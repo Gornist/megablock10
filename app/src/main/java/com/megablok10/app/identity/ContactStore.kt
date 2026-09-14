@@ -1,28 +1,26 @@
 package com.megablok10.app.identity
 
 import android.content.Context
+import com.megablok10.app.data.CharacterEntity
+import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.qr.Mb10Qr
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
-/** Плоское локальное хранилище отсканированных контактов (заглушка до Room). */
+/** Известные контакты (отсканированные Character других игроков) поверх Room. */
 object ContactStore {
-    private const val PREFS = "contacts_prefs"
-    private const val KEY_SET = "contacts"
-
-    fun all(context: Context): List<Mb10Qr.Contact> {
-        val raw = prefs(context).getStringSet(KEY_SET, emptySet()) ?: emptySet()
-        return raw.mapNotNull { entry ->
-            val p = entry.split("|")
-            if (p.size == 3) Mb10Qr.Contact(p[0], p[1], p[2]) else null
+    fun observeAll(context: Context): Flow<List<Mb10Qr.Contact>> =
+        Mb10Database.get(context).characterDao().observeAll().map { entities ->
+            entities.map { Mb10Qr.Contact(it.publicKeyB64, it.callsign, it.faction) }
         }
-    }
 
-    fun add(context: Context, contact: Mb10Qr.Contact) {
-        val current = prefs(context).getStringSet(KEY_SET, emptySet())?.toMutableSet()
-            ?: mutableSetOf()
-        current.add("${contact.publicKeyB64}|${contact.callsign}|${contact.faction}")
-        prefs(context).edit().putStringSet(KEY_SET, current).apply()
+    suspend fun add(context: Context, contact: Mb10Qr.Contact) {
+        Mb10Database.get(context).characterDao().upsert(
+            CharacterEntity(
+                publicKeyB64 = contact.publicKeyB64,
+                callsign = contact.callsign,
+                faction = contact.faction
+            )
+        )
     }
-
-    private fun prefs(context: Context) =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 }

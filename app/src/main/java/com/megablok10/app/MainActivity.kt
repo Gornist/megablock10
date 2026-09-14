@@ -25,6 +25,7 @@ import com.megablok10.app.identity.IdentityManager
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
 import com.megablok10.app.qr.rememberMb10QrScanner
+import kotlinx.coroutines.launch
 
 // Минимальная тёмная тема в духе общего стиля проекта — без полного
 // чамферного стайлгайда, чтобы не тормозить эту часть работы.
@@ -114,14 +115,12 @@ fun SetupScreen(onCreated: (String, String) -> Unit) {
 @Composable
 fun ProfileScreen(identity: Identity) {
     val context = LocalContext.current
-    var contacts by remember { mutableStateOf(ContactStore.all(context)) }
+    val scope = rememberCoroutineScope()
+    val contacts by ContactStore.observeAll(context).collectAsState(initial = emptyList())
 
     val startScan = rememberMb10QrScanner { qr ->
         when (qr) {
-            is Mb10Qr.Contact -> {
-                ContactStore.add(context, qr)
-                contacts = ContactStore.all(context)
-            }
+            is Mb10Qr.Contact -> scope.launch { ContactStore.add(context, qr) }
         }
     }
 
