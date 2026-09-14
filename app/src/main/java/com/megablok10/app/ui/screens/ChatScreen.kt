@@ -1,6 +1,7 @@
 package com.megablok10.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.ui.theme.ChamferedPanel
+import com.megablok10.app.ui.theme.DemoNotice
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.MB10Colors
@@ -38,12 +40,19 @@ private data class ChatMessage(val sender: String, val time: String, val body: S
 /**
  * Заглушка на демо-данных из HTML-макета — реальный TCP-чат появится
  * только на этапе NSD/presence. Пока это визуальный макет экрана, не
- * подключённый ни к какому транспорту.
+ * подключённый ни к какому транспорту. Два отдельных списка (а не один и
+ * тот же под обоими сегментами) — чтобы переключатель "Фракция/Личные"
+ * реально что-то переключал, а не просто менял цвет пилюли.
  */
 private val demoFactionMessages = listOf(
     ChatMessage("Лидер · Отряд", "21:32", "Всем оставаться на 8 этаже. К клинике не подходить без пропуска второго уровня."),
     ChatMessage("Игрок_04", "21:40", "У западного лифта нашли ещё один пропуск, отдал на пост."),
     ChatMessage("Вы", "21:44", "Принято, иду проверять техэтаж вместе с Ольгой.", self = true)
+)
+
+private val demoPersonalMessages = listOf(
+    ChatMessage("Ольга", "21:36", "Встречаемся у техэтажа через пять минут?"),
+    ChatMessage("Вы", "21:37", "Да, уже иду.", self = true)
 )
 
 @Composable
@@ -66,6 +75,7 @@ fun ChatScreen() {
                         modifier = Modifier
                             .weight(1f)
                             .background(if (active) MB10Colors.bg2 else MB10Colors.bg1)
+                            .clickable { activeSegment = i }
                             .padding(vertical = 8.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -80,10 +90,12 @@ fun ChatScreen() {
                 }
             }
         }
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(6.dp))
+        DemoNotice("сообщения — демо-данные, чат не подключён к транспорту", modifier = Modifier.padding(bottom = 8.dp))
 
+        val visibleMessages = if (activeSegment == 0) demoFactionMessages else demoPersonalMessages
         LazyColumn(modifier = Modifier.weight(1f)) {
-            items(demoFactionMessages) { msg -> MessageBubble(msg) }
+            items(visibleMessages) { msg -> MessageBubble(msg) }
         }
 
         Row(
@@ -101,7 +113,10 @@ fun ChatScreen() {
                 TextField(
                     value = draft,
                     onValueChange = { draft = it },
-                    placeholder = { Text("Сообщение фракции", color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 13.sp) },
+                    placeholder = {
+                        val hint = if (activeSegment == 0) "Сообщение фракции" else "Личное сообщение"
+                        Text(hint, color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 13.sp)
+                    },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions.Default,
                     colors = TextFieldDefaults.colors(
@@ -121,7 +136,7 @@ fun ChatScreen() {
                     .background(MB10Colors.yellow, chamferShape(6.dp))
                     .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
-                Text("Отпр.", color = androidx.compose.ui.graphics.Color(0xFF1A1600), fontFamily = JetBrainsMono, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                Text("Отпр.", color = MB10Colors.onAccent, fontFamily = JetBrainsMono, fontSize = 12.sp, fontWeight = FontWeight.Medium)
             }
         }
     }

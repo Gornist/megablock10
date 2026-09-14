@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.ui.theme.ChamferedPanel
+import com.megablok10.app.ui.theme.DemoNotice
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.MB10Colors
@@ -84,7 +85,7 @@ fun ShardsScreen(onOpenHack: () -> Unit) {
         ) {
             Text(
                 "Сканировать QR-шард",
-                color = Color(0xFF0A0A00),
+                color = MB10Colors.onAccent,
                 fontFamily = JetBrainsMono,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium,
@@ -93,6 +94,7 @@ fun ShardsScreen(onOpenHack: () -> Unit) {
             )
         }
         Spacer(Modifier.height(16.dp))
+        DemoNotice("список ниже — демо-данные из макета, реальные контейнеры ещё не подключены", modifier = Modifier.padding(bottom = 12.dp))
 
         LazyColumn {
             items(demoShards) { shard -> ShardCard(shard, onOpenHack) }
@@ -140,6 +142,8 @@ private fun ShardCard(shard: DemoShard, onOpenHack: () -> Unit) {
 
 @Composable
 private fun ShardBadgeChip(badge: ShardBadge) {
+    // Не через общий Chip: здесь текст всегда в полную яркость, а приглушена
+    // только рамка/заливка — нюанс, которого нет у других чипов в приложении.
     Box(
         modifier = Modifier
             .background(badge.color.copy(alpha = 0.08f), chamferShape(4.dp))

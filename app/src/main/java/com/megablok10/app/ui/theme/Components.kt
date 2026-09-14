@@ -19,7 +19,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -108,4 +113,77 @@ fun FlagTab(text: String, accent: Color = MB10Colors.lime, modifier: Modifier = 
     ) {
         Text(text, color = Color.Black, fontFamily = JetBrainsMono, fontSize = 10.sp)
     }
+}
+
+/** Мелкий заголовок секции: hex-буллит + моно-текст капсом. Повторяется на каждом экране со списками. */
+@Composable
+fun SectionLabel(text: String, color: Color = MB10Colors.inkMuted, modifier: Modifier = Modifier) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier.padding(bottom = 8.dp)) {
+        HexBullet(color, size = 8.dp)
+        Spacer(Modifier.width(6.dp))
+        Text(text, color = color, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
+    }
+}
+
+/** Чамфер-бейдж с рамкой — код демона, статус шарда, версия базы. Один визуальный паттерн вместо трёх копий по экранам. */
+@Composable
+fun Chip(text: String, color: Color = MB10Colors.inkMuted, cut: Dp = 4.dp, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .background(color.copy(alpha = 0.08f), chamferShape(cut))
+            .border(1.dp, color, chamferShape(cut))
+            .padding(horizontal = 7.dp, vertical = 2.dp)
+    ) {
+        Text(text, color = color, fontFamily = JetBrainsMono, fontSize = 9.5.sp)
+    }
+}
+
+/**
+ * Кнопка-рамка с моно-текстом по центру — единственный вариант "аутлайн"
+ * кнопки в стайлгайде. accentColor красит и рамку, и текст (red для
+ * опасных действий, ink0 по умолчанию).
+ */
+@Composable
+fun OutlineButton(
+    text: String,
+    modifier: Modifier = Modifier,
+    accentColor: Color = MB10Colors.ink0,
+    borderColor: Color = accentColor,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    val effectiveTextColor = if (enabled) accentColor else MB10Colors.inkFaint
+    val effectiveBorderColor = if (enabled) borderColor else MB10Colors.inkFaint
+    Box(
+        modifier = modifier
+            .border(1.dp, effectiveBorderColor, chamferShape(5.dp))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(vertical = 10.dp)
+    ) {
+        Text(
+            text,
+            color = effectiveTextColor,
+            fontFamily = JetBrainsMono,
+            fontSize = 11.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+/**
+ * Дисклеймер "это макет, не реальные данные" — одна строка мелким моно
+ * текстом. Нужен там, где статичные цифры/статусы визуально неотличимы от
+ * настоящих игровых данных (карантин-таймер, репутация, баланс) и живой
+ * тестировщик может принять заглушку за баг или за факт игры.
+ */
+@Composable
+fun DemoNotice(text: String, modifier: Modifier = Modifier) {
+    Text(
+        "// $text",
+        color = MB10Colors.inkFaint,
+        fontFamily = JetBrainsMono,
+        fontSize = 9.5.sp,
+        modifier = modifier
+    )
 }

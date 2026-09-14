@@ -21,4 +21,7 @@ object MB10Colors {
     val yellow = Color(0xFFFCEE0A)
     val lime = Color(0xFFD9FF3F)
     val red = Color(0xFFFF2E63)
+
+    /** Текст поверх заливки акцентом (yellow/lime) — оба достаточно светлые, чтобы требовать один и тот же тёмный текст. */
+    val onAccent = Color(0xFF0A0A00)
 }

@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.ui.theme.ChamferedPanel
+import com.megablok10.app.ui.theme.DemoNotice
 import com.megablok10.app.ui.theme.DottedDivider
 import com.megablok10.app.ui.theme.HexBullet
 import com.megablok10.app.ui.theme.Jura
@@ -79,17 +80,22 @@ fun AppHeader(identity: Identity) {
             modifier = Modifier.fillMaxWidth()
         ) {
             Row(
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Top,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
             ) {
-                Box(Modifier.size(6.dp).background(MB10Colors.red, CircleShape))
-                Text(
-                    "Мегаблок №10 — карантин, 3ч 12м с изоляции",
-                    color = MB10Colors.red,
-                    fontFamily = JetBrainsMono,
-                    fontSize = 10.5.sp
-                )
+                Box(Modifier.padding(top = 3.dp).size(6.dp).background(MB10Colors.red, CircleShape))
+                Column {
+                    Text(
+                        "Мегаблок №10 — карантин, 3ч 12м с изоляции",
+                        color = MB10Colors.red,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 10.5.sp
+                    )
+                    // Нет мастерской трансляции состояния игры — таймер статичен,
+                    // а не тикает. Без этой строки он неотличим от настоящего.
+                    DemoNotice("статично, обновляется вручную мастером", modifier = Modifier.padding(top = 2.dp))
+                }
             }
         }
     }

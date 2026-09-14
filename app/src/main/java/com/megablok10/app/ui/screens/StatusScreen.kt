@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
@@ -40,13 +39,14 @@ import com.megablok10.app.qr.Mb10QrCodec
 import com.megablok10.app.qr.generateQrBitmap
 import com.megablok10.app.qr.rememberMb10QrScanner
 import com.megablok10.app.ui.theme.ChamferedPanel
+import com.megablok10.app.ui.theme.DemoNotice
 import com.megablok10.app.ui.theme.DottedDivider
-import com.megablok10.app.ui.theme.HexBullet
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.Jura
 import com.megablok10.app.ui.theme.MB10Colors
 import com.megablok10.app.ui.theme.MB10Toggle
+import com.megablok10.app.ui.theme.SectionLabel
 import kotlinx.coroutines.launch
 
 @Composable
@@ -79,12 +79,12 @@ fun StatusScreen(identity: Identity) {
             }
             Spacer(Modifier.height(18.dp))
 
-            // RAM — реальный лимит буфера кибердеки берётся из MockBreach, пока
-            // не появится Character.ramCapacity (импланты/этап 4).
+            // Ни системы репутации фракций, ни cyberpsychosis-механики, ни
+            // реального Character.ramCapacity в MVP пока нет (последняя
+            // осознанно выведена из скоупа) — все метры ниже статичны, поэтому
+            // явно помечены как демо, а не молча выдаются за реальные данные.
+            DemoNotice("показатели ниже не привязаны к персонажу — визуальный макет", modifier = Modifier.padding(bottom = 10.dp))
             StatMeter("RAM нетраннера", "${MockBreach.ramCapacity - 6} / ${MockBreach.ramCapacity}", 0.4f, MB10Colors.ink0)
-            // Репутация и сбой импланта — визуальные заглушки из макета: ни
-            // системы репутации фракций, ни cyberpsychosis-механики в MVP нет
-            // (последняя осознанно выведена из скоупа) — числа ничего не значат.
             StatMeter("Репутация — Отряд самообороны", "высокая", 0.78f, MB10Colors.ink0)
             StatMeter("Репутация — Клемты", "низкая", 0.18f, MB10Colors.ink0)
             StatMeter("Сбой импланта", "62%", 0.62f, MB10Colors.red)
@@ -135,15 +135,6 @@ fun StatusScreen(identity: Identity) {
             }
             DottedDivider()
         }
-    }
-}
-
-@Composable
-private fun SectionLabel(text: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 8.dp)) {
-        HexBullet(MB10Colors.inkMuted, size = 8.dp)
-        Spacer(Modifier.width(6.dp))
-        Text(text, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
     }
 }
 

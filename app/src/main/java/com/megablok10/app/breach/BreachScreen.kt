@@ -45,6 +45,7 @@ import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.Jura
 import com.megablok10.app.ui.theme.MB10Colors
+import com.megablok10.app.ui.theme.OutlineButton
 import com.megablok10.app.ui.theme.chamferShape
 import kotlinx.coroutines.delay
 import kotlin.random.Random
@@ -93,7 +94,7 @@ fun BreachScreen() {
         ) {
             Text(
                 "Взломать точку доступа",
-                color = if (canStart) Color(0xFF0A0A00) else Color(0xFF0A0A00).copy(alpha = 0.4f),
+                color = if (canStart) MB10Colors.onAccent else MB10Colors.onAccent.copy(alpha = 0.4f),
                 fontFamily = JetBrainsMono,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium,
@@ -183,14 +184,14 @@ private fun BreachSession(daemons: List<Daemon>, seed: Long, onRestart: () -> Un
     TerminalFrame {
         Box(Modifier.fillMaxWidth().background(MB10Colors.lime).padding(10.dp, 8.dp)) {
             Column {
-                Text("BREACH PROTOCOL // ИНТЕРФЕЙС", color = Color(0xFF0A0A00), fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                Text("BREACH PROTOCOL // ИНТЕРФЕЙС", color = MB10Colors.onAccent, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
                 Spacer(Modifier.height(4.dp))
                 Text(
                     "доступ разрешён только персоналу с пропуском уровня 2 и выше",
-                    color = Color(0xFF0A0A00).copy(alpha = 0.8f), fontFamily = JetBrainsMono, fontSize = 8.sp, lineHeight = 11.sp
+                    color = MB10Colors.onAccent.copy(alpha = 0.8f), fontFamily = JetBrainsMono, fontSize = 8.sp, lineHeight = 11.sp
                 )
                 Spacer(Modifier.height(5.dp))
-                Text(breachId, color = Color(0xFF0A0A00), fontFamily = JetBrainsMono, fontSize = 9.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.End)
+                Text(breachId, color = MB10Colors.onAccent, fontFamily = JetBrainsMono, fontSize = 9.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.End)
             }
         }
         Spacer(Modifier.height(14.dp))
@@ -290,9 +291,12 @@ private fun BreachSession(daemons: List<Daemon>, seed: Long, onRestart: () -> Un
 
     Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         if (result == null) {
-            OutlineActionButton("Прервать взлом", modifier = Modifier.weight(1f), onClick = { resolveOnce() })
+            // Не "отмена без последствий" — сдаёт текущий буфер на резолв
+            // досрочно, так же как истечение таймера. Название кнопки должно
+            // это отражать, иначе игрок ждёт отмены без результата.
+            OutlineButton("Сдать буфер досрочно", modifier = Modifier.weight(1f), borderColor = MB10Colors.inkFaint, onClick = { resolveOnce() })
         }
-        OutlineActionButton("Новая точка доступа", modifier = Modifier.weight(1f), onClick = onRestart)
+        OutlineButton("Новая точка доступа", modifier = Modifier.weight(1f), borderColor = MB10Colors.inkFaint, onClick = onRestart)
     }
 }
 
@@ -404,18 +408,6 @@ private fun ResultPanel(result: BreachResult) {
             fontSize = 10.5.sp,
             modifier = Modifier.padding(top = 8.dp)
         )
-    }
-}
-
-@Composable
-private fun OutlineActionButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Box(
-        modifier = modifier
-            .border(1.dp, MB10Colors.inkFaint, chamferShape(5.dp))
-            .clickable(onClick = onClick)
-            .padding(vertical = 8.dp)
-    ) {
-        Text(text, color = MB10Colors.ink0, fontFamily = JetBrainsMono, fontSize = 11.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
     }
 }
 

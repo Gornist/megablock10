@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
@@ -19,12 +18,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.ui.theme.ChamferedPanel
+import com.megablok10.app.ui.theme.DemoNotice
 import com.megablok10.app.ui.theme.DottedDivider
-import com.megablok10.app.ui.theme.HexBullet
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.Jura
 import com.megablok10.app.ui.theme.MB10Colors
+import com.megablok10.app.ui.theme.SectionLabel
 
 private data class DemoTx(val name: String, val time: String, val amount: Int)
 
@@ -42,6 +42,7 @@ private val demoTransactions = listOf(
 @Composable
 fun WalletScreen() {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+        DemoNotice("баланс и операции ниже — демо-данные, реальная экономика ещё не подключена", modifier = Modifier.padding(bottom = 12.dp))
         SectionLabel("Баланс")
         ChamferedPanel(
             borderColor = MB10Colors.inkFaint,
@@ -69,15 +70,6 @@ fun WalletScreen() {
                 if (index != demoTransactions.lastIndex) DottedDivider()
             }
         }
-    }
-}
-
-@Composable
-private fun SectionLabel(text: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
-        HexBullet(MB10Colors.inkMuted, size = 8.dp)
-        Spacer(Modifier.width(6.dp))
-        Text(text, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
     }
 }
 
