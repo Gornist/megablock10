@@ -22,7 +22,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.MultiFormatWriter
-import com.journeyapps.barcodescanner.IntentIntegrator
+import com.google.zxing.integration.android.IntentIntegrator
 import com.megablok10.app.identity.ContactQr
 import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.identity.Identity
