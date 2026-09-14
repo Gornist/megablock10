@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.MultiFormatWriter
+import com.megablok10.app.breach.BreachScreen
 import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.identity.IdentityManager
@@ -56,17 +57,21 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private enum class Screen { Profile, Breach }
+
 @Composable
 fun AppRoot() {
     val context = LocalContext.current
     var identity by remember { mutableStateOf(IdentityManager.current(context)) }
+    var screen by remember { mutableStateOf(Screen.Profile) }
 
     if (identity == null) {
         SetupScreen(onCreated = { callsign, faction ->
             identity = IdentityManager.getOrCreate(context, callsign, faction)
         })
-    } else {
-        ProfileScreen(identity!!)
+    } else when (screen) {
+        Screen.Profile -> ProfileScreen(identity!!, onOpenBreach = { screen = Screen.Breach })
+        Screen.Breach -> BreachScreen(onExit = { screen = Screen.Profile })
     }
 }
 
@@ -113,7 +118,7 @@ fun SetupScreen(onCreated: (String, String) -> Unit) {
 }
 
 @Composable
-fun ProfileScreen(identity: Identity) {
+fun ProfileScreen(identity: Identity, onOpenBreach: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val contacts by ContactStore.observeAll(context).collectAsState(initial = emptyList())
@@ -149,6 +154,11 @@ fun ProfileScreen(identity: Identity) {
         Spacer(Modifier.height(20.dp))
         Button(onClick = startScan, modifier = Modifier.fillMaxWidth()) {
             Text("Сканировать контакт")
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Button(onClick = onOpenBreach, modifier = Modifier.fillMaxWidth()) {
+            Text("Кибердека (тест)")
         }
 
         Spacer(Modifier.height(20.dp))
