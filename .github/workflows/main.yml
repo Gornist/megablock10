@@ -22,10 +22,13 @@ jobs:
         with:
           gradle-version: "8.7"
 
-      - name: Build debug APK
+      - name: Run unit tests
         run: |
           yes | sdkmanager --licenses > /dev/null || true
-          gradle assembleDebug --no-daemon
+          gradle testDebugUnitTest --no-daemon
+
+      - name: Build debug APK
+        run: gradle assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v7
