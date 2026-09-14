@@ -1,5 +1,6 @@
 package com.megablok10.app.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,70 +18,56 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.megablok10.app.qr.Mb10Qr
+import com.megablok10.app.qr.rememberMb10QrScanner
+import com.megablok10.app.shards.ShardStore
 import com.megablok10.app.ui.theme.ChamferedPanel
-import com.megablok10.app.ui.theme.DemoNotice
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.MB10Colors
 import com.megablok10.app.ui.theme.chamferShape
+import kotlinx.coroutines.launch
 
 private enum class ShardBadge(val text: String, val color: Color) {
     Public("открыт", MB10Colors.inkMuted),
     Locked("зашифрован", MB10Colors.lime),
-    Fragment("фрагмент 1/3", MB10Colors.yellow),
+    Fragment("фрагмент", MB10Colors.yellow),
     Compromised("скомпрометирован", MB10Colors.red)
 }
 
-private data class DemoShard(
-    val title: String,
-    val badge: ShardBadge,
-    val meta: String,
-    val body: String,
-    val decryptAction: Boolean = false
-)
-
-/** Демо-данные из HTML-макета — реальный Container/Shard появится на этапе "Контейнеры и лут". */
-private val demoShards = listOf(
-    DemoShard(
-        "Отчёт техника: партия хладагента",
-        ShardBadge.Public,
-        "получен 20:41 · техэтаж",
-        "«...партия С-9 пришла с браком клапана ещё в среду, я докладывал наверх, ответа не было...»"
-    ),
-    DemoShard(
-        "Служебный лог клиники",
-        ShardBadge.Locked,
-        "получен 21:02 · клиника, уровень доступа 2",
-        "Содержимое скрыто. Требуется взлом точки доступа для расшифровки.",
-        decryptAction = true
-    ),
-    DemoShard(
-        "Радиоперехват — Клемты",
-        ShardBadge.Fragment,
-        "получен 20:15 · техэтаж",
-        "Собрано 1 из 3 фрагментов. Остальные части — у других игроков или в других локациях."
-    ),
-    DemoShard(
-        "Записка охраны рынка",
-        ShardBadge.Compromised,
-        "впервые открыт Игрок_04 в 20:58",
-        "Этот шард уже читал другой игрок — расчитывать на эксклюзив информации не стоит."
-    )
-)
+private fun resolveBadge(raw: String): ShardBadge =
+    ShardBadge.entries.find { it.name.equals(raw, ignoreCase = true) } ?: ShardBadge.Public
 
 @Composable
 fun ShardsScreen(onOpenHack: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val shards by ShardStore.observeAll(context).collectAsState(initial = emptyList())
+
+    val scanShard = rememberMb10QrScanner { qr ->
+        when (qr) {
+            is Mb10Qr.Shard -> scope.launch { ShardStore.add(context, qr) }
+            else -> Toast.makeText(context, "Это не QR-код шарда", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(MB10Colors.lime, chamferShape(6.dp))
+                .clickable(onClick = scanShard)
                 .padding(vertical = 10.dp),
         ) {
             Text(
@@ -94,16 +81,23 @@ fun ShardsScreen(onOpenHack: () -> Unit) {
             )
         }
         Spacer(Modifier.height(16.dp))
-        DemoNotice("список ниже — демо-данные из макета, реальные контейнеры ещё не подключены", modifier = Modifier.padding(bottom = 12.dp))
 
-        LazyColumn {
-            items(demoShards) { shard -> ShardCard(shard, onOpenHack) }
+        if (shards.isEmpty()) {
+            Text(
+                "Пока нет отсканированных шардов. Найдите QR-метку в игровом пространстве.",
+                color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 13.sp, lineHeight = 18.sp
+            )
+        } else {
+            LazyColumn {
+                items(shards, key = { it.id }) { shard -> ShardCard(shard, onOpenHack) }
+            }
         }
     }
 }
 
 @Composable
-private fun ShardCard(shard: DemoShard, onOpenHack: () -> Unit) {
+private fun ShardCard(shard: Mb10Qr.Shard, onOpenHack: () -> Unit) {
+    val badge = remember(shard.badge) { resolveBadge(shard.badge) }
     ChamferedPanel(
         borderColor = MB10Colors.inkFaint,
         fillColor = MB10Colors.bg1,
@@ -119,7 +113,7 @@ private fun ShardCard(shard: DemoShard, onOpenHack: () -> Unit) {
             ) {
                 Text(shard.title, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.5.sp, modifier = Modifier.weight(1f))
                 Spacer(Modifier.width(8.dp))
-                ShardBadgeChip(shard.badge)
+                ShardBadgeChip(badge)
             }
             Spacer(Modifier.height(5.dp))
             Text(shard.meta, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)

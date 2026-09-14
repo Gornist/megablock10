@@ -1,5 +1,6 @@
 package com.megablok10.app.breach
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -34,9 +35,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.megablok10.app.qr.Mb10Qr
+import com.megablok10.app.qr.rememberMb10QrScanner
 import com.megablok10.app.ui.theme.ChamferedPanel
 import com.megablok10.app.ui.theme.DottedDivider
 import com.megablok10.app.ui.theme.FlagTab
@@ -51,17 +55,71 @@ import kotlinx.coroutines.delay
 import kotlin.random.Random
 
 /**
- * Структура экрана повторяет референсный HTML-макет: выбор программ и
- * кнопка старта видны ПОСТОЯННО (а не прячутся на время попытки), терминал
- * взлома появляется под ними и после резолва не исчезает — результат
- * рисуется внутри той же рамки поверх замороженной сетки/буфера/демонов,
- * а не отдельным экраном. Повторный тап "Взломать точку доступа" всегда
- * стартует новую попытку с текущим выбором демонов.
+ * Взлом недоступен, пока не отсканирована QR-метка конкретной точки доступа
+ * (её печатают мастера на месте) — без этого экран просто просит сканировать.
+ * После скана открывается сессия, привязанная к этой точке; "Новая точка
+ * доступа" внизу возвращает к запросу скана, а не просто пересевает грид.
  */
 @Composable
 fun BreachScreen() {
-    var chosen by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var sessionSeed by remember { mutableStateOf<Long?>(null) }
+    val context = LocalContext.current
+    var point by remember { mutableStateOf<Mb10Qr.AccessPoint?>(null) }
+    val scanPoint = rememberMb10QrScanner { qr ->
+        when (qr) {
+            is Mb10Qr.AccessPoint -> point = qr
+            else -> Toast.makeText(context, "Это не QR-метка точки доступа", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val currentPoint = point
+    if (currentPoint == null) {
+        BreachScanGate(onScan = scanPoint)
+    } else {
+        BreachAccessPointFlow(point = currentPoint, onRescan = { point = null })
+    }
+}
+
+@Composable
+private fun BreachScanGate(onScan: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        HexBullet(MB10Colors.lime, size = 14.dp)
+        Spacer(Modifier.height(14.dp))
+        Text(
+            "Взлом доступен только на месте",
+            color = MB10Colors.ink0, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 17.sp,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Найдите QR-метку точки доступа в игровом пространстве и отсканируйте её, чтобы начать Breach Protocol.",
+            color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 13.sp, lineHeight = 18.sp,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(20.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MB10Colors.lime, chamferShape(6.dp))
+                .clickable(onClick = onScan)
+                .padding(vertical = 10.dp)
+        ) {
+            Text(
+                "Сканировать точку доступа",
+                color = MB10Colors.onAccent, fontFamily = JetBrainsMono, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+@Composable
+private fun BreachAccessPointFlow(point: Mb10Qr.AccessPoint, onRescan: () -> Unit) {
+    var chosen by remember(point.id) { mutableStateOf<Set<String>>(emptySet()) }
+    var sessionSeed by remember(point.id) { mutableStateOf<Long?>(null) }
 
     val chosenDaemons = MockBreach.daemons.filter { it.id in chosen }
     val used = chosenDaemons.sumOf { it.sequence.size }
@@ -72,7 +130,7 @@ fun BreachScreen() {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 10.dp)) {
             HexBullet(MB10Colors.lime, size = 8.dp)
             Spacer(Modifier.width(6.dp))
-            Text("Точка доступа: панель вентиляции, техэтаж", color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
+            Text("Точка доступа: ${point.name}", color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
         }
 
         DaemonPicker(chosen = chosen, onToggle = { id -> chosen = if (id in chosen) chosen - id else chosen + id })
@@ -108,7 +166,7 @@ fun BreachScreen() {
             BreachSession(
                 daemons = chosenDaemons,
                 seed = seed,
-                onRestart = { sessionSeed = System.nanoTime() }
+                onRescan = onRescan
             )
         }
     }
@@ -159,7 +217,7 @@ private fun CodePill(code: String) {
  * и поверх появляется result-panel, как в макете.
  */
 @Composable
-private fun BreachSession(daemons: List<Daemon>, seed: Long, onRestart: () -> Unit) {
+private fun BreachSession(daemons: List<Daemon>, seed: Long, onRescan: () -> Unit) {
     val grid = remember(seed) { generateGrid(MockBreach.gridSize, daemons, Random(seed)) }
     val breachId = remember(seed) { "MB10-VENT-" + seed.toString(16).takeLast(4).uppercase() }
 
@@ -296,7 +354,7 @@ private fun BreachSession(daemons: List<Daemon>, seed: Long, onRestart: () -> Un
             // это отражать, иначе игрок ждёт отмены без результата.
             OutlineButton("Сдать буфер досрочно", modifier = Modifier.weight(1f), borderColor = MB10Colors.inkFaint, onClick = { resolveOnce() })
         }
-        OutlineButton("Новая точка доступа", modifier = Modifier.weight(1f), borderColor = MB10Colors.inkFaint, onClick = onRestart)
+        OutlineButton("Новая точка доступа", modifier = Modifier.weight(1f), borderColor = MB10Colors.inkFaint, onClick = onRescan)
     }
 }
 

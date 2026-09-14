@@ -6,14 +6,20 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 /**
- * Схема наращивается по мере фич (Character сейчас, Container/Transaction —
- * когда появятся экономика и лут), а не строится целиком заранее.
- * До релиза миграции не пишем — схема ещё нестабильна, при её смене Room
- * просто пересоздаст базу (fallbackToDestructiveMigration).
+ * Схема наращивается по мере фич (Character/Shard/Transaction сейчас,
+ * Container — когда появятся полноценные контейнеры), а не строится целиком
+ * заранее. До релиза миграции не пишем — схема ещё нестабильна, при её смене
+ * Room просто пересоздаст базу (fallbackToDestructiveMigration).
  */
-@Database(entities = [CharacterEntity::class], version = 1, exportSchema = false)
+@Database(
+    entities = [CharacterEntity::class, ShardEntity::class, TransactionEntity::class],
+    version = 2,
+    exportSchema = false
+)
 abstract class Mb10Database : RoomDatabase() {
     abstract fun characterDao(): CharacterDao
+    abstract fun shardDao(): ShardDao
+    abstract fun transactionDao(): TransactionDao
 
     companion object {
         @Volatile private var instance: Mb10Database? = null

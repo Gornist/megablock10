@@ -1,5 +1,6 @@
 package com.megablok10.app.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
@@ -39,8 +41,10 @@ import com.megablok10.app.qr.Mb10QrCodec
 import com.megablok10.app.qr.generateQrBitmap
 import com.megablok10.app.qr.rememberMb10QrScanner
 import com.megablok10.app.ui.theme.ChamferedPanel
+import com.megablok10.app.ui.theme.Chip
 import com.megablok10.app.ui.theme.DemoNotice
 import com.megablok10.app.ui.theme.DottedDivider
+import com.megablok10.app.ui.theme.HexBullet
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.Jura
@@ -58,6 +62,7 @@ fun StatusScreen(identity: Identity) {
     val startScan = rememberMb10QrScanner { qr ->
         when (qr) {
             is Mb10Qr.Contact -> scope.launch { ContactStore.add(context, qr) }
+            else -> Toast.makeText(context, "Это не QR-код контакта", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -128,10 +133,23 @@ fun StatusScreen(identity: Identity) {
             Spacer(Modifier.height(8.dp))
         }
 
-        items(contacts) { c ->
-            Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                Text(c.callsign, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp)
-                Text(c.faction, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
+        if (contacts.isEmpty()) {
+            item {
+                Text(
+                    "Пока нет контактов. Отсканируйте QR-код другого игрока, чтобы добавить его.",
+                    color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 13.sp, lineHeight = 18.sp
+                )
+            }
+        }
+        items(contacts, key = { it.publicKeyB64 }) { c ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                HexBullet(MB10Colors.yellow, size = 8.dp)
+                Spacer(Modifier.width(8.dp))
+                Text(c.callsign, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Chip(c.faction, color = MB10Colors.inkMuted)
             }
             DottedDivider()
         }

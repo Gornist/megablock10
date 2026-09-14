@@ -74,7 +74,7 @@ fun AppRoot() {
             when (activeTab) {
                 AppTab.Chat -> ChatScreen()
                 AppTab.Hack -> BreachScreen()
-                AppTab.Wallet -> WalletScreen()
+                AppTab.Wallet -> WalletScreen(currentIdentity)
                 AppTab.Shards -> ShardsScreen(onOpenHack = { tab = AppTab.Hack })
                 AppTab.Profile -> StatusScreen(currentIdentity)
                 AppTab.Settings -> SettingsScreen(onResetIdentity = {
