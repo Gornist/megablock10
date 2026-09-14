@@ -63,6 +63,7 @@ fun AppRoot() {
     val context = LocalContext.current
     var identity by remember { mutableStateOf(IdentityManager.current(context)) }
     var tab by remember { mutableStateOf(AppTab.Chat) }
+    var chatContact by remember { mutableStateOf<String?>(null) }
 
     val currentIdentity = identity
     if (currentIdentity == null) {
@@ -72,11 +73,14 @@ fun AppRoot() {
     } else {
         MainScaffold(identity = currentIdentity, selectedTab = tab, onSelectTab = { tab = it }) { activeTab ->
             when (activeTab) {
-                AppTab.Chat -> ChatScreen()
+                AppTab.Chat -> ChatScreen(openedWithContact = chatContact, onContactConsumed = { chatContact = null })
                 AppTab.Hack -> BreachScreen()
                 AppTab.Wallet -> WalletScreen(currentIdentity)
                 AppTab.Shards -> ShardsScreen(onOpenHack = { tab = AppTab.Hack })
-                AppTab.Profile -> StatusScreen(currentIdentity)
+                AppTab.Profile -> StatusScreen(currentIdentity, onMessageContact = { callsign ->
+                    chatContact = callsign
+                    tab = AppTab.Chat
+                })
                 AppTab.Settings -> SettingsScreen(onResetIdentity = {
                     IdentityManager.clear(context)
                     identity = null

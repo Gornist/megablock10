@@ -49,6 +49,19 @@ sealed interface Mb10Qr {
         val memo: String,
         val signatureB64: String
     ) : Mb10Qr
+
+    /**
+     * Подтверждение получения — показывает получатель в ответ, отправитель
+     * сканирует его, чтобы зафиксировать транзакцию (см. TransactionStore).
+     * До этого момента отправитель ещё может отменить платёж и вернуть себе
+     * деньги; после — нет, ровно для того, чтобы "отменить и оставить деньги
+     * себе" было невозможно, если получатель уже реально получил перевод.
+     */
+    data class Receipt(
+        val id: String,
+        val receiverPubKeyB64: String,
+        val signatureB64: String
+    ) : Mb10Qr
 }
 
 object Mb10QrCodec {
@@ -63,6 +76,7 @@ object Mb10QrCodec {
                 "AP" -> decodeAccessPoint(parts)
                 "SHARD" -> decodeShard(parts)
                 "TX" -> decodeTransaction(parts)
+                "RCPT" -> decodeReceipt(parts)
                 else -> null
             }
         } catch (e: Exception) {
@@ -129,6 +143,18 @@ object Mb10QrCodec {
     /** Байты, которые подписывает плательщик и проверяет получатель — одна и та же формула по обе стороны. */
     fun transactionSignaturePayload(id: String, fromPubKeyB64: String, amount: Long, memo: String): ByteArray =
         "$id|$fromPubKeyB64|$amount|$memo".toByteArray(Charsets.UTF_8)
+
+    fun encodeReceipt(receipt: Mb10Qr.Receipt): String =
+        "$MAGIC:RCPT:v1:${receipt.id}:${receipt.receiverPubKeyB64}:${receipt.signatureB64}"
+
+    private fun decodeReceipt(parts: List<String>): Mb10Qr.Receipt? {
+        if (parts.size < 6) return null
+        return Mb10Qr.Receipt(id = parts[3], receiverPubKeyB64 = parts[4], signatureB64 = parts[5])
+    }
+
+    /** Байты, которые подписывает получатель на чеке — та же id, что и у исходной транзакции, плюс его ключ. */
+    fun receiptSignaturePayload(id: String, receiverPubKeyB64: String): ByteArray =
+        "$id|$receiverPubKeyB64".toByteArray(Charsets.UTF_8)
 
     private fun b64(text: String): String = Base64.getEncoder().encodeToString(text.toByteArray(Charsets.UTF_8))
 

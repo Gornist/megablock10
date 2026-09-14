@@ -16,17 +16,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.qr.Mb10Qr
@@ -35,6 +40,7 @@ import com.megablok10.app.shards.ShardStore
 import com.megablok10.app.ui.theme.ChamferedPanel
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
+import com.megablok10.app.ui.theme.Jura
 import com.megablok10.app.ui.theme.MB10Colors
 import com.megablok10.app.ui.theme.chamferShape
 import kotlinx.coroutines.launch
@@ -54,12 +60,19 @@ fun ShardsScreen(onOpenHack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val shards by ShardStore.observeAll(context).collectAsState(initial = emptyList())
+    var openedShard by remember { mutableStateOf<Mb10Qr.Shard?>(null) }
 
     val scanShard = rememberMb10QrScanner { qr ->
         when (qr) {
             is Mb10Qr.Shard -> scope.launch { ShardStore.add(context, qr) }
             else -> Toast.makeText(context, "Это не QR-код шарда", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    val opened = openedShard
+    if (opened != null) {
+        ShardDetailOverlay(shard = opened, onClose = { openedShard = null }, onOpenHack = onOpenHack)
+        return
     }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
@@ -77,7 +90,7 @@ fun ShardsScreen(onOpenHack: () -> Unit) {
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier.fillMaxWidth(),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                textAlign = TextAlign.Center
             )
         }
         Spacer(Modifier.height(16.dp))
@@ -89,21 +102,22 @@ fun ShardsScreen(onOpenHack: () -> Unit) {
             )
         } else {
             LazyColumn {
-                items(shards, key = { it.id }) { shard -> ShardCard(shard, onOpenHack) }
+                items(shards, key = { it.id }) { shard -> ShardCard(shard, onClick = { openedShard = shard }) }
             }
         }
     }
 }
 
+/** Заголовок ряда — короткая витрина шарда; полный текст открывается только по тапу, в ShardDetailOverlay. */
 @Composable
-private fun ShardCard(shard: Mb10Qr.Shard, onOpenHack: () -> Unit) {
+private fun ShardCard(shard: Mb10Qr.Shard, onClick: () -> Unit) {
     val badge = remember(shard.badge) { resolveBadge(shard.badge) }
     ChamferedPanel(
         borderColor = MB10Colors.inkFaint,
         fillColor = MB10Colors.bg1,
         cut = 6.dp,
         contentPadding = 0.dp,
-        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp).clickable(onClick = onClick)
     ) {
         Column(Modifier.padding(11.dp)) {
             Row(
@@ -117,18 +131,59 @@ private fun ShardCard(shard: Mb10Qr.Shard, onOpenHack: () -> Unit) {
             }
             Spacer(Modifier.height(5.dp))
             Text(shard.meta, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
-            Spacer(Modifier.height(6.dp))
-            Text(shard.body, color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 12.5.sp, lineHeight = 17.sp)
-            if (shard.decryptAction) {
-                Spacer(Modifier.height(8.dp))
-                Box(
-                    modifier = Modifier
-                        .border(1.dp, MB10Colors.lime, chamferShape(5.dp))
-                        .clickable(onClick = onOpenHack)
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                ) {
-                    Text("Расшифровать", color = MB10Colors.lime, fontFamily = JetBrainsMono, fontSize = 11.sp)
-                }
+        }
+    }
+}
+
+@Composable
+private fun ShardDetailOverlay(shard: Mb10Qr.Shard, onClose: () -> Unit, onOpenHack: () -> Unit) {
+    val badge = remember(shard.badge) { resolveBadge(shard.badge) }
+    Column(Modifier.fillMaxSize().background(MB10Colors.bg0).padding(16.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onClose).padding(vertical = 6.dp)
+        ) {
+            Text("←", color = MB10Colors.ink0, fontFamily = JetBrainsMono, fontSize = 16.sp)
+            Spacer(Modifier.width(8.dp))
+            Text("Назад к шардам", color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 11.sp)
+        }
+        Spacer(Modifier.height(16.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Top
+        ) {
+            Text(
+                shard.title,
+                color = MB10Colors.ink0, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 19.sp,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(Modifier.width(8.dp))
+            ShardBadgeChip(badge)
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(shard.meta, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
+        Spacer(Modifier.height(16.dp))
+
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            Text(shard.body, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 14.sp, lineHeight = 21.sp)
+            Spacer(Modifier.height(16.dp))
+        }
+
+        if (shard.decryptAction) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, MB10Colors.lime, chamferShape(6.dp))
+                    .clickable(onClick = onOpenHack)
+                    .padding(vertical = 10.dp)
+            ) {
+                Text(
+                    "Расшифровать",
+                    color = MB10Colors.lime, fontFamily = JetBrainsMono, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
+                )
             }
         }
     }

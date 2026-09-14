@@ -23,6 +23,7 @@ import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -63,6 +64,9 @@ import kotlin.random.Random
 @Composable
 fun BreachScreen() {
     val context = LocalContext.current
+    LaunchedEffect(Unit) { DaemonStore.ensureSeeded(context) }
+    val daemons by DaemonStore.observeAll(context).collectAsState(initial = emptyList())
+
     var point by remember { mutableStateOf<Mb10Qr.AccessPoint?>(null) }
     val scanPoint = rememberMb10QrScanner { qr ->
         when (qr) {
@@ -73,55 +77,66 @@ fun BreachScreen() {
 
     val currentPoint = point
     if (currentPoint == null) {
-        BreachScanGate(onScan = scanPoint)
+        BreachScanGate(daemons = daemons, onScan = scanPoint)
     } else {
-        BreachAccessPointFlow(point = currentPoint, onRescan = { point = null })
+        BreachAccessPointFlow(point = currentPoint, daemons = daemons, onRescan = { point = null })
     }
 }
 
+/**
+ * Демонов можно просматривать и читать их описание в любой момент, даже не
+ * сканируя точку доступа — коллекция пополняется по ходу игры, и это её
+ * единственная витрина вне конкретной попытки взлома.
+ */
 @Composable
-private fun BreachScanGate(onScan: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        HexBullet(MB10Colors.lime, size = 14.dp)
-        Spacer(Modifier.height(14.dp))
-        Text(
-            "Взлом доступен только на месте",
-            color = MB10Colors.ink0, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 17.sp,
-            textAlign = TextAlign.Center
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "Найдите QR-метку точки доступа в игровом пространстве и отсканируйте её, чтобы начать Breach Protocol.",
-            color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 13.sp, lineHeight = 18.sp,
-            textAlign = TextAlign.Center
-        )
-        Spacer(Modifier.height(20.dp))
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MB10Colors.lime, chamferShape(6.dp))
-                .clickable(onClick = onScan)
-                .padding(vertical = 10.dp)
-        ) {
+private fun BreachScanGate(daemons: List<Daemon>, onScan: () -> Unit) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp)) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+            HexBullet(MB10Colors.lime, size = 14.dp)
+            Spacer(Modifier.height(14.dp))
             Text(
-                "Сканировать точку доступа",
-                color = MB10Colors.onAccent, fontFamily = JetBrainsMono, fontSize = 12.sp, fontWeight = FontWeight.Medium,
-                textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
+                "Взлом доступен только на месте",
+                color = MB10Colors.ink0, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 17.sp,
+                textAlign = TextAlign.Center
             )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Найдите QR-метку точки доступа в игровом пространстве и отсканируйте её, чтобы начать Breach Protocol.",
+                color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 13.sp, lineHeight = 18.sp,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(20.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MB10Colors.lime, chamferShape(6.dp))
+                    .clickable(onClick = onScan)
+                    .padding(vertical = 10.dp)
+            ) {
+                Text(
+                    "Сканировать точку доступа",
+                    color = MB10Colors.onAccent, fontFamily = JetBrainsMono, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
+
+        Spacer(Modifier.height(28.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 10.dp)) {
+            HexBullet(MB10Colors.inkMuted, size = 8.dp)
+            Spacer(Modifier.width(6.dp))
+            Text("Мои демоны (${daemons.size})", color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
+        }
+        DaemonList(daemons)
     }
 }
 
 @Composable
-private fun BreachAccessPointFlow(point: Mb10Qr.AccessPoint, onRescan: () -> Unit) {
+private fun BreachAccessPointFlow(point: Mb10Qr.AccessPoint, daemons: List<Daemon>, onRescan: () -> Unit) {
     var chosen by remember(point.id) { mutableStateOf<Set<String>>(emptySet()) }
     var sessionSeed by remember(point.id) { mutableStateOf<Long?>(null) }
 
-    val chosenDaemons = MockBreach.daemons.filter { it.id in chosen }
+    val chosenDaemons = daemons.filter { it.id in chosen }
     val used = chosenDaemons.sumOf { it.sequence.size }
     val overBudget = used > MockBreach.ramCapacity
     val canStart = chosenDaemons.isNotEmpty() && !overBudget
@@ -133,7 +148,7 @@ private fun BreachAccessPointFlow(point: Mb10Qr.AccessPoint, onRescan: () -> Uni
             Text("Точка доступа: ${point.name}", color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
         }
 
-        DaemonPicker(chosen = chosen, onToggle = { id -> chosen = if (id in chosen) chosen - id else chosen + id })
+        DaemonPicker(daemons = daemons, chosen = chosen, onToggle = { id -> chosen = if (id in chosen) chosen - id else chosen + id })
 
         Text(
             "Буфер: $used / ${MockBreach.ramCapacity}" + if (overBudget) " — снимите демон" else "",
@@ -173,9 +188,9 @@ private fun BreachAccessPointFlow(point: Mb10Qr.AccessPoint, onRescan: () -> Uni
 }
 
 @Composable
-private fun DaemonPicker(chosen: Set<String>, onToggle: (String) -> Unit) {
+private fun DaemonPicker(daemons: List<Daemon>, chosen: Set<String>, onToggle: (String) -> Unit) {
     Column {
-        MockBreach.daemons.forEachIndexed { index, daemon ->
+        daemons.forEachIndexed { index, daemon ->
             val isChecked = daemon.id in chosen
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -196,7 +211,26 @@ private fun DaemonPicker(chosen: Set<String>, onToggle: (String) -> Unit) {
                     }
                 }
             }
-            if (index != MockBreach.daemons.lastIndex) DottedDivider()
+            if (index != daemons.lastIndex) DottedDivider()
+        }
+    }
+}
+
+/** Просмотр коллекции демонов без выбора — на гейте, до сканирования точки доступа. */
+@Composable
+private fun DaemonList(daemons: List<Daemon>) {
+    Column {
+        daemons.forEachIndexed { index, daemon ->
+            Column(Modifier.fillMaxWidth().padding(vertical = 9.dp)) {
+                Text(daemon.name, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp)
+                if (daemon.reward.isNotEmpty()) {
+                    Text(daemon.reward, color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 11.sp)
+                }
+                Row(Modifier.padding(top = 4.dp)) {
+                    daemon.sequence.forEach { code -> CodePill(code) }
+                }
+            }
+            if (index != daemons.lastIndex) DottedDivider()
         }
     }
 }

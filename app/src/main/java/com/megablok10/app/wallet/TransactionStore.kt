@@ -3,6 +3,8 @@ package com.megablok10.app.wallet
 import android.content.Context
 import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.data.TransactionEntity
+import com.megablok10.app.data.TransactionStatus
+import com.megablok10.app.identity.Identity
 import com.megablok10.app.identity.IdentityManager
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
@@ -11,8 +13,8 @@ import kotlinx.coroutines.flow.map
 
 /**
  * Локальный денежный журнал устройства поверх Room. Баланс — не отдельное
- * поле, а сумма amount по всем записям: то же самое "сколько раз кто-то
- * подтвердил передачу", что и во всём остальном протоколе (контакты, шарды).
+ * поле, а сумма amount по всем записям (PENDING считаются наравне с
+ * CONFIRMED — деньги уже не в руках игрока с момента генерации QR).
  */
 object TransactionStore {
     fun observeAll(context: Context): Flow<List<TransactionEntity>> =
@@ -23,26 +25,53 @@ object TransactionStore {
 
     /**
      * Плательщик списывает у себя сумму СРАЗУ при генерации QR — как отдать
-     * наличные из рук в руки, без подтверждения от получателя. Кто именно
-     * отсканирует, в этот момент ещё не известно, поэтому counterparty пуст.
+     * наличные из рук в руки. Статус PENDING: пока получатель не подтвердил
+     * чеком, что деньги реально дошли, плательщик ещё может отменить платёж
+     * и вернуть себе деньги (см. cancelOutgoing) — например, если получатель
+     * не смог отсканировать QR вовсе.
      */
-    suspend fun recordOutgoing(context: Context, tx: Mb10Qr.Transaction) {
+    suspend fun recordOutgoingPending(context: Context, tx: Mb10Qr.Transaction) {
         Mb10Database.get(context).transactionDao().insertIfAbsent(
             TransactionEntity(
                 id = tx.id,
                 counterpartyPubKeyB64 = "",
                 amount = -tx.amount,
                 memo = tx.memo,
-                timestamp = System.currentTimeMillis()
+                timestamp = System.currentTimeMillis(),
+                status = TransactionStatus.PENDING
             )
         )
     }
 
+    /** Отменяет ещё не подтверждённый платёж и возвращает деньги. false, если запись уже подтверждена или не найдена. */
+    suspend fun cancelOutgoing(context: Context, id: String): Boolean =
+        Mb10Database.get(context).transactionDao().cancelPending(id) > 0
+
+    /**
+     * Фиксирует платёж по чеку получателя — с этого момента отменить его
+     * уже нельзя. Именно эта проверка и не даёт "нажать отменить и оставить
+     * деньги себе" после того, как получатель их реально получил.
+     */
+    suspend fun verifyAndConfirmReceipt(context: Context, pendingTxId: String, receipt: Mb10Qr.Receipt): Boolean {
+        if (receipt.id != pendingTxId) return false
+        val payload = Mb10QrCodec.receiptSignaturePayload(receipt.id, receipt.receiverPubKeyB64)
+        if (!IdentityManager.verify(receipt.receiverPubKeyB64, payload, receipt.signatureB64)) return false
+        return Mb10Database.get(context).transactionDao().confirm(receipt.id) > 0
+    }
+
+    /** Чек, который получатель показывает в ответ отправителю — доказательство, что деньги реально получены. */
+    fun buildReceipt(context: Context, identity: Identity, transactionId: String): Mb10Qr.Receipt {
+        val payload = Mb10QrCodec.receiptSignaturePayload(transactionId, identity.publicKeyB64)
+        val signature = IdentityManager.sign(context, payload)
+        return Mb10Qr.Receipt(id = transactionId, receiverPubKeyB64 = identity.publicKeyB64, signatureB64 = signature)
+    }
+
     /**
      * Получатель проверяет подпись плательщика тем же публичным ключом, что
-     * зашит в его Contact-QR, и зачисляет сумму себе. Возвращает false, если
-     * подпись не сошлась, сумма некорректна, это своя же транзакция или она
-     * уже была зачислена раньше (защита от повторного скана одного QR).
+     * зашит в его Contact-QR, и зачисляет сумму себе — сразу как CONFIRMED,
+     * получателю отменять нечего. Возвращает false, если подпись не сошлась,
+     * сумма некорректна, это своя же транзакция или она уже была зачислена
+     * раньше (защита от повторного скана одного QR).
      */
     suspend fun recordIncoming(context: Context, myPublicKeyB64: String, tx: Mb10Qr.Transaction): Boolean {
         if (tx.amount <= 0) return false
@@ -56,7 +85,8 @@ object TransactionStore {
                 counterpartyPubKeyB64 = tx.fromPubKeyB64,
                 amount = tx.amount,
                 memo = tx.memo,
-                timestamp = System.currentTimeMillis()
+                timestamp = System.currentTimeMillis(),
+                status = TransactionStatus.CONFIRMED
             )
         )
         return rowId != -1L

@@ -19,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,10 +56,24 @@ private val demoPersonalMessages = listOf(
     ChatMessage("Вы", "21:37", "Да, уже иду.", self = true)
 )
 
+/**
+ * openedWithContact — заданный извне (кнопка "Сообщение" в контактах) callsign,
+ * с которым нужно открыть чат. Чат всё ещё демо-данные (нет транспорта), но
+ * переключение на "Личные" — реальная навигация, а не оставленная как есть
+ * пилюля: onContactConsumed сразу обнуляет запрос на стороне AppRoot, чтобы
+ * повторный визит на вкладку без нового тапа "Сообщение" не переключал сегмент.
+ */
 @Composable
-fun ChatScreen() {
+fun ChatScreen(openedWithContact: String? = null, onContactConsumed: () -> Unit = {}) {
     var activeSegment by remember { mutableStateOf(0) }
     var draft by remember { mutableStateOf("") }
+
+    LaunchedEffect(openedWithContact) {
+        if (openedWithContact != null) {
+            activeSegment = 1
+            onContactConsumed()
+        }
+    }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         ChamferedPanel(

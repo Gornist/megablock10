@@ -86,6 +86,20 @@ class Mb10QrCodecTest {
     }
 
     @Test
+    fun `receipt round-trips`() {
+        val receipt = Mb10Qr.Receipt(id = "tx-1", receiverPubKeyB64 = "recvPub==", signatureB64 = "sigB64==")
+        val decoded = Mb10QrCodec.decode(Mb10QrCodec.encodeReceipt(receipt))
+        assertEquals(receipt, decoded)
+    }
+
+    @Test
+    fun `receipt signature payload changes if receiver key is tampered`() {
+        val original = Mb10QrCodec.receiptSignaturePayload("tx-1", "recvPub==")
+        val tampered = Mb10QrCodec.receiptSignaturePayload("tx-1", "otherPub==")
+        assert(!original.contentEquals(tampered))
+    }
+
+    @Test
     fun `unknown magic prefix decodes to null`() {
         assertNull(Mb10QrCodec.decode("NOTMB10:CONTACT:v1:a:b:c"))
     }

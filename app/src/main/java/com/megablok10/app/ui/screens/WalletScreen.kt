@@ -2,6 +2,7 @@ package com.megablok10.app.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -29,9 +30,11 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.data.TransactionEntity
+import com.megablok10.app.data.TransactionStatus
 import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.identity.IdentityManager
@@ -64,15 +67,49 @@ fun WalletScreen(identity: Identity) {
 
     var sending by remember { mutableStateOf(false) }
     var pendingTx by remember { mutableStateOf<Mb10Qr.Transaction?>(null) }
+    var confirmed by remember { mutableStateOf(false) }
+    var incomingReceipt by remember { mutableStateOf<Mb10Qr.Receipt?>(null) }
+
+    fun resetSendPanel() {
+        sending = false
+        pendingTx = null
+        confirmed = false
+    }
 
     val scanTransaction = rememberMb10QrScanner { qr ->
         when (qr) {
             is Mb10Qr.Transaction -> scope.launch {
                 val credited = TransactionStore.recordIncoming(context, identity.publicKeyB64, qr)
-                val message = if (credited) "Зачислено ${qr.amount} €$" else "QR транзакции недействителен или уже отсканирован"
-                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                if (credited) {
+                    incomingReceipt = TransactionStore.buildReceipt(context, identity, qr.id)
+                    Toast.makeText(context, "Зачислено ${qr.amount} €$ — покажите QR-подтверждение отправителю", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(context, "QR транзакции недействителен или уже отсканирован", Toast.LENGTH_SHORT).show()
+                }
             }
             else -> Toast.makeText(context, "Это не QR-код транзакции", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val scanReceipt = rememberMb10QrScanner { qr ->
+        when (qr) {
+            is Mb10Qr.Receipt -> {
+                val tx = pendingTx
+                if (tx == null) {
+                    Toast.makeText(context, "Нет платежа, ожидающего подтверждения", Toast.LENGTH_SHORT).show()
+                } else {
+                    scope.launch {
+                        val ok = TransactionStore.verifyAndConfirmReceipt(context, tx.id, qr)
+                        if (ok) {
+                            confirmed = true
+                            Toast.makeText(context, "Получатель подтвердил получение", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Это подтверждение не подходит к этому платежу", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            }
+            else -> Toast.makeText(context, "Это не QR-код подтверждения", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -99,13 +136,10 @@ fun WalletScreen(identity: Identity) {
         Spacer(Modifier.height(14.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlineButton(
-                if (sending) "Отменить" else "Отправить",
+                if (sending) "Скрыть" else "Отправить",
                 modifier = Modifier.weight(1f),
                 accentColor = MB10Colors.yellow,
-                onClick = {
-                    sending = !sending
-                    pendingTx = null
-                }
+                onClick = { sending = !sending }
             )
             OutlineButton("Получить (скан)", modifier = Modifier.weight(1f), borderColor = MB10Colors.inkFaint, onClick = scanTransaction)
         }
@@ -114,19 +148,28 @@ fun WalletScreen(identity: Identity) {
             Spacer(Modifier.height(14.dp))
             SendTransactionPanel(
                 pendingTx = pendingTx,
+                confirmed = confirmed,
                 onGenerate = { amount, memo ->
                     val id = UUID.randomUUID().toString()
                     val payload = Mb10QrCodec.transactionSignaturePayload(id, identity.publicKeyB64, amount, memo)
                     val signature = IdentityManager.sign(context, payload)
                     val tx = Mb10Qr.Transaction(id, identity.publicKeyB64, amount, memo, signature)
-                    scope.launch { TransactionStore.recordOutgoing(context, tx) }
+                    scope.launch { TransactionStore.recordOutgoingPending(context, tx) }
                     pendingTx = tx
                 },
-                onDone = {
-                    sending = false
-                    pendingTx = null
-                }
+                onCancel = {
+                    val tx = pendingTx
+                    if (tx != null) scope.launch { TransactionStore.cancelOutgoing(context, tx.id) }
+                    resetSendPanel()
+                },
+                onScanReceipt = scanReceipt,
+                onDone = { resetSendPanel() }
             )
+        }
+
+        incomingReceipt?.let { receipt ->
+            Spacer(Modifier.height(14.dp))
+            ReceiptPanel(receipt = receipt, onDone = { incomingReceipt = null })
         }
 
         Spacer(Modifier.height(20.dp))
@@ -139,7 +182,11 @@ fun WalletScreen(identity: Identity) {
         } else {
             Column {
                 transactions.forEachIndexed { index, tx ->
-                    TxRow(tx, contactsByKey[tx.counterpartyPubKeyB64]?.callsign)
+                    TxRow(
+                        tx = tx,
+                        counterpartyName = contactsByKey[tx.counterpartyPubKeyB64]?.callsign,
+                        onCancelPending = { scope.launch { TransactionStore.cancelOutgoing(context, tx.id) } }
+                    )
                     if (index != transactions.lastIndex) DottedDivider()
                 }
             }
@@ -150,7 +197,10 @@ fun WalletScreen(identity: Identity) {
 @Composable
 private fun SendTransactionPanel(
     pendingTx: Mb10Qr.Transaction?,
+    confirmed: Boolean,
     onGenerate: (amount: Long, memo: String) -> Unit,
+    onCancel: () -> Unit,
+    onScanReceipt: () -> Unit,
     onDone: () -> Unit
 ) {
     ChamferedPanel(
@@ -167,7 +217,7 @@ private fun SendTransactionPanel(
 
             Column {
                 Text(
-                    "Сумма списывается с вашего баланса сразу — как передать наличные из рук в руки. Покажите QR тому, кто получает деньги.",
+                    "Сумма списывается с вашего баланса сразу — как передать наличные из рук в руки. Покажите QR тому, кто получает деньги, а затем отсканируйте его QR-подтверждение — до этого платёж ещё можно отменить.",
                     color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 12.sp, lineHeight = 16.sp
                 )
                 Spacer(Modifier.height(10.dp))
@@ -199,8 +249,9 @@ private fun SendTransactionPanel(
         } else {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    "Покажите этот QR получателю платежа",
-                    color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp
+                    if (confirmed) "Получатель подтвердил получение" else "Покажите этот QR получателю платежа",
+                    color = if (confirmed) MB10Colors.yellow else MB10Colors.ink0,
+                    fontFamily = IBMPlexSans, fontSize = 13.sp, textAlign = TextAlign.Center
                 )
                 Spacer(Modifier.height(10.dp))
                 val bitmap = remember(pendingTx.id) { generateQrBitmap(Mb10QrCodec.encodeTransaction(pendingTx)) }
@@ -211,15 +262,61 @@ private fun SendTransactionPanel(
                     color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 11.sp
                 )
                 Spacer(Modifier.height(12.dp))
-                OutlineButton("Готово", modifier = Modifier.fillMaxWidth(), onClick = onDone)
+                if (confirmed) {
+                    OutlineButton("Готово", modifier = Modifier.fillMaxWidth(), onClick = onDone)
+                } else {
+                    Text(
+                        "Ожидает подтверждения — отсканируйте QR-чек получателя, чтобы зафиксировать платёж.",
+                        color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 11.5.sp, lineHeight = 15.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    OutlineButton(
+                        "Подтвердить получение (скан)",
+                        modifier = Modifier.fillMaxWidth(),
+                        accentColor = MB10Colors.yellow,
+                        onClick = onScanReceipt
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlineButton(
+                        "Отменить платёж",
+                        modifier = Modifier.fillMaxWidth(),
+                        accentColor = MB10Colors.red,
+                        onClick = onCancel
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun TxRow(tx: TransactionEntity, counterpartyName: String?) {
+private fun ReceiptPanel(receipt: Mb10Qr.Receipt, onDone: () -> Unit) {
+    ChamferedPanel(
+        borderColor = MB10Colors.lime,
+        fillColor = MB10Colors.bg1,
+        cut = 6.dp,
+        contentPadding = 14.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+            Text(
+                "Покажите этот QR отправителю для подтверждения",
+                color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp, textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(10.dp))
+            val bitmap = remember(receipt.id) { generateQrBitmap(Mb10QrCodec.encodeReceipt(receipt)) }
+            Image(bitmap = bitmap.asImageBitmap(), contentDescription = "QR подтверждения", modifier = Modifier.size(200.dp))
+            Spacer(Modifier.height(12.dp))
+            OutlineButton("Готово", modifier = Modifier.fillMaxWidth(), onClick = onDone)
+        }
+    }
+}
+
+@Composable
+private fun TxRow(tx: TransactionEntity, counterpartyName: String?, onCancelPending: () -> Unit) {
     val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+    val pending = tx.status == TransactionStatus.PENDING
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 9.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -235,7 +332,21 @@ private fun TxRow(tx: TransactionEntity, counterpartyName: String?) {
                 tx.counterpartyPubKeyB64.isNotEmpty() -> " · от ${tx.counterpartyPubKeyB64.take(8)}…"
                 else -> null
             }
-            Text(timeText + (fromText ?: ""), color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
+            val statusText = if (pending) " · ожидает подтверждения" else ""
+            Text(
+                timeText + (fromText ?: "") + statusText,
+                color = if (pending) MB10Colors.yellow else MB10Colors.inkMuted,
+                fontFamily = JetBrainsMono, fontSize = 10.sp
+            )
+            if (pending) {
+                Text(
+                    "Отменить",
+                    color = MB10Colors.red,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 10.sp,
+                    modifier = Modifier.clickable(onClick = onCancelPending).padding(top = 2.dp)
+                )
+            }
         }
         val amountText = (if (tx.amount > 0) "+" else "") + tx.amount
         Text(

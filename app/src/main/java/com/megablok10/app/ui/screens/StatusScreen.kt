@@ -3,6 +3,8 @@ package com.megablok10.app.ui.screens
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -51,10 +53,11 @@ import com.megablok10.app.ui.theme.Jura
 import com.megablok10.app.ui.theme.MB10Colors
 import com.megablok10.app.ui.theme.MB10Toggle
 import com.megablok10.app.ui.theme.SectionLabel
+import com.megablok10.app.ui.theme.chamferShape
 import kotlinx.coroutines.launch
 
 @Composable
-fun StatusScreen(identity: Identity) {
+fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val contacts by ContactStore.observeAll(context).collectAsState(initial = emptyList())
@@ -142,17 +145,48 @@ fun StatusScreen(identity: Identity) {
             }
         }
         items(contacts, key = { it.publicKeyB64 }) { c ->
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                HexBullet(MB10Colors.yellow, size = 8.dp)
-                Spacer(Modifier.width(8.dp))
-                Text(c.callsign, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                Chip(c.faction, color = MB10Colors.inkMuted)
+            Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    HexBullet(MB10Colors.yellow, size = 8.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text(c.callsign, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    Chip(c.faction, color = MB10Colors.inkMuted)
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ContactActionButton(
+                        "Сообщение",
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            Toast.makeText(context, "Открываю чат с ${c.callsign}", Toast.LENGTH_SHORT).show()
+                            onMessageContact(c.callsign)
+                        }
+                    )
+                    ContactActionButton(
+                        "Звонок",
+                        modifier = Modifier.weight(1f),
+                        onClick = { Toast.makeText(context, "Голосовая связь — в следующих обновлениях", Toast.LENGTH_SHORT).show() }
+                    )
+                }
             }
             DottedDivider()
         }
+    }
+}
+
+/** Компактная кнопка под строкой контакта — OutlineButton из темы великоват (padding под полноразмерную CTA). */
+@Composable
+private fun ContactActionButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(
+        modifier = modifier
+            .border(1.dp, MB10Colors.inkFaint, chamferShape(4.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 6.dp)
+    ) {
+        Text(
+            text, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.5.sp,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 

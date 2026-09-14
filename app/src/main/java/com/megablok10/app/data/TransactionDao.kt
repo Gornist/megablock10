@@ -18,4 +18,12 @@ interface TransactionDao {
      */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIfAbsent(transaction: TransactionEntity): Long
+
+    /** Переводит исходящую запись в CONFIRMED — только пока она ещё PENDING. Возвращает число изменённых строк (0 или 1). */
+    @Query("UPDATE transactions SET status = 'CONFIRMED' WHERE id = :id AND status = 'PENDING'")
+    suspend fun confirm(id: String): Int
+
+    /** Удаляет запись, только если она ещё PENDING — подтверждённую отменить нельзя. Возвращает число удалённых строк. */
+    @Query("DELETE FROM transactions WHERE id = :id AND status = 'PENDING'")
+    suspend fun cancelPending(id: String): Int
 }
