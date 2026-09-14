@@ -1,13 +1,10 @@
 package com.megablok10.app
 
-import android.app.Activity
 import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -22,11 +19,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.MultiFormatWriter
-import com.google.zxing.integration.android.IntentIntegrator
-import com.megablok10.app.identity.ContactQr
 import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.identity.IdentityManager
+import com.megablok10.app.qr.Mb10Qr
+import com.megablok10.app.qr.Mb10QrCodec
+import com.megablok10.app.qr.rememberMb10QrScanner
 
 // Минимальная тёмная тема в духе общего стиля проекта — без полного
 // чамферного стайлгайда, чтобы не тормозить эту часть работы.
@@ -116,26 +114,15 @@ fun SetupScreen(onCreated: (String, String) -> Unit) {
 @Composable
 fun ProfileScreen(identity: Identity) {
     val context = LocalContext.current
-    val activity = context as Activity
     var contacts by remember { mutableStateOf(ContactStore.all(context)) }
 
-    val scanLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        val scan = IntentIntegrator.parseActivityResult(result.resultCode, result.data)
-        val raw = scan?.contents ?: return@rememberLauncherForActivityResult
-        ContactQr.decode(raw)?.let { contact ->
-            ContactStore.add(context, contact)
-            contacts = ContactStore.all(context)
+    val startScan = rememberMb10QrScanner { qr ->
+        when (qr) {
+            is Mb10Qr.Contact -> {
+                ContactStore.add(context, qr)
+                contacts = ContactStore.all(context)
+            }
         }
-    }
-
-    fun startScan() {
-        val integrator = IntentIntegrator(activity)
-            .setDesiredBarcodeFormats(IntentIntegrator.QR_CODE)
-            .setPrompt("Наведите на QR контакта")
-            .setBeepEnabled(false)
-        scanLauncher.launch(integrator.createScanIntent())
     }
 
     Column(
@@ -148,7 +135,9 @@ fun ProfileScreen(identity: Identity) {
         Spacer(Modifier.height(16.dp))
 
         val qrBitmap = remember(identity.publicKeyB64) {
-            generateQrBitmap(ContactQr.encode(identity))
+            generateQrBitmap(
+                Mb10QrCodec.encodeContact(identity.publicKeyB64, identity.callsign, identity.faction)
+            )
         }
         Image(
             bitmap = qrBitmap.asImageBitmap(),
@@ -159,7 +148,7 @@ fun ProfileScreen(identity: Identity) {
         )
 
         Spacer(Modifier.height(20.dp))
-        Button(onClick = { startScan() }, modifier = Modifier.fillMaxWidth()) {
+        Button(onClick = startScan, modifier = Modifier.fillMaxWidth()) {
             Text("Сканировать контакт")
         }
 
