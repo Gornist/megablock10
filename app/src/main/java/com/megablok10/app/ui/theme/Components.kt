@@ -1,6 +1,8 @@
 package com.megablok10.app.ui.theme
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -8,12 +10,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -21,8 +26,14 @@ import androidx.compose.ui.unit.sp
 
 /**
  * Двухслойная рамка со срезом: border не комбинируется с clip-path на одном
- * элементе, поэтому "рамка" — это внешний Box цвета borderColor, внутрь
- * которого с отступом borderWidth вложен внутренний Box цвета fillColor.
+ * элементе, поэтому "рамка" рисуется отдельным фоном под отступом borderWidth
+ * от заливки. Это ОДИН Box с цепочкой модификаторов (фон рамки → отступ →
+ * фон заливки → отступ → контент), а не два вложенных Box — важно: вложенный
+ * Box с fillMaxSize()/fillMaxWidth() внутри Box без своего размера даёт
+ * циклическую зависимость размеров (родитель хочет обернуть ребёнка, ребёнок
+ * хочет заполнить родителя) и панель раздувается на весь доступный экран.
+ * Модификаторы в цепочке такой проблемы не создают: Box просто оборачивает
+ * content, а фоны/паддинги — это концентрические отступы вокруг него.
  * innerCut уменьшен на borderWidth, чтобы диагональ среза оставалась
  * параллельна внешней независимо от толщины рамки.
  */
@@ -44,15 +55,10 @@ fun ChamferedPanel(
         modifier = modifier
             .background(borderColor, outerShape)
             .padding(borderWidth)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(fillColor, innerShape)
-                .padding(contentPadding),
-            content = content
-        )
-    }
+            .background(fillColor, innerShape)
+            .padding(contentPadding),
+        content = content
+    )
 }
 
 @Composable
@@ -69,6 +75,26 @@ fun DottedDivider(color: Color = MB10Colors.inkFaint, modifier: Modifier = Modif
             end = Offset(size.width, 0f),
             strokeWidth = 1.dp.toPx(),
             pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f))
+        )
+    }
+}
+
+/** Кастомный тумблер по макету — трек 34x18, ручка 12x12, on = жёлтый. */
+@Composable
+fun MB10Toggle(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+    val knobOffset by animateDpAsState(if (checked) 18.dp else 2.dp, tween(150), label = "toggleKnob")
+    Box(
+        modifier = modifier
+            .size(width = 34.dp, height = 18.dp)
+            .background(MB10Colors.bg2)
+            .border(1.dp, if (checked) MB10Colors.yellow else MB10Colors.inkFaint)
+            .clickable { onCheckedChange(!checked) }
+    ) {
+        Box(
+            modifier = Modifier
+                .padding(start = knobOffset, top = 2.dp)
+                .size(12.dp)
+                .background(if (checked) MB10Colors.yellow else MB10Colors.inkMuted)
         )
     }
 }

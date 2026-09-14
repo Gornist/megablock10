@@ -62,6 +62,11 @@ object IdentityManager {
         return Identity(pubB64, callsign, faction)
     }
 
+    /** Необратимо стирает личность этого устройства (ключи, позывной, фракция). */
+    fun clear(context: Context) {
+        prefs(context).edit().clear().apply()
+    }
+
     fun current(context: Context): Identity? {
         val p = prefs(context)
         val pub = p.getString(KEY_PUBLIC, null) ?: return null

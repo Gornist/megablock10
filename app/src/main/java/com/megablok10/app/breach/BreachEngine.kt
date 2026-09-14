@@ -6,7 +6,8 @@ import kotlin.random.Random
 data class Daemon(
     val id: String,
     val name: String,
-    val sequence: List<String>
+    val sequence: List<String>,
+    val reward: String = ""
 )
 
 data class BreachGrid(

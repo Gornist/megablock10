@@ -14,9 +14,9 @@ object MockBreach {
     const val ramCapacity = 8
 
     val daemons = listOf(
-        Daemon("datamine_v1", "Datamine V1", listOf("1C", "55")),
-        Daemon("datamine_v2", "Datamine V2", listOf("BD", "E9", "1C")),
-        Daemon("icepick", "Icepick", listOf("55", "7A", "BD")),
-        Daemon("camera_shutdown", "Camera Shutdown", listOf("E9", "FF"))
+        Daemon("datamine_v1", "Datamine V1", listOf("1C", "55"), "открывает текстовый шард"),
+        Daemon("datamine_v2", "Datamine V2", listOf("BD", "E9", "1C"), "открывает второй шард на точке"),
+        Daemon("icepick", "Icepick", listOf("55", "7A", "BD"), "снимает физическую блокировку двери"),
+        Daemon("camera_shutdown", "Camera Shutdown", listOf("E9", "FF"), "скрывает попытку взлома от лога СБ")
     )
 }

@@ -1,38 +1,39 @@
 package com.megablok10.app
 
-import android.graphics.Bitmap
-import android.graphics.Color as AndroidColor
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.MultiFormatWriter
 import com.megablok10.app.breach.BreachScreen
-import com.megablok10.app.identity.ContactStore
-import com.megablok10.app.identity.Identity
 import com.megablok10.app.identity.IdentityManager
-import com.megablok10.app.qr.Mb10Qr
-import com.megablok10.app.qr.Mb10QrCodec
-import com.megablok10.app.qr.rememberMb10QrScanner
-import kotlinx.coroutines.launch
-
-// Минимальная тёмная тема в духе общего стиля проекта — без полного
-// чамферного стайлгайда, чтобы не тормозить эту часть работы.
-private val LimeAccent = Color(0xFFD9FF3F)
-private val AppBackground = Color(0xFF0C0C0D)
-private val AppSurface = Color(0xFF151515)
+import com.megablok10.app.ui.nav.AppTab
+import com.megablok10.app.ui.nav.MainScaffold
+import com.megablok10.app.ui.screens.ChatScreen
+import com.megablok10.app.ui.screens.SettingsScreen
+import com.megablok10.app.ui.screens.ShardsScreen
+import com.megablok10.app.ui.screens.StatusScreen
+import com.megablok10.app.ui.screens.WalletScreen
+import com.megablok10.app.ui.theme.MB10Colors
 
 class MainActivity : ComponentActivity() {
 
@@ -41,12 +42,12 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme(
                 colorScheme = darkColorScheme(
-                    primary = LimeAccent,
-                    background = AppBackground,
-                    surface = AppSurface,
-                    onPrimary = Color.Black,
-                    onBackground = Color(0xFFF5F5F0),
-                    onSurface = Color(0xFFF5F5F0)
+                    primary = MB10Colors.yellow,
+                    background = MB10Colors.bg0,
+                    surface = MB10Colors.bg1,
+                    onPrimary = androidx.compose.ui.graphics.Color.Black,
+                    onBackground = MB10Colors.ink0,
+                    onSurface = MB10Colors.ink0
                 )
             ) {
                 Surface(color = MaterialTheme.colorScheme.background) {
@@ -57,21 +58,32 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Screen { Profile, Breach }
-
 @Composable
 fun AppRoot() {
     val context = LocalContext.current
     var identity by remember { mutableStateOf(IdentityManager.current(context)) }
-    var screen by remember { mutableStateOf(Screen.Profile) }
+    var tab by remember { mutableStateOf(AppTab.Chat) }
 
-    if (identity == null) {
+    val currentIdentity = identity
+    if (currentIdentity == null) {
         SetupScreen(onCreated = { callsign, faction ->
             identity = IdentityManager.getOrCreate(context, callsign, faction)
         })
-    } else when (screen) {
-        Screen.Profile -> ProfileScreen(identity!!, onOpenBreach = { screen = Screen.Breach })
-        Screen.Breach -> BreachScreen(onExit = { screen = Screen.Profile })
+    } else {
+        MainScaffold(identity = currentIdentity, selectedTab = tab, onSelectTab = { tab = it }) { activeTab ->
+            when (activeTab) {
+                AppTab.Chat -> ChatScreen()
+                AppTab.Hack -> BreachScreen()
+                AppTab.Wallet -> WalletScreen()
+                AppTab.Shards -> ShardsScreen(onOpenHack = { tab = AppTab.Hack })
+                AppTab.Profile -> StatusScreen(currentIdentity)
+                AppTab.Settings -> SettingsScreen(onResetIdentity = {
+                    IdentityManager.clear(context)
+                    identity = null
+                    tab = AppTab.Chat
+                })
+            }
+        }
     }
 }
 
@@ -115,72 +127,4 @@ fun SetupScreen(onCreated: (String, String) -> Unit) {
             style = MaterialTheme.typography.bodySmall
         )
     }
-}
-
-@Composable
-fun ProfileScreen(identity: Identity, onOpenBreach: () -> Unit) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val contacts by ContactStore.observeAll(context).collectAsState(initial = emptyList())
-
-    val startScan = rememberMb10QrScanner { qr ->
-        when (qr) {
-            is Mb10Qr.Contact -> scope.launch { ContactStore.add(context, qr) }
-        }
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(20.dp)
-    ) {
-        Text(identity.callsign, style = MaterialTheme.typography.headlineSmall)
-        Text(identity.faction, style = MaterialTheme.typography.bodyMedium)
-        Spacer(Modifier.height(16.dp))
-
-        val qrBitmap = remember(identity.publicKeyB64) {
-            generateQrBitmap(
-                Mb10QrCodec.encodeContact(identity.publicKeyB64, identity.callsign, identity.faction)
-            )
-        }
-        Image(
-            bitmap = qrBitmap.asImageBitmap(),
-            contentDescription = "QR-код контакта",
-            modifier = Modifier
-                .size(220.dp)
-                .align(Alignment.CenterHorizontally)
-        )
-
-        Spacer(Modifier.height(20.dp))
-        Button(onClick = startScan, modifier = Modifier.fillMaxWidth()) {
-            Text("Сканировать контакт")
-        }
-
-        Spacer(Modifier.height(12.dp))
-        Button(onClick = onOpenBreach, modifier = Modifier.fillMaxWidth()) {
-            Text("Кибердека (тест)")
-        }
-
-        Spacer(Modifier.height(20.dp))
-        Text("Контакты (${contacts.size})", style = MaterialTheme.typography.titleSmall)
-        LazyColumn(modifier = Modifier.padding(top = 8.dp)) {
-            items(contacts) { c ->
-                Column(modifier = Modifier.padding(vertical = 6.dp)) {
-                    Text(c.callsign, style = MaterialTheme.typography.bodyLarge)
-                    Text(c.faction, style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-    }
-}
-
-private fun generateQrBitmap(content: String, sizePx: Int = 512): Bitmap {
-    val matrix = MultiFormatWriter().encode(content, BarcodeFormat.QR_CODE, sizePx, sizePx)
-    val bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.RGB_565)
-    for (x in 0 until sizePx) {
-        for (y in 0 until sizePx) {
-            bmp.setPixel(x, y, if (matrix.get(x, y)) AndroidColor.BLACK else AndroidColor.WHITE)
-        }
-    }
-    return bmp
 }
