@@ -1,0 +1,191 @@
+package com.megablok10.app.ui.screens
+
+import android.widget.Toast
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.megablok10.app.data.CallDirection
+import com.megablok10.app.data.CallLogEntity
+import com.megablok10.app.data.CallOutcome
+import com.megablok10.app.data.Mb10Database
+import com.megablok10.app.identity.ContactStore
+import com.megablok10.app.presence.PeerInfo
+import com.megablok10.app.presence.PresenceService
+import com.megablok10.app.ui.theme.DottedDivider
+import com.megablok10.app.ui.theme.IBMPlexSans
+import com.megablok10.app.ui.theme.JetBrainsMono
+import com.megablok10.app.ui.theme.MB10Colors
+import com.megablok10.app.ui.theme.chamferShape
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+/**
+ * Журнал звонков — своя вкладка, а не похороненный внизу Профиля список,
+ * как раньше. "+" открывает пикер контактов для нового звонка; тап по
+ * строке лога перезванивает тому же собеседнику, если он сейчас в сети.
+ */
+@Composable
+fun CallsScreen(onCallPeer: (PeerInfo) -> Unit) {
+    val context = LocalContext.current
+    val callLog by Mb10Database.get(context).callLogDao().observeAll().collectAsState(initial = emptyList())
+    val onlinePeers by PresenceService.peers.collectAsState()
+    var showPicker by remember { mutableStateOf(false) }
+
+    fun tryCall(peerPubKeyB64: String, callsign: String) {
+        val peer = onlinePeers.find { it.pubKeyB64 == peerPubKeyB64 }
+        if (peer == null) {
+            Toast.makeText(context, "$callsign сейчас не в сети", Toast.LENGTH_SHORT).show()
+        } else {
+            onCallPeer(peer)
+        }
+    }
+
+    if (showPicker) {
+        NewCallPicker(
+            onPick = { key, callsign -> showPicker = false; tryCall(key, callsign) },
+            onBack = { showPicker = false }
+        )
+        return
+    }
+
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("Звонки", color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            Box(
+                modifier = Modifier
+                    .background(MB10Colors.accentPrimary, chamferShape(5.dp))
+                    .clickable { showPicker = true }
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Text("+ Новый звонок", color = MB10Colors.onAccent, fontFamily = JetBrainsMono, fontSize = 10.5.sp, fontWeight = FontWeight.Medium)
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+
+        if (callLog.isEmpty()) {
+            Text("Звонков пока не было.", color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 13.sp)
+        } else {
+            LazyColumn(Modifier.fillMaxSize()) {
+                items(callLog, key = { it.id }) { entry ->
+                    CallLogRow(entry, onClick = { tryCall(entry.peerPubKeyB64, entry.peerCallsign) })
+                    DottedDivider()
+                }
+            }
+        }
+    }
+}
+
+/** Только метаданные звонка — направление, итог, время, длительность для состоявшихся. Само аудио сюда никогда не попадает, ни в каком виде. */
+@Composable
+private fun CallLogRow(entry: CallLogEntity, onClick: () -> Unit) {
+    val timeFormatter = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+    val outcomeLabel = when (entry.outcome) {
+        CallOutcome.COMPLETED -> "Завершён · ${formatDuration(entry.endedAt - entry.startedAt)}"
+        CallOutcome.DECLINED -> "Отклонён"
+        CallOutcome.CANCELLED -> "Отменён"
+        CallOutcome.MISSED -> "Пропущен"
+        CallOutcome.UNREACHABLE -> "Не в сети"
+        else -> entry.outcome
+    }
+    val outcomeColor = when (entry.outcome) {
+        CallOutcome.COMPLETED -> MB10Colors.accentPrimary
+        CallOutcome.MISSED, CallOutcome.UNREACHABLE -> MB10Colors.danger
+        else -> MB10Colors.inkMuted
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            if (entry.direction == CallDirection.OUTGOING) "↗" else "↙",
+            color = MB10Colors.inkFaint, fontFamily = JetBrainsMono, fontSize = 14.sp,
+            modifier = Modifier.width(20.dp)
+        )
+        Column(Modifier.weight(1f)) {
+            Text(entry.peerCallsign, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp)
+            Text(outcomeLabel, color = outcomeColor, fontFamily = JetBrainsMono, fontSize = 10.sp)
+        }
+        Text(timeFormatter.format(Date(entry.startedAt)), color = MB10Colors.inkFaint, fontFamily = JetBrainsMono, fontSize = 10.sp)
+    }
+}
+
+private fun formatDuration(millis: Long): String {
+    val totalSeconds = (millis / 1000).coerceAtLeast(0)
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return "%d:%02d".format(minutes, seconds)
+}
+
+/** Список контактов для старта нового звонка (кнопка "+") — сам звонок пойдёт, только если контакт сейчас в сети. */
+@Composable
+private fun NewCallPicker(onPick: (String, String) -> Unit, onBack: () -> Unit) {
+    val context = LocalContext.current
+    val contacts by ContactStore.observeAll(context).collectAsState(initial = emptyList())
+    val onlinePeers by PresenceService.peers.collectAsState()
+    val onlineKeys = remember(onlinePeers) { onlinePeers.map { it.pubKeyB64 }.toSet() }
+
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onBack).padding(bottom = 8.dp)
+        ) {
+            Text("←", color = MB10Colors.ink0, fontFamily = JetBrainsMono, fontSize = 16.sp)
+            Spacer(Modifier.width(8.dp))
+            Text("Новый звонок", color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 14.sp)
+        }
+
+        if (contacts.isEmpty()) {
+            Text(
+                "Пока нет контактов. Отсканируйте QR-код другого игрока в Профиле, чтобы иметь возможность позвонить.",
+                color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 13.sp, lineHeight = 18.sp,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+            return@Column
+        }
+
+        LazyColumn(Modifier.fillMaxSize()) {
+            items(contacts, key = { it.publicKeyB64 }) { c ->
+                val online = c.publicKeyB64 in onlineKeys
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().clickable { onPick(c.publicKeyB64, c.callsign) }.padding(vertical = 12.dp)
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(c.callsign, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp)
+                        Text(c.faction, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                    }
+                    Text(
+                        if (online) "в сети" else "не в сети",
+                        color = if (online) MB10Colors.inkMuted else MB10Colors.inkFaint,
+                        fontFamily = JetBrainsMono, fontSize = 10.sp
+                    )
+                }
+            }
+        }
+    }
+}

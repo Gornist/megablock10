@@ -41,6 +41,7 @@ import com.megablok10.app.presence.PeerInfo
 import com.megablok10.app.ui.nav.AppTab
 import com.megablok10.app.ui.nav.MainScaffold
 import com.megablok10.app.ui.screens.CallOverlay
+import com.megablok10.app.ui.screens.CallsScreen
 import com.megablok10.app.ui.screens.ChatScreen
 import com.megablok10.app.ui.screens.CyberdeckScreen
 import com.megablok10.app.ui.screens.MasterToolScreen
@@ -125,6 +126,9 @@ fun AppRoot() {
             MainScaffold(identity = currentIdentity, selectedTab = tab, onSelectTab = { tab = it }) { activeTab ->
                 when (activeTab) {
                     AppTab.Chat -> ChatScreen(identity = currentIdentity, openedWithContactKey = chatContact, onContactConsumed = { chatContact = null })
+                    AppTab.Calls -> CallsScreen(onCallPeer = { peer: PeerInfo ->
+                        withMicPermission { CallManager.startOutgoingCall(context, currentIdentity, peer) }
+                    })
                     AppTab.Hack -> CyberdeckScreen()
                     AppTab.Wallet -> WalletScreen(currentIdentity)
                     AppTab.Profile -> StatusScreen(

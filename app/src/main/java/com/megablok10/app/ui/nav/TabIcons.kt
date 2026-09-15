@@ -63,6 +63,21 @@ fun HackTabIcon(tint: Color, size: Dp = 17.dp) {
     }
 }
 
+/** Классическая трубка, тот же path-паттерн, что у остальных иконок бара (viewBox 0..24). */
+@Composable
+fun CallsTabIcon(tint: Color, size: Dp = 17.dp) {
+    IconCanvas(tint, size) { scale ->
+        strokePath(
+            listOf(
+                Offset(6f, 4f), Offset(10f, 4f), Offset(11.5f, 8f), Offset(9f, 10f),
+                Offset(12f, 15f), Offset(15f, 17f), Offset(17f, 13.5f), Offset(21f, 15f),
+                Offset(21f, 19f), Offset(18f, 21f), Offset(11f, 17f), Offset(4f, 9f), Offset(6f, 4f)
+            ),
+            tint, scale, close = true
+        )
+    }
+}
+
 @Composable
 fun WalletTabIcon(tint: Color, size: Dp = 17.dp) {
     Box(Modifier.size(size), contentAlignment = Alignment.Center) {

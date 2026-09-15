@@ -33,6 +33,7 @@ import com.megablok10.app.ui.theme.MB10Colors
 
 enum class AppTab(val label: String) {
     Chat("Чат"),
+    Calls("Звонки"),
     Hack("Кибердека"),
     Wallet("Финансы"),
     Profile("Профиль"),
@@ -121,6 +122,7 @@ fun AppTabBar(selected: AppTab, onSelect: (AppTab) -> Unit) {
                 ) {
                     when (tab) {
                         AppTab.Chat -> ChatTabIcon(color)
+                        AppTab.Calls -> CallsTabIcon(color)
                         AppTab.Hack -> HackTabIcon(color)
                         AppTab.Wallet -> WalletTabIcon(color)
                         AppTab.Profile -> ProfileTabIcon(color)
