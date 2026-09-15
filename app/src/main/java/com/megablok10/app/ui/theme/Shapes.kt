@@ -67,3 +67,29 @@ fun flagTabShape(): Shape = GenericShape { size, _ ->
     lineTo(0f, size.height)
     close()
 }
+
+/**
+ * Зубчатый чамфер — как chamferShape (срез только в верхнем левом углу), но
+ * с дополнительным уступом-ступенькой на правом крае посередине высоты:
+ * верхний сегмент уже нижнего на stepInset. Источник паттерна — фан-карточка
+ * персонажа CP2077 (боковые акцентные полосы), не панель общего назначения —
+ * не путать с обычным chamferShape для карточек/кнопок.
+ */
+@Composable
+fun jaggedChamferShape(cut: Dp, stepInset: Dp = cut): Shape {
+    val cutPx = with(LocalDensity.current) { cut.toPx() }
+    val stepPx = with(LocalDensity.current) { stepInset.toPx() }
+    return GenericShape { size, _ ->
+        val c = cutPx.coerceIn(0f, minOf(size.width, size.height))
+        val step = stepPx.coerceIn(0f, size.width * 0.6f)
+        val midY = size.height / 2f
+        moveTo(c, 0f)
+        lineTo(size.width - step, 0f)
+        lineTo(size.width - step, midY)
+        lineTo(size.width, midY)
+        lineTo(size.width, size.height)
+        lineTo(0f, size.height)
+        lineTo(0f, c)
+        close()
+    }
+}

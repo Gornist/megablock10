@@ -113,7 +113,7 @@ private fun AccessPointForm() {
         OutlineButton(
             "Показать QR",
             modifier = Modifier.fillMaxWidth(),
-            accentColor = MB10Colors.lime,
+            accentColor = MB10Colors.accentPrimary,
             enabled = name.isNotBlank(),
             onClick = { generatedFor = id to name }
         )
@@ -121,7 +121,7 @@ private fun AccessPointForm() {
         generatedFor?.let { (gid, gname) ->
             Spacer(Modifier.height(16.dp))
             val raw = remember(gid, gname) { Mb10QrCodec.encodeAccessPoint(gid, gname) }
-            GeneratedQrPanel(raw = raw, caption = gname, accent = MB10Colors.lime)
+            GeneratedQrPanel(raw = raw, caption = gname, accent = MB10Colors.accentPrimary)
         }
     }
 }
@@ -145,14 +145,14 @@ private fun ShardForm() {
                 val selected = option == badge
                 Chip(
                     option,
-                    color = if (selected) MB10Colors.yellow else MB10Colors.inkMuted,
+                    color = if (selected) MB10Colors.accentPrimary else MB10Colors.inkMuted,
                     modifier = Modifier.clickable { badge = option }
                 )
             }
         }
         Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { decryptAction = !decryptAction }) {
-            Chip(if (decryptAction) "требует взлома: да" else "требует взлома: нет", color = if (decryptAction) MB10Colors.lime else MB10Colors.inkMuted)
+            Chip(if (decryptAction) "требует взлома: да" else "требует взлома: нет", color = if (decryptAction) MB10Colors.accentHack else MB10Colors.inkMuted)
         }
         Spacer(Modifier.height(12.dp))
         LabeledField("Заголовок (короткое описание в списке)", title, placeholder = "Служебный лог клиники") { title = it }
@@ -164,7 +164,7 @@ private fun ShardForm() {
         OutlineButton(
             "Показать QR",
             modifier = Modifier.fillMaxWidth(),
-            accentColor = MB10Colors.lime,
+            accentColor = MB10Colors.accentHack,
             enabled = title.isNotBlank() && body.isNotBlank(),
             onClick = {
                 generated = Mb10QrCodec.encodeShard(id, badge, decryptAction, title, meta, body)
@@ -173,7 +173,7 @@ private fun ShardForm() {
 
         generated?.let { raw ->
             Spacer(Modifier.height(16.dp))
-            GeneratedQrPanel(raw = raw, caption = title, accent = MB10Colors.lime)
+            GeneratedQrPanel(raw = raw, caption = title, accent = MB10Colors.accentHack)
         }
     }
 }

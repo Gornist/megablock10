@@ -66,14 +66,14 @@ fun AppHeader(identity: Identity) {
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.padding(start = 6.dp, end = 8.dp, top = 3.dp, bottom = 3.dp)
                 ) {
-                    HexBullet(MB10Colors.yellow, size = 8.dp)
+                    HexBullet(MB10Colors.accentPrimary, size = 8.dp)
                     Text(identity.faction, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
                 }
             }
         }
         Spacer(Modifier.height(10.dp))
         ChamferedPanel(
-            borderColor = MB10Colors.red.copy(alpha = 0.45f),
+            borderColor = MB10Colors.danger.copy(alpha = 0.45f),
             fillColor = MB10Colors.bg1,
             cut = 6.dp,
             contentPadding = 0.dp,
@@ -84,11 +84,11 @@ fun AppHeader(identity: Identity) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
             ) {
-                Box(Modifier.padding(top = 3.dp).size(6.dp).background(MB10Colors.red, CircleShape))
+                Box(Modifier.padding(top = 3.dp).size(6.dp).background(MB10Colors.danger, CircleShape))
                 Column {
                     Text(
                         "Мегаблок №10 — карантин, 3ч 12м с изоляции",
-                        color = MB10Colors.red,
+                        color = MB10Colors.danger,
                         fontFamily = JetBrainsMono,
                         fontSize = 10.5.sp
                     )
@@ -109,7 +109,7 @@ fun AppTabBar(selected: AppTab, onSelect: (AppTab) -> Unit) {
         Row(Modifier.fillMaxWidth().background(MB10Colors.bg1)) {
             AppTab.entries.forEach { tab ->
                 val active = tab == selected
-                val color = if (active) MB10Colors.yellow else MB10Colors.inkFaint
+                val color = if (active) MB10Colors.accentPrimary else MB10Colors.inkFaint
                 Column(
                     modifier = Modifier
                         .weight(1f)

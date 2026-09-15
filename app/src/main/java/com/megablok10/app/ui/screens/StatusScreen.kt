@@ -103,7 +103,7 @@ fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}, on
             StatMeter("RAM нетраннера", "${MockBreach.ramCapacity - 6} / ${MockBreach.ramCapacity}", 0.4f, MB10Colors.ink0)
             StatMeter("Репутация — Отряд самообороны", "высокая", 0.78f, MB10Colors.ink0)
             StatMeter("Репутация — Клемты", "низкая", 0.18f, MB10Colors.ink0)
-            StatMeter("Сбой импланта", "62%", 0.62f, MB10Colors.red)
+            StatMeter("Сбой импланта", "62%", 0.62f, MB10Colors.danger)
 
             SectionLabel("Медицинский статус")
             var hideSymptoms by remember { mutableStateOf(true) }
@@ -155,7 +155,7 @@ fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}, on
         items(contacts, key = { it.publicKeyB64 }) { c ->
             Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    HexBullet(MB10Colors.yellow, size = 8.dp)
+                    HexBullet(MB10Colors.accentPrimary, size = 8.dp)
                     Spacer(Modifier.width(8.dp))
                     Text(c.callsign, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp, modifier = Modifier.weight(1f))
                     Chip(c.faction, color = MB10Colors.inkMuted)
@@ -217,8 +217,8 @@ private fun CallLogRow(entry: CallLogEntity) {
         else -> entry.outcome
     }
     val outcomeColor = when (entry.outcome) {
-        CallOutcome.COMPLETED -> MB10Colors.lime
-        CallOutcome.MISSED, CallOutcome.UNREACHABLE -> MB10Colors.red
+        CallOutcome.COMPLETED -> MB10Colors.accentPrimary
+        CallOutcome.MISSED, CallOutcome.UNREACHABLE -> MB10Colors.danger
         else -> MB10Colors.inkMuted
     }
     Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {

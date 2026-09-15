@@ -43,7 +43,7 @@ fun CallOverlay(state: CallUiState, identity: Identity, onAccept: () -> Unit, on
         contentAlignment = Alignment.Center
     ) {
         ChamferedPanel(
-            borderColor = MB10Colors.yellow,
+            borderColor = MB10Colors.accentPrimary,
             fillColor = MB10Colors.bg1,
             cut = 12.dp,
             doubleCorner = true,
@@ -61,7 +61,7 @@ fun CallOverlay(state: CallUiState, identity: Identity, onAccept: () -> Unit, on
                     color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.5.sp
                 )
                 Spacer(Modifier.height(10.dp))
-                HexBullet(MB10Colors.yellow, size = 14.dp)
+                HexBullet(MB10Colors.accentPrimary, size = 14.dp)
                 Spacer(Modifier.height(10.dp))
                 Text(state.peerCallsign, color = MB10Colors.ink0, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                 Spacer(Modifier.height(6.dp))
@@ -72,17 +72,17 @@ fun CallOverlay(state: CallUiState, identity: Identity, onAccept: () -> Unit, on
                         CallPhase.IN_CALL -> if (state.audioConnected) "Аудио подключено" else "Соединяем аудио..."
                         CallPhase.IDLE -> ""
                     },
-                    color = if (state.phase == CallPhase.IN_CALL && state.audioConnected) MB10Colors.lime else MB10Colors.inkFaint,
+                    color = if (state.phase == CallPhase.IN_CALL && state.audioConnected) MB10Colors.accentPrimary else MB10Colors.inkFaint,
                     fontFamily = JetBrainsMono, fontSize = 10.sp
                 )
                 Spacer(Modifier.height(22.dp))
                 when (state.phase) {
                     CallPhase.INCOMING_RINGING -> Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        OutlineButton("Принять", accentColor = MB10Colors.lime, onClick = onAccept)
-                        OutlineButton("Отклонить", accentColor = MB10Colors.red, onClick = onEnd)
+                        OutlineButton("Принять", accentColor = MB10Colors.accentPrimary, onClick = onAccept)
+                        OutlineButton("Отклонить", accentColor = MB10Colors.danger, onClick = onEnd)
                     }
-                    CallPhase.OUTGOING_RINGING -> OutlineButton("Отменить вызов", accentColor = MB10Colors.red, modifier = Modifier.fillMaxWidth(), onClick = onEnd)
-                    CallPhase.IN_CALL -> OutlineButton("Завершить", accentColor = MB10Colors.red, modifier = Modifier.fillMaxWidth(), onClick = onEnd)
+                    CallPhase.OUTGOING_RINGING -> OutlineButton("Отменить вызов", accentColor = MB10Colors.danger, modifier = Modifier.fillMaxWidth(), onClick = onEnd)
+                    CallPhase.IN_CALL -> OutlineButton("Завершить", accentColor = MB10Colors.danger, modifier = Modifier.fillMaxWidth(), onClick = onEnd)
                     CallPhase.IDLE -> {}
                 }
             }

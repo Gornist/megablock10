@@ -193,7 +193,7 @@ private fun ContactPicker(onPick: (String) -> Unit) {
 
 @Composable
 private fun OnlineDot(online: Boolean) {
-    Box(Modifier.size(7.dp).background(if (online) MB10Colors.lime else MB10Colors.inkFaint, CircleShape))
+    Box(Modifier.size(7.dp).background(if (online) MB10Colors.ink0 else MB10Colors.inkFaint, CircleShape))
 }
 
 @Composable
@@ -243,7 +243,7 @@ private fun MessageInput(placeholder: String, onSend: (String) -> Unit) {
         }
         Box(
             modifier = Modifier
-                .background(MB10Colors.yellow, chamferShape(6.dp))
+                .background(MB10Colors.accentPrimary, chamferShape(6.dp))
                 .clickable(enabled = draft.isNotBlank()) {
                     onSend(draft)
                     draft = ""
@@ -269,7 +269,7 @@ private fun MessageBubble(msg: ChatMessageEntity, self: Boolean, showSender: Boo
         Spacer(Modifier.height(4.dp))
         Row {
             if (self) {
-                Box(Modifier.width(2.dp).background(MB10Colors.yellow))
+                Box(Modifier.width(2.dp).background(MB10Colors.accentPrimary))
             }
             Box(
                 modifier = Modifier

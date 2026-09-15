@@ -47,9 +47,9 @@ import kotlinx.coroutines.launch
 
 private enum class ShardBadge(val text: String, val color: Color) {
     Public("открыт", MB10Colors.inkMuted),
-    Locked("зашифрован", MB10Colors.lime),
-    Fragment("фрагмент", MB10Colors.yellow),
-    Compromised("скомпрометирован", MB10Colors.red)
+    Locked("зашифрован", MB10Colors.accentHack),
+    Fragment("фрагмент", MB10Colors.accentPrimary),
+    Compromised("скомпрометирован", MB10Colors.danger)
 }
 
 private fun resolveBadge(raw: String): ShardBadge =
@@ -79,7 +79,7 @@ fun ShardsScreen(onOpenHack: () -> Unit) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MB10Colors.lime, chamferShape(6.dp))
+                .background(MB10Colors.accentHack, chamferShape(6.dp))
                 .clickable(onClick = scanShard)
                 .padding(vertical = 10.dp),
         ) {
@@ -175,13 +175,13 @@ private fun ShardDetailOverlay(shard: Mb10Qr.Shard, onClose: () -> Unit, onOpenH
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.dp, MB10Colors.lime, chamferShape(6.dp))
+                    .border(1.dp, MB10Colors.accentHack, chamferShape(6.dp))
                     .clickable(onClick = onOpenHack)
                     .padding(vertical = 10.dp)
             ) {
                 Text(
                     "Расшифровать",
-                    color = MB10Colors.lime, fontFamily = JetBrainsMono, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                    color = MB10Colors.accentHack, fontFamily = JetBrainsMono, fontSize = 12.sp, fontWeight = FontWeight.Medium,
                     textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
                 )
             }

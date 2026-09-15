@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Alignment
@@ -67,8 +68,24 @@ fun ChamferedPanel(
 }
 
 @Composable
-fun HexBullet(color: Color = MB10Colors.yellow, size: Dp = 8.dp) {
+fun HexBullet(color: Color = MB10Colors.accentPrimary, size: Dp = 8.dp) {
     Box(Modifier.size(size).background(color, hexShape()))
+}
+
+/**
+ * Контурный шестиугольник с буквой/пиктограммой внутри — в отличие от
+ * HexBullet (залитая точка-статус), это отдельная сущность с содержимым:
+ * инициал позывного там, где аватарок в базе нет. Только обводка (border,
+ * не background) — залитый вариант остаётся исключительно за HexBullet.
+ */
+@Composable
+fun HexOutlineIcon(letter: String, color: Color = MB10Colors.ink0, size: Dp = 32.dp, borderWidth: Dp = 1.5.dp) {
+    Box(
+        modifier = Modifier.size(size).border(borderWidth, color, hexShape()),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(letter, color = color, fontFamily = Jura, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, fontSize = (size.value * 0.4f).sp)
+    }
 }
 
 @Composable
@@ -92,20 +109,20 @@ fun MB10Toggle(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: M
         modifier = modifier
             .size(width = 34.dp, height = 18.dp)
             .background(MB10Colors.bg2)
-            .border(1.dp, if (checked) MB10Colors.yellow else MB10Colors.inkFaint)
+            .border(1.dp, if (checked) MB10Colors.accentPrimary else MB10Colors.inkFaint)
             .clickable { onCheckedChange(!checked) }
     ) {
         Box(
             modifier = Modifier
                 .padding(start = knobOffset, top = 2.dp)
                 .size(12.dp)
-                .background(if (checked) MB10Colors.yellow else MB10Colors.inkMuted)
+                .background(if (checked) MB10Colors.accentPrimary else MB10Colors.inkMuted)
         )
     }
 }
 
 @Composable
-fun FlagTab(text: String, accent: Color = MB10Colors.lime, modifier: Modifier = Modifier) {
+fun FlagTab(text: String, accent: Color = MB10Colors.accentHack, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .background(accent, flagTabShape())
@@ -185,5 +202,37 @@ fun DemoNotice(text: String, modifier: Modifier = Modifier) {
         fontFamily = JetBrainsMono,
         fontSize = 9.5.sp,
         modifier = modifier
+    )
+}
+
+/**
+ * Строка выбираемого списка. Невыбранная — только тонкая рамка (обычный
+ * ChamferedPanel-паттерн). Выбранная — сплошная заливка акцентом на всю
+ * строку, а не просто более толстая рамка или второй индикатор (галочка и
+ * т.п.) — единственный сигнал состояния сам по себе. Текст/иконки внутри
+ * content должны сами переключаться на onAccent при selected == true —
+ * компонент передаёт это решение наружу, а не красит контент сам.
+ */
+@Composable
+fun SelectableRow(
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    accentColor: Color = MB10Colors.accentPrimary,
+    borderColor: Color = MB10Colors.accentBorder,
+    cut: Dp = 6.dp,
+    content: @Composable RowScope.() -> Unit
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .then(
+                if (selected) Modifier.background(accentColor, chamferShape(cut))
+                else Modifier.border(1.dp, borderColor, chamferShape(cut))
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content
     )
 }

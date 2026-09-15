@@ -55,7 +55,7 @@ fun SettingsScreen(onResetIdentity: () -> Unit, onOpenMasterTool: () -> Unit = {
         // Кнопка задизейблена, а не удалена: пусть игрок видит, что опция существует, но не через приложение.
         OutlineButton("Сменить фракцию (по решению мастера)", modifier = Modifier.fillMaxWidth(), enabled = false, onClick = {})
         Spacer(Modifier.height(8.dp))
-        OutlineButton("Сбросить сессию персонажа", modifier = Modifier.fillMaxWidth(), accentColor = MB10Colors.red, onClick = { confirmingReset = true })
+        OutlineButton("Сбросить сессию персонажа", modifier = Modifier.fillMaxWidth(), accentColor = MB10Colors.danger, onClick = { confirmingReset = true })
 
         Spacer(Modifier.height(16.dp))
         SectionLabel("Мастеру")
@@ -69,7 +69,7 @@ fun SettingsScreen(onResetIdentity: () -> Unit, onOpenMasterTool: () -> Unit = {
             text = { Text("Ключевая пара, позывной и фракция этого устройства будут удалены безвозвратно. Отменить нельзя.") },
             confirmButton = {
                 TextButton(onClick = { confirmingReset = false; onResetIdentity() }) {
-                    Text("Сбросить", color = MB10Colors.red)
+                    Text("Сбросить", color = MB10Colors.danger)
                 }
             },
             dismissButton = {

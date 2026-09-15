@@ -138,7 +138,7 @@ fun WalletScreen(identity: Identity) {
             OutlineButton(
                 if (sending) "Скрыть" else "Отправить",
                 modifier = Modifier.weight(1f),
-                accentColor = MB10Colors.yellow,
+                accentColor = MB10Colors.accentPrimary,
                 onClick = { sending = !sending }
             )
             OutlineButton("Получить (скан)", modifier = Modifier.weight(1f), borderColor = MB10Colors.inkFaint, onClick = scanTransaction)
@@ -241,7 +241,7 @@ private fun SendTransactionPanel(
                 OutlineButton(
                     "Сгенерировать QR",
                     modifier = Modifier.fillMaxWidth(),
-                    accentColor = MB10Colors.yellow,
+                    accentColor = MB10Colors.accentPrimary,
                     enabled = amountValid,
                     onClick = { onGenerate(amountText.toLong(), memoText) }
                 )
@@ -250,7 +250,7 @@ private fun SendTransactionPanel(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
                     if (confirmed) "Получатель подтвердил получение" else "Покажите этот QR получателю платежа",
-                    color = if (confirmed) MB10Colors.yellow else MB10Colors.ink0,
+                    color = if (confirmed) MB10Colors.accentPrimary else MB10Colors.ink0,
                     fontFamily = IBMPlexSans, fontSize = 13.sp, textAlign = TextAlign.Center
                 )
                 Spacer(Modifier.height(10.dp))
@@ -274,14 +274,14 @@ private fun SendTransactionPanel(
                     OutlineButton(
                         "Подтвердить получение (скан)",
                         modifier = Modifier.fillMaxWidth(),
-                        accentColor = MB10Colors.yellow,
+                        accentColor = MB10Colors.accentPrimary,
                         onClick = onScanReceipt
                     )
                     Spacer(Modifier.height(8.dp))
                     OutlineButton(
                         "Отменить платёж",
                         modifier = Modifier.fillMaxWidth(),
-                        accentColor = MB10Colors.red,
+                        accentColor = MB10Colors.danger,
                         onClick = onCancel
                     )
                 }
@@ -293,7 +293,7 @@ private fun SendTransactionPanel(
 @Composable
 private fun ReceiptPanel(receipt: Mb10Qr.Receipt, onDone: () -> Unit) {
     ChamferedPanel(
-        borderColor = MB10Colors.lime,
+        borderColor = MB10Colors.accentPrimary,
         fillColor = MB10Colors.bg1,
         cut = 6.dp,
         contentPadding = 14.dp,
@@ -335,13 +335,13 @@ private fun TxRow(tx: TransactionEntity, counterpartyName: String?, onCancelPend
             val statusText = if (pending) " · ожидает подтверждения" else ""
             Text(
                 timeText + (fromText ?: "") + statusText,
-                color = if (pending) MB10Colors.yellow else MB10Colors.inkMuted,
+                color = if (pending) MB10Colors.accentPrimary else MB10Colors.inkMuted,
                 fontFamily = JetBrainsMono, fontSize = 10.sp
             )
             if (pending) {
                 Text(
                     "Отменить",
-                    color = MB10Colors.red,
+                    color = MB10Colors.danger,
                     fontFamily = JetBrainsMono,
                     fontSize = 10.sp,
                     modifier = Modifier.clickable(onClick = onCancelPending).padding(top = 2.dp)
@@ -351,7 +351,7 @@ private fun TxRow(tx: TransactionEntity, counterpartyName: String?, onCancelPend
         val amountText = (if (tx.amount > 0) "+" else "") + tx.amount
         Text(
             amountText,
-            color = if (tx.amount > 0) MB10Colors.yellow else MB10Colors.inkMuted,
+            color = if (tx.amount > 0) MB10Colors.accentPrimary else MB10Colors.inkMuted,
             fontFamily = JetBrainsMono,
             fontSize = 13.sp
         )
