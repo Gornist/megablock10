@@ -12,11 +12,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -42,13 +42,15 @@ import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
 import com.megablok10.app.qr.generateQrBitmap
 import com.megablok10.app.qr.rememberMb10QrScanner
+import com.megablok10.app.ui.theme.AppButton
+import com.megablok10.app.ui.theme.AppTextField
+import com.megablok10.app.ui.theme.ButtonVariant
 import com.megablok10.app.ui.theme.ChamferedPanel
 import com.megablok10.app.ui.theme.DottedDivider
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.Jura
 import com.megablok10.app.ui.theme.MB10Colors
-import com.megablok10.app.ui.theme.OutlineButton
 import com.megablok10.app.ui.theme.SectionLabel
 import com.megablok10.app.wallet.TransactionStore
 import kotlinx.coroutines.launch
@@ -135,13 +137,13 @@ fun WalletScreen(identity: Identity) {
 
         Spacer(Modifier.height(14.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlineButton(
+            AppButton(
                 if (sending) "Скрыть" else "Отправить",
                 modifier = Modifier.weight(1f),
-                accentColor = MB10Colors.accentPrimary,
+                variant = ButtonVariant.Primary,
                 onClick = { sending = !sending }
             )
-            OutlineButton("Получить (скан)", modifier = Modifier.weight(1f), borderColor = MB10Colors.inkFaint, onClick = scanTransaction)
+            AppButton("Получить (скан)", modifier = Modifier.weight(1f), variant = ButtonVariant.Secondary, onClick = scanTransaction)
         }
 
         if (sending) {
@@ -214,34 +216,43 @@ private fun SendTransactionPanel(
             var amountText by remember { mutableStateOf("") }
             var memoText by remember { mutableStateOf("") }
             val amountValid = amountText.toLongOrNull()?.let { it > 0 } ?: false
+            val showError = amountText.isNotEmpty() && !amountValid
 
             Column {
                 Text(
                     "Сумма списывается с вашего баланса сразу — как передать наличные из рук в руки. Покажите QR тому, кто получает деньги, а затем отсканируйте его QR-подтверждение — до этого платёж ещё можно отменить.",
-                    color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 12.sp, lineHeight = 16.sp
+                    color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 12.sp, lineHeight = 16.sp
                 )
                 Spacer(Modifier.height(10.dp))
-                TextField(
-                    value = amountText,
-                    onValueChange = { amountText = it.filter(Char::isDigit) },
-                    placeholder = { Text("Сумма, €$", color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 13.sp) },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    AppTextField(
+                        value = amountText,
+                        onValueChange = { amountText = it.filter(Char::isDigit) },
+                        placeholder = "Сумма",
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    // Единица измерения видна постоянно, а не только пока поле пустое (как было с placeholder "Сумма, €$") —
+                    // после ввода суммы плейсхолдер пропадал и обозначение валюты пропадало вместе с ним.
+                    Text("€$", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                }
+                if (showError) {
+                    Spacer(Modifier.height(4.dp))
+                    Text("Введите сумму больше нуля", color = MB10Colors.accentDanger, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                }
                 Spacer(Modifier.height(8.dp))
-                TextField(
+                AppTextField(
                     value = memoText,
                     onValueChange = { memoText = it },
-                    placeholder = { Text("За что (необязательно)", color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 13.sp) },
-                    singleLine = true,
+                    placeholder = "За что (необязательно)",
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(10.dp))
-                OutlineButton(
+                AppButton(
                     "Сгенерировать QR",
                     modifier = Modifier.fillMaxWidth(),
-                    accentColor = MB10Colors.accentPrimary,
+                    variant = ButtonVariant.Primary,
                     enabled = amountValid,
                     onClick = { onGenerate(amountText.toLong(), memoText) }
                 )
@@ -263,25 +274,25 @@ private fun SendTransactionPanel(
                 )
                 Spacer(Modifier.height(12.dp))
                 if (confirmed) {
-                    OutlineButton("Готово", modifier = Modifier.fillMaxWidth(), onClick = onDone)
+                    AppButton("Готово", modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.Primary, onClick = onDone)
                 } else {
                     Text(
                         "Ожидает подтверждения — отсканируйте QR-чек получателя, чтобы зафиксировать платёж.",
-                        color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 11.5.sp, lineHeight = 15.sp,
+                        color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 11.5.sp, lineHeight = 15.sp,
                         textAlign = TextAlign.Center
                     )
                     Spacer(Modifier.height(10.dp))
-                    OutlineButton(
+                    AppButton(
                         "Подтвердить получение (скан)",
                         modifier = Modifier.fillMaxWidth(),
-                        accentColor = MB10Colors.accentPrimary,
+                        variant = ButtonVariant.Primary,
                         onClick = onScanReceipt
                     )
                     Spacer(Modifier.height(8.dp))
-                    OutlineButton(
+                    AppButton(
                         "Отменить платёж",
                         modifier = Modifier.fillMaxWidth(),
-                        accentColor = MB10Colors.danger,
+                        variant = ButtonVariant.Danger,
                         onClick = onCancel
                     )
                 }
@@ -308,7 +319,7 @@ private fun ReceiptPanel(receipt: Mb10Qr.Receipt, onDone: () -> Unit) {
             val bitmap = remember(receipt.id) { generateQrBitmap(Mb10QrCodec.encodeReceipt(receipt)) }
             Image(bitmap = bitmap.asImageBitmap(), contentDescription = "QR подтверждения", modifier = Modifier.size(200.dp))
             Spacer(Modifier.height(12.dp))
-            OutlineButton("Готово", modifier = Modifier.fillMaxWidth(), onClick = onDone)
+            AppButton("Готово", modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.Primary, onClick = onDone)
         }
     }
 }
