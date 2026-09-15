@@ -1,6 +1,10 @@
 package com.megablok10.app.call
 
 import android.content.Context
+import com.megablok10.app.data.CallDirection
+import com.megablok10.app.data.CallLogEntity
+import com.megablok10.app.data.CallOutcome
+import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.presence.PeerInfo
 import com.megablok10.app.presence.PresenceService
@@ -23,14 +27,16 @@ data class CallUiState(
     val peerPubKeyB64: String = "",
     val peerCallsign: String = "",
     /** true только когда ICE реально соединился (CONNECTED/COMPLETED) — отдельно от phase.IN_CALL, который значит лишь "обе стороны договорились созвониться". */
-    val audioConnected: Boolean = false
+    val audioConnected: Boolean = false,
+    val isOutgoing: Boolean = false,
+    val startedAt: Long = 0L
 )
 
 /**
  * Сигнализация звонка (offer/answer/ICE/decline/end) поверх того же TCP, что
- * и чат, плюс сама медиа-сессия (CallMedia/WebRTC). Состояние держится в
- * памяти процесса, ни один звонок никуда не пишется в Room (лог звонков —
- * отдельный будущий шаг).
+ * и чат, плюс сама медиа-сессия (CallMedia/WebRTC). Само состояние — в
+ * памяти процесса, но каждый закончившийся звонок оставляет одну строку в
+ * Room (call_log) — только метаданные, аудио туда не попадает.
  */
 object CallManager {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -41,7 +47,7 @@ object CallManager {
     fun startOutgoingCall(context: Context, identity: Identity, peer: PeerInfo) {
         if (_state.value.phase != CallPhase.IDLE) return
         val callId = UUID.randomUUID().toString()
-        _state.value = CallUiState(CallPhase.OUTGOING_RINGING, callId, peer.pubKeyB64, peer.callsign)
+        _state.value = CallUiState(CallPhase.OUTGOING_RINGING, callId, peer.pubKeyB64, peer.callsign, isOutgoing = true, startedAt = System.currentTimeMillis())
         SoundPlayer.startDialTone(context)
 
         CallMedia.open(
@@ -57,7 +63,7 @@ object CallManager {
                 val delivered = CallClient.send(peer.host, peer.port, signal)
                 if (!delivered && _state.value.callId == callId) {
                     // Не достучались до пира прямо сейчас (ушёл из сети между сканом присутствия и звонком) — откатываем вызов локально, ждать нечего.
-                    endCallLocal(context)
+                    endCallLocal(context, CallOutcome.UNREACHABLE)
                 }
             }
         }
@@ -69,7 +75,7 @@ object CallManager {
             CallSignalType.OFFER -> {
                 if (_state.value.phase != CallPhase.IDLE) return // уже заняты другим звонком — молча игнорируем, без busy-сигнала в MVP
                 val sdp = signal.sdp ?: return
-                _state.value = CallUiState(CallPhase.INCOMING_RINGING, signal.callId, signal.fromPubKeyB64, signal.fromCallsign)
+                _state.value = CallUiState(CallPhase.INCOMING_RINGING, signal.callId, signal.fromPubKeyB64, signal.fromCallsign, isOutgoing = false, startedAt = System.currentTimeMillis())
                 SoundPlayer.startIncomingRingtone(context)
                 CallMedia.open(
                     context,
@@ -94,7 +100,13 @@ object CallManager {
                 CallMedia.addRemoteIceCandidate(mid, idx, candidate)
             }
             CallSignalType.DECLINE, CallSignalType.END -> if (_state.value.callId == signal.callId) {
-                endCallLocal(context)
+                val outcome = when (_state.value.phase) {
+                    CallPhase.IN_CALL -> CallOutcome.COMPLETED
+                    CallPhase.OUTGOING_RINGING -> CallOutcome.DECLINED // пир отклонил/сбросил, пока мы дозванивались
+                    CallPhase.INCOMING_RINGING -> CallOutcome.MISSED // звонивший сам передумал/сбросил, пока мы не ответили
+                    CallPhase.IDLE -> CallOutcome.COMPLETED
+                }
+                endCallLocal(context, outcome)
             }
         }
     }
@@ -115,7 +127,13 @@ object CallManager {
         if (s.phase == CallPhase.IDLE) return
         val type = if (s.phase == CallPhase.INCOMING_RINGING) CallSignalType.DECLINE else CallSignalType.END
         sendSignal(identity, s.peerPubKeyB64, type, s.callId)
-        endCallLocal(context)
+        val outcome = when (s.phase) {
+            CallPhase.IN_CALL -> CallOutcome.COMPLETED
+            CallPhase.OUTGOING_RINGING -> CallOutcome.CANCELLED
+            CallPhase.INCOMING_RINGING -> CallOutcome.DECLINED
+            CallPhase.IDLE -> CallOutcome.COMPLETED
+        }
+        endCallLocal(context, outcome)
     }
 
     private fun sendSignal(identity: Identity, peerPubKeyB64: String, type: CallSignalType, callId: String, sdp: String? = null, ice: IceCandidate? = null) {
@@ -128,10 +146,27 @@ object CallManager {
         scope.launch { CallClient.send(peer.host, peer.port, signal) }
     }
 
-    private fun endCallLocal(context: Context) {
+    private fun endCallLocal(context: Context, outcome: String) {
+        val s = _state.value
         SoundPlayer.stopLoop()
         CallMedia.close()
         CallForegroundService.stop(context)
         _state.value = CallUiState()
+
+        if (s.phase == CallPhase.IDLE) return // нечего логировать — звонка и не было
+        val appContext = context.applicationContext
+        val endedAt = System.currentTimeMillis()
+        scope.launch {
+            Mb10Database.get(appContext).callLogDao().insert(
+                CallLogEntity(
+                    peerPubKeyB64 = s.peerPubKeyB64,
+                    peerCallsign = s.peerCallsign,
+                    direction = if (s.isOutgoing) CallDirection.OUTGOING else CallDirection.INCOMING,
+                    outcome = outcome,
+                    startedAt = s.startedAt,
+                    endedAt = endedAt
+                )
+            )
+        }
     }
 }

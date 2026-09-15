@@ -36,6 +36,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.breach.MockBreach
+import com.megablok10.app.data.CallDirection
+import com.megablok10.app.data.CallLogEntity
+import com.megablok10.app.data.CallOutcome
+import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.presence.PeerInfo
@@ -64,6 +68,7 @@ fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}, on
     val scope = rememberCoroutineScope()
     val contacts by ContactStore.observeAll(context).collectAsState(initial = emptyList())
     val onlinePeers by PresenceService.peers.collectAsState()
+    val callLog by Mb10Database.get(context).callLogDao().observeAll().collectAsState(initial = emptyList())
 
     val startScan = rememberMb10QrScanner { qr ->
         when (qr) {
@@ -181,7 +186,60 @@ fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}, on
             }
             DottedDivider()
         }
+
+        item {
+            Spacer(Modifier.height(18.dp))
+            SectionLabel("Недавние звонки")
+            if (callLog.isEmpty()) {
+                Text(
+                    "Звонков пока не было.",
+                    color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 13.sp
+                )
+            }
+        }
+        items(callLog.take(20), key = { it.id }) { entry ->
+            CallLogRow(entry)
+            DottedDivider()
+        }
     }
+}
+
+/** Только метаданные звонка — направление, итог, время, длительность для состоявшихся. Само аудио сюда никогда не попадает, ни в каком виде. */
+@Composable
+private fun CallLogRow(entry: CallLogEntity) {
+    val timeFormatter = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
+    val outcomeLabel = when (entry.outcome) {
+        CallOutcome.COMPLETED -> "Завершён · ${formatDuration(entry.endedAt - entry.startedAt)}"
+        CallOutcome.DECLINED -> "Отклонён"
+        CallOutcome.CANCELLED -> "Отменён"
+        CallOutcome.MISSED -> "Пропущен"
+        CallOutcome.UNREACHABLE -> "Не в сети"
+        else -> entry.outcome
+    }
+    val outcomeColor = when (entry.outcome) {
+        CallOutcome.COMPLETED -> MB10Colors.lime
+        CallOutcome.MISSED, CallOutcome.UNREACHABLE -> MB10Colors.red
+        else -> MB10Colors.inkMuted
+    }
+    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            if (entry.direction == CallDirection.OUTGOING) "↗" else "↙",
+            color = MB10Colors.inkFaint, fontFamily = JetBrainsMono, fontSize = 14.sp,
+            modifier = Modifier.width(20.dp)
+        )
+        Column(Modifier.weight(1f)) {
+            Text(entry.peerCallsign, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp)
+            Text(outcomeLabel, color = outcomeColor, fontFamily = JetBrainsMono, fontSize = 10.sp)
+        }
+        Text(timeFormatter.format(java.util.Date(entry.startedAt)), color = MB10Colors.inkFaint, fontFamily = JetBrainsMono, fontSize = 10.sp)
+    }
+}
+
+private fun formatDuration(millis: Long): String {
+    val totalSeconds = (millis / 1000).coerceAtLeast(0)
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return "%d:%02d".format(minutes, seconds)
 }
 
 /** Компактная кнопка под строкой контакта — OutlineButton из темы великоват (padding под полноразмерную CTA). */
