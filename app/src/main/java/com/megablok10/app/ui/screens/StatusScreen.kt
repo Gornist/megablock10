@@ -159,7 +159,7 @@ fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}) {
                         modifier = Modifier.weight(1f),
                         onClick = {
                             Toast.makeText(context, "Открываю чат с ${c.callsign}", Toast.LENGTH_SHORT).show()
-                            onMessageContact(c.callsign)
+                            onMessageContact(c.publicKeyB64)
                         }
                     )
                     ContactActionButton(

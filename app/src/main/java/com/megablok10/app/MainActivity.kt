@@ -17,6 +17,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -25,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.megablok10.app.breach.BreachScreen
+import com.megablok10.app.chat.ChatStore
 import com.megablok10.app.identity.IdentityManager
 import com.megablok10.app.ui.nav.AppTab
 import com.megablok10.app.ui.nav.MainScaffold
@@ -68,6 +70,12 @@ fun AppRoot() {
     var showMasterTool by remember { mutableStateOf(false) }
 
     val currentIdentity = identity
+    if (currentIdentity != null) {
+        LaunchedEffect(currentIdentity.publicKeyB64) {
+            ChatStore.start(context, currentIdentity)
+        }
+    }
+
     if (currentIdentity == null) {
         SetupScreen(onCreated = { callsign, faction ->
             identity = IdentityManager.getOrCreate(context, callsign, faction)
@@ -77,16 +85,17 @@ fun AppRoot() {
     } else {
         MainScaffold(identity = currentIdentity, selectedTab = tab, onSelectTab = { tab = it }) { activeTab ->
             when (activeTab) {
-                AppTab.Chat -> ChatScreen(openedWithContact = chatContact, onContactConsumed = { chatContact = null })
+                AppTab.Chat -> ChatScreen(identity = currentIdentity, openedWithContactKey = chatContact, onContactConsumed = { chatContact = null })
                 AppTab.Hack -> BreachScreen()
                 AppTab.Wallet -> WalletScreen(currentIdentity)
                 AppTab.Shards -> ShardsScreen(onOpenHack = { tab = AppTab.Hack })
-                AppTab.Profile -> StatusScreen(currentIdentity, onMessageContact = { callsign ->
-                    chatContact = callsign
+                AppTab.Profile -> StatusScreen(currentIdentity, onMessageContact = { pubKeyB64 ->
+                    chatContact = pubKeyB64
                     tab = AppTab.Chat
                 })
                 AppTab.Settings -> SettingsScreen(
                     onResetIdentity = {
+                        ChatStore.stop()
                         IdentityManager.clear(context)
                         identity = null
                         tab = AppTab.Chat
