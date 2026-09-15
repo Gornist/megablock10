@@ -45,8 +45,7 @@ import com.megablok10.app.ui.screens.CallsScreen
 import com.megablok10.app.ui.screens.ChatScreen
 import com.megablok10.app.ui.screens.CyberdeckScreen
 import com.megablok10.app.ui.screens.MasterToolScreen
-import com.megablok10.app.ui.screens.SettingsScreen
-import com.megablok10.app.ui.screens.StatusScreen
+import com.megablok10.app.ui.screens.ProfileScreen
 import com.megablok10.app.ui.screens.WalletScreen
 import com.megablok10.app.ui.theme.MB10Colors
 
@@ -80,6 +79,7 @@ fun AppRoot() {
     var tab by remember { mutableStateOf(AppTab.Chat) }
     var chatContact by remember { mutableStateOf<String?>(null) }
     var showMasterTool by remember { mutableStateOf(false) }
+    var showProfile by remember { mutableStateOf(false) }
 
     // WebRTC не откроет микрофон без RECORD_AUDIO — звонок (свой исходящий
     // или принятие входящего) — единственное место в приложении, где он
@@ -120,10 +120,31 @@ fun AppRoot() {
         })
     } else if (showMasterTool) {
         MasterToolScreen(onClose = { showMasterTool = false })
+    } else if (showProfile) {
+        ProfileScreen(
+            identity = currentIdentity,
+            onMessageContact = { pubKeyB64 ->
+                chatContact = pubKeyB64
+                tab = AppTab.Chat
+                showProfile = false
+            },
+            onCallContact = { peer: PeerInfo ->
+                withMicPermission { CallManager.startOutgoingCall(context, currentIdentity, peer) }
+            },
+            onResetIdentity = {
+                ChatStore.stop()
+                IdentityManager.clear(context)
+                identity = null
+                tab = AppTab.Chat
+                showProfile = false
+            },
+            onOpenMasterTool = { showMasterTool = true },
+            onBack = { showProfile = false }
+        )
     } else {
         val callState by CallManager.state.collectAsState()
         Box(Modifier.fillMaxSize()) {
-            MainScaffold(identity = currentIdentity, selectedTab = tab, onSelectTab = { tab = it }) { activeTab ->
+            MainScaffold(identity = currentIdentity, selectedTab = tab, onSelectTab = { tab = it }, onOpenProfile = { showProfile = true }) { activeTab ->
                 when (activeTab) {
                     AppTab.Chat -> ChatScreen(identity = currentIdentity, openedWithContactKey = chatContact, onContactConsumed = { chatContact = null })
                     AppTab.Calls -> CallsScreen(onCallPeer = { peer: PeerInfo ->
@@ -131,25 +152,6 @@ fun AppRoot() {
                     })
                     AppTab.Hack -> CyberdeckScreen()
                     AppTab.Wallet -> WalletScreen(currentIdentity)
-                    AppTab.Profile -> StatusScreen(
-                        currentIdentity,
-                        onMessageContact = { pubKeyB64 ->
-                            chatContact = pubKeyB64
-                            tab = AppTab.Chat
-                        },
-                        onCallContact = { peer: PeerInfo ->
-                            withMicPermission { CallManager.startOutgoingCall(context, currentIdentity, peer) }
-                        }
-                    )
-                    AppTab.Settings -> SettingsScreen(
-                        onResetIdentity = {
-                            ChatStore.stop()
-                            IdentityManager.clear(context)
-                            identity = null
-                            tab = AppTab.Chat
-                        },
-                        onOpenMasterTool = { showMasterTool = true }
-                    )
                 }
             }
             if (callState.phase != CallPhase.IDLE) {

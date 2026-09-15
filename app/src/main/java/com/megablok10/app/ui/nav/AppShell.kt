@@ -35,22 +35,22 @@ enum class AppTab(val label: String) {
     Chat("Чат"),
     Calls("Звонки"),
     Hack("Кибердека"),
-    Wallet("Финансы"),
-    Profile("Профиль"),
-    Settings("Настройки")
+    Wallet("Финансы")
 }
 
 /**
  * Шапка приложения — позывной, фракция, алерт-бар карантина. Реального
  * системного времени изоляции пока неоткуда взять (нет мастерской
  * трансляции состояния игры) — строка статична, это визуальный макет,
- * не тикающий таймер.
+ * не тикающий таймер. Позывной+фракция теперь ещё и вход в Профиль —
+ * Профиль/Настройки больше не таб, а экран за аватаром, как в обычных
+ * мессенджерах.
  */
 @Composable
-fun AppHeader(identity: Identity) {
+fun AppHeader(identity: Identity, onOpenProfile: () -> Unit = {}) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenProfile),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -125,8 +125,6 @@ fun AppTabBar(selected: AppTab, onSelect: (AppTab) -> Unit) {
                         AppTab.Calls -> CallsTabIcon(color)
                         AppTab.Hack -> HackTabIcon(color)
                         AppTab.Wallet -> WalletTabIcon(color)
-                        AppTab.Profile -> ProfileTabIcon(color)
-                        AppTab.Settings -> SettingsTabIcon(color)
                     }
                     Spacer(Modifier.height(4.dp))
                     Text(tab.label, color = color, fontFamily = JetBrainsMono, fontSize = 9.sp)
@@ -141,10 +139,11 @@ fun MainScaffold(
     identity: Identity,
     selectedTab: AppTab,
     onSelectTab: (AppTab) -> Unit,
+    onOpenProfile: () -> Unit = {},
     content: @Composable (AppTab) -> Unit
 ) {
     Column(Modifier.fillMaxSize().background(MB10Colors.bg0)) {
-        AppHeader(identity)
+        AppHeader(identity, onOpenProfile)
         Box(Modifier.weight(1f)) {
             content(selectedTab)
         }
