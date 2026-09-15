@@ -75,6 +75,10 @@ object ChatStore {
     fun observeDirect(context: Context, myPubKey: String, peerPubKey: String): Flow<List<ChatMessageEntity>> =
         Mb10Database.get(context).chatMessageDao().observeDirect(myPubKey, peerPubKey)
 
+    /** Последнее сообщение с каждым собеседником — для инбокса. */
+    fun observeRecentDirectThreads(context: Context, myPubKey: String): Flow<List<ChatMessageEntity>> =
+        Mb10Database.get(context).chatMessageDao().observeRecentDirectThreads(myPubKey)
+
     /** Сохраняет свою копию сразу и рассылает всем сейчас видимым игрокам своей фракции — доставка best-effort, без подтверждений и ретраев. */
     suspend fun sendFaction(context: Context, identity: Identity, body: String) {
         val timestamp = System.currentTimeMillis()

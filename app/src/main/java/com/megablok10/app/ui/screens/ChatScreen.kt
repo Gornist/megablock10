@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.chat.ChatStore
@@ -42,6 +43,7 @@ import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.ui.theme.ChamferedPanel
+import com.megablok10.app.ui.theme.DottedDivider
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.MB10Colors
@@ -50,76 +52,137 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
 
+private sealed class ChatDestination {
+    object Faction : ChatDestination()
+    data class Direct(val peerPubKeyB64: String) : ChatDestination()
+}
+
 /**
  * openedWithContactKey — publicKey контакта, с которым нужно сразу открыть
  * личный тред (кнопка "Сообщение" в контактах). onContactConsumed сразу
  * обнуляет запрос на стороне AppRoot, чтобы повторный визит на вкладку без
  * нового тапа не переоткрывал тот же тред.
+ *
+ * Инбокс, а не два статичных сегмента (Фракция/Личные), как было раньше:
+ * фракция закреплена первой строкой, ниже — реальные диалоги, отсортированные
+ * по времени последнего сообщения, с превью — тот же паттерн, что в обычных
+ * мессенджерах. Контакт, с которым ещё не переписывались, в списке не
+ * появится — им начинают через "+", а не браузят отдельным табом.
  */
 @Composable
 fun ChatScreen(identity: Identity, openedWithContactKey: String? = null, onContactConsumed: () -> Unit = {}) {
-    var activeSegment by remember { mutableStateOf(0) }
-    var selectedContactKey by remember { mutableStateOf<String?>(null) }
+    var destination by remember { mutableStateOf<ChatDestination?>(null) }
+    var showContactPicker by remember { mutableStateOf(false) }
 
     LaunchedEffect(openedWithContactKey) {
         if (openedWithContactKey != null) {
-            activeSegment = 1
-            selectedContactKey = openedWithContactKey
+            destination = ChatDestination.Direct(openedWithContactKey)
             onContactConsumed()
         }
     }
 
+    when {
+        showContactPicker -> NewChatPicker(
+            onPick = { key -> showContactPicker = false; destination = ChatDestination.Direct(key) },
+            onBack = { showContactPicker = false }
+        )
+        destination is ChatDestination.Faction -> FactionThread(identity, onBack = { destination = null })
+        destination is ChatDestination.Direct -> DirectThread(
+            identity = identity,
+            peerPubKeyB64 = (destination as ChatDestination.Direct).peerPubKeyB64,
+            onBack = { destination = null }
+        )
+        else -> ConversationInbox(
+            identity = identity,
+            onOpenFaction = { destination = ChatDestination.Faction },
+            onOpenDirect = { key -> destination = ChatDestination.Direct(key) },
+            onNewChat = { showContactPicker = true }
+        )
+    }
+}
+
+@Composable
+private fun ConversationInbox(identity: Identity, onOpenFaction: () -> Unit, onOpenDirect: (String) -> Unit, onNewChat: () -> Unit) {
+    val context = LocalContext.current
+    val factionMessages by ChatStore.observeFaction(context, identity.faction).collectAsState(initial = emptyList())
+    val recentThreads by ChatStore.observeRecentDirectThreads(context, identity.publicKeyB64).collectAsState(initial = emptyList())
+    val contacts by ContactStore.observeAll(context).collectAsState(initial = emptyList())
+    val onlinePeers by PresenceService.peers.collectAsState()
+    val onlineKeys = remember(onlinePeers) { onlinePeers.map { it.pubKeyB64 }.toSet() }
+    val lastFactionMessage = factionMessages.lastOrNull()
+
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        ChamferedPanel(
-            borderColor = MB10Colors.inkFaint,
-            fillColor = MB10Colors.bg1,
-            cut = 6.dp,
-            contentPadding = 0.dp,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(Modifier.fillMaxWidth()) {
-                listOf("Фракция", "Личные").forEachIndexed { i, label ->
-                    val active = i == activeSegment
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .background(if (active) MB10Colors.bg2 else MB10Colors.bg1)
-                            .clickable { activeSegment = i }
-                            .padding(vertical = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            label,
-                            color = if (active) MB10Colors.ink0 else MB10Colors.inkMuted,
-                            fontFamily = IBMPlexSans,
-                            fontSize = 13.sp
-                        )
-                    }
-                }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("Чаты", color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            Box(
+                modifier = Modifier
+                    .background(MB10Colors.accentPrimary, chamferShape(5.dp))
+                    .clickable(onClick = onNewChat)
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Text("+ Новый чат", color = MB10Colors.onAccent, fontFamily = JetBrainsMono, fontSize = 10.5.sp, fontWeight = FontWeight.Medium)
             }
         }
         Spacer(Modifier.height(10.dp))
 
-        if (activeSegment == 0) {
-            FactionThread(identity)
-        } else {
-            val key = selectedContactKey
-            if (key == null) {
-                ContactPicker(onPick = { selectedContactKey = it })
-            } else {
-                DirectThread(identity = identity, peerPubKeyB64 = key, onBack = { selectedContactKey = null })
+        LazyColumn(Modifier.fillMaxSize()) {
+            item {
+                ConversationRow(
+                    title = "Фракция: ${identity.faction}",
+                    preview = lastFactionMessage?.let { (if (it.fromPubKeyB64 == identity.publicKeyB64) "Вы: " else "${it.fromCallsign}: ") + it.body }
+                        ?: "Пока нет сообщений",
+                    time = lastFactionMessage?.timestamp,
+                    onClick = onOpenFaction
+                )
+            }
+            items(recentThreads, key = { it.id }) { msg ->
+                val peerKey = if (msg.fromPubKeyB64 == identity.publicKeyB64) msg.toPubKeyB64 else msg.fromPubKeyB64
+                val contact = contacts.find { it.publicKeyB64 == peerKey }
+                ConversationRow(
+                    title = contact?.callsign ?: "Неизвестный контакт",
+                    preview = (if (msg.fromPubKeyB64 == identity.publicKeyB64) "Вы: " else "") + msg.body,
+                    time = msg.timestamp,
+                    online = peerKey in onlineKeys,
+                    onClick = { onOpenDirect(peerKey) }
+                )
             }
         }
     }
 }
 
 @Composable
-private fun FactionThread(identity: Identity) {
+private fun ConversationRow(title: String, preview: String, time: Long?, online: Boolean? = null, onClick: () -> Unit) {
+    val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+    Column(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+        Row(Modifier.fillMaxWidth().padding(vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (online != null) {
+                OnlineDot(online)
+                Spacer(Modifier.width(10.dp))
+            } else {
+                Spacer(Modifier.width(17.dp))
+            }
+            Column(Modifier.weight(1f)) {
+                Text(title, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp)
+                Spacer(Modifier.height(2.dp))
+                Text(preview, color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            if (time != null) {
+                Spacer(Modifier.width(8.dp))
+                Text(timeFormat.format(time), color = MB10Colors.inkFaint, fontFamily = JetBrainsMono, fontSize = 10.sp)
+            }
+        }
+        DottedDivider()
+    }
+}
+
+@Composable
+private fun FactionThread(identity: Identity, onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val messages by ChatStore.observeFaction(context, identity.faction).collectAsState(initial = emptyList())
 
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
+        ThreadHeader(title = "Фракция: ${identity.faction}", onBack = onBack)
         MessageList(messages = messages, myPubKey = identity.publicKeyB64, showSender = true, emptyText = "Пока нет сообщений во фракции.")
         MessageInput(placeholder = "Сообщение фракции") { body ->
             scope.launch { ChatStore.sendFaction(context, identity, body) }
@@ -138,7 +201,7 @@ private fun DirectThread(identity: Identity, peerPubKeyB64: String, onBack: () -
     val peer = onlinePeers.find { it.pubKeyB64 == peerPubKeyB64 }
     val messages by ChatStore.observeDirect(context, identity.publicKeyB64, peerPubKeyB64).collectAsState(initial = emptyList())
 
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth().clickable(onClick = onBack).padding(bottom = 8.dp)
@@ -159,32 +222,49 @@ private fun DirectThread(identity: Identity, peerPubKeyB64: String, onBack: () -
 }
 
 @Composable
-private fun ContactPicker(onPick: (String) -> Unit) {
+private fun ThreadHeader(title: String, onBack: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onBack).padding(bottom = 8.dp)
+    ) {
+        Text("←", color = MB10Colors.ink0, fontFamily = JetBrainsMono, fontSize = 16.sp)
+        Spacer(Modifier.width(8.dp))
+        Text(title, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 14.sp)
+    }
+}
+
+/** Список контактов для старта НОВОГО диалога (кнопка "+" в инбоксе) — не путать с самим инбоксом уже идущих переписок. */
+@Composable
+private fun NewChatPicker(onPick: (String) -> Unit, onBack: () -> Unit) {
     val context = LocalContext.current
     val contacts by ContactStore.observeAll(context).collectAsState(initial = emptyList())
     val onlinePeers by PresenceService.peers.collectAsState()
     val onlineKeys = remember(onlinePeers) { onlinePeers.map { it.pubKeyB64 }.toSet() }
 
-    if (contacts.isEmpty()) {
-        Text(
-            "Пока нет контактов. Отсканируйте QR-код другого игрока в Профиле, чтобы начать с ним переписку.",
-            color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 13.sp, lineHeight = 18.sp,
-            modifier = Modifier.padding(top = 8.dp)
-        )
-        return
-    }
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
+        ThreadHeader(title = "Новый чат", onBack = onBack)
 
-    LazyColumn(Modifier.fillMaxSize()) {
-        items(contacts, key = { it.publicKeyB64 }) { c ->
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth().clickable { onPick(c.publicKeyB64) }.padding(vertical = 12.dp)
-            ) {
-                OnlineDot(online = c.publicKeyB64 in onlineKeys)
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(c.callsign, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp)
-                    Text(c.faction, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
+        if (contacts.isEmpty()) {
+            Text(
+                "Пока нет контактов. Отсканируйте QR-код другого игрока в Профиле, чтобы начать с ним переписку.",
+                color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 13.sp, lineHeight = 18.sp,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+            return@Column
+        }
+
+        LazyColumn(Modifier.fillMaxSize()) {
+            items(contacts, key = { it.publicKeyB64 }) { c ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().clickable { onPick(c.publicKeyB64) }.padding(vertical = 12.dp)
+                ) {
+                    OnlineDot(online = c.publicKeyB64 in onlineKeys)
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(c.callsign, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp)
+                        Text(c.faction, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                    }
                 }
             }
         }
