@@ -1,6 +1,5 @@
 package com.megablok10.app.breach
 
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,7 +22,6 @@ import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -36,12 +34,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.qr.Mb10Qr
-import com.megablok10.app.qr.rememberMb10QrScanner
 import com.megablok10.app.ui.theme.ChamferedPanel
 import com.megablok10.app.ui.theme.DottedDivider
 import com.megablok10.app.ui.theme.FlagTab
@@ -57,82 +53,13 @@ import kotlin.random.Random
 
 /**
  * Взлом недоступен, пока не отсканирована QR-метка конкретной точки доступа
- * (её печатают мастера на месте) — без этого экран просто просит сканировать.
- * После скана открывается сессия, привязанная к этой точке; "Новая точка
- * доступа" внизу возвращает к запросу скана, а не просто пересевает грид.
+ * (её печатают мастера на месте). Сама точка входа для скана теперь общая
+ * для Демонов и Шардов (единая кнопка "Сканировать объект" на экране
+ * Кибердеки выше) — этот композабл только показывает сессию взлома, когда
+ * точка уже выбрана; вызывается из CyberdeckScreen.
  */
 @Composable
-fun BreachScreen() {
-    val context = LocalContext.current
-    LaunchedEffect(Unit) { DaemonStore.ensureSeeded(context) }
-    val daemons by DaemonStore.observeAll(context).collectAsState(initial = emptyList())
-
-    var point by remember { mutableStateOf<Mb10Qr.AccessPoint?>(null) }
-    val scanPoint = rememberMb10QrScanner { qr ->
-        when (qr) {
-            is Mb10Qr.AccessPoint -> point = qr
-            else -> Toast.makeText(context, "Это не QR-метка точки доступа", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    val currentPoint = point
-    if (currentPoint == null) {
-        BreachScanGate(daemons = daemons, onScan = scanPoint)
-    } else {
-        BreachAccessPointFlow(point = currentPoint, daemons = daemons, onRescan = { point = null })
-    }
-}
-
-/**
- * Демонов можно просматривать и читать их описание в любой момент, даже не
- * сканируя точку доступа — коллекция пополняется по ходу игры, и это её
- * единственная витрина вне конкретной попытки взлома.
- */
-@Composable
-private fun BreachScanGate(daemons: List<Daemon>, onScan: () -> Unit) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp)) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-            HexBullet(MB10Colors.accentHack, size = 14.dp)
-            Spacer(Modifier.height(14.dp))
-            Text(
-                "Взлом доступен только на месте",
-                color = MB10Colors.ink0, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 17.sp,
-                textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Найдите QR-метку точки доступа в игровом пространстве и отсканируйте её, чтобы начать Breach Protocol.",
-                color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 13.sp, lineHeight = 18.sp,
-                textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(20.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MB10Colors.accentHack, chamferShape(6.dp))
-                    .clickable(onClick = onScan)
-                    .padding(vertical = 10.dp)
-            ) {
-                Text(
-                    "Сканировать точку доступа",
-                    color = MB10Colors.onAccent, fontFamily = JetBrainsMono, fontSize = 12.sp, fontWeight = FontWeight.Medium,
-                    textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
-                )
-            }
-        }
-
-        Spacer(Modifier.height(28.dp))
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 10.dp)) {
-            HexBullet(MB10Colors.inkMuted, size = 8.dp)
-            Spacer(Modifier.width(6.dp))
-            Text("Мои демоны (${daemons.size})", color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
-        }
-        DaemonList(daemons)
-    }
-}
-
-@Composable
-private fun BreachAccessPointFlow(point: Mb10Qr.AccessPoint, daemons: List<Daemon>, onRescan: () -> Unit) {
+internal fun BreachAccessPointFlow(point: Mb10Qr.AccessPoint, daemons: List<Daemon>, onRescan: () -> Unit) {
     var chosen by remember(point.id) { mutableStateOf<Set<String>>(emptySet()) }
     var sessionSeed by remember(point.id) { mutableStateOf<Long?>(null) }
 
@@ -216,27 +143,8 @@ private fun DaemonPicker(daemons: List<Daemon>, chosen: Set<String>, onToggle: (
     }
 }
 
-/** Просмотр коллекции демонов без выбора — на гейте, до сканирования точки доступа. */
 @Composable
-private fun DaemonList(daemons: List<Daemon>) {
-    Column {
-        daemons.forEachIndexed { index, daemon ->
-            Column(Modifier.fillMaxWidth().padding(vertical = 9.dp)) {
-                Text(daemon.name, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp)
-                if (daemon.reward.isNotEmpty()) {
-                    Text(daemon.reward, color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 11.sp)
-                }
-                Row(Modifier.padding(top = 4.dp)) {
-                    daemon.sequence.forEach { code -> CodePill(code) }
-                }
-            }
-            if (index != daemons.lastIndex) DottedDivider()
-        }
-    }
-}
-
-@Composable
-private fun CodePill(code: String) {
+internal fun CodePill(code: String) {
     Box(Modifier.padding(end = 4.dp).background(MB10Colors.bg2, chamferShape(3.dp)).padding(horizontal = 5.dp, vertical = 2.dp)) {
         Text(code, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
     }

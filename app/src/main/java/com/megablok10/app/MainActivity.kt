@@ -33,7 +33,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import com.megablok10.app.breach.BreachScreen
 import com.megablok10.app.call.CallManager
 import com.megablok10.app.call.CallPhase
 import com.megablok10.app.chat.ChatStore
@@ -43,9 +42,9 @@ import com.megablok10.app.ui.nav.AppTab
 import com.megablok10.app.ui.nav.MainScaffold
 import com.megablok10.app.ui.screens.CallOverlay
 import com.megablok10.app.ui.screens.ChatScreen
+import com.megablok10.app.ui.screens.CyberdeckScreen
 import com.megablok10.app.ui.screens.MasterToolScreen
 import com.megablok10.app.ui.screens.SettingsScreen
-import com.megablok10.app.ui.screens.ShardsScreen
 import com.megablok10.app.ui.screens.StatusScreen
 import com.megablok10.app.ui.screens.WalletScreen
 import com.megablok10.app.ui.theme.MB10Colors
@@ -126,9 +125,8 @@ fun AppRoot() {
             MainScaffold(identity = currentIdentity, selectedTab = tab, onSelectTab = { tab = it }) { activeTab ->
                 when (activeTab) {
                     AppTab.Chat -> ChatScreen(identity = currentIdentity, openedWithContactKey = chatContact, onContactConsumed = { chatContact = null })
-                    AppTab.Hack -> BreachScreen()
+                    AppTab.Hack -> CyberdeckScreen()
                     AppTab.Wallet -> WalletScreen(currentIdentity)
-                    AppTab.Shards -> ShardsScreen(onOpenHack = { tab = AppTab.Hack })
                     AppTab.Profile -> StatusScreen(
                         currentIdentity,
                         onMessageContact = { pubKeyB64 ->

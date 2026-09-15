@@ -35,7 +35,6 @@ enum class AppTab(val label: String) {
     Chat("Чат"),
     Hack("Кибердека"),
     Wallet("Финансы"),
-    Shards("Шарды"),
     Profile("Профиль"),
     Settings("Настройки")
 }
@@ -124,7 +123,6 @@ fun AppTabBar(selected: AppTab, onSelect: (AppTab) -> Unit) {
                         AppTab.Chat -> ChatTabIcon(color)
                         AppTab.Hack -> HackTabIcon(color)
                         AppTab.Wallet -> WalletTabIcon(color)
-                        AppTab.Shards -> ShardsTabIcon(color)
                         AppTab.Profile -> ProfileTabIcon(color)
                         AppTab.Settings -> SettingsTabIcon(color)
                     }
