@@ -57,7 +57,7 @@ object CallManager {
                 val delivered = CallClient.send(peer.host, peer.port, signal)
                 if (!delivered && _state.value.callId == callId) {
                     // Не достучались до пира прямо сейчас (ушёл из сети между сканом присутствия и звонком) — откатываем вызов локально, ждать нечего.
-                    endCallLocal()
+                    endCallLocal(context)
                 }
             }
         }
@@ -85,6 +85,7 @@ object CallManager {
                 SoundPlayer.stopLoop()
                 _state.value = _state.value.copy(phase = CallPhase.IN_CALL)
                 CallMedia.setRemoteAnswer(sdp)
+                CallForegroundService.start(context, _state.value.peerCallsign)
             }
             CallSignalType.ICE_CANDIDATE -> if (_state.value.callId == signal.callId) {
                 val mid = signal.iceSdpMid ?: return
@@ -93,7 +94,7 @@ object CallManager {
                 CallMedia.addRemoteIceCandidate(mid, idx, candidate)
             }
             CallSignalType.DECLINE, CallSignalType.END -> if (_state.value.callId == signal.callId) {
-                endCallLocal()
+                endCallLocal(context)
             }
         }
     }
@@ -105,15 +106,16 @@ object CallManager {
         _state.value = s.copy(phase = CallPhase.IN_CALL)
         CallMedia.addLocalAudioTrack(context)
         CallMedia.createAnswer { sdp -> sendSignal(identity, s.peerPubKeyB64, CallSignalType.ANSWER, s.callId, sdp = sdp) }
+        CallForegroundService.start(context, s.peerCallsign)
     }
 
     /** И отклонение входящего, и отмена исходящего, и завершение уже идущего звонка — везде со стороны пира это просто "разговор закончен". */
-    fun endCall(identity: Identity) {
+    fun endCall(context: Context, identity: Identity) {
         val s = _state.value
         if (s.phase == CallPhase.IDLE) return
         val type = if (s.phase == CallPhase.INCOMING_RINGING) CallSignalType.DECLINE else CallSignalType.END
         sendSignal(identity, s.peerPubKeyB64, type, s.callId)
-        endCallLocal()
+        endCallLocal(context)
     }
 
     private fun sendSignal(identity: Identity, peerPubKeyB64: String, type: CallSignalType, callId: String, sdp: String? = null, ice: IceCandidate? = null) {
@@ -126,9 +128,10 @@ object CallManager {
         scope.launch { CallClient.send(peer.host, peer.port, signal) }
     }
 
-    private fun endCallLocal() {
+    private fun endCallLocal(context: Context) {
         SoundPlayer.stopLoop()
         CallMedia.close()
+        CallForegroundService.stop(context)
         _state.value = CallUiState()
     }
 }

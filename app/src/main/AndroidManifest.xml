@@ -22,6 +22,11 @@
 
     <!-- Голосовые звонки (WebRTC): захват с микрофона + сам факт разрешения, запрашиваемого рантаймом перед звонком. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Foreground-сервис на время звонка — без него Android 14 отбирает микрофон у свёрнутого/фонового процесса. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- Само CallStyle-уведомление на Android 13+ не покажется без этого — сервис при этом всё равно запустится и будет жить, просто плашка будет не видна игроку. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:allowBackup="true"
@@ -42,6 +47,19 @@
         <!-- CaptureActivity для сканера QR уже объявлена в манифесте
              библиотеки zxing-android-embedded и подтянется автоматически
              при слиянии манифестов — здесь её дублировать не нужно. -->
+
+        <service
+            android:name=".call.CallForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
+        <receiver
+            android:name=".call.CallActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.megablok10.app.call.ACTION_HANG_UP" />
+            </intent-filter>
+        </receiver>
 
     </application>
 

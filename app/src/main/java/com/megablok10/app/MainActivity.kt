@@ -2,6 +2,7 @@ package com.megablok10.app
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -83,9 +84,13 @@ fun AppRoot() {
     // WebRTC не откроет микрофон без RECORD_AUDIO — звонок (свой исходящий
     // или принятие входящего) — единственное место в приложении, где он
     // реально нужен, поэтому запрашиваем не заранее, а прямо в момент звонка.
+    // POST_NOTIFICATIONS просим тут же за компанию (нужен для видимой
+    // CallStyle-плашки на Android 13+), но не блокируем на нём звонок —
+    // без неё сервис всё равно поднимется и звонок пройдёт, просто плашки
+    // не будет видно.
     var pendingMicAction by remember { mutableStateOf<(() -> Unit)?>(null) }
-    val micPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) pendingMicAction?.invoke()
+    val callPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
+        if (results[Manifest.permission.RECORD_AUDIO] == true) pendingMicAction?.invoke()
         pendingMicAction = null
     }
     fun withMicPermission(action: () -> Unit) {
@@ -93,7 +98,12 @@ fun AppRoot() {
             action()
         } else {
             pendingMicAction = action
-            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                arrayOf(Manifest.permission.RECORD_AUDIO)
+            }
+            callPermissionLauncher.launch(permissions)
         }
     }
 
@@ -145,7 +155,7 @@ fun AppRoot() {
                     state = callState,
                     identity = currentIdentity,
                     onAccept = { withMicPermission { CallManager.accept(context, currentIdentity) } },
-                    onEnd = { CallManager.endCall(currentIdentity) }
+                    onEnd = { CallManager.endCall(context, currentIdentity) }
                 )
             }
         }
