@@ -1,8 +1,12 @@
 package com.megablok10.app
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,11 +31,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.megablok10.app.breach.BreachScreen
 import com.megablok10.app.call.CallManager
 import com.megablok10.app.call.CallPhase
 import com.megablok10.app.chat.ChatStore
 import com.megablok10.app.identity.IdentityManager
+import com.megablok10.app.presence.PeerInfo
 import com.megablok10.app.ui.nav.AppTab
 import com.megablok10.app.ui.nav.MainScaffold
 import com.megablok10.app.ui.screens.CallOverlay
@@ -74,6 +80,23 @@ fun AppRoot() {
     var chatContact by remember { mutableStateOf<String?>(null) }
     var showMasterTool by remember { mutableStateOf(false) }
 
+    // WebRTC не откроет микрофон без RECORD_AUDIO — звонок (свой исходящий
+    // или принятие входящего) — единственное место в приложении, где он
+    // реально нужен, поэтому запрашиваем не заранее, а прямо в момент звонка.
+    var pendingMicAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val micPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) pendingMicAction?.invoke()
+        pendingMicAction = null
+    }
+    fun withMicPermission(action: () -> Unit) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            action()
+        } else {
+            pendingMicAction = action
+            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
     val currentIdentity = identity
     if (currentIdentity != null) {
         LaunchedEffect(currentIdentity.publicKeyB64) {
@@ -96,10 +119,16 @@ fun AppRoot() {
                     AppTab.Hack -> BreachScreen()
                     AppTab.Wallet -> WalletScreen(currentIdentity)
                     AppTab.Shards -> ShardsScreen(onOpenHack = { tab = AppTab.Hack })
-                    AppTab.Profile -> StatusScreen(currentIdentity, onMessageContact = { pubKeyB64 ->
-                        chatContact = pubKeyB64
-                        tab = AppTab.Chat
-                    })
+                    AppTab.Profile -> StatusScreen(
+                        currentIdentity,
+                        onMessageContact = { pubKeyB64 ->
+                            chatContact = pubKeyB64
+                            tab = AppTab.Chat
+                        },
+                        onCallContact = { peer: PeerInfo ->
+                            withMicPermission { CallManager.startOutgoingCall(context, currentIdentity, peer) }
+                        }
+                    )
                     AppTab.Settings -> SettingsScreen(
                         onResetIdentity = {
                             ChatStore.stop()
@@ -115,7 +144,7 @@ fun AppRoot() {
                 CallOverlay(
                     state = callState,
                     identity = currentIdentity,
-                    onAccept = { CallManager.accept(context, currentIdentity) },
+                    onAccept = { withMicPermission { CallManager.accept(context, currentIdentity) } },
                     onEnd = { CallManager.endCall(currentIdentity) }
                 )
             }

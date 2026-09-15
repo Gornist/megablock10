@@ -29,9 +29,10 @@ import com.megablok10.app.ui.theme.OutlineButton
 /**
  * Полноэкранный оверлей звонка поверх любой вкладки — звонок может прийти,
  * пока игрок сидит в шардах или в кошельке, ждать переключения на чат нельзя.
- * IN_CALL сознательно не рисует ничего похожего на живой аудио-индикатор:
- * сам голосовой поток (WebRTC) ещё не подключен, это только сигнализация,
- * и статус честно об этом говорит, а не притворяется работающим звонком.
+ * IN_CALL — это только "обе стороны договорились созвониться" (сигнализация
+ * прошла), реальное audioConnected приходит отдельно от ICE и может занять
+ * секунду-две после этого — статус честно показывает оба состояния, а не
+ * выдаёт сигнализацию за готовое соединение.
  */
 @Composable
 fun CallOverlay(state: CallUiState, identity: Identity, onAccept: () -> Unit, onEnd: () -> Unit) {
@@ -68,10 +69,11 @@ fun CallOverlay(state: CallUiState, identity: Identity, onAccept: () -> Unit, on
                     when (state.phase) {
                         CallPhase.OUTGOING_RINGING -> "Дозваниваемся..."
                         CallPhase.INCOMING_RINGING -> "Вызывает вас"
-                        CallPhase.IN_CALL -> "Соединение установлено — аудио будет в следующем обновлении"
+                        CallPhase.IN_CALL -> if (state.audioConnected) "Аудио подключено" else "Соединяем аудио..."
                         CallPhase.IDLE -> ""
                     },
-                    color = MB10Colors.inkFaint, fontFamily = JetBrainsMono, fontSize = 10.sp
+                    color = if (state.phase == CallPhase.IN_CALL && state.audioConnected) MB10Colors.lime else MB10Colors.inkFaint,
+                    fontFamily = JetBrainsMono, fontSize = 10.sp
                 )
                 Spacer(Modifier.height(22.dp))
                 when (state.phase) {

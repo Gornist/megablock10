@@ -36,9 +36,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.breach.MockBreach
-import com.megablok10.app.call.CallManager
 import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.identity.Identity
+import com.megablok10.app.presence.PeerInfo
 import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
@@ -59,7 +59,7 @@ import com.megablok10.app.ui.theme.chamferShape
 import kotlinx.coroutines.launch
 
 @Composable
-fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}) {
+fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}, onCallContact: (PeerInfo) -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val contacts by ContactStore.observeAll(context).collectAsState(initial = emptyList())
@@ -173,7 +173,7 @@ fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}) {
                             if (peer == null) {
                                 Toast.makeText(context, "${c.callsign} сейчас не в сети", Toast.LENGTH_SHORT).show()
                             } else {
-                                CallManager.startOutgoingCall(context, identity, peer)
+                                onCallContact(peer)
                             }
                         }
                     )

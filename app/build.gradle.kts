@@ -53,5 +53,11 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
 
+    // Голосовые звонки: чистый P2P поверх LAN, без STUN/TURN — ICE соберёт
+    // host-кандидаты напрямую. org.webrtc:google-webrtc официально мёртв
+    // (Google больше не публикует precompiled Android-сборки), этот форк —
+    // активно поддерживаемая замена с тем же пакетом org.webrtc.*.
+    implementation("io.github.webrtc-sdk:android:144.7559.09")
+
     testImplementation("junit:junit:4.13.2")
 }

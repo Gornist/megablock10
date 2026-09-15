@@ -52,7 +52,7 @@ object ChatStore {
                     // и есть приём с провода), свои же исходящие persist() не должны пищать.
                     SoundPlayer.playMessageReceived(appContext)
                 },
-                onCallSignal = { signal -> CallManager.onSignalReceived(appContext, signal) }
+                onCallSignal = { signal -> CallManager.onSignalReceived(appContext, identity, signal) }
             )
             srv.start(appScope)
             server = srv

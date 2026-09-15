@@ -10,9 +10,18 @@
     <!-- Presence/чат: NSD (mDNS) + прямой TCP между устройствами в одной Wi-Fi сети, без интернета. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Без этого WebRTC падает насмерть: его внутренний NetworkMonitor дёргает
+         ConnectivityManager.getActiveNetworkInfo() при старте PeerConnection,
+         SecurityException без разрешения улетает через JNI, а WebRTC трактует
+         любое необработанное Java-исключение там как fatal (abort()). Поймано
+         вживую на эмуляторе — SIGABRT в network_thread при первом же звонке. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <!-- Требуется на Android 13+ для обнаружения устройств по Wi-Fi (NSD в т.ч.); на более старых версиях игнорируется. -->
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" android:usesPermissionFlags="neverForLocation" tools:targetApi="33" />
+
+    <!-- Голосовые звонки (WebRTC): захват с микрофона + сам факт разрешения, запрашиваемого рантаймом перед звонком. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <application
         android:allowBackup="true"

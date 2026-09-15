@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import org.webrtc.IceCandidate
 
 enum class CallPhase { IDLE, OUTGOING_RINGING, INCOMING_RINGING, IN_CALL }
 
@@ -20,15 +21,16 @@ data class CallUiState(
     val phase: CallPhase = CallPhase.IDLE,
     val callId: String = "",
     val peerPubKeyB64: String = "",
-    val peerCallsign: String = ""
+    val peerCallsign: String = "",
+    /** true только когда ICE реально соединился (CONNECTED/COMPLETED) — отдельно от phase.IN_CALL, который значит лишь "обе стороны договорились созвониться". */
+    val audioConnected: Boolean = false
 )
 
 /**
- * Только сигнализация звонка (offer/answer/decline/end) поверх того же TCP,
- * что и чат — состояние держится в памяти процесса, ни один звонок никуда не
- * пишется в Room. Собственно голосовой поток (WebRTC) — следующий этап,
- * здесь его сознательно нет: IN_CALL значит только то, что обе стороны
- * согласились на звонок, а не то, что звук уже передаётся.
+ * Сигнализация звонка (offer/answer/ICE/decline/end) поверх того же TCP, что
+ * и чат, плюс сама медиа-сессия (CallMedia/WebRTC). Состояние держится в
+ * памяти процесса, ни один звонок никуда не пишется в Room (лог звонков —
+ * отдельный будущий шаг).
  */
 object CallManager {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -41,27 +43,54 @@ object CallManager {
         val callId = UUID.randomUUID().toString()
         _state.value = CallUiState(CallPhase.OUTGOING_RINGING, callId, peer.pubKeyB64, peer.callsign)
         SoundPlayer.startDialTone(context)
-        val signal = CallSignal(CallSignalType.OFFER, callId, identity.publicKeyB64, identity.callsign, peer.pubKeyB64, System.currentTimeMillis())
-        scope.launch {
-            val delivered = CallClient.send(peer.host, peer.port, signal)
-            if (!delivered && _state.value.callId == callId) {
-                // Не достучались до пира прямо сейчас (ушёл из сети между сканом присутствия и звонком) — откатываем вызов локально, ждать нечего.
-                endCallLocal()
+
+        CallMedia.open(
+            context,
+            onIceCandidate = { candidate -> sendSignal(identity, peer.pubKeyB64, CallSignalType.ICE_CANDIDATE, callId, ice = candidate) },
+            onConnected = { if (_state.value.callId == callId) _state.value = _state.value.copy(audioConnected = true) },
+            onDisconnected = { if (_state.value.callId == callId) _state.value = _state.value.copy(audioConnected = false) }
+        )
+        CallMedia.addLocalAudioTrack(context)
+        CallMedia.createOffer { sdp ->
+            val signal = CallSignal(CallSignalType.OFFER, callId, identity.publicKeyB64, identity.callsign, peer.pubKeyB64, System.currentTimeMillis(), sdp = sdp)
+            scope.launch {
+                val delivered = CallClient.send(peer.host, peer.port, signal)
+                if (!delivered && _state.value.callId == callId) {
+                    // Не достучались до пира прямо сейчас (ушёл из сети между сканом присутствия и звонком) — откатываем вызов локально, ждать нечего.
+                    endCallLocal()
+                }
             }
         }
     }
 
     /** Вызывается из ChatServer.onCallSignal — сигнал уже пришёл по сети, тут только реакция на него. */
-    fun onSignalReceived(context: Context, signal: CallSignal) {
+    fun onSignalReceived(context: Context, identity: Identity, signal: CallSignal) {
         when (signal.type) {
             CallSignalType.OFFER -> {
                 if (_state.value.phase != CallPhase.IDLE) return // уже заняты другим звонком — молча игнорируем, без busy-сигнала в MVP
+                val sdp = signal.sdp ?: return
                 _state.value = CallUiState(CallPhase.INCOMING_RINGING, signal.callId, signal.fromPubKeyB64, signal.fromCallsign)
                 SoundPlayer.startIncomingRingtone(context)
+                CallMedia.open(
+                    context,
+                    onIceCandidate = { candidate -> sendSignal(identity, signal.fromPubKeyB64, CallSignalType.ICE_CANDIDATE, signal.callId, ice = candidate) },
+                    onConnected = { if (_state.value.callId == signal.callId) _state.value = _state.value.copy(audioConnected = true) },
+                    onDisconnected = { if (_state.value.callId == signal.callId) _state.value = _state.value.copy(audioConnected = false) }
+                )
+                // Обработать чужой SDP и начать сбор своих ICE-кандидатов можно сразу — микрофон подключаем только по "Принять" (см. accept()).
+                CallMedia.setRemoteOffer(sdp)
             }
             CallSignalType.ANSWER -> if (_state.value.callId == signal.callId) {
+                val sdp = signal.sdp ?: return
                 SoundPlayer.stopLoop()
                 _state.value = _state.value.copy(phase = CallPhase.IN_CALL)
+                CallMedia.setRemoteAnswer(sdp)
+            }
+            CallSignalType.ICE_CANDIDATE -> if (_state.value.callId == signal.callId) {
+                val mid = signal.iceSdpMid ?: return
+                val idx = signal.iceSdpMLineIndex ?: return
+                val candidate = signal.iceCandidate ?: return
+                CallMedia.addRemoteIceCandidate(mid, idx, candidate)
             }
             CallSignalType.DECLINE, CallSignalType.END -> if (_state.value.callId == signal.callId) {
                 endCallLocal()
@@ -74,7 +103,8 @@ object CallManager {
         if (s.phase != CallPhase.INCOMING_RINGING) return
         SoundPlayer.stopLoop()
         _state.value = s.copy(phase = CallPhase.IN_CALL)
-        sendSignalToPeer(identity, CallSignalType.ANSWER, s)
+        CallMedia.addLocalAudioTrack(context)
+        CallMedia.createAnswer { sdp -> sendSignal(identity, s.peerPubKeyB64, CallSignalType.ANSWER, s.callId, sdp = sdp) }
     }
 
     /** И отклонение входящего, и отмена исходящего, и завершение уже идущего звонка — везде со стороны пира это просто "разговор закончен". */
@@ -82,18 +112,23 @@ object CallManager {
         val s = _state.value
         if (s.phase == CallPhase.IDLE) return
         val type = if (s.phase == CallPhase.INCOMING_RINGING) CallSignalType.DECLINE else CallSignalType.END
-        sendSignalToPeer(identity, type, s)
+        sendSignal(identity, s.peerPubKeyB64, type, s.callId)
         endCallLocal()
     }
 
-    private fun sendSignalToPeer(identity: Identity, type: CallSignalType, s: CallUiState) {
-        val peer = PresenceService.peers.value.find { it.pubKeyB64 == s.peerPubKeyB64 } ?: return
-        val signal = CallSignal(type, s.callId, identity.publicKeyB64, identity.callsign, s.peerPubKeyB64, System.currentTimeMillis())
+    private fun sendSignal(identity: Identity, peerPubKeyB64: String, type: CallSignalType, callId: String, sdp: String? = null, ice: IceCandidate? = null) {
+        val peer = PresenceService.peers.value.find { it.pubKeyB64 == peerPubKeyB64 } ?: return
+        val signal = CallSignal(
+            type = type, callId = callId, fromPubKeyB64 = identity.publicKeyB64, fromCallsign = identity.callsign,
+            toPubKeyB64 = peerPubKeyB64, timestamp = System.currentTimeMillis(), sdp = sdp,
+            iceSdpMid = ice?.sdpMid, iceSdpMLineIndex = ice?.sdpMLineIndex, iceCandidate = ice?.sdp
+        )
         scope.launch { CallClient.send(peer.host, peer.port, signal) }
     }
 
     private fun endCallLocal() {
         SoundPlayer.stopLoop()
+        CallMedia.close()
         _state.value = CallUiState()
     }
 }
