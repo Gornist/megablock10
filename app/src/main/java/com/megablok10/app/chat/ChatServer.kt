@@ -1,6 +1,8 @@
 package com.megablok10.app.chat
 
 import android.util.Log
+import com.megablok10.app.call.CallProtocol
+import com.megablok10.app.call.CallSignal
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.ServerSocket
@@ -17,9 +19,14 @@ private const val TAG = "ChatServer"
  * Слушает входящие сообщения на порту, который сама же и выбирает (0 — ОС
  * назначает свободный). Один коннект = одно сообщение (см. ChatProtocol) —
  * поэтому accept-луп просто читает одну строку и закрывает сокет, без
- * долгоживущих соединений и их учёта.
+ * долгоживущих соединений и их учёта. Сигналы звонка (CallProtocol) идут
+ * через тот же самый сокет — отдельный сервер/порт под них не нужен,
+ * различаются они по магическому префиксу первой же строки.
  */
-class ChatServer(private val onMessage: (ChatWireMessage) -> Unit) {
+class ChatServer(
+    private val onMessage: (ChatWireMessage) -> Unit,
+    private val onCallSignal: (CallSignal) -> Unit = {}
+) {
     private var serverSocket: ServerSocket? = null
     private var job: Job? = null
 
@@ -45,7 +52,7 @@ class ChatServer(private val onMessage: (ChatWireMessage) -> Unit) {
         socket.use {
             it.soTimeout = 5000
             val line = BufferedReader(InputStreamReader(it.getInputStream(), Charsets.UTF_8)).readLine() ?: return
-            ChatProtocol.decode(line)?.let(onMessage)
+            ChatProtocol.decode(line)?.let(onMessage) ?: CallProtocol.decode(line)?.let(onCallSignal)
         }
     }
 

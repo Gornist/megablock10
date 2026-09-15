@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -26,10 +28,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.megablok10.app.breach.BreachScreen
+import com.megablok10.app.call.CallManager
+import com.megablok10.app.call.CallPhase
 import com.megablok10.app.chat.ChatStore
 import com.megablok10.app.identity.IdentityManager
 import com.megablok10.app.ui.nav.AppTab
 import com.megablok10.app.ui.nav.MainScaffold
+import com.megablok10.app.ui.screens.CallOverlay
 import com.megablok10.app.ui.screens.ChatScreen
 import com.megablok10.app.ui.screens.MasterToolScreen
 import com.megablok10.app.ui.screens.SettingsScreen
@@ -83,24 +88,35 @@ fun AppRoot() {
     } else if (showMasterTool) {
         MasterToolScreen(onClose = { showMasterTool = false })
     } else {
-        MainScaffold(identity = currentIdentity, selectedTab = tab, onSelectTab = { tab = it }) { activeTab ->
-            when (activeTab) {
-                AppTab.Chat -> ChatScreen(identity = currentIdentity, openedWithContactKey = chatContact, onContactConsumed = { chatContact = null })
-                AppTab.Hack -> BreachScreen()
-                AppTab.Wallet -> WalletScreen(currentIdentity)
-                AppTab.Shards -> ShardsScreen(onOpenHack = { tab = AppTab.Hack })
-                AppTab.Profile -> StatusScreen(currentIdentity, onMessageContact = { pubKeyB64 ->
-                    chatContact = pubKeyB64
-                    tab = AppTab.Chat
-                })
-                AppTab.Settings -> SettingsScreen(
-                    onResetIdentity = {
-                        ChatStore.stop()
-                        IdentityManager.clear(context)
-                        identity = null
+        val callState by CallManager.state.collectAsState()
+        Box(Modifier.fillMaxSize()) {
+            MainScaffold(identity = currentIdentity, selectedTab = tab, onSelectTab = { tab = it }) { activeTab ->
+                when (activeTab) {
+                    AppTab.Chat -> ChatScreen(identity = currentIdentity, openedWithContactKey = chatContact, onContactConsumed = { chatContact = null })
+                    AppTab.Hack -> BreachScreen()
+                    AppTab.Wallet -> WalletScreen(currentIdentity)
+                    AppTab.Shards -> ShardsScreen(onOpenHack = { tab = AppTab.Hack })
+                    AppTab.Profile -> StatusScreen(currentIdentity, onMessageContact = { pubKeyB64 ->
+                        chatContact = pubKeyB64
                         tab = AppTab.Chat
-                    },
-                    onOpenMasterTool = { showMasterTool = true }
+                    })
+                    AppTab.Settings -> SettingsScreen(
+                        onResetIdentity = {
+                            ChatStore.stop()
+                            IdentityManager.clear(context)
+                            identity = null
+                            tab = AppTab.Chat
+                        },
+                        onOpenMasterTool = { showMasterTool = true }
+                    )
+                }
+            }
+            if (callState.phase != CallPhase.IDLE) {
+                CallOverlay(
+                    state = callState,
+                    identity = currentIdentity,
+                    onAccept = { CallManager.accept(context, currentIdentity) },
+                    onEnd = { CallManager.endCall(currentIdentity) }
                 )
             }
         }

@@ -36,8 +36,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.breach.MockBreach
+import com.megablok10.app.call.CallManager
 import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.identity.Identity
+import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
 import com.megablok10.app.qr.generateQrBitmap
@@ -61,6 +63,7 @@ fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val contacts by ContactStore.observeAll(context).collectAsState(initial = emptyList())
+    val onlinePeers by PresenceService.peers.collectAsState()
 
     val startScan = rememberMb10QrScanner { qr ->
         when (qr) {
@@ -165,7 +168,14 @@ fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}) {
                     ContactActionButton(
                         "Звонок",
                         modifier = Modifier.weight(1f),
-                        onClick = { Toast.makeText(context, "Голосовая связь — в следующих обновлениях", Toast.LENGTH_SHORT).show() }
+                        onClick = {
+                            val peer = onlinePeers.find { it.pubKeyB64 == c.publicKeyB64 }
+                            if (peer == null) {
+                                Toast.makeText(context, "${c.callsign} сейчас не в сети", Toast.LENGTH_SHORT).show()
+                            } else {
+                                CallManager.startOutgoingCall(context, identity, peer)
+                            }
+                        }
                     )
                 }
             }

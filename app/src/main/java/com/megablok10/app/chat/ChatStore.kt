@@ -4,8 +4,10 @@ import android.content.Context
 import com.megablok10.app.data.ChatMessageEntity
 import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.identity.Identity
+import com.megablok10.app.call.CallManager
 import com.megablok10.app.presence.PeerInfo
 import com.megablok10.app.presence.PresenceService
+import com.megablok10.app.sound.SoundPlayer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -40,10 +42,18 @@ object ChatStore {
         val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         scope = appScope
 
+        SoundPlayer.preload(appContext)
+
         appScope.launch {
-            val srv = ChatServer(onMessage = { msg ->
-                appScope.launch { persist(appContext, msg) }
-            })
+            val srv = ChatServer(
+                onMessage = { msg ->
+                    appScope.launch { persist(appContext, msg) }
+                    // Звук — только для реально пришедших по сети сообщений (этот колбэк
+                    // и есть приём с провода), свои же исходящие persist() не должны пищать.
+                    SoundPlayer.playMessageReceived(appContext)
+                },
+                onCallSignal = { signal -> CallManager.onSignalReceived(appContext, signal) }
+            )
             srv.start(appScope)
             server = srv
             PresenceService.start(appContext, identity, srv.port)
