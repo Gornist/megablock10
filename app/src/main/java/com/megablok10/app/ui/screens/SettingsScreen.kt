@@ -52,9 +52,13 @@ fun SettingsScreen(onResetIdentity: () -> Unit, onOpenMasterTool: () -> Unit = {
         Spacer(Modifier.height(16.dp))
         SectionLabel("Персонаж")
         // Смена фракции — решение мастера вручную вне приложения, здесь этому неоткуда взяться.
-        // Кнопка задизейблена, а не удалена: пусть игрок видит, что опция существует, но не через приложение.
-        OutlineButton("Сменить фракцию (по решению мастера)", modifier = Modifier.fillMaxWidth(), enabled = false, onClick = {})
-        Spacer(Modifier.height(8.dp))
+        // Раньше это была вечно задизейбленная кнопка (нерабочая форма вместо неё вводит в
+        // заблуждение — неясно, почему не жмётся); теперь та же информация обычным текстом.
+        Text(
+            "Смена фракции — по решению мастера, вручную вне приложения",
+            color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.5.sp
+        )
+        Spacer(Modifier.height(12.dp))
         OutlineButton("Сбросить сессию персонажа", modifier = Modifier.fillMaxWidth(), accentColor = MB10Colors.danger, onClick = { confirmingReset = true })
 
         Spacer(Modifier.height(16.dp))

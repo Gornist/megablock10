@@ -109,7 +109,10 @@ fun AppTabBar(selected: AppTab, onSelect: (AppTab) -> Unit) {
         Row(Modifier.fillMaxWidth().background(MB10Colors.bg1)) {
             AppTab.entries.forEach { tab ->
                 val active = tab == selected
-                val color = if (active) MB10Colors.accentPrimary else MB10Colors.inkFaint
+                // inkFaint (тёмно-коричневый) на bg1 (тёмно-синий) почти неразличимы — оба
+                // около-чёрные с разным подтоном. Приглушённый ink0 вместо этого читается
+                // как "тусклый циан", а не как отдельный несвязанный оттенок.
+                val color = if (active) MB10Colors.accentPrimary else MB10Colors.ink0.copy(alpha = 0.35f)
                 Column(
                     modifier = Modifier
                         .weight(1f)
