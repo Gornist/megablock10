@@ -1,6 +1,7 @@
 package com.megablok10.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,13 +15,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -31,7 +30,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -42,6 +40,7 @@ import com.megablok10.app.data.ChatMessageEntity
 import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.presence.PresenceService
+import com.megablok10.app.ui.theme.AppTextField
 import com.megablok10.app.ui.theme.ChamferedPanel
 import com.megablok10.app.ui.theme.DottedDivider
 import com.megablok10.app.ui.theme.IBMPlexSans
@@ -50,6 +49,7 @@ import com.megablok10.app.ui.theme.MB10Colors
 import com.megablok10.app.ui.theme.chamferShape
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Locale
 
 private sealed class ChatDestination {
@@ -276,89 +276,128 @@ private fun OnlineDot(online: Boolean) {
     Box(Modifier.size(7.dp).background(if (online) MB10Colors.ink0 else MB10Colors.inkFaint, CircleShape))
 }
 
+private sealed class ChatEntry {
+    data class DaySeparator(val label: String) : ChatEntry()
+    data class Msg(val message: ChatMessageEntity) : ChatEntry()
+}
+
+/** День меняется — вставляется разделитель. Тот же принцип, что и в обычных мессенджерах: не нужно вычислять дату по каждому сообщению вручную. */
+private fun buildChatEntries(messages: List<ChatMessageEntity>): List<ChatEntry> {
+    val cal = Calendar.getInstance()
+    val today = Calendar.getInstance()
+    val entries = mutableListOf<ChatEntry>()
+    var lastDay = -1
+    var lastYear = -1
+    messages.forEach { msg ->
+        cal.timeInMillis = msg.timestamp
+        val day = cal.get(Calendar.DAY_OF_YEAR)
+        val year = cal.get(Calendar.YEAR)
+        if (day != lastDay || year != lastYear) {
+            entries += ChatEntry.DaySeparator(dayLabel(cal, today))
+            lastDay = day
+            lastYear = year
+        }
+        entries += ChatEntry.Msg(msg)
+    }
+    return entries
+}
+
+private fun dayLabel(day: Calendar, today: Calendar): String {
+    val sameYear = today.get(Calendar.YEAR) == day.get(Calendar.YEAR)
+    val diff = today.get(Calendar.DAY_OF_YEAR) - day.get(Calendar.DAY_OF_YEAR)
+    return when {
+        sameYear && diff == 0 -> "Сегодня"
+        sameYear && diff == 1 -> "Вчера"
+        else -> SimpleDateFormat("d MMMM", Locale("ru")).format(day.time)
+    }
+}
+
 @Composable
 private fun ColumnScope.MessageList(messages: List<ChatMessageEntity>, myPubKey: String, showSender: Boolean, emptyText: String) {
     if (messages.isEmpty()) {
-        Text(emptyText, color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 13.sp, modifier = Modifier.weight(1f))
+        Text(emptyText, color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 13.sp, modifier = Modifier.weight(1f))
         return
     }
+    val entries = remember(messages) { buildChatEntries(messages) }
     LazyColumn(modifier = Modifier.weight(1f)) {
-        items(messages, key = { it.id }) { msg -> MessageBubble(msg, self = msg.fromPubKeyB64 == myPubKey, showSender = showSender) }
+        items(entries) { entry ->
+            when (entry) {
+                is ChatEntry.DaySeparator -> DaySeparatorLabel(entry.label)
+                is ChatEntry.Msg -> MessageBubble(entry.message, self = entry.message.fromPubKeyB64 == myPubKey, showSender = showSender)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DaySeparatorLabel(label: String) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) {
+        Text(label, color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 9.5.sp)
     }
 }
 
 @Composable
 private fun MessageInput(placeholder: String, onSend: (String) -> Unit) {
     var draft by remember { mutableStateOf("") }
+    val canSend = draft.isNotBlank()
 
     Row(
         modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        ChamferedPanel(
-            modifier = Modifier.weight(1f),
-            borderColor = MB10Colors.inkFaint,
-            fillColor = MB10Colors.bg2,
-            cut = 6.dp,
-            contentPadding = 0.dp
-        ) {
-            TextField(
-                value = draft,
-                onValueChange = { draft = it },
-                placeholder = { Text(placeholder, color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 13.sp) },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions.Default,
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = MB10Colors.bg2,
-                    unfocusedContainerColor = MB10Colors.bg2,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    focusedTextColor = MB10Colors.ink0,
-                    unfocusedTextColor = MB10Colors.ink0
-                ),
-                textStyle = androidx.compose.ui.text.TextStyle(fontFamily = IBMPlexSans, fontSize = 13.sp),
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
+        AppTextField(
+            value = draft,
+            onValueChange = { draft = it },
+            placeholder = placeholder,
+            modifier = Modifier.weight(1f)
+        )
         Box(
             modifier = Modifier
-                .background(MB10Colors.accentPrimary, chamferShape(6.dp))
-                .clickable(enabled = draft.isNotBlank()) {
+                .background(if (canSend) MB10Colors.accentAction else MB10Colors.surfaceSunken, chamferShape(6.dp))
+                .clickable(enabled = canSend) {
                     onSend(draft)
                     draft = ""
                 }
                 .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
-            Text("Отпр.", color = MB10Colors.onAccent, fontFamily = JetBrainsMono, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Text(
+                "Отпр.",
+                color = if (canSend) MB10Colors.onAccent else MB10Colors.inkTertiary,
+                fontFamily = JetBrainsMono, fontSize = 12.sp, fontWeight = FontWeight.Medium
+            )
         }
     }
 }
 
+/**
+ * Свои сообщения — справа, тонированные акцентом; чужие — слева, нейтральные.
+ * Раньше единственным отличием была двухпиксельная полоска слева от своих
+ * сообщений — легко не заметить. Сторона + цвет вместе читаются мгновенно,
+ * без необходимости сверяться с подписью отправителя.
+ */
 @Composable
 private fun MessageBubble(msg: ChatMessageEntity, self: Boolean, showSender: Boolean) {
     val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
-    Column(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(
-                if (showSender) (if (self) "Вы" else msg.fromCallsign) else "",
-                color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.sp
-            )
-            Text(timeFormat.format(msg.timestamp), color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
-        }
-        Spacer(Modifier.height(4.dp))
-        Row {
-            if (self) {
-                Box(Modifier.width(2.dp).background(MB10Colors.accentPrimary))
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+        horizontalArrangement = if (self) Arrangement.End else Arrangement.Start
+    ) {
+        Column(modifier = Modifier.widthIn(max = 280.dp), horizontalAlignment = if (self) Alignment.End else Alignment.Start) {
+            if (showSender && !self) {
+                Text(msg.fromCallsign, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                Spacer(Modifier.height(2.dp))
             }
             Box(
                 modifier = Modifier
-                    .weight(1f)
-                    .background(MB10Colors.bg2, chamferShape(6.dp))
+                    .background(if (self) MB10Colors.accentAction.copy(alpha = 0.16f) else MB10Colors.surfaceSunken, chamferShape(6.dp))
+                    .border(1.dp, if (self) MB10Colors.accentAction.copy(alpha = 0.4f) else MB10Colors.borderMuted, chamferShape(6.dp))
                     .padding(vertical = 9.dp, horizontal = 11.dp)
             ) {
-                Text(msg.body, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.5.sp, lineHeight = 19.sp)
+                Text(msg.body, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.5.sp, lineHeight = 19.sp)
             }
+            Spacer(Modifier.height(2.dp))
+            Text(timeFormat.format(msg.timestamp), color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 9.5.sp)
         }
     }
 }
