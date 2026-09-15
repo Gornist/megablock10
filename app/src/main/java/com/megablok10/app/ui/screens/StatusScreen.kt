@@ -23,10 +23,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -53,7 +51,6 @@ import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.Jura
 import com.megablok10.app.ui.theme.MB10Colors
-import com.megablok10.app.ui.theme.MB10Toggle
 import com.megablok10.app.ui.theme.SectionLabel
 import com.megablok10.app.ui.theme.chamferShape
 import kotlinx.coroutines.launch
@@ -100,26 +97,6 @@ fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}, on
             StatMeter("Репутация — Клемты", "низкая", 0.18f, MB10Colors.ink0)
             StatMeter("Сбой импланта", "62%", 0.62f, MB10Colors.danger)
 
-            SectionLabel("Медицинский статус")
-            var hideSymptoms by remember { mutableStateOf(true) }
-            ChamferedPanel(
-                borderColor = MB10Colors.inkFaint,
-                fillColor = MB10Colors.bg1,
-                cut = 6.dp,
-                contentPadding = 0.dp,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Скрывать симптомы от других", color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp)
-                    MB10Toggle(hideSymptoms, { hideSymptoms = it })
-                }
-            }
-
-            Spacer(Modifier.height(18.dp))
             SectionLabel("Контакты (${contacts.size})")
 
             val qrBitmap = remember(identity.publicKeyB64) {

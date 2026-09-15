@@ -11,20 +11,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.ui.theme.ChamferedPanel
-import com.megablok10.app.ui.theme.DemoNotice
 import com.megablok10.app.ui.theme.DottedDivider
 import com.megablok10.app.ui.theme.HexBullet
 import com.megablok10.app.ui.theme.Jura
@@ -39,12 +34,15 @@ enum class AppTab(val label: String) {
 }
 
 /**
- * Шапка приложения — позывной, фракция, алерт-бар карантина. Реального
- * системного времени изоляции пока неоткуда взять (нет мастерской
- * трансляции состояния игры) — строка статична, это визуальный макет,
- * не тикающий таймер. Позывной+фракция теперь ещё и вход в Профиль —
- * Профиль/Настройки больше не таб, а экран за аватаром, как в обычных
- * мессенджерах.
+ * Шапка приложения — позывной, фракция. Позывной+фракция — ещё и вход в
+ * Профиль (Профиль/Настройки больше не таб, а экран за аватаром, как в
+ * обычных мессенджерах).
+ *
+ * Раньше здесь же был баннер "карантин, 3ч 12м с изоляции" — убран: текст
+ * утверждал "обновляется вручную мастером", но в Мастерской нет и не было
+ * ни одного поля, которым мастер мог бы это обновить — обновить можно было
+ * только правкой исходников. Просто застывший текст на каждом экране
+ * приложения, ничего не сообщающий.
  */
 @Composable
 fun AppHeader(identity: Identity, onOpenProfile: () -> Unit = {}) {
@@ -68,33 +66,6 @@ fun AppHeader(identity: Identity, onOpenProfile: () -> Unit = {}) {
                 ) {
                     HexBullet(MB10Colors.accentPrimary, size = 8.dp)
                     Text(identity.faction, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
-                }
-            }
-        }
-        Spacer(Modifier.height(10.dp))
-        ChamferedPanel(
-            borderColor = MB10Colors.danger.copy(alpha = 0.45f),
-            fillColor = MB10Colors.bg1,
-            cut = 6.dp,
-            contentPadding = 0.dp,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                verticalAlignment = Alignment.Top,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
-            ) {
-                Box(Modifier.padding(top = 3.dp).size(6.dp).background(MB10Colors.danger, CircleShape))
-                Column {
-                    Text(
-                        "Мегаблок №10 — карантин, 3ч 12м с изоляции",
-                        color = MB10Colors.danger,
-                        fontFamily = JetBrainsMono,
-                        fontSize = 10.5.sp
-                    )
-                    // Нет мастерской трансляции состояния игры — таймер статичен,
-                    // а не тикает. Без этой строки он неотличим от настоящего.
-                    DemoNotice("статично, обновляется вручную мастером", modifier = Modifier.padding(top = 2.dp))
                 }
             }
         }
