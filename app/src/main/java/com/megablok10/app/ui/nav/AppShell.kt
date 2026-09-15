@@ -11,14 +11,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.identity.Identity
+import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.ui.theme.ChamferedPanel
 import com.megablok10.app.ui.theme.DottedDivider
 import com.megablok10.app.ui.theme.HexBullet
@@ -46,6 +50,8 @@ enum class AppTab(val label: String) {
  */
 @Composable
 fun AppHeader(identity: Identity, onOpenProfile: () -> Unit = {}) {
+    val peers by PresenceService.peers.collectAsState()
+
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenProfile),
@@ -69,8 +75,29 @@ fun AppHeader(identity: Identity, onOpenProfile: () -> Unit = {}) {
                 }
             }
         }
+        Spacer(Modifier.height(4.dp))
+        // Живой статус меш-сети — реальное число узлов из PresenceService (NSD-обнаружение), не заглушка.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            HexBullet(if (peers.isNotEmpty()) MB10Colors.inkPrimary else MB10Colors.inkTertiary, size = 6.dp)
+            Spacer(Modifier.width(6.dp))
+            Text(
+                if (peers.isNotEmpty()) "Меш-сеть: ${peers.size} ${nodeWord(peers.size)} рядом" else "Меш-сеть: узлов рядом нет",
+                color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 9.5.sp
+            )
+        }
     }
     DottedDivider()
+}
+
+private fun nodeWord(count: Int): String {
+    val mod100 = count % 100
+    val mod10 = count % 10
+    return when {
+        mod100 in 11..14 -> "узлов"
+        mod10 == 1 -> "узел"
+        mod10 in 2..4 -> "узла"
+        else -> "узлов"
+    }
 }
 
 @Composable
