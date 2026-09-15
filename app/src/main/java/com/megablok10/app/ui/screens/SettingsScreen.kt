@@ -11,9 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -23,12 +21,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.megablok10.app.ui.theme.AppDialog
+import com.megablok10.app.ui.theme.AppToggle
 import com.megablok10.app.ui.theme.ChamferedPanel
 import com.megablok10.app.ui.theme.Chip
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.MB10Colors
-import com.megablok10.app.ui.theme.MB10Toggle
 import com.megablok10.app.ui.theme.OutlineButton
 import com.megablok10.app.ui.theme.SectionLabel
 
@@ -67,18 +66,12 @@ fun SettingsScreen(onResetIdentity: () -> Unit, onOpenMasterTool: () -> Unit = {
     }
 
     if (confirmingReset) {
-        AlertDialog(
+        AppDialog(
             onDismissRequest = { confirmingReset = false },
-            title = { Text("Сбросить сессию персонажа?") },
-            text = { Text("Ключевая пара, позывной и фракция этого устройства будут удалены безвозвратно. Отменить нельзя.") },
-            confirmButton = {
-                TextButton(onClick = { confirmingReset = false; onResetIdentity() }) {
-                    Text("Сбросить", color = MB10Colors.danger)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmingReset = false }) { Text("Отмена") }
-            }
+            title = "Сбросить сессию персонажа?",
+            body = "Ключевая пара, позывной и фракция этого устройства будут удалены безвозвратно. Отменить нельзя.",
+            confirmText = "Сбросить",
+            onConfirm = { confirmingReset = false; onResetIdentity() }
         )
     }
 }
@@ -98,7 +91,7 @@ private fun ToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(label, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp)
-            MB10Toggle(checked, onCheckedChange)
+            AppToggle(checked, onCheckedChange)
         }
     }
 }

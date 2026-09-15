@@ -101,9 +101,9 @@ fun DottedDivider(color: Color = MB10Colors.inkFaint, modifier: Modifier = Modif
     }
 }
 
-/** Кастомный тумблер по макету — трек 34x18, ручка 12x12, on = жёлтый. */
+/** Кастомный тумблер по макету — трек 34x18, ручка 12x12, on = акцент действия. */
 @Composable
-fun MB10Toggle(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+fun AppToggle(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
     val knobOffset by animateDpAsState(if (checked) 18.dp else 2.dp, tween(150), label = "toggleKnob")
     Box(
         modifier = modifier

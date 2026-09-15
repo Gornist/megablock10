@@ -28,4 +28,36 @@ object MB10Colors {
 
     /** Текст поверх заливки акцентом (accentPrimary/accentHack) — оба достаточно светлые, чтобы требовать один и тот же тёмный текст. */
     val onAccent = Color(0xFF1a0a08)
+
+    // --- Слой 0: семантические имена ---
+    // Существующие поля выше не переименованы и не удалены (слишком много мест
+    // на них ссылается), но весь новый/переработанный код должен брать цвет
+    // здесь, а не по "физическому" имени (bg1, ink0...) — так со временем
+    // единственным местом, где смысл привязан к конкретному оттенку,
+    // остаётся этот блок.
+    val surfaceBase = bg0
+    val surfaceRaised = bg1
+    val surfaceSunken = bg2
+
+    /** Рамки/разделители — то, для чего inkFaint фактически всегда использовался (это не читаемый текстовый тон). */
+    val borderMuted = inkFaint
+    val borderAccent = accentBorder
+
+    val inkPrimary = ink0
+    val inkSecondary = inkMuted
+    /** Приглушённее inkSecondary — плейсхолдеры, disabled-текст. Отдельный тон, не inkFaint (тот слишком тёмный, чтобы читаться). */
+    val inkTertiary = inkMuted.copy(alpha = 0.5f)
+
+    val accentAction = accentPrimary
+    val accentDanger = danger
+    /** Кибердека/хак-контекст ТОЛЬКО — см. правило в шапке файла. */
+    val accentNetrun = accentHack
+}
+
+/** Единственная горизонтальная сетка экрана — новый код берёт отступ отсюда, а не хардкодит 16.dp/12.dp по месту. */
+object MB10Spacing {
+    val screenPadding = androidx.compose.ui.unit.Dp(16f)
+    val sm = androidx.compose.ui.unit.Dp(8f)
+    val md = androidx.compose.ui.unit.Dp(12f)
+    val lg = androidx.compose.ui.unit.Dp(18f)
 }

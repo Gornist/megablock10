@@ -8,17 +8,18 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
@@ -29,9 +30,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.megablok10.app.call.CallManager
 import com.megablok10.app.call.CallPhase
@@ -47,6 +51,13 @@ import com.megablok10.app.ui.screens.CyberdeckScreen
 import com.megablok10.app.ui.screens.MasterToolScreen
 import com.megablok10.app.ui.screens.ProfileScreen
 import com.megablok10.app.ui.screens.WalletScreen
+import com.megablok10.app.ui.theme.AppButton
+import com.megablok10.app.ui.theme.AppTextField
+import com.megablok10.app.ui.theme.ButtonVariant
+import com.megablok10.app.ui.theme.HexBullet
+import com.megablok10.app.ui.theme.IBMPlexSans
+import com.megablok10.app.ui.theme.JetBrainsMono
+import com.megablok10.app.ui.theme.Jura
 import com.megablok10.app.ui.theme.MB10Colors
 
 class MainActivity : ComponentActivity() {
@@ -174,36 +185,39 @@ fun SetupScreen(onCreated: (String, String) -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(MB10Colors.surfaceBase)
             .padding(24.dp),
         verticalArrangement = Arrangement.Center
     ) {
-        Text("Создание личности", style = MaterialTheme.typography.headlineSmall)
-        Spacer(Modifier.height(24.dp))
-        OutlinedTextField(
-            value = callsign,
-            onValueChange = { callsign = it },
-            label = { Text("Позывной") },
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(Modifier.height(12.dp))
-        OutlinedTextField(
-            value = faction,
-            onValueChange = { faction = it },
-            label = { Text("Фракция") },
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(Modifier.height(24.dp))
-        Button(
-            onClick = { if (callsign.isNotBlank()) onCreated(callsign, faction) },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Сгенерировать ключ и QR")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            HexBullet(MB10Colors.accentAction, size = 10.dp)
+            Spacer(Modifier.width(8.dp))
+            Text("МЕГАБЛОК №10", color = MB10Colors.inkPrimary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 20.sp)
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(4.dp))
+        Text("Создание личности", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
+        Spacer(Modifier.height(28.dp))
+
+        Text("Позывной", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+        Spacer(Modifier.height(6.dp))
+        AppTextField(value = callsign, onValueChange = { callsign = it }, placeholder = "RAZOR", modifier = Modifier.fillMaxWidth())
+        Spacer(Modifier.height(16.dp))
+        Text("Фракция", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+        Spacer(Modifier.height(6.dp))
+        AppTextField(value = faction, onValueChange = { faction = it }, placeholder = "Малстром", modifier = Modifier.fillMaxWidth())
+
+        Spacer(Modifier.height(28.dp))
+        AppButton(
+            "Сгенерировать ключ и QR",
+            variant = ButtonVariant.Primary,
+            enabled = callsign.isNotBlank(),
+            modifier = Modifier.fillMaxWidth(),
+            onClick = { if (callsign.isNotBlank()) onCreated(callsign, faction) }
+        )
+        Spacer(Modifier.height(10.dp))
         Text(
-            "Ключевая пара генерируется один раз на этом устройстве и " +
-                "остаётся идентификатором персонажа на всю игру.",
-            style = MaterialTheme.typography.bodySmall
+            "Ключевая пара генерируется один раз на этом устройстве и остаётся идентификатором персонажа на всю игру.",
+            color = MB10Colors.inkTertiary, fontFamily = IBMPlexSans, fontSize = 11.sp, lineHeight = 15.sp
         )
     }
 }

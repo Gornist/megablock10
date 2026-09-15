@@ -36,6 +36,8 @@ import com.megablok10.app.call.CallPhase
 import com.megablok10.app.call.CallUiState
 import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.identity.Identity
+import com.megablok10.app.ui.theme.AppButton
+import com.megablok10.app.ui.theme.ButtonVariant
 import com.megablok10.app.ui.theme.ChamferedPanel
 import com.megablok10.app.ui.theme.Chip
 import com.megablok10.app.ui.theme.HexBullet
@@ -105,16 +107,19 @@ private fun RingingCard(state: CallUiState, peerFaction: String?, onAccept: () -
                 Spacer(Modifier.height(6.dp))
                 Text(
                     if (incoming) "Вызывает вас" else "Дозваниваемся...",
-                    color = MB10Colors.inkFaint, fontFamily = JetBrainsMono, fontSize = 10.sp
+                    color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.sp
                 )
-                Spacer(Modifier.height(22.dp))
+                Spacer(Modifier.height(26.dp))
                 if (incoming) {
-                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        OutlineButton("Принять", accentColor = MB10Colors.accentPrimary, onClick = onAccept)
-                        OutlineButton("Отклонить", accentColor = MB10Colors.danger, onClick = onEnd)
+                    // Принять — единственное filled-действие на экране (Primary), Отклонить —
+                    // контурная Danger-кнопка. Разный вес важнее разного цвета: на первый взгляд
+                    // должно быть очевидно, какая кнопка "хочет", чтобы её нажали.
+                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        AppButton("Принять", variant = ButtonVariant.Primary, modifier = Modifier.fillMaxWidth(), onClick = onAccept)
+                        AppButton("Отклонить", variant = ButtonVariant.Danger, modifier = Modifier.fillMaxWidth(), onClick = onEnd)
                     }
                 } else {
-                    OutlineButton("Отменить вызов", accentColor = MB10Colors.danger, modifier = Modifier.fillMaxWidth(), onClick = onEnd)
+                    AppButton("Отменить вызов", variant = ButtonVariant.Danger, modifier = Modifier.fillMaxWidth(), onClick = onEnd)
                 }
             }
         }
