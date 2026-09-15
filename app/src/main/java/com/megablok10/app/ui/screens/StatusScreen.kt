@@ -2,7 +2,6 @@ package com.megablok10.app.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -27,13 +26,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.megablok10.app.breach.MockBreach
 import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.presence.PeerInfo
@@ -44,7 +41,6 @@ import com.megablok10.app.qr.generateQrBitmap
 import com.megablok10.app.qr.rememberMb10QrScanner
 import com.megablok10.app.ui.theme.ChamferedPanel
 import com.megablok10.app.ui.theme.Chip
-import com.megablok10.app.ui.theme.DemoNotice
 import com.megablok10.app.ui.theme.DottedDivider
 import com.megablok10.app.ui.theme.HexBullet
 import com.megablok10.app.ui.theme.IBMPlexSans
@@ -86,16 +82,6 @@ fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}, on
                 }
             }
             Spacer(Modifier.height(18.dp))
-
-            // Ни системы репутации фракций, ни cyberpsychosis-механики, ни
-            // реального Character.ramCapacity в MVP пока нет (последняя
-            // осознанно выведена из скоупа) — все метры ниже статичны, поэтому
-            // явно помечены как демо, а не молча выдаются за реальные данные.
-            DemoNotice("показатели ниже не привязаны к персонажу — визуальный макет", modifier = Modifier.padding(bottom = 10.dp))
-            StatMeter("RAM нетраннера", "${MockBreach.ramCapacity - 6} / ${MockBreach.ramCapacity}", 0.4f, MB10Colors.ink0)
-            StatMeter("Репутация — Отряд самообороны", "высокая", 0.78f, MB10Colors.ink0)
-            StatMeter("Репутация — Клемты", "низкая", 0.18f, MB10Colors.ink0)
-            StatMeter("Сбой импланта", "62%", 0.62f, MB10Colors.danger)
 
             SectionLabel("Контакты (${contacts.size})")
 
@@ -174,19 +160,5 @@ private fun ContactActionButton(text: String, modifier: Modifier = Modifier, onC
             text, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.5.sp,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth()
         )
-    }
-}
-
-@Composable
-private fun StatMeter(name: String, value: String, fraction: Float, fillColor: Color) {
-    Column(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-            Text(name, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp)
-            Text(value, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 11.sp)
-        }
-        Spacer(Modifier.height(6.dp))
-        Box(Modifier.fillMaxWidth().height(5.dp).background(MB10Colors.bg2)) {
-            Box(Modifier.fillMaxWidth(fraction).height(5.dp).background(fillColor))
-        }
     }
 }
