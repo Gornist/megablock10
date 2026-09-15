@@ -1,7 +1,6 @@
 package com.megablok10.app.ui.screens
 
 import android.widget.Toast
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -26,7 +25,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -41,6 +39,7 @@ import com.megablok10.app.qr.generateQrBitmap
 import com.megablok10.app.qr.rememberMb10QrScanner
 import com.megablok10.app.ui.theme.ChamferedPanel
 import com.megablok10.app.ui.theme.Chip
+import com.megablok10.app.ui.theme.DimmableQr
 import com.megablok10.app.ui.theme.DottedDivider
 import com.megablok10.app.ui.theme.HexBullet
 import com.megablok10.app.ui.theme.IBMPlexSans
@@ -89,11 +88,7 @@ fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}, on
                 generateQrBitmap(Mb10QrCodec.encodeContact(identity.publicKeyB64, identity.callsign, identity.faction))
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                Image(
-                    bitmap = qrBitmap.asImageBitmap(),
-                    contentDescription = "QR-код контакта",
-                    modifier = Modifier.size(160.dp)
-                )
+                DimmableQr(bitmap = qrBitmap, contentDescription = "QR-код контакта", size = 160.dp)
             }
             Spacer(Modifier.height(12.dp))
             Button(onClick = startScan, modifier = Modifier.fillMaxWidth()) {

@@ -1,5 +1,7 @@
 package com.megablok10.app.ui.theme
 
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,15 +15,21 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -193,6 +201,31 @@ fun ListRow(
         if (trailing != null) {
             Spacer(Modifier.width(10.dp))
             trailing()
+        }
+    }
+}
+
+/**
+ * QR, который показывают другому игроку с экрана телефона — по умолчанию
+ * притушен и не читается издалека/на случайном фото через плечо, по тапу
+ * раскрывается на полную яркость. Не для QR, которые печатают на пропсы
+ * (МастерТул) — только для тех, что игрок показывает с руки другому игроку.
+ */
+@Composable
+fun DimmableQr(bitmap: Bitmap, contentDescription: String, size: Dp = 200.dp, modifier: Modifier = Modifier) {
+    var revealed by remember { mutableStateOf(false) }
+    Box(
+        modifier = modifier.size(size).clickable { revealed = !revealed },
+        contentAlignment = Alignment.Center
+    ) {
+        Image(bitmap = bitmap.asImageBitmap(), contentDescription = contentDescription, modifier = Modifier.size(size))
+        if (!revealed) {
+            Box(Modifier.size(size).background(MB10Colors.surfaceBase.copy(alpha = 0.88f)))
+            Text(
+                "Нажмите, чтобы показать",
+                color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp,
+                textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 20.dp)
+            )
         }
     }
 }
