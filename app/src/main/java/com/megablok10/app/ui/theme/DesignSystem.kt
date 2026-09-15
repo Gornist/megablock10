@@ -123,7 +123,8 @@ fun AppTextField(
  * заливкой, а не просто прозрачностью — это единственный вариант, где
  * "выключено" и "включено, но тускло" легко перепутать на взгляд.
  */
-enum class ButtonVariant { Primary, Secondary, Danger }
+/** Netrun — filled-акцент лаймом, СТРОГО для действий взлома (сканировать объект, расшифровать) — см. правило accentNetrun в Color.kt. */
+enum class ButtonVariant { Primary, Secondary, Danger, Netrun }
 
 @Composable
 fun AppButton(
@@ -134,9 +135,10 @@ fun AppButton(
     onClick: () -> Unit
 ) {
     when (variant) {
-        ButtonVariant.Primary -> {
-            val fill = if (enabled) MB10Colors.accentAction else MB10Colors.surfaceSunken
-            val border = if (enabled) MB10Colors.accentAction else MB10Colors.borderMuted
+        ButtonVariant.Primary, ButtonVariant.Netrun -> {
+            val accent = if (variant == ButtonVariant.Primary) MB10Colors.accentAction else MB10Colors.accentNetrun
+            val fill = if (enabled) accent else MB10Colors.surfaceSunken
+            val border = if (enabled) accent else MB10Colors.borderMuted
             val textColor = if (enabled) MB10Colors.onAccent else MB10Colors.inkTertiary
             Box(
                 modifier = modifier

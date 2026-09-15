@@ -27,8 +27,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.breach.BreachAccessPointFlow
@@ -38,11 +36,12 @@ import com.megablok10.app.breach.DaemonStore
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.rememberMb10QrScanner
 import com.megablok10.app.shards.ShardStore
+import com.megablok10.app.ui.theme.AppButton
+import com.megablok10.app.ui.theme.ButtonVariant
 import com.megablok10.app.ui.theme.ChamferedPanel
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.MB10Colors
-import com.megablok10.app.ui.theme.chamferShape
 import kotlinx.coroutines.launch
 
 /**
@@ -86,19 +85,7 @@ fun CyberdeckScreen() {
     }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MB10Colors.accentHack, chamferShape(6.dp))
-                .clickable(onClick = scanObject)
-                .padding(vertical = 10.dp)
-        ) {
-            Text(
-                "Сканировать объект",
-                color = MB10Colors.onAccent, fontFamily = JetBrainsMono, fontSize = 12.sp, fontWeight = FontWeight.Medium,
-                textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
-            )
-        }
+        AppButton("Сканировать объект", variant = ButtonVariant.Netrun, modifier = Modifier.fillMaxWidth(), onClick = scanObject)
         Spacer(Modifier.height(14.dp))
 
         ChamferedPanel(
