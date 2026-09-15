@@ -29,6 +29,7 @@ import com.megablok10.app.identity.IdentityManager
 import com.megablok10.app.ui.nav.AppTab
 import com.megablok10.app.ui.nav.MainScaffold
 import com.megablok10.app.ui.screens.ChatScreen
+import com.megablok10.app.ui.screens.MasterToolScreen
 import com.megablok10.app.ui.screens.SettingsScreen
 import com.megablok10.app.ui.screens.ShardsScreen
 import com.megablok10.app.ui.screens.StatusScreen
@@ -64,12 +65,15 @@ fun AppRoot() {
     var identity by remember { mutableStateOf(IdentityManager.current(context)) }
     var tab by remember { mutableStateOf(AppTab.Chat) }
     var chatContact by remember { mutableStateOf<String?>(null) }
+    var showMasterTool by remember { mutableStateOf(false) }
 
     val currentIdentity = identity
     if (currentIdentity == null) {
         SetupScreen(onCreated = { callsign, faction ->
             identity = IdentityManager.getOrCreate(context, callsign, faction)
         })
+    } else if (showMasterTool) {
+        MasterToolScreen(onClose = { showMasterTool = false })
     } else {
         MainScaffold(identity = currentIdentity, selectedTab = tab, onSelectTab = { tab = it }) { activeTab ->
             when (activeTab) {
@@ -81,11 +85,14 @@ fun AppRoot() {
                     chatContact = callsign
                     tab = AppTab.Chat
                 })
-                AppTab.Settings -> SettingsScreen(onResetIdentity = {
-                    IdentityManager.clear(context)
-                    identity = null
-                    tab = AppTab.Chat
-                })
+                AppTab.Settings -> SettingsScreen(
+                    onResetIdentity = {
+                        IdentityManager.clear(context)
+                        identity = null
+                        tab = AppTab.Chat
+                    },
+                    onOpenMasterTool = { showMasterTool = true }
+                )
             }
         }
     }

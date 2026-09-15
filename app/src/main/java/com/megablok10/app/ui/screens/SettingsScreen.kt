@@ -33,7 +33,7 @@ import com.megablok10.app.ui.theme.OutlineButton
 import com.megablok10.app.ui.theme.SectionLabel
 
 @Composable
-fun SettingsScreen(onResetIdentity: () -> Unit) {
+fun SettingsScreen(onResetIdentity: () -> Unit, onOpenMasterTool: () -> Unit = {}) {
     var pushEnabled by remember { mutableStateOf(true) }
     var soundEnabled by remember { mutableStateOf(false) }
     var confirmingReset by remember { mutableStateOf(false) }
@@ -56,6 +56,10 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
         OutlineButton("Сменить фракцию (по решению мастера)", modifier = Modifier.fillMaxWidth(), enabled = false, onClick = {})
         Spacer(Modifier.height(8.dp))
         OutlineButton("Сбросить сессию персонажа", modifier = Modifier.fillMaxWidth(), accentColor = MB10Colors.red, onClick = { confirmingReset = true })
+
+        Spacer(Modifier.height(16.dp))
+        SectionLabel("Мастеру")
+        OutlineButton("Мастерская — генерация QR точек и шардов", modifier = Modifier.fillMaxWidth(), borderColor = MB10Colors.inkFaint, onClick = onOpenMasterTool)
     }
 
     if (confirmingReset) {
