@@ -1,6 +1,5 @@
 package com.megablok10.app.ui.screens
 
-import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -30,32 +29,43 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.megablok10.app.chat.ChatStore
 import com.megablok10.app.data.TransactionEntity
 import com.megablok10.app.data.TransactionStatus
 import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.identity.IdentityManager
+import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
-import com.megablok10.app.qr.generateQrBitmap
-import com.megablok10.app.qr.rememberMb10QrScanner
 import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.AppTextField
 import com.megablok10.app.ui.theme.ButtonVariant
 import com.megablok10.app.ui.theme.ChamferedPanel
-import com.megablok10.app.ui.theme.DimmableQr
+import com.megablok10.app.ui.theme.ChipTone
 import com.megablok10.app.ui.theme.DottedDivider
+import com.megablok10.app.ui.theme.HexBullet
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.Jura
 import com.megablok10.app.ui.theme.MB10Colors
 import com.megablok10.app.ui.theme.SectionLabel
+import com.megablok10.app.ui.theme.StatusChip
 import com.megablok10.app.wallet.TransactionStore
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.UUID
 
+/**
+ * Хэндшейк перевода теперь идёт сообщениями в личном чате с получателем, а
+ * не показыванием QR друг другу: получатель выбирается из контактов сразу
+ * (а не определяется тем, кто отсканировал QR), подписанная транзакция и
+ * чек-подтверждение — та же сериализация, что раньше шла в QR-картинку,
+ * просто телом обычного DM-сообщения (см. ChatScreen — там же и рисуются
+ * платёжные "пузыри" с кнопкой "Принять"). QR остаётся только для контактов,
+ * точек доступа и шардов — не для денег.
+ */
 @Composable
 fun WalletScreen(identity: Identity) {
     val context = LocalContext.current
@@ -64,112 +74,57 @@ fun WalletScreen(identity: Identity) {
     val transactions by TransactionStore.observeAll(context).collectAsState(initial = emptyList())
     val contacts by ContactStore.observeAll(context).collectAsState(initial = emptyList())
     val contactsByKey = remember(contacts) { contacts.associateBy { it.publicKeyB64 } }
+    val onlinePeers by PresenceService.peers.collectAsState()
+    val onlineKeys = remember(onlinePeers) { onlinePeers.map { it.pubKeyB64 }.toSet() }
 
     var sending by remember { mutableStateOf(false) }
-    var pendingTx by remember { mutableStateOf<Mb10Qr.Transaction?>(null) }
-    var confirmed by remember { mutableStateOf(false) }
-    var incomingReceipt by remember { mutableStateOf<Mb10Qr.Receipt?>(null) }
-
-    fun resetSendPanel() {
-        sending = false
-        pendingTx = null
-        confirmed = false
-    }
-
-    val scanTransaction = rememberMb10QrScanner { qr ->
-        when (qr) {
-            is Mb10Qr.Transaction -> scope.launch {
-                val credited = TransactionStore.recordIncoming(context, identity.publicKeyB64, qr)
-                if (credited) {
-                    incomingReceipt = TransactionStore.buildReceipt(context, identity, qr.id)
-                    Toast.makeText(context, "Зачислено ${qr.amount} €$ — покажите QR-подтверждение отправителю", Toast.LENGTH_LONG).show()
-                } else {
-                    Toast.makeText(context, "QR транзакции недействителен или уже отсканирован", Toast.LENGTH_SHORT).show()
-                }
-            }
-            else -> Toast.makeText(context, "Это не QR-код транзакции", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    val scanReceipt = rememberMb10QrScanner { qr ->
-        when (qr) {
-            is Mb10Qr.Receipt -> {
-                val tx = pendingTx
-                if (tx == null) {
-                    Toast.makeText(context, "Нет платежа, ожидающего подтверждения", Toast.LENGTH_SHORT).show()
-                } else {
-                    scope.launch {
-                        val ok = TransactionStore.verifyAndConfirmReceipt(context, tx.id, qr)
-                        if (ok) {
-                            confirmed = true
-                            Toast.makeText(context, "Получатель подтвердил получение", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(context, "Это подтверждение не подходит к этому платежу", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                }
-            }
-            else -> Toast.makeText(context, "Это не QR-код подтверждения", Toast.LENGTH_SHORT).show()
-        }
-    }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         SectionLabel("Баланс")
         ChamferedPanel(
-            borderColor = MB10Colors.inkFaint,
-            fillColor = MB10Colors.bg2,
+            borderColor = MB10Colors.borderMuted,
+            fillColor = MB10Colors.surfaceSunken,
             cut = 10.dp,
             doubleCorner = true,
             contentPadding = 16.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
             Column {
-                Text("евродоллары", color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
+                Text("евродоллары", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
                 Spacer(Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.Bottom) {
-                    Text("$balance", color = MB10Colors.ink0, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 36.sp)
-                    Text(" €$", color = MB10Colors.inkMuted, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text("$balance", color = MB10Colors.inkPrimary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 36.sp)
+                    Text(" €$", color = MB10Colors.inkSecondary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 }
             }
         }
 
         Spacer(Modifier.height(14.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AppButton(
-                if (sending) "Скрыть" else "Отправить",
-                modifier = Modifier.weight(1f),
-                variant = ButtonVariant.Primary,
-                onClick = { sending = !sending }
-            )
-            AppButton("Получить (скан)", modifier = Modifier.weight(1f), variant = ButtonVariant.Secondary, onClick = scanTransaction)
-        }
+        AppButton(
+            if (sending) "Скрыть" else "Отправить",
+            modifier = Modifier.fillMaxWidth(),
+            variant = ButtonVariant.Primary,
+            onClick = { sending = !sending }
+        )
 
         if (sending) {
             Spacer(Modifier.height(14.dp))
             SendTransactionPanel(
-                pendingTx = pendingTx,
-                confirmed = confirmed,
-                onGenerate = { amount, memo ->
-                    val id = UUID.randomUUID().toString()
+                contacts = contacts,
+                onlineKeys = onlineKeys,
+                transactions = transactions,
+                onSend = { contact, id, amount, memo ->
                     val payload = Mb10QrCodec.transactionSignaturePayload(id, identity.publicKeyB64, amount, memo)
                     val signature = IdentityManager.sign(context, payload)
                     val tx = Mb10Qr.Transaction(id, identity.publicKeyB64, amount, memo, signature)
-                    scope.launch { TransactionStore.recordOutgoingPending(context, tx) }
-                    pendingTx = tx
+                    val peer = onlinePeers.find { it.pubKeyB64 == contact.publicKeyB64 }
+                    scope.launch {
+                        TransactionStore.recordOutgoingPending(context, tx, contact.publicKeyB64)
+                        ChatStore.sendDirect(context, identity, contact.publicKeyB64, peer, Mb10QrCodec.encodeTransaction(tx))
+                    }
                 },
-                onCancel = {
-                    val tx = pendingTx
-                    if (tx != null) scope.launch { TransactionStore.cancelOutgoing(context, tx.id) }
-                    resetSendPanel()
-                },
-                onScanReceipt = scanReceipt,
-                onDone = { resetSendPanel() }
+                onCancel = { id -> scope.launch { TransactionStore.cancelOutgoing(context, id) } }
             )
-        }
-
-        incomingReceipt?.let { receipt ->
-            Spacer(Modifier.height(14.dp))
-            ReceiptPanel(receipt = receipt, onDone = { incomingReceipt = null })
         }
 
         Spacer(Modifier.height(20.dp))
@@ -177,7 +132,7 @@ fun WalletScreen(identity: Identity) {
         if (transactions.isEmpty()) {
             Text(
                 "Ещё не было ни одной транзакции.",
-                color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 13.sp
+                color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 13.sp
             )
         } else {
             Column {
@@ -194,130 +149,154 @@ fun WalletScreen(identity: Identity) {
     }
 }
 
+private data class SentPayment(val id: String, val contact: Mb10Qr.Contact, val amount: Long, val memo: String)
+
 @Composable
 private fun SendTransactionPanel(
-    pendingTx: Mb10Qr.Transaction?,
-    confirmed: Boolean,
-    onGenerate: (amount: Long, memo: String) -> Unit,
-    onCancel: () -> Unit,
-    onScanReceipt: () -> Unit,
-    onDone: () -> Unit
+    contacts: List<Mb10Qr.Contact>,
+    onlineKeys: Set<String>,
+    transactions: List<TransactionEntity>,
+    onSend: (contact: Mb10Qr.Contact, id: String, amount: Long, memo: String) -> Unit,
+    onCancel: (id: String) -> Unit
 ) {
+    var selectedContact by remember { mutableStateOf<Mb10Qr.Contact?>(null) }
+    var sent by remember { mutableStateOf<SentPayment?>(null) }
+
     ChamferedPanel(
-        borderColor = MB10Colors.inkFaint,
-        fillColor = MB10Colors.bg1,
+        borderColor = MB10Colors.borderMuted,
+        fillColor = MB10Colors.surfaceRaised,
         cut = 6.dp,
         contentPadding = 14.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
-        if (pendingTx == null) {
-            var amountText by remember { mutableStateOf("") }
-            var memoText by remember { mutableStateOf("") }
-            val amountValid = amountText.toLongOrNull()?.let { it > 0 } ?: false
-            val showError = amountText.isNotEmpty() && !amountValid
-
-            Column {
-                Text(
-                    "Сумма списывается с вашего баланса сразу — как передать наличные из рук в руки. Покажите QR тому, кто получает деньги, а затем отсканируйте его QR-подтверждение — до этого платёж ещё можно отменить.",
-                    color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 12.sp, lineHeight = 16.sp
-                )
-                Spacer(Modifier.height(10.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    AppTextField(
-                        value = amountText,
-                        onValueChange = { amountText = it.filter(Char::isDigit) },
-                        placeholder = "Сумма",
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    // Единица измерения видна постоянно, а не только пока поле пустое (как было с placeholder "Сумма, €$") —
-                    // после ввода суммы плейсхолдер пропадал и обозначение валюты пропадало вместе с ним.
-                    Text("€$", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                }
-                if (showError) {
-                    Spacer(Modifier.height(4.dp))
-                    Text("Введите сумму больше нуля", color = MB10Colors.accentDanger, fontFamily = JetBrainsMono, fontSize = 10.sp)
-                }
-                Spacer(Modifier.height(8.dp))
-                AppTextField(
-                    value = memoText,
-                    onValueChange = { memoText = it },
-                    placeholder = "За что (необязательно)",
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(10.dp))
-                AppButton(
-                    "Сгенерировать QR",
-                    modifier = Modifier.fillMaxWidth(),
-                    variant = ButtonVariant.Primary,
-                    enabled = amountValid,
-                    onClick = { onGenerate(amountText.toLong(), memoText) }
-                )
-            }
-        } else {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    if (confirmed) "Получатель подтвердил получение" else "Покажите этот QR получателю платежа",
-                    color = if (confirmed) MB10Colors.accentPrimary else MB10Colors.ink0,
-                    fontFamily = IBMPlexSans, fontSize = 13.sp, textAlign = TextAlign.Center
-                )
-                Spacer(Modifier.height(10.dp))
-                val bitmap = remember(pendingTx.id) { generateQrBitmap(Mb10QrCodec.encodeTransaction(pendingTx)) }
-                DimmableQr(bitmap = bitmap, contentDescription = "QR транзакции")
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "${pendingTx.amount} €$" + if (pendingTx.memo.isNotBlank()) " · ${pendingTx.memo}" else "",
-                    color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 11.sp
-                )
-                Spacer(Modifier.height(12.dp))
-                if (confirmed) {
-                    AppButton("Готово", modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.Primary, onClick = onDone)
-                } else {
+        val activeSent = sent
+        when {
+            activeSent != null -> {
+                val status = transactions.find { it.id == activeSent.id }?.status
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                     Text(
-                        "Ожидает подтверждения — отсканируйте QR-чек получателя, чтобы зафиксировать платёж.",
-                        color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 11.5.sp, lineHeight = 15.sp,
-                        textAlign = TextAlign.Center
+                        "Отправлено → ${activeSent.contact.callsign}",
+                        color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp, textAlign = TextAlign.Center
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "${activeSent.amount} €$" + if (activeSent.memo.isNotBlank()) " · ${activeSent.memo}" else "",
+                        color = MB10Colors.inkPrimary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 20.sp
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    StatusChip(
+                        if (status == TransactionStatus.CONFIRMED) "подтверждено" else "ожидает подтверждения",
+                        tone = if (status == TransactionStatus.CONFIRMED) ChipTone.Action else ChipTone.Neutral
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    if (status == TransactionStatus.CONFIRMED) {
+                        AppButton(
+                            "Новый платёж", modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.Primary,
+                            onClick = { sent = null; selectedContact = null }
+                        )
+                    } else {
+                        Text(
+                            "Ждём, пока получатель примет перевод в чате.",
+                            color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 11.5.sp, lineHeight = 15.sp,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        AppButton(
+                            "Отменить платёж", modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.Danger,
+                            onClick = { onCancel(activeSent.id); sent = null; selectedContact = null }
+                        )
+                    }
+                }
+            }
+            selectedContact == null -> {
+                Column {
+                    Text("Кому отправить", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
+                    Spacer(Modifier.height(10.dp))
+                    if (contacts.isEmpty()) {
+                        Text(
+                            "Нет добавленных контактов — сначала отсканируйте QR-код игрока в Профиле.",
+                            color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 13.sp, lineHeight = 18.sp
+                        )
+                    } else {
+                        contacts.forEachIndexed { index, c ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth().clickable { selectedContact = c }.padding(vertical = 10.dp)
+                            ) {
+                                HexBullet(if (c.publicKeyB64 in onlineKeys) MB10Colors.inkPrimary else MB10Colors.inkTertiary, size = 7.dp)
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(c.callsign, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
+                                    Text(c.faction, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                                }
+                            }
+                            if (index != contacts.lastIndex) DottedDivider()
+                        }
+                    }
+                }
+            }
+            else -> {
+                val contact = selectedContact!!
+                var amountText by remember { mutableStateOf("") }
+                var memoText by remember { mutableStateOf("") }
+                val amountValid = amountText.toLongOrNull()?.let { it > 0 } ?: false
+                val showError = amountText.isNotEmpty() && !amountValid
+
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Кому: ", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
+                        Text(
+                            contact.callsign, color = MB10Colors.inkPrimary, fontFamily = JetBrainsMono,
+                            fontSize = 11.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            "Сменить", color = MB10Colors.accentAction, fontFamily = JetBrainsMono, fontSize = 10.sp,
+                            modifier = Modifier.clickable { selectedContact = null }
+                        )
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "Сумма списывается с вашего баланса сразу — как передать наличные из рук в руки. Перевод уйдёт получателю сообщением в чат — до его подтверждения платёж ещё можно отменить.",
+                        color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 12.sp, lineHeight = 16.sp
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        AppTextField(
+                            value = amountText,
+                            onValueChange = { amountText = it.filter(Char::isDigit) },
+                            placeholder = "Сумма",
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("€$", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    }
+                    if (showError) {
+                        Spacer(Modifier.height(4.dp))
+                        Text("Введите сумму больше нуля", color = MB10Colors.accentDanger, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    AppTextField(
+                        value = memoText,
+                        onValueChange = { memoText = it },
+                        placeholder = "За что (необязательно)",
+                        modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(10.dp))
                     AppButton(
-                        "Подтвердить получение (скан)",
+                        "Отправить",
                         modifier = Modifier.fillMaxWidth(),
                         variant = ButtonVariant.Primary,
-                        onClick = onScanReceipt
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    AppButton(
-                        "Отменить платёж",
-                        modifier = Modifier.fillMaxWidth(),
-                        variant = ButtonVariant.Danger,
-                        onClick = onCancel
+                        enabled = amountValid,
+                        onClick = {
+                            val id = UUID.randomUUID().toString()
+                            val amount = amountText.toLong()
+                            onSend(contact, id, amount, memoText)
+                            sent = SentPayment(id, contact, amount, memoText)
+                        }
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun ReceiptPanel(receipt: Mb10Qr.Receipt, onDone: () -> Unit) {
-    ChamferedPanel(
-        borderColor = MB10Colors.accentPrimary,
-        fillColor = MB10Colors.bg1,
-        cut = 6.dp,
-        contentPadding = 14.dp,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-            Text(
-                "Покажите этот QR отправителю для подтверждения",
-                color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp, textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(10.dp))
-            val bitmap = remember(receipt.id) { generateQrBitmap(Mb10QrCodec.encodeReceipt(receipt)) }
-            DimmableQr(bitmap = bitmap, contentDescription = "QR подтверждения")
-            Spacer(Modifier.height(12.dp))
-            AppButton("Готово", modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.Primary, onClick = onDone)
         }
     }
 }
@@ -333,24 +312,24 @@ private fun TxRow(tx: TransactionEntity, counterpartyName: String?, onCancelPend
     ) {
         Column(Modifier.weight(1f)) {
             val title = tx.memo.ifBlank { if (tx.amount > 0) "Входящий платёж" else "Платёж" }
-            Text(title, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp)
+            Text(title, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
             val timeText = timeFormat.format(tx.timestamp)
-            val fromText = when {
-                tx.amount <= 0 -> null
-                counterpartyName != null -> " · от $counterpartyName"
-                tx.counterpartyPubKeyB64.isNotEmpty() -> " · от ${tx.counterpartyPubKeyB64.take(8)}…"
-                else -> null
+            val fromText = if (tx.counterpartyPubKeyB64.isEmpty()) {
+                null
+            } else {
+                val label = counterpartyName ?: (tx.counterpartyPubKeyB64.take(8) + "…")
+                if (tx.amount > 0) " · от $label" else " · → $label"
             }
             val statusText = if (pending) " · ожидает подтверждения" else ""
             Text(
                 timeText + (fromText ?: "") + statusText,
-                color = if (pending) MB10Colors.accentPrimary else MB10Colors.inkMuted,
+                color = if (pending) MB10Colors.accentAction else MB10Colors.inkSecondary,
                 fontFamily = JetBrainsMono, fontSize = 10.sp
             )
             if (pending) {
                 Text(
                     "Отменить",
-                    color = MB10Colors.danger,
+                    color = MB10Colors.accentDanger,
                     fontFamily = JetBrainsMono,
                     fontSize = 10.sp,
                     modifier = Modifier.clickable(onClick = onCancelPending).padding(top = 2.dp)
@@ -360,7 +339,7 @@ private fun TxRow(tx: TransactionEntity, counterpartyName: String?, onCancelPend
         val amountText = (if (tx.amount > 0) "+" else "") + tx.amount
         Text(
             amountText,
-            color = if (tx.amount > 0) MB10Colors.accentPrimary else MB10Colors.inkMuted,
+            color = if (tx.amount > 0) MB10Colors.accentAction else MB10Colors.inkSecondary,
             fontFamily = JetBrainsMono,
             fontSize = 13.sp
         )

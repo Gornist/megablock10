@@ -37,16 +37,27 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.chat.ChatStore
 import com.megablok10.app.data.ChatMessageEntity
+import com.megablok10.app.data.TransactionEntity
+import com.megablok10.app.data.TransactionStatus
 import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.presence.PresenceService
+import com.megablok10.app.qr.Mb10Qr
+import com.megablok10.app.qr.Mb10QrCodec
+import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.AppTextField
+import com.megablok10.app.ui.theme.ButtonVariant
 import com.megablok10.app.ui.theme.ChamferedPanel
+import com.megablok10.app.ui.theme.ChipTone
 import com.megablok10.app.ui.theme.DottedDivider
+import com.megablok10.app.ui.theme.HexBullet
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
+import com.megablok10.app.ui.theme.Jura
 import com.megablok10.app.ui.theme.MB10Colors
+import com.megablok10.app.ui.theme.StatusChip
 import com.megablok10.app.ui.theme.chamferShape
+import com.megablok10.app.wallet.TransactionStore
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -139,7 +150,7 @@ private fun ConversationInbox(identity: Identity, onOpenFaction: () -> Unit, onO
             item {
                 ConversationRow(
                     title = "Фракция: ${identity.faction}",
-                    preview = lastFactionMessage?.let { (if (it.fromPubKeyB64 == identity.publicKeyB64) "Вы: " else "${it.fromCallsign}: ") + it.body }
+                    preview = lastFactionMessage?.let { (if (it.fromPubKeyB64 == identity.publicKeyB64) "Вы: " else "${it.fromCallsign}: ") + previewBody(it.body) }
                         ?: "Пока нет сообщений",
                     time = lastFactionMessage?.timestamp,
                     onClick = onOpenFaction
@@ -150,7 +161,7 @@ private fun ConversationInbox(identity: Identity, onOpenFaction: () -> Unit, onO
                 val contact = contacts.find { it.publicKeyB64 == peerKey }
                 ConversationRow(
                     title = contact?.callsign ?: "Неизвестный контакт",
-                    preview = (if (msg.fromPubKeyB64 == identity.publicKeyB64) "Вы: " else "") + msg.body,
+                    preview = (if (msg.fromPubKeyB64 == identity.publicKeyB64) "Вы: " else "") + previewBody(msg.body),
                     time = msg.timestamp,
                     online = peerKey in onlineKeys,
                     onClick = { onOpenDirect(peerKey) }
@@ -206,10 +217,25 @@ private fun DirectThread(identity: Identity, peerPubKeyB64: String, onBack: () -
     val scope = rememberCoroutineScope()
     val contacts by ContactStore.observeAll(context).collectAsState(initial = emptyList())
     val onlinePeers by PresenceService.peers.collectAsState()
+    val transactions by TransactionStore.observeAll(context).collectAsState(initial = emptyList())
 
     val contact = contacts.find { it.publicKeyB64 == peerPubKeyB64 }
     val peer = onlinePeers.find { it.pubKeyB64 == peerPubKeyB64 }
     val messages by ChatStore.observeDirect(context, identity.publicKeyB64, peerPubKeyB64).collectAsState(initial = emptyList())
+
+    // Отправитель видит чек получателя как обычное входящее сообщение — фиксируем
+    // подтверждение автоматически, без ручного шага. Повторный вызов на уже
+    // подтверждённой транзакции безопасен (см. TransactionDao.confirm — WHERE status='PENDING').
+    LaunchedEffect(messages) {
+        messages.forEach { msg ->
+            if (msg.fromPubKeyB64 != identity.publicKeyB64) {
+                val decoded = Mb10QrCodec.decode(msg.body)
+                if (decoded is Mb10Qr.Receipt) {
+                    TransactionStore.verifyAndConfirmReceipt(context, decoded.id, decoded)
+                }
+            }
+        }
+    }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Row(
@@ -224,7 +250,22 @@ private fun DirectThread(identity: Identity, peerPubKeyB64: String, onBack: () -
             Text(if (peer != null) "в сети" else "не в сети", color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
         }
 
-        MessageList(messages = messages, myPubKey = identity.publicKeyB64, showSender = false, emptyText = "Пока нет сообщений с ${contact?.callsign ?: "этим контактом"}.")
+        MessageList(
+            messages = messages,
+            myPubKey = identity.publicKeyB64,
+            showSender = false,
+            emptyText = "Пока нет сообщений с ${contact?.callsign ?: "этим контактом"}.",
+            transactions = transactions,
+            onAcceptTransaction = { tx ->
+                scope.launch {
+                    val credited = TransactionStore.recordIncoming(context, identity.publicKeyB64, tx)
+                    if (credited) {
+                        val receipt = TransactionStore.buildReceipt(context, identity, tx.id)
+                        ChatStore.sendDirect(context, identity, tx.fromPubKeyB64, peer, Mb10QrCodec.encodeReceipt(receipt))
+                    }
+                }
+            }
+        )
         MessageInput(placeholder = if (peer != null) "Личное сообщение" else "Личное сообщение (получатель не в сети)") { body ->
             scope.launch { ChatStore.sendDirect(context, identity, peerPubKeyB64, peer, body) }
         }
@@ -322,8 +363,22 @@ private fun dayLabel(day: Calendar, today: Calendar): String {
     }
 }
 
+/** Тело перевода/чека в теле сообщения — та же строка, что раньше шла в QR-картинку. В превью инбокса это должен быть человеческий текст, а не сырая строка вида "MB10:TX:v1:...". */
+private fun previewBody(body: String): String = when (val decoded = Mb10QrCodec.decode(body)) {
+    is Mb10Qr.Transaction -> "Перевод ${decoded.amount} €$" + if (decoded.memo.isNotBlank()) " · ${decoded.memo}" else ""
+    is Mb10Qr.Receipt -> "Платёж подтверждён"
+    else -> body
+}
+
 @Composable
-private fun ColumnScope.MessageList(messages: List<ChatMessageEntity>, myPubKey: String, showSender: Boolean, emptyText: String) {
+private fun ColumnScope.MessageList(
+    messages: List<ChatMessageEntity>,
+    myPubKey: String,
+    showSender: Boolean,
+    emptyText: String,
+    transactions: List<TransactionEntity> = emptyList(),
+    onAcceptTransaction: ((Mb10Qr.Transaction) -> Unit)? = null
+) {
     if (messages.isEmpty()) {
         Text(emptyText, color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 13.sp, modifier = Modifier.weight(1f))
         return
@@ -333,7 +388,13 @@ private fun ColumnScope.MessageList(messages: List<ChatMessageEntity>, myPubKey:
         items(entries) { entry ->
             when (entry) {
                 is ChatEntry.DaySeparator -> DaySeparatorLabel(entry.label)
-                is ChatEntry.Msg -> MessageBubble(entry.message, self = entry.message.fromPubKeyB64 == myPubKey, showSender = showSender)
+                is ChatEntry.Msg -> MessageBubble(
+                    msg = entry.message,
+                    self = entry.message.fromPubKeyB64 == myPubKey,
+                    showSender = showSender,
+                    transactions = transactions,
+                    onAcceptTransaction = onAcceptTransaction
+                )
             }
         }
     }
@@ -385,9 +446,36 @@ private fun MessageInput(placeholder: String, onSend: (String) -> Unit) {
  * Раньше единственным отличием была двухпиксельная полоска слева от своих
  * сообщений — легко не заметить. Сторона + цвет вместе читаются мгновенно,
  * без необходимости сверяться с подписью отправителя.
+ *
+ * Тело сообщения может оказаться сериализованным переводом/чеком (тот же
+ * формат, что раньше шёл в QR) — тогда вместо текстового пузыря рисуется
+ * платёжный: с суммой и, для получателя ещё не принятого перевода, кнопкой
+ * "Принять" прямо в ленте.
  */
 @Composable
-private fun MessageBubble(msg: ChatMessageEntity, self: Boolean, showSender: Boolean) {
+private fun MessageBubble(
+    msg: ChatMessageEntity,
+    self: Boolean,
+    showSender: Boolean,
+    transactions: List<TransactionEntity> = emptyList(),
+    onAcceptTransaction: ((Mb10Qr.Transaction) -> Unit)? = null
+) {
+    val decoded = remember(msg.body) { Mb10QrCodec.decode(msg.body) }
+    when (decoded) {
+        is Mb10Qr.Transaction -> PaymentBubble(
+            tx = decoded,
+            self = self,
+            senderCallsign = msg.fromCallsign,
+            status = transactions.find { it.id == decoded.id }?.status,
+            onAccept = if (self) null else { { onAcceptTransaction?.invoke(decoded) } }
+        )
+        is Mb10Qr.Receipt -> ReceiptLine()
+        else -> PlainMessageBubble(msg, self, showSender)
+    }
+}
+
+@Composable
+private fun PlainMessageBubble(msg: ChatMessageEntity, self: Boolean, showSender: Boolean) {
     val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
     Row(
         modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
@@ -409,5 +497,61 @@ private fun MessageBubble(msg: ChatMessageEntity, self: Boolean, showSender: Boo
             Spacer(Modifier.height(2.dp))
             Text(timeFormat.format(msg.timestamp), color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 9.5.sp)
         }
+    }
+}
+
+@Composable
+private fun PaymentBubble(
+    tx: Mb10Qr.Transaction,
+    self: Boolean,
+    senderCallsign: String,
+    status: String?,
+    onAccept: (() -> Unit)?
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+        horizontalArrangement = if (self) Arrangement.End else Arrangement.Start
+    ) {
+        ChamferedPanel(
+            borderColor = MB10Colors.accentAction,
+            fillColor = MB10Colors.surfaceSunken,
+            cut = 8.dp,
+            contentPadding = 12.dp,
+            modifier = Modifier.widthIn(max = 260.dp)
+        ) {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    HexBullet(MB10Colors.accentAction, size = 8.dp)
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        if (self) "Перевод отправлен" else "Перевод от $senderCallsign",
+                        color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                Text("${tx.amount} €$", color = MB10Colors.inkPrimary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                if (tx.memo.isNotBlank()) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(tx.memo, color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 12.sp)
+                }
+                Spacer(Modifier.height(8.dp))
+                when {
+                    self -> StatusChip(
+                        if (status == TransactionStatus.CONFIRMED) "подтверждено" else "ожидает подтверждения",
+                        tone = if (status == TransactionStatus.CONFIRMED) ChipTone.Action else ChipTone.Neutral
+                    )
+                    status == null -> AppButton("Принять", variant = ButtonVariant.Primary, modifier = Modifier.fillMaxWidth(), onClick = { onAccept?.invoke() })
+                    else -> StatusChip("принято", tone = ChipTone.Action)
+                }
+            }
+        }
+    }
+}
+
+/** Чек — не полноценный пузырь, а тонкая системная строка по центру, как разделитель дня. */
+@Composable
+private fun ReceiptLine() {
+    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.Center) {
+        Text("✓ Получение подтверждено", color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 10.sp)
     }
 }

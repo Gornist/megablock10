@@ -24,17 +24,19 @@ object TransactionStore {
         observeAll(context).map { list -> list.sumOf { it.amount } }
 
     /**
-     * Плательщик списывает у себя сумму СРАЗУ при генерации QR — как отдать
+     * Плательщик списывает у себя сумму СРАЗУ при отправке — как отдать
      * наличные из рук в руки. Статус PENDING: пока получатель не подтвердил
-     * чеком, что деньги реально дошли, плательщик ещё может отменить платёж
-     * и вернуть себе деньги (см. cancelOutgoing) — например, если получатель
-     * не смог отсканировать QR вовсе.
+     * чеком (сообщением), что деньги реально дошли, плательщик ещё может
+     * отменить платёж и вернуть себе деньги (см. cancelOutgoing) — например,
+     * если получатель так и не принял перевод. toPubKeyB64 известен сразу —
+     * получатель выбирается из контактов перед отправкой, а не определяется
+     * тем, кто отсканировал QR, как раньше.
      */
-    suspend fun recordOutgoingPending(context: Context, tx: Mb10Qr.Transaction) {
+    suspend fun recordOutgoingPending(context: Context, tx: Mb10Qr.Transaction, toPubKeyB64: String) {
         Mb10Database.get(context).transactionDao().insertIfAbsent(
             TransactionEntity(
                 id = tx.id,
-                counterpartyPubKeyB64 = "",
+                counterpartyPubKeyB64 = toPubKeyB64,
                 amount = -tx.amount,
                 memo = tx.memo,
                 timestamp = System.currentTimeMillis(),
