@@ -50,9 +50,9 @@ fun ProfileScreen(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth().clickable(onClick = onBack).padding(horizontal = 16.dp, vertical = 10.dp)
         ) {
-            Text("←", color = MB10Colors.ink0, fontFamily = JetBrainsMono, fontSize = 16.sp)
+            Text("←", color = MB10Colors.inkPrimary, fontFamily = JetBrainsMono, fontSize = 16.sp)
             Spacer(Modifier.width(8.dp))
-            Text("Профиль", color = MB10Colors.ink0, fontFamily = JetBrainsMono, fontSize = 13.sp)
+            Text("Профиль", color = MB10Colors.inkPrimary, fontFamily = JetBrainsMono, fontSize = 13.sp)
         }
 
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
@@ -61,12 +61,12 @@ fun ProfileScreen(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .background(if (active) MB10Colors.bg2 else MB10Colors.bg1)
+                        .background(if (active) MB10Colors.surfaceSunken else MB10Colors.surfaceRaised)
                         .clickable { segment = i }
                         .padding(vertical = 8.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(label, color = if (active) MB10Colors.ink0 else MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 12.sp)
+                    Text(label, color = if (active) MB10Colors.inkPrimary else MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 12.sp)
                 }
             }
         }

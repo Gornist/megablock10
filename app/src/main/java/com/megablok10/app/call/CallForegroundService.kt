@@ -8,7 +8,6 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -78,7 +77,7 @@ class CallForegroundService : Service() {
     companion object {
         fun start(context: Context, callsign: String) {
             val intent = Intent(context, CallForegroundService::class.java).putExtra(EXTRA_CALLSIGN, callsign)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent) else context.startService(intent)
+            context.startForegroundService(intent)
         }
 
         fun stop(context: Context) {

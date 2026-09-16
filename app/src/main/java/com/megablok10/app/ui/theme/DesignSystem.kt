@@ -48,31 +48,79 @@ import androidx.compose.ui.window.Dialog
  * нужного варианта нет, он добавляется сюда, а не копируется по месту.
  *
  * Часть компонентов — тонкие обёртки над уже существующими примитивами
- * (ChamferedPanel, Chip, OutlineButton): геометрия и так была верной,
- * здесь фиксируется единый набор входных параметров и семантика.
+ * (Chip, OutlineButton): геометрия и так была верной, здесь фиксируется
+ * единый набор входных параметров и семантика.
  */
 
 /** Направление среза для ChamferedSurface — фиксированные варианты вместо произвольного Dp по месту. */
 enum class SurfaceCorner { Single, Double }
 
+/**
+ * Единственная панель со срезанными углами во всём приложении — экраны
+ * больше не собирают её сами через двухслойный border+background (см.
+ * приватный chamferedPanelImpl ниже, который делает эту работу один раз).
+ */
 @Composable
 fun ChamferedSurface(
     modifier: Modifier = Modifier,
     corner: SurfaceCorner = SurfaceCorner.Single,
     borderColor: Color = MB10Colors.borderMuted,
     fillColor: Color = MB10Colors.surfaceRaised,
+    cut: Dp = 10.dp,
     borderWidth: Dp = 1.dp,
     contentPadding: Dp = MB10Spacing.md,
     content: @Composable BoxScope.() -> Unit
 ) {
-    ChamferedPanel(
+    chamferedPanelImpl(
         modifier = modifier,
         borderColor = borderColor,
         fillColor = fillColor,
-        cut = 10.dp,
+        cut = cut,
         borderWidth = borderWidth,
         doubleCorner = corner == SurfaceCorner.Double,
         contentPadding = contentPadding,
+        content = content
+    )
+}
+
+/**
+ * Двухслойная рамка со срезом: border не комбинируется с clip-path на одном
+ * элементе, поэтому "рамка" рисуется отдельным фоном под отступом borderWidth
+ * от заливки. Это ОДИН Box с цепочкой модификаторов (фон рамки → отступ →
+ * фон заливки → отступ → контент), а не два вложенных Box — важно: вложенный
+ * Box с fillMaxSize()/fillMaxWidth() внутри Box без своего размера даёт
+ * циклическую зависимость размеров (родитель хочет обернуть ребёнка, ребёнок
+ * хочет заполнить родителя) и панель раздувается на весь доступный экран.
+ * Модификаторы в цепочке такой проблемы не создают: Box просто оборачивает
+ * content, а фоны/паддинги — это концентрические отступы вокруг него.
+ * innerCut уменьшен на borderWidth, чтобы диагональ среза оставалась
+ * параллельна внешней независимо от толщины рамки.
+ *
+ * Приватная реализация ChamferedSurface — единственный вызывающий код за
+ * пределами этого файла не существует, раньше это было публичным
+ * ChamferedPanel в Components.kt, на который экраны ссылались напрямую в
+ * обход ChamferedSurface.
+ */
+@Composable
+private fun chamferedPanelImpl(
+    modifier: Modifier = Modifier,
+    borderColor: Color,
+    fillColor: Color,
+    cut: Dp,
+    borderWidth: Dp,
+    doubleCorner: Boolean,
+    contentPadding: Dp,
+    content: @Composable BoxScope.() -> Unit
+) {
+    val innerCut = cut - borderWidth
+    val outerShape = if (doubleCorner) doubleChamferShape(cut) else chamferShape(cut)
+    val innerShape = if (doubleCorner) doubleChamferShape(innerCut) else chamferShape(innerCut)
+    Box(
+        modifier = modifier
+            .background(borderColor, outerShape)
+            .padding(borderWidth)
+            .background(fillColor, innerShape)
+            .padding(contentPadding),
         content = content
     )
 }
@@ -169,6 +217,24 @@ fun AppButton(
 }
 
 /**
+ * Компактная кнопка-пилюля по ширине текста, а не на всю ширину контейнера,
+ * как AppButton — для действий в шапке экрана ("+ Новый чат", "+ Новый
+ * звонок"), где кнопка на всю ширину строки выглядела бы нелепо рядом с
+ * заголовком.
+ */
+@Composable
+fun CompactActionButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .background(MB10Colors.accentAction, chamferShape(5.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Text(text, color = MB10Colors.onAccent, fontFamily = JetBrainsMono, fontSize = 10.5.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
+/**
  * Единая строка списка: опциональные leading/trailing слоты + произвольный
  * контент по центру. Заменяет собой вручную собранные Row-паттерны в
  * контактах/чатах/звонках — те либо мигрируют на это, либо остаются
@@ -176,11 +242,18 @@ fun AppButton(
  * не строка списка). Горизонтального паддинга внутри намеренно нет — он
  * уже есть на экране (Column/LazyColumn с padding(16.dp)), дублировать
  * его тут значило бы визуально сдвинуть все существующие списки.
+ *
+ * selected — сплошная заливка акцентом на всю строку, единственный сигнал
+ * состояния сам по себе (без отдельной галочки). selectedColor по умолчанию
+ * accentAction, но в хак-контексте (взлом, шифрование) должен быть явно
+ * передан accentNetrun — см. правило разделения акцентов в Color.kt. Текст/
+ * иконки внутри content должны сами переключаться на onAccent при selected.
  */
 @Composable
 fun ListRow(
     modifier: Modifier = Modifier,
     selected: Boolean = false,
+    selectedColor: Color = MB10Colors.accentAction,
     onClick: (() -> Unit)? = null,
     leading: (@Composable () -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
@@ -190,7 +263,7 @@ fun ListRow(
         modifier = modifier
             .fillMaxWidth()
             .then(
-                if (selected) Modifier.background(MB10Colors.accentAction, chamferShape(6.dp))
+                if (selected) Modifier.background(selectedColor, chamferShape(6.dp))
                 else Modifier
             )
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)

@@ -13,6 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -21,21 +22,25 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.megablok10.app.presence.PresenceService
+import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.AppDialog
 import com.megablok10.app.ui.theme.AppToggle
-import com.megablok10.app.ui.theme.ChamferedPanel
-import com.megablok10.app.ui.theme.Chip
+import com.megablok10.app.ui.theme.ButtonVariant
+import com.megablok10.app.ui.theme.ChamferedSurface
+import com.megablok10.app.ui.theme.ChipTone
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.MB10Colors
-import com.megablok10.app.ui.theme.OutlineButton
 import com.megablok10.app.ui.theme.SectionLabel
+import com.megablok10.app.ui.theme.StatusChip
 
 @Composable
 fun SettingsScreen(onResetIdentity: () -> Unit, onOpenMasterTool: () -> Unit = {}) {
     var pushEnabled by remember { mutableStateOf(true) }
     var soundEnabled by remember { mutableStateOf(false) }
     var confirmingReset by remember { mutableStateOf(false) }
+    val onlinePeers by PresenceService.peers.collectAsState()
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         SectionLabel("Приложение")
@@ -45,8 +50,7 @@ fun SettingsScreen(onResetIdentity: () -> Unit, onOpenMasterTool: () -> Unit = {
 
         Spacer(Modifier.height(16.dp))
         SectionLabel("Сеть и данные")
-        NetworkRow("Мешь-сеть", "последняя синхронизация 21:40", "онлайн")
-        NetworkRow("База шардов", "загружена мастерами перед игрой", "v12")
+        NetworkRow("Мешь-сеть", "устройства рядом обнаруживаются через NSD", "${onlinePeers.size} в сети")
 
         Spacer(Modifier.height(16.dp))
         SectionLabel("Персонаж")
@@ -55,14 +59,14 @@ fun SettingsScreen(onResetIdentity: () -> Unit, onOpenMasterTool: () -> Unit = {
         // заблуждение — неясно, почему не жмётся); теперь та же информация обычным текстом.
         Text(
             "Смена фракции — по решению мастера, вручную вне приложения",
-            color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.5.sp
+            color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp
         )
         Spacer(Modifier.height(12.dp))
-        OutlineButton("Сбросить сессию персонажа", modifier = Modifier.fillMaxWidth(), accentColor = MB10Colors.danger, onClick = { confirmingReset = true })
+        AppButton("Сбросить сессию персонажа", modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.Danger, onClick = { confirmingReset = true })
 
         Spacer(Modifier.height(16.dp))
         SectionLabel("Мастеру")
-        OutlineButton("Мастерская — генерация QR точек и шардов", modifier = Modifier.fillMaxWidth(), borderColor = MB10Colors.inkFaint, onClick = onOpenMasterTool)
+        AppButton("Мастерская — генерация QR точек и шардов", modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.Secondary, onClick = onOpenMasterTool)
     }
 
     if (confirmingReset) {
@@ -78,9 +82,9 @@ fun SettingsScreen(onResetIdentity: () -> Unit, onOpenMasterTool: () -> Unit = {
 
 @Composable
 private fun ToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    ChamferedPanel(
-        borderColor = MB10Colors.inkFaint,
-        fillColor = MB10Colors.bg1,
+    ChamferedSurface(
+        borderColor = MB10Colors.borderMuted,
+        fillColor = MB10Colors.surfaceRaised,
         cut = 6.dp,
         contentPadding = 0.dp,
         modifier = Modifier.fillMaxWidth()
@@ -90,7 +94,7 @@ private fun ToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(label, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp)
+            Text(label, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
             AppToggle(checked, onCheckedChange)
         }
     }
@@ -104,9 +108,9 @@ private fun NetworkRow(name: String, meta: String, badge: String) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.weight(1f)) {
-            Text(name, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp)
-            Text(meta, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
+            Text(name, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
+            Text(meta, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
         }
-        Chip(badge, color = MB10Colors.inkMuted)
+        StatusChip(badge, tone = ChipTone.Neutral)
     }
 }

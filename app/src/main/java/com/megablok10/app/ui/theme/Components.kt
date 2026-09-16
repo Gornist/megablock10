@@ -4,8 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
@@ -20,7 +18,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Alignment
@@ -30,45 +27,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/**
- * Двухслойная рамка со срезом: border не комбинируется с clip-path на одном
- * элементе, поэтому "рамка" рисуется отдельным фоном под отступом borderWidth
- * от заливки. Это ОДИН Box с цепочкой модификаторов (фон рамки → отступ →
- * фон заливки → отступ → контент), а не два вложенных Box — важно: вложенный
- * Box с fillMaxSize()/fillMaxWidth() внутри Box без своего размера даёт
- * циклическую зависимость размеров (родитель хочет обернуть ребёнка, ребёнок
- * хочет заполнить родителя) и панель раздувается на весь доступный экран.
- * Модификаторы в цепочке такой проблемы не создают: Box просто оборачивает
- * content, а фоны/паддинги — это концентрические отступы вокруг него.
- * innerCut уменьшен на borderWidth, чтобы диагональ среза оставалась
- * параллельна внешней независимо от толщины рамки.
- */
 @Composable
-fun ChamferedPanel(
-    modifier: Modifier = Modifier,
-    borderColor: Color = MB10Colors.inkFaint,
-    fillColor: Color = MB10Colors.bg1,
-    cut: Dp = 10.dp,
-    borderWidth: Dp = 1.dp,
-    doubleCorner: Boolean = false,
-    contentPadding: Dp = 12.dp,
-    content: @Composable BoxScope.() -> Unit
-) {
-    val innerCut = cut - borderWidth
-    val outerShape = if (doubleCorner) doubleChamferShape(cut) else chamferShape(cut)
-    val innerShape = if (doubleCorner) doubleChamferShape(innerCut) else chamferShape(innerCut)
-    Box(
-        modifier = modifier
-            .background(borderColor, outerShape)
-            .padding(borderWidth)
-            .background(fillColor, innerShape)
-            .padding(contentPadding),
-        content = content
-    )
-}
-
-@Composable
-fun HexBullet(color: Color = MB10Colors.accentPrimary, size: Dp = 8.dp) {
+fun HexBullet(color: Color = MB10Colors.accentAction, size: Dp = 8.dp) {
     Box(Modifier.size(size).background(color, hexShape()))
 }
 
@@ -79,7 +39,7 @@ fun HexBullet(color: Color = MB10Colors.accentPrimary, size: Dp = 8.dp) {
  * не background) — залитый вариант остаётся исключительно за HexBullet.
  */
 @Composable
-fun HexOutlineIcon(letter: String, color: Color = MB10Colors.ink0, size: Dp = 32.dp, borderWidth: Dp = 1.5.dp) {
+fun HexOutlineIcon(letter: String, color: Color = MB10Colors.inkPrimary, size: Dp = 32.dp, borderWidth: Dp = 1.5.dp) {
     Box(
         modifier = Modifier.size(size).border(borderWidth, color, hexShape()),
         contentAlignment = Alignment.Center
@@ -89,7 +49,7 @@ fun HexOutlineIcon(letter: String, color: Color = MB10Colors.ink0, size: Dp = 32
 }
 
 @Composable
-fun DottedDivider(color: Color = MB10Colors.inkFaint, modifier: Modifier = Modifier) {
+fun DottedDivider(color: Color = MB10Colors.borderMuted, modifier: Modifier = Modifier) {
     Canvas(modifier.fillMaxWidth().height(1.dp)) {
         drawLine(
             color = color,
@@ -108,21 +68,21 @@ fun AppToggle(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Mo
     Box(
         modifier = modifier
             .size(width = 34.dp, height = 18.dp)
-            .background(MB10Colors.bg2)
-            .border(1.dp, if (checked) MB10Colors.accentPrimary else MB10Colors.inkFaint)
+            .background(MB10Colors.surfaceSunken)
+            .border(1.dp, if (checked) MB10Colors.accentAction else MB10Colors.borderMuted)
             .clickable { onCheckedChange(!checked) }
     ) {
         Box(
             modifier = Modifier
                 .padding(start = knobOffset, top = 2.dp)
                 .size(12.dp)
-                .background(if (checked) MB10Colors.accentPrimary else MB10Colors.inkMuted)
+                .background(if (checked) MB10Colors.accentAction else MB10Colors.inkSecondary)
         )
     }
 }
 
 @Composable
-fun FlagTab(text: String, accent: Color = MB10Colors.accentHack, modifier: Modifier = Modifier) {
+fun FlagTab(text: String, accent: Color = MB10Colors.accentNetrun, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .background(accent, flagTabShape())
@@ -134,7 +94,7 @@ fun FlagTab(text: String, accent: Color = MB10Colors.accentHack, modifier: Modif
 
 /** Мелкий заголовок секции: hex-буллит + моно-текст капсом. Повторяется на каждом экране со списками. */
 @Composable
-fun SectionLabel(text: String, color: Color = MB10Colors.inkMuted, modifier: Modifier = Modifier) {
+fun SectionLabel(text: String, color: Color = MB10Colors.inkSecondary, modifier: Modifier = Modifier) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier.padding(bottom = 8.dp)) {
         HexBullet(color, size = 8.dp)
         Spacer(Modifier.width(6.dp))
@@ -144,7 +104,7 @@ fun SectionLabel(text: String, color: Color = MB10Colors.inkMuted, modifier: Mod
 
 /** Чамфер-бейдж с рамкой — код демона, статус шарда, версия базы. Один визуальный паттерн вместо трёх копий по экранам. */
 @Composable
-fun Chip(text: String, color: Color = MB10Colors.inkMuted, cut: Dp = 4.dp, modifier: Modifier = Modifier) {
+fun Chip(text: String, color: Color = MB10Colors.inkSecondary, cut: Dp = 4.dp, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .background(color.copy(alpha = 0.08f), chamferShape(cut))
@@ -164,13 +124,13 @@ fun Chip(text: String, color: Color = MB10Colors.inkMuted, cut: Dp = 4.dp, modif
 fun OutlineButton(
     text: String,
     modifier: Modifier = Modifier,
-    accentColor: Color = MB10Colors.ink0,
+    accentColor: Color = MB10Colors.inkPrimary,
     borderColor: Color = accentColor,
     enabled: Boolean = true,
     onClick: () -> Unit
 ) {
-    val effectiveTextColor = if (enabled) accentColor else MB10Colors.inkFaint
-    val effectiveBorderColor = if (enabled) borderColor else MB10Colors.inkFaint
+    val effectiveTextColor = if (enabled) accentColor else MB10Colors.borderMuted
+    val effectiveBorderColor = if (enabled) borderColor else MB10Colors.borderMuted
     Box(
         modifier = modifier
             .border(1.dp, effectiveBorderColor, chamferShape(5.dp))
@@ -188,51 +148,3 @@ fun OutlineButton(
     }
 }
 
-/**
- * Дисклеймер "это макет, не реальные данные" — одна строка мелким моно
- * текстом. Нужен там, где статичные цифры/статусы визуально неотличимы от
- * настоящих игровых данных (карантин-таймер, репутация, баланс) и живой
- * тестировщик может принять заглушку за баг или за факт игры.
- */
-@Composable
-fun DemoNotice(text: String, modifier: Modifier = Modifier) {
-    Text(
-        "// $text",
-        color = MB10Colors.inkFaint,
-        fontFamily = JetBrainsMono,
-        fontSize = 9.5.sp,
-        modifier = modifier
-    )
-}
-
-/**
- * Строка выбираемого списка. Невыбранная — только тонкая рамка (обычный
- * ChamferedPanel-паттерн). Выбранная — сплошная заливка акцентом на всю
- * строку, а не просто более толстая рамка или второй индикатор (галочка и
- * т.п.) — единственный сигнал состояния сам по себе. Текст/иконки внутри
- * content должны сами переключаться на onAccent при selected == true —
- * компонент передаёт это решение наружу, а не красит контент сам.
- */
-@Composable
-fun SelectableRow(
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    accentColor: Color = MB10Colors.accentPrimary,
-    borderColor: Color = MB10Colors.accentBorder,
-    cut: Dp = 6.dp,
-    content: @Composable RowScope.() -> Unit
-) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .then(
-                if (selected) Modifier.background(accentColor, chamferShape(cut))
-                else Modifier.border(1.dp, borderColor, chamferShape(cut))
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        content = content
-    )
-}

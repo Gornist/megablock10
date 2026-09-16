@@ -36,7 +36,7 @@ import com.megablok10.app.qr.generateQrBitmap
 import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.AppTextField
 import com.megablok10.app.ui.theme.ButtonVariant
-import com.megablok10.app.ui.theme.ChamferedPanel
+import com.megablok10.app.ui.theme.ChamferedSurface
 import com.megablok10.app.ui.theme.ChipTone
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
@@ -75,7 +75,7 @@ fun MasterToolScreen(onClose: () -> Unit) {
         )
         Spacer(Modifier.height(18.dp))
 
-        ChamferedPanel(
+        ChamferedSurface(
             borderColor = MB10Colors.borderMuted, fillColor = MB10Colors.surfaceRaised, cut = 6.dp, contentPadding = 0.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -188,7 +188,7 @@ private fun ShardForm() {
 
 @Composable
 private fun GeneratedQrPanel(raw: String, caption: String, accent: Color) {
-    ChamferedPanel(borderColor = accent, fillColor = MB10Colors.surfaceRaised, cut = 6.dp, contentPadding = 14.dp, modifier = Modifier.fillMaxWidth()) {
+    ChamferedSurface(borderColor = accent, fillColor = MB10Colors.surfaceRaised, cut = 6.dp, contentPadding = 14.dp, modifier = Modifier.fillMaxWidth()) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
             val bitmap = remember(raw) { generateQrBitmap(raw) }
             Image(bitmap = bitmap.asImageBitmap(), contentDescription = "QR", modifier = Modifier.size(220.dp))

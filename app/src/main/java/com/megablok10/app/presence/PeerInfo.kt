@@ -6,6 +6,5 @@ data class PeerInfo(
     val callsign: String,
     val faction: String,
     val host: String,
-    val port: Int,
-    val lastSeen: Long
+    val port: Int
 )

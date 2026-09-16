@@ -38,7 +38,7 @@ import com.megablok10.app.qr.rememberMb10QrScanner
 import com.megablok10.app.shards.ShardStore
 import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.ButtonVariant
-import com.megablok10.app.ui.theme.ChamferedPanel
+import com.megablok10.app.ui.theme.ChamferedSurface
 import com.megablok10.app.ui.theme.EmptyState
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
@@ -92,9 +92,9 @@ fun CyberdeckScreen(onNestedChange: (Boolean) -> Unit = {}) {
         AppButton("Сканировать объект", variant = ButtonVariant.Netrun, modifier = Modifier.fillMaxWidth(), onClick = scanObject)
         Spacer(Modifier.height(14.dp))
 
-        ChamferedPanel(
-            borderColor = MB10Colors.inkFaint,
-            fillColor = MB10Colors.bg1,
+        ChamferedSurface(
+            borderColor = MB10Colors.borderMuted,
+            fillColor = MB10Colors.surfaceRaised,
             cut = 6.dp,
             contentPadding = 0.dp,
             modifier = Modifier.fillMaxWidth()
@@ -105,12 +105,12 @@ fun CyberdeckScreen(onNestedChange: (Boolean) -> Unit = {}) {
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .background(if (active) MB10Colors.bg2 else MB10Colors.bg1)
+                            .background(if (active) MB10Colors.surfaceSunken else MB10Colors.surfaceRaised)
                             .clickable { segment = i }
                             .padding(vertical = 8.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(label, color = if (active) MB10Colors.ink0 else MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 12.sp)
+                        Text(label, color = if (active) MB10Colors.inkPrimary else MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 12.sp)
                     }
                 }
             }
@@ -137,7 +137,7 @@ private fun DemonsSegment(daemons: List<Daemon>, point: Mb10Qr.AccessPoint?, onR
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Text(
             "Чтобы начать взлом, отсканируйте QR-метку точки доступа кнопкой выше. Демонов можно просматривать и без этого — коллекция пополняется по ходу игры.",
-            color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 13.sp, lineHeight = 18.sp
+            color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 13.sp, lineHeight = 18.sp
         )
         Spacer(Modifier.height(16.dp))
         daemons.forEach { daemon -> DaemonCard(daemon) }
@@ -147,18 +147,18 @@ private fun DemonsSegment(daemons: List<Daemon>, point: Mb10Qr.AccessPoint?, onR
 /** Тот же визуальный паттерн строки, что у ShardCard — единый вид для обоих составных Кибердеки. */
 @Composable
 private fun DaemonCard(daemon: Daemon) {
-    ChamferedPanel(
-        borderColor = MB10Colors.inkFaint,
-        fillColor = MB10Colors.bg1,
+    ChamferedSurface(
+        borderColor = MB10Colors.borderMuted,
+        fillColor = MB10Colors.surfaceRaised,
         cut = 6.dp,
         contentPadding = 11.dp,
         modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
     ) {
         Column {
-            Text(daemon.name, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.5.sp)
+            Text(daemon.name, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.5.sp)
             if (daemon.reward.isNotEmpty()) {
                 Spacer(Modifier.height(4.dp))
-                Text(daemon.reward, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                Text(daemon.reward, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
             }
             Row(Modifier.padding(top = 6.dp)) {
                 daemon.sequence.forEach { code -> CodePill(code) }

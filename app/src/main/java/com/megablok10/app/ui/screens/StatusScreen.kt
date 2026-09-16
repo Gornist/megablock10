@@ -40,8 +40,9 @@ import com.megablok10.app.qr.generateQrBitmap
 import com.megablok10.app.qr.rememberMb10QrScanner
 import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.ButtonVariant
-import com.megablok10.app.ui.theme.ChamferedPanel
-import com.megablok10.app.ui.theme.Chip
+import com.megablok10.app.ui.theme.ChamferedSurface
+import com.megablok10.app.ui.theme.SurfaceCorner
+import com.megablok10.app.ui.theme.ChipTone
 import com.megablok10.app.ui.theme.DimmableQr
 import com.megablok10.app.ui.theme.DottedDivider
 import com.megablok10.app.ui.theme.EmptyState
@@ -50,6 +51,7 @@ import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.Jura
 import com.megablok10.app.ui.theme.MB10Colors
+import com.megablok10.app.ui.theme.StatusChip
 import com.megablok10.app.ui.theme.chamferShape
 import kotlinx.coroutines.launch
 
@@ -70,18 +72,18 @@ fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}, on
 
     LazyColumn(Modifier.fillMaxSize().padding(16.dp)) {
         item {
-            ChamferedPanel(
-                borderColor = MB10Colors.inkFaint,
-                fillColor = MB10Colors.bg2,
+            ChamferedSurface(
+                borderColor = MB10Colors.borderMuted,
+                fillColor = MB10Colors.surfaceSunken,
                 cut = 10.dp,
-                doubleCorner = true,
+                corner = SurfaceCorner.Double,
                 contentPadding = 16.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column {
-                    Text(identity.callsign, color = MB10Colors.ink0, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text(identity.callsign, color = MB10Colors.inkPrimary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     Spacer(Modifier.height(2.dp))
-                    Text(identity.faction, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                    Text(identity.faction, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
                 }
             }
             Spacer(Modifier.height(18.dp))
@@ -116,10 +118,10 @@ fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}, on
             items(contacts, key = { it.publicKeyB64 }) { c ->
                 Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        HexBullet(MB10Colors.accentPrimary, size = 8.dp)
+                        HexBullet(MB10Colors.accentAction, size = 8.dp)
                         Spacer(Modifier.width(8.dp))
-                        Text(c.callsign, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                        Chip(c.faction, color = MB10Colors.inkMuted)
+                        Text(c.callsign, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        StatusChip(c.faction, tone = ChipTone.Neutral)
                     }
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -156,12 +158,12 @@ fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}, on
 private fun ContactActionButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
         modifier = modifier
-            .border(1.dp, MB10Colors.inkFaint, chamferShape(4.dp))
+            .border(1.dp, MB10Colors.borderMuted, chamferShape(4.dp))
             .clickable(onClick = onClick)
             .padding(vertical = 6.dp)
     ) {
         Text(
-            text, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.5.sp,
+            text, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth()
         )
     }

@@ -38,13 +38,14 @@ import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.ButtonVariant
-import com.megablok10.app.ui.theme.ChamferedPanel
-import com.megablok10.app.ui.theme.Chip
+import com.megablok10.app.ui.theme.ChamferedSurface
+import com.megablok10.app.ui.theme.SurfaceCorner
+import com.megablok10.app.ui.theme.ChipTone
 import com.megablok10.app.ui.theme.HexBullet
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.Jura
 import com.megablok10.app.ui.theme.MB10Colors
-import com.megablok10.app.ui.theme.OutlineButton
+import com.megablok10.app.ui.theme.StatusChip
 import com.megablok10.app.ui.theme.chamferShape
 import kotlinx.coroutines.delay
 
@@ -76,38 +77,38 @@ private fun RingingCard(state: CallUiState, peerFaction: String?, onAccept: () -
     val incoming = state.phase == CallPhase.INCOMING_RINGING
 
     Box(
-        modifier = Modifier.fillMaxSize().background(MB10Colors.bg0.copy(alpha = 0.92f)),
+        modifier = Modifier.fillMaxSize().background(MB10Colors.surfaceBase.copy(alpha = 0.92f)),
         contentAlignment = Alignment.Center
     ) {
-        ChamferedPanel(
-            borderColor = MB10Colors.accentPrimary,
-            fillColor = MB10Colors.bg1,
+        ChamferedSurface(
+            borderColor = MB10Colors.accentAction,
+            fillColor = MB10Colors.surfaceRaised,
             cut = 12.dp,
-            doubleCorner = true,
+            corner = SurfaceCorner.Double,
             contentPadding = 24.dp,
             modifier = Modifier.fillMaxWidth().padding(24.dp)
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    HexBullet(MB10Colors.accentPrimary, size = 6.dp)
+                    HexBullet(MB10Colors.accentAction, size = 6.dp)
                     Spacer(Modifier.width(6.dp))
                     Text(
                         if (incoming) "ВХОДЯЩАЯ ТРАНСМИССИЯ" else "ИСХОДЯЩАЯ ТРАНСМИССИЯ",
-                        color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.5.sp
+                        color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp
                     )
                 }
                 Spacer(Modifier.height(18.dp))
                 HoloPortrait(letter = state.peerCallsign.take(1).uppercase(), portraitSize = 150.dp)
                 Spacer(Modifier.height(16.dp))
-                Text(state.peerCallsign, color = MB10Colors.ink0, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                Text(state.peerCallsign, color = MB10Colors.inkPrimary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 22.sp)
                 if (peerFaction != null) {
                     Spacer(Modifier.height(6.dp))
-                    Chip(peerFaction, color = MB10Colors.inkMuted)
+                    StatusChip(peerFaction, tone = ChipTone.Neutral)
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
                     if (incoming) "Вызывает вас" else "Дозваниваемся...",
-                    color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.sp
+                    color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp
                 )
                 Spacer(Modifier.height(26.dp))
                 if (incoming) {
@@ -140,9 +141,9 @@ private fun ActiveCallBar(state: CallUiState, onEnd: () -> Unit) {
     val seconds = elapsedSeconds % 60
 
     Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), contentAlignment = Alignment.TopCenter) {
-        ChamferedPanel(
-            borderColor = if (state.audioConnected) MB10Colors.accentPrimary else MB10Colors.accentBorder,
-            fillColor = MB10Colors.bg1,
+        ChamferedSurface(
+            borderColor = if (state.audioConnected) MB10Colors.accentAction else MB10Colors.borderAccent,
+            fillColor = MB10Colors.surfaceRaised,
             cut = 8.dp,
             contentPadding = 10.dp,
             modifier = Modifier.fillMaxWidth()
@@ -151,17 +152,17 @@ private fun ActiveCallBar(state: CallUiState, onEnd: () -> Unit) {
                 HoloPortrait(letter = state.peerCallsign.take(1).uppercase(), portraitSize = 36.dp, showScanlines = false)
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(state.peerCallsign, color = MB10Colors.ink0, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text(state.peerCallsign, color = MB10Colors.inkPrimary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Text(
                         "%d:%02d".format(minutes, seconds),
-                        color = if (state.audioConnected) MB10Colors.inkMuted else MB10Colors.inkFaint,
+                        color = if (state.audioConnected) MB10Colors.inkSecondary else MB10Colors.borderMuted,
                         fontFamily = JetBrainsMono, fontSize = 10.sp
                     )
                 }
                 Spacer(Modifier.width(10.dp))
                 Box(
                     modifier = Modifier
-                        .background(MB10Colors.danger, chamferShape(4.dp))
+                        .background(MB10Colors.accentDanger, chamferShape(4.dp))
                         .clickable(onClick = onEnd)
                         .padding(horizontal = 14.dp, vertical = 8.dp)
                 ) {
@@ -178,11 +179,11 @@ private fun HoloPortrait(letter: String, portraitSize: Dp, showScanlines: Boolea
     Box(
         modifier = Modifier
             .size(portraitSize)
-            .background(MB10Colors.bg2, chamferShape(cut))
-            .border(1.dp, MB10Colors.accentPrimary, chamferShape(cut)),
+            .background(MB10Colors.surfaceSunken, chamferShape(cut))
+            .border(1.dp, MB10Colors.accentAction, chamferShape(cut)),
         contentAlignment = Alignment.Center
     ) {
-        Text(letter, color = MB10Colors.accentPrimary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = (portraitSize.value * 0.4f).sp)
+        Text(letter, color = MB10Colors.accentAction, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = (portraitSize.value * 0.4f).sp)
         if (showScanlines) {
             Canvas(Modifier.fillMaxSize()) {
                 var y = 0f
@@ -192,7 +193,7 @@ private fun HoloPortrait(letter: String, portraitSize: Dp, showScanlines: Boolea
                     y += gap
                 }
                 val accentY = size.height * 0.32f
-                drawLine(MB10Colors.accentPrimary.copy(alpha = 0.45f), Offset(0f, accentY), Offset(size.width, accentY), strokeWidth = 2f)
+                drawLine(MB10Colors.accentAction.copy(alpha = 0.45f), Offset(0f, accentY), Offset(size.width, accentY), strokeWidth = 2f)
             }
         }
     }

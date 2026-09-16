@@ -1,10 +1,8 @@
 package com.megablok10.app.ui.screens
 
 import android.widget.Toast
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -36,6 +34,7 @@ import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.presence.PeerInfo
 import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.ui.theme.AppTextField
+import com.megablok10.app.ui.theme.CompactActionButton
 import com.megablok10.app.ui.theme.DottedDivider
 import com.megablok10.app.ui.theme.EmptyState
 import com.megablok10.app.ui.theme.IBMPlexSans
@@ -43,7 +42,6 @@ import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.ListRow
 import com.megablok10.app.ui.theme.MB10Colors
 import com.megablok10.app.ui.theme.OnlineDot
-import com.megablok10.app.ui.theme.chamferShape
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -79,15 +77,8 @@ fun CallsScreen(onCallPeer: (PeerInfo) -> Unit) {
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("Звонки", color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-            Box(
-                modifier = Modifier
-                    .background(MB10Colors.accentPrimary, chamferShape(5.dp))
-                    .clickable { showPicker = true }
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                Text("+ Новый звонок", color = MB10Colors.onAccent, fontFamily = JetBrainsMono, fontSize = 10.5.sp, fontWeight = FontWeight.Medium)
-            }
+            Text("Звонки", color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            CompactActionButton("+ Новый звонок", onClick = { showPicker = true })
         }
         Spacer(Modifier.height(10.dp))
 
@@ -162,9 +153,9 @@ private fun NewCallPicker(onPick: (String, String) -> Unit, onBack: () -> Unit) 
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth().clickable(onClick = onBack).padding(bottom = 8.dp)
         ) {
-            Text("←", color = MB10Colors.ink0, fontFamily = JetBrainsMono, fontSize = 16.sp)
+            Text("←", color = MB10Colors.inkPrimary, fontFamily = JetBrainsMono, fontSize = 16.sp)
             Spacer(Modifier.width(8.dp))
-            Text("Новый звонок", color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 14.sp)
+            Text("Новый звонок", color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 14.sp)
         }
 
         if (contacts.isEmpty()) {
@@ -186,8 +177,8 @@ private fun NewCallPicker(onPick: (String, String) -> Unit, onBack: () -> Unit) 
                     onClick = { onPick(c.publicKeyB64, c.callsign) },
                     leading = { OnlineDot(c.publicKeyB64 in onlineKeys) }
                 ) {
-                    Text(c.callsign, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp)
-                    Text(c.faction, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                    Text(c.callsign, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
+                    Text(c.faction, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
                 }
             }
         }

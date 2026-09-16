@@ -40,7 +40,8 @@ import com.megablok10.app.ui.theme.AmountField
 import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.AppTextField
 import com.megablok10.app.ui.theme.ButtonVariant
-import com.megablok10.app.ui.theme.ChamferedPanel
+import com.megablok10.app.ui.theme.ChamferedSurface
+import com.megablok10.app.ui.theme.SurfaceCorner
 import com.megablok10.app.ui.theme.ChipTone
 import com.megablok10.app.ui.theme.DottedDivider
 import com.megablok10.app.ui.theme.EmptyState
@@ -82,11 +83,11 @@ fun WalletScreen(identity: Identity) {
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         SectionLabel("Баланс")
-        ChamferedPanel(
+        ChamferedSurface(
             borderColor = MB10Colors.borderMuted,
             fillColor = MB10Colors.surfaceSunken,
             cut = 10.dp,
-            doubleCorner = true,
+            corner = SurfaceCorner.Double,
             contentPadding = 16.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -160,7 +161,7 @@ private fun SendTransactionPanel(
     var selectedContact by remember { mutableStateOf<Mb10Qr.Contact?>(null) }
     var sent by remember { mutableStateOf<SentPayment?>(null) }
 
-    ChamferedPanel(
+    ChamferedSurface(
         borderColor = MB10Colors.borderMuted,
         fillColor = MB10Colors.surfaceRaised,
         cut = 6.dp,

@@ -23,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -46,8 +47,9 @@ import com.megablok10.app.qr.Mb10QrCodec
 import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.AppTextField
 import com.megablok10.app.ui.theme.ButtonVariant
-import com.megablok10.app.ui.theme.ChamferedPanel
+import com.megablok10.app.ui.theme.ChamferedSurface
 import com.megablok10.app.ui.theme.ChipTone
+import com.megablok10.app.ui.theme.CompactActionButton
 import com.megablok10.app.ui.theme.DottedDivider
 import com.megablok10.app.ui.theme.EmptyState
 import com.megablok10.app.ui.theme.HexBullet
@@ -136,15 +138,8 @@ private fun ConversationInbox(identity: Identity, onOpenFaction: () -> Unit, onO
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("Чаты", color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-            Box(
-                modifier = Modifier
-                    .background(MB10Colors.accentPrimary, chamferShape(5.dp))
-                    .clickable(onClick = onNewChat)
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                Text("+ Новый чат", color = MB10Colors.onAccent, fontFamily = JetBrainsMono, fontSize = 10.5.sp, fontWeight = FontWeight.Medium)
-            }
+            Text("Чаты", color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            CompactActionButton("+ Новый чат", onClick = onNewChat)
         }
         Spacer(Modifier.height(10.dp))
 
@@ -219,9 +214,12 @@ private fun DirectThread(identity: Identity, peerPubKeyB64: String, onBack: () -
 
     // Отправитель видит чек получателя как обычное входящее сообщение — фиксируем
     // подтверждение автоматически, без ручного шага. Повторный вызов на уже
-    // подтверждённой транзакции безопасен (см. TransactionDao.confirm — WHERE status='PENDING').
-    LaunchedEffect(messages) {
-        messages.forEach { msg ->
+    // подтверждённой транзакции безопасен (см. TransactionDao.confirm — WHERE status='PENDING'),
+    // но сканируем только новый хвост списка — thread может разрастись на сотни
+    // сообщений, и полный пересчёт при каждом новом сообщении был бы лишней работой.
+    var scannedCount by remember(peerPubKeyB64) { mutableIntStateOf(0) }
+    LaunchedEffect(messages.size) {
+        messages.drop(scannedCount).forEach { msg ->
             if (msg.fromPubKeyB64 != identity.publicKeyB64) {
                 val decoded = Mb10QrCodec.decode(msg.body)
                 if (decoded is Mb10Qr.Receipt) {
@@ -229,6 +227,7 @@ private fun DirectThread(identity: Identity, peerPubKeyB64: String, onBack: () -
                 }
             }
         }
+        scannedCount = messages.size
     }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
@@ -236,12 +235,12 @@ private fun DirectThread(identity: Identity, peerPubKeyB64: String, onBack: () -
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth().clickable(onClick = onBack).padding(bottom = 8.dp)
         ) {
-            Text("←", color = MB10Colors.ink0, fontFamily = JetBrainsMono, fontSize = 16.sp)
+            Text("←", color = MB10Colors.inkPrimary, fontFamily = JetBrainsMono, fontSize = 16.sp)
             Spacer(Modifier.width(8.dp))
-            Text(contact?.callsign ?: "Неизвестный контакт", color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 14.sp, modifier = Modifier.weight(1f))
+            Text(contact?.callsign ?: "Неизвестный контакт", color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 14.sp, modifier = Modifier.weight(1f))
             OnlineDot(online = peer != null)
             Spacer(Modifier.width(6.dp))
-            Text(if (peer != null) "в сети" else "не в сети", color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
+            Text(if (peer != null) "в сети" else "не в сети", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
         }
 
         MessageList(
@@ -272,9 +271,9 @@ private fun ThreadHeader(title: String, onBack: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().clickable(onClick = onBack).padding(bottom = 8.dp)
     ) {
-        Text("←", color = MB10Colors.ink0, fontFamily = JetBrainsMono, fontSize = 16.sp)
+        Text("←", color = MB10Colors.inkPrimary, fontFamily = JetBrainsMono, fontSize = 16.sp)
         Spacer(Modifier.width(8.dp))
-        Text(title, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 14.sp)
+        Text(title, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 14.sp)
     }
 }
 
@@ -508,7 +507,7 @@ private fun PaymentBubble(
         modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
         horizontalArrangement = if (self) Arrangement.End else Arrangement.Start
     ) {
-        ChamferedPanel(
+        ChamferedSurface(
             borderColor = MB10Colors.accentAction,
             fillColor = MB10Colors.surfaceSunken,
             cut = 8.dp,

@@ -115,7 +115,7 @@ object PresenceService {
                         val host = resolved.host?.hostAddress ?: return
                         // Пир снова нашёлся — отменяем его отложенное удаление, если оно было запланировано.
                         pendingRemovals.remove(resolved.serviceName)?.cancel()
-                        peerMap[resolved.serviceName] = PeerInfo(pk, cs, fac, host, resolved.port, System.currentTimeMillis())
+                        peerMap[resolved.serviceName] = PeerInfo(pk, cs, fac, host, resolved.port)
                         publishPeers()
                     }
                 })

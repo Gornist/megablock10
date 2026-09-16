@@ -67,12 +67,12 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme(
                 colorScheme = darkColorScheme(
-                    primary = MB10Colors.accentPrimary,
-                    background = MB10Colors.bg0,
-                    surface = MB10Colors.bg1,
+                    primary = MB10Colors.accentAction,
+                    background = MB10Colors.surfaceBase,
+                    surface = MB10Colors.surfaceRaised,
                     onPrimary = androidx.compose.ui.graphics.Color.Black,
-                    onBackground = MB10Colors.ink0,
-                    onSurface = MB10Colors.ink0
+                    onBackground = MB10Colors.inkPrimary,
+                    onSurface = MB10Colors.inkPrimary
                 )
             ) {
                 Surface(color = MaterialTheme.colorScheme.background) {

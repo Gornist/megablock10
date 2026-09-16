@@ -17,8 +17,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -38,15 +36,16 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.qr.Mb10Qr
-import com.megablok10.app.ui.theme.ChamferedPanel
+import com.megablok10.app.ui.theme.AppButton
+import com.megablok10.app.ui.theme.ButtonVariant
 import com.megablok10.app.ui.theme.DottedDivider
 import com.megablok10.app.ui.theme.FlagTab
 import com.megablok10.app.ui.theme.HexBullet
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.Jura
+import com.megablok10.app.ui.theme.ListRow
 import com.megablok10.app.ui.theme.MB10Colors
-import com.megablok10.app.ui.theme.OutlineButton
 import com.megablok10.app.ui.theme.chamferShape
 import kotlinx.coroutines.delay
 import kotlin.random.Random
@@ -70,16 +69,16 @@ internal fun BreachAccessPointFlow(point: Mb10Qr.AccessPoint, daemons: List<Daem
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 10.dp)) {
-            HexBullet(MB10Colors.accentHack, size = 8.dp)
+            HexBullet(MB10Colors.accentNetrun, size = 8.dp)
             Spacer(Modifier.width(6.dp))
-            Text("Точка доступа: ${point.name}", color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
+            Text("Точка доступа: ${point.name}", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
         }
 
         DaemonPicker(daemons = daemons, chosen = chosen, onToggle = { id -> chosen = if (id in chosen) chosen - id else chosen + id })
 
         Text(
             "Буфер: $used / ${MockBreach.ramCapacity}" + if (overBudget) " — снимите демон" else "",
-            color = if (overBudget) MB10Colors.danger else MB10Colors.inkMuted,
+            color = if (overBudget) MB10Colors.accentDanger else MB10Colors.inkSecondary,
             fontFamily = JetBrainsMono,
             fontSize = 11.sp,
             modifier = Modifier.padding(top = 10.dp, bottom = 14.dp)
@@ -88,7 +87,7 @@ internal fun BreachAccessPointFlow(point: Mb10Qr.AccessPoint, daemons: List<Daem
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MB10Colors.accentHack, chamferShape(6.dp))
+                .background(MB10Colors.accentNetrun, chamferShape(6.dp))
                 .clickable(enabled = canStart) { sessionSeed = System.nanoTime() }
                 .padding(vertical = 10.dp)
         ) {
@@ -119,23 +118,19 @@ private fun DaemonPicker(daemons: List<Daemon>, chosen: Set<String>, onToggle: (
     Column {
         daemons.forEachIndexed { index, daemon ->
             val isChecked = daemon.id in chosen
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth().clickable { onToggle(daemon.id) }.padding(vertical = 9.dp)
+            val textColor = if (isChecked) MB10Colors.onAccent else MB10Colors.inkPrimary
+            val rewardColor = if (isChecked) MB10Colors.onAccent.copy(alpha = 0.8f) else MB10Colors.inkSecondary
+            ListRow(
+                selected = isChecked,
+                selectedColor = MB10Colors.accentNetrun,
+                onClick = { onToggle(daemon.id) }
             ) {
-                Checkbox(
-                    checked = isChecked,
-                    onCheckedChange = { onToggle(daemon.id) },
-                    colors = CheckboxDefaults.colors(checkedColor = MB10Colors.accentHack, uncheckedColor = MB10Colors.inkFaint)
-                )
-                Column(Modifier.padding(start = 2.dp)) {
-                    Text(daemon.name, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp)
-                    if (daemon.reward.isNotEmpty()) {
-                        Text(daemon.reward, color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 11.sp)
-                    }
-                    Row(Modifier.padding(top = 4.dp)) {
-                        daemon.sequence.forEach { code -> CodePill(code) }
-                    }
+                Text(daemon.name, color = textColor, fontFamily = IBMPlexSans, fontSize = 13.sp)
+                if (daemon.reward.isNotEmpty()) {
+                    Text(daemon.reward, color = rewardColor, fontFamily = IBMPlexSans, fontSize = 11.sp)
+                }
+                Row(Modifier.padding(top = 4.dp)) {
+                    daemon.sequence.forEach { code -> CodePill(code) }
                 }
             }
             if (index != daemons.lastIndex) DottedDivider()
@@ -145,8 +140,8 @@ private fun DaemonPicker(daemons: List<Daemon>, chosen: Set<String>, onToggle: (
 
 @Composable
 internal fun CodePill(code: String) {
-    Box(Modifier.padding(end = 4.dp).background(MB10Colors.bg2, chamferShape(3.dp)).padding(horizontal = 5.dp, vertical = 2.dp)) {
-        Text(code, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
+    Box(Modifier.padding(end = 4.dp).background(MB10Colors.surfaceSunken, chamferShape(3.dp)).padding(horizontal = 5.dp, vertical = 2.dp)) {
+        Text(code, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
     }
 }
 
@@ -182,7 +177,7 @@ private fun BreachSession(daemons: List<Daemon>, seed: Long, onRescan: () -> Uni
     val selectable = if (result == null) attempt.selectableCells() else emptySet()
 
     TerminalFrame {
-        Box(Modifier.fillMaxWidth().background(MB10Colors.accentHack).padding(10.dp, 8.dp)) {
+        Box(Modifier.fillMaxWidth().background(MB10Colors.accentNetrun).padding(10.dp, 8.dp)) {
             Column {
                 Text("BREACH PROTOCOL // ИНТЕРФЕЙС", color = MB10Colors.onAccent, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
                 Spacer(Modifier.height(4.dp))
@@ -197,19 +192,19 @@ private fun BreachSession(daemons: List<Daemon>, seed: Long, onRescan: () -> Uni
         Spacer(Modifier.height(14.dp))
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-            Text("Время взлома", color = MB10Colors.ink0, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Text("Время взлома", color = MB10Colors.inkPrimary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 14.sp)
             Text(
                 formatTime(secondsLeft),
-                color = MB10Colors.accentHack,
+                color = MB10Colors.accentNetrun,
                 fontFamily = JetBrainsMono,
                 fontSize = 15.sp,
-                modifier = Modifier.border(1.dp, MB10Colors.accentHack).padding(horizontal = 10.dp, vertical = 3.dp)
+                modifier = Modifier.border(1.dp, MB10Colors.accentNetrun).padding(horizontal = 10.dp, vertical = 3.dp)
             )
         }
         Spacer(Modifier.height(6.dp))
         val progress = (secondsLeft.toFloat() / MockBreach.timerSec).coerceIn(0f, 1f)
-        Box(Modifier.fillMaxWidth().height(3.dp).background(MB10Colors.bg2)) {
-            Box(Modifier.fillMaxWidth(progress).height(3.dp).background(MB10Colors.accentHack))
+        Box(Modifier.fillMaxWidth().height(3.dp).background(MB10Colors.surfaceSunken)) {
+            Box(Modifier.fillMaxWidth(progress).height(3.dp).background(MB10Colors.accentNetrun))
         }
 
         Row(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -217,8 +212,8 @@ private fun BreachSession(daemons: List<Daemon>, seed: Long, onRescan: () -> Uni
             for (i in 0 until attempt.bufferSize) {
                 val filled = i < codes.size
                 Box(
-                    Modifier.size(20.dp).border(1.dp, if (filled) MB10Colors.accentHack else MB10Colors.inkFaint)
-                        .background(if (filled) MB10Colors.accentHack.copy(alpha = 0.1f) else Color.Transparent)
+                    Modifier.size(20.dp).border(1.dp, if (filled) MB10Colors.accentNetrun else MB10Colors.borderMuted)
+                        .background(if (filled) MB10Colors.accentNetrun.copy(alpha = 0.1f) else Color.Transparent)
                 )
             }
         }
@@ -252,10 +247,10 @@ private fun BreachSession(daemons: List<Daemon>, seed: Long, onRescan: () -> Uni
                 for (i in 0 until attempt.bufferSize) {
                     val filled = i < codes.size
                     Box(
-                        Modifier.size(width = 34.dp, height = 28.dp).border(1.dp, if (filled) MB10Colors.ink0 else MB10Colors.inkFaint),
+                        Modifier.size(width = 34.dp, height = 28.dp).border(1.dp, if (filled) MB10Colors.inkPrimary else MB10Colors.borderMuted),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(if (filled) codes[i] else "", color = MB10Colors.ink0, fontFamily = JetBrainsMono, fontSize = 12.sp)
+                        Text(if (filled) codes[i] else "", color = MB10Colors.inkPrimary, fontFamily = JetBrainsMono, fontSize = 12.sp)
                     }
                 }
             }
@@ -268,7 +263,7 @@ private fun BreachSession(daemons: List<Daemon>, seed: Long, onRescan: () -> Uni
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 6.dp)) {
                     Text(
                         daemon.sequence.joinToString(" · "),
-                        color = if (matched) MB10Colors.accentHack else MB10Colors.inkMuted,
+                        color = if (matched) MB10Colors.accentNetrun else MB10Colors.inkSecondary,
                         fontFamily = JetBrainsMono,
                         fontSize = 13.sp,
                         textDecoration = if (matched) TextDecoration.LineThrough else null
@@ -283,7 +278,7 @@ private fun BreachSession(daemons: List<Daemon>, seed: Long, onRescan: () -> Uni
                 attempt.selected.isEmpty() -> "Выберите первый символ в верхней строке."
                 else -> "Продолжайте цепочку."
             },
-            color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp)
+            color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp)
         )
 
         result?.let { ResultPanel(it) }
@@ -294,9 +289,9 @@ private fun BreachSession(daemons: List<Daemon>, seed: Long, onRescan: () -> Uni
             // Не "отмена без последствий" — сдаёт текущий буфер на резолв
             // досрочно, так же как истечение таймера. Название кнопки должно
             // это отражать, иначе игрок ждёт отмены без результата.
-            OutlineButton("Сдать буфер досрочно", modifier = Modifier.weight(1f), borderColor = MB10Colors.inkFaint, onClick = { resolveOnce() })
+            AppButton("Сдать буфер досрочно", modifier = Modifier.weight(1f), variant = ButtonVariant.Secondary, onClick = { resolveOnce() })
         }
-        OutlineButton("Новая точка доступа", modifier = Modifier.weight(1f), borderColor = MB10Colors.inkFaint, onClick = onRescan)
+        AppButton("Новая точка доступа", modifier = Modifier.weight(1f), variant = ButtonVariant.Secondary, onClick = onRescan)
     }
 }
 
@@ -305,12 +300,12 @@ private fun TerminalFrame(content: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, MB10Colors.inkFaint)
+            .border(1.dp, MB10Colors.borderMuted)
             .drawWithContent {
                 drawContent()
                 val bracket = 9.dp.toPx()
                 val stroke = 2.dp.toPx()
-                val lime = MB10Colors.accentHack
+                val lime = MB10Colors.accentNetrun
                 drawLine(lime, Offset(0f, 0f), Offset(bracket, 0f), stroke)
                 drawLine(lime, Offset(0f, 0f), Offset(0f, bracket), stroke)
                 drawLine(lime, Offset(size.width, 0f), Offset(size.width - bracket, 0f), stroke)
@@ -333,9 +328,9 @@ private fun PanelBox(content: @Composable () -> Unit) {
             .fillMaxWidth()
             .drawWithContent {
                 drawContent()
-                drawLine(MB10Colors.inkFaint, Offset(0f, 0f), Offset(0f, size.height), 1.dp.toPx())
-                drawLine(MB10Colors.inkFaint, Offset(size.width, 0f), Offset(size.width, size.height), 1.dp.toPx())
-                drawLine(MB10Colors.inkFaint, Offset(0f, size.height), Offset(size.width, size.height), 1.dp.toPx())
+                drawLine(MB10Colors.borderMuted, Offset(0f, 0f), Offset(0f, size.height), 1.dp.toPx())
+                drawLine(MB10Colors.borderMuted, Offset(size.width, 0f), Offset(size.width, size.height), 1.dp.toPx())
+                drawLine(MB10Colors.borderMuted, Offset(0f, size.height), Offset(size.width, size.height), 1.dp.toPx())
             }
             .padding(10.dp, 12.dp, 10.dp, 10.dp)
     ) {
@@ -346,9 +341,9 @@ private fun PanelBox(content: @Composable () -> Unit) {
 @Composable
 private fun HackCell(code: String, isSelected: Boolean, orderLabel: String?, isSelectable: Boolean, onClick: () -> Unit) {
     val (bg, borderColor, textColor) = when {
-        isSelected -> Triple(Color(0xFF0E1414), MB10Colors.inkFaint, MB10Colors.inkFaint)
-        isSelectable -> Triple(MB10Colors.accentHack.copy(alpha = 0.07f), MB10Colors.accentHack, MB10Colors.accentHack)
-        else -> Triple(MB10Colors.bg2, MB10Colors.inkFaint, MB10Colors.ink0)
+        isSelected -> Triple(MB10Colors.surfaceBase, MB10Colors.borderMuted, MB10Colors.borderMuted)
+        isSelectable -> Triple(MB10Colors.accentNetrun.copy(alpha = 0.07f), MB10Colors.accentNetrun, MB10Colors.accentNetrun)
+        else -> Triple(MB10Colors.surfaceSunken, MB10Colors.borderMuted, MB10Colors.inkPrimary)
     }
     Box(
         modifier = Modifier
@@ -361,7 +356,7 @@ private fun HackCell(code: String, isSelected: Boolean, orderLabel: String?, isS
         Text(code, color = textColor, fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium, fontSize = 15.sp)
         if (orderLabel != null) {
             Text(
-                orderLabel, color = MB10Colors.accentHack, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                orderLabel, color = MB10Colors.accentNetrun, fontSize = 9.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.align(Alignment.TopEnd).padding(2.dp)
             )
         }
@@ -371,9 +366,9 @@ private fun HackCell(code: String, isSelected: Boolean, orderLabel: String?, isS
 @Composable
 private fun ResultPanel(result: BreachResult) {
     val (title, color) = when (result.outcome) {
-        BreachOutcome.SUCCESS -> "Взлом завершён" to MB10Colors.accentHack
-        BreachOutcome.PARTIAL -> "Взлом частично успешен" to MB10Colors.accentPrimary
-        BreachOutcome.FAIL -> "Взлом провален" to MB10Colors.danger
+        BreachOutcome.SUCCESS -> "Взлом завершён" to MB10Colors.accentNetrun
+        BreachOutcome.PARTIAL -> "Взлом частично успешен" to MB10Colors.accentAction
+        BreachOutcome.FAIL -> "Взлом провален" to MB10Colors.accentDanger
     }
     Column(Modifier.fillMaxWidth().padding(top = 14.dp).border(1.dp, color).padding(12.dp)) {
         Text(title, color = color, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 15.sp)
@@ -383,14 +378,14 @@ private fun ResultPanel(result: BreachResult) {
             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(
                     daemon.name,
-                    color = if (done) MB10Colors.ink0 else MB10Colors.inkMuted,
+                    color = if (done) MB10Colors.inkPrimary else MB10Colors.inkSecondary,
                     fontFamily = IBMPlexSans,
                     fontSize = 12.5.sp,
                     textDecoration = if (done) null else TextDecoration.LineThrough
                 )
                 Text(
                     if (done) "загружен" else "не загружен",
-                    color = if (done) MB10Colors.ink0 else MB10Colors.inkMuted,
+                    color = if (done) MB10Colors.inkPrimary else MB10Colors.inkSecondary,
                     fontFamily = IBMPlexSans,
                     fontSize = 12.5.sp
                 )
@@ -399,11 +394,11 @@ private fun ResultPanel(result: BreachResult) {
         DottedDivider(modifier = Modifier.padding(top = 8.dp))
         Text(
             when (result.outcome) {
-                BreachOutcome.FAIL -> "СБ зафиксировала попытку. Точка доступа заблокирована до конца этого акта, репутация фракции-владельца снижена."
+                BreachOutcome.FAIL -> "СБ зафиксировала попытку. Точка доступа заблокирована до конца этого акта."
                 BreachOutcome.PARTIAL -> "Незагруженные демоны останутся недоступны до новой попытки на этой точке."
                 BreachOutcome.SUCCESS -> "Следов взлома не осталось."
             },
-            color = MB10Colors.inkMuted,
+            color = MB10Colors.inkSecondary,
             fontFamily = JetBrainsMono,
             fontSize = 10.5.sp,
             modifier = Modifier.padding(top = 8.dp)

@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.presence.PresenceService
-import com.megablok10.app.ui.theme.ChamferedPanel
+import com.megablok10.app.ui.theme.ChamferedSurface
 import com.megablok10.app.ui.theme.DottedDivider
 import com.megablok10.app.ui.theme.HexBullet
 import com.megablok10.app.ui.theme.Jura
@@ -58,10 +58,10 @@ fun AppHeader(identity: Identity, onOpenProfile: () -> Unit = {}) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(identity.callsign, color = MB10Colors.ink0, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 19.sp)
-            ChamferedPanel(
-                borderColor = MB10Colors.inkFaint,
-                fillColor = MB10Colors.bg1,
+            Text(identity.callsign, color = MB10Colors.inkPrimary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 19.sp)
+            ChamferedSurface(
+                borderColor = MB10Colors.borderMuted,
+                fillColor = MB10Colors.surfaceRaised,
                 cut = 6.dp,
                 contentPadding = 0.dp
             ) {
@@ -70,8 +70,8 @@ fun AppHeader(identity: Identity, onOpenProfile: () -> Unit = {}) {
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.padding(start = 6.dp, end = 8.dp, top = 3.dp, bottom = 3.dp)
                 ) {
-                    HexBullet(MB10Colors.accentPrimary, size = 8.dp)
-                    Text(identity.faction, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                    HexBullet(MB10Colors.accentAction, size = 8.dp)
+                    Text(identity.faction, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
                 }
             }
         }
@@ -104,13 +104,13 @@ private fun nodeWord(count: Int): String {
 fun AppTabBar(selected: AppTab, onSelect: (AppTab) -> Unit) {
     Column {
         DottedDivider()
-        Row(Modifier.fillMaxWidth().background(MB10Colors.bg1)) {
+        Row(Modifier.fillMaxWidth().background(MB10Colors.surfaceRaised)) {
             AppTab.entries.forEach { tab ->
                 val active = tab == selected
                 // inkFaint (тёмно-коричневый) на bg1 (тёмно-синий) почти неразличимы — оба
                 // около-чёрные с разным подтоном. Приглушённый ink0 вместо этого читается
                 // как "тусклый циан", а не как отдельный несвязанный оттенок.
-                val color = if (active) MB10Colors.accentPrimary else MB10Colors.ink0.copy(alpha = 0.35f)
+                val color = if (active) MB10Colors.accentAction else MB10Colors.inkPrimary.copy(alpha = 0.35f)
                 Column(
                     modifier = Modifier
                         .weight(1f)
@@ -148,7 +148,7 @@ fun MainScaffold(
     hideChrome: Boolean = false,
     content: @Composable (AppTab) -> Unit
 ) {
-    Column(Modifier.fillMaxSize().background(MB10Colors.bg0)) {
+    Column(Modifier.fillMaxSize().background(MB10Colors.surfaceBase)) {
         if (!hideChrome) AppHeader(identity, onOpenProfile)
         Box(Modifier.weight(1f)) {
             content(selectedTab)

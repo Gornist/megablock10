@@ -1,6 +1,7 @@
 package com.megablok10.app.qr
 
 import android.app.Activity
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -22,7 +23,12 @@ fun rememberMb10QrScanner(onResult: (Mb10Qr) -> Unit): () -> Unit {
     ) { result ->
         val scan = IntentIntegrator.parseActivityResult(result.resultCode, result.data)
         val raw = scan?.contents ?: return@rememberLauncherForActivityResult
-        Mb10QrCodec.decode(raw)?.let(onResult)
+        val decoded = Mb10QrCodec.decode(raw)
+        if (decoded != null) {
+            onResult(decoded)
+        } else {
+            Toast.makeText(context, "Это не код Мегаблока", Toast.LENGTH_SHORT).show()
+        }
     }
 
     return {
