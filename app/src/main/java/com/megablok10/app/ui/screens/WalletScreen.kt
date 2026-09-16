@@ -44,6 +44,7 @@ import com.megablok10.app.ui.theme.ButtonVariant
 import com.megablok10.app.ui.theme.ChamferedPanel
 import com.megablok10.app.ui.theme.ChipTone
 import com.megablok10.app.ui.theme.DottedDivider
+import com.megablok10.app.ui.theme.EmptyState
 import com.megablok10.app.ui.theme.HexBullet
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
@@ -130,10 +131,7 @@ fun WalletScreen(identity: Identity) {
         Spacer(Modifier.height(20.dp))
         SectionLabel("Операции")
         if (transactions.isEmpty()) {
-            Text(
-                "Ещё не было ни одной транзакции.",
-                color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 13.sp
-            )
+            EmptyState("Ещё не было ни одной транзакции.")
         } else {
             Column {
                 transactions.forEachIndexed { index, tx ->
@@ -213,10 +211,7 @@ private fun SendTransactionPanel(
                     Text("Кому отправить", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
                     Spacer(Modifier.height(10.dp))
                     if (contacts.isEmpty()) {
-                        Text(
-                            "Нет добавленных контактов — сначала отсканируйте QR-код игрока в Профиле.",
-                            color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 13.sp, lineHeight = 18.sp
-                        )
+                        EmptyState("Нет добавленных контактов — сначала отсканируйте QR-код игрока в Профиле.")
                     } else {
                         contacts.forEachIndexed { index, c ->
                             Row(

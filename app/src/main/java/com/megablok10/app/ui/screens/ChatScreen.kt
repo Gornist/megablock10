@@ -50,6 +50,7 @@ import com.megablok10.app.ui.theme.ButtonVariant
 import com.megablok10.app.ui.theme.ChamferedPanel
 import com.megablok10.app.ui.theme.ChipTone
 import com.megablok10.app.ui.theme.DottedDivider
+import com.megablok10.app.ui.theme.EmptyState
 import com.megablok10.app.ui.theme.HexBullet
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
@@ -296,11 +297,7 @@ private fun NewChatPicker(onPick: (String) -> Unit, onBack: () -> Unit) {
         ThreadHeader(title = "Новый чат", onBack = onBack)
 
         if (contacts.isEmpty()) {
-            Text(
-                "Пока нет контактов. Отсканируйте QR-код другого игрока в Профиле, чтобы начать с ним переписку.",
-                color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 13.sp, lineHeight = 18.sp,
-                modifier = Modifier.padding(top = 8.dp)
-            )
+            EmptyState("Пока нет контактов. Отсканируйте QR-код другого игрока в Профиле, чтобы начать с ним переписку.")
             return@Column
         }
 
@@ -380,7 +377,9 @@ private fun ColumnScope.MessageList(
     onAcceptTransaction: ((Mb10Qr.Transaction) -> Unit)? = null
 ) {
     if (messages.isEmpty()) {
-        Text(emptyText, color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 13.sp, modifier = Modifier.weight(1f))
+        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            EmptyState(emptyText)
+        }
         return
     }
     val entries = remember(messages) { buildChatEntries(messages) }

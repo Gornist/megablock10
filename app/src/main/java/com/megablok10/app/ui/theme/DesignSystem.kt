@@ -265,3 +265,25 @@ fun AppDialog(
         }
     }
 }
+
+/**
+ * Единый вид пустого списка — контурный шестиугольник + пояснительный текст
+ * по центру, вместо серой строки текста без акцента, как было раньше на
+ * каждом экране по-своему. Не более того: сам текст ("что сделать, чтобы
+ * список не был пустым") остаётся за экраном, компонент только задаёт форму.
+ */
+@Composable
+fun EmptyState(text: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.fillMaxWidth().padding(vertical = 28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(Modifier.size(40.dp).border(1.5.dp, MB10Colors.borderMuted, hexShape()))
+        Spacer(Modifier.height(14.dp))
+        Text(
+            text,
+            color = MB10Colors.inkTertiary, fontFamily = IBMPlexSans, fontSize = 13.sp, lineHeight = 18.sp,
+            textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 28.dp)
+        )
+    }
+}

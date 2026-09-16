@@ -39,6 +39,7 @@ import com.megablok10.app.shards.ShardStore
 import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.ButtonVariant
 import com.megablok10.app.ui.theme.ChamferedPanel
+import com.megablok10.app.ui.theme.EmptyState
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.MB10Colors
@@ -169,10 +170,7 @@ private fun DaemonCard(daemon: Daemon) {
 @Composable
 private fun ShardsSegment(shards: List<Mb10Qr.Shard>, onOpen: (Mb10Qr.Shard) -> Unit) {
     if (shards.isEmpty()) {
-        Text(
-            "Пока нет отсканированных шардов. Отсканируйте QR-метку кнопкой выше.",
-            color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 13.sp, lineHeight = 18.sp
-        )
+        EmptyState("Пока нет отсканированных шардов. Отсканируйте QR-метку кнопкой выше.")
         return
     }
     LazyColumn(Modifier.fillMaxSize()) {

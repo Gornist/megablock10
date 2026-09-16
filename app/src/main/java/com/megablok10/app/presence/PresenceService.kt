@@ -7,12 +7,22 @@ import android.net.wifi.WifiManager
 import android.util.Log
 import com.megablok10.app.identity.Identity
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 private const val SERVICE_TYPE = "_mb10chat._tcp."
 private const val TAG = "PresenceService"
+
+/** Известный баг платформы на части устройств: NSD может мигнуть onServiceLost сразу за onServiceFound для одного и того же пира без реального разрыва — отсюда дебаунс перед фактическим удалением. */
+private const val LOST_DEBOUNCE_MS = 4000L
 
 /**
  * Реклама себя и поиск других устройств этого приложения в локальной сети
@@ -30,10 +40,15 @@ object PresenceService {
     private var discoveryListener: NsdManager.DiscoveryListener? = null
     private var multicastLock: WifiManager.MulticastLock? = null
     private var myServiceName: String? = null
+    private var scope: CoroutineScope? = null
 
     // Источник правды — потокобезопасная карта (колбэки NSD приходят не из главного потока);
     // _peers лишь публикует её снимок при каждом изменении.
     private val peerMap = ConcurrentHashMap<String, PeerInfo>()
+    // Отложенные удаления по onServiceLost — ключ тот же serviceName, что и у peerMap.
+    // Если до срабатывания придёт onServiceFound на того же пира, job отменяется и
+    // пир не пропадает из списка вовсе — то самое мерцание, которого не должно быть видно.
+    private val pendingRemovals = ConcurrentHashMap<String, Job>()
     private val _peers = MutableStateFlow<List<PeerInfo>>(emptyList())
     val peers: StateFlow<List<PeerInfo>> = _peers.asStateFlow()
 
@@ -43,6 +58,8 @@ object PresenceService {
 
     fun start(context: Context, identity: Identity, chatPort: Int) {
         stop()
+        val presenceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        scope = presenceScope
 
         val appContext = context.applicationContext
         val wifiManager = appContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
@@ -96,6 +113,8 @@ object PresenceService {
                         val cs = resolved.attributes["cs"]?.toString(Charsets.UTF_8) ?: ""
                         val fac = resolved.attributes["fac"]?.toString(Charsets.UTF_8) ?: ""
                         val host = resolved.host?.hostAddress ?: return
+                        // Пир снова нашёлся — отменяем его отложенное удаление, если оно было запланировано.
+                        pendingRemovals.remove(resolved.serviceName)?.cancel()
                         peerMap[resolved.serviceName] = PeerInfo(pk, cs, fac, host, resolved.port, System.currentTimeMillis())
                         publishPeers()
                     }
@@ -103,8 +122,14 @@ object PresenceService {
             }
 
             override fun onServiceLost(info: NsdServiceInfo) {
-                peerMap.remove(info.serviceName)
-                publishPeers()
+                val name = info.serviceName
+                pendingRemovals[name]?.cancel()
+                pendingRemovals[name] = presenceScope.launch {
+                    delay(LOST_DEBOUNCE_MS)
+                    peerMap.remove(name)
+                    pendingRemovals.remove(name)
+                    publishPeers()
+                }
             }
         }
         discoveryListener = discListener
@@ -123,11 +148,15 @@ object PresenceService {
             if (multicastLock?.isHeld == true) multicastLock?.release()
         } catch (e: Exception) { /* ignore */ }
 
+        scope?.cancel()
+        pendingRemovals.clear()
+
         registrationListener = null
         discoveryListener = null
         multicastLock = null
         nsdManager = null
         myServiceName = null
+        scope = null
         peerMap.clear()
         publishPeers()
     }

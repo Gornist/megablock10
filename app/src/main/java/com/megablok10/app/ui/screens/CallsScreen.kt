@@ -36,6 +36,7 @@ import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.presence.PeerInfo
 import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.ui.theme.DottedDivider
+import com.megablok10.app.ui.theme.EmptyState
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.MB10Colors
@@ -88,7 +89,7 @@ fun CallsScreen(onCallPeer: (PeerInfo) -> Unit) {
         Spacer(Modifier.height(10.dp))
 
         if (callLog.isEmpty()) {
-            Text("Звонков пока не было.", color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 13.sp)
+            EmptyState("Звонков пока не было.")
         } else {
             LazyColumn(Modifier.fillMaxSize()) {
                 items(callLog, key = { it.id }) { entry ->
@@ -160,11 +161,7 @@ private fun NewCallPicker(onPick: (String, String) -> Unit, onBack: () -> Unit) 
         }
 
         if (contacts.isEmpty()) {
-            Text(
-                "Пока нет контактов. Отсканируйте QR-код другого игрока в Профиле, чтобы иметь возможность позвонить.",
-                color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 13.sp, lineHeight = 18.sp,
-                modifier = Modifier.padding(top = 8.dp)
-            )
+            EmptyState("Пока нет контактов. Отсканируйте QR-код другого игрока в Профиле, чтобы иметь возможность позвонить.")
             return@Column
         }
 

@@ -44,6 +44,7 @@ import com.megablok10.app.ui.theme.ChamferedPanel
 import com.megablok10.app.ui.theme.Chip
 import com.megablok10.app.ui.theme.DimmableQr
 import com.megablok10.app.ui.theme.DottedDivider
+import com.megablok10.app.ui.theme.EmptyState
 import com.megablok10.app.ui.theme.HexBullet
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
@@ -109,10 +110,7 @@ fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}, on
         if (contactsExpanded) {
             if (contacts.isEmpty()) {
                 item {
-                    Text(
-                        "Пока нет контактов. Отсканируйте QR-код другого игрока, чтобы добавить его.",
-                        color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 13.sp, lineHeight = 18.sp
-                    )
+                    EmptyState("Пока нет контактов. Отсканируйте QR-код другого игрока, чтобы добавить его.")
                 }
             }
             items(contacts, key = { it.publicKeyB64 }) { c ->
