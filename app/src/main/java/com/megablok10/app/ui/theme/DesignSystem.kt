@@ -170,9 +170,11 @@ fun AppButton(
 /**
  * Единая строка списка: опциональные leading/trailing слоты + произвольный
  * контент по центру. Заменяет собой вручную собранные Row-паттерны в
- * контактах/чатах/звонках/шардах — те либо мигрируют на это, либо остаются
+ * контактах/чатах/звонках — те либо мигрируют на это, либо остаются
  * содержательно другими (например ShardCard — отдельная крупная карточка,
- * не строка списка).
+ * не строка списка). Горизонтального паддинга внутри намеренно нет — он
+ * уже есть на экране (Column/LazyColumn с padding(16.dp)), дублировать
+ * его тут значило бы визуально сдвинуть все существующие списки.
  */
 @Composable
 fun ListRow(
@@ -191,7 +193,7 @@ fun ListRow(
                 else Modifier
             )
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (leading != null) {

@@ -49,6 +49,7 @@ import com.megablok10.app.ui.theme.HexBullet
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.Jura
+import com.megablok10.app.ui.theme.ListRow
 import com.megablok10.app.ui.theme.MB10Colors
 import com.megablok10.app.ui.theme.SectionLabel
 import com.megablok10.app.ui.theme.StatusChip
@@ -214,16 +215,12 @@ private fun SendTransactionPanel(
                         EmptyState("Нет добавленных контактов — сначала отсканируйте QR-код игрока в Профиле.")
                     } else {
                         contacts.forEachIndexed { index, c ->
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth().clickable { selectedContact = c }.padding(vertical = 10.dp)
+                            ListRow(
+                                onClick = { selectedContact = c },
+                                leading = { HexBullet(if (c.publicKeyB64 in onlineKeys) MB10Colors.inkPrimary else MB10Colors.inkTertiary, size = 7.dp) }
                             ) {
-                                HexBullet(if (c.publicKeyB64 in onlineKeys) MB10Colors.inkPrimary else MB10Colors.inkTertiary, size = 7.dp)
-                                Spacer(Modifier.width(10.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(c.callsign, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
-                                    Text(c.faction, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
-                                }
+                                Text(c.callsign, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
+                                Text(c.faction, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
                             }
                             if (index != contacts.lastIndex) DottedDivider()
                         }
@@ -300,43 +297,40 @@ private fun SendTransactionPanel(
 private fun TxRow(tx: TransactionEntity, counterpartyName: String?, onCancelPending: () -> Unit) {
     val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
     val pending = tx.status == TransactionStatus.PENDING
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 9.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(Modifier.weight(1f)) {
-            val title = tx.memo.ifBlank { if (tx.amount > 0) "Входящий платёж" else "Платёж" }
-            Text(title, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
-            val timeText = timeFormat.format(tx.timestamp)
-            val fromText = if (tx.counterpartyPubKeyB64.isEmpty()) {
-                null
-            } else {
-                val label = counterpartyName ?: (tx.counterpartyPubKeyB64.take(8) + "…")
-                if (tx.amount > 0) " · от $label" else " · → $label"
-            }
-            val statusText = if (pending) " · ожидает подтверждения" else ""
+    ListRow(
+        trailing = {
+            val amountText = (if (tx.amount > 0) "+" else "") + tx.amount
             Text(
-                timeText + (fromText ?: "") + statusText,
-                color = if (pending) MB10Colors.accentAction else MB10Colors.inkSecondary,
-                fontFamily = JetBrainsMono, fontSize = 10.sp
+                amountText,
+                color = if (tx.amount > 0) MB10Colors.accentAction else MB10Colors.inkSecondary,
+                fontFamily = JetBrainsMono,
+                fontSize = 13.sp
             )
-            if (pending) {
-                Text(
-                    "Отменить",
-                    color = MB10Colors.accentDanger,
-                    fontFamily = JetBrainsMono,
-                    fontSize = 10.sp,
-                    modifier = Modifier.clickable(onClick = onCancelPending).padding(top = 2.dp)
-                )
-            }
         }
-        val amountText = (if (tx.amount > 0) "+" else "") + tx.amount
+    ) {
+        val title = tx.memo.ifBlank { if (tx.amount > 0) "Входящий платёж" else "Платёж" }
+        Text(title, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
+        val timeText = timeFormat.format(tx.timestamp)
+        val fromText = if (tx.counterpartyPubKeyB64.isEmpty()) {
+            null
+        } else {
+            val label = counterpartyName ?: (tx.counterpartyPubKeyB64.take(8) + "…")
+            if (tx.amount > 0) " · от $label" else " · → $label"
+        }
+        val statusText = if (pending) " · ожидает подтверждения" else ""
         Text(
-            amountText,
-            color = if (tx.amount > 0) MB10Colors.accentAction else MB10Colors.inkSecondary,
-            fontFamily = JetBrainsMono,
-            fontSize = 13.sp
+            timeText + (fromText ?: "") + statusText,
+            color = if (pending) MB10Colors.accentAction else MB10Colors.inkSecondary,
+            fontFamily = JetBrainsMono, fontSize = 10.sp
         )
+        if (pending) {
+            Text(
+                "Отменить",
+                color = MB10Colors.accentDanger,
+                fontFamily = JetBrainsMono,
+                fontSize = 10.sp,
+                modifier = Modifier.clickable(onClick = onCancelPending).padding(top = 2.dp)
+            )
+        }
     }
 }

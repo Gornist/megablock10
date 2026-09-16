@@ -40,6 +40,7 @@ import com.megablok10.app.ui.theme.DottedDivider
 import com.megablok10.app.ui.theme.EmptyState
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
+import com.megablok10.app.ui.theme.ListRow
 import com.megablok10.app.ui.theme.MB10Colors
 import com.megablok10.app.ui.theme.OnlineDot
 import com.megablok10.app.ui.theme.chamferShape
@@ -116,24 +117,23 @@ private fun CallLogRow(entry: CallLogEntity, onClick: () -> Unit) {
         else -> entry.outcome
     }
     val outcomeColor = when (entry.outcome) {
-        CallOutcome.COMPLETED -> MB10Colors.accentPrimary
-        CallOutcome.MISSED, CallOutcome.UNREACHABLE -> MB10Colors.danger
-        else -> MB10Colors.inkMuted
+        CallOutcome.COMPLETED -> MB10Colors.accentAction
+        CallOutcome.MISSED, CallOutcome.UNREACHABLE -> MB10Colors.accentDanger
+        else -> MB10Colors.inkSecondary
     }
-    Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
+    ListRow(
+        onClick = onClick,
+        leading = {
+            Text(
+                if (entry.direction == CallDirection.OUTGOING) "↗" else "↙",
+                color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 14.sp,
+                modifier = Modifier.width(10.dp)
+            )
+        },
+        trailing = { Text(timeFormatter.format(Date(entry.startedAt)), color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 10.sp) }
     ) {
-        Text(
-            if (entry.direction == CallDirection.OUTGOING) "↗" else "↙",
-            color = MB10Colors.inkFaint, fontFamily = JetBrainsMono, fontSize = 14.sp,
-            modifier = Modifier.width(20.dp)
-        )
-        Column(Modifier.weight(1f)) {
-            Text(entry.peerCallsign, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp)
-            Text(outcomeLabel, color = outcomeColor, fontFamily = JetBrainsMono, fontSize = 10.sp)
-        }
-        Text(timeFormatter.format(Date(entry.startedAt)), color = MB10Colors.inkFaint, fontFamily = JetBrainsMono, fontSize = 10.sp)
+        Text(entry.peerCallsign, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
+        Text(outcomeLabel, color = outcomeColor, fontFamily = JetBrainsMono, fontSize = 10.sp)
     }
 }
 
@@ -182,17 +182,12 @@ private fun NewCallPicker(onPick: (String, String) -> Unit, onBack: () -> Unit) 
 
         LazyColumn(Modifier.fillMaxSize()) {
             items(filtered, key = { it.publicKeyB64 }) { c ->
-                val online = c.publicKeyB64 in onlineKeys
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth().clickable { onPick(c.publicKeyB64, c.callsign) }.padding(vertical = 12.dp)
+                ListRow(
+                    onClick = { onPick(c.publicKeyB64, c.callsign) },
+                    leading = { OnlineDot(c.publicKeyB64 in onlineKeys) }
                 ) {
-                    OnlineDot(online)
-                    Spacer(Modifier.width(10.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(c.callsign, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp)
-                        Text(c.faction, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
-                    }
+                    Text(c.callsign, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp)
+                    Text(c.faction, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
                 }
             }
         }

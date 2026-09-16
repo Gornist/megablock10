@@ -54,6 +54,7 @@ import com.megablok10.app.ui.theme.HexBullet
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.Jura
+import com.megablok10.app.ui.theme.ListRow
 import com.megablok10.app.ui.theme.MB10Colors
 import com.megablok10.app.ui.theme.OnlineDot
 import com.megablok10.app.ui.theme.StatusChip
@@ -175,23 +176,15 @@ private fun ConversationInbox(identity: Identity, onOpenFaction: () -> Unit, onO
 @Composable
 private fun ConversationRow(title: String, preview: String, time: Long?, online: Boolean? = null, onClick: () -> Unit) {
     val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
-    Column(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Row(Modifier.fillMaxWidth().padding(vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (online != null) {
-                OnlineDot(online)
-                Spacer(Modifier.width(10.dp))
-            } else {
-                Spacer(Modifier.width(17.dp))
-            }
-            Column(Modifier.weight(1f)) {
-                Text(title, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp)
-                Spacer(Modifier.height(2.dp))
-                Text(preview, color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            if (time != null) {
-                Spacer(Modifier.width(8.dp))
-                Text(timeFormat.format(time), color = MB10Colors.inkFaint, fontFamily = JetBrainsMono, fontSize = 10.sp)
-            }
+    Column(Modifier.fillMaxWidth()) {
+        ListRow(
+            onClick = onClick,
+            leading = { if (online != null) OnlineDot(online) else Spacer(Modifier.width(7.dp)) },
+            trailing = time?.let { t -> { Text(timeFormat.format(t), color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 10.sp) } }
+        ) {
+            Text(title, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
+            Spacer(Modifier.height(2.dp))
+            Text(preview, color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         DottedDivider()
     }
@@ -316,16 +309,12 @@ private fun NewChatPicker(onPick: (String) -> Unit, onBack: () -> Unit) {
 
         LazyColumn(Modifier.fillMaxSize()) {
             items(filtered, key = { it.publicKeyB64 }) { c ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth().clickable { onPick(c.publicKeyB64) }.padding(vertical = 12.dp)
+                ListRow(
+                    onClick = { onPick(c.publicKeyB64) },
+                    leading = { OnlineDot(c.publicKeyB64 in onlineKeys) }
                 ) {
-                    OnlineDot(online = c.publicKeyB64 in onlineKeys)
-                    Spacer(Modifier.width(10.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(c.callsign, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp)
-                        Text(c.faction, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
-                    }
+                    Text(c.callsign, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
+                    Text(c.faction, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
                 }
             }
         }
