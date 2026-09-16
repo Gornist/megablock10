@@ -93,4 +93,26 @@ object TransactionStore {
         )
         return rowId != -1L
     }
+
+    /**
+     * Деньги внутри шарда — находка, а не перевод от игрока: подписи тут
+     * нет и проверять нечего, доверие идёт от самого факта, что шард
+     * физически найден и отсканирован. Идемпотентность — через тот же
+     * insertIfAbsent, что и у обычных транзакций: id записи привязан к id
+     * шарда, поэтому повторный скан того же шарда (тот же QR, другая
+     * копия, случайный повтор) не зачисляет деньги дважды.
+     */
+    suspend fun creditShardMoney(context: Context, shardId: String, amount: Long, shardTitle: String) {
+        if (amount <= 0) return
+        Mb10Database.get(context).transactionDao().insertIfAbsent(
+            TransactionEntity(
+                id = "shard:$shardId",
+                counterpartyPubKeyB64 = "",
+                amount = amount,
+                memo = "Шард: $shardTitle",
+                timestamp = System.currentTimeMillis(),
+                status = TransactionStatus.CONFIRMED
+            )
+        )
+    }
 }

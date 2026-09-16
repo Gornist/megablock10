@@ -4,6 +4,7 @@ import android.content.Context
 import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.data.ShardEntity
 import com.megablok10.app.qr.Mb10Qr
+import com.megablok10.app.wallet.TransactionStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -11,9 +12,10 @@ import kotlinx.coroutines.flow.map
 object ShardStore {
     fun observeAll(context: Context): Flow<List<Mb10Qr.Shard>> =
         Mb10Database.get(context).shardDao().observeAll().map { entities ->
-            entities.map { Mb10Qr.Shard(it.id, it.badge, it.decryptAction, it.title, it.meta, it.body) }
+            entities.map { Mb10Qr.Shard(it.id, it.badge, it.decryptAction, it.title, it.meta, it.body, it.moneyAmount) }
         }
 
+    /** Деньги внутри шарда (если есть) зачисляются тут же, в момент сохранения — тем же событием, что и появление шарда в коллекции. */
     suspend fun add(context: Context, shard: Mb10Qr.Shard) {
         Mb10Database.get(context).shardDao().upsert(
             ShardEntity(
@@ -23,8 +25,10 @@ object ShardStore {
                 title = shard.title,
                 meta = shard.meta,
                 body = shard.body,
-                scannedAt = System.currentTimeMillis()
+                scannedAt = System.currentTimeMillis(),
+                moneyAmount = shard.moneyAmount
             )
         )
+        TransactionStore.creditShardMoney(context, shard.id, shard.moneyAmount, shard.title)
     }
 }

@@ -16,5 +16,6 @@ data class ShardEntity(
     val title: String,
     val meta: String,
     val body: String,
-    val scannedAt: Long
+    val scannedAt: Long,
+    val moneyAmount: Long = 0
 )

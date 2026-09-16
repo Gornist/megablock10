@@ -26,14 +26,20 @@ sealed interface Mb10Qr {
         val name: String
     ) : Mb10Qr
 
-    /** Шард — печатается мастерами на месте либо выдаётся как награда за взлом. */
+    /**
+     * Шард — печатается мастерами на месте либо выдаётся как награда за взлом.
+     * moneyAmount — необязательные деньги внутри шарда (0, если их нет):
+     * зачисляются один раз, в момент скана, тем же путём, что и находка
+     * наличных в тайнике — не переводом от другого игрока.
+     */
     data class Shard(
         val id: String,
         val badge: String,
         val decryptAction: Boolean,
         val title: String,
         val meta: String,
-        val body: String
+        val body: String,
+        val moneyAmount: Long = 0
     ) : Mb10Qr
 
     /**
@@ -110,8 +116,9 @@ object Mb10QrCodec {
         decryptAction: Boolean,
         title: String,
         meta: String,
-        body: String
-    ): String = "$MAGIC:SHARD:v1:$id:$badge:${if (decryptAction) 1 else 0}:${b64(title)}:${b64(meta)}:${b64(body)}"
+        body: String,
+        moneyAmount: Long = 0
+    ): String = "$MAGIC:SHARD:v1:$id:$badge:${if (decryptAction) 1 else 0}:${b64(title)}:${b64(meta)}:${b64(body)}:$moneyAmount"
 
     private fun decodeShard(parts: List<String>): Mb10Qr.Shard? {
         if (parts.size < 9) return null
@@ -121,7 +128,9 @@ object Mb10QrCodec {
             decryptAction = parts[5] == "1",
             title = unb64(parts[6]),
             meta = unb64(parts[7]),
-            body = unb64(parts[8])
+            body = unb64(parts[8]),
+            // Поле добавлено позже v1 — у уже напечатанных до этого шардов его просто нет в строке, считаем 0.
+            moneyAmount = parts.getOrNull(9)?.toLongOrNull() ?: 0
         )
     }
 

@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.ui.theme.ChamferedPanel
+import com.megablok10.app.ui.theme.HexBullet
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.Jura
@@ -71,7 +72,21 @@ internal fun ShardCard(shard: Mb10Qr.Shard, onClick: () -> Unit) {
             }
             Spacer(Modifier.height(5.dp))
             Text(shard.meta, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
+            if (shard.moneyAmount > 0) {
+                Spacer(Modifier.height(5.dp))
+                ShardMoneyRow(shard.moneyAmount)
+            }
         }
+    }
+}
+
+/** Деньги уже зачислены в момент скана — это не кнопка, а подтверждение находки. */
+@Composable
+private fun ShardMoneyRow(amount: Long) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        HexBullet(MB10Colors.accentAction, size = 7.dp)
+        Spacer(Modifier.width(6.dp))
+        Text("+$amount €$", color = MB10Colors.accentAction, fontFamily = JetBrainsMono, fontSize = 10.5.sp, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -104,6 +119,10 @@ internal fun ShardDetailOverlay(shard: Mb10Qr.Shard, onClose: () -> Unit, onOpen
         }
         Spacer(Modifier.height(4.dp))
         Text(shard.meta, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
+        if (shard.moneyAmount > 0) {
+            Spacer(Modifier.height(8.dp))
+            ShardMoneyRow(shard.moneyAmount)
+        }
         Spacer(Modifier.height(16.dp))
 
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
