@@ -53,7 +53,7 @@ import kotlinx.coroutines.launch
  * типу декодированного QR, а не по вкладке, которая открыта в моменте.
  */
 @Composable
-fun CyberdeckScreen() {
+fun CyberdeckScreen(onNestedChange: (Boolean) -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { DaemonStore.ensureSeeded(context) }
@@ -63,6 +63,9 @@ fun CyberdeckScreen() {
     var segment by remember { mutableStateOf(0) } // 0 = Демоны, 1 = Шарды
     var point by remember { mutableStateOf<Mb10Qr.AccessPoint?>(null) }
     var openedShard by remember { mutableStateOf<Mb10Qr.Shard?>(null) }
+
+    // Деталь шарда — полноэкранная, со своим back-заголовком; шапка приложения над ней была бы дублем.
+    LaunchedEffect(openedShard) { onNestedChange(openedShard != null) }
 
     val scanObject = rememberMb10QrScanner { qr ->
         when (qr) {

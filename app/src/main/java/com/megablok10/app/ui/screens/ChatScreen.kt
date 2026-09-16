@@ -70,7 +70,12 @@ private sealed class ChatDestination {
  * появится — им начинают через "+", а не браузят отдельным табом.
  */
 @Composable
-fun ChatScreen(identity: Identity, openedWithContactKey: String? = null, onContactConsumed: () -> Unit = {}) {
+fun ChatScreen(
+    identity: Identity,
+    openedWithContactKey: String? = null,
+    onContactConsumed: () -> Unit = {},
+    onNestedChange: (Boolean) -> Unit = {}
+) {
     var destination by remember { mutableStateOf<ChatDestination?>(null) }
     var showContactPicker by remember { mutableStateOf(false) }
 
@@ -79,6 +84,11 @@ fun ChatScreen(identity: Identity, openedWithContactKey: String? = null, onConta
             destination = ChatDestination.Direct(openedWithContactKey)
             onContactConsumed()
         }
+    }
+
+    // Шапка приложения и таббар прячутся, пока открыт тред/пикер — у обоих уже есть свой back-заголовок.
+    LaunchedEffect(destination, showContactPicker) {
+        onNestedChange(destination != null || showContactPicker)
     }
 
     when {

@@ -132,19 +132,27 @@ fun AppTabBar(selected: AppTab, onSelect: (AppTab) -> Unit) {
     }
 }
 
+/**
+ * hideChrome — вложенный экран внутри таба (тред чата, деталь шарда) сам
+ * несёт свой back-заголовок; шапка приложения и таббар над ним были бы
+ * вторым, конкурирующим заголовком и второй "точкой выхода" одновременно.
+ * Таб, который сейчас активен, сам решает, когда он "вложен" — MainScaffold
+ * только прячет/показывает chrome по этому единственному флагу.
+ */
 @Composable
 fun MainScaffold(
     identity: Identity,
     selectedTab: AppTab,
     onSelectTab: (AppTab) -> Unit,
     onOpenProfile: () -> Unit = {},
+    hideChrome: Boolean = false,
     content: @Composable (AppTab) -> Unit
 ) {
     Column(Modifier.fillMaxSize().background(MB10Colors.bg0)) {
-        AppHeader(identity, onOpenProfile)
+        if (!hideChrome) AppHeader(identity, onOpenProfile)
         Box(Modifier.weight(1f)) {
             content(selectedTab)
         }
-        AppTabBar(selected = selectedTab, onSelect = onSelectTab)
+        if (!hideChrome) AppTabBar(selected = selectedTab, onSelect = onSelectTab)
     }
 }

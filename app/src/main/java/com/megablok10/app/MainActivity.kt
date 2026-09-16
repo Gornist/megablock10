@@ -91,6 +91,8 @@ fun AppRoot() {
     var chatContact by remember { mutableStateOf<String?>(null) }
     var showMasterTool by remember { mutableStateOf(false) }
     var showProfile by remember { mutableStateOf(false) }
+    var chatThreadOpen by remember { mutableStateOf(false) }
+    var shardDetailOpen by remember { mutableStateOf(false) }
 
     // WebRTC не откроет микрофон без RECORD_AUDIO — звонок (свой исходящий
     // или принятие входящего) — единственное место в приложении, где он
@@ -154,14 +156,32 @@ fun AppRoot() {
         )
     } else {
         val callState by CallManager.state.collectAsState()
+        // Только активный таб решает, вложен ли он сейчас — chrome прячется по его флагу,
+        // не по обоим сразу (состояние неактивного таба не влияет, пока на него не переключились).
+        val hideChrome = when (tab) {
+            AppTab.Chat -> chatThreadOpen
+            AppTab.Hack -> shardDetailOpen
+            else -> false
+        }
         Box(Modifier.fillMaxSize()) {
-            MainScaffold(identity = currentIdentity, selectedTab = tab, onSelectTab = { tab = it }, onOpenProfile = { showProfile = true }) { activeTab ->
+            MainScaffold(
+                identity = currentIdentity,
+                selectedTab = tab,
+                onSelectTab = { tab = it },
+                onOpenProfile = { showProfile = true },
+                hideChrome = hideChrome
+            ) { activeTab ->
                 when (activeTab) {
-                    AppTab.Chat -> ChatScreen(identity = currentIdentity, openedWithContactKey = chatContact, onContactConsumed = { chatContact = null })
+                    AppTab.Chat -> ChatScreen(
+                        identity = currentIdentity,
+                        openedWithContactKey = chatContact,
+                        onContactConsumed = { chatContact = null },
+                        onNestedChange = { chatThreadOpen = it }
+                    )
                     AppTab.Calls -> CallsScreen(onCallPeer = { peer: PeerInfo ->
                         withMicPermission { CallManager.startOutgoingCall(context, currentIdentity, peer) }
                     })
-                    AppTab.Hack -> CyberdeckScreen()
+                    AppTab.Hack -> CyberdeckScreen(onNestedChange = { shardDetailOpen = it })
                     AppTab.Wallet -> WalletScreen(currentIdentity)
                 }
             }
