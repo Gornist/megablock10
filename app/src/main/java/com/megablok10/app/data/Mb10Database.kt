@@ -13,7 +13,7 @@ import androidx.room.RoomDatabase
  */
 @Database(
     entities = [CharacterEntity::class, ShardEntity::class, TransactionEntity::class, DaemonEntity::class, ChatMessageEntity::class, CallLogEntity::class],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class Mb10Database : RoomDatabase() {

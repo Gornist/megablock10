@@ -125,12 +125,20 @@ internal fun ShardDetailOverlay(shard: Mb10Qr.Shard, onClose: () -> Unit, onOpen
         }
         Spacer(Modifier.height(16.dp))
 
+        val locked = shard.decryptAction && !shard.decrypted
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-            Text(shard.body, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 14.sp, lineHeight = 21.sp)
+            if (locked) {
+                Text(
+                    "Содержимое зашифровано. Взломайте шифр-замок, чтобы прочитать.",
+                    color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 12.sp, lineHeight = 18.sp
+                )
+            } else {
+                Text(shard.body, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 14.sp, lineHeight = 21.sp)
+            }
             Spacer(Modifier.height(16.dp))
         }
 
-        if (shard.decryptAction) {
+        if (locked) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()

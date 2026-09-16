@@ -14,4 +14,7 @@ interface ShardDao {
     /** REPLACE, не IGNORE — повторное сканирование того же шарда обновляет его текст, если мастер перепечатал QR. */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(shard: ShardEntity)
+
+    @Query("UPDATE shards SET decrypted = 1 WHERE id = :id")
+    suspend fun markDecrypted(id: String)
 }

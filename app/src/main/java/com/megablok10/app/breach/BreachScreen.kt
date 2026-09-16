@@ -113,6 +113,43 @@ internal fun BreachAccessPointFlow(point: Mb10Qr.AccessPoint, daemons: List<Daem
     }
 }
 
+/**
+ * Мини-взлом одного зашифрованного шарда — тот же движок Breach Protocol
+ * (BreachSession), что и у точки доступа, но без выбора демонов: цель ровно
+ * одна, детерминированно выведенная из id шарда (shardDecryptTarget), так
+ * что у одного и того же шарда всегда один и тот же набор кодов-цели на
+ * этом устройстве. Сетка вокруг цели каждый раз новая (сид от nanoTime,
+ * как и в BreachAccessPointFlow) — пересдать попытку можно, а не зубрить
+ * один и тот же расклад. Вызывается из CyberdeckScreen поверх ShardDetailOverlay.
+ */
+@Composable
+internal fun ShardDecryptFlow(shard: Mb10Qr.Shard, onDecrypted: () -> Unit, onCancel: () -> Unit) {
+    val target = remember(shard.id) { shardDecryptTarget(shard) }
+    val sessionSeed = remember(shard.id) { System.nanoTime() }
+
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 10.dp)) {
+            HexBullet(MB10Colors.accentNetrun, size = 8.dp)
+            Spacer(Modifier.width(6.dp))
+            Text("Шифр-замок: ${shard.title}", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
+        }
+        BreachSession(
+            daemons = listOf(target),
+            seed = sessionSeed,
+            onRescan = onCancel,
+            rescanLabel = "Отмена",
+            failMessage = "Шифр-замок устоял. Шард остаётся зашифрован — можно попробовать ещё раз.",
+            onResult = { result -> if (result.outcome == BreachOutcome.SUCCESS) onDecrypted() }
+        )
+    }
+}
+
+private fun shardDecryptTarget(shard: Mb10Qr.Shard): Daemon {
+    val random = Random(shard.id.hashCode().toLong())
+    val sequence = List(3) { BreachSymbols.ALPHABET.random(random) }
+    return Daemon(id = "shard-decrypt:${shard.id}", name = "Шифр-замок", sequence = sequence)
+}
+
 @Composable
 private fun DaemonPicker(daemons: List<Daemon>, chosen: Set<String>, onToggle: (String) -> Unit) {
     Column {
@@ -154,7 +191,14 @@ internal fun CodePill(code: String) {
  * и поверх появляется result-panel, как в макете.
  */
 @Composable
-private fun BreachSession(daemons: List<Daemon>, seed: Long, onRescan: () -> Unit) {
+private fun BreachSession(
+    daemons: List<Daemon>,
+    seed: Long,
+    onRescan: () -> Unit,
+    rescanLabel: String = "Новая точка доступа",
+    failMessage: String = "СБ зафиксировала попытку. Точка доступа заблокирована до конца этого акта.",
+    onResult: (BreachResult) -> Unit = {}
+) {
     val grid = remember(seed) { generateGrid(MockBreach.gridSize, daemons, Random(seed)) }
     val breachId = remember(seed) { "MB10-VENT-" + seed.toString(16).takeLast(4).uppercase() }
 
@@ -163,7 +207,11 @@ private fun BreachSession(daemons: List<Daemon>, seed: Long, onRescan: () -> Uni
     var result by remember(seed) { mutableStateOf<BreachResult?>(null) }
 
     fun resolveOnce() {
-        if (result == null) result = BreachResult(attempt.daemons, attempt.matchedDaemonIds)
+        if (result == null) {
+            val resolved = BreachResult(attempt.daemons, attempt.matchedDaemonIds)
+            result = resolved
+            onResult(resolved)
+        }
     }
 
     LaunchedEffect(seed) {
@@ -281,7 +329,7 @@ private fun BreachSession(daemons: List<Daemon>, seed: Long, onRescan: () -> Uni
             color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp)
         )
 
-        result?.let { ResultPanel(it) }
+        result?.let { ResultPanel(it, failMessage = failMessage) }
     }
 
     Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -291,7 +339,7 @@ private fun BreachSession(daemons: List<Daemon>, seed: Long, onRescan: () -> Uni
             // это отражать, иначе игрок ждёт отмены без результата.
             AppButton("Сдать буфер досрочно", modifier = Modifier.weight(1f), variant = ButtonVariant.Secondary, onClick = { resolveOnce() })
         }
-        AppButton("Новая точка доступа", modifier = Modifier.weight(1f), variant = ButtonVariant.Secondary, onClick = onRescan)
+        AppButton(rescanLabel, modifier = Modifier.weight(1f), variant = ButtonVariant.Secondary, onClick = onRescan)
     }
 }
 
@@ -364,7 +412,10 @@ private fun HackCell(code: String, isSelected: Boolean, orderLabel: String?, isS
 }
 
 @Composable
-private fun ResultPanel(result: BreachResult) {
+private fun ResultPanel(
+    result: BreachResult,
+    failMessage: String = "СБ зафиксировала попытку. Точка доступа заблокирована до конца этого акта."
+) {
     val (title, color) = when (result.outcome) {
         BreachOutcome.SUCCESS -> "Взлом завершён" to MB10Colors.accentNetrun
         BreachOutcome.PARTIAL -> "Взлом частично успешен" to MB10Colors.accentAction
@@ -394,7 +445,7 @@ private fun ResultPanel(result: BreachResult) {
         DottedDivider(modifier = Modifier.padding(top = 8.dp))
         Text(
             when (result.outcome) {
-                BreachOutcome.FAIL -> "СБ зафиксировала попытку. Точка доступа заблокирована до конца этого акта."
+                BreachOutcome.FAIL -> failMessage
                 BreachOutcome.PARTIAL -> "Незагруженные демоны останутся недоступны до новой попытки на этой точке."
                 BreachOutcome.SUCCESS -> "Следов взлома не осталось."
             },

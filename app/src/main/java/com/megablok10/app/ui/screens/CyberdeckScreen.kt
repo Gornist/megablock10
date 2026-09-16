@@ -34,6 +34,7 @@ import com.megablok10.app.breach.BreachAccessPointFlow
 import com.megablok10.app.breach.CodePill
 import com.megablok10.app.breach.Daemon
 import com.megablok10.app.breach.DaemonStore
+import com.megablok10.app.breach.ShardDecryptFlow
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.rememberMb10QrScanner
 import com.megablok10.app.shards.ShardStore
@@ -65,9 +66,10 @@ fun CyberdeckScreen(onNestedChange: (Boolean) -> Unit = {}) {
     var segment by remember { mutableStateOf(0) } // 0 = Демоны, 1 = Шарды
     var point by remember { mutableStateOf<Mb10Qr.AccessPoint?>(null) }
     var openedShard by remember { mutableStateOf<Mb10Qr.Shard?>(null) }
+    var decryptingShard by remember { mutableStateOf<Mb10Qr.Shard?>(null) }
 
-    // Деталь шарда — полноэкранная, со своим back-заголовком; шапка приложения над ней была бы дублем.
-    LaunchedEffect(openedShard) { onNestedChange(openedShard != null) }
+    // Деталь шарда и мини-взлом — полноэкранные, со своим back-заголовком; шапка приложения над ними была бы дублем.
+    LaunchedEffect(openedShard, decryptingShard) { onNestedChange(openedShard != null || decryptingShard != null) }
 
     val scanObject = rememberMb10QrScanner { qr ->
         when (qr) {
@@ -77,14 +79,28 @@ fun CyberdeckScreen(onNestedChange: (Boolean) -> Unit = {}) {
         }
     }
 
+    val decrypting = decryptingShard
+    if (decrypting != null) {
+        ShardDecryptFlow(
+            shard = decrypting,
+            onDecrypted = {
+                scope.launch { ShardStore.markDecrypted(context, decrypting.id) }
+                decryptingShard = null
+                openedShard = decrypting.copy(decrypted = true)
+            },
+            onCancel = { decryptingShard = null; openedShard = decrypting }
+        )
+        return
+    }
+
     val opened = openedShard
     if (opened != null) {
         ShardDetailOverlay(
             shard = opened,
             onClose = { openedShard = null },
-            // "Расшифровать" — переключает на сегмент взлома внутри этого же экрана,
-            // а не на отдельный таб, как было раньше (Шарды и Кибердека — один экран).
-            onOpenHack = { openedShard = null; segment = 0 }
+            // "Расшифровать" — открывает мини-взлом этого конкретного шарда
+            // (ShardDecryptFlow), а не общий сегмент "Демоны".
+            onOpenHack = { openedShard = null; decryptingShard = opened }
         )
         return
     }

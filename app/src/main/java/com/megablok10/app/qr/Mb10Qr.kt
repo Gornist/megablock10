@@ -31,6 +31,12 @@ sealed interface Mb10Qr {
      * moneyAmount — необязательные деньги внутри шарда (0, если их нет):
      * зачисляются один раз, в момент скана, тем же путём, что и находка
      * наличных в тайнике — не переводом от другого игрока.
+     *
+     * decrypted — локальное состояние устройства, а не часть QR: шард с
+     * decryptAction = true рождается нерасшифрованным (см. ShardStore.add)
+     * и текст его body скрыт в UI, пока игрок не пройдёт мини-взлом
+     * (ShardDecryptFlow в BreachScreen.kt). У шардов без decryptAction
+     * это поле не имеет смысла, поэтому по умолчанию true (не заблокирован).
      */
     data class Shard(
         val id: String,
@@ -39,7 +45,8 @@ sealed interface Mb10Qr {
         val title: String,
         val meta: String,
         val body: String,
-        val moneyAmount: Long = 0
+        val moneyAmount: Long = 0,
+        val decrypted: Boolean = true
     ) : Mb10Qr
 
     /**

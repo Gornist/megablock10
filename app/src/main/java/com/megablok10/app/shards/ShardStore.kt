@@ -12,10 +12,15 @@ import kotlinx.coroutines.flow.map
 object ShardStore {
     fun observeAll(context: Context): Flow<List<Mb10Qr.Shard>> =
         Mb10Database.get(context).shardDao().observeAll().map { entities ->
-            entities.map { Mb10Qr.Shard(it.id, it.badge, it.decryptAction, it.title, it.meta, it.body, it.moneyAmount) }
+            entities.map { Mb10Qr.Shard(it.id, it.badge, it.decryptAction, it.title, it.meta, it.body, it.moneyAmount, it.decrypted) }
         }
 
-    /** Деньги внутри шарда (если есть) зачисляются тут же, в момент сохранения — тем же событием, что и появление шарда в коллекции. */
+    /**
+     * Деньги внутри шарда (если есть) зачисляются тут же, в момент сохранения —
+     * тем же событием, что и появление шарда в коллекции. decrypted стартует
+     * как !decryptAction: шард без требования расшифровки сразу открыт,
+     * шард с decryptAction = true — заблокирован до успешного мини-взлома.
+     */
     suspend fun add(context: Context, shard: Mb10Qr.Shard) {
         Mb10Database.get(context).shardDao().upsert(
             ShardEntity(
@@ -26,9 +31,14 @@ object ShardStore {
                 meta = shard.meta,
                 body = shard.body,
                 scannedAt = System.currentTimeMillis(),
-                moneyAmount = shard.moneyAmount
+                moneyAmount = shard.moneyAmount,
+                decrypted = !shard.decryptAction
             )
         )
         TransactionStore.creditShardMoney(context, shard.id, shard.moneyAmount, shard.title)
+    }
+
+    suspend fun markDecrypted(context: Context, id: String) {
+        Mb10Database.get(context).shardDao().markDecrypted(id)
     }
 }
