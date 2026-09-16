@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -56,6 +55,7 @@ import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.Jura
 import com.megablok10.app.ui.theme.MB10Colors
+import com.megablok10.app.ui.theme.OnlineDot
 import com.megablok10.app.ui.theme.StatusChip
 import com.megablok10.app.ui.theme.chamferShape
 import com.megablok10.app.wallet.TransactionStore
@@ -292,6 +292,11 @@ private fun NewChatPicker(onPick: (String) -> Unit, onBack: () -> Unit) {
     val contacts by ContactStore.observeAll(context).collectAsState(initial = emptyList())
     val onlinePeers by PresenceService.peers.collectAsState()
     val onlineKeys = remember(onlinePeers) { onlinePeers.map { it.pubKeyB64 }.toSet() }
+    var query by remember { mutableStateOf("") }
+    val filtered = remember(contacts, query) {
+        if (query.isBlank()) contacts
+        else contacts.filter { it.callsign.contains(query, ignoreCase = true) || it.faction.contains(query, ignoreCase = true) }
+    }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         ThreadHeader(title = "Новый чат", onBack = onBack)
@@ -301,8 +306,16 @@ private fun NewChatPicker(onPick: (String) -> Unit, onBack: () -> Unit) {
             return@Column
         }
 
+        AppTextField(value = query, onValueChange = { query = it }, placeholder = "Позывной или фракция", modifier = Modifier.fillMaxWidth())
+        Spacer(Modifier.height(10.dp))
+
+        if (filtered.isEmpty()) {
+            EmptyState("Ничего не нашлось.")
+            return@Column
+        }
+
         LazyColumn(Modifier.fillMaxSize()) {
-            items(contacts, key = { it.publicKeyB64 }) { c ->
+            items(filtered, key = { it.publicKeyB64 }) { c ->
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth().clickable { onPick(c.publicKeyB64) }.padding(vertical = 12.dp)
@@ -317,11 +330,6 @@ private fun NewChatPicker(onPick: (String) -> Unit, onBack: () -> Unit) {
             }
         }
     }
-}
-
-@Composable
-private fun OnlineDot(online: Boolean) {
-    Box(Modifier.size(7.dp).background(if (online) MB10Colors.ink0 else MB10Colors.inkFaint, CircleShape))
 }
 
 private sealed class ChatEntry {

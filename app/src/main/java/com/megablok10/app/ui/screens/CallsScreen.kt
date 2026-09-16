@@ -35,11 +35,13 @@ import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.presence.PeerInfo
 import com.megablok10.app.presence.PresenceService
+import com.megablok10.app.ui.theme.AppTextField
 import com.megablok10.app.ui.theme.DottedDivider
 import com.megablok10.app.ui.theme.EmptyState
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.MB10Colors
+import com.megablok10.app.ui.theme.OnlineDot
 import com.megablok10.app.ui.theme.chamferShape
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -149,6 +151,11 @@ private fun NewCallPicker(onPick: (String, String) -> Unit, onBack: () -> Unit) 
     val contacts by ContactStore.observeAll(context).collectAsState(initial = emptyList())
     val onlinePeers by PresenceService.peers.collectAsState()
     val onlineKeys = remember(onlinePeers) { onlinePeers.map { it.pubKeyB64 }.toSet() }
+    var query by remember { mutableStateOf("") }
+    val filtered = remember(contacts, query) {
+        if (query.isBlank()) contacts
+        else contacts.filter { it.callsign.contains(query, ignoreCase = true) || it.faction.contains(query, ignoreCase = true) }
+    }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Row(
@@ -165,22 +172,27 @@ private fun NewCallPicker(onPick: (String, String) -> Unit, onBack: () -> Unit) 
             return@Column
         }
 
+        AppTextField(value = query, onValueChange = { query = it }, placeholder = "Позывной или фракция", modifier = Modifier.fillMaxWidth())
+        Spacer(Modifier.height(10.dp))
+
+        if (filtered.isEmpty()) {
+            EmptyState("Ничего не нашлось.")
+            return@Column
+        }
+
         LazyColumn(Modifier.fillMaxSize()) {
-            items(contacts, key = { it.publicKeyB64 }) { c ->
+            items(filtered, key = { it.publicKeyB64 }) { c ->
                 val online = c.publicKeyB64 in onlineKeys
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth().clickable { onPick(c.publicKeyB64, c.callsign) }.padding(vertical = 12.dp)
                 ) {
+                    OnlineDot(online)
+                    Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
                         Text(c.callsign, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 13.sp)
                         Text(c.faction, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
                     }
-                    Text(
-                        if (online) "в сети" else "не в сети",
-                        color = if (online) MB10Colors.inkMuted else MB10Colors.inkFaint,
-                        fontFamily = JetBrainsMono, fontSize = 10.sp
-                    )
                 }
             }
         }
