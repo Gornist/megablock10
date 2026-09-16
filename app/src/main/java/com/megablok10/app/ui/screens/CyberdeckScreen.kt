@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.breach.BreachAccessPointFlow
@@ -155,13 +156,21 @@ private fun DaemonCard(daemon: Daemon) {
         modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
     ) {
         Column {
-            Text(daemon.name, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.5.sp)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    daemon.name,
+                    color = MB10Colors.inkPrimary,
+                    fontFamily = IBMPlexSans,
+                    fontSize = 13.5.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Row { daemon.sequence.forEach { code -> CodePill(code) } }
+            }
             if (daemon.reward.isNotEmpty()) {
                 Spacer(Modifier.height(4.dp))
                 Text(daemon.reward, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
-            }
-            Row(Modifier.padding(top = 6.dp)) {
-                daemon.sequence.forEach { code -> CodePill(code) }
             }
         }
     }
