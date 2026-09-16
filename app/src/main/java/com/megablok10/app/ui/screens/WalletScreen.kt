@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,7 +24,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -38,6 +36,7 @@ import com.megablok10.app.identity.IdentityManager
 import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
+import com.megablok10.app.ui.theme.AmountField
 import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.AppTextField
 import com.megablok10.app.ui.theme.ButtonVariant
@@ -252,17 +251,7 @@ private fun SendTransactionPanel(
                         color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 12.sp, lineHeight = 16.sp
                     )
                     Spacer(Modifier.height(10.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        AppTextField(
-                            value = amountText,
-                            onValueChange = { amountText = it.filter(Char::isDigit) },
-                            placeholder = "Сумма",
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1f)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text("€$", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                    }
+                    AmountField(value = amountText, onValueChange = { amountText = it }, modifier = Modifier.fillMaxWidth())
                     if (showError) {
                         Spacer(Modifier.height(4.dp))
                         Text("Введите сумму больше нуля", color = MB10Colors.accentDanger, fontFamily = JetBrainsMono, fontSize = 10.sp)

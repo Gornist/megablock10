@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -294,5 +295,81 @@ fun EmptyState(text: String, modifier: Modifier = Modifier) {
             color = MB10Colors.inkTertiary, fontFamily = IBMPlexSans, fontSize = 13.sp, lineHeight = 18.sp,
             textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 28.dp)
         )
+    }
+}
+
+/**
+ * Поле суммы для денег: не текстовое поле с системной клавиатурой, а
+ * дисплей текущего значения + своя цифровая клавиатура снизу, в тех же
+ * токенах, что весь остальной интерфейс — единственное место в приложении,
+ * где вместо IME телефона используется собственная раскладка.
+ */
+@Composable
+fun AmountField(value: String, onValueChange: (String) -> Unit, modifier: Modifier = Modifier, maxLength: Int = 9) {
+    Column(modifier) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MB10Colors.surfaceSunken, chamferShape(6.dp))
+                .border(1.dp, MB10Colors.borderMuted, chamferShape(6.dp))
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                value.ifEmpty { "0" },
+                color = if (value.isEmpty()) MB10Colors.inkTertiary else MB10Colors.inkPrimary,
+                fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 22.sp,
+                modifier = Modifier.weight(1f)
+            )
+            Text("€$", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+        }
+        Spacer(Modifier.height(10.dp))
+        NumericKeypad(value = value, onValueChange = onValueChange, maxLength = maxLength)
+    }
+}
+
+@Composable
+private fun NumericKeypad(value: String, onValueChange: (String) -> Unit, maxLength: Int) {
+    val rows = listOf(
+        listOf("1", "2", "3"),
+        listOf("4", "5", "6"),
+        listOf("7", "8", "9"),
+        listOf("", "0", "⌫")
+    )
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        rows.forEach { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                row.forEach { key ->
+                    if (key.isEmpty()) {
+                        Spacer(Modifier.weight(1f))
+                    } else {
+                        KeypadKey(
+                            key,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                when (key) {
+                                    "⌫" -> onValueChange(value.dropLast(1))
+                                    else -> if (value.length < maxLength) onValueChange(value + key)
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun KeypadKey(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(
+        modifier = modifier
+            .aspectRatio(1.7f)
+            .background(MB10Colors.surfaceRaised, chamferShape(6.dp))
+            .border(1.dp, MB10Colors.borderMuted, chamferShape(6.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(label, color = MB10Colors.inkPrimary, fontFamily = JetBrainsMono, fontSize = 18.sp, fontWeight = FontWeight.Medium)
     }
 }
