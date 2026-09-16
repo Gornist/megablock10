@@ -30,6 +30,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.megablok10.app.breach.AccessPointCooldownStore
 import com.megablok10.app.breach.BreachAccessPointFlow
 import com.megablok10.app.breach.CodePill
 import com.megablok10.app.breach.Daemon
@@ -73,9 +74,21 @@ fun CyberdeckScreen(onNestedChange: (Boolean) -> Unit = {}) {
 
     val scanObject = rememberMb10QrScanner { qr ->
         when (qr) {
-            is Mb10Qr.AccessPoint -> { point = qr; segment = 0 }
+            is Mb10Qr.AccessPoint -> {
+                scope.launch {
+                    val remainingMs = AccessPointCooldownStore.remainingCooldownMs(context, qr.id)
+                    if (remainingMs > 0) {
+                        val minutes = (remainingMs / 60_000L + 1).coerceAtLeast(1)
+                        Toast.makeText(context, "Точку уже вскрывали недавно — повтор через $minutes мин", Toast.LENGTH_LONG).show()
+                    } else {
+                        point = qr
+                        segment = 0
+                    }
+                }
+            }
             is Mb10Qr.Shard -> { scope.launch { ShardStore.add(context, qr) }; segment = 1 }
-            else -> Toast.makeText(context, "Это не точка доступа и не шард", Toast.LENGTH_SHORT).show()
+            is Mb10Qr.DaemonItem -> { scope.launch { DaemonStore.add(context, qr) }; segment = 0 }
+            else -> Toast.makeText(context, "Это не точка доступа, не шард и не демон", Toast.LENGTH_SHORT).show()
         }
     }
 

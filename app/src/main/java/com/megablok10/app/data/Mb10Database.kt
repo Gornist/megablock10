@@ -12,8 +12,8 @@ import androidx.room.RoomDatabase
  * Room просто пересоздаст базу (fallbackToDestructiveMigration).
  */
 @Database(
-    entities = [CharacterEntity::class, ShardEntity::class, TransactionEntity::class, DaemonEntity::class, ChatMessageEntity::class, CallLogEntity::class],
-    version = 7,
+    entities = [CharacterEntity::class, ShardEntity::class, TransactionEntity::class, DaemonEntity::class, ChatMessageEntity::class, CallLogEntity::class, AccessPointBreachEntity::class],
+    version = 8,
     exportSchema = false
 )
 abstract class Mb10Database : RoomDatabase() {
@@ -23,6 +23,7 @@ abstract class Mb10Database : RoomDatabase() {
     abstract fun daemonDao(): DaemonDao
     abstract fun chatMessageDao(): ChatMessageDao
     abstract fun callLogDao(): CallLogDao
+    abstract fun accessPointBreachDao(): AccessPointBreachDao
 
     companion object {
         @Volatile private var instance: Mb10Database? = null

@@ -25,10 +25,12 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
@@ -47,6 +49,7 @@ import com.megablok10.app.ui.theme.ListRow
 import com.megablok10.app.ui.theme.MB10Colors
 import com.megablok10.app.ui.theme.chamferShape
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.random.Random
 
 /**
@@ -58,6 +61,8 @@ import kotlin.random.Random
  */
 @Composable
 internal fun BreachAccessPointFlow(point: Mb10Qr.AccessPoint, daemons: List<Daemon>, onRescan: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var chosen by remember(point.id) { mutableStateOf<Set<String>>(emptySet()) }
     var sessionSeed by remember(point.id) { mutableStateOf<Long?>(null) }
 
@@ -74,7 +79,22 @@ internal fun BreachAccessPointFlow(point: Mb10Qr.AccessPoint, daemons: List<Daem
                 Spacer(Modifier.width(6.dp))
                 Text("Точка доступа: ${point.name}", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
             }
-            BreachSession(daemons = chosenDaemons, seed = seed, onRescan = onRescan)
+            BreachSession(
+                daemons = chosenDaemons,
+                seed = seed,
+                onRescan = onRescan,
+                // Награда — деньги/шард у совпавших демонов (если заданы) —
+                // и отметка кулдауна точки, только если реально что-то
+                // засчиталось (FAIL кулдаун не запускает).
+                onResult = { result ->
+                    scope.launch {
+                        DaemonRewards.apply(context, result)
+                        if (result.matchedIds.isNotEmpty()) {
+                            AccessPointCooldownStore.markRewarded(context, point.id)
+                        }
+                    }
+                }
+            )
         }
         return
     }

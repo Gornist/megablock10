@@ -115,4 +115,23 @@ object TransactionStore {
             )
         )
     }
+
+    /**
+     * Деньги за совпадение денежного демона на взломе — тот же принцип, что
+     * у денег внутри шарда: находка, а не перевод, идемпотентность через id
+     * записи, привязанный к id демона (см. DaemonRewards.apply).
+     */
+    suspend fun creditDaemonReward(context: Context, daemonId: String, amount: Long, daemonName: String) {
+        if (amount <= 0) return
+        Mb10Database.get(context).transactionDao().insertIfAbsent(
+            TransactionEntity(
+                id = "daemon:$daemonId",
+                counterpartyPubKeyB64 = "",
+                amount = amount,
+                memo = "Демон: $daemonName",
+                timestamp = System.currentTimeMillis(),
+                status = TransactionStatus.CONFIRMED
+            )
+        )
+    }
 }

@@ -2,12 +2,23 @@ package com.megablok10.app.breach
 
 import kotlin.random.Random
 
-/** Одна программа взлома — цепочка кодов, которую нужно собрать в буфере подряд. */
+/**
+ * Одна программа взлома — цепочка кодов, которую нужно собрать в буфере
+ * подряд. reward — текст-описание эффекта для игрока (уже был), rewardMoney/
+ * rewardShard* — сам эффект: при совпадении демона в результате взлома
+ * зачисляются деньги и/или открывается шард с этим содержимым (см.
+ * DaemonRewards.apply). У стартовых демонов (MockBreach) эти поля нулевые —
+ * реальная награда есть только у демонов, которых выдал мастер через QR.
+ */
 data class Daemon(
     val id: String,
     val name: String,
     val sequence: List<String>,
-    val reward: String = ""
+    val reward: String = "",
+    val rewardMoney: Long = 0,
+    val rewardShardTitle: String? = null,
+    val rewardShardMeta: String? = null,
+    val rewardShardBody: String? = null
 )
 
 data class BreachGrid(

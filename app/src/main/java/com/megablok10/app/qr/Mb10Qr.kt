@@ -50,6 +50,26 @@ sealed interface Mb10Qr {
     ) : Mb10Qr
 
     /**
+     * Демон — программа взлома, выданная мастером как предмет (награда,
+     * "плюшка", торговый лот), а не встроенная в стартовый набор. Сканируется
+     * в кибердеку игрока (DaemonStore.add) и дальше выбирается на любом
+     * взломе наравне со стартовыми демонами. rewardMoney/rewardShard* —
+     * необязательный эффект при совпадении демона в результате взлома
+     * (см. Daemon в BreachEngine.kt и DaemonRewards.apply); у демона без
+     * награды оба поля пустые/нулевые — reward остаётся чистым текстом.
+     */
+    data class DaemonItem(
+        val id: String,
+        val name: String,
+        val sequence: List<String>,
+        val reward: String,
+        val rewardMoney: Long = 0,
+        val rewardShardTitle: String? = null,
+        val rewardShardMeta: String? = null,
+        val rewardShardBody: String? = null
+    ) : Mb10Qr
+
+    /**
      * Подписанная денежная транзакция. Плательщик генерирует и показывает
      * QR — деньги у него списываются сразу в момент генерации (как передача
      * наличных из рук в руки), получатель сканирует и зачисляет их себе.
@@ -88,6 +108,7 @@ object Mb10QrCodec {
                 "CONTACT" -> decodeContact(parts)
                 "AP" -> decodeAccessPoint(parts)
                 "SHARD" -> decodeShard(parts)
+                "DAEMON" -> decodeDaemon(parts)
                 "TX" -> decodeTransaction(parts)
                 "RCPT" -> decodeReceipt(parts)
                 else -> null
@@ -138,6 +159,33 @@ object Mb10QrCodec {
             body = unb64(parts[8]),
             // Поле добавлено позже v1 — у уже напечатанных до этого шардов его просто нет в строке, считаем 0.
             moneyAmount = parts.getOrNull(9)?.toLongOrNull() ?: 0
+        )
+    }
+
+    fun encodeDaemon(
+        id: String,
+        name: String,
+        sequence: List<String>,
+        reward: String,
+        rewardMoney: Long = 0,
+        rewardShardTitle: String? = null,
+        rewardShardMeta: String? = null,
+        rewardShardBody: String? = null
+    ): String = "$MAGIC:DAEMON:v1:$id:${b64(name)}:${sequence.joinToString(",")}:${b64(reward)}:$rewardMoney:" +
+        "${b64(rewardShardTitle.orEmpty())}:${b64(rewardShardMeta.orEmpty())}:${b64(rewardShardBody.orEmpty())}"
+
+    private fun decodeDaemon(parts: List<String>): Mb10Qr.DaemonItem? {
+        if (parts.size < 11) return null
+        val rewardMoney = parts[7].toLongOrNull() ?: return null
+        return Mb10Qr.DaemonItem(
+            id = parts[3],
+            name = unb64(parts[4]),
+            sequence = parts[5].split(","),
+            reward = unb64(parts[6]),
+            rewardMoney = rewardMoney,
+            rewardShardTitle = unb64(parts[8]).ifEmpty { null },
+            rewardShardMeta = unb64(parts[9]).ifEmpty { null },
+            rewardShardBody = unb64(parts[10]).ifEmpty { null }
         )
     }
 
