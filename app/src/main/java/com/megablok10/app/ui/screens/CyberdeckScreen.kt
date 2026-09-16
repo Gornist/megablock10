@@ -151,14 +151,29 @@ private fun DemonsSegment(daemons: List<Daemon>, point: Mb10Qr.AccessPoint?, onR
         return
     }
 
+    // Вступительный текст нужен только пока коллекция пуста — дальше это
+    // уже не подсказка, а шум над списком, который игрок видит каждый раз.
+    if (daemons.isEmpty()) {
+        EmptyState("Демонов пока нет. Взломайте первую точку доступа кнопкой выше, чтобы начать коллекцию.")
+        return
+    }
+
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        Text(
-            "Чтобы начать взлом, отсканируйте QR-метку точки доступа кнопкой выше. Демонов можно просматривать и без этого — коллекция пополняется по ходу игры.",
-            color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 13.sp, lineHeight = 18.sp
-        )
-        Spacer(Modifier.height(16.dp))
         daemons.forEach { daemon -> DaemonCard(daemon) }
     }
+}
+
+/** "N ячеек/ячейка/ячейки" с русским склонением — используется как цена демона в буфере взлома. */
+private fun cellsLabel(count: Int): String {
+    val mod100 = count % 100
+    val mod10 = count % 10
+    val word = when {
+        mod100 in 11..14 -> "ячеек"
+        mod10 == 1 -> "ячейка"
+        mod10 in 2..4 -> "ячейки"
+        else -> "ячеек"
+    }
+    return "$count $word"
 }
 
 /** Тот же визуальный паттерн строки, что у ShardCard — единый вид для обоих составных Кибердеки. */
@@ -184,10 +199,11 @@ private fun DaemonCard(daemon: Daemon) {
                 )
                 Row { daemon.sequence.forEach { code -> CodePill(code) } }
             }
-            if (daemon.reward.isNotEmpty()) {
-                Spacer(Modifier.height(4.dp))
-                Text(daemon.reward, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
-            }
+            Spacer(Modifier.height(4.dp))
+            // Стоимость видна и вне активного взлома — иначе бюджет буфера
+            // (RAM) узнаётся только внутри уже начатой попытки.
+            val caption = if (daemon.reward.isNotEmpty()) "${daemon.reward} · ${cellsLabel(daemon.sequence.size)}" else cellsLabel(daemon.sequence.size)
+            Text(caption, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
         }
     }
 }

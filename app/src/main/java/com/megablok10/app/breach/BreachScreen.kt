@@ -29,7 +29,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
@@ -67,14 +66,32 @@ internal fun BreachAccessPointFlow(point: Mb10Qr.AccessPoint, daemons: List<Daem
     val overBudget = used > MockBreach.ramCapacity
     val canStart = chosenDaemons.isNotEmpty() && !overBudget
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+    val seed = sessionSeed
+    if (seed != null) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 10.dp)) {
+                HexBullet(MB10Colors.accentNetrun, size = 8.dp)
+                Spacer(Modifier.width(6.dp))
+                Text("Точка доступа: ${point.name}", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
+            }
+            BreachSession(daemons = chosenDaemons, seed = seed, onRescan = onRescan)
+        }
+        return
+    }
+
+    // Список демонов скроллится в своей области (weight), а счётчик буфера и
+    // кнопка старта закреплены снизу вне скролла — раньше счётчик стоял под
+    // списком и терялся из виду, пока выбираешь демонов дальше по списку.
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 10.dp)) {
             HexBullet(MB10Colors.accentNetrun, size = 8.dp)
             Spacer(Modifier.width(6.dp))
             Text("Точка доступа: ${point.name}", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
         }
 
-        DaemonPicker(daemons = daemons, chosen = chosen, onToggle = { id -> chosen = if (id in chosen) chosen - id else chosen + id })
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            DaemonPicker(daemons = daemons, chosen = chosen, onToggle = { id -> chosen = if (id in chosen) chosen - id else chosen + id })
+        }
 
         Text(
             "Буфер: $used / ${MockBreach.ramCapacity}" + if (overBudget) " — снимите демон" else "",
@@ -99,15 +116,6 @@ internal fun BreachAccessPointFlow(point: Mb10Qr.AccessPoint, daemons: List<Daem
                 fontWeight = FontWeight.Medium,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth()
-            )
-        }
-
-        sessionSeed?.let { seed ->
-            Spacer(Modifier.height(14.dp))
-            BreachSession(
-                daemons = chosenDaemons,
-                seed = seed,
-                onRescan = onRescan
             )
         }
     }
@@ -255,17 +263,6 @@ private fun BreachSession(
             Box(Modifier.fillMaxWidth(progress).height(3.dp).background(MB10Colors.accentNetrun))
         }
 
-        Row(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            val codes = attempt.bufferCodes
-            for (i in 0 until attempt.bufferSize) {
-                val filled = i < codes.size
-                Box(
-                    Modifier.size(20.dp).border(1.dp, if (filled) MB10Colors.accentNetrun else MB10Colors.borderMuted)
-                        .background(if (filled) MB10Colors.accentNetrun.copy(alpha = 0.1f) else Color.Transparent)
-                )
-            }
-        }
-
         FlagTab("код-матрица", modifier = Modifier.padding(top = 14.dp))
         PanelBox {
             for (r in 0 until attempt.grid.size) {
@@ -288,7 +285,7 @@ private fun BreachSession(
             }
         }
 
-        FlagTab("буфер", modifier = Modifier.padding(top = 14.dp))
+        FlagTab("буфер ${attempt.selected.size}/${attempt.bufferSize}", modifier = Modifier.padding(top = 14.dp))
         PanelBox {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 val codes = attempt.bufferCodes
@@ -304,18 +301,35 @@ private fun BreachSession(
             }
         }
 
+        // Не только коды цели, но и что даст их совпадение — иначе на самом
+        // экране взлома нет ответа на вопрос "а зачем я вообще выбрал этих демонов".
         FlagTab("демоны", modifier = Modifier.padding(top = 14.dp))
         PanelBox {
             attempt.daemons.forEach { daemon ->
                 val matched = daemon.id in attempt.matchedDaemonIds
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 6.dp)) {
-                    Text(
-                        daemon.sequence.joinToString(" · "),
-                        color = if (matched) MB10Colors.accentNetrun else MB10Colors.inkSecondary,
-                        fontFamily = JetBrainsMono,
-                        fontSize = 13.sp,
-                        textDecoration = if (matched) TextDecoration.LineThrough else null
-                    )
+                val nameColor = if (matched) MB10Colors.inkPrimary else MB10Colors.inkSecondary
+                val codeColor = if (matched) MB10Colors.accentNetrun else MB10Colors.inkSecondary
+                Column(Modifier.padding(vertical = 6.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            daemon.name,
+                            color = nameColor,
+                            fontFamily = IBMPlexSans,
+                            fontSize = 12.5.sp,
+                            textDecoration = if (matched) TextDecoration.LineThrough else null,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            daemon.sequence.joinToString(" · "),
+                            color = codeColor,
+                            fontFamily = JetBrainsMono,
+                            fontSize = 12.sp,
+                            textDecoration = if (matched) TextDecoration.LineThrough else null
+                        )
+                    }
+                    if (daemon.reward.isNotEmpty()) {
+                        Text(daemon.reward, color = MB10Colors.inkTertiary, fontFamily = IBMPlexSans, fontSize = 10.5.sp)
+                    }
                 }
             }
         }
