@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,14 +33,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.qr.Mb10QrCodec
 import com.megablok10.app.qr.generateQrBitmap
+import com.megablok10.app.ui.theme.AppButton
+import com.megablok10.app.ui.theme.AppTextField
+import com.megablok10.app.ui.theme.ButtonVariant
 import com.megablok10.app.ui.theme.ChamferedPanel
-import com.megablok10.app.ui.theme.Chip
+import com.megablok10.app.ui.theme.ChipTone
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.Jura
 import com.megablok10.app.ui.theme.MB10Colors
-import com.megablok10.app.ui.theme.OutlineButton
 import com.megablok10.app.ui.theme.SectionLabel
+import com.megablok10.app.ui.theme.StatusChip
 import java.util.UUID
 
 private val shardBadgeOptions = listOf("PUBLIC", "LOCKED", "FRAGMENT", "COMPROMISED")
@@ -55,26 +57,26 @@ private val shardBadgeOptions = listOf("PUBLIC", "LOCKED", "FRAGMENT", "COMPROMI
 fun MasterToolScreen(onClose: () -> Unit) {
     var activeSegment by remember { mutableStateOf(0) }
 
-    Column(Modifier.fillMaxSize().background(MB10Colors.bg0).verticalScroll(rememberScrollState()).padding(16.dp)) {
+    Column(Modifier.fillMaxSize().background(MB10Colors.surfaceBase).verticalScroll(rememberScrollState()).padding(16.dp)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth().clickable(onClick = onClose).padding(vertical = 6.dp)
         ) {
-            Text("←", color = MB10Colors.ink0, fontFamily = JetBrainsMono, fontSize = 16.sp)
+            Text("←", color = MB10Colors.inkPrimary, fontFamily = JetBrainsMono, fontSize = 16.sp)
             Spacer(Modifier.width(8.dp))
-            Text("Назад в настройки", color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 11.sp)
+            Text("Назад в настройки", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
         }
         Spacer(Modifier.height(12.dp))
-        Text("Мастерская", color = MB10Colors.ink0, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+        Text("Мастерская", color = MB10Colors.inkPrimary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 20.sp)
         Spacer(Modifier.height(4.dp))
         Text(
             "Генерирует QR для точек доступа и шардов — их печатают или показывают заранее, до игры. Игроки эти коды только сканируют, этот экран им не нужен.",
-            color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 12.sp, lineHeight = 16.sp
+            color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 12.sp, lineHeight = 16.sp
         )
         Spacer(Modifier.height(18.dp))
 
         ChamferedPanel(
-            borderColor = MB10Colors.inkFaint, fillColor = MB10Colors.bg1, cut = 6.dp, contentPadding = 0.dp,
+            borderColor = MB10Colors.borderMuted, fillColor = MB10Colors.surfaceRaised, cut = 6.dp, contentPadding = 0.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
             Row(Modifier.fillMaxWidth()) {
@@ -83,12 +85,12 @@ fun MasterToolScreen(onClose: () -> Unit) {
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .background(if (active) MB10Colors.bg2 else MB10Colors.bg1)
+                            .background(if (active) MB10Colors.surfaceSunken else MB10Colors.surfaceRaised)
                             .clickable { activeSegment = i }
                             .padding(vertical = 8.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(label, color = if (active) MB10Colors.ink0 else MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 13.sp)
+                        Text(label, color = if (active) MB10Colors.inkPrimary else MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 13.sp)
                     }
                 }
             }
@@ -110,10 +112,10 @@ private fun AccessPointForm() {
         Spacer(Modifier.height(8.dp))
         LabeledField("Название точки", name, placeholder = "Панель вентиляции, техэтаж") { name = it }
         Spacer(Modifier.height(12.dp))
-        OutlineButton(
+        AppButton(
             "Показать QR",
             modifier = Modifier.fillMaxWidth(),
-            accentColor = MB10Colors.accentPrimary,
+            variant = ButtonVariant.Primary,
             enabled = name.isNotBlank(),
             onClick = { generatedFor = id to name }
         )
@@ -121,7 +123,7 @@ private fun AccessPointForm() {
         generatedFor?.let { (gid, gname) ->
             Spacer(Modifier.height(16.dp))
             val raw = remember(gid, gname) { Mb10QrCodec.encodeAccessPoint(gid, gname) }
-            GeneratedQrPanel(raw = raw, caption = gname, accent = MB10Colors.accentPrimary)
+            GeneratedQrPanel(raw = raw, caption = gname, accent = MB10Colors.accentAction)
         }
     }
 }
@@ -144,16 +146,19 @@ private fun ShardForm() {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             shardBadgeOptions.forEach { option ->
                 val selected = option == badge
-                Chip(
+                StatusChip(
                     option,
-                    color = if (selected) MB10Colors.accentPrimary else MB10Colors.inkMuted,
+                    tone = if (selected) ChipTone.Action else ChipTone.Neutral,
                     modifier = Modifier.clickable { badge = option }
                 )
             }
         }
         Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { decryptAction = !decryptAction }) {
-            Chip(if (decryptAction) "требует взлома: да" else "требует взлома: нет", color = if (decryptAction) MB10Colors.accentHack else MB10Colors.inkMuted)
+            StatusChip(
+                if (decryptAction) "требует взлома: да" else "требует взлома: нет",
+                tone = if (decryptAction) ChipTone.Netrun else ChipTone.Neutral
+            )
         }
         Spacer(Modifier.height(12.dp))
         LabeledField("Заголовок (короткое описание в списке)", title, placeholder = "Служебный лог клиники") { title = it }
@@ -164,10 +169,10 @@ private fun ShardForm() {
         Spacer(Modifier.height(8.dp))
         LabeledField("Деньги в шарде, €$ (0 — без денег)", moneyText, placeholder = "0") { moneyText = it.filter(Char::isDigit) }
         Spacer(Modifier.height(12.dp))
-        OutlineButton(
+        AppButton(
             "Показать QR",
             modifier = Modifier.fillMaxWidth(),
-            accentColor = MB10Colors.accentHack,
+            variant = ButtonVariant.Netrun,
             enabled = title.isNotBlank() && body.isNotBlank(),
             onClick = {
                 generated = Mb10QrCodec.encodeShard(id, badge, decryptAction, title, meta, body, moneyText.toLongOrNull() ?: 0)
@@ -176,23 +181,23 @@ private fun ShardForm() {
 
         generated?.let { raw ->
             Spacer(Modifier.height(16.dp))
-            GeneratedQrPanel(raw = raw, caption = title, accent = MB10Colors.accentHack)
+            GeneratedQrPanel(raw = raw, caption = title, accent = MB10Colors.accentNetrun)
         }
     }
 }
 
 @Composable
 private fun GeneratedQrPanel(raw: String, caption: String, accent: Color) {
-    ChamferedPanel(borderColor = accent, fillColor = MB10Colors.bg1, cut = 6.dp, contentPadding = 14.dp, modifier = Modifier.fillMaxWidth()) {
+    ChamferedPanel(borderColor = accent, fillColor = MB10Colors.surfaceRaised, cut = 6.dp, contentPadding = 14.dp, modifier = Modifier.fillMaxWidth()) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
             val bitmap = remember(raw) { generateQrBitmap(raw) }
             Image(bitmap = bitmap.asImageBitmap(), contentDescription = "QR", modifier = Modifier.size(220.dp))
             Spacer(Modifier.height(8.dp))
-            Text(caption, color = MB10Colors.ink0, fontFamily = IBMPlexSans, fontSize = 12.sp, textAlign = TextAlign.Center)
+            Text(caption, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 12.sp, textAlign = TextAlign.Center)
             Spacer(Modifier.height(4.dp))
             Text(
                 "Сфотографируйте или напечатайте до игры — точка/шард появится у игрока сразу после скана.",
-                color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 10.5.sp, lineHeight = 14.sp, textAlign = TextAlign.Center
+                color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 10.5.sp, lineHeight = 14.sp, textAlign = TextAlign.Center
             )
         }
     }
@@ -201,11 +206,11 @@ private fun GeneratedQrPanel(raw: String, caption: String, accent: Color) {
 @Composable
 private fun LabeledField(label: String, value: String, placeholder: String = "", minLines: Int = 1, onValueChange: (String) -> Unit) {
     Column {
-        Text(label, color = MB10Colors.inkMuted, fontFamily = JetBrainsMono, fontSize = 10.sp, modifier = Modifier.padding(bottom = 4.dp))
-        TextField(
+        Text(label, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp, modifier = Modifier.padding(bottom = 4.dp))
+        AppTextField(
             value = value,
             onValueChange = onValueChange,
-            placeholder = { Text(placeholder, color = MB10Colors.inkMuted, fontFamily = IBMPlexSans, fontSize = 13.sp) },
+            placeholder = placeholder,
             singleLine = minLines == 1,
             modifier = Modifier.fillMaxWidth().heightIn(min = if (minLines > 1) 100.dp else 0.dp)
         )
