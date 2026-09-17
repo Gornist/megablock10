@@ -1,5 +1,6 @@
 package com.megablok10.app.breach
 
+import com.megablok10.app.identity.RAM_CAPACITY_DEFAULT
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -20,12 +21,35 @@ class BreachEngineTest {
     fun `generated grid is always solvable via the same selection rules the UI enforces`() {
         val daemons = MockBreach.daemons
         val totalLength = daemons.sumOf { it.sequence.size }
+        val gridSize = BreachTierParams.forTier(Tier.BASE).gridSize
 
         repeat(150) { seed ->
-            val grid = generateGrid(MockBreach.gridSize, daemons, Random(seed.toLong()))
+            val grid = generateGrid(gridSize, daemons, Random(seed.toLong()))
             val solvable = hasSolutionPath(grid, totalLength, daemons)
             assertTrue(
                 "Сетка (seed=$seed) не решается через правила выбора UI:\n${renderGrid(grid)}",
+                solvable
+            )
+        }
+    }
+
+    /**
+     * Мёртвые клетки и порченые коды (ревизия v9) кладутся только вне
+     * пути-решения — эта попытка remains решаема тем же путём независимо от
+     * тира/ловушек. Гоняем на самом суровом тире (NIGHTMARE), где ловушек
+     * больше всего — если решаемость держится тут, держится и на более лёгких.
+     */
+    @Test
+    fun `grid stays solvable when dead cells and corrupted codes are present`() {
+        val daemons = MockBreach.daemons
+        val totalLength = daemons.sumOf { it.sequence.size }
+        val params = BreachTierParams.forTier(Tier.NIGHTMARE)
+
+        repeat(150) { seed ->
+            val grid = generateGrid(params.gridSize, daemons, Random(seed.toLong()), params)
+            val solvable = hasSolutionPath(grid, totalLength, daemons)
+            assertTrue(
+                "Сетка с ловушками (seed=$seed) не решается через правила выбора UI:\n${renderGrid(grid)}",
                 solvable
             )
         }
@@ -49,16 +73,18 @@ class BreachEngineTest {
 
     @Test
     fun `selectable cells on a fresh attempt are exactly the top row`() {
-        val grid = generateGrid(MockBreach.gridSize, MockBreach.daemons, Random(1))
-        val state = BreachAttemptState(grid, MockBreach.daemons, MockBreach.ramCapacity)
+        val gridSize = BreachTierParams.forTier(Tier.BASE).gridSize
+        val grid = generateGrid(gridSize, MockBreach.daemons, Random(1))
+        val state = BreachAttemptState(grid, MockBreach.daemons, RAM_CAPACITY_DEFAULT)
         val expectedTopRow = (0 until grid.size).map { c -> 0 to c }.toSet()
         assertEquals(expectedTopRow, state.selectableCells())
     }
 
     @Test
     fun `select rejects a cell outside the current selectable set`() {
-        val grid = generateGrid(MockBreach.gridSize, MockBreach.daemons, Random(2))
-        val state = BreachAttemptState(grid, MockBreach.daemons, MockBreach.ramCapacity)
+        val gridSize = BreachTierParams.forTier(Tier.BASE).gridSize
+        val grid = generateGrid(gridSize, MockBreach.daemons, Random(2))
+        val state = BreachAttemptState(grid, MockBreach.daemons, RAM_CAPACITY_DEFAULT)
         val bottomRightNotInTopRow = (grid.size - 1) to (grid.size - 1)
         assertTrue(bottomRightNotInTopRow !in state.selectableCells())
         try {

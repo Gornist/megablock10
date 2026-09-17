@@ -1,5 +1,9 @@
 package com.megablok10.app.qr
 
+import com.megablok10.app.breach.Container
+import com.megablok10.app.breach.LootSlot
+import com.megablok10.app.breach.LootType
+import com.megablok10.app.breach.Tier
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -20,18 +24,36 @@ class Mb10QrCodecTest {
     }
 
     @Test
-    fun `access point round-trips with punctuation in the name`() {
-        val raw = Mb10QrCodec.encodeAccessPoint("ap-vent-8", "Панель вентиляции: техэтаж, блок Б")
+    fun `container round-trips with punctuation in the name and a loot slot`() {
+        val container = Container(
+            id = "container-vent-8",
+            name = "Панель вентиляции: техэтаж, блок Б",
+            tier = Tier.HARD,
+            ownerFaction = "Otryad_SB",
+            loot = listOf(LootSlot(type = LootType.SHARD, tier = Tier.BASE, copies = 3, payload = "cGF5bG9hZA=="))
+        )
+        val raw = Mb10QrCodec.encodeContainer(container)
         val decoded = Mb10QrCodec.decode(raw)
-        assertEquals(Mb10Qr.AccessPoint("ap-vent-8", "Панель вентиляции: техэтаж, блок Б"), decoded)
+        assertEquals(Mb10Qr.ContainerQr(container), decoded)
+    }
+
+    @Test
+    fun `legacy AP QR still decodes as a tier-BASE container with no loot`() {
+        // Формат до ревизии v9 (MB10:AP:v1:id:b64(name)) — уже напечатанные до неё QR обязаны продолжать читаться.
+        val decoded = Mb10QrCodec.decode("MB10:AP:v1:ap-vent-8:0J/QsNC90LXQu9GM")
+        assertEquals(
+            Mb10Qr.ContainerQr(Container(id = "ap-vent-8", name = "Панель", tier = Tier.BASE, ownerFaction = "", loot = emptyList())),
+            decoded
+        )
     }
 
     @Test
     fun `shard round-trips with colons, newlines and cyrillic in every free-text field`() {
         val raw = Mb10QrCodec.encodeShard(
             id = "shard-report-1",
-            badge = "LOCKED",
             decryptAction = true,
+            tier = 2,
+            valueHint = "ценный тех. документ",
             title = "Служебный лог: клиника",
             meta = "получен 21:02 · клиника, уровень доступа 2",
             body = "«...партия С-9: брак клапана, ответа не было...»"
@@ -40,8 +62,9 @@ class Mb10QrCodecTest {
         assertEquals(
             Mb10Qr.Shard(
                 id = "shard-report-1",
-                badge = "LOCKED",
                 decryptAction = true,
+                tier = 2,
+                valueHint = "ценный тех. документ",
                 title = "Служебный лог: клиника",
                 meta = "получен 21:02 · клиника, уровень доступа 2",
                 body = "«...партия С-9: брак клапана, ответа не было...»"
@@ -52,8 +75,8 @@ class Mb10QrCodecTest {
 
     @Test
     fun `shard decryptAction flag survives round-trip both ways`() {
-        val lockedRaw = Mb10QrCodec.encodeShard("s1", "LOCKED", true, "t", "m", "b")
-        val publicRaw = Mb10QrCodec.encodeShard("s2", "PUBLIC", false, "t", "m", "b")
+        val lockedRaw = Mb10QrCodec.encodeShard("s1", decryptAction = true, tier = 1, valueHint = "", title = "t", meta = "m", body = "b")
+        val publicRaw = Mb10QrCodec.encodeShard("s2", decryptAction = false, tier = 1, valueHint = "", title = "t", meta = "m", body = "b")
         assertEquals(true, (Mb10QrCodec.decode(lockedRaw) as Mb10Qr.Shard).decryptAction)
         assertEquals(false, (Mb10QrCodec.decode(publicRaw) as Mb10Qr.Shard).decryptAction)
     }
