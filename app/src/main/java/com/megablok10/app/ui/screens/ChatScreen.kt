@@ -479,7 +479,10 @@ private fun MessageBubble(
  * акцентом accentDanger вместо нейтрального фона, чтобы не выбиваться из
  * ленты размером. Тир контейнера тут не показываем — это служебное деление
  * сложности взлома для мастера, игроку сама тревога важна, а не тир узла,
- * который взломали. В одну строку, лишнее обрезается многоточием.
+ * который взломали. В одну строку — но, в отличие от обычных сообщений,
+ * без ограничения ширины в 280dp (это не пузырь одного собеседника напротив
+ * аватара, а системная строка по центру): у неё есть весь экран, поэтому
+ * реально обрезать многоточием почти нечего.
  */
 @Composable
 private fun SecurityAlertBubble(alert: Mb10Qr.SecurityAlert) {
@@ -493,7 +496,6 @@ private fun SecurityAlertBubble(alert: Mb10Qr.SecurityAlert) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
-                .widthIn(max = 280.dp)
                 .background(MB10Colors.accentDanger.copy(alpha = 0.1f), chamferShape(6.dp))
                 .border(1.dp, MB10Colors.accentDanger.copy(alpha = 0.4f), chamferShape(6.dp))
                 .padding(vertical = 9.dp, horizontal = 11.dp)
