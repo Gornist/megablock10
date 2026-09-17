@@ -35,7 +35,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.megablok10.app.breach.Tier
 import com.megablok10.app.chat.ChatStore
 import com.megablok10.app.data.ChatMessageEntity
 import com.megablok10.app.data.TransactionEntity
@@ -361,7 +360,7 @@ private fun dayLabel(day: Calendar, today: Calendar): String {
 private fun previewBody(body: String): String = when (val decoded = Mb10QrCodec.decode(body)) {
     is Mb10Qr.Transaction -> "Перевод ${decoded.amount} €$" + if (decoded.memo.isNotBlank()) " · ${decoded.memo}" else ""
     is Mb10Qr.Receipt -> "Платёж подтверждён"
-    is Mb10Qr.SecurityAlert -> "Сигнал СБ · «${decoded.containerName}»"
+    is Mb10Qr.SecurityAlert -> "Тревога! · «${decoded.containerName}»"
     else -> body
 }
 
@@ -478,21 +477,21 @@ private fun MessageBubble(
  * PlainMessageBubble сырой строкой вида "MB10:SECALERT:v1:...". Тот же
  * пузырь-Box, что у обычного сообщения (см. PlainMessageBubble) — просто с
  * акцентом accentDanger вместо нейтрального фона, чтобы не выбиваться из
- * ленты размером. Текст переносится, а не обрезается многоточием — тира,
- * узла, позывного и времени и так немного, обрезать тут нечего в ущерб смыслу.
+ * ленты размером. Тир контейнера тут не показываем — это служебное деление
+ * сложности взлома для мастера, игроку сама тревога важна, а не тир узла,
+ * который взломали. В одну строку, лишнее обрезается многоточием.
  */
 @Composable
 private fun SecurityAlertBubble(alert: Mb10Qr.SecurityAlert) {
     val parts = buildList {
-        add("СИГНАЛ СБ")
-        add(Tier.fromLevel(alert.tier).label)
+        add("Тревога!")
         add("«${alert.containerName}»")
         alert.intruderCallsign?.let(::add)
         alert.preciseAt?.let { add(SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(it)) }
     }
     Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.Center) {
         Row(
-            verticalAlignment = Alignment.Top,
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .widthIn(max = 280.dp)
                 .background(MB10Colors.accentDanger.copy(alpha = 0.1f), chamferShape(6.dp))
@@ -501,7 +500,14 @@ private fun SecurityAlertBubble(alert: Mb10Qr.SecurityAlert) {
         ) {
             HexBullet(MB10Colors.accentDanger, size = 6.dp)
             Spacer(Modifier.width(6.dp))
-            Text(parts.joinToString(" · "), color = MB10Colors.accentDanger, fontFamily = JetBrainsMono, fontSize = 10.sp, lineHeight = 14.sp)
+            Text(
+                parts.joinToString(" · "),
+                color = MB10Colors.accentDanger,
+                fontFamily = JetBrainsMono,
+                fontSize = 10.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
