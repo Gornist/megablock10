@@ -430,8 +430,50 @@ private fun DashboardSegment() {
                 Column {
                     Text("${entity.name} · ${Tier.fromLevel(entity.tier).label}", color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
                     Text("владелец: ${entity.ownerFaction} · id: ${entity.id}", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                    Spacer(Modifier.height(6.dp))
+                    ContainerClaimStatus(entity)
                 }
             }
+        }
+    }
+}
+
+private data class LootSummary(val type: LootType, val tier: Tier, val copies: Int)
+
+/** Тот же формат, что LootSlotBuilder пишет в ContainerEntity.lootJson при сохранении — здесь только читаем обратно тип/тир/тираж, payload дашборду не нужен. */
+private fun parseLootSummary(lootJson: String): List<LootSummary> {
+    if (lootJson.isBlank()) return emptyList()
+    return lootJson.split(";").mapNotNull { entry ->
+        val parts = entry.split(",")
+        if (parts.size < 3) return@mapNotNull null
+        val type = runCatching { LootType.valueOf(parts[0]) }.getOrNull() ?: return@mapNotNull null
+        val tierLevel = parts[1].toIntOrNull() ?: return@mapNotNull null
+        val copies = parts[2].toIntOrNull() ?: return@mapNotNull null
+        LootSummary(type, Tier.fromLevel(tierLevel), copies)
+    }
+}
+
+/** Сверяет напечатанный состав контейнера с уже принятыми заявками (SlotClaimDao) — что из тиража игроки уже разобрали, живьём, по мере поступления сигналов от взломов. */
+@Composable
+private fun ContainerClaimStatus(entity: ContainerEntity) {
+    val context = LocalContext.current
+    val slots = remember(entity.lootJson) { parseLootSummary(entity.lootJson) }
+    if (slots.isEmpty()) return
+
+    val claims by Mb10Database.get(context).slotClaimDao().observeForContainer(entity.id).collectAsState(initial = emptyList())
+    val claimedCounts = remember(claims) { claims.groupingBy { it.slotRef }.eachCount() }
+
+    Column {
+        slots.forEachIndexed { index, slot ->
+            val claimed = claimedCounts["${entity.id}#$index"] ?: 0
+            val typeLabel = if (slot.type == LootType.SHARD) "шард" else "демон"
+            val quota = if (slot.copies > 0) "$claimed/${slot.copies}" else "$claimed (тираж не ограничен)"
+            val exhausted = slot.copies > 0 && claimed >= slot.copies
+            Text(
+                "· $typeLabel · ${slot.tier.label} · разобрано $quota",
+                color = if (exhausted) MB10Colors.accentDanger else MB10Colors.inkSecondary,
+                fontFamily = JetBrainsMono, fontSize = 10.sp
+            )
         }
     }
 }

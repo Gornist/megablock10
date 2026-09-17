@@ -37,31 +37,48 @@ object SecAlertStore {
         }
     }
 
+    /** Что решено про конкретный взлом — результат [decide], ещё без привязки к Context/БД. */
+    data class AlertPlan(val sendAt: Long, val revealCallsign: Boolean, val revealPreciseTime: Boolean)
+
     /**
-     * Ставит сигнал в очередь по правилам ревизии v9 §4: FAIL на тире BASE
-     * сигнала не даёт вовсе; BLACKOUT среди совпавших эффектов гасит его
-     * полностью; TIMESKEW добавляет 10 минут к задержке; GHOST убирает
-     * позывной взломщика из содержимого, даже если тир его обычно раскрывает.
-     * Взлом собственного узла (ownerFaction игрока-взломщика) сигнала не даёт.
+     * Правила ревизии v9 §4, вынесены в чистую функцию без Context/БД —
+     * именно тут решается, будет ли сигнал вообще, и что в нём раскроется.
+     * null — сигнала не будет: свой узел (ownerFaction взломщика), FAIL на
+     * тире BASE, либо BLACKOUT среди совпавших эффектов гасит его полностью.
+     * TIMESKEW добавляет 10 минут к задержке; GHOST убирает позывной
+     * взломщика из содержимого, даже если тир его обычно раскрывает.
      */
-    suspend fun dispatch(context: Context, identity: Identity, container: Container, outcome: BreachOutcome, matchedEffects: Set<DaemonEffect>) {
-        if (container.ownerFaction.isBlank() || container.ownerFaction == identity.faction) return
-        if (outcome == BreachOutcome.FAIL && container.tier == Tier.BASE) return
-        if (DaemonEffect.BLACKOUT in matchedEffects) return
+    fun decide(
+        ownerFaction: String,
+        intruderFaction: String,
+        tier: Tier,
+        outcome: BreachOutcome,
+        matchedEffects: Set<DaemonEffect>,
+        now: Long
+    ): AlertPlan? {
+        if (ownerFaction.isBlank() || ownerFaction == intruderFaction) return null
+        if (outcome == BreachOutcome.FAIL && tier == Tier.BASE) return null
+        if (DaemonEffect.BLACKOUT in matchedEffects) return null
 
-        val baseDelayMs = if (container.tier == Tier.NIGHTMARE) 0L else 2 * 60_000L
+        val baseDelayMs = if (tier == Tier.NIGHTMARE) 0L else 2 * 60_000L
         val timeskewBonus = if (DaemonEffect.TIMESKEW in matchedEffects) 10 * 60_000L else 0L
-        val now = System.currentTimeMillis()
-        val sendAt = now + baseDelayMs + timeskewBonus
+        return AlertPlan(
+            sendAt = now + baseDelayMs + timeskewBonus,
+            revealCallsign = tier != Tier.BASE && DaemonEffect.GHOST !in matchedEffects,
+            revealPreciseTime = tier == Tier.NIGHTMARE
+        )
+    }
 
-        val revealCallsign = container.tier != Tier.BASE && DaemonEffect.GHOST !in matchedEffects
-        val revealPreciseTime = container.tier == Tier.NIGHTMARE
+    suspend fun dispatch(context: Context, identity: Identity, container: Container, outcome: BreachOutcome, matchedEffects: Set<DaemonEffect>) {
+        val now = System.currentTimeMillis()
+        val plan = decide(container.ownerFaction, identity.faction, container.tier, outcome, matchedEffects, now) ?: return
+
         val alert = Mb10Qr.SecurityAlert(
             containerId = container.id,
             containerName = container.name,
             tier = container.tier.level,
-            intruderCallsign = if (revealCallsign) identity.callsign else null,
-            preciseAt = if (revealPreciseTime) now else null
+            intruderCallsign = if (plan.revealCallsign) identity.callsign else null,
+            preciseAt = if (plan.revealPreciseTime) now else null
         )
 
         Mb10Database.get(context).pendingAlertDao().insert(
@@ -70,7 +87,7 @@ object SecAlertStore {
                 containerName = container.name,
                 faction = container.ownerFaction,
                 payload = Mb10QrCodec.encodeSecurityAlert(alert),
-                sendAt = sendAt,
+                sendAt = plan.sendAt,
                 ttl = now + TTL_MS
             )
         )

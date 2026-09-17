@@ -33,18 +33,36 @@ object SlotClaimStore {
         excludeIndices: Set<Int>
     ): Int? {
         val dao = Mb10Database.get(context).slotClaimDao()
+        val index = pickSlot(container, type, extractorTier, excludeIndices) { slotRef -> dao.claimCount(slotRef) } ?: return null
+
+        val slotRef = container.slotRef(index)
+        val claimedAt = System.currentTimeMillis()
+        val signature = IdentityManager.sign(context, ClaimProtocol.signaturePayload(slotRef, identity.publicKeyB64, claimedAt))
+        val entity = SlotClaimEntity(slotRef = slotRef, claimantKeyB64 = identity.publicKeyB64, claimedAt = claimedAt, signature = signature)
+        dao.insertIfAbsent(entity)
+        broadcast(entity)
+        return index
+    }
+
+    /**
+     * Чистый выбор слота без Context/БД — первый по порядку слот нужного
+     * типа, который extractorTier способен извлечь и который ещё не
+     * исчерпан по тиражу (claimedCount — число уже принятых заявок на него).
+     * excludeIndices — слоты, уже занятые ДРУГИМИ демонами в этой же попытке.
+     */
+    suspend fun pickSlot(
+        container: Container,
+        type: LootType,
+        extractorTier: Tier,
+        excludeIndices: Set<Int>,
+        claimedCount: suspend (slotRef: String) -> Int
+    ): Int? {
         for ((index, slot) in container.loot.withIndex()) {
             if (index in excludeIndices) continue
             if (slot.type != type) continue
             if (!extractorTier.covers(slot.tier)) continue
             val slotRef = container.slotRef(index)
-            if (slot.copies > 0 && dao.claimCount(slotRef) >= slot.copies) continue
-
-            val claimedAt = System.currentTimeMillis()
-            val signature = IdentityManager.sign(context, ClaimProtocol.signaturePayload(slotRef, identity.publicKeyB64, claimedAt))
-            val entity = SlotClaimEntity(slotRef = slotRef, claimantKeyB64 = identity.publicKeyB64, claimedAt = claimedAt, signature = signature)
-            dao.insertIfAbsent(entity)
-            broadcast(entity)
+            if (slot.copies > 0 && claimedCount(slotRef) >= slot.copies) continue
             return index
         }
         return null

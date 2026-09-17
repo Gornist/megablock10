@@ -1,6 +1,6 @@
 package com.megablok10.app.breach
 
-import android.util.Base64
+import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
@@ -30,12 +30,12 @@ object LootCrypto {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(KEY, "AES"), GCMParameterSpec(TAG_BITS, iv))
         val encrypted = cipher.doFinal(plain.toByteArray(Charsets.UTF_8))
-        return Base64.encodeToString(iv + encrypted, Base64.NO_WRAP)
+        return Base64.getEncoder().encodeToString(iv + encrypted)
     }
 
     /** null — payload битый или зашифрован другим ключом (например, QR прошлого акта после ротации KEY). */
     fun decrypt(payloadB64: String): String? = try {
-        val bytes = Base64.decode(payloadB64, Base64.NO_WRAP)
+        val bytes = Base64.getDecoder().decode(payloadB64)
         val iv = bytes.copyOfRange(0, IV_BYTES)
         val body = bytes.copyOfRange(IV_BYTES, bytes.size)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
