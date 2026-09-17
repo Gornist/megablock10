@@ -25,6 +25,7 @@ import com.megablok10.app.identity.Identity
 import com.megablok10.app.presence.PeerInfo
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.MB10Colors
+import com.megablok10.app.ui.theme.SegmentedTabs
 
 /**
  * Профиль и Настройки — одно место за аватаром в шапке, а не два отдельных
@@ -55,21 +56,10 @@ fun ProfileScreen(
             Text("Профиль", color = MB10Colors.inkPrimary, fontFamily = JetBrainsMono, fontSize = 13.sp)
         }
 
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-            listOf("Профиль", "Настройки").forEachIndexed { i, label ->
-                val active = i == segment
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .background(if (active) MB10Colors.surfaceSunken else MB10Colors.surfaceRaised)
-                        .clickable { segment = i }
-                        .padding(vertical = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(label, color = if (active) MB10Colors.inkPrimary else MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 12.sp)
-                }
-            }
-        }
+        SegmentedTabs(
+            listOf("Профиль", "Настройки"), selected = segment, onSelect = { segment = it },
+            modifier = Modifier.padding(horizontal = 16.dp), wrapInSurface = false
+        )
         Spacer(Modifier.height(4.dp))
 
         Box(Modifier.weight(1f)) {

@@ -170,6 +170,41 @@ fun SystemNoticeLine(text: String, tone: ChipTone = ChipTone.Neutral, modifier: 
     }
 }
 
+/**
+ * Единственная сегментированная плашка вкладок во всём приложении — Мастерская,
+ * Кибердека и Профиль писали один и тот же Row+Box+forEachIndexed заново,
+ * расходясь по мелочи (шрифт, наличие рамки). wrapInSurface рисует
+ * ChamferedSurface-рамку вокруг (как у Мастерской и Кибердеки); false — голый
+ * ряд без рамки (как у Профиля, у него уже есть обрамление экрана снаружи).
+ */
+@Composable
+fun SegmentedTabs(labels: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier, wrapInSurface: Boolean = true) {
+    val row: @Composable () -> Unit = {
+        Row(Modifier.fillMaxWidth()) {
+            labels.forEachIndexed { i, label ->
+                val active = i == selected
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .background(if (active) MB10Colors.surfaceSunken else MB10Colors.surfaceRaised)
+                        .clickable { onSelect(i) }
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(label, color = if (active) MB10Colors.inkPrimary else MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 12.sp)
+                }
+            }
+        }
+    }
+    if (wrapInSurface) {
+        ChamferedSurface(borderColor = MB10Colors.borderMuted, fillColor = MB10Colors.surfaceRaised, cut = 6.dp, contentPadding = 0.dp, modifier = modifier.fillMaxWidth()) {
+            row()
+        }
+    } else {
+        Box(modifier.fillMaxWidth()) { row() }
+    }
+}
+
 /** Единственное текстовое поле в стайлгайде — заменяет голые Material3 TextField/OutlinedTextField по экранам. */
 @Composable
 fun AppTextField(

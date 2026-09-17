@@ -31,6 +31,7 @@ import com.megablok10.app.ui.theme.ChamferedSurface
 import com.megablok10.app.ui.theme.ChipTone
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
+import com.megablok10.app.ui.theme.ListRow
 import com.megablok10.app.ui.theme.MB10Colors
 import com.megablok10.app.ui.theme.SectionLabel
 import com.megablok10.app.ui.theme.StatusChip
@@ -50,7 +51,10 @@ fun SettingsScreen(onResetIdentity: () -> Unit, onOpenMasterTool: () -> Unit = {
 
         Spacer(Modifier.height(16.dp))
         SectionLabel("Сеть и данные")
-        NetworkRow("Мешь-сеть", "устройства рядом обнаруживаются через NSD", "${onlinePeers.size} в сети")
+        ListRow(trailing = { StatusChip("${onlinePeers.size} в сети", tone = ChipTone.Neutral) }) {
+            Text("Мешь-сеть", color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
+            Text("устройства рядом обнаруживаются через NSD", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+        }
 
         Spacer(Modifier.height(16.dp))
         SectionLabel("Персонаж")
@@ -100,17 +104,3 @@ private fun ToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean
     }
 }
 
-@Composable
-private fun NetworkRow(name: String, meta: String, badge: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 9.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(name, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
-            Text(meta, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
-        }
-        StatusChip(badge, tone = ChipTone.Neutral)
-    }
-}

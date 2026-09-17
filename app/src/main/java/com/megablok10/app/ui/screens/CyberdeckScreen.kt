@@ -53,6 +53,7 @@ import com.megablok10.app.ui.theme.EmptyState
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.MB10Colors
+import com.megablok10.app.ui.theme.SegmentedTabs
 import kotlinx.coroutines.launch
 
 /**
@@ -151,29 +152,7 @@ fun CyberdeckScreen(identity: Identity, onNestedChange: (Boolean) -> Unit = {}) 
         AppButton("Сканировать объект", variant = ButtonVariant.Netrun, modifier = Modifier.fillMaxWidth(), onClick = scanObject)
         Spacer(Modifier.height(14.dp))
 
-        ChamferedSurface(
-            borderColor = MB10Colors.borderMuted,
-            fillColor = MB10Colors.surfaceRaised,
-            cut = 6.dp,
-            contentPadding = 0.dp,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(Modifier.fillMaxWidth()) {
-                listOf("Демоны", "Шарды").forEachIndexed { i, label ->
-                    val active = i == segment
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .background(if (active) MB10Colors.surfaceSunken else MB10Colors.surfaceRaised)
-                            .clickable { segment = i }
-                            .padding(vertical = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(label, color = if (active) MB10Colors.inkPrimary else MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 12.sp)
-                    }
-                }
-            }
-        }
+        SegmentedTabs(listOf("Демоны", "Шарды"), selected = segment, onSelect = { segment = it })
         Spacer(Modifier.height(14.dp))
 
         Box(Modifier.weight(1f)) {

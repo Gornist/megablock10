@@ -59,6 +59,7 @@ import com.megablok10.app.ui.theme.Jura
 import com.megablok10.app.ui.theme.ListRow
 import com.megablok10.app.ui.theme.MB10Colors
 import com.megablok10.app.ui.theme.SectionLabel
+import com.megablok10.app.ui.theme.SegmentedTabs
 import com.megablok10.app.ui.theme.StatusChip
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -92,26 +93,7 @@ fun MasterToolScreen(onClose: () -> Unit) {
         )
         Spacer(Modifier.height(18.dp))
 
-        ChamferedSurface(
-            borderColor = MB10Colors.borderMuted, fillColor = MB10Colors.surfaceRaised, cut = 6.dp, contentPadding = 0.dp,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(Modifier.fillMaxWidth()) {
-                listOf("Контейнер", "Шард", "RAM", "Дашборд").forEachIndexed { i, label ->
-                    val active = i == activeSegment
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .background(if (active) MB10Colors.surfaceSunken else MB10Colors.surfaceRaised)
-                            .clickable { activeSegment = i }
-                            .padding(vertical = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(label, color = if (active) MB10Colors.inkPrimary else MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 12.sp)
-                    }
-                }
-            }
-        }
+        SegmentedTabs(listOf("Контейнер", "Шард", "RAM", "Дашборд"), selected = activeSegment, onSelect = { activeSegment = it })
         Spacer(Modifier.height(16.dp))
 
         when (activeSegment) {

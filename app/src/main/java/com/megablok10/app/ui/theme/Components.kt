@@ -32,22 +32,6 @@ fun HexBullet(color: Color = MB10Colors.accentAction, size: Dp = 8.dp) {
     Box(Modifier.size(size).background(color, hexShape()))
 }
 
-/**
- * Контурный шестиугольник с буквой/пиктограммой внутри — в отличие от
- * HexBullet (залитая точка-статус), это отдельная сущность с содержимым:
- * инициал позывного там, где аватарок в базе нет. Только обводка (border,
- * не background) — залитый вариант остаётся исключительно за HexBullet.
- */
-@Composable
-fun HexOutlineIcon(letter: String, color: Color = MB10Colors.inkPrimary, size: Dp = 32.dp, borderWidth: Dp = 1.5.dp) {
-    Box(
-        modifier = Modifier.size(size).border(borderWidth, color, hexShape()),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(letter, color = color, fontFamily = Jura, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, fontSize = (size.value * 0.4f).sp)
-    }
-}
-
 @Composable
 fun DottedDivider(color: Color = MB10Colors.borderMuted, modifier: Modifier = Modifier) {
     Canvas(modifier.fillMaxWidth().height(1.dp)) {
