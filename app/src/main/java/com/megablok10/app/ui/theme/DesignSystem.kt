@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -128,16 +129,45 @@ private fun chamferedPanelImpl(
 /** Смысловой тон чипа/статуса — цвет выбирается по смыслу, а не подбирается вручную на каждом экране. */
 enum class ChipTone { Neutral, Info, Action, Danger, Netrun }
 
+/** Единственное место, где ChipTone превращается в конкретный цвет — и StatusChip, и SystemNoticeLine берут его отсюда, а не дублируют один и тот же when. */
+fun toneColor(tone: ChipTone): Color = when (tone) {
+    ChipTone.Neutral -> MB10Colors.inkSecondary
+    ChipTone.Info -> MB10Colors.inkPrimary
+    ChipTone.Action -> MB10Colors.accentAction
+    ChipTone.Danger -> MB10Colors.accentDanger
+    ChipTone.Netrun -> MB10Colors.accentNetrun
+}
+
 @Composable
 fun StatusChip(text: String, tone: ChipTone = ChipTone.Neutral, modifier: Modifier = Modifier) {
-    val color = when (tone) {
-        ChipTone.Neutral -> MB10Colors.inkSecondary
-        ChipTone.Info -> MB10Colors.inkPrimary
-        ChipTone.Action -> MB10Colors.accentAction
-        ChipTone.Danger -> MB10Colors.accentDanger
-        ChipTone.Netrun -> MB10Colors.accentNetrun
+    Chip(text, color = toneColor(tone), modifier = modifier)
+}
+
+/**
+ * Единственная обёртка для системных строк-уведомлений в чате (не переписка
+ * между людьми, а автоматическое сообщение — сигнал СБ, чек) — по центру
+ * ленты, в одну строку (обрезается многоточием только в совсем крайнем
+ * случае, ширина не ограничена искусственно, как у пузыря между двумя
+ * собеседниками), цвет по смыслу через ChipTone. Один компонент на все
+ * системные уведомления, а не отдельная почти такая же обёртка под каждый
+ * новый тип.
+ */
+@Composable
+fun SystemNoticeLine(text: String, tone: ChipTone = ChipTone.Neutral, modifier: Modifier = Modifier) {
+    val color = toneColor(tone)
+    Row(modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.Center) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .background(color.copy(alpha = 0.1f), chamferShape(6.dp))
+                .border(1.dp, color.copy(alpha = 0.4f), chamferShape(6.dp))
+                .padding(vertical = 9.dp, horizontal = 11.dp)
+        ) {
+            HexBullet(color, size = 6.dp)
+            Spacer(Modifier.width(6.dp))
+            Text(text, color = color, fontFamily = JetBrainsMono, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
     }
-    Chip(text, color = color, modifier = modifier)
 }
 
 /** Единственное текстовое поле в стайлгайде — заменяет голые Material3 TextField/OutlinedTextField по экранам. */

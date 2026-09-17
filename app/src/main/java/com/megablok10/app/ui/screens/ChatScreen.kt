@@ -60,6 +60,7 @@ import com.megablok10.app.ui.theme.ListRow
 import com.megablok10.app.ui.theme.MB10Colors
 import com.megablok10.app.ui.theme.OnlineDot
 import com.megablok10.app.ui.theme.StatusChip
+import com.megablok10.app.ui.theme.SystemNoticeLine
 import com.megablok10.app.ui.theme.chamferShape
 import com.megablok10.app.wallet.TransactionStore
 import kotlinx.coroutines.launch
@@ -474,15 +475,10 @@ private fun MessageBubble(
 /**
  * Сигнал СБ (SecAlertStore) приходит телом обычного фракционного сообщения —
  * без этой ветки декодированный Mb10Qr.SecurityAlert падал бы в
- * PlainMessageBubble сырой строкой вида "MB10:SECALERT:v1:...". Тот же
- * пузырь-Box, что у обычного сообщения (см. PlainMessageBubble) — просто с
- * акцентом accentDanger вместо нейтрального фона, чтобы не выбиваться из
- * ленты размером. Тир контейнера тут не показываем — это служебное деление
- * сложности взлома для мастера, игроку сама тревога важна, а не тир узла,
- * который взломали. В одну строку — но, в отличие от обычных сообщений,
- * без ограничения ширины в 280dp (это не пузырь одного собеседника напротив
- * аватара, а системная строка по центру): у неё есть весь экран, поэтому
- * реально обрезать многоточием почти нечего.
+ * PlainMessageBubble сырой строкой вида "MB10:SECALERT:v1:...". Обёртка —
+ * общий SystemNoticeLine (см. design system), тот же компонент, что и у
+ * ReceiptLine. Тир контейнера тут не показываем — это служебное деление
+ * сложности взлома для мастера, игроку сама тревога важна, а не тир узла.
  */
 @Composable
 private fun SecurityAlertBubble(alert: Mb10Qr.SecurityAlert) {
@@ -492,26 +488,7 @@ private fun SecurityAlertBubble(alert: Mb10Qr.SecurityAlert) {
         alert.intruderCallsign?.let(::add)
         alert.preciseAt?.let { add(SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(it)) }
     }
-    Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.Center) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .background(MB10Colors.accentDanger.copy(alpha = 0.1f), chamferShape(6.dp))
-                .border(1.dp, MB10Colors.accentDanger.copy(alpha = 0.4f), chamferShape(6.dp))
-                .padding(vertical = 9.dp, horizontal = 11.dp)
-        ) {
-            HexBullet(MB10Colors.accentDanger, size = 6.dp)
-            Spacer(Modifier.width(6.dp))
-            Text(
-                parts.joinToString(" · "),
-                color = MB10Colors.accentDanger,
-                fontFamily = JetBrainsMono,
-                fontSize = 10.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
+    SystemNoticeLine(parts.joinToString(" · "), tone = ChipTone.Danger)
 }
 
 @Composable
@@ -588,10 +565,8 @@ private fun PaymentBubble(
     }
 }
 
-/** Чек — не полноценный пузырь, а тонкая системная строка по центру, как разделитель дня. */
+/** Чек — тот же общий SystemNoticeLine, что и у сигнала СБ, тоном Action (подтверждение, не тревога). */
 @Composable
 private fun ReceiptLine() {
-    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.Center) {
-        Text("✓ Получение подтверждено", color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 10.sp)
-    }
+    SystemNoticeLine("✓ Получение подтверждено", tone = ChipTone.Action)
 }
