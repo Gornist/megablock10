@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -67,6 +68,7 @@ internal fun BreachContainerFlow(container: Container, daemons: List<Daemon>, id
     var chosen by remember(container.id) { mutableStateOf<Set<String>>(emptySet()) }
     var sessionSeed by remember(container.id) { mutableStateOf<Long?>(null) }
     var rewardOutcome by remember(container.id) { mutableStateOf<RewardOutcome?>(null) }
+    var secAlertStatus by remember(container.id) { mutableStateOf<String?>(null) }
 
     val chosenDaemons = daemons.filter { it.id in chosen }
     val used = chosenDaemons.sumOf { it.sequence.size }
@@ -89,7 +91,8 @@ internal fun BreachContainerFlow(container: Container, daemons: List<Daemon>, id
                 onRescan = onRescan,
                 rescanLabel = "Новый контейнер",
                 failMessage = "СБ зафиксировала попытку. Контейнер заблокирован до конца этого акта.",
-                rewardSummary = rewardOutcome?.let(::formatRewardSummary),
+                rewardOutcome = rewardOutcome,
+                secAlertStatus = secAlertStatus,
                 onResult = { result ->
                     scope.launch {
                         val outcome = DaemonRewards.apply(context, identity, container, result, attemptId = "${container.id}:$seed")
@@ -98,6 +101,7 @@ internal fun BreachContainerFlow(container: Container, daemons: List<Daemon>, id
                             ContainerCooldownStore.markRewarded(context, container.id)
                         }
                         SecAlertStore.dispatch(context, identity, container, result.outcome, outcome.matchedEffects)
+                        secAlertStatus = secAlertStatusText(container, identity, result.outcome, outcome.matchedEffects)
                     }
                 }
             )
@@ -112,7 +116,12 @@ internal fun BreachContainerFlow(container: Container, daemons: List<Daemon>, id
         ContainerHeader(container)
 
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-            DaemonPicker(daemons = daemons, chosen = chosen, onToggle = { id -> chosen = if (id in chosen) chosen - id else chosen + id })
+            DaemonPicker(
+                daemons = daemons,
+                chosen = chosen,
+                remainingBuffer = identity.ramCapacity - used,
+                onToggle = { id -> chosen = if (id in chosen) chosen - id else chosen + id }
+            )
         }
 
         Text(
@@ -155,13 +164,18 @@ private fun ContainerHeader(container: Container) {
     }
 }
 
-private fun formatRewardSummary(outcome: RewardOutcome): String {
-    val parts = mutableListOf<String>()
-    if (outcome.eddies > 0) parts += "+${outcome.eddies} эдди"
-    outcome.extractedShardTitles.forEach { parts += "шард «$it»" }
-    outcome.extractedDaemonNames.forEach { parts += "демон «$it»" }
-    if (outcome.cacheExhausted) parts += "КЭШ ОЧИЩЕН"
-    return parts.joinToString(" · ")
+/**
+ * Что написать в строке "Сигнал СБ" на экране результата — те же правила
+ * гейтинга, что у SecAlertStore.decide (свой контейнер/FAIL на BASE — сигнала
+ * не было вовсе, тогда и строки нет), но здесь только для отображения: сам
+ * сигнал уже поставлен в очередь отдельным вызовом SecAlertStore.dispatch.
+ * Раньше это никак не показывалось на экране результата — игрок не мог
+ * узнать, ушёл ли сигнал владельцу, не заглянув в чужой чат.
+ */
+private fun secAlertStatusText(container: Container, identity: Identity, outcome: BreachOutcome, matchedEffects: Set<DaemonEffect>): String? {
+    if (container.ownerFaction.isBlank() || container.ownerFaction == identity.faction) return null
+    if (outcome == BreachOutcome.FAIL && container.tier == Tier.BASE) return null
+    return if (DaemonEffect.BLACKOUT in matchedEffects) "подавлен (Blackout)" else "отправлен фракции «${container.ownerFaction}»"
 }
 
 /**
@@ -208,20 +222,37 @@ private fun shardDecryptTarget(shard: Mb10Qr.Shard): Daemon {
     return Daemon(id = "shard-decrypt:${shard.id}", name = "Шифр-замок", sequence = sequence)
 }
 
+/**
+ * remainingBuffer — сколько буфера осталось ПОСЛЕ уже выбранных демонов (см.
+ * BreachContainerFlow). Демон, который в него не влезает, показан приглушённым
+ * и с явной причиной ("не влезает в буфер") вместо своего эффекта, а не
+ * кликабелен — раньше это выяснялось только после попытки стартовать взлом,
+ * общей надписью под списком. Уже выбранного демона это не касается: снять
+ * его можно всегда, его вес уже учтён в remainingBuffer, а не заново против него.
+ */
 @Composable
-private fun DaemonPicker(daemons: List<Daemon>, chosen: Set<String>, onToggle: (String) -> Unit) {
+private fun DaemonPicker(daemons: List<Daemon>, chosen: Set<String>, remainingBuffer: Int, onToggle: (String) -> Unit) {
     Column {
         daemons.forEachIndexed { index, daemon ->
             val isChecked = daemon.id in chosen
-            val textColor = if (isChecked) MB10Colors.onAccent else MB10Colors.inkPrimary
-            val effectColor = if (isChecked) MB10Colors.onAccent.copy(alpha = 0.8f) else MB10Colors.inkSecondary
+            val fitsBuffer = isChecked || daemon.sequence.size <= remainingBuffer
+            val textColor = when {
+                isChecked -> MB10Colors.onAccent
+                !fitsBuffer -> MB10Colors.inkTertiary
+                else -> MB10Colors.inkPrimary
+            }
+            val effectColor = when {
+                isChecked -> MB10Colors.onAccent.copy(alpha = 0.8f)
+                !fitsBuffer -> MB10Colors.accentDanger.copy(alpha = 0.7f)
+                else -> MB10Colors.inkSecondary
+            }
             ListRow(
                 selected = isChecked,
                 selectedColor = MB10Colors.accentNetrun,
-                onClick = { onToggle(daemon.id) }
+                onClick = if (fitsBuffer) ({ onToggle(daemon.id) }) else null
             ) {
                 Text("${daemon.name} · ${daemon.tier.label}", color = textColor, fontFamily = IBMPlexSans, fontSize = 13.sp)
-                Text(daemon.effect.label(), color = effectColor, fontFamily = IBMPlexSans, fontSize = 11.sp)
+                Text(if (fitsBuffer) daemon.effect.label() else "не влезает в буфер", color = effectColor, fontFamily = IBMPlexSans, fontSize = 11.sp)
                 Row(Modifier.padding(top = 4.dp)) {
                     daemon.sequence.forEach { code -> CodePill(code) }
                 }
@@ -259,7 +290,8 @@ private fun BreachSession(
     onRescan: () -> Unit,
     rescanLabel: String = "Новый контейнер",
     failMessage: String = "СБ зафиксировала попытку. Контейнер заблокирован до конца этого акта.",
-    rewardSummary: String? = null,
+    rewardOutcome: RewardOutcome? = null,
+    secAlertStatus: String? = null,
     onResult: (BreachResult) -> Unit = {}
 ) {
     val grid = remember(seed) { generateGrid(gridSize, daemons, Random(seed), breachParams) }
@@ -396,7 +428,7 @@ private fun BreachSession(
             color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp)
         )
 
-        result?.let { ResultPanel(it, failMessage = failMessage, rewardSummary = rewardSummary) }
+        result?.let { ResultPanel(it, failMessage = failMessage, rewardOutcome = rewardOutcome, secAlertStatus = secAlertStatus) }
     }
 
     Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -484,7 +516,8 @@ private fun HackCell(code: String, isSelected: Boolean, orderLabel: String?, isS
 private fun ResultPanel(
     result: BreachResult,
     failMessage: String = "СБ зафиксировала попытку. Контейнер заблокирован до конца этого акта.",
-    rewardSummary: String? = null
+    rewardOutcome: RewardOutcome? = null,
+    secAlertStatus: String? = null
 ) {
     val (title, color) = when (result.outcome) {
         BreachOutcome.SUCCESS -> "Взлом завершён" to MB10Colors.accentNetrun
@@ -524,16 +557,25 @@ private fun ResultPanel(
             fontSize = 10.5.sp,
             modifier = Modifier.padding(top = 8.dp)
         )
-        if (!rewardSummary.isNullOrEmpty()) {
-            Text(
-                rewardSummary,
-                color = MB10Colors.accentNetrun,
-                fontFamily = JetBrainsMono,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.padding(top = 6.dp)
-            )
+        if (rewardOutcome != null || secAlertStatus != null) {
+            DottedDivider(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
         }
+        rewardOutcome?.let { outcome ->
+            outcome.extractedShardTitles.forEach { title -> RewardRow("Шард извлечён", "«$title»") }
+            outcome.extractedDaemonNames.forEach { name -> RewardRow("Демон извлечён", "«$name»") }
+            if (outcome.eddies > 0) RewardRow("Эдди начислены", "+${outcome.eddies} €$")
+            if (outcome.cacheExhausted) RewardRow("Тираж узла", "исчерпан", valueColor = MB10Colors.accentDanger)
+        }
+        secAlertStatus?.let { RewardRow("Сигнал СБ", it, valueColor = MB10Colors.accentDanger) }
+    }
+}
+
+/** Одна строка разбора результата — тип награды/события слева, значение справа. Раньше это всё было одной склеенной строкой, из которой не разобрать, что случилось конкретно (см. ревизию мокапа "Результат · шард"). */
+@Composable
+private fun RewardRow(label: String, value: String, valueColor: Color = MB10Colors.accentNetrun) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 11.5.sp)
+        Text(value, color = valueColor, fontFamily = JetBrainsMono, fontSize = 11.5.sp, fontWeight = FontWeight.Medium)
     }
 }
 

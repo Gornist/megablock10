@@ -3,6 +3,7 @@ package com.megablok10.app.ui.screens
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -27,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -39,6 +42,7 @@ import com.megablok10.app.breach.DaemonRewards
 import com.megablok10.app.breach.DaemonStore
 import com.megablok10.app.breach.LootType
 import com.megablok10.app.breach.ShardDecryptFlow
+import com.megablok10.app.breach.SlotClaimStore
 import com.megablok10.app.breach.label
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.identity.RamUpgradeStore
@@ -50,6 +54,7 @@ import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.ButtonVariant
 import com.megablok10.app.ui.theme.ChamferedSurface
 import com.megablok10.app.ui.theme.EmptyState
+import com.megablok10.app.ui.theme.HexBullet
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.MB10Colors
@@ -77,28 +82,39 @@ fun CyberdeckScreen(identity: Identity, onNestedChange: (Boolean) -> Unit = {}) 
     var container by remember { mutableStateOf<Container?>(null) }
     var openedShard by remember { mutableStateOf<Mb10Qr.Shard?>(null) }
     var decryptingShard by remember { mutableStateOf<Mb10Qr.Shard?>(null) }
+    var scanIssue by remember { mutableStateOf<ScanIssue?>(null) }
 
     // Деталь шарда и мини-взлом — полноэкранные, со своим back-заголовком; шапка приложения над ними была бы дублем.
     LaunchedEffect(openedShard, decryptingShard) { onNestedChange(openedShard != null || decryptingShard != null) }
 
     val scanObject = rememberMb10QrScanner { qr ->
+        scanIssue = null
         when (qr) {
             is Mb10Qr.ContainerQr -> {
                 // Связь нужна ДО открытия выбора демонов, не только чтобы разослать
                 // заявку на слот — без неё можно было бы обойти сигнал СБ авиарежимом
                 // (см. ревизию v9 §5).
                 if (!MeshLink.isOnline(context)) {
-                    Toast.makeText(context, "Нет связи с сетью Мегаблока", Toast.LENGTH_SHORT).show()
+                    scanIssue = ScanIssue("НЕТ СВЯЗИ", "Дека вне зоны сети Мегаблока. Взлом недоступен без подключения к узлу связи.")
                     return@rememberMb10QrScanner
                 }
                 scope.launch {
                     val remainingMs = ContainerCooldownStore.remainingCooldownMs(context, qr.container.id)
-                    if (remainingMs > 0) {
-                        val minutes = (remainingMs / 60_000L + 1).coerceAtLeast(1)
-                        Toast.makeText(context, "Контейнер недоступен ещё $minutes мин", Toast.LENGTH_LONG).show()
-                    } else {
-                        container = qr.container
-                        segment = 0
+                    when {
+                        remainingMs > 0 -> {
+                            val minutes = (remainingMs / 60_000L + 1).coerceAtLeast(1)
+                            scanIssue = ScanIssue("УЗЕЛ ОСТЫВАЕТ", "Повторное подключение к этому узлу возможно через $minutes мин.")
+                        }
+                        // Раньше это не проверялось вовсе — попытку можно было честно
+                        // потратить на уже пустой контейнер и узнать об этом только
+                        // в самом конце, через cacheExhausted в результате взлома.
+                        SlotClaimStore.isExhausted(context, qr.container) -> {
+                            scanIssue = ScanIssue("КЭШ ОЧИЩЕН", "Все слоты узла исчерпаны — здесь больше нечего извлекать.")
+                        }
+                        else -> {
+                            container = qr.container
+                            segment = 0
+                        }
                     }
                 }
             }
@@ -150,6 +166,10 @@ fun CyberdeckScreen(identity: Identity, onNestedChange: (Boolean) -> Unit = {}) 
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         AppButton("Сканировать объект", variant = ButtonVariant.Netrun, modifier = Modifier.fillMaxWidth(), onClick = scanObject)
+        scanIssue?.let { issue ->
+            Spacer(Modifier.height(10.dp))
+            ScanIssueCard(issue, onDismiss = { scanIssue = null })
+        }
         Spacer(Modifier.height(14.dp))
 
         SegmentedTabs(listOf("Демоны", "Шарды"), selected = segment, onSelect = { segment = it })
@@ -239,5 +259,37 @@ private fun ShardsSegment(shards: List<Mb10Qr.Shard>, onOpen: (Mb10Qr.Shard) -> 
     }
     LazyColumn(Modifier.fillMaxSize()) {
         items(shards, key = { it.id }) { shard -> ShardCard(shard, onClick = { onOpen(shard) }) }
+    }
+}
+
+/** Почему скан контейнера не открыл выбор демонов — заголовок + объяснение. */
+private data class ScanIssue(val title: String, val message: String)
+
+/**
+ * Постоянная карточка вместо Toast — Toast сам исчезает через пару секунд и
+ * не даёт места ни для объяснения причины, ни для повторной попытки; эта
+ * остаётся на экране, пока игрок сам её не закроет или не отсканирует снова.
+ */
+@Composable
+private fun ScanIssueCard(issue: ScanIssue, onDismiss: () -> Unit) {
+    ChamferedSurface(
+        borderColor = MB10Colors.accentDanger, fillColor = MB10Colors.surfaceRaised, cut = 8.dp, contentPadding = 12.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    HexBullet(MB10Colors.accentDanger, size = 7.dp)
+                    Spacer(Modifier.width(6.dp))
+                    Text(issue.title, color = MB10Colors.accentDanger, fontFamily = JetBrainsMono, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                }
+                Text(
+                    "✕", color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 13.sp,
+                    modifier = Modifier.clickable(onClick = onDismiss).padding(4.dp)
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(issue.message, color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 12.sp, lineHeight = 16.sp)
+        }
     }
 }

@@ -68,6 +68,21 @@ object SlotClaimStore {
         return null
     }
 
+    /**
+     * Все слоты конечного тиража в контейнере уже разобраны — сканировать его
+     * дальше некому смысла нет ("КЭШ ОЧИЩЕН", см. CyberdeckScreen). Слоты с
+     * copies=0 (бесконечный тираж) никогда не считаются исчерпанными; контейнер
+     * совсем без лута (легаси "AP"-QR) исчерпанным тоже не считается — у него
+     * просто изначально нечего доставать, это не то же самое, что "уже разобрали".
+     */
+    suspend fun isExhausted(context: Context, container: Container): Boolean {
+        if (container.loot.isEmpty()) return false
+        val dao = Mb10Database.get(context).slotClaimDao()
+        return container.loot.withIndex().all { (index, slot) ->
+            slot.copies > 0 && dao.claimCount(container.slotRef(index)) >= slot.copies
+        }
+    }
+
     /** Входящая заявка от другого устройства (см. ChatStore) — принимается только если подпись действительно принадлежит заявленному ключу. */
     suspend fun receive(context: Context, claim: SlotClaimEntity) {
         val payload = ClaimProtocol.signaturePayload(claim.slotRef, claim.claimantKeyB64, claim.claimedAt)
