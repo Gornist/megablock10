@@ -1,28 +1,20 @@
 package com.megablok10.app.breach
 
 /**
- * Общие параметры баланса взлома и стартовый набор демонов, который сеется
- * в кибердеку персонажа один раз при первом запуске (см. DaemonStore.
- * ensureSeeded) — дальше коллекция растёт через QR мастера, а не отсюда.
- * Числа для gridSize/timerSec/ramCapacity подобраны так, чтобы 4 стартовых
- * демона суммарно ПРЕВЫШАЛИ ёмкость буфера (2+3+3+2=10 > 8) — это даёт
- * реально проверить на экране выбора демонов сценарий "придётся снять один",
- * а не только happy path. У стартовых демонов reward — чистый текст без
- * цифрового эффекта (rewardMoney/rewardShard* не заданы) — реальная награда
- * есть только у демонов, которых выдаёт мастер (см. Daemon в BreachEngine.kt).
+ * Стартовый набор демона персонажа и глобальные (не завязанные на тир
+ * контейнера) параметры баланса. gridSize/timerSec/deadCells/corruptedCodes
+ * теперь приходят из BreachTierParams.forTier(container.tier) — здесь их
+ * больше нет, единственная зависящая от игрока величина (буфер) — это
+ * Identity.ramCapacity, не константа.
  */
 object MockBreach {
-    const val gridSize = 5
-    const val timerSec = 45
-    const val ramCapacity = 8
+    /** Анти-фарм: один и тот же контейнер не платит лут чаще этого интервала (см. ContainerCooldownStore). */
+    const val containerCooldownMinutes = 30
 
-    /** Анти-фарм: одна и та же точка доступа не платит демонов-наградами чаще этого интервала (см. AccessPointCooldownStore). */
-    const val accessPointCooldownMinutes = 60
+    /** Длина цели расшифровки шарда — по тиру шарда (1/2/3), индекс = tier-1. */
+    val shardDecryptTargetLength = listOf(3, 4, 5)
 
     val daemons = listOf(
-        Daemon("datamine_v1", "Datamine V1", listOf("1C", "55"), "открывает текстовый шард"),
-        Daemon("datamine_v2", "Datamine V2", listOf("BD", "E9", "1C"), "открывает второй шард на точке"),
-        Daemon("icepick", "Icepick", listOf("55", "7A", "BD"), "снимает физическую блокировку двери"),
-        Daemon("camera_shutdown", "Camera Shutdown", listOf("E9", "FF"), "скрывает попытку взлома от лога СБ")
+        Daemon("datamine_v1", "Datamine V1", listOf("1C", "55"), tier = Tier.BASE, effect = DaemonEffect.EXTRACT_SHARD)
     )
 }

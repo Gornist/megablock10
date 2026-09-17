@@ -1,6 +1,8 @@
 package com.megablok10.app.chat
 
 import android.content.Context
+import com.megablok10.app.breach.SecAlertStore
+import com.megablok10.app.breach.SlotClaimStore
 import com.megablok10.app.data.ChatMessageEntity
 import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.identity.Identity
@@ -52,11 +54,13 @@ object ChatStore {
                     // и есть приём с провода), свои же исходящие persist() не должны пищать.
                     SoundPlayer.playMessageReceived(appContext)
                 },
-                onCallSignal = { signal -> CallManager.onSignalReceived(appContext, identity, signal) }
+                onCallSignal = { signal -> CallManager.onSignalReceived(appContext, identity, signal) },
+                onSlotClaim = { claim -> appScope.launch { SlotClaimStore.receive(appContext, claim) } }
             )
             srv.start(appScope)
             server = srv
             PresenceService.start(appContext, identity, srv.port)
+            SecAlertStore.start(appContext, appScope)
         }
     }
 

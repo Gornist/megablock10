@@ -66,7 +66,7 @@ fun SettingsScreen(onResetIdentity: () -> Unit, onOpenMasterTool: () -> Unit = {
 
         Spacer(Modifier.height(16.dp))
         SectionLabel("Мастеру")
-        AppButton("Мастерская — генерация QR точек, шардов и демонов", modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.Secondary, onClick = onOpenMasterTool)
+        AppButton("Мастерская — генерация QR контейнеров, шардов и RAM", modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.Secondary, onClick = onOpenMasterTool)
     }
 
     if (confirmingReset) {

@@ -17,7 +17,7 @@ interface DaemonDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(daemons: List<DaemonEntity>)
 
-    /** REPLACE — как у шардов: повторное сканирование того же демона обновляет его, если мастер перепечатал QR. */
+    /** REPLACE — извлечение демона с тем же id (например, повторная выдача мастером через LootGrant) не плодит дубликат, просто перезаписывает. */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(daemon: DaemonEntity)
 }

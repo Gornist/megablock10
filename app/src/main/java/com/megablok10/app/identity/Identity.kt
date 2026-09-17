@@ -17,11 +17,17 @@ private const val KEY_PRIVATE = "private_key"
 private const val KEY_PUBLIC = "public_key"
 private const val KEY_CALLSIGN = "callsign"
 private const val KEY_FACTION = "faction"
+private const val KEY_RAM = "ram_capacity"
+
+/** Стартовая и максимальная ёмкость буфера взлома (см. ревизию v9 §2 — раньше это была глобальная константа MockBreach.ramCapacity). */
+const val RAM_CAPACITY_DEFAULT = 6
+const val RAM_CAPACITY_MAX = 13
 
 data class Identity(
     val publicKeyB64: String,
     val callsign: String,
-    val faction: String
+    val faction: String,
+    val ramCapacity: Int = RAM_CAPACITY_DEFAULT
 )
 
 /**
@@ -44,7 +50,8 @@ object IdentityManager {
             return Identity(
                 publicKeyB64 = existingPub,
                 callsign = p.getString(KEY_CALLSIGN, callsign) ?: callsign,
-                faction = p.getString(KEY_FACTION, faction) ?: faction
+                faction = p.getString(KEY_FACTION, faction) ?: faction,
+                ramCapacity = p.getInt(KEY_RAM, RAM_CAPACITY_DEFAULT)
             )
         }
 
@@ -73,8 +80,17 @@ object IdentityManager {
         return Identity(
             publicKeyB64 = pub,
             callsign = p.getString(KEY_CALLSIGN, "") ?: "",
-            faction = p.getString(KEY_FACTION, "") ?: ""
+            faction = p.getString(KEY_FACTION, "") ?: "",
+            ramCapacity = p.getInt(KEY_RAM, RAM_CAPACITY_DEFAULT)
         )
+    }
+
+    /** +delta к ёмкости буфера, зажато потолком — даже если QR сфотографируют и применят несколько раз с разных устройств, выше потолка на этом устройстве не прыгнуть. Дедупликация самого токена — на вызывающей стороне (RamUpgradeStore), не здесь. */
+    fun applyRamUpgrade(context: Context, delta: Int): Int {
+        val p = prefs(context)
+        val next = (p.getInt(KEY_RAM, RAM_CAPACITY_DEFAULT) + delta).coerceIn(RAM_CAPACITY_DEFAULT, RAM_CAPACITY_MAX)
+        p.edit().putInt(KEY_RAM, next).apply()
+        return next
     }
 
     fun getPrivateKey(context: Context): PrivateKey {

@@ -4,21 +4,20 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 
 /**
- * Демон, известный этому персонажу. Стартовый набор сеется из MockBreach при
- * первом запуске (см. DaemonStore.ensureSeeded) — дальше список пополняется
- * по мере игры: демон — предмет, который выдаёт мастер через свой QR
- * (Мастерская → форма "Демон"), сканируется в кибердеку игрока тем же путём,
- * что и шард. sequence хранится как коды через запятую — своей таблицы под
- * них не нужно. rewardMoney/rewardShard* — см. Daemon в BreachEngine.kt.
+ * Демон, известный этому персонажу. Стартовый набор (сейчас — один Datamine
+ * V1) сеется из MockBreach при первом запуске (см. DaemonStore.ensureSeeded),
+ * дальше пополняется извлечением из контейнеров (см. DaemonRewards, effect =
+ * EXTRACT_DAEMON) — отдельных QR-демонов больше нет (ревизия v9). sequence
+ * хранится как коды через запятую — своей таблицы под них не нужно.
+ * tier/effect — что за демон и что он делает при совпадении, см. Daemon в
+ * BreachEngine.kt и DaemonEffect.kt. Полей награды на демоне больше нет —
+ * лут теперь на контейнере, демон — многоразовый инструмент, не билет.
  */
 @Entity(tableName = "daemons")
 data class DaemonEntity(
     @PrimaryKey val id: String,
     val name: String,
     val sequence: String,
-    val reward: String,
-    val rewardMoney: Long = 0,
-    val rewardShardTitle: String? = null,
-    val rewardShardMeta: String? = null,
-    val rewardShardBody: String? = null
+    val tier: Int,
+    val effect: String
 )

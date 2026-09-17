@@ -181,7 +181,7 @@ fun AppRoot() {
                     AppTab.Calls -> CallsScreen(onCallPeer = { peer: PeerInfo ->
                         withMicPermission { CallManager.startOutgoingCall(context, currentIdentity, peer) }
                     })
-                    AppTab.Hack -> CyberdeckScreen(onNestedChange = { shardDetailOpen = it })
+                    AppTab.Hack -> CyberdeckScreen(identity = currentIdentity, onNestedChange = { shardDetailOpen = it })
                     AppTab.Wallet -> WalletScreen(currentIdentity)
                 }
             }

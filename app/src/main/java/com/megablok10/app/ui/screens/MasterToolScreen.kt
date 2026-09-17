@@ -19,20 +19,33 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.breach.BreachSymbols
 import com.megablok10.app.breach.CodePill
+import com.megablok10.app.breach.Container
+import com.megablok10.app.breach.DaemonEffect
+import com.megablok10.app.breach.LootCodec
+import com.megablok10.app.breach.LootCrypto
+import com.megablok10.app.breach.LootSlot
+import com.megablok10.app.breach.LootType
+import com.megablok10.app.breach.Tier
+import com.megablok10.app.breach.label
+import com.megablok10.app.data.ContainerEntity
+import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.qr.Mb10QrCodec
 import com.megablok10.app.qr.generateQrBitmap
 import com.megablok10.app.ui.theme.AppButton
@@ -43,17 +56,19 @@ import com.megablok10.app.ui.theme.ChipTone
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.Jura
+import com.megablok10.app.ui.theme.ListRow
 import com.megablok10.app.ui.theme.MB10Colors
 import com.megablok10.app.ui.theme.SectionLabel
 import com.megablok10.app.ui.theme.StatusChip
+import kotlinx.coroutines.launch
 import java.util.UUID
 
-private val shardBadgeOptions = listOf("PUBLIC", "LOCKED", "FRAGMENT", "COMPROMISED")
-
 /**
- * Только для мастеров — генерирует QR для точки доступа и шарда, которые
+ * Только для мастеров — генерирует QR для контейнеров и шардов, которые
  * больше нигде в приложении не создаются (игроки их только сканируют).
- * Печатать/показывать заранее, до игры; в самом приложении не участвует.
+ * Отдельных QR-демонов больше нет (ревизия v9) — демон выдаётся только
+ * как лут-слот контейнера. Печатать/показывать заранее, до игры; в самом
+ * приложении не участвует.
  */
 @Composable
 fun MasterToolScreen(onClose: () -> Unit) {
@@ -72,7 +87,7 @@ fun MasterToolScreen(onClose: () -> Unit) {
         Text("Мастерская", color = MB10Colors.inkPrimary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 20.sp)
         Spacer(Modifier.height(4.dp))
         Text(
-            "Генерирует QR для точек доступа, шардов и демонов — их печатают или показывают заранее, до игры. Игроки эти коды только сканируют, этот экран им не нужен.",
+            "Генерирует QR для контейнеров, шардов и RAM-апгрейдов — их печатают или показывают заранее, до игры. Игроки эти коды только сканируют, этот экран им не нужен.",
             color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 12.sp, lineHeight = 16.sp
         )
         Spacer(Modifier.height(18.dp))
@@ -82,7 +97,7 @@ fun MasterToolScreen(onClose: () -> Unit) {
             modifier = Modifier.fillMaxWidth()
         ) {
             Row(Modifier.fillMaxWidth()) {
-                listOf("Точка доступа", "Шард", "Демон").forEachIndexed { i, label ->
+                listOf("Контейнер", "Шард", "RAM", "Дашборд").forEachIndexed { i, label ->
                     val active = i == activeSegment
                     Box(
                         modifier = Modifier
@@ -92,7 +107,7 @@ fun MasterToolScreen(onClose: () -> Unit) {
                             .padding(vertical = 8.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(label, color = if (active) MB10Colors.inkPrimary else MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 13.sp)
+                        Text(label, color = if (active) MB10Colors.inkPrimary else MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 12.sp)
                     }
                 }
             }
@@ -100,36 +115,214 @@ fun MasterToolScreen(onClose: () -> Unit) {
         Spacer(Modifier.height(16.dp))
 
         when (activeSegment) {
-            0 -> AccessPointForm()
+            0 -> ContainerForm()
             1 -> ShardForm()
-            else -> DaemonForm()
+            2 -> RamForm()
+            else -> DashboardSegment()
         }
     }
 }
 
 @Composable
-private fun AccessPointForm() {
-    var id by remember { mutableStateOf(newId("ap")) }
+private fun TierPicker(tier: Tier, onChange: (Tier) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Tier.entries.forEach { t ->
+            StatusChip(t.label, tone = if (t == tier) ChipTone.Action else ChipTone.Neutral, modifier = Modifier.clickable { onChange(t) })
+        }
+    }
+}
+
+/**
+ * Контейнер — заменяет старую "точку доступа" (ревизия v9). Лут собирается
+ * слотами прямо в форме (LootSlotBuilder) — каждый слот шифруется
+ * (LootCrypto) и упаковывается в QR контейнера целиком, отдельного QR под
+ * демона/шард из контейнера нет: игрок получает их автоматически, извлекая
+ * слот демоном нужного эффекта (см. DaemonRewards).
+ */
+@Composable
+private fun ContainerForm() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var id by remember { mutableStateOf(newId("container")) }
     var name by remember { mutableStateOf("") }
-    var generatedFor by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var tier by remember { mutableStateOf(Tier.BASE) }
+    var ownerFaction by remember { mutableStateOf("") }
+    var slots by remember { mutableStateOf(listOf<LootSlot>()) }
+    var generated by remember { mutableStateOf<String?>(null) }
 
     Column {
-        LabeledField("id точки (менять не обязательно)", id) { id = it }
+        LabeledField("id контейнера (менять не обязательно)", id) { id = it }
         Spacer(Modifier.height(8.dp))
-        LabeledField("Название точки", name, placeholder = "Панель вентиляции, техэтаж") { name = it }
+        LabeledField("Название", name, placeholder = "Панель вентиляции, техэтаж") { name = it }
         Spacer(Modifier.height(12.dp))
+        SectionLabel("Тир (сложность взлома)")
+        TierPicker(tier) { tier = it }
+        Spacer(Modifier.height(12.dp))
+        LabeledField("Фракция-владелец (получает сигнал СБ при взломе)", ownerFaction, placeholder = "Otryad_SB") { ownerFaction = it }
+        Spacer(Modifier.height(16.dp))
+
+        SectionLabel("Лут — ${slots.size} слот(ов)")
+        slots.forEachIndexed { index, slot ->
+            SlotSummaryRow(slot) { slots = slots.filterIndexed { i, _ -> i != index } }
+        }
+        Spacer(Modifier.height(8.dp))
+        LootSlotBuilder(onAdd = { slot -> slots = slots + slot })
+        Spacer(Modifier.height(16.dp))
+
         AppButton(
             "Показать QR",
             modifier = Modifier.fillMaxWidth(),
             variant = ButtonVariant.Primary,
-            enabled = name.isNotBlank(),
-            onClick = { generatedFor = id to name }
+            enabled = name.isNotBlank() && ownerFaction.isNotBlank(),
+            onClick = {
+                val container = Container(id, name, tier, ownerFaction, slots)
+                generated = Mb10QrCodec.encodeContainer(container)
+                scope.launch {
+                    val lootJson = slots.joinToString(";") { "${it.type.name},${it.tier.level},${it.copies},${it.payload}" }
+                    Mb10Database.get(context).containerDao().upsert(
+                        ContainerEntity(id = id, name = name, tier = tier.level, ownerFaction = ownerFaction, lootJson = lootJson)
+                    )
+                }
+            }
         )
 
-        generatedFor?.let { (gid, gname) ->
+        generated?.let { raw ->
             Spacer(Modifier.height(16.dp))
-            val raw = remember(gid, gname) { Mb10QrCodec.encodeAccessPoint(gid, gname) }
-            GeneratedQrPanel(raw = raw, caption = gname, accent = MB10Colors.accentAction)
+            GeneratedQrPanel(raw = raw, caption = name, accent = MB10Colors.accentAction)
+        }
+    }
+}
+
+@Composable
+private fun SlotSummaryRow(slot: LootSlot, onRemove: () -> Unit) {
+    val loot = remember(slot) { LootCrypto.decrypt(slot.payload)?.let(LootCodec::decode) }
+    val label = when (loot) {
+        is LootCodec.Loot.ShardLoot -> "Шард: ${loot.title}"
+        is LootCodec.Loot.DaemonLoot -> "Демон: ${loot.name}"
+        null -> "?"
+    }
+    val copiesLabel = if (slot.copies == 0) "∞" else slot.copies.toString()
+    ListRow(
+        trailing = {
+            Text("✕", color = MB10Colors.accentDanger, fontFamily = JetBrainsMono, fontSize = 13.sp, modifier = Modifier.clickable(onClick = onRemove))
+        }
+    ) {
+        Text(label, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 12.5.sp)
+        Text("${slot.tier.label} · $copiesLabel", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+    }
+}
+
+private val slotTypeOptions = listOf(LootType.SHARD, LootType.DAEMON)
+
+@Composable
+private fun LootSlotBuilder(onAdd: (LootSlot) -> Unit) {
+    var type by remember { mutableStateOf(LootType.SHARD) }
+    var slotTier by remember { mutableStateOf(Tier.BASE) }
+    var copiesText by remember { mutableStateOf("") }
+
+    var shardTitle by remember { mutableStateOf("") }
+    var shardMeta by remember { mutableStateOf("") }
+    var shardBody by remember { mutableStateOf("") }
+    var shardValueHint by remember { mutableStateOf("") }
+    var shardDecryptAction by remember { mutableStateOf(false) }
+    var shardMoneyText by remember { mutableStateOf("") }
+
+    var daemonName by remember { mutableStateOf("") }
+    var daemonSequence by remember { mutableStateOf(listOf<String>()) }
+    var daemonEffect by remember { mutableStateOf(DaemonEffect.EXTRACT_SHARD) }
+
+    ChamferedSurface(borderColor = MB10Colors.borderMuted, fillColor = MB10Colors.surfaceSunken, cut = 6.dp, contentPadding = 12.dp, modifier = Modifier.fillMaxWidth()) {
+        Column {
+            SectionLabel("Новый слот")
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                slotTypeOptions.forEach { option ->
+                    StatusChip(
+                        if (option == LootType.SHARD) "Шард" else "Демон",
+                        tone = if (option == type) ChipTone.Action else ChipTone.Neutral,
+                        modifier = Modifier.clickable { type = option }
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            TierPicker(slotTier) { slotTier = it }
+            Spacer(Modifier.height(8.dp))
+            LabeledField("Тираж (0 — без ограничения)", copiesText, placeholder = "0") { copiesText = it.filter(Char::isDigit) }
+            Spacer(Modifier.height(10.dp))
+
+            if (type == LootType.SHARD) {
+                LabeledField("Заголовок шарда", shardTitle, placeholder = "Служебный лог клиники") { shardTitle = it }
+                Spacer(Modifier.height(8.dp))
+                LabeledField("Мета-строка", shardMeta, placeholder = "получен 21:02 · клиника") { shardMeta = it }
+                Spacer(Modifier.height(8.dp))
+                LabeledField("Текст шарда", shardBody, placeholder = "Полный текст, который увидит игрок", minLines = 4) { shardBody = it }
+                Spacer(Modifier.height(8.dp))
+                LabeledField("Подсказка ценности (для отыгрыша торга)", shardValueHint, placeholder = "ценный технический документ") { shardValueHint = it }
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { shardDecryptAction = !shardDecryptAction }) {
+                    StatusChip(
+                        if (shardDecryptAction) "требует взлома: да" else "требует взлома: нет",
+                        tone = if (shardDecryptAction) ChipTone.Netrun else ChipTone.Neutral
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                LabeledField("Деньги в шарде, €$ (0 — без денег)", shardMoneyText, placeholder = "0") { shardMoneyText = it.filter(Char::isDigit) }
+            } else {
+                LabeledField("Название демона", daemonName, placeholder = "Backdoor.exe") { daemonName = it }
+                Spacer(Modifier.height(8.dp))
+                SectionLabel("Код-последовательность (тапайте по порядку)")
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    BreachSymbols.ALPHABET.forEach { code ->
+                        StatusChip(code, tone = ChipTone.Netrun, modifier = Modifier.clickable { daemonSequence = daemonSequence + code })
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    if (daemonSequence.isEmpty()) {
+                        Text("Пока пусто — нажмите код(ы) выше", color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
+                    } else {
+                        daemonSequence.forEach { code -> CodePill(code) }
+                    }
+                    Spacer(Modifier.weight(1f))
+                    if (daemonSequence.isNotEmpty()) {
+                        Text("Очистить", color = MB10Colors.accentDanger, fontFamily = JetBrainsMono, fontSize = 10.sp, modifier = Modifier.clickable { daemonSequence = emptyList() })
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                SectionLabel("Эффект при совпадении")
+                Column {
+                    DaemonEffect.entries.chunked(3).forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 6.dp)) {
+                            row.forEach { effect ->
+                                StatusChip(
+                                    effect.label(),
+                                    tone = if (effect == daemonEffect) ChipTone.Action else ChipTone.Neutral,
+                                    modifier = Modifier.clickable { daemonEffect = effect }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+            val canAdd = if (type == LootType.SHARD) shardTitle.isNotBlank() && shardBody.isNotBlank() else daemonName.isNotBlank() && daemonSequence.isNotEmpty()
+            AppButton(
+                "Добавить слот в контейнер",
+                modifier = Modifier.fillMaxWidth(),
+                variant = ButtonVariant.Secondary,
+                enabled = canAdd,
+                onClick = {
+                    val plain = if (type == LootType.SHARD) {
+                        LootCodec.encodeShard(shardTitle, shardMeta, shardBody, shardValueHint, shardDecryptAction, shardMoneyText.toLongOrNull() ?: 0)
+                    } else {
+                        LootCodec.encodeDaemon(daemonName, daemonSequence, slotTier, daemonEffect)
+                    }
+                    onAdd(LootSlot(type = type, tier = slotTier, copies = copiesText.toIntOrNull() ?: 0, payload = LootCrypto.encrypt(plain)))
+                    shardTitle = ""; shardMeta = ""; shardBody = ""; shardValueHint = ""; shardDecryptAction = false; shardMoneyText = ""
+                    daemonName = ""; daemonSequence = emptyList()
+                    copiesText = ""
+                }
+            )
         }
     }
 }
@@ -137,8 +330,9 @@ private fun AccessPointForm() {
 @Composable
 private fun ShardForm() {
     var id by remember { mutableStateOf(newId("shard")) }
-    var badge by remember { mutableStateOf(shardBadgeOptions[0]) }
     var decryptAction by remember { mutableStateOf(false) }
+    var tier by remember { mutableStateOf(Tier.BASE) }
+    var valueHint by remember { mutableStateOf("") }
     var title by remember { mutableStateOf("") }
     var meta by remember { mutableStateOf("") }
     var body by remember { mutableStateOf("") }
@@ -148,17 +342,8 @@ private fun ShardForm() {
     Column {
         LabeledField("id шарда (менять не обязательно)", id) { id = it }
         Spacer(Modifier.height(8.dp))
-        SectionLabel("Статус")
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            shardBadgeOptions.forEach { option ->
-                val selected = option == badge
-                StatusChip(
-                    option,
-                    tone = if (selected) ChipTone.Action else ChipTone.Neutral,
-                    modifier = Modifier.clickable { badge = option }
-                )
-            }
-        }
+        SectionLabel("Тир (длина цели расшифровки)")
+        TierPicker(tier) { tier = it }
         Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { decryptAction = !decryptAction }) {
             StatusChip(
@@ -173,6 +358,8 @@ private fun ShardForm() {
         Spacer(Modifier.height(8.dp))
         LabeledField("Текст шарда (2-3 абзаца)", body, placeholder = "Полный текст, который увидит игрок", minLines = 5) { body = it }
         Spacer(Modifier.height(8.dp))
+        LabeledField("Подсказка ценности (для отыгрыша торга)", valueHint, placeholder = "ценный технический документ") { valueHint = it }
+        Spacer(Modifier.height(8.dp))
         LabeledField("Деньги в шарде, €$ (0 — без денег)", moneyText, placeholder = "0") { moneyText = it.filter(Char::isDigit) }
         Spacer(Modifier.height(12.dp))
         AppButton(
@@ -181,7 +368,7 @@ private fun ShardForm() {
             variant = ButtonVariant.Netrun,
             enabled = title.isNotBlank() && body.isNotBlank(),
             onClick = {
-                generated = Mb10QrCodec.encodeShard(id, badge, decryptAction, title, meta, body, moneyText.toLongOrNull() ?: 0)
+                generated = Mb10QrCodec.encodeShard(id, decryptAction, tier.level, valueHint, title, meta, body, moneyText.toLongOrNull() ?: 0)
             }
         )
 
@@ -192,108 +379,59 @@ private fun ShardForm() {
     }
 }
 
-private val daemonRewardTypeOptions = listOf("Без награды", "Деньги", "Шард")
-
-/**
- * Демон — предмет, который игрок сканирует к себе в кибердеку и потом
- * может выбрать на любом взломе (см. DaemonStore.add). Код-последовательность
- * собирается тапом по алфавиту взлома (BreachSymbols.ALPHABET), а не вводом
- * произвольного текста — коды вне этого алфавита никогда не появятся в
- * сетке взлома как "случайные соседи", только как сама цель, что сделало бы
- * такую клетку подозрительно уникальной и выдавало бы решение на глаз.
- */
+/** RAM-апгрейд деки — токен одноразовый на устройство (см. RamUpgradeStore), delta прибавляется к Identity.ramCapacity с потолком 13. */
 @Composable
-private fun DaemonForm() {
-    var id by remember { mutableStateOf(newId("daemon")) }
-    var name by remember { mutableStateOf("") }
-    var sequence by remember { mutableStateOf(listOf<String>()) }
-    var reward by remember { mutableStateOf("") }
-    var rewardType by remember { mutableStateOf(daemonRewardTypeOptions[0]) }
-    var moneyText by remember { mutableStateOf("") }
-    var shardTitle by remember { mutableStateOf("") }
-    var shardMeta by remember { mutableStateOf("") }
-    var shardBody by remember { mutableStateOf("") }
+private fun RamForm() {
+    var delta by remember { mutableStateOf("1") }
     var generated by remember { mutableStateOf<String?>(null) }
 
     Column {
-        LabeledField("id демона (менять не обязательно)", id) { id = it }
-        Spacer(Modifier.height(8.dp))
-        LabeledField("Название демона", name, placeholder = "Backdoor.exe") { name = it }
+        Text(
+            "Каждый QR одноразовый на устройство игрока — генерируйте новый для каждой выдачи, не показывайте один и тот же токен дважды.",
+            color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 12.sp, lineHeight = 16.sp
+        )
         Spacer(Modifier.height(12.dp))
-
-        SectionLabel("Код-последовательность (тапайте по порядку)")
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            BreachSymbols.ALPHABET.forEach { code ->
-                StatusChip(code, tone = ChipTone.Netrun, modifier = Modifier.clickable { sequence = sequence + code })
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            if (sequence.isEmpty()) {
-                Text("Пока пусто — нажмите код(ы) выше", color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
-            } else {
-                sequence.forEach { code -> CodePill(code) }
-            }
-            Spacer(Modifier.weight(1f))
-            if (sequence.isNotEmpty()) {
-                Text(
-                    "Очистить",
-                    color = MB10Colors.accentDanger, fontFamily = JetBrainsMono, fontSize = 10.sp,
-                    modifier = Modifier.clickable { sequence = emptyList() }
-                )
-            }
-        }
+        LabeledField("Прибавка к RAM, ячеек", delta, placeholder = "1") { delta = it.filter(Char::isDigit) }
         Spacer(Modifier.height(12.dp))
-
-        LabeledField("Описание эффекта (текст для игрока)", reward, placeholder = "Снимает физическую блокировку двери") { reward = it }
-        Spacer(Modifier.height(12.dp))
-
-        SectionLabel("Награда за совпадение на взломе")
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            daemonRewardTypeOptions.forEach { option ->
-                val selected = option == rewardType
-                StatusChip(
-                    option,
-                    tone = if (selected) ChipTone.Action else ChipTone.Neutral,
-                    modifier = Modifier.clickable { rewardType = option }
-                )
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-        when (rewardType) {
-            "Деньги" -> LabeledField("Сумма, €$", moneyText, placeholder = "50") { moneyText = it.filter(Char::isDigit) }
-            "Шард" -> Column {
-                LabeledField("Заголовок шарда-награды", shardTitle, placeholder = "Пропуск уровня 3") { shardTitle = it }
-                Spacer(Modifier.height(8.dp))
-                LabeledField("Мета-строка", shardMeta, placeholder = "получен через взлом") { shardMeta = it }
-                Spacer(Modifier.height(8.dp))
-                LabeledField("Текст шарда", shardBody, placeholder = "Полный текст, который увидит игрок", minLines = 4) { shardBody = it }
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-
         AppButton(
             "Показать QR",
             modifier = Modifier.fillMaxWidth(),
-            variant = ButtonVariant.Netrun,
-            enabled = name.isNotBlank() && sequence.isNotEmpty(),
-            onClick = {
-                generated = Mb10QrCodec.encodeDaemon(
-                    id = id,
-                    name = name,
-                    sequence = sequence,
-                    reward = reward,
-                    rewardMoney = if (rewardType == "Деньги") moneyText.toLongOrNull() ?: 0 else 0,
-                    rewardShardTitle = if (rewardType == "Шард" && shardTitle.isNotBlank()) shardTitle else null,
-                    rewardShardMeta = if (rewardType == "Шард") shardMeta else null,
-                    rewardShardBody = if (rewardType == "Шард") shardBody else null
-                )
-            }
+            variant = ButtonVariant.Primary,
+            enabled = (delta.toIntOrNull() ?: 0) > 0,
+            onClick = { generated = Mb10QrCodec.encodeRamUpgrade(newId("ram"), delta.toIntOrNull() ?: 1) }
         )
-
         generated?.let { raw ->
             Spacer(Modifier.height(16.dp))
-            GeneratedQrPanel(raw = raw, caption = name, accent = MB10Colors.accentNetrun)
+            GeneratedQrPanel(raw = raw, caption = "+$delta RAM", accent = MB10Colors.accentAction)
+        }
+    }
+}
+
+/** Реестр контейнеров, выпущенных этим устройством — свериться с тем, что уже роздано, без пересбора состава лута по памяти. */
+@Composable
+private fun DashboardSegment() {
+    val context = LocalContext.current
+    val containers by Mb10Database.get(context).containerDao().observeAll().collectAsState(initial = emptyList())
+
+    if (containers.isEmpty()) {
+        Text(
+            "Пока нет ни одного выпущенного контейнера — появится здесь после первого «Показать QR» на вкладке «Контейнер».",
+            color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 12.5.sp, lineHeight = 17.sp
+        )
+        return
+    }
+
+    Column {
+        containers.forEach { entity ->
+            ChamferedSurface(
+                borderColor = MB10Colors.borderMuted, fillColor = MB10Colors.surfaceRaised, cut = 6.dp, contentPadding = 11.dp,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
+            ) {
+                Column {
+                    Text("${entity.name} · ${Tier.fromLevel(entity.tier).label}", color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
+                    Text("владелец: ${entity.ownerFaction} · id: ${entity.id}", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                }
+            }
         }
     }
 }
@@ -308,7 +446,7 @@ private fun GeneratedQrPanel(raw: String, caption: String, accent: Color) {
             Text(caption, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 12.sp, textAlign = TextAlign.Center)
             Spacer(Modifier.height(4.dp))
             Text(
-                "Сфотографируйте или напечатайте до игры — точка/шард появится у игрока сразу после скана.",
+                "Сфотографируйте или напечатайте до игры — появится у игрока сразу после скана.",
                 color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 10.5.sp, lineHeight = 14.sp, textAlign = TextAlign.Center
             )
         }

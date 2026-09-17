@@ -30,12 +30,19 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.megablok10.app.breach.AccessPointCooldownStore
-import com.megablok10.app.breach.BreachAccessPointFlow
+import com.megablok10.app.breach.BreachContainerFlow
 import com.megablok10.app.breach.CodePill
+import com.megablok10.app.breach.Container
+import com.megablok10.app.breach.ContainerCooldownStore
 import com.megablok10.app.breach.Daemon
+import com.megablok10.app.breach.DaemonRewards
 import com.megablok10.app.breach.DaemonStore
+import com.megablok10.app.breach.LootType
 import com.megablok10.app.breach.ShardDecryptFlow
+import com.megablok10.app.breach.label
+import com.megablok10.app.identity.Identity
+import com.megablok10.app.identity.RamUpgradeStore
+import com.megablok10.app.presence.MeshLink
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.rememberMb10QrScanner
 import com.megablok10.app.shards.ShardStore
@@ -50,14 +57,15 @@ import kotlinx.coroutines.launch
 
 /**
  * Демоны и Шарды — два составных одной Кибердеки, не отдельные экраны:
- * оба населяются через один и тот же объект-сканер на площадке (QR точки
- * доступа или QR шарда — визуально не отличить издалека, игрок не должен
- * заранее знать, что перед ним, чтобы выбрать "правильную" кнопку скана).
- * Единая кнопка "Сканировать объект" наверху разруливает по фактическому
- * типу декодированного QR, а не по вкладке, которая открыта в моменте.
+ * оба населяются через один и тот же объект-сканер на площадке (QR
+ * контейнера или QR шарда — визуально не отличить издалека, игрок не
+ * должен заранее знать, что перед ним, чтобы выбрать "правильную" кнопку
+ * скана). Единая кнопка "Сканировать объект" наверху разруливает по
+ * фактическому типу декодированного QR, а не по вкладке, которая открыта
+ * в моменте.
  */
 @Composable
-fun CyberdeckScreen(onNestedChange: (Boolean) -> Unit = {}) {
+fun CyberdeckScreen(identity: Identity, onNestedChange: (Boolean) -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { DaemonStore.ensureSeeded(context) }
@@ -65,7 +73,7 @@ fun CyberdeckScreen(onNestedChange: (Boolean) -> Unit = {}) {
     val shards by ShardStore.observeAll(context).collectAsState(initial = emptyList())
 
     var segment by remember { mutableStateOf(0) } // 0 = Демоны, 1 = Шарды
-    var point by remember { mutableStateOf<Mb10Qr.AccessPoint?>(null) }
+    var container by remember { mutableStateOf<Container?>(null) }
     var openedShard by remember { mutableStateOf<Mb10Qr.Shard?>(null) }
     var decryptingShard by remember { mutableStateOf<Mb10Qr.Shard?>(null) }
 
@@ -74,21 +82,42 @@ fun CyberdeckScreen(onNestedChange: (Boolean) -> Unit = {}) {
 
     val scanObject = rememberMb10QrScanner { qr ->
         when (qr) {
-            is Mb10Qr.AccessPoint -> {
+            is Mb10Qr.ContainerQr -> {
+                // Связь нужна ДО открытия выбора демонов, не только чтобы разослать
+                // заявку на слот — без неё можно было бы обойти сигнал СБ авиарежимом
+                // (см. ревизию v9 §5).
+                if (!MeshLink.isOnline(context)) {
+                    Toast.makeText(context, "Нет связи с сетью Мегаблока", Toast.LENGTH_SHORT).show()
+                    return@rememberMb10QrScanner
+                }
                 scope.launch {
-                    val remainingMs = AccessPointCooldownStore.remainingCooldownMs(context, qr.id)
+                    val remainingMs = ContainerCooldownStore.remainingCooldownMs(context, qr.container.id)
                     if (remainingMs > 0) {
                         val minutes = (remainingMs / 60_000L + 1).coerceAtLeast(1)
-                        Toast.makeText(context, "Точку уже вскрывали недавно — повтор через $minutes мин", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, "Контейнер недоступен ещё $minutes мин", Toast.LENGTH_LONG).show()
                     } else {
-                        point = qr
+                        container = qr.container
                         segment = 0
                     }
                 }
             }
             is Mb10Qr.Shard -> { scope.launch { ShardStore.add(context, qr) }; segment = 1 }
-            is Mb10Qr.DaemonItem -> { scope.launch { DaemonStore.add(context, qr) }; segment = 0 }
-            else -> Toast.makeText(context, "Это не точка доступа, не шард и не демон", Toast.LENGTH_SHORT).show()
+            is Mb10Qr.RamUpgrade -> {
+                scope.launch {
+                    val newCapacity = RamUpgradeStore.apply(context, qr)
+                    val message = if (newCapacity != null) "RAM деки увеличена до $newCapacity" else "Этот RAM-токен уже был применён"
+                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                }
+            }
+            is Mb10Qr.LootGrant -> {
+                scope.launch {
+                    val granted = DaemonRewards.applyGrant(context, qr)
+                    val message = granted ?: "Фрагмент повреждён — обратитесь к мастеру"
+                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                    segment = if (qr.type == LootType.DAEMON) 0 else 1
+                }
+            }
+            else -> Toast.makeText(context, "Этот QR не распознан Кибердекой", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -149,7 +178,7 @@ fun CyberdeckScreen(onNestedChange: (Boolean) -> Unit = {}) {
 
         Box(Modifier.weight(1f)) {
             if (segment == 0) {
-                DemonsSegment(daemons = daemons, point = point, onRescan = { point = null })
+                DemonsSegment(daemons = daemons, identity = identity, container = container, onRescan = { container = null })
             } else {
                 ShardsSegment(shards = shards, onOpen = { openedShard = it })
             }
@@ -158,16 +187,16 @@ fun CyberdeckScreen(onNestedChange: (Boolean) -> Unit = {}) {
 }
 
 @Composable
-private fun DemonsSegment(daemons: List<Daemon>, point: Mb10Qr.AccessPoint?, onRescan: () -> Unit) {
-    if (point != null) {
-        BreachAccessPointFlow(point = point, daemons = daemons, onRescan = onRescan)
+private fun DemonsSegment(daemons: List<Daemon>, identity: Identity, container: Container?, onRescan: () -> Unit) {
+    if (container != null) {
+        BreachContainerFlow(container = container, daemons = daemons, identity = identity, onRescan = onRescan)
         return
     }
 
     // Вступительный текст нужен только пока коллекция пуста — дальше это
     // уже не подсказка, а шум над списком, который игрок видит каждый раз.
     if (daemons.isEmpty()) {
-        EmptyState("Демонов пока нет. Взломайте первую точку доступа кнопкой выше, чтобы начать коллекцию.")
+        EmptyState("Демонов пока нет. Взломайте первый контейнер кнопкой выше, чтобы начать коллекцию.")
         return
     }
 
@@ -202,7 +231,7 @@ private fun DaemonCard(daemon: Daemon) {
         Column {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    daemon.name,
+                    "${daemon.name} · ${daemon.tier.label}",
                     color = MB10Colors.inkPrimary,
                     fontFamily = IBMPlexSans,
                     fontSize = 13.5.sp,
@@ -215,8 +244,10 @@ private fun DaemonCard(daemon: Daemon) {
             Spacer(Modifier.height(4.dp))
             // Стоимость видна и вне активного взлома — иначе бюджет буфера
             // (RAM) узнаётся только внутри уже начатой попытки.
-            val caption = if (daemon.reward.isNotEmpty()) "${daemon.reward} · ${cellsLabel(daemon.sequence.size)}" else cellsLabel(daemon.sequence.size)
-            Text(caption, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+            Text(
+                "${daemon.effect.label()} · ${cellsLabel(daemon.sequence.size)}",
+                color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp
+            )
         }
     }
 }

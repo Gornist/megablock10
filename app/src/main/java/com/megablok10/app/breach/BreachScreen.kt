@@ -36,6 +36,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.megablok10.app.identity.Identity
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.ButtonVariant
@@ -53,45 +54,50 @@ import kotlinx.coroutines.launch
 import kotlin.random.Random
 
 /**
- * Взлом недоступен, пока не отсканирована QR-метка конкретной точки доступа
- * (её печатают мастера на месте). Сама точка входа для скана теперь общая
- * для Демонов и Шардов (единая кнопка "Сканировать объект" на экране
- * Кибердеки выше) — этот композабл только показывает сессию взлома, когда
- * точка уже выбрана; вызывается из CyberdeckScreen.
+ * Взлом недоступен, пока не отсканирована QR-метка конкретного контейнера
+ * (его печатают мастера на месте, либо это старая "точка доступа" — читается
+ * как контейнер тира BASE без лута, см. Mb10Qr.kt). Сама точка входа для
+ * скана — общая кнопка "Сканировать объект" на экране Кибердеки — этот
+ * композабл только показывает сессию взлома, когда контейнер уже выбран.
  */
 @Composable
-internal fun BreachAccessPointFlow(point: Mb10Qr.AccessPoint, daemons: List<Daemon>, onRescan: () -> Unit) {
+internal fun BreachContainerFlow(container: Container, daemons: List<Daemon>, identity: Identity, onRescan: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var chosen by remember(point.id) { mutableStateOf<Set<String>>(emptySet()) }
-    var sessionSeed by remember(point.id) { mutableStateOf<Long?>(null) }
+    var chosen by remember(container.id) { mutableStateOf<Set<String>>(emptySet()) }
+    var sessionSeed by remember(container.id) { mutableStateOf<Long?>(null) }
+    var rewardOutcome by remember(container.id) { mutableStateOf<RewardOutcome?>(null) }
 
     val chosenDaemons = daemons.filter { it.id in chosen }
     val used = chosenDaemons.sumOf { it.sequence.size }
-    val overBudget = used > MockBreach.ramCapacity
+    val overBudget = used > identity.ramCapacity
     val canStart = chosenDaemons.isNotEmpty() && !overBudget
+    val params = remember(container.tier) { BreachTierParams.forTier(container.tier) }
+    val timerBonus = if (chosenDaemons.any { it.effect == DaemonEffect.JITTER }) 15 else 0
 
     val seed = sessionSeed
     if (seed != null) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 10.dp)) {
-                HexBullet(MB10Colors.accentNetrun, size = 8.dp)
-                Spacer(Modifier.width(6.dp))
-                Text("Точка доступа: ${point.name}", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
-            }
+            ContainerHeader(container)
             BreachSession(
                 daemons = chosenDaemons,
                 seed = seed,
+                gridSize = params.gridSize,
+                timerSec = params.timerSec + timerBonus,
+                bufferSize = identity.ramCapacity,
+                breachParams = params,
                 onRescan = onRescan,
-                // Награда — деньги/шард у совпавших демонов (если заданы) —
-                // и отметка кулдауна точки, только если реально что-то
-                // засчиталось (FAIL кулдаун не запускает).
+                rescanLabel = "Новый контейнер",
+                failMessage = "СБ зафиксировала попытку. Контейнер заблокирован до конца этого акта.",
+                rewardSummary = rewardOutcome?.let(::formatRewardSummary),
                 onResult = { result ->
                     scope.launch {
-                        DaemonRewards.apply(context, result)
+                        val outcome = DaemonRewards.apply(context, identity, container, result, attemptId = "${container.id}:$seed")
+                        rewardOutcome = outcome
                         if (result.matchedIds.isNotEmpty()) {
-                            AccessPointCooldownStore.markRewarded(context, point.id)
+                            ContainerCooldownStore.markRewarded(context, container.id)
                         }
+                        SecAlertStore.dispatch(context, identity, container, result.outcome, outcome.matchedEffects)
                     }
                 }
             )
@@ -103,18 +109,14 @@ internal fun BreachAccessPointFlow(point: Mb10Qr.AccessPoint, daemons: List<Daem
     // кнопка старта закреплены снизу вне скролла — раньше счётчик стоял под
     // списком и терялся из виду, пока выбираешь демонов дальше по списку.
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 10.dp)) {
-            HexBullet(MB10Colors.accentNetrun, size = 8.dp)
-            Spacer(Modifier.width(6.dp))
-            Text("Точка доступа: ${point.name}", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
-        }
+        ContainerHeader(container)
 
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
             DaemonPicker(daemons = daemons, chosen = chosen, onToggle = { id -> chosen = if (id in chosen) chosen - id else chosen + id })
         }
 
         Text(
-            "Буфер: $used / ${MockBreach.ramCapacity}" + if (overBudget) " — снимите демон" else "",
+            "Буфер: $used / ${identity.ramCapacity}" + if (overBudget) " — снимите демон" else "",
             color = if (overBudget) MB10Colors.accentDanger else MB10Colors.inkSecondary,
             fontFamily = JetBrainsMono,
             fontSize = 11.sp,
@@ -129,7 +131,7 @@ internal fun BreachAccessPointFlow(point: Mb10Qr.AccessPoint, daemons: List<Daem
                 .padding(vertical = 10.dp)
         ) {
             Text(
-                "Взломать точку доступа",
+                "Взломать контейнер",
                 color = if (canStart) MB10Colors.onAccent else MB10Colors.onAccent.copy(alpha = 0.4f),
                 fontFamily = JetBrainsMono,
                 fontSize = 12.sp,
@@ -141,19 +143,42 @@ internal fun BreachAccessPointFlow(point: Mb10Qr.AccessPoint, daemons: List<Daem
     }
 }
 
+@Composable
+private fun ContainerHeader(container: Container) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 10.dp)) {
+        HexBullet(MB10Colors.accentNetrun, size = 8.dp)
+        Spacer(Modifier.width(6.dp))
+        Text(
+            "Контейнер: ${container.name} · ${container.tier.label}",
+            color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp
+        )
+    }
+}
+
+private fun formatRewardSummary(outcome: RewardOutcome): String {
+    val parts = mutableListOf<String>()
+    if (outcome.eddies > 0) parts += "+${outcome.eddies} эдди"
+    outcome.extractedShardTitles.forEach { parts += "шард «$it»" }
+    outcome.extractedDaemonNames.forEach { parts += "демон «$it»" }
+    if (outcome.cacheExhausted) parts += "КЭШ ОЧИЩЕН"
+    return parts.joinToString(" · ")
+}
+
 /**
  * Мини-взлом одного зашифрованного шарда — тот же движок Breach Protocol
- * (BreachSession), что и у точки доступа, но без выбора демонов: цель ровно
+ * (BreachSession), что и у контейнера, но без выбора демонов: цель ровно
  * одна, детерминированно выведенная из id шарда (shardDecryptTarget), так
  * что у одного и того же шарда всегда один и тот же набор кодов-цели на
- * этом устройстве. Сетка вокруг цели каждый раз новая (сид от nanoTime,
- * как и в BreachAccessPointFlow) — пересдать попытку можно, а не зубрить
- * один и тот же расклад. Вызывается из CyberdeckScreen поверх ShardDetailOverlay.
+ * этом устройстве. Длина цели — по тиру шарда (MockBreach.
+ * shardDecryptTargetLength). Сетка вокруг цели каждый раз новая (сид от
+ * nanoTime) — пересдать попытку можно, а не зубрить один и тот же расклад.
+ * Вызывается из CyberdeckScreen поверх ShardDetailOverlay.
  */
 @Composable
 internal fun ShardDecryptFlow(shard: Mb10Qr.Shard, onDecrypted: () -> Unit, onCancel: () -> Unit) {
     val target = remember(shard.id) { shardDecryptTarget(shard) }
     val sessionSeed = remember(shard.id) { System.nanoTime() }
+    val params = remember(shard.tier) { BreachTierParams.forTier(Tier.fromLevel(shard.tier)) }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 10.dp)) {
@@ -164,6 +189,10 @@ internal fun ShardDecryptFlow(shard: Mb10Qr.Shard, onDecrypted: () -> Unit, onCa
         BreachSession(
             daemons = listOf(target),
             seed = sessionSeed,
+            gridSize = params.gridSize,
+            timerSec = params.timerSec,
+            bufferSize = target.sequence.size + 2,
+            breachParams = null,
             onRescan = onCancel,
             rescanLabel = "Отмена",
             failMessage = "Шифр-замок устоял. Шард остаётся зашифрован — можно попробовать ещё раз.",
@@ -174,7 +203,8 @@ internal fun ShardDecryptFlow(shard: Mb10Qr.Shard, onDecrypted: () -> Unit, onCa
 
 private fun shardDecryptTarget(shard: Mb10Qr.Shard): Daemon {
     val random = Random(shard.id.hashCode().toLong())
-    val sequence = List(3) { BreachSymbols.ALPHABET.random(random) }
+    val length = MockBreach.shardDecryptTargetLength.getOrElse(shard.tier - 1) { 3 }
+    val sequence = List(length) { BreachSymbols.ALPHABET.random(random) }
     return Daemon(id = "shard-decrypt:${shard.id}", name = "Шифр-замок", sequence = sequence)
 }
 
@@ -184,16 +214,14 @@ private fun DaemonPicker(daemons: List<Daemon>, chosen: Set<String>, onToggle: (
         daemons.forEachIndexed { index, daemon ->
             val isChecked = daemon.id in chosen
             val textColor = if (isChecked) MB10Colors.onAccent else MB10Colors.inkPrimary
-            val rewardColor = if (isChecked) MB10Colors.onAccent.copy(alpha = 0.8f) else MB10Colors.inkSecondary
+            val effectColor = if (isChecked) MB10Colors.onAccent.copy(alpha = 0.8f) else MB10Colors.inkSecondary
             ListRow(
                 selected = isChecked,
                 selectedColor = MB10Colors.accentNetrun,
                 onClick = { onToggle(daemon.id) }
             ) {
-                Text(daemon.name, color = textColor, fontFamily = IBMPlexSans, fontSize = 13.sp)
-                if (daemon.reward.isNotEmpty()) {
-                    Text(daemon.reward, color = rewardColor, fontFamily = IBMPlexSans, fontSize = 11.sp)
-                }
+                Text("${daemon.name} · ${daemon.tier.label}", color = textColor, fontFamily = IBMPlexSans, fontSize = 13.sp)
+                Text(daemon.effect.label(), color = effectColor, fontFamily = IBMPlexSans, fontSize = 11.sp)
                 Row(Modifier.padding(top = 4.dp)) {
                     daemon.sequence.forEach { code -> CodePill(code) }
                 }
@@ -216,22 +244,29 @@ internal fun CodePill(code: String) {
  * каждом старте) не меняется; тапы по сетке меняют этот же state, а не
  * пересоздают его. После резолва (таймер/буфер/ручной стоп) сетка и буфер
  * остаются на экране в финальном виде — просто перестают принимать тапы —
- * и поверх появляется result-panel, как в макете.
+ * и поверх появляется result-panel, как в макете. breachParams — если не
+ * null, задаёт мёртвые клетки/порченые коды (см. generateGrid); у
+ * ShardDecryptFlow ловушек нет вовсе (null), это только для контейнеров.
  */
 @Composable
 private fun BreachSession(
     daemons: List<Daemon>,
     seed: Long,
+    gridSize: Int,
+    timerSec: Int,
+    bufferSize: Int,
+    breachParams: BreachParams?,
     onRescan: () -> Unit,
-    rescanLabel: String = "Новая точка доступа",
-    failMessage: String = "СБ зафиксировала попытку. Точка доступа заблокирована до конца этого акта.",
+    rescanLabel: String = "Новый контейнер",
+    failMessage: String = "СБ зафиксировала попытку. Контейнер заблокирован до конца этого акта.",
+    rewardSummary: String? = null,
     onResult: (BreachResult) -> Unit = {}
 ) {
-    val grid = remember(seed) { generateGrid(MockBreach.gridSize, daemons, Random(seed)) }
+    val grid = remember(seed) { generateGrid(gridSize, daemons, Random(seed), breachParams) }
     val breachId = remember(seed) { "MB10-VENT-" + seed.toString(16).takeLast(4).uppercase() }
 
-    var attempt by remember(seed) { mutableStateOf(BreachAttemptState(grid, daemons, MockBreach.ramCapacity)) }
-    var secondsLeft by remember(seed) { mutableIntStateOf(MockBreach.timerSec) }
+    var attempt by remember(seed) { mutableStateOf(BreachAttemptState(grid, daemons, bufferSize)) }
+    var secondsLeft by remember(seed) { mutableIntStateOf(timerSec) }
     var result by remember(seed) { mutableStateOf<BreachResult?>(null) }
 
     fun resolveOnce() {
@@ -278,7 +313,7 @@ private fun BreachSession(
             )
         }
         Spacer(Modifier.height(6.dp))
-        val progress = (secondsLeft.toFloat() / MockBreach.timerSec).coerceIn(0f, 1f)
+        val progress = (secondsLeft.toFloat() / timerSec).coerceIn(0f, 1f)
         Box(Modifier.fillMaxWidth().height(3.dp).background(MB10Colors.surfaceSunken)) {
             Box(Modifier.fillMaxWidth(progress).height(3.dp).background(MB10Colors.accentNetrun))
         }
@@ -347,9 +382,7 @@ private fun BreachSession(
                             textDecoration = if (matched) TextDecoration.LineThrough else null
                         )
                     }
-                    if (daemon.reward.isNotEmpty()) {
-                        Text(daemon.reward, color = MB10Colors.inkTertiary, fontFamily = IBMPlexSans, fontSize = 10.5.sp)
-                    }
+                    Text(daemon.effect.label(), color = MB10Colors.inkTertiary, fontFamily = IBMPlexSans, fontSize = 10.5.sp)
                 }
             }
         }
@@ -363,7 +396,7 @@ private fun BreachSession(
             color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp)
         )
 
-        result?.let { ResultPanel(it, failMessage = failMessage) }
+        result?.let { ResultPanel(it, failMessage = failMessage, rewardSummary = rewardSummary) }
     }
 
     Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -422,7 +455,9 @@ private fun PanelBox(content: @Composable () -> Unit) {
 
 @Composable
 private fun HackCell(code: String, isSelected: Boolean, orderLabel: String?, isSelectable: Boolean, onClick: () -> Unit) {
+    val isDead = code == BreachSymbols.DEAD_MARKER
     val (bg, borderColor, textColor) = when {
+        isDead && !isSelected -> Triple(MB10Colors.accentDanger.copy(alpha = 0.08f), MB10Colors.accentDanger, MB10Colors.accentDanger)
         isSelected -> Triple(MB10Colors.surfaceBase, MB10Colors.borderMuted, MB10Colors.borderMuted)
         isSelectable -> Triple(MB10Colors.accentNetrun.copy(alpha = 0.07f), MB10Colors.accentNetrun, MB10Colors.accentNetrun)
         else -> Triple(MB10Colors.surfaceSunken, MB10Colors.borderMuted, MB10Colors.inkPrimary)
@@ -448,7 +483,8 @@ private fun HackCell(code: String, isSelected: Boolean, orderLabel: String?, isS
 @Composable
 private fun ResultPanel(
     result: BreachResult,
-    failMessage: String = "СБ зафиксировала попытку. Точка доступа заблокирована до конца этого акта."
+    failMessage: String = "СБ зафиксировала попытку. Контейнер заблокирован до конца этого акта.",
+    rewardSummary: String? = null
 ) {
     val (title, color) = when (result.outcome) {
         BreachOutcome.SUCCESS -> "Взлом завершён" to MB10Colors.accentNetrun
@@ -480,7 +516,7 @@ private fun ResultPanel(
         Text(
             when (result.outcome) {
                 BreachOutcome.FAIL -> failMessage
-                BreachOutcome.PARTIAL -> "Незагруженные демоны останутся недоступны до новой попытки на этой точке."
+                BreachOutcome.PARTIAL -> "Незагруженные демоны останутся недоступны до новой попытки на этом контейнере."
                 BreachOutcome.SUCCESS -> "Следов взлома не осталось."
             },
             color = MB10Colors.inkSecondary,
@@ -488,6 +524,16 @@ private fun ResultPanel(
             fontSize = 10.5.sp,
             modifier = Modifier.padding(top = 8.dp)
         )
+        if (!rewardSummary.isNullOrEmpty()) {
+            Text(
+                rewardSummary,
+                color = MB10Colors.accentNetrun,
+                fontFamily = JetBrainsMono,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+        }
     }
 }
 

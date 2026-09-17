@@ -1,13 +1,16 @@
 package com.megablok10.app.qr
 
+import com.megablok10.app.breach.Container
+import com.megablok10.app.breach.LootSlot
+import com.megablok10.app.breach.LootType
+import com.megablok10.app.breach.Tier
 import java.util.Base64
 
 /**
  * Единая точка разбора ВСЕХ QR-кодов игры. Тип определяется по второму
  * сегменту после "MB10" — остальные экраны не парсят сырую строку сами,
- * а получают уже типизированный результат отсюда. Новый тип QR (Container,
- * установка импланта у риппердока) добавляется одним новым вариантом
- * sealed-интерфейса и одной веткой в decode().
+ * а получают уже типизированный результат отсюда. Новый тип QR добавляется
+ * одним новым вариантом sealed-интерфейса и одной веткой в decode().
  *
  * Свободный текст (позывной, имя точки, текст шарда) кодируется в base64,
  * а не пишется как есть между двоеточиями — иначе любой ":" внутри текста
@@ -20,17 +23,24 @@ sealed interface Mb10Qr {
         val faction: String
     ) : Mb10Qr
 
-    /** Точка доступа для Breach Protocol — печатается мастерами на месте. */
-    data class AccessPoint(
-        val id: String,
-        val name: String
-    ) : Mb10Qr
+    /**
+     * Контейнер — заменяет старую "точку доступа" (ревизия v9). Печатается
+     * мастерами на месте, несёт свой тир (сложность взлома) и список лута.
+     * Уже напечатанные до ревизии "AP"-коды по-прежнему читаются — см.
+     * decodeLegacyAccessPoint — как контейнер тира BASE без лута.
+     */
+    data class ContainerQr(val container: Container) : Mb10Qr
 
     /**
-     * Шард — печатается мастерами на месте либо выдаётся как награда за взлом.
+     * Шард — печатается мастерами на месте либо выдаётся как лут контейнера.
      * moneyAmount — необязательные деньги внутри шарда (0, если их нет):
      * зачисляются один раз, в момент скана, тем же путём, что и находка
-     * наличных в тайнике — не переводом от другого игрока.
+     * наличных в тайнике — не переводом от другого игрока. tier/valueHint —
+     * ревизия v9: тир для длины цели расшифровки и текст-подсказка ценности
+     * для отыгрыша торга (приложение цену не считает). badge убран —
+     * ярлык теперь вычисляется из decryptAction+tier при отображении, не
+     * задаётся мастером отдельно (раньше эти два поля могли противоречить
+     * друг другу).
      *
      * decrypted — локальное состояние устройства, а не часть QR: шард с
      * decryptAction = true рождается нерасшифрованным (см. ShardStore.add)
@@ -40,8 +50,9 @@ sealed interface Mb10Qr {
      */
     data class Shard(
         val id: String,
-        val badge: String,
         val decryptAction: Boolean,
+        val tier: Int,
+        val valueHint: String,
         val title: String,
         val meta: String,
         val body: String,
@@ -49,24 +60,34 @@ sealed interface Mb10Qr {
         val decrypted: Boolean = true
     ) : Mb10Qr
 
+    /** RAM-апгрейд деки — токен одноразовый (см. RamUpgradeStore), delta прибавляется к Identity.ramCapacity с потолком RAM_CAPACITY_MAX. */
+    data class RamUpgrade(val token: String, val delta: Int) : Mb10Qr
+
     /**
-     * Демон — программа взлома, выданная мастером как предмет (награда,
-     * "плюшка", торговый лот), а не встроенная в стартовый набор. Сканируется
-     * в кибердеку игрока (DaemonStore.add) и дальше выбирается на любом
-     * взломе наравне со стартовыми демонами. rewardMoney/rewardShard* —
-     * необязательный эффект при совпадении демона в результате взлома
-     * (см. Daemon в BreachEngine.kt и DaemonRewards.apply); у демона без
-     * награды оба поля пустые/нулевые — reward остаётся чистым текстом.
+     * Ручная выдача одного слота лута живым мастером в обход авто-извлечения
+     * (ревизия v9 §6 — для самого ценного, тир 3: игрок видит "ФРАГМЕНТ
+     * ИЗВЛЕЧЁН · ТРЕБУЕТСЯ ДЕШИФРОВКА" и идёт к мастеру за этим QR).
+     * encryptedPayload — тот же формат, что у LootSlot.payload, тот же
+     * LootCodec/LootCrypto читает оба пути одинаково.
      */
-    data class DaemonItem(
-        val id: String,
-        val name: String,
-        val sequence: List<String>,
-        val reward: String,
-        val rewardMoney: Long = 0,
-        val rewardShardTitle: String? = null,
-        val rewardShardMeta: String? = null,
-        val rewardShardBody: String? = null
+    data class LootGrant(val slotRef: String, val type: LootType, val tier: Tier, val encryptedPayload: String) : Mb10Qr
+
+    /**
+     * Сигнал СБ — не QR в смысле "сканируется", а тело обычного фракционного
+     * чат-сообщения (см. ChatScreen.MessageBubble, тот же трюк, что и у
+     * PaymentBubble): SecAlertStore кодирует этим кодеком и шлёт как body
+     * FACTION-сообщения от системного псевдо-контакта "SEC//MB10". tier
+     * определяет, что видно фракции — см. ревизию v9 §4: BASE — только факт
+     * и имя узла, HARD — плюс intruderCallsign, NIGHTMARE — плюс точное время.
+     * intruderCallsign = null, если демон Ghost убрал ID; preciseAt = null,
+     * если тир не NIGHTMARE.
+     */
+    data class SecurityAlert(
+        val containerId: String,
+        val containerName: String,
+        val tier: Int,
+        val intruderCallsign: String?,
+        val preciseAt: Long?
     ) : Mb10Qr
 
     /**
@@ -106,9 +127,12 @@ object Mb10QrCodec {
         return try {
             when (parts[1]) {
                 "CONTACT" -> decodeContact(parts)
-                "AP" -> decodeAccessPoint(parts)
+                "AP" -> decodeLegacyAccessPoint(parts)
+                "CONTAINER" -> decodeContainer(parts)
                 "SHARD" -> decodeShard(parts)
-                "DAEMON" -> decodeDaemon(parts)
+                "RAM" -> decodeRamUpgrade(parts)
+                "GRANT" -> decodeLootGrant(parts)
+                "SECALERT" -> decodeSecurityAlert(parts)
                 "TX" -> decodeTransaction(parts)
                 "RCPT" -> decodeReceipt(parts)
                 else -> null
@@ -130,62 +154,92 @@ object Mb10QrCodec {
         )
     }
 
-    fun encodeAccessPoint(id: String, name: String): String =
-        "$MAGIC:AP:v1:$id:${b64(name)}"
-
-    private fun decodeAccessPoint(parts: List<String>): Mb10Qr.AccessPoint? {
+    /** Старые (до ревизии v9) точки доступа без тира и лута — читаются как контейнер тира BASE, пустой лут. */
+    private fun decodeLegacyAccessPoint(parts: List<String>): Mb10Qr.ContainerQr? {
         if (parts.size < 5) return null
-        return Mb10Qr.AccessPoint(id = parts[3], name = unb64(parts[4]))
+        return Mb10Qr.ContainerQr(Container(id = parts[3], name = unb64(parts[4]), tier = Tier.BASE, ownerFaction = "", loot = emptyList()))
+    }
+
+    fun encodeContainer(container: Container): String {
+        val loot = container.loot.joinToString(";") { "${it.type.name},${it.tier.level},${it.copies},${it.payload}" }
+        return "$MAGIC:CONTAINER:v1:${container.id}:${b64(container.name)}:${container.tier.level}:${b64(container.ownerFaction)}:${b64(loot)}"
+    }
+
+    private fun decodeContainer(parts: List<String>): Mb10Qr.ContainerQr? {
+        if (parts.size < 8) return null
+        val lootBlob = unb64(parts[7])
+        val loot = if (lootBlob.isEmpty()) emptyList() else lootBlob.split(";").mapNotNull { slot ->
+            val f = slot.split(",", limit = 4)
+            if (f.size < 4) return@mapNotNull null
+            val type = LootType.entries.find { it.name == f[0] } ?: return@mapNotNull null
+            LootSlot(type = type, tier = Tier.fromLevel(f[1].toIntOrNull() ?: 1), copies = f[2].toIntOrNull() ?: 0, payload = f[3])
+        }
+        return Mb10Qr.ContainerQr(
+            Container(
+                id = parts[3],
+                name = unb64(parts[4]),
+                tier = Tier.fromLevel(parts[5].toIntOrNull() ?: 1),
+                ownerFaction = unb64(parts[6]),
+                loot = loot
+            )
+        )
     }
 
     fun encodeShard(
         id: String,
-        badge: String,
         decryptAction: Boolean,
+        tier: Int,
+        valueHint: String,
         title: String,
         meta: String,
         body: String,
         moneyAmount: Long = 0
-    ): String = "$MAGIC:SHARD:v1:$id:$badge:${if (decryptAction) 1 else 0}:${b64(title)}:${b64(meta)}:${b64(body)}:$moneyAmount"
+    ): String = "$MAGIC:SHARD:v1:$id:${if (decryptAction) 1 else 0}:$tier:${b64(valueHint)}:${b64(title)}:${b64(meta)}:${b64(body)}:$moneyAmount"
 
     private fun decodeShard(parts: List<String>): Mb10Qr.Shard? {
-        if (parts.size < 9) return null
+        if (parts.size < 10) return null
         return Mb10Qr.Shard(
             id = parts[3],
-            badge = parts[4],
-            decryptAction = parts[5] == "1",
-            title = unb64(parts[6]),
-            meta = unb64(parts[7]),
-            body = unb64(parts[8]),
-            // Поле добавлено позже v1 — у уже напечатанных до этого шардов его просто нет в строке, считаем 0.
-            moneyAmount = parts.getOrNull(9)?.toLongOrNull() ?: 0
+            decryptAction = parts[4] == "1",
+            tier = parts[5].toIntOrNull() ?: 1,
+            valueHint = unb64(parts[6]),
+            title = unb64(parts[7]),
+            meta = unb64(parts[8]),
+            body = unb64(parts[9]),
+            moneyAmount = parts.getOrNull(10)?.toLongOrNull() ?: 0
         )
     }
 
-    fun encodeDaemon(
-        id: String,
-        name: String,
-        sequence: List<String>,
-        reward: String,
-        rewardMoney: Long = 0,
-        rewardShardTitle: String? = null,
-        rewardShardMeta: String? = null,
-        rewardShardBody: String? = null
-    ): String = "$MAGIC:DAEMON:v1:$id:${b64(name)}:${sequence.joinToString(",")}:${b64(reward)}:$rewardMoney:" +
-        "${b64(rewardShardTitle.orEmpty())}:${b64(rewardShardMeta.orEmpty())}:${b64(rewardShardBody.orEmpty())}"
+    fun encodeRamUpgrade(token: String, delta: Int): String = "$MAGIC:RAM:v1:$token:$delta"
 
-    private fun decodeDaemon(parts: List<String>): Mb10Qr.DaemonItem? {
-        if (parts.size < 11) return null
-        val rewardMoney = parts[7].toLongOrNull() ?: return null
-        return Mb10Qr.DaemonItem(
-            id = parts[3],
-            name = unb64(parts[4]),
-            sequence = parts[5].split(","),
-            reward = unb64(parts[6]),
-            rewardMoney = rewardMoney,
-            rewardShardTitle = unb64(parts[8]).ifEmpty { null },
-            rewardShardMeta = unb64(parts[9]).ifEmpty { null },
-            rewardShardBody = unb64(parts[10]).ifEmpty { null }
+    private fun decodeRamUpgrade(parts: List<String>): Mb10Qr.RamUpgrade? {
+        if (parts.size < 5) return null
+        val delta = parts[4].toIntOrNull() ?: return null
+        return Mb10Qr.RamUpgrade(token = parts[3], delta = delta)
+    }
+
+    fun encodeLootGrant(slotRef: String, type: LootType, tier: Tier, encryptedPayload: String): String =
+        "$MAGIC:GRANT:v1:$slotRef:${type.name}:${tier.level}:$encryptedPayload"
+
+    private fun decodeLootGrant(parts: List<String>): Mb10Qr.LootGrant? {
+        if (parts.size < 7) return null
+        val type = LootType.entries.find { it.name == parts[4] } ?: return null
+        return Mb10Qr.LootGrant(slotRef = parts[3], type = type, tier = Tier.fromLevel(parts[5].toIntOrNull() ?: 1), encryptedPayload = parts[6])
+    }
+
+    fun encodeSecurityAlert(alert: Mb10Qr.SecurityAlert): String = listOf(
+        MAGIC, "SECALERT", "v1", alert.containerId, b64(alert.containerName), alert.tier.toString(),
+        alert.intruderCallsign?.let { b64(it) } ?: "", alert.preciseAt?.toString() ?: ""
+    ).joinToString(":")
+
+    private fun decodeSecurityAlert(parts: List<String>): Mb10Qr.SecurityAlert? {
+        if (parts.size < 8) return null
+        return Mb10Qr.SecurityAlert(
+            containerId = parts[3],
+            containerName = unb64(parts[4]),
+            tier = parts[5].toIntOrNull() ?: 1,
+            intruderCallsign = parts[6].takeIf { it.isNotEmpty() }?.let { unb64(it) },
+            preciseAt = parts[7].toLongOrNull()
         )
     }
 

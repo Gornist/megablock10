@@ -6,14 +6,17 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 /**
- * Схема наращивается по мере фич (Character/Shard/Transaction сейчас,
- * Container — когда появятся полноценные контейнеры), а не строится целиком
- * заранее. До релиза миграции не пишем — схема ещё нестабильна, при её смене
- * Room просто пересоздаст базу (fallbackToDestructiveMigration).
+ * Схема наращивается по мере фич, а не строится целиком заранее. До релиза
+ * миграции не пишем — схема ещё нестабильна, при её смене Room просто
+ * пересоздаст базу (fallbackToDestructiveMigration).
  */
 @Database(
-    entities = [CharacterEntity::class, ShardEntity::class, TransactionEntity::class, DaemonEntity::class, ChatMessageEntity::class, CallLogEntity::class, AccessPointBreachEntity::class],
-    version = 8,
+    entities = [
+        CharacterEntity::class, ShardEntity::class, TransactionEntity::class, DaemonEntity::class,
+        ChatMessageEntity::class, CallLogEntity::class, ContainerBreachEntity::class,
+        ContainerEntity::class, SlotClaimEntity::class, ConsumedTokenEntity::class, PendingAlertEntity::class
+    ],
+    version = 9,
     exportSchema = false
 )
 abstract class Mb10Database : RoomDatabase() {
@@ -23,7 +26,11 @@ abstract class Mb10Database : RoomDatabase() {
     abstract fun daemonDao(): DaemonDao
     abstract fun chatMessageDao(): ChatMessageDao
     abstract fun callLogDao(): CallLogDao
-    abstract fun accessPointBreachDao(): AccessPointBreachDao
+    abstract fun containerBreachDao(): ContainerBreachDao
+    abstract fun containerDao(): ContainerDao
+    abstract fun slotClaimDao(): SlotClaimDao
+    abstract fun consumedTokenDao(): ConsumedTokenDao
+    abstract fun pendingAlertDao(): PendingAlertDao
 
     companion object {
         @Volatile private var instance: Mb10Database? = null

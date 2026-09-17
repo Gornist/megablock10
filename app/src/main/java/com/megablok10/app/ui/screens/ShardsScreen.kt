@@ -41,8 +41,18 @@ internal enum class ShardBadge(val text: String, val color: Color) {
     Compromised("скомпрометирован", MB10Colors.accentDanger)
 }
 
-internal fun resolveBadge(raw: String): ShardBadge =
-    ShardBadge.entries.find { it.name.equals(raw, ignoreCase = true) } ?: ShardBadge.Public
+/**
+ * Ярлык вычисляется из decryptAction+decrypted+tier, а не хранится отдельным
+ * полем (ревизия v9) — раньше мастер мог задать badge и decryptAction
+ * противоречиво (например "зашифрован" на шарде, который на деле открыт
+ * сразу), теперь такого рассинхрона в принципе не может возникнуть.
+ */
+internal fun resolveBadge(shard: Mb10Qr.Shard): ShardBadge = when {
+    shard.decryptAction && !shard.decrypted -> ShardBadge.Locked
+    shard.tier <= 1 -> ShardBadge.Public
+    shard.tier == 2 -> ShardBadge.Fragment
+    else -> ShardBadge.Compromised
+}
 
 /**
  * Шарды теперь сегмент внутри общего экрана Кибердеки (CyberdeckScreen), а не
@@ -52,7 +62,7 @@ internal fun resolveBadge(raw: String): ShardBadge =
  */
 @Composable
 internal fun ShardCard(shard: Mb10Qr.Shard, onClick: () -> Unit) {
-    val badge = remember(shard.badge) { resolveBadge(shard.badge) }
+    val badge = remember(shard) { resolveBadge(shard) }
     ChamferedSurface(
         borderColor = MB10Colors.borderMuted,
         fillColor = MB10Colors.surfaceRaised,
@@ -92,7 +102,7 @@ private fun ShardMoneyRow(amount: Long) {
 
 @Composable
 internal fun ShardDetailOverlay(shard: Mb10Qr.Shard, onClose: () -> Unit, onOpenHack: () -> Unit) {
-    val badge = remember(shard.badge) { resolveBadge(shard.badge) }
+    val badge = remember(shard) { resolveBadge(shard) }
     Column(Modifier.fillMaxSize().background(MB10Colors.surfaceBase).padding(16.dp)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -119,6 +129,10 @@ internal fun ShardDetailOverlay(shard: Mb10Qr.Shard, onClose: () -> Unit, onOpen
         }
         Spacer(Modifier.height(4.dp))
         Text(shard.meta, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
+        if (shard.valueHint.isNotEmpty()) {
+            Spacer(Modifier.height(4.dp))
+            Text(shard.valueHint, color = MB10Colors.inkTertiary, fontFamily = IBMPlexSans, fontSize = 11.sp)
+        }
         if (shard.moneyAmount > 0) {
             Spacer(Modifier.height(8.dp))
             ShardMoneyRow(shard.moneyAmount)

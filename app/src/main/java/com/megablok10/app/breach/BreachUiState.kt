@@ -9,7 +9,11 @@ data class BreachAttemptState(
 ) {
     val bufferCodes: List<String> get() = selected.map(grid::codeAt)
     val isFull: Boolean get() = selected.size >= bufferSize
-    val matchedDaemonIds: Set<String> get() = resolveDaemons(bufferCodes, daemons)
+
+    /** То же, что bufferCodes, но клетки-ловушки (grid.trapCells) заменены на TRAP_SENTINEL — не могут войти ни в один матч демона. */
+    private val matchCodes: List<String>
+        get() = selected.map { cell -> if (cell in grid.trapCells) BreachSymbols.TRAP_SENTINEL else grid.codeAt(cell) }
+    val matchedDaemonIds: Set<String> get() = resolveDaemons(matchCodes, daemons)
 
     /**
      * Клетки, доступные для СЛЕДУЮЩЕГО тапа — используют то же самое правило

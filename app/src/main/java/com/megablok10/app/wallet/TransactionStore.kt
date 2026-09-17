@@ -117,18 +117,22 @@ object TransactionStore {
     }
 
     /**
-     * Деньги за совпадение денежного демона на взломе — тот же принцип, что
-     * у денег внутри шарда: находка, а не перевод, идемпотентность через id
-     * записи, привязанный к id демона (см. DaemonRewards.apply).
+     * Эдди за успешный (SUCCESS/PARTIAL) взлом контейнера — ревизия v9 §2:
+     * сумма зависит от тира контейнера, не от конкретного демона (денежных
+     * демонов больше нет). attemptId уникален на попытку (не на контейнер и
+     * не на демона) — это не разовая награда, а честный доход за каждый
+     * успешно пройденный (и не заблокированный кулдауном) взлом; тот же
+     * insertIfAbsent защищает только от повторного зачисления ОДНОЙ и той
+     * же попытки, если вызов почему-то продублируется.
      */
-    suspend fun creditDaemonReward(context: Context, daemonId: String, amount: Long, daemonName: String) {
+    suspend fun creditContainerEddies(context: Context, attemptId: String, amount: Long, containerName: String) {
         if (amount <= 0) return
         Mb10Database.get(context).transactionDao().insertIfAbsent(
             TransactionEntity(
-                id = "daemon:$daemonId",
+                id = "breach:$attemptId",
                 counterpartyPubKeyB64 = "",
                 amount = amount,
-                memo = "Демон: $daemonName",
+                memo = "Взлом: $containerName",
                 timestamp = System.currentTimeMillis(),
                 status = TransactionStatus.CONFIRMED
             )
