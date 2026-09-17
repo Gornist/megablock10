@@ -32,7 +32,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -475,38 +474,34 @@ private fun MessageBubble(
 /**
  * Сигнал СБ (SecAlertStore) приходит телом обычного фракционного сообщения —
  * без этой ветки декодированный Mb10Qr.SecurityAlert падал бы в
- * PlainMessageBubble сырой строкой вида "MB10:SECALERT:v1:...". Не
- * left/right пузырь, как у чата между игроками (это системное оповещение
- * всей фракции, не переписка с конкретным человеком) — по центру, цветом
- * accentDanger, тем же принципом, что ReceiptLine у чека.
+ * PlainMessageBubble сырой строкой вида "MB10:SECALERT:v1:...". Тонкая
+ * системная строка по центру, тем же принципом, что ReceiptLine у чека —
+ * не отдельная карточка с заливкой, сигнал не должен перевешивать обычные
+ * сообщения в ленте. Если всё не влезает в одну строку, лишнее обрезается
+ * многоточием, а не переносится — данные всё равно приходят в саму заявку
+ * из PendingAlertEntity, тут только уведомление.
  */
 @Composable
 private fun SecurityAlertBubble(alert: Mb10Qr.SecurityAlert) {
-    Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.Center) {
-        ChamferedSurface(
-            borderColor = MB10Colors.accentDanger,
-            fillColor = MB10Colors.accentDanger.copy(alpha = 0.08f),
-            cut = 8.dp,
-            contentPadding = 12.dp,
-            modifier = Modifier.widthIn(max = 280.dp)
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    HexBullet(MB10Colors.accentDanger, size = 8.dp)
-                    Spacer(Modifier.width(6.dp))
-                    Text("СИГНАЛ СБ · ${Tier.fromLevel(alert.tier).label}", color = MB10Colors.accentDanger, fontFamily = JetBrainsMono, fontSize = 10.sp, fontWeight = FontWeight.Medium)
-                }
-                Spacer(Modifier.height(6.dp))
-                Text("Несанкционированный взлом узла «${alert.containerName}»", color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp, textAlign = TextAlign.Center)
-                if (alert.intruderCallsign != null) {
-                    Spacer(Modifier.height(2.dp))
-                    Text("Взломщик: ${alert.intruderCallsign}", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
-                }
-                if (alert.preciseAt != null) {
-                    Spacer(Modifier.height(2.dp))
-                    Text(SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(alert.preciseAt), color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 9.5.sp)
-                }
-            }
+    val parts = buildList {
+        add("СИГНАЛ СБ")
+        add(Tier.fromLevel(alert.tier).label)
+        add("«${alert.containerName}»")
+        alert.intruderCallsign?.let(::add)
+        alert.preciseAt?.let { add(SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(it)) }
+    }
+    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.Center) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.widthIn(max = 300.dp).padding(horizontal = 16.dp)) {
+            HexBullet(MB10Colors.accentDanger, size = 6.dp)
+            Spacer(Modifier.width(6.dp))
+            Text(
+                parts.joinToString(" · "),
+                color = MB10Colors.accentDanger,
+                fontFamily = JetBrainsMono,
+                fontSize = 10.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
