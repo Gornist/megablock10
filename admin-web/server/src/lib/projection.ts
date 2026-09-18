@@ -1,6 +1,7 @@
 import type { Db } from "../db/index.js";
 import type { Field, StoredChangeRow } from "./changeRecord.js";
 import { RAM_CAPACITY_DEFAULT } from "./identityDefaults.js";
+import { parseSafe } from "./json.js";
 
 export interface DaemonEntry {
   daemonId: string;
@@ -122,27 +123,27 @@ function applyRow(
 
   switch (field) {
     case "daemons.add": {
-      const d = parseJson<DaemonEntry>(row.new_value);
+      const d = parseSafe<DaemonEntry>(row.new_value);
       if (d) daemons.set(d.daemonId, d);
       return;
     }
     case "daemons.remove": {
-      const d = parseJson<{ daemonId: string }>(row.new_value);
+      const d = parseSafe<{ daemonId: string }>(row.new_value);
       if (d) daemons.delete(d.daemonId);
       return;
     }
     case "shards.add": {
-      const s = parseJson<ShardEntry>(row.new_value);
+      const s = parseSafe<ShardEntry>(row.new_value);
       if (s) shards.set(s.shardId, s);
       return;
     }
     case "shards.remove": {
-      const s = parseJson<{ shardId: string }>(row.new_value);
+      const s = parseSafe<{ shardId: string }>(row.new_value);
       if (s) shards.delete(s.shardId);
       return;
     }
     case "shards.decrypt": {
-      const s = parseJson<{ shardId: string }>(row.new_value);
+      const s = parseSafe<{ shardId: string }>(row.new_value);
       if (s) {
         const existing = shards.get(s.shardId);
         if (existing) existing.decrypted = true;
@@ -150,21 +151,21 @@ function applyRow(
       return;
     }
     case "counters.breach": {
-      const c = parseJson<{ tier: string; outcome: "success" | "partial" | "fail" }>(row.new_value);
+      const c = parseSafe<{ tier: string; outcome: "success" | "partial" | "fail" }>(row.new_value);
       if (!c) return;
       const bucket = (snapshot.counters.breaches[c.tier] ??= { success: 0, partial: 0, fail: 0 });
       bucket[c.outcome] += 1;
       return;
     }
     case "counters.alert": {
-      const c = parseJson<{ suppressed: boolean }>(row.new_value);
+      const c = parseSafe<{ suppressed: boolean }>(row.new_value);
       if (!c) return;
       if (c.suppressed) snapshot.counters.alertsSuppressed += 1;
       else snapshot.counters.alertsSent += 1;
       return;
     }
     case "counters.blocked": {
-      const c = parseJson<{ reason: string }>(row.new_value);
+      const c = parseSafe<{ reason: string }>(row.new_value);
       if (!c) return;
       snapshot.counters.breachesBlocked[c.reason] = (snapshot.counters.breachesBlocked[c.reason] ?? 0) + 1;
       return;
@@ -187,14 +188,5 @@ function applyScalar(snapshot: CharacterSnapshot, field: Field, newValue: string
     case "faction":
       snapshot.faction = newValue;
       return;
-  }
-}
-
-function parseJson<T>(text: string | null): T | null {
-  if (!text) return null;
-  try {
-    return JSON.parse(text) as T;
-  } catch {
-    return null;
   }
 }

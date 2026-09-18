@@ -148,8 +148,21 @@ export function registerPlayersRoutes(app: FastifyInstance, db: Db) {
 
       db.prepare(
         `INSERT INTO changes (id, subject_key, seq, happened_at, received_at, field, old_value, new_value, reason, source_ref, actor, signature)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'MASTER_OVERRIDE', ?, ?, '')`,
-      ).run(id, subjectKey, seq, now, now, field, oldValue, newValue, justification, `master:${master.id}`);
+         VALUES (@id, @subject_key, @seq, @happened_at, @received_at, @field, @old_value, @new_value, @reason, @source_ref, @actor, @signature)`,
+      ).run({
+        id,
+        subject_key: subjectKey,
+        seq,
+        happened_at: now,
+        received_at: now,
+        field,
+        old_value: oldValue,
+        new_value: newValue,
+        reason: "MASTER_OVERRIDE",
+        source_ref: justification,
+        actor: `master:${master.id}`,
+        signature: "",
+      });
 
       db.prepare(`INSERT INTO master_pending (change_id, subject_key, delivered, created_at) VALUES (?, ?, 0, ?)`).run(id, subjectKey, now);
 

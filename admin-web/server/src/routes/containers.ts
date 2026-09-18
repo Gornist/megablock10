@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { Db } from "../db/index.js";
 import { requireMaster } from "../lib/auth.js";
+import { validateContainerSlots } from "../lib/containerSlots.js";
 
 export interface ContainerSlot {
   index: number;
@@ -61,12 +62,17 @@ export function registerContainersRoute(app: FastifyInstance, db: Db) {
         errors.push({ id: typeof c.id === "string" ? c.id : "?", error: "malformed container" });
         continue;
       }
+      const validated = validateContainerSlots(c.slots);
+      if (!validated.ok) {
+        errors.push({ id: c.id, error: validated.error });
+        continue;
+      }
       upsertContainer(db, {
         id: c.id,
         name: c.name,
         tier: c.tier,
         ownerFaction: typeof c.ownerFaction === "string" ? c.ownerFaction : null,
-        slots: c.slots as ContainerSlot[],
+        slots: validated.slots,
       });
       count += 1;
     }

@@ -1,7 +1,14 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { Db } from "../db/index.js";
 import { hashToken } from "./crypto.js";
+
+/** Сравнение хэшей токенов постоянным временем — см. lib/gameSecret.ts, та же мотивация: обычный !== утекает тайминг совпавших байт. */
+function timingSafeEqualStrings(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, "utf8");
+  const bufB = Buffer.from(b, "utf8");
+  return bufA.length === bufB.length && timingSafeEqual(bufA, bufB);
+}
 
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // сутки, см. §9 ТЗ
 
@@ -50,7 +57,7 @@ export function login(db: Db, name: string, token: string): { sessionToken: stri
   const row = db.prepare(`SELECT id, name, token_hash FROM masters WHERE name = ?`).get(name) as
     | { id: string; name: string; token_hash: string }
     | undefined;
-  if (!row || row.token_hash !== hashToken(token)) return null;
+  if (!row || !timingSafeEqualStrings(row.token_hash, hashToken(token))) return null;
 
   const sessionToken = randomBytes(32).toString("base64url");
   const now = Date.now();
