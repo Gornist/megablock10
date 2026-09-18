@@ -1,16 +1,23 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "./client";
 
+/** Дефолт для списковых экранов — раньше независимо объявлялся как POLL_MS в каждом из них. */
+export const DEFAULT_POLL_MS = 8000;
+
 interface UseApiDataOptions {
-  /** Если задано — перезапрашивать в фоне каждые pollMs, без сброса data в null между обновлениями (чтобы список не мигал пустотой). */
-  pollMs?: number;
+  /**
+   * Перезапрашивать в фоне каждые pollMs, без сброса data в null между
+   * обновлениями (чтобы список не мигал пустотой). По умолчанию — DEFAULT_POLL_MS;
+   * передайте false, чтобы отключить polling (разовая загрузка).
+   */
+  pollMs?: number | false;
 }
 
 /**
  * Общий загрузчик для экранов-списков: раньше каждый экран сам писал
  * `api.get(...).then(setX)` без единого `.catch` — любая ошибка (не 401,
  * тот уже ловится в api/client.ts) оставляла экран на «загрузка…» навсегда,
- * без единого сообщения. Заодно даёт опциональный polling вместо того,
+ * без единого сообщения. Заодно даёт polling по умолчанию вместо того,
  * чтобы требовать от мастера жать F5.
  */
 export function useApiData<T>(path: string, options: UseApiDataOptions = {}) {
@@ -18,7 +25,7 @@ export function useApiData<T>(path: string, options: UseApiDataOptions = {}) {
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const reload = useCallback(() => setTick((t) => t + 1), []);
-  const pollMs = options.pollMs;
+  const pollMs = options.pollMs === false ? undefined : (options.pollMs ?? DEFAULT_POLL_MS);
 
   useEffect(() => {
     let cancelled = false;

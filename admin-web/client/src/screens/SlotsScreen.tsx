@@ -2,29 +2,36 @@ import { useState } from "react";
 import { api } from "../api/client";
 import type { SlotRegistryItem } from "../api/types";
 import { useApiData } from "../api/useApiData";
-import { AppButton, AppDialog, AppInput, AppSelect, Badge, EmptyState, ErrorNote, Panel } from "../design/components";
+import { useAsyncAction } from "../api/useAsyncAction";
+import { AsyncPanel } from "../design/AsyncPanel";
+import { AppButton, AppDialog, AppInput, AppSelect, Badge, Panel } from "../design/components";
 import { DataTable, type Column } from "../design/DataTable";
 import { shortKey } from "../format";
 
 type Filter = "all" | "open" | "exhausted";
-const POLL_MS = 8000;
 
 export function SlotsScreen() {
-  const { data: slots, error, reload } = useApiData<SlotRegistryItem[]>("/api/slots", { pollMs: POLL_MS });
+  const { data: slots, error, reload } = useApiData<SlotRegistryItem[]>("/api/slots");
   const [filter, setFilter] = useState<Filter>("all");
   const [revoking, setRevoking] = useState<{ slotRef: string; claimantKeyB64: string } | null>(null);
   const [revokeReason, setRevokeReason] = useState("");
+  const revokeAction = useAsyncAction({ fallbackError: "не удалось аннулировать заявку" });
+  const restoreAction = useAsyncAction({ fallbackError: "не удалось вернуть слот в оборот" });
 
   async function confirmRevoke() {
     if (!revoking) return;
-    await api.post(`/api/slots/${encodeURIComponent(revoking.slotRef)}/revoke`, { claimantKeyB64: revoking.claimantKeyB64, reason: revokeReason });
-    setRevoking(null);
-    setRevokeReason("");
-    reload();
+    const res = await revokeAction.run(() =>
+      api.post(`/api/slots/${encodeURIComponent(revoking.slotRef)}/revoke`, { claimantKeyB64: revoking.claimantKeyB64, reason: revokeReason }),
+    );
+    if (res.ok) {
+      setRevoking(null);
+      setRevokeReason("");
+      reload();
+    }
   }
   async function restore(slotRef: string) {
-    await api.post(`/api/slots/${encodeURIComponent(slotRef)}/restore`, {});
-    reload();
+    const res = await restoreAction.run(() => api.post(`/api/slots/${encodeURIComponent(slotRef)}/restore`, {}));
+    if (res.ok) reload();
   }
 
   const filtered = (slots ?? []).filter((s) => {
@@ -62,7 +69,11 @@ export function SlotsScreen() {
               </AppButton>
             </div>
           ))}
-          {s.copiesClaimed > 0 && <AppButton onClick={() => restore(s.slotRef)}>вернуть в оборот</AppButton>}
+          {s.copiesClaimed > 0 && (
+            <AppButton onClick={() => restore(s.slotRef)} disabled={restoreAction.busy}>
+              вернуть в оборот
+            </AppButton>
+          )}
         </div>
       ),
     },
@@ -80,22 +91,18 @@ export function SlotsScreen() {
           </AppSelect>
         }
       >
-        {error && <ErrorNote>{error}</ErrorNote>}
-        {slots === null ? (
-          <EmptyState>загрузка…</EmptyState>
-        ) : filtered.length === 0 ? (
-          <EmptyState>нет тиражных слотов</EmptyState>
-        ) : (
-          <DataTable columns={columns} rows={filtered} rowKey={(s) => s.slotRef} />
-        )}
+        {restoreAction.error && <div className="login-error">{restoreAction.error}</div>}
+        <AsyncPanel data={slots} error={error} isEmpty={() => filtered.length === 0} emptyLabel="нет тиражных слотов">
+          {() => <DataTable columns={columns} rows={filtered} rowKey={(s) => s.slotRef} />}
+        </AsyncPanel>
       </Panel>
       {revoking && (
         <AppDialog
           title="Аннулировать заявку"
           body={`Слот ${revoking.slotRef}, заявитель ${shortKey(revoking.claimantKeyB64)}. Слот вернётся в оборот для этого игрока.`}
-          confirmText="Аннулировать"
+          confirmText={revokeAction.busy ? "Аннулирую…" : "Аннулировать"}
           confirmVariant="danger"
-          confirmDisabled={!revokeReason.trim()}
+          confirmDisabled={!revokeReason.trim() || revokeAction.busy}
           onConfirm={confirmRevoke}
           onCancel={() => {
             setRevoking(null);
@@ -103,6 +110,7 @@ export function SlotsScreen() {
           }}
         >
           <AppInput autoFocus placeholder="основание (обязательно)" value={revokeReason} onChange={(e) => setRevokeReason(e.target.value)} />
+          {revokeAction.error && <div className="login-error">{revokeAction.error}</div>}
         </AppDialog>
       )}
     </>

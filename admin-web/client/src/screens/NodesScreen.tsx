@@ -1,13 +1,12 @@
 import type { NodeSummary } from "../api/types";
 import { useApiData } from "../api/useApiData";
-import { EmptyState, ErrorNote, Panel, StatTile } from "../design/components";
+import { AsyncPanel } from "../design/AsyncPanel";
+import { Panel, StatTile } from "../design/components";
 import { DataTable, type Column } from "../design/DataTable";
 import { formatAgo } from "../format";
 
-const POLL_MS = 8000;
-
 export function NodesScreen() {
-  const { data: nodes, error } = useApiData<NodeSummary[]>("/api/nodes", { pollMs: POLL_MS });
+  const { data: nodes, error } = useApiData<NodeSummary[]>("/api/nodes");
 
   const byTier = new Map<string, number>();
   for (const n of nodes ?? []) byTier.set(n.tier, (byTier.get(n.tier) ?? 0) + 1);
@@ -31,14 +30,9 @@ export function NodesScreen() {
         ))}
       </div>
       <Panel title={`Узлы${nodes ? ` (${nodes.length})` : ""}`}>
-        {error && <ErrorNote>{error}</ErrorNote>}
-        {nodes === null ? (
-          <EmptyState>загрузка…</EmptyState>
-        ) : nodes.length === 0 ? (
-          <EmptyState>контейнеров пока нет — залейте их из Мастерской</EmptyState>
-        ) : (
-          <DataTable columns={columns} rows={nodes} rowKey={(n) => n.id} />
-        )}
+        <AsyncPanel data={nodes} error={error} isEmpty={(d) => d.length === 0} emptyLabel="контейнеров пока нет — залейте их из Мастерской">
+          {(d) => <DataTable columns={columns} rows={d} rowKey={(n) => n.id} />}
+        </AsyncPanel>
       </Panel>
     </div>
   );
