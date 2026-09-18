@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import com.megablok10.app.collector.CollectorSettings
+import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.AppDialog
@@ -48,6 +49,7 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
     val onlinePeers by PresenceService.peers.collectAsState()
     var collectorUrl by remember { mutableStateOf(CollectorSettings.baseUrl(context) ?: "") }
     var gameSecret by remember { mutableStateOf(CollectorSettings.gameSecret(context) ?: "") }
+    val pendingChanges by Mb10Database.get(context).pendingChangeRecordDao().observeCount().collectAsState(initial = 0)
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         SectionLabel("Приложение")
@@ -80,6 +82,13 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
             "Адрес ноутбука мастера в игровой сети — сюда уходит история изменений для дашборда. Пусто — ничего не отправляется, игра работает как обычно.",
             color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp
         )
+        Spacer(Modifier.height(10.dp))
+        ListRow(
+            trailing = { StatusChip(if (pendingChanges > 0) "$pendingChanges ожидает" else "всё отправлено", tone = if (pendingChanges > 0) ChipTone.Neutral else ChipTone.Action) }
+        ) {
+            Text("Очередь синка", color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
+            Text("записи, ещё не подтверждённые коллектором", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+        }
         Spacer(Modifier.height(8.dp))
         AppTextField(
             value = collectorUrl,

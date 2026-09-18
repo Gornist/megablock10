@@ -161,11 +161,20 @@ fun AppRoot() {
                 withMicPermission { CallManager.startOutgoingCall(context, currentIdentity, peer) }
             },
             onResetIdentity = {
-                ChatStore.stop()
-                IdentityManager.clear(context)
-                identity = null
-                tab = AppTab.Chat
-                showProfile = false
+                // Зеркало пары enqueue при CHARACTER_CREATED (см. SetupScreen выше) —
+                // иначе сброс персонажа молча выпадает из истории дашборда: до сих пор
+                // мастер видел там появление позывного/фракции, но не их исчезновение.
+                // Enqueue обязан пройти ДО IdentityManager.clear — подписывать запись
+                // уже будет нечем, ключ сотрётся вместе с остальными SharedPreferences.
+                scope.launch {
+                    ChangeRecordStore.enqueue(context, ChangeField.CALLSIGN, currentIdentity.callsign, "", ChangeReason.CHARACTER_RESET)
+                    ChangeRecordStore.enqueue(context, ChangeField.FACTION, currentIdentity.faction, "", ChangeReason.CHARACTER_RESET)
+                    ChatStore.stop()
+                    IdentityManager.clear(context)
+                    identity = null
+                    tab = AppTab.Chat
+                    showProfile = false
+                }
             },
             onBack = { showProfile = false }
         )

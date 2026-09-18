@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface PendingChangeRecordDao {
@@ -16,6 +17,7 @@ interface PendingChangeRecordDao {
     @Query("DELETE FROM pending_change_records WHERE id IN (:ids)")
     suspend fun deleteByIds(ids: List<String>)
 
+    /** Живой счётчик для настроек (см. SettingsScreen) — раньше был suspend-разовым и нигде не вызывался. */
     @Query("SELECT COUNT(*) FROM pending_change_records")
-    suspend fun count(): Int
+    fun observeCount(): Flow<Int>
 }
