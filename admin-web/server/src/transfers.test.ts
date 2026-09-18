@@ -26,9 +26,9 @@ test("GET /api/transfers — сводит TRANSFER_OUT и TRANSFER_IN по txId 
   assert.equal(transfers[0].txId, "tx-1");
   assert.equal(transfers[0].from, alice.publicKeyB64);
   assert.equal(transfers[0].to, bob.publicKeyB64);
-  // amount зеркалит new_value записи TRANSFER_OUT как есть (routes/transfers.ts) —
-  // это итоговый баланс отправителя ПОСЛЕ списания, а не сумма перевода.
-  assert.equal(transfers[0].amount, out.newValue);
+  // amount — реальная сумма перевода (old − new баланса отправителя: 100 − 80),
+  // не итоговый остаток отправителя после списания (см. routes/transfers.ts).
+  assert.equal(transfers[0].amount, 20);
   assert.equal(transfers[0].oneSided, false);
   assert.ok(transfers[0].confirmedAt !== null);
 });
@@ -45,6 +45,7 @@ test("GET /api/transfers — TRANSFER_OUT без парного TRANSFER_IN по
   const res = await app.inject({ method: "GET", url: "/api/transfers", headers });
   const transfers = res.json();
   assert.equal(transfers.length, 1);
+  assert.equal(transfers[0].amount, 20);
   assert.equal(transfers[0].oneSided, true);
   assert.equal(transfers[0].confirmedAt, null);
 });
@@ -65,6 +66,7 @@ test("GET /api/transfers — TRANSFER_IN без парного TRANSFER_OUT то
   assert.equal(transfers[0].txId, "tx-3");
   assert.equal(transfers[0].from, alice.publicKeyB64);
   assert.equal(transfers[0].to, bob.publicKeyB64);
+  assert.equal(transfers[0].amount, 10);
   assert.equal(transfers[0].sentAt, null);
   assert.equal(transfers[0].oneSided, true);
 });

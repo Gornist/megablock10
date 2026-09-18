@@ -13,7 +13,7 @@ export function TransfersScreen() {
   const columns: Column<Transfer>[] = [
     { key: "from", label: "От", render: (t) => shortKey(t.from), sortValue: (t) => t.from },
     { key: "to", label: "Кому", render: (t) => shortKey(t.to), sortValue: (t) => t.to },
-    { key: "amount", label: "Сумма", render: (t) => t.amount ?? "—", sortValue: (t) => Number(t.amount) || 0 },
+    { key: "amount", label: "Сумма", render: (t) => t.amount, sortValue: (t) => t.amount },
     { key: "sentAt", label: "Отправлен", render: (t) => formatTime(t.sentAt), sortValue: (t) => t.sentAt ?? 0 },
     { key: "confirmedAt", label: "Подтверждён", render: (t) => formatTime(t.confirmedAt), sortValue: (t) => t.confirmedAt ?? 0 },
     {

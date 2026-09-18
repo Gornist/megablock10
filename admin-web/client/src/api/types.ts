@@ -101,7 +101,7 @@ export interface Transfer {
   txId: string;
   from: string;
   to: string;
-  amount: string | null;
+  amount: number;
   sentAt: number | null;
   confirmedAt: number | null;
   oneSided: boolean;

@@ -5,11 +5,26 @@ import { requireMaster } from "../lib/auth.js";
 interface TransferRow {
   id: string;
   subject_key: string;
+  old_value: string | null;
   new_value: string | null;
   source_ref: string | null;
   actor: string;
   happened_at: number;
   received_at: number;
+}
+
+/**
+ * balance — это абсолютный баланс ПОСЛЕ применения дельты (см.
+ * TransactionStore.kt.emitBalanceChange на Android-стороне), не сама
+ * дельта. Раньше amount тут был просто new_value записи TRANSFER_OUT —
+ * т.е. остаток отправителя после списания, а не сумма перевода. Сумму
+ * восстанавливаем как разницу old/new, с учётом знака: у TRANSFER_OUT
+ * баланс уменьшается (old − new), у TRANSFER_IN — увеличивается (new − old).
+ */
+function transferAmount(row: TransferRow, direction: "out" | "in"): number {
+  const oldBalance = Number(row.old_value ?? 0);
+  const newBalance = Number(row.new_value ?? 0);
+  return direction === "out" ? oldBalance - newBalance : newBalance - oldBalance;
 }
 
 /**
@@ -24,12 +39,12 @@ export function registerTransfersRoute(app: FastifyInstance, db: Db) {
 
     const outs = db
       .prepare(
-        `SELECT id, subject_key, new_value, source_ref, actor, happened_at, received_at FROM changes WHERE reason = 'TRANSFER_OUT'`,
+        `SELECT id, subject_key, old_value, new_value, source_ref, actor, happened_at, received_at FROM changes WHERE reason = 'TRANSFER_OUT'`,
       )
       .all() as TransferRow[];
     const ins = db
       .prepare(
-        `SELECT id, subject_key, new_value, source_ref, actor, happened_at, received_at FROM changes WHERE reason = 'TRANSFER_IN'`,
+        `SELECT id, subject_key, old_value, new_value, source_ref, actor, happened_at, received_at FROM changes WHERE reason = 'TRANSFER_IN'`,
       )
       .all() as TransferRow[];
 
@@ -46,7 +61,7 @@ export function registerTransfersRoute(app: FastifyInstance, db: Db) {
         txId,
         from: out.subject_key,
         to: inRow ? inRow.subject_key : out.actor,
-        amount: out.new_value,
+        amount: transferAmount(out, "out"),
         sentAt: out.received_at,
         confirmedAt: inRow ? inRow.received_at : null,
         oneSided: !inRow,
@@ -60,7 +75,7 @@ export function registerTransfersRoute(app: FastifyInstance, db: Db) {
         txId,
         from: inRow.actor,
         to: inRow.subject_key,
-        amount: inRow.new_value,
+        amount: transferAmount(inRow, "in"),
         sentAt: null,
         confirmedAt: inRow.received_at,
         oneSided: true,
