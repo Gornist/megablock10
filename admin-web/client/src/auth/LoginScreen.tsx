@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { api, ApiError } from "../api/client";
+import { api } from "../api/client";
+import { useAsyncAction } from "../api/useAsyncAction";
 import { AppButton, AppInput, Field, Panel } from "../design/components";
 import { useAuth } from "./AuthContext";
 
@@ -7,24 +8,14 @@ export function LoginScreen() {
   const { setSession } = useAuth();
   const [name, setName] = useState("");
   const [token, setToken] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const { busy, error, run } = useAsyncAction({ fallbackError: "не удалось связаться с сервером" });
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await api.post<{ sessionToken: string; master: { id: string; name: string }; expiresAt: number }>(
-        "/api/auth/login",
-        { name, token },
-      );
-      setSession(result);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "не удалось связаться с сервером");
-    } finally {
-      setBusy(false);
-    }
+    const res = await run(() =>
+      api.post<{ sessionToken: string; master: { id: string; name: string }; expiresAt: number }>("/api/auth/login", { name, token }),
+    );
+    if (res.ok) setSession(res.value);
   }
 
   return (

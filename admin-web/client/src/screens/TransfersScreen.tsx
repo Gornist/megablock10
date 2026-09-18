@@ -1,13 +1,12 @@
 import type { Transfer } from "../api/types";
 import { useApiData } from "../api/useApiData";
-import { Badge, EmptyState, ErrorNote, Panel } from "../design/components";
+import { AsyncPanel } from "../design/AsyncPanel";
+import { Badge, Panel } from "../design/components";
 import { DataTable, type Column } from "../design/DataTable";
 import { formatAgo, formatTime, shortKey } from "../format";
 
-const POLL_MS = 8000;
-
 export function TransfersScreen() {
-  const { data: transfers, error } = useApiData<Transfer[]>("/api/transfers", { pollMs: POLL_MS });
+  const { data: transfers, error } = useApiData<Transfer[]>("/api/transfers");
 
   const oneSided = (transfers ?? []).filter((t) => t.oneSided);
 
@@ -33,14 +32,9 @@ export function TransfersScreen() {
         </Panel>
       )}
       <Panel title={`Все переводы${transfers ? ` (${transfers.length})` : ""}`}>
-        {error && <ErrorNote>{error}</ErrorNote>}
-        {transfers === null ? (
-          <EmptyState>загрузка…</EmptyState>
-        ) : transfers.length === 0 ? (
-          <EmptyState>переводов пока не было</EmptyState>
-        ) : (
-          <DataTable columns={columns} rows={transfers} rowKey={(t) => t.txId} />
-        )}
+        <AsyncPanel data={transfers} error={error} isEmpty={(d) => d.length === 0} emptyLabel="переводов пока не было">
+          {(d) => <DataTable columns={columns} rows={d} rowKey={(t) => t.txId} />}
+        </AsyncPanel>
       </Panel>
     </div>
   );

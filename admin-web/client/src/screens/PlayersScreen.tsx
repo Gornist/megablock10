@@ -1,15 +1,14 @@
 import { useMemo, useState } from "react";
 import type { PlayerListItem } from "../api/types";
 import { useApiData } from "../api/useApiData";
-import { AppInput, AppSelect, EmptyState, ErrorNote, Panel } from "../design/components";
+import { AsyncPanel } from "../design/AsyncPanel";
+import { AppInput, AppSelect, Panel } from "../design/components";
 import { DataTable, type Column } from "../design/DataTable";
 import { formatAgo, shortKey } from "../format";
 import { navigate } from "../router";
 
-const POLL_MS = 8000;
-
 export function PlayersScreen() {
-  const { data: players, error } = useApiData<PlayerListItem[]>("/api/players", { pollMs: POLL_MS });
+  const { data: players, error } = useApiData<PlayerListItem[]>("/api/players");
   const [search, setSearch] = useState("");
   const [faction, setFaction] = useState("");
 
@@ -64,12 +63,9 @@ export function PlayersScreen() {
         </div>
       }
     >
-      {error && <ErrorNote>{error}</ErrorNote>}
-      {players === null ? (
-        <EmptyState>{error ? "" : "загрузка…"}</EmptyState>
-      ) : (
-        <DataTable columns={columns} rows={filtered} rowKey={(p) => p.publicKeyB64} onRowClick={(p) => navigate("players", p.publicKeyB64)} />
-      )}
+      <AsyncPanel data={players} error={error}>
+        {() => <DataTable columns={columns} rows={filtered} rowKey={(p) => p.publicKeyB64} onRowClick={(p) => navigate("players", p.publicKeyB64)} />}
+      </AsyncPanel>
     </Panel>
   );
 }

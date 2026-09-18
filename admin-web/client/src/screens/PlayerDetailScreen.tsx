@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
 import type { CharacterSnapshot, ChangeRow } from "../api/types";
 import { useApiData } from "../api/useApiData";
+import { useAsyncAction } from "../api/useAsyncAction";
 import { AppButton, AppInput, AppSelect, Badge, EmptyState, ErrorNote, HexRow, Panel, StatTile } from "../design/components";
 import { formatTime, shortKey } from "../format";
 import { navigate } from "../router";
@@ -29,6 +30,7 @@ export function PlayerDetailScreen({ publicKeyB64 }: { publicKeyB64: string }) {
   const [refreshTick, setRefreshTick] = useState(0);
   const { data: snapshot, error: snapshotError } = useApiData<CharacterSnapshot>(
     `/api/players/${encodeURIComponent(publicKeyB64)}?t=${refreshTick}`,
+    { pollMs: false },
   );
 
   const [history, setHistory] = useState<ChangeRow[] | null>(null);
@@ -172,6 +174,7 @@ export function PlayerDetailScreen({ publicKeyB64 }: { publicKeyB64: string }) {
               <HexRow key={r.id}>
                 {formatTime(r.happened_at)} {r.field} {r.old_value ?? "∅"} → {r.new_value ?? "∅"} <Badge>{r.reason}</Badge>{" "}
                 {r.source_ref && <span className="feed-source">{r.source_ref}</span>}
+                {r.actor !== publicKeyB64 && <span className="feed-source">от {shortKey(r.actor)}</span>}
               </HexRow>
             ))}
             <div className="pager">
@@ -194,22 +197,15 @@ function OverridePanel({ publicKeyB64, onDone }: { publicKeyB64: string; onDone:
   const [field, setField] = useState(OVERRIDE_FIELDS[0]);
   const [value, setValue] = useState("");
   const [reason, setReason] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { busy, error, run } = useAsyncAction({ fallbackError: "не удалось сохранить правку" });
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      await api.post(`/api/players/${encodeURIComponent(publicKeyB64)}/override`, { field, newValue: value, reason });
+    const res = await run(() => api.post(`/api/players/${encodeURIComponent(publicKeyB64)}/override`, { field, newValue: value, reason }));
+    if (res.ok) {
       setValue("");
       setReason("");
       onDone();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "не удалось сохранить правку");
-    } finally {
-      setBusy(false);
     }
   }
 
