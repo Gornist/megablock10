@@ -7,6 +7,7 @@ import { encryptLoot } from "../lib/lootCrypto.js";
 import { encodeDaemonLoot, encodeShardLoot } from "../lib/lootCodec.js";
 import { encodeContainerQr, encodeRamUpgradeQr, encodeShardQr } from "../lib/mb10QrCodec.js";
 import { tierLevel } from "../lib/tier.js";
+import { validateContainerSlot } from "../lib/containerSlots.js";
 import { upsertContainer, type ContainerSlot } from "./containers.js";
 
 interface ShardSlotInput {
@@ -99,7 +100,12 @@ export function registerMasterRoutes(app: FastifyInstance, db: Db) {
       }
 
       const payload = encryptLoot(plain);
-      slots.push({ index, type, tier: slotTier, copies, title, payload });
+      // Тот же валидатор, что и у routes/containers.ts — гарантирует, что
+      // сгенерированный здесь слот проходит ровно те же проверки (в частности,
+      // ловит copies < 0, которое раньше проскакивало мимо Number.isInteger).
+      const validated = validateContainerSlot(index, { type, tier: slotTier, copies, title, payload });
+      if (!validated.ok) return reply.code(400).send({ error: validated.error });
+      slots.push(validated.slot);
     }
 
     upsertContainer(db, { id, name, tier, ownerFaction, slots });
