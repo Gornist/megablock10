@@ -1,0 +1,65 @@
+import { AuthProvider, useAuth } from "./auth/AuthContext";
+import { LoginScreen } from "./auth/LoginScreen";
+import { OverviewScreen } from "./screens/OverviewScreen";
+import { PlayersScreen } from "./screens/PlayersScreen";
+import { PlayerDetailScreen } from "./screens/PlayerDetailScreen";
+import { NodesScreen } from "./screens/NodesScreen";
+import { SlotsScreen } from "./screens/SlotsScreen";
+import { TransfersScreen } from "./screens/TransfersScreen";
+import { MasterScreen } from "./screens/MasterScreen";
+import { useHashRoute, navigate } from "./router";
+import { AppButton } from "./design/components";
+
+const NAV: { path: string; label: string }[] = [
+  { path: "overview", label: "Обзор" },
+  { path: "players", label: "Игроки" },
+  { path: "nodes", label: "Узлы" },
+  { path: "slots", label: "Реестр тиражей" },
+  { path: "transfers", label: "Переводы" },
+  { path: "master", label: "Мастерская" },
+];
+
+function Shell() {
+  const { session, logout } = useAuth();
+  const route = useHashRoute();
+
+  if (!session) return <LoginScreen />;
+
+  const section = route[0] ?? "overview";
+
+  return (
+    <div className="app-shell">
+      <header className="app-header">
+        <h1>МЕГАБЛОК №10 · КОЛЛЕКТОР</h1>
+        <nav>
+          {NAV.map((n) => (
+            <button key={n.path} className={`nav-item status-caps ${section === n.path ? "active" : ""}`} onClick={() => navigate(n.path)}>
+              {n.label}
+            </button>
+          ))}
+        </nav>
+        <div className="app-header-right">
+          <span className="mono">{session.master.name}</span>
+          <AppButton onClick={logout}>выйти</AppButton>
+        </div>
+      </header>
+      <main className="app-main">
+        {section === "overview" && <OverviewScreen />}
+        {section === "players" && route[1] && <PlayerDetailScreen publicKeyB64={route[1]} />}
+        {section === "players" && !route[1] && <PlayersScreen />}
+        {section === "nodes" && <NodesScreen />}
+        {section === "slots" && <SlotsScreen />}
+        {section === "transfers" && <TransfersScreen />}
+        {section === "master" && <MasterScreen />}
+      </main>
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <Shell />
+    </AuthProvider>
+  );
+}

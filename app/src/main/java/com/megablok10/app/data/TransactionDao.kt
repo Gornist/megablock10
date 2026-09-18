@@ -26,4 +26,8 @@ interface TransactionDao {
     /** Удаляет запись, только если она ещё PENDING — подтверждённую отменить нельзя. Возвращает число удалённых строк. */
     @Query("DELETE FROM transactions WHERE id = :id AND status = 'PENDING'")
     suspend fun cancelPending(id: String): Int
+
+    /** Разовый снимок баланса (не Flow) — нужен, чтобы посчитать oldValue/newValue для ChangeRecord в момент мутации, см. TransactionStore. */
+    @Query("SELECT COALESCE(SUM(amount), 0) FROM transactions")
+    suspend fun currentBalance(): Long
 }

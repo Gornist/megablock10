@@ -1,0 +1,34 @@
+# systemd-юнит мастерского коллектора для выделенной машины (Raspberry Pi
+# или любой Linux-хост на игровом LAN). Не нужен для разработки — там
+# `npm run dev` из admin-web/README.md.
+#
+# Установка:
+#   sudo cp admin-web/deploy/mb10-admin.service /etc/systemd/system/
+#   sudo nano /etc/systemd/system/mb10-admin.service   # поправить User/WorkingDirectory/пути
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now mb10-admin
+#
+# Логи: journalctl -u mb10-admin -f
+
+[Unit]
+Description=Мегаблок №10 — мастерский веб-коллектор
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=master
+WorkingDirectory=/home/master/megablock10/admin-web/server
+ExecStart=/usr/bin/node dist/index.js
+Restart=on-failure
+RestartSec=2
+
+Environment=PORT=8080
+Environment=DB_PATH=/home/master/megablock10/admin-web/server/data/mb10-admin.sqlite
+Environment=BACKUP_DIR=/home/master/megablock10/admin-web/server/data/backups
+Environment=BACKUP_INTERVAL_MS=1800000
+# Раскомментировать и задать перед игрой — см. GAME_SECRET в README.
+# Environment=GAME_SECRET=замени-на-свою-строку
+
+[Install]
+WantedBy=multi-user.target

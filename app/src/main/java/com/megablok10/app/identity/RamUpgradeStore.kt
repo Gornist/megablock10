@@ -1,6 +1,9 @@
 package com.megablok10.app.identity
 
 import android.content.Context
+import com.megablok10.app.collector.ChangeField
+import com.megablok10.app.collector.ChangeReason
+import com.megablok10.app.collector.ChangeRecordStore
 import com.megablok10.app.data.ConsumedTokenEntity
 import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.qr.Mb10Qr
@@ -19,6 +22,9 @@ object RamUpgradeStore {
             ConsumedTokenEntity(token = upgrade.token, consumedAt = System.currentTimeMillis())
         )
         if (rowId == -1L) return null
-        return IdentityManager.applyRamUpgrade(context, upgrade.delta)
+        val oldCapacity = IdentityManager.current(context)?.ramCapacity ?: RAM_CAPACITY_DEFAULT
+        val newCapacity = IdentityManager.applyRamUpgrade(context, upgrade.delta)
+        ChangeRecordStore.enqueue(context, ChangeField.RAM_CAPACITY, oldCapacity.toString(), newCapacity.toString(), ChangeReason.RAM_UPGRADE, sourceRef = upgrade.token)
+        return newCapacity
     }
 }

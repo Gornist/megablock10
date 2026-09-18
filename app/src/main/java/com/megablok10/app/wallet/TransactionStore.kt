@@ -1,7 +1,11 @@
 package com.megablok10.app.wallet
 
 import android.content.Context
+import com.megablok10.app.collector.ChangeField
+import com.megablok10.app.collector.ChangeReason
+import com.megablok10.app.collector.ChangeRecordStore
 import com.megablok10.app.data.Mb10Database
+import com.megablok10.app.data.TransactionDao
 import com.megablok10.app.data.TransactionEntity
 import com.megablok10.app.data.TransactionStatus
 import com.megablok10.app.identity.Identity
@@ -33,7 +37,8 @@ object TransactionStore {
      * тем, кто отсканировал QR, как раньше.
      */
     suspend fun recordOutgoingPending(context: Context, tx: Mb10Qr.Transaction, toPubKeyB64: String) {
-        Mb10Database.get(context).transactionDao().insertIfAbsent(
+        val dao = Mb10Database.get(context).transactionDao()
+        val rowId = dao.insertIfAbsent(
             TransactionEntity(
                 id = tx.id,
                 counterpartyPubKeyB64 = toPubKeyB64,
@@ -43,9 +48,22 @@ object TransactionStore {
                 status = TransactionStatus.PENDING
             )
         )
+        if (rowId != -1L) emitBalanceChange(context, dao, -tx.amount, ChangeReason.TRANSFER_OUT, sourceRef = tx.id)
     }
 
-    /** Отменяет ещё не подтверждённый платёж и возвращает деньги. false, если запись уже подтверждена или не найдена. */
+    /**
+     * Отменяет ещё не подтверждённый платёж и возвращает деньги. false, если
+     * запись уже подтверждена или не найдена.
+     *
+     * ИЗВЕСТНЫЙ ПРОБЕЛ: локальный баланс на устройстве откатывается верно
+     * (запись просто удаляется из transactions), но компенсирующий
+     * ChangeRecord сюда не шлётся — в наборе причин ТЗ (§2.2) нет отдельного
+     * "перевод отменён", а слать второй TRANSFER_OUT с тем же txId сбило бы
+     * сведение по txId на дашборде. Итог: если платёж отменили ДО того, как
+     * получатель подтвердил чек, баланс в дашборде на копейку разойдётся с
+     * реальным — на масштабе одного акта LARP решили этим пренебречь, а не
+     * городить отдельную причину ради редкого кейса.
+     */
     suspend fun cancelOutgoing(context: Context, id: String): Boolean =
         Mb10Database.get(context).transactionDao().cancelPending(id) > 0
 
@@ -81,7 +99,8 @@ object TransactionStore {
         val payload = Mb10QrCodec.transactionSignaturePayload(tx.id, tx.fromPubKeyB64, tx.amount, tx.memo)
         if (!IdentityManager.verify(tx.fromPubKeyB64, payload, tx.signatureB64)) return false
 
-        val rowId = Mb10Database.get(context).transactionDao().insertIfAbsent(
+        val dao = Mb10Database.get(context).transactionDao()
+        val rowId = dao.insertIfAbsent(
             TransactionEntity(
                 id = tx.id,
                 counterpartyPubKeyB64 = tx.fromPubKeyB64,
@@ -91,6 +110,9 @@ object TransactionStore {
                 status = TransactionStatus.CONFIRMED
             )
         )
+        if (rowId != -1L) {
+            emitBalanceChange(context, dao, tx.amount, ChangeReason.TRANSFER_IN, sourceRef = tx.id, actor = tx.fromPubKeyB64)
+        }
         return rowId != -1L
     }
 
@@ -104,7 +126,8 @@ object TransactionStore {
      */
     suspend fun creditShardMoney(context: Context, shardId: String, amount: Long, shardTitle: String) {
         if (amount <= 0) return
-        Mb10Database.get(context).transactionDao().insertIfAbsent(
+        val dao = Mb10Database.get(context).transactionDao()
+        val rowId = dao.insertIfAbsent(
             TransactionEntity(
                 id = "shard:$shardId",
                 counterpartyPubKeyB64 = "",
@@ -114,6 +137,7 @@ object TransactionStore {
                 status = TransactionStatus.CONFIRMED
             )
         )
+        if (rowId != -1L) emitBalanceChange(context, dao, amount, ChangeReason.SHARD_SCAN, sourceRef = shardId)
     }
 
     /**
@@ -127,7 +151,8 @@ object TransactionStore {
      */
     suspend fun creditContainerEddies(context: Context, attemptId: String, amount: Long, containerName: String) {
         if (amount <= 0) return
-        Mb10Database.get(context).transactionDao().insertIfAbsent(
+        val dao = Mb10Database.get(context).transactionDao()
+        val rowId = dao.insertIfAbsent(
             TransactionEntity(
                 id = "breach:$attemptId",
                 counterpartyPubKeyB64 = "",
@@ -137,5 +162,48 @@ object TransactionStore {
                 status = TransactionStatus.CONFIRMED
             )
         )
+        if (rowId != -1L) emitBalanceChange(context, dao, amount, ChangeReason.BREACH_EDDIES, sourceRef = attemptId)
+    }
+
+    /**
+     * Применяет правку баланса от мастера с дашборда (§6.3 ТЗ) — newValue
+     * абсолютный, не дельта. В отличие от emitBalanceChange НЕ шлёт
+     * ChangeRecord обратно на коллектор (эта правка сама следствие уже
+     * существующей записи в его истории — эхо было бы дублем). id записи —
+     * id самого MASTER_OVERRIDE с сервера, поэтому insertIfAbsent защищает
+     * от повторного применения при повторной доставке.
+     */
+    suspend fun applyBalanceOverride(context: Context, changeId: String, newBalance: Long, memo: String) {
+        val dao = Mb10Database.get(context).transactionDao()
+        val currentBalance = dao.currentBalance()
+        dao.insertIfAbsent(
+            TransactionEntity(
+                id = "override:$changeId",
+                counterpartyPubKeyB64 = "",
+                amount = newBalance - currentBalance,
+                memo = "Правка мастера: $memo",
+                timestamp = System.currentTimeMillis(),
+                status = TransactionStatus.CONFIRMED,
+            ),
+        )
+    }
+
+    /**
+     * newValue — баланс ПОСЛЕ применения delta (снимок читаем уже после
+     * insert), oldValue выводим вычитанием — дешевле, чем читать баланс
+     * дважды, и корректно, поскольку мутация и чтение идут последовательно
+     * в одной suspend-цепочке одного вызова (гонок с самим собой нет).
+     */
+    private suspend fun emitBalanceChange(
+        context: Context,
+        dao: TransactionDao,
+        delta: Long,
+        reason: String,
+        sourceRef: String,
+        actor: String? = null,
+    ) {
+        val newBalance = dao.currentBalance()
+        val oldBalance = newBalance - delta
+        ChangeRecordStore.enqueue(context, ChangeField.BALANCE, oldBalance.toString(), newBalance.toString(), reason, sourceRef, actor = actor)
     }
 }

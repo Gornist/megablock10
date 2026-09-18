@@ -41,7 +41,6 @@ fun ProfileScreen(
     onMessageContact: (String) -> Unit,
     onCallContact: (PeerInfo) -> Unit,
     onResetIdentity: () -> Unit,
-    onOpenMasterTool: () -> Unit,
     onBack: () -> Unit
 ) {
     var segment by remember { mutableStateOf(0) } // 0 = Профиль, 1 = Настройки
@@ -66,7 +65,7 @@ fun ProfileScreen(
             if (segment == 0) {
                 StatusScreen(identity, onMessageContact = onMessageContact, onCallContact = onCallContact)
             } else {
-                SettingsScreen(onResetIdentity = onResetIdentity, onOpenMasterTool = onOpenMasterTool)
+                SettingsScreen(onResetIdentity = onResetIdentity)
             }
         }
     }

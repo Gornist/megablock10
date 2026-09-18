@@ -1,6 +1,8 @@
 package com.megablok10.app.breach
 
 import android.content.Context
+import com.megablok10.app.collector.CollectorClient
+import com.megablok10.app.collector.CollectorSettings
 import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.data.SlotClaimEntity
 import com.megablok10.app.identity.Identity
@@ -10,11 +12,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Эксклюзивность лута конечного тиража — см. ревизию v9 §6. Заявка на слот
- * подписывается ключом персонажа (тем же, что и денежные транзакции) и
- * рассылается ГОССИПОМ всем сейчас видимым пирам (см. ClaimProtocol —
- * это не полная синхронизация реестров, устройство, которое было офлайн в
- * момент чужого извлечения, не дозаберёт заявку задним числом).
+ * Эксклюзивность лута конечного тиража — см. ревизию v9 §6 и §5 мастерского
+ * ТЗ (упрощённая версия). Если в Настройках задан адрес мастерского
+ * коллектора, слоты конечного тиража арбитрирует ОН — см.
+ * [claimViaCollector]: коллектор недоступен или слот исчерпан → лут просто
+ * не выдаётся, без очереди "ожидает подтверждения". Локальный ГОССИП
+ * (ClaimProtocol, рассылка всем видимым пирам) остаётся резервным путём на
+ * случай, когда коллектор не настроен вовсе (тестирование без дашборда) —
+ * тогда, как и раньше, гонка между устройствами не исключена в принципе,
+ * это осознанный компромисс на случай отсутствия мастерского ноутбука.
  */
 object SlotClaimStore {
     /**
@@ -38,6 +44,13 @@ object SlotClaimStore {
         val slotRef = container.slotRef(index)
         val claimedAt = System.currentTimeMillis()
         val signature = IdentityManager.sign(context, ClaimProtocol.signaturePayload(slotRef, identity.publicKeyB64, claimedAt))
+
+        val collectorUrl = CollectorSettings.baseUrl(context)
+        if (collectorUrl != null && container.loot[index].copies > 0) {
+            val granted = CollectorClient.claimSlot(collectorUrl, slotRef, identity.publicKeyB64, claimedAt, signature, CollectorSettings.gameSecret(context))
+            if (!granted) return null
+        }
+
         val entity = SlotClaimEntity(slotRef = slotRef, claimantKeyB64 = identity.publicKeyB64, claimedAt = claimedAt, signature = signature)
         dao.insertIfAbsent(entity)
         broadcast(entity)

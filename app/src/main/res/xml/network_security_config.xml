@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Коллектор мастерского дашборда — обычный HTTP на ноутбуке мастера в той
+  же изолированной локальной Wi-Fi сети, без интернета и без сертификата
+  (см. admin-web/README.md). base-config разрешает cleartext на весь
+  трафик приложения — оно и так не ходит никуда за пределами локальной
+  сети (NSD/TCP для чата и звонков, теперь ещё HTTP до коллектора).
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

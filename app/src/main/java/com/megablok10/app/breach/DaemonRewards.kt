@@ -56,11 +56,11 @@ object DaemonRewards {
             val slotRef = container.slotRef(slotIndex)
             when (val loot = LootCrypto.decrypt(slot.payload)?.let(LootCodec::decode)) {
                 is LootCodec.Loot.ShardLoot -> {
-                    ShardStore.grant(context, id = "shard:$slotRef", tier = slot.tier, loot = loot)
+                    ShardStore.grant(context, id = "shard:$slotRef", tier = slot.tier, loot = loot, sourceRef = slotRef)
                     shardTitles += loot.title
                 }
                 is LootCodec.Loot.DaemonLoot -> {
-                    DaemonStore.grant(context, id = "daemon:$slotRef", loot = loot)
+                    DaemonStore.grant(context, id = "daemon:$slotRef", loot = loot, sourceRef = slotRef)
                     daemonNames += loot.name
                 }
                 null -> Unit // payload битый/чужой ключ — тираж не тратим, просто ничего не выдаём
@@ -81,11 +81,11 @@ object DaemonRewards {
         val loot = LootCrypto.decrypt(grant.encryptedPayload)?.let(LootCodec::decode) ?: return null
         return when (loot) {
             is LootCodec.Loot.ShardLoot -> {
-                ShardStore.grant(context, id = "shard:${grant.slotRef}", tier = grant.tier, loot = loot)
+                ShardStore.grant(context, id = "shard:${grant.slotRef}", tier = grant.tier, loot = loot, sourceRef = grant.slotRef)
                 "Шард получен: ${loot.title}"
             }
             is LootCodec.Loot.DaemonLoot -> {
-                DaemonStore.grant(context, id = "daemon:${grant.slotRef}", loot = loot)
+                DaemonStore.grant(context, id = "daemon:${grant.slotRef}", loot = loot, sourceRef = grant.slotRef)
                 "Демон получен: ${loot.name}"
             }
         }

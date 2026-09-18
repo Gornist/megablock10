@@ -59,5 +59,9 @@ dependencies {
     // активно поддерживаемая замена с тем же пакетом org.webrtc.*.
     implementation("io.github.webrtc-sdk:android:144.7559.09")
 
+    // Связь с мастерским коллектором (admin-web) — обычный HTTP на ноутбуке
+    // мастера в той же локальной сети, не P2P. См. CollectorClient.
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
     testImplementation("junit:junit:4.13.2")
 }

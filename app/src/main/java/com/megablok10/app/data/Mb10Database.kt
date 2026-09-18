@@ -14,9 +14,10 @@ import androidx.room.RoomDatabase
     entities = [
         CharacterEntity::class, ShardEntity::class, TransactionEntity::class, DaemonEntity::class,
         ChatMessageEntity::class, CallLogEntity::class, ContainerBreachEntity::class,
-        ContainerEntity::class, SlotClaimEntity::class, ConsumedTokenEntity::class, PendingAlertEntity::class
+        SlotClaimEntity::class, ConsumedTokenEntity::class, PendingAlertEntity::class,
+        PendingChangeRecordEntity::class
     ],
-    version = 9,
+    version = 11,
     exportSchema = false
 )
 abstract class Mb10Database : RoomDatabase() {
@@ -27,10 +28,10 @@ abstract class Mb10Database : RoomDatabase() {
     abstract fun chatMessageDao(): ChatMessageDao
     abstract fun callLogDao(): CallLogDao
     abstract fun containerBreachDao(): ContainerBreachDao
-    abstract fun containerDao(): ContainerDao
     abstract fun slotClaimDao(): SlotClaimDao
     abstract fun consumedTokenDao(): ConsumedTokenDao
     abstract fun pendingAlertDao(): PendingAlertDao
+    abstract fun pendingChangeRecordDao(): PendingChangeRecordDao
 
     companion object {
         @Volatile private var instance: Mb10Database? = null

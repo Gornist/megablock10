@@ -29,6 +29,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,6 +41,9 @@ import androidx.core.content.ContextCompat
 import com.megablok10.app.call.CallManager
 import com.megablok10.app.call.CallPhase
 import com.megablok10.app.chat.ChatStore
+import com.megablok10.app.collector.ChangeField
+import com.megablok10.app.collector.ChangeReason
+import com.megablok10.app.collector.ChangeRecordStore
 import com.megablok10.app.identity.IdentityManager
 import com.megablok10.app.presence.PeerInfo
 import com.megablok10.app.ui.nav.AppTab
@@ -48,7 +52,6 @@ import com.megablok10.app.ui.screens.CallOverlay
 import com.megablok10.app.ui.screens.CallsScreen
 import com.megablok10.app.ui.screens.ChatScreen
 import com.megablok10.app.ui.screens.CyberdeckScreen
-import com.megablok10.app.ui.screens.MasterToolScreen
 import com.megablok10.app.ui.screens.ProfileScreen
 import com.megablok10.app.ui.screens.WalletScreen
 import com.megablok10.app.ui.theme.AppButton
@@ -59,6 +62,7 @@ import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.Jura
 import com.megablok10.app.ui.theme.MB10Colors
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -89,10 +93,16 @@ fun AppRoot() {
     var identity by remember { mutableStateOf(IdentityManager.current(context)) }
     var tab by remember { mutableStateOf(AppTab.Chat) }
     var chatContact by remember { mutableStateOf<String?>(null) }
-    var showMasterTool by remember { mutableStateOf(false) }
     var showProfile by remember { mutableStateOf(false) }
     var chatThreadOpen by remember { mutableStateOf(false) }
     var shardDetailOpen by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    // Фоновая отправка ChangeRecord мастерскому коллектору — не зависит от
+    // наличия личности (очередь может копиться и отправляться, даже пока
+    // экран настройки ещё не пройден, хотя на практике enqueue() без
+    // личности просто ничего не пишет).
+    LaunchedEffect(Unit) { ChangeRecordStore.start(context) }
 
     // WebRTC не откроет микрофон без RECORD_AUDIO — звонок (свой исходящий
     // или принятие входящего) — единственное место в приложении, где он
@@ -129,10 +139,16 @@ fun AppRoot() {
 
     if (currentIdentity == null) {
         SetupScreen(onCreated = { callsign, faction ->
-            identity = IdentityManager.getOrCreate(context, callsign, faction)
+            val isNewIdentity = !IdentityManager.hasIdentity(context)
+            val created = IdentityManager.getOrCreate(context, callsign, faction)
+            identity = created
+            if (isNewIdentity) {
+                scope.launch {
+                    ChangeRecordStore.enqueue(context, ChangeField.CALLSIGN, null, created.callsign, ChangeReason.CHARACTER_CREATED)
+                    ChangeRecordStore.enqueue(context, ChangeField.FACTION, null, created.faction, ChangeReason.CHARACTER_CREATED)
+                }
+            }
         })
-    } else if (showMasterTool) {
-        MasterToolScreen(onClose = { showMasterTool = false })
     } else if (showProfile) {
         ProfileScreen(
             identity = currentIdentity,
@@ -151,7 +167,6 @@ fun AppRoot() {
                 tab = AppTab.Chat
                 showProfile = false
             },
-            onOpenMasterTool = { showMasterTool = true },
             onBack = { showProfile = false }
         )
     } else {

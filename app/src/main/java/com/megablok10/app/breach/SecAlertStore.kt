@@ -2,6 +2,9 @@ package com.megablok10.app.breach
 
 import android.content.Context
 import com.megablok10.app.chat.ChatStore
+import com.megablok10.app.collector.ChangeField
+import com.megablok10.app.collector.ChangeReason
+import com.megablok10.app.collector.ChangeRecordStore
 import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.data.PendingAlertEntity
 import com.megablok10.app.identity.Identity
@@ -11,6 +14,7 @@ import com.megablok10.app.qr.Mb10QrCodec
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 
 /**
  * Сигнал СБ игроку-владельцу узла — ревизия v9 §4-5. Не отдельный QR, а
@@ -71,7 +75,15 @@ object SecAlertStore {
 
     suspend fun dispatch(context: Context, identity: Identity, container: Container, outcome: BreachOutcome, matchedEffects: Set<DaemonEffect>) {
         val now = System.currentTimeMillis()
-        val plan = decide(container.ownerFaction, identity.faction, container.tier, outcome, matchedEffects, now) ?: return
+        val plan = decide(container.ownerFaction, identity.faction, container.tier, outcome, matchedEffects, now)
+
+        ChangeRecordStore.enqueue(
+            context, ChangeField.COUNTERS_ALERT, null,
+            JSONObject().put("suppressed", plan == null).toString(),
+            if (plan == null) ChangeReason.ALERT_SUPPRESSED else ChangeReason.ALERT_SENT,
+            sourceRef = container.id, subjectKeyB64 = identity.publicKeyB64,
+        )
+        if (plan == null) return
 
         val alert = Mb10Qr.SecurityAlert(
             containerId = container.id,

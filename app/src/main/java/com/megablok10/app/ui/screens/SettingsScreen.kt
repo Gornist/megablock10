@@ -22,9 +22,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import com.megablok10.app.collector.CollectorSettings
 import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.AppDialog
+import com.megablok10.app.ui.theme.AppTextField
 import com.megablok10.app.ui.theme.AppToggle
 import com.megablok10.app.ui.theme.ButtonVariant
 import com.megablok10.app.ui.theme.ChamferedSurface
@@ -37,11 +40,14 @@ import com.megablok10.app.ui.theme.SectionLabel
 import com.megablok10.app.ui.theme.StatusChip
 
 @Composable
-fun SettingsScreen(onResetIdentity: () -> Unit, onOpenMasterTool: () -> Unit = {}) {
+fun SettingsScreen(onResetIdentity: () -> Unit) {
+    val context = LocalContext.current
     var pushEnabled by remember { mutableStateOf(true) }
     var soundEnabled by remember { mutableStateOf(false) }
     var confirmingReset by remember { mutableStateOf(false) }
     val onlinePeers by PresenceService.peers.collectAsState()
+    var collectorUrl by remember { mutableStateOf(CollectorSettings.baseUrl(context) ?: "") }
+    var gameSecret by remember { mutableStateOf(CollectorSettings.gameSecret(context) ?: "") }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         SectionLabel("Приложение")
@@ -69,8 +75,44 @@ fun SettingsScreen(onResetIdentity: () -> Unit, onOpenMasterTool: () -> Unit = {
         AppButton("Сбросить сессию персонажа", modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.Danger, onClick = { confirmingReset = true })
 
         Spacer(Modifier.height(16.dp))
-        SectionLabel("Мастеру")
-        AppButton("Мастерская — генерация QR контейнеров, шардов и RAM", modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.Secondary, onClick = onOpenMasterTool)
+        SectionLabel("Мастерский коллектор")
+        Text(
+            "Адрес ноутбука мастера в игровой сети — сюда уходит история изменений для дашборда. Пусто — ничего не отправляется, игра работает как обычно.",
+            color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp
+        )
+        Spacer(Modifier.height(8.dp))
+        AppTextField(
+            value = collectorUrl,
+            onValueChange = { collectorUrl = it },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = "http://192.168.1.10:8080"
+        )
+        Spacer(Modifier.height(8.dp))
+        AppButton(
+            "Сохранить адрес коллектора",
+            modifier = Modifier.fillMaxWidth(),
+            variant = ButtonVariant.Secondary,
+            onClick = { CollectorSettings.setBaseUrl(context, collectorUrl.ifBlank { null }) }
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            "Код игры — если мастер его задал на сервере (GAME_SECRET), без него запросы к коллектору будут отклонены. Пусто — как раньше, без кода.",
+            color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp
+        )
+        Spacer(Modifier.height(8.dp))
+        AppTextField(
+            value = gameSecret,
+            onValueChange = { gameSecret = it },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = "код игры"
+        )
+        Spacer(Modifier.height(8.dp))
+        AppButton(
+            "Сохранить код игры",
+            modifier = Modifier.fillMaxWidth(),
+            variant = ButtonVariant.Secondary,
+            onClick = { CollectorSettings.setGameSecret(context, gameSecret.ifBlank { null }) }
+        )
     }
 
     if (confirmingReset) {

@@ -1,0 +1,93 @@
+:root {
+  --bg-0: #020202;
+  --bg-1: #0a0a0a;
+  --bg-2: #121212;
+  --text-main: #f2f2f2;
+  --text-dim: #9a9a9a;
+  --line: #555555;
+  --accent: #ff8a2b;
+  --danger: #ff4d4d;
+  --ok: #6fe08a;
+
+  --font-heading: "Jura", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --font-body: "IBM Plex Sans", sans-serif;
+
+  --chamfer: 10px;
+  --gap: 16px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-0);
+  color: var(--text-main);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  margin: 0;
+}
+
+code,
+.mono {
+  font-family: var(--font-mono);
+}
+
+a {
+  color: var(--accent);
+}
+
+button,
+input,
+select {
+  font-family: inherit;
+  color: inherit;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--bg-0);
+}
+
+.status-caps {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Пунктирный разделитель — не сплошная линия (§10 ТЗ), #555 только для линий. */
+.dashed-divider {
+  border: none;
+  border-top: 1px dashed var(--line);
+  margin: var(--gap) 0;
+}
+
+/* Шестиугольный маркер строки. */
+.hex-bullet {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: var(--text-dim);
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  flex: none;
+}
+.hex-bullet.accent {
+  background: var(--accent);
+}

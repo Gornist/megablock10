@@ -18,6 +18,7 @@ private const val KEY_PUBLIC = "public_key"
 private const val KEY_CALLSIGN = "callsign"
 private const val KEY_FACTION = "faction"
 private const val KEY_RAM = "ram_capacity"
+private const val KEY_NEXT_SEQ = "next_change_seq"
 
 /** Стартовая и максимальная ёмкость буфера взлома (см. ревизию v9 §2 — раньше это была глобальная константа MockBreach.ramCapacity). */
 const val RAM_CAPACITY_DEFAULT = 6
@@ -93,6 +94,28 @@ object IdentityManager {
         return next
     }
 
+    /**
+     * Применяет правку мастера с дашборда (§6.3 ТЗ) — в отличие от
+     * applyRamUpgrade/getOrCreate, НЕ эмитит новый ChangeRecord обратно на
+     * коллектор: этот вызов сам следствие уже существующей записи в его
+     * истории (MASTER_OVERRIDE), эхо было бы бессмысленным дублем. Значение
+     * абсолютное (не дельта), поэтому применить пришедшую правку дважды
+     * (переотправка при повторном опросе) безопасно само по себе.
+     */
+    fun applyRamOverride(context: Context, newValue: Int) {
+        prefs(context).edit().putInt(KEY_RAM, newValue.coerceIn(RAM_CAPACITY_DEFAULT, RAM_CAPACITY_MAX)).apply()
+    }
+
+    /** См. applyRamOverride — тот же принцип, для позывного. */
+    fun applyCallsignOverride(context: Context, newValue: String) {
+        prefs(context).edit().putString(KEY_CALLSIGN, newValue).apply()
+    }
+
+    /** См. applyRamOverride — тот же принцип, для фракции. */
+    fun applyFactionOverride(context: Context, newValue: String) {
+        prefs(context).edit().putString(KEY_FACTION, newValue).apply()
+    }
+
     fun getPrivateKey(context: Context): PrivateKey {
         val privB64 = prefs(context).getString(KEY_PRIVATE, null)
             ?: error("Личность ещё не создана")
@@ -121,6 +144,21 @@ object IdentityManager {
         signature.verify(Base64.decode(signatureB64, Base64.NO_WRAP))
     } catch (e: Exception) {
         false
+    }
+
+    /**
+     * Следующий номер seq для ChangeRecord к мастерскому коллектору (§2.2/
+     * §3.4 ТЗ) — сквозной счётчик на устройстве, растёт монотонно и не
+     * зависит от локальной очереди отправки: если очередь целиком
+     * подтвердится и опустеет, следующий вызов не должен начать нумерацию
+     * заново. Здесь же, а не в очереди — тот же SharedPreferences, что и
+     * остальное состояние личности.
+     */
+    fun nextChangeSeq(context: Context): Long {
+        val p = prefs(context)
+        val next = p.getLong(KEY_NEXT_SEQ, 0L) + 1
+        p.edit().putLong(KEY_NEXT_SEQ, next).apply()
+        return next
     }
 
     private fun generateKeyPair(): KeyPair {

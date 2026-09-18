@@ -44,6 +44,9 @@ import com.megablok10.app.breach.LootType
 import com.megablok10.app.breach.ShardDecryptFlow
 import com.megablok10.app.breach.SlotClaimStore
 import com.megablok10.app.breach.label
+import com.megablok10.app.collector.ChangeField
+import com.megablok10.app.collector.ChangeReason
+import com.megablok10.app.collector.ChangeRecordStore
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.identity.RamUpgradeStore
 import com.megablok10.app.presence.MeshLink
@@ -60,6 +63,7 @@ import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.MB10Colors
 import com.megablok10.app.ui.theme.SegmentedTabs
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 
 /**
  * Демоны и Шарды — два составных одной Кибердеки, не отдельные экраны:
@@ -96,6 +100,7 @@ fun CyberdeckScreen(identity: Identity, onNestedChange: (Boolean) -> Unit = {}) 
                 // (см. ревизию v9 §5).
                 if (!MeshLink.isOnline(context)) {
                     scanIssue = ScanIssue("НЕТ СВЯЗИ", "Дека вне зоны сети Мегаблока. Взлом недоступен без подключения к узлу связи.")
+                    scope.launch { emitBreachBlocked(context, identity.publicKeyB64, qr.container.id, "NO_LINK") }
                     return@rememberMb10QrScanner
                 }
                 scope.launch {
@@ -104,12 +109,14 @@ fun CyberdeckScreen(identity: Identity, onNestedChange: (Boolean) -> Unit = {}) 
                         remainingMs > 0 -> {
                             val minutes = (remainingMs / 60_000L + 1).coerceAtLeast(1)
                             scanIssue = ScanIssue("УЗЕЛ ОСТЫВАЕТ", "Повторное подключение к этому узлу возможно через $minutes мин.")
+                            emitBreachBlocked(context, identity.publicKeyB64, qr.container.id, "COOLDOWN")
                         }
                         // Раньше это не проверялось вовсе — попытку можно было честно
                         // потратить на уже пустой контейнер и узнать об этом только
                         // в самом конце, через cacheExhausted в результате взлома.
                         SlotClaimStore.isExhausted(context, qr.container) -> {
                             scanIssue = ScanIssue("КЭШ ОЧИЩЕН", "Все слоты узла исчерпаны — здесь больше нечего извлекать.")
+                            emitBreachBlocked(context, identity.publicKeyB64, qr.container.id, "EXHAUSTED")
                         }
                         else -> {
                             container = qr.container
@@ -202,6 +209,15 @@ private fun DemonsSegment(daemons: List<Daemon>, identity: Identity, container: 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         daemons.forEach { daemon -> DaemonCard(daemon) }
     }
+}
+
+/** Попытка взлома отклонена до начала (§2.2 ТЗ: BREACH_BLOCKED) — нет связи/кулдаун/пустой узел, см. точки вызова выше. */
+private suspend fun emitBreachBlocked(context: android.content.Context, subjectKeyB64: String, containerId: String, reason: String) {
+    ChangeRecordStore.enqueue(
+        context, ChangeField.COUNTERS_BLOCKED, null,
+        JSONObject().put("reason", reason).toString(),
+        ChangeReason.BREACH_BLOCKED, sourceRef = containerId, subjectKeyB64 = subjectKeyB64,
+    )
 }
 
 /** "N ячеек/ячейка/ячейки" с русским склонением — используется как цена демона в буфере взлома. */
