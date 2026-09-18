@@ -77,15 +77,21 @@ export function registerChangesRoute(app: FastifyInstance, db: Db) {
 
     const receivedAt = Date.now();
 
-    for (const raw of records) {
-      const result = validateAndInsert(raw, receivedAt);
-      if (result.ok) {
-        accepted.push(result.id);
-        touchedSubjects.add(result.subjectKeyB64);
-      } else {
-        rejected.push({ id: result.id, error: result.error });
+    // Одна транзакция на весь батч, не по одному autocommit-INSERT на запись
+    // (при MAX_BATCH=200 это раньше было 200 отдельных fsync) — см.
+    // routes/players.ts, applyOverride про тот же приём.
+    const insertBatch = db.transaction((recs: unknown[]) => {
+      for (const raw of recs) {
+        const result = validateAndInsert(raw, receivedAt);
+        if (result.ok) {
+          accepted.push(result.id);
+          touchedSubjects.add(result.subjectKeyB64);
+        } else {
+          rejected.push({ id: result.id, error: result.error });
+        }
       }
-    }
+    });
+    insertBatch(records);
 
     const knownSeq: Record<string, number> = {};
     const pending: PendingWire[] = [];
