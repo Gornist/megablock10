@@ -57,6 +57,10 @@ export function registerContainersRoute(app: FastifyInstance, db: Db) {
     const errors: { id: string; error: string }[] = [];
     let count = 0;
     for (const raw of list) {
+      if (typeof raw !== "object" || raw === null) {
+        errors.push({ id: "?", error: "malformed container" });
+        continue;
+      }
       const c = raw as ContainerInput;
       if (typeof c.id !== "string" || typeof c.name !== "string" || typeof c.tier !== "string" || !Array.isArray(c.slots)) {
         errors.push({ id: typeof c.id === "string" ? c.id : "?", error: "malformed container" });

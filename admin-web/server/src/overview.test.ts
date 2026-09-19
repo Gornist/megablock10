@@ -106,3 +106,19 @@ test("GET /api/changes/recent — без мастерского токена —
   const res = await app.inject({ method: "GET", url: "/api/changes/recent" });
   assert.equal(res.statusCode, 401);
 });
+
+test("GET /api/changes/recent — при усечении по limit курсор не перескакивает остаток, повторный запрос его добирает", async () => {
+  const db = testDb();
+  const app = testApp(db);
+  const headers = await auth(app, db);
+  const alice = testDevice();
+  for (let i = 0; i < 3; i++) {
+    await app.inject({ method: "POST", url: "/api/changes", payload: { records: [alice.change({ field: "balance", oldValue: "0", newValue: String(i + 1), reason: "BREACH_EDDIES", sourceRef: `a-${i}` })] } });
+    await new Promise((r) => setTimeout(r, 3));
+  }
+  const first = (await app.inject({ method: "GET", url: "/api/changes/recent?since=0&limit=2", headers })).json();
+  assert.equal(first.records.length, 2);
+  const second = (await app.inject({ method: "GET", url: `/api/changes/recent?since=${first.now}&limit=2`, headers })).json();
+  const ids = new Set([...first.records, ...second.records].map((r: { id: string }) => r.id));
+  assert.equal(ids.size, 3, "третья запись не должна потеряться из-за курсора");
+});

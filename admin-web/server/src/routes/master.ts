@@ -39,6 +39,22 @@ interface ContainerBody {
 }
 
 /**
+ * id попадает в QR как есть, а формат — ':'-разделённый (а slotRef дальше собирается через '#'):
+ * id вроде "nasos:4" или "a#b" даёт QR, который приложение разбирает со сдвигом полей или не разбирает вовсе.
+ */
+const SAFE_ID = /^[A-Za-z0-9_.-]{1,64}$/;
+
+const DAEMON_EFFECTS = new Set(["EXTRACT_SHARD", "EXTRACT_DAEMON", "GHOST", "TIMESKEW", "BLACKOUT", "JITTER"]);
+/** Коды демона склеиваются через ',' внутри LootCodec ("|"-формат) — символы-разделители в коде ломают разбор на телефоне. */
+const SAFE_CODE = /^[A-Za-z0-9]{1,8}$/;
+
+/** Деньги в шарде — неотрицательное целое; дробное/отрицательное приложение молча превращало в 0. */
+function moneyOrNull(v: unknown): number | null {
+  if (v === undefined || v === null) return 0;
+  return Number.isSafeInteger(v) && (v as number) >= 0 ? (v as number) : null;
+}
+
+/**
  * Генератор QR прямо в дашборде — перенесено из Мастерской в Android-
  * приложении (MasterToolScreen.kt): то же шифрование (AES-256-GCM, тот же
  * ключ, см. lib/lootCrypto.ts) и тот же формат QR (lib/mb10QrCodec.ts),
@@ -61,6 +77,9 @@ export function registerMasterRoutes(app: FastifyInstance, db: Db) {
     if (!Array.isArray(body.slots)) return reply.code(400).send({ error: "slots must be an array" });
 
     const id = typeof body.id === "string" && body.id.trim() ? body.id : `container-${randomUUID().slice(0, 8)}`;
+    if (!SAFE_ID.test(id)) {
+      return reply.code(400).send({ error: "id may contain only letters, digits, '_', '-', '.' (max 64)" });
+    }
     const slots: ContainerSlot[] = [];
 
     for (const [index, raw] of body.slots.entries()) {
@@ -76,13 +95,15 @@ export function registerMasterRoutes(app: FastifyInstance, db: Db) {
         if (!title.trim() || typeof s.body !== "string" || !s.body.trim()) {
           return reply.code(400).send({ error: `slot ${index}: shard title/body required` });
         }
+        const money = moneyOrNull(s.moneyAmount);
+        if (money === null) return reply.code(400).send({ error: `slot ${index}: moneyAmount must be a non-negative integer` });
         plain = encodeShardLoot({
           title,
           meta: typeof s.meta === "string" ? s.meta : "",
           body: s.body,
           valueHint: typeof s.valueHint === "string" ? s.valueHint : "",
           decryptAction: s.decryptAction === true,
-          moneyAmount: Number.isFinite(s.moneyAmount) ? Number(s.moneyAmount) : 0,
+          moneyAmount: money,
         });
       } else {
         const d = raw.daemon ?? {};
@@ -90,6 +111,13 @@ export function registerMasterRoutes(app: FastifyInstance, db: Db) {
         const sequence = Array.isArray(d.sequence) ? d.sequence.filter((x): x is string => typeof x === "string") : [];
         if (!title.trim() || sequence.length === 0) {
           return reply.code(400).send({ error: `slot ${index}: daemon name/sequence required` });
+        }
+        if (!sequence.every((code) => SAFE_CODE.test(code))) {
+          return reply.code(400).send({ error: `slot ${index}: daemon codes must be 1-8 letters/digits` });
+        }
+        // Неизвестный эффект телефон молча заменял на EXTRACT_SHARD — демон работал не так, как задумал мастер.
+        if (d.effect !== undefined && (typeof d.effect !== "string" || !DAEMON_EFFECTS.has(d.effect))) {
+          return reply.code(400).send({ error: `slot ${index}: unknown daemon effect` });
         }
         plain = encodeDaemonLoot({
           name: title,
@@ -140,6 +168,11 @@ export function registerMasterRoutes(app: FastifyInstance, db: Db) {
       return reply.code(400).send({ error: "title and body are required" });
     }
     const id = typeof b.id === "string" && b.id.trim() ? b.id : `shard-${randomUUID().slice(0, 8)}`;
+    if (!SAFE_ID.test(id)) {
+      return reply.code(400).send({ error: "id may contain only letters, digits, '_', '-', '.' (max 64)" });
+    }
+    const money = moneyOrNull(b.moneyAmount);
+    if (money === null) return reply.code(400).send({ error: "moneyAmount must be a non-negative integer" });
     const tier = typeof b.tier === "string" ? tierLevel(b.tier) : 1;
     const qr = encodeShardQr(
       id,
@@ -149,7 +182,7 @@ export function registerMasterRoutes(app: FastifyInstance, db: Db) {
       b.title,
       typeof b.meta === "string" ? b.meta : "",
       b.body,
-      Number.isFinite(b.moneyAmount) ? Number(b.moneyAmount) : 0,
+      money,
     );
     const qrImage = await QRCode.toDataURL(qr, { margin: 1, width: 480 });
     return { shardId: id, qr, qrImage };

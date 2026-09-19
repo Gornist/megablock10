@@ -216,3 +216,38 @@ test("POST /api/master/ram — без мастерского токена — 40
   const res = await app.inject({ method: "POST", url: "/api/master/ram", payload: { delta: 1 } });
   assert.equal(res.statusCode, 401);
 });
+
+test("POST /api/master/containers — id с разделителями QR, кривые коды демона и неизвестный эффект отклоняются", async () => {
+  const db = testDb();
+  const app = testApp(db);
+  const headers = await auth(app, db);
+  const post = async (payload: Record<string, unknown>) =>
+    (await app.inject({ method: "POST", url: "/api/master/containers", headers, payload })).statusCode;
+  const shardSlot = { type: "SHARD", tier: "BASE", copies: 1, shard: { title: "t", body: "b" } };
+  const base = { name: "N", tier: "BASE", ownerFaction: "F", slots: [shardSlot] };
+
+  assert.equal(await post({ ...base, id: "a:b" }), 400);
+  assert.equal(await post({ ...base, id: "a#b" }), 400);
+  assert.equal(await post({ ...base, id: "ok-id_1.2" }), 200);
+  assert.equal(
+    await post({ ...base, id: "d1", slots: [{ type: "DAEMON", tier: "BASE", copies: 0, daemon: { name: "D", sequence: ["1C,55"] } }] }),
+    400,
+  );
+  assert.equal(
+    await post({ ...base, id: "d2", slots: [{ type: "DAEMON", tier: "BASE", copies: 0, daemon: { name: "D", sequence: ["1C"], effect: "NOPE" } }] }),
+    400,
+  );
+  assert.equal(await post({ ...base, id: "s1", slots: [{ ...shardSlot, shard: { title: "t", body: "b", moneyAmount: -5 } }] }), 400);
+  assert.equal(await post({ ...base, id: "s2", slots: [{ ...shardSlot, shard: { title: "t", body: "b", moneyAmount: 1.5 } }] }), 400);
+});
+
+test("POST /api/master/shards — id с ':' и дробные/отрицательные деньги отклоняются", async () => {
+  const db = testDb();
+  const app = testApp(db);
+  const headers = await auth(app, db);
+  const post = async (payload: Record<string, unknown>) =>
+    (await app.inject({ method: "POST", url: "/api/master/shards", headers, payload })).statusCode;
+  assert.equal(await post({ id: "a:b", title: "t", body: "b" }), 400);
+  assert.equal(await post({ title: "t", body: "b", moneyAmount: -1 }), 400);
+  assert.equal(await post({ title: "t", body: "b", moneyAmount: 25 }), 200);
+});

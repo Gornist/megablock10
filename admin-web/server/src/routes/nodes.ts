@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { escapeLike } from "../lib/sqlLike.js";
 import type { Db } from "../db/index.js";
 import { requireMaster } from "../lib/auth.js";
 import { parseSafe } from "../lib/json.js";
@@ -22,10 +23,11 @@ interface ContainerRow {
  * т.к. attemptId никогда не парсится обратно, в отличие от slotRef).
  */
 function containerRefClause(): string {
-  return "(source_ref = ? OR source_ref LIKE ? OR source_ref LIKE ?)";
+  return "(source_ref = ? OR source_ref LIKE ? ESCAPE '\\' OR source_ref LIKE ? ESCAPE '\\')";
 }
 function containerRefParams(containerId: string): [string, string, string] {
-  return [containerId, `${containerId}#%`, `${containerId}:%`];
+  const escaped = escapeLike(containerId);
+  return [containerId, `${escaped}#%`, `${escaped}:%`];
 }
 
 /** Переиспользуется и роутом, и CSV-экспортом (routes/exportCsv.ts) — раньше экспорт пересчитывал то же самое отдельно, рискуя разойтись с тем, что видно в Узлах. */

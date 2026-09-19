@@ -114,3 +114,24 @@ test("GET /api/nodes — без мастерского токена — 401", as
   const res = await app.inject({ method: "GET", url: "/api/nodes" });
   assert.equal(res.statusCode, 401);
 });
+
+test("GET /api/nodes — '_' в id контейнера не захватывает записи соседнего контейнера (LIKE-шаблон)", async () => {
+  const db = testDb();
+  const app = testApp(db);
+  const headers = await auth(app, db);
+  const mk = (id: string) => ({ id, name: id, tier: "BASE", ownerFaction: "F", slots: [{ index: 0, type: "SHARD", tier: "BASE", copies: 1, title: "t" }] });
+  await app.inject({ method: "POST", url: "/api/containers", headers, payload: { containers: [mk("pump_1"), mk("pumpX1")] } });
+
+  const alice = testDevice();
+  await app.inject({
+    method: "POST",
+    url: "/api/changes",
+    payload: {
+      records: [alice.change({ field: "counters.breach", newValue: JSON.stringify({ tier: "BASE", outcome: "success" }), reason: "BREACH_ATTEMPT", sourceRef: "pumpX1:seed-1" })],
+    },
+  });
+
+  const nodes = (await app.inject({ method: "GET", url: "/api/nodes", headers })).json() as { id: string; breaches: { success: number } }[];
+  assert.equal(nodes.find((n) => n.id === "pumpX1")!.breaches.success, 1);
+  assert.equal(nodes.find((n) => n.id === "pump_1")!.breaches.success, 0, "взлом pumpX1 не должен считаться взломом pump_1");
+});

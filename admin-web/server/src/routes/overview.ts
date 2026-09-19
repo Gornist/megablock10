@@ -88,9 +88,13 @@ export function registerOverviewRoutes(app: FastifyInstance, db: Db) {
 
     const since = Number(request.query.since) || 0;
     const limit = Math.min(500, Math.max(1, Number(request.query.limit) || 100));
+    // '>=' и курсор = received_at последней ОТДАННОЙ записи (а не серверное "сейчас"): раньше при
+    // числе новых записей больше limit остаток терялся навсегда, а запись, вставленная в ту же
+    // миллисекунду, что и "now", выпадала из ленты. Повторы на границе клиент отсекает по id.
     const rows = db
-      .prepare(`SELECT * FROM changes WHERE received_at > ? ORDER BY received_at ASC LIMIT ?`)
-      .all(since, limit);
-    return { records: rows, now: Date.now() };
+      .prepare(`SELECT * FROM changes WHERE received_at >= ? ORDER BY received_at ASC LIMIT ?`)
+      .all(since, limit) as { received_at: number }[];
+    const cursor = rows.length === limit ? rows[rows.length - 1].received_at : Date.now();
+    return { records: rows, now: cursor };
   });
 }

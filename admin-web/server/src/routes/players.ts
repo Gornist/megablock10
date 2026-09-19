@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { escapeLike } from "../lib/sqlLike.js";
 import type { Db } from "../db/index.js";
 import { logMasterAction, requireMaster } from "../lib/auth.js";
 import { projectCharacter } from "../lib/projection.js";
@@ -84,8 +85,8 @@ export function registerPlayersRoutes(app: FastifyInstance, db: Db) {
       }
       if (request.query.source) {
         // Подстрока, не точное совпадение — «покажи всё, что вышло из узла nasos-4» (§8.3 ТЗ) ищет по префиксу/куску source_ref.
-        clauses.push("source_ref LIKE ?");
-        params.push(`%${request.query.source}%`);
+        clauses.push("source_ref LIKE ? ESCAPE '\\'");
+        params.push(`%${escapeLike(request.query.source)}%`);
       }
       const where = clauses.join(" AND ");
 

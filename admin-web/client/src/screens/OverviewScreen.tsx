@@ -17,13 +17,18 @@ export function OverviewScreen() {
       try {
         const [ov, recent] = await Promise.all([
           api.get<Overview>("/api/overview"),
-          api.get<{ records: ChangeRow[]; now: number }>(`/api/changes/recent?since=${sinceRef.current}`),
+          api.get<{ records: ChangeRow[]; now: number }>(`/api/changes/recent?since=${sinceRef.current}&limit=500`),
         ]);
         if (cancelled) return;
         setOverview(ov);
+        // Курсор двигаем всегда; сервер отдаёт записи с received_at >= курсора, поэтому на границе возможны повторы — режем по id.
+        sinceRef.current = recent.now;
         if (recent.records.length > 0) {
-          sinceRef.current = recent.now;
-          setFeed((prev) => [...recent.records.slice().reverse(), ...prev].slice(0, 200));
+          setFeed((prev) => {
+            const seen = new Set(prev.map((r) => r.id));
+            const fresh = recent.records.filter((r) => !seen.has(r.id)).reverse();
+            return fresh.length === 0 ? prev : [...fresh, ...prev].slice(0, 200);
+          });
         }
       } catch {
         // сеть моргнула — следующий тик поправит, отдельного индикатора ошибки для polling не делаем
