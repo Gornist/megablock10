@@ -36,7 +36,7 @@ test("правка мастера приходит устройству пуст
   assert.equal(body.pending[0].sourceRef, "тестовая правка");
 });
 
-test("одна и та же правка не доставляется дважды", async () => {
+test("правка доставляется повторно, пока устройство не подтвердит применение (ackIds)", async () => {
   const db = testDb();
   const app = testApp(db);
   const master = testMaster(db);
@@ -50,13 +50,46 @@ test("одна и та же правка не доставляется дваж�
     payload: { field: "ramCapacity", newValue: "10", reason: "тест" },
   });
 
-  const poll = async () =>
+  const poll = async (ackIds: string[] = []) =>
     (
-      await app.inject({ method: "POST", url: "/api/changes", payload: { records: [], subjectKeyB64: device.publicKeyB64 } })
-    ).json().pending.length;
+      await app.inject({ method: "POST", url: "/api/changes", payload: { records: [], subjectKeyB64: device.publicKeyB64, ackIds } })
+    ).json().pending as { id: string }[];
 
-  assert.equal(await poll(), 1);
-  assert.equal(await poll(), 0, "повторный опрос не должен вернуть уже доставленную правку");
+  const first = await poll();
+  assert.equal(first.length, 1);
+  assert.equal((await poll()).length, 1, "без ack правка должна прийти снова (ответ мог потеряться)");
+  assert.equal((await poll([first[0].id])).length, 0, "после ack правка больше не доставляется");
+  assert.equal((await poll()).length, 0);
+});
+
+test("чужой ключ не может подтвердить правку другого устройства", async () => {
+  const db = testDb();
+  const app = testApp(db);
+  const master = testMaster(db);
+  const session = await loginAs(app, master.name, master.token);
+  const alice = testDevice();
+  const bob = testDevice();
+
+  await app.inject({
+    method: "POST",
+    url: `/api/players/${encodeURIComponent(alice.publicKeyB64)}/override`,
+    headers: { authorization: `Bearer ${session}` },
+    payload: { field: "balance", newValue: "1", reason: "для Алисы" },
+  });
+  const pending = (await app.inject({ method: "POST", url: "/api/changes", payload: { records: [], subjectKeyB64: alice.publicKeyB64 } })).json().pending;
+  await app.inject({ method: "POST", url: "/api/changes", payload: { records: [], subjectKeyB64: bob.publicKeyB64, ackIds: [pending[0].id] } });
+  const again = (await app.inject({ method: "POST", url: "/api/changes", payload: { records: [], subjectKeyB64: alice.publicKeyB64 } })).json().pending;
+  assert.equal(again.length, 1);
+});
+
+test("устройство не может прислать запись с причиной MASTER_OVERRIDE", async () => {
+  const db = testDb();
+  const app = testApp(db);
+  const device = testDevice();
+  const forged = device.change({ field: "balance", oldValue: "0", newValue: "999999", reason: "MASTER_OVERRIDE", sourceRef: "fake" });
+  const res = await app.inject({ method: "POST", url: "/api/changes", payload: { records: [forged] } });
+  assert.equal(res.json().accepted.length, 0);
+  assert.equal(res.json().rejected.length, 1);
 });
 
 test("правка для другого устройства не приходит при опросе своим ключом", async () => {

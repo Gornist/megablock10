@@ -7,6 +7,7 @@ import com.megablok10.app.data.PendingChangeRecordEntity
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.identity.IdentityManager
 import com.megablok10.app.wallet.TransactionStore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -91,45 +92,67 @@ object ChangeRecordStore {
      */
     private suspend fun syncLoop(context: Context) {
         var backoffIndex = 0
+        // id применённых правок мастера, о которых коллектор ещё не знает: уходят в следующем запросе,
+        // и только после этого он перестаёт присылать их заново.
+        var pendingAcks: List<String> = emptyList()
         while (true) {
-            val baseUrl = CollectorSettings.baseUrl(context)
-            if (baseUrl == null) {
-                backoffIndex = 0
-                waitForWakeOrTimeout(30_000)
-                continue
-            }
-
-            val dao = Mb10Database.get(context).pendingChangeRecordDao()
-            val batch = dao.nextBatch(BATCH_SIZE)
-            val identity = IdentityManager.current(context)
-            val records = batch.map {
-                ChangeRecord(it.id, it.subjectKeyB64, it.seq, it.happenedAt, it.field, it.oldValue, it.newValue, it.reason, it.sourceRef, it.actor, it.signature)
-            }
-            val result = CollectorClient.sendBatch(baseUrl, records, identity?.publicKeyB64, CollectorSettings.gameSecret(context))
-
-            if (result == null) {
-                // Сеть/коллектор недоступны — экспоненциальный бэкофф (§3.4: 1с → 2с → 5с → 15с → 60с, дальше по минуте).
+            try {
+                val step = syncOnce(context, pendingAcks, backoffIndex)
+                pendingAcks = step.acks
+                backoffIndex = step.backoffIndex
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Любой сбой одной итерации (Room, разбор ответа, применение правки) не должен
+                // навсегда останавливать синк — идём на бэкофф и пробуем снова.
+                Log.w(TAG, "итерация синка упала: ${e.message}", e)
                 val delayMs = BACKOFF_STEPS_MS[backoffIndex.coerceAtMost(BACKOFF_STEPS_MS.lastIndex)]
                 backoffIndex++
                 waitForWakeOrTimeout(delayMs)
-                continue
             }
-
-            backoffIndex = 0
-            val toDelete = result.accepted + result.rejected.keys
-            if (toDelete.isNotEmpty()) dao.deleteByIds(toDelete.toList())
-            if (result.rejected.isNotEmpty()) {
-                Log.w(TAG, "коллектор отбраковал ${result.rejected.size} записей: ${result.rejected.values.take(3)}")
-            }
-            if (result.pending.isNotEmpty()) applyPending(context, result.pending)
-
-            if (batch.isEmpty() && result.pending.isEmpty()) {
-                // Действительно нечего ни слать, ни получать — обычный простой, не долбим коллектор чаще раза в 30с.
-                waitForWakeOrTimeout(30_000)
-            }
-            // Иначе сразу на новый виток: либо не всё отправили (MAX_BATCH), либо только что применили pending
-            // и стоит проверить очередь ещё раз без задержки.
         }
+    }
+
+    private class SyncStep(val acks: List<String>, val backoffIndex: Int)
+
+    /** Одна итерация цикла синка. Возвращает актуальные ack-и и индекс бэкоффа; исключения — на вызывающей стороне (syncLoop). */
+    private suspend fun syncOnce(context: Context, acksIn: List<String>, backoffIn: Int): SyncStep {
+        val baseUrl = CollectorSettings.baseUrl(context)
+        if (baseUrl == null) {
+            waitForWakeOrTimeout(30_000)
+            return SyncStep(acksIn, 0)
+        }
+
+        val dao = Mb10Database.get(context).pendingChangeRecordDao()
+        val batch = dao.nextBatch(BATCH_SIZE)
+        val identity = IdentityManager.current(context)
+        val records = batch.map {
+            ChangeRecord(it.id, it.subjectKeyB64, it.seq, it.happenedAt, it.field, it.oldValue, it.newValue, it.reason, it.sourceRef, it.actor, it.signature)
+        }
+        val result = CollectorClient.sendBatch(baseUrl, records, identity?.publicKeyB64, CollectorSettings.gameSecret(context), acksIn)
+
+        if (result == null) {
+            // Сеть/коллектор недоступны — экспоненциальный бэкофф (§3.4: 1с → 2с → 5с → 15с → 60с, дальше по минуте).
+            val delayMs = BACKOFF_STEPS_MS[backoffIn.coerceAtMost(BACKOFF_STEPS_MS.lastIndex)]
+            waitForWakeOrTimeout(delayMs)
+            return SyncStep(acksIn, backoffIn + 1)
+        }
+
+        val toDelete = result.accepted + result.rejected.keys
+        if (toDelete.isNotEmpty()) dao.deleteByIds(toDelete.toList())
+        if (result.rejected.isNotEmpty()) {
+            Log.w(TAG, "коллектор отбраковал ${result.rejected.size} записей: ${result.rejected.values.take(3)}")
+        }
+        // Запрос с acksIn дошёл — коллектор их учёл; новые ack-и — по правкам, применённым прямо сейчас.
+        val newAcks = if (result.pending.isNotEmpty()) applyPending(context, result.pending) else emptyList()
+
+        if (batch.isEmpty() && result.pending.isEmpty()) {
+            // Действительно нечего ни слать, ни получать — обычный простой, не долбим коллектор чаще раза в 30с.
+            waitForWakeOrTimeout(30_000)
+        }
+        // Иначе сразу на новый виток: либо не всё отправили (MAX_BATCH), либо только что применили pending
+        // и надо отправить ack и проверить очередь ещё раз без задержки.
+        return SyncStep(newAcks, 0)
     }
 
     /**
@@ -138,21 +161,30 @@ object ChangeRecordStore {
      * записал). Каждый сеттер здесь — "тихий", без обратной эмиссии
      * ChangeRecord (см. applyRamOverride/applyBalanceOverride) — иначе
      * получили бы эхо в историю. Неизвестное поле — просто пропускаем,
-     * не роняя остальные записи в пачке.
+     * не роняя остальные записи в пачке. Возвращает id обработанных правок
+     * для ack: одна "ядовитая" правка не должна доставляться вечно, поэтому
+     * сбой на конкретной записи логируется, а id всё равно подтверждается.
      */
-    private suspend fun applyPending(context: Context, pending: List<ChangeRecord>) {
+    private suspend fun applyPending(context: Context, pending: List<ChangeRecord>): List<String> {
         for (p in pending) {
-            val newValue = p.newValue ?: continue
-            when (p.field) {
-                ChangeField.BALANCE -> newValue.toLongOrNull()?.let {
-                    TransactionStore.applyBalanceOverride(context, p.id, it, p.sourceRef ?: "без основания")
+            try {
+                val newValue = p.newValue ?: continue
+                when (p.field) {
+                    ChangeField.BALANCE -> newValue.toLongOrNull()?.let {
+                        TransactionStore.applyBalanceOverride(context, p.id, it, p.sourceRef ?: "без основания")
+                    }
+                    ChangeField.RAM_CAPACITY -> newValue.toIntOrNull()?.let { IdentityManager.applyRamOverride(context, it) }
+                    ChangeField.CALLSIGN -> IdentityManager.applyCallsignOverride(context, newValue)
+                    ChangeField.FACTION -> IdentityManager.applyFactionOverride(context, newValue)
+                    else -> Log.w(TAG, "pending с неизвестным полем ${p.field} — пропущено")
                 }
-                ChangeField.RAM_CAPACITY -> newValue.toIntOrNull()?.let { IdentityManager.applyRamOverride(context, it) }
-                ChangeField.CALLSIGN -> IdentityManager.applyCallsignOverride(context, newValue)
-                ChangeField.FACTION -> IdentityManager.applyFactionOverride(context, newValue)
-                else -> Log.w(TAG, "pending с неизвестным полем ${p.field} — пропущено")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "не удалось применить правку ${p.id}: ${e.message}", e)
             }
         }
+        return pending.map { it.id }
     }
 
     private suspend fun waitForWakeOrTimeout(timeoutMs: Long) {

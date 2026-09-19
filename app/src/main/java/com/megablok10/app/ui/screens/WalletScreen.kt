@@ -115,14 +115,16 @@ fun WalletScreen(identity: Identity) {
                 contacts = contacts,
                 onlineKeys = onlineKeys,
                 transactions = transactions,
+                balance = balance,
                 onSend = { contact, id, amount, memo ->
                     val payload = Mb10QrCodec.transactionSignaturePayload(id, identity.publicKeyB64, amount, memo)
                     val signature = IdentityManager.sign(context, payload)
                     val tx = Mb10Qr.Transaction(id, identity.publicKeyB64, amount, memo, signature)
                     val peer = onlinePeers.find { it.pubKeyB64 == contact.publicKeyB64 }
                     scope.launch {
-                        TransactionStore.recordOutgoingPending(context, tx, contact.publicKeyB64)
-                        ChatStore.sendDirect(context, identity, contact.publicKeyB64, peer, Mb10QrCodec.encodeTransaction(tx))
+                        if (TransactionStore.recordOutgoingPending(context, tx, contact.publicKeyB64)) {
+                            ChatStore.sendDirect(context, identity, contact.publicKeyB64, peer, Mb10QrCodec.encodeTransaction(tx))
+                        }
                     }
                 },
                 onCancel = { id -> scope.launch { TransactionStore.cancelOutgoing(context, id) } }
@@ -155,6 +157,7 @@ private fun SendTransactionPanel(
     contacts: List<Mb10Qr.Contact>,
     onlineKeys: Set<String>,
     transactions: List<TransactionEntity>,
+    balance: Long,
     onSend: (contact: Mb10Qr.Contact, id: String, amount: Long, memo: String) -> Unit,
     onCancel: (id: String) -> Unit
 ) {
@@ -231,7 +234,8 @@ private fun SendTransactionPanel(
                 val contact = selectedContact!!
                 var amountText by remember { mutableStateOf("") }
                 var memoText by remember { mutableStateOf("") }
-                val amountValid = amountText.toLongOrNull()?.let { it > 0 } ?: false
+                val parsedAmount = amountText.toLongOrNull()
+                val amountValid = parsedAmount != null && parsedAmount > 0 && parsedAmount <= balance
                 val showError = amountText.isNotEmpty() && !amountValid
 
                 Column {
@@ -255,7 +259,7 @@ private fun SendTransactionPanel(
                     AmountField(value = amountText, onValueChange = { amountText = it }, modifier = Modifier.fillMaxWidth())
                     if (showError) {
                         Spacer(Modifier.height(4.dp))
-                        Text("Введите сумму больше нуля", color = MB10Colors.accentDanger, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                        Text(if (parsedAmount != null && parsedAmount > balance) "Недостаточно средств на балансе" else "Введите сумму больше нуля", color = MB10Colors.accentDanger, fontFamily = JetBrainsMono, fontSize = 10.sp)
                     }
                     Spacer(Modifier.height(8.dp))
                     AppTextField(

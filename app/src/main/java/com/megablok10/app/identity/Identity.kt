@@ -154,6 +154,9 @@ object IdentityManager {
      * заново. Здесь же, а не в очереди — тот же SharedPreferences, что и
      * остальное состояние личности.
      */
+    // @Synchronized: read-modify-write по SharedPreferences, а enqueue зовут параллельные корутины —
+    // без блокировки два вызова получали один seq, и коллектор отбраковывал вторую запись.
+    @Synchronized
     fun nextChangeSeq(context: Context): Long {
         val p = prefs(context)
         val next = p.getLong(KEY_NEXT_SEQ, 0L) + 1

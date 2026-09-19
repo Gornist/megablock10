@@ -15,6 +15,14 @@ interface ChangesBody {
   records?: unknown;
   /** Не входит в состав ни одной записи — нужен, чтобы устройство могло спросить "есть что доставить?" даже пустым батчем (см. §6.3, ChangeRecordStore.kt на клиенте опрашивает раз в 30с и когда нечего слать). */
   subjectKeyB64?: unknown;
+  /**
+   * id правок мастера (MASTER_OVERRIDE), которые устройство уже применило —
+   * только после этого они перестают доставляться. Раньше запись помечалась
+   * доставленной в момент формирования ответа: потерянный ответ (обрыв
+   * сети) или сбой при применении на устройстве навсегда терял правку.
+   * Повторная доставка безопасна — все правки применяются идемпотентно.
+   */
+  ackIds?: unknown;
 }
 
 interface RejectedItem {
@@ -57,7 +65,7 @@ export function registerChangesRoute(app: FastifyInstance, db: Db) {
     WHERE mp.subject_key = ? AND mp.delivered = 0
     ORDER BY c.seq ASC
   `);
-  const markDeliveredStmt = db.prepare(`UPDATE master_pending SET delivered = 1 WHERE change_id = ?`);
+  const markDeliveredStmt = db.prepare(`UPDATE master_pending SET delivered = 1 WHERE change_id = ? AND subject_key = ?`);
 
   app.post<{ Body: ChangesBody }>("/api/changes", async (request, reply) => {
     if (!checkGameSecret(request, reply)) return;
@@ -74,6 +82,14 @@ export function registerChangesRoute(app: FastifyInstance, db: Db) {
     const rejected: RejectedItem[] = [];
     const touchedSubjects = new Set<string>();
     if (typeof request.body?.subjectKeyB64 === "string") touchedSubjects.add(request.body.subjectKeyB64);
+
+    const ackIds = request.body?.ackIds;
+    if (typeof request.body?.subjectKeyB64 === "string" && Array.isArray(ackIds)) {
+      const subject = request.body.subjectKeyB64;
+      for (const id of ackIds.slice(0, MAX_BATCH)) {
+        if (typeof id === "string") markDeliveredStmt.run(id, subject);
+      }
+    }
 
     const receivedAt = Date.now();
 
@@ -126,7 +142,6 @@ export function registerChangesRoute(app: FastifyInstance, db: Db) {
           actor: row.actor,
           signature: row.signature,
         });
-        markDeliveredStmt.run(row.id);
       }
     }
 
@@ -152,6 +167,11 @@ export function registerChangesRoute(app: FastifyInstance, db: Db) {
       }
       if (!isReason(r.reason)) {
         return { ok: false, id: r.id, error: `unknown reason: ${r.reason}` };
+      }
+      // Правки мастера создаёт только сам сервер (routes/players.ts) — устройство,
+      // приславшее такую причину, подделывало бы запись "от мастера" в истории.
+      if (r.reason === "MASTER_OVERRIDE") {
+        return { ok: false, id: r.id, error: "MASTER_OVERRIDE can only be issued by the collector" };
       }
       // subjectKeyB64 совпадает с отправителем, кроме TRANSFER_IN — там actor это контрагент (см. §3.1, §4).
       if (r.reason !== "TRANSFER_IN" && r.actor !== r.subjectKeyB64) {

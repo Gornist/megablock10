@@ -36,8 +36,11 @@ object TransactionStore {
      * получатель выбирается из контактов перед отправкой, а не определяется
      * тем, кто отсканировал QR, как раньше.
      */
-    suspend fun recordOutgoingPending(context: Context, tx: Mb10Qr.Transaction, toPubKeyB64: String) {
+    suspend fun recordOutgoingPending(context: Context, tx: Mb10Qr.Transaction, toPubKeyB64: String): Boolean {
         val dao = Mb10Database.get(context).transactionDao()
+        // Без этой проверки перевод больше баланса уводил отправителя в минус, а получателю
+        // зачислялась полная сумма — то есть деньги можно было печатать себе через сообщника.
+        if (tx.amount <= 0 || tx.amount > dao.currentBalance()) return false
         val rowId = dao.insertIfAbsent(
             TransactionEntity(
                 id = tx.id,
@@ -49,6 +52,7 @@ object TransactionStore {
             )
         )
         if (rowId != -1L) emitBalanceChange(context, dao, -tx.amount, ChangeReason.TRANSFER_OUT, sourceRef = tx.id)
+        return rowId != -1L
     }
 
     /**

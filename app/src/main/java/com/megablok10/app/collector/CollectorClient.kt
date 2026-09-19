@@ -8,6 +8,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
+import org.json.JSONException
 import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -41,9 +42,17 @@ object CollectorClient {
      * накопленные MASTER_OVERRIDE для этого ключа (§6.3), а без явного
      * ключа в пустом батче ему неоткуда узнать, чью очередь проверять.
      */
-    suspend fun sendBatch(baseUrl: String, records: List<ChangeRecord>, subjectKeyB64: String?, gameSecret: String? = null): BatchResult? = withContext(Dispatchers.IO) {
+    suspend fun sendBatch(
+        baseUrl: String,
+        records: List<ChangeRecord>,
+        subjectKeyB64: String?,
+        gameSecret: String? = null,
+        ackIds: List<String> = emptyList(),
+    ): BatchResult? = withContext(Dispatchers.IO) {
         val body = JSONObject().put("records", JSONArray(records.map { it.toJson() }))
         if (subjectKeyB64 != null) body.put("subjectKeyB64", subjectKeyB64)
+        // Подтверждение применённых правок мастера из прошлого ответа — сервер шлёт их снова, пока не получит ack.
+        if (ackIds.isNotEmpty()) body.put("ackIds", JSONArray(ackIds))
         val request = Request.Builder()
             .url("$baseUrl/api/changes")
             .post(body.toString().toRequestBody(JSON))
@@ -68,6 +77,11 @@ object CollectorClient {
             }
         } catch (e: IOException) {
             Log.w(TAG, "коллектор недоступен: ${e.message}")
+            null
+        } catch (e: JSONException) {
+            // 200 с не-JSON телом (прокси, captive portal, не тот сервер по адресу) — раньше это
+            // исключение не ловилось и навсегда останавливало цикл синка до перезапуска приложения.
+            Log.w(TAG, "коллектор ответил не тем, что ожидалось: ${e.message}")
             null
         }
     }
