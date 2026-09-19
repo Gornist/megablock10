@@ -102,13 +102,12 @@ object ChatStore {
      * (null, если сейчас не в сети): без него есть кому, но некуда стучаться,
      * сообщение всё равно останется в треде локально.
      */
-    suspend fun sendDirect(context: Context, identity: Identity, peerPubKeyB64: String, peer: PeerInfo?, body: String) {
+    suspend fun sendDirect(context: Context, identity: Identity, peerPubKeyB64: String, peer: PeerInfo?, body: String): Boolean {
         val timestamp = System.currentTimeMillis()
         val wire = ChatWireMessage(ChatMessageType.DM, identity.publicKeyB64, identity.callsign, identity.faction, peerPubKeyB64, timestamp, body)
         persist(context, wire)
-        if (peer != null) {
-            withContext(Dispatchers.IO) { ChatClient.send(peer.host, peer.port, wire) }
-        }
+        if (peer == null) return false
+        return withContext(Dispatchers.IO) { ChatClient.send(peer.host, peer.port, wire) }
     }
 
     private suspend fun persist(context: Context, message: ChatWireMessage) {

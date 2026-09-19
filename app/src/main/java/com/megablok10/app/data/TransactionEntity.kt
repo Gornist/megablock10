@@ -4,7 +4,10 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 
 object TransactionStatus {
+    /** Записан локально, но карточка получателю НЕ доставлена (он офлайн / отправка не удалась) — отменить ещё можно. */
     const val PENDING = "PENDING"
+    /** Карточка ушла получателю — он уже мог нажать "Принять", поэтому отмена запрещена (иначе сумма окажется у обоих). */
+    const val DELIVERED = "DELIVERED"
     const val CONFIRMED = "CONFIRMED"
 }
 

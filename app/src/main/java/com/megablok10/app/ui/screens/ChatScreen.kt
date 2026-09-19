@@ -554,7 +554,11 @@ private fun PaymentBubble(
                 Spacer(Modifier.height(8.dp))
                 when {
                     self -> StatusChip(
-                        if (status == TransactionStatus.CONFIRMED) "подтверждено" else "ожидает подтверждения",
+                        when (status) {
+                            TransactionStatus.CONFIRMED -> "подтверждено"
+                            TransactionStatus.DELIVERED -> "доставлено, ждёт принятия"
+                            else -> "не доставлено"
+                        },
                         tone = if (status == TransactionStatus.CONFIRMED) ChipTone.Action else ChipTone.Neutral
                     )
                     status == null -> AppButton("Принять", variant = ButtonVariant.Primary, modifier = Modifier.fillMaxWidth(), onClick = { onAccept?.invoke() })

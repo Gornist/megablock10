@@ -123,7 +123,9 @@ fun WalletScreen(identity: Identity) {
                     val peer = onlinePeers.find { it.pubKeyB64 == contact.publicKeyB64 }
                     scope.launch {
                         if (TransactionStore.recordOutgoingPending(context, tx, contact.publicKeyB64)) {
-                            ChatStore.sendDirect(context, identity, contact.publicKeyB64, peer, Mb10QrCodec.encodeTransaction(tx))
+                            TransactionStore.deliverOutgoing(context, tx.id, willSend = peer != null) {
+                                ChatStore.sendDirect(context, identity, contact.publicKeyB64, peer, Mb10QrCodec.encodeTransaction(tx))
+                            }
                         }
                     }
                 },
@@ -187,7 +189,11 @@ private fun SendTransactionPanel(
                     )
                     Spacer(Modifier.height(10.dp))
                     StatusChip(
-                        if (status == TransactionStatus.CONFIRMED) "подтверждено" else "ожидает подтверждения",
+                        when (status) {
+                            TransactionStatus.CONFIRMED -> "подтверждено"
+                            TransactionStatus.DELIVERED -> "доставлено, ждёт принятия"
+                            else -> "не доставлено"
+                        },
                         tone = if (status == TransactionStatus.CONFIRMED) ChipTone.Action else ChipTone.Neutral
                     )
                     Spacer(Modifier.height(12.dp))
@@ -196,9 +202,15 @@ private fun SendTransactionPanel(
                             "Новый платёж", modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.Primary,
                             onClick = { sent = null; selectedContact = null }
                         )
+                    } else if (status == TransactionStatus.DELIVERED) {
+                        Text(
+                            "Карточка уже у получателя — отменить платёж нельзя, ждём, пока он примет его в чате.",
+                            color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 11.5.sp, lineHeight = 15.sp,
+                            textAlign = TextAlign.Center
+                        )
                     } else {
                         Text(
-                            "Ждём, пока получатель примет перевод в чате.",
+                            "Получатель не в сети — карточка ему не дошла. Пока это так, платёж можно отменить и вернуть деньги.",
                             color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 11.5.sp, lineHeight = 15.sp,
                             textAlign = TextAlign.Center
                         )
@@ -291,6 +303,7 @@ private fun SendTransactionPanel(
 private fun TxRow(tx: TransactionEntity, counterpartyName: String?, onCancelPending: () -> Unit) {
     val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
     val pending = tx.status == TransactionStatus.PENDING
+    val delivered = tx.status == TransactionStatus.DELIVERED
     ListRow(
         trailing = {
             val amountText = (if (tx.amount > 0) "+" else "") + tx.amount
@@ -311,10 +324,14 @@ private fun TxRow(tx: TransactionEntity, counterpartyName: String?, onCancelPend
             val label = counterpartyName ?: (tx.counterpartyPubKeyB64.take(8) + "…")
             if (tx.amount > 0) " · от $label" else " · → $label"
         }
-        val statusText = if (pending) " · ожидает подтверждения" else ""
+        val statusText = when {
+            pending -> " · не доставлено"
+            delivered -> " · доставлено, ждёт принятия"
+            else -> ""
+        }
         Text(
             timeText + (fromText ?: "") + statusText,
-            color = if (pending) MB10Colors.accentAction else MB10Colors.inkSecondary,
+            color = if (pending || delivered) MB10Colors.accentAction else MB10Colors.inkSecondary,
             fontFamily = JetBrainsMono, fontSize = 10.sp
         )
         if (pending) {

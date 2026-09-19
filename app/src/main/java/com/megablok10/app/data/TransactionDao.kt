@@ -19,9 +19,17 @@ interface TransactionDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIfAbsent(transaction: TransactionEntity): Long
 
-    /** Переводит исходящую запись в CONFIRMED — только пока она ещё PENDING. Возвращает число изменённых строк (0 или 1). */
-    @Query("UPDATE transactions SET status = 'CONFIRMED' WHERE id = :id AND status = 'PENDING'")
+    /** Переводит исходящую запись в CONFIRMED — из PENDING или DELIVERED (чек мог прийти и по недоставленной, с точки зрения отправителя, карточке). Возвращает число изменённых строк (0 или 1). */
+    @Query("UPDATE transactions SET status = 'CONFIRMED' WHERE id = :id AND status IN ('PENDING', 'DELIVERED')")
     suspend fun confirm(id: String): Int
+
+    /** Блокирует отмену: карточка уходит (или ушла) получателю. Только из PENDING. */
+    @Query("UPDATE transactions SET status = 'DELIVERED' WHERE id = :id AND status = 'PENDING'")
+    suspend fun markDelivered(id: String): Int
+
+    /** Отправка не удалась — карточка получателя не достигла, отмена снова допустима. Только из DELIVERED. */
+    @Query("UPDATE transactions SET status = 'PENDING' WHERE id = :id AND status = 'DELIVERED'")
+    suspend fun markUndelivered(id: String): Int
 
     /** Удаляет запись, только если она ещё PENDING — подтверждённую отменить нельзя. Возвращает число удалённых строк. */
     @Query("DELETE FROM transactions WHERE id = :id AND status = 'PENDING'")
