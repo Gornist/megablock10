@@ -72,7 +72,9 @@ scene_deck() {
 scene_breach() {
   step "сцена: взлом"
   dbg $A DEBUG_QR --es qr "$QR"; sleep 4      # скан QR узла → выбор демонов: имя, эффект, цена в ячейках
-  tapt "Data Siphon"; sleep 2; tapt "Black Curtain"; sleep 2; tapt "Deep Miner"; sleep 3   # буфер заполняется
+  tapt "Data Siphon"; sleep 2; tapt "Black Curtain"; sleep 2      # буфер сверху заполняется кодами выбранных демонов
+  adb_ $A shell input swipe 540 1700 540 1100 600; sleep 1.5       # список короче экрана: нижний демон уезжает за край — прокручиваем
+  tapt "Deep Miner"; sleep 3
   tapt "Взломать контейнер"
   sleep 20                       # вход в узел, таймер, реплики ICE, сетка решается по клетке
   adb_ $A shell input swipe 540 1600 540 1000 1000; sleep 5   # буфер и демоны: совпавшие зачёркнуты
