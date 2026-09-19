@@ -17,6 +17,26 @@ import kotlinx.coroutines.launch
 
 private const val TAG = "ChatServer"
 
+/** Самая длинная легитимная строка — SDP-предложение звонка (единицы КБ в base64); всё, что больше, — мусор или попытка забить память. */
+private const val MAX_LINE_CHARS = 256 * 1024
+
+/**
+ * Читает одну строку до '\n', но не больше [maxChars] символов: BufferedReader.readLine()
+ * накапливал бы строку без границы, пока клиент шлёт данные без перевода строки.
+ * null — поток кончился без данных, либо строка длиннее лимита (отбрасываем целиком).
+ */
+internal fun readBoundedLine(input: java.io.InputStream, maxChars: Int): String? {
+    val reader = BufferedReader(InputStreamReader(input, Charsets.UTF_8))
+    val sb = StringBuilder()
+    while (true) {
+        val c = reader.read()
+        if (c == -1) return if (sb.isEmpty()) null else sb.toString()
+        if (c == '\n'.code) return sb.toString().trimEnd('\r')
+        if (sb.length >= maxChars) return null
+        sb.append(c.toChar())
+    }
+}
+
 /**
  * Слушает входящие сообщения на порту, который сама же и выбирает (0 — ОС
  * назначает свободный). Один коннект = одно сообщение (см. ChatProtocol) —
@@ -52,13 +72,23 @@ class ChatServer(
         }
     }
 
+    /**
+     * Любой сбой одного соединения (молчащий клиент → SocketTimeoutException, обрыв,
+     * исключение из колбэка) обязан оставаться внутри него. Раньше исключение уходило
+     * из launch в родительскую корутину без обработчика — то есть любое устройство в
+     * Wi-Fi, просто открывшее порт и промолчавшее 5 секунд, роняло приложение.
+     */
     private fun handleClient(socket: Socket) {
-        socket.use {
-            it.soTimeout = 5000
-            val line = BufferedReader(InputStreamReader(it.getInputStream(), Charsets.UTF_8)).readLine() ?: return
-            ChatProtocol.decode(line)?.let(onMessage)
-                ?: CallProtocol.decode(line)?.let(onCallSignal)
-                ?: ClaimProtocol.decode(line)?.let(onSlotClaim)
+        try {
+            socket.use {
+                it.soTimeout = 5000
+                val line = readBoundedLine(it.getInputStream(), MAX_LINE_CHARS) ?: return
+                ChatProtocol.decode(line)?.let(onMessage)
+                    ?: CallProtocol.decode(line)?.let(onCallSignal)
+                    ?: ClaimProtocol.decode(line)?.let(onSlotClaim)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "входящее соединение отброшено: ${e.message}")
         }
     }
 

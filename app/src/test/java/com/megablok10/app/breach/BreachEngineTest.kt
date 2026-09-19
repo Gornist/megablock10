@@ -55,6 +55,21 @@ class BreachEngineTest {
         }
     }
 
+    /** Максимальный буфер (RAM 13) на самой маленькой сетке (BASE, 5x5) — генератор не должен падать с "не удалось построить путь". */
+    @Test
+    fun `generator survives the longest allowed chain on the smallest grid`() {
+        val params = BreachTierParams.forTier(Tier.BASE)
+        val codes = BreachSymbols.ALPHABET
+        val daemons = listOf(
+            Daemon("a", "A", List(5) { codes[it % codes.size] }),
+            Daemon("b", "B", List(5) { codes[(it + 2) % codes.size] }),
+            Daemon("c", "C", List(3) { codes[(it + 4) % codes.size] })
+        )
+        repeat(300) { seed ->
+            generateGrid(params.gridSize, daemons, Random(seed.toLong()), params)
+        }
+    }
+
     @Test
     fun `resolveDaemons requires the sequence contiguous and in order`() {
         val daemon = Daemon("x", "X", listOf("1C", "55"))

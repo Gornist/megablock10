@@ -16,6 +16,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.webrtc.IceCandidate
 
@@ -38,6 +39,8 @@ data class CallUiState(
  * памяти процесса, но каждый закончившийся звонок оставляет одну строку в
  * Room (call_log) — только метаданные, аудио туда не попадает.
  */
+private const val RING_TIMEOUT_MS = 45_000L
+
 object CallManager {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -57,7 +60,11 @@ object CallManager {
             onDisconnected = { if (_state.value.callId == callId) _state.value = _state.value.copy(audioConnected = false) }
         )
         CallMedia.addLocalAudioTrack(context)
+        scheduleRingTimeout(context, identity, callId)
         CallMedia.createOffer { sdp ->
+            // Звонок могли отменить, пока WebRTC собирал offer — не отправляем его "вдогонку" END,
+            // иначе у собеседника вызов оживает уже после отмены и звонит, пока его не сбросят вручную.
+            if (_state.value.callId != callId) return@createOffer
             val signal = CallSignal(CallSignalType.OFFER, callId, identity.publicKeyB64, identity.callsign, peer.pubKeyB64, System.currentTimeMillis(), sdp = sdp)
             scope.launch {
                 val delivered = CallClient.send(peer.host, peer.port, signal)
@@ -77,6 +84,7 @@ object CallManager {
                 val sdp = signal.sdp ?: return
                 _state.value = CallUiState(CallPhase.INCOMING_RINGING, signal.callId, signal.fromPubKeyB64, signal.fromCallsign, isOutgoing = false, startedAt = System.currentTimeMillis())
                 SoundPlayer.startIncomingRingtone(context)
+                scheduleRingTimeout(context, identity, signal.callId)
                 CallMedia.open(
                     context,
                     onIceCandidate = { candidate -> sendSignal(identity, signal.fromPubKeyB64, CallSignalType.ICE_CANDIDATE, signal.callId, ice = candidate) },
@@ -134,6 +142,26 @@ object CallManager {
             CallPhase.IDLE -> CallOutcome.COMPLETED
         }
         endCallLocal(context, outcome)
+    }
+
+    /**
+     * Вызов без ответа не должен висеть вечно: если звонящий пропал (приложение убито, вышел из
+     * сети), у получателя рингтон иначе звонил бы бесконечно, а у звонящего "звонок" не кончался.
+     */
+    private fun scheduleRingTimeout(context: Context, identity: Identity, callId: String) {
+        scope.launch {
+            delay(RING_TIMEOUT_MS)
+            val s = _state.value
+            if (s.callId != callId) return@launch
+            when (s.phase) {
+                CallPhase.OUTGOING_RINGING -> {
+                    sendSignal(identity, s.peerPubKeyB64, CallSignalType.END, callId)
+                    endCallLocal(context, CallOutcome.UNREACHABLE)
+                }
+                CallPhase.INCOMING_RINGING -> endCallLocal(context, CallOutcome.MISSED)
+                else -> Unit
+            }
+        }
     }
 
     private fun sendSignal(identity: Identity, peerPubKeyB64: String, type: CallSignalType, callId: String, sdp: String? = null, ice: IceCandidate? = null) {
