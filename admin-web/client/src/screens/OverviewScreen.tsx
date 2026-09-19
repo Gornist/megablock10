@@ -9,7 +9,7 @@ const POLL_MS = 3000;
 export function OverviewScreen() {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [feed, setFeed] = useState<ChangeRow[]>([]);
-  const sinceRef = useRef(Date.now() - 5 * 60 * 1000);
+  const sinceRef = useRef(Date.now() - 30 * 60 * 1000);
 
   useEffect(() => {
     let cancelled = false;

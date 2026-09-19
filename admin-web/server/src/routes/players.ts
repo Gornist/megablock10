@@ -1,3 +1,4 @@
+import { lastPresence } from "../lib/presence.js";
 import type { FastifyInstance } from "fastify";
 import { escapeLike } from "../lib/sqlLike.js";
 import type { Db } from "../db/index.js";
@@ -35,7 +36,10 @@ function computePlayerBase(db: Db) {
 
 function withOnline(base: PlayerBase[]) {
   const now = Date.now();
-  return base.map((s) => ({ ...s, online: now - s.lastSeenAt < ONLINE_WINDOW_MS }));
+  return base.map((s) => {
+    const seenAt = Math.max(s.lastSeenAt, lastPresence(s.publicKeyB64)); // запись изменения ИЛИ heartbeat телефона
+    return { ...s, lastSeenAt: seenAt, online: now - seenAt < ONLINE_WINDOW_MS };
+  });
 }
 
 /** Переиспользуется CSV-экспортом (routes/exportCsv.ts) — простая некэшированная версия, годится и для нечастых вызовов, и для тестов. */

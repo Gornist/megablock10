@@ -8,6 +8,7 @@ import {
 } from "../lib/changeRecord.js";
 import { verifySignature } from "../lib/crypto.js";
 import { checkGameSecret } from "../lib/gameSecret.js";
+import { touchPresence } from "../lib/presence.js";
 
 const MAX_BATCH = 200;
 
@@ -81,7 +82,10 @@ export function registerChangesRoute(app: FastifyInstance, db: Db) {
     const accepted: string[] = [];
     const rejected: RejectedItem[] = [];
     const touchedSubjects = new Set<string>();
-    if (typeof request.body?.subjectKeyB64 === "string") touchedSubjects.add(request.body.subjectKeyB64);
+    if (typeof request.body?.subjectKeyB64 === "string") {
+      touchedSubjects.add(request.body.subjectKeyB64);
+      touchPresence(request.body.subjectKeyB64); // heartbeat: игрок на связи, даже если писать в БД нечего
+    }
 
     const ackIds = request.body?.ackIds;
     if (typeof request.body?.subjectKeyB64 === "string" && Array.isArray(ackIds)) {

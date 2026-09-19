@@ -1,3 +1,4 @@
+import { presentSince } from "../lib/presence.js";
 import type { FastifyInstance } from "fastify";
 import type { Db } from "../db/index.js";
 import { requireMaster } from "../lib/auth.js";
@@ -54,11 +55,16 @@ export function registerOverviewRoutes(app: FastifyInstance, db: Db) {
     if (!requireMaster(db, request, reply)) return;
 
     const now = Date.now();
-    const onlinePlayers = (
-      db.prepare(`SELECT COUNT(DISTINCT subject_key) AS n FROM changes WHERE received_at > ?`).get(now - ONLINE_WINDOW_MS) as {
-        n: number;
-      }
-    ).n;
+    // «На связи» = были свежие записи ИЛИ heartbeat телефона (пустой батч), причём только игроки, которых мы уже знаем по истории.
+    const online = new Set(
+      (db.prepare(`SELECT DISTINCT subject_key FROM changes WHERE received_at > ?`).all(now - ONLINE_WINDOW_MS) as { subject_key: string }[]).map(
+        (r) => r.subject_key,
+      ),
+    );
+    for (const key of presentSince(now - ONLINE_WINDOW_MS)) {
+      if (db.prepare(`SELECT 1 FROM changes WHERE subject_key = ? LIMIT 1`).get(key)) online.add(key);
+    }
+    const onlinePlayers = online.size;
 
     const breachRows = db
       .prepare(`SELECT new_value AS payload FROM changes WHERE field = 'counters.breach' AND happened_at > ?`)
