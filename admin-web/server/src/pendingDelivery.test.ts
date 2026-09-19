@@ -174,3 +174,27 @@ test("POST /api/players/:key/override без мастерского токена
   });
   assert.equal(res.statusCode, 401);
 });
+
+test("POST /api/players/:key/override отклоняет значения, которые устройство не сможет применить", async () => {
+  const db = testDb();
+  const app = testApp(db);
+  const master = testMaster(db);
+  const session = await loginAs(app, master.name, master.token);
+  const device = testDevice();
+  const send = async (field: string, newValue: unknown) =>
+    (
+      await app.inject({
+        method: "POST",
+        url: `/api/players/${encodeURIComponent(device.publicKeyB64)}/override`,
+        headers: { authorization: `Bearer ${session}` },
+        payload: { field, newValue, reason: "тест" },
+      })
+    ).statusCode;
+
+  assert.equal(await send("balance", "abc"), 400);
+  assert.equal(await send("balance", null), 400);
+  assert.equal(await send("ramCapacity", "99"), 400);
+  assert.equal(await send("callsign", "  "), 400);
+  assert.equal(await send("balance", "-50"), 200);
+  assert.equal(await send("ramCapacity", "10"), 200);
+});

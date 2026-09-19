@@ -31,8 +31,13 @@ export function registerSlotsRoutes(app: FastifyInstance, db: Db) {
   const insertClaimStmt = db.prepare(`
     INSERT INTO slot_claims (slot_ref, claimant_key, claimed_at, granted_by, revoked)
     VALUES (?, ?, ?, 'SERVER', 0)
-    ON CONFLICT(slot_ref, claimant_key) DO NOTHING
+    ON CONFLICT(slot_ref, claimant_key) DO UPDATE SET
+      revoked = 0, revoked_by = NULL, revoked_reason = NULL, claimed_at = excluded.claimed_at, granted_by = 'SERVER'
+      WHERE slot_claims.revoked = 1
   `);
+  // Раньше здесь было DO NOTHING: аннулированная заявка (revoked=1) при повторном клейме оставалась
+  // аннулированной, а ответ был granted:true — игрок получал лут, которого реестр не учитывал, и слот
+  // можно было выдать сверх тиража.
 
   const claim = db.transaction((slotRef: string, claimantKeyB64: string, claimedAt: number) => {
     const containerRow = getContainerStmt.get(containerIdOf(slotRef)) as { slots_json: string } | undefined;

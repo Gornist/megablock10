@@ -39,22 +39,30 @@ object SlotClaimStore {
         excludeIndices: Set<Int>
     ): Int? {
         val dao = Mb10Database.get(context).slotClaimDao()
-        val index = pickSlot(container, type, extractorTier, excludeIndices) { slotRef -> dao.claimCount(slotRef) } ?: return null
+        // Слот, в котором коллектор отказал (глобально исчерпан, а локальный счётчик ещё не в курсе),
+        // не должен обрывать извлечение целиком — пробуем следующий подходящий слот того же типа.
+        val refused = mutableSetOf<Int>()
+        while (true) {
+            val index = pickSlot(container, type, extractorTier, excludeIndices + refused) { slotRef -> dao.claimCount(slotRef) } ?: return null
 
-        val slotRef = container.slotRef(index)
-        val claimedAt = System.currentTimeMillis()
-        val signature = IdentityManager.sign(context, ClaimProtocol.signaturePayload(slotRef, identity.publicKeyB64, claimedAt))
+            val slotRef = container.slotRef(index)
+            val claimedAt = System.currentTimeMillis()
+            val signature = IdentityManager.sign(context, ClaimProtocol.signaturePayload(slotRef, identity.publicKeyB64, claimedAt))
 
-        val collectorUrl = CollectorSettings.baseUrl(context)
-        if (collectorUrl != null && container.loot[index].copies > 0) {
-            val granted = CollectorClient.claimSlot(collectorUrl, slotRef, identity.publicKeyB64, claimedAt, signature, CollectorSettings.gameSecret(context))
-            if (!granted) return null
+            val collectorUrl = CollectorSettings.baseUrl(context)
+            if (collectorUrl != null && container.loot[index].copies > 0) {
+                val granted = CollectorClient.claimSlot(collectorUrl, slotRef, identity.publicKeyB64, claimedAt, signature, CollectorSettings.gameSecret(context))
+                if (!granted) {
+                    refused += index
+                    continue
+                }
+            }
+
+            val entity = SlotClaimEntity(slotRef = slotRef, claimantKeyB64 = identity.publicKeyB64, claimedAt = claimedAt, signature = signature)
+            dao.insertIfAbsent(entity)
+            broadcast(entity)
+            return index
         }
-
-        val entity = SlotClaimEntity(slotRef = slotRef, claimantKeyB64 = identity.publicKeyB64, claimedAt = claimedAt, signature = signature)
-        dao.insertIfAbsent(entity)
-        broadcast(entity)
-        return index
     }
 
     /**

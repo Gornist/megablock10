@@ -113,8 +113,19 @@ export function registerPlayersRoutes(app: FastifyInstance, db: Db) {
     if (!OVERRIDABLE_FIELDS.includes(field as Field)) {
       return reply.code(400).send({ error: `field must be one of: ${OVERRIDABLE_FIELDS.join(", ")}` });
     }
-    if (typeof newValue !== "string" && newValue !== null) {
-      return reply.code(400).send({ error: "newValue must be a string or null" });
+    if (typeof newValue !== "string") {
+      return reply.code(400).send({ error: "newValue must be a string" });
+    }
+    // Значение должно быть таким, которое телефон реально применит: иначе на дашборде оно
+    // отображается (NaN, пустой позывной), а устройство молча его игнорирует — расхождение навсегда.
+    if (field === "balance" && !/^-?\d+$/.test(newValue)) {
+      return reply.code(400).send({ error: "balance must be an integer" });
+    }
+    if (field === "ramCapacity" && !(/^\d+$/.test(newValue) && Number(newValue) >= 6 && Number(newValue) <= 13)) {
+      return reply.code(400).send({ error: "ramCapacity must be an integer from 6 to 13" });
+    }
+    if ((field === "callsign" || field === "faction") && newValue.trim() === "") {
+      return reply.code(400).send({ error: `${field} must not be empty` });
     }
 
     const subjectKey = request.params.key;

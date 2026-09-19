@@ -170,3 +170,39 @@ test("GET /api/slots и POST revoke/restore — реестр отражает а
   });
   assert.equal(reclaim.json().granted, true);
 });
+
+test("POST claim — заявитель с аннулированной заявкой получает слот снова и он учитывается в реестре (без выдачи сверх тиража)", async () => {
+  const db = testDb();
+  const app = testApp(db);
+  const master = testMaster(db);
+  const session = await loginAs(app, master.name, master.token);
+  await seedContainer(app, session);
+  const auth = { authorization: `Bearer ${session}` };
+
+  const alice = testDevice();
+  const claim = async (dev: ReturnType<typeof testDevice>) => {
+    const at = Date.now();
+    return (
+      await app.inject({
+        method: "POST",
+        url: "/api/slots/nasos-4%230/claim",
+        payload: { claimantKeyB64: dev.publicKeyB64, claimedAt: at, signature: claimSignature(dev, "nasos-4#0", at) },
+      })
+    ).json();
+  };
+
+  assert.equal((await claim(alice)).granted, true);
+  await app.inject({
+    method: "POST",
+    url: "/api/slots/nasos-4%230/revoke",
+    headers: auth,
+    payload: { claimantKeyB64: alice.publicKeyB64, reason: "тест" },
+  });
+
+  assert.equal((await claim(alice)).granted, true);
+  const registry = (await app.inject({ method: "GET", url: "/api/slots", headers: auth })).json();
+  assert.equal(registry[0].copiesClaimed, 1, "повторная заявка Алисы должна быть учтена, а не потеряна");
+
+  const bob = testDevice();
+  assert.equal((await claim(bob)).granted, false, "слот единственный — второму претенденту не должен достаться");
+});
