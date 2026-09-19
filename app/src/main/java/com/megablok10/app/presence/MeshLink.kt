@@ -13,10 +13,16 @@ import android.net.NetworkCapabilities
  * обратно уже после результата.
  */
 object MeshLink {
+    /**
+     * Смотрим на ВСЕ подключённые сети, а не только на активную по умолчанию: Wi-Fi площадки почти всегда без интернета, и при включённых
+     * мобильных данных Android делает основной именно мобильную сеть — прежняя проверка activeNetwork тогда ошибочно писала «нет связи»,
+     * хотя телефон подключён к сети игры.
+     */
+    @Suppress("DEPRECATION")
     fun isOnline(context: Context): Boolean {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
-        val network = cm.activeNetwork ?: return false
-        val caps = cm.getNetworkCapabilities(network) ?: return false
-        return caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+        return cm.allNetworks.any { network ->
+            cm.getNetworkCapabilities(network)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+        }
     }
 }
