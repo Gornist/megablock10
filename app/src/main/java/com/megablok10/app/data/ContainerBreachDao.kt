@@ -12,4 +12,7 @@ interface ContainerBreachDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entry: ContainerBreachEntity)
+
+    @Query("DELETE FROM container_breaches")
+    suspend fun deleteAll()
 }

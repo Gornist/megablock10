@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.megablok10.app.DebugConfig
 import com.megablok10.app.collector.ChangeField
 import com.megablok10.app.collector.ChangeReason
 import com.megablok10.app.collector.ChangeRecordStore
@@ -89,7 +90,7 @@ internal fun BreachContainerFlow(container: Container, daemons: List<Daemon>, id
                 daemons = chosenDaemons,
                 seed = seed,
                 gridSize = params.gridSize,
-                timerSec = params.timerSec + timerBonus,
+                timerSec = DebugConfig.scaledTimerSec(params.timerSec + timerBonus),
                 bufferSize = identity.ramCapacity,
                 breachParams = params,
                 onRescan = onRescan,
@@ -320,6 +321,10 @@ private fun BreachSession(
     }
 
     LaunchedEffect(seed) {
+        if (DebugConfig.autoSolve) {
+            for (cell in BreachAutoSolver.solve(attempt)) attempt = attempt.select(cell)
+            if (attempt.selected.isNotEmpty()) resolveOnce()
+        }
         while (secondsLeft > 0 && !attempt.isFull && result == null) {
             delay(1000)
             secondsLeft -= 1

@@ -5,6 +5,8 @@
             <intent-filter>
                 <action android:name="com.megablok10.app.DEBUG_QR" />
                 <action android:name="com.megablok10.app.DEBUG_PEER" />
+                <action android:name="com.megablok10.app.DEBUG_CONFIG" />
+                <action android:name="com.megablok10.app.DEBUG_SET" />
             </intent-filter>
         </receiver>
     </application>

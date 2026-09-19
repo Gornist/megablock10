@@ -1,6 +1,7 @@
 package com.megablok10.app.breach
 
 import android.content.Context
+import com.megablok10.app.DebugConfig
 import com.megablok10.app.chat.ChatStore
 import com.megablok10.app.collector.ChangeField
 import com.megablok10.app.collector.ChangeReason
@@ -50,7 +51,7 @@ object SecAlertStore {
         }
         scope.launch {
             while (true) {
-                delay(FLUSH_TICK_MS)
+                delay(DebugConfig.scaledMs(FLUSH_TICK_MS).coerceAtLeast(1_000))
                 flush(context)
             }
         }
@@ -116,8 +117,8 @@ object SecAlertStore {
                 containerName = container.name,
                 faction = container.ownerFaction,
                 payload = Mb10QrCodec.encodeSecurityAlert(alert),
-                sendAt = plan.sendAt,
-                ttl = now + TTL_MS
+                sendAt = now + DebugConfig.scaledMs(plan.sendAt - now),
+                ttl = now + DebugConfig.scaledMs(TTL_MS)
             )
         )
         flush(context)
@@ -144,7 +145,7 @@ object SecAlertStore {
     private fun aggregatedBody(pending: PendingAlertEntity): String {
         val state = aggregation.getOrPut(pending.containerId) { AggState() }
         val now = System.currentTimeMillis()
-        if (now - state.lastFullSentAt >= AGG_WINDOW_MS) {
+        if (now - state.lastFullSentAt >= DebugConfig.scaledMs(AGG_WINDOW_MS)) {
             state.lastFullSentAt = now
             state.suppressed = 0
             return pending.payload

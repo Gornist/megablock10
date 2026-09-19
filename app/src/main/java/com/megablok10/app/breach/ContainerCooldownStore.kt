@@ -1,6 +1,7 @@
 package com.megablok10.app.breach
 
 import android.content.Context
+import com.megablok10.app.DebugConfig
 import com.megablok10.app.data.ContainerBreachEntity
 import com.megablok10.app.data.Mb10Database
 
@@ -12,7 +13,7 @@ import com.megablok10.app.data.Mb10Database
  * кулдаун не запускает.
  */
 object ContainerCooldownStore {
-    private val cooldownMs = MockBreach.containerCooldownMinutes * 60_000L
+    private val cooldownMs get() = DebugConfig.scaledMs(MockBreach.containerCooldownMinutes * 60_000L)
 
     /** 0, если контейнер можно вскрывать прямо сейчас; иначе — сколько миллисекунд осталось ждать. */
     suspend fun remainingCooldownMs(context: Context, containerId: String): Long {
