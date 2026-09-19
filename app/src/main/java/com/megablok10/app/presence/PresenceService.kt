@@ -56,6 +56,15 @@ object PresenceService {
         _peers.value = peerMap.values.toList()
     }
 
+    /**
+     * Добавляет пира вручную, минуя NSD — только для прогонов на эмуляторах, где mDNS между
+     * устройствами не ходит (см. DebugQrReceiver). В боевом коде не вызывается.
+     */
+    fun addStaticPeer(peer: PeerInfo) {
+        peerMap["static:${peer.pubKeyB64}"] = peer
+        publishPeers()
+    }
+
     fun start(context: Context, identity: Identity, chatPort: Int) {
         stop()
         val presenceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)

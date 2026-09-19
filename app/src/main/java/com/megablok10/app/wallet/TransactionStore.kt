@@ -103,6 +103,8 @@ object TransactionStore {
      */
     suspend fun verifyAndConfirmReceipt(context: Context, pendingTxId: String, receipt: Mb10Qr.Receipt): Boolean {
         if (receipt.id != pendingTxId) return false
+        // Чек должен подписать именно адресат платежа — иначе любой контакт мог бы "подтвердить" чужой платёж (и тем самым заблокировать его отмену).
+        if (Mb10Database.get(context).transactionDao().counterpartyOf(receipt.id) != receipt.receiverPubKeyB64) return false
         val payload = Mb10QrCodec.receiptSignaturePayload(receipt.id, receipt.receiverPubKeyB64)
         if (!IdentityManager.verify(receipt.receiverPubKeyB64, payload, receipt.signatureB64)) return false
         return Mb10Database.get(context).transactionDao().confirm(receipt.id) > 0

@@ -5,6 +5,8 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalContext
 import com.google.zxing.integration.android.IntentIntegrator
 
@@ -28,6 +30,16 @@ fun rememberMb10QrScanner(onResult: (Mb10Qr) -> Unit): () -> Unit {
             onResult(decoded)
         } else {
             Toast.makeText(context, "Это не код Мегаблока", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Отладочный вход без камеры (см. DebugQrBus): та же декодировка и тот же колбэк, что у настоящего скана.
+    val latestOnResult = rememberUpdatedState(onResult)
+    LaunchedEffect(Unit) {
+        DebugQrBus.events.collect { raw ->
+            val decoded = Mb10QrCodec.decode(raw)
+            if (decoded != null) latestOnResult.value(decoded)
+            else Toast.makeText(context, "Это не код Мегаблока", Toast.LENGTH_SHORT).show()
         }
     }
 

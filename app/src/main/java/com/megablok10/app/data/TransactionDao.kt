@@ -35,6 +35,10 @@ interface TransactionDao {
     @Query("DELETE FROM transactions WHERE id = :id AND status = 'PENDING'")
     suspend fun cancelPending(id: String): Int
 
+    /** Контрагент записи — чтобы принять чек только от того, кому платёж реально адресован. */
+    @Query("SELECT counterpartyPubKeyB64 FROM transactions WHERE id = :id")
+    suspend fun counterpartyOf(id: String): String?
+
     /** Сумма записи (для исходящей — отрицательная) — нужна до удаления при отмене, чтобы отправить ChangeRecord с корректной дельтой. */
     @Query("SELECT amount FROM transactions WHERE id = :id")
     suspend fun amountOf(id: String): Long?

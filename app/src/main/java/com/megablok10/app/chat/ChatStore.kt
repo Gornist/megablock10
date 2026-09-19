@@ -10,6 +10,9 @@ import com.megablok10.app.call.CallManager
 import com.megablok10.app.presence.PeerInfo
 import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.sound.SoundPlayer
+import com.megablok10.app.qr.Mb10Qr
+import com.megablok10.app.qr.Mb10QrCodec
+import com.megablok10.app.wallet.TransactionStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -49,7 +52,10 @@ object ChatStore {
         appScope.launch {
             val srv = ChatServer(
                 onMessage = { msg ->
-                    appScope.launch { persist(appContext, msg) }
+                    appScope.launch {
+                        persist(appContext, msg)
+                        confirmIfReceipt(appContext, msg)
+                    }
                     // Звук — только для реально пришедших по сети сообщений (этот колбэк
                     // и есть приём с провода), свои же исходящие persist() не должны пищать.
                     SoundPlayer.playMessageReceived(appContext)
@@ -108,6 +114,17 @@ object ChatStore {
         persist(context, wire)
         if (peer == null) return false
         return withContext(Dispatchers.IO) { ChatClient.send(peer.host, peer.port, wire) }
+    }
+
+    /**
+     * Чек получателя фиксирует платёж при ПРИЁМЕ, а не пока у отправителя открыт этот тред: раньше
+     * подтверждение делал только DirectThread, и если отправитель сидел на вкладке "Финансы", платёж
+     * навсегда оставался "ждёт принятия".
+     */
+    private suspend fun confirmIfReceipt(context: Context, message: ChatWireMessage) {
+        if (message.type != ChatMessageType.DM) return
+        val receipt = Mb10QrCodec.decode(message.body) as? Mb10Qr.Receipt ?: return
+        TransactionStore.verifyAndConfirmReceipt(context, receipt.id, receipt)
     }
 
     private suspend fun persist(context: Context, message: ChatWireMessage) {
