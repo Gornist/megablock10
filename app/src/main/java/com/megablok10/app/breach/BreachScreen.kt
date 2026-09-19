@@ -3,6 +3,13 @@ package com.megablok10.app.breach
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -31,10 +39,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.DebugConfig
@@ -43,6 +53,8 @@ import com.megablok10.app.collector.ChangeReason
 import com.megablok10.app.collector.ChangeRecordStore
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.qr.Mb10Qr
+import com.megablok10.app.sound.BreachCue
+import com.megablok10.app.sound.BreachSfx
 import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.ButtonVariant
 import com.megablok10.app.ui.theme.DottedDivider
@@ -56,6 +68,7 @@ import com.megablok10.app.ui.theme.MB10Colors
 import com.megablok10.app.ui.theme.chamferShape
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 import kotlin.random.Random
 import org.json.JSONObject
 
@@ -87,6 +100,7 @@ internal fun BreachContainerFlow(container: Container, daemons: List<Daemon>, id
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
             ContainerHeader(container)
             BreachSession(
+                tier = container.tier,
                 daemons = chosenDaemons,
                 seed = seed,
                 gridSize = params.gridSize,
@@ -212,6 +226,7 @@ internal fun ShardDecryptFlow(shard: Mb10Qr.Shard, onDecrypted: () -> Unit, onCa
             Text("Шифр-замок: ${shard.title}", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
         }
         BreachSession(
+            tier = Tier.fromLevel(shard.tier),
             daemons = listOf(target),
             seed = sessionSeed,
             gridSize = params.gridSize,
@@ -292,6 +307,7 @@ internal fun CodePill(code: String) {
  */
 @Composable
 private fun BreachSession(
+    tier: Tier,
     daemons: List<Daemon>,
     seed: Long,
     gridSize: Int,
@@ -311,16 +327,35 @@ private fun BreachSession(
     var attempt by remember(seed) { mutableStateOf(BreachAttemptState(grid, daemons, bufferSize)) }
     var secondsLeft by remember(seed) { mutableIntStateOf(timerSec) }
     var result by remember(seed) { mutableStateOf<BreachResult?>(null) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    // Вступительный «вход в узел» — только в живой игре: автосолвер (debug-прогоны) стартует сразу.
+    var booted by remember(seed) { mutableStateOf(DebugConfig.autoSolve) }
+    val shake = remember(seed) { Animatable(0f) }
+    // Реплика защиты узла (см. IceLines) — одна строка над сеткой, обновляется по событиям взлома.
+    var iceLine by remember(seed) { mutableStateOf<String?>(null) }
+    fun ice(event: IceEvent) { iceLine = IceLines.line(tier, event, Random(seed xor event.ordinal.toLong())) }
 
     fun resolveOnce() {
         if (result == null) {
             val resolved = BreachResult(attempt.daemons, attempt.matchedDaemonIds)
             result = resolved
+            BreachSfx.play(context, when (resolved.outcome) {
+                BreachOutcome.SUCCESS -> BreachCue.SUCCESS
+                BreachOutcome.PARTIAL -> BreachCue.PARTIAL
+                BreachOutcome.FAIL -> BreachCue.FAIL
+            })
             onResult(resolved)
         }
     }
 
     LaunchedEffect(seed) {
+        if (!booted) {
+            BreachSfx.play(context, BreachCue.ENTER)
+            delay(BOOT_LINE_MS * BOOT_LINES)
+            booted = true
+            ice(IceEvent.INTRO)
+        }
         if (DebugConfig.autoSolve) {
             for (cell in BreachAutoSolver.solve(attempt)) attempt = attempt.select(cell)
             if (attempt.selected.isNotEmpty()) resolveOnce()
@@ -328,6 +363,9 @@ private fun BreachSession(
         while (secondsLeft > 0 && !attempt.isFull && result == null) {
             delay(1000)
             secondsLeft -= 1
+            if (secondsLeft in 1..5) BreachSfx.play(context, BreachCue.WARN)
+            if (secondsLeft == timerSec / 2 && timerSec > 20) ice(IceEvent.HALF_TIME)
+            if (secondsLeft == 10 && timerSec > 20) ice(IceEvent.LOW_TIME)
         }
         resolveOnce()
     }
@@ -349,24 +387,43 @@ private fun BreachSession(
         }
         Spacer(Modifier.height(14.dp))
 
+        if (!booted) {
+            BootLog(breachId, bufferSize)
+            return@TerminalFrame
+        }
+
+        val urgent = secondsLeft in 1..10 && result == null
+        val blink by rememberInfiniteTransition(label = "timerBlink").animateFloat(
+            initialValue = 0f, targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(450, easing = LinearEasing), RepeatMode.Reverse), label = "blink"
+        )
+        val timerColor = if (urgent) lerp(MB10Colors.accentNetrun, MB10Colors.accentDanger, blink) else MB10Colors.accentNetrun
+
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
             Text("Время взлома", color = MB10Colors.inkPrimary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 14.sp)
             Text(
                 formatTime(secondsLeft),
-                color = MB10Colors.accentNetrun,
+                color = timerColor,
                 fontFamily = JetBrainsMono,
                 fontSize = 15.sp,
-                modifier = Modifier.border(1.dp, MB10Colors.accentNetrun).padding(horizontal = 10.dp, vertical = 3.dp)
+                modifier = Modifier.border(1.dp, timerColor).padding(horizontal = 10.dp, vertical = 3.dp)
             )
         }
         Spacer(Modifier.height(6.dp))
         val progress = (secondsLeft.toFloat() / timerSec).coerceIn(0f, 1f)
         Box(Modifier.fillMaxWidth().height(3.dp).background(MB10Colors.surfaceSunken)) {
-            Box(Modifier.fillMaxWidth(progress).height(3.dp).background(MB10Colors.accentNetrun))
+            Box(Modifier.fillMaxWidth(progress).height(3.dp).background(timerColor))
+        }
+
+        iceLine?.let {
+            Text(
+                it, color = MB10Colors.accentDanger, fontFamily = JetBrainsMono, fontSize = 10.5.sp,
+                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(top = 10.dp)
+            )
         }
 
         FlagTab("код-матрица", modifier = Modifier.padding(top = 14.dp))
-        PanelBox {
+        PanelBox(modifier = Modifier.offset { IntOffset(shake.value.roundToInt(), 0) }) {
             for (r in 0 until attempt.grid.size) {
                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.padding(bottom = 5.dp)) {
                     for (c in 0 until attempt.grid.size) {
@@ -378,7 +435,22 @@ private fun BreachSession(
                             orderLabel = if (order >= 0) (order + 1).toString() else null,
                             isSelectable = cell in selectable,
                             onClick = {
-                                attempt = attempt.select(cell)
+                                val next = attempt.select(cell)
+                                val hitTrap = cell in attempt.grid.trapCells
+                                val matched = next.matchedDaemonIds.size > attempt.matchedDaemonIds.size
+                                attempt = next
+                                when {
+                                    hitTrap -> {
+                                        BreachSfx.play(context, BreachCue.TRAP)
+                                        ice(IceEvent.TRAP)
+                                        scope.launch {
+                                            repeat(3) { shake.animateTo(if (it % 2 == 0) 9f else -9f, tween(40)) }
+                                            shake.animateTo(0f, tween(40))
+                                        }
+                                    }
+                                    matched -> { BreachSfx.play(context, BreachCue.MATCH); ice(IceEvent.MATCH) }
+                                    else -> BreachSfx.play(context, BreachCue.TAP)
+                                }
                                 if (attempt.isFull) resolveOnce()
                             }
                         )
@@ -484,9 +556,9 @@ private fun TerminalFrame(content: @Composable ColumnScope.() -> Unit) {
 
 /** Рамка без верхней стороны — визуально продолжает FlagTab, который стоит прямо над ней. */
 @Composable
-private fun PanelBox(content: @Composable () -> Unit) {
+private fun PanelBox(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .drawWithContent {
                 drawContent()
@@ -597,4 +669,34 @@ private fun RewardRow(label: String, value: String, valueColor: Color = MB10Colo
 private fun formatTime(totalSeconds: Int): String {
     val s = totalSeconds.coerceAtLeast(0)
     return "${(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}"
+}
+
+private const val BOOT_LINES = 4
+private const val BOOT_LINE_MS = 350L
+
+/** Вступление «вход в узел»: строки лога проявляются по одной, пока в фоне не истечёт [BOOT_LINES]×[BOOT_LINE_MS]. */
+@Composable
+private fun BootLog(breachId: String, bufferSize: Int) {
+    val lines = listOf(
+        "> подключение к $breachId…",
+        "> обход контура ICE…",
+        "> буфер: $bufferSize ячеек",
+        "> доступ получен",
+    )
+    var shown by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (shown < lines.size) {
+            delay(BOOT_LINE_MS)
+            shown += 1
+        }
+    }
+    PanelBox {
+        lines.forEachIndexed { i, line ->
+            Text(
+                if (i < shown) line else "",
+                color = if (i == lines.lastIndex) MB10Colors.accentNetrun else MB10Colors.inkSecondary,
+                fontFamily = JetBrainsMono, fontSize = 12.sp, modifier = Modifier.padding(vertical = 3.dp)
+            )
+        }
+    }
 }

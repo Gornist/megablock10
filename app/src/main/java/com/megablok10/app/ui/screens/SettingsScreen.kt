@@ -29,6 +29,7 @@ import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.AppDialog
 import com.megablok10.app.ui.theme.AppTextField
+import com.megablok10.app.sound.BreachSfx
 import com.megablok10.app.ui.theme.AppToggle
 import com.megablok10.app.ui.theme.ButtonVariant
 import com.megablok10.app.ui.theme.ChamferedSurface
@@ -56,6 +57,9 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
         ToggleRow("Push-уведомления", pushEnabled) { pushEnabled = it }
         Spacer(Modifier.height(10.dp))
         ToggleRow("Звук при новом сообщении", soundEnabled) { soundEnabled = it }
+        Spacer(Modifier.height(10.dp))
+        var breachSfx by remember { mutableStateOf(BreachSfx.isEnabled(context)) }
+        ToggleRow("Звуки взлома", breachSfx) { breachSfx = it; BreachSfx.setEnabled(context, it) }
 
         Spacer(Modifier.height(16.dp))
         SectionLabel("Сеть и данные")
