@@ -83,15 +83,18 @@ object TransactionStore {
      * "Принять", и отмена оставила бы сумму у обоих (см. deliverOutgoing).
      * false, если запись не PENDING или не найдена.
      *
-     * ИЗВЕСТНЫЙ ПРОБЕЛ: локальный баланс откатывается верно (запись
-     * удаляется), но компенсирующий ChangeRecord не шлётся — в наборе причин
-     * ТЗ (§2.2) нет "перевод отменён", а второй TRANSFER_OUT с тем же txId
-     * сбил бы сведение по txId на дашборде. Итог: дашборд видит односторонний
-     * TRANSFER_OUT и пониженный баланс, пока следующее изменение баланса
-     * (его oldValue считается от реального локального) не выровняет картину.
+     * Отмена уходит на дашборд компенсирующим ChangeRecord с причиной
+     * TRANSFER_CANCELLED и тем же txId в sourceRef: сервер по нему помечает
+     * перевод "отменён отправителем" вместо висящего одностороннего.
      */
-    suspend fun cancelOutgoing(context: Context, id: String): Boolean =
-        Mb10Database.get(context).transactionDao().cancelPending(id) > 0
+    suspend fun cancelOutgoing(context: Context, id: String): Boolean {
+        val dao = Mb10Database.get(context).transactionDao()
+        val amount = dao.amountOf(id) ?: return false
+        if (dao.cancelPending(id) == 0) return false
+        // amount исходящей записи отрицательный — деньги возвращаются, дельта баланса положительная.
+        emitBalanceChange(context, dao, -amount, ChangeReason.TRANSFER_CANCELLED, sourceRef = id)
+        return true
+    }
 
     /**
      * Фиксирует платёж по чеку получателя — с этого момента отменить его

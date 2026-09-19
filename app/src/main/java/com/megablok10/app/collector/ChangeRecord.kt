@@ -51,6 +51,7 @@ object ChangeReason {
     const val SHARD_DECRYPT = "SHARD_DECRYPT"
     const val TRANSFER_OUT = "TRANSFER_OUT"
     const val TRANSFER_IN = "TRANSFER_IN"
+    const val TRANSFER_CANCELLED = "TRANSFER_CANCELLED"
     const val RAM_UPGRADE = "RAM_UPGRADE"
     const val ALERT_SENT = "ALERT_SENT"
     const val ALERT_SUPPRESSED = "ALERT_SUPPRESSED"

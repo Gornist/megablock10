@@ -35,6 +35,10 @@ interface TransactionDao {
     @Query("DELETE FROM transactions WHERE id = :id AND status = 'PENDING'")
     suspend fun cancelPending(id: String): Int
 
+    /** Сумма записи (для исходящей — отрицательная) — нужна до удаления при отмене, чтобы отправить ChangeRecord с корректной дельтой. */
+    @Query("SELECT amount FROM transactions WHERE id = :id")
+    suspend fun amountOf(id: String): Long?
+
     /** Разовый снимок баланса (не Flow) — нужен, чтобы посчитать oldValue/newValue для ChangeRecord в момент мутации, см. TransactionStore. */
     @Query("SELECT COALESCE(SUM(amount), 0) FROM transactions")
     suspend fun currentBalance(): Long

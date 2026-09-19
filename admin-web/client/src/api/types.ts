@@ -104,5 +104,6 @@ export interface Transfer {
   amount: number;
   sentAt: number | null;
   confirmedAt: number | null;
+  cancelledAt: number | null;
   oneSided: boolean;
 }

@@ -19,8 +19,15 @@ export function TransfersScreen() {
     {
       key: "status",
       label: "Статус",
-      render: (t) => (t.oneSided ? <Badge tone="danger">односторонний, {formatAgo(t.sentAt ?? t.confirmedAt)}</Badge> : <Badge tone="ok">сведён</Badge>),
-      sortValue: (t) => (t.oneSided ? 0 : 1),
+      render: (t) =>
+        t.cancelledAt !== null ? (
+          <Badge tone="neutral">отменён отправителем</Badge>
+        ) : t.oneSided ? (
+          <Badge tone="danger">односторонний, {formatAgo(t.sentAt ?? t.confirmedAt)}</Badge>
+        ) : (
+          <Badge tone="ok">сведён</Badge>
+        ),
+      sortValue: (t) => (t.cancelledAt !== null ? 2 : t.oneSided ? 0 : 1),
     },
   ];
 

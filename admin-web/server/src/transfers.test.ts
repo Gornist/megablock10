@@ -77,3 +77,24 @@ test("GET /api/transfers — без мастерского токена — 401"
   const res = await app.inject({ method: "GET", url: "/api/transfers" });
   assert.equal(res.statusCode, 401);
 });
+
+test("GET /api/transfers — TRANSFER_CANCELLED помечает перевод отменённым и снимает флаг oneSided", async () => {
+  const db = testDb();
+  const app = testApp(db);
+  const headers = await auth(app, db);
+  const alice = testDevice();
+
+  const out = alice.change({ field: "balance", oldValue: "50", newValue: "30", reason: "TRANSFER_OUT", sourceRef: "tx-c" });
+  const cancel = alice.change({ field: "balance", oldValue: "30", newValue: "50", reason: "TRANSFER_CANCELLED", sourceRef: "tx-c" });
+  const res0 = await app.inject({ method: "POST", url: "/api/changes", payload: { records: [out, cancel] } });
+  assert.equal(res0.json().accepted.length, 2, "сервер должен знать причину TRANSFER_CANCELLED");
+
+  const transfers = (await app.inject({ method: "GET", url: "/api/transfers", headers })).json();
+  assert.equal(transfers.length, 1);
+  assert.equal(transfers[0].amount, 20);
+  assert.ok(transfers[0].cancelledAt !== null);
+  assert.equal(transfers[0].oneSided, false);
+
+  const snapshot = (await app.inject({ method: "GET", url: `/api/players/${encodeURIComponent(alice.publicKeyB64)}`, headers })).json();
+  assert.equal(snapshot.snapshot?.balance ?? snapshot.balance, 50, "баланс на дашборде после отмены снова 50");
+});

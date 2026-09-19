@@ -48,6 +48,14 @@ export function registerTransfersRoute(app: FastifyInstance, db: Db) {
       )
       .all() as TransferRow[];
 
+    // Отправитель отменил недоставленный платёж (TransactionStore.cancelOutgoing на Android) —
+    // деньги вернулись к нему, это не "висящий" односторонний перевод.
+    const cancelledByTx = new Map<string, number>();
+    const cancels = db
+      .prepare(`SELECT source_ref, received_at FROM changes WHERE reason = 'TRANSFER_CANCELLED' AND source_ref IS NOT NULL`)
+      .all() as { source_ref: string; received_at: number }[];
+    for (const row of cancels) cancelledByTx.set(row.source_ref, row.received_at);
+
     const insByTx = new Map<string, TransferRow>();
     for (const row of ins) if (row.source_ref) insByTx.set(row.source_ref, row);
 
@@ -64,7 +72,8 @@ export function registerTransfersRoute(app: FastifyInstance, db: Db) {
         amount: transferAmount(out, "out"),
         sentAt: out.received_at,
         confirmedAt: inRow ? inRow.received_at : null,
-        oneSided: !inRow,
+        cancelledAt: cancelledByTx.get(txId) ?? null,
+        oneSided: !inRow && !cancelledByTx.has(txId),
       });
     }
     // TRANSFER_IN без пары TRANSFER_OUT (второе устройство ещё не досылало) — тоже показываем, помеченным односторонним.
@@ -78,6 +87,7 @@ export function registerTransfersRoute(app: FastifyInstance, db: Db) {
         amount: transferAmount(inRow, "in"),
         sentAt: null,
         confirmedAt: inRow.received_at,
+        cancelledAt: null,
         oneSided: true,
       });
     }
