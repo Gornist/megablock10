@@ -45,6 +45,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -135,11 +136,16 @@ internal fun BreachContainerFlow(container: Container, daemons: List<Daemon>, id
         return
     }
 
-    // Список демонов скроллится в своей области (weight), а счётчик буфера и
-    // кнопка старта закреплены снизу вне скролла — раньше счётчик стоял под
-    // списком и терялся из виду, пока выбираешь демонов дальше по списку.
+    // Список демонов скроллится в своей области (weight), а буфер (сверху) и кнопка старта (снизу) закреплены вне скролла —
+    // раньше счётчик стоял под списком и терялся из виду, пока выбираешь демонов дальше по списку.
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         ContainerHeader(container)
+
+        // Размер буфера и его заполнение — сверху, закреплено: видно, сколько места остаётся, пока выбираешь демонов ниже по списку.
+        // Ячейки заполняются кодами выбранных демонов в порядке выбора.
+        val pickedCodes = chosen.mapNotNull { id -> daemons.find { it.id == id } }.flatMap { it.sequence }
+        BufferPanel(codes = pickedCodes, size = identity.ramCapacity, topPadding = 4.dp, hint = if (overBudget) " — снимите демон" else "")
+        Spacer(Modifier.height(10.dp))
 
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
             DaemonPicker(
@@ -150,13 +156,7 @@ internal fun BreachContainerFlow(container: Container, daemons: List<Daemon>, id
             )
         }
 
-        Text(
-            "Буфер: $used / ${identity.ramCapacity}" + if (overBudget) " — снимите демон" else "",
-            color = if (overBudget) MB10Colors.accentDanger else MB10Colors.inkSecondary,
-            fontFamily = JetBrainsMono,
-            fontSize = 11.sp,
-            modifier = Modifier.padding(top = 10.dp, bottom = 14.dp)
-        )
+        Spacer(Modifier.height(14.dp))
 
         Box(
             modifier = Modifier
@@ -447,27 +447,8 @@ private fun BreachSession(
             )
         }
 
-        // Буфер — над матрицей: игрок должен видеть свой выбор, не листая экран вниз. Ячейки равной ширины на всю строку,
-        // при большом буфере (RAM до 13) — в две строки, иначе фиксированные ячейки не влезали и последняя сжималась.
-        FlagTab("буфер ${attempt.selected.size}/${attempt.bufferSize}", modifier = Modifier.padding(top = 14.dp))
-        PanelBox {
-            val codes = attempt.bufferCodes
-            val perRow = if (attempt.bufferSize <= 8) attempt.bufferSize else (attempt.bufferSize + 1) / 2
-            for (start in 0 until attempt.bufferSize step perRow) {
-                Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.padding(bottom = if (start + perRow < attempt.bufferSize) 5.dp else 0.dp)) {
-                    for (i in start until start + perRow) {
-                        if (i >= attempt.bufferSize) { Spacer(Modifier.weight(1f)); continue }
-                        val filled = i < codes.size
-                        Box(
-                            Modifier.weight(1f).height(30.dp).border(1.dp, if (filled) MB10Colors.inkPrimary else MB10Colors.borderMuted),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(if (filled) codes[i] else "", color = MB10Colors.inkPrimary, fontFamily = JetBrainsMono, fontSize = 12.sp)
-                        }
-                    }
-                }
-            }
-        }
+        // Буфер — над матрицей: игрок должен видеть свой выбор, не листая экран вниз.
+        BufferPanel(codes = attempt.bufferCodes, size = attempt.bufferSize)
 
         FlagTab("код-матрица", modifier = Modifier.padding(top = 14.dp))
         PanelBox(modifier = Modifier.offset { IntOffset(shake.value.roundToInt(), 0) }) {
@@ -729,6 +710,34 @@ private fun BootLog(breachId: String, bufferSize: Int) {
                 color = if (i == lines.lastIndex) MB10Colors.accentNetrun else MB10Colors.inkSecondary,
                 fontFamily = JetBrainsMono, fontSize = 12.sp, modifier = Modifier.padding(vertical = 3.dp)
             )
+        }
+    }
+}
+
+
+/**
+ * Буфер: ряд ячеек, которые заполняются кодами. Один и тот же компонент на экране выбора демонов (там ячейки заполняют коды выбранных
+ * демонов) и на экране взлома (там — выбранные клетки сетки). Ячейки равной ширины на всю строку, при большом буфере (RAM до 13) —
+ * в две строки, иначе фиксированные ячейки не влезали и последняя сжималась.
+ */
+@Composable
+private fun BufferPanel(codes: List<String>, size: Int, topPadding: Dp = 14.dp, hint: String = "") {
+    FlagTab("буфер ${codes.size}/$size$hint", modifier = Modifier.padding(top = topPadding))
+    PanelBox {
+        val perRow = if (size <= 8) size else (size + 1) / 2
+        for (start in 0 until size step perRow) {
+            Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.padding(bottom = if (start + perRow < size) 5.dp else 0.dp)) {
+                for (i in start until start + perRow) {
+                    if (i >= size) { Spacer(Modifier.weight(1f)); continue }
+                    val filled = i < codes.size
+                    Box(
+                        Modifier.weight(1f).height(30.dp).border(1.dp, if (filled) MB10Colors.inkPrimary else MB10Colors.borderMuted),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(if (filled) codes[i] else "", color = MB10Colors.inkPrimary, fontFamily = JetBrainsMono, fontSize = 12.sp)
+                    }
+                }
+            }
         }
     }
 }
