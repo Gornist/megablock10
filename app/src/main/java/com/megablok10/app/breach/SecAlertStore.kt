@@ -13,7 +13,10 @@ import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 
 /**
@@ -26,6 +29,7 @@ import org.json.JSONObject
  * видимых пиров, пока не истечёт ttl.
  */
 object SecAlertStore {
+    private const val FLUSH_TICK_MS = 15_000L
     private const val AGG_WINDOW_MS = 15 * 60_000L
     private const val TTL_MS = 30 * 60_000L
     private const val SYSTEM_PUBKEY = "SEC-SYSTEM"
@@ -35,11 +39,24 @@ object SecAlertStore {
     private val aggregation = ConcurrentHashMap<String, AggState>()
     private data class AggState(var lastFullSentAt: Long = 0, var suppressed: Int = 0)
 
+    /**
+     * Сброс очереди — по изменению списка пиров И по таймеру: раньше только по первому, и отложенный
+     * сигнал (задержка 2+ минуты по тиру/TIMESKEW) при стабильном списке пиров не уходил вообще,
+     * пока не истекал ttl. Найдено на живом прогоне на двух эмуляторах.
+     */
     fun start(context: Context, scope: CoroutineScope) {
         scope.launch {
             PresenceService.peers.collect { flush(context) }
         }
+        scope.launch {
+            while (true) {
+                delay(FLUSH_TICK_MS)
+                flush(context)
+            }
+        }
     }
+
+    private val flushMutex = Mutex()
 
     /** Что решено про конкретный взлом — результат [decide], ещё без привязки к Context/БД. */
     data class AlertPlan(val sendAt: Long, val revealCallsign: Boolean, val revealPreciseTime: Boolean)
@@ -106,7 +123,7 @@ object SecAlertStore {
         flush(context)
     }
 
-    suspend fun flush(context: Context) {
+    suspend fun flush(context: Context) = flushMutex.withLock {
         val dao = Mb10Database.get(context).pendingAlertDao()
         val now = System.currentTimeMillis()
         dao.deleteExpired(now)
