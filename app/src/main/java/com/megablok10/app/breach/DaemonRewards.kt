@@ -32,7 +32,8 @@ object DaemonRewards {
             return RewardOutcome(0, emptyList(), emptyList(), cacheExhausted = false, matchedEffects = matchedEffects)
         }
 
-        val eddies = ContainerEddies.roll(container.tier)
+        val eddies = ContainerEddies.roll(container.tier) +
+            if (DaemonEffect.MINER in matchedEffects) ContainerEddies.minerBonus(container.tier) else 0L
         TransactionStore.creditContainerEddies(context, attemptId, eddies, container.name)
 
         val claimedThisAttempt = mutableSetOf<Int>()

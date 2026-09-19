@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,10 +38,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.chat.ChatStore
 import com.megablok10.app.data.ChatMessageEntity
+import com.megablok10.app.data.ItemTransferEntity
 import com.megablok10.app.data.TransactionEntity
 import com.megablok10.app.data.TransactionStatus
 import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.identity.Identity
+import com.megablok10.app.items.ItemPayload
+import com.megablok10.app.items.ItemTransferStore
+import com.megablok10.app.breach.label
+import com.megablok10.app.qr.ItemKind
 import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
@@ -208,6 +214,7 @@ private fun DirectThread(identity: Identity, peerPubKeyB64: String, onBack: () -
     val contacts by ContactStore.observeAll(context).collectAsState(initial = emptyList())
     val onlinePeers by PresenceService.peers.collectAsState()
     val transactions by TransactionStore.observeAll(context).collectAsState(initial = emptyList())
+    val itemTransfers by ItemTransferStore.observeAll(context).collectAsState(initial = emptyList())
 
     val contact = contacts.find { it.publicKeyB64 == peerPubKeyB64 }
     val peer = onlinePeers.find { it.pubKeyB64 == peerPubKeyB64 }
@@ -225,6 +232,7 @@ private fun DirectThread(identity: Identity, peerPubKeyB64: String, onBack: () -
                 val decoded = Mb10QrCodec.decode(msg.body)
                 if (decoded is Mb10Qr.Receipt) {
                     TransactionStore.verifyAndConfirmReceipt(context, decoded.id, decoded)
+                    ItemTransferStore.verifyAndConfirmReceipt(context, decoded.id, decoded)
                 }
             }
         }
@@ -250,6 +258,15 @@ private fun DirectThread(identity: Identity, peerPubKeyB64: String, onBack: () -
             showSender = false,
             emptyText = "Пока нет сообщений с ${contact?.callsign ?: "этим контактом"}.",
             transactions = transactions,
+            itemTransfers = itemTransfers,
+            onAcceptItem = { card ->
+                scope.launch {
+                    if (ItemTransferStore.acceptIncoming(context, identity.publicKeyB64, card)) {
+                        val receipt = ItemTransferStore.buildReceipt(context, identity, card.id)
+                        ChatStore.sendDirect(context, identity, card.fromPubKeyB64, peer, Mb10QrCodec.encodeReceipt(receipt))
+                    }
+                }
+            },
             onAcceptTransaction = { tx ->
                 scope.launch {
                     val credited = TransactionStore.recordIncoming(context, identity.publicKeyB64, tx)
@@ -360,6 +377,7 @@ private fun dayLabel(day: Calendar, today: Calendar): String {
 /** Тело перевода/чека в теле сообщения — та же строка, что раньше шла в QR-картинку. В превью инбокса это должен быть человеческий текст, а не сырая строка вида "MB10:TX:v1:...". */
 private fun previewBody(body: String): String = when (val decoded = Mb10QrCodec.decode(body)) {
     is Mb10Qr.Transaction -> "Перевод ${decoded.amount} €$" + if (decoded.memo.isNotBlank()) " · ${decoded.memo}" else ""
+    is Mb10Qr.ItemTransfer -> "Передача: «" + (ItemPayload.decodeShard(decoded.payload)?.title ?: ItemPayload.decodeDaemon(decoded.payload)?.name ?: "предмет") + "»"
     is Mb10Qr.Receipt -> "Платёж подтверждён"
     is Mb10Qr.SecurityAlert -> "Тревога! · «${decoded.containerName}»"
     else -> body
@@ -372,6 +390,8 @@ private fun ColumnScope.MessageList(
     showSender: Boolean,
     emptyText: String,
     transactions: List<TransactionEntity> = emptyList(),
+    itemTransfers: List<ItemTransferEntity> = emptyList(),
+    onAcceptItem: ((Mb10Qr.ItemTransfer) -> Unit)? = null,
     onAcceptTransaction: ((Mb10Qr.Transaction) -> Unit)? = null
 ) {
     if (messages.isEmpty()) {
@@ -381,7 +401,20 @@ private fun ColumnScope.MessageList(
         return
     }
     val entries = remember(messages) { buildChatEntries(messages) }
-    LazyColumn(modifier = Modifier.weight(1f)) {
+    // Экран должен показывать конец переписки: при открытии — сразу низ, при новых сообщениях — плавно вниз, если читатель и так был у низа
+    // (иначе он листает историю, и мы его не дёргаем). Раньше список всегда стартовал сверху, и свежая карточка перевода оказывалась за краем экрана.
+    val listState = rememberLazyListState()
+    var firstScrollDone by remember { mutableStateOf(false) }
+    LaunchedEffect(entries.size) {
+        if (entries.isEmpty()) return@LaunchedEffect
+        val info = listState.layoutInfo
+        val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+        val atBottom = lastVisible >= info.totalItemsCount - 2
+        if (!firstScrollDone) listState.scrollToItem(entries.lastIndex)
+        else if (atBottom) listState.animateScrollToItem(entries.lastIndex)
+        firstScrollDone = true
+    }
+    LazyColumn(state = listState, modifier = Modifier.weight(1f)) {
         items(entries) { entry ->
             when (entry) {
                 is ChatEntry.DaySeparator -> DaySeparatorLabel(entry.label)
@@ -390,6 +423,8 @@ private fun ColumnScope.MessageList(
                     self = entry.message.fromPubKeyB64 == myPubKey,
                     showSender = showSender,
                     transactions = transactions,
+                    itemTransfers = itemTransfers,
+                    onAcceptItem = onAcceptItem,
                     onAcceptTransaction = onAcceptTransaction
                 )
             }
@@ -455,6 +490,8 @@ private fun MessageBubble(
     self: Boolean,
     showSender: Boolean,
     transactions: List<TransactionEntity> = emptyList(),
+    itemTransfers: List<ItemTransferEntity> = emptyList(),
+    onAcceptItem: ((Mb10Qr.ItemTransfer) -> Unit)? = null,
     onAcceptTransaction: ((Mb10Qr.Transaction) -> Unit)? = null
 ) {
     val decoded = remember(msg.body) { Mb10QrCodec.decode(msg.body) }
@@ -465,6 +502,13 @@ private fun MessageBubble(
             senderCallsign = msg.fromCallsign,
             status = transactions.find { it.id == decoded.id }?.status,
             onAccept = if (self) null else { { onAcceptTransaction?.invoke(decoded) } }
+        )
+        is Mb10Qr.ItemTransfer -> ItemTransferBubble(
+            card = decoded,
+            self = self,
+            senderCallsign = msg.fromCallsign,
+            record = itemTransfers.find { it.id == decoded.id },
+            onAccept = if (self) null else { { onAcceptItem?.invoke(decoded) } }
         )
         is Mb10Qr.Receipt -> ReceiptLine()
         is Mb10Qr.SecurityAlert -> SecurityAlertBubble(decoded)
@@ -562,6 +606,66 @@ private fun PaymentBubble(
                         tone = if (status == TransactionStatus.CONFIRMED) ChipTone.Action else ChipTone.Neutral
                     )
                     status == null -> AppButton("Принять", variant = ButtonVariant.Primary, modifier = Modifier.fillMaxWidth(), onClick = { onAccept?.invoke() })
+                    else -> StatusChip("принято", tone = ChipTone.Action)
+                }
+            }
+        }
+    }
+}
+
+/** Карточка передачи шарда/демона — тот же вид и те же статусы, что у платёжной (PaymentBubble). */
+@Composable
+private fun ItemTransferBubble(
+    card: Mb10Qr.ItemTransfer,
+    self: Boolean,
+    senderCallsign: String,
+    record: ItemTransferEntity?,
+    onAccept: (() -> Unit)?
+) {
+    val shard = remember(card.payload) { if (card.kind == ItemKind.SHARD) ItemPayload.decodeShard(card.payload) else null }
+    val daemon = remember(card.payload) { if (card.kind == ItemKind.DAEMON) ItemPayload.decodeDaemon(card.payload) else null }
+    val title = shard?.title ?: daemon?.name ?: "предмет"
+    val details = when {
+        shard != null -> "Шард · тир ${shard.tier}" + if (shard.decryptAction && !shard.decrypted) " · зашифрован" else ""
+        daemon != null -> "Демон · тир ${daemon.tier.level} · ${daemon.effect.label()}"
+        else -> ""
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+        horizontalArrangement = if (self) Arrangement.End else Arrangement.Start
+    ) {
+        ChamferedSurface(
+            borderColor = MB10Colors.accentNetrun,
+            fillColor = MB10Colors.surfaceSunken,
+            cut = 8.dp,
+            contentPadding = 12.dp,
+            modifier = Modifier.widthIn(max = 280.dp)
+        ) {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    HexBullet(MB10Colors.accentNetrun, size = 8.dp)
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        if (self) "Передача отправлена" else "Передача от $senderCallsign",
+                        color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                Text("«$title»", color = MB10Colors.inkPrimary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Spacer(Modifier.height(2.dp))
+                Text(details, color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 12.sp)
+                Spacer(Modifier.height(8.dp))
+                when {
+                    self -> StatusChip(
+                        when (record?.status) {
+                            TransactionStatus.CONFIRMED -> "принято"
+                            TransactionStatus.DELIVERED -> "доставлено, ждёт принятия"
+                            null -> "отменено"
+                            else -> "не доставлено"
+                        },
+                        tone = if (record?.status == TransactionStatus.CONFIRMED) ChipTone.Action else ChipTone.Neutral
+                    )
+                    record == null -> AppButton("Принять", variant = ButtonVariant.Primary, modifier = Modifier.fillMaxWidth(), onClick = { onAccept?.invoke() })
                     else -> StatusChip("принято", tone = ChipTone.Action)
                 }
             }

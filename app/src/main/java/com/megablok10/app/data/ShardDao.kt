@@ -15,6 +15,12 @@ interface ShardDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(shard: ShardEntity)
 
+    @Query("SELECT * FROM shards WHERE id = :id")
+    suspend fun get(id: String): ShardEntity?
+
+    @Query("DELETE FROM shards WHERE id = :id")
+    suspend fun delete(id: String)
+
     @Query("UPDATE shards SET decrypted = 1 WHERE id = :id")
     suspend fun markDecrypted(id: String)
 }

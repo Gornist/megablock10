@@ -17,7 +17,11 @@ enum class DaemonEffect {
     /** Сигнал SEC для этой попытки не отправляется вовсе. */
     BLACKOUT,
     /** +15 секунд к таймеру текущей попытки. */
-    JITTER
+    JITTER,
+    /** Дешифратор: без демона с этим эффектом (тира не ниже тира шарда) мини-игра расшифровки шарда не запускается. */
+    DECRYPT,
+    /** Майнер: успешный взлом контейнера приносит дополнительные эдди (см. ContainerEddies.minerBonus). */
+    MINER
 }
 
 fun DaemonEffect.label(): String = when (this) {
@@ -27,4 +31,6 @@ fun DaemonEffect.label(): String = when (this) {
     DaemonEffect.TIMESKEW -> "+10 мин к задержке сигнала СБ"
     DaemonEffect.BLACKOUT -> "сигнал СБ не отправляется"
     DaemonEffect.JITTER -> "+15 сек к таймеру попытки"
+    DaemonEffect.DECRYPT -> "расшифровывает зашифрованные шарды"
+    DaemonEffect.MINER -> "добывает эдди из взломанного узла"
 }

@@ -43,7 +43,7 @@ object DaemonStore {
     }
 
     /** Демон, извлечённый из слота лута (см. DaemonRewards) — id детерминирован от slotRef, повторное извлечение того же слота не плодит дубликат в коллекции. */
-    suspend fun grant(context: Context, id: String, loot: LootCodec.Loot.DaemonLoot, sourceRef: String) {
+    suspend fun grant(context: Context, id: String, loot: LootCodec.Loot.DaemonLoot, sourceRef: String, reason: String = ChangeReason.BREACH_LOOT) {
         Mb10Database.get(context).daemonDao().upsert(
             DaemonEntity(id = id, name = loot.name, sequence = loot.sequence.joinToString(","), tier = loot.tier.level, effect = loot.effect.name)
         )
@@ -56,6 +56,12 @@ object DaemonStore {
             .put("weight", loot.sequence.size)
             .put("acquiredAt", System.currentTimeMillis())
             .put("sourceRef", sourceRef)
-        ChangeRecordStore.enqueue(context, ChangeField.DAEMONS_ADD, null, entry.toString(), ChangeReason.BREACH_LOOT, sourceRef)
+        ChangeRecordStore.enqueue(context, ChangeField.DAEMONS_ADD, null, entry.toString(), reason, sourceRef)
+    }
+
+    /** Убирает демона из коллекции (передача другому игроку) и сообщает об этом дашборду. */
+    suspend fun remove(context: Context, id: String, reason: String, sourceRef: String) {
+        Mb10Database.get(context).daemonDao().delete(id)
+        ChangeRecordStore.enqueue(context, ChangeField.DAEMONS_REMOVE, null, JSONObject().put("daemonId", id).toString(), reason, sourceRef)
     }
 }

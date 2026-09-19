@@ -330,7 +330,7 @@ private fun BreachSession(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     // Вступительный «вход в узел» — только в живой игре: автосолвер (debug-прогоны) стартует сразу.
-    var booted by remember(seed) { mutableStateOf(DebugConfig.autoSolve) }
+    var booted by remember(seed) { mutableStateOf(DebugConfig.autoSolve && DebugConfig.autoSolveStepMs == 0L) }
     val shake = remember(seed) { Animatable(0f) }
     // Реплика защиты узла (см. IceLines) — одна строка над сеткой, обновляется по событиям взлома.
     var iceLine by remember(seed) { mutableStateOf<String?>(null) }
@@ -357,7 +357,18 @@ private fun BreachSession(
             ice(IceEvent.INTRO)
         }
         if (DebugConfig.autoSolve) {
-            for (cell in BreachAutoSolver.solve(attempt)) attempt = attempt.select(cell)
+            val step = DebugConfig.autoSolveStepMs
+            for (cell in BreachAutoSolver.solve(attempt)) {
+                if (step > 0) {
+                    delay(step)
+                    val next = attempt.select(cell)
+                    val hitTrap = cell in attempt.grid.trapCells
+                    val matched = next.matchedDaemonIds.size > attempt.matchedDaemonIds.size
+                    attempt = next
+                    BreachSfx.play(context, if (hitTrap) BreachCue.TRAP else if (matched) BreachCue.MATCH else BreachCue.TAP)
+                    if (matched) ice(IceEvent.MATCH)
+                } else attempt = attempt.select(cell)
+            }
             if (attempt.selected.isNotEmpty()) resolveOnce()
         }
         while (secondsLeft > 0 && !attempt.isFull && result == null) {

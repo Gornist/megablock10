@@ -13,6 +13,8 @@ const DAEMON_EFFECTS = [
   { value: "TIMESKEW", label: "+10 мин к задержке сигнала СБ" },
   { value: "BLACKOUT", label: "сигнал СБ не отправляется" },
   { value: "JITTER", label: "+15 сек к таймеру попытки" },
+  { value: "DECRYPT", label: "расшифровывает зашифрованные шарды" },
+  { value: "MINER", label: "добывает эдди из взломанного узла" },
 ];
 
 interface SlotDraft {

@@ -66,6 +66,10 @@ for s in $A $B; do
   [ -s "$E2E_DIR/pk_$s.txt" ] || die "не получил публичный ключ $s"
 done
 
+# Игроки знают друг друга (как после обмена QR-контактами) — иначе в чате «Неизвестный контакт».
+dbg $A DEBUG_SET --es contact "$(cat "$E2E_DIR/pk_$B.txt"):Bob:Rats"
+dbg $B DEBUG_SET --es contact "$(cat "$E2E_DIR/pk_$A.txt"):Alice:Neon"
+
 # 5. Связь пиров и проверка, что оба на дашборде
 "$(dirname "$0")/link.sh" || die "link.sh"
 wait_until 60 bash -c "source '$(dirname "$0")/lib.sh'; [ \"\$(api GET /api/players | jq_ 'len(d)')\" -ge 2 ]" \

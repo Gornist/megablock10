@@ -37,6 +37,8 @@ import com.megablok10.app.breach.BreachContainerFlow
 import com.megablok10.app.breach.CodePill
 import com.megablok10.app.breach.Container
 import com.megablok10.app.breach.ContainerCooldownStore
+import com.megablok10.app.breach.DecryptRules
+import com.megablok10.app.items.ItemTransferStore
 import com.megablok10.app.breach.Daemon
 import com.megablok10.app.breach.DaemonRewards
 import com.megablok10.app.breach.DaemonStore
@@ -56,6 +58,7 @@ import com.megablok10.app.shards.ShardStore
 import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.ButtonVariant
 import com.megablok10.app.ui.theme.ChamferedSurface
+import com.megablok10.app.ui.theme.CompactActionButton
 import com.megablok10.app.ui.theme.EmptyState
 import com.megablok10.app.ui.theme.HexBullet
 import com.megablok10.app.ui.theme.IBMPlexSans
@@ -87,6 +90,9 @@ fun CyberdeckScreen(identity: Identity, onNestedChange: (Boolean) -> Unit = {}) 
     var openedShard by remember { mutableStateOf<Mb10Qr.Shard?>(null) }
     var decryptingShard by remember { mutableStateOf<Mb10Qr.Shard?>(null) }
     var scanIssue by remember { mutableStateOf<ScanIssue?>(null) }
+    // Что сейчас передаём другому игроку (шард или демон) — до выбора получателя в диалоге.
+    var transferShard by remember { mutableStateOf<Mb10Qr.Shard?>(null) }
+    var transferDaemon by remember { mutableStateOf<Daemon?>(null) }
 
     // Деталь шарда и мини-взлом — полноэкранные, со своим back-заголовком; шапка приложения над ними была бы дублем.
     LaunchedEffect(openedShard, decryptingShard) { onNestedChange(openedShard != null || decryptingShard != null) }
@@ -159,10 +165,40 @@ fun CyberdeckScreen(identity: Identity, onNestedChange: (Boolean) -> Unit = {}) 
         return
     }
 
+    fun sendTo(contact: Mb10Qr.Contact) {
+        val shard = transferShard
+        val daemon = transferDaemon
+        transferShard = null
+        transferDaemon = null
+        scope.launch {
+            val card = when {
+                shard != null -> ItemTransferStore.sendShard(context, identity, shard.id, contact.publicKeyB64)
+                daemon != null -> ItemTransferStore.sendDaemon(context, identity, daemon, contact.publicKeyB64)
+                else -> null
+            }
+            if (card == null) {
+                Toast.makeText(context, "Не удалось передать", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            ItemTransferStore.deliver(context, identity, card, contact.publicKeyB64)
+            openedShard = null
+            Toast.makeText(context, "Передача отправлена: ${contact.callsign}", Toast.LENGTH_SHORT).show()
+        }
+    }
+    if (transferShard != null || transferDaemon != null) {
+        ContactPickerDialog(
+            title = "Кому передать «${transferShard?.title ?: transferDaemon?.name}»?",
+            onPick = ::sendTo,
+            onDismiss = { transferShard = null; transferDaemon = null }
+        )
+    }
+
     val opened = openedShard
     if (opened != null) {
         ShardDetailOverlay(
             shard = opened,
+            decrypter = DecryptRules.bestDecrypter(daemons, opened.tier),
+            onTransfer = { transferShard = opened },
             onClose = { openedShard = null },
             // "Расшифровать" — открывает мини-взлом этого конкретного шарда
             // (ShardDecryptFlow), а не общий сегмент "Демоны".
@@ -184,7 +220,7 @@ fun CyberdeckScreen(identity: Identity, onNestedChange: (Boolean) -> Unit = {}) 
 
         Box(Modifier.weight(1f)) {
             if (segment == 0) {
-                DemonsSegment(daemons = daemons, identity = identity, container = container, onRescan = { container = null })
+                DemonsSegment(daemons = daemons, identity = identity, container = container, onRescan = { container = null }, onTransfer = { transferDaemon = it })
             } else {
                 ShardsSegment(shards = shards, onOpen = { openedShard = it })
             }
@@ -193,7 +229,7 @@ fun CyberdeckScreen(identity: Identity, onNestedChange: (Boolean) -> Unit = {}) 
 }
 
 @Composable
-private fun DemonsSegment(daemons: List<Daemon>, identity: Identity, container: Container?, onRescan: () -> Unit) {
+private fun DemonsSegment(daemons: List<Daemon>, identity: Identity, container: Container?, onRescan: () -> Unit, onTransfer: (Daemon) -> Unit) {
     if (container != null) {
         BreachContainerFlow(container = container, daemons = daemons, identity = identity, onRescan = onRescan)
         return
@@ -207,7 +243,7 @@ private fun DemonsSegment(daemons: List<Daemon>, identity: Identity, container: 
     }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        daemons.forEach { daemon -> DaemonCard(daemon) }
+        daemons.forEach { daemon -> DaemonCard(daemon, onTransfer = if (ItemTransferStore.isTransferable(daemon)) { { onTransfer(daemon) } } else null) }
     }
 }
 
@@ -235,7 +271,7 @@ private fun cellsLabel(count: Int): String {
 
 /** Тот же визуальный паттерн строки, что у ShardCard — единый вид для обоих составных Кибердеки. */
 @Composable
-private fun DaemonCard(daemon: Daemon) {
+private fun DaemonCard(daemon: Daemon, onTransfer: (() -> Unit)?) {
     ChamferedSurface(
         borderColor = MB10Colors.borderMuted,
         fillColor = MB10Colors.surfaceRaised,
@@ -263,6 +299,10 @@ private fun DaemonCard(daemon: Daemon) {
                 "${daemon.effect.label()} · ${cellsLabel(daemon.sequence.size)}",
                 color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp
             )
+            if (onTransfer != null) {
+                Spacer(Modifier.height(8.dp))
+                CompactActionButton("Передать", onClick = onTransfer)
+            }
         }
     }
 }

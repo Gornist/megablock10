@@ -25,7 +25,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.megablok10.app.breach.DecryptRules
+import com.megablok10.app.breach.Daemon
 import com.megablok10.app.qr.Mb10Qr
+import com.megablok10.app.ui.theme.AppButton
+import com.megablok10.app.ui.theme.ButtonVariant
 import com.megablok10.app.ui.theme.ChamferedSurface
 import com.megablok10.app.ui.theme.HexBullet
 import com.megablok10.app.ui.theme.IBMPlexSans
@@ -101,7 +105,7 @@ private fun ShardMoneyRow(amount: Long) {
 }
 
 @Composable
-internal fun ShardDetailOverlay(shard: Mb10Qr.Shard, onClose: () -> Unit, onOpenHack: () -> Unit) {
+internal fun ShardDetailOverlay(shard: Mb10Qr.Shard, decrypter: Daemon?, onClose: () -> Unit, onOpenHack: () -> Unit, onTransfer: () -> Unit) {
     val badge = remember(shard) { resolveBadge(shard) }
     Column(Modifier.fillMaxSize().background(MB10Colors.surfaceBase).padding(16.dp)) {
         Row(
@@ -143,8 +147,14 @@ internal fun ShardDetailOverlay(shard: Mb10Qr.Shard, onClose: () -> Unit, onOpen
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
             if (locked) {
                 Text(
-                    "Содержимое зашифровано. Взломайте шифр-замок, чтобы прочитать.",
+                    if (decrypter != null) "Содержимое зашифровано. Дешифратор «${decrypter.name}» готов — взломайте шифр-замок, чтобы прочитать."
+                    else "Содержимое зашифровано. Нужен демон-дешифратор тира ${shard.tier} или выше — в вашей коллекции такого нет.",
                     color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 12.sp, lineHeight = 18.sp
+                )
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    DecryptRules.garble(shard.body, shard.id.hashCode().toLong()),
+                    color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 12.sp, lineHeight = 18.sp
                 )
             } else {
                 Text(shard.body, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 14.sp, lineHeight = 21.sp)
@@ -153,20 +163,24 @@ internal fun ShardDetailOverlay(shard: Mb10Qr.Shard, onClose: () -> Unit, onOpen
         }
 
         if (locked) {
+            val enabled = decrypter != null
+            val color = if (enabled) MB10Colors.accentNetrun else MB10Colors.inkTertiary
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.dp, MB10Colors.accentNetrun, chamferShape(6.dp))
-                    .clickable(onClick = onOpenHack)
+                    .border(1.dp, color, chamferShape(6.dp))
+                    .clickable(enabled = enabled, onClick = onOpenHack)
                     .padding(vertical = 10.dp)
             ) {
                 Text(
-                    "Расшифровать",
-                    color = MB10Colors.accentNetrun, fontFamily = JetBrainsMono, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                    if (enabled) "Расшифровать" else "Расшифровать (нужен дешифратор)",
+                    color = color, fontFamily = JetBrainsMono, fontSize = 12.sp, fontWeight = FontWeight.Medium,
                     textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
                 )
             }
+            Spacer(Modifier.height(8.dp))
         }
+        AppButton("Передать другому игроку", modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.Secondary, onClick = onTransfer)
     }
 }
 

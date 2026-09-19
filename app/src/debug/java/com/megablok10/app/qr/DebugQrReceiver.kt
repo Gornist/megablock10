@@ -14,10 +14,15 @@ import com.megablok10.app.collector.ChangeReason
 import com.megablok10.app.collector.ChangeRecordStore
 import com.megablok10.app.collector.CollectorSettings
 import com.megablok10.app.data.Mb10Database
+import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.identity.IdentityManager
+import com.megablok10.app.items.ItemTransferStore
 import com.megablok10.app.presence.PeerInfo
 import com.megablok10.app.presence.PresenceService
+import com.megablok10.app.chat.ChatClient
+import com.megablok10.app.chat.ChatMessageType
 import com.megablok10.app.chat.ChatStore
+import com.megablok10.app.chat.ChatWireMessage
 import com.megablok10.app.wallet.TransactionStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -28,7 +33,7 @@ import kotlinx.coroutines.launch
  *  - DEBUG_QR     --es qr <строка>                      подать QR-строку как скан
  *  - DEBUG_PEER   --es pk --es cs --es fac --es host --ei port   добавить пира без NSD
  *  - DEBUG_CONFIG --es clock <N> --es timer <N> --es autosolve true|false   см. DebugConfig
- *  - DEBUG_SET    --es create "Позывной:Фракция" / collector <url> / cs / fac / ram / balance / daemon "имя:1C,55:тир:ЭФФЕКТ" / pay "получатель:сумма:online|offline" / cancel <txId> / cooldowns reset
+ *  - DEBUG_SET    --es create "Позывной:Фракция" / collector <url> / cs / fac / ram / balance / daemon "имя:1C,55:тир:ЭФФЕКТ" / pay "получатель:сумма:online|offline" / contact "pk:позывной:фракция" / say "получатель|текст" / sayas "получатель|pk|позывной|фракция|текст" / give "daemon|shard:id:получатель[:offline]" / cancelitem <id> / cancel <txId> / cooldowns reset
  * Итог DEBUG_CONFIG / DEBUG_SET пишется в logcat с тегом MB10DBG; после смены
  * позывного/фракции/RAM экраны подхватят значения только после перезапуска приложения.
  */
@@ -46,6 +51,7 @@ class DebugQrReceiver : BroadcastReceiver() {
                 intent.getStringExtra("clock")?.toDoubleOrNull()?.let { DebugConfig.clockSpeed = it.coerceAtLeast(0.01) }
                 intent.getStringExtra("timer")?.toDoubleOrNull()?.let { DebugConfig.breachTimerFactor = it.coerceAtLeast(0.01) }
                 intent.getStringExtra("autosolve")?.let { DebugConfig.autoSolve = it.toBoolean() }
+                intent.getStringExtra("step")?.toLongOrNull()?.let { DebugConfig.autoSolveStepMs = it }
                 Log.i(TAG, "config clock=${DebugConfig.clockSpeed} timer=${DebugConfig.breachTimerFactor} autosolve=${DebugConfig.autoSolve}")
             }
             "com.megablok10.app.DEBUG_SET" -> {
@@ -101,6 +107,44 @@ class DebugQrReceiver : BroadcastReceiver() {
                 Log.i(TAG, "pay id=$id")
             } else Log.i(TAG, "pay rejected")
         }
+        // Сообщение от этого устройства: "получатель|текст" (DM) или "faction|текст" (фракционный чат). Для демо-записей.
+        intent.getStringExtra("say")?.let { spec ->
+            val me = IdentityManager.current(context) ?: return@let
+            val (to, text) = spec.split("|", limit = 2).let { it[0] to it.getOrElse(1) { "" } }
+            if (to == "faction") ChatStore.sendFaction(context, me, text)
+            else ChatStore.sendDirect(context, me, to, PresenceService.peers.value.find { it.pubKeyB64 == to }, text)
+        }
+        // Добавить контакт как после скана QR: "pubKeyB64:позывной:фракция" (ключ base64 без ':').
+        intent.getStringExtra("contact")?.let { spec ->
+            val p = spec.split(":")
+            if (p.size == 3) ContactStore.add(context, Mb10Qr.Contact(p[0], p[1], p[2]))
+        }
+        // Сообщение от чужого имени (демо «неизвестный контакт»): "получатель|pk-отправителя|позывной|фракция|текст". Чат не проверяет отправителя.
+        intent.getStringExtra("sayas")?.let { spec ->
+            val p = spec.split("|", limit = 5)
+            val peer = PresenceService.peers.value.find { it.pubKeyB64 == p[0] } ?: return@let
+            ChatClient.send(peer.host, peer.port, ChatWireMessage(ChatMessageType.DM, p[1], p[2], p[3], p[0], System.currentTimeMillis(), p[4]))
+        }
+        // Передача предмета как из интерфейса: "daemon|shard:идентификатор:получатель[:offline]". Пишет "give id=<id>" в logcat.
+        intent.getStringExtra("give")?.let { spec ->
+            val p = spec.split(":", limit = 3)
+            val me = IdentityManager.current(context) ?: return@let
+            val rest = p[2].split(":")
+            val to = rest[0]
+            val offline = rest.getOrNull(1) == "offline"
+            val card = when (p[0]) {
+                "shard" -> ItemTransferStore.sendShard(context, me, p[1], to)
+                else -> Mb10Database.get(context).daemonDao().get(p[1])?.let {
+                    ItemTransferStore.sendDaemon(context, me, com.megablok10.app.breach.Daemon(it.id, it.name, it.sequence.split(","), Tier.fromLevel(it.tier), DaemonEffect.valueOf(it.effect)), to)
+                }
+            }
+            if (card == null) Log.i(TAG, "give rejected") else {
+                if (offline) ItemTransferStore.deliverOutgoing(context, card.id, willSend = false) { false }
+                else ItemTransferStore.deliver(context, me, card, to)
+                Log.i(TAG, "give id=${card.id}")
+            }
+        }
+        intent.getStringExtra("cancelitem")?.let { Log.i(TAG, "cancelitem $it -> ${ItemTransferStore.cancelOutgoing(context, it)}") }
         intent.getStringExtra("cancel")?.let { Log.i(TAG, "cancel ${it} -> ${TransactionStore.cancelOutgoing(context, it)}") }
         if (intent.getStringExtra("cooldowns") == "reset") Mb10Database.get(context).containerBreachDao().deleteAll()
         Log.i(TAG, "set applied: ${IdentityManager.current(context)}")

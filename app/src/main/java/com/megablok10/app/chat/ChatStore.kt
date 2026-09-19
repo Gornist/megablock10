@@ -9,6 +9,7 @@ import com.megablok10.app.identity.Identity
 import com.megablok10.app.call.CallManager
 import com.megablok10.app.presence.PeerInfo
 import com.megablok10.app.presence.PresenceService
+import com.megablok10.app.items.ItemTransferStore
 import com.megablok10.app.sound.SoundPlayer
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
@@ -124,7 +125,9 @@ object ChatStore {
     private suspend fun confirmIfReceipt(context: Context, message: ChatWireMessage) {
         if (message.type != ChatMessageType.DM) return
         val receipt = Mb10QrCodec.decode(message.body) as? Mb10Qr.Receipt ?: return
+        // Один и тот же чек подтверждает и деньги, и передачу предмета: id из разных журналов не пересекаются.
         TransactionStore.verifyAndConfirmReceipt(context, receipt.id, receipt)
+        ItemTransferStore.verifyAndConfirmReceipt(context, receipt.id, receipt)
     }
 
     private suspend fun persist(context: Context, message: ChatWireMessage) {

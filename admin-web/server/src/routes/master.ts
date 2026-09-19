@@ -44,7 +44,7 @@ interface ContainerBody {
  */
 const SAFE_ID = /^[A-Za-z0-9_.-]{1,64}$/;
 
-const DAEMON_EFFECTS = new Set(["EXTRACT_SHARD", "EXTRACT_DAEMON", "GHOST", "TIMESKEW", "BLACKOUT", "JITTER"]);
+const DAEMON_EFFECTS = new Set(["EXTRACT_SHARD", "EXTRACT_DAEMON", "GHOST", "TIMESKEW", "BLACKOUT", "JITTER", "DECRYPT", "MINER"]);
 /** Коды демона склеиваются через ',' внутри LootCodec ("|"-формат) — символы-разделители в коде ломают разбор на телефоне. */
 const SAFE_CODE = /^[A-Za-z0-9]{1,8}$/;
 

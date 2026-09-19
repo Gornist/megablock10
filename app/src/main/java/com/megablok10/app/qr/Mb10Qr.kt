@@ -16,6 +16,8 @@ import java.util.Base64
  * а не пишется как есть между двоеточиями — иначе любой ":" внутри текста
  * автора QR-кода (мастера игры) сломал бы разбор.
  */
+enum class ItemKind { SHARD, DAEMON }
+
 sealed interface Mb10Qr {
     data class Contact(
         val publicKeyB64: String,
@@ -105,6 +107,19 @@ sealed interface Mb10Qr {
     ) : Mb10Qr
 
     /**
+     * Передача шарда или демона другому игроку — тот же протокол, что у денег (Transaction/Receipt):
+     * карточка в чате, «Принять» у получателя, чек в ответ, отмена только пока карточка не доставлена.
+     * payload — предмет целиком (см. ItemTransferStore.encodeShardPayload/encodeDaemonPayload), подписан отправителем.
+     */
+    data class ItemTransfer(
+        val id: String,
+        val fromPubKeyB64: String,
+        val kind: ItemKind,
+        val payload: String,
+        val signatureB64: String
+    ) : Mb10Qr
+
+    /**
      * Подтверждение получения — показывает получатель в ответ, отправитель
      * сканирует его, чтобы зафиксировать транзакцию (см. TransactionStore).
      * До этого момента отправитель ещё может отменить платёж и вернуть себе
@@ -134,6 +149,7 @@ object Mb10QrCodec {
                 "GRANT" -> decodeLootGrant(parts)
                 "SECALERT" -> decodeSecurityAlert(parts)
                 "TX" -> decodeTransaction(parts)
+                "ITEM" -> decodeItemTransfer(parts)
                 "RCPT" -> decodeReceipt(parts)
                 else -> null
             }
@@ -261,6 +277,19 @@ object Mb10QrCodec {
     /** Байты, которые подписывает плательщик и проверяет получатель — одна и та же формула по обе стороны. */
     fun transactionSignaturePayload(id: String, fromPubKeyB64: String, amount: Long, memo: String): ByteArray =
         "$id|$fromPubKeyB64|$amount|$memo".toByteArray(Charsets.UTF_8)
+
+    fun encodeItemTransfer(t: Mb10Qr.ItemTransfer): String =
+        "$MAGIC:ITEM:v1:${t.id}:${t.fromPubKeyB64}:${t.kind.name}:${b64(t.payload)}:${t.signatureB64}"
+
+    private fun decodeItemTransfer(parts: List<String>): Mb10Qr.ItemTransfer? {
+        if (parts.size < 8) return null
+        val kind = ItemKind.entries.find { it.name == parts[5] } ?: return null
+        return Mb10Qr.ItemTransfer(id = parts[3], fromPubKeyB64 = parts[4], kind = kind, payload = unb64(parts[6]), signatureB64 = parts[7])
+    }
+
+    /** Байты, которые подписывает отправитель предмета и проверяет получатель. */
+    fun itemTransferSignaturePayload(id: String, fromPubKeyB64: String, kind: ItemKind, payload: String): ByteArray =
+        "$id|$fromPubKeyB64|${kind.name}|$payload".toByteArray(Charsets.UTF_8)
 
     fun encodeReceipt(receipt: Mb10Qr.Receipt): String =
         "$MAGIC:RCPT:v1:${receipt.id}:${receipt.receiverPubKeyB64}:${receipt.signatureB64}"

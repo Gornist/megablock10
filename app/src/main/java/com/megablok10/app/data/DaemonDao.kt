@@ -11,6 +11,12 @@ interface DaemonDao {
     @Query("SELECT * FROM daemons ORDER BY name")
     fun observeAll(): Flow<List<DaemonEntity>>
 
+    @Query("SELECT * FROM daemons WHERE id = :id")
+    suspend fun get(id: String): DaemonEntity?
+
+    @Query("DELETE FROM daemons WHERE id = :id")
+    suspend fun delete(id: String)
+
     @Query("SELECT COUNT(*) FROM daemons")
     suspend fun count(): Int
 

@@ -69,7 +69,9 @@ jq_() { python3 -c "import sys,json;d=json.load(sys.stdin);print($1)"; }
 # ── Debug-команды в приложение ──
 dbg() { # dbg <serial> <действие DEBUG_CONFIG|DEBUG_SET|DEBUG_QR|DEBUG_PEER> [--es k v ...]
   local s=$1 act=$2; shift 2
-  adb_ "$s" shell am broadcast -f 0x20 -n "$PKG/$PKG.qr.DebugQrReceiver" -a "$PKG.$act" "$@" >/dev/null
+  # adb shell склеивает аргументы в одну строку для удалённого sh — каждый значащий аргумент берём в одинарные кавычки (пробелы, «|»).
+  local q="" a; for a in "$@"; do q="$q '${a//\'/\'\\\'\'}'"; done
+  adb_ "$s" shell "am broadcast -f 0x20 -n $PKG/$PKG.qr.DebugQrReceiver -a $PKG.$act$q" >/dev/null
 }
 pk_of() { grep -h "set applied" <(adb_ "$1" logcat -d -s MB10DBG) | tail -1 | sed 's/.*publicKeyB64=\([^,]*\),.*/\1/'; }
 start_app() { adb_ "$1" shell am start -n "$PKG/.MainActivity" >/dev/null; }
@@ -144,3 +146,10 @@ server_start() {
 # tx_of <serial> — id последнего перевода, созданного командой pay (из logcat).
 tx_of() { adb_ "$1" logcat -d -s MB10DBG | grep "pay id=" | tail -1 | sed 's/.*pay id=//' | tr -d '\r'; }
 ram_of() { adb_ "$1" exec-out run-as $PKG cat shared_prefs/identity_prefs.xml | grep -o 'ram_capacity" value="[0-9]*' | grep -o '[0-9]*$'; }
+# item_of <serial> — id последней передачи предмета, созданной командой give (из logcat).
+item_of() { adb_ "$1" logcat -d -s MB10DBG | grep "give id=" | tail -1 | sed 's/.*give id=//' | tr -d '\r'; }
+# open_chat <serial> <позывной> — вкладка «Чат» → тред с контактом.
+open_chat() { tap_text "$1" "Чат" >/dev/null; sleep 1; tap_text "$1" "$2" >/dev/null; sleep 1.5; }
+
+# back_if_arrow <serial> — нажимает «←» только если она есть на экране (в треде): на списке чатов тап в этом углу открыл бы профиль.
+back_if_arrow() { dump_ui "$1"; tap_xml "$E2E_DIR/ui_$1.xml" "$1" "←" || true; }

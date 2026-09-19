@@ -15,6 +15,9 @@ object DebugConfig {
     /** Сетка решается сама, как только начался взлом. */
     @Volatile var autoSolve: Boolean = false
 
+    /** >0 — автосолвер жмёт клетки по одной с этой паузой (для демо-записи), 0 — решает мгновенно. */
+    @Volatile var autoSolveStepMs: Long = 0
+
     fun scaledMs(ms: Long): Long = if (clockSpeed == 1.0) ms else (ms / clockSpeed).toLong().coerceAtLeast(1)
 
     fun scaledTimerSec(sec: Int): Int = if (breachTimerFactor == 1.0) sec else (sec * breachTimerFactor).toInt().coerceAtLeast(1)

@@ -28,7 +28,14 @@ object ShardStore {
      * шард с decryptAction = true — заблокирован до успешного мини-взлома.
      */
     /** reason/sourceRef — откуда взялся шард для мастерского коллектора (§2.2 ТЗ): напрямую сканом или через grant() из контейнера. */
-    suspend fun add(context: Context, shard: Mb10Qr.Shard, reason: String = ChangeReason.SHARD_SCAN, sourceRef: String? = null) {
+    suspend fun add(
+        context: Context,
+        shard: Mb10Qr.Shard,
+        reason: String = ChangeReason.SHARD_SCAN,
+        sourceRef: String? = null,
+        creditMoney: Boolean = true,
+        decrypted: Boolean = !shard.decryptAction
+    ) {
         val acquiredAt = System.currentTimeMillis()
         Mb10Database.get(context).shardDao().upsert(
             ShardEntity(
@@ -41,16 +48,17 @@ object ShardStore {
                 body = shard.body,
                 scannedAt = acquiredAt,
                 moneyAmount = shard.moneyAmount,
-                decrypted = !shard.decryptAction
+                decrypted = decrypted
             )
         )
-        TransactionStore.creditShardMoney(context, shard.id, shard.moneyAmount, shard.title)
+        // Деньги внутри шарда зачисляются один раз — тому, кто его нашёл; при передаче другому игроку повторно их не начисляем.
+        if (creditMoney) TransactionStore.creditShardMoney(context, shard.id, shard.moneyAmount, shard.title)
 
         val entry = JSONObject()
             .put("shardId", shard.id)
             .put("title", shard.title)
             .put("tier", shard.tier.toString())
-            .put("decrypted", !shard.decryptAction)
+            .put("decrypted", decrypted)
             .put("acquiredAt", acquiredAt)
             .put("sourceRef", sourceRef)
         ChangeRecordStore.enqueue(context, ChangeField.SHARDS_ADD, null, entry.toString(), reason, sourceRef ?: shard.id)
@@ -73,6 +81,12 @@ object ShardStore {
             reason = ChangeReason.BREACH_LOOT,
             sourceRef = sourceRef
         )
+    }
+
+    /** Убирает шард из коллекции (передача другому игроку) и сообщает об этом дашборду. */
+    suspend fun remove(context: Context, id: String, reason: String, sourceRef: String) {
+        Mb10Database.get(context).shardDao().delete(id)
+        ChangeRecordStore.enqueue(context, ChangeField.SHARDS_REMOVE, null, JSONObject().put("shardId", id).toString(), reason, sourceRef)
     }
 
     suspend fun markDecrypted(context: Context, id: String) {

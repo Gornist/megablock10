@@ -98,3 +98,23 @@ test("GET /api/transfers — TRANSFER_CANCELLED помечает перевод 
   const snapshot = (await app.inject({ method: "GET", url: `/api/players/${encodeURIComponent(alice.publicKeyB64)}`, headers })).json();
   assert.equal(snapshot.snapshot?.balance ?? snapshot.balance, 50, "баланс на дашборде после отмены снова 50");
 });
+
+test("POST /api/changes — передача предмета: ITEM_TRANSFER_* принимаются, shards.remove убирает шард из снимка", async () => {
+  const db = testDb();
+  const app = testApp(db);
+  const headers = await auth(app, db);
+  const alice = testDevice();
+
+  const shard = { shardId: "shard:x#0", title: "Схемы", tier: "2", decrypted: false, acquiredAt: 1, sourceRef: "x#0" };
+  const add = alice.change({ field: "shards.add", oldValue: null, newValue: JSON.stringify(shard), reason: "BREACH_LOOT", sourceRef: "x#0" });
+  const out = alice.change({ field: "shards.remove", oldValue: null, newValue: JSON.stringify({ shardId: "shard:x#0" }), reason: "ITEM_TRANSFER_OUT", sourceRef: "item-1" });
+  const res = await app.inject({ method: "POST", url: "/api/changes", payload: { records: [add, out] } });
+  assert.equal(res.json().accepted.length, 2, "сервер должен знать причину ITEM_TRANSFER_OUT");
+
+  const snapshot = (await app.inject({ method: "GET", url: `/api/players/${encodeURIComponent(alice.publicKeyB64)}`, headers })).json();
+  assert.equal((snapshot.snapshot?.shards ?? snapshot.shards).length, 0, "после передачи шарда у отправителя не осталось");
+
+  const back = alice.change({ field: "shards.add", oldValue: null, newValue: JSON.stringify(shard), reason: "ITEM_TRANSFER_CANCELLED", sourceRef: "item-1" });
+  const res2 = await app.inject({ method: "POST", url: "/api/changes", payload: { records: [back] } });
+  assert.equal(res2.json().accepted.length, 1, "сервер должен знать причину ITEM_TRANSFER_CANCELLED");
+});
