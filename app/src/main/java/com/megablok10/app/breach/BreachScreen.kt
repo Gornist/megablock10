@@ -263,19 +263,12 @@ private fun DaemonPicker(daemons: List<Daemon>, chosen: Set<String>, remainingBu
         daemons.forEachIndexed { index, daemon ->
             val isChecked = daemon.id in chosen
             val fitsBuffer = isChecked || daemon.sequence.size <= remainingBuffer
-            val textColor = when {
-                isChecked -> MB10Colors.onAccent
-                !fitsBuffer -> MB10Colors.inkTertiary
-                else -> MB10Colors.inkPrimary
-            }
-            val effectColor = when {
-                isChecked -> MB10Colors.onAccent.copy(alpha = 0.8f)
-                !fitsBuffer -> MB10Colors.accentDanger.copy(alpha = 0.7f)
-                else -> MB10Colors.inkSecondary
-            }
+            val textColor = if (!fitsBuffer) MB10Colors.inkTertiary else MB10Colors.inkPrimary
+            val effectColor = if (!fitsBuffer) MB10Colors.accentDanger.copy(alpha = 0.7f) else MB10Colors.inkSecondary
+            // Выбранный демон — не заливка, а лаймовая грань (как у панели «Взлом завершён»); небольшой вертикальный зазор,
+            // чтобы рамки соседних выбранных карточек не слипались.
             ListRow(
-                selected = isChecked,
-                selectedColor = MB10Colors.accentNetrun,
+                modifier = if (isChecked) Modifier.padding(vertical = 3.dp).border(1.dp, MB10Colors.accentNetrun) else Modifier.padding(vertical = 3.dp),
                 horizontalInset = 12.dp,
                 onClick = if (fitsBuffer) ({ onToggle(daemon.id) }) else null
             ) {
@@ -287,14 +280,14 @@ private fun DaemonPicker(daemons: List<Daemon>, chosen: Set<String>, remainingBu
                     // Выбранный демон подписан в углу карточки: что он уже в буфере и сколько там занимает.
                     if (isChecked) {
                         Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 8.dp)) {
-                            Text("ЗАГРУЖЕНО В БУФЕР", color = MB10Colors.onAccent, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 9.sp)
-                            Text("занимает ${cellsLabel(daemon.sequence.size)}", color = MB10Colors.onAccent.copy(alpha = 0.8f), fontFamily = JetBrainsMono, fontSize = 9.sp)
+                            Text("ЗАГРУЖЕНО В БУФЕР", color = MB10Colors.accentNetrun, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 9.sp)
+                            Text("занимает ${cellsLabel(daemon.sequence.size)}", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 9.sp)
                         }
                     }
                 }
                 Text(if (fitsBuffer) daemon.effect.label() else "не влезает в буфер", color = effectColor, fontFamily = IBMPlexSans, fontSize = 11.sp)
                 Row(Modifier.padding(top = 4.dp)) {
-                    daemon.sequence.forEach { code -> CodePill(code) }
+                    daemon.sequence.forEach { code -> CodePill(code, highlight = isChecked) }
                 }
             }
             if (index != daemons.lastIndex) DottedDivider()
@@ -303,9 +296,9 @@ private fun DaemonPicker(daemons: List<Daemon>, chosen: Set<String>, remainingBu
 }
 
 @Composable
-internal fun CodePill(code: String) {
+internal fun CodePill(code: String, highlight: Boolean = false) {
     Box(Modifier.padding(end = 4.dp).background(MB10Colors.surfaceSunken, chamferShape(3.dp)).padding(horizontal = 5.dp, vertical = 2.dp)) {
-        Text(code, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+        Text(code, color = if (highlight) MB10Colors.accentNetrun else MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
     }
 }
 
