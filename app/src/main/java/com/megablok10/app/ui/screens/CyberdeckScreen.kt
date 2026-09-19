@@ -37,6 +37,7 @@ import com.megablok10.app.breach.BreachContainerFlow
 import com.megablok10.app.breach.CodePill
 import com.megablok10.app.breach.Container
 import com.megablok10.app.breach.ContainerCooldownStore
+import com.megablok10.app.breach.cellsLabel
 import com.megablok10.app.breach.DecryptRules
 import com.megablok10.app.items.ItemTransferStore
 import com.megablok10.app.breach.Daemon
@@ -254,19 +255,6 @@ private suspend fun emitBreachBlocked(context: android.content.Context, subjectK
         JSONObject().put("reason", reason).toString(),
         ChangeReason.BREACH_BLOCKED, sourceRef = containerId, subjectKeyB64 = subjectKeyB64,
     )
-}
-
-/** "N ячеек/ячейка/ячейки" с русским склонением — используется как цена демона в буфере взлома. */
-private fun cellsLabel(count: Int): String {
-    val mod100 = count % 100
-    val mod10 = count % 10
-    val word = when {
-        mod100 in 11..14 -> "ячеек"
-        mod10 == 1 -> "ячейка"
-        mod10 in 2..4 -> "ячейки"
-        else -> "ячеек"
-    }
-    return "$count $word"
 }
 
 /** Тот же визуальный паттерн строки, что у ShardCard — единый вид для обоих составных Кибердеки. */

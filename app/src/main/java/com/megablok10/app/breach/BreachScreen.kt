@@ -11,6 +11,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -275,9 +276,22 @@ private fun DaemonPicker(daemons: List<Daemon>, chosen: Set<String>, remainingBu
             ListRow(
                 selected = isChecked,
                 selectedColor = MB10Colors.accentNetrun,
+                horizontalInset = 12.dp,
                 onClick = if (fitsBuffer) ({ onToggle(daemon.id) }) else null
             ) {
-                Text("${daemon.name} · ${daemon.tier.label}", color = textColor, fontFamily = IBMPlexSans, fontSize = 13.sp)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                    Text(
+                        "${daemon.name} · ${daemon.tier.label}", color = textColor, fontFamily = IBMPlexSans, fontSize = 13.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    // Выбранный демон подписан в углу карточки: что он уже в буфере и сколько там занимает.
+                    if (isChecked) {
+                        Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 8.dp)) {
+                            Text("ЗАГРУЖЕНО В БУФЕР", color = MB10Colors.onAccent, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 9.sp)
+                            Text("занимает ${cellsLabel(daemon.sequence.size)}", color = MB10Colors.onAccent.copy(alpha = 0.8f), fontFamily = JetBrainsMono, fontSize = 9.sp)
+                        }
+                    }
+                }
                 Text(if (fitsBuffer) daemon.effect.label() else "не влезает в буфер", color = effectColor, fontFamily = IBMPlexSans, fontSize = 11.sp)
                 Row(Modifier.padding(top = 4.dp)) {
                     daemon.sequence.forEach { code -> CodePill(code) }
@@ -433,6 +447,28 @@ private fun BreachSession(
             )
         }
 
+        // Буфер — над матрицей: игрок должен видеть свой выбор, не листая экран вниз. Ячейки равной ширины на всю строку,
+        // при большом буфере (RAM до 13) — в две строки, иначе фиксированные ячейки не влезали и последняя сжималась.
+        FlagTab("буфер ${attempt.selected.size}/${attempt.bufferSize}", modifier = Modifier.padding(top = 14.dp))
+        PanelBox {
+            val codes = attempt.bufferCodes
+            val perRow = if (attempt.bufferSize <= 8) attempt.bufferSize else (attempt.bufferSize + 1) / 2
+            for (start in 0 until attempt.bufferSize step perRow) {
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.padding(bottom = if (start + perRow < attempt.bufferSize) 5.dp else 0.dp)) {
+                    for (i in start until start + perRow) {
+                        if (i >= attempt.bufferSize) { Spacer(Modifier.weight(1f)); continue }
+                        val filled = i < codes.size
+                        Box(
+                            Modifier.weight(1f).height(30.dp).border(1.dp, if (filled) MB10Colors.inkPrimary else MB10Colors.borderMuted),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(if (filled) codes[i] else "", color = MB10Colors.inkPrimary, fontFamily = JetBrainsMono, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
+
         FlagTab("код-матрица", modifier = Modifier.padding(top = 14.dp))
         PanelBox(modifier = Modifier.offset { IntOffset(shake.value.roundToInt(), 0) }) {
             for (r in 0 until attempt.grid.size) {
@@ -441,6 +477,7 @@ private fun BreachSession(
                         val cell = r to c
                         val order = attempt.selected.indexOf(cell)
                         HackCell(
+                            modifier = Modifier.weight(1f),
                             code = attempt.grid.codeAt(cell),
                             isSelected = order >= 0,
                             orderLabel = if (order >= 0) (order + 1).toString() else null,
@@ -465,22 +502,6 @@ private fun BreachSession(
                                 if (attempt.isFull) resolveOnce()
                             }
                         )
-                    }
-                }
-            }
-        }
-
-        FlagTab("буфер ${attempt.selected.size}/${attempt.bufferSize}", modifier = Modifier.padding(top = 14.dp))
-        PanelBox {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                val codes = attempt.bufferCodes
-                for (i in 0 until attempt.bufferSize) {
-                    val filled = i < codes.size
-                    Box(
-                        Modifier.size(width = 34.dp, height = 28.dp).border(1.dp, if (filled) MB10Colors.inkPrimary else MB10Colors.borderMuted),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(if (filled) codes[i] else "", color = MB10Colors.inkPrimary, fontFamily = JetBrainsMono, fontSize = 12.sp)
                     }
                 }
             }
@@ -584,7 +605,7 @@ private fun PanelBox(modifier: Modifier = Modifier, content: @Composable () -> U
 }
 
 @Composable
-private fun HackCell(code: String, isSelected: Boolean, orderLabel: String?, isSelectable: Boolean, onClick: () -> Unit) {
+private fun HackCell(modifier: Modifier, code: String, isSelected: Boolean, orderLabel: String?, isSelectable: Boolean, onClick: () -> Unit) {
     val isDead = code == BreachSymbols.DEAD_MARKER
     val (bg, borderColor, textColor) = when {
         isDead && !isSelected -> Triple(MB10Colors.accentDanger.copy(alpha = 0.08f), MB10Colors.accentDanger, MB10Colors.accentDanger)
@@ -593,8 +614,8 @@ private fun HackCell(code: String, isSelected: Boolean, orderLabel: String?, isS
         else -> Triple(MB10Colors.surfaceSunken, MB10Colors.borderMuted, MB10Colors.inkPrimary)
     }
     Box(
-        modifier = Modifier
-            .size(48.dp)
+        modifier = modifier
+            .aspectRatio(1f)
             .background(bg)
             .border(1.dp, borderColor)
             .clickable(enabled = isSelectable, onClick = onClick),

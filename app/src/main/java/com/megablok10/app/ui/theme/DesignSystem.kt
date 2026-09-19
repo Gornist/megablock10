@@ -313,12 +313,16 @@ fun CompactActionButton(text: String, onClick: () -> Unit, modifier: Modifier = 
  * accentAction, но в хак-контексте (взлом, шифрование) должен быть явно
  * передан accentNetrun — см. правило разделения акцентов в Color.kt. Текст/
  * иконки внутри content должны сами переключаться на onAccent при selected.
+ *
+ * horizontalInset — внутренний горизонтальный отступ ВНУТРИ заливки. По умолчанию 0 (см. выше), но у списков с selected он нужен: иначе текст
+ * прижат к самому краю скошенной заливки и она выглядит обрезанной слева. Отступ действует и у невыбранных строк, чтобы текст не прыгал при выборе.
  */
 @Composable
 fun ListRow(
     modifier: Modifier = Modifier,
     selected: Boolean = false,
     selectedColor: Color = MB10Colors.accentAction,
+    horizontalInset: Dp = 0.dp,
     onClick: (() -> Unit)? = null,
     leading: (@Composable () -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
@@ -332,7 +336,7 @@ fun ListRow(
                 else Modifier
             )
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(vertical = 10.dp),
+            .padding(horizontal = horizontalInset, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (leading != null) {

@@ -34,3 +34,16 @@ fun DaemonEffect.label(): String = when (this) {
     DaemonEffect.DECRYPT -> "расшифровывает зашифрованные шарды"
     DaemonEffect.MINER -> "добывает эдди из взломанного узла"
 }
+
+/** "N ячеек/ячейка/ячейки" с русским склонением — используется как цена демона в буфере взлома. */
+fun cellsLabel(count: Int): String {
+    val mod100 = count % 100
+    val mod10 = count % 10
+    val word = when {
+        mod100 in 11..14 -> "ячеек"
+        mod10 == 1 -> "ячейка"
+        mod10 in 2..4 -> "ячейки"
+        else -> "ячеек"
+    }
+    return "$count $word"
+}
