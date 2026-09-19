@@ -1,5 +1,5 @@
 #!/bin/bash
-# Демо-ролик для стейкхолдеров: экран Alice, ≈2 минуты. Записывает screenrecord'ом эмулятора A, затем ffmpeg ускоряет запись до 2 минут
+# Демо-ролик для стейкхолдеров: экран Alice, ≈3–4 минуты. Записывает screenrecord'ом эмулятора A, затем ffmpeg ускоряет запись до 2 минут
 # и делает demo.mp4 (+ gif). Требует свежего стенда (./up.sh): сюжет двигает предметы и деньги, повторный прогон без up.sh даст дубли.
 #   ./demo.sh                 — всё: подготовка, запись, обработка
 #   SCENES="breach shard finale" ./demo.sh   — только перечисленные сцены (для отладки, без записи если NOREC=1)
@@ -10,7 +10,7 @@
 source "$(dirname "$0")/lib.sh"
 OUT=$E2E_DIR/demo; mkdir -p "$OUT"
 PKA=$(cat "$E2E_DIR/pk_$A.txt"); PKB=$(cat "$E2E_DIR/pk_$B.txt")
-SCENES=${SCENES:-"deal breach shard finale outro"}
+SCENES=${SCENES:-"deal deck breach shard finale wallet outro"}
 step() { log "▶ $*"; }
 say_b() { dbg $B DEBUG_SET --es say "$PKA|$1"; }
 say_a() { dbg $A DEBUG_SET --es say "$PKB|$1"; }
@@ -35,7 +35,7 @@ prepare() {
   dbg $A DEBUG_SET --es daemon "Deep Miner:E9,FF:2:MINER"
   dbg $A DEBUG_SET --es daemon "Data Siphon:1C,FF:2:EXTRACT_SHARD"
   dbg $B DEBUG_SET --es daemon "Black Curtain:7A,BD:2:BLACKOUT"
-  set_config $A clock 1; set_config $A timer 4; set_config $A autosolve true; set_config $A step 500
+  set_config $A clock 1; set_config $A timer 4; set_config $A autosolve true; set_config $A step 900
   dbg $A DEBUG_SET --es cooldowns reset
   make_qr
   restart_app $A; sleep 8
@@ -59,23 +59,35 @@ scene_deal() {
   tap "$BACK"; sleep 1.5
 }
 
+# Обзор интерфейса перед взломом: список демонов с эффектами и ценой в ячейках буфера, пустой список шардов.
+scene_deck() {
+  step "сцена: Кибердека"
+  tap "$TAB_DECK"; sleep 4
+  adb_ $A shell input swipe 540 1700 540 900 1200; sleep 4
+  adb_ $A shell input swipe 540 900 540 1700 1200; sleep 3
+  tapt "Шарды"; sleep 4
+  tapt "Демоны"; sleep 2
+}
+
 scene_breach() {
   step "сцена: взлом"
-  tap "$TAB_DECK"; sleep 2
-  dbg $A DEBUG_QR --es qr "$QR"; sleep 3
-  tapt "Data Siphon"; sleep 0.7; tapt "Black Curtain"; sleep 0.7; tapt "Deep Miner"; sleep 1
+  dbg $A DEBUG_QR --es qr "$QR"; sleep 4      # скан QR узла → выбор демонов: имя, эффект, цена в ячейках
+  tapt "Data Siphon"; sleep 2; tapt "Black Curtain"; sleep 2; tapt "Deep Miner"; sleep 3   # буфер заполняется
   tapt "Взломать контейнер"
-  sleep 20                       # вход в узел + пошаговое решение сетки автосолвером
-  scroll_down $A; sleep 5        # результат: шард, эдди, сигнал СБ
+  sleep 20                       # вход в узел, таймер, реплики ICE, сетка решается по клетке
+  adb_ $A shell input swipe 540 1600 540 1000 1000; sleep 5   # буфер и демоны: совпавшие зачёркнуты
+  scroll_down $A; sleep 4; scroll_down $A; sleep 7             # результат: шард, эдди, сигнал СБ (быстрый свайп: медленный не прокручивал до конца)
 }
 
 scene_shard() {
   step "сцена: шард"
-  tapt "Шарды"; sleep 2
-  tapt "Кибер-тело"; sleep 5     # шард зашифрован: набор символов
-  tapt "Расшифровать"; sleep 20  # шифр-замок решает автосолвер
-  adb_ $A shell input swipe 540 1500 540 900 300; sleep 6   # читаем расшифрованный текст
-  tapt "Назад к шардам"; sleep 1
+  tapt "Шарды"; sleep 3
+  tapt "Кибер-тело"; sleep 9     # шард зашифрован: набор символов, подсказка про дешифратор
+  tapt "Расшифровать"; sleep 3
+  wait_until 60 screen_has $A "силовая рама"   # шифр-замок решает автосолвер, затем открывается текст
+  sleep 9                                       # читаем расшифрованный текст
+  adb_ $A shell input swipe 540 1500 540 1000 900; sleep 4
+  tapt "Назад к шардам"; sleep 2
 }
 
 scene_finale() {
@@ -94,9 +106,17 @@ scene_finale() {
 }
 
 # Финальный штрих отдельным куском: из треда в список чатов и на глазах приходит сообщение от неизвестного.
+# Экран «Финансы»: баланс и журнал операций после всей истории.
+scene_wallet() {
+  step "сцена: Финансы"
+  back_if_arrow $A; sleep 2
+  tap "945 2285"; sleep 8
+  adb_ $A shell input swipe 540 1700 540 900 1000; sleep 4
+}
+
 scene_outro() {
   step "сцена: финальный штрих"
-  back_if_arrow $A; sleep 3      # в списке чатов; строки бесед подгружаются не сразу
+  tap "$TAB_CHAT"; sleep 3       # в списке чатов; строки бесед подгружаются не сразу
   dbg $B DEBUG_SET --es sayas "$PKA|UNKNOWN-DEMO-KEY|Аноним|?|Мы знаем."; sleep 9
 }
 
@@ -113,12 +133,13 @@ rec_stop() {
 }
 trim_of() { case $1 in deal) echo 3.5;; *) echo 0;; esac; }   # мёртвое начало первой сцены (ждём первого сообщения)
 cutend_of() { case $1 in finale) echo 0.4;; *) echo 0;; esac; }
-speed_of() { case $1 in deal) echo 1.2;; breach) echo 2.4;; shard) echo 2.0;; finale) echo 1.5;; outro) echo 1.0;; *) echo 1.5;; esac; }
+speed_of() { case $1 in deal) echo 1.3;; finale) echo 1.5;; *) echo 1.0;; *) echo 1.5;; esac; }
 compose() {
   local total=0 s d
   for s in $SCENES; do d=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$OUT/seg_$s.mp4"); total=$(python3 -c "print($total+($d-$(trim_of $s))/$(speed_of $s))"); done
   local n; n=$(echo $SCENES | wc -w)
-  local k; k=$(python3 -c "print(max(1.0, round($total/(118-2.5*$n), 3)))")
+  local k=1.0
+  [ -n "$TARGET" ] && k=$(python3 -c "print(max(1.0, round($total/($TARGET-2.5*$n), 3)))")   # TARGET=120 — ужать до ~2 минут
   log "после ускорения по сценам ≈${total%.*} с → общий множитель ×$k"
   : > "$OUT/list.txt"
   for s in $SCENES; do
