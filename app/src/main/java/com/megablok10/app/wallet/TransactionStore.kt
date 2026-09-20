@@ -1,6 +1,7 @@
 package com.megablok10.app.wallet
 
 import android.content.Context
+import androidx.room.withTransaction
 import com.megablok10.app.collector.ChangeField
 import com.megablok10.app.collector.ChangeReason
 import com.megablok10.app.collector.ChangeRecordStore
@@ -37,20 +38,24 @@ object TransactionStore {
      * тем, кто отсканировал QR, как раньше.
      */
     suspend fun recordOutgoingPending(context: Context, tx: Mb10Qr.Transaction, toPubKeyB64: String): Boolean {
-        val dao = Mb10Database.get(context).transactionDao()
-        // Без этой проверки перевод больше баланса уводил отправителя в минус, а получателю
-        // зачислялась полная сумма — то есть деньги можно было печатать себе через сообщника.
-        if (tx.amount <= 0 || tx.amount > dao.currentBalance()) return false
-        val rowId = dao.insertIfAbsent(
-            TransactionEntity(
-                id = tx.id,
-                counterpartyPubKeyB64 = toPubKeyB64,
-                amount = -tx.amount,
-                memo = tx.memo,
-                timestamp = System.currentTimeMillis(),
-                status = TransactionStatus.PENDING
+        val db = Mb10Database.get(context)
+        val dao = db.transactionDao()
+        if (tx.amount <= 0) return false
+        // Проверка баланса и вставка — одной транзакцией: иначе два быстрых перевода (двойной тап «Отправить») оба видели бы прежний
+        // баланс, проходили проверку и уводили отправителя в минус, а получателям зачислялись бы полные суммы — деньги из воздуха.
+        val rowId = db.withTransaction {
+            if (tx.amount > dao.currentBalance()) return@withTransaction -1L
+            dao.insertIfAbsent(
+                TransactionEntity(
+                    id = tx.id,
+                    counterpartyPubKeyB64 = toPubKeyB64,
+                    amount = -tx.amount,
+                    memo = tx.memo,
+                    timestamp = System.currentTimeMillis(),
+                    status = TransactionStatus.PENDING
+                )
             )
-        )
+        }
         if (rowId != -1L) emitBalanceChange(context, dao, -tx.amount, ChangeReason.TRANSFER_OUT, sourceRef = tx.id)
         return rowId != -1L
     }

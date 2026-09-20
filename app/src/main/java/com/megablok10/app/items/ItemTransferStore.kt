@@ -1,6 +1,7 @@
 package com.megablok10.app.items
 
 import android.content.Context
+import androidx.room.withTransaction
 import com.megablok10.app.breach.Daemon
 import com.megablok10.app.breach.DaemonStore
 import com.megablok10.app.breach.LootCodec
@@ -35,19 +36,23 @@ object ItemTransferStore {
     /** Стартовый демон есть у каждого персонажа и пересеивается при пустой коллекции — передавать его нельзя, иначе он размножался бы. */
     fun isTransferable(daemon: Daemon): Boolean = MockBreach.daemons.none { it.id == daemon.id }
 
-    suspend fun sendShard(context: Context, identity: Identity, shardId: String, toPubKeyB64: String): Mb10Qr.ItemTransfer? {
-        val entity = Mb10Database.get(context).shardDao().get(shardId) ?: return null
-        val shard = Mb10Qr.Shard(entity.id, entity.decryptAction, entity.tier, entity.valueHint, entity.title, entity.meta, entity.body, entity.moneyAmount, entity.decrypted)
-        return sendOut(context, identity, ItemKind.SHARD, ItemPayload.encodeShard(shard), toPubKeyB64) { id ->
-            ShardStore.remove(context, shardId, ChangeReason.ITEM_TRANSFER_OUT, sourceRef = id)
+    // Проверка «предмет ещё у меня» и его списание — одной транзакцией: иначе двойной тап по «Передать» создавал бы две передачи одного предмета.
+    suspend fun sendShard(context: Context, identity: Identity, shardId: String, toPubKeyB64: String): Mb10Qr.ItemTransfer? =
+        Mb10Database.get(context).withTransaction {
+            val entity = Mb10Database.get(context).shardDao().get(shardId) ?: return@withTransaction null
+            val shard = Mb10Qr.Shard(entity.id, entity.decryptAction, entity.tier, entity.valueHint, entity.title, entity.meta, entity.body, entity.moneyAmount, entity.decrypted)
+            sendOut(context, identity, ItemKind.SHARD, ItemPayload.encodeShard(shard), toPubKeyB64) { id ->
+                ShardStore.remove(context, shardId, ChangeReason.ITEM_TRANSFER_OUT, sourceRef = id)
+            }
         }
-    }
 
     suspend fun sendDaemon(context: Context, identity: Identity, daemon: Daemon, toPubKeyB64: String): Mb10Qr.ItemTransfer? {
         if (!isTransferable(daemon)) return null
-        if (Mb10Database.get(context).daemonDao().get(daemon.id) == null) return null
-        return sendOut(context, identity, ItemKind.DAEMON, ItemPayload.encodeDaemon(daemon), toPubKeyB64) { id ->
-            DaemonStore.remove(context, daemon.id, ChangeReason.ITEM_TRANSFER_OUT, sourceRef = id)
+        return Mb10Database.get(context).withTransaction {
+            if (Mb10Database.get(context).daemonDao().get(daemon.id) == null) return@withTransaction null
+            sendOut(context, identity, ItemKind.DAEMON, ItemPayload.encodeDaemon(daemon), toPubKeyB64) { id ->
+                DaemonStore.remove(context, daemon.id, ChangeReason.ITEM_TRANSFER_OUT, sourceRef = id)
+            }
         }
     }
 

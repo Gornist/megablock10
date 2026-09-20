@@ -1,6 +1,7 @@
 package com.megablok10.app.ui.screens
 
 import com.megablok10.app.ui.theme.AppSnack
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -99,6 +100,17 @@ fun CyberdeckScreen(identity: Identity, onNestedChange: (Boolean) -> Unit = {}) 
     var transferDaemon by remember { mutableStateOf<Daemon?>(null) }
     // Идёт таймер взлома: шапка и навигация приложения прячутся, взлом получает весь экран.
     var breachRunning by remember { mutableStateOf(false) }
+
+    // Системная «Назад» ведёт на уровень выше, а не выкидывает из приложения. Во время таймера взлома она заблокирована:
+    // случайный жест не должен сжигать попытку — выйти можно только кнопками экрана.
+    BackHandler(enabled = openedShard != null || decryptingShard != null || container != null) {
+        when {
+            breachRunning -> Unit
+            decryptingShard != null -> { openedShard = decryptingShard; decryptingShard = null }
+            openedShard != null -> openedShard = null
+            else -> container = null
+        }
+    }
 
     // Деталь шарда и мини-взлом — полноэкранные, со своим back-заголовком; шапка приложения над ними была бы дублем.
     LaunchedEffect(openedShard, decryptingShard, breachRunning) { onNestedChange(openedShard != null || decryptingShard != null || breachRunning) }

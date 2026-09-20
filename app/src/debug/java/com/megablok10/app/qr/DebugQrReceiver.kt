@@ -26,14 +26,16 @@ import com.megablok10.app.chat.ChatWireMessage
 import com.megablok10.app.wallet.TransactionStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 
 /**
  * Отладочные broadcast-ы для эмуляторов (только debug-сборка; вызывает scripts/e2e/):
  *  - DEBUG_QR     --es qr <строка>                      подать QR-строку как скан
  *  - DEBUG_PEER   --es pk --es cs --es fac --es host --ei port   добавить пира без NSD
- *  - DEBUG_CONFIG --es clock <N> --es timer <N> --es autosolve true|false   см. DebugConfig
- *  - DEBUG_SET    --es create "Позывной:Фракция" / collector <url> / cs / fac / ram / balance / daemon "имя:1C,55:тир:ЭФФЕКТ" / pay "получатель:сумма:online|offline" / contact "pk:позывной:фракция" / say "получатель|текст" / sayas "получатель|pk|позывной|фракция|текст" / give "daemon|shard:id:получатель[:offline]" / cancelitem <id> / cancel <txId> / cooldowns reset
+ *  - DEBUG_CONFIG --es clock <N> --es timer <N> --es autosolve true|false / port ? (напечатать порт приложения: "port=N")   см. DebugConfig
+ *  - DEBUG_SET    --es create "Позывной:Фракция" / collector <url> / cs / fac / ram / balance / daemon "имя:1C,55:тир:ЭФФЕКТ" / pay "получатель:сумма:online|offline" [--ei burst N — N одновременных переводов] / contact "pk:позывной:фракция" / say "получатель|текст" / sayas "получатель|pk|позывной|фракция|текст" / give "daemon|shard:id:получатель[:offline]" / cancelitem <id> / cancel <txId> / cooldowns reset
  * Итог DEBUG_CONFIG / DEBUG_SET пишется в logcat с тегом MB10DBG; после смены
  * позывного/фракции/RAM экраны подхватят значения только после перезапуска приложения.
  */
@@ -52,6 +54,7 @@ class DebugQrReceiver : BroadcastReceiver() {
                 intent.getStringExtra("timer")?.toDoubleOrNull()?.let { DebugConfig.breachTimerFactor = it.coerceAtLeast(0.01) }
                 intent.getStringExtra("autosolve")?.let { DebugConfig.autoSolve = it.toBoolean() }
                 intent.getStringExtra("step")?.toLongOrNull()?.let { DebugConfig.autoSolveStepMs = it }
+                if (intent.hasExtra("port")) Log.i(TAG, "port=${com.megablok10.app.chat.ChatStore.listeningPort}")
                 Log.i(TAG, "config clock=${DebugConfig.clockSpeed} timer=${DebugConfig.breachTimerFactor} autosolve=${DebugConfig.autoSolve}")
             }
             "com.megablok10.app.DEBUG_SET" -> {
@@ -92,20 +95,26 @@ class DebugQrReceiver : BroadcastReceiver() {
             }
         }
         // Перевод как из WalletScreen: "получатель:сумма:online|offline" (offline — как если бы получатель не в сети, карточка не уходит).
+        // burst — сколько одинаковых переводов запустить ОДНОВРЕМЕННО (для проверки гонки «двойной тап»: баланс не должен уйти в минус).
         intent.getStringExtra("pay")?.let { spec ->
             val (to, amountStr, mode) = spec.split(":").let { Triple(it[0], it[1], it.getOrElse(2) { "online" }) }
             val me = IdentityManager.current(context) ?: return@let
-            val id = "dbg-${System.nanoTime()}"
             val amount = amountStr.toLong()
-            val payload = Mb10QrCodec.transactionSignaturePayload(id, me.publicKeyB64, amount, "debug")
-            val tx = Mb10Qr.Transaction(id, me.publicKeyB64, amount, "debug", IdentityManager.sign(context, payload))
-            val peer = if (mode == "offline") null else PresenceService.peers.value.find { it.pubKeyB64 == to }
-            if (TransactionStore.recordOutgoingPending(context, tx, to)) {
-                TransactionStore.deliverOutgoing(context, id, willSend = peer != null) {
-                    ChatStore.sendDirect(context, me, to, peer, Mb10QrCodec.encodeTransaction(tx))
-                }
-                Log.i(TAG, "pay id=$id")
-            } else Log.i(TAG, "pay rejected")
+            suspend fun payOnce() {
+                val id = "dbg-${System.nanoTime()}"
+                val payload = Mb10QrCodec.transactionSignaturePayload(id, me.publicKeyB64, amount, "debug")
+                val tx = Mb10Qr.Transaction(id, me.publicKeyB64, amount, "debug", IdentityManager.sign(context, payload))
+                val peer = if (mode == "offline") null else PresenceService.peers.value.find { it.pubKeyB64 == to }
+                if (TransactionStore.recordOutgoingPending(context, tx, to)) {
+                    TransactionStore.deliverOutgoing(context, id, willSend = peer != null) {
+                        ChatStore.sendDirect(context, me, to, peer, Mb10QrCodec.encodeTransaction(tx))
+                    }
+                    Log.i(TAG, "pay id=$id")
+                } else Log.i(TAG, "pay rejected")
+            }
+            val burst = intent.getIntExtra("burst", 1)
+            if (burst <= 1) payOnce()
+            else kotlinx.coroutines.coroutineScope { List(burst) { async(Dispatchers.IO) { payOnce() } }.awaitAll() }
         }
         // Сообщение от этого устройства: "получатель|текст" (DM) или "faction|текст" (фракционный чат). Для демо-записей.
         intent.getStringExtra("say")?.let { spec ->

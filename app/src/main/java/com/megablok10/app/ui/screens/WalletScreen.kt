@@ -103,7 +103,7 @@ fun WalletScreen(identity: Identity, presetContactKey: String? = null, onPresetC
         // Форма отправки — отдельным окном: список операций под ней не сдвигается.
         if (sending) {
             androidx.compose.ui.window.Dialog(
-                onDismissRequest = { sending = false },
+                onDismissRequest = { sending = false; presetKey = null },
                 properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
             ) {
                 Column(Modifier.padding(12.dp).verticalScroll(rememberScrollState())) {
@@ -129,7 +129,7 @@ fun WalletScreen(identity: Identity, presetContactKey: String? = null, onPresetC
                         onCancel = { id -> scope.launch { TransactionStore.cancelOutgoing(context, id) } }
                     )
                     Spacer(Modifier.height(8.dp))
-                    AppButton("Закрыть", variant = ButtonVariant.Secondary, dense = true, modifier = Modifier.fillMaxWidth(), onClick = { sending = false })
+                    AppButton("Закрыть", variant = ButtonVariant.Secondary, dense = true, modifier = Modifier.fillMaxWidth(), onClick = { sending = false; presetKey = null })
                 }
             }
         }

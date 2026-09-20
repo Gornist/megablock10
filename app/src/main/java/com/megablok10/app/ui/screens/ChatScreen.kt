@@ -1,5 +1,6 @@
 package com.megablok10.app.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -102,6 +103,9 @@ fun ChatScreen(
 ) {
     var destination by remember { mutableStateOf<ChatDestination?>(null) }
     var showContactPicker by remember { mutableStateOf(false) }
+    BackHandler(enabled = destination != null || showContactPicker) {
+        if (showContactPicker) showContactPicker = false else destination = null
+    }
 
     LaunchedEffect(openedWithContactKey) {
         if (openedWithContactKey != null) {

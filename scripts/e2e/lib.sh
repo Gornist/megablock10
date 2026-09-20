@@ -5,6 +5,8 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 SDK=${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}
 ADB=$SDK/platform-tools/adb
 EMU=$SDK/emulator/emulator
+export PATH="$SDK/platform-tools:$PATH"   # чтобы `adb` работал и в ручных командах после `source lib.sh`
+APK=${APK:-$ROOT/app/build/outputs/apk/debug/app-debug.apk}
 NODE20=${NODE20:-/opt/homebrew/opt/node@20/bin}
 export JAVA_HOME=${JAVA_HOME:-/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home}
 PKG=com.megablok10.app
@@ -105,6 +107,16 @@ tap_text() { dump_ui "$1"; tap_xml "$E2E_DIR/ui_$1.xml" "$1" "$2"; }   # tap_tex
 screen_has() { dump_ui "$1"; grep -q "$2" "$E2E_DIR/ui_$1.xml"; }
 scroll_down() { adb_ "$1" shell input swipe 540 1700 540 700 200; }
 
+# reset_ui — убрать с обоих экранов то, что осталось от прошлого сценария: окно «Сообщение от мастера» (иначе оно перехватывает тапы всех
+# следующих сценариев), открытый тред/оверлей — и вернуть приложение на передний план.
+reset_ui() {
+  local s
+  for s in $A $B; do
+    if screen_has $s "Сообщение от мастера"; then tap_text $s "Принято" >/dev/null; sleep 1; fi
+    start_app $s >/dev/null 2>&1
+  done
+}
+
 # ── Контейнеры и взлом ──
 # container <id> <имя> <тир> <фракция-владелец> <копий> — контейнер с одним слотом-шардом; печатает QR-строку.
 container() {
@@ -135,7 +147,15 @@ breach() {
 }
 back_to_scan() { tap_text "$1" "Новый контейнер" >/dev/null 2>&1; }
 
-port_of() { adb_ "$1" logcat -d | grep "Слушаю входящие" | tail -1 | sed 's/.*порту //' | tr -dc 0-9; }
+# Порт приложения. Раньше брали из logcat («Слушаю входящие…»), но сценарии делают `logcat -c` и строка пропадала — после этого
+# link.sh не мог связать эмуляторы. Теперь спрашиваем у самого приложения (DEBUG_CONFIG port), а старый способ оставлен запасным.
+port_of() {
+  local p
+  dbg "$1" DEBUG_CONFIG --es port '?' >/dev/null 2>&1; sleep 0.4
+  p=$(adb_ "$1" logcat -d -s MB10DBG | grep "port=" | tail -1 | sed 's/.*port=//' | tr -dc 0-9)
+  [ -n "$p" ] && [ "$p" != "-1" ] || p=$(adb_ "$1" logcat -d | grep "Слушаю входящие" | tail -1 | sed 's/.*порту //' | tr -dc 0-9)
+  echo "$p"
+}
 
 # ── Управление сервером ──
 server_stop() { [ -f "$E2E_DIR/server.pid" ] && kill "$(cat "$E2E_DIR/server.pid")" 2>/dev/null; rm -f "$E2E_DIR/server.pid"; lsof -ti tcp:$PORT -sTCP:LISTEN 2>/dev/null | xargs kill 2>/dev/null; sleep 1; }

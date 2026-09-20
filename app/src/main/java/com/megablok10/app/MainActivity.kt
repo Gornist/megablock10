@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -101,6 +102,7 @@ fun AppRoot() {
     var walletPreset by remember { mutableStateOf<String?>(null) }
     var shardDetailOpen by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    BackHandler(enabled = showProfile) { showProfile = false }
 
     // Фоновая отправка ChangeRecord мастерскому коллектору — не зависит от
     // наличия личности (очередь может копиться и отправляться, даже пока

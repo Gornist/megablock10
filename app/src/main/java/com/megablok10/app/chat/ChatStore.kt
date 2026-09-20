@@ -31,6 +31,9 @@ import kotlinx.coroutines.withContext
  */
 object ChatStore {
     private var server: ChatServer? = null
+
+    /** Порт, на котором сейчас слушает приложение (-1 — не запущен). Нужен стенду e2e, чтобы связать эмуляторы после перезапуска. */
+    val listeningPort: Int get() = server?.port ?: -1
     private var scope: CoroutineScope? = null
     private var startedForKey: String? = null
 
