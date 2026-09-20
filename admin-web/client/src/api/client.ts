@@ -10,12 +10,17 @@ export function loadSession(): Session | null {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return null;
-    const session = JSON.parse(raw) as Session;
+    const session = JSON.parse(raw) as Partial<Session>;
+    // Битое содержимое (чужой ответ, старый формат) не должно ронять весь интерфейс в пустой экран — считаем, что сессии нет.
+    if (typeof session.sessionToken !== "string" || typeof session.master?.name !== "string" || typeof session.expiresAt !== "number") {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
     if (session.expiresAt < Date.now()) {
       localStorage.removeItem(SESSION_KEY);
       return null;
     }
-    return session;
+    return session as Session;
   } catch {
     return null;
   }
