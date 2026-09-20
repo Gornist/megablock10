@@ -1,0 +1,4 @@
+#!/bin/bash
+# Перед пушем — быстрая проверка (scripts/check.sh): не пушим красное в main. Пропустить в крайнем случае: git push --no-verify.
+# Включается один раз на клон: git config core.hooksPath .githooks   (скрипт scripts/setup-hooks.sh делает это же)
+exec "$(git rev-parse --show-toplevel)/scripts/check.sh"

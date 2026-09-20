@@ -12,15 +12,25 @@ while [ $# -gt 0 ]; do case $1 in
 
 "$(dirname "$0")/down.sh" --keep-emulators >/dev/null 2>&1
 
+# 0. Один стенд на машину: порты эмуляторов (5554/5556) и сервера фиксированы, два одновременных up.sh (например, у двух агентов в разных
+# рабочих копиях) ломают друг другу прогоны. Владелец пишется в $E2E_DIR/owner; чужой живой up.sh — отказ.
+if [ -s "$E2E_DIR/owner" ] && [ "$(cat "$E2E_DIR/owner")" != "$ROOT" ] && pgrep -f "emulator.*-port 5554" >/dev/null; then
+  die "стенд занят другой рабочей копией: $(cat "$E2E_DIR/owner"). Остановите её (./scripts/e2e/down.sh там) или дождитесь конца прогона"
+fi
+echo "$ROOT" > "$E2E_DIR/owner"
+
 # 1. APK
 APK="$ROOT/app/build/outputs/apk/debug/app-debug.apk"
-if [ $BUILD -eq 1 ] || [ ! -f "$APK" ]; then log "сборка APK…"; (cd "$ROOT" && gradle -q assembleDebug) || die "gradle assembleDebug"; fi
+if [ $BUILD -eq 1 ] || [ ! -f "$APK" ]; then log "сборка APK…"; (cd "$ROOT" && ./gradlew -q assembleDebug) || die "gradle assembleDebug"; fi
 
 # 2. Сервер
 SERVER="$ROOT/admin-web/server"
 export PATH="$NODE20:$PATH"
 [ -d "$SERVER/node_modules" ] || (cd "$SERVER" && npm ci >/dev/null) || die "npm ci"
-log "сборка сервера…"; (cd "$SERVER" && npm run build >/dev/null) || die "npm run build"
+# Сервер пересобираем только если исходники новее dist (tsc ≈ 10 с на каждый up.sh).
+if [ ! -f "$SERVER/dist/index.js" ] || [ -n "$(find "$SERVER/src" "$SERVER/package.json" -newer "$SERVER/dist/index.js" -type f 2>/dev/null | head -1)" ]; then
+  log "сборка сервера…"; (cd "$SERVER" && npm run build >/dev/null) || die "npm run build"
+else log "сервер не менялся — сборка пропущена"; fi
 [ $KEEP -eq 1 ] || rm -f "$E2E_DIR"/db.sqlite*
 export DB_PATH="$E2E_DIR/db.sqlite" BACKUP_DIR="$E2E_DIR/backups"
 if [ $KEEP -eq 0 ] || [ ! -s "$E2E_DIR/master.txt" ]; then
