@@ -57,6 +57,7 @@ import com.megablok10.app.ui.screens.CyberdeckScreen
 import com.megablok10.app.ui.screens.ProfileScreen
 import com.megablok10.app.ui.screens.WalletScreen
 import com.megablok10.app.ui.theme.AppButton
+import com.megablok10.app.ui.theme.AppSnackHost
 import com.megablok10.app.ui.theme.AppTextField
 import com.megablok10.app.ui.theme.ButtonVariant
 import com.megablok10.app.ui.theme.HexBullet
@@ -97,6 +98,7 @@ fun AppRoot() {
     var chatContact by remember { mutableStateOf<String?>(null) }
     var showProfile by remember { mutableStateOf(false) }
     var chatThreadOpen by remember { mutableStateOf(false) }
+    var walletPreset by remember { mutableStateOf<String?>(null) }
     var shardDetailOpen by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -205,16 +207,19 @@ fun AppRoot() {
                         identity = currentIdentity,
                         openedWithContactKey = chatContact,
                         onContactConsumed = { chatContact = null },
-                        onNestedChange = { chatThreadOpen = it }
+                        onNestedChange = { chatThreadOpen = it },
+                        onQuickTransfer = { key -> walletPreset = key; tab = AppTab.Wallet },
+                        onQuickItem = { tab = AppTab.Hack }
                     )
                     AppTab.Calls -> CallsScreen(onCallPeer = { peer: PeerInfo ->
                         withMicPermission { CallManager.startOutgoingCall(context, currentIdentity, peer) }
                     })
                     AppTab.Hack -> CyberdeckScreen(identity = currentIdentity, onNestedChange = { shardDetailOpen = it })
-                    AppTab.Wallet -> WalletScreen(currentIdentity)
+                    AppTab.Wallet -> WalletScreen(currentIdentity, presetContactKey = walletPreset, onPresetConsumed = { walletPreset = null })
                 }
             }
             AnnouncementDialogHost()
+            AppSnackHost(Modifier.align(Alignment.BottomCenter).padding(bottom = 64.dp))
             if (callState.phase != CallPhase.IDLE) {
                 CallOverlay(
                     state = callState,

@@ -504,7 +504,7 @@ private fun BreachSession(
             if (result == null) {
                 // Не "отмена без последствий" — сдаёт текущий буфер на резолв досрочно, так же как истечение таймера.
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AppButton("Сдать буфер досрочно", modifier = Modifier.weight(1f), variant = ButtonVariant.Secondary, dense = true, onClick = { resolveOnce() })
+                    AppButton("Сдать буфер", modifier = Modifier.weight(1f), variant = ButtonVariant.Secondary, dense = true, onClick = { resolveOnce() })
                     AppButton(rescanLabel, modifier = Modifier.weight(1f), variant = ButtonVariant.Secondary, dense = true, onClick = onRescan)
                 }
             }

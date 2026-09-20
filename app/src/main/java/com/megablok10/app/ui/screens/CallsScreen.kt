@@ -1,6 +1,6 @@
 package com.megablok10.app.ui.screens
 
-import android.widget.Toast
+import com.megablok10.app.ui.theme.AppSnack
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -61,7 +61,7 @@ fun CallsScreen(onCallPeer: (PeerInfo) -> Unit) {
     fun tryCall(peerPubKeyB64: String, callsign: String) {
         val peer = onlinePeers.find { it.pubKeyB64 == peerPubKeyB64 }
         if (peer == null) {
-            Toast.makeText(context, "$callsign сейчас не в сети", Toast.LENGTH_SHORT).show()
+            AppSnack.show("$callsign сейчас не в сети")
         } else {
             onCallPeer(peer)
         }

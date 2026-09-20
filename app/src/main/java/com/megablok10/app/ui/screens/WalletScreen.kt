@@ -14,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -69,7 +70,7 @@ import java.util.UUID
  * точек доступа и шардов — не для денег.
  */
 @Composable
-fun WalletScreen(identity: Identity) {
+fun WalletScreen(identity: Identity, presetContactKey: String? = null, onPresetConsumed: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val balance by TransactionStore.observeBalance(context).collectAsState(initial = 0L)
@@ -80,6 +81,11 @@ fun WalletScreen(identity: Identity) {
     val onlineKeys = remember(onlinePeers) { onlinePeers.map { it.pubKeyB64 }.toSet() }
 
     var sending by remember { mutableStateOf(false) }
+    // Пришли из треда чата: сразу открываем форму с уже выбранным получателем.
+    var presetKey by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(presetContactKey) {
+        if (presetContactKey != null) { presetKey = presetContactKey; sending = true; onPresetConsumed() }
+    }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
         // Баланс — крупное число в одной строке с кнопкой «Отправить» (раньше: карточка ≈130 dp + кнопка на всю ширину).
@@ -106,6 +112,7 @@ fun WalletScreen(identity: Identity) {
                         onlineKeys = onlineKeys,
                         transactions = transactions,
                         balance = balance,
+                        initialContact = contacts.find { it.publicKeyB64 == presetKey },
                         onSend = { contact, id, amount, memo ->
                             val payload = Mb10QrCodec.transactionSignaturePayload(id, identity.publicKeyB64, amount, memo)
                             val signature = IdentityManager.sign(context, payload)
@@ -154,10 +161,13 @@ private fun SendTransactionPanel(
     onlineKeys: Set<String>,
     transactions: List<TransactionEntity>,
     balance: Long,
+    initialContact: Mb10Qr.Contact? = null,
     onSend: (contact: Mb10Qr.Contact, id: String, amount: Long, memo: String) -> Unit,
     onCancel: (id: String) -> Unit
 ) {
-    var selectedContact by remember { mutableStateOf<Mb10Qr.Contact?>(null) }
+    var selectedContact by remember { mutableStateOf(initialContact) }
+    // Список контактов приходит из БД уже после первой композиции — подставляем получателя, когда он появится.
+    LaunchedEffect(initialContact) { if (selectedContact == null && initialContact != null) selectedContact = initialContact }
     var sent by remember { mutableStateOf<SentPayment?>(null) }
 
     ChamferedSurface(

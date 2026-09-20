@@ -1,6 +1,6 @@
 package com.megablok10.app.ui.screens
 
-import android.widget.Toast
+import com.megablok10.app.ui.theme.AppSnack
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -142,18 +142,18 @@ fun CyberdeckScreen(identity: Identity, onNestedChange: (Boolean) -> Unit = {}) 
                 scope.launch {
                     val newCapacity = RamUpgradeStore.apply(context, qr)
                     val message = if (newCapacity != null) "RAM деки увеличена до $newCapacity" else "Этот RAM-токен уже был применён"
-                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                    AppSnack.show(message)
                 }
             }
             is Mb10Qr.LootGrant -> {
                 scope.launch {
                     val granted = DaemonRewards.applyGrant(context, qr)
                     val message = granted ?: "Фрагмент повреждён — обратитесь к мастеру"
-                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                    AppSnack.show(message)
                     segment = if (qr.type == LootType.DAEMON) 0 else 1
                 }
             }
-            else -> Toast.makeText(context, "Этот QR не распознан Кибердекой", Toast.LENGTH_SHORT).show()
+            else -> AppSnack.show("Этот QR не распознан Кибердекой")
         }
     }
 
@@ -183,12 +183,12 @@ fun CyberdeckScreen(identity: Identity, onNestedChange: (Boolean) -> Unit = {}) 
                 else -> null
             }
             if (card == null) {
-                Toast.makeText(context, "Не удалось передать", Toast.LENGTH_SHORT).show()
+                AppSnack.show("Не удалось передать")
                 return@launch
             }
             ItemTransferStore.deliver(context, identity, card, contact.publicKeyB64)
             openedShard = null
-            Toast.makeText(context, "Передача отправлена: ${contact.callsign}", Toast.LENGTH_SHORT).show()
+            AppSnack.show("Передача отправлена: ${contact.callsign}")
         }
     }
     if (transferShard != null || transferDaemon != null) {

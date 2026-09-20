@@ -96,7 +96,9 @@ fun ChatScreen(
     identity: Identity,
     openedWithContactKey: String? = null,
     onContactConsumed: () -> Unit = {},
-    onNestedChange: (Boolean) -> Unit = {}
+    onNestedChange: (Boolean) -> Unit = {},
+    onQuickTransfer: (String) -> Unit = {},
+    onQuickItem: () -> Unit = {}
 ) {
     var destination by remember { mutableStateOf<ChatDestination?>(null) }
     var showContactPicker by remember { mutableStateOf(false) }
@@ -122,7 +124,9 @@ fun ChatScreen(
         destination is ChatDestination.Direct -> DirectThread(
             identity = identity,
             peerPubKeyB64 = (destination as ChatDestination.Direct).peerPubKeyB64,
-            onBack = { destination = null }
+            onBack = { destination = null },
+            onQuickTransfer = onQuickTransfer,
+            onQuickItem = onQuickItem
         )
         else -> ConversationInbox(
             identity = identity,
@@ -208,7 +212,7 @@ private fun FactionThread(identity: Identity, onBack: () -> Unit) {
 }
 
 @Composable
-private fun DirectThread(identity: Identity, peerPubKeyB64: String, onBack: () -> Unit) {
+private fun DirectThread(identity: Identity, peerPubKeyB64: String, onBack: () -> Unit, onQuickTransfer: (String) -> Unit, onQuickItem: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val contacts by ContactStore.observeAll(context).collectAsState(initial = emptyList())
@@ -250,6 +254,11 @@ private fun DirectThread(identity: Identity, peerPubKeyB64: String, onBack: () -
             OnlineDot(online = peer != null)
             Spacer(Modifier.width(6.dp))
             Text(if (peer != null) "в сети" else "не в сети", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
+        }
+        // Быстрые действия: перевод этому контакту и передача демона/шарда (ведёт в Кибердеку).
+        Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AppButton("€$ Перевести", modifier = Modifier.weight(1f), variant = ButtonVariant.Secondary, dense = true, onClick = { onQuickTransfer(peerPubKeyB64) })
+            AppButton("Передать предмет", modifier = Modifier.weight(1f), variant = ButtonVariant.Secondary, dense = true, onClick = onQuickItem)
         }
 
         MessageList(

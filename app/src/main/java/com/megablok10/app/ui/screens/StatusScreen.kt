@@ -1,6 +1,6 @@
 package com.megablok10.app.ui.screens
 
-import android.widget.Toast
+import com.megablok10.app.ui.theme.AppSnack
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -66,7 +66,7 @@ fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}, on
     val startScan = rememberMb10QrScanner { qr ->
         when (qr) {
             is Mb10Qr.Contact -> scope.launch { ContactStore.add(context, qr) }
-            else -> Toast.makeText(context, "Это не QR-код контакта", Toast.LENGTH_SHORT).show()
+            else -> AppSnack.show("Это не QR-код контакта")
         }
     }
 
@@ -129,7 +129,7 @@ fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}, on
                             "Сообщение",
                             modifier = Modifier.weight(1f),
                             onClick = {
-                                Toast.makeText(context, "Открываю чат с ${c.callsign}", Toast.LENGTH_SHORT).show()
+                                AppSnack.show("Открываю чат с ${c.callsign}")
                                 onMessageContact(c.publicKeyB64)
                             }
                         )
@@ -139,7 +139,7 @@ fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}, on
                             onClick = {
                                 val peer = onlinePeers.find { it.pubKeyB64 == c.publicKeyB64 }
                                 if (peer == null) {
-                                    Toast.makeText(context, "${c.callsign} сейчас не в сети", Toast.LENGTH_SHORT).show()
+                                    AppSnack.show("${c.callsign} сейчас не в сети")
                                 } else {
                                     onCallContact(peer)
                                 }
