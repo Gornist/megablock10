@@ -3,7 +3,7 @@ import type { Db } from "../db/index.js";
 import { requireMaster } from "../lib/auth.js";
 import { toCsv } from "../lib/csv.js";
 import { listPlayerSummaries } from "./players.js";
-import { listNodeSummaries } from "./nodes.js";
+import { listNodeSummaries } from "../lib/nodeSummary.js";
 import { listSlotRegistry } from "./slots.js";
 
 const KINDS = ["players", "nodes", "slots", "history"] as const;

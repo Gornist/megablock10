@@ -1,17 +1,9 @@
 import type { FastifyInstance } from "fastify";
 import type { Db } from "../db/index.js";
 import { requireMaster } from "../lib/auth.js";
-import { validateContainerSlots } from "../lib/containerSlots.js";
+import { validateContainerSlots, type ContainerSlot } from "../lib/containerSlots.js";
 
-export interface ContainerSlot {
-  index: number;
-  type: "SHARD" | "DAEMON";
-  tier: string;
-  copies: number;
-  title: string;
-  /** Зашифрованный LootCodec-блок (см. lib/lootCrypto.ts) — есть только у слотов, сгенерированных прямо в дашборде (§ Мастерская), нужен для переотрисовки QR. У импортированных извне контейнеров может отсутствовать. */
-  payload?: string;
-}
+export type { ContainerSlot };
 
 interface ContainerInput {
   id?: unknown;

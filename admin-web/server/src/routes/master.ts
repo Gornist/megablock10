@@ -8,7 +8,8 @@ import { encodeDaemonLoot, encodeShardLoot } from "../lib/lootCodec.js";
 import { encodeContainerQr, encodeRamUpgradeQr, encodeShardQr } from "../lib/mb10QrCodec.js";
 import { tierLevel } from "../lib/tier.js";
 import { validateContainerSlot } from "../lib/containerSlots.js";
-import { upsertContainer, type ContainerSlot } from "./containers.js";
+import type { ContainerSlot } from "../lib/containerSlots.js";
+import { upsertContainer } from "./containers.js";
 
 interface ShardSlotInput {
   title?: unknown;

@@ -9,6 +9,7 @@ import {
 import { verifySignature } from "../lib/crypto.js";
 import { checkGameSecret } from "../lib/gameSecret.js";
 import { ipv4Of, peersSince, touchPresence } from "../lib/presence.js";
+import { RateLimiter } from "../lib/rateLimit.js";
 
 /** Дольше этого без heartbeat игрок не считается доступным для запасного обнаружения (телефон шлёт раз в ~30 с). */
 const PEER_FRESH_MS = 90_000;
@@ -74,7 +75,17 @@ export function registerChangesRoute(app: FastifyInstance, db: Db) {
   const subjectKnownStmt = db.prepare(`SELECT 1 FROM changes WHERE subject_key = ? LIMIT 1`);
   const markDeliveredStmt = db.prepare(`UPDATE master_pending SET delivered = 1 WHERE change_id = ? AND subject_key = ?`);
 
+  // Открытый для всех устройств эндпоинт (игроки без авторизации): без лимита один зациклившийся или враждебный клиент в
+  // сети мог занять единственный поток сервера. Нормальный телефон шлёт ~2 запроса в минуту (heartbeat + ack), пачки по 200
+  // записей идут подряд, но их единицы — 120/мин на адрес с запасом; CHANGES_RATE_PER_MIN=0 отключает лимит.
+  const perMinute = Number(process.env.CHANGES_RATE_PER_MIN ?? 120);
+  const limiter = perMinute > 0 ? new RateLimiter(perMinute, 60_000) : null;
+
   app.post<{ Body: ChangesBody }>("/api/changes", async (request, reply) => {
+    if (limiter?.hit(request.ip)) {
+      reply.header("retry-after", "30");
+      return reply.code(429).send({ error: "too many requests" });
+    }
     if (!checkGameSecret(request, reply)) return;
 
     const records = request.body?.records;

@@ -1,4 +1,12 @@
-import type { ContainerSlot } from "../routes/containers.js";
+export interface ContainerSlot {
+  index: number;
+  type: "SHARD" | "DAEMON";
+  tier: string;
+  copies: number;
+  title: string;
+  /** Зашифрованный LootCodec-блок (см. lib/lootCrypto.ts) — есть только у слотов, сгенерированных прямо в дашборде (§ Мастерская), нужен для переотрисовки QR. У импортированных извне контейнеров может отсутствовать. */
+  payload?: string;
+}
 
 const SLOT_TYPES = new Set(["SHARD", "DAEMON"]);
 

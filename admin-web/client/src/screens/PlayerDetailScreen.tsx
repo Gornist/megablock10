@@ -1,35 +1,15 @@
-import { useEffect, useState } from "react";
-import { api, ApiError } from "../api/client";
-import type { CharacterSnapshot, ChangeRow } from "../api/types";
+import { useState } from "react";
+import { api } from "../api/client";
+import type { CharacterSnapshot, EventsResponse } from "../api/types";
 import { useApiData } from "../api/useApiData";
 import { useAsyncAction } from "../api/useAsyncAction";
 import { AppButton, AppInput, AppSelect, Badge, EmptyState, ErrorNote, HexRow, Panel, StatTile } from "../design/components";
 import { ChangeLine } from "../design/ChangeLine";
+import { useMeta } from "../api/useMeta";
 import { useWatch } from "../api/useWatch";
 import { fromDatetimeLocal, shortKey, toDatetimeLocal } from "../format";
-import { reasonLabel } from "../reasons";
 import { navigate } from "../router";
 
-const REASONS = [
-  "CHARACTER_CREATED",
-  "BREACH_ATTEMPT",
-  "BREACH_BLOCKED",
-  "BREACH_LOOT",
-  "BREACH_EDDIES",
-  "SHARD_SCAN",
-  "SHARD_DECRYPT",
-  "TRANSFER_OUT",
-  "TRANSFER_IN",
-  "TRANSFER_CANCELLED",
-  "ITEM_TRANSFER_OUT",
-  "ITEM_TRANSFER_IN",
-  "ITEM_TRANSFER_CANCELLED",
-  "RAM_UPGRADE",
-  "ALERT_SENT",
-  "ALERT_SUPPRESSED",
-  "MASTER_OVERRIDE",
-  "CHARACTER_RESET",
-];
 
 const OVERRIDE_FIELDS = ["balance", "ramCapacity", "callsign", "faction"];
 
@@ -43,38 +23,25 @@ export function PlayerDetailScreen({ publicKeyB64 }: { publicKeyB64: string }) {
     `/api/players/${encodeURIComponent(publicKeyB64)}?t=${refreshTick}${asOfMs ? `&until=${asOfMs}` : ""}`,
     { pollMs: false },
   );
+  const meta = useMeta();
   const watch = useWatch();
   const watched = watch.byKey.get(publicKeyB64);
   const [note, setNote] = useState("");
 
-  const [history, setHistory] = useState<ChangeRow[] | null>(null);
-  const [historyError, setHistoryError] = useState<string | null>(null);
-  const [historyTotal, setHistoryTotal] = useState(0);
   const [reasonFilter, setReasonFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
   const [page, setPage] = useState(0);
 
-  useEffect(() => {
-    let cancelled = false;
-    const q = new URLSearchParams({ page: String(page), pageSize: "50" });
-    if (reasonFilter) q.set("reason", reasonFilter);
-    if (sourceFilter) q.set("source", sourceFilter);
-    api
-      .get<{ total: number; records: ChangeRow[] }>(`/api/players/${encodeURIComponent(publicKeyB64)}/history?${q}`)
-      .then((r) => {
-        if (cancelled) return;
-        setHistoryTotal(r.total);
-        setHistory(r.records);
-        setHistoryError(null);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setHistoryError(err instanceof ApiError ? err.message : "не удалось связаться с сервером");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [publicKeyB64, reasonFilter, sourceFilter, page, refreshTick]);
+  // refreshTick в запросе — чтобы после правки мастера история перезагрузилась (сервер параметр t игнорирует).
+  const historyQuery = new URLSearchParams({ page: String(page), pageSize: "50", t: String(refreshTick) });
+  if (reasonFilter) historyQuery.set("reason", reasonFilter);
+  if (sourceFilter) historyQuery.set("source", sourceFilter);
+  const { data: historyData, error: historyError } = useApiData<EventsResponse>(
+    `/api/players/${encodeURIComponent(publicKeyB64)}/history?${historyQuery}`,
+    { pollMs: false },
+  );
+  const history = historyData?.records ?? null;
+  const historyTotal = historyData?.total ?? 0;
 
   if (snapshotError) return <ErrorNote>{snapshotError}</ErrorNote>;
   if (!snapshot) return <EmptyState>загрузка…</EmptyState>;
@@ -186,9 +153,9 @@ export function PlayerDetailScreen({ publicKeyB64 }: { publicKeyB64: string }) {
               }}
             >
               <option value="">все причины</option>
-              {REASONS.map((r) => (
-                <option key={r} value={r}>
-                  {reasonLabel(r)}
+              {(meta?.reasons ?? []).map((r) => (
+                <option key={r.code} value={r.code}>
+                  {r.label}
                 </option>
               ))}
             </AppSelect>

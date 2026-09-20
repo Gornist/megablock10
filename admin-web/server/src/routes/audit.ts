@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import type { AuditResponse } from "../apiTypes.js";
 import type { Db } from "../db/index.js";
 import { requireMaster } from "../lib/auth.js";
 import { AUDIT_ACTION_LABEL_RU, describeAudit } from "../lib/auditSummary.js";
@@ -11,7 +12,7 @@ import { parseSafe } from "../lib/json.js";
  * вопрос доверия: «кто мне обнулил баланс?» — ответ здесь, с основанием.
  */
 export function registerAuditRoute(app: FastifyInstance, db: Db) {
-  app.get<{ Querystring: { action?: string; page?: string; pageSize?: string } }>("/api/audit", async (request, reply) => {
+  app.get<{ Querystring: { action?: string; page?: string; pageSize?: string } }>("/api/audit", async (request, reply): Promise<AuditResponse | void> => {
     if (!requireMaster(db, request, reply)) return;
 
     const pageSize = Math.min(200, Math.max(1, Number(request.query.pageSize) || 50));

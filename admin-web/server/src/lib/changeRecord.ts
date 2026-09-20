@@ -65,20 +65,9 @@ export interface ChangeRecord extends ChangeRecordInput {
   reason: Reason;
 }
 
-export interface StoredChangeRow {
-  id: string;
-  subject_key: string;
-  seq: number;
-  happened_at: number;
-  received_at: number;
-  field: string;
-  old_value: string | null;
-  new_value: string | null;
-  reason: string;
-  source_ref: string | null;
-  actor: string;
-  signature: string;
-}
+import type { StoredChangeRow } from "../apiTypes.js";
+
+export type { StoredChangeRow };
 
 /**
  * Байты, которые подписывает отправитель — pipe-разделённая строка из полей

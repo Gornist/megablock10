@@ -3,20 +3,11 @@ import { REASON_LABEL_RU, makeHumanizeContext } from "./humanize.js";
 import { parseSafe } from "./json.js";
 import { lastPresence } from "./presence.js";
 import { ONLINE_WINDOW_MS, getPlayerBase, seenAt } from "./playerSummary.js";
-import { breachesLastHourByNode, getNodeSummaries } from "../routes/nodes.js";
+import { breachesLastHourByNode, getNodeSummaries } from "./nodeSummary.js";
 
-export type Severity = "crit" | "warn" | "info";
+import type { AttentionItem, Severity } from "../apiTypes.js";
 
-export interface AttentionItem {
-  id: string;
-  kind: "negative_balance" | "balance_jump" | "went_silent" | "node_exhausted_hot" | "revoke_repeat" | "override_undelivered";
-  severity: Severity;
-  title: string;
-  detail: string;
-  subjectKey?: string;
-  nodeId?: string;
-  at: number;
-}
+export type { AttentionItem, Severity };
 
 const MIN = 60 * 1000;
 const SEVERITY_ORDER: Record<Severity, number> = { crit: 0, warn: 1, info: 2 };

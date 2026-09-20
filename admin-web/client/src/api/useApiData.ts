@@ -11,6 +11,11 @@ interface UseApiDataOptions {
    * передайте false, чтобы отключить polling (разовая загрузка).
    */
   pollMs?: number | false;
+  /**
+   * Нужен, когда path — функция: по ключу хук понимает, что запрос стал другим, и перезагружает данные.
+   * Функция вызывается при каждой загрузке, поэтому в ней можно брать «сейчас» (например, since = «за последний час»).
+   */
+  key?: string;
 }
 
 /**
@@ -20,19 +25,20 @@ interface UseApiDataOptions {
  * без единого сообщения. Заодно даёт polling по умолчанию вместо того,
  * чтобы требовать от мастера жать F5.
  */
-export function useApiData<T>(path: string, options: UseApiDataOptions = {}) {
+export function useApiData<T>(path: string | (() => string), options: UseApiDataOptions = {}) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const reload = useCallback(() => setTick((t) => t + 1), []);
   const pollMs = options.pollMs === false ? undefined : (options.pollMs ?? DEFAULT_POLL_MS);
+  const queryKey = typeof path === "string" ? path : (options.key ?? "");
 
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
       try {
-        const res = await api.get<T>(path);
+        const res = await api.get<T>(typeof path === "string" ? path : path());
         if (!cancelled) {
           setData(res);
           setError(null);
@@ -49,7 +55,7 @@ export function useApiData<T>(path: string, options: UseApiDataOptions = {}) {
       if (id) clearInterval(id);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path, tick, pollMs]);
+  }, [queryKey, tick, pollMs]);
 
   return { data, error, reload };
 }

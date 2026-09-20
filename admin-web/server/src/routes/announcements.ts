@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
+import type { AnnouncementItem, AnnouncementRecipient } from "../apiTypes.js";
 import type { Db } from "../db/index.js";
 import { logMasterAction, requireMaster } from "../lib/auth.js";
 import { makeHumanizeContext } from "../lib/humanize.js";
@@ -53,7 +54,7 @@ export function registerAnnouncementsRoutes(app: FastifyInstance, db: Db) {
   });
 
   /** История рассылок: текст, время, сколько адресатов и сколько уже применили. */
-  app.get("/api/announcements", async (request, reply) => {
+  app.get("/api/announcements", async (request, reply): Promise<AnnouncementItem[] | void> => {
     if (!requireMaster(db, request, reply)) return;
 
     const rows = db
@@ -77,7 +78,7 @@ export function registerAnnouncementsRoutes(app: FastifyInstance, db: Db) {
   });
 
   /** Кому из адресатов рассылка ещё не дошла — для «позвонить/подойти лично». */
-  app.get<{ Params: { id: string } }>("/api/announcements/:id/recipients", async (request, reply) => {
+  app.get<{ Params: { id: string } }>("/api/announcements/:id/recipients", async (request, reply): Promise<AnnouncementRecipient[] | void> => {
     if (!requireMaster(db, request, reply)) return;
 
     const rows = db

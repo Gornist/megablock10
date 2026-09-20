@@ -6,7 +6,8 @@ import { containerIdOf, makeSlotRef } from "../lib/slotRef.js";
 import { logMasterAction, requireMaster } from "../lib/auth.js";
 import { cachedByDbVersion } from "../lib/dbCache.js";
 import { checkGameSecret } from "../lib/gameSecret.js";
-import type { ContainerSlot } from "./containers.js";
+import type { SlotRegistryItem } from "../apiTypes.js";
+import type { ContainerSlot } from "../lib/containerSlots.js";
 
 interface ClaimBody {
   claimantKeyB64?: unknown;
@@ -126,7 +127,7 @@ export function registerSlotsRoutes(app: FastifyInstance, db: Db) {
 }
 
 /** Переиспользуется и роутом /api/slots, и CSV-экспортом (routes/exportCsv.ts) — та же причина, что у listNodeSummaries/listPlayerSummaries. */
-export function listSlotRegistry(db: Db) {
+export function listSlotRegistry(db: Db): SlotRegistryItem[] {
   const containers = db.prepare(`SELECT id, name, tier, owner_faction, slots_json FROM containers`).all() as {
     id: string;
     name: string;
@@ -146,7 +147,7 @@ export function listSlotRegistry(db: Db) {
     claimsBySlot.set(row.slot_ref, list);
   }
 
-  const registry = [];
+  const registry: SlotRegistryItem[] = [];
   for (const c of containers) {
     const slots = JSON.parse(c.slots_json) as ContainerSlot[];
     for (const slot of slots) {

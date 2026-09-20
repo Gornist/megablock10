@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ChangeRow } from "../api/types";
-import { reasonLabel } from "../reasons";
+import { reasonLabel, useMeta } from "../api/useMeta";
 import { formatDateTime, formatTime, shortKey } from "../format";
 
 /**
@@ -10,6 +10,7 @@ import { formatDateTime, formatTime, shortKey } from "../format";
  */
 export function ChangeLine({ row, showSubject, time = "received", withDate = false }: { row: ChangeRow; showSubject: boolean; time?: "received" | "happened"; withDate?: boolean }) {
   const [open, setOpen] = useState(false);
+  const meta = useMeta();
   const human = row.human;
   const kind = human?.kind ?? "system";
   return (
@@ -28,7 +29,7 @@ export function ChangeLine({ row, showSubject, time = "received", withDate = fal
       {open && (
         <dl className="change-details mono">
           <dt>Событие</dt>
-          <dd>{reasonLabel(row.reason)} <span className="hint-text">({row.reason})</span></dd>
+          <dd>{reasonLabel(meta, row.reason)} <span className="hint-text">({row.reason})</span></dd>
           <dt>Поле</dt>
           <dd>{row.field}</dd>
           <dt>Было → стало</dt>

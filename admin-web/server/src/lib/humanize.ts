@@ -5,15 +5,9 @@ import type { Db } from "../db/index.js";
  * Сырые поля остаются в записи — дашборд прячет их под «детали»; тут только человекочитаемая часть.
  * Фразы без рода глагола («перевод 100 €$ → Bob», «взлом узла … — успех»), потому что подлежащее — игрок, а его пол мы не знаем.
  */
-export type ChangeKind = "money" | "item" | "breach" | "alert" | "master" | "system";
+import type { ChangeKind, HumanChange } from "../apiTypes.js";
 
-export interface HumanChange {
-  kind: ChangeKind;
-  /** Чья запись (позывной или укороченный ключ). */
-  subject: string;
-  /** Что произошло, без подлежащего — для истории игрока; в ленте перед ним ставится subject. */
-  body: string;
-}
+export type { ChangeKind, HumanChange };
 
 export interface ChangeRowLike {
   subject_key: string;

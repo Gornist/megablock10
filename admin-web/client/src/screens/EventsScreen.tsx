@@ -1,24 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
-import { api, ApiError } from "../api/client";
+import { useMemo, useState } from "react";
 import type { EventsResponse, NodeSummary, PlayerListItem } from "../api/types";
 import { useApiData } from "../api/useApiData";
+import { reasonLabel, useMeta } from "../api/useMeta";
 import { ChangeLine } from "../design/ChangeLine";
 import { AppButton, AppSelect, Badge, EmptyState, ErrorNote, Panel } from "../design/components";
-import { REASON_LABEL } from "../reasons";
 
 const PAGE_SIZE = 50;
 const POLL_MS = 5000;
 /** Как в API: значение фильтра «игроки без фракции» (пустую строку в адресе не передать). */
 export const NO_FACTION = "__none__";
 
-const KIND_LABEL: Record<string, string> = {
-  money: "Деньги",
-  item: "Демоны и шарды",
-  breach: "Взломы",
-  alert: "Сигналы СБ",
-  master: "Действия мастера",
-  system: "Профиль (позывной, фракция, RAM)",
-};
 
 const PERIODS: { value: string; label: string }[] = [
   { value: "", label: "за всё время" },
@@ -48,17 +39,15 @@ export function EventsScreen({ preset }: { preset: EventsPreset }) {
   const [period, setPeriod] = useState("");
   const [page, setPage] = useState(0);
 
+  const meta = useMeta();
   const { data: players } = useApiData<PlayerListItem[]>("/api/players", { pollMs: false });
   const { data: nodes } = useApiData<NodeSummary[]>("/api/nodes", { pollMs: false });
   const sortedPlayers = useMemo(() => [...(players ?? [])].sort((a, b) => a.callsign.localeCompare(b.callsign)), [players]);
   const factions = useMemo(() => [...new Set((players ?? []).map((p) => p.faction))].sort(), [players]);
 
-  const [result, setResult] = useState<EventsResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
+  // Первая страница обновляется сама; листая историю, страница не должна «плыть» под руками.
+  const { data: result, error } = useApiData<EventsResponse>(
+    () => {
       const q = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
       if (player) q.set("player", player);
       if (faction) q.set("faction", faction);
@@ -66,23 +55,10 @@ export function EventsScreen({ preset }: { preset: EventsPreset }) {
       if (kind) q.set("kind", kind);
       if (reason) q.set("reason", reason);
       if (period) q.set("since", String(Date.now() - Number(period) * 60_000));
-      try {
-        const r = await api.get<EventsResponse>(`/api/events?${q}`);
-        if (cancelled) return;
-        setResult(r);
-        setError(null);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof ApiError ? err.message : "не удалось связаться с сервером");
-      }
-    }
-    void load();
-    // Живое обновление только на первой странице: листая историю, страница не должна «плыть» под руками.
-    const id = page === 0 ? setInterval(load, POLL_MS) : undefined;
-    return () => {
-      cancelled = true;
-      if (id) clearInterval(id);
-    };
-  }, [player, faction, node, kind, reason, period, page]);
+      return `/api/events?${q}`;
+    },
+    { key: JSON.stringify([player, faction, node, kind, reason, period, page]), pollMs: page === 0 ? POLL_MS : false },
+  );
 
   const nameOfPlayer = sortedPlayers.find((p) => p.publicKeyB64 === player)?.callsign ?? "игрок";
   const nameOfNode = (nodes ?? []).find((n) => n.id === node)?.name ?? node;
@@ -90,8 +66,8 @@ export function EventsScreen({ preset }: { preset: EventsPreset }) {
     player && `игрок: ${nameOfPlayer}`,
     faction && `фракция: ${faction === NO_FACTION ? "без фракции" : faction}`,
     node && `узел: ${nameOfNode}`,
-    kind && `тип: ${KIND_LABEL[kind]}`,
-    reason && `причина: ${REASON_LABEL[reason] ?? reason}`,
+    kind && `тип: ${meta?.kinds.find((k) => k.code === kind)?.label ?? kind}`,
+    reason && `причина: ${reasonLabel(meta, reason)}`,
     period && PERIODS.find((p) => p.value === period)?.label,
   ].filter(Boolean) as string[];
 
@@ -146,17 +122,17 @@ export function EventsScreen({ preset }: { preset: EventsPreset }) {
           </AppSelect>
           <AppSelect value={kind} onChange={change(setKind)} aria-label="тип события">
             <option value="">любой тип</option>
-            {Object.entries(KIND_LABEL).map(([k, l]) => (
-              <option key={k} value={k}>
-                {l}
+            {(meta?.kinds ?? []).map((k) => (
+              <option key={k.code} value={k.code}>
+                {k.label}
               </option>
             ))}
           </AppSelect>
           <AppSelect value={reason} onChange={change(setReason)} aria-label="причина">
             <option value="">любая причина</option>
-            {Object.entries(REASON_LABEL).map(([k, l]) => (
-              <option key={k} value={k}>
-                {l}
+            {(meta?.reasons ?? []).map((r) => (
+              <option key={r.code} value={r.code}>
+                {r.label}
               </option>
             ))}
           </AppSelect>

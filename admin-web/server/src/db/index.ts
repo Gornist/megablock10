@@ -26,6 +26,9 @@ CREATE INDEX IF NOT EXISTS idx_changes_source_ref ON changes (source_ref);
 -- overview/аналитика/тревоги фильтруют по field + времени, а лента и "на связи" — по received_at.
 CREATE INDEX IF NOT EXISTS idx_changes_field_happened ON changes (field, happened_at);
 CREATE INDEX IF NOT EXISTS idx_changes_received_at ON changes (received_at);
+-- projectAll читает всю историю в порядке (игрок, время) — без этого индекса это сортировка сотен тысяч строк.
+CREATE INDEX IF NOT EXISTS idx_changes_subject_received ON changes (subject_key, received_at, seq);
+CREATE INDEX IF NOT EXISTS idx_changes_field_received ON changes (field, received_at);
 
 -- Игроки "под наблюдением" — общий для всех мастеров список с пометкой.
 CREATE TABLE IF NOT EXISTS watchlist (

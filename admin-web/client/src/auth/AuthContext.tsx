@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { type Session, clearSession, loadSession, saveSession } from "../api/client";
+import { type Session, api, clearSession, loadSession, saveSession } from "../api/client";
 
 interface AuthContextValue {
   session: Session | null;
@@ -17,6 +17,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSessionState(s);
   };
   const logout = () => {
+    // Сначала закрываем сессию на сервере (заголовок собирается синхронно, до очистки), потом стираем локальную копию.
+    // Ответ не ждём: даже если сеть моргнула, мастер всё равно выходит из интерфейса.
+    api.post("/api/auth/logout").catch(() => {});
     clearSession();
     setSessionState(null);
   };

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { Db } from "../db/index.js";
-import { login } from "../lib/auth.js";
+import { login, logout } from "../lib/auth.js";
 import { RateLimiter } from "../lib/rateLimit.js";
 
 interface LoginBody {
@@ -30,5 +30,11 @@ export function registerAuthRoute(app: FastifyInstance, db: Db) {
 
     loginLimiter.reset(request.ip);
     return { sessionToken: result.sessionToken, master: result.master, expiresAt: result.expiresAt };
+  });
+
+  /** POST /api/auth/logout — закрыть сессию на сервере. Всегда 200: недействительный токен — то же самое, что «уже вышел». */
+  app.post("/api/auth/logout", async (request) => {
+    logout(db, request);
+    return { ok: true };
   });
 }

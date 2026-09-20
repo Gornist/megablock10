@@ -3,44 +3,12 @@ import type { Field, StoredChangeRow } from "./changeRecord.js";
 import { RAM_CAPACITY_DEFAULT } from "./identityDefaults.js";
 import { parseSafe } from "./json.js";
 
-export interface DaemonEntry {
-  daemonId: string;
-  name: string;
-  tier: string;
-  weight: number;
-  acquiredAt: number;
-  sourceRef: string | null;
-}
+import type { CharacterSnapshot, Counters, DaemonEntry, ShardEntry } from "../apiTypes.js";
 
-export interface ShardEntry {
-  shardId: string;
-  title: string;
-  tier: string;
-  decrypted: boolean;
-  acquiredAt: number;
-  sourceRef: string | null;
-}
+export type { CharacterSnapshot, Counters, DaemonEntry, ShardEntry };
 
-export interface Counters {
-  breaches: Record<string, { success: number; partial: number; fail: number }>;
-  slotsClaimed: number;
-  alertsSent: number;
-  alertsSuppressed: number;
-  breachesBlocked: Record<string, number>;
-}
-
-export interface CharacterSnapshot {
-  publicKeyB64: string;
-  callsign: string;
-  faction: string;
-  ramCapacity: number;
-  balance: number;
-  daemons: DaemonEntry[];
-  shards: ShardEntry[];
-  counters: Counters;
-  lastSeenAt: number;
-  lastSeq: number;
-}
+/** Поля записи, которые читает свёртка (подмножество StoredChangeRow). */
+export type ProjectionRow = Pick<StoredChangeRow, "subject_key" | "field" | "new_value" | "reason" | "received_at" | "seq">;
 
 const SCALAR_FIELDS: Field[] = ["balance", "ramCapacity", "callsign", "faction"];
 
@@ -76,6 +44,68 @@ export function projectCharacter(db: Db, subjectKeyB64: string, until?: number):
           .all(subjectKeyB64, until)
   ) as StoredChangeRow[];
 
+  // slotsClaimed — не из changes, а из реестра арбитража (§5 ТЗ): именно
+  // slot_claims фиксирует, кто реально получил тиражный слот через сервер.
+  const claimedRow = (
+    until === undefined
+      ? db.prepare(`SELECT COUNT(*) AS n FROM slot_claims WHERE claimant_key = ? AND revoked = 0`).get(subjectKeyB64)
+      : db
+          .prepare(`SELECT COUNT(*) AS n FROM slot_claims WHERE claimant_key = ? AND revoked = 0 AND claimed_at <= ?`)
+          .get(subjectKeyB64, until)
+  ) as { n: number };
+
+  return projectRows(subjectKeyB64, rows, claimedRow.n);
+}
+
+/**
+ * Снимки ВСЕХ персонажей за один проход по истории: одна выборка, упорядоченная
+ * по (игрок, время), вместо запроса на каждого игрока (1 + 2·N обращений к БД).
+ * Результат тот же, что у projectCharacter для каждого ключа по отдельности
+ * (это проверяется тестом) — просто дешевле на сотнях игроков и десятках тысяч записей.
+ */
+/** Только то, что читает свёртка: подписи, actor, source_ref и т.п. ей не нужны, а на десятках тысяч строк их материализация заметна. */
+const PROJECTION_COLUMNS = "subject_key, field, new_value, reason, received_at, seq";
+
+export function projectAll(db: Db, until?: number): CharacterSnapshot[] {
+  const claims = new Map(
+    (
+      (until === undefined
+        ? db.prepare(`SELECT claimant_key, COUNT(*) AS n FROM slot_claims WHERE revoked = 0 GROUP BY claimant_key`).all()
+        : db.prepare(`SELECT claimant_key, COUNT(*) AS n FROM slot_claims WHERE revoked = 0 AND claimed_at <= ? GROUP BY claimant_key`).all(until)) as {
+        claimant_key: string;
+        n: number;
+      }[]
+    ).map((r) => [r.claimant_key, r.n]),
+  );
+
+  const stmt =
+    until === undefined
+      ? db.prepare(`SELECT ${PROJECTION_COLUMNS} FROM changes ORDER BY subject_key, received_at ASC, seq ASC`)
+      : db.prepare(`SELECT ${PROJECTION_COLUMNS} FROM changes WHERE received_at <= ? ORDER BY subject_key, received_at ASC, seq ASC`);
+  const rows = (until === undefined ? stmt.iterate() : stmt.iterate(until)) as Iterable<ProjectionRow>;
+
+  const out: CharacterSnapshot[] = [];
+  let key: string | null = null;
+  let group: ProjectionRow[] = [];
+  const flush = () => {
+    if (key === null) return;
+    const snapshot = projectRows(key, group, claims.get(key) ?? 0);
+    if (snapshot) out.push(snapshot);
+  };
+  for (const row of rows) {
+    if (row.subject_key !== key) {
+      flush();
+      key = row.subject_key;
+      group = [];
+    }
+    group.push(row);
+  }
+  flush();
+  return out;
+}
+
+/** Свёртка уже упорядоченных (received_at, seq) записей одного игрока в снимок. null — записей нет. */
+export function projectRows(subjectKeyB64: string, rows: ProjectionRow[], slotsClaimed: number): CharacterSnapshot | null {
   if (rows.length === 0) return null;
 
   const snapshot: CharacterSnapshot = {
@@ -103,18 +133,7 @@ export function projectCharacter(db: Db, subjectKeyB64: string, until?: number):
 
   snapshot.daemons = [...daemons.values()];
   snapshot.shards = [...shards.values()];
-
-  // slotsClaimed — не из changes, а из реестра арбитража (§5 ТЗ): именно
-  // slot_claims фиксирует, кто реально получил тиражный слот через сервер.
-  const claimedRow = (
-    until === undefined
-      ? db.prepare(`SELECT COUNT(*) AS n FROM slot_claims WHERE claimant_key = ? AND revoked = 0`).get(subjectKeyB64)
-      : db
-          .prepare(`SELECT COUNT(*) AS n FROM slot_claims WHERE claimant_key = ? AND revoked = 0 AND claimed_at <= ?`)
-          .get(subjectKeyB64, until)
-  ) as { n: number };
-  snapshot.counters.slotsClaimed = claimedRow.n;
-
+  snapshot.counters.slotsClaimed = slotsClaimed;
   return snapshot;
 }
 
@@ -122,7 +141,7 @@ function applyRow(
   snapshot: CharacterSnapshot,
   daemons: Map<string, DaemonEntry>,
   shards: Map<string, ShardEntry>,
-  row: StoredChangeRow,
+  row: ProjectionRow,
 ) {
   const field = row.field as Field;
 

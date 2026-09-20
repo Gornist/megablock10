@@ -1,12 +1,13 @@
 import { withHuman } from "../lib/humanize.js";
+import type { Overview } from "../apiTypes.js";
 import { presentSince } from "../lib/presence.js";
+import { ONLINE_WINDOW_MS } from "../lib/playerSummary.js";
 import type { FastifyInstance } from "fastify";
 import type { Db } from "../db/index.js";
 import { requireMaster } from "../lib/auth.js";
 import { parseSafe } from "../lib/json.js";
 import { cachedByDbVersion } from "../lib/dbCache.js";
 
-const ONLINE_WINDOW_MS = 5 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 /**
  * Верхняя граница на скан истории тревог СБ при подсчёте alerts.sent/
@@ -22,7 +23,7 @@ function computeOverviewBase(db: Db) {
   const totalPlayers = (db.prepare(`SELECT COUNT(DISTINCT subject_key) AS n FROM changes`).get() as { n: number }).n;
 
   const alertRows = db
-    .prepare(`SELECT new_value AS payload FROM changes WHERE field = 'counters.alert' ORDER BY happened_at DESC LIMIT ?`)
+    .prepare(`SELECT new_value AS payload FROM changes WHERE field = 'counters.alert' ORDER BY received_at DESC LIMIT ?`)
     .all(ALERTS_SCAN_LIMIT) as { payload: string | null }[];
   let alertsSent = 0,
     alertsSuppressed = 0;
@@ -72,7 +73,7 @@ export function registerOverviewRoutes(app: FastifyInstance, db: Db) {
     const onlinePlayers = online.size;
 
     const breachRows = db
-      .prepare(`SELECT new_value AS payload FROM changes WHERE field = 'counters.breach' AND happened_at > ?`)
+      .prepare(`SELECT new_value AS payload FROM changes WHERE field = 'counters.breach' AND received_at > ?`)
       .all(now - HOUR_MS) as { payload: string | null }[];
     const breachesLastHour = { success: 0, partial: 0, fail: 0 };
     for (const row of breachRows) {
@@ -80,12 +81,13 @@ export function registerOverviewRoutes(app: FastifyInstance, db: Db) {
       if (parsed) breachesLastHour[parsed.outcome] += 1;
     }
 
-    return {
+    const overview: Overview = {
       players: { online: onlinePlayers, total: base.totalPlayers },
       breachesLastHour,
       slots: { claimed: base.slotsClaimed, printed: base.slotsPrinted },
       alerts: { sent: base.alertsSent, suppressed: base.alertsSuppressed },
     };
+    return overview;
   });
 
   /**

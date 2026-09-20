@@ -1,3 +1,4 @@
+import type { Economy, FactionEvents, FactionRow } from "../apiTypes.js";
 import type { Db } from "../db/index.js";
 import { REASON_LABEL_RU, containerIdOf } from "./humanize.js";
 import { parseSafe } from "./json.js";
@@ -7,11 +8,6 @@ import type { PlayerBase } from "./playerSummary.js";
 const TRANSFER_REASONS = new Set(["TRANSFER_OUT", "TRANSFER_IN", "TRANSFER_CANCELLED"]);
 
 const DELTA_SQL = `(CAST(COALESCE(new_value, '0') AS INTEGER) - CAST(COALESCE(old_value, '0') AS INTEGER))`;
-
-export interface EconomyPoint {
-  t: number;
-  supply: number;
-}
 
 /** Джини по неотрицательным остаткам: 0 — поровну, →1 — всё у одного. */
 export function gini(values: number[]): number {
@@ -36,12 +32,12 @@ function percentile(sortedAsc: number[], p: number): number {
  * часам СЕРВЕРА (received_at): часы телефонов разъезжаются, серверные — одни.
  * Чистая функция от БД → кэшируется по версии БД (dbCache.ts).
  */
-export function computeEconomy(db: Db, players: PlayerBase[], buckets = 60) {
+export function computeEconomy(db: Db, players: PlayerBase[], buckets = 60): Economy {
   const rows = db
     .prepare(`SELECT received_at AS t, ${DELTA_SQL} AS delta FROM changes WHERE field = 'balance' ORDER BY received_at ASC`)
     .all() as { t: number; delta: number }[];
 
-  const series: EconomyPoint[] = [];
+  const series: Economy["series"] = [];
   if (rows.length > 0) {
     const start = rows[0].t;
     const end = rows[rows.length - 1].t;
@@ -93,13 +89,7 @@ export function computeEconomy(db: Db, players: PlayerBase[], buckets = 60) {
   };
 }
 
-export interface FactionEvents {
-  breachesOwn: number;
-  breachesForeign: number;
-  alertsSent: number;
-  alertsSuppressed: number;
-  alertsReceived: number;
-}
+export type { FactionEvents, FactionRow };
 
 const emptyEvents = (): FactionEvents => ({ breachesOwn: 0, breachesForeign: 0, alertsSent: 0, alertsSuppressed: 0, alertsReceived: 0 });
 
@@ -145,18 +135,6 @@ export function computeFactionEvents(db: Db, players: PlayerBase[]): Map<string,
     }
   }
   return out;
-}
-
-export interface FactionRow extends FactionEvents {
-  faction: string;
-  players: number;
-  online: number;
-  totalBalance: number;
-  avgBalance: number;
-  daemons: number;
-  shards: number;
-  breaches: { success: number; partial: number; fail: number };
-  slotsClaimed: number;
 }
 
 /** Сводка по фракциям: сумма по игрокам + события (events — из computeFactionEvents). online считается на каждый запрос. */

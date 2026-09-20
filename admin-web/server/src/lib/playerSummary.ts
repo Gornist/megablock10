@@ -1,21 +1,17 @@
 import type { Db } from "../db/index.js";
 import { cachedByDbVersion } from "./dbCache.js";
 import { lastPresence } from "./presence.js";
-import { projectCharacter } from "./projection.js";
+import type { PlayerListItem } from "../apiTypes.js";
+import { projectAll } from "./projection.js";
 
 export const ONLINE_WINDOW_MS = 5 * 60 * 1000;
 
 /** Всё, что зависит только от БД (кэшируемо по dbCache.ts) — без online, он зависит от текущего времени, не только от записей. until — «состояние на момент T» (мс, часы сервера). */
-export function computePlayerBase(db: Db, until?: number) {
-  const keys = (
-    (until === undefined
-      ? db.prepare(`SELECT DISTINCT subject_key FROM changes`).all()
-      : db.prepare(`SELECT DISTINCT subject_key FROM changes WHERE received_at <= ?`).all(until)) as { subject_key: string }[]
-  ).map((r) => r.subject_key);
-  return keys
-    .map((key) => projectCharacter(db, key, until))
-    .filter((s): s is NonNullable<typeof s> => s !== null)
-    .map((s) => ({
+export type PlayerBase = Omit<PlayerListItem, "online">;
+
+export function computePlayerBase(db: Db, until?: number): PlayerBase[] {
+  return projectAll(db, until)
+    .map((s): PlayerBase => ({
       publicKeyB64: s.publicKeyB64,
       callsign: s.callsign,
       faction: s.faction,
@@ -29,15 +25,13 @@ export function computePlayerBase(db: Db, until?: number) {
     }));
 }
 
-export type PlayerBase = ReturnType<typeof computePlayerBase>[number];
-
 /** Время последней активности игрока: запись изменения ИЛИ heartbeat телефона. */
 export function seenAt(p: { publicKeyB64: string; lastSeenAt: number }): number {
   return Math.max(p.lastSeenAt, lastPresence(p.publicKeyB64));
 }
 
-export function withOnline(base: PlayerBase[], now = Date.now()) {
-  return base.map((s) => {
+export function withOnline(base: PlayerBase[], now = Date.now()): PlayerListItem[] {
+  return base.map((s): PlayerListItem => {
     const at = seenAt(s);
     return { ...s, lastSeenAt: at, online: now - at < ONLINE_WINDOW_MS };
   });

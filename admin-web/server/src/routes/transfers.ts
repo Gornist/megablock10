@@ -1,5 +1,6 @@
 import { makeHumanizeContext } from "../lib/humanize.js";
 import type { FastifyInstance } from "fastify";
+import type { Transfer } from "../apiTypes.js";
 import type { Db } from "../db/index.js";
 import { requireMaster } from "../lib/auth.js";
 
@@ -61,7 +62,7 @@ export function registerTransfersRoute(app: FastifyInstance, db: Db) {
     for (const row of ins) if (row.source_ref) insByTx.set(row.source_ref, row);
 
     const seen = new Set<string>();
-    const transfers = [];
+    const transfers: Transfer[] = [];
     for (const out of outs) {
       const txId = out.source_ref ?? out.id;
       seen.add(txId);
@@ -95,7 +96,10 @@ export function registerTransfersRoute(app: FastifyInstance, db: Db) {
 
     // Имена вместо ключей: на дашборде «от MFkw…» ничего не говорит мастеру.
     const names = makeHumanizeContext(db);
-    for (const t of transfers) Object.assign(t, { fromName: names.playerName(t.from), toName: names.playerName(t.to) });
+    for (const t of transfers) {
+      t.fromName = names.playerName(t.from);
+      t.toName = names.playerName(t.to);
+    }
 
     transfers.sort((a, b) => (b.confirmedAt ?? b.sentAt ?? 0) - (a.confirmedAt ?? a.sentAt ?? 0));
     return transfers;

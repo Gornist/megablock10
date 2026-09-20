@@ -1,8 +1,8 @@
 /**
  * Простой rate-limit по ключу (IP) в памяти процесса — коллектор
  * однопроцессный, персистентность между рестартами не нужна. Единственное
- * применение — POST /api/auth/login: дашборд висит в открытой игровой сети
- * (§9 ТЗ), и без этого ничто не мешает подбирать мастерский токен перебором.
+ * применения — POST /api/auth/login (дашборд висит в открытой игровой сети, §9 ТЗ, и без лимита
+ * мастерский токен можно подбирать перебором) и POST /api/changes (защита от зациклившегося клиента).
  */
 export class RateLimiter {
   private hits = new Map<string, number[]>();
@@ -18,6 +18,10 @@ export class RateLimiter {
     const timestamps = (this.hits.get(key) ?? []).filter((t) => now - t < this.windowMs);
     timestamps.push(now);
     this.hits.set(key, timestamps);
+    // Адреса, которые давно молчат, иначе оставались бы в карте навсегда.
+    if (this.hits.size > 1000) {
+      for (const [k, ts] of this.hits) if (ts.every((t) => now - t >= this.windowMs)) this.hits.delete(k);
+    }
     return timestamps.length > this.max;
   }
 

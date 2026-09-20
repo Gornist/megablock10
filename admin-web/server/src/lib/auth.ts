@@ -63,8 +63,11 @@ export function login(db: Db, name: string, token: string): { sessionToken: stri
   const sessionToken = randomBytes(32).toString("base64url");
   const now = Date.now();
   const expiresAt = now + SESSION_TTL_MS;
+  // Просроченные сессии раньше копились в таблице вечно.
+  db.prepare(`DELETE FROM sessions WHERE expires_at < ?`).run(now);
+  // В БД (а значит и в бэкапах) — только хэш сессионного токена, как и у мастерского: копия базы не даёт войти в дашборд.
   db.prepare(`INSERT INTO sessions (token, master_id, created_at, expires_at) VALUES (?, ?, ?, ?)`).run(
-    sessionToken,
+    hashToken(sessionToken),
     row.id,
     now,
     expiresAt,
@@ -77,12 +80,19 @@ export function authenticate(db: Db, request: FastifyRequest): Master | null {
   const header = request.headers.authorization;
   if (!header?.startsWith("Bearer ")) return null;
   const token = header.slice("Bearer ".length);
-  const row = db.prepare(`SELECT master_id, expires_at FROM sessions WHERE token = ?`).get(token) as
+  const row = db.prepare(`SELECT master_id, expires_at FROM sessions WHERE token = ?`).get(hashToken(token)) as
     | { master_id: string; expires_at: number }
     | undefined;
   if (!row || row.expires_at < Date.now()) return null;
   const master = db.prepare(`SELECT id, name FROM masters WHERE id = ?`).get(row.master_id) as Master | undefined;
   return master ?? null;
+}
+
+/** Закрывает сессию из заголовка Authorization на сервере (раньше «выйти» лишь стирало токен в браузере, а сам он жил до 24 часов). Идемпотентно. */
+export function logout(db: Db, request: FastifyRequest): void {
+  const header = request.headers.authorization;
+  if (!header?.startsWith("Bearer ")) return;
+  db.prepare(`DELETE FROM sessions WHERE token = ?`).run(hashToken(header.slice("Bearer ".length)));
 }
 
 /** Хелпер для защищённых роутов: отдаёт 401 и возвращает null, если токена нет/протух. */

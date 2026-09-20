@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { testDb } from "./testUtil.js";
+import { testApp, testDb, testDevice } from "./testUtil.js";
 import { projectCharacter } from "./lib/projection.js";
 import { RAM_CAPACITY_DEFAULT } from "./lib/identityDefaults.js";
 import type { Db } from "./db/index.js";
@@ -189,4 +189,39 @@ test("projectCharacter — slotsClaimed берётся из slot_claims (revoked
 
   const snapshot = projectCharacter(db, key)!;
   assert.equal(snapshot.counters.slotsClaimed, 1, "revoked-заявка не должна считаться");
+});
+
+test("projectAll за один проход даёт то же, что projectCharacter по каждому игроку (в том числе «на момент T» и со слотами)", async () => {
+  const { projectAll, projectCharacter } = await import("./lib/projection.js");
+  const db = testDb();
+  const app = testApp(db);
+  const devices = [testDevice(), testDevice(), testDevice()];
+  let t = 0;
+  for (const [i, d] of devices.entries()) {
+    await app.inject({
+      method: "POST",
+      url: "/api/changes",
+      payload: {
+        records: [
+          d.change({ field: "callsign", newValue: `P${i}`, reason: "CHARACTER_CREATED" }),
+          d.change({ field: "balance", oldValue: "0", newValue: String(100 * (i + 1)), reason: "BREACH_EDDIES" }),
+          d.change({ field: "counters.breach", newValue: JSON.stringify({ tier: "HARD", outcome: i % 2 ? "success" : "fail" }), reason: "BREACH_ATTEMPT", sourceRef: "n:s" }),
+        ],
+      },
+    });
+    // разнести записи игроков по времени, чтобы «момент T» что-то отсекал
+    db.prepare(`UPDATE changes SET received_at = ? WHERE subject_key = ?`).run(1_000 + 1_000 * (t++), d.publicKeyB64);
+  }
+  db.prepare(`INSERT INTO slot_claims (slot_ref, claimant_key, claimed_at, granted_by, revoked) VALUES ('n#0', ?, 1500, 'SERVER', 0)`).run(devices[0].publicKeyB64);
+
+  for (const until of [undefined, 1_500, 2_500]) {
+    const all = projectAll(db, until);
+    const each = devices.map((d) => projectCharacter(db, d.publicKeyB64, until)).filter((s) => s !== null);
+    assert.deepEqual(
+      [...all].sort((a, b) => a.publicKeyB64.localeCompare(b.publicKeyB64)),
+      [...each].sort((a, b) => a!.publicKeyB64.localeCompare(b!.publicKeyB64)),
+      `until=${until}`,
+    );
+  }
+  assert.equal(projectAll(db, 1_500).length, 1, "на момент T виден только тот, кто уже был");
 });
