@@ -3,8 +3,10 @@ package com.megablok10.app.chat
 import android.content.Context
 import android.util.Log
 import com.megablok10.app.data.Mb10Database
+import com.megablok10.app.data.OutboxDao
 import com.megablok10.app.data.OutboxEntity
 import com.megablok10.app.net.LineSocketClient
+import com.megablok10.app.presence.PeerInfo
 import com.megablok10.app.presence.PresenceService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -31,21 +33,33 @@ object OutboxStore {
 
     /** Пробует отправить всё, что пора. Возвращает, сколько сообщений ушло. Параллельные вызовы не пересекаются. */
     suspend fun flush(context: Context, now: Long = System.currentTimeMillis()): Int = flushLock.withLock {
-        val dao = Mb10Database.get(context).outboxDao()
-        dao.deleteOlderThan(now - OutboxPolicy.MAX_AGE_MS)
-        val peers = PresenceService.peers.value.associateBy { it.pubKeyB64 }
-        var sent = 0
-        for (entry in dao.due(now)) {
-            val peer = peers[entry.toPubKeyB64] ?: continue   // не виден — не считаем попыткой, ждём его появления
-            val ok = withContext(Dispatchers.IO) { LineSocketClient.sendLine(peer.host, peer.port, entry.wireLine, 2000) }
-            if (ok) {
-                dao.delete(entry.id); sent++
-            } else {
-                val attempts = entry.attempts + 1
-                dao.reschedule(entry.id, attempts, now + OutboxPolicy.nextDelayMs(attempts))
-            }
-        }
+        val sent = flushOutbox(
+            Mb10Database.get(context).outboxDao(),
+            PresenceService.peers.value.associateBy { it.pubKeyB64 },
+            now
+        ) { peer, line -> withContext(Dispatchers.IO) { LineSocketClient.sendLine(peer.host, peer.port, line, 2000) } }
         if (sent > 0) Log.i(TAG, "досланы из очереди: $sent")
         sent
     }
+}
+
+/** Ядро отправки очереди без Android: выбрасывает просроченное, шлёт то, что пора и чей адресат виден, пересчитывает паузу неудачным. */
+internal suspend fun flushOutbox(
+    dao: OutboxDao,
+    peers: Map<String, PeerInfo>,
+    now: Long,
+    send: suspend (PeerInfo, String) -> Boolean
+): Int {
+    dao.deleteOlderThan(now - OutboxPolicy.MAX_AGE_MS)
+    var sent = 0
+    for (entry in dao.due(now)) {
+        val peer = peers[entry.toPubKeyB64] ?: continue   // не виден — не считаем попыткой, ждём его появления
+        if (send(peer, entry.wireLine)) {
+            dao.delete(entry.id); sent++
+        } else {
+            val attempts = entry.attempts + 1
+            dao.reschedule(entry.id, attempts, now + OutboxPolicy.nextDelayMs(attempts))
+        }
+    }
+    return sent
 }

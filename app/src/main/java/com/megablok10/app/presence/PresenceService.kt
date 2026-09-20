@@ -6,26 +6,14 @@ import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
 import android.util.Log
 import com.megablok10.app.identity.Identity
-import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 
 private const val SERVICE_TYPE = "_mb10chat._tcp."
 private const val TAG = "PresenceService"
-
-/** Известный баг платформы на части устройств: NSD может мигнуть onServiceLost сразу за onServiceFound для одного и того же пира без реального разрыва — отсюда дебаунс перед фактическим удалением. 12 с (а не 4): при роуминге между точками Wi-Fi бывают паузы до нескольких секунд, и короткий разрыв не должен выглядеть как «ушёл офлайн» (docs/network-spec.md, §7). */
-private const val LOST_DEBOUNCE_MS = 12_000L
-
-/** После переподключения к сети старые записи NSD недействительны: пиры, не нашедшиеся заново за это время, убираются. */
-private const val REFRESH_GRACE_MS = 15_000L
 
 /**
  * Реклама себя и поиск других устройств этого приложения в локальной сети
@@ -46,27 +34,16 @@ object PresenceService {
     private var scope: CoroutineScope? = null
     private var startArgs: Triple<Context, Identity, Int>? = null
 
-    // Источник правды — потокобезопасная карта (колбэки NSD приходят не из главного потока);
-    // _peers лишь публикует её снимок при каждом изменении.
-    private val peerMap = ConcurrentHashMap<String, PeerInfo>()
-    // Отложенные удаления по onServiceLost — ключ тот же serviceName, что и у peerMap.
-    // Если до срабатывания придёт onServiceFound на того же пира, job отменяется и
-    // пир не пропадает из списка вовсе — то самое мерцание, которого не должно быть видно.
-    private val pendingRemovals = ConcurrentHashMap<String, Job>()
-    private val _peers = MutableStateFlow<List<PeerInfo>>(emptyList())
-    val peers: StateFlow<List<PeerInfo>> = _peers.asStateFlow()
-
-    private fun publishPeers() {
-        _peers.value = peerMap.values.toList()
-    }
+    // Таблица пиров (дебаунс потери, отсрочка после смены сети, серверные подсказки) — чистая логика в PeerTable, покрыта JVM-тестами.
+    private val table = PeerTable { scope }
+    val peers: StateFlow<List<PeerInfo>> get() = table.peers
 
     /**
      * Добавляет пира вручную, минуя NSD — только для прогонов на эмуляторах, где mDNS между
      * устройствами не ходит (см. DebugQrReceiver). В боевом коде не вызывается.
      */
     fun addStaticPeer(peer: PeerInfo) {
-        peerMap["static:${peer.pubKeyB64}"] = peer
-        publishPeers()
+        table.addStatic(peer)
     }
 
     fun start(context: Context, identity: Identity, chatPort: Int) {
@@ -127,23 +104,13 @@ object PresenceService {
                         val cs = resolved.attributes["cs"]?.toString(Charsets.UTF_8) ?: ""
                         val fac = resolved.attributes["fac"]?.toString(Charsets.UTF_8) ?: ""
                         val host = resolved.host?.hostAddress ?: return
-                        // Пир снова нашёлся — отменяем его отложенное удаление, если оно было запланировано.
-                        pendingRemovals.remove(resolved.serviceName)?.cancel()
-                        peerMap[resolved.serviceName] = PeerInfo(pk, cs, fac, host, resolved.port)
-                        publishPeers()
+                        table.found(resolved.serviceName, PeerInfo(pk, cs, fac, host, resolved.port))
                     }
                 })
             }
 
             override fun onServiceLost(info: NsdServiceInfo) {
-                val name = info.serviceName
-                pendingRemovals[name]?.cancel()
-                pendingRemovals[name] = presenceScope.launch {
-                    delay(LOST_DEBOUNCE_MS)
-                    peerMap.remove(name)
-                    pendingRemovals.remove(name)
-                    publishPeers()
-                }
+                table.lost(info.serviceName)
             }
         }
         discoveryListener = discListener
@@ -164,7 +131,6 @@ object PresenceService {
         } catch (e: Exception) { /* ignore */ }
 
         scope?.cancel()
-        pendingRemovals.clear()
 
         registrationListener = null
         discoveryListener = null
@@ -172,8 +138,7 @@ object PresenceService {
         nsdManager = null
         myServiceName = null
         scope = null
-        peerMap.clear()
-        publishPeers()
+        table.clear()
     }
 
     /**
@@ -184,37 +149,17 @@ object PresenceService {
     fun refresh() {
         val args = startArgs ?: return
         // Статические (отладочные) и серверные записи NSD-обновление не касается — они переживают refresh как есть.
-        val keep = peerMap.toMap()
+        val keep = table.snapshot()
         start(args.first, args.second, args.third)
-        val presenceScope = scope ?: return
-        keep.forEach { (name, peer) ->
-            peerMap[name] = peer
-            if (name.startsWith("static:") || name.startsWith("srv:")) return@forEach
-            pendingRemovals[name] = presenceScope.launch {
-                delay(REFRESH_GRACE_MS)
-                peerMap.remove(name)
-                pendingRemovals.remove(name)
-                publishPeers()
-            }
-        }
-        publishPeers()
+        table.restore(keep)
+        table.graceAll()
     }
 
     /**
      * Запасное обнаружение: сервер знает адреса всех, кто недавно слал heartbeat, и отдаёт их в ответе (docs/network-spec.md, §7 —
      * «запасной путь: известный адрес сервера»). Пиры, которых NSD уже нашёл сам, не дублируются; пропавшие из списка сервера убираются.
      */
-    fun updateServerPeers(fromServer: List<PeerInfo>, myPubKeyB64: String) {
-        val wanted = fromServer.filter { it.pubKeyB64 != myPubKeyB64 && it.port > 0 && it.host.isNotBlank() }.associateBy { "srv:${it.pubKeyB64}" }
-        val viaNsdOrStatic = peerMap.filterKeys { !it.startsWith("srv:") }.values.map { it.pubKeyB64 }.toSet()
-        var changed = false
-        wanted.forEach { (key, peer) ->
-            if (peer.pubKeyB64 in viaNsdOrStatic) { if (peerMap.remove(key) != null) changed = true }
-            else if (peerMap[key] != peer) { peerMap[key] = peer; changed = true }
-        }
-        peerMap.keys.filter { it.startsWith("srv:") && it !in wanted }.forEach { peerMap.remove(it); changed = true }
-        if (changed) publishPeers()
-    }
+    fun updateServerPeers(fromServer: List<PeerInfo>, myPubKeyB64: String) = table.updateServerPeers(fromServer, myPubKeyB64)
 
     private fun deriveServiceName(pubKeyB64: String): String =
         "mb10-" + pubKeyB64.hashCode().toUInt().toString(16)
