@@ -36,7 +36,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Android SDK: образ системы и два AVD
+      - name: "Android SDK: образ системы и два AVD"
         run: |
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
           yes | sdkmanager --licenses > /dev/null || true
@@ -48,7 +48,7 @@ jobs:
       - name: Сборка APK
         run: ./gradlew assembleDebug --no-daemon
 
-      - name: Стенд: сервер, эмуляторы, персонажи
+      - name: "Стенд: сервер, эмуляторы, персонажи"
         run: scripts/e2e/up.sh --no-build
 
       - name: Сценарии
