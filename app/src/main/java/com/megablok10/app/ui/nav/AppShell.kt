@@ -16,6 +16,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -52,51 +53,40 @@ enum class AppTab(val label: String) {
 fun AppHeader(identity: Identity, onOpenProfile: () -> Unit = {}) {
     val peers by PresenceService.peers.collectAsState()
 
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenProfile),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+    // Одна строка ~44 dp: позывной · фракция слева, узлы меш-сети справа. Раньше это были три строки и пунктир (≈104 dp).
+    // Норма («узлы есть») — одна точка и число; текст нужен только когда связи нет — тогда он красный и заметен.
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenProfile).padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(identity.callsign, color = MB10Colors.inkPrimary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 17.sp, maxLines = 1)
+        Spacer(Modifier.width(8.dp))
+        ChamferedSurface(
+            borderColor = MB10Colors.borderMuted,
+            fillColor = MB10Colors.surfaceRaised,
+            cut = 5.dp,
+            contentPadding = 0.dp
         ) {
-            Text(identity.callsign, color = MB10Colors.inkPrimary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 19.sp)
-            ChamferedSurface(
-                borderColor = MB10Colors.borderMuted,
-                fillColor = MB10Colors.surfaceRaised,
-                cut = 6.dp,
-                contentPadding = 0.dp
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                modifier = Modifier.padding(start = 6.dp, end = 8.dp, top = 2.dp, bottom = 2.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier.padding(start = 6.dp, end = 8.dp, top = 3.dp, bottom = 3.dp)
-                ) {
-                    HexBullet(MB10Colors.accentAction, size = 8.dp)
-                    Text(identity.faction, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
-                }
+                HexBullet(MB10Colors.accentAction, size = 7.dp)
+                Text(identity.faction, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp, maxLines = 1)
             }
         }
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.weight(1f))
         // Живой статус меш-сети — реальное число узлов из PresenceService (NSD-обнаружение), не заглушка.
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            HexBullet(if (peers.isNotEmpty()) MB10Colors.inkPrimary else MB10Colors.inkTertiary, size = 6.dp)
-            Spacer(Modifier.width(6.dp))
-            Text(
-                if (peers.isNotEmpty()) "Меш-сеть: ${peers.size} ${nodeWord(peers.size)} рядом" else "Меш-сеть: узлов рядом нет",
-                color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 9.5.sp
-            )
+        if (peers.isNotEmpty()) {
+            HexBullet(MB10Colors.inkPrimary, size = 7.dp)
+            Spacer(Modifier.width(5.dp))
+            Text("${peers.size}", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 12.sp)
+        } else {
+            HexBullet(MB10Colors.accentDanger, size = 7.dp)
+            Spacer(Modifier.width(5.dp))
+            Text("нет узлов", color = MB10Colors.accentDanger, fontFamily = JetBrainsMono, fontSize = 11.sp)
         }
-    }
-    DottedDivider()
-}
-
-private fun nodeWord(count: Int): String {
-    val mod100 = count % 100
-    val mod10 = count % 10
-    return when {
-        mod100 in 11..14 -> "узлов"
-        mod10 == 1 -> "узел"
-        mod10 in 2..4 -> "узла"
-        else -> "узлов"
     }
 }
 
@@ -115,7 +105,7 @@ fun AppTabBar(selected: AppTab, onSelect: (AppTab) -> Unit) {
                     modifier = Modifier
                         .weight(1f)
                         .clickable { onSelect(tab) }
-                        .padding(top = 9.dp, bottom = 8.dp),
+                        .padding(top = 6.dp, bottom = 5.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     when (tab) {
@@ -124,8 +114,8 @@ fun AppTabBar(selected: AppTab, onSelect: (AppTab) -> Unit) {
                         AppTab.Hack -> HackTabIcon(color)
                         AppTab.Wallet -> WalletTabIcon(color)
                     }
-                    Spacer(Modifier.height(4.dp))
-                    Text(tab.label, color = color, fontFamily = JetBrainsMono, fontSize = 9.sp)
+                    Spacer(Modifier.height(2.dp))
+                    Text(tab.label, color = color, fontFamily = JetBrainsMono, fontSize = 11.sp)
                 }
             }
         }
@@ -150,8 +140,10 @@ fun MainScaffold(
 ) {
     Column(Modifier.fillMaxSize().background(MB10Colors.surfaceBase)) {
         if (!hideChrome) AppHeader(identity, onOpenProfile)
+        // Состояние rememberSaveable каждой вкладки (сегмент Кибердеки и т. п.) переживает переключение вкладок.
+        val stateHolder = rememberSaveableStateHolder()
         Box(Modifier.weight(1f)) {
-            content(selectedTab)
+            stateHolder.SaveableStateProvider(selectedTab.name) { content(selectedTab) }
         }
         if (!hideChrome) AppTabBar(selected = selectedTab, onSelect = onSelectTab)
     }

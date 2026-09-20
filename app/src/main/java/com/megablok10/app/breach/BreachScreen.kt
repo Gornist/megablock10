@@ -1,8 +1,6 @@
 package com.megablok10.app.breach
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import android.content.Context
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -10,41 +8,47 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -59,14 +63,14 @@ import com.megablok10.app.sound.BreachCue
 import com.megablok10.app.sound.BreachSfx
 import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.ButtonVariant
+import com.megablok10.app.ui.theme.ChamferedSurface
 import com.megablok10.app.ui.theme.DottedDivider
-import com.megablok10.app.ui.theme.FlagTab
 import com.megablok10.app.ui.theme.HexBullet
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.Jura
-import com.megablok10.app.ui.theme.ListRow
 import com.megablok10.app.ui.theme.MB10Colors
+import com.megablok10.app.ui.theme.chamferBorder
 import com.megablok10.app.ui.theme.chamferShape
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -82,13 +86,18 @@ import org.json.JSONObject
  * композабл только показывает сессию взлома, когда контейнер уже выбран.
  */
 @Composable
-internal fun BreachContainerFlow(container: Container, daemons: List<Daemon>, identity: Identity, onRescan: () -> Unit) {
+internal fun BreachContainerFlow(container: Container, daemons: List<Daemon>, identity: Identity, onRescan: () -> Unit, onImmersive: (Boolean) -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var chosen by remember(container.id) { mutableStateOf<Set<String>>(emptySet()) }
     var sessionSeed by remember(container.id) { mutableStateOf<Long?>(null) }
     var rewardOutcome by remember(container.id) { mutableStateOf<RewardOutcome?>(null) }
     var secAlertStatus by remember(container.id) { mutableStateOf<String?>(null) }
+    var running by remember(container.id) { mutableStateOf(false) }
+
+    // Пока идёт таймер, шапка и нижняя навигация приложения прячутся: взлом получает весь экран.
+    LaunchedEffect(running) { onImmersive(running) }
+    DisposableEffect(Unit) { onDispose { onImmersive(false) } }
 
     val chosenDaemons = daemons.filter { it.id in chosen }
     val used = chosenDaemons.sumOf { it.sequence.size }
@@ -99,10 +108,10 @@ internal fun BreachContainerFlow(container: Container, daemons: List<Daemon>, id
 
     val seed = sessionSeed
     if (seed != null) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-            ContainerHeader(container)
+        Box(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp)) {
             BreachSession(
                 tier = container.tier,
+                title = "${container.name} · ${container.tier.label}",
                 daemons = chosenDaemons,
                 seed = seed,
                 gridSize = params.gridSize,
@@ -114,6 +123,7 @@ internal fun BreachContainerFlow(container: Container, daemons: List<Daemon>, id
                 failMessage = "СБ зафиксировала попытку. Контейнер заблокирован до конца этого акта.",
                 rewardOutcome = rewardOutcome,
                 secAlertStatus = secAlertStatus,
+                onRunningChange = { running = it },
                 onResult = { result ->
                     scope.launch {
                         val attemptId = "${container.id}:$seed"
@@ -136,16 +146,15 @@ internal fun BreachContainerFlow(container: Container, daemons: List<Daemon>, id
         return
     }
 
-    // Список демонов скроллится в своей области (weight), а буфер (сверху) и кнопка старта (снизу) закреплены вне скролла —
-    // раньше счётчик стоял под списком и терялся из виду, пока выбираешь демонов дальше по списку.
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
-        ContainerHeader(container)
+    // Список демонов скроллится в своей области (weight), а буфер (сверху) и кнопка старта (снизу) закреплены вне скролла.
+    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp)) {
+        ContainerHeader(container, onCancel = onRescan)
 
         // Размер буфера и его заполнение — сверху, закреплено: видно, сколько места остаётся, пока выбираешь демонов ниже по списку.
         // Ячейки заполняются кодами выбранных демонов в порядке выбора.
         val pickedCodes = chosen.mapNotNull { id -> daemons.find { it.id == id } }.flatMap { it.sequence }
-        BufferPanel(codes = pickedCodes, size = identity.ramCapacity, topPadding = 4.dp, hint = if (overBudget) " — снимите демон" else "")
-        Spacer(Modifier.height(10.dp))
+        BufferPanel(codes = pickedCodes, size = identity.ramCapacity, hint = if (overBudget) " — снимите демон" else "")
+        Spacer(Modifier.height(6.dp))
 
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
             DaemonPicker(
@@ -156,36 +165,25 @@ internal fun BreachContainerFlow(container: Container, daemons: List<Daemon>, id
             )
         }
 
-        Spacer(Modifier.height(14.dp))
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MB10Colors.accentNetrun, chamferShape(6.dp))
-                .clickable(enabled = canStart) { sessionSeed = System.nanoTime() }
-                .padding(vertical = 10.dp)
-        ) {
-            Text(
-                "Взломать контейнер",
-                color = if (canStart) MB10Colors.onAccent else MB10Colors.onAccent.copy(alpha = 0.4f),
-                fontFamily = JetBrainsMono,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
+        Spacer(Modifier.height(8.dp))
+        AppButton("Взломать контейнер", variant = ButtonVariant.Netrun, enabled = canStart, dense = true, modifier = Modifier.fillMaxWidth(),
+            onClick = { sessionSeed = System.nanoTime() })
     }
 }
 
 @Composable
-private fun ContainerHeader(container: Container) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 10.dp)) {
+private fun ContainerHeader(container: Container, onCancel: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         HexBullet(MB10Colors.accentNetrun, size = 8.dp)
         Spacer(Modifier.width(6.dp))
         Text(
-            "Контейнер: ${container.name} · ${container.tier.label}",
-            color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp
+            "${container.name} · ${container.tier.label}",
+            color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            "✕ Отмена", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp,
+            modifier = Modifier.clickable(onClick = onCancel).padding(horizontal = 6.dp, vertical = 6.dp)
         )
     }
 }
@@ -220,14 +218,10 @@ internal fun ShardDecryptFlow(shard: Mb10Qr.Shard, onDecrypted: () -> Unit, onCa
     val sessionSeed = remember(shard.id) { System.nanoTime() }
     val params = remember(shard.tier) { BreachTierParams.forTier(Tier.fromLevel(shard.tier)) }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 10.dp)) {
-            HexBullet(MB10Colors.accentNetrun, size = 8.dp)
-            Spacer(Modifier.width(6.dp))
-            Text("Шифр-замок: ${shard.title}", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
-        }
+    Box(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp)) {
         BreachSession(
             tier = Tier.fromLevel(shard.tier),
+            title = "Шифр-замок: ${shard.title}",
             daemons = listOf(target),
             seed = sessionSeed,
             gridSize = params.gridSize,
@@ -250,71 +244,70 @@ private fun shardDecryptTarget(shard: Mb10Qr.Shard): Daemon {
 }
 
 /**
- * remainingBuffer — сколько буфера осталось ПОСЛЕ уже выбранных демонов (см.
- * BreachContainerFlow). Демон, который в него не влезает, показан приглушённым
- * и с явной причиной ("не влезает в буфер") вместо своего эффекта, а не
- * кликабелен — раньше это выяснялось только после попытки стартовать взлом,
- * общей надписью под списком. Уже выбранного демона это не касается: снять
- * его можно всегда, его вес уже учтён в remainingBuffer, а не заново против него.
+ * remainingBuffer — сколько буфера осталось ПОСЛЕ уже выбранных демонов (см. BreachContainerFlow). Демон, который в него не влезает,
+ * показан приглушённым и с явной причиной ("не влезает в буфер") вместо своего эффекта, а не кликабелен. Уже выбранного демона это
+ * не касается: снять его можно всегда, его вес уже учтён в remainingBuffer.
+ *
+ * Выбранный демон — не заливка, а лаймовая скошенная грань (как у панели «Взлом завершён»).
  */
 @Composable
 private fun DaemonPicker(daemons: List<Daemon>, chosen: Set<String>, remainingBuffer: Int, onToggle: (String) -> Unit) {
     Column {
-        daemons.forEachIndexed { index, daemon ->
+        daemons.forEach { daemon ->
             val isChecked = daemon.id in chosen
             val fitsBuffer = isChecked || daemon.sequence.size <= remainingBuffer
             val textColor = if (!fitsBuffer) MB10Colors.inkTertiary else MB10Colors.inkPrimary
             val effectColor = if (!fitsBuffer) MB10Colors.accentDanger.copy(alpha = 0.7f) else MB10Colors.inkSecondary
-            // Выбранный демон — не заливка, а лаймовая грань (как у панели «Взлом завершён»); небольшой вертикальный зазор,
-            // чтобы рамки соседних выбранных карточек не слипались.
-            ListRow(
-                modifier = if (isChecked) Modifier.padding(vertical = 3.dp).border(1.dp, MB10Colors.accentNetrun) else Modifier.padding(vertical = 3.dp),
-                horizontalInset = 12.dp,
-                onClick = if (fitsBuffer) ({ onToggle(daemon.id) }) else null
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp)
+                    .then(if (isChecked) Modifier.chamferBorder(MB10Colors.accentNetrun, cut = 6.dp) else Modifier)
+                    .clickable(enabled = fitsBuffer) { onToggle(daemon.id) }
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
             ) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         "${daemon.name} · ${daemon.tier.label}", color = textColor, fontFamily = IBMPlexSans, fontSize = 13.sp,
-                        modifier = Modifier.weight(1f)
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
                     )
-                    // Выбранный демон подписан в углу карточки: что он уже в буфере и сколько там занимает.
-                    if (isChecked) {
-                        Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 8.dp)) {
-                            Text("ЗАГРУЖЕНО В БУФЕР", color = MB10Colors.accentNetrun, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 9.sp)
-                            Text("занимает ${cellsLabel(daemon.sequence.size)}", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 9.sp)
-                        }
-                    }
+                    Row { daemon.sequence.forEach { code -> CodePill(code, highlight = isChecked) } }
                 }
                 Text(if (fitsBuffer) daemon.effect.label() else "не влезает в буфер", color = effectColor, fontFamily = IBMPlexSans, fontSize = 11.sp)
-                Row(Modifier.padding(top = 4.dp)) {
-                    daemon.sequence.forEach { code -> CodePill(code, highlight = isChecked) }
+                if (isChecked) {
+                    Text(
+                        "ЗАГРУЖЕНО В БУФЕР · занимает ${cellsLabel(daemon.sequence.size)}",
+                        color = MB10Colors.accentNetrun, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 11.sp
+                    )
                 }
             }
-            if (index != daemons.lastIndex) DottedDivider()
         }
     }
 }
 
 @Composable
 internal fun CodePill(code: String, highlight: Boolean = false) {
-    Box(Modifier.padding(end = 4.dp).background(MB10Colors.surfaceSunken, chamferShape(3.dp)).padding(horizontal = 5.dp, vertical = 2.dp)) {
-        Text(code, color = if (highlight) MB10Colors.accentNetrun else MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+    Box(Modifier.padding(start = 4.dp).background(MB10Colors.surfaceSunken, chamferShape(3.dp)).padding(horizontal = 5.dp, vertical = 2.dp)) {
+        Text(code, color = if (highlight) MB10Colors.accentNetrun else MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
     }
 }
 
+/** Один раз объясняем механику новичку (не диалогом: он заблокировал бы таймер) — строкой над сеткой до первого тапа. */
+private const val UX_PREFS = "ux_prefs"
+private const val BREACH_HINT_SEEN = "breach_hint_seen"
+private fun breachHintSeen(context: Context) = context.getSharedPreferences(UX_PREFS, Context.MODE_PRIVATE).getBoolean(BREACH_HINT_SEEN, false)
+private fun markBreachHintSeen(context: Context) = context.getSharedPreferences(UX_PREFS, Context.MODE_PRIVATE).edit().putBoolean(BREACH_HINT_SEEN, true).apply()
+
 /**
- * Владеет одной попыткой целиком: тикающим таймером и результатом, если он
- * уже наступил. `remember(seed)` — попытка живёт, пока seed (задаётся при
- * каждом старте) не меняется; тапы по сетке меняют этот же state, а не
- * пересоздают его. После резолва (таймер/буфер/ручной стоп) сетка и буфер
- * остаются на экране в финальном виде — просто перестают принимать тапы —
- * и поверх появляется result-panel, как в макете. breachParams — если не
- * null, задаёт мёртвые клетки/порченые коды (см. generateGrid); у
- * ShardDecryptFlow ловушек нет вовсе (null), это только для контейнеров.
+ * Владеет одной попыткой целиком: тикающим таймером и результатом, если он уже наступил. `remember(seed)` — попытка живёт, пока
+ * seed (задаётся при каждом старте) не меняется. Всё помещается на один экран без прокрутки: размер ячеек считается из доступной
+ * высоты, а не только ширины. Итог показывается оверлеем поверх экрана (сетка и буфер остаются под ним в финальном виде).
+ * breachParams — если не null, задаёт мёртвые клетки/порченые коды (см. generateGrid); у ShardDecryptFlow ловушек нет вовсе.
  */
 @Composable
 private fun BreachSession(
     tier: Tier,
+    title: String,
     daemons: List<Daemon>,
     seed: Long,
     gridSize: Int,
@@ -326,6 +319,7 @@ private fun BreachSession(
     failMessage: String = "СБ зафиксировала попытку. Контейнер заблокирован до конца этого акта.",
     rewardOutcome: RewardOutcome? = null,
     secAlertStatus: String? = null,
+    onRunningChange: (Boolean) -> Unit = {},
     onResult: (BreachResult) -> Unit = {}
 ) {
     val grid = remember(seed) { generateGrid(gridSize, daemons, Random(seed), breachParams) }
@@ -335,18 +329,23 @@ private fun BreachSession(
     var secondsLeft by remember(seed) { mutableIntStateOf(timerSec) }
     var result by remember(seed) { mutableStateOf<BreachResult?>(null) }
     val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     // Вступительный «вход в узел» — только в живой игре: автосолвер (debug-прогоны) стартует сразу.
     var booted by remember(seed) { mutableStateOf(DebugConfig.autoSolve && DebugConfig.autoSolveStepMs == 0L) }
     val shake = remember(seed) { Animatable(0f) }
     // Реплика защиты узла (см. IceLines) — одна строка над сеткой, обновляется по событиям взлома.
     var iceLine by remember(seed) { mutableStateOf<String?>(null) }
+    var hintSeen by remember(seed) { mutableStateOf(DebugConfig.autoSolve || breachHintSeen(context)) }
     fun ice(event: IceEvent) { iceLine = IceLines.line(tier, event, Random(seed xor event.ordinal.toLong())) }
+
+    LaunchedEffect(result == null) { onRunningChange(result == null) }
 
     fun resolveOnce() {
         if (result == null) {
             val resolved = BreachResult(attempt.daemons, attempt.matchedDaemonIds)
             result = resolved
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
             BreachSfx.play(context, when (resolved.outcome) {
                 BreachOutcome.SUCCESS -> BreachCue.SUCCESS
                 BreachOutcome.PARTIAL -> BreachCue.PARTIAL
@@ -390,196 +389,158 @@ private fun BreachSession(
 
     val selectable = if (result == null) attempt.selectableCells() else emptySet()
 
-    TerminalFrame {
-        Box(Modifier.fillMaxWidth().background(MB10Colors.accentNetrun).padding(10.dp, 8.dp)) {
-            Column {
-                Text("BREACH PROTOCOL // ИНТЕРФЕЙС", color = MB10Colors.onAccent, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "доступ разрешён только персоналу с пропуском уровня 2 и выше",
-                    color = MB10Colors.onAccent.copy(alpha = 0.8f), fontFamily = JetBrainsMono, fontSize = 8.sp, lineHeight = 11.sp
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            TerminalFrame(Modifier.weight(1f)) {
+                val urgent = secondsLeft in 1..10 && result == null && booted
+                val blink by rememberInfiniteTransition(label = "timerBlink").animateFloat(
+                    initialValue = 0f, targetValue = 1f,
+                    animationSpec = infiniteRepeatable(tween(450, easing = LinearEasing), RepeatMode.Reverse), label = "blink"
                 )
+                val timerColor = if (urgent) lerp(MB10Colors.accentNetrun, MB10Colors.accentDanger, blink) else MB10Colors.accentNetrun
+
+                // Одна строка: заголовок узла слева, таймер справа.
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(Modifier.weight(1f).background(MB10Colors.accentNetrun, chamferShape(5.dp)).padding(horizontal = 9.dp, vertical = 5.dp)) {
+                        Text(
+                            "BREACH // $title", color = MB10Colors.onAccent, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 12.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    if (booted) {
+                        Text(
+                            formatTime(secondsLeft), color = timerColor, fontFamily = JetBrainsMono, fontSize = 15.sp, fontWeight = FontWeight.Medium,
+                            modifier = Modifier.chamferBorder(timerColor, cut = 5.dp).padding(horizontal = 9.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+
+                if (!booted) {
+                    Spacer(Modifier.height(10.dp))
+                    BootLog(breachId, bufferSize)
+                    return@TerminalFrame
+                }
+
                 Spacer(Modifier.height(5.dp))
-                Text(breachId, color = MB10Colors.onAccent, fontFamily = JetBrainsMono, fontSize = 9.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.End)
-            }
-        }
-        Spacer(Modifier.height(14.dp))
+                val progress = (secondsLeft.toFloat() / timerSec).coerceIn(0f, 1f)
+                Box(Modifier.fillMaxWidth().height(3.dp).background(MB10Colors.surfaceSunken)) {
+                    Box(Modifier.fillMaxWidth(progress).height(3.dp).background(timerColor))
+                }
 
-        if (!booted) {
-            BootLog(breachId, bufferSize)
-            return@TerminalFrame
-        }
+                // Строка-статус фиксированной высоты (одна строка), чтобы сетка не «прыгала» при смене реплик.
+                val statusText = iceLine ?: if (!hintSeen && attempt.selected.isEmpty()) "Цепочка: строка → столбец → строка… Соберите коды демонов до нуля." else ""
+                val statusColor = if (iceLine != null) MB10Colors.accentDanger else MB10Colors.inkSecondary
+                Text(
+                    statusText, color = statusColor, fontFamily = JetBrainsMono, fontSize = 11.sp, minLines = 1, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 5.dp)
+                )
 
-        val urgent = secondsLeft in 1..10 && result == null
-        val blink by rememberInfiniteTransition(label = "timerBlink").animateFloat(
-            initialValue = 0f, targetValue = 1f,
-            animationSpec = infiniteRepeatable(tween(450, easing = LinearEasing), RepeatMode.Reverse), label = "blink"
-        )
-        val timerColor = if (urgent) lerp(MB10Colors.accentNetrun, MB10Colors.accentDanger, blink) else MB10Colors.accentNetrun
+                // Буфер — над матрицей: игрок видит свой выбор, не листая экран.
+                BufferPanel(codes = attempt.bufferCodes, size = attempt.bufferSize, topPadding = 4.dp)
 
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-            Text("Время взлома", color = MB10Colors.inkPrimary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-            Text(
-                formatTime(secondsLeft),
-                color = timerColor,
-                fontFamily = JetBrainsMono,
-                fontSize = 15.sp,
-                modifier = Modifier.border(1.dp, timerColor).padding(horizontal = 10.dp, vertical = 3.dp)
-            )
-        }
-        Spacer(Modifier.height(6.dp))
-        val progress = (secondsLeft.toFloat() / timerSec).coerceIn(0f, 1f)
-        Box(Modifier.fillMaxWidth().height(3.dp).background(MB10Colors.surfaceSunken)) {
-            Box(Modifier.fillMaxWidth(progress).height(3.dp).background(timerColor))
-        }
-
-        iceLine?.let {
-            Text(
-                it, color = MB10Colors.accentDanger, fontFamily = JetBrainsMono, fontSize = 10.5.sp,
-                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(top = 10.dp)
-            )
-        }
-
-        // Буфер — над матрицей: игрок должен видеть свой выбор, не листая экран вниз.
-        BufferPanel(codes = attempt.bufferCodes, size = attempt.bufferSize)
-
-        FlagTab("код-матрица", modifier = Modifier.padding(top = 14.dp))
-        PanelBox(modifier = Modifier.offset { IntOffset(shake.value.roundToInt(), 0) }) {
-            for (r in 0 until attempt.grid.size) {
-                Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.padding(bottom = 5.dp)) {
-                    for (c in 0 until attempt.grid.size) {
-                        val cell = r to c
-                        val order = attempt.selected.indexOf(cell)
-                        HackCell(
-                            modifier = Modifier.weight(1f),
-                            code = attempt.grid.codeAt(cell),
-                            isSelected = order >= 0,
-                            orderLabel = if (order >= 0) (order + 1).toString() else null,
-                            isSelectable = cell in selectable,
-                            onClick = {
-                                val next = attempt.select(cell)
-                                val hitTrap = cell in attempt.grid.trapCells
-                                val matched = next.matchedDaemonIds.size > attempt.matchedDaemonIds.size
-                                attempt = next
-                                when {
-                                    hitTrap -> {
-                                        BreachSfx.play(context, BreachCue.TRAP)
-                                        ice(IceEvent.TRAP)
-                                        scope.launch {
-                                            repeat(3) { shake.animateTo(if (it % 2 == 0) 9f else -9f, tween(40)) }
-                                            shake.animateTo(0f, tween(40))
+                // Матрица занимает всё свободное место; размер ячейки — из меньшей стороны (ширина/высота).
+                BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
+                    val n = attempt.grid.size
+                    val gap = 4.dp
+                    val cell = minOf((maxWidth - gap * (n - 1)) / n, (maxHeight - gap * (n - 1)) / n).coerceIn(20.dp, 64.dp)
+                    Column(Modifier.offset { IntOffset(shake.value.roundToInt(), 0) }, verticalArrangement = Arrangement.spacedBy(gap)) {
+                        for (r in 0 until n) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                                for (c in 0 until n) {
+                                    val at = r to c
+                                    val order = attempt.selected.indexOf(at)
+                                    HackCell(
+                                        size = cell,
+                                        code = attempt.grid.codeAt(at),
+                                        isSelected = order >= 0,
+                                        orderLabel = if (order >= 0) (order + 1).toString() else null,
+                                        isSelectable = at in selectable,
+                                        onClick = {
+                                            if (!hintSeen) { hintSeen = true; markBreachHintSeen(context) }
+                                            val next = attempt.select(at)
+                                            val hitTrap = at in attempt.grid.trapCells
+                                            val matched = next.matchedDaemonIds.size > attempt.matchedDaemonIds.size
+                                            attempt = next
+                                            when {
+                                                hitTrap -> {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                    BreachSfx.play(context, BreachCue.TRAP)
+                                                    ice(IceEvent.TRAP)
+                                                    scope.launch {
+                                                        repeat(3) { shake.animateTo(if (it % 2 == 0) 9f else -9f, tween(40)) }
+                                                        shake.animateTo(0f, tween(40))
+                                                    }
+                                                }
+                                                matched -> { haptic.performHapticFeedback(HapticFeedbackType.LongPress); BreachSfx.play(context, BreachCue.MATCH); ice(IceEvent.MATCH) }
+                                                else -> { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); BreachSfx.play(context, BreachCue.TAP) }
+                                            }
+                                            if (attempt.isFull) resolveOnce()
                                         }
-                                    }
-                                    matched -> { BreachSfx.play(context, BreachCue.MATCH); ice(IceEvent.MATCH) }
-                                    else -> BreachSfx.play(context, BreachCue.TAP)
+                                    )
                                 }
-                                if (attempt.isFull) resolveOnce()
                             }
-                        )
+                        }
                     }
+                }
+
+                // Не только коды цели, но и что даст их совпадение — иначе на экране взлома нет ответа на «зачем я выбрал этих демонов».
+                TerminalPanel {
+                    attempt.daemons.forEach { daemon ->
+                        val matched = daemon.id in attempt.matchedDaemonIds
+                        val nameColor = if (matched) MB10Colors.inkPrimary else MB10Colors.inkSecondary
+                        val codeColor = if (matched) MB10Colors.accentNetrun else MB10Colors.inkSecondary
+                        val strike = if (matched) TextDecoration.LineThrough else null
+                        Column(Modifier.padding(vertical = 2.dp)) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text(daemon.name, color = nameColor, fontFamily = IBMPlexSans, fontSize = 12.5.sp, textDecoration = strike, modifier = Modifier.weight(1f))
+                                Text(daemon.sequence.joinToString(" · "), color = codeColor, fontFamily = JetBrainsMono, fontSize = 12.sp, textDecoration = strike)
+                            }
+                            Text(daemon.effect.label(), color = MB10Colors.inkTertiary, fontFamily = IBMPlexSans, fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+
+            if (result == null) {
+                // Не "отмена без последствий" — сдаёт текущий буфер на резолв досрочно, так же как истечение таймера.
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AppButton("Сдать буфер досрочно", modifier = Modifier.weight(1f), variant = ButtonVariant.Secondary, dense = true, onClick = { resolveOnce() })
+                    AppButton(rescanLabel, modifier = Modifier.weight(1f), variant = ButtonVariant.Secondary, dense = true, onClick = onRescan)
                 }
             }
         }
 
-        // Не только коды цели, но и что даст их совпадение — иначе на самом
-        // экране взлома нет ответа на вопрос "а зачем я вообще выбрал этих демонов".
-        FlagTab("демоны", modifier = Modifier.padding(top = 14.dp))
-        PanelBox {
-            attempt.daemons.forEach { daemon ->
-                val matched = daemon.id in attempt.matchedDaemonIds
-                val nameColor = if (matched) MB10Colors.inkPrimary else MB10Colors.inkSecondary
-                val codeColor = if (matched) MB10Colors.accentNetrun else MB10Colors.inkSecondary
-                Column(Modifier.padding(vertical = 6.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            daemon.name,
-                            color = nameColor,
-                            fontFamily = IBMPlexSans,
-                            fontSize = 12.5.sp,
-                            textDecoration = if (matched) TextDecoration.LineThrough else null,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text(
-                            daemon.sequence.joinToString(" · "),
-                            color = codeColor,
-                            fontFamily = JetBrainsMono,
-                            fontSize = 12.sp,
-                            textDecoration = if (matched) TextDecoration.LineThrough else null
-                        )
-                    }
-                    Text(daemon.effect.label(), color = MB10Colors.inkTertiary, fontFamily = IBMPlexSans, fontSize = 10.5.sp)
-                }
-            }
-        }
-
-        Text(
-            when {
-                result != null -> ""
-                attempt.selected.isEmpty() -> "Выберите первый символ в верхней строке."
-                else -> "Продолжайте цепочку."
-            },
-            color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp)
-        )
-
-        result?.let { ResultPanel(it, failMessage = failMessage, rewardOutcome = rewardOutcome, secAlertStatus = secAlertStatus) }
-    }
-
-    Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (result == null) {
-            // Не "отмена без последствий" — сдаёт текущий буфер на резолв
-            // досрочно, так же как истечение таймера. Название кнопки должно
-            // это отражать, иначе игрок ждёт отмены без результата.
-            AppButton("Сдать буфер досрочно", modifier = Modifier.weight(1f), variant = ButtonVariant.Secondary, onClick = { resolveOnce() })
-        }
-        AppButton(rescanLabel, modifier = Modifier.weight(1f), variant = ButtonVariant.Secondary, onClick = onRescan)
+        result?.let { ResultOverlay(it, failMessage, rewardOutcome, secAlertStatus, actionLabel = rescanLabel, onAction = onRescan) }
     }
 }
 
+/** Скошенная рамка терминала: контур повторяет срез, остальные панели экрана взлома лежат внутри неё. */
 @Composable
-private fun TerminalFrame(content: @Composable ColumnScope.() -> Unit) {
+private fun TerminalFrame(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .border(1.dp, MB10Colors.borderMuted)
-            .drawWithContent {
-                drawContent()
-                val bracket = 9.dp.toPx()
-                val stroke = 2.dp.toPx()
-                val lime = MB10Colors.accentNetrun
-                drawLine(lime, Offset(0f, 0f), Offset(bracket, 0f), stroke)
-                drawLine(lime, Offset(0f, 0f), Offset(0f, bracket), stroke)
-                drawLine(lime, Offset(size.width, 0f), Offset(size.width - bracket, 0f), stroke)
-                drawLine(lime, Offset(size.width, 0f), Offset(size.width, bracket), stroke)
-                drawLine(lime, Offset(0f, size.height), Offset(bracket, size.height), stroke)
-                drawLine(lime, Offset(0f, size.height), Offset(0f, size.height - bracket), stroke)
-                drawLine(lime, Offset(size.width, size.height), Offset(size.width - bracket, size.height), stroke)
-                drawLine(lime, Offset(size.width, size.height), Offset(size.width, size.height - bracket), stroke)
-            }
-            .padding(14.dp),
+            .chamferBorder(MB10Colors.borderMuted, cut = 10.dp)
+            .padding(8.dp),
         content = content
     )
 }
 
-/** Рамка без верхней стороны — визуально продолжает FlagTab, который стоит прямо над ней. */
+/** Тонкая скошенная панель внутри терминала (список демонов, лог входа). */
 @Composable
-private fun PanelBox(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+private fun TerminalPanel(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .drawWithContent {
-                drawContent()
-                drawLine(MB10Colors.borderMuted, Offset(0f, 0f), Offset(0f, size.height), 1.dp.toPx())
-                drawLine(MB10Colors.borderMuted, Offset(size.width, 0f), Offset(size.width, size.height), 1.dp.toPx())
-                drawLine(MB10Colors.borderMuted, Offset(0f, size.height), Offset(size.width, size.height), 1.dp.toPx())
-            }
-            .padding(10.dp, 12.dp, 10.dp, 10.dp)
-    ) {
-        content()
-    }
+            .chamferBorder(MB10Colors.borderMuted, cut = 6.dp)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        content = content
+    )
 }
 
+/** Ячейка матрицы: квадрат заданного размера, скошенный. Шрифт растёт вместе с ячейкой, но не мельче 12 sp. */
 @Composable
-private fun HackCell(modifier: Modifier, code: String, isSelected: Boolean, orderLabel: String?, isSelectable: Boolean, onClick: () -> Unit) {
+private fun HackCell(size: Dp, code: String, isSelected: Boolean, orderLabel: String?, isSelectable: Boolean, onClick: () -> Unit) {
     val isDead = code == BreachSymbols.DEAD_MARKER
     val (bg, borderColor, textColor) = when {
         isDead && !isSelected -> Triple(MB10Colors.accentDanger.copy(alpha = 0.08f), MB10Colors.accentDanger, MB10Colors.accentDanger)
@@ -588,87 +549,100 @@ private fun HackCell(modifier: Modifier, code: String, isSelected: Boolean, orde
         else -> Triple(MB10Colors.surfaceSunken, MB10Colors.borderMuted, MB10Colors.inkPrimary)
     }
     Box(
-        modifier = modifier
-            .aspectRatio(1f)
-            .background(bg)
-            .border(1.dp, borderColor)
+        modifier = Modifier
+            .size(size)
+            .background(bg, chamferShape(4.dp))
+            .chamferBorder(borderColor, cut = 4.dp)
             .clickable(enabled = isSelectable, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Text(code, color = textColor, fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+        Text(code, color = textColor, fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium, fontSize = (size.value * 0.32f).coerceIn(12f, 18f).sp)
         if (orderLabel != null) {
             Text(
-                orderLabel, color = MB10Colors.accentNetrun, fontSize = 9.sp, fontWeight = FontWeight.Bold,
-                modifier = Modifier.align(Alignment.TopEnd).padding(2.dp)
+                orderLabel, color = MB10Colors.accentNetrun, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.TopEnd).padding(horizontal = 3.dp, vertical = 1.dp)
             )
         }
     }
 }
 
+/**
+ * Итог взлома поверх экрана, а не под сеткой: раньше игрок узнавал результат, только прокрутив вниз. Сетка и буфер остаются под
+ * затемнением в финальном виде; выход — кнопка внутри панели.
+ */
 @Composable
-private fun ResultPanel(
+private fun ResultOverlay(
     result: BreachResult,
-    failMessage: String = "СБ зафиксировала попытку. Контейнер заблокирован до конца этого акта.",
-    rewardOutcome: RewardOutcome? = null,
-    secAlertStatus: String? = null
+    failMessage: String,
+    rewardOutcome: RewardOutcome?,
+    secAlertStatus: String?,
+    actionLabel: String,
+    onAction: () -> Unit
 ) {
     val (title, color) = when (result.outcome) {
         BreachOutcome.SUCCESS -> "Взлом завершён" to MB10Colors.accentNetrun
         BreachOutcome.PARTIAL -> "Взлом частично успешен" to MB10Colors.accentAction
         BreachOutcome.FAIL -> "Взлом провален" to MB10Colors.accentDanger
     }
-    Column(Modifier.fillMaxWidth().padding(top = 14.dp).border(1.dp, color).padding(12.dp)) {
-        Text(title, color = color, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-        Spacer(Modifier.height(8.dp))
-        result.allDaemons.forEach { daemon ->
-            val done = daemon.id in result.matchedIds
-            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(
-                    daemon.name,
-                    color = if (done) MB10Colors.inkPrimary else MB10Colors.inkSecondary,
-                    fontFamily = IBMPlexSans,
-                    fontSize = 12.5.sp,
-                    textDecoration = if (done) null else TextDecoration.LineThrough
-                )
-                Text(
-                    if (done) "загружен" else "не загружен",
-                    color = if (done) MB10Colors.inkPrimary else MB10Colors.inkSecondary,
-                    fontFamily = IBMPlexSans,
-                    fontSize = 12.5.sp
-                )
+    Box(
+        Modifier.fillMaxSize().background(MB10Colors.surfaceBase.copy(alpha = 0.8f))
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        ChamferedSurface(
+            borderColor = color, fillColor = MB10Colors.surfaceRaised, cut = 10.dp, contentPadding = 12.dp,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)
+        ) {
+            Column {
+                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                    Text(title, color = color, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Spacer(Modifier.height(6.dp))
+                    result.allDaemons.forEach { daemon ->
+                        val done = daemon.id in result.matchedIds
+                        Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(
+                                daemon.name, color = if (done) MB10Colors.inkPrimary else MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 12.5.sp,
+                                textDecoration = if (done) null else TextDecoration.LineThrough
+                            )
+                            Text(
+                                if (done) "загружен" else "не загружен", color = if (done) MB10Colors.inkPrimary else MB10Colors.inkSecondary,
+                                fontFamily = IBMPlexSans, fontSize = 12.5.sp
+                            )
+                        }
+                    }
+                    DottedDivider(modifier = Modifier.padding(top = 6.dp))
+                    Text(
+                        when (result.outcome) {
+                            BreachOutcome.FAIL -> failMessage
+                            BreachOutcome.PARTIAL -> "Незагруженные демоны останутся недоступны до новой попытки на этом контейнере."
+                            BreachOutcome.SUCCESS -> "Следов взлома не осталось."
+                        },
+                        color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp)
+                    )
+                    if (rewardOutcome != null || secAlertStatus != null) {
+                        DottedDivider(modifier = Modifier.padding(top = 6.dp, bottom = 2.dp))
+                    }
+                    rewardOutcome?.let { outcome ->
+                        outcome.extractedShardTitles.forEach { t -> RewardRow("Шард извлечён", "«$t»") }
+                        outcome.extractedDaemonNames.forEach { name -> RewardRow("Демон извлечён", "«$name»") }
+                        if (outcome.eddies > 0) RewardRow("Эдди начислены", "+${outcome.eddies} €$")
+                        if (outcome.cacheExhausted) RewardRow("Тираж узла", "исчерпан", valueColor = MB10Colors.accentDanger)
+                    }
+                    secAlertStatus?.let { RewardRow("Сигнал СБ", it, valueColor = MB10Colors.accentDanger) }
+                }
+                Spacer(Modifier.height(10.dp))
+                AppButton(actionLabel, modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.Secondary, dense = true, onClick = onAction)
             }
         }
-        DottedDivider(modifier = Modifier.padding(top = 8.dp))
-        Text(
-            when (result.outcome) {
-                BreachOutcome.FAIL -> failMessage
-                BreachOutcome.PARTIAL -> "Незагруженные демоны останутся недоступны до новой попытки на этом контейнере."
-                BreachOutcome.SUCCESS -> "Следов взлома не осталось."
-            },
-            color = MB10Colors.inkSecondary,
-            fontFamily = JetBrainsMono,
-            fontSize = 10.5.sp,
-            modifier = Modifier.padding(top = 8.dp)
-        )
-        if (rewardOutcome != null || secAlertStatus != null) {
-            DottedDivider(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
-        }
-        rewardOutcome?.let { outcome ->
-            outcome.extractedShardTitles.forEach { title -> RewardRow("Шард извлечён", "«$title»") }
-            outcome.extractedDaemonNames.forEach { name -> RewardRow("Демон извлечён", "«$name»") }
-            if (outcome.eddies > 0) RewardRow("Эдди начислены", "+${outcome.eddies} €$")
-            if (outcome.cacheExhausted) RewardRow("Тираж узла", "исчерпан", valueColor = MB10Colors.accentDanger)
-        }
-        secAlertStatus?.let { RewardRow("Сигнал СБ", it, valueColor = MB10Colors.accentDanger) }
     }
 }
 
-/** Одна строка разбора результата — тип награды/события слева, значение справа. Раньше это всё было одной склеенной строкой, из которой не разобрать, что случилось конкретно (см. ревизию мокапа "Результат · шард"). */
+/** Одна строка разбора результата — тип награды/события слева, значение справа. */
 @Composable
 private fun RewardRow(label: String, value: String, valueColor: Color = MB10Colors.accentNetrun) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 11.5.sp)
-        Text(value, color = valueColor, fontFamily = JetBrainsMono, fontSize = 11.5.sp, fontWeight = FontWeight.Medium)
+    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 12.sp)
+        Text(value, color = valueColor, fontFamily = JetBrainsMono, fontSize = 12.sp, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -696,35 +670,40 @@ private fun BootLog(breachId: String, bufferSize: Int) {
             shown += 1
         }
     }
-    PanelBox {
+    TerminalPanel {
         lines.forEachIndexed { i, line ->
             Text(
                 if (i < shown) line else "",
                 color = if (i == lines.lastIndex) MB10Colors.accentNetrun else MB10Colors.inkSecondary,
-                fontFamily = JetBrainsMono, fontSize = 12.sp, modifier = Modifier.padding(vertical = 3.dp)
+                fontFamily = JetBrainsMono, fontSize = 12.sp, minLines = 1, modifier = Modifier.padding(vertical = 3.dp)
             )
         }
     }
 }
 
-
 /**
  * Буфер: ряд ячеек, которые заполняются кодами. Один и тот же компонент на экране выбора демонов (там ячейки заполняют коды выбранных
  * демонов) и на экране взлома (там — выбранные клетки сетки). Ячейки равной ширины на всю строку, при большом буфере (RAM до 13) —
- * в две строки, иначе фиксированные ячейки не влезали и последняя сжималась.
+ * в две строки, иначе фиксированные ячейки не влезали и последняя сжималась. Заголовок — одна строка текста, без отдельной рамки.
  */
 @Composable
-private fun BufferPanel(codes: List<String>, size: Int, topPadding: Dp = 14.dp, hint: String = "") {
-    FlagTab("буфер ${codes.size}/$size$hint", modifier = Modifier.padding(top = topPadding))
-    PanelBox {
+internal fun BufferPanel(codes: List<String>, size: Int, topPadding: Dp = 2.dp, hint: String = "") {
+    Column(Modifier.fillMaxWidth().padding(top = topPadding)) {
+        Row {
+            Text("БУФЕР ${codes.size}/$size", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
+            if (hint.isNotEmpty()) Text(hint, color = MB10Colors.accentDanger, fontFamily = JetBrainsMono, fontSize = 11.sp)
+        }
+        Spacer(Modifier.height(3.dp))
         val perRow = if (size <= 8) size else (size + 1) / 2
         for (start in 0 until size step perRow) {
-            Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.padding(bottom = if (start + perRow < size) 5.dp else 0.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(bottom = if (start + perRow < size) 4.dp else 0.dp)) {
                 for (i in start until start + perRow) {
                     if (i >= size) { Spacer(Modifier.weight(1f)); continue }
                     val filled = i < codes.size
                     Box(
-                        Modifier.weight(1f).height(30.dp).border(1.dp, if (filled) MB10Colors.inkPrimary else MB10Colors.borderMuted),
+                        Modifier.weight(1f).height(26.dp)
+                            .background(if (filled) MB10Colors.surfaceSunken else Color.Transparent, chamferShape(3.dp))
+                            .chamferBorder(if (filled) MB10Colors.inkPrimary else MB10Colors.borderMuted, cut = 3.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(if (filled) codes[i] else "", color = MB10Colors.inkPrimary, fontFamily = JetBrainsMono, fontSize = 12.sp)

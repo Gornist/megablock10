@@ -188,7 +188,7 @@ fun SegmentedTabs(labels: List<String>, selected: Int, onSelect: (Int) -> Unit, 
                         .weight(1f)
                         .background(if (active) MB10Colors.surfaceSunken else MB10Colors.surfaceRaised)
                         .clickable { onSelect(i) }
-                        .padding(vertical = 8.dp),
+                        .padding(vertical = 7.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(label, color = if (active) MB10Colors.inkPrimary else MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 12.sp)
@@ -255,8 +255,10 @@ fun AppButton(
     modifier: Modifier = Modifier,
     variant: ButtonVariant = ButtonVariant.Secondary,
     enabled: Boolean = true,
+    dense: Boolean = false,
     onClick: () -> Unit
 ) {
+    val pad = if (dense) 8.dp else 12.dp
     when (variant) {
         ButtonVariant.Primary, ButtonVariant.Netrun -> {
             val accent = if (variant == ButtonVariant.Primary) MB10Colors.accentAction else MB10Colors.accentNetrun
@@ -268,7 +270,7 @@ fun AppButton(
                     .background(fill, chamferShape(6.dp))
                     .border(1.dp, border, chamferShape(6.dp))
                     .clickable(enabled = enabled, onClick = onClick)
-                    .padding(vertical = 12.dp)
+                    .padding(vertical = pad)
             ) {
                 Text(
                     text, color = textColor, fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium,
@@ -276,8 +278,8 @@ fun AppButton(
                 )
             }
         }
-        ButtonVariant.Secondary -> OutlineButton(text, modifier, accentColor = MB10Colors.inkPrimary, enabled = enabled, onClick = onClick)
-        ButtonVariant.Danger -> OutlineButton(text, modifier, accentColor = MB10Colors.accentDanger, enabled = enabled, onClick = onClick)
+        ButtonVariant.Secondary -> OutlineButton(text, modifier, accentColor = MB10Colors.inkPrimary, enabled = enabled, verticalPadding = if (dense) 7.dp else 10.dp, onClick = onClick)
+        ButtonVariant.Danger -> OutlineButton(text, modifier, accentColor = MB10Colors.accentDanger, enabled = enabled, verticalPadding = if (dense) 7.dp else 10.dp, onClick = onClick)
     }
 }
 
@@ -323,6 +325,7 @@ fun ListRow(
     selected: Boolean = false,
     selectedColor: Color = MB10Colors.accentAction,
     horizontalInset: Dp = 0.dp,
+    verticalPadding: Dp = 6.dp,
     onClick: (() -> Unit)? = null,
     leading: (@Composable () -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
@@ -336,7 +339,7 @@ fun ListRow(
                 else Modifier
             )
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(horizontal = horizontalInset, vertical = 10.dp),
+            .padding(horizontal = horizontalInset, vertical = verticalPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (leading != null) {

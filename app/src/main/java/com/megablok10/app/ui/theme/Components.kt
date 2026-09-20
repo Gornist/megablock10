@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -111,6 +112,7 @@ fun OutlineButton(
     accentColor: Color = MB10Colors.inkPrimary,
     borderColor: Color = accentColor,
     enabled: Boolean = true,
+    verticalPadding: Dp = 10.dp,
     onClick: () -> Unit
 ) {
     val effectiveTextColor = if (enabled) accentColor else MB10Colors.borderMuted
@@ -119,7 +121,7 @@ fun OutlineButton(
         modifier = modifier
             .border(1.dp, effectiveBorderColor, chamferShape(5.dp))
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(vertical = 10.dp)
+            .padding(vertical = verticalPadding)
     ) {
         Text(
             text,
@@ -132,3 +134,34 @@ fun OutlineButton(
     }
 }
 
+
+/**
+ * Плавающая кнопка сканирования — главное действие Кибердеки. Лаймовая (действие взлома), скошенная; лежит в правом нижнем углу,
+ * куда дотягивается большой палец, и не съедает высоту списка.
+ */
+@Composable
+fun ScanFab(onClick: () -> Unit, modifier: Modifier = Modifier, label: String = "Сканировать") {
+    Row(
+        modifier = modifier
+            .background(MB10Colors.accentNetrun, chamferShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Видоискатель: четыре уголка и точка.
+        Canvas(Modifier.size(18.dp)) {
+            val stroke = 2.dp.toPx()
+            val arm = 5.dp.toPx()
+            val w = size.width
+            val h = size.height
+            val c = MB10Colors.onAccent
+            drawLine(c, Offset(0f, 0f), Offset(arm, 0f), stroke); drawLine(c, Offset(0f, 0f), Offset(0f, arm), stroke)
+            drawLine(c, Offset(w, 0f), Offset(w - arm, 0f), stroke); drawLine(c, Offset(w, 0f), Offset(w, arm), stroke)
+            drawLine(c, Offset(0f, h), Offset(arm, h), stroke); drawLine(c, Offset(0f, h), Offset(0f, h - arm), stroke)
+            drawLine(c, Offset(w, h), Offset(w - arm, h), stroke); drawLine(c, Offset(w, h), Offset(w, h - arm), stroke)
+            drawCircle(c, radius = 2.dp.toPx(), center = Offset(w / 2, h / 2))
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(label, color = MB10Colors.onAccent, fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+    }
+}

@@ -24,6 +24,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -59,6 +60,8 @@ import com.megablok10.app.shards.ShardStore
 import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.ButtonVariant
 import com.megablok10.app.ui.theme.ChamferedSurface
+import com.megablok10.app.ui.theme.DottedDivider
+import com.megablok10.app.ui.theme.ScanFab
 import com.megablok10.app.ui.theme.CompactActionButton
 import com.megablok10.app.ui.theme.EmptyState
 import com.megablok10.app.ui.theme.HexBullet
@@ -86,7 +89,7 @@ fun CyberdeckScreen(identity: Identity, onNestedChange: (Boolean) -> Unit = {}) 
     val daemons by DaemonStore.observeAll(context).collectAsState(initial = emptyList())
     val shards by ShardStore.observeAll(context).collectAsState(initial = emptyList())
 
-    var segment by remember { mutableStateOf(0) } // 0 = Демоны, 1 = Шарды
+    var segment by rememberSaveable { mutableStateOf(0) } // 0 = Демоны, 1 = Шарды; переживает смену вкладки приложения
     var container by remember { mutableStateOf<Container?>(null) }
     var openedShard by remember { mutableStateOf<Mb10Qr.Shard?>(null) }
     var decryptingShard by remember { mutableStateOf<Mb10Qr.Shard?>(null) }
@@ -94,9 +97,11 @@ fun CyberdeckScreen(identity: Identity, onNestedChange: (Boolean) -> Unit = {}) 
     // Что сейчас передаём другому игроку (шард или демон) — до выбора получателя в диалоге.
     var transferShard by remember { mutableStateOf<Mb10Qr.Shard?>(null) }
     var transferDaemon by remember { mutableStateOf<Daemon?>(null) }
+    // Идёт таймер взлома: шапка и навигация приложения прячутся, взлом получает весь экран.
+    var breachRunning by remember { mutableStateOf(false) }
 
     // Деталь шарда и мини-взлом — полноэкранные, со своим back-заголовком; шапка приложения над ними была бы дублем.
-    LaunchedEffect(openedShard, decryptingShard) { onNestedChange(openedShard != null || decryptingShard != null) }
+    LaunchedEffect(openedShard, decryptingShard, breachRunning) { onNestedChange(openedShard != null || decryptingShard != null || breachRunning) }
 
     val scanObject = rememberMb10QrScanner { qr ->
         scanIssue = null
@@ -208,43 +213,58 @@ fun CyberdeckScreen(identity: Identity, onNestedChange: (Boolean) -> Unit = {}) 
         return
     }
 
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
-        AppButton("Сканировать объект", variant = ButtonVariant.Netrun, modifier = Modifier.fillMaxWidth(), onClick = scanObject)
-        scanIssue?.let { issue ->
-            Spacer(Modifier.height(10.dp))
-            ScanIssueCard(issue, onDismiss = { scanIssue = null })
-        }
-        Spacer(Modifier.height(14.dp))
+    // Выбранный контейнер — взлом на весь экран, без вкладок и кнопки сканирования (отмена и выход — внутри потока).
+    val activeContainer = container
+    if (activeContainer != null) {
+        BreachContainerFlow(
+            container = activeContainer, daemons = daemons, identity = identity,
+            onRescan = { container = null }, onImmersive = { breachRunning = it }
+        )
+        return
+    }
 
-        SegmentedTabs(listOf("Демоны", "Шарды"), selected = segment, onSelect = { segment = it })
-        Spacer(Modifier.height(14.dp))
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().padding(horizontal = 12.dp).padding(top = 4.dp)) {
+            scanIssue?.let { issue ->
+                ScanIssueCard(issue, onDismiss = { scanIssue = null })
+                Spacer(Modifier.height(8.dp))
+            }
+            SegmentedTabs(listOf("Демоны", "Шарды"), selected = segment, onSelect = { segment = it })
+            Spacer(Modifier.height(6.dp))
 
-        Box(Modifier.weight(1f)) {
-            if (segment == 0) {
-                DemonsSegment(daemons = daemons, identity = identity, container = container, onRescan = { container = null }, onTransfer = { transferDaemon = it })
-            } else {
-                ShardsSegment(shards = shards, onOpen = { openedShard = it })
+            Box(Modifier.weight(1f)) {
+                if (segment == 0) {
+                    DemonsSegment(daemons = daemons, onTransfer = { transferDaemon = it })
+                } else {
+                    ShardsSegment(shards = shards, onOpen = { openedShard = it })
+                }
             }
         }
+        // Главное действие экрана — в зоне большого пальца, не съедает высоту списка.
+        ScanFab(onClick = scanObject, modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 16.dp))
     }
 }
 
 @Composable
-private fun DemonsSegment(daemons: List<Daemon>, identity: Identity, container: Container?, onRescan: () -> Unit, onTransfer: (Daemon) -> Unit) {
-    if (container != null) {
-        BreachContainerFlow(container = container, daemons = daemons, identity = identity, onRescan = onRescan)
-        return
-    }
-
-    // Вступительный текст нужен только пока коллекция пуста — дальше это
-    // уже не подсказка, а шум над списком, который игрок видит каждый раз.
+private fun DemonsSegment(daemons: List<Daemon>, onTransfer: (Daemon) -> Unit) {
+    // Вступительный текст нужен только пока коллекция пуста — дальше это уже не подсказка, а шум над списком.
     if (daemons.isEmpty()) {
-        EmptyState("Демонов пока нет. Взломайте первый контейнер кнопкой выше, чтобы начать коллекцию.")
+        EmptyState("Демонов пока нет. Отсканируйте контейнер кнопкой «Сканировать» — так начнётся коллекция.")
         return
     }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        daemons.forEach { daemon -> DaemonCard(daemon, onTransfer = if (ItemTransferStore.isTransferable(daemon)) { { onTransfer(daemon) } } else null) }
+    // Раскрыта одна строка за раз: тап — детали и действие «Передать»; в свёрнутом виде строка ≈ 48 dp.
+    var expandedId by remember { mutableStateOf<String?>(null) }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 88.dp)) {
+        daemons.forEach { daemon ->
+            DaemonRow(
+                daemon = daemon,
+                expanded = expandedId == daemon.id,
+                onToggle = { expandedId = if (expandedId == daemon.id) null else daemon.id },
+                onTransfer = if (ItemTransferStore.isTransferable(daemon)) { { onTransfer(daemon) } } else null
+            )
+            DottedDivider()
+        }
     }
 }
 
@@ -257,40 +277,33 @@ private suspend fun emitBreachBlocked(context: android.content.Context, subjectK
     )
 }
 
-/** Тот же визуальный паттерн строки, что у ShardCard — единый вид для обоих составных Кибердеки. */
+/** Плотная строка демона: имя и коды в одной строке, эффект и цена — во второй; «Передать» появляется по тапу. */
 @Composable
-private fun DaemonCard(daemon: Daemon, onTransfer: (() -> Unit)?) {
-    ChamferedSurface(
-        borderColor = MB10Colors.borderMuted,
-        fillColor = MB10Colors.surfaceRaised,
-        cut = 6.dp,
-        contentPadding = 11.dp,
-        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+private fun DaemonRow(daemon: Daemon, expanded: Boolean, onToggle: () -> Unit, onTransfer: (() -> Unit)?) {
+    Column(
+        Modifier.fillMaxWidth()
+            .then(if (onTransfer != null) Modifier.clickable(onClick = onToggle) else Modifier)
+            .padding(vertical = 7.dp, horizontal = 2.dp)
     ) {
-        Column {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "${daemon.name} · ${daemon.tier.label}",
-                    color = MB10Colors.inkPrimary,
-                    fontFamily = IBMPlexSans,
-                    fontSize = 13.5.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                Row { daemon.sequence.forEach { code -> CodePill(code) } }
-            }
-            Spacer(Modifier.height(4.dp))
-            // Стоимость видна и вне активного взлома — иначе бюджет буфера
-            // (RAM) узнаётся только внутри уже начатой попытки.
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "${daemon.effect.label()} · ${cellsLabel(daemon.sequence.size)}",
-                color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp
+                "${daemon.name} · ${daemon.tier.label}",
+                color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.5.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
             )
+            Row { daemon.sequence.forEach { code -> CodePill(code) } }
             if (onTransfer != null) {
-                Spacer(Modifier.height(8.dp))
-                CompactActionButton("Передать", onClick = onTransfer)
+                Text(if (expanded) "▴" else "▾", color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp))
             }
+        }
+        // Стоимость видна и вне активного взлома — иначе бюджет буфера (RAM) узнаётся только внутри уже начатой попытки.
+        Text(
+            "${daemon.effect.label()} · ${cellsLabel(daemon.sequence.size)}",
+            color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp
+        )
+        if (expanded && onTransfer != null) {
+            Spacer(Modifier.height(8.dp))
+            CompactActionButton("Передать другому игроку", onClick = onTransfer)
         }
     }
 }
