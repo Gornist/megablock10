@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const E2E_DIR = process.env.E2E_DIR ?? "/tmp/mb10-e2e";
-const API = process.env.API ?? "http://localhost:8080";
+const API = process.env.API ?? "http://localhost:2517";
 const OUT = path.join(E2E_DIR, "dash");
 const FRAMES = path.join(OUT, "frames");
 const CHROME = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";

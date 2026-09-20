@@ -1,6 +1,7 @@
 package com.megablok10.app.collector
 
 import android.util.Log
+import com.megablok10.app.presence.PeerInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -20,6 +21,8 @@ data class BatchResult(
     val accepted: Set<String>,
     val rejected: Map<String, String>,
     val pending: List<ChangeRecord>,
+    /** Другие игроки, недавно приславшие heartbeat, с адресом и портом — запасное обнаружение, когда NSD молчит (см. PresenceService.updateServerPeers). */
+    val peers: List<PeerInfo> = emptyList(),
 )
 
 /**
@@ -48,11 +51,14 @@ object CollectorClient {
         subjectKeyB64: String?,
         gameSecret: String? = null,
         ackIds: List<String> = emptyList(),
+        presence: JSONObject? = null,
     ): BatchResult? = withContext(Dispatchers.IO) {
         val body = JSONObject().put("records", JSONArray(records.map { it.toJson() }))
         if (subjectKeyB64 != null) body.put("subjectKeyB64", subjectKeyB64)
         // Подтверждение применённых правок мастера из прошлого ответа — сервер шлёт их снова, пока не получит ack.
         if (ackIds.isNotEmpty()) body.put("ackIds", JSONArray(ackIds))
+        // Порт чат-сервера, позывной и фракция — чтобы сервер мог подсказать другим, где меня искать (адрес он видит сам).
+        if (presence != null) body.put("presence", presence)
         val request = Request.Builder()
             .url("$baseUrl/api/changes")
             .post(body.toString().toRequestBody(JSON))
@@ -73,7 +79,16 @@ object CollectorClient {
                     }
                 }
                 val pending = json.getJSONArray("pending").let { arr -> (0 until arr.length()).map { arr.getJSONObject(it).toChangeRecord() } }
-                BatchResult(accepted, rejected, pending)
+                val peers = json.optJSONArray("peers")?.let { arr ->
+                    (0 until arr.length()).mapNotNull { i ->
+                        val o = arr.getJSONObject(i)
+                        val host = o.optString("host")
+                        val port = o.optInt("port", 0)
+                        if (host.isBlank() || port <= 0) null
+                        else PeerInfo(o.optString("pubKeyB64"), o.optString("callsign"), o.optString("faction"), host, port)
+                    }
+                }.orEmpty()
+                BatchResult(accepted, rejected, pending, peers)
             }
         } catch (e: IOException) {
             Log.w(TAG, "коллектор недоступен: ${e.message}")

@@ -25,24 +25,24 @@ cd ../client && npm install && npm run build   # собирает SPA в client/
 
 cd ../server
 npm run create-master -- "Имя мастера"   # один раз — печатает токен для входа, больше нигде не покажется
-PORT=8080 npm run build && npm start
+PORT=2517 npm run build && npm start
 ```
 
 Сервер сам раздаёт собранный `client/dist` с того же порта (`http://<ip
-ноутбука>:8080`) — второй процесс не нужен, mDNS сознательно не делали (см.
+ноутбука>:2517`) — второй процесс не нужен, mDNS сознательно не делали (см.
 ниже).
 
 ## Разработка
 
 ```bash
 # терминал 1
-cd admin-web/server && PORT=8080 npm run dev
+cd admin-web/server && PORT=2517 npm run dev
 
-# терминал 2 — Vite с прокси /api → :8080, HMR
+# терминал 2 — Vite с прокси /api → :2517, HMR
 cd admin-web/client && npm run dev
 ```
 
-Переменные окружения сервера: `PORT` (по умолчанию 8080), `DB_PATH` (по
+Переменные окружения сервера: `PORT` (по умолчанию 2517), `DB_PATH` (по
 умолчанию `./data/mb10-admin.sqlite`), `BACKUP_DIR` (по умолчанию
 `./data/backups`), `BACKUP_INTERVAL_MS` (по умолчанию 30 минут), `GAME_SECRET`
 (по умолчанию не задан — см. «Секрет игры» ниже).

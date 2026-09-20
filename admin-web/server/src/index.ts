@@ -4,7 +4,7 @@ import { buildApp } from "./app.js";
 import { openDb } from "./db/index.js";
 import { scheduleBackups } from "./lib/backup.js";
 
-const PORT = Number(process.env.PORT ?? 8080);
+const PORT = Number(process.env.PORT ?? 2517);
 const DB_PATH = process.env.DB_PATH ?? "./data/mb10-admin.sqlite";
 const BACKUP_DIR = process.env.BACKUP_DIR ?? "./data/backups";
 const BACKUP_INTERVAL_MS = Number(process.env.BACKUP_INTERVAL_MS ?? 30 * 60 * 1000);

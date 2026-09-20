@@ -4,12 +4,15 @@ import android.content.Context
 import android.util.Log
 import com.megablok10.app.announce.AnnouncementNotifier
 import com.megablok10.app.announce.AnnouncementStore
+import com.megablok10.app.chat.ChatStore
 import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.data.PendingChangeRecordEntity
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.identity.IdentityManager
+import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.wallet.TransactionStore
 import kotlinx.coroutines.CancellationException
+import org.json.JSONObject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -131,7 +134,9 @@ object ChangeRecordStore {
         val records = batch.map {
             ChangeRecord(it.id, it.subjectKeyB64, it.seq, it.happenedAt, it.field, it.oldValue, it.newValue, it.reason, it.sourceRef, it.actor, it.signature)
         }
-        val result = CollectorClient.sendBatch(baseUrl, records, identity?.publicKeyB64, CollectorSettings.gameSecret(context), acksIn)
+        val port = ChatStore.listeningPort
+        val presence = if (identity != null && port > 0) JSONObject().put("chatPort", port).put("callsign", identity.callsign).put("faction", identity.faction) else null
+        val result = CollectorClient.sendBatch(baseUrl, records, identity?.publicKeyB64, CollectorSettings.gameSecret(context), acksIn, presence)
 
         if (result == null) {
             // Сеть/коллектор недоступны — экспоненциальный бэкофф (§3.4: 1с → 2с → 5с → 15с → 60с, дальше по минуте).
@@ -139,6 +144,8 @@ object ChangeRecordStore {
             waitForWakeOrTimeout(delayMs)
             return SyncStep(acksIn, backoffIn + 1)
         }
+
+        if (identity != null) PresenceService.updateServerPeers(result.peers, identity.publicKeyB64)
 
         val toDelete = result.accepted + result.rejected.keys
         if (toDelete.isNotEmpty()) dao.deleteByIds(toDelete.toList())

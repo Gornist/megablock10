@@ -13,7 +13,7 @@ PKG=com.megablok10.app
 AVD_A=${AVD_A:-Medium_Phone_API_35}; AVD_B=${AVD_B:-Second_API_35}   # имена AVD (на CI создаются под теми же именами)
 A=emulator-5554   # Alice / Neon
 B=emulator-5556   # Bob / Rats
-PORT=${PORT:-8080}
+PORT=${PORT:-2517}
 API=http://localhost:$PORT
 COLLECTOR_FROM_EMU=http://10.0.2.2:$PORT
 mkdir -p "$E2E_DIR"

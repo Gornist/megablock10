@@ -9,6 +9,7 @@ import com.megablok10.app.identity.Identity
 import com.megablok10.app.call.CallManager
 import com.megablok10.app.presence.PeerInfo
 import com.megablok10.app.presence.PresenceService
+import com.megablok10.app.presence.WifiBinder
 import com.megablok10.app.items.ItemTransferStore
 import com.megablok10.app.sound.SoundPlayer
 import com.megablok10.app.qr.Mb10Qr
@@ -19,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -52,12 +54,15 @@ object ChatStore {
         scope = appScope
 
         SoundPlayer.preload(appContext)
+        // Трафик приложения — только по Wi-Fi игровой сети; при смене сети NSD перерегистрируется (docs/network-spec.md, §7).
+        WifiBinder.start(appContext) { PresenceService.refresh() }
 
         appScope.launch {
             val srv = ChatServer(
                 onMessage = { msg ->
                     appScope.launch {
-                        persist(appContext, msg)
+                        // Повторная доставка того же сообщения (отправитель не увидел подтверждения и переслал из очереди) не дублируется.
+                        if (!persistIfNew(appContext, msg)) return@launch
                         confirmIfReceipt(appContext, msg)
                     }
                     // Звук — только для реально пришедших по сети сообщений (этот колбэк
@@ -72,11 +77,16 @@ object ChatStore {
             PresenceService.start(appContext, identity, srv.port)
             SecAlertStore.start(appContext, appScope)
         }
+
+        // Очередь исходящих: досылаем, как только адресат снова виден, и по таймеру (для повторов с паузой).
+        appScope.launch { PresenceService.peers.collect { OutboxStore.flush(appContext) } }
+        appScope.launch { while (true) { delay(5_000); OutboxStore.flush(appContext) } }
     }
 
     fun stop() {
         server?.stop()
         PresenceService.stop()
+        WifiBinder.stop()
         scope?.cancel()
         server = null
         scope = null
@@ -100,7 +110,7 @@ object ChatStore {
         persist(context, wire)
         val recipients = PresenceService.peers.value.filter { it.faction == identity.faction }
         withContext(Dispatchers.IO) {
-            recipients.forEach { peer -> ChatClient.send(peer.host, peer.port, wire) }
+            recipients.forEach { peer -> if (!ChatClient.send(peer.host, peer.port, wire)) OutboxStore.enqueue(context, peer.pubKeyB64, wire) }
         }
     }
 
@@ -116,8 +126,10 @@ object ChatStore {
         val timestamp = System.currentTimeMillis()
         val wire = ChatWireMessage(ChatMessageType.DM, identity.publicKeyB64, identity.callsign, identity.faction, peerPubKeyB64, timestamp, body)
         persist(context, wire)
-        if (peer == null) return false
-        return withContext(Dispatchers.IO) { ChatClient.send(peer.host, peer.port, wire) }
+        val delivered = peer != null && withContext(Dispatchers.IO) { ChatClient.send(peer.host, peer.port, wire) }
+        // Не ушло (адресата не видно или обрыв на роуминге) — в очередь: уйдёт само, когда он появится. Деньги/предметы не queue-им, см. OutboxPolicy.
+        if (!delivered && OutboxPolicy.isQueueable(body)) OutboxStore.enqueue(context, peerPubKeyB64, wire)
+        return delivered
     }
 
     /**
@@ -131,6 +143,14 @@ object ChatStore {
         // Один и тот же чек подтверждает и деньги, и передачу предмета: id из разных журналов не пересекаются.
         TransactionStore.verifyAndConfirmReceipt(context, receipt.id, receipt)
         ItemTransferStore.verifyAndConfirmReceipt(context, receipt.id, receipt)
+    }
+
+    /** Сохраняет входящее, если такого ещё нет (тот же отправитель, время, тип и текст). false — это повтор. */
+    private suspend fun persistIfNew(context: Context, message: ChatWireMessage): Boolean {
+        val dao = Mb10Database.get(context).chatMessageDao()
+        if (dao.countSame(message.fromPubKeyB64, message.timestamp, message.type.name, message.body) > 0) return false
+        persist(context, message)
+        return true
     }
 
     private suspend fun persist(context: Context, message: ChatWireMessage) {

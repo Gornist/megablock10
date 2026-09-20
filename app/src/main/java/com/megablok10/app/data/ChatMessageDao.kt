@@ -10,6 +10,9 @@ interface ChatMessageDao {
     @Insert
     suspend fun insert(message: ChatMessageEntity): Long
 
+    @Query("SELECT COUNT(*) FROM chat_messages WHERE fromPubKeyB64 = :from AND timestamp = :timestamp AND type = :type AND body = :body")
+    suspend fun countSame(from: String, timestamp: Long, type: String, body: String): Int
+
     @Query("SELECT * FROM chat_messages WHERE type = 'FACTION' AND faction = :faction ORDER BY timestamp ASC")
     fun observeFaction(faction: String): Flow<List<ChatMessageEntity>>
 

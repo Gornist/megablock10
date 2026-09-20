@@ -8,7 +8,10 @@ import {
 } from "../lib/changeRecord.js";
 import { verifySignature } from "../lib/crypto.js";
 import { checkGameSecret } from "../lib/gameSecret.js";
-import { touchPresence } from "../lib/presence.js";
+import { ipv4Of, peersSince, touchPresence } from "../lib/presence.js";
+
+/** Дольше этого без heartbeat игрок не считается доступным для запасного обнаружения (телефон шлёт раз в ~30 с). */
+const PEER_FRESH_MS = 90_000;
 
 const MAX_BATCH = 200;
 
@@ -24,6 +27,8 @@ interface ChangesBody {
    * Повторная доставка безопасна — все правки применяются идемпотентно.
    */
   ackIds?: unknown;
+  /** Порт чат-сервера телефона и его позывной/фракция — для запасного обнаружения пиров (см. lib/presence.ts). Адрес сервер берёт сам, из соединения. */
+  presence?: unknown;
 }
 
 interface RejectedItem {
@@ -66,6 +71,7 @@ export function registerChangesRoute(app: FastifyInstance, db: Db) {
     WHERE mp.subject_key = ? AND mp.delivered = 0
     ORDER BY c.seq ASC
   `);
+  const subjectKnownStmt = db.prepare(`SELECT 1 FROM changes WHERE subject_key = ? LIMIT 1`);
   const markDeliveredStmt = db.prepare(`UPDATE master_pending SET delivered = 1 WHERE change_id = ? AND subject_key = ?`);
 
   app.post<{ Body: ChangesBody }>("/api/changes", async (request, reply) => {
@@ -84,7 +90,19 @@ export function registerChangesRoute(app: FastifyInstance, db: Db) {
     const touchedSubjects = new Set<string>();
     if (typeof request.body?.subjectKeyB64 === "string") {
       touchedSubjects.add(request.body.subjectKeyB64);
-      touchPresence(request.body.subjectKeyB64); // heartbeat: игрок на связи, даже если писать в БД нечего
+      // heartbeat: игрок на связи, даже если писать в БД нечего. Адрес и порт для запасного обнаружения запоминаем только для
+      // известных игроков (есть хоть одна запись) и только со своего адреса соединения — иначе любой в сети мог бы подсунуть чужой адрес.
+      const p = request.body.presence as { chatPort?: unknown; callsign?: unknown; faction?: unknown } | undefined;
+      const host = ipv4Of(request.ip);
+      const known = subjectKnownStmt.get(request.body.subjectKeyB64) !== undefined;
+      const port = typeof p?.chatPort === "number" && Number.isInteger(p.chatPort) && p.chatPort > 0 && p.chatPort < 65536 ? p.chatPort : 0;
+      touchPresence(
+        request.body.subjectKeyB64,
+        Date.now(),
+        known && host && port
+          ? { host, port, callsign: typeof p?.callsign === "string" ? p.callsign.slice(0, 40) : "", faction: typeof p?.faction === "string" ? p.faction.slice(0, 40) : "" }
+          : undefined,
+      );
     }
 
     const ackIds = request.body?.ackIds;
@@ -149,7 +167,8 @@ export function registerChangesRoute(app: FastifyInstance, db: Db) {
       }
     }
 
-    return { accepted, rejected, knownSeq, pending };
+    const peers = typeof request.body?.subjectKeyB64 === "string" ? peersSince(Date.now() - PEER_FRESH_MS, request.body.subjectKeyB64) : [];
+    return { accepted, rejected, knownSeq, pending, peers };
 
     function validateAndInsert(
       raw: unknown,

@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import com.megablok10.app.announce.AnnouncementStore
 import com.megablok10.app.collector.CollectorSettings
+import com.megablok10.app.collector.DEFAULT_COLLECTOR_URL
 import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.ui.theme.AppButton
@@ -95,7 +96,7 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
         )
         if (collectorHelp) {
             Text(
-                "Адрес ноутбука мастера в игровой сети — сюда уходит история изменений для дашборда. Пусто — ничего не отправляется, игра работает как обычно. " +
+                "Адрес сервера дашборда в игровой сети (по умолчанию 10.10.0.10:2517) — сюда уходит история изменений. Пустой адрес отключает отправку, игра работает как обычно. " +
                     "Код игры нужен, если мастер задал его на сервере (GAME_SECRET): без него запросы к коллектору будут отклонены.",
                 color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp
             )
@@ -112,14 +113,14 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
             value = collectorUrl,
             onValueChange = { collectorUrl = it },
             modifier = Modifier.fillMaxWidth(),
-            placeholder = "http://192.168.1.10:8080"
+            placeholder = DEFAULT_COLLECTOR_URL
         )
         Spacer(Modifier.height(8.dp))
         AppButton(
             "Сохранить адрес коллектора",
             modifier = Modifier.fillMaxWidth(),
             variant = ButtonVariant.Secondary,
-            onClick = { CollectorSettings.setBaseUrl(context, collectorUrl.ifBlank { null }) }
+            onClick = { CollectorSettings.setBaseUrl(context, collectorUrl) }
         )
         Spacer(Modifier.height(8.dp))
         AppTextField(

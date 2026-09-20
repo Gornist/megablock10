@@ -23,7 +23,7 @@ ExecStart=/usr/bin/node dist/index.js
 Restart=on-failure
 RestartSec=2
 
-Environment=PORT=8080
+Environment=PORT=2517
 Environment=DB_PATH=/home/master/megablock10/admin-web/server/data/mb10-admin.sqlite
 Environment=BACKUP_DIR=/home/master/megablock10/admin-web/server/data/backups
 Environment=BACKUP_INTERVAL_MS=1800000
