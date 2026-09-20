@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import com.megablok10.app.announce.AnnouncementStore
 import com.megablok10.app.collector.CollectorSettings
 import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.presence.PresenceService
@@ -49,6 +50,7 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
     var confirmingReset by remember { mutableStateOf(false) }
     val onlinePeers by PresenceService.peers.collectAsState()
     var collectorUrl by remember { mutableStateOf(CollectorSettings.baseUrl(context) ?: "") }
+    val announcements by AnnouncementStore.items.collectAsState()
     var gameSecret by remember { mutableStateOf(CollectorSettings.gameSecret(context) ?: "") }
     val pendingChanges by Mb10Database.get(context).pendingChangeRecordDao().observeCount().collectAsState(initial = 0)
 
@@ -79,6 +81,19 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
         )
         Spacer(Modifier.height(12.dp))
         AppButton("Сбросить сессию персонажа", modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.Danger, onClick = { confirmingReset = true })
+
+        if (announcements.isNotEmpty()) {
+            Spacer(Modifier.height(16.dp))
+            SectionLabel("Сообщения мастера")
+            val format = remember { java.text.SimpleDateFormat("dd.MM HH:mm", java.util.Locale.getDefault()) }
+            announcements.take(10).forEach { a ->
+                ListRow {
+                    Text(a.text, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
+                    Text(format.format(java.util.Date(a.receivedAt)), color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                }
+                Spacer(Modifier.height(6.dp))
+            }
+        }
 
         Spacer(Modifier.height(16.dp))
         SectionLabel("Мастерский коллектор")

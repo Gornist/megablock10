@@ -1,16 +1,28 @@
 import { useMemo, useState } from "react";
 import type { PlayerListItem } from "../api/types";
 import { useApiData } from "../api/useApiData";
+import { useWatch } from "../api/useWatch";
 import { AsyncPanel } from "../design/AsyncPanel";
-import { AppInput, AppSelect, Panel } from "../design/components";
+import { AppButton, AppInput, AppSelect, Panel } from "../design/components";
 import { DataTable, type Column } from "../design/DataTable";
-import { formatAgo, shortKey, tierLabel } from "../format";
+import { formatAgo, fromDatetimeLocal, shortKey, tierLabel, toDatetimeLocal } from "../format";
 import { navigate } from "../router";
+import { BulkOverridePanel } from "./players/BulkOverridePanel";
 
 export function PlayersScreen() {
-  const { data: players, error } = useApiData<PlayerListItem[]>("/api/players");
+  const [asOf, setAsOf] = useState("");
+  const [nowLocal] = useState(() => toDatetimeLocal(Date.now()));
+  const asOfMs = asOf ? fromDatetimeLocal(asOf) : null;
+  // «На момент T» — историческая картина, не меняется: без polling.
+  const { data: players, error, reload } = useApiData<PlayerListItem[]>(asOfMs ? `/api/players?until=${asOfMs}` : "/api/players", {
+    pollMs: asOfMs ? false : undefined,
+  });
+  const watch = useWatch();
   const [search, setSearch] = useState("");
   const [faction, setFaction] = useState("");
+  const [onlyWatched, setOnlyWatched] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   const factions = useMemo(() => [...new Set((players ?? []).map((p) => p.faction).filter(Boolean))], [players]);
 
@@ -18,12 +30,50 @@ export function PlayersScreen() {
     if (!players) return [];
     return players.filter((p) => {
       if (faction && p.faction !== faction) return false;
+      if (onlyWatched && !watch.byKey.has(p.publicKeyB64)) return false;
       if (search && !p.callsign.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     });
-  }, [players, search, faction]);
+  }, [players, search, faction, onlyWatched, watch.byKey]);
+
+  const toggleSelected = (key: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   const columns: Column<PlayerListItem>[] = [
+    {
+      key: "select",
+      label: "",
+      render: (p) => (
+        <input type="checkbox" checked={selected.has(p.publicKeyB64)} onClick={(e) => e.stopPropagation()} onChange={() => toggleSelected(p.publicKeyB64)} aria-label="выбрать" />
+      ),
+    },
+    {
+      key: "watch",
+      label: "",
+      render: (p) => {
+        const on = watch.byKey.has(p.publicKeyB64);
+        return (
+          <button
+            type="button"
+            className={`watch-star ${on ? "on" : ""}`}
+            title={on ? "снять наблюдение" : "следить"}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (on) void watch.remove(p.publicKeyB64);
+              else void watch.set(p.publicKeyB64);
+            }}
+          >
+            {on ? "★" : "☆"}
+          </button>
+        );
+      },
+      sortValue: (p) => (watch.byKey.has(p.publicKeyB64) ? 1 : 0),
+    },
     { key: "online", label: "", render: (p) => <span className={`online-dot ${p.online ? "on" : ""}`} />, sortValue: (p) => (p.online ? 1 : 0) },
     { key: "callsign", label: "Позывной", render: (p) => p.callsign || shortKey(p.publicKeyB64), sortValue: (p) => p.callsign },
     { key: "faction", label: "Фракция", render: (p) => p.faction, sortValue: (p) => p.faction },
@@ -47,25 +97,72 @@ export function PlayersScreen() {
   ];
 
   return (
-    <Panel
-      title={`Игроки${players ? ` (${filtered.length}/${players.length})` : ""}`}
-      action={
-        <div className="filter-row">
-          <AppInput placeholder="поиск по позывному" value={search} onChange={(e) => setSearch(e.target.value)} />
-          <AppSelect value={faction} onChange={(e) => setFaction(e.target.value)}>
-            <option value="">все фракции</option>
-            {factions.map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
-            ))}
-          </AppSelect>
+    <div className="screen-grid">
+      {asOfMs && (
+        <div className="asof-banner">
+          Состояние на {new Date(asOfMs).toLocaleString("ru-RU")} — это история, не текущая картина. Массовые правки отключены.{" "}
+          <button type="button" className="change-toggle" onClick={() => setAsOf("")}>
+            вернуться к текущему
+          </button>
         </div>
-      }
-    >
-      <AsyncPanel data={players} error={error}>
-        {() => <DataTable columns={columns} rows={filtered} rowKey={(p) => p.publicKeyB64} onRowClick={(p) => navigate("players", p.publicKeyB64)} />}
-      </AsyncPanel>
-    </Panel>
+      )}
+
+      {bulkOpen && !asOfMs && players && (
+        <BulkOverridePanel
+          players={players}
+          selectedKeys={[...selected]}
+          factionFilter={faction}
+          onDone={() => {
+            setSelected(new Set());
+            reload();
+          }}
+          onClose={() => setBulkOpen(false)}
+        />
+      )}
+
+      <Panel
+        title={`Игроки${players ? ` (${filtered.length}/${players.length})` : ""}`}
+        action={
+          <div className="filter-row">
+            <AppInput placeholder="поиск по позывному" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <AppSelect value={faction} onChange={(e) => setFaction(e.target.value)}>
+              <option value="">все фракции</option>
+              {factions.map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </AppSelect>
+            <AppButton variant={onlyWatched ? "primary" : "default"} onClick={() => setOnlyWatched((v) => !v)}>
+              ★ {watch.items.length}
+            </AppButton>
+            <AppInput
+              type="datetime-local"
+              title="Показать состояние на момент времени"
+              value={asOf}
+              max={nowLocal}
+              onChange={(e) => setAsOf(e.target.value)}
+            />
+          </div>
+        }
+      >
+        {!asOfMs && (
+          <div className="filter-row" style={{ marginBottom: 10 }}>
+            <AppButton onClick={() => setSelected(new Set(filtered.map((p) => p.publicKeyB64)))} disabled={filtered.length === 0}>
+              выбрать видимых ({filtered.length})
+            </AppButton>
+            <AppButton onClick={() => setSelected(new Set())} disabled={selected.size === 0}>
+              снять выбор
+            </AppButton>
+            <AppButton variant="primary" onClick={() => setBulkOpen(true)}>
+              Массовая правка{selected.size > 0 ? ` (${selected.size})` : ""}
+            </AppButton>
+          </div>
+        )}
+        <AsyncPanel data={players} error={error}>
+          {() => <DataTable columns={columns} rows={filtered} rowKey={(p) => p.publicKeyB64} onRowClick={(p) => navigate("players", p.publicKeyB64)} />}
+        </AsyncPanel>
+      </Panel>
+    </div>
   );
 }

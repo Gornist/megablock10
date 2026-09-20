@@ -7,15 +7,25 @@ import { NodesScreen } from "./screens/NodesScreen";
 import { SlotsScreen } from "./screens/SlotsScreen";
 import { TransfersScreen } from "./screens/TransfersScreen";
 import { MasterScreen } from "./screens/MasterScreen";
+import { FactionsScreen } from "./screens/FactionsScreen";
+import { EconomyScreen } from "./screens/EconomyScreen";
+import { AnnouncementsScreen } from "./screens/AnnouncementsScreen";
+import { AuditScreen } from "./screens/AuditScreen";
+import { EventsScreen } from "./screens/EventsScreen";
 import { useHashRoute, navigate } from "./router";
 import { AppButton } from "./design/components";
 
 const NAV: { path: string; label: string }[] = [
   { path: "overview", label: "Обзор" },
+  { path: "events", label: "События" },
   { path: "players", label: "Игроки" },
+  { path: "factions", label: "Фракции" },
+  { path: "economy", label: "Экономика" },
   { path: "nodes", label: "Узлы" },
   { path: "slots", label: "Реестр тиражей" },
   { path: "transfers", label: "Переводы" },
+  { path: "announcements", label: "Объявления" },
+  { path: "audit", label: "Журнал" },
   { path: "master", label: "Мастерская" },
 ];
 
@@ -47,9 +57,14 @@ function Shell() {
         {section === "overview" && <OverviewScreen />}
         {section === "players" && route[1] && <PlayerDetailScreen publicKeyB64={route[1]} />}
         {section === "players" && !route[1] && <PlayersScreen />}
-        {section === "nodes" && <NodesScreen />}
+        {section === "events" && <EventsScreen key={route.join("/")} preset={{ type: route[1], value: route[2] }} />}
+        {section === "factions" && <FactionsScreen />}
+        {section === "economy" && <EconomyScreen />}
+        {section === "nodes" && <NodesScreen nodeId={route[1]} />}
         {section === "slots" && <SlotsScreen />}
         {section === "transfers" && <TransfersScreen />}
+        {section === "announcements" && <AnnouncementsScreen />}
+        {section === "audit" && <AuditScreen />}
         {section === "master" && <MasterScreen />}
       </main>
     </div>

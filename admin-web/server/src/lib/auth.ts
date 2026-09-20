@@ -39,6 +39,7 @@ export function ensureAuthSchema(db: Db) {
       detail     TEXT,
       at         INTEGER NOT NULL
     );
+    CREATE INDEX IF NOT EXISTS idx_audit_master_at ON audit_master (at);
   `);
 }
 

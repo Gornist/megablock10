@@ -86,7 +86,7 @@ export function humanizeChange(row: ChangeRowLike, ctx: HumanizeContext): HumanC
   const node = () => {
     const id = containerIdOf(row.source_ref);
     const name = id ? ctx.containerName(id) : null;
-    return name ? `«${name}»` : id ? `«${id}»` : "узла";
+    return name ? `«${name}»` : id ? `«${id}»` : "«неизвестный»";
   };
 
   switch (row.field) {
@@ -174,6 +174,8 @@ export function humanizeChange(row: ChangeRowLike, ctx: HumanizeContext): HumanC
         ? done("alert", `сигнал СБ по узлу ${node()} не отправлен (подавлен демоном или узел свой)`)
         : done("alert", `сигнал СБ по узлу ${node()} отправлен владельцам`);
     }
+    case "announcement":
+      return done("master", `сообщение от мастера: «${row.new_value ?? ""}»`);
     default:
       return done("system", `${row.field}: ${row.old_value ?? "∅"} → ${row.new_value ?? "∅"}`);
   }

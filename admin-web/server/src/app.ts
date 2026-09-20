@@ -13,6 +13,12 @@ import { registerOverviewRoutes } from "./routes/overview.js";
 import { registerExportRoute } from "./routes/exportCsv.js";
 import { registerMasterRoutes } from "./routes/master.js";
 import { registerMastersRoutes } from "./routes/masters.js";
+import { registerAuditRoute } from "./routes/audit.js";
+import { registerAnnouncementsRoutes } from "./routes/announcements.js";
+import { registerAnalyticsRoutes } from "./routes/analytics.js";
+import { registerAttentionRoute } from "./routes/attention.js";
+import { registerWatchRoutes } from "./routes/watch.js";
+import { registerEventsRoute } from "./routes/events.js";
 
 /**
  * Собирает Fastify-приложение без побочного listen() — раньше вся сборка
@@ -38,6 +44,12 @@ export function buildApp(db: Db, options: { clientDist?: string; logger?: boolea
   registerExportRoute(app, db);
   registerMasterRoutes(app, db);
   registerMastersRoutes(app, db);
+  registerAuditRoute(app, db);
+  registerAnnouncementsRoutes(app, db);
+  registerAnalyticsRoutes(app, db);
+  registerAttentionRoute(app, db);
+  registerWatchRoutes(app, db);
+  registerEventsRoute(app, db);
 
   app.get("/api/health", async () => ({ ok: true }));
 

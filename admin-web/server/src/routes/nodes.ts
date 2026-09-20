@@ -5,6 +5,7 @@ import { requireMaster } from "../lib/auth.js";
 import { parseSafe } from "../lib/json.js";
 import { cachedByDbVersion } from "../lib/dbCache.js";
 import { makeSlotRef } from "../lib/slotRef.js";
+import { containerIdOf } from "../lib/humanize.js";
 import type { ContainerSlot } from "./containers.js";
 
 interface ContainerRow {
@@ -22,10 +23,10 @@ interface ContainerRow {
  * попытку взлома, отдельная от slotRef схема и с ней никак не связана,
  * т.к. attemptId никогда не парсится обратно, в отличие от slotRef).
  */
-function containerRefClause(): string {
+export function containerRefClause(): string {
   return "(source_ref = ? OR source_ref LIKE ? ESCAPE '\\' OR source_ref LIKE ? ESCAPE '\\')";
 }
-function containerRefParams(containerId: string): [string, string, string] {
+export function containerRefParams(containerId: string): [string, string, string] {
   const escaped = escapeLike(containerId);
   return [containerId, `${escaped}#%`, `${escaped}:%`];
 }
@@ -36,18 +37,60 @@ export function listNodeSummaries(db: Db) {
   return containers.map((c) => summarize(db, c));
 }
 
+const nodeCaches = new WeakMap<Db, () => ReturnType<typeof listNodeSummaries>>();
+
+/** Сводка узлов, кэшированная по версии БД — общая для списка узлов и панели «требует внимания». */
+export function getNodeSummaries(db: Db) {
+  let cached = nodeCaches.get(db);
+  if (!cached) {
+    cached = cachedByDbVersion(db, () => listNodeSummaries(db));
+    nodeCaches.set(db, cached);
+  }
+  return cached();
+}
+
+const HOUR_MS = 60 * 60 * 1000;
+
+/** Сколько взломов узла за последний час — по узлам, у которых они были. Зависит от времени, поэтому вне кэша. */
+export function breachesLastHourByNode(db: Db, now = Date.now()): Map<string, number> {
+  const rows = db
+    .prepare(`SELECT source_ref FROM changes WHERE field = 'counters.breach' AND happened_at > ?`)
+    .all(now - HOUR_MS) as { source_ref: string | null }[];
+  const out = new Map<string, number>();
+  for (const r of rows) {
+    const id = containerIdOf(r.source_ref);
+    if (id) out.set(id, (out.get(id) ?? 0) + 1);
+  }
+  return out;
+}
+
+/** Исходы взломов узла по часам (последние `hours`, включая пустые) — «когда и как ломали». */
+function nodeTimeline(db: Db, containerId: string, hours: number, now = Date.now()) {
+  const from = Math.floor(now / HOUR_MS) * HOUR_MS - (hours - 1) * HOUR_MS;
+  const buckets = Array.from({ length: hours }, (_, i) => ({ t: from + i * HOUR_MS, success: 0, partial: 0, fail: 0 }));
+  const rows = db
+    .prepare(`SELECT happened_at, new_value FROM changes WHERE field = 'counters.breach' AND happened_at >= ? AND ${containerRefClause()}`)
+    .all(from, ...containerRefParams(containerId)) as { happened_at: number; new_value: string | null }[];
+  for (const r of rows) {
+    const outcome = parseSafe<{ outcome?: "success" | "partial" | "fail" }>(r.new_value)?.outcome;
+    const bucket = buckets[Math.floor((r.happened_at - from) / HOUR_MS)];
+    if (bucket && outcome) bucket[outcome] += 1;
+  }
+  return buckets;
+}
+
 /** GET /api/nodes, GET /api/nodes/:id — агрегат по контейнерам (§8.4 ТЗ). Узел = контейнер. */
 export function registerNodesRoutes(app: FastifyInstance, db: Db) {
   // См. players.ts/dbCache.ts — кэш по версии БД, не по времени: правка
   // мастера или новый взлом видны на следующем же запросе, не через окно TTL.
-  const cachedNodeSummaries = cachedByDbVersion(db, () => listNodeSummaries(db));
-
+  // «За последний час» зависит от текущего времени — добавляется поверх кэша.
   app.get("/api/nodes", async (request, reply) => {
     if (!requireMaster(db, request, reply)) return;
-    return cachedNodeSummaries();
+    const lastHour = breachesLastHourByNode(db);
+    return getNodeSummaries(db).map((n) => ({ ...n, breachesLastHour: lastHour.get(n.id) ?? 0 }));
   });
 
-  app.get<{ Params: { id: string } }>("/api/nodes/:id", async (request, reply) => {
+  app.get<{ Params: { id: string }; Querystring: { hours?: string } }>("/api/nodes/:id", async (request, reply) => {
     if (!requireMaster(db, request, reply)) return;
 
     const c = db.prepare(`SELECT id, name, tier, owner_faction, slots_json FROM containers WHERE id = ?`).get(request.params.id) as
@@ -65,7 +108,8 @@ export function registerNodesRoutes(app: FastifyInstance, db: Db) {
       )
       .all(...containerRefParams(c.id));
 
-    return { ...summarize(db, c), breachers };
+    const hours = Math.min(168, Math.max(1, Number(request.query.hours) || 24));
+    return { ...summarize(db, c), breachers, timeline: nodeTimeline(db, c.id, hours) };
   });
 }
 

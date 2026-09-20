@@ -1,10 +1,14 @@
 package com.megablok10.app.ui.theme
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 
 /**
  * Срез — только в верхнем левом углу. Так решено во всех предыдущих
@@ -93,3 +97,11 @@ fun jaggedChamferShape(cut: Dp, stepInset: Dp = cut): Shape {
         close()
     }
 }
+
+/**
+ * Единственный способ обвести элемент рамкой: контур повторяет срез [chamferShape], а не прямоугольник.
+ * Голый `Modifier.border(w, color)` без формы даёт квадратную рамку — это считается ошибкой (следит `NoRectangularBordersTest`).
+ */
+@Composable
+fun Modifier.chamferBorder(color: Color, cut: Dp = 5.dp, width: Dp = 1.dp): Modifier =
+    this.border(width, color, chamferShape(cut))

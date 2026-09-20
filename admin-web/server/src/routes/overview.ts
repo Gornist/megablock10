@@ -41,7 +41,10 @@ function computeOverviewBase(db: Db) {
   }, 0);
   const slotsClaimed = (db.prepare(`SELECT COUNT(*) AS n FROM slot_claims WHERE revoked = 0`).get() as { n: number }).n;
 
-  return { totalPlayers, alertsSent, alertsSuppressed, slotsPrinted, slotsClaimed };
+  // Все известные ключи одним запросом: раньше на каждого замеченного по heartbeat игрока шёл отдельный SELECT (каждые 3 с на 100 игроков).
+  const knownKeys = new Set((db.prepare(`SELECT DISTINCT subject_key FROM changes`).all() as { subject_key: string }[]).map((r) => r.subject_key));
+
+  return { totalPlayers, alertsSent, alertsSuppressed, slotsPrinted, slotsClaimed, knownKeys };
 }
 
 /** GET /api/overview (§7, §8.1 ТЗ) и GET /api/changes/recent (лента изменений — замена SSE на polling, упрощение №3). */
@@ -56,14 +59,15 @@ export function registerOverviewRoutes(app: FastifyInstance, db: Db) {
     if (!requireMaster(db, request, reply)) return;
 
     const now = Date.now();
+    const base = cachedBase();
     // «На связи» = были свежие записи ИЛИ heartbeat телефона (пустой батч), причём только игроки, которых мы уже знаем по истории.
     const online = new Set(
-      (db.prepare(`SELECT DISTINCT subject_key FROM changes WHERE received_at > ?`).all(now - ONLINE_WINDOW_MS) as { subject_key: string }[]).map(
+      (db.prepare(`SELECT DISTINCT subject_key FROM changes WHERE received_at > ? AND reason != 'MASTER_OVERRIDE'`).all(now - ONLINE_WINDOW_MS) as { subject_key: string }[]).map(
         (r) => r.subject_key,
       ),
     );
     for (const key of presentSince(now - ONLINE_WINDOW_MS)) {
-      if (db.prepare(`SELECT 1 FROM changes WHERE subject_key = ? LIMIT 1`).get(key)) online.add(key);
+      if (base.knownKeys.has(key)) online.add(key);
     }
     const onlinePlayers = online.size;
 
@@ -75,8 +79,6 @@ export function registerOverviewRoutes(app: FastifyInstance, db: Db) {
       const parsed = parseSafe<{ outcome: "success" | "partial" | "fail" }>(row.payload);
       if (parsed) breachesLastHour[parsed.outcome] += 1;
     }
-
-    const base = cachedBase();
 
     return {
       players: { online: onlinePlayers, total: base.totalPlayers },
@@ -99,7 +101,7 @@ export function registerOverviewRoutes(app: FastifyInstance, db: Db) {
     // числе новых записей больше limit остаток терялся навсегда, а запись, вставленная в ту же
     // миллисекунду, что и "now", выпадала из ленты. Повторы на границе клиент отсекает по id.
     const rows = db
-      .prepare(`SELECT * FROM changes WHERE received_at >= ? ORDER BY received_at ASC LIMIT ?`)
+      .prepare(`SELECT * FROM changes WHERE received_at >= ? AND field != 'announcement' ORDER BY received_at ASC LIMIT ?`)
       .all(since, limit) as { received_at: number }[];
     const cursor = rows.length === limit ? rows[rows.length - 1].received_at : Date.now();
     return { records: withHuman(db, rows as never[]), now: cursor };

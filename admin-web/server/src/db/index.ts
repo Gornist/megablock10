@@ -23,6 +23,17 @@ CREATE INDEX IF NOT EXISTS idx_changes_subject_seq ON changes (subject_key, seq)
 CREATE INDEX IF NOT EXISTS idx_changes_happened_at ON changes (happened_at);
 CREATE INDEX IF NOT EXISTS idx_changes_reason ON changes (reason);
 CREATE INDEX IF NOT EXISTS idx_changes_source_ref ON changes (source_ref);
+-- overview/аналитика/тревоги фильтруют по field + времени, а лента и "на связи" — по received_at.
+CREATE INDEX IF NOT EXISTS idx_changes_field_happened ON changes (field, happened_at);
+CREATE INDEX IF NOT EXISTS idx_changes_received_at ON changes (received_at);
+
+-- Игроки "под наблюдением" — общий для всех мастеров список с пометкой.
+CREATE TABLE IF NOT EXISTS watchlist (
+  subject_key TEXT PRIMARY KEY,
+  note        TEXT NOT NULL DEFAULT '',
+  added_by    TEXT NOT NULL,
+  added_at    INTEGER NOT NULL
+);
 
 -- Снимка Character нет по решению: он всегда пересчитывается SQL-агрегатом
 -- по changes на чтение, а не поддерживается построчно (см. обсуждение объёма

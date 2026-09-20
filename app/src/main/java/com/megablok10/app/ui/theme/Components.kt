@@ -52,15 +52,15 @@ fun AppToggle(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Mo
     Box(
         modifier = modifier
             .size(width = 34.dp, height = 18.dp)
-            .background(MB10Colors.surfaceSunken)
-            .border(1.dp, if (checked) MB10Colors.accentAction else MB10Colors.borderMuted)
+            .background(MB10Colors.surfaceSunken, chamferShape(4.dp))
+            .chamferBorder(if (checked) MB10Colors.accentAction else MB10Colors.borderMuted, cut = 4.dp)
             .clickable { onCheckedChange(!checked) }
     ) {
         Box(
             modifier = Modifier
                 .padding(start = knobOffset, top = 2.dp)
                 .size(12.dp)
-                .background(if (checked) MB10Colors.accentAction else MB10Colors.inkSecondary)
+                .background(if (checked) MB10Colors.accentAction else MB10Colors.inkSecondary, chamferShape(3.dp))
         )
     }
 }

@@ -1,46 +1,32 @@
 import { withHuman } from "../lib/humanize.js";
-import { lastPresence } from "../lib/presence.js";
 import type { FastifyInstance } from "fastify";
 import { escapeLike } from "../lib/sqlLike.js";
 import type { Db } from "../db/index.js";
 import { logMasterAction, requireMaster } from "../lib/auth.js";
 import { projectCharacter } from "../lib/projection.js";
-import { cachedByDbVersion } from "../lib/dbCache.js";
-import { randomUUID } from "node:crypto";
 import type { Field } from "../lib/changeRecord.js";
+import { computePlayerBase, getPlayerBase, withOnline } from "../lib/playerSummary.js";
+import {
+  BULK_FIELDS,
+  OVERRIDABLE_FIELDS,
+  currentFieldValue,
+  insertMasterRecords,
+  resolveValue,
+  selectTargets,
+  type OverrideMode,
+  type TargetSelector,
+} from "../lib/masterRecords.js";
 
-const ONLINE_WINDOW_MS = 5 * 60 * 1000;
-/** Только скалярные поля персонажа — правка daemons.add/shards.add/counters.* через дашборд не предусмотрена (нет формы, нет смысла: это коллекции, не значения). */
-const OVERRIDABLE_FIELDS: Field[] = ["balance", "ramCapacity", "callsign", "faction"];
-
-type PlayerBase = ReturnType<typeof computePlayerBase>[number];
-
-/** Всё, что зависит только от БД (кэшируемо по dbCache.ts) — без online, он зависит от текущего времени, не только от записей. */
-function computePlayerBase(db: Db) {
-  const keys = (db.prepare(`SELECT DISTINCT subject_key FROM changes`).all() as { subject_key: string }[]).map((r) => r.subject_key);
-  return keys
-    .map((key) => projectCharacter(db, key))
-    .filter((s): s is NonNullable<typeof s> => s !== null)
-    .map((s) => ({
-      publicKeyB64: s.publicKeyB64,
-      callsign: s.callsign,
-      faction: s.faction,
-      ramCapacity: s.ramCapacity,
-      balance: s.balance,
-      daemonCount: s.daemons.length,
-      shardsByTier: countByTier(s.shards.map((sh) => sh.tier)),
-      breaches: sumBreaches(s.counters.breaches),
-      slotsClaimed: s.counters.slotsClaimed,
-      lastSeenAt: s.lastSeenAt,
-    }));
+/** ?until=<мс> — «состояние на момент T»; пусто/некорректно → текущее. */
+function parseUntil(raw: unknown): number | undefined {
+  if (raw === undefined || raw === "") return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
-function withOnline(base: PlayerBase[]) {
-  const now = Date.now();
-  return base.map((s) => {
-    const seenAt = Math.max(s.lastSeenAt, lastPresence(s.publicKeyB64)); // запись изменения ИЛИ heartbeat телефона
-    return { ...s, lastSeenAt: seenAt, online: now - seenAt < ONLINE_WINDOW_MS };
-  });
+function parseMode(raw: unknown): OverrideMode | null {
+  if (raw === undefined) return "set";
+  return raw === "set" || raw === "add" ? raw : null;
 }
 
 /** Переиспользуется CSV-экспортом (routes/exportCsv.ts) — простая некэшированная версия, годится и для нечастых вызовов, и для тестов. */
@@ -50,21 +36,23 @@ export function listPlayerSummaries(db: Db) {
 
 /** GET /api/players/:key, /api/players, /api/players/:key/history, POST /api/players/:key/override — §7, §8.2, §8.3 ТЗ. */
 export function registerPlayersRoutes(app: FastifyInstance, db: Db) {
-  // Кэш только на "тяжёлую" часть (перебор истории всех игроков) — online
-  // считается заново на каждый запрос из свежего Date.now(), иначе игрок,
-  // переставший слать реальные события (но не сам факт связи — heartbeat
-  // пустыми батчами ничего не пишет в БД), завис бы "в сети" навечно между
-  // записями. См. dbCache.ts про то, почему кэш вообще по версии БД, а не по TTL.
-  const cachedPlayerBase = cachedByDbVersion(db, () => computePlayerBase(db));
-
-  app.get("/api/players", async (request, reply) => {
+  // Кэш только на "тяжёлую" часть (перебор истории всех игроков, см.
+  // getPlayerBase) — online считается заново на каждый запрос из свежего
+  // Date.now(), иначе игрок, переставший слать реальные события (но не сам
+  // факт связи — heartbeat пустыми батчами ничего не пишет в БД), завис бы
+  // "в сети" навечно между записями. См. dbCache.ts про то, почему кэш вообще
+  // по версии БД, а не по TTL.
+  app.get<{ Querystring: { until?: string } }>("/api/players", async (request, reply) => {
     if (!requireMaster(db, request, reply)) return;
-    return withOnline(cachedPlayerBase());
+    const until = parseUntil(request.query.until);
+    // «На момент T» — история, не текущая связь: online там не определён, кэш обходим.
+    if (until !== undefined) return computePlayerBase(db, until).map((p) => ({ ...p, online: false }));
+    return withOnline(getPlayerBase(db));
   });
 
-  app.get<{ Params: { key: string } }>("/api/players/:key", async (request, reply) => {
+  app.get<{ Params: { key: string }; Querystring: { until?: string } }>("/api/players/:key", async (request, reply) => {
     if (!requireMaster(db, request, reply)) return;
-    const snapshot = projectCharacter(db, request.params.key);
+    const snapshot = projectCharacter(db, request.params.key, parseUntil(request.query.until));
     if (!snapshot) return reply.code(404).send({ error: "unknown character" });
     return snapshot;
   });
@@ -104,10 +92,14 @@ export function registerPlayersRoutes(app: FastifyInstance, db: Db) {
     },
   );
 
-  /** POST /api/players/:key/override — ручная правка мастера (§6, §7). reason=MASTER_OVERRIDE, sourceRef = обязательное основание. */
+  /**
+   * POST /api/players/:key/override — ручная правка мастера (§6, §7).
+   * reason=MASTER_OVERRIDE, sourceRef = обязательное основание. mode="add" —
+   * дельта к текущему значению (только balance/ramCapacity), по умолчанию "set".
+   */
   app.post<{
     Params: { key: string };
-    Body: { field?: unknown; newValue?: unknown; reason?: unknown };
+    Body: { field?: unknown; newValue?: unknown; reason?: unknown; mode?: unknown };
   }>("/api/players/:key/override", async (request, reply) => {
     const master = requireMaster(db, request, reply);
     if (!master) return;
@@ -122,107 +114,84 @@ export function registerPlayersRoutes(app: FastifyInstance, db: Db) {
     if (typeof newValue !== "string") {
       return reply.code(400).send({ error: "newValue must be a string" });
     }
-    // Значение должно быть таким, которое телефон реально применит: иначе на дашборде оно
-    // отображается (NaN, пустой позывной), а устройство молча его игнорирует — расхождение навсегда.
-    if (field === "balance" && !/^-?\d+$/.test(newValue)) {
-      return reply.code(400).send({ error: "balance must be an integer" });
-    }
-    if (field === "ramCapacity" && !(/^\d+$/.test(newValue) && Number(newValue) >= 6 && Number(newValue) <= 13)) {
-      return reply.code(400).send({ error: "ramCapacity must be an integer from 6 to 13" });
-    }
-    if ((field === "callsign" || field === "faction") && newValue.trim() === "") {
-      return reply.code(400).send({ error: `${field} must not be empty` });
-    }
+    const mode = parseMode(request.body?.mode);
+    if (!mode) return reply.code(400).send({ error: "mode must be set or add" });
 
     const subjectKey = request.params.key;
     const current = projectCharacter(db, subjectKey);
-    const oldValue = current ? currentFieldValue(current, field as Field) : null;
+    const resolved = resolveValue(field as Field, mode, newValue, current);
+    if (!resolved.ok) return reply.code(400).send({ error: resolved.error });
+    const oldValue = currentFieldValue(current, field as Field);
 
-    const id = randomUUID();
-    const now = Date.now();
+    const [record] = insertMasterRecords(db, master.id, [
+      { subjectKey, field, oldValue, newValue: resolved.value, sourceRef: justification },
+    ]);
 
-    // Запись в changes и постановка в очередь доставки на устройство — одной
-    // транзакцией, чтобы либо и то, и другое, либо ничего (иначе возможна
-    // правка, которая видна в истории на дашборде, но никогда не долетит
-    // до игрока, если процесс упадёт между двумя INSERT).
-    const applyOverride = db.transaction(() => {
-      // seq мастерских правок — ОТДЕЛЬНЫЙ отрицательный диапазон, не
-      // "следующий после устройства". Устройство нумерует seq САМО и
-      // независимо от сервера (IdentityManager.nextChangeSeq, offline-first —
-      // см. §3.4 ТЗ); если бы мы брали MAX(seq)+1 здесь, эта же цифра рано
-      // или поздно совпала бы с seq, которую устройство присвоит одному из
-      // СВОИХ будущих событий — и то, и другое не может лечь в таблицу
-      // разом из-за UNIQUE(subject_key, seq): свежая законная запись игрока
-      // получила бы "seq already used" и потерялась бы молча. Отрицательные
-      // числа гарантированно никогда не встретятся у устройства (его
-      // счётчик стартует с 1 и только растёт) — коллизия отсюда структурно
-      // невозможна, а не просто маловероятна. Порядок применения при этом
-      // берётся не из seq (см. projection.ts), а из received_at.
-      const minSeqRow = db.prepare(`SELECT MIN(seq) AS minSeq FROM changes WHERE subject_key = ?`).get(subjectKey) as {
-        minSeq: number | null;
-      };
-      const seq = Math.min(0, minSeqRow.minSeq ?? 0) - 1;
+    logMasterAction(db, master.id, "PLAYER_OVERRIDE", { subjectKey, field, mode, oldValue, newValue: resolved.value, justification });
 
-      db.prepare(
-        `INSERT INTO changes (id, subject_key, seq, happened_at, received_at, field, old_value, new_value, reason, source_ref, actor, signature)
-         VALUES (@id, @subject_key, @seq, @happened_at, @received_at, @field, @old_value, @new_value, @reason, @source_ref, @actor, @signature)`,
-      ).run({
-        id,
-        subject_key: subjectKey,
-        seq,
-        happened_at: now,
-        received_at: now,
-        field,
-        old_value: oldValue,
-        new_value: newValue,
-        reason: "MASTER_OVERRIDE",
-        source_ref: justification,
-        actor: `master:${master.id}`,
-        signature: "",
-      });
-
-      db.prepare(`INSERT INTO master_pending (change_id, subject_key, delivered, created_at) VALUES (?, ?, 0, ?)`).run(id, subjectKey, now);
-
-      return seq;
-    });
-    const seq = applyOverride();
-
-    logMasterAction(db, master.id, "PLAYER_OVERRIDE", { subjectKey, field, oldValue, newValue, justification });
-
-    return { id, seq };
+    return { id: record.id, seq: record.seq };
   });
-}
 
-function currentFieldValue(snapshot: ReturnType<typeof projectCharacter>, field: Field): string | null {
-  if (!snapshot) return null;
-  switch (field) {
-    case "balance":
-      return String(snapshot.balance);
-    case "ramCapacity":
-      return String(snapshot.ramCapacity);
-    case "callsign":
-      return snapshot.callsign;
-    case "faction":
-      return snapshot.faction;
-    default:
-      return null;
-  }
-}
+  /**
+   * POST /api/players/bulk-override — та же правка сразу многим: выбранным,
+   * целой фракции или всем. dryRun=true — только предпросмотр («кому что
+   * изменится»), ничего не пишет: массовая ошибка на 100 игроков дороже
+   * одиночной, поэтому UI всегда сначала показывает предпросмотр.
+   */
+  app.post<{
+    Body: TargetSelector & { field?: unknown; newValue?: unknown; reason?: unknown; mode?: unknown; dryRun?: unknown };
+  }>("/api/players/bulk-override", async (request, reply) => {
+    const master = requireMaster(db, request, reply);
+    if (!master) return;
 
-function countByTier(tiers: string[]): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const t of tiers) out[t] = (out[t] ?? 0) + 1;
-  return out;
-}
+    const body = request.body ?? {};
+    const { field, newValue, reason: justification } = body;
+    if (typeof field !== "string" || typeof justification !== "string" || justification.trim() === "") {
+      return reply.code(400).send({ error: "field and a non-empty justification (reason) are required" });
+    }
+    if (!BULK_FIELDS.includes(field as Field)) {
+      return reply.code(400).send({ error: `field must be one of: ${BULK_FIELDS.join(", ")}` });
+    }
+    if (typeof newValue !== "string") return reply.code(400).send({ error: "newValue must be a string" });
+    const mode = parseMode(body.mode);
+    if (!mode) return reply.code(400).send({ error: "mode must be set or add" });
 
-function sumBreaches(breaches: Record<string, { success: number; partial: number; fail: number }>) {
-  let success = 0,
-    partial = 0,
-    fail = 0;
-  for (const b of Object.values(breaches)) {
-    success += b.success;
-    partial += b.partial;
-    fail += b.fail;
-  }
-  return { success, partial, fail };
+    const targets = selectTargets(getPlayerBase(db), body);
+    if (!targets.ok) return reply.code(400).send({ error: targets.error });
+
+    const plan: { publicKeyB64: string; callsign: string; oldValue: string | null; newValue: string }[] = [];
+    for (const p of targets.players) {
+      const resolved = resolveValue(field as Field, mode, newValue, p);
+      if (!resolved.ok) return reply.code(400).send({ error: resolved.error });
+      plan.push({
+        publicKeyB64: p.publicKeyB64,
+        callsign: p.callsign,
+        oldValue: currentFieldValue(p, field as Field),
+        newValue: resolved.value,
+      });
+    }
+    // Значение не изменится (тот же баланс, RAM уже на потолке) — писать пустую правку игроку незачем.
+    const changes = plan.filter((c) => c.oldValue !== c.newValue);
+
+    if (body.dryRun === true) {
+      return { dryRun: true, target: targets.label, count: changes.length, unchanged: plan.length - changes.length, changes };
+    }
+    if (changes.length === 0) return reply.code(400).send({ error: "no players would change" });
+
+    const records = insertMasterRecords(
+      db,
+      master.id,
+      changes.map((c) => ({ subjectKey: c.publicKeyB64, field, oldValue: c.oldValue, newValue: c.newValue, sourceRef: justification })),
+    );
+    logMasterAction(db, master.id, "BULK_OVERRIDE", {
+      field,
+      mode,
+      newValue,
+      justification,
+      target: targets.label,
+      count: records.length,
+      keys: changes.map((c) => c.publicKeyB64),
+    });
+    return { dryRun: false, target: targets.label, count: records.length, unchanged: plan.length - changes.length };
+  });
 }

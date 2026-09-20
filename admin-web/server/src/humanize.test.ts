@@ -78,3 +78,9 @@ test("API: лента и история отдают человеческую ф
   assert.equal(transfers[0].fromName, "Alice");
   assert.equal(transfers[0].toName, "Bob");
 });
+
+test("humanize: запись без узла в source_ref не даёт «узла узла»", () => {
+  const ctx = { playerName: () => "Alice", containerName: () => null, peerName: () => null, itemTitle: () => null };
+  const h = humanizeChange({ subject_key: "k", field: "balance", old_value: "0", new_value: "5", reason: "BREACH_EDDIES", source_ref: null, actor: "k" }, ctx);
+  assert.equal(h.body, "+5 €$ за взлом узла «неизвестный»");
+});

@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
 import QRCode from "qrcode";
 import type { Db } from "../db/index.js";
-import { requireMaster } from "../lib/auth.js";
+import { logMasterAction, requireMaster } from "../lib/auth.js";
 import { encryptLoot } from "../lib/lootCrypto.js";
 import { encodeDaemonLoot, encodeShardLoot } from "../lib/lootCodec.js";
 import { encodeContainerQr, encodeRamUpgradeQr, encodeShardQr } from "../lib/mb10QrCodec.js";
@@ -65,7 +65,8 @@ function moneyOrNull(v: unknown): number | null {
  */
 export function registerMasterRoutes(app: FastifyInstance, db: Db) {
   app.post<{ Body: ContainerBody }>("/api/master/containers", async (request, reply) => {
-    if (!requireMaster(db, request, reply)) return;
+    const master = requireMaster(db, request, reply);
+    if (!master) return;
 
     const body = request.body ?? {};
     const name = body.name;
@@ -137,6 +138,7 @@ export function registerMasterRoutes(app: FastifyInstance, db: Db) {
     }
 
     upsertContainer(db, { id, name, tier, ownerFaction, slots });
+    logMasterAction(db, master.id, "CONTAINER_CREATED", { containerId: id, name, tier, ownerFaction, slots: slots.length });
 
     const qr = encodeContainerQr(
       id,
@@ -161,7 +163,8 @@ export function registerMasterRoutes(app: FastifyInstance, db: Db) {
       moneyAmount?: unknown;
     };
   }>("/api/master/shards", async (request, reply) => {
-    if (!requireMaster(db, request, reply)) return;
+    const master = requireMaster(db, request, reply);
+    if (!master) return;
 
     const b = request.body ?? {};
     if (typeof b.title !== "string" || !b.title.trim() || typeof b.body !== "string" || !b.body.trim()) {
@@ -185,11 +188,13 @@ export function registerMasterRoutes(app: FastifyInstance, db: Db) {
       money,
     );
     const qrImage = await QRCode.toDataURL(qr, { margin: 1, width: 480 });
+    logMasterAction(db, master.id, "QR_SHARD", { shardId: id, title: b.title });
     return { shardId: id, qr, qrImage };
   });
 
   app.post<{ Body: { delta?: unknown } }>("/api/master/ram", async (request, reply) => {
-    if (!requireMaster(db, request, reply)) return;
+    const master = requireMaster(db, request, reply);
+    if (!master) return;
 
     const delta = request.body?.delta;
     if (!Number.isInteger(delta) || (delta as number) <= 0) return reply.code(400).send({ error: "delta must be a positive integer" });
@@ -197,6 +202,7 @@ export function registerMasterRoutes(app: FastifyInstance, db: Db) {
     const token = `ram-${randomUUID().slice(0, 8)}`;
     const qr = encodeRamUpgradeQr(token, delta as number);
     const qrImage = await QRCode.toDataURL(qr, { margin: 1, width: 480 });
+    logMasterAction(db, master.id, "QR_RAM", { token, delta });
     return { token, qr, qrImage };
   });
 }

@@ -2,6 +2,8 @@ package com.megablok10.app.collector
 
 import android.content.Context
 import android.util.Log
+import com.megablok10.app.announce.AnnouncementNotifier
+import com.megablok10.app.announce.AnnouncementStore
 import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.data.PendingChangeRecordEntity
 import com.megablok10.app.identity.Identity
@@ -176,6 +178,7 @@ object ChangeRecordStore {
                     ChangeField.RAM_CAPACITY -> newValue.toIntOrNull()?.let { IdentityManager.applyRamOverride(context, it) }
                     ChangeField.CALLSIGN -> IdentityManager.applyCallsignOverride(context, newValue)
                     ChangeField.FACTION -> IdentityManager.applyFactionOverride(context, newValue)
+                    ChangeField.ANNOUNCEMENT -> if (AnnouncementStore.add(context, p.id, newValue)) AnnouncementNotifier.show(context, p.id, newValue)
                     else -> Log.w(TAG, "pending с неизвестным полем ${p.field} — пропущено")
                 }
             } catch (e: CancellationException) {

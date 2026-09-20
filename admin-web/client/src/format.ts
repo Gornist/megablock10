@@ -25,3 +25,24 @@ export function formatAgo(ms: number | null): string {
   const h = Math.floor(m / 60);
   return `${h}ч назад`;
 }
+
+export function formatDateTime(ms: number | null): string {
+  if (!ms) return "—";
+  return new Date(ms).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+/** Значение для <input type="datetime-local"> в локальном времени браузера. */
+export function toDatetimeLocal(ms: number): string {
+  const d = new Date(ms - new Date(ms).getTimezoneOffset() * 60_000);
+  return d.toISOString().slice(0, 16);
+}
+
+export function fromDatetimeLocal(value: string): number | null {
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/** Целое с разделителем тысяч: 12 500 */
+export function formatNumber(n: number): string {
+  return n.toLocaleString("ru-RU");
+}

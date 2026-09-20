@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import type { ChangeRow, Overview } from "../api/types";
 import { ChangeLine } from "../design/ChangeLine";
-import { EmptyState, Panel, StatTile } from "../design/components";
+import { AppButton, EmptyState, Panel, StatTile } from "../design/components";
+import { navigate } from "../router";
+import { AttentionPanel } from "./overview/AttentionPanel";
+import { WatchPanel } from "./overview/WatchPanel";
 
 const POLL_MS = 3000;
 
@@ -54,7 +57,12 @@ export function OverviewScreen() {
         <StatTile label="Сигналы СБ: отправлено / подавлено" value={overview ? `${overview.alerts.sent} / ${overview.alerts.suppressed}` : "—"} />
       </div>
 
-      <Panel title="Живая лента изменений">
+      <div className="two-col">
+        <AttentionPanel />
+        <WatchPanel />
+      </div>
+
+      <Panel title="Живая лента изменений" action={<AppButton onClick={() => navigate("events")}>все события с фильтрами →</AppButton>}>
         {feed.length === 0 ? (
           <EmptyState>пока тихо</EmptyState>
         ) : (

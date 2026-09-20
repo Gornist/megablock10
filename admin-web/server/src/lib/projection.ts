@@ -60,16 +60,21 @@ function emptyCounters(): Counters {
  * (Ф2): daemons.add/shards.add несут полный объект сущности, .remove/.decrypt
  * несут { daemonId | shardId }, counters.* несут { path, delta }.
  */
-export function projectCharacter(db: Db, subjectKeyB64: string): CharacterSnapshot | null {
+export function projectCharacter(db: Db, subjectKeyB64: string, until?: number): CharacterSnapshot | null {
   // received_at, не seq — seq осмысленно сравним только внутри одного actor'а
   // (устройство нумерует свои же записи по порядку), а master-правки живут в
   // отдельном (отрицательном) диапазоне seq именно чтобы не сталкиваться с
   // устройством, а не чтобы задавать порядок применения. received_at общий
   // для всех источников и отражает реальный порядок поступления на сервер —
   // то, что нужно для "последняя правка выигрывает" (§6.4 ТЗ).
-  const rows = db
-    .prepare(`SELECT * FROM changes WHERE subject_key = ? ORDER BY received_at ASC, seq ASC`)
-    .all(subjectKeyB64) as StoredChangeRow[];
+  // until — состояние «на момент T» по часам сервера (received_at): ровно то, что видел бы дашборд в тот момент.
+  const rows = (
+    until === undefined
+      ? db.prepare(`SELECT * FROM changes WHERE subject_key = ? ORDER BY received_at ASC, seq ASC`).all(subjectKeyB64)
+      : db
+          .prepare(`SELECT * FROM changes WHERE subject_key = ? AND received_at <= ? ORDER BY received_at ASC, seq ASC`)
+          .all(subjectKeyB64, until)
+  ) as StoredChangeRow[];
 
   if (rows.length === 0) return null;
 
@@ -91,7 +96,8 @@ export function projectCharacter(db: Db, subjectKeyB64: string): CharacterSnapsh
 
   for (const row of rows) {
     applyRow(snapshot, daemons, shards, row);
-    snapshot.lastSeenAt = Math.max(snapshot.lastSeenAt, row.received_at);
+    // Мастерская правка/объявление — действие мастера, а не признак того, что игрок на связи.
+    if (row.reason !== "MASTER_OVERRIDE") snapshot.lastSeenAt = Math.max(snapshot.lastSeenAt, row.received_at);
     snapshot.lastSeq = Math.max(snapshot.lastSeq, row.seq);
   }
 
@@ -100,9 +106,13 @@ export function projectCharacter(db: Db, subjectKeyB64: string): CharacterSnapsh
 
   // slotsClaimed — не из changes, а из реестра арбитража (§5 ТЗ): именно
   // slot_claims фиксирует, кто реально получил тиражный слот через сервер.
-  const claimedRow = db
-    .prepare(`SELECT COUNT(*) AS n FROM slot_claims WHERE claimant_key = ? AND revoked = 0`)
-    .get(subjectKeyB64) as { n: number };
+  const claimedRow = (
+    until === undefined
+      ? db.prepare(`SELECT COUNT(*) AS n FROM slot_claims WHERE claimant_key = ? AND revoked = 0`).get(subjectKeyB64)
+      : db
+          .prepare(`SELECT COUNT(*) AS n FROM slot_claims WHERE claimant_key = ? AND revoked = 0 AND claimed_at <= ?`)
+          .get(subjectKeyB64, until)
+  ) as { n: number };
   snapshot.counters.slotsClaimed = claimedRow.n;
 
   return snapshot;

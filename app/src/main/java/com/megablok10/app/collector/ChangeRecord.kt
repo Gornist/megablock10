@@ -39,6 +39,9 @@ object ChangeField {
     const val COUNTERS_BREACH = "counters.breach"
     const val COUNTERS_ALERT = "counters.alert"
     const val COUNTERS_BLOCKED = "counters.blocked"
+
+    /** Только от мастера (дашборд → устройство): текст объявления. Устройство такие записи не создаёт. */
+    const val ANNOUNCEMENT = "announcement"
 }
 
 object ChangeReason {

@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.megablok10.app.announce.AnnouncementStore
 import com.megablok10.app.call.CallManager
 import com.megablok10.app.call.CallPhase
 import com.megablok10.app.chat.ChatStore
@@ -48,6 +49,7 @@ import com.megablok10.app.identity.IdentityManager
 import com.megablok10.app.presence.PeerInfo
 import com.megablok10.app.ui.nav.AppTab
 import com.megablok10.app.ui.nav.MainScaffold
+import com.megablok10.app.ui.screens.AnnouncementDialogHost
 import com.megablok10.app.ui.screens.CallOverlay
 import com.megablok10.app.ui.screens.CallsScreen
 import com.megablok10.app.ui.screens.ChatScreen
@@ -102,7 +104,10 @@ fun AppRoot() {
     // наличия личности (очередь может копиться и отправляться, даже пока
     // экран настройки ещё не пройден, хотя на практике enqueue() без
     // личности просто ничего не пишет).
-    LaunchedEffect(Unit) { ChangeRecordStore.start(context) }
+    LaunchedEffect(Unit) {
+        AnnouncementStore.load(context)
+        ChangeRecordStore.start(context)
+    }
 
     // WebRTC не откроет микрофон без RECORD_AUDIO — звонок (свой исходящий
     // или принятие входящего) — единственное место в приложении, где он
@@ -209,6 +214,7 @@ fun AppRoot() {
                     AppTab.Wallet -> WalletScreen(currentIdentity)
                 }
             }
+            AnnouncementDialogHost()
             if (callState.phase != CallPhase.IDLE) {
                 CallOverlay(
                     state = callState,
