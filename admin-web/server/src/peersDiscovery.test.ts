@@ -60,3 +60,25 @@ test("ipv4Of: v4-mapped адрес разбирается, остальное �
   assert.equal(ipv4Of("999.1.1.1"), null);
   assert.equal(ipv4Of(undefined), null);
 });
+
+test("список пиров получает только известный серверу игрок — случайный ключ видит пустой список", async () => {
+  resetPresence();
+  const app = testApp(testDb());
+  const alice = testDevice(), bob = testDevice(), stranger = testDevice();
+  await registered(app, alice, "Alice");
+  await registered(app, bob, "Bob");
+  await heartbeat(app, bob, "192.0.2.20", { chatPort: 40001, callsign: "Bob", faction: "Rats" });
+
+  const res = (await heartbeat(app, stranger, "192.0.2.99", { chatPort: 40009, callsign: "X", faction: "?" })).json();
+  assert.deepEqual(res.peers, [], "у чужого ключа нет ни одной записи — адреса игроков ему не отдаются");
+  assert.deepEqual((await app.inject({ method: "POST", url: "/api/changes", payload: { records: [] } })).json().peers, [], "без ключа — тоже пусто");
+
+  const newcomer = testDevice();
+  const first = await app.inject({
+    method: "POST",
+    url: "/api/changes",
+    remoteAddress: "192.0.2.30",
+    payload: { records: [newcomer.change({ field: "callsign", oldValue: null, newValue: "New", reason: "CHARACTER_CREATED" })], subjectKeyB64: newcomer.publicKeyB64 },
+  });
+  assert.equal(first.json().peers.length, 1, "новичок, приславший первые записи этим же запросом, уже известен и получает список");
+});

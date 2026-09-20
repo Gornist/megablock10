@@ -167,7 +167,11 @@ export function registerChangesRoute(app: FastifyInstance, db: Db) {
       }
     }
 
-    const peers = typeof request.body?.subjectKeyB64 === "string" ? peersSince(Date.now() - PEER_FRESH_MS, request.body.subjectKeyB64) : [];
+    // Список адресов игроков — только тому, кого сервер уже знает (проверка ПОСЛЕ приёма батча: новичок, приславший
+    // первые записи этим же запросом, уже известен). Иначе любой в сети, не имея ни одной записи, получал бы адреса, позывные и фракции всех.
+    const requester = request.body?.subjectKeyB64;
+    const peers =
+      typeof requester === "string" && subjectKnownStmt.get(requester) !== undefined ? peersSince(Date.now() - PEER_FRESH_MS, requester) : [];
     return { accepted, rejected, knownSeq, pending, peers };
 
     function validateAndInsert(
