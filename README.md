@@ -153,8 +153,8 @@ Android Studio для этого пути не нужна вообще.
 # один раз — поставить нужные компоненты SDK
 sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
-# собрать APK (используется системно установленный Gradle,
-# поэтому gradle-wrapper здесь не требуется)
+# собрать APK (Gradle 8.7 подтянется через wrapper,
+# отдельно ставить Gradle не нужно)
 ./gradlew assembleDebug
 
 # результат:
