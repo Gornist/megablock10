@@ -83,7 +83,7 @@ fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}, on
                 Column {
                     Text(identity.callsign, color = MB10Colors.inkPrimary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     Spacer(Modifier.height(2.dp))
-                    Text(identity.faction, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                    Text(identity.faction, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
                 }
             }
             Spacer(Modifier.height(18.dp))
@@ -163,7 +163,7 @@ private fun ContactActionButton(text: String, modifier: Modifier = Modifier, onC
             .padding(vertical = 6.dp)
     ) {
         Text(
-            text, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp,
+            text, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth()
         )
     }

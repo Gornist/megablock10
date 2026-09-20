@@ -94,7 +94,7 @@ private fun RingingCard(state: CallUiState, peerFaction: String?, onAccept: () -
                     Spacer(Modifier.width(6.dp))
                     Text(
                         if (incoming) "ВХОДЯЩАЯ ТРАНСМИССИЯ" else "ИСХОДЯЩАЯ ТРАНСМИССИЯ",
-                        color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp
+                        color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp
                     )
                 }
                 Spacer(Modifier.height(18.dp))
@@ -108,7 +108,7 @@ private fun RingingCard(state: CallUiState, peerFaction: String?, onAccept: () -
                 Spacer(Modifier.height(6.dp))
                 Text(
                     if (incoming) "Вызывает вас" else "Дозваниваемся...",
-                    color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp
+                    color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp
                 )
                 Spacer(Modifier.height(26.dp))
                 if (incoming) {
@@ -156,7 +156,7 @@ private fun ActiveCallBar(state: CallUiState, onEnd: () -> Unit) {
                     Text(
                         "%d:%02d".format(minutes, seconds),
                         color = if (state.audioConnected) MB10Colors.inkSecondary else MB10Colors.borderMuted,
-                        fontFamily = JetBrainsMono, fontSize = 10.sp
+                        fontFamily = JetBrainsMono, fontSize = 11.sp
                     )
                 }
                 Spacer(Modifier.width(10.dp))
@@ -166,7 +166,7 @@ private fun ActiveCallBar(state: CallUiState, onEnd: () -> Unit) {
                         .clickable(onClick = onEnd)
                         .padding(horizontal = 14.dp, vertical = 8.dp)
                 ) {
-                    Text("ЗАВЕРШИТЬ", color = MB10Colors.onAccent, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                    Text("ЗАВЕРШИТЬ", color = MB10Colors.onAccent, fontFamily = JetBrainsMono, fontSize = 11.sp)
                 }
             }
         }

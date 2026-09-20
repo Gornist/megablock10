@@ -72,7 +72,7 @@ internal fun ShardCard(shard: Mb10Qr.Shard, onClick: () -> Unit) {
         fillColor = MB10Colors.surfaceRaised,
         cut = 6.dp,
         contentPadding = 0.dp,
-        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp).clickable(onClick = onClick)
+        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).clickable(onClick = onClick)
     ) {
         Column(Modifier.padding(11.dp)) {
             Row(
@@ -85,7 +85,7 @@ internal fun ShardCard(shard: Mb10Qr.Shard, onClick: () -> Unit) {
                 ShardBadgeChip(badge)
             }
             Spacer(Modifier.height(5.dp))
-            Text(shard.meta, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+            Text(shard.meta, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
             if (shard.moneyAmount > 0) {
                 Spacer(Modifier.height(5.dp))
                 ShardMoneyRow(shard.moneyAmount)
@@ -100,7 +100,7 @@ private fun ShardMoneyRow(amount: Long) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         HexBullet(MB10Colors.accentAction, size = 7.dp)
         Spacer(Modifier.width(6.dp))
-        Text("+$amount €$", color = MB10Colors.accentAction, fontFamily = JetBrainsMono, fontSize = 10.5.sp, fontWeight = FontWeight.Medium)
+        Text("+$amount €$", color = MB10Colors.accentAction, fontFamily = JetBrainsMono, fontSize = 11.sp, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -132,7 +132,7 @@ internal fun ShardDetailOverlay(shard: Mb10Qr.Shard, decrypter: Daemon?, onClose
             ShardBadgeChip(badge)
         }
         Spacer(Modifier.height(4.dp))
-        Text(shard.meta, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
+        Text(shard.meta, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
         if (shard.valueHint.isNotEmpty()) {
             Spacer(Modifier.height(4.dp))
             Text(shard.valueHint, color = MB10Colors.inkTertiary, fontFamily = IBMPlexSans, fontSize = 11.sp)
@@ -194,6 +194,6 @@ private fun ShardBadgeChip(badge: ShardBadge) {
             .border(1.dp, badge.color.copy(alpha = if (badge == ShardBadge.Public) 1f else 0.4f), chamferShape(4.dp))
             .padding(horizontal = 7.dp, vertical = 2.dp)
     ) {
-        Text(badge.text, color = badge.color, fontFamily = JetBrainsMono, fontSize = 9.5.sp)
+        Text(badge.text, color = badge.color, fontFamily = JetBrainsMono, fontSize = 11.sp)
     }
 }

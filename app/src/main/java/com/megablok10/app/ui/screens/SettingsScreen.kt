@@ -1,5 +1,6 @@
 package com.megablok10.app.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,10 +55,10 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
     var gameSecret by remember { mutableStateOf(CollectorSettings.gameSecret(context) ?: "") }
     val pendingChanges by Mb10Database.get(context).pendingChangeRecordDao().observeCount().collectAsState(initial = 0)
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
         SectionLabel("Приложение")
         ToggleRow("Push-уведомления", pushEnabled) { pushEnabled = it }
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(6.dp))
         ToggleRow("Звук при новом сообщении", soundEnabled) { soundEnabled = it }
         Spacer(Modifier.height(10.dp))
         var breachSfx by remember { mutableStateOf(BreachSfx.isEnabled(context)) }
@@ -67,21 +68,10 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
         SectionLabel("Сеть и данные")
         ListRow(trailing = { StatusChip("${onlinePeers.size} в сети", tone = ChipTone.Neutral) }) {
             Text("Мешь-сеть", color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
-            Text("устройства рядом обнаруживаются через NSD", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+            Text("устройства рядом обнаруживаются через NSD", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
         }
 
         Spacer(Modifier.height(16.dp))
-        SectionLabel("Персонаж")
-        // Смена фракции — решение мастера вручную вне приложения, здесь этому неоткуда взяться.
-        // Раньше это была вечно задизейбленная кнопка (нерабочая форма вместо неё вводит в
-        // заблуждение — неясно, почему не жмётся); теперь та же информация обычным текстом.
-        Text(
-            "Смена фракции — по решению мастера, вручную вне приложения",
-            color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp
-        )
-        Spacer(Modifier.height(12.dp))
-        AppButton("Сбросить сессию персонажа", modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.Danger, onClick = { confirmingReset = true })
-
         if (announcements.isNotEmpty()) {
             Spacer(Modifier.height(16.dp))
             SectionLabel("Сообщения мастера")
@@ -89,7 +79,7 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
             announcements.take(10).forEach { a ->
                 ListRow {
                     Text(a.text, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
-                    Text(format.format(java.util.Date(a.receivedAt)), color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                    Text(format.format(java.util.Date(a.receivedAt)), color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
                 }
                 Spacer(Modifier.height(6.dp))
             }
@@ -97,16 +87,25 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
 
         Spacer(Modifier.height(16.dp))
         SectionLabel("Мастерский коллектор")
+        var collectorHelp by remember { mutableStateOf(false) }
         Text(
-            "Адрес ноутбука мастера в игровой сети — сюда уходит история изменений для дашборда. Пусто — ничего не отправляется, игра работает как обычно.",
-            color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp
+            if (collectorHelp) "Скрыть подсказки" else "Подробнее",
+            color = MB10Colors.accentAction, fontFamily = JetBrainsMono, fontSize = 11.sp,
+            modifier = Modifier.clickable { collectorHelp = !collectorHelp }.padding(vertical = 4.dp)
         )
-        Spacer(Modifier.height(10.dp))
+        if (collectorHelp) {
+            Text(
+                "Адрес ноутбука мастера в игровой сети — сюда уходит история изменений для дашборда. Пусто — ничего не отправляется, игра работает как обычно. " +
+                    "Код игры нужен, если мастер задал его на сервере (GAME_SECRET): без него запросы к коллектору будут отклонены.",
+                color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp
+            )
+        }
+        Spacer(Modifier.height(6.dp))
         ListRow(
             trailing = { StatusChip(if (pendingChanges > 0) "$pendingChanges ожидает" else "всё отправлено", tone = if (pendingChanges > 0) ChipTone.Neutral else ChipTone.Action) }
         ) {
             Text("Очередь синка", color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
-            Text("записи, ещё не подтверждённые коллектором", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+            Text("записи, ещё не подтверждённые коллектором", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
         }
         Spacer(Modifier.height(8.dp))
         AppTextField(
@@ -122,11 +121,6 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
             variant = ButtonVariant.Secondary,
             onClick = { CollectorSettings.setBaseUrl(context, collectorUrl.ifBlank { null }) }
         )
-        Spacer(Modifier.height(12.dp))
-        Text(
-            "Код игры — если мастер его задал на сервере (GAME_SECRET), без него запросы к коллектору будут отклонены. Пусто — как раньше, без кода.",
-            color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp
-        )
         Spacer(Modifier.height(8.dp))
         AppTextField(
             value = gameSecret,
@@ -141,6 +135,17 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
             variant = ButtonVariant.Secondary,
             onClick = { CollectorSettings.setGameSecret(context, gameSecret.ifBlank { null }) }
         )
+
+        // Необратимое действие — отдельным блоком внизу, чтобы не нажать по соседству с обычными кнопками.
+        Spacer(Modifier.height(28.dp))
+        SectionLabel("Опасная зона", color = MB10Colors.accentDanger)
+        Text(
+            "Смена фракции — по решению мастера, вручную вне приложения.",
+            color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp
+        )
+        Spacer(Modifier.height(8.dp))
+        AppButton("Сбросить сессию персонажа", modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.Danger, dense = true, onClick = { confirmingReset = true })
+        Spacer(Modifier.height(16.dp))
     }
 
     if (confirmingReset) {
@@ -164,7 +169,7 @@ private fun ToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 7.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {

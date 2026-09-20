@@ -3,6 +3,7 @@
 # Нужен поднятый стенд (./up.sh). Результат: $E2E_DIR/audit/*.png и сводный лист sheet.png (нужен ffmpeg).
 source "$(dirname "$0")/lib.sh"
 PKA=$(cat $E2E_DIR/pk_$A.txt); PKB=$(cat $E2E_DIR/pk_$B.txt)
+restart_app $A; sleep 2   # начинаем с чистого экрана: после сценариев мог остаться оверлей взлома
 mkdir -p $E2E_DIR/audit; S=$E2E_DIR/audit; rm -f $S/*.png
 dbg $A DEBUG_SET --es balance 1500 --es ram 9; dbg $A DEBUG_SET --es daemon "Cipher Key:7A,E9:2:DECRYPT"; dbg $A DEBUG_SET --es daemon "Deep Miner:E9,FF:2:MINER"; dbg $A DEBUG_SET --es daemon "Black Curtain:7A,BD,55:2:BLACKOUT"
 dbg $B DEBUG_SET --es say "$PKA|Готов к делу? Узел у северных ворот."; dbg $B DEBUG_SET --es pay "$PKA:100:online"; sleep 5

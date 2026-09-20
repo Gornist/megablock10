@@ -165,7 +165,7 @@ fun SystemNoticeLine(text: String, tone: ChipTone = ChipTone.Neutral, modifier: 
         ) {
             HexBullet(color, size = 6.dp)
             Spacer(Modifier.width(6.dp))
-            Text(text, color = color, fontFamily = JetBrainsMono, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(text, color = color, fontFamily = JetBrainsMono, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -297,7 +297,7 @@ fun CompactActionButton(text: String, onClick: () -> Unit, modifier: Modifier = 
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 6.dp)
     ) {
-        Text(text, color = MB10Colors.onAccent, fontFamily = JetBrainsMono, fontSize = 10.5.sp, fontWeight = FontWeight.Medium)
+        Text(text, color = MB10Colors.onAccent, fontFamily = JetBrainsMono, fontSize = 11.sp, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -372,7 +372,7 @@ fun DimmableQr(bitmap: Bitmap, contentDescription: String, size: Dp = 200.dp, mo
             Box(Modifier.size(size).background(MB10Colors.surfaceBase.copy(alpha = 0.88f)))
             Text(
                 "Нажмите, чтобы показать",
-                color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp,
+                color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp,
                 textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 20.dp)
             )
         }
@@ -430,11 +430,11 @@ fun OnlineDot(online: Boolean, modifier: Modifier = Modifier) {
 @Composable
 fun EmptyState(text: String, modifier: Modifier = Modifier) {
     Column(
-        modifier = modifier.fillMaxWidth().padding(vertical = 28.dp),
+        modifier = modifier.fillMaxWidth().padding(vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(Modifier.size(40.dp).border(1.5.dp, MB10Colors.borderMuted, hexShape()))
-        Spacer(Modifier.height(14.dp))
+        Box(Modifier.size(24.dp).border(1.5.dp, MB10Colors.borderMuted, hexShape()))
+        Spacer(Modifier.height(8.dp))
         Text(
             text,
             color = MB10Colors.inkTertiary, fontFamily = IBMPlexSans, fontSize = 13.sp, lineHeight = 18.sp,

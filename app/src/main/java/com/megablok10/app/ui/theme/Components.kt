@@ -73,7 +73,7 @@ fun FlagTab(text: String, accent: Color = MB10Colors.accentNetrun, modifier: Mod
             .background(accent, flagTabShape())
             .padding(start = 9.dp, end = 14.dp, top = 5.dp, bottom = 5.dp)
     ) {
-        Text(text, color = Color.Black, fontFamily = JetBrainsMono, fontSize = 10.sp)
+        Text(text, color = Color.Black, fontFamily = JetBrainsMono, fontSize = 11.sp)
     }
 }
 
@@ -83,7 +83,7 @@ fun SectionLabel(text: String, color: Color = MB10Colors.inkSecondary, modifier:
     Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier.padding(bottom = 8.dp)) {
         HexBullet(color, size = 8.dp)
         Spacer(Modifier.width(6.dp))
-        Text(text, color = color, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
+        Text(text, color = color, fontFamily = JetBrainsMono, fontSize = 11.sp)
     }
 }
 
@@ -96,7 +96,7 @@ fun Chip(text: String, color: Color = MB10Colors.inkSecondary, cut: Dp = 4.dp, m
             .border(1.dp, color, chamferShape(cut))
             .padding(horizontal = 7.dp, vertical = 2.dp)
     ) {
-        Text(text, color = color, fontFamily = JetBrainsMono, fontSize = 9.5.sp)
+        Text(text, color = color, fontFamily = JetBrainsMono, fontSize = 11.sp)
     }
 }
 

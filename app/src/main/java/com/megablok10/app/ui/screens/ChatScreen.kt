@@ -182,7 +182,7 @@ private fun ConversationRow(title: String, preview: String, time: Long?, online:
         ListRow(
             onClick = onClick,
             leading = { if (online != null) OnlineDot(online) else Spacer(Modifier.width(7.dp)) },
-            trailing = time?.let { t -> { Text(timeFormat.format(t), color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 10.sp) } }
+            trailing = time?.let { t -> { Text(timeFormat.format(t), color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 11.sp) } }
         ) {
             Text(title, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
             Spacer(Modifier.height(2.dp))
@@ -249,7 +249,7 @@ private fun DirectThread(identity: Identity, peerPubKeyB64: String, onBack: () -
             Text(contact?.callsign ?: "Неизвестный контакт", color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 14.sp, modifier = Modifier.weight(1f))
             OnlineDot(online = peer != null)
             Spacer(Modifier.width(6.dp))
-            Text(if (peer != null) "в сети" else "не в сети", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+            Text(if (peer != null) "в сети" else "не в сети", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
         }
 
         MessageList(
@@ -331,7 +331,7 @@ private fun NewChatPicker(onPick: (String) -> Unit, onBack: () -> Unit) {
                     leading = { OnlineDot(c.publicKeyB64 in onlineKeys) }
                 ) {
                     Text(c.callsign, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
-                    Text(c.faction, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                    Text(c.faction, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
                 }
             }
         }
@@ -435,7 +435,7 @@ private fun ColumnScope.MessageList(
 @Composable
 private fun DaySeparatorLabel(label: String) {
     Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) {
-        Text(label, color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 9.5.sp)
+        Text(label, color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 11.sp)
     }
 }
 
@@ -544,7 +544,7 @@ private fun PlainMessageBubble(msg: ChatMessageEntity, self: Boolean, showSender
     ) {
         Column(modifier = Modifier.widthIn(max = 280.dp), horizontalAlignment = if (self) Alignment.End else Alignment.Start) {
             if (showSender && !self) {
-                Text(msg.fromCallsign, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                Text(msg.fromCallsign, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
                 Spacer(Modifier.height(2.dp))
             }
             Box(
@@ -556,7 +556,7 @@ private fun PlainMessageBubble(msg: ChatMessageEntity, self: Boolean, showSender
                 Text(msg.body, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.5.sp, lineHeight = 19.sp)
             }
             Spacer(Modifier.height(2.dp))
-            Text(timeFormat.format(msg.timestamp), color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 9.5.sp)
+            Text(timeFormat.format(msg.timestamp), color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 11.sp)
         }
     }
 }
@@ -586,7 +586,7 @@ private fun PaymentBubble(
                     Spacer(Modifier.width(6.dp))
                     Text(
                         if (self) "Перевод отправлен" else "Перевод от $senderCallsign",
-                        color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp
+                        color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp
                     )
                 }
                 Spacer(Modifier.height(6.dp))
@@ -605,7 +605,7 @@ private fun PaymentBubble(
                         },
                         tone = if (status == TransactionStatus.CONFIRMED) ChipTone.Action else ChipTone.Neutral
                     )
-                    status == null -> AppButton("Принять", variant = ButtonVariant.Primary, modifier = Modifier.fillMaxWidth(), onClick = { onAccept?.invoke() })
+                    status == null -> AppButton("Принять", variant = ButtonVariant.Primary, dense = true, modifier = Modifier.fillMaxWidth(), onClick = { onAccept?.invoke() })
                     else -> StatusChip("принято", tone = ChipTone.Action)
                 }
             }
@@ -647,7 +647,7 @@ private fun ItemTransferBubble(
                     Spacer(Modifier.width(6.dp))
                     Text(
                         if (self) "Передача отправлена" else "Передача от $senderCallsign",
-                        color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp
+                        color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp
                     )
                 }
                 Spacer(Modifier.height(6.dp))
@@ -665,7 +665,7 @@ private fun ItemTransferBubble(
                         },
                         tone = if (record?.status == TransactionStatus.CONFIRMED) ChipTone.Action else ChipTone.Neutral
                     )
-                    record == null -> AppButton("Принять", variant = ButtonVariant.Primary, modifier = Modifier.fillMaxWidth(), onClick = { onAccept?.invoke() })
+                    record == null -> AppButton("Принять", variant = ButtonVariant.Primary, dense = true, modifier = Modifier.fillMaxWidth(), onClick = { onAccept?.invoke() })
                     else -> StatusChip("принято", tone = ChipTone.Action)
                 }
             }

@@ -559,7 +559,7 @@ private fun HackCell(size: Dp, code: String, isSelected: Boolean, orderLabel: St
         Text(code, color = textColor, fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium, fontSize = (size.value * 0.32f).coerceIn(12f, 18f).sp)
         if (orderLabel != null) {
             Text(
-                orderLabel, color = MB10Colors.accentNetrun, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                orderLabel, color = MB10Colors.accentNetrun, fontSize = 11.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.align(Alignment.TopEnd).padding(horizontal = 3.dp, vertical = 1.dp)
             )
         }

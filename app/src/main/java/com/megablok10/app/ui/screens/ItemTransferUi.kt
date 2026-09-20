@@ -54,7 +54,7 @@ fun ContactPickerDialog(title: String, onPick: (Mb10Qr.Contact) -> Unit, onDismi
                         contacts.forEach { contact ->
                             ListRow(onClick = { onPick(contact) }, leading = { OnlineDot(contact.publicKeyB64 in onlineKeys) }) {
                                 Text(contact.callsign, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.5.sp)
-                                Text(contact.faction, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                                Text(contact.faction, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
                             }
                         }
                     }

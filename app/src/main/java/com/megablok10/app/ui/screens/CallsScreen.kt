@@ -121,10 +121,10 @@ private fun CallLogRow(entry: CallLogEntity, onClick: () -> Unit) {
                 modifier = Modifier.width(10.dp)
             )
         },
-        trailing = { Text(timeFormatter.format(Date(entry.startedAt)), color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 10.sp) }
+        trailing = { Text(timeFormatter.format(Date(entry.startedAt)), color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 11.sp) }
     ) {
         Text(entry.peerCallsign, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
-        Text(outcomeLabel, color = outcomeColor, fontFamily = JetBrainsMono, fontSize = 10.sp)
+        Text(outcomeLabel, color = outcomeColor, fontFamily = JetBrainsMono, fontSize = 11.sp)
     }
 }
 
@@ -178,7 +178,7 @@ private fun NewCallPicker(onPick: (String, String) -> Unit, onBack: () -> Unit) 
                     leading = { OnlineDot(c.publicKeyB64 in onlineKeys) }
                 ) {
                     Text(c.callsign, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
-                    Text(c.faction, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                    Text(c.faction, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
                 }
             }
         }

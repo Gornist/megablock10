@@ -81,59 +81,53 @@ fun WalletScreen(identity: Identity) {
 
     var sending by remember { mutableStateOf(false) }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-        SectionLabel("Баланс")
-        ChamferedSurface(
-            borderColor = MB10Colors.borderMuted,
-            fillColor = MB10Colors.surfaceSunken,
-            cut = 10.dp,
-            corner = SurfaceCorner.Double,
-            contentPadding = 16.dp,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column {
-                Text("евродоллары", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
-                Spacer(Modifier.height(6.dp))
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
+        // Баланс — крупное число в одной строке с кнопкой «Отправить» (раньше: карточка ≈130 dp + кнопка на всю ширину).
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("евродоллары", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
                 Row(verticalAlignment = Alignment.Bottom) {
-                    Text("$balance", color = MB10Colors.inkPrimary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 36.sp)
-                    Text(" €$", color = MB10Colors.inkSecondary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text("$balance", color = MB10Colors.inkPrimary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 32.sp)
+                    Text(" €$", color = MB10Colors.inkSecondary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(bottom = 4.dp))
+                }
+            }
+            AppButton("Отправить", variant = ButtonVariant.Primary, dense = true, modifier = Modifier.width(140.dp), onClick = { sending = true })
+        }
+
+        // Форма отправки — отдельным окном: список операций под ней не сдвигается.
+        if (sending) {
+            androidx.compose.ui.window.Dialog(
+                onDismissRequest = { sending = false },
+                properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+            ) {
+                Column(Modifier.padding(12.dp).verticalScroll(rememberScrollState())) {
+                    SendTransactionPanel(
+                        contacts = contacts,
+                        onlineKeys = onlineKeys,
+                        transactions = transactions,
+                        balance = balance,
+                        onSend = { contact, id, amount, memo ->
+                            val payload = Mb10QrCodec.transactionSignaturePayload(id, identity.publicKeyB64, amount, memo)
+                            val signature = IdentityManager.sign(context, payload)
+                            val tx = Mb10Qr.Transaction(id, identity.publicKeyB64, amount, memo, signature)
+                            val peer = onlinePeers.find { it.pubKeyB64 == contact.publicKeyB64 }
+                            scope.launch {
+                                if (TransactionStore.recordOutgoingPending(context, tx, contact.publicKeyB64)) {
+                                    TransactionStore.deliverOutgoing(context, tx.id, willSend = peer != null) {
+                                        ChatStore.sendDirect(context, identity, contact.publicKeyB64, peer, Mb10QrCodec.encodeTransaction(tx))
+                                    }
+                                }
+                            }
+                        },
+                        onCancel = { id -> scope.launch { TransactionStore.cancelOutgoing(context, id) } }
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    AppButton("Закрыть", variant = ButtonVariant.Secondary, dense = true, modifier = Modifier.fillMaxWidth(), onClick = { sending = false })
                 }
             }
         }
 
-        Spacer(Modifier.height(14.dp))
-        AppButton(
-            if (sending) "Скрыть" else "Отправить",
-            modifier = Modifier.fillMaxWidth(),
-            variant = ButtonVariant.Primary,
-            onClick = { sending = !sending }
-        )
-
-        if (sending) {
-            Spacer(Modifier.height(14.dp))
-            SendTransactionPanel(
-                contacts = contacts,
-                onlineKeys = onlineKeys,
-                transactions = transactions,
-                balance = balance,
-                onSend = { contact, id, amount, memo ->
-                    val payload = Mb10QrCodec.transactionSignaturePayload(id, identity.publicKeyB64, amount, memo)
-                    val signature = IdentityManager.sign(context, payload)
-                    val tx = Mb10Qr.Transaction(id, identity.publicKeyB64, amount, memo, signature)
-                    val peer = onlinePeers.find { it.pubKeyB64 == contact.publicKeyB64 }
-                    scope.launch {
-                        if (TransactionStore.recordOutgoingPending(context, tx, contact.publicKeyB64)) {
-                            TransactionStore.deliverOutgoing(context, tx.id, willSend = peer != null) {
-                                ChatStore.sendDirect(context, identity, contact.publicKeyB64, peer, Mb10QrCodec.encodeTransaction(tx))
-                            }
-                        }
-                    }
-                },
-                onCancel = { id -> scope.launch { TransactionStore.cancelOutgoing(context, id) } }
-            )
-        }
-
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(10.dp))
         SectionLabel("Операции")
         if (transactions.isEmpty()) {
             EmptyState("Ещё не было ни одной транзакции.")
@@ -224,7 +218,7 @@ private fun SendTransactionPanel(
             }
             selectedContact == null -> {
                 Column {
-                    Text("Кому отправить", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.5.sp)
+                    Text("Кому отправить", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
                     Spacer(Modifier.height(10.dp))
                     if (contacts.isEmpty()) {
                         EmptyState("Нет добавленных контактов — сначала отсканируйте QR-код игрока в Профиле.")
@@ -235,7 +229,7 @@ private fun SendTransactionPanel(
                                 leading = { HexBullet(if (c.publicKeyB64 in onlineKeys) MB10Colors.inkPrimary else MB10Colors.inkTertiary, size = 7.dp) }
                             ) {
                                 Text(c.callsign, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
-                                Text(c.faction, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                                Text(c.faction, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
                             }
                             if (index != contacts.lastIndex) DottedDivider()
                         }
@@ -258,7 +252,7 @@ private fun SendTransactionPanel(
                             fontSize = 11.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f)
                         )
                         Text(
-                            "Сменить", color = MB10Colors.accentAction, fontFamily = JetBrainsMono, fontSize = 10.sp,
+                            "Сменить", color = MB10Colors.accentAction, fontFamily = JetBrainsMono, fontSize = 11.sp,
                             modifier = Modifier.clickable { selectedContact = null }
                         )
                     }
@@ -271,7 +265,7 @@ private fun SendTransactionPanel(
                     AmountField(value = amountText, onValueChange = { amountText = it }, modifier = Modifier.fillMaxWidth())
                     if (showError) {
                         Spacer(Modifier.height(4.dp))
-                        Text(if (parsedAmount != null && parsedAmount > balance) "Недостаточно средств на балансе" else "Введите сумму больше нуля", color = MB10Colors.accentDanger, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                        Text(if (parsedAmount != null && parsedAmount > balance) "Недостаточно средств на балансе" else "Введите сумму больше нуля", color = MB10Colors.accentDanger, fontFamily = JetBrainsMono, fontSize = 11.sp)
                     }
                     Spacer(Modifier.height(8.dp))
                     AppTextField(
@@ -332,14 +326,14 @@ private fun TxRow(tx: TransactionEntity, counterpartyName: String?, onCancelPend
         Text(
             timeText + (fromText ?: "") + statusText,
             color = if (pending || delivered) MB10Colors.accentAction else MB10Colors.inkSecondary,
-            fontFamily = JetBrainsMono, fontSize = 10.sp
+            fontFamily = JetBrainsMono, fontSize = 11.sp
         )
         if (pending) {
             Text(
                 "Отменить",
                 color = MB10Colors.accentDanger,
                 fontFamily = JetBrainsMono,
-                fontSize = 10.sp,
+                fontSize = 11.sp,
                 modifier = Modifier.clickable(onClick = onCancelPending).padding(top = 2.dp)
             )
         }
