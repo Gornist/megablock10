@@ -155,7 +155,7 @@ sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
 # собрать APK (используется системно установленный Gradle,
 # поэтому gradle-wrapper здесь не требуется)
-gradle assembleDebug
+./gradlew assembleDebug
 
 # результат:
 # app/build/outputs/apk/debug/app-debug.apk
@@ -213,3 +213,8 @@ mDNS между изолированными эмуляторами не ход�
   проверяется, само значение — нет): принятая модель доверия для LARP, но
   стоит держать в уме, если игра станет менее «дружеской».
 
+
+### Рабочий цикл разработчика
+- Один раз после клонирования: `scripts/setup-hooks.sh` — включает pre-push хук (быстрая `scripts/check.sh`: тесты и сборки только того, что менялось).
+- Перед крупным пушем: `scripts/check.sh --all`, а при правках интерфейса или протокола — `scripts/check.sh --e2e` (поднимает стенд и гоняет сценарии; время каждого шага печатается в конце).
+- Сборка везде через `./gradlew` (Gradle 8.7, как в CI). Нужен JDK 17: `export JAVA_HOME=$(/usr/libexec/java_home -v 17)`.
