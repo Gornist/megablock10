@@ -6,9 +6,10 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 /**
- * Схема наращивается по мере фич, а не строится целиком заранее. До релиза
- * миграции не пишем — схема ещё нестабильна, при её смене Room просто
- * пересоздаст базу (fallbackToDestructiveMigration).
+ * Версия 13 — базовая: схема экспортируется в `app/schemas`, и с неё любое изменение
+ * обязано сопровождаться миграцией (иначе Room падает при открытии, а не стирает
+ * данные игроков молча). Версии 1–12 до релиза стираются, как и раньше.
+ * Как менять схему: см. docs/db-migrations.md.
  */
 @Database(
     entities = [
@@ -18,7 +19,7 @@ import androidx.room.RoomDatabase
         PendingChangeRecordEntity::class, ItemTransferEntity::class, OutboxEntity::class
     ],
     version = 13,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class Mb10Database : RoomDatabase() {
     abstract fun characterDao(): CharacterDao
@@ -45,20 +46,24 @@ abstract class Mb10Database : RoomDatabase() {
                     Mb10Database::class.java,
                     "mb10.db"
                 )
-                    // 12 → 13 — настоящая миграция (очередь исходящих), данные игроков не теряются. Всё, что старше, по-прежнему пересоздаёт базу.
-                    .addMigrations(MIGRATION_12_13)
-                    .fallbackToDestructiveMigration()
+                    .addMigrations(*ALL_MIGRATIONS)
+                    // Только доисторические версии: с 13 и выше данные не стираем никогда.
+                    .fallbackToDestructiveMigrationFrom(*(1..12).toList().toIntArray())
                     .build()
                     .also { instance = it }
             }
     }
 }
 
-private val MIGRATION_12_13 = object : androidx.room.migration.Migration(12, 13) {
+internal const val OUTBOX_CREATE_SQL =
+    "CREATE TABLE IF NOT EXISTS `outbox` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `toPubKeyB64` TEXT NOT NULL, " +
+        "`wireLine` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `attempts` INTEGER NOT NULL, `nextAttemptAt` INTEGER NOT NULL)"
+
+internal val MIGRATION_12_13 = object : androidx.room.migration.Migration(12, 13) {
     override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
-        db.execSQL(
-            "CREATE TABLE IF NOT EXISTS `outbox` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `toPubKeyB64` TEXT NOT NULL, " +
-                "`wireLine` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `attempts` INTEGER NOT NULL, `nextAttemptAt` INTEGER NOT NULL)"
-        )
+        db.execSQL(OUTBOX_CREATE_SQL)
     }
 }
+
+/** Все миграции по порядку. Новую версию схемы добавляем сюда и в тест MigrationGuardTest. */
+internal val ALL_MIGRATIONS = arrayOf(MIGRATION_12_13)

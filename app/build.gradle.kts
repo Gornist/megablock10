@@ -37,6 +37,11 @@ android {
     }
 }
 
+ksp {
+    // Схемы Room экспортируются в app/schemas и коммитятся: по ним пишутся и проверяются миграции.
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.activity:activity-compose:1.9.0")
