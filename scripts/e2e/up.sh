@@ -49,7 +49,7 @@ start_emu() { # <avd> <порт> <serial>
 start_emu $AVD_A 5554 $A
 start_emu $AVD_B 5556 $B
 for s in $A $B; do
-  wait_until 240 bash -c "'$ADB' -s $s shell getprop sys.boot_completed 2>/dev/null | grep -q 1" || die "$s не загрузился"
+  wait_until ${BOOT_TIMEOUT:-240} bash -c "'$ADB' -s $s shell getprop sys.boot_completed 2>/dev/null | grep -q 1" || { tail -25 "$E2E_DIR/emu_$s.log" >&2; die "$s не загрузился"; }
   wait_until 120 bash -c "'$ADB' -s $s shell cmd activity get-current-user 2>/dev/null | grep -q '^[0-9]'" || die "$s: система не готова"
   # анимации выключены — заметно ускоряет тапы; лишние системные окна убираем
   for k in window_animation_scale transition_animation_scale animator_duration_scale; do adb_ $s shell settings put global $k 0; done

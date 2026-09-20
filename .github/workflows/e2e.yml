@@ -14,6 +14,7 @@ jobs:
     env:
       AVD_A: e2e_a
       AVD_B: e2e_b
+      BOOT_TIMEOUT: "600"
       EMU_EXTRA_ARGS: "-memory 2048 -cores 2 -no-metrics"
       E2E_DIR: /tmp/mb10-e2e
     steps:
@@ -36,6 +37,11 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      - name: Диагностика KVM
+        run: |
+          ls -l /dev/kvm || true
+          nproc; free -m | head -2
+
       - name: "Android SDK: образ системы и два AVD"
         run: |
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
@@ -56,12 +62,13 @@ jobs:
 
       - name: Логи и снимки экрана (при падении)
         if: failure()
+        timeout-minutes: 3   # adb на незагрузившемся эмуляторе блокируется — без таймаута шаг висел бы до конца job
         run: |
           mkdir -p e2e-artifacts
-          cp -r "$E2E_DIR"/*.log "$E2E_DIR"/*.xml e2e-artifacts/ 2>/dev/null || true
+          cp -r "$E2E_DIR"/*.log "$E2E_DIR"/*.xml ~/.android/avd/*.avd/*.log e2e-artifacts/ 2>/dev/null || true
           for s in emulator-5554 emulator-5556; do
-            "$ANDROID_HOME/platform-tools/adb" -s $s exec-out screencap -p > e2e-artifacts/screen_$s.png 2>/dev/null || true
-            "$ANDROID_HOME/platform-tools/adb" -s $s logcat -d > e2e-artifacts/logcat_$s.txt 2>/dev/null || true
+            timeout 15 "$ANDROID_HOME/platform-tools/adb" -s $s exec-out screencap -p > e2e-artifacts/screen_$s.png 2>/dev/null || true
+            timeout 15 "$ANDROID_HOME/platform-tools/adb" -s $s logcat -d > e2e-artifacts/logcat_$s.txt 2>/dev/null || true
           done
 
       - uses: actions/upload-artifact@v7
