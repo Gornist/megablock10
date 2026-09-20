@@ -44,10 +44,10 @@ log "сервер на :$PORT (pid $(cat "$E2E_DIR/server.pid"))"
 start_emu() { # <avd> <порт> <serial>
   if "$ADB" devices | grep -q "^$3"; then return; fi
   log "запускаю $1 на :$2"
-  nohup "$EMU" -avd "$1" -port "$2" -no-window -no-audio -no-boot-anim -no-snapshot-save -gpu swiftshader_indirect > "$E2E_DIR/emu_$3.log" 2>&1 &
+  nohup "$EMU" -avd "$1" -port "$2" -no-window -no-audio -no-boot-anim -no-snapshot-save -gpu swiftshader_indirect ${EMU_EXTRA_ARGS:-} > "$E2E_DIR/emu_$3.log" 2>&1 &
 }
-start_emu Medium_Phone_API_35 5554 $A
-start_emu Second_API_35 5556 $B
+start_emu $AVD_A 5554 $A
+start_emu $AVD_B 5556 $B
 for s in $A $B; do
   wait_until 240 bash -c "'$ADB' -s $s shell getprop sys.boot_completed 2>/dev/null | grep -q 1" || die "$s не загрузился"
   wait_until 120 bash -c "'$ADB' -s $s shell cmd activity get-current-user 2>/dev/null | grep -q '^[0-9]'" || die "$s: система не готова"

@@ -251,7 +251,7 @@ private fun shardDecryptTarget(shard: Mb10Qr.Shard): Daemon {
  * Выбранный демон — не заливка, а лаймовая скошенная грань (как у панели «Взлом завершён»).
  */
 @Composable
-private fun DaemonPicker(daemons: List<Daemon>, chosen: Set<String>, remainingBuffer: Int, onToggle: (String) -> Unit) {
+internal fun DaemonPicker(daemons: List<Daemon>, chosen: Set<String>, remainingBuffer: Int, onToggle: (String) -> Unit) {
     Column {
         daemons.forEach { daemon ->
             val isChecked = daemon.id in chosen
@@ -516,7 +516,7 @@ private fun BreachSession(
 
 /** Скошенная рамка терминала: контур повторяет срез, остальные панели экрана взлома лежат внутри неё. */
 @Composable
-private fun TerminalFrame(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+internal fun TerminalFrame(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -528,7 +528,7 @@ private fun TerminalFrame(modifier: Modifier = Modifier, content: @Composable Co
 
 /** Тонкая скошенная панель внутри терминала (список демонов, лог входа). */
 @Composable
-private fun TerminalPanel(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+internal fun TerminalPanel(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -540,7 +540,7 @@ private fun TerminalPanel(modifier: Modifier = Modifier, content: @Composable Co
 
 /** Ячейка матрицы: квадрат заданного размера, скошенный. Шрифт растёт вместе с ячейкой, но не мельче 12 sp. */
 @Composable
-private fun HackCell(size: Dp, code: String, isSelected: Boolean, orderLabel: String?, isSelectable: Boolean, onClick: () -> Unit) {
+internal fun HackCell(size: Dp, code: String, isSelected: Boolean, orderLabel: String?, isSelectable: Boolean, onClick: () -> Unit) {
     val isDead = code == BreachSymbols.DEAD_MARKER
     val (bg, borderColor, textColor) = when {
         isDead && !isSelected -> Triple(MB10Colors.accentDanger.copy(alpha = 0.08f), MB10Colors.accentDanger, MB10Colors.accentDanger)
@@ -571,7 +571,7 @@ private fun HackCell(size: Dp, code: String, isSelected: Boolean, orderLabel: St
  * затемнением в финальном виде; выход — кнопка внутри панели.
  */
 @Composable
-private fun ResultOverlay(
+internal fun ResultOverlay(
     result: BreachResult,
     failMessage: String,
     rewardOutcome: RewardOutcome?,

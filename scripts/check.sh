@@ -18,7 +18,10 @@ step() { # step "имя" команда...
 }
 skip() { TIMES+=("$1: пропущено (нет изменений)"); }
 
-if changed app; then step "app: unit-тесты" ./gradlew -q --console=plain testDebugUnitTest; else skip "app: unit-тесты"; fi
+if changed app; then
+  step "app: unit-тесты" ./gradlew -q --console=plain testDebugUnitTest
+  step "app: скриншот-тесты" ./gradlew -q --console=plain verifyPaparazziDebug   # эталоны: app/src/test/snapshots; обновить: ./gradlew recordPaparazziDebug
+else skip "app: unit- и скриншот-тесты"; fi
 if changed admin-web/server; then step "server: тесты" bash -c 'cd admin-web/server && npm test --silent'; else skip "server: тесты"; fi
 if changed admin-web; then
   step "server: сборка" bash -c 'cd admin-web/server && npm run build --silent'

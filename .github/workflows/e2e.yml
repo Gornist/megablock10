@@ -1,0 +1,71 @@
+name: E2E на эмуляторах
+
+# Тяжёлый прогон (два эмулятора + сервер дашборда + все сценарии scripts/e2e/scenarios): ночью и вручную, не на каждый пуш.
+# Запуск вручную: Actions → «E2E на эмуляторах» → Run workflow (или `gh workflow run e2e.yml`).
+on:
+  schedule:
+    - cron: "0 1 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      AVD_A: e2e_a
+      AVD_B: e2e_b
+      EMU_EXTRA_ARGS: "-memory 2048 -cores 2 -no-metrics"
+      E2E_DIR: /tmp/mb10-e2e
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: KVM для эмуляторов
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Android SDK: образ системы и два AVD
+        run: |
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platform-tools" "emulator" "system-images;android-34;google_apis;x86_64" > /dev/null
+          for n in "$AVD_A" "$AVD_B"; do
+            echo no | avdmanager create avd -n "$n" -k "system-images;android-34;google_apis;x86_64" -d pixel_6 --force
+          done
+
+      - name: Сборка APK
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Стенд: сервер, эмуляторы, персонажи
+        run: scripts/e2e/up.sh --no-build
+
+      - name: Сценарии
+        run: scripts/e2e/run-all.sh
+
+      - name: Логи и снимки экрана (при падении)
+        if: failure()
+        run: |
+          mkdir -p e2e-artifacts
+          cp -r "$E2E_DIR"/*.log "$E2E_DIR"/*.xml e2e-artifacts/ 2>/dev/null || true
+          for s in emulator-5554 emulator-5556; do
+            "$ANDROID_HOME/platform-tools/adb" -s $s exec-out screencap -p > e2e-artifacts/screen_$s.png 2>/dev/null || true
+            "$ANDROID_HOME/platform-tools/adb" -s $s logcat -d > e2e-artifacts/logcat_$s.txt 2>/dev/null || true
+          done
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: e2e-artifacts
+          path: e2e-artifacts

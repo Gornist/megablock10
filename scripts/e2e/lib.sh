@@ -2,14 +2,15 @@
 # Общие функции для прогонов на двух эмуляторах + дашборд. Подключается через `source`.
 E2E_DIR=${E2E_DIR:-/tmp/mb10-e2e}
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-SDK=${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}
+SDK=${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}
 ADB=$SDK/platform-tools/adb
 EMU=$SDK/emulator/emulator
 export PATH="$SDK/platform-tools:$PATH"   # чтобы `adb` работал и в ручных командах после `source lib.sh`
 APK=${APK:-$ROOT/app/build/outputs/apk/debug/app-debug.apk}
-NODE20=${NODE20:-/opt/homebrew/opt/node@20/bin}
-export JAVA_HOME=${JAVA_HOME:-/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home}
+NODE20=${NODE20:-/opt/homebrew/opt/node@20/bin}   # на CI нет такого пути — node берётся из PATH (setup-node)
+[ -n "${JAVA_HOME:-}" ] || { [ -d /Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home ] && export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home; }
 PKG=com.megablok10.app
+AVD_A=${AVD_A:-Medium_Phone_API_35}; AVD_B=${AVD_B:-Second_API_35}   # имена AVD (на CI создаются под теми же именами)
 A=emulator-5554   # Alice / Neon
 B=emulator-5556   # Bob / Rats
 PORT=${PORT:-8080}

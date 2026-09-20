@@ -3,6 +3,8 @@ name: Build debug APK
 on:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]   # ветки агентов (agent/*) проверяются в PR до слияния
   workflow_dispatch: {}
 
 jobs:
@@ -22,6 +24,17 @@ jobs:
         run: |
           yes | sdkmanager --licenses > /dev/null || true
           ./gradlew testDebugUnitTest --no-daemon
+
+      - name: Скриншот-тесты (Paparazzi, JVM)
+        run: ./gradlew verifyPaparazziDebug --no-daemon
+
+      - name: Отчёт скриншот-тестов (при падении)
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: paparazzi-diff
+          path: app/build/paparazzi/failures
+          if-no-files-found: ignore
 
       - name: Build debug APK
         run: ./gradlew assembleDebug --no-daemon

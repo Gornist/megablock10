@@ -218,3 +218,8 @@ mDNS между изолированными эмуляторами не ход�
 - Один раз после клонирования: `scripts/setup-hooks.sh` — включает pre-push хук (быстрая `scripts/check.sh`: тесты и сборки только того, что менялось).
 - Перед крупным пушем: `scripts/check.sh --all`, а при правках интерфейса или протокола — `scripts/check.sh --e2e` (поднимает стенд и гоняет сценарии; время каждого шага печатается в конце).
 - Сборка везде через `./gradlew` (Gradle 8.7, как в CI). Нужен JDK 17: `export JAVA_HOME=$(/usr/libexec/java_home -v 17)`.
+
+### Скриншот-тесты, e2e в CI и работа нескольких агентов
+- **Скриншот-тесты на JVM (Paparazzi):** `app/src/test/java/.../screenshots/ScreenshotTest.kt`, эталоны — `app/src/test/snapshots/images`. `./gradlew verifyPaparazziDebug` сравнивает (≈25 с, эмулятор не нужен, это делают CI и `check.sh`); после намеренной правки интерфейса — `./gradlew recordPaparazziDebug` и коммит новых эталонов. При падении CI прикладывает diff-картинки (артефакт `paparazzi-diff`).
+- **e2e в CI:** `.github/workflows/e2e.yml` — ночью и вручную (`gh workflow run e2e.yml`): два эмулятора x86_64 с KVM, сервер дашборда, все сценарии `scripts/e2e`. Логи и снимки экрана при падении — артефакт `e2e-artifacts`.
+- **Несколько агентов:** `scripts/agent-worktree.sh new <имя>` — отдельная рабочая копия и ветка `agent/<имя>`; `finish <имя>` — проверка, пуш и Pull Request (CI гоняется на PR). Стенд e2e общий на машину: одновременно им владеет одна копия (замок в `up.sh`).
