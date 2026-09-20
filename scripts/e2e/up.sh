@@ -45,6 +45,9 @@ start_emu() { # <avd> <порт> <serial>
   if "$ADB" devices | grep -q "^$3"; then return; fi
   log "запускаю $1 на :$2"
   nohup "$EMU" -avd "$1" -port "$2" -no-window -no-audio -no-boot-anim -no-snapshot-save -gpu swiftshader_indirect ${EMU_EXTRA_ARGS:-} > "$E2E_DIR/emu_$3.log" 2>&1 &
+  local pid=$!; sleep 6
+  # Эмулятор, который сразу упал (нет AVD, нет KVM), иначе «загружался» бы весь таймаут — падаем сразу и показываем его лог.
+  kill -0 $pid 2>/dev/null || { tail -20 "$E2E_DIR/emu_$3.log" >&2; die "эмулятор $1 завершился сразу после запуска"; }
 }
 start_emu $AVD_A 5554 $A
 start_emu $AVD_B 5556 $B
