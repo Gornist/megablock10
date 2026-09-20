@@ -1,3 +1,4 @@
+import { withHuman } from "../lib/humanize.js";
 import { presentSince } from "../lib/presence.js";
 import type { FastifyInstance } from "fastify";
 import type { Db } from "../db/index.js";
@@ -101,6 +102,6 @@ export function registerOverviewRoutes(app: FastifyInstance, db: Db) {
       .prepare(`SELECT * FROM changes WHERE received_at >= ? ORDER BY received_at ASC LIMIT ?`)
       .all(since, limit) as { received_at: number }[];
     const cursor = rows.length === limit ? rows[rows.length - 1].received_at : Date.now();
-    return { records: rows, now: cursor };
+    return { records: withHuman(db, rows as never[]), now: cursor };
   });
 }

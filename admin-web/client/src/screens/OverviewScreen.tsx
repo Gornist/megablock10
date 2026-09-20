@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import type { ChangeRow, Overview } from "../api/types";
-import { EmptyState, HexRow, Panel, StatTile } from "../design/components";
-import { formatTime } from "../format";
+import { ChangeLine } from "../design/ChangeLine";
+import { EmptyState, Panel, StatTile } from "../design/components";
 
 const POLL_MS = 3000;
 
@@ -47,11 +47,11 @@ export function OverviewScreen() {
       <div className="stat-row">
         <StatTile label="Игроков на связи" value={overview ? `${overview.players.online} / ${overview.players.total}` : "—"} />
         <StatTile
-          label="Взломы за час (у/ч/п)"
+          label="Взломы за час: успех / частично / провал"
           value={overview ? `${overview.breachesLastHour.success}/${overview.breachesLastHour.partial}/${overview.breachesLastHour.fail}` : "—"}
         />
         <StatTile label="Тиражных слотов в обороте" value={overview ? `${overview.slots.claimed} / ${overview.slots.printed}` : "—"} tone="accent" />
-        <StatTile label="Сигналы СБ (ушло / подавлено)" value={overview ? `${overview.alerts.sent} / ${overview.alerts.suppressed}` : "—"} />
+        <StatTile label="Сигналы СБ: отправлено / подавлено" value={overview ? `${overview.alerts.sent} / ${overview.alerts.suppressed}` : "—"} />
       </div>
 
       <Panel title="Живая лента изменений">
@@ -60,11 +60,7 @@ export function OverviewScreen() {
         ) : (
           <div className="feed-list">
             {feed.map((r) => (
-              <HexRow key={r.id}>
-                <span className="feed-time">{formatTime(r.received_at)}</span>{" "}
-                <span className="feed-field">{r.field}</span> <span className="feed-reason status-caps">{r.reason}</span>{" "}
-                {r.source_ref && <span className="feed-source">{r.source_ref}</span>}
-              </HexRow>
+              <ChangeLine key={r.id} row={r} showSubject />
             ))}
           </div>
         )}

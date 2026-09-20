@@ -1,8 +1,9 @@
 .panel {
+  --c: var(--chamfer);
+  --bc: #1c1c1c;
   background: var(--bg-1);
-  border: 1px solid #1c1c1c;
-  clip-path: polygon(var(--chamfer) 0, 100% 0, 100% calc(100% - var(--chamfer)), calc(100% - var(--chamfer)) 100%, 0 100%, 0 var(--chamfer));
-  padding: 18px 20px;
+  clip-path: polygon(var(--c) 0, 100% 0, 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, 0 100%, 0 var(--c));
+  padding: 19px 21px;
 }
 
 .panel-header {
@@ -43,40 +44,42 @@
 }
 
 .badge {
+  --c: 5px;
+  --bc: var(--line);
   display: inline-block;
-  padding: 2px 8px;
+  padding: 3px 9px;
   font-size: 11px;
-  border: 1px solid var(--line);
-  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+  clip-path: polygon(var(--c) 0, 100% 0, 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, 0 100%, 0 var(--c));
 }
 .badge.neutral {
   color: var(--text-dim);
 }
 .badge.accent {
   color: var(--accent);
-  border-color: var(--accent);
+  --bc: var(--accent);
 }
 .badge.ok {
   color: var(--ok);
-  border-color: var(--ok);
+  --bc: var(--ok);
 }
 .badge.danger {
   color: var(--danger);
-  border-color: var(--danger);
+  --bc: var(--danger);
 }
 
 .app-button {
+  --c: 6px;
+  --bc: var(--line);
   background: var(--bg-2);
-  border: 1px solid var(--line);
   color: var(--text-main);
-  padding: 8px 16px;
+  padding: 9px 17px;
   font-family: var(--font-body);
   font-size: 13px;
   cursor: pointer;
-  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  clip-path: polygon(var(--c) 0, 100% 0, 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, 0 100%, 0 var(--c));
 }
 .app-button:hover:not(:disabled) {
-  border-color: var(--text-main);
+  --bc: var(--text-main);
 }
 .app-button:disabled {
   opacity: 0.4;
@@ -84,13 +87,49 @@
 }
 .app-button.primary {
   background: var(--accent);
-  border-color: var(--accent);
+  --bc: var(--accent);
   color: var(--bg-0);
   font-weight: 600;
 }
 .app-button.danger {
-  border-color: var(--danger);
+  --bc: var(--danger);
   color: var(--danger);
+}
+
+/*
+ * Скошенная рамка. Обычный border на элементе со скошенным clip-path обрезается на диагоналях, и угол выглядит незамкнутым.
+ * Поэтому рамка рисуется кольцом: псевдоэлемент с внешним и внутренним скошенными контурами (evenodd вырезает середину).
+ * Внутренний контур сдвинут на толщину линии (--bw) с поправкой .414 на диагональ 45°; цвет — --bc, скос — --c.
+ * Отрезок «внешний контур → внутренний» проходится туда и обратно и при evenodd не оставляет следа.
+ */
+.panel,
+.badge,
+.app-button,
+.dialog-panel {
+  --bw: 1px;
+  position: relative;
+  border: 0;
+}
+.panel::after,
+.badge::after,
+.app-button::after,
+.dialog-panel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--bc);
+  clip-path: polygon(
+    evenodd,
+    var(--c) 0, 100% 0, 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, 0 100%, 0 var(--c), var(--c) 0,
+    calc(var(--c) + 0.414 * var(--bw)) var(--bw),
+    calc(100% - var(--bw)) var(--bw),
+    calc(100% - var(--bw)) calc(100% - var(--c) - 0.414 * var(--bw)),
+    calc(100% - var(--c) - 0.414 * var(--bw)) calc(100% - var(--bw)),
+    var(--bw) calc(100% - var(--bw)),
+    var(--bw) calc(var(--c) + 0.414 * var(--bw)),
+    calc(var(--c) + 0.414 * var(--bw)) var(--bw)
+  );
 }
 
 .app-input,

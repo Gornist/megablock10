@@ -3,7 +3,7 @@ import { useApiData } from "../api/useApiData";
 import { AsyncPanel } from "../design/AsyncPanel";
 import { Panel, StatTile } from "../design/components";
 import { DataTable, type Column } from "../design/DataTable";
-import { formatAgo } from "../format";
+import { formatAgo, tierLabel } from "../format";
 
 export function NodesScreen() {
   const { data: nodes, error } = useApiData<NodeSummary[]>("/api/nodes");
@@ -13,12 +13,12 @@ export function NodesScreen() {
 
   const columns: Column<NodeSummary>[] = [
     { key: "name", label: "Имя", render: (n) => n.name, sortValue: (n) => n.name },
-    { key: "tier", label: "Тир", render: (n) => n.tier, sortValue: (n) => n.tier },
+    { key: "tier", label: "Сложность", render: (n) => tierLabel(n.tier), sortValue: (n) => n.tier },
     { key: "faction", label: "Владелец", render: (n) => n.ownerFaction ?? "—", sortValue: (n) => n.ownerFaction ?? "" },
     { key: "slots", label: "Слотов забрано/всего", render: (n) => `${n.slotsClaimed}/${n.slotsTotal}`, sortValue: (n) => n.slotsClaimed },
-    { key: "breaches", label: "Взломы у/ч/п", render: (n) => `${n.breaches.success}/${n.breaches.partial}/${n.breaches.fail}`, sortValue: (n) => n.breaches.success },
+    { key: "breaches", label: "Взломы: успех / частично / провал", render: (n) => `${n.breaches.success}/${n.breaches.partial}/${n.breaches.fail}`, sortValue: (n) => n.breaches.success },
     { key: "players", label: "Уникальных игроков", render: (n) => n.uniquePlayers, sortValue: (n) => n.uniquePlayers },
-    { key: "alerts", label: "СБ отпр/подавл", render: (n) => `${n.alertsSent}/${n.alertsSuppressed}`, sortValue: (n) => n.alertsSent },
+    { key: "alerts", label: "Сигналы СБ: отправлено / подавлено", render: (n) => `${n.alertsSent}/${n.alertsSuppressed}`, sortValue: (n) => n.alertsSent },
     { key: "last", label: "Последний взлом", render: (n) => formatAgo(n.lastBreachAt), sortValue: (n) => n.lastBreachAt ?? 0 },
   ];
 

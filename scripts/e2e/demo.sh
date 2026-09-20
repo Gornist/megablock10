@@ -158,9 +158,11 @@ compose() {
 
 [ -n "$RECOMPOSE" ] && { compose; exit 0; }   # пересобрать ролик из уже записанных кусков
 if [ -z "$NOREC" ] && [ -z "$SKIPPREP" ]; then prepare; fi
+# NOVIDEO=1 — прогнать сюжет ради данных на дашборде (например, для dashboard-demo.mjs), без записи экрана телефона и монтажа.
+RECORDING=1; { [ -n "$NOREC" ] || [ -n "$NOVIDEO" ]; } && RECORDING=""
 for s in $SCENES; do
-  [ -z "$NOREC" ] && rec_start $s
+  if [ -n "$RECORDING" ]; then rec_start $s; fi
   scene_$s
-  [ -z "$NOREC" ] && rec_stop $s
+  if [ -n "$RECORDING" ]; then rec_stop $s; fi
 done
-[ -z "$NOREC" ] && compose
+if [ -n "$RECORDING" ]; then compose; fi

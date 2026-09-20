@@ -4,7 +4,7 @@ import { useApiData } from "../api/useApiData";
 import { AsyncPanel } from "../design/AsyncPanel";
 import { AppInput, AppSelect, Panel } from "../design/components";
 import { DataTable, type Column } from "../design/DataTable";
-import { formatAgo, shortKey } from "../format";
+import { formatAgo, shortKey, tierLabel } from "../format";
 import { navigate } from "../router";
 
 export function PlayersScreen() {
@@ -32,13 +32,13 @@ export function PlayersScreen() {
     {
       key: "shards",
       label: "Шарды",
-      render: (p) => Object.entries(p.shardsByTier).map(([t, n]) => `${t}:${n}`).join(" ") || "—",
+      render: (p) => Object.entries(p.shardsByTier).map(([t, n]) => `${tierLabel(t)} × ${n}`).join(", ") || "—",
       sortValue: (p) => Object.values(p.shardsByTier).reduce((a, b) => a + b, 0),
     },
     { key: "daemons", label: "Демоны", render: (p) => p.daemonCount, sortValue: (p) => p.daemonCount },
     {
       key: "breaches",
-      label: "Взломы у/ч/п",
+      label: "Взломы: успех / частично / провал",
       render: (p) => `${p.breaches.success}/${p.breaches.partial}/${p.breaches.fail}`,
       sortValue: (p) => p.breaches.success,
     },

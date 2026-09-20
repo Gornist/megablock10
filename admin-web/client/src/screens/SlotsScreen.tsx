@@ -6,14 +6,14 @@ import { useAsyncAction } from "../api/useAsyncAction";
 import { AsyncPanel } from "../design/AsyncPanel";
 import { AppButton, AppDialog, AppInput, AppSelect, Badge, Panel } from "../design/components";
 import { DataTable, type Column } from "../design/DataTable";
-import { shortKey } from "../format";
+import { shortKey, tierLabel } from "../format";
 
 type Filter = "all" | "open" | "exhausted";
 
 export function SlotsScreen() {
   const { data: slots, error, reload } = useApiData<SlotRegistryItem[]>("/api/slots");
   const [filter, setFilter] = useState<Filter>("all");
-  const [revoking, setRevoking] = useState<{ slotRef: string; claimantKeyB64: string } | null>(null);
+  const [revoking, setRevoking] = useState<{ slotRef: string; claimantKeyB64: string; claimantName?: string } | null>(null);
   const [revokeReason, setRevokeReason] = useState("");
   const revokeAction = useAsyncAction({ fallbackError: "не удалось аннулировать заявку" });
   const restoreAction = useAsyncAction({ fallbackError: "не удалось вернуть слот в оборот" });
@@ -45,7 +45,7 @@ export function SlotsScreen() {
     { key: "container", label: "Узел", render: (s) => s.containerName, sortValue: (s) => s.containerName },
     { key: "title", label: "Содержимое", render: (s) => s.title, sortValue: (s) => s.title },
     { key: "type", label: "Тип", render: (s) => s.type, sortValue: (s) => s.type },
-    { key: "tier", label: "Тир", render: (s) => s.tier, sortValue: (s) => s.tier },
+    { key: "tier", label: "Сложность", render: (s) => tierLabel(s.tier), sortValue: (s) => s.tier },
     {
       key: "copies",
       label: "Занято/всего",
@@ -63,8 +63,8 @@ export function SlotsScreen() {
         <div className="claimants-cell">
           {s.claimants.map((c) => (
             <div key={c.claimantKeyB64} className="claimant-row">
-              <span>{shortKey(c.claimantKeyB64)}</span>
-              <AppButton variant="danger" onClick={() => setRevoking({ slotRef: s.slotRef, claimantKeyB64: c.claimantKeyB64 })}>
+              <span title={c.claimantKeyB64}>{c.claimantName ?? shortKey(c.claimantKeyB64)}</span>
+              <AppButton variant="danger" onClick={() => setRevoking({ slotRef: s.slotRef, claimantKeyB64: c.claimantKeyB64, claimantName: c.claimantName })}>
                 аннулировать
               </AppButton>
             </div>
@@ -99,7 +99,7 @@ export function SlotsScreen() {
       {revoking && (
         <AppDialog
           title="Аннулировать заявку"
-          body={`Слот ${revoking.slotRef}, заявитель ${shortKey(revoking.claimantKeyB64)}. Слот вернётся в оборот для этого игрока.`}
+          body={`Слот ${revoking.slotRef}, заявитель ${revoking.claimantName ?? shortKey(revoking.claimantKeyB64)}. Слот вернётся в оборот для этого игрока.`}
           confirmText={revokeAction.busy ? "Аннулирую…" : "Аннулировать"}
           confirmVariant="danger"
           confirmDisabled={!revokeReason.trim() || revokeAction.busy}

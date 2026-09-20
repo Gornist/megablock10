@@ -1,3 +1,4 @@
+import { withHuman } from "../lib/humanize.js";
 import { lastPresence } from "../lib/presence.js";
 import type { FastifyInstance } from "fastify";
 import { escapeLike } from "../lib/sqlLike.js";
@@ -99,7 +100,7 @@ export function registerPlayersRoutes(app: FastifyInstance, db: Db) {
         .prepare(`SELECT * FROM changes WHERE ${where} ORDER BY seq DESC LIMIT ? OFFSET ?`)
         .all(...params, pageSize, page * pageSize);
 
-      return { total, page, pageSize, records: rows };
+      return { total, page, pageSize, records: withHuman(db, rows as never[]) };
     },
   );
 

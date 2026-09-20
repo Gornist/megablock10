@@ -5,7 +5,15 @@ export interface Overview {
   alerts: { sent: number; suppressed: number };
 }
 
+/** Человекочитаемая часть записи изменения — собирает сервер (lib/humanize.ts); сырые поля остаются рядом для «деталей». */
+export interface HumanChange {
+  kind: "money" | "item" | "breach" | "alert" | "master" | "system";
+  subject: string;
+  body: string;
+}
+
 export interface ChangeRow {
+  human?: HumanChange;
   id: string;
   subject_key: string;
   seq: number;
@@ -94,13 +102,15 @@ export interface SlotRegistryItem {
   title: string;
   copiesTotal: number;
   copiesClaimed: number;
-  claimants: { claimantKeyB64: string; claimedAt: number }[];
+  claimants: { claimantKeyB64: string; claimantName?: string; claimedAt: number }[];
 }
 
 export interface Transfer {
   txId: string;
   from: string;
   to: string;
+  fromName?: string;
+  toName?: string;
   amount: number;
   sentAt: number | null;
   confirmedAt: number | null;

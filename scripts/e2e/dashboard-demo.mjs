@@ -114,6 +114,7 @@ const title = (big, small) => evaluate(`(() => {
   el.innerHTML = '<div style="color:#d9ff3f;font-size:44px;font-weight:700;margin-bottom:18px;">' + ${JSON.stringify(big)} + '</div><div style="color:#eaf2ff;font-size:24px;max-width:900px;line-height:1.4;">' + ${JSON.stringify(small)} + '</div>';
   document.body.appendChild(el);
 })()`);
+const clickDetails = (i) => evaluate(`document.querySelectorAll(".change-toggle")[${i}]?.click()`);
 const untitle = () => evaluate(`document.getElementById("mb10-title")?.remove()`);
 
 // ── сценарий: порядок повторяет демо-ролик приложения ──
@@ -124,8 +125,13 @@ await untitle();
 await go("#/overview");
 await caption("СЦЕНА «ВЗЛОМ» · ОБЗОР",
   `Игроков на связи: ${overview.players.online} из ${overview.players.total}. Взломы за час (успех/частично/провал): ${overview.breachesLastHour.success}/${overview.breachesLastHour.partial}/${overview.breachesLastHour.fail}. ` +
-  `Тиражных слотов в обороте: ${overview.slots.claimed} из ${overview.slots.printed}. Сигналы СБ: ушло ${overview.alerts.sent}, подавлено ${overview.alerts.suppressed} — демон Black Curtain сработал. Внизу живая лента: события приходят с телефонов сразу, по ним видно ход сцены.`);
-await sleep(12);
+  `Тиражных слотов в обороте: ${overview.slots.claimed} из ${overview.slots.printed}. Сигналы СБ: ушло ${overview.alerts.sent}, подавлено ${overview.alerts.suppressed} — демон Black Curtain сработал. Внизу живая лента: события приходят с телефонов сразу и записаны человеческим языком.`);
+await sleep(11);
+await clickDetails(3);
+await caption("СЫРЫЕ ДАННЫЕ — ПОД «ДЕТАЛИ»", "Поле, «было → стало», код причины, источник и ключи игроков доступны по клику — для отладки; читать ленту они не мешают.");
+await sleep(8);
+await clickDetails(3);
+await sleep(1);
 
 await go("#/players");
 await caption("ИГРОКИ", `Alice (Neon) и Bob (Rats): баланс, ёмкость буфера RAM, число демонов и шардов. Данные приходят с телефонов сами — мастер ничего не вводит.`);

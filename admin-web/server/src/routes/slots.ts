@@ -1,3 +1,4 @@
+import { makeHumanizeContext } from "../lib/humanize.js";
 import type { FastifyInstance } from "fastify";
 import type { Db } from "../db/index.js";
 import { verifySignature } from "../lib/crypto.js";
@@ -133,14 +134,15 @@ export function listSlotRegistry(db: Db) {
     owner_faction: string | null;
     slots_json: string;
   }[];
-  const claimsBySlot = new Map<string, { claimantKeyB64: string; claimedAt: number }[]>();
+  const names = makeHumanizeContext(db);
+  const claimsBySlot = new Map<string, { claimantKeyB64: string; claimantName: string; claimedAt: number }[]>();
   for (const row of db.prepare(`SELECT slot_ref, claimant_key, claimed_at FROM slot_claims WHERE revoked = 0`).all() as {
     slot_ref: string;
     claimant_key: string;
     claimed_at: number;
   }[]) {
     const list = claimsBySlot.get(row.slot_ref) ?? [];
-    list.push({ claimantKeyB64: row.claimant_key, claimedAt: row.claimed_at });
+    list.push({ claimantKeyB64: row.claimant_key, claimantName: names.playerName(row.claimant_key), claimedAt: row.claimed_at });
     claimsBySlot.set(row.slot_ref, list);
   }
 

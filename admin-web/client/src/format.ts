@@ -1,3 +1,9 @@
+/** Тир узла/шарда словами — так же, как в приложении (База / Сложно / Кошмар); принимает и имя тира, и уровень. */
+export function tierLabel(tier: string | number): string {
+  const map: Record<string, string> = { BASE: "База", HARD: "Сложно", NIGHTMARE: "Кошмар", "1": "База", "2": "Сложно", "3": "Кошмар" };
+  return map[String(tier)] ?? String(tier);
+}
+
 export function shortKey(keyB64: string, len = 10): string {
   return keyB64.length <= len * 2 ? keyB64 : `${keyB64.slice(0, len)}…${keyB64.slice(-4)}`;
 }

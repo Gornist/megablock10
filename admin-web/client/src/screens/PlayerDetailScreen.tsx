@@ -4,7 +4,9 @@ import type { CharacterSnapshot, ChangeRow } from "../api/types";
 import { useApiData } from "../api/useApiData";
 import { useAsyncAction } from "../api/useAsyncAction";
 import { AppButton, AppInput, AppSelect, Badge, EmptyState, ErrorNote, HexRow, Panel, StatTile } from "../design/components";
-import { formatTime, shortKey } from "../format";
+import { ChangeLine } from "../design/ChangeLine";
+import { shortKey } from "../format";
+import { reasonLabel } from "../reasons";
 import { navigate } from "../router";
 
 const REASONS = [
@@ -91,7 +93,7 @@ export function PlayerDetailScreen({ publicKeyB64 }: { publicKeyB64: string }) {
       <Panel title="Счётчики">
         <div className="counters-grid">
           <span>
-            Взломы у/ч/п: <span className="mono">{breachTotals.success}/{breachTotals.partial}/{breachTotals.fail}</span>
+            Взломы (успех / частично / провал): <span className="mono">{breachTotals.success}/{breachTotals.partial}/{breachTotals.fail}</span>
           </span>
           <span>
             Заблокировано попыток: <span className="mono">{blockedTotal}</span>
@@ -106,7 +108,7 @@ export function PlayerDetailScreen({ publicKeyB64 }: { publicKeyB64: string }) {
             Слотов забрано: <span className="mono">{snapshot.counters.slotsClaimed}</span>
           </span>
           <span>
-            Сигналы СБ отпр/подавл: <span className="mono">{snapshot.counters.alertsSent}/{snapshot.counters.alertsSuppressed}</span>
+            Сигналы СБ (отправлено / подавлено): <span className="mono">{snapshot.counters.alertsSent}/{snapshot.counters.alertsSuppressed}</span>
           </span>
         </div>
       </Panel>
@@ -152,7 +154,7 @@ export function PlayerDetailScreen({ publicKeyB64 }: { publicKeyB64: string }) {
               <option value="">все причины</option>
               {REASONS.map((r) => (
                 <option key={r} value={r}>
-                  {r}
+                  {reasonLabel(r)}
                 </option>
               ))}
             </AppSelect>
@@ -175,11 +177,7 @@ export function PlayerDetailScreen({ publicKeyB64 }: { publicKeyB64: string }) {
         ) : (
           <>
             {history.map((r) => (
-              <HexRow key={r.id}>
-                {formatTime(r.happened_at)} {r.field} {r.old_value ?? "∅"} → {r.new_value ?? "∅"} <Badge>{r.reason}</Badge>{" "}
-                {r.source_ref && <span className="feed-source">{r.source_ref}</span>}
-                {r.actor !== publicKeyB64 && <span className="feed-source">от {shortKey(r.actor)}</span>}
-              </HexRow>
+              <ChangeLine key={r.id} row={r} showSubject={false} time="happened" />
             ))}
             <div className="pager">
               <AppButton onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}>
