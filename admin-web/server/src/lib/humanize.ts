@@ -74,105 +74,131 @@ export function containerIdOfSourceRef(sourceRef: string | null): string | null 
 const money = (n: number) => `${n} €$`;
 const num = (v: string | null) => Number(v ?? 0);
 
+/** Всё, что нужно форматтеру одной записи: сама запись, справочники и готовые помощники «подлежащее/узел/основание». */
+interface Fmt {
+  row: ChangeRowLike;
+  ctx: HumanizeContext;
+  done: (kind: ChangeKind, body: string) => HumanChange;
+  node: () => string;
+}
+type Formatter = (f: Fmt) => HumanChange;
+
+const orQ = (v: string | null) => v ?? "?";
+const basis = (row: ChangeRowLike) => (row.source_ref ? `. Основание: ${row.source_ref}` : "");
+
+/** Значение мастер поправил сам (MASTER_OVERRIDE) или устройство записало его само — от этого зависит вид записи и тип строки. */
+const kindOfScalar = (row: ChangeRowLike): ChangeKind => (row.reason === "MASTER_OVERRIDE" ? "master" : "system");
+
+/** Баланс: по причине записи. */
+const BALANCE_BY_REASON: Record<string, (f: Fmt, delta: number, amount: number) => HumanChange> = {
+  TRANSFER_OUT: ({ row, ctx, done }, _d, amount) => {
+    const peer = ctx.peerName(row.source_ref, row.subject_key, ["TRANSFER_IN"]);
+    return done("money", `перевод ${money(amount)} → ${peer ?? "получатель ещё не подтвердил"}`);
+  },
+  TRANSFER_IN: ({ row, ctx, done }, _d, amount) => done("money", `получен перевод ${money(amount)} от ${ctx.playerName(row.actor)}`),
+  TRANSFER_CANCELLED: ({ done }, _d, amount) => done("money", `перевод ${money(amount)} отменён отправителем, деньги вернулись`),
+  BREACH_EDDIES: ({ done, node }, _d, amount) => done("money", `+${amount} €$ за взлом узла ${node()}`),
+  SHARD_SCAN: ({ done }, delta, amount) => done("money", `${delta >= 0 ? "+" : "−"}${amount} €$ из шарда`),
+  BREACH_LOOT: ({ done }, delta, amount) => done("money", `${delta >= 0 ? "+" : "−"}${amount} €$ из шарда`),
+  MASTER_OVERRIDE: ({ row, done }) => done("master", `мастер изменил баланс: ${orQ(row.old_value)} → ${orQ(row.new_value)}${basis(row)}`),
+};
+
+const formatBalance: Formatter = (f) => {
+  const delta = num(f.row.new_value) - num(f.row.old_value);
+  const byReason = BALANCE_BY_REASON[f.row.reason];
+  return byReason ? byReason(f, delta, Math.abs(delta)) : f.done("money", `баланс ${orQ(f.row.old_value)} → ${orQ(f.row.new_value)}`);
+};
+
+const formatRam: Formatter = ({ row, done }) =>
+  row.reason === "MASTER_OVERRIDE"
+    ? done("master", `мастер изменил буфер RAM: ${orQ(row.old_value)} → ${orQ(row.new_value)}${basis(row)}`)
+    : done("system", `буфер RAM ${orQ(row.old_value)} → ${orQ(row.new_value)} (улучшение деки)`);
+
+/** Позывной и фракция различаются только словами: создание/сброс/смена. */
+const formatIdentity = (created: (v: string | null) => string, reset: string, changed: string): Formatter => ({ row, done }) => {
+  if (row.reason === "CHARACTER_CREATED") return done("system", created(row.new_value));
+  if (row.reason === "CHARACTER_RESET") return done("system", reset);
+  return done(kindOfScalar(row), `${changed} «${orQ(row.old_value)}» → «${row.new_value}»${row.reason === "MASTER_OVERRIDE" ? basis(row) : ""}`);
+};
+
+const ITEM_PEER_OUT = ["ITEM_TRANSFER_OUT"];
+const ITEM_PEER_IN = ["ITEM_TRANSFER_IN"];
+
+const formatDaemonAdd: Formatter = ({ row, ctx, done }) => {
+  const d = parse<{ name?: string; tier?: string }>(row.new_value);
+  const name = d?.name ? `«${d.name}»` : "демон";
+  if (row.reason === "ITEM_TRANSFER_IN") return done("item", `получен демон ${name} от ${ctx.peerName(row.source_ref, row.subject_key, ITEM_PEER_OUT) ?? "игрока"}`);
+  if (row.reason === "ITEM_TRANSFER_CANCELLED") return done("item", `демон ${name} вернулся: передача отменена`);
+  return done("item", `демон ${name}${d?.tier ? ` (тир ${d.tier})` : ""} добавлен в коллекцию`);
+};
+
+/** Запись remove несёт только id — название берём из истории того же игрока. */
+const formatItemRemove = (idKey: "daemonId" | "shardId", addField: "daemons.add" | "shards.add", noun: string): Formatter => ({ row, ctx, done }) => {
+  const title = ctx.itemTitle(row.subject_key, addField, parse<Record<string, string>>(row.new_value)?.[idKey] ?? "");
+  return done("item", `${noun} ${title ? `«${title}»` : "из коллекции"} передан → ${ctx.peerName(row.source_ref, row.subject_key, ITEM_PEER_IN) ?? "получатель ещё не принял"}`);
+};
+
+const formatShardAdd: Formatter = ({ row, ctx, done, node }) => {
+  const s = parse<{ title?: string; tier?: string; decrypted?: boolean }>(row.new_value);
+  const title = s?.title ? `«${s.title}»` : "шард";
+  const state = s?.decrypted === false ? ", зашифрован" : s?.decrypted ? ", открыт" : "";
+  if (row.reason === "ITEM_TRANSFER_IN") return done("item", `получен шард ${title} от ${ctx.peerName(row.source_ref, row.subject_key, ITEM_PEER_OUT) ?? "игрока"}`);
+  if (row.reason === "ITEM_TRANSFER_CANCELLED") return done("item", `шард ${title} вернулся: передача отменена`);
+  if (row.reason === "BREACH_LOOT") return done("item", `извлечён шард ${title} (тир ${s?.tier ?? "?"}${state}) с узла ${node()}`);
+  return done("item", `отсканирован шард ${title} (тир ${s?.tier ?? "?"}${state})`);
+};
+
+const formatShardDecrypt: Formatter = ({ row, ctx, done }) => {
+  const title = ctx.itemTitle(row.subject_key, "shards.add", parse<{ shardId?: string }>(row.new_value)?.shardId ?? "");
+  return done("item", `расшифрован шард ${title ? `«${title}»` : ""}`.trim());
+};
+
+const formatBreach: Formatter = ({ row, done, node }) => {
+  const p = parse<{ tier?: string; outcome?: string }>(row.new_value);
+  const tier = p?.tier ? ` (${TIER_RU[p.tier] ?? p.tier})` : "";
+  return done("breach", `взлом узла ${node()}${tier} — ${OUTCOME_RU[p?.outcome ?? ""] ?? p?.outcome ?? "результат неизвестен"}`);
+};
+
+const formatBlocked: Formatter = ({ row, done, node }) => {
+  const p = parse<{ reason?: string }>(row.new_value);
+  return done("breach", `попытка взлома узла ${node()} отклонена: ${BLOCK_RU[p?.reason ?? ""] ?? p?.reason ?? "причина неизвестна"}`);
+};
+
+const formatAlert: Formatter = ({ row, done, node }) =>
+  parse<{ suppressed?: boolean }>(row.new_value)?.suppressed
+    ? done("alert", `сигнал СБ по узлу ${node()} не отправлен (подавлен демоном или узел свой)`)
+    : done("alert", `сигнал СБ по узлу ${node()} отправлен владельцам`);
+
+/** Форматтеры по полю записи; неизвестное поле показывается как есть. */
+const FORMATTERS: Record<string, Formatter> = {
+  balance: formatBalance,
+  ramCapacity: formatRam,
+  callsign: formatIdentity((v) => `создан персонаж, позывной «${v}»`, "персонаж сброшен на устройстве", "позывной"),
+  faction: formatIdentity((v) => `фракция «${v}»`, "фракция сброшена", "фракция"),
+  "daemons.add": formatDaemonAdd,
+  "daemons.remove": formatItemRemove("daemonId", "daemons.add", "демон"),
+  "shards.add": formatShardAdd,
+  "shards.remove": formatItemRemove("shardId", "shards.add", "шард"),
+  "shards.decrypt": formatShardDecrypt,
+  "counters.breach": formatBreach,
+  "counters.blocked": formatBlocked,
+  "counters.alert": formatAlert,
+  announcement: ({ row, done }) => done("master", `сообщение от мастера: «${row.new_value ?? ""}»`),
+};
+
 export function humanizeChange(row: ChangeRowLike, ctx: HumanizeContext): HumanChange {
   const subject = ctx.playerName(row.subject_key);
-  const done = (kind: ChangeKind, body: string): HumanChange => ({ kind, subject, body });
-  const node = () => {
-    const id = containerIdOfSourceRef(row.source_ref);
-    const name = id ? ctx.containerName(id) : null;
-    return name ? `«${name}»` : id ? `«${id}»` : "«неизвестный»";
+  const f: Fmt = {
+    row,
+    ctx,
+    done: (kind, body) => ({ kind, subject, body }),
+    node: () => {
+      const id = containerIdOfSourceRef(row.source_ref);
+      const name = id ? ctx.containerName(id) : null;
+      return name ? `«${name}»` : id ? `«${id}»` : "«неизвестный»";
+    },
   };
-
-  switch (row.field) {
-    case "balance": {
-      const delta = num(row.new_value) - num(row.old_value);
-      const amount = Math.abs(delta);
-      switch (row.reason) {
-        case "TRANSFER_OUT": {
-          const peer = ctx.peerName(row.source_ref, row.subject_key, ["TRANSFER_IN"]);
-          return done("money", `перевод ${money(amount)} → ${peer ?? "получатель ещё не подтвердил"}`);
-        }
-        case "TRANSFER_IN":
-          return done("money", `получен перевод ${money(amount)} от ${ctx.playerName(row.actor)}`);
-        case "TRANSFER_CANCELLED":
-          return done("money", `перевод ${money(amount)} отменён отправителем, деньги вернулись`);
-        case "BREACH_EDDIES":
-          return done("money", `+${amount} €$ за взлом узла ${node()}`);
-        case "SHARD_SCAN":
-        case "BREACH_LOOT":
-          return done("money", `${delta >= 0 ? "+" : "−"}${amount} €$ из шарда`);
-        case "MASTER_OVERRIDE":
-          return done("master", `мастер изменил баланс: ${row.old_value ?? "?"} → ${row.new_value ?? "?"}${row.source_ref ? `. Основание: ${row.source_ref}` : ""}`);
-        default:
-          return done("money", `баланс ${row.old_value ?? "?"} → ${row.new_value ?? "?"}`);
-      }
-    }
-    case "ramCapacity":
-      return row.reason === "MASTER_OVERRIDE"
-        ? done("master", `мастер изменил буфер RAM: ${row.old_value ?? "?"} → ${row.new_value ?? "?"}${row.source_ref ? `. Основание: ${row.source_ref}` : ""}`)
-        : done("system", `буфер RAM ${row.old_value ?? "?"} → ${row.new_value ?? "?"} (улучшение деки)`);
-    case "callsign":
-      if (row.reason === "CHARACTER_CREATED") return done("system", `создан персонаж, позывной «${row.new_value}»`);
-      if (row.reason === "CHARACTER_RESET") return done("system", "персонаж сброшен на устройстве");
-      return done(row.reason === "MASTER_OVERRIDE" ? "master" : "system", `позывной «${row.old_value ?? "?"}» → «${row.new_value}»${row.reason === "MASTER_OVERRIDE" && row.source_ref ? `. Основание: ${row.source_ref}` : ""}`);
-    case "faction":
-      if (row.reason === "CHARACTER_CREATED") return done("system", `фракция «${row.new_value}»`);
-      if (row.reason === "CHARACTER_RESET") return done("system", "фракция сброшена");
-      return done(row.reason === "MASTER_OVERRIDE" ? "master" : "system", `фракция «${row.old_value ?? "?"}» → «${row.new_value}»${row.reason === "MASTER_OVERRIDE" && row.source_ref ? `. Основание: ${row.source_ref}` : ""}`);
-
-    case "daemons.add": {
-      const d = parse<{ name?: string; tier?: string }>(row.new_value);
-      const name = d?.name ? `«${d.name}»` : "демон";
-      const tier = d?.tier ? ` (тир ${d.tier})` : "";
-      if (row.reason === "ITEM_TRANSFER_IN") return done("item", `получен демон ${name} от ${ctx.peerName(row.source_ref, row.subject_key, ["ITEM_TRANSFER_OUT"]) ?? "игрока"}`);
-      if (row.reason === "ITEM_TRANSFER_CANCELLED") return done("item", `демон ${name} вернулся: передача отменена`);
-      return done("item", `демон ${name}${tier} добавлен в коллекцию`);
-    }
-    case "daemons.remove": {
-      const id = parse<{ daemonId?: string }>(row.new_value)?.daemonId ?? "";
-      const name = ctx.itemTitle(row.subject_key, "daemons.add", id);
-      return done("item", `демон ${name ? `«${name}»` : "из коллекции"} передан → ${ctx.peerName(row.source_ref, row.subject_key, ["ITEM_TRANSFER_IN"]) ?? "получатель ещё не принял"}`);
-    }
-    case "shards.add": {
-      const s = parse<{ title?: string; tier?: string; decrypted?: boolean }>(row.new_value);
-      const title = s?.title ? `«${s.title}»` : "шард";
-      const state = s?.decrypted === false ? ", зашифрован" : s?.decrypted ? ", открыт" : "";
-      if (row.reason === "ITEM_TRANSFER_IN") return done("item", `получен шард ${title} от ${ctx.peerName(row.source_ref, row.subject_key, ["ITEM_TRANSFER_OUT"]) ?? "игрока"}`);
-      if (row.reason === "ITEM_TRANSFER_CANCELLED") return done("item", `шард ${title} вернулся: передача отменена`);
-      if (row.reason === "BREACH_LOOT") return done("item", `извлечён шард ${title} (тир ${s?.tier ?? "?"}${state}) с узла ${node()}`);
-      return done("item", `отсканирован шард ${title} (тир ${s?.tier ?? "?"}${state})`);
-    }
-    case "shards.remove": {
-      const id = parse<{ shardId?: string }>(row.new_value)?.shardId ?? "";
-      const title = ctx.itemTitle(row.subject_key, "shards.add", id);
-      return done("item", `шард ${title ? `«${title}»` : "из коллекции"} передан → ${ctx.peerName(row.source_ref, row.subject_key, ["ITEM_TRANSFER_IN"]) ?? "получатель ещё не принял"}`);
-    }
-    case "shards.decrypt": {
-      const id = parse<{ shardId?: string }>(row.new_value)?.shardId ?? "";
-      const title = ctx.itemTitle(row.subject_key, "shards.add", id);
-      return done("item", `расшифрован шард ${title ? `«${title}»` : ""}`.trim());
-    }
-
-    case "counters.breach": {
-      const p = parse<{ tier?: string; outcome?: string }>(row.new_value);
-      const tier = p?.tier ? ` (${TIER_RU[p.tier] ?? p.tier})` : "";
-      return done("breach", `взлом узла ${node()}${tier} — ${OUTCOME_RU[p?.outcome ?? ""] ?? p?.outcome ?? "результат неизвестен"}`);
-    }
-    case "counters.blocked": {
-      const p = parse<{ reason?: string }>(row.new_value);
-      return done("breach", `попытка взлома узла ${node()} отклонена: ${BLOCK_RU[p?.reason ?? ""] ?? p?.reason ?? "причина неизвестна"}`);
-    }
-    case "counters.alert": {
-      const suppressed = parse<{ suppressed?: boolean }>(row.new_value)?.suppressed;
-      return suppressed
-        ? done("alert", `сигнал СБ по узлу ${node()} не отправлен (подавлен демоном или узел свой)`)
-        : done("alert", `сигнал СБ по узлу ${node()} отправлен владельцам`);
-    }
-    case "announcement":
-      return done("master", `сообщение от мастера: «${row.new_value ?? ""}»`);
-    default:
-      return done("system", `${row.field}: ${row.old_value ?? "∅"} → ${row.new_value ?? "∅"}`);
-  }
+  return (FORMATTERS[row.field] ?? (({ row: r, done }) => done("system", `${r.field}: ${r.old_value ?? "∅"} → ${r.new_value ?? "∅"}`)))(f);
 }
 
 const shortKey = (key: string) => (key.length <= 12 ? key : `${key.slice(0, 6)}…${key.slice(-4)}`);
