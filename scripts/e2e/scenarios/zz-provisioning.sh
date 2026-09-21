@@ -65,4 +65,5 @@ dbg $A DEBUG_QR --es qr "$SQR"
 check "приложение запомнило отказ по коду (плашка в Настройках)" wait_until 90 bash -c "source '$ROOT/scripts/e2e/lib.sh'; adb_ $A exec-out run-as $PKG cat shared_prefs/collector_prefs.xml | grep -q 'provision_rejected\" value=\"true'"
 eq "игрока с чужим кодом на дашборде нет" 0 "$(api GET /api/players | jq_ 'sum(1 for p in d if p["callsign"]=="Squatted")')"
 check "на дашборде тревога provision_conflict" bash -c "source '$ROOT/scripts/e2e/lib.sh'; api GET /api/attention | jq_ 'any(i[\"kind\"]==\"provision_conflict\" for i in d[\"items\"])' | grep -q True"
+ensure_wifi_on $A   # вернуть Wi-Fi: выключенный остаётся выключенным и на следующем стенде
 finish

@@ -61,6 +61,9 @@ for s in $A $B; do
   adb_ $s shell settings put system screen_off_timeout 2147483647 >/dev/null 2>&1
 done
 
+# Wi-Fi мог остаться выключенным от прошлого прогона (состояние AVD переживает перезапуск) — до установки и запуска приложения
+for s in $A $B; do ensure_wifi_on $s; done
+
 # 4. Приложение и персонажи
 setup_device() { # <serial> <позывной:фракция>
   local s=$1
@@ -88,7 +91,13 @@ dbg $A DEBUG_SET --es contact "$(cat "$E2E_DIR/pk_$B.txt"):Bob:Rats"
 dbg $B DEBUG_SET --es contact "$(cat "$E2E_DIR/pk_$A.txt"):Alice:Neon"
 
 # 5. Связь пиров и проверка, что оба на дашборде
-"$(dirname "$0")/link.sh" || die "link.sh"
-wait_until 60 bash -c "source '$(dirname "$0")/lib.sh'; [ \"\$(api GET /api/players | jq_ 'len(d)')\" -ge 2 ]" \
-  || log "ВНИМАНИЕ: оба игрока пока не видны на дашборде (проверь коллектор в Настройках)"
+# После холодного старта эмулятора приложение иногда заморожено системой и порт не отдаёт — тогда перезапускаем приложения и пробуем снова.
+for try in 1 2 3; do
+  "$(dirname "$0")/link.sh" && break
+  [ $try -eq 3 ] && die "link.sh"
+  log "link.sh не удался — перезапускаю приложения (попытка $try из 3)"
+  for s in $A $B; do restart_app $s; done; sleep 5
+done
+heal_host_reach 2 || log "ВНИМАНИЕ: оба игрока не видны на дашборде (проверь коллектор в Настройках)"
+preflight || log "ВНИМАНИЕ: экран одного из эмуляторов не отвечает (см. выше)"
 log "стенд готов. Дашборд: $API (мастер E2E, токен в $E2E_DIR/master.txt)"

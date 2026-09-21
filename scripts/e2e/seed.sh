@@ -7,14 +7,7 @@ source "$(dirname "$0")/lib.sh"
 PKA=$(cat "$E2E_DIR/pk_$A.txt"); PKB=$(cat "$E2E_DIR/pk_$B.txt")
 step() { log "▶ $*"; }
 
-# Особенность эмулятора: если приложение привязалось к виртуальному Wi-Fi, до хоста (10.0.2.2) оно не достучится и на дашборде не появится.
-# На реальной игровой сети сервер доступен именно по Wi-Fi, там этого нет. Лечим выключением виртуального Wi-Fi (трафик пойдёт по сотовому каналу эмулятора).
-players_online() { api GET /api/overview | jq_ 'd["players"]["total"]' 2>/dev/null; }
-if [ "$(players_online)" != "2" ]; then
-  step "Alice не видна на дашборде — выключаю виртуальный Wi-Fi эмулятора"
-  adb_ $A shell svc wifi disable
-  wait_until 90 bash -c "source '$ROOT/scripts/e2e/lib.sh'; [ \"\$(api GET /api/overview | jq_ 'd[\"players\"][\"total\"]')\" = 2 ]" || log "ВНИМАНИЕ: Alice так и не появилась на дашборде"
-fi
+heal_host_reach 2   # см. lib.sh: особенность эмулятора с виртуальным Wi-Fi
 
 step "деньги, RAM, демоны"
 dbg $A DEBUG_SET --es balance 250; dbg $B DEBUG_SET --es balance 900; dbg $A DEBUG_SET --es ram 9

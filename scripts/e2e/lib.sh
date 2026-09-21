@@ -28,11 +28,13 @@ FAILED=0
 # check "описание" <команда...> — команда должна вернуть 0; счётчик провалов идёт в FAILED.
 check() {
   local desc=$1; shift
-  if "$@" >/dev/null 2>&1; then echo "  ✓ $desc"; else echo "  ✗ $desc"; FAILED=$((FAILED+1)); fi
+  if "$@" >/dev/null 2>&1; then echo "  ✓ $desc"; else echo "  ✗ $desc$(infra_note)"; FAILED=$((FAILED+1)); fi
 }
+# infra_note — если экран эмулятора не ожил (маркер screen_dead_*), красная строка помечается как сбой стенда, а не приложения.
+infra_note() { local m; for m in "$E2E_DIR"/screen_dead_*; do [ -e "$m" ] && { echo "  [сбой стенда: экран ${m##*_} не отвечает, не вина приложения]"; return; }; done; }
 # eq "описание" ожидаемое фактическое
 eq() {
-  if [ "$2" == "$3" ]; then echo "  ✓ $1"; else echo "  ✗ $1 (ожидалось «$2», получено «$3»)"; FAILED=$((FAILED+1)); fi
+  if [ "$2" == "$3" ]; then echo "  ✓ $1"; else echo "  ✗ $1 (ожидалось «$2», получено «$3»)$(infra_note)"; FAILED=$((FAILED+1)); fi
 }
 # wait_until <секунды> <команда...> — ждёт, пока команда не вернёт 0.
 wait_until() {
@@ -83,14 +85,87 @@ start_app() { adb_ "$1" shell am start -n "$PKG/.MainActivity" >/dev/null; }
 restart_app() { adb_ "$1" shell am force-stop $PKG; start_app "$1"; sleep 3; resend_config "$1"; }
 
 # ── UI по тексту (uiautomator) ──
-# dump_ui <serial> — кладёт XML экрана в $E2E_DIR/ui_<serial>.xml; системные «не отвечает» закрывает и снимает дамп заново.
-dump_ui() {
+# raw_dump <serial> — кладёт XML экрана в $E2E_DIR/ui_<serial>.xml; системные «не отвечает» закрывает и снимает дамп заново.
+raw_dump() {
   local s=$1 f="$E2E_DIR/ui_$1.xml" i
   for i in 1 2 3; do
     adb_ "$s" shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
     adb_ "$s" exec-out cat /sdcard/ui.xml > "$f"
     if grep -q "isn't responding" "$f"; then tap_xml "$f" "$s" "Close app"; sleep 1; else return 0; fi
   done
+}
+# ui_ok <serial> — экран отвечает: в последнем дампе есть хотя бы один узел. Упавший SystemUI, блокировка или чёрный экран дают пустой дамп
+# (только заголовок hierarchy) — раньше это выглядело как «нужного текста нет» и краснило сценарий, хотя виноват был стенд.
+ui_ok() { [ -s "$E2E_DIR/ui_$1.xml" ] && grep -q "<node " "$E2E_DIR/ui_$1.xml"; }
+wake_screen() { adb_ "$1" shell input keyevent KEYCODE_WAKEUP; adb_ "$1" shell wm dismiss-keyguard >/dev/null 2>&1; adb_ "$1" shell input keyevent 82; sleep 1; }
+wait_boot() { wait_until "${2:-240}" bash -c "'$ADB' -s $1 shell getprop sys.boot_completed 2>/dev/null | grep -q 1"; }
+
+# revive_screen <serial> — лестница восстановления мёртвого экрана эмулятора (SystemUI упал / блокировка / чёрный экран):
+#   1) разбудить и снять блокировку, вернуть приложение; 2) перезапустить SystemUI; 3) перезагрузить эмулятор (≈1 мин) и вернуть приложение.
+# Возвращает 0, когда экран снова отвечает. REVIVE_FORCE_REBOOT=1 — сразу третья ступень (для проверки самой лестницы).
+revive_screen() {
+  local s=$1
+  log "$s: экран не отвечает — восстанавливаю"
+  if [ -z "${REVIVE_FORCE_REBOOT:-}" ]; then
+    wake_screen "$s"; start_app "$s" >/dev/null 2>&1; sleep 2; raw_dump "$s"; ui_ok "$s" && { log "$s: ожил после пробуждения"; return 0; }
+    adb_ "$s" shell am crash com.android.systemui >/dev/null 2>&1; sleep 10
+    wake_screen "$s"; start_app "$s" >/dev/null 2>&1; sleep 2; raw_dump "$s"; ui_ok "$s" && { log "$s: ожил после перезапуска SystemUI"; return 0; }
+  fi
+  log "$s: перезагружаю эмулятор"
+  adb_ "$s" reboot >/dev/null 2>&1; sleep 20
+  wait_boot "$s" 240 || return 1
+  sleep 15
+  adb_ "$s" shell svc power stayon true >/dev/null 2>&1
+  wake_screen "$s"; start_app "$s" >/dev/null 2>&1; sleep 3; resend_config "$s"
+  # порт приложения после перезагрузки другой — связь пиров (redir + DEBUG_PEER) надо восстановить
+  "$ROOT/scripts/e2e/link.sh" >/dev/null 2>&1 || log "$s: связать пиров после перезагрузки не удалось (запустите link.sh)"
+  raw_dump "$s"; ui_ok "$s" && { log "$s: ожил после перезагрузки"; return 0; }
+  return 1
+}
+# dump_ui <serial> — как raw_dump, но с проверкой живости и восстановлением. Если экран так и не ожил, ставит маркер $E2E_DIR/screen_dead_<serial>
+# (его читает check и помечает красную строку как сбой стенда, а не приложения); удачный дамп маркер снимает.
+dump_ui() {
+  local s=$1
+  raw_dump "$s"
+  if ui_ok "$s"; then rm -f "$E2E_DIR/screen_dead_$s"; return 0; fi
+  if revive_screen "$s"; then rm -f "$E2E_DIR/screen_dead_$s"; return 0; fi
+  touch "$E2E_DIR/screen_dead_$s"; return 1
+}
+# ensure_wifi_on <serial> — Wi-Fi эмулятора включён. Состояние Wi-Fi переживает перезапуск эмулятора: выключенный сценарием или лечением (heal_host_reach) Wi-Fi
+# оставался бы выключенным на следующем стенде, а приложение разрешает взлом только при подключённом Wi-Fi (MeshLink.isOnline, ревизия v9 §5) —
+# сценарии со взломом (sec-alert, slot-race) краснели бы «сами». Включаем ТОЛЬКО если он выключен: лишнее включение поверх работающего Wi-Fi
+# переподключает сеть, и приложение может привязаться к новой сети, из которой до хоста не достучаться.
+ensure_wifi_on() {
+  adb_ "$1" shell "dumpsys wifi | grep -q 'Wi-Fi is enabled'" 2>/dev/null && return 0
+  log "$1: Wi-Fi выключен — включаю"
+  adb_ "$1" shell svc wifi enable; sleep 10
+}
+# players_total — сколько игроков видит дашборд (пусто, если сервер не отвечает).
+players_total() { api GET /api/overview 2>/dev/null | jq_ 'd["players"]["total"]' 2>/dev/null; }
+# heal_host_reach [сколько игроков ждать] — особенность эмулятора: приложение, привязанное к виртуальному Wi-Fi, не достукивается до хоста (10.0.2.2)
+# и на дашборде не появляется. На реальной игровой сети сервер доступен именно по Wi-Fi, там этого нет. Если игроков меньше нужного, выключает
+# виртуальный Wi-Fi у тех эмуляторов, чьё приложение жалуется «коллектор недоступен» (трафик уйдёт по сотовому каналу эмулятора).
+heal_host_reach() {
+  local want=${1:-2} s
+  wait_until 45 bash -c "source '$ROOT/scripts/e2e/lib.sh'; [ \"\$(players_total)\" -ge $want ]" && return 0
+  for s in $A $B; do
+    if adb_ "$s" logcat -d -t 300 2>/dev/null | grep -q "CollectorClient.*недоступен"; then
+      log "$s: приложение не достукивается до сервера — выключаю виртуальный Wi-Fi (особенность эмулятора)"
+      adb_ "$s" shell svc wifi disable
+    fi
+  done
+  wait_until 90 bash -c "source '$ROOT/scripts/e2e/lib.sh'; [ \"\$(players_total)\" -ge $want ]" || { log "ВНИМАНИЕ: на дашборде видно меньше $want игроков"; return 1; }
+}
+# preflight — проверка обоих эмуляторов перед сценарием: устройство на связи, система загружена, экран отвечает (иначе чинит).
+preflight() {
+  local s bad=0
+  for s in $A $B; do
+    "$ADB" -s "$s" get-state 2>/dev/null | grep -q device || { log "$s: устройство недоступно (adb)"; bad=1; continue; }
+    [ "$(adb_ "$s" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ] || { wait_boot "$s" 120 || { log "$s: система не загрузилась"; bad=1; continue; }; }
+    wake_screen "$s"   # экран мог погаснуть или уйти под блокировку: окна приложения (например «Сообщение от мастера») на спящем экране не показываются
+    dump_ui "$s" || { log "$s: экран не удалось оживить"; bad=1; }
+  done
+  return $bad
 }
 tap_xml() { # tap_xml <xml> <serial> "<подстрока>"
   local xy
@@ -114,6 +189,8 @@ scroll_down() { adb_ "$1" shell input swipe 540 1700 540 700 200; }
 # следующих сценариев), открытый тред/оверлей — и вернуть приложение на передний план.
 reset_ui() {
   local s
+  rm -f "$E2E_DIR"/screen_dead_*
+  [ -n "${E2E_NO_PREFLIGHT:-}" ] || preflight >/dev/null 2>&1
   for s in $A $B; do
     if screen_has $s "Сообщение от мастера"; then tap_text $s "Принято" >/dev/null; sleep 1; fi
     start_app $s >/dev/null 2>&1
@@ -141,6 +218,7 @@ open_deck() { tap_text "$1" "Кибердека" >/dev/null; sleep 1; }
 # Ждёт итог; возвращает 0 и оставляет экран результата, 1 — если взлом не дошёл до результата (например, отказ на скане).
 breach() {
   local s=$1 qr=$2
+  ensure_wifi_on $s
   open_deck $s
   dbg $s DEBUG_QR --es qr "$qr"
   wait_until 15 screen_has $s "Datamine" || return 1
