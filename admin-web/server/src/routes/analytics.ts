@@ -3,11 +3,11 @@ import type { Db } from "../db/index.js";
 import { buildFactionRows, computeEconomy, computeFactionEvents } from "../lib/analytics.js";
 import { requireMaster } from "../lib/auth.js";
 import { cachedByDbVersion } from "../lib/dbCache.js";
-import { getPlayerBase, withOnline } from "../lib/playerSummary.js";
+import { activePlayers, getPlayerBase, isActivePlayer, withOnline } from "../lib/playerSummary.js";
 
 /** GET /api/economy, GET /api/factions — срезы для управления игрой (не «что произошло», а «как идёт экономика и кто с кем»). */
 export function registerAnalyticsRoutes(app: FastifyInstance, db: Db) {
-  const cachedEconomy = cachedByDbVersion(db, () => computeEconomy(db, getPlayerBase(db)));
+  const cachedEconomy = cachedByDbVersion(db, () => computeEconomy(db, activePlayers(getPlayerBase(db)), 60, new Set(getPlayerBase(db).filter((p) => !isActivePlayer(p)).map((p) => p.publicKeyB64))));
   const cachedFactionEvents = cachedByDbVersion(db, () => computeFactionEvents(db, getPlayerBase(db)));
 
   app.get("/api/economy", async (request, reply) => {
@@ -18,6 +18,6 @@ export function registerAnalyticsRoutes(app: FastifyInstance, db: Db) {
   app.get("/api/factions", async (request, reply) => {
     if (!requireMaster(db, request, reply)) return;
     // Тяжёлая часть (скан истории) кэшируется; online зависит от текущего времени — считается заново.
-    return buildFactionRows(withOnline(getPlayerBase(db)), cachedFactionEvents());
+    return buildFactionRows(withOnline(activePlayers(getPlayerBase(db))), cachedFactionEvents());
   });
 }

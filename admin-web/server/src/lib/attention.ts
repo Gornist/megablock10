@@ -2,9 +2,10 @@ import type { Db } from "../db/index.js";
 import { REASON_LABEL_RU, makeHumanizeContext } from "./humanize.js";
 import { parseSafe } from "./json.js";
 import { lastPresence } from "./presence.js";
-import { ONLINE_WINDOW_MS, getPlayerBase, seenAt, withOnline } from "./playerSummary.js";
+import { ONLINE_WINDOW_MS, activePlayers, getPlayerBase, isActivePlayer, seenAt, withOnline } from "./playerSummary.js";
 import { breachesLastHourByNode, getNodeSummaries } from "./nodeSummary.js";
 import { computeClockAnomalies, computeOutliers, computePulseAnomalies } from "./anomalies.js";
+import { provisionConflicts } from "./provisions.js";
 import { findUnexplainedJumps, getIntegrityFindings } from "./integrity.js";
 
 import type { AttentionItem, Severity } from "../apiTypes.js";
@@ -37,7 +38,9 @@ const num = (v: string | null) => Number(v ?? 0);
  */
 export function computeAttention(db: Db, now = Date.now()): AttentionItem[] {
   const t = thresholds();
-  const players = getPlayerBase(db);
+  const everyone = getPlayerBase(db);
+  const players = activePlayers(everyone); // заменённые и сбросившие сессию (устройство свободно) тревог «нет связи/минус» не дают
+  const inactiveKeys = new Set(everyone.filter((p) => !isActivePlayer(p)).map((p) => p.publicKeyB64));
   const ctx = makeHumanizeContext(db);
   const items: AttentionItem[] = [];
 
@@ -141,6 +144,7 @@ export function computeAttention(db: Db, now = Date.now()): AttentionItem[] {
     )
     .all(now - t.undeliveredAfterMs) as { subject_key: string; n: number; oldest: number }[];
   for (const r of undelivered) {
+    if (inactiveKeys.has(r.subject_key)) continue;
     const online = now - lastPresence(r.subject_key) < ONLINE_WINDOW_MS;
     items.push({
       id: `undelivered:${r.subject_key}`,
@@ -167,6 +171,19 @@ function integrityItems(db: Db, playerName: (key: string) => string, now: number
   const items: AttentionItem[] = [];
   const found = getIntegrityFindings(db);
   const since = now - t.integrityWindowMs;
+
+  for (const c of provisionConflicts(db)) {
+    if (c.at < since) continue;
+    items.push({
+      id: `provision:${c.provisionId}:${c.key}`,
+      kind: "provision_conflict",
+      severity: "crit",
+      title: "Код персонажа применили на двух телефонах",
+      detail: `код «${c.callsign}» (${c.provisionId.slice(0, 8)}) уже у ${c.boundKey ? playerName(c.boundKey) : "другого телефона"}, вторая попытка — ${playerName(c.key)}: копия QR или напечатан дубль`,
+      subjectKey: c.key,
+      at: c.at,
+    });
+  }
 
   for (const d of found.duplicateReceives) {
     if (d.at < since) continue;

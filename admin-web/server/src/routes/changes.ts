@@ -9,6 +9,7 @@ import {
 import { verifySignature } from "../lib/crypto.js";
 import { checkGameSecret } from "../lib/gameSecret.js";
 import { ipv4Of, parseClientVersions, peersSince, touchPresence } from "../lib/presence.js";
+import { bindProvision } from "../lib/provisions.js";
 import { pulse } from "../lib/pulse.js";
 import { RateLimiter } from "../lib/rateLimit.js";
 
@@ -235,6 +236,11 @@ export function registerChangesRoute(app: FastifyInstance, db: Db) {
       }
       if (existsBySeqStmt.get(r.subjectKeyB64, r.seq)) {
         return { ok: false, id: r.id, error: "seq already used by a different record" };
+      }
+      // Код персонажа (QR выдачи) одноразовый: первый телефон, приславший CHARACTER_CREATED с этим sourceRef, забирает его себе.
+      if (r.reason === "CHARACTER_CREATED" && r.sourceRef) {
+        const bound = bindProvision(db, r.sourceRef, r.subjectKeyB64, receivedAt);
+        if (!bound.ok) return { ok: false, id: r.id, error: bound.error };
       }
 
       insertStmt.run({

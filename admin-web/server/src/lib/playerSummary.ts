@@ -3,6 +3,7 @@ import { cachedByDbVersion } from "./dbCache.js";
 import { clientVersionsOf, lastPresence } from "./presence.js";
 import type { PlayerListItem } from "../apiTypes.js";
 import { projectAll } from "./projection.js";
+import { replacedMap, replacesMap } from "./provisions.js";
 
 /** Сколько игрок считается «на связи» после последнего сигнала; ONLINE_WINDOW_MS в окружении сокращает окно для стендовых прогонов (иначе тишина «видна» только через 5 минут). */
 export const ONLINE_WINDOW_MS = Number(process.env.ONLINE_WINDOW_MS) > 0 ? Number(process.env.ONLINE_WINDOW_MS) : 5 * 60 * 1000;
@@ -11,6 +12,8 @@ export const ONLINE_WINDOW_MS = Number(process.env.ONLINE_WINDOW_MS) > 0 ? Numbe
 export type PlayerBase = Omit<PlayerListItem, "online">;
 
 export function computePlayerBase(db: Db, until?: number): PlayerBase[] {
+  const replaced = replacedMap(db);
+  const replaces = replacesMap(db);
   return projectAll(db, until)
     .map((s): PlayerBase => ({
       publicKeyB64: s.publicKeyB64,
@@ -23,7 +26,17 @@ export function computePlayerBase(db: Db, until?: number): PlayerBase[] {
       breaches: sumBreaches(s.counters.breaches),
       slotsClaimed: s.counters.slotsClaimed,
       lastSeenAt: s.lastSeenAt,
+      sessionResetAt: s.sessionResetAt,
+      replacedBy: replaced.get(s.publicKeyB64) ?? null,
+      replaces: replaces.get(s.publicKeyB64) ?? null,
     }));
+}
+
+/** Игрок считается в сводках («Экономика», «Фракции», «Обзор», игроки на связи, тревоги «пропал со связи»): не заменён на другой телефон и не сбросил сессию (устройство свободно). */
+export const isActivePlayer = (p: { sessionResetAt: number | null; replacedBy: string | null }) => p.sessionResetAt === null && p.replacedBy === null;
+
+export function activePlayers<T extends { sessionResetAt: number | null; replacedBy: string | null }>(players: T[]): T[] {
+  return players.filter(isActivePlayer);
 }
 
 /** Время последней активности игрока: запись изменения ИЛИ heartbeat телефона. */

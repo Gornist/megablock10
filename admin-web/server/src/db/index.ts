@@ -50,6 +50,38 @@ CREATE TABLE IF NOT EXISTS attention_snooze (
   until   INTEGER NOT NULL
 );
 
+-- Выданные мастером QR персонажа (lib/provisions.ts): параметры выдачи, к какому ключу привязан код (первый телефон, приславший
+-- CHARACTER_CREATED с source_ref = id), и связь «повторной выдачи» с прежним ключом.
+CREATE TABLE IF NOT EXISTS provisions (
+  id           TEXT PRIMARY KEY,
+  callsign     TEXT NOT NULL,
+  faction      TEXT NOT NULL,
+  balance      INTEGER NOT NULL,
+  ram          INTEGER NOT NULL,
+  created_by   TEXT NOT NULL,
+  created_at   INTEGER NOT NULL,
+  replaces_key TEXT,
+  bound_key    TEXT,
+  bound_at     INTEGER,
+  void         INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_provisions_bound ON provisions (bound_key);
+CREATE INDEX IF NOT EXISTS idx_provisions_replaces ON provisions (replaces_key);
+-- Ключ, чей персонаж перевыдан на другой телефон: в сводках не считается (иначе остаточный баланс удвоит эмиссию).
+CREATE TABLE IF NOT EXISTS replaced_keys (
+  old_key TEXT PRIMARY KEY,
+  new_key TEXT NOT NULL,
+  at      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_replaced_new ON replaced_keys (new_key);
+-- Код персонажа, который попытались применить на втором телефоне (копия QR): по строке на пару (код, ключ) — для тревоги.
+CREATE TABLE IF NOT EXISTS provision_conflicts (
+  provision_id TEXT NOT NULL,
+  key          TEXT NOT NULL,
+  at           INTEGER NOT NULL,
+  PRIMARY KEY (provision_id, key)
+);
+
 -- Снимка Character нет по решению: он всегда пересчитывается SQL-агрегатом
 -- по changes на чтение, а не поддерживается построчно (см. обсуждение объёма
 -- работ — так рассинхронизироваться нечему).

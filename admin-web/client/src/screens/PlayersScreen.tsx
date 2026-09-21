@@ -3,7 +3,7 @@ import type { PlayerListItem } from "../api/types";
 import { useApiData } from "../api/useApiData";
 import { useWatch } from "../api/useWatch";
 import { AsyncPanel } from "../design/AsyncPanel";
-import { AppButton, AppInput, AppSelect, Panel } from "../design/components";
+import { AppButton, AppInput, AppSelect, Badge, Panel } from "../design/components";
 import { DataTable, type Column } from "../design/DataTable";
 import { formatAgo, fromDatetimeLocal, shortKey, tierLabel, toDatetimeLocal } from "../format";
 import { navigate } from "../router";
@@ -21,6 +21,8 @@ export function PlayersScreen() {
   const [search, setSearch] = useState("");
   const [faction, setFaction] = useState("");
   const [onlyWatched, setOnlyWatched] = useState(false);
+  // Сброшенные и перевыданные сессии по умолчанию скрыты: это не игроки на площадке, а «хвосты» прежних телефонов.
+  const [showRetired, setShowRetired] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkOpen, setBulkOpen] = useState(false);
 
@@ -29,12 +31,15 @@ export function PlayersScreen() {
   const filtered = useMemo(() => {
     if (!players) return [];
     return players.filter((p) => {
+      if (!showRetired && (p.sessionResetAt !== null || p.replacedBy !== null)) return false;
       if (faction && p.faction !== faction) return false;
       if (onlyWatched && !watch.byKey.has(p.publicKeyB64)) return false;
       if (search && !p.callsign.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     });
-  }, [players, search, faction, onlyWatched, watch.byKey]);
+  }, [players, search, faction, onlyWatched, showRetired, watch.byKey]);
+
+  const retiredCount = (players ?? []).filter((p) => p.sessionResetAt !== null || p.replacedBy !== null).length;
 
   const toggleSelected = (key: string) =>
     setSelected((prev) => {
@@ -75,7 +80,17 @@ export function PlayersScreen() {
       sortValue: (p) => (watch.byKey.has(p.publicKeyB64) ? 1 : 0),
     },
     { key: "online", label: "", render: (p) => <span className={`online-dot ${p.online ? "on" : ""}`} />, sortValue: (p) => (p.online ? 1 : 0) },
-    { key: "callsign", label: "Позывной", render: (p) => p.callsign || shortKey(p.publicKeyB64), sortValue: (p) => p.callsign },
+    {
+      key: "callsign",
+      label: "Позывной",
+      render: (p) => (
+        <>
+          {p.callsign || shortKey(p.publicKeyB64)}{" "}
+          {p.replacedBy ? <Badge>заменён</Badge> : p.sessionResetAt !== null ? <Badge tone="accent">сброс</Badge> : null}
+        </>
+      ),
+      sortValue: (p) => p.callsign,
+    },
     {
       key: "version",
       label: "Версия",
@@ -143,6 +158,11 @@ export function PlayersScreen() {
                 </option>
               ))}
             </AppSelect>
+            {retiredCount > 0 && (
+              <AppButton variant={showRetired ? "primary" : "default"} onClick={() => setShowRetired((v) => !v)}>
+                выбывшие {retiredCount}
+              </AppButton>
+            )}
             <AppButton variant={onlyWatched ? "primary" : "default"} onClick={() => setOnlyWatched((v) => !v)}>
               ★ {watch.items.length}
             </AppButton>

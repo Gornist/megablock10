@@ -5,6 +5,7 @@ import type { Db } from "../db/index.js";
 import { logMasterAction, requireMaster } from "../lib/auth.js";
 import { projectCharacter } from "../lib/projection.js";
 import type { Field } from "../lib/changeRecord.js";
+import { replacedMap, replacesMap } from "../lib/provisions.js";
 import { computePlayerBase, getPlayerBase, withOnline } from "../lib/playerSummary.js";
 import {
   BULK_FIELDS,
@@ -54,7 +55,7 @@ export function registerPlayersRoutes(app: FastifyInstance, db: Db) {
     if (!requireMaster(db, request, reply)) return;
     const snapshot = projectCharacter(db, request.params.key, parseUntil(request.query.until));
     if (!snapshot) return reply.code(404).send({ error: "unknown character" });
-    return snapshot;
+    return { ...snapshot, replacedBy: replacedMap(db).get(snapshot.publicKeyB64) ?? null, replaces: replacesMap(db).get(snapshot.publicKeyB64) ?? null };
   });
 
   app.get<{

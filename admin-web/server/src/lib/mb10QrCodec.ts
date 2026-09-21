@@ -37,3 +37,8 @@ export function encodeShardQr(
 export function encodeRamUpgradeQr(token: string, delta: number): string {
   return `${MAGIC}:RAM:v1:${token}:${delta}`;
 }
+
+/** QR персонажа: первый запуск одним кодом (docs/provisioning-qr.md). Пустые url/secret — приложение оставляет свои. */
+export function encodeProvisionQr(p: { id: string; url: string; secret: string; callsign: string; faction: string; balance: number; ram: number }): string {
+  return `${MAGIC}:PROV:v1:${p.id}:${b64(p.url)}:${b64(p.secret)}:${b64(p.callsign)}:${b64(p.faction)}:${p.balance}:${p.ram}`;
+}

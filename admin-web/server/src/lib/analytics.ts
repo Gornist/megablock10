@@ -32,10 +32,11 @@ function percentile(sortedAsc: number[], p: number): number {
  * часам СЕРВЕРА (received_at): часы телефонов разъезжаются, серверные — одни.
  * Чистая функция от БД → кэшируется по версии БД (dbCache.ts).
  */
-export function computeEconomy(db: Db, players: PlayerBase[], buckets = 60): Economy {
-  const rows = db
-    .prepare(`SELECT received_at AS t, ${DELTA_SQL} AS delta FROM changes WHERE field = 'balance' ORDER BY received_at ASC`)
-    .all() as { t: number; delta: number }[];
+export function computeEconomy(db: Db, players: PlayerBase[], buckets = 60, excludeKeys: ReadonlySet<string> = new Set()): Economy {
+  // Серия — деньги «в обороте»: остаток заменённых и сброшенных сессий в неё не входит (иначе перевыдача удвоила бы эмиссию).
+  const rows = (db
+    .prepare(`SELECT received_at AS t, subject_key AS k, ${DELTA_SQL} AS delta FROM changes WHERE field = 'balance' ORDER BY received_at ASC`)
+    .all() as { t: number; k: string; delta: number }[]).filter((r) => !excludeKeys.has(r.k));
 
   const series: Economy["series"] = [];
   if (rows.length > 0) {

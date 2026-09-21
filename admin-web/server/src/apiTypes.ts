@@ -73,6 +73,12 @@ export interface PlayerListItem {
   /** Версия приложения и протоколов по последнему heartbeat; нет — телефон не сообщал (старая сборка или сервер перезапускался). */
   appVersion?: string;
   wireVersions?: Record<string, number>;
+  /** Сессия сброшена на телефоне — устройство свободно; в сводках такой игрок не считается. */
+  sessionResetAt: number | null;
+  /** Ключ нового телефона, на который персонаж перевыдан; такой (прежний) ключ в сводках не считается. */
+  replacedBy: string | null;
+  /** Прежний ключ, чей персонаж выдан этому телефону (ссылка «предыдущая сессия»). */
+  replaces: string | null;
 }
 
 export interface DaemonEntry {
@@ -112,6 +118,11 @@ export interface CharacterSnapshot {
   counters: Counters;
   lastSeenAt: number;
   lastSeq: number;
+  /** Когда игрок сбросил сессию на телефоне (устройство свободно, персонаж остаётся у мастера); null — не сбрасывал. */
+  sessionResetAt: number | null;
+  /** Ссылки повторной выдачи; заполняет GET /api/players/:key (сама свёртка истории о них не знает). */
+  replacedBy?: string | null;
+  replaces?: string | null;
 }
 
 /** Как выбрать адресатов массовой правки/рассылки — ровно один способ (см. lib/masterRecords.ts). */
@@ -186,7 +197,7 @@ export type Severity = "crit" | "warn" | "info";
 
 export interface AttentionItem {
   id: string;
-  kind: "negative_balance" | "balance_jump" | "went_silent" | "node_exhausted_hot" | "revoke_repeat" | "override_undelivered" | "transfer_stuck" | "duplicate_receive" | "balance_chain_break" | "balance_unexplained" | "old_version" | "mass_silence" | "reject_spike" | "rate_limited" | "secret_denied" | "server_slow" | "clock_skew" | "transfer_amount_mismatch" | "emission_spike" | "player_outlier";
+  kind: "negative_balance" | "balance_jump" | "went_silent" | "node_exhausted_hot" | "revoke_repeat" | "override_undelivered" | "transfer_stuck" | "duplicate_receive" | "balance_chain_break" | "balance_unexplained" | "old_version" | "mass_silence" | "reject_spike" | "rate_limited" | "secret_denied" | "server_slow" | "clock_skew" | "transfer_amount_mismatch" | "emission_spike" | "player_outlier" | "provision_conflict";
   severity: Severity;
   title: string;
   detail: string;
@@ -292,4 +303,37 @@ export interface PulseSample {
 export interface Pulse {
   intervalMs: number;
   samples: PulseSample[];
+}
+
+/** Выданный QR персонажа. */
+export interface ProvisionItem {
+  id: string;
+  callsign: string;
+  faction: string;
+  balance: number;
+  ram: number;
+  createdAt: number;
+  createdBy: string;
+  /** Ключ прежней сессии, которую этот код заменяет (повторная выдача). */
+  replacesKey: string | null;
+  replacesName: string | null;
+  boundKey: string | null;
+  boundName: string | null;
+  boundAt: number | null;
+  /** Погашен: перевыдан заново (или заменён более новым кодом). */
+  void: boolean;
+  /** Второй телефон пытался применить этот код. */
+  conflicts: number;
+}
+
+export interface ProvisionsResponse {
+  /** Что попадёт в QR из настроек сервера: адрес (откуда взят) и есть ли код игры. Сам код не отдаётся. */
+  config: { url: string; urlSource: "env" | "request" | "none"; secretSet: boolean };
+  items: ProvisionItem[];
+}
+
+export interface ProvisionQr {
+  item: ProvisionItem;
+  qr: string;
+  qrImage: string;
 }

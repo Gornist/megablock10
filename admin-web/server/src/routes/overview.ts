@@ -1,7 +1,7 @@
 import { withHuman } from "../lib/humanize.js";
 import type { Overview } from "../apiTypes.js";
 import { presentSince } from "../lib/presence.js";
-import { ONLINE_WINDOW_MS } from "../lib/playerSummary.js";
+import { ONLINE_WINDOW_MS, getPlayerBase, isActivePlayer } from "../lib/playerSummary.js";
 import type { FastifyInstance } from "fastify";
 import type { Db } from "../db/index.js";
 import { requireMaster } from "../lib/auth.js";
@@ -70,7 +70,9 @@ export function registerOverviewRoutes(app: FastifyInstance, db: Db) {
     for (const key of presentSince(now - ONLINE_WINDOW_MS)) {
       if (base.knownKeys.has(key)) online.add(key);
     }
-    const onlinePlayers = online.size;
+    // Заменённые и сбросившие сессию ключи — не игроки на площадке.
+    const inactive = new Set(getPlayerBase(db).filter((p) => !isActivePlayer(p)).map((p) => p.publicKeyB64));
+    const onlinePlayers = [...online].filter((k) => !inactive.has(k)).length;
 
     const breachRows = db
       .prepare(`SELECT new_value AS payload FROM changes WHERE field = 'counters.breach' AND received_at > ?`)
@@ -82,7 +84,7 @@ export function registerOverviewRoutes(app: FastifyInstance, db: Db) {
     }
 
     const overview: Overview = {
-      players: { online: onlinePlayers, total: base.totalPlayers },
+      players: { online: onlinePlayers, total: Math.max(0, base.totalPlayers - inactive.size) },
       breachesLastHour,
       slots: { claimed: base.slotsClaimed, printed: base.slotsPrinted },
       alerts: { sent: base.alertsSent, suppressed: base.alertsSuppressed },

@@ -10,6 +10,8 @@ export const AUDIT_ACTION_LABEL_RU: Record<string, string> = {
   QR_SHARD: "QR шарда",
   QR_RAM: "QR апгрейда RAM",
   ATTENTION_SNOOZE: "Тревога отложена",
+  PROVISION_CREATE: "QR персонажа",
+  PROVISION_REISSUE: "Персонаж выдан заново",
 };
 
 const FIELD_RU: Record<string, string> = { balance: "баланс", ramCapacity: "буфер RAM", callsign: "позывной", faction: "фракция" };
@@ -46,6 +48,10 @@ export function describeAudit(action: string, detail: Detail, playerName: (key: 
       return `шард «${str(d.title)}» (${str(d.shardId)})`;
     case "QR_RAM":
       return `токен ${str(d.token)}: +${str(d.delta)} к буферу`;
+    case "PROVISION_CREATE":
+      return `QR персонажа «${str(d.callsign)}»${d.faction ? ` (${str(d.faction)})` : ""}, баланс ${str(d.balance, "0")}, RAM ${Number(d.ram) ? str(d.ram) : "по умолчанию"}`;
+    case "PROVISION_REISSUE":
+      return `${playerName(str(d.subjectKey, ""))}: выдан заново как «${str(d.callsign)}»${d.faction ? ` (${str(d.faction)})` : ""}, баланс ${str(d.balance, "0")}, RAM ${Number(d.ram) ? str(d.ram) : "по умолчанию"}`;
     case "ATTENTION_SNOOZE":
       return `«${str(d.title, str(d.id))}» отложена на ${str(d.minutes)} мин`;
     default:

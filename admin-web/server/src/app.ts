@@ -21,6 +21,7 @@ import { registerWatchRoutes } from "./routes/watch.js";
 import { registerEventsRoute } from "./routes/events.js";
 import { registerMetaRoute } from "./routes/meta.js";
 import { registerPulseRoute } from "./routes/pulse.js";
+import { registerProvisionRoutes } from "./routes/provisions.js";
 
 /**
  * Собирает Fastify-приложение без побочного listen() — раньше вся сборка
@@ -54,6 +55,7 @@ export function buildApp(db: Db, options: { clientDist?: string; logger?: boolea
   registerEventsRoute(app, db);
   registerMetaRoute(app, db);
   registerPulseRoute(app, db);
+  registerProvisionRoutes(app, db);
 
   app.get("/api/health", async () => ({ ok: true }));
 

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Db } from "../db/index.js";
 import type { Field } from "./changeRecord.js";
 import { RAM_CAPACITY_DEFAULT, RAM_CAPACITY_MAX } from "./identityDefaults.js";
-import type { PlayerBase } from "./playerSummary.js";
+import { activePlayers, type PlayerBase } from "./playerSummary.js";
 import type { CharacterSnapshot } from "./projection.js";
 
 /** Только скалярные поля персонажа — правка daemons.add/shards.add/counters.* через дашборд не предусмотрена (нет формы, нет смысла: это коллекции, не значения). */
@@ -81,7 +81,7 @@ export type TargetResult = { ok: true; players: PlayerBase[]; label: string } | 
 
 const MAX_KEYS = 500;
 
-/** Ровно один способ выбрать адресатов: список ключей, фракция целиком или все игроки. */
+/** Ровно один способ выбрать адресатов: список ключей, фракция целиком или все игроки. «Все» и фракция — только действующие: заменённым и сброшенным телефонам правка и объявление не дойдут никогда. */
 export function selectTargets(base: PlayerBase[], sel: TargetSelector): TargetResult {
   const given = [sel.keys !== undefined, sel.faction !== undefined, sel.all === true].filter(Boolean).length;
   if (given !== 1) return { ok: false, error: "specify exactly one of keys, faction, all" };
@@ -96,9 +96,9 @@ export function selectTargets(base: PlayerBase[], sel: TargetSelector): TargetRe
   if (sel.faction !== undefined) {
     if (typeof sel.faction !== "string") return { ok: false, error: "faction must be a string" };
     const faction = sel.faction;
-    return { ok: true, players: base.filter((p) => p.faction === faction), label: `фракция «${faction || "без фракции"}»` };
+    return { ok: true, players: activePlayers(base).filter((p) => p.faction === faction), label: `фракция «${faction || "без фракции"}»` };
   }
-  return { ok: true, players: base, label: "все игроки" };
+  return { ok: true, players: activePlayers(base), label: "все игроки" };
 }
 
 export interface MasterRecordSpec {

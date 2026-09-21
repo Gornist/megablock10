@@ -7,7 +7,8 @@ import { AppButton, AppInput, AppSelect, Badge, EmptyState, ErrorNote, HexRow, P
 import { ChangeLine } from "../design/ChangeLine";
 import { useMeta } from "../api/useMeta";
 import { useWatch } from "../api/useWatch";
-import { fromDatetimeLocal, shortKey, toDatetimeLocal } from "../format";
+import { formatAgo, fromDatetimeLocal, shortKey, toDatetimeLocal } from "../format";
+import { ReissuePanel } from "./players/ReissuePanel";
 import { navigate } from "../router";
 
 
@@ -27,6 +28,7 @@ export function PlayerDetailScreen({ publicKeyB64 }: { publicKeyB64: string }) {
   const watch = useWatch();
   const watched = watch.byKey.get(publicKeyB64);
   const [note, setNote] = useState("");
+  const [reissueOpen, setReissueOpen] = useState(false);
 
   const [reasonFilter, setReasonFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
@@ -73,7 +75,35 @@ export function PlayerDetailScreen({ publicKeyB64 }: { publicKeyB64: string }) {
           <AppInput placeholder="пометка для наблюдения" value={note} onChange={(e) => setNote(e.target.value)} />
         )}
         <AppInput type="datetime-local" title="Состояние на момент времени" value={asOf} max={nowLocal} onChange={(e) => setAsOf(e.target.value)} />
+        {!asOfMs && (
+          <AppButton variant={snapshot.sessionResetAt ? "primary" : "default"} onClick={() => setReissueOpen((v) => !v)}>
+            Выдать заново
+          </AppButton>
+        )}
       </div>
+
+      {snapshot.sessionResetAt !== null && !snapshot.replacedBy && (
+        <div className="asof-banner">
+          Сессия сброшена на телефоне {formatAgo(snapshot.sessionResetAt)}: устройство свободно, персонаж сохранён — нажмите «Выдать заново». В сводках этот игрок не считается.
+        </div>
+      )}
+      {snapshot.replacedBy && (
+        <div className="asof-banner">
+          Персонаж перевыдан на другой телефон, эта сессия закрыта и в сводках не считается.{" "}
+          <button type="button" className="change-toggle" onClick={() => navigate("players", snapshot.replacedBy!)}>
+            открыть текущую сессию →
+          </button>
+        </div>
+      )}
+      {snapshot.replaces && (
+        <div className="asof-banner">
+          Персонаж выдан заново после прежней сессии.{" "}
+          <button type="button" className="change-toggle" onClick={() => navigate("players", snapshot.replaces!)}>
+            открыть предыдущую сессию (история) →
+          </button>
+        </div>
+      )}
+      {reissueOpen && !asOfMs && <ReissuePanel snapshot={snapshot} onClose={() => setReissueOpen(false)} />}
 
       {asOfMs && (
         <div className="asof-banner">

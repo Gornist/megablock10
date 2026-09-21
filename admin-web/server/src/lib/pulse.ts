@@ -1,6 +1,6 @@
 import type { PulseSample } from "../apiTypes.js";
 import type { Db } from "../db/index.js";
-import { ONLINE_WINDOW_MS, getPlayerBase, withOnline } from "./playerSummary.js";
+import { ONLINE_WINDOW_MS, activePlayers, getPlayerBase, withOnline } from "./playerSummary.js";
 
 /**
  * «Пульс игры»: раз в минуту снимок метрик (активность на площадке + здоровье приёма записей), пишется в таблицу pulse_samples.
@@ -11,13 +11,14 @@ import { ONLINE_WINDOW_MS, getPlayerBase, withOnline } from "./playerSummary.js"
 export const PULSE_INTERVAL_MS = Number(process.env.PULSE_INTERVAL_MS ?? 60_000);
 const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
-export type RejectCategory = "signature" | "malformed" | "unknown" | "seq" | "actor" | "other";
+export type RejectCategory = "signature" | "malformed" | "unknown" | "seq" | "actor" | "provision" | "other";
 
 export function categorizeReject(error: string): RejectCategory {
   if (error === "invalid signature") return "signature";
   if (error === "malformed record") return "malformed";
   if (error.startsWith("unknown ")) return "unknown";
   if (error.startsWith("seq ")) return "seq";
+  if (error.startsWith("provision ")) return "provision";
   if (error.startsWith("actor ") || error.startsWith("MASTER_OVERRIDE")) return "actor";
   return "other";
 }
@@ -85,7 +86,7 @@ export function takePulseSample(db: Db, now = Date.now(), intervalMs = PULSE_INT
   }
 
   const undelivered = (db.prepare(`SELECT COUNT(*) AS n FROM master_pending WHERE delivered = 0`).get() as { n: number }).n;
-  const online = withOnline(getPlayerBase(db), now).filter((p) => now - p.lastSeenAt < ONLINE_WINDOW_MS).length;
+  const online = withOnline(activePlayers(getPlayerBase(db)), now).filter((p) => now - p.lastSeenAt < ONLINE_WINDOW_MS).length;
 
   const rejected = Object.values(c.rejectedBy).reduce((a, b) => a + b, 0);
   const sample: PulseSample = {

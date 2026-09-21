@@ -119,6 +119,7 @@ export function projectRows(subjectKeyB64: string, rows: ProjectionRow[], slotsC
     counters: emptyCounters(),
     lastSeenAt: 0,
     lastSeq: 0,
+    sessionResetAt: null,
   };
 
   const daemons = new Map<string, DaemonEntry>();
@@ -144,6 +145,13 @@ function applyRow(
   row: ProjectionRow,
 ) {
   const field = row.field as Field;
+
+  // Сброс сессии стирает данные на УСТРОЙСТВЕ, а персонаж остаётся у мастера для повторной выдачи: значения в снимке не трогаем,
+  // только помечаем «сессия сброшена» (последние позывной и фракция лежат в old_value этих записей — они и так уже в снимке).
+  if (row.reason === "CHARACTER_RESET") {
+    snapshot.sessionResetAt = Math.max(snapshot.sessionResetAt ?? 0, row.received_at);
+    return;
+  }
 
   if (SCALAR_FIELDS.includes(field)) {
     applyScalar(snapshot, field, row.new_value);
