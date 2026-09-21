@@ -6,7 +6,7 @@ import { Panel, StatTile } from "../design/components";
 import { DataTable, type Column } from "../design/DataTable";
 import { formatNumber } from "../format";
 import { navigate } from "../router";
-import { NO_FACTION } from "./EventsScreen";
+import { NO_FACTION } from "./events/eventFilters";
 
 /**
  * Срез по фракциям: деньги, боевая активность, чьи узлы ломают (свои/чужие) и

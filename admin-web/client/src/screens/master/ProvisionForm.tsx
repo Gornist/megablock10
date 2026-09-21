@@ -4,11 +4,11 @@ import type { FactionRow, ProvisionItem, ProvisionQr, ProvisionsResponse } from 
 import { useApiData } from "../../api/useApiData";
 import { useAsyncAction } from "../../api/useAsyncAction";
 import { AsyncPanel } from "../../design/AsyncPanel";
-import { AppButton, Badge, Panel } from "../../design/components";
+import { Badge, Panel } from "../../design/components";
 import { DataTable, type Column } from "../../design/DataTable";
 import { formatAgo } from "../../format";
 import { QrPanel } from "./common";
-import { ProvisionFields, type ProvisionValues } from "./ProvisionFields";
+import { ProvisionIssuer } from "./ProvisionIssuer";
 import { provisionStatus, ramLabel } from "./provisionUtil";
 
 const LAST_KEY = "mb10.provision.last";
@@ -22,39 +22,13 @@ function loadLast(): { faction: string; balance: string; ram: string } {
   }
 }
 
-/** Что нужно знать мастеру про содержимое QR: адрес и код игры подставляются сервером, вводить их руками не нужно. */
-export function ProvisionConfigNote({ config }: { config: ProvisionsResponse["config"] }) {
-  return (
-    <p className="hint-text">
-      В QR подставляются: адрес сервера{" "}
-      {config.url ? <span className="mono">{config.url}</span> : <b>не определён (задайте PUBLIC_URL на сервере — иначе останется адрес из сборки)</b>} и код игры{" "}
-      {config.secretSet ? "(включён)" : "(на сервере не задан)"}. Код игры лежит в QR: не выкладывайте снимки и лишние распечатки.
-    </p>
-  );
-}
-
 /** Форма «Персонаж»: выдача нового персонажа QR-кодом первого запуска (docs/provisioning-qr.md). Последние фракция/баланс/RAM запоминаются — выдача пачки в 2 клика. */
 export function ProvisionForm() {
   const last = loadLast();
-  const [values, setValues] = useState<ProvisionValues>({ callsign: "", ...last });
-  const { callsign, faction, balance, ram } = values;
   const [result, setResult] = useState<ProvisionQr | null>(null);
-  const { busy, error, run } = useAsyncAction({ fallbackError: "не удалось выдать" });
+  const { error: showError, run } = useAsyncAction({ fallbackError: "не удалось показать код" });
   const { data, error: listError, reload } = useApiData<ProvisionsResponse>("/api/provisions", { pollMs: 10000 });
   const { data: factions } = useApiData<FactionRow[]>("/api/factions", { pollMs: false });
-
-  async function submit() {
-    const res = await run(() => api.post<ProvisionQr>("/api/provisions", { callsign, faction, balance: Number(balance) || 0, ram: Number(ram) }));
-    if (!res.ok) return;
-    setResult(res.value);
-    setValues((v) => ({ ...v, callsign: "" })); // следующий игрок: фракция, баланс и RAM остаются
-    try {
-      localStorage.setItem(LAST_KEY, JSON.stringify({ faction, balance, ram }));
-    } catch {
-      // запоминание — удобство, не необходимость
-    }
-    reload();
-  }
 
   async function showAgain(id: string) {
     const res = await run(() => api.get<ProvisionQr>(`/api/provisions/${id}/qr`));
@@ -90,19 +64,28 @@ export function ProvisionForm() {
 
   return (
     <>
-      <Panel title="Новый персонаж">
-        <div className="master-form">
-          <p className="hint-text">
-            Игрок сканирует один QR на первом запуске: приложение настроится и создаст персонажа. Код работает один раз — копия на втором телефоне не примется.
-          </p>
-          {data && <ProvisionConfigNote config={data.config} />}
-          <ProvisionFields values={values} onChange={setValues} factions={(factions ?? []).map((f) => f.faction).filter(Boolean)} autoFocus />
-          {error && <div className="login-error">{error}</div>}
-          <AppButton variant="primary" onClick={submit} disabled={busy || !callsign.trim()}>
-            {busy ? "Выдаю…" : "Выдать и показать QR"}
-          </AppButton>
-        </div>
-      </Panel>
+      <ProvisionIssuer
+        title="Новый персонаж"
+        intro="Игрок сканирует один QR на первом запуске: приложение настроится и создаст персонажа. Код работает один раз — копия на втором телефоне не примется."
+        initial={{ callsign: "", ...last }}
+        endpoint="/api/provisions"
+        submitLabel="Выдать и показать QR"
+        factions={(factions ?? []).map((f) => f.faction).filter(Boolean)}
+        autoFocus
+        keepAfterIssue={{ callsign: "" }} // следующий игрок: фракция, баланс и RAM остаются
+        onResult={(r) => {
+          setResult(r);
+          reload();
+        }}
+        onIssued={({ faction, balance, ram }) => {
+          try {
+            localStorage.setItem(LAST_KEY, JSON.stringify({ faction, balance, ram }));
+          } catch {
+            // запоминание — удобство, не необходимость
+          }
+        }}
+      />
+      {showError && <div className="login-error">{showError}</div>}
 
       {result && <QrPanel result={result} caption={`${result.item.callsign}${result.item.faction ? ` · ${result.item.faction}` : ""} · ${result.item.balance} €$`} />}
 

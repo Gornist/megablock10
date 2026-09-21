@@ -35,6 +35,15 @@ PORT=2517 npm run build && npm start
 ноутбука>:2517`) — второй процесс не нужен, mDNS сознательно не делали (см.
 ниже).
 
+## Тесты
+
+```bash
+cd admin-web/server && npm test    # node --test через tsx: API, детекторы, приём записей
+cd admin-web/client && npm test    # vitest + jsdom: чистая логика форм и ключевые экраны с подменённым api
+```
+
+Клиентские тесты лежат рядом с кодом (`*.test.ts(x)`), подмена сети — `src/test/mockApi.ts`.
+
 ## Разработка
 
 ```bash
