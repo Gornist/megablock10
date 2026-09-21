@@ -17,6 +17,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,6 +31,8 @@ import com.megablok10.app.announce.AnnouncementStore
 import com.megablok10.app.collector.CollectorSettings
 import com.megablok10.app.collector.DEFAULT_COLLECTOR_URL
 import com.megablok10.app.data.Mb10Database
+import com.megablok10.app.log.DeviceDiagnostics
+import com.megablok10.app.log.Mb10Log
 import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.AppDialog
@@ -70,6 +76,9 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
             Text("Мешь-сеть", color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
             Text("устройства рядом обнаруживаются через NSD", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
         }
+
+        Spacer(Modifier.height(16.dp))
+        LogSection()
 
         Spacer(Modifier.height(16.dp))
         if (announcements.isNotEmpty()) {
@@ -134,7 +143,7 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
             "Сохранить адрес коллектора",
             modifier = Modifier.fillMaxWidth(),
             variant = ButtonVariant.Secondary,
-            onClick = { CollectorSettings.setBaseUrl(context, collectorUrl) }
+            onClick = { CollectorSettings.setBaseUrl(context, collectorUrl); Mb10Log.event("Settings", "collector_url_saved", "url" to collectorUrl) }
         )
         Spacer(Modifier.height(8.dp))
         AppTextField(
@@ -148,7 +157,7 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
             "Сохранить код игры",
             modifier = Modifier.fillMaxWidth(),
             variant = ButtonVariant.Secondary,
-            onClick = { CollectorSettings.setGameSecret(context, gameSecret.ifBlank { null }) }
+            onClick = { CollectorSettings.setGameSecret(context, gameSecret.ifBlank { null }); Mb10Log.event("Settings", "game_secret_saved", "empty" to gameSecret.isBlank()) }
         )
         }
 
@@ -160,7 +169,7 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
             color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp
         )
         Spacer(Modifier.height(8.dp))
-        AppButton("Сбросить сессию персонажа", modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.Danger, dense = true, onClick = { confirmingReset = true })
+        AppButton("Сбросить сессию персонажа", modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.Danger, dense = true, onClick = { confirmingReset = true; Mb10Log.event("Settings", "reset_dialog_opened") })
         Spacer(Modifier.height(16.dp))
     }
 
@@ -195,3 +204,79 @@ private fun ToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean
     }
 }
 
+
+/** Журнал приложения: отправить архив на разбор, оставить метку («вышел из зоны точки 2»), очистить перед новой проверкой. */
+@Composable
+private fun LogSection() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var sizeKb by remember { mutableStateOf(Mb10Log.sizeBytes() / 1024) }
+    var mark by remember { mutableStateOf("") }
+    var status by remember { mutableStateOf<String?>(null) }
+    var confirmingClear by remember { mutableStateOf(false) }
+
+    SectionLabel("Журнал")
+    Text(
+        "Подробный журнал работы приложения (сеть, сообщения, деньги, синхронизация). Без текстов сообщений и паролей. После проверки отправьте архив.",
+        color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp
+    )
+    Spacer(Modifier.height(6.dp))
+    ListRow(trailing = { StatusChip("$sizeKb КБ", tone = ChipTone.Neutral) }) {
+        Text("Размер журнала", color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
+        Text("хранится ~16 МБ, старое вытесняется", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
+    }
+    Spacer(Modifier.height(8.dp))
+    AppTextField(value = mark, onValueChange = { mark = it }, modifier = Modifier.fillMaxWidth(), placeholder = "метка: что вы сейчас делаете")
+    Spacer(Modifier.height(6.dp))
+    AppButton(
+        "Записать метку в журнал", modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.Secondary, dense = true,
+        onClick = {
+            if (mark.isNotBlank()) {
+                Mb10Log.event("MARK", "mark", "text" to mark.trim())
+                mark = ""; status = "Метка записана"
+                scope.launch { Mb10Log.flush(); sizeKb = Mb10Log.sizeBytes() / 1024 }
+            }
+        }
+    )
+    Spacer(Modifier.height(6.dp))
+    AppButton(
+        "Отправить журнал", modifier = Modifier.fillMaxWidth(), dense = true,
+        onClick = {
+            scope.launch {
+                Mb10Log.event("Settings", "log_export_requested")
+                val zip = withContext(Dispatchers.IO) {
+                    runCatching { Mb10Log.exportZip(context, DeviceDiagnostics.deviceReport(context)) }.getOrNull()
+                }
+                if (zip == null) { status = "Не удалось собрать архив"; return@launch }
+                val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.logs", zip)
+                val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = "application/zip"
+                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(android.content.Intent.createChooser(send, "Отправить журнал").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                status = "Архив: ${zip.length() / 1024} КБ"
+            }
+        }
+    )
+    Spacer(Modifier.height(6.dp))
+    AppButton("Очистить журнал", modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.Secondary, dense = true, onClick = { confirmingClear = true })
+    status?.let {
+        Spacer(Modifier.height(6.dp))
+        Text(it, color = MB10Colors.accentAction, fontFamily = JetBrainsMono, fontSize = 11.sp)
+    }
+    if (confirmingClear) {
+        AppDialog(
+            onDismissRequest = { confirmingClear = false },
+            title = "Очистить журнал?",
+            body = "Делайте это перед новой проверкой. Старые записи пропадут безвозвратно.",
+            confirmText = "Очистить",
+            onConfirm = {
+                confirmingClear = false
+                Mb10Log.clear()
+                Mb10Log.event("Settings", "log_cleared")
+                scope.launch { Mb10Log.flush(); sizeKb = Mb10Log.sizeBytes() / 1024; status = "Журнал очищен" }
+            }
+        )
+    }
+}

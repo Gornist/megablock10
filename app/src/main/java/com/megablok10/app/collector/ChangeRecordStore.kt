@@ -1,7 +1,7 @@
 package com.megablok10.app.collector
 
 import android.content.Context
-import android.util.Log
+import com.megablok10.app.log.Mb10Log
 import com.megablok10.app.announce.AnnouncementNotifier
 import com.megablok10.app.announce.AnnouncementStore
 import com.megablok10.app.chat.ChatStore
@@ -38,6 +38,10 @@ object ChangeRecordStore {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     @Volatile private var loopStarted = false
 
+    /** Итог последней попытки синка одной строкой: попадает в снимок состояния. */
+    @Volatile var lastSyncSummary: String = "ещё не было"
+        private set
+
     /** actor по умолчанию — сам subject; для TRANSFER_IN вызывающая сторона передаёт actor = ключ контрагента (§3.1 исключение). */
     suspend fun enqueue(
         context: Context,
@@ -50,7 +54,7 @@ object ChangeRecordStore {
         actor: String? = null,
     ) {
         val identity = IdentityManager.current(context) ?: run {
-            Log.w(TAG, "нет личности устройства — запись $field/$reason потеряна")
+            Mb10Log.w(TAG, "нет личности устройства — запись $field/$reason потеряна")
             return
         }
         val subject = subjectKeyB64 ?: identity.publicKeyB64
@@ -77,6 +81,7 @@ object ChangeRecordStore {
                 sourceRef = signed.sourceRef, actor = signed.actor, signature = signed.signature,
             ),
         )
+        Mb10Log.event(TAG, "record.enqueued", "field" to field, "reason" to reason, "old" to oldValue.takeIf { field != ChangeField.ANNOUNCEMENT }, "new" to newValue.takeIf { field != ChangeField.ANNOUNCEMENT }, "seq" to seq, "ref" to sourceRef)
         wake.tryEmit(Unit)
     }
 
@@ -110,7 +115,8 @@ object ChangeRecordStore {
             } catch (e: Exception) {
                 // Любой сбой одной итерации (Room, разбор ответа, применение правки) не должен
                 // навсегда останавливать синк — идём на бэкофф и пробуем снова.
-                Log.w(TAG, "итерация синка упала: ${e.message}", e)
+                Mb10Log.w(TAG, "итерация синка упала: ${e.message}", e)
+                lastSyncSummary = "упал ${e.javaClass.simpleName} в ${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date())}"
                 val delayMs = BACKOFF_STEPS_MS[backoffIndex.coerceAtMost(BACKOFF_STEPS_MS.lastIndex)]
                 backoffIndex++
                 waitForWakeOrTimeout(delayMs)
@@ -141,22 +147,26 @@ object ChangeRecordStore {
         val presence = if (identity != null && port > 0) presenceJson(context, port, identity.callsign, identity.faction, pendingCount, oldestPendingAgeMs) else null
         val result = CollectorClient.sendBatch(baseUrl, records, identity?.publicKeyB64, CollectorSettings.gameSecret(context), acksIn, presence)
 
+        val hhmmss = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date())
         if (result == null) {
+            lastSyncSummary = "нет связи в $hhmmss (очередь $pendingCount, повтор ${backoffIn + 1})"
             // Сеть/коллектор недоступны — экспоненциальный бэкофф (§3.4: 1с → 2с → 5с → 15с → 60с, дальше по минуте).
             val delayMs = BACKOFF_STEPS_MS[backoffIn.coerceAtMost(BACKOFF_STEPS_MS.lastIndex)]
             waitForWakeOrTimeout(delayMs)
             return SyncStep(acksIn, backoffIn + 1)
         }
 
+        lastSyncSummary = "ok в $hhmmss (отправлено ${records.size}, принято ${result.accepted.size}, отбраковано ${result.rejected.size})"
         if (identity != null) PresenceService.updateServerPeers(result.peers, identity.publicKeyB64)
 
         val toDelete = result.accepted + result.rejected.keys
         if (toDelete.isNotEmpty()) dao.deleteByIds(toDelete.toList())
         if (result.rejected.isNotEmpty()) {
-            Log.w(TAG, "коллектор отбраковал ${result.rejected.size} записей: ${result.rejected.values.take(3)}")
+            Mb10Log.warnEvent(TAG, "sync.rejected", "count" to result.rejected.size, "reasons" to result.rejected.values.take(5).joinToString(" | "), "ids" to result.rejected.keys.take(5).joinToString(","))
             // Код персонажа не принят: запись не повторяем (иначе синк крутился бы в цикле), но игрок должен узнать и обратиться к мастеру.
             if (ProvisionRejection.anyProvisionError(result.rejected.values) && !CollectorSettings.isProvisionRejected(context)) {
                 CollectorSettings.setProvisionRejected(context, true)
+                Mb10Log.warnEvent(TAG, "provision.rejected_by_server", "reasons" to result.rejected.values.take(3).joinToString(" | "))
                 AppSnack.show(ProvisionRejection.PLAYER_MESSAGE)
             }
         }
@@ -184,6 +194,7 @@ object ChangeRecordStore {
      */
     private suspend fun applyPending(context: Context, pending: List<ChangeRecord>): List<String> {
         for (p in pending) {
+            Mb10Log.event(TAG, "master.apply", "id" to p.id, "field" to p.field, "new" to p.newValue.takeIf { p.field != ChangeField.ANNOUNCEMENT }, "reason" to p.reason)
             try {
                 val newValue = p.newValue ?: continue
                 when (p.field) {
@@ -194,12 +205,12 @@ object ChangeRecordStore {
                     ChangeField.CALLSIGN -> IdentityManager.applyCallsignOverride(context, newValue)
                     ChangeField.FACTION -> IdentityManager.applyFactionOverride(context, newValue)
                     ChangeField.ANNOUNCEMENT -> if (AnnouncementStore.add(context, p.id, newValue)) AnnouncementNotifier.show(context, p.id, newValue)
-                    else -> Log.w(TAG, "pending с неизвестным полем ${p.field} — пропущено")
+                    else -> Mb10Log.w(TAG, "pending с неизвестным полем ${p.field} — пропущено")
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.w(TAG, "не удалось применить правку ${p.id}: ${e.message}", e)
+                Mb10Log.w(TAG, "не удалось применить правку ${p.id}: ${e.message}", e)
             }
         }
         return pending.map { it.id }

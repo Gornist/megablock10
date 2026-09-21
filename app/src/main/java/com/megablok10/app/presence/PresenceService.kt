@@ -4,7 +4,7 @@ import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
-import android.util.Log
+import com.megablok10.app.log.Mb10Log
 import com.megablok10.app.identity.Identity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -38,6 +38,9 @@ object PresenceService {
     private val table = PeerTable { scope }
     val peers: StateFlow<List<PeerInfo>> get() = table.peers
 
+    /** Список видимых пиров одной строкой — для снимка состояния в журнале. */
+    fun describePeers(): String = table.describe()
+
     /**
      * Добавляет пира вручную, минуя NSD — только для прогонов на эмуляторах, где mDNS между
      * устройствами не ходит (см. DebugQrReceiver). В боевом коде не вызывается.
@@ -48,6 +51,7 @@ object PresenceService {
 
     fun start(context: Context, identity: Identity, chatPort: Int) {
         stop()
+        Mb10Log.event(TAG, "nsd.start", "me" to Mb10Log.short(identity.publicKeyB64), "chatPort" to chatPort, "ip" to WifiBinder.ownIpv4)
         startArgs = Triple(context.applicationContext, identity, chatPort)
         val presenceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         scope = presenceScope
@@ -74,9 +78,10 @@ object PresenceService {
         val regListener = object : NsdManager.RegistrationListener {
             override fun onServiceRegistered(info: NsdServiceInfo) {
                 myServiceName = info.serviceName
+                Mb10Log.event(TAG, "nsd.registered", "service" to info.serviceName)
             }
             override fun onRegistrationFailed(info: NsdServiceInfo, errorCode: Int) {
-                Log.w(TAG, "Регистрация NSD не удалась: $errorCode")
+                Mb10Log.warnEvent(TAG, "nsd.register_failed", "code" to errorCode)
             }
             override fun onServiceUnregistered(info: NsdServiceInfo) {}
             override fun onUnregistrationFailed(info: NsdServiceInfo, errorCode: Int) {}
@@ -85,18 +90,19 @@ object PresenceService {
         manager.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, regListener)
 
         val discListener = object : NsdManager.DiscoveryListener {
-            override fun onDiscoveryStarted(serviceType: String) {}
+            override fun onDiscoveryStarted(serviceType: String) { Mb10Log.event(TAG, "nsd.discovery_started") }
             override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
-                Log.w(TAG, "Поиск NSD не удалось запустить: $errorCode")
+                Mb10Log.warnEvent(TAG, "nsd.discovery_start_failed", "code" to errorCode)
             }
             override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {}
             override fun onDiscoveryStopped(serviceType: String) {}
 
             override fun onServiceFound(info: NsdServiceInfo) {
                 if (info.serviceName == myServiceName) return
+                Mb10Log.event(TAG, "nsd.service_found", "service" to info.serviceName)
                 manager.resolveService(info, object : NsdManager.ResolveListener {
                     override fun onResolveFailed(info: NsdServiceInfo, errorCode: Int) {
-                        Log.w(TAG, "Не удалось разрешить пира ${info.serviceName}: $errorCode")
+                        Mb10Log.warnEvent(TAG, "nsd.resolve_failed", "service" to info.serviceName, "code" to errorCode)
                     }
                     override fun onServiceResolved(resolved: NsdServiceInfo) {
                         val pk = resolved.attributes["pk"]?.toString(Charsets.UTF_8) ?: return
@@ -110,6 +116,7 @@ object PresenceService {
             }
 
             override fun onServiceLost(info: NsdServiceInfo) {
+                Mb10Log.event(TAG, "nsd.service_lost", "service" to info.serviceName)
                 table.lost(info.serviceName)
             }
         }
@@ -148,6 +155,7 @@ object PresenceService {
      */
     fun refresh() {
         val args = startArgs ?: return
+        Mb10Log.event(TAG, "nsd.refresh", "reason" to "смена сети", "peersBefore" to table.describe())
         // Статические (отладочные) и серверные записи NSD-обновление не касается — они переживают refresh как есть.
         val keep = table.snapshot()
         start(args.first, args.second, args.third)

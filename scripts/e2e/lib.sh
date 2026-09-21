@@ -42,7 +42,31 @@ wait_until() {
   while [ $SECONDS -lt $end ]; do "$@" >/dev/null 2>&1 && return 0; sleep 1; done
   return 1
 }
-finish() { if [ $FAILED -eq 0 ]; then echo "ЗЕЛЁНЫЙ"; else echo "КРАСНЫЙ: провалов $FAILED"; exit 1; fi; }
+# ── Журнал приложения (Android/data/<пакет>/files/logs, см. docs/live-test-plan.md) ──
+# Журнал лежит во внешней папке приложения, а если туда писать нельзя (после переустановки на эмуляторе) — во внутренней: читаем оба места.
+journal_cat() {
+  adb_ "$1" shell "cat /sdcard/Android/data/$PKG/files/logs/mb10-*.log 2>/dev/null" 2>/dev/null
+  adb_ "$1" shell "run-as $PKG sh -c 'cat files/logs/mb10-*.log 2>/dev/null'" 2>/dev/null
+}
+journal_count() { journal_cat "$1" | grep -c -- "$2"; }   # journal_count <serial> <подстрока>: сколько строк журнала её содержит
+# journal_save <метка>: журналы обоих телефонов рядом со сценарием — при красном сценарии лежат в $E2E_DIR/journals/ и уходят в артефакты
+journal_save() {
+  local d="$E2E_DIR/journals" s
+  mkdir -p "$d"
+  for s in $A $B; do journal_cat "$s" > "$d/$1-$s.log"; done
+}
+finish() {
+  if [ $FAILED -eq 0 ]; then echo "ЗЕЛЁНЫЙ"; return 0; fi
+  local name; name=$(basename "$0" .sh)
+  journal_save "$name" 2>/dev/null && echo "  журналы приложения: $E2E_DIR/journals/$name-*.log"
+  # экран каждого телефона в момент провала: без него непонятно, чего на экране не было (кнопки, карточки)
+  local s
+  for s in $A $B; do
+    dump_ui "$s" >/dev/null 2>&1; cp "$E2E_DIR/ui_$s.xml" "$E2E_DIR/journals/$name-ui-$s.xml" 2>/dev/null
+    adb_ "$s" exec-out screencap -p > "$E2E_DIR/journals/$name-screen-$s.png" 2>/dev/null
+  done
+  echo "КРАСНЫЙ: провалов $FAILED"; exit 1
+}
 
 # ── БД устройства (run-as, копия в E2E_DIR) ──
 q() { # q <serial> "<SQL>"
@@ -194,6 +218,8 @@ reset_ui() {
   for s in $A $B; do
     if screen_has $s "Сообщение от мастера"; then tap_text $s "Принято" >/dev/null; sleep 1; fi
     start_app $s >/dev/null 2>&1
+    # Оставшийся открытым тред прячет нижнюю панель (вкладки «Кибердека», «Финансы»): выходим из него, иначе следующий сценарий не найдёт вкладку.
+    sleep 1; back_if_arrow $s
   done
 }
 
@@ -251,7 +277,16 @@ ram_of() { adb_ "$1" exec-out run-as $PKG cat shared_prefs/identity_prefs.xml | 
 # item_of <serial> — id последней передачи предмета, созданной командой give (из logcat).
 item_of() { adb_ "$1" logcat -d -s MB10DBG | grep "give id=" | tail -1 | sed 's/.*give id=//' | tr -d '\r'; }
 # open_chat <serial> <позывной> — вкладка «Чат» → тред с контактом.
-open_chat() { tap_text "$1" "Чат" >/dev/null; sleep 1; tap_text "$1" "$2" >/dev/null; sleep 1.5; }
+# Тап по строке списка иногда не попадает (строка сдвигается, когда в этот момент приходит сообщение), поэтому проверяем, что тред открылся
+# (в нём есть кнопка «Отпр.»), и при неудаче повторяем.
+open_chat() {
+  local n
+  for n in 1 2 3; do
+    tap_text "$1" "Чат" >/dev/null; sleep 1; tap_text "$1" "$2" >/dev/null; sleep 1.5
+    screen_has "$1" "Отпр." && return 0
+  done
+  return 0
+}
 
 # back_if_arrow <serial> — нажимает «←» только если она есть на экране (в треде): на списке чатов тап в этом углу открыл бы профиль.
 back_if_arrow() { dump_ui "$1"; tap_xml "$E2E_DIR/ui_$1.xml" "$1" "←" || true; }

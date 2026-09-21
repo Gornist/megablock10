@@ -32,6 +32,7 @@ object AnnouncementStore {
 
     /** true — объявление новое (стоит показать/уведомить); false — такой id уже был. */
     fun add(context: Context, id: String, text: String, now: Long = System.currentTimeMillis()): Boolean {
+        com.megablok10.app.log.Mb10Log.event("Announce", "announcement.add", "id" to id, "chars" to text.length)
         load(context)
         synchronized(this) {
             val before = _items.value

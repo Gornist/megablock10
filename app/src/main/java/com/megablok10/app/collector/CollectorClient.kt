@@ -1,6 +1,6 @@
 package com.megablok10.app.collector
 
-import android.util.Log
+import com.megablok10.app.log.Mb10Log
 import com.megablok10.app.presence.PeerInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -64,10 +64,11 @@ object CollectorClient {
             .post(body.toString().toRequestBody(JSON))
             .withGameSecret(gameSecret)
             .build()
+        val started = System.currentTimeMillis()
         try {
             http.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    Log.w(TAG, "POST /api/changes -> ${response.code}")
+                    Mb10Log.warnEvent(TAG, "sync.http_error", "url" to baseUrl, "code" to response.code, "records" to records.size, "ms" to (System.currentTimeMillis() - started))
                     return@withContext null
                 }
                 val json = JSONObject(response.body?.string().orEmpty())
@@ -88,15 +89,16 @@ object CollectorClient {
                         else PeerInfo(o.optString("pubKeyB64"), o.optString("callsign"), o.optString("faction"), host, port)
                     }
                 }.orEmpty()
+                Mb10Log.event(TAG, "sync.ok", "sent" to records.size, "accepted" to accepted.size, "rejected" to rejected.size, "pendingFromMaster" to pending.size, "peersFromServer" to peers.size, "ms" to (System.currentTimeMillis() - started))
                 BatchResult(accepted, rejected, pending, peers)
             }
         } catch (e: IOException) {
-            Log.w(TAG, "коллектор недоступен: ${e.message}")
+            Mb10Log.warnEvent(TAG, "sync.unreachable", "url" to baseUrl, "error" to e.javaClass.simpleName, "msg" to e.message, "records" to records.size, "ms" to (System.currentTimeMillis() - started))
             null
         } catch (e: JSONException) {
             // 200 с не-JSON телом (прокси, captive portal, не тот сервер по адресу) — раньше это
             // исключение не ловилось и навсегда останавливало цикл синка до перезапуска приложения.
-            Log.w(TAG, "коллектор ответил не тем, что ожидалось: ${e.message}")
+            Mb10Log.warnEvent(TAG, "sync.bad_response", "url" to baseUrl, "msg" to e.message)
             null
         }
     }
@@ -120,11 +122,16 @@ object CollectorClient {
                 .build()
             try {
                 http.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) return@withContext false
-                    JSONObject(response.body?.string().orEmpty()).optBoolean("granted", false)
+                    if (!response.isSuccessful) {
+                        Mb10Log.warnEvent(TAG, "slot.claim_http_error", "slot" to slotRef, "code" to response.code)
+                        return@withContext false
+                    }
+                    val granted = JSONObject(response.body?.string().orEmpty()).optBoolean("granted", false)
+                    Mb10Log.event(TAG, "slot.claim", "slot" to slotRef, "granted" to granted)
+                    granted
                 }
             } catch (e: IOException) {
-                Log.w(TAG, "коллектор недоступен при заявке на слот: ${e.message}")
+                Mb10Log.warnEvent(TAG, "slot.claim_unreachable", "slot" to slotRef, "error" to e.javaClass.simpleName, "msg" to e.message)
                 false
             }
         }

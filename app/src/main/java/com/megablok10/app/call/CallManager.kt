@@ -9,6 +9,7 @@ import com.megablok10.app.identity.Identity
 import com.megablok10.app.presence.PeerInfo
 import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.sound.SoundPlayer
+import com.megablok10.app.log.Mb10Log
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -41,6 +42,8 @@ data class CallUiState(
  */
 private const val RING_TIMEOUT_MS = 45_000L
 
+private const val TAG = "CallManager"
+
 object CallManager {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -50,6 +53,7 @@ object CallManager {
     fun startOutgoingCall(context: Context, identity: Identity, peer: PeerInfo) {
         if (_state.value.phase != CallPhase.IDLE) return
         val callId = UUID.randomUUID().toString()
+        Mb10Log.event(TAG, "call.outgoing_start", "call" to callId.take(8), "peer" to Mb10Log.short(peer.pubKeyB64), "addr" to "${peer.host}:${peer.port}")
         _state.value = CallUiState(CallPhase.OUTGOING_RINGING, callId, peer.pubKeyB64, peer.callsign, isOutgoing = true, startedAt = System.currentTimeMillis())
         SoundPlayer.startDialTone(context)
 
@@ -68,6 +72,7 @@ object CallManager {
             val signal = CallSignal(CallSignalType.OFFER, callId, identity.publicKeyB64, identity.callsign, peer.pubKeyB64, System.currentTimeMillis(), sdp = sdp)
             scope.launch {
                 val delivered = CallClient.send(peer.host, peer.port, signal)
+                Mb10Log.event(TAG, "call.offer_sent", "call" to callId.take(8), "delivered" to delivered)
                 if (!delivered && _state.value.callId == callId) {
                     // Не достучались до пира прямо сейчас (ушёл из сети между сканом присутствия и звонком) — откатываем вызов локально, ждать нечего.
                     endCallLocal(context, CallOutcome.UNREACHABLE)
@@ -78,9 +83,10 @@ object CallManager {
 
     /** Вызывается из ChatServer.onCallSignal — сигнал уже пришёл по сети, тут только реакция на него. */
     fun onSignalReceived(context: Context, identity: Identity, signal: CallSignal) {
+        Mb10Log.event(TAG, "call.signal_in", "type" to signal.type.name, "call" to signal.callId.take(8), "from" to Mb10Log.short(signal.fromPubKeyB64), "phase" to _state.value.phase.name)
         when (signal.type) {
             CallSignalType.OFFER -> {
-                if (_state.value.phase != CallPhase.IDLE) return // уже заняты другим звонком — молча игнорируем, без busy-сигнала в MVP
+                if (_state.value.phase != CallPhase.IDLE) { Mb10Log.warnEvent(TAG, "call.offer_ignored_busy", "call" to signal.callId.take(8)); return } // уже заняты другим звонком — молча игнорируем, без busy-сигнала в MVP
                 val sdp = signal.sdp ?: return
                 _state.value = CallUiState(CallPhase.INCOMING_RINGING, signal.callId, signal.fromPubKeyB64, signal.fromCallsign, isOutgoing = false, startedAt = System.currentTimeMillis())
                 SoundPlayer.startIncomingRingtone(context)
@@ -122,6 +128,7 @@ object CallManager {
     fun accept(context: Context, identity: Identity) {
         val s = _state.value
         if (s.phase != CallPhase.INCOMING_RINGING) return
+        Mb10Log.event(TAG, "call.accept", "call" to s.callId.take(8))
         SoundPlayer.stopLoop()
         _state.value = s.copy(phase = CallPhase.IN_CALL)
         CallMedia.addLocalAudioTrack(context)
@@ -133,6 +140,7 @@ object CallManager {
     fun endCall(context: Context, identity: Identity) {
         val s = _state.value
         if (s.phase == CallPhase.IDLE) return
+        Mb10Log.event(TAG, "call.end_by_user", "call" to s.callId.take(8), "phase" to s.phase.name)
         val type = if (s.phase == CallPhase.INCOMING_RINGING) CallSignalType.DECLINE else CallSignalType.END
         sendSignal(identity, s.peerPubKeyB64, type, s.callId)
         val outcome = when (s.phase) {
@@ -165,17 +173,24 @@ object CallManager {
     }
 
     private fun sendSignal(identity: Identity, peerPubKeyB64: String, type: CallSignalType, callId: String, sdp: String? = null, ice: IceCandidate? = null) {
-        val peer = PresenceService.peers.value.find { it.pubKeyB64 == peerPubKeyB64 } ?: return
+        val peer = PresenceService.peers.value.find { it.pubKeyB64 == peerPubKeyB64 } ?: run {
+            Mb10Log.warnEvent(TAG, "call.signal_dropped_peer_unknown", "type" to type.name, "call" to callId.take(8), "peer" to Mb10Log.short(peerPubKeyB64))
+            return
+        }
         val signal = CallSignal(
             type = type, callId = callId, fromPubKeyB64 = identity.publicKeyB64, fromCallsign = identity.callsign,
             toPubKeyB64 = peerPubKeyB64, timestamp = System.currentTimeMillis(), sdp = sdp,
             iceSdpMid = ice?.sdpMid, iceSdpMLineIndex = ice?.sdpMLineIndex, iceCandidate = ice?.sdp
         )
-        scope.launch { CallClient.send(peer.host, peer.port, signal) }
+        scope.launch {
+            val ok = CallClient.send(peer.host, peer.port, signal)
+            if (type != CallSignalType.ICE_CANDIDATE || !ok) Mb10Log.event(TAG, "call.signal_out", "type" to type.name, "call" to callId.take(8), "delivered" to ok)
+        }
     }
 
     private fun endCallLocal(context: Context, outcome: String) {
         val s = _state.value
+        Mb10Log.event(TAG, "call.ended", "call" to s.callId.take(8), "outcome" to outcome, "phase" to s.phase.name, "durationMs" to (System.currentTimeMillis() - s.startedAt))
         SoundPlayer.stopLoop()
         CallMedia.close()
         CallForegroundService.stop(context)

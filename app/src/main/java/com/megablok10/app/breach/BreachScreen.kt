@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import com.megablok10.app.log.Mb10Log
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -344,6 +345,7 @@ private fun BreachSession(
         if (result == null) {
             val resolved = BreachResult(attempt.daemons, attempt.matchedDaemonIds)
             result = resolved
+            Mb10Log.event("Breach", "breach.result", "id" to breachId, "title" to title, "tier" to tier.name, "outcome" to resolved.outcome.name, "matched" to attempt.matchedDaemonIds.size, "daemons" to attempt.daemons.size, "secondsLeft" to secondsLeft, "of" to timerSec)
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
             BreachSfx.play(context, when (resolved.outcome) {
                 BreachOutcome.SUCCESS -> BreachCue.SUCCESS
@@ -355,6 +357,7 @@ private fun BreachSession(
     }
 
     LaunchedEffect(seed) {
+        Mb10Log.event("Breach", "breach.start", "id" to breachId, "title" to title, "tier" to tier.name, "grid" to gridSize, "timerSec" to timerSec, "buffer" to bufferSize, "daemons" to daemons.size, "autoSolve" to DebugConfig.autoSolve)
         if (!booted) {
             BreachSfx.play(context, BreachCue.ENTER)
             delay(BOOT_LINE_MS * BOOT_LINES)

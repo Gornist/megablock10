@@ -36,7 +36,11 @@ check "чек подтвердил передачу у Bob" wait_until 30 bash -
 check "дашборд видит демона у Alice" wait_until 90 bash -c "source '$ROOT/scripts/e2e/lib.sh'; api GET \"/api/players/\$(python3 -c 'import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1],safe=\"\"))' '$PKA')\" | grep -q 'Тень Ghost'"
 
 # 3. повторное «Принять» на старой карточке не размножает предмет
-dbg $A DEBUG_SET --es give "daemon:$ID:$PKB"; sleep 4   # Alice передаёт демона обратно
+# Alice передаёт демона обратно. Ждём, пока карточка реально дойдёт до Bob (по журналу приложения), а не фиксированные секунды: иначе тап
+# по «Принять» иногда приходился раньше, чем карточка появлялась в треде.
+BEFORE=$(journal_count $B "chat.recv")
+dbg $A DEBUG_SET --es give "daemon:$ID:$PKB"
+wait_until 30 bash -c "source '$ROOT/scripts/e2e/lib.sh'; [ \$(journal_count $B chat.recv) -gt $BEFORE ]"; sleep 1
 open_chat $B Alice; tap_text $B "Принять" >/dev/null; sleep 3
 eq "демон вернулся к Bob" 1 "$(has $B "$ID")"
 open_chat $A Bob; tap_text $A "Принять" >/dev/null; sleep 3   # старая карточка Bob → Alice

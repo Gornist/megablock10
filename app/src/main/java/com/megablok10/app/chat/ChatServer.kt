@@ -1,6 +1,6 @@
 package com.megablok10.app.chat
 
-import android.util.Log
+import com.megablok10.app.log.Mb10Log
 import com.megablok10.app.breach.ClaimProtocol
 import com.megablok10.app.call.CallProtocol
 import com.megablok10.app.call.CallSignal
@@ -61,7 +61,7 @@ class ChatServer(
     fun start(scope: CoroutineScope) {
         val socket = ServerSocket(0)
         serverSocket = socket
-        Log.i(TAG, "Слушаю входящие сообщения на порту ${socket.localPort}")
+        Mb10Log.event(TAG, "server.listen", "port" to socket.localPort)
         job = scope.launch(Dispatchers.IO) {
             while (isActive) {
                 val client = try {
@@ -84,14 +84,30 @@ class ChatServer(
         try {
             socket.use {
                 it.soTimeout = 5000
-                val line = readBoundedLine(it.getInputStream(), MAX_LINE_CHARS) ?: return
+                val remote = it.inetAddress?.hostAddress
+                val line = readBoundedLine(it.getInputStream(), MAX_LINE_CHARS)
+                if (line == null) {
+                    Mb10Log.warnEvent(TAG, "server.empty_or_oversize", "from" to remote)
+                    return
+                }
+                // Что именно пришло — только вид и длина: тексты и карточки в журнал не попадают.
+                val kind = when {
+                    ChatProtocol.decode(line) != null -> "chat"
+                    CallProtocol.decode(line) != null -> "call"
+                    ClaimProtocol.decode(line) != null -> "claim"
+                    else -> "unknown"
+                }
+                Mb10Log.event(TAG, "server.recv", "from" to remote, "kind" to kind, "chars" to line.length)
                 val handled = ChatProtocol.decode(line)?.let(onMessage)
                     ?: CallProtocol.decode(line)?.let(onCallSignal)
                     ?: ClaimProtocol.decode(line)?.let(onSlotClaim)
-                if (handled == null) onIncompatible(line)
+                if (handled == null) {
+                    Mb10Log.warnEvent(TAG, "server.incompatible_line", "from" to remote, "head" to line.take(24))
+                    onIncompatible(line)
+                }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "входящее соединение отброшено: ${e.message}")
+            Mb10Log.w(TAG, "входящее соединение отброшено: ${e.javaClass.simpleName}: ${e.message}")
         }
     }
 

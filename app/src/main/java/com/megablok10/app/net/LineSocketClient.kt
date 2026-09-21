@@ -1,5 +1,6 @@
 package com.megablok10.app.net
 
+import com.megablok10.app.log.Mb10Log
 import java.io.PrintWriter
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -21,18 +22,23 @@ object LineSocketClient {
      */
     fun sendLineOutcome(host: String, port: Int, line: String, timeoutMs: Int = 2000): SendOutcome {
         val socket = Socket()
+        val started = System.currentTimeMillis()
+        fun took() = System.currentTimeMillis() - started
         return try {
             try {
                 socket.connect(InetSocketAddress(host, port), timeoutMs)
             } catch (e: Exception) {
+                Mb10Log.warnEvent("Socket", "send.not_reached", "to" to "$host:$port", "error" to e.javaClass.simpleName, "msg" to e.message, "ms" to took(), "chars" to line.length)
                 return SendOutcome.NOT_REACHED
             }
             PrintWriter(socket.getOutputStream(), true, Charsets.UTF_8).apply {
                 println(line)
                 flush()
             }
+            Mb10Log.d("Socket", "send.delivered to=$host:$port ms=${took()} chars=${line.length}")
             SendOutcome.DELIVERED
         } catch (e: Exception) {
+            Mb10Log.warnEvent("Socket", "send.unknown", "to" to "$host:$port", "error" to e.javaClass.simpleName, "msg" to e.message, "ms" to took())
             SendOutcome.UNKNOWN
         } finally {
             try { socket.close() } catch (e: Exception) { /* уже закрыт */ }

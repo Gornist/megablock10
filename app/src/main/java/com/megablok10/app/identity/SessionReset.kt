@@ -9,6 +9,7 @@ import com.megablok10.app.collector.ChangeReason
 import com.megablok10.app.collector.ChangeRecordStore
 import com.megablok10.app.collector.CollectorSettings
 import com.megablok10.app.data.Mb10Database
+import com.megablok10.app.log.Mb10Log
 
 /**
  * Сброс сессии персонажа НА УСТРОЙСТВЕ (Настройки → «Опасная зона»): телефон возвращается в состояние «чистая установка», чтобы игрок не нашёл
@@ -35,6 +36,7 @@ object SessionReset {
      * Записи обязаны попасть в очередь ДО стирания ключа: подписывать их после будет нечем.
      */
     suspend fun perform(context: Context, identity: Identity?, reportToCollector: Boolean = true) {
+        Mb10Log.event("SessionReset", "reset.start", "me" to Mb10Log.short(identity?.publicKeyB64), "reportToCollector" to reportToCollector)
         if (reportToCollector && identity != null) {
             ChangeRecordStore.enqueue(context, ChangeField.CALLSIGN, identity.callsign, "", ChangeReason.CHARACTER_RESET)
             ChangeRecordStore.enqueue(context, ChangeField.FACTION, identity.faction, "", ChangeReason.CHARACTER_RESET)
@@ -50,5 +52,6 @@ object SessionReset {
         IdentityManager.clear(context)
         CollectorSettings.setProvisioned(context, false)
         CollectorSettings.setProvisionRejected(context, false)
+        Mb10Log.event("SessionReset", "reset.done")
     }
 }

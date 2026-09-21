@@ -68,6 +68,7 @@ jobs:
         run: |
           mkdir -p e2e-artifacts
           cp -r "$E2E_DIR"/*.log "$E2E_DIR"/*.xml "$ANDROID_AVD_HOME"/*.avd/*.log e2e-artifacts/ 2>/dev/null || true
+          cp -r "$E2E_DIR"/journals e2e-artifacts/ 2>/dev/null || true   # журналы приложения красных сценариев
           for s in emulator-5554 emulator-5556; do
             timeout 15 "$ANDROID_HOME/platform-tools/adb" -s $s exec-out screencap -p > e2e-artifacts/screen_$s.png 2>/dev/null || true
             timeout 15 "$ANDROID_HOME/platform-tools/adb" -s $s logcat -d > e2e-artifacts/logcat_$s.txt 2>/dev/null || true

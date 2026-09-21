@@ -7,6 +7,7 @@ import com.megablok10.app.collector.ChangeRecordStore
 import com.megablok10.app.collector.CollectorSettings
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.identity.IdentityManager
+import com.megablok10.app.log.Mb10Log
 import com.megablok10.app.wallet.TransactionStore
 
 /** Итог применения QR персонажа. */
@@ -26,9 +27,11 @@ sealed interface ProvisionResult {
  */
 object ProvisionStore {
     suspend fun apply(context: Context, p: Mb10Qr.Provision): ProvisionResult {
-        ProvisionRules.validate(p)?.let { return ProvisionResult.Invalid(it) }
-        if (IdentityManager.hasIdentity(context)) return ProvisionResult.AlreadyHasIdentity
-        if (CollectorSettings.isProvisionUsed(context, p.id)) return ProvisionResult.AlreadyUsed
+        val tag = "Provision"
+        ProvisionRules.validate(p)?.let { Mb10Log.warnEvent(tag, "provision.invalid", "id" to p.id, "why" to it); return ProvisionResult.Invalid(it) }
+        if (IdentityManager.hasIdentity(context)) { Mb10Log.warnEvent(tag, "provision.refused", "id" to p.id, "why" to "личность уже есть"); return ProvisionResult.AlreadyHasIdentity }
+        if (CollectorSettings.isProvisionUsed(context, p.id)) { Mb10Log.warnEvent(tag, "provision.refused", "id" to p.id, "why" to "код уже применялся на этом телефоне"); return ProvisionResult.AlreadyUsed }
+        Mb10Log.event(tag, "provision.apply", "id" to p.id, "callsign" to p.callsign, "faction" to p.faction, "balance" to p.startBalance, "ram" to p.ramCapacity, "server" to p.collectorUrl.ifEmpty { "из сборки" }, "secretSet" to p.gameSecret.isNotEmpty())
 
         CollectorSettings.markProvisionUsed(context, p.id)
         if (p.collectorUrl.isNotEmpty()) CollectorSettings.setBaseUrl(context, p.collectorUrl)
@@ -43,6 +46,7 @@ object ProvisionStore {
             ChangeRecordStore.enqueue(context, ChangeField.RAM_CAPACITY, created.ramCapacity.toString(), p.ramCapacity.toString(), ChangeReason.CHARACTER_CREATED, sourceRef = p.id)
         }
         TransactionStore.setStartingBalance(context, p.id, p.startBalance)
+        Mb10Log.event(tag, "provision.done", "id" to p.id, "me" to Mb10Log.short(created.publicKeyB64))
         return ProvisionResult.Applied(IdentityManager.current(context) ?: created)
     }
 }

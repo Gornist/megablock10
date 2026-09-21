@@ -9,6 +9,7 @@ import com.megablok10.app.collector.ChangeRecordStore
 import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.data.PendingAlertEntity
 import com.megablok10.app.identity.Identity
+import com.megablok10.app.log.Mb10Log
 import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
@@ -94,6 +95,7 @@ object SecAlertStore {
     suspend fun dispatch(context: Context, identity: Identity, container: Container, outcome: BreachOutcome, matchedEffects: Set<DaemonEffect>) {
         val now = System.currentTimeMillis()
         val plan = decide(container.ownerFaction, identity.faction, container.tier, outcome, matchedEffects, now)
+        Mb10Log.event("SecAlert", "alert.decide", "container" to container.id, "tier" to container.tier.name, "outcome" to outcome.name, "owner" to container.ownerFaction, "myFaction" to identity.faction, "suppressed" to (plan == null), "sendInMs" to plan?.let { it.sendAt - now })
 
         ChangeRecordStore.enqueue(
             context, ChangeField.COUNTERS_ALERT, null,
@@ -137,6 +139,7 @@ object SecAlertStore {
 
     private suspend fun sendNow(context: Context, pending: PendingAlertEntity) {
         val body = aggregatedBody(pending)
+        Mb10Log.event("SecAlert", "alert.send", "container" to pending.containerId, "faction" to pending.faction)
         val systemIdentity = Identity(publicKeyB64 = SYSTEM_PUBKEY, callsign = SYSTEM_CALLSIGN, faction = pending.faction)
         ChatStore.sendFaction(context, systemIdentity, body)
     }

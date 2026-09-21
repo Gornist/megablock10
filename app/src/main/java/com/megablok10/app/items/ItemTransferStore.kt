@@ -13,6 +13,7 @@ import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.data.TransactionStatus
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.identity.IdentityManager
+import com.megablok10.app.log.Mb10Log
 import com.megablok10.app.net.SendOutcome
 import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.qr.ItemKind
@@ -30,6 +31,8 @@ import java.util.UUID
  * Предметы не копируются, а именно передаются: у получателя они появляются только при принятии,
  * у отправителя пропадают при отправке, отмена недоставленной передачи возвращает предмет.
  */
+private const val TAG = "Items"
+
 object ItemTransferStore {
     fun observeAll(context: Context): Flow<List<ItemTransferEntity>> =
         Mb10Database.get(context).itemTransferDao().observeAll()
@@ -68,6 +71,7 @@ object ItemTransferStore {
         )
         if (inserted == -1L) return null
         removeItem(id)
+        Mb10Log.event(TAG, "item.out_created", "id" to id, "kind" to kind.name, "to" to Mb10Log.short(toPubKeyB64), "payloadChars" to payload.length)
         return Mb10Qr.ItemTransfer(id, identity.publicKeyB64, toPubKeyB64, kind, payload, signature)
     }
 
@@ -76,18 +80,22 @@ object ItemTransferStore {
         val dao = Mb10Database.get(context).itemTransferDao()
         if (!willSend) {
             send()
+            Mb10Log.event(TAG, "item.deliver", "id" to id, "peerVisible" to false, "status" to "остаётся PENDING")
             return
         }
         dao.markDelivered(id)
-        if (send() == SendOutcome.NOT_REACHED) dao.markUndelivered(id)
+        val outcome = send()
+        if (outcome == SendOutcome.NOT_REACHED) dao.markUndelivered(id)
+        Mb10Log.event(TAG, "item.deliver", "id" to id, "peerVisible" to true, "outcome" to outcome.name, "status" to if (outcome == SendOutcome.NOT_REACHED) "откат в PENDING" else "DELIVERED")
     }
 
     /** Отмена недоставленной передачи: предмет возвращается в коллекцию. false — карточка уже доставлена/подтверждена или записи нет. */
     suspend fun cancelOutgoing(context: Context, id: String): Boolean {
         val dao = Mb10Database.get(context).itemTransferDao()
-        val record = dao.get(id) ?: return false
-        if (!record.outgoing || dao.cancelPending(id) == 0) return false
+        val record = dao.get(id) ?: run { Mb10Log.warnEvent(TAG, "item.cancel", "id" to id, "result" to "нет такой записи"); return false }
+        if (!record.outgoing || dao.cancelPending(id) == 0) { Mb10Log.warnEvent(TAG, "item.cancel", "id" to id, "result" to "отказ: уже доставлена/подтверждена"); return false }
         restore(context, record, ChangeReason.ITEM_TRANSFER_CANCELLED)
+        Mb10Log.event(TAG, "item.cancel", "id" to id, "result" to "отменена, предмет возвращён", "kind" to record.kind)
         return true
     }
 
@@ -98,24 +106,28 @@ object ItemTransferStore {
         val record = dao.get(id) ?: return false
         if (!record.outgoing || record.counterpartyPubKeyB64 != receipt.receiverPubKeyB64) return false
         if (!IdentityManager.verify(receipt.receiverPubKeyB64, Mb10QrCodec.receiptSignaturePayload(receipt.id, receipt.receiverPubKeyB64), receipt.signatureB64)) return false
-        return dao.confirm(id) > 0
+        val confirmed = dao.confirm(id) > 0
+        Mb10Log.event(TAG, "item.receipt", "id" to id, "confirmed" to confirmed)
+        return confirmed
     }
 
     /** Получатель проверяет подпись отправителя и кладёт предмет в коллекцию. false — подпись не сошлась, своя же карточка или уже принято. */
     suspend fun acceptIncoming(context: Context, myPubKeyB64: String, card: Mb10Qr.ItemTransfer): Boolean {
-        if (card.fromPubKeyB64 == myPubKeyB64) return false
+        fun reject(why: String): Boolean { Mb10Log.warnEvent(TAG, "item.in_rejected", "id" to card.id, "from" to Mb10Log.short(card.fromPubKeyB64), "kind" to card.kind.name, "why" to why); return false }
+        if (card.fromPubKeyB64 == myPubKeyB64) return reject("своя же карточка")
         // Адресат в подписи: чужую копию карточки принять нельзя (иначе один предмет можно получить дважды).
-        if (card.toPubKeyB64 != myPubKeyB64) return false
+        if (card.toPubKeyB64 != myPubKeyB64) return reject("адресована не мне")
         val signed = Mb10QrCodec.itemTransferSignaturePayload(card.id, card.fromPubKeyB64, card.toPubKeyB64, card.kind, card.payload)
-        if (!IdentityManager.verify(card.fromPubKeyB64, signed, card.signatureB64)) return false
+        if (!IdentityManager.verify(card.fromPubKeyB64, signed, card.signatureB64)) return reject("подпись не сошлась")
 
         val record = ItemTransferEntity(card.id, card.fromPubKeyB64, card.kind.name, card.payload, System.currentTimeMillis(), TransactionStatus.CONFIRMED, outgoing = false)
         // Запись-«принято» ставится первой: если предмет не разобрался, откатываем её, иначе карточка «сгорит» без выдачи.
-        if (Mb10Database.get(context).itemTransferDao().insertIfAbsent(record) == -1L) return false
+        if (Mb10Database.get(context).itemTransferDao().insertIfAbsent(record) == -1L) return reject("уже принята раньше")
         if (!restore(context, record, ChangeReason.ITEM_TRANSFER_IN)) {
             Mb10Database.get(context).itemTransferDao().delete(card.id)
-            return false
+            return reject("содержимое не разобралось")
         }
+        Mb10Log.event(TAG, "item.in_accepted", "id" to card.id, "from" to Mb10Log.short(card.fromPubKeyB64), "kind" to card.kind.name)
         return true
     }
 

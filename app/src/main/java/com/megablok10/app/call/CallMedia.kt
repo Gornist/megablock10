@@ -1,7 +1,7 @@
 package com.megablok10.app.call
 
 import android.content.Context
-import android.util.Log
+import com.megablok10.app.log.Mb10Log
 import org.webrtc.AudioSource
 import org.webrtc.AudioTrack
 import org.webrtc.DataChannel
@@ -74,6 +74,7 @@ object CallMedia {
         val observer = object : PeerConnection.Observer {
             override fun onIceCandidate(candidate: IceCandidate) = onIceCandidate(candidate)
             override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) {
+                Mb10Log.event(TAG, "call.ice_state", "state" to state.name)
                 when (state) {
                     PeerConnection.IceConnectionState.CONNECTED,
                     PeerConnection.IceConnectionState.COMPLETED -> onConnected()
@@ -83,8 +84,8 @@ object CallMedia {
                     else -> {}
                 }
             }
-            override fun onSignalingChange(state: PeerConnection.SignalingState) {}
-            override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) {}
+            override fun onSignalingChange(state: PeerConnection.SignalingState) { Mb10Log.event(TAG, "call.signaling_state", "state" to state.name) }
+            override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) { Mb10Log.event(TAG, "call.ice_gathering", "state" to state.name) }
             override fun onIceConnectionReceivingChange(receiving: Boolean) {}
             override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>) {}
             override fun onAddStream(stream: MediaStream) {}
@@ -94,7 +95,7 @@ object CallMedia {
             override fun onAddTrack(receiver: RtpReceiver, streams: Array<out MediaStream>) {}
         }
         val pc = pcFactory.createPeerConnection(rtcConfig, observer) ?: run {
-            Log.w(TAG, "createPeerConnection вернул null")
+            Mb10Log.w(TAG, "createPeerConnection вернул null")
             return
         }
         peerConnection = pc
@@ -164,8 +165,8 @@ object CallMedia {
     private fun sdpObserver(
         onCreate: (SessionDescription) -> Unit = {},
         onSet: () -> Unit = {},
-        onCreateFailure: (String) -> Unit = { Log.w(TAG, "createOffer/Answer failed: $it") },
-        onSetFailure: (String) -> Unit = { Log.w(TAG, "setLocal/RemoteDescription failed: $it") }
+        onCreateFailure: (String) -> Unit = { Mb10Log.w(TAG, "createOffer/Answer failed: $it") },
+        onSetFailure: (String) -> Unit = { Mb10Log.w(TAG, "setLocal/RemoteDescription failed: $it") }
     ) = object : SdpObserver {
         override fun onCreateSuccess(sdp: SessionDescription) = onCreate(sdp)
         override fun onSetSuccess() = onSet()

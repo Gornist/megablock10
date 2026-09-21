@@ -9,6 +9,8 @@ import com.megablok10.app.identity.Identity
 import com.megablok10.app.net.IncompatibleVersionReporter
 import com.megablok10.app.net.SendOutcome
 import com.megablok10.app.call.CallManager
+import com.megablok10.app.log.DeviceDiagnostics
+import com.megablok10.app.log.Mb10Log
 import com.megablok10.app.presence.PeerInfo
 import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.presence.WifiBinder
@@ -33,6 +35,8 @@ import kotlinx.coroutines.withContext
  * вкладке). Держит сервер на приём + presence на обнаружение и знает, как
  * разослать/сохранить исходящее.
  */
+private const val TAG = "ChatStore"
+
 object ChatStore {
     private var server: ChatServer? = null
 
@@ -51,6 +55,7 @@ object ChatStore {
         if (startedForKey == identity.publicKeyB64) return
         stop()
         startedForKey = identity.publicKeyB64
+        Mb10Log.event(TAG, "chat.start", "me" to Mb10Log.short(identity.publicKeyB64), "callsign" to identity.callsign, "faction" to identity.faction)
 
         val appContext = context.applicationContext
         val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -65,7 +70,9 @@ object ChatStore {
                 onMessage = { msg ->
                     appScope.launch {
                         // Повторная доставка того же сообщения (отправитель не увидел подтверждения и переслал из очереди) не дублируется.
-                        if (!persistIfNew(appContext, msg)) return@launch
+                        val fresh = persistIfNew(appContext, msg)
+                        Mb10Log.event(TAG, "chat.recv", "type" to msg.type.name, "from" to Mb10Log.short(msg.fromPubKeyB64), "chars" to msg.body.length, "duplicate" to !fresh, "ageMs" to (System.currentTimeMillis() - msg.timestamp))
+                        if (!fresh) return@launch
                         confirmIfReceipt(appContext, msg)
                     }
                     // Звук — только для реально пришедших по сети сообщений (этот колбэк
@@ -80,6 +87,7 @@ object ChatStore {
             server = srv
             PresenceService.start(appContext, identity, srv.port)
             SecAlertStore.start(appContext, appScope)
+            DeviceDiagnostics.startSnapshots(appContext, appScope)
         }
 
         // Очередь исходящих: досылаем, как только адресат снова виден, и по таймеру (для повторов с паузой).
@@ -88,6 +96,7 @@ object ChatStore {
     }
 
     fun stop() {
+        Mb10Log.event(TAG, "chat.stop")
         server?.stop()
         PresenceService.stop()
         WifiBinder.stop()
@@ -113,6 +122,7 @@ object ChatStore {
         val wire = ChatWireMessage(ChatMessageType.FACTION, identity.publicKeyB64, identity.callsign, identity.faction, "", timestamp, body)
         persist(context, wire)
         val recipients = PresenceService.peers.value.filter { it.faction == identity.faction }
+        Mb10Log.event(TAG, "chat.send_faction", "recipients" to recipients.size, "chars" to body.length)
         withContext(Dispatchers.IO) {
             recipients.forEach { peer -> if (!ChatClient.send(peer.host, peer.port, wire)) OutboxStore.enqueue(context, peer.pubKeyB64, wire) }
         }
@@ -135,8 +145,10 @@ object ChatStore {
         val wire = ChatWireMessage(ChatMessageType.DM, identity.publicKeyB64, identity.callsign, identity.faction, peerPubKeyB64, timestamp, body)
         persist(context, wire)
         val outcome = if (peer == null) SendOutcome.NOT_REACHED else withContext(Dispatchers.IO) { ChatClient.sendOutcome(peer.host, peer.port, wire) }
+        val queued = outcome != SendOutcome.DELIVERED && OutboxPolicy.isQueueable(body)
+        Mb10Log.event(TAG, "chat.send_direct", "to" to Mb10Log.short(peerPubKeyB64), "peerVisible" to (peer != null), "outcome" to outcome.name, "queued" to queued, "chars" to body.length)
         // Не ушло (адресата не видно или обрыв на роуминге) — в очередь: уйдёт само, когда он появится. Деньги/предметы не queue-им, см. OutboxPolicy.
-        if (outcome != SendOutcome.DELIVERED && OutboxPolicy.isQueueable(body)) OutboxStore.enqueue(context, peerPubKeyB64, wire)
+        if (queued) OutboxStore.enqueue(context, peerPubKeyB64, wire)
         return outcome
     }
 
@@ -149,8 +161,9 @@ object ChatStore {
         if (message.type != ChatMessageType.DM) return
         val receipt = Mb10QrCodec.decode(message.body) as? Mb10Qr.Receipt ?: return
         // Один и тот же чек подтверждает и деньги, и передачу предмета: id из разных журналов не пересекаются.
-        TransactionStore.verifyAndConfirmReceipt(context, receipt.id, receipt)
-        ItemTransferStore.verifyAndConfirmReceipt(context, receipt.id, receipt)
+        val money = TransactionStore.verifyAndConfirmReceipt(context, receipt.id, receipt)
+        val item = ItemTransferStore.verifyAndConfirmReceipt(context, receipt.id, receipt)
+        Mb10Log.event(TAG, "receipt.in", "id" to receipt.id, "from" to Mb10Log.short(receipt.receiverPubKeyB64), "confirmedMoney" to money, "confirmedItem" to item)
     }
 
     /** Сохраняет входящее, если такого ещё нет (тот же отправитель, время, тип и текст). false — это повтор. */

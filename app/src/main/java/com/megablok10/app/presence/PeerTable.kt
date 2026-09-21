@@ -1,5 +1,6 @@
 package com.megablok10.app.presence
 
+import com.megablok10.app.log.Mb10Log
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -8,6 +9,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+
+private const val TAG = "PeerTable"
 
 /** Известный баг платформы на части устройств: NSD может мигнуть onServiceLost сразу за onServiceFound для одного и того же пира без реального разрыва — отсюда дебаунс перед фактическим удалением. 12 с (а не 4): при роуминге между точками Wi-Fi бывают паузы до нескольких секунд, и короткий разрыв не должен выглядеть как «ушёл офлайн» (docs/network-spec.md, §7). */
 internal const val LOST_DEBOUNCE_MS = 12_000L
@@ -28,17 +31,25 @@ internal class PeerTable(private val scopeProvider: () -> CoroutineScope?) {
 
     private fun publish() { _peers.value = peerMap.values.toList() }
 
-    fun addStatic(peer: PeerInfo) { peerMap["static:${peer.pubKeyB64}"] = peer; publish() }
+    fun addStatic(peer: PeerInfo) { peerMap["static:${peer.pubKeyB64}"] = peer; Mb10Log.event(TAG, "peer.static", "peer" to Mb10Log.short(peer.pubKeyB64), "addr" to "${peer.host}:${peer.port}"); publish() }
+
+    /** Короткое описание для журнала: `ab12cd34(Ник@10.10.0.5:4000,nsd)`. */
+    fun describe(): String = peerMap.entries.joinToString(",", "[", "]") { (k, p) ->
+        val src = when { k.startsWith("static:") -> "static"; k.startsWith("srv:") -> "srv"; else -> "nsd" }
+        "${Mb10Log.short(p.pubKeyB64)}(${p.callsign}@${p.host}:${p.port},$src)"
+    }
 
     /** Пир найден и разрешён: отменяет отложенное удаление, если оно было запланировано. */
     fun found(serviceName: String, peer: PeerInfo) {
-        pendingRemovals.remove(serviceName)?.cancel()
-        peerMap[serviceName] = peer
+        val cancelled = pendingRemovals.remove(serviceName)?.also { it.cancel() } != null
+        val isNew = peerMap.put(serviceName, peer) == null
+        Mb10Log.event(TAG, "peer.found", "service" to serviceName, "peer" to Mb10Log.short(peer.pubKeyB64), "callsign" to peer.callsign, "addr" to "${peer.host}:${peer.port}", "new" to isNew, "cancelledRemoval" to cancelled)
         publish()
     }
 
     /** NSD сообщил о пропаже: удаляем не сразу, а через [LOST_DEBOUNCE_MS]. */
     fun lost(serviceName: String) {
+        Mb10Log.event(TAG, "peer.lost_reported", "service" to serviceName, "removeInMs" to LOST_DEBOUNCE_MS)
         scheduleRemoval(serviceName, LOST_DEBOUNCE_MS)
     }
 
@@ -52,8 +63,9 @@ internal class PeerTable(private val scopeProvider: () -> CoroutineScope?) {
         pendingRemovals[name]?.cancel()
         pendingRemovals[name] = scope.launch {
             delay(afterMs)
-            peerMap.remove(name)
+            val gone = peerMap.remove(name)
             pendingRemovals.remove(name)
+            Mb10Log.event(TAG, "peer.removed", "service" to name, "peer" to Mb10Log.short(gone?.pubKeyB64), "afterMs" to afterMs)
             publish()
         }
     }
@@ -80,6 +92,9 @@ internal class PeerTable(private val scopeProvider: () -> CoroutineScope?) {
             else if (peerMap[key] != peer) { peerMap[key] = peer; changed = true }
         }
         peerMap.keys.filter { it.startsWith("srv:") && it !in wanted }.forEach { peerMap.remove(it); changed = true }
-        if (changed) publish()
+        if (changed) {
+            Mb10Log.event(TAG, "peer.server_hints", "fromServer" to fromServer.size, "peers" to describe())
+            publish()
+        }
     }
 }

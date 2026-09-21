@@ -5,7 +5,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
-import android.util.Log
+import com.megablok10.app.log.Mb10Log
 import java.net.Inet4Address
 
 private const val TAG = "WifiBinder"
@@ -33,6 +33,7 @@ object WifiBinder {
     fun start(context: Context, onChanged: () -> Unit) {
         stop()
         val cm = context.applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+        Mb10Log.event(TAG, "wifi.start")
         manager = cm
         // INTERNET снимаем: сеть без выхода наружу — это и есть наша сеть; VALIDATED не требуем вовсе.
         val request = NetworkRequest.Builder()
@@ -41,21 +42,25 @@ object WifiBinder {
             .build()
         val cb = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
+                Mb10Log.event(TAG, "wifi.available", "network" to network)
                 bind(cm, network)
                 onChanged()
             }
             override fun onLinkPropertiesChanged(network: Network, linkProperties: android.net.LinkProperties) {
                 if (network == boundNetwork) {
+                    val before = ownIpv4
                     ownIpv4 = linkProperties.linkAddresses.map { it.address }.filterIsInstance<Inet4Address>().firstOrNull()?.hostAddress
+                    Mb10Log.event(TAG, "wifi.link_changed", "network" to network, "ipBefore" to before, "ip" to ownIpv4, "dns" to linkProperties.dnsServers.joinToString(",") { it.hostAddress ?: "?" }, "routes" to linkProperties.routes.size)
                     onChanged()
                 }
             }
             override fun onLost(network: Network) {
+                Mb10Log.event(TAG, "wifi.lost", "network" to network, "wasBound" to (network == boundNetwork))
                 if (network == boundNetwork) {
                     boundNetwork = null
                     ownIpv4 = null
-                    try { cm.bindProcessToNetwork(null) } catch (e: Exception) { Log.w(TAG, "не удалось снять привязку: ${e.message}") }
-                    Log.i(TAG, "Wi-Fi пропал, привязка снята")
+                    try { cm.bindProcessToNetwork(null) } catch (e: Exception) { Mb10Log.w(TAG, "не удалось снять привязку: ${e.message}") }
+                    Mb10Log.i(TAG, "Wi-Fi пропал, привязка снята")
                 }
                 onChanged()
             }
@@ -64,7 +69,7 @@ object WifiBinder {
         try {
             cm.requestNetwork(request, cb)
         } catch (e: SecurityException) {
-            Log.w(TAG, "нет разрешения CHANGE_NETWORK_STATE, привязка к Wi-Fi недоступна: ${e.message}")
+            Mb10Log.w(TAG, "нет разрешения CHANGE_NETWORK_STATE, привязка к Wi-Fi недоступна: ${e.message}")
         }
     }
 
@@ -73,12 +78,12 @@ object WifiBinder {
             if (cm.bindProcessToNetwork(network)) {
                 boundNetwork = network
                 ownIpv4 = cm.getLinkProperties(network)?.linkAddresses?.map { it.address }?.filterIsInstance<Inet4Address>()?.firstOrNull()?.hostAddress
-                Log.i(TAG, "привязано к Wi-Fi: network=$network ip=$ownIpv4")
+                Mb10Log.i(TAG, "привязано к Wi-Fi: network=$network ip=$ownIpv4")
             } else {
-                Log.w(TAG, "bindProcessToNetwork вернул false для $network")
+                Mb10Log.w(TAG, "bindProcessToNetwork вернул false для $network")
             }
         } catch (e: Exception) {
-            Log.w(TAG, "не удалось привязаться к Wi-Fi: ${e.message}")
+            Mb10Log.w(TAG, "не удалось привязаться к Wi-Fi: ${e.message}")
         }
     }
 

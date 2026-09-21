@@ -7,6 +7,7 @@ import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.data.SlotClaimEntity
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.identity.IdentityManager
+import com.megablok10.app.log.Mb10Log
 import com.megablok10.app.presence.PresenceService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -53,6 +54,7 @@ object SlotClaimStore {
             if (collectorUrl != null && container.loot[index].copies > 0) {
                 val granted = CollectorClient.claimSlot(collectorUrl, slotRef, identity.publicKeyB64, claimedAt, signature, CollectorSettings.gameSecret(context))
                 if (!granted) {
+                    Mb10Log.warnEvent("Slots", "slot.refused_by_server", "slot" to slotRef)
                     refused += index
                     continue
                 }
@@ -60,6 +62,7 @@ object SlotClaimStore {
 
             val entity = SlotClaimEntity(slotRef = slotRef, claimantKeyB64 = identity.publicKeyB64, claimedAt = claimedAt, signature = signature)
             dao.insertIfAbsent(entity)
+            Mb10Log.event("Slots", "slot.claimed", "slot" to slotRef, "viaServer" to (collectorUrl != null && container.loot[index].copies > 0))
             broadcast(entity)
             return index
         }
@@ -107,8 +110,12 @@ object SlotClaimStore {
     /** Входящая заявка от другого устройства (см. ChatStore) — принимается только если подпись действительно принадлежит заявленному ключу. */
     suspend fun receive(context: Context, claim: SlotClaimEntity) {
         val payload = ClaimProtocol.signaturePayload(claim.slotRef, claim.claimantKeyB64, claim.claimedAt)
-        if (!IdentityManager.verify(claim.claimantKeyB64, payload, claim.signature)) return
+        if (!IdentityManager.verify(claim.claimantKeyB64, payload, claim.signature)) {
+            Mb10Log.warnEvent("Slots", "slot.claim_in_bad_signature", "slot" to claim.slotRef, "from" to Mb10Log.short(claim.claimantKeyB64))
+            return
+        }
         Mb10Database.get(context).slotClaimDao().insertIfAbsent(claim)
+        Mb10Log.event("Slots", "slot.claim_in", "slot" to claim.slotRef, "from" to Mb10Log.short(claim.claimantKeyB64))
     }
 
     private suspend fun broadcast(claim: SlotClaimEntity) {
