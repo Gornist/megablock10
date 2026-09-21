@@ -36,11 +36,11 @@ object ProvisionStore {
         CollectorSettings.setProvisioned(context, p.collectorUrl.isNotEmpty() || p.gameSecret.isNotEmpty())
 
         val created = IdentityManager.getOrCreate(context, p.callsign.trim(), p.faction.trim())
-        ChangeRecordStore.enqueue(context, ChangeField.CALLSIGN, null, created.callsign, ChangeReason.CHARACTER_CREATED)
-        ChangeRecordStore.enqueue(context, ChangeField.FACTION, null, created.faction, ChangeReason.CHARACTER_CREATED)
+        ChangeRecordStore.enqueue(context, ChangeField.CALLSIGN, null, created.callsign, ChangeReason.CHARACTER_CREATED, sourceRef = p.id)
+        ChangeRecordStore.enqueue(context, ChangeField.FACTION, null, created.faction, ChangeReason.CHARACTER_CREATED, sourceRef = p.id)
         if (p.ramCapacity != 0 && p.ramCapacity != created.ramCapacity) {
             IdentityManager.applyRamOverride(context, p.ramCapacity)
-            ChangeRecordStore.enqueue(context, ChangeField.RAM_CAPACITY, created.ramCapacity.toString(), p.ramCapacity.toString(), ChangeReason.CHARACTER_CREATED)
+            ChangeRecordStore.enqueue(context, ChangeField.RAM_CAPACITY, created.ramCapacity.toString(), p.ramCapacity.toString(), ChangeReason.CHARACTER_CREATED, sourceRef = p.id)
         }
         TransactionStore.setStartingBalance(context, p.id, p.startBalance)
         return ProvisionResult.Applied(IdentityManager.current(context) ?: created)
