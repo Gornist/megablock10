@@ -164,7 +164,7 @@ port_of() {
 # ── Управление сервером ──
 server_stop() { [ -f "$E2E_DIR/server.pid" ] && kill "$(cat "$E2E_DIR/server.pid")" 2>/dev/null; rm -f "$E2E_DIR/server.pid"; lsof -ti tcp:$PORT -sTCP:LISTEN 2>/dev/null | xargs kill 2>/dev/null; sleep 1; }
 server_start() {
-  (cd "$ROOT/admin-web/server" && PATH="${NODE_BIN:+$NODE_BIN:}$PATH" DB_PATH="$E2E_DIR/db.sqlite" BACKUP_DIR="$E2E_DIR/backups" PORT=$PORT GAME_SECRET="${E2E_GAME_SECRET:-}" nohup node dist/index.js > "$E2E_DIR/server.log" 2>&1 & echo $! > "$E2E_DIR/server.pid")
+  (cd "$ROOT/admin-web/server" && PATH="${NODE_BIN:+$NODE_BIN:}$PATH" DB_PATH="$E2E_DIR/db.sqlite" BACKUP_DIR="$E2E_DIR/backups" PORT=$PORT GAME_SECRET="${E2E_GAME_SECRET:-}" nohup env ${E2E_SERVER_ENV:-} node dist/index.js > "$E2E_DIR/server.log" 2>&1 & echo $! > "$E2E_DIR/server.pid")
   wait_until 20 curl -s -o /dev/null "$API/api/overview"
 }
 # tx_of <serial> — id последнего перевода, созданного командой pay (из logcat).

@@ -61,6 +61,17 @@ jobs:
           npm test
           npm run build
 
+      - name: Сценарии-провокаторы детекторов аномалий (отдельный сервер, без эмуляторов)
+        run: scripts/e2e/anomaly-all.sh
+
+      - name: Артефакты replay детекторов
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: anomaly-replay
+          path: /tmp/mb10-e2e-anom-artifacts
+          if-no-files-found: ignore
+
       - name: Client — линт и сборка
         working-directory: admin-web/client
         run: |

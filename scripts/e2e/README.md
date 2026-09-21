@@ -14,6 +14,38 @@ scripts/e2e/down.sh          # остановить всё
 
 `up.sh` флаги: `--no-build` (не пересобирать APK), `--keep-data` (не сбрасывать БД сервера и данные телефонов), `--clock N` (игровые часы в N раз быстрее, по умолчанию 60), `--timer N` (таймер взлома ×N, по умолчанию 10).
 
+## Сценарии-провокаторы для детекторов аномалий
+
+Детекторы коллектора (тревоги «Требует внимания») проверены юнит-тестами, а здесь — на живом сервере. `scripts/e2e/anomaly-all.sh` гоняет `scenarios-anomaly/*.sh`: каждый сценарий делает провокацию, ждёт тревогу нужного вида (`kind`) и проверяет, что **без провокации** этой тревоги нет (ложные срабатывания так же важны). Эмуляторы не нужны: сценарии идут на **отдельном** сервере (порт 2518, пустая БД в `/tmp/mb10-e2e-anom`, ускоренные окна `PULSE_INTERVAL_MS=2000`, `ONLINE_WINDOW_MS=15000`, `CHANGES_RATE_PER_MIN=60`, `ATTN_TRANSFER_STUCK_MIN=0.1`), основной стенд не затрагивается. Поддельные устройства делает `fakedev.mjs` (пара EC P-256, подписи как у приложения). Нужны Node ≥22 и `python3`; в CI шаг идёт в job `admin-web`.
+
+```bash
+scripts/e2e/anomaly-all.sh                       # все, кроме silent-phone
+scripts/e2e/anomaly-all.sh anomaly-clock        # один
+scripts/e2e/anomaly-all.sh --phones             # плюс silent-phone (нужен ./up.sh с эмуляторами)
+```
+
+| Сценарий | Провокация | Ожидаемая тревога |
+|---|---|---|
+| `anomaly-mass-silence` | 6 устройств на связи 15 с, затем молчат | `mass_silence` (срочная) |
+| `anomaly-reject-spike` | 15 записей с чужой подписью | `reject_spike` (срочная, «подпись») |
+| `anomaly-rate-limit` | 100 heartbeat с одного адреса | `rate_limited` |
+| `anomaly-secret` | 5 запросов без кода игры (на сервере с `GAME_SECRET`) | `secret_denied` |
+| `anomaly-duplicate-receive` | один `sourceRef` с `TRANSFER_IN` у двух игроков | `duplicate_receive` (срочная) |
+| `anomaly-amount-mismatch` | списано 100, получено 300 | `transfer_amount_mismatch` (срочная); честная пара 50/50 тревоги не даёт |
+| `anomaly-chain-break` | `oldValue` не равен прошлому `newValue` | `balance_chain_break` |
+| `anomaly-unexplained-jump` | +5000 по причине `RAM_UPGRADE` | `balance_unexplained` (срочная); тот же рост за взлом не даёт |
+| `anomaly-clock` | запись, датированная на 30 мин вперёд | `clock_skew` |
+| `anomaly-stuck-transfer` | `TRANSFER_OUT` без пары; вариант с отменой | `transfer_stuck` (ровно один) |
+| `anomaly-outlier` | 6 игроков по 3 взлома, у одного 40 | `player_outlier` |
+| `anomaly-emission` | 55 с спокойной игры, потом 3 награды по 500 | `emission_spike` |
+| `anomaly-silent-phone` | настоящий эмулятор Bob уходит в авиарежим | `went_silent` (порог на стенде 45 с) |
+
+После каждого сценария в `/tmp/mb10-e2e-anom-artifacts` (в CI — артефакт `anomaly-replay`) сохраняется вывод `GET /api/anomalies/replay` — по нему подбирают пороги `ANOM_*`. Проверять тревоги нужно по полю `kind`, а не по тексту.
+
+Сценарий `zz-honest-traffic.sh` в обычном `run-all.sh` после всех остальных проверяет, что честный трафик двух эмуляторов не породил тревог о подделке (`duplicate_receive`, `transfer_amount_mismatch`, `balance_unexplained`, `clock_skew`, `reject_spike`). Тревога `balance_chain_break` на стенде появляется всегда и ложной не считается: отладочные команды `--es balance N` меняют баланс без записи об изменении, поэтому цепочка на стенде рвётся (в игре так делает только мастер, а его правки детектор исключает).
+
+**Порог `ATTN_SILENT_MIN` на стенде нельзя ставить меньше ~40 с**: телефон шлёт heartbeat раз в 30 с, при более коротком пороге честный телефон всё время будет «пропадать со связи».
+
 ## Что ускоряет прогон
 
 - **Ускоренные часы** (`DebugConfig.clockSpeed`): кулдаун контейнера 30 мин → 30 с, задержка сигнала СБ 2 мин → 2 с, TTL и агрегация — так же.
