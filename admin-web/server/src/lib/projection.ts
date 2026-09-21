@@ -16,74 +16,64 @@ function emptyCounters(): Counters {
   return { breaches: {}, slotsClaimed: 0, alertsSent: 0, alertsSuppressed: 0, breachesBlocked: {} };
 }
 
-/**
- * Снимок персонажа, посчитанный SQL-выборкой по changes на каждое чтение —
- * никакой отдельной таблицы-снимка нет и поддерживать её в синхроне не
- * нужно (см. обсуждение объёма работ). Для ~100 игроков и десятков тысяч
- * записей это дешевле, чем инкрементальное обновление, и не может разойтись
- * с историей по определению — история и есть источник истины.
- *
- * Формат JSON внутри old_value/new_value для полей daemons, shards, counters
- * — рабочий черновик протокола, будет зафиксирован вместе с Android-клиентом
- * (Ф2): daemons.add/shards.add несут полный объект сущности, .remove/.decrypt
- * несут { daemonId | shardId }, counters.* несут { path, delta }.
- */
-export function projectCharacter(db: Db, subjectKeyB64: string, until?: number): CharacterSnapshot | null {
-  // received_at, не seq — seq осмысленно сравним только внутри одного actor'а
-  // (устройство нумерует свои же записи по порядку), а master-правки живут в
-  // отдельном (отрицательном) диапазоне seq именно чтобы не сталкиваться с
-  // устройством, а не чтобы задавать порядок применения. received_at общий
-  // для всех источников и отражает реальный порядок поступления на сервер —
-  // то, что нужно для "последняя правка выигрывает" (§6.4 ТЗ).
-  // until — состояние «на момент T» по часам сервера (received_at): ровно то, что видел бы дашборд в тот момент.
-  const rows = (
-    until === undefined
-      ? db.prepare(`SELECT * FROM changes WHERE subject_key = ? ORDER BY received_at ASC, seq ASC`).all(subjectKeyB64)
-      : db
-          .prepare(`SELECT * FROM changes WHERE subject_key = ? AND received_at <= ? ORDER BY received_at ASC, seq ASC`)
-          .all(subjectKeyB64, until)
-  ) as StoredChangeRow[];
-
-  // slotsClaimed — не из changes, а из реестра арбитража (§5 ТЗ): именно
-  // slot_claims фиксирует, кто реально получил тиражный слот через сервер.
-  const claimedRow = (
-    until === undefined
-      ? db.prepare(`SELECT COUNT(*) AS n FROM slot_claims WHERE claimant_key = ? AND revoked = 0`).get(subjectKeyB64)
-      : db
-          .prepare(`SELECT COUNT(*) AS n FROM slot_claims WHERE claimant_key = ? AND revoked = 0 AND claimed_at <= ?`)
-          .get(subjectKeyB64, until)
-  ) as { n: number };
-
-  return projectRows(subjectKeyB64, rows, claimedRow.n);
-}
-
-/**
- * Снимки ВСЕХ персонажей за один проход по истории: одна выборка, упорядоченная
- * по (игрок, время), вместо запроса на каждого игрока (1 + 2·N обращений к БД).
- * Результат тот же, что у projectCharacter для каждого ключа по отдельности
- * (это проверяется тестом) — просто дешевле на сотнях игроков и десятках тысяч записей.
- */
 /** Только то, что читает свёртка: подписи, actor, source_ref и т.п. ей не нужны, а на десятках тысяч строк их материализация заметна. */
 const PROJECTION_COLUMNS = "subject_key, field, new_value, reason, received_at, seq";
 
+/**
+ * Записи для свёртки в порядке применения (игрок, received_at, seq). received_at, не seq — seq осмысленно сравним только внутри
+ * одного устройства, а мастерские правки живут в отдельном (отрицательном) диапазоне; received_at общий для всех источников и
+ * отражает реальный порядок поступления на сервер — то, что нужно для «последняя правка выигрывает» (§6.4 ТЗ).
+ * until — состояние «на момент T» по часам сервера: ровно то, что видел бы дашборд в тот момент. key — только один игрок.
+ */
+function selectRows(db: Db, until?: number, key?: string): Iterable<ProjectionRow> {
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+  if (key !== undefined) {
+    clauses.push("subject_key = ?");
+    params.push(key);
+  }
+  if (until !== undefined) {
+    clauses.push("received_at <= ?");
+    params.push(until);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  return db.prepare(`SELECT ${PROJECTION_COLUMNS} FROM changes ${where} ORDER BY subject_key, received_at ASC, seq ASC`).iterate(...params) as Iterable<ProjectionRow>;
+}
+
+/** slotsClaimed — не из changes, а из реестра арбитража (§5 ТЗ): именно slot_claims фиксирует, кто реально получил тиражный слот через сервер. */
+function claimCounts(db: Db, until?: number, key?: string): Map<string, number> {
+  const clauses = ["revoked = 0"];
+  const params: unknown[] = [];
+  if (key !== undefined) {
+    clauses.push("claimant_key = ?");
+    params.push(key);
+  }
+  if (until !== undefined) {
+    clauses.push("claimed_at <= ?");
+    params.push(until);
+  }
+  const rows = db.prepare(`SELECT claimant_key, COUNT(*) AS n FROM slot_claims WHERE ${clauses.join(" AND ")} GROUP BY claimant_key`).all(...params) as { claimant_key: string; n: number }[];
+  return new Map(rows.map((r) => [r.claimant_key, r.n]));
+}
+
+/**
+ * Снимок персонажа, посчитанный SQL-выборкой по changes на каждое чтение — никакой отдельной таблицы-снимка нет и поддерживать её в
+ * синхроне не нужно. Для ~100 игроков и десятков тысяч записей это дешевле, чем инкрементальное обновление, и не может разойтись
+ * с историей по определению — история и есть источник истины.
+ *
+ * Формат JSON внутри old_value/new_value для полей daemons, shards, counters — рабочий черновик протокола, зафиксированный вместе
+ * с Android-клиентом: daemons.add/shards.add несут полный объект сущности, .remove/.decrypt несут { daemonId | shardId }, counters.* — { path, delta }.
+ */
+export function projectCharacter(db: Db, subjectKeyB64: string, until?: number): CharacterSnapshot | null {
+  return projectRows(subjectKeyB64, [...selectRows(db, until, subjectKeyB64)], claimCounts(db, until, subjectKeyB64).get(subjectKeyB64) ?? 0);
+}
+
+/**
+ * Снимки ВСЕХ персонажей за один проход по истории: одна выборка, упорядоченная по (игрок, время), вместо запроса на каждого игрока.
+ * Тот же projectRows, что и у projectCharacter, поэтому результат для каждого ключа одинаков (это проверяется тестом).
+ */
 export function projectAll(db: Db, until?: number): CharacterSnapshot[] {
-  const claims = new Map(
-    (
-      (until === undefined
-        ? db.prepare(`SELECT claimant_key, COUNT(*) AS n FROM slot_claims WHERE revoked = 0 GROUP BY claimant_key`).all()
-        : db.prepare(`SELECT claimant_key, COUNT(*) AS n FROM slot_claims WHERE revoked = 0 AND claimed_at <= ? GROUP BY claimant_key`).all(until)) as {
-        claimant_key: string;
-        n: number;
-      }[]
-    ).map((r) => [r.claimant_key, r.n]),
-  );
-
-  const stmt =
-    until === undefined
-      ? db.prepare(`SELECT ${PROJECTION_COLUMNS} FROM changes ORDER BY subject_key, received_at ASC, seq ASC`)
-      : db.prepare(`SELECT ${PROJECTION_COLUMNS} FROM changes WHERE received_at <= ? ORDER BY subject_key, received_at ASC, seq ASC`);
-  const rows = (until === undefined ? stmt.iterate() : stmt.iterate(until)) as Iterable<ProjectionRow>;
-
+  const claims = claimCounts(db, until);
   const out: CharacterSnapshot[] = [];
   let key: string | null = null;
   let group: ProjectionRow[] = [];
@@ -92,7 +82,7 @@ export function projectAll(db: Db, until?: number): CharacterSnapshot[] {
     const snapshot = projectRows(key, group, claims.get(key) ?? 0);
     if (snapshot) out.push(snapshot);
   };
-  for (const row of rows) {
+  for (const row of selectRows(db, until)) {
     if (row.subject_key !== key) {
       flush();
       key = row.subject_key;
