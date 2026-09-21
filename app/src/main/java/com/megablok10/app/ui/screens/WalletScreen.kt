@@ -114,14 +114,14 @@ fun WalletScreen(identity: Identity, presetContactKey: String? = null, onPresetC
                         balance = balance,
                         initialContact = contacts.find { it.publicKeyB64 == presetKey },
                         onSend = { contact, id, amount, memo ->
-                            val payload = Mb10QrCodec.transactionSignaturePayload(id, identity.publicKeyB64, amount, memo)
+                            val payload = Mb10QrCodec.transactionSignaturePayload(id, identity.publicKeyB64, contact.publicKeyB64, amount, memo)
                             val signature = IdentityManager.sign(context, payload)
-                            val tx = Mb10Qr.Transaction(id, identity.publicKeyB64, amount, memo, signature)
+                            val tx = Mb10Qr.Transaction(id, identity.publicKeyB64, contact.publicKeyB64, amount, memo, signature)
                             val peer = onlinePeers.find { it.pubKeyB64 == contact.publicKeyB64 }
                             scope.launch {
                                 if (TransactionStore.recordOutgoingPending(context, tx, contact.publicKeyB64)) {
                                     TransactionStore.deliverOutgoing(context, tx.id, willSend = peer != null) {
-                                        ChatStore.sendDirect(context, identity, contact.publicKeyB64, peer, Mb10QrCodec.encodeTransaction(tx))
+                                        ChatStore.sendDirectOutcome(context, identity, contact.publicKeyB64, peer, Mb10QrCodec.encodeTransaction(tx))
                                     }
                                 }
                             }

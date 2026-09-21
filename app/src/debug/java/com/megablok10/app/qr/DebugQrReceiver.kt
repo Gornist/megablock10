@@ -102,12 +102,12 @@ class DebugQrReceiver : BroadcastReceiver() {
             val amount = amountStr.toLong()
             suspend fun payOnce() {
                 val id = "dbg-${System.nanoTime()}"
-                val payload = Mb10QrCodec.transactionSignaturePayload(id, me.publicKeyB64, amount, "debug")
-                val tx = Mb10Qr.Transaction(id, me.publicKeyB64, amount, "debug", IdentityManager.sign(context, payload))
+                val payload = Mb10QrCodec.transactionSignaturePayload(id, me.publicKeyB64, to, amount, "debug")
+                val tx = Mb10Qr.Transaction(id, me.publicKeyB64, to, amount, "debug", IdentityManager.sign(context, payload))
                 val peer = if (mode == "offline") null else PresenceService.peers.value.find { it.pubKeyB64 == to }
                 if (TransactionStore.recordOutgoingPending(context, tx, to)) {
                     TransactionStore.deliverOutgoing(context, id, willSend = peer != null) {
-                        ChatStore.sendDirect(context, me, to, peer, Mb10QrCodec.encodeTransaction(tx))
+                        ChatStore.sendDirectOutcome(context, me, to, peer, Mb10QrCodec.encodeTransaction(tx))
                     }
                     Log.i(TAG, "pay id=$id")
                 } else Log.i(TAG, "pay rejected")
@@ -115,6 +115,21 @@ class DebugQrReceiver : BroadcastReceiver() {
             val burst = intent.getIntExtra("burst", 1)
             if (burst <= 1) payOnce()
             else kotlinx.coroutines.coroutineScope { List(burst) { async(Dispatchers.IO) { payOnce() } }.awaitAll() }
+        }
+        // Подложная карточка платежа: подписана ЭТИМ устройством, адресована ключу "toKey" (не тому, кто её примет). В лог — `card=<строка>`.
+        intent.getStringExtra("forgecard")?.let { spec ->
+            val (to, amountStr) = spec.split(":").let { it[0] to it[1] }
+            val me = IdentityManager.current(context) ?: return@let
+            val id = "forged-${System.nanoTime()}"
+            val amount = amountStr.toLong()
+            val sig = IdentityManager.sign(context, Mb10QrCodec.transactionSignaturePayload(id, me.publicKeyB64, to, amount, "forged"))
+            Log.i(TAG, "card=" + Mb10QrCodec.encodeTransaction(Mb10Qr.Transaction(id, me.publicKeyB64, to, amount, "forged", sig)))
+        }
+        // Принять карточку платежа, как по нажатию «Принять» в чате: результат в лог — `recv -> true|false`.
+        intent.getStringExtra("recv")?.let { raw ->
+            val me = IdentityManager.current(context) ?: return@let
+            val tx = Mb10QrCodec.decode(raw) as? Mb10Qr.Transaction
+            Log.i(TAG, "recv -> " + (tx != null && TransactionStore.recordIncoming(context, me.publicKeyB64, tx)))
         }
         // Сообщение от этого устройства: "получатель|текст" (DM) или "faction|текст" (фракционный чат). Для демо-записей.
         intent.getStringExtra("say")?.let { spec ->
@@ -148,7 +163,7 @@ class DebugQrReceiver : BroadcastReceiver() {
                 }
             }
             if (card == null) Log.i(TAG, "give rejected") else {
-                if (offline) ItemTransferStore.deliverOutgoing(context, card.id, willSend = false) { false }
+                if (offline) ItemTransferStore.deliverOutgoing(context, card.id, willSend = false) { com.megablok10.app.net.SendOutcome.NOT_REACHED }
                 else ItemTransferStore.deliver(context, me, card, to)
                 Log.i(TAG, "give id=${card.id}")
             }

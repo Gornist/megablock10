@@ -6,6 +6,7 @@ import com.megablok10.app.breach.SlotClaimStore
 import com.megablok10.app.data.ChatMessageEntity
 import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.identity.Identity
+import com.megablok10.app.net.SendOutcome
 import com.megablok10.app.call.CallManager
 import com.megablok10.app.presence.PeerInfo
 import com.megablok10.app.presence.PresenceService
@@ -122,14 +123,18 @@ object ChatStore {
      * (null, если сейчас не в сети): без него есть кому, но некуда стучаться,
      * сообщение всё равно останется в треде локально.
      */
-    suspend fun sendDirect(context: Context, identity: Identity, peerPubKeyB64: String, peer: PeerInfo?, body: String): Boolean {
+    suspend fun sendDirect(context: Context, identity: Identity, peerPubKeyB64: String, peer: PeerInfo?, body: String): Boolean =
+        sendDirectOutcome(context, identity, peerPubKeyB64, peer, body) == SendOutcome.DELIVERED
+
+    /** Как [sendDirect], но с различением «точно не ушло» и «могло уйти» — нужно деньгам и предметам (TransactionStore.deliverOutgoing). */
+    suspend fun sendDirectOutcome(context: Context, identity: Identity, peerPubKeyB64: String, peer: PeerInfo?, body: String): SendOutcome {
         val timestamp = System.currentTimeMillis()
         val wire = ChatWireMessage(ChatMessageType.DM, identity.publicKeyB64, identity.callsign, identity.faction, peerPubKeyB64, timestamp, body)
         persist(context, wire)
-        val delivered = peer != null && withContext(Dispatchers.IO) { ChatClient.send(peer.host, peer.port, wire) }
+        val outcome = if (peer == null) SendOutcome.NOT_REACHED else withContext(Dispatchers.IO) { ChatClient.sendOutcome(peer.host, peer.port, wire) }
         // Не ушло (адресата не видно или обрыв на роуминге) — в очередь: уйдёт само, когда он появится. Деньги/предметы не queue-им, см. OutboxPolicy.
-        if (!delivered && OutboxPolicy.isQueueable(body)) OutboxStore.enqueue(context, peerPubKeyB64, wire)
-        return delivered
+        if (outcome != SendOutcome.DELIVERED && OutboxPolicy.isQueueable(body)) OutboxStore.enqueue(context, peerPubKeyB64, wire)
+        return outcome
     }
 
     /**

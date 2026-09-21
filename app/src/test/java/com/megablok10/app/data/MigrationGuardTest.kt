@@ -26,6 +26,13 @@ class MigrationGuardTest {
         assertEquals("миграции должны идти подряд до текущей версии", (12 until currentVersion).map { it to it + 1 }, steps)
     }
 
+    /** Room падает при ОТКРЫТИИ базы, если версия есть и в миграциях, и в fallbackToDestructiveMigrationFrom (поймано e2e: приложение вылетало на старте). */
+    @Test fun destructiveFallbackNeverOverlapsMigrations() {
+        val migrationStarts = ALL_MIGRATIONS.map { it.startVersion }.toSet()
+        assertTrue("версии в DESTRUCTIVE_FROM пересекаются с миграциями: ${DESTRUCTIVE_FROM.toSet() intersect migrationStarts}", DESTRUCTIVE_FROM.none { it in migrationStarts })
+        assertTrue("версии >= первой миграции нельзя стирать", DESTRUCTIVE_FROM.all { it < ALL_MIGRATIONS.first().startVersion })
+    }
+
     @Test fun outboxMigrationMatchesExportedSchema() {
         val json = schema(13)
         val columns = Regex("`(\\w+)` (INTEGER|TEXT|REAL|BLOB)").findAll(OUTBOX_CREATE_SQL).map { it.groupValues[1] }.toList()

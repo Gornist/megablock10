@@ -11,6 +11,7 @@ import com.megablok10.app.data.TransactionEntity
 import com.megablok10.app.data.TransactionStatus
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.identity.IdentityManager
+import com.megablok10.app.net.SendOutcome
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
 import kotlinx.coroutines.flow.Flow
@@ -67,18 +68,18 @@ object TransactionStore {
      * откатывается в PENDING, только если отправка точно не удалась. willSend =
      * false — получатель офлайн, карточка не уходит вовсе (send() лишь сохранит
      * сообщение в локальный тред), запись остаётся PENDING и отменяема.
-     * Известный остаток: отправка могла дойти, а исключение случиться после —
-     * тогда откат разрешит отмену уже доставленного платежа; на практике это
-     * редкий обрыв на закрытии сокета уже после передачи строки.
+     * Откат делается ТОЛЬКО при [SendOutcome.NOT_REACHED] (соединиться не удалось — карточка точно не ушла). Если ошибка случилась
+     * уже после соединения ([SendOutcome.UNKNOWN]), карточка могла дойти: платёж остаётся DELIVERED и отменить его нельзя —
+     * лучше заморозить сумму до чека или вмешательства мастера, чем оставить её у обоих.
      */
-    suspend fun deliverOutgoing(context: Context, id: String, willSend: Boolean, send: suspend () -> Boolean) {
+    suspend fun deliverOutgoing(context: Context, id: String, willSend: Boolean, send: suspend () -> SendOutcome) {
         val dao = Mb10Database.get(context).transactionDao()
         if (!willSend) {
             send()
             return
         }
         dao.markDelivered(id)
-        if (!send()) dao.markUndelivered(id)
+        if (send() == SendOutcome.NOT_REACHED) dao.markUndelivered(id)
     }
 
     /**
@@ -132,7 +133,9 @@ object TransactionStore {
     suspend fun recordIncoming(context: Context, myPublicKeyB64: String, tx: Mb10Qr.Transaction): Boolean {
         if (tx.amount <= 0) return false
         if (tx.fromPubKeyB64 == myPublicKeyB64) return false
-        val payload = Mb10QrCodec.transactionSignaturePayload(tx.id, tx.fromPubKeyB64, tx.amount, tx.memo)
+        // Карточка адресована не мне — копия, пересланная сообщником или перехваченная в сети: принять её значило бы создать деньги из воздуха.
+        if (tx.toPubKeyB64 != myPublicKeyB64) return false
+        val payload = Mb10QrCodec.transactionSignaturePayload(tx.id, tx.fromPubKeyB64, tx.toPubKeyB64, tx.amount, tx.memo)
         if (!IdentityManager.verify(tx.fromPubKeyB64, payload, tx.signatureB64)) return false
 
         val dao = Mb10Database.get(context).transactionDao()

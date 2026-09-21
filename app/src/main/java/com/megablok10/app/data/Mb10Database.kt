@@ -8,7 +8,7 @@ import androidx.room.RoomDatabase
 /**
  * Версия 13 — базовая: схема экспортируется в `app/schemas`, и с неё любое изменение
  * обязано сопровождаться миграцией (иначе Room падает при открытии, а не стирает
- * данные игроков молча). Версии 1–12 до релиза стираются, как и раньше.
+ * данные игроков молча). Версии 1–11 до релиза стираются, как и раньше.
  * Как менять схему: см. docs/db-migrations.md.
  */
 @Database(
@@ -47,8 +47,9 @@ abstract class Mb10Database : RoomDatabase() {
                     "mb10.db"
                 )
                     .addMigrations(*ALL_MIGRATIONS)
-                    // Только доисторические версии: с 13 и выше данные не стираем никогда.
-                    .fallbackToDestructiveMigrationFrom(*(1..12).toList().toIntArray())
+                    // Только доисторические версии (без экспортированных схем): с 12 и выше данные не стираем никогда.
+                    // Версия из этого списка не может быть началом миграции — Room падает при открытии базы (см. MigrationGuardTest).
+                    .fallbackToDestructiveMigrationFrom(*DESTRUCTIVE_FROM)
                     .build()
                     .also { instance = it }
             }
@@ -64,6 +65,9 @@ internal val MIGRATION_12_13 = object : androidx.room.migration.Migration(12, 13
         db.execSQL(OUTBOX_CREATE_SQL)
     }
 }
+
+/** Версии, с которых базу пересоздаём вместо миграции (схемы старше 12 не сохранились). */
+internal val DESTRUCTIVE_FROM: IntArray = (1..11).toList().toIntArray()
 
 /** Все миграции по порядку. Новую версию схемы добавляем сюда и в тест MigrationGuardTest. */
 internal val ALL_MIGRATIONS = arrayOf(MIGRATION_12_13)

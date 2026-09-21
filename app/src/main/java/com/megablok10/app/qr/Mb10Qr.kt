@@ -101,6 +101,8 @@ sealed interface Mb10Qr {
     data class Transaction(
         val id: String,
         val fromPubKeyB64: String,
+        /** Кому адресован платёж — входит в подпись: чужую копию карточки (у сообщника, из перехваченного трафика) принять нельзя. */
+        val toPubKeyB64: String,
         val amount: Long,
         val memo: String,
         val signatureB64: String
@@ -114,6 +116,8 @@ sealed interface Mb10Qr {
     data class ItemTransfer(
         val id: String,
         val fromPubKeyB64: String,
+        /** Адресат передачи — входит в подпись (см. Transaction.toPubKeyB64). */
+        val toPubKeyB64: String,
         val kind: ItemKind,
         val payload: String,
         val signatureB64: String
@@ -259,37 +263,39 @@ object Mb10QrCodec {
         )
     }
 
+    /** Карточки платежа и передачи — формат v2 (адресат в подписи). v1 не принимается: иначе защиту обошли бы старым форматом. */
     fun encodeTransaction(tx: Mb10Qr.Transaction): String =
-        "$MAGIC:TX:v1:${tx.id}:${tx.fromPubKeyB64}:${tx.amount}:${b64(tx.memo)}:${tx.signatureB64}"
+        "$MAGIC:TX:v2:${tx.id}:${tx.fromPubKeyB64}:${tx.toPubKeyB64}:${tx.amount}:${b64(tx.memo)}:${tx.signatureB64}"
 
     private fun decodeTransaction(parts: List<String>): Mb10Qr.Transaction? {
-        if (parts.size < 8) return null
-        val amount = parts[5].toLongOrNull() ?: return null
+        if (parts.size < 9 || parts[2] != "v2") return null
+        val amount = parts[6].toLongOrNull() ?: return null
         return Mb10Qr.Transaction(
             id = parts[3],
             fromPubKeyB64 = parts[4],
+            toPubKeyB64 = parts[5],
             amount = amount,
-            memo = unb64(parts[6]),
-            signatureB64 = parts[7]
+            memo = unb64(parts[7]),
+            signatureB64 = parts[8]
         )
     }
 
     /** Байты, которые подписывает плательщик и проверяет получатель — одна и та же формула по обе стороны. */
-    fun transactionSignaturePayload(id: String, fromPubKeyB64: String, amount: Long, memo: String): ByteArray =
-        "$id|$fromPubKeyB64|$amount|$memo".toByteArray(Charsets.UTF_8)
+    fun transactionSignaturePayload(id: String, fromPubKeyB64: String, toPubKeyB64: String, amount: Long, memo: String): ByteArray =
+        "TX2|$id|$fromPubKeyB64|$toPubKeyB64|$amount|$memo".toByteArray(Charsets.UTF_8)
 
     fun encodeItemTransfer(t: Mb10Qr.ItemTransfer): String =
-        "$MAGIC:ITEM:v1:${t.id}:${t.fromPubKeyB64}:${t.kind.name}:${b64(t.payload)}:${t.signatureB64}"
+        "$MAGIC:ITEM:v2:${t.id}:${t.fromPubKeyB64}:${t.toPubKeyB64}:${t.kind.name}:${b64(t.payload)}:${t.signatureB64}"
 
     private fun decodeItemTransfer(parts: List<String>): Mb10Qr.ItemTransfer? {
-        if (parts.size < 8) return null
-        val kind = ItemKind.entries.find { it.name == parts[5] } ?: return null
-        return Mb10Qr.ItemTransfer(id = parts[3], fromPubKeyB64 = parts[4], kind = kind, payload = unb64(parts[6]), signatureB64 = parts[7])
+        if (parts.size < 9 || parts[2] != "v2") return null
+        val kind = ItemKind.entries.find { it.name == parts[6] } ?: return null
+        return Mb10Qr.ItemTransfer(id = parts[3], fromPubKeyB64 = parts[4], toPubKeyB64 = parts[5], kind = kind, payload = unb64(parts[7]), signatureB64 = parts[8])
     }
 
     /** Байты, которые подписывает отправитель предмета и проверяет получатель. */
-    fun itemTransferSignaturePayload(id: String, fromPubKeyB64: String, kind: ItemKind, payload: String): ByteArray =
-        "$id|$fromPubKeyB64|${kind.name}|$payload".toByteArray(Charsets.UTF_8)
+    fun itemTransferSignaturePayload(id: String, fromPubKeyB64: String, toPubKeyB64: String, kind: ItemKind, payload: String): ByteArray =
+        "ITEM2|$id|$fromPubKeyB64|$toPubKeyB64|${kind.name}|$payload".toByteArray(Charsets.UTF_8)
 
     fun encodeReceipt(receipt: Mb10Qr.Receipt): String =
         "$MAGIC:RCPT:v1:${receipt.id}:${receipt.receiverPubKeyB64}:${receipt.signatureB64}"

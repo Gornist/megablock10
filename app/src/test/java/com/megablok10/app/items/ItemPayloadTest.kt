@@ -41,13 +41,13 @@ class ItemPayloadTest {
     @Test
     fun `item card encodes to a chat body and back, keeping the signed payload bytes`() {
         val payload = ItemPayload.encodeShard(shard)
-        val card = Mb10Qr.ItemTransfer("item-1", "PK_A", ItemKind.SHARD, payload, "SIG")
+        val card = Mb10Qr.ItemTransfer("item-1", "PK_A", "PK_B", ItemKind.SHARD, payload, "SIG")
         val decoded = Mb10QrCodec.decode(Mb10QrCodec.encodeItemTransfer(card))
         assertNotNull(decoded)
         assertEquals(card, decoded)
         assertEquals(
-            String(Mb10QrCodec.itemTransferSignaturePayload("item-1", "PK_A", ItemKind.SHARD, payload)),
-            "item-1|PK_A|SHARD|$payload"
+            String(Mb10QrCodec.itemTransferSignaturePayload("item-1", "PK_A", "PK_B", ItemKind.SHARD, payload)),
+            "ITEM2|item-1|PK_A|PK_B|SHARD|$payload"
         )
     }
 }

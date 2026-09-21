@@ -13,6 +13,7 @@ import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.data.TransactionStatus
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.identity.IdentityManager
+import com.megablok10.app.net.SendOutcome
 import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.qr.ItemKind
 import com.megablok10.app.qr.Mb10Qr
@@ -61,24 +62,24 @@ object ItemTransferStore {
     ): Mb10Qr.ItemTransfer? {
         if (toPubKeyB64 == identity.publicKeyB64) return null
         val id = "item-${UUID.randomUUID()}"
-        val signature = IdentityManager.sign(context, Mb10QrCodec.itemTransferSignaturePayload(id, identity.publicKeyB64, kind, payload))
+        val signature = IdentityManager.sign(context, Mb10QrCodec.itemTransferSignaturePayload(id, identity.publicKeyB64, toPubKeyB64, kind, payload))
         val inserted = Mb10Database.get(context).itemTransferDao().insertIfAbsent(
             ItemTransferEntity(id, toPubKeyB64, kind.name, payload, System.currentTimeMillis(), TransactionStatus.PENDING, outgoing = true)
         )
         if (inserted == -1L) return null
         removeItem(id)
-        return Mb10Qr.ItemTransfer(id, identity.publicKeyB64, kind, payload, signature)
+        return Mb10Qr.ItemTransfer(id, identity.publicKeyB64, toPubKeyB64, kind, payload, signature)
     }
 
-    /** Как TransactionStore.deliverOutgoing: DELIVERED ставится ДО отправки, откат — только если отправка точно не удалась. */
-    suspend fun deliverOutgoing(context: Context, id: String, willSend: Boolean, send: suspend () -> Boolean) {
+    /** Как TransactionStore.deliverOutgoing: DELIVERED ставится ДО отправки, откат — только если соединиться не удалось (NOT_REACHED). */
+    suspend fun deliverOutgoing(context: Context, id: String, willSend: Boolean, send: suspend () -> SendOutcome) {
         val dao = Mb10Database.get(context).itemTransferDao()
         if (!willSend) {
             send()
             return
         }
         dao.markDelivered(id)
-        if (!send()) dao.markUndelivered(id)
+        if (send() == SendOutcome.NOT_REACHED) dao.markUndelivered(id)
     }
 
     /** Отмена недоставленной передачи: предмет возвращается в коллекцию. false — карточка уже доставлена/подтверждена или записи нет. */
@@ -103,7 +104,9 @@ object ItemTransferStore {
     /** Получатель проверяет подпись отправителя и кладёт предмет в коллекцию. false — подпись не сошлась, своя же карточка или уже принято. */
     suspend fun acceptIncoming(context: Context, myPubKeyB64: String, card: Mb10Qr.ItemTransfer): Boolean {
         if (card.fromPubKeyB64 == myPubKeyB64) return false
-        val signed = Mb10QrCodec.itemTransferSignaturePayload(card.id, card.fromPubKeyB64, card.kind, card.payload)
+        // Адресат в подписи: чужую копию карточки принять нельзя (иначе один предмет можно получить дважды).
+        if (card.toPubKeyB64 != myPubKeyB64) return false
+        val signed = Mb10QrCodec.itemTransferSignaturePayload(card.id, card.fromPubKeyB64, card.toPubKeyB64, card.kind, card.payload)
         if (!IdentityManager.verify(card.fromPubKeyB64, signed, card.signatureB64)) return false
 
         val record = ItemTransferEntity(card.id, card.fromPubKeyB64, card.kind.name, card.payload, System.currentTimeMillis(), TransactionStatus.CONFIRMED, outgoing = false)
@@ -120,7 +123,7 @@ object ItemTransferStore {
     suspend fun deliver(context: Context, identity: Identity, card: Mb10Qr.ItemTransfer, toPubKeyB64: String) {
         val peer = PresenceService.peers.value.find { it.pubKeyB64 == toPubKeyB64 }
         deliverOutgoing(context, card.id, willSend = peer != null) {
-            ChatStore.sendDirect(context, identity, toPubKeyB64, peer, Mb10QrCodec.encodeItemTransfer(card))
+            ChatStore.sendDirectOutcome(context, identity, toPubKeyB64, peer, Mb10QrCodec.encodeItemTransfer(card))
         }
     }
 

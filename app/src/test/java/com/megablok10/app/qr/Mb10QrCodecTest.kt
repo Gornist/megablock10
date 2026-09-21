@@ -86,6 +86,7 @@ class Mb10QrCodecTest {
         val tx = Mb10Qr.Transaction(
             id = "tx-1",
             fromPubKeyB64 = "pubKeyB64==",
+            toPubKeyB64 = "toPubKey==",
             amount = 350,
             memo = "Антидот: у контрабандиста",
             signatureB64 = "sigB64=="
@@ -96,16 +97,38 @@ class Mb10QrCodecTest {
 
     @Test
     fun `transaction signature payload is deterministic for the same inputs`() {
-        val a = Mb10QrCodec.transactionSignaturePayload("tx-1", "pub==", 100, "за информацию")
-        val b = Mb10QrCodec.transactionSignaturePayload("tx-1", "pub==", 100, "за информацию")
+        val a = Mb10QrCodec.transactionSignaturePayload("tx-1", "pub==", "to==", 100, "за информацию")
+        val b = Mb10QrCodec.transactionSignaturePayload("tx-1", "pub==", "to==", 100, "за информацию")
         assertEquals(String(a), String(b))
     }
 
     @Test
     fun `transaction signature payload changes if amount is tampered`() {
-        val original = Mb10QrCodec.transactionSignaturePayload("tx-1", "pub==", 100, "оплата")
-        val tampered = Mb10QrCodec.transactionSignaturePayload("tx-1", "pub==", 100000, "оплата")
+        val original = Mb10QrCodec.transactionSignaturePayload("tx-1", "pub==", "to==", 100, "оплата")
+        val tampered = Mb10QrCodec.transactionSignaturePayload("tx-1", "pub==", "to==", 100000, "оплата")
         assert(!original.contentEquals(tampered))
+    }
+
+    @Test
+    fun `transaction signature payload changes if recipient is swapped`() {
+        val forBob = Mb10QrCodec.transactionSignaturePayload("tx-1", "pub==", "bob==", 100, "оплата")
+        val forCarol = Mb10QrCodec.transactionSignaturePayload("tx-1", "pub==", "carol==", 100, "оплата")
+        assert(!forBob.contentEquals(forCarol))
+    }
+
+    @Test
+    fun `item transfer round-trips and signature covers recipient`() {
+        val t = Mb10Qr.ItemTransfer("item-1", "from==", "to==", ItemKind.SHARD, "payload:with:colons", "sig==")
+        assertEquals(t, Mb10QrCodec.decode(Mb10QrCodec.encodeItemTransfer(t)))
+        val a = Mb10QrCodec.itemTransferSignaturePayload("item-1", "from==", "bob==", ItemKind.SHARD, "p")
+        val b = Mb10QrCodec.itemTransferSignaturePayload("item-1", "from==", "carol==", ItemKind.SHARD, "p")
+        assert(!a.contentEquals(b))
+    }
+
+    @Test
+    fun `old v1 cards without recipient are rejected`() {
+        assertEquals(null, Mb10QrCodec.decode("MB10:TX:v1:tx-1:pubKeyB64==:350:0JDQvdGC0LjQtNC+0YI=:sigB64=="))
+        assertEquals(null, Mb10QrCodec.decode("MB10:ITEM:v1:item-1:from==:SHARD:cGF5bG9hZA==:sig=="))
     }
 
     @Test

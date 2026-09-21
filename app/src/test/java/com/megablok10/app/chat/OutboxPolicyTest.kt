@@ -21,12 +21,12 @@ class OutboxPolicyTest {
 
     @Test fun moneyCardIsNeverQueued() {
         // Карточку платежа можно отменить, пока получатель её не получил; автодоставка позже вручила бы карточку уже отменённого платежа.
-        val tx = Mb10Qr.Transaction("tx-1", "pk-a", 100, "за узел", "sig")
+        val tx = Mb10Qr.Transaction("tx-1", "pk-a", "pk-b", 100, "за узел", "sig")
         assertFalse(OutboxPolicy.isQueueable(Mb10QrCodec.encodeTransaction(tx)))
     }
 
     @Test fun itemTransferCardIsNeverQueued() {
-        val t = Mb10Qr.ItemTransfer("item-1", "pk-a", ItemKind.DAEMON, "payload", "sig")
+        val t = Mb10Qr.ItemTransfer("item-1", "pk-a", "pk-b", ItemKind.DAEMON, "payload", "sig")
         assertFalse(OutboxPolicy.isQueueable(Mb10QrCodec.encodeItemTransfer(t)))
     }
 
