@@ -37,11 +37,35 @@ export function parseClientVersions(appVersion: unknown, wireVersions: unknown):
   return app === null && Object.keys(wire).length === 0 ? null : { appVersion: app, wireVersions: wire };
 }
 
-export function touchPresence(subjectKeyB64: string, at: number = Date.now(), info?: PresenceDetails, clientVersions?: ClientVersions | null) {
+/** Очередь неотправленных записей на телефоне: сколько их и как давно лежит самая старая (по часам телефона — только возраст, не момент). */
+export interface SyncState {
+  pendingCount: number;
+  oldestPendingAgeMs: number;
+}
+const syncStates = new Map<string, SyncState>();
+
+export function parseSyncState(pendingCount: unknown, oldestPendingAgeMs: unknown): SyncState | null {
+  const ok = (v: unknown, max: number): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= max;
+  if (!ok(pendingCount, 1_000_000) || !ok(oldestPendingAgeMs, 366 * 24 * 3_600_000)) return null;
+  return { pendingCount, oldestPendingAgeMs };
+}
+
+export function touchPresence(
+  subjectKeyB64: string,
+  at: number = Date.now(),
+  info?: PresenceDetails,
+  clientVersions?: ClientVersions | null,
+  sync?: SyncState | null,
+) {
   if (!subjectKeyB64) return;
   seen.set(subjectKeyB64, at);
   if (info) details.set(subjectKeyB64, info);
   if (clientVersions) versions.set(subjectKeyB64, clientVersions);
+  if (sync) syncStates.set(subjectKeyB64, sync);
+}
+
+export function syncStateOf(subjectKeyB64: string): SyncState | null {
+  return syncStates.get(subjectKeyB64) ?? null;
 }
 
 export function clientVersionsOf(subjectKeyB64: string): ClientVersions | null {
@@ -79,4 +103,5 @@ export function resetPresence() {
   seen.clear();
   details.clear();
   versions.clear();
+  syncStates.clear();
 }

@@ -1,7 +1,7 @@
 import type { Db } from "../db/index.js";
 import { isField, isReason, signaturePayload, type ChangeRecordInput } from "./changeRecord.js";
 import { verifySignature } from "./crypto.js";
-import { ipv4Of, parseClientVersions, peersSince, touchPresence } from "./presence.js";
+import { ipv4Of, parseClientVersions, parseSyncState, peersSince, touchPresence } from "./presence.js";
 import { bindProvision } from "./provisions.js";
 
 /**
@@ -145,7 +145,7 @@ export function createChangeIngest(db: Db) {
      * игроков (есть хоть одна запись) и только со своего адреса соединения — иначе любой в сети мог бы подсунуть чужой адрес.
      */
     touchPresence(subjectKey: string, rawPresence: unknown, ip: string | undefined) {
-      const p = rawPresence as { chatPort?: unknown; callsign?: unknown; faction?: unknown; appVersion?: unknown; wireVersions?: unknown } | undefined;
+      const p = rawPresence as { chatPort?: unknown; callsign?: unknown; faction?: unknown; appVersion?: unknown; wireVersions?: unknown; pendingCount?: unknown; oldestPendingAgeMs?: unknown } | undefined;
       const host = ipv4Of(ip);
       const known = isKnown(subjectKey);
       const port = typeof p?.chatPort === "number" && Number.isInteger(p.chatPort) && p.chatPort > 0 && p.chatPort < 65536 ? p.chatPort : 0;
@@ -157,6 +157,7 @@ export function createChangeIngest(db: Db) {
           : undefined,
         // версии — только известным игрокам, как и адрес: память не должна расти от чужих ключей
         known ? parseClientVersions(p?.appVersion, p?.wireVersions) : null,
+        known ? parseSyncState(p?.pendingCount, p?.oldestPendingAgeMs) : null,
       );
     },
 

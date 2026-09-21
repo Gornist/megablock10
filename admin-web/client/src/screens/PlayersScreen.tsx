@@ -118,6 +118,19 @@ export function PlayersScreen() {
       sortValue: (p) => p.breaches.success,
     },
     { key: "slots", label: "Слотов забрано", render: (p) => p.slotsClaimed, sortValue: (p) => p.slotsClaimed },
+    {
+      key: "queue",
+      label: "Очередь",
+      render: (p) =>
+        p.pendingCount ? (
+          <span className="mono" title="неотправленные записи на телефоне (по последнему heartbeat)">
+            {p.pendingCount} · {Math.round((p.oldestPendingAgeMs ?? 0) / 60_000)} мин
+          </span>
+        ) : (
+          "—"
+        ),
+      sortValue: (p) => p.pendingCount ?? 0,
+    },
     { key: "lastSeen", label: "Активность", render: (p) => formatAgo(p.lastSeenAt), sortValue: (p) => p.lastSeenAt },
   ];
 

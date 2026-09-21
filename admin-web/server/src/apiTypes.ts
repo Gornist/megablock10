@@ -73,6 +73,9 @@ export interface PlayerListItem {
   /** Версия приложения и протоколов по последнему heartbeat; нет — телефон не сообщал (старая сборка или сервер перезапускался). */
   appVersion?: string;
   wireVersions?: Record<string, number>;
+  /** Очередь неотправленных записей на телефоне по последнему heartbeat: телефон на связи, но синхронизация может застрять. */
+  pendingCount?: number;
+  oldestPendingAgeMs?: number;
   /** Сессия сброшена на телефоне — устройство свободно; в сводках такой игрок не считается. */
   sessionResetAt: number | null;
   /** Ключ нового телефона, на который персонаж перевыдан; такой (прежний) ключ в сводках не считается. */
@@ -198,7 +201,7 @@ export type Severity = "crit" | "warn" | "info";
 
 export interface AttentionItem {
   id: string;
-  kind: "negative_balance" | "balance_jump" | "went_silent" | "node_exhausted_hot" | "revoke_repeat" | "override_undelivered" | "transfer_stuck" | "duplicate_receive" | "balance_chain_break" | "balance_unexplained" | "old_version" | "mass_silence" | "reject_spike" | "rate_limited" | "secret_denied" | "server_slow" | "clock_skew" | "transfer_amount_mismatch" | "emission_spike" | "player_outlier" | "provision_conflict";
+  kind: "negative_balance" | "balance_jump" | "went_silent" | "node_exhausted_hot" | "revoke_repeat" | "override_undelivered" | "transfer_stuck" | "duplicate_receive" | "balance_chain_break" | "balance_unexplained" | "old_version" | "mass_silence" | "reject_spike" | "rate_limited" | "secret_denied" | "server_slow" | "clock_skew" | "transfer_amount_mismatch" | "emission_spike" | "player_outlier" | "provision_conflict" | "sync_stuck";
   severity: Severity;
   title: string;
   detail: string;

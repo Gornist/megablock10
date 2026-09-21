@@ -13,6 +13,7 @@ export function attentionThresholds() {
     silentAfterMs: positiveNumber(process.env.ATTN_SILENT_MIN, 10) * MIN,
     silentUntilMs: positiveNumber(process.env.ATTN_SILENT_MAX_MIN, 180) * MIN,
     undeliveredAfterMs: positiveNumber(process.env.ATTN_UNDELIVERED_MIN, 2) * MIN,
+    syncStuckMs: positiveNumber(process.env.ATTN_SYNC_STUCK_MIN, 3) * MIN,
     transferStuckMs: positiveNumber(process.env.ATTN_TRANSFER_STUCK_MIN, 10) * MIN,
     /** Как давно может быть запись, чтобы проверки целостности о ней ещё напоминали: иначе давний разрыв висел бы всю игру. */
     integrityWindowMs: positiveNumber(process.env.ATTN_INTEGRITY_HOURS, 12) * 60 * MIN,

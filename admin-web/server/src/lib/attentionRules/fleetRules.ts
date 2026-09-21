@@ -1,7 +1,7 @@
 import type { AttentionItem } from "../../apiTypes.js";
 import { computeClockAnomalies, computeOutliers, computePulseAnomalies } from "../anomalies.js";
 import { withOnline } from "../playerSummary.js";
-import type { AttentionRule } from "./context.js";
+import { MIN, type AttentionRule } from "./context.js";
 
 /** Правила про парк устройств и ход игры в целом: версии, пульс, выбросы, часы. */
 
@@ -46,3 +46,22 @@ export const playerOutliers: AttentionRule = ({ db, now, playerName }) => comput
 
 /** Часы устройств, спешащие относительно сервера. */
 export const clockSkew: AttentionRule = ({ db, now, t, playerName }) => computeClockAnomalies(db, playerName, now - t.integrityWindowMs);
+
+/**
+ * Телефон на связи (heartbeat идёт), а самая старая неотправленная запись лежит дольше порога: записи не доходят или отклоняются.
+ * Меньше порога — обычная очередь: heartbeat уходит тем же запросом, что и пачка, и считает записи, которые сейчас отправляются.
+ */
+export const syncStuck: AttentionRule = ({ players, now, t, playerName }) =>
+  withOnline(players, now)
+    .filter((p) => p.online && (p.pendingCount ?? 0) > 0 && (p.oldestPendingAgeMs ?? 0) >= t.syncStuckMs)
+    .map(
+      (p): AttentionItem => ({
+        id: `sync:${p.publicKeyB64}`,
+        kind: "sync_stuck",
+        severity: "warn",
+        title: "Записи не доходят до сервера",
+        detail: `${p.callsign || playerName(p.publicKeyB64)}: телефон на связи, в очереди ${p.pendingCount} записей, самой старой ${Math.round((p.oldestPendingAgeMs ?? 0) / MIN)} мин`,
+        subjectKey: p.publicKeyB64,
+        at: p.lastSeenAt,
+      }),
+    );

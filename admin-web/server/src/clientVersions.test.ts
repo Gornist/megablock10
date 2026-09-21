@@ -56,3 +56,25 @@ test("attention: без явного большинства версия не с
   const items = (await app.inject({ method: "GET", url: "/api/attention", headers })).json().items as { kind: string }[];
   assert.equal(items.filter((i) => i.kind === "old_version").length, 0);
 });
+
+test("очередь телефона из heartbeat: видна в списке, тревога только когда самая старая запись лежит дольше порога", async () => {
+  const { app, headers } = await setup();
+  const a = await seedPlayer(app, { callsign: "Alice", faction: "X" });
+  await beat(app, a, { pendingCount: 12, oldestPendingAgeMs: 30_000 });
+  const p = (await list(app, headers)).find((x) => x.callsign === "Alice") as { pendingCount?: number; oldestPendingAgeMs?: number };
+  assert.equal(p.pendingCount, 12);
+  assert.equal(p.oldestPendingAgeMs, 30_000);
+  const kinds = async () => ((await app.inject({ method: "GET", url: "/api/attention", headers })).json().items as { kind: string; detail: string }[]);
+  assert.equal((await kinds()).some((i) => i.kind === "sync_stuck"), false, "30 секунд — обычная очередь");
+
+  await beat(app, a, { pendingCount: 12, oldestPendingAgeMs: 10 * 60_000 });
+  const stuck = (await kinds()).find((i) => i.kind === "sync_stuck");
+  assert.ok(stuck);
+  assert.match(stuck.detail, /Alice: телефон на связи, в очереди 12 записей, самой старой 10 мин/);
+
+  await beat(app, a, { pendingCount: 0, oldestPendingAgeMs: 0 });
+  assert.equal((await kinds()).some((i) => i.kind === "sync_stuck"), false, "очередь опустела — тревога ушла");
+
+  await beat(app, a, { pendingCount: -1, oldestPendingAgeMs: "x" });
+  assert.equal(((await list(app, headers)).find((x) => x.callsign === "Alice") as { pendingCount?: number }).pendingCount, 0, "кривые значения игнорируются, прежние остаются");
+});

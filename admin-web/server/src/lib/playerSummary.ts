@@ -1,6 +1,6 @@
 import type { Db } from "../db/index.js";
 import { cachedByDbVersion } from "./dbCache.js";
-import { clientVersionsOf, lastPresence } from "./presence.js";
+import { clientVersionsOf, lastPresence, syncStateOf } from "./presence.js";
 import type { PlayerListItem } from "../apiTypes.js";
 import { projectAll } from "./projection.js";
 import { replacedMap, replacesMap } from "./provisions.js";
@@ -48,12 +48,14 @@ export function withOnline(base: PlayerBase[], now = Date.now()): PlayerListItem
   return base.map((s): PlayerListItem => {
     const at = seenAt(s);
     const v = clientVersionsOf(s.publicKeyB64);
+    const sync = syncStateOf(s.publicKeyB64);
     return {
       ...s,
       lastSeenAt: at,
       online: now - at < ONLINE_WINDOW_MS,
       ...(v?.appVersion ? { appVersion: v.appVersion } : {}),
       ...(v && Object.keys(v.wireVersions).length > 0 ? { wireVersions: v.wireVersions } : {}),
+      ...(sync ? { pendingCount: sync.pendingCount, oldestPendingAgeMs: sync.oldestPendingAgeMs } : {}),
     };
   });
 }
