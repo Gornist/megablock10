@@ -4,6 +4,7 @@ import { parseSafe } from "./json.js";
 import { lastPresence } from "./presence.js";
 import { ONLINE_WINDOW_MS, getPlayerBase, seenAt } from "./playerSummary.js";
 import { breachesLastHourByNode, getNodeSummaries } from "./nodeSummary.js";
+import { findUnexplainedJumps, getIntegrityFindings } from "./integrity.js";
 
 import type { AttentionItem, Severity } from "../apiTypes.js";
 
@@ -20,6 +21,9 @@ export function thresholds() {
     silentAfterMs: num(process.env.ATTN_SILENT_MIN, 10) * MIN,
     silentUntilMs: num(process.env.ATTN_SILENT_MAX_MIN, 180) * MIN,
     undeliveredAfterMs: num(process.env.ATTN_UNDELIVERED_MIN, 2) * MIN,
+    transferStuckMs: num(process.env.ATTN_TRANSFER_STUCK_MIN, 10) * MIN,
+    /** Как давно может быть запись, чтобы проверки целостности о ней ещё напоминали: иначе давний разрыв висел бы всю игру. */
+    integrityWindowMs: num(process.env.ATTN_INTEGRITY_HOURS, 12) * 60 * MIN,
   };
 }
 
@@ -148,5 +152,73 @@ export function computeAttention(db: Db, now = Date.now()): AttentionItem[] {
     });
   }
 
+  items.push(...integrityItems(db, ctx.playerName, now, t));
+
   return items.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] || b.at - a.at);
+}
+
+/** Проверки целостности (lib/integrity.ts): перекрёстные признаки подделки и зависших переводов. */
+function integrityItems(db: Db, playerName: (key: string) => string, now: number, t: ReturnType<typeof thresholds>): AttentionItem[] {
+  const items: AttentionItem[] = [];
+  const found = getIntegrityFindings(db);
+  const since = now - t.integrityWindowMs;
+
+  for (const d of found.duplicateReceives) {
+    if (d.at < since) continue;
+    const names = d.subjectKeys.map(playerName).join(", ");
+    items.push({
+      id: `duplicate:${d.reason}:${d.sourceRef}`,
+      kind: "duplicate_receive",
+      severity: "crit",
+      title: d.reason === "TRANSFER_IN" ? "Один платёж получили двое" : "Один предмет получили двое",
+      detail: `${names} (перевод ${d.sourceRef.slice(0, 8)}) — честное приложение так не делает`,
+      subjectKey: d.subjectKeys[0],
+      at: d.at,
+    });
+  }
+
+  for (const j of findUnexplainedJumps(db, since, t.balanceJump)) {
+    items.push({
+      id: `unexplained:${j.id}`,
+      kind: "balance_unexplained",
+      severity: "crit",
+      title: "Баланс вырос без причины",
+      detail: `${playerName(j.subjectKey)}: +${j.delta} €$ по причине «${REASON_LABEL_RU[j.reason] ?? j.reason}», которая денег не даёт`,
+      subjectKey: j.subjectKey,
+      at: j.at,
+    });
+  }
+
+  for (const b of found.chainBreaks) {
+    if (b.at < since) continue;
+    items.push({
+      id: `chain:${b.subjectKey}:${b.at}`,
+      kind: "balance_chain_break",
+      severity: "warn",
+      title: "Разрыв цепочки баланса",
+      detail: `${playerName(b.subjectKey)}: по журналу было ${b.expected} €$, а запись исходит из ${b.actual} €$${b.count > 1 ? ` (разрывов: ${b.count})` : ""}`,
+      subjectKey: b.subjectKey,
+      at: b.at,
+    });
+  }
+
+  for (const u of found.unpairedTransfers) {
+    if (now - u.at < t.transferStuckMs) continue;
+    const mins = Math.round((now - u.at) / MIN);
+    const what = u.kind === "money" ? `платёж${u.amount ? ` ${u.amount} €$` : ""}` : "передача предмета";
+    items.push({
+      id: `stuck:${u.kind}:${u.txId}:${u.side}`,
+      kind: "transfer_stuck",
+      severity: "warn",
+      title: u.side === "out" ? "Перевод завис: не получен" : "Получение без отправки",
+      detail:
+        u.side === "out"
+          ? `${playerName(u.subjectKey)}: ${what} отправлен ${mins} мин назад, получения и отмены нет. Если получатель не выйдет на связь — поправить баланс/предмет правкой мастера`
+          : `${playerName(u.subjectKey)}: ${what} получен ${mins} мин назад, записи отправки нет (телефон отправителя не на связи?)`,
+      subjectKey: u.subjectKey,
+      at: u.at,
+    });
+  }
+
+  return items;
 }

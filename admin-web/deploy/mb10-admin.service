@@ -21,14 +21,18 @@ User=master
 WorkingDirectory=/home/master/megablock10/admin-web/server
 ExecStart=/usr/bin/node dist/index.js
 Restart=on-failure
+# 78 — неверная конфигурация боевого режима (нет секрета/мастера): перезапуск не поможет.
+RestartPreventExitStatus=78
 RestartSec=2
 
 Environment=PORT=2517
 Environment=DB_PATH=/home/master/megablock10/admin-web/server/data/mb10-admin.sqlite
 Environment=BACKUP_DIR=/home/master/megablock10/admin-web/server/data/backups
 Environment=BACKUP_INTERVAL_MS=1800000
-# Раскомментировать и задать перед игрой — см. GAME_SECRET в README.
-# Environment=GAME_SECRET=замени-на-свою-строку
+# Боевой режим: без GAME_SECRET (от 8 символов) и хотя бы одного мастера сервер не стартует.
+Environment=MB10_MODE=production
+# Задать перед игрой — см. GAME_SECRET в README.
+Environment=GAME_SECRET=замени-на-свою-строку
 
 [Install]
 WantedBy=multi-user.target

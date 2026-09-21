@@ -35,6 +35,9 @@ export function TransfersScreen() {
     <div className="screen-grid">
       {oneSided.length > 0 && (
         <Panel title={`Односторонние (${oneSided.length})`} className="warning-panel">
+          <p className="hint-text">
+            Приложение такой платёж само не отменит. Если получатель не выходит на связь — поправьте баланс отправителя правкой мастера (карточка игрока).
+          </p>
           <DataTable columns={columns} rows={oneSided} rowKey={(t) => t.txId} />
         </Panel>
       )}

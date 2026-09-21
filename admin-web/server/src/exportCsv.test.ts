@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { seedPlayer, setup } from "./testHelpers.js";
 import { loginAs, testApp, testDb, testDevice, testMaster } from "./testUtil.js";
 
 async function auth(app: ReturnType<typeof testApp>, db: ReturnType<typeof testDb>) {
@@ -97,4 +98,16 @@ test("GET /api/export/players.csv — без мастерского токена
   const app = testApp(db);
   const res = await app.inject({ method: "GET", url: "/api/export/players.csv" });
   assert.equal(res.statusCode, 401);
+});
+
+test("GET /api/export/audit.csv — журнал действий мастеров", async () => {
+  const { app, db, headers } = await setup();
+  const a = await seedPlayer(app, { callsign: "Alice", faction: "X", balance: 10 });
+  await app.inject({ method: "POST", url: `/api/players/${encodeURIComponent(a.publicKeyB64)}/override`, headers, payload: { field: "balance", newValue: "99", reason: "тест" } });
+  const res = await app.inject({ method: "GET", url: "/api/export/audit.csv", headers });
+  assert.equal(res.statusCode, 200);
+  const [head, ...rows] = res.body.trim().split("\n");
+  assert.equal(head, "at,master,action,detail");
+  assert.equal(rows.length, (db.prepare(`SELECT COUNT(*) AS n FROM audit_master`).get() as { n: number }).n);
+  assert.match(rows[0], /Мастер-1/);
 });

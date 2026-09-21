@@ -6,11 +6,11 @@ import { listPlayerSummaries } from "./players.js";
 import { listNodeSummaries } from "../lib/nodeSummary.js";
 import { listSlotRegistry } from "./slots.js";
 
-const KINDS = ["players", "nodes", "slots", "history"] as const;
+const KINDS = ["players", "nodes", "slots", "history", "audit"] as const;
 type Kind = (typeof KINDS)[number];
 
 /**
- * GET /api/export/:kind.csv — players | nodes | slots | history (§7 ТЗ).
+ * GET /api/export/:kind.csv — players | nodes | slots | history | audit (§7 ТЗ; audit — журнал действий мастеров).
  * Строки те же, что видно в соответствующих экранах (listPlayerSummaries/
  * listNodeSummaries/listSlotRegistry) — раньше экспорт пересчитывал
  * агрегаты заново своими руками и рисковал незаметно разойтись с UI.
@@ -80,6 +80,13 @@ function buildRows(db: Db, kind: Kind): Record<string, unknown>[] {
         copiesClaimed: s.copiesClaimed,
         claimants: s.claimants.map((c) => `${c.claimantKeyB64}@${c.claimedAt}`).join("; "),
       }));
+    case "audit":
+      return db
+        .prepare(
+          `SELECT a.at, m.name AS master, a.action, a.detail FROM audit_master a
+           LEFT JOIN masters m ON m.id = a.master_id ORDER BY a.at ASC`,
+        )
+        .all() as Record<string, unknown>[];
     case "history":
       return db.prepare(`SELECT * FROM changes ORDER BY received_at ASC`).all() as Record<string, unknown>[];
   }

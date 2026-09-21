@@ -183,7 +183,7 @@ export type Severity = "crit" | "warn" | "info";
 
 export interface AttentionItem {
   id: string;
-  kind: "negative_balance" | "balance_jump" | "went_silent" | "node_exhausted_hot" | "revoke_repeat" | "override_undelivered";
+  kind: "negative_balance" | "balance_jump" | "went_silent" | "node_exhausted_hot" | "revoke_repeat" | "override_undelivered" | "transfer_stuck" | "duplicate_receive" | "balance_chain_break" | "balance_unexplained";
   severity: Severity;
   title: string;
   detail: string;
