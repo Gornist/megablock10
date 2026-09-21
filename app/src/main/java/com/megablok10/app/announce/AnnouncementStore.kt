@@ -43,6 +43,15 @@ object AnnouncementStore {
         }
     }
 
+    /** Полный сброс сессии на устройстве (identity/SessionReset): объявления мастера прежнего персонажа новому не нужны. */
+    fun clear(context: Context) {
+        synchronized(this) {
+            _items.value = emptyList()
+            loaded = true
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY_LIST).apply()
+        }
+    }
+
     fun markAllRead(context: Context) {
         load(context)
         synchronized(this) {

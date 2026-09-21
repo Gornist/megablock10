@@ -16,6 +16,7 @@ import com.megablok10.app.collector.CollectorSettings
 import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.identity.IdentityManager
+import com.megablok10.app.identity.SessionReset
 import com.megablok10.app.items.ItemTransferStore
 import com.megablok10.app.presence.PeerInfo
 import com.megablok10.app.presence.PresenceService
@@ -69,11 +70,10 @@ class DebugQrReceiver : BroadcastReceiver() {
 
     private suspend fun applySet(context: Context, intent: Intent) {
         intent.getStringExtra("collector")?.let { CollectorSettings.setBaseUrl(context, it) }
-        // Сброс сессии как в Настройках («Опасная зона»), без записей о сбросе: стирает личность и снимает признак «настроено мастером». Экран
-        // обновится после перезапуска приложения (restart_app) — состояние личности в MainActivity читается один раз.
+        // Сброс сессии тем же путём, что кнопка в Настройках («Опасная зона», identity/SessionReset). Экран обновится после перезапуска
+        // приложения (restart_app) — состояние личности в MainActivity читается один раз.
         if (intent.getStringExtra("sessionreset") == "1") {
-            IdentityManager.clear(context)
-            CollectorSettings.setProvisioned(context, false)
+            SessionReset.perform(context, IdentityManager.current(context))
         }
         // Код игры (заголовок X-Game-Secret): пустая строка — сбросить.
         intent.getStringExtra("secret")?.let { CollectorSettings.setGameSecret(context, it.ifBlank { null }) }

@@ -44,6 +44,7 @@ import com.megablok10.app.call.CallManager
 import com.megablok10.app.call.CallPhase
 import com.megablok10.app.chat.ChatStore
 import com.megablok10.app.BuildConfig
+import com.megablok10.app.identity.SessionReset
 import com.megablok10.app.collector.ChangeField
 import com.megablok10.app.collector.CollectorSettings
 import com.megablok10.app.qr.Mb10Qr
@@ -194,11 +195,8 @@ fun AppRoot() {
                 // Enqueue обязан пройти ДО IdentityManager.clear — подписывать запись
                 // уже будет нечем, ключ сотрётся вместе с остальными SharedPreferences.
                 scope.launch {
-                    ChangeRecordStore.enqueue(context, ChangeField.CALLSIGN, currentIdentity.callsign, "", ChangeReason.CHARACTER_RESET)
-                    ChangeRecordStore.enqueue(context, ChangeField.FACTION, currentIdentity.faction, "", ChangeReason.CHARACTER_RESET)
-                    ChatStore.stop()
-                    IdentityManager.clear(context)
-                    CollectorSettings.setProvisioned(context, false)   // снова можно принять QR персонажа (новый выдаёт мастер)
+                    // Полный сброс сессии на устройстве (записи о сбросе → стирание игровых данных → ключи): см. identity/SessionReset.
+                    SessionReset.perform(context, currentIdentity)
                     identity = null
                     tab = AppTab.Chat
                     showProfile = false
