@@ -4,7 +4,8 @@ import { clientVersionsOf, lastPresence } from "./presence.js";
 import type { PlayerListItem } from "../apiTypes.js";
 import { projectAll } from "./projection.js";
 
-export const ONLINE_WINDOW_MS = 5 * 60 * 1000;
+/** Сколько игрок считается «на связи» после последнего сигнала; ONLINE_WINDOW_MS в окружении сокращает окно для стендовых прогонов (иначе тишина «видна» только через 5 минут). */
+export const ONLINE_WINDOW_MS = Number(process.env.ONLINE_WINDOW_MS) > 0 ? Number(process.env.ONLINE_WINDOW_MS) : 5 * 60 * 1000;
 
 /** Всё, что зависит только от БД (кэшируемо по dbCache.ts) — без online, он зависит от текущего времени, не только от записей. until — «состояние на момент T» (мс, часы сервера). */
 export type PlayerBase = Omit<PlayerListItem, "online">;
