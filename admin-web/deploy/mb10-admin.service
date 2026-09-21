@@ -33,6 +33,8 @@ Environment=BACKUP_INTERVAL_MS=1800000
 Environment=MB10_MODE=production
 # Задать перед игрой — см. GAME_SECRET в README.
 Environment=GAME_SECRET=замени-на-свою-строку
+# Внешний адрес сервера для телефонов — задать ДО печати QR персонажей (он попадает внутрь кода), см. README.
+# Environment=PUBLIC_URL=http://10.10.0.10:2517
 
 [Install]
 WantedBy=multi-user.target
