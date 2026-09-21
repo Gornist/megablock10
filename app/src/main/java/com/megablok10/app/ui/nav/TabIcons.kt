@@ -18,7 +18,7 @@ import androidx.compose.ui.unit.dp
  */
 
 @Composable
-private fun IconCanvas(tint: Color, size: Dp, draw: androidx.compose.ui.graphics.drawscope.DrawScope.(scale: Float) -> Unit) {
+private fun IconCanvas(size: Dp, draw: androidx.compose.ui.graphics.drawscope.DrawScope.(scale: Float) -> Unit) {
     Canvas(Modifier.size(size)) {
         val scale = this.size.width / 24f
         draw(scale)
@@ -38,7 +38,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.strokePath(points: 
 
 @Composable
 fun ChatTabIcon(tint: Color, size: Dp = 17.dp) {
-    IconCanvas(tint, size) { scale ->
+    IconCanvas(size) { scale ->
         strokePath(
             listOf(
                 Offset(4f, 5f), Offset(20f, 5f), Offset(20f, 16f),
@@ -51,7 +51,7 @@ fun ChatTabIcon(tint: Color, size: Dp = 17.dp) {
 
 @Composable
 fun HackTabIcon(tint: Color, size: Dp = 17.dp) {
-    IconCanvas(tint, size) { scale ->
+    IconCanvas(size) { scale ->
         strokePath(listOf(Offset(4f, 4f), Offset(20f, 4f), Offset(20f, 20f), Offset(4f, 20f)), tint, scale, close = true)
         strokePath(listOf(Offset(8f, 9f), Offset(11f, 12f), Offset(8f, 15f)), tint, scale)
         strokePath(listOf(Offset(13f, 15f), Offset(16f, 15f)), tint, scale)
@@ -61,7 +61,7 @@ fun HackTabIcon(tint: Color, size: Dp = 17.dp) {
 /** Классическая трубка, тот же path-паттерн, что у остальных иконок бара (viewBox 0..24). */
 @Composable
 fun CallsTabIcon(tint: Color, size: Dp = 17.dp) {
-    IconCanvas(tint, size) { scale ->
+    IconCanvas(size) { scale ->
         strokePath(
             listOf(
                 Offset(6f, 4f), Offset(10f, 4f), Offset(11.5f, 8f), Offset(9f, 10f),
@@ -76,7 +76,7 @@ fun CallsTabIcon(tint: Color, size: Dp = 17.dp) {
 /** Карта/кошелёк с полосой — та же line-art логика, что у остальных иконок бара, ни одна не смешивает векторный рисунок с текстовым глифом. */
 @Composable
 fun WalletTabIcon(tint: Color, size: Dp = 17.dp) {
-    IconCanvas(tint, size) { scale ->
+    IconCanvas(size) { scale ->
         strokePath(listOf(Offset(4f, 7f), Offset(20f, 7f), Offset(20f, 18f), Offset(4f, 18f)), tint, scale, close = true)
         strokePath(listOf(Offset(4f, 11f), Offset(20f, 11f)), tint, scale)
         strokePath(listOf(Offset(15f, 14.5f), Offset(17.5f, 14.5f)), tint, scale)

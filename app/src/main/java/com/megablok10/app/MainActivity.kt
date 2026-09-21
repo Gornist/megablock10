@@ -43,10 +43,8 @@ import com.megablok10.app.announce.AnnouncementStore
 import com.megablok10.app.call.CallManager
 import com.megablok10.app.call.CallPhase
 import com.megablok10.app.chat.ChatStore
-import com.megablok10.app.BuildConfig
 import com.megablok10.app.identity.SessionReset
 import com.megablok10.app.collector.ChangeField
-import com.megablok10.app.collector.CollectorSettings
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.ProvisionResult
 import com.megablok10.app.qr.ProvisionStore
@@ -242,7 +240,6 @@ fun AppRoot() {
             if (callState.phase != CallPhase.IDLE) {
                 CallOverlay(
                     state = callState,
-                    identity = currentIdentity,
                     onAccept = { withMicPermission { CallManager.accept(context, currentIdentity) } },
                     onEnd = { CallManager.endCall(context, currentIdentity) }
                 )

@@ -2,7 +2,6 @@ package com.megablok10.app.ui.screens
 
 import com.megablok10.app.ui.theme.AppSnack
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -58,8 +57,6 @@ import com.megablok10.app.presence.MeshLink
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.rememberMb10QrScanner
 import com.megablok10.app.shards.ShardStore
-import com.megablok10.app.ui.theme.AppButton
-import com.megablok10.app.ui.theme.ButtonVariant
 import com.megablok10.app.ui.theme.ChamferedSurface
 import com.megablok10.app.ui.theme.DottedDivider
 import com.megablok10.app.ui.theme.ScanFab

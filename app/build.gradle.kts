@@ -5,6 +5,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
     id("app.cash.paparazzi")
+    id("io.gitlab.arturbosch.detekt")
 }
 
 // Настройки конкретной игры задаются при сборке, а не в публичном коде: адрес сервера мастера и режим первого запуска.
@@ -22,6 +23,14 @@ fun buildSetting(prop: String, env: String, default: String): String {
 }
 val collectorUrl = buildSetting("mb10.collectorUrl", "MB10_COLLECTOR_URL", "")
 val allowManualSetup = buildSetting("mb10.allowManualSetup", "MB10_ALLOW_MANUAL_SETUP", "false")
+
+detekt {
+    buildUponDefaultConfig = true
+    config.setFrom(rootProject.file("config/detekt/detekt.yml"))
+    baseline = file("detekt-baseline.xml")     // старые находки заморожены, новые ломают проверку; обновить: ./gradlew :app:detektBaseline
+    source.setFrom("src/main/java", "src/debug/java", "src/test/java")
+    parallel = true
+}
 
 android {
     namespace = "com.megablok10.app"
@@ -55,6 +64,15 @@ android {
     }
     kotlinOptions {
         jvmTarget = "17"
+        // Отчёты компилятора Compose (какие функции перерисовываются лишний раз): ./gradlew :app:compileDebugKotlin -Pmb10.composeReports=true --rerun-tasks
+        // → app/build/compose_reports/. Подробности в README (раздел про проверки).
+        if (providers.gradleProperty("mb10.composeReports").orNull == "true") {
+            val out = layout.buildDirectory.dir("compose_reports").get().asFile.absolutePath
+            freeCompilerArgs += listOf(
+                "-P", "plugin:androidx.compose.compiler.plugins.kotlin:reportsDestination=$out",
+                "-P", "plugin:androidx.compose.compiler.plugins.kotlin:metricsDestination=$out"
+            )
+        }
     }
     packaging {
         resources.excludes.add("META-INF/*")

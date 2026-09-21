@@ -1,0 +1,67 @@
+# Настройки detekt поверх стандартных (buildUponDefaultConfig). Цель — ловить настоящее (сложность, мёртвый приватный код, пустые ветки),
+# а не спорить о стиле: длинные строки и «магические числа» в этом проекте нормальны (игровые константы, русские комментарии).
+# Запуск: ./gradlew :app:detekt   (отчёты — app/build/reports/detekt/). Старые находки лежат в app/detekt-baseline.xml.
+complexity:
+  LongMethod:
+    threshold: 80
+    ignoreAnnotated: ['Composable']
+    excludes: ['**/debug/**', '**/test/**']
+  LongParameterList:
+    functionThreshold: 8
+    constructorThreshold: 10
+    ignoreDefaultParameters: true
+    ignoreAnnotated: ['Composable']
+  CyclomaticComplexMethod:
+    threshold: 20
+    ignoreAnnotated: ['Composable']
+    excludes: ['**/debug/**', '**/test/**']
+  NestedBlockDepth:
+    threshold: 5
+    ignoreAnnotated: ['Composable']
+  TooManyFunctions:
+    thresholdInFiles: 30
+    thresholdInClasses: 25
+    thresholdInObjects: 25
+    ignoreAnnotated: ['Composable']
+  LargeClass:
+    threshold: 700
+style:
+  MagicNumber:
+    active: false
+  MaxLineLength:
+    active: false
+  WildcardImport:
+    active: false
+  ForbiddenComment:
+    active: false
+  ReturnCount:
+    max: 5
+  ThrowsCount:
+    max: 4
+  UnusedImports:
+    active: true
+  UnusedPrivateMember:
+    active: true
+    ignoreAnnotated: ['Preview']
+  UnusedPrivateProperty:
+    active: true
+naming:
+  MatchingDeclarationName:
+    active: false
+  FunctionNaming:
+    ignoreAnnotated: ['Composable']
+  TopLevelPropertyNaming:
+    active: true
+exceptions:
+  TooGenericExceptionCaught:
+    active: false
+  SwallowedException:
+    active: false
+  TooGenericExceptionThrown:
+    active: false
+empty-blocks:
+  EmptyFunctionBlock:
+    ignoreOverridden: true     # обязательные пустые обратные вызовы интерфейсов (NsdManager, WebRTC и т. п.)
+performance:
+  SpreadOperator:
+    active: false              # varargs Room (addMigrations) на старте — не горячий путь

@@ -21,6 +21,7 @@ step() { # step "имя" команда...
 skip() { TIMES+=("$1: пропущено (нет изменений)"); }
 
 if changed app; then
+  step "app: detekt" ./gradlew -q --console=plain :app:detekt   # статический анализ; старые находки в app/detekt-baseline.xml, новые ломают проверку
   step "app: unit-тесты" ./gradlew -q --console=plain testDebugUnitTest
   step "app: скриншот-тесты" ./gradlew -q --console=plain verifyPaparazziDebug   # эталоны: app/src/test/snapshots; обновить: ./gradlew recordPaparazziDebug
 else skip "app: unit- и скриншот-тесты"; fi

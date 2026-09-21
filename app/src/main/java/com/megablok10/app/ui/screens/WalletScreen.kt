@@ -1,7 +1,6 @@
 package com.megablok10.app.ui.screens
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -42,7 +41,6 @@ import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.AppTextField
 import com.megablok10.app.ui.theme.ButtonVariant
 import com.megablok10.app.ui.theme.ChamferedSurface
-import com.megablok10.app.ui.theme.SurfaceCorner
 import com.megablok10.app.ui.theme.ChipTone
 import com.megablok10.app.ui.theme.DottedDivider
 import com.megablok10.app.ui.theme.EmptyState

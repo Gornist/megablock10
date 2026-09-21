@@ -7,7 +7,6 @@ import com.megablok10.app.announce.AnnouncementStore
 import com.megablok10.app.chat.ChatStore
 import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.data.PendingChangeRecordEntity
-import com.megablok10.app.identity.Identity
 import com.megablok10.app.identity.IdentityManager
 import com.megablok10.app.net.WireVersion
 import com.megablok10.app.presence.PresenceService
@@ -17,7 +16,6 @@ import org.json.JSONObject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch

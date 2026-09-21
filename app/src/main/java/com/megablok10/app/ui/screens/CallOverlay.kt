@@ -35,7 +35,6 @@ import androidx.compose.ui.unit.sp
 import com.megablok10.app.call.CallPhase
 import com.megablok10.app.call.CallUiState
 import com.megablok10.app.identity.ContactStore
-import com.megablok10.app.identity.Identity
 import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.ButtonVariant
 import com.megablok10.app.ui.theme.ChamferedSurface
@@ -58,7 +57,7 @@ import kotlinx.coroutines.delay
  * в углу кадра в игре, а не модальный диалог.
  */
 @Composable
-fun CallOverlay(state: CallUiState, identity: Identity, onAccept: () -> Unit, onEnd: () -> Unit) {
+fun CallOverlay(state: CallUiState, onAccept: () -> Unit, onEnd: () -> Unit) {
     if (state.phase == CallPhase.IDLE) return
 
     val context = LocalContext.current
