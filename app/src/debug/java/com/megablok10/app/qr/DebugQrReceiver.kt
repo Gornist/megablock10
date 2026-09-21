@@ -112,6 +112,7 @@ class DebugQrReceiver : BroadcastReceiver() {
                         ChatStore.sendDirectOutcome(context, me, to, peer, Mb10QrCodec.encodeTransaction(tx))
                     }
                     Log.i(TAG, "pay id=$id")
+                    Log.i(TAG, "paycard=" + Mb10QrCodec.encodeTransaction(tx))   // для recv на устройстве получателя (scripts/e2e/seed.sh)
                 } else Log.i(TAG, "pay rejected")
             }
             val burst = intent.getIntExtra("burst", 1)
@@ -131,7 +132,13 @@ class DebugQrReceiver : BroadcastReceiver() {
         intent.getStringExtra("recv")?.let { raw ->
             val me = IdentityManager.current(context) ?: return@let
             val tx = Mb10QrCodec.decode(raw) as? Mb10Qr.Transaction
-            Log.i(TAG, "recv -> " + (tx != null && TransactionStore.recordIncoming(context, me.publicKeyB64, tx)))
+            val credited = tx != null && TransactionStore.recordIncoming(context, me.publicKeyB64, tx)
+            Log.i(TAG, "recv -> $credited")
+            // как «Принять» в чате: чек отправителю, иначе его платёж останется «доставлен» и не сведётся
+            if (credited && tx != null) {
+                val receipt = TransactionStore.buildReceipt(context, me, tx.id)
+                ChatStore.sendDirect(context, me, tx.fromPubKeyB64, PresenceService.peers.value.find { it.pubKeyB64 == tx.fromPubKeyB64 }, Mb10QrCodec.encodeReceipt(receipt))
+            }
         }
         // Сообщение от этого устройства: "получатель|текст" (DM) или "faction|текст" (фракционный чат). Для демо-записей.
         intent.getStringExtra("say")?.let { spec ->
