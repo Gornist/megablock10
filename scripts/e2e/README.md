@@ -6,6 +6,7 @@
 ```bash
 scripts/e2e/up.sh            # сервер + эмуляторы + APK + персонажи + связь пиров (~3 мин)
 scripts/e2e/run-all.sh       # все сценарии; код возврата 1, если что-то красное
+scripts/e2e/perf-breach.sh    # грубый замер нагрузки CPU от матрицы взлома (нужен up.sh)
 scripts/e2e/seed.sh          # насытить стенд тестовыми данными для показа интерфейсов (~1 мин), см. ниже
 scripts/e2e/scenarios/slot-race.sh   # или один сценарий
 scripts/e2e/shot.sh имя      # скриншоты обоих экранов
