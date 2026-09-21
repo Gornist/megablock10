@@ -9,6 +9,7 @@ import {
 import { verifySignature } from "../lib/crypto.js";
 import { checkGameSecret } from "../lib/gameSecret.js";
 import { ipv4Of, parseClientVersions, peersSince, touchPresence } from "../lib/presence.js";
+import { pulse } from "../lib/pulse.js";
 import { RateLimiter } from "../lib/rateLimit.js";
 
 /** Дольше этого без heartbeat игрок не считается доступным для запасного обнаружения (телефон шлёт раз в ~30 с). */
@@ -81,12 +82,21 @@ export function registerChangesRoute(app: FastifyInstance, db: Db) {
   const perMinute = Number(process.env.CHANGES_RATE_PER_MIN ?? 120);
   const limiter = perMinute > 0 ? new RateLimiter(perMinute, 60_000) : null;
 
+  // Задержка приёма — метрика пульса (сервер однопоточный: рост задержки = перегрузка).
+  app.addHook("onResponse", async (request, reply) => {
+    if (request.method === "POST" && request.routeOptions.url === "/api/changes") pulse.request(reply.elapsedTime);
+  });
+
   app.post<{ Body: ChangesBody }>("/api/changes", async (request, reply) => {
     if (limiter?.hit(request.ip)) {
+      pulse.rateLimited();
       reply.header("retry-after", "30");
       return reply.code(429).send({ error: "too many requests" });
     }
-    if (!checkGameSecret(request, reply)) return;
+    if (!checkGameSecret(request, reply)) {
+      pulse.secretDenied();
+      return;
+    }
 
     const records = request.body?.records;
     if (!Array.isArray(records)) {
@@ -101,6 +111,7 @@ export function registerChangesRoute(app: FastifyInstance, db: Db) {
     const touchedSubjects = new Set<string>();
     if (typeof request.body?.subjectKeyB64 === "string") {
       touchedSubjects.add(request.body.subjectKeyB64);
+      pulse.heartbeat();
       // heartbeat: игрок на связи, даже если писать в БД нечего. Адрес и порт для запасного обнаружения запоминаем только для
       // известных игроков (есть хоть одна запись) и только со своего адреса соединения — иначе любой в сети мог бы подсунуть чужой адрес.
       const p = request.body.presence as { chatPort?: unknown; callsign?: unknown; faction?: unknown; appVersion?: unknown; wireVersions?: unknown } | undefined;
@@ -143,6 +154,7 @@ export function registerChangesRoute(app: FastifyInstance, db: Db) {
       }
     });
     insertBatch(records);
+    pulse.batch(accepted.length, rejected.map((r) => r.error));
 
     const knownSeq: Record<string, number> = {};
     const pending: PendingWire[] = [];

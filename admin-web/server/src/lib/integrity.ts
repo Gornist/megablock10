@@ -49,7 +49,18 @@ export interface UnpairedTransfer {
   amount: number | null;
 }
 
+/** Отправитель списал одну сумму, получатель получил другую: деньги появились или пропали при передаче. */
+export interface AmountMismatch {
+  txId: string;
+  fromKey: string;
+  toKey: string;
+  sent: number;
+  received: number;
+  at: number;
+}
+
 export interface IntegrityFindings {
+  amountMismatches: AmountMismatch[];
   chainBreaks: ChainBreak[];
   duplicateReceives: DuplicateReceive[];
   unpairedTransfers: UnpairedTransfer[];
@@ -120,7 +131,7 @@ function findDuplicateReceives(db: Db): DuplicateReceive[] {
 }
 
 /** Отправка без получения/отмены и получение без отправки. Сколько это уже висит — решает вызывающий по `at`. */
-function findUnpairedTransfers(db: Db): UnpairedTransfer[] {
+function findUnpairedTransfers(db: Db): { unpaired: UnpairedTransfer[]; mismatches: AmountMismatch[] } {
   type Row = { subject_key: string; source_ref: string; reason: string; received_at: number; old_value: string | null; new_value: string | null };
   const rows = db
     .prepare(
@@ -138,12 +149,18 @@ function findUnpairedTransfers(db: Db): UnpairedTransfer[] {
   }
 
   const out: UnpairedTransfer[] = [];
+  const mismatches: AmountMismatch[] = [];
   for (const [txId, list] of byRef) {
     for (const kind of ["money", "item"] as const) {
       const prefix = kind === "money" ? "TRANSFER_" : "ITEM_TRANSFER_";
       const outRow = list.find((r) => r.reason === `${prefix}OUT`);
       const inRow = list.find((r) => r.reason === `${prefix}IN`);
       const cancelled = list.some((r) => r.reason === `${prefix}CANCELLED`);
+      if (kind === "money" && outRow && inRow) {
+        const sent = Number(outRow.old_value ?? 0) - Number(outRow.new_value ?? 0);
+        const received = Number(inRow.new_value ?? 0) - Number(inRow.old_value ?? 0);
+        if (sent !== received) mismatches.push({ txId, fromKey: outRow.subject_key, toKey: inRow.subject_key, sent, received, at: Math.max(outRow.received_at, inRow.received_at) });
+      }
       if (outRow && !inRow && !cancelled) {
         out.push({ txId, kind, side: "out", subjectKey: outRow.subject_key, at: outRow.received_at, amount: kind === "money" ? Number(outRow.old_value ?? 0) - Number(outRow.new_value ?? 0) : null });
       } else if (inRow && !outRow) {
@@ -151,7 +168,7 @@ function findUnpairedTransfers(db: Db): UnpairedTransfer[] {
       }
     }
   }
-  return out;
+  return { unpaired: out, mismatches };
 }
 
 const caches = new WeakMap<Db, () => IntegrityFindings>();
@@ -159,11 +176,15 @@ const caches = new WeakMap<Db, () => IntegrityFindings>();
 export function getIntegrityFindings(db: Db): IntegrityFindings {
   let cached = caches.get(db);
   if (!cached) {
-    cached = cachedByDbVersion(db, () => ({
-      chainBreaks: findChainBreaks(db),
-      duplicateReceives: findDuplicateReceives(db),
-      unpairedTransfers: findUnpairedTransfers(db),
-    }));
+    cached = cachedByDbVersion(db, () => {
+      const transfers = findUnpairedTransfers(db);
+      return {
+        chainBreaks: findChainBreaks(db),
+        duplicateReceives: findDuplicateReceives(db),
+        unpairedTransfers: transfers.unpaired,
+        amountMismatches: transfers.mismatches,
+      };
+    });
     caches.set(db, cached);
   }
   return cached();
@@ -189,4 +210,25 @@ export function findUnexplainedJumps(db: Db, since: number, minDelta: number): U
     if (delta >= minDelta) out.push({ id: r.id, subjectKey: r.subject_key, at: r.received_at, delta, reason: r.reason });
   }
   return out;
+}
+
+export interface FutureClock {
+  subjectKey: string;
+  /** На сколько устройство «опережает» сервер, мс (максимум по записям окна). */
+  aheadMs: number;
+  at: number;
+}
+
+/**
+ * Часы устройства спешат: запись датирована будущим относительно момента получения. Отставание не аномалия (офлайн-игрок законно
+ * досылает старые записи), а вот «будущее» — сбитые часы или подделка времени, ломающая хронологию на устройстве.
+ */
+export function findFutureClocks(db: Db, since: number, toleranceMs: number): FutureClock[] {
+  const rows = db
+    .prepare(
+      `SELECT subject_key, MAX(happened_at - received_at) AS ahead, MAX(received_at) AS at FROM changes
+       WHERE received_at > ? AND seq > 0 AND happened_at - received_at > ? GROUP BY subject_key`,
+    )
+    .all(since, toleranceMs) as { subject_key: string; ahead: number; at: number }[];
+  return rows.map((r) => ({ subjectKey: r.subject_key, aheadMs: r.ahead, at: r.at }));
 }

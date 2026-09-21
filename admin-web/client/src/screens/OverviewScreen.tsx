@@ -5,6 +5,7 @@ import { ChangeLine } from "../design/ChangeLine";
 import { AppButton, EmptyState, Panel, StatTile } from "../design/components";
 import { navigate } from "../router";
 import { AttentionPanel } from "./overview/AttentionPanel";
+import { PulsePanel } from "./overview/PulsePanel";
 import { WatchPanel } from "./overview/WatchPanel";
 
 const POLL_MS = 3000;
@@ -61,6 +62,8 @@ export function OverviewScreen() {
         <AttentionPanel />
         <WatchPanel />
       </div>
+
+      <PulsePanel />
 
       <Panel title="Живая лента изменений" action={<AppButton onClick={() => navigate("events")}>все события с фильтрами →</AppButton>}>
         {feed.length === 0 ? (

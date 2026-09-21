@@ -38,6 +38,12 @@ CREATE TABLE IF NOT EXISTS watchlist (
   added_at    INTEGER NOT NULL
 );
 
+-- Пульс игры: снимок метрик раз в минуту (lib/pulse.ts). Хранится в БД, а не в памяти, чтобы картину можно было листать назад и разбирать постфактум.
+CREATE TABLE IF NOT EXISTS pulse_samples (
+  t    INTEGER PRIMARY KEY,
+  data TEXT NOT NULL
+);
+
 -- Снимка Character нет по решению: он всегда пересчитывается SQL-агрегатом
 -- по changes на чтение, а не поддерживается построчно (см. обсуждение объёма
 -- работ — так рассинхронизироваться нечему).

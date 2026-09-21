@@ -186,7 +186,7 @@ export type Severity = "crit" | "warn" | "info";
 
 export interface AttentionItem {
   id: string;
-  kind: "negative_balance" | "balance_jump" | "went_silent" | "node_exhausted_hot" | "revoke_repeat" | "override_undelivered" | "transfer_stuck" | "duplicate_receive" | "balance_chain_break" | "balance_unexplained" | "old_version";
+  kind: "negative_balance" | "balance_jump" | "went_silent" | "node_exhausted_hot" | "revoke_repeat" | "override_undelivered" | "transfer_stuck" | "duplicate_receive" | "balance_chain_break" | "balance_unexplained" | "old_version" | "mass_silence" | "reject_spike" | "rate_limited" | "secret_denied" | "server_slow" | "clock_skew" | "transfer_amount_mismatch";
   severity: Severity;
   title: string;
   detail: string;
@@ -262,4 +262,32 @@ export interface AnnouncementRecipient {
   publicKeyB64: string;
   callsign: string;
   delivered: boolean;
+}
+
+/** Снимок «пульса игры» за интервал (обычно минуту): что происходило на площадке и как чувствовал себя сервер. */
+export interface PulseSample {
+  t: number;
+  online: number;
+  /** Принятые записи и heartbeat-запросы за интервал. */
+  records: number;
+  heartbeats: number;
+  /** Отклонённые записи по причинам: signature, malformed, unknown, seq, actor, other. */
+  rejected: number;
+  rejectedBy: Record<string, number>;
+  rateLimited: number;
+  secretDenied: number;
+  requests: number;
+  latencyAvgMs: number;
+  latencyMaxMs: number;
+  breaches: number;
+  /** Выдано эдди наградами (взлом, шард, добыча). */
+  eddies: number;
+  transfers: number;
+  /** Правок мастера, ещё не дошедших до устройств. */
+  undelivered: number;
+}
+
+export interface Pulse {
+  intervalMs: number;
+  samples: PulseSample[];
 }

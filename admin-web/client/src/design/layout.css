@@ -474,3 +474,8 @@
   flex-wrap: wrap;
   margin-top: 10px;
 }
+.pulse-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--gap);
+}

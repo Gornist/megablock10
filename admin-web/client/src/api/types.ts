@@ -8,6 +8,8 @@ export type {
   AnnouncementRecipient,
   Attention,
   AttentionItem,
+  Pulse,
+  PulseSample,
   AuditRecord,
   AuditResponse,
   BulkPreview,

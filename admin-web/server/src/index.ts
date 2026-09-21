@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { buildApp } from "./app.js";
 import { openDb } from "./db/index.js";
 import { scheduleBackups } from "./lib/backup.js";
+import { schedulePulse } from "./lib/pulse.js";
 import { EXIT_CONFIG, isProduction, productionProblems } from "./lib/productionMode.js";
 
 const PORT = Number(process.env.PORT ?? 2517);
@@ -26,6 +27,7 @@ const app = buildApp(db, { clientDist });
 // На :memory: (тестовый режим buildApp не используется тут вовсе) бэкапить
 // нечего и некуда — в реальном запуске DB_PATH всегда файл на диске.
 scheduleBackups(db, BACKUP_DIR, BACKUP_INTERVAL_MS);
+schedulePulse(db);
 
 app.listen({ port: PORT, host: "0.0.0.0" }).catch((err) => {
   app.log.error(err);

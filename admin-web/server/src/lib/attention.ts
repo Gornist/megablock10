@@ -4,6 +4,7 @@ import { parseSafe } from "./json.js";
 import { lastPresence } from "./presence.js";
 import { ONLINE_WINDOW_MS, getPlayerBase, seenAt, withOnline } from "./playerSummary.js";
 import { breachesLastHourByNode, getNodeSummaries } from "./nodeSummary.js";
+import { computeClockAnomalies, computePulseAnomalies } from "./anomalies.js";
 import { findUnexplainedJumps, getIntegrityFindings } from "./integrity.js";
 
 import type { AttentionItem, Severity } from "../apiTypes.js";
@@ -153,6 +154,8 @@ export function computeAttention(db: Db, now = Date.now()): AttentionItem[] {
   }
 
   items.push(...versionItems(withOnline(players, now), ctx.playerName));
+  items.push(...computePulseAnomalies(db, now));
+  items.push(...computeClockAnomalies(db, ctx.playerName, now - t.integrityWindowMs));
   items.push(...integrityItems(db, ctx.playerName, now, t));
 
   return items.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] || b.at - a.at);
@@ -175,6 +178,19 @@ function integrityItems(db: Db, playerName: (key: string) => string, now: number
       detail: `${names} (перевод ${d.sourceRef.slice(0, 8)}) — честное приложение так не делает`,
       subjectKey: d.subjectKeys[0],
       at: d.at,
+    });
+  }
+
+  for (const m of found.amountMismatches) {
+    if (m.at < since) continue;
+    items.push({
+      id: `mismatch:${m.txId}`,
+      kind: "transfer_amount_mismatch",
+      severity: "crit",
+      title: "Сумма перевода не сходится",
+      detail: `${playerName(m.fromKey)} → ${playerName(m.toKey)}: списано ${m.sent} €$, получено ${m.received} €$`,
+      subjectKey: m.toKey,
+      at: m.at,
     });
   }
 
