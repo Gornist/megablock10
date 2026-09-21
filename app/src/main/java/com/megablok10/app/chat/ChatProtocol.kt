@@ -1,5 +1,6 @@
 package com.megablok10.app.chat
 
+import com.megablok10.app.net.WireVersion
 import java.util.Base64
 
 enum class ChatMessageType { FACTION, DM }
@@ -27,14 +28,14 @@ object ChatProtocol {
     private const val MAGIC = "MB10CHAT"
 
     fun encode(message: ChatWireMessage): String = listOf(
-        MAGIC, "v1", message.type.name,
+        MAGIC, "v${WireVersion.CHAT}", message.type.name,
         message.fromPubKeyB64, b64(message.fromCallsign), b64(message.fromFaction),
         message.toPubKeyB64, message.timestamp.toString(), b64(message.body)
     ).joinToString(":")
 
     fun decode(raw: String): ChatWireMessage? {
         val parts = raw.split(":")
-        if (parts.size < 9 || parts[0] != MAGIC) return null
+        if (parts.size < 9 || !WireVersion.matches(parts, MAGIC)) return null
         return try {
             ChatWireMessage(
                 type = ChatMessageType.valueOf(parts[2]),

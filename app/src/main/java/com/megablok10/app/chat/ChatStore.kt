@@ -6,6 +6,7 @@ import com.megablok10.app.breach.SlotClaimStore
 import com.megablok10.app.data.ChatMessageEntity
 import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.identity.Identity
+import com.megablok10.app.net.IncompatibleVersionReporter
 import com.megablok10.app.net.SendOutcome
 import com.megablok10.app.call.CallManager
 import com.megablok10.app.presence.PeerInfo
@@ -39,6 +40,7 @@ object ChatStore {
     val listeningPort: Int get() = server?.port ?: -1
     private var scope: CoroutineScope? = null
     private var startedForKey: String? = null
+    private val versionReporter = IncompatibleVersionReporter { com.megablok10.app.ui.theme.AppSnack.show(it) }
 
     /**
      * Сама функция синхронная (её удобно звать из LaunchedEffect на главном
@@ -71,7 +73,8 @@ object ChatStore {
                     SoundPlayer.playMessageReceived(appContext)
                 },
                 onCallSignal = { signal -> CallManager.onSignalReceived(appContext, identity, signal) },
-                onSlotClaim = { claim -> appScope.launch { SlotClaimStore.receive(appContext, claim) } }
+                onSlotClaim = { claim -> appScope.launch { SlotClaimStore.receive(appContext, claim) } },
+                onIncompatible = { line -> versionReporter.report(line) }
             )
             srv.start(appScope)
             server = srv

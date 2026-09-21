@@ -1,6 +1,7 @@
 package com.megablok10.app.call
 
 import java.util.Base64
+import com.megablok10.app.net.WireVersion
 
 enum class CallSignalType { OFFER, ANSWER, ICE_CANDIDATE, DECLINE, END }
 
@@ -34,14 +35,14 @@ object CallProtocol {
     private const val MAGIC = "MB10CALL"
 
     fun encode(signal: CallSignal): String = listOf(
-        MAGIC, "v2", signal.type.name, signal.callId,
+        MAGIC, "v${WireVersion.CALL}", signal.type.name, signal.callId,
         signal.fromPubKeyB64, b64(signal.fromCallsign), signal.toPubKeyB64, signal.timestamp.toString(),
         b64(signal.sdp ?: ""), b64(signal.iceSdpMid ?: ""), (signal.iceSdpMLineIndex ?: -1).toString(), b64(signal.iceCandidate ?: "")
     ).joinToString(":")
 
     fun decode(raw: String): CallSignal? {
         val parts = raw.split(":")
-        if (parts.size < 12 || parts[0] != MAGIC) return null
+        if (parts.size < 12 || !WireVersion.matches(parts, MAGIC)) return null
         return try {
             CallSignal(
                 type = CallSignalType.valueOf(parts[2]),

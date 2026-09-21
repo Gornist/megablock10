@@ -49,7 +49,9 @@ internal fun readBoundedLine(input: java.io.InputStream, maxChars: Int): String?
 class ChatServer(
     private val onMessage: (ChatWireMessage) -> Unit,
     private val onCallSignal: (CallSignal) -> Unit = {},
-    private val onSlotClaim: (SlotClaimEntity) -> Unit = {}
+    private val onSlotClaim: (SlotClaimEntity) -> Unit = {},
+    /** Строка известного протокола, но другой версии (телефон со старым/новым приложением): сообщается игроку, см. WireVersion. */
+    private val onIncompatible: (String) -> Unit = {}
 ) {
     private var serverSocket: ServerSocket? = null
     private var job: Job? = null
@@ -83,9 +85,10 @@ class ChatServer(
             socket.use {
                 it.soTimeout = 5000
                 val line = readBoundedLine(it.getInputStream(), MAX_LINE_CHARS) ?: return
-                ChatProtocol.decode(line)?.let(onMessage)
+                val handled = ChatProtocol.decode(line)?.let(onMessage)
                     ?: CallProtocol.decode(line)?.let(onCallSignal)
                     ?: ClaimProtocol.decode(line)?.let(onSlotClaim)
+                if (handled == null) onIncompatible(line)
             }
         } catch (e: Exception) {
             Log.w(TAG, "входящее соединение отброшено: ${e.message}")

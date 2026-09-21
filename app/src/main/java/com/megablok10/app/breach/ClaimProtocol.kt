@@ -1,6 +1,7 @@
 package com.megablok10.app.breach
 
 import com.megablok10.app.data.SlotClaimEntity
+import com.megablok10.app.net.WireVersion
 
 /**
  * Построчный протокол поверх того же TCP-сокета, что чат и звонки (см.
@@ -21,11 +22,11 @@ object ClaimProtocol {
     private const val MAGIC = "MB10CLAIM"
 
     fun encode(claim: SlotClaimEntity): String =
-        listOf(MAGIC, "v1", claim.slotRef, claim.claimantKeyB64, claim.claimedAt.toString(), claim.signature).joinToString(":")
+        listOf(MAGIC, "v${WireVersion.CLAIM}", claim.slotRef, claim.claimantKeyB64, claim.claimedAt.toString(), claim.signature).joinToString(":")
 
     fun decode(raw: String): SlotClaimEntity? {
         val parts = raw.split(":")
-        if (parts.size < 6 || parts[0] != MAGIC) return null
+        if (parts.size < 6 || !WireVersion.matches(parts, MAGIC)) return null
         return try {
             SlotClaimEntity(
                 slotRef = parts[2],

@@ -153,8 +153,9 @@ back_to_scan() { tap_text "$1" "Новый контейнер" >/dev/null 2>&1; 
 port_of() {
   local p
   dbg "$1" DEBUG_CONFIG --es port '?' >/dev/null 2>&1; sleep 0.4
-  p=$(adb_ "$1" logcat -d -s MB10DBG | grep "port=" | tail -1 | sed 's/.*port=//' | tr -dc 0-9)
-  [ -n "$p" ] && [ "$p" != "-1" ] || p=$(adb_ "$1" logcat -d | grep "Слушаю входящие" | tail -1 | sed 's/.*порту //' | tr -dc 0-9)
+  # Минус сохраняем: сервер чата ещё не поднят → «port=-1»; без минуса это читалось как порт 1 (стенд «связывал» пиры с несуществующим портом).
+  p=$(adb_ "$1" logcat -d -s MB10DBG | grep "port=" | tail -1 | sed 's/.*port=//' | tr -dc '0-9-')
+  [ -n "$p" ] && [ "$p" -gt 1024 ] 2>/dev/null || p=$(adb_ "$1" logcat -d | grep "Слушаю входящие" | tail -1 | sed 's/.*порту //' | tr -dc 0-9)
   echo "$p"
 }
 
