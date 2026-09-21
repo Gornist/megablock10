@@ -181,7 +181,8 @@ export interface SlotRegistryItem {
 export interface Transfer {
   txId: string;
   from: string;
-  to: string;
+  /** Получатель; null — перевод ещё не подтверждён получателем (в записи отправки его ключа нет). */
+  to: string | null;
   fromName?: string;
   toName?: string;
   amount: number;

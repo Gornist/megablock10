@@ -46,6 +46,7 @@ test("GET /api/transfers — TRANSFER_OUT без парного TRANSFER_IN по
   const transfers = res.json();
   assert.equal(transfers.length, 1);
   assert.equal(transfers[0].amount, 20);
+  assert.equal(transfers[0].to, null, "получатель неизвестен, пока не пришла запись получения");
   assert.equal(transfers[0].oneSided, true);
   assert.equal(transfers[0].confirmedAt, null);
 });

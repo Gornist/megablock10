@@ -12,7 +12,7 @@ export function TransfersScreen() {
 
   const columns: Column<Transfer>[] = [
     { key: "from", label: "От", render: (t) => <span title={t.from}>{t.fromName ?? shortKey(t.from)}</span>, sortValue: (t) => t.fromName ?? t.from },
-    { key: "to", label: "Кому", render: (t) => <span title={t.to}>{t.toName ?? shortKey(t.to)}</span>, sortValue: (t) => t.toName ?? t.to },
+    { key: "to", label: "Кому", render: (t) => (t.to ? <span title={t.to}>{t.toName ?? shortKey(t.to)}</span> : <span className="hint-text">не подтверждён получателем</span>), sortValue: (t) => t.toName ?? t.to ?? "" },
     { key: "amount", label: "Сумма", render: (t) => t.amount, sortValue: (t) => t.amount },
     { key: "sentAt", label: "Отправлен", render: (t) => formatTime(t.sentAt), sortValue: (t) => t.sentAt ?? 0 },
     { key: "confirmedAt", label: "Подтверждён", render: (t) => formatTime(t.confirmedAt), sortValue: (t) => t.confirmedAt ?? 0 },

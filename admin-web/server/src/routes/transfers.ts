@@ -70,7 +70,8 @@ export function registerTransfersRoute(app: FastifyInstance, db: Db) {
       transfers.push({
         txId,
         from: out.subject_key,
-        to: inRow ? inRow.subject_key : out.actor,
+        // В записи отправки actor — сам отправитель (сервер требует actor = subject), так что получатель известен только по записи получения.
+        to: inRow ? inRow.subject_key : null,
         amount: transferAmount(out, "out"),
         sentAt: out.received_at,
         confirmedAt: inRow ? inRow.received_at : null,
@@ -98,7 +99,7 @@ export function registerTransfersRoute(app: FastifyInstance, db: Db) {
     const names = makeHumanizeContext(db);
     for (const t of transfers) {
       t.fromName = names.playerName(t.from);
-      t.toName = names.playerName(t.to);
+      if (t.to) t.toName = names.playerName(t.to);
     }
 
     transfers.sort((a, b) => (b.confirmedAt ?? b.sentAt ?? 0) - (a.confirmedAt ?? a.sentAt ?? 0));
