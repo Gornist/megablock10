@@ -7,7 +7,9 @@ ADB=$SDK/platform-tools/adb
 EMU=$SDK/emulator/emulator
 export PATH="$SDK/platform-tools:$PATH"   # чтобы `adb` работал и в ручных командах после `source lib.sh`
 APK=${APK:-$ROOT/app/build/outputs/apk/debug/app-debug.apk}
-NODE20=${NODE20:-/opt/homebrew/opt/node@20/bin}   # на CI нет такого пути — node берётся из PATH (setup-node)
+# Node сервера: LTS 22 (зависимости требуют >=22), запасной — 20; NODE_BIN переопределяет. На CI таких путей нет — node берётся из PATH (setup-node).
+for d in "${NODE_BIN:-}" /opt/homebrew/opt/node@22/bin /opt/homebrew/opt/node@20/bin; do [ -n "$d" ] && [ -d "$d" ] && { NODE_BIN=$d; break; }; done
+NODE_BIN=${NODE_BIN:-}
 [ -n "${JAVA_HOME:-}" ] || { [ -d /Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home ] && export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home; }
 PKG=com.megablok10.app
 AVD_A=${AVD_A:-Medium_Phone_API_35}; AVD_B=${AVD_B:-Second_API_35}   # имена AVD (на CI создаются под теми же именами)
@@ -162,7 +164,7 @@ port_of() {
 # ── Управление сервером ──
 server_stop() { [ -f "$E2E_DIR/server.pid" ] && kill "$(cat "$E2E_DIR/server.pid")" 2>/dev/null; rm -f "$E2E_DIR/server.pid"; lsof -ti tcp:$PORT -sTCP:LISTEN 2>/dev/null | xargs kill 2>/dev/null; sleep 1; }
 server_start() {
-  (cd "$ROOT/admin-web/server" && PATH="$NODE20:$PATH" DB_PATH="$E2E_DIR/db.sqlite" BACKUP_DIR="$E2E_DIR/backups" PORT=$PORT nohup node dist/index.js > "$E2E_DIR/server.log" 2>&1 & echo $! > "$E2E_DIR/server.pid")
+  (cd "$ROOT/admin-web/server" && PATH="${NODE_BIN:+$NODE_BIN:}$PATH" DB_PATH="$E2E_DIR/db.sqlite" BACKUP_DIR="$E2E_DIR/backups" PORT=$PORT nohup node dist/index.js > "$E2E_DIR/server.log" 2>&1 & echo $! > "$E2E_DIR/server.pid")
   wait_until 20 curl -s -o /dev/null "$API/api/overview"
 }
 # tx_of <serial> — id последнего перевода, созданного командой pay (из logcat).

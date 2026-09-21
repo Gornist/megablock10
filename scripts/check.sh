@@ -7,7 +7,9 @@
 cd "$(dirname "$0")/.." || exit 1
 ROOT=$PWD; LOGS=/tmp/mb10-check; mkdir -p $LOGS
 export JAVA_HOME=${JAVA_HOME:-/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home}
-export PATH="${NODE20:-/opt/homebrew/opt/node@20/bin}:$PATH"
+# Node для сервера/клиента: LTS 22 (зависимости сервера требуют >=22), запасной — 20; NODE_BIN переопределяет. На CI node берётся из setup-node.
+for d in "${NODE_BIN:-}" /opt/homebrew/opt/node@22/bin /opt/homebrew/opt/node@20/bin; do [ -n "$d" ] && [ -d "$d" ] && { NODE_BIN=$d; break; }; done
+export PATH="${NODE_BIN:+$NODE_BIN:}$PATH"
 ALL=0; E2E=0; for a in "$@"; do case $a in --all) ALL=1;; --e2e) E2E=1; ALL=1;; esac; done
 changed() { [ $ALL -eq 1 ] || { git diff --name-only origin/main 2>/dev/null; git ls-files --others --exclude-standard; } | grep -q "^$1"; }
 declare -a TIMES; FAIL=0

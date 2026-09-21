@@ -1,7 +1,7 @@
 # Прогоны на двух эмуляторах + дашборд
 
 Стенд из двух эмуляторов (Alice/Neon и Bob/Rats), коллектора `admin-web` и сценариев с проверками.
-Нужны: Android SDK с AVD `Medium_Phone_API_35` и `Second_API_35` (клон первого), `node@20` (Homebrew), `sqlite3`, `gradle` c JDK 17.
+Нужны: Android SDK с AVD `Medium_Phone_API_35` и `Second_API_35` (клон первого), `node@22` (Homebrew; подойдёт и `node@20`), `sqlite3`, `gradle` c JDK 17.
 
 ```bash
 scripts/e2e/up.sh            # сервер + эмуляторы + APK + персонажи + связь пиров (~3 мин)

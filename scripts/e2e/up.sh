@@ -1,5 +1,5 @@
 #!/bin/bash
-# Поднимает весь стенд одной командой: сервер-коллектор (node@20, свежая БД), два эмулятора,
+# Поднимает весь стенд одной командой: сервер-коллектор (node@22 или 20, свежая БД), два эмулятора,
 # APK, персонажи Alice/Neon и Bob/Rats, связь пиров и ускоренные часы.
 #   ./up.sh [--no-build] [--keep-data] [--clock N] [--timer N]
 # После: ./scenarios/*.sh или ./run-all.sh; убрать всё — ./down.sh.
@@ -25,7 +25,7 @@ if [ $BUILD -eq 1 ] || [ ! -f "$APK" ]; then log "сборка APK…"; (cd "$RO
 
 # 2. Сервер
 SERVER="$ROOT/admin-web/server"
-export PATH="$NODE20:$PATH"
+export PATH="${NODE_BIN:+$NODE_BIN:}$PATH"
 [ -d "$SERVER/node_modules" ] || (cd "$SERVER" && npm ci >/dev/null) || die "npm ci"
 # Сервер пересобираем только если исходники новее dist (tsc ≈ 10 с на каждый up.sh).
 if [ ! -f "$SERVER/dist/index.js" ] || [ -n "$(find "$SERVER/src" "$SERVER/package.json" -newer "$SERVER/dist/index.js" -type f 2>/dev/null | head -1)" ]; then
