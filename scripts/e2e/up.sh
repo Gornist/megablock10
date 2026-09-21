@@ -58,6 +58,7 @@ for s in $A $B; do
   for k in window_animation_scale transition_animation_scale animator_duration_scale; do adb_ $s shell settings put global $k 0; done
   adb_ $s shell pm disable-user --user 0 com.google.android.apps.messaging >/dev/null 2>&1
   adb_ $s shell svc power stayon true >/dev/null 2>&1   # экран не засыпает во время длинных прогонов и записи
+  adb_ $s shell svc wifi enable >/dev/null 2>&1          # состояние Wi-Fi переживает перезапуск AVD: после прерванного network-drop он мог остаться выключенным
   adb_ $s shell settings put system screen_off_timeout 2147483647 >/dev/null 2>&1
 done
 

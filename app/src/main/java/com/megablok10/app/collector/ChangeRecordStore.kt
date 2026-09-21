@@ -9,6 +9,7 @@ import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.data.PendingChangeRecordEntity
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.identity.IdentityManager
+import com.megablok10.app.net.WireVersion
 import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.wallet.TransactionStore
 import kotlinx.coroutines.CancellationException
@@ -135,7 +136,7 @@ object ChangeRecordStore {
             ChangeRecord(it.id, it.subjectKeyB64, it.seq, it.happenedAt, it.field, it.oldValue, it.newValue, it.reason, it.sourceRef, it.actor, it.signature)
         }
         val port = ChatStore.listeningPort
-        val presence = if (identity != null && port > 0) JSONObject().put("chatPort", port).put("callsign", identity.callsign).put("faction", identity.faction) else null
+        val presence = if (identity != null && port > 0) presenceJson(context, port, identity.callsign, identity.faction) else null
         val result = CollectorClient.sendBatch(baseUrl, records, identity?.publicKeyB64, CollectorSettings.gameSecret(context), acksIn, presence)
 
         if (result == null) {
@@ -200,4 +201,16 @@ object ChangeRecordStore {
     private suspend fun waitForWakeOrTimeout(timeoutMs: Long) {
         kotlinx.coroutines.withTimeoutOrNull(timeoutMs) { wake.first() }
     }
+}
+
+/**
+ * Что телефон сообщает коллектору вместе с heartbeat: порт чата и позывной/фракция (запасное обнаружение), версия приложения и версии
+ * построчных протоколов (дашборд подсветит игроков со старой сборкой — им перестанут приходить сообщения, см. net/WireVersion).
+ * Сервер игнорирует незнакомые поля, поэтому добавление обратно-совместимо.
+ */
+private fun presenceJson(context: Context, chatPort: Int, callsign: String, faction: String): JSONObject {
+    val appVersion = try { context.packageManager.getPackageInfo(context.packageName, 0).versionName } catch (e: Exception) { null }
+    val wire = JSONObject().also { o -> WireVersion.REPORTED.forEach { (k, v) -> o.put(k, v) } }
+    return JSONObject().put("chatPort", chatPort).put("callsign", callsign).put("faction", faction)
+        .put("appVersion", appVersion ?: "unknown").put("wireVersions", wire)
 }

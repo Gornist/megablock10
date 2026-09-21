@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Видео веб-интерфейса мастера: обход дашборда по событиям, которые показаны в демо-ролике приложения (см. demo.sh).
-// Запускать ПОСЛЕ demo.sh на том же стенде (данные — в БД сервера). Без зависимостей: Node ≥ 22 (встроенный WebSocket/fetch),
+// Запускать ПОСЛЕ сюжета демо на том же стенде (данные — в БД сервера): `NOVIDEO=1 ./demo.sh` — именно он, а не NOREC=1 (тот пропускает
+// подготовку баланса и демонов, платежи отклоняются и дашборд остаётся пустым). Без зависимостей: Node ≥ 22 (встроенный WebSocket/fetch),
 // Google Chrome (headless, управление по протоколу DevTools), ffmpeg. Chrome отдаёт кадры screencast только при изменении страницы —
 // как screenrecord на телефоне, поэтому длительности кадров берутся из меток времени и склеиваются ffmpeg concat.
 //   node scripts/e2e/dashboard-demo.mjs            → $E2E_DIR/dash/dashboard.mp4
@@ -25,6 +26,9 @@ const login = await (await fetch(`${API}/api/auth/login`, {
   method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "E2E", token: masterToken }),
 })).json();
 const get = async (p) => (await fetch(`${API}${p}`, { headers: { authorization: `Bearer ${login.sessionToken}` } })).json();
+const post = async (p, body) => (await fetch(`${API}${p}`, {
+  method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${login.sessionToken}` }, body: JSON.stringify(body),
+})).json();
 const players = await get("/api/players");
 const byName = (n) => players.find((p) => p.callsign === n);
 const alice = byName("Alice"), bob = byName("Bob");
@@ -33,11 +37,16 @@ const snap = (p) => get(`/api/players/${encodeURIComponent(p.publicKeyB64)}`);
 const aliceSnap = await snap(alice), bobSnap = await snap(bob);
 const names = (list, key) => list.map((x) => x[key]).join(", ") || "нет";
 const overview = await get("/api/overview");
+const attention = await get("/api/attention").catch(() => ({ items: [] }));
+const factions = await get("/api/factions").catch(() => []);
 const nodes = await get("/api/nodes");
 const node = nodes.find((n) => n.name.includes("Арасака")) ?? nodes[0];
 const slots = await get("/api/slots");
 const transfers = await get("/api/transfers");
 const amounts = transfers.filter((t) => !t.cancelledAt).map((t) => t.amount).sort((a, b) => a - b);
+
+// Демонстрационная рассылка: попадёт в «Объявления → История рассылок» и в «Журнал действий мастеров».
+await post("/api/announcements", { text: "Внимание, всем игрокам: сбор у центрального узла через 10 минут.", all: true }).catch(() => null);
 
 // ── Chrome + DevTools ──
 const chrome = spawn(CHROME, [
@@ -118,7 +127,7 @@ const clickDetails = (i) => evaluate(`document.querySelectorAll(".change-toggle"
 const untitle = () => evaluate(`document.getElementById("mb10-title")?.remove()`);
 
 // ── сценарий: порядок повторяет демо-ролик приложения ──
-await title("Мегаблок №10 · панель мастера", "События из демо-ролика приложения, как их видит мастер: переводы, передача предметов, взлом узла, шард, сигнал СБ");
+await title("Мегаблок №10 · панель мастера", "События из демо-ролика приложения, как их видит мастер: переводы, передача предметов, взлом узла, шард, сигнал СБ — и инструменты управления игрой: тревоги, фракции, экономика, объявления, журнал");
 await sleep(5);
 await untitle();
 
@@ -166,11 +175,39 @@ await go("#/transfers");
 await caption("СЦЕНЫ «СДЕЛКА» И «ФИНАЛ» · ПЕРЕВОДЫ", `Переводы между игроками: ${amounts.join(" и ")} €$, оба подтверждены получателем (карточка доставлена → «Принять» → чек). Односторонних и отменённых нет.`);
 await sleep(10);
 
+// ── экраны управления игрой ──
+await go("#/overview");
+await caption("КОНТРОЛЬ · «ТРЕБУЕТ ВНИМАНИЯ»",
+  `Сервер сам ищет странное и складывает в одну панель: отрицательный баланс, скачок без причины, разрыв цепочки баланса, платёж, полученный дважды, зависший перевод, игрок пропал со связи, узел выбит подряд.` +
+  (attention.items?.length ? ` Сейчас в панели: «${attention.items[0].title}» — ${attention.items[0].detail}.` : " Сейчас всё спокойно.") +
+  ` Мастеру не нужно читать ленту целиком: тревоги приходят сверху.`);
+await sleep(11);
+
+await go("#/events");
+await caption("СОБЫТИЯ · ФИЛЬТРЫ", "Вся история игры одной лентой: фильтр по игроку, фракции, типу события и времени. Любую строку можно раскрыть до сырых данных «было → стало».");
+await sleep(9);
+
+await go("#/factions");
+await caption("ФРАКЦИИ", `Сводка по сторонам: ${factions.map((f) => `${f.faction} — ${f.players} игр., ${f.totalBalance} €$, демонов ${f.daemons}, шардов ${f.shards}`).join("; ") || "игроки, деньги и предметы каждой стороны"}. Видно перекосы раньше, чем на них пожалуются игроки.`);
+await sleep(8);
+
+await go("#/economy");
+await caption("ЭКОНОМИКА", "«Эдди в обороте по времени», «Откуда берутся деньги» (взломы, шарды, переводы, правки мастера) и «Самые богатые» — как раз то, что нужно для баланса игры в реальном времени.");
+await sleep(9);
+
+await go("#/announcements");
+await caption("ОБЪЯВЛЕНИЯ", "Мастер пишет текст, выбирает адресатов (все, фракция, отдельные игроки) — телефоны показывают окно «Сообщение от мастера». В «Истории рассылок» видно, кому доставлено, а кому ещё нет.");
+await sleep(9);
+
+await go("#/audit");
+await caption("ЖУРНАЛ ДЕЙСТВИЙ МАСТЕРОВ", "Каждое действие мастера — правка баланса, рассылка, аннулирование заявки — записано с автором и временем. Спорные ситуации разбираются по журналу, а не по памяти.");
+await sleep(8);
+
 await go("#/master");
 await caption("МАСТЕРСКАЯ", "Так создан узел «Арасака-404»: генератор QR-меток контейнеров и шардов с шифрованной начинкой прямо в дашборде — игрок сканирует результат обычным сканером приложения.");
 await sleep(9);
 
-await title("Итог", "Мастер видит всё в реальном времени: деньги, предметы, взломы, тиражи и сигналы СБ — без ручного учёта на площадке.");
+await title("Итог", "Мастер видит всё в реальном времени: деньги, предметы, взломы, тиражи и сигналы СБ, а сервер сам подсвечивает подозрительное — без ручного учёта на площадке.");
 await sleep(5);
 
 // ── завершение и сборка видео ──

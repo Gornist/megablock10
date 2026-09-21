@@ -24,6 +24,11 @@ class WireVersionTest {
         assertNull(WireVersion.parse(""))
     }
 
+    @Test fun reportedVersionsMatchSupportedOnes() {
+        assertEquals(mapOf("chat" to WireVersion.CHAT, "call" to WireVersion.CALL, "claim" to WireVersion.CLAIM), WireVersion.REPORTED)
+        assertEquals(WireVersion.SUPPORTED.values.toSet(), WireVersion.REPORTED.values.toSet())
+    }
+
     @Test fun ownVersionRoundTrips() {
         assertTrue(line.startsWith("MB10CHAT:v${WireVersion.CHAT}:"))
         assertEquals(msg, ChatProtocol.decode(line))

@@ -13,6 +13,9 @@ object WireVersion {
     const val CALL = 2
     const val CLAIM = 1
 
+    /** Версии для дашборда (поле `wireVersions` в presence): короткие имена протоколов, порядок стабилен. */
+    val REPORTED: Map<String, Int> = linkedMapOf("chat" to CHAT, "call" to CALL, "claim" to CLAIM)
+
     /** Магия протокола → версия, которую понимает это приложение. */
     val SUPPORTED: Map<String, Int> = mapOf("MB10CHAT" to CHAT, "MB10CALL" to CALL, "MB10CLAIM" to CLAIM)
 
