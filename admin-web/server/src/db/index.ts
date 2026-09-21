@@ -44,6 +44,12 @@ CREATE TABLE IF NOT EXISTS pulse_samples (
   data TEXT NOT NULL
 );
 
+-- Тревоги, которые мастер отложил («знаю, не мешай»): id тревоги из lib/attention.ts и до какого времени молчать.
+CREATE TABLE IF NOT EXISTS attention_snooze (
+  item_id TEXT PRIMARY KEY,
+  until   INTEGER NOT NULL
+);
+
 -- Снимка Character нет по решению: он всегда пересчитывается SQL-агрегатом
 -- по changes на чтение, а не поддерживается построчно (см. обсуждение объёма
 -- работ — так рассинхронизироваться нечему).

@@ -4,7 +4,7 @@ import type { PulseSample } from "./apiTypes.js";
 import type { Db } from "./db/index.js";
 import { categorizeReject, resetPulseCounters, takePulseSample } from "./lib/pulse.js";
 import { testDevice } from "./testUtil.js";
-import { seedPlayer, setup, type App } from "./testHelpers.js";
+import { seedPlayer, setup, sleep, type App } from "./testHelpers.js";
 
 const MIN = 60_000;
 type Item = { kind: string; severity: string; detail: string; subjectKey?: string };
@@ -51,6 +51,7 @@ test("сэмпл пульса: счётчики приёма и показате
   const next = takePulseSample(db, Date.now() + 1);
   assert.equal(next.rejected, 0, "счётчики сброшены");
 
+  await sleep(5); // второй сэмпл датирован на 1 мс вперёд
   const res = (await app.inject({ method: "GET", url: "/api/pulse?minutes=5", headers })).json() as { intervalMs: number; samples: PulseSample[] };
   assert.equal(res.intervalMs, 60_000);
   assert.deepEqual(res.samples.map((x) => x.rejected), [2, 0]);

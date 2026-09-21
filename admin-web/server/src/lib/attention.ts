@@ -4,7 +4,7 @@ import { parseSafe } from "./json.js";
 import { lastPresence } from "./presence.js";
 import { ONLINE_WINDOW_MS, getPlayerBase, seenAt, withOnline } from "./playerSummary.js";
 import { breachesLastHourByNode, getNodeSummaries } from "./nodeSummary.js";
-import { computeClockAnomalies, computePulseAnomalies } from "./anomalies.js";
+import { computeClockAnomalies, computeOutliers, computePulseAnomalies } from "./anomalies.js";
 import { findUnexplainedJumps, getIntegrityFindings } from "./integrity.js";
 
 import type { AttentionItem, Severity } from "../apiTypes.js";
@@ -155,6 +155,7 @@ export function computeAttention(db: Db, now = Date.now()): AttentionItem[] {
 
   items.push(...versionItems(withOnline(players, now), ctx.playerName));
   items.push(...computePulseAnomalies(db, now));
+  items.push(...computeOutliers(db, ctx.playerName, now));
   items.push(...computeClockAnomalies(db, ctx.playerName, now - t.integrityWindowMs));
   items.push(...integrityItems(db, ctx.playerName, now, t));
 

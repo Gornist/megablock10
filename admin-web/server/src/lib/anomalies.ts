@@ -16,6 +16,12 @@ export function pulseThresholds() {
     rejectShare: num(process.env.ANOM_REJECT_SHARE, 0.3),
     slowAvgMs: num(process.env.ANOM_SLOW_MS, 500),
     clockAheadMs: num(process.env.ANOM_CLOCK_AHEAD_MIN, 5) * MIN,
+    /** Игрок-выброс: не меньше стольких взломов/эдди за 15 минут — иначе «в 10 раз больше медианы» про 1 и 10 взломов ничего не значит. */
+    outlierMinBreaches: num(process.env.ANOM_OUTLIER_MIN_BREACHES, 10),
+    outlierMinEddies: num(process.env.ANOM_OUTLIER_MIN_EDDIES, 2000),
+    /** Во сколько «робастных сигм» (MAD·1.4826) от медианы начинается выброс. */
+    outlierSigmas: num(process.env.ANOM_OUTLIER_SIGMAS, 5),
+    emissionMin: num(process.env.ANOM_EMISSION_MIN, 1000),
   };
 }
 
@@ -36,8 +42,9 @@ const sum = (xs: PulseSample[], f: (s: PulseSample) => number) => xs.reduce((a, 
  * Если сэмплер давно молчит (нет свежих сэмплов) — тревог по пульсу нет: не о чем судить.
  */
 export function computePulseAnomalies(db: Db, now = Date.now()): AttentionItem[] {
-  const samples = readPulse(db, 15 * MIN, now);
-  const last = samples[samples.length - 1];
+  const history = readPulse(db, 60 * MIN, now); // час — база для сравнения «как обычно»
+  const samples = history.filter((s) => s.t > now - 15 * MIN);
+  const last = history[history.length - 1];
   if (!last || now - last.t > 2.5 * PULSE_INTERVAL_MS) return [];
 
   const t = pulseThresholds();
@@ -92,7 +99,115 @@ export function computePulseAnomalies(db: Db, now = Date.now()): AttentionItem[]
     items.push({ id: "pulse:server_slow", kind: "server_slow", severity: "warn", title: "Сервер тормозит", detail: `среднее время приёма ${Math.round(avg)} мс за 3 мин (порог ${t.slowAvgMs})`, at: last.t });
   }
 
+  // Скачок эмиссии эдди относительно обычного темпа этой же игры: сумма наград за 3 сэмпла против медианы предыдущих.
+  const past = history.slice(0, -3);
+  if (past.length >= 20 && recent.length === 3) {
+    const base = robustStats(past.map((s) => s.eddies));
+    const avgNow = sum(recent, (s) => s.eddies) / 3;
+    const limit = base.median + t.outlierSigmas * Math.max(base.sigma, 0.2 * base.median, 1);
+    if (avgNow > limit && sum(recent, (s) => s.eddies) >= t.emissionMin) {
+      items.push({
+        id: "pulse:emission_spike",
+        kind: "emission_spike",
+        severity: "warn",
+        title: "Эмиссия эдди резко выросла",
+        detail: `за 3 мин выдано ${sum(recent, (s) => s.eddies)} €$ (${Math.round(avgNow)}/мин), обычно ~${Math.round(base.median)}/мин — щедрый узел, баг или накрутка`,
+        at: last.t,
+      });
+    }
+  }
+
   return items;
+}
+
+/** Медиана и «робастная сигма» (MAD·1.4826): выбросы не сдвигают базу, как сдвигали бы среднее и σ. */
+export function robustStats(xs: number[]): { median: number; sigma: number } {
+  if (xs.length === 0) return { median: 0, sigma: 0 };
+  const med = (a: number[]) => {
+    const b = [...a].sort((x, y) => x - y);
+    const m = b.length >> 1;
+    return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2;
+  };
+  const median = med(xs);
+  return { median, sigma: 1.4826 * med(xs.map((x) => Math.abs(x - median))) };
+}
+
+const REWARD_REASONS = new Set(["BREACH_EDDIES", "BREACH_LOOT", "SHARD_SCAN"]);
+
+/**
+ * Игроки-выбросы за последние 15 минут: взломов или наград заметно больше, чем у остальных активных. Сравнение — с самой игрой
+ * (медиана активных), а не с константой: на быстрой игре «много» — другое число, чем на медленной. Нужно не меньше 5 активных.
+ */
+export function computeOutliers(db: Db, playerName: (key: string) => string, now = Date.now()): AttentionItem[] {
+  const t = pulseThresholds();
+  const rows = db
+    .prepare(
+      `SELECT subject_key, field, reason, old_value, new_value, received_at FROM changes
+       WHERE received_at > ? AND received_at <= ? AND seq > 0 AND (field = 'counters.breach' OR (field = 'balance' AND reason IN ('BREACH_EDDIES','BREACH_LOOT','SHARD_SCAN')))`,
+    )
+    .all(now - 15 * MIN, now) as { subject_key: string; field: string; reason: string; old_value: string | null; new_value: string | null; received_at: number }[];
+
+  const breaches = new Map<string, number>();
+  const eddies = new Map<string, number>();
+  const lastAt = new Map<string, number>();
+  for (const r of rows) {
+    lastAt.set(r.subject_key, Math.max(lastAt.get(r.subject_key) ?? 0, r.received_at));
+    if (r.field === "counters.breach") breaches.set(r.subject_key, (breaches.get(r.subject_key) ?? 0) + 1);
+    else if (REWARD_REASONS.has(r.reason)) eddies.set(r.subject_key, (eddies.get(r.subject_key) ?? 0) + Math.max(0, Number(r.new_value ?? 0) - Number(r.old_value ?? 0)));
+  }
+
+  const items: AttentionItem[] = [];
+  const check = (values: Map<string, number>, min: number, kind: "breaches" | "eddies") => {
+    if (values.size < 5) return;
+    const { median, sigma } = robustStats([...values.values()]);
+    const limit = median + t.outlierSigmas * Math.max(sigma, 1);
+    for (const [key, v] of values) {
+      if (v < min || v <= limit) continue;
+      items.push({
+        id: `outlier:${kind}:${key}`,
+        kind: "player_outlier",
+        severity: "warn",
+        title: kind === "breaches" ? "Слишком много взломов" : "Слишком много заработанных эдди",
+        detail: `${playerName(key)}: ${kind === "breaches" ? `${v} взломов` : `${v} €$`} за 15 мин, у остальных активных медиана ${Math.round(median)} — накрутка, баг или лучший игрок игры`,
+        subjectKey: key,
+        at: lastAt.get(key) ?? now,
+      });
+    }
+  };
+  check(breaches, t.outlierMinBreaches, "breaches");
+  check(eddies, t.outlierMinEddies, "eddies");
+  return items;
+}
+
+export interface AnomalyEpisode {
+  id: string;
+  kind: AttentionItem["kind"];
+  title: string;
+  detail: string;
+  firstAt: number;
+  lastAt: number;
+  /** На скольких шагах перебора условие держалось. */
+  steps: number;
+}
+
+/**
+ * Перебор детекторов по прошлому: «что бы мы показали мастеру, если бы смотрели в момент t» для t от from до to с шагом step.
+ * Нужен для подбора порогов по записанным играм и тестовым прогонам: смотрим, где срабатывало, и правим ANOM_*.
+ * Только детекторы, которые полностью определяются пульсом и записями до момента t (остальные зависят от текущего состояния).
+ */
+export function replayAnomalies(db: Db, playerName: (key: string) => string, from: number, to: number, stepMs: number): AnomalyEpisode[] {
+  const episodes = new Map<string, AnomalyEpisode>();
+  for (let t = from; t <= to; t += stepMs) {
+    for (const i of [...computePulseAnomalies(db, t), ...computeOutliers(db, playerName, t)]) {
+      const e = episodes.get(i.id);
+      if (e) {
+        e.lastAt = t;
+        e.steps++;
+        e.detail = i.detail;
+      } else episodes.set(i.id, { id: i.id, kind: i.kind, title: i.title, detail: i.detail, firstAt: t, lastAt: t, steps: 1 });
+    }
+  }
+  return [...episodes.values()].sort((a, b) => a.firstAt - b.firstAt);
 }
 
 /** Часы устройств, спешащие относительно сервера (за окно проверок целостности). */

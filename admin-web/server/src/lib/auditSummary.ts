@@ -9,6 +9,7 @@ export const AUDIT_ACTION_LABEL_RU: Record<string, string> = {
   CONTAINER_CREATED: "Создан контейнер",
   QR_SHARD: "QR шарда",
   QR_RAM: "QR апгрейда RAM",
+  ATTENTION_SNOOZE: "Тревога отложена",
 };
 
 const FIELD_RU: Record<string, string> = { balance: "баланс", ramCapacity: "буфер RAM", callsign: "позывной", faction: "фракция" };
@@ -45,6 +46,8 @@ export function describeAudit(action: string, detail: Detail, playerName: (key: 
       return `шард «${str(d.title)}» (${str(d.shardId)})`;
     case "QR_RAM":
       return `токен ${str(d.token)}: +${str(d.delta)} к буферу`;
+    case "ATTENTION_SNOOZE":
+      return `«${str(d.title, str(d.id))}» отложена на ${str(d.minutes)} мин`;
     default:
       return action;
   }
