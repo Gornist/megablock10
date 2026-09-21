@@ -1,4 +1,5 @@
 import { withHuman } from "../lib/humanize.js";
+import type { StoredChangeRow } from "../apiTypes.js";
 import { parsePaging } from "../lib/paging.js";
 import type { FastifyInstance } from "fastify";
 import { escapeLike } from "../lib/sqlLike.js";
@@ -87,9 +88,9 @@ export function registerPlayersRoutes(app: FastifyInstance, db: Db) {
       const total = (db.prepare(`SELECT COUNT(*) AS n FROM changes WHERE ${where}`).get(...params) as { n: number }).n;
       const rows = db
         .prepare(`SELECT * FROM changes WHERE ${where} ORDER BY seq DESC LIMIT ? OFFSET ?`)
-        .all(...params, pageSize, page * pageSize);
+        .all(...params, pageSize, page * pageSize) as StoredChangeRow[];
 
-      return { total, page, pageSize, records: withHuman(db, rows as never[]) };
+      return { total, page, pageSize, records: withHuman(db, rows) };
     },
   );
 

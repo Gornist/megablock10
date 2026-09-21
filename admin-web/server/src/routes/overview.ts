@@ -1,4 +1,5 @@
 import { withHuman } from "../lib/humanize.js";
+import type { StoredChangeRow } from "../apiTypes.js";
 import type { Overview } from "../apiTypes.js";
 import { presentSince } from "../lib/presence.js";
 import { ONLINE_WINDOW_MS, getPlayerBase, isActivePlayer } from "../lib/playerSummary.js";
@@ -106,8 +107,8 @@ export function registerOverviewRoutes(app: FastifyInstance, db: Db) {
     // миллисекунду, что и "now", выпадала из ленты. Повторы на границе клиент отсекает по id.
     const rows = db
       .prepare(`SELECT * FROM changes WHERE received_at >= ? AND field != 'announcement' ORDER BY received_at ASC LIMIT ?`)
-      .all(since, limit) as { received_at: number }[];
+      .all(since, limit) as StoredChangeRow[];
     const cursor = rows.length === limit ? rows[rows.length - 1].received_at : Date.now();
-    return { records: withHuman(db, rows as never[]), now: cursor };
+    return { records: withHuman(db, rows), now: cursor };
   });
 }

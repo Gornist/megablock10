@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import type { StoredChangeRow } from "../apiTypes.js";
 import { parsePaging } from "../lib/paging.js";
 import type { EventsResponse } from "../apiTypes.js";
 import type { Db } from "../db/index.js";
@@ -73,7 +74,7 @@ export function registerEventsRoute(app: FastifyInstance, db: Db) {
     const total = (db.prepare(`SELECT COUNT(*) AS n FROM changes ${where}`).get(...params) as { n: number }).n;
     const rows = db
       .prepare(`SELECT * FROM changes ${where} ORDER BY received_at DESC, seq DESC LIMIT ? OFFSET ?`)
-      .all(...params, pageSize, page * pageSize);
-    return { total, page, pageSize, records: withHuman(db, rows as never[]) };
+      .all(...params, pageSize, page * pageSize) as StoredChangeRow[];
+    return { total, page, pageSize, records: withHuman(db, rows) };
   });
 }
