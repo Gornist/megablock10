@@ -69,6 +69,8 @@ class DebugQrReceiver : BroadcastReceiver() {
 
     private suspend fun applySet(context: Context, intent: Intent) {
         intent.getStringExtra("collector")?.let { CollectorSettings.setBaseUrl(context, it) }
+        // Код игры (заголовок X-Game-Secret): пустая строка — сбросить.
+        intent.getStringExtra("secret")?.let { CollectorSettings.setGameSecret(context, it.ifBlank { null }) }
         // Создание персонажа без экрана регистрации: "Позывной:Фракция" — как SetupScreen (см. MainActivity).
         intent.getStringExtra("create")?.let { spec ->
             val (callsign, faction) = spec.split(":", limit = 2).let { it[0] to it.getOrElse(1) { "" } }

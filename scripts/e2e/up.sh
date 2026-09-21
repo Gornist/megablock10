@@ -70,6 +70,8 @@ setup_device() { # <serial> <позывной:фракция>
   for p in POST_NOTIFICATIONS RECORD_AUDIO CAMERA; do adb_ $s shell pm grant $PKG android.permission.$p >/dev/null 2>&1; done
   adb_ $s logcat -c
   dbg $s DEBUG_SET --es collector "$COLLECTOR_FROM_EMU" --es create "$2"
+  # E2E_GAME_SECRET=строка ./up.sh — стенд с включённым кодом игры на сервере (телефоны получают его в настройках)
+  [ -z "${E2E_GAME_SECRET:-}" ] || dbg $s DEBUG_SET --es secret "$E2E_GAME_SECRET"
   rm -f "$E2E_DIR"/cfg_${s}_*
   set_config $s clock "$CLOCK"; set_config $s timer "$TIMER"; set_config $s autosolve false
 }
