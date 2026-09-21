@@ -2,7 +2,7 @@ import type { Db } from "../db/index.js";
 import { REASON_LABEL_RU, makeHumanizeContext } from "./humanize.js";
 import { parseSafe } from "./json.js";
 import { lastPresence } from "./presence.js";
-import { ONLINE_WINDOW_MS, getPlayerBase, seenAt } from "./playerSummary.js";
+import { ONLINE_WINDOW_MS, getPlayerBase, seenAt, withOnline } from "./playerSummary.js";
 import { breachesLastHourByNode, getNodeSummaries } from "./nodeSummary.js";
 import { findUnexplainedJumps, getIntegrityFindings } from "./integrity.js";
 
@@ -152,6 +152,7 @@ export function computeAttention(db: Db, now = Date.now()): AttentionItem[] {
     });
   }
 
+  items.push(...versionItems(withOnline(players, now), ctx.playerName));
   items.push(...integrityItems(db, ctx.playerName, now, t));
 
   return items.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] || b.at - a.at);
@@ -221,4 +222,37 @@ function integrityItems(db: Db, playerName: (key: string) => string, now: number
   }
 
   return items;
+}
+
+const versionKey = (p: { appVersion?: string; wireVersions?: Record<string, number> }) =>
+  `${p.appVersion ?? "?"} ${Object.entries(p.wireVersions ?? {}).sort().map(([k, v]) => `${k}${v}`).join(",")}`.trim();
+
+/**
+ * Игроки на связи с сборкой, отличной от той, что у большинства: старый APK не понимает новый протокол (чат/звонки/заявки
+ * проверяют версию), так что такому игроку нужно обновить приложение. Считаем, только когда у большинства (>50%) версия одна —
+ * иначе «эталона» нет, и подсказка была бы шумом.
+ */
+function versionItems(players: ReturnType<typeof withOnline>, playerName: (key: string) => string): AttentionItem[] {
+  const reporting = players.filter((p) => p.online && (p.appVersion || p.wireVersions));
+  if (reporting.length < 3) return [];
+  const counts = new Map<string, number>();
+  for (const p of reporting) counts.set(versionKey(p), (counts.get(versionKey(p)) ?? 0) + 1);
+  const [majorityKey, majorityCount] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+  if (majorityCount * 2 <= reporting.length) return [];
+
+  const wireOf = (key: string) => key.slice(key.indexOf(" ") + 1);
+  return reporting
+    .filter((p) => versionKey(p) !== majorityKey)
+    .map((p): AttentionItem => {
+      const protocolDiffers = wireOf(versionKey(p)) !== wireOf(majorityKey);
+      return {
+        id: `version:${p.publicKeyB64}`,
+        kind: "old_version",
+        severity: protocolDiffers ? "warn" : "info",
+        title: protocolDiffers ? "Другая версия протоколов" : "Другая версия приложения",
+        detail: `${p.callsign || playerName(p.publicKeyB64)}: ${versionKey(p)}, у большинства (${majorityCount} из ${reporting.length}) — ${majorityKey}`,
+        subjectKey: p.publicKeyB64,
+        at: p.lastSeenAt,
+      };
+    });
 }

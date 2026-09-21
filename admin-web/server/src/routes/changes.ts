@@ -8,7 +8,7 @@ import {
 } from "../lib/changeRecord.js";
 import { verifySignature } from "../lib/crypto.js";
 import { checkGameSecret } from "../lib/gameSecret.js";
-import { ipv4Of, peersSince, touchPresence } from "../lib/presence.js";
+import { ipv4Of, parseClientVersions, peersSince, touchPresence } from "../lib/presence.js";
 import { RateLimiter } from "../lib/rateLimit.js";
 
 /** Дольше этого без heartbeat игрок не считается доступным для запасного обнаружения (телефон шлёт раз в ~30 с). */
@@ -103,7 +103,7 @@ export function registerChangesRoute(app: FastifyInstance, db: Db) {
       touchedSubjects.add(request.body.subjectKeyB64);
       // heartbeat: игрок на связи, даже если писать в БД нечего. Адрес и порт для запасного обнаружения запоминаем только для
       // известных игроков (есть хоть одна запись) и только со своего адреса соединения — иначе любой в сети мог бы подсунуть чужой адрес.
-      const p = request.body.presence as { chatPort?: unknown; callsign?: unknown; faction?: unknown } | undefined;
+      const p = request.body.presence as { chatPort?: unknown; callsign?: unknown; faction?: unknown; appVersion?: unknown; wireVersions?: unknown } | undefined;
       const host = ipv4Of(request.ip);
       const known = subjectKnownStmt.get(request.body.subjectKeyB64) !== undefined;
       const port = typeof p?.chatPort === "number" && Number.isInteger(p.chatPort) && p.chatPort > 0 && p.chatPort < 65536 ? p.chatPort : 0;
@@ -113,6 +113,8 @@ export function registerChangesRoute(app: FastifyInstance, db: Db) {
         known && host && port
           ? { host, port, callsign: typeof p?.callsign === "string" ? p.callsign.slice(0, 40) : "", faction: typeof p?.faction === "string" ? p.faction.slice(0, 40) : "" }
           : undefined,
+        // версии — только известным игрокам, как и адрес: память не должна расти от чужих ключей
+        known ? parseClientVersions(p?.appVersion, p?.wireVersions) : null,
       );
     }
 

@@ -92,3 +92,13 @@ test("режим add принимает прибавку со знаком «+»
   const bulk = await app.inject({ method: "POST", url: "/api/players/bulk-override", headers, payload: { field: "balance", newValue: " +5 ", mode: "add", reason: "r", all: true, dryRun: true } });
   assert.equal(bulk.json().changes[0].newValue, "305");
 });
+
+test("правка мастера в ту же миллисекунду, что и запись устройства, всё равно применяется последней", async () => {
+  const { app, db, headers } = await setup();
+  const a = await seedPlayer(app, { callsign: "Alice", faction: "X", balance: 100 });
+  db.prepare(`UPDATE changes SET received_at = ? WHERE subject_key = ?`).run(Date.now() + 60_000, a.publicKeyB64);
+  const url = `/api/players/${encodeURIComponent(a.publicKeyB64)}/override`;
+  await app.inject({ method: "POST", url, headers, payload: { field: "balance", newValue: "7", reason: "r1" } });
+  await app.inject({ method: "POST", url, headers, payload: { field: "balance", newValue: "9", reason: "r2" } });
+  assert.equal((await players(app, headers))[0].balance, 9);
+});

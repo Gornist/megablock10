@@ -125,6 +125,7 @@ export interface MasterRecordSpec {
  */
 export function insertMasterRecords(db: Db, masterId: string, specs: MasterRecordSpec[]): { id: string; subjectKey: string; seq: number }[] {
   const minSeqStmt = db.prepare(`SELECT MIN(seq) AS minSeq FROM changes WHERE subject_key = ?`);
+  const lastReceivedStmt = db.prepare(`SELECT MAX(received_at) AS at FROM changes WHERE subject_key = ?`);
   const insertChange = db.prepare(
     `INSERT INTO changes (id, subject_key, seq, happened_at, received_at, field, old_value, new_value, reason, source_ref, actor, signature)
      VALUES (@id, @subject_key, @seq, @happened_at, @received_at, @field, @old_value, @new_value, 'MASTER_OVERRIDE', @source_ref, @actor, '')`,
@@ -137,19 +138,23 @@ export function insertMasterRecords(db: Db, masterId: string, specs: MasterRecor
       const id = randomUUID();
       const minSeq = (minSeqStmt.get(spec.subjectKey) as { minSeq: number | null }).minSeq;
       const seq = Math.min(0, minSeq ?? 0) - 1;
+      // Порядок применения — (received_at, seq), а у мастерских записей seq отрицательный: при совпадении миллисекунды
+      // правка проиграла бы записи устройства (а вторая правка — первой). Поэтому она всегда строго позже всего, что уже есть у игрока.
+      const lastAt = (lastReceivedStmt.get(spec.subjectKey) as { at: number | null }).at ?? 0;
+      const receivedAt = Math.max(now, lastAt + 1);
       insertChange.run({
         id,
         subject_key: spec.subjectKey,
         seq,
         happened_at: now,
-        received_at: now,
+        received_at: receivedAt,
         field: spec.field,
         old_value: spec.oldValue,
         new_value: spec.newValue,
         source_ref: spec.sourceRef,
         actor: `master:${masterId}`,
       });
-      insertPending.run(id, spec.subjectKey, now);
+      insertPending.run(id, spec.subjectKey, receivedAt);
       return { id, subjectKey: spec.subjectKey, seq };
     });
   });

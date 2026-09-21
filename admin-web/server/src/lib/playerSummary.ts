@@ -1,6 +1,6 @@
 import type { Db } from "../db/index.js";
 import { cachedByDbVersion } from "./dbCache.js";
-import { lastPresence } from "./presence.js";
+import { clientVersionsOf, lastPresence } from "./presence.js";
 import type { PlayerListItem } from "../apiTypes.js";
 import { projectAll } from "./projection.js";
 
@@ -33,7 +33,14 @@ export function seenAt(p: { publicKeyB64: string; lastSeenAt: number }): number 
 export function withOnline(base: PlayerBase[], now = Date.now()): PlayerListItem[] {
   return base.map((s): PlayerListItem => {
     const at = seenAt(s);
-    return { ...s, lastSeenAt: at, online: now - at < ONLINE_WINDOW_MS };
+    const v = clientVersionsOf(s.publicKeyB64);
+    return {
+      ...s,
+      lastSeenAt: at,
+      online: now - at < ONLINE_WINDOW_MS,
+      ...(v?.appVersion ? { appVersion: v.appVersion } : {}),
+      ...(v && Object.keys(v.wireVersions).length > 0 ? { wireVersions: v.wireVersions } : {}),
+    };
   });
 }
 

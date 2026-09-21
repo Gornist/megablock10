@@ -76,6 +76,16 @@ export function PlayersScreen() {
     },
     { key: "online", label: "", render: (p) => <span className={`online-dot ${p.online ? "on" : ""}`} />, sortValue: (p) => (p.online ? 1 : 0) },
     { key: "callsign", label: "Позывной", render: (p) => p.callsign || shortKey(p.publicKeyB64), sortValue: (p) => p.callsign },
+    {
+      key: "version",
+      label: "Версия",
+      render: (p) => (
+        <span className="mono" title={p.wireVersions ? Object.entries(p.wireVersions).map(([k, v]) => `${k} v${v}`).join(", ") : undefined}>
+          {p.appVersion ?? "—"}
+        </span>
+      ),
+      sortValue: (p) => p.appVersion ?? "",
+    },
     { key: "faction", label: "Фракция", render: (p) => p.faction, sortValue: (p) => p.faction },
     { key: "ram", label: "RAM", render: (p) => p.ramCapacity, sortValue: (p) => p.ramCapacity },
     { key: "balance", label: "Эдди", render: (p) => p.balance, sortValue: (p) => p.balance },

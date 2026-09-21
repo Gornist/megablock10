@@ -70,6 +70,9 @@ export interface PlayerListItem {
   slotsClaimed: number;
   lastSeenAt: number;
   online: boolean;
+  /** Версия приложения и протоколов по последнему heartbeat; нет — телефон не сообщал (старая сборка или сервер перезапускался). */
+  appVersion?: string;
+  wireVersions?: Record<string, number>;
 }
 
 export interface DaemonEntry {
@@ -183,7 +186,7 @@ export type Severity = "crit" | "warn" | "info";
 
 export interface AttentionItem {
   id: string;
-  kind: "negative_balance" | "balance_jump" | "went_silent" | "node_exhausted_hot" | "revoke_repeat" | "override_undelivered" | "transfer_stuck" | "duplicate_receive" | "balance_chain_break" | "balance_unexplained";
+  kind: "negative_balance" | "balance_jump" | "went_silent" | "node_exhausted_hot" | "revoke_repeat" | "override_undelivered" | "transfer_stuck" | "duplicate_receive" | "balance_chain_break" | "balance_unexplained" | "old_version";
   severity: Severity;
   title: string;
   detail: string;
