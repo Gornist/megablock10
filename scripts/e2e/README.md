@@ -39,9 +39,15 @@ scripts/e2e/anomaly-all.sh --phones             # плюс silent-phone (нуж�
 | `anomaly-stuck-transfer` | `TRANSFER_OUT` без пары; вариант с отменой | `transfer_stuck` (ровно один) |
 | `anomaly-outlier` | 6 игроков по 3 взлома, у одного 40 | `player_outlier` |
 | `anomaly-emission` | 55 с спокойной игры, потом 3 награды по 500 | `emission_spike` |
+| `provision-conflict` | копия применённого QR персонажа | отказ `provision code already applied on another device`, игрока-копии на дашборде нет, тревога `provision_conflict` |
+| `provision-reissue` | «Выдать заново» и применение нового кода | у старого ключа `replacedBy`, у нового `replaces`, остаток старого не входит в «Экономику» и «Обзор» |
+| `provision-void-code` | код погашен повторной выдачей до применения | отказ `provision code is no longer valid (issued again)` |
+| `session-reset` | сброс сессии на устройстве | позывной, фракция и баланс остаются в снимке, `sessionResetAt`, в «Обзоре» не считается |
 | `anomaly-silent-phone` | настоящий эмулятор Bob уходит в авиарежим | `went_silent` (порог на стенде 45 с) |
 
 После каждого сценария в `/tmp/mb10-e2e-anom-artifacts` (в CI — артефакт `anomaly-replay`) сохраняется вывод `GET /api/anomalies/replay` — по нему подбирают пороги `ANOM_*`. Проверять тревоги нужно по полю `kind`, а не по тексту.
+
+`zz-provisioning.sh` (последним, разрушает состояние Alice) проверяет на настоящем приложении: QR, выданный самим сервером (`POST /api/provisions`), принимается; повторно не применяется; сброс сессии стирает игровые данные; при отказе сервера по коду (код уже применён другим телефоном) приложение показывает плашку и не зацикливает синхронизацию.
 
 Сценарий `zz-honest-traffic.sh` в обычном `run-all.sh` после всех остальных проверяет, что честный трафик двух эмуляторов не породил тревог о подделке (`duplicate_receive`, `transfer_amount_mismatch`, `balance_unexplained`, `clock_skew`, `reject_spike`). Тревога `balance_chain_break` на стенде появляется всегда и ложной не считается: отладочные команды `--es balance N` меняют баланс без записи об изменении, поэтому цепочка на стенде рвётся (в игре так делает только мастер, а его правки детектор исключает).
 

@@ -49,5 +49,6 @@ object SessionReset {
         AnnouncementStore.clear(context)
         IdentityManager.clear(context)
         CollectorSettings.setProvisioned(context, false)
+        CollectorSettings.setProvisionRejected(context, false)
     }
 }

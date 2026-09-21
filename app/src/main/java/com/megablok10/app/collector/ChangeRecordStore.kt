@@ -9,6 +9,7 @@ import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.data.PendingChangeRecordEntity
 import com.megablok10.app.identity.IdentityManager
 import com.megablok10.app.net.WireVersion
+import com.megablok10.app.ui.theme.AppSnack
 import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.wallet.TransactionStore
 import kotlinx.coroutines.CancellationException
@@ -134,7 +135,10 @@ object ChangeRecordStore {
             ChangeRecord(it.id, it.subjectKeyB64, it.seq, it.happenedAt, it.field, it.oldValue, it.newValue, it.reason, it.sourceRef, it.actor, it.signature)
         }
         val port = ChatStore.listeningPort
-        val presence = if (identity != null && port > 0) presenceJson(context, port, identity.callsign, identity.faction) else null
+        // Очередь неотправленных записей — в heartbeat: дашборд увидит телефон «на связи», но с застрявшей синхронизацией.
+        val pendingCount = dao.count()
+        val oldestPendingAgeMs = dao.oldestHappenedAt()?.let { (System.currentTimeMillis() - it).coerceAtLeast(0) } ?: 0L
+        val presence = if (identity != null && port > 0) presenceJson(context, port, identity.callsign, identity.faction, pendingCount, oldestPendingAgeMs) else null
         val result = CollectorClient.sendBatch(baseUrl, records, identity?.publicKeyB64, CollectorSettings.gameSecret(context), acksIn, presence)
 
         if (result == null) {
@@ -150,6 +154,11 @@ object ChangeRecordStore {
         if (toDelete.isNotEmpty()) dao.deleteByIds(toDelete.toList())
         if (result.rejected.isNotEmpty()) {
             Log.w(TAG, "коллектор отбраковал ${result.rejected.size} записей: ${result.rejected.values.take(3)}")
+            // Код персонажа не принят: запись не повторяем (иначе синк крутился бы в цикле), но игрок должен узнать и обратиться к мастеру.
+            if (ProvisionRejection.anyProvisionError(result.rejected.values) && !CollectorSettings.isProvisionRejected(context)) {
+                CollectorSettings.setProvisionRejected(context, true)
+                AppSnack.show(ProvisionRejection.PLAYER_MESSAGE)
+            }
         }
         // Запрос с acksIn дошёл — коллектор их учёл; новые ack-и — по правкам, применённым прямо сейчас.
         val newAcks = if (result.pending.isNotEmpty()) applyPending(context, result.pending) else emptyList()
@@ -206,9 +215,10 @@ object ChangeRecordStore {
  * построчных протоколов (дашборд подсветит игроков со старой сборкой — им перестанут приходить сообщения, см. net/WireVersion).
  * Сервер игнорирует незнакомые поля, поэтому добавление обратно-совместимо.
  */
-private fun presenceJson(context: Context, chatPort: Int, callsign: String, faction: String): JSONObject {
+private fun presenceJson(context: Context, chatPort: Int, callsign: String, faction: String, pendingCount: Int, oldestPendingAgeMs: Long): JSONObject {
     val appVersion = try { context.packageManager.getPackageInfo(context.packageName, 0).versionName } catch (e: Exception) { null }
     val wire = JSONObject().also { o -> WireVersion.REPORTED.forEach { (k, v) -> o.put(k, v) } }
     return JSONObject().put("chatPort", chatPort).put("callsign", callsign).put("faction", faction)
         .put("appVersion", appVersion ?: "unknown").put("wireVersions", wire)
+        .put("pendingCount", pendingCount).put("oldestPendingAgeMs", oldestPendingAgeMs)
 }

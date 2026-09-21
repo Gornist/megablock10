@@ -28,7 +28,7 @@ else skip "app: unit- и скриншот-тесты"; fi
 if changed admin-web/server; then step "server: тесты" bash -c 'cd admin-web/server && npm test --silent'; else skip "server: тесты"; fi
 if changed admin-web; then
   step "server: сборка" bash -c 'cd admin-web/server && npm run build --silent'
-  step "client: линт и сборка" bash -c 'cd admin-web/client && npm run lint --silent && npm run build --silent'
+  step "client: тесты, линт и сборка" bash -c 'cd admin-web/client && npm test --silent && npm run lint --silent && npm run build --silent'
 else skip "admin-web: сборка"; fi
 if [ $E2E -eq 1 ] && [ $FAIL -eq 0 ]; then
   step "e2e: сборка APK" ./gradlew -q --console=plain assembleDebug

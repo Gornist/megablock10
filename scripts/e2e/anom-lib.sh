@@ -29,6 +29,14 @@ fake() { "$NODE" "$ROOT/scripts/e2e/fakedev.mjs" --api "$API" --dir "$FAKE_DIR" 
 # fake_swarm <кол-во> <префикс> [опции register] — N новичков.
 fake_swarm() { local n=$1 pre=$2; shift 2; local i; for i in $(seq 1 $n); do fake register "$pre$i" "$@" >/dev/null; done; }
 
+# provision_new <позывной> <фракция> <баланс> <RAM> — выдать код персонажа (как форма в «Мастерской»); печатает номер выдачи.
+provision_new() { api POST /api/provisions "{\"callsign\":\"$1\",\"faction\":\"$2\",\"balance\":$3,\"ram\":$4}" | jq_ 'd["item"]["id"]'; }
+# reissue <ключ игрока> — «Выдать заново» с карточки игрока (параметры из снимка); печатает новый номер выдачи.
+reissue() { api POST "/api/players/$(python3 -c 'import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1],safe=""))' "$1")/reissue" '{}' | jq_ 'd["item"]["id"]'; }
+# player_field <позывной> <поле> — поле игрока из /api/players (пусто, если игрока нет).
+player_field() { api GET /api/players | jq_ "next((str(p.get('$2')) for p in d if p['callsign']=='$1'), '')"; }
+players_named() { api GET /api/players | jq_ "sum(1 for p in d if p['callsign']=='$1')"; }
+
 # kinds — виды тревог сейчас (по одному в строке).
 kinds() { api GET /api/attention | jq_ '"\n".join(i["kind"] for i in d["items"])'; }
 # item_count <kind> — сколько тревог такого вида.

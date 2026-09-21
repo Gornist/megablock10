@@ -8,6 +8,7 @@ private const val KEY_GAME_SECRET = "game_secret"
 
 private const val KEY_PROVISIONED = "provisioned"
 private const val KEY_USED_PROVISIONS = "used_provisions"
+private const val KEY_PROVISION_REJECTED = "provision_rejected"
 
 /**
  * Адрес сервера дашборда в игровой сети по умолчанию — задаётся при сборке (`mb10.collectorUrl` в local.properties, см. README), в публичном
@@ -48,6 +49,10 @@ object CollectorSettings {
     /** Настройки пришли по QR персонажа от мастера (ProvisionStore): в Настройках адрес и код игры только читаются. Снимается сбросом сессии. */
     fun isProvisioned(context: Context): Boolean = prefs(context).getBoolean(KEY_PROVISIONED, false)
     fun setProvisioned(context: Context, value: Boolean) { prefs(context).edit().putBoolean(KEY_PROVISIONED, value).apply() }
+
+    /** Сервер отказал в коде персонажа (применён на другом телефоне или заменён новой выдачей): в Настройках висит плашка «обратитесь к мастеру» до сброса сессии. */
+    fun isProvisionRejected(context: Context): Boolean = prefs(context).getBoolean(KEY_PROVISION_REJECTED, false)
+    fun setProvisionRejected(context: Context, value: Boolean) { prefs(context).edit().putBoolean(KEY_PROVISION_REJECTED, value).apply() }
 
     /**
      * Идентификаторы уже применённых QR персонажа. Хранятся здесь, а не в Room и не в личности: сброс сессии стирает личность, но тот же QR

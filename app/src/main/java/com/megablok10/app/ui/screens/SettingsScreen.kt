@@ -108,6 +108,13 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
             Text("записи, ещё не подтверждённые коллектором", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
         }
         val provisioned = remember { CollectorSettings.isProvisioned(context) }
+        if (remember { CollectorSettings.isProvisionRejected(context) }) {
+            Text(
+                "Сервер не принял код персонажа: он использован на другом телефоне или заменён. Обратитесь к мастеру за новым кодом, затем сделайте сброс сессии.",
+                color = MB10Colors.accentDanger, fontFamily = JetBrainsMono, fontSize = 11.sp
+            )
+            Spacer(Modifier.height(6.dp))
+        }
         if (provisioned) {
             // Сервер и код игры пришли по QR персонажа от мастера: правятся только новым QR после сброса сессии.
             Text(

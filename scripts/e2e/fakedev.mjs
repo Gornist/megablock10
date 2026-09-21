@@ -5,7 +5,10 @@
 //
 //   node fakedev.mjs [--api URL] [--dir DIR] [--secret S] <команда> <имя> [опции]
 //
-//   register <имя> [--faction F] [--balance N]   новичок: CHARACTER_CREATED (позывной, фракция, стартовый баланс)
+//   register <имя> [--faction F] [--balance N] [--ram N] [--provision ID]
+//                                                новичок: CHARACTER_CREATED (позывной, фракция, стартовый баланс); --provision — применить QR персонажа
+//                                                с этим номером выдачи (sourceRef = ID, как делает приложение)
+//   reset    <имя>                               сброс сессии: CHARACTER_RESET (позывной и фракция → пусто), как «Опасная зона» в приложении
 //   beat     <имя> [--repeat N]                  heartbeat (пустой батч); N — столько отдельных запросов подряд
 //   send     <имя> --field F --reason R [--new V | --delta N] [--old V] [--ref ID] [--actor <имя|ключ>]
 //                  [--bad-signature] [--happened-at +мс|абс] [--repeat N]
@@ -94,13 +97,24 @@ if (cmd === "key") {
 } else if (cmd === "register") {
   const balance = Number(opts.balance ?? 100);
   const faction = String(opts.faction ?? "Neon");
+  const ref = opts.provision && opts.provision !== true ? String(opts.provision) : null;
+  s.faction = faction;
   const records = [
-    makeRecord(s, { field: "callsign", oldValue: null, newValue: name, reason: "CHARACTER_CREATED" }),
-    makeRecord(s, { field: "faction", oldValue: null, newValue: faction, reason: "CHARACTER_CREATED" }),
-    makeRecord(s, { field: "balance", oldValue: null, newValue: String(balance), reason: "CHARACTER_CREATED" }),
+    makeRecord(s, { field: "callsign", oldValue: null, newValue: name, reason: "CHARACTER_CREATED", sourceRef: ref }),
+    makeRecord(s, { field: "faction", oldValue: null, newValue: faction, reason: "CHARACTER_CREATED", sourceRef: ref }),
+    makeRecord(s, { field: "balance", oldValue: null, newValue: String(balance), reason: "CHARACTER_CREATED", sourceRef: ref }),
   ];
+  if (opts.ram !== undefined && opts.ram !== true) records.push(makeRecord(s, { field: "ramCapacity", oldValue: "6", newValue: String(opts.ram), reason: "CHARACTER_CREATED", sourceRef: ref }));
   const r = await post({ records, subjectKeyB64: s.publicKeyB64 });
   if (r.status === 200) { s.balance = balance; save(s); }
+  console.log(JSON.stringify(summary(r)));
+} else if (cmd === "reset") {
+  const records = [
+    makeRecord(s, { field: "callsign", oldValue: name, newValue: "", reason: "CHARACTER_RESET" }),
+    makeRecord(s, { field: "faction", oldValue: s.faction ?? "", newValue: "", reason: "CHARACTER_RESET" }),
+  ];
+  const r = await post({ records, subjectKeyB64: s.publicKeyB64 });
+  save(s);
   console.log(JSON.stringify(summary(r)));
 } else if (cmd === "beat") {
   const n = Number(opts.repeat ?? 1);
