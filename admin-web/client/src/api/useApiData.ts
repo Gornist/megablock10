@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "./client";
 
 /** Дефолт для списковых экранов — раньше независимо объявлялся как POLL_MS в каждом из них. */
-export const DEFAULT_POLL_MS = 8000;
+const DEFAULT_POLL_MS = 8000;
 
 interface UseApiDataOptions {
   /**

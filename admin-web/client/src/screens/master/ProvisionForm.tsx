@@ -4,11 +4,12 @@ import type { FactionRow, ProvisionItem, ProvisionQr, ProvisionsResponse } from 
 import { useApiData } from "../../api/useApiData";
 import { useAsyncAction } from "../../api/useAsyncAction";
 import { AsyncPanel } from "../../design/AsyncPanel";
-import { AppButton, AppInput, AppSelect, Badge, Field, Panel } from "../../design/components";
+import { AppButton, Badge, Panel } from "../../design/components";
 import { DataTable, type Column } from "../../design/DataTable";
 import { formatAgo } from "../../format";
 import { QrPanel } from "./common";
-import { RAM_OPTIONS, provisionStatus, ramLabel } from "./provisionUtil";
+import { ProvisionFields, type ProvisionValues } from "./ProvisionFields";
+import { provisionStatus, ramLabel } from "./provisionUtil";
 
 const LAST_KEY = "mb10.provision.last";
 
@@ -35,10 +36,8 @@ export function ProvisionConfigNote({ config }: { config: ProvisionsResponse["co
 /** Форма «Персонаж»: выдача нового персонажа QR-кодом первого запуска (docs/provisioning-qr.md). Последние фракция/баланс/RAM запоминаются — выдача пачки в 2 клика. */
 export function ProvisionForm() {
   const last = loadLast();
-  const [callsign, setCallsign] = useState("");
-  const [faction, setFaction] = useState(last.faction);
-  const [balance, setBalance] = useState(last.balance);
-  const [ram, setRam] = useState(last.ram);
+  const [values, setValues] = useState<ProvisionValues>({ callsign: "", ...last });
+  const { callsign, faction, balance, ram } = values;
   const [result, setResult] = useState<ProvisionQr | null>(null);
   const { busy, error, run } = useAsyncAction({ fallbackError: "не удалось выдать" });
   const { data, error: listError, reload } = useApiData<ProvisionsResponse>("/api/provisions", { pollMs: 10000 });
@@ -48,7 +47,7 @@ export function ProvisionForm() {
     const res = await run(() => api.post<ProvisionQr>("/api/provisions", { callsign, faction, balance: Number(balance) || 0, ram: Number(ram) }));
     if (!res.ok) return;
     setResult(res.value);
-    setCallsign(""); // следующий игрок: фракция, баланс и RAM остаются
+    setValues((v) => ({ ...v, callsign: "" })); // следующий игрок: фракция, баланс и RAM остаются
     try {
       localStorage.setItem(LAST_KEY, JSON.stringify({ faction, balance, ram }));
     } catch {
@@ -97,29 +96,7 @@ export function ProvisionForm() {
             Игрок сканирует один QR на первом запуске: приложение настроится и создаст персонажа. Код работает один раз — копия на втором телефоне не примется.
           </p>
           {data && <ProvisionConfigNote config={data.config} />}
-          <Field label="Позывной">
-            <AppInput value={callsign} maxLength={40} onChange={(e) => setCallsign(e.target.value)} placeholder="Alice" autoFocus />
-          </Field>
-          <Field label="Фракция">
-            <AppInput value={faction} maxLength={40} list="provision-factions" onChange={(e) => setFaction(e.target.value)} placeholder="Neon" />
-            <datalist id="provision-factions">
-              {(factions ?? []).filter((f) => f.faction).map((f) => (
-                <option key={f.faction} value={f.faction} />
-              ))}
-            </datalist>
-          </Field>
-          <Field label="Стартовый баланс, эдди">
-            <AppInput value={balance} onChange={(e) => setBalance(e.target.value.replace(/\D/g, ""))} placeholder="0" />
-          </Field>
-          <Field label="Ёмкость буфера RAM">
-            <AppSelect value={ram} onChange={(e) => setRam(e.target.value)}>
-              {RAM_OPTIONS.map((r) => (
-                <option key={r} value={r}>
-                  {ramLabel(r)}
-                </option>
-              ))}
-            </AppSelect>
-          </Field>
+          <ProvisionFields values={values} onChange={setValues} factions={(factions ?? []).map((f) => f.faction).filter(Boolean)} autoFocus />
           {error && <div className="login-error">{error}</div>}
           <AppButton variant="primary" onClick={submit} disabled={busy || !callsign.trim()}>
             {busy ? "Выдаю…" : "Выдать и показать QR"}

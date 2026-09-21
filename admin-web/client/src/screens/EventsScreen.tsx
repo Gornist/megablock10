@@ -3,6 +3,7 @@ import type { EventsResponse, NodeSummary, PlayerListItem } from "../api/types";
 import { useApiData } from "../api/useApiData";
 import { reasonLabel, useMeta } from "../api/useMeta";
 import { ChangeLine } from "../design/ChangeLine";
+import { Pager } from "../design/Pager";
 import { AppButton, AppSelect, Badge, EmptyState, ErrorNote, Panel } from "../design/components";
 
 const PAGE_SIZE = 50;
@@ -166,15 +167,7 @@ export function EventsScreen({ preset }: { preset: EventsPreset }) {
             {result.records.map((r) => (
               <ChangeLine key={r.id} row={r} showSubject={!player} withDate />
             ))}
-            <div className="pager">
-              <AppButton onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}>
-                ← новее
-              </AppButton>
-              <span className="mono">стр. {page + 1}</span>
-              <AppButton onClick={() => setPage((p) => p + 1)} disabled={(page + 1) * PAGE_SIZE >= result.total}>
-                старше →
-              </AppButton>
-            </div>
+            <Pager page={page} pageSize={PAGE_SIZE} total={result.total} onPage={setPage} prevLabel="← новее" nextLabel="старше →" />
           </>
         )}
       </Panel>

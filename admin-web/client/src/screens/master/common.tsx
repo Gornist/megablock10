@@ -1,6 +1,6 @@
 import { Badge, Panel } from "../../design/components";
 
-export const TIERS = ["BASE", "HARD", "NIGHTMARE"] as const;
+const TIERS = ["BASE", "HARD", "NIGHTMARE"] as const;
 export type TierName = (typeof TIERS)[number];
 export const TIER_LABEL: Record<TierName, string> = { BASE: "База", HARD: "Сложно", NIGHTMARE: "Кошмар" };
 

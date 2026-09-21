@@ -1,6 +1,6 @@
 import type { Db } from "../db/index.js";
 
-export const MIN_GAME_SECRET_LENGTH = 8;
+const MIN_GAME_SECRET_LENGTH = 8;
 /** Код выхода «неверная конфигурация» (EX_CONFIG): systemd-юнит по нему не перезапускает процесс впустую. */
 /** Заглушка из deploy/mb10-admin.service: забытая замена не должна проходить как настоящий секрет. */
 const PLACEHOLDER_SECRET = "замени-на-свою-строку";

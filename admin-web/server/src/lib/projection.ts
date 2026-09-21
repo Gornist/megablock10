@@ -5,7 +5,7 @@ import { parseSafe } from "./json.js";
 
 import type { CharacterSnapshot, Counters, DaemonEntry, ShardEntry } from "../apiTypes.js";
 
-export type { CharacterSnapshot, Counters, DaemonEntry, ShardEntry };
+export type { CharacterSnapshot };
 
 /** Поля записи, которые читает свёртка (подмножество StoredChangeRow). */
 export type ProjectionRow = Pick<StoredChangeRow, "subject_key" | "field" | "new_value" | "reason" | "received_at" | "seq">;
@@ -105,7 +105,7 @@ export function projectAll(db: Db, until?: number): CharacterSnapshot[] {
 }
 
 /** Свёртка уже упорядоченных (received_at, seq) записей одного игрока в снимок. null — записей нет. */
-export function projectRows(subjectKeyB64: string, rows: ProjectionRow[], slotsClaimed: number): CharacterSnapshot | null {
+function projectRows(subjectKeyB64: string, rows: ProjectionRow[], slotsClaimed: number): CharacterSnapshot | null {
   if (rows.length === 0) return null;
 
   const snapshot: CharacterSnapshot = {

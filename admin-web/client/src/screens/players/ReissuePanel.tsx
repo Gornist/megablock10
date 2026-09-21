@@ -3,9 +3,9 @@ import { api } from "../../api/client";
 import type { CharacterSnapshot, ProvisionQr, ProvisionsResponse } from "../../api/types";
 import { useApiData } from "../../api/useApiData";
 import { useAsyncAction } from "../../api/useAsyncAction";
-import { AppButton, AppInput, AppSelect, Field, Panel } from "../../design/components";
+import { AppButton, Panel } from "../../design/components";
 import { ProvisionConfigNote } from "../master/ProvisionForm";
-import { RAM_OPTIONS, ramLabel } from "../master/provisionUtil";
+import { ProvisionFields, type ProvisionValues } from "../master/ProvisionFields";
 import { QrPanel } from "../master/common";
 
 /**
@@ -13,10 +13,13 @@ import { QrPanel } from "../master/common";
  * два клика (кнопка на карточке → «Выдать»). Прежний код гасится, прежний ключ пометится «заменён», когда новый телефон применит QR.
  */
 export function ReissuePanel({ snapshot, onClose }: { snapshot: CharacterSnapshot; onClose: () => void }) {
-  const [callsign, setCallsign] = useState(snapshot.callsign);
-  const [faction, setFaction] = useState(snapshot.faction);
-  const [balance, setBalance] = useState(String(Math.max(0, snapshot.balance)));
-  const [ram, setRam] = useState(String(snapshot.ramCapacity));
+  const [values, setValues] = useState<ProvisionValues>({
+    callsign: snapshot.callsign,
+    faction: snapshot.faction,
+    balance: String(Math.max(0, snapshot.balance)),
+    ram: String(snapshot.ramCapacity),
+  });
+  const { callsign, faction, balance, ram } = values;
   const [result, setResult] = useState<ProvisionQr | null>(null);
   const { busy, error, run } = useAsyncAction({ fallbackError: "не удалось выдать" });
   const { data } = useApiData<ProvisionsResponse>("/api/provisions", { pollMs: false });
@@ -37,24 +40,7 @@ export function ReissuePanel({ snapshot, onClose }: { snapshot: CharacterSnapsho
             сессия перестанет считаться в сводках, когда новый телефон применит код.
           </p>
           {data && <ProvisionConfigNote config={data.config} />}
-          <Field label="Позывной">
-            <AppInput value={callsign} maxLength={40} onChange={(e) => setCallsign(e.target.value)} />
-          </Field>
-          <Field label="Фракция">
-            <AppInput value={faction} maxLength={40} onChange={(e) => setFaction(e.target.value)} />
-          </Field>
-          <Field label="Баланс, эдди">
-            <AppInput value={balance} onChange={(e) => setBalance(e.target.value.replace(/\D/g, ""))} />
-          </Field>
-          <Field label="Ёмкость буфера RAM">
-            <AppSelect value={ram} onChange={(e) => setRam(e.target.value)}>
-              {[...new Set([...RAM_OPTIONS, snapshot.ramCapacity])].sort((a, b) => a - b).map((r) => (
-                <option key={r} value={r}>
-                  {ramLabel(r)}
-                </option>
-              ))}
-            </AppSelect>
-          </Field>
+          <ProvisionFields values={values} onChange={setValues} extraRam={snapshot.ramCapacity} balanceLabel="Баланс, эдди" />
           {error && <div className="login-error">{error}</div>}
           <AppButton variant="primary" onClick={submit} disabled={busy || !callsign.trim()}>
             {busy ? "Выдаю…" : result ? "Выдать ещё один код (прежний погаснет)" : "Выдать и показать QR"}

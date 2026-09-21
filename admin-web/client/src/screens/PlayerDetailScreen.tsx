@@ -4,6 +4,7 @@ import type { CharacterSnapshot, EventsResponse } from "../api/types";
 import { useApiData } from "../api/useApiData";
 import { useAsyncAction } from "../api/useAsyncAction";
 import { AppButton, AppInput, AppSelect, Badge, EmptyState, ErrorNote, HexRow, Panel, StatTile } from "../design/components";
+import { Pager } from "../design/Pager";
 import { ChangeLine } from "../design/ChangeLine";
 import { useMeta } from "../api/useMeta";
 import { useWatch } from "../api/useWatch";
@@ -210,15 +211,7 @@ export function PlayerDetailScreen({ publicKeyB64 }: { publicKeyB64: string }) {
             {history.map((r) => (
               <ChangeLine key={r.id} row={r} showSubject={false} time="happened" />
             ))}
-            <div className="pager">
-              <AppButton onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}>
-                ← назад
-              </AppButton>
-              <span className="mono">стр. {page + 1}</span>
-              <AppButton onClick={() => setPage((p) => p + 1)} disabled={(page + 1) * 50 >= historyTotal}>
-                вперёд →
-              </AppButton>
-            </div>
+            <Pager page={page} pageSize={50} total={historyTotal} onPage={setPage} />
           </>
         )}
       </Panel>

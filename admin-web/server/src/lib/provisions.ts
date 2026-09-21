@@ -10,7 +10,7 @@ import { encodeProvisionQr } from "./mb10QrCodec.js";
  * повторная выдача создаёт новый код, помнит прежний ключ и после привязки помечает его «заменён» (см. replaced_keys).
  */
 
-export const PROVISION_MAX_TEXT = 40;
+const PROVISION_MAX_TEXT = 40;
 export const PROVISION_MAX_BALANCE = 1_000_000;
 
 export interface ProvisionParams {

@@ -7,7 +7,7 @@ import type { Db } from "../db/index.js";
  */
 import type { ChangeKind, HumanChange } from "../apiTypes.js";
 
-export type { ChangeKind, HumanChange };
+export type { HumanChange };
 
 export interface ChangeRowLike {
   subject_key: string;
@@ -64,7 +64,7 @@ function parse<T>(raw: string | null): T | null {
 }
 
 /** Идентификатор узла из source_ref: «containerId:seed», «containerId», «shard:containerId#0», «daemon:containerId#1». */
-export function containerIdOf(sourceRef: string | null): string | null {
+export function containerIdOfSourceRef(sourceRef: string | null): string | null {
   if (!sourceRef) return null;
   const stripped = sourceRef.replace(/^(shard|daemon):/, "");
   const id = stripped.split(/[#:]/)[0];
@@ -78,7 +78,7 @@ export function humanizeChange(row: ChangeRowLike, ctx: HumanizeContext): HumanC
   const subject = ctx.playerName(row.subject_key);
   const done = (kind: ChangeKind, body: string): HumanChange => ({ kind, subject, body });
   const node = () => {
-    const id = containerIdOf(row.source_ref);
+    const id = containerIdOfSourceRef(row.source_ref);
     const name = id ? ctx.containerName(id) : null;
     return name ? `«${name}»` : id ? `«${id}»` : "«неизвестный»";
   };

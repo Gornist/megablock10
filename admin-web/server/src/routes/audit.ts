@@ -5,6 +5,7 @@ import { requireMaster } from "../lib/auth.js";
 import { AUDIT_ACTION_LABEL_RU, describeAudit } from "../lib/auditSummary.js";
 import { makeHumanizeContext } from "../lib/humanize.js";
 import { parseSafe } from "../lib/json.js";
+import { parsePaging } from "../lib/paging.js";
 
 /**
  * GET /api/audit — журнал действий мастеров (audit_master пишется с самого
@@ -15,8 +16,7 @@ export function registerAuditRoute(app: FastifyInstance, db: Db) {
   app.get<{ Querystring: { action?: string; page?: string; pageSize?: string } }>("/api/audit", async (request, reply): Promise<AuditResponse | void> => {
     if (!requireMaster(db, request, reply)) return;
 
-    const pageSize = Math.min(200, Math.max(1, Number(request.query.pageSize) || 50));
-    const page = Math.max(0, Number(request.query.page) || 0);
+    const { page, pageSize } = parsePaging(request.query);
     const action = request.query.action || null;
 
     const where = action ? "WHERE a.action = ?" : "";

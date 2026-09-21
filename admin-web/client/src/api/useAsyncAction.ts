@@ -6,7 +6,7 @@ interface UseAsyncActionOptions {
   fallbackError?: string;
 }
 
-export type AsyncActionResult<T> = { ok: true; value: T } | { ok: false };
+type AsyncActionResult<T> = { ok: true; value: T } | { ok: false };
 
 /**
  * Общий busy/error/try-catch-finally для кнопок-действий: раньше в

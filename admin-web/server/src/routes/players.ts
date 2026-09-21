@@ -1,4 +1,5 @@
 import { withHuman } from "../lib/humanize.js";
+import { parsePaging } from "../lib/paging.js";
 import type { FastifyInstance } from "fastify";
 import { escapeLike } from "../lib/sqlLike.js";
 import type { Db } from "../db/index.js";
@@ -15,7 +16,7 @@ import {
   resolveValue,
   selectTargets,
   type OverrideMode,
-  type TargetSelector,
+  type TargetSelectorInput,
 } from "../lib/masterRecords.js";
 
 /** ?until=<мс> — «состояние на момент T»; пусто/некорректно → текущее. */
@@ -64,8 +65,7 @@ export function registerPlayersRoutes(app: FastifyInstance, db: Db) {
   }>("/api/players/:key/history", async (request, reply) => {
       if (!requireMaster(db, request, reply)) return;
 
-      const pageSize = Math.min(200, Math.max(1, Number(request.query.pageSize) || 50));
-      const page = Math.max(0, Number(request.query.page) || 0);
+      const { page, pageSize } = parsePaging(request.query);
 
       const clauses = ["subject_key = ?"];
       const params: unknown[] = [request.params.key];
@@ -140,7 +140,7 @@ export function registerPlayersRoutes(app: FastifyInstance, db: Db) {
    * одиночной, поэтому UI всегда сначала показывает предпросмотр.
    */
   app.post<{
-    Body: TargetSelector & { field?: unknown; newValue?: unknown; reason?: unknown; mode?: unknown; dryRun?: unknown };
+    Body: TargetSelectorInput & { field?: unknown; newValue?: unknown; reason?: unknown; mode?: unknown; dryRun?: unknown };
   }>("/api/players/bulk-override", async (request, reply) => {
     const master = requireMaster(db, request, reply);
     if (!master) return;

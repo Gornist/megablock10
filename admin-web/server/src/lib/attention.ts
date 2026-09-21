@@ -1,4 +1,5 @@
 import type { Db } from "../db/index.js";
+import { positiveNumber } from "./envNumber.js";
 import { REASON_LABEL_RU, makeHumanizeContext } from "./humanize.js";
 import { parseSafe } from "./json.js";
 import { lastPresence } from "./presence.js";
@@ -10,22 +11,21 @@ import { findUnexplainedJumps, getIntegrityFindings } from "./integrity.js";
 
 import type { AttentionItem, Severity } from "../apiTypes.js";
 
-export type { AttentionItem, Severity };
+export type { AttentionItem };
 
 const MIN = 60 * 1000;
 const SEVERITY_ORDER: Record<Severity, number> = { crit: 0, warn: 1, info: 2 };
 
 /** Пороги — не «истина», а стартовые значения под типичную экономику; правятся переменными окружения без пересборки. */
-export function thresholds() {
-  const num = (v: string | undefined, d: number) => (v !== undefined && Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : d);
+function thresholds() {
   return {
-    balanceJump: num(process.env.ATTN_BALANCE_JUMP, 1000),
-    silentAfterMs: num(process.env.ATTN_SILENT_MIN, 10) * MIN,
-    silentUntilMs: num(process.env.ATTN_SILENT_MAX_MIN, 180) * MIN,
-    undeliveredAfterMs: num(process.env.ATTN_UNDELIVERED_MIN, 2) * MIN,
-    transferStuckMs: num(process.env.ATTN_TRANSFER_STUCK_MIN, 10) * MIN,
+    balanceJump: positiveNumber(process.env.ATTN_BALANCE_JUMP, 1000),
+    silentAfterMs: positiveNumber(process.env.ATTN_SILENT_MIN, 10) * MIN,
+    silentUntilMs: positiveNumber(process.env.ATTN_SILENT_MAX_MIN, 180) * MIN,
+    undeliveredAfterMs: positiveNumber(process.env.ATTN_UNDELIVERED_MIN, 2) * MIN,
+    transferStuckMs: positiveNumber(process.env.ATTN_TRANSFER_STUCK_MIN, 10) * MIN,
     /** Как давно может быть запись, чтобы проверки целостности о ней ещё напоминали: иначе давний разрыв висел бы всю игру. */
-    integrityWindowMs: num(process.env.ATTN_INTEGRITY_HOURS, 12) * 60 * MIN,
+    integrityWindowMs: positiveNumber(process.env.ATTN_INTEGRITY_HOURS, 12) * 60 * MIN,
   };
 }
 

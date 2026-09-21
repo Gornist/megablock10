@@ -1,4 +1,4 @@
-export const FIELDS = [
+const FIELDS = [
   "balance",
   "ramCapacity",
   "callsign",
@@ -60,7 +60,7 @@ export interface ChangeRecordInput {
 }
 
 /** Та же запись, уже провалидированная и приведённая к строгим типам полей/причин. */
-export interface ChangeRecord extends ChangeRecordInput {
+interface ChangeRecord extends ChangeRecordInput {
   field: Field;
   reason: Reason;
 }

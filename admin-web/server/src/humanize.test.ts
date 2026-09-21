@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { humanizeChange, containerIdOf, type ChangeRowLike, type HumanizeContext } from "./lib/humanize.js";
+import { humanizeChange, containerIdOfSourceRef, type ChangeRowLike, type HumanizeContext } from "./lib/humanize.js";
 import { loginAs, testApp, testDb, testDevice, testMaster } from "./testUtil.js";
 
 const ctx: HumanizeContext = {
@@ -40,11 +40,11 @@ for (const [name, over, kind, body] of cases) {
   });
 }
 
-test("containerIdOf понимает все виды source_ref", () => {
-  assert.equal(containerIdOf("arasaka-404:9911"), "arasaka-404");
-  assert.equal(containerIdOf("shard:arasaka-404#0"), "arasaka-404");
-  assert.equal(containerIdOf("daemon:x#1"), "x");
-  assert.equal(containerIdOf(null), null);
+test("containerIdOfSourceRef понимает все виды source_ref", () => {
+  assert.equal(containerIdOfSourceRef("arasaka-404:9911"), "arasaka-404");
+  assert.equal(containerIdOfSourceRef("shard:arasaka-404#0"), "arasaka-404");
+  assert.equal(containerIdOfSourceRef("daemon:x#1"), "x");
+  assert.equal(containerIdOfSourceRef(null), null);
 });
 
 test("API: лента и история отдают человеческую фразу, ключи в переводах заменены позывными", async () => {

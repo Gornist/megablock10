@@ -76,7 +76,7 @@ export function login(db: Db, name: string, token: string): { sessionToken: stri
 }
 
 /** Возвращает мастера по сессионному токену из заголовка Authorization: Bearer <token>, либо null. Не сама шлёт ответ — решение, что делать с отказом, за вызывающим роутом. */
-export function authenticate(db: Db, request: FastifyRequest): Master | null {
+function authenticate(db: Db, request: FastifyRequest): Master | null {
   const header = request.headers.authorization;
   if (!header?.startsWith("Bearer ")) return null;
   const token = header.slice("Bearer ".length);

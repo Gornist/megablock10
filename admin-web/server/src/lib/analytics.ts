@@ -1,6 +1,6 @@
 import type { Economy, FactionEvents, FactionRow } from "../apiTypes.js";
 import type { Db } from "../db/index.js";
-import { REASON_LABEL_RU, containerIdOf } from "./humanize.js";
+import { REASON_LABEL_RU, containerIdOfSourceRef } from "./humanize.js";
 import { parseSafe } from "./json.js";
 import type { PlayerBase } from "./playerSummary.js";
 
@@ -119,7 +119,7 @@ export function computeFactionEvents(db: Db, players: PlayerBase[]): Map<string,
   for (const r of rows) {
     const playerFaction = factionOf.get(r.subject_key);
     if (playerFaction === undefined) continue;
-    const containerId = containerIdOf(r.source_ref);
+    const containerId = containerIdOfSourceRef(r.source_ref);
     const ownerFaction = containerId ? owner.get(containerId) : undefined;
 
     if (r.field === "counters.breach") {

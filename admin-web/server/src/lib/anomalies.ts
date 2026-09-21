@@ -1,27 +1,27 @@
 import type { AttentionItem, PulseSample } from "../apiTypes.js";
 import type { Db } from "../db/index.js";
+import { positiveNumber } from "./envNumber.js";
 import { findFutureClocks } from "./integrity.js";
 import { PULSE_INTERVAL_MS, readPulse } from "./pulse.js";
 
 const MIN = 60_000;
 
 /** Пороги детекторов пульса; правятся переменными окружения без пересборки. */
-export function pulseThresholds() {
-  const num = (v: string | undefined, d: number) => (v !== undefined && Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : d);
+function pulseThresholds() {
   return {
     /** Онлайн упал ниже этой доли от недавнего пика — это не «игроки разошлись», а обрыв связи. */
-    silenceRatio: num(process.env.ANOM_SILENCE_RATIO, 0.7),
-    silenceMinPeak: num(process.env.ANOM_SILENCE_MIN_PEAK, 5),
-    rejectMin: num(process.env.ANOM_REJECT_MIN, 10),
-    rejectShare: num(process.env.ANOM_REJECT_SHARE, 0.3),
-    slowAvgMs: num(process.env.ANOM_SLOW_MS, 500),
-    clockAheadMs: num(process.env.ANOM_CLOCK_AHEAD_MIN, 5) * MIN,
+    silenceRatio: positiveNumber(process.env.ANOM_SILENCE_RATIO, 0.7),
+    silenceMinPeak: positiveNumber(process.env.ANOM_SILENCE_MIN_PEAK, 5),
+    rejectMin: positiveNumber(process.env.ANOM_REJECT_MIN, 10),
+    rejectShare: positiveNumber(process.env.ANOM_REJECT_SHARE, 0.3),
+    slowAvgMs: positiveNumber(process.env.ANOM_SLOW_MS, 500),
+    clockAheadMs: positiveNumber(process.env.ANOM_CLOCK_AHEAD_MIN, 5) * MIN,
     /** Игрок-выброс: не меньше стольких взломов/эдди за 15 минут — иначе «в 10 раз больше медианы» про 1 и 10 взломов ничего не значит. */
-    outlierMinBreaches: num(process.env.ANOM_OUTLIER_MIN_BREACHES, 10),
-    outlierMinEddies: num(process.env.ANOM_OUTLIER_MIN_EDDIES, 2000),
+    outlierMinBreaches: positiveNumber(process.env.ANOM_OUTLIER_MIN_BREACHES, 10),
+    outlierMinEddies: positiveNumber(process.env.ANOM_OUTLIER_MIN_EDDIES, 2000),
     /** Во сколько «робастных сигм» (MAD·1.4826) от медианы начинается выброс. */
-    outlierSigmas: num(process.env.ANOM_OUTLIER_SIGMAS, 5),
-    emissionMin: num(process.env.ANOM_EMISSION_MIN, 1000),
+    outlierSigmas: positiveNumber(process.env.ANOM_OUTLIER_SIGMAS, 5),
+    emissionMin: positiveNumber(process.env.ANOM_EMISSION_MIN, 1000),
   };
 }
 

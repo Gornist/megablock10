@@ -4,10 +4,10 @@ import type { AnnouncementItem, AnnouncementRecipient } from "../apiTypes.js";
 import type { Db } from "../db/index.js";
 import { logMasterAction, requireMaster } from "../lib/auth.js";
 import { makeHumanizeContext } from "../lib/humanize.js";
-import { insertMasterRecords, selectTargets, type TargetSelector } from "../lib/masterRecords.js";
+import { insertMasterRecords, selectTargets, type TargetSelectorInput } from "../lib/masterRecords.js";
 import { getPlayerBase } from "../lib/playerSummary.js";
 
-export const ANNOUNCEMENT_FIELD = "announcement";
+const ANNOUNCEMENT_FIELD = "announcement";
 const MAX_TEXT = 500;
 const REF_PREFIX = "broadcast:";
 
@@ -20,7 +20,7 @@ const REF_PREFIX = "broadcast:";
  * подтверждает ack-ом — только после этого запись считается доставленной.
  */
 export function registerAnnouncementsRoutes(app: FastifyInstance, db: Db) {
-  app.post<{ Body: TargetSelector & { text?: unknown; dryRun?: unknown } }>("/api/announcements", async (request, reply) => {
+  app.post<{ Body: TargetSelectorInput & { text?: unknown; dryRun?: unknown } }>("/api/announcements", async (request, reply) => {
     const master = requireMaster(db, request, reply);
     if (!master) return;
 

@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { parsePaging } from "../lib/paging.js";
 import type { EventsResponse } from "../apiTypes.js";
 import type { Db } from "../db/index.js";
 import { requireMaster } from "../lib/auth.js";
@@ -9,7 +10,7 @@ import { getPlayerBase } from "../lib/playerSummary.js";
 import { containerRefClause, containerRefParams } from "../lib/nodeSummary.js";
 
 /** Значение фильтра фракции для игроков без фракции (пустую строку в query не передать). */
-export const NO_FACTION = "__none__";
+const NO_FACTION = "__none__";
 
 /**
  * GET /api/events — журнал событий с фильтрами: по игроку, фракции (текущей),
@@ -66,8 +67,7 @@ export function registerEventsRoute(app: FastifyInstance, db: Db) {
       params.push(until);
     }
 
-    const pageSize = Math.min(200, Math.max(1, Number(q.pageSize) || 50));
-    const page = Math.max(0, Number(q.page) || 0);
+    const { page, pageSize } = parsePaging(q);
     const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
 
     const total = (db.prepare(`SELECT COUNT(*) AS n FROM changes ${where}`).get(...params) as { n: number }).n;

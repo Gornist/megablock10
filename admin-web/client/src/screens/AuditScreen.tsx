@@ -2,7 +2,8 @@ import { useState } from "react";
 import type { AuditResponse } from "../api/types";
 import { useApiData } from "../api/useApiData";
 import { AsyncPanel } from "../design/AsyncPanel";
-import { AppButton, AppSelect, Badge, Panel } from "../design/components";
+import { Pager } from "../design/Pager";
+import { AppSelect, Badge, Panel } from "../design/components";
 import { formatDateTime } from "../format";
 
 const PAGE_SIZE = 50;
@@ -48,15 +49,7 @@ export function AuditScreen() {
                 <span className="attn-detail">{r.summary}</span>
               </div>
             ))}
-            <div className="pager">
-              <AppButton onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}>
-                ← назад
-              </AppButton>
-              <span className="mono">стр. {page + 1}</span>
-              <AppButton onClick={() => setPage((p) => p + 1)} disabled={(page + 1) * PAGE_SIZE >= d.total}>
-                вперёд →
-              </AppButton>
-            </div>
+            <Pager page={page} pageSize={PAGE_SIZE} total={d.total} onPage={setPage} />
           </>
         )}
       </AsyncPanel>

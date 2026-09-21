@@ -2,12 +2,12 @@ import type { NodeSummary } from "../apiTypes.js";
 import type { Db } from "../db/index.js";
 import type { ContainerSlot } from "./containerSlots.js";
 import { cachedByDbVersion } from "./dbCache.js";
-import { containerIdOf } from "./humanize.js";
+import { containerIdOfSourceRef } from "./humanize.js";
 import { parseSafe } from "./json.js";
 import { escapeLike } from "./sqlLike.js";
 import { makeSlotRef } from "./slotRef.js";
 
-export interface ContainerRow {
+interface ContainerRow {
   id: string;
   name: string;
   tier: string;
@@ -147,7 +147,7 @@ export function breachesLastHourByNode(db: Db, now = Date.now()): Map<string, nu
     .all(now - HOUR_MS) as { source_ref: string | null }[];
   const out = new Map<string, number>();
   for (const r of rows) {
-    const id = containerIdOf(r.source_ref);
+    const id = containerIdOfSourceRef(r.source_ref);
     if (id) out.set(id, (out.get(id) ?? 0) + 1);
   }
   return out;

@@ -17,7 +17,7 @@ export type OverrideMode = "set" | "add";
  * дашборде оно отображается (NaN, пустой позывной), а устройство молча его
  * игнорирует — расхождение навсегда.
  */
-export function validateValue(field: Field, value: string): string | null {
+function validateValue(field: Field, value: string): string | null {
   if (field === "balance" && !/^-?\d+$/.test(value)) return "balance must be an integer";
   if (field === "ramCapacity" && !(/^\d+$/.test(value) && Number(value) >= RAM_CAPACITY_DEFAULT && Number(value) <= RAM_CAPACITY_MAX)) {
     return `ramCapacity must be an integer from ${RAM_CAPACITY_DEFAULT} to ${RAM_CAPACITY_MAX}`;
@@ -71,7 +71,7 @@ export function resolveValue(
   return { ok: true, value: String(next) };
 }
 
-export interface TargetSelector {
+export interface TargetSelectorInput {
   keys?: unknown;
   faction?: unknown;
   all?: unknown;
@@ -82,7 +82,7 @@ export type TargetResult = { ok: true; players: PlayerBase[]; label: string } | 
 const MAX_KEYS = 500;
 
 /** Ровно один способ выбрать адресатов: список ключей, фракция целиком или все игроки. «Все» и фракция — только действующие: заменённым и сброшенным телефонам правка и объявление не дойдут никогда. */
-export function selectTargets(base: PlayerBase[], sel: TargetSelector): TargetResult {
+export function selectTargets(base: PlayerBase[], sel: TargetSelectorInput): TargetResult {
   const given = [sel.keys !== undefined, sel.faction !== undefined, sel.all === true].filter(Boolean).length;
   if (given !== 1) return { ok: false, error: "specify exactly one of keys, faction, all" };
 
