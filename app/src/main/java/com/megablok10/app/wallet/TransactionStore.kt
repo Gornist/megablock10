@@ -205,6 +205,28 @@ object TransactionStore {
     }
 
     /**
+     * Стартовый баланс персонажа из QR мастера (ProvisionStore): баланс становится РОВНО [balance], а не «плюс столько». В базе могли остаться
+     * записи прежней сессии (сброс сессии стирает только ключи), поэтому сумма записи — разность. Идемпотентно по id выдачи. Уходит на дашборд
+     * записью баланса с причиной CHARACTER_CREATED — тем же способом, каким телефон сообщает о любом изменении.
+     */
+    suspend fun setStartingBalance(context: Context, provisionId: String, balance: Long) {
+        val dao = Mb10Database.get(context).transactionDao()
+        val delta = balance - dao.currentBalance()
+        if (delta == 0L) return
+        val rowId = dao.insertIfAbsent(
+            TransactionEntity(
+                id = "prov:$provisionId",
+                counterpartyPubKeyB64 = "",
+                amount = delta,
+                memo = "Стартовый баланс",
+                timestamp = System.currentTimeMillis(),
+                status = TransactionStatus.CONFIRMED
+            )
+        )
+        if (rowId != -1L) emitBalanceChange(context, dao, delta, ChangeReason.CHARACTER_CREATED, sourceRef = provisionId)
+    }
+
+    /**
      * Применяет правку баланса от мастера с дашборда (§6.3 ТЗ) — newValue
      * абсолютный, не дельта. В отличие от emitBalanceChange НЕ шлёт
      * ChangeRecord обратно на коллектор (эта правка сама следствие уже

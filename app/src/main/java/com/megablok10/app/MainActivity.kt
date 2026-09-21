@@ -43,7 +43,14 @@ import com.megablok10.app.announce.AnnouncementStore
 import com.megablok10.app.call.CallManager
 import com.megablok10.app.call.CallPhase
 import com.megablok10.app.chat.ChatStore
+import com.megablok10.app.BuildConfig
 import com.megablok10.app.collector.ChangeField
+import com.megablok10.app.collector.CollectorSettings
+import com.megablok10.app.qr.Mb10Qr
+import com.megablok10.app.qr.ProvisionResult
+import com.megablok10.app.qr.ProvisionStore
+import com.megablok10.app.qr.rememberMb10QrScanner
+import com.megablok10.app.ui.theme.AppSnack
 import com.megablok10.app.collector.ChangeReason
 import com.megablok10.app.collector.ChangeRecordStore
 import com.megablok10.app.identity.IdentityManager
@@ -147,7 +154,18 @@ fun AppRoot() {
     }
 
     if (currentIdentity == null) {
-        SetupScreen(onCreated = { callsign, faction ->
+        SetupScreen(
+            onProvision = { qr ->
+                scope.launch {
+                    when (val r = ProvisionStore.apply(context, qr)) {
+                        is ProvisionResult.Applied -> identity = r.identity
+                        ProvisionResult.AlreadyHasIdentity -> AppSnack.show("Персонаж уже создан. Повторно — только после сброса сессии в Настройках")
+                        ProvisionResult.AlreadyUsed -> AppSnack.show("Этот код уже использован. Попросите мастера выдать новый")
+                        is ProvisionResult.Invalid -> AppSnack.show(r.message)
+                    }
+                }
+            },
+            onCreated = { callsign, faction ->
             val isNewIdentity = !IdentityManager.hasIdentity(context)
             val created = IdentityManager.getOrCreate(context, callsign, faction)
             identity = created
@@ -180,6 +198,7 @@ fun AppRoot() {
                     ChangeRecordStore.enqueue(context, ChangeField.FACTION, currentIdentity.faction, "", ChangeReason.CHARACTER_RESET)
                     ChatStore.stop()
                     IdentityManager.clear(context)
+                    CollectorSettings.setProvisioned(context, false)   // снова можно принять QR персонажа (новый выдаёт мастер)
                     identity = null
                     tab = AppTab.Chat
                     showProfile = false
@@ -235,9 +254,12 @@ fun AppRoot() {
 }
 
 @Composable
-fun SetupScreen(onCreated: (String, String) -> Unit) {
+fun SetupScreen(onProvision: (Mb10Qr.Provision) -> Unit, onCreated: (String, String) -> Unit) {
     var callsign by remember { mutableStateOf("") }
     var faction by remember { mutableStateOf("") }
+    val startScan = rememberMb10QrScanner { qr ->
+        if (qr is Mb10Qr.Provision) onProvision(qr) else AppSnack.show("Это не код персонажа. Нужен QR от мастера")
+    }
 
     Column(
         modifier = Modifier
@@ -252,8 +274,24 @@ fun SetupScreen(onCreated: (String, String) -> Unit) {
             Text("МЕГАБЛОК №10", color = MB10Colors.inkPrimary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 20.sp)
         }
         Spacer(Modifier.height(4.dp))
-        Text("Создание личности", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
+        Text(if (BuildConfig.ALLOW_MANUAL_SETUP) "Создание личности" else "Выдача персонажа", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
         Spacer(Modifier.height(28.dp))
+
+        Text(
+            "Подойдите к мастеру: он покажет QR с вашим персонажем. Один код настроит приложение и создаст персонажа.",
+            color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 13.sp, lineHeight = 18.sp
+        )
+        Spacer(Modifier.height(16.dp))
+        AppButton("Сканировать QR персонажа", variant = ButtonVariant.Primary, modifier = Modifier.fillMaxWidth(), onClick = startScan)
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "Код действует один раз. Повторно — только после сброса сессии и с новым кодом от мастера.",
+            color = MB10Colors.inkTertiary, fontFamily = IBMPlexSans, fontSize = 11.sp, lineHeight = 15.sp
+        )
+        if (!BuildConfig.ALLOW_MANUAL_SETUP) return@Column
+        Spacer(Modifier.height(28.dp))
+        Text("Ручное создание (сборка для разработки)", color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+        Spacer(Modifier.height(12.dp))
 
         Text("Позывной", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
         Spacer(Modifier.height(6.dp))

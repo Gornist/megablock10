@@ -69,6 +69,12 @@ class DebugQrReceiver : BroadcastReceiver() {
 
     private suspend fun applySet(context: Context, intent: Intent) {
         intent.getStringExtra("collector")?.let { CollectorSettings.setBaseUrl(context, it) }
+        // Сброс сессии как в Настройках («Опасная зона»), без записей о сбросе: стирает личность и снимает признак «настроено мастером». Экран
+        // обновится после перезапуска приложения (restart_app) — состояние личности в MainActivity читается один раз.
+        if (intent.getStringExtra("sessionreset") == "1") {
+            IdentityManager.clear(context)
+            CollectorSettings.setProvisioned(context, false)
+        }
         // Код игры (заголовок X-Game-Secret): пустая строка — сбросить.
         intent.getStringExtra("secret")?.let { CollectorSettings.setGameSecret(context, it.ifBlank { null }) }
         // Создание персонажа без экрана регистрации: "Позывной:Фракция" — как SetupScreen (см. MainActivity).

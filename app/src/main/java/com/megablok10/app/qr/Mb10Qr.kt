@@ -124,6 +124,21 @@ sealed interface Mb10Qr {
     ) : Mb10Qr
 
     /**
+     * QR персонажа от мастера (docs/provisioning-qr.md): всё, что нужно телефону на первом запуске, одним кодом — сервер, код игры и сам
+     * персонаж. Применяется один раз (ProvisionStore); повторно только после сброса сессии и с новым QR. [id] — уникальный номер выдачи,
+     * по нему приложение (и сервер) узнают уже использованный код. Пустые [collectorUrl]/[gameSecret] — оставить как в сборке; [ramCapacity] 0 — по умолчанию.
+     */
+    data class Provision(
+        val id: String,
+        val collectorUrl: String,
+        val gameSecret: String,
+        val callsign: String,
+        val faction: String,
+        val startBalance: Long,
+        val ramCapacity: Int
+    ) : Mb10Qr
+
+    /**
      * Подтверждение получения — показывает получатель в ответ, отправитель
      * сканирует его, чтобы зафиксировать транзакцию (см. TransactionStore).
      * До этого момента отправитель ещё может отменить платёж и вернуть себе
@@ -154,6 +169,7 @@ object Mb10QrCodec {
                 "SECALERT" -> decodeSecurityAlert(parts)
                 "TX" -> decodeTransaction(parts)
                 "ITEM" -> decodeItemTransfer(parts)
+                "PROV" -> decodeProvision(parts)
                 "RCPT" -> decodeReceipt(parts)
                 else -> null
             }
@@ -264,6 +280,22 @@ object Mb10QrCodec {
     }
 
     /** Карточки платежа и передачи — формат v2 (адресат в подписи). v1 не принимается: иначе защиту обошли бы старым форматом. */
+    fun encodeProvision(p: Mb10Qr.Provision): String =
+        "$MAGIC:PROV:v1:${p.id}:${b64(p.collectorUrl)}:${b64(p.gameSecret)}:${b64(p.callsign)}:${b64(p.faction)}:${p.startBalance}:${p.ramCapacity}"
+
+    private fun decodeProvision(parts: List<String>): Mb10Qr.Provision? {
+        if (parts.size < 10 || parts[2] != "v1") return null
+        return Mb10Qr.Provision(
+            id = parts[3],
+            collectorUrl = unb64(parts[4]),
+            gameSecret = unb64(parts[5]),
+            callsign = unb64(parts[6]),
+            faction = unb64(parts[7]),
+            startBalance = parts[8].toLongOrNull() ?: return null,
+            ramCapacity = parts[9].toIntOrNull() ?: return null
+        )
+    }
+
     fun encodeTransaction(tx: Mb10Qr.Transaction): String =
         "$MAGIC:TX:v2:${tx.id}:${tx.fromPubKeyB64}:${tx.toPubKeyB64}:${tx.amount}:${b64(tx.memo)}:${tx.signatureB64}"
 

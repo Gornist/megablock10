@@ -96,7 +96,7 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
         )
         if (collectorHelp) {
             Text(
-                "Адрес сервера дашборда в игровой сети (по умолчанию 10.10.0.10:2517) — сюда уходит история изменений. Пустой адрес отключает отправку, игра работает как обычно. " +
+                "Адрес сервера дашборда в игровой сети — сюда уходит история изменений. Пустой адрес отключает отправку, игра работает как обычно. " +
                     "Код игры нужен, если мастер задал его на сервере (GAME_SECRET): без него запросы к коллектору будут отклонены.",
                 color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp
             )
@@ -108,12 +108,20 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
             Text("Очередь синка", color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
             Text("записи, ещё не подтверждённые коллектором", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
         }
+        val provisioned = remember { CollectorSettings.isProvisioned(context) }
+        if (provisioned) {
+            // Сервер и код игры пришли по QR персонажа от мастера: правятся только новым QR после сброса сессии.
+            Text(
+                "Сервер и код игры настроены мастером через QR персонажа и здесь не меняются.",
+                color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp
+            )
+        } else {
         Spacer(Modifier.height(8.dp))
         AppTextField(
             value = collectorUrl,
             onValueChange = { collectorUrl = it },
             modifier = Modifier.fillMaxWidth(),
-            placeholder = DEFAULT_COLLECTOR_URL
+            placeholder = DEFAULT_COLLECTOR_URL.ifBlank { "http://адрес-сервера:порт" }
         )
         Spacer(Modifier.height(8.dp))
         AppButton(
@@ -136,6 +144,7 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
             variant = ButtonVariant.Secondary,
             onClick = { CollectorSettings.setGameSecret(context, gameSecret.ifBlank { null }) }
         )
+        }
 
         // Необратимое действие — отдельным блоком внизу, чтобы не нажать по соседству с обычными кнопками.
         Spacer(Modifier.height(28.dp))

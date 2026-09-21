@@ -1,9 +1,27 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
     id("app.cash.paparazzi")
 }
+
+// Настройки конкретной игры задаются при сборке, а не в публичном коде: адрес сервера мастера и режим первого запуска.
+// Источники по порядку: свойство Gradle (-Pmb10.collectorUrl=…), переменная окружения MB10_COLLECTOR_URL, local.properties (в .gitignore).
+fun buildSetting(prop: String, env: String, default: String): String {
+    providers.gradleProperty(prop).orNull?.let { return it }
+    System.getenv(env)?.takeIf { it.isNotBlank() }?.let { return it }
+    val local = rootProject.file("local.properties")
+    if (local.exists()) {
+        val props = Properties()
+        local.inputStream().use { props.load(it) }
+        props.getProperty(prop)?.let { return it }
+    }
+    return default
+}
+val collectorUrl = buildSetting("mb10.collectorUrl", "MB10_COLLECTOR_URL", "")
+val allowManualSetup = buildSetting("mb10.allowManualSetup", "MB10_ALLOW_MANUAL_SETUP", "false")
 
 android {
     namespace = "com.megablok10.app"
@@ -17,10 +35,16 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "0.1-mvp"
+        // Адрес сервера мастера по умолчанию (пусто — не задан: отправка выключена, пока адрес не придёт по QR персонажа или не введён в Настройках).
+        buildConfigField("String", "DEFAULT_COLLECTOR_URL", "\"${collectorUrl.trim().trimEnd('/')}\"")
+        // Ручное создание персонажа на первом запуске. Выключено везде, включая debug-APK из CI, который и раздаётся игрокам: персонажа выдаёт мастер QR-кодом.
+        // Разработчику без мастера: mb10.allowManualSetup=true в local.properties (стенд e2e создаёт персонажей отладочными командами и этого не требует).
+        buildConfigField("boolean", "ALLOW_MANUAL_SETUP", allowManualSetup.toBoolean().toString())
     }
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.14"
