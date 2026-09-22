@@ -44,7 +44,17 @@ object CallMedia {
             PeerConnectionFactory.InitializationOptions.builder(context.applicationContext).createInitializationOptions()
         )
         val adm = JavaAudioDeviceModule.builder(context.applicationContext).createAudioDeviceModule()
+        // На живой проверке звонки, где звонящий — Xiaomi, не соединялись (ICE уходило в FAILED, тогда как в обратную сторону
+        // работало): у ICE-кандидатов на этом телефоне без этой опции есть шанс уйти по мобильной сети или через VPN-интерфейс,
+        // недоступный собеседнику на LAN, — тогда как сокеты чата и коллектора уже принудительно идут по Wi-Fi через WifiBinder.
+        // STUN/TURN нет (чистый LAN, ADAPTER_TYPE_LOOPBACK тоже ни разу не пригодится паре реальных устройств).
+        val options = PeerConnectionFactory.Options().apply {
+            networkIgnoreMask = PeerConnectionFactory.Options.ADAPTER_TYPE_CELLULAR or
+                PeerConnectionFactory.Options.ADAPTER_TYPE_VPN or
+                PeerConnectionFactory.Options.ADAPTER_TYPE_LOOPBACK
+        }
         val created = PeerConnectionFactory.builder()
+            .setOptions(options)
             .setAudioDeviceModule(adm)
             .setVideoEncoderFactory(SoftwareVideoEncoderFactory())
             .setVideoDecoderFactory(SoftwareVideoDecoderFactory())

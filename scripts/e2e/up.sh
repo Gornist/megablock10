@@ -82,6 +82,10 @@ setup_device $B Bob:Rats
 sleep 2
 for s in $A $B; do
   restart_app $s
+  # Холодный старт после force-stop не всегда укладывается в паузу restart_app: постоянный foreground-сервис (MeshForegroundService)
+  # у процесса, который ещё доживает после force-stop, изредка задерживает запуск нового (лог: «refused to die while trying to launch») —
+  # без повтора первая же медленная попытка роняла весь стенд.
+  wait_until 30 bash -c "source '$ROOT/scripts/e2e/lib.sh'; [ -n \"\$(pk_of $s)\" ]" || die "$s не прислал публичный ключ за 30с после restart_app"
   pk_of $s > "$E2E_DIR/pk_$s.txt"
   [ -s "$E2E_DIR/pk_$s.txt" ] || die "не получил публичный ключ $s"
 done

@@ -11,6 +11,7 @@ import com.megablok10.app.net.SendOutcome
 import com.megablok10.app.call.CallManager
 import com.megablok10.app.log.DeviceDiagnostics
 import com.megablok10.app.log.Mb10Log
+import com.megablok10.app.presence.MeshForegroundService
 import com.megablok10.app.presence.PeerInfo
 import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.presence.WifiBinder
@@ -44,6 +45,7 @@ object ChatStore {
     val listeningPort: Int get() = server?.port ?: -1
     private var scope: CoroutineScope? = null
     private var startedForKey: String? = null
+    private var processContext: Context? = null
     private val versionReporter = IncompatibleVersionReporter { com.megablok10.app.ui.theme.AppSnack.show(it) }
 
     /**
@@ -58,10 +60,13 @@ object ChatStore {
         Mb10Log.event(TAG, "chat.start", "me" to Mb10Log.short(identity.publicKeyB64), "callsign" to identity.callsign, "faction" to identity.faction)
 
         val appContext = context.applicationContext
+        processContext = appContext
         val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         scope = appScope
 
         SoundPlayer.preload(appContext)
+        // Без этого фоновый процесс рано или поздно замораживается, и приём сообщений/звонков встаёт до открытия приложения заново.
+        MeshForegroundService.start(appContext)
         // Трафик приложения — только по Wi-Fi игровой сети; при смене сети NSD перерегистрируется (docs/network-spec.md, §7).
         WifiBinder.start(appContext) { PresenceService.refresh() }
 
@@ -74,6 +79,7 @@ object ChatStore {
                         Mb10Log.event(TAG, "chat.recv", "type" to msg.type.name, "from" to Mb10Log.short(msg.fromPubKeyB64), "chars" to msg.body.length, "duplicate" to !fresh, "ageMs" to (System.currentTimeMillis() - msg.timestamp))
                         if (!fresh) return@launch
                         confirmIfReceipt(appContext, msg)
+                        ChatNotifier.show(appContext, msg)
                     }
                     // Звук — только для реально пришедших по сети сообщений (этот колбэк
                     // и есть приём с провода), свои же исходящие persist() не должны пищать.
@@ -100,6 +106,7 @@ object ChatStore {
         server?.stop()
         PresenceService.stop()
         WifiBinder.stop()
+        processContext?.let { MeshForegroundService.stop(it) }
         scope?.cancel()
         server = null
         scope = null

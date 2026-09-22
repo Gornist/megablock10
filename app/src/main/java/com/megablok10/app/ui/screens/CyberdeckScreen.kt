@@ -51,6 +51,7 @@ import com.megablok10.app.breach.label
 import com.megablok10.app.collector.ChangeField
 import com.megablok10.app.collector.ChangeReason
 import com.megablok10.app.collector.ChangeRecordStore
+import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.identity.RamUpgradeStore
 import com.megablok10.app.presence.MeshLink
@@ -80,14 +81,28 @@ import org.json.JSONObject
  * в моменте.
  */
 @Composable
-fun CyberdeckScreen(identity: Identity, onNestedChange: (Boolean) -> Unit = {}) {
+fun CyberdeckScreen(
+    identity: Identity,
+    onNestedChange: (Boolean) -> Unit = {},
+    presetPeerKey: String? = null,
+    initialSegment: Int? = null,
+    onPresetConsumed: () -> Unit = {}
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { DaemonStore.ensureSeeded(context) }
     val daemons by DaemonStore.observeAll(context).collectAsState(initial = emptyList())
     val shards by ShardStore.observeAll(context).collectAsState(initial = emptyList())
+    val contacts by ContactStore.observeAll(context).collectAsState(initial = emptyList())
 
     var segment by rememberSaveable { mutableStateOf(0) } // 0 = Демоны, 1 = Шарды; переживает смену вкладки приложения
+    // Пришли из треда чата (кнопка со скрепкой у "Отправить") — получатель уже выбран, картинка контактов не нужна:
+    // остаётся выбрать конкретный шард/демон, и он уйдёт сразу этому игроку.
+    var itemRecipientPreset by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(presetPeerKey, initialSegment) {
+        if (initialSegment != null) segment = initialSegment
+        if (presetPeerKey != null) { itemRecipientPreset = presetPeerKey; onPresetConsumed() }
+    }
     var container by remember { mutableStateOf<Container?>(null) }
     var openedShard by remember { mutableStateOf<Mb10Qr.Shard?>(null) }
     var decryptingShard by remember { mutableStateOf<Mb10Qr.Shard?>(null) }
@@ -180,24 +195,39 @@ fun CyberdeckScreen(identity: Identity, onNestedChange: (Boolean) -> Unit = {}) 
         return
     }
 
-    fun sendTo(contact: Mb10Qr.Contact) {
+    fun performTransfer(toKeyB64: String, label: String) {
         val shard = transferShard
         val daemon = transferDaemon
         transferShard = null
         transferDaemon = null
         scope.launch {
             val card = when {
-                shard != null -> ItemTransferStore.sendShard(context, identity, shard.id, contact.publicKeyB64)
-                daemon != null -> ItemTransferStore.sendDaemon(context, identity, daemon, contact.publicKeyB64)
+                shard != null -> ItemTransferStore.sendShard(context, identity, shard.id, toKeyB64)
+                daemon != null -> ItemTransferStore.sendDaemon(context, identity, daemon, toKeyB64)
                 else -> null
             }
             if (card == null) {
                 AppSnack.show("Не удалось передать")
                 return@launch
             }
-            ItemTransferStore.deliver(context, identity, card, contact.publicKeyB64)
+            ItemTransferStore.deliver(context, identity, card, toKeyB64)
             openedShard = null
-            AppSnack.show("Передача отправлена: ${contact.callsign}")
+            AppSnack.show("Передача отправлена: $label")
+        }
+    }
+    fun sendTo(contact: Mb10Qr.Contact) = performTransfer(contact.publicKeyB64, contact.callsign)
+
+    /** Начать передачу: если пришли из чата с уже известным получателем (см. presetPeerKey), отправляем сразу, без диалога выбора. */
+    fun startTransfer(shard: Mb10Qr.Shard?, daemon: Daemon?) {
+        val preset = itemRecipientPreset
+        if (preset != null) {
+            transferShard = shard
+            transferDaemon = daemon
+            val label = contacts.find { it.publicKeyB64 == preset }?.callsign ?: "получателю"
+            performTransfer(preset, label)
+        } else {
+            transferShard = shard
+            transferDaemon = daemon
         }
     }
     if (transferShard != null || transferDaemon != null) {
@@ -213,7 +243,7 @@ fun CyberdeckScreen(identity: Identity, onNestedChange: (Boolean) -> Unit = {}) 
         ShardDetailOverlay(
             shard = opened,
             decrypter = DecryptRules.bestDecrypter(daemons, opened.tier),
-            onTransfer = { transferShard = opened },
+            onTransfer = { startTransfer(shard = opened, daemon = null) },
             onClose = { openedShard = null },
             // "Расшифровать" — открывает мини-взлом этого конкретного шарда
             // (ShardDecryptFlow), а не общий сегмент "Демоны".
@@ -243,7 +273,7 @@ fun CyberdeckScreen(identity: Identity, onNestedChange: (Boolean) -> Unit = {}) 
 
             Box(Modifier.weight(1f)) {
                 if (segment == 0) {
-                    DemonsSegment(daemons = daemons, onTransfer = { transferDaemon = it })
+                    DemonsSegment(daemons = daemons, onTransfer = { startTransfer(shard = null, daemon = it) })
                 } else {
                     ShardsSegment(shards = shards, onOpen = { openedShard = it })
                 }

@@ -27,6 +27,8 @@
     <!-- Foreground-сервис на время звонка — без него Android 14 отбирает микрофон у свёрнутого/фонового процесса. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- Foreground-сервис на всё время сессии персонажа — без него фоновый процесс рано или поздно замораживается, и приём чата/звонков встаёт до открытия приложения заново (presence/MeshForegroundService). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- Само CallStyle-уведомление на Android 13+ не покажется без этого — сервис при этом всё равно запустится и будет жить, просто плашка будет не видна игроку. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
@@ -67,6 +69,11 @@
             android:name=".call.CallForegroundService"
             android:exported="false"
             android:foregroundServiceType="microphone" />
+
+        <service
+            android:name=".presence.MeshForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <receiver
             android:name=".call.CallActionReceiver"

@@ -45,6 +45,7 @@ import com.megablok10.app.call.CallPhase
 import com.megablok10.app.chat.ChatStore
 import com.megablok10.app.identity.SessionReset
 import com.megablok10.app.collector.ChangeField
+import com.megablok10.app.qr.ItemKind
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.ProvisionResult
 import com.megablok10.app.qr.ProvisionStore
@@ -106,6 +107,9 @@ fun AppRoot() {
     var showProfile by remember { mutableStateOf(false) }
     var chatThreadOpen by remember { mutableStateOf(false) }
     var walletPreset by remember { mutableStateOf<String?>(null) }
+    // Пришли из чата кнопкой-скрепкой ("Передать шард/демона") — какую вкладку Кибердеки открыть и кому уже готова передача.
+    var cyberdeckPeerPreset by remember { mutableStateOf<String?>(null) }
+    var cyberdeckSegmentPreset by remember { mutableStateOf<Int?>(null) }
     var shardDetailOpen by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     BackHandler(enabled = showProfile) { showProfile = false }
@@ -142,6 +146,17 @@ fun AppRoot() {
                 arrayOf(Manifest.permission.RECORD_AUDIO)
             }
             callPermissionLauncher.launch(permissions)
+        }
+    }
+
+    // Уведомления о сообщениях и постоянная плашка «на связи» (MeshForegroundService) не должны ждать первого звонка — раньше
+    // POST_NOTIFICATIONS просили только там, и до первого звонка игрок не видел вообще никаких уведомлений о чате.
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 
@@ -226,12 +241,22 @@ fun AppRoot() {
                         onContactConsumed = { chatContact = null },
                         onNestedChange = { chatThreadOpen = it },
                         onQuickTransfer = { key -> walletPreset = key; tab = AppTab.Wallet },
-                        onQuickItem = { tab = AppTab.Hack }
+                        onQuickItem = { kind, peerKey ->
+                            cyberdeckPeerPreset = peerKey
+                            cyberdeckSegmentPreset = if (kind == ItemKind.DAEMON) 0 else 1
+                            tab = AppTab.Hack
+                        }
                     )
                     AppTab.Calls -> CallsScreen(onCallPeer = { peer: PeerInfo ->
                         withMicPermission { CallManager.startOutgoingCall(context, currentIdentity, peer) }
                     })
-                    AppTab.Hack -> CyberdeckScreen(identity = currentIdentity, onNestedChange = { shardDetailOpen = it })
+                    AppTab.Hack -> CyberdeckScreen(
+                        identity = currentIdentity,
+                        onNestedChange = { shardDetailOpen = it },
+                        presetPeerKey = cyberdeckPeerPreset,
+                        initialSegment = cyberdeckSegmentPreset,
+                        onPresetConsumed = { cyberdeckPeerPreset = null; cyberdeckSegmentPreset = null }
+                    )
                     AppTab.Wallet -> WalletScreen(currentIdentity, presetContactKey = walletPreset, onPresetConsumed = { walletPreset = null })
                 }
             }

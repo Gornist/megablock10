@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -99,7 +101,7 @@ fun ChatScreen(
     onContactConsumed: () -> Unit = {},
     onNestedChange: (Boolean) -> Unit = {},
     onQuickTransfer: (String) -> Unit = {},
-    onQuickItem: () -> Unit = {}
+    onQuickItem: (ItemKind, String) -> Unit = { _, _ -> }
 ) {
     var destination by remember { mutableStateOf<ChatDestination?>(null) }
     var showContactPicker by remember { mutableStateOf(false) }
@@ -216,7 +218,7 @@ private fun FactionThread(identity: Identity, onBack: () -> Unit) {
 }
 
 @Composable
-private fun DirectThread(identity: Identity, peerPubKeyB64: String, onBack: () -> Unit, onQuickTransfer: (String) -> Unit, onQuickItem: () -> Unit) {
+private fun DirectThread(identity: Identity, peerPubKeyB64: String, onBack: () -> Unit, onQuickTransfer: (String) -> Unit, onQuickItem: (ItemKind, String) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val contacts by ContactStore.observeAll(context).collectAsState(initial = emptyList())
@@ -259,12 +261,6 @@ private fun DirectThread(identity: Identity, peerPubKeyB64: String, onBack: () -
             Spacer(Modifier.width(6.dp))
             Text(if (peer != null) "в сети" else "не в сети", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
         }
-        // Быстрые действия: перевод этому контакту и передача демона/шарда (ведёт в Кибердеку).
-        Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AppButton("€$ Перевести", modifier = Modifier.weight(1f), variant = ButtonVariant.Secondary, dense = true, onClick = { onQuickTransfer(peerPubKeyB64) })
-            AppButton("Передать предмет", modifier = Modifier.weight(1f), variant = ButtonVariant.Secondary, dense = true, onClick = onQuickItem)
-        }
-
         MessageList(
             messages = messages,
             myPubKey = identity.publicKeyB64,
@@ -290,9 +286,13 @@ private fun DirectThread(identity: Identity, peerPubKeyB64: String, onBack: () -
                 }
             }
         )
-        MessageInput(placeholder = if (peer != null) "Личное сообщение" else "Личное сообщение (получатель не в сети)") { body ->
-            scope.launch { ChatStore.sendDirect(context, identity, peerPubKeyB64, peer, body) }
-        }
+        MessageInput(
+            placeholder = if (peer != null) "Личное сообщение" else "Личное сообщение (получатель не в сети)",
+            onSend = { body -> scope.launch { ChatStore.sendDirect(context, identity, peerPubKeyB64, peer, body) } },
+            onTransferMoney = { onQuickTransfer(peerPubKeyB64) },
+            onTransferShard = { onQuickItem(ItemKind.SHARD, peerPubKeyB64) },
+            onTransferDaemon = { onQuickItem(ItemKind.DAEMON, peerPubKeyB64) }
+        )
     }
 }
 
@@ -453,15 +453,48 @@ private fun DaySeparatorLabel(label: String) {
 }
 
 @Composable
-private fun MessageInput(placeholder: String, onSend: (String) -> Unit) {
+private fun MessageInput(
+    placeholder: String,
+    onTransferMoney: (() -> Unit)? = null,
+    onTransferShard: (() -> Unit)? = null,
+    onTransferDaemon: (() -> Unit)? = null,
+    onSend: (String) -> Unit
+) {
     var draft by remember { mutableStateOf("") }
     val canSend = draft.isNotBlank()
+    var attachMenuOpen by remember { mutableStateOf(false) }
+    val hasAttach = onTransferMoney != null || onTransferShard != null || onTransferDaemon != null
 
     Row(
         modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Перевод эдди и передача шарда/демона — раньше два отдельных ряда кнопок над полем ввода, теперь одна скрепка
+        // рядом с "Отправить" с выпадающим списком: реже нужны, чем сам текст, и не должны занимать строку постоянно.
+        if (hasAttach) {
+            Box {
+                Box(
+                    modifier = Modifier
+                        .background(MB10Colors.surfaceSunken, chamferShape(6.dp))
+                        .clickable { attachMenuOpen = true }
+                        .padding(horizontal = 12.dp, vertical = 12.dp)
+                ) {
+                    Text("📎", fontSize = 14.sp)
+                }
+                DropdownMenu(expanded = attachMenuOpen, onDismissRequest = { attachMenuOpen = false }) {
+                    onTransferMoney?.let { action ->
+                        DropdownMenuItem(text = { Text("€$ Перевести эдди", fontFamily = JetBrainsMono, fontSize = 12.sp) }, onClick = { attachMenuOpen = false; action() })
+                    }
+                    onTransferShard?.let { action ->
+                        DropdownMenuItem(text = { Text("Передать шард", fontFamily = JetBrainsMono, fontSize = 12.sp) }, onClick = { attachMenuOpen = false; action() })
+                    }
+                    onTransferDaemon?.let { action ->
+                        DropdownMenuItem(text = { Text("Передать демона", fontFamily = JetBrainsMono, fontSize = 12.sp) }, onClick = { attachMenuOpen = false; action() })
+                    }
+                }
+            }
+        }
         AppTextField(
             value = draft,
             onValueChange = { draft = it },

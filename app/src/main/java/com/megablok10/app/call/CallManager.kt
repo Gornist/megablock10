@@ -44,6 +44,9 @@ private const val RING_TIMEOUT_MS = 45_000L
 
 private const val TAG = "CallManager"
 
+/** `candidate:<foundation> <component> udp|tcp <priority> <address> <port> typ host|srflx|relay|prflx ...` (RFC 5245). */
+private val ICE_CANDIDATE_PATTERN = Regex("""candidate:\S+ \d+ (\S+) \d+ (\S+) \d+ typ (\S+)""")
+
 object CallManager {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -111,6 +114,7 @@ object CallManager {
                 val mid = signal.iceSdpMid ?: return
                 val idx = signal.iceSdpMLineIndex ?: return
                 val candidate = signal.iceCandidate ?: return
+                Mb10Log.d(TAG, "call.ice_candidate_in call=${signal.callId.take(8)} ${iceCandidateSummary(candidate)}")
                 CallMedia.addRemoteIceCandidate(mid, idx, candidate)
             }
             CallSignalType.DECLINE, CallSignalType.END -> if (_state.value.callId == signal.callId) {
@@ -184,8 +188,21 @@ object CallManager {
         )
         scope.launch {
             val ok = CallClient.send(peer.host, peer.port, signal)
-            if (type != CallSignalType.ICE_CANDIDATE || !ok) Mb10Log.event(TAG, "call.signal_out", "type" to type.name, "call" to callId.take(8), "delivered" to ok)
+            if (type == CallSignalType.ICE_CANDIDATE) {
+                // Раньше успешная отправка кандидата не логировалась вовсе (только отказ) — не видно было даже, сколько их вообще
+                // ушло. На разборе живой проверки это как раз и не хватило: по логам нельзя было отличить «кандидат не сгенерировался»
+                // от «сгенерировался, но не долетел». Debug-уровень — их может быть много за один звонок.
+                Mb10Log.d(TAG, "call.ice_candidate_out call=${callId.take(8)} delivered=$ok ${ice?.sdp?.let(::iceCandidateSummary) ?: ""}")
+            } else {
+                Mb10Log.event(TAG, "call.signal_out", "type" to type.name, "call" to callId.take(8), "delivered" to ok)
+            }
         }
+    }
+
+    /** `typ host 192.168.1.49` из строки ICE-кандидата (RFC 5245) — для диагностики, без полной строки (в ней ufrag/pwd). */
+    private fun iceCandidateSummary(candidateSdp: String): String {
+        val m = ICE_CANDIDATE_PATTERN.find(candidateSdp) ?: return "candidate=?"
+        return "transport=${m.groupValues[1]} addr=${m.groupValues[2]} typ=${m.groupValues[3]}"
     }
 
     private fun endCallLocal(context: Context, outcome: String) {
