@@ -9,7 +9,9 @@
 //                                                новичок: CHARACTER_CREATED (позывной, фракция, стартовый баланс); --provision — применить QR персонажа
 //                                                с этим номером выдачи (sourceRef = ID, как делает приложение)
 //   reset    <имя>                               сброс сессии: CHARACTER_RESET (позывной и фракция → пусто), как «Опасная зона» в приложении
-//   beat     <имя> [--repeat N]                  heartbeat (пустой батч); N — столько отдельных запросов подряд
+//   beat     <имя> [--repeat N] [--pending N --oldest-ms N]
+//                                                heartbeat (пустой батч); N — столько отдельных запросов подряд; --pending/--oldest-ms —
+//                                                presence.pendingCount/oldestPendingAgeMs как в настоящем приложении (провокация sync_stuck)
 //   send     <имя> --field F --reason R [--new V | --delta N] [--old V] [--ref ID] [--actor <имя|ключ>]
 //                  [--bad-signature] [--happened-at +мс|абс] [--repeat N]
 //                                                одна запись (или N записей одним батчем); для balance old берётся из состояния устройства
@@ -118,10 +120,15 @@ if (cmd === "key") {
   console.log(JSON.stringify(summary(r)));
 } else if (cmd === "beat") {
   const n = Number(opts.repeat ?? 1);
+  // --pending/--oldest-ms — то же поле presence, что шлёт настоящее приложение вместе с heartbeat (ChangeRecordStore.presenceJson):
+  // не сама очередь на этом поддельном устройстве, а произвольные числа для сценариев sync_stuck (провокация без реальной очереди).
+  const presence = opts.pending !== undefined || opts["oldest-ms"] !== undefined
+    ? { pendingCount: Number(opts.pending ?? 0), oldestPendingAgeMs: Number(opts["oldest-ms"] ?? 0) }
+    : undefined;
   let last = null;
   const statuses = {};
   for (let i = 0; i < n; i++) {
-    last = await post({ records: [], subjectKeyB64: s.publicKeyB64 });
+    last = await post({ records: [], subjectKeyB64: s.publicKeyB64, ...(presence ? { presence } : {}) });
     statuses[last.status] = (statuses[last.status] ?? 0) + 1;
   }
   console.log(JSON.stringify({ requests: n, statuses }));
