@@ -3,6 +3,5 @@
   <ManuallySuppressedIssues></ManuallySuppressedIssues>
   <CurrentIssues>
     <ID>LoopWithTooManyJumpStatements:DecryptRules.kt$DecryptRules$for</ID>
-    <ID>TooManyFunctions:Mb10Qr.kt$Mb10QrCodec</ID>
   </CurrentIssues>
 </SmellBaseline>

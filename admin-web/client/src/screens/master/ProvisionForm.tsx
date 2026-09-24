@@ -2,6 +2,7 @@ import { useState } from "react";
 import { api } from "../../api/client";
 import type { FactionRow, ProvisionItem, ProvisionQr, ProvisionsResponse } from "../../api/types";
 import { useApiData } from "../../api/useApiData";
+import { POLL_RELAXED_MS } from "../../api/pollIntervals";
 import { useAsyncAction } from "../../api/useAsyncAction";
 import { AsyncPanel } from "../../design/AsyncPanel";
 import { Badge, Panel } from "../../design/components";
@@ -27,7 +28,7 @@ export function ProvisionForm() {
   const last = loadLast();
   const [result, setResult] = useState<ProvisionQr | null>(null);
   const { error: showError, run } = useAsyncAction({ fallbackError: "не удалось показать код" });
-  const { data, error: listError, reload } = useApiData<ProvisionsResponse>("/api/provisions", { pollMs: 10000 });
+  const { data, error: listError, reload } = useApiData<ProvisionsResponse>("/api/provisions", { pollMs: POLL_RELAXED_MS });
   const { data: factions } = useApiData<FactionRow[]>("/api/factions", { pollMs: false });
 
   async function showAgain(id: string) {

@@ -127,12 +127,67 @@ CREATE INDEX IF NOT EXISTS idx_master_pending_subject ON master_pending (subject
 
 export type Db = Database.Database;
 
+/**
+ * Версия 1 — вся SCHEMA выше. До этой правки схема не версионировалась:
+ * CREATE TABLE/INDEX IF NOT EXISTS сами по себе безопасны для повторного
+ * применения на любой БД, поэтому отсутствие версии не подводило, пока
+ * каждое изменение схемы было только новой таблицей (см. git-историю —
+ * ALTER TABLE тут не было ни разу). MIGRATIONS — на случай, когда
+ * IF NOT EXISTS не спасает: ALTER TABLE ADD COLUMN, смена типа столбца,
+ * перекладка данных и т. п. Экспортируется в приложение только через
+ * openDb/runMigrations — ensureAuthSchema (masters/sessions/audit_master)
+ * намеренно остаётся отдельной, независимой от игровой схемы (см. её
+ * комментарий в auth.ts).
+ */
+export const BASELINE_VERSION = 1;
+
+export interface Migration {
+  /** Обязательно baselineVersion + 1, + 2, ... по порядку — без пропусков и дублей, проверяется validateMigrationSequence. */
+  version: number;
+  /** Синхронная — better-sqlite3 весь и так синхронный; оборачивается в db.transaction для атомарности "несколько операторов сразу". */
+  migrate: (db: Db) => void;
+}
+
+// Пока ни одной: следующее изменение существующей таблицы (не просто новая
+// таблица — под неё IF NOT EXISTS в SCHEMA по-прежнему достаточно) добавляется
+// сюда новым элементом, а не правкой SCHEMA задним числом.
+const MIGRATIONS: Migration[] = [];
+
+/** Вынесена из runMigrations как чистая функция — юнит-тестируется отдельно, без реальной БД (см. dbMigrations.test.ts). */
+export function validateMigrationSequence(migrations: Pick<Migration, "version">[], baselineVersion: number): void {
+  migrations.forEach((m, i) => {
+    const expected = baselineVersion + 1 + i;
+    if (m.version !== expected) {
+      throw new Error(`db migrations must be a contiguous sequence starting at ${baselineVersion + 1}: expected version ${expected} at index ${i}, got ${m.version}`);
+    }
+  });
+}
+
+/** SCHEMA (idempotent) + миграции, каждая ровно один раз, по возрастанию версии — отслеживается через PRAGMA user_version. */
+export function runMigrations(db: Db): void {
+  validateMigrationSequence(MIGRATIONS, BASELINE_VERSION);
+  db.exec(SCHEMA);
+  let version = db.pragma("user_version", { simple: true }) as number;
+  if (version < BASELINE_VERSION) {
+    db.pragma(`user_version = ${BASELINE_VERSION}`);
+    version = BASELINE_VERSION;
+  }
+  for (const migration of MIGRATIONS) {
+    if (migration.version <= version) continue;
+    db.transaction(() => {
+      migration.migrate(db);
+      db.pragma(`user_version = ${migration.version}`);
+    })();
+    version = migration.version;
+  }
+}
+
 export function openDb(path: string): Db {
   mkdirSync(dirname(path), { recursive: true });
   const db = new Database(path);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
-  db.exec(SCHEMA);
+  runMigrations(db);
   ensureAuthSchema(db);
   return db;
 }

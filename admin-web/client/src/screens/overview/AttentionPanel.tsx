@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/client";
 import type { Attention } from "../../api/types";
 import { useApiData } from "../../api/useApiData";
+import { POLL_RELAXED_MS } from "../../api/pollIntervals";
 import { AsyncPanel } from "../../design/AsyncPanel";
 import { Badge, Panel } from "../../design/components";
 import { formatAgo } from "../../format";
@@ -41,7 +42,7 @@ function beep() {
 export function AttentionPanel() {
   const [showAll, setShowAll] = useState(false);
   const [notify, setNotify] = useState(loadNotify);
-  const { data, error, reload } = useApiData<Attention>(() => (showAll ? "/api/attention?all=1" : "/api/attention"), { pollMs: 10000, key: String(showAll) });
+  const { data, error, reload } = useApiData<Attention>(() => (showAll ? "/api/attention?all=1" : "/api/attention"), { pollMs: POLL_RELAXED_MS, key: String(showAll) });
   const counts = data?.counts;
 
   // Уведомляем только о срочных, которых раньше не видели; первая загрузка лишь запоминает текущие.

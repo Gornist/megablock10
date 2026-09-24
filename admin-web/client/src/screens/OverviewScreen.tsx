@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useRef } from "react";
+import { usePolledData } from "../api/useApiData";
+import { POLL_LIVE_MS } from "../api/pollIntervals";
 import { api } from "../api/client";
 import type { ChangeRow, Overview } from "../api/types";
 import { ChangeLine } from "../design/ChangeLine";
@@ -8,43 +10,38 @@ import { AttentionPanel } from "./overview/AttentionPanel";
 import { PulsePanel } from "./overview/PulsePanel";
 import { WatchPanel } from "./overview/WatchPanel";
 
-const POLL_MS = 3000;
+const POLL_MS = POLL_LIVE_MS;
+
+interface OverviewTick {
+  overview: Overview;
+  feed: ChangeRow[];
+}
 
 export function OverviewScreen() {
-  const [overview, setOverview] = useState<Overview | null>(null);
-  const [feed, setFeed] = useState<ChangeRow[]>([]);
   const sinceRef = useRef(Date.now() - 30 * 60 * 1000);
+  const feedRef = useRef<ChangeRow[]>([]);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function tick() {
-      try {
-        const [ov, recent] = await Promise.all([
-          api.get<Overview>("/api/overview"),
-          api.get<{ records: ChangeRow[]; now: number }>(`/api/changes/recent?since=${sinceRef.current}&limit=500`),
-        ]);
-        if (cancelled) return;
-        setOverview(ov);
-        // Курсор двигаем всегда; сервер отдаёт записи с received_at >= курсора, поэтому на границе возможны повторы — режем по id.
-        sinceRef.current = recent.now;
-        if (recent.records.length > 0) {
-          setFeed((prev) => {
-            const seen = new Set(prev.map((r) => r.id));
-            const fresh = recent.records.filter((r) => !seen.has(r.id)).reverse();
-            return fresh.length === 0 ? prev : [...fresh, ...prev].slice(0, 200);
-          });
-        }
-      } catch {
-        // сеть моргнула — следующий тик поправит, отдельного индикатора ошибки для polling не делаем
-      }
+  // Комбинирует /api/overview и живую ленту в один тик (общий интервал, одна ошибка на двоих
+  // — сеть моргнула, следующий тик поправит сам, отдельный индикатор ошибки для polling не делаем).
+  // Курсор и накопленная лента живут в ref: usePolledData просто подставляет то, что вернул fetch.
+  const fetchTick = useCallback(async (): Promise<OverviewTick> => {
+    const [overview, recent] = await Promise.all([
+      api.get<Overview>("/api/overview"),
+      api.get<{ records: ChangeRow[]; now: number }>(`/api/changes/recent?since=${sinceRef.current}&limit=500`),
+    ]);
+    // Курсор двигаем всегда; сервер отдаёт записи с received_at >= курсора, поэтому на границе возможны повторы — режем по id.
+    sinceRef.current = recent.now;
+    if (recent.records.length > 0) {
+      const seen = new Set(feedRef.current.map((r) => r.id));
+      const fresh = recent.records.filter((r) => !seen.has(r.id)).reverse();
+      if (fresh.length > 0) feedRef.current = [...fresh, ...feedRef.current].slice(0, 200);
     }
-    tick();
-    const id = setInterval(tick, POLL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
+    return { overview, feed: feedRef.current };
   }, []);
+
+  const { data } = usePolledData(fetchTick, { pollMs: POLL_MS });
+  const overview = data?.overview ?? null;
+  const feed = data?.feed ?? [];
 
   return (
     <div className="screen-grid">

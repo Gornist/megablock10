@@ -1,4 +1,4 @@
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
 import fastifyStatic from "@fastify/static";
 import { existsSync } from "node:fs";
 import type { Db } from "./db/index.js";
@@ -35,6 +35,23 @@ export function buildApp(db: Db, options: { clientDist?: string; logger?: boolea
   // после encodeURIComponent ещё длиннее — дефолтный лимит Fastify (100) в это
   // не помещается.
   const app = Fastify({ logger: options.logger ?? true, routerOptions: { maxParamLength: 512 } });
+
+  // Без этого необработанное исключение (например, редкая ошибка better-sqlite3 не
+  // отловленная валидацией заранее) долетало бы до клиента с err.message как есть —
+  // Fastify по умолчанию не отдаёт стек-трейс в ответе, но message может содержать
+  // детали БД (имя таблицы/колонки, кусок SQL). На /api/changes и /api/slots/:ref/claim
+  // это разрешено правишь любому устройству в сети без авторизации мастера, поэтому
+  // 5xx (неожиданная ошибка сервера) отдаём общей фразой, а исходную ошибку — в лог;
+  // 4xx (уже свой statusCode — валидация самого Fastify, битый JSON и т. п.) message не прячем.
+  app.setErrorHandler((error: FastifyError, request, reply) => {
+    const statusCode = error.statusCode ?? 500;
+    if (statusCode >= 500) {
+      request.log.error(error);
+      reply.code(statusCode).send({ error: "internal error" });
+      return;
+    }
+    reply.code(statusCode).send({ error: error.message });
+  });
 
   registerChangesRoute(app, db);
   registerPlayersRoutes(app, db);

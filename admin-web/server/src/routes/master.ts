@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import QRCode from "qrcode";
 import type { Db } from "../db/index.js";
 import { logMasterAction, requireMaster } from "../lib/auth.js";
-import { encryptLoot } from "../lib/lootCrypto.js";
+import { deriveLootKey, encryptLoot } from "../lib/lootCrypto.js";
 import { encodeDaemonLoot, encodeShardLoot } from "../lib/lootCodec.js";
 import { encodeContainerQr, encodeRamUpgradeQr, encodeShardQr } from "../lib/mb10QrCodec.js";
 import { tierLevel } from "../lib/tier.js";
@@ -83,6 +83,7 @@ export function registerMasterRoutes(app: FastifyInstance, db: Db) {
       return reply.code(400).send({ error: "id may contain only letters, digits, '_', '-', '.' (max 64)" });
     }
     const slots: ContainerSlot[] = [];
+    const lootKey = deriveLootKey(process.env.GAME_SECRET);
 
     for (const [index, raw] of body.slots.entries()) {
       const type = raw.type === "DAEMON" ? "DAEMON" : "SHARD";
@@ -129,7 +130,7 @@ export function registerMasterRoutes(app: FastifyInstance, db: Db) {
         });
       }
 
-      const payload = encryptLoot(plain);
+      const payload = encryptLoot(plain, lootKey);
       // Тот же валидатор, что и у routes/containers.ts — гарантирует, что
       // сгенерированный здесь слот проходит ровно те же проверки (в частности,
       // ловит copies < 0, которое раньше проскакивало мимо Number.isInteger).
