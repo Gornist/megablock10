@@ -1,7 +1,7 @@
 package com.megablok10.app.net
 
 import com.megablok10.app.log.Mb10Log
-import java.io.PrintWriter
+import java.io.OutputStreamWriter
 import java.net.InetSocketAddress
 import java.net.Socket
 
@@ -11,6 +11,11 @@ import java.net.Socket
  * не достучаться, очереди/ретраев нет. Оба клиента отличались только тем,
  * какой Protocol.encode() вызывали, поэтому сама отправка строки вынесена
  * сюда одним местом.
+ *
+ * Строка уходит в UTF-8 с `\n` в конце. Пишем через OutputStreamWriter, а не PrintWriter: удобный конструктор
+ * PrintWriter(OutputStream, Boolean, Charset) есть на Android только с API 33 (на Android 8–12 — NoSuchMethodError, это Error,
+ * а не Exception, и он ронял приложение при первой же отправке), а сам PrintWriter глотает ошибки записи — из-за этого
+ * обрыв уже после соединения выглядел как [SendOutcome.DELIVERED] вместо [SendOutcome.UNKNOWN].
  */
 object LineSocketClient {
     fun sendLine(host: String, port: Int, line: String, timeoutMs: Int = 2000): Boolean =
@@ -31,10 +36,10 @@ object LineSocketClient {
                 Mb10Log.warnEvent("Socket", "send.not_reached", "to" to "$host:$port", "error" to e.javaClass.simpleName, "msg" to e.message, "ms" to took(), "chars" to line.length)
                 return SendOutcome.NOT_REACHED
             }
-            PrintWriter(socket.getOutputStream(), true, Charsets.UTF_8).apply {
-                println(line)
-                flush()
-            }
+            val writer = OutputStreamWriter(socket.getOutputStream(), Charsets.UTF_8)
+            writer.write(line)
+            writer.write("\n")
+            writer.flush()
             Mb10Log.d("Socket", "send.delivered to=$host:$port ms=${took()} chars=${line.length}")
             SendOutcome.DELIVERED
         } catch (e: Exception) {
