@@ -77,32 +77,6 @@ fun flagTabShape(): Shape = GenericShape { size, _ ->
 }
 
 /**
- * Зубчатый чамфер — как chamferShape (срез только в верхнем левом углу), но
- * с дополнительным уступом-ступенькой на правом крае посередине высоты:
- * верхний сегмент уже нижнего на stepInset. Источник паттерна — фан-карточка
- * персонажа CP2077 (боковые акцентные полосы), не панель общего назначения —
- * не путать с обычным chamferShape для карточек/кнопок.
- */
-@Composable
-fun jaggedChamferShape(cut: Dp, stepInset: Dp = cut): Shape {
-    val cutPx = with(LocalDensity.current) { cut.toPx() }
-    val stepPx = with(LocalDensity.current) { stepInset.toPx() }
-    return GenericShape { size, _ ->
-        val c = cutPx.coerceIn(0f, minOf(size.width, size.height))
-        val step = stepPx.coerceIn(0f, size.width * 0.6f)
-        val midY = size.height / 2f
-        moveTo(c, 0f)
-        lineTo(size.width - step, 0f)
-        lineTo(size.width - step, midY)
-        lineTo(size.width, midY)
-        lineTo(size.width, size.height)
-        lineTo(0f, size.height)
-        lineTo(0f, c)
-        close()
-    }
-}
-
-/**
  * Срез в правом нижнем углу плюс маленький прямоугольный вырез-паз на левом крае, у середины высоты — форма кнопки с
  * cyberpunk.net (докладка «Cyberpunk.net → Мегаблок №10»): их SVG — лицензионный актив CD Projekt RED, не копируется,
  * но геометрию (единственный, а не оба среза chamferShape/doubleChamferShape; плюс сам приём паза) переснял с реального
@@ -244,8 +218,3 @@ fun Modifier.augCornerBrackets(
     drawLine(color, Offset(i, h - i), Offset(i + arm, h - i), t, StrokeCap.Square)
     drawLine(color, Offset(i, h - i), Offset(i, h - i - arm), t, StrokeCap.Square)
 }
-
-/** Тот же приём, что chamferBorder — но контуром [notchedChamferShape], для ButtonVariant.System. */
-@Composable
-fun Modifier.notchedChamferBorder(color: Color, cut: Dp = 8.dp, width: Dp = 1.dp): Modifier =
-    this.border(width, color, notchedChamferShape(cut))

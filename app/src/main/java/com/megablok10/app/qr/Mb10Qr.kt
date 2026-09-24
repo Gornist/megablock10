@@ -248,16 +248,11 @@ object Mb10QrCodec {
         )
     }
 
-    fun encodeRamUpgrade(token: String, delta: Int): String = "$MAGIC:RAM:v1:$token:$delta"
-
     private fun decodeRamUpgrade(parts: List<String>): Mb10Qr.RamUpgrade? {
         if (parts.size < 5) return null
         val delta = parts[4].toIntOrNull() ?: return null
         return Mb10Qr.RamUpgrade(token = parts[3], delta = delta)
     }
-
-    fun encodeLootGrant(slotRef: String, type: LootType, tier: Tier, encryptedPayload: String): String =
-        "$MAGIC:GRANT:v1:$slotRef:${type.name}:${tier.level}:$encryptedPayload"
 
     private fun decodeLootGrant(parts: List<String>): Mb10Qr.LootGrant? {
         if (parts.size < 7) return null
