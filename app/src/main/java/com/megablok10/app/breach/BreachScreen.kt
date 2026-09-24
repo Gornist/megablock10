@@ -606,6 +606,7 @@ internal fun ResultOverlay(
     ) {
         ChamferedSurface(
             borderColor = color, fillColor = MB10Colors.surfaceRaised, cut = 10.dp, contentPadding = 12.dp,
+            augmented = true,
             modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)
         ) {
             Column {

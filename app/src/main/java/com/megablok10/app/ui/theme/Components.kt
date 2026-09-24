@@ -117,9 +117,12 @@ fun OutlineButton(
 ) {
     val effectiveTextColor = if (enabled) accentColor else MB10Colors.borderMuted
     val effectiveBorderColor = if (enabled) borderColor else MB10Colors.borderMuted
+    // Та же диагональная форма (верх-право + низ-лево), что у filled-кнопок AppButton — единый силуэт действия
+    // независимо от того, обведена кнопка рамкой или залита.
+    val outlineShape = augmentedShape(topRight = AugCorner.Clip, topRightSize = 8.dp, bottomLeft = AugCorner.Clip, bottomLeftSize = 8.dp)
     Box(
         modifier = modifier
-            .border(1.dp, effectiveBorderColor, chamferShape(5.dp))
+            .border(1.dp, effectiveBorderColor, outlineShape)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(vertical = verticalPadding)
     ) {

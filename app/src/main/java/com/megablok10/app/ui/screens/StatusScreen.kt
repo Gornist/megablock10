@@ -78,6 +78,9 @@ fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}, on
                 cut = 10.dp,
                 corner = SurfaceCorner.Double,
                 contentPadding = 16.dp,
+                augmented = true,
+                // borderMuted слишком тёмный для уголков-прицела (см. правило в Color.kt) — акцент отдельным живым цветом.
+                bracketColor = MB10Colors.accentAction,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column {

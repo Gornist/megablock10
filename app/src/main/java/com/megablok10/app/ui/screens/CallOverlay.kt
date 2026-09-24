@@ -87,6 +87,7 @@ private fun RingingCard(state: CallUiState, peerFaction: String?, onAccept: () -
             cut = 12.dp,
             corner = SurfaceCorner.Double,
             contentPadding = 24.dp,
+            augmented = true,
             modifier = Modifier.fillMaxWidth().padding(24.dp)
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {

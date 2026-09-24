@@ -173,6 +173,9 @@ private fun SendTransactionPanel(
         fillColor = MB10Colors.surfaceRaised,
         cut = 6.dp,
         contentPadding = 14.dp,
+        augmented = true,
+        // borderMuted слишком тёмный для уголков-прицела (см. правило в Color.kt) — акцент отдельным живым цветом.
+        bracketColor = MB10Colors.accentAction,
         modifier = Modifier.fillMaxWidth()
     ) {
         val activeSent = sent

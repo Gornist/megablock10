@@ -70,16 +70,75 @@ fun ChamferedSurface(
     cut: Dp = 10.dp,
     borderWidth: Dp = 1.dp,
     contentPadding: Dp = MB10Spacing.md,
+    /**
+     * Усиленный HUD-вид для героических поверхностей (диалоги, акцентные карточки, шапка звонка) — асимметричный
+     * срез+вогнутость через [augmentedShape], уголки-прицел ([augCornerBrackets]) и внутренняя тонкая обводка-свечение.
+     * По умолчанию выключен: существующие панели, которые не передают этот параметр, выглядят как раньше.
+     */
+    augmented: Boolean = false,
+    bracketColor: Color = borderColor,
     content: @Composable BoxScope.() -> Unit
 ) {
-    chamferedPanelImpl(
-        modifier = modifier,
-        borderColor = borderColor,
-        fillColor = fillColor,
-        cut = cut,
-        borderWidth = borderWidth,
-        doubleCorner = corner == SurfaceCorner.Double,
-        contentPadding = contentPadding,
+    if (augmented) {
+        augmentedPanelImpl(
+            modifier = modifier,
+            borderColor = borderColor,
+            fillColor = fillColor,
+            cut = cut,
+            borderWidth = borderWidth,
+            contentPadding = contentPadding,
+            bracketColor = bracketColor,
+            content = content
+        )
+    } else {
+        chamferedPanelImpl(
+            modifier = modifier,
+            borderColor = borderColor,
+            fillColor = fillColor,
+            cut = cut,
+            borderWidth = borderWidth,
+            doubleCorner = corner == SurfaceCorner.Double,
+            contentPadding = contentPadding,
+            content = content
+        )
+    }
+}
+
+/**
+ * augmented=true реализация ChamferedSurface — срез сверху-слева (прямой, как обычный chamferShape) и вогнутая
+ * выемка снизу-справа (Scoop), а не два одинаковых среза: смешение типов углов — сигнатурный приём augmented-ui,
+ * ровный doubleChamferShape так не читается. glowInset — тонкая обводка-свечение того же контура, отступя внутрь
+ * от заливки, вместо простого второго border, как у [chamferedPanelImpl].
+ */
+@Composable
+private fun augmentedPanelImpl(
+    modifier: Modifier,
+    borderColor: Color,
+    fillColor: Color,
+    cut: Dp,
+    borderWidth: Dp,
+    contentPadding: Dp,
+    bracketColor: Color,
+    content: @Composable BoxScope.() -> Unit
+) {
+    val scoopCut = cut * 0.85f
+    val innerCut = (cut - borderWidth).coerceAtLeast(0.dp)
+    val innerScoop = (scoopCut - borderWidth).coerceAtLeast(0.dp)
+    val glowInset = 6.dp
+    val glowCut = (innerCut - glowInset).coerceAtLeast(0.dp)
+    val glowScoop = (innerScoop - glowInset).coerceAtLeast(0.dp)
+    val outerShape = augmentedShape(topLeft = AugCorner.Clip, topLeftSize = cut, bottomRight = AugCorner.Scoop, bottomRightSize = scoopCut)
+    val innerShape = augmentedShape(topLeft = AugCorner.Clip, topLeftSize = innerCut, bottomRight = AugCorner.Scoop, bottomRightSize = innerScoop)
+    val glowShape = augmentedShape(topLeft = AugCorner.Clip, topLeftSize = glowCut, bottomRight = AugCorner.Scoop, bottomRightSize = glowScoop)
+    Box(
+        modifier = modifier
+            .background(borderColor, outerShape)
+            .padding(borderWidth)
+            .background(fillColor, innerShape)
+            .augCornerBrackets(bracketColor)
+            .padding(glowInset)
+            .border(1.dp, bracketColor.copy(alpha = 0.35f), glowShape)
+            .padding(contentPadding),
         content = content
     )
 }
@@ -267,10 +326,13 @@ fun AppButton(
             val fill = if (enabled) accent else MB10Colors.surfaceSunken
             val border = if (enabled) accent else MB10Colors.borderMuted
             val textColor = if (enabled) MB10Colors.onAccent else MB10Colors.inkTertiary
+            // Срез по диагонали (верх-право + низ-лево), а не один и тот же угол со всех сторон — форма кнопки
+            // из редизайна под augmented-ui, отличает filled-действие от прямоугольной Material-кнопки на взгляд.
+            val actionShape = augmentedShape(topRight = AugCorner.Clip, topRightSize = 9.dp, bottomLeft = AugCorner.Clip, bottomLeftSize = 9.dp)
             Box(
                 modifier = modifier
-                    .background(fill, chamferShape(6.dp))
-                    .border(1.dp, border, chamferShape(6.dp))
+                    .background(fill, actionShape)
+                    .border(1.dp, border, actionShape)
                     .clickable(enabled = enabled, onClick = onClick)
                     .padding(vertical = pad)
             ) {
@@ -420,7 +482,11 @@ fun AppDialog(
         ChamferedSurface(
             borderColor = borderColor,
             fillColor = MB10Colors.surfaceRaised,
-            contentPadding = MB10Spacing.lg
+            contentPadding = MB10Spacing.lg,
+            augmented = true,
+            // borderMuted (по умолчанию — нейтральная рамка) слишком тёмный для уголков-прицела, см. правило у его
+            // объявления в Color.kt — приглушённая рамка остаётся, но акцент HUD берёт живой цвет отдельно.
+            bracketColor = if (borderColor == MB10Colors.borderMuted) MB10Colors.accentAction else borderColor
         ) {
             Column {
                 Text(title, color = MB10Colors.inkPrimary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 16.sp)
