@@ -108,6 +108,8 @@
 
 Архитектура в двух словах: приложение — Kotlin и Jetpack Compose, база Room. Игроки находят друг друга через NSD (mDNS), весь обмен между телефонами идёт прямым TCP. Центральный сервер игре не нужен. Для мастеров есть необязательный веб-дашборд-коллектор (`admin-web/`: Fastify, better-sqlite3, React и Vite), который принимает от телефонов подписанные записи об изменениях и показывает их мастеру.
 
+Код разделён на два модуля. `:kit` — переиспользуемое ядро без Android и без игры: сеть на площадке, подписи, передача ценностей, синхронизация с сервером ([kit/README.md](kit/README.md)). `:app` — само приложение: корень композиции `di/AppGraph`, сценарии (use cases), ViewModel экранов. Слои, правила размещения кода и тестирования описаны в [docs/architecture.md](docs/architecture.md).
+
 Сетевые требования площадки и то, как они реализованы в приложении, — в [docs/network-spec.md](docs/network-spec.md), раздел 8а.
 
 <details>
@@ -184,7 +186,7 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 
 ### Статический анализ и отчёты Compose
 
-- **detekt** (`./gradlew :app:detekt`, ≈10 с): сложность функций, мёртвый приватный код, неиспользуемые импорты и параметры, «запахи». Настройки — `config/detekt/detekt.yml` (длинные строки и «магические числа» отключены сознательно), старые находки заморожены в `app/detekt-baseline.xml`, **новые находки ломают `check.sh` и CI**. Появилось ложное срабатывание или нужно принять старую находку: `./gradlew :app:detektBaseline` (перегенерирует базу) или точечное `@Suppress("Имя")`. Отчёты HTML/SARIF — `app/build/reports/detekt/` (в CI — артефакт `detekt-report`).
+- **detekt** (`./gradlew :app:detekt :kit:detekt`, ≈10 с; для kit ещё `:kit:animalsnifferMain` — ничего новее API Android 8.0): сложность функций, мёртвый приватный код, неиспользуемые импорты и параметры, «запахи». Настройки — `config/detekt/detekt.yml` (длинные строки и «магические числа» отключены сознательно), старые находки заморожены в `app/detekt-baseline.xml`, **новые находки ломают `check.sh` и CI**. Появилось ложное срабатывание или нужно принять старую находку: `./gradlew :app:detektBaseline` (перегенерирует базу) или точечное `@Suppress("Имя")`. Отчёты HTML/SARIF — `app/build/reports/detekt/` (в CI — артефакт `detekt-report`).
 - **Отчёты компилятора Compose**: `./gradlew :app:compileDebugKotlin -Pmb10.composeReports=true --rerun-tasks` → `app/build/compose_reports/` (`*-composables.txt` — какие функции пропускаются при перерисовке и какие параметры нестабильны). По матрице взлома на момент замера: ячейка `HackCell` пропускается (все параметры стабильны), нестабильны в основном параметры-списки (`List<Daemon>`, `List<String>`) у нескольких небольших функций — заметной нагрузки это не даёт (см. `scripts/e2e/perf-breach.sh`).
 
 ### Рабочий цикл
