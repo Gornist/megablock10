@@ -8,6 +8,7 @@ private const val KEY_GAME_SECRET = "game_secret"
 private const val KEY_PROVISIONED = "provisioned"
 private const val KEY_USED_PROVISIONS = "used_provisions"
 private const val KEY_PROVISION_REJECTED = "provision_rejected"
+private const val KEY_PROVISION_IN_PROGRESS = "provision_in_progress"
 
 /**
  * Адрес ноутбука мастера (коллектора) в игровой сети и код игры. Обычно приходят по QR персонажа (ProvisionStore), форма ручного
@@ -52,9 +53,22 @@ class CollectorSettings(private val prefs: SharedPreferences, val defaultUrl: St
      * второй раз применить нельзя — новый выдаёт мастер.
      */
     fun isProvisionUsed(id: String): Boolean = prefs.getStringSet(KEY_USED_PROVISIONS, emptySet())?.contains(id) == true
-    fun markProvisionUsed(id: String) {
+    /**
+     * Начало выдачи по QR [raw] с id [id]: код помечается использованным и запоминается как «в процессе» — одной синхронной записью.
+     * Если процесс умрёт до [finishProvision], выдачу доделают при запуске (ProvisionStore.resumeInterrupted), а не сочтут QR
+     * «уже использованным» при несозданном персонаже.
+     */
+    fun beginProvision(id: String, raw: String) {
         val next = (prefs.getStringSet(KEY_USED_PROVISIONS, emptySet()) ?: emptySet()) + id
-        prefs.edit().putStringSet(KEY_USED_PROVISIONS, next).apply()
+        prefs.edit().putStringSet(KEY_USED_PROVISIONS, next).putString(KEY_PROVISION_IN_PROGRESS, raw).commit()
+    }
+
+    /** QR выдачи, применение которого началось и не закончилось; null — такого нет. */
+    fun provisionInProgress(): String? = prefs.getString(KEY_PROVISION_IN_PROGRESS, null)
+
+    /** Выдача закончена. Синхронно — заодно на диск уходят адрес сервера и код игры, записанные по ходу выдачи. */
+    fun finishProvision() {
+        prefs.edit().remove(KEY_PROVISION_IN_PROGRESS).commit()
     }
 
     companion object {

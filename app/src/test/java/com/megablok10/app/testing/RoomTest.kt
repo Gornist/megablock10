@@ -2,11 +2,14 @@ package com.megablok10.app.testing
 
 import androidx.room.Room
 import com.megablok10.app.breach.DaemonStore
+import com.megablok10.app.collector.CollectorSettings
 import com.megablok10.app.collector.RoomChangeQueue
 import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.data.RoomTransactor
 import com.megablok10.app.identity.IdentityStore
+import com.megablok10.app.identity.RamUpgradeStore
 import com.megablok10.app.items.ItemTransferStore
+import com.megablok10.app.qr.ProvisionStore
 import com.megablok10.app.shards.ShardStore
 import com.megablok10.app.wallet.TransactionStore
 import com.megablok10.kit.sync.ChangeRecord
@@ -24,6 +27,7 @@ abstract class RoomTest {
     protected val db: Mb10Database = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), Mb10Database::class.java).build()
     protected val prefs = MemoryPrefs()
     protected val identity = IdentityStore(prefs).also { it.getOrCreate("Alice", "Малстром") }
+    protected val settings = CollectorSettings(MemoryPrefs(), defaultUrl = "")
     protected val me get() = identity.current!!
 
     /**
@@ -38,6 +42,8 @@ abstract class RoomTest {
     protected var shards = ShardStore(db.shardDao(), wallet, changes, transactor)
     protected var daemons = DaemonStore(db.daemonDao(), changes, transactor)
     protected var items = ItemTransferStore(db, identity, shards, daemons, transactor)
+    protected var ramUpgrades = RamUpgradeStore(db.consumedTokenDao(), identity, changes, transactor)
+    protected var provisioning = ProvisionStore(identity, settings, changes, wallet, db.consumedTokenDao(), transactor)
 
     private fun newRecorder(): ChangeRecorder {
         val queue = RoomChangeQueue(db.pendingChangeRecordDao(), db.sequenceDao(), identity::legacyChangeSeq)
@@ -63,6 +69,8 @@ abstract class RoomTest {
         shards = ShardStore(db.shardDao(), wallet, changes, transactor)
         daemons = DaemonStore(db.daemonDao(), changes, transactor)
         items = ItemTransferStore(db, identity, shards, daemons, transactor)
+        ramUpgrades = RamUpgradeStore(db.consumedTokenDao(), identity, changes, transactor)
+        provisioning = ProvisionStore(identity, settings, changes, wallet, db.consumedTokenDao(), transactor)
     }
 
     /** Очередь записей для мастера по порядку seq. */

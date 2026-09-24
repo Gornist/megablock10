@@ -113,7 +113,7 @@ class AppGraph(private val app: Application) {
     val shards = ShardStore(db.shardDao(), wallet, changes, transactor)
     val daemons = DaemonStore(db.daemonDao(), changes, transactor)
     val items = ItemTransferStore(db, identity, shards, daemons, transactor)
-    val ramUpgrades = RamUpgradeStore(db.consumedTokenDao(), identity, changes)
+    val ramUpgrades = RamUpgradeStore(db.consumedTokenDao(), identity, changes, transactor)
     val receipts = ReceiptConfirmer(wallet, items)
 
     // Взлом
@@ -142,7 +142,7 @@ class AppGraph(private val app: Application) {
             { scope -> DeviceDiagnostics.startSnapshots(app, scope, this) },
         ),
     )
-    val provisioning = ProvisionStore(identity, collectorSettings, changes, wallet)
+    val provisioning = ProvisionStore(identity, collectorSettings, changes, wallet, db.consumedTokenDao(), transactor)
     val sessionReset = SessionReset(db, identity, collectorSettings, changes, announcements, mesh)
 
     /** Фоновый обмен с мастерским коллектором (kit SyncEngine). Запускается один раз — [startCollectorSync]. */
@@ -166,6 +166,17 @@ class AppGraph(private val app: Application) {
     fun observePendingChanges(): Flow<Int> = changeQueue.observeCount()
 
     @Volatile private var syncStarted = false
+
+    /**
+     * Доделать операции, прерванные падением прошлого процесса посередине: выдачу персонажа по QR и RAM-апгрейд (см.
+     * ProvisionStore, RamUpgradeStore). Зовётся один раз при запуске процесса ([Mb10App.onCreate]).
+     */
+    fun resumeInterruptedWork() {
+        processScope.launch {
+            runCatching { provisioning.resumeInterrupted() }.onFailure { Mb10Log.e("App", "не удалось доделать выдачу: ${it.message}", it) }
+            runCatching { ramUpgrades.resumeInterrupted() }.onFailure { Mb10Log.e("App", "не удалось доделать RAM-апгрейд: ${it.message}", it) }
+        }
+    }
 
     /** Запускать один раз при старте интерфейса (см. MainActivity). Повторные вызовы — не операция. */
     @Synchronized

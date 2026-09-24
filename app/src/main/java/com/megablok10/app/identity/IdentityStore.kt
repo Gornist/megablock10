@@ -15,6 +15,7 @@ private const val KEY_CALLSIGN = "callsign"
 private const val KEY_FACTION = "faction"
 private const val KEY_RAM = "ram_capacity"
 private const val KEY_NEXT_SEQ = "next_change_seq"
+private const val KEY_RAM_PENDING = "ram_upgrade_pending"
 
 /**
  * Личность персонажа на этом устройстве: пара ключей ECDSA (secp256r1, см. kit Ecdsa), сгенерированная один раз, позывной,
@@ -53,7 +54,9 @@ class IdentityStore(private val prefs: SharedPreferences) {
             .putString(KEY_PRIVATE, Ecdsa.encodeKey(keyPair.private))
             .putString(KEY_CALLSIGN, callsign)
             .putString(KEY_FACTION, faction)
-            .apply()
+            // Синхронно: следом этим ключом подписываются записи для мастера. Ключ, не дошедший до диска, после перезапуска
+            // сменился бы на новый, и уже подписанные записи остались бы от «никого».
+            .commit()
         publish()
         return Identity(pubB64, callsign, faction)
     }
@@ -65,17 +68,32 @@ class IdentityStore(private val prefs: SharedPreferences) {
         publish()
     }
 
-    /** +delta к ёмкости буфера, зажато потолком — даже если QR сфотографируют и применят несколько раз с разных устройств, выше потолка на этом устройстве не прыгнуть. Дедупликация самого токена — на вызывающей стороне (RamUpgradeStore), не здесь. */
+    /**
+     * RAM-апгрейд по одноразовому токену — в два шага, чтобы падение между списанием токена (Room) и новой ёмкостью (здесь) не
+     * съедало апгрейд (см. RamUpgradeStore): [beginRamUpgrade] запоминает токен и итоговую ёмкость до списания, [finishRamUpgrade]
+     * одной записью ставит ёмкость и снимает отметку. Отметка, оставшаяся после падения, — [pendingRamUpgrade].
+     */
     @Synchronized
-    fun applyRamUpgrade(delta: Int): Int {
-        val next = (prefs.getInt(KEY_RAM, RAM_CAPACITY_DEFAULT) + delta).coerceIn(RAM_CAPACITY_DEFAULT, RAM_CAPACITY_MAX)
-        prefs.edit().putInt(KEY_RAM, next).apply()
+    fun beginRamUpgrade(token: String, capacity: Int): Boolean = prefs.edit().putString(KEY_RAM_PENDING, "$capacity:$token").commit()
+
+    /** Начатый и не законченный RAM-апгрейд: токен → итоговая ёмкость; null — такого нет. */
+    fun pendingRamUpgrade(): Pair<String, Int>? {
+        val raw = prefs.getString(KEY_RAM_PENDING, null) ?: return null
+        val capacity = raw.substringBefore(':').toIntOrNull() ?: return null
+        return raw.substringAfter(':') to capacity
+    }
+
+    /** [capacity] — новая ёмкость (null — апгрейд не состоялся, только снять отметку). */
+    @Synchronized
+    fun finishRamUpgrade(capacity: Int?) {
+        val edit = prefs.edit().remove(KEY_RAM_PENDING)
+        capacity?.let { edit.putInt(KEY_RAM, it.coerceIn(RAM_CAPACITY_DEFAULT, RAM_CAPACITY_MAX)) }
+        edit.commit()
         publish()
-        return next
     }
 
     /**
-     * Применяет правку мастера с дашборда (§6.3 ТЗ) — в отличие от applyRamUpgrade/getOrCreate, НЕ эмитит новую запись обратно
+     * Применяет правку мастера с дашборда (§6.3 ТЗ) — в отличие от RAM-апгрейда и getOrCreate, НЕ эмитит новую запись обратно
      * на коллектор: этот вызов сам следствие уже существующей записи в его истории (MASTER_OVERRIDE), эхо было бы бессмысленным
      * дублем. Значение абсолютное (не дельта), поэтому применить пришедшую правку дважды (переотправка при повторном опросе)
      * безопасно само по себе. Запись синхронная (commit, не apply): сразу после этого вызова серверу уходит подтверждение, и

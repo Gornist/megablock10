@@ -2,6 +2,7 @@ package com.megablok10.app.breach
 
 import com.megablok10.app.collector.CollectorSettings
 import com.megablok10.app.identity.Identity
+import com.megablok10.app.log.Mb10Log
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.shards.ShardStore
 import com.megablok10.app.wallet.TransactionStore
@@ -43,6 +44,13 @@ class DaemonRewards(
         wallet.creditContainerEddies(attemptId, eddies, container.name)
 
         val lootKey = LootCrypto.deriveKey(settings.gameSecret())
+        // Содержимое слотов — до заявки на слот: битый или чужой (другая игра, другой ключ) payload, как и лут не того типа,
+        // что объявлен в слоте, выдать нельзя, и тратить на него конечный тираж тоже нельзя — такие слоты не заявляются вовсе.
+        val contents = container.loot.map { slot -> LootCrypto.decrypt(slot.payload, lootKey)?.let(LootCodec::decode)?.takeIf { it.type == slot.type } }
+        val unusable = contents.indices.filter { contents[it] == null }.toSet()
+        if (unusable.isNotEmpty() && matched.any { it.effect == DaemonEffect.EXTRACT_SHARD || it.effect == DaemonEffect.EXTRACT_DAEMON }) {
+            Mb10Log.warnEvent("Rewards", "loot.unreadable_slots", "container" to container.id, "slots" to unusable.joinToString(","))
+        }
         val claimedThisAttempt = mutableSetOf<Int>()
         val shardTitles = mutableListOf<String>()
         val daemonNames = mutableListOf<String>()
@@ -54,7 +62,7 @@ class DaemonRewards(
                 DaemonEffect.EXTRACT_DAEMON -> LootType.DAEMON
                 else -> return@forEach
             }
-            val slotIndex = slotClaims.claimNextAvailable(identity, container, lootType, daemon.tier, claimedThisAttempt)
+            val slotIndex = slotClaims.claimNextAvailable(identity, container, lootType, daemon.tier, claimedThisAttempt + unusable)
             if (slotIndex == null) {
                 exhausted = true
                 return@forEach
@@ -62,7 +70,7 @@ class DaemonRewards(
             claimedThisAttempt += slotIndex
             val slot = container.loot[slotIndex]
             val slotRef = container.slotRef(slotIndex)
-            when (val loot = LootCrypto.decrypt(slot.payload, lootKey)?.let(LootCodec::decode)) {
+            when (val loot = contents[slotIndex]) {
                 is LootCodec.Loot.ShardLoot -> {
                     shards.grant(id = "shard:$slotRef", tier = slot.tier, loot = loot, sourceRef = slotRef)
                     shardTitles += loot.title
@@ -71,7 +79,7 @@ class DaemonRewards(
                     daemons.grant(id = "daemon:$slotRef", loot = loot, sourceRef = slotRef)
                     daemonNames += loot.name
                 }
-                null -> Unit // payload битый/чужой ключ — тираж не тратим, просто ничего не выдаём
+                null -> Unit // не бывает: такие слоты исключены из заявки выше
             }
         }
 
@@ -100,3 +108,10 @@ class DaemonRewards(
         }
     }
 }
+
+/** Какой тип слота это содержимое заполняет. */
+private val LootCodec.Loot.type: LootType
+    get() = when (this) {
+        is LootCodec.Loot.ShardLoot -> LootType.SHARD
+        is LootCodec.Loot.DaemonLoot -> LootType.DAEMON
+    }
