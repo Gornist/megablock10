@@ -85,7 +85,7 @@ export function takePulseSample(db: Db, now = Date.now(), intervalMs = PULSE_INT
     if (r.field === "balance" && REWARD_REASONS.has(r.reason)) eddies += Math.max(0, Number(r.new_value ?? 0) - Number(r.old_value ?? 0));
   }
 
-  const undelivered = (db.prepare(`SELECT COUNT(*) AS n FROM master_pending WHERE delivered = 0`).get() as { n: number }).n;
+  const undelivered = (db.prepare(`SELECT COUNT(*) AS n FROM master_pending WHERE delivered = 0 AND failed_at IS NULL`).get() as { n: number }).n;
   const online = withOnline(activePlayers(getPlayerBase(db)), now).filter((p) => now - p.lastSeenAt < ONLINE_WINDOW_MS).length;
 
   const rejected = Object.values(c.rejectedBy).reduce((a, b) => a + b, 0);

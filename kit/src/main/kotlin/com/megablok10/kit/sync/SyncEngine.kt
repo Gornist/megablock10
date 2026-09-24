@@ -17,14 +17,34 @@ data class CollectorEndpoint(val baseUrl: String, val secret: String?)
 
 /**
  * Один обмен с сервером: наши записи, чей это телефон ([subjectKeyB64] — даже при пустом [records]: этим же запросом сервер
- * отдаёт правки мастера для этого ключа), подтверждения правок, применённых с прошлого ответа, и heartbeat [presence].
+ * отдаёт правки мастера для этого ключа), подтверждения правок, применённых с прошлого ответа, отказы по правкам, которые
+ * применить не удалось ([failures]), и heartbeat [presence].
  */
 data class SyncRequest(
     val records: List<ChangeRecord>,
     val subjectKeyB64: String?,
     val ackIds: List<String>,
     val presence: Map<String, Any?>?,
+    val failures: List<ApplyFailure> = emptyList(),
 )
+
+/**
+ * Исход применения правки мастера на телефоне. Подтверждается серверу только [Applied]: неприменённая правка, подтверждённая
+ * «для порядка», больше не пришла бы никогда и терялась молча.
+ */
+sealed interface MasterApply {
+    data object Applied : MasterApply
+
+    /**
+     * Не применилась. [permanent] — повтор не поможет (поле, которого эта версия приложения не знает; значение не того вида):
+     * сервер сразу перестаёт её слать и показывает мастеру. Иначе (сбой базы и т. п.) сервер пришлёт её снова и сдастся сам
+     * после нескольких попыток.
+     */
+    data class Failed(val reason: String, val permanent: Boolean) : MasterApply
+}
+
+/** Правка мастера [id] не применилась на телефоне — уходит серверу следующим запросом вместо подтверждения. */
+data class ApplyFailure(val id: String, val reason: String, val permanent: Boolean)
 
 /** Ответ сервера: что принято, что отбраковано (id → причина), правки мастера для этого телефона и адреса других игроков. */
 data class SyncResponse(
@@ -52,9 +72,10 @@ interface SyncHooks {
 
     /**
      * Применить правку мастера у себя — «тихо», без новой записи обратно на сервер (правка уже в его истории, эхо было бы
-     * дублем). Исключение — правка пропускается, но всё равно подтверждается: одна «ядовитая» правка не должна приходить вечно.
+     * дублем). Применение обязано быть идемпотентным: правка, подтверждение которой не дошло, придёт снова. Исключение
+     * считается [MasterApply.Failed] с повтором.
      */
-    suspend fun applyMasterChange(change: ChangeRecord) {}
+    suspend fun applyMasterChange(change: ChangeRecord): MasterApply = MasterApply.Applied
 }
 
 /** Размер пачки и паузы. По умолчанию — как в ТЗ мастерского сервера (§3.4): бэкофф 1 → 2 → 5 → 15 → 60 с, простой — раз в 30 с. */
@@ -96,14 +117,14 @@ class SyncEngine(
 
     /** Крутится, пока скоуп не отменят. Запускать один раз на процесс. */
     suspend fun run(): Nothing {
-        // id применённых правок мастера, о которых сервер ещё не знает: уходят в следующем запросе, и только после этого он
-        // перестаёт присылать их заново.
-        var acks: List<String> = emptyList()
+        // Ответы на правки мастера, о которых сервер ещё не знает: подтверждения применённых (только после них сервер перестаёт
+        // присылать правку заново) и отказы по неприменённым. Уходят в следующем запросе.
+        var replies = Replies.NONE
         var backoff = 0
         while (true) {
             try {
-                val step = syncOnce(acks, backoff)
-                acks = step.acks
+                val step = syncOnce(replies, backoff)
+                replies = step.replies
                 backoff = step.backoff
             } catch (e: CancellationException) {
                 throw e
@@ -117,13 +138,17 @@ class SyncEngine(
         }
     }
 
-    private class Step(val acks: List<String>, val backoff: Int)
+    private class Replies(val acks: List<String>, val failures: List<ApplyFailure>) {
+        companion object { val NONE = Replies(emptyList(), emptyList()) }
+    }
 
-    private suspend fun syncOnce(acksIn: List<String>, backoffIn: Int): Step {
+    private class Step(val replies: Replies, val backoff: Int)
+
+    private suspend fun syncOnce(repliesIn: Replies, backoffIn: Int): Step {
         val target = endpoint()
         if (target == null) {
             waitForWakeOrTimeout(config.noEndpointPollMs)
-            return Step(acksIn, 0)
+            return Step(repliesIn, 0)
         }
 
         val batch = queue.nextBatch(config.batchSize)
@@ -131,12 +156,12 @@ class SyncEngine(
         val pendingCount = queue.count()
         val oldestAgeMs = queue.oldestHappenedAt()?.let { (clock.nowMs() - it).coerceAtLeast(0) } ?: 0L
         val heartbeat = if (subject != null) presence(QueueStats(pendingCount, oldestAgeMs)) else null
-        val result = transport.exchange(target, SyncRequest(batch, subject, acksIn, heartbeat))
+        val result = transport.exchange(target, SyncRequest(batch, subject, repliesIn.acks, heartbeat, repliesIn.failures))
 
         if (result == null) {
             lastSummary = "нет связи в ${hhmmss()} (очередь $pendingCount, повтор ${backoffIn + 1})"
             waitForWakeOrTimeout(backoffDelay(backoffIn))
-            return Step(acksIn, backoffIn + 1)
+            return Step(repliesIn, backoffIn + 1)
         }
 
         lastSummary = "ok в ${hhmmss()} (отправлено ${batch.size}, принято ${result.accepted.size}, отбраковано ${result.rejected.size})"
@@ -148,29 +173,41 @@ class SyncEngine(
             log.warnEvent(tag, "sync.rejected", "count" to result.rejected.size, "reasons" to result.rejected.values.take(5).joinToString(" | "), "ids" to result.rejected.keys.take(5).joinToString(","))
             hooks.onRejected(result.rejected)
         }
-        // Запрос с acksIn дошёл — сервер их учёл; новые подтверждения — по правкам, применённым прямо сейчас.
-        val newAcks = if (result.pending.isNotEmpty()) applyMasterChanges(result.pending) else emptyList()
+        // Запрос с repliesIn дошёл — сервер их учёл; новые ответы — по правкам, применённым (или нет) прямо сейчас.
+        val replies = if (result.pending.isNotEmpty()) applyMasterChanges(result.pending) else Replies.NONE
 
-        if (batch.isEmpty() && result.pending.isEmpty()) {
-            // Действительно нечего ни слать, ни получать — обычный простой, не долбим сервер чаще раза в idlePollMs.
+        if (batch.isEmpty() && replies.acks.isEmpty()) {
+            // Нечего слать и ничего не применили — обычный простой, не долбим сервер чаще раза в idlePollMs. Сюда же — правки,
+            // которые не применились: сервер пришлёт их снова, но повторять раньше следующего опроса бессмысленно.
             waitForWakeOrTimeout(config.idlePollMs)
         }
         // Иначе сразу на новый виток: либо не всё отправили (пачка), либо только что применили правки и надо отправить
         // подтверждения и проверить очередь ещё раз без задержки.
-        return Step(newAcks, 0)
+        return Step(replies, 0)
     }
 
-    private suspend fun applyMasterChanges(pending: List<ChangeRecord>): List<String> {
+    /** Подтверждаются только применённые правки; остальные — отказом с причиной (сервер решает, слать ли снова). */
+    private suspend fun applyMasterChanges(pending: List<ChangeRecord>): Replies {
+        val acks = mutableListOf<String>()
+        val failures = mutableListOf<ApplyFailure>()
         for (change in pending) {
-            try {
+            val outcome = try {
                 hooks.applyMasterChange(change)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 log.w(tag, "не удалось применить правку ${change.id}: ${e.message}", e)
+                MasterApply.Failed("${e.javaClass.simpleName}: ${e.message}", permanent = false)
+            }
+            when (outcome) {
+                MasterApply.Applied -> acks += change.id
+                is MasterApply.Failed -> {
+                    log.warnEvent(tag, "master.apply_failed", "id" to change.id, "field" to change.field, "reason" to outcome.reason, "permanent" to outcome.permanent)
+                    failures += ApplyFailure(change.id, outcome.reason, outcome.permanent)
+                }
             }
         }
-        return pending.map { it.id }
+        return Replies(acks, failures)
     }
 
     private fun backoffDelay(index: Int): Long = config.backoffMs[index.coerceIn(0, config.backoffMs.lastIndex)]

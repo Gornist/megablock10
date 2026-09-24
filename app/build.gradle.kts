@@ -93,6 +93,13 @@ android {
     }
 }
 
+// Итог прогона тестов одной строкой в журнале (CI не показывает, сколько тестов на самом деле выполнилось).
+tasks.withType<Test>().configureEach {
+    afterSuite(KotlinClosure2<TestDescriptor, TestResult, Unit>({ suite, result ->
+        if (suite.parent == null) println("$name: тестов ${result.testCount}, прошло ${result.successfulTestCount}, упало ${result.failedTestCount}, пропущено ${result.skippedTestCount}")
+    }))
+}
+
 ksp {
     // Схемы Room экспортируются в app/schemas и коммитятся: по ним пишутся и проверяются миграции.
     arg("room.schemaLocation", "$projectDir/schemas")

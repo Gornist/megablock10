@@ -14,6 +14,9 @@ import { bindProvision } from "./provisions.js";
 const PEER_FRESH_MS = 90_000;
 
 export const MAX_BATCH = 200;
+/** Столько раз телефон может не применить правку мастера, прежде чем сервер перестанет её слать и покажет мастеру. */
+export const MAX_APPLY_ATTEMPTS = 5;
+const MAX_APPLY_ERROR_CHARS = 300;
 
 export interface RejectedItem {
   id: string;
@@ -78,11 +81,17 @@ export function createChangeIngest(db: Db) {
   const maxSeqStmt = db.prepare(`SELECT MAX(seq) AS maxSeq FROM changes WHERE subject_key = ?`);
   const pendingForSubjectStmt = db.prepare(`
     SELECT c.* FROM master_pending mp JOIN changes c ON c.id = mp.change_id
-    WHERE mp.subject_key = ? AND mp.delivered = 0
+    WHERE mp.subject_key = ? AND mp.delivered = 0 AND mp.failed_at IS NULL
     ORDER BY c.seq ASC
   `);
   const subjectKnownStmt = db.prepare(`SELECT 1 FROM changes WHERE subject_key = ? LIMIT 1`);
   const markDeliveredStmt = db.prepare(`UPDATE master_pending SET delivered = 1 WHERE change_id = ? AND subject_key = ?`);
+  const markFailedStmt = db.prepare(`
+    UPDATE master_pending
+    SET attempts = attempts + 1, last_error = @error,
+        failed_at = CASE WHEN @permanent = 1 OR attempts + 1 >= @max THEN @now ELSE NULL END
+    WHERE change_id = @id AND subject_key = @subject AND delivered = 0 AND failed_at IS NULL
+  `);
 
   const isKnown = (key: string) => subjectKnownStmt.get(key) !== undefined;
 
@@ -165,6 +174,21 @@ export function createChangeIngest(db: Db) {
     acknowledge(subjectKey: string, ackIds: unknown[]) {
       for (const id of ackIds.slice(0, MAX_BATCH)) {
         if (typeof id === "string") markDeliveredStmt.run(id, subjectKey);
+      }
+    },
+
+    /**
+     * Правки, которые телефон не смог применить (вместо ackIds). Правка остаётся недоставленной и приходит снова; после
+     * MAX_APPLY_ATTEMPTS отказов — или сразу, если телефон сообщил, что повтор бесполезен (поле, которого его версия не знает,
+     * значение не того вида), — сервер перестаёт её слать (failed_at) и показывает мастеру (attentionRules, overrideFailed).
+     */
+    reportFailures(subjectKey: string, failures: unknown[], now: number) {
+      for (const f of failures.slice(0, MAX_BATCH)) {
+        if (typeof f !== "object" || f === null) continue;
+        const { id, error, permanent } = f as { id?: unknown; error?: unknown; permanent?: unknown };
+        if (typeof id !== "string") continue;
+        const reason = typeof error === "string" && error.length > 0 ? error.slice(0, MAX_APPLY_ERROR_CHARS) : "без причины";
+        markFailedStmt.run({ id, subject: subjectKey, error: reason, permanent: permanent === true ? 1 : 0, max: MAX_APPLY_ATTEMPTS, now });
       }
     },
 

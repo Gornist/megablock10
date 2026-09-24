@@ -43,11 +43,15 @@ class SyncEngineTest {
         val rejected = mutableListOf<Map<String, String>>()
         val peers = mutableListOf<List<PeerInfo>>()
         var poison: String? = null
+        /** Правки, которые телефон отвергает сам: поле, которого эта версия не знает. */
+        val unsupported = mutableSetOf<String>()
         override fun onServerPeers(peers: List<PeerInfo>, myPubKeyB64: String) { this.peers += peers }
         override suspend fun onRejected(rejected: Map<String, String>) { this.rejected += rejected }
-        override suspend fun applyMasterChange(change: ChangeRecord) {
+        override suspend fun applyMasterChange(change: ChangeRecord): MasterApply {
             if (change.id == poison) error("ядовитая правка")
+            if (change.id in unsupported) return MasterApply.Failed("поле не поддерживается", permanent = true)
             applied += change.id
+            return MasterApply.Applied
         }
     }
 
@@ -142,14 +146,42 @@ class SyncEngineTest {
         assertTrue(env.server.requests[2].second.ackIds.isEmpty()) // сервер их учёл — повторно не шлём
     }
 
-    @Test fun poisonMasterChangeIsSkippedButStillAcked() = runTest {
-        val env = Env(this).apply { hooks.poison = "m1" }
-        env.server.script += { SyncResponse(emptySet(), emptyMap(), listOf(rec("m1", 10), rec("m2", 11))) }
+    @Test fun failedMasterChangeIsNotAckedButReportedAndRetried() = runTest {
+        val env = Env(this).apply { hooks.poison = "m2" }
+        // Сервер присылает правки, пока их не подтвердят: хорошая, плохая, снова хорошая.
+        val unacked = mutableListOf(rec("m1", 10), rec("m2", 11), rec("m3", 12))
+        repeat(3) {
+            env.server.script += { r -> unacked.removeAll { it.id in r.ackIds }; SyncResponse(emptySet(), emptyMap(), unacked.toList()) }
+        }
         backgroundScope.launch { env.engine.run() }; runCurrent()
-        assertEquals(listOf("m2"), env.hooks.applied)
-        assertEquals(listOf("m1", "m2"), env.server.requests[1].second.ackIds)
-        assertTrue(env.log.has("не удалось применить правку m1"))
+        assertEquals(listOf("m1", "m3"), env.hooks.applied)
+        val second = env.server.requests[1].second
+        assertEquals("подтверждены только применённые", listOf("m1", "m3"), second.ackIds)
+        assertEquals(listOf(ApplyFailure("m2", "IllegalStateException: ядовитая правка", permanent = false)), second.failures)
+        assertTrue(env.log.has("не удалось применить правку m2"))
+
+        // Неприменённая правка пришла снова — повтор не раньше обычного опроса, без тугого цикла запросов.
+        assertEquals(2, env.server.requests.size)
+        env.hooks.poison = null
+        advanceTimeBy(30_001); runCurrent()
+        assertEquals(listOf("m1", "m3", "m2"), env.hooks.applied)
+        // Третий запрос несёт отказ по второй попытке, четвёртый — подтверждение удачной третьей.
+        assertEquals(listOf("m2"), env.server.requests[2].second.failures.map { it.id })
+        assertEquals(listOf("m2"), env.server.requests[3].second.ackIds)
+        assertTrue(env.server.requests[3].second.failures.isEmpty())
     }
+
+    @Test fun permanentlyUnsupportedMasterChangeIsReportedAsSuch() = runTest {
+        val env = Env(this).apply { hooks.unsupported += "m1" }
+        env.server.script += { SyncResponse(emptySet(), emptyMap(), listOf(rec("m1", 10))) }
+        backgroundScope.launch { env.engine.run() }; runCurrent()
+        advanceTimeBy(30_001); runCurrent()
+        val next = env.server.requests[1].second
+        assertTrue(next.ackIds.isEmpty())
+        assertEquals(listOf(ApplyFailure("m1", "поле не поддерживается", permanent = true)), next.failures)
+        assertTrue(env.log.has("master.apply_failed"))
+    }
+
 
     @Test fun acksSurviveAFailedRequest() = runTest {
         val env = Env(this)

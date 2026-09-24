@@ -109,7 +109,7 @@ export const overrideUndelivered: AttentionRule = ({ db, now, t, inactiveKeys, p
   const rows = db
     .prepare(
       `SELECT subject_key, COUNT(*) AS n, MIN(created_at) AS oldest FROM master_pending
-       WHERE delivered = 0 AND created_at < ? GROUP BY subject_key`,
+       WHERE delivered = 0 AND failed_at IS NULL AND created_at < ? GROUP BY subject_key`,
     )
     .all(now - t.undeliveredAfterMs) as { subject_key: string; n: number; oldest: number }[];
   const items: AttentionItem[] = [];
@@ -127,4 +127,32 @@ export const overrideUndelivered: AttentionRule = ({ db, now, t, inactiveKeys, p
     });
   }
   return items;
+};
+
+/** Телефон сообщил, что правку мастера применить не может (или не смог несколько раз подряд): сервер её больше не шлёт — решает мастер. */
+export const overrideFailed: AttentionRule = ({ db, inactiveKeys, playerName }) => {
+  const rows = db
+    .prepare(
+      `SELECT mp.subject_key, mp.failed_at, mp.attempts, mp.last_error, c.field, c.new_value
+       FROM master_pending mp JOIN changes c ON c.id = mp.change_id
+       WHERE mp.delivered = 0 AND mp.failed_at IS NOT NULL ORDER BY mp.failed_at DESC`,
+    )
+    .all() as { subject_key: string; failed_at: number; attempts: number; last_error: string | null; field: string; new_value: string | null }[];
+  const bySubject = new Map<string, typeof rows>();
+  for (const r of rows) {
+    if (inactiveKeys.has(r.subject_key)) continue;
+    bySubject.set(r.subject_key, [...(bySubject.get(r.subject_key) ?? []), r]);
+  }
+  return [...bySubject].map(([key, list]): AttentionItem => {
+    const last = list[0];
+    return {
+      id: `override_failed:${key}`,
+      kind: "override_failed",
+      severity: "crit",
+      title: "Правка не применилась на телефоне",
+      detail: `${playerName(key)}: ${list.length} шт.; последняя — ${last.field} → «${last.new_value ?? ""}»: ${last.last_error ?? "без причины"} (попыток: ${last.attempts})`,
+      subjectKey: key,
+      at: last.failed_at,
+    };
+  });
 };

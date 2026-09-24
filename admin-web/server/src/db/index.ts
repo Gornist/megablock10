@@ -109,9 +109,10 @@ CREATE TABLE IF NOT EXISTS slot_claims (
 -- Очередь доставки MASTER_OVERRIDE на устройство игрока (§6.3 ТЗ). change_id
 -- ссылается на changes.id той же записи, что уже видна в истории на
 -- дашборде — эта таблица только про "долетело ли до телефона", не про сам
--- факт правки. Доставка once-and-forget: помечаем delivered при первой же
--- отдаче в ответе устройству, без ack от клиента, что он применил —
--- симметрично остальным упрощениям в этом проекте (см. admin-web/README.md).
+-- факт правки. delivered = 1 — только когда устройство подтвердило, что
+-- применило правку (ackIds); отказ устройства (failures) считается в attempts
+-- (миграция 2), после нескольких или неустранимого — failed_at, и правку
+-- больше не шлют (см. lib/changeIngest.ts).
 CREATE TABLE IF NOT EXISTS master_pending (
   change_id   TEXT PRIMARY KEY,
   subject_key TEXT NOT NULL,
@@ -148,10 +149,29 @@ export interface Migration {
   migrate: (db: Db) => void;
 }
 
-// Пока ни одной: следующее изменение существующей таблицы (не просто новая
-// таблица — под неё IF NOT EXISTS в SCHEMA по-прежнему достаточно) добавляется
-// сюда новым элементом, а не правкой SCHEMA задним числом.
-const MIGRATIONS: Migration[] = [];
+/** ALTER TABLE ADD COLUMN, если такой колонки ещё нет: миграция переживает повторный прогон (прерванный или по сброшенной версии). */
+function addColumnIfMissing(db: Db, table: string, column: string, definition: string): void {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (!columns.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
+
+// Следующее изменение существующей таблицы (не просто новая таблица — под неё IF NOT EXISTS в SCHEMA по-прежнему достаточно)
+// добавляется сюда новым элементом, а не правкой SCHEMA задним числом.
+const MIGRATIONS: Migration[] = [
+  {
+    // Правка мастера, которую телефон не смог применить: сколько раз пытался, последняя причина и когда сервер перестал её слать
+    // (failed_at). Раньше телефон подтверждал и неприменённую правку — она пропадала молча (см. lib/changeIngest.ts, reportFailures).
+    version: 2,
+    migrate: (db) => {
+      addColumnIfMissing(db, "master_pending", "attempts", "INTEGER NOT NULL DEFAULT 0");
+      addColumnIfMissing(db, "master_pending", "last_error", "TEXT");
+      addColumnIfMissing(db, "master_pending", "failed_at", "INTEGER");
+    },
+  },
+];
+
+/** Версия схемы после всех миграций. */
+export const CURRENT_VERSION = BASELINE_VERSION + MIGRATIONS.length;
 
 /** Вынесена из runMigrations как чистая функция — юнит-тестируется отдельно, без реальной БД (см. dbMigrations.test.ts). */
 export function validateMigrationSequence(migrations: Pick<Migration, "version">[], baselineVersion: number): void {

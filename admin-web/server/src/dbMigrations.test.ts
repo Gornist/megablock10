@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { BASELINE_VERSION, runMigrations, validateMigrationSequence, type Migration } from "./db/index.js";
+import { BASELINE_VERSION, CURRENT_VERSION, runMigrations, validateMigrationSequence, type Migration } from "./db/index.js";
 import { testDb } from "./testUtil.js";
 
 /**
@@ -12,9 +12,16 @@ import { testDb } from "./testUtil.js";
  * что-либо тронет реальную БД.
  */
 
-test("openDb (через testDb) поднимает user_version свежей БД ровно до BASELINE_VERSION", () => {
+test("openDb (через testDb) поднимает user_version свежей БД до последней миграции", () => {
   const db = testDb();
-  assert.equal(db.pragma("user_version", { simple: true }), BASELINE_VERSION);
+  assert.equal(db.pragma("user_version", { simple: true }), CURRENT_VERSION);
+  assert.ok(CURRENT_VERSION > BASELINE_VERSION);
+});
+
+test("миграция 2: у master_pending есть счётчик попыток, причина и отметка «не применилась»", () => {
+  const db = testDb();
+  const columns = (db.prepare(`PRAGMA table_info(master_pending)`).all() as { name: string }[]).map((c) => c.name);
+  for (const c of ["attempts", "last_error", "failed_at"]) assert.ok(columns.includes(c), `нет колонки ${c}`);
 });
 
 test("свежая БД после runMigrations содержит таблицы из SCHEMA", () => {
@@ -34,20 +41,21 @@ test("повторный runMigrations на уже смигрированной 
   assert.equal(db.pragma("user_version", { simple: true }), before);
 });
 
-test("runMigrations поднимает БД с user_version=0 (как до появления версионирования) до BASELINE_VERSION, не трогая данные", () => {
-  const db = testDb(); // уже BASELINE_VERSION — имитируем "старую" базу без версии, откатив pragma вручную
+test("runMigrations поднимает БД с user_version=0 (как до появления версионирования) до последней версии, не трогая данные", () => {
+  const db = testDb(); // уже последняя версия — имитируем "старую" базу без версии, откатив pragma вручную (миграции идемпотентны)
   db.pragma(`user_version = 0`);
   db.exec(`INSERT INTO watchlist (subject_key, note, added_by, added_at) VALUES ('pk-1', 'заметка', 'master-1', 1000)`);
 
   runMigrations(db);
 
-  assert.equal(db.pragma("user_version", { simple: true }), BASELINE_VERSION);
+  assert.equal(db.pragma("user_version", { simple: true }), CURRENT_VERSION);
   const row = db.prepare(`SELECT note FROM watchlist WHERE subject_key = 'pk-1'`).get() as { note: string };
   assert.equal(row.note, "заметка");
 });
 
 test("миграция применяется ровно один раз и поднимает user_version до своей версии", () => {
   const db = testDb();
+  db.pragma(`user_version = ${BASELINE_VERSION}`); // проверяем механизм на локальной миграции, а не на списке проекта
   let calls = 0;
   const migration: Migration = {
     version: BASELINE_VERSION + 1,
@@ -57,8 +65,8 @@ test("миграция применяется ровно один раз и по
     },
   };
   const applyOnce = () => {
-    // Тот же порядок операций, что в runMigrations, но с локальным списком миграций — сам runMigrations читает module-level MIGRATIONS,
-    // который в проекте пока пуст; здесь проверяем именно механизм "применить один раз и поднять версию", а не список миграций.
+    // Тот же порядок операций, что в runMigrations, но с локальным списком миграций — сам runMigrations читает module-level MIGRATIONS;
+    // здесь проверяем именно механизм "применить один раз и поднять версию", а не список миграций.
     const version = db.pragma("user_version", { simple: true }) as number;
     if (migration.version <= version) return;
     db.transaction(() => {

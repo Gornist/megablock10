@@ -17,6 +17,8 @@ interface ChangesBody {
    * Повторная доставка безопасна — все правки применяются идемпотентно.
    */
   ackIds?: unknown;
+  /** Правки мастера, которые устройство применить не смогло: [{ id, error, permanent }] — вместо ack (см. lib/changeIngest.ts, reportFailures). */
+  failures?: unknown;
   /** Порт чат-сервера телефона и его позывной/фракция — для запасного обнаружения пиров (см. lib/presence.ts). Адрес сервер берёт сам, из соединения. */
   presence?: unknown;
 }
@@ -65,6 +67,7 @@ export function registerChangesRoute(app: FastifyInstance, db: Db) {
       pulse.heartbeat();
       ingest.touchPresence(subject, body.presence, request.ip);
       if (Array.isArray(body.ackIds)) ingest.acknowledge(subject, body.ackIds);
+      if (Array.isArray(body.failures)) ingest.reportFailures(subject, body.failures, Date.now());
     }
 
     const { accepted, rejected, subjects } = ingest.insertBatch(records, Date.now());

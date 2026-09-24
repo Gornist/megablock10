@@ -78,27 +78,22 @@ class IdentityStore(private val prefs: SharedPreferences) {
      * Применяет правку мастера с дашборда (§6.3 ТЗ) — в отличие от applyRamUpgrade/getOrCreate, НЕ эмитит новую запись обратно
      * на коллектор: этот вызов сам следствие уже существующей записи в его истории (MASTER_OVERRIDE), эхо было бы бессмысленным
      * дублем. Значение абсолютное (не дельта), поэтому применить пришедшую правку дважды (переотправка при повторном опросе)
-     * безопасно само по себе.
+     * безопасно само по себе. Запись синхронная (commit, не apply): сразу после этого вызова серверу уходит подтверждение, и
+     * правка, не дошедшая до диска, потерялась бы вместе с ним. false — записать не удалось, подтверждать нельзя.
      */
     @Synchronized
-    fun applyRamOverride(newValue: Int) {
-        prefs.edit().putInt(KEY_RAM, newValue.coerceIn(RAM_CAPACITY_DEFAULT, RAM_CAPACITY_MAX)).apply()
-        publish()
-    }
+    fun applyRamOverride(newValue: Int): Boolean =
+        prefs.edit().putInt(KEY_RAM, newValue.coerceIn(RAM_CAPACITY_DEFAULT, RAM_CAPACITY_MAX)).commit().also { publish() }
 
     /** См. applyRamOverride — тот же принцип, для позывного. */
     @Synchronized
-    fun applyCallsignOverride(newValue: String) {
-        prefs.edit().putString(KEY_CALLSIGN, newValue).apply()
-        publish()
-    }
+    fun applyCallsignOverride(newValue: String): Boolean =
+        prefs.edit().putString(KEY_CALLSIGN, newValue).commit().also { publish() }
 
     /** См. applyRamOverride — тот же принцип, для фракции. */
     @Synchronized
-    fun applyFactionOverride(newValue: String) {
-        prefs.edit().putString(KEY_FACTION, newValue).apply()
-        publish()
-    }
+    fun applyFactionOverride(newValue: String): Boolean =
+        prefs.edit().putString(KEY_FACTION, newValue).commit().also { publish() }
 
     /** Подписать произвольные данные приватным ключом персонажа (ECDSA P-256). Без личности — IllegalStateException. */
     fun sign(data: ByteArray): String {

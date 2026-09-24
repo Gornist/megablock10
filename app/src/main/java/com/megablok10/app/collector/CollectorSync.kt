@@ -17,6 +17,7 @@ import com.megablok10.app.wallet.TransactionStore
 import com.megablok10.kit.mesh.PeerInfo
 import com.megablok10.kit.sync.ChangeQueue
 import com.megablok10.kit.sync.ChangeRecord
+import com.megablok10.kit.sync.MasterApply
 import com.megablok10.kit.sync.QueueStats
 import com.megablok10.kit.sync.SyncHooks
 import kotlinx.coroutines.flow.Flow
@@ -53,8 +54,9 @@ fun heartbeat(app: Context, identity: IdentityStore, chatPort: Int, stats: Queue
 /**
  * Реакция Мегаблока на ответ коллектора: подсказки адресов других игроков, отказ по коду персонажа и правки мастера (§6.3, §6.5
  * ТЗ — правка видна в истории наравне с игровыми, но это забота сервера: он её уже записал). Каждый сеттер правки — "тихий", без
- * обратной записи на сервер (см. applyRamOverride/applyBalanceOverride), иначе получили бы эхо в историю. Неизвестное поле —
- * пропускаем, не роняя остальные правки в пачке; сбой на конкретной правке движок логирует и всё равно подтверждает.
+ * обратной записи на сервер (см. applyRamOverride/applyBalanceOverride), иначе получили бы эхо в историю. Подтверждается только
+ * применённая и сохранённая правка: неизвестное поле или значение не того вида — отказ без повтора (мастер увидит его на
+ * дашборде), сбой записи — отказ с повтором (см. kit MasterApply).
  */
 class MasterChangeHooks(
     private val app: Context,
@@ -76,19 +78,22 @@ class MasterChangeHooks(
         }
     }
 
-    override suspend fun applyMasterChange(change: ChangeRecord) {
+    /** Подтверждение серверу уходит, только если правка действительно применена и сохранена (см. kit MasterApply). */
+    override suspend fun applyMasterChange(change: ChangeRecord): MasterApply {
         Mb10Log.event(SYNC_LOG_TAG, "master.apply", "id" to change.id, "field" to change.field, "new" to change.newValue.takeIf { change.field != ChangeField.ANNOUNCEMENT }, "reason" to change.reason)
-        val newValue = change.newValue ?: return
-        when (change.field) {
-            ChangeField.BALANCE -> newValue.toLongOrNull()?.let {
-                wallet.applyBalanceOverride(change.id, it, change.sourceRef ?: "без основания")
+        val saved = when (val override = MasterOverride.parse(change)) {
+            is MasterOverride.Invalid -> return override.failure
+            is MasterOverride.Balance -> { wallet.applyBalanceOverride(change.id, override.value, override.memo); true }
+            is MasterOverride.Ram -> identity.applyRamOverride(override.value)
+            is MasterOverride.Callsign -> identity.applyCallsignOverride(override.value)
+            is MasterOverride.Faction -> identity.applyFactionOverride(override.value)
+            is MasterOverride.Announcement -> {
+                // Повтор уже показанного объявления (подтверждение прошлого раза не дошло) — тоже «применено», просто без уведомления.
+                if (announcements.add(change.id, override.text)) AnnouncementNotifier.show(app, change.id, override.text)
+                announcements.contains(change.id)
             }
-            ChangeField.RAM_CAPACITY -> newValue.toIntOrNull()?.let { identity.applyRamOverride(it) }
-            ChangeField.CALLSIGN -> identity.applyCallsignOverride(newValue)
-            ChangeField.FACTION -> identity.applyFactionOverride(newValue)
-            ChangeField.ANNOUNCEMENT -> if (announcements.add(change.id, newValue)) AnnouncementNotifier.show(app, change.id, newValue)
-            else -> Mb10Log.w(SYNC_LOG_TAG, "pending с неизвестным полем ${change.field} — пропущено")
         }
+        return if (saved) MasterApply.Applied else MasterApply.Failed("не удалось сохранить на телефоне", permanent = false)
     }
 }
 

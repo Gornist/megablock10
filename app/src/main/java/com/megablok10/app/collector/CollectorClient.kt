@@ -53,6 +53,10 @@ class CollectorClient(
         if (request.subjectKeyB64 != null) body.put("subjectKeyB64", request.subjectKeyB64)
         // Подтверждение применённых правок мастера из прошлого ответа — сервер шлёт их снова, пока не получит ack.
         if (request.ackIds.isNotEmpty()) body.put("ackIds", JSONArray(request.ackIds))
+        // Правки, которые применить не удалось: сервер считает попытки и после нескольких (или сразу, если повтор бесполезен) показывает их мастеру.
+        if (request.failures.isNotEmpty()) {
+            body.put("failures", JSONArray(request.failures.map { JSONObject().put("id", it.id).put("error", it.reason).put("permanent", it.permanent) }))
+        }
         // Порт чат-сервера, позывной и фракция — чтобы сервер мог подсказать другим, где меня искать (адрес он видит сам).
         request.presence?.let { body.put("presence", JSONObject(it)) }
         val httpRequest = Request.Builder()

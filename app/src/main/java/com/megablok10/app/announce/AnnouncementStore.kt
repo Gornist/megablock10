@@ -40,9 +40,17 @@ class AnnouncementStore(private val prefs: SharedPreferences) {
             val after = Announcements.addIfAbsent(before, Announcement(id, text, now))
             if (after === before) return false
             _items.value = after
-            write(after)
+            // Синхронно: объявление пришло правкой мастера, и сразу после этого серверу уходит подтверждение (см. MasterChangeHooks).
+            // Не записалось — откатываем и в памяти: объявления нет, подтверждать нечего, сервер пришлёт его снова.
+            if (!write(after, durable = true)) { _items.value = before; return false }
             return true
         }
+    }
+
+    /** Объявление [id] уже сохранено на телефоне. */
+    fun contains(id: String): Boolean {
+        load()
+        return _items.value.any { it.id == id }
     }
 
     /** Полный сброс сессии на устройстве (identity/SessionReset): объявления мастера прежнего персонажа новому не нужны. */
@@ -77,9 +85,11 @@ class AnnouncementStore(private val prefs: SharedPreferences) {
         }
     }
 
-    private fun write(list: List<Announcement>) {
+    /** [durable] — дождаться записи на диск (commit); false — записать не удалось. Иначе — в фоне (apply), результат всегда true. */
+    private fun write(list: List<Announcement>, durable: Boolean = false): Boolean {
         val arr = JSONArray(list.map { JSONObject().put("id", it.id).put("text", it.text).put("at", it.receivedAt).put("read", it.read) })
-        prefs.edit().putString(KEY_LIST, arr.toString()).apply()
+        val edit = prefs.edit().putString(KEY_LIST, arr.toString())
+        return if (durable) edit.commit() else { edit.apply(); true }
     }
 
     companion object {
