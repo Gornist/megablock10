@@ -42,16 +42,21 @@ function Shell() {
       <header className="app-header">
         <h1>МЕГАБЛОК №10 · КОЛЛЕКТОР</h1>
         <nav>
-          {NAV.map((n) => (
-            <button
-              key={n.path}
-              className={`nav-item status-caps ${section === n.path ? "active" : ""}`}
-              onClick={() => navigate(n.path)}
-              data-augmented-ui="tl-clip br-clip border"
-            >
-              {n.label}
-            </button>
-          ))}
+          {NAV.map((n) => {
+            const active = section === n.path;
+            return (
+              <button
+                key={n.path}
+                className={`nav-item status-caps ${active ? "active" : ""}`}
+                onClick={() => navigate(n.path)}
+                // Срез и рамка — только у активного пункта, он же и есть указатель «вы здесь»;
+                // остальные — просто подписи, без коробки, чтобы меню не читалось решёткой.
+                {...(active ? { "data-augmented-ui": "tl-clip br-clip border" } : {})}
+              >
+                {n.label}
+              </button>
+            );
+          })}
         </nav>
         <div className="app-header-right">
           <span className="mono">{session.master.name}</span>

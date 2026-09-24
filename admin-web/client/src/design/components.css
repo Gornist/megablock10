@@ -109,6 +109,7 @@
   --aug-br: var(--c);
   --aug-border-all: 1px;
   --aug-border-bg: var(--bc);
+  border: 0; /* иначе поверх среза видна нативная рамка <button> — рамку рисует augmented-ui сама */
   background: var(--bg-2);
   color: var(--text-main);
   padding: 9px 17px;
@@ -161,6 +162,7 @@
   --aug-br: var(--c);
   --aug-border-all: 1px;
   --aug-border-bg: var(--line);
+  border: 0; /* иначе поверх среза видна нативная рамка <input>/<select> — рамку рисует augmented-ui сама */
   background: var(--bg-0);
   color: var(--text-main);
   padding: 8px 10px;
