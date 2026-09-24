@@ -1,4 +1,4 @@
-package com.megablok10.app.chat
+package com.megablok10.kit.net
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull

@@ -32,7 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.identity.Identity
-import com.megablok10.app.presence.PeerInfo
+import com.megablok10.kit.mesh.PeerInfo
 import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec

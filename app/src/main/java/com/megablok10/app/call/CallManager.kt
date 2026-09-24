@@ -6,7 +6,7 @@ import com.megablok10.app.data.CallLogEntity
 import com.megablok10.app.data.CallOutcome
 import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.identity.Identity
-import com.megablok10.app.presence.PeerInfo
+import com.megablok10.kit.mesh.PeerInfo
 import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.sound.SoundPlayer
 import com.megablok10.app.log.Mb10Log

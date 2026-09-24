@@ -18,7 +18,7 @@ import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.identity.IdentityManager
 import com.megablok10.app.identity.SessionReset
 import com.megablok10.app.items.ItemTransferStore
-import com.megablok10.app.presence.PeerInfo
+import com.megablok10.kit.mesh.PeerInfo
 import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.chat.ChatClient
 import com.megablok10.app.chat.ChatMessageType
@@ -178,7 +178,7 @@ class DebugQrReceiver : BroadcastReceiver() {
                 }
             }
             if (card == null) Log.i(TAG, "give rejected") else {
-                if (offline) ItemTransferStore.deliverOutgoing(context, card.id, willSend = false) { com.megablok10.app.net.SendOutcome.NOT_REACHED }
+                if (offline) ItemTransferStore.deliverOutgoing(context, card.id, willSend = false) { com.megablok10.kit.net.SendOutcome.NOT_REACHED }
                 else ItemTransferStore.deliver(context, me, card, to)
                 Log.i(TAG, "give id=${card.id}")
             }

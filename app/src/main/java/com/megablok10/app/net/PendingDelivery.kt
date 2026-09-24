@@ -1,5 +1,7 @@
 package com.megablok10.app.net
 
+import com.megablok10.kit.net.SendOutcome
+
 /**
  * Общая для денег (wallet/TransactionStore) и предметов (items/ItemTransferStore)
  * логика вокруг статусов PENDING/DELIVERED при отправке карточки по сети —

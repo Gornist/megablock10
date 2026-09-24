@@ -54,7 +54,7 @@ import com.megablok10.app.ui.theme.AppSnack
 import com.megablok10.app.collector.ChangeReason
 import com.megablok10.app.collector.ChangeRecordStore
 import com.megablok10.app.identity.IdentityManager
-import com.megablok10.app.presence.PeerInfo
+import com.megablok10.kit.mesh.PeerInfo
 import com.megablok10.app.ui.nav.AppTab
 import com.megablok10.app.ui.nav.MainScaffold
 import com.megablok10.app.ui.screens.AnnouncementDialogHost

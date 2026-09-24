@@ -12,7 +12,7 @@ import com.megablok10.app.data.TransactionStatus
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.identity.IdentityManager
 import com.megablok10.app.log.Mb10Log
-import com.megablok10.app.net.SendOutcome
+import com.megablok10.kit.net.SendOutcome
 import com.megablok10.app.net.incomingCardRejection
 import com.megablok10.app.net.shouldMarkDeliveredBeforeSend
 import com.megablok10.app.net.shouldRevertToPendingAfterSend

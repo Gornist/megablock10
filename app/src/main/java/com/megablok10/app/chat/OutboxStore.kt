@@ -1,68 +1,61 @@
 package com.megablok10.app.chat
 
 import android.content.Context
-import com.megablok10.app.log.Mb10Log
 import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.data.OutboxDao
 import com.megablok10.app.data.OutboxEntity
-import com.megablok10.app.net.LineSocketClient
-import com.megablok10.app.presence.PeerInfo
+import com.megablok10.app.log.Mb10Log
+import com.megablok10.app.net.LineTransport
 import com.megablok10.app.presence.PresenceService
+import com.megablok10.kit.log.shortKey
+import com.megablok10.kit.mesh.Outbox
+import com.megablok10.kit.mesh.OutboxEntry
+import com.megablok10.kit.mesh.OutboxQueue
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 private const val TAG = "OutboxStore"
 
 /**
- * Очередь исходящих сообщений с повторами. Сообщение попадает сюда, если получателя не видно или отправка не удалась, и уходит,
- * как только он снова виден в сети (см. ChatStore: flush по появлению пира и по таймеру). Повтор с нарастающей паузой
- * ([OutboxPolicy.nextDelayMs]); что ушло — удаляется; что старше [OutboxPolicy.MAX_AGE_MS] — тоже.
+ * Очередь исходящих сообщений чата с повторами — механика в kit [Outbox] (docs/network-spec.md, §7): сообщение попадает сюда,
+ * если получателя не видно или отправка не удалась, и уходит, как только он снова виден в сети (см. ChatStore: flush по появлению
+ * пира и по таймеру). Что можно ставить в очередь, решает [OutboxPolicy.isQueueable]. Хранилище — таблица Room `outbox`.
  */
 object OutboxStore {
-    private val flushLock = Mutex()
+    @Volatile private var outbox: Outbox? = null
+
+    private fun outbox(context: Context): Outbox = outbox ?: synchronized(this) {
+        outbox ?: Outbox(
+            queue = RoomOutboxQueue(Mb10Database.get(context).outboxDao()),
+            log = Mb10Log,
+            tag = TAG,
+        ) { peer, line -> withContext(Dispatchers.IO) { LineTransport.client.sendLine(peer.host, peer.port, line, 2000) } }
+            .also { outbox = it }
+    }
 
     suspend fun enqueue(context: Context, toPubKeyB64: String, wire: ChatWireMessage) {
-        Mb10Database.get(context).outboxDao().insert(
-            OutboxEntity(toPubKeyB64 = toPubKeyB64, wireLine = ChatProtocol.encode(wire), createdAt = System.currentTimeMillis())
-        )
-        Mb10Log.event(TAG, "outbox.enqueue", "to" to Mb10Log.short(toPubKeyB64), "type" to wire.type.name)
+        outbox(context).enqueue(toPubKeyB64, ChatProtocol.encode(wire))
+        Mb10Log.event(TAG, "outbox.enqueue", "to" to shortKey(toPubKeyB64), "type" to wire.type.name)
     }
 
-    suspend fun pending(context: Context): Int = Mb10Database.get(context).outboxDao().count()
+    suspend fun pending(context: Context): Int = outbox(context).pending()
 
     /** Пробует отправить всё, что пора. Возвращает, сколько сообщений ушло. Параллельные вызовы не пересекаются. */
-    suspend fun flush(context: Context, now: Long = System.currentTimeMillis()): Int = flushLock.withLock {
-        val sent = flushOutbox(
-            Mb10Database.get(context).outboxDao(),
-            PresenceService.peers.value.associateBy { it.pubKeyB64 },
-            now
-        ) { peer, line -> withContext(Dispatchers.IO) { LineSocketClient.sendLine(peer.host, peer.port, line, 2000) } }
-        if (sent > 0) Mb10Log.event(TAG, "outbox.flushed", "sent" to sent, "left" to Mb10Database.get(context).outboxDao().count())
-        sent
-    }
+    suspend fun flush(context: Context): Int =
+        outbox(context).flush(PresenceService.peers.value.associateBy { it.pubKeyB64 })
 }
 
-/** Ядро отправки очереди без Android: выбрасывает просроченное, шлёт то, что пора и чей адресат виден, пересчитывает паузу неудачным. */
-internal suspend fun flushOutbox(
-    dao: OutboxDao,
-    peers: Map<String, PeerInfo>,
-    now: Long,
-    send: suspend (PeerInfo, String) -> Boolean
-): Int {
-    dao.deleteOlderThan(now - OutboxPolicy.MAX_AGE_MS)
-    var sent = 0
-    for (entry in dao.due(now)) {
-        val peer = peers[entry.toPubKeyB64] ?: continue   // не виден — не считаем попыткой, ждём его появления
-        if (send(peer, entry.wireLine)) {
-            dao.delete(entry.id); sent++
-            Mb10Log.event(TAG, "outbox.sent", "id" to entry.id, "to" to Mb10Log.short(entry.toPubKeyB64), "attempts" to entry.attempts, "ageMs" to (now - entry.createdAt))
-        } else {
-            val attempts = entry.attempts + 1
-            Mb10Log.warnEvent(TAG, "outbox.retry", "id" to entry.id, "to" to Mb10Log.short(entry.toPubKeyB64), "attempts" to attempts, "nextInMs" to OutboxPolicy.nextDelayMs(attempts))
-            dao.reschedule(entry.id, attempts, now + OutboxPolicy.nextDelayMs(attempts))
-        }
+/** Таблица Room `outbox` как хранилище kit-очереди. Колонки те же, что были (миграция не нужна): wireLine — строка протокола целиком. */
+internal class RoomOutboxQueue(private val dao: OutboxDao) : OutboxQueue {
+    override suspend fun insert(toPubKeyB64: String, line: String, createdAt: Long) {
+        dao.insert(OutboxEntity(toPubKeyB64 = toPubKeyB64, wireLine = line, createdAt = createdAt))
     }
-    return sent
+
+    override suspend fun due(now: Long): List<OutboxEntry> =
+        dao.due(now).map { OutboxEntry(it.id, it.toPubKeyB64, it.wireLine, it.createdAt, it.attempts, it.nextAttemptAt) }
+
+    override suspend fun delete(id: Long) = dao.delete(id)
+    override suspend fun reschedule(id: Long, attempts: Int, nextAttemptAt: Long) = dao.reschedule(id, attempts, nextAttemptAt)
+    override suspend fun deleteOlderThan(cutoff: Long): Int = dao.deleteOlderThan(cutoff)
+    override suspend fun count(): Int = dao.count()
 }

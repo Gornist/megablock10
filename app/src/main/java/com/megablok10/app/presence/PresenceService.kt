@@ -6,6 +6,8 @@ import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
 import com.megablok10.app.log.Mb10Log
 import com.megablok10.app.identity.Identity
+import com.megablok10.kit.mesh.PeerInfo
+import com.megablok10.kit.mesh.PeerTable
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -34,8 +36,8 @@ object PresenceService {
     private var scope: CoroutineScope? = null
     private var startArgs: Triple<Context, Identity, Int>? = null
 
-    // Таблица пиров (дебаунс потери, отсрочка после смены сети, серверные подсказки) — чистая логика в PeerTable, покрыта JVM-тестами.
-    private val table = PeerTable { scope }
+    // Таблица пиров (дебаунс потери, отсрочка после смены сети, серверные подсказки) — чистая логика в kit PeerTable, покрыта JVM-тестами.
+    private val table = PeerTable(Mb10Log) { scope }
     val peers: StateFlow<List<PeerInfo>> get() = table.peers
 
     /** Список видимых пиров одной строкой — для снимка состояния в журнале. */

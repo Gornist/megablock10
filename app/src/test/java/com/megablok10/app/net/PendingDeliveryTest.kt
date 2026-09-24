@@ -1,5 +1,6 @@
 package com.megablok10.app.net
 
+import com.megablok10.kit.net.SendOutcome
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull

@@ -20,8 +20,8 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6   # версия Gradle — из gradle/wrapper (та же, что локально)
 
-      - name: Статический анализ Kotlin (detekt)
-        run: ./gradlew :app:detekt :kit:detekt --no-daemon
+      - name: Статический анализ Kotlin (detekt; kit — ещё и API Android 8.0 через Animal Sniffer)
+        run: ./gradlew :app:detekt :kit:detekt :kit:animalsnifferMain --no-daemon
 
       - name: Отчёт detekt
         if: always()
@@ -31,6 +31,7 @@ jobs:
           path: |
             app/build/reports/detekt
             kit/build/reports/detekt
+            kit/build/reports/animalsniffer
           if-no-files-found: ignore
 
       - name: Run unit tests

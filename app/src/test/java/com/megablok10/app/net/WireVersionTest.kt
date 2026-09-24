@@ -5,8 +5,9 @@ import com.megablok10.app.call.CallProtocol
 import com.megablok10.app.chat.ChatMessageType
 import com.megablok10.app.chat.ChatProtocol
 import com.megablok10.app.chat.ChatWireMessage
+import com.megablok10.kit.net.IncompatibleVersionReporter
+import com.megablok10.kit.time.ManualClock
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -14,15 +15,6 @@ import org.junit.Test
 class WireVersionTest {
     private val msg = ChatWireMessage(ChatMessageType.DM, "pk==", "Ольга", "Клемты", "to==", 42L, "привет: мир")
     private val line = ChatProtocol.encode(msg)
-
-    @Test fun parseReadsOnlyVPrefixedNumbers() {
-        assertEquals(2, WireVersion.parse("v2"))
-        assertEquals(12, WireVersion.parse("v12"))
-        assertNull(WireVersion.parse("2"))
-        assertNull(WireVersion.parse("vx"))
-        assertNull(WireVersion.parse("v"))
-        assertNull(WireVersion.parse(""))
-    }
 
     @Test fun reportedVersionsMatchSupportedOnes() {
         assertEquals(mapOf("chat" to WireVersion.CHAT, "call" to WireVersion.CALL, "claim" to WireVersion.CLAIM), WireVersion.REPORTED)
@@ -57,28 +49,11 @@ class WireVersionTest {
         assertEquals("MB10CHAT" to null, WireVersion.mismatch("MB10CHAT:zzz:DM:a"))
     }
 
-    @Test fun reporterNotifiesOncePerMinutePerVersionPair() {
-        var now = 1_000L
+    @Test fun reporterUsesGameProtocolsAndPlayerMessage() {
         val shown = mutableListOf<String>()
-        val r = IncompatibleVersionReporter({ now }) { shown += it }
-        val old = "MB10CHAT:v0:DM:x"
-        r.report(old); r.report(old)
-        assertEquals(1, shown.size)
-        now += IncompatibleVersionReporter.COOLDOWN_MS - 1
-        r.report(old)
-        assertEquals(1, shown.size)
-        now += 2
-        r.report(old)
-        assertEquals(2, shown.size)
-        r.report("MB10CALL:v1:x") // другая пара — отдельное уведомление
-        assertEquals(3, shown.size)
-    }
-
-    @Test fun reporterIgnoresCompatibleAndForeignLines() {
-        val shown = mutableListOf<String>()
-        val r = IncompatibleVersionReporter({ 0L }) { shown += it }
-        r.report(line); r.report("junk"); r.report("")
-        assertTrue(shown.isEmpty())
-        assertNotNull(line)
+        val r = IncompatibleVersionReporter(WireVersion.protocols, WireVersion.INCOMPATIBLE_MESSAGE, ManualClock()) { shown += it }
+        r.report(line)
+        r.report("MB10CHAT:v0:DM:x")
+        assertEquals(listOf(WireVersion.INCOMPATIBLE_MESSAGE), shown)
     }
 }

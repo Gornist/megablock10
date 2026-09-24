@@ -1,123 +1,43 @@
 package com.megablok10.app.chat
 
-import com.megablok10.app.log.Mb10Log
 import com.megablok10.app.breach.ClaimProtocol
 import com.megablok10.app.call.CallProtocol
 import com.megablok10.app.call.CallSignal
 import com.megablok10.app.data.SlotClaimEntity
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.net.ServerSocket
-import java.net.Socket
+import com.megablok10.app.log.Mb10Log
+import com.megablok10.kit.net.LineRoute
+import com.megablok10.kit.net.LineServer
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-
-private const val TAG = "ChatServer"
-
-/** Самая длинная легитимная строка — SDP-предложение звонка (единицы КБ в base64); всё, что больше, — мусор или попытка забить память. */
-private const val MAX_LINE_CHARS = 256 * 1024
 
 /**
- * Читает одну строку до '\n', но не больше [maxChars] символов: BufferedReader.readLine()
- * накапливал бы строку без границы, пока клиент шлёт данные без перевода строки.
- * null — поток кончился без данных, либо строка длиннее лимита (отбрасываем целиком).
- */
-internal fun readBoundedLine(input: java.io.InputStream, maxChars: Int): String? {
-    val reader = BufferedReader(InputStreamReader(input, Charsets.UTF_8))
-    val sb = StringBuilder()
-    while (true) {
-        val c = reader.read()
-        if (c == -1) return if (sb.isEmpty()) null else sb.toString()
-        if (c == '\n'.code) return sb.toString().trimEnd('\r')
-        if (sb.length >= maxChars) return null
-        sb.append(c.toChar())
-    }
-}
-
-/**
- * Слушает входящие сообщения на порту, который сама же и выбирает (0 — ОС
- * назначает свободный). Один коннект = одно сообщение (см. ChatProtocol) —
- * поэтому accept-луп просто читает одну строку и закрывает сокет, без
- * долгоживущих соединений и их учёта. Сигналы звонка (CallProtocol) и заявки
- * на слот лута (ClaimProtocol) идут через тот же самый сокет — отдельный
- * сервер/порт под них не нужен, различаются они по магическому префиксу
- * первой же строки.
+ * Приём всех входящих строк Мегаблока на одном порту (порт выбирает ОС): сообщения чата (ChatProtocol), сигналы звонка
+ * (CallProtocol) и заявки на слот лута (ClaimProtocol) различаются магическим префиксом первой строки. Механика приёма —
+ * kit [LineServer]: одно соединение = одна строка, ограничение длины, таймаут молчащего клиента, сбой одного соединения не
+ * роняет ни сервер, ни приложение. Строка известного протокола, но другой версии уходит в [onIncompatible].
+ *
+ * Журнал — под тегом `ChatServer` (server.listen, server.recv, server.incompatible_line…), как и раньше.
  */
 class ChatServer(
-    private val onMessage: (ChatWireMessage) -> Unit,
-    private val onCallSignal: (CallSignal) -> Unit = {},
-    private val onSlotClaim: (SlotClaimEntity) -> Unit = {},
+    onMessage: (ChatWireMessage) -> Unit,
+    onCallSignal: (CallSignal) -> Unit = {},
+    onSlotClaim: (SlotClaimEntity) -> Unit = {},
     /** Строка известного протокола, но другой версии (телефон со старым/новым приложением): сообщается игроку, см. WireVersion. */
-    private val onIncompatible: (String) -> Unit = {}
+    onIncompatible: (String) -> Unit = {}
 ) {
-    private var serverSocket: ServerSocket? = null
-    private var job: Job? = null
+    private val server = LineServer(
+        routes = listOf(
+            LineRoute("chat", ChatProtocol::decode, onMessage),
+            LineRoute("call", CallProtocol::decode, onCallSignal),
+            LineRoute("claim", ClaimProtocol::decode, onSlotClaim),
+        ),
+        onUnrecognized = onIncompatible,
+        log = Mb10Log,
+        tag = "ChatServer",
+    )
 
-    val port: Int get() = serverSocket?.localPort ?: -1
+    val port: Int get() = server.port
 
-    fun start(scope: CoroutineScope) {
-        val socket = ServerSocket(0)
-        serverSocket = socket
-        Mb10Log.event(TAG, "server.listen", "port" to socket.localPort)
-        job = scope.launch(Dispatchers.IO) {
-            while (isActive) {
-                val client = try {
-                    socket.accept()
-                } catch (e: Exception) {
-                    break
-                }
-                launch(Dispatchers.IO) { handleClient(client) }
-            }
-        }
-    }
+    fun start(scope: CoroutineScope) = server.start(scope)
 
-    /**
-     * Любой сбой одного соединения (молчащий клиент → SocketTimeoutException, обрыв,
-     * исключение из колбэка) обязан оставаться внутри него. Раньше исключение уходило
-     * из launch в родительскую корутину без обработчика — то есть любое устройство в
-     * Wi-Fi, просто открывшее порт и промолчавшее 5 секунд, роняло приложение.
-     */
-    private fun handleClient(socket: Socket) {
-        try {
-            socket.use {
-                it.soTimeout = 5000
-                val remote = it.inetAddress?.hostAddress
-                val line = readBoundedLine(it.getInputStream(), MAX_LINE_CHARS)
-                if (line == null) {
-                    Mb10Log.warnEvent(TAG, "server.empty_or_oversize", "from" to remote)
-                    return
-                }
-                // Что именно пришло — только вид и длина: тексты и карточки в журнал не попадают.
-                val kind = when {
-                    ChatProtocol.decode(line) != null -> "chat"
-                    CallProtocol.decode(line) != null -> "call"
-                    ClaimProtocol.decode(line) != null -> "claim"
-                    else -> "unknown"
-                }
-                Mb10Log.event(TAG, "server.recv", "from" to remote, "kind" to kind, "chars" to line.length)
-                val handled = ChatProtocol.decode(line)?.let(onMessage)
-                    ?: CallProtocol.decode(line)?.let(onCallSignal)
-                    ?: ClaimProtocol.decode(line)?.let(onSlotClaim)
-                if (handled == null) {
-                    Mb10Log.warnEvent(TAG, "server.incompatible_line", "from" to remote, "head" to line.take(24))
-                    onIncompatible(line)
-                }
-            }
-        } catch (e: Exception) {
-            Mb10Log.w(TAG, "входящее соединение отброшено: ${e.javaClass.simpleName}: ${e.message}")
-        }
-    }
-
-    fun stop() {
-        job?.cancel()
-        try {
-            serverSocket?.close()
-        } catch (e: Exception) {
-            // сокет мог уже закрыться сам — не наша забота на остановке
-        }
-        serverSocket = null
-    }
+    fun stop() = server.stop()
 }

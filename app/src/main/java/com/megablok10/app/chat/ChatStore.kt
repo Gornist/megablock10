@@ -6,13 +6,14 @@ import com.megablok10.app.breach.SlotClaimStore
 import com.megablok10.app.data.ChatMessageEntity
 import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.identity.Identity
-import com.megablok10.app.net.IncompatibleVersionReporter
-import com.megablok10.app.net.SendOutcome
+import com.megablok10.app.net.WireVersion
+import com.megablok10.kit.net.IncompatibleVersionReporter
+import com.megablok10.kit.net.SendOutcome
 import com.megablok10.app.call.CallManager
 import com.megablok10.app.log.DeviceDiagnostics
 import com.megablok10.app.log.Mb10Log
 import com.megablok10.app.presence.MeshForegroundService
-import com.megablok10.app.presence.PeerInfo
+import com.megablok10.kit.mesh.PeerInfo
 import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.presence.WifiBinder
 import com.megablok10.app.items.ItemTransferStore
@@ -46,7 +47,7 @@ object ChatStore {
     private var scope: CoroutineScope? = null
     private var startedForKey: String? = null
     private var processContext: Context? = null
-    private val versionReporter = IncompatibleVersionReporter { com.megablok10.app.ui.theme.AppSnack.show(it) }
+    private val versionReporter = IncompatibleVersionReporter(WireVersion.protocols, WireVersion.INCOMPATIBLE_MESSAGE) { com.megablok10.app.ui.theme.AppSnack.show(it) }
 
     /**
      * Сама функция синхронная (её удобно звать из LaunchedEffect на главном

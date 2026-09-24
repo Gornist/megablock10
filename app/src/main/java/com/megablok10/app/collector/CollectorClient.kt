@@ -1,7 +1,7 @@
 package com.megablok10.app.collector
 
 import com.megablok10.app.log.Mb10Log
-import com.megablok10.app.presence.PeerInfo
+import com.megablok10.kit.mesh.PeerInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType

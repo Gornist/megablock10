@@ -1,4 +1,4 @@
-package com.megablok10.app.presence
+package com.megablok10.kit.mesh
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceTimeBy
