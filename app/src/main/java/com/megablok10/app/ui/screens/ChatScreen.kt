@@ -25,13 +25,11 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -65,9 +63,11 @@ import com.megablok10.app.ui.theme.MB10Colors
 import com.megablok10.app.ui.theme.OnlineDot
 import com.megablok10.app.ui.theme.StatusChip
 import com.megablok10.app.ui.theme.SystemNoticeLine
-import com.megablok10.app.ui.LocalAppGraph
+import com.megablok10.app.di.chatViewModel
+import com.megablok10.app.di.directThreadViewModel
+import com.megablok10.app.identity.ContactsView
+import com.megablok10.app.ui.appViewModel
 import com.megablok10.app.ui.theme.chamferShape
-import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -98,6 +98,8 @@ fun ChatScreen(
     onQuickTransfer: (String) -> Unit = {},
     onQuickItem: (ItemKind, String) -> Unit = { _, _ -> }
 ) {
+    val chat = appViewModel { chatViewModel() }
+    val inbox by chat.state.collectAsStateWithLifecycle()
     var destination by remember { mutableStateOf<ChatDestination?>(null) }
     var showContactPicker by remember { mutableStateOf(false) }
     BackHandler(enabled = destination != null || showContactPicker) {
@@ -118,10 +120,11 @@ fun ChatScreen(
 
     when {
         showContactPicker -> NewChatPicker(
+            directory = inbox.contacts,
             onPick = { key -> showContactPicker = false; destination = ChatDestination.Direct(key) },
             onBack = { showContactPicker = false }
         )
-        destination is ChatDestination.Faction -> FactionThread(identity, onBack = { destination = null })
+        destination is ChatDestination.Faction -> FactionThread(identity, inbox.factionMessages, onSend = chat::sendFaction, onBack = { destination = null })
         destination is ChatDestination.Direct -> DirectThread(
             identity = identity,
             peerPubKeyB64 = (destination as ChatDestination.Direct).peerPubKeyB64,
@@ -131,6 +134,7 @@ fun ChatScreen(
         )
         else -> ConversationInbox(
             identity = identity,
+            inbox = inbox,
             onOpenFaction = { destination = ChatDestination.Faction },
             onOpenDirect = { key -> destination = ChatDestination.Direct(key) },
             onNewChat = { showContactPicker = true }
@@ -139,14 +143,16 @@ fun ChatScreen(
 }
 
 @Composable
-private fun ConversationInbox(identity: Identity, onOpenFaction: () -> Unit, onOpenDirect: (String) -> Unit, onNewChat: () -> Unit) {
-    val graph = LocalAppGraph.current
-    val factionMessages by remember(identity.faction) { graph.chat.observeFaction(identity.faction) }.collectAsState(initial = emptyList())
-    val recentThreads by remember(identity.publicKeyB64) { graph.chat.observeRecentDirectThreads(identity.publicKeyB64) }.collectAsState(initial = emptyList())
-    val contacts by remember { graph.contacts.observeAll() }.collectAsState(initial = emptyList())
-    val onlinePeers by graph.presence.peers.collectAsState()
-    val onlineKeys = remember(onlinePeers) { onlinePeers.map { it.pubKeyB64 }.toSet() }
-    val lastFactionMessage = factionMessages.lastOrNull()
+private fun ConversationInbox(
+    identity: Identity,
+    inbox: ChatInboxState,
+    onOpenFaction: () -> Unit,
+    onOpenDirect: (String) -> Unit,
+    onNewChat: () -> Unit,
+) {
+    val recentThreads = inbox.recentThreads
+    val onlineKeys = inbox.contacts.onlineKeys
+    val lastFactionMessage = inbox.factionMessages.lastOrNull()
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -167,7 +173,7 @@ private fun ConversationInbox(identity: Identity, onOpenFaction: () -> Unit, onO
             }
             items(recentThreads, key = { it.id }) { msg ->
                 val peerKey = if (msg.fromPubKeyB64 == identity.publicKeyB64) msg.toPubKeyB64 else msg.fromPubKeyB64
-                val contact = contacts.find { it.publicKeyB64 == peerKey }
+                val contact = inbox.contacts.contact(peerKey)
                 ConversationRow(
                     title = contact?.callsign ?: "Неизвестный контакт",
                     preview = (if (msg.fromPubKeyB64 == identity.publicKeyB64) "Вы: " else "") + previewBody(msg.body),
@@ -198,48 +204,22 @@ private fun ConversationRow(title: String, preview: String, time: Long?, online:
 }
 
 @Composable
-private fun FactionThread(identity: Identity, onBack: () -> Unit) {
-    val graph = LocalAppGraph.current
-    val scope = rememberCoroutineScope()
-    val messages by remember(identity.faction) { graph.chat.observeFaction(identity.faction) }.collectAsState(initial = emptyList())
-
+private fun FactionThread(identity: Identity, messages: List<ChatMessageEntity>, onSend: (String) -> Unit, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         ThreadHeader(title = "Фракция: ${identity.faction}", onBack = onBack)
         MessageList(messages = messages, myPubKey = identity.publicKeyB64, showSender = true, emptyText = "Пока нет сообщений во фракции.")
-        MessageInput(placeholder = "Сообщение фракции") { body ->
-            scope.launch { graph.chat.sendFaction(identity, body) }
-        }
+        MessageInput(placeholder = "Сообщение фракции", onSend = onSend)
     }
 }
 
 @Composable
 private fun DirectThread(identity: Identity, peerPubKeyB64: String, onBack: () -> Unit, onQuickTransfer: (String) -> Unit, onQuickItem: (ItemKind, String) -> Unit) {
-    val graph = LocalAppGraph.current
-    val scope = rememberCoroutineScope()
-    val contacts by remember { graph.contacts.observeAll() }.collectAsState(initial = emptyList())
-    val onlinePeers by graph.presence.peers.collectAsState()
-    val transactions by remember { graph.wallet.observeAll() }.collectAsState(initial = emptyList())
-    val itemTransfers by remember { graph.items.observeAll() }.collectAsState(initial = emptyList())
-
-    val contact = contacts.find { it.publicKeyB64 == peerPubKeyB64 }
-    val peer = onlinePeers.find { it.pubKeyB64 == peerPubKeyB64 }
-    val messages by remember(identity.publicKeyB64, peerPubKeyB64) { graph.chat.observeDirect(identity.publicKeyB64, peerPubKeyB64) }.collectAsState(initial = emptyList())
-
-    // Отправитель видит чек получателя как обычное входящее сообщение — фиксируем
-    // подтверждение автоматически, без ручного шага. Повторный вызов на уже
-    // подтверждённой транзакции безопасен (см. TransactionDao.confirm — WHERE status='PENDING'),
-    // но сканируем только новый хвост списка — thread может разрастись на сотни
-    // сообщений, и полный пересчёт при каждом новом сообщении был бы лишней работой.
-    var scannedCount by remember(peerPubKeyB64) { mutableIntStateOf(0) }
-    LaunchedEffect(messages.size) {
-        messages.drop(scannedCount).forEach { msg ->
-            if (msg.fromPubKeyB64 != identity.publicKeyB64) {
-                val decoded = Mb10QrCodec.decode(msg.body)
-                if (decoded is Mb10Qr.Receipt) graph.receipts.confirm(decoded)
-            }
-        }
-        scannedCount = messages.size
-    }
+    // Свой экземпляр на пару «я — собеседник»: лента из базы привязана к ключам (после сброса сессии — новый персонаж, новый тред).
+    val thread = appViewModel(key = "thread:${identity.publicKeyB64}:$peerPubKeyB64") { directThreadViewModel(identity.publicKeyB64, peerPubKeyB64) }
+    val state by thread.state.collectAsStateWithLifecycle()
+    val messages = state.feed.messages
+    val contact = state.contacts.contact(peerPubKeyB64)
+    val peer = state.contacts.peer(peerPubKeyB64)
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Row(
@@ -258,14 +238,14 @@ private fun DirectThread(identity: Identity, peerPubKeyB64: String, onBack: () -
             myPubKey = identity.publicKeyB64,
             showSender = false,
             emptyText = "Пока нет сообщений с ${contact?.callsign ?: "этим контактом"}.",
-            transactions = transactions,
-            itemTransfers = itemTransfers,
-            onAcceptItem = { card -> scope.launch { graph.acceptItem(identity, card) } },
-            onAcceptTransaction = { tx -> scope.launch { graph.acceptPayment(identity, tx) } }
+            transactions = state.feed.transactions,
+            itemTransfers = state.feed.itemTransfers,
+            onAcceptItem = thread::accept,
+            onAcceptTransaction = thread::accept
         )
         MessageInput(
             placeholder = if (peer != null) "Личное сообщение" else "Личное сообщение (получатель не в сети)",
-            onSend = { body -> scope.launch { graph.chat.sendDirect(identity, peerPubKeyB64, peer, body) } },
+            onSend = thread::send,
             onTransferMoney = { onQuickTransfer(peerPubKeyB64) },
             onTransferShard = { onQuickItem(ItemKind.SHARD, peerPubKeyB64) },
             onTransferDaemon = { onQuickItem(ItemKind.DAEMON, peerPubKeyB64) }
@@ -287,11 +267,9 @@ private fun ThreadHeader(title: String, onBack: () -> Unit) {
 
 /** Список контактов для старта НОВОГО диалога (кнопка "+" в инбоксе) — не путать с самим инбоксом уже идущих переписок. */
 @Composable
-private fun NewChatPicker(onPick: (String) -> Unit, onBack: () -> Unit) {
-    val graph = LocalAppGraph.current
-    val contacts by remember { graph.contacts.observeAll() }.collectAsState(initial = emptyList())
-    val onlinePeers by graph.presence.peers.collectAsState()
-    val onlineKeys = remember(onlinePeers) { onlinePeers.map { it.pubKeyB64 }.toSet() }
+private fun NewChatPicker(directory: ContactsView, onPick: (String) -> Unit, onBack: () -> Unit) {
+    val contacts = directory.contacts
+    val onlineKeys = directory.onlineKeys
     var query by remember { mutableStateOf("") }
     val filtered = remember(contacts, query) {
         if (query.isBlank()) contacts

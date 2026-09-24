@@ -14,8 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -23,7 +21,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.identity.Identity
-import com.megablok10.app.ui.LocalAppGraph
 import com.megablok10.app.ui.theme.ChamferedSurface
 import com.megablok10.app.ui.theme.DottedDivider
 import com.megablok10.app.ui.theme.HexBullet
@@ -50,9 +47,7 @@ enum class AppTab(val label: String) {
  * приложения, ничего не сообщающий.
  */
 @Composable
-fun AppHeader(identity: Identity, onOpenProfile: () -> Unit = {}) {
-    val peers by LocalAppGraph.current.presence.peers.collectAsState()
-
+fun AppHeader(identity: Identity, onlineNodes: Int, onOpenProfile: () -> Unit = {}) {
     // Одна строка ~44 dp: позывной · фракция слева, узлы меш-сети справа. Раньше это были три строки и пунктир (≈104 dp).
     // Норма («узлы есть») — одна точка и число; текст нужен только когда связи нет — тогда он красный и заметен.
     Row(
@@ -78,10 +73,10 @@ fun AppHeader(identity: Identity, onOpenProfile: () -> Unit = {}) {
         }
         Spacer(Modifier.weight(1f))
         // Живой статус меш-сети — реальное число узлов из PresenceService (NSD-обнаружение), не заглушка.
-        if (peers.isNotEmpty()) {
+        if (onlineNodes > 0) {
             HexBullet(MB10Colors.inkPrimary, size = 7.dp)
             Spacer(Modifier.width(5.dp))
-            Text("${peers.size}", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 12.sp)
+            Text("$onlineNodes", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 12.sp)
         } else {
             HexBullet(MB10Colors.accentDanger, size = 7.dp)
             Spacer(Modifier.width(5.dp))
@@ -132,6 +127,7 @@ fun AppTabBar(selected: AppTab, onSelect: (AppTab) -> Unit) {
 @Composable
 fun MainScaffold(
     identity: Identity,
+    onlineNodes: Int,
     selectedTab: AppTab,
     onSelectTab: (AppTab) -> Unit,
     onOpenProfile: () -> Unit = {},
@@ -139,7 +135,7 @@ fun MainScaffold(
     content: @Composable (AppTab) -> Unit
 ) {
     Column(Modifier.fillMaxSize().background(MB10Colors.surfaceBase)) {
-        if (!hideChrome) AppHeader(identity, onOpenProfile)
+        if (!hideChrome) AppHeader(identity, onlineNodes, onOpenProfile)
         // Состояние rememberSaveable каждой вкладки (сегмент Кибердеки и т. п.) переживает переключение вкладок.
         val stateHolder = rememberSaveableStateHolder()
         Box(Modifier.weight(1f)) {

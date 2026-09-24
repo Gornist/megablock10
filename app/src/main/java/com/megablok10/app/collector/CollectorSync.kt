@@ -16,6 +16,7 @@ import com.megablok10.kit.sync.ChangeQueue
 import com.megablok10.kit.sync.ChangeRecord
 import com.megablok10.kit.sync.QueueStats
 import com.megablok10.kit.sync.SyncHooks
+import kotlinx.coroutines.flow.Flow
 
 /**
  * Синхронизация с мастерским коллектором (§3.4 ТЗ): механика — kit ChangeRecorder (подписать и положить запись в очередь тем же
@@ -105,4 +106,7 @@ class RoomChangeQueue(private val dao: PendingChangeRecordDao) : ChangeQueue {
     override suspend fun deleteByIds(ids: List<String>) = dao.deleteByIds(ids)
     override suspend fun count(): Int = dao.count()
     override suspend fun oldestHappenedAt(): Long? = dao.oldestHappenedAt()
+
+    /** Сколько записей ждёт подтверждения коллектора — для Настроек. */
+    fun observeCount(): Flow<Int> = dao.observeCount()
 }

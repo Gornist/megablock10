@@ -26,6 +26,7 @@ import com.megablok10.app.collector.RoomChangeQueue
 import com.megablok10.app.collector.SYNC_LOG_TAG
 import com.megablok10.app.collector.heartbeat
 import com.megablok10.app.data.Mb10Database
+import com.megablok10.app.identity.ContactDirectory
 import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.identity.CreateCharacter
 import com.megablok10.app.identity.IdentityStore
@@ -54,6 +55,7 @@ import com.megablok10.kit.sync.SyncEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 
 /**
@@ -99,6 +101,7 @@ class AppGraph(private val app: Application) {
     val outbox = OutboxStore(db.outboxDao(), lines, peers)
     val chat = ChatStore(db.chatMessageDao(), outbox, lines, peers)
     val calls = CallManager(app, peers, db.callLogDao(), lines)
+    val directory = ContactDirectory(contacts, presence.peers)
 
     // Деньги и предметы
     val wallet = TransactionStore(db, identity, changes)
@@ -150,6 +153,12 @@ class AppGraph(private val app: Application) {
             tag = SYNC_LOG_TAG,
         )
     }
+
+    /** Сведения об устройстве и приложении для архива журнала (`device.txt`). */
+    suspend fun deviceReport(): String = DeviceDiagnostics.deviceReport(app, this)
+
+    /** Сколько записей ждёт подтверждения коллектора (Настройки). */
+    fun observePendingChanges(): Flow<Int> = changeQueue.observeCount()
 
     @Volatile private var syncStarted = false
 

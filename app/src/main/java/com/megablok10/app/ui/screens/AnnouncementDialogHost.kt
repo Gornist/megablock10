@@ -1,13 +1,14 @@
 package com.megablok10.app.ui.screens
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.megablok10.app.announce.Announcements
-import com.megablok10.app.ui.LocalAppGraph
+import com.megablok10.app.di.announcementsViewModel
+import com.megablok10.app.ui.appViewModel
 import com.megablok10.app.ui.theme.AppDialog
 import com.megablok10.app.ui.theme.ButtonVariant
 import com.megablok10.app.ui.theme.MB10Colors
@@ -19,8 +20,8 @@ import com.megablok10.app.ui.theme.MB10Colors
  */
 @Composable
 fun AnnouncementDialogHost() {
-    val graph = LocalAppGraph.current
-    val items by graph.announcements.items.collectAsState()
+    val announcements = appViewModel { announcementsViewModel() }
+    val items by announcements.items.collectAsStateWithLifecycle()
     var snoozedIds by remember { mutableStateOf(emptySet<String>()) }
 
     val unread = Announcements.unread(items)
@@ -33,7 +34,7 @@ fun AnnouncementDialogHost() {
         title = if (unread.size > 1) "Сообщения от мастера (${unread.size})" else "Сообщение от мастера",
         body = ordered.joinToString("\n\n") { it.text },
         confirmText = "Принято",
-        onConfirm = { graph.announcements.markAllRead() },
+        onConfirm = announcements::markAllRead,
         dismissText = "Позже",
         // Служебный жёлтый — это сообщение от мастера/приложения, не игровое действие (см. правило accentSystem в Color.kt).
         confirmVariant = ButtonVariant.System,

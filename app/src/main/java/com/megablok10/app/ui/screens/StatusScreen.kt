@@ -18,12 +18,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -31,7 +30,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.identity.Identity
 import com.megablok10.kit.mesh.PeerInfo
-import com.megablok10.app.ui.LocalAppGraph
+import com.megablok10.app.di.contactsViewModel
+import com.megablok10.app.ui.appViewModel
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
 import com.megablok10.app.qr.generateQrBitmap
@@ -51,19 +51,17 @@ import com.megablok10.app.ui.theme.Jura
 import com.megablok10.app.ui.theme.MB10Colors
 import com.megablok10.app.ui.theme.StatusChip
 import com.megablok10.app.ui.theme.chamferShape
-import kotlinx.coroutines.launch
 
 @Composable
 fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}, onCallContact: (PeerInfo) -> Unit = {}) {
-    val graph = LocalAppGraph.current
-    val scope = rememberCoroutineScope()
-    val contacts by remember { graph.contacts.observeAll() }.collectAsState(initial = emptyList())
-    val onlinePeers by graph.presence.peers.collectAsState()
+    val vm = appViewModel { contactsViewModel() }
+    val directory by vm.contacts.collectAsStateWithLifecycle()
+    val contacts = directory.contacts
     var contactsExpanded by remember { mutableStateOf(false) }
 
     val startScan = rememberMb10QrScanner { qr ->
         when (qr) {
-            is Mb10Qr.Contact -> scope.launch { graph.contacts.add(qr) }
+            is Mb10Qr.Contact -> vm.add(qr)
             else -> AppSnack.show("Это не QR-код контакта")
         }
     }
@@ -138,7 +136,7 @@ fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}, on
                             "Звонок",
                             modifier = Modifier.weight(1f),
                             onClick = {
-                                val peer = onlinePeers.find { it.pubKeyB64 == c.publicKeyB64 }
+                                val peer = directory.peer(c.publicKeyB64)
                                 if (peer == null) {
                                     AppSnack.show("${c.callsign} сейчас не в сети")
                                 } else {

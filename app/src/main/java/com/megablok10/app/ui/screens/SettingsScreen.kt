@@ -14,7 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,9 +28,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
-import com.megablok10.app.log.DeviceDiagnostics
 import com.megablok10.app.log.Mb10Log
-import com.megablok10.app.ui.LocalAppGraph
+import com.megablok10.app.di.announcementsViewModel
+import com.megablok10.app.di.settingsViewModel
+import com.megablok10.app.ui.appViewModel
 import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.AppDialog
 import com.megablok10.app.ui.theme.AppTextField
@@ -54,13 +55,12 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
     var pushEnabled by remember { mutableStateOf(true) }
     var soundEnabled by remember { mutableStateOf(false) }
     var confirmingReset by remember { mutableStateOf(false) }
-    val graph = LocalAppGraph.current
-    val settings = graph.collectorSettings
-    val onlinePeers by graph.presence.peers.collectAsState()
-    var collectorUrl by remember { mutableStateOf(settings.baseUrl() ?: "") }
-    val announcements by graph.announcements.items.collectAsState()
-    var gameSecret by remember { mutableStateOf(settings.gameSecret() ?: "") }
-    val pendingChanges by remember { graph.db.pendingChangeRecordDao().observeCount() }.collectAsState(initial = 0)
+    val settings = appViewModel { settingsViewModel() }
+    val onlinePeers by settings.peers.collectAsStateWithLifecycle()
+    var collectorUrl by remember { mutableStateOf(settings.collectorUrl()) }
+    val announcements by appViewModel { announcementsViewModel() }.items.collectAsStateWithLifecycle()
+    var gameSecret by remember { mutableStateOf(settings.gameSecret()) }
+    val pendingChanges by settings.pendingChanges.collectAsStateWithLifecycle()
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
         SectionLabel("Приложение")
@@ -79,7 +79,7 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
         }
 
         Spacer(Modifier.height(16.dp))
-        LogSection()
+        LogSection(deviceReport = settings::deviceReport)
 
         Spacer(Modifier.height(16.dp))
         if (announcements.isNotEmpty()) {
@@ -151,7 +151,7 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
             "Сохранить адрес коллектора",
             modifier = Modifier.fillMaxWidth(),
             variant = ButtonVariant.Secondary,
-            onClick = { settings.setBaseUrl(collectorUrl); Mb10Log.event("Settings", "collector_url_saved", "url" to collectorUrl); graph.collectorSync.wake() }
+            onClick = { settings.saveCollectorUrl(collectorUrl) }
         )
         Spacer(Modifier.height(8.dp))
         AppTextField(
@@ -165,7 +165,7 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
             "Сохранить код игры",
             modifier = Modifier.fillMaxWidth(),
             variant = ButtonVariant.Secondary,
-            onClick = { settings.setGameSecret(gameSecret.ifBlank { null }); Mb10Log.event("Settings", "game_secret_saved", "empty" to gameSecret.isBlank()); graph.collectorSync.wake() }
+            onClick = { settings.saveGameSecret(gameSecret) }
         )
         }
 
@@ -215,9 +215,8 @@ private fun ToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean
 
 /** Журнал приложения: отправить архив на разбор, оставить метку («вышел из зоны точки 2»), очистить перед новой проверкой. */
 @Composable
-private fun LogSection() {
+private fun LogSection(deviceReport: suspend () -> String) {
     val context = LocalContext.current
-    val graph = LocalAppGraph.current
     val scope = rememberCoroutineScope()
     var sizeKb by remember { mutableStateOf(Mb10Log.sizeBytes() / 1024) }
     var mark by remember { mutableStateOf("") }
@@ -254,7 +253,7 @@ private fun LogSection() {
             scope.launch {
                 Mb10Log.event("Settings", "log_export_requested")
                 val zip = withContext(Dispatchers.IO) {
-                    runCatching { Mb10Log.exportZip(context, DeviceDiagnostics.deviceReport(context, graph)) }.getOrNull()
+                    runCatching { Mb10Log.exportZip(context, deviceReport()) }.getOrNull()
                 }
                 if (zip == null) { status = "Не удалось собрать архив"; return@launch }
                 val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.logs", zip)

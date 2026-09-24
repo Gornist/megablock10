@@ -14,12 +14,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -28,9 +27,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.data.TransactionEntity
 import com.megablok10.app.data.TransactionStatus
-import com.megablok10.app.identity.Identity
 import com.megablok10.app.qr.Mb10Qr
-import com.megablok10.app.ui.LocalAppGraph
+import com.megablok10.app.di.walletViewModel
+import com.megablok10.app.ui.appViewModel
 import com.megablok10.app.ui.theme.AmountField
 import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.AppTextField
@@ -47,7 +46,6 @@ import com.megablok10.app.ui.theme.ListRow
 import com.megablok10.app.ui.theme.MB10Colors
 import com.megablok10.app.ui.theme.SectionLabel
 import com.megablok10.app.ui.theme.StatusChip
-import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.UUID
@@ -62,15 +60,14 @@ import java.util.UUID
  * точек доступа и шардов — не для денег.
  */
 @Composable
-fun WalletScreen(identity: Identity, presetContactKey: String? = null, onPresetConsumed: () -> Unit = {}) {
-    val graph = LocalAppGraph.current
-    val scope = rememberCoroutineScope()
-    val balance by remember { graph.wallet.observeBalance() }.collectAsState(initial = 0L)
-    val transactions by remember { graph.wallet.observeAll() }.collectAsState(initial = emptyList())
-    val contacts by remember { graph.contacts.observeAll() }.collectAsState(initial = emptyList())
+fun WalletScreen(presetContactKey: String? = null, onPresetConsumed: () -> Unit = {}) {
+    val wallet = appViewModel { walletViewModel() }
+    val state by wallet.state.collectAsStateWithLifecycle()
+    val balance = state.balance
+    val transactions = state.transactions
+    val contacts = state.contacts.contacts
     val contactsByKey = remember(contacts) { contacts.associateBy { it.publicKeyB64 } }
-    val onlinePeers by graph.presence.peers.collectAsState()
-    val onlineKeys = remember(onlinePeers) { onlinePeers.map { it.pubKeyB64 }.toSet() }
+    val onlineKeys = state.contacts.onlineKeys
 
     var sending by remember { mutableStateOf(false) }
     // Пришли из треда чата: сразу открываем форму с уже выбранным получателем.
@@ -105,10 +102,8 @@ fun WalletScreen(identity: Identity, presetContactKey: String? = null, onPresetC
                         transactions = transactions,
                         balance = balance,
                         initialContact = contacts.find { it.publicKeyB64 == presetKey },
-                        onSend = { contact, id, amount, memo ->
-                            scope.launch { graph.sendPayment(identity, contact.publicKeyB64, amount, memo, id) }
-                        },
-                        onCancel = { id -> scope.launch { graph.wallet.cancelOutgoing(id) } }
+                        onSend = { contact, id, amount, memo -> wallet.send(contact.publicKeyB64, id, amount, memo) },
+                        onCancel = wallet::cancel
                     )
                     Spacer(Modifier.height(8.dp))
                     AppButton("Закрыть", variant = ButtonVariant.Secondary, dense = true, modifier = Modifier.fillMaxWidth(), onClick = { sending = false; presetKey = null })
@@ -126,7 +121,7 @@ fun WalletScreen(identity: Identity, presetContactKey: String? = null, onPresetC
                     TxRow(
                         tx = tx,
                         counterpartyName = contactsByKey[tx.counterpartyPubKeyB64]?.callsign,
-                        onCancelPending = { scope.launch { graph.wallet.cancelOutgoing(tx.id) } }
+                        onCancelPending = { wallet.cancel(tx.id) }
                     )
                     if (index != transactions.lastIndex) DottedDivider()
                 }

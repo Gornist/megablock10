@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
@@ -33,7 +32,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.call.CallPhase
 import com.megablok10.app.call.CallUiState
-import com.megablok10.app.ui.LocalAppGraph
 import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.ButtonVariant
 import com.megablok10.app.ui.theme.ChamferedSurface
@@ -57,12 +55,8 @@ import kotlinx.coroutines.delay
  * в углу кадра в игре, а не модальный диалог.
  */
 @Composable
-fun CallOverlay(state: CallUiState, onAccept: () -> Unit, onEnd: () -> Unit) {
+fun CallOverlay(state: CallUiState, peerFaction: String?, onAccept: () -> Unit, onEnd: () -> Unit) {
     if (state.phase == CallPhase.IDLE) return
-
-    val graph = LocalAppGraph.current
-    val contacts by remember { graph.contacts.observeAll() }.collectAsState(initial = emptyList())
-    val peerFaction = contacts.find { it.publicKeyB64 == state.peerPubKeyB64 }?.faction
 
     if (state.phase == CallPhase.IN_CALL) {
         ActiveCallBar(state, onEnd)

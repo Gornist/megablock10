@@ -1,6 +1,5 @@
 package com.megablok10.app.ui.screens
 
-import com.megablok10.app.ui.theme.AppSnack
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -20,13 +19,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -37,19 +34,19 @@ import com.megablok10.app.breach.BreachAccess
 import com.megablok10.app.breach.BreachBlock
 import com.megablok10.app.breach.BreachContainerFlow
 import com.megablok10.app.breach.CodePill
-import com.megablok10.app.breach.Container
 import com.megablok10.app.breach.cellsLabel
 import com.megablok10.app.breach.DecryptRules
 import com.megablok10.app.items.ItemTransferStore
 import com.megablok10.app.items.OutgoingItem
 import com.megablok10.app.breach.Daemon
-import com.megablok10.app.breach.LootType
 import com.megablok10.app.breach.ShardDecryptFlow
 import com.megablok10.app.breach.label
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.rememberMb10QrScanner
-import com.megablok10.app.ui.LocalAppGraph
+import com.megablok10.app.di.breachViewModel
+import com.megablok10.app.di.cyberdeckViewModel
+import com.megablok10.app.ui.appViewModel
 import com.megablok10.app.ui.theme.ChamferedSurface
 import com.megablok10.app.ui.theme.DottedDivider
 import com.megablok10.app.ui.theme.ScanFab
@@ -60,7 +57,6 @@ import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.MB10Colors
 import com.megablok10.app.ui.theme.SegmentedTabs
-import kotlinx.coroutines.launch
 
 /**
  * Демоны и Шарды — два составных одной Кибердеки, не отдельные экраны:
@@ -79,25 +75,29 @@ fun CyberdeckScreen(
     initialSegment: Int? = null,
     onPresetConsumed: () -> Unit = {}
 ) {
-    val graph = LocalAppGraph.current
-    val scope = rememberCoroutineScope()
-    LaunchedEffect(Unit) { graph.daemons.ensureSeeded() }
-    val daemons by remember { graph.daemons.observeAll() }.collectAsState(initial = emptyList())
-    val shards by remember { graph.shards.observeAll() }.collectAsState(initial = emptyList())
-    val contacts by remember { graph.contacts.observeAll() }.collectAsState(initial = emptyList())
+    val deck = appViewModel { cyberdeckViewModel() }
+    // Открытый контейнер и отказ при скане — у персонажа свои (ключ ViewModel — ключ личности), см. BreachViewModel.
+    val breach = appViewModel(key = "breach:${identity.publicKeyB64}") { breachViewModel() }
+    val state by deck.state.collectAsStateWithLifecycle()
+    val daemons = state.daemons
+    val shards = state.shards
+    val contacts = state.contacts.contacts
+    // 0 = Демоны, 1 = Шарды; живёт в ViewModel — переживает смену вкладки приложения.
+    val segment by deck.segment.collectAsStateWithLifecycle()
+    val container by breach.container.collectAsStateWithLifecycle()
+    val scanIssue by breach.issue.collectAsStateWithLifecycle()
 
-    var segment by rememberSaveable { mutableStateOf(0) } // 0 = Демоны, 1 = Шарды; переживает смену вкладки приложения
     // Пришли из треда чата (кнопка со скрепкой у "Отправить") — получатель уже выбран, картинка контактов не нужна:
     // остаётся выбрать конкретный шард/демон, и он уйдёт сразу этому игроку.
     var itemRecipientPreset by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(presetPeerKey, initialSegment) {
-        if (initialSegment != null) segment = initialSegment
+        if (initialSegment != null) deck.selectSegment(initialSegment)
         if (presetPeerKey != null) { itemRecipientPreset = presetPeerKey; onPresetConsumed() }
     }
-    var container by remember { mutableStateOf<Container?>(null) }
+    // Открылся взлом контейнера — после него игрок вернётся к демонам.
+    LaunchedEffect(container) { if (container != null) deck.selectSegment(CyberdeckViewModel.SEGMENT_DAEMONS) }
     var openedShard by remember { mutableStateOf<Mb10Qr.Shard?>(null) }
     var decryptingShard by remember { mutableStateOf<Mb10Qr.Shard?>(null) }
-    var scanIssue by remember { mutableStateOf<ScanIssue?>(null) }
     // Что сейчас передаём другому игроку (шард или демон) — до выбора получателя в диалоге.
     var transferShard by remember { mutableStateOf<Mb10Qr.Shard?>(null) }
     var transferDaemon by remember { mutableStateOf<Daemon?>(null) }
@@ -111,41 +111,18 @@ fun CyberdeckScreen(
             breachRunning -> Unit
             decryptingShard != null -> { openedShard = decryptingShard; decryptingShard = null }
             openedShard != null -> openedShard = null
-            else -> container = null
+            else -> breach.close()
         }
     }
 
     // Деталь шарда и мини-взлом — полноэкранные, со своим back-заголовком; шапка приложения над ними была бы дублем.
     LaunchedEffect(openedShard, decryptingShard, breachRunning) { onNestedChange(openedShard != null || decryptingShard != null || breachRunning) }
 
+    // Одна кнопка скана на всё: контейнер проверяется перед взломом (BreachViewModel → CheckBreachAccess — связь, остывание узла,
+    // остаток слотов), остальное — шард, RAM-токен, фрагмент лута — применяет Кибердека.
     val scanObject = rememberMb10QrScanner { qr ->
-        scanIssue = null
-        when (qr) {
-            // Связь, остывание узла и остаток слотов проверяются ДО выбора демонов (сценарий CheckBreachAccess).
-            is Mb10Qr.ContainerQr -> scope.launch {
-                when (val access = graph.checkBreachAccess(identity, qr.container)) {
-                    BreachAccess.Open -> { container = qr.container; segment = 0 }
-                    is BreachAccess.Blocked -> scanIssue = scanIssueOf(access)
-                }
-            }
-            is Mb10Qr.Shard -> { scope.launch { graph.shards.add(qr) }; segment = 1 }
-            is Mb10Qr.RamUpgrade -> {
-                scope.launch {
-                    val newCapacity = graph.ramUpgrades.apply(qr)
-                    val message = if (newCapacity != null) "RAM деки увеличена до $newCapacity" else "Этот RAM-токен уже был применён"
-                    AppSnack.show(message)
-                }
-            }
-            is Mb10Qr.LootGrant -> {
-                scope.launch {
-                    val granted = graph.rewards.applyGrant(qr)
-                    val message = granted ?: "Фрагмент повреждён — обратитесь к мастеру"
-                    AppSnack.show(message)
-                    segment = if (qr.type == LootType.DAEMON) 0 else 1
-                }
-            }
-            else -> AppSnack.show("Этот QR не распознан Кибердекой")
-        }
+        breach.dismissIssue()
+        if (qr is Mb10Qr.ContainerQr) breach.open(qr.container) else deck.onScan(qr)
     }
 
     val decrypting = decryptingShard
@@ -153,7 +130,7 @@ fun CyberdeckScreen(
         ShardDecryptFlow(
             shard = decrypting,
             onDecrypted = {
-                scope.launch { graph.shards.markDecrypted(decrypting.id) }
+                deck.markDecrypted(decrypting.id)
                 decryptingShard = null
                 openedShard = decrypting.copy(decrypted = true)
             },
@@ -163,23 +140,11 @@ fun CyberdeckScreen(
     }
 
     fun performTransfer(toKeyB64: String, label: String) {
-        val shard = transferShard
-        val daemon = transferDaemon
+        val item = transferShard?.let { OutgoingItem.Shard(it.id) } ?: transferDaemon?.let { OutgoingItem.Daemon(it) }
         transferShard = null
         transferDaemon = null
-        scope.launch {
-            val card = when {
-                shard != null -> graph.sendItem(identity, OutgoingItem.Shard(shard.id), toKeyB64)
-                daemon != null -> graph.sendItem(identity, OutgoingItem.Daemon(daemon), toKeyB64)
-                else -> null
-            }
-            if (card == null) {
-                AppSnack.show("Не удалось передать")
-                return@launch
-            }
-            openedShard = null
-            AppSnack.show("Передача отправлена: $label")
-        }
+        // Карточка ушла — деталь шарда закрываем (его у игрока больше нет); не ушла — Кибердека скажет «Не удалось передать».
+        if (item != null) deck.transfer(item, toKeyB64, label, onSent = { openedShard = null })
     }
     fun sendTo(contact: Mb10Qr.Contact) = performTransfer(contact.publicKeyB64, contact.callsign)
 
@@ -199,6 +164,7 @@ fun CyberdeckScreen(
     if (transferShard != null || transferDaemon != null) {
         ContactPickerDialog(
             title = "Кому передать «${transferShard?.title ?: transferDaemon?.name}»?",
+            directory = state.contacts,
             onPick = ::sendTo,
             onDismiss = { transferShard = null; transferDaemon = null }
         )
@@ -223,22 +189,23 @@ fun CyberdeckScreen(
     if (activeContainer != null) {
         BreachContainerFlow(
             container = activeContainer, daemons = daemons, identity = identity,
-            onRescan = { container = null }, onImmersive = { breachRunning = it }
+            onRescan = breach::close, onImmersive = { breachRunning = it },
+            finish = { result, seed, onDone -> breach.finish(activeContainer, result, seed, onDone) }
         )
         return
     }
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().padding(horizontal = 12.dp).padding(top = 4.dp)) {
-            scanIssue?.let { issue ->
-                ScanIssueCard(issue, onDismiss = { scanIssue = null })
+            scanIssue?.let { blocked ->
+                ScanIssueCard(scanIssueOf(blocked), onDismiss = breach::dismissIssue)
                 Spacer(Modifier.height(8.dp))
             }
-            SegmentedTabs(listOf("Демоны", "Шарды"), selected = segment, onSelect = { segment = it })
+            SegmentedTabs(listOf("Демоны", "Шарды"), selected = segment, onSelect = deck::selectSegment)
             Spacer(Modifier.height(6.dp))
 
             Box(Modifier.weight(1f)) {
-                if (segment == 0) {
+                if (segment == CyberdeckViewModel.SEGMENT_DAEMONS) {
                     DemonsSegment(daemons = daemons, onTransfer = { startTransfer(shard = null, daemon = it) })
                 } else {
                     ShardsSegment(shards = shards, onOpen = { openedShard = it })

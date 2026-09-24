@@ -1,8 +1,11 @@
 package com.megablok10.app.testing
 
 import android.content.SharedPreferences
+import com.megablok10.app.PlayerNotices
 import com.megablok10.app.breach.Daemon
 import com.megablok10.app.chat.DirectMessenger
+import com.megablok10.app.data.CharacterDao
+import com.megablok10.app.data.CharacterEntity
 import com.megablok10.app.data.ItemTransferEntity
 import com.megablok10.app.data.TransactionEntity
 import com.megablok10.app.data.TransactionStatus
@@ -23,7 +26,6 @@ import com.megablok10.kit.sync.ChangeRecorder
 import com.megablok10.kit.sync.RecordSigner
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.map
 import java.security.KeyPair
 
 /** Игрок для тестов: настоящая пара ключей, подписи проверяются теми же функциями, что в приложении. */
@@ -100,14 +102,21 @@ class MemoryJournal(private val status: MutableMap<String, String>, private val 
  * Денежный журнал в памяти: баланс, статусы и настоящие подписи (подписывает [me]). Доставка и чеки — настоящий kit Handover,
  * поэтому тесты сценариев проверяют реальные переходы статусов, а не заглушки.
  */
-class FakePaymentLedger(private val me: TestPlayer, var balance: Long = 100) : PaymentLedger {
+class FakePaymentLedger(private val me: TestPlayer, balance: Long = 100) : PaymentLedger {
+    private val balanceFlow = MutableStateFlow(balance)
+    var balance: Long
+        get() = balanceFlow.value
+        set(value) { balanceFlow.value = value }
+
+    /** Строки журнала для экранов — тест задаёт их сам. */
+    val entries = MutableStateFlow<List<TransactionEntity>>(emptyList())
     val status = mutableMapOf<String, String>()
     val recipients = mutableMapOf<String, String>()
     val credited = mutableListOf<Mb10Qr.Transaction>()
     private val handover = Handover(MemoryJournal(status) { recipients[it] })
 
-    override fun observeAll(): Flow<List<TransactionEntity>> = MutableStateFlow(emptyList())
-    override fun observeBalance(): Flow<Long> = MutableStateFlow(balance).map { it }
+    override fun observeAll(): Flow<List<TransactionEntity>> = entries
+    override fun observeBalance(): Flow<Long> = balanceFlow
 
     override fun signedTransaction(me: Identity, toPubKeyB64: String, amount: Long, memo: String, id: String): Mb10Qr.Transaction {
         val payload = com.megablok10.app.qr.Mb10QrCodec.transactionSignaturePayload(id, me.publicKeyB64, toPubKeyB64, amount, memo)
@@ -149,7 +158,8 @@ class FakeItemLedger(private val me: TestPlayer, vararg owned: String) : ItemLed
     private var next = 0
     private val handover = Handover(MemoryJournal(status) { recipients[it] })
 
-    override fun observeAll(): Flow<List<ItemTransferEntity>> = MutableStateFlow(emptyList())
+    val entries = MutableStateFlow<List<ItemTransferEntity>>(emptyList())
+    override fun observeAll(): Flow<List<ItemTransferEntity>> = entries
 
     override suspend fun sendShard(me: Identity, shardId: String, toPubKeyB64: String) = take(me, ItemKind.SHARD, shardId, toPubKeyB64)
 
@@ -217,4 +227,19 @@ class MemoryPrefs : SharedPreferences {
         }
         override fun apply() { commit() }
     }
+}
+
+/** Таблица контактов в памяти (порядок — по позывному, как ORDER BY callsign). */
+class FakeCharacterDao(vararg contacts: CharacterEntity) : CharacterDao {
+    val rows = MutableStateFlow(contacts.sortedBy { it.callsign })
+    override fun observeAll(): Flow<List<CharacterEntity>> = rows
+    override suspend fun upsert(character: CharacterEntity) {
+        rows.value = (rows.value.filter { it.publicKeyB64 != character.publicKeyB64 } + character).sortedBy { it.callsign }
+    }
+}
+
+/** Уведомления игроку в памяти. */
+class RecordingNotices : PlayerNotices {
+    val shown = mutableListOf<String>()
+    override fun show(text: String) { shown += text }
 }

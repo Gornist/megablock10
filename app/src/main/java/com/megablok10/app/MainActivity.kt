@@ -27,11 +27,9 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,14 +38,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.megablok10.app.call.CallPhase
 import com.megablok10.app.di.appGraph
+import com.megablok10.app.di.callsViewModel
+import com.megablok10.app.di.sessionViewModel
 import com.megablok10.app.qr.ItemKind
 import com.megablok10.app.qr.Mb10Qr
-import com.megablok10.app.qr.ProvisionResult
 import com.megablok10.app.qr.rememberMb10QrScanner
 import com.megablok10.app.ui.theme.AppSnack
 import com.megablok10.app.ui.LocalAppGraph
+import com.megablok10.app.ui.appViewModel
 import com.megablok10.kit.mesh.PeerInfo
 import com.megablok10.app.ui.nav.AppTab
 import com.megablok10.app.ui.nav.MainScaffold
@@ -67,7 +68,6 @@ import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.Jura
 import com.megablok10.app.ui.theme.MB10Colors
-import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -99,9 +99,12 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppRoot() {
     val context = LocalContext.current
-    val graph = LocalAppGraph.current
+    // Персонаж, выдача, сброс и сетевая сессия — SessionViewModel; звонки (плашка поверх любого экрана) — CallsViewModel.
+    val session = appViewModel { sessionViewModel() }
+    val calls = appViewModel { callsViewModel() }
     // Личность реактивна (IdentityStore.state): создание, сброс и правки мастера (позывной, фракция, RAM) видны сразу.
-    val identity by graph.identity.state.collectAsState()
+    val identity by session.identity.collectAsStateWithLifecycle()
+    val onlinePeers by session.peers.collectAsStateWithLifecycle()
     var tab by remember { mutableStateOf(AppTab.Chat) }
     var chatContact by remember { mutableStateOf<String?>(null) }
     var showProfile by remember { mutableStateOf(false) }
@@ -111,16 +114,11 @@ fun AppRoot() {
     var cyberdeckPeerPreset by remember { mutableStateOf<String?>(null) }
     var cyberdeckSegmentPreset by remember { mutableStateOf<Int?>(null) }
     var shardDetailOpen by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
     BackHandler(enabled = showProfile) { showProfile = false }
 
-    // Фоновая отправка ChangeRecord мастерскому коллектору — не зависит от
-    // наличия личности (очередь может копиться и отправляться, даже пока
-    // экран настройки ещё не пройден, хотя на практике enqueue() без
-    // личности просто ничего не пишет).
-    LaunchedEffect(Unit) {
-        graph.announcements.load()
-        graph.startCollectorSync()
+    // После сброса сессии (личность исчезла) приложение начинается с чистого листа: вкладка «Чат», профиль закрыт.
+    LaunchedEffect(identity == null) {
+        if (identity == null) { tab = AppTab.Chat; showProfile = false }
     }
 
     // WebRTC не откроет микрофон без RECORD_AUDIO — звонок (свой исходящий
@@ -161,26 +159,9 @@ fun AppRoot() {
     }
 
     val currentIdentity = identity
-    if (currentIdentity != null) {
-        LaunchedEffect(currentIdentity.publicKeyB64) {
-            graph.mesh.start(currentIdentity)
-        }
-    }
-
     if (currentIdentity == null) {
-        SetupScreen(
-            onProvision = { qr ->
-                scope.launch {
-                    when (val r = graph.provisioning.apply(qr)) {
-                        is ProvisionResult.Applied -> Unit // личность появилась в IdentityStore.state — экран сменится сам
-                        ProvisionResult.AlreadyHasIdentity -> AppSnack.show("Персонаж уже создан. Повторно — только после сброса сессии в Настройках")
-                        ProvisionResult.AlreadyUsed -> AppSnack.show("Этот код уже использован. Попросите мастера выдать новый")
-                        is ProvisionResult.Invalid -> AppSnack.show(r.message)
-                    }
-                }
-            },
-            onCreated = { callsign, faction -> scope.launch { graph.createCharacter(callsign, faction) } }
-        )
+        // Сетевая сессия поднимается сама, как только персонаж появился (SessionViewModel).
+        SetupScreen(onProvision = session::provision, onCreated = session::createCharacter)
     } else if (showProfile) {
         ProfileScreen(
             identity = currentIdentity,
@@ -189,26 +170,15 @@ fun AppRoot() {
                 tab = AppTab.Chat
                 showProfile = false
             },
-            onCallContact = { peer: PeerInfo ->
-                withMicPermission { graph.calls.startOutgoingCall(currentIdentity, peer) }
-            },
-            onResetIdentity = {
-                // Зеркало пары enqueue при CHARACTER_CREATED (см. SetupScreen выше) —
-                // иначе сброс персонажа молча выпадает из истории дашборда: до сих пор
-                // мастер видел там появление позывного/фракции, но не их исчезновение.
-                // Enqueue обязан пройти ДО стирания личности — подписывать запись
-                // уже будет нечем, ключ сотрётся вместе с остальными SharedPreferences.
-                scope.launch {
-                    // Полный сброс сессии на устройстве (записи о сбросе → стирание игровых данных → ключи): см. identity/SessionReset.
-                    graph.sessionReset.perform(currentIdentity)
-                    tab = AppTab.Chat
-                    showProfile = false
-                }
-            },
+            onCallContact = { peer: PeerInfo -> withMicPermission { calls.start(peer) } },
+            // Полный сброс сессии на устройстве (записи о сбросе мастеру → стирание игровых данных → ключи): identity/SessionReset.
+            // Записи о сбросе — зеркало CHARACTER_CREATED: иначе мастер видел бы появление позывного и фракции, но не их исчезновение.
+            onResetIdentity = session::resetSession,
             onBack = { showProfile = false }
         )
     } else {
-        val callState by graph.calls.state.collectAsState()
+        val callState by calls.call.collectAsStateWithLifecycle()
+        val callContacts by calls.contacts.collectAsStateWithLifecycle()
         // Только активный таб решает, вложен ли он сейчас — chrome прячется по его флагу,
         // не по обоим сразу (состояние неактивного таба не влияет, пока на него не переключились).
         val hideChrome = when (tab) {
@@ -219,6 +189,7 @@ fun AppRoot() {
         Box(Modifier.fillMaxSize()) {
             MainScaffold(
                 identity = currentIdentity,
+                onlineNodes = onlinePeers.size,
                 selectedTab = tab,
                 onSelectTab = { tab = it },
                 onOpenProfile = { showProfile = true },
@@ -237,9 +208,7 @@ fun AppRoot() {
                             tab = AppTab.Hack
                         }
                     )
-                    AppTab.Calls -> CallsScreen(onCallPeer = { peer: PeerInfo ->
-                        withMicPermission { graph.calls.startOutgoingCall(currentIdentity, peer) }
-                    })
+                    AppTab.Calls -> CallsScreen(onCallPeer = { peer: PeerInfo -> withMicPermission { calls.start(peer) } })
                     AppTab.Hack -> CyberdeckScreen(
                         identity = currentIdentity,
                         onNestedChange = { shardDetailOpen = it },
@@ -247,7 +216,7 @@ fun AppRoot() {
                         initialSegment = cyberdeckSegmentPreset,
                         onPresetConsumed = { cyberdeckPeerPreset = null; cyberdeckSegmentPreset = null }
                     )
-                    AppTab.Wallet -> WalletScreen(currentIdentity, presetContactKey = walletPreset, onPresetConsumed = { walletPreset = null })
+                    AppTab.Wallet -> WalletScreen(presetContactKey = walletPreset, onPresetConsumed = { walletPreset = null })
                 }
             }
             AnnouncementDialogHost()
@@ -255,8 +224,9 @@ fun AppRoot() {
             if (callState.phase != CallPhase.IDLE) {
                 CallOverlay(
                     state = callState,
-                    onAccept = { withMicPermission { graph.calls.accept(currentIdentity) } },
-                    onEnd = { graph.calls.endCall(currentIdentity) }
+                    peerFaction = callContacts.contact(callState.peerPubKeyB64)?.faction,
+                    onAccept = { withMicPermission { calls.accept() } },
+                    onEnd = calls::end
                 )
             }
         }

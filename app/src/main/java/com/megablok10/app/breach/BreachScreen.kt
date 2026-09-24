@@ -58,7 +58,6 @@ import com.megablok10.app.identity.Identity
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.sound.BreachCue
 import com.megablok10.app.sound.BreachSfx
-import com.megablok10.app.ui.LocalAppGraph
 import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.ButtonVariant
 import com.megablok10.app.ui.theme.ChamferedSurface
@@ -83,10 +82,15 @@ import kotlin.random.Random
  * композабл только показывает сессию взлома, когда контейнер уже выбран.
  */
 @Composable
-internal fun BreachContainerFlow(container: Container, daemons: List<Daemon>, identity: Identity, onRescan: () -> Unit, onImmersive: (Boolean) -> Unit = {}) {
-    val graph = LocalAppGraph.current
-    val scope = rememberCoroutineScope()
-    var chosen by remember(container.id) { mutableStateOf<Set<String>>(emptySet()) }
+internal fun BreachContainerFlow(
+    container: Container,
+    daemons: List<Daemon>,
+    identity: Identity,
+    onRescan: () -> Unit,
+    onImmersive: (Boolean) -> Unit = {},
+    /** Итог взлома — награда и прочее (BreachViewModel → сценарий FinishBreach); onDone получает награду для итогового экрана. */
+    finish: (result: BreachResult, seed: Long, onDone: (RewardOutcome) -> Unit) -> Unit,
+) {    var chosen by remember(container.id) { mutableStateOf<Set<String>>(emptySet()) }
     var sessionSeed by remember(container.id) { mutableStateOf<Long?>(null) }
     var rewardOutcome by remember(container.id) { mutableStateOf<RewardOutcome?>(null) }
     var secAlertStatus by remember(container.id) { mutableStateOf<String?>(null) }
@@ -122,8 +126,7 @@ internal fun BreachContainerFlow(container: Container, daemons: List<Daemon>, id
                 secAlertStatus = secAlertStatus,
                 onRunningChange = { running = it },
                 onResult = { result ->
-                    scope.launch {
-                        val outcome = graph.finishBreach(identity, container, result, seed)
+                    finish(result, seed) { outcome ->
                         rewardOutcome = outcome
                         secAlertStatus = secAlertStatusText(container, identity, result.outcome, outcome.matchedEffects)
                     }

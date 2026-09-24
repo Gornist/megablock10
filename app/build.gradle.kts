@@ -94,6 +94,11 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui-tooling-preview")
+    // Экраны — через ViewModel (переживают поворот и смену вкладки): viewModel() и collectAsStateWithLifecycle в Compose.
+    // 2.6.x — та же линия lifecycle, что уже приходит с activity-compose 1.9 и Compose BOM 2024.06.
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.2")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.2")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.2")
 
     // QR: генерация своего кода и сканирование чужого
     implementation("com.google.zxing:core:3.5.3")

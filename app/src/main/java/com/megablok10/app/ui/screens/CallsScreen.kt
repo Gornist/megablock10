@@ -15,11 +15,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -29,7 +29,9 @@ import com.megablok10.app.data.CallDirection
 import com.megablok10.app.data.CallLogEntity
 import com.megablok10.app.data.CallOutcome
 import com.megablok10.kit.mesh.PeerInfo
-import com.megablok10.app.ui.LocalAppGraph
+import com.megablok10.app.di.callsViewModel
+import com.megablok10.app.identity.ContactsView
+import com.megablok10.app.ui.appViewModel
 import com.megablok10.app.ui.theme.AppTextField
 import com.megablok10.app.ui.theme.CompactActionButton
 import com.megablok10.app.ui.theme.DottedDivider
@@ -50,13 +52,13 @@ import java.util.Locale
  */
 @Composable
 fun CallsScreen(onCallPeer: (PeerInfo) -> Unit) {
-    val graph = LocalAppGraph.current
-    val callLog by remember { graph.db.callLogDao().observeAll() }.collectAsState(initial = emptyList())
-    val onlinePeers by graph.presence.peers.collectAsState()
+    val calls = appViewModel { callsViewModel() }
+    val callLog by calls.log.collectAsStateWithLifecycle()
+    val directory by calls.contacts.collectAsStateWithLifecycle()
     var showPicker by remember { mutableStateOf(false) }
 
     fun tryCall(peerPubKeyB64: String, callsign: String) {
-        val peer = onlinePeers.find { it.pubKeyB64 == peerPubKeyB64 }
+        val peer = directory.peer(peerPubKeyB64)
         if (peer == null) {
             AppSnack.show("$callsign сейчас не в сети")
         } else {
@@ -66,6 +68,7 @@ fun CallsScreen(onCallPeer: (PeerInfo) -> Unit) {
 
     if (showPicker) {
         NewCallPicker(
+            directory = directory,
             onPick = { key, callsign -> showPicker = false; tryCall(key, callsign) },
             onBack = { showPicker = false }
         )
@@ -134,11 +137,9 @@ private fun formatDuration(millis: Long): String {
 
 /** Список контактов для старта нового звонка (кнопка "+") — сам звонок пойдёт, только если контакт сейчас в сети. */
 @Composable
-private fun NewCallPicker(onPick: (String, String) -> Unit, onBack: () -> Unit) {
-    val graph = LocalAppGraph.current
-    val contacts by remember { graph.contacts.observeAll() }.collectAsState(initial = emptyList())
-    val onlinePeers by graph.presence.peers.collectAsState()
-    val onlineKeys = remember(onlinePeers) { onlinePeers.map { it.pubKeyB64 }.toSet() }
+private fun NewCallPicker(directory: ContactsView, onPick: (String, String) -> Unit, onBack: () -> Unit) {
+    val contacts = directory.contacts
+    val onlineKeys = directory.onlineKeys
     var query by remember { mutableStateOf("") }
     val filtered = remember(contacts, query) {
         if (query.isBlank()) contacts

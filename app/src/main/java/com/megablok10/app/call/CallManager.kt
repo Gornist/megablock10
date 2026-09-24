@@ -14,6 +14,7 @@ import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -52,13 +53,16 @@ class CallManager(
     private val peers: () -> List<PeerInfo>,
     private val callLog: CallLogDao,
     private val lines: LineSocketClient,
-) {
+) : CallControls {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _state = MutableStateFlow(CallUiState())
-    val state: StateFlow<CallUiState> = _state.asStateFlow()
+    override val state: StateFlow<CallUiState> = _state.asStateFlow()
 
-    fun startOutgoingCall(identity: Identity, peer: PeerInfo) {
+    /** Журнал звонков (call_log): одна строка на каждый закончившийся звонок, новые сверху. */
+    override fun observeLog(): Flow<List<CallLogEntity>> = callLog.observeAll()
+
+    override fun startOutgoingCall(identity: Identity, peer: PeerInfo) {
         if (_state.value.phase != CallPhase.IDLE) return
         val callId = UUID.randomUUID().toString()
         Mb10Log.event(TAG, "call.outgoing_start", "call" to callId.take(8), "peer" to Mb10Log.short(peer.pubKeyB64), "addr" to "${peer.host}:${peer.port}")
@@ -143,7 +147,7 @@ class CallManager(
         endCallLocal(outcome)
     }
 
-    fun accept(identity: Identity) {
+    override fun accept(identity: Identity) {
         val s = _state.value
         if (s.phase != CallPhase.INCOMING_RINGING) return
         Mb10Log.event(TAG, "call.accept", "call" to s.callId.take(8))
@@ -155,7 +159,7 @@ class CallManager(
     }
 
     /** И отклонение входящего, и отмена исходящего, и завершение уже идущего звонка — везде со стороны пира это просто "разговор закончен". */
-    fun endCall(identity: Identity) {
+    override fun endCall(identity: Identity) {
         val s = _state.value
         if (s.phase == CallPhase.IDLE) return
         Mb10Log.event(TAG, "call.end_by_user", "call" to s.callId.take(8), "phase" to s.phase.name)
