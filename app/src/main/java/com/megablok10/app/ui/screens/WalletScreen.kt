@@ -30,7 +30,6 @@ import com.megablok10.app.data.TransactionEntity
 import com.megablok10.app.data.TransactionStatus
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.qr.Mb10Qr
-import com.megablok10.app.qr.Mb10QrCodec
 import com.megablok10.app.ui.LocalAppGraph
 import com.megablok10.app.ui.theme.AmountField
 import com.megablok10.app.ui.theme.AppButton
@@ -107,15 +106,7 @@ fun WalletScreen(identity: Identity, presetContactKey: String? = null, onPresetC
                         balance = balance,
                         initialContact = contacts.find { it.publicKeyB64 == presetKey },
                         onSend = { contact, id, amount, memo ->
-                            val tx = graph.wallet.signedTransaction(identity, contact.publicKeyB64, amount, memo, id)
-                            val peer = onlinePeers.find { it.pubKeyB64 == contact.publicKeyB64 }
-                            scope.launch {
-                                if (graph.wallet.recordOutgoingPending(tx, contact.publicKeyB64)) {
-                                    graph.wallet.deliverOutgoing(tx.id, willSend = peer != null) {
-                                        graph.chat.sendDirectOutcome(identity, contact.publicKeyB64, peer, Mb10QrCodec.encodeTransaction(tx))
-                                    }
-                                }
-                            }
+                            scope.launch { graph.sendPayment(identity, contact.publicKeyB64, amount, memo, id) }
                         },
                         onCancel = { id -> scope.launch { graph.wallet.cancelOutgoing(id) } }
                     )

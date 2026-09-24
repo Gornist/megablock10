@@ -23,7 +23,9 @@ class ChatStore(
     private val outbox: OutboxStore,
     private val lines: LineSocketClient,
     private val peers: () -> List<PeerInfo>,
-) {
+) : DirectMessenger {
+    override fun onlinePeer(pubKeyB64: String): PeerInfo? = peers().find { it.pubKeyB64 == pubKeyB64 }
+
     fun observeFaction(faction: String): Flow<List<ChatMessageEntity>> = dao.observeFaction(faction)
 
     fun observeDirect(myPubKey: String, peerPubKey: String): Flow<List<ChatMessageEntity>> = dao.observeDirect(myPubKey, peerPubKey)
@@ -52,11 +54,11 @@ class ChatStore(
      * (null, если сейчас не в сети): без него есть кому, но некуда стучаться,
      * сообщение всё равно останется в треде локально.
      */
-    suspend fun sendDirect(identity: Identity, peerPubKeyB64: String, peer: PeerInfo?, body: String): Boolean =
+    override suspend fun sendDirect(identity: Identity, peerPubKeyB64: String, peer: PeerInfo?, body: String): Boolean =
         sendDirectOutcome(identity, peerPubKeyB64, peer, body) == SendOutcome.DELIVERED
 
     /** Как [sendDirect], но с различением «точно не ушло» и «могло уйти» — нужно деньгам и предметам (kit handover). */
-    suspend fun sendDirectOutcome(identity: Identity, peerPubKeyB64: String, peer: PeerInfo?, body: String): SendOutcome {
+    override suspend fun sendDirectOutcome(identity: Identity, peerPubKeyB64: String, peer: PeerInfo?, body: String): SendOutcome {
         val timestamp = System.currentTimeMillis()
         val wire = ChatWireMessage(ChatMessageType.DM, identity.publicKeyB64, identity.callsign, identity.faction, peerPubKeyB64, timestamp, body)
         persist(wire)

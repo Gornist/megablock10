@@ -43,3 +43,15 @@ object ChangeReason {
     const val MASTER_OVERRIDE = "MASTER_OVERRIDE"
     const val CHARACTER_RESET = "CHARACTER_RESET"
 }
+
+/**
+ * Значение счётчика для дашборда (counters.*) — плоский JSON из имён: `{"tier":"HARD","outcome":"success"}`, байт в байт как раньше
+ * собирал org.json. Собирается без org.json, чтобы сценарии проверялись обычными JVM-тестами; ключи и значения — только имена
+ * (enum, коды причин), экранировать в них нечего — иное считается ошибкой программы.
+ */
+fun counterValue(vararg fields: Pair<String, String>): String {
+    require(fields.all { (key, value) -> key.isPlainName() && value.isPlainName() }) { "counterValue: только имена без кавычек и пробелов" }
+    return fields.joinToString(",", "{", "}") { (key, value) -> "\"$key\":\"$value\"" }
+}
+
+private fun String.isPlainName(): Boolean = isNotEmpty() && all { it.isLetterOrDigit() || it == '_' }

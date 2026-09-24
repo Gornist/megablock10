@@ -11,10 +11,9 @@ import com.megablok10.app.breach.Tier
 import com.megablok10.app.chat.ChatMessageType
 import com.megablok10.app.chat.ChatProtocol
 import com.megablok10.app.chat.ChatWireMessage
-import com.megablok10.app.collector.ChangeField
-import com.megablok10.app.collector.ChangeReason
 import com.megablok10.app.di.AppGraph
 import com.megablok10.app.di.appGraph
+import com.megablok10.app.items.OutgoingItem
 import com.megablok10.kit.mesh.PeerInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -60,7 +59,7 @@ class DebugQrReceiver : BroadcastReceiver() {
     }
 
     private suspend fun applySet(graph: AppGraph, intent: Intent) {
-        fun peerOf(key: String) = graph.presence.peers.value.find { it.pubKeyB64 == key }
+        fun peerOf(key: String) = graph.chat.onlinePeer(key)
         intent.getStringExtra("collector")?.let { graph.collectorSettings.setBaseUrl(it) }
         // Сброс сессии тем же путём, что кнопка в Настройках («Опасная зона», identity/SessionReset). Корень приложения видит сброс
         // сразу (личность реактивна), но стенд после сброса всё равно перезапускает приложение (restart_app).
@@ -69,15 +68,10 @@ class DebugQrReceiver : BroadcastReceiver() {
         }
         // Код игры (заголовок X-Game-Secret): пустая строка — сбросить.
         intent.getStringExtra("secret")?.let { graph.collectorSettings.setGameSecret(it.ifBlank { null }) }
-        // Создание персонажа без экрана регистрации: "Позывной:Фракция" — как SetupScreen (см. MainActivity).
+        // Создание персонажа без экрана регистрации: "Позывной:Фракция" — тот же сценарий, что ручное создание в SetupScreen.
         intent.getStringExtra("create")?.let { spec ->
             val (callsign, faction) = spec.split(":", limit = 2).let { it[0] to it.getOrElse(1) { "" } }
-            val isNew = !graph.identity.hasIdentity()
-            val created = graph.identity.getOrCreate(callsign, faction)
-            if (isNew) {
-                graph.changes.record(ChangeField.CALLSIGN, null, created.callsign, ChangeReason.CHARACTER_CREATED)
-                graph.changes.record(ChangeField.FACTION, null, created.faction, ChangeReason.CHARACTER_CREATED)
-            }
+            graph.createCharacter(callsign, faction)
         }
         intent.getStringExtra("cs")?.let { graph.identity.applyCallsignOverride(it) }
         intent.getStringExtra("fac")?.let { graph.identity.applyFactionOverride(it) }
@@ -101,12 +95,8 @@ class DebugQrReceiver : BroadcastReceiver() {
             val me = graph.identity.current ?: return@let
             val amount = amountStr.toLong()
             suspend fun payOnce() {
-                val tx = graph.wallet.signedTransaction(me, to, amount, "debug", id = "dbg-${System.nanoTime()}")
-                val peer = if (mode == "offline") null else peerOf(to)
-                if (graph.wallet.recordOutgoingPending(tx, to)) {
-                    graph.wallet.deliverOutgoing(tx.id, willSend = peer != null) {
-                        graph.chat.sendDirectOutcome(me, to, peer, Mb10QrCodec.encodeTransaction(tx))
-                    }
+                val tx = graph.sendPayment(me, to, amount, "debug", id = "dbg-${System.nanoTime()}", offline = mode == "offline")
+                if (tx != null) {
                     Log.i(TAG, "pay id=${tx.id}")
                     Log.i(TAG, "paycard=" + Mb10QrCodec.encodeTransaction(tx))   // для recv на устройстве получателя (scripts/e2e/seed.sh)
                 } else Log.i(TAG, "pay rejected")
@@ -126,13 +116,9 @@ class DebugQrReceiver : BroadcastReceiver() {
         intent.getStringExtra("recv")?.let { raw ->
             val me = graph.identity.current ?: return@let
             val tx = Mb10QrCodec.decode(raw) as? Mb10Qr.Transaction
-            val credited = tx != null && graph.wallet.recordIncoming(me.publicKeyB64, tx)
+            // тот же сценарий, что «Принять» в чате: зачислить и ответить чеком, иначе платёж отправителя останется «доставлен»
+            val credited = tx != null && graph.acceptPayment(me, tx)
             Log.i(TAG, "recv -> $credited")
-            // как «Принять» в чате: чек отправителю, иначе его платёж останется «доставлен» и не сведётся
-            if (credited && tx != null) {
-                val receipt = graph.wallet.buildReceipt(me, tx.id)
-                graph.chat.sendDirect(me, tx.fromPubKeyB64, peerOf(tx.fromPubKeyB64), Mb10QrCodec.encodeReceipt(receipt))
-            }
         }
         // Сообщение от этого устройства: "получатель|текст" (DM) или "faction|текст" (фракционный чат). Для демо-записей.
         intent.getStringExtra("say")?.let { spec ->
@@ -159,15 +145,12 @@ class DebugQrReceiver : BroadcastReceiver() {
             val rest = p[2].split(":")
             val to = rest[0]
             val offline = rest.getOrNull(1) == "offline"
-            val card = when (p[0]) {
-                "shard" -> graph.items.sendShard(me, p[1], to)
-                else -> graph.daemons.get(p[1])?.let { graph.items.sendDaemon(me, it, to) }
+            val item = when (p[0]) {
+                "shard" -> OutgoingItem.Shard(p[1])
+                else -> graph.daemons.get(p[1])?.let { OutgoingItem.Daemon(it) }
             }
-            if (card == null) Log.i(TAG, "give rejected") else {
-                if (offline) graph.items.deliverOutgoing(card.id, willSend = false) { com.megablok10.kit.net.SendOutcome.NOT_REACHED }
-                else graph.items.deliver(me, card, to)
-                Log.i(TAG, "give id=${card.id}")
-            }
+            val card = item?.let { graph.sendItem(me, it, to, offline) }
+            if (card == null) Log.i(TAG, "give rejected") else Log.i(TAG, "give id=${card.id}")
         }
         intent.getStringExtra("cancelitem")?.let { Log.i(TAG, "cancelitem $it -> ${graph.items.cancelOutgoing(it)}") }
         intent.getStringExtra("cancel")?.let { Log.i(TAG, "cancel ${it} -> ${graph.wallet.cancelOutgoing(it)}") }

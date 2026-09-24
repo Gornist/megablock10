@@ -42,13 +42,11 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.megablok10.app.call.CallPhase
 import com.megablok10.app.di.appGraph
-import com.megablok10.app.collector.ChangeField
 import com.megablok10.app.qr.ItemKind
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.ProvisionResult
 import com.megablok10.app.qr.rememberMb10QrScanner
 import com.megablok10.app.ui.theme.AppSnack
-import com.megablok10.app.collector.ChangeReason
 import com.megablok10.app.ui.LocalAppGraph
 import com.megablok10.kit.mesh.PeerInfo
 import com.megablok10.app.ui.nav.AppTab
@@ -181,16 +179,8 @@ fun AppRoot() {
                     }
                 }
             },
-            onCreated = { callsign, faction ->
-            val isNewIdentity = !graph.identity.hasIdentity()
-            val created = graph.identity.getOrCreate(callsign, faction)
-            if (isNewIdentity) {
-                scope.launch {
-                    graph.changes.record(ChangeField.CALLSIGN, null, created.callsign, ChangeReason.CHARACTER_CREATED)
-                    graph.changes.record(ChangeField.FACTION, null, created.faction, ChangeReason.CHARACTER_CREATED)
-                }
-            }
-        })
+            onCreated = { callsign, faction -> scope.launch { graph.createCharacter(callsign, faction) } }
+        )
     } else if (showProfile) {
         ProfileScreen(
             identity = currentIdentity,

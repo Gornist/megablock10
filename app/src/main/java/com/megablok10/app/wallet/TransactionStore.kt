@@ -18,7 +18,6 @@ import com.megablok10.kit.handover.HandoverRules
 import com.megablok10.kit.handover.OutgoingJournal
 import com.megablok10.kit.net.SendOutcome
 import com.megablok10.kit.sync.ChangeRecorder
-import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -36,16 +35,16 @@ class TransactionStore(
     private val db: Mb10Database,
     private val identity: IdentityStore,
     private val changes: ChangeRecorder,
-) {
+) : PaymentLedger {
     private val dao = db.transactionDao()
     private val handover = Handover(TransactionJournal(dao), Mb10Log, tag = TAG, eventPrefix = "tx")
 
-    fun observeAll(): Flow<List<TransactionEntity>> = dao.observeAll()
+    override fun observeAll(): Flow<List<TransactionEntity>> = dao.observeAll()
 
-    fun observeBalance(): Flow<Long> = observeAll().map { list -> list.sumOf { it.amount } }
+    override fun observeBalance(): Flow<Long> = observeAll().map { list -> list.sumOf { it.amount } }
 
     /** Подписанная карточка перевода от [me] игроку [toPubKeyB64] — то, что уйдёт ему сообщением в чат (формат TX v2, адресат в подписи). */
-    fun signedTransaction(me: Identity, toPubKeyB64: String, amount: Long, memo: String, id: String = UUID.randomUUID().toString()): Mb10Qr.Transaction {
+    override fun signedTransaction(me: Identity, toPubKeyB64: String, amount: Long, memo: String, id: String): Mb10Qr.Transaction {
         val payload = Mb10QrCodec.transactionSignaturePayload(id, me.publicKeyB64, toPubKeyB64, amount, memo)
         return Mb10Qr.Transaction(id, me.publicKeyB64, toPubKeyB64, amount, memo, identity.sign(payload))
     }
@@ -59,7 +58,7 @@ class TransactionStore(
      * получатель выбирается из контактов перед отправкой, а не определяется
      * тем, кто отсканировал QR, как раньше.
      */
-    suspend fun recordOutgoingPending(tx: Mb10Qr.Transaction, toPubKeyB64: String): Boolean {
+    override suspend fun recordOutgoingPending(tx: Mb10Qr.Transaction, toPubKeyB64: String): Boolean {
         if (tx.amount <= 0) { Mb10Log.warnEvent(TAG, "tx.out_rejected", "id" to tx.id, "reason" to "сумма<=0"); return false }
         // Проверка баланса и вставка — одной транзакцией: иначе два быстрых перевода (двойной тап «Отправить») оба видели бы прежний
         // баланс, проходили проверку и уводили отправителя в минус, а получателям зачислялись бы полные суммы — деньги из воздуха.
@@ -92,7 +91,7 @@ class TransactionStore(
      * уже после соединения ([SendOutcome.UNKNOWN]), карточка могла дойти: платёж остаётся DELIVERED и отменить его нельзя —
      * лучше заморозить сумму до чека или вмешательства мастера, чем оставить её у обоих.
      */
-    suspend fun deliverOutgoing(id: String, willSend: Boolean, send: suspend () -> SendOutcome) =
+    override suspend fun deliverOutgoing(id: String, willSend: Boolean, send: suspend () -> SendOutcome) =
         handover.deliver(id, willSend, send)
 
     /**
@@ -106,7 +105,7 @@ class TransactionStore(
      * TRANSFER_CANCELLED и тем же txId в sourceRef: сервер по нему помечает
      * перевод "отменён отправителем" вместо висящего одностороннего.
      */
-    suspend fun cancelOutgoing(id: String): Boolean {
+    override suspend fun cancelOutgoing(id: String): Boolean {
         val amount = dao.amountOf(id) ?: run { Mb10Log.warnEvent(TAG, "tx.cancel", "id" to id, "result" to "нет такой записи"); return false }
         if (dao.cancelPending(id) == 0) { Mb10Log.warnEvent(TAG, "tx.cancel", "id" to id, "result" to "отказ: уже доставлен/подтверждён"); return false }
         Mb10Log.event(TAG, "tx.cancel", "id" to id, "result" to "отменён", "refund" to -amount)
@@ -120,11 +119,11 @@ class TransactionStore(
      * уже нельзя. Именно эта проверка и не даёт "нажать отменить и оставить
      * деньги себе" после того, как получатель их реально получил.
      */
-    suspend fun verifyAndConfirmReceipt(pendingTxId: String, receipt: Mb10Qr.Receipt): Boolean =
+    override suspend fun verifyAndConfirmReceipt(pendingTxId: String, receipt: Mb10Qr.Receipt): Boolean =
         handover.confirmByReceipt(pendingTxId, receipt.id, receipt.receiverPubKeyB64, receipt.signatureB64)
 
     /** Чек, который получатель [me] показывает в ответ отправителю — доказательство, что деньги (или предмет) реально получены. */
-    fun buildReceipt(me: Identity, transactionId: String): Mb10Qr.Receipt {
+    override fun buildReceipt(me: Identity, transactionId: String): Mb10Qr.Receipt {
         val payload = HandoverRules.receiptSignaturePayload(transactionId, me.publicKeyB64)
         return Mb10Qr.Receipt(id = transactionId, receiverPubKeyB64 = me.publicKeyB64, signatureB64 = identity.sign(payload))
     }
@@ -136,7 +135,7 @@ class TransactionStore(
      * сумма некорректна, это своя же транзакция или она уже была зачислена
      * раньше (защита от повторного скана одного QR).
      */
-    suspend fun recordIncoming(myPublicKeyB64: String, tx: Mb10Qr.Transaction): Boolean {
+    override suspend fun recordIncoming(myPublicKeyB64: String, tx: Mb10Qr.Transaction): Boolean {
         fun reject(why: String): Boolean { Mb10Log.warnEvent(TAG, "tx.in_rejected", "id" to tx.id, "from" to Mb10Log.short(tx.fromPubKeyB64), "amount" to tx.amount, "why" to why); return false }
         if (tx.amount <= 0) return reject("сумма<=0")
         val payload = Mb10QrCodec.transactionSignaturePayload(tx.id, tx.fromPubKeyB64, tx.toPubKeyB64, tx.amount, tx.memo)

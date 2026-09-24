@@ -4,7 +4,7 @@ import android.content.Context
 import com.megablok10.app.breach.SlotClaimStore
 import com.megablok10.app.call.CallManager
 import com.megablok10.app.identity.Identity
-import com.megablok10.app.items.ItemTransferStore
+import com.megablok10.app.items.ItemLedger
 import com.megablok10.app.log.Mb10Log
 import com.megablok10.app.presence.MeshForegroundService
 import com.megablok10.app.presence.PresenceService
@@ -12,7 +12,7 @@ import com.megablok10.app.presence.WifiBinder
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
 import com.megablok10.app.sound.SoundPlayer
-import com.megablok10.app.wallet.TransactionStore
+import com.megablok10.app.wallet.PaymentLedger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -118,13 +118,19 @@ class MeshSession(
  * Чек получателя фиксирует перевод или передачу предмета при ПРИЁМЕ, а не пока у отправителя открыт тред: раньше подтверждение
  * делал только экран треда, и если отправитель сидел на вкладке "Финансы", платёж навсегда оставался "ждёт принятия".
  */
-class ReceiptConfirmer(private val wallet: TransactionStore, private val items: ItemTransferStore) {
+class ReceiptConfirmer(private val payments: PaymentLedger, private val items: ItemLedger) {
     suspend fun onIncoming(message: ChatWireMessage) {
         if (message.type != ChatMessageType.DM) return
         val receipt = Mb10QrCodec.decode(message.body) as? Mb10Qr.Receipt ?: return
-        // Один и тот же чек подтверждает и деньги, и передачу предмета: id из разных журналов не пересекаются.
-        val money = wallet.verifyAndConfirmReceipt(receipt.id, receipt)
-        val item = items.verifyAndConfirmReceipt(receipt.id, receipt)
+        val (money, item) = confirm(receipt)
         Mb10Log.event(TAG, "receipt.in", "id" to receipt.id, "from" to Mb10Log.short(receipt.receiverPubKeyB64), "confirmedMoney" to money, "confirmedItem" to item)
     }
+
+    /**
+     * Один и тот же чек подтверждает и деньги, и передачу предмета: id из разных журналов не пересекаются. Повтор безопасен (переход
+     * только из DELIVERED/PENDING), поэтому тред при открытии перепроверяет чеки из истории — без записи в журнал.
+     * Возвращает пару «подтверждён перевод» к «подтверждена передача предмета».
+     */
+    suspend fun confirm(receipt: Mb10Qr.Receipt): Pair<Boolean, Boolean> =
+        payments.verifyAndConfirmReceipt(receipt.id, receipt) to items.verifyAndConfirmReceipt(receipt.id, receipt)
 }

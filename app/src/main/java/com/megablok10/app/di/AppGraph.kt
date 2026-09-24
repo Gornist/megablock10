@@ -6,9 +6,11 @@ import com.megablok10.app.BuildConfig
 import com.megablok10.app.Mb10App
 import com.megablok10.app.PlayerNotices
 import com.megablok10.app.announce.AnnouncementStore
+import com.megablok10.app.breach.CheckBreachAccess
 import com.megablok10.app.breach.ContainerCooldownStore
 import com.megablok10.app.breach.DaemonRewards
 import com.megablok10.app.breach.DaemonStore
+import com.megablok10.app.breach.FinishBreach
 import com.megablok10.app.breach.SecAlertStore
 import com.megablok10.app.breach.SlotClaimStore
 import com.megablok10.app.call.CallManager
@@ -25,18 +27,24 @@ import com.megablok10.app.collector.SYNC_LOG_TAG
 import com.megablok10.app.collector.heartbeat
 import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.identity.ContactStore
+import com.megablok10.app.identity.CreateCharacter
 import com.megablok10.app.identity.IdentityStore
 import com.megablok10.app.identity.RamUpgradeStore
 import com.megablok10.app.identity.SessionReset
+import com.megablok10.app.items.AcceptItem
 import com.megablok10.app.items.ItemTransferStore
+import com.megablok10.app.items.SendItem
 import com.megablok10.app.log.DeviceDiagnostics
 import com.megablok10.app.log.Mb10Log
 import com.megablok10.app.net.WireVersion
+import com.megablok10.app.presence.MeshLink
 import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.presence.WifiBinder
 import com.megablok10.app.qr.ProvisionStore
 import com.megablok10.app.shards.ShardStore
 import com.megablok10.app.ui.theme.AppSnack
+import com.megablok10.app.wallet.AcceptPayment
+import com.megablok10.app.wallet.SendPayment
 import com.megablok10.app.wallet.TransactionStore
 import com.megablok10.kit.net.IncompatibleVersionReporter
 import com.megablok10.kit.net.LineSocketClient
@@ -96,8 +104,9 @@ class AppGraph(private val app: Application) {
     val wallet = TransactionStore(db, identity, changes)
     val shards = ShardStore(db.shardDao(), wallet, changes)
     val daemons = DaemonStore(db.daemonDao(), changes)
-    val items = ItemTransferStore(db, identity, shards, daemons, chat, peers)
+    val items = ItemTransferStore(db, identity, shards, daemons)
     val ramUpgrades = RamUpgradeStore(db.consumedTokenDao(), identity, changes)
+    val receipts = ReceiptConfirmer(wallet, items)
 
     // Взлом
     val collectorClient = CollectorClient()
@@ -106,10 +115,19 @@ class AppGraph(private val app: Application) {
     val secAlerts = SecAlertStore(db.pendingAlertDao(), chat, changes, presence.peers)
     val rewards = DaemonRewards(wallet, shards, daemons, slotClaims, collectorSettings)
 
+    // Сценарии (use cases): потоки из нескольких шагов, одинаковые для интерфейса и стенда e2e (DebugQrReceiver)
+    val sendPayment = SendPayment(wallet, chat)
+    val acceptPayment = AcceptPayment(wallet, chat)
+    val sendItem = SendItem(items, chat)
+    val acceptItem = AcceptItem(items, chat)
+    val createCharacter = CreateCharacter(identity, changes)
+    val checkBreachAccess = CheckBreachAccess({ MeshLink.isOnline(app) }, cooldowns::remainingCooldownMs, slotClaims::isExhausted, changes)
+    val finishBreach = FinishBreach(changes, rewards::apply, cooldowns::markRewarded, secAlerts::dispatch)
+
     // Сессия и жизненный цикл персонажа
     val mesh: MeshSession = MeshSession(
         app, chat, presence, wifi, calls, slotClaims,
-        receipts = ReceiptConfirmer(wallet, items),
+        receipts = receipts,
         onIncompatible = IncompatibleVersionReporter(WireVersion.protocols, WireVersion.INCOMPATIBLE_MESSAGE) { notices.show(it) }::report,
         sessionTasks = listOf(
             { scope -> secAlerts.start(scope) },

@@ -54,8 +54,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.DebugConfig
-import com.megablok10.app.collector.ChangeField
-import com.megablok10.app.collector.ChangeReason
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.sound.BreachCue
@@ -76,7 +74,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import kotlin.random.Random
-import org.json.JSONObject
 
 /**
  * Взлом недоступен, пока не отсканирована QR-метка конкретного контейнера
@@ -126,18 +123,8 @@ internal fun BreachContainerFlow(container: Container, daemons: List<Daemon>, id
                 onRunningChange = { running = it },
                 onResult = { result ->
                     scope.launch {
-                        val attemptId = "${container.id}:$seed"
-                        graph.changes.record(
-                            ChangeField.COUNTERS_BREACH, null,
-                            JSONObject().put("tier", container.tier.name).put("outcome", result.outcome.name.lowercase()).toString(),
-                            ChangeReason.BREACH_ATTEMPT, sourceRef = attemptId, subjectKeyB64 = identity.publicKeyB64,
-                        )
-                        val outcome = graph.rewards.apply(identity, container, result, attemptId = attemptId)
+                        val outcome = graph.finishBreach(identity, container, result, seed)
                         rewardOutcome = outcome
-                        if (result.matchedIds.isNotEmpty()) {
-                            graph.cooldowns.markRewarded(container.id)
-                        }
-                        graph.secAlerts.dispatch(identity, container, result.outcome, outcome.matchedEffects)
                         secAlertStatus = secAlertStatusText(container, identity, result.outcome, outcome.matchedEffects)
                     }
                 }

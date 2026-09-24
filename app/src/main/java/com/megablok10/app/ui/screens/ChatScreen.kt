@@ -235,10 +235,7 @@ private fun DirectThread(identity: Identity, peerPubKeyB64: String, onBack: () -
         messages.drop(scannedCount).forEach { msg ->
             if (msg.fromPubKeyB64 != identity.publicKeyB64) {
                 val decoded = Mb10QrCodec.decode(msg.body)
-                if (decoded is Mb10Qr.Receipt) {
-                    graph.wallet.verifyAndConfirmReceipt(decoded.id, decoded)
-                    graph.items.verifyAndConfirmReceipt(decoded.id, decoded)
-                }
+                if (decoded is Mb10Qr.Receipt) graph.receipts.confirm(decoded)
             }
         }
         scannedCount = messages.size
@@ -263,23 +260,8 @@ private fun DirectThread(identity: Identity, peerPubKeyB64: String, onBack: () -
             emptyText = "Пока нет сообщений с ${contact?.callsign ?: "этим контактом"}.",
             transactions = transactions,
             itemTransfers = itemTransfers,
-            onAcceptItem = { card ->
-                scope.launch {
-                    if (graph.items.acceptIncoming(identity.publicKeyB64, card)) {
-                        val receipt = graph.items.buildReceipt(identity, card.id)
-                        graph.chat.sendDirect(identity, card.fromPubKeyB64, peer, Mb10QrCodec.encodeReceipt(receipt))
-                    }
-                }
-            },
-            onAcceptTransaction = { tx ->
-                scope.launch {
-                    val credited = graph.wallet.recordIncoming(identity.publicKeyB64, tx)
-                    if (credited) {
-                        val receipt = graph.wallet.buildReceipt(identity, tx.id)
-                        graph.chat.sendDirect(identity, tx.fromPubKeyB64, peer, Mb10QrCodec.encodeReceipt(receipt))
-                    }
-                }
-            }
+            onAcceptItem = { card -> scope.launch { graph.acceptItem(identity, card) } },
+            onAcceptTransaction = { tx -> scope.launch { graph.acceptPayment(identity, tx) } }
         )
         MessageInput(
             placeholder = if (peer != null) "Личное сообщение" else "Личное сообщение (получатель не в сети)",
