@@ -4,6 +4,7 @@ import com.megablok10.app.breach.Container
 import com.megablok10.app.breach.LootSlot
 import com.megablok10.app.breach.LootType
 import com.megablok10.app.breach.Tier
+import com.megablok10.kit.handover.HandoverRules
 import com.megablok10.kit.text.Base64Text.decode as unb64
 import com.megablok10.kit.text.Base64Text.encode as b64
 
@@ -338,7 +339,7 @@ object Mb10QrCodec {
         return Mb10Qr.Receipt(id = parts[3], receiverPubKeyB64 = parts[4], signatureB64 = parts[5])
     }
 
-    /** Байты, которые подписывает получатель на чеке — та же id, что и у исходной транзакции, плюс его ключ. */
+    /** Байты, которые подписывает получатель на чеке — та же id, что и у исходной транзакции, плюс его ключ (kit [HandoverRules]). */
     fun receiptSignaturePayload(id: String, receiverPubKeyB64: String): ByteArray =
-        "$id|$receiverPubKeyB64".toByteArray(Charsets.UTF_8)
+        HandoverRules.receiptSignaturePayload(id, receiverPubKeyB64)
 }

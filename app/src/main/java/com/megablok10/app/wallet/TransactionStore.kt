@@ -12,12 +12,12 @@ import com.megablok10.app.data.TransactionStatus
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.identity.IdentityManager
 import com.megablok10.app.log.Mb10Log
-import com.megablok10.kit.net.SendOutcome
-import com.megablok10.app.net.incomingCardRejection
-import com.megablok10.app.net.shouldMarkDeliveredBeforeSend
-import com.megablok10.app.net.shouldRevertToPendingAfterSend
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
+import com.megablok10.kit.handover.Handover
+import com.megablok10.kit.handover.HandoverRules
+import com.megablok10.kit.handover.OutgoingJournal
+import com.megablok10.kit.net.SendOutcome
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -27,8 +27,14 @@ private const val TAG = "Wallet"
  * Локальный денежный журнал устройства поверх Room. Баланс — не отдельное
  * поле, а сумма amount по всем записям (PENDING считаются наравне с
  * CONFIRMED — деньги уже не в руках игрока с момента генерации QR).
+ *
+ * Доставка карточки перевода и фиксация по чеку — общий протокол передачи kit [Handover] (тот же, что у предметов,
+ * см. ItemTransferStore); здесь — только денежная часть: баланс, суммы и записи для мастерского сервера.
  */
 object TransactionStore {
+    private fun handover(context: Context) =
+        Handover(TransactionJournal(Mb10Database.get(context).transactionDao()), Mb10Log, tag = TAG, eventPrefix = "tx")
+
     fun observeAll(context: Context): Flow<List<TransactionEntity>> =
         Mb10Database.get(context).transactionDao().observeAll()
 
@@ -79,19 +85,8 @@ object TransactionStore {
      * уже после соединения ([SendOutcome.UNKNOWN]), карточка могла дойти: платёж остаётся DELIVERED и отменить его нельзя —
      * лучше заморозить сумму до чека или вмешательства мастера, чем оставить её у обоих.
      */
-    suspend fun deliverOutgoing(context: Context, id: String, willSend: Boolean, send: suspend () -> SendOutcome) {
-        val dao = Mb10Database.get(context).transactionDao()
-        if (!shouldMarkDeliveredBeforeSend(willSend)) {
-            send()
-            Mb10Log.event(TAG, "tx.deliver", "id" to id, "peerVisible" to false, "status" to "остаётся PENDING")
-            return
-        }
-        dao.markDelivered(id)
-        val outcome = send()
-        val reverted = shouldRevertToPendingAfterSend(outcome)
-        if (reverted) dao.markUndelivered(id)
-        Mb10Log.event(TAG, "tx.deliver", "id" to id, "peerVisible" to true, "outcome" to outcome.name, "status" to if (reverted) "откат в PENDING" else "DELIVERED")
-    }
+    suspend fun deliverOutgoing(context: Context, id: String, willSend: Boolean, send: suspend () -> SendOutcome) =
+        handover(context).deliver(id, willSend, send)
 
     /**
      * Отменяет платёж, карточка которого получателю НЕ доставлена (статус
@@ -119,20 +114,12 @@ object TransactionStore {
      * уже нельзя. Именно эта проверка и не даёт "нажать отменить и оставить
      * деньги себе" после того, как получатель их реально получил.
      */
-    suspend fun verifyAndConfirmReceipt(context: Context, pendingTxId: String, receipt: Mb10Qr.Receipt): Boolean {
-        if (receipt.id != pendingTxId) return false
-        // Чек должен подписать именно адресат платежа — иначе любой контакт мог бы "подтвердить" чужой платёж (и тем самым заблокировать его отмену).
-        if (Mb10Database.get(context).transactionDao().counterpartyOf(receipt.id) != receipt.receiverPubKeyB64) return false
-        val payload = Mb10QrCodec.receiptSignaturePayload(receipt.id, receipt.receiverPubKeyB64)
-        if (!IdentityManager.verify(receipt.receiverPubKeyB64, payload, receipt.signatureB64)) return false
-        val confirmed = Mb10Database.get(context).transactionDao().confirm(receipt.id) > 0
-        Mb10Log.event(TAG, "tx.receipt", "id" to receipt.id, "confirmed" to confirmed)
-        return confirmed
-    }
+    suspend fun verifyAndConfirmReceipt(context: Context, pendingTxId: String, receipt: Mb10Qr.Receipt): Boolean =
+        handover(context).confirmByReceipt(pendingTxId, receipt.id, receipt.receiverPubKeyB64, receipt.signatureB64)
 
     /** Чек, который получатель показывает в ответ отправителю — доказательство, что деньги реально получены. */
     fun buildReceipt(context: Context, identity: Identity, transactionId: String): Mb10Qr.Receipt {
-        val payload = Mb10QrCodec.receiptSignaturePayload(transactionId, identity.publicKeyB64)
+        val payload = HandoverRules.receiptSignaturePayload(transactionId, identity.publicKeyB64)
         val signature = IdentityManager.sign(context, payload)
         return Mb10Qr.Receipt(id = transactionId, receiverPubKeyB64 = identity.publicKeyB64, signatureB64 = signature)
     }
@@ -147,9 +134,8 @@ object TransactionStore {
     suspend fun recordIncoming(context: Context, myPublicKeyB64: String, tx: Mb10Qr.Transaction): Boolean {
         fun reject(why: String): Boolean { Mb10Log.warnEvent(TAG, "tx.in_rejected", "id" to tx.id, "from" to Mb10Log.short(tx.fromPubKeyB64), "amount" to tx.amount, "why" to why); return false }
         if (tx.amount <= 0) return reject("сумма<=0")
-        incomingCardRejection(tx.fromPubKeyB64, tx.toPubKeyB64, myPublicKeyB64)?.let { return reject(it) }
         val payload = Mb10QrCodec.transactionSignaturePayload(tx.id, tx.fromPubKeyB64, tx.toPubKeyB64, tx.amount, tx.memo)
-        if (!IdentityManager.verify(tx.fromPubKeyB64, payload, tx.signatureB64)) return reject("подпись не сошлась")
+        HandoverRules.rejectIncoming(tx.fromPubKeyB64, tx.toPubKeyB64, myPublicKeyB64, payload, tx.signatureB64, IdentityManager::verify)?.let { return reject(it) }
 
         val dao = Mb10Database.get(context).transactionDao()
         val rowId = dao.insertIfAbsent(
@@ -283,4 +269,12 @@ object TransactionStore {
         Mb10Log.event(TAG, "balance.change", "reason" to reason, "delta" to delta, "old" to oldBalance, "new" to newBalance, "ref" to sourceRef)
         ChangeRecordStore.enqueue(context, ChangeField.BALANCE, oldBalance.toString(), newBalance.toString(), reason, sourceRef, actor = actor)
     }
+}
+
+/** Таблица `transactions` как журнал исходящих карточек kit-протокола передачи (переходы статусов — условные запросы TransactionDao). */
+private class TransactionJournal(private val dao: TransactionDao) : OutgoingJournal {
+    override suspend fun markDelivered(id: String) = dao.markDelivered(id)
+    override suspend fun markUndelivered(id: String) = dao.markUndelivered(id)
+    override suspend fun confirm(id: String) = dao.confirm(id)
+    override suspend fun recipientOf(id: String) = dao.counterpartyOf(id)
 }

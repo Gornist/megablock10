@@ -8,27 +8,28 @@ import com.megablok10.app.breach.LootCodec
 import com.megablok10.app.breach.MockBreach
 import com.megablok10.app.chat.ChatStore
 import com.megablok10.app.collector.ChangeReason
+import com.megablok10.app.data.ItemTransferDao
 import com.megablok10.app.data.ItemTransferEntity
 import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.data.TransactionStatus
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.identity.IdentityManager
 import com.megablok10.app.log.Mb10Log
-import com.megablok10.kit.net.SendOutcome
-import com.megablok10.app.net.incomingCardRejection
-import com.megablok10.app.net.shouldMarkDeliveredBeforeSend
-import com.megablok10.app.net.shouldRevertToPendingAfterSend
 import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.qr.ItemKind
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
 import com.megablok10.app.shards.ShardStore
 import com.megablok10.app.wallet.TransactionStore
+import com.megablok10.kit.handover.Handover
+import com.megablok10.kit.handover.HandoverRules
+import com.megablok10.kit.handover.OutgoingJournal
+import com.megablok10.kit.net.SendOutcome
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 
 /**
- * Передача шардов и демонов между игроками — тот же протокол, что у денег (см. TransactionStore):
+ * Передача шардов и демонов между игроками — тот же протокол, что у денег (kit [Handover], см. TransactionStore):
  * предмет уходит из коллекции отправителя сразу (PENDING), карточка доставляется получателю
  * (DELIVERED — с этого момента отмена запрещена), получатель нажимает «Принять» и шлёт чек (CONFIRMED).
  * Предметы не копируются, а именно передаются: у получателя они появляются только при принятии,
@@ -37,6 +38,9 @@ import java.util.UUID
 private const val TAG = "Items"
 
 object ItemTransferStore {
+    private fun handover(context: Context) =
+        Handover(ItemTransferJournal(Mb10Database.get(context).itemTransferDao()), Mb10Log, tag = TAG, eventPrefix = "item")
+
     fun observeAll(context: Context): Flow<List<ItemTransferEntity>> =
         Mb10Database.get(context).itemTransferDao().observeAll()
 
@@ -79,19 +83,8 @@ object ItemTransferStore {
     }
 
     /** Как TransactionStore.deliverOutgoing: DELIVERED ставится ДО отправки, откат — только если соединиться не удалось (NOT_REACHED). */
-    suspend fun deliverOutgoing(context: Context, id: String, willSend: Boolean, send: suspend () -> SendOutcome) {
-        val dao = Mb10Database.get(context).itemTransferDao()
-        if (!shouldMarkDeliveredBeforeSend(willSend)) {
-            send()
-            Mb10Log.event(TAG, "item.deliver", "id" to id, "peerVisible" to false, "status" to "остаётся PENDING")
-            return
-        }
-        dao.markDelivered(id)
-        val outcome = send()
-        val reverted = shouldRevertToPendingAfterSend(outcome)
-        if (reverted) dao.markUndelivered(id)
-        Mb10Log.event(TAG, "item.deliver", "id" to id, "peerVisible" to true, "outcome" to outcome.name, "status" to if (reverted) "откат в PENDING" else "DELIVERED")
-    }
+    suspend fun deliverOutgoing(context: Context, id: String, willSend: Boolean, send: suspend () -> SendOutcome) =
+        handover(context).deliver(id, willSend, send)
 
     /** Отмена недоставленной передачи: предмет возвращается в коллекцию. false — карточка уже доставлена/подтверждена или записи нет. */
     suspend fun cancelOutgoing(context: Context, id: String): Boolean {
@@ -104,24 +97,15 @@ object ItemTransferStore {
     }
 
     /** Чек получателя фиксирует передачу — те же проверки, что у денег: чек подписал именно адресат этой передачи. */
-    suspend fun verifyAndConfirmReceipt(context: Context, id: String, receipt: Mb10Qr.Receipt): Boolean {
-        if (receipt.id != id) return false
-        val dao = Mb10Database.get(context).itemTransferDao()
-        val record = dao.get(id) ?: return false
-        if (!record.outgoing || record.counterpartyPubKeyB64 != receipt.receiverPubKeyB64) return false
-        if (!IdentityManager.verify(receipt.receiverPubKeyB64, Mb10QrCodec.receiptSignaturePayload(receipt.id, receipt.receiverPubKeyB64), receipt.signatureB64)) return false
-        val confirmed = dao.confirm(id) > 0
-        Mb10Log.event(TAG, "item.receipt", "id" to id, "confirmed" to confirmed)
-        return confirmed
-    }
+    suspend fun verifyAndConfirmReceipt(context: Context, id: String, receipt: Mb10Qr.Receipt): Boolean =
+        handover(context).confirmByReceipt(id, receipt.id, receipt.receiverPubKeyB64, receipt.signatureB64)
 
     /** Получатель проверяет подпись отправителя и кладёт предмет в коллекцию. false — подпись не сошлась, своя же карточка или уже принято. */
     suspend fun acceptIncoming(context: Context, myPubKeyB64: String, card: Mb10Qr.ItemTransfer): Boolean {
         fun reject(why: String): Boolean { Mb10Log.warnEvent(TAG, "item.in_rejected", "id" to card.id, "from" to Mb10Log.short(card.fromPubKeyB64), "kind" to card.kind.name, "why" to why); return false }
         // Адресат в подписи: чужую копию карточки принять нельзя (иначе один предмет можно получить дважды).
-        incomingCardRejection(card.fromPubKeyB64, card.toPubKeyB64, myPubKeyB64)?.let { return reject(it) }
         val signed = Mb10QrCodec.itemTransferSignaturePayload(card.id, card.fromPubKeyB64, card.toPubKeyB64, card.kind, card.payload)
-        if (!IdentityManager.verify(card.fromPubKeyB64, signed, card.signatureB64)) return reject("подпись не сошлась")
+        HandoverRules.rejectIncoming(card.fromPubKeyB64, card.toPubKeyB64, myPubKeyB64, signed, card.signatureB64, IdentityManager::verify)?.let { return reject(it) }
 
         val record = ItemTransferEntity(card.id, card.fromPubKeyB64, card.kind.name, card.payload, System.currentTimeMillis(), TransactionStatus.CONFIRMED, outgoing = false)
         // Запись-«принято» ставится первой: если предмет не разобрался, откатываем её, иначе карточка «сгорит» без выдачи.
@@ -157,4 +141,15 @@ object ItemTransferStore {
             daemon != null
         }
     }
+}
+
+/**
+ * Таблица `item_transfers` как журнал исходящих карточек kit-протокола передачи. Входящие записи (outgoing = false) — отметки
+ * «уже принято»: чек по ним не принимается, переходы статусов их не трогают (условие outgoing = 1 в запросах ItemTransferDao).
+ */
+private class ItemTransferJournal(private val dao: ItemTransferDao) : OutgoingJournal {
+    override suspend fun markDelivered(id: String) = dao.markDelivered(id)
+    override suspend fun markUndelivered(id: String) = dao.markUndelivered(id)
+    override suspend fun confirm(id: String) = dao.confirm(id)
+    override suspend fun recipientOf(id: String) = dao.get(id)?.takeIf { it.outgoing }?.counterpartyPubKeyB64
 }

@@ -3,13 +3,15 @@ package com.megablok10.app.data
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.megablok10.kit.handover.HandoverStatus
 
+/** Статусы переводов и передач предметов — те же, что у kit-протокола передачи ([HandoverStatus]); строки лежат в базе как есть. */
 object TransactionStatus {
     /** Записан локально, но карточка получателю НЕ доставлена (он офлайн / отправка не удалась) — отменить ещё можно. */
-    const val PENDING = "PENDING"
+    const val PENDING = HandoverStatus.PENDING
     /** Карточка ушла получателю — он уже мог нажать "Принять", поэтому отмена запрещена (иначе сумма окажется у обоих). */
-    const val DELIVERED = "DELIVERED"
-    const val CONFIRMED = "CONFIRMED"
+    const val DELIVERED = HandoverStatus.DELIVERED
+    const val CONFIRMED = HandoverStatus.CONFIRMED
 }
 
 /**
