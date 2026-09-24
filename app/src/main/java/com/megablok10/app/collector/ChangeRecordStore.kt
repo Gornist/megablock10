@@ -1,46 +1,51 @@
 package com.megablok10.app.collector
 
 import android.content.Context
-import com.megablok10.app.log.Mb10Log
 import com.megablok10.app.announce.AnnouncementNotifier
 import com.megablok10.app.announce.AnnouncementStore
 import com.megablok10.app.chat.ChatStore
 import com.megablok10.app.data.Mb10Database
+import com.megablok10.app.data.PendingChangeRecordDao
 import com.megablok10.app.data.PendingChangeRecordEntity
+import com.megablok10.app.identity.Identity
 import com.megablok10.app.identity.IdentityManager
+import com.megablok10.app.log.Mb10Log
 import com.megablok10.app.net.WireVersion
-import com.megablok10.app.ui.theme.AppSnack
 import com.megablok10.app.presence.PresenceService
+import com.megablok10.app.ui.theme.AppSnack
 import com.megablok10.app.wallet.TransactionStore
-import kotlinx.coroutines.CancellationException
-import org.json.JSONObject
+import com.megablok10.kit.mesh.PeerInfo
+import com.megablok10.kit.sync.ChangeQueue
+import com.megablok10.kit.sync.ChangeRecord
+import com.megablok10.kit.sync.ChangeRecorder
+import com.megablok10.kit.sync.CollectorEndpoint
+import com.megablok10.kit.sync.QueueStats
+import com.megablok10.kit.sync.RecordSigner
+import com.megablok10.kit.sync.SyncEngine
+import com.megablok10.kit.sync.SyncHooks
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import java.util.UUID
 
 private const val TAG = "ChangeRecordStore"
-private const val BATCH_SIZE = 200
-private val BACKOFF_STEPS_MS = longArrayOf(1_000, 2_000, 5_000, 15_000, 60_000)
 
 /**
- * Точка входа для остального приложения: "вот что изменилось, отправь
- * мастерскому коллектору когда сможешь" (§3.4 ТЗ). Пишет в локальную
- * очередь синхронно с игровым действием (тем же вызовом, что меняет Room-
- * сущность), саму отправку делает фоновый цикл с бэкоффом — вызывающая
- * сторона никогда не ждёт сеть.
+ * Точка входа для остального приложения: "вот что изменилось, отправь мастерскому коллектору когда сможешь" (§3.4 ТЗ). Механика —
+ * kit: [ChangeRecorder] подписывает запись и кладёт в локальную очередь (таблица Room `pending_change_records`) тем же вызовом,
+ * что меняет игровые данные, — вызывающий никогда не ждёт сеть; [SyncEngine] в фоне отправляет очередь с бэкоффом, забирает
+ * правки мастера и подтверждает их. Здесь — только то, что относится к Мегаблоку: личность, адрес сервера, heartbeat и
+ * применение правок мастера (см. [MasterChangeHooks]).
  */
 object ChangeRecordStore {
-    private val wake = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     @Volatile private var loopStarted = false
+    @Volatile private var sync: Sync? = null
+
+    private class Sync(val recorder: ChangeRecorder, val engine: SyncEngine)
 
     /** Итог последней попытки синка одной строкой: попадает в снимок состояния. */
-    @Volatile var lastSyncSummary: String = "ещё не было"
-        private set
+    val lastSyncSummary: String get() = sync?.engine?.lastSummary ?: "ещё не было"
 
     /** actor по умолчанию — сам subject; для TRANSFER_IN вызывающая сторона передаёт actor = ключ контрагента (§3.1 исключение). */
     suspend fun enqueue(
@@ -53,183 +58,124 @@ object ChangeRecordStore {
         subjectKeyB64: String? = null,
         actor: String? = null,
     ) {
-        val identity = IdentityManager.current(context) ?: run {
-            Mb10Log.w(TAG, "нет личности устройства — запись $field/$reason потеряна")
-            return
-        }
-        val subject = subjectKeyB64 ?: identity.publicKeyB64
-        val seq = IdentityManager.nextChangeSeq(context)
-        val record = ChangeRecord(
-            id = UUID.randomUUID().toString(),
-            subjectKeyB64 = subject,
-            seq = seq,
-            happenedAt = System.currentTimeMillis(),
-            field = field,
-            oldValue = oldValue,
-            newValue = newValue,
-            reason = reason,
-            sourceRef = sourceRef,
-            actor = actor ?: identity.publicKeyB64,
-            signature = "",
-        )
-        val signed = record.copy(signature = IdentityManager.sign(context, record.signaturePayload()))
-
-        Mb10Database.get(context).pendingChangeRecordDao().insert(
-            PendingChangeRecordEntity(
-                id = signed.id, subjectKeyB64 = signed.subjectKeyB64, seq = signed.seq, happenedAt = signed.happenedAt,
-                field = signed.field, oldValue = signed.oldValue, newValue = signed.newValue, reason = signed.reason,
-                sourceRef = signed.sourceRef, actor = signed.actor, signature = signed.signature,
-            ),
-        )
-        Mb10Log.event(TAG, "record.enqueued", "field" to field, "reason" to reason, "old" to oldValue.takeIf { field != ChangeField.ANNOUNCEMENT }, "new" to newValue.takeIf { field != ChangeField.ANNOUNCEMENT }, "seq" to seq, "ref" to sourceRef)
-        wake.tryEmit(Unit)
+        sync(context).recorder.record(field, oldValue, newValue, reason, sourceRef, subjectKeyB64, actor)
     }
 
     /** Запускать один раз при старте приложения (см. MainActivity). Повторные вызовы — не операция. */
     fun start(context: Context) {
         if (loopStarted) return
         loopStarted = true
-        val appContext = context.applicationContext
-        scope.launch { syncLoop(appContext) }
+        val engine = sync(context).engine
+        scope.launch { engine.run() }
     }
 
-    /**
-     * Опрашивает коллектор ДАЖЕ когда исходящая очередь пуста — единственный
-     * способ узнать про новую правку мастера (§6.3): push-канала нет,
-     * коллектор отдаёт pending тем же ответом на POST /api/changes, но
-     * только если его спросить. Пустой батч с subjectKeyB64 — легитимный
-     * запрос именно за этим, не только досылка исходящего.
-     */
-    private suspend fun syncLoop(context: Context) {
-        var backoffIndex = 0
-        // id применённых правок мастера, о которых коллектор ещё не знает: уходят в следующем запросе,
-        // и только после этого он перестаёт присылать их заново.
-        var pendingAcks: List<String> = emptyList()
-        while (true) {
-            try {
-                val step = syncOnce(context, pendingAcks, backoffIndex)
-                pendingAcks = step.acks
-                backoffIndex = step.backoffIndex
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // Любой сбой одной итерации (Room, разбор ответа, применение правки) не должен
-                // навсегда останавливать синк — идём на бэкофф и пробуем снова.
-                Mb10Log.w(TAG, "итерация синка упала: ${e.message}", e)
-                lastSyncSummary = "упал ${e.javaClass.simpleName} в ${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date())}"
-                val delayMs = BACKOFF_STEPS_MS[backoffIndex.coerceAtMost(BACKOFF_STEPS_MS.lastIndex)]
-                backoffIndex++
-                waitForWakeOrTimeout(delayMs)
-            }
-        }
+    private fun sync(context: Context): Sync = sync ?: synchronized(this) {
+        sync ?: build(context.applicationContext).also { sync = it }
     }
 
-    private class SyncStep(val acks: List<String>, val backoffIndex: Int)
-
-    /** Одна итерация цикла синка. Возвращает актуальные ack-и и индекс бэкоффа; исключения — на вызывающей стороне (syncLoop). */
-    private suspend fun syncOnce(context: Context, acksIn: List<String>, backoffIn: Int): SyncStep {
-        val baseUrl = CollectorSettings.baseUrl(context)
-        if (baseUrl == null) {
-            waitForWakeOrTimeout(30_000)
-            return SyncStep(acksIn, 0)
-        }
-
-        val dao = Mb10Database.get(context).pendingChangeRecordDao()
-        val batch = dao.nextBatch(BATCH_SIZE)
-        val identity = IdentityManager.current(context)
-        val records = batch.map {
-            ChangeRecord(it.id, it.subjectKeyB64, it.seq, it.happenedAt, it.field, it.oldValue, it.newValue, it.reason, it.sourceRef, it.actor, it.signature)
-        }
-        val port = ChatStore.listeningPort
-        // Очередь неотправленных записей — в heartbeat: дашборд увидит телефон «на связи», но с застрявшей синхронизацией.
-        val pendingCount = dao.count()
-        val oldestPendingAgeMs = dao.oldestHappenedAt()?.let { (System.currentTimeMillis() - it).coerceAtLeast(0) } ?: 0L
-        val presence = if (identity != null && port > 0) presenceJson(context, port, identity.callsign, identity.faction, pendingCount, oldestPendingAgeMs) else null
-        val result = CollectorClient.sendBatch(baseUrl, records, identity?.publicKeyB64, CollectorSettings.gameSecret(context), acksIn, presence)
-
-        val hhmmss = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date())
-        if (result == null) {
-            lastSyncSummary = "нет связи в $hhmmss (очередь $pendingCount, повтор ${backoffIn + 1})"
-            // Сеть/коллектор недоступны — экспоненциальный бэкофф (§3.4: 1с → 2с → 5с → 15с → 60с, дальше по минуте).
-            val delayMs = BACKOFF_STEPS_MS[backoffIn.coerceAtMost(BACKOFF_STEPS_MS.lastIndex)]
-            waitForWakeOrTimeout(delayMs)
-            return SyncStep(acksIn, backoffIn + 1)
-        }
-
-        lastSyncSummary = "ok в $hhmmss (отправлено ${records.size}, принято ${result.accepted.size}, отбраковано ${result.rejected.size})"
-        if (identity != null) PresenceService.updateServerPeers(result.peers, identity.publicKeyB64)
-
-        val toDelete = result.accepted + result.rejected.keys
-        if (toDelete.isNotEmpty()) dao.deleteByIds(toDelete.toList())
-        if (result.rejected.isNotEmpty()) {
-            Mb10Log.warnEvent(TAG, "sync.rejected", "count" to result.rejected.size, "reasons" to result.rejected.values.take(5).joinToString(" | "), "ids" to result.rejected.keys.take(5).joinToString(","))
-            // Код персонажа не принят: запись не повторяем (иначе синк крутился бы в цикле), но игрок должен узнать и обратиться к мастеру.
-            if (ProvisionRejection.anyProvisionError(result.rejected.values) && !CollectorSettings.isProvisionRejected(context)) {
-                CollectorSettings.setProvisionRejected(context, true)
-                Mb10Log.warnEvent(TAG, "provision.rejected_by_server", "reasons" to result.rejected.values.take(3).joinToString(" | "))
-                AppSnack.show(ProvisionRejection.PLAYER_MESSAGE)
-            }
-        }
-        // Запрос с acksIn дошёл — коллектор их учёл; новые ack-и — по правкам, применённым прямо сейчас.
-        val newAcks = if (result.pending.isNotEmpty()) applyPending(context, result.pending) else emptyList()
-
-        if (batch.isEmpty() && result.pending.isEmpty()) {
-            // Действительно нечего ни слать, ни получать — обычный простой, не долбим коллектор чаще раза в 30с.
-            waitForWakeOrTimeout(30_000)
-        }
-        // Иначе сразу на новый виток: либо не всё отправили (MAX_BATCH), либо только что применили pending
-        // и надо отправить ack и проверить очередь ещё раз без задержки.
-        return SyncStep(newAcks, 0)
+    private fun build(app: Context): Sync {
+        val queue = RoomChangeQueue(Mb10Database.get(app).pendingChangeRecordDao())
+        lateinit var engine: SyncEngine
+        val recorder = ChangeRecorder(
+            queue = queue,
+            signer = { IdentityManager.current(app)?.let { IdentitySigner(app, it) } },
+            log = Mb10Log,
+            tag = TAG,
+            sensitiveFields = setOf(ChangeField.ANNOUNCEMENT),
+            onRecorded = { engine.wake() },
+        )
+        engine = SyncEngine(
+            queue = queue,
+            transport = CollectorClient,
+            endpoint = { CollectorSettings.baseUrl(app)?.let { CollectorEndpoint(it, CollectorSettings.gameSecret(app)) } },
+            subjectKey = { IdentityManager.current(app)?.publicKeyB64 },
+            presence = { stats -> presence(app, stats) },
+            hooks = MasterChangeHooks(app),
+            log = Mb10Log,
+            tag = TAG,
+        )
+        return Sync(recorder, engine)
     }
+}
 
-    /**
-     * Применяет MASTER_OVERRIDE с дашборда локально (§6.3, §6.5 ТЗ — правка
-     * видна в истории наравне с игровыми, но это забота сервера: он её уже
-     * записал). Каждый сеттер здесь — "тихий", без обратной эмиссии
-     * ChangeRecord (см. applyRamOverride/applyBalanceOverride) — иначе
-     * получили бы эхо в историю. Неизвестное поле — просто пропускаем,
-     * не роняя остальные записи в пачке. Возвращает id обработанных правок
-     * для ack: одна "ядовитая" правка не должна доставляться вечно, поэтому
-     * сбой на конкретной записи логируется, а id всё равно подтверждается.
-     */
-    private suspend fun applyPending(context: Context, pending: List<ChangeRecord>): List<String> {
-        for (p in pending) {
-            Mb10Log.event(TAG, "master.apply", "id" to p.id, "field" to p.field, "new" to p.newValue.takeIf { p.field != ChangeField.ANNOUNCEMENT }, "reason" to p.reason)
-            try {
-                val newValue = p.newValue ?: continue
-                when (p.field) {
-                    ChangeField.BALANCE -> newValue.toLongOrNull()?.let {
-                        TransactionStore.applyBalanceOverride(context, p.id, it, p.sourceRef ?: "без основания")
-                    }
-                    ChangeField.RAM_CAPACITY -> newValue.toIntOrNull()?.let { IdentityManager.applyRamOverride(context, it) }
-                    ChangeField.CALLSIGN -> IdentityManager.applyCallsignOverride(context, newValue)
-                    ChangeField.FACTION -> IdentityManager.applyFactionOverride(context, newValue)
-                    ChangeField.ANNOUNCEMENT -> if (AnnouncementStore.add(context, p.id, newValue)) AnnouncementNotifier.show(context, p.id, newValue)
-                    else -> Mb10Log.w(TAG, "pending с неизвестным полем ${p.field} — пропущено")
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Mb10Log.w(TAG, "не удалось применить правку ${p.id}: ${e.message}", e)
-            }
-        }
-        return pending.map { it.id }
-    }
-
-    private suspend fun waitForWakeOrTimeout(timeoutMs: Long) {
-        kotlinx.coroutines.withTimeoutOrNull(timeoutMs) { wake.first() }
-    }
+/** Ключ персонажа как подписант записей: сквозной seq и подпись — в IdentityManager (SharedPreferences устройства). */
+private class IdentitySigner(private val app: Context, identity: Identity) : RecordSigner {
+    override val publicKeyB64: String = identity.publicKeyB64
+    override fun nextSeq(): Long = IdentityManager.nextChangeSeq(app)
+    override fun sign(data: ByteArray): String = IdentityManager.sign(app, data)
 }
 
 /**
  * Что телефон сообщает коллектору вместе с heartbeat: порт чата и позывной/фракция (запасное обнаружение), версия приложения и версии
- * построчных протоколов (дашборд подсветит игроков со старой сборкой — им перестанут приходить сообщения, см. net/WireVersion).
- * Сервер игнорирует незнакомые поля, поэтому добавление обратно-совместимо.
+ * построчных протоколов (дашборд подсветит игроков со старой сборкой — им перестанут приходить сообщения, см. net/WireVersion) и
+ * очередь неотправленных записей (дашборд увидит телефон «на связи», но с застрявшей синхронизацией). Сервер игнорирует незнакомые
+ * поля, поэтому добавление обратно-совместимо. null — нечего сообщать (нет личности или чат-сервер ещё не слушает).
  */
-private fun presenceJson(context: Context, chatPort: Int, callsign: String, faction: String, pendingCount: Int, oldestPendingAgeMs: Long): JSONObject {
-    val appVersion = try { context.packageManager.getPackageInfo(context.packageName, 0).versionName } catch (e: Exception) { null }
-    val wire = JSONObject().also { o -> WireVersion.REPORTED.forEach { (k, v) -> o.put(k, v) } }
-    return JSONObject().put("chatPort", chatPort).put("callsign", callsign).put("faction", faction)
-        .put("appVersion", appVersion ?: "unknown").put("wireVersions", wire)
-        .put("pendingCount", pendingCount).put("oldestPendingAgeMs", oldestPendingAgeMs)
+private fun presence(app: Context, stats: QueueStats): Map<String, Any?>? {
+    val identity = IdentityManager.current(app) ?: return null
+    val port = ChatStore.listeningPort
+    if (port <= 0) return null
+    val appVersion = try { app.packageManager.getPackageInfo(app.packageName, 0).versionName } catch (e: Exception) { null }
+    return linkedMapOf(
+        "chatPort" to port,
+        "callsign" to identity.callsign,
+        "faction" to identity.faction,
+        "appVersion" to (appVersion ?: "unknown"),
+        "wireVersions" to WireVersion.REPORTED,
+        "pendingCount" to stats.pendingCount,
+        "oldestPendingAgeMs" to stats.oldestPendingAgeMs,
+    )
+}
+
+/**
+ * Реакция Мегаблока на ответ коллектора: подсказки адресов других игроков, отказ по коду персонажа и правки мастера (§6.3, §6.5
+ * ТЗ — правка видна в истории наравне с игровыми, но это забота сервера: он её уже записал). Каждый сеттер правки — "тихий", без
+ * обратной записи на сервер (см. applyRamOverride/applyBalanceOverride), иначе получили бы эхо в историю. Неизвестное поле —
+ * пропускаем, не роняя остальные правки в пачке; сбой на конкретной правке движок логирует и всё равно подтверждает.
+ */
+private class MasterChangeHooks(private val app: Context) : SyncHooks {
+    override fun onServerPeers(peers: List<PeerInfo>, myPubKeyB64: String) = PresenceService.updateServerPeers(peers, myPubKeyB64)
+
+    override suspend fun onRejected(rejected: Map<String, String>) {
+        // Код персонажа не принят: запись не повторяем (иначе синк крутился бы в цикле), но игрок должен узнать и обратиться к мастеру.
+        if (ProvisionRejection.anyProvisionError(rejected.values) && !CollectorSettings.isProvisionRejected(app)) {
+            CollectorSettings.setProvisionRejected(app, true)
+            Mb10Log.warnEvent(TAG, "provision.rejected_by_server", "reasons" to rejected.values.take(3).joinToString(" | "))
+            AppSnack.show(ProvisionRejection.PLAYER_MESSAGE)
+        }
+    }
+
+    override suspend fun applyMasterChange(change: ChangeRecord) {
+        Mb10Log.event(TAG, "master.apply", "id" to change.id, "field" to change.field, "new" to change.newValue.takeIf { change.field != ChangeField.ANNOUNCEMENT }, "reason" to change.reason)
+        val newValue = change.newValue ?: return
+        when (change.field) {
+            ChangeField.BALANCE -> newValue.toLongOrNull()?.let {
+                TransactionStore.applyBalanceOverride(app, change.id, it, change.sourceRef ?: "без основания")
+            }
+            ChangeField.RAM_CAPACITY -> newValue.toIntOrNull()?.let { IdentityManager.applyRamOverride(app, it) }
+            ChangeField.CALLSIGN -> IdentityManager.applyCallsignOverride(app, newValue)
+            ChangeField.FACTION -> IdentityManager.applyFactionOverride(app, newValue)
+            ChangeField.ANNOUNCEMENT -> if (AnnouncementStore.add(app, change.id, newValue)) AnnouncementNotifier.show(app, change.id, newValue)
+            else -> Mb10Log.w(TAG, "pending с неизвестным полем ${change.field} — пропущено")
+        }
+    }
+}
+
+/** Таблица Room `pending_change_records` как очередь kit-синхронизации (колонки один в один с ChangeRecord, миграция не нужна). */
+internal class RoomChangeQueue(private val dao: PendingChangeRecordDao) : ChangeQueue {
+    override suspend fun insert(record: ChangeRecord) = dao.insert(
+        PendingChangeRecordEntity(
+            id = record.id, subjectKeyB64 = record.subjectKeyB64, seq = record.seq, happenedAt = record.happenedAt,
+            field = record.field, oldValue = record.oldValue, newValue = record.newValue, reason = record.reason,
+            sourceRef = record.sourceRef, actor = record.actor, signature = record.signature,
+        ),
+    )
+
+    override suspend fun nextBatch(limit: Int): List<ChangeRecord> = dao.nextBatch(limit).map {
+        ChangeRecord(it.id, it.subjectKeyB64, it.seq, it.happenedAt, it.field, it.oldValue, it.newValue, it.reason, it.sourceRef, it.actor, it.signature)
+    }
+
+    override suspend fun deleteByIds(ids: List<String>) = dao.deleteByIds(ids)
+    override suspend fun count(): Int = dao.count()
+    override suspend fun oldestHappenedAt(): Long? = dao.oldestHappenedAt()
 }

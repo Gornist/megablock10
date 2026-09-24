@@ -1,4 +1,4 @@
-package com.megablok10.app.collector
+package com.megablok10.kit.sync
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -20,10 +20,10 @@ class ChangeRecordTest {
         subjectKeyB64 = "pubKeyB64==",
         seq = 42L,
         happenedAt = 1_700_000_000_000L,
-        field = ChangeField.RAM_CAPACITY,
+        field = "ramCapacity",
         oldValue = oldValue,
         newValue = newValue,
-        reason = ChangeReason.RAM_UPGRADE,
+        reason = "RAM_UPGRADE",
         sourceRef = sourceRef,
         actor = "actorKeyB64==",
         signature = "",
@@ -57,10 +57,10 @@ class ChangeRecordTest {
             base.copy(subjectKeyB64 = "otherPub=="),
             base.copy(seq = 43L),
             base.copy(happenedAt = 1_700_000_000_001L),
-            base.copy(field = ChangeField.BALANCE),
+            base.copy(field = "balance"),
             base.copy(oldValue = "4"),
             base.copy(newValue = "7"),
-            base.copy(reason = ChangeReason.MASTER_OVERRIDE),
+            base.copy(reason = "MASTER_OVERRIDE"),
             base.copy(sourceRef = "ref-2"),
             base.copy(actor = "otherActor=="),
         )

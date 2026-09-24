@@ -2,6 +2,11 @@ package com.megablok10.app.collector
 
 import com.megablok10.app.log.Mb10Log
 import com.megablok10.kit.mesh.PeerInfo
+import com.megablok10.kit.sync.ChangeRecord
+import com.megablok10.kit.sync.CollectorEndpoint
+import com.megablok10.kit.sync.CollectorTransport
+import com.megablok10.kit.sync.SyncRequest
+import com.megablok10.kit.sync.SyncResponse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -17,22 +22,16 @@ import java.util.concurrent.TimeUnit
 private const val TAG = "CollectorClient"
 private val JSON = "application/json; charset=utf-8".toMediaType()
 
-data class BatchResult(
-    val accepted: Set<String>,
-    val rejected: Map<String, String>,
-    val pending: List<ChangeRecord>,
-    /** Другие игроки, недавно приславшие heartbeat, с адресом и портом — запасное обнаружение, когда NSD молчит (см. PresenceService.updateServerPeers). */
-    val peers: List<PeerInfo> = emptyList(),
-)
-
 /**
  * HTTP-клиент до мастерского коллектора (admin-web/server) — обычный POST
  * в открытой локальной сети, без TLS (см. network_security_config.xml).
  * Не P2P: в отличие от ChatServer/ClaimClient это единственное место в
  * приложении, где устройство говорит с фиксированным сервером, а не с
  * другими игроками напрямую.
+ *
+ * Для синхронизации это транспорт kit ([CollectorTransport], движок — SyncEngine): здесь только HTTP и JSON.
  */
-object CollectorClient {
+object CollectorClient : CollectorTransport {
     private val http = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(5, TimeUnit.SECONDS)
@@ -44,29 +43,25 @@ object CollectorClient {
      * ВСЕГДА, даже при пустом records — этим же запросом сервер отдаёт
      * накопленные MASTER_OVERRIDE для этого ключа (§6.3), а без явного
      * ключа в пустом батче ему неоткуда узнать, чью очередь проверять.
+     * peers в ответе — другие игроки, недавно приславшие heartbeat, с адресом и портом: запасное обнаружение, когда NSD молчит.
      */
-    suspend fun sendBatch(
-        baseUrl: String,
-        records: List<ChangeRecord>,
-        subjectKeyB64: String?,
-        gameSecret: String? = null,
-        ackIds: List<String> = emptyList(),
-        presence: JSONObject? = null,
-    ): BatchResult? = withContext(Dispatchers.IO) {
+    override suspend fun exchange(endpoint: CollectorEndpoint, request: SyncRequest): SyncResponse? = withContext(Dispatchers.IO) {
+        val baseUrl = endpoint.baseUrl
+        val records = request.records
         val body = JSONObject().put("records", JSONArray(records.map { it.toJson() }))
-        if (subjectKeyB64 != null) body.put("subjectKeyB64", subjectKeyB64)
+        if (request.subjectKeyB64 != null) body.put("subjectKeyB64", request.subjectKeyB64)
         // Подтверждение применённых правок мастера из прошлого ответа — сервер шлёт их снова, пока не получит ack.
-        if (ackIds.isNotEmpty()) body.put("ackIds", JSONArray(ackIds))
+        if (request.ackIds.isNotEmpty()) body.put("ackIds", JSONArray(request.ackIds))
         // Порт чат-сервера, позывной и фракция — чтобы сервер мог подсказать другим, где меня искать (адрес он видит сам).
-        if (presence != null) body.put("presence", presence)
-        val request = Request.Builder()
+        request.presence?.let { body.put("presence", JSONObject(it)) }
+        val httpRequest = Request.Builder()
             .url("$baseUrl/api/changes")
             .post(body.toString().toRequestBody(JSON))
-            .withGameSecret(gameSecret)
+            .withGameSecret(endpoint.secret)
             .build()
         val started = System.currentTimeMillis()
         try {
-            http.newCall(request).execute().use { response ->
+            http.newCall(httpRequest).execute().use { response ->
                 if (!response.isSuccessful) {
                     Mb10Log.warnEvent(TAG, "sync.http_error", "url" to baseUrl, "code" to response.code, "records" to records.size, "ms" to (System.currentTimeMillis() - started))
                     return@withContext null
@@ -90,7 +85,7 @@ object CollectorClient {
                     }
                 }.orEmpty()
                 Mb10Log.event(TAG, "sync.ok", "sent" to records.size, "accepted" to accepted.size, "rejected" to rejected.size, "pendingFromMaster" to pending.size, "peersFromServer" to peers.size, "ms" to (System.currentTimeMillis() - started))
-                BatchResult(accepted, rejected, pending, peers)
+                SyncResponse(accepted, rejected, pending, peers)
             }
         } catch (e: IOException) {
             Mb10Log.warnEvent(TAG, "sync.unreachable", "url" to baseUrl, "error" to e.javaClass.simpleName, "msg" to e.message, "records" to records.size, "ms" to (System.currentTimeMillis() - started))
