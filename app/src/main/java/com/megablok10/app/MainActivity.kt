@@ -302,7 +302,8 @@ fun SetupScreen(onProvision: (Mb10Qr.Provision) -> Unit, onCreated: (String, Str
             color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 13.sp, lineHeight = 18.sp
         )
         Spacer(Modifier.height(16.dp))
-        AppButton("Сканировать QR персонажа", variant = ButtonVariant.Primary, modifier = Modifier.fillMaxWidth(), onClick = startScan)
+        // Код от мастера, не игровое действие игрока — служебный жёлтый (см. правило accentSystem в Color.kt).
+        AppButton("Сканировать QR персонажа", variant = ButtonVariant.System, modifier = Modifier.fillMaxWidth(), onClick = startScan)
         Spacer(Modifier.height(10.dp))
         Text(
             "Код действует один раз. Повторно — только после сброса сессии и с новым кодом от мастера.",

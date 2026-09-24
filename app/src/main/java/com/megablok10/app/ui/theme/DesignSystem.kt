@@ -247,7 +247,9 @@ fun AppTextField(
  * "выключено" и "включено, но тускло" легко перепутать на взгляд.
  */
 /** Netrun — filled-акцент лаймом, СТРОГО для действий взлома (сканировать объект, расшифровать) — см. правило accentNetrun в Color.kt. */
-enum class ButtonVariant { Primary, Secondary, Danger, Netrun }
+/** System — filled-акцент служебным жёлтым (accentSystem), форма среза другая (notchedChamferShape, см. Shapes.kt) — СТРОГО для действий
+ * от мастера/приложения, не от игрока: подтвердить объявление мастера, принять код персонажа. См. правило accentSystem в Color.kt. */
+enum class ButtonVariant { Primary, Secondary, Danger, Netrun, System }
 
 @Composable
 fun AppButton(
@@ -280,6 +282,23 @@ fun AppButton(
         }
         ButtonVariant.Secondary -> OutlineButton(text, modifier, accentColor = MB10Colors.inkPrimary, enabled = enabled, verticalPadding = if (dense) 7.dp else 10.dp, onClick = onClick)
         ButtonVariant.Danger -> OutlineButton(text, modifier, accentColor = MB10Colors.accentDanger, enabled = enabled, verticalPadding = if (dense) 7.dp else 10.dp, onClick = onClick)
+        ButtonVariant.System -> {
+            val fill = if (enabled) MB10Colors.accentSystem else MB10Colors.surfaceSunken
+            val border = if (enabled) MB10Colors.accentSystem else MB10Colors.borderMuted
+            val textColor = if (enabled) MB10Colors.onAccentSystem else MB10Colors.inkTertiary
+            Box(
+                modifier = modifier
+                    .background(fill, notchedChamferShape(8.dp))
+                    .border(1.dp, border, notchedChamferShape(8.dp))
+                    .clickable(enabled = enabled, onClick = onClick)
+                    .padding(vertical = pad)
+            ) {
+                Text(
+                    text, color = textColor, fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium,
+                    fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
     }
 }
 
@@ -393,11 +412,13 @@ fun AppDialog(
     confirmText: String,
     onConfirm: () -> Unit,
     dismissText: String = "Отмена",
-    confirmVariant: ButtonVariant = ButtonVariant.Danger
+    confirmVariant: ButtonVariant = ButtonVariant.Danger,
+    /** Явный акцент рамки — например accentSystem для диалогов от мастера/приложения (см. AnnouncementDialogHost). По умолчанию нейтральная. */
+    borderColor: Color = MB10Colors.borderMuted
 ) {
     Dialog(onDismissRequest = onDismissRequest) {
         ChamferedSurface(
-            borderColor = MB10Colors.borderMuted,
+            borderColor = borderColor,
             fillColor = MB10Colors.surfaceRaised,
             contentPadding = MB10Spacing.lg
         ) {

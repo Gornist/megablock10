@@ -393,7 +393,7 @@ private fun BreachSession(
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            TerminalFrame(Modifier.weight(1f)) {
+            TerminalFrame(Modifier.weight(1f), dotDecoration = true) {
                 val urgent = secondsLeft in 1..10 && result == null && booted
                 val blink by rememberInfiniteTransition(label = "timerBlink").animateFloat(
                     initialValue = 0f, targetValue = 1f,
@@ -516,16 +516,29 @@ private fun BreachSession(
     }
 }
 
-/** Скошенная рамка терминала: контур повторяет срез, остальные панели экрана взлома лежат внутри неё. */
+/**
+ * Скошенная рамка терминала: контур повторяет срез, остальные панели экрана взлома лежат внутри неё.
+ * dotDecoration — полоса точек-делений сверху/снизу (HUD-линейка, см. Motion.DotTickRow); по умолчанию выключена —
+ * не всякий вызов TerminalFrame это отдельный "терминал-сцена" (скриншот-тесты используют голую рамку).
+ */
 @Composable
-internal fun TerminalFrame(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+internal fun TerminalFrame(modifier: Modifier = Modifier, dotDecoration: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier = modifier
             .fillMaxWidth()
             .chamferBorder(MB10Colors.borderMuted, cut = 10.dp)
             .padding(8.dp),
-        content = content
-    )
+    ) {
+        if (dotDecoration) {
+            com.megablok10.app.ui.theme.DotTickRow(color = MB10Colors.borderMuted)
+            Spacer(Modifier.height(6.dp))
+        }
+        content()
+        if (dotDecoration) {
+            Spacer(Modifier.height(6.dp))
+            com.megablok10.app.ui.theme.DotTickRow(color = MB10Colors.borderMuted)
+        }
+    }
 }
 
 /** Тонкая скошенная панель внутри терминала (список демонов, лог входа). */

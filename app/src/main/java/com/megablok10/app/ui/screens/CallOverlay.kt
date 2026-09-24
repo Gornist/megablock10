@@ -46,6 +46,7 @@ import com.megablok10.app.ui.theme.Jura
 import com.megablok10.app.ui.theme.MB10Colors
 import com.megablok10.app.ui.theme.StatusChip
 import com.megablok10.app.ui.theme.chamferShape
+import com.megablok10.app.ui.theme.vignetteBottom
 import kotlinx.coroutines.delay
 
 /**
@@ -76,7 +77,8 @@ private fun RingingCard(state: CallUiState, peerFaction: String?, onAccept: () -
     val incoming = state.phase == CallPhase.INCOMING_RINGING
 
     Box(
-        modifier = Modifier.fillMaxSize().background(MB10Colors.surfaceBase.copy(alpha = 0.92f)),
+        // Виньетка снизу — приём с шапки cyberpunk.net (мягкий переход в фон вместо жёсткого обреза, см. Motion.kt).
+        modifier = Modifier.fillMaxSize().background(MB10Colors.surfaceBase.copy(alpha = 0.92f)).vignetteBottom(MB10Colors.surfaceBase, heightFraction = 0.35f),
         contentAlignment = Alignment.Center
     ) {
         ChamferedSurface(

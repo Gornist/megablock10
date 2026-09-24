@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
@@ -44,9 +45,11 @@ import com.megablok10.app.ui.theme.ChamferedSurface
 import com.megablok10.app.ui.theme.ChipTone
 import com.megablok10.app.ui.theme.IBMPlexSans
 import com.megablok10.app.ui.theme.JetBrainsMono
+import com.megablok10.app.ui.theme.HamburgerToggle
 import com.megablok10.app.ui.theme.ListRow
 import com.megablok10.app.ui.theme.MB10Colors
 import com.megablok10.app.ui.theme.SectionLabel
+import com.megablok10.app.ui.theme.StaggeredReveal
 import com.megablok10.app.ui.theme.StatusChip
 
 @Composable
@@ -85,23 +88,30 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
             Spacer(Modifier.height(16.dp))
             SectionLabel("Сообщения мастера")
             val format = remember { java.text.SimpleDateFormat("dd.MM HH:mm", java.util.Locale.getDefault()) }
-            announcements.take(10).forEach { a ->
-                ListRow {
-                    Text(a.text, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
-                    Text(format.format(java.util.Date(a.receivedAt)), color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
+            announcements.take(10).forEachIndexed { index, a ->
+                StaggeredReveal(index) {
+                    Column {
+                        ListRow {
+                            Text(a.text, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
+                            Text(format.format(java.util.Date(a.receivedAt)), color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
+                        }
+                        Spacer(Modifier.height(6.dp))
+                    }
                 }
-                Spacer(Modifier.height(6.dp))
             }
         }
 
         Spacer(Modifier.height(16.dp))
         SectionLabel("Мастерский коллектор")
         var collectorHelp by remember { mutableStateOf(false) }
-        Text(
-            if (collectorHelp) "Скрыть подсказки" else "Подробнее",
-            color = MB10Colors.accentAction, fontFamily = JetBrainsMono, fontSize = 11.sp,
-            modifier = Modifier.clickable { collectorHelp = !collectorHelp }.padding(vertical = 4.dp)
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { collectorHelp = !collectorHelp }.padding(vertical = 4.dp)) {
+            HamburgerToggle(open = collectorHelp, onToggle = { collectorHelp = it })
+            Spacer(Modifier.width(8.dp))
+            Text(
+                if (collectorHelp) "Скрыть подсказки" else "Подробнее",
+                color = MB10Colors.accentAction, fontFamily = JetBrainsMono, fontSize = 11.sp
+            )
+        }
         if (collectorHelp) {
             Text(
                 "Адрес сервера дашборда в игровой сети — сюда уходит история изменений. Пустой адрес отключает отправку, игра работает как обычно. " +

@@ -11,6 +11,7 @@ import com.megablok10.app.announce.AnnouncementStore
 import com.megablok10.app.announce.Announcements
 import com.megablok10.app.ui.theme.AppDialog
 import com.megablok10.app.ui.theme.ButtonVariant
+import com.megablok10.app.ui.theme.MB10Colors
 
 /**
  * Окно с непрочитанными объявлениями мастера — показывается поверх любого
@@ -35,6 +36,8 @@ fun AnnouncementDialogHost() {
         confirmText = "Принято",
         onConfirm = { AnnouncementStore.markAllRead(context) },
         dismissText = "Позже",
-        confirmVariant = ButtonVariant.Primary
+        // Служебный жёлтый — это сообщение от мастера/приложения, не игровое действие (см. правило accentSystem в Color.kt).
+        confirmVariant = ButtonVariant.System,
+        borderColor = MB10Colors.accentSystem
     )
 }
