@@ -39,6 +39,18 @@ jobs:
           yes | sdkmanager --licenses > /dev/null || true
           ./gradlew testDebugUnitTest :kit:test --no-daemon
 
+      # kit проверяет Animal Sniffer (шаг выше), приложение — Android Lint: вызов API новее Android 8.0 падал бы на телефонах игроков.
+      - name: Android Lint — API не новее minSdk 26 (NewApi)
+        run: ./gradlew :app:lintDebug --no-daemon
+
+      - name: Отчёт Android Lint (при падении)
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lint-report
+          path: app/build/reports/lint-results-debug.*
+          if-no-files-found: ignore
+
       - name: Скриншот-тесты (Paparazzi, JVM)
         run: ./gradlew verifyPaparazziDebug --no-daemon
 

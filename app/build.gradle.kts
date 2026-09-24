@@ -77,6 +77,16 @@ android {
     packaging {
         resources.excludes.add("META-INF/*")
     }
+    // Android Lint — пока только уровень API (NewApi): вызов того, чего нет на minSdk 26, компилируется молча, а на телефоне игрока
+    // с Android 8–12 падает NoSuchMethodError. Так было с PrintWriter(OutputStream, Boolean, Charset) — он есть только с API 33.
+    // Модуль kit сторожит Animal Sniffer (сигнатура API 26), приложение — эта проверка. Остальные проверки lint не включены
+    // сознательно: у них свой шум, это отдельная работа. Запуск: ./gradlew :app:lintDebug (CI и scripts/check.sh).
+    lint {
+        checkOnly += "NewApi"
+        abortOnError = true
+        textReport = true
+        textOutput = file("stdout")   // находки — прямо в журнал сборки, без скачивания отчёта
+    }
 }
 
 ksp {
