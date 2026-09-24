@@ -18,8 +18,8 @@ class ShardStore(
     private val dao: ShardDao,
     private val wallet: TransactionStore,
     private val changes: ChangeRecorder,
-) {
-    fun observeAll(): Flow<List<Mb10Qr.Shard>> =
+) : ShardCollection {
+    override fun observeAll(): Flow<List<Mb10Qr.Shard>> =
         dao.observeAll().map { entities -> entities.map { it.toShard() } }
 
     /** Шард из коллекции (для передачи другому игроку); null — такого у игрока нет. */
@@ -33,12 +33,12 @@ class ShardStore(
      *
      * reason/sourceRef — откуда взялся шард для мастерского коллектора (§2.2 ТЗ): напрямую сканом или через grant() из контейнера.
      */
-    suspend fun add(
+    override suspend fun add(
         shard: Mb10Qr.Shard,
-        reason: String = ChangeReason.SHARD_SCAN,
-        sourceRef: String? = null,
-        creditMoney: Boolean = true,
-        decrypted: Boolean = !shard.decryptAction
+        reason: String,
+        sourceRef: String?,
+        creditMoney: Boolean,
+        decrypted: Boolean
     ) {
         val acquiredAt = System.currentTimeMillis()
         dao.upsert(
@@ -92,7 +92,7 @@ class ShardStore(
         changes.record(ChangeField.SHARDS_REMOVE, null, JSONObject().put("shardId", id).toString(), reason, sourceRef)
     }
 
-    suspend fun markDecrypted(id: String) {
+    override suspend fun markDecrypted(id: String) {
         dao.markDecrypted(id)
         changes.record(
             ChangeField.SHARDS_DECRYPT, null,

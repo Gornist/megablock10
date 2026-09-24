@@ -2,7 +2,7 @@ package com.megablok10.app.ui.screens
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.megablok10.app.chat.ChatStore
+import com.megablok10.app.chat.ChatInbox
 import com.megablok10.app.data.ChatMessageEntity
 import com.megablok10.app.identity.ContactDirectory
 import com.megablok10.app.identity.ContactsView
@@ -35,7 +35,7 @@ data class ChatInboxState(
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatViewModel(
     private val identity: StateFlow<Identity?>,
-    private val chat: ChatStore,
+    private val chat: ChatInbox,
     directory: ContactDirectory,
     private val work: CoroutineScope,
 ) : ViewModel() {

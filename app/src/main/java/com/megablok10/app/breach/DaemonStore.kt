@@ -21,13 +21,13 @@ import org.json.JSONObject
 class DaemonStore(
     private val dao: DaemonDao,
     private val changes: ChangeRecorder,
-) {
-    fun observeAll(): Flow<List<Daemon>> = dao.observeAll().map { entities -> entities.map { it.toDaemon() } }
+) : DaemonCollection {
+    override fun observeAll(): Flow<List<Daemon>> = dao.observeAll().map { entities -> entities.map { it.toDaemon() } }
 
     /** Демон из коллекции (для передачи другому игроку); null — такого у игрока нет. */
     suspend fun get(id: String): Daemon? = dao.get(id)?.toDaemon()
 
-    suspend fun ensureSeeded() {
+    override suspend fun ensureSeeded() {
         if (dao.count() == 0) {
             dao.insertAll(MockBreach.daemons.map {
                 DaemonEntity(id = it.id, name = it.name, sequence = it.sequence.joinToString(","), tier = it.tier.level, effect = it.effect.name)

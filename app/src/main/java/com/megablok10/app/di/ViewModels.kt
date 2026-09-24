@@ -53,7 +53,8 @@ fun AppGraph.directThreadViewModel(myKey: String, peerKey: String) = DirectThrea
     work = processScope,
 )
 
-fun AppGraph.cyberdeckViewModel() = CyberdeckViewModel(identity.state, daemons, shards, directory, ramUpgrades, rewards, sendItem, notices, processScope)
+fun AppGraph.cyberdeckViewModel() =
+    CyberdeckViewModel(identity.state, daemons, shards, directory, ramUpgrades::apply, rewards::applyGrant, sendItem, notices, processScope)
 
 fun AppGraph.breachViewModel() = BreachViewModel(identity.state, checkBreachAccess, finishBreach, processScope)
 

@@ -23,18 +23,18 @@ class ChatStore(
     private val outbox: OutboxStore,
     private val lines: LineSocketClient,
     private val peers: () -> List<PeerInfo>,
-) : DirectMessenger {
+) : DirectMessenger, ChatInbox {
     override fun onlinePeer(pubKeyB64: String): PeerInfo? = peers().find { it.pubKeyB64 == pubKeyB64 }
 
-    fun observeFaction(faction: String): Flow<List<ChatMessageEntity>> = dao.observeFaction(faction)
+    override fun observeFaction(faction: String): Flow<List<ChatMessageEntity>> = dao.observeFaction(faction)
 
     fun observeDirect(myPubKey: String, peerPubKey: String): Flow<List<ChatMessageEntity>> = dao.observeDirect(myPubKey, peerPubKey)
 
     /** Последнее сообщение с каждым собеседником — для инбокса. */
-    fun observeRecentDirectThreads(myPubKey: String): Flow<List<ChatMessageEntity>> = dao.observeRecentDirectThreads(myPubKey)
+    override fun observeRecentDirectThreads(myPubKey: String): Flow<List<ChatMessageEntity>> = dao.observeRecentDirectThreads(myPubKey)
 
     /** Сохраняет свою копию сразу и рассылает всем сейчас видимым игрокам своей фракции; кому не ушло — в очередь исходящих. */
-    suspend fun sendFaction(identity: Identity, body: String) {
+    override suspend fun sendFaction(identity: Identity, body: String) {
         val timestamp = System.currentTimeMillis()
         val wire = ChatWireMessage(ChatMessageType.FACTION, identity.publicKeyB64, identity.callsign, identity.faction, "", timestamp, body)
         persist(wire)

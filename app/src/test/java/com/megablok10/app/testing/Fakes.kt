@@ -3,9 +3,15 @@ package com.megablok10.app.testing
 import android.content.SharedPreferences
 import com.megablok10.app.PlayerNotices
 import com.megablok10.app.breach.Daemon
+import com.megablok10.app.breach.DaemonCollection
+import com.megablok10.app.call.CallControls
+import com.megablok10.app.call.CallUiState
+import com.megablok10.app.chat.ChatInbox
 import com.megablok10.app.chat.DirectMessenger
+import com.megablok10.app.data.CallLogEntity
 import com.megablok10.app.data.CharacterDao
 import com.megablok10.app.data.CharacterEntity
+import com.megablok10.app.data.ChatMessageEntity
 import com.megablok10.app.data.ItemTransferEntity
 import com.megablok10.app.data.TransactionEntity
 import com.megablok10.app.data.TransactionStatus
@@ -13,6 +19,7 @@ import com.megablok10.app.identity.Identity
 import com.megablok10.app.items.ItemLedger
 import com.megablok10.app.qr.ItemKind
 import com.megablok10.app.qr.Mb10Qr
+import com.megablok10.app.shards.ShardCollection
 import com.megablok10.app.wallet.PaymentLedger
 import com.megablok10.kit.crypto.Ecdsa
 import com.megablok10.kit.handover.Handover
@@ -242,4 +249,60 @@ class FakeCharacterDao(vararg contacts: CharacterEntity) : CharacterDao {
 class RecordingNotices : PlayerNotices {
     val shown = mutableListOf<String>()
     override fun show(text: String) { shown += text }
+}
+
+/** Коллекция шардов в памяти — как [FakePaymentLedger], минимальный порт для CyberdeckViewModel/ScanObject. */
+class FakeShardCollection(vararg initial: Mb10Qr.Shard) : ShardCollection {
+    val items = MutableStateFlow(initial.toList())
+    val decryptedIds = mutableListOf<String>()
+    override fun observeAll(): Flow<List<Mb10Qr.Shard>> = items
+
+    override suspend fun add(shard: Mb10Qr.Shard, reason: String, sourceRef: String?, creditMoney: Boolean, decrypted: Boolean) {
+        items.value = items.value + shard.copy(decrypted = decrypted)
+    }
+
+    override suspend fun markDecrypted(id: String) {
+        decryptedIds += id
+        items.value = items.value.map { if (it.id == id) it.copy(decrypted = true) else it }
+    }
+}
+
+/** Коллекция демонов в памяти. [seedCalls] считает вызовы ensureSeeded — идемпотентность (не пересеивает непустую коллекцию) проверяет тест. */
+class FakeDaemonCollection(vararg initial: Daemon) : DaemonCollection {
+    val items = MutableStateFlow(initial.toList())
+    var seedCalls = 0
+    override fun observeAll(): Flow<List<Daemon>> = items
+    override suspend fun ensureSeeded() {
+        seedCalls++
+        if (items.value.isEmpty()) items.value = listOf(Daemon("seed", "Datamine V1", listOf("1C", "55")))
+    }
+}
+
+/**
+ * Инбокс чата в памяти: лента у каждой фракции — свой Flow (как настоящий ChatStore.observeFaction фильтрует по фракции в
+ * запросе) — тест может проверить, что смена фракции персонажа переподписывает ленту, а не просто ждёт новых элементов в общей.
+ */
+class FakeChatInbox : ChatInbox {
+    private val factionFeeds = mutableMapOf<String, MutableStateFlow<List<ChatMessageEntity>>>()
+    val recentThreads = MutableStateFlow<List<ChatMessageEntity>>(emptyList())
+    val sentFaction = mutableListOf<String>()
+
+    fun factionFeed(faction: String): MutableStateFlow<List<ChatMessageEntity>> = factionFeeds.getOrPut(faction) { MutableStateFlow(emptyList()) }
+
+    override fun observeFaction(faction: String): Flow<List<ChatMessageEntity>> = factionFeed(faction)
+    override fun observeRecentDirectThreads(myPubKey: String): Flow<List<ChatMessageEntity>> = recentThreads
+    override suspend fun sendFaction(identity: Identity, body: String) { sentFaction += body }
+}
+
+/** Звонки в памяти — состояние и журнал задаёт тест, действия только записываются (как настоящий CallManager делает WebRTC). */
+class FakeCallControls(initial: CallUiState = CallUiState()) : CallControls {
+    override val state = MutableStateFlow(initial)
+    val log = MutableStateFlow<List<CallLogEntity>>(emptyList())
+    val started = mutableListOf<PeerInfo>()
+    var accepted = 0
+    var ended = 0
+    override fun observeLog(): Flow<List<CallLogEntity>> = log
+    override fun startOutgoingCall(identity: Identity, peer: PeerInfo) { started += peer }
+    override fun accept(identity: Identity) { accepted++ }
+    override fun endCall(identity: Identity) { ended++ }
 }

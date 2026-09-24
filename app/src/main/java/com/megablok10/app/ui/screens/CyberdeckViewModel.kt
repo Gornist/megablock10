@@ -4,17 +4,17 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.megablok10.app.PlayerNotices
 import com.megablok10.app.breach.Daemon
-import com.megablok10.app.breach.DaemonRewards
-import com.megablok10.app.breach.DaemonStore
-import com.megablok10.app.breach.LootType
+import com.megablok10.app.breach.DaemonCollection
+import com.megablok10.app.cyberdeck.CollectedKind
+import com.megablok10.app.cyberdeck.ScanEffect
+import com.megablok10.app.cyberdeck.ScanObject
 import com.megablok10.app.identity.ContactDirectory
 import com.megablok10.app.identity.ContactsView
 import com.megablok10.app.identity.Identity
-import com.megablok10.app.identity.RamUpgradeStore
 import com.megablok10.app.items.OutgoingItem
 import com.megablok10.app.items.SendItem
 import com.megablok10.app.qr.Mb10Qr
-import com.megablok10.app.shards.ShardStore
+import com.megablok10.app.shards.ShardCollection
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,15 +39,17 @@ data class CyberdeckState(
  */
 class CyberdeckViewModel(
     private val identity: StateFlow<Identity?>,
-    private val daemons: DaemonStore,
-    private val shards: ShardStore,
+    private val daemons: DaemonCollection,
+    private val shards: ShardCollection,
     directory: ContactDirectory,
-    private val ramUpgrades: RamUpgradeStore,
-    private val rewards: DaemonRewards,
+    applyRamUpgrade: suspend (Mb10Qr.RamUpgrade) -> Int?,
+    applyGrant: suspend (Mb10Qr.LootGrant) -> String?,
     private val sendItem: SendItem,
     private val notices: PlayerNotices,
     private val work: CoroutineScope,
 ) : ViewModel() {
+    private val scanObject = ScanObject(shards, applyRamUpgrade, applyGrant)
+
     val state: StateFlow<CyberdeckState> = combine(daemons.observeAll(), shards.observeAll(), directory.view, ::CyberdeckState)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_MS), CyberdeckState())
 
@@ -63,22 +65,18 @@ class CyberdeckViewModel(
 
     fun selectSegment(segment: Int) { _segment.value = segment }
 
-    /** Отсканированный объект, кроме контейнера: шард, RAM-токен, фрагмент лута от мастера. */
+    /** Отсканированный объект, кроме контейнера: шард, RAM-токен, фрагмент лута от мастера. Маршрутизация — сценарий ScanObject. */
     fun onScan(qr: Mb10Qr) {
-        when (qr) {
-            is Mb10Qr.Shard -> {
-                work.launch { shards.add(qr) }
-                _segment.value = SEGMENT_SHARDS
+        work.launch {
+            scanObject(qr).forEach { effect ->
+                when (effect) {
+                    is ScanEffect.Notice -> notices.show(effect.text)
+                    is ScanEffect.Collected -> _segment.value = when (effect.kind) {
+                        CollectedKind.Shard -> SEGMENT_SHARDS
+                        CollectedKind.Daemon -> SEGMENT_DAEMONS
+                    }
+                }
             }
-            is Mb10Qr.RamUpgrade -> work.launch {
-                val capacity = ramUpgrades.apply(qr)
-                notices.show(if (capacity != null) "RAM деки увеличена до $capacity" else "Этот RAM-токен уже был применён")
-            }
-            is Mb10Qr.LootGrant -> work.launch {
-                notices.show(rewards.applyGrant(qr) ?: "Фрагмент повреждён — обратитесь к мастеру")
-                _segment.value = if (qr.type == LootType.DAEMON) SEGMENT_DAEMONS else SEGMENT_SHARDS
-            }
-            else -> notices.show("Этот QR не распознан Кибердекой")
         }
     }
 
