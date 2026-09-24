@@ -34,7 +34,7 @@ private val BIND_RETRY_DELAYS_MS = longArrayOf(200, 500, 1000, 2000)
  * [onChanged] вызывается, когда сеть появилась, пропала или у неё сменился адрес (переподключение, новая аренда DHCP): NSD после
  * этого надо регистрировать заново, старые записи mDNS уже не действуют.
  */
-object WifiBinder {
+class WifiBinder(private val app: Context) {
     private var manager: ConnectivityManager? = null
     private var callback: ConnectivityManager.NetworkCallback? = null
     private var scope: CoroutineScope? = null
@@ -47,9 +47,9 @@ object WifiBinder {
     @Volatile var ownIpv4: String? = null
         private set
 
-    fun start(context: Context, onChanged: () -> Unit) {
+    fun start(onChanged: () -> Unit) {
         stop()
-        val cm = context.applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+        val cm = app.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
         Mb10Log.event(TAG, "wifi.start")
         manager = cm
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)

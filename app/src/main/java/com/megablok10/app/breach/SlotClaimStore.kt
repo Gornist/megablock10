@@ -1,14 +1,15 @@
 package com.megablok10.app.breach
 
-import android.content.Context
 import com.megablok10.app.collector.CollectorClient
 import com.megablok10.app.collector.CollectorSettings
-import com.megablok10.app.data.Mb10Database
+import com.megablok10.app.data.SlotClaimDao
 import com.megablok10.app.data.SlotClaimEntity
 import com.megablok10.app.identity.Identity
-import com.megablok10.app.identity.IdentityManager
+import com.megablok10.app.identity.IdentityStore
 import com.megablok10.app.log.Mb10Log
-import com.megablok10.app.presence.PresenceService
+import com.megablok10.kit.crypto.Ecdsa
+import com.megablok10.kit.mesh.PeerInfo
+import com.megablok10.kit.net.LineSocketClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -23,7 +24,14 @@ import kotlinx.coroutines.withContext
  * тогда, как и раньше, гонка между устройствами не исключена в принципе,
  * это осознанный компромисс на случай отсутствия мастерского ноутбука.
  */
-object SlotClaimStore {
+class SlotClaimStore(
+    private val dao: SlotClaimDao,
+    private val identityStore: IdentityStore,
+    private val settings: CollectorSettings,
+    private val collector: CollectorClient,
+    private val peers: () -> List<PeerInfo>,
+    private val lines: LineSocketClient,
+) {
     /**
      * Ищет первый (по порядку слотов контейнера) ещё не исчерпанный слот
      * нужного типа, который extractorTier способен извлечь, застолбливает
@@ -32,14 +40,12 @@ object SlotClaimStore {
      * подходящих свободных слотов не осталось ("КЭШ ОЧИЩЕН").
      */
     suspend fun claimNextAvailable(
-        context: Context,
         identity: Identity,
         container: Container,
         type: LootType,
         extractorTier: Tier,
         excludeIndices: Set<Int>
     ): Int? {
-        val dao = Mb10Database.get(context).slotClaimDao()
         // Слот, в котором коллектор отказал (глобально исчерпан, а локальный счётчик ещё не в курсе),
         // не должен обрывать извлечение целиком — пробуем следующий подходящий слот того же типа.
         val refused = mutableSetOf<Int>()
@@ -48,11 +54,11 @@ object SlotClaimStore {
 
             val slotRef = container.slotRef(index)
             val claimedAt = System.currentTimeMillis()
-            val signature = IdentityManager.sign(context, ClaimProtocol.signaturePayload(slotRef, identity.publicKeyB64, claimedAt))
+            val signature = identityStore.sign(ClaimProtocol.signaturePayload(slotRef, identity.publicKeyB64, claimedAt))
 
-            val collectorUrl = CollectorSettings.baseUrl(context)
+            val collectorUrl = settings.baseUrl()
             if (collectorUrl != null && container.loot[index].copies > 0) {
-                val granted = CollectorClient.claimSlot(collectorUrl, slotRef, identity.publicKeyB64, claimedAt, signature, CollectorSettings.gameSecret(context))
+                val granted = collector.claimSlot(collectorUrl, slotRef, identity.publicKeyB64, claimedAt, signature, settings.gameSecret())
                 if (!granted) {
                     Mb10Log.warnEvent("Slots", "slot.refused_by_server", "slot" to slotRef)
                     refused += index
@@ -69,58 +75,57 @@ object SlotClaimStore {
     }
 
     /**
-     * Чистый выбор слота без Context/БД — первый по порядку слот нужного
-     * типа, который extractorTier способен извлечь и который ещё не
-     * исчерпан по тиражу (claimedCount — число уже принятых заявок на него).
-     * excludeIndices — слоты, уже занятые ДРУГИМИ демонами в этой же попытке.
-     */
-    suspend fun pickSlot(
-        container: Container,
-        type: LootType,
-        extractorTier: Tier,
-        excludeIndices: Set<Int>,
-        claimedCount: suspend (slotRef: String) -> Int
-    ): Int? {
-        for ((index, slot) in container.loot.withIndex()) {
-            if (index in excludeIndices) continue
-            if (slot.type != type) continue
-            if (!extractorTier.covers(slot.tier)) continue
-            val slotRef = container.slotRef(index)
-            if (slot.copies > 0 && claimedCount(slotRef) >= slot.copies) continue
-            return index
-        }
-        return null
-    }
-
-    /**
      * Все слоты конечного тиража в контейнере уже разобраны — сканировать его
      * дальше некому смысла нет ("КЭШ ОЧИЩЕН", см. CyberdeckScreen). Слоты с
      * copies=0 (бесконечный тираж) никогда не считаются исчерпанными; контейнер
      * совсем без лута (легаси "AP"-QR) исчерпанным тоже не считается — у него
      * просто изначально нечего доставать, это не то же самое, что "уже разобрали".
      */
-    suspend fun isExhausted(context: Context, container: Container): Boolean {
+    suspend fun isExhausted(container: Container): Boolean {
         if (container.loot.isEmpty()) return false
-        val dao = Mb10Database.get(context).slotClaimDao()
         return container.loot.withIndex().all { (index, slot) ->
             slot.copies > 0 && dao.claimCount(container.slotRef(index)) >= slot.copies
         }
     }
 
     /** Входящая заявка от другого устройства (см. ChatStore) — принимается только если подпись действительно принадлежит заявленному ключу. */
-    suspend fun receive(context: Context, claim: SlotClaimEntity) {
+    suspend fun receive(claim: SlotClaimEntity) {
         val payload = ClaimProtocol.signaturePayload(claim.slotRef, claim.claimantKeyB64, claim.claimedAt)
-        if (!IdentityManager.verify(claim.claimantKeyB64, payload, claim.signature)) {
+        if (!Ecdsa.verify(claim.claimantKeyB64, payload, claim.signature)) {
             Mb10Log.warnEvent("Slots", "slot.claim_in_bad_signature", "slot" to claim.slotRef, "from" to Mb10Log.short(claim.claimantKeyB64))
             return
         }
-        Mb10Database.get(context).slotClaimDao().insertIfAbsent(claim)
+        dao.insertIfAbsent(claim)
         Mb10Log.event("Slots", "slot.claim_in", "slot" to claim.slotRef, "from" to Mb10Log.short(claim.claimantKeyB64))
     }
 
     private suspend fun broadcast(claim: SlotClaimEntity) {
         withContext(Dispatchers.IO) {
-            PresenceService.peers.value.forEach { peer -> ClaimClient.send(peer.host, peer.port, claim) }
+            val line = ClaimProtocol.encode(claim)
+            peers().forEach { peer -> lines.sendLine(peer.host, peer.port, line) }
+        }
+    }
+
+    companion object {
+        /**
+         * Чистый выбор слота без Context/БД — первый по порядку слот нужного
+         * типа, который extractorTier способен извлечь и который ещё не
+         * исчерпан по тиражу (claimedCount — число уже принятых заявок на него).
+         * excludeIndices — слоты, уже занятые ДРУГИМИ демонами в этой же попытке.
+         */
+        suspend fun pickSlot(
+            container: Container,
+            type: LootType,
+            extractorTier: Tier,
+            excludeIndices: Set<Int>,
+            claimedCount: suspend (slotRef: String) -> Int
+        ): Int? {
+            for ((index, slot) in container.loot.withIndex()) {
+                val fits = index !in excludeIndices && slot.type == type && extractorTier.covers(slot.tier)
+                // Тираж спрашиваем, только если слот вообще подходит и конечен (0 — бесконечный): claimedCount ходит в базу.
+                if (fits && (slot.copies <= 0 || claimedCount(container.slotRef(index)) < slot.copies)) return index
+            }
+            return null
         }
     }
 }

@@ -56,11 +56,11 @@ import androidx.compose.ui.unit.sp
 import com.megablok10.app.DebugConfig
 import com.megablok10.app.collector.ChangeField
 import com.megablok10.app.collector.ChangeReason
-import com.megablok10.app.collector.ChangeRecordStore
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.sound.BreachCue
 import com.megablok10.app.sound.BreachSfx
+import com.megablok10.app.ui.LocalAppGraph
 import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.ButtonVariant
 import com.megablok10.app.ui.theme.ChamferedSurface
@@ -87,7 +87,7 @@ import org.json.JSONObject
  */
 @Composable
 internal fun BreachContainerFlow(container: Container, daemons: List<Daemon>, identity: Identity, onRescan: () -> Unit, onImmersive: (Boolean) -> Unit = {}) {
-    val context = LocalContext.current
+    val graph = LocalAppGraph.current
     val scope = rememberCoroutineScope()
     var chosen by remember(container.id) { mutableStateOf<Set<String>>(emptySet()) }
     var sessionSeed by remember(container.id) { mutableStateOf<Long?>(null) }
@@ -127,17 +127,17 @@ internal fun BreachContainerFlow(container: Container, daemons: List<Daemon>, id
                 onResult = { result ->
                     scope.launch {
                         val attemptId = "${container.id}:$seed"
-                        ChangeRecordStore.enqueue(
-                            context, ChangeField.COUNTERS_BREACH, null,
+                        graph.changes.record(
+                            ChangeField.COUNTERS_BREACH, null,
                             JSONObject().put("tier", container.tier.name).put("outcome", result.outcome.name.lowercase()).toString(),
                             ChangeReason.BREACH_ATTEMPT, sourceRef = attemptId, subjectKeyB64 = identity.publicKeyB64,
                         )
-                        val outcome = DaemonRewards.apply(context, identity, container, result, attemptId = attemptId)
+                        val outcome = graph.rewards.apply(identity, container, result, attemptId = attemptId)
                         rewardOutcome = outcome
                         if (result.matchedIds.isNotEmpty()) {
-                            ContainerCooldownStore.markRewarded(context, container.id)
+                            graph.cooldowns.markRewarded(container.id)
                         }
-                        SecAlertStore.dispatch(context, identity, container, result.outcome, outcome.matchedEffects)
+                        graph.secAlerts.dispatch(identity, container, result.outcome, outcome.matchedEffects)
                         secAlertStatus = secAlertStatusText(container, identity, result.outcome, outcome.matchedEffects)
                     }
                 }

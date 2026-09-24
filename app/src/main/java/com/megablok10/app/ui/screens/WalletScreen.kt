@@ -22,20 +22,16 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.megablok10.app.chat.ChatStore
 import com.megablok10.app.data.TransactionEntity
 import com.megablok10.app.data.TransactionStatus
-import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.identity.Identity
-import com.megablok10.app.identity.IdentityManager
-import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
+import com.megablok10.app.ui.LocalAppGraph
 import com.megablok10.app.ui.theme.AmountField
 import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.AppTextField
@@ -52,7 +48,6 @@ import com.megablok10.app.ui.theme.ListRow
 import com.megablok10.app.ui.theme.MB10Colors
 import com.megablok10.app.ui.theme.SectionLabel
 import com.megablok10.app.ui.theme.StatusChip
-import com.megablok10.app.wallet.TransactionStore
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -69,13 +64,13 @@ import java.util.UUID
  */
 @Composable
 fun WalletScreen(identity: Identity, presetContactKey: String? = null, onPresetConsumed: () -> Unit = {}) {
-    val context = LocalContext.current
+    val graph = LocalAppGraph.current
     val scope = rememberCoroutineScope()
-    val balance by TransactionStore.observeBalance(context).collectAsState(initial = 0L)
-    val transactions by TransactionStore.observeAll(context).collectAsState(initial = emptyList())
-    val contacts by ContactStore.observeAll(context).collectAsState(initial = emptyList())
+    val balance by remember { graph.wallet.observeBalance() }.collectAsState(initial = 0L)
+    val transactions by remember { graph.wallet.observeAll() }.collectAsState(initial = emptyList())
+    val contacts by remember { graph.contacts.observeAll() }.collectAsState(initial = emptyList())
     val contactsByKey = remember(contacts) { contacts.associateBy { it.publicKeyB64 } }
-    val onlinePeers by PresenceService.peers.collectAsState()
+    val onlinePeers by graph.presence.peers.collectAsState()
     val onlineKeys = remember(onlinePeers) { onlinePeers.map { it.pubKeyB64 }.toSet() }
 
     var sending by remember { mutableStateOf(false) }
@@ -112,19 +107,17 @@ fun WalletScreen(identity: Identity, presetContactKey: String? = null, onPresetC
                         balance = balance,
                         initialContact = contacts.find { it.publicKeyB64 == presetKey },
                         onSend = { contact, id, amount, memo ->
-                            val payload = Mb10QrCodec.transactionSignaturePayload(id, identity.publicKeyB64, contact.publicKeyB64, amount, memo)
-                            val signature = IdentityManager.sign(context, payload)
-                            val tx = Mb10Qr.Transaction(id, identity.publicKeyB64, contact.publicKeyB64, amount, memo, signature)
+                            val tx = graph.wallet.signedTransaction(identity, contact.publicKeyB64, amount, memo, id)
                             val peer = onlinePeers.find { it.pubKeyB64 == contact.publicKeyB64 }
                             scope.launch {
-                                if (TransactionStore.recordOutgoingPending(context, tx, contact.publicKeyB64)) {
-                                    TransactionStore.deliverOutgoing(context, tx.id, willSend = peer != null) {
-                                        ChatStore.sendDirectOutcome(context, identity, contact.publicKeyB64, peer, Mb10QrCodec.encodeTransaction(tx))
+                                if (graph.wallet.recordOutgoingPending(tx, contact.publicKeyB64)) {
+                                    graph.wallet.deliverOutgoing(tx.id, willSend = peer != null) {
+                                        graph.chat.sendDirectOutcome(identity, contact.publicKeyB64, peer, Mb10QrCodec.encodeTransaction(tx))
                                     }
                                 }
                             }
                         },
-                        onCancel = { id -> scope.launch { TransactionStore.cancelOutgoing(context, id) } }
+                        onCancel = { id -> scope.launch { graph.wallet.cancelOutgoing(id) } }
                     )
                     Spacer(Modifier.height(8.dp))
                     AppButton("Закрыть", variant = ButtonVariant.Secondary, dense = true, modifier = Modifier.fillMaxWidth(), onClick = { sending = false; presetKey = null })
@@ -142,7 +135,7 @@ fun WalletScreen(identity: Identity, presetContactKey: String? = null, onPresetC
                     TxRow(
                         tx = tx,
                         counterpartyName = contactsByKey[tx.counterpartyPubKeyB64]?.callsign,
-                        onCancelPending = { scope.launch { TransactionStore.cancelOutgoing(context, tx.id) } }
+                        onCancelPending = { scope.launch { graph.wallet.cancelOutgoing(tx.id) } }
                     )
                     if (index != transactions.lastIndex) DottedDivider()
                 }

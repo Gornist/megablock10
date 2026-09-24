@@ -3,15 +3,23 @@ package com.megablok10.app
 import android.app.Activity
 import android.app.Application
 import android.os.Bundle
+import com.megablok10.app.di.AppGraph
 import com.megablok10.app.log.DeviceDiagnostics
 import com.megablok10.app.log.Mb10Log
 
-/** Точка входа процесса: включает журнал и ловит падения до того, как что-либо ещё успело запуститься. */
+/**
+ * Точка входа процесса: включает журнал, ловит падения до того, как что-либо ещё успело запуститься, и собирает корень
+ * композиции [graph] (di.AppGraph) — все долгоживущие части приложения; Android-компоненты достают его через `context.appGraph`.
+ */
 class Mb10App : Application() {
+    lateinit var graph: AppGraph
+        private set
+
     override fun onCreate() {
         super.onCreate()
         Mb10Log.init(this)
         Mb10Log.i("App", "=== ЗАПУСК ПРОЦЕССА === ${DeviceDiagnostics.header()} logDir=${Mb10Log.directory?.path}")
+        graph = AppGraph(this)
 
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->

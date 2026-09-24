@@ -25,17 +25,18 @@ private val JSON = "application/json; charset=utf-8".toMediaType()
 /**
  * HTTP-клиент до мастерского коллектора (admin-web/server) — обычный POST
  * в открытой локальной сети, без TLS (см. network_security_config.xml).
- * Не P2P: в отличие от ChatServer/ClaimClient это единственное место в
+ * Не P2P: в отличие от ChatServer и заявок на слоты это единственное место в
  * приложении, где устройство говорит с фиксированным сервером, а не с
  * другими игроками напрямую.
  *
  * Для синхронизации это транспорт kit ([CollectorTransport], движок — SyncEngine): здесь только HTTP и JSON.
  */
-object CollectorClient : CollectorTransport {
-    private val http = OkHttpClient.Builder()
+class CollectorClient(
+    private val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(5, TimeUnit.SECONDS)
-        .build()
+        .build(),
+) : CollectorTransport {
 
     /**
      * POST /api/changes — см. §3.1 ТЗ. null означает "сеть/коллектор

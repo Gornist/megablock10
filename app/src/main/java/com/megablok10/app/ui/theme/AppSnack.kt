@@ -13,19 +13,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.megablok10.app.PlayerNotices
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Единое короткое уведомление вместо системного Toast: в стиле приложения (скошенная плашка над навигацией), тап убирает,
- * через 3 с исчезает сама. Вызывается откуда угодно — `AppSnack.show("текст")`; рисует [AppSnackHost] один раз в корне.
+ * через 3 с исчезает сама. Интерфейс вызывает `AppSnack.show("текст")`, доменный код — через [PlayerNotices] (корень композиции
+ * подставляет сюда этот объект); рисует [AppSnackHost] один раз в корне.
  */
-object AppSnack {
+object AppSnack : PlayerNotices {
     private val _message = MutableStateFlow<Pair<Long, String>?>(null)
     val message: StateFlow<Pair<Long, String>?> = _message
 
-    fun show(text: String) { _message.value = System.nanoTime() to text }
+    override fun show(text: String) { _message.value = System.nanoTime() to text }
     fun dismiss() { _message.value = null }
 }
 

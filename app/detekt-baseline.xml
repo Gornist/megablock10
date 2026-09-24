@@ -2,11 +2,7 @@
 <SmellBaseline>
   <ManuallySuppressedIssues></ManuallySuppressedIssues>
   <CurrentIssues>
-    <ID>CyclomaticComplexMethod:CallManager.kt$CallManager$fun onSignalReceived(context: Context, identity: Identity, signal: CallSignal)</ID>
     <ID>LoopWithTooManyJumpStatements:DecryptRules.kt$DecryptRules$for</ID>
-    <ID>LoopWithTooManyJumpStatements:SlotClaimStore.kt$SlotClaimStore$for</ID>
-    <ID>ReturnCount:CallManager.kt$CallManager$fun onSignalReceived(context: Context, identity: Identity, signal: CallSignal)</ID>
-    <ID>ReturnCount:ItemTransferStore.kt$ItemTransferStore$suspend fun acceptIncoming(context: Context, myPubKeyB64: String, card: Mb10Qr.ItemTransfer): Boolean</ID>
     <ID>TooManyFunctions:Mb10Qr.kt$Mb10QrCodec</ID>
   </CurrentIssues>
 </SmellBaseline>

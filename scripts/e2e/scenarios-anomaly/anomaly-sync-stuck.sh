@@ -1,7 +1,7 @@
 #!/bin/bash
 # Записи не доходят до сервера: телефон на связи (heartbeat идёт), а самая старая неотправленная запись в очереди лежит дольше порога →
 # sync_stuck. Провоцируется без реальной очереди: поддельное устройство присылает presence.pendingCount/oldestPendingAgeMs напрямую в
-# heartbeat, как настоящее приложение (ChangeRecordStore.presenceJson) — см. fakedev.mjs beat --pending/--oldest-ms.
+# heartbeat, как настоящее приложение (heartbeat в app/.../collector/CollectorSync.kt) — см. fakedev.mjs beat --pending/--oldest-ms.
 source "$(dirname "$0")/../anom-lib.sh"
 echo "== anomaly-sync-stuck"
 anom_up ATTN_SYNC_STUCK_MIN=0.05   # 3 с

@@ -6,9 +6,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
-import com.megablok10.app.announce.AnnouncementStore
 import com.megablok10.app.announce.Announcements
+import com.megablok10.app.ui.LocalAppGraph
 import com.megablok10.app.ui.theme.AppDialog
 import com.megablok10.app.ui.theme.ButtonVariant
 import com.megablok10.app.ui.theme.MB10Colors
@@ -20,8 +19,8 @@ import com.megablok10.app.ui.theme.MB10Colors
  */
 @Composable
 fun AnnouncementDialogHost() {
-    val context = LocalContext.current
-    val items by AnnouncementStore.items.collectAsState()
+    val graph = LocalAppGraph.current
+    val items by graph.announcements.items.collectAsState()
     var snoozedIds by remember { mutableStateOf(emptySet<String>()) }
 
     val unread = Announcements.unread(items)
@@ -34,7 +33,7 @@ fun AnnouncementDialogHost() {
         title = if (unread.size > 1) "Сообщения от мастера (${unread.size})" else "Сообщение от мастера",
         body = ordered.joinToString("\n\n") { it.text },
         confirmText = "Принято",
-        onConfirm = { AnnouncementStore.markAllRead(context) },
+        onConfirm = { graph.announcements.markAllRead() },
         dismissText = "Позже",
         // Служебный жёлтый — это сообщение от мастера/приложения, не игровое действие (см. правило accentSystem в Color.kt).
         confirmVariant = ButtonVariant.System,

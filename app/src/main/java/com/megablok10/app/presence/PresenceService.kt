@@ -21,20 +21,20 @@ private const val TAG = "PresenceService"
  * Реклама себя и поиск других устройств этого приложения в локальной сети
  * через NSD (обёртка над mDNS) — без какого-либо центрального сервера, как
  * и весь остальной протокол. host/port живого пира — это адрес его
- * ChatServer, куда ChatClient потом стучится напрямую.
+ * ChatServer, куда отправители (kit LineSocketClient) потом стучатся напрямую.
  *
  * Ключ внутренней карты — имя NSD-сервиса (не publicKey): именно его, а не
  * атрибуты, возвращает onServiceLost, так что только по нему и можно
  * надёжно понять, какая запись пропала.
  */
-object PresenceService {
+class PresenceService(private val app: Context, private val wifi: WifiBinder) {
     private var nsdManager: NsdManager? = null
     private var registrationListener: NsdManager.RegistrationListener? = null
     private var discoveryListener: NsdManager.DiscoveryListener? = null
     private var multicastLock: WifiManager.MulticastLock? = null
     private var myServiceName: String? = null
     private var scope: CoroutineScope? = null
-    private var startArgs: Triple<Context, Identity, Int>? = null
+    private var startArgs: Pair<Identity, Int>? = null
 
     // Таблица пиров (дебаунс потери, отсрочка после смены сети, серверные подсказки) — чистая логика в kit PeerTable, покрыта JVM-тестами.
     private val table = PeerTable(Mb10Log) { scope }
@@ -52,17 +52,17 @@ object PresenceService {
     }
 
     // start/stop/refresh мутируют одни и те же var-поля и могут прийти из разных диспетчеров одновременно
-    // (WifiBinder дёргает refresh() из колбэка смены сети, а UI — start()/stop() из своего потока) — без
-    // synchronized(this) это гонка на nsdManager/startArgs и т. п. Монитор object реентерабелен: start()
+    // (WifiBinder дёргает refresh() из колбэка смены сети, а сессия — start()/stop() из своего потока) — без
+    // synchronized(this) это гонка на nsdManager/startArgs и т. п. Монитор реентерабелен: start()
     // вызывает stop() изнутри того же блока, повторный вход тем же потоком безопасен, дедлока не будет.
-    fun start(context: Context, identity: Identity, chatPort: Int): Unit = synchronized(this) {
+    fun start(identity: Identity, chatPort: Int): Unit = synchronized(this) {
         stop()
-        Mb10Log.event(TAG, "nsd.start", "me" to Mb10Log.short(identity.publicKeyB64), "chatPort" to chatPort, "ip" to WifiBinder.ownIpv4)
-        startArgs = Triple(context.applicationContext, identity, chatPort)
+        Mb10Log.event(TAG, "nsd.start", "me" to Mb10Log.short(identity.publicKeyB64), "chatPort" to chatPort, "ip" to wifi.ownIpv4)
+        startArgs = identity to chatPort
         val presenceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         scope = presenceScope
 
-        val appContext = context.applicationContext
+        val appContext = app
         val wifiManager = appContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
         multicastLock = wifiManager?.createMulticastLock("mb10-presence")?.apply {
             setReferenceCounted(true)
@@ -164,7 +164,7 @@ object PresenceService {
         Mb10Log.event(TAG, "nsd.refresh", "reason" to "смена сети", "peersBefore" to table.describe())
         // Статические (отладочные) и серверные записи NSD-обновление не касается — они переживают refresh как есть.
         val keep = table.snapshot()
-        start(args.first, args.second, args.third)
+        start(args.first, args.second)
         table.restore(keep)
         table.graceAll()
     }

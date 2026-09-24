@@ -1,11 +1,10 @@
 package com.megablok10.app.breach
 
-import android.content.Context
 import com.megablok10.app.collector.ChangeField
 import com.megablok10.app.collector.ChangeReason
-import com.megablok10.app.collector.ChangeRecordStore
+import com.megablok10.app.data.DaemonDao
 import com.megablok10.app.data.DaemonEntity
-import com.megablok10.app.data.Mb10Database
+import com.megablok10.kit.sync.ChangeRecorder
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import org.json.JSONObject
@@ -19,22 +18,16 @@ import org.json.JSONObject
  * контейнера, многоразовый: попав в кибердеку, он доступен на любом
  * будущем взломе, а не тратится.
  */
-object DaemonStore {
-    fun observeAll(context: Context): Flow<List<Daemon>> =
-        Mb10Database.get(context).daemonDao().observeAll().map { entities ->
-            entities.map {
-                Daemon(
-                    id = it.id,
-                    name = it.name,
-                    sequence = it.sequence.split(","),
-                    tier = Tier.fromLevel(it.tier),
-                    effect = DaemonEffect.entries.find { e -> e.name == it.effect } ?: DaemonEffect.EXTRACT_SHARD
-                )
-            }
-        }
+class DaemonStore(
+    private val dao: DaemonDao,
+    private val changes: ChangeRecorder,
+) {
+    fun observeAll(): Flow<List<Daemon>> = dao.observeAll().map { entities -> entities.map { it.toDaemon() } }
 
-    suspend fun ensureSeeded(context: Context) {
-        val dao = Mb10Database.get(context).daemonDao()
+    /** Демон из коллекции (для передачи другому игроку); null — такого у игрока нет. */
+    suspend fun get(id: String): Daemon? = dao.get(id)?.toDaemon()
+
+    suspend fun ensureSeeded() {
         if (dao.count() == 0) {
             dao.insertAll(MockBreach.daemons.map {
                 DaemonEntity(id = it.id, name = it.name, sequence = it.sequence.joinToString(","), tier = it.tier.level, effect = it.effect.name)
@@ -43,8 +36,8 @@ object DaemonStore {
     }
 
     /** Демон, извлечённый из слота лута (см. DaemonRewards) — id детерминирован от slotRef, повторное извлечение того же слота не плодит дубликат в коллекции. */
-    suspend fun grant(context: Context, id: String, loot: LootCodec.Loot.DaemonLoot, sourceRef: String, reason: String = ChangeReason.BREACH_LOOT) {
-        Mb10Database.get(context).daemonDao().upsert(
+    suspend fun grant(id: String, loot: LootCodec.Loot.DaemonLoot, sourceRef: String, reason: String = ChangeReason.BREACH_LOOT) {
+        dao.upsert(
             DaemonEntity(id = id, name = loot.name, sequence = loot.sequence.joinToString(","), tier = loot.tier.level, effect = loot.effect.name)
         )
         // weight — в игровой модели такого поля нет (только Compose Modifier.weight не в счёт);
@@ -56,12 +49,20 @@ object DaemonStore {
             .put("weight", loot.sequence.size)
             .put("acquiredAt", System.currentTimeMillis())
             .put("sourceRef", sourceRef)
-        ChangeRecordStore.enqueue(context, ChangeField.DAEMONS_ADD, null, entry.toString(), reason, sourceRef)
+        changes.record(ChangeField.DAEMONS_ADD, null, entry.toString(), reason, sourceRef)
     }
 
     /** Убирает демона из коллекции (передача другому игроку) и сообщает об этом дашборду. */
-    suspend fun remove(context: Context, id: String, reason: String, sourceRef: String) {
-        Mb10Database.get(context).daemonDao().delete(id)
-        ChangeRecordStore.enqueue(context, ChangeField.DAEMONS_REMOVE, null, JSONObject().put("daemonId", id).toString(), reason, sourceRef)
+    suspend fun remove(id: String, reason: String, sourceRef: String) {
+        dao.delete(id)
+        changes.record(ChangeField.DAEMONS_REMOVE, null, JSONObject().put("daemonId", id).toString(), reason, sourceRef)
     }
+
+    private fun DaemonEntity.toDaemon() = Daemon(
+        id = id,
+        name = name,
+        sequence = sequence.split(","),
+        tier = Tier.fromLevel(tier),
+        effect = DaemonEffect.entries.find { e -> e.name == effect } ?: DaemonEffect.EXTRACT_SHARD
+    )
 }

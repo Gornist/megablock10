@@ -3,7 +3,7 @@ package com.megablok10.app.call
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import com.megablok10.app.identity.IdentityManager
+import com.megablok10.app.di.appGraph
 
 const val ACTION_HANG_UP = "com.megablok10.app.call.ACTION_HANG_UP"
 
@@ -11,6 +11,7 @@ const val ACTION_HANG_UP = "com.megablok10.app.call.ACTION_HANG_UP"
 class CallActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != ACTION_HANG_UP) return
-        IdentityManager.current(context)?.let { CallManager.endCall(context, it) }
+        val graph = context.appGraph
+        graph.identity.current?.let { graph.calls.endCall(it) }
     }
 }

@@ -1,15 +1,14 @@
 package com.megablok10.app.identity
 
-import android.content.Context
 import androidx.room.withTransaction
 import com.megablok10.app.announce.AnnouncementStore
-import com.megablok10.app.chat.ChatStore
+import com.megablok10.app.chat.MeshSession
 import com.megablok10.app.collector.ChangeField
 import com.megablok10.app.collector.ChangeReason
-import com.megablok10.app.collector.ChangeRecordStore
 import com.megablok10.app.collector.CollectorSettings
 import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.log.Mb10Log
+import com.megablok10.kit.sync.ChangeRecorder
 
 /**
  * Сброс сессии персонажа НА УСТРОЙСТВЕ (Настройки → «Опасная зона»): телефон возвращается в состояние «чистая установка», чтобы игрок не нашёл
@@ -22,36 +21,44 @@ import com.megablok10.app.log.Mb10Log
  * уведомление о сбросе, стереть их значило бы потерять историю; (2) адрес сервера и код игры (нужны, чтобы эти записи дошли; новый QR перезапишет);
  * (3) идентификаторы уже применённых QR — тот же код повторно не примется, (4) пользовательские настройки устройства (звук, подсказки).
  */
-object SessionReset {
-    /** Таблицы, которые сброс НЕ трогает. Всё остальное, включая таблицы, которые появятся позже, стирается по умолчанию. */
-    val KEEP_TABLES = setOf("pending_change_records")
-
-    /** Что выполнить для очистки: по одному DELETE на каждую таблицу, кроме [KEEP_TABLES]. Чистая функция — покрыта тестами на настоящем SQLite. */
-    fun wipeStatements(allTables: List<String>): List<String> =
-        allTables.filter { it !in KEEP_TABLES && !it.startsWith("sqlite_") && !it.startsWith("android_") && !it.startsWith("room_") }
-            .map { "DELETE FROM `$it`" }
-
+class SessionReset(
+    private val db: Mb10Database,
+    private val identityStore: IdentityStore,
+    private val settings: CollectorSettings,
+    private val changes: ChangeRecorder,
+    private val announcements: AnnouncementStore,
+    private val mesh: MeshSession,
+) {
     /**
      * Выполняет сброс. [reportToCollector] — записать на сервер, что персонаж сброшен (кнопка в Настройках); стенд e2e тоже идёт этим путём.
      * Записи обязаны попасть в очередь ДО стирания ключа: подписывать их после будет нечем.
      */
-    suspend fun perform(context: Context, identity: Identity?, reportToCollector: Boolean = true) {
+    suspend fun perform(identity: Identity?, reportToCollector: Boolean = true) {
         Mb10Log.event("SessionReset", "reset.start", "me" to Mb10Log.short(identity?.publicKeyB64), "reportToCollector" to reportToCollector)
         if (reportToCollector && identity != null) {
-            ChangeRecordStore.enqueue(context, ChangeField.CALLSIGN, identity.callsign, "", ChangeReason.CHARACTER_RESET)
-            ChangeRecordStore.enqueue(context, ChangeField.FACTION, identity.faction, "", ChangeReason.CHARACTER_RESET)
+            changes.record(ChangeField.CALLSIGN, identity.callsign, "", ChangeReason.CHARACTER_RESET)
+            changes.record(ChangeField.FACTION, identity.faction, "", ChangeReason.CHARACTER_RESET)
         }
-        ChatStore.stop()
-        val db = Mb10Database.get(context)
+        mesh.stop()
         db.withTransaction {
             val db1 = db.openHelper.writableDatabase
             val tables = db1.query("SELECT name FROM sqlite_master WHERE type = 'table'").use { c -> buildList { while (c.moveToNext()) add(c.getString(0)) } }
             wipeStatements(tables).forEach { db1.execSQL(it) }
         }
-        AnnouncementStore.clear(context)
-        IdentityManager.clear(context)
-        CollectorSettings.setProvisioned(context, false)
-        CollectorSettings.setProvisionRejected(context, false)
+        announcements.clear()
+        identityStore.clear()
+        settings.setProvisioned(false)
+        settings.setProvisionRejected(false)
         Mb10Log.event("SessionReset", "reset.done")
+    }
+
+    companion object {
+        /** Таблицы, которые сброс НЕ трогает. Всё остальное, включая таблицы, которые появятся позже, стирается по умолчанию. */
+        val KEEP_TABLES = setOf("pending_change_records")
+
+        /** Что выполнить для очистки: по одному DELETE на каждую таблицу, кроме [KEEP_TABLES]. Чистая функция — покрыта тестами на настоящем SQLite. */
+        fun wipeStatements(allTables: List<String>): List<String> =
+            allTables.filter { it !in KEEP_TABLES && !it.startsWith("sqlite_") && !it.startsWith("android_") && !it.startsWith("room_") }
+                .map { "DELETE FROM `$it`" }
     }
 }

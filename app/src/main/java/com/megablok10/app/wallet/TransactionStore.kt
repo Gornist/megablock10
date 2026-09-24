@@ -1,23 +1,24 @@
 package com.megablok10.app.wallet
 
-import android.content.Context
 import androidx.room.withTransaction
 import com.megablok10.app.collector.ChangeField
 import com.megablok10.app.collector.ChangeReason
-import com.megablok10.app.collector.ChangeRecordStore
 import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.data.TransactionDao
 import com.megablok10.app.data.TransactionEntity
 import com.megablok10.app.data.TransactionStatus
 import com.megablok10.app.identity.Identity
-import com.megablok10.app.identity.IdentityManager
+import com.megablok10.app.identity.IdentityStore
 import com.megablok10.app.log.Mb10Log
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
+import com.megablok10.kit.crypto.Ecdsa
 import com.megablok10.kit.handover.Handover
 import com.megablok10.kit.handover.HandoverRules
 import com.megablok10.kit.handover.OutgoingJournal
 import com.megablok10.kit.net.SendOutcome
+import com.megablok10.kit.sync.ChangeRecorder
+import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -29,17 +30,25 @@ private const val TAG = "Wallet"
  * CONFIRMED — деньги уже не в руках игрока с момента генерации QR).
  *
  * Доставка карточки перевода и фиксация по чеку — общий протокол передачи kit [Handover] (тот же, что у предметов,
- * см. ItemTransferStore); здесь — только денежная часть: баланс, суммы и записи для мастерского сервера.
+ * см. ItemTransferStore); здесь — только денежная часть: баланс, суммы и записи для мастерского сервера ([changes]).
  */
-object TransactionStore {
-    private fun handover(context: Context) =
-        Handover(TransactionJournal(Mb10Database.get(context).transactionDao()), Mb10Log, tag = TAG, eventPrefix = "tx")
+class TransactionStore(
+    private val db: Mb10Database,
+    private val identity: IdentityStore,
+    private val changes: ChangeRecorder,
+) {
+    private val dao = db.transactionDao()
+    private val handover = Handover(TransactionJournal(dao), Mb10Log, tag = TAG, eventPrefix = "tx")
 
-    fun observeAll(context: Context): Flow<List<TransactionEntity>> =
-        Mb10Database.get(context).transactionDao().observeAll()
+    fun observeAll(): Flow<List<TransactionEntity>> = dao.observeAll()
 
-    fun observeBalance(context: Context): Flow<Long> =
-        observeAll(context).map { list -> list.sumOf { it.amount } }
+    fun observeBalance(): Flow<Long> = observeAll().map { list -> list.sumOf { it.amount } }
+
+    /** Подписанная карточка перевода от [me] игроку [toPubKeyB64] — то, что уйдёт ему сообщением в чат (формат TX v2, адресат в подписи). */
+    fun signedTransaction(me: Identity, toPubKeyB64: String, amount: Long, memo: String, id: String = UUID.randomUUID().toString()): Mb10Qr.Transaction {
+        val payload = Mb10QrCodec.transactionSignaturePayload(id, me.publicKeyB64, toPubKeyB64, amount, memo)
+        return Mb10Qr.Transaction(id, me.publicKeyB64, toPubKeyB64, amount, memo, identity.sign(payload))
+    }
 
     /**
      * Плательщик списывает у себя сумму СРАЗУ при отправке — как отдать
@@ -50,9 +59,7 @@ object TransactionStore {
      * получатель выбирается из контактов перед отправкой, а не определяется
      * тем, кто отсканировал QR, как раньше.
      */
-    suspend fun recordOutgoingPending(context: Context, tx: Mb10Qr.Transaction, toPubKeyB64: String): Boolean {
-        val db = Mb10Database.get(context)
-        val dao = db.transactionDao()
+    suspend fun recordOutgoingPending(tx: Mb10Qr.Transaction, toPubKeyB64: String): Boolean {
         if (tx.amount <= 0) { Mb10Log.warnEvent(TAG, "tx.out_rejected", "id" to tx.id, "reason" to "сумма<=0"); return false }
         // Проверка баланса и вставка — одной транзакцией: иначе два быстрых перевода (двойной тап «Отправить») оба видели бы прежний
         // баланс, проходили проверку и уводили отправителя в минус, а получателям зачислялись бы полные суммы — деньги из воздуха.
@@ -69,7 +76,7 @@ object TransactionStore {
                 )
             )
         }
-        if (rowId != -1L) emitBalanceChange(context, dao, -tx.amount, ChangeReason.TRANSFER_OUT, sourceRef = tx.id)
+        if (rowId != -1L) emitBalanceChange(-tx.amount, ChangeReason.TRANSFER_OUT, sourceRef = tx.id)
         Mb10Log.event(TAG, "tx.out_pending", "id" to tx.id, "to" to Mb10Log.short(toPubKeyB64), "amount" to tx.amount, "ok" to (rowId != -1L), "reason" to if (rowId == -1L) "не хватает денег или уже есть" else null)
         return rowId != -1L
     }
@@ -85,8 +92,8 @@ object TransactionStore {
      * уже после соединения ([SendOutcome.UNKNOWN]), карточка могла дойти: платёж остаётся DELIVERED и отменить его нельзя —
      * лучше заморозить сумму до чека или вмешательства мастера, чем оставить её у обоих.
      */
-    suspend fun deliverOutgoing(context: Context, id: String, willSend: Boolean, send: suspend () -> SendOutcome) =
-        handover(context).deliver(id, willSend, send)
+    suspend fun deliverOutgoing(id: String, willSend: Boolean, send: suspend () -> SendOutcome) =
+        handover.deliver(id, willSend, send)
 
     /**
      * Отменяет платёж, карточка которого получателю НЕ доставлена (статус
@@ -95,17 +102,16 @@ object TransactionStore {
      * "Принять", и отмена оставила бы сумму у обоих (см. deliverOutgoing).
      * false, если запись не PENDING или не найдена.
      *
-     * Отмена уходит на дашборд компенсирующим ChangeRecord с причиной
+     * Отмена уходит на дашборд компенсирующей записью с причиной
      * TRANSFER_CANCELLED и тем же txId в sourceRef: сервер по нему помечает
      * перевод "отменён отправителем" вместо висящего одностороннего.
      */
-    suspend fun cancelOutgoing(context: Context, id: String): Boolean {
-        val dao = Mb10Database.get(context).transactionDao()
+    suspend fun cancelOutgoing(id: String): Boolean {
         val amount = dao.amountOf(id) ?: run { Mb10Log.warnEvent(TAG, "tx.cancel", "id" to id, "result" to "нет такой записи"); return false }
         if (dao.cancelPending(id) == 0) { Mb10Log.warnEvent(TAG, "tx.cancel", "id" to id, "result" to "отказ: уже доставлен/подтверждён"); return false }
         Mb10Log.event(TAG, "tx.cancel", "id" to id, "result" to "отменён", "refund" to -amount)
         // amount исходящей записи отрицательный — деньги возвращаются, дельта баланса положительная.
-        emitBalanceChange(context, dao, -amount, ChangeReason.TRANSFER_CANCELLED, sourceRef = id)
+        emitBalanceChange(-amount, ChangeReason.TRANSFER_CANCELLED, sourceRef = id)
         return true
     }
 
@@ -114,14 +120,13 @@ object TransactionStore {
      * уже нельзя. Именно эта проверка и не даёт "нажать отменить и оставить
      * деньги себе" после того, как получатель их реально получил.
      */
-    suspend fun verifyAndConfirmReceipt(context: Context, pendingTxId: String, receipt: Mb10Qr.Receipt): Boolean =
-        handover(context).confirmByReceipt(pendingTxId, receipt.id, receipt.receiverPubKeyB64, receipt.signatureB64)
+    suspend fun verifyAndConfirmReceipt(pendingTxId: String, receipt: Mb10Qr.Receipt): Boolean =
+        handover.confirmByReceipt(pendingTxId, receipt.id, receipt.receiverPubKeyB64, receipt.signatureB64)
 
-    /** Чек, который получатель показывает в ответ отправителю — доказательство, что деньги реально получены. */
-    fun buildReceipt(context: Context, identity: Identity, transactionId: String): Mb10Qr.Receipt {
-        val payload = HandoverRules.receiptSignaturePayload(transactionId, identity.publicKeyB64)
-        val signature = IdentityManager.sign(context, payload)
-        return Mb10Qr.Receipt(id = transactionId, receiverPubKeyB64 = identity.publicKeyB64, signatureB64 = signature)
+    /** Чек, который получатель [me] показывает в ответ отправителю — доказательство, что деньги (или предмет) реально получены. */
+    fun buildReceipt(me: Identity, transactionId: String): Mb10Qr.Receipt {
+        val payload = HandoverRules.receiptSignaturePayload(transactionId, me.publicKeyB64)
+        return Mb10Qr.Receipt(id = transactionId, receiverPubKeyB64 = me.publicKeyB64, signatureB64 = identity.sign(payload))
     }
 
     /**
@@ -131,13 +136,12 @@ object TransactionStore {
      * сумма некорректна, это своя же транзакция или она уже была зачислена
      * раньше (защита от повторного скана одного QR).
      */
-    suspend fun recordIncoming(context: Context, myPublicKeyB64: String, tx: Mb10Qr.Transaction): Boolean {
+    suspend fun recordIncoming(myPublicKeyB64: String, tx: Mb10Qr.Transaction): Boolean {
         fun reject(why: String): Boolean { Mb10Log.warnEvent(TAG, "tx.in_rejected", "id" to tx.id, "from" to Mb10Log.short(tx.fromPubKeyB64), "amount" to tx.amount, "why" to why); return false }
         if (tx.amount <= 0) return reject("сумма<=0")
         val payload = Mb10QrCodec.transactionSignaturePayload(tx.id, tx.fromPubKeyB64, tx.toPubKeyB64, tx.amount, tx.memo)
-        HandoverRules.rejectIncoming(tx.fromPubKeyB64, tx.toPubKeyB64, myPublicKeyB64, payload, tx.signatureB64, IdentityManager::verify)?.let { return reject(it) }
+        HandoverRules.rejectIncoming(tx.fromPubKeyB64, tx.toPubKeyB64, myPublicKeyB64, payload, tx.signatureB64, Ecdsa::verify)?.let { return reject(it) }
 
-        val dao = Mb10Database.get(context).transactionDao()
         val rowId = dao.insertIfAbsent(
             TransactionEntity(
                 id = tx.id,
@@ -149,7 +153,7 @@ object TransactionStore {
             )
         )
         if (rowId != -1L) {
-            emitBalanceChange(context, dao, tx.amount, ChangeReason.TRANSFER_IN, sourceRef = tx.id, actor = tx.fromPubKeyB64)
+            emitBalanceChange(tx.amount, ChangeReason.TRANSFER_IN, sourceRef = tx.id, actor = tx.fromPubKeyB64)
             Mb10Log.event(TAG, "tx.in_accepted", "id" to tx.id, "from" to Mb10Log.short(tx.fromPubKeyB64), "amount" to tx.amount)
         } else Mb10Log.warnEvent(TAG, "tx.in_rejected", "id" to tx.id, "why" to "уже принят раньше")
         return rowId != -1L
@@ -163,9 +167,8 @@ object TransactionStore {
      * шарда, поэтому повторный скан того же шарда (тот же QR, другая
      * копия, случайный повтор) не зачисляет деньги дважды.
      */
-    suspend fun creditShardMoney(context: Context, shardId: String, amount: Long, shardTitle: String) {
+    suspend fun creditShardMoney(shardId: String, amount: Long, shardTitle: String) {
         if (amount <= 0) return
-        val dao = Mb10Database.get(context).transactionDao()
         val rowId = dao.insertIfAbsent(
             TransactionEntity(
                 id = "shard:$shardId",
@@ -176,7 +179,7 @@ object TransactionStore {
                 status = TransactionStatus.CONFIRMED
             )
         )
-        if (rowId != -1L) emitBalanceChange(context, dao, amount, ChangeReason.SHARD_SCAN, sourceRef = shardId)
+        if (rowId != -1L) emitBalanceChange(amount, ChangeReason.SHARD_SCAN, sourceRef = shardId)
     }
 
     /**
@@ -188,9 +191,8 @@ object TransactionStore {
      * insertIfAbsent защищает только от повторного зачисления ОДНОЙ и той
      * же попытки, если вызов почему-то продублируется.
      */
-    suspend fun creditContainerEddies(context: Context, attemptId: String, amount: Long, containerName: String) {
+    suspend fun creditContainerEddies(attemptId: String, amount: Long, containerName: String) {
         if (amount <= 0) return
-        val dao = Mb10Database.get(context).transactionDao()
         val rowId = dao.insertIfAbsent(
             TransactionEntity(
                 id = "breach:$attemptId",
@@ -201,7 +203,7 @@ object TransactionStore {
                 status = TransactionStatus.CONFIRMED
             )
         )
-        if (rowId != -1L) emitBalanceChange(context, dao, amount, ChangeReason.BREACH_EDDIES, sourceRef = attemptId)
+        if (rowId != -1L) emitBalanceChange(amount, ChangeReason.BREACH_EDDIES, sourceRef = attemptId)
     }
 
     /**
@@ -209,8 +211,7 @@ object TransactionStore {
      * записи прежней сессии (сброс сессии стирает только ключи), поэтому сумма записи — разность. Идемпотентно по id выдачи. Уходит на дашборд
      * записью баланса с причиной CHARACTER_CREATED — тем же способом, каким телефон сообщает о любом изменении.
      */
-    suspend fun setStartingBalance(context: Context, provisionId: String, balance: Long) {
-        val dao = Mb10Database.get(context).transactionDao()
+    suspend fun setStartingBalance(provisionId: String, balance: Long) {
         val delta = balance - dao.currentBalance()
         if (delta == 0L) return
         val rowId = dao.insertIfAbsent(
@@ -223,19 +224,18 @@ object TransactionStore {
                 status = TransactionStatus.CONFIRMED
             )
         )
-        if (rowId != -1L) emitBalanceChange(context, dao, delta, ChangeReason.CHARACTER_CREATED, sourceRef = provisionId)
+        if (rowId != -1L) emitBalanceChange(delta, ChangeReason.CHARACTER_CREATED, sourceRef = provisionId)
     }
 
     /**
      * Применяет правку баланса от мастера с дашборда (§6.3 ТЗ) — newValue
      * абсолютный, не дельта. В отличие от emitBalanceChange НЕ шлёт
-     * ChangeRecord обратно на коллектор (эта правка сама следствие уже
+     * запись обратно на коллектор (эта правка сама следствие уже
      * существующей записи в его истории — эхо было бы дублем). id записи —
      * id самого MASTER_OVERRIDE с сервера, поэтому insertIfAbsent защищает
      * от повторного применения при повторной доставке.
      */
-    suspend fun applyBalanceOverride(context: Context, changeId: String, newBalance: Long, memo: String) {
-        val dao = Mb10Database.get(context).transactionDao()
+    suspend fun applyBalanceOverride(changeId: String, newBalance: Long, memo: String) {
         val currentBalance = dao.currentBalance()
         Mb10Log.event(TAG, "balance.master_override", "change" to changeId, "old" to currentBalance, "new" to newBalance)
         dao.insertIfAbsent(
@@ -256,18 +256,11 @@ object TransactionStore {
      * дважды, и корректно, поскольку мутация и чтение идут последовательно
      * в одной suspend-цепочке одного вызова (гонок с самим собой нет).
      */
-    private suspend fun emitBalanceChange(
-        context: Context,
-        dao: TransactionDao,
-        delta: Long,
-        reason: String,
-        sourceRef: String,
-        actor: String? = null,
-    ) {
+    private suspend fun emitBalanceChange(delta: Long, reason: String, sourceRef: String, actor: String? = null) {
         val newBalance = dao.currentBalance()
         val oldBalance = newBalance - delta
         Mb10Log.event(TAG, "balance.change", "reason" to reason, "delta" to delta, "old" to oldBalance, "new" to newBalance, "ref" to sourceRef)
-        ChangeRecordStore.enqueue(context, ChangeField.BALANCE, oldBalance.toString(), newBalance.toString(), reason, sourceRef, actor = actor)
+        changes.record(ChangeField.BALANCE, oldBalance.toString(), newBalance.toString(), reason, sourceRef, actor = actor)
     }
 }
 

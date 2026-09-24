@@ -28,13 +28,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
-import com.megablok10.app.announce.AnnouncementStore
-import com.megablok10.app.collector.CollectorSettings
-import com.megablok10.app.collector.DEFAULT_COLLECTOR_URL
-import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.log.DeviceDiagnostics
 import com.megablok10.app.log.Mb10Log
-import com.megablok10.app.presence.PresenceService
+import com.megablok10.app.ui.LocalAppGraph
 import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.AppDialog
 import com.megablok10.app.ui.theme.AppTextField
@@ -58,11 +54,13 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
     var pushEnabled by remember { mutableStateOf(true) }
     var soundEnabled by remember { mutableStateOf(false) }
     var confirmingReset by remember { mutableStateOf(false) }
-    val onlinePeers by PresenceService.peers.collectAsState()
-    var collectorUrl by remember { mutableStateOf(CollectorSettings.baseUrl(context) ?: "") }
-    val announcements by AnnouncementStore.items.collectAsState()
-    var gameSecret by remember { mutableStateOf(CollectorSettings.gameSecret(context) ?: "") }
-    val pendingChanges by Mb10Database.get(context).pendingChangeRecordDao().observeCount().collectAsState(initial = 0)
+    val graph = LocalAppGraph.current
+    val settings = graph.collectorSettings
+    val onlinePeers by graph.presence.peers.collectAsState()
+    var collectorUrl by remember { mutableStateOf(settings.baseUrl() ?: "") }
+    val announcements by graph.announcements.items.collectAsState()
+    var gameSecret by remember { mutableStateOf(settings.gameSecret() ?: "") }
+    val pendingChanges by remember { graph.db.pendingChangeRecordDao().observeCount() }.collectAsState(initial = 0)
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
         SectionLabel("Приложение")
@@ -126,8 +124,8 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
             Text("Очередь синка", color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
             Text("записи, ещё не подтверждённые коллектором", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
         }
-        val provisioned = remember { CollectorSettings.isProvisioned(context) }
-        if (remember { CollectorSettings.isProvisionRejected(context) }) {
+        val provisioned = remember { settings.isProvisioned() }
+        if (remember { settings.isProvisionRejected() }) {
             Text(
                 "Сервер не принял код персонажа: он использован на другом телефоне или заменён. Обратитесь к мастеру за новым кодом, затем сделайте сброс сессии.",
                 color = MB10Colors.accentDanger, fontFamily = JetBrainsMono, fontSize = 11.sp
@@ -146,14 +144,14 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
             value = collectorUrl,
             onValueChange = { collectorUrl = it },
             modifier = Modifier.fillMaxWidth(),
-            placeholder = DEFAULT_COLLECTOR_URL.ifBlank { "http://адрес-сервера:порт" }
+            placeholder = settings.defaultUrl.ifBlank { "http://адрес-сервера:порт" }
         )
         Spacer(Modifier.height(8.dp))
         AppButton(
             "Сохранить адрес коллектора",
             modifier = Modifier.fillMaxWidth(),
             variant = ButtonVariant.Secondary,
-            onClick = { CollectorSettings.setBaseUrl(context, collectorUrl); Mb10Log.event("Settings", "collector_url_saved", "url" to collectorUrl) }
+            onClick = { settings.setBaseUrl(collectorUrl); Mb10Log.event("Settings", "collector_url_saved", "url" to collectorUrl); graph.collectorSync.wake() }
         )
         Spacer(Modifier.height(8.dp))
         AppTextField(
@@ -167,7 +165,7 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
             "Сохранить код игры",
             modifier = Modifier.fillMaxWidth(),
             variant = ButtonVariant.Secondary,
-            onClick = { CollectorSettings.setGameSecret(context, gameSecret.ifBlank { null }); Mb10Log.event("Settings", "game_secret_saved", "empty" to gameSecret.isBlank()) }
+            onClick = { settings.setGameSecret(gameSecret.ifBlank { null }); Mb10Log.event("Settings", "game_secret_saved", "empty" to gameSecret.isBlank()); graph.collectorSync.wake() }
         )
         }
 
@@ -219,6 +217,7 @@ private fun ToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean
 @Composable
 private fun LogSection() {
     val context = LocalContext.current
+    val graph = LocalAppGraph.current
     val scope = rememberCoroutineScope()
     var sizeKb by remember { mutableStateOf(Mb10Log.sizeBytes() / 1024) }
     var mark by remember { mutableStateOf("") }
@@ -255,7 +254,7 @@ private fun LogSection() {
             scope.launch {
                 Mb10Log.event("Settings", "log_export_requested")
                 val zip = withContext(Dispatchers.IO) {
-                    runCatching { Mb10Log.exportZip(context, DeviceDiagnostics.deviceReport(context)) }.getOrNull()
+                    runCatching { Mb10Log.exportZip(context, DeviceDiagnostics.deviceReport(context, graph)) }.getOrNull()
                 }
                 if (zip == null) { status = "Не удалось собрать архив"; return@launch }
                 val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.logs", zip)

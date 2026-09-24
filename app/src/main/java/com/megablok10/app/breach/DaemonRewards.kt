@@ -1,6 +1,5 @@
 package com.megablok10.app.breach
 
-import android.content.Context
 import com.megablok10.app.collector.CollectorSettings
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.qr.Mb10Qr
@@ -24,8 +23,14 @@ data class RewardOutcome(
  * какие именно демоны выбраны (см. ContainerEddies). На FAIL — только
  * matchedEffects (пустой набор) для SecAlertStore, ни денег, ни лута.
  */
-object DaemonRewards {
-    suspend fun apply(context: Context, identity: Identity, container: Container, result: BreachResult, attemptId: String): RewardOutcome {
+class DaemonRewards(
+    private val wallet: TransactionStore,
+    private val shards: ShardStore,
+    private val daemons: DaemonStore,
+    private val slotClaims: SlotClaimStore,
+    private val settings: CollectorSettings,
+) {
+    suspend fun apply(identity: Identity, container: Container, result: BreachResult, attemptId: String): RewardOutcome {
         val matched = result.allDaemons.filter { it.id in result.matchedIds }
         val matchedEffects = matched.map { it.effect }.toSet()
 
@@ -35,9 +40,9 @@ object DaemonRewards {
 
         val eddies = ContainerEddies.roll(container.tier) +
             if (DaemonEffect.MINER in matchedEffects) ContainerEddies.minerBonus(container.tier) else 0L
-        TransactionStore.creditContainerEddies(context, attemptId, eddies, container.name)
+        wallet.creditContainerEddies(attemptId, eddies, container.name)
 
-        val lootKey = LootCrypto.deriveKey(CollectorSettings.gameSecret(context))
+        val lootKey = LootCrypto.deriveKey(settings.gameSecret())
         val claimedThisAttempt = mutableSetOf<Int>()
         val shardTitles = mutableListOf<String>()
         val daemonNames = mutableListOf<String>()
@@ -49,7 +54,7 @@ object DaemonRewards {
                 DaemonEffect.EXTRACT_DAEMON -> LootType.DAEMON
                 else -> return@forEach
             }
-            val slotIndex = SlotClaimStore.claimNextAvailable(context, identity, container, lootType, daemon.tier, claimedThisAttempt)
+            val slotIndex = slotClaims.claimNextAvailable(identity, container, lootType, daemon.tier, claimedThisAttempt)
             if (slotIndex == null) {
                 exhausted = true
                 return@forEach
@@ -59,11 +64,11 @@ object DaemonRewards {
             val slotRef = container.slotRef(slotIndex)
             when (val loot = LootCrypto.decrypt(slot.payload, lootKey)?.let(LootCodec::decode)) {
                 is LootCodec.Loot.ShardLoot -> {
-                    ShardStore.grant(context, id = "shard:$slotRef", tier = slot.tier, loot = loot, sourceRef = slotRef)
+                    shards.grant(id = "shard:$slotRef", tier = slot.tier, loot = loot, sourceRef = slotRef)
                     shardTitles += loot.title
                 }
                 is LootCodec.Loot.DaemonLoot -> {
-                    DaemonStore.grant(context, id = "daemon:$slotRef", loot = loot, sourceRef = slotRef)
+                    daemons.grant(id = "daemon:$slotRef", loot = loot, sourceRef = slotRef)
                     daemonNames += loot.name
                 }
                 null -> Unit // payload битый/чужой ключ — тираж не тратим, просто ничего не выдаём
@@ -80,16 +85,16 @@ object DaemonRewards {
      * взлома: мастер лично подтвердил выдачу, повторный взлом не нужен.
      * Возвращает описание для тоста, null — если payload битый.
      */
-    suspend fun applyGrant(context: Context, grant: Mb10Qr.LootGrant): String? {
-        val lootKey = LootCrypto.deriveKey(CollectorSettings.gameSecret(context))
+    suspend fun applyGrant(grant: Mb10Qr.LootGrant): String? {
+        val lootKey = LootCrypto.deriveKey(settings.gameSecret())
         val loot = LootCrypto.decrypt(grant.encryptedPayload, lootKey)?.let(LootCodec::decode) ?: return null
         return when (loot) {
             is LootCodec.Loot.ShardLoot -> {
-                ShardStore.grant(context, id = "shard:${grant.slotRef}", tier = grant.tier, loot = loot, sourceRef = grant.slotRef)
+                shards.grant(id = "shard:${grant.slotRef}", tier = grant.tier, loot = loot, sourceRef = grant.slotRef)
                 "Шард получен: ${loot.title}"
             }
             is LootCodec.Loot.DaemonLoot -> {
-                DaemonStore.grant(context, id = "daemon:${grant.slotRef}", loot = loot, sourceRef = grant.slotRef)
+                daemons.grant(id = "daemon:${grant.slotRef}", loot = loot, sourceRef = grant.slotRef)
                 "Демон получен: ${loot.name}"
             }
         }

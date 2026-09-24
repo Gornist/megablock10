@@ -10,12 +10,7 @@ import android.os.BatteryManager
 import android.os.Build
 import android.os.PowerManager
 import com.megablok10.app.BuildConfig
-import com.megablok10.app.chat.ChatStore
-import com.megablok10.app.chat.OutboxStore
-import com.megablok10.app.collector.ChangeRecordStore
-import com.megablok10.app.identity.IdentityManager
-import com.megablok10.app.presence.PresenceService
-import com.megablok10.app.presence.WifiBinder
+import com.megablok10.app.di.AppGraph
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -38,40 +33,40 @@ object DeviceDiagnostics {
             "collector=${BuildConfig.DEFAULT_COLLECTOR_URL.ifBlank { "-" }}"
 
     /** Текст device.txt в экспортируемом архиве. */
-    suspend fun deviceReport(context: Context): String {
-        val id = IdentityManager.current(context)
+    suspend fun deviceReport(context: Context, graph: AppGraph): String {
+        val id = graph.identity.current
         return buildString {
             appendLine("время экспорта: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss XXX", java.util.Locale.US).format(java.util.Date())}")
             appendLine(header())
             appendLine("игрок: ${id?.callsign ?: "-"} фракция=${id?.faction ?: "-"} ключ=…${Mb10Log.short(id?.publicKeyB64)}")
             appendLine("часовой пояс: ${java.util.TimeZone.getDefault().id}")
             appendLine("экран/производитель: ${Build.BRAND} ${Build.DEVICE} ${Build.HARDWARE}")
-            appendLine("последний снимок: ${snapshotLine(context)}")
+            appendLine("последний снимок: ${snapshotLine(context, graph)}")
         }
     }
 
     /** Запускает периодический снимок в переданном скоупе (останавливается вместе с ним). */
-    fun startSnapshots(context: Context, scope: CoroutineScope) {
+    fun startSnapshots(context: Context, scope: CoroutineScope, graph: AppGraph) {
         val app = context.applicationContext
         scope.launch {
             while (true) {
-                runCatching { Mb10Log.i(TAG, snapshotLine(app)) }.onFailure { Mb10Log.w(TAG, "снимок не собрался: ${it.message}") }
+                runCatching { Mb10Log.i(TAG, snapshotLine(app, graph)) }.onFailure { Mb10Log.w(TAG, "снимок не собрался: ${it.message}") }
                 delay(SNAPSHOT_EVERY_MS)
             }
         }
     }
 
     /** Одна строка со всем, что нужно, чтобы понять состояние телефона в этот момент. */
-    private suspend fun snapshotLine(context: Context): String {
+    private suspend fun snapshotLine(context: Context, graph: AppGraph): String {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
         val wifi = wifiSignal(cm)
-        val outbox = runCatching { OutboxStore.pending(context) }.getOrNull()
-        val id = IdentityManager.current(context)
+        val outbox = runCatching { graph.outbox.pending() }.getOrNull()
+        val id = graph.identity.current
         return "snapshot fg=$foreground me=${Mb10Log.short(id?.publicKeyB64)} " +
-            "wifiBound=${WifiBinder.boundNetwork != null} ip=${WifiBinder.ownIpv4 ?: "-"} nets=${networkKinds(cm)} " +
+            "wifiBound=${graph.wifi.boundNetwork != null} ip=${graph.wifi.ownIpv4 ?: "-"} nets=${networkKinds(cm)} " +
             "rssi=${wifi.rssi ?: "-"} freqMHz=${wifi.freq ?: "-"} linkMbps=${wifi.linkMbps ?: "-"} " +
-            "chatPort=${ChatStore.listeningPort} peers=${PresenceService.describePeers()} outbox=${outbox ?: "-"} " +
-            "sync=${ChangeRecordStore.lastSyncSummary} ${powerAndMemory(context)}"
+            "chatPort=${graph.mesh.listeningPort} peers=${graph.presence.describePeers()} outbox=${outbox ?: "-"} " +
+            "sync=${graph.collectorSync.lastSummary} ${powerAndMemory(context)}"
     }
 
     /** Какие сети сейчас есть: `wifi:IV` — Wi-Fi с признаками INTERNET и VALIDATED (у игровой сети без выхода наружу их не будет). */

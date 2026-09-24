@@ -1,35 +1,39 @@
 package com.megablok10.app.shards
 
-import android.content.Context
 import com.megablok10.app.breach.LootCodec
 import com.megablok10.app.breach.Tier
 import com.megablok10.app.collector.ChangeField
 import com.megablok10.app.collector.ChangeReason
-import com.megablok10.app.collector.ChangeRecordStore
-import com.megablok10.app.data.Mb10Database
+import com.megablok10.app.data.ShardDao
 import com.megablok10.app.data.ShardEntity
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.wallet.TransactionStore
+import com.megablok10.kit.sync.ChangeRecorder
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import org.json.JSONObject
 
 /** Шарды, отсканированные этим устройством или извлечённые из контейнера, поверх Room. */
-object ShardStore {
-    fun observeAll(context: Context): Flow<List<Mb10Qr.Shard>> =
-        Mb10Database.get(context).shardDao().observeAll().map { entities ->
-            entities.map { Mb10Qr.Shard(it.id, it.decryptAction, it.tier, it.valueHint, it.title, it.meta, it.body, it.moneyAmount, it.decrypted) }
-        }
+class ShardStore(
+    private val dao: ShardDao,
+    private val wallet: TransactionStore,
+    private val changes: ChangeRecorder,
+) {
+    fun observeAll(): Flow<List<Mb10Qr.Shard>> =
+        dao.observeAll().map { entities -> entities.map { it.toShard() } }
+
+    /** Шард из коллекции (для передачи другому игроку); null — такого у игрока нет. */
+    suspend fun get(id: String): Mb10Qr.Shard? = dao.get(id)?.toShard()
 
     /**
      * Деньги внутри шарда (если есть) зачисляются тут же, в момент сохранения —
      * тем же событием, что и появление шарда в коллекции. decrypted стартует
      * как !decryptAction: шард без требования расшифровки сразу открыт,
      * шард с decryptAction = true — заблокирован до успешного мини-взлома.
+     *
+     * reason/sourceRef — откуда взялся шард для мастерского коллектора (§2.2 ТЗ): напрямую сканом или через grant() из контейнера.
      */
-    /** reason/sourceRef — откуда взялся шард для мастерского коллектора (§2.2 ТЗ): напрямую сканом или через grant() из контейнера. */
     suspend fun add(
-        context: Context,
         shard: Mb10Qr.Shard,
         reason: String = ChangeReason.SHARD_SCAN,
         sourceRef: String? = null,
@@ -37,7 +41,7 @@ object ShardStore {
         decrypted: Boolean = !shard.decryptAction
     ) {
         val acquiredAt = System.currentTimeMillis()
-        Mb10Database.get(context).shardDao().upsert(
+        dao.upsert(
             ShardEntity(
                 id = shard.id,
                 decryptAction = shard.decryptAction,
@@ -52,7 +56,7 @@ object ShardStore {
             )
         )
         // Деньги внутри шарда зачисляются один раз — тому, кто его нашёл; при передаче другому игроку повторно их не начисляем.
-        if (creditMoney) TransactionStore.creditShardMoney(context, shard.id, shard.moneyAmount, shard.title)
+        if (creditMoney) wallet.creditShardMoney(shard.id, shard.moneyAmount, shard.title)
 
         val entry = JSONObject()
             .put("shardId", shard.id)
@@ -61,13 +65,12 @@ object ShardStore {
             .put("decrypted", decrypted)
             .put("acquiredAt", acquiredAt)
             .put("sourceRef", sourceRef)
-        ChangeRecordStore.enqueue(context, ChangeField.SHARDS_ADD, null, entry.toString(), reason, sourceRef ?: shard.id)
+        changes.record(ChangeField.SHARDS_ADD, null, entry.toString(), reason, sourceRef ?: shard.id)
     }
 
     /** Шард, извлечённый из слота лута контейнера (см. DaemonRewards) — id детерминирован от slotRef. */
-    suspend fun grant(context: Context, id: String, tier: Tier, loot: LootCodec.Loot.ShardLoot, sourceRef: String) {
+    suspend fun grant(id: String, tier: Tier, loot: LootCodec.Loot.ShardLoot, sourceRef: String) {
         add(
-            context,
             Mb10Qr.Shard(
                 id = id,
                 decryptAction = loot.decryptAction,
@@ -84,17 +87,19 @@ object ShardStore {
     }
 
     /** Убирает шард из коллекции (передача другому игроку) и сообщает об этом дашборду. */
-    suspend fun remove(context: Context, id: String, reason: String, sourceRef: String) {
-        Mb10Database.get(context).shardDao().delete(id)
-        ChangeRecordStore.enqueue(context, ChangeField.SHARDS_REMOVE, null, JSONObject().put("shardId", id).toString(), reason, sourceRef)
+    suspend fun remove(id: String, reason: String, sourceRef: String) {
+        dao.delete(id)
+        changes.record(ChangeField.SHARDS_REMOVE, null, JSONObject().put("shardId", id).toString(), reason, sourceRef)
     }
 
-    suspend fun markDecrypted(context: Context, id: String) {
-        Mb10Database.get(context).shardDao().markDecrypted(id)
-        ChangeRecordStore.enqueue(
-            context, ChangeField.SHARDS_DECRYPT, null,
+    suspend fun markDecrypted(id: String) {
+        dao.markDecrypted(id)
+        changes.record(
+            ChangeField.SHARDS_DECRYPT, null,
             JSONObject().put("shardId", id).toString(),
             ChangeReason.SHARD_DECRYPT, sourceRef = id,
         )
     }
+
+    private fun ShardEntity.toShard() = Mb10Qr.Shard(id, decryptAction, tier, valueHint, title, meta, body, moneyAmount, decrypted)
 }

@@ -10,13 +10,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.platform.LocalContext
-import com.megablok10.app.identity.ContactStore
-import com.megablok10.app.presence.PresenceService
+import com.megablok10.app.ui.LocalAppGraph
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.ButtonVariant
@@ -33,9 +32,9 @@ import androidx.compose.ui.text.font.FontWeight
 /** Выбор получателя передачи из контактов (онлайн — с точкой). Один диалог и для шарда, и для демона. */
 @Composable
 fun ContactPickerDialog(title: String, onPick: (Mb10Qr.Contact) -> Unit, onDismiss: () -> Unit) {
-    val context = LocalContext.current
-    val contacts by ContactStore.observeAll(context).collectAsState(initial = emptyList())
-    val online by PresenceService.peers.collectAsState()
+    val graph = LocalAppGraph.current
+    val contacts by remember { graph.contacts.observeAll() }.collectAsState(initial = emptyList())
+    val online by graph.presence.peers.collectAsState()
     val onlineKeys = online.map { it.pubKeyB64 }.toSet()
     Dialog(onDismissRequest = onDismiss) {
         ChamferedSurface(borderColor = MB10Colors.borderMuted, fillColor = MB10Colors.surfaceRaised, contentPadding = MB10Spacing.lg) {

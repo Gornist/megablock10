@@ -26,14 +26,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.identity.Identity
 import com.megablok10.kit.mesh.PeerInfo
-import com.megablok10.app.presence.PresenceService
+import com.megablok10.app.ui.LocalAppGraph
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
 import com.megablok10.app.qr.generateQrBitmap
@@ -57,15 +55,15 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}, onCallContact: (PeerInfo) -> Unit = {}) {
-    val context = LocalContext.current
+    val graph = LocalAppGraph.current
     val scope = rememberCoroutineScope()
-    val contacts by ContactStore.observeAll(context).collectAsState(initial = emptyList())
-    val onlinePeers by PresenceService.peers.collectAsState()
+    val contacts by remember { graph.contacts.observeAll() }.collectAsState(initial = emptyList())
+    val onlinePeers by graph.presence.peers.collectAsState()
     var contactsExpanded by remember { mutableStateOf(false) }
 
     val startScan = rememberMb10QrScanner { qr ->
         when (qr) {
-            is Mb10Qr.Contact -> scope.launch { ContactStore.add(context, qr) }
+            is Mb10Qr.Contact -> scope.launch { graph.contacts.add(qr) }
             else -> AppSnack.show("Это не QR-код контакта")
         }
     }

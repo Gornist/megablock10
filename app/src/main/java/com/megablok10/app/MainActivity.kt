@@ -25,6 +25,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -39,21 +40,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import com.megablok10.app.announce.AnnouncementStore
-import com.megablok10.app.call.CallManager
 import com.megablok10.app.call.CallPhase
-import com.megablok10.app.chat.ChatStore
-import com.megablok10.app.identity.SessionReset
+import com.megablok10.app.di.appGraph
 import com.megablok10.app.collector.ChangeField
 import com.megablok10.app.qr.ItemKind
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.ProvisionResult
-import com.megablok10.app.qr.ProvisionStore
 import com.megablok10.app.qr.rememberMb10QrScanner
 import com.megablok10.app.ui.theme.AppSnack
 import com.megablok10.app.collector.ChangeReason
-import com.megablok10.app.collector.ChangeRecordStore
-import com.megablok10.app.identity.IdentityManager
+import com.megablok10.app.ui.LocalAppGraph
 import com.megablok10.kit.mesh.PeerInfo
 import com.megablok10.app.ui.nav.AppTab
 import com.megablok10.app.ui.nav.MainScaffold
@@ -79,19 +75,23 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val graph = appGraph
         setContent {
-            MaterialTheme(
-                colorScheme = darkColorScheme(
-                    primary = MB10Colors.accentAction,
-                    background = MB10Colors.surfaceBase,
-                    surface = MB10Colors.surfaceRaised,
-                    onPrimary = androidx.compose.ui.graphics.Color.Black,
-                    onBackground = MB10Colors.inkPrimary,
-                    onSurface = MB10Colors.inkPrimary
-                )
-            ) {
-                Surface(color = MaterialTheme.colorScheme.background) {
-                    AppRoot()
+            // Экраны берут зависимости из корня композиции приложения (di.AppGraph), а не из глобальных объектов.
+            CompositionLocalProvider(LocalAppGraph provides graph) {
+                MaterialTheme(
+                    colorScheme = darkColorScheme(
+                        primary = MB10Colors.accentAction,
+                        background = MB10Colors.surfaceBase,
+                        surface = MB10Colors.surfaceRaised,
+                        onPrimary = androidx.compose.ui.graphics.Color.Black,
+                        onBackground = MB10Colors.inkPrimary,
+                        onSurface = MB10Colors.inkPrimary
+                    )
+                ) {
+                    Surface(color = MaterialTheme.colorScheme.background) {
+                        AppRoot()
+                    }
                 }
             }
         }
@@ -101,7 +101,9 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppRoot() {
     val context = LocalContext.current
-    var identity by remember { mutableStateOf(IdentityManager.current(context)) }
+    val graph = LocalAppGraph.current
+    // Личность реактивна (IdentityStore.state): создание, сброс и правки мастера (позывной, фракция, RAM) видны сразу.
+    val identity by graph.identity.state.collectAsState()
     var tab by remember { mutableStateOf(AppTab.Chat) }
     var chatContact by remember { mutableStateOf<String?>(null) }
     var showProfile by remember { mutableStateOf(false) }
@@ -119,8 +121,8 @@ fun AppRoot() {
     // экран настройки ещё не пройден, хотя на практике enqueue() без
     // личности просто ничего не пишет).
     LaunchedEffect(Unit) {
-        AnnouncementStore.load(context)
-        ChangeRecordStore.start(context)
+        graph.announcements.load()
+        graph.startCollectorSync()
     }
 
     // WebRTC не откроет микрофон без RECORD_AUDIO — звонок (свой исходящий
@@ -163,7 +165,7 @@ fun AppRoot() {
     val currentIdentity = identity
     if (currentIdentity != null) {
         LaunchedEffect(currentIdentity.publicKeyB64) {
-            ChatStore.start(context, currentIdentity)
+            graph.mesh.start(currentIdentity)
         }
     }
 
@@ -171,8 +173,8 @@ fun AppRoot() {
         SetupScreen(
             onProvision = { qr ->
                 scope.launch {
-                    when (val r = ProvisionStore.apply(context, qr)) {
-                        is ProvisionResult.Applied -> identity = r.identity
+                    when (val r = graph.provisioning.apply(qr)) {
+                        is ProvisionResult.Applied -> Unit // личность появилась в IdentityStore.state — экран сменится сам
                         ProvisionResult.AlreadyHasIdentity -> AppSnack.show("Персонаж уже создан. Повторно — только после сброса сессии в Настройках")
                         ProvisionResult.AlreadyUsed -> AppSnack.show("Этот код уже использован. Попросите мастера выдать новый")
                         is ProvisionResult.Invalid -> AppSnack.show(r.message)
@@ -180,13 +182,12 @@ fun AppRoot() {
                 }
             },
             onCreated = { callsign, faction ->
-            val isNewIdentity = !IdentityManager.hasIdentity(context)
-            val created = IdentityManager.getOrCreate(context, callsign, faction)
-            identity = created
+            val isNewIdentity = !graph.identity.hasIdentity()
+            val created = graph.identity.getOrCreate(callsign, faction)
             if (isNewIdentity) {
                 scope.launch {
-                    ChangeRecordStore.enqueue(context, ChangeField.CALLSIGN, null, created.callsign, ChangeReason.CHARACTER_CREATED)
-                    ChangeRecordStore.enqueue(context, ChangeField.FACTION, null, created.faction, ChangeReason.CHARACTER_CREATED)
+                    graph.changes.record(ChangeField.CALLSIGN, null, created.callsign, ChangeReason.CHARACTER_CREATED)
+                    graph.changes.record(ChangeField.FACTION, null, created.faction, ChangeReason.CHARACTER_CREATED)
                 }
             }
         })
@@ -199,18 +200,17 @@ fun AppRoot() {
                 showProfile = false
             },
             onCallContact = { peer: PeerInfo ->
-                withMicPermission { CallManager.startOutgoingCall(context, currentIdentity, peer) }
+                withMicPermission { graph.calls.startOutgoingCall(currentIdentity, peer) }
             },
             onResetIdentity = {
                 // Зеркало пары enqueue при CHARACTER_CREATED (см. SetupScreen выше) —
                 // иначе сброс персонажа молча выпадает из истории дашборда: до сих пор
                 // мастер видел там появление позывного/фракции, но не их исчезновение.
-                // Enqueue обязан пройти ДО IdentityManager.clear — подписывать запись
+                // Enqueue обязан пройти ДО стирания личности — подписывать запись
                 // уже будет нечем, ключ сотрётся вместе с остальными SharedPreferences.
                 scope.launch {
                     // Полный сброс сессии на устройстве (записи о сбросе → стирание игровых данных → ключи): см. identity/SessionReset.
-                    SessionReset.perform(context, currentIdentity)
-                    identity = null
+                    graph.sessionReset.perform(currentIdentity)
                     tab = AppTab.Chat
                     showProfile = false
                 }
@@ -218,7 +218,7 @@ fun AppRoot() {
             onBack = { showProfile = false }
         )
     } else {
-        val callState by CallManager.state.collectAsState()
+        val callState by graph.calls.state.collectAsState()
         // Только активный таб решает, вложен ли он сейчас — chrome прячется по его флагу,
         // не по обоим сразу (состояние неактивного таба не влияет, пока на него не переключились).
         val hideChrome = when (tab) {
@@ -248,7 +248,7 @@ fun AppRoot() {
                         }
                     )
                     AppTab.Calls -> CallsScreen(onCallPeer = { peer: PeerInfo ->
-                        withMicPermission { CallManager.startOutgoingCall(context, currentIdentity, peer) }
+                        withMicPermission { graph.calls.startOutgoingCall(currentIdentity, peer) }
                     })
                     AppTab.Hack -> CyberdeckScreen(
                         identity = currentIdentity,
@@ -265,8 +265,8 @@ fun AppRoot() {
             if (callState.phase != CallPhase.IDLE) {
                 CallOverlay(
                     state = callState,
-                    onAccept = { withMicPermission { CallManager.accept(context, currentIdentity) } },
-                    onEnd = { CallManager.endCall(context, currentIdentity) }
+                    onAccept = { withMicPermission { graph.calls.accept(currentIdentity) } },
+                    onEnd = { graph.calls.endCall(currentIdentity) }
                 )
             }
         }

@@ -37,27 +37,21 @@ import androidx.compose.ui.unit.sp
 import com.megablok10.app.breach.BreachContainerFlow
 import com.megablok10.app.breach.CodePill
 import com.megablok10.app.breach.Container
-import com.megablok10.app.breach.ContainerCooldownStore
 import com.megablok10.app.breach.cellsLabel
 import com.megablok10.app.breach.DecryptRules
 import com.megablok10.app.items.ItemTransferStore
 import com.megablok10.app.breach.Daemon
-import com.megablok10.app.breach.DaemonRewards
-import com.megablok10.app.breach.DaemonStore
 import com.megablok10.app.breach.LootType
 import com.megablok10.app.breach.ShardDecryptFlow
-import com.megablok10.app.breach.SlotClaimStore
 import com.megablok10.app.breach.label
 import com.megablok10.app.collector.ChangeField
 import com.megablok10.app.collector.ChangeReason
-import com.megablok10.app.collector.ChangeRecordStore
-import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.identity.Identity
-import com.megablok10.app.identity.RamUpgradeStore
 import com.megablok10.app.presence.MeshLink
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.rememberMb10QrScanner
-import com.megablok10.app.shards.ShardStore
+import com.megablok10.app.ui.LocalAppGraph
+import com.megablok10.kit.sync.ChangeRecorder
 import com.megablok10.app.ui.theme.ChamferedSurface
 import com.megablok10.app.ui.theme.DottedDivider
 import com.megablok10.app.ui.theme.ScanFab
@@ -89,11 +83,12 @@ fun CyberdeckScreen(
     onPresetConsumed: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val graph = LocalAppGraph.current
     val scope = rememberCoroutineScope()
-    LaunchedEffect(Unit) { DaemonStore.ensureSeeded(context) }
-    val daemons by DaemonStore.observeAll(context).collectAsState(initial = emptyList())
-    val shards by ShardStore.observeAll(context).collectAsState(initial = emptyList())
-    val contacts by ContactStore.observeAll(context).collectAsState(initial = emptyList())
+    LaunchedEffect(Unit) { graph.daemons.ensureSeeded() }
+    val daemons by remember { graph.daemons.observeAll() }.collectAsState(initial = emptyList())
+    val shards by remember { graph.shards.observeAll() }.collectAsState(initial = emptyList())
+    val contacts by remember { graph.contacts.observeAll() }.collectAsState(initial = emptyList())
 
     var segment by rememberSaveable { mutableStateOf(0) } // 0 = Демоны, 1 = Шарды; переживает смену вкладки приложения
     // Пришли из треда чата (кнопка со скрепкой у "Отправить") — получатель уже выбран, картинка контактов не нужна:
@@ -136,23 +131,23 @@ fun CyberdeckScreen(
                 // (см. ревизию v9 §5).
                 if (!MeshLink.isOnline(context)) {
                     scanIssue = ScanIssue("НЕТ СВЯЗИ", "Дека вне зоны сети Мегаблока. Взлом недоступен без подключения к узлу связи.")
-                    scope.launch { emitBreachBlocked(context, identity.publicKeyB64, qr.container.id, "NO_LINK") }
+                    scope.launch { emitBreachBlocked(graph.changes, identity.publicKeyB64, qr.container.id, "NO_LINK") }
                     return@rememberMb10QrScanner
                 }
                 scope.launch {
-                    val remainingMs = ContainerCooldownStore.remainingCooldownMs(context, qr.container.id)
+                    val remainingMs = graph.cooldowns.remainingCooldownMs(qr.container.id)
                     when {
                         remainingMs > 0 -> {
                             val minutes = (remainingMs / 60_000L + 1).coerceAtLeast(1)
                             scanIssue = ScanIssue("УЗЕЛ ОСТЫВАЕТ", "Повторное подключение к этому узлу возможно через $minutes мин.")
-                            emitBreachBlocked(context, identity.publicKeyB64, qr.container.id, "COOLDOWN")
+                            emitBreachBlocked(graph.changes, identity.publicKeyB64, qr.container.id, "COOLDOWN")
                         }
                         // Раньше это не проверялось вовсе — попытку можно было честно
                         // потратить на уже пустой контейнер и узнать об этом только
                         // в самом конце, через cacheExhausted в результате взлома.
-                        SlotClaimStore.isExhausted(context, qr.container) -> {
+                        graph.slotClaims.isExhausted(qr.container) -> {
                             scanIssue = ScanIssue("КЭШ ОЧИЩЕН", "Все слоты узла исчерпаны — здесь больше нечего извлекать.")
-                            emitBreachBlocked(context, identity.publicKeyB64, qr.container.id, "EXHAUSTED")
+                            emitBreachBlocked(graph.changes, identity.publicKeyB64, qr.container.id, "EXHAUSTED")
                         }
                         else -> {
                             container = qr.container
@@ -161,17 +156,17 @@ fun CyberdeckScreen(
                     }
                 }
             }
-            is Mb10Qr.Shard -> { scope.launch { ShardStore.add(context, qr) }; segment = 1 }
+            is Mb10Qr.Shard -> { scope.launch { graph.shards.add(qr) }; segment = 1 }
             is Mb10Qr.RamUpgrade -> {
                 scope.launch {
-                    val newCapacity = RamUpgradeStore.apply(context, qr)
+                    val newCapacity = graph.ramUpgrades.apply(qr)
                     val message = if (newCapacity != null) "RAM деки увеличена до $newCapacity" else "Этот RAM-токен уже был применён"
                     AppSnack.show(message)
                 }
             }
             is Mb10Qr.LootGrant -> {
                 scope.launch {
-                    val granted = DaemonRewards.applyGrant(context, qr)
+                    val granted = graph.rewards.applyGrant(qr)
                     val message = granted ?: "Фрагмент повреждён — обратитесь к мастеру"
                     AppSnack.show(message)
                     segment = if (qr.type == LootType.DAEMON) 0 else 1
@@ -186,7 +181,7 @@ fun CyberdeckScreen(
         ShardDecryptFlow(
             shard = decrypting,
             onDecrypted = {
-                scope.launch { ShardStore.markDecrypted(context, decrypting.id) }
+                scope.launch { graph.shards.markDecrypted(decrypting.id) }
                 decryptingShard = null
                 openedShard = decrypting.copy(decrypted = true)
             },
@@ -202,15 +197,15 @@ fun CyberdeckScreen(
         transferDaemon = null
         scope.launch {
             val card = when {
-                shard != null -> ItemTransferStore.sendShard(context, identity, shard.id, toKeyB64)
-                daemon != null -> ItemTransferStore.sendDaemon(context, identity, daemon, toKeyB64)
+                shard != null -> graph.items.sendShard(identity, shard.id, toKeyB64)
+                daemon != null -> graph.items.sendDaemon(identity, daemon, toKeyB64)
                 else -> null
             }
             if (card == null) {
                 AppSnack.show("Не удалось передать")
                 return@launch
             }
-            ItemTransferStore.deliver(context, identity, card, toKeyB64)
+            graph.items.deliver(identity, card, toKeyB64)
             openedShard = null
             AppSnack.show("Передача отправлена: $label")
         }
@@ -308,9 +303,9 @@ private fun DemonsSegment(daemons: List<Daemon>, onTransfer: (Daemon) -> Unit) {
 }
 
 /** Попытка взлома отклонена до начала (§2.2 ТЗ: BREACH_BLOCKED) — нет связи/кулдаун/пустой узел, см. точки вызова выше. */
-private suspend fun emitBreachBlocked(context: android.content.Context, subjectKeyB64: String, containerId: String, reason: String) {
-    ChangeRecordStore.enqueue(
-        context, ChangeField.COUNTERS_BLOCKED, null,
+private suspend fun emitBreachBlocked(changes: ChangeRecorder, subjectKeyB64: String, containerId: String, reason: String) {
+    changes.record(
+        ChangeField.COUNTERS_BLOCKED, null,
         JSONObject().put("reason", reason).toString(),
         ChangeReason.BREACH_BLOCKED, sourceRef = containerId, subjectKeyB64 = subjectKeyB64,
     )

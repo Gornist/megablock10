@@ -34,23 +34,18 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.megablok10.app.chat.ChatStore
 import com.megablok10.app.data.ChatMessageEntity
 import com.megablok10.app.data.ItemTransferEntity
 import com.megablok10.app.data.TransactionEntity
 import com.megablok10.app.data.TransactionStatus
-import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.items.ItemPayload
-import com.megablok10.app.items.ItemTransferStore
 import com.megablok10.app.breach.label
 import com.megablok10.app.qr.ItemKind
-import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
 import com.megablok10.app.ui.theme.AppButton
@@ -70,8 +65,8 @@ import com.megablok10.app.ui.theme.MB10Colors
 import com.megablok10.app.ui.theme.OnlineDot
 import com.megablok10.app.ui.theme.StatusChip
 import com.megablok10.app.ui.theme.SystemNoticeLine
+import com.megablok10.app.ui.LocalAppGraph
 import com.megablok10.app.ui.theme.chamferShape
-import com.megablok10.app.wallet.TransactionStore
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -145,11 +140,11 @@ fun ChatScreen(
 
 @Composable
 private fun ConversationInbox(identity: Identity, onOpenFaction: () -> Unit, onOpenDirect: (String) -> Unit, onNewChat: () -> Unit) {
-    val context = LocalContext.current
-    val factionMessages by ChatStore.observeFaction(context, identity.faction).collectAsState(initial = emptyList())
-    val recentThreads by ChatStore.observeRecentDirectThreads(context, identity.publicKeyB64).collectAsState(initial = emptyList())
-    val contacts by ContactStore.observeAll(context).collectAsState(initial = emptyList())
-    val onlinePeers by PresenceService.peers.collectAsState()
+    val graph = LocalAppGraph.current
+    val factionMessages by remember(identity.faction) { graph.chat.observeFaction(identity.faction) }.collectAsState(initial = emptyList())
+    val recentThreads by remember(identity.publicKeyB64) { graph.chat.observeRecentDirectThreads(identity.publicKeyB64) }.collectAsState(initial = emptyList())
+    val contacts by remember { graph.contacts.observeAll() }.collectAsState(initial = emptyList())
+    val onlinePeers by graph.presence.peers.collectAsState()
     val onlineKeys = remember(onlinePeers) { onlinePeers.map { it.pubKeyB64 }.toSet() }
     val lastFactionMessage = factionMessages.lastOrNull()
 
@@ -204,31 +199,31 @@ private fun ConversationRow(title: String, preview: String, time: Long?, online:
 
 @Composable
 private fun FactionThread(identity: Identity, onBack: () -> Unit) {
-    val context = LocalContext.current
+    val graph = LocalAppGraph.current
     val scope = rememberCoroutineScope()
-    val messages by ChatStore.observeFaction(context, identity.faction).collectAsState(initial = emptyList())
+    val messages by remember(identity.faction) { graph.chat.observeFaction(identity.faction) }.collectAsState(initial = emptyList())
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         ThreadHeader(title = "Фракция: ${identity.faction}", onBack = onBack)
         MessageList(messages = messages, myPubKey = identity.publicKeyB64, showSender = true, emptyText = "Пока нет сообщений во фракции.")
         MessageInput(placeholder = "Сообщение фракции") { body ->
-            scope.launch { ChatStore.sendFaction(context, identity, body) }
+            scope.launch { graph.chat.sendFaction(identity, body) }
         }
     }
 }
 
 @Composable
 private fun DirectThread(identity: Identity, peerPubKeyB64: String, onBack: () -> Unit, onQuickTransfer: (String) -> Unit, onQuickItem: (ItemKind, String) -> Unit) {
-    val context = LocalContext.current
+    val graph = LocalAppGraph.current
     val scope = rememberCoroutineScope()
-    val contacts by ContactStore.observeAll(context).collectAsState(initial = emptyList())
-    val onlinePeers by PresenceService.peers.collectAsState()
-    val transactions by TransactionStore.observeAll(context).collectAsState(initial = emptyList())
-    val itemTransfers by ItemTransferStore.observeAll(context).collectAsState(initial = emptyList())
+    val contacts by remember { graph.contacts.observeAll() }.collectAsState(initial = emptyList())
+    val onlinePeers by graph.presence.peers.collectAsState()
+    val transactions by remember { graph.wallet.observeAll() }.collectAsState(initial = emptyList())
+    val itemTransfers by remember { graph.items.observeAll() }.collectAsState(initial = emptyList())
 
     val contact = contacts.find { it.publicKeyB64 == peerPubKeyB64 }
     val peer = onlinePeers.find { it.pubKeyB64 == peerPubKeyB64 }
-    val messages by ChatStore.observeDirect(context, identity.publicKeyB64, peerPubKeyB64).collectAsState(initial = emptyList())
+    val messages by remember(identity.publicKeyB64, peerPubKeyB64) { graph.chat.observeDirect(identity.publicKeyB64, peerPubKeyB64) }.collectAsState(initial = emptyList())
 
     // Отправитель видит чек получателя как обычное входящее сообщение — фиксируем
     // подтверждение автоматически, без ручного шага. Повторный вызов на уже
@@ -241,8 +236,8 @@ private fun DirectThread(identity: Identity, peerPubKeyB64: String, onBack: () -
             if (msg.fromPubKeyB64 != identity.publicKeyB64) {
                 val decoded = Mb10QrCodec.decode(msg.body)
                 if (decoded is Mb10Qr.Receipt) {
-                    TransactionStore.verifyAndConfirmReceipt(context, decoded.id, decoded)
-                    ItemTransferStore.verifyAndConfirmReceipt(context, decoded.id, decoded)
+                    graph.wallet.verifyAndConfirmReceipt(decoded.id, decoded)
+                    graph.items.verifyAndConfirmReceipt(decoded.id, decoded)
                 }
             }
         }
@@ -270,25 +265,25 @@ private fun DirectThread(identity: Identity, peerPubKeyB64: String, onBack: () -
             itemTransfers = itemTransfers,
             onAcceptItem = { card ->
                 scope.launch {
-                    if (ItemTransferStore.acceptIncoming(context, identity.publicKeyB64, card)) {
-                        val receipt = ItemTransferStore.buildReceipt(context, identity, card.id)
-                        ChatStore.sendDirect(context, identity, card.fromPubKeyB64, peer, Mb10QrCodec.encodeReceipt(receipt))
+                    if (graph.items.acceptIncoming(identity.publicKeyB64, card)) {
+                        val receipt = graph.items.buildReceipt(identity, card.id)
+                        graph.chat.sendDirect(identity, card.fromPubKeyB64, peer, Mb10QrCodec.encodeReceipt(receipt))
                     }
                 }
             },
             onAcceptTransaction = { tx ->
                 scope.launch {
-                    val credited = TransactionStore.recordIncoming(context, identity.publicKeyB64, tx)
+                    val credited = graph.wallet.recordIncoming(identity.publicKeyB64, tx)
                     if (credited) {
-                        val receipt = TransactionStore.buildReceipt(context, identity, tx.id)
-                        ChatStore.sendDirect(context, identity, tx.fromPubKeyB64, peer, Mb10QrCodec.encodeReceipt(receipt))
+                        val receipt = graph.wallet.buildReceipt(identity, tx.id)
+                        graph.chat.sendDirect(identity, tx.fromPubKeyB64, peer, Mb10QrCodec.encodeReceipt(receipt))
                     }
                 }
             }
         )
         MessageInput(
             placeholder = if (peer != null) "Личное сообщение" else "Личное сообщение (получатель не в сети)",
-            onSend = { body -> scope.launch { ChatStore.sendDirect(context, identity, peerPubKeyB64, peer, body) } },
+            onSend = { body -> scope.launch { graph.chat.sendDirect(identity, peerPubKeyB64, peer, body) } },
             onTransferMoney = { onQuickTransfer(peerPubKeyB64) },
             onTransferShard = { onQuickItem(ItemKind.SHARD, peerPubKeyB64) },
             onTransferDaemon = { onQuickItem(ItemKind.DAEMON, peerPubKeyB64) }
@@ -311,9 +306,9 @@ private fun ThreadHeader(title: String, onBack: () -> Unit) {
 /** Список контактов для старта НОВОГО диалога (кнопка "+" в инбоксе) — не путать с самим инбоксом уже идущих переписок. */
 @Composable
 private fun NewChatPicker(onPick: (String) -> Unit, onBack: () -> Unit) {
-    val context = LocalContext.current
-    val contacts by ContactStore.observeAll(context).collectAsState(initial = emptyList())
-    val onlinePeers by PresenceService.peers.collectAsState()
+    val graph = LocalAppGraph.current
+    val contacts by remember { graph.contacts.observeAll() }.collectAsState(initial = emptyList())
+    val onlinePeers by graph.presence.peers.collectAsState()
     val onlineKeys = remember(onlinePeers) { onlinePeers.map { it.pubKeyB64 }.toSet() }
     var query by remember { mutableStateOf("") }
     val filtered = remember(contacts, query) {

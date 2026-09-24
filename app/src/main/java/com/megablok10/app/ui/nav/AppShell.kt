@@ -23,7 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.identity.Identity
-import com.megablok10.app.presence.PresenceService
+import com.megablok10.app.ui.LocalAppGraph
 import com.megablok10.app.ui.theme.ChamferedSurface
 import com.megablok10.app.ui.theme.DottedDivider
 import com.megablok10.app.ui.theme.HexBullet
@@ -51,7 +51,7 @@ enum class AppTab(val label: String) {
  */
 @Composable
 fun AppHeader(identity: Identity, onOpenProfile: () -> Unit = {}) {
-    val peers by PresenceService.peers.collectAsState()
+    val peers by LocalAppGraph.current.presence.peers.collectAsState()
 
     // Одна строка ~44 dp: позывной · фракция слева, узлы меш-сети справа. Раньше это были три строки и пунктир (≈104 dp).
     // Норма («узлы есть») — одна точка и число; текст нужен только когда связи нет — тогда он красный и заметен.

@@ -22,17 +22,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.data.CallDirection
 import com.megablok10.app.data.CallLogEntity
 import com.megablok10.app.data.CallOutcome
-import com.megablok10.app.data.Mb10Database
-import com.megablok10.app.identity.ContactStore
 import com.megablok10.kit.mesh.PeerInfo
-import com.megablok10.app.presence.PresenceService
+import com.megablok10.app.ui.LocalAppGraph
 import com.megablok10.app.ui.theme.AppTextField
 import com.megablok10.app.ui.theme.CompactActionButton
 import com.megablok10.app.ui.theme.DottedDivider
@@ -53,9 +50,9 @@ import java.util.Locale
  */
 @Composable
 fun CallsScreen(onCallPeer: (PeerInfo) -> Unit) {
-    val context = LocalContext.current
-    val callLog by Mb10Database.get(context).callLogDao().observeAll().collectAsState(initial = emptyList())
-    val onlinePeers by PresenceService.peers.collectAsState()
+    val graph = LocalAppGraph.current
+    val callLog by remember { graph.db.callLogDao().observeAll() }.collectAsState(initial = emptyList())
+    val onlinePeers by graph.presence.peers.collectAsState()
     var showPicker by remember { mutableStateOf(false) }
 
     fun tryCall(peerPubKeyB64: String, callsign: String) {
@@ -138,9 +135,9 @@ private fun formatDuration(millis: Long): String {
 /** Список контактов для старта нового звонка (кнопка "+") — сам звонок пойдёт, только если контакт сейчас в сети. */
 @Composable
 private fun NewCallPicker(onPick: (String, String) -> Unit, onBack: () -> Unit) {
-    val context = LocalContext.current
-    val contacts by ContactStore.observeAll(context).collectAsState(initial = emptyList())
-    val onlinePeers by PresenceService.peers.collectAsState()
+    val graph = LocalAppGraph.current
+    val contacts by remember { graph.contacts.observeAll() }.collectAsState(initial = emptyList())
+    val onlinePeers by graph.presence.peers.collectAsState()
     val onlineKeys = remember(onlinePeers) { onlinePeers.map { it.pubKeyB64 }.toSet() }
     var query by remember { mutableStateOf("") }
     val filtered = remember(contacts, query) {

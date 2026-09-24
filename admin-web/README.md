@@ -291,7 +291,7 @@ CSV — для чтения и таблиц, не для восстановле�
 
 Бэкенд (`admin-web/server`):
 - `POST /api/changes` — приём батча ChangeRecord, проверка ECDSA-подписи
-  (secp256r1, тот же формат, что `IdentityManager` в Android-приложении —
+  (secp256r1, тот же формат, что `IdentityStore` в Android-приложении —
   проверено сквозным тестом), идемпотентность по `id` и по
   `(subjectKeyB64, seq)`, битая подпись не роняет весь батч.
 - `POST /api/containers`, `POST/GET /api/slots*` — заливка контейнеров из
@@ -340,12 +340,12 @@ CSV — для чтения и таблиц, не для восстановле�
 расшифровала payload, сгенерированный Node-сервером, и наоборот — байт в
 байт совпало в обе стороны.
 
-Android-клиент (`app/`, пакет `com.megablok10.app.collector`):
-- `ChangeRecord.kt` — зеркало серверной модели, та же pipe-подпись.
-- `ChangeRecordStore` — локальная очередь (Room, таблица
+Android-клиент (`app/`, пакет `com.megablok10.app.collector`; механика — в модуле `kit`, пакет `com.megablok10.kit.sync`):
+- `ChangeRecord` (kit) — зеркало серверной модели, та же pipe-подпись.
+- `ChangeRecorder` + `SyncEngine` (kit) и `CollectorSync.kt` (приложение) — локальная очередь (Room, таблица
   `pending_change_records`, переживает перезапуск), фоновая отправка с
   экспоненциальным бэкоффом (1с → 2с → 5с → 15с → 60с). `seq` — сквозной
-  счётчик в `IdentityManager`, не зависит от того, что уже вычищено из
+  счётчик в `IdentityStore`, не зависит от того, что уже вычищено из
   очереди.
 - `CollectorClient` — HTTP до коллектора (OkHttp), `network_security_config.xml`
   разрешает cleartext (коллектор в локальной сети без TLS).
