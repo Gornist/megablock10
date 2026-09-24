@@ -1,31 +1,43 @@
 import type { ReactNode } from "react";
 import "./components.css";
 
+/** Общий мискин augmented-ui для этого дашборда: два противоположных угла срезаны (фирменный силуэт), плюс рамка по контуру среза. Размер и цвет среза — CSS-переменные --aug-tl/--aug-br/--aug-border-bg на самом элементе (components.css). */
+const AUG = "tl-clip br-clip border";
+
 export function Panel({ title, action, children, className }: { title?: ReactNode; action?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <section className={`panel ${className ?? ""}`}>
+    <section className={`panel ${className ?? ""}`} data-augmented-ui={AUG}>
       {(title || action) && (
         <header className="panel-header">
           {title && <h3>{title}</h3>}
           {action}
         </header>
       )}
-      <div className="panel-body">{children}</div>
+      {/* Панель вкладывает кнопки/поля/бейджи с теми же позициями среза (tl+br) — по правилам augmented-ui
+          это «граничный случай», сброс не обязателен, но панель — единственное место с вложенностью на
+          несколько уровней, поэтому reset ставится явно, для устойчивости при будущих правках вёрстки. */}
+      <div className="panel-body" data-augmented-ui-reset="">
+        {children}
+      </div>
     </section>
   );
 }
 
 export function StatTile({ label, value, tone }: { label: string; value: ReactNode; tone?: "ok" | "danger" | "accent" }) {
   return (
-    <div className={`stat-tile ${tone ?? ""}`}>
+    <div className={`stat-tile ${tone ?? ""}`} data-augmented-ui={AUG}>
       <div className="stat-tile-value mono">{value}</div>
       <div className="stat-tile-label status-caps">{label}</div>
     </div>
   );
 }
 
-export function Badge({ children, tone }: { children: ReactNode; tone?: "ok" | "danger" | "accent" | "neutral" }) {
-  return <span className={`badge status-caps ${tone ?? "neutral"}`}>{children}</span>;
+export function Badge({ children, tone }: { children: ReactNode; tone?: "ok" | "danger" | "accent" | "info" | "neutral" }) {
+  return (
+    <span className={`badge status-caps ${tone ?? "neutral"}`} data-augmented-ui={AUG}>
+      {children}
+    </span>
+  );
 }
 
 export function AppButton({
@@ -42,19 +54,22 @@ export function AppButton({
   disabled?: boolean;
 }) {
   return (
-    <button type={type} className={`app-button ${variant}`} onClick={onClick} disabled={disabled}>
+    <button type={type} className={`app-button ${variant}`} onClick={onClick} disabled={disabled} data-augmented-ui={AUG}>
       {children}
     </button>
   );
 }
 
+/** Поля ввода — только один срезанный угол (br), потемнее панелей и кнопок: это текстовый контейнер, а не рамка-акцент, полный tl+br съедал бы больше места под курсор и лево-выравненный текст. */
+const AUG_FIELD = "br-clip border";
+
 export function AppInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={`app-input ${props.className ?? ""}`} />;
+  return <input {...props} className={`app-input ${props.className ?? ""}`} data-augmented-ui={AUG_FIELD} />;
 }
 
 export function AppSelect({ children, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <select {...props} className={`app-select ${props.className ?? ""}`}>
+    <select {...props} className={`app-select ${props.className ?? ""}`} data-augmented-ui={AUG_FIELD}>
       {children}
     </select>
   );
@@ -119,11 +134,11 @@ export function AppDialog({
 }) {
   return (
     <div className="dialog-backdrop" onClick={onCancel}>
-      <div className="dialog-panel" onClick={(e) => e.stopPropagation()}>
+      <div className="dialog-panel" onClick={(e) => e.stopPropagation()} data-augmented-ui={AUG}>
         <h3>{title}</h3>
         {body && <p className="hint-text dialog-body">{body}</p>}
         {children}
-        <div className="dialog-actions">
+        <div className="dialog-actions" data-augmented-ui-reset="">
           <AppButton onClick={onCancel}>отмена</AppButton>
           <AppButton variant={confirmVariant} onClick={onConfirm} disabled={confirmDisabled}>
             {confirmText}

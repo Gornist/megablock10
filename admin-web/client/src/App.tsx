@@ -43,7 +43,12 @@ function Shell() {
         <h1>МЕГАБЛОК №10 · КОЛЛЕКТОР</h1>
         <nav>
           {NAV.map((n) => (
-            <button key={n.path} className={`nav-item status-caps ${section === n.path ? "active" : ""}`} onClick={() => navigate(n.path)}>
+            <button
+              key={n.path}
+              className={`nav-item status-caps ${section === n.path ? "active" : ""}`}
+              onClick={() => navigate(n.path)}
+              data-augmented-ui="tl-clip br-clip border"
+            >
               {n.label}
             </button>
           ))}

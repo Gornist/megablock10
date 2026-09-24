@@ -1,8 +1,21 @@
+/*
+ * Скошенные углы и рамки — через augmented-ui (public/vendor/augmented-ui.min.css, см. README там же),
+ * а не руками написанный clip-path/evenodd-рамка, как было раньше. Тот же почерк — два противоположных
+ * угла срезаны (tl+br), это фирменный силуэт этого дашборда — но теперь задаётся мискином в
+ * data-augmented-ui и парой --aug-* свойств вместо полусотни строк тригонометрии на панель.
+ *
+ * Общий приём: --c задаёт размер среза (--aug-tl/--aug-br), --bc — цвет рамки (--aug-border-bg).
+ * Рамка — не border, а ::after по контуру среза (--aug-border-all), поэтому clip-path не режет её
+ * по диагонали, как резало бы обычный border на скошенном элементе.
+ */
 .panel {
   --c: var(--chamfer);
-  --bc: #1c1c1c;
+  --bc: var(--line);
+  --aug-tl: var(--c);
+  --aug-br: var(--c);
+  --aug-border-all: 1px;
+  --aug-border-bg: var(--bc);
   background: var(--bg-1);
-  clip-path: polygon(var(--c) 0, 100% 0, 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, 0 100%, 0 var(--c));
   padding: 19px 21px;
 }
 
@@ -11,6 +24,7 @@
   align-items: center;
   justify-content: space-between;
   margin-bottom: 14px;
+  gap: 12px;
 }
 .panel-header h3 {
   font-size: 15px;
@@ -18,21 +32,35 @@
 }
 
 .stat-tile {
+  --c: var(--chamfer-sm);
+  --aug-tl: var(--c);
+  --aug-br: var(--c);
+  --aug-border-all: 1px;
+  --aug-border-bg: var(--line-soft);
   background: var(--bg-2);
-  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
-  padding: 12px 16px;
+  padding: 12px 16px 12px 18px;
   min-width: 120px;
+  border-left: 2px solid var(--line-soft);
 }
 .stat-tile-value {
   font-size: 26px;
   font-weight: 600;
   color: var(--text-main);
 }
+.stat-tile.accent {
+  border-left-color: var(--accent);
+}
 .stat-tile.accent .stat-tile-value {
   color: var(--accent);
 }
+.stat-tile.danger {
+  border-left-color: var(--danger);
+}
 .stat-tile.danger .stat-tile-value {
   color: var(--danger);
+}
+.stat-tile.ok {
+  border-left-color: var(--ok);
 }
 .stat-tile.ok .stat-tile-value {
   color: var(--ok);
@@ -46,10 +74,13 @@
 .badge {
   --c: 5px;
   --bc: var(--line);
+  --aug-tl: var(--c);
+  --aug-br: var(--c);
+  --aug-border-all: 1px;
+  --aug-border-bg: var(--bc);
   display: inline-block;
   padding: 3px 9px;
   font-size: 11px;
-  clip-path: polygon(var(--c) 0, 100% 0, 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, 0 100%, 0 var(--c));
 }
 .badge.neutral {
   color: var(--text-dim);
@@ -66,20 +97,42 @@
   color: var(--danger);
   --bc: var(--danger);
 }
+.badge.info {
+  color: var(--cyan);
+  --bc: var(--cyan);
+}
 
 .app-button {
-  --c: 6px;
+  --c: var(--chamfer-sm);
   --bc: var(--line);
+  --aug-tl: var(--c);
+  --aug-br: var(--c);
+  --aug-border-all: 1px;
+  --aug-border-bg: var(--bc);
   background: var(--bg-2);
   color: var(--text-main);
   padding: 9px 17px;
   font-family: var(--font-body);
   font-size: 13px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
   cursor: pointer;
-  clip-path: polygon(var(--c) 0, 100% 0, 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, 0 100%, 0 var(--c));
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease,
+    filter 0.15s ease;
 }
 .app-button:hover:not(:disabled) {
   --bc: var(--text-main);
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.18));
+}
+.app-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.app-button:focus-visible {
+  outline: none;
+  filter: drop-shadow(0 0 0 2px var(--bg-1)) drop-shadow(0 0 8px var(--cyan));
 }
 .app-button:disabled {
   opacity: 0.4;
@@ -88,63 +141,42 @@
 .app-button.primary {
   background: var(--accent);
   --bc: var(--accent);
-  color: var(--bg-0);
+  color: var(--accent-ink);
   font-weight: 600;
+}
+.app-button.primary:hover:not(:disabled) {
+  filter: drop-shadow(0 0 10px rgba(252, 238, 10, 0.45));
 }
 .app-button.danger {
   --bc: var(--danger);
   color: var(--danger);
 }
-
-/*
- * Скошенная рамка. Обычный border на элементе со скошенным clip-path обрезается на диагоналях, и угол выглядит незамкнутым.
- * Поэтому рамка рисуется кольцом: псевдоэлемент с внешним и внутренним скошенными контурами (evenodd вырезает середину).
- * Внутренний контур сдвинут на толщину линии (--bw) с поправкой .414 на диагональ 45°; цвет — --bc, скос — --c.
- * Отрезок «внешний контур → внутренний» проходится туда и обратно и при evenodd не оставляет следа.
- */
-.panel,
-.badge,
-.app-button,
-.dialog-panel {
-  --bw: 1px;
-  position: relative;
-  border: 0;
-}
-.panel::after,
-.badge::after,
-.app-button::after,
-.dialog-panel::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: var(--bc);
-  clip-path: polygon(
-    evenodd,
-    var(--c) 0, 100% 0, 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, 0 100%, 0 var(--c), var(--c) 0,
-    calc(var(--c) + 0.414 * var(--bw)) var(--bw),
-    calc(100% - var(--bw)) var(--bw),
-    calc(100% - var(--bw)) calc(100% - var(--c) - 0.414 * var(--bw)),
-    calc(100% - var(--c) - 0.414 * var(--bw)) calc(100% - var(--bw)),
-    var(--bw) calc(100% - var(--bw)),
-    var(--bw) calc(var(--c) + 0.414 * var(--bw)),
-    calc(var(--c) + 0.414 * var(--bw)) var(--bw)
-  );
+.app-button.danger:hover:not(:disabled) {
+  filter: drop-shadow(0 0 8px rgba(255, 59, 59, 0.4));
 }
 
 .app-input,
 .app-select {
+  --c: 7px;
+  --aug-br: var(--c);
+  --aug-border-all: 1px;
+  --aug-border-bg: var(--line);
   background: var(--bg-0);
-  border: 1px solid var(--line);
   color: var(--text-main);
   padding: 8px 10px;
   font-family: var(--font-mono);
   font-size: 13px;
+  transition: filter 0.15s ease;
+}
+.app-input::placeholder {
+  color: var(--text-dim);
+  opacity: 0.8;
 }
 .app-input:focus,
 .app-select:focus {
   outline: none;
-  border-color: var(--accent);
+  --aug-border-bg: var(--accent);
+  filter: drop-shadow(0 0 6px rgba(252, 238, 10, 0.3));
 }
 
 .hex-row {
@@ -152,7 +184,7 @@
   align-items: baseline;
   gap: 10px;
   padding: 6px 0;
-  border-bottom: 1px dashed #1c1c1c;
+  border-bottom: 1px dashed var(--line-soft);
   font-size: 12.5px;
 }
 .hex-row-content {
@@ -187,10 +219,16 @@ table.data-table th {
   user-select: none;
   white-space: nowrap;
 }
+table.data-table th:hover {
+  color: var(--cyan);
+}
 table.data-table td {
   padding: 8px 10px;
-  border-bottom: 1px dashed #1c1c1c;
+  border-bottom: 1px dashed var(--line-soft);
   font-family: var(--font-mono);
+}
+table.data-table tbody tr {
+  transition: background-color 0.1s ease;
 }
 table.data-table tbody tr:hover {
   background: var(--bg-2);

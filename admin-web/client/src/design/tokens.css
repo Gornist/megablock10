@@ -1,20 +1,35 @@
+/*
+ * Палитра — фирменные цвета cyberpunk.net (проверено в браузере: computed background/border-color
+ * на живой странице, сентябрь 2026): чёрный фон, кислотно-жёлтый #FCEE0A (основной акцент, как у
+ * их CTA «BUY NOW»/«SUBMIT»), электрик-циан #00F0FF (их вторичный акцент — рамки хайлайтов, соцсети,
+ * лого). У нас три эти цвета естественно легли на три уровня тревог: crit=красный, warn=жёлтый,
+ * info=циан (Badge tone="info", AttentionPanel) — не decoration ради decoration, а переиспользование
+ * того же различения, которое уже было нужно панели «Требует внимания».
+ */
 :root {
-  --bg-0: #020202;
+  --bg-0: #030303;
   --bg-1: #0a0a0a;
-  --bg-2: #121212;
-  --text-main: #f2f2f2;
-  --text-dim: #9a9a9a;
-  --line: #555555;
-  --accent: #ff8a2b;
-  --danger: #ff4d4d;
-  --ok: #6fe08a;
+  --bg-2: #141414;
+  --text-main: #f2f2f0;
+  --text-dim: #8f8f89;
+  --line: #4c4c46;
+  --line-soft: #1c1c1c;
+
+  --accent: #fcee0a;
+  --accent-ink: #12100a; /* текст поверх жёлтой заливки — тёплый почти-чёрный, не режет глаз, как у cyberpunk.net */
+  --cyan: #00e5f2;
+  --danger: #ff3b3b;
+  --ok: #4fe08a;
+  --violet: #c79bff; /* действия мастера (ChangeLine kind-master) — вне 3-цветной системы тревог, отдельный акцент */
 
   --font-heading: "Jura", sans-serif;
   --font-mono: "JetBrains Mono", monospace;
   --font-body: "IBM Plex Sans", sans-serif;
 
   --chamfer: 10px;
+  --chamfer-sm: 6px;
   --gap: 16px;
+  --aug-border-opacity: 1;
 }
 
 * {
@@ -27,9 +42,16 @@ body,
   height: 100%;
 }
 
+/*
+ * Точечная текстура фона — на cyberpunk.net она есть под выпадающим меню. Очень низкая непрозрачность
+ * (не мешает читать плотные таблицы во время игры, это рабочий инструмент, а не промо-страница) и без
+ * анимации — статичный слой поверх сплошного чёрного, дешёвый по рендеру (один repeating-radial-gradient).
+ */
 body {
   margin: 0;
-  background: var(--bg-0);
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.05) 1px, transparent 1px) 0 0 / 22px 22px,
+    var(--bg-0);
   color: var(--text-main);
   font-family: var(--font-body);
   font-size: 14px;
@@ -52,7 +74,7 @@ code,
 }
 
 a {
-  color: var(--accent);
+  color: var(--cyan);
 }
 
 button,
