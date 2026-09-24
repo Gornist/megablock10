@@ -1,5 +1,6 @@
 import type { EventsResponse } from "../api/types";
 import { useApiData } from "../api/useApiData";
+import { POLL_MODERATE_MS } from "../api/pollIntervals";
 import { ChangeLine } from "../design/ChangeLine";
 import { Pager } from "../design/Pager";
 import { EmptyState, ErrorNote, Panel } from "../design/components";
@@ -7,7 +8,7 @@ import { EventFiltersPanel } from "./events/EventFiltersPanel";
 import { eventsQuery, useEventFilters, type EventsPreset } from "./events/eventFilters";
 
 const PAGE_SIZE = 50;
-const POLL_MS = 5000;
+const POLL_MS = POLL_MODERATE_MS;
 
 /**
  * События с фильтрами: по игроку, фракции, типу, причине, узлу и периоду.

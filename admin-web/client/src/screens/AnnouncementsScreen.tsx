@@ -2,6 +2,7 @@ import { useState } from "react";
 import { api } from "../api/client";
 import type { AnnouncementItem, AnnouncementRecipient, FactionRow } from "../api/types";
 import { useApiData } from "../api/useApiData";
+import { POLL_MODERATE_MS } from "../api/pollIntervals";
 import { useAsyncAction } from "../api/useAsyncAction";
 import { AsyncPanel } from "../design/AsyncPanel";
 import { ShareBar } from "../design/charts";
@@ -23,7 +24,7 @@ interface Preview {
  */
 export function AnnouncementsScreen() {
   const { data: factions } = useApiData<FactionRow[]>("/api/factions", { pollMs: false });
-  const { data: history, error, reload } = useApiData<AnnouncementItem[]>("/api/announcements", { pollMs: 5000 });
+  const { data: history, error, reload } = useApiData<AnnouncementItem[]>("/api/announcements", { pollMs: POLL_MODERATE_MS });
   const [text, setText] = useState("");
   const [target, setTarget] = useState("all");
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -129,7 +130,7 @@ function AnnouncementRow({ item }: { item: AnnouncementItem }) {
 
 /** Кому дошло, кому нет — недоставленные первыми (порядок задаёт сервер). Опрашивается, пока строка раскрыта. */
 function RecipientList({ id }: { id: string }) {
-  const { data } = useApiData<AnnouncementRecipient[]>(`/api/announcements/${id}/recipients`, { pollMs: 5000 });
+  const { data } = useApiData<AnnouncementRecipient[]>(`/api/announcements/${id}/recipients`, { pollMs: POLL_MODERATE_MS });
   return (
     <div style={{ flexBasis: "100%" }} className="hint-text">
       {data === null ? (

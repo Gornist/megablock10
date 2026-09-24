@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { PlayerListItem } from "../api/types";
 import { useApiData } from "../api/useApiData";
 import { useWatch } from "../api/useWatch";
@@ -41,15 +41,22 @@ export function PlayersScreen() {
 
   const retiredCount = (players ?? []).filter((p) => p.sessionResetAt !== null || p.replacedBy !== null).length;
 
-  const toggleSelected = (key: string) =>
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+  // Функциональный updater — setSelected не зависит от текущего selected, поэтому toggleSelected стабилен без него в deps.
+  const toggleSelected = useCallback(
+    (key: string) =>
+      setSelected((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        return next;
+      }),
+    [setSelected],
+  );
 
-  const columns: Column<PlayerListItem>[] = [
+  // 13 колонок пересоздавались на каждый рендер (в т.ч. на каждый тик polling) — мемоизация вместо этого пересчитывает
+  // только когда реально меняется то, от чего зависит рендер строк (кто выбран, кто под наблюдением).
+  const columns: Column<PlayerListItem>[] = useMemo(
+    () => [
     {
       key: "select",
       label: "",
@@ -132,7 +139,11 @@ export function PlayersScreen() {
       sortValue: (p) => p.pendingCount ?? 0,
     },
     { key: "lastSeen", label: "Активность", render: (p) => formatAgo(p.lastSeenAt), sortValue: (p) => p.lastSeenAt },
-  ];
+    ],
+    // watch — новый объект на каждый рендер useWatch(); нужны именно его стабильные части (byKey/remove/set), не сам объект.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selected, watch.byKey, watch.remove, watch.set, toggleSelected],
+  );
 
   return (
     <div className="screen-grid">
