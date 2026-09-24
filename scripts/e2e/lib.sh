@@ -106,6 +106,13 @@ dbg() { # dbg <serial> <действие DEBUG_CONFIG|DEBUG_SET|DEBUG_QR|DEBUG_P
 }
 pk_of() { grep -h "set applied" <(adb_ "$1" logcat -d -s MB10DBG) | tail -1 | sed 's/.*publicKeyB64=\([^,]*\),.*/\1/'; }
 start_app() { adb_ "$1" shell am start -n "$PKG/.MainActivity" >/dev/null; }
+# app_state <serial> — одна строка для журнала стенда: жив ли процесс приложения и что на переднем плане (разбор «на экране не то»).
+app_state() {
+  local pid top
+  pid=$(adb_ "$1" shell pidof $PKG 2>/dev/null | tr -d '\r')
+  top=$(adb_ "$1" shell dumpsys activity activities 2>/dev/null | grep -m1 -E 'topResumedActivity|mResumedActivity' | sed 's/^ *//' | tr -d '\r')
+  echo "процесс ${pid:-нет}; наверху: ${top:-?}"
+}
 restart_app() { adb_ "$1" shell am force-stop $PKG; start_app "$1"; sleep 3; resend_config "$1"; }
 
 # ── UI по тексту (uiautomator) ──

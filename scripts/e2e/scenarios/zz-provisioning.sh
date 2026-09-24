@@ -19,9 +19,21 @@ setup_screen() { screen_has $A "Сканировать QR персонажа"; }
 
 # Особенность эмулятора: приложение, привязанное к виртуальному Wi-Fi, не достукивается до хоста (10.0.2.2) — см. seed.sh. На реальной сети такого нет.
 adb_ $A shell svc wifi disable; sleep 3
-adb_ $A shell pm clear $PKG >/dev/null; start_app $A >/dev/null 2>&1
-adb_ $A shell pm grant $PKG android.permission.POST_NOTIFICATIONS >/dev/null 2>&1
+# Чистая установка. pm clear убивает процесс, но процесс прежней сессии с foreground-сервисом (MeshForegroundService) может ещё доживать —
+# тогда новый запуск откладывается на десятки секунд («refused to die», см. up.sh): экран выдачи появлялся через минуту с лишним, первый QR
+# уходил в пустоту (DebugQrBus не хранит строку, пока экран её не слушает), и дальше сценарий валился каскадом. Поэтому: ждём, пока старый
+# процесс уйдёт; разрешения выдаём ДО запуска (иначе поверх экрана выдачи висит системный запрос уведомлений); медленный старт — ещё раз.
+# Повтор не прячет падения: журнал крэшей очищается до запуска и проверяется после.
+adb_ $A logcat -b crash -c >/dev/null 2>&1
+adb_ $A shell pm clear $PKG >/dev/null
+wait_until 20 bash -c "source '$ROOT/scripts/e2e/lib.sh'; [ -z \"\$(adb_ $A shell pidof $PKG | tr -d '\r')\" ]" \
+  || log "$A: процесс прежней сессии не ушёл за 20 с ($(app_state $A))"
+for p in POST_NOTIFICATIONS RECORD_AUDIO CAMERA; do adb_ $A shell pm grant $PKG android.permission.$p >/dev/null 2>&1; done
+start_app $A >/dev/null 2>&1
+wait_until 20 setup_screen || { log "$A: экрана выдачи нет через 20 с ($(app_state $A)) — запускаю ещё раз"; start_app $A >/dev/null 2>&1; }
 check "первый запуск показывает выдачу персонажа по QR" wait_until 30 setup_screen
+setup_screen || log "$A: экрана выдачи так и нет ($(app_state $A))"
+eq "приложение не падало при первом запуске" 0 "$(adb_ $A logcat -b crash -d 2>/dev/null | grep -c "Process: $PKG")"
 
 # 1. QR, выданный самим сервером (POST /api/provisions, как форма «Персонаж» в Мастерской): проверка, что кодек Kotlin читает то, что пишет кодек TypeScript
 ISSUED=$(api POST /api/provisions '{"callsign":"Prov","faction":"Neon","balance":300,"ram":8}')
