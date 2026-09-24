@@ -62,8 +62,11 @@ kit — в [kit/README.md](../kit/README.md).
 
 - ViewModel живут, пока жива Activity. Экземпляры с ключом (тред на пару ключей, взлом на персонажа) копятся до закрытия
   Activity. Памяти это почти не занимает, но стоит помнить.
-- Unit-тестов нет у `CyberdeckViewModel`, `ChatViewModel`, `CallsViewModel`, `SettingsViewModel`. Причина: их зависимости
-  (`ShardStore`, `DaemonRewards`, `CallManager`) нельзя собрать без Room или `Context`.
+- ~~Unit-тестов нет у `CyberdeckViewModel`, `ChatViewModel`, `CallsViewModel`, `SettingsViewModel`~~ — сделано (коммит
+  `9730e25`): порты `ShardCollection`/`DaemonCollection`/`ChatInbox` (как `PaymentLedger`), сценарий `ScanObject`
+  (маршрутизация скана вынесена из `CyberdeckViewModel`), `rewards`/`ramUpgrades` в конструкторе — узкими
+  suspend-лямбдами (как у `FinishBreach.applyRewards`). `CallsViewModel`/`SettingsViewModel` портов не потребовали —
+  их зависимости (`CallControls`, `SharedPreferences`) уже были фейкуемы. 24 новых теста, 189 app + 101 kit всего.
 - `TransactionStore` и `ItemTransferStore` открывают транзакцию через `Mb10Database.withTransaction`, поэтому сами хранилища
   проверяются только через фейки портов и e2e, а не напрямую.
 - Сетевая сессия (`MeshSession`) стартует от интерфейса, при появлении персонажа. Если система перезапустит процесс без
@@ -76,8 +79,7 @@ kit — в [kit/README.md](../kit/README.md).
 
 По порядку:
 
-1. **Слить ветку в `main`.** Открыть PR, дождаться зелёного CI и ночного e2e на `main`. Если вся ветка пока не нужна,
-   исправление `e7a31ae` можно взять в `main` отдельно — оно чинит реальное падение на Android 8–12.
+1. ~~**Слить ветку в `main`.**~~ Сделано — ветка уже на `main`.
 2. **Живая проверка на двух или трёх телефонах** по [device-testing.md](device-testing.md). Особое внимание — потокам,
    которые переехали:
    - перевод, «Принять» и чек;
@@ -86,9 +88,7 @@ kit — в [kit/README.md](../kit/README.md).
    - выдача по QR и сброс сессии без перезапуска;
    - правка мастера на дашборде без перезапуска;
    - хотя бы один телефон на Android 8–12 (проверка `e7a31ae`).
-3. **Тесты для оставшихся ViewModel.**
-   - Выделить порты `ShardCollection` (наблюдать, добавить, расшифровать) и `DaemonCollection` — как `PaymentLedger`.
-   - Маршрутизацию скана Кибердеки вынести в сценарий `ScanObject` и покрыть тестами.
+3. ~~**Тесты для оставшихся ViewModel.**~~ Сделано (коммит `9730e25`, см. «Известные ограничения и долги» выше).
 4. **Хранилища без Room в тестах.** Вариант: порт `Transactor` (`suspend fun <R> run(block)`) вместо прямого
    `db.withTransaction`, фейковые DAO в тестах. Альтернатива — Robolectric с настоящей Room в памяти.
 5. **Сетевая сессия от процесса, а не от экрана.** Поднимать `MeshSession` из `Mb10App` или foreground-сервиса при наличии
