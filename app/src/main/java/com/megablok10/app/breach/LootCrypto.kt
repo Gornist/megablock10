@@ -1,10 +1,7 @@
 package com.megablok10.app.breach
 
-import java.util.Base64
-import javax.crypto.Cipher
-import javax.crypto.Mac
-import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.SecretKeySpec
+import com.megablok10.kit.crypto.Hkdf
+import com.megablok10.kit.crypto.SecretBox
 
 /**
  * Шифрует payload лут-слотов AES-GCM ключом этой игры (см. [deriveKey]).
@@ -28,8 +25,6 @@ object LootCrypto {
     // "Нет соли" по RFC 5869 — HashLen (32) нулевых байт, явно, а не по умолчанию.
     private val HKDF_SALT = ByteArray(32)
     private val HKDF_INFO = "mb10-loot-v1".toByteArray(Charsets.UTF_8)
-    private const val IV_BYTES = 12
-    private const val TAG_BITS = 128
 
     /**
      * Ключ AES-256 для лута этой игры: без GAME_SECRET — FALLBACK_KEY (как
@@ -42,37 +37,12 @@ object LootCrypto {
      */
     fun deriveKey(gameSecret: String?): ByteArray {
         val secret = gameSecret?.trim()?.takeIf { it.isNotEmpty() } ?: return FALLBACK_KEY
-        return hkdfSha256(ikm = secret.toByteArray(Charsets.UTF_8), salt = HKDF_SALT, info = HKDF_INFO, length = 32)
+        return Hkdf.sha256(ikm = secret.toByteArray(Charsets.UTF_8), salt = HKDF_SALT, info = HKDF_INFO, length = 32)
     }
 
-    fun encrypt(plain: String, key: ByteArray): String {
-        val iv = ByteArray(IV_BYTES).also { java.security.SecureRandom().nextBytes(it) }
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(TAG_BITS, iv))
-        val encrypted = cipher.doFinal(plain.toByteArray(Charsets.UTF_8))
-        return Base64.getEncoder().encodeToString(iv + encrypted)
-    }
+    /** AES-GCM, формат base64(IV ‖ шифртекст ‖ тег) — см. kit [SecretBox], тот же формат собирает сервер. */
+    fun encrypt(plain: String, key: ByteArray): String = SecretBox.seal(plain, key)
 
     /** null — payload битый или зашифрован другим ключом (например, QR другой игры или прошлого акта). */
-    fun decrypt(payloadB64: String, key: ByteArray): String? = try {
-        val bytes = Base64.getDecoder().decode(payloadB64)
-        val iv = bytes.copyOfRange(0, IV_BYTES)
-        val body = bytes.copyOfRange(IV_BYTES, bytes.size)
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(TAG_BITS, iv))
-        String(cipher.doFinal(body), Charsets.UTF_8)
-    } catch (e: Exception) {
-        null
-    }
-
-    /** HKDF-SHA256 (RFC 5869), только Extract + один блок Expand — этого хватает ровно на length <= 32. */
-    private fun hkdfSha256(ikm: ByteArray, salt: ByteArray, info: ByteArray, length: Int): ByteArray {
-        require(length in 1..32) { "single-block HKDF-Expand only covers up to 32 bytes" }
-        val mac = Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(salt, "HmacSHA256"))
-        val prk = mac.doFinal(ikm)
-        mac.init(SecretKeySpec(prk, "HmacSHA256"))
-        val t1 = mac.doFinal(info + byteArrayOf(0x01))
-        return t1.copyOf(length)
-    }
+    fun decrypt(payloadB64: String, key: ByteArray): String? = SecretBox.open(payloadB64, key)
 }

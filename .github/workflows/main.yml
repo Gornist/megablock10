@@ -21,20 +21,22 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6   # версия Gradle — из gradle/wrapper (та же, что локально)
 
       - name: Статический анализ Kotlin (detekt)
-        run: ./gradlew :app:detekt --no-daemon
+        run: ./gradlew :app:detekt :kit:detekt --no-daemon
 
       - name: Отчёт detekt
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: detekt-report
-          path: app/build/reports/detekt
+          path: |
+            app/build/reports/detekt
+            kit/build/reports/detekt
           if-no-files-found: ignore
 
       - name: Run unit tests
         run: |
           yes | sdkmanager --licenses > /dev/null || true
-          ./gradlew testDebugUnitTest --no-daemon
+          ./gradlew testDebugUnitTest :kit:test --no-daemon
 
       - name: Скриншот-тесты (Paparazzi, JVM)
         run: ./gradlew verifyPaparazziDebug --no-daemon

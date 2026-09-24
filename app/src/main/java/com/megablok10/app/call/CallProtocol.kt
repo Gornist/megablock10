@@ -1,6 +1,7 @@
 package com.megablok10.app.call
 
-import java.util.Base64
+import com.megablok10.kit.text.Base64Text.decode as unb64
+import com.megablok10.kit.text.Base64Text.encode as b64
 import com.megablok10.app.net.WireVersion
 
 enum class CallSignalType { OFFER, ANSWER, ICE_CANDIDATE, DECLINE, END }
@@ -60,8 +61,4 @@ object CallProtocol {
             null
         }
     }
-
-    private fun b64(text: String): String = Base64.getEncoder().encodeToString(text.toByteArray(Charsets.UTF_8))
-
-    private fun unb64(text: String): String = String(Base64.getDecoder().decode(text), Charsets.UTF_8)
 }

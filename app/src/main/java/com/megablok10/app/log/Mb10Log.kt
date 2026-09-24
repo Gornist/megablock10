@@ -2,6 +2,10 @@ package com.megablok10.app.log
 
 import android.content.Context
 import android.util.Log
+import com.megablok10.kit.log.KitLog
+import com.megablok10.kit.log.LogFormat
+import com.megablok10.kit.log.RotatingLogFile
+import com.megablok10.kit.log.shortKey
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -20,8 +24,12 @@ import java.util.zip.ZipOutputStream
  *  - публичные ключи только в сокращении ([short], 8 символов); код игры, закрытые ключи, тексты сообщений, содержимое предметов и карточек
  *    не пишутся никогда — только длины, идентификаторы и исходы;
  *  - время в локальной зоне телефона с смещением: сопоставлять телефоны между собой удобнее по метке времени, синхронизируйте часы (docs/live-test-plan.md).
+ *
+ * Реализует [KitLog] — тот же журнал получают компоненты kit (сеть, очередь, синхронизация), формат событий общий ([LogFormat]).
  */
-object Mb10Log {
+object Mb10Log : KitLog {
+    /** Файлы `mb10-current.log`, `mb10-<n>.log` — по этим именам журналы забирает стенд e2e (scripts/e2e/lib.sh) и `adb pull`. */
+    private const val FILE_PREFIX = "mb10"
     private const val MAX_FILE_BYTES = 2L * 1024 * 1024
     private const val MAX_ROTATED = 7
 
@@ -51,7 +59,7 @@ object Mb10Log {
         internalDir = File(app.filesDir, "logs")
         val external = app.getExternalFilesDir(null)?.let { File(it, "logs") }
         val chosen = external?.takeIf { canWrite(it) } ?: internalDir!!.also { usingFallback = true }
-        file = RotatingLogFile(chosen, MAX_FILE_BYTES, MAX_ROTATED)
+        file = RotatingLogFile(chosen, MAX_FILE_BYTES, MAX_ROTATED, FILE_PREFIX)
         if (usingFallback) w("Mb10Log", "во внешнюю папку писать нельзя (${external?.path}), журнал во внутренней: ${chosen.path}")
     }
 
@@ -70,7 +78,7 @@ object Mb10Log {
         val dir = internalDir ?: return
         if (usingFallback) return
         usingFallback = true
-        val next = RotatingLogFile(dir, MAX_FILE_BYTES, MAX_ROTATED)
+        val next = RotatingLogFile(dir, MAX_FILE_BYTES, MAX_ROTATED, FILE_PREFIX)
         file = next
         runCatching {
             next.append("${stamp.get()!!.format(Date())} W/Mb10Log [mb10-log] запись во внешнюю папку не удалась, дальше во внутреннюю: ${dir.path}")
@@ -78,28 +86,19 @@ object Mb10Log {
         }
     }
 
-    fun d(tag: String, msg: String, t: Throwable? = null) = write('D', tag, msg, t)
-    fun i(tag: String, msg: String, t: Throwable? = null) = write('I', tag, msg, t)
-    fun w(tag: String, msg: String, t: Throwable? = null) = write('W', tag, msg, t)
-    fun e(tag: String, msg: String, t: Throwable? = null) = write('E', tag, msg, t)
+    override fun d(tag: String, msg: String, t: Throwable?) = write('D', tag, msg, t)
+    override fun i(tag: String, msg: String, t: Throwable?) = write('I', tag, msg, t)
+    override fun w(tag: String, msg: String, t: Throwable?) = write('W', tag, msg, t)
+    override fun e(tag: String, msg: String, t: Throwable?) = write('E', tag, msg, t)
 
     /** Событие с полями: `send.outcome to=ab12cd34 outcome=DELIVERED ms=41`. Пустые значения (null) пропускаются. */
-    fun event(tag: String, name: String, vararg fields: Pair<String, Any?>) {
-        val body = fields.filter { it.second != null }.joinToString(" ") { (k, v) -> "$k=${quote(v.toString())}" }
-        write('I', tag, if (body.isEmpty()) name else "$name $body", null)
-    }
+    override fun event(tag: String, name: String, vararg fields: Pair<String, Any?>) = write('I', tag, LogFormat.event(name, fields), null)
 
     /** То же на уровне предупреждения — для отказов и неожиданных исходов. */
-    fun warnEvent(tag: String, name: String, vararg fields: Pair<String, Any?>) {
-        val body = fields.filter { it.second != null }.joinToString(" ") { (k, v) -> "$k=${quote(v.toString())}" }
-        write('W', tag, if (body.isEmpty()) name else "$name $body", null)
-    }
+    override fun warnEvent(tag: String, name: String, vararg fields: Pair<String, Any?>) = write('W', tag, LogFormat.event(name, fields), null)
 
-    /** Ключ в сокращении для журнала: хватает, чтобы различать игроков, и не раскрывает ключ целиком. */
-    fun short(pubKeyB64: String?): String = when {
-        pubKeyB64.isNullOrEmpty() -> "-"
-        else -> pubKeyB64.filter { it.isLetterOrDigit() }.takeLast(8)
-    }
+    /** Ключ в сокращении для журнала: хватает, чтобы различать игроков, и не раскрывает ключ целиком (см. kit [shortKey]). */
+    fun short(pubKeyB64: String?): String = shortKey(pubKeyB64)
 
     fun sizeBytes(): Long = file?.totalBytes() ?: 0L
 
@@ -146,8 +145,4 @@ object Mb10Log {
         val line = "$time $level/$tag [$thread] $msg$trace"
         executor.execute { try { f.append(line) } catch (_: Exception) { fallbackTo(line) } }
     }
-
-    private fun quote(v: String): String = if (v.isEmpty() || v.any(::needsQuotes)) "\"" + v.replace("\"", "'").replace("\n", " ") + "\"" else v
-
-    private fun needsQuotes(c: Char): Boolean = c == ' ' || c == '"' || c == '\n'
 }

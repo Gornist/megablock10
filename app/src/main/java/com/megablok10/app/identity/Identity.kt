@@ -1,16 +1,8 @@
 package com.megablok10.app.identity
 
 import android.content.Context
-import android.util.Base64
-import java.security.KeyFactory
-import java.security.KeyPair
-import java.security.KeyPairGenerator
+import com.megablok10.kit.crypto.Ecdsa
 import java.security.PrivateKey
-import java.security.PublicKey
-import java.security.Signature
-import java.security.spec.ECGenParameterSpec
-import java.security.spec.PKCS8EncodedKeySpec
-import java.security.spec.X509EncodedKeySpec
 
 private const val PREFS = "identity_prefs"
 private const val KEY_PRIVATE = "private_key"
@@ -56,9 +48,9 @@ object IdentityManager {
             )
         }
 
-        val keyPair = generateKeyPair()
-        val pubB64 = Base64.encodeToString(keyPair.public.encoded, Base64.NO_WRAP)
-        val privB64 = Base64.encodeToString(keyPair.private.encoded, Base64.NO_WRAP)
+        val keyPair = Ecdsa.generateKeyPair()
+        val pubB64 = Ecdsa.encodeKey(keyPair.public)
+        val privB64 = Ecdsa.encodeKey(keyPair.private)
 
         p.edit()
             .putString(KEY_PUBLIC, pubB64)
@@ -116,35 +108,17 @@ object IdentityManager {
         prefs(context).edit().putString(KEY_FACTION, newValue).apply()
     }
 
-    fun getPrivateKey(context: Context): PrivateKey {
+    private fun getPrivateKey(context: Context): PrivateKey {
         val privB64 = prefs(context).getString(KEY_PRIVATE, null)
             ?: error("Личность ещё не создана")
-        val spec = PKCS8EncodedKeySpec(Base64.decode(privB64, Base64.NO_WRAP))
-        return KeyFactory.getInstance("EC").generatePrivate(spec)
+        return Ecdsa.decodePrivateKey(privB64)
     }
 
-    fun publicKeyFromB64(b64: String): PublicKey {
-        val spec = X509EncodedKeySpec(Base64.decode(b64, Base64.NO_WRAP))
-        return KeyFactory.getInstance("EC").generatePublic(spec)
-    }
+    /** Подписать произвольные данные приватным ключом персонажа (ECDSA P-256, см. kit [Ecdsa]). */
+    fun sign(context: Context, data: ByteArray): String = Ecdsa.sign(getPrivateKey(context), data)
 
-    /** Подписать произвольные данные приватным ключом персонажа. */
-    fun sign(context: Context, data: ByteArray): String {
-        val signature = Signature.getInstance("SHA256withECDSA")
-        signature.initSign(getPrivateKey(context))
-        signature.update(data)
-        return Base64.encodeToString(signature.sign(), Base64.NO_WRAP)
-    }
-
-    /** Проверить подпись данных чужим публичным ключом. */
-    fun verify(publicKeyB64: String, data: ByteArray, signatureB64: String): Boolean = try {
-        val signature = Signature.getInstance("SHA256withECDSA")
-        signature.initVerify(publicKeyFromB64(publicKeyB64))
-        signature.update(data)
-        signature.verify(Base64.decode(signatureB64, Base64.NO_WRAP))
-    } catch (e: Exception) {
-        false
-    }
+    /** Проверить подпись данных чужим публичным ключом. Никогда не бросает. */
+    fun verify(publicKeyB64: String, data: ByteArray, signatureB64: String): Boolean = Ecdsa.verify(publicKeyB64, data, signatureB64)
 
     /**
      * Следующий номер seq для ChangeRecord к мастерскому коллектору (§2.2/
@@ -162,12 +136,6 @@ object IdentityManager {
         val next = p.getLong(KEY_NEXT_SEQ, 0L) + 1
         p.edit().putLong(KEY_NEXT_SEQ, next).apply()
         return next
-    }
-
-    private fun generateKeyPair(): KeyPair {
-        val generator = KeyPairGenerator.getInstance("EC")
-        generator.initialize(ECGenParameterSpec("secp256r1"))
-        return generator.generateKeyPair()
     }
 
     private fun prefs(context: Context) =

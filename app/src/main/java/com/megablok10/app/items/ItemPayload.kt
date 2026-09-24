@@ -4,7 +4,8 @@ import com.megablok10.app.breach.Daemon
 import com.megablok10.app.breach.DaemonEffect
 import com.megablok10.app.breach.Tier
 import com.megablok10.app.qr.Mb10Qr
-import java.util.Base64
+import com.megablok10.kit.text.Base64Text.decode as unb64
+import com.megablok10.kit.text.Base64Text.encode as b64
 
 /**
  * Предмет целиком в том виде, в каком он едет в карточке передачи (Mb10Qr.ItemTransfer.payload)
@@ -40,7 +41,4 @@ object ItemPayload {
     } catch (e: Exception) {
         null
     }
-
-    private fun b64(text: String): String = Base64.getEncoder().encodeToString(text.toByteArray(Charsets.UTF_8))
-    private fun unb64(text: String): String = String(Base64.getDecoder().decode(text), Charsets.UTF_8)
 }

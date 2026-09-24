@@ -20,9 +20,10 @@ step() { # step "имя" команда...
 }
 skip() { TIMES+=("$1: пропущено (нет изменений)"); }
 
-if changed app; then
-  step "app: detekt" ./gradlew -q --console=plain :app:detekt   # статический анализ; старые находки в app/detekt-baseline.xml, новые ломают проверку
-  step "app: unit-тесты" ./gradlew -q --console=plain testDebugUnitTest
+# kit/ — часть приложения (подключён к :app), поэтому любая его правка тоже гоняет проверки приложения.
+if changed app || changed kit; then
+  step "app+kit: detekt" ./gradlew -q --console=plain :app:detekt :kit:detekt   # статический анализ; старые находки в app/detekt-baseline.xml, новые ломают проверку
+  step "app+kit: unit-тесты" ./gradlew -q --console=plain testDebugUnitTest :kit:test
   step "app: скриншот-тесты" ./gradlew -q --console=plain verifyPaparazziDebug   # эталоны: app/src/test/snapshots; обновить: ./gradlew recordPaparazziDebug
 else skip "app: unit- и скриншот-тесты"; fi
 if changed admin-web/server; then step "server: тесты" bash -c 'cd admin-web/server && npm test --silent'; else skip "server: тесты"; fi

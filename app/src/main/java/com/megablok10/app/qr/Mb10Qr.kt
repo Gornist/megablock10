@@ -4,7 +4,8 @@ import com.megablok10.app.breach.Container
 import com.megablok10.app.breach.LootSlot
 import com.megablok10.app.breach.LootType
 import com.megablok10.app.breach.Tier
-import java.util.Base64
+import com.megablok10.kit.text.Base64Text.decode as unb64
+import com.megablok10.kit.text.Base64Text.encode as b64
 
 /**
  * Единая точка разбора ВСЕХ QR-кодов игры. Тип определяется по второму
@@ -340,8 +341,4 @@ object Mb10QrCodec {
     /** Байты, которые подписывает получатель на чеке — та же id, что и у исходной транзакции, плюс его ключ. */
     fun receiptSignaturePayload(id: String, receiverPubKeyB64: String): ByteArray =
         "$id|$receiverPubKeyB64".toByteArray(Charsets.UTF_8)
-
-    private fun b64(text: String): String = Base64.getEncoder().encodeToString(text.toByteArray(Charsets.UTF_8))
-
-    private fun unb64(text: String): String = String(Base64.getDecoder().decode(text), Charsets.UTF_8)
 }
