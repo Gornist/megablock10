@@ -107,24 +107,16 @@ class IdentityStore(private val prefs: SharedPreferences) {
     }
 
     /**
-     * Следующий номер seq для записи мастерскому коллектору (§2.2/§3.4 ТЗ) — сквозной счётчик на устройстве, растёт монотонно
-     * и не зависит от локальной очереди отправки: если очередь целиком подтвердится и опустеет, следующий вызов не должен
-     * начать нумерацию заново. Synchronized: read-modify-write по SharedPreferences, а записи создают параллельные корутины —
-     * без блокировки два вызова получали один seq, и коллектор отбраковывал вторую запись.
+     * Последний seq, выданный прежним счётчиком записей для мастера (до версии базы 15 он жил здесь). Теперь счётчик в базе
+     * (RoomChangeQueue.nextSeq) и продолжает нумерацию с этого значения; сюда больше никто не пишет.
      */
-    @Synchronized
-    fun nextChangeSeq(): Long {
-        val next = prefs.getLong(KEY_NEXT_SEQ, 0L) + 1
-        prefs.edit().putLong(KEY_NEXT_SEQ, next).apply()
-        return next
-    }
+    fun legacyChangeSeq(): Long = prefs.getLong(KEY_NEXT_SEQ, 0L)
 
     /** Подписант записей для мастерского коллектора (kit ChangeRecorder); null — личности нет, записывать нечем. */
     fun recordSigner(): RecordSigner? {
         val identity = current ?: return null
         return object : RecordSigner {
             override val publicKeyB64: String = identity.publicKeyB64
-            override fun nextSeq(): Long = nextChangeSeq()
             override fun sign(data: ByteArray): String = this@IdentityStore.sign(data)
         }
     }

@@ -53,12 +53,12 @@ class RecordedChanges(player: TestPlayer?) : ChangeQueue {
     private val signer = player?.let {
         object : RecordSigner {
             override val publicKeyB64 = it.key
-            override fun nextSeq() = ++seq
             override fun sign(data: ByteArray) = it.sign(data)
         }
     }
     val recorder = ChangeRecorder(this, { signer })
 
+    override suspend fun nextSeq() = ++seq
     override suspend fun insert(record: ChangeRecord) { rows += record }
     override suspend fun nextBatch(limit: Int) = rows.take(limit)
     override suspend fun deleteByIds(ids: List<String>) { rows.removeAll { it.id in ids } }

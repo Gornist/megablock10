@@ -1,6 +1,5 @@
 package com.megablok10.app.items
 
-import androidx.room.withTransaction
 import com.megablok10.app.breach.Daemon
 import com.megablok10.app.breach.DaemonStore
 import com.megablok10.app.breach.LootCodec
@@ -22,6 +21,7 @@ import com.megablok10.kit.handover.Handover
 import com.megablok10.kit.handover.HandoverRules
 import com.megablok10.kit.handover.OutgoingJournal
 import com.megablok10.kit.net.SendOutcome
+import com.megablok10.kit.sync.Transactor
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 
@@ -40,6 +40,7 @@ class ItemTransferStore(
     private val identity: IdentityStore,
     private val shards: ShardStore,
     private val daemons: DaemonStore,
+    private val tx: Transactor,
 ) : ItemLedger {
     private val dao = db.itemTransferDao()
     private val handover = Handover(ItemTransferJournal(dao), Mb10Log, tag = TAG, eventPrefix = "item")
@@ -48,8 +49,8 @@ class ItemTransferStore(
 
     // Проверка «предмет ещё у меня» и его списание — одной транзакцией: иначе двойной тап по «Передать» создавал бы две передачи одного предмета.
     override suspend fun sendShard(me: Identity, shardId: String, toPubKeyB64: String): Mb10Qr.ItemTransfer? =
-        db.withTransaction {
-            val shard = shards.get(shardId) ?: return@withTransaction null
+        tx.inTransaction {
+            val shard = shards.get(shardId) ?: return@inTransaction null
             sendOut(me, ItemKind.SHARD, ItemPayload.encodeShard(shard), toPubKeyB64) { id ->
                 shards.remove(shardId, ChangeReason.ITEM_TRANSFER_OUT, sourceRef = id)
             }
@@ -57,8 +58,8 @@ class ItemTransferStore(
 
     override suspend fun sendDaemon(me: Identity, daemon: Daemon, toPubKeyB64: String): Mb10Qr.ItemTransfer? {
         if (!isTransferable(daemon)) return null
-        return db.withTransaction {
-            if (daemons.get(daemon.id) == null) return@withTransaction null
+        return tx.inTransaction {
+            if (daemons.get(daemon.id) == null) return@inTransaction null
             sendOut(me, ItemKind.DAEMON, ItemPayload.encodeDaemon(daemon), toPubKeyB64) { id ->
                 daemons.remove(daemon.id, ChangeReason.ITEM_TRANSFER_OUT, sourceRef = id)
             }
@@ -85,12 +86,13 @@ class ItemTransferStore(
         handover.deliver(id, willSend, send)
 
     /** Отмена недоставленной передачи: предмет возвращается в коллекцию. false — карточка уже доставлена/подтверждена или записи нет. */
-    override suspend fun cancelOutgoing(id: String): Boolean {
-        val record = dao.get(id) ?: run { Mb10Log.warnEvent(TAG, "item.cancel", "id" to id, "result" to "нет такой записи"); return false }
-        if (!record.outgoing || dao.cancelPending(id) == 0) { Mb10Log.warnEvent(TAG, "item.cancel", "id" to id, "result" to "отказ: уже доставлена/подтверждена"); return false }
+    override suspend fun cancelOutgoing(id: String): Boolean = tx.inTransaction {
+        val record = dao.get(id) ?: run { Mb10Log.warnEvent(TAG, "item.cancel", "id" to id, "result" to "нет такой записи"); return@inTransaction false }
+        if (!record.outgoing || dao.cancelPending(id) == 0) { Mb10Log.warnEvent(TAG, "item.cancel", "id" to id, "result" to "отказ: уже доставлена/подтверждена"); return@inTransaction false }
+        // Статус «отменена» и возврат предмета — один коммит: иначе падение между ними оставляло отменённую передачу без предмета.
         restore(record, ChangeReason.ITEM_TRANSFER_CANCELLED)
         Mb10Log.event(TAG, "item.cancel", "id" to id, "result" to "отменена, предмет возвращён", "kind" to record.kind)
-        return true
+        true
     }
 
     /** Чек получателя фиксирует передачу — те же проверки, что у денег: чек подписал именно адресат этой передачи. */
@@ -105,12 +107,15 @@ class ItemTransferStore(
         HandoverRules.rejectIncoming(card.fromPubKeyB64, card.toPubKeyB64, myPubKeyB64, signed, card.signatureB64, Ecdsa::verify)?.let { return reject(it) }
 
         val record = ItemTransferEntity(card.id, card.fromPubKeyB64, card.kind.name, card.payload, System.currentTimeMillis(), TransactionStatus.CONFIRMED, outgoing = false)
-        // Запись-«принято» ставится первой: если предмет не разобрался, откатываем её, иначе карточка «сгорит» без выдачи.
-        if (dao.insertIfAbsent(record) == -1L) return reject("уже принята раньше")
-        if (!restore(record, ChangeReason.ITEM_TRANSFER_IN)) {
+        // Запись-«принято» и предмет в коллекции — один коммит: падение между ними раньше оставляло карточку «уже принята» без
+        // предмета, а повторное «Принять» отказывало. Предмет не разобрался — запись-«принято» убирается в той же транзакции.
+        val why = tx.inTransaction {
+            if (dao.insertIfAbsent(record) == -1L) return@inTransaction "уже принята раньше"
+            if (restore(record, ChangeReason.ITEM_TRANSFER_IN)) return@inTransaction null
             dao.delete(card.id)
-            return reject("содержимое не разобралось")
+            "содержимое не разобралось"
         }
+        if (why != null) return reject(why)
         Mb10Log.event(TAG, "item.in_accepted", "id" to card.id, "from" to Mb10Log.short(card.fromPubKeyB64), "kind" to card.kind.name)
         return true
     }

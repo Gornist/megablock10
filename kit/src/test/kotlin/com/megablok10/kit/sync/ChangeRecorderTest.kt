@@ -13,34 +13,50 @@ import org.junit.Test
 class ChangeRecorderTest {
     private val keys = Ecdsa.generateKeyPair()
     private val myKey = Ecdsa.encodeKey(keys.public)
-    private var seq = 0L
     private val signer = object : RecordSigner {
         override val publicKeyB64 = myKey
-        override fun nextSeq() = ++seq
         override fun sign(data: ByteArray) = Ecdsa.sign(keys.private, data)
     }
-    private val queue = object : ChangeQueue {
+
+    /**
+     * Очередь и счётчик номеров «на диске» с транзакциями, как у Room: [store] откатывает и строки, и счётчик, если блок упал.
+     * [data] — игровые данные того же хранилища (баланс), чтобы проверить, что они и запись фиксируются вместе.
+     */
+    private class Store {
         val rows = mutableListOf<ChangeRecord>()
-        override suspend fun insert(record: ChangeRecord) { rows += record }
-        override suspend fun nextBatch(limit: Int) = rows.take(limit)
-        override suspend fun deleteByIds(ids: List<String>) { rows.removeAll { it.id in ids } }
-        override suspend fun count() = rows.size
-        override suspend fun oldestHappenedAt() = rows.minOfOrNull { it.happenedAt }
+        var seq = 0L
+        var data = 0L
+        var commits = 0
+        val transactor = NestingTransactor { block ->
+            val rows0 = rows.toList(); val seq0 = seq; val data0 = data
+            try { block(); commits++ } catch (e: Throwable) { rows.clear(); rows += rows0; seq = seq0; data = data0; throw e }
+        }
+        val queue = object : ChangeQueue {
+            override suspend fun nextSeq() = ++seq
+            override suspend fun insert(record: ChangeRecord) { rows += record }
+            override suspend fun nextBatch(limit: Int) = rows.take(limit)
+            override suspend fun deleteByIds(ids: List<String>) { rows.removeAll { it.id in ids } }
+            override suspend fun count() = rows.size
+            override suspend fun oldestHappenedAt() = rows.minOfOrNull { it.happenedAt }
+        }
     }
+    private val store = Store()
     private val log = RecordingLog()
     private var woken = 0
+    private var wokenAtCommit = -1
     private var ids = 0
 
     private fun recorder(withSigner: RecordSigner? = signer) = ChangeRecorder(
-        queue, { withSigner }, ManualClock(1_700_000_000_000L), log, tag = "ChangeRecordStore",
-        sensitiveFields = setOf("announcement"), newId = { "id-${++ids}" }, onRecorded = { woken++ },
+        store.queue, { withSigner }, ManualClock(1_700_000_000_000L), log, tag = "ChangeRecordStore",
+        sensitiveFields = setOf("announcement"), newId = { "id-${++ids}" }, onRecorded = { woken++; wokenAtCommit = store.commits },
+        transactor = store.transactor,
     )
 
     @Test fun recordIsSignedQueuedAndWakesTheSync() = runTest {
         val r = recorder().record("balance", "5", "6", "TRANSFER_OUT", sourceRef = "tx-1")!!
         assertEquals(ChangeRecord("id-1", myKey, 1, 1_700_000_000_000L, "balance", "5", "6", "TRANSFER_OUT", "tx-1", myKey, r.signature), r)
         assertTrue(Ecdsa.verify(myKey, r.signaturePayload(), r.signature))
-        assertEquals(listOf(r), queue.rows)
+        assertEquals(listOf(r), store.rows)
         assertEquals(1, woken)
         assertTrue(log.has("I/ChangeRecordStore record.enqueued field=balance reason=TRANSFER_OUT old=5 new=6 seq=1 ref=tx-1"))
     }
@@ -62,8 +78,39 @@ class ChangeRecorderTest {
 
     @Test fun withoutIdentityNothingIsRecorded() = runTest {
         assertNull(recorder(withSigner = null).record("balance", null, "1", "X"))
-        assertTrue(queue.rows.isEmpty())
+        assertTrue(store.rows.isEmpty())
         assertEquals(0, woken)
         assertTrue(log.has("нет личности устройства — запись balance/X потеряна"))
+    }
+
+    @Test fun recordJoinsTheCallersTransactionAndRollsBackWithIt() = runTest {
+        val rec = recorder()
+        rec.record("counters.alert", null, "{}", "ALERT_SENT")
+        // Изменение данных и запись о нём — одна транзакция: падение после записи откатывает и данные, и запись, и её номер.
+        runCatching {
+            store.transactor.inTransaction {
+                store.data += 10
+                rec.record("balance", "0", "10", "SHARD_SCAN")
+                error("процесс умер до коммита")
+            }
+        }
+        assertEquals(0L, store.data)
+        assertEquals(listOf(1L), store.rows.map { it.seq })
+        assertEquals("разбудили только по записи, которая зафиксирована", 1, woken)
+        // Номер откатился вместе с записью: следующая запись получает 2, а не 3 — дыр и повторов нет.
+        assertEquals(2L, rec.record("balance", "0", "5", "SHARD_SCAN")!!.seq)
+    }
+
+    @Test fun syncIsWokenOnlyAfterTheOutermostCommit() = runTest {
+        val rec = recorder()
+        store.transactor.inTransaction {
+            store.data += 10
+            rec.record("balance", "0", "10", "SHARD_SCAN")
+            rec.record("shards.add", null, "{}", "SHARD_SCAN")
+            assertEquals("внутри транзакции синк ещё не будили", 0, woken)
+        }
+        assertEquals(2, woken)
+        assertEquals("разбудили уже после коммита внешней транзакции", 1, wokenAtCommit)
+        assertEquals(1, store.commits)
     }
 }

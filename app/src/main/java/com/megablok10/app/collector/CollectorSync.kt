@@ -4,8 +4,11 @@ import android.content.Context
 import com.megablok10.app.PlayerNotices
 import com.megablok10.app.announce.AnnouncementNotifier
 import com.megablok10.app.announce.AnnouncementStore
+import com.megablok10.app.data.CHANGE_SEQ
 import com.megablok10.app.data.PendingChangeRecordDao
 import com.megablok10.app.data.PendingChangeRecordEntity
+import com.megablok10.app.data.SequenceDao
+import com.megablok10.app.data.SequenceEntity
 import com.megablok10.app.identity.IdentityStore
 import com.megablok10.app.log.Mb10Log
 import com.megablok10.app.net.WireVersion
@@ -89,8 +92,22 @@ class MasterChangeHooks(
     }
 }
 
-/** Таблица Room `pending_change_records` как очередь kit-синхронизации (колонки один в один с ChangeRecord, миграция не нужна). */
-class RoomChangeQueue(private val dao: PendingChangeRecordDao) : ChangeQueue {
+/**
+ * Таблица Room `pending_change_records` как очередь kit-синхронизации (колонки один в один с ChangeRecord), счётчик seq — в таблице
+ * `sequences` той же базы. [legacySeq] — последний номер, выданный прежним счётчиком в SharedPreferences (до версии базы 15): с него
+ * нумерация продолжается, чтобы номера, уже ушедшие на сервер, не повторились.
+ */
+class RoomChangeQueue(
+    private val dao: PendingChangeRecordDao,
+    private val sequences: SequenceDao,
+    private val legacySeq: () -> Long,
+) : ChangeQueue {
+    /** kit ChangeRecorder зовёт это внутри транзакции вместе с [insert]: номер и запись сохраняются или откатываются вместе. */
+    override suspend fun nextSeq(): Long {
+        val last = sequences.get(CHANGE_SEQ) ?: maxOf(legacySeq(), dao.maxSeq() ?: 0L)
+        return (last + 1).also { sequences.put(SequenceEntity(CHANGE_SEQ, it)) }
+    }
+
     override suspend fun insert(record: ChangeRecord) = dao.insert(
         PendingChangeRecordEntity(
             id = record.id, subjectKeyB64 = record.subjectKeyB64, seq = record.seq, happenedAt = record.happenedAt,

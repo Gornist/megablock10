@@ -20,6 +20,10 @@ interface PendingChangeRecordDao {
     @Query("SELECT COUNT(*) FROM pending_change_records")
     suspend fun count(): Int
 
+    /** Наибольший seq в очереди — нижняя граница счётчика при первом запуске после переезда счётчика в базу. */
+    @Query("SELECT MAX(seq) FROM pending_change_records")
+    suspend fun maxSeq(): Long?
+
     /** Время самой старой неотправленной записи — по нему дашборд видит застрявшую синхронизацию. */
     @Query("SELECT MIN(happenedAt) FROM pending_change_records")
     suspend fun oldestHappenedAt(): Long?

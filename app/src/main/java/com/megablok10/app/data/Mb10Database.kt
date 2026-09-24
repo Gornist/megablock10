@@ -6,7 +6,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 /**
- * Версия 14 — с 12 и выше данные игроков не стираются никогда (12→13, 13→14 —
+ * Версия 15 — с 12 и выше данные игроков не стираются никогда (12→13, 13→14, 14→15 —
  * настоящие миграции): схема экспортируется в `app/schemas`, и с неё любое
  * изменение обязано сопровождаться миграцией (иначе Room падает при
  * открытии, а не стирает данные игроков молча). Версии 1–11 до релиза
@@ -17,9 +17,10 @@ import androidx.room.RoomDatabase
         CharacterEntity::class, ShardEntity::class, TransactionEntity::class, DaemonEntity::class,
         ChatMessageEntity::class, CallLogEntity::class, ContainerBreachEntity::class,
         SlotClaimEntity::class, ConsumedTokenEntity::class, PendingAlertEntity::class,
-        PendingChangeRecordEntity::class, ItemTransferEntity::class, OutboxEntity::class
+        PendingChangeRecordEntity::class, ItemTransferEntity::class, OutboxEntity::class,
+        SequenceEntity::class,
     ],
-    version = 14,
+    version = 15,
     exportSchema = true
 )
 abstract class Mb10Database : RoomDatabase() {
@@ -36,6 +37,7 @@ abstract class Mb10Database : RoomDatabase() {
     abstract fun pendingChangeRecordDao(): PendingChangeRecordDao
     abstract fun itemTransferDao(): ItemTransferDao
     abstract fun outboxDao(): OutboxDao
+    abstract fun sequenceDao(): SequenceDao
 
     companion object {
         @Volatile private var instance: Mb10Database? = null
@@ -81,8 +83,19 @@ internal val MIGRATION_13_14 = object : androidx.room.migration.Migration(13, 14
     }
 }
 
+internal const val SEQUENCES_CREATE_SQL =
+    "CREATE TABLE IF NOT EXISTS `sequences` (`name` TEXT NOT NULL, `value` INTEGER NOT NULL, PRIMARY KEY(`name`))"
+
+// Счётчик seq записей для мастера переезжает из SharedPreferences в базу. Начальное значение миграция не переносит — SQL не видит
+// настроек; его подхватывает первая выдача номера (RoomChangeQueue.nextSeq), взяв максимум из прежнего счётчика и очереди.
+internal val MIGRATION_14_15 = object : androidx.room.migration.Migration(14, 15) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL(SEQUENCES_CREATE_SQL)
+    }
+}
+
 /** Версии, с которых базу пересоздаём вместо миграции (схемы старше 12 не сохранились). */
 internal val DESTRUCTIVE_FROM: IntArray = (1..11).toList().toIntArray()
 
 /** Все миграции по порядку. Новую версию схемы добавляем сюда и в тест MigrationGuardTest. */
-internal val ALL_MIGRATIONS = arrayOf(MIGRATION_12_13, MIGRATION_13_14)
+internal val ALL_MIGRATIONS = arrayOf(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)

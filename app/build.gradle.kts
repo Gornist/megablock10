@@ -77,6 +77,10 @@ android {
     packaging {
         resources.excludes.add("META-INF/*")
     }
+    // Robolectric (тесты на настоящей Room в памяти, см. testing/RoomTest.kt) берёт манифест и ресурсы из сборки.
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
     // Android Lint — пока только уровень API (NewApi): вызов того, чего нет на minSdk 26, компилируется молча, а на телефоне игрока
     // с Android 8–12 падает NoSuchMethodError. Так было с PrintWriter(OutputStream, Boolean, Charset) — он есть только с API 33.
     // Модуль kit сторожит Animal Sniffer (сигнатура API 26), приложение — эта проверка. Остальные проверки lint не включены
@@ -133,4 +137,6 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
     // Настоящий SQLite на JVM — чтобы прогонять миграции Room на базе с данными (MigrationDataTest)
     testImplementation("org.xerial:sqlite-jdbc:3.46.1.0")
+    // Настоящая Room в памяти на JVM: транзакции, откаты, выдача seq — то, что фейками не проверить (testing/RoomTest.kt)
+    testImplementation("org.robolectric:robolectric:4.13")
 }

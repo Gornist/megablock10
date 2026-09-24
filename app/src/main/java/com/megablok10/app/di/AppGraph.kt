@@ -26,6 +26,7 @@ import com.megablok10.app.collector.RoomChangeQueue
 import com.megablok10.app.collector.SYNC_LOG_TAG
 import com.megablok10.app.collector.heartbeat
 import com.megablok10.app.data.Mb10Database
+import com.megablok10.app.data.RoomTransactor
 import com.megablok10.app.identity.ContactDirectory
 import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.identity.CreateCharacter
@@ -52,6 +53,7 @@ import com.megablok10.kit.net.LineSocketClient
 import com.megablok10.kit.sync.ChangeRecorder
 import com.megablok10.kit.sync.CollectorEndpoint
 import com.megablok10.kit.sync.SyncEngine
+import com.megablok10.kit.sync.Transactor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -74,6 +76,8 @@ class AppGraph(private val app: Application) {
     val processScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     val db: Mb10Database = Mb10Database.get(app)
+    /** Все транзакции базы — через него: изменение данных и запись о нём для мастера фиксируются одним коммитом. */
+    val transactor: Transactor = RoomTransactor(db)
     val notices: PlayerNotices = AppSnack
     val lines = LineSocketClient(Mb10Log)
 
@@ -84,7 +88,7 @@ class AppGraph(private val app: Application) {
     val contacts = ContactStore(db.characterDao())
 
     // Записи для мастерского коллектора. Будят синхронизацию, чтобы запись ушла без ожидания следующего опроса.
-    private val changeQueue = RoomChangeQueue(db.pendingChangeRecordDao())
+    private val changeQueue = RoomChangeQueue(db.pendingChangeRecordDao(), db.sequenceDao(), identity::legacyChangeSeq)
     val changes = ChangeRecorder(
         queue = changeQueue,
         signer = identity::recordSigner,
@@ -92,6 +96,7 @@ class AppGraph(private val app: Application) {
         tag = SYNC_LOG_TAG,
         sensitiveFields = setOf(ChangeField.ANNOUNCEMENT),
         onRecorded = { collectorSync.wake() },
+        transactor = transactor,
     )
 
     // Сеть на площадке
@@ -104,10 +109,10 @@ class AppGraph(private val app: Application) {
     val directory = ContactDirectory(contacts, presence.peers)
 
     // Деньги и предметы
-    val wallet = TransactionStore(db, identity, changes)
-    val shards = ShardStore(db.shardDao(), wallet, changes)
-    val daemons = DaemonStore(db.daemonDao(), changes)
-    val items = ItemTransferStore(db, identity, shards, daemons)
+    val wallet = TransactionStore(db, identity, changes, transactor)
+    val shards = ShardStore(db.shardDao(), wallet, changes, transactor)
+    val daemons = DaemonStore(db.daemonDao(), changes, transactor)
+    val items = ItemTransferStore(db, identity, shards, daemons, transactor)
     val ramUpgrades = RamUpgradeStore(db.consumedTokenDao(), identity, changes)
     val receipts = ReceiptConfirmer(wallet, items)
 

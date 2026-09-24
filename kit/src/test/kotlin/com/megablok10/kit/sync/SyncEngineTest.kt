@@ -18,6 +18,8 @@ import org.junit.Test
 class SyncEngineTest {
     private class FakeQueue : ChangeQueue {
         val rows = mutableListOf<ChangeRecord>()
+        private var seq = 0L
+        override suspend fun nextSeq() = ++seq
         override suspend fun insert(record: ChangeRecord) { if (rows.none { it.id == record.id }) rows += record }
         override suspend fun nextBatch(limit: Int) = rows.sortedBy { it.seq }.take(limit)
         override suspend fun deleteByIds(ids: List<String>) { rows.removeAll { it.id in ids } }

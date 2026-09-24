@@ -107,8 +107,26 @@ class MigrationDataTest {
         assertEquals(1, indexNames("transactions").count { it == "index_transactions_timestamp" })
     }
 
+    @Test fun migration14to15AddsSeqCounterWithoutTouchingData() {
+        schemaTables(14).values.forEach(::sql)
+        sql("INSERT INTO transactions (id, counterpartyPubKeyB64, amount, memo, timestamp, status) VALUES ('tx-1', 'pk-bob', -300, 'за шард', 1000, 'CONFIRMED')")
+        sql("INSERT INTO pending_change_records (id, subjectKeyB64, seq, happenedAt, field, oldValue, newValue, reason, sourceRef, actor, signature) VALUES ('r-1', 'me', 41, 5, 'balance', '0', '10', 'SHARD_SCAN', NULL, 'me', 'sig')")
+
+        ALL_MIGRATIONS.filter { it.startVersion == 14 }.forEach { it.migrate(supportDb()) }
+        ALL_MIGRATIONS.filter { it.startVersion == 14 }.forEach { it.migrate(supportDb()) }   // повтор после прерванной миграции не падает
+
+        assertEquals("таблица счётчика совпадает со схемой 15", listOf("name:TEXT:1:1", "value:INTEGER:1:0"), columns("sequences"))
+        assertEquals("счётчик пуст: начальное значение берёт первая выдача номера", "0", scalar("SELECT COUNT(*) FROM sequences"))
+        assertEquals("-300", scalar("SELECT amount FROM transactions WHERE id = 'tx-1'"))
+        assertEquals("41", scalar("SELECT seq FROM pending_change_records WHERE id = 'r-1'"))
+    }
+
+    @Test fun seqCounterMigrationMatchesExportedSchema() {
+        assertEquals(schemaTables(15)["sequences"], SEQUENCES_CREATE_SQL)
+    }
+
     @Test fun exportedSchemaHasEveryTableOfTheCurrentVersion() {
-        val tables = schemaTables(13)
+        val tables = schemaTables(15)
         assertTrue("regex схемы не нашёл таблиц (изменился формат экспорта?)", tables.size >= 10)
         tables.values.forEach(::sql)   // каждый createSql — валидный SQLite
         assertEquals(tables.size.toString(), scalar("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"))

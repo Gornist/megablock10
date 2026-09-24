@@ -9,6 +9,7 @@ import com.megablok10.app.data.ShardEntity
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.wallet.TransactionStore
 import com.megablok10.kit.sync.ChangeRecorder
+import com.megablok10.kit.sync.Transactor
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import org.json.JSONObject
@@ -18,6 +19,7 @@ class ShardStore(
     private val dao: ShardDao,
     private val wallet: TransactionStore,
     private val changes: ChangeRecorder,
+    private val tx: Transactor,
 ) : ShardCollection {
     override fun observeAll(): Flow<List<Mb10Qr.Shard>> =
         dao.observeAll().map { entities -> entities.map { it.toShard() } }
@@ -39,7 +41,8 @@ class ShardStore(
         sourceRef: String?,
         creditMoney: Boolean,
         decrypted: Boolean
-    ) {
+    ): Unit = tx.inTransaction {
+        // Шард, деньги из него и записи о них для мастера — один коммит: падение посередине не оставит одно без другого.
         val acquiredAt = System.currentTimeMillis()
         dao.upsert(
             ShardEntity(
@@ -87,12 +90,12 @@ class ShardStore(
     }
 
     /** Убирает шард из коллекции (передача другому игроку) и сообщает об этом дашборду. */
-    suspend fun remove(id: String, reason: String, sourceRef: String) {
+    suspend fun remove(id: String, reason: String, sourceRef: String): Unit = tx.inTransaction {
         dao.delete(id)
         changes.record(ChangeField.SHARDS_REMOVE, null, JSONObject().put("shardId", id).toString(), reason, sourceRef)
     }
 
-    override suspend fun markDecrypted(id: String) {
+    override suspend fun markDecrypted(id: String): Unit = tx.inTransaction {
         dao.markDecrypted(id)
         changes.record(
             ChangeField.SHARDS_DECRYPT, null,

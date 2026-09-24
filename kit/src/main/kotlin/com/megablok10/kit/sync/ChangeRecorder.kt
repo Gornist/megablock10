@@ -5,8 +5,16 @@ import com.megablok10.kit.log.NoopLog
 import com.megablok10.kit.time.Clock
 import java.util.UUID
 
-/** Локальная очередь записей, ещё не подтверждённых сервером — порт (у Мегаблока — таблица Room `pending_change_records`). */
+/**
+ * Локальная очередь записей, ещё не подтверждённых сервером, и счётчик их номеров — порт (у Мегаблока — таблицы Room
+ * `pending_change_records` и `sequences`). [nextSeq] и [insert] [ChangeRecorder] зовёт внутри одной транзакции, поэтому номер
+ * должен храниться в том же хранилище, что и очередь: номер, выданный записи, которая не сохранилась, откатывается вместе с ней,
+ * а номер сохранённой записи после перезапуска уже не выдаётся повторно (сервер отбраковал бы вторую запись с тем же seq).
+ */
 interface ChangeQueue {
+    /** Следующий seq: растёт монотонно на устройстве и не зависит от очереди (очередь может опустеть, нумерация — нет). */
+    suspend fun nextSeq(): Long
+
     /** Повторная запись с тем же id игнорируется. */
     suspend fun insert(record: ChangeRecord)
 
@@ -19,12 +27,9 @@ interface ChangeQueue {
     suspend fun oldestHappenedAt(): Long?
 }
 
-/** Кто подписывает записи: ключ игрока, сквозной номер записи и подпись. null из провайдера — личности на устройстве ещё нет. */
+/** Кто подписывает записи: ключ игрока и подпись. null из провайдера — личности на устройстве ещё нет. */
 interface RecordSigner {
     val publicKeyB64: String
-
-    /** Следующий seq: растёт монотонно на устройстве, не зависит от очереди (очередь может опустеть, нумерация — нет). */
-    fun nextSeq(): Long
     fun sign(data: ByteArray): String
 }
 
@@ -34,6 +39,9 @@ interface RecordSigner {
  * [onRecorded] будит его, чтобы запись ушла без ожидания следующего опроса.
  *
  * [sensitiveFields] — поля, значения которых не пишутся в журнал (например, тексты объявлений мастера).
+ *
+ * [transactor] — транзакция хранилища очереди: номер и запись сохраняются вместе, а вызов изнутри транзакции вызывающего (изменение
+ * игровых данных) присоединяется к ней — данные и запись о них фиксируются одним коммитом. [onRecorded] — после этого коммита.
  */
 class ChangeRecorder(
     private val queue: ChangeQueue,
@@ -44,6 +52,7 @@ class ChangeRecorder(
     private val sensitiveFields: Set<String> = emptySet(),
     private val newId: () -> String = { UUID.randomUUID().toString() },
     private val onRecorded: () -> Unit = {},
+    private val transactor: Transactor = Transactor.Direct,
 ) {
     /**
      * [subjectKeyB64] — чья это запись (по умолчанию — самого игрока), [actor] — кто её вызвал (по умолчанию тоже он; для
@@ -62,25 +71,26 @@ class ChangeRecorder(
             log.w(tag, "нет личности устройства — запись $field/$reason потеряна")
             return null
         }
-        val seq = me.nextSeq()
-        val unsigned = ChangeRecord(
-            id = newId(),
-            subjectKeyB64 = subjectKeyB64 ?: me.publicKeyB64,
-            seq = seq,
-            happenedAt = clock.nowMs(),
-            field = field,
-            oldValue = oldValue,
-            newValue = newValue,
-            reason = reason,
-            sourceRef = sourceRef,
-            actor = actor ?: me.publicKeyB64,
-            signature = "",
-        )
-        val signed = unsigned.copy(signature = me.sign(unsigned.signaturePayload()))
-        queue.insert(signed)
+        val signed = transactor.inTransaction {
+            val seq = queue.nextSeq()
+            val unsigned = ChangeRecord(
+                id = newId(),
+                subjectKeyB64 = subjectKeyB64 ?: me.publicKeyB64,
+                seq = seq,
+                happenedAt = clock.nowMs(),
+                field = field,
+                oldValue = oldValue,
+                newValue = newValue,
+                reason = reason,
+                sourceRef = sourceRef,
+                actor = actor ?: me.publicKeyB64,
+                signature = "",
+            )
+            unsigned.copy(signature = me.sign(unsigned.signaturePayload())).also { queue.insert(it) }
+        }
         val hidden = field in sensitiveFields
-        log.event(tag, "record.enqueued", "field" to field, "reason" to reason, "old" to oldValue.takeUnless { hidden }, "new" to newValue.takeUnless { hidden }, "seq" to seq, "ref" to sourceRef)
-        onRecorded()
+        log.event(tag, "record.enqueued", "field" to field, "reason" to reason, "old" to oldValue.takeUnless { hidden }, "new" to newValue.takeUnless { hidden }, "seq" to signed.seq, "ref" to sourceRef)
+        transactor.afterCommit(onRecorded)
         return signed
     }
 }

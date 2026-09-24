@@ -5,6 +5,7 @@ import com.megablok10.app.collector.ChangeReason
 import com.megablok10.app.data.DaemonDao
 import com.megablok10.app.data.DaemonEntity
 import com.megablok10.kit.sync.ChangeRecorder
+import com.megablok10.kit.sync.Transactor
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import org.json.JSONObject
@@ -21,6 +22,7 @@ import org.json.JSONObject
 class DaemonStore(
     private val dao: DaemonDao,
     private val changes: ChangeRecorder,
+    private val tx: Transactor,
 ) : DaemonCollection {
     override fun observeAll(): Flow<List<Daemon>> = dao.observeAll().map { entities -> entities.map { it.toDaemon() } }
 
@@ -36,7 +38,7 @@ class DaemonStore(
     }
 
     /** Демон, извлечённый из слота лута (см. DaemonRewards) — id детерминирован от slotRef, повторное извлечение того же слота не плодит дубликат в коллекции. */
-    suspend fun grant(id: String, loot: LootCodec.Loot.DaemonLoot, sourceRef: String, reason: String = ChangeReason.BREACH_LOOT) {
+    suspend fun grant(id: String, loot: LootCodec.Loot.DaemonLoot, sourceRef: String, reason: String = ChangeReason.BREACH_LOOT): Unit = tx.inTransaction {
         dao.upsert(
             DaemonEntity(id = id, name = loot.name, sequence = loot.sequence.joinToString(","), tier = loot.tier.level, effect = loot.effect.name)
         )
@@ -53,7 +55,7 @@ class DaemonStore(
     }
 
     /** Убирает демона из коллекции (передача другому игроку) и сообщает об этом дашборду. */
-    suspend fun remove(id: String, reason: String, sourceRef: String) {
+    suspend fun remove(id: String, reason: String, sourceRef: String): Unit = tx.inTransaction {
         dao.delete(id)
         changes.record(ChangeField.DAEMONS_REMOVE, null, JSONObject().put("daemonId", id).toString(), reason, sourceRef)
     }

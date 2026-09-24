@@ -39,6 +39,17 @@ jobs:
           yes | sdkmanager --licenses > /dev/null || true
           ./gradlew testDebugUnitTest :kit:test --no-daemon
 
+      # Room заново пишет схему в app/schemas при каждой сборке. Отличие от закоммиченной — схему забыли закоммитить или правили руками:
+      # миграции и MigrationDataTest опираются на закоммиченную, а не на настоящую. Настоящая печатается прямо в журнал.
+      - name: Схема Room совпадает с закоммиченной (app/schemas)
+        if: always()
+        run: |
+          drift=$(git status --porcelain app/schemas)
+          [ -z "$drift" ] && exit 0
+          echo "$drift"; git diff app/schemas
+          echo "$drift" | awk '$1=="??"{print $2}' | xargs -r cat
+          echo "::error::Схема Room отличается от закоммиченной — см. вывод выше"; exit 1
+
       # kit проверяет Animal Sniffer (шаг выше), приложение — Android Lint: вызов API новее Android 8.0 падал бы на телефонах игроков.
       - name: Android Lint — API не новее minSdk 26 (NewApi)
         run: ./gradlew :app:lintDebug --no-daemon

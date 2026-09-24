@@ -1,6 +1,5 @@
 package com.megablok10.app.wallet
 
-import androidx.room.withTransaction
 import com.megablok10.app.collector.ChangeField
 import com.megablok10.app.collector.ChangeReason
 import com.megablok10.app.data.Mb10Database
@@ -18,6 +17,7 @@ import com.megablok10.kit.handover.HandoverRules
 import com.megablok10.kit.handover.OutgoingJournal
 import com.megablok10.kit.net.SendOutcome
 import com.megablok10.kit.sync.ChangeRecorder
+import com.megablok10.kit.sync.Transactor
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -35,6 +35,7 @@ class TransactionStore(
     private val db: Mb10Database,
     private val identity: IdentityStore,
     private val changes: ChangeRecorder,
+    private val tx: Transactor,
 ) : PaymentLedger {
     private val dao = db.transactionDao()
     private val handover = Handover(TransactionJournal(dao), Mb10Log, tag = TAG, eventPrefix = "tx")
@@ -62,8 +63,9 @@ class TransactionStore(
         if (tx.amount <= 0) { Mb10Log.warnEvent(TAG, "tx.out_rejected", "id" to tx.id, "reason" to "сумма<=0"); return false }
         // Проверка баланса и вставка — одной транзакцией: иначе два быстрых перевода (двойной тап «Отправить») оба видели бы прежний
         // баланс, проходили проверку и уводили отправителя в минус, а получателям зачислялись бы полные суммы — деньги из воздуха.
-        val rowId = db.withTransaction {
-            if (!canDebit(tx.amount, dao.currentBalance())) return@withTransaction -1L
+        // Запись баланса для мастера — в той же транзакции: деньги не списываются без записи о списании и наоборот.
+        val rowId = this.tx.inTransaction {
+            if (!canDebit(tx.amount, dao.currentBalance())) return@inTransaction -1L
             dao.insertIfAbsent(
                 TransactionEntity(
                     id = tx.id,
@@ -73,9 +75,8 @@ class TransactionStore(
                     timestamp = System.currentTimeMillis(),
                     status = TransactionStatus.PENDING
                 )
-            )
+            ).also { if (it != -1L) emitBalanceChange(-tx.amount, ChangeReason.TRANSFER_OUT, sourceRef = tx.id) }
         }
-        if (rowId != -1L) emitBalanceChange(-tx.amount, ChangeReason.TRANSFER_OUT, sourceRef = tx.id)
         Mb10Log.event(TAG, "tx.out_pending", "id" to tx.id, "to" to Mb10Log.short(toPubKeyB64), "amount" to tx.amount, "ok" to (rowId != -1L), "reason" to if (rowId == -1L) "не хватает денег или уже есть" else null)
         return rowId != -1L
     }
@@ -105,13 +106,13 @@ class TransactionStore(
      * TRANSFER_CANCELLED и тем же txId в sourceRef: сервер по нему помечает
      * перевод "отменён отправителем" вместо висящего одностороннего.
      */
-    override suspend fun cancelOutgoing(id: String): Boolean {
-        val amount = dao.amountOf(id) ?: run { Mb10Log.warnEvent(TAG, "tx.cancel", "id" to id, "result" to "нет такой записи"); return false }
-        if (dao.cancelPending(id) == 0) { Mb10Log.warnEvent(TAG, "tx.cancel", "id" to id, "result" to "отказ: уже доставлен/подтверждён"); return false }
+    override suspend fun cancelOutgoing(id: String): Boolean = tx.inTransaction {
+        val amount = dao.amountOf(id) ?: run { Mb10Log.warnEvent(TAG, "tx.cancel", "id" to id, "result" to "нет такой записи"); return@inTransaction false }
+        if (dao.cancelPending(id) == 0) { Mb10Log.warnEvent(TAG, "tx.cancel", "id" to id, "result" to "отказ: уже доставлен/подтверждён"); return@inTransaction false }
         Mb10Log.event(TAG, "tx.cancel", "id" to id, "result" to "отменён", "refund" to -amount)
         // amount исходящей записи отрицательный — деньги возвращаются, дельта баланса положительная.
         emitBalanceChange(-amount, ChangeReason.TRANSFER_CANCELLED, sourceRef = id)
-        return true
+        true
     }
 
     /**
@@ -141,18 +142,19 @@ class TransactionStore(
         val payload = Mb10QrCodec.transactionSignaturePayload(tx.id, tx.fromPubKeyB64, tx.toPubKeyB64, tx.amount, tx.memo)
         HandoverRules.rejectIncoming(tx.fromPubKeyB64, tx.toPubKeyB64, myPublicKeyB64, payload, tx.signatureB64, Ecdsa::verify)?.let { return reject(it) }
 
-        val rowId = dao.insertIfAbsent(
-            TransactionEntity(
-                id = tx.id,
-                counterpartyPubKeyB64 = tx.fromPubKeyB64,
-                amount = tx.amount,
-                memo = tx.memo,
-                timestamp = System.currentTimeMillis(),
-                status = TransactionStatus.CONFIRMED
-            )
-        )
+        val rowId = this.tx.inTransaction {
+            dao.insertIfAbsent(
+                TransactionEntity(
+                    id = tx.id,
+                    counterpartyPubKeyB64 = tx.fromPubKeyB64,
+                    amount = tx.amount,
+                    memo = tx.memo,
+                    timestamp = System.currentTimeMillis(),
+                    status = TransactionStatus.CONFIRMED
+                )
+            ).also { if (it != -1L) emitBalanceChange(tx.amount, ChangeReason.TRANSFER_IN, sourceRef = tx.id, actor = tx.fromPubKeyB64) }
+        }
         if (rowId != -1L) {
-            emitBalanceChange(tx.amount, ChangeReason.TRANSFER_IN, sourceRef = tx.id, actor = tx.fromPubKeyB64)
             Mb10Log.event(TAG, "tx.in_accepted", "id" to tx.id, "from" to Mb10Log.short(tx.fromPubKeyB64), "amount" to tx.amount)
         } else Mb10Log.warnEvent(TAG, "tx.in_rejected", "id" to tx.id, "why" to "уже принят раньше")
         return rowId != -1L
@@ -168,17 +170,19 @@ class TransactionStore(
      */
     suspend fun creditShardMoney(shardId: String, amount: Long, shardTitle: String) {
         if (amount <= 0) return
-        val rowId = dao.insertIfAbsent(
-            TransactionEntity(
-                id = "shard:$shardId",
-                counterpartyPubKeyB64 = "",
-                amount = amount,
-                memo = "Шард: $shardTitle",
-                timestamp = System.currentTimeMillis(),
-                status = TransactionStatus.CONFIRMED
+        tx.inTransaction {
+            val rowId = dao.insertIfAbsent(
+                TransactionEntity(
+                    id = "shard:$shardId",
+                    counterpartyPubKeyB64 = "",
+                    amount = amount,
+                    memo = "Шард: $shardTitle",
+                    timestamp = System.currentTimeMillis(),
+                    status = TransactionStatus.CONFIRMED
+                )
             )
-        )
-        if (rowId != -1L) emitBalanceChange(amount, ChangeReason.SHARD_SCAN, sourceRef = shardId)
+            if (rowId != -1L) emitBalanceChange(amount, ChangeReason.SHARD_SCAN, sourceRef = shardId)
+        }
     }
 
     /**
@@ -192,17 +196,19 @@ class TransactionStore(
      */
     suspend fun creditContainerEddies(attemptId: String, amount: Long, containerName: String) {
         if (amount <= 0) return
-        val rowId = dao.insertIfAbsent(
-            TransactionEntity(
-                id = "breach:$attemptId",
-                counterpartyPubKeyB64 = "",
-                amount = amount,
-                memo = "Взлом: $containerName",
-                timestamp = System.currentTimeMillis(),
-                status = TransactionStatus.CONFIRMED
+        tx.inTransaction {
+            val rowId = dao.insertIfAbsent(
+                TransactionEntity(
+                    id = "breach:$attemptId",
+                    counterpartyPubKeyB64 = "",
+                    amount = amount,
+                    memo = "Взлом: $containerName",
+                    timestamp = System.currentTimeMillis(),
+                    status = TransactionStatus.CONFIRMED
+                )
             )
-        )
-        if (rowId != -1L) emitBalanceChange(amount, ChangeReason.BREACH_EDDIES, sourceRef = attemptId)
+            if (rowId != -1L) emitBalanceChange(amount, ChangeReason.BREACH_EDDIES, sourceRef = attemptId)
+        }
     }
 
     /**
@@ -210,9 +216,9 @@ class TransactionStore(
      * записи прежней сессии (сброс сессии стирает только ключи), поэтому сумма записи — разность. Идемпотентно по id выдачи. Уходит на дашборд
      * записью баланса с причиной CHARACTER_CREATED — тем же способом, каким телефон сообщает о любом изменении.
      */
-    suspend fun setStartingBalance(provisionId: String, balance: Long) {
+    suspend fun setStartingBalance(provisionId: String, balance: Long): Unit = tx.inTransaction {
         val delta = balance - dao.currentBalance()
-        if (delta == 0L) return
+        if (delta == 0L) return@inTransaction
         val rowId = dao.insertIfAbsent(
             TransactionEntity(
                 id = "prov:$provisionId",
@@ -234,7 +240,8 @@ class TransactionStore(
      * id самого MASTER_OVERRIDE с сервера, поэтому insertIfAbsent защищает
      * от повторного применения при повторной доставке.
      */
-    suspend fun applyBalanceOverride(changeId: String, newBalance: Long, memo: String) {
+    suspend fun applyBalanceOverride(changeId: String, newBalance: Long, memo: String): Unit = tx.inTransaction {
+        // Баланс читается в той же транзакции, что и вставка: перевод, пришедший между ними, иначе увёл бы итог мимо значения мастера.
         val currentBalance = dao.currentBalance()
         Mb10Log.event(TAG, "balance.master_override", "change" to changeId, "old" to currentBalance, "new" to newBalance)
         dao.insertIfAbsent(
@@ -251,9 +258,11 @@ class TransactionStore(
 
     /**
      * newValue — баланс ПОСЛЕ применения delta (снимок читаем уже после
-     * insert), oldValue выводим вычитанием — дешевле, чем читать баланс
-     * дважды, и корректно, поскольку мутация и чтение идут последовательно
-     * в одной suspend-цепочке одного вызова (гонок с самим собой нет).
+     * insert), oldValue выводим вычитанием. Вызывать только внутри той же
+     * транзакции, что и изменение: записи транзакций пишутся по одной, поэтому
+     * параллельная операция не вклинится между вставкой и чтением, и записи
+     * баланса для мастера образуют цепочку (100→110→130), а не 100→110 и
+     * 100→120 с одинаковым «было».
      */
     private suspend fun emitBalanceChange(delta: Long, reason: String, sourceRef: String, actor: String? = null) {
         val newBalance = dao.currentBalance()

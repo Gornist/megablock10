@@ -1,5 +1,6 @@
 package com.megablok10.app.identity
 
+import com.megablok10.app.data.SEQUENCES_CREATE_SQL
 import java.io.File
 import java.sql.Connection
 import java.sql.DriverManager
@@ -30,8 +31,8 @@ class SessionResetTest {
         }
     }
 
-    @Test fun keepsOnlyThePendingQueue() {
-        assertEquals(setOf("pending_change_records"), SessionReset.KEEP_TABLES)
+    @Test fun keepsOnlyThePendingQueueAndItsSeqCounter() {
+        assertEquals(setOf("pending_change_records", "sequences"), SessionReset.KEEP_TABLES)
     }
 
     @Test fun wipesGameDataButKeepsUnsentRecords() {
@@ -43,11 +44,14 @@ class SessionResetTest {
         sql("INSERT INTO chat_messages (type, fromPubKeyB64, fromCallsign, faction, toPubKeyB64, body, timestamp) VALUES ('DM', 'a', 'A', 'F', 'b', 'привет', 4)")
         sql("INSERT INTO characters (publicKeyB64, callsign, faction, isNpc) VALUES ('pk-contact', 'Bob', 'Rats', 0)")
         sql("INSERT INTO pending_change_records (id, subjectKeyB64, seq, happenedAt, field, oldValue, newValue, reason, sourceRef, actor, signature) VALUES ('r-1', 'old-key', 1, 5, 'callsign', 'Alice', '', 'CHARACTER_RESET', NULL, 'old-key', 'sig')")
+        sql(SEQUENCES_CREATE_SQL)
+        sql("INSERT INTO sequences (name, value) VALUES ('change_seq', 1)")
 
         SessionReset.wipeStatements(tables()).forEach(::sql)
 
         listOf("transactions", "consumed_tokens", "container_breaches", "outbox", "chat_messages", "characters").forEach { assertEquals("$it должна быть пуста", 0, count(it)) }
         assertEquals("неотправленная запись о сбросе должна уцелеть", 1, count("pending_change_records"))
+        assertEquals("счётчик номеров записей не сбрасывается — новые записи не повторят номера из очереди", 1, count("sequences"))
     }
 
     @Test fun everyTableExceptTheQueueIsWiped_evenOnesAddedLater() {
