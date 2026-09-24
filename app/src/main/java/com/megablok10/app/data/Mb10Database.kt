@@ -6,10 +6,11 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 /**
- * Версия 13 — базовая: схема экспортируется в `app/schemas`, и с неё любое изменение
- * обязано сопровождаться миграцией (иначе Room падает при открытии, а не стирает
- * данные игроков молча). Версии 1–11 до релиза стираются, как и раньше.
- * Как менять схему: см. docs/db-migrations.md.
+ * Версия 14 — с 12 и выше данные игроков не стираются никогда (12→13, 13→14 —
+ * настоящие миграции): схема экспортируется в `app/schemas`, и с неё любое
+ * изменение обязано сопровождаться миграцией (иначе Room падает при
+ * открытии, а не стирает данные игроков молча). Версии 1–11 до релиза
+ * стираются, как и раньше. Как менять схему: см. docs/db-migrations.md.
  */
 @Database(
     entities = [
@@ -18,7 +19,7 @@ import androidx.room.RoomDatabase
         SlotClaimEntity::class, ConsumedTokenEntity::class, PendingAlertEntity::class,
         PendingChangeRecordEntity::class, ItemTransferEntity::class, OutboxEntity::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = true
 )
 abstract class Mb10Database : RoomDatabase() {
@@ -66,8 +67,22 @@ internal val MIGRATION_12_13 = object : androidx.room.migration.Migration(12, 13
     }
 }
 
+// Только новые индексы — ни одной таблицы/колонки не меняется, поэтому CREATE INDEX IF NOT EXISTS
+// безопасен и идемпотентен сам по себе (в отличие от ALTER TABLE ADD COLUMN, который так писать нельзя).
+internal const val TRANSACTIONS_TIMESTAMP_INDEX_SQL =
+    "CREATE INDEX IF NOT EXISTS `index_transactions_timestamp` ON `transactions` (`timestamp`)"
+internal const val OUTBOX_NEXT_ATTEMPT_INDEX_SQL =
+    "CREATE INDEX IF NOT EXISTS `index_outbox_nextAttemptAt` ON `outbox` (`nextAttemptAt`)"
+
+internal val MIGRATION_13_14 = object : androidx.room.migration.Migration(13, 14) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL(TRANSACTIONS_TIMESTAMP_INDEX_SQL)
+        db.execSQL(OUTBOX_NEXT_ATTEMPT_INDEX_SQL)
+    }
+}
+
 /** Версии, с которых базу пересоздаём вместо миграции (схемы старше 12 не сохранились). */
 internal val DESTRUCTIVE_FROM: IntArray = (1..11).toList().toIntArray()
 
 /** Все миграции по порядку. Новую версию схемы добавляем сюда и в тест MigrationGuardTest. */
-internal val ALL_MIGRATIONS = arrayOf(MIGRATION_12_13)
+internal val ALL_MIGRATIONS = arrayOf(MIGRATION_12_13, MIGRATION_13_14)

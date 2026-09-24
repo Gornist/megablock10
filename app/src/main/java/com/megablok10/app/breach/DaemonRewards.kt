@@ -1,6 +1,7 @@
 package com.megablok10.app.breach
 
 import android.content.Context
+import com.megablok10.app.collector.CollectorSettings
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.shards.ShardStore
@@ -36,6 +37,7 @@ object DaemonRewards {
             if (DaemonEffect.MINER in matchedEffects) ContainerEddies.minerBonus(container.tier) else 0L
         TransactionStore.creditContainerEddies(context, attemptId, eddies, container.name)
 
+        val lootKey = LootCrypto.deriveKey(CollectorSettings.gameSecret(context))
         val claimedThisAttempt = mutableSetOf<Int>()
         val shardTitles = mutableListOf<String>()
         val daemonNames = mutableListOf<String>()
@@ -55,7 +57,7 @@ object DaemonRewards {
             claimedThisAttempt += slotIndex
             val slot = container.loot[slotIndex]
             val slotRef = container.slotRef(slotIndex)
-            when (val loot = LootCrypto.decrypt(slot.payload)?.let(LootCodec::decode)) {
+            when (val loot = LootCrypto.decrypt(slot.payload, lootKey)?.let(LootCodec::decode)) {
                 is LootCodec.Loot.ShardLoot -> {
                     ShardStore.grant(context, id = "shard:$slotRef", tier = slot.tier, loot = loot, sourceRef = slotRef)
                     shardTitles += loot.title
@@ -79,7 +81,8 @@ object DaemonRewards {
      * Возвращает описание для тоста, null — если payload битый.
      */
     suspend fun applyGrant(context: Context, grant: Mb10Qr.LootGrant): String? {
-        val loot = LootCrypto.decrypt(grant.encryptedPayload)?.let(LootCodec::decode) ?: return null
+        val lootKey = LootCrypto.deriveKey(CollectorSettings.gameSecret(context))
+        val loot = LootCrypto.decrypt(grant.encryptedPayload, lootKey)?.let(LootCodec::decode) ?: return null
         return when (loot) {
             is LootCodec.Loot.ShardLoot -> {
                 ShardStore.grant(context, id = "shard:${grant.slotRef}", tier = grant.tier, loot = loot, sourceRef = grant.slotRef)

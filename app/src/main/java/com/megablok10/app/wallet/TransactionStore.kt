@@ -13,6 +13,9 @@ import com.megablok10.app.identity.Identity
 import com.megablok10.app.identity.IdentityManager
 import com.megablok10.app.log.Mb10Log
 import com.megablok10.app.net.SendOutcome
+import com.megablok10.app.net.incomingCardRejection
+import com.megablok10.app.net.shouldMarkDeliveredBeforeSend
+import com.megablok10.app.net.shouldRevertToPendingAfterSend
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
 import kotlinx.coroutines.flow.Flow
@@ -48,7 +51,7 @@ object TransactionStore {
         // Проверка баланса и вставка — одной транзакцией: иначе два быстрых перевода (двойной тап «Отправить») оба видели бы прежний
         // баланс, проходили проверку и уводили отправителя в минус, а получателям зачислялись бы полные суммы — деньги из воздуха.
         val rowId = db.withTransaction {
-            if (tx.amount > dao.currentBalance()) return@withTransaction -1L
+            if (!canDebit(tx.amount, dao.currentBalance())) return@withTransaction -1L
             dao.insertIfAbsent(
                 TransactionEntity(
                     id = tx.id,
@@ -78,15 +81,16 @@ object TransactionStore {
      */
     suspend fun deliverOutgoing(context: Context, id: String, willSend: Boolean, send: suspend () -> SendOutcome) {
         val dao = Mb10Database.get(context).transactionDao()
-        if (!willSend) {
+        if (!shouldMarkDeliveredBeforeSend(willSend)) {
             send()
             Mb10Log.event(TAG, "tx.deliver", "id" to id, "peerVisible" to false, "status" to "остаётся PENDING")
             return
         }
         dao.markDelivered(id)
         val outcome = send()
-        if (outcome == SendOutcome.NOT_REACHED) dao.markUndelivered(id)
-        Mb10Log.event(TAG, "tx.deliver", "id" to id, "peerVisible" to true, "outcome" to outcome.name, "status" to if (outcome == SendOutcome.NOT_REACHED) "откат в PENDING" else "DELIVERED")
+        val reverted = shouldRevertToPendingAfterSend(outcome)
+        if (reverted) dao.markUndelivered(id)
+        Mb10Log.event(TAG, "tx.deliver", "id" to id, "peerVisible" to true, "outcome" to outcome.name, "status" to if (reverted) "откат в PENDING" else "DELIVERED")
     }
 
     /**
@@ -143,9 +147,7 @@ object TransactionStore {
     suspend fun recordIncoming(context: Context, myPublicKeyB64: String, tx: Mb10Qr.Transaction): Boolean {
         fun reject(why: String): Boolean { Mb10Log.warnEvent(TAG, "tx.in_rejected", "id" to tx.id, "from" to Mb10Log.short(tx.fromPubKeyB64), "amount" to tx.amount, "why" to why); return false }
         if (tx.amount <= 0) return reject("сумма<=0")
-        if (tx.fromPubKeyB64 == myPublicKeyB64) return reject("своя же карточка")
-        // Карточка адресована не мне — копия, пересланная сообщником или перехваченная в сети: принять её значило бы создать деньги из воздуха.
-        if (tx.toPubKeyB64 != myPublicKeyB64) return reject("адресована не мне")
+        incomingCardRejection(tx.fromPubKeyB64, tx.toPubKeyB64, myPublicKeyB64)?.let { return reject(it) }
         val payload = Mb10QrCodec.transactionSignaturePayload(tx.id, tx.fromPubKeyB64, tx.toPubKeyB64, tx.amount, tx.memo)
         if (!IdentityManager.verify(tx.fromPubKeyB64, payload, tx.signatureB64)) return reject("подпись не сошлась")
 

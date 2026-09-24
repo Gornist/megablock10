@@ -49,7 +49,11 @@ object PresenceService {
         table.addStatic(peer)
     }
 
-    fun start(context: Context, identity: Identity, chatPort: Int) {
+    // start/stop/refresh мутируют одни и те же var-поля и могут прийти из разных диспетчеров одновременно
+    // (WifiBinder дёргает refresh() из колбэка смены сети, а UI — start()/stop() из своего потока) — без
+    // synchronized(this) это гонка на nsdManager/startArgs и т. п. Монитор object реентерабелен: start()
+    // вызывает stop() изнутри того же блока, повторный вход тем же потоком безопасен, дедлока не будет.
+    fun start(context: Context, identity: Identity, chatPort: Int): Unit = synchronized(this) {
         stop()
         Mb10Log.event(TAG, "nsd.start", "me" to Mb10Log.short(identity.publicKeyB64), "chatPort" to chatPort, "ip" to WifiBinder.ownIpv4)
         startArgs = Triple(context.applicationContext, identity, chatPort)
@@ -124,7 +128,7 @@ object PresenceService {
         manager.discoverServices(SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, discListener)
     }
 
-    fun stop() {
+    fun stop(): Unit = synchronized(this) {
         startArgs = null
         val manager = nsdManager
         try {
@@ -153,7 +157,7 @@ object PresenceService {
      * запись не рекламируется, поиск молчит. Уже известные пиры не сбрасываем сразу (иначе список мигает): они получают отсрочку
      * [REFRESH_GRACE_MS] и остаются, если найдутся заново.
      */
-    fun refresh() {
+    fun refresh(): Unit = synchronized(this) {
         val args = startArgs ?: return
         Mb10Log.event(TAG, "nsd.refresh", "reason" to "смена сети", "peersBefore" to table.describe())
         // Статические (отладочные) и серверные записи NSD-обновление не касается — они переживают refresh как есть.

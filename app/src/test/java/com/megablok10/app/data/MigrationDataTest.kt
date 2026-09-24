@@ -36,6 +36,9 @@ class MigrationDataTest {
     private fun columns(table: String): List<String> = conn.createStatement().use { st ->
         st.executeQuery("PRAGMA table_info($table)").use { rs -> buildList { while (rs.next()) add("${rs.getString("name")}:${rs.getString("type")}:${rs.getInt("notnull")}:${rs.getInt("pk")}") } }
     }
+    private fun indexNames(table: String): List<String> = conn.createStatement().use { st ->
+        st.executeQuery("PRAGMA index_list($table)").use { rs -> buildList { while (rs.next()) add(rs.getString("name")) } }
+    }
 
     /** Минимальный SupportSQLiteDatabase: только execSQL, всё остальное — явная ошибка. */
     private fun supportDb(): SupportSQLiteDatabase = Proxy.newProxyInstance(javaClass.classLoader, arrayOf(SupportSQLiteDatabase::class.java)) { _, method, args ->
@@ -78,6 +81,30 @@ class MigrationDataTest {
         sql("INSERT INTO outbox (toPubKeyB64, wireLine, createdAt, attempts, nextAttemptAt) VALUES ('pk', 'line', 1, 0, 0)")
         ALL_MIGRATIONS.filter { it.startVersion == 12 }.forEach { it.migrate(supportDb()) }
         assertEquals("1", scalar("SELECT COUNT(*) FROM outbox"))
+    }
+
+    @Test fun migration13to14AddsIndexesWithoutTouchingData() {
+        schemaTables(13).values.forEach(::sql)
+        sql("INSERT INTO transactions (id, counterpartyPubKeyB64, amount, memo, timestamp, status) VALUES ('tx-1', 'pk-bob', -300, 'за шард', 1000, 'CONFIRMED')")
+        sql("INSERT INTO outbox (toPubKeyB64, wireLine, createdAt, attempts, nextAttemptAt) VALUES ('pk-bob', 'MB10CHAT:v1:...', 1, 0, 0)")
+        assertTrue("до миграции индекса на transactions.timestamp быть не должно", indexNames("transactions").none { it.contains("timestamp") })
+        assertTrue("до миграции индекса на outbox.nextAttemptAt быть не должно", indexNames("outbox").none { it.contains("nextAttemptAt") })
+
+        ALL_MIGRATIONS.filter { it.startVersion == 13 }.forEach { it.migrate(supportDb()) }
+
+        assertTrue("миграция 13→14 должна создать индекс на transactions.timestamp", "index_transactions_timestamp" in indexNames("transactions"))
+        assertTrue("миграция 13→14 должна создать индекс на outbox.nextAttemptAt", "index_outbox_nextAttemptAt" in indexNames("outbox"))
+        // данные не затронуты — миграция только добавляет индексы
+        assertEquals("-300", scalar("SELECT amount FROM transactions WHERE id = 'tx-1'"))
+        assertEquals("1", scalar("SELECT COUNT(*) FROM outbox"))
+    }
+
+    @Test fun migration13to14IsIdempotentOnAlreadyMigratedDatabase() {
+        // Повторный запуск (например, после прерванной миграции) не должен падать — CREATE INDEX IF NOT EXISTS.
+        schemaTables(13).values.forEach(::sql)
+        ALL_MIGRATIONS.filter { it.startVersion == 13 }.forEach { it.migrate(supportDb()) }
+        ALL_MIGRATIONS.filter { it.startVersion == 13 }.forEach { it.migrate(supportDb()) }
+        assertEquals(1, indexNames("transactions").count { it == "index_transactions_timestamp" })
     }
 
     @Test fun exportedSchemaHasEveryTableOfTheCurrentVersion() {

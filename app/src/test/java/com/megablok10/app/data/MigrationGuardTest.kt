@@ -11,7 +11,7 @@ import org.junit.Test
  */
 class MigrationGuardTest {
     private val schemaDir = File("schemas/com.megablok10.app.data.Mb10Database")
-    private val currentVersion = 13 // держим в синхроне с @Database(version = …)
+    private val currentVersion = 14 // держим в синхроне с @Database(version = …)
 
     private fun schema(version: Int) = File(schemaDir, "$version.json").also {
         assertTrue("нет экспортированной схемы ${it.path} — соберите проект и закоммитьте app/schemas", it.exists())

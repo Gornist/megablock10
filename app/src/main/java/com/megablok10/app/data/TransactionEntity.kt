@@ -1,6 +1,7 @@
 package com.megablok10.app.data
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 object TransactionStatus {
@@ -25,7 +26,8 @@ object TransactionStatus {
  * состоялся, а не просто "деньги списались и пропали в никуда". Входящие
  * записи у получателя сразу CONFIRMED: получив деньги, отменять ему нечего.
  */
-@Entity(tableName = "transactions")
+// observeAll() сортирует по timestamp DESC на каждый снимок кошелька — без индекса это полный скан таблицы.
+@Entity(tableName = "transactions", indices = [Index("timestamp")])
 data class TransactionEntity(
     @PrimaryKey val id: String,
     val counterpartyPubKeyB64: String,
