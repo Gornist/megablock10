@@ -29,7 +29,7 @@ dbg $B DEBUG_SET --es cancelitem "$T2"; sleep 2
 check "отмена доставленного отклонена" bash -c "source '$ROOT/scripts/e2e/lib.sh'; adb_ $B logcat -d -s MB10DBG | grep -q \"cancelitem $T2 -> false\""
 
 open_chat $A Bob
-tap_text $A "Принять" >/dev/null; sleep 3
+tap_when $A "Принять" || log "$A: кнопки «Принять» нет"; sleep 3
 eq "Alice приняла: демон у неё" 1 "$(has $A "$ID")"
 eq "у Bob его больше нет" 0 "$(has $B "$ID")"
 check "чек подтвердил передачу у Bob" wait_until 30 bash -c "source '$ROOT/scripts/e2e/lib.sh'; [ \"\$(q $B \"select status from item_transfers where id='$T2'\")\" = CONFIRMED ]"
@@ -41,7 +41,7 @@ check "дашборд видит демона у Alice" wait_until 90 bash -c "s
 BEFORE=$(journal_count $B "chat.recv")
 dbg $A DEBUG_SET --es give "daemon:$ID:$PKB"
 wait_until 30 bash -c "source '$ROOT/scripts/e2e/lib.sh'; [ \$(journal_count $B chat.recv) -gt $BEFORE ]"; sleep 1
-open_chat $B Alice; tap_text $B "Принять" >/dev/null; sleep 3
+open_chat $B Alice; tap_when $B "Принять" || log "$B: кнопки «Принять» нет"; sleep 3
 eq "демон вернулся к Bob" 1 "$(has $B "$ID")"
 open_chat $A Bob; tap_text $A "Принять" >/dev/null; sleep 3   # старая карточка Bob → Alice
 eq "повторное «Принять» демона не размножило" 0 "$(has $A "$ID")"

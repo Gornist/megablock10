@@ -213,6 +213,9 @@ for n in ET.parse(sys.argv[1]).getroot().iter("node"):
   adb_ "$2" shell input tap $xy
 }
 tap_text() { dump_ui "$1"; tap_xml "$E2E_DIR/ui_$1.xml" "$1" "$2"; }   # tap_text <serial> "<подстрока text/content-desc>"
+# tap_when <serial> "<подстрока>" [сек] — ждёт, пока элемент появится, и нажимает. Экран (например, тред) открывается раньше, чем из базы
+# подгрузились карточки: одиночный tap_text в этот момент молча промахивался, и сценарий валился каскадом. Нет элемента за [сек] — код 1.
+tap_when() { wait_until "${3:-15}" tap_text "$1" "$2"; }
 screen_has() { dump_ui "$1"; grep -q "$2" "$E2E_DIR/ui_$1.xml"; }
 scroll_down() { adb_ "$1" shell input swipe 540 1700 540 700 200; }
 
