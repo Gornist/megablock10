@@ -33,6 +33,7 @@ if changed app || changed kit; then
   step "kit: unit-тесты" ./gradlew -q --console=plain :kit:test
   # verifyPaparazziDebug прогоняет ВСЕ unit-тесты приложения (testDebugUnitTest в режиме сверки скриншотов) — отдельный шаг
   # testDebugUnitTest гонял бы их второй раз. Эталоны: app/src/test/snapshots; обновить: ./gradlew recordPaparazziDebug
+  # Не cleanTestDebugUnitTest: Paparazzi считает эталоны выходом задачи, и clean их удаляет (заново без кэша — --rerun-tasks).
   step "app: unit- и скриншот-тесты" ./gradlew -q --console=plain verifyPaparazziDebug
 else skip "app: unit- и скриншот-тесты"; fi
 if changed admin-web/server; then step "server: тесты" bash -c 'cd admin-web/server && npm test --silent'; else skip "server: тесты"; fi
