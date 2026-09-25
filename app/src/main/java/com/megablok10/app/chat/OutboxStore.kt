@@ -8,7 +8,10 @@ import com.megablok10.kit.mesh.Outbox
 import com.megablok10.kit.mesh.OutboxEntry
 import com.megablok10.kit.mesh.OutboxQueue
 import com.megablok10.kit.mesh.PeerInfo
+import com.megablok10.kit.mesh.addressesOf
+import com.megablok10.kit.mesh.sendToFirstReachable
 import com.megablok10.kit.net.LineSocketClient
+import com.megablok10.kit.net.SendOutcome
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -25,8 +28,11 @@ class OutboxStore(
     lines: LineSocketClient,
     private val peers: () -> List<PeerInfo>,
 ) {
+    // Все адреса адресата по очереди (NSD, статический, подсказка сервера): одна запись может хранить порт его прошлого процесса.
     private val outbox = Outbox(queue = RoomOutboxQueue(dao), log = Mb10Log, tag = TAG) { peer, line ->
-        withContext(Dispatchers.IO) { lines.sendLine(peer.host, peer.port, line, 2000) }
+        withContext(Dispatchers.IO) {
+            sendToFirstReachable(peers().addressesOf(peer.pubKeyB64, peer)) { lines.sendLineOutcome(it.host, it.port, line, 2000) } == SendOutcome.DELIVERED
+        }
     }
 
     suspend fun enqueue(toPubKeyB64: String, wire: ChatWireMessage) {

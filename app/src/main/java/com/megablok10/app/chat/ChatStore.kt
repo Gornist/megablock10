@@ -5,6 +5,8 @@ import com.megablok10.app.data.ChatMessageEntity
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.log.Mb10Log
 import com.megablok10.kit.mesh.PeerInfo
+import com.megablok10.kit.mesh.addressesOf
+import com.megablok10.kit.mesh.sendToFirstReachable
 import com.megablok10.kit.net.LineSocketClient
 import com.megablok10.kit.net.SendOutcome
 import kotlinx.coroutines.Dispatchers
@@ -38,11 +40,16 @@ class ChatStore(
         val timestamp = System.currentTimeMillis()
         val wire = ChatWireMessage(ChatMessageType.FACTION, identity.publicKeyB64, identity.callsign, identity.faction, "", timestamp, body)
         persist(wire)
-        val recipients = peers().filter { it.faction == identity.faction }
+        // У одного игрока в списке пиров бывает несколько адресов (NSD, статический, подсказка сервера) — по одному разу на игрока.
+        val known = peers()
+        val recipients = known.filter { it.faction == identity.faction }.map { it.pubKeyB64 }.distinct()
         Mb10Log.event(TAG, "chat.send_faction", "recipients" to recipients.size, "chars" to body.length)
         val line = ChatProtocol.encode(wire)
         withContext(Dispatchers.IO) {
-            recipients.forEach { peer -> if (!lines.sendLine(peer.host, peer.port, line)) outbox.enqueue(peer.pubKeyB64, wire) }
+            recipients.forEach { key ->
+                val outcome = sendToFirstReachable(known.addressesOf(key)) { lines.sendLineOutcome(it.host, it.port, line) }
+                if (outcome != SendOutcome.DELIVERED) outbox.enqueue(key, wire)
+            }
         }
     }
 
@@ -62,7 +69,12 @@ class ChatStore(
         val timestamp = System.currentTimeMillis()
         val wire = ChatWireMessage(ChatMessageType.DM, identity.publicKeyB64, identity.callsign, identity.faction, peerPubKeyB64, timestamp, body)
         persist(wire)
-        val outcome = if (peer == null) SendOutcome.NOT_REACHED else withContext(Dispatchers.IO) { lines.sendLineOutcome(peer.host, peer.port, ChatProtocol.encode(wire)) }
+        // peer == null — адресата нет в сети (или вызывающий нарочно отправляет «вне сети»): не стучимся никуда. Иначе — по всем его
+        // адресам, начиная с выбранного: запись NSD после перезапуска его приложения может ещё хранить порт прошлого процесса.
+        val line = ChatProtocol.encode(wire)
+        val outcome = if (peer == null) SendOutcome.NOT_REACHED else withContext(Dispatchers.IO) {
+            sendToFirstReachable(peers().addressesOf(peerPubKeyB64, peer)) { lines.sendLineOutcome(it.host, it.port, line) }
+        }
         val queued = outcome != SendOutcome.DELIVERED && OutboxPolicy.isQueueable(body)
         Mb10Log.event(TAG, "chat.send_direct", "to" to Mb10Log.short(peerPubKeyB64), "peerVisible" to (peer != null), "outcome" to outcome.name, "queued" to queued, "chars" to body.length)
         // Не ушло (адресата не видно или обрыв на роуминге) — в очередь: уйдёт само, когда он появится. Деньги/предметы не queue-им, см. OutboxPolicy.
@@ -77,8 +89,10 @@ class ChatStore(
         }
 
     /** Отправить уже сохранённое сообщение ещё раз, без новой копии в своём треде. */
-    suspend fun resend(peer: PeerInfo, message: ChatWireMessage): Boolean =
-        withContext(Dispatchers.IO) { lines.sendLine(peer.host, peer.port, ChatProtocol.encode(message)) }
+    suspend fun resend(peer: PeerInfo, message: ChatWireMessage): Boolean = withContext(Dispatchers.IO) {
+        val line = ChatProtocol.encode(message)
+        sendToFirstReachable(peers().addressesOf(peer.pubKeyB64, peer)) { lines.sendLineOutcome(it.host, it.port, line) } == SendOutcome.DELIVERED
+    }
 
     /** Дослать очередь исходящих тем, кто сейчас виден (сессия зовёт при изменении списка пиров и по таймеру). */
     suspend fun flushOutbox(): Int = outbox.flush()
