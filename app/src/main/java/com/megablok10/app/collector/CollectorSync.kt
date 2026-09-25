@@ -108,10 +108,9 @@ class RoomChangeQueue(
     private val legacySeq: () -> Long,
 ) : ChangeQueue {
     /** kit ChangeRecorder зовёт это внутри транзакции вместе с [insert]: номер и запись сохраняются или откатываются вместе. */
-    override suspend fun nextSeq(): Long {
-        val last = sequences.get(CHANGE_SEQ) ?: maxOf(legacySeq(), dao.maxSeq() ?: 0L)
-        return (last + 1).also { sequences.put(SequenceEntity(CHANGE_SEQ, it)) }
-    }
+    override suspend fun nextSeq(): Long = (lastSeq() + 1).also { sequences.put(SequenceEntity(CHANGE_SEQ, it)) }
+
+    override suspend fun lastSeq(): Long = sequences.get(CHANGE_SEQ) ?: maxOf(legacySeq(), dao.maxSeq() ?: 0L)
 
     override suspend fun insert(record: ChangeRecord) = dao.insert(
         PendingChangeRecordEntity(

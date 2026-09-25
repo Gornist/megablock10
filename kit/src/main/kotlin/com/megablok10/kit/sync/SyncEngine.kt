@@ -27,6 +27,8 @@ data class SyncRequest(
     val ackIds: List<String>,
     val presence: Map<String, Any?>?,
     val failures: List<ApplyFailure> = emptyList(),
+    /** id подтверждённой правки → последний seq телефона в момент её применения: сервер ставит правку в хронологию телефона. */
+    val appliedAtSeq: Map<String, Long> = emptyMap(),
 )
 
 /**
@@ -148,7 +150,7 @@ class SyncEngine(
         }
     }
 
-    private class Replies(val acks: List<String>, val failures: List<ApplyFailure>) {
+    private class Replies(val acks: List<String>, val failures: List<ApplyFailure>, val appliedAtSeq: Map<String, Long> = emptyMap()) {
         companion object { val NONE = Replies(emptyList(), emptyList()) }
     }
 
@@ -166,7 +168,7 @@ class SyncEngine(
         val pendingCount = queue.count()
         val oldestAgeMs = queue.oldestHappenedAt()?.let { (clock.nowMs() - it).coerceAtLeast(0) } ?: 0L
         val heartbeat = if (subject != null) presence(QueueStats(pendingCount, oldestAgeMs)) else null
-        val result = transport.exchange(target, SyncRequest(batch, subject, repliesIn.acks, heartbeat, repliesIn.failures))
+        val result = transport.exchange(target, SyncRequest(batch, subject, repliesIn.acks, heartbeat, repliesIn.failures, repliesIn.appliedAtSeq))
 
         if (result == null) {
             lastSummary = "нет связи в ${hhmmss()} (очередь $pendingCount, повтор ${backoffIn + 1})"
@@ -200,6 +202,7 @@ class SyncEngine(
     private suspend fun applyMasterChanges(pending: List<ChangeRecord>): Replies {
         val acks = mutableListOf<String>()
         val failures = mutableListOf<ApplyFailure>()
+        val appliedAtSeq = mutableMapOf<String, Long>()
         for (change in pending) {
             val outcome = try {
                 hooks.applyMasterChange(change)
@@ -210,14 +213,18 @@ class SyncEngine(
                 MasterApply.Failed("${e.javaClass.simpleName}: ${e.message}", permanent = false)
             }
             when (outcome) {
-                MasterApply.Applied -> acks += change.id
+                MasterApply.Applied -> {
+                    acks += change.id
+                    // Всё, что телефон записал до этого момента (seq ≤ lastSeq), случилось до правки, остальное — после.
+                    appliedAtSeq[change.id] = queue.lastSeq()
+                }
                 is MasterApply.Failed -> {
                     log.warnEvent(tag, "master.apply_failed", "id" to change.id, "field" to change.field, "reason" to outcome.reason, "permanent" to outcome.permanent)
                     failures += ApplyFailure(change.id, outcome.reason, outcome.permanent)
                 }
             }
         }
-        return Replies(acks, failures)
+        return Replies(acks, failures, appliedAtSeq)
     }
 
     private fun backoffDelay(index: Int): Long = config.spread(config.backoffMs[index.coerceIn(0, config.backoffMs.lastIndex)])

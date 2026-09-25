@@ -168,6 +168,12 @@ const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, "master_pending", "failed_at", "INTEGER");
     },
   },
+  {
+    // Где правка мастера встала в хронологии телефона: его последний seq в момент применения (подтверждение, appliedAtSeq).
+    // По нему свёртка ставит правку между записями устройства, а не по времени прихода на сервер (см. lib/projection.ts).
+    version: 3,
+    migrate: (db) => addColumnIfMissing(db, "master_pending", "applied_at_seq", "INTEGER"),
+  },
 ];
 
 /** Версия схемы после всех миграций. */

@@ -53,6 +53,8 @@ class CollectorClient(
         if (request.subjectKeyB64 != null) body.put("subjectKeyB64", request.subjectKeyB64)
         // Подтверждение применённых правок мастера из прошлого ответа — сервер шлёт их снова, пока не получит ack.
         if (request.ackIds.isNotEmpty()) body.put("ackIds", JSONArray(request.ackIds))
+        // Где в хронологии телефона применилась каждая правка — по этому сервер ставит её между записями устройства.
+        if (request.appliedAtSeq.isNotEmpty()) body.put("appliedAtSeq", JSONObject(request.appliedAtSeq))
         // Правки, которые применить не удалось: сервер считает попытки и после нескольких (или сразу, если повтор бесполезен) показывает их мастеру.
         if (request.failures.isNotEmpty()) {
             body.put("failures", JSONArray(request.failures.map { JSONObject().put("id", it.id).put("error", it.reason).put("permanent", it.permanent) }))

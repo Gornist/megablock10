@@ -7,8 +7,14 @@ import type { CharacterSnapshot, Counters, DaemonEntry, ShardEntry } from "../ap
 
 export type { CharacterSnapshot };
 
-/** Поля записи, которые читает свёртка (подмножество StoredChangeRow). */
-export type ProjectionRow = Pick<StoredChangeRow, "subject_key" | "field" | "new_value" | "reason" | "received_at" | "seq">;
+/**
+ * Поля записи, которые читает свёртка (подмножество StoredChangeRow), и — для правок мастера — их доставка (master_pending):
+ * applied_at_seq — последний seq телефона в момент применения, delivered — подтверждена ли (null — строки доставки нет).
+ */
+export type ProjectionRow = Pick<StoredChangeRow, "subject_key" | "field" | "new_value" | "reason" | "received_at" | "seq"> & {
+  applied_at_seq?: number | null;
+  delivered?: number | null;
+};
 
 const SCALAR_FIELDS: Field[] = ["balance", "ramCapacity", "callsign", "faction"];
 
@@ -17,27 +23,57 @@ function emptyCounters(): Counters {
 }
 
 /** Только то, что читает свёртка: подписи, actor, source_ref и т.п. ей не нужны, а на десятках тысяч строк их материализация заметна. */
-const PROJECTION_COLUMNS = "subject_key, field, new_value, reason, received_at, seq";
+const PROJECTION_COLUMNS =
+  "c.subject_key AS subject_key, c.field AS field, c.new_value AS new_value, c.reason AS reason, c.received_at AS received_at, c.seq AS seq, " +
+  "mp.applied_at_seq AS applied_at_seq, mp.delivered AS delivered";
 
 /**
- * Записи для свёртки в порядке применения (игрок, received_at, seq). received_at, не seq — seq осмысленно сравним только внутри
- * одного устройства, а мастерские правки живут в отдельном (отрицательном) диапазоне; received_at общий для всех источников и
- * отражает реальный порядок поступления на сервер — то, что нужно для «последняя правка выигрывает» (§6.4 ТЗ).
+ * Записи для свёртки в порядке поступления (игрок, received_at, seq); порядок применения задаёт [inDeviceTimeline].
+ * Правки мастера, которые телефон применить не смог (failed_at), в снимок не попадают — на телефоне их нет.
  * until — состояние «на момент T» по часам сервера: ровно то, что видел бы дашборд в тот момент. key — только один игрок.
  */
 function selectRows(db: Db, until?: number, key?: string): Iterable<ProjectionRow> {
-  const clauses: string[] = [];
+  const clauses: string[] = ["mp.failed_at IS NULL"];
   const params: unknown[] = [];
   if (key !== undefined) {
-    clauses.push("subject_key = ?");
+    clauses.push("c.subject_key = ?");
     params.push(key);
   }
   if (until !== undefined) {
-    clauses.push("received_at <= ?");
+    clauses.push("c.received_at <= ?");
     params.push(until);
   }
-  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-  return db.prepare(`SELECT ${PROJECTION_COLUMNS} FROM changes ${where} ORDER BY subject_key, received_at ASC, seq ASC`).iterate(...params) as Iterable<ProjectionRow>;
+  return db
+    .prepare(
+      `SELECT ${PROJECTION_COLUMNS} FROM changes c LEFT JOIN master_pending mp ON mp.change_id = c.id
+       WHERE ${clauses.join(" AND ")} ORDER BY c.subject_key, c.received_at ASC, c.seq ASC`,
+    )
+    .iterate(...params) as Iterable<ProjectionRow>;
+}
+
+/**
+ * Записи одного игрока в порядке, в котором они случились на его телефоне. Порядок прихода на сервер (received_at) для этого
+ * не годится: телефон, бывший без связи, присылает старые записи позже правки мастера, и «последняя выигрывает» по приходу
+ * откатывала бы правку к значению, которое было до неё.
+ *
+ * Записи устройства упорядочены его seq. Правка мастера встаёт туда, где телефон её применил: после записи с seq, который он
+ * сообщил в подтверждении (applied_at_seq), — всё, что телефон записал до применения, идёт раньше неё, а после — позже.
+ * Правка, ещё не применённая телефоном, идёт последней: всё, что он прислал, записано до неё. Подтверждённая старым клиентом
+ * (без seq) или без строки доставки — после записей устройства, пришедших раньше неё (прежнее поведение).
+ */
+export function inDeviceTimeline(rows: ProjectionRow[]): ProjectionRow[] {
+  let maxDeviceSeq = 0;
+  const keyed = rows.map((row, index) => {
+    let key: number;
+    if (row.reason !== "MASTER_OVERRIDE") {
+      key = row.seq;
+      maxDeviceSeq = Math.max(maxDeviceSeq, row.seq);
+    } else if (row.applied_at_seq != null) key = row.applied_at_seq + 0.5;
+    else if (row.delivered === 0) key = Number.POSITIVE_INFINITY;
+    else key = maxDeviceSeq + 0.5;
+    return { row, key, index };
+  });
+  return keyed.sort((a, b) => a.key - b.key || a.index - b.index).map((k) => k.row);
 }
 
 /** slotsClaimed — не из changes, а из реестра арбитража (§5 ТЗ): именно slot_claims фиксирует, кто реально получил тиражный слот через сервер. */
@@ -94,7 +130,7 @@ export function projectAll(db: Db, until?: number): CharacterSnapshot[] {
   return out;
 }
 
-/** Свёртка уже упорядоченных (received_at, seq) записей одного игрока в снимок. null — записей нет. */
+/** Свёртка записей одного игрока (в порядке поступления) в снимок — в порядке его хронологии ([inDeviceTimeline]). null — записей нет. */
 function projectRows(subjectKeyB64: string, rows: ProjectionRow[], slotsClaimed: number): CharacterSnapshot | null {
   if (rows.length === 0) return null;
 
@@ -115,7 +151,7 @@ function projectRows(subjectKeyB64: string, rows: ProjectionRow[], slotsClaimed:
   const daemons = new Map<string, DaemonEntry>();
   const shards = new Map<string, ShardEntry>();
 
-  for (const row of rows) {
+  for (const row of inDeviceTimeline(rows)) {
     applyRow(snapshot, daemons, shards, row);
     // Мастерская правка/объявление — действие мастера, а не признак того, что игрок на связи.
     if (row.reason !== "MASTER_OVERRIDE") snapshot.lastSeenAt = Math.max(snapshot.lastSeenAt, row.received_at);

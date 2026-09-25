@@ -59,6 +59,7 @@ class RecordedChanges(player: TestPlayer?) : ChangeQueue {
     val recorder = ChangeRecorder(this, { signer })
 
     override suspend fun nextSeq() = ++seq
+    override suspend fun lastSeq() = seq
     override suspend fun insert(record: ChangeRecord) { rows += record }
     override suspend fun nextBatch(limit: Int) = rows.take(limit)
     override suspend fun deleteByIds(ids: List<String>) { rows.removeAll { it.id in ids } }

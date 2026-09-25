@@ -154,7 +154,9 @@ export function createChangeIngest(db: Db) {
     ORDER BY c.seq ASC
   `);
   const subjectKnownStmt = db.prepare(`SELECT 1 FROM changes WHERE subject_key = ? LIMIT 1`);
-  const markDeliveredStmt = db.prepare(`UPDATE master_pending SET delivered = 1 WHERE change_id = ? AND subject_key = ?`);
+  const markDeliveredStmt = db.prepare(
+    `UPDATE master_pending SET delivered = 1, applied_at_seq = COALESCE(?, applied_at_seq) WHERE change_id = ? AND subject_key = ?`,
+  );
   const markFailedStmt = db.prepare(`
     UPDATE master_pending
     SET attempts = attempts + 1, last_error = @error,
@@ -246,9 +248,16 @@ export function createChangeIngest(db: Db) {
     },
 
     /** Устройство подтверждает применённые правки мастера — только после этого они перестают доставляться (повтор безопасен: правки идемпотентны). */
-    acknowledge(subjectKey: string, ackIds: unknown[]) {
+    /**
+     * Правки, которые устройство применило. [appliedAtSeq] — id → последний seq телефона в момент применения: по нему свёртка
+     * ставит правку в хронологию устройства (старый клиент его не шлёт — тогда по времени прихода, как раньше).
+     */
+    acknowledge(subjectKey: string, ackIds: unknown[], appliedAtSeq: unknown = undefined) {
+      const seqs = typeof appliedAtSeq === "object" && appliedAtSeq !== null ? (appliedAtSeq as Record<string, unknown>) : {};
       for (const id of ackIds.slice(0, MAX_BATCH)) {
-        if (typeof id === "string") markDeliveredStmt.run(id, subjectKey);
+        if (typeof id !== "string") continue;
+        const seq = seqs[id];
+        markDeliveredStmt.run(Number.isSafeInteger(seq) ? seq : null, id, subjectKey);
       }
     },
 

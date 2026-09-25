@@ -15,6 +15,9 @@ interface ChangeQueue {
     /** Следующий seq: растёт монотонно на устройстве и не зависит от очереди (очередь может опустеть, нумерация — нет). */
     suspend fun nextSeq(): Long
 
+    /** Последний выданный seq (0 — ни одного): точка в хронологии телефона, где применилась правка мастера (SyncRequest.appliedAtSeq). */
+    suspend fun lastSeq(): Long
+
     /** Повторная запись с тем же id игнорируется. */
     suspend fun insert(record: ChangeRecord)
 

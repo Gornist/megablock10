@@ -20,6 +20,7 @@ class SyncEngineTest {
         val rows = mutableListOf<ChangeRecord>()
         private var seq = 0L
         override suspend fun nextSeq() = ++seq
+        override suspend fun lastSeq() = seq
         override suspend fun insert(record: ChangeRecord) { if (rows.none { it.id == record.id }) rows += record }
         override suspend fun nextBatch(limit: Int) = rows.sortedBy { it.seq }.take(limit)
         override suspend fun deleteByIds(ids: List<String>) { rows.removeAll { it.id in ids } }
@@ -247,5 +248,15 @@ class SyncEngineTest {
         assertTrue("каждая пауза в пределах 30 с ± 20 %: $gaps", gaps.all { it in 24_000L..36_000L })
         assertTrue("паузы разные, а не строго по 30 с", gaps.toSet().size > gaps.size / 2)
         assertTrue("средняя — около 30 с", gaps.average() in 28_000.0..32_000.0)
+    }
+
+    @Test fun ackCarriesTheDeviceSeqAtWhichTheMasterChangeWasApplied() = runTest {
+        val env = Env(this)
+        repeat(3) { env.queue.nextSeq() }   // телефон уже выдал номера 1..3
+        env.server.script += { SyncResponse(emptySet(), emptyMap(), listOf(rec("m1", -1))) }
+        backgroundScope.launch { env.engine.run() }; runCurrent()
+        val ack = env.server.requests[1].second
+        assertEquals(listOf("m1"), ack.ackIds)
+        assertEquals("правка встала после записи с seq 3", mapOf("m1" to 3L), ack.appliedAtSeq)
     }
 }
