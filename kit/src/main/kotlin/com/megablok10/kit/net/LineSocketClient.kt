@@ -17,8 +17,15 @@ import java.net.Socket
  * PrintWriter(OutputStream, Boolean, Charset) есть на Android только с API 33 (на Android 8–12 — NoSuchMethodError, это Error,
  * а не Exception, и он ронял приложение при первой же отправке), а сам PrintWriter глотает ошибки записи — из-за этого
  * обрыв уже после соединения выглядел как [SendOutcome.DELIVERED] вместо [SendOutcome.UNKNOWN].
+ *
+ * [onOutcome] узнаёт исход каждой отправки — по нему таблица пиров (mesh.PeerTable.reportSend) ставит рабочий адрес игрока первым,
+ * а отказавший — в конец.
  */
-class LineSocketClient(private val log: KitLog = NoopLog, private val defaultTimeoutMs: Int = 2000) {
+class LineSocketClient(
+    private val log: KitLog = NoopLog,
+    private val defaultTimeoutMs: Int = 2000,
+    private val onOutcome: (host: String, port: Int, outcome: SendOutcome) -> Unit = { _, _, _ -> },
+) {
     fun sendLine(host: String, port: Int, line: String, timeoutMs: Int = defaultTimeoutMs): Boolean =
         sendLineOutcome(host, port, line, timeoutMs) == SendOutcome.DELIVERED
 
@@ -26,7 +33,10 @@ class LineSocketClient(private val log: KitLog = NoopLog, private val defaultTim
      * Три исхода вместо двух: для денег и предметов важно отличить «не соединились — строка точно не ушла» от «ошибка уже после
      * соединения — получатель мог её получить» (см. handover).
      */
-    fun sendLineOutcome(host: String, port: Int, line: String, timeoutMs: Int = defaultTimeoutMs): SendOutcome {
+    fun sendLineOutcome(host: String, port: Int, line: String, timeoutMs: Int = defaultTimeoutMs): SendOutcome =
+        connectAndWrite(host, port, line, timeoutMs).also { onOutcome(host, port, it) }
+
+    private fun connectAndWrite(host: String, port: Int, line: String, timeoutMs: Int): SendOutcome {
         val socket = Socket()
         val started = System.currentTimeMillis()
         fun took() = System.currentTimeMillis() - started

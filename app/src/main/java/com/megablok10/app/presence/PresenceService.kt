@@ -8,6 +8,7 @@ import com.megablok10.app.log.Mb10Log
 import com.megablok10.app.identity.Identity
 import com.megablok10.kit.mesh.PeerInfo
 import com.megablok10.kit.mesh.PeerTable
+import com.megablok10.kit.net.SendOutcome
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -171,9 +172,12 @@ class PresenceService(private val app: Context, private val wifi: WifiBinder) {
 
     /**
      * Запасное обнаружение: сервер знает адреса всех, кто недавно слал heartbeat, и отдаёт их в ответе (docs/network-spec.md, §7 —
-     * «запасной путь: известный адрес сервера»). Пиры, которых NSD уже нашёл сам, не дублируются; пропавшие из списка сервера убираются.
+     * «запасной путь: известный адрес сервера»). Подсказка — ещё один адрес игрока рядом с найденными NSD; пропавшие из списка сервера убираются.
      */
     fun updateServerPeers(fromServer: List<PeerInfo>, myPubKeyB64: String) = table.updateServerPeers(fromServer, myPubKeyB64)
+
+    /** Исход отправки по адресу пира (LineSocketClient, AppGraph): порядок адресов игрока в [peers] — по нему. */
+    fun reportSend(host: String, port: Int, outcome: SendOutcome) = table.reportSend(host, port, outcome)
 
     private fun deriveServiceName(pubKeyB64: String): String =
         "mb10-" + pubKeyB64.hashCode().toUInt().toString(16)

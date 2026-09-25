@@ -9,6 +9,8 @@ import com.megablok10.app.identity.IdentityStore
 import com.megablok10.app.log.Mb10Log
 import com.megablok10.kit.crypto.Ecdsa
 import com.megablok10.kit.mesh.PeerInfo
+import com.megablok10.kit.mesh.addressesOf
+import com.megablok10.kit.mesh.sendToFirstReachable
 import com.megablok10.kit.net.LineSocketClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -102,7 +104,11 @@ class SlotClaimStore(
     private suspend fun broadcast(claim: SlotClaimEntity) {
         withContext(Dispatchers.IO) {
             val line = ClaimProtocol.encode(claim)
-            peers().forEach { peer -> lines.sendLine(peer.host, peer.port, line) }
+            // По разу на игрока (у него бывает несколько адресов — kit PeerTable): заявка идемпотентна, но лишние соединения ни к чему.
+            val known = peers()
+            known.map { it.pubKeyB64 }.distinct().forEach { key ->
+                sendToFirstReachable(known.addressesOf(key)) { lines.sendLineOutcome(it.host, it.port, line) }
+            }
         }
     }
 

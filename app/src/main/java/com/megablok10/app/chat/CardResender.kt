@@ -2,6 +2,7 @@ package com.megablok10.app.chat
 
 import com.megablok10.app.log.Mb10Log
 import com.megablok10.kit.mesh.PeerInfo
+import com.megablok10.kit.mesh.bestPerPlayer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -32,7 +33,7 @@ class CardResender(
     /** Один проход: сколько карточек ушло снова. */
     suspend fun resendOnce(): Int {
         val myKey = me() ?: return 0
-        val visible = peers().associateBy { it.pubKeyB64 }
+        val visible = peers().bestPerPlayer()
         // Только адресатам, которых сейчас видно, и только если исходное сообщение с карточкой ещё лежит в своём треде.
         val due = stuck(now() - GRACE_MS).mapNotNull { card ->
             val peer = visible[card.toPubKeyB64] ?: return@mapNotNull null

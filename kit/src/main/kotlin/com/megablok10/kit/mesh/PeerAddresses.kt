@@ -3,12 +3,13 @@ package com.megablok10.kit.mesh
 import com.megablok10.kit.net.SendOutcome
 
 /**
- * Все известные адреса игрока [pubKeyB64]: сначала [preferred] (тот, что выбрал вызывающий), затем остальные записи того же
- * ключа в списке пиров — [PeerTable] держит их по источникам (NSD, статические, подсказки сервера), и после перезапуска
- * приложения у игрока одна из записей может ещё хранить порт прошлого процесса. Одинаковые host:port — один раз.
+ * Все известные адреса игрока [pubKeyB64] в порядке списка пиров — [PeerTable] держит их по источникам (NSD, статические,
+ * подсказки сервера) и ставит лучший первым, а отказавший — в конец (после перезапуска приложения у игрока одна из записей
+ * может ещё хранить порт прошлого процесса). [preferred] — адрес, который вызывающий взял раньше (экран, очередь): его место
+ * решает таблица, а если его в списке уже нет — последним. Одинаковые host:port — один раз.
  */
 fun List<PeerInfo>.addressesOf(pubKeyB64: String, preferred: PeerInfo? = null): List<PeerInfo> =
-    (listOfNotNull(preferred) + filter { it.pubKeyB64 == pubKeyB64 }).distinctBy { it.host to it.port }
+    (filter { it.pubKeyB64 == pubKeyB64 } + listOfNotNull(preferred)).distinctBy { it.host to it.port }
 
 /**
  * Отправка по адресам по очереди. К следующему адресу — только после [SendOutcome.NOT_REACHED]: строка точно не ушла.
@@ -22,4 +23,14 @@ inline fun sendToFirstReachable(addresses: List<PeerInfo>, send: (PeerInfo) -> S
         if (outcome != SendOutcome.NOT_REACHED) return outcome
     }
     return outcome
+}
+
+/**
+ * Один адрес на игрока — лучший ([PeerTable] ставит его первым среди адресов игрока): для «кто сейчас виден» и числа игроков в
+ * сети. Не `associateBy`: тот оставляет последний адрес игрока, то есть худший.
+ */
+fun List<PeerInfo>.bestPerPlayer(): Map<String, PeerInfo> {
+    val out = LinkedHashMap<String, PeerInfo>()
+    forEach { out.putIfAbsent(it.pubKeyB64, it) }
+    return out
 }

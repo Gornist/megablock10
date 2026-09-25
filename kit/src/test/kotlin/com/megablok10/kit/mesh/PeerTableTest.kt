@@ -1,5 +1,6 @@
 package com.megablok10.kit.mesh
 
+import com.megablok10.kit.net.SendOutcome
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
@@ -37,7 +38,7 @@ class PeerTableTest {
         advanceTimeBy(5_000)
         t.found("a", peer("1", host = "10.10.0.99")) // после роуминга адрес мог смениться
         advanceTimeBy(LOST_DEBOUNCE_MS * 2)
-        assertEquals("10.10.0.99", t.peers.value.single().host)
+        assertEquals(listOf("10.10.0.99", "10.10.0.1"), t.peers.value.map { it.host }) // новый адрес первым, прежний — запасным
     }
 
     @Test fun repeatedLostRestartsTheTimer() = runTest {
@@ -86,12 +87,12 @@ class PeerTableTest {
         t.clear()
     }
 
-    @Test fun serverPeersFillGapsButNeverDuplicateNsd() = runTest {
+    @Test fun serverHintIsKeptAsAnotherAddressOfTheSamePlayer() = runTest {
         val t = PeerTable { this }
         t.found("nsd", peer("1"))
         t.updateServerPeers(listOf(peer("1", host = "10.10.1.1"), peer("2"), peer("me")), "me")
-        assertEquals(listOf("1", "2"), keys(t))
-        assertEquals("10.10.0.1", t.peers.value.first { it.pubKeyB64 == "1" }.host) // адрес NSD главнее серверного
+        assertEquals(listOf("1", "1", "2"), keys(t))
+        assertEquals("подсказка свежее записи NSD", listOf("10.10.1.1", "10.10.0.1"), t.peers.value.addressesOf("1").map { it.host })
     }
 
     @Test fun serverPeerDisappearsWhenServerNoLongerListsIt() = runTest {
@@ -107,12 +108,104 @@ class PeerTableTest {
         assertTrue(keys(t).isEmpty())
     }
 
-    @Test fun serverPeerIsDroppedOnceNsdFindsSamePlayer() = runTest {
+    @Test fun sameHintAgainDoesNotJumpAheadOfNsd() = runTest {
         val t = PeerTable { this }
         t.updateServerPeers(listOf(peer("1", host = "10.10.1.1")), "me")
         t.found("nsd", peer("1"))
-        t.updateServerPeers(listOf(peer("1", host = "10.10.1.1")), "me")
-        assertEquals(1, t.peers.value.size)
-        assertEquals("10.10.0.1", t.peers.value.single().host)
+        t.updateServerPeers(listOf(peer("1", host = "10.10.1.1")), "me") // heartbeat раз в 30 с — тот же адрес
+        assertEquals(listOf("10.10.0.1", "10.10.1.1"), t.peers.value.addressesOf("1").map { it.host })
+    }
+
+    // B2 (docs/refactor-plan.md): имя сервиса NSD у игрока одно во всех процессах — после перезапуска меняется только порт.
+    private fun firstTried(t: PeerTable, key: String): PeerInfo {
+        val tried = mutableListOf<PeerInfo>()
+        sendToFirstReachable(t.peers.value.addressesOf(key)) { tried += it; SendOutcome.DELIVERED }
+        return tried.single()
+    }
+
+    @Test fun playerRestartedWithNewPortFirstSendGoesToTheNewPort() = runTest {
+        val t = PeerTable { this }
+        t.found("mb10-a", peer("1", port = 33617))
+        t.reportSend("10.10.0.1", 33617, SendOutcome.DELIVERED) // до перезапуска всё ходило
+        t.found("mb10-a", peer("1", port = 41531))              // перезапуск: новый процесс, новый порт
+        assertEquals(41531, firstTried(t, "1").port)
+    }
+
+    @Test fun staleNsdAnswerAfterRestartDoesNotHideTheNewPort() = runTest {
+        val t = PeerTable { this }
+        t.found("mb10-a", peer("1", port = 33617))
+        t.found("mb10-a", peer("1", port = 41531))
+        t.found("mb10-a", peer("1", port = 33617)) // кэш mDNS снова отдал порт прошлого процесса
+        assertEquals(41531, firstTried(t, "1").port)
+        assertEquals(listOf(41531, 33617), t.peers.value.addressesOf("1").map { it.port })
+    }
+
+    @Test fun nsdRemembersOnlyTheLastFewAddresses() = runTest {
+        val t = PeerTable { this }
+        (1..NSD_ADDRESS_HISTORY + 2).forEach { t.found("mb10-a", peer("1", port = 4000 + it)) }
+        assertEquals(NSD_ADDRESS_HISTORY, t.peers.value.size)
+        assertEquals(4000 + NSD_ADDRESS_HISTORY + 2, t.peers.value.first().port)
+    }
+
+    @Test fun loopbackHintTakesPortFromServerAndHostFromNsd() = runTest {
+        // e2e A4, run 36179242929: сервер видит эмулятор как 127.0.0.1 — верный порт нового процесса, но бесполезный host.
+        val t = PeerTable { this }
+        t.found("mb10-a", peer("1", host = "10.0.2.16", port = 33617))
+        t.updateServerPeers(listOf(peer("1", host = "127.0.0.1", port = 41531)), "me")
+        t.found("mb10-a", peer("1", host = "10.0.2.16", port = 33617)) // устаревший ответ NSD уже после подсказки
+        assertEquals(listOf("10.0.2.16:41531", "10.0.2.16:33617"), t.peers.value.addressesOf("1").map { "${it.host}:${it.port}" })
+    }
+
+    @Test fun loopbackHintWithoutDirectAddressIsNotPublished() = runTest {
+        val t = PeerTable { this }
+        t.updateServerPeers(listOf(peer("1", host = "127.0.0.1", port = 41531)), "me")
+        assertTrue(t.peers.value.isEmpty())
+        t.found("mb10-a", peer("1", host = "10.0.2.16", port = 33617))
+        assertEquals(listOf(41531, 33617).sorted(), t.peers.value.map { it.port }.sorted())
+    }
+
+    @Test fun notReachedMovesAddressToTheEndUntilItWorksAgain() = runTest {
+        val t = PeerTable { this }
+        t.found("nsd", peer("1", port = 4000))
+        t.updateServerPeers(listOf(peer("1", host = "10.10.1.1", port = 4001)), "me")
+        assertEquals(4001, t.peers.value.first().port)
+        t.reportSend("10.10.1.1", 4001, SendOutcome.NOT_REACHED)
+        assertEquals(listOf(4000, 4001), t.peers.value.map { it.port })
+        assertTrue(t.describe(), t.describe().contains("srv!"))
+        t.updateServerPeers(listOf(peer("1", host = "10.10.1.1", port = 4001)), "me") // та же подсказка не оживляет адрес
+        assertEquals(4000, t.peers.value.first().port)
+        t.reportSend("10.10.1.1", 4001, SendOutcome.DELIVERED)
+        assertEquals(listOf(4001, 4000), t.peers.value.map { it.port })
+    }
+
+    @Test fun unknownOutcomeAndForeignAddressesChangeNothing() = runTest {
+        val t = PeerTable { this }
+        t.found("nsd", peer("1", port = 4000))
+        t.found("nsd2", peer("1", port = 4001))
+        val before = t.peers.value
+        t.reportSend("10.10.0.1", 4001, SendOutcome.UNKNOWN)
+        t.reportSend("10.0.2.2", 2517, SendOutcome.NOT_REACHED)
+        assertEquals(before, t.peers.value)
+    }
+
+    @Test fun lostServiceTakesAllItsAddresses() = runTest {
+        val t = PeerTable { this }
+        t.found("mb10-a", peer("1", port = 4000))
+        t.found("mb10-a", peer("1", port = 4001))
+        t.lost("mb10-a")
+        advanceTimeBy(LOST_DEBOUNCE_MS + 1)
+        assertTrue(keys(t).isEmpty())
+    }
+
+    @Test fun restoreKeepsWhichAddressFailed() = runTest {
+        val t = PeerTable { this }
+        t.found("nsd", peer("1", port = 4000))
+        t.found("nsd2", peer("1", port = 4001))
+        t.reportSend("10.10.0.1", 4001, SendOutcome.NOT_REACHED)
+        val saved = t.snapshot()
+        t.clear()
+        t.restore(saved)
+        assertEquals(listOf(4000, 4001), t.peers.value.map { it.port })
+        t.clear()
     }
 }

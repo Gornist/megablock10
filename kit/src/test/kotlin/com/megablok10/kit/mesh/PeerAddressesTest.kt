@@ -10,11 +10,23 @@ class PeerAddressesTest {
     private val static = PeerInfo("alice", "Alice", "Neon", "10.0.2.2", 21277)
     private val bob = PeerInfo("bob", "Bob", "Rats", "10.0.2.17", 36675)
 
-    @Test fun addressesOfPutsPreferredFirstAndSkipsOthersAndDuplicates() {
+    @Test fun addressesOfKeepsTableOrderAndSkipsOthersAndDuplicates() {
         val peers = listOf(staleNsd, bob, static, staleNsd.copy(callsign = "Alice (дубль)"))
-        assertEquals(listOf(static, staleNsd), peers.addressesOf("alice", preferred = static))
         assertEquals(listOf(staleNsd, static), peers.addressesOf("alice"))
+        assertEquals("порядок решает таблица, а не вызывающий", listOf(staleNsd, static), peers.addressesOf("alice", preferred = static))
         assertEquals(emptyList<PeerInfo>(), peers.addressesOf("carol"))
+    }
+
+    @Test fun preferredThatLeftTheTableIsTriedLast() {
+        val gone = static.copy(port = 1)
+        assertEquals(listOf(staleNsd, static, gone), listOf(staleNsd, static).addressesOf("alice", preferred = gone))
+        assertEquals(listOf(gone), emptyList<PeerInfo>().addressesOf("alice", preferred = gone))
+    }
+
+    @Test fun bestPerPlayerKeepsTheFirstAddressOfEachPlayer() {
+        val best = listOf(static, staleNsd, bob).bestPerPlayer()
+        assertEquals(listOf("alice", "bob"), best.keys.toList())
+        assertEquals(static, best["alice"])
     }
 
     @Test fun notReachedMovesOnToTheNextAddress() {

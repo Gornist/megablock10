@@ -9,6 +9,7 @@ import com.megablok10.kit.mesh.OutboxEntry
 import com.megablok10.kit.mesh.OutboxQueue
 import com.megablok10.kit.mesh.PeerInfo
 import com.megablok10.kit.mesh.addressesOf
+import com.megablok10.kit.mesh.bestPerPlayer
 import com.megablok10.kit.mesh.sendToFirstReachable
 import com.megablok10.kit.net.LineSocketClient
 import com.megablok10.kit.net.SendOutcome
@@ -43,7 +44,7 @@ class OutboxStore(
     suspend fun pending(): Int = outbox.pending()
 
     /** Пробует отправить всё, что пора. Возвращает, сколько сообщений ушло. Параллельные вызовы не пересекаются. */
-    suspend fun flush(): Int = outbox.flush(peers().associateBy { it.pubKeyB64 })
+    suspend fun flush(): Int = outbox.flush(peers().bestPerPlayer())
 }
 
 /** Таблица Room `outbox` как хранилище kit-очереди. Колонки те же, что были (миграция не нужна): wireLine — строка протокола целиком. */

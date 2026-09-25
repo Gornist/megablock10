@@ -50,6 +50,7 @@ import com.megablok10.app.ui.theme.AppSnack
 import com.megablok10.app.ui.LocalAppGraph
 import com.megablok10.app.ui.appViewModel
 import com.megablok10.kit.mesh.PeerInfo
+import com.megablok10.kit.mesh.bestPerPlayer
 import com.megablok10.app.ui.nav.AppTab
 import com.megablok10.app.ui.nav.MainScaffold
 import com.megablok10.app.ui.screens.AnnouncementDialogHost
@@ -189,7 +190,7 @@ fun AppRoot() {
         Box(Modifier.fillMaxSize()) {
             MainScaffold(
                 identity = currentIdentity,
-                onlineNodes = onlinePeers.size,
+                onlineNodes = onlinePeers.bestPerPlayer().size, // у игрока бывает несколько адресов
                 selectedTab = tab,
                 onSelectTab = { tab = it },
                 onOpenProfile = { showProfile = true },

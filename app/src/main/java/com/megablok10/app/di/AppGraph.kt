@@ -81,7 +81,8 @@ class AppGraph(private val app: Application) {
     /** Все транзакции базы — через него: изменение данных и запись о нём для мастера фиксируются одним коммитом. */
     val transactor: Transactor = RoomTransactor(db)
     val notices: PlayerNotices = AppSnack
-    val lines = LineSocketClient(Mb10Log)
+    // Исход каждой отправки — таблице пиров: рабочий адрес игрока первым, отказавший — в конец (kit PeerTable, B2).
+    val lines = LineSocketClient(Mb10Log) { host, port, outcome -> presence.reportSend(host, port, outcome) }
 
     // Личность и настройки
     val identity = IdentityStore(prefs(IdentityStore.PREFS))
