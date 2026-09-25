@@ -20,10 +20,6 @@ declare -a TIMES; FAIL=0
 step() { # step "имя" команда...
   local name=$1; shift; local t0=$(date +%s) log="$LOGS/${name// /_}.log"
   if "$@" > "$log" 2>&1; then r="ок"
-  # Сбой подключения Java-агента (ByteBuddy, Paparazzi) — не провал тестов, а сбой запуска JVM: один повтор. Любая другая ошибка — провал.
-  # Агент грузится при старте JVM (-javaagent, app/build.gradle.kts), так что сюда попадать не должно; повтор — страховка.
-  elif grep -rqsE "Could not self-attach|Error during attachment using|AttachNotSupportedException" "$log" app/build/test-results/ \
-      && "$@" > "$log" 2>&1; then r="ок (со второй попытки: сбой подключения агента)"
   else r="ПРОВАЛ (см. $log)"; FAIL=1; fi
   TIMES+=("$name: $r, $(( $(date +%s) - t0 )) с")
 }

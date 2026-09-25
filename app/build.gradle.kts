@@ -139,11 +139,6 @@ for (variant in listOf("Debug", "Release")) {
             rootProject.fileTree("scripts/e2e") { include("**/*.sh", "log-contract.tsv") },
             fileTree("src/main/java"), fileTree("src/debug/java"), rootProject.fileTree("kit/src/main/kotlin"),
         ).withPathSensitivity(PathSensitivity.RELATIVE).withPropertyName("logContractFiles")
-        // SQLite для Room под Robolectric — прежний режим (sqlite4java), а не нативный: нативный грузит librobolectric-nativeruntime —
-        // кусок Android runtime со своей Skia, и на macOS её слабые C++-символы склеивались с такими же в layoutlib Paparazzi в той же
-        // JVM (SIGSEGV в SkiaHostPipeline::setSurface). Причину сняло разделение JVM выше, но на macOS это не проверено — режим
-        // оставлен, пока владелец не прогонит на Mac scripts/check.sh --all без него (docs/refactor-plan.md, A1). Стережёт SqliteModeTest.
-        systemProperty("robolectric.sqliteMode", "LEGACY")
     }
     tasks.withType<Test>().matching { it.name == unitTest }.configureEach {
         dependsOn(noScreenshots)
