@@ -14,6 +14,7 @@ import com.megablok10.app.breach.FinishBreach
 import com.megablok10.app.breach.SecAlertStore
 import com.megablok10.app.breach.SlotClaimStore
 import com.megablok10.app.call.CallManager
+import com.megablok10.app.chat.CardResender
 import com.megablok10.app.chat.ChatStore
 import com.megablok10.app.chat.MeshSession
 import com.megablok10.app.chat.OutboxStore
@@ -115,6 +116,14 @@ class AppGraph(private val app: Application) {
     val items = ItemTransferStore(db, identity, shards, daemons, transactor)
     val ramUpgrades = RamUpgradeStore(db.consumedTokenDao(), identity, changes, transactor)
     val receipts = ReceiptConfirmer(wallet, items)
+    /** Карточки, доставленные, но без чека получателя, — снова адресату, когда он виден (фоновая задача сетевой сессии). */
+    val cardResender = CardResender(
+        stuck = { before -> wallet.deliveredUnconfirmed(before) + items.deliveredUnconfirmed(before) },
+        originalMessage = chat::outgoingCard,
+        send = chat::resend,
+        peers = peers,
+        me = { identity.current?.publicKeyB64 },
+    )
 
     // Взлом
     val collectorClient = CollectorClient()
@@ -139,6 +148,7 @@ class AppGraph(private val app: Application) {
         onIncompatible = IncompatibleVersionReporter(WireVersion.protocols, WireVersion.INCOMPATIBLE_MESSAGE) { notices.show(it) }::report,
         sessionTasks = listOf(
             { scope -> secAlerts.start(scope) },
+            { scope -> cardResender.start(scope) },
             { scope -> DeviceDiagnostics.startSnapshots(app, scope, this) },
         ),
     )

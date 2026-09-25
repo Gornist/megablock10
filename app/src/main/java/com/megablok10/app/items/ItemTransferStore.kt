@@ -4,6 +4,7 @@ import com.megablok10.app.breach.Daemon
 import com.megablok10.app.breach.DaemonStore
 import com.megablok10.app.breach.LootCodec
 import com.megablok10.app.breach.MockBreach
+import com.megablok10.app.chat.StuckCard
 import com.megablok10.app.collector.ChangeReason
 import com.megablok10.app.data.ItemTransferDao
 import com.megablok10.app.data.ItemTransferEntity
@@ -94,6 +95,10 @@ class ItemTransferStore(
         Mb10Log.event(TAG, "item.cancel", "id" to id, "result" to "отменена, предмет возвращён", "kind" to record.kind)
         true
     }
+
+    /** Передачи, доставленные адресату, но без его чека, созданные раньше [before] — их карточки переотправляет chat.CardResender. */
+    suspend fun deliveredUnconfirmed(before: Long): List<StuckCard> =
+        dao.deliveredUnconfirmed(before).map { StuckCard(it.id, it.counterpartyPubKeyB64) }
 
     /** Чек получателя фиксирует передачу — те же проверки, что у денег: чек подписал именно адресат этой передачи. */
     override suspend fun verifyAndConfirmReceipt(id: String, receipt: Mb10Qr.Receipt): Boolean =

@@ -8,6 +8,10 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TransactionDao {
+    /** Исходящие переводы, доставленные адресату, но без его чека, — созданные раньше [before] (см. chat.CardResender). */
+    @Query("SELECT * FROM transactions WHERE status = 'DELIVERED' AND amount < 0 AND timestamp < :before")
+    suspend fun deliveredUnconfirmed(before: Long): List<TransactionEntity>
+
     @Query("SELECT * FROM transactions ORDER BY timestamp DESC")
     fun observeAll(): Flow<List<TransactionEntity>>
 

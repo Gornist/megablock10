@@ -7,6 +7,10 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ChatMessageDao {
+    /** Своё сообщение с карточкой перевода или предмета [transferId] адресату [to] — ровно как оно ушло (см. chat.CardResender). */
+    @Query("SELECT * FROM chat_messages WHERE type = 'DM' AND fromPubKeyB64 = :me AND toPubKeyB64 = :to AND body LIKE '%:' || :transferId || ':%' ORDER BY timestamp ASC LIMIT 1")
+    suspend fun outgoingCard(me: String, to: String, transferId: String): ChatMessageEntity?
+
     @Insert
     suspend fun insert(message: ChatMessageEntity): Long
 

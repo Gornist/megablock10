@@ -70,6 +70,16 @@ class ChatStore(
         return outcome
     }
 
+    /** Своё сообщение с карточкой [transferId] адресату [to] — то самое, что ушло (то же время и текст: у получателя повтор — дубль). */
+    suspend fun outgoingCard(me: String, to: String, transferId: String): ChatWireMessage? =
+        dao.outgoingCard(me, to, transferId)?.let {
+            ChatWireMessage(ChatMessageType.valueOf(it.type), it.fromPubKeyB64, it.fromCallsign, it.faction, it.toPubKeyB64, it.timestamp, it.body)
+        }
+
+    /** Отправить уже сохранённое сообщение ещё раз, без новой копии в своём треде. */
+    suspend fun resend(peer: PeerInfo, message: ChatWireMessage): Boolean =
+        withContext(Dispatchers.IO) { lines.sendLine(peer.host, peer.port, ChatProtocol.encode(message)) }
+
     /** Дослать очередь исходящих тем, кто сейчас виден (сессия зовёт при изменении списка пиров и по таймеру). */
     suspend fun flushOutbox(): Int = outbox.flush()
 

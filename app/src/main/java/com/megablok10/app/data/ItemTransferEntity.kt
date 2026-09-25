@@ -29,6 +29,10 @@ data class ItemTransferEntity(
 
 @Dao
 interface ItemTransferDao {
+    /** Исходящие передачи, доставленные адресату, но без его чека, — созданные раньше [before] (см. chat.CardResender). */
+    @Query("SELECT * FROM item_transfers WHERE status = 'DELIVERED' AND outgoing = 1 AND timestamp < :before")
+    suspend fun deliveredUnconfirmed(before: Long): List<ItemTransferEntity>
+
     @Query("SELECT * FROM item_transfers ORDER BY timestamp DESC")
     fun observeAll(): Flow<List<ItemTransferEntity>>
 

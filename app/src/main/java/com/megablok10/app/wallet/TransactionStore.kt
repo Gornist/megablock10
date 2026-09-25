@@ -1,6 +1,7 @@
 package com.megablok10.app.wallet
 
 import com.megablok10.app.collector.ChangeField
+import com.megablok10.app.chat.StuckCard
 import com.megablok10.app.collector.ChangeReason
 import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.data.TransactionDao
@@ -120,6 +121,10 @@ class TransactionStore(
      * уже нельзя. Именно эта проверка и не даёт "нажать отменить и оставить
      * деньги себе" после того, как получатель их реально получил.
      */
+    /** Переводы, доставленные адресату, но без его чека, созданные раньше [before] — их карточки переотправляет chat.CardResender. */
+    suspend fun deliveredUnconfirmed(before: Long): List<StuckCard> =
+        dao.deliveredUnconfirmed(before).map { StuckCard(it.id, it.counterpartyPubKeyB64) }
+
     override suspend fun verifyAndConfirmReceipt(pendingTxId: String, receipt: Mb10Qr.Receipt): Boolean =
         handover.confirmByReceipt(pendingTxId, receipt.id, receipt.receiverPubKeyB64, receipt.signatureB64)
 
