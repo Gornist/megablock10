@@ -1,0 +1,19 @@
+# Контракт журнала: строки, которые стенд e2e (scripts/e2e) ищет в выводе приложения. Сверяет с кодом LogContractTest (unit-тест app):
+# переименовали событие или строку в коде — тест падает сразу, а не стенд через 17 минут (docs/refactor-plan.md, A2).
+# Формат: <тег logcat><TAB><неизменная часть строки>. Тег «*» — журнал Mb10Log (journal_cat/journal_count), тег не важен.
+# Тест требует: тег объявлен строкой в том же файле исходников, где и строка; строка встречается в scripts/e2e; каждый тег
+# из «logcat … -s <тег>» в scripts/e2e есть здесь. Новая проверка стенда по выводу приложения — сначала строка сюда.
+MB10DBG	port=
+MB10DBG	pay id=
+MB10DBG	pay rejected
+MB10DBG	paycard=
+MB10DBG	card=
+MB10DBG	recv ->
+MB10DBG	give id=
+MB10DBG	cancelitem
+MB10DBG	cancel
+MB10DBG	set applied
+CollectorClient	sync.ok
+CollectorClient	sync.unreachable
+WifiBinder	привязано к Wi-Fi
+*	chat.recv

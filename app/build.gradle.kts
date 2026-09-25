@@ -134,6 +134,11 @@ for (variant in listOf("Debug", "Release")) {
         testClassesDirs = files(Callable { base.get().testClassesDirs })
         classpath = files(Callable { base.get().classpath })
         filter.excludeTestsMatching(screenshotTests)
+        // log/LogContractTest читает стенд e2e и исходники как текст: без этих входов правка скрипта оставляла бы задачу up-to-date.
+        inputs.files(
+            rootProject.fileTree("scripts/e2e") { include("**/*.sh", "log-contract.tsv") },
+            fileTree("src/main/java"), fileTree("src/debug/java"), rootProject.fileTree("kit/src/main/kotlin"),
+        ).withPathSensitivity(PathSensitivity.RELATIVE).withPropertyName("logContractFiles")
         // SQLite для Room под Robolectric — прежний режим (sqlite4java), а не нативный: нативный грузит librobolectric-nativeruntime —
         // кусок Android runtime со своей Skia, и на macOS её слабые C++-символы склеивались с такими же в layoutlib Paparazzi в той же
         // JVM (SIGSEGV в SkiaHostPipeline::setSurface). Причину сняло разделение JVM выше, но на macOS это не проверено — режим
