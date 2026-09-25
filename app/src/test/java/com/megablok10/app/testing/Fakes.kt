@@ -25,6 +25,8 @@ import com.megablok10.kit.crypto.Ecdsa
 import com.megablok10.kit.handover.Handover
 import com.megablok10.kit.handover.HandoverRules
 import com.megablok10.kit.handover.OutgoingJournal
+import com.megablok10.kit.mesh.OnlinePlayer
+import com.megablok10.kit.mesh.PeerDirectory
 import com.megablok10.kit.mesh.PeerInfo
 import com.megablok10.kit.net.SendOutcome
 import com.megablok10.kit.sync.ChangeQueue
@@ -40,7 +42,7 @@ class TestPlayer(val callsign: String, val faction: String = "Малстром")
     val keys: KeyPair = Ecdsa.generateKeyPair()
     val key: String = Ecdsa.encodeKey(keys.public)
     val identity = Identity(key, callsign, faction)
-    val peer = PeerInfo(key, callsign, faction, "10.0.0.${callsign.length}", 40_000 + callsign.length)
+    val peer = OnlinePlayer(key, callsign, faction)
 
     fun sign(data: ByteArray): String = Ecdsa.sign(keys.private, data)
     fun sign(data: String): String = sign(data.toByteArray(Charsets.UTF_8))
@@ -67,11 +69,11 @@ class RecordedChanges(player: TestPlayer?) : ChangeQueue {
     override suspend fun oldestHappenedAt() = rows.minOfOrNull { it.happenedAt }
 }
 
-/** Отправленное личное сообщение: кому, по какому адресу (null — адресат не был виден) и что. */
-data class SentDirect(val to: String, val peer: PeerInfo?, val body: String)
+/** Отправленное личное сообщение: кому, был ли адресат виден (null — нет) и что. */
+data class SentDirect(val to: String, val peer: OnlinePlayer?, val body: String)
 
 /** Личка в памяти: кто «в сети» — [online], исход отправки видимому адресату — [outcome]. */
-class FakeMessenger(vararg online: PeerInfo) : DirectMessenger {
+class FakeMessenger(vararg online: OnlinePlayer) : DirectMessenger {
     val online = online.toMutableList()
     var outcome = SendOutcome.DELIVERED
     val sent = mutableListOf<SentDirect>()
@@ -81,10 +83,10 @@ class FakeMessenger(vararg online: PeerInfo) : DirectMessenger {
 
     override fun onlinePeer(pubKeyB64: String) = online.find { it.pubKeyB64 == pubKeyB64 }
 
-    override suspend fun sendDirect(identity: Identity, peerPubKeyB64: String, peer: PeerInfo?, body: String) =
+    override suspend fun sendDirect(identity: Identity, peerPubKeyB64: String, peer: OnlinePlayer?, body: String) =
         sendDirectOutcome(identity, peerPubKeyB64, peer, body) == SendOutcome.DELIVERED
 
-    override suspend fun sendDirectOutcome(identity: Identity, peerPubKeyB64: String, peer: PeerInfo?, body: String): SendOutcome {
+    override suspend fun sendDirectOutcome(identity: Identity, peerPubKeyB64: String, peer: OnlinePlayer?, body: String): SendOutcome {
         onSend()
         sent += SentDirect(peerPubKeyB64, peer, body)
         return if (peer == null) SendOutcome.NOT_REACHED else outcome
@@ -299,11 +301,18 @@ class FakeChatInbox : ChatInbox {
 class FakeCallControls(initial: CallUiState = CallUiState()) : CallControls {
     override val state = MutableStateFlow(initial)
     val log = MutableStateFlow<List<CallLogEntity>>(emptyList())
-    val started = mutableListOf<PeerInfo>()
+    val started = mutableListOf<OnlinePlayer>()
     var accepted = 0
     var ended = 0
     override fun observeLog(): Flow<List<CallLogEntity>> = log
-    override fun startOutgoingCall(identity: Identity, peer: PeerInfo) { started += peer }
+    override fun startOutgoingCall(identity: Identity, peer: OnlinePlayer) { started += peer }
     override fun accept(identity: Identity) { accepted++ }
     override fun endCall(identity: Identity) { ended++ }
 }
+
+/** Справочник пиров без сети: видно никого (или [online]), отправка — [outcome] на любой адрес. */
+fun testPeerDirectory(vararg online: OnlinePlayer, outcome: SendOutcome = SendOutcome.NOT_REACHED) =
+    PeerDirectory(
+        { online.map { PeerInfo(it.pubKeyB64, it.callsign, it.faction, "10.0.0.1", 40_000) } },
+        MutableStateFlow(online.toList()),
+    ) { _, _, _ -> outcome }

@@ -56,6 +56,9 @@ class PeerTable(private val log: KitLog = NoopLog, private val scopeProvider: ()
     private var published: List<Candidate> = emptyList()
     private val _peers = MutableStateFlow<List<PeerInfo>>(emptyList())
     val peers: StateFlow<List<PeerInfo>> = _peers.asStateFlow()
+    private val _players = MutableStateFlow<List<OnlinePlayer>>(emptyList())
+    /** Видимые игроки без адресов, по одному на ключ (подпись и фракция — с лучшего адреса): для экранов через [PeerDirectory]. */
+    val players: StateFlow<List<OnlinePlayer>> = _players.asStateFlow()
 
     private fun addrKey(p: PeerInfo) = "${p.pubKeyB64}@${p.host}:${p.port}"
 
@@ -92,6 +95,7 @@ class PeerTable(private val log: KitLog = NoopLog, private val scopeProvider: ()
         )
         health.keys.retainAll(found.keys)
         _peers.value = published.map { it.peer }
+        _players.value = _peers.value.bestPerPlayer().values.map { OnlinePlayer(it.pubKeyB64, it.callsign, it.faction) }
     }
 
     private fun lanHostsOf(pubKeyB64: String): List<String> =

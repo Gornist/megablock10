@@ -6,6 +6,7 @@ import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
 import com.megablok10.app.log.Mb10Log
 import com.megablok10.app.identity.Identity
+import com.megablok10.kit.mesh.OnlinePlayer
 import com.megablok10.kit.mesh.PeerInfo
 import com.megablok10.kit.mesh.PeerTable
 import com.megablok10.kit.net.SendOutcome
@@ -40,6 +41,7 @@ class PresenceService(private val app: Context, private val wifi: WifiBinder) {
     // Таблица пиров (дебаунс потери, отсрочка после смены сети, серверные подсказки) — чистая логика в kit PeerTable, покрыта JVM-тестами.
     private val table = PeerTable(Mb10Log) { scope }
     val peers: StateFlow<List<PeerInfo>> get() = table.peers
+    val players: StateFlow<List<OnlinePlayer>> get() = table.players
 
     /** Список видимых пиров одной строкой — для снимка состояния в журнале. */
     fun describePeers(): String = table.describe()

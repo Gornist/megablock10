@@ -8,7 +8,7 @@ import com.megablok10.app.data.CallLogEntity
 import com.megablok10.app.identity.ContactDirectory
 import com.megablok10.app.identity.ContactsView
 import com.megablok10.app.identity.Identity
-import com.megablok10.kit.mesh.PeerInfo
+import com.megablok10.kit.mesh.OnlinePlayer
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -26,7 +26,7 @@ class CallsViewModel(
     val log: StateFlow<List<CallLogEntity>> = calls.observeLog().stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_MS), emptyList())
     val contacts: StateFlow<ContactsView> = directory.view.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_MS), ContactsView())
 
-    fun start(peer: PeerInfo) { identity.value?.let { calls.startOutgoingCall(it, peer) } }
+    fun start(peer: OnlinePlayer) { identity.value?.let { calls.startOutgoingCall(it, peer) } }
 
     fun accept() { identity.value?.let { calls.accept(it) } }
 

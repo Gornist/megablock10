@@ -28,7 +28,7 @@ import androidx.compose.ui.unit.sp
 import com.megablok10.app.data.CallDirection
 import com.megablok10.app.data.CallLogEntity
 import com.megablok10.app.data.CallOutcome
-import com.megablok10.kit.mesh.PeerInfo
+import com.megablok10.kit.mesh.OnlinePlayer
 import com.megablok10.app.di.callsViewModel
 import com.megablok10.app.identity.ContactsView
 import com.megablok10.app.ui.appViewModel
@@ -51,7 +51,7 @@ import java.util.Locale
  * строке лога перезванивает тому же собеседнику, если он сейчас в сети.
  */
 @Composable
-fun CallsScreen(onCallPeer: (PeerInfo) -> Unit) {
+fun CallsScreen(onCallPeer: (OnlinePlayer) -> Unit) {
     val calls = appViewModel { callsViewModel() }
     val callLog by calls.log.collectAsStateWithLifecycle()
     val directory by calls.contacts.collectAsStateWithLifecycle()

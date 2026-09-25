@@ -51,6 +51,7 @@ import com.megablok10.app.wallet.AcceptPayment
 import com.megablok10.app.wallet.SendPayment
 import com.megablok10.app.wallet.TransactionStore
 import com.megablok10.kit.net.IncompatibleVersionReporter
+import com.megablok10.kit.mesh.PeerDirectory
 import com.megablok10.kit.net.LineSocketClient
 import com.megablok10.kit.sync.ChangeRecorder
 import com.megablok10.kit.sync.CollectorEndpoint
@@ -105,11 +106,12 @@ class AppGraph(private val app: Application) {
     // Сеть на площадке
     val wifi = WifiBinder(app)
     val presence = PresenceService(app, wifi)
-    private val peers = { presence.peers.value }
-    val outbox = OutboxStore(db.outboxDao(), lines, peers)
-    val chat = ChatStore(db.chatMessageDao(), outbox, lines, peers)
-    val calls = CallManager(app, peers, db.callLogDao(), lines)
-    val directory = ContactDirectory(contacts, presence.peers)
+    /** Одно место адресации пиров (B1): снаружи — игроки и «отправь игроку», адреса и их перебор — внутри (kit PeerDirectory). */
+    val peerDirectory = PeerDirectory({ presence.peers.value }, presence.players) { host, port, line -> lines.sendLineOutcome(host, port, line) }
+    val outbox = OutboxStore(db.outboxDao(), peerDirectory)
+    val chat = ChatStore(db.chatMessageDao(), outbox, peerDirectory)
+    val calls = CallManager(app, peerDirectory, db.callLogDao())
+    val directory = ContactDirectory(contacts, peerDirectory.online)
 
     // Деньги и предметы
     val wallet = TransactionStore(db, identity, changes, transactor)
@@ -123,15 +125,15 @@ class AppGraph(private val app: Application) {
         stuck = { before -> wallet.deliveredUnconfirmed(before) + items.deliveredUnconfirmed(before) },
         originalMessage = chat::outgoingCard,
         send = chat::resend,
-        peers = peers,
+        online = peerDirectory::isOnline,
         me = { identity.current?.publicKeyB64 },
     )
 
     // Взлом
     val collectorClient = CollectorClient()
     val cooldowns = ContainerCooldownStore(db.containerBreachDao())
-    val slotClaims = SlotClaimStore(db.slotClaimDao(), identity, collectorSettings, collectorClient, peers, lines)
-    val secAlerts = SecAlertStore(db.pendingAlertDao(), chat, changes, presence.peers)
+    val slotClaims = SlotClaimStore(db.slotClaimDao(), identity, collectorSettings, collectorClient, peerDirectory)
+    val secAlerts = SecAlertStore(db.pendingAlertDao(), chat, changes, peerDirectory.online)
     val rewards = DaemonRewards(wallet, shards, daemons, slotClaims, collectorSettings)
 
     // Сценарии (use cases): потоки из нескольких шагов, одинаковые для интерфейса и стенда e2e (DebugQrReceiver)

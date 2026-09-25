@@ -72,10 +72,14 @@
 
 ## Этап B — сетевой код (до проверки на телефонах: проверять уже итоговый код)
 
-**B1. `PeerDirectory` вместо сырого списка пиров.** Одно место для адресации: `addresses(key)`, `send(key, line): SendOutcome`
+~~**B1. `PeerDirectory` вместо сырого списка пиров.**~~ Одно место для адресации: `addresses(key)`, `send(key, line): SendOutcome`
 (перебор адресов — уже есть `addressesOf`/`sendToFirstReachable`), `online(): List<Peer>` без дублей для экранов. Перевести
 `ChatStore`, `OutboxStore`, `CallManager` (сейчас берёт один адрес), `ContactDirectory`, `SecAlertStore`.
 *Готово, когда:* `PeerInfo` с host/port не выходит за пределы `PeerDirectory`/`MeshSession`; `grep "peers().find"` пуст.
+*Сделано (kit `PeerDirectory`, `OnlinePlayer`):* ~~снаружи — `online` (игроки без адреса, по одному на ключ), `send(ключ, строка)`,
+`sendToAll`, `isOnline`, `describe` (для журнала)~~. Переведены `ChatStore`, `OutboxStore` (kit `Outbox` — по ключу), `CardResender`,
+`SlotClaimStore`, `CallManager` (сигналы звонка раньше брали один адрес), `ContactDirectory`, `SecAlertStore`, ViewModel и экраны.
+`PeerInfo` в приложении — только в `presence/` (источник адресов) и `collector/` (подсказки сервера); `grep "peers().find"` пуст.
 
 ~~**B2. Таблица пиров — по ключу игрока.**~~ (`65b87e1`) Записи хранить по `pubKeyB64` со списком адресов и временем; свежий `peer.found`
 того же ключа вытесняет адрес прошлого процесса; удачная отправка поднимает адрес вверх, `NOT_REACHED` — опускает.

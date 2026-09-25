@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.combine
 
 fun AppGraph.sessionViewModel() = SessionViewModel(
     identityStore = identity,
-    peers = presence.peers,
+    peers = peerDirectory.online,
     provisioning = provisioning::apply,
     create = createCharacter,
     reset = { sessionReset.perform(it) },
@@ -58,4 +58,4 @@ fun AppGraph.cyberdeckViewModel() =
 fun AppGraph.breachViewModel() = BreachViewModel(identity.state, checkBreachAccess, finishBreach, processScope)
 
 fun AppGraph.settingsViewModel() =
-    SettingsViewModel(collectorSettings, observePendingChanges(), presence.peers, { collectorSync.wake() }, ::deviceReport)
+    SettingsViewModel(collectorSettings, observePendingChanges(), peerDirectory.online, { collectorSync.wake() }, ::deviceReport)

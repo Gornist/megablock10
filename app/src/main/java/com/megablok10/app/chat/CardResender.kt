@@ -1,8 +1,6 @@
 package com.megablok10.app.chat
 
 import com.megablok10.app.log.Mb10Log
-import com.megablok10.kit.mesh.PeerInfo
-import com.megablok10.kit.mesh.bestPerPlayer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -25,22 +23,21 @@ data class StuckCard(val id: String, val toPubKeyB64: String)
 class CardResender(
     private val stuck: suspend (createdBefore: Long) -> List<StuckCard>,
     private val originalMessage: suspend (me: String, to: String, transferId: String) -> ChatWireMessage?,
-    private val send: suspend (PeerInfo, ChatWireMessage) -> Boolean,
-    private val peers: () -> List<PeerInfo>,
+    private val send: suspend (toPubKeyB64: String, ChatWireMessage) -> Boolean,
+    private val online: (pubKeyB64: String) -> Boolean,
     private val me: () -> String?,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
     /** Один проход: сколько карточек ушло снова. */
     suspend fun resendOnce(): Int {
         val myKey = me() ?: return 0
-        val visible = peers().bestPerPlayer()
         // Только адресатам, которых сейчас видно, и только если исходное сообщение с карточкой ещё лежит в своём треде.
         val due = stuck(now() - GRACE_MS).mapNotNull { card ->
-            val peer = visible[card.toPubKeyB64] ?: return@mapNotNull null
-            originalMessage(myKey, card.toPubKeyB64, card.id)?.let { Triple(card, peer, it) }
+            if (!online(card.toPubKeyB64)) return@mapNotNull null
+            originalMessage(myKey, card.toPubKeyB64, card.id)?.let { card to it }
         }
-        return due.count { (card, peer, message) ->
-            send(peer, message).also { ok -> Mb10Log.event(TAG, "card.resend", "id" to card.id, "to" to Mb10Log.short(card.toPubKeyB64), "ok" to ok) }
+        return due.count { (card, message) ->
+            send(card.toPubKeyB64, message).also { ok -> Mb10Log.event(TAG, "card.resend", "id" to card.id, "to" to Mb10Log.short(card.toPubKeyB64), "ok" to ok) }
         }
     }
 

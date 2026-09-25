@@ -6,8 +6,9 @@ import com.megablok10.app.data.CallLogDao
 import com.megablok10.app.data.CallLogEntity
 import com.megablok10.app.data.CallOutcome
 import com.megablok10.app.identity.Identity
-import com.megablok10.kit.mesh.PeerInfo
-import com.megablok10.kit.net.LineSocketClient
+import com.megablok10.kit.mesh.OnlinePlayer
+import com.megablok10.kit.mesh.PeerDirectory
+import com.megablok10.kit.net.SendOutcome
 import com.megablok10.app.sound.SoundPlayer
 import com.megablok10.app.log.Mb10Log
 import java.util.UUID
@@ -50,9 +51,9 @@ private val ICE_CANDIDATE_PATTERN = Regex("""candidate:\S+ \d+ (\S+) \d+ (\S+) \
 
 class CallManager(
     private val app: Context,
-    private val peers: () -> List<PeerInfo>,
+    /** Сигналы звонка — игроку по ключу, адрес и перебор адресов — в PeerDirectory (раньше брался один адрес, B1). */
+    private val peers: PeerDirectory,
     private val callLog: CallLogDao,
-    private val lines: LineSocketClient,
 ) : CallControls {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -62,10 +63,10 @@ class CallManager(
     /** Журнал звонков (call_log): одна строка на каждый закончившийся звонок, новые сверху. */
     override fun observeLog(): Flow<List<CallLogEntity>> = callLog.observeAll()
 
-    override fun startOutgoingCall(identity: Identity, peer: PeerInfo) {
+    override fun startOutgoingCall(identity: Identity, peer: OnlinePlayer) {
         if (_state.value.phase != CallPhase.IDLE) return
         val callId = UUID.randomUUID().toString()
-        Mb10Log.event(TAG, "call.outgoing_start", "call" to callId.take(8), "peer" to Mb10Log.short(peer.pubKeyB64), "addr" to "${peer.host}:${peer.port}")
+        Mb10Log.event(TAG, "call.outgoing_start", "call" to callId.take(8), "peer" to Mb10Log.short(peer.pubKeyB64), "addr" to peers.describe(peer.pubKeyB64))
         _state.value = CallUiState(CallPhase.OUTGOING_RINGING, callId, peer.pubKeyB64, peer.callsign, isOutgoing = true, startedAt = System.currentTimeMillis())
         SoundPlayer.startDialTone(app)
 
@@ -83,7 +84,7 @@ class CallManager(
             if (_state.value.callId != callId) return@createOffer
             val signal = CallSignal(CallSignalType.OFFER, callId, identity.publicKeyB64, identity.callsign, peer.pubKeyB64, System.currentTimeMillis(), sdp = sdp)
             scope.launch {
-                val delivered = lines.sendLine(peer.host, peer.port, CallProtocol.encode(signal))
+                val delivered = peers.send(peer.pubKeyB64, CallProtocol.encode(signal)) == SendOutcome.DELIVERED
                 Mb10Log.event(TAG, "call.offer_sent", "call" to callId.take(8), "delivered" to delivered)
                 if (!delivered && _state.value.callId == callId) {
                     // Не достучались до пира прямо сейчас (ушёл из сети между сканом присутствия и звонком) — откатываем вызов локально, ждать нечего.
@@ -195,7 +196,7 @@ class CallManager(
     }
 
     private fun sendSignal(identity: Identity, peerPubKeyB64: String, type: CallSignalType, callId: String, sdp: String? = null, ice: IceCandidate? = null) {
-        val peer = peers().find { it.pubKeyB64 == peerPubKeyB64 } ?: run {
+        if (!peers.isOnline(peerPubKeyB64)) {
             Mb10Log.warnEvent(TAG, "call.signal_dropped_peer_unknown", "type" to type.name, "call" to callId.take(8), "peer" to Mb10Log.short(peerPubKeyB64))
             return
         }
@@ -205,7 +206,7 @@ class CallManager(
             iceSdpMid = ice?.sdpMid, iceSdpMLineIndex = ice?.sdpMLineIndex, iceCandidate = ice?.sdp
         )
         scope.launch {
-            val ok = lines.sendLine(peer.host, peer.port, CallProtocol.encode(signal))
+            val ok = peers.send(peerPubKeyB64, CallProtocol.encode(signal)) == SendOutcome.DELIVERED
             if (type == CallSignalType.ICE_CANDIDATE) {
                 // Раньше успешная отправка кандидата не логировалась вовсе (только отказ) — не видно было даже, сколько их вообще
                 // ушло. На разборе живой проверки это как раз и не хватило: по логам нельзя было отличить «кандидат не сгенерировался»

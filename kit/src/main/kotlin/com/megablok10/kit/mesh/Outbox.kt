@@ -60,7 +60,8 @@ class Outbox(
     private val clock: Clock = Clock.System,
     private val log: KitLog = NoopLog,
     private val tag: String = "Outbox",
-    private val send: suspend (PeerInfo, String) -> Boolean,
+    /** Строку — игроку по ключу (в Мегаблоке — PeerDirectory.send: адрес выбирает таблица пиров). */
+    private val send: suspend (toPubKeyB64: String, line: String) -> Boolean,
 ) {
     private val lock = Mutex()
 
@@ -68,13 +69,13 @@ class Outbox(
 
     suspend fun pending(): Int = queue.count()
 
-    /** Пробует отправить всё, что пора и чей адресат виден в [peers] (ключ — pubKeyB64). Возвращает, сколько строк ушло. */
-    suspend fun flush(peers: Map<String, PeerInfo>, now: Long = clock.nowMs()): Int = lock.withLock {
+    /** Пробует отправить всё, что пора и чей адресат сейчас виден ([visible] — ключи pubKeyB64). Возвращает, сколько строк ушло. */
+    suspend fun flush(visible: Set<String>, now: Long = clock.nowMs()): Int = lock.withLock {
         queue.deleteOlderThan(now - schedule.maxAgeMs)
         var sent = 0
         for (entry in queue.due(now)) {
-            val peer = peers[entry.toPubKeyB64] ?: continue
-            if (send(peer, entry.line)) {
+            if (entry.toPubKeyB64 !in visible) continue
+            if (send(entry.toPubKeyB64, entry.line)) {
                 queue.delete(entry.id); sent++
                 log.event(tag, "outbox.sent", "id" to entry.id, "to" to shortKey(entry.toPubKeyB64), "attempts" to entry.attempts, "ageMs" to (now - entry.createdAt))
             } else {

@@ -7,11 +7,7 @@ import com.megablok10.kit.log.shortKey
 import com.megablok10.kit.mesh.Outbox
 import com.megablok10.kit.mesh.OutboxEntry
 import com.megablok10.kit.mesh.OutboxQueue
-import com.megablok10.kit.mesh.PeerInfo
-import com.megablok10.kit.mesh.addressesOf
-import com.megablok10.kit.mesh.bestPerPlayer
-import com.megablok10.kit.mesh.sendToFirstReachable
-import com.megablok10.kit.net.LineSocketClient
+import com.megablok10.kit.mesh.PeerDirectory
 import com.megablok10.kit.net.SendOutcome
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -26,14 +22,11 @@ private const val TAG = "OutboxStore"
  */
 class OutboxStore(
     dao: OutboxDao,
-    lines: LineSocketClient,
-    private val peers: () -> List<PeerInfo>,
+    private val peers: PeerDirectory,
 ) {
-    // Все адреса адресата по очереди (NSD, статический, подсказка сервера): одна запись может хранить порт его прошлого процесса.
-    private val outbox = Outbox(queue = RoomOutboxQueue(dao), log = Mb10Log, tag = TAG) { peer, line ->
-        withContext(Dispatchers.IO) {
-            sendToFirstReachable(peers().addressesOf(peer.pubKeyB64, peer)) { lines.sendLineOutcome(it.host, it.port, line, 2000) } == SendOutcome.DELIVERED
-        }
+    // Адрес выбирает PeerDirectory — все адреса адресата по очереди: одна запись может хранить порт его прошлого процесса.
+    private val outbox = Outbox(queue = RoomOutboxQueue(dao), log = Mb10Log, tag = TAG) { to, line ->
+        withContext(Dispatchers.IO) { peers.send(to, line) == SendOutcome.DELIVERED }
     }
 
     suspend fun enqueue(toPubKeyB64: String, wire: ChatWireMessage) {
@@ -44,7 +37,7 @@ class OutboxStore(
     suspend fun pending(): Int = outbox.pending()
 
     /** Пробует отправить всё, что пора. Возвращает, сколько сообщений ушло. Параллельные вызовы не пересекаются. */
-    suspend fun flush(): Int = outbox.flush(peers().bestPerPlayer())
+    suspend fun flush(): Int = outbox.flush(peers.online.value.mapTo(HashSet()) { it.pubKeyB64 })
 }
 
 /** Таблица Room `outbox` как хранилище kit-очереди. Колонки те же, что были (миграция не нужна): wireLine — строка протокола целиком. */

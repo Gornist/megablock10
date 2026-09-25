@@ -29,7 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.identity.Identity
-import com.megablok10.kit.mesh.PeerInfo
+import com.megablok10.kit.mesh.OnlinePlayer
 import com.megablok10.app.di.contactsViewModel
 import com.megablok10.app.ui.appViewModel
 import com.megablok10.app.qr.Mb10Qr
@@ -53,7 +53,7 @@ import com.megablok10.app.ui.theme.StatusChip
 import com.megablok10.app.ui.theme.chamferShape
 
 @Composable
-fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}, onCallContact: (PeerInfo) -> Unit = {}) {
+fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}, onCallContact: (OnlinePlayer) -> Unit = {}) {
     val vm = appViewModel { contactsViewModel() }
     val directory by vm.contacts.collectAsStateWithLifecycle()
     val contacts = directory.contacts

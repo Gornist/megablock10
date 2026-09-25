@@ -27,16 +27,16 @@ class OutboxTest {
         override suspend fun count() = rows.size
     }
 
-    private val bob = PeerInfo("bob", "Bob", "F", "10.10.0.2", 4000)
+    private val bob = setOf("bob")
     private val now = 1_000_000L
     private val schedule = OutboxSchedule()
 
-    private suspend fun flush(queue: OutboxQueue, peers: Map<String, PeerInfo>, at: Long, send: suspend (PeerInfo, String) -> Boolean) =
-        Outbox(queue, schedule, send = send).flush(peers, at)
+    private suspend fun flush(queue: OutboxQueue, visible: Set<String>, at: Long, send: suspend (String, String) -> Boolean) =
+        Outbox(queue, schedule, send = send).flush(visible, at)
 
     @Test fun invisiblePeerKeepsMessageWithoutCountingAttempt() = runTest {
         val q = FakeQueue().apply { add("bob") }
-        val sent = flush(q, emptyMap(), now) { _, _ -> error("не должно отправляться") }
+        val sent = flush(q, emptySet(), now) { _, _ -> error("не должно отправляться") }
         assertEquals(0, sent)
         assertEquals(0, q.rows.single().attempts)
     }
@@ -44,7 +44,7 @@ class OutboxTest {
     @Test fun visiblePeerGetsMessageAndRowIsRemoved() = runTest {
         val q = FakeQueue().apply { add("bob") }
         val got = mutableListOf<String>()
-        val sent = flush(q, mapOf("bob" to bob), now) { p, line -> got += "${p.host}:$line"; true }
+        val sent = flush(q, bob, now) { to, line -> got += "$to:$line"; true }
         assertEquals(1, sent)
         assertTrue(q.rows.isEmpty())
         assertEquals(1, got.size)
@@ -52,20 +52,20 @@ class OutboxTest {
 
     @Test fun failedSendBacksOffAndRetriesLater() = runTest {
         val q = FakeQueue().apply { add("bob") }
-        assertEquals(0, flush(q, mapOf("bob" to bob), now) { _, _ -> false })
+        assertEquals(0, flush(q, bob, now) { _, _ -> false })
         val row = q.rows.single()
         assertEquals(1, row.attempts)
         assertEquals(now + schedule.nextDelayMs(1), row.nextAttemptAt)
         // до срока не пробуем
-        assertEquals(0, flush(q, mapOf("bob" to bob), now + 1) { _, _ -> error("рано") })
+        assertEquals(0, flush(q, bob, now + 1) { _, _ -> error("рано") })
         // после срока уходит
-        assertEquals(1, flush(q, mapOf("bob" to bob), row.nextAttemptAt) { _, _ -> true })
+        assertEquals(1, flush(q, bob, row.nextAttemptAt) { _, _ -> true })
         assertTrue(q.rows.isEmpty())
     }
 
     @Test fun messagesOlderThanMaxAgeAreDropped() = runTest {
         val q = FakeQueue().apply { add("bob", createdAt = now - schedule.maxAgeMs - 1); add("bob", createdAt = now) }
-        val sent = flush(q, mapOf("bob" to bob), now) { _, _ -> true }
+        val sent = flush(q, bob, now) { _, _ -> true }
         assertEquals(1, sent)
         assertTrue(q.rows.isEmpty())
     }
@@ -73,7 +73,7 @@ class OutboxTest {
     @Test fun orderIsPreservedAndOtherPeersDontBlockTheQueue() = runTest {
         val q = FakeQueue().apply { add("alice"); add("bob"); add("bob") }
         val order = mutableListOf<Long>()
-        flush(q, mapOf("bob" to bob), now) { _, line -> order += line.substringAfterLast('-').toLong(); true }
+        flush(q, bob, now) { _, line -> order += line.substringAfterLast('-').toLong(); true }
         assertEquals(order.sorted(), order)
         assertEquals(listOf("alice"), q.rows.map { it.toPubKeyB64 })
     }
@@ -81,7 +81,7 @@ class OutboxTest {
     @Test fun oneFailureDoesNotStopOtherMessages() = runTest {
         val q = FakeQueue().apply { add("bob"); add("bob") }
         var n = 0
-        val sent = flush(q, mapOf("bob" to bob), now) { _, _ -> ++n == 2 }
+        val sent = flush(q, bob, now) { _, _ -> ++n == 2 }
         assertEquals(1, sent)
         assertEquals(1, q.rows.size)
         assertEquals(1, q.rows.single().attempts)
@@ -98,7 +98,7 @@ class OutboxTest {
         val q = FakeQueue().apply { repeat(5) { add("bob") } }
         val sentLines = mutableListOf<String>()
         val outbox = Outbox(q, schedule) { _, line -> sentLines += line; true }
-        List(4) { async { outbox.flush(mapOf("bob" to bob), now) } }.awaitAll()
+        List(4) { async { outbox.flush(bob, now) } }.awaitAll()
         assertEquals(5, sentLines.size)
         assertEquals(5, sentLines.toSet().size)
     }
@@ -107,7 +107,7 @@ class OutboxTest {
         val q = FakeQueue().apply { add("bob"); add("bob") }
         val log = RecordingLog()
         var n = 0
-        Outbox(q, schedule, log = log, tag = "OutboxStore") { _, _ -> ++n == 1 }.flush(mapOf("bob" to bob), now)
+        Outbox(q, schedule, log = log, tag = "OutboxStore") { _, _ -> ++n == 1 }.flush(bob, now)
         assertTrue(log.has("I/OutboxStore outbox.sent"))
         assertTrue(log.has("W/OutboxStore outbox.retry"))
         assertTrue(log.has("I/OutboxStore outbox.flushed sent=1 left=1"))

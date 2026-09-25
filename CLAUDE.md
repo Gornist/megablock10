@@ -76,8 +76,8 @@
   (меняете — поднимайте версию, `net/WireVersion.kt`), теги и события журнала, строки `MB10DBG`.
 - Деньги и предметы: `SendOutcome.UNKNOWN` = «могло дойти» — **не повторять** по другому адресу и не откатывать в PENDING.
 - Адрес игрока — не «первый в списке»: у одного ключа бывает несколько записей пиров (NSD, статическая, подсказка сервера),
-  NSD может хранить порт прошлого процесса. Отправлять через `kit.mesh.addressesOf` + `sendToFirstReachable`
-  (звонки пока нет — refactor-plan, B1).
+  NSD может хранить порт прошлого процесса. Отправлять только через `AppGraph.peerDirectory.send(ключ, строка)`
+  (kit `PeerDirectory`: перебор адресов, порядок — `PeerTable`); экранам — `OnlinePlayer` без адреса.
 - Фоновая работа стартует от процесса (`Mb10App.onCreate`), не от экрана: сеть (`startMeshWhenIdentityAppears`) и синк
   (`startCollectorSync`). С Android 12 `startForegroundService` из фона бросает исключение — ловить (см. `MeshForegroundService.start`).
 - Личность — в SharedPreferences, игровые данные — в Room: личность появляется раньше коммита данных. Не читать «персонаж

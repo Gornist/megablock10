@@ -5,11 +5,10 @@ import com.megablok10.kit.net.SendOutcome
 /**
  * Все известные адреса игрока [pubKeyB64] в порядке списка пиров — [PeerTable] держит их по источникам (NSD, статические,
  * подсказки сервера) и ставит лучший первым, а отказавший — в конец (после перезапуска приложения у игрока одна из записей
- * может ещё хранить порт прошлого процесса). [preferred] — адрес, который вызывающий взял раньше (экран, очередь): его место
- * решает таблица, а если его в списке уже нет — последним. Одинаковые host:port — один раз.
+ * может ещё хранить порт прошлого процесса). Одинаковые host:port — один раз. Снаружи kit — через [PeerDirectory].
  */
-fun List<PeerInfo>.addressesOf(pubKeyB64: String, preferred: PeerInfo? = null): List<PeerInfo> =
-    (filter { it.pubKeyB64 == pubKeyB64 } + listOfNotNull(preferred)).distinctBy { it.host to it.port }
+fun List<PeerInfo>.addressesOf(pubKeyB64: String): List<PeerInfo> =
+    filter { it.pubKeyB64 == pubKeyB64 }.distinctBy { it.host to it.port }
 
 /**
  * Отправка по адресам по очереди. К следующему адресу — только после [SendOutcome.NOT_REACHED]: строка точно не ушла.

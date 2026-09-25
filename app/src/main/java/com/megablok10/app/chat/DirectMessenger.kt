@@ -3,7 +3,7 @@ package com.megablok10.app.chat
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
-import com.megablok10.kit.mesh.PeerInfo
+import com.megablok10.kit.mesh.OnlinePlayer
 import com.megablok10.kit.net.SendOutcome
 
 /**
@@ -11,14 +11,14 @@ import com.megablok10.kit.net.SendOutcome
  * Реализация — [ChatStore]; в тестах сценариев — фейк.
  */
 interface DirectMessenger {
-    /** Живой адрес игрока, если он сейчас виден в сети; null — не в сети (сообщение всё равно останется в треде). */
-    fun onlinePeer(pubKeyB64: String): PeerInfo?
+    /** Игрок, если он сейчас виден в сети; null — не в сети (сообщение всё равно останется в треде). Адрес выбирает PeerDirectory. */
+    fun onlinePeer(pubKeyB64: String): OnlinePlayer?
 
     /** true — адресат точно получил строку. См. [ChatStore.sendDirect]. */
-    suspend fun sendDirect(identity: Identity, peerPubKeyB64: String, peer: PeerInfo?, body: String): Boolean
+    suspend fun sendDirect(identity: Identity, peerPubKeyB64: String, peer: OnlinePlayer?, body: String): Boolean
 
     /** С различением «точно не ушло» и «могло уйти» — нужно деньгам и предметам (kit handover). См. [ChatStore.sendDirectOutcome]. */
-    suspend fun sendDirectOutcome(identity: Identity, peerPubKeyB64: String, peer: PeerInfo?, body: String): SendOutcome
+    suspend fun sendDirectOutcome(identity: Identity, peerPubKeyB64: String, peer: OnlinePlayer?, body: String): SendOutcome
 }
 
 /**

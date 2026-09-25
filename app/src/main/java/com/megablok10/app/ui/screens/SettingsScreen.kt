@@ -49,7 +49,6 @@ import com.megablok10.app.ui.theme.MB10Colors
 import com.megablok10.app.ui.theme.SectionLabel
 import com.megablok10.app.ui.theme.StaggeredReveal
 import com.megablok10.app.ui.theme.StatusChip
-import com.megablok10.kit.mesh.bestPerPlayer
 
 @Composable
 fun SettingsScreen(onResetIdentity: () -> Unit) {
@@ -75,7 +74,7 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
 
         Spacer(Modifier.height(16.dp))
         SectionLabel("Сеть и данные")
-        ListRow(trailing = { StatusChip("${onlinePeers.bestPerPlayer().size} в сети", tone = ChipTone.Neutral) }) {
+        ListRow(trailing = { StatusChip("${onlinePeers.size} в сети", tone = ChipTone.Neutral) }) {
             Text("Мешь-сеть", color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
             Text("устройства рядом обнаруживаются через NSD", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
         }

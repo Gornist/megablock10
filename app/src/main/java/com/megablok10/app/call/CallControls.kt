@@ -2,7 +2,7 @@ package com.megablok10.app.call
 
 import com.megablok10.app.data.CallLogEntity
 import com.megablok10.app.identity.Identity
-import com.megablok10.kit.mesh.PeerInfo
+import com.megablok10.kit.mesh.OnlinePlayer
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -12,7 +12,7 @@ interface CallControls {
 
     fun observeLog(): Flow<List<CallLogEntity>>
 
-    fun startOutgoingCall(identity: Identity, peer: PeerInfo)
+    fun startOutgoingCall(identity: Identity, peer: OnlinePlayer)
 
     fun accept(identity: Identity)
 

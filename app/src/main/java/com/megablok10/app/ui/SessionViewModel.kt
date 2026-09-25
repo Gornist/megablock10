@@ -7,7 +7,7 @@ import com.megablok10.app.identity.Identity
 import com.megablok10.app.identity.IdentityStore
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.ProvisionResult
-import com.megablok10.kit.mesh.PeerInfo
+import com.megablok10.kit.mesh.OnlinePlayer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -22,7 +22,7 @@ import kotlinx.coroutines.launch
  */
 class SessionViewModel(
     private val identityStore: IdentityStore,
-    val peers: StateFlow<List<PeerInfo>>,
+    val peers: StateFlow<List<OnlinePlayer>>,
     private val provisioning: suspend (Mb10Qr.Provision) -> ProvisionResult,
     private val create: CreateCharacter,
     private val reset: suspend (Identity?) -> Unit,

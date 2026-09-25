@@ -3,7 +3,7 @@ package com.megablok10.app.ui.screens
 import com.megablok10.app.collector.CollectorSettings
 import com.megablok10.app.testing.MainDispatcherRule
 import com.megablok10.app.testing.MemoryPrefs
-import com.megablok10.kit.mesh.PeerInfo
+import com.megablok10.kit.mesh.OnlinePlayer
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -24,7 +24,7 @@ class SettingsViewModelTest {
 
     private val settings = CollectorSettings(MemoryPrefs(), defaultUrl = "http://default.local")
     private val pendingChanges = MutableStateFlow(0)
-    private val peers = MutableStateFlow<List<PeerInfo>>(emptyList())
+    private val peers = MutableStateFlow<List<OnlinePlayer>>(emptyList())
     private var wakeCalls = 0
     private var deviceReportText = "device info"
 
@@ -66,7 +66,7 @@ class SettingsViewModelTest {
         runCurrent()
 
         pendingChanges.value = 3
-        peers.value = listOf(PeerInfo("pk", "Bob", "Арасака", "10.0.0.2", 4001))
+        peers.value = listOf(OnlinePlayer("pk", "Bob", "Арасака"))
         runCurrent()
 
         assertEquals(3, model.pendingChanges.value)

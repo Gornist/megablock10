@@ -13,14 +13,7 @@ class PeerAddressesTest {
     @Test fun addressesOfKeepsTableOrderAndSkipsOthersAndDuplicates() {
         val peers = listOf(staleNsd, bob, static, staleNsd.copy(callsign = "Alice (дубль)"))
         assertEquals(listOf(staleNsd, static), peers.addressesOf("alice"))
-        assertEquals("порядок решает таблица, а не вызывающий", listOf(staleNsd, static), peers.addressesOf("alice", preferred = static))
         assertEquals(emptyList<PeerInfo>(), peers.addressesOf("carol"))
-    }
-
-    @Test fun preferredThatLeftTheTableIsTriedLast() {
-        val gone = static.copy(port = 1)
-        assertEquals(listOf(staleNsd, static, gone), listOf(staleNsd, static).addressesOf("alice", preferred = gone))
-        assertEquals(listOf(gone), emptyList<PeerInfo>().addressesOf("alice", preferred = gone))
     }
 
     @Test fun bestPerPlayerKeepsTheFirstAddressOfEachPlayer() {

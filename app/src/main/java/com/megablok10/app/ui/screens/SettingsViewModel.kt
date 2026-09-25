@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.megablok10.app.collector.CollectorSettings
 import com.megablok10.app.log.Mb10Log
-import com.megablok10.kit.mesh.PeerInfo
+import com.megablok10.kit.mesh.OnlinePlayer
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -18,7 +18,7 @@ import kotlinx.coroutines.flow.stateIn
 class SettingsViewModel(
     private val settings: CollectorSettings,
     pendingChanges: Flow<Int>,
-    val peers: StateFlow<List<PeerInfo>>,
+    val peers: StateFlow<List<OnlinePlayer>>,
     private val wakeSync: () -> Unit,
     private val deviceInfo: suspend () -> String,
 ) : ViewModel() {

@@ -2,7 +2,7 @@ package com.megablok10.app.breach
 
 import com.megablok10.app.collector.CollectorClient
 import com.megablok10.app.testing.RoomTest
-import com.megablok10.kit.net.LineSocketClient
+import com.megablok10.app.testing.testPeerDirectory
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -18,7 +18,7 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class LootSlotOrderTest : RoomTest() {
     // settings из RoomTest — без адреса коллектора: заявки на слоты локальные, без сети
-    private val slots = SlotClaimStore(db.slotClaimDao(), identity, settings, CollectorClient(), { emptyList() }, LineSocketClient())
+    private val slots = SlotClaimStore(db.slotClaimDao(), identity, settings, CollectorClient(), testPeerDirectory())
     private val rewards = DaemonRewards(wallet, shards, daemons, slots, settings)
     private val key = LootCrypto.deriveKey(null)
     private val extractor = Daemon("d-1", "Экстрактор", listOf("1C", "7A"), Tier.BASE, DaemonEffect.EXTRACT_SHARD)

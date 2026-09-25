@@ -8,7 +8,7 @@ import com.megablok10.app.data.PendingAlertDao
 import com.megablok10.app.data.PendingAlertEntity
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.log.Mb10Log
-import com.megablok10.kit.mesh.PeerInfo
+import com.megablok10.kit.mesh.OnlinePlayer
 import com.megablok10.kit.sync.ChangeRecorder
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
@@ -34,7 +34,7 @@ class SecAlertStore(
     private val dao: PendingAlertDao,
     private val chat: ChatStore,
     private val changes: ChangeRecorder,
-    private val peers: StateFlow<List<PeerInfo>>,
+    private val peers: StateFlow<List<OnlinePlayer>>,
 ) {
     /** containerId → окно агрегации: полное сообщение раз в 15 минут, дальше счётчик повторов. Живёт в памяти на время сессии приложения — не переживает перезапуск, это осознанно (см. ревизию v9 §4). */
     private val aggregation = ConcurrentHashMap<String, AggState>()

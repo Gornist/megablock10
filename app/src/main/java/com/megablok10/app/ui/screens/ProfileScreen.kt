@@ -21,7 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.identity.Identity
-import com.megablok10.kit.mesh.PeerInfo
+import com.megablok10.kit.mesh.OnlinePlayer
 import com.megablok10.app.ui.theme.JetBrainsMono
 import com.megablok10.app.ui.theme.MB10Colors
 import com.megablok10.app.ui.theme.SegmentedTabs
@@ -38,7 +38,7 @@ import com.megablok10.app.ui.theme.SegmentedTabs
 fun ProfileScreen(
     identity: Identity,
     onMessageContact: (String) -> Unit,
-    onCallContact: (PeerInfo) -> Unit,
+    onCallContact: (OnlinePlayer) -> Unit,
     onResetIdentity: () -> Unit,
     onBack: () -> Unit
 ) {

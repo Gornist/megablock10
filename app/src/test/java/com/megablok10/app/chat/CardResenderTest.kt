@@ -17,8 +17,8 @@ class CardResenderTest {
     private fun resender(stuck: List<StuckCard>, visible: List<TestPlayer>, me: String? = alice.key, known: Set<String> = stuck.map { it.id }.toSet()) = CardResender(
         stuck = { stuck },
         originalMessage = { _, to, id -> original(to, id).takeIf { id in known } },
-        send = { peer, msg -> sent += peer.pubKeyB64 to msg; true },
-        peers = { visible.map { it.peer } },
+        send = { to, msg -> sent += to to msg; true },
+        online = { key -> visible.any { it.key == key } },
         me = { me },
     )
 

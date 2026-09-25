@@ -3,7 +3,7 @@ package com.megablok10.app.chat
 import com.megablok10.app.qr.Mb10QrCodec
 import com.megablok10.app.testing.RoomTest
 import com.megablok10.app.testing.TestPlayer
-import com.megablok10.kit.net.LineSocketClient
+import com.megablok10.app.testing.testPeerDirectory
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -14,14 +14,14 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class CardResenderRoomTest : RoomTest() {
     private val bob = TestPlayer("Bob")
-    private val chat = ChatStore(db.chatMessageDao(), OutboxStore(db.outboxDao(), LineSocketClient(), { emptyList() }), LineSocketClient(), { emptyList() })
+    private val chat = ChatStore(db.chatMessageDao(), OutboxStore(db.outboxDao(), testPeerDirectory()), testPeerDirectory())
     private val sent = mutableListOf<ChatWireMessage>()
     private var now = 0L
     private val resender get() = CardResender(
         stuck = { before -> wallet.deliveredUnconfirmed(before) + items.deliveredUnconfirmed(before) },
         originalMessage = chat::outgoingCard,
         send = { _, msg -> sent += msg; true },
-        peers = { listOf(bob.peer) },
+        online = { it == bob.key },
         me = { me.publicKeyB64 },
         now = { now },
     )

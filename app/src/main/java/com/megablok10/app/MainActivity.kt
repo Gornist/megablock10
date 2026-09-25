@@ -49,8 +49,7 @@ import com.megablok10.app.qr.rememberMb10QrScanner
 import com.megablok10.app.ui.theme.AppSnack
 import com.megablok10.app.ui.LocalAppGraph
 import com.megablok10.app.ui.appViewModel
-import com.megablok10.kit.mesh.PeerInfo
-import com.megablok10.kit.mesh.bestPerPlayer
+import com.megablok10.kit.mesh.OnlinePlayer
 import com.megablok10.app.ui.nav.AppTab
 import com.megablok10.app.ui.nav.MainScaffold
 import com.megablok10.app.ui.screens.AnnouncementDialogHost
@@ -171,7 +170,7 @@ fun AppRoot() {
                 tab = AppTab.Chat
                 showProfile = false
             },
-            onCallContact = { peer: PeerInfo -> withMicPermission { calls.start(peer) } },
+            onCallContact = { peer: OnlinePlayer -> withMicPermission { calls.start(peer) } },
             // Полный сброс сессии на устройстве (записи о сбросе мастеру → стирание игровых данных → ключи): identity/SessionReset.
             // Записи о сбросе — зеркало CHARACTER_CREATED: иначе мастер видел бы появление позывного и фракции, но не их исчезновение.
             onResetIdentity = session::resetSession,
@@ -190,7 +189,7 @@ fun AppRoot() {
         Box(Modifier.fillMaxSize()) {
             MainScaffold(
                 identity = currentIdentity,
-                onlineNodes = onlinePeers.bestPerPlayer().size, // у игрока бывает несколько адресов
+                onlineNodes = onlinePeers.size,
                 selectedTab = tab,
                 onSelectTab = { tab = it },
                 onOpenProfile = { showProfile = true },
@@ -209,7 +208,7 @@ fun AppRoot() {
                             tab = AppTab.Hack
                         }
                     )
-                    AppTab.Calls -> CallsScreen(onCallPeer = { peer: PeerInfo -> withMicPermission { calls.start(peer) } })
+                    AppTab.Calls -> CallsScreen(onCallPeer = { peer: OnlinePlayer -> withMicPermission { calls.start(peer) } })
                     AppTab.Hack -> CyberdeckScreen(
                         identity = currentIdentity,
                         onNestedChange = { shardDetailOpen = it },

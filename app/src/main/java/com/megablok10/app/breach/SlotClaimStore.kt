@@ -8,10 +8,7 @@ import com.megablok10.app.identity.Identity
 import com.megablok10.app.identity.IdentityStore
 import com.megablok10.app.log.Mb10Log
 import com.megablok10.kit.crypto.Ecdsa
-import com.megablok10.kit.mesh.PeerInfo
-import com.megablok10.kit.mesh.addressesOf
-import com.megablok10.kit.mesh.sendToFirstReachable
-import com.megablok10.kit.net.LineSocketClient
+import com.megablok10.kit.mesh.PeerDirectory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -31,8 +28,7 @@ class SlotClaimStore(
     private val identityStore: IdentityStore,
     private val settings: CollectorSettings,
     private val collector: CollectorClient,
-    private val peers: () -> List<PeerInfo>,
-    private val lines: LineSocketClient,
+    private val peers: PeerDirectory,
 ) {
     /**
      * Ищет первый (по порядку слотов контейнера) ещё не исчерпанный слот
@@ -104,11 +100,7 @@ class SlotClaimStore(
     private suspend fun broadcast(claim: SlotClaimEntity) {
         withContext(Dispatchers.IO) {
             val line = ClaimProtocol.encode(claim)
-            // По разу на игрока (у него бывает несколько адресов — kit PeerTable): заявка идемпотентна, но лишние соединения ни к чему.
-            val known = peers()
-            known.map { it.pubKeyB64 }.distinct().forEach { key ->
-                sendToFirstReachable(known.addressesOf(key)) { lines.sendLineOutcome(it.host, it.port, line) }
-            }
+            peers.sendToAll(line) // по разу на игрока, адрес выбирает PeerDirectory
         }
     }
 

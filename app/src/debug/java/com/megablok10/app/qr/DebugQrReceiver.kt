@@ -135,8 +135,8 @@ class DebugQrReceiver : BroadcastReceiver() {
         // Сообщение от чужого имени (демо «неизвестный контакт»): "получатель|pk-отправителя|позывной|фракция|текст". Чат не проверяет отправителя.
         intent.getStringExtra("sayas")?.let { spec ->
             val p = spec.split("|", limit = 5)
-            val peer = peerOf(p[0]) ?: return@let
-            graph.lines.sendLine(peer.host, peer.port, ChatProtocol.encode(ChatWireMessage(ChatMessageType.DM, p[1], p[2], p[3], p[0], System.currentTimeMillis(), p[4])))
+            if (peerOf(p[0]) == null) return@let
+            graph.peerDirectory.send(p[0], ChatProtocol.encode(ChatWireMessage(ChatMessageType.DM, p[1], p[2], p[3], p[0], System.currentTimeMillis(), p[4])))
         }
         // Передача предмета как из интерфейса: "daemon|shard:идентификатор:получатель[:offline]". Пишет "give id=<id>" в logcat.
         intent.getStringExtra("give")?.let { spec ->
