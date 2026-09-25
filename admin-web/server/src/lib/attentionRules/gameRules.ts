@@ -156,3 +156,34 @@ export const overrideFailed: AttentionRule = ({ db, inactiveKeys, playerName }) 
     };
   });
 };
+
+/**
+ * Один и тот же шард отсканировали с QR несколько игроков — скорее всего, копия напечатанного QR (фото, ксерокс): деньги из шарда
+ * зачисляются каждому телефону по разу. Подпись мастера на QR от этого не защищает — копия подписана так же. Считаются только
+ * прямые сканы: передача шарда из рук в руки (ITEM_TRANSFER_IN) и лут контейнера с тиражом (BREACH_LOOT) — законные пути.
+ */
+export const shardCopies: AttentionRule = ({ db, inactiveKeys, playerName }) => {
+  const rows = db
+    .prepare(
+      `SELECT json_extract(new_value, '$.shardId') AS shard_id, MAX(json_extract(new_value, '$.title')) AS title,
+              GROUP_CONCAT(DISTINCT subject_key) AS keys, MAX(received_at) AS at
+       FROM changes
+       WHERE field = 'shards.add' AND reason = 'SHARD_SCAN' AND json_valid(new_value)
+       GROUP BY shard_id HAVING COUNT(DISTINCT subject_key) > 1`,
+    )
+    .all() as { shard_id: string | null; title: string | null; keys: string; at: number }[];
+  return rows
+    .filter((r) => r.shard_id)
+    .map((r) => ({ ...r, active: r.keys.split(",").filter((k) => !inactiveKeys.has(k)) }))
+    .filter((r) => r.active.length > 1)
+    .map(
+      (r): AttentionItem => ({
+        id: `shard_copies:${r.shard_id}`,
+        kind: "shard_copies",
+        severity: "warn",
+        title: "Один шард отсканировали несколько игроков",
+        detail: `«${r.title ?? r.shard_id}» (${r.shard_id}): ${r.active.length} игроков — ${r.active.map(playerName).join(", ")}. Копия QR?`,
+        at: r.at,
+      }),
+    );
+};
