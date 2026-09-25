@@ -113,6 +113,9 @@ kit — в [kit/README.md](../kit/README.md).
   экрана, сессия не поднимется, пока игрок не откроет приложение. Так было и до переделки.
 - Android Lint включён только на `NewApi`, остальные проверки выключены. В detekt-baseline осталась одна старая находка
   (`DecryptRules`).
+- Paparazzi и Robolectric в одной тестовой JVM: на macOS Paparazzi иногда не мог подключить Java-агент через внешний процесс
+  («Could not self-attach to current VM»). Тестовая JVM теперь запускается с `-Djdk.attach.allowAttachSelf=true` (агент ставится без
+  внешнего процесса) и 2 ГБ памяти; `scripts/check.sh` один раз повторяет шаг, если упал именно этот сбой.
 - `DebugQrBus` (только debug) теряет строку, если экран её сейчас не слушает. Стенд e2e это учитывает.
 
 ## План дальнейшей работы
@@ -144,7 +147,7 @@ kit — в [kit/README.md](../kit/README.md).
 
 ```bash
 ./gradlew :app:detekt :kit:detekt :kit:animalsnifferMain :app:lintDebug   # статический анализ и уровень API
-./gradlew testDebugUnitTest :kit:test verifyPaparazziDebug                  # тесты и скриншоты
+./gradlew verifyPaparazziDebug :kit:test                                    # все тесты приложения со сверкой скриншотов + kit
 scripts/check.sh --all                                                      # всё сразу
 scripts/e2e/up.sh && scripts/e2e/run-all.sh                                 # два эмулятора и все сценарии
 ```

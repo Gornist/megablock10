@@ -93,8 +93,20 @@ android {
     }
 }
 
-// Итог прогона тестов одной строкой в журнале (CI не показывает, сколько тестов на самом деле выполнилось).
 tasks.withType<Test>().configureEach {
+    // Paparazzi ставит Java-агент через ByteBuddy. Без этого флага JVM 9+ запрещает подключаться к самой себе, и ByteBuddy запускает
+    // для подключения отдельную `java` — на macOS под нагрузкой она иногда не успевает («Could not self-attach to current VM using
+    // external process»): стабильно падали 5 тестов ScreenshotTest, чаще всего в прогоне после тестов на Robolectric. С флагом агент
+    // ставится изнутри тестовой JVM, без внешнего процесса. Флаг читается при старте JVM, поэтому только jvmArgs.
+    jvmArgs("-Djdk.attach.allowAttachSelf=true")
+    // JDK 21+ предупреждает о динамически загруженных агентах и в следующих версиях запретит их по умолчанию; на 17 флага нет.
+    if (JavaVersion.current() >= JavaVersion.VERSION_21) jvmArgs("-XX:+EnableDynamicAgentLoading")
+    // Robolectric (android-all) и Paparazzi (layoutlib) живут в одной тестовой JVM; по умолчанию Gradle даёт ей 512 МБ.
+    maxHeapSize = "2g"
+    // Упавший тест — с полным текстом исключения прямо в журнале: отчёты CI отсюда не скачать, а по классу исключения причину не понять.
+    testLogging { exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
+
+    // Итог прогона одной строкой в журнале (CI не показывает, сколько тестов на самом деле выполнилось).
     afterSuite(KotlinClosure2<TestDescriptor, TestResult, Unit>({ suite, result ->
         if (suite.parent == null) println("$name: тестов ${result.testCount}, прошло ${result.successfulTestCount}, упало ${result.failedTestCount}, пропущено ${result.skippedTestCount}")
     }))

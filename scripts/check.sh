@@ -14,8 +14,11 @@ ALL=0; E2E=0; for a in "$@"; do case $a in --all) ALL=1;; --e2e) E2E=1; ALL=1;; 
 changed() { [ $ALL -eq 1 ] || { git diff --name-only origin/main 2>/dev/null; git ls-files --others --exclude-standard; } | grep -q "^$1"; }
 declare -a TIMES; FAIL=0
 step() { # step "имя" команда...
-  local name=$1; shift; local t0=$(date +%s)
-  if "$@" > "$LOGS/${name// /_}.log" 2>&1; then r="ок"; else r="ПРОВАЛ (см. $LOGS/${name// /_}.log)"; FAIL=1; fi
+  local name=$1; shift; local t0=$(date +%s) log="$LOGS/${name// /_}.log"
+  if "$@" > "$log" 2>&1; then r="ок"
+  # Сбой подключения Java-агента (ByteBuddy, Paparazzi) — не провал тестов, а сбой запуска JVM: один повтор. Любая другая ошибка — провал.
+  elif grep -rqs "Could not self-attach to current VM" "$log" app/build/test-results/ && "$@" > "$log" 2>&1; then r="ок (со второй попытки: сбой подключения агента)"
+  else r="ПРОВАЛ (см. $log)"; FAIL=1; fi
   TIMES+=("$name: $r, $(( $(date +%s) - t0 )) с")
 }
 skip() { TIMES+=("$1: пропущено (нет изменений)"); }
@@ -25,8 +28,10 @@ if changed app || changed kit; then
   step "app+kit: detekt" ./gradlew -q --console=plain :app:detekt :kit:detekt   # статический анализ; старые находки в app/detekt-baseline.xml, новые ломают проверку
   step "kit: API Android 8.0" ./gradlew -q --console=plain :kit:animalsnifferMain   # kit собирается JDK 17+, но работает на Android 26: вызов более нового API ломает проверку
   step "app: API Android 8.0" ./gradlew -q --console=plain :app:lintDebug   # Android Lint, только NewApi: то же для приложения
-  step "app+kit: unit-тесты" ./gradlew -q --console=plain testDebugUnitTest :kit:test
-  step "app: скриншот-тесты" ./gradlew -q --console=plain verifyPaparazziDebug   # эталоны: app/src/test/snapshots; обновить: ./gradlew recordPaparazziDebug
+  step "kit: unit-тесты" ./gradlew -q --console=plain :kit:test
+  # verifyPaparazziDebug прогоняет ВСЕ unit-тесты приложения (testDebugUnitTest в режиме сверки скриншотов) — отдельный шаг
+  # testDebugUnitTest гонял бы их второй раз. Эталоны: app/src/test/snapshots; обновить: ./gradlew recordPaparazziDebug
+  step "app: unit- и скриншот-тесты" ./gradlew -q --console=plain verifyPaparazziDebug
 else skip "app: unit- и скриншот-тесты"; fi
 if changed admin-web/server; then step "server: тесты" bash -c 'cd admin-web/server && npm test --silent'; else skip "server: тесты"; fi
 if changed admin-web; then
