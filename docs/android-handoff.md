@@ -145,6 +145,9 @@ kit — в [kit/README.md](../kit/README.md).
    `SessionViewModel.init`, то есть только когда открыт экран. Логика вынесена в тестируемую
    `identity/MeshAutostart.kt` (`startMeshOncePerCharacter`, тест `MeshAutostartTest`), из `SessionViewModel` убрана
    как дубль.
+   Процесс без экрана (перезапуск системой, broadcast) на Android 12+ не может запустить foreground-сервис — исключение
+   ловит `MeshForegroundService.start`: сеть работает без сервиса, а открытие приложения поднимает его
+   (`MeshSession.ensureForeground` из `onUiStarted`).
 5. ~~**Android Lint шире.**~~ Сделано: `checkOnly` снят, теперь полный набор проверок; то, что прямо противоречит уже
    принятым решениям проекта (`ApplySharedPref`, `InsecureBaseConfiguration`, `LockedOrientationActivity`/
    `DiscouragedApi`, `ExportedReceiver` у debug-only `DebugQrReceiver`, `GradleDependency`), явно отключено с

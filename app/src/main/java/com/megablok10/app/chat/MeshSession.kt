@@ -91,6 +91,12 @@ class MeshSession(
         sessionScope.launch { while (true) { delay(5_000); chat.flushOutbox() } }
     }
 
+    /** Сессия уже идёт — убедиться, что foreground-сервис поднят: при старте из фона Android 12+ мог его не пустить. Зовёт экран. */
+    @Synchronized
+    fun ensureForeground() {
+        if (startedForKey != null) MeshForegroundService.start(app)
+    }
+
     @Synchronized
     fun stop() {
         Mb10Log.event(TAG, "chat.stop")

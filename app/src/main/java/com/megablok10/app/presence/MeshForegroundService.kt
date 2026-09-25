@@ -14,6 +14,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import com.megablok10.app.MainActivity
 import com.megablok10.app.R
+import com.megablok10.app.log.Mb10Log
 
 private const val CHANNEL_ID = "mb10_mesh"
 private const val NOTIFICATION_ID = 4202
@@ -64,8 +65,17 @@ class MeshForegroundService : Service() {
     }
 
     companion object {
+        /**
+         * Сеть поднимается и при запуске процесса без экрана (AppGraph.startMeshWhenIdentityAppears) — а с Android 12 запуск
+         * foreground-сервиса из фона запрещён (ForegroundServiceStartNotAllowedException, наследник IllegalStateException).
+         * Тогда сеть работает без сервиса, а сервис поднимет открытие приложения ([com.megablok10.app.chat.MeshSession.ensureForeground]).
+         */
         fun start(context: Context) {
-            context.startForegroundService(Intent(context, MeshForegroundService::class.java))
+            try {
+                context.startForegroundService(Intent(context, MeshForegroundService::class.java))
+            } catch (e: IllegalStateException) {
+                Mb10Log.w("MeshService", "foreground-сервис не запущен (приложение в фоне)", e)
+            }
         }
 
         fun stop(context: Context) {

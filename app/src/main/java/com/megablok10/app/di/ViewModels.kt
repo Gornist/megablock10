@@ -24,7 +24,7 @@ fun AppGraph.sessionViewModel() = SessionViewModel(
     provisioning = provisioning::apply,
     create = createCharacter,
     reset = { sessionReset.perform(it) },
-    onUiStarted = { announcements.load(); startCollectorSync() },
+    onUiStarted = { announcements.load(); startCollectorSync(); mesh.ensureForeground() },
     notices = notices,
     work = processScope,
 )
