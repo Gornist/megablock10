@@ -37,6 +37,7 @@ class PresenceService(private val app: Context, private val wifi: WifiBinder) {
     private var myServiceName: String? = null
     private var scope: CoroutineScope? = null
     private var startArgs: Pair<Identity, Int>? = null
+    private val refreshGate = NsdRefreshGate<Any>()
 
     // Таблица пиров (дебаунс потери, отсрочка после смены сети, серверные подсказки) — чистая логика в kit PeerTable, покрыта JVM-тестами.
     private val table = PeerTable(Mb10Log) { scope }
@@ -59,6 +60,11 @@ class PresenceService(private val app: Context, private val wifi: WifiBinder) {
     // synchronized(this) это гонка на nsdManager/startArgs и т. п. Монитор реентерабелен: start()
     // вызывает stop() изнутри того же блока, повторный вход тем же потоком безопасен, дедлока не будет.
     fun start(identity: Identity, chatPort: Int): Unit = synchronized(this) {
+        refreshGate.started(wifi.boundNetwork, wifi.ownIpv4)
+        restart(identity, chatPort)
+    }
+
+    private fun restart(identity: Identity, chatPort: Int) {
         stop()
         Mb10Log.event(TAG, "nsd.start", "me" to Mb10Log.short(identity.publicKeyB64), "chatPort" to chatPort, "ip" to wifi.ownIpv4)
         startArgs = identity to chatPort
@@ -164,10 +170,16 @@ class PresenceService(private val app: Context, private val wifi: WifiBinder) {
      */
     fun refresh(): Unit = synchronized(this) {
         val args = startArgs ?: return
+        // Та же сеть и тот же IP (link_changed вслед за available) или первая привязка после запуска — не трогаем регистрацию:
+        // пересоздание снимает ещё не завершённую, и устройство перестаёт быть видно (NsdRefreshGate).
+        if (!refreshGate.shouldRefresh(wifi.boundNetwork, wifi.ownIpv4)) {
+            Mb10Log.event(TAG, "nsd.refresh_skipped", "network" to wifi.boundNetwork, "ip" to wifi.ownIpv4, "registered" to (myServiceName != null))
+            return
+        }
         Mb10Log.event(TAG, "nsd.refresh", "reason" to "смена сети", "peersBefore" to table.describe())
         // Статические (отладочные) и серверные записи NSD-обновление не касается — они переживают refresh как есть.
         val keep = table.snapshot()
-        start(args.first, args.second)
+        restart(args.first, args.second)
         table.restore(keep)
         table.graceAll()
     }

@@ -58,7 +58,7 @@ adb -s <серийный номер> logcat -v time -s App Snapshot WifiBinder P
 - Ожидание: сообщения не пропадают, пауза не больше нескольких секунд, сосед не «мигает» офлайн (дебаунс 12 с).
 - Идущий уходит из зоны на 2–3 минуты и возвращается: недошедшие сообщения доходят сами.
 - Записать: сколько секунд заняло восстановление после перехода; были ли сообщения «в очереди».
-- В логах смотреть: `wifi.lost` / `wifi.available` / `wifi.link_changed` (смена IP), `nsd.refresh`, `peer.lost_reported` → `peer.removed` (или `peer.found` с `cancelledRemoval=true`), `outbox.enqueue` → `outbox.sent`, в снимках `rssi`, `freqMHz`, `ip`.
+- В логах смотреть: `wifi.lost` / `wifi.available` / `wifi.link_changed` (смена IP), `nsd.refresh` (или `nsd.refresh_skipped` — сеть и IP не поменялись), `nsd.registered` после него, `peer.lost_reported` → `peer.removed` (или `peer.found` с `cancelledRemoval=true`), `outbox.enqueue` → `outbox.sent`, в снимках `rssi`, `freqMHz`, `ip`.
 
 ### Т3. Звонок при переходе — 15 минут
 - Звонок между двумя телефонами; во время разговора один идёт между точками. Метки на старт звонка, на переход, на конец.
