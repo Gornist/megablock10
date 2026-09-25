@@ -121,12 +121,28 @@ class MigrationDataTest {
         assertEquals("41", scalar("SELECT seq FROM pending_change_records WHERE id = 'r-1'"))
     }
 
+    @Test fun migration15to16AddsAcceptedJournalWithoutTouchingTheQueue() {
+        schemaTables(15).values.forEach(::sql)
+        sql("INSERT INTO pending_change_records (id, subjectKeyB64, seq, happenedAt, field, oldValue, newValue, reason, sourceRef, actor, signature) VALUES ('r-1', 'me', 41, 5, 'balance', '0', '10', 'SHARD_SCAN', NULL, 'me', 'sig')")
+
+        ALL_MIGRATIONS.filter { it.startVersion == 15 }.forEach { it.migrate(supportDb()) }
+        ALL_MIGRATIONS.filter { it.startVersion == 15 }.forEach { it.migrate(supportDb()) }   // повтор не падает
+
+        assertEquals(columns("pending_change_records").map { it.substringBefore(':') } + "acceptedAt", columns("accepted_change_records").map { it.substringBefore(':') })
+        assertTrue("index_accepted_change_records_acceptedAt" in indexNames("accepted_change_records"))
+        assertEquals("41", scalar("SELECT seq FROM pending_change_records WHERE id = 'r-1'"))
+    }
+
+    @Test fun acceptedJournalMigrationMatchesExportedSchema() {
+        assertEquals(schemaTables(16)["accepted_change_records"], ACCEPTED_CREATE_SQL)
+    }
+
     @Test fun seqCounterMigrationMatchesExportedSchema() {
         assertEquals(schemaTables(15)["sequences"], SEQUENCES_CREATE_SQL)
     }
 
     @Test fun exportedSchemaHasEveryTableOfTheCurrentVersion() {
-        val tables = schemaTables(15)
+        val tables = schemaTables(16)
         assertTrue("regex схемы не нашёл таблиц (изменился формат экспорта?)", tables.size >= 10)
         tables.values.forEach(::sql)   // каждый createSql — валидный SQLite
         assertEquals(tables.size.toString(), scalar("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"))

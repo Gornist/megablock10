@@ -24,6 +24,18 @@ interface ChangeQueue {
     /** Самые старые записи по seq. */
     suspend fun nextBatch(limit: Int): List<ChangeRecord>
     suspend fun deleteByIds(ids: List<String>)
+
+    /**
+     * Сервер принял записи [ids]: из очереди их убрать, но какое-то время хранить (журнал подтверждённых) — если сервер
+     * восстановят из резервной копии, они вернутся в очередь через [requeueAcceptedAbove]. По умолчанию — просто удалить.
+     */
+    suspend fun markAccepted(ids: List<String>) = deleteByIds(ids)
+
+    /**
+     * Вернуть в очередь подтверждённые записи [subjectKeyB64] с seq больше [seq] — сервер их потерял (у него последний — [seq]).
+     * Возвращает, сколько вернулось. По умолчанию журнала нет — 0.
+     */
+    suspend fun requeueAcceptedAbove(subjectKeyB64: String, seq: Long): Int = 0
     suspend fun count(): Int
 
     /** Время самой старой записи в очереди; null — очередь пуста. */

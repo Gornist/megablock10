@@ -14,6 +14,12 @@ interface PendingChangeRecordDao {
     @Query("SELECT * FROM pending_change_records ORDER BY seq ASC LIMIT :limit")
     suspend fun nextBatch(limit: Int): List<PendingChangeRecordEntity>
 
+    @Query("SELECT * FROM pending_change_records WHERE id IN (:ids)")
+    suspend fun byIds(ids: List<String>): List<PendingChangeRecordEntity>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAll(records: List<PendingChangeRecordEntity>)
+
     @Query("DELETE FROM pending_change_records WHERE id IN (:ids)")
     suspend fun deleteByIds(ids: List<String>)
 

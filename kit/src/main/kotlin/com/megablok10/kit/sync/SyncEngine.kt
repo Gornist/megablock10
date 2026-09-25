@@ -49,12 +49,17 @@ sealed interface MasterApply {
 /** Правка мастера [id] не применилась на телефоне — уходит серверу следующим запросом вместо подтверждения. */
 data class ApplyFailure(val id: String, val reason: String, val permanent: Boolean)
 
-/** Ответ сервера: что принято, что отбраковано (id → причина), правки мастера для этого телефона и адреса других игроков. */
+/**
+ * Ответ сервера: что принято, что отбраковано (id → причина), правки мастера для этого телефона, адреса других игроков и
+ * [knownSeq] — последний seq каждого затронутого игрока, который есть у сервера (по нему телефон замечает, что сервер потерял
+ * уже подтверждённые записи, например после восстановления из резервной копии).
+ */
 data class SyncResponse(
     val accepted: Set<String>,
     val rejected: Map<String, String>,
     val pending: List<ChangeRecord>,
     val peers: List<PeerInfo> = emptyList(),
+    val knownSeq: Map<String, Long> = emptyMap(),
 )
 
 /** Транспорт до сервера — порт (у Мегаблока — POST /api/changes через OkHttp). null — сеть или сервер недоступны. */
@@ -179,8 +184,12 @@ class SyncEngine(
         lastSummary = "ok в ${hhmmss()} (отправлено ${batch.size}, принято ${result.accepted.size}, отбраковано ${result.rejected.size})"
         if (subject != null) hooks.onServerPeers(result.peers, subject)
 
-        val toDelete = result.accepted + result.rejected.keys
-        if (toDelete.isNotEmpty()) queue.deleteByIds(toDelete.toList())
+        if (result.accepted.isNotEmpty()) queue.markAccepted(result.accepted.toList())
+        if (result.rejected.isNotEmpty()) queue.deleteByIds(result.rejected.keys.toList())
+        // Сервер знает меньше, чем уже подтвердил, — его восстановили из резервной копии: подтверждённые записи сверх его
+        // последнего seq возвращаются в очередь и уходят снова (для сервера это новые записи, повтор с тем же id — не дубль).
+        val lost = subject?.let { s -> result.knownSeq[s]?.let { known -> queue.requeueAcceptedAbove(s, known) } } ?: 0
+        if (lost > 0) log.warnEvent(tag, "sync.server_lost_records", "count" to lost, "serverSeq" to result.knownSeq[subject])
         if (result.rejected.isNotEmpty()) {
             log.warnEvent(tag, "sync.rejected", "count" to result.rejected.size, "reasons" to result.rejected.values.take(5).joinToString(" | "), "ids" to result.rejected.keys.take(5).joinToString(","))
             hooks.onRejected(result.rejected)
@@ -188,7 +197,7 @@ class SyncEngine(
         // Запрос с repliesIn дошёл — сервер их учёл; новые ответы — по правкам, применённым (или нет) прямо сейчас.
         val replies = if (result.pending.isNotEmpty()) applyMasterChanges(result.pending) else Replies.NONE
 
-        if (batch.isEmpty() && replies.acks.isEmpty()) {
+        if (batch.isEmpty() && replies.acks.isEmpty() && lost == 0) {
             // Нечего слать и ничего не применили — обычный простой, не долбим сервер чаще раза в idlePollMs. Сюда же — правки,
             // которые не применились: сервер пришлёт их снова, но повторять раньше следующего опроса бессмысленно.
             waitForWakeOrTimeout(config.spread(config.idlePollMs))

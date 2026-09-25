@@ -6,7 +6,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 /**
- * Версия 15 — с 12 и выше данные игроков не стираются никогда (12→13, 13→14, 14→15 —
+ * Версия 16 — с 12 и выше данные игроков не стираются никогда (12→13 … 15→16 —
  * настоящие миграции): схема экспортируется в `app/schemas`, и с неё любое
  * изменение обязано сопровождаться миграцией (иначе Room падает при
  * открытии, а не стирает данные игроков молча). Версии 1–11 до релиза
@@ -18,9 +18,9 @@ import androidx.room.RoomDatabase
         ChatMessageEntity::class, CallLogEntity::class, ContainerBreachEntity::class,
         SlotClaimEntity::class, ConsumedTokenEntity::class, PendingAlertEntity::class,
         PendingChangeRecordEntity::class, ItemTransferEntity::class, OutboxEntity::class,
-        SequenceEntity::class,
+        SequenceEntity::class, AcceptedChangeRecordEntity::class,
     ],
-    version = 15,
+    version = 16,
     exportSchema = true
 )
 abstract class Mb10Database : RoomDatabase() {
@@ -38,6 +38,7 @@ abstract class Mb10Database : RoomDatabase() {
     abstract fun itemTransferDao(): ItemTransferDao
     abstract fun outboxDao(): OutboxDao
     abstract fun sequenceDao(): SequenceDao
+    abstract fun acceptedChangeRecordDao(): AcceptedChangeRecordDao
 
     companion object {
         @Volatile private var instance: Mb10Database? = null
@@ -94,8 +95,23 @@ internal val MIGRATION_14_15 = object : androidx.room.migration.Migration(14, 15
     }
 }
 
+internal const val ACCEPTED_CREATE_SQL =
+    "CREATE TABLE IF NOT EXISTS `accepted_change_records` (`id` TEXT NOT NULL, `subjectKeyB64` TEXT NOT NULL, `seq` INTEGER NOT NULL, " +
+        "`happenedAt` INTEGER NOT NULL, `field` TEXT NOT NULL, `oldValue` TEXT, `newValue` TEXT, `reason` TEXT NOT NULL, `sourceRef` TEXT, " +
+        "`actor` TEXT NOT NULL, `signature` TEXT NOT NULL, `acceptedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))"
+internal const val ACCEPTED_INDEX_SQL =
+    "CREATE INDEX IF NOT EXISTS `index_accepted_change_records_acceptedAt` ON `accepted_change_records` (`acceptedAt`)"
+
+// Журнал подтверждённых записей — чтобы дослать их, если сервер восстановят из резервной копии (см. AcceptedChangeRecordEntity).
+internal val MIGRATION_15_16 = object : androidx.room.migration.Migration(15, 16) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL(ACCEPTED_CREATE_SQL)
+        db.execSQL(ACCEPTED_INDEX_SQL)
+    }
+}
+
 /** Версии, с которых базу пересоздаём вместо миграции (схемы старше 12 не сохранились). */
 internal val DESTRUCTIVE_FROM: IntArray = (1..11).toList().toIntArray()
 
 /** Все миграции по порядку. Новую версию схемы добавляем сюда и в тест MigrationGuardTest. */
-internal val ALL_MIGRATIONS = arrayOf(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
+internal val ALL_MIGRATIONS = arrayOf(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)

@@ -92,7 +92,8 @@ class CollectorClient(
                     }
                 }.orEmpty()
                 Mb10Log.event(TAG, "sync.ok", "sent" to records.size, "accepted" to accepted.size, "rejected" to rejected.size, "pendingFromMaster" to pending.size, "peersFromServer" to peers.size, "ms" to (System.currentTimeMillis() - started))
-                SyncResponse(accepted, rejected, pending, peers)
+                val knownSeq = json.optJSONObject("knownSeq")?.let { o -> o.keys().asSequence().associateWith { o.getLong(it) } } ?: emptyMap()
+                SyncResponse(accepted, rejected, pending, peers, knownSeq)
             }
         } catch (e: IOException) {
             Mb10Log.warnEvent(TAG, "sync.unreachable", "url" to baseUrl, "error" to e.javaClass.simpleName, "msg" to e.message, "records" to records.size, "ms" to (System.currentTimeMillis() - started))

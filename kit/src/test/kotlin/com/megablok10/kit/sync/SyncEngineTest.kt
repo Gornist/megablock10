@@ -24,6 +24,14 @@ class SyncEngineTest {
         override suspend fun insert(record: ChangeRecord) { if (rows.none { it.id == record.id }) rows += record }
         override suspend fun nextBatch(limit: Int) = rows.sortedBy { it.seq }.take(limit)
         override suspend fun deleteByIds(ids: List<String>) { rows.removeAll { it.id in ids } }
+        /** Журнал подтверждённых — как у приложения: принятые уходят из очереди сюда и возвращаются, если сервер их потерял. */
+        val journal = mutableListOf<ChangeRecord>()
+        override suspend fun markAccepted(ids: List<String>) { journal += rows.filter { it.id in ids }; deleteByIds(ids) }
+        override suspend fun requeueAcceptedAbove(subjectKeyB64: String, seq: Long): Int {
+            val back = journal.filter { it.subjectKeyB64 == subjectKeyB64 && it.seq > seq }
+            journal -= back.toSet(); rows += back
+            return back.size
+        }
         override suspend fun count() = rows.size
         override suspend fun oldestHappenedAt() = rows.minOfOrNull { it.happenedAt }
     }
@@ -258,5 +266,21 @@ class SyncEngineTest {
         val ack = env.server.requests[1].second
         assertEquals(listOf("m1"), ack.ackIds)
         assertEquals("правка встала после записи с seq 3", mapOf("m1" to 3L), ack.appliedAtSeq)
+    }
+
+    @Test fun recordsTheServerLostAfterARestoreAreSentAgain() = runTest {
+        val env = Env(this)
+        listOf(rec("r1", 1), rec("r2", 2), rec("r3", 3)).forEach { env.queue.insert(it) }
+        backgroundScope.launch { env.engine.run() }; runCurrent()
+        assertEquals(listOf("r1", "r2", "r3"), env.server.requests[0].second.records.map { it.id })
+        assertTrue("принятые — в журнале, не в очереди", env.queue.rows.isEmpty())
+        assertEquals(3, env.queue.journal.size)
+
+        // Сервер восстановили из копии, сделанной после r1: у него последний seq этого телефона — 1.
+        env.server.script += { SyncResponse(emptySet(), emptyMap(), emptyList(), knownSeq = mapOf("me" to 1L)) }
+        advanceTimeBy(30_001); runCurrent()
+        assertEquals("потерянные уходят снова сразу, без ожидания опроса", listOf("r2", "r3"), env.server.requests[3].second.records.map { it.id })
+        assertTrue(env.log.has("sync.server_lost_records"))
+        assertEquals(listOf("r1", "r2", "r3"), env.queue.journal.map { it.id }.sorted())
     }
 }

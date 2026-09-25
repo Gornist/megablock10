@@ -88,7 +88,7 @@ class AppGraph(private val app: Application) {
     val contacts = ContactStore(db.characterDao())
 
     // Записи для мастерского коллектора. Будят синхронизацию, чтобы запись ушла без ожидания следующего опроса.
-    private val changeQueue = RoomChangeQueue(db.pendingChangeRecordDao(), db.sequenceDao(), identity::legacyChangeSeq)
+    private val changeQueue = RoomChangeQueue(db.pendingChangeRecordDao(), db.sequenceDao(), identity::legacyChangeSeq, db.acceptedChangeRecordDao(), transactor)
     val changes = ChangeRecorder(
         queue = changeQueue,
         signer = identity::recordSigner,

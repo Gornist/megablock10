@@ -4,6 +4,9 @@ import android.content.Context
 import com.megablok10.app.PlayerNotices
 import com.megablok10.app.announce.AnnouncementNotifier
 import com.megablok10.app.announce.AnnouncementStore
+import com.megablok10.app.data.ACCEPTED_RETENTION_MS
+import com.megablok10.app.data.AcceptedChangeRecordDao
+import com.megablok10.app.data.AcceptedChangeRecordEntity
 import com.megablok10.app.data.CHANGE_SEQ
 import com.megablok10.app.data.PendingChangeRecordDao
 import com.megablok10.app.data.PendingChangeRecordEntity
@@ -20,6 +23,7 @@ import com.megablok10.kit.sync.ChangeRecord
 import com.megablok10.kit.sync.MasterApply
 import com.megablok10.kit.sync.QueueStats
 import com.megablok10.kit.sync.SyncHooks
+import com.megablok10.kit.sync.Transactor
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -106,11 +110,32 @@ class RoomChangeQueue(
     private val dao: PendingChangeRecordDao,
     private val sequences: SequenceDao,
     private val legacySeq: () -> Long,
+    private val accepted: AcceptedChangeRecordDao,
+    private val tx: Transactor,
+    private val now: () -> Long = System::currentTimeMillis,
 ) : ChangeQueue {
     /** kit ChangeRecorder зовёт это внутри транзакции вместе с [insert]: номер и запись сохраняются или откатываются вместе. */
     override suspend fun nextSeq(): Long = (lastSeq() + 1).also { sequences.put(SequenceEntity(CHANGE_SEQ, it)) }
 
-    override suspend fun lastSeq(): Long = sequences.get(CHANGE_SEQ) ?: maxOf(legacySeq(), dao.maxSeq() ?: 0L)
+    override suspend fun lastSeq(): Long = sequences.get(CHANGE_SEQ) ?: maxOf(legacySeq(), dao.maxSeq() ?: 0L, accepted.maxSeq() ?: 0L)
+
+    /** Подтверждённые — из очереди в журнал (одной транзакцией); заодно из журнала уходит всё старше [ACCEPTED_RETENTION_MS]. */
+    override suspend fun markAccepted(ids: List<String>): Unit = tx.inTransaction {
+        val at = now()
+        accepted.insertAll(dao.byIds(ids).map { it.toAccepted(at) })
+        dao.deleteByIds(ids)
+        accepted.deleteAcceptedBefore(at - ACCEPTED_RETENTION_MS)
+    }
+
+    /** Сервер потерял подтверждённые записи (восстановлен из копии) — вернуть их из журнала в очередь. */
+    override suspend fun requeueAcceptedAbove(subjectKeyB64: String, seq: Long): Int = tx.inTransaction {
+        val back = accepted.above(subjectKeyB64, seq)
+        if (back.isNotEmpty()) {
+            dao.insertAll(back.map { it.toPending() })
+            accepted.deleteByIds(back.map { it.id })
+        }
+        back.size
+    }
 
     override suspend fun insert(record: ChangeRecord) = dao.insert(
         PendingChangeRecordEntity(
@@ -131,3 +156,11 @@ class RoomChangeQueue(
     /** Сколько записей ждёт подтверждения коллектора — для Настроек. */
     fun observeCount(): Flow<Int> = dao.observeCount()
 }
+
+private fun PendingChangeRecordEntity.toAccepted(at: Long) = AcceptedChangeRecordEntity(
+    id, subjectKeyB64, seq, happenedAt, field, oldValue, newValue, reason, sourceRef, actor, signature, acceptedAt = at,
+)
+
+private fun AcceptedChangeRecordEntity.toPending() = PendingChangeRecordEntity(
+    id, subjectKeyB64, seq, happenedAt, field, oldValue, newValue, reason, sourceRef, actor, signature,
+)

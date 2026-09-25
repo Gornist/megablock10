@@ -36,6 +36,9 @@ abstract class RoomTest {
      */
     protected var failOnSign = 0
 
+    /** Часы журнала подтверждённых записей (срок хранения). */
+    protected var clock = 1_000_000L
+
     protected var transactor = RoomTransactor(db)
     protected var changes = newRecorder()
     protected var wallet = TransactionStore(db, identity, changes, transactor)
@@ -46,7 +49,7 @@ abstract class RoomTest {
     protected var provisioning = ProvisionStore(identity, settings, changes, wallet, db.consumedTokenDao(), transactor)
 
     private fun newRecorder(): ChangeRecorder {
-        val queue = RoomChangeQueue(db.pendingChangeRecordDao(), db.sequenceDao(), identity::legacyChangeSeq)
+        val queue = RoomChangeQueue(db.pendingChangeRecordDao(), db.sequenceDao(), identity::legacyChangeSeq, db.acceptedChangeRecordDao(), transactor, now = { clock })
         val signer = {
             identity.recordSigner()?.let { real ->
                 object : RecordSigner {
