@@ -74,6 +74,24 @@ jobs:
             timeout 15 "$ANDROID_HOME/platform-tools/adb" -s $s logcat -d > e2e-artifacts/logcat_$s.txt 2>/dev/null || true
           done
 
+      # Артефакты не всем доступны (и не из каждой среды скачиваются) — главное о красных сценариях печатаем прямо в журнал job.
+      - name: Журналы красных сценариев (в лог)
+        if: failure()
+        timeout-minutes: 2
+        run: |
+          for f in "$E2E_DIR"/journals/*-emulator-*.log; do
+            [ -f "$f" ] || continue
+            echo "::group::$(basename "$f") — последние 150 строк"
+            grep -v -E "state\.snapshot|snapshot " "$f" | tail -150
+            echo "::endgroup::"
+          done
+          for f in "$E2E_DIR"/journals/*-ui-*.xml; do
+            [ -f "$f" ] || continue
+            echo "::group::$(basename "$f") — тексты на экране"
+            grep -o 'text="[^"]*"' "$f" | grep -v 'text=""' | head -80
+            echo "::endgroup::"
+          done
+
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
