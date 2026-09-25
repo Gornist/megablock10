@@ -18,7 +18,7 @@
 
 | Что | Команда | Где |
 |---|---|---|
-| Всё локально | `scripts/check.sh --all` | pre-push хук (`scripts/setup-hooks.sh`) — быстрая версия |
+| Всё локально | `scripts/check.sh --all` | pre-push хук (`scripts/setup-hooks.sh`) — `check.sh --fast` (≤ 1 мин): detekt, lint, kit, сервер; без Robolectric/Paparazzi |
 | Тесты приложения + скриншоты | `./gradlew verifyPaparazziDebug` (сам гоняет **все** unit-тесты app: скриншоты и остальное — в разных JVM) | без скриншотов — `testDebugUnitTestNoScreenshots`; один тест — `--tests` у неё |
 | kit | `./gradlew :kit:test` | чистый JVM |
 | Статика | `./gradlew :app:detekt :kit:detekt :kit:animalsnifferMain :app:lintDebug` | новые находки ломают CI |

@@ -1,4 +1,6 @@
 #!/bin/bash
-# Перед пушем — быстрая проверка (scripts/check.sh): не пушим красное в main. Пропустить в крайнем случае: git push --no-verify.
+# Перед пушем — быстрая проверка (scripts/check.sh --fast, ≤ 1 мин): статический анализ, линт, kit и сервер по изменённым путям.
+# Robolectric и скриншоты сюда не входят — их гоняет CI (на macOS они давали сбои, из-за которых хук обходили). Полная — --all.
+# Пропустить в крайнем случае: git push --no-verify.
 # Включается один раз на клон: git config core.hooksPath .githooks   (скрипт scripts/setup-hooks.sh делает это же)
-exec "$(git rev-parse --show-toplevel)/scripts/check.sh"
+exec "$(git rev-parse --show-toplevel)/scripts/check.sh" --fast

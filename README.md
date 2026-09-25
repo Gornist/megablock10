@@ -194,7 +194,7 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 
 Правила для агентов и выверенные грабли (проверки, стенд, инварианты) — [CLAUDE.md](CLAUDE.md); план рефакторинга — [docs/refactor-plan.md](docs/refactor-plan.md).
 
-- Один раз после клонирования: `scripts/setup-hooks.sh` — включает pre-push хук (быстрая `scripts/check.sh`: тесты и сборки только того, что менялось).
+- Один раз после клонирования: `scripts/setup-hooks.sh` — включает pre-push хук (`scripts/check.sh --fast`, ≤ 1 мин: detekt, Android Lint, Animal Sniffer, тесты kit и сервера — только того, что менялось; тесты приложения и скриншоты — в CI).
 - Перед крупным пушем: `scripts/check.sh --all`; при правках интерфейса или протокола — `scripts/check.sh --e2e` (поднимает стенд и гоняет сценарии, время каждого шага печатается в конце).
 - **Скриншот-тесты (Paparazzi):** `app/src/test/java/.../screenshots/ScreenshotTest.kt`, эталоны — `app/src/test/snapshots/images`. `./gradlew verifyPaparazziDebug` сравнивает (≈25 с, эмулятор не нужен); после намеренной правки интерфейса — `./gradlew recordPaparazziDebug` и коммит новых эталонов.
 - **Несколько агентов или задач параллельно:** `scripts/agent-worktree.sh new <имя>` — отдельная рабочая копия и ветка `agent/<имя>`; `finish <имя>` — проверка, пуш и Pull Request.

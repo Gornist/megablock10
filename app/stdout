@@ -1,0 +1,11 @@
+/home/user/megablock10/app/lint-baseline.xml: Information: 10 warnings were filtered out because they are listed in the baseline file, lint-baseline.xml [LintBaseline]
+/home/user/megablock10/app/lint-baseline.xml: Information: 1 errors/warnings were listed in the baseline file (lint-baseline.xml) but not found in the project; perhaps they have been fixed? Another possible explanation is that lint recently stopped analyzing (and including results from) dependent projects by default. You can turn this back on with android.lintOptions.checkDependencies=true. Unmatched issue types: OldTargetApi [LintBaselineFixed]
+
+   Explanation for issues of type "LintBaselineFixed":
+   If a lint baseline describes a problem which is no longer reported, then
+   the problem has either been fixed, or perhaps the issue type has been
+   disabled. In any case, the entry can be removed from the baseline (such
+   that if the issue is reintroduced at some point, lint will complain rather
+   than just silently starting to match the old baseline entry again.)
+
+0 errors, 0 warnings (10 warnings filtered by baseline lint-baseline.xml)
