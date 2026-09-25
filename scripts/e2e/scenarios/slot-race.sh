@@ -8,7 +8,8 @@ QR=$(container $ID "Гонка" BASE Ghosts 1) || die "не создал кон�
 autosolve $A true; autosolve $B true
 breach $A "$QR" & breach $B "$QR" & wait
 sleep 5
-SA=$(q $A "select count(*) from shards where id like '%$ID%'"); SB=$(q $B "select count(*) from shards where id like '%$ID%'")
-eq "ровно один шард на двоих" 1 $((SA+SB))
-eq "на дашборде тираж выбран" 1 "$(api GET /api/slots | jq_ "sum(s['copiesClaimed'] for s in d if s['containerId']=='$ID')")"
+shards_total() { echo $(( $(q $A "select count(*) from shards where id like '%$ID%'") + $(q $B "select count(*) from shards where id like '%$ID%'") )); }
+eq_wait 20 "ровно один шард на двоих" 1 shards_total
+claimed() { api GET /api/slots | jq_ "sum(s['copiesClaimed'] for s in d if s['containerId']=='$ID')"; }
+eq_wait 90 "на дашборде тираж выбран" 1 claimed   # до сервера — через синк
 finish

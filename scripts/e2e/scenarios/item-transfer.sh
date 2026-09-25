@@ -6,31 +6,31 @@ echo "== item-transfer"
 PKA=$(cat "$E2E_DIR/pk_$A.txt"); PKB=$(cat "$E2E_DIR/pk_$B.txt")
 has() { q "$1" "select count(*) from daemons where id='$2'"; }
 
-dbg $B DEBUG_SET --es daemon "Тень Ghost:1C,7A:2:BLACKOUT"; sleep 2
+dbg $B DEBUG_SET --es daemon "Тень Ghost:1C,7A:2:BLACKOUT"
 ID="debug-Тень Ghost"
-eq "у Bob есть демон" 1 "$(has $B "$ID")"
+eq_wait 15 "у Bob есть демон" 1 has $B "$ID"
 
 # 1. недоставленная передача (получатель «не в сети») — отмена возвращает демона
 adb_ $B logcat -c
-dbg $B DEBUG_SET --es give "daemon:$ID:$PKA:offline"; sleep 3
-T1=$(item_of $B); [ -n "$T1" ] || die "передача не создана"
-eq "PENDING: у Bob демона уже нет" 0 "$(has $B "$ID")"
-dbg $B DEBUG_SET --es cancelitem "$T1"; sleep 3
-eq "после отмены демон вернулся к Bob" 1 "$(has $B "$ID")"
+dbg $B DEBUG_SET --es give "daemon:$ID:$PKA:offline"
+T1=$(await 15 item_of $B); [ -n "$T1" ] || die "передача не создана"
+eq_wait 15 "PENDING: у Bob демона уже нет" 0 has $B "$ID"
+dbg $B DEBUG_SET --es cancelitem "$T1"
+eq_wait 15 "после отмены демон вернулся к Bob" 1 has $B "$ID"
 eq "у Alice его нет" 0 "$(has $A "$ID")"
 
 # 2. доставленная передача: Alice принимает в чате
 adb_ $B logcat -c
-dbg $B DEBUG_SET --es give "daemon:$ID:$PKA"; sleep 4
-T2=$(item_of $B); [ -n "$T2" ] || die "вторая передача не создана"
-eq "DELIVERED у отправителя" DELIVERED "$(q $B "select status from item_transfers where id='$T2'")"
+dbg $B DEBUG_SET --es give "daemon:$ID:$PKA"
+T2=$(await 15 item_of $B); [ -n "$T2" ] || die "вторая передача не создана"
+eq_wait 20 "DELIVERED у отправителя" DELIVERED q $B "select status from item_transfers where id='$T2'"
 eq "у Alice демона ещё нет, пока не приняла" 0 "$(has $A "$ID")"
-dbg $B DEBUG_SET --es cancelitem "$T2"; sleep 2
-check "отмена доставленного отклонена" bash -c "source '$ROOT/scripts/e2e/lib.sh'; adb_ $B logcat -d -s MB10DBG | grep -q \"cancelitem $T2 -> false\""
+dbg $B DEBUG_SET --es cancelitem "$T2"
+check "отмена доставленного отклонена" wait_until 15 bash -c "source '$ROOT/scripts/e2e/lib.sh'; adb_ $B logcat -d -s MB10DBG | grep -q \"cancelitem $T2 -> false\""
 
 open_chat $A Bob
-tap_when $A "Принять" || log "$A: кнопки «Принять» нет"; sleep 3
-eq "Alice приняла: демон у неё" 1 "$(has $A "$ID")"
+tap_when $A "Принять" || log "$A: кнопки «Принять» нет"
+eq_wait 15 "Alice приняла: демон у неё" 1 has $A "$ID"
 eq "у Bob его больше нет" 0 "$(has $B "$ID")"
 check "чек подтвердил передачу у Bob" wait_until 30 bash -c "source '$ROOT/scripts/e2e/lib.sh'; [ \"\$(q $B \"select status from item_transfers where id='$T2'\")\" = CONFIRMED ]"
 check "дашборд видит демона у Alice" wait_until 90 bash -c "source '$ROOT/scripts/e2e/lib.sh'; api GET \"/api/players/\$(python3 -c 'import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1],safe=\"\"))' '$PKA')\" | grep -q 'Тень Ghost'"
@@ -41,8 +41,8 @@ check "дашборд видит демона у Alice" wait_until 90 bash -c "s
 BEFORE=$(journal_count $B "chat.recv")
 dbg $A DEBUG_SET --es give "daemon:$ID:$PKB"
 wait_until 30 bash -c "source '$ROOT/scripts/e2e/lib.sh'; [ \$(journal_count $B chat.recv) -gt $BEFORE ]"; sleep 1
-open_chat $B Alice; tap_when $B "Принять" || log "$B: кнопки «Принять» нет"; sleep 3
-eq "демон вернулся к Bob" 1 "$(has $B "$ID")"
+open_chat $B Alice; tap_when $B "Принять" || log "$B: кнопки «Принять» нет"
+eq_wait 15 "демон вернулся к Bob" 1 has $B "$ID"
 open_chat $A Bob; tap_text $A "Принять" >/dev/null; sleep 3   # старая карточка Bob → Alice
 eq "повторное «Принять» демона не размножило" 0 "$(has $A "$ID")"
 finish

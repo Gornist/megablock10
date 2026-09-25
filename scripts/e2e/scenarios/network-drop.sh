@@ -15,7 +15,7 @@ cnt() { q $B "select count(*) from chat_messages where body = '$TEXT'"; }
 
 drop; sleep 4
 dbg $A DEBUG_SET --es say "$PKB|$TEXT"; sleep 4
-check "сообщение встало в очередь у отправителя" bash -c "source '$ROOT/scripts/e2e/lib.sh'; [ \"\$(q $A 'select count(*) from outbox')\" -ge 1 ]"
+check "сообщение встало в очередь у отправителя" wait_until 15 bash -c "source '$ROOT/scripts/e2e/lib.sh'; [ \"\$(q $A 'select count(*) from outbox')\" -ge 1 ]"
 eq "пока Wi-Fi у получателя выключен, сообщения у него нет" 0 "$(cnt)"
 
 restore
@@ -24,7 +24,8 @@ check "очередь у отправителя опустела" wait_until 60 
 sleep 3; eq "ровно одно сообщение, без дублей" 1 "$(cnt)"
 
 # Деньги офлайн: карточка не уходит и в очередь не ставится — платёж остаётся PENDING и отменяем.
-dbg $A DEBUG_SET --es balance 50; sleep 2
+dbg $A DEBUG_SET --es balance 50
+eq_wait 15 "баланс для платежа" 50 bal_of $A
 drop; sleep 4
 dbg $A DEBUG_SET --es pay "$PKB:20:online"; sleep 4
 eq "карточка платежа не попала в очередь (очередь пуста)" 0 "$(q $A 'select count(*) from outbox')"

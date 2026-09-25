@@ -51,10 +51,11 @@ check "чужой код не заменил персонажа" bash -c "source
 
 # 3. сброс сессии стирает игровые данные устройства; тот же код второй раз не принимается, новый — принимается
 PKB=$(cat "$E2E_DIR/pk_$B.txt")
-dbg $A DEBUG_SET --es daemon "Остаток:1C,FF:2:MINER"; dbg $A DEBUG_SET --es contact "$PKB:Bob:Rats"; sleep 2
-eq "до сброса: демон, контакт и стартовый баланс на месте" "1|1|300" "$(q $A "select (select count(*) from daemons)||'|'||(select count(*) from characters)||'|'||(select coalesce(sum(amount),0) from transactions)")"
-dbg $A DEBUG_SET --es sessionreset 1; sleep 2
-eq "после сброса игровые данные стёрты (демоны, контакты, кошелёк)" "0|0|0" "$(q $A "select (select count(*) from daemons)||'|'||(select count(*) from characters)||'|'||(select coalesce(sum(amount),0) from transactions)")"
+data_of_a() { q $A "select (select count(*) from daemons)||'|'||(select count(*) from characters)||'|'||(select coalesce(sum(amount),0) from transactions)"; }
+dbg $A DEBUG_SET --es daemon "Остаток:1C,FF:2:MINER"; dbg $A DEBUG_SET --es contact "$PKB:Bob:Rats"
+eq_wait 15 "до сброса: демон, контакт и стартовый баланс на месте" "1|1|300" data_of_a
+dbg $A DEBUG_SET --es sessionreset 1
+eq_wait 15 "после сброса игровые данные стёрты (демоны, контакты, кошелёк)" "0|0|0" data_of_a
 restart_app $A >/dev/null 2>&1; sleep 3
 check "после сброса снова экран выдачи" wait_until 30 setup_screen
 dbg $A DEBUG_QR --es qr "$QR1"; sleep 5
@@ -63,8 +64,7 @@ check "личность не создалась" bash -c "source '$ROOT/scripts/
 dbg $A DEBUG_QR --es qr "$(prov e2e-prov-3 Prov2 Neon 100 6)"
 check "новый код от мастера принят" wait_until 30 identity_has 'Prov2'
 # Личность (prefs) появляется раньше, чем коммитится транзакция с записями и стартовым балансом, — баланс ждём. Остатки прежнего дали бы не 100 насовсем.
-check "баланс нового персонажа ровно из QR, без остатков прежнего" wait_until 15 bash -c "source '$ROOT/scripts/e2e/lib.sh'; [ \"\$(q $A 'select coalesce(sum(amount),0) from transactions')\" = 100 ]"
-q $A 'select coalesce(sum(amount),0) from transactions' | grep -qx 100 || log "$A: баланс нового персонажа — $(q $A 'select coalesce(sum(amount),0) from transactions')"
+eq_wait 15 "баланс нового персонажа ровно из QR, без остатков прежнего" 100 bal_of $A
 eq "у нового персонажа нет ни остатков демонов, ни чужих контактов" "0|0" "$(q $A "select (select count(*) from daemons)||'|'||(select count(*) from characters)")"
 
 # 4. сервер отказал в коде (его уже применил другой телефон): приложение объясняет игроку и не зацикливает синхронизацию
@@ -78,6 +78,6 @@ NODE=${NODE_BIN:+$NODE_BIN/}node
 dbg $A DEBUG_QR --es qr "$SQR"
 check "приложение запомнило отказ по коду (плашка в Настройках)" wait_until 90 bash -c "source '$ROOT/scripts/e2e/lib.sh'; adb_ $A exec-out run-as $PKG cat shared_prefs/collector_prefs.xml | grep -q 'provision_rejected\" value=\"true'"
 eq "игрока с чужим кодом на дашборде нет" 0 "$(api GET /api/players | jq_ 'sum(1 for p in d if p["callsign"]=="Squatted")')"
-check "на дашборде тревога provision_conflict" bash -c "source '$ROOT/scripts/e2e/lib.sh'; api GET /api/attention | jq_ 'any(i[\"kind\"]==\"provision_conflict\" for i in d[\"items\"])' | grep -q True"
+check "на дашборде тревога provision_conflict" wait_until 30 bash -c "source '$ROOT/scripts/e2e/lib.sh'; api GET /api/attention | jq_ 'any(i[\"kind\"]==\"provision_conflict\" for i in d[\"items\"])' | grep -q True"
 ensure_wifi_on $A   # вернуть Wi-Fi: выключенный остаётся выключенным и на следующем стенде
 finish

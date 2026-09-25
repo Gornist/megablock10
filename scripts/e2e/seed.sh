@@ -24,8 +24,9 @@ dbg $A DEBUG_SET --es say "faction|Неон на связи. Ждём указа
 
 step "перевод Bob → Alice 100 €\$ (принят, сведён)"
 adb_ $B logcat -c
-dbg $B DEBUG_SET --es pay "$PKA:100:online"; sleep 4
-CARD=$(adb_ $B logcat -d -s MB10DBG | grep -o 'paycard=.*' | tail -1 | cut -d= -f2- | tr -d '\r')
+dbg $B DEBUG_SET --es pay "$PKA:100:online"
+paycard_of() { adb_ $B logcat -d -s MB10DBG | grep -o 'paycard=.*' | tail -1 | cut -d= -f2- | tr -d '\r'; }
+CARD=$(await 15 paycard_of)
 [ -n "$CARD" ] || die "карточка перевода не создана (Bob и Alice видят друг друга? ./link.sh)"
 dbg $A DEBUG_SET --es recv "$CARD"; sleep 3
 

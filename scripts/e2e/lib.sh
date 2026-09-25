@@ -36,6 +36,23 @@ infra_note() { local m; for m in "$E2E_DIR"/screen_dead_*; do [ -e "$m" ] && { e
 eq() {
   if [ "$2" == "$3" ]; then echo "  ✓ $1"; else echo "  ✗ $1 (ожидалось «$2», получено «$3»)$(infra_note)"; FAILED=$((FAILED+1)); fi
 }
+# eq_wait <секунды> "описание" ожидаемое <команда...> — eq для результата асинхронного действия: опрашивает команду, пока её вывод не станет
+# ожидаемым, красная строка — с последним прочитанным значением. Приложение пишет результат после ответа на broadcast, по сети — ещё позже:
+# разовое чтение после фиксированного sleep ловило данные до записи (баланс 0 у только что выданного персонажа и т.п.).
+# Для «не изменилось»/«не появилось» ожидание ничего не доказывает — там eq, но после свидетельства, что действие уже отработало.
+eq_wait() {
+  local t=$1 desc=$2 want=$3 got; shift 3; local end=$((SECONDS+t))
+  while :; do got=$("$@" 2>/dev/null); [ "$got" == "$want" ] || [ $SECONDS -ge $end ] && break; sleep 1; done
+  eq "$desc" "$want" "$got"
+}
+# await <секунды> <команда...> — ждёт непустой вывод команды и печатает его (пусто — не дождались). Для значений из logcat (id перевода и т.п.).
+await() {
+  local t=$1 out; shift; local end=$((SECONDS+t))
+  while :; do out=$("$@" 2>/dev/null); [ -n "$out" ] || [ $SECONDS -ge $end ] && break; sleep 1; done
+  printf '%s' "$out"
+}
+# bal_of <serial> — баланс кошелька на устройстве.
+bal_of() { q "$1" 'select coalesce(sum(amount),0) from transactions'; }
 # wait_until <секунды> <команда...> — ждёт, пока команда не вернёт 0.
 wait_until() {
   local t=$1; shift; local end=$((SECONDS+t))
