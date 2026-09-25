@@ -38,18 +38,21 @@ export function registerAnnouncementsRoutes(app: FastifyInstance, db: Db) {
     }
 
     const broadcastId = randomUUID();
-    insertMasterRecords(
-      db,
-      master.id,
-      targets.players.map((p) => ({
-        subjectKey: p.publicKeyB64,
-        field: ANNOUNCEMENT_FIELD,
-        oldValue: null,
-        newValue: text,
-        sourceRef: `${REF_PREFIX}${broadcastId}`,
-      })),
-    );
-    logMasterAction(db, master.id, "ANNOUNCEMENT", { broadcastId, text, target: targets.label, count: targets.players.length });
+    // Правка и запись в журнал мастера — одна транзакция: не бывает правки без записи «кто и зачем» (и наоборот).
+    db.transaction(() => {
+      insertMasterRecords(
+        db,
+        master.id,
+        targets.players.map((p) => ({
+          subjectKey: p.publicKeyB64,
+          field: ANNOUNCEMENT_FIELD,
+          oldValue: null,
+          newValue: text,
+          sourceRef: `${REF_PREFIX}${broadcastId}`,
+        })),
+      );
+      logMasterAction(db, master.id, "ANNOUNCEMENT", { broadcastId, text, target: targets.label, count: targets.players.length });
+    })();
     return { dryRun: false, broadcastId, target: targets.label, count: targets.players.length };
   });
 

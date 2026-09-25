@@ -105,10 +105,13 @@ export function registerSlotsRoutes(app: FastifyInstance, db: Db) {
       const { claimantKeyB64, reason } = request.body ?? {};
       if (typeof claimantKeyB64 !== "string") return reply.code(400).send({ error: "claimantKeyB64 required" });
 
-      db.prepare(
-        `UPDATE slot_claims SET revoked = 1, revoked_by = ?, revoked_reason = ? WHERE slot_ref = ? AND claimant_key = ?`,
-      ).run(master.id, typeof reason === "string" ? reason : null, request.params.ref, claimantKeyB64);
-      logMasterAction(db, master.id, "SLOT_REVOKE", { slotRef: request.params.ref, claimantKeyB64, reason });
+      // Правка и запись в журнал мастера — одна транзакция: не бывает правки без записи «кто и зачем» (и наоборот).
+      db.transaction(() => {
+        db.prepare(
+          `UPDATE slot_claims SET revoked = 1, revoked_by = ?, revoked_reason = ? WHERE slot_ref = ? AND claimant_key = ?`,
+        ).run(master.id, typeof reason === "string" ? reason : null, request.params.ref, claimantKeyB64);
+        logMasterAction(db, master.id, "SLOT_REVOKE", { slotRef: request.params.ref, claimantKeyB64, reason });
+      })();
       return { ok: true };
     },
   );
@@ -118,10 +121,12 @@ export function registerSlotsRoutes(app: FastifyInstance, db: Db) {
     const master = requireMaster(db, request, reply);
     if (!master) return;
 
-    db.prepare(`UPDATE slot_claims SET revoked = 0, revoked_by = NULL, revoked_reason = NULL WHERE slot_ref = ?`).run(
-      request.params.ref,
-    );
-    logMasterAction(db, master.id, "SLOT_RESTORE", { slotRef: request.params.ref });
+    db.transaction(() => {
+      db.prepare(`UPDATE slot_claims SET revoked = 0, revoked_by = NULL, revoked_reason = NULL WHERE slot_ref = ?`).run(
+        request.params.ref,
+      );
+      logMasterAction(db, master.id, "SLOT_RESTORE", { slotRef: request.params.ref });
+    })();
     return { ok: true };
   });
 }

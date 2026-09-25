@@ -47,8 +47,11 @@ export function registerProvisionRoutes(app: FastifyInstance, db: Db) {
     const checked = validateProvisionParams({ callsign: b.callsign, faction: b.faction ?? "", balance: b.balance ?? 0, ram: b.ram ?? 0 });
     if (!checked.ok) return reply.code(400).send({ error: checked.error });
 
-    const id = createProvision(db, master.name, checked.value);
-    logMasterAction(db, master.id, "PROVISION_CREATE", { id, ...checked.value });
+    const id = db.transaction(() => {
+      const created = createProvision(db, master.name, checked.value);
+      logMasterAction(db, master.id, "PROVISION_CREATE", { id: created, ...checked.value });
+      return created;
+    })();
     return respond(request, id);
   });
 
@@ -81,8 +84,11 @@ export function registerProvisionRoutes(app: FastifyInstance, db: Db) {
     });
     if (!checked.ok) return reply.code(400).send({ error: checked.error });
 
-    const id = createProvision(db, master.name, checked.value, request.params.key);
-    logMasterAction(db, master.id, "PROVISION_REISSUE", { id, subjectKey: request.params.key, ...checked.value });
+    const id = db.transaction(() => {
+      const created = createProvision(db, master.name, checked.value, request.params.key);
+      logMasterAction(db, master.id, "PROVISION_REISSUE", { id: created, subjectKey: request.params.key, ...checked.value });
+      return created;
+    })();
     return respond(request, id);
   });
 }

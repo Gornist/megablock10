@@ -125,11 +125,14 @@ export function registerPlayersRoutes(app: FastifyInstance, db: Db) {
     if (!resolved.ok) return reply.code(400).send({ error: resolved.error });
     const oldValue = currentFieldValue(current, field as Field);
 
-    const [record] = insertMasterRecords(db, master.id, [
-      { subjectKey, field, oldValue, newValue: resolved.value, sourceRef: justification },
-    ]);
-
-    logMasterAction(db, master.id, "PLAYER_OVERRIDE", { subjectKey, field, mode, oldValue, newValue: resolved.value, justification });
+    // Правка и запись в журнал мастера — одна транзакция: не бывает правки без записи «кто и зачем» (и наоборот).
+    const record = db.transaction(() => {
+      const [inserted] = insertMasterRecords(db, master.id, [
+        { subjectKey, field, oldValue, newValue: resolved.value, sourceRef: justification },
+      ]);
+      logMasterAction(db, master.id, "PLAYER_OVERRIDE", { subjectKey, field, mode, oldValue, newValue: resolved.value, justification });
+      return inserted;
+    })();
 
     return { id: record.id, seq: record.seq };
   });
@@ -180,20 +183,24 @@ export function registerPlayersRoutes(app: FastifyInstance, db: Db) {
     }
     if (changes.length === 0) return reply.code(400).send({ error: "no players would change" });
 
-    const records = insertMasterRecords(
-      db,
-      master.id,
-      changes.map((c) => ({ subjectKey: c.publicKeyB64, field, oldValue: c.oldValue, newValue: c.newValue, sourceRef: justification })),
-    );
-    logMasterAction(db, master.id, "BULK_OVERRIDE", {
-      field,
-      mode,
-      newValue,
-      justification,
-      target: targets.label,
-      count: records.length,
-      keys: changes.map((c) => c.publicKeyB64),
-    });
+    // Правка и запись в журнал мастера — одна транзакция: не бывает правки без записи «кто и зачем» (и наоборот).
+    const records = db.transaction(() => {
+      const inserted = insertMasterRecords(
+        db,
+        master.id,
+        changes.map((c) => ({ subjectKey: c.publicKeyB64, field, oldValue: c.oldValue, newValue: c.newValue, sourceRef: justification })),
+      );
+      logMasterAction(db, master.id, "BULK_OVERRIDE", {
+        field,
+        mode,
+        newValue,
+        justification,
+        target: targets.label,
+        count: inserted.length,
+        keys: changes.map((c) => c.publicKeyB64),
+      });
+      return inserted;
+    })();
     return { dryRun: false, target: targets.label, count: records.length, unchanged: plan.length - changes.length };
   });
 }

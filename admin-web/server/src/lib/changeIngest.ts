@@ -2,6 +2,7 @@ import type { Db } from "../db/index.js";
 import { isField, isReason, signaturePayload, type ChangeRecordInput } from "./changeRecord.js";
 import { verifySignature } from "./crypto.js";
 import { ipv4Of, parseClientVersions, parseSyncState, peersSince, touchPresence } from "./presence.js";
+import { RAM_CAPACITY_DEFAULT, RAM_CAPACITY_MAX } from "./identityDefaults.js";
 import { bindProvision } from "./provisions.js";
 
 /**
@@ -58,17 +59,83 @@ export function isChangeRecordInput(v: unknown): v is ChangeRecordInput {
   );
 }
 
-/** Проверки, не требующие БД: известные поле и причина, автор, подпись. */
+const MAX_ID_CHARS = 100;
+const MAX_REF_CHARS = 200;
+const MAX_NAME_CHARS = 64;
+const MAX_JSON_CHARS = 4096;
+const INTEGER = /^-?\d{1,15}$/;
+
+/**
+ * Значение записи того вида, что ждёт свёртка (lib/projection.ts), — иначе запись попадала бы в историю и её тихо пропускала
+ * бы свёртка. Баланс — целое (со знаком: мастер может увести в минус), RAM — целое 6..13, позывной и фракция — короткая строка
+ * (пустая — при сбросе сессии), остальные поля — JSON-объект. Границы длины — чтобы одна запись не раздувала базу и дашборд.
+ */
+function valueProblem(r: ChangeRecordInput): string | null {
+  if (r.id.length === 0 || r.id.length > MAX_ID_CHARS) return "bad id";
+  if (r.sourceRef != null && r.sourceRef.length > MAX_REF_CHARS) return "sourceRef too long";
+  const v = r.newValue ?? null;
+  const old = r.oldValue ?? null;
+  switch (r.field) {
+    case "balance":
+      if (v === null || !INTEGER.test(v)) return "balance must be an integer";
+      if (old !== null && !INTEGER.test(old)) return "old balance must be an integer";
+      return null;
+    case "ramCapacity": {
+      const n = v === null || !INTEGER.test(v) ? NaN : Number(v);
+      if (!(n >= RAM_CAPACITY_DEFAULT && n <= RAM_CAPACITY_MAX)) return `ramCapacity must be an integer ${RAM_CAPACITY_DEFAULT}..${RAM_CAPACITY_MAX}`;
+      return null;
+    }
+    case "callsign":
+    case "faction":
+      if (v === null || v.length > MAX_NAME_CHARS) return `${r.field} must be at most ${MAX_NAME_CHARS} chars`;
+      return null;
+    default: {
+      if (v === null || v.length > MAX_JSON_CHARS) return `${r.field} must be a JSON object up to ${MAX_JSON_CHARS} chars`;
+      try {
+        const parsed: unknown = JSON.parse(v);
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return `${r.field} must be a JSON object`;
+      } catch {
+        return `${r.field} must be a JSON object`;
+      }
+      return null;
+    }
+  }
+}
+
+/** Проверки, не требующие БД: известные поле и причина, вид значения, автор, подпись. */
 export function validateRecord(r: ChangeRecordInput): Verdict {
   if (!isField(r.field)) return { ok: false, error: `unknown field: ${r.field}` };
   if (!isReason(r.reason)) return { ok: false, error: `unknown reason: ${r.reason}` };
   // Правки мастера создаёт только сам сервер (routes/players.ts) — устройство, приславшее такую причину, подделывало бы запись «от мастера» в истории.
   if (r.reason === "MASTER_OVERRIDE") return { ok: false, error: "MASTER_OVERRIDE can only be issued by the collector" };
+  const problem = valueProblem(r);
+  if (problem) return { ok: false, error: problem };
   // subjectKeyB64 совпадает с отправителем, кроме TRANSFER_IN — там actor это контрагент (см. §3.1, §4).
   if (r.reason !== "TRANSFER_IN" && r.actor !== r.subjectKeyB64) return { ok: false, error: "actor must equal subjectKeyB64 for this reason" };
   const signer = r.reason === "TRANSFER_IN" ? r.subjectKeyB64 : r.actor;
   if (!verifySignature(signer, signaturePayload(r), r.signature)) return { ok: false, error: "invalid signature" };
   return { ok: true };
+}
+
+interface ExistingRow {
+  subject_key: string;
+  seq: number;
+  happened_at: number;
+  field: string;
+  old_value: string | null;
+  new_value: string | null;
+  reason: string;
+  source_ref: string | null;
+  actor: string;
+  signature: string;
+}
+
+function sameRecord(e: ExistingRow, r: ChangeRecordInput): boolean {
+  return (
+    e.subject_key === r.subjectKeyB64 && e.seq === r.seq && e.happened_at === r.happenedAt && e.field === r.field &&
+    e.old_value === (r.oldValue ?? null) && e.new_value === (r.newValue ?? null) && e.reason === r.reason &&
+    e.source_ref === (r.sourceRef ?? null) && e.actor === r.actor && e.signature === r.signature
+  );
 }
 
 export function createChangeIngest(db: Db) {
@@ -77,7 +144,9 @@ export function createChangeIngest(db: Db) {
     VALUES (@id, @subject_key, @seq, @happened_at, @received_at, @field, @old_value, @new_value, @reason, @source_ref, @actor, @signature)
   `);
   const existsBySeqStmt = db.prepare(`SELECT id FROM changes WHERE subject_key = ? AND seq = ?`);
-  const existsByIdStmt = db.prepare(`SELECT id FROM changes WHERE id = ?`);
+  const byIdStmt = db.prepare(
+    `SELECT subject_key, seq, happened_at, field, old_value, new_value, reason, source_ref, actor, signature FROM changes WHERE id = ?`,
+  );
   const maxSeqStmt = db.prepare(`SELECT MAX(seq) AS maxSeq FROM changes WHERE subject_key = ?`);
   const pendingForSubjectStmt = db.prepare(`
     SELECT c.* FROM master_pending mp JOIN changes c ON c.id = mp.change_id
@@ -101,8 +170,14 @@ export function createChangeIngest(db: Db) {
     if (!isChangeRecordInput(raw)) return { ok: false, id: idForError, error: "malformed record" };
     const r = raw;
 
-    // Повторная отправка того же id — уже приняли, не ошибка (см. п.13: повтор не создаёт дублей).
-    if (existsByIdStmt.get(r.id)) return { ok: true, id: r.id, subjectKeyB64: r.subjectKeyB64 };
+    // Повторная отправка той же записи — уже приняли, не ошибка (см. п.13: повтор не создаёт дублей). Но только ТОЙ ЖЕ: другая
+    // запись с занятым id — конфликт, а не «принято» (иначе телефон удалил бы её из очереди, а сервер её так и не записал).
+    const existing = byIdStmt.get(r.id) as ExistingRow | undefined;
+    if (existing) {
+      return sameRecord(existing, r)
+        ? { ok: true, id: r.id, subjectKeyB64: r.subjectKeyB64 }
+        : { ok: false, id: r.id, error: "id already used by a different record" };
+    }
 
     const verdict = validateRecord(r);
     if (!verdict.ok) return { ok: false, id: r.id, error: verdict.error };

@@ -57,7 +57,8 @@ class SyncEngineTest {
 
     private fun rec(id: String, seq: Long, at: Long = 0) = ChangeRecord(id, "me", seq, at, "balance", null, "1", "X", null, "me", "sig")
 
-    private class Env(scope: TestScope) {
+    /** Разброс пауз выключен: остальные тесты проверяют паузы до миллисекунды. Разброс — отдельным тестом. */
+    private class Env(scope: TestScope, config: SyncConfig = SyncConfig(jitter = 0.0)) {
         val queue = FakeQueue()
         val server = FakeServer { scope.testScheduler.currentTime }
         val hooks = Hooks()
@@ -68,7 +69,7 @@ class SyncEngineTest {
         val engine = SyncEngine(
             queue, server, { endpoint }, { subject },
             presence = { stats -> presenceSeen += stats; mapOf("chatPort" to 4000) },
-            hooks = hooks, clock = Clock { scope.testScheduler.currentTime }, log = log, tag = "ChangeRecordStore",
+            hooks = hooks, clock = Clock { scope.testScheduler.currentTime }, log = log, tag = "ChangeRecordStore", config = config,
         )
         fun times() = server.requests.map { it.first }
     }
@@ -235,5 +236,16 @@ class SyncEngineTest {
         anon.server.script += { SyncResponse(emptySet(), emptyMap(), emptyList(), listOf(peer)) }
         backgroundScope.launch { anon.engine.run() }; runCurrent()
         assertTrue(anon.hooks.peers.isEmpty())
+    }
+
+    @Test fun idlePollsAreSpreadSoPhonesDoNotPollInLockstep() = runTest {
+        val env = Env(this, SyncConfig(random = kotlin.random.Random(42)))
+        backgroundScope.launch { env.engine.run() }; runCurrent()
+        advanceTimeBy(30 * 60_000L); runCurrent()
+        val gaps = env.times().zipWithNext { a, b -> b - a }
+        assertTrue("опросов достаточно для статистики: ${gaps.size}", gaps.size > 40)
+        assertTrue("каждая пауза в пределах 30 с ± 20 %: $gaps", gaps.all { it in 24_000L..36_000L })
+        assertTrue("паузы разные, а не строго по 30 с", gaps.toSet().size > gaps.size / 2)
+        assertTrue("средняя — около 30 с", gaps.average() in 28_000.0..32_000.0)
     }
 }

@@ -7,6 +7,7 @@ import com.megablok10.kit.time.Clock
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
@@ -78,13 +79,22 @@ interface SyncHooks {
     suspend fun applyMasterChange(change: ChangeRecord): MasterApply = MasterApply.Applied
 }
 
-/** Размер пачки и паузы. По умолчанию — как в ТЗ мастерского сервера (§3.4): бэкофф 1 → 2 → 5 → 15 → 60 с, простой — раз в 30 с. */
+/**
+ * Размер пачки и паузы. По умолчанию — как в ТЗ мастерского сервера (§3.4): бэкофф 1 → 2 → 5 → 15 → 60 с, простой — раз в 30 с.
+ * [jitter] — случайный разброс каждой паузы (0.2 — ±20 %): сто телефонов, включённых разом, иначе опрашивали бы сервер строго
+ * в одни и те же секунды, и после перезапуска сервера возвращались бы одной волной. Средняя пауза от разброса не меняется.
+ */
 class SyncConfig(
     val batchSize: Int = 200,
     val backoffMs: LongArray = longArrayOf(1_000, 2_000, 5_000, 15_000, 60_000),
     val idlePollMs: Long = 30_000,
     val noEndpointPollMs: Long = 30_000,
-)
+    val jitter: Double = 0.2,
+    val random: Random = Random.Default,
+) {
+    /** [ms] с разбросом ±[jitter]. */
+    fun spread(ms: Long): Long = if (jitter <= 0.0) ms else (ms * (1 + jitter * (2 * random.nextDouble() - 1))).toLong().coerceAtLeast(0)
+}
 
 /**
  * Фоновый обмен с мастерским сервером: отправляет очередь [ChangeRecord] пачками, удаляет принятые и отбракованные, применяет
@@ -147,7 +157,7 @@ class SyncEngine(
     private suspend fun syncOnce(repliesIn: Replies, backoffIn: Int): Step {
         val target = endpoint()
         if (target == null) {
-            waitForWakeOrTimeout(config.noEndpointPollMs)
+            waitForWakeOrTimeout(config.spread(config.noEndpointPollMs))
             return Step(repliesIn, 0)
         }
 
@@ -179,7 +189,7 @@ class SyncEngine(
         if (batch.isEmpty() && replies.acks.isEmpty()) {
             // Нечего слать и ничего не применили — обычный простой, не долбим сервер чаще раза в idlePollMs. Сюда же — правки,
             // которые не применились: сервер пришлёт их снова, но повторять раньше следующего опроса бессмысленно.
-            waitForWakeOrTimeout(config.idlePollMs)
+            waitForWakeOrTimeout(config.spread(config.idlePollMs))
         }
         // Иначе сразу на новый виток: либо не всё отправили (пачка), либо только что применили правки и надо отправить
         // подтверждения и проверить очередь ещё раз без задержки.
@@ -210,7 +220,7 @@ class SyncEngine(
         return Replies(acks, failures)
     }
 
-    private fun backoffDelay(index: Int): Long = config.backoffMs[index.coerceIn(0, config.backoffMs.lastIndex)]
+    private fun backoffDelay(index: Int): Long = config.spread(config.backoffMs[index.coerceIn(0, config.backoffMs.lastIndex)])
 
     private suspend fun waitForWakeOrTimeout(timeoutMs: Long) {
         withTimeoutOrNull(timeoutMs) { wakeSignal.first() }

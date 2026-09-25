@@ -139,8 +139,10 @@ export function registerMasterRoutes(app: FastifyInstance, db: Db) {
       slots.push(validated.slot);
     }
 
-    upsertContainer(db, { id, name, tier, ownerFaction, slots });
-    logMasterAction(db, master.id, "CONTAINER_CREATED", { containerId: id, name, tier, ownerFaction, slots: slots.length });
+    db.transaction(() => {
+      upsertContainer(db, { id, name, tier, ownerFaction, slots });
+      logMasterAction(db, master.id, "CONTAINER_CREATED", { containerId: id, name, tier, ownerFaction, slots: slots.length });
+    })();
 
     const qr = encodeContainerQr(
       id,
