@@ -93,14 +93,20 @@ android {
     }
 }
 
+// Java-агент ByteBuddy (им пользуется Paparazzi) — загружается при старте тестовой JVM, а не подключается на лету. Версия — та же,
+// что приходит с Paparazzi 1.3.4; при расхождении не страшно: ByteBuddy ищет загруженный агент по имени класса в системном загрузчике.
+val byteBuddyAgent: Configuration by configurations.creating { isTransitive = false }
+dependencies { byteBuddyAgent("net.bytebuddy:byte-buddy-agent:1.14.16") }
+
 tasks.withType<Test>().configureEach {
-    // Paparazzi ставит Java-агент через ByteBuddy. Без этого флага JVM 9+ запрещает подключаться к самой себе, и ByteBuddy запускает
-    // для подключения отдельную `java` — на macOS под нагрузкой она иногда не успевает («Could not self-attach to current VM using
-    // external process»): стабильно падали 5 тестов ScreenshotTest, чаще всего в прогоне после тестов на Robolectric. С флагом агент
-    // ставится изнутри тестовой JVM, без внешнего процесса. Флаг читается при старте JVM, поэтому только jvmArgs.
+    // Paparazzi зовёт ByteBuddyAgent.install(). Подключение на лету (attach) на macOS под нагрузкой ненадёжно: сначала падал внешний
+    // процесс-подключатель («Could not self-attach … using external process»), с -Djdk.attach.allowAttachSelf — таймаут сокета
+    // собственного Attach Listener («.java_pid… doesn't respond within 10500ms»). Агент, загруженный через -javaagent, install()
+    // находит сразу: ни внешнего процесса, ни сигнала SIGQUIT, ни сокета (проверено strace: 0/0/0 против 1/2/2 при attach).
+    val agentJar = byteBuddyAgent
+    jvmArgumentProviders.add(CommandLineArgumentProvider { listOf("-javaagent:${agentJar.singleFile.absolutePath}") })
+    // Запасной путь, если агент при старте почему-то не найдётся: подключение изнутри JVM, без внешнего процесса.
     jvmArgs("-Djdk.attach.allowAttachSelf=true")
-    // JDK 21+ предупреждает о динамически загруженных агентах и в следующих версиях запретит их по умолчанию; на 17 флага нет.
-    if (JavaVersion.current() >= JavaVersion.VERSION_21) jvmArgs("-XX:+EnableDynamicAgentLoading")
     // Robolectric (android-all) и Paparazzi (layoutlib) живут в одной тестовой JVM; по умолчанию Gradle даёт ей 512 МБ.
     maxHeapSize = "2g"
     // Упавший тест — с полным текстом исключения прямо в журнале: отчёты CI отсюда не скачать, а по классу исключения причину не понять.

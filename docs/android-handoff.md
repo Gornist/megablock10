@@ -113,9 +113,10 @@ kit — в [kit/README.md](../kit/README.md).
   экрана, сессия не поднимется, пока игрок не откроет приложение. Так было и до переделки.
 - Android Lint включён только на `NewApi`, остальные проверки выключены. В detekt-baseline осталась одна старая находка
   (`DecryptRules`).
-- Paparazzi и Robolectric в одной тестовой JVM: на macOS Paparazzi иногда не мог подключить Java-агент через внешний процесс
-  («Could not self-attach to current VM»). Тестовая JVM теперь запускается с `-Djdk.attach.allowAttachSelf=true` (агент ставится без
-  внешнего процесса) и 2 ГБ памяти; `scripts/check.sh` один раз повторяет шаг, если упал именно этот сбой.
+- Paparazzi ставит Java-агент ByteBuddy. Подключение агента на лету (attach) на macOS под нагрузкой ненадёжно: падал и внешний
+  процесс-подключатель, и (с `-Djdk.attach.allowAttachSelf=true`) собственный Attach Listener по таймауту 10,5 с. Поэтому агент
+  загружается при старте тестовой JVM (`-javaagent`, конфигурация `byteBuddyAgent` в `app/build.gradle.kts`), и install() берёт его
+  готовым; `AgentPreloadTest` следит, чтобы это не потерялось. `scripts/check.sh` один раз повторяет шаг при сбое подключения агента.
 - `DebugQrBus` (только debug) теряет строку, если экран её сейчас не слушает. Стенд e2e это учитывает.
 
 ## План дальнейшей работы
