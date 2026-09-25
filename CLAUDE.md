@@ -16,7 +16,8 @@
 
 ## Окружение агентов
 
-- Плагины Claude Code для проекта — `.claude/settings.json` (code-review, KotlinSense); облачная сессия ставит их при старте.
+- Плагины Claude Code для проекта — `.claude/settings.json` (code-review, KotlinSense). Облачная сессия по нему их не ставит —
+  ставит `scripts/cloud-setup.sh` (`claude plugin install`, до старта сессии).
   Decibel Superpowers публичного git-источника не имеет — включается в аккаунте claude.ai.
 - Облачное окружение настраивает `scripts/cloud-setup.sh` (копия вставлена в Setup script окружения): SDK 34, зеркало Maven
   для Gradle и Robolectric, `LANG=C.UTF-8`, kotlin-language-server (для KotlinSense). Правите скрипт — обновите и его копию в настройках.

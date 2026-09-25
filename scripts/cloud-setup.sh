@@ -42,14 +42,20 @@ allprojects {
 EOF
 
 # 3. Переменные для shell сессии: SDK для Gradle и UTF-8 — клиент Gradle кодирует вывод по локали, при пустом LANG русский — «???».
+#    Блок — в НАЧАЛО ~/.bashrc: штатный .bashrc выходит на `[ -z "$PS1" ] && return`, а shell агента неинтерактивный —
+#    дописанное в конец не выполнялось (25.09: LANG в сессии пустой, хотя блок в файле был).
 touch ~/.bashrc
-grep -q 'MB10: окружение' ~/.bashrc || cat >> ~/.bashrc <<EOF
+if ! grep -q 'MB10: окружение' ~/.bashrc; then
+  tmp=$(mktemp)
+  cat > "$tmp" <<EOF
 # MB10: окружение (scripts/cloud-setup.sh)
 export ANDROID_HOME=$SDK
 export ANDROID_SDK_ROOT=$SDK
 export LANG=C.UTF-8
 export PATH="\$HOME/.local/bin:\$PATH"
 EOF
+  cat ~/.bashrc >> "$tmp"; mv "$tmp" ~/.bashrc
+fi
 
 # 4. kotlin-language-server для плагина KotlinSense (.claude/settings.json; его .lsp.json зовёт kotlin-language-server из PATH).
 KLS_VERSION=1.3.13
@@ -62,4 +68,15 @@ fi
 mkdir -p "$HOME/.local/bin"
 ln -sf "$HOME/.kotlin-language-server/bin/kotlin-language-server" "$HOME/.local/bin/kotlin-language-server"
 
-echo "MB10 cloud setup: SDK $(ls "$SDK/platforms" | tr '\n' ' '), kotlin-language-server $KLS_VERSION, init.d и ~/.bashrc готовы"
+# 5. Плагины Claude Code. enabledPlugins из .claude/settings.json облачная сессия при старте не ставит (25.09:
+#    installed_plugins.json пуст, маркетплейс KotlinSense даже не добавлен) — ставим сами, в пользовательскую область.
+#    Ошибка здесь не должна валить настройку: без плагинов сессия работает.
+CLAUDE_BIN=$(command -v claude || echo /opt/claude-code/bin/claude)
+if [ -x "$CLAUDE_BIN" ]; then
+  "$CLAUDE_BIN" plugin marketplace add anthropics/claude-plugins-official || true
+  "$CLAUDE_BIN" plugin marketplace add SUDARSHANCHAUDHARI/KotlinSense || true
+  "$CLAUDE_BIN" plugin install code-review@claude-plugins-official || true
+  "$CLAUDE_BIN" plugin install kotlinsense@kotlinsense || true
+fi
+
+echo "MB10 cloud setup: SDK $(ls "$SDK/platforms" | tr '\n' ' '), kotlin-language-server $KLS_VERSION, init.d, ~/.bashrc и плагины готовы"
