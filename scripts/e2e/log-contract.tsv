@@ -17,3 +17,4 @@ CollectorClient	sync.ok
 CollectorClient	sync.unreachable
 WifiBinder	привязано к Wi-Fi
 *	chat.recv
+*	peer.found

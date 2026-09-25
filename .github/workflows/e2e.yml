@@ -13,7 +13,12 @@ on:
       - ".github/workflows/e2e.yml"
   schedule:
     - cron: "0 1 * * *"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      static_peers:
+        description: "Статические пиры (link.sh: DEBUG_PEER + emu redir). Снять — только NSD (эксперимент A4, docs/refactor-plan.md)"
+        type: boolean
+        default: true
 
 # Новый пуш в тот же PR отменяет недоигранный прогон: результат старого коммита уже никому не нужен, а раннер занят 17 минут.
 concurrency:
@@ -31,6 +36,8 @@ jobs:
       ANDROID_AVD_HOME: /home/runner/.android/avd   # одно место и для avdmanager (создание), и для emulator (запуск) — иначе «Unknown AVD name»
       EMU_EXTRA_ARGS: "-memory 2048 -cores 2 -no-metrics"
       E2E_DIR: /tmp/mb10-e2e
+      # Строкой, не inputs.static_peers: у ночного и PR-запуска входов нет, а null == false в выражениях GitHub истинно.
+      E2E_STATIC_PEERS: ${{ github.event.inputs.static_peers == 'false' && '0' || '1' }}
     steps:
       - uses: actions/checkout@v7
 
