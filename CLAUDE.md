@@ -38,9 +38,10 @@
 - **Никогда `./gradlew cleanTest*` / `:app:cleanTestDebugUnitTest`**: Paparazzi считает `app/src/test/snapshots/` выходом
   тестовой задачи, clean **удаляет закоммиченные эталоны**. Заново без кэша — `--rerun-tasks`. Стёрлись — `git restore app/src/test/snapshots`.
 - Намеренно поменяли интерфейс — `./gradlew recordPaparazziDebug` и коммит новых PNG вместе с правкой.
-- Тестовая JVM в `app/build.gradle.kts` настроена под macOS (M1, JDK под Rosetta): агент ByteBuddy — через `-javaagent`,
-  SQLite Robolectric — `LEGACY` (нативная ломала layoutlib Paparazzi, SIGSEGV). Не убирать без замены (см. refactor-plan, A1);
-  стерегут `AgentPreloadTest` и `SqliteModeTest`.
+- Скриншот-тесты (Paparazzi) и остальные unit-тесты (Robolectric) — в разных JVM (`app/build.gradle.kts`, refactor-plan A1):
+  раньше нативный SQLite Robolectric в общей JVM ломал layoutlib Paparazzi на macOS (SIGSEGV), разделение это сняло —
+  подтверждено 5 прогонами на Mac (M1), `robolectric.sqliteMode=LEGACY` больше нет. Агент ByteBuddy — через `-javaagent`
+  (нужен Paparazzi в любой JVM, не убирать); стережёт `AgentPreloadTest`.
 
 ## Как писать проверки e2e (`scripts/e2e/`)
 
