@@ -116,7 +116,9 @@ kit — в [kit/README.md](../kit/README.md).
 - Paparazzi ставит Java-агент ByteBuddy. Подключение агента на лету (attach) на macOS под нагрузкой ненадёжно: падал и внешний
   процесс-подключатель, и (с `-Djdk.attach.allowAttachSelf=true`) собственный Attach Listener по таймауту 10,5 с. Поэтому агент
   загружается при старте тестовой JVM (`-javaagent`, конфигурация `byteBuddyAgent` в `app/build.gradle.kts`), и install() берёт его
-  готовым; `AgentPreloadTest` следит, чтобы это не потерялось. `scripts/check.sh` один раз повторяет шаг при сбое подключения агента.
+  готовым; `AgentPreloadTest` следит, чтобы это не потерялось. Второе: на macOS нативная SQLite Robolectric (`librobolectric-nativeruntime`, со своей Skia)
+  в той же JVM ломала layoutlib Paparazzi — SIGSEGV в `SkiaHostPipeline::setSurface` у скриншот-тестов после тестов на Robolectric.
+  Robolectric работает с SQLite в режиме `LEGACY` (`robolectric.sqliteMode`, проверяет `SqliteModeTest`). `scripts/check.sh` один раз повторяет шаг при сбое подключения агента.
 - `DebugQrBus` (только debug) теряет строку, если экран её сейчас не слушает. Стенд e2e это учитывает.
 
 ## План дальнейшей работы

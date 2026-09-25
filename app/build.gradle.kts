@@ -107,6 +107,10 @@ tasks.withType<Test>().configureEach {
     jvmArgumentProviders.add(CommandLineArgumentProvider { listOf("-javaagent:${agentJar.singleFile.absolutePath}") })
     // Запасной путь, если агент при старте почему-то не найдётся: подключение изнутри JVM, без внешнего процесса.
     jvmArgs("-Djdk.attach.allowAttachSelf=true")
+    // SQLite для Room под Robolectric — прежний режим (sqlite4java), а не нативный: нативный грузит librobolectric-nativeruntime —
+    // кусок Android runtime со своей Skia. На macOS её слабые C++-символы склеиваются с такими же в layoutlib Paparazzi в той же
+    // JVM, и скриншот-тесты, идущие после Robolectric, падали SIGSEGV в SkiaHostPipeline::setSurface (отдельно — проходили).
+    systemProperty("robolectric.sqliteMode", "LEGACY")
     // Robolectric (android-all) и Paparazzi (layoutlib) живут в одной тестовой JVM; по умолчанию Gradle даёт ей 512 МБ.
     maxHeapSize = "2g"
     // Упавший тест — с полным текстом исключения прямо в журнале: отчёты CI отсюда не скачать, а по классу исключения причину не понять.
