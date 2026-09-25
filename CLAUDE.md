@@ -19,7 +19,7 @@
 | Что | Команда | Где |
 |---|---|---|
 | Всё локально | `scripts/check.sh --all` | pre-push хук (`scripts/setup-hooks.sh`) — быстрая версия |
-| Тесты приложения + скриншоты | `./gradlew verifyPaparazziDebug` (сам гоняет **все** unit-тесты app) | не звать отдельно `testDebugUnitTest` — двойной прогон |
+| Тесты приложения + скриншоты | `./gradlew verifyPaparazziDebug` (сам гоняет **все** unit-тесты app: скриншоты и остальное — в разных JVM) | без скриншотов — `testDebugUnitTestNoScreenshots`; один тест — `--tests` у неё |
 | kit | `./gradlew :kit:test` | чистый JVM |
 | Статика | `./gradlew :app:detekt :kit:detekt :kit:animalsnifferMain :app:lintDebug` | новые находки ломают CI |
 | CI | `.github/workflows/main.yml` (push/PR в `main`, вручную) | ≈4 мин |

@@ -1,4 +1,5 @@
 import java.util.Properties
+import java.util.concurrent.Callable
 
 plugins {
     id("com.android.application")
@@ -115,20 +116,47 @@ android {
 val byteBuddyAgent: Configuration by configurations.creating { isTransitive = false }
 dependencies { byteBuddyAgent("net.bytebuddy:byte-buddy-agent:1.14.16") }
 
+// Скриншот-тесты (Paparazzi: layoutlib со своей Skia) и остальные unit-тесты (Robolectric: android-all, нативный SQLite) — в разных
+// JVM. В одной JVM нативные библиотеки конфликтовали: на macOS скриншоты после Robolectric падали SIGSEGV в layoutlib (25.09).
+// Paparazzi привязан к test<Variant>UnitTest (его verify/record зовут именно её) — ей оставлены только скриншоты; остальное идёт
+// в test<Variant>UnitTestNoScreenshots, от которой она зависит. Итог прежний: testDebugUnitTest и verifyPaparazziDebug гоняют ВСЕ
+// тесты приложения, каждый ровно один раз (задача без скриншотов от режима Paparazzi не зависит и во втором вызове up-to-date).
+// Один тест: ./gradlew :app:testDebugUnitTestNoScreenshots --tests '*RoomTest*' (скриншот — verifyPaparazziDebug --tests …).
+val screenshotTests = "com.megablok10.app.screenshots.*"
+for (variant in listOf("Debug", "Release")) {
+    val unitTest = "test${variant}UnitTest"
+    val noScreenshots = tasks.register<Test>("${unitTest}NoScreenshots") {
+        description = "Unit-тесты варианта ${variant.lowercase()} без скриншот-тестов — в своей JVM, без Paparazzi"
+        group = "verification"
+        // Классы и classpath — те же, что у задачи AGP (её создают после вычисления скрипта, поэтому лениво). Через Callable, а не
+        // provider задачи: provider нёс бы зависимость от самой test<Variant>UnitTest, а она зависит от этой — цикл.
+        val base = tasks.named<Test>(unitTest)
+        testClassesDirs = files(Callable { base.get().testClassesDirs })
+        classpath = files(Callable { base.get().classpath })
+        filter.excludeTestsMatching(screenshotTests)
+        // SQLite для Room под Robolectric — прежний режим (sqlite4java), а не нативный: нативный грузит librobolectric-nativeruntime —
+        // кусок Android runtime со своей Skia, и на macOS её слабые C++-символы склеивались с такими же в layoutlib Paparazzi в той же
+        // JVM (SIGSEGV в SkiaHostPipeline::setSurface). Причину сняло разделение JVM выше, но на macOS это не проверено — режим
+        // оставлен, пока владелец не прогонит на Mac scripts/check.sh --all без него (docs/refactor-plan.md, A1). Стережёт SqliteModeTest.
+        systemProperty("robolectric.sqliteMode", "LEGACY")
+    }
+    tasks.withType<Test>().matching { it.name == unitTest }.configureEach {
+        dependsOn(noScreenshots)
+        filter.includeTestsMatching(screenshotTests)
+        // Paparazzi зовёт ByteBuddyAgent.install(). Подключение на лету (attach) на macOS под нагрузкой ненадёжно: сначала падал внешний
+        // процесс-подключатель («Could not self-attach … using external process»), с -Djdk.attach.allowAttachSelf — таймаут сокета
+        // собственного Attach Listener («.java_pid… doesn't respond within 10500ms»). Агент, загруженный через -javaagent, install()
+        // находит сразу: ни внешнего процесса, ни сигнала SIGQUIT, ни сокета (проверено strace: 0/0/0 против 1/2/2 при attach).
+        // Разделение JVM этого не касается (attach нужен Paparazzi в любой JVM) — агент остаётся. Стережёт screenshots/AgentPreloadTest.
+        val agentJar = byteBuddyAgent
+        jvmArgumentProviders.add(CommandLineArgumentProvider { listOf("-javaagent:${agentJar.singleFile.absolutePath}") })
+        // Запасной путь, если агент при старте почему-то не найдётся: подключение изнутри JVM, без внешнего процесса.
+        jvmArgs("-Djdk.attach.allowAttachSelf=true")
+    }
+}
+
 tasks.withType<Test>().configureEach {
-    // Paparazzi зовёт ByteBuddyAgent.install(). Подключение на лету (attach) на macOS под нагрузкой ненадёжно: сначала падал внешний
-    // процесс-подключатель («Could not self-attach … using external process»), с -Djdk.attach.allowAttachSelf — таймаут сокета
-    // собственного Attach Listener («.java_pid… doesn't respond within 10500ms»). Агент, загруженный через -javaagent, install()
-    // находит сразу: ни внешнего процесса, ни сигнала SIGQUIT, ни сокета (проверено strace: 0/0/0 против 1/2/2 при attach).
-    val agentJar = byteBuddyAgent
-    jvmArgumentProviders.add(CommandLineArgumentProvider { listOf("-javaagent:${agentJar.singleFile.absolutePath}") })
-    // Запасной путь, если агент при старте почему-то не найдётся: подключение изнутри JVM, без внешнего процесса.
-    jvmArgs("-Djdk.attach.allowAttachSelf=true")
-    // SQLite для Room под Robolectric — прежний режим (sqlite4java), а не нативный: нативный грузит librobolectric-nativeruntime —
-    // кусок Android runtime со своей Skia. На macOS её слабые C++-символы склеиваются с такими же в layoutlib Paparazzi в той же
-    // JVM, и скриншот-тесты, идущие после Robolectric, падали SIGSEGV в SkiaHostPipeline::setSurface (отдельно — проходили).
-    systemProperty("robolectric.sqliteMode", "LEGACY")
-    // Robolectric (android-all) и Paparazzi (layoutlib) живут в одной тестовой JVM; по умолчанию Gradle даёт ей 512 МБ.
+    // Robolectric (android-all) и Paparazzi (layoutlib) — тяжёлые; по умолчанию Gradle даёт тестовой JVM 512 МБ.
     maxHeapSize = "2g"
     // Упавший тест — с полным текстом исключения прямо в журнале: отчёты CI отсюда не скачать, а по классу исключения причину не понять.
     testLogging { exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }

@@ -7,6 +7,8 @@
 cd "$(dirname "$0")/.." || exit 1
 ROOT=$PWD; LOGS=/tmp/mb10-check; mkdir -p $LOGS
 export JAVA_HOME=${JAVA_HOME:-/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home}
+# Кодировка вывода клиента Gradle берётся из локали (stdout.encoding): при пустом LANG (облачная сессия, cron) русский текст — «???».
+[ "$(locale charmap 2>/dev/null)" = UTF-8 ] || export LC_ALL=C.UTF-8
 # Node для сервера/клиента: LTS 22 (зависимости сервера требуют >=22), запасной — 20; NODE_BIN переопределяет. На CI node берётся из setup-node.
 for d in "${NODE_BIN:-}" /opt/homebrew/opt/node@22/bin /opt/homebrew/opt/node@20/bin; do [ -n "$d" ] && [ -d "$d" ] && { NODE_BIN=$d; break; }; done
 export PATH="${NODE_BIN:+$NODE_BIN:}$PATH"

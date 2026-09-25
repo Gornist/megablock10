@@ -118,9 +118,11 @@ kit — в [kit/README.md](../kit/README.md).
   готовым; `AgentPreloadTest` следит, чтобы это не потерялось. Второе: на macOS нативная SQLite Robolectric (`librobolectric-nativeruntime`, со своей Skia)
   в той же JVM ломала layoutlib Paparazzi — SIGSEGV в `SkiaHostPipeline::setSurface` у скриншот-тестов после тестов на Robolectric.
   Robolectric работает с SQLite в режиме `LEGACY` (`robolectric.sqliteMode`, проверяет `SqliteModeTest`). `scripts/check.sh` один раз повторяет шаг при сбое подключения агента.
+  С A1 (refactor-plan) скриншоты идут в своей JVM: `testDebugUnitTest` — только `screenshots/` (агент подключён только к ней),
+  остальное — `testDebugUnitTestNoScreenshots`, от которой она зависит. `LEGACY` и повтор в `check.sh` оставлены до проверки на Mac.
   Не запускай `cleanTestDebugUnitTest` (и `cleanTest*` у app вообще): Paparazzi регистрирует `app/src/test/snapshots` как выход
   тестовой задачи, и clean удаляет закоммиченные эталоны, после чего сверка падает на «нет файла». Прогнать тесты заново без
-  кэша — `./gradlew verifyPaparazziDebug --rerun-tasks` (или `:app:testDebugUnitTest --rerun`); удалённые эталоны — `git restore app/src/test/snapshots`.
+  кэша — `./gradlew verifyPaparazziDebug --rerun-tasks` (или `:app:testDebugUnitTestNoScreenshots --rerun` — без скриншотов); удалённые эталоны — `git restore app/src/test/snapshots`.
 - `DebugQrBus` (только debug) теряет строку, если экран её сейчас не слушает. Стенд e2e это учитывает.
 
 ## План дальнейшей работы

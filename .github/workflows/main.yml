@@ -34,10 +34,12 @@ jobs:
             kit/build/reports/animalsniffer
           if-no-files-found: ignore
 
+      # Все тесты приложения, кроме скриншотов (у тех своя JVM и свой шаг ниже). Раньше здесь был testDebugUnitTest, и шаг скриншотов
+      # (verifyPaparazziDebug) гонял те же тесты второй раз; задача без скриншотов во втором вызове up-to-date (app/build.gradle.kts).
       - name: Run unit tests
         run: |
           yes | sdkmanager --licenses > /dev/null || true
-          ./gradlew testDebugUnitTest :kit:test --no-daemon
+          ./gradlew testDebugUnitTestNoScreenshots :kit:test --no-daemon
 
       # Room заново пишет схему в app/schemas при каждой сборке. Отличие от закоммиченной — схему забыли закоммитить или правили руками:
       # миграции и MigrationDataTest опираются на закоммиченную, а не на настоящую. Настоящая печатается прямо в журнал.

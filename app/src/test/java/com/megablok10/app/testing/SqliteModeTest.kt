@@ -9,7 +9,8 @@ import org.robolectric.config.ConfigurationRegistry
 
 /**
  * Robolectric работает с SQLite в прежнем режиме (sqlite4java), а не в нативном: нативный грузит в тестовую JVM свою Skia, и на macOS
- * Paparazzi, идущий следом в той же JVM, падал SIGSEGV (app/build.gradle.kts, robolectric.sqliteMode).
+ * Paparazzi, шедший следом в той же JVM, падал SIGSEGV (app/build.gradle.kts, robolectric.sqliteMode). Теперь скриншоты в своей JVM;
+ * режим снимается вместе с этим тестом после проверки на Mac (docs/refactor-plan.md, A1).
  */
 @RunWith(RobolectricTestRunner::class)
 class SqliteModeTest {

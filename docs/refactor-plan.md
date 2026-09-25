@@ -23,6 +23,11 @@
 `-Djdk.attach.allowAttachSelf`, повтор в `check.sh`.
 *Готово, когда:* `scripts/check.sh --all` 5 раз подряд зелёный на macOS (M1) и CI зелёный; каждый оставленный обход объяснён
 в комментарии. *Риск:* `verifyPaparazziDebug` сам зовёт `testDebugUnitTest` — проверить, что задачи не гоняют тесты дважды.
+*Сделано (ветка `claude/nice-allen-lustu8`):* ~~разделение JVM~~ — `testDebugUnitTest` гоняет только `screenshots/` (Paparazzi
+привязан к ней), остальные 219 тестов — `testDebugUnitTestNoScreenshots`, от которой она зависит; CI больше не гоняет тесты дважды.
+`-javaagent` и `allowAttachSelf` — только у JVM скриншотов (attach нужен Paparazzi при любом разделении — оставлены).
+*Осталось владельцу (на Mac):* снять `robolectric.sqliteMode=LEGACY` (с `SqliteModeTest`) и повтор в `check.sh`, прогнать
+`scripts/check.sh --all` 5 раз; причина LEGACY (общая JVM) разделением снята, но в облаке macOS не проверить.
 
 **A2. Контракт журнала — тестом.** Имена событий и строки `MB10DBG`, которые читает стенд, собрать константами (или списком
 в тесте) и проверять unit-тестом: каждое имя, встречающееся в `scripts/e2e/**/*.sh` в `grep`, есть в исходниках приложения.
