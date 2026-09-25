@@ -173,20 +173,28 @@ ensure_wifi_on() {
 }
 # players_total — сколько игроков видит дашборд (пусто, если сервер не отвечает).
 players_total() { api GET /api/overview 2>/dev/null | jq_ 'd["players"]["total"]' 2>/dev/null; }
-# heal_host_reach [сколько игроков ждать] — особенность эмулятора: приложение, привязанное к виртуальному Wi-Fi, не достукивается до хоста (10.0.2.2)
-# и на дашборде не появляется. На реальной игровой сети сервер доступен именно по Wi-Fi, там этого нет. Если игроков меньше нужного, выключает
-# виртуальный Wi-Fi у тех эмуляторов, чьё приложение жалуется «коллектор недоступен» (трафик уйдёт по сотовому каналу эмулятора).
+# last_sync <serial> — чем закончилась последняя попытка синка приложения с сервером (журнал CollectorClient, Mb10Log): sync.ok, sync.unreachable
+# или пусто (попыток после `logcat -c` ещё не было).
+last_sync() { adb_ "$1" logcat -d -s CollectorClient 2>/dev/null | grep -oE "sync\.(ok|unreachable)" | tail -1; }
+# host_reach_ok <сколько игроков> — дашборд знает не меньше игроков и ни одно приложение сейчас не сидит в «сервер недоступен».
+# Одного числа игроков мало: total считает и тех, кто давно не на связи, а online держится ещё 5 минут после обрыва (ONLINE_WINDOW_MS).
+host_reach_ok() { [ "$(players_total)" -ge "$1" ] 2>/dev/null && [ "$(last_sync $A)" != sync.unreachable ] && [ "$(last_sync $B)" != sync.unreachable ]; }
+# heal_host_reach [сколько игроков ждать] — особенность эмулятора: приложение, привязанное к виртуальному Wi-Fi, не достукивается до хоста (10.0.2.2).
+# На реальной игровой сети сервер доступен именно по Wi-Fi, там этого нет. Если связи нет, выключает виртуальный Wi-Fi у тех эмуляторов, чья последняя
+# попытка синка — sync.unreachable (трафик уйдёт по сотовому каналу эмулятора). Зовётся при подъёме стенда и перед каждым сценарием (run-all.sh):
+# обрыв посреди прогона иначе оставался незамеченным до конца и краснил все следующие сценарии с проверками дашборда.
 heal_host_reach() {
   local want=${1:-2} s
-  wait_until 45 bash -c "source '$ROOT/scripts/e2e/lib.sh'; [ \"\$(players_total)\" -ge $want ]" && return 0
+  host_reach_ok "$want" && return 0
+  wait_until 45 bash -c "source '$ROOT/scripts/e2e/lib.sh'; host_reach_ok $want" && return 0
   for s in $A $B; do
-    # Событие журнала CollectorClient (Mb10Log.warnEvent): «W CollectorClient: sync.unreachable url=… error=ConnectException …»
-    if adb_ "$s" logcat -d -t 300 2>/dev/null | grep -q "CollectorClient.*sync\.unreachable"; then
+    if [ "$(last_sync "$s")" = sync.unreachable ]; then
       log "$s: приложение не достукивается до сервера — выключаю виртуальный Wi-Fi (особенность эмулятора)"
       adb_ "$s" shell svc wifi disable
     fi
   done
-  wait_until 90 bash -c "source '$ROOT/scripts/e2e/lib.sh'; [ \"\$(players_total)\" -ge $want ]" || { log "ВНИМАНИЕ: на дашборде видно меньше $want игроков"; return 1; }
+  # Повтор синка после сбоя — с паузой до минуты (SyncEngine.backoffMs), поэтому ждём с запасом.
+  wait_until 90 bash -c "source '$ROOT/scripts/e2e/lib.sh'; host_reach_ok $want" || { log "ВНИМАНИЕ: связи с сервером нет ($(players_total) игроков на дашборде, синк: $(last_sync $A) / $(last_sync $B))"; return 1; }
 }
 # preflight — проверка обоих эмуляторов перед сценарием: устройство на связи, система загружена, экран отвечает (иначе чинит).
 preflight() {

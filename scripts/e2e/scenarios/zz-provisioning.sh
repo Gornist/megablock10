@@ -62,7 +62,9 @@ check "использованный код не принят повторно" s
 check "личность не создалась" bash -c "source '$ROOT/scripts/e2e/lib.sh'; ! adb_ $A exec-out run-as $PKG cat shared_prefs/identity_prefs.xml | grep -q 'public_key'"
 dbg $A DEBUG_QR --es qr "$(prov e2e-prov-3 Prov2 Neon 100 6)"
 check "новый код от мастера принят" wait_until 30 identity_has 'Prov2'
-eq "баланс нового персонажа ровно из QR, без остатков прежнего" 100 "$(q $A 'select coalesce(sum(amount),0) from transactions')"
+# Личность (prefs) появляется раньше, чем коммитится транзакция с записями и стартовым балансом, — баланс ждём. Остатки прежнего дали бы не 100 насовсем.
+check "баланс нового персонажа ровно из QR, без остатков прежнего" wait_until 15 bash -c "source '$ROOT/scripts/e2e/lib.sh'; [ \"\$(q $A 'select coalesce(sum(amount),0) from transactions')\" = 100 ]"
+q $A 'select coalesce(sum(amount),0) from transactions' | grep -qx 100 || log "$A: баланс нового персонажа — $(q $A 'select coalesce(sum(amount),0) from transactions')"
 eq "у нового персонажа нет ни остатков демонов, ни чужих контактов" "0|0" "$(q $A "select (select count(*) from daemons)||'|'||(select count(*) from characters)")"
 
 # 4. сервер отказал в коде (его уже применил другой телефон): приложение объясняет игроку и не зацикливает синхронизацию
