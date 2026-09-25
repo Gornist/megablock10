@@ -83,7 +83,7 @@ class AppGraph(private val app: Application) {
     val transactor: Transactor = RoomTransactor(db)
     val notices: PlayerNotices = AppSnack
     // Исход каждой отправки — таблице пиров: рабочий адрес игрока первым, отказавший — в конец (kit PeerTable, B2).
-    val lines = LineSocketClient(Mb10Log) { host, port, outcome -> presence.reportSend(host, port, outcome) }
+    val lines = LineSocketClient(Mb10Log) { host, port, outcome, answeredBy -> presence.reportSend(host, port, outcome, answeredBy) }
 
     // Личность и настройки
     val identity = IdentityStore(prefs(IdentityStore.PREFS))
@@ -107,7 +107,11 @@ class AppGraph(private val app: Application) {
     val wifi = WifiBinder(app)
     val presence = PresenceService(app, wifi)
     /** Одно место адресации пиров (B1): снаружи — игроки и «отправь игроку», адреса и их перебор — внутри (kit PeerDirectory). */
-    val peerDirectory = PeerDirectory({ presence.peers.value }, presence.players) { host, port, line -> lines.sendLineOutcome(host, port, line) }
+    val peerDirectory = PeerDirectory(
+        addresses = { presence.peers.value },
+        online = presence.players,
+        me = { identity.current?.let { it.publicKeyB64 to mesh.listeningPort } },
+    ) { host, port, line, expect -> lines.sendLineOutcome(host, port, line, expectAckFrom = expect) }
     val outbox = OutboxStore(db.outboxDao(), peerDirectory)
     val chat = ChatStore(db.chatMessageDao(), outbox, peerDirectory)
     val calls = CallManager(app, peerDirectory, db.callLogDao())

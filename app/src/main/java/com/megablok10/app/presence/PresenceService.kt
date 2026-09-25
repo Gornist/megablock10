@@ -190,8 +190,11 @@ class PresenceService(private val app: Context, private val wifi: WifiBinder) {
      */
     fun updateServerPeers(fromServer: List<PeerInfo>, myPubKeyB64: String) = table.updateServerPeers(fromServer, myPubKeyB64)
 
-    /** Исход отправки по адресу пира (LineSocketClient, AppGraph): порядок адресов игрока в [peers] — по нему. */
-    fun reportSend(host: String, port: Int, outcome: SendOutcome) = table.reportSend(host, port, outcome)
+    /** Исход отправки по адресу пира (LineSocketClient, AppGraph): порядок адресов игрока в [peers] — по нему; [answeredBy] — чей ключ ответил. */
+    fun reportSend(host: String, port: Int, outcome: SendOutcome, answeredBy: String?) = table.reportSend(host, port, outcome, answeredBy)
+
+    /** Игрок сам прислал строку в конверте с этого адреса (ChatServer): где он слушает — свежее любого обнаружения. */
+    fun heard(pubKeyB64: String, host: String, port: Int) = table.heard(pubKeyB64, host, port)
 
     private fun deriveServiceName(pubKeyB64: String): String =
         "mb10-" + pubKeyB64.hashCode().toUInt().toString(16)

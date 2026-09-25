@@ -15,12 +15,16 @@ import kotlinx.coroutines.launch
 private const val TAG = "PeerTable"
 private const val STATIC = "static:"
 private const val SRV = "srv:"
+private const val HEARD = "heard:"
 
 /** Известный баг платформы на части устройств: NSD может мигнуть onServiceLost сразу за onServiceFound для одного и того же пира без реального разрыва — отсюда дебаунс перед фактическим удалением. 12 с (а не 4): при роуминге между точками Wi-Fi бывают паузы до нескольких секунд, и короткий разрыв не должен выглядеть как «ушёл офлайн» (docs/network-spec.md, §7). */
 const val LOST_DEBOUNCE_MS = 12_000L
 
 /** После переподключения к сети старые записи NSD недействительны: пиры, не нашедшиеся заново за это время, убираются. */
 const val REFRESH_GRACE_MS = 15_000L
+
+/** Адрес, где игрок сам дал о себе знать ([PeerTable.heard]), живёт столько без новых вестей от него или удачных отправок. */
+const val HEARD_TTL_MS = 180_000L
 
 /** Сколько последних адресов помнит одна запись NSD: после перезапуска игрока кэш mDNS может снова отдать порт прошлого процесса. */
 const val NSD_ADDRESS_HISTORY = 3
@@ -95,11 +99,14 @@ class PeerTable(private val log: KitLog = NoopLog, private val scopeProvider: ()
         )
         health.keys.retainAll(found.keys)
         _peers.value = published.map { it.peer }
-        _players.value = _peers.value.bestPerPlayer().values.map { OnlinePlayer(it.pubKeyB64, it.callsign, it.faction) }
+        // Позывной и фракция — с первого адреса игрока, где они известны (запись «услышан» может быть без них).
+        _players.value = _peers.value.groupBy { it.pubKeyB64 }.map { (key, addrs) ->
+            OnlinePlayer(key, addrs.firstOrNull { it.callsign.isNotEmpty() }?.callsign.orEmpty(), addrs.firstOrNull { it.faction.isNotEmpty() }?.faction.orEmpty())
+        }
     }
 
     private fun lanHostsOf(pubKeyB64: String): List<String> =
-        entries.filterKeys { !it.startsWith(SRV) }.values.flatten()
+        entries.filterKeys { !it.startsWith(SRV) && !it.startsWith(HEARD) }.values.flatten()
             .filter { it.peer.pubKeyB64 == pubKeyB64 && !isLoopback(it.peer.host) }
             .sortedByDescending { it.at }.map { it.peer.host }.distinct()
 
@@ -112,7 +119,9 @@ class PeerTable(private val log: KitLog = NoopLog, private val scopeProvider: ()
     /** Короткое описание для журнала в порядке [peers]: `ab12cd34(Ник@10.10.0.5:4000,nsd)`; `!` после источника — адрес отказал. */
     fun describe(): String = synchronized(lock) {
         published.joinToString(",", "[", "]") { c ->
-            val src = when { c.source.startsWith(STATIC) -> "static"; c.source.startsWith(SRV) -> "srv"; else -> "nsd" }
+            val src = when {
+                c.source.startsWith(STATIC) -> "static"; c.source.startsWith(SRV) -> "srv"; c.source.startsWith(HEARD) -> "heard"; else -> "nsd"
+            }
             "${shortKey(c.peer.pubKeyB64)}(${c.peer.callsign}@${c.peer.host}:${c.peer.port},$src${if (c.down) "!" else ""})"
         }
     }
@@ -134,7 +143,7 @@ class PeerTable(private val log: KitLog = NoopLog, private val scopeProvider: ()
 
     /** Перезапуск обнаружения после смены сети: найденные им пиры получают отсрочку [REFRESH_GRACE_MS], статические и серверные остаются как есть. */
     fun graceAll(): Unit = synchronized(lock) {
-        entries.keys.filter { !it.startsWith(STATIC) && !it.startsWith(SRV) }.forEach { scheduleRemoval(it, REFRESH_GRACE_MS) }
+        entries.keys.filter { !it.startsWith(STATIC) && !it.startsWith(SRV) && !it.startsWith(HEARD) }.forEach { scheduleRemoval(it, REFRESH_GRACE_MS) }
     }
 
     private fun scheduleRemoval(name: String, afterMs: Long) {
@@ -155,16 +164,42 @@ class PeerTable(private val log: KitLog = NoopLog, private val scopeProvider: ()
      * Исход отправки по адресу [host]:[port] (kit LineSocketClient сообщает о каждой): дошло — адрес первым у своего игрока,
      * [SendOutcome.NOT_REACHED] — в конец, пока по нему снова не дойдёт. [SendOutcome.UNKNOWN] ничего не говорит о том, жив ли
      * адрес, — не меняет ничего. Адреса не из таблицы (сервер мастера и т. п.) пропускаются.
+     *
+     * [answeredBy] — чей ключ ответил по этому адресу (ответ получателя, D2). Ответил другой игрок — адрес у остальных ключей
+     * отказал, а у него самого — живой ([heard]).
      */
-    fun reportSend(host: String, port: Int, outcome: SendOutcome): Unit = synchronized(lock) {
+    fun reportSend(host: String, port: Int, outcome: SendOutcome, answeredBy: String? = null): Unit = synchronized(lock) {
         if (outcome == SendOutcome.UNKNOWN) return
         val hit = published.filter { it.peer.host == host && it.peer.port == port }
-        if (hit.isEmpty()) return
-        val at = ++seq
-        hit.forEach { c ->
-            val h = health.getOrPut(addrKey(c.peer)) { Health() }
-            if (outcome == SendOutcome.DELIVERED) h.ok = at else h.fail = at
+        if (hit.isNotEmpty()) {
+            val at = ++seq
+            hit.forEach { c ->
+                val h = health.getOrPut(addrKey(c.peer)) { Health() }
+                val ok = outcome == SendOutcome.DELIVERED && (answeredBy == null || answeredBy == c.peer.pubKeyB64)
+                if (ok) h.ok = at else h.fail = at
+                if (ok && c.source.startsWith(HEARD)) scheduleRemoval(c.source, HEARD_TTL_MS)
+            }
+            publish()
         }
+        val confirmed = outcome == SendOutcome.DELIVERED && hit.any { it.peer.pubKeyB64 == answeredBy }
+        if (!answeredBy.isNullOrEmpty() && !confirmed) heard(answeredBy, host, port)
+    }
+
+    /**
+     * Игрок [pubKeyB64] сам дал о себе знать с адреса [host]:[port] — прислал строку в конверте (порт — его сервера строк, из
+     * конверта) или ответил на нашу. Самое свежее свидетельство, где он: адрес — живой и первым. Отказавший раньше адрес этим не
+     * оживает (его поднимет только удачная отправка): с Mac-стенда через `emu redir` соединение приходит с адреса шлюза, куда
+     * самому не достучаться. Адрес петли пропускается. Позывной и фракция — из других записей игрока, если они есть.
+     */
+    fun heard(pubKeyB64: String, host: String, port: Int): Unit = synchronized(lock) {
+        if (pubKeyB64.isEmpty() || port <= 0 || isLoopback(host)) return
+        val known = entries.values.flatten().map { it.peer }.firstOrNull { it.pubKeyB64 == pubKeyB64 && it.callsign.isNotEmpty() }
+        val peer = PeerInfo(pubKeyB64, known?.callsign.orEmpty(), known?.faction.orEmpty(), host, port)
+        val isNew = put("$HEARD$pubKeyB64", peer, keep = 1)
+        val h = health.getOrPut(addrKey(peer)) { Health() }
+        if (!h.down) h.ok = ++seq
+        if (isNew) log.event(TAG, "peer.heard", "peer" to shortKey(pubKeyB64), "addr" to "$host:$port")
+        scheduleRemoval("$HEARD$pubKeyB64", HEARD_TTL_MS)
         publish()
     }
 

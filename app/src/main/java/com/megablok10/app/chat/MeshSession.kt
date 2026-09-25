@@ -70,15 +70,18 @@ class MeshSession(
 
         sessionScope.launch {
             val srv = ChatServer(
+                // Сохранение — до возврата: отправитель получит «доставлено» только после него (D2). Звук и уведомление — потом.
                 onMessage = { msg ->
-                    sessionScope.launch { onChatMessage(msg) }
+                    onChatMessage(msg)
                     // Звук — только для реально пришедших по сети сообщений (этот колбэк
                     // и есть приём с провода), свои же исходящие не должны пищать.
                     SoundPlayer.playMessageReceived(app)
                 },
                 onCallSignal = { signal -> calls.onSignalReceived(identity, signal) },
-                onSlotClaim = { claim -> sessionScope.launch { slotClaims.receive(claim) } },
-                onIncompatible = onIncompatible
+                onSlotClaim = { claim -> slotClaims.receive(claim) },
+                onIncompatible = onIncompatible,
+                myKey = { identity.publicKeyB64 },
+                onHeard = presence::heard,
             )
             srv.start(sessionScope)
             server = srv

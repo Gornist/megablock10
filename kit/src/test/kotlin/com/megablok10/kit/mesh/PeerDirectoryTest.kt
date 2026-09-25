@@ -16,9 +16,18 @@ class PeerDirectoryTest {
         fun send(port: Int): SendOutcome { tried += port; return outcomes[port] ?: SendOutcome.DELIVERED }
     }
 
-    private fun directory(t: PeerTable, wire: Wire) = PeerDirectory({ t.peers.value }, t.players) { h, p, l ->
-        check(l.isNotEmpty())
+    private val lines = mutableListOf<String>()
+
+    private fun directory(t: PeerTable, wire: Wire) = PeerDirectory({ t.peers.value }, t.players, me = { "me" to 47100 }) { h, p, l, expect ->
+        lines += "$expect|$l"
         wire.send(p).also { t.reportSend(h, p, it) } // как LineSocketClient(onOutcome) в приложении
+    }
+
+    @Test fun everyLineGoesInAnEnvelopeToTheExpectedPlayer() = runTest {
+        val t = PeerTable { this }
+        t.found("a", peer("1", 4000))
+        directory(t, Wire(emptyMap())).send("1", "MB10CHAT:v1:x")
+        assertEquals(listOf("1|MB10TO:v1:1:me:47100:MB10CHAT:v1:x"), lines)
     }
 
     @Test fun sendGoesPastTheDeadAddressAndRemembersTheLiveOne() = runTest {

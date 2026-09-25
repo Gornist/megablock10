@@ -315,4 +315,4 @@ fun testPeerDirectory(vararg online: OnlinePlayer, outcome: SendOutcome = SendOu
     PeerDirectory(
         { online.map { PeerInfo(it.pubKeyB64, it.callsign, it.faction, "10.0.0.1", 40_000) } },
         MutableStateFlow(online.toList()),
-    ) { _, _, _ -> outcome }
+    ) { _, _, _, _ -> outcome }

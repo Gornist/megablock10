@@ -1,5 +1,6 @@
 package com.megablok10.app.net
 
+import com.megablok10.kit.net.LineEnvelope
 import com.megablok10.kit.net.WireProtocols
 
 /**
@@ -14,12 +15,14 @@ object WireVersion {
     const val CHAT = 1
     const val CALL = 2
     const val CLAIM = 1
+    /** Конверт «кому/от кого» вокруг любой строки и ответ получателя (kit LineEnvelope/LineAck, docs/refactor-plan.md, D2). */
+    const val ENVELOPE = LineEnvelope.VERSION
 
     /** Версии для дашборда (поле `wireVersions` в presence): короткие имена протоколов, порядок стабилен. */
-    val REPORTED: Map<String, Int> = linkedMapOf("chat" to CHAT, "call" to CALL, "claim" to CLAIM)
+    val REPORTED: Map<String, Int> = linkedMapOf("chat" to CHAT, "call" to CALL, "claim" to CLAIM, "to" to ENVELOPE)
 
     /** Магия протокола → версия, которую понимает это приложение. */
-    val SUPPORTED: Map<String, Int> = mapOf("MB10CHAT" to CHAT, "MB10CALL" to CALL, "MB10CLAIM" to CLAIM)
+    val SUPPORTED: Map<String, Int> = mapOf("MB10CHAT" to CHAT, "MB10CALL" to CALL, "MB10CLAIM" to CLAIM, LineEnvelope.MAGIC to ENVELOPE)
 
     val protocols = WireProtocols(SUPPORTED)
 

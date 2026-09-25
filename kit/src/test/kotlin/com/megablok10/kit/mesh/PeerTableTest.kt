@@ -208,4 +208,55 @@ class PeerTableTest {
         assertEquals(listOf(4000, 4001), t.peers.value.map { it.port })
         t.clear()
     }
+
+    // D2: адрес из входящих и из ответа получателя.
+    @Test fun heardPlayerBecomesReachableEvenWithoutNsd() = runTest {
+        val t = PeerTable { this }
+        t.heard("1", "10.10.0.7", 47100)
+        assertEquals(listOf("10.10.0.7:47100"), t.peers.value.map { "${it.host}:${it.port}" })
+        assertEquals("", t.players.value.single().callsign) // позывного ещё не знаем
+        t.found("mb10-a", peer("1", port = 47100))
+        assertEquals("cs1", t.players.value.single().callsign)
+        t.clear()
+    }
+
+    @Test fun heardAddressComesFirstButDoesNotReviveADeadOne() = runTest {
+        val t = PeerTable { this }
+        t.found("mb10-a", peer("1", port = 47100))
+        t.heard("1", "10.0.2.2", 47100)
+        assertEquals("10.0.2.2", t.peers.value.first().host)
+        t.reportSend("10.0.2.2", 47100, SendOutcome.NOT_REACHED) // mac-стенд: адрес шлюза, самому не достучаться
+        t.heard("1", "10.0.2.2", 47100)
+        assertEquals("10.10.0.1", t.peers.value.first().host)
+        t.clear()
+    }
+
+    @Test fun heardAddressExpiresWithoutNews() = runTest {
+        val t = PeerTable { this }
+        t.heard("1", "10.10.0.7", 47100)
+        advanceTimeBy(HEARD_TTL_MS - 1)
+        assertEquals(1, t.peers.value.size)
+        t.heard("1", "10.10.0.7", 47100) // новые вести продлевают
+        advanceTimeBy(HEARD_TTL_MS - 1)
+        assertEquals(1, t.peers.value.size)
+        advanceTimeBy(2)
+        assertTrue(t.peers.value.isEmpty())
+    }
+
+    @Test fun loopbackIsNeverHeard() = runTest {
+        val t = PeerTable { this }
+        t.heard("1", "127.0.0.1", 47100)
+        assertTrue(t.peers.value.isEmpty())
+    }
+
+    @Test fun answerFromAnotherPlayerMovesTheAddressToHim() = runTest {
+        // DHCP отдал IP ушедшего Alice телефону Bob: по старой записи Alice ответил Bob — «wrong».
+        val t = PeerTable { this }
+        t.found("mb10-alice", peer("alice", host = "10.10.0.5", port = 47100))
+        t.found("mb10-alice2", peer("alice", host = "10.10.0.9", port = 47100))
+        t.reportSend("10.10.0.5", 47100, SendOutcome.NOT_REACHED, answeredBy = "bob")
+        assertEquals("у Alice этот адрес — последним", "10.10.0.9", t.peers.value.first { it.pubKeyB64 == "alice" }.host)
+        assertEquals("10.10.0.5", t.peers.value.first { it.pubKeyB64 == "bob" }.host)
+        t.clear()
+    }
 }
