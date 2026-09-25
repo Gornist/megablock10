@@ -1,6 +1,5 @@
 package com.megablok10.app.testing
 
-import java.lang.management.ManagementFactory
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -11,7 +10,10 @@ import org.junit.Test
  */
 class AgentPreloadTest {
     @Test fun byteBuddyAgentIsLoadedAtJvmStart() {
-        val args = ManagementFactory.getRuntimeMXBean().inputArguments
+        // java.lang.management нет в android.jar, против которого компилируются тесты модуля, — только в самой тестовой JVM.
+        val runtime = Class.forName("java.lang.management.ManagementFactory").getMethod("getRuntimeMXBean").invoke(null)
+        @Suppress("UNCHECKED_CAST")
+        val args = Class.forName("java.lang.management.RuntimeMXBean").getMethod("getInputArguments").invoke(runtime) as List<String>
         assertTrue("тестовая JVM без -javaagent:byte-buddy-agent: $args", args.any { it.startsWith("-javaagent:") && "byte-buddy-agent" in it })
         // Тот же поиск, что делает ByteBuddyAgent.install(): класс-установщик в системном загрузчике и его Instrumentation.
         val installer = Class.forName("net.bytebuddy.agent.Installer", true, ClassLoader.getSystemClassLoader())
