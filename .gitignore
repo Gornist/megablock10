@@ -7,3 +7,6 @@ local.properties
 *.keystore
 .idea/
 .DS_Store
+
+# Личные настройки Claude Code — не в репо (общие — .claude/settings.json)
+.claude/settings.local.json
