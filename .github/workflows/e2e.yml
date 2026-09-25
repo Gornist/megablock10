@@ -82,7 +82,7 @@ jobs:
           for f in "$E2E_DIR"/journals/*-emulator-*.log; do
             [ -f "$f" ] || continue
             echo "::group::$(basename "$f") — последние 150 строк"
-            grep -v -E "state\.snapshot|snapshot " "$f" | tail -150
+            tail -150 "$f"
             echo "::endgroup::"
           done
           for f in "$E2E_DIR"/journals/*-ui-*.xml; do
