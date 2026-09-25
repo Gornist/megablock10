@@ -22,6 +22,7 @@ class Mb10App : Application() {
         graph = AppGraph(this)
         graph.resumeInterruptedWork()
         graph.startMeshWhenIdentityAppears()
+        graph.startCollectorSync()
 
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->

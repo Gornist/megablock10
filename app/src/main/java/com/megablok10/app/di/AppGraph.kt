@@ -198,7 +198,11 @@ class AppGraph(private val app: Application) {
         processScope.launch { identity.state.startMeshOncePerCharacter { mesh.start(it) } }
     }
 
-    /** Запускать один раз при старте интерфейса (см. MainActivity). Повторные вызовы — не операция. */
+    /**
+     * Обмен с коллектором — с запуска процесса ([Mb10App.onCreate]), как и сетевая сессия: процесс, поднятый системой без экрана
+     * (перезапуск MeshForegroundService), иначе не отправлял записи для мастера и не получал его правки, пока игрок не откроет
+     * приложение. Без адреса сервера или личности движок просто ждёт (SyncEngine). Повторные вызовы (экран, onUiStarted) — не операция.
+     */
     @Synchronized
     fun startCollectorSync() {
         if (syncStarted) return
