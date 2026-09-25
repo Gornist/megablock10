@@ -23,7 +23,7 @@
 | kit | `./gradlew :kit:test` | чистый JVM |
 | Статика | `./gradlew :app:detekt :kit:detekt :kit:animalsnifferMain :app:lintDebug` | новые находки ломают CI |
 | CI | `.github/workflows/main.yml` (push/PR в `main`, вручную) | ≈4 мин |
-| e2e | `scripts/e2e/up.sh && scripts/e2e/run-all.sh`; CI — `e2e.yml` (ночью и вручную) | ≈17 мин |
+| e2e | `scripts/e2e/up.sh && scripts/e2e/run-all.sh`; CI — `e2e.yml` (PR в `main` с правкой `app/`, `kit/`, `scripts/e2e/`; ночью; вручную) | ≈17 мин |
 
 - **Облачная сессия без Android SDK** не соберёт `:app` (и даже `:kit` — Gradle конфигурирует весь проект). Проверка —
   только CI: запустить `main.yml`/`e2e.yml` на своей ветке и читать журнал job. Не утверждать «проверено», не дождавшись CI.

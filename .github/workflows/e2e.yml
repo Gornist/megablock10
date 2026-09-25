@@ -1,11 +1,24 @@
 name: E2E на эмуляторах
 
-# Тяжёлый прогон (два эмулятора + сервер дашборда + все сценарии scripts/e2e/scenarios): ночью и вручную, не на каждый пуш.
+# Тяжёлый прогон (два эмулятора + сервер дашборда + все сценарии scripts/e2e/scenarios, ≈17 мин): на PR в main, если он трогает
+# приложение, kit или стенд, — иначе регрессия видна только ночью (docs/refactor-plan.md, A3); плюс ночью и вручную.
 # Запуск вручную: Actions → «E2E на эмуляторах» → Run workflow (или `gh workflow run e2e.yml`).
 on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - "app/**"
+      - "kit/**"
+      - "scripts/e2e/**"
+      - ".github/workflows/e2e.yml"
   schedule:
     - cron: "0 1 * * *"
   workflow_dispatch: {}
+
+# Новый пуш в тот же PR отменяет недоигранный прогон: результат старого коммита уже никому не нужен, а раннер занят 17 минут.
+concurrency:
+  group: e2e-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   e2e:
