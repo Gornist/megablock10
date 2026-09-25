@@ -80,8 +80,13 @@ Android 8.0. В приложении то же сторожит Android Lint (`:
 ### Хранилища
 
 `*Store` владеют своими данными (Room, SharedPreferences) и инвариантами. Проверка и запись идут одной транзакцией
-(`recordOutgoingPending` проверяет баланс и списывает внутри `withTransaction`). Изменения, о которых должен узнать мастер,
-хранилище записывает тем же вызовом через `ChangeRecorder` из kit. `IdentityStore` реактивен (`state`): правки мастера,
+(`recordOutgoingPending` проверяет баланс и списывает внутри транзакции). Изменения, о которых должен узнать мастер,
+хранилище записывает тем же вызовом через `ChangeRecorder` из kit — внутри той же транзакции: данные и запись о них
+фиксируются одним коммитом, номер записи (seq) выдаётся там же (таблица `sequences`). Все транзакции открываются через
+`AppGraph.transactor` (kit `Transactor`), а не `db.withTransaction` напрямую: вложенные вызовы присоединяются к внешней
+транзакции, а синхронизация просыпается только после её коммита. Всё, после чего уходит подтверждение (серверу, другому
+телефону), пишется синхронно — транзакцией Room или `commit()`, не `apply()`. Операции, которые охватывают и Room, и
+SharedPreferences (выдача по QR, RAM-апгрейд), доделываются после падения процесса при запуске (`AppGraph.resumeInterruptedWork`). `IdentityStore` реактивен (`state`): правки мастера,
 создание и сброс персонажа видны экранам сразу.
 
 ### Сетевая сессия — `chat/MeshSession`
@@ -124,6 +129,7 @@ Android 8.0. В приложении то же сторожит Android Lint (`:
 | сценарии | `…/wallet/PaymentScenariosTest`, `items/ItemScenariosTest`, `breach/BreachScenariosTest` и др. | фейки портов (`testing/Fakes.kt`) поверх настоящего kit `Handover` и настоящих подписей: проверяются реальные переходы статусов |
 | ViewModel | `…/ui/*ViewModelTest` | `MainDispatcherRule` (главный поток на тестовом диспетчере), `work` — скоуп теста |
 | база | `data/MigrationDataTest`, `MigrationGuardTest` | миграции на настоящем SQLite |
+| хранилища | наследники `testing/RoomTest` (`ChangeRecordTransactionsTest`, `InterruptedIssueTest` и др.) | настоящая Room в памяти под Robolectric: транзакции, откаты, сбой посреди операции (`failOnSign`), перезапуск (`restart()`) |
 | интерфейс | `screenshots/ScreenshotTest` | Paparazzi |
 | целиком | `scripts/e2e` | два эмулятора и сервер; `DebugQrReceiver` ходит через те же сценарии, что интерфейс |
 
