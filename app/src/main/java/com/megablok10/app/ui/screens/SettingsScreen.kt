@@ -16,6 +16,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -218,7 +219,7 @@ private fun ToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean
 private fun LogSection(deviceReport: suspend () -> String) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var sizeKb by remember { mutableStateOf(Mb10Log.sizeBytes() / 1024) }
+    var sizeKb by remember { mutableLongStateOf(Mb10Log.sizeBytes() / 1024) }
     var mark by remember { mutableStateOf("") }
     var status by remember { mutableStateOf<String?>(null) }
     var confirmingClear by remember { mutableStateOf(false) }

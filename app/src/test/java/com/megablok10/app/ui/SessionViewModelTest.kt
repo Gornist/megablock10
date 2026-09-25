@@ -30,7 +30,6 @@ class SessionViewModelTest {
     // Подписывает сам IdentityStore — как в приложении: ключ появляется в момент создания персонажа.
     private val changes = ChangeRecorder(queue, { identity.recordSigner() })
     private val notices = RecordingNotices()
-    private val meshStarts = mutableListOf<Identity>()
     private var uiStarts = 0
     private var provisionResult: ProvisionResult = ProvisionResult.AlreadyUsed
     private val resets = mutableListOf<Identity?>()
@@ -41,27 +40,23 @@ class SessionViewModelTest {
         provisioning = { provisionResult },
         create = CreateCharacter(identity, changes),
         reset = { resets += it; identity.clear() },
-        startMesh = { meshStarts += it },
         onUiStarted = { uiStarts++ },
         notices = notices,
         work = work,
     )
 
-    @Test fun meshStartsOncePerCharacterNotOnEveryProfileChange() = runTest {
+    @Test fun uiStartedFiresOnceAndResetGetsTheIdentityBeforeItIsWiped() = runTest {
         val vm = session()
         assertEquals(1, uiStarts)
-        assertEquals("персонажа ещё нет — сети нет", emptyList<Identity>(), meshStarts)
 
         vm.createCharacter("RAZOR", "Малстром")
         runCurrent()
-        identity.applyCallsignOverride("BLADE")   // правка мастера: тот же ключ — сеть не перезапускается
+        identity.applyCallsignOverride("BLADE")   // правка мастера — та же личность, тот же persistent-ключ
         vm.resetSession()
         runCurrent()
-        vm.createCharacter("GHOST", "Арасака")
-        runCurrent()
 
-        assertEquals(listOf("RAZOR", "GHOST"), meshStarts.map { it.callsign })
         assertEquals("сброс получил личность до стирания", "BLADE", resets.single()?.callsign)
+        assertEquals(1, uiStarts)
     }
 
     @Test fun provisioningProblemsAreExplainedToThePlayer() = runTest {

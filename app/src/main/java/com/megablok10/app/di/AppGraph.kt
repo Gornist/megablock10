@@ -34,6 +34,7 @@ import com.megablok10.app.identity.CreateCharacter
 import com.megablok10.app.identity.IdentityStore
 import com.megablok10.app.identity.RamUpgradeStore
 import com.megablok10.app.identity.SessionReset
+import com.megablok10.app.identity.startMeshOncePerCharacter
 import com.megablok10.app.items.AcceptItem
 import com.megablok10.app.items.ItemTransferStore
 import com.megablok10.app.items.SendItem
@@ -186,6 +187,15 @@ class AppGraph(private val app: Application) {
             runCatching { provisioning.resumeInterrupted() }.onFailure { Mb10Log.e("App", "не удалось доделать выдачу: ${it.message}", it) }
             runCatching { ramUpgrades.resumeInterrupted() }.onFailure { Mb10Log.e("App", "не удалось доделать RAM-апгрейд: ${it.message}", it) }
         }
+    }
+
+    /**
+     * Сетевая сессия — при появлении личности, а не при открытии экрана: подписка живёт в [processScope] с момента старта
+     * процесса, поэтому работает и когда систем перезапускает процесс сам (MeshForegroundService — START_STICKY) без
+     * единой Activity. Зовётся один раз при запуске процесса ([Mb10App.onCreate]).
+     */
+    fun startMeshWhenIdentityAppears() {
+        processScope.launch { identity.state.startMeshOncePerCharacter { mesh.start(it) } }
     }
 
     /** Запускать один раз при старте интерфейса (см. MainActivity). Повторные вызовы — не операция. */

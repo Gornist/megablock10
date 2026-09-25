@@ -50,8 +50,8 @@ jobs:
           echo "$drift" | awk '$1=="??"{print $2}' | xargs -r cat
           echo "::error::Схема Room отличается от закоммиченной — см. вывод выше"; exit 1
 
-      # kit проверяет Animal Sniffer (шаг выше), приложение — Android Lint: вызов API новее Android 8.0 падал бы на телефонах игроков.
-      - name: Android Lint — API не новее minSdk 26 (NewApi)
+      # kit проверяет Animal Sniffer (шаг выше), приложение — Android Lint (полный набор, baseline — app/lint-baseline.xml, как у detekt).
+      - name: Android Lint
         run: ./gradlew :app:lintDebug --no-daemon
 
       - name: Отчёт Android Lint (при падении)

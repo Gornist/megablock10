@@ -59,7 +59,7 @@ enum class SurfaceCorner { Single, Double }
 /**
  * Единственная панель со срезанными углами во всём приложении — экраны
  * больше не собирают её сами через двухслойный border+background (см.
- * приватный chamferedPanelImpl ниже, который делает эту работу один раз).
+ * приватный ChamferedPanelImpl ниже, который делает эту работу один раз).
  */
 @Composable
 fun ChamferedSurface(
@@ -80,7 +80,7 @@ fun ChamferedSurface(
     content: @Composable BoxScope.() -> Unit
 ) {
     if (augmented) {
-        augmentedPanelImpl(
+        AugmentedPanelImpl(
             modifier = modifier,
             borderColor = borderColor,
             fillColor = fillColor,
@@ -91,7 +91,7 @@ fun ChamferedSurface(
             content = content
         )
     } else {
-        chamferedPanelImpl(
+        ChamferedPanelImpl(
             modifier = modifier,
             borderColor = borderColor,
             fillColor = fillColor,
@@ -108,10 +108,10 @@ fun ChamferedSurface(
  * augmented=true реализация ChamferedSurface — срез сверху-слева (прямой, как обычный chamferShape) и вогнутая
  * выемка снизу-справа (Scoop), а не два одинаковых среза: смешение типов углов — сигнатурный приём augmented-ui,
  * ровный doubleChamferShape так не читается. glowInset — тонкая обводка-свечение того же контура, отступя внутрь
- * от заливки, вместо простого второго border, как у [chamferedPanelImpl].
+ * от заливки, вместо простого второго border, как у [ChamferedPanelImpl].
  */
 @Composable
-private fun augmentedPanelImpl(
+private fun AugmentedPanelImpl(
     modifier: Modifier,
     borderColor: Color,
     fillColor: Color,
@@ -162,7 +162,7 @@ private fun augmentedPanelImpl(
  * обход ChamferedSurface.
  */
 @Composable
-private fun chamferedPanelImpl(
+private fun ChamferedPanelImpl(
     modifier: Modifier = Modifier,
     borderColor: Color,
     fillColor: Color,

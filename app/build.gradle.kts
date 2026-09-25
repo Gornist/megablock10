@@ -81,12 +81,29 @@ android {
     testOptions {
         unitTests.isIncludeAndroidResources = true
     }
-    // Android Lint — пока только уровень API (NewApi): вызов того, чего нет на minSdk 26, компилируется молча, а на телефоне игрока
-    // с Android 8–12 падает NoSuchMethodError. Так было с PrintWriter(OutputStream, Boolean, Charset) — он есть только с API 33.
-    // Модуль kit сторожит Animal Sniffer (сигнатура API 26), приложение — эта проверка. Остальные проверки lint не включены
-    // сознательно: у них свой шум, это отдельная работа. Запуск: ./gradlew :app:lintDebug (CI и scripts/check.sh).
+    // Android Lint — полный набор проверок по умолчанию (не только уровень API — NewApi поймал реальное падение,
+    // PrintWriter(OutputStream, Boolean, Charset) есть только с API 33, а minSdk — 26). Модуль kit сторожит свою
+    // границу отдельно (Animal Sniffer, сигнатура API 26). Старые находки заморожены в lint-baseline.xml, как у
+    // detekt — новые ломают проверку. Обновить: ./gradlew :app:updateLintBaseline. Запуск: ./gradlew :app:lintDebug
+    // (CI и scripts/check.sh).
     lint {
-        checkOnly += "NewApi"
+        disable += setOf(
+            // Синхронная запись (commit, не apply) здесь всегда намеренная — после неё сразу уходит подтверждение
+            // (серверу, другому телефону) или подписываются записи для мастера тем же ключом; см. правило в
+            // docs/architecture.md, «Хранилища». Предложение lint (заменить на фоновый apply) прямо противоречит ему.
+            "ApplySharedPref",
+            // Сеть площадки офлайн целиком (docs/network-spec.md, «Интернета в сети нет и не будет») — TLS в LAN без
+            // интернета для чата/NSD не имеет смысла (HTTPS у коллектора — отдельная история, уже поверх этого).
+            "InsecureBaseConfiguration",
+            // Портретная ориентация — намеренный выбор телефонного интерфейса игрока, не упущение.
+            "LockedOrientationActivity", "DiscouragedApi",
+            // DebugQrReceiver обязан быть exported без разрешения — им управляет `adb shell am broadcast` снаружи
+            // приложения (стенд e2e, scripts/e2e/lib.sh); он есть только в debug-сборке, игрокам не попадает.
+            "ExportedReceiver",
+            // Версии зависимостей обновляются отдельным осознанным решением, не через находку линтера в CI.
+            "GradleDependency",
+        )
+        baseline = file("lint-baseline.xml")
         abortOnError = true
         textReport = true
         textOutput = file("stdout")   // находки — прямо в журнал сборки, без скачивания отчёта

@@ -1,7 +1,6 @@
 package com.megablok10.app.ui
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import com.megablok10.app.PlayerNotices
 import com.megablok10.app.identity.CreateCharacter
 import com.megablok10.app.identity.Identity
@@ -10,15 +9,13 @@ import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.ProvisionResult
 import com.megablok10.kit.mesh.PeerInfo
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.distinctUntilChangedBy
-import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 
 /**
  * Состояние корня приложения (AppRoot): есть ли персонаж, выдача по QR мастера, ручное создание, сброс сессии, узлы сети в шапке.
- * Сетевая сессия ([startMesh]) поднимается при появлении персонажа — и после выдачи, и после перезапуска приложения.
+ * Сетевая сессия поднимается отдельно, при запуске процесса — [com.megablok10.app.di.AppGraph.startMeshWhenIdentityAppears],
+ * не завязана на этот экран (см. docs/android-handoff.md, «Сетевая сессия от процесса»).
  *
  * Выдача, создание и сброс идут в [work] (скоуп процесса), а не в скоупе экрана: их нельзя бросить на полпути, даже если
  * экран за это время сменился или Activity пересоздалась.
@@ -29,7 +26,6 @@ class SessionViewModel(
     private val provisioning: suspend (Mb10Qr.Provision) -> ProvisionResult,
     private val create: CreateCharacter,
     private val reset: suspend (Identity?) -> Unit,
-    startMesh: (Identity) -> Unit,
     onUiStarted: () -> Unit,
     private val notices: PlayerNotices,
     private val work: CoroutineScope,
@@ -39,10 +35,6 @@ class SessionViewModel(
 
     init {
         onUiStarted()
-        // Dispatchers.Main, а не immediate: сеть поднимается после первого кадра, а не посреди композиции.
-        viewModelScope.launch(Dispatchers.Main) {
-            identity.filterNotNull().distinctUntilChangedBy { it.publicKeyB64 }.collect { startMesh(it) }
-        }
     }
 
     fun provision(qr: Mb10Qr.Provision) {

@@ -109,10 +109,9 @@ kit — в [kit/README.md](../kit/README.md).
 - Правки и объявления мастера, сделанные после момента резервной копии сервера, после восстановления досылать некому — их
   повторяет мастер (admin-web/README, «Резервные копии»).
 - Нагрузка на 100 устройств не проверялась: стенд — два эмулятора.
-- Сетевая сессия (`MeshSession`) стартует от интерфейса, при появлении персонажа. Если система перезапустит процесс без
-  экрана, сессия не поднимется, пока игрок не откроет приложение. Так было и до переделки.
-- Android Lint включён только на `NewApi`, остальные проверки выключены. В detekt-baseline осталась одна старая находка
-  (`DecryptRules`).
+- ~~Сетевая сессия стартует от интерфейса~~ — сделано, см. «План дальнейшей работы» ниже, пункт про `MeshSession`.
+- ~~Android Lint включён только на `NewApi`~~ — сделано, см. план ниже. В detekt-baseline осталась одна старая находка
+  (`DecryptRules`), в lint-baseline — `InlinedApi`/`OldTargetApi`/`ModifierParameter`/`MissingApplicationIcon`.
 - Paparazzi ставит Java-агент ByteBuddy. Подключение агента на лету (attach) на macOS под нагрузкой ненадёжно: падал и внешний
   процесс-подключатель, и (с `-Djdk.attach.allowAttachSelf=true`) собственный Attach Listener по таймауту 10,5 с. Поэтому агент
   загружается при старте тестовой JVM (`-javaagent`, конфигурация `byteBuddyAgent` в `app/build.gradle.kts`), и install() берёт его
@@ -141,9 +140,21 @@ kit — в [kit/README.md](../kit/README.md).
      обновление приложения поверх старой версии (миграции Room 14→16, нумерация записей продолжается).
 2. ~~**Тесты для оставшихся ViewModel.**~~ Сделано (коммит `9730e25`, см. «Известные ограничения и долги» выше).
 3. ~~**Хранилища без Room в тестах.**~~ Сделано: порт `Transactor` и Robolectric с настоящей Room (аудит, `74c913a`).
-4. **Сетевая сессия от процесса, а не от экрана.** Поднимать `MeshSession` из `Mb10App` или foreground-сервиса при наличии
-   личности, чтобы приём сообщений не зависел от открытого экрана после перезапуска процесса системой.
-5. **Android Lint шире.** Включать проверки группами (`Correctness`, потом `Performance`) с baseline, как у detekt.
+4. ~~**Сетевая сессия от процесса, а не от экрана.**~~ Сделано: `AppGraph.startMeshWhenIdentityAppears()` подписывается
+   на личность в `processScope` с момента запуска процесса ([Mb10App.onCreate]) — раньше сеть поднимал только
+   `SessionViewModel.init`, то есть только когда открыт экран. Логика вынесена в тестируемую
+   `identity/MeshAutostart.kt` (`startMeshOncePerCharacter`, тест `MeshAutostartTest`), из `SessionViewModel` убрана
+   как дубль.
+5. ~~**Android Lint шире.**~~ Сделано: `checkOnly` снят, теперь полный набор проверок; то, что прямо противоречит уже
+   принятым решениям проекта (`ApplySharedPref`, `InsecureBaseConfiguration`, `LockedOrientationActivity`/
+   `DiscouragedApi`, `ExportedReceiver` у debug-only `DebugQrReceiver`, `GradleDependency`), явно отключено с
+   комментарием в `app/build.gradle.kts`; остальные старые находки — в `app/lint-baseline.xml`, как у detekt
+   (обновить: `./gradlew :app:updateLintBaseline`). Два дешёвых fix'а сделаны сразу, не баселином:
+   `AutoboxingStateCreation` (`mutableIntStateOf`/`mutableLongStateOf` вместо `mutableStateOf` для Int/Long) и
+   `ComposableNaming` (переименованы два приватных composable). `ModifierParameter` (7 находок, `modifier` не первый
+   опциональный параметр) в baseline — риск шире, трогает публичные сигнатуры дизайн-системы по всему приложению.
+   Иконки приложения нет вовсе (`MissingApplicationIcon`, ни `android:icon`, ни `mipmap/`) — тоже в baseline, это
+   отдельная работа с настоящим арт-активом, не для этой сессии.
 6. **kit как библиотека.** Когда появится второе приложение, публиковать kit отдельным артефактом (composite build или
    Maven), а не копией каталога. До тех пор — правило из kit/README: ни Android, ни игры, форматы закреплены тестами.
 7. **Серверная сторона повторной выдачи персонажа** ([character-reissue.md](character-reissue.md)) — старый пункт, не
