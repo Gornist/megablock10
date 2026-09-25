@@ -16,7 +16,7 @@ class CardResenderRoomTest : RoomTest() {
     private val bob = TestPlayer("Bob")
     private val chat = ChatStore(db.chatMessageDao(), OutboxStore(db.outboxDao(), LineSocketClient(), { emptyList() }), LineSocketClient(), { emptyList() })
     private val sent = mutableListOf<ChatWireMessage>()
-    private var now = System.currentTimeMillis()
+    private var now = 0L
     private val resender get() = CardResender(
         stuck = { before -> wallet.deliveredUnconfirmed(before) + items.deliveredUnconfirmed(before) },
         originalMessage = chat::outgoingCard,
@@ -32,6 +32,7 @@ class CardResenderRoomTest : RoomTest() {
         wallet.recordOutgoingPending(tx, bob.key)
         chat.sendDirectOutcome(me, bob.key, null, Mb10QrCodec.encodeTransaction(tx))   // карточка в своём треде
         db.transactionDao().markDelivered(tx.id)                                          // «записали в сокет»
+        now = System.currentTimeMillis()   // часы теста — после создания перевода: его время записано по настоящим часам
         val original = chat.outgoingCard(me.publicKeyB64, bob.key, tx.id)!!
 
         assertEquals("свежую карточку не трогаем — чек обычно приходит за секунды", 0, resender.resendOnce())
