@@ -65,6 +65,7 @@ done
 for s in $A $B; do ensure_wifi_on $s; done
 
 # 4. Приложение и персонажи
+rm -f "$E2E_DIR/stand_used"   # свежий стенд: run-all.sh снова можно запускать (см. zz-provisioning)
 setup_device() { # <serial> <позывной:фракция>
   local s=$1
   [ $KEEP -eq 1 ] || adb_ $s uninstall $PKG >/dev/null 2>&1
