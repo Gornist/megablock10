@@ -6,7 +6,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 /**
- * Версия 16 — с 12 и выше данные игроков не стираются никогда (12→13 … 15→16 —
+ * Версия 17 — с 12 и выше данные игроков не стираются никогда (12→13 … 16→17 —
  * настоящие миграции): схема экспортируется в `app/schemas`, и с неё любое
  * изменение обязано сопровождаться миграцией (иначе Room падает при
  * открытии, а не стирает данные игроков молча). Версии 1–11 до релиза
@@ -20,7 +20,7 @@ import androidx.room.RoomDatabase
         PendingChangeRecordEntity::class, ItemTransferEntity::class, OutboxEntity::class,
         SequenceEntity::class, AcceptedChangeRecordEntity::class,
     ],
-    version = 16,
+    version = 17,
     exportSchema = true
 )
 abstract class Mb10Database : RoomDatabase() {
@@ -110,8 +110,23 @@ internal val MIGRATION_15_16 = object : androidx.room.migration.Migration(15, 16
     }
 }
 
+internal const val CHAT_STATUS_SQL = "ALTER TABLE `chat_messages` ADD COLUMN `status` INTEGER NOT NULL DEFAULT 0"
+
+// Статус своих личных сообщений (docs/refactor-plan.md, D3): у старых строк — 0 («нет статуса»), история не трогается.
+internal val MIGRATION_16_17 = object : androidx.room.migration.Migration(16, 17) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        // Повтор на уже мигрированной базе не должен падать (как у прошлых миграций): «duplicate column» — колонка уже есть.
+        try {
+            db.execSQL(CHAT_STATUS_SQL)
+        } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+            val duplicate = generateSequence<Throwable>(e) { it.cause }.any { it.message?.contains("duplicate column", ignoreCase = true) == true }
+            if (!duplicate) throw e
+        }
+    }
+}
+
 /** Версии, с которых базу пересоздаём вместо миграции (схемы старше 12 не сохранились). */
 internal val DESTRUCTIVE_FROM: IntArray = (1..11).toList().toIntArray()
 
 /** Все миграции по порядку. Новую версию схемы добавляем сюда и в тест MigrationGuardTest. */
-internal val ALL_MIGRATIONS = arrayOf(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
+internal val ALL_MIGRATIONS = arrayOf(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)

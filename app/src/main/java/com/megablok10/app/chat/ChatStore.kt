@@ -2,6 +2,7 @@ package com.megablok10.app.chat
 
 import com.megablok10.app.data.ChatMessageDao
 import com.megablok10.app.data.ChatMessageEntity
+import com.megablok10.app.data.MessageStatus
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.log.Mb10Log
 import com.megablok10.kit.mesh.OnlinePlayer
@@ -63,7 +64,7 @@ class ChatStore(
     override suspend fun sendDirectOutcome(identity: Identity, peerPubKeyB64: String, peer: OnlinePlayer?, body: String): SendOutcome {
         val timestamp = System.currentTimeMillis()
         val wire = ChatWireMessage(ChatMessageType.DM, identity.publicKeyB64, identity.callsign, identity.faction, peerPubKeyB64, timestamp, body)
-        persist(wire)
+        val rowId = persist(wire)
         // peer == null — адресата нет в сети (или вызывающий нарочно отправляет «вне сети»): не стучимся никуда. Иначе — по всем его
         // адресам (PeerDirectory): запись NSD после перезапуска его приложения может ещё хранить порт прошлого процесса.
         val line = ChatProtocol.encode(wire)
@@ -72,7 +73,14 @@ class ChatStore(
         Mb10Log.event(TAG, "chat.send_direct", "to" to Mb10Log.short(peerPubKeyB64), "peerVisible" to (peer != null), "outcome" to outcome.name, "queued" to queued, "chars" to body.length)
         // Не ушло (адресата не видно или обрыв на роуминге) — в очередь: уйдёт само, когда он появится. Деньги/предметы не queue-им, см. OutboxPolicy.
         if (queued) outbox.enqueue(peerPubKeyB64, wire)
+        dao.raiseStatus(rowId, statusOf(outcome))
         return outcome
+    }
+
+    /** Строка чата ушла из очереди или при переотправке и адресат подтвердил её (D2) — «доставлено» у своей копии. */
+    suspend fun markDelivered(line: String) {
+        val wire = ChatProtocol.decode(line) ?: return
+        dao.raiseStatusOf(wire.fromPubKeyB64, wire.timestamp, wire.type.name, wire.body, MessageStatus.DELIVERED)
     }
 
     /** Своё сообщение с карточкой [transferId] адресату [to] — то самое, что ушло (то же время и текст: у получателя повтор — дубль). */
@@ -82,8 +90,11 @@ class ChatStore(
         }
 
     /** Отправить уже сохранённое сообщение ещё раз, без новой копии в своём треде. */
-    suspend fun resend(toPubKeyB64: String, message: ChatWireMessage): Boolean = withContext(Dispatchers.IO) {
-        peers.send(toPubKeyB64, ChatProtocol.encode(message)) == SendOutcome.DELIVERED
+    suspend fun resend(toPubKeyB64: String, message: ChatWireMessage): Boolean {
+        val line = ChatProtocol.encode(message)
+        val delivered = withContext(Dispatchers.IO) { peers.send(toPubKeyB64, line) } == SendOutcome.DELIVERED
+        if (delivered) markDelivered(line)
+        return delivered
     }
 
     /** Дослать очередь исходящих тем, кто сейчас виден (сессия зовёт при изменении списка пиров и по таймеру). */
@@ -96,7 +107,7 @@ class ChatStore(
         return true
     }
 
-    private suspend fun persist(message: ChatWireMessage) {
+    private suspend fun persist(message: ChatWireMessage): Long =
         dao.insert(
             ChatMessageEntity(
                 type = message.type.name,
@@ -108,5 +119,11 @@ class ChatStore(
                 timestamp = message.timestamp
             )
         )
-    }
+}
+
+/** Исход отправки → статус своей копии (MessageStatus). */
+internal fun statusOf(outcome: SendOutcome): Int = when (outcome) {
+    SendOutcome.DELIVERED -> MessageStatus.DELIVERED
+    SendOutcome.UNKNOWN -> MessageStatus.SENT
+    SendOutcome.NOT_REACHED -> MessageStatus.PENDING
 }

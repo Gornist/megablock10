@@ -23,10 +23,14 @@ private const val TAG = "OutboxStore"
 class OutboxStore(
     dao: OutboxDao,
     private val peers: PeerDirectory,
+    /** Строка ушла и адресат её подтвердил — «доставлено» у своей копии в треде (ChatStore.markDelivered). */
+    private val onDelivered: suspend (line: String) -> Unit = {},
 ) {
     // Адрес выбирает PeerDirectory — все адреса адресата по очереди: одна запись может хранить порт его прошлого процесса.
     private val outbox = Outbox(queue = RoomOutboxQueue(dao), log = Mb10Log, tag = TAG) { to, line ->
-        withContext(Dispatchers.IO) { peers.send(to, line) == SendOutcome.DELIVERED }
+        val delivered = withContext(Dispatchers.IO) { peers.send(to, line) } == SendOutcome.DELIVERED
+        if (delivered) onDelivered(line)
+        delivered
     }
 
     suspend fun enqueue(toPubKeyB64: String, wire: ChatWireMessage) {

@@ -133,6 +133,20 @@ class MigrationDataTest {
         assertEquals("41", scalar("SELECT seq FROM pending_change_records WHERE id = 'r-1'"))
     }
 
+    @Test fun migration16to17AddsMessageStatusWithoutTouchingHistory() {
+        schemaTables(16).values.forEach(::sql)
+        sql("INSERT INTO chat_messages (type, fromPubKeyB64, fromCallsign, faction, toPubKeyB64, body, timestamp) VALUES ('DM', 'me', 'Я', 'Neon', 'bob', 'привет', 5)")
+
+        ALL_MIGRATIONS.filter { it.startVersion == 16 }.forEach { it.migrate(supportDb()) }
+        ALL_MIGRATIONS.filter { it.startVersion == 16 }.forEach { it.migrate(supportDb()) }   // повтор не падает
+
+        assertEquals("0", scalar("SELECT status FROM chat_messages WHERE body = 'привет'"))
+        assertEquals("привет", scalar("SELECT body FROM chat_messages WHERE timestamp = 5"))
+        val v17 = schemaTables(17)["chat_messages"]!!
+        assertTrue("колонка как в экспортированной схеме 17", v17.contains("`status` INTEGER NOT NULL DEFAULT 0"))
+        assertTrue(columns("chat_messages").any { it.startsWith("status:INTEGER") })
+    }
+
     @Test fun acceptedJournalMigrationMatchesExportedSchema() {
         assertEquals(schemaTables(16)["accepted_change_records"], ACCEPTED_CREATE_SQL)
     }
@@ -142,7 +156,7 @@ class MigrationDataTest {
     }
 
     @Test fun exportedSchemaHasEveryTableOfTheCurrentVersion() {
-        val tables = schemaTables(16)
+        val tables = schemaTables(17)
         assertTrue("regex схемы не нашёл таблиц (изменился формат экспорта?)", tables.size >= 10)
         tables.values.forEach(::sql)   // каждый createSql — валидный SQLite
         assertEquals(tables.size.toString(), scalar("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"))

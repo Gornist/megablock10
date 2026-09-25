@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.megablok10.app.data.ChatMessageEntity
+import com.megablok10.app.data.MessageStatus
 import com.megablok10.app.data.ItemTransferEntity
 import com.megablok10.app.data.TransactionEntity
 import com.megablok10.app.data.TransactionStatus
@@ -557,9 +558,27 @@ private fun PlainMessageBubble(msg: ChatMessageEntity, self: Boolean, showSender
                 Text(msg.body, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.5.sp, lineHeight = 19.sp)
             }
             Spacer(Modifier.height(2.dp))
-            Text(timeFormat.format(msg.timestamp), color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 11.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(timeFormat.format(msg.timestamp), color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 11.sp)
+                if (self) statusMark(msg.status)?.let { (mark, read) ->
+                    Spacer(Modifier.width(6.dp))
+                    Text(mark, color = if (read) MB10Colors.accentAction else MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 11.sp)
+                }
+            }
         }
     }
+}
+
+/**
+ * Отметка у своего личного сообщения (MessageStatus, docs/refactor-plan.md D3): «…» — не ушло (ждёт адресата в очереди),
+ * «✓» — ушло без подтверждения, «✓✓» — адресат сохранил, «✓✓» цветом — прочитал. null — без отметки (фракционное, старое).
+ */
+internal fun statusMark(status: Int): Pair<String, Boolean>? = when (status) {
+    MessageStatus.PENDING -> "…" to false
+    MessageStatus.SENT -> "✓" to false
+    MessageStatus.DELIVERED -> "✓✓" to false
+    MessageStatus.READ -> "✓✓" to true
+    else -> null
 }
 
 @Composable

@@ -17,6 +17,18 @@ interface ChatMessageDao {
     @Query("SELECT COUNT(*) FROM chat_messages WHERE fromPubKeyB64 = :from AND timestamp = :timestamp AND type = :type AND body = :body")
     suspend fun countSame(from: String, timestamp: Long, type: String, body: String): Int
 
+    /** Статус своего сообщения — только вверх (см. MessageStatus). */
+    @Query("UPDATE chat_messages SET status = :status WHERE id = :id AND status < :status")
+    suspend fun raiseStatus(id: Long, status: Int)
+
+    /** То же по содержимому — для очереди исходящих и переотправки, где известна строка, а не id. */
+    @Query("UPDATE chat_messages SET status = :status WHERE fromPubKeyB64 = :from AND timestamp = :timestamp AND type = :type AND body = :body AND status < :status")
+    suspend fun raiseStatusOf(from: String, timestamp: Long, type: String, body: String, status: Int)
+
+    /** Отчёт о прочтении (D4): все мои личные сообщения [reader], отправленные не позже [upTo], — прочитаны. */
+    @Query("UPDATE chat_messages SET status = 4 WHERE type = 'DM' AND fromPubKeyB64 = :me AND toPubKeyB64 = :reader AND timestamp <= :upTo AND status < 4")
+    suspend fun markReadUpTo(me: String, reader: String, upTo: Long): Int
+
     @Query("SELECT * FROM chat_messages WHERE type = 'FACTION' AND faction = :faction ORDER BY timestamp ASC")
     fun observeFaction(faction: String): Flow<List<ChatMessageEntity>>
 

@@ -112,8 +112,8 @@ class AppGraph(private val app: Application) {
         online = presence.players,
         me = { identity.current?.let { it.publicKeyB64 to mesh.listeningPort } },
     ) { host, port, line, expect -> lines.sendLineOutcome(host, port, line, expectAckFrom = expect) }
-    val outbox = OutboxStore(db.outboxDao(), peerDirectory)
-    val chat = ChatStore(db.chatMessageDao(), outbox, peerDirectory)
+    val outbox: OutboxStore = OutboxStore(db.outboxDao(), peerDirectory) { line -> chat.markDelivered(line) }
+    val chat: ChatStore = ChatStore(db.chatMessageDao(), outbox, peerDirectory)
     val calls = CallManager(app, peerDirectory, db.callLogDao())
     val directory = ContactDirectory(contacts, peerDirectory.online)
 
