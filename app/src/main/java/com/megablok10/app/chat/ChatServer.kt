@@ -17,6 +17,12 @@ import kotlinx.coroutines.CoroutineScope
  *
  * Журнал — под тегом `ChatServer` (server.listen, server.recv, server.incompatible_line…), как и раньше.
  */
+/**
+ * Постоянный порт сервера строк на всех телефонах (docs/refactor-plan.md, D1): адрес игрока — его IP, перезапуск приложения его не
+ * меняет (раньше каждый процесс брал случайный порт, и NSD, подсказки сервера и статические пиры хранили порт прошлого процесса).
+ */
+const val CHAT_PORT = 47100
+
 class ChatServer(
     onMessage: (ChatWireMessage) -> Unit,
     onCallSignal: (CallSignal) -> Unit = {},
@@ -33,6 +39,7 @@ class ChatServer(
         onUnrecognized = onIncompatible,
         log = Mb10Log,
         tag = "ChatServer",
+        preferredPort = CHAT_PORT,
     )
 
     val port: Int get() = server.port

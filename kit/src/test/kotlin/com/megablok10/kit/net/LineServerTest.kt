@@ -53,6 +53,27 @@ class LineServerTest {
         assertEquals(-1, s.port)
     }
 
+    private fun freePort(): Int = java.net.ServerSocket(0).use { it.localPort }
+
+    @Test fun listensOnPreferredPortAndTakesItAgainAfterRestart() {
+        val wanted = freePort()
+        val first = LineServer(routes = emptyList(), preferredPort = wanted).also { it.start(scope) }
+        assertEquals(wanted, first.port)
+        first.stop()
+        val again = LineServer(routes = emptyList(), preferredPort = wanted).also { it.start(scope) }
+        assertEquals("перезапуск — тот же адрес", wanted, again.port)
+        again.stop()
+    }
+
+    @Test fun busyPreferredPortFallsBackToAnyWithAnEvent() {
+        val wanted = freePort()
+        val holder = LineServer(routes = emptyList(), preferredPort = wanted).also { it.start(scope) }
+        val second = LineServer(routes = emptyList(), preferredPort = wanted, log = log, tag = "ChatServer").also { it.start(scope) }
+        assertTrue(second.port > 0 && second.port != wanted)
+        assertTrue(log.has("W/ChatServer server.listen_fallback wanted=$wanted"))
+        holder.stop(); second.stop()
+    }
+
     @Test fun unknownLineGoesToUnrecognized() {
         val s = server()
         client.sendLine("127.0.0.1", s.port, "MB10CHAT:v9:что-то")

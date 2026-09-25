@@ -5,6 +5,8 @@ import com.megablok10.kit.log.NoopLog
 import java.io.BufferedReader
 import java.io.InputStream
 import java.io.InputStreamReader
+import java.net.BindException
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import kotlinx.coroutines.CoroutineDispatcher
@@ -25,7 +27,9 @@ class LineRoute<T : Any>(val kind: String, private val decode: (String) -> T?, p
 }
 
 /**
- * Приём строк по TCP: порт выбирает ОС (0 — свободный), одно соединение = одна строка (см. [LineSocketClient]), дальше
+ * Приём строк по TCP на порту [preferredPort] (0 — любой свободный; занят — тоже любой, с событием `server.listen_fallback`:
+ * фиксированный порт делает адрес устройства постоянным между перезапусками, docs/refactor-plan.md, D1), одно соединение = одна
+ * строка (см. [LineSocketClient]), дальше
  * сокет закрывается — без долгоживущих соединений и их учёта. Несколько протоколов делят один сервер и порт: строку забирает
  * первый [LineRoute], который её распознал (обычно по магическому префиксу `МАГИЯ:vN:`). Нераспознанная строка уходит в
  * [onUnrecognized] (например, чтобы сказать игроку, что рядом телефон с другой версией протокола).
@@ -44,6 +48,7 @@ class LineServer(
     private val maxLineChars: Int = DEFAULT_MAX_LINE_CHARS,
     private val readTimeoutMs: Int = 5000,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    private val preferredPort: Int = 0,
 ) {
     @Volatile private var serverSocket: ServerSocket? = null
     private var job: Job? = null
@@ -53,7 +58,7 @@ class LineServer(
 
     /** Открывает порт сразу (вызывающий может тут же объявить его в сети) и принимает соединения в [scope]. */
     fun start(scope: CoroutineScope) {
-        val socket = ServerSocket(0)
+        val socket = open()
         serverSocket = socket
         log.event(tag, "server.listen", "port" to socket.localPort)
         job = scope.launch(io) {
@@ -66,6 +71,24 @@ class LineServer(
                 launch(io) { handleClient(client) }
             }
         }
+    }
+
+    /**
+     * SO_REUSEADDR — чтобы перезапущенный процесс снова занял свой порт, пока соединения прошлого висят в TIME_WAIT. Порт занят
+     * чем-то живым — берём любой: устройство останется доступным (порт объявляется в NSD и серверу), просто не по постоянному адресу.
+     */
+    private fun open(): ServerSocket {
+        if (preferredPort > 0) {
+            val socket = ServerSocket().apply { reuseAddress = true }
+            try {
+                socket.bind(InetSocketAddress(preferredPort))
+                return socket
+            } catch (e: BindException) {
+                socket.close()
+                log.warnEvent(tag, "server.listen_fallback", "wanted" to preferredPort, "error" to e.message)
+            }
+        }
+        return ServerSocket(0)
     }
 
     fun stop() {
