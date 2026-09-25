@@ -180,7 +180,8 @@ heal_host_reach() {
   local want=${1:-2} s
   wait_until 45 bash -c "source '$ROOT/scripts/e2e/lib.sh'; [ \"\$(players_total)\" -ge $want ]" && return 0
   for s in $A $B; do
-    if adb_ "$s" logcat -d -t 300 2>/dev/null | grep -q "CollectorClient.*недоступен"; then
+    # Событие журнала CollectorClient (Mb10Log.warnEvent): «W CollectorClient: sync.unreachable url=… error=ConnectException …»
+    if adb_ "$s" logcat -d -t 300 2>/dev/null | grep -q "CollectorClient.*sync\.unreachable"; then
       log "$s: приложение не достукивается до сервера — выключаю виртуальный Wi-Fi (особенность эмулятора)"
       adb_ "$s" shell svc wifi disable
     fi
