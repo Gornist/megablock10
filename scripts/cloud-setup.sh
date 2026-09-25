@@ -2,7 +2,8 @@
 # Скрипт настройки облачного окружения Claude Code (claude.ai/code) для MegaBlock10.
 # Копия того, что вставлено в настройки окружения (меню окружения в заголовке сессии → Edit → Setup script):
 # правите здесь — вставьте туда заново. Самодостаточный (не читает репозиторий) и идемпотентный: повторный запуск ничего не ломает.
-# Что даёт сессии: Android SDK 34 для :app, зеркало Maven Central для Gradle и Robolectric, UTF-8 в выводе Gradle.
+# Что даёт сессии: Android SDK 34 для :app, зеркало Maven Central для Gradle и Robolectric, UTF-8 в выводе Gradle,
+# kotlin-language-server для плагина KotlinSense.
 set -euo pipefail
 
 SDK=${ANDROID_HOME:-/root/android-sdk}
@@ -50,4 +51,15 @@ export LANG=C.UTF-8
 export PATH="\$HOME/.local/bin:\$PATH"
 EOF
 
-echo "MB10 cloud setup: SDK $(ls "$SDK/platforms" | tr '\n' ' '), init.d и ~/.bashrc готовы"
+# 4. kotlin-language-server для плагина KotlinSense (.claude/settings.json; его .lsp.json зовёт kotlin-language-server из PATH).
+KLS_VERSION=1.3.13
+if [ ! -x "$HOME/.kotlin-language-server/bin/kotlin-language-server" ]; then
+  tmp=$(mktemp -d)
+  curl -fsSL "https://github.com/fwcd/kotlin-language-server/releases/download/$KLS_VERSION/server.zip" -o "$tmp/server.zip"
+  unzip -q "$tmp/server.zip" -d "$tmp"
+  rm -rf "$HOME/.kotlin-language-server"; mv "$tmp/server" "$HOME/.kotlin-language-server"; rm -rf "$tmp"
+fi
+mkdir -p "$HOME/.local/bin"
+ln -sf "$HOME/.kotlin-language-server/bin/kotlin-language-server" "$HOME/.local/bin/kotlin-language-server"
+
+echo "MB10 cloud setup: SDK $(ls "$SDK/platforms" | tr '\n' ' '), kotlin-language-server $KLS_VERSION, init.d и ~/.bashrc готовы"

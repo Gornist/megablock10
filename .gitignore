@@ -10,3 +10,5 @@ local.properties
 
 # Личные настройки Claude Code — не в репо (общие — .claude/settings.json)
 .claude/settings.local.json
+# Кэш kotlin-language-server (плагин KotlinSense, .claude/settings.json)
+.kotlin-ls/
