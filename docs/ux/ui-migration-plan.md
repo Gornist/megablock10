@@ -58,12 +58,18 @@
 *Готово, когда:* вопросы закрыты, ветка `agent/ui-kit` создана.~~ Сделано: ветка `agent/ui-kit` создана
 (`scripts/agent-worktree.sh new ui-kit`), документы закоммичены (6c4236a), открытые вопросы закрыты (см. ниже).
 
-**M1. Токены, шрифты, формы.** `ui/theme/MbColors.kt` (три темы), `MbTypography` (таблица гайдлайна, раздел 3), `MbDimens`
+~~**M1. Токены, шрифты, формы.** `ui/theme/MbColors.kt` (три темы), `MbTypography` (таблица гайдлайна, раздел 3), `MbDimens`
 (отступы 10/8/4, 48 dp), `MbChamfer` и `Modifier.mbFrame`. Шрифты Fira Sans Condensed и IBM Plex Mono — статичные TTF в `res/font`
 (лицензия OFL — положить `OFL.txt` рядом с исходниками шрифтов). `MB10Colors` пока отдаёт новые цвета под старыми именами, чтобы
 всё собиралось; экраны не трогаем.
 *Готово, когда:* сборка и тесты зелёные; `ScreenshotTest.designSystem` перезаписан и показывает новые цвета и фаски; detekt без новых находок.
-*Риск:* размер APK (+≈1 МБ на 6 файлов) — приемлемо.
+*Риск:* размер APK (+≈1 МБ на 6 файлов) — приемлемо.~~ Сделано: 6797a1f. `MbColors`/`MbTypography`/`MbDimens`/`MbChamfer` в
+`ui/theme/`, шрифты статичные TTF (google/fonts, IBM/plex), лицензии — `docs/ux/font-licenses/` (не в `res/font`: aapt не
+пропустит там `.txt`). Фактический размер шрифтов +≈1,9 МБ на 6 файлов — больше оценки, но временно (старые уходят в M5).
+`MB10Colors` — псевдоним `MbColorsDefault`/`MbColorsBreach`; `accentSystem` — заглушка на `money` до M4.7 (объявление мастера
+узнаётся по окну, не по цвету). Формы (`MbChamfer`) сделаны независимо от старых `chamferShape`/`augmentedShape` — экраны их
+ещё не используют, это задел на M2. Проверено локально `scripts/check.sh --all` (detekt, lint, kit, `verifyPaparazziDebug`) —
+всё зелёное; 5 эталонов Paparazzi перезаписаны (только цвет, ±2-6 %).
 
 **M2. Компоненты.** По одному файлу на группу в `ui/theme/components/`: `MbButton`/`MbIconButton`/`MbKeyCap`/`MbActionBar`,
 `MbTabs`/`MbBreadcrumb`/`MbSectionTitle`/`MbMetaLine`, `MbListItem`, `MbTag`/`MbStatusText`, `MbTile`/`MbCard`/`MbPortrait`/`MbQr`,
