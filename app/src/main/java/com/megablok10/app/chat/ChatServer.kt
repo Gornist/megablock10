@@ -58,7 +58,4 @@ class ChatServer(
     fun start(scope: CoroutineScope) = server.start(scope)
 
     fun stop() = server.stop()
-
-    /** Смена сети: переоткрыть слушающий сокет на том же порту — старый мог принадлежать пропавшей сети (kit LineServer.relisten). */
-    fun relisten() = server.relisten()
 }

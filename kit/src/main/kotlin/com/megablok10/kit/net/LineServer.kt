@@ -75,10 +75,10 @@ class LineServer(
     /**
      * Открывает порт сразу (вызывающий может тут же объявить его в сети) и принимает соединения в [scope].
      *
-     * Слушающий сокет может умереть и без [stop]: Android уничтожает сокеты сети, которая пропала (процесс привязан к Wi-Fi площадки),
-     * — e2e run 36209401543: после выключения/включения Wi-Fi у получателя его сервер больше не принял ни одного соединения, а
-     * цикл приёма молча вышел. Теперь сбой приёма — событие `server.accept_failed` и тот же порт заново через [reopenDelayMs];
-     * при смене сети его можно переоткрыть и заранее ([relisten]).
+     * Слушающий сокет может умереть и без [stop]: Android уничтожает сокеты сети, которая пропала (сокет, открытый после привязки
+     * процесса к Wi-Fi, помечен этой сетью) — e2e run 36209401543: после выключения/включения Wi-Fi у получателя его сервер больше не
+     * принял ни одного соединения, а цикл приёма молча вышел. Теперь сбой приёма — событие `server.accept_failed` и тот же порт
+     * заново через [reopenDelayMs]. Главное средство — открывать сервер ДО привязки (MeshSession), это — страховка.
      */
     fun start(scope: CoroutineScope) {
         stopped = false
@@ -92,7 +92,7 @@ class LineServer(
         }
     }
 
-    /** Соединение или null: сокет переоткрыт [relisten] (не сбой), остановлен, либо умер — тогда тот же порт заново после паузы. */
+    /** Соединение или null: сервер остановлен, либо сокет умер — тогда тот же порт заново после паузы. */
     private suspend fun acceptOrRecover(listening: ServerSocket): Socket? = try {
         listening.accept()
     } catch (e: Exception) {
@@ -103,12 +103,6 @@ class LineServer(
                 .onFailure { log.warnEvent(tag, "server.reopen_failed", "error" to it.javaClass.simpleName) }
         }
         null
-    }
-
-    /** Закрыть и снова открыть слушающий сокет на том же порту (смена сети: старый мог принадлежать пропавшей). Принятые соединения не трогает. */
-    fun relisten() {
-        if (stopped || serverSocket == null) return
-        runCatching { reopen(reason = "network") }.onFailure { log.warnEvent(tag, "server.reopen_failed", "error" to it.javaClass.simpleName) }
     }
 
     @Synchronized
@@ -129,14 +123,20 @@ class LineServer(
      */
     private fun open(): ServerSocket {
         if (preferredPort > 0) {
-            val socket = ServerSocket().apply { reuseAddress = true }
-            try {
-                socket.bind(InetSocketAddress(preferredPort))
-                return socket
-            } catch (e: BindException) {
-                socket.close()
-                log.warnEvent(tag, "server.listen_fallback", "wanted" to preferredPort, "error" to e.message)
+            // Только что закрытый порт ядро может отдать не сразу — несколько попыток с паузой, прежде чем уйти на запасной.
+            var last: BindException? = null
+            repeat(BIND_ATTEMPTS) { attempt ->
+                val socket = ServerSocket().apply { reuseAddress = true }
+                try {
+                    socket.bind(InetSocketAddress(preferredPort))
+                    return socket
+                } catch (e: BindException) {
+                    socket.close()
+                    last = e
+                    if (attempt < BIND_ATTEMPTS - 1) Thread.sleep(BIND_RETRY_MS)
+                }
             }
+            log.warnEvent(tag, "server.listen_fallback", "wanted" to preferredPort, "error" to last?.message)
         }
         return ServerSocket(0)
     }
@@ -223,6 +223,8 @@ class LineServer(
     companion object {
         /** Самая длинная легитимная строка у Мегаблока — SDP-предложение звонка (единицы КБ в base64); всё, что больше, — мусор или попытка забить память. */
         const val DEFAULT_MAX_LINE_CHARS = 256 * 1024
+        private const val BIND_ATTEMPTS = 5
+        private const val BIND_RETRY_MS = 100L
     }
 }
 
