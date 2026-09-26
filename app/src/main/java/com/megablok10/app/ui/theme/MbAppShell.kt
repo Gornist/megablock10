@@ -82,15 +82,19 @@ fun MbAppShell(
                         style = MbTypography.meta.copy(fontSize = 11.sp, letterSpacing = 0.04f.em, fontWeight = FontWeight.SemiBold),
                         color = c.money
                     )
+                    // Прототип рисует чип только «в сети» (зелёный) — ноль узлов (игрок изолирован от меш-сети) он не
+                    // показывает вовсе, но это реальный и важный для игрока случай (было отдельным красным текстом в
+                    // старой шапке, AppShell.kt): здесь тот же чип переключается на bad, а не тихо остаётся зелёным.
+                    val nodesTone = if (onlineNodes > 0) c.ok else c.bad
                     Row(
                         modifier = Modifier
-                            .mbFrame(fill = c.bg, edge = c.ok, form = MbChamferForm.Tab, cut = 4.dp)
+                            .mbFrame(fill = c.bg, edge = nodesTone, form = MbChamferForm.Tab, cut = 4.dp)
                             .padding(horizontal = 8.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Box(Modifier.size(6.dp).background(c.ok, CircleShape))
-                        Text("$onlineNodes УЗЛОВ", style = MbTypography.metaStatus.copy(letterSpacing = 0.06f.em), color = c.ok)
+                        Box(Modifier.size(6.dp).background(nodesTone, CircleShape))
+                        Text("$onlineNodes УЗЛОВ", style = MbTypography.metaStatus.copy(letterSpacing = 0.06f.em), color = nodesTone)
                     }
                 }
             }
