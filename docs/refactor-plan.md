@@ -98,6 +98,11 @@
 `Mb10App.onCreate`, `AppGraph.start*`, `onUiStarted`, `MeshSession.ensureForeground`, `SessionReset`.
 *Готово, когда:* JVM-тест на таблицу «событие → что запущено» и никто, кроме контроллера, не зовёт `mesh.start/stop`,
 `startCollectorSync`, `MeshForegroundService.start`.
+*Сделано:* ~~`session/SessionController`~~ (`9869e08`) — таблица правил в `SessionControllerTest`, «никто другой» — `SessionGuardTest`.
+~~NSD по одной операции~~ — `presence/NsdSlot` (регистрация и поиск: желаемое → фактическое, следующая операция только после
+ответа Android, тайм-аут, повтор после сбоя; снять незавершённую регистрацию нельзя по построению) и `presence/NsdResolveQueue`
+(разрешение найденных по одному — на Android до 14 одновременные падают с FAILURE_ALREADY_ACTIVE, на площадке это десятки
+телефонов разом); `PresenceService` — только вызовы Android поверх них. Тесты `NsdSlotTest`, `NsdResolveQueueTest`.
 
 ## Этап D — адрес игрока без догадок (решение владельца 25.09)
 
