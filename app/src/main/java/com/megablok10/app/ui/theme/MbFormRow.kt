@@ -102,3 +102,32 @@ fun MbValue(text: String, modifier: Modifier = Modifier, tone: Color = LocalMbCo
         modifier = modifier
     )
 }
+
+/** Однострочное текстовое поле — та же форма tab, что у поля Composer, просто без кнопки отправки рядом. */
+@Composable
+fun MbField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    placeholder: String = ""
+) {
+    val c = LocalMbColors.current
+    Box(
+        modifier
+            .fillMaxWidth()
+            .heightIn(min = MbDimens.rowHeight)
+            .mbFrame(fill = c.plate, edge = c.plateEdge, form = MbChamferForm.Tab, cut = 6.dp)
+            .padding(horizontal = 12.dp),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        if (value.isEmpty()) Text(placeholder, style = MbTypography.dialogText, color = c.ink3)
+        androidx.compose.foundation.text.BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            textStyle = MbTypography.dialogText.copy(color = c.ink),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(c.acc),
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}

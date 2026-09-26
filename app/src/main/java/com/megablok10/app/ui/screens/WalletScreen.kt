@@ -1,16 +1,14 @@
 package com.megablok10.app.ui.screens
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -19,45 +17,43 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.painterResource
 import com.megablok10.app.data.TransactionEntity
 import com.megablok10.app.data.TransactionStatus
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.di.walletViewModel
 import com.megablok10.app.ui.appViewModel
-import com.megablok10.app.ui.theme.AmountField
-import com.megablok10.app.ui.theme.AppButton
-import com.megablok10.app.ui.theme.AppTextField
-import com.megablok10.app.ui.theme.ButtonVariant
-import com.megablok10.app.ui.theme.ChamferedSurface
-import com.megablok10.app.ui.theme.ChipTone
-import com.megablok10.app.ui.theme.DottedDivider
-import com.megablok10.app.ui.theme.EmptyState
-import com.megablok10.app.ui.theme.HexBullet
-import com.megablok10.app.ui.theme.IBMPlexSans
-import com.megablok10.app.ui.theme.JetBrainsMono
-import com.megablok10.app.ui.theme.Jura
-import com.megablok10.app.ui.theme.ListRow
-import com.megablok10.app.ui.theme.MB10Colors
-import com.megablok10.app.ui.theme.SectionLabel
-import com.megablok10.app.ui.theme.StatusChip
+import com.megablok10.app.ui.theme.LocalMbColors
+import com.megablok10.app.ui.theme.MbAmountField
+import com.megablok10.app.ui.theme.MbButton
+import com.megablok10.app.ui.theme.MbButtonKind
+import com.megablok10.app.ui.theme.MbDialog
+import com.megablok10.app.ui.theme.MbDialogAction
+import com.megablok10.app.ui.theme.MbDialogTone
+import com.megablok10.app.ui.theme.MbDimens
+import com.megablok10.app.ui.theme.MbEmptyState
+import com.megablok10.app.ui.theme.MbField
+import com.megablok10.app.ui.theme.MbIcons
+import com.megablok10.app.ui.theme.MbListItem
+import com.megablok10.app.ui.theme.MbListItemState
+import com.megablok10.app.ui.theme.MbSectionTitle
+import com.megablok10.app.ui.theme.MbStatusText
+import com.megablok10.app.ui.theme.MbStatusTone
+import com.megablok10.app.ui.theme.MbTile
+import com.megablok10.app.ui.theme.MbTileTone
+import com.megablok10.app.ui.theme.MbTypography
+import com.megablok10.app.ui.theme.formatMoney
+import com.megablok10.app.ui.theme.groupThousands
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Locale
 import java.util.UUID
 
 /**
- * Хэндшейк перевода теперь идёт сообщениями в личном чате с получателем, а
- * не показыванием QR друг другу: получатель выбирается из контактов сразу
- * (а не определяется тем, кто отсканировал QR), подписанная транзакция и
- * чек-подтверждение — та же сериализация, что раньше шла в QR-картинку,
- * просто телом обычного DM-сообщения (см. ChatScreen — там же и рисуются
- * платёжные "пузыри" с кнопкой "Принять"). QR остаётся только для контактов,
- * точек доступа и шардов — не для денег.
+ * Хэндшейк перевода идёт сообщениями в личном чате с получателем, а не показыванием QR друг другу: получатель выбирается
+ * из контактов сразу, подписанная транзакция и чек-подтверждение — телом обычного DM-сообщения (см. ChatScreen — там же
+ * рисуются платёжные "пузыри" с кнопкой "Принять"). QR остаётся только для контактов, точек доступа и шардов — не для денег.
  */
 @Composable
 fun WalletScreen(presetContactKey: String? = null, onPresetConsumed: () -> Unit = {}) {
@@ -76,256 +72,230 @@ fun WalletScreen(presetContactKey: String? = null, onPresetConsumed: () -> Unit 
         if (presetContactKey != null) { presetKey = presetContactKey; sending = true; onPresetConsumed() }
     }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
-        // Баланс — крупное число в одной строке с кнопкой «Отправить» (раньше: карточка ≈130 dp + кнопка на всю ширину).
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("евродоллары", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text("$balance", color = MB10Colors.inkPrimary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 32.sp)
-                    Text(" €$", color = MB10Colors.inkSecondary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(bottom = 4.dp))
-                }
-            }
-            AppButton("Отправить", variant = ButtonVariant.Primary, dense = true, modifier = Modifier.width(140.dp), onClick = { sending = true })
+    val todayTotals = remember(transactions) { todayInOut(transactions) }
+
+    Column(Modifier.fillMaxSize().padding(horizontal = MbDimens.screenPadding)) {
+        MbTile(
+            modifier = Modifier.fillMaxWidth(),
+            label = "Баланс",
+            value = groupThousands(balance),
+            valueUnit = "€$",
+            tone = MbTileTone.Money,
+            big = true,
+            subItems = if (todayTotals == null) emptyList() else listOf(
+                "+${groupThousands(todayTotals.first)} за сутки",
+                "−${groupThousands(todayTotals.second)} отправлено"
+            )
+        )
+        Row(Modifier.fillMaxWidth().padding(vertical = MbDimens.blockGap)) {
+            MbButton("Новый платёж", onClick = { sending = true })
         }
 
-        // Форма отправки — отдельным окном: список операций под ней не сдвигается.
-        if (sending) {
-            androidx.compose.ui.window.Dialog(
-                onDismissRequest = { sending = false; presetKey = null },
-                properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
-            ) {
-                Column(Modifier.padding(12.dp).verticalScroll(rememberScrollState())) {
-                    SendTransactionPanel(
-                        contacts = contacts,
-                        onlineKeys = onlineKeys,
-                        transactions = transactions,
-                        balance = balance,
-                        initialContact = contacts.find { it.publicKeyB64 == presetKey },
-                        onSend = { contact, id, amount, memo -> wallet.send(contact.publicKeyB64, id, amount, memo) },
-                        onCancel = wallet::cancel
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    AppButton("Закрыть", variant = ButtonVariant.Secondary, dense = true, modifier = Modifier.fillMaxWidth(), onClick = { sending = false; presetKey = null })
-                }
-            }
-        }
-
-        Spacer(Modifier.height(10.dp))
-        SectionLabel("Операции")
         if (transactions.isEmpty()) {
-            EmptyState("Ещё не было ни одной транзакции.")
+            Box(Modifier.weight(1f)) { MbEmptyState(MbIcons.Wallet, "Пока пусто", "Ещё не было ни одной транзакции.") }
         } else {
-            Column {
-                transactions.forEachIndexed { index, tx ->
-                    TxRow(
-                        tx = tx,
-                        counterpartyName = contactsByKey[tx.counterpartyPubKeyB64]?.callsign,
-                        onCancelPending = { wallet.cancel(tx.id) }
-                    )
-                    if (index != transactions.lastIndex) DottedDivider()
+            val groups = remember(transactions) { groupByDay(transactions) }
+            LazyColumn(Modifier.weight(1f)) {
+                groups.forEach { (label, txs) ->
+                    item { MbSectionTitle(label) }
+                    items(txs, key = { it.id }) { tx ->
+                        TxRow(tx = tx, counterpartyName = contactsByKey[tx.counterpartyPubKeyB64]?.callsign, onCancelPending = { wallet.cancel(tx.id) })
+                    }
                 }
             }
         }
     }
+
+    if (sending) {
+        SendTransactionDialog(
+            contacts = contacts,
+            onlineKeys = onlineKeys,
+            transactions = transactions,
+            balance = balance,
+            initialContact = contacts.find { it.publicKeyB64 == presetKey },
+            onSend = { contact, id, amount, memo -> wallet.send(contact.publicKeyB64, id, amount, memo) },
+            onCancel = wallet::cancel,
+            onDismiss = { sending = false; presetKey = null }
+        )
+    }
+}
+
+/** Сумма входящих минус исходящих за сегодня — null, если сегодня ещё не было ни одной операции. */
+private fun todayInOut(transactions: List<TransactionEntity>): Pair<Long, Long>? {
+    val cal = Calendar.getInstance()
+    val today = Calendar.getInstance()
+    val todayTx = transactions.filter { cal.apply { timeInMillis = it.timestamp }.get(Calendar.DAY_OF_YEAR) == today.get(Calendar.DAY_OF_YEAR) &&
+        cal.get(Calendar.YEAR) == today.get(Calendar.YEAR) }
+    if (todayTx.isEmpty()) return null
+    val incoming = todayTx.filter { it.amount > 0 }.sumOf { it.amount }
+    val outgoing = -todayTx.filter { it.amount < 0 }.sumOf { it.amount }
+    return incoming to outgoing
+}
+
+/** Тот же принцип, что в ленте чата (ChatScreen.buildChatEntries): день сменился — новая группа с заголовком. */
+private fun groupByDay(transactions: List<TransactionEntity>): List<Pair<String, List<TransactionEntity>>> {
+    val cal = Calendar.getInstance()
+    val today = Calendar.getInstance()
+    val groups = LinkedHashMap<String, MutableList<TransactionEntity>>()
+    transactions.forEach { tx ->
+        cal.timeInMillis = tx.timestamp
+        val label = dayLabelFor(cal, today)
+        groups.getOrPut(label) { mutableListOf() } += tx
+    }
+    return groups.map { it.key to it.value }
+}
+
+private fun dayLabelFor(day: Calendar, today: Calendar): String {
+    val sameYear = today.get(Calendar.YEAR) == day.get(Calendar.YEAR)
+    val diff = today.get(Calendar.DAY_OF_YEAR) - day.get(Calendar.DAY_OF_YEAR)
+    return when {
+        sameYear && diff == 0 -> "Сегодня"
+        sameYear && diff == 1 -> "Вчера"
+        else -> SimpleDateFormat("d MMMM", Locale("ru")).format(day.time)
+    }
+}
+
+@Composable
+internal fun TxRow(tx: TransactionEntity, counterpartyName: String?, onCancelPending: () -> Unit) {
+    val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+    val c = LocalMbColors.current
+    val pending = tx.status == TransactionStatus.PENDING
+    val delivered = tx.status == TransactionStatus.DELIVERED
+    val incoming = tx.amount > 0
+    val tone = when { pending -> c.bad; delivered -> c.warn; incoming -> c.ok; else -> c.ink }
+    val icon = when { pending -> MbIcons.Close; incoming -> MbIcons.In; else -> MbIcons.Out }
+    val title = tx.memo.ifBlank { if (incoming) "Входящий платёж" else "Платёж" }
+    val counterpartyText = if (tx.counterpartyPubKeyB64.isEmpty()) {
+        null
+    } else {
+        val label = counterpartyName ?: (tx.counterpartyPubKeyB64.take(8) + "…")
+        if (incoming) "от $label" else "→ $label"
+    }
+    MbListItem(
+        title = title,
+        sub = listOfNotNull(counterpartyText).joinToString(),
+        lead = { Icon(painterResource(icon), contentDescription = null, tint = tone) },
+        trail = listOfNotNull(
+            { Text((if (incoming) "+" else "") + formatMoney(tx.amount), style = MbTypography.listAmount, color = tone) },
+            if (pending) {
+                { MbStatusText("не доставлено", MbStatusTone.Bad) }
+            } else if (delivered) {
+                { MbStatusText("доставлено, ждёт принятия", MbStatusTone.Warn) }
+            } else null,
+            { Text(timeFormat.format(tx.timestamp), style = MbTypography.meta, color = c.ink2) },
+            if (pending) { { MbButton("Отменить", onClick = onCancelPending, kind = MbButtonKind.Danger, inline = true) } } else null
+        )
+    )
 }
 
 private data class SentPayment(val id: String, val contact: Mb10Qr.Contact, val amount: Long, val memo: String)
 
 @Composable
-private fun SendTransactionPanel(
+private fun SendTransactionDialog(
     contacts: List<Mb10Qr.Contact>,
     onlineKeys: Set<String>,
     transactions: List<TransactionEntity>,
     balance: Long,
     initialContact: Mb10Qr.Contact? = null,
     onSend: (contact: Mb10Qr.Contact, id: String, amount: Long, memo: String) -> Unit,
-    onCancel: (id: String) -> Unit
+    onCancel: (id: String) -> Unit,
+    onDismiss: () -> Unit
 ) {
     var selectedContact by remember { mutableStateOf(initialContact) }
     // Список контактов приходит из БД уже после первой композиции — подставляем получателя, когда он появится.
     LaunchedEffect(initialContact) { if (selectedContact == null && initialContact != null) selectedContact = initialContact }
     var sent by remember { mutableStateOf<SentPayment?>(null) }
+    var amountText by remember { mutableStateOf("") }
+    var memoText by remember { mutableStateOf("") }
+    val c = LocalMbColors.current
 
-    ChamferedSurface(
-        borderColor = MB10Colors.borderMuted,
-        fillColor = MB10Colors.surfaceRaised,
-        cut = 6.dp,
-        contentPadding = 14.dp,
-        augmented = true,
-        // borderMuted слишком тёмный для уголков-прицела (см. правило в Color.kt) — акцент отдельным живым цветом.
-        bracketColor = MB10Colors.accentAction,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        val activeSent = sent
-        when {
+    val activeSent = sent
+    val contact = selectedContact
+    MbDialog(
+        onDismissRequest = onDismiss,
+        icon = MbIcons.Wallet,
+        title = when {
+            activeSent != null -> "Перевод"
+            contact == null -> "Кому отправить"
+            else -> "Перевод · ${contact.callsign}"
+        },
+        tone = MbDialogTone.Default,
+        actions = when {
             activeSent != null -> {
                 val status = transactions.find { it.id == activeSent.id }?.status
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        "Отправлено → ${activeSent.contact.callsign}",
-                        color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp, textAlign = TextAlign.Center
+                when (status) {
+                    TransactionStatus.CONFIRMED -> listOf(MbDialogAction("Закрыть", MbButtonKind.Quiet, onClick = onDismiss))
+                    TransactionStatus.PENDING -> listOf(
+                        MbDialogAction("Отменить платёж", MbButtonKind.Danger) { onCancel(activeSent.id); sent = null; selectedContact = null },
+                        MbDialogAction("Закрыть", MbButtonKind.Quiet, onClick = onDismiss)
                     )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        "${activeSent.amount} €$" + if (activeSent.memo.isNotBlank()) " · ${activeSent.memo}" else "",
-                        color = MB10Colors.inkPrimary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 20.sp
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    StatusChip(
-                        when (status) {
-                            TransactionStatus.CONFIRMED -> "подтверждено"
-                            TransactionStatus.DELIVERED -> "доставлено, ждёт принятия"
-                            else -> "не доставлено"
-                        },
-                        tone = if (status == TransactionStatus.CONFIRMED) ChipTone.Action else ChipTone.Neutral
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    if (status == TransactionStatus.CONFIRMED) {
-                        AppButton(
-                            "Новый платёж", modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.Primary,
-                            onClick = { sent = null; selectedContact = null }
-                        )
-                    } else if (status == TransactionStatus.DELIVERED) {
-                        Text(
-                            "Карточка уже у получателя — отменить платёж нельзя, ждём, пока он примет его в чате.",
-                            color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 11.5.sp, lineHeight = 15.sp,
-                            textAlign = TextAlign.Center
-                        )
-                    } else {
-                        Text(
-                            "Получатель не в сети — карточка ему не дошла. Пока это так, платёж можно отменить и вернуть деньги.",
-                            color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 11.5.sp, lineHeight = 15.sp,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(Modifier.height(10.dp))
-                        AppButton(
-                            "Отменить платёж", modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.Danger,
-                            onClick = { onCancel(activeSent.id); sent = null; selectedContact = null }
-                        )
-                    }
+                    else -> listOf(MbDialogAction("Закрыть", MbButtonKind.Quiet, onClick = onDismiss))
                 }
             }
-            selectedContact == null -> {
-                Column {
-                    Text("Кому отправить", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
-                    Spacer(Modifier.height(10.dp))
-                    if (contacts.isEmpty()) {
-                        EmptyState("Нет добавленных контактов — сначала отсканируйте QR-код игрока в Профиле.")
-                    } else {
-                        contacts.forEachIndexed { index, c ->
-                            ListRow(
-                                onClick = { selectedContact = c },
-                                leading = { HexBullet(if (c.publicKeyB64 in onlineKeys) MB10Colors.inkPrimary else MB10Colors.inkTertiary, size = 7.dp) }
-                            ) {
-                                Text(c.callsign, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
-                                Text(c.faction, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
-                            }
-                            if (index != contacts.lastIndex) DottedDivider()
-                        }
-                    }
-                }
-            }
+            contact == null -> listOf(MbDialogAction("Отмена", MbButtonKind.Quiet, onClick = onDismiss))
             else -> {
-                val contact = selectedContact!!
-                var amountText by remember { mutableStateOf("") }
-                var memoText by remember { mutableStateOf("") }
                 val parsedAmount = amountText.toLongOrNull()
                 val amountValid = parsedAmount != null && parsedAmount > 0 && parsedAmount <= balance
-                val showError = amountText.isNotEmpty() && !amountValid
-
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Кому: ", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
-                        Text(
-                            contact.callsign, color = MB10Colors.inkPrimary, fontFamily = JetBrainsMono,
-                            fontSize = 11.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f)
-                        )
-                        Text(
-                            "Сменить", color = MB10Colors.accentAction, fontFamily = JetBrainsMono, fontSize = 11.sp,
-                            modifier = Modifier.clickable { selectedContact = null }
-                        )
-                    }
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        "Сумма списывается с вашего баланса сразу — как передать наличные из рук в руки. Перевод уйдёт получателю сообщением в чат — до его подтверждения платёж ещё можно отменить.",
-                        color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 12.sp, lineHeight = 16.sp
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    AmountField(value = amountText, onValueChange = { amountText = it }, modifier = Modifier.fillMaxWidth())
-                    if (showError) {
-                        Spacer(Modifier.height(4.dp))
-                        Text(if (parsedAmount != null && parsedAmount > balance) "Недостаточно средств на балансе" else "Введите сумму больше нуля", color = MB10Colors.accentDanger, fontFamily = JetBrainsMono, fontSize = 11.sp)
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    AppTextField(
-                        value = memoText,
-                        onValueChange = { memoText = it },
-                        placeholder = "За что (необязательно)",
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    AppButton(
-                        "Отправить",
-                        modifier = Modifier.fillMaxWidth(),
-                        variant = ButtonVariant.Primary,
-                        enabled = amountValid,
-                        onClick = {
+                listOf(
+                    MbDialogAction("Отмена", MbButtonKind.Quiet, onClick = { selectedContact = null }),
+                    MbDialogAction("Отправить", if (amountValid) MbButtonKind.Success else MbButtonKind.Quiet) {
+                        if (amountValid) {
                             val id = UUID.randomUUID().toString()
                             val amount = amountText.toLong()
                             onSend(contact, id, amount, memoText)
                             sent = SentPayment(id, contact, amount, memoText)
                         }
-                    )
+                    }
+                )
+            }
+        },
+        wideActions = activeSent == null && contact != null
+    ) {
+        when {
+            activeSent != null -> {
+                val status = transactions.find { it.id == activeSent.id }?.status
+                Text(formatMoney(activeSent.amount) + if (activeSent.memo.isNotBlank()) " · ${activeSent.memo}" else "", style = MbTypography.dialogText, color = c.ink)
+                when (status) {
+                    TransactionStatus.CONFIRMED -> MbStatusText("подтверждено", MbStatusTone.Ok)
+                    TransactionStatus.DELIVERED -> {
+                        MbStatusText("доставлено, ждёт принятия", MbStatusTone.Warn)
+                        Text("Карточка уже у получателя — отменить платёж нельзя, ждём, пока он примет его в чате.", style = MbTypography.meta, color = c.ink2)
+                    }
+                    else -> {
+                        MbStatusText("не доставлено", MbStatusTone.Bad)
+                        Text("Получатель не в сети — карточка ему не дошла. Пока это так, платёж можно отменить и вернуть деньги.", style = MbTypography.meta, color = c.ink2)
+                    }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun TxRow(tx: TransactionEntity, counterpartyName: String?, onCancelPending: () -> Unit) {
-    val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
-    val pending = tx.status == TransactionStatus.PENDING
-    val delivered = tx.status == TransactionStatus.DELIVERED
-    ListRow(
-        trailing = {
-            val amountText = (if (tx.amount > 0) "+" else "") + tx.amount
-            Text(
-                amountText,
-                color = if (tx.amount > 0) MB10Colors.accentAction else MB10Colors.inkSecondary,
-                fontFamily = JetBrainsMono,
-                fontSize = 13.sp
-            )
-        }
-    ) {
-        val title = tx.memo.ifBlank { if (tx.amount > 0) "Входящий платёж" else "Платёж" }
-        Text(title, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
-        val timeText = timeFormat.format(tx.timestamp)
-        val fromText = if (tx.counterpartyPubKeyB64.isEmpty()) {
-            null
-        } else {
-            val label = counterpartyName ?: (tx.counterpartyPubKeyB64.take(8) + "…")
-            if (tx.amount > 0) " · от $label" else " · → $label"
-        }
-        val statusText = when {
-            pending -> " · не доставлено"
-            delivered -> " · доставлено, ждёт принятия"
-            else -> ""
-        }
-        Text(
-            timeText + (fromText ?: "") + statusText,
-            color = if (pending || delivered) MB10Colors.accentAction else MB10Colors.inkSecondary,
-            fontFamily = JetBrainsMono, fontSize = 11.sp
-        )
-        if (pending) {
-            Text(
-                "Отменить",
-                color = MB10Colors.accentDanger,
-                fontFamily = JetBrainsMono,
-                fontSize = 11.sp,
-                modifier = Modifier.clickable(onClick = onCancelPending).padding(top = 2.dp)
-            )
+            contact == null -> {
+                if (contacts.isEmpty()) {
+                    Text("Нет добавленных контактов — сначала отсканируйте QR-код игрока в Профиле.", style = MbTypography.dialogText, color = c.ink2)
+                } else {
+                    contacts.forEach { contact2 ->
+                        val online = contact2.publicKeyB64 in onlineKeys
+                        MbListItem(
+                            title = contact2.callsign,
+                            sub = contact2.faction,
+                            lead = { Icon(painterResource(MbIcons.User), contentDescription = null) },
+                            state = if (online) MbListItemState.Normal else MbListItemState.Off,
+                            onClick = { selectedContact = contact2 }
+                        )
+                    }
+                }
+            }
+            else -> {
+                val parsedAmount = amountText.toLongOrNull()
+                val showError = amountText.isNotEmpty() && (parsedAmount == null || parsedAmount <= 0 || parsedAmount > balance)
+                Text(
+                    "Сумма списывается с вашего баланса сразу — как передать наличные из рук в руки. Перевод уйдёт получателю сообщением в чат — до его подтверждения платёж ещё можно отменить.",
+                    style = MbTypography.meta, color = c.ink2
+                )
+                MbAmountField(value = amountText, onValueChange = { amountText = it })
+                if (showError) {
+                    MbStatusText(if (parsedAmount != null && parsedAmount > balance) "недостаточно средств" else "введите сумму больше нуля", MbStatusTone.Bad)
+                }
+                MbField(value = memoText, onValueChange = { memoText = it }, placeholder = "За что (необязательно)")
+            }
         }
     }
 }
