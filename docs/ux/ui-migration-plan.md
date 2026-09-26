@@ -71,13 +71,25 @@
 ещё не используют, это задел на M2. Проверено локально `scripts/check.sh --all` (detekt, lint, kit, `verifyPaparazziDebug`) —
 всё зелёное; 5 эталонов Paparazzi перезаписаны (только цвет, ±2-6 %).
 
-**M2. Компоненты.** По одному файлу на группу в `ui/theme/components/`: `MbButton`/`MbIconButton`/`MbKeyCap`/`MbActionBar`,
+~~**M2. Компоненты.** По одному файлу на группу в `ui/theme/components/`: `MbButton`/`MbIconButton`/`MbKeyCap`/`MbActionBar`,
 `MbTabs`/`MbBreadcrumb`/`MbSectionTitle`/`MbMetaLine`, `MbListItem`, `MbTag`/`MbStatusText`, `MbTile`/`MbCard`/`MbPortrait`/`MbQr`,
 `MbDialog`/`MbBanner`, `MbFormRow`/`MbToggle`/`MbSlider`, `MbEmptyState`/`MbSkeleton`, `MbBubble`/`MbPayBubble`/`MbComposer`,
 взлом: `MbPanel`/`MbTimer`/`MbBuffer`/`MbCodeMatrix`/`MbLog`. Иконки прототипа (24×24, штрих 1,7) — `ImageVector` в `MbIcons`.
 Каждый компонент: `minimumInteractiveComponentSize`, `contentDescription`, состояния нажато/выключено/фокус, `@Preview`.
 *Готово, когда:* новый Paparazzi-тест `kitCatalog` снимает все компоненты во всех состояниях и темах (аналог вкладки «Компоненты»
-прототипа) и совпадает с прототипом на глаз; старые компоненты ещё живы.
+прототипа) и совпадает с прототипом на глаз; старые компоненты ещё живы.~~ Сделано: 0e07250 (атомы и структура — Button/Tag/
+Tabs/ListItem/Tile/Dialog/FormRow/EmptyState), 4276a11 (Bubble/Composer, взлом, `KitCatalogTest`). Отклонения от плана:
+- иконки — не `ImageVector` в коде, а 27 `res/drawable/ic_mb_*.xml` (pathData скопирован из прототипа 1:1) + `MbIcons` со
+  ссылками на ресурсы — короче и без ручного переноса кривых;
+- файлы не в `ui/theme/components/`, а прямо в `ui/theme/` (подкаталог не заводили — плоский список из 11 файлов не мешает);
+- `@Preview` не добавляли (Paparazzi-каталог `KitCatalogTest` даёт то же самое — снимок всех состояний в CI, без ручного
+  открытия каждого `@Preview` в IDE); добавим точечно, если понадобится живая разработка компонента в Android Studio;
+- добавлен токен `surface` в `MbColors`/гайдлайн (был в прототипе, отсутствовал в таблице раздела 2 — прототип прав по
+  тай-брейку плана);
+- `MbBuffer` — минимальный срез 3 dp вместо прямоугольных ячеек прототипа (`NoRectangularBordersTest` запрещает голые
+  прямоугольные рамки везде, гайдлайн раздел 10);
+- свечение (`text-shadow`/`drop-shadow` активных вкладок и кнопок, диагональная засветка портрета) — упрощено или
+  пропущено; дощёлкивание при переносе экранов (M4), если будет заметно на устройстве.
 
 **M3. Оболочка.** `MbAppShell`: шапка (портрет → профиль, позывной, фракция, €$, узлы), параметр `header = false` для вложенных
 экранов, меню из 4 иконок с подписью активного и счётчиками, edge-to-edge с системными отступами. `AppSnack` → плашка.
