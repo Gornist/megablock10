@@ -281,6 +281,7 @@ autosolve() { set_config "$1" autosolve "$2"; }
 open_deck() { tap_text "$1" "Кибердека" >/dev/null; sleep 1; }
 # breach <serial> <qr> — сканирует QR, выбирает стартового демона, запускает взлом (нужен autosolve true).
 # Ждёт итог; возвращает 0 и оставляет экран результата, 1 — если взлом не дошёл до результата (например, отказ на скане).
+# M4.5 плана миграции UI: результат помещается без прокрутки (гайдлайн, раздел 5) — scroll_down больше не нужен.
 breach() {
   local s=$1 qr=$2
   ensure_wifi_on $s
@@ -289,7 +290,7 @@ breach() {
   wait_until 15 screen_has $s "Datamine" || return 1
   tap_text $s "Datamine" >/dev/null; sleep 0.5
   tap_text $s "Взломать контейнер" >/dev/null
-  wait_until 90 bash -c "source '$ROOT/scripts/e2e/lib.sh'; scroll_down $s; screen_has $s 'Взлом завершён\|Взлом частично\|Взлом провален'"
+  wait_until 90 screen_has $s "Взлом завершён\|Взлом частично\|Взлом провален"
 }
 
 # Порт приложения. Раньше брали из logcat («Слушаю входящие…»), но сценарии делают `logcat -c` и строка пропадала — после этого

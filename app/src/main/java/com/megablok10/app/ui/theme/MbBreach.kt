@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -18,6 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.invisibleToUser
@@ -47,14 +47,15 @@ fun MbStrip(label: String, barText: String, modifier: Modifier = Modifier) {
 
 /** Таймер взлома: подпись + цифровой индикатор в рамке tab; [extra] — обычно кнопка «Выйти из взлома». */
 @Composable
-fun MbTimer(label: String, time: String, modifier: Modifier = Modifier, extra: (@Composable () -> Unit)? = null) {
+fun MbTimer(label: String, time: String, modifier: Modifier = Modifier, timeColor: Color? = null, extra: (@Composable () -> Unit)? = null) {
     val c = LocalMbColors.current
+    val tone = timeColor ?: c.acc
     Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(label.uppercase(), style = MbTypography.settingLabel.copy(letterSpacing = 0.06f.em), color = c.ink, modifier = Modifier.weight(1f))
         Box(
-            Modifier.mbFrame(fill = c.bg, edge = c.acc, form = MbChamferForm.Tab, cut = 5.dp).padding(horizontal = 8.dp, vertical = 5.dp)
+            Modifier.mbFrame(fill = c.bg, edge = tone, form = MbChamferForm.Tab, cut = 5.dp).padding(horizontal = 8.dp, vertical = 5.dp)
         ) {
-            Text(time, style = MbTypography.breachCell, color = c.acc)
+            Text(time, style = MbTypography.breachCell, color = tone)
         }
         extra?.invoke()
     }
@@ -129,7 +130,7 @@ fun MbCodeMatrix(cells: List<List<MbMatrixCell>>, modifier: Modifier = Modifier)
                     val bg = when (cell.kind) {
                         MbMatrixCellKind.Band -> c.acc.copy(alpha = 0.1f)
                         MbMatrixCellKind.Aim -> c.acc
-                        else -> androidx.compose.ui.graphics.Color.Transparent
+                        else -> Color.Transparent
                     }
                     val ink = when (cell.kind) {
                         MbMatrixCellKind.Aim -> c.accInk
@@ -150,14 +151,18 @@ fun MbCodeMatrix(cells: List<List<MbMatrixCell>>, modifier: Modifier = Modifier)
     }
 }
 
-/** Журнал взлома — строки в столбик моношрифтом акцентного цвета. */
+/**
+ * Журнал взлома — строки в столбик моношрифтом акцентного цвета. Высота — по содержимому (не fillMaxSize): в
+ * BootLog это единственный контент панели, в ResultOverlay он делит место с итоговой плашкой и списком демонов —
+ * fillMaxSize() отбирал бы у них всю высоту (баг, найден на скриншот-тесте M4.5).
+ */
 @Composable
 fun MbLog(lines: List<String>, modifier: Modifier = Modifier) {
     Text(
         lines.joinToString("\n"),
         style = MbTypography.meta.copy(lineHeight = 16.5.sp),
         color = LocalMbColors.current.acc,
-        modifier = modifier.fillMaxSize().padding(2.dp)
+        modifier = modifier.fillMaxWidth().padding(2.dp)
     )
 }
 
