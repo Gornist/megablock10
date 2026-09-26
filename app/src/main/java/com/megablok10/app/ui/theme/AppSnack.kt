@@ -12,7 +12,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.megablok10.app.PlayerNotices
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,20 +30,25 @@ object AppSnack : PlayerNotices {
     fun dismiss() { _message.value = null }
 }
 
+/** M3 плана миграции UI: та же плашка, но токенами и фаской новой дизайн-системы вместо старых `ChamferedSurface`/`MB10Colors`. */
 @Composable
 fun AppSnackHost(modifier: Modifier = Modifier) {
     val current by AppSnack.message.collectAsState()
     val item = current ?: return
+    val c = LocalMbColors.current
     LaunchedEffect(item.first) {
         delay(3000)
         if (AppSnack.message.value?.first == item.first) AppSnack.dismiss()
     }
     Box(modifier.fillMaxWidth().padding(horizontal = 16.dp), contentAlignment = Alignment.BottomCenter) {
-        ChamferedSurface(
-            borderColor = MB10Colors.accentAction, fillColor = MB10Colors.surfaceRaised, cut = 8.dp, contentPadding = 12.dp,
-            modifier = Modifier.fillMaxWidth().clickable { AppSnack.dismiss() }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .mbFrame(fill = c.dlgFill, edge = c.dlgEdge, form = MbChamferForm.Dlg, cut = 8.dp)
+                .clickable { AppSnack.dismiss() }
+                .padding(12.dp)
         ) {
-            Text(item.second, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
+            Text(item.second, style = MbTypography.dialogText, color = c.ink)
         }
     }
 }
