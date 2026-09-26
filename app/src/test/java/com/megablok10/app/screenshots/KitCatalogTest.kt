@@ -232,4 +232,34 @@ class KitCatalogTest {
         MbDone("Демоны загружены · 2 из 3")
         MbLog(listOf("//КОРЕНЬ", "//ЗАГРУЗКА_ЗАВЕРШЕНА"))
     }
+
+    private val navItems = listOf(
+        com.megablok10.app.ui.theme.MbNavItem("chat", MbIcons.Chat, "Чат", badge = 3),
+        com.megablok10.app.ui.theme.MbNavItem("calls", MbIcons.Phone, "Звонки", badge = 1),
+        com.megablok10.app.ui.theme.MbNavItem("hack", MbIcons.Hack, "Кибердека"),
+        com.megablok10.app.ui.theme.MbNavItem("wallet", MbIcons.Wallet, "Финансы")
+    )
+
+    @Test
+    fun appShellWithHeader() = paparazzi.snapshot("kit_app_shell_header") {
+        CompositionLocalProvider(LocalMbColors provides MbColorsDefault) {
+            com.megablok10.app.ui.theme.MbAppShell(
+                items = navItems, selectedId = "chat", onSelect = {},
+                portraitLetter = "Ш", callsign = "Шрам", faction = "фракция · Вольные", balance = "€$ 1 240", onlineNodes = 7
+            ) {
+                MbMetaLine("содержимое экрана")
+            }
+        }
+    }
+
+    @Test
+    fun appShellNoHeader() = paparazzi.snapshot("kit_app_shell_no_header") {
+        CompositionLocalProvider(LocalMbColors provides MbColorsBreach) {
+            com.megablok10.app.ui.theme.MbAppShell(
+                items = navItems, selectedId = "hack", onSelect = {}, header = false
+            ) {
+                MbStrip("СЕТЬ ═ ДЕКА", "ПРОТОКОЛ 2.07")
+            }
+        }
+    }
 }

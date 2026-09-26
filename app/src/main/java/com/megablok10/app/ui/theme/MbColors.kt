@@ -49,7 +49,11 @@ data class MbColorScheme(
     val bubbleOwnEdge: Color,
     val bubbleOwnText: Color,
     /** Использованная ячейка матрицы взлома — осмыслена только в теме Breach. */
-    val used: Color
+    val used: Color,
+    /** Неактивный пункт нижнего меню (`MbAppShell`) — в прототипе есть (`--nav-idle`), в таблице раздела 2 отсутствовал. */
+    val navIdle: Color,
+    /** Линия под неактивным пунктом меню (`--nav-line`) — то же самое: есть в прототипе, добавлено в гайдлайн этим коммитом. */
+    val navLine: Color
 )
 
 val MbColorsDefault = MbColorScheme(
@@ -90,7 +94,9 @@ val MbColorsDefault = MbColorScheme(
     bubbleOwnFill = Color(0xFF17663D),
     bubbleOwnEdge = Color(0xFF43F08F),
     bubbleOwnText = Color(0xFFEFFFF4),
-    used = Color(0xFF5A2629)
+    used = Color(0xFF5A2629),
+    navIdle = Color(0xFFC65A52),
+    navLine = Color(0xFF6A3B3B)
 )
 
 /**
@@ -111,7 +117,9 @@ val MbColorsBreach = MbColorsDefault.copy(
     ink = Color(0xFFE6F2B0),
     ink2 = Color(0xFFA2AE70),
     ink3 = Color(0xFF86934F),
-    used = Color(0xFF5F6A3C)
+    used = Color(0xFF5F6A3C),
+    navIdle = Color(0xFF5D673A),
+    navLine = Color(0xFF3B4320)
 )
 
 /** Итог взлома — поверх темы Breach: гайдлайн переопределяет только плашки, акцент и первые два тона текста. */
