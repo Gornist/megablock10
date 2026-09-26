@@ -1,5 +1,5 @@
 import type { CharacterSnapshot } from "../../api/types";
-import { Badge, EmptyState, HexRow, Panel } from "../../design/components";
+import { Badge, EmptyState, Panel } from "../../design/components";
 
 /** Демоны и шарды игрока (то, что сервер знает о предметах: название, тир, состояние). */
 export function ItemsPanels({ snapshot }: { snapshot: CharacterSnapshot }) {
@@ -10,9 +10,9 @@ export function ItemsPanels({ snapshot }: { snapshot: CharacterSnapshot }) {
         <EmptyState>нет</EmptyState>
       ) : (
         snapshot.daemons.map((d) => (
-          <HexRow key={d.daemonId}>
+          <div className="item-row mono" key={d.daemonId}>
             {d.name} <Badge>{d.tier}</Badge> вес {d.weight} · {d.sourceRef ?? "—"}
-          </HexRow>
+          </div>
         ))
       )}
     </Panel>
@@ -22,10 +22,10 @@ export function ItemsPanels({ snapshot }: { snapshot: CharacterSnapshot }) {
         <EmptyState>нет</EmptyState>
       ) : (
         snapshot.shards.map((s) => (
-          <HexRow key={s.shardId}>
+          <div className="item-row mono" key={s.shardId}>
             {s.title} <Badge>{s.tier}</Badge> <Badge tone={s.decrypted ? "ok" : "neutral"}>{s.decrypted ? "расшифрован" : "зашифрован"}</Badge> ·{" "}
             {s.sourceRef ?? "—"}
-          </HexRow>
+          </div>
         ))
       )}
     </Panel>

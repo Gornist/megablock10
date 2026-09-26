@@ -1,21 +1,21 @@
 /*
- * Скошенные углы и рамки — через augmented-ui (public/vendor/augmented-ui.min.css, см. README там же),
- * а не руками написанный clip-path/evenodd-рамка, как было раньше. Тот же почерк — два противоположных
- * угла срезаны (tl+br), это фирменный силуэт этого дашборда — но теперь задаётся мискином в
- * data-augmented-ui и парой --aug-* свойств вместо полусотни строк тригонометрии на панель.
+ * Скошенные углы и рамки — через augmented-ui (public/vendor/augmented-ui.min.css, см. README там же).
+ * Три формы, как в гайдлайне телефона (ui-style-guide.md, раздел 4): std — срезаны правый верхний и
+ * левый нижний угол (--aug-tr/--aug-bl), tab — только правый нижний (--aug-br), dlg — только правый
+ * верхний (--aug-tr). Мискин на каждом элементе — в components.tsx (AUG_STD/AUG_TAB/AUG_DLG).
  *
- * Общий приём: --c задаёт размер среза (--aug-tl/--aug-br), --bc — цвет рамки (--aug-border-bg).
- * Рамка — не border, а ::after по контуру среза (--aug-border-all), поэтому clip-path не режет её
- * по диагонали, как резало бы обычный border на скошенном элементе.
+ * Общий приём: --c задаёт размер среза, --bc — цвет рамки (--aug-border-bg). Рамка — не border, а
+ * ::after по контуру среза (--aug-border-all), поэтому clip-path не режет её по диагонали, как резало
+ * бы обычный border на скошенном элементе.
  */
 .panel {
   --c: var(--chamfer);
-  --bc: var(--line);
-  --aug-tl: var(--c);
-  --aug-br: var(--c);
+  --bc: var(--chrome-dim);
+  --aug-tr: var(--c);
+  --aug-bl: var(--c);
   --aug-border-all: 1px;
   --aug-border-bg: var(--bc);
-  background: var(--bg-1);
+  background: var(--plate2);
   padding: 19px 21px;
 }
 
@@ -28,36 +28,41 @@
 }
 .panel-header h3 {
   font-size: 15px;
-  color: var(--text-main);
+  color: var(--ink-strong);
 }
 
 .stat-tile {
   --c: var(--chamfer-sm);
-  --aug-tl: var(--c);
   --aug-br: var(--c);
   --aug-border-all: 1px;
-  --aug-border-bg: var(--line-soft);
-  background: var(--bg-2);
+  --aug-border-bg: var(--plate-edge);
+  background: var(--plate);
   padding: 12px 16px 12px 18px;
   min-width: 120px;
-  border-left: 2px solid var(--line-soft);
+  border-left: 2px solid var(--plate-edge);
 }
 .stat-tile-value {
   font-size: 26px;
   font-weight: 600;
-  color: var(--text-main);
+  color: var(--ink);
 }
 .stat-tile.accent {
-  border-left-color: var(--accent);
+  border-left-color: var(--acc);
 }
 .stat-tile.accent .stat-tile-value {
-  color: var(--accent);
+  color: var(--acc);
+}
+.stat-tile.money {
+  border-left-color: var(--money);
+}
+.stat-tile.money .stat-tile-value {
+  color: var(--money);
 }
 .stat-tile.danger {
-  border-left-color: var(--danger);
+  border-left-color: var(--bad);
 }
 .stat-tile.danger .stat-tile-value {
-  color: var(--danger);
+  color: var(--bad);
 }
 .stat-tile.ok {
   border-left-color: var(--ok);
@@ -67,14 +72,13 @@
 }
 .stat-tile-label {
   font-size: 11px;
-  color: var(--text-dim);
+  color: var(--chrome-deep);
   margin-top: 4px;
 }
 
 .badge {
-  --c: 5px;
-  --bc: var(--line);
-  --aug-tl: var(--c);
+  --c: var(--chamfer-tag);
+  --bc: var(--chrome-dim);
   --aug-br: var(--c);
   --aug-border-all: 1px;
   --aug-border-bg: var(--bc);
@@ -83,37 +87,41 @@
   font-size: 11px;
 }
 .badge.neutral {
-  color: var(--text-dim);
+  color: var(--ink-2);
 }
 .badge.accent {
-  color: var(--accent);
-  --bc: var(--accent);
+  color: var(--acc);
+  --bc: var(--acc);
 }
 .badge.ok {
   color: var(--ok);
   --bc: var(--ok);
 }
 .badge.danger {
-  color: var(--danger);
-  --bc: var(--danger);
+  color: var(--bad);
+  --bc: var(--bad);
+}
+.badge.warn {
+  color: var(--warn);
+  --bc: var(--warn);
 }
 .badge.info {
-  color: var(--cyan);
-  --bc: var(--cyan);
+  color: var(--acc);
+  --bc: var(--acc);
 }
 
 .app-button {
   --c: var(--chamfer-sm);
-  --bc: var(--line);
-  --aug-tl: var(--c);
-  --aug-br: var(--c);
+  --bc: var(--chrome-dim);
+  --aug-tr: var(--c);
+  --aug-bl: var(--c);
   --aug-border-all: 1px;
   --aug-border-bg: var(--bc);
   border: 0; /* иначе поверх среза видна нативная рамка <button> — рамку рисует augmented-ui сама */
-  background: var(--bg-2);
-  color: var(--text-main);
+  background: var(--plate);
+  color: var(--ink);
   padding: 9px 17px;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: 13px;
   font-weight: 500;
   text-transform: uppercase;
@@ -125,35 +133,35 @@
     filter 0.15s ease;
 }
 .app-button:hover:not(:disabled) {
-  --bc: var(--text-main);
-  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.18));
+  --bc: var(--ink);
+  filter: drop-shadow(0 0 6px rgba(226, 244, 240, 0.18));
 }
 .app-button:active:not(:disabled) {
   transform: translateY(1px);
 }
 .app-button:focus-visible {
   outline: none;
-  filter: drop-shadow(0 0 0 2px var(--bg-1)) drop-shadow(0 0 8px var(--cyan));
+  filter: drop-shadow(0 0 0 2px var(--plate2)) drop-shadow(0 0 8px var(--acc));
 }
 .app-button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 .app-button.primary {
-  background: var(--accent);
-  --bc: var(--accent);
-  color: var(--accent-ink);
+  background: var(--acc);
+  --bc: var(--acc);
+  color: var(--acc-ink);
   font-weight: 600;
 }
 .app-button.primary:hover:not(:disabled) {
-  filter: drop-shadow(0 0 10px rgba(252, 238, 10, 0.45));
+  filter: drop-shadow(0 0 10px rgba(94, 246, 255, 0.45));
 }
 .app-button.danger {
-  --bc: var(--danger);
-  color: var(--danger);
+  --bc: var(--bad);
+  color: var(--bad);
 }
 .app-button.danger:hover:not(:disabled) {
-  filter: drop-shadow(0 0 8px rgba(255, 59, 59, 0.4));
+  filter: drop-shadow(0 0 8px rgba(255, 90, 80, 0.4));
 }
 
 .app-input,
@@ -161,43 +169,40 @@
   --c: 7px;
   --aug-br: var(--c);
   --aug-border-all: 1px;
-  --aug-border-bg: var(--line);
+  --aug-border-bg: var(--chrome-dim);
   border: 0; /* иначе поверх среза видна нативная рамка <input>/<select> — рамку рисует augmented-ui сама */
-  background: var(--bg-0);
-  color: var(--text-main);
+  background: var(--bg);
+  color: var(--ink);
   padding: 8px 10px;
   font-family: var(--font-mono);
   font-size: 13px;
   transition: filter 0.15s ease;
 }
 .app-input::placeholder {
-  color: var(--text-dim);
+  color: var(--ink-3);
   opacity: 0.8;
 }
 .app-input:focus,
 .app-select:focus {
   outline: none;
-  --aug-border-bg: var(--accent);
-  filter: drop-shadow(0 0 6px rgba(252, 238, 10, 0.3));
+  --aug-border-bg: var(--acc);
+  filter: drop-shadow(0 0 6px rgba(94, 246, 255, 0.3));
 }
 
-.hex-row {
+/* Строка предмета (демон/шард в карточке игрока) — раньше с шестиугольным маркером и пунктиром (§10 ТЗ
+   прежней темы), в новой системе гексы и точки не используются вовсе (как и на телефоне) — просто строка
+   с сплошным тонким разделителем chromeSoft. */
+.item-row {
   display: flex;
   align-items: baseline;
   gap: 10px;
   padding: 6px 0;
-  border-bottom: 1px dashed var(--line-soft);
+  border-bottom: 1px solid var(--chrome-soft);
   font-size: 12.5px;
-}
-.hex-row-content {
-  color: var(--text-dim);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .empty-state {
-  color: var(--text-dim);
+  color: var(--ink-2);
   font-size: 12px;
   padding: 24px 0;
   text-align: center;
@@ -210,29 +215,29 @@ table.data-table {
 }
 table.data-table th {
   text-align: left;
-  color: var(--text-dim);
+  color: var(--ink-2);
   font-weight: 400;
   font-size: 11px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   padding: 8px 10px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--chrome-dim);
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
 }
 table.data-table th:hover {
-  color: var(--cyan);
+  color: var(--acc);
 }
 table.data-table td {
   padding: 8px 10px;
-  border-bottom: 1px dashed var(--line-soft);
+  border-bottom: 1px solid var(--chrome-soft);
   font-family: var(--font-mono);
 }
 table.data-table tbody tr {
   transition: background-color 0.1s ease;
 }
 table.data-table tbody tr:hover {
-  background: var(--bg-2);
+  background: var(--plate);
   cursor: pointer;
 }

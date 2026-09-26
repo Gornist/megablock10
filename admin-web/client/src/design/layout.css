@@ -9,27 +9,26 @@
   align-items: center;
   gap: 28px;
   padding: 14px 24px;
-  border-bottom: 1px solid var(--line-soft);
-  background: var(--bg-1);
+  border-bottom: 1px solid var(--plate-edge);
+  background: var(--plate2);
   flex-wrap: wrap;
   position: relative;
-  /* Тонкая циановая полоса под шапкой поверх обычной границы — тот же приём, что у выделенных блоков cyberpunk.net. */
-  box-shadow: 0 1px 0 0 rgba(0, 229, 242, 0.25);
+  /* Линия chrome под шапкой — тот же приём, что у AppShell телефона («под ней линия chrome»). */
+  box-shadow: 0 1px 0 0 var(--chrome);
 }
 .app-header h1 {
   font-size: 15px;
-  color: var(--accent);
+  color: var(--ink-strong);
   white-space: nowrap;
   display: flex;
   align-items: baseline;
   gap: 6px;
 }
-/* Маркер «///» перед заголовком — как подписи разделов на cyberpunk.net («///.NEWS.MODULE_HIGHLIGHT»). */
 .app-header h1::before {
   content: "///";
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--cyan);
+  color: var(--chrome);
   font-weight: 400;
 }
 .app-header nav {
@@ -48,8 +47,8 @@
 .nav-item {
   background: none;
   border: 0; /* у неактивного пункта нет data-augmented-ui — без этого вернулась бы нативная рамка <button> */
-  color: var(--text-dim);
-  font-family: var(--font-heading);
+  color: var(--chrome);
+  font-family: var(--font-ui);
   font-weight: 500;
   padding: 8px 10px;
   font-size: 12px;
@@ -68,21 +67,20 @@
   transition: background-color 0.15s ease;
 }
 .nav-item:hover {
-  color: var(--text-main);
+  color: var(--ink);
 }
 .nav-item:hover::after {
-  background: var(--text-dim);
+  background: var(--chrome);
 }
 .nav-item.active {
   --c: var(--chamfer-sm);
-  --aug-tl: var(--c);
   --aug-br: var(--c);
   --aug-border-all: 1px;
-  --aug-border-bg: var(--accent);
-  color: var(--accent-ink);
-  background: var(--accent);
+  --aug-border-bg: var(--acc);
+  color: var(--acc-ink);
+  background: var(--acc);
   padding: 8px 14px;
-  filter: drop-shadow(0 0 8px rgba(252, 238, 10, 0.35));
+  filter: drop-shadow(0 0 8px rgba(94, 246, 255, 0.35));
 }
 .nav-item.active::after {
   content: none;
@@ -91,7 +89,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  color: var(--text-dim);
+  color: var(--ink-2);
 }
 
 .app-main {
@@ -128,25 +126,24 @@
   overflow-y: auto;
 }
 .feed-time {
-  color: var(--text-dim);
+  color: var(--ink-2);
 }
 .feed-field {
-  color: var(--text-main);
+  color: var(--ink);
 }
 .feed-reason {
-  color: var(--accent);
+  color: var(--acc);
 }
 .feed-source {
-  color: var(--text-dim);
+  color: var(--ink-2);
 }
 
 .online-dot {
   display: inline-block;
   width: 7px;
   height: 7px;
-  border-radius: 0;
-  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-  background: var(--line);
+  border-radius: 50%;
+  background: var(--chrome-dim);
 }
 .online-dot.on {
   background: var(--ok);
@@ -176,7 +173,7 @@
 }
 
 .hint-text {
-  color: var(--text-dim);
+  color: var(--ink-2);
   font-size: 11px;
   margin: 10px 0 0;
 }
@@ -193,7 +190,7 @@
 }
 
 .panel.warning-panel {
-  --bc: var(--danger);
+  --bc: var(--bad);
 }
 
 .login-screen {
@@ -212,11 +209,11 @@
 }
 .login-form label {
   font-size: 11px;
-  color: var(--text-dim);
+  color: var(--ink-2);
   margin-top: 6px;
 }
 .login-error {
-  color: var(--danger);
+  color: var(--bad);
   font-size: 12px;
 }
 
@@ -232,7 +229,7 @@
 }
 .master-form label {
   margin-top: 8px;
-  color: var(--text-dim);
+  color: var(--ink-2);
   font-size: 11px;
 }
 .master-form label:first-child {
@@ -255,7 +252,7 @@
 }
 
 .panel.slot-builder {
-  --bc: var(--accent);
+  --bc: var(--acc);
 }
 
 .slot-row {
@@ -264,7 +261,7 @@
   justify-content: space-between;
   gap: 10px;
   padding: 6px 0;
-  border-bottom: 1px dashed var(--line-soft);
+  border-bottom: 1px solid var(--chrome-soft);
   font-size: 12.5px;
 }
 
@@ -287,13 +284,13 @@
   padding: 8px;
 }
 .qr-caption {
-  color: var(--text-main);
+  color: var(--ink);
 }
 .qr-raw {
   display: block;
   max-width: 560px;
   word-break: break-all;
-  color: var(--text-dim);
+  color: var(--ink-2);
   font-size: 10px;
   margin-top: 6px;
 }
@@ -301,7 +298,7 @@
 .dialog-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.74);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -309,12 +306,11 @@
 }
 .dialog-panel {
   --c: var(--chamfer);
-  --bc: var(--accent);
-  --aug-tl: var(--c);
-  --aug-br: var(--c);
+  --aug-tr: var(--c);
   --aug-border-all: 1px;
-  --aug-border-bg: var(--bc);
-  background: var(--bg-1);
+  --aug-border-bg: var(--dlg-edge);
+  background: var(--dlg-fill);
+  border-left: 4px solid var(--dlg-bar);
   padding: 21px;
   width: 360px;
   max-width: calc(100vw - 32px);
@@ -322,6 +318,7 @@
 .dialog-panel h3 {
   font-size: 15px;
   margin-bottom: 10px;
+  color: var(--dlg-edge);
 }
 .dialog-body {
   margin-bottom: 12px;
@@ -338,20 +335,25 @@
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 8px;
   font-size: 12.5px;
-  color: var(--text-dim);
+  color: var(--ink-2);
 }
 
-/* Строка события (ChangeLine): маркер типа, фраза, «детали» под спойлером */
+/*
+ * Строка события (ChangeLine): маркер типа, фраза, «детали» под спойлером. Действие мастера (kind-master)
+ * не получает свой акцентный цвет (--violet раньше был пятым цветом вне общей системы) — как и «служебный
+ * жёлтый» на телефоне, оно узнаётся по текстовой метке «МАСТЕР» (см. ChangeLine.tsx), маркер остаётся
+ * нейтральным chrome.
+ */
 .change-line {
-  --kind: var(--text-dim);
+  --kind: var(--ink-2);
   padding: 7px 0;
-  border-bottom: 1px dashed var(--line-soft);
+  border-bottom: 1px solid var(--chrome-soft);
 }
-.change-line.kind-money { --kind: var(--accent); }
+.change-line.kind-money { --kind: var(--money); }
 .change-line.kind-item { --kind: var(--ok); }
-.change-line.kind-breach { --kind: var(--cyan); }
-.change-line.kind-alert { --kind: var(--danger); }
-.change-line.kind-master { --kind: var(--violet); }
+.change-line.kind-breach { --kind: var(--acc); }
+.change-line.kind-alert { --kind: var(--bad); }
+.change-line.kind-master { --kind: var(--chrome); }
 .change-line-main {
   display: flex;
   align-items: baseline;
@@ -361,22 +363,27 @@
   flex: none;
   width: 8px;
   height: 8px;
+  border-radius: 50%;
   background: var(--kind);
-  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
   align-self: center;
+}
+.change-kind-tag {
+  flex: none;
+  color: var(--chrome);
+  font-size: 10px;
 }
 .change-time {
   flex: none;
-  color: var(--text-dim);
+  color: var(--ink-2);
   font-size: 12px;
 }
 .change-text {
   flex: 1;
   min-width: 0;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: 14px;
   line-height: 1.4;
-  color: var(--text-main);
+  color: var(--ink);
 }
 .change-subject {
   color: var(--kind);
@@ -386,7 +393,7 @@
   flex: none;
   background: none;
   border: 0;
-  color: var(--text-dim);
+  color: var(--ink-2);
   font-family: var(--font-mono);
   font-size: 11px;
   cursor: pointer;
@@ -394,7 +401,7 @@
   text-decoration: underline dotted;
 }
 .change-toggle:hover {
-  color: var(--text-main);
+  color: var(--ink);
 }
 .change-details {
   display: grid;
@@ -402,21 +409,21 @@
   gap: 3px 12px;
   margin: 8px 0 2px 18px;
   padding: 8px 12px;
-  background: var(--bg-0);
+  background: var(--bg);
   border-left: 2px solid var(--kind);
   font-size: 12px;
-  color: var(--text-dim);
+  color: var(--ink-2);
 }
 .change-details dt {
-  color: var(--text-dim);
+  color: var(--ink-2);
 }
 .change-details dd {
   margin: 0;
-  color: var(--text-main);
+  color: var(--ink);
   word-break: break-all;
 }
 .change-raw {
-  color: var(--text-dim);
+  color: var(--ink-2);
 }
 
 /* Графики */
@@ -424,23 +431,23 @@
   display: block;
   width: 100%;
   height: 140px;
-  background: var(--bg-0);
-  border: 1px dashed var(--line-soft);
+  background: var(--bg);
+  border: 1px solid var(--chrome-soft);
 }
 .chart-line {
-  stroke: var(--accent);
+  stroke: var(--acc);
   stroke-width: 1.6;
   vector-effect: non-scaling-stroke;
 }
 .chart-area {
-  fill: var(--accent);
+  fill: var(--acc);
   opacity: 0.12;
 }
 .chart-axis {
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  color: var(--text-dim);
+  color: var(--ink-2);
   font-size: 11px;
   margin-top: 4px;
 }
@@ -451,32 +458,32 @@
   display: inline-block;
   width: 120px;
   height: 8px;
-  background: var(--bg-2);
+  background: var(--plate);
   vertical-align: middle;
 }
 .share-bar-fill {
   display: block;
   height: 100%;
-  background: var(--accent);
+  background: var(--acc);
 }
 .share-bar-fill.ok { background: var(--ok); }
-.share-bar-fill.danger { background: var(--danger); }
+.share-bar-fill.danger { background: var(--bad); }
 
 /* Панель «требует внимания» */
 .attn-item {
-  --sev: var(--text-dim);
+  --sev: var(--ink-2);
   display: flex;
   align-items: baseline;
   gap: 10px;
   padding: 7px 0;
-  border-bottom: 1px dashed var(--line-soft);
+  border-bottom: 1px solid var(--chrome-soft);
   cursor: default;
 }
 .attn-item.clickable { cursor: pointer; }
 .attn-item.clickable:hover .attn-title { text-decoration: underline dotted; }
-.attn-item.sev-crit { --sev: var(--danger); }
-.attn-item.sev-warn { --sev: var(--accent); }
-.attn-item.sev-info { --sev: var(--cyan); }
+.attn-item.sev-crit { --sev: var(--bad); }
+.attn-item.sev-warn { --sev: var(--warn); }
+.attn-item.sev-info { --sev: var(--acc); }
 /* Срочная тревога — едва заметный пульс заголовка, чтобы взгляд цеплялся за красные строки первыми, не отвлекая от чтения остального списка. */
 @media (prefers-reduced-motion: no-preference) {
   .attn-item.sev-crit .attn-title {
@@ -493,7 +500,7 @@
   white-space: nowrap;
 }
 .attn-detail { flex: 1; min-width: 0; }
-.attn-time { color: var(--text-dim); font-size: 12px; flex: none; }
+.attn-time { color: var(--ink-2); font-size: 12px; flex: none; }
 
 .two-col {
   display: grid;
@@ -505,13 +512,13 @@
   border: 0;
   cursor: pointer;
   font-size: 15px;
-  color: var(--text-dim);
+  color: var(--ink-2);
   padding: 0 4px;
 }
-.watch-star.on { color: var(--accent); }
+.watch-star.on { color: var(--acc); }
 .asof-banner {
-  color: var(--cyan);
-  border: 1px dashed var(--cyan);
+  color: var(--acc);
+  border: 1px solid var(--acc);
   padding: 8px 12px;
   font-size: 12.5px;
 }

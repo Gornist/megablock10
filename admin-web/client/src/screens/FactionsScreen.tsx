@@ -45,7 +45,7 @@ export function FactionsScreen() {
       <div className="stat-row">
         <StatTile label="Фракций" value={rows?.length ?? "—"} />
         <StatTile label="Игроков всего" value={rows ? rows.reduce((a, r) => a + r.players, 0) : "—"} />
-        <StatTile label="Эдди у всех" value={rows ? formatNumber(rows.reduce((a, r) => a + r.totalBalance, 0)) : "—"} tone="accent" />
+        <StatTile label="Эдди у всех" value={rows ? formatNumber(rows.reduce((a, r) => a + r.totalBalance, 0)) : "—"} tone="money" />
       </div>
       <Panel title="Фракции">
         <AsyncPanel data={rows} error={error} isEmpty={(d) => d.length === 0} emptyLabel="игроков пока нет">

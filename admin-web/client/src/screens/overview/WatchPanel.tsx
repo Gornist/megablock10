@@ -21,7 +21,7 @@ export function WatchPanel() {
           return (
             <div key={w.publicKeyB64} className="attn-item clickable" onClick={() => navigate("players", w.publicKeyB64)}>
               <span className={`online-dot ${p?.online ? "on" : ""}`} />
-              <span className="attn-title" style={{ color: "var(--text-main)" }}>
+              <span className="attn-title" style={{ color: "var(--ink)" }}>
                 {p?.callsign || "неизвестный"}
               </span>
               <span className="attn-detail">

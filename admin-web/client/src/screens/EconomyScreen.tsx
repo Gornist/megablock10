@@ -24,7 +24,7 @@ export function EconomyScreen() {
           return (
             <>
               <div className="stat-row">
-                <StatTile label="Эдди в обороте" value={formatNumber(d.totalSupply)} tone="accent" />
+                <StatTile label="Эдди в обороте" value={formatNumber(d.totalSupply)} tone="money" />
                 <StatTile label="Медианный баланс" value={formatNumber(d.distribution.median)} />
                 <StatTile label="Топ-10% начинается с" value={formatNumber(d.distribution.p90)} />
                 <StatTile label="Неравенство (Джини)" value={d.distribution.gini.toFixed(2)} />

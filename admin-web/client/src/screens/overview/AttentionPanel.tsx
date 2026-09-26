@@ -83,7 +83,7 @@ export function AttentionPanel() {
       action={
         <span className="filter-row">
           {counts && counts.crit > 0 && <Badge tone="danger">срочно {counts.crit}</Badge>}
-          {counts && counts.warn > 0 && <Badge tone="accent">важно {counts.warn}</Badge>}
+          {counts && counts.warn > 0 && <Badge tone="warn">важно {counts.warn}</Badge>}
           {counts && counts.info > 0 && <Badge tone="info">к сведению {counts.info}</Badge>}
           {(data?.snoozed ?? 0) > 0 && (
             <button type="button" className="change-toggle" onClick={() => setShowAll((v) => !v)}>

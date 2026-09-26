@@ -43,7 +43,7 @@ export function AuditScreen() {
               <div key={r.id} className="attn-item">
                 <span className="attn-time mono">{formatDateTime(r.at)}</span>
                 <Badge tone="accent">{r.masterName}</Badge>
-                <span className="attn-title" style={{ color: "var(--text-main)" }}>
+                <span className="attn-title" style={{ color: "var(--ink)" }}>
                   {r.actionLabel}
                 </span>
                 <span className="attn-detail">{r.summary}</span>

@@ -120,7 +120,7 @@ function AnnouncementRow({ item }: { item: AnnouncementItem }) {
       <span className="attn-detail">«{item.text}»</span>
       <span>
         <ShareBar value={item.delivered} max={item.recipients} tone="ok" /> <span className="mono">{item.delivered}/{item.recipients}</span>{" "}
-        {missing > 0 ? <Badge tone="accent">не дошло: {missing}</Badge> : <Badge tone="ok">доставлено</Badge>}
+        {missing > 0 ? <Badge tone="warn">не дошло: {missing}</Badge> : <Badge tone="ok">доставлено</Badge>}
       </span>
       <span className="attn-time">{item.masterName}</span>
       {open && <RecipientList id={item.id} />}

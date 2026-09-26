@@ -1,21 +1,27 @@
 import type { ReactNode } from "react";
 import "./components.css";
 
-/** Общий мискин augmented-ui для этого дашборда: два противоположных угла срезаны (фирменный силуэт), плюс рамка по контуру среза. Размер и цвет среза — CSS-переменные --aug-tl/--aug-br/--aug-border-bg на самом элементе (components.css). */
-const AUG = "tl-clip br-clip border";
+/*
+ * Три формы среза augmented-ui — те же, что в гайдлайне телефона (раздел 4): std (правый верхний +
+ * левый нижний) для кнопок и панелей-карточек, tab (только правый нижний) для плиток/меток/полей/строк,
+ * dlg (только правый верхний) для модальных окон. Размер и цвет среза — CSS-переменные
+ * --aug-tr/--aug-bl/--aug-br/--aug-border-bg на самом элементе (components.css).
+ */
+const AUG_STD = "tr-clip bl-clip border";
+const AUG_TAB = "br-clip border";
+const AUG_DLG = "tr-clip border";
 
 export function Panel({ title, action, children, className }: { title?: ReactNode; action?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <section className={`panel ${className ?? ""}`} data-augmented-ui={AUG}>
+    <section className={`panel ${className ?? ""}`} data-augmented-ui={AUG_STD}>
       {(title || action) && (
         <header className="panel-header">
           {title && <h3>{title}</h3>}
           {action}
         </header>
       )}
-      {/* Панель вкладывает кнопки/поля/бейджи с теми же позициями среза (tl+br) — по правилам augmented-ui
-          это «граничный случай», сброс не обязателен, но панель — единственное место с вложенностью на
-          несколько уровней, поэтому reset ставится явно, для устойчивости при будущих правках вёрстки. */}
+      {/* Панель вкладывает кнопки/поля/бейджи с другой формой среза (tab) — сброс обязателен, иначе
+          augmented-ui унаследовала бы срез родителя на вложенных элементах. */}
       <div className="panel-body" data-augmented-ui-reset="">
         {children}
       </div>
@@ -23,18 +29,18 @@ export function Panel({ title, action, children, className }: { title?: ReactNod
   );
 }
 
-export function StatTile({ label, value, tone }: { label: string; value: ReactNode; tone?: "ok" | "danger" | "accent" }) {
+export function StatTile({ label, value, tone }: { label: string; value: ReactNode; tone?: "ok" | "danger" | "money" | "accent" }) {
   return (
-    <div className={`stat-tile ${tone ?? ""}`} data-augmented-ui={AUG}>
+    <div className={`stat-tile ${tone ?? ""}`} data-augmented-ui={AUG_TAB}>
       <div className="stat-tile-value mono">{value}</div>
       <div className="stat-tile-label status-caps">{label}</div>
     </div>
   );
 }
 
-export function Badge({ children, tone }: { children: ReactNode; tone?: "ok" | "danger" | "accent" | "info" | "neutral" }) {
+export function Badge({ children, tone }: { children: ReactNode; tone?: "ok" | "danger" | "warn" | "accent" | "info" | "neutral" }) {
   return (
-    <span className={`badge status-caps ${tone ?? "neutral"}`} data-augmented-ui={AUG}>
+    <span className={`badge status-caps ${tone ?? "neutral"}`} data-augmented-ui={AUG_TAB}>
       {children}
     </span>
   );
@@ -54,14 +60,14 @@ export function AppButton({
   disabled?: boolean;
 }) {
   return (
-    <button type={type} className={`app-button ${variant}`} onClick={onClick} disabled={disabled} data-augmented-ui={AUG}>
+    <button type={type} className={`app-button ${variant}`} onClick={onClick} disabled={disabled} data-augmented-ui={AUG_STD}>
       {children}
     </button>
   );
 }
 
-/** Поля ввода — только один срезанный угол (br), потемнее панелей и кнопок: это текстовый контейнер, а не рамка-акцент, полный tl+br съедал бы больше места под курсор и лево-выравненный текст. */
-const AUG_FIELD = "br-clip border";
+/** Поля ввода — форма tab (только br), как в гайдлайне: тёмный текстовый контейнер, а не рамка-акцент. */
+const AUG_FIELD = AUG_TAB;
 
 export function AppInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={`app-input ${props.className ?? ""}`} data-augmented-ui={AUG_FIELD} />;
@@ -72,15 +78,6 @@ export function AppSelect({ children, ...props }: React.SelectHTMLAttributes<HTM
     <select {...props} className={`app-select ${props.className ?? ""}`} data-augmented-ui={AUG_FIELD}>
       {children}
     </select>
-  );
-}
-
-export function HexRow({ children }: { children: ReactNode }) {
-  return (
-    <div className="hex-row">
-      <span className="hex-bullet" />
-      <span className="hex-row-content mono">{children}</span>
-    </div>
   );
 }
 
@@ -134,7 +131,7 @@ export function AppDialog({
 }) {
   return (
     <div className="dialog-backdrop" onClick={onCancel}>
-      <div className="dialog-panel" onClick={(e) => e.stopPropagation()} data-augmented-ui={AUG}>
+      <div className="dialog-panel" onClick={(e) => e.stopPropagation()} data-augmented-ui={AUG_DLG}>
         <h3>{title}</h3>
         {body && <p className="hint-text dialog-body">{body}</p>}
         {children}

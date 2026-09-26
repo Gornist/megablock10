@@ -39,8 +39,8 @@ export function LineChart({ points, height = 140, format = formatNumber }: { poi
 
 const STACK = [
   { key: "success", label: "успех", color: "var(--ok)" },
-  { key: "partial", label: "частично", color: "var(--accent)" },
-  { key: "fail", label: "провал", color: "var(--danger)" },
+  { key: "partial", label: "частично", color: "var(--warn)" },
+  { key: "fail", label: "провал", color: "var(--bad)" },
 ] as const;
 
 /** Столбики по часам, поделённые на исходы взлома. */

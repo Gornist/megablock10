@@ -17,6 +17,7 @@ export function ChangeLine({ row, showSubject, time = "received", withDate = fal
     <div className={`change-line kind-${kind}`}>
       <div className="change-line-main">
         <span className="change-marker" />
+        {kind === "master" && <span className="change-kind-tag mono status-caps">мастер</span>}
         <span className="change-time mono">{(withDate ? formatDateTime : formatTime)(time === "received" ? row.received_at : row.happened_at)}</span>
         <span className="change-text">
           {showSubject && human && <strong className="change-subject">{human.subject}: </strong>}

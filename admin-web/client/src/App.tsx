@@ -51,7 +51,7 @@ function Shell() {
                 onClick={() => navigate(n.path)}
                 // Срез и рамка — только у активного пункта, он же и есть указатель «вы здесь»;
                 // остальные — просто подписи, без коробки, чтобы меню не читалось решёткой.
-                {...(active ? { "data-augmented-ui": "tl-clip br-clip border" } : {})}
+                {...(active ? { "data-augmented-ui": "br-clip border" } : {})}
               >
                 {n.label}
               </button>

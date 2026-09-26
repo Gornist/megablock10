@@ -57,7 +57,7 @@ export function PlayerDetailScreen({ publicKeyB64 }: { publicKeyB64: string }) {
         <StatTile label="Позывной" value={snapshot.callsign || "—"} />
         <StatTile label="Фракция" value={snapshot.faction || "—"} />
         <StatTile label="RAM" value={snapshot.ramCapacity} />
-        <StatTile label="Эдди" value={snapshot.balance} tone="accent" />
+        <StatTile label="Эдди" value={snapshot.balance} tone="money" />
       </div>
 
       <CountersPanel snapshot={snapshot} />
