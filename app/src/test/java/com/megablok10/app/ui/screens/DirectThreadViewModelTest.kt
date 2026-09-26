@@ -4,6 +4,7 @@ import com.megablok10.app.chat.ChatMessageType
 import com.megablok10.app.chat.ReceiptConfirmer
 import com.megablok10.app.data.CharacterEntity
 import com.megablok10.app.data.ChatMessageEntity
+import com.megablok10.app.data.MessageStatus
 import com.megablok10.app.data.TransactionStatus
 import com.megablok10.app.identity.ContactDirectory
 import com.megablok10.app.identity.ContactStore
@@ -42,6 +43,9 @@ class DirectThreadViewModelTest {
     private val feed = MutableStateFlow(ThreadFeed())
     private val directory = ContactDirectory(ContactStore(FakeCharacterDao(CharacterEntity(bob.key, "Bob", "Арасака"))), MutableStateFlow(listOf(bob.peer)))
 
+    private val showRead = MutableStateFlow(true)
+    private val readMarks = mutableListOf<Int>()
+
     private fun TestScope.thread() = DirectThreadViewModel(
         peerKey = bob.key,
         identity = MutableStateFlow(alice.identity),
@@ -52,6 +56,8 @@ class DirectThreadViewModelTest {
         acceptItem = AcceptItem(items, chat),
         receipts = ReceiptConfirmer(payments, items),
         work = this,
+        markRead = { _, peer, messages -> if (peer == bob.key) readMarks += messages.size },
+        showRead = showRead,
     )
 
     private fun message(from: TestPlayer, body: String, id: Long) =
@@ -99,5 +105,19 @@ class DirectThreadViewModelTest {
         assertEquals(listOf("привет", "ты где?"), chat.sent.map { it.body })
         assertEquals(bob.peer, chat.sent[0].peer)
         assertNull("ушёл из сети — сообщение ляжет в тред и очередь", chat.sent[1].peer)
+    }
+
+    @Test fun visibleThreadSendsReadReceiptsAndHidesReadWhenSwitchedOff() = runTest {
+        val vm = thread()
+        backgroundScope.launch { vm.state.collect {} }
+        val mine = message(alice, "моё", 1).copy(status = MessageStatus.READ)
+        feed.value = ThreadFeed(messages = listOf(mine, message(bob, "его", 2)))
+        runCurrent()
+        assertEquals("лента на экране — отчёт о прочтении", listOf(2), readMarks)
+        assertEquals(MessageStatus.READ, vm.state.value.feed.messages.first().status)
+
+        showRead.value = false // как в мессенджерах: не отправляешь — не видишь
+        runCurrent()
+        assertEquals(MessageStatus.DELIVERED, vm.state.value.feed.messages.first().status)
     }
 }

@@ -38,6 +38,12 @@ class OutboxStore(
         Mb10Log.event(TAG, "outbox.enqueue", "to" to shortKey(toPubKeyB64), "type" to wire.type.name)
     }
 
+    /** Готовая строка любого протокола (отчёт о прочтении) — в ту же очередь. */
+    suspend fun enqueueLine(toPubKeyB64: String, line: String) {
+        outbox.enqueue(toPubKeyB64, line)
+        Mb10Log.event(TAG, "outbox.enqueue", "to" to shortKey(toPubKeyB64), "type" to line.substringBefore(':'))
+    }
+
     suspend fun pending(): Int = outbox.pending()
 
     /** Пробует отправить всё, что пора. Возвращает, сколько сообщений ушло. Параллельные вызовы не пересекаются. */

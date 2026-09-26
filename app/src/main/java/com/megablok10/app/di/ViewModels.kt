@@ -50,6 +50,8 @@ fun AppGraph.directThreadViewModel(myKey: String, peerKey: String) = DirectThrea
     acceptItem = acceptItem,
     receipts = receipts,
     work = processScope,
+    markRead = readReceipts::onThreadShown,
+    showRead = readReceiptSetting.enabled,
 )
 
 fun AppGraph.cyberdeckViewModel() =
@@ -58,4 +60,4 @@ fun AppGraph.cyberdeckViewModel() =
 fun AppGraph.breachViewModel() = BreachViewModel(identity.state, checkBreachAccess, finishBreach, processScope)
 
 fun AppGraph.settingsViewModel() =
-    SettingsViewModel(collectorSettings, observePendingChanges(), peerDirectory.online, { collectorSync.wake() }, ::deviceReport)
+    SettingsViewModel(collectorSettings, observePendingChanges(), peerDirectory.online, { collectorSync.wake() }, ::deviceReport, readReceiptSetting)

@@ -69,6 +69,10 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
         Spacer(Modifier.height(6.dp))
         ToggleRow("Звук при новом сообщении", soundEnabled) { soundEnabled = it }
         Spacer(Modifier.height(10.dp))
+        // Как в мессенджерах: выключил — свои отчёты не уходят и чужое «прочитано» не видно (docs/refactor-plan.md, D4).
+        val readReceipts by settings.readReceiptsEnabled.collectAsStateWithLifecycle()
+        ToggleRow("Отчёты о прочтении", readReceipts) { settings.setReadReceipts(it) }
+        Spacer(Modifier.height(10.dp))
         var breachSfx by remember { mutableStateOf(BreachSfx.isEnabled(context)) }
         ToggleRow("Звуки взлома", breachSfx) { breachSfx = it; BreachSfx.setEnabled(context, it) }
 

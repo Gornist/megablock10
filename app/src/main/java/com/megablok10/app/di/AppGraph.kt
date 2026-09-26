@@ -18,6 +18,8 @@ import com.megablok10.app.chat.CardResender
 import com.megablok10.app.chat.ChatStore
 import com.megablok10.app.chat.MeshSession
 import com.megablok10.app.chat.OutboxStore
+import com.megablok10.app.chat.ReadReceiptSetting
+import com.megablok10.app.chat.ReadReceipts
 import com.megablok10.app.chat.ReceiptConfirmer
 import com.megablok10.app.collector.ChangeField
 import com.megablok10.app.collector.CollectorClient
@@ -115,6 +117,9 @@ class AppGraph(private val app: Application) {
     val outbox: OutboxStore = OutboxStore(db.outboxDao(), peerDirectory) { line -> chat.markDelivered(line) }
     val chat: ChatStore = ChatStore(db.chatMessageDao(), outbox, peerDirectory)
     val calls = CallManager(app, peerDirectory, db.callLogDao())
+    /** Отчёты о прочтении (D4) и переключатель «как в мессенджерах». */
+    val readReceiptSetting = ReadReceiptSetting(prefs(ReadReceiptSetting.PREFS))
+    val readReceipts = ReadReceipts(db.chatMessageDao(), peerDirectory, outbox, readReceiptSetting)
     val directory = ContactDirectory(contacts, peerDirectory.online)
 
     // Деньги и предметы
@@ -153,6 +158,7 @@ class AppGraph(private val app: Application) {
     val mesh: MeshSession = MeshSession(
         app, chat, presence, wifi, calls, slotClaims,
         receipts = receipts,
+        readReceipts = readReceipts,
         onIncompatible = IncompatibleVersionReporter(WireVersion.protocols, WireVersion.INCOMPATIBLE_MESSAGE) { notices.show(it) }::report,
         sessionTasks = listOf(
             { scope -> secAlerts.start(scope) },

@@ -32,6 +32,8 @@ private const val TAG = "ChatStore"
  * [start] для той же личности — не операция. [start] синхронный (его удобно звать с главного потока), всё блокирующее — bind
  * сокета, регистрация NSD — уходит в свой скоуп на Dispatchers.IO.
  */
+// Приёмники всех входящих протоколов собраны здесь, в корне композиции; разобрать сессию на части — B3 (SessionController).
+@Suppress("LongParameterList")
 class MeshSession(
     private val app: Context,
     private val chat: ChatStore,
@@ -40,6 +42,7 @@ class MeshSession(
     private val calls: CallManager,
     private val slotClaims: SlotClaimStore,
     private val receipts: ReceiptConfirmer,
+    private val readReceipts: ReadReceipts,
     /** Строка известного протокола, но другой версии (телефон со старым/новым приложением) — сказать игроку (kit IncompatibleVersionReporter). */
     private val onIncompatible: (String) -> Unit,
     /** Фоновые задачи на время сессии (отложенные сигналы СБ, снимки состояния): стартуют после сервера, гаснут с сессией. */
@@ -79,6 +82,7 @@ class MeshSession(
                 },
                 onCallSignal = { signal -> calls.onSignalReceived(identity, signal) },
                 onSlotClaim = { claim -> slotClaims.receive(claim) },
+                onReadReceipt = { r -> readReceipts.onReceived(identity.publicKeyB64, r) },
                 onIncompatible = onIncompatible,
                 myKey = { identity.publicKeyB64 },
                 onHeard = presence::heard,

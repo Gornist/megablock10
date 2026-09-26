@@ -25,8 +25,10 @@ class MessageStatusTest : RoomTest() {
         { online.value.map { PeerInfo(it.pubKeyB64, it.callsign, it.faction, "10.0.0.2", 47100) } }, online,
     ) { _, _, _, _ -> wire }
     private lateinit var chat: ChatStore
-    private val outbox = OutboxStore(db.outboxDao(), directory) { line -> chat.markDelivered(line) }.also {
-        chat = ChatStore(db.chatMessageDao(), it, directory)
+
+    init {
+        val outbox = OutboxStore(db.outboxDao(), directory) { line -> chat.markDelivered(line) }
+        chat = ChatStore(db.chatMessageDao(), outbox, directory)
     }
 
     private suspend fun statuses(): List<Int> = db.chatMessageDao().observeDirect(me.publicKeyB64, bob.key).first().map { it.status }

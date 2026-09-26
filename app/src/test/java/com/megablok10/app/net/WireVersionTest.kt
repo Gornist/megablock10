@@ -17,7 +17,7 @@ class WireVersionTest {
     private val line = ChatProtocol.encode(msg)
 
     @Test fun reportedVersionsMatchSupportedOnes() {
-        assertEquals(mapOf("chat" to WireVersion.CHAT, "call" to WireVersion.CALL, "claim" to WireVersion.CLAIM, "to" to WireVersion.ENVELOPE), WireVersion.REPORTED)
+        assertEquals(mapOf("chat" to WireVersion.CHAT, "call" to WireVersion.CALL, "claim" to WireVersion.CLAIM, "read" to WireVersion.READ, "to" to WireVersion.ENVELOPE), WireVersion.REPORTED)
         assertEquals(WireVersion.SUPPORTED.values.toSet(), WireVersion.REPORTED.values.toSet())
     }
 

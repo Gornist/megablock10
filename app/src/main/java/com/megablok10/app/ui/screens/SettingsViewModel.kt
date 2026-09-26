@@ -2,10 +2,12 @@ package com.megablok10.app.ui.screens
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.megablok10.app.chat.ReadReceiptSetting
 import com.megablok10.app.collector.CollectorSettings
 import com.megablok10.app.log.Mb10Log
 import com.megablok10.kit.mesh.OnlinePlayer
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -21,7 +23,13 @@ class SettingsViewModel(
     val peers: StateFlow<List<OnlinePlayer>>,
     private val wakeSync: () -> Unit,
     private val deviceInfo: suspend () -> String,
+    private val readReceipts: ReadReceiptSetting? = null,
 ) : ViewModel() {
+    /** «Отчёты о прочтении» (D4): выключен — свои не уходят, чужие не видны. */
+    val readReceiptsEnabled: StateFlow<Boolean> = readReceipts?.enabled ?: MutableStateFlow(true)
+
+    fun setReadReceipts(on: Boolean) { readReceipts?.set(on) }
+
     /** Записи, ещё не подтверждённые коллектором. */
     val pendingChanges: StateFlow<Int> = pendingChanges.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_MS), 0)
 

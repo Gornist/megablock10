@@ -32,6 +32,7 @@ class ChatServer(
     onMessage: suspend (ChatWireMessage) -> Unit,
     onCallSignal: suspend (CallSignal) -> Unit = {},
     onSlotClaim: suspend (SlotClaimEntity) -> Unit = {},
+    onReadReceipt: suspend (ReadReceipt) -> Unit = {},
     /** Строка известного протокола, но другой версии (телефон со старым/новым приложением): сообщается игроку, см. WireVersion. */
     onIncompatible: (String) -> Unit = {},
     myKey: () -> String? = { null },
@@ -42,6 +43,7 @@ class ChatServer(
             LineRoute("chat", ChatProtocol::decode, onMessage),
             LineRoute("call", CallProtocol::decode, onCallSignal),
             LineRoute("claim", ClaimProtocol::decode, onSlotClaim),
+            LineRoute("read", ReadReceiptProtocol::decode, onReadReceipt),
         ),
         onUnrecognized = onIncompatible,
         log = Mb10Log,

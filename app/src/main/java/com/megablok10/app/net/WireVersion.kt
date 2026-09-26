@@ -15,14 +15,16 @@ object WireVersion {
     const val CHAT = 1
     const val CALL = 2
     const val CLAIM = 1
+    /** Отчёт о прочтении личных сообщений (chat.ReadReceiptProtocol, D4). */
+    const val READ = 1
     /** Конверт «кому/от кого» вокруг любой строки и ответ получателя (kit LineEnvelope/LineAck, docs/refactor-plan.md, D2). */
     const val ENVELOPE = LineEnvelope.VERSION
 
     /** Версии для дашборда (поле `wireVersions` в presence): короткие имена протоколов, порядок стабилен. */
-    val REPORTED: Map<String, Int> = linkedMapOf("chat" to CHAT, "call" to CALL, "claim" to CLAIM, "to" to ENVELOPE)
+    val REPORTED: Map<String, Int> = linkedMapOf("chat" to CHAT, "call" to CALL, "claim" to CLAIM, "read" to READ, "to" to ENVELOPE)
 
     /** Магия протокола → версия, которую понимает это приложение. */
-    val SUPPORTED: Map<String, Int> = mapOf("MB10CHAT" to CHAT, "MB10CALL" to CALL, "MB10CLAIM" to CLAIM, LineEnvelope.MAGIC to ENVELOPE)
+    val SUPPORTED: Map<String, Int> = mapOf("MB10CHAT" to CHAT, "MB10CALL" to CALL, "MB10CLAIM" to CLAIM, "MB10READ" to READ, LineEnvelope.MAGIC to ENVELOPE)
 
     val protocols = WireProtocols(SUPPORTED)
 
