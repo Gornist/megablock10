@@ -28,6 +28,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
@@ -74,8 +75,11 @@ fun MbAppShell(
                 ) {
                     MbPortrait(portraitLetter, size = MbDimens.portraitHeader, ink = c.chrome)
                     Column(Modifier.weight(1f)) {
-                        Text(callsign.uppercase(), style = MbTypography.headerCallsign, color = c.ink)
-                        Text(faction, style = MbTypography.meta.copy(letterSpacing = 0.05f.em), color = c.chrome.copy(alpha = 0.85f))
+                        Text(callsign.uppercase(), style = MbTypography.headerCallsign, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            faction, style = MbTypography.meta.copy(letterSpacing = 0.05f.em), color = c.chrome.copy(alpha = 0.85f),
+                            maxLines = 1, overflow = TextOverflow.Ellipsis
+                        )
                     }
                     Text(
                         balance,

@@ -45,6 +45,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.megablok10.app.log.Mb10Log
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -591,9 +592,11 @@ internal fun ResultOverlay(
 /** Одна строка разбора результата — тип награды/события слева, значение справа. */
 @Composable
 private fun RewardRow(label: String, value: String, valueColor: Color = LocalMbColors.current.acc) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(MbDimens.rowGap)) {
         Text(label, style = MbTypography.rowSub, color = LocalMbColors.current.ink2)
-        Text(value, style = MbTypography.demonCode, color = valueColor)
+        // weight+End, не SpaceBetween: длинное значение (награда, статус сигнала СБ) при крупном шрифте системы
+        // должно переноситься в оставшемся месте, а не наезжать на подпись слева (найдено FontScaleTest, M6 плана миграции).
+        Text(value, style = MbTypography.demonCode, color = valueColor, textAlign = TextAlign.End, modifier = Modifier.weight(1f))
     }
 }
 
