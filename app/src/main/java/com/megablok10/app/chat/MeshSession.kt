@@ -67,7 +67,8 @@ class MeshSession(
         SoundPlayer.preload(app)
         // Foreground-сервис (без него фоновый процесс замораживается) поднимает SessionController вместе с сетью (B3).
         // Трафик приложения — только по Wi-Fi игровой сети; при смене сети NSD перерегистрируется (docs/network-spec.md, §7).
-        wifi.start { presence.refresh() }
+        // Сеть сменилась по-настоящему — и слушающий сокет заново: Android уничтожает сокеты пропавшей сети (e2e run 36209401543).
+        wifi.start { if (presence.refresh()) server?.relisten() }
 
         sessionScope.launch {
             val srv = ChatServer(

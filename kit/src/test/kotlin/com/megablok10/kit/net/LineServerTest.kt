@@ -74,6 +74,33 @@ class LineServerTest {
         holder.stop(); second.stop()
     }
 
+    @Test fun deadListeningSocketIsReopenedOnTheSamePort() {
+        // e2e run 36209401543: Android уничтожил слушающий сокет пропавшей сети — сервер молча перестал принимать соединения.
+        val wanted = freePort()
+        val s = LineServer(routes = listOf(LineRoute("chat", { l -> l.removePrefix("CHAT:").takeIf { it != l } }) { events += "chat:$it" }),
+            log = log, tag = "ChatServer", preferredPort = wanted, reopenDelayMs = 100).also { it.start(scope) }
+        s.killListeningSocketForTest()
+        assertTrue(awaitLog("W/ChatServer server.accept_failed"))
+        assertTrue(awaitLog("server.listen port=$wanted reason=accept_failed"))
+        assertEquals(SendOutcome.DELIVERED, client.sendLineOutcome("127.0.0.1", wanted, "CHAT:снова здесь"))
+        assertEquals("chat:снова здесь", next())
+        s.stop()
+    }
+
+    @Test fun relistenKeepsThePortAndIsNotAFailure() {
+        val wanted = freePort()
+        val s = LineServer(routes = listOf(LineRoute("chat", { l -> l.removePrefix("CHAT:").takeIf { it != l } }) { events += "chat:$it" }),
+            log = log, tag = "ChatServer", preferredPort = wanted).also { it.start(scope) }
+        s.relisten()
+        assertEquals(wanted, s.port)
+        assertEquals(SendOutcome.DELIVERED, client.sendLineOutcome("127.0.0.1", wanted, "CHAT:после смены сети"))
+        assertEquals("chat:после смены сети", next())
+        assertTrue(!log.has("server.accept_failed"))
+        s.stop()
+        s.relisten() // после stop — не операция
+        assertEquals(-1, s.port)
+    }
+
     @Test fun unknownLineGoesToUnrecognized() {
         val s = server()
         client.sendLine("127.0.0.1", s.port, "MB10CHAT:v9:что-то")

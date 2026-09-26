@@ -15,6 +15,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -61,31 +62,66 @@ class LineServer(
     private val identityKey: () -> String? = { null },
     private val onHeard: (key: String, host: String, port: Int) -> Unit = { _, _, _ -> },
     private val handleTimeoutMs: Long = 3_000,
+    private val reopenDelayMs: Long = 1_000,
 ) {
     @Volatile private var serverSocket: ServerSocket? = null
+    @Volatile private var stopped = false
     private var job: Job? = null
     private var scope: CoroutineScope? = null
 
     /** Порт, на котором сервер слушает; -1 — не запущен. */
     val port: Int get() = serverSocket?.localPort ?: -1
 
-    /** Открывает порт сразу (вызывающий может тут же объявить его в сети) и принимает соединения в [scope]. */
+    /**
+     * Открывает порт сразу (вызывающий может тут же объявить его в сети) и принимает соединения в [scope].
+     *
+     * Слушающий сокет может умереть и без [stop]: Android уничтожает сокеты сети, которая пропала (процесс привязан к Wi-Fi площадки),
+     * — e2e run 36209401543: после выключения/включения Wi-Fi у получателя его сервер больше не принял ни одного соединения, а
+     * цикл приёма молча вышел. Теперь сбой приёма — событие `server.accept_failed` и тот же порт заново через [reopenDelayMs];
+     * при смене сети его можно переоткрыть и заранее ([relisten]).
+     */
     fun start(scope: CoroutineScope) {
-        val socket = open()
-        serverSocket = socket
+        stopped = false
         this.scope = scope
-        log.event(tag, "server.listen", "port" to socket.localPort)
+        reopen(reason = "start")
         job = scope.launch(io) {
-            while (isActive) {
-                val client = try {
-                    socket.accept()
-                } catch (e: Exception) {
-                    break
-                }
-                launch(io) { handleClient(client) }
+            while (isActive && !stopped) {
+                val client = serverSocket?.let { acceptOrRecover(it) }
+                if (client != null) launch(io) { handleClient(client) }
             }
         }
     }
+
+    /** Соединение или null: сокет переоткрыт [relisten] (не сбой), остановлен, либо умер — тогда тот же порт заново после паузы. */
+    private suspend fun acceptOrRecover(listening: ServerSocket): Socket? = try {
+        listening.accept()
+    } catch (e: Exception) {
+        if (!stopped && serverSocket === listening) {
+            log.warnEvent(tag, "server.accept_failed", "error" to e.javaClass.simpleName, "msg" to e.message)
+            delay(reopenDelayMs)
+            if (!stopped && serverSocket === listening) runCatching { reopen(reason = "accept_failed") }
+                .onFailure { log.warnEvent(tag, "server.reopen_failed", "error" to it.javaClass.simpleName) }
+        }
+        null
+    }
+
+    /** Закрыть и снова открыть слушающий сокет на том же порту (смена сети: старый мог принадлежать пропавшей). Принятые соединения не трогает. */
+    fun relisten() {
+        if (stopped || serverSocket == null) return
+        runCatching { reopen(reason = "network") }.onFailure { log.warnEvent(tag, "server.reopen_failed", "error" to it.javaClass.simpleName) }
+    }
+
+    @Synchronized
+    private fun reopen(reason: String) {
+        if (stopped && reason != "start") return
+        try { serverSocket?.close() } catch (e: Exception) { /* уже закрыт */ }
+        val socket = open()
+        serverSocket = socket
+        log.event(tag, "server.listen", "port" to socket.localPort, "reason" to reason)
+    }
+
+    /** Только для тестов: убить слушающий сокет «снаружи», как это делает Android при потере сети. */
+    internal fun killListeningSocketForTest() { serverSocket?.close() }
 
     /**
      * SO_REUSEADDR — чтобы перезапущенный процесс снова занял свой порт, пока соединения прошлого висят в TIME_WAIT. Порт занят
@@ -106,6 +142,7 @@ class LineServer(
     }
 
     fun stop() {
+        stopped = true
         job?.cancel()
         try {
             serverSocket?.close()

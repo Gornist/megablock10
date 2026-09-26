@@ -122,19 +122,20 @@ class PresenceService(private val app: Context, private val wifi: WifiBinder) {
      * Пересоздать NSD-регистрацию и поиск после смены сети (WifiBinder): NSD на Android после переподключения нередко «глохнет» —
      * запись не рекламируется, поиск молчит. Уже известные пиры не сбрасываем сразу (иначе список мигает): они получают отсрочку
      * [com.megablok10.kit.mesh.REFRESH_GRACE_MS] и остаются, если найдутся заново. Пересоздание идёт по очереди с идущими
-     * операциями (NsdSlot.restart), незавершённая регистрация не снимается.
+     * операциями (NsdSlot.restart), незавершённая регистрация не снимается. true — сеть действительно сменилась.
      */
-    fun refresh(): Unit = synchronized(this) {
-        if (identity == null) return
+    fun refresh(): Boolean = synchronized(this) {
+        if (identity == null) return false
         // Та же сеть и тот же IP (link_changed вслед за available) или первая привязка после запуска — не трогаем регистрацию (NsdRefreshGate).
         if (!refreshGate.shouldRefresh(wifi.boundNetwork, wifi.ownIpv4)) {
             Mb10Log.event(TAG, "nsd.refresh_skipped", "network" to wifi.boundNetwork, "ip" to wifi.ownIpv4, "registered" to (myServiceName != null))
-            return
+            return false
         }
         Mb10Log.event(TAG, "nsd.refresh", "reason" to "смена сети", "peersBefore" to table.describe())
         table.graceAll()
         registration.restart()
         discovery.restart()
+        true
     }
 
     /**
