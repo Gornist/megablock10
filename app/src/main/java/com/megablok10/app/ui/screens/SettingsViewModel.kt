@@ -24,6 +24,8 @@ class SettingsViewModel(
     private val wakeSync: () -> Unit,
     private val deviceInfo: suspend () -> String,
     private val readReceipts: ReadReceiptSetting? = null,
+    /** Итог последней попытки коллектора (CollectorClient.reachable) — для плашки «Нет связи», M4.8 плана миграции. */
+    val collectorReachable: StateFlow<Boolean> = MutableStateFlow(true),
 ) : ViewModel() {
     /** «Отчёты о прочтении» (D4): выключен — свои не уходят, чужие не видны. */
     val readReceiptsEnabled: StateFlow<Boolean> = readReceipts?.enabled ?: MutableStateFlow(true)
@@ -32,6 +34,9 @@ class SettingsViewModel(
 
     /** Записи, ещё не подтверждённые коллектором. */
     val pendingChanges: StateFlow<Int> = pendingChanges.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_MS), 0)
+
+    /** «Повторить» на плашке «Нет связи» — тот же будильник синка, что после сохранения адреса/кода. */
+    fun retrySync() = wakeSync()
 
     /** Адрес из сборки — подсказка в пустом поле. */
     val defaultUrl: String get() = settings.defaultUrl

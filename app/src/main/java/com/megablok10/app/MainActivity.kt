@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -35,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -44,6 +46,7 @@ import com.megablok10.app.call.CallPhase
 import com.megablok10.app.di.appGraph
 import com.megablok10.app.di.callsViewModel
 import com.megablok10.app.di.sessionViewModel
+import com.megablok10.app.di.settingsViewModel
 import com.megablok10.app.qr.ItemKind
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.rememberMb10QrScanner
@@ -52,7 +55,12 @@ import com.megablok10.app.ui.LocalAppGraph
 import com.megablok10.app.ui.appViewModel
 import com.megablok10.kit.mesh.OnlinePlayer
 import com.megablok10.app.ui.nav.AppTab
+import com.megablok10.app.ui.theme.LocalMbColors
 import com.megablok10.app.ui.theme.MbAppShell
+import com.megablok10.app.ui.theme.MbBanner
+import com.megablok10.app.ui.theme.MbBannerTone
+import com.megablok10.app.ui.theme.MbButton
+import com.megablok10.app.ui.theme.MbButtonKind
 import com.megablok10.app.ui.theme.MbIcons
 import com.megablok10.app.ui.theme.MbNavItem
 import com.megablok10.app.ui.theme.formatMoney
@@ -187,6 +195,11 @@ fun AppRoot() {
         val balance by graph.wallet.observeBalance().collectAsStateWithLifecycle(0L)
         val unreadChat by graph.shellBadges.unreadChatThreads(currentIdentity.publicKeyB64).collectAsStateWithLifecycle(0)
         val missedCalls by graph.shellBadges.missedCalls().collectAsStateWithLifecycle(0)
+        // «Нет связи» (M4.8 плана миграции) — только на верхнем уровне вкладок, не поверх вложенных полноэкранных
+        // потоков (тред чата, деталь шарда): у них своя immersive-вёрстка, как и у шапки (см. hideHeader ниже).
+        val settings = appViewModel { settingsViewModel() }
+        val collectorReachable by settings.collectorReachable.collectAsStateWithLifecycle()
+        val pendingSync by settings.pendingChanges.collectAsStateWithLifecycle()
         // Таб, на который переключились, сам гасит свой бейдж — отдельного экрана «прочитано» не нужно.
         LaunchedEffect(tab) {
             when (tab) {
@@ -220,32 +233,43 @@ fun AppRoot() {
                 onlineNodes = onlinePeers.size,
                 onOpenProfile = { showProfile = true }
             ) {
-                // Состояние каждой вкладки (сегмент Кибердеки и т. п.) переживает переключение вкладок.
-                val stateHolder = rememberSaveableStateHolder()
-                stateHolder.SaveableStateProvider(tab.name) {
-                    when (tab) {
-                        AppTab.Chat -> ChatScreen(
-                            identity = currentIdentity,
-                            openedWithContactKey = chatContact,
-                            onContactConsumed = { chatContact = null },
-                            onNestedChange = { chatThreadOpen = it },
-                            onQuickTransfer = { key -> walletPreset = key; tab = AppTab.Wallet },
-                            onQuickItem = { kind, peerKey ->
-                                cyberdeckPeerPreset = peerKey
-                                cyberdeckSegmentPreset = if (kind == ItemKind.DAEMON) 0 else 1
-                                tab = AppTab.Hack
-                            },
-                            onCallContact = { peer: OnlinePlayer -> withMicPermission { calls.start(peer) } }
+                Column(Modifier.fillMaxSize()) {
+                    if (!hideHeader && !collectorReachable) {
+                        MbBanner(
+                            lead = { Icon(painterResource(MbIcons.NoSignal), contentDescription = null, tint = LocalMbColors.current.bad) },
+                            title = "Нет связи",
+                            sub = if (pendingSync > 0) "коллектор недоступен · $pendingSync записей ждут" else "коллектор недоступен",
+                            tone = MbBannerTone.Danger,
+                            action = { MbButton("Повторить", onClick = settings::retrySync, kind = MbButtonKind.Danger, inline = true) }
                         )
-                        AppTab.Calls -> CallsScreen(onCallPeer = { peer: OnlinePlayer -> withMicPermission { calls.start(peer) } })
-                        AppTab.Hack -> CyberdeckScreen(
-                            identity = currentIdentity,
-                            onNestedChange = { shardDetailOpen = it },
-                            presetPeerKey = cyberdeckPeerPreset,
-                            initialSegment = cyberdeckSegmentPreset,
-                            onPresetConsumed = { cyberdeckPeerPreset = null; cyberdeckSegmentPreset = null }
-                        )
-                        AppTab.Wallet -> WalletScreen(presetContactKey = walletPreset, onPresetConsumed = { walletPreset = null })
+                    }
+                    // Состояние каждой вкладки (сегмент Кибердеки и т. п.) переживает переключение вкладок.
+                    val stateHolder = rememberSaveableStateHolder()
+                    stateHolder.SaveableStateProvider(tab.name) {
+                        when (tab) {
+                            AppTab.Chat -> ChatScreen(
+                                identity = currentIdentity,
+                                openedWithContactKey = chatContact,
+                                onContactConsumed = { chatContact = null },
+                                onNestedChange = { chatThreadOpen = it },
+                                onQuickTransfer = { key -> walletPreset = key; tab = AppTab.Wallet },
+                                onQuickItem = { kind, peerKey ->
+                                    cyberdeckPeerPreset = peerKey
+                                    cyberdeckSegmentPreset = if (kind == ItemKind.DAEMON) 0 else 1
+                                    tab = AppTab.Hack
+                                },
+                                onCallContact = { peer: OnlinePlayer -> withMicPermission { calls.start(peer) } }
+                            )
+                            AppTab.Calls -> CallsScreen(onCallPeer = { peer: OnlinePlayer -> withMicPermission { calls.start(peer) } })
+                            AppTab.Hack -> CyberdeckScreen(
+                                identity = currentIdentity,
+                                onNestedChange = { shardDetailOpen = it },
+                                presetPeerKey = cyberdeckPeerPreset,
+                                initialSegment = cyberdeckSegmentPreset,
+                                onPresetConsumed = { cyberdeckPeerPreset = null; cyberdeckSegmentPreset = null }
+                            )
+                            AppTab.Wallet -> WalletScreen(presetContactKey = walletPreset, onPresetConsumed = { walletPreset = null })
+                        }
                     }
                 }
             }
