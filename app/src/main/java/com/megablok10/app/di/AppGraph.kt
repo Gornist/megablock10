@@ -45,6 +45,7 @@ import com.megablok10.app.log.Mb10Log
 import com.megablok10.app.presence.MeshForegroundService
 import com.megablok10.app.session.SessionActions
 import com.megablok10.app.session.SessionController
+import com.megablok10.app.ui.nav.ShellBadges
 import com.megablok10.app.net.WireVersion
 import com.megablok10.app.presence.MeshLink
 import com.megablok10.app.presence.PresenceService
@@ -124,6 +125,8 @@ class AppGraph(private val app: Application) {
     val readReceiptSetting = ReadReceiptSetting(prefs(ReadReceiptSetting.PREFS))
     val readReceipts = ReadReceipts(db.chatMessageDao(), peerDirectory, outbox, readReceiptSetting)
     val directory = ContactDirectory(contacts, peerDirectory.online)
+    /** Бейджи меню новой оболочки (docs/ux/ui-migration-plan.md, «Нужны данные» перед M3) — локальный водяной знак, не read-receipt. */
+    val shellBadges = ShellBadges(db.chatMessageDao(), db.callLogDao(), prefs(ShellBadges.PREFS))
 
     // Деньги и предметы
     val wallet = TransactionStore(db, identity, changes, transactor)
