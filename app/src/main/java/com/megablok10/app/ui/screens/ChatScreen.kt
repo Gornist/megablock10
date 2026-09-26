@@ -1,9 +1,6 @@
 package com.megablok10.app.ui.screens
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,14 +11,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -32,10 +28,8 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.megablok10.app.data.ChatMessageEntity
 import com.megablok10.app.data.MessageStatus
 import com.megablok10.app.data.ItemTransferEntity
@@ -47,28 +41,31 @@ import com.megablok10.app.breach.label
 import com.megablok10.app.qr.ItemKind
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
-import com.megablok10.app.ui.theme.AppButton
-import com.megablok10.app.ui.theme.AppTextField
-import com.megablok10.app.ui.theme.ButtonVariant
-import com.megablok10.app.ui.theme.ChamferedSurface
-import com.megablok10.app.ui.theme.ChipTone
-import com.megablok10.app.ui.theme.CompactActionButton
-import com.megablok10.app.ui.theme.DottedDivider
-import com.megablok10.app.ui.theme.EmptyState
-import com.megablok10.app.ui.theme.HexBullet
-import com.megablok10.app.ui.theme.IBMPlexSans
-import com.megablok10.app.ui.theme.JetBrainsMono
-import com.megablok10.app.ui.theme.Jura
-import com.megablok10.app.ui.theme.ListRow
-import com.megablok10.app.ui.theme.MB10Colors
-import com.megablok10.app.ui.theme.OnlineDot
-import com.megablok10.app.ui.theme.StatusChip
-import com.megablok10.app.ui.theme.SystemNoticeLine
+import com.megablok10.app.ui.theme.LocalMbColors
+import com.megablok10.app.ui.theme.MbBreadcrumb
+import com.megablok10.app.ui.theme.MbButton
+import com.megablok10.app.ui.theme.MbBubble
+import com.megablok10.app.ui.theme.MbComposer
+import com.megablok10.app.ui.theme.MbDaySep
+import com.megablok10.app.ui.theme.MbDimens
+import com.megablok10.app.ui.theme.MbEmptyState
+import com.megablok10.app.ui.theme.MbIconButton
+import com.megablok10.app.ui.theme.MbIcons
+import com.megablok10.app.ui.theme.MbListItem
+import com.megablok10.app.ui.theme.MbMetaLine
+import com.megablok10.app.ui.theme.MbMetaTone
+import com.megablok10.app.ui.theme.MbPayBubble
+import com.megablok10.app.ui.theme.MbStatusText
+import com.megablok10.app.ui.theme.MbStatusTone
+import com.megablok10.app.ui.theme.MbTag
+import com.megablok10.app.ui.theme.MbTagTone
+import com.megablok10.app.ui.theme.MbTypography
+import com.megablok10.app.ui.theme.formatMoney
 import com.megablok10.app.di.chatViewModel
 import com.megablok10.app.di.directThreadViewModel
 import com.megablok10.app.identity.ContactsView
 import com.megablok10.app.ui.appViewModel
-import com.megablok10.app.ui.theme.chamferShape
+import com.megablok10.kit.mesh.OnlinePlayer
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -97,7 +94,8 @@ fun ChatScreen(
     onContactConsumed: () -> Unit = {},
     onNestedChange: (Boolean) -> Unit = {},
     onQuickTransfer: (String) -> Unit = {},
-    onQuickItem: (ItemKind, String) -> Unit = { _, _ -> }
+    onQuickItem: (ItemKind, String) -> Unit = { _, _ -> },
+    onCallContact: (OnlinePlayer) -> Unit = {}
 ) {
     val chat = appViewModel { chatViewModel() }
     val inbox by chat.state.collectAsStateWithLifecycle()
@@ -114,7 +112,7 @@ fun ChatScreen(
         }
     }
 
-    // Шапка приложения и таббар прячутся, пока открыт тред/пикер — у обоих уже есть свой back-заголовок.
+    // Шапка оболочки прячется, пока открыт тред/пикер — у обоих свой Breadcrumb-заголовок (нижнее меню остаётся видно).
     LaunchedEffect(destination, showContactPicker) {
         onNestedChange(destination != null || showContactPicker)
     }
@@ -131,7 +129,8 @@ fun ChatScreen(
             peerPubKeyB64 = (destination as ChatDestination.Direct).peerPubKeyB64,
             onBack = { destination = null },
             onQuickTransfer = onQuickTransfer,
-            onQuickItem = onQuickItem
+            onQuickItem = onQuickItem,
+            onCallContact = onCallContact
         )
         else -> ConversationInbox(
             identity = identity,
@@ -152,88 +151,103 @@ private fun ConversationInbox(
     onNewChat: () -> Unit,
 ) {
     val recentThreads = inbox.recentThreads
-    val onlineKeys = inbox.contacts.onlineKeys
     val lastFactionMessage = inbox.factionMessages.lastOrNull()
 
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("Чаты", color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-            CompactActionButton("+ Новый чат", onClick = onNewChat)
-        }
-        Spacer(Modifier.height(10.dp))
-
-        LazyColumn(Modifier.fillMaxSize()) {
-            item {
-                ConversationRow(
-                    title = "Фракция: ${identity.faction}",
-                    preview = lastFactionMessage?.let { (if (it.fromPubKeyB64 == identity.publicKeyB64) "Вы: " else "${it.fromCallsign}: ") + previewBody(it.body) }
-                        ?: "Пока нет сообщений",
-                    time = lastFactionMessage?.timestamp,
-                    onClick = onOpenFaction
+    Column(Modifier.fillMaxSize().padding(horizontal = MbDimens.screenPadding)) {
+        Box(Modifier.weight(1f)) {
+            if (recentThreads.isEmpty() && lastFactionMessage == null) {
+                MbEmptyState(
+                    icon = MbIcons.Chat,
+                    title = "Чатов пока нет",
+                    text = "Отсканируйте QR-код другого игрока в Профиле, чтобы начать с ним переписку."
                 )
-            }
-            items(recentThreads, key = { it.id }) { msg ->
-                val peerKey = if (msg.fromPubKeyB64 == identity.publicKeyB64) msg.toPubKeyB64 else msg.fromPubKeyB64
-                val contact = inbox.contacts.contact(peerKey)
-                ConversationRow(
-                    title = contact?.callsign ?: "Неизвестный контакт",
-                    preview = (if (msg.fromPubKeyB64 == identity.publicKeyB64) "Вы: " else "") + previewBody(msg.body),
-                    time = msg.timestamp,
-                    online = peerKey in onlineKeys,
-                    onClick = { onOpenDirect(peerKey) }
-                )
+            } else {
+                LazyColumn(Modifier.fillMaxSize()) {
+                    item {
+                        ConversationRow(
+                            title = "Фракция: ${identity.faction}",
+                            preview = lastFactionMessage?.let { (if (it.fromPubKeyB64 == identity.publicKeyB64) "Вы: " else "${it.fromCallsign}: ") + previewBody(it.body) }
+                                ?: "Пока нет сообщений",
+                            time = lastFactionMessage?.timestamp,
+                            onClick = onOpenFaction
+                        )
+                    }
+                    items(recentThreads, key = { it.id }) { msg ->
+                        val peerKey = if (msg.fromPubKeyB64 == identity.publicKeyB64) msg.toPubKeyB64 else msg.fromPubKeyB64
+                        val contact = inbox.contacts.contact(peerKey)
+                        ConversationRow(
+                            title = contact?.callsign ?: "Неизвестный контакт",
+                            preview = (if (msg.fromPubKeyB64 == identity.publicKeyB64) "Вы: " else "") + previewBody(msg.body),
+                            time = msg.timestamp,
+                            onClick = { onOpenDirect(peerKey) }
+                        )
+                    }
+                }
             }
         }
+        MbButton("Новый чат", onClick = onNewChat, modifier = Modifier.padding(vertical = MbDimens.blockGap), keyIcon = MbIcons.Plus)
     }
 }
 
 @Composable
-private fun ConversationRow(title: String, preview: String, time: Long?, online: Boolean? = null, onClick: () -> Unit) {
+internal fun ConversationRow(title: String, preview: String, time: Long?, onClick: () -> Unit) {
     val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
-    Column(Modifier.fillMaxWidth()) {
-        ListRow(
-            onClick = onClick,
-            leading = { if (online != null) OnlineDot(online) else Spacer(Modifier.width(7.dp)) },
-            trailing = time?.let { t -> { Text(timeFormat.format(t), color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 11.sp) } }
-        ) {
-            Text(title, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
-            Spacer(Modifier.height(2.dp))
-            Text(preview, color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        DottedDivider()
-    }
+    MbListItem(
+        title = title,
+        sub = preview,
+        lead = { Icon(painterResource(MbIcons.User), contentDescription = null) },
+        trail = if (time != null) listOf({ Text(timeFormat.format(time), style = MbTypography.meta, color = LocalMbColors.current.ink2) }) else emptyList(),
+        onClick = onClick
+    )
 }
 
 @Composable
 private fun FactionThread(identity: Identity, messages: List<ChatMessageEntity>, onSend: (String) -> Unit, onBack: () -> Unit) {
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
-        ThreadHeader(title = "Фракция: ${identity.faction}", onBack = onBack)
+    var draft by remember { mutableStateOf("") }
+    Column(Modifier.fillMaxSize().padding(horizontal = MbDimens.screenPadding)) {
+        MbBreadcrumb(parts = listOf("Сообщения", "Фракция: ${identity.faction}"), icon = MbIcons.Mail) {
+            MbIconButton(MbIcons.Close, "Назад", onBack)
+        }
+        Spacer(Modifier.height(MbDimens.blockGap))
         MessageList(messages = messages, myPubKey = identity.publicKeyB64, showSender = true, emptyText = "Пока нет сообщений во фракции.")
-        MessageInput(placeholder = "Сообщение фракции", onSend = onSend)
+        MbComposer(
+            value = draft,
+            onValueChange = { draft = it },
+            onSend = { if (draft.isNotBlank()) { onSend(draft); draft = "" } },
+            placeholder = "Сообщение фракции"
+        )
     }
 }
 
 @Composable
-private fun DirectThread(identity: Identity, peerPubKeyB64: String, onBack: () -> Unit, onQuickTransfer: (String) -> Unit, onQuickItem: (ItemKind, String) -> Unit) {
+private fun DirectThread(
+    identity: Identity,
+    peerPubKeyB64: String,
+    onBack: () -> Unit,
+    onQuickTransfer: (String) -> Unit,
+    onQuickItem: (ItemKind, String) -> Unit,
+    onCallContact: (OnlinePlayer) -> Unit
+) {
     // Свой экземпляр на пару «я — собеседник»: лента из базы привязана к ключам (после сброса сессии — новый персонаж, новый тред).
     val thread = appViewModel(key = "thread:${identity.publicKeyB64}:$peerPubKeyB64") { directThreadViewModel(identity.publicKeyB64, peerPubKeyB64) }
     val state by thread.state.collectAsStateWithLifecycle()
     val messages = state.feed.messages
     val contact = state.contacts.contact(peerPubKeyB64)
     val peer = state.contacts.peer(peerPubKeyB64)
+    var draft by remember { mutableStateOf("") }
+    var attachMenuOpen by remember { mutableStateOf(false) }
 
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onBack).padding(bottom = 8.dp)
-        ) {
-            Text("←", color = MB10Colors.inkPrimary, fontFamily = JetBrainsMono, fontSize = 16.sp)
-            Spacer(Modifier.width(8.dp))
-            Text(contact?.callsign ?: "Неизвестный контакт", color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 14.sp, modifier = Modifier.weight(1f))
-            OnlineDot(online = peer != null)
-            Spacer(Modifier.width(6.dp))
-            Text(if (peer != null) "в сети" else "не в сети", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
+    Column(Modifier.fillMaxSize().padding(horizontal = MbDimens.screenPadding)) {
+        MbBreadcrumb(parts = listOf("Сообщения", contact?.callsign ?: "Неизвестный контакт"), icon = MbIcons.Mail) {
+            MbIconButton(MbIcons.Close, "Назад", onBack)
+            if (peer != null) MbIconButton(MbIcons.Phone, "Позвонить", { onCallContact(peer) })
+            MbIconButton(MbIcons.Wallet, "Перевод", { onQuickTransfer(peerPubKeyB64) })
         }
+        MbMetaLine(
+            (if (peer != null) "● в сети" else "не в сети") + " · ${contact?.faction ?: "—"} · ключ ${shortKey(peerPubKeyB64)}",
+            tone = if (peer != null) MbMetaTone.Ok else MbMetaTone.Neutral
+        )
+        Spacer(Modifier.height(MbDimens.rowGap))
         MessageList(
             messages = messages,
             myPubKey = identity.publicKeyB64,
@@ -244,64 +258,60 @@ private fun DirectThread(identity: Identity, peerPubKeyB64: String, onBack: () -
             onAcceptItem = thread::accept,
             onAcceptTransaction = thread::accept
         )
-        MessageInput(
-            placeholder = if (peer != null) "Личное сообщение" else "Личное сообщение (получатель не в сети)",
-            onSend = thread::send,
-            onTransferMoney = { onQuickTransfer(peerPubKeyB64) },
-            onTransferShard = { onQuickItem(ItemKind.SHARD, peerPubKeyB64) },
-            onTransferDaemon = { onQuickItem(ItemKind.DAEMON, peerPubKeyB64) }
-        )
+        Row(Modifier.fillMaxWidth().padding(vertical = MbDimens.blockGap), horizontalArrangement = Arrangement.spacedBy(MbDimens.rowGap), verticalAlignment = Alignment.CenterVertically) {
+            Box {
+                MbIconButton(MbIcons.Shard, "Передать предмет", { attachMenuOpen = true })
+                DropdownMenu(expanded = attachMenuOpen, onDismissRequest = { attachMenuOpen = false }) {
+                    DropdownMenuItem(text = { Text("Передать шард") }, onClick = { attachMenuOpen = false; onQuickItem(ItemKind.SHARD, peerPubKeyB64) })
+                    DropdownMenuItem(text = { Text("Передать демона") }, onClick = { attachMenuOpen = false; onQuickItem(ItemKind.DAEMON, peerPubKeyB64) })
+                }
+            }
+            Box(Modifier.weight(1f)) {
+                MbComposer(
+                    value = draft,
+                    onValueChange = { draft = it },
+                    onSend = { if (draft.isNotBlank()) { thread.send(draft); draft = "" } },
+                    placeholder = if (peer != null) "Личное сообщение" else "Личное сообщение (получатель не в сети)"
+                )
+            }
+        }
     }
 }
 
-@Composable
-private fun ThreadHeader(title: String, onBack: () -> Unit) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onBack).padding(bottom = 8.dp)
-    ) {
-        Text("←", color = MB10Colors.inkPrimary, fontFamily = JetBrainsMono, fontSize = 16.sp)
-        Spacer(Modifier.width(8.dp))
-        Text(title, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 14.sp)
-    }
-}
+private fun shortKey(key: String): String = if (key.length <= 8) key else "${key.take(4)}…${key.takeLast(3)}"
 
-/** Список контактов для старта НОВОГО диалога (кнопка "+" в инбоксе) — не путать с самим инбоксом уже идущих переписок. */
+/** Список контактов для старта НОВОГО диалога (кнопка «+» в инбоксе) — не путать с самим инбоксом уже идущих переписок. */
 @Composable
 private fun NewChatPicker(directory: ContactsView, onPick: (String) -> Unit, onBack: () -> Unit) {
     val contacts = directory.contacts
-    val onlineKeys = directory.onlineKeys
     var query by remember { mutableStateOf("") }
     val filtered = remember(contacts, query) {
         if (query.isBlank()) contacts
         else contacts.filter { it.callsign.contains(query, ignoreCase = true) || it.faction.contains(query, ignoreCase = true) }
     }
 
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
-        ThreadHeader(title = "Новый чат", onBack = onBack)
+    Column(Modifier.fillMaxSize().padding(horizontal = MbDimens.screenPadding)) {
+        MbBreadcrumb(parts = listOf("Новый чат")) { MbIconButton(MbIcons.Close, "Назад", onBack) }
+        Spacer(Modifier.height(MbDimens.blockGap))
 
         if (contacts.isEmpty()) {
-            EmptyState("Пока нет контактов. Отсканируйте QR-код другого игрока в Профиле, чтобы начать с ним переписку.")
+            Box(Modifier.weight(1f)) {
+                MbEmptyState(MbIcons.User, "Контактов пока нет", "Отсканируйте QR-код другого игрока в Профиле, чтобы начать с ним переписку.")
+            }
             return@Column
         }
-
-        AppTextField(value = query, onValueChange = { query = it }, placeholder = "Позывной или фракция", modifier = Modifier.fillMaxWidth())
-        Spacer(Modifier.height(10.dp))
-
         if (filtered.isEmpty()) {
-            EmptyState("Ничего не нашлось.")
+            Box(Modifier.weight(1f)) { MbEmptyState(MbIcons.User, "Ничего не нашлось", "Попробуйте другой позывной или фракцию.") }
             return@Column
         }
-
-        LazyColumn(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.weight(1f)) {
             items(filtered, key = { it.publicKeyB64 }) { c ->
-                ListRow(
-                    onClick = { onPick(c.publicKeyB64) },
-                    leading = { OnlineDot(c.publicKeyB64 in onlineKeys) }
-                ) {
-                    Text(c.callsign, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp)
-                    Text(c.faction, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
-                }
+                MbListItem(
+                    title = c.callsign,
+                    sub = c.faction,
+                    lead = { Icon(painterResource(MbIcons.User), contentDescription = null) },
+                    onClick = { onPick(c.publicKeyB64) }
+                )
             }
         }
     }
@@ -345,7 +355,7 @@ private fun dayLabel(day: Calendar, today: Calendar): String {
 
 /** Тело перевода/чека в теле сообщения — та же строка, что раньше шла в QR-картинку. В превью инбокса это должен быть человеческий текст, а не сырая строка вида "MB10:TX:v1:...". */
 private fun previewBody(body: String): String = when (val decoded = Mb10QrCodec.decode(body)) {
-    is Mb10Qr.Transaction -> "Перевод ${decoded.amount} €$" + if (decoded.memo.isNotBlank()) " · ${decoded.memo}" else ""
+    is Mb10Qr.Transaction -> "Перевод ${formatMoney(decoded.amount)}" + if (decoded.memo.isNotBlank()) " · ${decoded.memo}" else ""
     is Mb10Qr.ItemTransfer -> "Передача: «" + (ItemPayload.decodeShard(decoded.payload)?.title ?: ItemPayload.decodeDaemon(decoded.payload)?.name ?: "предмет") + "»"
     is Mb10Qr.Receipt -> "Платёж подтверждён"
     is Mb10Qr.SecurityAlert -> "Тревога! · «${decoded.containerName}»"
@@ -365,7 +375,7 @@ private fun ColumnScope.MessageList(
 ) {
     if (messages.isEmpty()) {
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            EmptyState(emptyText)
+            MbEmptyState(MbIcons.Chat, "Пока тихо", emptyText)
         }
         return
     }
@@ -386,7 +396,7 @@ private fun ColumnScope.MessageList(
     LazyColumn(state = listState, modifier = Modifier.weight(1f)) {
         items(entries) { entry ->
             when (entry) {
-                is ChatEntry.DaySeparator -> DaySeparatorLabel(entry.label)
+                is ChatEntry.DaySeparator -> Box(Modifier.fillMaxWidth().padding(vertical = MbDimens.blockGap)) { MbDaySep(entry.label) }
                 is ChatEntry.Msg -> MessageBubble(
                     msg = entry.message,
                     self = entry.message.fromPubKeyB64 == myPubKey,
@@ -401,93 +411,13 @@ private fun ColumnScope.MessageList(
     }
 }
 
-@Composable
-private fun DaySeparatorLabel(label: String) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) {
-        Text(label, color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 11.sp)
-    }
-}
-
-@Composable
-private fun MessageInput(
-    placeholder: String,
-    onTransferMoney: (() -> Unit)? = null,
-    onTransferShard: (() -> Unit)? = null,
-    onTransferDaemon: (() -> Unit)? = null,
-    onSend: (String) -> Unit
-) {
-    var draft by remember { mutableStateOf("") }
-    val canSend = draft.isNotBlank()
-    var attachMenuOpen by remember { mutableStateOf(false) }
-    val hasAttach = onTransferMoney != null || onTransferShard != null || onTransferDaemon != null
-
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Перевод эдди и передача шарда/демона — раньше два отдельных ряда кнопок над полем ввода, теперь одна скрепка
-        // рядом с "Отправить" с выпадающим списком: реже нужны, чем сам текст, и не должны занимать строку постоянно.
-        if (hasAttach) {
-            Box {
-                Box(
-                    modifier = Modifier
-                        .background(MB10Colors.surfaceSunken, chamferShape(6.dp))
-                        .clickable { attachMenuOpen = true }
-                        .padding(horizontal = 12.dp, vertical = 12.dp)
-                ) {
-                    Text("📎", fontSize = 14.sp)
-                }
-                DropdownMenu(expanded = attachMenuOpen, onDismissRequest = { attachMenuOpen = false }) {
-                    onTransferMoney?.let { action ->
-                        DropdownMenuItem(text = { Text("€$ Перевести эдди", fontFamily = JetBrainsMono, fontSize = 12.sp) }, onClick = { attachMenuOpen = false; action() })
-                    }
-                    onTransferShard?.let { action ->
-                        DropdownMenuItem(text = { Text("Передать шард", fontFamily = JetBrainsMono, fontSize = 12.sp) }, onClick = { attachMenuOpen = false; action() })
-                    }
-                    onTransferDaemon?.let { action ->
-                        DropdownMenuItem(text = { Text("Передать демона", fontFamily = JetBrainsMono, fontSize = 12.sp) }, onClick = { attachMenuOpen = false; action() })
-                    }
-                }
-            }
-        }
-        AppTextField(
-            value = draft,
-            onValueChange = { draft = it },
-            placeholder = placeholder,
-            modifier = Modifier.weight(1f)
-        )
-        Box(
-            modifier = Modifier
-                .background(if (canSend) MB10Colors.accentAction else MB10Colors.surfaceSunken, chamferShape(6.dp))
-                .clickable(enabled = canSend) {
-                    onSend(draft)
-                    draft = ""
-                }
-                .padding(horizontal = 16.dp, vertical = 12.dp)
-        ) {
-            Text(
-                "Отпр.",
-                color = if (canSend) MB10Colors.onAccent else MB10Colors.inkTertiary,
-                fontFamily = JetBrainsMono, fontSize = 12.sp, fontWeight = FontWeight.Medium
-            )
-        }
-    }
-}
-
 /**
- * Свои сообщения — справа, тонированные акцентом; чужие — слева, нейтральные.
- * Раньше единственным отличием была двухпиксельная полоска слева от своих
- * сообщений — легко не заметить. Сторона + цвет вместе читаются мгновенно,
- * без необходимости сверяться с подписью отправителя.
- *
- * Тело сообщения может оказаться сериализованным переводом/чеком (тот же
- * формат, что раньше шёл в QR) — тогда вместо текстового пузыря рисуется
- * платёжный: с суммой и, для получателя ещё не принятого перевода, кнопкой
- * "Принять" прямо в ленте.
+ * Своё сообщение — справа (зелёное), чужое — слева (тёмное с бирюзовой рамкой) — MbBubble уже несёт этот смысл формой
+ * и цветом (раздел 5 гайдлайна). Тело сообщения может оказаться сериализованным переводом/чеком (тот же формат, что
+ * раньше шёл в QR) — тогда вместо текстового пузыря рисуется платёжный, с кнопкой «Принять» прямо в ленте.
  */
 @Composable
-private fun MessageBubble(
+internal fun MessageBubble(
     msg: ChatMessageEntity,
     self: Boolean,
     showSender: Boolean,
@@ -497,75 +427,86 @@ private fun MessageBubble(
     onAcceptTransaction: ((Mb10Qr.Transaction) -> Unit)? = null
 ) {
     val decoded = remember(msg.body) { Mb10QrCodec.decode(msg.body) }
-    when (decoded) {
-        is Mb10Qr.Transaction -> PaymentBubble(
-            tx = decoded,
-            self = self,
-            senderCallsign = msg.fromCallsign,
-            status = transactions.find { it.id == decoded.id }?.status,
-            onAccept = if (self) null else { { onAcceptTransaction?.invoke(decoded) } }
-        )
-        is Mb10Qr.ItemTransfer -> ItemTransferBubble(
-            card = decoded,
-            self = self,
-            senderCallsign = msg.fromCallsign,
-            record = itemTransfers.find { it.id == decoded.id },
-            onAccept = if (self) null else { { onAcceptItem?.invoke(decoded) } }
-        )
-        is Mb10Qr.Receipt -> ReceiptLine()
-        is Mb10Qr.SecurityAlert -> SecurityAlertBubble(decoded)
-        else -> PlainMessageBubble(msg, self, showSender)
+    val c = LocalMbColors.current
+    Row(Modifier.fillMaxWidth().padding(bottom = MbDimens.rowGap), horizontalArrangement = if (self) Arrangement.End else Arrangement.Start) {
+        when (decoded) {
+            is Mb10Qr.Transaction -> MbPayBubble(
+                head = if (self) "Перевод отправлен" else "Перевод от ${msg.fromCallsign}",
+                value = formatMoney(decoded.amount),
+                fromMe = self,
+                modifier = Modifier.widthIn(max = 260.dp)
+            ) {
+                val status = transactions.find { it.id == decoded.id }?.status
+                if (decoded.memo.isNotBlank()) Text(decoded.memo, style = MbTypography.rowSub, color = c.ink2)
+                PaymentOrItemStatus(self, status, onAccept = if (self) null else { { onAcceptTransaction?.invoke(decoded) } })
+            }
+            is Mb10Qr.ItemTransfer -> {
+                val shard = remember(decoded.payload) { if (decoded.kind == ItemKind.SHARD) ItemPayload.decodeShard(decoded.payload) else null }
+                val daemon = remember(decoded.payload) { if (decoded.kind == ItemKind.DAEMON) ItemPayload.decodeDaemon(decoded.payload) else null }
+                val title = shard?.title ?: daemon?.name ?: "предмет"
+                val details = when {
+                    shard != null -> "Шард · тир ${shard.tier}" + if (shard.decryptAction && !shard.decrypted) " · зашифрован" else ""
+                    daemon != null -> "Демон · тир ${daemon.tier.level} · ${daemon.effect.label()}"
+                    else -> ""
+                }
+                val record = itemTransfers.find { it.id == decoded.id }
+                MbPayBubble(
+                    head = if (self) "Передача отправлена" else "Передача от ${msg.fromCallsign}",
+                    value = "«$title»",
+                    fromMe = self,
+                    modifier = Modifier.widthIn(max = 280.dp)
+                ) {
+                    Text(details, style = MbTypography.rowSub, color = c.ink2)
+                    PaymentOrItemStatus(self, record?.status, onAccept = if (self || record != null) null else { { onAcceptItem?.invoke(decoded) } }, cancelledWhenNull = true)
+                }
+            }
+            is Mb10Qr.Receipt -> MbTag("получение подтверждено", tone = MbTagTone.Ok)
+            is Mb10Qr.SecurityAlert -> SecurityAlertTag(decoded)
+            else -> PlainMessageBubble(msg, self, showSender)
+        }
     }
 }
 
-/**
- * Сигнал СБ (SecAlertStore) приходит телом обычного фракционного сообщения —
- * без этой ветки декодированный Mb10Qr.SecurityAlert падал бы в
- * PlainMessageBubble сырой строкой вида "MB10:SECALERT:v1:...". Обёртка —
- * общий SystemNoticeLine (см. design system), тот же компонент, что и у
- * ReceiptLine. Тир контейнера тут не показываем — это служебное деление
- * сложности взлома для мастера, игроку сама тревога важна, а не тир узла.
- */
 @Composable
-private fun SecurityAlertBubble(alert: Mb10Qr.SecurityAlert) {
+private fun PaymentOrItemStatus(self: Boolean, status: String?, onAccept: (() -> Unit)?, cancelledWhenNull: Boolean = false) {
+    when {
+        self -> {
+            val (text, tone) = when (status) {
+                TransactionStatus.CONFIRMED -> "подтверждено" to MbStatusTone.Ok
+                TransactionStatus.DELIVERED -> "доставлено, ждёт принятия" to MbStatusTone.Warn
+                null -> (if (cancelledWhenNull) "отменено" else "не доставлено") to MbStatusTone.Dim
+                else -> "не доставлено" to MbStatusTone.Bad
+            }
+            MbStatusText(text, tone)
+        }
+        onAccept != null -> MbButton("Принять", onClick = onAccept, inline = true)
+        else -> MbStatusText("принято", MbStatusTone.Ok)
+    }
+}
+
+/** Сигнал СБ (SecAlertStore) приходит телом обычного фракционного сообщения — тег вместо пузыря, тир контейнера не показываем: это служебное деление сложности взлома для мастера. */
+@Composable
+private fun SecurityAlertTag(alert: Mb10Qr.SecurityAlert) {
     val parts = buildList {
         add("Тревога!")
         add("«${alert.containerName}»")
         alert.intruderCallsign?.let(::add)
         alert.preciseAt?.let { add(SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(it)) }
     }
-    SystemNoticeLine(parts.joinToString(" · "), tone = ChipTone.Danger)
+    MbTag(parts.joinToString(" · "), tone = MbTagTone.Bad)
 }
 
 @Composable
 private fun PlainMessageBubble(msg: ChatMessageEntity, self: Boolean, showSender: Boolean) {
     val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
-        horizontalArrangement = if (self) Arrangement.End else Arrangement.Start
-    ) {
-        Column(modifier = Modifier.widthIn(max = 280.dp), horizontalAlignment = if (self) Alignment.End else Alignment.Start) {
-            if (showSender && !self) {
-                Text(msg.fromCallsign, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
-                Spacer(Modifier.height(2.dp))
-            }
-            Box(
-                modifier = Modifier
-                    .background(if (self) MB10Colors.accentAction.copy(alpha = 0.16f) else MB10Colors.surfaceSunken, chamferShape(6.dp))
-                    .border(1.dp, if (self) MB10Colors.accentAction.copy(alpha = 0.4f) else MB10Colors.borderMuted, chamferShape(6.dp))
-                    .padding(vertical = 9.dp, horizontal = 11.dp)
-            ) {
-                Text(msg.body, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.5.sp, lineHeight = 19.sp)
-            }
+    val mark = if (self) statusMark(msg.status) else null
+    val meta = timeFormat.format(msg.timestamp) + (mark?.let { " ${it.first}" } ?: "")
+    Column(Modifier.widthIn(max = 280.dp), horizontalAlignment = if (self) Alignment.End else Alignment.Start) {
+        if (showSender && !self) {
+            Text(msg.fromCallsign, style = MbTypography.meta, color = LocalMbColors.current.ink2)
             Spacer(Modifier.height(2.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(timeFormat.format(msg.timestamp), color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 11.sp)
-                if (self) statusMark(msg.status)?.let { (mark, read) ->
-                    Spacer(Modifier.width(6.dp))
-                    Text(mark, color = if (read) MB10Colors.accentAction else MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 11.sp)
-                }
-            }
         }
+        MbBubble(fromMe = self, text = msg.body, meta = meta)
     }
 }
 
@@ -579,122 +520,4 @@ internal fun statusMark(status: Int): Pair<String, Boolean>? = when (status) {
     MessageStatus.DELIVERED -> "✓✓" to false
     MessageStatus.READ -> "✓✓" to true
     else -> null
-}
-
-@Composable
-private fun PaymentBubble(
-    tx: Mb10Qr.Transaction,
-    self: Boolean,
-    senderCallsign: String,
-    status: String?,
-    onAccept: (() -> Unit)?
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
-        horizontalArrangement = if (self) Arrangement.End else Arrangement.Start
-    ) {
-        ChamferedSurface(
-            borderColor = MB10Colors.accentAction,
-            fillColor = MB10Colors.surfaceSunken,
-            cut = 8.dp,
-            contentPadding = 12.dp,
-            modifier = Modifier.widthIn(max = 260.dp)
-        ) {
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    HexBullet(MB10Colors.accentAction, size = 8.dp)
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        if (self) "Перевод отправлен" else "Перевод от $senderCallsign",
-                        color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp
-                    )
-                }
-                Spacer(Modifier.height(6.dp))
-                Text("${tx.amount} €$", color = MB10Colors.inkPrimary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 22.sp)
-                if (tx.memo.isNotBlank()) {
-                    Spacer(Modifier.height(2.dp))
-                    Text(tx.memo, color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 12.sp)
-                }
-                Spacer(Modifier.height(8.dp))
-                when {
-                    self -> StatusChip(
-                        when (status) {
-                            TransactionStatus.CONFIRMED -> "подтверждено"
-                            TransactionStatus.DELIVERED -> "доставлено, ждёт принятия"
-                            else -> "не доставлено"
-                        },
-                        tone = if (status == TransactionStatus.CONFIRMED) ChipTone.Action else ChipTone.Neutral
-                    )
-                    status == null -> AppButton("Принять", variant = ButtonVariant.Primary, dense = true, modifier = Modifier.fillMaxWidth(), onClick = { onAccept?.invoke() })
-                    else -> StatusChip("принято", tone = ChipTone.Action)
-                }
-            }
-        }
-    }
-}
-
-/** Карточка передачи шарда/демона — тот же вид и те же статусы, что у платёжной (PaymentBubble). */
-@Composable
-private fun ItemTransferBubble(
-    card: Mb10Qr.ItemTransfer,
-    self: Boolean,
-    senderCallsign: String,
-    record: ItemTransferEntity?,
-    onAccept: (() -> Unit)?
-) {
-    val shard = remember(card.payload) { if (card.kind == ItemKind.SHARD) ItemPayload.decodeShard(card.payload) else null }
-    val daemon = remember(card.payload) { if (card.kind == ItemKind.DAEMON) ItemPayload.decodeDaemon(card.payload) else null }
-    val title = shard?.title ?: daemon?.name ?: "предмет"
-    val details = when {
-        shard != null -> "Шард · тир ${shard.tier}" + if (shard.decryptAction && !shard.decrypted) " · зашифрован" else ""
-        daemon != null -> "Демон · тир ${daemon.tier.level} · ${daemon.effect.label()}"
-        else -> ""
-    }
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
-        horizontalArrangement = if (self) Arrangement.End else Arrangement.Start
-    ) {
-        ChamferedSurface(
-            borderColor = MB10Colors.accentNetrun,
-            fillColor = MB10Colors.surfaceSunken,
-            cut = 8.dp,
-            contentPadding = 12.dp,
-            modifier = Modifier.widthIn(max = 280.dp)
-        ) {
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    HexBullet(MB10Colors.accentNetrun, size = 8.dp)
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        if (self) "Передача отправлена" else "Передача от $senderCallsign",
-                        color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp
-                    )
-                }
-                Spacer(Modifier.height(6.dp))
-                Text("«$title»", color = MB10Colors.inkPrimary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                Spacer(Modifier.height(2.dp))
-                Text(details, color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 12.sp)
-                Spacer(Modifier.height(8.dp))
-                when {
-                    self -> StatusChip(
-                        when (record?.status) {
-                            TransactionStatus.CONFIRMED -> "принято"
-                            TransactionStatus.DELIVERED -> "доставлено, ждёт принятия"
-                            null -> "отменено"
-                            else -> "не доставлено"
-                        },
-                        tone = if (record?.status == TransactionStatus.CONFIRMED) ChipTone.Action else ChipTone.Neutral
-                    )
-                    record == null -> AppButton("Принять", variant = ButtonVariant.Primary, dense = true, modifier = Modifier.fillMaxWidth(), onClick = { onAccept?.invoke() })
-                    else -> StatusChip("принято", tone = ChipTone.Action)
-                }
-            }
-        }
-    }
-}
-
-/** Чек — тот же общий SystemNoticeLine, что и у сигнала СБ, тоном Action (подтверждение, не тревога). */
-@Composable
-private fun ReceiptLine() {
-    SystemNoticeLine("✓ Получение подтверждено", tone = ChipTone.Action)
 }

@@ -92,18 +92,26 @@ fun MbBubble(fromMe: Boolean, text: String, meta: String, modifier: Modifier = M
     }
 }
 
-/** Перевод — пузырь своего вида: заголовок «ПЕРЕВОД · …», сумма крупно, статус строкой (обычно [MbStatusText]). */
+/**
+ * Перевод (или передача предмета — тот же вид, гайдлайн отдельную карточку для неё не определяет) — пузырь своего вида:
+ * заголовок «ПЕРЕВОД · …», значение крупно, статус строкой (обычно [MbStatusText]). Прототип рисует только свой (зелёный)
+ * вариант; [fromMe] = false — входящий, теми же цветами, что обычный входящий пузырь ([MbBubble]).
+ */
 @Composable
-fun MbPayBubble(head: String, value: String, modifier: Modifier = Modifier, note: @Composable () -> Unit) {
+fun MbPayBubble(head: String, value: String, modifier: Modifier = Modifier, fromMe: Boolean = true, note: @Composable () -> Unit) {
     val c = LocalMbColors.current
+    val fill = if (fromMe) Color(0xFF0F1A14) else c.bubbleInFill
+    val edge = if (fromMe) c.ok else c.bubbleInEdge
+    val headColor = if (fromMe) c.ok else c.bubbleInText
+    val valueColor = if (fromMe) Color(0xFFF1FFF6) else c.bubbleInText
     Column(
         modifier
-            .then(bubbleBackground(true, Color(0xFF0F1A14), c.ok))
+            .then(bubbleBackground(fromMe, fill, edge))
             .padding(start = 10.dp, top = 7.dp, end = 10.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
-        Text(head.uppercase(), style = MbTypography.tagLabel.copy(letterSpacing = 0.1f.em), color = c.ok)
-        Text(value, style = TextStyle(fontFamily = FiraSansCondensed, fontWeight = FontWeight.Medium, fontSize = 22.sp), color = Color(0xFFF1FFF6))
+        Text(head.uppercase(), style = MbTypography.tagLabel.copy(letterSpacing = 0.1f.em), color = headColor)
+        Text(value, style = TextStyle(fontFamily = FiraSansCondensed, fontWeight = FontWeight.Medium, fontSize = 22.sp), color = valueColor)
         note()
     }
 }
