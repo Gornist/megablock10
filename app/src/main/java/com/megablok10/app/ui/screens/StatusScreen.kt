@@ -1,7 +1,6 @@
 package com.megablok10.app.ui.screens
 
-import com.megablok10.app.ui.theme.AppSnack
-import androidx.compose.foundation.border
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
@@ -22,42 +20,43 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.megablok10.app.identity.Identity
-import com.megablok10.kit.mesh.OnlinePlayer
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.megablok10.app.di.contactsViewModel
-import com.megablok10.app.ui.appViewModel
+import com.megablok10.app.identity.Identity
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
 import com.megablok10.app.qr.generateQrBitmap
 import com.megablok10.app.qr.rememberMb10QrScanner
-import com.megablok10.app.ui.theme.AppButton
-import com.megablok10.app.ui.theme.ButtonVariant
-import com.megablok10.app.ui.theme.ChamferedSurface
-import com.megablok10.app.ui.theme.SurfaceCorner
-import com.megablok10.app.ui.theme.ChipTone
-import com.megablok10.app.ui.theme.DimmableQr
-import com.megablok10.app.ui.theme.DottedDivider
-import com.megablok10.app.ui.theme.EmptyState
-import com.megablok10.app.ui.theme.HexBullet
-import com.megablok10.app.ui.theme.IBMPlexSans
-import com.megablok10.app.ui.theme.JetBrainsMono
-import com.megablok10.app.ui.theme.Jura
-import com.megablok10.app.ui.theme.MB10Colors
-import com.megablok10.app.ui.theme.StatusChip
-import com.megablok10.app.ui.theme.chamferShape
+import com.megablok10.app.ui.appViewModel
+import com.megablok10.app.ui.theme.AppSnack
+import com.megablok10.app.ui.theme.LocalMbColors
+import com.megablok10.app.ui.theme.MbButton
+import com.megablok10.app.ui.theme.MbButtonKind
+import com.megablok10.app.ui.theme.MbCard
+import com.megablok10.app.ui.theme.MbDimens
+import com.megablok10.app.ui.theme.MbEmptyState
+import com.megablok10.app.ui.theme.MbIcons
+import com.megablok10.app.ui.theme.MbListItem
+import com.megablok10.app.ui.theme.MbListItemState
+import com.megablok10.app.ui.theme.MbPortrait
+import com.megablok10.app.ui.theme.MbQr
+import com.megablok10.app.ui.theme.MbSectionTitle
+import com.megablok10.app.ui.theme.MbTag
+import com.megablok10.app.ui.theme.MbTagTone
+import com.megablok10.app.ui.theme.MbTypography
+import com.megablok10.kit.mesh.OnlinePlayer
 
 @Composable
 fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}, onCallContact: (OnlinePlayer) -> Unit = {}) {
     val vm = appViewModel { contactsViewModel() }
     val directory by vm.contacts.collectAsStateWithLifecycle()
     val contacts = directory.contacts
-    var contactsExpanded by remember { mutableStateOf(false) }
+    var expandedKey by remember { mutableStateOf<String?>(null) }
 
     val startScan = rememberMb10QrScanner { qr ->
         when (qr) {
@@ -66,104 +65,90 @@ fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}, on
         }
     }
 
-    LazyColumn(Modifier.fillMaxSize().padding(16.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(MbDimens.blockGap)) {
         item {
-            ChamferedSurface(
-                borderColor = MB10Colors.borderMuted,
-                fillColor = MB10Colors.surfaceSunken,
-                cut = 10.dp,
-                corner = SurfaceCorner.Double,
-                contentPadding = 16.dp,
-                augmented = true,
-                // borderMuted слишком тёмный для уголков-прицела (см. правило в Color.kt) — акцент отдельным живым цветом.
-                bracketColor = MB10Colors.accentAction,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column {
-                    Text(identity.callsign, color = MB10Colors.inkPrimary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Spacer(Modifier.height(2.dp))
-                    Text(identity.faction, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
-                }
+            MbCard(lead = { MbPortrait(identity.callsign.take(1), size = MbDimens.portraitProfile) }) {
+                Text(identity.callsign, style = MbTypography.cardTitle, color = LocalMbColors.current.inkStrong)
+                Text(identity.faction, style = MbTypography.rowSub, color = LocalMbColors.current.ink2)
+                Text("КЛЮЧ ${shortKey(identity.publicKeyB64)}", style = MbTypography.demonCode, color = LocalMbColors.current.acc)
             }
-            Spacer(Modifier.height(18.dp))
-
+        }
+        item {
             val qrBitmap = remember(identity.publicKeyB64) {
                 generateQrBitmap(Mb10QrCodec.encodeContact(identity.publicKeyB64, identity.callsign, identity.faction))
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                DimmableQr(bitmap = qrBitmap, contentDescription = "QR-код контакта", size = 160.dp)
+            MbCard(lead = { RevealableQr(bitmap = qrBitmap, contentDescription = "QR-код контакта") }) {
+                Text("Мой QR-код.", style = MbTypography.cardTitle.copy(fontSize = 13.sp), color = LocalMbColors.current.inkStrong)
+                Text(
+                    "Покажите игроку — он отсканирует и добавит вас в контакты.",
+                    style = MbTypography.rowSub, color = LocalMbColors.current.ink2
+                )
             }
-            Spacer(Modifier.height(12.dp))
-            AppButton("Сканировать контакт", variant = ButtonVariant.Primary, modifier = Modifier.fillMaxWidth(), onClick = startScan)
-
-            Spacer(Modifier.height(14.dp))
-            // Тот же паттерн, что "Отправить" в Финансах: кнопка раскрывает скроллируемый
-            // список под собой, а не занимает экран списком контактов постоянно.
-            AppButton(
-                if (contactsExpanded) "Скрыть контакты (${contacts.size})" else "Контакты (${contacts.size})",
-                variant = ButtonVariant.Secondary,
-                modifier = Modifier.fillMaxWidth(),
-                onClick = { contactsExpanded = !contactsExpanded }
-            )
-            Spacer(Modifier.height(8.dp))
         }
-
-        if (contactsExpanded) {
-            if (contacts.isEmpty()) {
-                item {
-                    EmptyState("Пока нет контактов. Отсканируйте QR-код другого игрока, чтобы добавить его.")
-                }
-            }
+        item { MbSectionTitle("Контакты", meta = contacts.size.toString()) }
+        if (contacts.isEmpty()) {
+            item { MbEmptyState(MbIcons.User, "Контактов пока нет", "Отсканируйте QR-код другого игрока, чтобы добавить его.") }
+        } else {
             items(contacts, key = { it.publicKeyB64 }) { c ->
-                Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        HexBullet(MB10Colors.accentAction, size = 8.dp)
-                        Spacer(Modifier.width(8.dp))
-                        Text(c.callsign, color = MB10Colors.inkPrimary, fontFamily = IBMPlexSans, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                        StatusChip(c.faction, tone = ChipTone.Neutral)
+                ContactRow(
+                    contact = c,
+                    online = c.publicKeyB64 in directory.onlineKeys,
+                    expanded = expandedKey == c.publicKeyB64,
+                    onToggle = { expandedKey = if (expandedKey == c.publicKeyB64) null else c.publicKeyB64 },
+                    onMessage = { onMessageContact(c.publicKeyB64) },
+                    onCall = {
+                        val peer = directory.peer(c.publicKeyB64)
+                        if (peer == null) AppSnack.show("${c.callsign} сейчас не в сети") else onCallContact(peer)
                     }
-                    Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ContactActionButton(
-                            "Сообщение",
-                            modifier = Modifier.weight(1f),
-                            onClick = {
-                                AppSnack.show("Открываю чат с ${c.callsign}")
-                                onMessageContact(c.publicKeyB64)
-                            }
-                        )
-                        ContactActionButton(
-                            "Звонок",
-                            modifier = Modifier.weight(1f),
-                            onClick = {
-                                val peer = directory.peer(c.publicKeyB64)
-                                if (peer == null) {
-                                    AppSnack.show("${c.callsign} сейчас не в сети")
-                                } else {
-                                    onCallContact(peer)
-                                }
-                            }
-                        )
-                    }
-                }
-                DottedDivider()
+                )
+            }
+        }
+        item {
+            Spacer(Modifier.height(MbDimens.rowGap))
+            MbButton("Сканер", onClick = startScan, keyIcon = MbIcons.Scan, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(MbDimens.blockGap))
+        }
+    }
+}
+
+/** Строка контакта: тап разворачивает «Сообщение»/«Звонок» — тот же паттерн, что у демонов в Кибердеке (DaemonRow). */
+@Composable
+private fun ContactRow(contact: Mb10Qr.Contact, online: Boolean, expanded: Boolean, onToggle: () -> Unit, onMessage: () -> Unit, onCall: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(bottom = MbDimens.rowGap)) {
+        MbListItem(
+            title = contact.callsign,
+            sub = contact.faction,
+            trail = if (online) listOf({ MbTag("в сети", tone = MbTagTone.Ok) }) else emptyList(),
+            plate = true,
+            state = if (online) MbListItemState.Normal else MbListItemState.Off,
+            onClick = onToggle
+        )
+        if (expanded) {
+            Row(Modifier.padding(top = MbDimens.rowGap), horizontalArrangement = Arrangement.spacedBy(MbDimens.rowGap * 2)) {
+                MbButton("Сообщение", onClick = onMessage, kind = MbButtonKind.Ghost, modifier = Modifier.weight(1f))
+                MbButton("Звонок", onClick = onCall, kind = MbButtonKind.Ghost, modifier = Modifier.weight(1f))
             }
         }
     }
 }
 
-/** Компактная кнопка под строкой контакта — OutlineButton из темы великоват (padding под полноразмерную CTA). */
+/** Один тап показывает и скрывает QR — ключ не должен маячить открытым на столе (было DimmableQr). */
 @Composable
-private fun ContactActionButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Box(
-        modifier = modifier
-            .border(1.dp, MB10Colors.borderMuted, chamferShape(4.dp))
-            .clickable(onClick = onClick)
-            .padding(vertical = 6.dp)
-    ) {
-        Text(
-            text, color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth()
-        )
+private fun RevealableQr(bitmap: android.graphics.Bitmap, contentDescription: String) {
+    var revealed by remember { mutableStateOf(false) }
+    val size = 96.dp
+    Box(Modifier.size(size).clickable { revealed = !revealed }, contentAlignment = Alignment.Center) {
+        MbQr(bitmap = bitmap, contentDescription = contentDescription, size = size)
+        if (!revealed) {
+            Box(Modifier.size(size).background(LocalMbColors.current.bg.copy(alpha = 0.9f)))
+            Text(
+                "Нажмите, чтобы показать",
+                style = MbTypography.meta, color = LocalMbColors.current.ink2,
+                textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 10.dp)
+            )
+        }
     }
 }
+
+/** «7F3A…C21» — первые 4 и последние 3 символа ключа, как в прототипе. */
+private fun shortKey(keyB64: String): String = if (keyB64.length <= 9) keyB64 else "${keyB64.take(4)}…${keyB64.takeLast(3)}"
