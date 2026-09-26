@@ -314,12 +314,12 @@ ram_of() { adb_ "$1" exec-out run-as $PKG cat shared_prefs/identity_prefs.xml | 
 item_of() { adb_ "$1" logcat -d -s MB10DBG | grep "give id=" | tail -1 | sed 's/.*give id=//' | tr -d '\r'; }
 # open_chat <serial> <позывной> — вкладка «Чат» → тред с контактом.
 # Тап по строке списка иногда не попадает (строка сдвигается, когда в этот момент приходит сообщение), поэтому проверяем, что тред открылся
-# (в нём есть кнопка «Отпр.»), и при неудаче повторяем.
+# (в нём есть кнопка «Отправить» — MbComposer, иконка с этой подписью для TalkBack и стенда), и при неудаче повторяем.
 open_chat() {
   local n
   for n in 1 2 3; do
     tap_text "$1" "Чат" >/dev/null; sleep 1; tap_text "$1" "$2" >/dev/null; sleep 1.5
-    screen_has "$1" "Отпр." && return 0
+    screen_has "$1" "Отправить" && return 0
   done
   return 0
 }

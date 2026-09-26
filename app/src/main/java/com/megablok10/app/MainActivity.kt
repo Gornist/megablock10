@@ -234,7 +234,8 @@ fun AppRoot() {
                                 cyberdeckPeerPreset = peerKey
                                 cyberdeckSegmentPreset = if (kind == ItemKind.DAEMON) 0 else 1
                                 tab = AppTab.Hack
-                            }
+                            },
+                            onCallContact = { peer: OnlinePlayer -> withMicPermission { calls.start(peer) } }
                         )
                         AppTab.Calls -> CallsScreen(onCallPeer = { peer: OnlinePlayer -> withMicPermission { calls.start(peer) } })
                         AppTab.Hack -> CyberdeckScreen(
