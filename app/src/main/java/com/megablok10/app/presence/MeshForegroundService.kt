@@ -66,17 +66,18 @@ class MeshForegroundService : Service() {
 
     companion object {
         /**
-         * Сеть поднимается и при запуске процесса без экрана (AppGraph.startMeshWhenIdentityAppears) — а с Android 12 запуск
-         * foreground-сервиса из фона запрещён (ForegroundServiceStartNotAllowedException, наследник IllegalStateException).
-         * Тогда сеть работает без сервиса, а сервис поднимет открытие приложения ([com.megablok10.app.chat.MeshSession.ensureForeground]).
+         * Сеть поднимается и при запуске процесса без экрана — а с Android 12 запуск foreground-сервиса из фона запрещён
+         * (ForegroundServiceStartNotAllowedException, наследник IllegalStateException). Тогда false: сеть работает без сервиса, а
+         * сервис поднимет открытие приложения (session.SessionController.onUiStarted). Зовёт только SessionController.
          */
-        fun start(context: Context) {
+        fun start(context: Context): Boolean =
             try {
                 context.startForegroundService(Intent(context, MeshForegroundService::class.java))
+                true
             } catch (e: IllegalStateException) {
                 Mb10Log.w("MeshService", "foreground-сервис не запущен (приложение в фоне)", e)
+                false
             }
-        }
 
         fun stop(context: Context) {
             context.stopService(Intent(context, MeshForegroundService::class.java))

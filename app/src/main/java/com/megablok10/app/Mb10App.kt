@@ -21,8 +21,7 @@ class Mb10App : Application() {
         Mb10Log.i("App", "=== ЗАПУСК ПРОЦЕССА === ${DeviceDiagnostics.header()} logDir=${Mb10Log.directory?.path}")
         graph = AppGraph(this)
         graph.resumeInterruptedWork()
-        graph.startMeshWhenIdentityAppears()
-        graph.startCollectorSync()
+        graph.startSession()
 
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->

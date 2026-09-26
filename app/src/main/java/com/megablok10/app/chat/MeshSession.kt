@@ -6,7 +6,6 @@ import com.megablok10.app.call.CallManager
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.items.ItemLedger
 import com.megablok10.app.log.Mb10Log
-import com.megablok10.app.presence.MeshForegroundService
 import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.presence.WifiBinder
 import com.megablok10.app.qr.Mb10Qr
@@ -66,8 +65,7 @@ class MeshSession(
         scope = sessionScope
 
         SoundPlayer.preload(app)
-        // Без этого фоновый процесс рано или поздно замораживается, и приём сообщений/звонков встаёт до открытия приложения заново.
-        MeshForegroundService.start(app)
+        // Foreground-сервис (без него фоновый процесс замораживается) поднимает SessionController вместе с сетью (B3).
         // Трафик приложения — только по Wi-Fi игровой сети; при смене сети NSD перерегистрируется (docs/network-spec.md, §7).
         wifi.start { presence.refresh() }
 
@@ -98,19 +96,12 @@ class MeshSession(
         sessionScope.launch { while (true) { delay(5_000); chat.flushOutbox() } }
     }
 
-    /** Сессия уже идёт — убедиться, что foreground-сервис поднят: при старте из фона Android 12+ мог его не пустить. Зовёт экран. */
-    @Synchronized
-    fun ensureForeground() {
-        if (startedForKey != null) MeshForegroundService.start(app)
-    }
-
     @Synchronized
     fun stop() {
         Mb10Log.event(TAG, "chat.stop")
         server?.stop()
         presence.stop()
         wifi.stop()
-        if (startedForKey != null) MeshForegroundService.stop(app)
         scope?.cancel()
         server = null
         scope = null

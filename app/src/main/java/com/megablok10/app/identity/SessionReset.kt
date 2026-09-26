@@ -2,7 +2,6 @@ package com.megablok10.app.identity
 
 import androidx.room.withTransaction
 import com.megablok10.app.announce.AnnouncementStore
-import com.megablok10.app.chat.MeshSession
 import com.megablok10.app.collector.ChangeField
 import com.megablok10.app.collector.ChangeReason
 import com.megablok10.app.collector.CollectorSettings
@@ -28,7 +27,8 @@ class SessionReset(
     private val settings: CollectorSettings,
     private val changes: ChangeRecorder,
     private val announcements: AnnouncementStore,
-    private val mesh: MeshSession,
+    /** Остановить сеть до стирания данных (session.SessionController.onSessionReset). */
+    private val stopSession: () -> Unit,
 ) {
     /**
      * Выполняет сброс. [reportToCollector] — записать на сервер, что персонаж сброшен (кнопка в Настройках); стенд e2e тоже идёт этим путём.
@@ -40,7 +40,7 @@ class SessionReset(
             changes.record(ChangeField.CALLSIGN, identity.callsign, "", ChangeReason.CHARACTER_RESET)
             changes.record(ChangeField.FACTION, identity.faction, "", ChangeReason.CHARACTER_RESET)
         }
-        mesh.stop()
+        stopSession()
         db.withTransaction {
             val db1 = db.openHelper.writableDatabase
             val tables = db1.query("SELECT name FROM sqlite_master WHERE type = 'table'").use { c -> buildList { while (c.moveToNext()) add(c.getString(0)) } }

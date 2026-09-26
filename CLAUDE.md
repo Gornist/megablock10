@@ -80,8 +80,9 @@
 - Адрес игрока — не «первый в списке»: у одного ключа бывает несколько записей пиров (NSD, статическая, подсказка сервера),
   NSD может хранить порт прошлого процесса. Отправлять только через `AppGraph.peerDirectory.send(ключ, строка)`
   (kit `PeerDirectory`: перебор адресов, порядок — `PeerTable`); экранам — `OnlinePlayer` без адреса.
-- Фоновая работа стартует от процесса (`Mb10App.onCreate`), не от экрана: сеть (`startMeshWhenIdentityAppears`) и синк
-  (`startCollectorSync`). С Android 12 `startForegroundService` из фона бросает исключение — ловить (см. `MeshForegroundService.start`).
+- Фоновая работа — только через `session/SessionController` (B3): процесс (`AppGraph.startSession`), личность, экран и сброс сессии
+  сообщают ему события, а сеть, синк и foreground-сервис запускает он (стережёт `SessionGuardTest`). С Android 12
+  `startForegroundService` из фона бросает исключение — `MeshForegroundService.start` ловит и возвращает false, сервис поднимет экран.
 - Личность — в SharedPreferences, игровые данные — в Room: личность появляется раньше коммита данных. Не читать «персонаж
   есть ⇒ стартовый баланс есть» (refactor-plan, C1).
 - Модель угроз — дружеская игра: подписи QR мастера, реестр ключей, подписи чата не делаем (решение владельца).

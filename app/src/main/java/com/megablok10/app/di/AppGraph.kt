@@ -33,15 +33,18 @@ import com.megablok10.app.data.RoomTransactor
 import com.megablok10.app.identity.ContactDirectory
 import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.identity.CreateCharacter
+import com.megablok10.app.identity.Identity
 import com.megablok10.app.identity.IdentityStore
 import com.megablok10.app.identity.RamUpgradeStore
 import com.megablok10.app.identity.SessionReset
-import com.megablok10.app.identity.startMeshOncePerCharacter
 import com.megablok10.app.items.AcceptItem
 import com.megablok10.app.items.ItemTransferStore
 import com.megablok10.app.items.SendItem
 import com.megablok10.app.log.DeviceDiagnostics
 import com.megablok10.app.log.Mb10Log
+import com.megablok10.app.presence.MeshForegroundService
+import com.megablok10.app.session.SessionActions
+import com.megablok10.app.session.SessionController
 import com.megablok10.app.net.WireVersion
 import com.megablok10.app.presence.MeshLink
 import com.megablok10.app.presence.PresenceService
@@ -167,9 +170,21 @@ class AppGraph(private val app: Application) {
         ),
     )
     val provisioning = ProvisionStore(identity, collectorSettings, changes, wallet, db.consumedTokenDao(), transactor)
-    val sessionReset = SessionReset(db, identity, collectorSettings, changes, announcements, mesh)
+    val sessionReset = SessionReset(db, identity, collectorSettings, changes, announcements) { session.onSessionReset() }
 
-    /** Фоновый обмен с мастерским коллектором (kit SyncEngine). Запускается один раз — [startCollectorSync]. */
+    /**
+     * Что работает в фоне — решает только он (B3): сеть на личность, синк на процесс, foreground-сервис с правилами Android 12+.
+     * Адаптер ниже — единственное место, где зовутся mesh.start/stop, запуск синка и MeshForegroundService (SessionGuardTest).
+     */
+    val session: SessionController = SessionController(object : SessionActions {
+        override fun startMesh(identity: Identity) = mesh.start(identity)
+        override fun stopMesh() = mesh.stop()
+        override fun startSync() { val engine = collectorSync; processScope.launch { engine.run() } }
+        override fun startForeground(): Boolean = MeshForegroundService.start(app)
+        override fun stopForeground() = MeshForegroundService.stop(app)
+    })
+
+    /** Фоновый обмен с мастерским коллектором (kit SyncEngine). Запускается один раз — SessionController (startSync). */
     val collectorSync: SyncEngine by lazy {
         SyncEngine(
             queue = changeQueue,
@@ -189,7 +204,6 @@ class AppGraph(private val app: Application) {
     /** Сколько записей ждёт подтверждения коллектора (Настройки). */
     fun observePendingChanges(): Flow<Int> = changeQueue.observeCount()
 
-    @Volatile private var syncStarted = false
 
     /**
      * Доделать операции, прерванные падением прошлого процесса посередине: выдачу персонажа по QR и RAM-апгрейд (см.
@@ -203,25 +217,12 @@ class AppGraph(private val app: Application) {
     }
 
     /**
-     * Сетевая сессия — при появлении личности, а не при открытии экрана: подписка живёт в [processScope] с момента старта
-     * процесса, поэтому работает и когда систем перезапускает процесс сам (MeshForegroundService — START_STICKY) без
-     * единой Activity. Зовётся один раз при запуске процесса ([Mb10App.onCreate]).
+     * Запуск процесса ([Mb10App.onCreate]): синк сразу, сеть — при появлении личности. Подписка живёт в [processScope] с момента
+     * старта, поэтому работает и когда система поднимает процесс сама (MeshForegroundService — START_STICKY) без единой Activity.
      */
-    fun startMeshWhenIdentityAppears() {
-        processScope.launch { identity.state.startMeshOncePerCharacter { mesh.start(it) } }
-    }
-
-    /**
-     * Обмен с коллектором — с запуска процесса ([Mb10App.onCreate]), как и сетевая сессия: процесс, поднятый системой без экрана
-     * (перезапуск MeshForegroundService), иначе не отправлял записи для мастера и не получал его правки, пока игрок не откроет
-     * приложение. Без адреса сервера или личности движок просто ждёт (SyncEngine). Повторные вызовы (экран, onUiStarted) — не операция.
-     */
-    @Synchronized
-    fun startCollectorSync() {
-        if (syncStarted) return
-        syncStarted = true
-        val engine = collectorSync
-        processScope.launch { engine.run() }
+    fun startSession() {
+        session.onProcessStarted()
+        processScope.launch { identity.state.collect { session.onIdentity(it) } }
     }
 
     private fun prefs(name: String) = app.getSharedPreferences(name, Context.MODE_PRIVATE)
