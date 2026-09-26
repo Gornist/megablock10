@@ -13,6 +13,7 @@ MB10DBG	give id=
 MB10DBG	cancelitem
 MB10DBG	cancel
 MB10DBG	set applied
+MB10DBG	readthread ->
 CollectorClient	sync.ok
 CollectorClient	sync.unreachable
 WifiBinder	привязано к Wi-Fi

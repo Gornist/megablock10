@@ -19,6 +19,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -26,6 +27,7 @@ import kotlinx.coroutines.launch
  *  - DEBUG_QR     --es qr <строка>                      подать QR-строку как скан
  *  - DEBUG_PEER   --es pk --es cs --es fac --es host --ei port   добавить пира без NSD
  *  - DEBUG_CONFIG --es clock <N> --es timer <N> --es autosolve true|false / port ? (напечатать порт приложения: "port=N")   см. DebugConfig
+ *  - DEBUG_SET    … / readreceipts on|off / readthread <pubKeyB64> (как открыть тред: отчёт о прочтении)
  *  - DEBUG_SET    --es create "Позывной:Фракция" / collector <url> / cs / fac / ram / balance / daemon "имя:1C,55:тир:ЭФФЕКТ" / pay "получатель:сумма:online|offline" [--ei burst N — N одновременных переводов] / contact "pk:позывной:фракция" / say "получатель|текст" / sayas "получатель|pk|позывной|фракция|текст" / give "daemon|shard:id:получатель[:offline]" / cancelitem <id> / cancel <txId> / cooldowns reset
  * Итог DEBUG_CONFIG / DEBUG_SET пишется в logcat с тегом MB10DBG (строки разбирает scripts/e2e/lib.sh — формат не менять).
  * Все действия идут через корень композиции (context.appGraph) — тем же путём, что и интерфейс.
@@ -155,6 +157,14 @@ class DebugQrReceiver : BroadcastReceiver() {
         intent.getStringExtra("cancelitem")?.let { Log.i(TAG, "cancelitem $it -> ${graph.items.cancelOutgoing(it)}") }
         intent.getStringExtra("cancel")?.let { Log.i(TAG, "cancel ${it} -> ${graph.wallet.cancelOutgoing(it)}") }
         if (intent.getStringExtra("cooldowns") == "reset") graph.cooldowns.resetAll()
+        // «Отчёты о прочтении» on|off — переключатель из Настроек (D4).
+        intent.getStringExtra("readreceipts")?.let { graph.readReceiptSetting.set(it == "on") }
+        // Игрок открыл тред с «pubKeyB64» — то же, что DirectThreadViewModel: отчёт о прочтении. Пишет «readthread -> SENT|QUEUED|OFF|NOTHING_NEW».
+        intent.getStringExtra("readthread")?.let { peer ->
+            val me = graph.identity.current ?: return@let
+            val messages = graph.chat.observeDirect(me.publicKeyB64, peer).first()
+            Log.i(TAG, "readthread -> ${graph.readReceipts.onThreadShown(me.publicKeyB64, peer, messages)}")
+        }
         Log.i(TAG, "set applied: ${graph.identity.current}")
     }
 

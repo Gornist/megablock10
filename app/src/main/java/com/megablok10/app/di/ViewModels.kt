@@ -50,7 +50,7 @@ fun AppGraph.directThreadViewModel(myKey: String, peerKey: String) = DirectThrea
     acceptItem = acceptItem,
     receipts = receipts,
     work = processScope,
-    markRead = readReceipts::onThreadShown,
+    markRead = { me, peer, messages -> readReceipts.onThreadShown(me, peer, messages) },
     showRead = readReceiptSetting.enabled,
 )
 

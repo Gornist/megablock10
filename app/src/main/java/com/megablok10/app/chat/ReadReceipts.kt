@@ -71,15 +71,21 @@ class ReadReceipts(
     /** Последний отправленный водяной знак на собеседника — чтобы не слать тот же отчёт на каждое обновление ленты. */
     private val sent = ConcurrentHashMap<String, Long>()
 
-    suspend fun onThreadShown(me: String, peerKey: String, messages: List<ChatMessageEntity>) {
-        if (!setting.enabled.value) return
-        val upTo = messages.filter { it.type == ChatMessageType.DM.name && it.fromPubKeyB64 == peerKey }.maxOfOrNull { it.timestamp } ?: return
-        if ((sent[peerKey] ?: Long.MIN_VALUE) >= upTo) return
+    /** Что стало с отчётом — для журнала и стенда e2e. */
+    enum class Result { OFF, NOTHING_NEW, SENT, QUEUED }
+
+    suspend fun onThreadShown(me: String, peerKey: String, messages: List<ChatMessageEntity>): Result {
+        if (!setting.enabled.value) return Result.OFF
+        val upTo = messages.filter { it.type == ChatMessageType.DM.name && it.fromPubKeyB64 == peerKey }.maxOfOrNull { it.timestamp }
+            ?: return Result.NOTHING_NEW
+        if ((sent[peerKey] ?: Long.MIN_VALUE) >= upTo) return Result.NOTHING_NEW
         sent[peerKey] = upTo
         val line = ReadReceiptProtocol.encode(ReadReceipt(me, peerKey, upTo))
         val outcome = withContext(Dispatchers.IO) { peers.send(peerKey, line) }
         Mb10Log.event(TAG, "read.sent", "to" to Mb10Log.short(peerKey), "upTo" to upTo, "outcome" to outcome.name)
-        if (outcome != SendOutcome.DELIVERED) outbox.enqueueLine(peerKey, line)
+        if (outcome == SendOutcome.DELIVERED) return Result.SENT
+        outbox.enqueueLine(peerKey, line)
+        return Result.QUEUED
     }
 
     /** Чужой отчёт о моих сообщениях: помечаем прочитанными (показ зависит от переключателя, хранение — нет). */
