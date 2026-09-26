@@ -42,6 +42,7 @@ object MbTypography {
     val menuLabel = TextStyle(fontFamily = FiraSansCondensed, fontWeight = FontWeight.Medium, fontSize = 11.sp)
     val meta = TextStyle(fontFamily = IBMPlexMono, fontWeight = FontWeight.Normal, fontSize = 11.sp)
     val metaStatus = TextStyle(fontFamily = IBMPlexMono, fontWeight = FontWeight.Medium, fontSize = 11.sp, letterSpacing = 0.08f.em)
+    val tagLabel = TextStyle(fontFamily = IBMPlexMono, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 0.08f.em)
     val demonCode = TextStyle(fontFamily = IBMPlexMono, fontWeight = FontWeight.Medium, fontSize = 12.5.sp, letterSpacing = 0.08f.em)
     val breachCell = TextStyle(fontFamily = IBMPlexMono, fontWeight = FontWeight.Medium, fontSize = 15.sp)
     val listAmount = TextStyle(fontFamily = IBMPlexMono, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
