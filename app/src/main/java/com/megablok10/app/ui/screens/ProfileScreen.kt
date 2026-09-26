@@ -1,38 +1,33 @@
 package com.megablok10.app.ui.screens
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.megablok10.app.identity.Identity
+import com.megablok10.app.ui.theme.MbBreadcrumb
+import com.megablok10.app.ui.theme.MbDimens
+import com.megablok10.app.ui.theme.MbIconButton
+import com.megablok10.app.ui.theme.MbIcons
+import com.megablok10.app.ui.theme.MbTabItem
+import com.megablok10.app.ui.theme.MbTabs
 import com.megablok10.kit.mesh.OnlinePlayer
-import com.megablok10.app.ui.theme.JetBrainsMono
-import com.megablok10.app.ui.theme.MB10Colors
-import com.megablok10.app.ui.theme.SegmentedTabs
+
+private const val SEGMENT_PROFILE = 0
+private const val SEGMENT_SETTINGS = 1
+private const val SEGMENT_NETWORK = 2
 
 /**
- * Профиль и Настройки — одно место за аватаром в шапке, а не два отдельных
- * таба внизу (как чат/звонки/кибердека/шарды раньше — экранов было слишком
- * много для нижнего бара). Сегменты, тот же паттерн, что уже есть в Чате и
- * Кибердеке, а не слитная страница: StatusScreen и SettingsScreen оба сами
- * по себе прокручиваемые списки, а вложенный скролл внутри скролла в Compose
- * ломается — сегменты показывают только один из них за раз, без этой проблемы.
+ * Профиль / Настройки / Сеть — три вкладки одного экрана за аватаром в шапке, а не отдельные табы внизу (их и так
+ * четыре — чат/звонки/кибердека/финансы). Три сегмента вместо прежних двух (M4.6 плана миграции): «Сеть» была частью
+ * «Настроек» одним длинным списком, гайдлайн (раздел 5) держит их отдельно. Экран остаётся отдельным полноэкранным
+ * флоу поверх оболочки (`MbAppShell`), как решили в M3, — сама оболочка вкладку профиля не заводит.
  */
 @Composable
 fun ProfileScreen(
@@ -42,29 +37,22 @@ fun ProfileScreen(
     onResetIdentity: () -> Unit,
     onBack: () -> Unit
 ) {
-    var segment by remember { mutableIntStateOf(0) } // 0 = Профиль, 1 = Настройки
+    var segment by remember { mutableIntStateOf(SEGMENT_PROFILE) }
 
-    Column(Modifier.fillMaxSize()) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onBack).padding(horizontal = 16.dp, vertical = 10.dp)
-        ) {
-            Text("←", color = MB10Colors.inkPrimary, fontFamily = JetBrainsMono, fontSize = 16.sp)
-            Spacer(Modifier.width(8.dp))
-            Text("Профиль", color = MB10Colors.inkPrimary, fontFamily = JetBrainsMono, fontSize = 13.sp)
+    Column(Modifier.fillMaxSize().padding(horizontal = MbDimens.screenPadding)) {
+        MbBreadcrumb(parts = listOf("Профиль"), icon = MbIcons.User) {
+            MbIconButton(MbIcons.Close, "Назад", onBack)
         }
-
-        SegmentedTabs(
-            listOf("Профиль", "Настройки"), selected = segment, onSelect = { segment = it },
-            modifier = Modifier.padding(horizontal = 16.dp), wrapInSurface = false
+        MbTabs(
+            items = listOf(MbTabItem(label = "Профиль"), MbTabItem(label = "Настройки"), MbTabItem(label = "Сеть")),
+            selected = segment,
+            onSelect = { segment = it }
         )
-        Spacer(Modifier.height(4.dp))
-
         Box(Modifier.weight(1f)) {
-            if (segment == 0) {
-                StatusScreen(identity, onMessageContact = onMessageContact, onCallContact = onCallContact)
-            } else {
-                SettingsScreen(onResetIdentity = onResetIdentity)
+            when (segment) {
+                SEGMENT_PROFILE -> StatusScreen(identity, onMessageContact = onMessageContact, onCallContact = onCallContact)
+                SEGMENT_SETTINGS -> SettingsScreen(onResetIdentity = onResetIdentity)
+                SEGMENT_NETWORK -> NetworkScreen()
             }
         }
     }
