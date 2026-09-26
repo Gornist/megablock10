@@ -24,6 +24,8 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -153,7 +155,10 @@ fun MbComposer(
                 onValueChange = onValueChange,
                 textStyle = MbTypography.dialogText.copy(color = c.ink),
                 cursorBrush = SolidColor(c.acc),
-                modifier = Modifier.fillMaxWidth()
+                // Плейсхолдер — соседний Text, не связанный с полем: без этого TalkBack получает пустое поле без
+                // подписи (найдено на реальном устройстве, M6 плана миграции — Т13; первый же сценарий чек-листа,
+                // «прочитать сообщение и ответить», упирался в немое поле ответа).
+                modifier = Modifier.fillMaxWidth().semantics { contentDescription = placeholder }
             )
         }
         Box(
