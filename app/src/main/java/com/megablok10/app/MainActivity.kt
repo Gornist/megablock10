@@ -13,13 +13,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -37,9 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.megablok10.app.call.CallPhase
@@ -71,15 +67,10 @@ import com.megablok10.app.ui.screens.ChatScreen
 import com.megablok10.app.ui.screens.CyberdeckScreen
 import com.megablok10.app.ui.screens.ProfileScreen
 import com.megablok10.app.ui.screens.WalletScreen
-import com.megablok10.app.ui.theme.AppButton
 import com.megablok10.app.ui.theme.AppSnackHost
-import com.megablok10.app.ui.theme.AppTextField
-import com.megablok10.app.ui.theme.ButtonVariant
-import com.megablok10.app.ui.theme.HexBullet
-import com.megablok10.app.ui.theme.IBMPlexSans
-import com.megablok10.app.ui.theme.JetBrainsMono
-import com.megablok10.app.ui.theme.Jura
-import com.megablok10.app.ui.theme.MB10Colors
+import com.megablok10.app.ui.theme.MbColorsDefault
+import com.megablok10.app.ui.theme.MbField
+import com.megablok10.app.ui.theme.MbTypography
 
 class MainActivity : ComponentActivity() {
 
@@ -91,12 +82,12 @@ class MainActivity : ComponentActivity() {
             CompositionLocalProvider(LocalAppGraph provides graph) {
                 MaterialTheme(
                     colorScheme = darkColorScheme(
-                        primary = MB10Colors.accentAction,
-                        background = MB10Colors.surfaceBase,
-                        surface = MB10Colors.surfaceRaised,
-                        onPrimary = androidx.compose.ui.graphics.Color.Black,
-                        onBackground = MB10Colors.inkPrimary,
-                        onSurface = MB10Colors.inkPrimary
+                        primary = MbColorsDefault.acc,
+                        background = MbColorsDefault.bg,
+                        surface = MbColorsDefault.plate,
+                        onPrimary = MbColorsDefault.accInk,
+                        onBackground = MbColorsDefault.ink,
+                        onSurface = MbColorsDefault.ink
                     )
                 ) {
                     Surface(color = MaterialTheme.colorScheme.background) {
@@ -291,6 +282,7 @@ fun AppRoot() {
 fun SetupScreen(onProvision: (Mb10Qr.Provision) -> Unit, onCreated: (String, String) -> Unit) {
     var callsign by remember { mutableStateOf("") }
     var faction by remember { mutableStateOf("") }
+    val c = MbColorsDefault
     val startScan = rememberMb10QrScanner { qr ->
         if (qr is Mb10Qr.Provision) onProvision(qr) else AppSnack.show("Это не код персонажа. Нужен QR от мастера")
     }
@@ -298,48 +290,43 @@ fun SetupScreen(onProvision: (Mb10Qr.Provision) -> Unit, onCreated: (String, Str
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MB10Colors.surfaceBase)
+            .background(c.bg)
             .padding(24.dp),
         verticalArrangement = Arrangement.Center
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            HexBullet(MB10Colors.accentAction, size = 10.dp)
-            Spacer(Modifier.width(8.dp))
-            Text("МЕГАБЛОК №10", color = MB10Colors.inkPrimary, fontFamily = Jura, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-        }
+        Text("МЕГАБЛОК №10", style = MbTypography.cardTitle, color = c.inkStrong)
         Spacer(Modifier.height(4.dp))
-        Text(if (BuildConfig.ALLOW_MANUAL_SETUP) "Создание личности" else "Выдача персонажа", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp)
+        Text(if (BuildConfig.ALLOW_MANUAL_SETUP) "Создание личности" else "Выдача персонажа", style = MbTypography.meta, color = c.ink2)
         Spacer(Modifier.height(28.dp))
 
         Text(
             "Подойдите к мастеру: он покажет QR с вашим персонажем. Один код настроит приложение и создаст персонажа.",
-            color = MB10Colors.inkSecondary, fontFamily = IBMPlexSans, fontSize = 13.sp, lineHeight = 18.sp
+            style = MbTypography.dialogText, color = c.ink2
         )
         Spacer(Modifier.height(16.dp))
-        // Код от мастера, не игровое действие игрока — служебный жёлтый (см. правило accentSystem в Color.kt).
-        AppButton("Сканировать QR персонажа", variant = ButtonVariant.System, modifier = Modifier.fillMaxWidth(), onClick = startScan)
+        MbButton("Сканировать QR персонажа", onClick = startScan, keyIcon = MbIcons.Scan)
         Spacer(Modifier.height(10.dp))
         Text(
             "Код действует один раз. Повторно — только после сброса сессии и с новым кодом от мастера.",
-            color = MB10Colors.inkTertiary, fontFamily = IBMPlexSans, fontSize = 11.sp, lineHeight = 15.sp
+            style = MbTypography.meta, color = c.ink3
         )
         if (!BuildConfig.ALLOW_MANUAL_SETUP) return@Column
         Spacer(Modifier.height(28.dp))
-        Text("Ручное создание (сборка для разработки)", color = MB10Colors.inkTertiary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+        Text("Ручное создание (сборка для разработки)", style = MbTypography.meta, color = c.ink3)
         Spacer(Modifier.height(12.dp))
 
-        Text("Позывной", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+        Text("Позывной", style = MbTypography.settingLabel, color = c.ink2)
         Spacer(Modifier.height(6.dp))
-        AppTextField(value = callsign, onValueChange = { callsign = it }, placeholder = "RAZOR", modifier = Modifier.fillMaxWidth())
+        MbField(value = callsign, onValueChange = { callsign = it }, placeholder = "RAZOR", modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(16.dp))
-        Text("Фракция", color = MB10Colors.inkSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+        Text("Фракция", style = MbTypography.settingLabel, color = c.ink2)
         Spacer(Modifier.height(6.dp))
-        AppTextField(value = faction, onValueChange = { faction = it }, placeholder = "Малстром", modifier = Modifier.fillMaxWidth())
+        MbField(value = faction, onValueChange = { faction = it }, placeholder = "Малстром", modifier = Modifier.fillMaxWidth())
 
         Spacer(Modifier.height(28.dp))
-        AppButton(
+        MbButton(
             "Сгенерировать ключ и QR",
-            variant = ButtonVariant.Primary,
+            kind = MbButtonKind.Ghost,
             enabled = callsign.isNotBlank(),
             modifier = Modifier.fillMaxWidth(),
             onClick = { if (callsign.isNotBlank()) onCreated(callsign, faction) }
@@ -347,7 +334,7 @@ fun SetupScreen(onProvision: (Mb10Qr.Provision) -> Unit, onCreated: (String, Str
         Spacer(Modifier.height(10.dp))
         Text(
             "Ключевая пара генерируется один раз на этом устройстве и остаётся идентификатором персонажа на всю игру.",
-            color = MB10Colors.inkTertiary, fontFamily = IBMPlexSans, fontSize = 11.sp, lineHeight = 15.sp
+            style = MbTypography.meta, color = c.ink3
         )
     }
 }
