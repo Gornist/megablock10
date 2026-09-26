@@ -1,6 +1,8 @@
 #!/bin/bash
 # Съёмка 12 экранов приложения на эмуляторе A для ревью интерфейса «до/после»: чат, тред, звонки, Кибердека, кошелёк, профиль, настройки, выбор демонов, взлом.
 # Нужен поднятый стенд (./up.sh). Результат: $E2E_DIR/audit/*.png и сводный лист sheet.png (нужен ffmpeg).
+# Y=2300 у тапов по нижнему меню — пересчитан под новую высоту MbAppShell (52 dp вместо ≈62dp, docs/ux/ui-migration-plan.md, M3),
+# но не проверен на живом эмуляторе (посчитан по dp, не измерен): если тап промахивается — посмотрите на снимок и подвиньте Y.
 source "$(dirname "$0")/lib.sh"
 PKA=$(cat $E2E_DIR/pk_$A.txt); PKB=$(cat $E2E_DIR/pk_$B.txt)
 restart_app $A; sleep 2   # начинаем с чистого экрана: после сценариев мог остаться оверлей взлома
@@ -11,16 +13,16 @@ snap() { adb_ $A exec-out screencap -p > $S/$1.png; }
 snap 01_chat_list
 tap_text $A "Bob" >/dev/null; sleep 2; snap 02_thread
 adb_ $A shell input tap 55 130; sleep 1.5
-adb_ $A shell input tap 405 2285; sleep 2; snap 03_calls
-adb_ $A shell input tap 675 2285; sleep 2; snap 04_cyberdeck_demons
+adb_ $A shell input tap 405 2300; sleep 2; snap 03_calls
+adb_ $A shell input tap 675 2300; sleep 2; snap 04_cyberdeck_demons
 tap_text $A "Шарды" >/dev/null; sleep 1.5; snap 05_cyberdeck_shards
-adb_ $A shell input tap 945 2285; sleep 2; snap 06_wallet
+adb_ $A shell input tap 945 2300; sleep 2; snap 06_wallet
 tap_text $A "Отправить" >/dev/null; sleep 2; snap 07_wallet_send
-adb_ $A shell input tap 135 2285; sleep 1.5
+adb_ $A shell input tap 135 2300; sleep 1.5
 adb_ $A shell input tap 100 130; sleep 2; snap 08_profile
 tap_text $A "Настройки" >/dev/null; sleep 2; snap 09_settings
 QR=$(container au-$RANDOM "Арасака-404" HARD Arasaka 1)
-adb_ $A shell input tap 55 130; sleep 1.5; adb_ $A shell input tap 675 2285; sleep 2; tap_text $A "Демоны" >/dev/null; sleep 1
+adb_ $A shell input tap 55 130; sleep 1.5; adb_ $A shell input tap 675 2300; sleep 2; tap_text $A "Демоны" >/dev/null; sleep 1
 dbg $A DEBUG_QR --es qr "$QR"; sleep 4; snap 10_picker
 tap_text $A "Black Curtain" >/dev/null; sleep 1; tap_text $A "Deep Miner" >/dev/null; sleep 1.5; snap 11_picker_selected
 set_config $A autosolve false; tap_text $A "Взломать контейнер" >/dev/null; sleep 5; snap 12_breach

@@ -30,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,7 +52,10 @@ import com.megablok10.app.ui.LocalAppGraph
 import com.megablok10.app.ui.appViewModel
 import com.megablok10.kit.mesh.OnlinePlayer
 import com.megablok10.app.ui.nav.AppTab
-import com.megablok10.app.ui.nav.MainScaffold
+import com.megablok10.app.ui.theme.MbAppShell
+import com.megablok10.app.ui.theme.MbIcons
+import com.megablok10.app.ui.theme.MbNavItem
+import com.megablok10.app.ui.theme.formatMoney
 import com.megablok10.app.ui.screens.AnnouncementDialogHost
 import com.megablok10.app.ui.screens.CallOverlay
 import com.megablok10.app.ui.screens.CallsScreen
@@ -177,46 +181,71 @@ fun AppRoot() {
             onBack = { showProfile = false }
         )
     } else {
+        val graph = LocalAppGraph.current
         val callState by calls.call.collectAsStateWithLifecycle()
         val callContacts by calls.contacts.collectAsStateWithLifecycle()
-        // Только активный таб решает, вложен ли он сейчас — chrome прячется по его флагу,
-        // не по обоим сразу (состояние неактивного таба не влияет, пока на него не переключились).
-        val hideChrome = when (tab) {
+        val balance by graph.wallet.observeBalance().collectAsStateWithLifecycle(0L)
+        val unreadChat by graph.shellBadges.unreadChatThreads(currentIdentity.publicKeyB64).collectAsStateWithLifecycle(0)
+        val missedCalls by graph.shellBadges.missedCalls().collectAsStateWithLifecycle(0)
+        // Таб, на который переключились, сам гасит свой бейдж — отдельного экрана «прочитано» не нужно.
+        LaunchedEffect(tab) {
+            when (tab) {
+                AppTab.Chat -> graph.shellBadges.markChatSeen()
+                AppTab.Calls -> graph.shellBadges.markCallsSeen()
+                else -> {}
+            }
+        }
+        // Только активный таб решает, вложен ли он сейчас — шапка прячется по его флагу. Нижнее меню — всегда (новая
+        // оболочка не даёт спрятать nav, как в прототипе: с вложенного экрана можно сразу уйти на другую вкладку).
+        val hideHeader = when (tab) {
             AppTab.Chat -> chatThreadOpen
             AppTab.Hack -> shardDetailOpen
             else -> false
         }
         Box(Modifier.fillMaxSize()) {
-            MainScaffold(
-                identity = currentIdentity,
+            MbAppShell(
+                items = listOf(
+                    MbNavItem(AppTab.Chat.name, MbIcons.Chat, AppTab.Chat.label, badge = unreadChat),
+                    MbNavItem(AppTab.Calls.name, MbIcons.Phone, AppTab.Calls.label, badge = missedCalls),
+                    MbNavItem(AppTab.Hack.name, MbIcons.Hack, AppTab.Hack.label),
+                    MbNavItem(AppTab.Wallet.name, MbIcons.Wallet, AppTab.Wallet.label)
+                ),
+                selectedId = tab.name,
+                onSelect = { id -> tab = AppTab.valueOf(id) },
+                header = !hideHeader,
+                portraitLetter = currentIdentity.callsign.take(1),
+                callsign = currentIdentity.callsign,
+                faction = currentIdentity.faction,
+                balance = formatMoney(balance),
                 onlineNodes = onlinePeers.size,
-                selectedTab = tab,
-                onSelectTab = { tab = it },
-                onOpenProfile = { showProfile = true },
-                hideChrome = hideChrome
-            ) { activeTab ->
-                when (activeTab) {
-                    AppTab.Chat -> ChatScreen(
-                        identity = currentIdentity,
-                        openedWithContactKey = chatContact,
-                        onContactConsumed = { chatContact = null },
-                        onNestedChange = { chatThreadOpen = it },
-                        onQuickTransfer = { key -> walletPreset = key; tab = AppTab.Wallet },
-                        onQuickItem = { kind, peerKey ->
-                            cyberdeckPeerPreset = peerKey
-                            cyberdeckSegmentPreset = if (kind == ItemKind.DAEMON) 0 else 1
-                            tab = AppTab.Hack
-                        }
-                    )
-                    AppTab.Calls -> CallsScreen(onCallPeer = { peer: OnlinePlayer -> withMicPermission { calls.start(peer) } })
-                    AppTab.Hack -> CyberdeckScreen(
-                        identity = currentIdentity,
-                        onNestedChange = { shardDetailOpen = it },
-                        presetPeerKey = cyberdeckPeerPreset,
-                        initialSegment = cyberdeckSegmentPreset,
-                        onPresetConsumed = { cyberdeckPeerPreset = null; cyberdeckSegmentPreset = null }
-                    )
-                    AppTab.Wallet -> WalletScreen(presetContactKey = walletPreset, onPresetConsumed = { walletPreset = null })
+                onOpenProfile = { showProfile = true }
+            ) {
+                // Состояние каждой вкладки (сегмент Кибердеки и т. п.) переживает переключение вкладок.
+                val stateHolder = rememberSaveableStateHolder()
+                stateHolder.SaveableStateProvider(tab.name) {
+                    when (tab) {
+                        AppTab.Chat -> ChatScreen(
+                            identity = currentIdentity,
+                            openedWithContactKey = chatContact,
+                            onContactConsumed = { chatContact = null },
+                            onNestedChange = { chatThreadOpen = it },
+                            onQuickTransfer = { key -> walletPreset = key; tab = AppTab.Wallet },
+                            onQuickItem = { kind, peerKey ->
+                                cyberdeckPeerPreset = peerKey
+                                cyberdeckSegmentPreset = if (kind == ItemKind.DAEMON) 0 else 1
+                                tab = AppTab.Hack
+                            }
+                        )
+                        AppTab.Calls -> CallsScreen(onCallPeer = { peer: OnlinePlayer -> withMicPermission { calls.start(peer) } })
+                        AppTab.Hack -> CyberdeckScreen(
+                            identity = currentIdentity,
+                            onNestedChange = { shardDetailOpen = it },
+                            presetPeerKey = cyberdeckPeerPreset,
+                            initialSegment = cyberdeckSegmentPreset,
+                            onPresetConsumed = { cyberdeckPeerPreset = null; cyberdeckSegmentPreset = null }
+                        )
+                        AppTab.Wallet -> WalletScreen(presetContactKey = walletPreset, onPresetConsumed = { walletPreset = null })
+                    }
                 }
             }
             AnnouncementDialogHost()

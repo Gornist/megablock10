@@ -14,8 +14,11 @@ SCENES=${SCENES:-"deal deck breach shard finale wallet outro"}
 step() { log "▶ $*"; }
 say_b() { dbg $B DEBUG_SET --es say "$PKA|$1"; }
 say_a() { dbg $A DEBUG_SET --es say "$PKB|$1"; }
-# нижняя панель есть только на списках: из треда/оверлея сначала «назад»
-TAB_CHAT="135 2285"; TAB_DECK="675 2285"; BACK="55 130"
+# Y=2300 у TAB_CHAT/TAB_DECK — пересчитан под новую высоту MbAppShell (52 dp вместо ≈62dp, docs/ux/ui-migration-plan.md,
+# M3), но не проверен на живом эмуляторе (посчитан по dp, не измерен) — если тап промахивается, подвиньте Y по записи.
+# Нижнее меню в новой оболочке видно всегда, даже из треда/взлома (так в прототипе) — «назад» ниже не обязателен для
+# переключения вкладки, но сцены его всё равно делают: так исходный экран сцены предсказуем независимо от смены оболочки.
+TAB_CHAT="135 2300"; TAB_DECK="675 2300"; BACK="55 130"
 tap() { adb_ $A shell input tap $1; }
 tapt() { local i; for i in 1 2 3; do tap_text $A "$1" >/dev/null && return 0; sleep 1; done; log "не нашёл «$1»"; }
 
@@ -99,7 +102,7 @@ scene_finale() {
   tapt "Шарды"; sleep 1.5; tapt "Кибер-тело"; sleep 2
   tapt "Передать другому игроку"; sleep 2; tapt "Bob"; sleep 3
   tap "$TAB_CHAT"; sleep 2; tapt "Bob"; sleep 2
-  back_if_arrow $B; sleep 1; adb_ $B shell input tap 135 2285; sleep 1     # Bob (за кадром): из треда в список → вкладка «Чат»
+  back_if_arrow $B; sleep 1; adb_ $B shell input tap 135 2300; sleep 1     # Bob (за кадром): из треда в список → вкладка «Чат»
   tap_text $B "Alice" >/dev/null || log "B: не нашёл Alice"; sleep 2; tap_text $B "Принять" >/dev/null || log "B: не нашёл Принять (шард)"; sleep 2   # принимает шард
   say_b "Отличная работа, Alice. Держи обещанные 300."; sleep 2
   dbg $B DEBUG_SET --es pay "$PKA:300:online"; sleep 4
@@ -111,7 +114,7 @@ scene_finale() {
 scene_wallet() {
   step "сцена: Финансы"
   back_if_arrow $A; sleep 2
-  tap "945 2285"; sleep 8
+  tap "945 2300"; sleep 8
   adb_ $A shell input swipe 540 1700 540 900 1000; sleep 4
 }
 
