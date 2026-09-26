@@ -54,6 +54,7 @@ fun NetworkScreen() {
     val settings = appViewModel { settingsViewModel() }
     val onlinePeers by settings.peers.collectAsStateWithLifecycle()
     val pendingChanges by settings.pendingChanges.collectAsStateWithLifecycle()
+    val collectorReachable by settings.collectorReachable.collectAsStateWithLifecycle()
     var collectorUrl by remember { mutableStateOf(settings.collectorUrl()) }
     var gameSecret by remember { mutableStateOf(settings.gameSecret()) }
     var collectorHelp by remember { mutableStateOf(false) }
@@ -84,7 +85,7 @@ fun NetworkScreen() {
         }
         MbTile("Журнал", modifier = Modifier.fillMaxWidth(), value = "$sizeKb", valueUnit = "КБ", subItems = listOf("хранится ~16 МБ, старое вытесняется"))
 
-        MbSectionTitle("Мастерский коллектор")
+        MbSectionTitle("Мастерский коллектор", meta = if (collectorReachable) "на связи" else "нет связи")
         Text(
             if (collectorHelp) "Скрыть подсказки" else "Подробнее",
             style = MbTypography.meta, color = c.acc,

@@ -60,4 +60,4 @@ fun AppGraph.cyberdeckViewModel() =
 fun AppGraph.breachViewModel() = BreachViewModel(identity.state, checkBreachAccess, finishBreach, processScope)
 
 fun AppGraph.settingsViewModel() =
-    SettingsViewModel(collectorSettings, observePendingChanges(), peerDirectory.online, { collectorSync.wake() }, ::deviceReport, readReceiptSetting)
+    SettingsViewModel(collectorSettings, observePendingChanges(), peerDirectory.online, { collectorSync.wake() }, ::deviceReport, readReceiptSetting, collectorClient.reachable)

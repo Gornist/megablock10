@@ -8,6 +8,9 @@ import com.megablok10.kit.sync.CollectorTransport
 import com.megablok10.kit.sync.SyncRequest
 import com.megablok10.kit.sync.SyncResponse
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -37,6 +40,14 @@ class CollectorClient(
         .readTimeout(5, TimeUnit.SECONDS)
         .build(),
 ) : CollectorTransport {
+
+    /**
+     * Итог последней попытки [exchange] — для плашки «Нет связи» (M4.8 плана миграции), больше ни для чего:
+     * SyncEngine.run сам решает, когда и сколько раз повторять, эта переменная лишь отражает исход постфактум.
+     * `true` по умолчанию — до первой попытки не показываем «нет связи» на пустом месте.
+     */
+    private val _reachable = MutableStateFlow(true)
+    val reachable: StateFlow<Boolean> = _reachable.asStateFlow()
 
     /**
      * POST /api/changes — см. §3.1 ТЗ. null означает "сеть/коллектор
@@ -92,11 +103,13 @@ class CollectorClient(
                     }
                 }.orEmpty()
                 Mb10Log.event(TAG, "sync.ok", "sent" to records.size, "accepted" to accepted.size, "rejected" to rejected.size, "pendingFromMaster" to pending.size, "peersFromServer" to peers.size, "ms" to (System.currentTimeMillis() - started))
+                _reachable.value = true
                 val knownSeq = json.optJSONObject("knownSeq")?.let { o -> o.keys().asSequence().associateWith { o.getLong(it) } } ?: emptyMap()
                 SyncResponse(accepted, rejected, pending, peers, knownSeq)
             }
         } catch (e: IOException) {
             Mb10Log.warnEvent(TAG, "sync.unreachable", "url" to baseUrl, "error" to e.javaClass.simpleName, "msg" to e.message, "records" to records.size, "ms" to (System.currentTimeMillis() - started))
+            _reachable.value = false
             null
         } catch (e: JSONException) {
             // 200 с не-JSON телом (прокси, captive portal, не тот сервер по адресу) — раньше это
