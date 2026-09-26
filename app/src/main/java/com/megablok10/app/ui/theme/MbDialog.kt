@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -59,10 +60,15 @@ fun MbDialogCard(
         fill = c.dlgFill; edge = c.dlgEdge; bar = c.dlgBar
         rule = Color(0xFF1F4550); head = Color(0xFF7FE6F2); ink = Color(0xFFBFE9E6)
     }
-    Column(modifier) {
-        Box(Modifier.mbFrame(fill = fill, edge = edge, form = MbChamferForm.Dlg, cut = 12.dp)) {
-            Box(Modifier.fillMaxHeight().width(7.dp).background(bar).align(Alignment.CenterStart))
-            Column(Modifier.padding(start = 16.dp, bottom = 12.dp)) {
+    Column(modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Min)
+                .mbFrame(fill = fill, edge = edge, form = MbChamferForm.Dlg, cut = 12.dp)
+        ) {
+            Box(Modifier.fillMaxHeight().width(7.dp).background(bar))
+            Column(Modifier.padding(start = 9.dp, bottom = 12.dp)) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()

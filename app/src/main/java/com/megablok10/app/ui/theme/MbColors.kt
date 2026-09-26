@@ -11,6 +11,8 @@ import androidx.compose.ui.graphics.Color
  */
 data class MbColorScheme(
     val bg: Color,
+    /** Фон панелей взлома (`MbPanel`) — в прототипе есть (`--surface`), в таблице раздела 2 гайдлайна отсутствовал; добавлен. */
+    val surface: Color,
     val plate: Color,
     val plate2: Color,
     val plateEdge: Color,
@@ -52,6 +54,7 @@ data class MbColorScheme(
 
 val MbColorsDefault = MbColorScheme(
     bg = Color(0xFF110A0C),
+    surface = Color(0xFF0E1718),
     plate = Color(0xFF150D10),
     plate2 = Color(0xFF0F0A0C),
     plateEdge = Color(0xFF4A2124),
@@ -97,6 +100,7 @@ val MbColorsDefault = MbColorScheme(
  */
 val MbColorsBreach = MbColorsDefault.copy(
     bg = Color(0xFF0E100A),
+    surface = Color(0xFF151809),
     plate = Color(0xFF151809),
     plate2 = Color(0xFF151809),
     plateEdge = Color(0xFF4B5626),
