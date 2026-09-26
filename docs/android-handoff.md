@@ -222,6 +222,27 @@ kit — в [kit/README.md](../kit/README.md).
 - Стенд одноразовый: после `zz-provisioning` следующий `run-all.sh` — только после `./down.sh && ./up.sh` (иначе откажется).
 - Локально: `:app:cleanTestDebugUnitTest` стирает эталоны Paparazzi — для прогона без кэша `--rerun-tasks`.
 
+## UI на новой дизайн-системе (26.09, ветка `agent/ui-kit`)
+
+Экраны игрока переехали с самодельной дизайн-системы (`MB10Colors`, `AppButton`, `ChamferedSurface`, шрифты Jura/
+JetBrains Mono/IBM Plex Sans) на систему по [docs/ux/ui-style-guide.md](ux/ui-style-guide.md) — прототип
+[docs/ux/prototype/mb10-ui-kit.html](ux/prototype/mb10-ui-kit.html), процесс и статус по каждому пункту —
+[docs/ux/ui-migration-plan.md](ux/ui-migration-plan.md) (M0–M5, коммиты f08bc18…M5, все с зелёными `main.yml`+`e2e.yml`).
+Коротко:
+
+- Новые компоненты (`Mb*` в `ui/theme/`) на токенах и типографике гайдлайна; шрифты Fira Sans Condensed + IBM Plex
+  Mono, статичные TTF в `res/font` (лицензии — `docs/ux/font-licenses/`).
+- Все 8 экранов игрока (Чат, Звонки, Кибердека, Кошелёк, Профиль/Настройки/Сеть, Взлом, объявление мастера,
+  состояния пусто/нет связи) и стартовый экран выдачи персонажа (`SetupScreen`) — на новых компонентах.
+- M5: старая дизайн-система удалена целиком (`Components.kt`, `DesignSystem.kt`, `Shapes.kt`, `Type.kt`, `Color.kt`
+  (`MB10Colors`/`MB10Spacing`), `Motion.kt`, `ui/nav/TabIcons.kt`, старый `ScreenshotTest.kt`, три старых TTF) —
+  `grep` по старым именам (`AppButton`, `MB10Colors`, `chamferShape`, `ChamferedSurface`, `Jura`, …) в `app/src/main`
+  и `app/src/test` пуст. `ui/nav/AppShell.kt` → `AppTab.kt` (в файле остался только сам enum, оболочку теперь рисует
+  `MbAppShell`).
+- `docs/ux/ux-plan.md` — более ранний, независимый заход на те же проблемы (компактная шапка, взлом без прокрутки)
+  старыми инструментами; помечен закрытым, замещён этой миграцией.
+- M6 (проверка на устройствах, `docs/device-testing.md`) — следующим шагом.
+
 ## Как проверить у себя
 
 ```bash
