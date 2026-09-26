@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Эталон интерфейса «Мегаблок №10»: каталог компонентов и экраны. Правила — ../ui-style-guide.md, перенос — ../ui-migration-plan.md.
+     Шрифты грузятся с Google Fonts только здесь, в прототипе; в приложении они вшиты в res/font. -->
+<title>Стилевая лаборатория Мегаблока</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=Fira+Sans+Condensed:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* ================= Страница-витрина ================= */
+:root{color-scheme:dark;--page:#0d0d10;--page-ink:#d9d7d2;--page-ink2:#8b8a86;--page-acc:#e8e3d6}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{background:var(--page);color:var(--page-ink)}
+body{font:14px/1.45 "Golos Text",system-ui,sans-serif;padding-inline:16px;padding-block:20px 48px}
+.lab{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+.lab h1{margin:0;font:600 20px/1.2 "Golos Text",sans-serif;text-wrap:balance}
+.lab h1 small{display:block;font:400 13px/1.45 "Golos Text",sans-serif;color:var(--page-ink2);margin-top:4px;max-width:90ch}
+.seg{display:flex;flex-wrap:wrap;gap:4px}
+.seg button{font:500 12px/1 "IBM Plex Mono",monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--page-ink2);background:#17171c;border:0;padding:9px 12px;cursor:pointer;clip-path:polygon(0 0,calc(100% - 6px) 0,100% 6px,100% 100%,6px 100%,0 calc(100% - 6px))}
+.seg button[aria-pressed="true"]{background:var(--page-acc);color:#111}
+.seg button:focus-visible{outline:2px solid var(--page-acc);outline-offset:2px}
+.phones{display:flex;flex-wrap:wrap;justify-content:center;gap:26px 22px}
+.pwrap{display:flex;flex-direction:column;gap:8px;align-items:center;width:360px;max-width:100%}
+.pcap{font:500 11px/1 "IBM Plex Mono",monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--page-ink2)}
+.puses{font:400 10.5px/1.5 "IBM Plex Mono",monospace;color:#6d6c68;text-align:center;max-width:340px}
+.phone{width:360px;max-width:100%;height:740px;border-radius:26px;padding:8px;background:#000;box-shadow:0 0 0 1px #2c2c32,0 20px 50px -20px #000}
+.screen{height:100%;border-radius:19px;overflow:hidden;position:relative}
+.cat{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
+.citem{display:flex;flex-direction:column;gap:8px;background:#141418;padding:12px;clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,10px 100%,0 calc(100% - 10px))}
+.citem h3{margin:0;font:600 14px/1.2 "Golos Text",sans-serif;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.citem h3 code{font:500 11px/1.4 "IBM Plex Mono",monospace;color:#9ad8de}
+.citem p{margin:0;color:var(--page-ink2);font-size:12.5px;line-height:1.45}
+.cdemo{padding:10px;display:flex;flex-direction:column;gap:8px;position:relative;min-height:40px;overflow:hidden}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ================= ТОКЕНЫ ================= */
+.mb{color-scheme:dark;
+  --bg:#110a0c; --bg-art:radial-gradient(130% 55% at 50% 0%,#3b1117 0%,rgba(59,17,23,0) 70%);
+  --surface:#0e1718; --plate:#150d10; --plate-2:#0f0a0c; --plate-edge:#4a2124;
+  --chrome:#c65a52; --chrome-dim:#5a2629; --chrome-soft:rgba(198,90,82,.3); --chrome-deep:#c96a62; --label:#f08a80;
+  --ink:#e2f4f0; --ink-2:#9db3af; --ink-3:#947a7e; --off-title:#8a9b98; --off-sub:#7c8a88; --ink-strong:#f1f1ef;
+  --acc:#5ef6ff; --acc-ink:#02181b; --acc-glow:rgba(94,246,255,.7); --sel-fill:#2d6563;
+  --money:#f5d547; --on-money:#1c1600; --ok:#43f08f; --bad:#ff5a50; --warn:#ff9f43;
+  --plate-sel:#c8433a; --plate-sel-edge:#ff6b5e; --mark:#2a1416; --mark-edge:#7a3632;
+  --dlg-fill:#0a1320; --dlg-edge:#4fb6c4; --dlg-bar:#2c6f7a; --dlg-rule:#1f4550; --dlg-head:#7fe6f2; --dlg-ink:#bfe9e6;
+  --nav-idle:var(--chrome); --nav-line:#6a3b3b; --tab-line:#f1c7c2;
+  --f-body:"Fira Sans Condensed",system-ui,sans-serif; --f-mono:"IBM Plex Mono",ui-monospace,monospace;
+  font-family:var(--f-body);color:var(--ink);background:var(--bg-art),var(--bg)}
+/* Тема «взлом»: те же компоненты, другие токены */
+.mb.theme-breach{--bg:#0e100a;--bg-art:repeating-linear-gradient(0deg,rgba(208,237,87,.04) 0 1px,transparent 1px 22px),repeating-linear-gradient(90deg,rgba(208,237,87,.04) 0 1px,transparent 1px 22px);
+  --surface:#151809;--plate:#151809;--plate-2:#151809;--plate-edge:#4b5626;--chrome:#d0ed57;--chrome-dim:#3b4320;--chrome-soft:rgba(208,237,87,.2);--chrome-deep:#a2ae70;--label:#a2ae70;
+  --ink:#e6f2b0;--ink-2:#a2ae70;--ink-3:#86934f;--used:#5f6a3c;--acc:#d0ed57;--acc-ink:#11140a;--acc-glow:rgba(208,237,87,.6);--nav-idle:#5d673a;--nav-line:#3b4320}
+.mb.theme-ok{--acc:#5ef2a0;--acc-glow:rgba(94,242,160,.6);--chrome:#5ef2a0;--chrome-dim:#1f4a33;--plate-edge:#1f4a33;--ink:#d8fbe8;--ink-2:#86c4a2;--plate:#12291c}
+
+/* ================= Фаска: единственный способ рисовать рамку ================= */
+.fx{position:relative;isolation:isolate;--cut:8px;--tl:0px;--tr:var(--cut);--br:0px;--bl:var(--cut);
+  --poly:polygon(var(--tl) 0,calc(100% - var(--tr)) 0,100% var(--tr),100% calc(100% - var(--br)),calc(100% - var(--br)) 100%,var(--bl) 100%,0 calc(100% - var(--bl)),0 var(--tl));
+  clip-path:var(--poly)}
+.fx::before{content:"";position:absolute;inset:0;background:var(--edge,var(--chrome-dim));z-index:-2}
+.fx::after{content:"";position:absolute;inset:var(--bw,1px);background:var(--fill,var(--plate));clip-path:var(--poly);z-index:-1}
+.s-tab{--tr:0px;--bl:0px;--br:var(--cut)}
+.s-dlg{--bl:0px}
+.ic{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:1.7;flex:none}
+.spacer{flex:1}
+
+/* ================= AppShell ================= */
+.app{height:100%;display:flex;flex-direction:column;position:relative;font-size:14px;line-height:1.35}
+.sbar{display:flex;justify-content:space-between;padding:6px 14px 4px;font:500 12px/1 system-ui,sans-serif;color:#dcdcdc}
+.hdr{display:flex;align-items:center;gap:9px;margin:0 10px;padding:6px 0 7px;border-bottom:1px solid var(--chrome)}
+.hdr .por{--por-ink:var(--chrome)}
+.who{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.who b{font:500 15px/1 var(--f-body);text-transform:uppercase;letter-spacing:.02em}
+.who span{font:400 11px/1 var(--f-mono);color:var(--chrome);opacity:.85;letter-spacing:.05em}
+.money{font:600 11px/1 var(--f-mono);color:var(--money);letter-spacing:.04em;white-space:nowrap}
+.chip{--cut:4px;display:flex;align-items:center;gap:6px;padding:6px 8px;font:500 11px/1 var(--f-mono);letter-spacing:.06em;color:var(--ok);--fill:var(--bg)}
+.dot{width:6px;height:6px;background:currentColor;display:inline-block;clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)}
+.body{flex:1;min-height:0;overflow:hidden;padding:8px 10px 0;display:flex;flex-direction:column;gap:8px}
+.nav{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;padding:4px 8px 10px}
+.nav a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:52px;padding:6px 0 5px;color:var(--nav-idle);border-bottom:3px solid var(--nav-line);text-decoration:none;font-size:24px}
+.ni{position:relative;display:flex}
+.nav-l{font:500 11px/1 var(--f-body);letter-spacing:.06em;text-transform:uppercase}
+.nbadge{position:absolute;top:-5px;left:15px;min-width:17px;height:17px;padding:0 4px;display:grid;place-items:center;font:600 11px/1 var(--f-mono);color:var(--on-money);background:var(--money);clip-path:polygon(0 0,100% 0,100% calc(100% - 4px),calc(100% - 4px) 100%,0 100%)}
+.nav a .ic{stroke-width:1.5}
+.nav a.on{color:var(--acc);border-bottom-color:var(--acc)}
+.nav a.on .ic{filter:drop-shadow(0 0 6px var(--acc-glow))}
+
+/* ================= Tabs / Breadcrumb ================= */
+.tabs{display:flex;align-items:flex-end;gap:4px}
+.tab{display:flex;align-items:flex-end;gap:6px;min-height:46px;padding:0 16px 10px 2px;font:500 14px/1 var(--f-body);text-transform:uppercase;letter-spacing:.02em;color:var(--chrome);border-bottom:3px solid var(--tab-line);white-space:nowrap}
+.tab .ic{font-size:15px}
+.tab.on{color:var(--acc);border-bottom-color:var(--acc);text-shadow:0 0 10px var(--acc-glow);box-shadow:0 7px 12px -9px var(--acc-glow)}
+.tabs.crumb .tab{color:#eaf6f3;border-bottom-color:#e9e0de;padding-right:10px}
+.tabs.crumb .sep{border:0;padding:0 0 10px}
+.crumb-acts{display:flex;gap:4px;padding-left:6px;align-self:center}
+.rail{flex:1;min-width:12px;border-bottom:1px solid var(--chrome);margin-bottom:1px}
+.metaline{font:400 11px/1 var(--f-mono);letter-spacing:.04em;color:var(--ink-2)}
+.metaline.t-ok{color:var(--ok)}
+
+/* ================= SectionTitle ================= */
+.sect{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font:500 13px/1 var(--f-body);color:var(--ink-strong);padding:8px 0 5px;border-bottom:1px solid var(--acc);letter-spacing:.02em}
+.sect span{font:500 11px/1 var(--f-mono);letter-spacing:.08em;color:var(--chrome)}
+
+/* ================= ListItem ================= */
+.list{display:flex;flex-direction:column}
+.list.is-gap{gap:4px}
+.li{display:grid;grid-template-columns:auto 1fr auto;gap:0 10px;align-items:center;min-height:48px;padding:8px 8px;border-bottom:1px solid var(--chrome-soft);--tag-bg:var(--bg)}
+.li.nl{grid-template-columns:1fr auto}
+.li-lead{display:grid;place-items:center;color:var(--ink-2);font-size:18px}
+.li-main{display:flex;flex-direction:column;gap:4px;min-width:0}
+.li-title{font:500 15px/1.1 var(--f-body);text-transform:uppercase;letter-spacing:.02em;color:#dff3ef;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.li-sub.wrap{white-space:normal}
+.li-title.wrap{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.li-sub{font-size:12px;line-height:1.25;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.li-trail{display:flex;flex-direction:column;align-items:flex-end;gap:5px;font:400 11px/1 var(--f-mono);color:var(--ink-2);white-space:nowrap}
+.li-trail.row{flex-direction:row;gap:4px}
+.code{font:500 12.5px/1 var(--f-mono);color:var(--acc);letter-spacing:.08em}
+.code em{font-style:normal;text-shadow:0 0 6px var(--acc-glow);color:var(--acc)}
+.code.dim{color:var(--ink)}
+.amt{font:600 13px/1 var(--f-mono);font-variant-numeric:tabular-nums}
+.st{display:inline-flex;align-items:center;gap:4px;font:500 11px/1 var(--f-mono);letter-spacing:.06em;text-transform:uppercase}
+.c-ok{color:var(--ok)}.c-bad{color:var(--bad)}.c-warn{color:var(--warn)}.c-ink{color:var(--ink)}.c-acc{color:var(--acc)}.c-dim{color:var(--ink-3)}
+.li.is-muted .li-title{color:#9fb8b4}.li.is-muted .li-sub{color:#6f8784}
+.li.is-off .li-title{color:var(--off-title)}.li.is-off .li-sub,.li.is-off .li-lead{color:var(--off-sub)}
+.li.is-end .li-main{align-items:flex-end;text-align:right}
+.glow{filter:drop-shadow(0 0 6px rgba(94,246,255,.45))}
+.li.is-sel{border-bottom:0;margin-block:2px;--cut:12px;--fill:var(--sel-fill);--edge:var(--acc);--tag-bg:var(--sel-fill);--kc-bg:var(--sel-fill)}
+.li.is-sel .li-title{color:#fff}.li.is-sel .li-sub,.li.is-sel .li-lead{color:#bfe7e2}
+.li.is-plate{border-bottom:0;padding:8px 10px;--fill:var(--plate);--edge:var(--plate-edge);--tag-bg:var(--plate)}
+.plate{display:grid;grid-template-columns:14px 1fr;gap:5px}
+.plate-mark{--cut:5px;--fill:var(--mark);--edge:var(--mark-edge)}
+.plate.is-sel .plate-mark,.plate.is-sel .li{--fill:var(--plate-sel);--edge:var(--plate-sel-edge);--tag-bg:var(--plate-sel)}
+.plate.is-sel .li-title{color:#fff}
+.panel .li{border-bottom:1px dashed var(--chrome-dim);padding:7px 2px}
+.panel .li:last-child{border-bottom:0}
+
+/* ================= Tag / KeyCap / ActionBar ================= */
+.tag{--cut:4px;display:inline-flex;align-items:center;font:600 11px/1 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;padding:4px 6px;color:var(--money);--edge:var(--money);--fill:var(--tag-bg,var(--bg))}
+.tag.is-filled{--fill:var(--money);color:var(--on-money)}
+.tag.t-ok{color:var(--ok);--edge:var(--ok)}
+.tag.t-bad{color:#ff7a70;--edge:#8a3a36}
+.tag.t-warn{color:var(--warn);--edge:var(--warn)}
+.kc{--cut:4px;--bw:1.5px;display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 4px;font:600 11px/1 var(--f-mono);--edge:currentColor;--fill:var(--kc-bg,var(--bg))}
+.kc .ic{font-size:13px;stroke-width:1.9}
+.actbar{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:0 14px;border-top:1px solid var(--chrome)}
+.act{display:flex;align-items:center;gap:6px;min-height:48px;padding:0 2px;cursor:pointer;font:500 12px/1 var(--f-body);letter-spacing:.03em;text-transform:uppercase;color:var(--chrome)}
+.act .kc{color:#e8f6f3}
+.theme-breach .act .kc{color:var(--ink)}
+
+/* ================= Button ================= */
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:48px;padding:10px 12px;border:0;background:none;cursor:pointer;font:500 13px/1 var(--f-body);letter-spacing:.1em;text-transform:uppercase;--kc-bg:var(--fill)}
+.btn.is-inline{width:auto;padding:10px 16px}
+.ibtn{--cut:6px;width:40px;height:40px;display:grid;place-items:center;font:600 12px/1 var(--f-mono);border:0;background:none;cursor:pointer;color:var(--ink);--fill:var(--plate);--edge:var(--plate-edge)}
+.ibtn .ic{font-size:18px}
+.li .ibtn{--fill:var(--bg)}
+.b-primary{--fill:var(--acc);--edge:var(--acc);color:var(--acc-ink)}
+.b-ghost{--fill:#1b1215;--edge:#dccbc8;color:#f1ecea}
+.b-success{--fill:#0f3a2a;--edge:var(--ok);color:#dfffee}
+.b-danger{--fill:#3a1214;--edge:var(--bad);color:#ffe3df}
+.b-alert{--fill:#b3312a;--edge:var(--bad);color:#fff;letter-spacing:.08em}
+.b-quiet{--fill:var(--dlg-fill);--edge:var(--dlg-bar);color:var(--acc);letter-spacing:.04em}
+.btn .kc{color:inherit}
+.btns{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:6px}
+.btns.end{display:flex;justify-content:flex-end;flex-wrap:wrap}
+
+/* ================= Bubble / Composer ================= */
+.msgs{flex:1;min-height:0;display:flex;flex-direction:column;gap:6px;justify-content:flex-end}
+.daysep{align-self:center;font:500 11px/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--chrome);opacity:.8;padding:4px 0}
+.bub{max-width:82%;padding:7px 10px 16px;display:flex;flex-direction:column;gap:3px;font-size:14px;line-height:1.3}
+.bub .meta{font:400 11px/1 var(--f-mono);color:var(--ink-2);display:flex;gap:6px;justify-content:flex-end;letter-spacing:.04em}
+.bub.them{align-self:flex-start;--fill:#0d1819;--edge:#8fe3d6;color:#dff5f0;--poly:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% calc(100% - 9px),13px calc(100% - 9px),0 100%)}
+.bub.me{align-self:flex-end;--fill:#17663d;--edge:var(--ok);color:#effff4;--poly:polygon(8px 0,100% 0,100% 100%,calc(100% - 13px) calc(100% - 9px),0 calc(100% - 9px),0 8px)}
+.bub.me .meta{color:#a9e8c3}
+.bub.is-pay{--fill:#0f1a14;min-width:72%}
+.bub .h{font:500 11px/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ok)}
+.bub .v{font:500 22px/1 var(--f-body);color:#f1fff6}
+.bub .n{font-size:12px;color:var(--ink-2)}
+.comp{display:flex;gap:6px;padding:2px 0 4px}
+.field{flex:1;display:flex;align-items:center;min-height:48px;padding:0 12px;color:var(--ink-3);font-size:13px;--fill:#140d10;--edge:#6b3337}
+.comp .btn{width:48px;padding:0;font-size:18px}
+
+/* ================= Tile / Card / Portrait / QR / Ram ================= */
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.tile{--cut:8px;display:flex;flex-direction:column;gap:5px;padding:9px 11px;--fill:var(--plate-2);--edge:var(--plate-edge)}
+.tile .k{font:500 11px/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--chrome-deep)}
+.tile .v{font:500 18px/1 var(--f-body);text-transform:uppercase;color:var(--ink-strong);display:flex;align-items:baseline;gap:6px;font-variant-numeric:tabular-nums}
+.tile .v .dot{color:var(--ok);align-self:center}
+.tile .s{font-size:12px;color:var(--ink-2);display:flex;gap:10px;flex-wrap:wrap}
+.tile.t-ok{--edge:#2e6b52}.tile.t-ok .v{color:#dfffee}
+.tile.t-money .v{color:var(--money)}
+.tile.is-big .v{font-size:38px}
+.tile .v small{font:500 15px/1 var(--f-mono)}
+.card{padding:10px 12px;--fill:var(--plate-2);--edge:var(--plate-edge);display:flex;gap:12px;align-items:center}
+.card-t{display:flex;flex-direction:column;gap:5px;min-width:0}
+.card-t b{font:500 20px/1 var(--f-body);text-transform:uppercase;letter-spacing:.03em;color:var(--ink-strong)}
+.card-t span{font-size:13px;color:var(--label);line-height:1.35}
+.card-t span strong{color:var(--ink-strong);font-weight:500}
+.card-t code{font:400 11px/1 var(--f-mono);color:var(--ink-3);letter-spacing:.06em}
+.por{--size:34px;--por-ink:var(--acc);width:var(--size);height:var(--size);flex:none;display:grid;place-items:center;font:500 calc(var(--size)*.45)/1 var(--f-body);color:var(--por-ink);--edge:var(--por-ink);--cut:calc(var(--size)*.15)}
+.fx.por::after{background:#0d1c26 repeating-linear-gradient(0deg,rgba(94,246,255,.08) 0 1px,transparent 1px 3px)}
+.qr{--cut:10px;width:112px;height:112px;flex:none;padding:7px;--fill:#e8f4f2;--edge:var(--acc)}
+.qr svg{width:100%;height:100%;display:block}
+.ram{display:flex;align-items:center;gap:6px;font:500 11px/1 var(--f-mono);color:var(--acc);letter-spacing:.08em}
+.ram i{display:inline-block;width:6px;height:12px;background:currentColor}
+.ram i.o{opacity:.2}
+
+/* ================= Dialog / Banner ================= */
+.scrim{position:absolute;inset:0;z-index:20;background:rgba(8,3,5,.74);display:flex;flex-direction:column;justify-content:center;gap:8px;padding:0 14px}
+.cdemo .scrim{position:static;background:none;padding:0}
+.dlg{--cut:12px;padding:0 0 12px 16px;--fill:var(--dlg-fill);--edge:var(--dlg-edge);display:flex;flex-direction:column}
+.dlg-bar{position:absolute;left:1px;top:1px;bottom:1px;width:7px;background:var(--dlg-bar)}
+.dlg-h{display:flex;align-items:center;gap:8px;padding:11px 12px 9px 2px;border-bottom:1px solid var(--dlg-rule);font:500 13px/1.15 var(--f-body);color:var(--dlg-head);text-transform:uppercase;letter-spacing:.05em}
+.dlg-h .ic{font-size:18px;color:var(--money)}
+.dlg-b{padding:9px 14px 0 2px;color:var(--dlg-ink);font-size:13.5px;line-height:1.38;display:flex;flex-direction:column;gap:5px}
+.dlg-b b{color:#f3fdfc;font-weight:500}
+.dlg-sig{font:400 11px/1.3 var(--f-mono);color:#7fa8a8;letter-spacing:.05em;padding-top:4px}
+.dlg.t-danger{--dlg-fill:#3a1113;--dlg-edge:#ff5a50;--dlg-bar:#8e2320;--dlg-rule:#6b2226;--dlg-head:#ffb3ab;--dlg-ink:#ffe3df}
+.dlg-acts{display:flex;justify-content:flex-end;gap:6px}
+.dlg-acts .btn{width:auto;padding:10px 14px}
+.dlg-acts.is-wide{display:grid;grid-template-columns:1fr 1fr}
+.dlg-acts.is-wide .btn{width:100%;padding:12px 6px}
+.eq{margin-left:auto;display:flex;gap:2px;align-items:flex-end;height:12px}
+.eq i{width:3px;background:currentColor;animation:eq 1s ease-in-out infinite alternate}
+.eq i:nth-child(2){animation-delay:.2s}.eq i:nth-child(3){animation-delay:.4s}.eq i:nth-child(4){animation-delay:.1s}
+@keyframes eq{from{height:3px}to{height:12px}}
+.caller{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 0 4px}
+.caller b{font:500 22px/1 var(--f-body);text-transform:uppercase;letter-spacing:.04em;margin-top:4px}
+.caller code{font:400 11px/1 var(--f-mono);color:#6f9ea5;letter-spacing:.08em}
+.banner{display:flex;align-items:center;gap:9px;padding:7px 8px 7px 10px;--fill:#0a1a17;--edge:var(--ok);filter:drop-shadow(0 0 6px rgba(67,240,143,.25))}
+.banner .por{--por-ink:var(--ok)}
+.banner-t{display:flex;flex-direction:column;gap:3px;flex:1;min-width:0}
+.banner-t b{font:500 14px/1 var(--f-body);text-transform:uppercase;letter-spacing:.04em;color:#e6fff1}
+.banner-t span{font:400 11px/1 var(--f-mono);color:var(--ok);letter-spacing:.06em}
+.banner .btn{width:auto;min-height:44px;padding:8px 14px;font-size:13px}
+
+/* ================= Состояния ================= */
+.btn.is-pressed{filter:brightness(1.35)}
+.b-ghost.is-pressed{--fill:#2a1d20}
+.btn.is-disabled{--fill:#1a1416;--edge:#3a2a2c;color:#7d6a6d;cursor:default}
+.is-focus{--bw:2px;--edge:#ffffff!important}
+.state-row{display:flex;flex-wrap:wrap;gap:6px}
+.state-row>*{flex:1 1 45%}
+.state-cap{font:500 11px/1 var(--f-mono);color:var(--ink-2);letter-spacing:.06em;text-transform:uppercase}
+.empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;padding:18px 20px}
+.empty .ic{font-size:40px;color:var(--chrome);stroke-width:1.3}
+.empty b{font:500 16px/1.1 var(--f-body);text-transform:uppercase;letter-spacing:.03em;color:var(--ink-strong)}
+.empty span{font-size:13px;color:var(--ink-2);line-height:1.35;max-width:28ch}
+.skel{display:grid;grid-template-columns:18px 1fr auto;gap:6px 10px;align-items:center;min-height:48px;padding:8px;border-bottom:1px solid var(--chrome-soft)}
+.skel i{display:block;height:10px;background:linear-gradient(90deg,#241518 0%,#3a2226 50%,#241518 100%);background-size:200% 100%;animation:shim 1.4s linear infinite}
+.skel i.a{width:18px;height:18px}.skel i.b{width:60%}.skel i.c{width:36px}.skel i.d{grid-column:2;width:85%;height:8px}
+@keyframes shim{from{background-position:200% 0}to{background-position:0 0}}
+.banner.t-danger{--fill:#2a0e10;--edge:var(--bad);filter:none}
+.banner.t-danger .banner-t b{color:#ffe3df}.banner.t-danger .banner-t span{color:#ffb3ab}
+.banner .bic{font-size:22px;color:var(--bad);display:grid}
+.sync-spin{display:inline-block;animation:spin 1.2s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ================= Form ================= */
+.frow{display:grid;grid-template-columns:1fr 128px;gap:8px;align-items:center;min-height:48px;padding:2px 0}
+.frow .l{color:var(--label);font-size:13px;line-height:1.2}
+.tg{--cut:7px;display:grid;grid-template-columns:1fr 1fr;height:32px;--fill:#101a1b;--edge:#2c4a4a}
+.tg span{display:grid;place-items:center;font:500 11px/1 var(--f-mono);letter-spacing:.08em;color:#86a09d}
+.tg .off.a{background:var(--plate-sel);color:#fff}
+.tg .on.a{background:var(--sel-fill);color:#eafffd}
+.sl{--cut:7px;height:32px;display:grid;place-items:center;font:500 11px/1 var(--f-mono);color:var(--acc);--fill:var(--plate);--edge:var(--plate-edge)}
+.sl i{position:absolute;top:1px;bottom:1px;width:14px;background:var(--plate-sel);clip-path:polygon(0 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%)}
+.sl b{position:relative;font-weight:500}
+.val{font:500 12px/1 var(--f-mono);color:var(--acc);text-align:right}
+
+/* ================= Взлом: Panel, Matrix, Buffer, Timer, Log ================= */
+.strip{display:flex;align-items:center;gap:6px}
+.strip b{font:600 11px/1 var(--f-mono);letter-spacing:.14em;color:var(--acc);white-space:nowrap}
+.strip i{flex:1;height:10px;background:var(--acc);opacity:.85;display:flex;align-items:center;justify-content:flex-end;padding-right:5px;font:500 7px/1 var(--f-mono);font-style:normal;color:var(--acc-ink);letter-spacing:.1em}
+.timer{display:flex;align-items:center;gap:8px}
+.timer span{flex:1;font:500 13px/1 var(--f-body);letter-spacing:.06em;text-transform:uppercase}
+.timer b{--cut:5px;font:500 15px/1 var(--f-mono);color:var(--acc);padding:5px 8px;--fill:var(--bg);--edge:var(--acc)}
+.prog{height:3px;background:var(--chrome-dim);position:relative}
+.prog i{position:absolute;inset:0 auto 0 0;background:var(--acc)}
+.panel{--cut:10px;--fill:var(--surface);--edge:var(--plate-edge)}
+.panel-h{display:flex;align-items:center;gap:6px;background:var(--acc);color:var(--acc-ink);padding:5px 8px;font:500 12px/1 var(--f-body);text-transform:uppercase;letter-spacing:.06em}
+.panel-h .ic{font-size:13px;stroke-width:2}
+.panel-h small{margin-left:auto;font:500 11px/1 var(--f-mono);letter-spacing:.06em;opacity:.75}
+.panel-b{padding:5px 8px 7px}
+.matrix{display:grid;grid-template-columns:repeat(5,1fr)}
+.matrix span{height:48px;display:grid;place-items:center;font:500 15px/1 var(--f-mono);color:var(--ink)}
+.matrix .band{background:rgba(208,237,87,.1);color:var(--acc)}
+.matrix .aim{background:var(--acc);color:var(--acc-ink)}
+.matrix .used{color:var(--used)}
+.matrix .trap{color:#ff5a50}
+.buffer{display:flex;gap:3px}
+.buffer b{flex:1;height:24px;display:grid;place-items:center;font:600 12px/1 var(--f-mono);color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}
+.buffer b.e{color:var(--ink-3);box-shadow:inset 0 0 0 1px var(--chrome-dim)}
+.log{font:400 11px/1.5 var(--f-mono);color:var(--acc);white-space:pre;padding:3px 2px}
+.done{margin:6px -8px -7px;padding:12px;text-align:center;font:500 14px/1 var(--f-body);letter-spacing:.08em;text-transform:uppercase;background:var(--acc);color:var(--acc-ink)}
+</style>
+</head>
+<body>
+<div class="lab">
+  <h1>Мегаблок №10 · интерфейс как в игре
+    <small>Каждый экран собран из одних и тех же компонентов. Во вкладке «Компоненты» — весь набор с именами для переноса в Compose; под каждым экраном — из чего он собран. Экран взлома — те же компоненты с другой темой токенов.</small>
+  </h1>
+  <div class="seg" id="mode">
+    <button type="button" data-mode="screens" aria-pressed="true">Экраны</button>
+    <button type="button" data-mode="kit" aria-pressed="false">Компоненты</button>
+  </div>
+  <div class="phones" id="screens"></div>
+  <div class="cat" id="kit" hidden></div>
+</div>
+
+<script>
+/* ================= Иконки ================= */
+const P={
+  chat:'<path d="M4 5h16v11H9l-5 4z"/>',
+  phone:'<path d="M6 3h4l2 5-3 2a11 11 0 0 0 5 5l2-3 5 2v4l-2 3C10 20 4 14 3 5z"/>',
+  hack:'<path d="M4 6h16v10H4zM8 20h8M7 10l2 2-2 2M12 14h4"/>',
+  wallet:'<path d="M3 7h15l3 3v9H3zM3 7l12-4 1 4M16 13h3"/>',
+  mail:'<path d="M3 6h18v12H3zM3 6l9 7 9-7"/>',
+  user:'<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',
+  group:'<circle cx="9" cy="8" r="3.5"/><circle cx="17" cy="9" r="2.5"/><path d="M2 20c0-3.5 3-5.5 7-5.5s7 2 7 5.5M16 14.5c3 0 6 1.5 6 4.5"/>',
+  in:'<path d="M18 6 7 17M7 9v8h8"/>',
+  out:'<path d="M7 17 18 6M10 6h8v8"/>',
+  miss:'<path d="M4 7l7 7 5-5M16 9h-4M16 9v4"/>',
+  bell:'<path d="M6 17V11a6 6 0 0 1 12 0v6l2 2H4zM10 21h4"/>',
+  shard:'<path d="M7 3h10l3 5-8 13L4 8z"/><path d="M4 8h16M12 21 9 8l3-5 3 5z"/>',
+  chip:'<rect x="6" y="6" width="12" height="12"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  close:'<path d="M6 6l12 12M18 6 6 18"/>',
+  check:'<path d="M5 12l5 5 9-10"/>',
+  swap:'<path d="M4 8h14l-3-3M20 16H6l3 3"/>',
+  scan:'<path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4M4 12h16"/>',
+  pen:'<path d="M4 20l4-1 11-11-3-3L5 16z"/>',
+  upload:'<path d="M12 16V4M7 9l5-5 5 5M4 20h16"/>',
+  reset:'<path d="M4 12a8 8 0 1 0 3-6.2M4 4v5h5"/>',
+  send:'<path d="M4 12h14M13 6l6 6-6 6"/>',
+  target:'<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/>',
+  alert:'<path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17v.5"/>',
+  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  sync:'<path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3M18 3v4h-4M6 21v-4h4"/>',
+  nosig:'<path d="M3 9a14 14 0 0 1 18 0M6 12.5a9 9 0 0 1 12 0M9.5 16a4 4 0 0 1 5 0M12 19.5v.5M4 4l16 16"/>'
+};
+const Icon=(n)=>`<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${P[n]}</svg>`;
+
+/* ================= Компоненты ================= */
+const KeyCap=(k)=>`<span class="fx s-tab kc">${P[k]?Icon(k):k}</span>`;
+const Tag=(t,{filled,tone}={})=>`<span class="fx s-tab tag${filled?' is-filled':''}${tone?' t-'+tone:''}">${t}</span>`;
+const Button=(t,{kind='primary',key,inline,st}={})=>`<button type="button" class="fx btn b-${kind}${inline?' is-inline':''}${st?' is-'+st:''}">${key?KeyCap(key):''}${t}</button>`;
+const IconButton=(k,label)=>`<button type="button" class="fx s-tab ibtn" aria-label="${label}" title="${label}">${P[k]?Icon(k):k}</button>`;
+/* StatusText: статус всегда текстом, а для предупреждения и ошибки — ещё и иконкой (не только цветом) */
+const StatusText=(t,tone)=>`<span class="st c-${tone}">${tone==='bad'?Icon('alert'):tone==='warn'?Icon('clock'):''}${t}</span>`;
+const EmptyState=({icon,title,text,action=''})=>`<div class="empty">${Icon(icon)}<b>${title}</b><span>${text}</span>${action}</div>`;
+const Skeleton=(n)=>Array.from({length:n},()=>'<div class="skel"><i class="a"></i><i class="b"></i><i class="c"></i><i class="d"></i></div>').join('');
+const Buttons=(...b)=>`<div class="btns">${b.join('')}</div>`;
+const ActionBar=(items)=>`<div class="actbar">${items.map(([k,l])=>`<span class="act">${KeyCap(k)}${l}</span>`).join('')}</div>`;
+const Tabs=(items,active)=>`<div class="tabs">${items.map(([k,l],i)=>`<span class="tab${i===active?' on':''}">${k?Icon(k):''}${l}</span>`).join('')}<span class="rail"></span></div>`;
+const Breadcrumb=(icon,parts,actions='')=>`<div class="tabs crumb">${parts.map((p,i)=>`${i?'<span class="tab sep">›</span>':''}<span class="tab">${i===0&&icon?Icon(icon):''}${p}</span>`).join('')}<span class="rail"></span>${actions?`<span class="crumb-acts">${actions}</span>`:''}</div>`;
+const MetaLine=(t,tone)=>`<span class="metaline${tone?' t-'+tone:''}">${t}</span>`;
+const SectionTitle=(t,meta='')=>`<div class="sect">${t}${meta?`<span>${meta}</span>`:''}</div>`;
+const Spacer=()=>`<div class="spacer"></div>`;
+/* ListItem — одна строка на все списки: чаты, контакты, звонки, операции, демоны, шарды, узлы.
+   lead: иконка/тег/портрет; trail: строки справа; state: sel|muted|off; plate: плашка; mark: «язычок»; end: текст вправо */
+function ListItem({lead,title,sub,trail=[],trailRow,state,plate,mark,end,wrap,subWrap}){
+  const cls=['li'];
+  if(!lead) cls.push('nl'); if(end) cls.push('is-end');
+  if(state==='muted') cls.push('is-muted'); if(state==='off') cls.push('is-off');
+  const selPlain = state==='pressed' && !plate;
+  if(plate) cls.push('is-plate'); if(selPlain) cls.push('is-sel');
+  const inner=`${lead?`<span class="li-lead">${P[lead]?Icon(lead):lead}</span>`:''}<span class="li-main"><span class="li-title${wrap?' wrap':''}">${title}</span>${sub?`<span class="li-sub${subWrap?' wrap':''}">${sub}</span>`:''}</span><span class="li-trail${trailRow?' row':''}">${trail.map(t=>t.startsWith('<')?t:`<span>${t}</span>`).join('')}</span>`;
+  const row=`<div class="${plate||selPlain?'fx s-tab ':''}${cls.join(' ')}">${inner}</div>`;
+  if(mark) return `<div class="plate${state==='pressed'?' is-sel':''}"><span class="fx s-tab plate-mark"></span>${row}</div>`;
+  if(selPlain) return `<div class="glow">${row}</div>`;
+  return row;
+}
+const List=(items,{gap}={})=>`<div class="list${gap?' is-gap':''}">${items.join('')}</div>`;
+const Bubble=({from,text,meta})=>`<div class="fx bub ${from}">${text}<span class="meta">${meta}</span></div>`;
+const PayBubble=({head,value,note})=>`<div class="fx bub me is-pay"><span class="h">${head}</span><span class="v">${value}</span><span class="n">${note}</span></div>`;
+const DaySep=(t)=>`<div class="daysep">— ${t} —</div>`;
+const Messages=(...m)=>`<div class="msgs">${m.join('')}</div>`;
+const Composer=()=>`<div class="comp"><div class="fx s-tab field">Сообщение</div>${Button(Icon('send'))}</div>`;
+const Tile=({k,v,s,tone,big})=>`<div class="fx s-tab tile${tone?' t-'+tone:''}${big?' is-big':''}"><span class="k">${k}</span>${v!==undefined?`<span class="v">${v}</span>`:''}${s?`<span class="s">${s}</span>`:''}</div>`;
+const Tiles=(...t)=>`<div class="tiles">${t.join('')}</div>`;
+const Portrait=(l,size=34)=>`<div class="fx por" style="--size:${size}px">${l}</div>`;
+const Card=(lead,body)=>`<div class="fx card">${lead}<div class="card-t">${body}</div></div>`;
+const RamMeter=(n,max)=>`<span class="ram">ОЗУ ДЕКИ ${Array.from({length:max},(_,i)=>`<i${i<n?'':' class="o"'}></i>`).join('')} ${n}/${max}</span>`;
+function Qr(){
+  const N=25,c=[];let s=1337;const r=()=>(s=(s*1103515245+12345)&0x7fffffff)/0x7fffffff;
+  const f=(x,y)=>{for(let i=0;i<7;i++)for(let j=0;j<7;j++){if(i===0||i===6||j===0||j===6||(i>=2&&i<=4&&j>=2&&j<=4))c.push([x+i,y+j])}};
+  const inF=(x,y)=>(x<8&&y<8)||(x>N-9&&y<8)||(x<8&&y>N-9);
+  f(0,0);f(N-7,0);f(0,N-7);
+  for(let x=0;x<N;x++)for(let y=0;y<N;y++){if(inF(x,y))continue;if(x===6||y===6){if((x+y)%2===0)c.push([x,y]);continue}if(r()>.52)c.push([x,y])}
+  return `<div class="fx qr"><svg viewBox="0 0 ${N} ${N}" shape-rendering="crispEdges"><path fill="#0b0b10" d="${c.map(([x,y])=>`M${x} ${y}h1v1h-1z`).join('')}"/></svg></div>`;
+}
+/* Dialog — одно окно для объявления, шарда, подтверждения, звонка */
+const Fields=(rows)=>rows.map(([k,v])=>`<span><b>${k}:</b> ${v}</span>`).join('');
+const Para=(t)=>`<span>${t}</span>`;
+const Sign=(t)=>`<span class="dlg-sig">${t}</span>`;
+const Dialog=({icon,title,extra='',body,tone,actions,wide})=>`<div class="scrim"><div class="fx s-dlg dlg${tone?' t-'+tone:''}"><span class="dlg-bar"></span><div class="dlg-h">${Icon(icon)}${title}${extra}</div><div class="dlg-b">${body}</div></div>${actions?`<div class="dlg-acts${wide?' is-wide':''}">${actions}</div>`:''}</div>`;
+const Equalizer=()=>`<span class="eq"><i></i><i></i><i></i><i></i></span>`;
+const Banner=({lead,title,sub,action='',tone})=>`<div class="fx banner${tone?' t-'+tone:''}">${lead}<div class="banner-t"><b>${title}</b><span>${sub}</span></div>${action}</div>`;
+const Toggle=(on)=>`<div class="fx s-tab tg"><span class="off${on?'':' a'}">ВЫКЛ</span><span class="on${on?' a':''}">ВКЛ</span></div>`;
+const Slider=(p,v)=>`<div class="fx s-tab sl"><i style="left:calc(${p}% - 7px)"></i><b>${v}</b></div>`;
+const Value=(t,tone)=>`<span class="val${tone?' c-'+tone:''}">${t}</span>`;
+const FormRow=(l,control)=>`<div class="frow"><span class="l">${l}</span>${control}</div>`;
+/* взлом */
+const Strip=(a,b)=>`<div class="strip"><b>${a}</b><i>${b}</i></div>`;
+const Timer=(l,t,extra='')=>`<div class="timer"><span>${l}</span><b class="fx s-tab">${t}</b>${extra}</div>`;
+const Progress=(p)=>`<div class="prog"><i style="width:${p}%"></i></div>`;
+const Panel=({title,meta='',body})=>`<div class="fx s-dlg panel"><div class="panel-h">${Icon('chip')}${title}${meta?`<small>${meta}</small>`:''}</div><div class="panel-b">${body}</div></div>`;
+const Buffer=(codes,n)=>`<div class="buffer">${Array.from({length:n},(_,i)=>codes[i]?`<b>${codes[i]}</b>`:'<b class="e">··</b>').join('')}</div>`;
+const G=[["E9","7A","1C","55","BD"],["55","1C","E9","FF","7A"],["BD","FF","7A","1C","E9"],["7A","55","BD","E9","1C"],["1C","E9","55","7A","FF"]];
+const CodeMatrix=({used=[],band,aim,trap})=>`<div class="matrix">${G.map((r,ri)=>r.map((c,ci)=>{const k=ri+','+ci;let cl='';if(used.includes(k))cl='used';else if(ri===band)cl=ci===aim?'aim':'band';if(trap===k){cl='trap';c='▒▒'}return `<span class="${cl}">${c}</span>`}).join('')).join('')}</div>`;
+const Log=(lines)=>`<div class="log">${lines.join('\n')}</div>`;
+const Done=(t)=>`<div class="done">${t}</div>`;
+/* AppShell */
+const NAV=[['chat','Чат'],['phone','Звонки'],['hack','Кибердека'],['wallet','Финансы']];
+const BADGES={chat:3,phone:1};
+function AppShell({tab,body,overlay='',theme='',header=true}){
+  return `<div class="mb app ${theme}">
+    <div class="sbar"><span>23:47</span><span>Wi-Fi МБ10 · 71%</span></div>
+    ${header?`<div class="hdr">${Portrait('Ш')}<div class="who"><b>Шрам</b><span>фракция · Вольные</span></div><span class="money">€$ 1 240</span><div class="fx s-tab chip"><span class="dot"></span>7 УЗЛОВ</div></div>`:''}
+    <div class="body">${body}</div>
+    <nav class="nav">${NAV.map(([k,l])=>`<a href="#" class="${k===tab?'on':''}" aria-label="${l}${BADGES[k]?', новых: '+BADGES[k]:''}"><span class="ni">${Icon(k)}${BADGES[k]&&k!==tab?`<b class="nbadge">${BADGES[k]}</b>`:''}</span>${k===tab?`<span class="nav-l">${l}</span>`:''}</a>`).join('')}</nav>
+    ${overlay}
+  </div>`;
+}
+
+/* ================= Экраны: только сборка из компонентов ================= */
+const contactsItems=(selFirst)=>[
+  ListItem({lead:'user',title:'Вобла',sub:'в сети · Вольные',trail:selFirst?[IconButton('phone','Позвонить')]:[]}),
+  ListItem({lead:'user',title:'Киса',sub:'в сети · Вольные',trail:selFirst?[IconButton('phone','Позвонить')]:[]}),
+  ListItem({lead:'user',title:'Лом',sub:'в сети · Сварщики',trail:selFirst?[IconButton('phone','Позвонить')]:[]}),
+  ListItem({lead:'user',title:'Шептун',sub:'не в сети · был в 22:10',state:'off'})
+];
+const S={};
+S.msgs=()=>Tabs([['mail','Сообщения'],['phone','Звонки']],0)+List([
+  ListItem({lead:'user',title:'Вобла',sub:'Два. Нужен ПРИЗРАК, иначе тебя срисуют…',trail:['23:33',Tag('2',{filled:true})]}),
+  ListItem({lead:'group',title:'Фракция · Вольные',sub:'Шептун: сбор у бойлерной в полночь',trail:['23:20',Tag('1',{filled:true})]}),
+  ListItem({lead:'user',title:'Киса',sub:'Перевод 300 €$ · «долг за крышу»',trail:['23:12',Tag('1',{filled:true})]}),
+  ListItem({lead:'user',title:'Лом',sub:'Вы: ок, жду у лифта',trail:['22:40'],state:'muted'}),
+  ListItem({lead:'user',title:'Шептун',sub:'Не звони до полуночи',trail:['21:58'],state:'muted'}),
+  ListItem({lead:'user',title:'Бар «Отстойник»',sub:'Ваш столик свободен до закрытия',trail:['вчера'],state:'muted'}),
+  ListItem({lead:'group',title:'Администрация МБ10',sub:'Проверка допуска на 37-м этаже',trail:['вчера'],state:'muted'})
+])+Spacer()+ActionBar([['plus','Новый чат'],['bell','Объявления']]);
+
+S.chat=()=>Breadcrumb('mail',['Сообщения','Вобла'],IconButton('phone','Позвонить')+IconButton('€$','Перевод'))+MetaLine('● в сети · Вольные · ключ 9C1E…04B','ok')+Messages(
+  DaySep('Сегодня'),
+  Bubble({from:'them',text:'СБ крутится у лифтов на 37-м. Сейф в диспетчерской пустой почти.',meta:'23:31'}),
+  Bubble({from:'me',text:'Почти — это сколько слотов?',meta:'23:32 ✓✓ доставлено'}),
+  Bubble({from:'them',text:'Два. Нужен ПРИЗРАК, иначе тебя срисуют через 4 минуты.',meta:'23:33'}),
+  PayBubble({head:'Перевод · Вобле',value:'50 €$',note:StatusText('не доставлено','bad')+' «за наводку» · получатель не в сети'}),
+  Bubble({from:'me',text:'Кину ещё раз, как появишься в сети',meta:'23:40 '+StatusText('в очереди','warn')})
+)+Composer();
+S.callOn=()=>Banner({lead:Portrait('В',30),title:'Вобла',sub:'● В ЭФИРЕ · 01:42',action:Button('Завершить',{kind:'alert'})})+S.chat();
+
+S.calls=()=>Tabs([['mail','Сообщения'],['phone','Звонки']],1)+SectionTitle('Контакты','4')+List(contactsItems(true))+SectionTitle('Недавние')+List([
+  ListItem({lead:`<span class="c-ok">${Icon('in')}</span>`,title:'Вобла',sub:'входящий',trail:['23:05','1:42']}),
+  ListItem({lead:`<span class="c-bad">${Icon('miss')}</span>`,title:'Киса',sub:'пропущенный',trail:['22:51','—']}),
+  ListItem({lead:'out',title:'Лом',sub:'исходящий',trail:['21:30','0:37']})
+]);
+const callDialog=()=>Dialog({icon:'phone',title:'Входящая трансмиссия',extra:Equalizer(),
+  body:`<div class="caller">${Portrait('В',96)}<b>Вобла</b><span>Вольные · вызывает вас</span><code>КЛЮЧ 9C1E…04B · ПРЯМОЙ КАНАЛ</code></div>`,
+  actions:Button('Отклонить',{kind:'danger',key:'close'})+Button('Принять',{kind:'success',key:'phone'}),wide:true});
+const announceDialog=()=>Dialog({icon:'bell',title:'Объявление мастера · 23:50',
+  body:Fields([['Кому','все жильцы секций 3–5'],['Тема','проверка допуска на 37-м этаже']])+Para('В 00:30 СБ блока проводит проверку пропусков. Всем, у кого нет допуска, — покинуть лифтовой холл до начала проверки.')+Para('Карантин по зоне Б продлён до утра. Вода по талонам — в бойлерной, с 07:00.')+Sign('— АДМИНИСТРАЦИЯ МЕГАБЛОКА №10'),
+  actions:Button('Закрыть',{kind:'quiet',key:'close'})});
+const shardDialog=()=>Dialog({icon:'shard',title:'Шард · Журнал охраны 37-Б',
+  body:Fields([['Тир','2 · открыт'],['Откуда','сейф диспетчерской 37-Б · 23:41']])+Para('23:10 — патруль СБ на 37-м. Смена в 00:30. Ключ от щитовой у старшего смены, носит на цепочке.')+Para('Камеры в лифтовом холле не пишут с прошлой недели.')+Sign('— ЗАПИСЬ ПОСТА ОХРАНЫ №3'),
+  actions:Button('Закрыть',{kind:'quiet',key:'close'})+Button('Передать',{kind:'quiet',key:'swap'})});
+const confirmDialog=()=>Dialog({icon:'wallet',title:'Подтверждение перевода',tone:'danger',
+  body:Para('Перевести <b>120 €$</b> игроку <b>ЛОМ</b>?')+Para('За: «за патроны». После отправки отменить нельзя.'),
+  actions:Button('Отмена',{kind:'danger',key:'close'})+Button('Подтвердить',{kind:'success',key:'check'}),wide:true});
+
+const op=(lead,title,sub,amt,tone,st,stTone,tm)=>ListItem({lead:`<span class="c-${tone}">${Icon(lead)}</span>`,title,sub,trail:[`<span class="amt c-${tone}">${amt}</span>`,StatusText(st,stTone),tm]});
+S.wallet=()=>Tile({k:'Баланс',v:'1 240<small>€$</small>',s:'<span>+335 за сутки</span><span>−170 отправлено</span>',tone:'money',big:true})
+  +Buttons(Button('Новый платёж'),Button('Сканер',{kind:'ghost'}))
+  +SectionTitle('Сегодня')+List([
+    op('in','Перевод от Кисы','«долг за крышу»','+300','ok','подтверждено','ok','23:12'),
+    op('out','Лом','«за патроны»','−120','ink','ждёт принятия','warn','22:40'),
+    op('close','Вобла','получатель не в сети','−50','bad','не доставлено','bad','21:05'),
+    op('chip','Демон «Шахтёр»','добыто из узла 12-А','+35','ok','зачислено','ok','20:17')])
+  +SectionTitle('Вчера')+List([op('out','Бар «Отстойник»','«два синтпива»','−50','ink','принято','dim','19:31')]);
+
+const deckTabs=(i)=>Tabs([['hack','Демоны'],['shard','Шарды']],i);
+const daemon=(n,c,e)=>ListItem({title:n,sub:e,subWrap:true,trail:[`<span class="code">${c}</span>`],plate:true});
+S.daemons=()=>deckTabs(0)+RamMeter(5,6)+List([
+  daemon('Призрак','1C BD 55','убирает ваш ID из сигнала СБ'),
+  daemon('Перекос','E9 7A','+10 мин к задержке сигнала СБ'),
+  daemon('Экстрактор','55 FF E9 7A','извлекает шард из контейнера'),
+  daemon('Дешифратор','BD BD 1C 55','расшифровывает зашифрованные шарды'),
+  daemon('Шахтёр','FF 1C 7A E9 55','добывает эдди из взломанного узла'),
+  daemon('Дрожь','7A 1C','+15 сек к таймеру попытки')],{gap:true})+Spacer()+Button('Сканер',{key:'scan'});
+S.shards=()=>deckTabs(1)+SectionTitle('Открытые','▽')+List([
+  ListItem({title:'Журнал охраны 37-Б',plate:true,mark:true,wrap:true}),
+  ListItem({title:'Письмо Шептуну',trail:[Tag('новый',{filled:true})],plate:true,mark:true,wrap:true}),
+  ListItem({title:'Карта доступа · фрагмент 1/3 из сейфа диспетчерской',plate:true,mark:true,wrap:true})],{gap:true})
+  +SectionTitle('Зашифрованные','▽')+List([ListItem({title:'Накладная склада 12',trail:[Tag('нужен дешифратор',{tone:'warn'})],plate:true,mark:true,wrap:true})],{gap:true})
+  +Spacer()+Button('Сканер',{key:'scan'});
+
+const seq=(n,c,e)=>ListItem({title:n,sub:e,subWrap:true,trail:[`<span class="code dim">${c}</span>`]});
+S.breach=()=>Strip('СЕТЬ ═ ДЕКА','ПРОТОКОЛ 2.07')+MetaLine('Сейф диспетчерской 37-Б · лёд: Сторож')+Timer('Время взлома','34.50',IconButton('close','Выйти из взлома'))+Progress(58)
+  +Panel({title:'Буфер',meta:'2 / 6',body:Buffer(['1C','BD'],6)})
+  +Panel({title:'Матрица кодов',meta:'5×5',body:CodeMatrix({used:['0,2','3,2'],band:3,aim:1,trap:'1,3'})})
+  +Panel({title:'Последовательности',meta:'3',body:List([
+    seq('Призрак','<em>1C BD</em> 55','убирает ваш ID из сигнала СБ'),
+    seq('Экстрактор','55 FF E9 7A','извлекает шард из контейнера'),
+    seq('Перекос','E9 7A','+10 мин к задержке сигнала СБ')])});
+const inst=(ok,n,e)=>ListItem({lead:Tag(ok?'установлен':'не вошёл',{tone:ok?'ok':'bad'}),title:n,sub:e,plate:true,end:true});
+S.breachOk=()=>Strip('СЕТЬ ═ ДЕКА','ПРОТОКОЛ 2.07')+Timer('Время взлома','33.32')
+  +Panel({title:'Журнал',meta:'сейф 37-Б',body:Log(['//КОРЕНЬ','//ЗАПРОС_ДОСТУПА','//ЗАПРОС_ДОСТУПА_УСПЕХ','//ПАКЕТ_1 ................ ГОТОВО','//ПАКЕТ_2 ................ ГОТОВО','//ПАКЕТ_3 ................ ГОТОВО','//ЗАГРУЗКА_ЗАВЕРШЕНА'])+Done('Демоны загружены · 2 из 3')})
+  +List([inst(true,'Призрак','ваш ID убран из сигнала СБ'),inst(true,'Экстрактор','получен шард «Журнал охраны 37-Б»'),inst(false,'Перекос','не хватило ячеек буфера')],{gap:true})
+  +Spacer()+`<div class="btns end">${Button('Выйти из интерфейса',{inline:true})}</div>`;
+
+const meTabs=(i)=>Tabs([['','Профиль'],['','Настройки'],['','Сеть']],i);
+S.profile=()=>meTabs(0)+Card(Portrait('Ш',58),'<b>Шрам</b><span>Вольные · жилец 37-Б</span><code>КЛЮЧ 7F3A…C21</code>')
+  +Card(Qr(),'<span><strong>Мой QR-код.</strong> Покажите игроку — он отсканирует и добавит вас в контакты.</span>')
+  +SectionTitle('Контакты','4')+List(contactsItems(false))+Spacer()+Button('Сканер',{key:'scan'});
+S.settings=()=>meTabs(1)+SectionTitle('Уведомления')
+  +FormRow('Вибрация при сообщении',Toggle(true))+FormRow('Звук входящего звонка',Toggle(true))+FormRow('Текст сообщения в уведомлении',Toggle(false))
+  +SectionTitle('Экран')+FormRow('Яркость подсветки',Slider(70,'70'))+FormRow('Размер текста',Slider(40,'100%'))+FormRow('Не гасить экран во время взлома',Toggle(true))
+  +SectionTitle('Игра')+FormRow('Сервер мастера',Value('10.10.0.10'))+FormRow('Код игры',Value('МБ10-ОСЕНЬ'))
+  +Spacer()+ActionBar([['reset','По умолчанию'],['close','Закрыть']]);
+const node=(n,a,s,p,off)=>ListItem({title:n,sub:s,trail:[`<span class="code">${a}</span>`,p],state:off?'off':''});
+S.network=()=>meTabs(2)+Tiles(
+    Tile({k:'Коллектор мастера',v:'<span class="dot"></span>На связи',s:'10.10.0.10 · синк 12 с назад',tone:'ok'}),
+    Tile({k:'Очередь синка',v:'0',s:'всё отправлено',tone:'ok'}),
+    Tile({k:'Мешь-сеть',v:'7 узлов',s:'рядом через NSD'}),
+    Tile({k:'Журнал',v:'3,2 МБ',s:'из ~16 МБ, старое вытесняется'}))
+  +SectionTitle('Узлы рядом','4')+List([
+    node('Вобла','10.10.0.57','NSD · прямой канал','14 мс'),
+    node('Киса','10.10.0.63','подсказка сервера','22 мс'),
+    node('Лом','10.10.1.12','NSD','31 мс'),
+    node('Шептун','10.10.0.88','не отвечает · 22:10','—',true)])
+  +Spacer()+ActionBar([['pen','Метка в журнал'],['upload','Отправить журнал']]);
+
+S.offline=()=>Banner({lead:`<span class="bic">${Icon('nosig')}</span>`,title:'Нет связи',sub:'коллектор 10.10.0.10 · 3 записи ждут',tone:'danger',action:Button('Повторить',{kind:'danger'})})+S.msgs();
+S.emptyShards=()=>deckTabs(1)+EmptyState({icon:'shard',title:'Шардов пока нет',text:'Отсканируйте QR-метку контейнера — найденные шарды появятся здесь.'})+Button('Сканер',{key:'scan'});
+S.loadingNet=()=>meTabs(2)+Tiles(
+    Tile({k:'Коллектор мастера',v:`<span class="sync-spin">${Icon('sync')}</span>Связь…`,s:'10.10.0.10 · подключаемся'}),
+    Tile({k:'Мешь-сеть',v:'—',s:'ищем узлы через NSD'}))
+  +SectionTitle('Узлы рядом','поиск')+Skeleton(4);
+const SCREENS=[
+  ['Сообщения',{tab:'chat',body:S.msgs},'Tabs · ListItem · Tag · ActionBar'],
+  ['Переписка',{tab:'chat',body:S.chat,header:false},'Breadcrumb + IconButton · MetaLine · Bubble · PayBubble · StatusText · Composer'],
+  ['Идёт звонок',{tab:'chat',body:S.callOn,header:false},'Banner · Portrait · Button — поверх «Переписки»'],
+  ['Звонки',{tab:'phone',body:S.calls},'Tabs · SectionTitle · ListItem · IconButton'],
+  ['Входящий звонок',{tab:'phone',body:S.calls,overlay:callDialog},'Dialog · Equalizer · Portrait · Button'],
+  ['Объявление мастера',{tab:'chat',body:S.msgs,overlay:announceDialog},'Dialog · Fields · Para · Sign · Button'],
+  ['Финансы',{tab:'wallet',body:S.wallet},'Tile · Button · SectionTitle · ListItem · StatusText'],
+  ['Подтверждение перевода',{tab:'wallet',body:S.wallet,overlay:confirmDialog},'Dialog (danger) · Button'],
+  ['Кибердека · демоны',{tab:'hack',body:S.daemons},'Tabs · RamMeter · ListItem (плашка) · Button'],
+  ['Кибердека · шарды',{tab:'hack',body:S.shards},'Tabs · SectionTitle · ListItem (плашка с «язычком») · Tag · Button'],
+  ['Шард · чтение',{tab:'hack',body:S.shards,overlay:shardDialog},'Dialog · Fields · Para · Sign · Button'],
+  ['Взлом',{tab:'hack',body:S.breach,theme:'theme-breach',header:false},'Strip · MetaLine · Timer + IconButton · Progress · Panel · Buffer · CodeMatrix · ListItem — тема «взлом»'],
+  ['Взлом · успех',{tab:'hack',body:S.breachOk,theme:'theme-breach theme-ok',header:false},'Strip · Timer · Panel · Log · Done · ListItem (плашка) · Tag · Button — тема «успех»'],
+  ['Профиль',{tab:'',body:S.profile},'Tabs · Card · Portrait · Qr · SectionTitle · ListItem · Button'],
+  ['Настройки',{tab:'',body:S.settings},'Tabs · SectionTitle · FormRow · Toggle · Slider · Value · ActionBar'],
+  ['Сеть',{tab:'',body:S.network},'Tabs · Tile · SectionTitle · ListItem · ActionBar'],
+  ['Состояние · нет связи',{tab:'chat',body:S.offline},'Banner (danger) · Button — поверх любого экрана'],
+  ['Состояние · пусто',{tab:'hack',body:S.emptyShards},'Tabs · EmptyState · Button'],
+  ['Состояние · загрузка',{tab:'',body:S.loadingNet},'Tabs · Tile · SectionTitle · Skeleton']
+];
+
+/* ================= Каталог компонентов ================= */
+const demo=(html,theme='')=>`<div class="mb cdemo ${theme}">${html}</div>`;
+const KIT=[
+  ['Фаска','Modifier.chamfer(shape)','Единственный способ нарисовать рамку. Три формы: std (срез справа сверху и слева снизу), tab (справа снизу), dlg (справа сверху). Цвет рамки и заливки — токены.',
+    demo(`<div class="btns">${Tile({k:'std'}).replace('fx s-tab tile','fx tile')}${Tile({k:'tab'})}${Tile({k:'dlg'}).replace('fx s-tab tile','fx s-dlg tile')}</div>`)],
+  ['AppShell','AppShell(tab, content, overlay)','Строка статуса, шапка (портрет, позывной, фракция, €$, узлы), тело и нижнее меню из иконок. Экран кладёт в него только содержимое.',
+    demo(`<div style="height:220px;position:relative;margin:-10px">${AppShell({tab:'chat',body:MetaLine('содержимое экрана')})}</div>`)],
+  ['Tabs','MbTabs(items, selected)','Вкладки с толстым подчёркиванием и красной линией до края. Активная — бирюзовая со свечением. Иконка необязательна.',
+    demo(Tabs([['mail','Сообщения'],['phone','Звонки']],0)+Tabs([['','Профиль'],['','Настройки'],['','Сеть']],2))],
+  ['Breadcrumb + MetaLine','MbBreadcrumb(parts) · MbMetaLine','Заголовок вложенного экрана из тех же отрезков, что вкладки, и строка состояния под ним.',demo(Breadcrumb('mail',['Сообщения','Вобла'])+MetaLine('● в сети · Вольные','ok'))],
+  ['SectionTitle','MbSectionTitle(text, meta)','Заголовок группы: белый текст, бирюзовая линия, справа счётчик или ▽.',demo(SectionTitle('Контакты','4'))],
+  ['ListItem','MbListItem(lead, title, sub, trail, state)','Одна строка на все списки: чаты, контакты, звонки, операции, узлы. Высота не меньше 48 dp. Состояния: обычная, нажата (подсветка только пока палец на строке), прочитанная, не в сети.',
+    demo(List([ListItem({lead:'user',title:'Вобла',sub:'нажата',trail:['23:33',Tag('2',{filled:true})],state:'pressed'}),ListItem({lead:'user',title:'Киса',sub:'обычная',trail:['23:12',Tag('1',{filled:true})]}),ListItem({lead:'user',title:'Лом',sub:'прочитанная',trail:['22:40'],state:'muted'}),ListItem({lead:'user',title:'Шептун',sub:'не в сети',state:'off'})]))],
+  ['ListItem · плашка','MbListItem(plate, mark, end)','Та же строка в рамке: коллекции (демоны), журнал (шарды — с «язычком», нажатая краснеет), итоги (текст вправо). Длинное название — до двух строк.',
+    demo(List([ListItem({title:'Журнал охраны 37-Б',plate:true,mark:true,state:'pressed'}),ListItem({title:'Письмо Шептуну',trail:[Tag('новый',{filled:true})],plate:true,mark:true}),daemon('Призрак','1C BD 55','убирает ваш ID из сигнала СБ')],{gap:true}))],
+  ['Tag','MbTag(text, filled, tone)','Метка. Жёлтая заливка — новое и счётчики; оранжевая — нужно действие; зелёная и красная — итог.',
+    demo(`<div class="btns end">${Tag('новый',{filled:true})}${Tag('нужен дешифратор',{tone:'warn'})}${Tag('установлен',{tone:'ok'})}${Tag('не вошёл',{tone:'bad'})}</div>`)],
+  ['KeyCap + ActionBar','MbKeyCap(icon) · MbActionBar(actions)','«Клавиша» из игры и подвал действий под красной линией.',demo(ActionBar([['phone','Позвонить'],['€$','Перевод'],['close','Закрыть']]))],
+  ['Button','MbButton(text, kind, key)','Кнопка стандартной формы. Виды: primary, ghost, success, danger, alert, quiet (в окнах). Может нести «клавишу».',
+    demo(Buttons(Button('Новый платёж'),Button('Сканер',{kind:'ghost'}))+Buttons(Button('Отклонить',{kind:'danger',key:'close'}),Button('Принять',{kind:'success',key:'phone'}))+`<div class="btns end">${Button('Завершить',{kind:'alert',inline:true})}${Button('Закрыть',{kind:'quiet',key:'close',inline:true})}</div>`)],
+  ['Bubble + PayBubble','MbBubble(from, text, meta) · MbPayBubble','Сообщение с хвостиком со стороны отправителя: входящее — тёмное с бирюзовой рамкой, своё — зелёное. Перевод — карточка того же вида.',
+    demo(Bubble({from:'them',text:'Два. Нужен ПРИЗРАК.',meta:'23:33'})+Bubble({from:'me',text:'Понял',meta:'23:34 ✓✓'})+PayBubble({head:'Перевод · Вобле',value:'50 €$',note:'«за наводку»'}))],
+  ['Composer','MbComposer()','Поле ввода и кнопка отправки, высота 48 dp. Действия переписки (позвонить, перевод) — в заголовке, чтобы не мешать клавиатуре.',demo(Composer())],
+  ['IconButton','MbIconButton(icon, label)','Кнопка-иконка: 40 dp рисунок, 48 dp область нажатия. У каждой есть подпись для TalkBack.',demo(`<div class="btns end">${IconButton('phone','Позвонить')}${IconButton('€$','Перевод')}${IconButton('scan','Сканер')}</div>`)],
+  ['StatusText','MbStatusText(text, tone)','Статус всегда текстом; предупреждение и ошибка — ещё и иконкой, чтобы не держаться на одном цвете.',demo(`<div class="btns end">${StatusText('подтверждено','ok')}${StatusText('ждёт принятия','warn')}${StatusText('не доставлено','bad')}</div>`)],
+  ['Tile','MbTile(label, value, sub, tone)','Плитка с числом: баланс (крупная, деньги), состояние сети (зелёная — всё в порядке).',
+    demo(Tile({k:'Баланс',v:'1 240<small>€$</small>',tone:'money',big:true})+Tiles(Tile({k:'Коллектор',v:'<span class="dot"></span>На связи',tone:'ok'}),Tile({k:'Мешь-сеть',v:'7 узлов'})))],
+  ['Card + Portrait + Qr','MbCard · MbPortrait(letter, size) · MbQr','Карточка с ведущим элементом: портрет-буква с развёрткой или QR-код.',demo(Card(Portrait('Ш',58),'<b>Шрам</b><span>Вольные · жилец 37-Б</span>'))],
+  ['Dialog','MbDialog(icon, title, body, actions, tone)','Одно окно на всё: объявление мастера, чтение шарда, входящий звонок, подтверждение (tone = danger). Кнопки — под окном.',
+    demo(announceDialog())+demo(confirmDialog())],
+  ['Banner','MbBanner(lead, title, sub, action, tone)','Плашка сверху для того, что идёт сейчас: разговор (зелёная) или потеря связи (красная).',demo(Banner({lead:Portrait('В',30),title:'Вобла',sub:'● В ЭФИРЕ · 01:42',action:Button('Завершить',{kind:'alert'})})+Banner({lead:`<span class="bic">${Icon('nosig')}</span>`,title:'Нет связи с коллектором',sub:'3 записи ждут отправки',tone:'danger',action:Button('Повторить',{kind:'danger'})}))],
+  ['Состояния кнопки','MbButton(enabled, …)','Обычная, нажата (ярче), выключена (гаснет), фокус для TalkBack и клавиатуры (белая рамка).',demo(`<div class="state-row">${Button('Обычная')}${Button('Нажата',{st:'pressed'})}${Button('Выключена',{st:'disabled'})}${Button('Фокус',{st:'focus'})}</div>`)],
+  ['EmptyState + Skeleton','MbEmptyState · MbSkeleton','Пустой список объясняет, что сделать дальше. Пока данные грузятся — серые строки-заглушки вместо пустоты.',demo(EmptyState({icon:'user',title:'Контактов пока нет',text:'Отсканируйте QR-код другого игрока, чтобы добавить его.',action:Button('Сканер',{key:'scan',inline:true})})+Skeleton(2))],
+  ['Отклик','вибрация и звук','Не видно на макете, но входит в набор. Короткая вибрация: перевод пришёл, демон загружен, звонок. Длинная двойная: тревога СБ, взлом провален. Звук — по настройкам.',demo(MetaLine('HapticFeedback + звук из настроек'))],
+  ['FormRow + Toggle + Slider + Value','MbFormRow · MbToggle · MbSlider · MbValue','Строка настройки: подпись слева, элемент справа. ВЫКЛ — красный, ВКЛ — тёмно-бирюзовый.',
+    demo(FormRow('Вибрация при сообщении',Toggle(true))+FormRow('Текст в уведомлении',Toggle(false))+FormRow('Яркость подсветки',Slider(70,'70'))+FormRow('Сервер мастера',Value('10.10.0.10')))],
+  ['Panel','MbPanel(title, meta, content)','Панель с залитой полосой-заголовком. На экране взлома; цвет берёт из темы.',
+    demo(Panel({title:'Последовательности',meta:'ДЛЯ ЗАГРУЗКИ',body:List([seq('Призрак','<em>1C BD</em> 55','убирает ваш ID из сигнала СБ')])}),'theme-breach')],
+  ['Взлом: Timer · Buffer · CodeMatrix · Log','MbTimer · MbBuffer · MbCodeMatrix · MbLog','Виджеты мини-игры. Те же токены, тема «взлом» или «успех».',
+    demo(Timer('Время взлома','34.50')+Progress(58)+Buffer(['1C','BD'],6),'theme-breach')+demo(Log(['//ЗАГРУЗКА_ЗАВЕРШЕНА'])+inst(true,'Призрак','ваш ID убран из сигнала СБ'),'theme-breach theme-ok')],
+  ['Темы','MbTheme.Default · Breach · Success','Все компоненты рисуются токенами. Тема меняет токены — компоненты те же.',
+    demo(Tabs([['','Демоны'],['','Шарды']],0)+Button('Сканер',{key:'scan'}))+demo(Tabs([['','Демоны'],['','Шарды']],0)+Button('Сканер',{key:'scan'}),'theme-breach')]
+];
+
+function render(){
+  document.getElementById('screens').innerHTML=SCREENS.map(([cap,o,uses])=>`<div class="pwrap"><span class="pcap">${cap}</span><div class="phone"><div class="screen">${AppShell({tab:o.tab,body:o.body(),overlay:o.overlay?o.overlay():'',theme:o.theme||'',header:o.header!==false})}</div></div><span class="puses">${uses}</span></div>`).join('');
+  document.getElementById('kit').innerHTML=KIT.map(([n,c,d,h])=>`<div class="citem"><h3>${n}<code>${c}</code></h3><p>${d}</p>${h}</div>`).join('');
+}
+let mode='screens';
+try{mode=localStorage.getItem('mb10mode')||'screens'}catch(_){}
+function setMode(m){mode=m;document.getElementById('screens').hidden=m!=='screens';document.getElementById('kit').hidden=m!=='kit';document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.mode===m));try{localStorage.setItem('mb10mode',m)}catch(_){}}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-mode]');if(b)setMode(b.dataset.mode);if(e.target.closest('.app a'))e.preventDefault();});
+render();setMode(mode);
+</script>
+</body>
+</html>
