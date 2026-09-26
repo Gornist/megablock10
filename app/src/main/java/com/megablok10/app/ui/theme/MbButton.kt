@@ -102,7 +102,7 @@ fun MbButton(
             MbKeyCap(keyIcon, tint = ink, fill = fill)
             Spacer(Modifier.width(8.dp))
         }
-        Text(text, color = ink, style = MbTypography.button.copy(letterSpacing = palette.letterSpacingEm.em), textAlign = TextAlign.Center)
+        Text(text.uppercase(), color = ink, style = MbTypography.button.copy(letterSpacing = palette.letterSpacingEm.em), textAlign = TextAlign.Center)
     }
 }
 

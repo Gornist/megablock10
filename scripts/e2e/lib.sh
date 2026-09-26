@@ -226,23 +226,26 @@ preflight() {
 }
 tap_xml() { # tap_xml <xml> <serial> "<подстрока>"
   local xy
+  # Без учёта регистра: новая дизайн-система (MbListItem/MbTabs/…) рисует заголовки ЗАГЛАВНЫМИ (гайдлайн, раздел 3) — позывные
+  # вроде "Bob" на экране выглядят как "BOB". Заводить по два варианта каждого имени/текста в десятках сценариев — источник
+  # рассинхронизации похуже редкого случайного совпадения регистронезависимой строки.
   xy=$(python3 -c '
 import sys,re
 import xml.etree.ElementTree as ET
-needle=sys.argv[2]
+needle=sys.argv[2].lower()
 for n in ET.parse(sys.argv[1]).getroot().iter("node"):
-    if needle in (n.get("text") or "") or needle in (n.get("content-desc") or ""):
+    if needle in (n.get("text") or "").lower() or needle in (n.get("content-desc") or "").lower():
         b=list(map(int,re.findall(r"\d+",n.get("bounds"))))
         print((b[0]+b[2])//2,(b[1]+b[3])//2); break
 ' "$1" "$3")
   [ -n "$xy" ] || return 1
   adb_ "$2" shell input tap $xy
 }
-tap_text() { dump_ui "$1"; tap_xml "$E2E_DIR/ui_$1.xml" "$1" "$2"; }   # tap_text <serial> "<подстрока text/content-desc>"
+tap_text() { dump_ui "$1"; tap_xml "$E2E_DIR/ui_$1.xml" "$1" "$2"; }   # tap_text <serial> "<подстрока text/content-desc, без учёта регистра>"
 # tap_when <serial> "<подстрока>" [сек] — ждёт, пока элемент появится, и нажимает. Экран (например, тред) открывается раньше, чем из базы
 # подгрузились карточки: одиночный tap_text в этот момент молча промахивался, и сценарий валился каскадом. Нет элемента за [сек] — код 1.
 tap_when() { wait_until "${3:-15}" tap_text "$1" "$2"; }
-screen_has() { dump_ui "$1"; grep -q "$2" "$E2E_DIR/ui_$1.xml"; }
+screen_has() { dump_ui "$1"; grep -qi -- "$2" "$E2E_DIR/ui_$1.xml"; }   # -i: та же причина, что у tap_xml выше
 scroll_down() { adb_ "$1" shell input swipe 540 1700 540 700 200; }
 
 # reset_ui — убрать с обоих экранов то, что осталось от прошлого сценария: окно «Сообщение от мастера» (иначе оно перехватывает тапы всех
@@ -325,4 +328,6 @@ open_chat() {
 }
 
 # back_if_arrow <serial> — нажимает «←» только если она есть на экране (в треде): на списке чатов тап в этом углу открыл бы профиль.
-back_if_arrow() { dump_ui "$1"; tap_xml "$E2E_DIR/ui_$1.xml" "$1" "←" || true; }
+# "←" — старые непереехавшие экраны (M4 в процессе), "Назад" — уже перенесённые на MbIconButton (docs/ux/ui-migration-plan.md).
+# Оставить только "Назад" можно будет в M5, когда переедут все экраны с кнопкой возврата.
+back_if_arrow() { dump_ui "$1"; tap_xml "$E2E_DIR/ui_$1.xml" "$1" "←" || tap_xml "$E2E_DIR/ui_$1.xml" "$1" "Назад" || true; }
