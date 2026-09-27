@@ -12,8 +12,8 @@ import { EconomyScreen } from "./screens/EconomyScreen";
 import { AnnouncementsScreen } from "./screens/AnnouncementsScreen";
 import { AuditScreen } from "./screens/AuditScreen";
 import { EventsScreen } from "./screens/EventsScreen";
-import { DisplaysScreen } from "./screens/DisplaysScreen";
 import { SoundScreen } from "./screens/SoundScreen";
+import { LocationsScreen } from "./screens/LocationsScreen";
 import { useEffect } from "react";
 import { useHashRoute, navigate } from "./router";
 import { NAV, resolveSection } from "./nav";
@@ -85,8 +85,8 @@ function Shell() {
         {section === "announcements" && <AnnouncementsScreen />}
         {section === "audit" && <AuditScreen />}
         {section === "master" && <MasterScreen />}
-        {/* До разбора по экранам (шаги 3–5 перекомпоновки): точки и группы — прежний экран дисплеев, звук — прежний экран. */}
-        {section === "locations" && <DisplaysScreen />}
+        {/* До разбора звука по экранам (шаг 5 перекомпоновки) Громкая связь и Каналы — прежний экран звука. */}
+        {section === "locations" && <LocationsScreen />}
         {(section === "announce" || section === "channels") && <SoundScreen />}
       </main>
     </div>

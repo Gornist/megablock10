@@ -17,6 +17,7 @@ export function GroupSection({
   onRename,
   onDelete,
   onAdd,
+  extra,
   children,
 }: {
   title: string;
@@ -27,6 +28,8 @@ export function GroupSection({
   onRename?: () => void;
   onDelete?: () => void;
   onAdd?: () => void;
+  /** Справа в заголовке, до кнопок: например, фон локации (канал и громкость). */
+  extra?: ReactNode;
   children: ReactNode;
 }) {
   const online = displays.filter((d) => d.status === "ONLINE" || d.status === "UPDATING").length;
@@ -48,17 +51,18 @@ export function GroupSection({
           {critical > 0 && <Badge tone="danger">батарея: {critical} критично</Badge>}
           {low > 0 && <Badge tone="warn">батарея: {low} мало</Badge>}
         </span>
+        {extra}
         <span className="display-group-actions">
-          {onAdd && <AppButton onClick={onAdd}>+ дисплей</AppButton>}
+          {onAdd && <AppButton onClick={onAdd}>+ точка</AppButton>}
           {onRename && <AppButton onClick={onRename}>Переименовать</AppButton>}
           {onDelete && (
             <AppButton variant="danger" onClick={onDelete}>
-              Удалить группу
+              Удалить локацию
             </AppButton>
           )}
         </span>
       </header>
-      {!collapsed && (displays.length > 0 ? children : <p className="hint-text display-group-empty">в группе пока нет дисплеев</p>)}
+      {!collapsed && (displays.length > 0 ? children : <p className="hint-text display-group-empty">в локации пока нет точек</p>)}
     </section>
   );
 }
@@ -66,7 +70,7 @@ export function GroupSection({
 /** Создать группу или переименовать: одно поле — название (например, локация «Бар «Посмертие»»). */
 export function GroupNameDialog({ group, onDone, onCancel }: { group?: DisplayGroup; onDone: () => void; onCancel: () => void }) {
   const [name, setName] = useState(group?.name ?? "");
-  const { busy, error, run } = useAsyncAction({ fallbackError: "не удалось сохранить группу" });
+  const { busy, error, run } = useAsyncAction({ fallbackError: "не удалось сохранить локацию" });
   async function save() {
     const res = await run(() =>
       group ? api.put<DisplayGroup>(`/api/display-groups/${encodeURIComponent(group.id)}`, { name }) : api.post<DisplayGroup>("/api/display-groups", { name }),
@@ -75,7 +79,7 @@ export function GroupNameDialog({ group, onDone, onCancel }: { group?: DisplayGr
   }
   return (
     <AppDialog
-      title={group ? `Переименовать «${group.name}»` : "Новая группа дисплеев"}
+      title={group ? `Переименовать «${group.name}»` : "Новая локация"}
       confirmText={busy ? "Сохраняю…" : group ? "Переименовать" : "Создать"}
       confirmDisabled={busy || !name.trim()}
       onConfirm={save}
@@ -92,15 +96,15 @@ export function GroupNameDialog({ group, onDone, onCancel }: { group?: DisplayGr
 
 /** Удалить группу: её дисплеи остаются, становятся «без группы». */
 export function GroupDeleteDialog({ group, onDone, onCancel }: { group: DisplayGroup; onDone: () => void; onCancel: () => void }) {
-  const { busy, error, run } = useAsyncAction({ fallbackError: "не удалось удалить группу" });
+  const { busy, error, run } = useAsyncAction({ fallbackError: "не удалось удалить локацию" });
   async function remove() {
     const res = await run(() => api.delete(`/api/display-groups/${encodeURIComponent(group.id)}`));
     if (res.ok) onDone();
   }
   return (
     <AppDialog
-      title={`Удалить группу «${group.name}»?`}
-      body={`Дисплеи группы (${group.count}) не удаляются — они окажутся «без группы».`}
+      title={`Удалить локацию «${group.name}»?`}
+      body={`Точки локации (${group.count}) не удаляются — они окажутся «без локации».`}
       confirmText={busy ? "Удаляю…" : "Удалить"}
       confirmVariant="danger"
       confirmDisabled={busy}

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import type { NodeDetail, NodeSummary, PlayerListItem } from "../api/types";
+import type { DisplayItem, NodeDetail, NodeSummary, PlayerListItem } from "../api/types";
+import { POLL_LIVE_MS } from "../api/pollIntervals";
 import { useApiData } from "../api/useApiData";
 import { AsyncPanel } from "../design/AsyncPanel";
 import { OutcomeBars } from "../design/charts";
@@ -8,17 +9,27 @@ import { DataTable, type Column } from "../design/DataTable";
 import { formatAgo, tierLabel } from "../format";
 import { navigate } from "../router";
 import { DisplayPushDialog } from "./displays/DisplayPushDialog";
+import { NodePoint, PointBadges } from "./nodes/NodePoint";
 
 const HOUR_OPTIONS = [6, 24, 72] as const;
 
 export function NodesScreen({ nodeId }: { nodeId?: string }) {
   const { data: nodes, error } = useApiData<NodeSummary[]>("/api/nodes");
+  // Узел в мире — это точка с QR-дисплеем и звуком: в списке видно, жива ли она.
+  const { data: displays } = useApiData<DisplayItem[]>("/api/displays", { pollMs: POLL_LIVE_MS });
+  const pointOf = (id: string) => (displays ?? []).find((d) => d.nodeId === id);
 
   const byTier = new Map<string, number>();
   for (const n of nodes ?? []) byTier.set(n.tier, (byTier.get(n.tier) ?? 0) + 1);
 
   const columns: Column<NodeSummary>[] = [
     { key: "name", label: "Имя", render: (n) => n.name, sortValue: (n) => n.name },
+    {
+      key: "point",
+      label: "Точка",
+      render: (n) => <PointBadges point={pointOf(n.id)} />,
+      sortValue: (n) => (pointOf(n.id) ? (pointOf(n.id)!.status === "ONLINE" ? 2 : 1) : 0),
+    },
     { key: "tier", label: "Сложность", render: (n) => tierLabel(n.tier), sortValue: (n) => n.tier },
     { key: "faction", label: "Владелец", render: (n) => n.ownerFaction ?? "—", sortValue: (n) => n.ownerFaction ?? "" },
     { key: "slots", label: "Слотов забрано/всего", render: (n) => `${n.slotsClaimed}/${n.slotsTotal}`, sortValue: (n) => n.slotsClaimed },
@@ -88,6 +99,7 @@ function NodeDetailPanel({ nodeId }: { nodeId: string }) {
                 ))
               )}
             </div>
+            <NodePoint nodeId={nodeId} nodeName={n.name} />
           </>
         )}
       </AsyncPanel>

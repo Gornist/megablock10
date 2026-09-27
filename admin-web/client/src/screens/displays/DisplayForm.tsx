@@ -15,9 +15,11 @@ interface Draft {
   enabled: boolean;
   /** "" — без группы. */
   groupId: string;
+  /** "" — без узла. */
+  nodeId: string;
 }
 
-const NEW_DRAFT: Draft = { id: "", name: "", ip: "", port: "47200", width: "792", height: "272", enabled: true, groupId: "" };
+const NEW_DRAFT: Draft = { id: "", name: "", ip: "", port: "47200", width: "792", height: "272", enabled: true, groupId: "", nodeId: "" };
 
 function toDraft(d: DisplayItem): Draft {
   return {
@@ -29,15 +31,21 @@ function toDraft(d: DisplayItem): Draft {
     height: String(d.height),
     enabled: d.enabled,
     groupId: d.groupId ?? "",
+    nodeId: d.nodeId ?? "",
   };
 }
 
 const digits = (v: string) => v.replace(/\D/g, "");
 
-/** Новый дисплей (id задаётся один раз — он прошит в плату) или правка существующего: имя, группа, постоянный IP, порт, размер панели. */
+/**
+ * Новая точка (id задаётся один раз — он прошит в плату) или правка существующей: имя, локация, узел, постоянный IP, порт,
+ * размер панели. Узел — контейнер, которым точка стоит в мире; одна точка на узел, занятые узлы в списке недоступны.
+ */
 export function DisplayForm({
   editing,
   groups,
+  nodes = [],
+  takenNodes = new Map(),
   defaultGroupId,
   onCreated,
   onSaved,
@@ -45,6 +53,10 @@ export function DisplayForm({
 }: {
   editing?: DisplayItem;
   groups: DisplayGroup[];
+  /** Узлы (контейнеры) для выбора. */
+  nodes?: { id: string; name: string }[];
+  /** Узел → id точки, которая на нём стоит. */
+  takenNodes?: Map<string, string>;
   /** Новый дисплей из группы («+ дисплей» в её заголовке) — сразу в неё. */
   defaultGroupId?: string;
   onCreated: (r: DisplaySecretResponse) => void;
@@ -64,6 +76,7 @@ export function DisplayForm({
       height: Number(draft.height),
       enabled: draft.enabled,
       groupId: draft.groupId || null,
+      nodeId: draft.nodeId || null,
     };
     if (editing) {
       const res = await run(() => api.put<DisplayItem>(`/api/displays/${encodeURIComponent(editing.id)}`, body));
@@ -75,7 +88,7 @@ export function DisplayForm({
   }
 
   return (
-    <Panel title={editing ? `Дисплей ${editing.id}` : "Новый дисплей"}>
+    <Panel title={editing ? `Точка ${editing.id}` : "Новая точка"}>
       <div className="master-form">
         {!editing && (
           <Field label="id (прошивается в плату, потом не меняется)">
@@ -85,14 +98,29 @@ export function DisplayForm({
         <Field label="Название точки">
           <AppInput value={draft.name} onChange={(e) => set({ name: e.target.value })} placeholder="Точка 17, техэтаж" />
         </Field>
-        <Field label="Группа (локация)">
+        <Field label="Локация">
           <AppSelect value={draft.groupId} onChange={(e) => set({ groupId: e.target.value })} aria-label="группа">
-            <option value="">без группы</option>
+            <option value="">без локации</option>
             {groups.map((g) => (
               <option key={g.id} value={g.id}>
                 {g.name}
               </option>
             ))}
+          </AppSelect>
+        </Field>
+        <Field label="Узел (контейнер, которым точка стоит в мире)">
+          <AppSelect value={draft.nodeId} onChange={(e) => set({ nodeId: e.target.value })} aria-label="узел">
+            <option value="">без узла — просто динамик в локации</option>
+            {nodes.map((n) => {
+              const other = takenNodes.get(n.id);
+              const busy = other !== undefined && other !== editing?.id;
+              return (
+                <option key={n.id} value={n.id} disabled={busy}>
+                  {n.name}
+                  {busy ? ` — занят (${other})` : ""}
+                </option>
+              );
+            })}
           </AppSelect>
         </Field>
         <Field label="IP-адрес (постоянный, выдан роутером)">

@@ -1294,3 +1294,81 @@
   background: var(--money);
   color: var(--on-money);
 }
+
+/* Точка узла (screens/nodes/NodePoint.tsx): узел-контейнер и есть QR-дисплей со звуком. */
+.node-point {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--chrome-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.node-point-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.node-point-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+.node-point-audio {
+  display: flex;
+  align-items: center;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+}
+.node-point-audio .sound-controls {
+  margin-left: 0;
+}
+.point-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.link-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--acc);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+/* Локации (screens/LocationsScreen.tsx): точки строками, «подробнее» — карточка точки. */
+.location-points {
+  list-style: none;
+  margin: 0 0 0 22px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.location-point {
+  border-bottom: 1px solid var(--chrome-soft);
+  padding: 6px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.location-point-line,
+.location-point-audio {
+  display: flex;
+  align-items: center;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+}
+.location-point-line .display-card-status {
+  margin-left: auto;
+}
+.location-point-audio {
+  padding-left: 22px;
+}
+.location-point .display-card {
+  margin: 4px 0 6px 22px;
+}

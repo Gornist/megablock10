@@ -15,9 +15,20 @@ const POLL_PUSH_MS = 1000;
  * по каждому дисплею шкала «подключение → отправлено → загружено → отображено», а макет показывает, что сейчас на экране выбранного
  * дисплея. Картинку рисует сервер, браузер к дисплеям не ходит.
  */
-export function DisplayPushDialog({ source, title, onClose }: { source: DisplaySource; title: string; onClose: () => void }) {
+export function DisplayPushDialog({
+  source,
+  title,
+  onClose,
+  preselect,
+}: {
+  source: DisplaySource;
+  title: string;
+  onClose: () => void;
+  /** Сразу отмеченные точки — например, точка этого узла (карточка узла). */
+  preselect?: string[];
+}) {
   const { data: displays, error: listError } = useApiData<DisplayItem[]>("/api/displays", { pollMs: POLL_PUSH_MS });
-  const [selected, setSelected] = useState<string[]>([]);
+  const [selected, setSelected] = useState<string[]>(preselect ?? []);
   const [preview, setPreview] = useState<DisplayPreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [sent, setSent] = useState<DisplayPushResponse | null>(null);

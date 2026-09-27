@@ -1,10 +1,10 @@
-import { useState } from "react";
 import { api } from "../../api/client";
 import type { AudioChannel, DisplayGroup, DisplayItem } from "../../api/types";
 import { useAsyncAction } from "../../api/useAsyncAction";
-import { AppSelect, Badge, Panel } from "../../design/components";
+import { AppSelect, Panel } from "../../design/components";
 import { useCollapsedGroups } from "../displays/useCollapsedGroups";
-import { isOnline, nowPlaying } from "./audioUtil";
+import { isOnline } from "./audioUtil";
+import { PointAudioControls, PointAudioStatus, VolumeInput } from "./PointAudio";
 
 /**
  * Что играет где: фон задаётся группе (локации) — каналом и громкостью, у отдельной точки — исключение (свой канал или
@@ -28,13 +28,11 @@ export function LocationsPanel({
 
   const saveGroup = (g: DisplayGroup, channelId: string | null, volume: number | null) =>
     run(() => api.put(`/api/display-groups/${encodeURIComponent(g.id)}/audio`, { channelId, volume })).then((r) => r.ok && onChanged());
-  const savePoint = (p: DisplayItem, channelId: string | null, volume: number | null) =>
-    run(() => api.put(`/api/displays/${encodeURIComponent(p.id)}/audio`, { channelId, volume })).then((r) => r.ok && onChanged());
 
   const rows = (list: DisplayItem[]) => (
     <ul className="sound-points">
       {list.map((p) => (
-        <PointRow key={p.id} point={p} channels={channels} onSave={(c, v) => void savePoint(p, c, v)} />
+        <PointRow key={p.id} point={p} channels={channels} onSaved={onChanged} />
       ))}
     </ul>
   );
@@ -99,93 +97,14 @@ export function LocationsPanel({
   );
 }
 
-function PointRow({
-  point,
-  channels,
-  onSave,
-}: {
-  point: DisplayItem;
-  channels: AudioChannel[];
-  onSave: (channelId: string | null, volume: number | null) => void;
-}) {
-  const a = point.audio!;
-  const online = isOnline(point);
-  // "override:" — как у группы; "" — тишина; иначе id канала.
-  const value = a.overrideChannelId === null ? "group" : a.overrideChannelId;
+function PointRow({ point, channels, onSaved }: { point: DisplayItem; channels: AudioChannel[]; onSaved: () => void }) {
   return (
     <li className="sound-point" data-point={point.id}>
       <span className="sound-point-name">
         {point.name} <span className="hint-text mono">{point.id}</span>
       </span>
-      <span className="sound-point-now">{online ? nowPlaying(point) : "—"}</span>
-      <span className="sound-point-flags">
-        {!online ? <Badge tone="neutral">нет связи</Badge> : a.applied ? <Badge tone="ok">применено</Badge> : <Badge tone="warn">доходит…</Badge>}
-        {a.sdOk === false && <Badge tone="danger">нет карты</Badge>}
-        {a.missing.length > 0 && (
-          <span title={a.missing.join("\n")}>
-            <Badge tone="danger">нет на карте: {a.missing.length}</Badge>
-          </span>
-        )}
-        <span className="hint-text mono">{a.reportedVolume ?? a.volume}%</span>
-      </span>
-      <span className="sound-controls">
-        <AppSelect
-          aria-label={`фон точки ${point.id}`}
-          value={value}
-          onChange={(e) => onSave(e.target.value === "group" ? null : e.target.value, a.overrideVolume)}
-        >
-          <option value="group">как у группы</option>
-          <option value="">тишина</option>
-          {channels.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </AppSelect>
-        <VolumeInput
-          key={`p-${a.overrideVolume}`}
-          label={`громкость точки ${point.id}`}
-          value={a.overrideVolume}
-          placeholder="авто"
-          onCommit={(v) => onSave(a.overrideChannelId, v)}
-        />
-      </span>
+      <PointAudioStatus point={point} />
+      <PointAudioControls point={point} channels={channels} onSaved={onSaved} />
     </li>
-  );
-}
-
-/** Громкость 0–100 или пусто («как выше»); сохраняется по Enter и при уходе с поля. Пришло новое значение с сервера — key={value} у вызывающего. */
-export function VolumeInput({
-  label,
-  value,
-  placeholder,
-  onCommit,
-}: {
-  label: string;
-  value: number | null;
-  placeholder: string;
-  onCommit: (v: number | null) => void;
-}) {
-  const [text, setText] = useState(value === null ? "" : String(value));
-  const commit = () => {
-    const t = text.trim();
-    const v = t === "" ? null : Math.max(0, Math.min(100, Math.round(Number(t))));
-    if (v !== null && Number.isNaN(v)) return setText(value === null ? "" : String(value));
-    if (v !== value) onCommit(v);
-  };
-  return (
-    <input
-      className="app-input sound-volume"
-      type="number"
-      min={0}
-      max={100}
-      aria-label={label}
-      title={label}
-      placeholder={placeholder}
-      value={text}
-      onChange={(e) => setText(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-    />
   );
 }

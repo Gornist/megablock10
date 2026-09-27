@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api } from "../../api/client";
 import type { DisplayGroup, DisplayItem, DisplayPreview, DisplaySecretResponse } from "../../api/types";
 import { useAsyncAction } from "../../api/useAsyncAction";
@@ -6,6 +6,7 @@ import { AppButton, AppDialog, AppSelect, Badge, Panel } from "../../design/comp
 import { formatAgo } from "../../format";
 import { BatteryGauge } from "./BatteryGauge";
 import { DisplayMock, PushSteps } from "./DisplayMock";
+import { isLagging, useDisplayFrame } from "./useDisplayFrame";
 import { phaseText, screenState, STATUS_LABEL, STATUS_TONE, type DisplaySource } from "./displayUtil";
 
 const BACKLIGHT = [
@@ -43,22 +44,7 @@ export function DisplayCard({
   const [note, setNote] = useState<string | null>(null);
   const action = useAsyncAction({ fallbackError: "дисплей не ответил" });
   const base = `/api/displays/${encodeURIComponent(d.id)}`;
-  // Кадр последней отправки — для макета «что на экране»; сервер перерисовывает его при каждой новой версии. Хранится вместе с
-  // версией: пока не пришёл кадр новой версии, старый не показывается. Причина ошибки — в «ошибка» выше, под шкалой не повторяется.
-  const [frame, setFrame] = useState<{ version: number; preview: DisplayPreview } | null>(null);
-  useEffect(() => {
-    const version = d.desiredVersion;
-    if (version === null) return;
-    let cancelled = false;
-    api
-      .get<DisplayPreview>(`${base}/preview`)
-      .then((preview) => !cancelled && setFrame({ version, preview }))
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [base, d.desiredVersion]);
-  const framePng = frame && frame.version === d.desiredVersion ? frame.preview.png : null;
+  const framePng = useDisplayFrame(d);
   const shownState = screenState(d);
   const inFlight = d.push && d.push.version === d.desiredVersion && d.push.phase !== "DISPLAYED" ? d.push : null;
 
@@ -94,7 +80,7 @@ export function DisplayCard({
     }
   }
 
-  const lagging = d.desiredVersion !== null && (d.displayedVersion ?? 0) < d.desiredVersion && d.activeVersion === null && d.pendingVersion === null;
+  const lagging = isLagging(d);
 
   return (
     <Panel
