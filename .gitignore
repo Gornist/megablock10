@@ -12,3 +12,4 @@ local.properties
 .claude/settings.local.json
 # Кэш kotlin-language-server (плагин KotlinSense, .claude/settings.json)
 .kotlin-ls/
+/display-print-sheet.pdf

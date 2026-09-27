@@ -10,8 +10,10 @@ import { deriveLootKey, encryptLoot } from "../lib/lootCrypto.js";
 import type { QrErrorCorrection } from "../lib/qrImage.js";
 
 /**
- * Лист для проверки читаемости QR с панели без самой панели (docs/firmware-plan.md, Ф7): кадры ровно как на e-paper
- * (тот же рендер), напечатанные в физическом размере панели. Печатать из браузера в масштабе 100 % («по размеру страницы» —
+ * Лист для проверки читаемости QR с панели без самой панели (docs/firmware-plan.md, Ф7): середина кадра ровно как на e-paper
+ * (тот же рендер), напечатанная в физическом размере панели. Полный кадр 47,6×138,6 мм — четыре в ширину A4 не влезали,
+ * поэтому на листе квадрат из середины панели (QR с тихой зоной целиком): сетка «контейнер × уровень коррекции» на одной
+ * странице, таблица результатов — на второй. Печатать из браузера в масштабе 100 % («по размеру страницы» —
  * выключить), линейка 50 мм на листе проверяет, что масштаб не съехал.
  *
  *   npm run display-print-sheet -- [--out data/display-print-sheet.html] [--pitch-mm 0.175] [--width 272 --height 792]
@@ -77,32 +79,30 @@ function dbContainers(path: string): Sample[] {
 
 const samples = values.db ? dbContainers(values.db) : sampleContainers();
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
-const wMm = (width * pitch).toFixed(2);
-const hMm = (height * pitch).toFixed(2);
+// Полный кадр 47,6×138,6 мм: четыре в ширину A4 не влезают. QR занимает только середину панели, поэтому печатаем квадрат
+// side×side из центра: масштаб рендера — от меньшей стороны (renderer.ts), так что пиксели те же, что на панели.
+const side = Math.min(width, height);
+const sideMm = (side * pitch).toFixed(2);
 
-const pages = levels.map((ec) => {
-  const cards = samples.map((s) => {
-    try {
-      const r = renderQrForDisplay(s.qr, width, height, undefined, ec);
-      const moduleMm = (r.scale * pitch).toFixed(2);
-      const warn = r.scale <= 1 ? " warn" : "";
-      return `<figure>
-  <img src="${bitmapToPngDataUrl(r)}" style="width:${wMm}mm;height:${hMm}mm" alt="">
-  <figcaption class="${warn}"><b>${esc(s.title)}</b><br>QR v${r.qrVersion}, ${r.modules} мод.<br>${r.scale} px = ${moduleMm} мм на модуль<br>${s.qr.length} символов</figcaption>
-</figure>`;
-    } catch (err) {
-      return `<figure><figcaption class="warn"><b>${esc(s.title)}</b><br>${esc((err as Error).message)}</figcaption></figure>`;
-    }
-  });
-  return `<section>
-  <h1>QR на панели ${width}×${height} — уровень коррекции ${ec}${ec === "M" ? " (как на печати и дисплее)" : " (эксперимент: та же строка)"}</h1>
-  <p>Шаг пикселя ${pitch} мм — кадр ${wMm}×${hMm} мм, как на e-paper. Печатать в масштабе 100 %. Линейка должна быть ровно 50 мм:</p>
-  <div class="ruler"></div>
-  <div class="row">${cards.join("\n")}</div>
-</section>`;
-});
+function cell(s: Sample, ec: QrErrorCorrection): string {
+  try {
+    const r = renderQrForDisplay(s.qr, side, side, undefined, ec);
+    const moduleMm = (r.scale * pitch).toFixed(2);
+    const warn = r.scale <= 1 ? " warn" : "";
+    return `<td><img src="${bitmapToPngDataUrl(r)}" style="width:${sideMm}mm;height:${sideMm}mm" alt="">
+  <div class="cap${warn}">${ec}: QR v${r.qrVersion}, ${r.modules} мод., ${r.scale} px = ${moduleMm} мм</div></td>`;
+  } catch (err) {
+    return `<td><div class="cap warn">${ec}: ${esc((err as Error).message)}</div></td>`;
+  }
+}
 
-const rows = samples.flatMap((s) => levels.map((ec) => `<tr><td>${esc(s.title)}</td><td>${ec}</td><td></td><td></td><td></td><td></td></tr>`)).join("\n");
+const gridRows = samples
+  .map((s, i) => `<tr><th>№${i + 1}<br>${esc(s.title)}<br><span class="small">${s.qr.length} символов</span></th>${levels.map((ec) => cell(s, ec)).join("")}</tr>`)
+  .join("\n");
+
+const rows = samples
+  .flatMap((s, i) => levels.map((ec) => `<tr><td>№${i + 1} ${esc(s.title)}</td><td>${ec}</td><td></td><td></td><td></td><td></td></tr>`))
+  .join("\n");
 
 const html = `<!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><title>QR-дисплей: проверка читаемости</title>
@@ -110,25 +110,38 @@ const html = `<!doctype html>
   @page { size: A4; margin: 10mm; }
   body { font: 10pt/1.3 sans-serif; color: #000; background: #fff; margin: 0; }
   section { page-break-after: always; }
+  section:last-child { page-break-after: auto; }
   h1 { font-size: 13pt; margin: 0 0 2mm; }
   p { margin: 0 0 2mm; }
-  .ruler { width: 50mm; height: 3mm; border: 0.3mm solid #000; border-top: 0; margin-bottom: 4mm;
+  .ruler { width: 50mm; height: 3mm; border: 0.3mm solid #000; border-top: 0; margin-bottom: 3mm;
            background: repeating-linear-gradient(90deg, #000 0 0.3mm, transparent 0.3mm 10mm); }
-  .row { display: flex; gap: 2mm; flex-wrap: wrap; }
-  figure { margin: 0; }
+  table.grid { border-collapse: separate; border-spacing: 3mm 1.5mm; margin-left: -3mm; }
+  table.grid th { font-size: 9pt; font-weight: normal; text-align: left; vertical-align: middle; width: 30mm; }
+  table.grid td { vertical-align: top; }
   img { display: block; outline: 0.2mm dashed #999; image-rendering: pixelated; }
-  figcaption { font-size: 8pt; margin-top: 1mm; max-width: ${wMm}mm; }
-  figcaption.warn { color: #b00; }
-  table { border-collapse: collapse; width: 100%; font-size: 9pt; }
-  td, th { border: 0.2mm solid #000; padding: 1.5mm; text-align: left; }
-  td:nth-child(n+3) { width: 22%; }
+  .cap { font-size: 7.5pt; margin-top: 0.8mm; }
+  .warn { color: #b00; }
+  .small { font-size: 8pt; color: #444; }
+  table.res { border-collapse: collapse; width: 100%; font-size: 9pt; }
+  table.res td, table.res th { border: 0.2mm solid #000; padding: 1.8mm; text-align: left; }
+  table.res td:nth-child(n+3) { width: 20%; }
 </style></head><body>
-${pages.join("\n")}
+<section>
+  <h1>QR на e-paper ${width}×${height}: середина панели ${side}×${side} px в натуральную величину</h1>
+  <p>Шаг пикселя ${pitch} мм — квадрат ${sideMm}×${sideMm} мм, ровно как на панели (остальная панель — белое поле). Печатать в масштабе 100 %
+  («по размеру страницы» выключить). Линейка должна быть ровно 50 мм:</p>
+  <div class="ruler"></div>
+  <table class="grid"><tr><th></th>${levels.map((ec) => `<th>Коррекция ${ec}${ec === "M" ? " — как сейчас на печати и дисплее" : " — эксперимент, та же строка"}</th>`).join("")}</tr>
+  ${gridRows}
+  </table>
+  <p class="small">Красная подпись — 1 px на модуль (≈${pitch} мм): вероятно, телефон не прочтёт.</p>
+</section>
 <section>
   <h1>Результаты: телефоны игроков, приложение Мегаблока</h1>
-  <p>Для каждого кадра: модель телефона, с какого расстояния читается, при каком свете (день / вечер / фонарик / подсветка), прочитал ли за 3 с.
-  Пунктирная рамка — край панели; QR в середине, остальное — белое поле e-paper.</p>
-  <table><tr><th>Контейнер</th><th>Коррекция</th><th>Телефон</th><th>Расстояние</th><th>Свет</th><th>Прочитал?</th></tr>
+  <p>Сканировать приложением игроков (не системной камерой). Для каждого квадрата: модель телефона, с какого расстояния читается,
+  при каком свете (день / вечер / фонарик), прочитал ли за 3 с. Вернуть лист (или фото) мастеру — по нему решаем: ≤ 2 слотов на контейнер,
+  панель крупнее или коррекция L для дисплея.</p>
+  <table class="res"><tr><th>Кадр</th><th>Коррекция</th><th>Телефон</th><th>Расстояние</th><th>Свет</th><th>Прочитал?</th></tr>
   ${rows}
   </table>
 </section>
