@@ -642,7 +642,7 @@
   gap: var(--gap);
 }
 
-/* Электронные QR-дисплеи (screens/DisplaysScreen.tsx, screens/displays/). */
+/* Точки: QR-дисплей (screens/LocationsScreen.tsx, screens/nodes/NodePoint.tsx, screens/displays/). */
 .dialog-panel.wide {
   width: 720px;
   max-height: calc(100vh - 48px);
@@ -1095,7 +1095,7 @@
   margin: 0 0 6px 22px;
 }
 
-/* Звук точек (screens/SoundScreen.tsx, screens/audio/). */
+/* Звук точек (screens/AnnounceScreen.tsx, screens/ChannelsScreen.tsx, screens/audio/). */
 .sound-announce-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));

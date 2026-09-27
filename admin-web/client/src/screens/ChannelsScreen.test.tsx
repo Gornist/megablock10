@@ -1,0 +1,97 @@
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { AudioCatalogTrack, AudioChannel, AudioClip, DisplayAudio, DisplayGroup, DisplayItem } from "../api/types";
+import { mockApi } from "../test/mockApi";
+import { display } from "../test/displayFixtures";
+import { ChannelsScreen } from "./ChannelsScreen";
+
+vi.mock("../api/client");
+
+const audio = (over: Partial<DisplayAudio> = {}): DisplayAudio => ({
+  channelId: "ch-neon",
+  channelName: "Радио «Неон»",
+  source: "group",
+  volume: 70,
+  desiredVersion: 3,
+  reportedVersion: 3,
+  applied: true,
+  playing: "radio-1.mp3",
+  reportedVolume: 70,
+  missing: [],
+  tracksOnCard: 12,
+  sdOk: true,
+  overrideChannelId: null,
+  overrideVolume: null,
+  announce: null,
+  ...over,
+});
+
+const groups: DisplayGroup[] = [
+  { id: "g-bar", name: "Бар «Посмертие»", count: 2, audioChannelId: "ch-neon", audioVolume: 70 },
+  { id: "g-sq", name: "Площадь", count: 1, audioChannelId: null, audioVolume: null },
+];
+const channels: AudioChannel[] = [{ id: "ch-neon", name: "Радио «Неон»", tracks: ["radio-1.mp3", "ad-neon.mp3"], shuffle: true, gapMs: 0, volume: 60 }];
+const catalog: AudioCatalogTrack[] = [
+  { name: "ad-neon.mp3", points: 2 },
+  { name: "radio-1.mp3", points: 2 },
+  { name: "rain.mp3", points: 1 },
+];
+const clips: AudioClip[] = [{ id: "a".repeat(64), name: "Игра началась", bytes: 40000, durationMs: 4800, preset: true, createdAt: 1 }];
+
+const list: DisplayItem[] = [
+  display({ id: "bar-1", name: "Бар, стойка", groupId: "g-bar", roles: ["display", "audio"], audio: audio() }),
+  display({
+    id: "bar-2",
+    name: "Бар, туалет",
+    groupId: "g-bar",
+    roles: ["display", "audio"],
+    audio: audio({ applied: false, missing: ["ad-neon.mp3"], playing: null }),
+  }),
+  display({
+    id: "sq-1",
+    name: "Площадь, фонтан",
+    groupId: "g-sq",
+    roles: ["display", "audio"],
+    audio: audio({ channelId: null, channelName: null, playing: null }),
+  }),
+  display({ id: "qr-only", name: "Только QR", groupId: "g-sq" }),
+];
+
+function routes(extra: Record<string, unknown> = {}) {
+  return mockApi({
+    "GET /api/displays": list,
+    "GET /api/display-groups": groups,
+    "GET /api/audio/channels": channels,
+    "GET /api/audio/catalog": catalog,
+    "GET /api/audio/clips": clips,
+    ...extra,
+  });
+}
+
+beforeEach(() => vi.clearAllMocks());
+
+describe("ChannelsScreen", () => {
+  it("канал: треки из каталога карт, порядок, сохранение", async () => {
+    const calls = routes({ "POST /api/audio/channels": channels[0] });
+    render(<ChannelsScreen />);
+    fireEvent.click(await screen.findByRole("button", { name: "+ канал" }));
+    fireEvent.change(await screen.findByPlaceholderText("Радио «Неон»"), { target: { value: "Дождь" } });
+    fireEvent.click(screen.getByRole("button", { name: "+ rain.mp3" }));
+    fireEvent.click(screen.getByRole("button", { name: "+ ad-neon.mp3" }));
+    const tracks = screen.getByLabelText("треки канала");
+    expect(within(tracks).getByText(/есть на 1 из 3/)).toBeTruthy();
+    fireEvent.click(within(tracks).getAllByTitle("выше")[1]);
+    fireEvent.change(screen.getByLabelText("трек вручную"), { target: { value: "thunder.mp3" } });
+    fireEvent.click(screen.getByRole("button", { name: "добавить" }));
+    expect(within(tracks).getByText(/ни одна точка не докладывала/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/api/audio/channels")).toBe(true));
+    expect(calls.find((c) => c.path === "/api/audio/channels" && c.method === "POST")!.body).toEqual({
+      name: "Дождь",
+      tracks: ["ad-neon.mp3", "rain.mp3", "thunder.mp3"],
+      shuffle: true,
+      volume: 60,
+      gapMs: 0,
+    });
+  });
+});

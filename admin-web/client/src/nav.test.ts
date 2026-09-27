@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { NAV, REDIRECTS, resolveSection } from "./nav";
+import { SCREENS } from "./routes";
 
 describe("меню коллектора", () => {
   it("две группы: «Игра» и «Мир», без «Дисплеев» и «Звука»", () => {
@@ -19,5 +20,10 @@ describe("меню коллектора", () => {
     expect(resolveSection("players")).toBe("players");
     const paths = new Set(NAV.flatMap((g) => g.items.map((i) => i.path)));
     for (const target of Object.values(REDIRECTS)) expect(paths.has(target)).toBe(true);
+  });
+
+  it("у каждого пункта меню есть экран, и лишних экранов без пункта нет", () => {
+    const paths = NAV.flatMap((g) => g.items.map((i) => i.path)).sort();
+    expect(Object.keys(SCREENS).sort()).toEqual(paths);
   });
 });

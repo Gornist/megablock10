@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AnnounceResponse, AudioCatalogTrack, AudioChannel, AudioClip, DisplayAudio, DisplayGroup, DisplayItem } from "../api/types";
 import { mockApi } from "../test/mockApi";
 import { display } from "../test/displayFixtures";
-import { SoundScreen } from "./SoundScreen";
+import { AnnounceScreen } from "./AnnounceScreen";
 
 vi.mock("../api/client");
 
@@ -70,7 +70,7 @@ function routes(extra: Record<string, unknown> = {}) {
 
 beforeEach(() => vi.clearAllMocks());
 
-describe("SoundScreen", () => {
+describe("AnnounceScreen", () => {
   it("звуковых точек нет — объяснение, как они появляются", async () => {
     mockApi({
       "GET /api/displays": [display()],
@@ -79,35 +79,8 @@ describe("SoundScreen", () => {
       "GET /api/audio/catalog": [],
       "GET /api/audio/clips": [],
     });
-    render(<SoundScreen />);
+    render(<AnnounceScreen />);
     expect(await screen.findByText("Как появляется звуковая точка")).toBeTruthy();
-  });
-
-  it("локации: что где играет, чего нет на карте; смена канала группы и исключение точки — сразу на сервер", async () => {
-    const calls = routes({ "PUT /api/display-groups/g-sq/audio": {}, "PUT /api/displays/bar-2/audio": {} });
-    const { container } = render(<SoundScreen />);
-    await screen.findByText("Бар, стойка");
-    expect(screen.queryByText("Только QR"), "дисплей без звука здесь не показывается").toBeNull();
-    const tiles = [...container.querySelectorAll(".stat-tile")].map((t) => t.textContent);
-    expect(tiles).toContain("3звуковых точек");
-    expect(tiles).toContain("2фон применён");
-
-    const bar2 = container.querySelector('[data-point="bar-2"]') as HTMLElement;
-    expect(within(bar2).getByText("доходит…")).toBeTruthy();
-    expect(within(bar2).getByText("нет на карте: 1")).toBeTruthy();
-    expect(within(container.querySelector('[data-point="bar-1"]') as HTMLElement).getByText("♪ radio-1.mp3")).toBeTruthy();
-
-    fireEvent.change(screen.getByLabelText("канал группы Площадь"), { target: { value: "ch-neon" } });
-    await waitFor(() => expect(calls.some((c) => c.method === "PUT" && c.path === "/api/display-groups/g-sq/audio")).toBe(true));
-    expect(calls.find((c) => c.path === "/api/display-groups/g-sq/audio")!.body).toEqual({ channelId: "ch-neon", volume: null });
-
-    fireEvent.change(screen.getByLabelText("фон точки bar-2"), { target: { value: "" } });
-    await waitFor(() => expect(calls.find((c) => c.path === "/api/displays/bar-2/audio")?.body).toEqual({ channelId: "", volume: null }));
-
-    const vol = screen.getByLabelText("громкость точки bar-1");
-    fireEvent.change(vol, { target: { value: "35" } });
-    fireEvent.blur(vol);
-    await waitFor(() => expect(calls.find((c) => c.path === "/api/displays/bar-1/audio")?.body).toEqual({ channelId: null, volume: 35 }));
   });
 
   it("громкая связь: клип → группа → объявить; ход по точкам", async () => {
@@ -120,7 +93,7 @@ describe("SoundScreen", () => {
       ],
     };
     const calls = routes({ "POST /api/audio/announce": response });
-    render(<SoundScreen />);
+    render(<AnnounceScreen />);
     const announce = await screen.findByRole("button", { name: /объявить/ });
     expect((announce as HTMLButtonElement).disabled, "без клипа — нельзя").toBe(true);
     fireEvent.click(screen.getByText("Игра началась"));
@@ -149,36 +122,12 @@ describe("SoundScreen", () => {
             : d,
     );
     const calls = routes({ "GET /api/displays": running, "POST /api/audio/announce/stop": { ok: true } });
-    render(<SoundScreen />);
+    render(<AnnounceScreen />);
     const progress = await screen.findByLabelText("ход объявления");
     expect(within(progress).getByText("загрузка 40 %")).toBeTruthy();
     expect(within(progress).getByText("играет")).toBeTruthy();
     expect(within(progress).queryByText(/не дошло/), "чужое завершённое объявление не показывается").toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "прервать" }));
     await waitFor(() => expect(calls.find((c) => c.path === "/api/audio/announce/stop")?.body).toEqual({ targets: { all: true } }));
-  });
-
-  it("канал: треки из каталога карт, порядок, сохранение", async () => {
-    const calls = routes({ "POST /api/audio/channels": channels[0] });
-    render(<SoundScreen />);
-    fireEvent.click(await screen.findByRole("button", { name: "+ канал" }));
-    fireEvent.change(await screen.findByPlaceholderText("Радио «Неон»"), { target: { value: "Дождь" } });
-    fireEvent.click(screen.getByRole("button", { name: "+ rain.mp3" }));
-    fireEvent.click(screen.getByRole("button", { name: "+ ad-neon.mp3" }));
-    const tracks = screen.getByLabelText("треки канала");
-    expect(within(tracks).getByText(/есть на 1 из 3/)).toBeTruthy();
-    fireEvent.click(within(tracks).getAllByTitle("выше")[1]);
-    fireEvent.change(screen.getByLabelText("трек вручную"), { target: { value: "thunder.mp3" } });
-    fireEvent.click(screen.getByRole("button", { name: "добавить" }));
-    expect(within(tracks).getByText(/ни одна точка не докладывала/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
-    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/api/audio/channels")).toBe(true));
-    expect(calls.find((c) => c.path === "/api/audio/channels" && c.method === "POST")!.body).toEqual({
-      name: "Дождь",
-      tracks: ["ad-neon.mp3", "rain.mp3", "thunder.mp3"],
-      shuffle: true,
-      volume: 60,
-      gapMs: 0,
-    });
   });
 });

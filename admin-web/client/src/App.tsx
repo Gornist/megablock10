@@ -1,22 +1,9 @@
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { LoginScreen } from "./auth/LoginScreen";
-import { OverviewScreen } from "./screens/OverviewScreen";
-import { PlayersScreen } from "./screens/PlayersScreen";
-import { PlayerDetailScreen } from "./screens/PlayerDetailScreen";
-import { NodesScreen } from "./screens/NodesScreen";
-import { SlotsScreen } from "./screens/SlotsScreen";
-import { TransfersScreen } from "./screens/TransfersScreen";
-import { MasterScreen } from "./screens/MasterScreen";
-import { FactionsScreen } from "./screens/FactionsScreen";
-import { EconomyScreen } from "./screens/EconomyScreen";
-import { AnnouncementsScreen } from "./screens/AnnouncementsScreen";
-import { AuditScreen } from "./screens/AuditScreen";
-import { EventsScreen } from "./screens/EventsScreen";
-import { SoundScreen } from "./screens/SoundScreen";
-import { LocationsScreen } from "./screens/LocationsScreen";
 import { useEffect } from "react";
 import { useHashRoute, navigate } from "./router";
 import { NAV, resolveSection } from "./nav";
+import { SCREENS } from "./routes";
 import { AppButton } from "./design/components";
 
 function Shell() {
@@ -72,23 +59,7 @@ function Shell() {
           <AppButton onClick={logout}>выйти</AppButton>
         </div>
       </aside>
-      <main className="app-main">
-        {section === "overview" && <OverviewScreen />}
-        {section === "players" && route[1] && <PlayerDetailScreen publicKeyB64={route[1]} />}
-        {section === "players" && !route[1] && <PlayersScreen />}
-        {section === "events" && <EventsScreen key={route.join("/")} preset={{ type: route[1], value: route[2] }} />}
-        {section === "factions" && <FactionsScreen />}
-        {section === "economy" && <EconomyScreen />}
-        {section === "nodes" && <NodesScreen nodeId={route[1]} />}
-        {section === "slots" && <SlotsScreen />}
-        {section === "transfers" && <TransfersScreen />}
-        {section === "announcements" && <AnnouncementsScreen />}
-        {section === "audit" && <AuditScreen />}
-        {section === "master" && <MasterScreen />}
-        {/* До разбора звука по экранам (шаг 5 перекомпоновки) Громкая связь и Каналы — прежний экран звука. */}
-        {section === "locations" && <LocationsScreen />}
-        {(section === "announce" || section === "channels") && <SoundScreen />}
-      </main>
+      <main className="app-main">{SCREENS[section]?.(route)}</main>
     </div>
   );
 }
