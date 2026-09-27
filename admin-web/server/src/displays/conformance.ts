@@ -356,7 +356,16 @@ export async function runConformance(target: ConformanceTarget, options: Partial
     { id: "C10", name: "версия ниже показанной — STALE_VERSION", run: () => rejected((c, v) => image(c, Math.max(0, v - 1)), NackCode.STALE_VERSION) },
     { id: "C11", name: "версия равна показанной — STALE_VERSION", run: () => rejected((c, v) => image(c, v), NackCode.STALE_VERSION) },
     { id: "C12", name: "кадр другому дисплею — WRONG_DEVICE", run: () => rejected((c, v) => sign(c, { deviceId: "display-other", type: MsgType.IMAGE, seq: v + 1, width: t.width, height: t.height, format: Format.BPP1, payload: testPattern(t.width, t.height) }), NackCode.WRONG_DEVICE) },
-    { id: "C13", name: "не тот размер кадра — BAD_FORMAT", run: () => rejected((c, v) => image(c, v + 1, { width: t.width + 8, payload: testPattern(t.width + 8, t.height) }), NackCode.BAD_FORMAT) },
+    {
+      id: "C13",
+      name: "не тот размер кадра (перепутана ориентация) — BAD_FORMAT",
+      // Кадр того же размера в байтах, что панель: больший упёрся бы в приёмный буфер и законно получил бы BAD_LENGTH по заголовку.
+      run: () =>
+        rejected((c, v) => {
+          const [w, h] = t.width !== t.height ? [t.height, t.width] : [t.width - 8, t.height];
+          return image(c, v + 1, { width: w, height: h, payload: testPattern(w, h) });
+        }, NackCode.BAD_FORMAT),
+    },
     {
       id: "C14",
       name: "TEST, BACKLIGHT, REBOOT — OK; после перезагрузки та же версия",
