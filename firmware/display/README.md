@@ -8,6 +8,8 @@
 lib/core/     ядро без Arduino: протокол, CRC32, SHA-256/HMAC, приём потока, сессия, устройство, Wi-Fi backoff; hal.h — интерфейсы платформы
 src/host/     та же прошивка программой для ПК: сокеты, каталог вместо flash, PNG вместо e-paper
 src/esp32/    драйверы CrowPanel 5.79″: GxEPD2, Wi-Fi, lwIP, LittleFS, NVS, сторож, подсветка, кнопка, USB-консоль
+lib/selftest/ самопроверка — клиент протокола на BSD-сокетах (POSIX и lwIP): внутри платы в Wokwi и display_selftest на ПК
+src/selftest/ display_selftest — та же самопроверка программой для ПК (против display_host или платы в сети)
 test/core/    тесты ядра; test/vectors/protocol-v1.json — общие векторы с сервером (пишет admin-web: npm run display-vectors)
 ```
 
@@ -34,7 +36,16 @@ firmware/display/build/display_host --id display-017 --secret <64 hex из да�
 cd admin-web/server
 npm run display-conformance -- --port 47217 --id display-017 --secret <hex>        # 20 сценариев C1–C20
 FIRMWARE_HOST_BIN=$PWD/../../firmware/display/build/display_host npx tsx --test src/firmwareHost.test.ts   # сервер ↔ прошивка, сбои
+FIRMWARE_HOST_BIN=$PWD/../../firmware/display/build/display_host npm run display-load   # 30 прошивок, лимит соединений, зависший
 ```
+
+`display-load` (Ф6): групповая отправка на 1/5/10/30 дисплеев — время до DISPLAYED по каждому, одновременные соединения против
+`DISPLAY_MAX_CONCURRENT`, «зависший» дисплей (SIGSTOP) не задерживает остальных; `--netem "delay 80ms 20ms loss 3%"` — плохая
+сеть на lo (нужны sudo и модуль `sch_netem`: в CI есть, в облачной сессии Claude — нет). Таймауты — из `DISPLAY_*`, как у сервера.
+
+Самопроверка (`ctest` гоняет её против `display_host`): `build/display_selftest --id … --secret … --port … [--reboot]` — 19 проверок
+протокола (HELLO, IMAGE, BAD_CRC, чужой ключ, STALE, WRONG_DEVICE, неизвестный тип, BAD_MAGIC, таймауты, вытеснение, TEST,
+BACKLIGHT) и перезагрузка с восстановлением кадра. Тот же код крутится внутри платы в Wokwi (ниже).
 
 ## Плата (CrowPanel 5.79″)
 
@@ -58,9 +69,28 @@ config {"id":"display-017","secret":"<64 hex>","port":47200,"width":272,"height"
 батареи — зависят от доработки платы, пока `-1` (выключено). Если журнал не виден в мониторе — плата может выводить `Serial` в
 родной USB: добавить `-DARDUINO_USB_CDC_ON_BOOT=1`.
 
-`crowpanel579-wokwi` — сборка для эмулятора Wokwi (Ф4): вместо панели пишет в журнал `PANEL frame 272x792 crc=…`.
+## Эмулятор Wokwi (Ф4)
+
+`crowpanel579-wokwi` — та же прошивка для ESP32-S3 в эмуляторе: вместо панели пишет в журнал `PANEL frame 272x792 crc=…`,
+настройки вшиты (Wi-Fi `Wokwi-GUEST`, id `selftest-wokwi`, тестовый секрет), сторож — 5 с. Порт платы wokwi-cli наружу не
+пробрасывает (`net.forward` есть только в расширении VS Code), поэтому сервер снаружи к ней не подключится — вместо этого
+самопроверка (`lib/selftest`) крутится в своей задаче FreeRTOS и стучится в TCP-сервер этой же платы через `127.0.0.1`. Фазы
+переживают перезагрузки в NVS: проверки протокола → REBOOT (причина `ESP_RST_SW`, кадр и версия из LittleFS) → зависание цикла →
+сброс сторожем (`ESP_RST_TASK_WDT`, кадр снова на месте) → `SELFTEST ALL PASSED`.
+
+```bash
+WOKWI_CLI_TOKEN=… firmware/display/tools/wokwi_selftest.sh     # сборка, склейка образа flash, wokwi-cli; журнал — wokwi-serial.log
+```
+
+Нужны PlatformIO, `wokwi-cli` (v0.27.1) и токен Wokwi в переменной окружения (в облачной сессии — `scripts/cloud-setup.sh` и
+настройки окружения; в CI — секрет `WOKWI_CLI_TOKEN`, без него шаг пропускается с пометкой). Образ склеивается целиком
+(загрузчик + таблица разделов + прошивка): с одним `firmware.bin` Wokwi кладёт свою таблицу разделов и LittleFS не там.
+
+Первый же прогон нашёл баг, который на плате не дал бы загрузиться: сервер открывался раньше `WiFi.mode()`, стек lwIP не был
+поднят — `assert … tcpip_send_msg_wait_sem (Invalid mbox)` и цикл перезагрузок.
 
 ## CI
 
-`.github/workflows/firmware.yml`: тесты ядра (и под ASan/UBSan), сервер мастера против прошивки для ПК, сборка для платы и
-артефакт `firmware.bin`.
+`.github/workflows/firmware.yml`: тесты ядра, прошивка для ПК и самопроверка (и под ASan/UBSan), сервер мастера против прошивки
+для ПК, нагрузка `display-load` (чистая сеть и netem), сборка для платы, самопроверка в Wokwi, артефакт `firmware.bin` и журнал
+Wokwi.
