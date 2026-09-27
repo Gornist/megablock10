@@ -1,0 +1,82 @@
+name: Прошивка QR-дисплея
+
+# docs/firmware-plan.md: ядро и сборка для ПК проверяются настоящим сервером мастера (Ф1–Ф2), сборка для платы — компиляцией (Ф3).
+on:
+  push:
+    branches: [ main ]
+    paths: [ "firmware/**", "admin-web/server/src/displays/**", ".github/workflows/firmware.yml" ]
+  pull_request:
+    branches: [ main ]
+    paths: [ "firmware/**", "admin-web/server/src/displays/**", ".github/workflows/firmware.yml" ]
+  workflow_dispatch: {}
+
+jobs:
+  host:
+    name: Ядро и прошивка для ПК
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Сборка (CMake) и тесты ядра — общие векторы протокола, сессия, восстановление
+        working-directory: firmware/display
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build build -j
+          ctest --test-dir build --output-on-failure
+
+      - name: Тесты ядра под ASan/UBSan
+        working-directory: firmware/display
+        run: |
+          cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          cmake --build build-asan -j --target core_test
+          ./build-asan/core_test
+
+      - name: Сервер мастера ↔ прошивка для ПК — набор совместимости C1–C20 и сбои
+        working-directory: admin-web/server
+        env:
+          FIRMWARE_HOST_BIN: ${{ github.workspace }}/firmware/display/build/display_host
+        run: |
+          npm ci
+          npx tsx --test src/displayVectors.test.ts src/displayConformance.test.ts src/firmwareHost.test.ts
+
+  esp32:
+    name: Сборка для CrowPanel 5.79 (ESP32-S3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ runner.os }}-${{ hashFiles('firmware/display/platformio.ini') }}
+
+      - name: PlatformIO
+        run: pip install platformio
+
+      - name: Сборка crowpanel579 и crowpanel579-wokwi
+        working-directory: firmware/display
+        run: pio run -e crowpanel579 -e crowpanel579-wokwi
+
+      - name: Размер прошивки
+        working-directory: firmware/display
+        run: pio run -e crowpanel579 -t size
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-crowpanel579
+          path: |
+            firmware/display/.pio/build/crowpanel579/firmware.bin
+            firmware/display/.pio/build/crowpanel579/bootloader.bin
+            firmware/display/.pio/build/crowpanel579/partitions.bin
+            firmware/display/.pio/build/crowpanel579-wokwi/firmware.bin
+            firmware/display/.pio/build/crowpanel579-wokwi/firmware.elf
