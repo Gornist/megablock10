@@ -56,6 +56,25 @@ const AUDIT_ACTIONS: Record<string, { label: string; describe: Describe }> = {
     label: "Команда дисплею",
     describe: (d) => `дисплей ${str(d.displayId)}: ${str(d.command)}${d.level ? ` ${str(d.level)}` : ""}`,
   },
+  AUDIO_CHANNEL_CREATE: { label: "Звуковой канал создан", describe: (d) => `канал «${str(d.name)}», треков: ${str(d.tracks)}` },
+  AUDIO_CHANNEL_UPDATE: { label: "Звуковой канал изменён", describe: (d) => `канал «${str(d.name)}», треков: ${str(d.tracks)}` },
+  AUDIO_CHANNEL_DELETE: { label: "Звуковой канал удалён", describe: (d) => `канал «${str(d.name)}» удалён, его точки — в тишине` },
+  AUDIO_GROUP: {
+    label: "Фон группы",
+    describe: (d) => `группа «${str(d.name)}»: ${d.channel ? `канал «${str(d.channel)}»` : "тишина"}${d.volume != null ? `, громкость ${str(d.volume)}` : ""}`,
+  },
+  AUDIO_POINT: {
+    label: "Фон точки",
+    describe: (d) =>
+      `точка ${str(d.displayId)}: ${d.channel === null ? "как у группы" : d.channel === "" ? "тишина" : `канал «${str(d.channel)}»`}${d.volume != null ? `, громкость ${str(d.volume)}` : ""}`,
+  },
+  AUDIO_CLIP_SAVE: { label: "Клип громкой связи", describe: (d) => `«${str(d.name)}», ${Math.round(Number(d.durationMs) / 100) / 10} с${d.preset ? ", заготовка" : ""}` },
+  AUDIO_CLIP_DELETE: { label: "Клип удалён", describe: (d) => `«${str(d.name)}»` },
+  AUDIO_ANNOUNCE: {
+    label: "Объявление",
+    describe: (d) => `«${str(d.clip)}» → точек: ${str(d.points)}${Number(d.skipped) > 0 ? `, пропущено: ${str(d.skipped)}` : ""}`,
+  },
+  AUDIO_ANNOUNCE_STOP: { label: "Объявление остановлено", describe: (d) => `точек: ${str(d.points)}` },
   PROVISION_CREATE: { label: "QR персонажа", describe: (d) => `QR персонажа «${str(d.callsign)}»${provisionTail(d)}` },
   PROVISION_REISSUE: {
     label: "Персонаж выдан заново",

@@ -19,6 +19,19 @@ export interface DisplayRow {
   battery_rate: number | null;
   /** display_groups.id; null — без группы. */
   group_id: string | null;
+  // ── Звук (audio/, миграция 6) ──
+  /** Роли из HELLO, JSON-массив; null — ещё не было HELLO (или старая прошивка дисплея). */
+  roles: string | null;
+  /** Канал-исключение: null — как у группы, "" — тишина. */
+  audio_channel_id: string | null;
+  /** Громкость-исключение 0…100; null — как у группы/канала. */
+  audio_volume: number | null;
+  /** Версия желаемого звукового состояния (seq AUDIO_STATE) и само состояние (JSON AudioStatePayload). */
+  audio_version: number;
+  audio_state: string | null;
+  /** Что точка доложила в последнем HELLO (JSON AudioHelloStatus) и каталог карты (JSON string[] из LIST). */
+  audio_reported: string | null;
+  audio_catalog: string | null;
   rssi: number | null;
   last_seen_at: number | null;
   last_connected_at: number | null;
@@ -48,6 +61,9 @@ export interface DisplayGroupRow {
   id: string;
   name: string;
   created_at: number;
+  /** Фон группы: канал (null — тишина) и громкость (null — как у канала). */
+  audio_channel_id: string | null;
+  audio_volume: number | null;
 }
 
 /** 32 случайных байта в hex — индивидуальный секрет каждого дисплея (одинаковый на всю партию не годится). */
@@ -108,7 +124,7 @@ export class DisplayRepository {
   }
 
   createGroup(name: string): DisplayGroupRow {
-    const row: DisplayGroupRow = { id: `g-${randomBytes(4).toString("hex")}`, name, created_at: Date.now() };
+    const row: DisplayGroupRow = { id: `g-${randomBytes(4).toString("hex")}`, name, created_at: Date.now(), audio_channel_id: null, audio_volume: null };
     this.db.prepare(`INSERT INTO display_groups (id, name, created_at) VALUES (@id, @name, @created_at)`).run(row);
     return row;
   }
@@ -125,6 +141,14 @@ export class DisplayRepository {
 
   setGroup(id: string, groupId: string | null): void {
     this.db.prepare(`UPDATE displays SET group_id = ?, updated_at = ? WHERE id = ?`).run(groupId, Date.now(), id);
+  }
+
+  /** Роли и звук из HELLO — сохраняются, только если точка их прислала (старая прошивка дисплея — не трогаем). */
+  setRoles(id: string, roles: unknown, audio: unknown): void {
+    if (Array.isArray(roles) && roles.every((r) => typeof r === "string")) {
+      this.db.prepare(`UPDATE displays SET roles = ? WHERE id = ?`).run(JSON.stringify(roles.slice(0, 8)), id);
+    }
+    if (audio && typeof audio === "object") this.db.prepare(`UPDATE displays SET audio_reported = ? WHERE id = ?`).run(JSON.stringify(audio).slice(0, 8192), id);
   }
 
   setSecret(id: string, secret: string): void {

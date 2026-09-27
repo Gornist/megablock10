@@ -159,6 +159,28 @@ CREATE TABLE IF NOT EXISTS display_groups (
   created_at INTEGER NOT NULL
 );
 
+-- Звук точек (audio/, docs/sound-nodes.md): каналы — плейлисты треков с карты точки; клипы — объявления громкой связи
+-- (IMA ADPCM WAV, id — sha256); желаемое и доложенное состояние звука — колонки displays и display_groups (миграция 6).
+CREATE TABLE IF NOT EXISTS audio_channels (
+  id         TEXT PRIMARY KEY,
+  name       TEXT NOT NULL,
+  tracks     TEXT NOT NULL DEFAULT '[]',
+  shuffle    INTEGER NOT NULL DEFAULT 1,
+  gap_ms     INTEGER NOT NULL DEFAULT 2000,
+  volume     INTEGER NOT NULL DEFAULT 60,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS audio_clips (
+  id          TEXT PRIMARY KEY,
+  name        TEXT NOT NULL,
+  data        BLOB NOT NULL,
+  bytes       INTEGER NOT NULL,
+  duration_ms INTEGER NOT NULL,
+  preset      INTEGER NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL,
+  created_by  TEXT
+);
+
 -- История заряда точек (displays/battery.ts): точка раз в DISPLAY_BATTERY_SAMPLE_MS из HELLO — по ней коллектор считает
 -- «примерно сколько часов осталось». Хранится DISPLAY_BATTERY_KEEP_MS (4 суток), старое чистится при записи.
 CREATE TABLE IF NOT EXISTS display_battery_samples (
@@ -235,6 +257,22 @@ const MIGRATIONS: Migration[] = [
     // Группа точки (display_groups, локация): коллектор показывает точки сворачивающимися группами.
     version: 5,
     migrate: (db) => addColumnIfMissing(db, "displays", "group_id", "TEXT"),
+  },
+  {
+    // Звук (docs/sound-nodes.md): канал и громкость группы; у точки — роли из HELLO, исключения канала и громкости, желаемое
+    // состояние с версией, доложенное в HELLO и каталог треков на карте.
+    version: 6,
+    migrate: (db) => {
+      addColumnIfMissing(db, "display_groups", "audio_channel_id", "TEXT");
+      addColumnIfMissing(db, "display_groups", "audio_volume", "INTEGER");
+      addColumnIfMissing(db, "displays", "roles", "TEXT");
+      addColumnIfMissing(db, "displays", "audio_channel_id", "TEXT");
+      addColumnIfMissing(db, "displays", "audio_volume", "INTEGER");
+      addColumnIfMissing(db, "displays", "audio_version", "INTEGER NOT NULL DEFAULT 0");
+      addColumnIfMissing(db, "displays", "audio_state", "TEXT");
+      addColumnIfMissing(db, "displays", "audio_reported", "TEXT");
+      addColumnIfMissing(db, "displays", "audio_catalog", "TEXT");
+    },
   },
 ];
 

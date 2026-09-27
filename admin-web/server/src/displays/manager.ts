@@ -3,7 +3,7 @@ import { estimateBattery, type BatteryEstimate } from "./battery.js";
 import type { DisplayItem, DisplayPushOutcome, DisplayPushPhase, DisplayPushState, DisplayStatus } from "../apiTypes.js";
 import type { Db } from "../db/index.js";
 import { positiveNumber } from "../lib/envNumber.js";
-import { DisplayFailure, DisplaySession, expectReply } from "./connection.js";
+import { DisplayFailure, DisplaySession, expectReply, type HelloInfo } from "./connection.js";
 import { BacklightLevel, encodeBacklightPayload, encodeSecondsPayload, Format, MsgType, NackCode } from "./protocol.js";
 import { renderQrForDisplay } from "./renderer.js";
 import { DisplayRepository, secretKey, type DisplayRow } from "./repository.js";
@@ -125,6 +125,17 @@ export function displayBattery(repo: DisplayRepository, row: DisplayRow, c: Omit
   );
 }
 
+/** Роли точки из HELLO (displays.roles, JSON); нет — старая прошивка дисплея. */
+export function parseRoles(raw: string | null): string[] {
+  if (!raw) return ["display"];
+  try {
+    const v = JSON.parse(raw) as unknown;
+    return Array.isArray(v) && v.every((x) => typeof x === "string") ? v : ["display"];
+  } catch {
+    return ["display"];
+  }
+}
+
 export interface OpResult {
   outcome: DisplayPushOutcome;
   version?: number;
@@ -136,7 +147,23 @@ type CommandType = MsgType.TEST | MsgType.BACKLIGHT | MsgType.REBOOT;
 type Op =
   | { kind: "image"; version: number; qr: string; label: string; sent: boolean; done: (r: OpResult) => void }
   | { kind: "command"; type: CommandType; payload: Buffer; done: (r: OpResult) => void }
-  | { kind: "probe"; done: (r: OpResult) => void };
+  | { kind: "probe"; done: (r: OpResult) => void }
+  | ({ kind: "custom"; done: (r: OpResult) => void } & CustomOp);
+
+/**
+ * Своя операция в очереди точки (звук — audio/audioService.ts): то же подключение, HELLO, лимит соединений и повторы, что у
+ * картинок; run работает с открытой сессией. key — «последняя ждущая побеждает» (новое звуковое состояние заменяет старое в
+ * очереди); front — вперёд очереди (объявление не ждёт смены фона). Статус точки UPDATING такие операции не включают.
+ */
+export interface CustomOp {
+  name: string;
+  key?: string;
+  front?: boolean;
+  run: (session: DisplaySession, row: DisplayRow) => Promise<OpResult>;
+}
+
+/** Вызывается на каждом подлинном HELLO (и опросе): звук сверяет доложенное с желаемым. */
+export type HelloHook = (row: DisplayRow, hello: HelloInfo) => void;
 
 interface Worker {
   queue: Op[];
@@ -172,6 +199,9 @@ export class DisplayManager {
   readonly repo: DisplayRepository;
   readonly config: DisplayManagerConfig;
   private readonly workers = new Map<string, Worker>();
+  private readonly helloHooks: HelloHook[] = [];
+  /** Звуковая часть карточки (audio/audioService.ts); без неё — null. */
+  private audioView: ((row: DisplayRow) => DisplayItem["audio"]) | null = null;
   /** Ход последней отправки картинки на каждый дисплей — для экрана (DisplayItem.push); только в памяти. */
   private readonly progress = new Map<string, DisplayPushState>();
   private readonly semaphore: Semaphore;
@@ -195,7 +225,7 @@ export class DisplayManager {
     const pendingImage = w?.queue.find((op): op is Extract<Op, { kind: "image" }> => op.kind === "image") ?? null;
     let status: DisplayStatus;
     if (!row.enabled) status = "DISABLED";
-    else if ([w?.active, ...(w?.queue ?? [])].some((op) => op && op.kind !== "probe")) status = "UPDATING";
+    else if ([w?.active, ...(w?.queue ?? [])].some((op) => op && op.kind !== "probe" && op.kind !== "custom")) status = "UPDATING";
     else if (row.last_error) status = "ERROR";
     else if (row.last_seen_at !== null && now - row.last_seen_at <= this.config.onlineWindowMs) status = "ONLINE";
     else status = "OFFLINE";
@@ -230,6 +260,8 @@ export class DisplayManager {
       activeVersion: activeImage?.version ?? null,
       pendingVersion: pendingImage?.version ?? null,
       push: this.progress.get(row.id) ?? null,
+      roles: parseRoles(row.roles),
+      audio: this.audioView ? this.audioView(row) : null,
     };
   }
 
@@ -287,6 +319,38 @@ export class DisplayManager {
       }
       this.kick(displayId);
     });
+  }
+
+  /** Своя операция (см. CustomOp). */
+  enqueueCustom(displayId: string, op: CustomOp): Promise<OpResult> {
+    return new Promise<OpResult>((done) => {
+      const w = this.worker(displayId);
+      const item: Op = { kind: "custom", ...op, done };
+      if (op.key) {
+        const i = w.queue.findIndex((o) => o.kind === "custom" && o.key === op.key);
+        if (i >= 0) {
+          w.queue[i].done({ outcome: "SUPERSEDED" });
+          w.queue.splice(i, 1);
+        }
+      }
+      if (op.front) w.queue.unshift(item);
+      else w.queue.push(item);
+      this.kick(displayId);
+    });
+  }
+
+  /** Есть ли в очереди точки (или в работе) своя операция с этим ключом — чтобы не ставить вторую такую же. */
+  hasCustom(displayId: string, key: string): boolean {
+    const w = this.workers.get(displayId);
+    return !!w && [w.active, ...w.queue].some((o) => o?.kind === "custom" && o.key === key);
+  }
+
+  onHello(hook: HelloHook): void {
+    this.helloHooks.push(hook);
+  }
+
+  setAudioView(view: (row: DisplayRow) => DisplayItem["audio"]): void {
+    this.audioView = view;
   }
 
   command(displayId: string, type: CommandType, payload: Buffer): Promise<OpResult> {
@@ -439,7 +503,7 @@ export class DisplayManager {
     );
     const now = Date.now();
     const hello = session.hello;
-    const quiet = op.kind === "probe";
+    const quiet = op.kind === "probe" || (op.kind === "custom" && op.name === "LIST");
     if (!quiet) this.log("DISPLAY_CONNECT", row.id, `ip=${row.ip}:${row.port} shows=${hello.displayedVersion} fw=${hello.status.fw ?? "?"}`);
     try {
       this.repo.markSeen(row.id, now, {
@@ -451,13 +515,19 @@ export class DisplayManager {
         rssi: hello.status.rssi,
         displayedVersion: hello.displayedVersion,
       });
+      this.repo.setRoles(row.id, hello.status.roles, hello.status.audio);
       const seen = this.repo.get(row.id);
       if (seen) this.repo.recordBattery(row.id, now, seen.battery_mv, seen.battery_pct, this.config.batterySampleMs, this.config.batteryKeepMs);
+      if (seen) for (const hook of this.helloHooks) hook(seen, hello);
       if (hello.width !== row.width || hello.height !== row.height) {
         throw new DisplayFailure("CONFIG", `panel is ${hello.width}×${hello.height}, display record says ${row.width}×${row.height}`, false, NackCode.BAD_FORMAT);
       }
       if (op.kind === "probe") return this.afterProbe(row, hello.displayedVersion);
       if (op.kind === "command") return await this.sendCommand(session, row, op);
+      if (op.kind === "custom") {
+        this.log("DISPLAY_OP", row.id, op.name);
+        return await op.run(session, this.repo.get(row.id) ?? row);
+      }
       return await this.sendImage(session, row, op, hello.displayedVersion);
     } finally {
       await session.close();
@@ -545,7 +615,7 @@ export class DisplayManager {
           : f.kind === "TIMEOUT"
             ? "DISPLAY_TIMEOUT"
             : "DISPLAY_ERROR";
-    const what = op.kind === "image" ? `image=${op.version}` : op.kind === "command" ? `cmd=${MsgType[op.type]}` : "probe";
+    const what = op.kind === "image" ? `image=${op.version}` : op.kind === "command" ? `cmd=${MsgType[op.type]}` : op.kind === "custom" ? `op=${op.name}` : "probe";
     this.log(event, displayId, `${what} attempt=${attempt} retryable=${f.retryable} ${f.summary}`);
   }
 

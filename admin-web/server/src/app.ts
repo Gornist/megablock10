@@ -24,6 +24,8 @@ import { registerPulseRoute } from "./routes/pulse.js";
 import { registerProvisionRoutes } from "./routes/provisions.js";
 import { registerDisplayRoutes } from "./routes/displays.js";
 import { DisplayManager } from "./displays/manager.js";
+import { AudioService } from "./audio/audioService.js";
+import { registerAudioRoutes } from "./routes/audio.js";
 
 /**
  * Собирает Fastify-приложение без побочного listen() — раньше вся сборка
@@ -32,7 +34,7 @@ import { DisplayManager } from "./displays/manager.js";
  * теперь только вызывает buildApp() и слушает; тесты вызывают buildApp()
  * на in-memory БД (см. testDb.ts) и бьют через inject().
  */
-export function buildApp(db: Db, options: { clientDist?: string; logger?: boolean; displays?: DisplayManager } = {}): FastifyInstance {
+export function buildApp(db: Db, options: { clientDist?: string; logger?: boolean; displays?: DisplayManager; audio?: AudioService } = {}): FastifyInstance {
   // Ключи персонажей — base64 EC SPKI DER (~124 символа) в URL-параметре,
   // после encodeURIComponent ещё длиннее — дефолтный лимит Fastify (100) в это
   // не помещается.
@@ -77,8 +79,14 @@ export function buildApp(db: Db, options: { clientDist?: string; logger?: boolea
   registerProvisionRoutes(app, db);
   // Электронные QR-дисплеи: менеджер передаёт index.ts (он же запускает опрос), тестам хватает созданного здесь — без опроса.
   const displays = options.displays ?? new DisplayManager(db);
-  registerDisplayRoutes(app, db, displays);
-  app.addHook("onClose", async () => displays.stop());
+  // Звук точек (docs/sound-nodes.md) — поверх той же очереди и соединений, что и дисплеи.
+  const audio = options.audio ?? new AudioService(db, displays);
+  registerDisplayRoutes(app, db, displays, () => audio.sync());
+  registerAudioRoutes(app, db, displays, audio);
+  app.addHook("onClose", async () => {
+    audio.stop();
+    displays.stop();
+  });
 
   app.get("/api/health", async () => ({ ok: true }));
 

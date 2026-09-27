@@ -59,6 +59,61 @@ export enum MsgType {
   NACK = 0x22,
   /** Дисплей → сервер: команда (TEST/BACKLIGHT/REBOOT) принята. */
   OK = 0x23,
+
+  // ── Звук (docs/sound-nodes.md) — только точкам с ролью audio в HELLO; остальные отвечают UNSUPPORTED_TYPE. ──
+
+  /** Сервер → точка: что играть фоном. seq — версия звукового состояния (монотонна); payload — JSON AudioStatePayload. */
+  AUDIO_STATE = 0x14,
+  /** Сервер → точка: начать приём клипа (объявления). payload: sha256[32] ‖ u32 длина. OK: u32 — сколько байт уже есть (докачка). */
+  CLIP_BEGIN = 0x15,
+  /** Сервер → точка: кусок клипа, начатого CLIP_BEGIN в этом соединении. payload: u32 смещение ‖ ≤ CLIP_CHUNK_MAX байт. OK: u32 — сколько есть. */
+  CLIP_CHUNK = 0x16,
+  /** Сервер → точка: клип целиком — проверить sha256 и сохранить. OK или NACK BAD_CRC (не сошлось — принятое выбрасывается). */
+  CLIP_COMMIT = 0x17,
+  /** Сервер → точка: объявление — приглушить фон, сыграть клип, вернуть фон. seq — id объявления; payload — JSON AnnouncePayload. OK: JSON {durationMs}. */
+  ANNOUNCE = 0x18,
+  /** Сервер → точка: прервать объявление. */
+  ANNOUNCE_STOP = 0x19,
+  /** Сервер → точка: каталог треков на карте, страница. payload: u16 с какого. OK: JSON {total, names[]} (не больше LIST_REPLY_MAX байт). */
+  LIST = 0x1a,
+}
+
+/** Кусок клипа: влезает в приёмный буфер прошивки и точки без панели. */
+export const CLIP_CHUNK_MAX = 16 * 1024;
+/** Ответ LIST — столько байт JSON максимум (буфер ответов прошивки). */
+export const LIST_REPLY_MAX = 1024;
+
+/** Фон точки: список треков на карте (имена в /mb10/tracks), порядок, паузы, громкость 0…100, плавность смены. Пустой список — тишина. */
+export interface AudioStatePayload {
+  tracks: string[];
+  shuffle: boolean;
+  gapMs: number;
+  volume: number;
+  fadeMs: number;
+}
+
+/** Объявление: клип (sha256 hex), громкость, сигнал перед ним, до какой громкости (%) приглушить фон. */
+export interface AnnouncePayload {
+  clip: string;
+  volume: number;
+  chime: boolean;
+  duck: number;
+}
+
+/** Звук в HELLO — что точка делает сейчас. */
+export interface AudioHelloStatus {
+  /** Применённая версия AUDIO_STATE. */
+  v: number;
+  /** Трек, который играет, или null — тишина. */
+  playing?: string | null;
+  vol?: number;
+  /** Треков на карте; нет карты — sd: false. */
+  tracks?: number;
+  sd?: boolean;
+  /** Треки текущего фона, которых нет на карте. */
+  missing?: string[];
+  /** Последнее объявление: id (seq ANNOUNCE) и где оно. */
+  ann?: { id: number; state: "playing" | "done" | "failed" | "stopped" };
 }
 
 export enum Format {
@@ -82,6 +137,8 @@ export enum NackCode {
   /** Кадр принят, но e-paper не обновился (или не записался во flash). */
   DISPLAY_FAILED = 10,
   UNSUPPORTED_TYPE = 11,
+  /** ANNOUNCE: клипа нет на точке — сначала CLIP_BEGIN/CHUNK/COMMIT. */
+  MISSING_CLIP = 12,
 }
 
 export enum BacklightLevel {
@@ -126,6 +183,9 @@ export interface HelloStatus {
   ip?: string;
   /** Состояние подсветки (BacklightLevel). */
   backlight?: number;
+  /** Что умеет точка: "display" (e-paper), "audio" (звук). Нет поля — старая прошивка дисплея: ["display"]. */
+  roles?: string[];
+  audio?: AudioHelloStatus;
 }
 
 // ── CRC32 (IEEE 802.3, полином 0xEDB88320) — та же таблица пишется в прошивке, поэтому своя, а не zlib.crc32. ──
@@ -202,6 +262,30 @@ export function encodeBacklightPayload(level: BacklightLevel, seconds: number): 
   const b = Buffer.alloc(3);
   b.writeUInt8(level, 0);
   b.writeUInt16BE(Math.max(0, Math.min(0xffff, Math.round(seconds))), 1);
+  return b;
+}
+
+export function encodeJsonPayload(value: unknown): Buffer {
+  return Buffer.from(JSON.stringify(value), "utf8");
+}
+
+export function encodeClipBeginPayload(sha256: Buffer, length: number): Buffer {
+  const b = Buffer.alloc(36);
+  sha256.copy(b, 0, 0, 32);
+  b.writeUInt32BE(length, 32);
+  return b;
+}
+
+export function encodeClipChunkPayload(offset: number, data: Buffer): Buffer {
+  const b = Buffer.alloc(4 + data.length);
+  b.writeUInt32BE(offset, 0);
+  data.copy(b, 4);
+  return b;
+}
+
+export function encodeListPayload(start: number): Buffer {
+  const b = Buffer.alloc(2);
+  b.writeUInt16BE(start, 0);
   return b;
 }
 
@@ -317,6 +401,8 @@ export interface PanelState {
   width: number;
   height: number;
   displayedVersion: number;
+  /** Есть ли у точки звук: без него звуковые команды — UNSUPPORTED_TYPE. */
+  audio?: boolean;
 }
 
 /**
@@ -343,6 +429,22 @@ export function validateIncoming(frame: Frame, key: Buffer, nonce: Buffer, panel
       return h.payloadLength === 3 && frame.payload[0] <= BacklightLevel.HIGH ? null : NackCode.BAD_LENGTH;
     case MsgType.REBOOT:
       return null;
+    case MsgType.AUDIO_STATE:
+    case MsgType.ANNOUNCE:
+      if (!panel.audio) return NackCode.UNSUPPORTED_TYPE;
+      return h.payloadLength > 0 && h.payloadLength <= 4096 ? null : NackCode.BAD_LENGTH;
+    case MsgType.CLIP_BEGIN:
+      if (!panel.audio) return NackCode.UNSUPPORTED_TYPE;
+      return h.payloadLength === 36 ? null : NackCode.BAD_LENGTH;
+    case MsgType.CLIP_CHUNK:
+      if (!panel.audio) return NackCode.UNSUPPORTED_TYPE;
+      return h.payloadLength > 4 && h.payloadLength <= 4 + CLIP_CHUNK_MAX ? null : NackCode.BAD_LENGTH;
+    case MsgType.CLIP_COMMIT:
+    case MsgType.ANNOUNCE_STOP:
+      return panel.audio ? null : NackCode.UNSUPPORTED_TYPE;
+    case MsgType.LIST:
+      if (!panel.audio) return NackCode.UNSUPPORTED_TYPE;
+      return h.payloadLength === 2 ? null : NackCode.BAD_LENGTH;
     default:
       return NackCode.UNSUPPORTED_TYPE;
   }

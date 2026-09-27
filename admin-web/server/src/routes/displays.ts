@@ -73,7 +73,8 @@ function resultOf(displayId: string, version: number | undefined, r: OpResult): 
   return { displayId, ok: r.outcome === "DISPLAYED", version: r.version ?? version, outcome: r.outcome, error: r.error };
 }
 
-export function registerDisplayRoutes(app: FastifyInstance, db: Db, displays: DisplayManager) {
+/** audioChanged — точки переехали между группами / включились: пересчитать, что им играть (AudioService.sync). */
+export function registerDisplayRoutes(app: FastifyInstance, db: Db, displays: DisplayManager, audioChanged: () => void = () => {}) {
   const repo = displays.repo;
 
   function secretResponse(id: string, secret: string): DisplaySecretResponse {
@@ -131,6 +132,7 @@ export function registerDisplayRoutes(app: FastifyInstance, db: Db, displays: Di
       repo.update(row.id, cfg.value);
       logMasterAction(db, master.id, "DISPLAY_UPDATE", { displayId: row.id, ...cfg.value });
     })();
+    audioChanged();
     return displays.get(row.id)!;
   });
 
@@ -139,7 +141,9 @@ export function registerDisplayRoutes(app: FastifyInstance, db: Db, displays: Di
   function groupList(): DisplayGroup[] {
     const counts = new Map<string, number>();
     for (const r of repo.list()) if (r.group_id) counts.set(r.group_id, (counts.get(r.group_id) ?? 0) + 1);
-    return repo.listGroups().map((g) => ({ id: g.id, name: g.name, count: counts.get(g.id) ?? 0 }));
+    return repo
+      .listGroups()
+      .map((g) => ({ id: g.id, name: g.name, count: counts.get(g.id) ?? 0, audioChannelId: g.audio_channel_id, audioVolume: g.audio_volume }));
   }
 
   function groupName(raw: unknown): string | null {
@@ -162,7 +166,7 @@ export function registerDisplayRoutes(app: FastifyInstance, db: Db, displays: Di
       logMasterAction(db, master.id, "DISPLAY_GROUP_CREATE", { groupId: created.id, name });
       return created;
     })();
-    return { id: g.id, name: g.name, count: 0 };
+    return { id: g.id, name: g.name, count: 0, audioChannelId: null, audioVolume: null };
   });
 
   app.put<{ Params: { id: string }; Body: { name?: unknown } }>("/api/display-groups/:id", async (request, reply): Promise<DisplayGroup | void> => {
@@ -190,6 +194,7 @@ export function registerDisplayRoutes(app: FastifyInstance, db: Db, displays: Di
       repo.deleteGroup(g.id);
       logMasterAction(db, master.id, "DISPLAY_GROUP_DELETE", { groupId: g.id, name: g.name });
     })();
+    audioChanged();
     return { ok: true };
   });
 
@@ -205,6 +210,7 @@ export function registerDisplayRoutes(app: FastifyInstance, db: Db, displays: Di
       repo.setGroup(row.id, groupId);
       logMasterAction(db, master.id, "DISPLAY_SET_GROUP", { displayId: row.id, groupId });
     })();
+    audioChanged();
     return displays.get(row.id)!;
   });
 
