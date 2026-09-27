@@ -15,7 +15,8 @@
     "mock-display": "tsx src/scripts/mockDisplay.ts",
     "display-vectors": "tsx src/scripts/displayVectors.ts",
     "display-conformance": "tsx src/scripts/displayConformance.ts",
-    "display-print-sheet": "tsx src/scripts/displayPrintSheet.ts"
+    "display-print-sheet": "tsx src/scripts/displayPrintSheet.ts",
+    "display-load": "tsx src/scripts/displayLoad.ts"
   },
   "dependencies": {
     "@fastify/static": "^10.1.4",
