@@ -14,56 +14,22 @@ import { AuditScreen } from "./screens/AuditScreen";
 import { EventsScreen } from "./screens/EventsScreen";
 import { DisplaysScreen } from "./screens/DisplaysScreen";
 import { SoundScreen } from "./screens/SoundScreen";
+import { useEffect } from "react";
 import { useHashRoute, navigate } from "./router";
+import { NAV, resolveSection } from "./nav";
 import { AppButton } from "./design/components";
-
-/**
- * Меню слева, пункты — смысловыми группами: двенадцать подписей столбиком без групп читаются хуже, чем строка сверху.
- * Порядок внутри группы — по частоте на игре.
- */
-const NAV: { title: string; items: { path: string; label: string }[] }[] = [
-  {
-    title: "Игра",
-    items: [
-      { path: "overview", label: "Обзор" },
-      { path: "events", label: "События" },
-      { path: "players", label: "Игроки" },
-      { path: "factions", label: "Фракции" },
-      { path: "economy", label: "Экономика" },
-    ],
-  },
-  {
-    title: "Мир",
-    items: [
-      { path: "nodes", label: "Узлы" },
-      { path: "slots", label: "Реестр тиражей" },
-      { path: "transfers", label: "Переводы" },
-    ],
-  },
-  {
-    title: "Мастер",
-    items: [
-      { path: "announcements", label: "Объявления" },
-      { path: "master", label: "Мастерская" },
-      { path: "audit", label: "Журнал" },
-    ],
-  },
-  {
-    title: "Площадка",
-    items: [
-      { path: "displays", label: "Дисплеи" },
-      { path: "sound", label: "Звук" },
-    ],
-  },
-];
 
 function Shell() {
   const { session, logout } = useAuth();
   const route = useHashRoute();
 
-  if (!session) return <LoginScreen />;
+  const section = resolveSection(route[0]);
+  // Прежний адрес (#displays, #sound) — заменить в истории на новый, чтобы «назад» не возвращал на редирект.
+  useEffect(() => {
+    if (route[0] && section !== route[0]) window.location.replace(`#/${[section, ...route.slice(1)].map(encodeURIComponent).join("/")}`);
+  }, [route, section]);
 
-  const section = route[0] ?? "overview";
+  if (!session) return <LoginScreen />;
 
   return (
     <div className="app-shell">
@@ -74,6 +40,10 @@ function Shell() {
             <span className="app-sidebar-sub status-caps">коллектор</span>
           </span>
         </h1>
+        {/* Срочное объявление — в одно нажатие с любого экрана. */}
+        <button className={`sidebar-announce status-caps${section === "announce" ? " active" : ""}`} onClick={() => navigate("announce")}>
+          📢 громкая связь
+        </button>
         <nav aria-label="разделы">
           {NAV.map((g) => (
             <div key={g.title} className="nav-group">
@@ -115,8 +85,9 @@ function Shell() {
         {section === "announcements" && <AnnouncementsScreen />}
         {section === "audit" && <AuditScreen />}
         {section === "master" && <MasterScreen />}
-        {section === "displays" && <DisplaysScreen />}
-        {section === "sound" && <SoundScreen />}
+        {/* До разбора по экранам (шаги 3–5 перекомпоновки): точки и группы — прежний экран дисплеев, звук — прежний экран. */}
+        {section === "locations" && <DisplaysScreen />}
+        {(section === "announce" || section === "channels") && <SoundScreen />}
       </main>
     </div>
   );
