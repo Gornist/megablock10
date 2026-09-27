@@ -1,5 +1,5 @@
 import type { Socket } from "node:net";
-import type { BatteryLevel, DisplayItem, DisplayPushOutcome, DisplayStatus } from "../apiTypes.js";
+import type { BatteryLevel, DisplayItem, DisplayPushOutcome, DisplayPushPhase, DisplayPushState, DisplayStatus } from "../apiTypes.js";
 import type { Db } from "../db/index.js";
 import { positiveNumber } from "../lib/envNumber.js";
 import { DisplayFailure, DisplaySession, expectReply } from "./connection.js";
@@ -128,6 +128,8 @@ export class DisplayManager {
   readonly repo: DisplayRepository;
   readonly config: DisplayManagerConfig;
   private readonly workers = new Map<string, Worker>();
+  /** Ход последней отправки картинки на каждый дисплей — для экрана (DisplayItem.push); только в памяти. */
+  private readonly progress = new Map<string, DisplayPushState>();
   private readonly semaphore: Semaphore;
   private readonly sockets = new Set<Socket>();
   private probeTimer: NodeJS.Timeout | null = null;
@@ -181,6 +183,7 @@ export class DisplayManager {
       displayedAt: row.displayed_at,
       activeVersion: activeImage?.version ?? null,
       pendingVersion: pendingImage?.version ?? null,
+      push: this.progress.get(row.id) ?? null,
     };
   }
 
@@ -208,6 +211,19 @@ export class DisplayManager {
   private enqueueImage(displayId: string, version: number, qr: string, label: string): Promise<OpResult> {
     return new Promise<OpResult>((done) => {
       const w = this.worker(displayId);
+      const now = Date.now();
+      this.progress.set(displayId, {
+        version,
+        label,
+        phase: "QUEUED",
+        attempt: 0,
+        attempts: this.config.retryDelaysMs.length + 1,
+        startedAt: now,
+        updatedAt: now,
+        error: null,
+        failedAt: null,
+        retryAt: null,
+      });
       const op: Op = { kind: "image", version, qr, label, sent: false, done };
       const pending = w.queue.findIndex((o) => o.kind === "image");
       if (pending >= 0) {
@@ -256,6 +272,7 @@ export class DisplayManager {
     const w = this.workers.get(displayId);
     if (!w) return;
     for (const op of w.queue.splice(0)) op.done({ outcome: "FAILED", error: "display removed" });
+    this.progress.delete(displayId);
   }
 
   startProbing(): void {
@@ -311,6 +328,10 @@ export class DisplayManager {
 
   private async run(displayId: string, op: Op): Promise<OpResult> {
     const result = await this.runAttempts(displayId, op);
+    if (op.kind === "image") {
+      const phase = result.outcome === "DISPLAYED" ? "DISPLAYED" : result.outcome === "SUPERSEDED" ? "SUPERSEDED" : "FAILED";
+      this.setPhase(displayId, op, phase, { error: phase === "FAILED" ? (result.error ?? "failed") : null, retryAt: null });
+    }
     if (op.kind === "probe") {
       const up = result.outcome === "DISPLAYED";
       if (this.reachable.get(displayId) !== up) this.log(up ? "DISPLAY_ONLINE" : "DISPLAY_OFFLINE", displayId, up ? "" : (result.error ?? ""));
@@ -336,11 +357,15 @@ export class DisplayManager {
       if (!row.enabled) return { outcome: "FAILED", error: "display is disabled" };
       const release = await this.semaphore.acquire();
       try {
+        if (op.kind === "image") this.setPhase(displayId, op, "CONNECTING", { attempt: attempt + 1, retryAt: null });
         return await this.attempt(row, op);
       } catch (err) {
         last = err instanceof DisplayFailure ? err : new DisplayFailure("PROTOCOL", String(err), false);
         // Опрос недоступного дисплея — обычное OFFLINE раз в 30 с на каждый выключенный; в журнал только то, что требует рук.
         if (op.kind !== "probe" || !last.retryable) this.logFailure(displayId, op, last, attempt + 1);
+        if (op.kind === "image" && last.retryable && attempt + 1 < attempts) {
+          this.setPhase(displayId, op, "RETRY", { error: last.summary, retryAt: Date.now() + this.config.retryDelaysMs[attempt] });
+        }
         if (!last.retryable) break;
       } finally {
         release();
@@ -416,20 +441,24 @@ export class DisplayManager {
       if (displayed === op.version && op.sent) {
         // Прошлая попытка дошла до экрана, но DISPLAYED потерялся по дороге.
         this.repo.markDisplayed(row.id, op.version, Date.now());
+        this.setPhase(row.id, op, "DISPLAYED");
         this.log("DISPLAY_DISPLAYED", row.id, `image=${op.version} (confirmed by HELLO)`);
         return { outcome: "DISPLAYED", version: op.version };
       }
       this.renumber(row.id, op, displayed);
     }
     const bitmap = renderQrForDisplay(op.qr, row.width, row.height);
+    this.setPhase(row.id, op, "SENDING");
     this.log("DISPLAY_SEND_START", row.id, `image=${op.version} bytes=${bitmap.data.length}`);
     session.send({ type: MsgType.IMAGE, seq: op.version, width: bitmap.width, height: bitmap.height, format: Format.BPP1, payload: bitmap.data });
     op.sent = true;
     try {
       const received = expectReply(await session.next(this.config.receivedTimeoutMs, "RECEIVED"), MsgType.RECEIVED, "RECEIVED");
+      this.setPhase(row.id, op, "RECEIVED");
       this.log("DISPLAY_RECEIVED", row.id, `image=${received.header.seq}`);
       const shown = expectReply(await session.next(this.config.displayedTimeoutMs, "DISPLAYED"), MsgType.DISPLAYED, "DISPLAYED");
       this.repo.markDisplayed(row.id, shown.header.seq, Date.now());
+      this.setPhase(row.id, op, "DISPLAYED");
       this.log("DISPLAY_DISPLAYED", row.id, `image=${shown.header.seq}`);
       return { outcome: "DISPLAYED", version: op.version };
     } catch (err) {
@@ -445,6 +474,8 @@ export class DisplayManager {
   private renumber(displayId: string, op: Extract<Op, { kind: "image" }>, displayed: number): void {
     const version = displayed + 1;
     this.log("DISPLAY_RENUMBER", displayId, `image=${op.version} -> ${version} (display shows ${displayed})`);
+    const p = this.progress.get(displayId);
+    if (p && p.version === op.version) p.version = version;
     op.version = version;
     op.sent = false;
     this.repo.bumpDesiredVersion(displayId, version);
@@ -461,6 +492,15 @@ export class DisplayManager {
             : "DISPLAY_ERROR";
     const what = op.kind === "image" ? `image=${op.version}` : op.kind === "command" ? `cmd=${MsgType[op.type]}` : "probe";
     this.log(event, displayId, `${what} attempt=${attempt} retryable=${f.retryable} ${f.summary}`);
+  }
+
+  /** Этап отправки для экрана — только если это та же отправка (новая картинка уже заняла место — её не трогать). */
+  private setPhase(displayId: string, op: Extract<Op, { kind: "image" }>, phase: DisplayPushPhase, patch: Partial<DisplayPushState> = {}): void {
+    const p = this.progress.get(displayId);
+    if (!p || p.version !== op.version) return;
+    if ((phase === "RETRY" || phase === "FAILED") && p.phase !== "RETRY" && p.phase !== "FAILED") p.failedAt = p.phase;
+    // Причина прошлой попытки остаётся видна, пока идёт следующая («попытка 2 из 3: нет ответа»); успех её стирает.
+    Object.assign(p, patch, { phase, updatedAt: Date.now() }, phase === "DISPLAYED" ? { error: null, failedAt: null } : {});
   }
 
   private log(event: string, displayId: string, details: string): void {

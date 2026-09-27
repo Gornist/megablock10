@@ -375,3 +375,80 @@ test("опрос не засоряет журнал: только переход
     await cleanup();
   }
 });
+
+// ── Ход отправки для экрана (DisplayItem.push) ──
+
+/** Снимать этап отправки каждую миллисекунду, пока промис не решится; повторы подряд схлопываются. */
+async function phasesDuring(manager: DisplayManager, id: string, done: Promise<unknown>): Promise<string[]> {
+  const seen: string[] = [];
+  let finished = false;
+  void done.then(() => (finished = true));
+  while (!finished) {
+    const phase = manager.get(id)?.push?.phase;
+    if (phase && seen[seen.length - 1] !== phase) seen.push(phase);
+    await new Promise((r) => setTimeout(r, 1));
+  }
+  const last = manager.get(id)?.push?.phase;
+  if (last && seen[seen.length - 1] !== last) seen.push(last);
+  return seen;
+}
+
+test("ход отправки: этапы идут по порядку до «на экране», версия и подпись — отправленные", async () => {
+  const { manager, cleanup } = await rig({ displayDelayMs: 120 });
+  try {
+    assert.equal(manager.get("display-001")!.push, null, "до первой отправки хода нет");
+    const job = manager.pushImage("display-001", QR_A, "Насосная-4");
+    const seen = await phasesDuring(manager, "display-001", job.result);
+    const order = ["QUEUED", "CONNECTING", "SENDING", "RECEIVED", "DISPLAYED"];
+    assert.deepEqual(seen, [...seen].sort((a, b) => order.indexOf(a) - order.indexOf(b)), `не по порядку: ${seen.join(" → ")}`);
+    assert.ok(seen.includes("RECEIVED"), "кадр принят дисплеем, пока обновляется панель");
+    const push = manager.get("display-001")!.push!;
+    assert.equal(push.phase, "DISPLAYED");
+    assert.equal(push.version, job.version);
+    assert.equal(push.label, "Насосная-4");
+    assert.equal(push.attempt, 1);
+    assert.equal(push.attempts, 3);
+    assert.equal(push.error, null);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("ход отправки: неудачная попытка — RETRY с причиной и временем следующей, успех стирает причину", async () => {
+  const { manager, cleanup } = await rig({ faults: { failDisplay: 1 } });
+  try {
+    const job = manager.pushImage("display-001", QR_A, "a");
+    const seen = await phasesDuring(manager, "display-001", job.result);
+    assert.ok(seen.includes("RETRY"), seen.join(" → "));
+    const push = manager.get("display-001")!.push!;
+    assert.equal(push.phase, "DISPLAYED");
+    assert.equal(push.attempt, 2);
+    assert.equal(push.error, null);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("ход отправки: попытки кончились — FAILED с причиной; новая отправка вытесняет ход старой", async () => {
+  const { manager, cleanup } = await rig({ faults: { dropConnections: 10 } });
+  try {
+    const job = manager.pushImage("display-001", QR_A, "a");
+    await new Promise((r) => setTimeout(r, 5));
+    const retrying = manager.get("display-001")!.push!;
+    assert.ok(["CONNECTING", "RETRY"].includes(retrying.phase), retrying.phase);
+    await job.result;
+    const failed = manager.get("display-001")!.push!;
+    assert.equal(failed.phase, "FAILED");
+    assert.equal(failed.attempt, 3);
+    assert.match(failed.error!, /DISCONNECT|TIMEOUT/);
+    assert.equal(failed.retryAt, null);
+    assert.equal(failed.failedAt, "CONNECTING", "обрыв сразу после accept — до HELLO");
+
+    const next = manager.pushImage("display-001", QR_B, "b");
+    assert.equal(manager.get("display-001")!.push!.version, next.version);
+    assert.equal(manager.get("display-001")!.push!.label, "b");
+    await next.result;
+  } finally {
+    await cleanup();
+  }
+});

@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../../api/client";
 import type { DisplayItem, DisplayPreview, DisplaySecretResponse } from "../../api/types";
 import { useAsyncAction } from "../../api/useAsyncAction";
 import { AppButton, AppDialog, AppSelect, Badge, Panel } from "../../design/components";
 import { formatAgo } from "../../format";
-import { STATUS_LABEL, STATUS_TONE, type DisplaySource } from "./displayUtil";
+import { DisplayMock, PushSteps } from "./DisplayMock";
+import { phaseText, screenState, STATUS_LABEL, STATUS_TONE, type DisplaySource } from "./displayUtil";
 
 const BACKLIGHT = [
   { value: "OFF", label: "выкл" },
@@ -41,6 +42,24 @@ export function DisplayCard({
   const [note, setNote] = useState<string | null>(null);
   const action = useAsyncAction({ fallbackError: "дисплей не ответил" });
   const base = `/api/displays/${encodeURIComponent(d.id)}`;
+  // Кадр последней отправки — для макета «что на экране»; сервер перерисовывает его при каждой новой версии. Хранится вместе с
+  // версией: пока не пришёл кадр новой версии, старый не показывается. Причина ошибки — в «ошибка» выше, под шкалой не повторяется.
+  const [frame, setFrame] = useState<{ version: number; preview: DisplayPreview } | null>(null);
+  useEffect(() => {
+    const version = d.desiredVersion;
+    if (version === null) return;
+    let cancelled = false;
+    api
+      .get<DisplayPreview>(`${base}/preview`)
+      .then((preview) => !cancelled && setFrame({ version, preview }))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [base, d.desiredVersion]);
+  const framePng = frame && frame.version === d.desiredVersion ? frame.preview.png : null;
+  const shownState = screenState(d);
+  const inFlight = d.push && d.push.version === d.desiredVersion && d.push.phase !== "DISPLAYED" ? d.push : null;
 
   async function command(path: string, body: Record<string, unknown>, done: string) {
     setNote(null);
@@ -81,47 +100,64 @@ export function DisplayCard({
       }
     >
       <div className="hint-text">{d.name}</div>
-      <dl className="display-facts">
-        <dt>адрес</dt>
-        <dd className="mono">
-          {d.ip}:{d.port}
-        </dd>
-        <dt>на связи</dt>
-        <dd>{formatAgo(d.lastSeenAt)}</dd>
-        <dt>на экране</dt>
-        <dd>
-          {d.displayedVersion ? `v${d.displayedVersion}` : "—"}
-          {d.desiredLabel && d.displayedVersion === d.desiredVersion ? ` · ${d.desiredLabel}` : ""}
-          {d.displayedAt ? ` · ${formatAgo(d.displayedAt)}` : ""}
-        </dd>
-        {d.desiredVersion !== null && d.desiredVersion !== d.displayedVersion && (
-          <>
-            <dt>должно быть</dt>
-            <dd>
-              v{d.desiredVersion} · {d.desiredLabel}
-              {d.activeVersion !== null ? " · отправляется" : d.pendingVersion !== null ? " · в очереди" : " · не дошло"}
-            </dd>
-          </>
+      <div className="display-card-body">
+        {shownState && (
+          <DisplayMock
+            png={framePng}
+            width={d.width}
+            height={d.height}
+            state={shownState}
+            note={shownState === "shown" ? `v${d.displayedVersion}` : d.displayedVersion ? `на экране пока v${d.displayedVersion}` : undefined}
+          />
         )}
-        {d.lastError && (
-          <>
-            <dt>ошибка</dt>
-            <dd className="login-error">
-              {d.lastError} ({formatAgo(d.lastErrorAt)})
-            </dd>
-          </>
-        )}
-        <dt>прошивка</dt>
-        <dd className="mono">
-          {d.fwVersion ?? "—"}
-          {d.rssi !== null ? ` · Wi-Fi ${d.rssi} дБм` : ""}
-          {d.hardwareId ? ` · ${d.hardwareId}` : ""}
-        </dd>
-        <dt>панель</dt>
-        <dd className="mono">
-          {d.width}×{d.height}
-        </dd>
-      </dl>
+        <dl className="display-facts">
+          <dt>адрес</dt>
+          <dd className="mono">
+            {d.ip}:{d.port}
+          </dd>
+          <dt>на связи</dt>
+          <dd>{formatAgo(d.lastSeenAt)}</dd>
+          <dt>на экране</dt>
+          <dd>
+            {d.displayedVersion ? `v${d.displayedVersion}` : "—"}
+            {d.desiredLabel && d.displayedVersion === d.desiredVersion ? ` · ${d.desiredLabel}` : ""}
+            {d.displayedAt ? ` · ${formatAgo(d.displayedAt)}` : ""}
+          </dd>
+          {d.desiredVersion !== null && d.desiredVersion !== d.displayedVersion && (
+            <>
+              <dt>должно быть</dt>
+              <dd>
+                v{d.desiredVersion} · {d.desiredLabel}
+                {d.activeVersion !== null ? " · отправляется" : d.pendingVersion !== null ? " · в очереди" : " · не дошло"}
+              </dd>
+            </>
+          )}
+          {d.lastError && (
+            <>
+              <dt>ошибка</dt>
+              <dd className="login-error">
+                {d.lastError} ({formatAgo(d.lastErrorAt)})
+              </dd>
+            </>
+          )}
+          <dt>прошивка</dt>
+          <dd className="mono">
+            {d.fwVersion ?? "—"}
+            {d.rssi !== null ? ` · Wi-Fi ${d.rssi} дБм` : ""}
+            {d.hardwareId ? ` · ${d.hardwareId}` : ""}
+          </dd>
+          <dt>панель</dt>
+          <dd className="mono">
+            {d.width}×{d.height}
+          </dd>
+        </dl>
+      </div>
+      {inFlight && (
+        <div className="display-inflight">
+          <PushSteps phase={inFlight.phase} failedAt={inFlight.failedAt} />
+          {inFlight.phase !== "FAILED" && <span className="hint-text">{phaseText(inFlight)}</span>}
+        </div>
+      )}
       <div className="display-actions">
         {lagging && (
           <AppButton variant="primary" onClick={resend} disabled={action.busy || !d.enabled}>
@@ -142,7 +178,13 @@ export function DisplayCard({
           ))}
         </AppSelect>
         <AppButton
-          onClick={() => command("backlight", { level, seconds: level === "OFF" ? 0 : BACKLIGHT_SECONDS }, level === "OFF" ? "подсветка выключена" : `подсветка на ${BACKLIGHT_SECONDS} с`)}
+          onClick={() =>
+            command(
+              "backlight",
+              { level, seconds: level === "OFF" ? 0 : BACKLIGHT_SECONDS },
+              level === "OFF" ? "подсветка выключена" : `подсветка на ${BACKLIGHT_SECONDS} с`,
+            )
+          }
           disabled={action.busy || !d.enabled}
         >
           Подсветка

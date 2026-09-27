@@ -25,5 +25,6 @@ export const display = (over: Partial<DisplayItem> = {}): DisplayItem => ({
   displayedAt: null,
   activeVersion: null,
   pendingVersion: null,
+  push: null,
   ...over,
 });

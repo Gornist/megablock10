@@ -4,13 +4,16 @@ import type { DisplayItem, DisplayPreview, DisplayPushResponse } from "../../api
 import { useApiData } from "../../api/useApiData";
 import { useAsyncAction } from "../../api/useAsyncAction";
 import { AppDialog, Badge, EmptyState } from "../../design/components";
-import { pushProgress, scaleWarning, STATUS_LABEL, STATUS_TONE, type DisplaySource } from "./displayUtil";
+import { DisplayMock, PushSteps } from "./DisplayMock";
+import { PUSH_TONE, pushProgress, scaleWarning, STATUS_LABEL, STATUS_TONE, type DisplaySource } from "./displayUtil";
 
-const POLL_PUSH_MS = 1500;
+// Этапы «отправлено → загружено» на месте длятся секунды — опрос чаще, чтобы их было видно.
+const POLL_PUSH_MS = 1000;
 
 /**
- * «Отправить на дисплей»: выбрать один или несколько дисплеев → предпросмотр кадра (ровно то, что уйдёт на e-paper) → отправить →
- * по каждому видно «отправляется / показан / ошибка». Картинку рисует сервер, браузер к дисплеям не ходит.
+ * «Отправить на дисплей»: выбрать один или несколько дисплеев → макет дисплея с кадром (ровно то, что уйдёт на e-paper) → отправить →
+ * по каждому дисплею шкала «подключение → отправлено → загружено → отображено», а макет показывает, что сейчас на экране выбранного
+ * дисплея. Картинку рисует сервер, браузер к дисплеям не ходит.
  */
 export function DisplayPushDialog({ source, title, onClose }: { source: DisplaySource; title: string; onClose: () => void }) {
   const { data: displays, error: listError } = useApiData<DisplayItem[]>("/api/displays", { pollMs: POLL_PUSH_MS });
@@ -18,6 +21,8 @@ export function DisplayPushDialog({ source, title, onClose }: { source: DisplayS
   const [preview, setPreview] = useState<DisplayPreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [sent, setSent] = useState<DisplayPushResponse | null>(null);
+  // Чей ход показывает макет после отправки (по умолчанию — первого дисплея).
+  const [focus, setFocus] = useState<string | null>(null);
   const send = useAsyncAction({ fallbackError: "не удалось отправить" });
 
   const usable = (displays ?? []).filter((d) => d.enabled);
@@ -35,7 +40,10 @@ export function DisplayPushDialog({ source, title, onClose }: { source: DisplayS
     let cancelled = false;
     setPreviewError(null);
     api
-      .post<DisplayPreview>("/api/displays/preview", { source, displayId: sizeOf })
+      .post<DisplayPreview>("/api/displays/preview", {
+        source,
+        displayId: sizeOf,
+      })
       .then((p) => !cancelled && setPreview(p))
       .catch((err) => !cancelled && setPreviewError(err instanceof ApiError ? err.message : "не удалось построить предпросмотр"));
     return () => {
@@ -49,11 +57,27 @@ export function DisplayPushDialog({ source, title, onClose }: { source: DisplayS
   }
 
   async function submit() {
-    const res = await send.run(() => api.post<DisplayPushResponse>("/api/displays/push", { displayIds: selected, source }));
+    const res = await send.run(() =>
+      api.post<DisplayPushResponse>("/api/displays/push", {
+        displayIds: selected,
+        source,
+      }),
+    );
     if (res.ok) setSent(res.value);
   }
 
   const warning = preview ? scaleWarning(preview.scale) : null;
+  const mockId = sent ? (focus ?? sent.results[0]?.displayId ?? null) : null;
+  const mockDisplay = mockId ? displays?.find((d) => d.id === mockId) : undefined;
+  const mockResult = sent?.results.find((r) => r.displayId === mockId);
+  const mockProgress = mockResult ? pushProgress(mockResult, mockDisplay) : null;
+  // Под макетом — только то, чего не видно по отметке: причина ошибки или повтора, показанная версия.
+  const mockNote =
+    mockProgress?.state === "failed" || mockProgress?.push?.phase === "RETRY"
+      ? mockProgress.text
+      : mockProgress?.state === "shown"
+        ? `v${mockDisplay?.displayedVersion ?? mockResult?.version}`
+        : undefined;
 
   return (
     <AppDialog
@@ -65,18 +89,22 @@ export function DisplayPushDialog({ source, title, onClose }: { source: DisplayS
       onCancel={onClose}
     >
       <div className="display-preview">
-        {preview ? (
-          <img src={preview.png} alt="кадр для дисплея" />
-        ) : (
-          <EmptyState>{previewError ? "нет предпросмотра" : "готовлю кадр…"}</EmptyState>
-        )}
+        <DisplayMock
+          png={preview?.png ?? null}
+          width={preview?.width ?? 272}
+          height={preview?.height ?? 792}
+          state={mockProgress?.state ?? "draft"}
+          caption={mockDisplay ? `${mockDisplay.id} · ${mockDisplay.name}` : undefined}
+          note={!preview ? (previewError ? "нет предпросмотра" : "готовлю кадр…") : mockNote}
+        />
         <div className="display-pick">
-          {preview && (
+          {preview && !sent && (
             <p className="hint-text">
-              {preview.width}×{preview.height}, QR версии {preview.qrVersion}: {preview.modules} модулей, {preview.scale} px на модуль. Та же строка QR, что для печати.
+              {preview.width}×{preview.height}, QR версии {preview.qrVersion}: {preview.modules} модулей, {preview.scale} px на модуль. Та же строка QR, что для
+              печати.
             </p>
           )}
-          {warning && <div className="login-error">{warning}</div>}
+          {warning && !sent && <div className="login-error">{warning}</div>}
           {previewError && <div className="login-error">{previewError}</div>}
           {listError && <div className="login-error">{listError}</div>}
           {displays && usable.length === 0 && <EmptyState>нет включённых дисплеев — добавьте на вкладке «Дисплеи»</EmptyState>}
@@ -90,12 +118,23 @@ export function DisplayPushDialog({ source, title, onClose }: { source: DisplayS
             ))}
           {sent &&
             sent.results.map((r) => {
-              const p = pushProgress(r, displays?.find((d) => d.id === r.displayId));
+              const d = displays?.find((x) => x.id === r.displayId);
+              const p = pushProgress(r, d);
               return (
-                <div key={r.displayId} className="display-card-head">
-                  <span className="mono">{r.displayId}</span>
-                  <Badge tone={p.state === "shown" ? "ok" : p.state === "failed" ? "danger" : p.state === "sending" ? "accent" : "neutral"}>{p.text}</Badge>
-                </div>
+                <button
+                  type="button"
+                  key={r.displayId}
+                  className={`push-row${r.displayId === mockId ? " push-row-focus" : ""}`}
+                  onClick={() => setFocus(r.displayId)}
+                  aria-pressed={r.displayId === mockId}
+                >
+                  <span className="display-card-head">
+                    <span className="mono">{r.displayId}</span>
+                    {d && <span>{d.name}</span>}
+                    <Badge tone={PUSH_TONE[p.state]}>{p.text}</Badge>
+                  </span>
+                  {p.push ? <PushSteps phase={p.state === "shown" ? "DISPLAYED" : p.push.phase} failedAt={p.push.failedAt} /> : null}
+                </button>
               );
             })}
           {send.error && <div className="login-error">{send.error}</div>}

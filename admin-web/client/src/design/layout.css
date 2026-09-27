@@ -559,13 +559,13 @@
 
 /* Электронные QR-дисплеи (screens/DisplaysScreen.tsx, screens/displays/). */
 .dialog-panel.wide {
-  width: 680px;
+  width: 720px;
   max-height: calc(100vh - 48px);
   overflow-y: auto;
 }
 .display-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(440px, 100%), 1fr)); /* макет дисплея + сведения рядом */
   gap: var(--gap);
 }
 .display-card-head {
@@ -596,11 +596,227 @@
   align-items: flex-start;
   flex-wrap: wrap;
 }
-/* Кадр e-paper целиком, в половину высоты панели: видно, какую часть экрана занимает QR. */
-.display-preview img {
-  background: #fff;
+/*
+ * Макет дисплея (DisplayMock): корпус CrowPanel, e-paper с кадром в пропорциях панели, отметка состояния. Кадр — ровно то, что
+ * рисует сервер; в диалоге — в половину высоты панели (видно, какую часть экрана занимает QR), в карточке — меньше.
+ */
+.display-mock {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.display-mock-body {
+  position: relative;
+  padding: 14px 10px 22px;
+  background: linear-gradient(160deg, #2a2a2e, #161618);
+  border: 1px solid #3a3a40;
+  border-radius: 10px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+.display-mock-screen {
+  position: relative;
   height: 396px;
+  overflow: hidden;
+  background: #e9e7df; /* e-paper не белый, а бумажно-серый */
+  border: 1px solid #0b0b0c;
+}
+.display-card-body .display-mock-screen {
+  height: 190px;
+}
+.display-card-body .display-facts dd {
+  overflow-wrap: anywhere;
+}
+.display-inflight .push-steps {
+  font-size: 11px;
+}
+.display-mock-screen img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  mix-blend-mode: multiply; /* белое поле кадра — цвета e-paper */
+}
+.display-mock-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #8a877e;
+  font-size: 12px;
+}
+.display-mock-led {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  width: 6px;
+  height: 6px;
+  margin-left: -3px;
+  border-radius: 50%;
+  background: #3a3a40;
+}
+.display-mock-sending .display-mock-led {
+  background: var(--acc);
+}
+.display-mock-loaded .display-mock-led {
+  background: var(--warn);
+}
+.display-mock-shown .display-mock-led {
+  background: var(--ok);
+}
+.display-mock-failed .display-mock-led {
+  background: var(--bad);
+}
+.display-mock-draft .display-mock-screen {
+  outline: 1px dashed var(--chrome);
+  outline-offset: 3px;
+}
+.display-mock-sending img,
+.display-mock-failed img,
+.display-mock-superseded img {
+  opacity: 0.35;
+}
+.display-mock-scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 18%;
+  background: linear-gradient(to bottom, transparent, rgba(94, 246, 255, 0.35), transparent);
+}
+.display-mock figcaption {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  max-width: 220px;
+  text-align: center;
+  font-size: 12px;
+}
+.display-mock-tag {
+  color: var(--ink-2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 11px;
+}
+.display-mock-tag-sending {
+  color: var(--acc);
+}
+.display-mock-tag-loaded {
+  color: var(--warn);
+}
+.display-mock-tag-shown {
+  color: var(--ok);
+}
+.display-mock-tag-failed {
+  color: var(--bad);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .display-mock-scan {
+    animation: mock-scan 1.4s linear infinite;
+  }
+  /* Полное обновление e-paper: экран пару раз мигает чёрным/белым, прежде чем встанет картинка. */
+  .display-mock-loaded .display-mock-screen img {
+    animation: mock-epaper-refresh 1.2s steps(1) infinite;
+  }
+}
+@keyframes mock-scan {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(560%);
+  }
+}
+@keyframes mock-epaper-refresh {
+  0% {
+    filter: invert(1);
+  }
+  25% {
+    filter: none;
+    opacity: 0.4;
+  }
+  50% {
+    filter: invert(1);
+    opacity: 1;
+  }
+  75% {
+    filter: none;
+  }
+}
+.display-card-body {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.display-card-body .display-facts {
+  flex: 1;
+  min-width: 0;
+}
+.display-inflight {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+/* Шкала хода отправки (PushSteps). */
+.push-steps {
+  display: flex;
+  gap: 3px;
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+.push-step {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink-3);
+}
+.push-step + .push-step::before {
+  content: "";
+  width: 8px;
+  height: 1px;
+  background: var(--chrome-dim);
+}
+.push-step-dot {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  font-size: 10px;
+}
+.push-step-done {
+  color: var(--ok);
+}
+.push-step-current {
+  color: var(--acc);
+}
+.push-step-retry {
+  color: var(--warn);
+}
+.push-step-failed {
+  color: var(--bad);
+}
+.push-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: none;
   border: 1px solid var(--chrome-dim);
+  cursor: pointer;
+}
+.push-row-focus {
+  border-color: var(--acc);
 }
 .display-pick {
   display: flex;

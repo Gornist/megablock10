@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { DisplayItem, DisplayPreview, DisplayPushResponse, DisplaySecretResponse } from "../api/types";
+import type { DisplayItem, DisplayPreview, DisplayPushResponse, DisplayPushState, DisplaySecretResponse } from "../api/types";
 import { mockApi } from "../test/mockApi";
 import { DisplaysScreen } from "./DisplaysScreen";
 import { DisplayPushDialog } from "./displays/DisplayPushDialog";
@@ -14,7 +14,16 @@ const list: DisplayItem[] = [
   display({ id: "display-019", name: "Точка 19", status: "ERROR", lastError: "CONNECT: no TCP connection", displayedVersion: 2, desiredVersion: 3 }),
 ];
 
-const preview: DisplayPreview = { qr: "MB10:CONTAINER:v1:x", label: "контейнер «X»", png: "data:image/png;base64,AAA", width: 272, height: 792, qrVersion: 19, modules: 93, scale: 2 };
+const preview: DisplayPreview = {
+  qr: "MB10:CONTAINER:v1:x",
+  label: "контейнер «X»",
+  png: "data:image/png;base64,AAA",
+  width: 272,
+  height: 792,
+  qrVersion: 19,
+  modules: 93,
+  scale: 2,
+};
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -44,7 +53,15 @@ describe("DisplaysScreen", () => {
     fireEvent.change(screen.getByPlaceholderText("10.10.0.217"), { target: { value: "10.10.0.218" } });
     fireEvent.click(screen.getByText("Добавить"));
     await screen.findByText("ab".repeat(32));
-    expect(calls.find((c) => c.method === "POST")?.body).toEqual({ id: "display-018", name: "Точка 18", ip: "10.10.0.218", port: 47200, width: 272, height: 792, enabled: true });
+    expect(calls.find((c) => c.method === "POST")?.body).toEqual({
+      id: "display-018",
+      name: "Точка 18",
+      ip: "10.10.0.218",
+      port: 47200,
+      width: 272,
+      height: 792,
+      enabled: true,
+    });
   });
 
   it("команда дисплею: ответ показывается мастеру", async () => {
@@ -90,12 +107,59 @@ describe("DisplayPushDialog", () => {
     fireEvent.click(boxes[2]);
     fireEvent.click(screen.getByText("Отправить (2)"));
     await waitFor(() => expect(calls.find((c) => c.path === "/api/displays/push")).toBeTruthy());
-    expect(calls.find((c) => c.path === "/api/displays/push")?.body).toEqual({ displayIds: ["display-017", "display-019"], source: { type: "container", id: "nasos-4" } });
+    expect(calls.find((c) => c.path === "/api/displays/push")?.body).toEqual({
+      displayIds: ["display-017", "display-019"],
+      source: { type: "container", id: "nasos-4" },
+    });
 
-    await screen.findByText("показан (v6)", {}, { timeout: 4000 });
+    await screen.findAllByText("отображено (v6)", {}, { timeout: 4000 });
     await screen.findByText("AUTH_FAILED: HELLO signature does not match");
     fireEvent.click(screen.getByText("Готово"));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("ход отправки: шкала этапов по данным сервера, макет показывает выбранный дисплей", async () => {
+    const push = (phase: DisplayPushState["phase"], over: Partial<DisplayPushState> = {}): DisplayPushState => ({
+      version: 6,
+      label: "контейнер «X»",
+      phase,
+      attempt: 1,
+      attempts: 3,
+      startedAt: 0,
+      updatedAt: 0,
+      error: null,
+      failedAt: null,
+      retryAt: null,
+      ...over,
+    });
+    let after = [list[0]];
+    mockApi({
+      "GET /api/displays": () => after,
+      "POST /api/displays/preview": preview,
+      "POST /api/displays/push": () => {
+        after = [{ ...list[0], desiredVersion: 6, status: "UPDATING", activeVersion: 6, push: push("RECEIVED") }];
+        return { label: "контейнер «X»", results: [{ displayId: "display-017", ok: true, version: 6, outcome: "QUEUED" }] };
+      },
+    });
+    render(<DisplayPushDialog source={{ type: "container", id: "nasos-4" }} title="Насосная-4" onClose={() => {}} />);
+    await screen.findByAltText("кадр для дисплея");
+    // Единственный дисплей выбирается сам, когда придёт список.
+    await waitFor(() => expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(true));
+    fireEvent.click(screen.getByText("Отправить"));
+    // Диалог — в портале, поэтому ищем по document. Кадр принят дисплеем — шаги «Подключение» и «Отправлено» пройдены, идёт «Загружено»; макет «обновляется».
+    await screen.findAllByText("загружено — обновляется экран", {}, { timeout: 4000 });
+    const steps = () => [...document.querySelectorAll(".push-step")].map((li) => li.className.replace("push-step push-step-", ""));
+    expect(steps()).toEqual(["done", "done", "current", "todo"]);
+    expect(document.querySelector(".display-mock-loaded")).toBeTruthy();
+    expect(screen.getByAltText("кадр на дисплее")).toBeTruthy();
+
+    after = [
+      { ...list[0], desiredVersion: 6, displayedVersion: 6, push: push("FAILED", { attempt: 3, error: "TIMEOUT: no DISPLAYED", failedAt: "RECEIVED" }) },
+    ];
+    // Дисплей подтвердил версию (например, в HELLO следующей попытки) — показан, какой бы ни была последняя ошибка.
+    await screen.findAllByText("отображено (v6)", {}, { timeout: 4000 });
+    expect(steps()).toEqual(["done", "done", "done", "done"]);
+    expect(document.querySelector(".display-mock-shown")).toBeTruthy();
   });
 
   it("QR не влезает в панель — ошибка предпросмотра, отправка недоступна", async () => {
