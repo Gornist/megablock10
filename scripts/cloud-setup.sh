@@ -3,7 +3,13 @@
 # Копия того, что вставлено в настройки окружения (меню окружения в заголовке сессии → Edit → Setup script):
 # правите здесь — вставьте туда заново. Самодостаточный (не читает репозиторий) и идемпотентный: повторный запуск ничего не ломает.
 # Что даёт сессии: Android SDK 34 для :app, зеркало Maven Central для Gradle и Robolectric, UTF-8 в выводе Gradle,
-# kotlin-language-server для плагина KotlinSense.
+# kotlin-language-server для плагина KotlinSense, PlatformIO с платформой ESP32 и wokwi-cli для прошивки QR-дисплея
+# (firmware/display, docs/firmware-plan.md).
+#
+# Сеть окружения (Network access) — кроме доступного по умолчанию, должны быть разрешены:
+#   api.registry.platformio.org, dl.registry.platformio.org — PlatformIO: платформа ESP32, тулчейн, библиотеки;
+#   wokwi.com — симулятор Wokwi (wokwi-cli подключается к wss://wokwi.com/api/ws/beta).
+# Токен Wokwi — не сюда: переменная окружения WOKWI_CLI_TOKEN в настройках окружения (и секрет с тем же именем в GitHub Actions).
 set -euo pipefail
 
 SDK=${ANDROID_HOME:-/root/android-sdk}
@@ -79,4 +85,28 @@ if [ -x "$CLAUDE_BIN" ]; then
   "$CLAUDE_BIN" plugin install kotlinsense@kotlinsense || true
 fi
 
-echo "MB10 cloud setup: SDK $(ls "$SDK/platforms" | tr '\n' ' '), kotlin-language-server $KLS_VERSION, init.d, ~/.bashrc и плагины готовы"
+# 6. Прошивка QR-дисплея (firmware/display). Сборка и тесты ядра на ПК — CMake + g++ (есть в образе); плата — PlatformIO;
+#    эмулятор — wokwi-cli. Без доступа к реестру PlatformIO или к wokwi.com настройка не падает: остальное окружение работает.
+if ! command -v pio > /dev/null; then
+  pip3 install -q platformio 2> /dev/null || pip3 install -q --break-system-packages platformio || true
+fi
+if command -v pio > /dev/null; then
+  pio settings set enable_telemetry No > /dev/null || true   # иначе стучится в collector.platformio.org
+  # Платформа, фреймворк, тулчейн ESP32-S3 и библиотеки — заранее (≈1 ГБ, первая сборка в сессии иначе ждёт минуты).
+  # Те же версии, что в firmware/display/platformio.ini; скрипт самодостаточный, поэтому проект — временный.
+  tmp=$(mktemp -d)
+  printf '%s\n' '[env:crowpanel579]' 'platform = espressif32@^6.9.0' 'framework = arduino' 'board = esp32-s3-devkitc-1' \
+    'lib_deps =' '  zinggjm/GxEPD2@^1.6.0' '  adafruit/Adafruit GFX Library@^1.11.9' '  adafruit/Adafruit BusIO@^1.16.1' \
+    '  bblanchon/ArduinoJson@^7.2.0' > "$tmp/platformio.ini"
+  (cd "$tmp" && pio pkg install > /dev/null 2>&1) ||
+    echo "PlatformIO: реестр недоступен (api/dl.registry.platformio.org в Network access?) — сборка для платы только в CI"
+  rm -rf "$tmp"
+fi
+WOKWI_VERSION=v0.27.1
+if [ ! -x "$HOME/.local/bin/wokwi-cli" ]; then
+  mkdir -p "$HOME/.local/bin"
+  curl -fsSL "https://github.com/wokwi/wokwi-cli/releases/download/$WOKWI_VERSION/wokwi-cli-linuxstatic-x64" -o "$HOME/.local/bin/wokwi-cli" &&
+    chmod +x "$HOME/.local/bin/wokwi-cli" || echo "wokwi-cli не скачан"
+fi
+
+echo "MB10 cloud setup: SDK $(ls "$SDK/platforms" | tr '\n' ' '), kotlin-language-server $KLS_VERSION, init.d, ~/.bashrc, плагины, $(command -v pio > /dev/null && echo "PlatformIO, ")wokwi-cli $WOKWI_VERSION готовы"

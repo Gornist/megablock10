@@ -21,7 +21,10 @@
   KotlinSense даёт диагностику) включается переменной `ENABLE_LSP_TOOL=1` — она в `env` того же `settings.json`.
   Decibel Superpowers публичного git-источника не имеет — включается в аккаунте claude.ai.
 - Облачное окружение настраивает `scripts/cloud-setup.sh` (копия вставлена в Setup script окружения): SDK 34, зеркало Maven
-  для Gradle и Robolectric, `LANG=C.UTF-8`, kotlin-language-server (для KotlinSense). Правите скрипт — обновите и его копию в настройках.
+  для Gradle и Robolectric, `LANG=C.UTF-8`, kotlin-language-server (для KotlinSense), PlatformIO с платформой ESP32 и `wokwi-cli`
+  (прошивка QR-дисплея, `firmware/display`). Правите скрипт — обновите и его копию в настройках. Для прошивки в Network access
+  окружения нужны `api.registry.platformio.org`, `dl.registry.platformio.org`, `wokwi.com`; токен Wokwi — переменная окружения
+  `WOKWI_CLI_TOKEN` в настройках окружения и секрет с тем же именем в GitHub Actions, не в репозитории и не в чате.
 
 ## Проверки
 
