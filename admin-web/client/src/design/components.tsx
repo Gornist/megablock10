@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 import "./components.css";
 
 /*
@@ -109,6 +110,7 @@ export function Field({
  * Модальное подтверждение с опциональным текстовым полем — замена
  * window.prompt() в Реестре тиражей (нативный попап ломал фирменный HUD).
  * confirmDisabled — например, чтобы не дать подтвердить с пустым основанием.
+ * Рендерится порталом в body: внутри Panel срез augmented-ui (clip-path) обрезал бы и fixed-подложку окна.
  */
 export function AppDialog({
   title,
@@ -118,6 +120,7 @@ export function AppDialog({
   confirmDisabled,
   onConfirm,
   onCancel,
+  wide,
   children,
 }: {
   title: string;
@@ -127,11 +130,13 @@ export function AppDialog({
   confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  /** Широкое окно — под предпросмотр и список (отправка QR на дисплеи). */
+  wide?: boolean;
   children?: ReactNode;
 }) {
-  return (
+  return createPortal(
     <div className="dialog-backdrop" onClick={onCancel}>
-      <div className="dialog-panel" onClick={(e) => e.stopPropagation()} data-augmented-ui={AUG_DLG}>
+      <div className={`dialog-panel ${wide ? "wide" : ""}`} onClick={(e) => e.stopPropagation()} data-augmented-ui={AUG_DLG}>
         <h3>{title}</h3>
         {body && <p className="hint-text dialog-body">{body}</p>}
         {children}
@@ -142,6 +147,7 @@ export function AppDialog({
           </AppButton>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -556,3 +556,67 @@
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: var(--gap);
 }
+
+/* Электронные QR-дисплеи (screens/DisplaysScreen.tsx, screens/displays/). */
+.dialog-panel.wide {
+  width: 680px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+.display-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: var(--gap);
+}
+.display-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.display-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 10px 0;
+  font-size: 13px;
+}
+.display-facts dt {
+  color: var(--chrome-deep);
+}
+.display-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.display-preview {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+/* Кадр e-paper целиком, в половину высоты панели: видно, какую часть экрана занимает QR. */
+.display-preview img {
+  background: #fff;
+  height: 396px;
+  border: 1px solid var(--chrome-dim);
+}
+.display-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 240px;
+  flex: 1;
+}
+.display-pick label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  cursor: pointer;
+}
+.secret-box {
+  word-break: break-all;
+  color: var(--money);
+  font-size: 12px;
+}

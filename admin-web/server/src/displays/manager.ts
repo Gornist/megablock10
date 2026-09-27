@@ -131,6 +131,8 @@ export class DisplayManager {
   private readonly semaphore: Semaphore;
   private readonly sockets = new Set<Socket>();
   private probeTimer: NodeJS.Timeout | null = null;
+  /** Итог последнего опроса по дисплею — в журнал идёт только смена «на связи ↔ нет связи», а не каждый опрос. */
+  private readonly reachable = new Map<string, boolean>();
   private stopped = false;
 
   constructor(db: Db, config: Partial<DisplayManagerConfig> = {}) {
@@ -308,6 +310,16 @@ export class DisplayManager {
   }
 
   private async run(displayId: string, op: Op): Promise<OpResult> {
+    const result = await this.runAttempts(displayId, op);
+    if (op.kind === "probe") {
+      const up = result.outcome === "DISPLAYED";
+      if (this.reachable.get(displayId) !== up) this.log(up ? "DISPLAY_ONLINE" : "DISPLAY_OFFLINE", displayId, up ? "" : (result.error ?? ""));
+      this.reachable.set(displayId, up);
+    }
+    return result;
+  }
+
+  private async runAttempts(displayId: string, op: Op): Promise<OpResult> {
     const attempts = op.kind === "probe" ? 1 : this.config.retryDelaysMs.length + 1;
     let last: DisplayFailure | null = null;
     for (let attempt = 0; attempt < attempts; attempt++) {
@@ -351,7 +363,8 @@ export class DisplayManager {
     );
     const now = Date.now();
     const hello = session.hello;
-    this.log("DISPLAY_CONNECT", row.id, `ip=${row.ip}:${row.port} shows=${hello.displayedVersion} fw=${hello.status.fw ?? "?"}`);
+    const quiet = op.kind === "probe";
+    if (!quiet) this.log("DISPLAY_CONNECT", row.id, `ip=${row.ip}:${row.port} shows=${hello.displayedVersion} fw=${hello.status.fw ?? "?"}`);
     try {
       this.repo.markSeen(row.id, now, {
         hardwareId: hello.status.hw,
@@ -368,7 +381,7 @@ export class DisplayManager {
       return await this.sendImage(session, row, op, hello.displayedVersion);
     } finally {
       await session.close();
-      this.log("DISPLAY_DISCONNECT", row.id, "");
+      if (!quiet) this.log("DISPLAY_DISCONNECT", row.id, "");
     }
   }
 

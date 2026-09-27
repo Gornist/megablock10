@@ -32,7 +32,7 @@ export function ContainerForm() {
   const [tier, setTier] = useState<TierName>("BASE");
   const [ownerFaction, setOwnerFaction] = useState("");
   const [slots, setSlots] = useState<SlotDraft[]>([]);
-  const [result, setResult] = useState<QrResult | null>(null);
+  const [result, setResult] = useState<(QrResult & { containerId: string }) | null>(null);
   const { busy, error, run } = useAsyncAction({ fallbackError: "не удалось сгенерировать" });
 
   async function submit() {
@@ -89,7 +89,7 @@ export function ContainerForm() {
           </AppButton>
         </div>
       </Panel>
-      {result && <QrPanel result={result} caption={name} />}
+      {result && <QrPanel result={result} caption={name} displaySource={{ type: "container", id: result.containerId }} />}
     </>
   );
 }

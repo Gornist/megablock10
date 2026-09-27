@@ -40,7 +40,7 @@ export function ShardForm() {
           </AppButton>
         </div>
       </Panel>
-      {result && <QrPanel result={result} caption={draft.title} />}
+      {result && <QrPanel result={result} caption={draft.title} displaySource={{ type: "qr", qr: result.qr, label: `шард «${draft.title}»` }} />}
     </>
   );
 }

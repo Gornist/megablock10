@@ -12,6 +12,7 @@ import { EconomyScreen } from "./screens/EconomyScreen";
 import { AnnouncementsScreen } from "./screens/AnnouncementsScreen";
 import { AuditScreen } from "./screens/AuditScreen";
 import { EventsScreen } from "./screens/EventsScreen";
+import { DisplaysScreen } from "./screens/DisplaysScreen";
 import { useHashRoute, navigate } from "./router";
 import { AppButton } from "./design/components";
 
@@ -27,6 +28,7 @@ const NAV: { path: string; label: string }[] = [
   { path: "announcements", label: "Объявления" },
   { path: "audit", label: "Журнал" },
   { path: "master", label: "Мастерская" },
+  { path: "displays", label: "Дисплеи" },
 ];
 
 function Shell() {
@@ -76,6 +78,7 @@ function Shell() {
         {section === "announcements" && <AnnouncementsScreen />}
         {section === "audit" && <AuditScreen />}
         {section === "master" && <MasterScreen />}
+        {section === "displays" && <DisplaysScreen />}
       </main>
     </div>
   );

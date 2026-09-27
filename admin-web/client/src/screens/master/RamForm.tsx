@@ -28,7 +28,7 @@ export function RamForm() {
           </AppButton>
         </div>
       </Panel>
-      {result && <QrPanel result={result} caption={`+${delta} RAM`} />}
+      {result && <QrPanel result={result} caption={`+${delta} RAM`} displaySource={{ type: "qr", qr: result.qr, label: `RAM +${delta}` }} />}
     </>
   );
 }

@@ -1,0 +1,29 @@
+import type { DisplayItem } from "../api/types";
+
+/** Дисплей для тестов экранов «Дисплеи» и отправки на дисплей — поля по умолчанию, поверх — то, что важно тесту. */
+export const display = (over: Partial<DisplayItem> = {}): DisplayItem => ({
+  id: "d1",
+  name: "Точка 1",
+  ip: "10.0.0.1",
+  port: 47200,
+  width: 272,
+  height: 792,
+  enabled: true,
+  status: "ONLINE",
+  hardwareId: null,
+  fwVersion: "0.1.0",
+  batteryMv: null,
+  battery: null,
+  rssi: null,
+  lastSeenAt: Date.now(),
+  lastConnectedAt: null,
+  lastError: null,
+  lastErrorAt: null,
+  desiredVersion: 5,
+  desiredLabel: "контейнер «X»",
+  displayedVersion: 4,
+  displayedAt: null,
+  activeVersion: null,
+  pendingVersion: null,
+  ...over,
+});

@@ -356,3 +356,22 @@ test("кадр на панели — тот самый QR: модули на с�
     await cleanup();
   }
 });
+
+test("опрос не засоряет журнал: только переходы «на связи ↔ нет связи»", async () => {
+  const { manager, mocks, lines, cleanup } = await rig();
+  try {
+    await manager.probeAll();
+    await manager.probeAll();
+    await manager.probeAll();
+    mocks[0].faults.dropConnections = 2;
+    await manager.probeAll();
+    await manager.probeAll();
+    await manager.probeAll();
+    assert.deepEqual(
+      lines.map((l) => l.split(" ").slice(0, 3).join(" ")),
+      ["[DISPLAY] DISPLAY_ONLINE display-001", "[DISPLAY] DISPLAY_OFFLINE display-001", "[DISPLAY] DISPLAY_ONLINE display-001"],
+    );
+  } finally {
+    await cleanup();
+  }
+});

@@ -1,4 +1,7 @@
-import { Badge, Panel } from "../../design/components";
+import { useState } from "react";
+import { AppButton, Badge, Panel } from "../../design/components";
+import { DisplayPushDialog } from "../displays/DisplayPushDialog";
+import type { DisplaySource } from "../displays/displayUtil";
 
 const TIERS = ["BASE", "HARD", "NIGHTMARE"] as const;
 export type TierName = (typeof TIERS)[number];
@@ -33,9 +36,14 @@ export function ToggleField({ label, value, onToggle }: { label: string; value: 
   );
 }
 
-export function QrPanel({ result, caption }: { result: QrResult; caption: string }) {
+/**
+ * Готовый QR: печать (картинка) и, если задан displaySource, «На дисплей» — тот же QR на электронную точку (сервер рисует кадр из той
+ * же строки, см. docs/displays.md).
+ */
+export function QrPanel({ result, caption, displaySource }: { result: QrResult; caption: string; displaySource?: DisplaySource }) {
+  const [pushing, setPushing] = useState(false);
   return (
-    <Panel title="Готово">
+    <Panel title="Готово" action={displaySource && <AppButton onClick={() => setPushing(true)}>На дисплей</AppButton>}>
       <div className="qr-panel">
         <img src={result.qrImage} alt="QR" width={260} height={260} />
         <p className="mono qr-caption">{caption}</p>
@@ -45,6 +53,7 @@ export function QrPanel({ result, caption }: { result: QrResult; caption: string
           <code className="qr-raw mono">{result.qr}</code>
         </details>
       </div>
+      {pushing && displaySource && <DisplayPushDialog source={displaySource} title={caption} onClose={() => setPushing(false)} />}
     </Panel>
   );
 }

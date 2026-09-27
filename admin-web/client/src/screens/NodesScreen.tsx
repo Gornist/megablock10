@@ -7,6 +7,7 @@ import { AppButton, Badge, Panel, StatTile } from "../design/components";
 import { DataTable, type Column } from "../design/DataTable";
 import { formatAgo, tierLabel } from "../format";
 import { navigate } from "../router";
+import { DisplayPushDialog } from "./displays/DisplayPushDialog";
 
 const HOUR_OPTIONS = [6, 24, 72] as const;
 
@@ -48,6 +49,7 @@ export function NodesScreen({ nodeId }: { nodeId?: string }) {
 /** Динамика взломов одного узла по часам и кто его ломал — «горячие» узлы и момент, когда их начали ломать. */
 function NodeDetailPanel({ nodeId }: { nodeId: string }) {
   const [hours, setHours] = useState<(typeof HOUR_OPTIONS)[number]>(24);
+  const [pushing, setPushing] = useState(false);
   const { data: node, error } = useApiData<NodeDetail>(`/api/nodes/${encodeURIComponent(nodeId)}?hours=${hours}`);
   const { data: players } = useApiData<PlayerListItem[]>("/api/players");
   const nameOf = (key: string) => (players ?? []).find((p) => p.publicKeyB64 === key)?.callsign || key.slice(0, 8);
@@ -63,6 +65,7 @@ function NodeDetailPanel({ nodeId }: { nodeId: string }) {
             </AppButton>
           ))}
           <AppButton onClick={() => navigate("events", "node", nodeId)}>события узла →</AppButton>
+          <AppButton onClick={() => setPushing(true)}>QR на дисплей</AppButton>
           <AppButton onClick={() => navigate("nodes")}>закрыть</AppButton>
         </div>
       }
@@ -88,6 +91,7 @@ function NodeDetailPanel({ nodeId }: { nodeId: string }) {
           </>
         )}
       </AsyncPanel>
+      {pushing && <DisplayPushDialog source={{ type: "container", id: nodeId }} title={node?.name ?? nodeId} onClose={() => setPushing(false)} />}
     </Panel>
   );
 }
