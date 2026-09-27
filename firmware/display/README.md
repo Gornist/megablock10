@@ -1,8 +1,9 @@
-# Прошивка QR-дисплея (ESP32-S3 + e-paper)
+# Прошивка точки на площадке (ESP32-S3: e-paper и звук)
 
-Дисплей — «тупой» приёмник кадра: сервер мастера (`admin-web`) рисует QR и по TCP отдаёт 1-битный кадр, прошивка проверяет
-его (длина, CRC, HMAC, версия), сохраняет во flash и показывает. Контракт — [docs/displays.md](../../docs/displays.md), план и
-способ проверки без железа — [docs/firmware-plan.md](../../docs/firmware-plan.md).
+Точка — исполнитель: сервер мастера (`admin-web`) рисует QR и по TCP отдаёт 1-битный кадр, прошивка проверяет его (длина, CRC,
+HMAC, версия), сохраняет во flash и показывает; точка со звуком ещё играет фон канала с microSD и объявления громкой связи.
+Контракт — [docs/displays.md](../../docs/displays.md) и [docs/sound-nodes.md](../../docs/sound-nodes.md), как проверяется без
+железа — [docs/firmware-plan.md](../../docs/firmware-plan.md). На настоящей плате прошивка ещё не запускалась.
 
 ```
 lib/core/     ядро без Arduino: протокол, CRC32, SHA-256/HMAC, приём потока, сессия, устройство, Wi-Fi backoff; hal.h — интерфейсы платформы;
@@ -22,7 +23,7 @@ test/core/    тесты ядра; test/vectors/protocol-v1.json — общие 
 
 ```bash
 cmake -S firmware/display -B firmware/display/build && cmake --build firmware/display/build -j
-ctest --test-dir firmware/display/build --output-on-failure          # тесты ядра
+ctest --test-dir firmware/display/build --output-on-failure          # тесты ядра (core_test, sound_test) и самопроверка против display_host
 
 # прошивка как программа — прямая замена `npm run mock-display` (те же флаги)
 firmware/display/build/display_host --id display-017 --secret <64 hex из дашборда> --port 47217 --delay 3000 --out ./fw-host
@@ -54,9 +55,11 @@ FIRMWARE_HOST_BIN=$PWD/../../firmware/display/build/display_host npm run display
 `DISPLAY_MAX_CONCURRENT`, «зависший» дисплей (SIGSTOP) не задерживает остальных; `--netem "delay 80ms 20ms loss 3%"` — плохая
 сеть на lo (нужны sudo и модуль `sch_netem`: в CI есть, в облачной сессии Claude — нет). Таймауты — из `DISPLAY_*`, как у сервера.
 
-Самопроверка (`ctest` гоняет её против `display_host`): `build/display_selftest --id … --secret … --port … [--reboot]` — 19 проверок
-протокола (HELLO, IMAGE, BAD_CRC, чужой ключ, STALE, WRONG_DEVICE, неизвестный тип, BAD_MAGIC, таймауты, вытеснение, TEST,
-BACKLIGHT) и перезагрузка с восстановлением кадра. Тот же код крутится внутри платы в Wokwi (ниже).
+Самопроверка (`ctest` гоняет её против `display_host` трижды: без звука, звуковая точка без карты, с картой):
+`build/display_selftest --id … --secret … --port … [--reboot]` — проверки протокола (HELLO, IMAGE, BAD_CRC, чужой ключ, STALE,
+WRONG_DEVICE, неизвестный тип, BAD_MAGIC, таймауты, вытеснение, TEST, BACKLIGHT), звук, если точка его докладывает (состояние и
+старая версия, LIST, клип с обрывом и докачкой, объявление до «доиграло»), и перезагрузка с восстановлением кадра и звука. Тот же
+код крутится внутри платы в Wokwi (ниже).
 
 ## Плата (CrowPanel 5.79″)
 

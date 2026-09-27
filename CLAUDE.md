@@ -1,7 +1,8 @@
 # Правила для агентов (Claude Code и др.)
 
 Проект: Android-приложение для LARP «Мегаблок №10» (`app/`), переиспользуемое ядро без Android (`kit/`), сервер и дашборд
-мастера (`admin-web/`), стенд e2e на двух эмуляторах (`scripts/e2e/`). Всё здесь выверено на реальных сбоях — не обходите.
+мастера (`admin-web/`), прошивка точек на площадке — QR-дисплей и звук на ESP32 (`firmware/display/`), стенд e2e на двух
+эмуляторах (`scripts/e2e/`). Всё здесь выверено на реальных сбоях — не обходите.
 
 Прочитать перед работой: [docs/android-handoff.md](docs/android-handoff.md) (состояние и план),
 [docs/architecture.md](docs/architecture.md) (слои, правила), [docs/refactor-plan.md](docs/refactor-plan.md) (что в работе),
@@ -36,6 +37,8 @@
 | Статика | `./gradlew :app:detekt :kit:detekt :kit:animalsnifferMain :app:lintDebug` | новые находки ломают CI |
 | CI | `.github/workflows/main.yml` (push/PR в `main`, вручную) | ≈4 мин |
 | e2e | `scripts/e2e/up.sh && scripts/e2e/run-all.sh`; CI — `e2e.yml` (PR в `main` с правкой `app/`, `kit/`, `scripts/e2e/`; ночью; вручную) | ≈17 мин |
+| Коллектор | `admin-web/server`: `npm test`; `admin-web/client`: `npm test`, `npm run lint`, `npm run build` | в CI — `main.yml`, job admin-web |
+| Прошивка | `cmake -S firmware/display -B firmware/display/build && cmake --build … && ctest --test-dir …`; плата — `pio run -e crowpanel579`; Wokwi — `firmware/display/tools/wokwi_selftest.sh` | CI — `firmware.yml` (правка `firmware/`, `admin-web/server/src/displays/`); ≈5 мин |
 
 - **Облачная сессия без Android SDK** не соберёт `:app` (и даже `:kit` — Gradle конфигурирует весь проект). Проверка —
   только CI: запустить `main.yml`/`e2e.yml` на своей ветке и читать журнал job. Не утверждать «проверено», не дождавшись CI.

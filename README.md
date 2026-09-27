@@ -15,9 +15,17 @@
 | **Кибердека** | Взлом узлов по QR-меткам на площадке: мини-игра на время, награда — эдди, шарды (секретные документы) и демоны (программы для взлома). |
 | **Финансы** | Эдди: баланс и переводы. Перевод приходит карточкой в чат, получатель жмёт «Принять». Шарды и демонов можно передать так же — предмет переходит, а не копируется. |
 
-**У мастера** — дашборд (`admin-web/`): все игроки и их состояние, правка баланса и данных (доходит до телефона за ~30 с),
-печать QR-меток и **QR персонажа**, повторная выдача персонажа, объявления на все телефоны, лента событий и панель «Требует
-внимания» (подозрения на подделку, пропавшие со связи, всплески денег). Без дашборда игра идёт как обычно.
+**У мастера** — дашборд-коллектор (`admin-web/`), меню двумя группами:
+
+- **Игра** — все игроки и их состояние, правка баланса и данных (доходит до телефона за ~30 с), **QR персонажа** и повторная
+  выдача, объявления на все телефоны, фракции, экономика, переводы, лента событий, журнал мастеров и «Требует внимания»
+  (подозрения на подделку, пропавшие со связи, всплески денег, севшие батареи точек).
+- **Мир** — узлы (контейнеры) и печать QR-меток; **точки на площадке**: узел может стоять в мире электронной точкой —
+  QR на e-paper-дисплее со звуком (ESP32, [docs/displays.md](docs/displays.md), [docs/sound-nodes.md](docs/sound-nodes.md)):
+  мастер отправляет на неё QR узла, в каждой локации играет свой фон, **громкая связь** — записанное в браузере объявление
+  на все точки, локации или отдельные точки.
+
+Без дашборда игра идёт как обычно; без точек — QR-метки просто печатаются на бумаге.
 
 ### Что нужно для игры
 
@@ -25,6 +33,9 @@
 - **Wi-Fi площадки без интернета**, телефоны видят друг друга напрямую: без изоляции клиентов, mDNS разрешён, **порт 47100/TCP**
   открыт между телефонами — [docs/network-spec.md](docs/network-spec.md).
 - По желанию — ноутбук мастера с дашбордом в той же сети: [admin-web/README.md](admin-web/README.md).
+- По желанию — точки на площадке (CrowPanel ESP32-S3 5.79″, для звука — усилитель MAX98357A, microSD и пачка 4 × 21700):
+  [docs/displays.md](docs/displays.md), [firmware/display/README.md](firmware/display/README.md). На настоящей плате прошивка
+  ещё не запускалась — всё проверено без железа (прошивка для ПК против сервера, эмулятор Wokwi).
 - Чек-лист на день игры — [docs/game-day-checklist.md](docs/game-day-checklist.md).
 
 ### Установка
@@ -52,7 +63,10 @@
   ценностей, синхронизация с сервером. [kit/README.md](kit/README.md)
 - `app/` — приложение: Kotlin, Jetpack Compose, Room. Корень композиции `di/AppGraph`, сценарии, ViewModel, экраны.
   [docs/architecture.md](docs/architecture.md)
-- `admin-web/` — дашборд-коллектор мастера: Fastify, better-sqlite3, React, Vite. [admin-web/README.md](admin-web/README.md)
+- `admin-web/` — дашборд-коллектор мастера: Fastify, better-sqlite3, React, Vite; он же управляет точками на площадке
+  (сервер сам подключается к ним по TCP 47200). [admin-web/README.md](admin-web/README.md)
+- `firmware/display/` — прошивка точки (QR-дисплей и звук): ядро на C++ без Arduino, сборка для ПК (проверяется настоящим
+  сервером) и для ESP32-S3, самопроверка в эмуляторе Wokwi. [firmware/display/README.md](firmware/display/README.md)
 - `scripts/e2e/` — стенд: сервер и два эмулятора, сценарии. [scripts/e2e/README.md](scripts/e2e/README.md)
 
 Сеть коротко: телефоны находят друг друга через NSD (mDNS), по подсказкам сервера и по входящим соединениям; обмен — прямым
@@ -78,9 +92,12 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 scripts/setup-hooks.sh                              # один раз: pre-push хук (check.sh --fast, ≤ 1 мин)
 scripts/check.sh --all                              # всё локально: статика, kit, app, скриншоты, сервер
 scripts/e2e/up.sh && scripts/e2e/run-all.sh         # два эмулятора + дашборд, все сценарии (~17 мин)
+cd admin-web/server && npm test                     # сервер коллектора; клиент — cd admin-web/client && npm test && npm run lint
+cmake -S firmware/display -B firmware/display/build && cmake --build firmware/display/build -j && ctest --test-dir firmware/display/build
 ```
 
-CI — `.github/workflows/main.yml` (сборка, статика, тесты) и `e2e.yml` (стенд на эмуляторах). Подробности, грабли и что
+CI — `.github/workflows/main.yml` (сборка, статика, тесты приложения и коллектора), `e2e.yml` (стенд на эмуляторах) и
+`firmware.yml` (прошивка: ядро, сервер против прошивки для ПК, нагрузка, сборка для платы, Wokwi). Подробности, грабли и что
 никогда не делать (например, `cleanTest*` стирает эталоны скриншотов) — в [CLAUDE.md](CLAUDE.md).
 
 ### Документы
@@ -95,6 +112,9 @@ CI — `.github/workflows/main.yml` (сборка, статика, тесты) �
 | [docs/provisioning-qr.md](docs/provisioning-qr.md), [docs/character-reissue.md](docs/character-reissue.md) | QR персонажа и повторная выдача |
 | [docs/device-testing.md](docs/device-testing.md), [docs/live-test-plan.md](docs/live-test-plan.md) | Проверка на телефонах |
 | [docs/game-day-checklist.md](docs/game-day-checklist.md) | Подготовка ко дню игры |
+| [docs/displays.md](docs/displays.md) | Точки на площадке: QR-дисплей, протокол с сервером, где что в коллекторе |
+| [docs/sound-nodes.md](docs/sound-nodes.md) | Звук точек: фон локаций, громкая связь, железо, питание и батарея |
+| [docs/firmware-plan.md](docs/firmware-plan.md) | Прошивка точки: как устроена и как проверяется без железа |
 | [docs/ux/ux-plan.md](docs/ux/ux-plan.md) | Интерфейс: план и статус |
 
 ### Осознанные ограничения
