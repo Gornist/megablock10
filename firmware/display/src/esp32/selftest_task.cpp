@@ -28,8 +28,8 @@ Settings mb10esp::selftestSettings() {
   Settings s;
   snprintf(s.cfg.deviceId, sizeof s.cfg.deviceId, "%s", kSelftestId);
   parseHex(kSelftestSecret, s.cfg.key, sizeof s.cfg.key);
-  s.cfg.width = 272;
-  s.cfg.height = 792;
+  s.cfg.width = 792;  // дисплеи висят горизонтально
+  s.cfg.height = 272;
   s.ssid = "Wokwi-GUEST";
   s.channel = 6;
   s.configured = true;

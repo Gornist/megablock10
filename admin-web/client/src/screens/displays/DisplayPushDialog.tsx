@@ -88,11 +88,11 @@ export function DisplayPushDialog({ source, title, onClose }: { source: DisplayS
       onConfirm={sent ? onClose : submit}
       onCancel={onClose}
     >
-      <div className="display-preview">
+      <div className={`display-preview${(preview?.width ?? 792) > (preview?.height ?? 272) ? " landscape" : ""}`}>
         <DisplayMock
           png={preview?.png ?? null}
-          width={preview?.width ?? 272}
-          height={preview?.height ?? 792}
+          width={preview?.width ?? 792}
+          height={preview?.height ?? 272}
           state={mockProgress?.state ?? "draft"}
           caption={mockDisplay ? `${mockDisplay.id} · ${mockDisplay.name}` : undefined}
           note={!preview ? (previewError ? "нет предпросмотра" : "готовлю кадр…") : mockNote}

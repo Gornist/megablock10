@@ -625,6 +625,35 @@
 .display-card-body .display-mock-screen {
   height: 190px;
 }
+/* Горизонтальная панель (792×272 — так дисплеи и висят): задаётся шириной, макет — над сведениями и списком. */
+.display-mock-landscape .display-mock-screen,
+.display-card-body.landscape .display-mock-screen {
+  height: auto;
+  width: 520px;
+  max-width: 100%;
+}
+.display-card-body.landscape .display-mock-screen {
+  width: 360px;
+}
+.display-mock-landscape .display-mock-body {
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 10px 26px 10px 14px;
+}
+.display-mock-landscape .display-mock-led {
+  left: auto;
+  right: 9px;
+  bottom: 50%;
+  margin: 0 0 -3px;
+}
+.display-card-body.landscape,
+.display-preview.landscape {
+  flex-direction: column;
+  align-items: stretch;
+}
+.display-mock-landscape figcaption {
+  max-width: none;
+}
 .display-card-body .display-facts dd {
   overflow-wrap: anywhere;
 }

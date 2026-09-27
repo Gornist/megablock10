@@ -36,7 +36,7 @@ export const DEVICE_ID_SIZE = 32;
 export const NONCE_SIZE = 16;
 export const HMAC_OFFSET = 60;
 export const HMAC_SIZE = 32;
-/** Кадр 272×792 — 26 928 байт; с запасом на панели крупнее, но не столько, чтобы битая длина заставила копить мегабайты. */
+/** Кадр 792×272 — 26 928 байт; с запасом на панели крупнее, но не столько, чтобы битая длина заставила копить мегабайты. */
 export const MAX_PAYLOAD = 256 * 1024;
 export const DEFAULT_DISPLAY_PORT = 47200;
 

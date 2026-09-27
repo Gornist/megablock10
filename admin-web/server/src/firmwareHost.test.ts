@@ -22,8 +22,9 @@ const skip = !BIN || !existsSync(BIN) ? "FIRMWARE_HOST_BIN не задан — �
 
 const QR_A = "MB10:RAM:v1:ram-aaaa:1";
 const QR_B = "MB10:RAM:v1:ram-bbbb:2";
-const W = 272;
-const H = 792;
+// Дисплеи висят горизонтально: кадр 792×272 (прошивка для ПК по умолчанию такая же).
+const W = 792;
+const H = 272;
 
 async function rig() {
   const out = mkdtempSync(join(tmpdir(), "mb10-fw-"));

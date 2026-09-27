@@ -10,8 +10,9 @@ import { logMasterAction, requireMaster } from "../lib/auth.js";
 import { containerQrFromDb } from "../lib/containerQr.js";
 
 /** CrowPanel 5.79" в портретной ориентации — панель, под которую делалась первая версия (docs/displays.md). */
-export const DEFAULT_DISPLAY_WIDTH = 272;
-export const DEFAULT_DISPLAY_HEIGHT = 792;
+// CrowPanel 5.79″ висит горизонтально: родные 792×272.
+export const DEFAULT_DISPLAY_WIDTH = 792;
+export const DEFAULT_DISPLAY_HEIGHT = 272;
 
 /** id уходит в заголовок кадра (32 байта ASCII) и в URL. */
 const DISPLAY_ID = /^[A-Za-z0-9_.-]{1,32}$/;
@@ -147,7 +148,7 @@ export function registerDisplayRoutes(app: FastifyInstance, db: Db, displays: Di
     return secretResponse(id, secret);
   });
 
-  /** Предпросмотр кадра до отправки: размер по дисплею (displayId) или явный, по умолчанию — CrowPanel 272×792. */
+  /** Предпросмотр кадра до отправки: размер по дисплею (displayId) или явный, по умолчанию — CrowPanel 792×272 (горизонтально). */
   app.post<{ Body: { source?: Source; displayId?: unknown } }>("/api/displays/preview", async (request, reply): Promise<DisplayPreview | void> => {
     if (!requireMaster(db, request, reply)) return;
     const b = request.body ?? {};

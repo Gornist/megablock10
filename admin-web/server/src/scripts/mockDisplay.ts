@@ -8,7 +8,7 @@ import { bitmapToPng } from "../displays/renderer.js";
 /**
  * Дисплей без железа для прогона дашборда на ПК (docs/displays.md, «Без железа»):
  *
- *   npm run mock-display -- --id display-017 --secret <hex из дашборда> [--port 47200] [--width 272 --height 792] [--delay 3000]
+ *   npm run mock-display -- --id display-017 --secret <hex из дашборда> [--port 47200] [--width 792 --height 272] [--delay 3000]
  *
  * Каждый показанный кадр пишется в <out>/<id>.png (откройте и наведите телефон — это тот же кадр, что уйдёт на e-paper),
  * версия — в <out>/<id>.json: после перезапуска mock «восстанавливает» её, как прошивка из flash.
@@ -19,15 +19,15 @@ const { values } = parseArgs({
     secret: { type: "string" },
     port: { type: "string", default: String(DEFAULT_DISPLAY_PORT) },
     host: { type: "string", default: "0.0.0.0" },
-    width: { type: "string", default: "272" },
-    height: { type: "string", default: "792" },
+    width: { type: "string", default: "792" },
+    height: { type: "string", default: "272" },
     delay: { type: "string", default: "3000" },
     out: { type: "string", default: "./data/mock-display" },
   },
 });
 
 if (!values.id || !values.secret || !/^[0-9a-f]{64}$/i.test(values.secret)) {
-  console.error("usage: npm run mock-display -- --id <display id> --secret <64 hex> [--port 47200] [--width 272 --height 792] [--delay 3000] [--out dir]");
+  console.error("usage: npm run mock-display -- --id <display id> --secret <64 hex> [--port 47200] [--width 792 --height 272] [--delay 3000] [--out dir]");
   process.exit(2);
 }
 

@@ -95,3 +95,22 @@ test("PNG предпросмотра: 1 бит оттенков серого, т
     }
   }
 });
+
+test("горизонтальная панель 792×272 (так дисплеи и висят): тот же масштаб, что у портрета, QR по центру, остальное — белое", () => {
+  const qr = "MB10:RAM:v1:ram-aaaa:1";
+  const land = renderQrForDisplay(qr, 792, 272);
+  const port = renderQrForDisplay(qr, 272, 792);
+  assert.equal(land.scale, port.scale, "масштаб задаёт короткая сторона — 272 в обеих ориентациях");
+  assert.equal(land.data.length, port.data.length, "26 928 байт в обеих ориентациях");
+  const quiet = DEFAULT_QUIET_MODULES * land.scale;
+  assert.equal(land.offsetX - quiet, Math.floor((792 - land.qrSizePx) / 2), "по центру по горизонтали");
+  assert.equal(land.offsetY - quiet, Math.floor((272 - land.qrSizePx) / 2), "по центру по вертикали");
+  let black = 0;
+  for (let y = 0; y < 272; y++) for (let x = 0; x < 792; x++) if (getPixel(land, x, y)) black++;
+  let blackInQr = 0;
+  const x0 = land.offsetX - quiet;
+  const y0 = land.offsetY - quiet;
+  for (let y = y0; y < y0 + land.qrSizePx; y++) for (let x = x0; x < x0 + land.qrSizePx; x++) if (getPixel(land, x, y)) blackInQr++;
+  assert.ok(black > 0);
+  assert.equal(black, blackInQr, "вне квадрата QR — ни одного чёрного пикселя");
+});

@@ -35,8 +35,8 @@ const { values } = parseArgs({
   },
 });
 
-const W = 272;
-const H = 792;
+const W = 792; // дисплеи висят горизонтально — как прошивка для ПК по умолчанию
+const H = 272;
 const counts = values.counts!.split(",").map((s) => Number(s.trim())).filter((n) => n > 0);
 const delayMs = Number(values.delay);
 const useHost = !!values.bin && existsSync(values.bin);

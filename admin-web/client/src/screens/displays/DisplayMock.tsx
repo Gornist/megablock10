@@ -11,7 +11,7 @@ const MOCK_LABEL: Record<PushState | "draft", string> = {
 };
 
 /**
- * Дисплей «как в руке»: корпус, e-paper с кадром в пропорциях панели (кадр ровно тот, что рисует сервер) и отметка состояния.
+ * Дисплей «как в руке»: корпус, e-paper с кадром в пропорциях панели (горизонтально, как висят, или портрет) (кадр ровно тот, что рисует сервер) и отметка состояния.
  * draft — ещё не отправлен; sending — картинка приглушена, по экрану бежит полоса передачи; loaded — e-paper «моргает», как при
  * полном обновлении; shown — чёткая; failed — приглушена, красная отметка.
  */
@@ -31,7 +31,10 @@ export function DisplayMock({
   note?: string;
 }) {
   return (
-    <figure className={`display-mock display-mock-${state}`} aria-label={`дисплей: ${MOCK_LABEL[state]}`}>
+    <figure
+      className={`display-mock display-mock-${state} display-mock-${width > height ? "landscape" : "portrait"}`}
+      aria-label={`дисплей: ${MOCK_LABEL[state]}`}
+    >
       <div className="display-mock-body">
         <div className="display-mock-screen" style={{ aspectRatio: `${width} / ${height}` }}>
           {png ? <img src={png} alt={state === "draft" ? "кадр для дисплея" : "кадр на дисплее"} /> : <span className="display-mock-empty">пусто</span>}

@@ -1,4 +1,4 @@
-// Прошивка QR-дисплея для CrowPanel 5.79″ (ESP32-S3 + e-paper 792×272). Вся логика протокола, проверок и состояния — в ядре
+// Прошивка QR-дисплея для CrowPanel 5.79″ (ESP32-S3 + e-paper 792×272, висит горизонтально). Вся логика протокола, проверок и состояния — в ядре
 // lib/core (то же, что проверено сборкой для ПК и набором совместимости C1–C20); здесь только драйверы платы: панель (GxEPD2),
 // Wi-Fi, TCP-сервер (lwIP), LittleFS, сторож, подсветка, кнопка, USB-консоль (docs/displays.md). Настройки в NVS —
 // settings.cpp, самопроверка для Wokwi — selftest_task.cpp, общее между ними — board.h.
@@ -64,6 +64,14 @@ class EpdPanel : public Panel {
     epd.epd2.setBusyCallback(feedDuringBusy);
     epd.setRotation(MB10_PANEL_ROTATION);
   }
+  // Ориентация — по размеру кадра из настроек: шире, чем выше, — горизонтально (родная 792×272, так дисплеи и висят), иначе
+  // портрет (поворот на 90°). MB10_PANEL_ROTATION — 0 или 2, если панель закреплена вверх ногами.
+  void orient(uint16_t w, uint16_t h) {
+    epd.setRotation(uint8_t((MB10_PANEL_ROTATION + (h > w ? 1 : 0)) % 4));
+    char line[64];
+    snprintf(line, sizeof line, "panel: %ux%u, rotation %u", epd.width(), epd.height(), unsigned(epd.getRotation()));
+    logLine(line);
+  }
   bool show(const uint8_t* frame, uint16_t w, uint16_t h) override {
     if (epd.width() != w || epd.height() != h) {
       logLine("panel: frame size does not match panel orientation");
@@ -99,6 +107,7 @@ class EpdPanel : public Panel {
 class EpdPanel : public Panel {
  public:
   void begin() { logLine("panel: stub (Wokwi)"); }
+  void orient(uint16_t, uint16_t) {}
   bool show(const uint8_t* frame, uint16_t w, uint16_t h) override {
     char line[64];
     snprintf(line, sizeof line, "PANEL frame %ux%u crc=%08lx", w, h, static_cast<unsigned long>(mb10d::crc32(frame, frameBytes(w, h))));
@@ -424,6 +433,7 @@ void setup() {
     panel.showText(lines, 2);
     return;
   }
+  panel.orient(settings.cfg.width, settings.cfg.height);
   size_t size = frameBytes(settings.cfg.width, settings.cfg.height);
   uint8_t* frame = static_cast<uint8_t*>(malloc(size));
   uint8_t* incoming = static_cast<uint8_t*>(malloc(size < 64 ? 64 : size));

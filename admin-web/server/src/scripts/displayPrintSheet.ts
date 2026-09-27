@@ -16,7 +16,7 @@ import type { QrErrorCorrection } from "../lib/qrImage.js";
  * странице, таблица результатов — на второй. Печатать из браузера в масштабе 100 % («по размеру страницы» —
  * выключить), линейка 50 мм на листе проверяет, что масштаб не съехал.
  *
- *   npm run display-print-sheet -- [--out data/display-print-sheet.html] [--pitch-mm 0.175] [--width 272 --height 792]
+ *   npm run display-print-sheet -- [--out data/display-print-sheet.html] [--pitch-mm 0.175] [--width 792 --height 272]
  *                                  [--ec M,L] [--db ./data/mb10-admin.sqlite [--containers id1,id2]] [--game-secret …]
  *
  * Без --db — типовые контейнеры на 1–4 слота (шард с текстом, демон на 4 кода), зашифрованные как в Мастерской.
@@ -26,8 +26,8 @@ const { values } = parseArgs({
   options: {
     out: { type: "string", default: "./data/display-print-sheet.html" },
     "pitch-mm": { type: "string", default: "0.175" },
-    width: { type: "string", default: "272" },
-    height: { type: "string", default: "792" },
+    width: { type: "string", default: "792" },
+    height: { type: "string", default: "272" },
     ec: { type: "string", default: "M,L" },
     db: { type: "string" },
     containers: { type: "string" },

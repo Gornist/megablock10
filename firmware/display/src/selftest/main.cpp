@@ -1,7 +1,7 @@
 // Самопроверка дисплея с ПК (docs/firmware-plan.md, Ф4): тот же клиент lib/selftest, что крутится внутри платы в Wokwi, —
 // здесь против прошивки для ПК (display_host) или платы в сети. Сначала отлаживается тут, потом едет в ESP32.
 //
-//   display_selftest --id display-017 --secret <64 hex> [--host 127.0.0.1] [--port 47200] [--width 272 --height 792]
+//   display_selftest --id display-017 --secret <64 hex> [--host 127.0.0.1] [--port 47200] [--width 792 --height 272]
 //                    [--header-timeout 2000 --payload-timeout 5000] [--reboot]
 //
 // --reboot — после проверок протокола REBOOT и ожидание, что после загрузки HELLO несёт ту же версию (кадр из flash).
@@ -17,7 +17,7 @@ using namespace mb10d;
 
 int main(int argc, char** argv) {
   std::string host = "127.0.0.1", id, secret;
-  int port = 47200, width = 272, height = 792, headerTimeout = 2000, payloadTimeout = 5000;
+  int port = 47200, width = 792, height = 272, headerTimeout = 2000, payloadTimeout = 5000;
   bool reboot = false;
   for (int i = 1; i < argc; i++) {
     std::string a = argv[i];

@@ -6,8 +6,8 @@ export const display = (over: Partial<DisplayItem> = {}): DisplayItem => ({
   name: "Точка 1",
   ip: "10.0.0.1",
   port: 47200,
-  width: 272,
-  height: 792,
+  width: 792, // висят горизонтально
+  height: 272,
   enabled: true,
   status: "ONLINE",
   hardwareId: null,

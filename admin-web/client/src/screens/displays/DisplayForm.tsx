@@ -15,7 +15,7 @@ interface Draft {
   enabled: boolean;
 }
 
-const NEW_DRAFT: Draft = { id: "", name: "", ip: "", port: "47200", width: "272", height: "792", enabled: true };
+const NEW_DRAFT: Draft = { id: "", name: "", ip: "", port: "47200", width: "792", height: "272", enabled: true };
 
 function toDraft(d: DisplayItem): Draft {
   return { id: d.id, name: d.name, ip: d.ip, port: String(d.port), width: String(d.width), height: String(d.height), enabled: d.enabled };
@@ -67,10 +67,10 @@ export function DisplayForm({
         <Field label="TCP-порт">
           <AppInput value={draft.port} onChange={(e) => set({ port: digits(e.target.value) })} placeholder="47200" />
         </Field>
-        <Field label="Панель, px: ширина × высота (CrowPanel 5.79 — 272 × 792)">
+        <Field label="Панель, px: ширина × высота (CrowPanel 5.79 горизонтально — 792 × 272)">
           <div className="filter-row">
-            <AppInput value={draft.width} onChange={(e) => set({ width: digits(e.target.value) })} placeholder="272" />
-            <AppInput value={draft.height} onChange={(e) => set({ height: digits(e.target.value) })} placeholder="792" />
+            <AppInput value={draft.width} onChange={(e) => set({ width: digits(e.target.value) })} placeholder="792" />
+            <AppInput value={draft.height} onChange={(e) => set({ height: digits(e.target.value) })} placeholder="272" />
           </div>
         </Field>
         <ToggleField label="Включён" value={draft.enabled} onToggle={() => set({ enabled: !draft.enabled })} />

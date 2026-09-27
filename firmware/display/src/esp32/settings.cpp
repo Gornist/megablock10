@@ -16,8 +16,8 @@ Settings mb10esp::loadSettings() {
   if (!p.begin("mb10d", true)) return s;
   String id = p.getString("id", "");
   size_t keyLen = p.getBytes("key", s.cfg.key, sizeof s.cfg.key);
-  s.cfg.width = p.getUShort("w", 272);
-  s.cfg.height = p.getUShort("h", 792);
+  s.cfg.width = p.getUShort("w", 792);
+  s.cfg.height = p.getUShort("h", 272);
   s.port = p.getUShort("port", kDefaultPort);
   s.ssid = p.getString("ssid", "");
   s.pass = p.getString("pass", "");
@@ -52,8 +52,8 @@ bool mb10esp::saveSettingsJson(const char* json, String& error) {
   p.begin("mb10d", false);
   p.putString("id", id);
   p.putBytes("key", key, sizeof key);
-  p.putUShort("w", doc["width"] | 272);
-  p.putUShort("h", doc["height"] | 792);
+  p.putUShort("w", doc["width"] | 792);
+  p.putUShort("h", doc["height"] | 272);
   p.putUShort("port", doc["port"] | kDefaultPort);
   p.putString("ssid", ssid);
   p.putString("pass", doc["wifiPassword"] | "");

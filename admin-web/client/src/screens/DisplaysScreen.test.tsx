@@ -43,7 +43,7 @@ describe("DisplaysScreen", () => {
     const created: DisplaySecretResponse = {
       display: list[1],
       secret: "ab".repeat(32),
-      provisioning: { id: "display-018", secret: "ab".repeat(32), port: 47200, width: 272, height: 792 },
+      provisioning: { id: "display-018", secret: "ab".repeat(32), port: 47200, width: 792, height: 272 },
     };
     const calls = mockApi({ "GET /api/displays": [], "POST /api/displays": created });
     render(<DisplaysScreen />);
@@ -58,8 +58,8 @@ describe("DisplaysScreen", () => {
       name: "Точка 18",
       ip: "10.10.0.218",
       port: 47200,
-      width: 272,
-      height: 792,
+      width: 792,
+      height: 272,
       enabled: true,
     });
   });

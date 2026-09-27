@@ -100,7 +100,7 @@ export function DisplayCard({
       }
     >
       <div className="hint-text">{d.name}</div>
-      <div className="display-card-body">
+      <div className={`display-card-body${d.width > d.height ? " landscape" : ""}`}>
         {shownState && (
           <DisplayMock
             png={framePng}

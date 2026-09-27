@@ -20,7 +20,7 @@ async function setup() {
 
   /** Дисплей через API + mock-плата с выданным секретом, как при установке. */
   async function addDisplay(id: string, extra: Record<string, unknown> = {}) {
-    const mock = new MockDisplay({ deviceId: id, key: Buffer.alloc(32), width: 272, height: 792, displayDelayMs: 5 });
+    const mock = new MockDisplay({ deviceId: id, key: Buffer.alloc(32), width: 792, height: 272, displayDelayMs: 5 });
     const port = await mock.start();
     const res = await app.inject({ method: "POST", url: "/api/displays", headers, payload: { id, name: `Точка ${id}`, ip: "127.0.0.1", port, ...extra } });
     assert.equal(res.statusCode, 200, res.body);
@@ -71,7 +71,7 @@ test("регистрация: секрет отдаётся один раз, в 
   try {
     const { body } = await addDisplay("display-017");
     assert.match(body.secret, /^[0-9a-f]{64}$/);
-    assert.deepEqual(body.provisioning, { id: "display-017", secret: body.secret, port: body.display.port, width: 272, height: 792 });
+    assert.deepEqual(body.provisioning, { id: "display-017", secret: body.secret, port: body.display.port, width: 792, height: 272 });
     assert.equal(body.display.status, "OFFLINE");
 
     const list = await app.inject({ method: "GET", url: "/api/displays", headers });
@@ -99,7 +99,7 @@ test("регистрация: проверка полей и дубликато�
     const ok = await post({ id: "d1", name: "Точка 1", ip: "10.0.0.1" });
     assert.equal(ok.statusCode, 200);
     const d = (ok.json() as DisplaySecretResponse).display;
-    assert.deepEqual([d.port, d.width, d.height, d.enabled], [47200, 272, 792, true]);
+    assert.deepEqual([d.port, d.width, d.height, d.enabled], [47200, 792, 272, true]);
     assert.equal((await post({ id: "d1", name: "x", ip: "10.0.0.2" })).statusCode, 409);
 
     const put = await app.inject({ method: "PUT", url: "/api/displays/d1", headers, payload: { ip: "10.0.0.9", enabled: false } });
@@ -125,7 +125,7 @@ test("предпросмотр контейнера: та же строка QR, 
     assert.equal(p.qr, printed.qr);
     assert.equal(p.label, "контейнер «Насосная-4»");
     assert.match(p.png, /^data:image\/png;base64,/);
-    assert.deepEqual([p.width, p.height], [272, 792]);
+    assert.deepEqual([p.width, p.height], [792, 272]);
     assert.ok(p.scale >= 1);
 
     assert.equal((await app.inject({ method: "POST", url: "/api/displays/preview", headers, payload: { source: { type: "container", id: "nope" } } })).statusCode, 404);
@@ -161,7 +161,7 @@ test("отправка контейнера на дисплей: на панел
     assert.equal(res.statusCode, 200, res.body);
     const body = res.json() as DisplayPushResponse;
     assert.deepEqual(body.results, [{ displayId: "d1", ok: true, version: 1, outcome: "DISPLAYED" }]);
-    assert.deepEqual(mock.framebuffer, renderQrForDisplay(printed.qr, 272, 792).data);
+    assert.deepEqual(mock.framebuffer, renderQrForDisplay(printed.qr, 792, 272).data);
 
     const item = (await app.inject({ method: "GET", url: "/api/displays/d1", headers })).json() as DisplayItem;
     assert.equal(item.displayedVersion, 1);

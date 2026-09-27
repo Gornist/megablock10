@@ -2,7 +2,7 @@
 // POSIX-сокеты вместо lwIP, каталог вместо LittleFS, PNG вместо e-paper. Сервер мастера работает с ней как с платой; флаги те
 // же, что у `npm run mock-display`, так что это прямая замена mock-дисплею.
 //
-//   display_host --id display-017 --secret <64 hex> [--port 47200] [--width 272 --height 792] [--delay 3000] [--out dir]
+//   display_host --id display-017 --secret <64 hex> [--port 47200] [--width 792 --height 272] [--delay 3000] [--out dir]
 //                [--header-timeout 2000 --payload-timeout 5000] [--watchdog-ms 15000] [--battery-mv 3900]
 //   сбои (снимаются при «перезагрузке»): --fail-display N, --crash-on-save N, --hang-on-image N
 //
@@ -36,7 +36,7 @@ namespace {
 
 struct Options {
   std::string id, secret, host = "0.0.0.0", out = "./fw-host";
-  int port = 47200, width = 272, height = 792, delayMs = 3000, headerTimeoutMs = 2000, payloadTimeoutMs = 5000, watchdogMs = 15000;
+  int port = 47200, width = 792, height = 272, delayMs = 3000, headerTimeoutMs = 2000, payloadTimeoutMs = 5000, watchdogMs = 15000;
   int batteryMv = -1, failDisplay = 0, crashOnSave = 0, hangOnImage = 0;
 };
 
@@ -306,7 +306,7 @@ int main(int argc, char** argv) {
   Options o;
   if (!parseArgs(argc, argv, o)) {
     std::fprintf(stderr,
-                 "usage: display_host --id <id> --secret <64 hex> [--port 47200] [--width 272 --height 792] [--delay 3000] [--out dir]\n"
+                 "usage: display_host --id <id> --secret <64 hex> [--port 47200] [--width 792 --height 272] [--delay 3000] [--out dir]\n"
                  "       [--header-timeout 2000 --payload-timeout 5000 --watchdog-ms 15000 --battery-mv N]\n"
                  "       [--fail-display N --crash-on-save N --hang-on-image N]\n");
     return 2;
