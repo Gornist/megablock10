@@ -46,6 +46,10 @@ export interface MockDisplayOptions {
   displayedVersion?: number;
   /** Сколько «обновляется e-paper» между RECEIVED и DISPLAYED. */
   displayDelayMs?: number;
+  /** Соединение без данных закрывается через столько (docs/displays.md: таймаут заголовка 2 с). */
+  headerTimeoutMs?: number;
+  /** Начатый кадр должен дойти целиком за столько, иначе соединение закрывается (таймаут payload 5 с). */
+  payloadTimeoutMs?: number;
   status?: HelloStatus;
   faults?: MockFaults;
   /** Кадр показан: сюда — сохранить во «flash» (CLI пишет PNG и версию). */
@@ -71,6 +75,8 @@ export class MockDisplay {
   readonly received: MockEvent[] = [];
   private server: Server | null = null;
   private readonly sockets = new Set<Socket>();
+  /** Обслуживаемое соединение: новое вытесняет его (полуоткрытое после обрыва Wi-Fi не должно занимать дисплей навсегда). */
+  private active: Socket | null = null;
 
   constructor(readonly options: MockDisplayOptions) {
     this.displayedVersion = options.displayedVersion ?? 0;
@@ -117,6 +123,11 @@ export class MockDisplay {
       this.openConnections--;
     });
     socket.on("error", () => {});
+    if (this.active && !this.active.destroyed) {
+      this.log("new connection replaces the previous one");
+      this.active.destroy();
+    }
+    this.active = socket;
     if (this.take("dropConnections")) {
       this.log("drop connection");
       socket.destroy();
@@ -138,8 +149,53 @@ export class MockDisplay {
 
     const reader = new FrameReader();
     let busy = false;
+    // Таймауты как у прошивки: без данных — заголовок, начатый кадр — payload; пока панель обновляется, не отсчитываются.
+    let timer: NodeJS.Timeout | null = null;
+    let frameStartedAt: number | null = null;
+    const headerMs = this.options.headerTimeoutMs ?? 2000;
+    const payloadMs = this.options.payloadTimeoutMs ?? 5000;
+    const arm = () => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      if (busy || socket.destroyed) return;
+      if (reader.pendingBytes === 0) {
+        frameStartedAt = null;
+        timer = setTimeout(() => {
+          this.log("header timeout — closing");
+          socket.destroy();
+        }, headerMs);
+      } else {
+        frameStartedAt ??= Date.now();
+        timer = setTimeout(
+          () => {
+            this.log("payload timeout — closing");
+            socket.destroy();
+          },
+          Math.max(0, payloadMs - (Date.now() - frameStartedAt)),
+        );
+      }
+    };
+    socket.on("close", () => timer && clearTimeout(timer));
+    arm();
     socket.on("data", (chunk: Buffer) => {
       reader.push(chunk);
+      this.handle(socket, reader, () => busy, (b) => (busy = b), nonce, reply, nack, arm);
+      arm();
+    });
+  }
+
+  private handle(
+    socket: Socket,
+    reader: FrameReader,
+    isBusy: () => boolean,
+    setBusy: (b: boolean) => void,
+    nonce: Buffer,
+    reply: (type: MsgType, seq: number, payload?: Buffer) => void,
+    nack: (code: NackCode, message?: string) => void,
+    arm: () => void,
+  ): void {
+    const { deviceId, key, width, height } = this.options;
+    {
       for (;;) {
         let frame;
         try {
@@ -158,7 +214,7 @@ export class MockDisplay {
           nack(code);
           continue;
         }
-        if (busy) {
+        if (isBusy()) {
           nack(NackCode.BUSY);
           continue;
         }
@@ -166,9 +222,10 @@ export class MockDisplay {
           case MsgType.IMAGE: {
             const seq = frame.header.seq;
             reply(MsgType.RECEIVED, seq);
-            busy = true;
+            setBusy(true);
             setTimeout(() => {
-              busy = false;
+              setBusy(false);
+              arm();
               if (this.take("failDisplay")) {
                 nack(NackCode.DISPLAY_FAILED, "panel update failed");
                 return;
@@ -198,6 +255,6 @@ export class MockDisplay {
             break;
         }
       }
-    });
+    }
   }
 }

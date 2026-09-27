@@ -1,0 +1,255 @@
+{
+  "comment": "Сгенерировано admin-web/server: npm run display-vectors. Не править руками — см. src/displays/vectors.ts.",
+  "protocolVersion": 1,
+  "headerSize": 92,
+  "maxPayload": 262144,
+  "deviceId": "display-017",
+  "keyHex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+  "nonceHex": "a0a1a2a3a4a5a6a7a8a9aaabacadaeaf",
+  "panel": {
+    "width": 20,
+    "height": 10,
+    "displayedVersion": 141
+  },
+  "crc32": [
+    {
+      "asciiInput": "",
+      "crc": 0
+    },
+    {
+      "asciiInput": "123456789",
+      "crc": 3421780262
+    },
+    {
+      "asciiInput": "MB10D",
+      "crc": 3691169678
+    }
+  ],
+  "hello": {
+    "statusJson": "{\"fw\":\"0.1.0\",\"hw\":\"24:0a:c4:00:00:17\",\"batteryMv\":3910,\"rssi\":-61}",
+    "displayedVersion": 141,
+    "hex": "4d42313044010100646973706c61792d3031370000000000000000000000000000000000000000000000008d0014000a0100000000000053f936d5a9c561b0154db6fb28ee4850c870213cb8009a5a96267f3abf1a05207a3233c2faa0a1a2a3a4a5a6a7a8a9aaabacadaeaf7b226677223a22302e312e30222c226877223a2232343a30613a63343a30303a30303a3137222c22626174746572794d76223a333931302c2272737369223a2d36317d"
+  },
+  "frames": [
+    {
+      "name": "image_ok",
+      "description": "IMAGE версии 142 при показанной 141",
+      "hex": "4d42313044011000646973706c61792d3031370000000000000000000000000000000000000000000000008e0014000a010000000000001ef89343a96b14cab7e2248a8f39a7a83a33261f758de56c5d93f67e017420f48cc14d20820b30557a9fc4e90e33587da2c7ec11365b80a5caef14395e83a8cdf2173c",
+      "expect": {
+        "action": "accept"
+      }
+    },
+    {
+      "name": "bad_magic",
+      "description": "первый байт MAGIC испорчен",
+      "hex": "5842313044011000646973706c61792d3031370000000000000000000000000000000000000000000000008e0014000a010000000000001ef89343a96b14cab7e2248a8f39a7a83a33261f758de56c5d93f67e017420f48cc14d20820b30557a9fc4e90e33587da2c7ec11365b80a5caef14395e83a8cdf2173c",
+      "expect": {
+        "action": "close",
+        "code": "BAD_MAGIC"
+      }
+    },
+    {
+      "name": "bad_version",
+      "description": "версия протокола 2",
+      "hex": "4d42313044021000646973706c61792d3031370000000000000000000000000000000000000000000000008e0014000a010000000000001ef89343a96b14cab7e2248a8f39a7a83a33261f758de56c5d93f67e017420f48cc14d20820b30557a9fc4e90e33587da2c7ec11365b80a5caef14395e83a8cdf2173c",
+      "expect": {
+        "action": "close",
+        "code": "BAD_VERSION"
+      }
+    },
+    {
+      "name": "oversize_length",
+      "description": "только заголовок, длина payload больше допустимой",
+      "hex": "4d42313044011000646973706c61792d3031370000000000000000000000000000000000000000000000008e0014000a0100000000040001f89343a96b14cab7e2248a8f39a7a83a33261f758de56c5d93f67e017420f48cc14d2082",
+      "expect": {
+        "action": "close",
+        "code": "BAD_LENGTH"
+      }
+    },
+    {
+      "name": "truncated",
+      "description": "заголовок и часть payload",
+      "hex": "4d42313044011000646973706c61792d3031370000000000000000000000000000000000000000000000008e0014000a010000000000001ef89343a96b14cab7e2248a8f39a7a83a33261f758de56c5d93f67e017420f48cc14d20820b30557a9fc4e90e33587da2c7ec11365b80a5caef14395e83",
+      "expect": {
+        "action": "incomplete"
+      }
+    },
+    {
+      "name": "header_only_partial",
+      "description": "меньше 92 байт заголовка",
+      "hex": "4d42313044011000646973706c61792d3031370000000000000000000000000000000000000000000000008e0014000a0100",
+      "expect": {
+        "action": "incomplete"
+      }
+    },
+    {
+      "name": "bad_crc",
+      "description": "испорчен байт payload",
+      "hex": "4d42313044011000646973706c61792d3031370000000000000000000000000000000000000000000000008e0014000a010000000000001ef89343a96b14cab7e2248a8f39a7a83a33261f758de56c5d93f67e017420f48cc14d20820b30557b9fc4e90e33587da2c7ec11365b80a5caef14395e83a8cdf2173c",
+      "expect": {
+        "action": "nack",
+        "code": "BAD_CRC"
+      }
+    },
+    {
+      "name": "wrong_key",
+      "description": "подписан чужим секретом",
+      "hex": "4d42313044011000646973706c61792d3031370000000000000000000000000000000000000000000000008e0014000a010000000000001ef89343a91ded576980cddba98794d9a31d17c18176b1ccd43aedaf07297b4c66e81640df0b30557a9fc4e90e33587da2c7ec11365b80a5caef14395e83a8cdf2173c",
+      "expect": {
+        "action": "nack",
+        "code": "AUTH_FAILED"
+      }
+    },
+    {
+      "name": "other_nonce",
+      "description": "подписан nonce другого соединения",
+      "hex": "4d42313044011000646973706c61792d3031370000000000000000000000000000000000000000000000008e0014000a010000000000001ef89343a92e13ef484b06ffd82ae0b9ef30df860a7764e41559ce2d3747f4c8d4745b0c3b0b30557a9fc4e90e33587da2c7ec11365b80a5caef14395e83a8cdf2173c",
+      "expect": {
+        "action": "nack",
+        "code": "AUTH_FAILED"
+      }
+    },
+    {
+      "name": "tampered_seq",
+      "description": "версия поднята после подписи",
+      "hex": "4d42313044011000646973706c61792d303137000000000000000000000000000000000000000000000003e70014000a010000000000001ef89343a96b14cab7e2248a8f39a7a83a33261f758de56c5d93f67e017420f48cc14d20820b30557a9fc4e90e33587da2c7ec11365b80a5caef14395e83a8cdf2173c",
+      "expect": {
+        "action": "nack",
+        "code": "AUTH_FAILED"
+      }
+    },
+    {
+      "name": "wrong_device",
+      "description": "кадр для display-018",
+      "hex": "4d42313044011000646973706c61792d3031380000000000000000000000000000000000000000000000008e0014000a010000000000001ef89343a9692960d3ee92be5e28674f60e8f2cbaafe2f9a17bdf1412ccfdb80a1fd32417b0b30557a9fc4e90e33587da2c7ec11365b80a5caef14395e83a8cdf2173c",
+      "expect": {
+        "action": "nack",
+        "code": "WRONG_DEVICE"
+      }
+    },
+    {
+      "name": "stale_equal",
+      "description": "версия равна показанной",
+      "hex": "4d42313044011000646973706c61792d3031370000000000000000000000000000000000000000000000008d0014000a010000000000001ef89343a93eca4aa2cb47831ba4d2e86ad1a0a763778978c900e1b2edfafb91da8ed32c110b30557a9fc4e90e33587da2c7ec11365b80a5caef14395e83a8cdf2173c",
+      "expect": {
+        "action": "nack",
+        "code": "STALE_VERSION"
+      }
+    },
+    {
+      "name": "stale_older",
+      "description": "версия меньше показанной",
+      "hex": "4d42313044011000646973706c61792d303137000000000000000000000000000000000000000000000000640014000a010000000000001ef89343a949e9c2395d1d88b82729c3fa33402dfcc511ddcc3ce30cc04eba5de425550d7c0b30557a9fc4e90e33587da2c7ec11365b80a5caef14395e83a8cdf2173c",
+      "expect": {
+        "action": "nack",
+        "code": "STALE_VERSION"
+      }
+    },
+    {
+      "name": "bad_width",
+      "description": "ширина кадра не та",
+      "hex": "4d42313044011000646973706c61792d3031370000000000000000000000000000000000000000000000008e0018000a010000000000001ef89343a9153b6fc8240a1efe10bb35bd719b8f6acd6bdd4ca0024833343725266224dd850b30557a9fc4e90e33587da2c7ec11365b80a5caef14395e83a8cdf2173c",
+      "expect": {
+        "action": "nack",
+        "code": "BAD_FORMAT"
+      }
+    },
+    {
+      "name": "bad_payload_size",
+      "description": "длина payload не stride×height",
+      "hex": "4d42313044011000646973706c61792d3031370000000000000000000000000000000000000000000000008e0014000a010000000000001d8f1483239018eaa649710ca90ceb0a6d6e6850169c0802b5391831a5b7a4c04a36af00b130557a9fc4e90e33587da2c7ec11365b80a5caef14395e83a8cdf2173c",
+      "expect": {
+        "action": "nack",
+        "code": "BAD_FORMAT"
+      }
+    },
+    {
+      "name": "test_ok",
+      "description": "TEST на 30 с",
+      "hex": "4d42313044011100646973706c61792d30313700000000000000000000000000000000000000000000000000000000000000000000000002bbd62f9c034d3943816abcf11de2656c63c0d6cb83351a6bfc968aa627023d0f6a9fb1dd001e",
+      "expect": {
+        "action": "accept"
+      }
+    },
+    {
+      "name": "test_bad_length",
+      "description": "TEST без секунд",
+      "hex": "4d42313044011100646973706c61792d303137000000000000000000000000000000000000000000000000000000000000000000000000000000000031d684dfd5632aec4a32b5c033cfea319da33c1406f16cf7988a13367d6f0fa7",
+      "expect": {
+        "action": "nack",
+        "code": "BAD_LENGTH"
+      }
+    },
+    {
+      "name": "backlight_ok",
+      "description": "подсветка «средне» на 20 с",
+      "hex": "4d42313044011200646973706c61792d30313700000000000000000000000000000000000000000000000000000000000000000000000003e61fd9010fbb42636c1cdbc91095c17cc24cb322d14eaac0222ccaf6d35be4f922adc1f2020014",
+      "expect": {
+        "action": "accept"
+      }
+    },
+    {
+      "name": "backlight_bad_level",
+      "description": "уровень 9",
+      "hex": "4d42313044011200646973706c61792d30313700000000000000000000000000000000000000000000000000000000000000000000000003ea4a36e04abe6484f258b1332338f91d1d46a48a69ac25758c4d32c24311658a7cfdba28090014",
+      "expect": {
+        "action": "nack",
+        "code": "BAD_LENGTH"
+      }
+    },
+    {
+      "name": "reboot_ok",
+      "description": "REBOOT",
+      "hex": "4d42313044011300646973706c61792d303137000000000000000000000000000000000000000000000000000000000000000000000000000000000019cd0618edd7852951ac2e52bdb11a0d0e72c523e8b59a987b0a818d1674a503",
+      "expect": {
+        "action": "accept"
+      }
+    },
+    {
+      "name": "unknown_type",
+      "description": "тип 0x7f",
+      "hex": "4d42313044017f00646973706c61792d3031370000000000000000000000000000000000000000000000000000000000000000000000000000000000eaea8c89fd593deb9008b34a5ccc112bc989f204df15758621379b9aa6813082",
+      "expect": {
+        "action": "nack",
+        "code": "UNSUPPORTED_TYPE"
+      }
+    }
+  ],
+  "replies": [
+    {
+      "name": "received",
+      "type": "RECEIVED",
+      "seq": 142,
+      "payloadHex": "",
+      "hex": "4d42313044012000646973706c61792d3031370000000000000000000000000000000000000000000000008e0014000a010000000000000000000000fcfef829272d08936c38e232f42bdeff0bc9d110e2a144e0da985a171eadbe27"
+    },
+    {
+      "name": "displayed",
+      "type": "DISPLAYED",
+      "seq": 142,
+      "payloadHex": "",
+      "hex": "4d42313044012100646973706c61792d3031370000000000000000000000000000000000000000000000008e0014000a0100000000000000000000000d172ce5958d804e5f8b5db9f093c4156e1b96d08ed8b0bf52a7fe37f85d34a5"
+    },
+    {
+      "name": "nack_bad_crc",
+      "type": "NACK",
+      "seq": 141,
+      "payloadHex": "04",
+      "hex": "4d42313044012200646973706c61792d3031370000000000000000000000000000000000000000000000008d0014000a0100000000000001d56f2b944c32bf3c86a36d62d44ae04db176396c571cb6c72aef68b065213512ebb4836d04"
+    },
+    {
+      "name": "nack_stale_with_text",
+      "type": "NACK",
+      "seq": 141,
+      "payloadHex": "0673686f777320313431",
+      "hex": "4d42313044012200646973706c61792d3031370000000000000000000000000000000000000000000000008d0014000a010000000000000a9e701411f186c097fb5b7ea50237623fdd7dc6b1276e898d1eb7cc1f12f612159d95478e0673686f777320313431"
+    },
+    {
+      "name": "ok",
+      "type": "OK",
+      "seq": 141,
+      "payloadHex": "",
+      "hex": "4d42313044012300646973706c61792d3031370000000000000000000000000000000000000000000000008d0014000a0100000000000000000000001574d68b5fdb7402e5351d7a3e9690e28707de4a32ad61000fb73aea1cc7ae64"
+    }
+  ]
+}
