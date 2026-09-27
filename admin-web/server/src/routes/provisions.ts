@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import QRCode from "qrcode";
+import { qrImageDataUrl } from "../lib/qrImage.js";
 import type { ProvisionQr, ProvisionsResponse } from "../apiTypes.js";
 import type { Db } from "../db/index.js";
 import { logMasterAction, requireMaster } from "../lib/auth.js";
@@ -28,7 +28,7 @@ export function registerProvisionRoutes(app: FastifyInstance, db: Db) {
     const cfg = provisionConfig(request);
     const qr = provisionQrString(row, cfg);
     const item = getProvision(db, id, makeHumanizeContext(db).playerName)!;
-    return { item, qr, qrImage: await QRCode.toDataURL(qr, { margin: 1, width: 480 }) };
+    return { item, qr, qrImage: await qrImageDataUrl(qr) };
   }
 
   app.get("/api/provisions", async (request, reply): Promise<ProvisionsResponse | void> => {

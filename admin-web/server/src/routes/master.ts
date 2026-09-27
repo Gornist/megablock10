@@ -1,11 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
-import QRCode from "qrcode";
+import { qrImageDataUrl } from "../lib/qrImage.js";
 import type { Db } from "../db/index.js";
 import { logMasterAction, requireMaster } from "../lib/auth.js";
 import { deriveLootKey, encryptLoot } from "../lib/lootCrypto.js";
 import { encodeDaemonLoot, encodeShardLoot } from "../lib/lootCodec.js";
-import { encodeContainerQr, encodeRamUpgradeQr, encodeShardQr } from "../lib/mb10QrCodec.js";
+import { containerQrString } from "../lib/containerQr.js";
+import { encodeRamUpgradeQr, encodeShardQr } from "../lib/mb10QrCodec.js";
 import { tierLevel } from "../lib/tier.js";
 import { validateContainerSlot } from "../lib/containerSlots.js";
 import type { ContainerSlot } from "../lib/containerSlots.js";
@@ -144,14 +145,8 @@ export function registerMasterRoutes(app: FastifyInstance, db: Db) {
       logMasterAction(db, master.id, "CONTAINER_CREATED", { containerId: id, name, tier, ownerFaction, slots: slots.length });
     })();
 
-    const qr = encodeContainerQr(
-      id,
-      name,
-      tierLevel(tier),
-      ownerFaction,
-      slots.map((s) => ({ typeName: s.type, tierLevel: tierLevel(s.tier), copies: s.copies, payload: s.payload! })),
-    );
-    const qrImage = await QRCode.toDataURL(qr, { margin: 1, width: 480 });
+    const qr = containerQrString({ id, name, tier, ownerFaction, slots });
+    const qrImage = await qrImageDataUrl(qr);
     return { containerId: id, qr, qrImage };
   });
 
@@ -191,7 +186,7 @@ export function registerMasterRoutes(app: FastifyInstance, db: Db) {
       b.body,
       money,
     );
-    const qrImage = await QRCode.toDataURL(qr, { margin: 1, width: 480 });
+    const qrImage = await qrImageDataUrl(qr);
     logMasterAction(db, master.id, "QR_SHARD", { shardId: id, title: b.title });
     return { shardId: id, qr, qrImage };
   });
@@ -205,7 +200,7 @@ export function registerMasterRoutes(app: FastifyInstance, db: Db) {
 
     const token = `ram-${randomUUID().slice(0, 8)}`;
     const qr = encodeRamUpgradeQr(token, delta as number);
-    const qrImage = await QRCode.toDataURL(qr, { margin: 1, width: 480 });
+    const qrImage = await qrImageDataUrl(qr);
     logMasterAction(db, master.id, "QR_RAM", { token, delta });
     return { token, qr, qrImage };
   });

@@ -341,3 +341,76 @@ export interface ProvisionQr {
   qr: string;
   qrImage: string;
 }
+
+// ── Электронные QR-дисплеи (docs/displays.md) ──
+
+/** DISABLED — выключен мастером; UPDATING — идёт отправка или ждёт очередь; ERROR — последняя операция не удалась; ONLINE/OFFLINE — по последнему HELLO. */
+export type DisplayStatus = "ONLINE" | "OFFLINE" | "UPDATING" | "ERROR" | "DISABLED";
+
+export type BatteryLevel = "OK" | "LOW" | "CRITICAL";
+
+export interface DisplayItem {
+  id: string;
+  name: string;
+  ip: string;
+  port: number;
+  width: number;
+  height: number;
+  enabled: boolean;
+  status: DisplayStatus;
+  /** Аппаратный id (MAC) из HELLO. */
+  hardwareId: string | null;
+  fwVersion: string | null;
+  batteryMv: number | null;
+  battery: BatteryLevel | null;
+  rssi: number | null;
+  lastSeenAt: number | null;
+  lastConnectedAt: number | null;
+  lastError: string | null;
+  lastErrorAt: number | null;
+  /** Что мастер велел показать: версия и подпись («контейнер Насосная-4»); null — ещё ничего не отправляли. */
+  desiredVersion: number | null;
+  desiredLabel: string | null;
+  /** Что дисплей подтвердил (DISPLAYED или HELLO). Меньше desiredVersion — последняя отправка не дошла. */
+  displayedVersion: number | null;
+  displayedAt: number | null;
+  /** Очередь сервера на этот дисплей: версия в отправке и следующая ждущая (не больше одной — промежуточные отбрасываются). */
+  activeVersion: number | null;
+  pendingVersion: number | null;
+}
+
+/** Ответ создания дисплея и смены секрета: секрет показывается только здесь, дальше его не отдаёт ни один запрос. */
+export interface DisplaySecretResponse {
+  display: DisplayItem;
+  secret: string;
+  /** Что прошить в дисплей (docs/displays.md, «Первичная настройка»): Wi-Fi вписывается руками, серверу он неизвестен. */
+  provisioning: { id: string; secret: string; port: number; width: number; height: number };
+}
+
+/** Что уйдёт на дисплей: строка QR (та же, что для печати) и кадр как PNG. */
+export interface DisplayPreview {
+  qr: string;
+  label: string;
+  png: string;
+  width: number;
+  height: number;
+  qrVersion: number;
+  modules: number;
+  /** Пикселей на модуль: 1–2 — телефон может не прочесть с обычного расстояния. */
+  scale: number;
+}
+
+export type DisplayPushOutcome = "QUEUED" | "DISPLAYED" | "FAILED" | "SUPERSEDED";
+
+export interface DisplayPushResult {
+  displayId: string;
+  ok: boolean;
+  version?: number;
+  outcome?: DisplayPushOutcome;
+  error?: string;
+}
+
+export interface DisplayPushResponse {
+  label: string;
+  results: DisplayPushResult[];
+}

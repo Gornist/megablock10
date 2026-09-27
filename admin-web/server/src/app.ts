@@ -22,6 +22,8 @@ import { registerEventsRoute } from "./routes/events.js";
 import { registerMetaRoute } from "./routes/meta.js";
 import { registerPulseRoute } from "./routes/pulse.js";
 import { registerProvisionRoutes } from "./routes/provisions.js";
+import { registerDisplayRoutes } from "./routes/displays.js";
+import { DisplayManager } from "./displays/manager.js";
 
 /**
  * Собирает Fastify-приложение без побочного listen() — раньше вся сборка
@@ -30,7 +32,7 @@ import { registerProvisionRoutes } from "./routes/provisions.js";
  * теперь только вызывает buildApp() и слушает; тесты вызывают buildApp()
  * на in-memory БД (см. testDb.ts) и бьют через inject().
  */
-export function buildApp(db: Db, options: { clientDist?: string; logger?: boolean } = {}): FastifyInstance {
+export function buildApp(db: Db, options: { clientDist?: string; logger?: boolean; displays?: DisplayManager } = {}): FastifyInstance {
   // Ключи персонажей — base64 EC SPKI DER (~124 символа) в URL-параметре,
   // после encodeURIComponent ещё длиннее — дефолтный лимит Fastify (100) в это
   // не помещается.
@@ -73,6 +75,10 @@ export function buildApp(db: Db, options: { clientDist?: string; logger?: boolea
   registerMetaRoute(app, db);
   registerPulseRoute(app, db);
   registerProvisionRoutes(app, db);
+  // Электронные QR-дисплеи: менеджер передаёт index.ts (он же запускает опрос), тестам хватает созданного здесь — без опроса.
+  const displays = options.displays ?? new DisplayManager(db);
+  registerDisplayRoutes(app, db, displays);
+  app.addHook("onClose", async () => displays.stop());
 
   app.get("/api/health", async () => ({ ok: true }));
 

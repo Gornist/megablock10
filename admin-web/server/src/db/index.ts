@@ -121,6 +121,36 @@ CREATE TABLE IF NOT EXISTS master_pending (
 );
 CREATE INDEX IF NOT EXISTS idx_master_pending_subject ON master_pending (subject_key, delivered);
 
+-- Электронные QR-дисплеи (ESP32 + e-paper, docs/displays.md; код — displays/). id — логическое имя устройства, ip/port —
+-- транспортный адрес, не смешиваются. secret — ключ HMAC в hex: не хэш, потому что сервер им подписывает кадры, а хэшем
+-- подписать нельзя; наружу через API не отдаётся (только один раз при создании/смене). desired_* — что мастер велел показать
+-- (строка QR и версия), displayed_version — что дисплей подтвердил (DISPLAYED или HELLO); расхождение — «не дошло».
+CREATE TABLE IF NOT EXISTS displays (
+  id                TEXT PRIMARY KEY,
+  name              TEXT NOT NULL,
+  ip                TEXT NOT NULL,
+  port              INTEGER NOT NULL,
+  width             INTEGER NOT NULL,
+  height            INTEGER NOT NULL,
+  enabled           INTEGER NOT NULL DEFAULT 1,
+  secret            TEXT NOT NULL,
+  hardware_id       TEXT,
+  fw_version        TEXT,
+  battery_mv        INTEGER,
+  rssi              INTEGER,
+  last_seen_at      INTEGER,
+  last_connected_at INTEGER,
+  last_error        TEXT,
+  last_error_at     INTEGER,
+  desired_version   INTEGER NOT NULL DEFAULT 0,
+  desired_qr        TEXT,
+  desired_label     TEXT,
+  displayed_version INTEGER,
+  displayed_at      INTEGER,
+  created_at        INTEGER NOT NULL,
+  updated_at        INTEGER NOT NULL
+);
+
 -- masters/sessions/audit_master — см. lib/auth.ts (ensureAuthSchema),
 -- появились позже основной схемы, вынесены отдельно, чтобы не мешать
 -- auth-логику с моделью данных игры.

@@ -40,6 +40,18 @@ const AUDIT_ACTIONS: Record<string, { label: string; describe: Describe }> = {
   QR_SHARD: { label: "QR шарда", describe: (d) => `шард «${str(d.title)}» (${str(d.shardId)})` },
   QR_RAM: { label: "QR апгрейда RAM", describe: (d) => `токен ${str(d.token)}: +${str(d.delta)} к буферу` },
   ATTENTION_SNOOZE: { label: "Тревога отложена", describe: (d) => `«${str(d.title, str(d.id))}» отложена на ${str(d.minutes)} мин` },
+  DISPLAY_CREATE: { label: "Дисплей добавлен", describe: (d) => `дисплей ${str(d.displayId)} «${str(d.name)}», ${str(d.ip)}:${str(d.port)}` },
+  DISPLAY_UPDATE: {
+    label: "Дисплей изменён",
+    describe: (d) => `дисплей ${str(d.displayId)} «${str(d.name)}», ${str(d.ip)}:${str(d.port)}${d.enabled === false ? ", выключен" : ""}`,
+  },
+  DISPLAY_DELETE: { label: "Дисплей удалён", describe: (d) => `дисплей ${str(d.displayId)} удалён` },
+  DISPLAY_SECRET: { label: "Секрет дисплея сменён", describe: (d) => `дисплей ${str(d.displayId)}: новый секрет, нужно прошить заново` },
+  DISPLAY_PUSH: { label: "QR на дисплей", describe: (d) => `${str(d.label)} → ${str(d.displays)}` },
+  DISPLAY_COMMAND: {
+    label: "Команда дисплею",
+    describe: (d) => `дисплей ${str(d.displayId)}: ${str(d.command)}${d.level ? ` ${str(d.level)}` : ""}`,
+  },
   PROVISION_CREATE: { label: "QR персонажа", describe: (d) => `QR персонажа «${str(d.callsign)}»${provisionTail(d)}` },
   PROVISION_REISSUE: {
     label: "Персонаж выдан заново",
