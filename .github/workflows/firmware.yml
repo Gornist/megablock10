@@ -3,7 +3,8 @@ name: Прошивка QR-дисплея
 # docs/firmware-plan.md: ядро и сборка для ПК проверяются настоящим сервером мастера (Ф1–Ф2), сборка для платы — компиляцией (Ф3).
 on:
   push:
-    branches: [ main ]
+    # Ветки агентов — тоже: workflow_dispatch работает только для workflow, который уже есть в main.
+    branches: [ main, "claude/**", "agent/**" ]
     paths: [ "firmware/**", "admin-web/server/src/displays/**", ".github/workflows/firmware.yml" ]
   pull_request:
     branches: [ main ]
