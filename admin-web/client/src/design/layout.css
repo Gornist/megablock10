@@ -1,48 +1,76 @@
+/*
+ * Каркас: меню слева на всю высоту (владелец: «слева органичнее»), содержимое справа. На узком экране (телефон мастера)
+ * меню превращается в полосу сверху — иначе съело бы половину ширины.
+ */
 .app-shell {
   display: flex;
-  flex-direction: column;
-  min-height: 100%;
+  min-height: 100vh;
 }
 
-.app-header {
+.app-sidebar {
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  height: 100vh;
+  width: 220px;
+  flex: 0 0 220px;
   display: flex;
-  align-items: center;
-  gap: 28px;
-  padding: 14px 24px;
-  border-bottom: 1px solid var(--plate-edge);
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px 14px;
+  box-sizing: border-box;
   background: var(--plate2);
-  flex-wrap: wrap;
-  position: relative;
-  /* Линия chrome под шапкой — тот же приём, что у AppShell телефона («под ней линия chrome»). */
-  box-shadow: 0 1px 0 0 var(--chrome);
+  border-right: 1px solid var(--plate-edge);
+  /* Линия chrome вдоль меню — тот же приём, что линия под шапкой у AppShell телефона. */
+  box-shadow: 1px 0 0 0 var(--chrome);
+  overflow-y: auto;
 }
-.app-header h1 {
-  font-size: 15px;
+.app-sidebar h1 {
+  font-size: 14px;
+  line-height: 1.3;
   color: var(--ink-strong);
-  white-space: nowrap;
   display: flex;
   align-items: baseline;
   gap: 6px;
+  margin: 0 0 4px 4px;
 }
-.app-header h1::before {
+.app-sidebar-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--acc);
+  font-weight: 500;
+}
+.app-sidebar h1::before {
   content: "///";
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--chrome);
   font-weight: 400;
 }
-.app-header nav {
+.app-sidebar nav {
   display: flex;
-  gap: 2px;
+  flex-direction: column;
+  gap: 14px;
   flex: 1;
-  flex-wrap: wrap;
-  row-gap: 6px;
+}
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.nav-group-title {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--ink-3);
+  padding: 0 10px 4px;
+  border-bottom: 1px solid var(--chrome-soft);
+  margin-bottom: 4px;
 }
 /*
- * Раньше рамка-чамфер была на КАЖДОМ пункте меню — 11 рядом стоящих коробок читались как решётка,
- * не как меню. Теперь коробка (заливка + augmented-ui срез) только у активного пункта — она же и
- * есть указатель «вы здесь»; остальные — просто подписи, разделённые местом, а не рамками. Тоньше
- * подчёркивание на hover — единственная реакция незанятого пункта, чтобы не возвращать вес обратно.
+ * Коробка (заливка + augmented-ui срез) только у активного пункта — она же указатель «вы здесь»; остальные — подписи.
+ * Реакция незанятого пункта на наведение — полоска слева, в цвет обвязки.
  */
 .nav-item {
   background: none;
@@ -54,23 +82,28 @@
   font-size: 12px;
   cursor: pointer;
   position: relative;
+  text-align: left;
   transition: color 0.15s ease;
 }
-.nav-item::after {
+.nav-item::before {
   content: "";
   position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: 3px;
-  height: 1px;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 2px;
   background: transparent;
   transition: background-color 0.15s ease;
 }
 .nav-item:hover {
   color: var(--ink);
 }
-.nav-item:hover::after {
+.nav-item:hover::before {
   background: var(--chrome);
+}
+.nav-item:focus-visible {
+  outline: 1px solid var(--acc);
+  outline-offset: 1px;
 }
 .nav-item.active {
   --c: var(--chamfer-sm);
@@ -79,25 +112,77 @@
   --aug-border-bg: var(--acc);
   color: var(--acc-ink);
   background: var(--acc);
-  padding: 8px 14px;
   filter: drop-shadow(0 0 8px rgba(94, 246, 255, 0.35));
 }
-.nav-item.active::after {
+.nav-item.active::before {
   content: none;
 }
-.app-header-right {
+.app-sidebar-footer {
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--chrome-soft);
   color: var(--ink-2);
+  font-size: 13px;
+}
+.app-sidebar-footer .mono {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .app-main {
   flex: 1;
+  min-width: 0;
   padding: 24px;
   max-width: 1400px;
   width: 100%;
   margin: 0 auto;
+  box-sizing: border-box;
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    flex-direction: column;
+  }
+  .app-sidebar {
+    position: static;
+    width: auto;
+    height: auto;
+    flex: none;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 16px;
+    border-right: 0;
+    border-bottom: 1px solid var(--plate-edge);
+    box-shadow: 0 1px 0 0 var(--chrome);
+    overflow: visible;
+  }
+  .app-sidebar nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 2px;
+    order: 3;
+    flex-basis: 100%;
+  }
+  .nav-group {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .nav-group-title {
+    display: none;
+  }
+  .app-sidebar-footer {
+    margin-left: auto;
+    border-top: 0;
+    padding-top: 0;
+  }
+  .app-main {
+    padding: 16px;
+  }
 }
 
 .screen-grid {
