@@ -207,6 +207,8 @@ export interface AttentionItem {
   detail: string;
   subjectKey?: string;
   nodeId?: string;
+  /** Тревога про точку (QR-дисплей, звук): без nodeId ссылка ведёт на «Локации». */
+  displayId?: string;
   at: number;
 }
 

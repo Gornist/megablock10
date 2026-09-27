@@ -6,7 +6,7 @@ import { POLL_RELAXED_MS } from "../../api/pollIntervals";
 import { AsyncPanel } from "../../design/AsyncPanel";
 import { Badge, Panel } from "../../design/components";
 import { formatAgo } from "../../format";
-import { navigate } from "../../router";
+import { attentionTarget } from "./attentionTarget";
 
 const NOTIFY_KEY = "mb10.notifyCrit";
 
@@ -99,7 +99,7 @@ export function AttentionPanel() {
       <AsyncPanel data={data} error={error} isEmpty={(d) => d.items.length === 0} emptyLabel="всё спокойно">
         {(d) =>
           d.items.map((i) => {
-            const go = i.subjectKey ? () => navigate("players", i.subjectKey!) : i.nodeId ? () => navigate("nodes", i.nodeId!) : undefined;
+            const go = attentionTarget(i);
             return (
               <div key={i.id} className={`attn-item sev-${i.severity} ${go ? "clickable" : ""}`} onClick={go}>
                 <span className="attn-title">{i.title}</span>

@@ -97,6 +97,11 @@ test("HELLO с топливомером → в DisplayItem процент, ис�
     assert.equal(alarms.length, 1);
     assert.equal(alarms[0].severity, "crit");
     assert.match(alarms[0].detail, /display-001 \(Бар\): 7 %, ≈ 2 ч/);
+    // Ссылка тревоги: точка без узла — на «Локации» (displayId), стоящая узлом — на узел (nodeId).
+    assert.equal(alarms[0].displayId, "display-001");
+    assert.equal(alarms[0].nodeId, undefined);
+    manager.repo.setNode("display-001", "bar-7");
+    assert.equal(computeAttention(db).find((a) => a.kind === "display_battery")!.nodeId, "bar-7");
 
     // Топливомер вынули — процент по напряжению, а не прежние 7 %.
     mock.options.status = { batteryMv: 4200 };

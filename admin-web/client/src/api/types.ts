@@ -14,6 +14,7 @@ export type {
   DisplayAudio,
   AnnouncementRecipient,
   Attention,
+  AttentionItem,
   Pulse,
   PulseSample,
   ProvisionItem,
