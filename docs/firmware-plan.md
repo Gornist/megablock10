@@ -26,23 +26,30 @@
 
 ## Структура
 
+Как сделано (подробности и команды — [firmware/display/README.md](../firmware/display/README.md)):
+
 ```
 firmware/display/
-  platformio.ini            # env: crowpanel579 (ESP32-S3), host (программа для ПК), native (unit-тесты)
-  lib/core/                 # без Arduino и без ESP-IDF
-    protocol.h/.cpp         # заголовок 92 байта, разбор потока, NACK-коды — зеркало admin-web/.../protocol.ts
+  CMakeLists.txt            # ПК: ядро, тесты ядра, прошивка-программа (CMake + g++, PlatformIO не нужен)
+  platformio.ini            # плата: crowpanel579 и crowpanel579-wokwi (ESP32-S3, Arduino)
+  lib/core/src/             # без Arduino и без ESP-IDF, ни одного #ifdef платформы
+    protocol.h/.cpp         # заголовок 92 байта, NACK-коды, проверки — зеркало admin-web/.../protocol.ts
     crc32.h/.cpp            # та же таблица, что на сервере
-    sha256.h, hmac.h        # переносимая реализация (27 КБ за миллисекунды и без аппаратного SHA)
-    session.h/.cpp          # одно соединение: HELLO с nonce → приём → проверки в порядке displays.md → ответы
-    app.h/.cpp              # BOOT → WIFI_CONNECTING → ONLINE → RECEIVING → VALIDATING → DISPLAY_UPDATING → ONLINE; ERROR → BACKOFF
-    backoff.h               # 1, 2, 4, 8, 16, 30 с
-    hal.h                   # интерфейсы: Panel, Storage, Net (TcpServer), Clock, Random, Backlight, Battery, Watchdog, Log
-  src/esp32/                # CrowPanel: GxEPD2_579_GDEY0579T93 (CS 45, DC 46, RST 47, BUSY 48, SCK 12, MOSI 11 — сверить
-                            # со схемой Elecrow), WiFi + WIFI_PS_MIN_MODEM, LittleFS, NVS, LEDC, АЦП, esp_task_wdt, кнопка
-  src/host/                 # ПК: сокеты, каталог вместо flash, PNG кадра, «батарея» и «подсветка» в лог, режимы сбоев
-  test/                     # unit-тесты ядра (pio test -e native, Unity)
-  test/vectors/             # общие с сервером тестовые векторы (см. ниже)
+    sha256.h/.cpp           # SHA-256 и HMAC — одна реализация для платы и ПК (RFC 4231)
+    receiver.h/.cpp         # сборка кадров из TCP-потока кусками любой длины
+    device.h/.cpp           # Device (кадр во flash, восстановление, тест, подсветка), Session (одно соединение: HELLO
+                            # с nonce → проверки → ответы, таймауты 2/5 с), Backoff и Connectivity (Wi-Fi 1…30 с)
+    hal.h                   # интерфейсы платформы: Panel, Storage, Backlight, Platform (время, RNG, сторож, журнал, сеть)
+  src/esp32/main.cpp        # CrowPanel: GxEPD2_579_GDEY0579T93, Wi-Fi + modem sleep, lwIP, LittleFS, NVS, task WDT, ШИМ, кнопка, USB-консоль
+  src/host/                 # ПК: POSIX-сокеты, каталог вместо flash, PNG кадра, сторож на SIGALRM, сбои флагами
+  test/core/core_test.cpp   # тесты ядра
+  test/vectors/             # общие с сервером тестовые векторы
+  tools/gen_vectors.py      # векторы JSON → заголовок C++ для тестов
 ```
+
+Состояния из ТЗ (BOOT → WIFI_CONNECTING → ONLINE → RECEIVING → VALIDATING → DISPLAY_UPDATING → ONLINE; ERROR → BACKOFF) разложены
+так: Wi-Fi — `Connectivity` (CONNECTING / ONLINE / BACKOFF), приём и проверка — `Session`, обновление панели — `Device::showImage`
+(синхронно: следующий кадр ждёт в буфере TCP).
 
 Решения внутри ядра, которые стоит зафиксировать сразу:
 
@@ -53,7 +60,7 @@ firmware/display/
   чёрный, как `drawBitmap(…, GxEPD_BLACK)` у GxEPD2. Кадр 26 928 байт — буфер в RAM, ESP32-S3 это не заметит.
 - **Одно соединение**: новое вытесняет старое (полуоткрытое после обрыва Wi-Fi не должно блокировать дисплей навсегда).
 - **Настройки** — NVS: SSID, пароль, id, секрет (32 байта), порт, ширина, высота. Первичная запись — через USB-консоль
-  (`config set …` / вставить JSON, который выдаёт дашборд). Одинакового секрета на партию нет.
+  (`config {JSON из дашборда + Wi-Fi}`). Одинакового секрета на партию нет.
 - **Порядок при загрузке**: питание панели (у CrowPanel — вывод питания e-paper, по примерам Elecrow GPIO 7) → показать кадр
   из flash → Wi-Fi → TCP-сервер.
 
@@ -66,7 +73,8 @@ firmware/display/
   старая версия, обрыв) и ожидаемое решение для каждого (принять / NACK с кодом / закрыть);
 - серверный тест проверяет, что файл совпадает с тем, что даёт `protocol.ts` сейчас (изменили протокол — забыли обновить
   векторы — красный тест, как `LogContractTest`);
-- тесты ядра прошивки читают тот же файл. Расхождение реализаций красит один из двух наборов, а не всплывает на площадке.
+- тесты ядра прошивки читают тот же файл (через `tools/gen_vectors.py`). Расхождение реализаций красит один из двух наборов,
+  а не всплывает на площадке.
 
 Плюс известные значения: `crc32("123456789") = 0xCBF43926`, векторы HMAC-SHA256 из RFC 4231.
 
@@ -122,7 +130,7 @@ npm run display-conformance -- --host 127.0.0.1 --port 47217 --id display-017 --
 
 - `lib/core`: протокол, CRC, SHA-256/HMAC, сессия, машина состояний, backoff — через интерфейсы `hal.h`.
 - Скрипт векторов на сервере + серверный тест «векторы актуальны».
-- Тесты ядра (`pio test -e native`): векторы сервера, RFC 4231, разбор потока кусками произвольной длины, порядок проверок,
+- Тесты ядра (`ctest`, CMake + g++): векторы сервера, RFC 4231, разбор потока кусками произвольной длины, порядок проверок,
   монотонность версии, backoff, переходы состояний (включая «сбой → BACKOFF → WIFI_CONNECTING»).
 - CI: новый `firmware.yml` (правка `firmware/` или `admin-web/server/src/displays/`) — тесты ядра.
 
