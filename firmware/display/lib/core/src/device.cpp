@@ -110,6 +110,7 @@ void Device::setBacklight(uint8_t level, uint16_t seconds) {
 }
 
 void Device::tick() {
+  if (Sound* snd = sound()) snd->tick();
   uint32_t now = platform_.nowMs();
   if (backlightTimer_ && reached(now, backlightOffAt_)) {
     backlightTimer_ = false;
@@ -146,6 +147,14 @@ size_t Device::statusJson(char* out, size_t cap) {
     append(".%d", a % 10);
   }
   append(",\"backlight\":%u", unsigned(backlight_level_));
+  if (Sound* snd = sound()) {
+    append("%s", ",\"roles\":[\"display\",\"audio\"],\"audio\":");
+    if (n >= 0 && size_t(n) < cap) {
+      size_t k = snd->statusJson(out + n, cap - size_t(n));
+      if (k == 0) append("%s", "{}");
+      else n += int(k);
+    }
+  }
   append("%s", "}");
   return n < 0 || size_t(n) >= cap ? 0 : size_t(n);
 }
@@ -153,20 +162,21 @@ size_t Device::statusJson(char* out, size_t cap) {
 // ── Сессия ──
 
 Session::Session(Device& device, Link& link)
-    : device_(device), link_(link), receiver_(device.incomingBuffer(), device.frameSize() < 64 ? 64 : device.frameSize()) {
+    : device_(device), link_(link), receiver_(device.incomingBuffer(), Device::incomingBytes(device.config())) {
   device_.platform().random(nonce_, sizeof nonce_);
+  if (Sound* snd = device_.sound()) snd->resetUpload();
   lastActivity_ = device_.platform().nowMs();
   // HELLO: nonce ‖ статус; подписан этим же nonce.
-  uint8_t payload[kNonceSize + 256];
+  uint8_t payload[kNonceSize + kReplyPayloadMax];
   std::memcpy(payload, nonce_, kNonceSize);
-  size_t json = device_.statusJson(reinterpret_cast<char*>(payload + kNonceSize), 256);
+  size_t json = device_.statusJson(reinterpret_cast<char*>(payload + kNonceSize), kReplyPayloadMax);
   reply(MsgType::Hello, device_.displayedVersion(), payload, kNonceSize + json);
 }
 
 void Session::reply(MsgType type, uint32_t seq, const uint8_t* payload, size_t len) {
   if (closed_) return;
   const Config& c = device_.config();
-  uint8_t out[kHeaderSize + kNonceSize + 256 + 64];
+  uint8_t out[kHeaderSize + kNonceSize + kReplyPayloadMax];
   FrameOut f{type, c.deviceId, seq, c.width, c.height, Format::Bpp1, payload, len};
   size_t n = encodeFrame(f, c.key, nonce_, out, sizeof out);
   if (n > 0) link_.send(out, n);
@@ -218,7 +228,7 @@ void Session::onData(const uint8_t* data, size_t len) {
 void Session::handle() {
   const Header& h = receiver_.header();
   const Config& c = device_.config();
-  PanelState panel{c.deviceId, c.width, c.height, device_.displayedVersion()};
+  PanelState panel{c.deviceId, c.width, c.height, device_.displayedVersion(), device_.sound() != nullptr};
   Nack code = validateIncoming(h, receiver_.signedHeader(), receiver_.payload(), c.key, nonce_, panel);
   if (code != Nack::None) {
     nack(code);
@@ -245,6 +255,62 @@ void Session::handle() {
       close("reboot requested");
       device_.requestReboot();
       break;
+    default:
+      handleAudio();
+      break;
+  }
+}
+
+// Звуковые команды: ответ — с seq запроса (сервер сверяет версию AUDIO_STATE и id объявления).
+void Session::handleAudio() {
+  const Header& h = receiver_.header();
+  const uint8_t* p = receiver_.payload();
+  Sound* snd = device_.sound();
+  if (!snd) return;
+  uint8_t u32[4];
+  auto answer = [&](Nack code, const uint8_t* payload, size_t len) {
+    if (code != Nack::None) nack(code);
+    else reply(MsgType::Ok, h.seq, payload, len);
+  };
+  switch (static_cast<MsgType>(h.type)) {
+    case MsgType::AudioState:
+      answer(snd->applyState(h.seq, p, h.payloadLength), nullptr, 0);
+      break;
+    case MsgType::ClipBegin: {
+      uint32_t have = 0;
+      Nack code = snd->clipBegin(p, have);
+      putU32(u32, have);
+      answer(code, u32, 4);
+      break;
+    }
+    case MsgType::ClipChunk: {
+      uint32_t have = 0;
+      Nack code = snd->clipChunk(p, h.payloadLength, have);
+      putU32(u32, have);
+      answer(code, u32, 4);
+      break;
+    }
+    case MsgType::ClipCommit:
+      answer(snd->clipCommit(), nullptr, 0);
+      break;
+    case MsgType::Announce: {
+      uint32_t duration = 0;
+      Nack code = snd->announce(h.seq, p, h.payloadLength, duration);
+      char json[40];
+      int n = std::snprintf(json, sizeof json, "{\"durationMs\":%u}", unsigned(duration));
+      answer(code, reinterpret_cast<const uint8_t*>(json), size_t(n));
+      break;
+    }
+    case MsgType::AnnounceStop:
+      snd->stopAnnounce();
+      answer(Nack::None, nullptr, 0);
+      break;
+    case MsgType::List: {
+      char json[kListReplyMax + 1];
+      size_t n = snd->listJson(getU16(p), json, sizeof json);
+      answer(Nack::None, reinterpret_cast<const uint8_t*>(json), n);
+      break;
+    }
     default:
       break;
   }

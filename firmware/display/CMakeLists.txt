@@ -31,8 +31,12 @@ add_executable(core_test test/core/core_test.cpp ${VECTORS_INC})
 target_include_directories(core_test PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
 target_link_libraries(core_test PRIVATE mb10d_core)
 
+add_executable(sound_test test/core/sound_test.cpp)
+target_link_libraries(sound_test PRIVATE mb10d_core)
+
 enable_testing()
 add_test(NAME core_test COMMAND core_test)
+add_test(NAME sound_test COMMAND sound_test)
 
 file(GLOB HOST_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/host/*.cpp)
 if(HOST_SOURCES)

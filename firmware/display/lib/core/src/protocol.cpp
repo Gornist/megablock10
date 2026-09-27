@@ -23,6 +23,7 @@ const char* nackName(Nack code) {
     case Nack::Busy: return "BUSY";
     case Nack::DisplayFailed: return "DISPLAY_FAILED";
     case Nack::UnsupportedType: return "UNSUPPORTED_TYPE";
+    case Nack::MissingClip: return "MISSING_CLIP";
   }
   return "NACK_?";
 }
@@ -93,6 +94,23 @@ Nack validateIncoming(const Header& h, const uint8_t* signedHeader, const uint8_
       return h.payloadLength == 3 && payload[0] <= uint8_t(BacklightLevel::High) ? Nack::None : Nack::BadLength;
     case MsgType::Reboot:
       return Nack::None;
+    // Звук: те же пределы, что в admin-web/server/src/displays/protocol.ts.
+    case MsgType::AudioState:
+    case MsgType::Announce:
+      if (!panel.audio) return Nack::UnsupportedType;
+      return h.payloadLength > 0 && h.payloadLength <= 4096 ? Nack::None : Nack::BadLength;
+    case MsgType::ClipBegin:
+      if (!panel.audio) return Nack::UnsupportedType;
+      return h.payloadLength == 36 ? Nack::None : Nack::BadLength;
+    case MsgType::ClipChunk:
+      if (!panel.audio) return Nack::UnsupportedType;
+      return h.payloadLength > 4 && h.payloadLength <= 4 + 16 * 1024 ? Nack::None : Nack::BadLength;
+    case MsgType::ClipCommit:
+    case MsgType::AnnounceStop:
+      return panel.audio ? Nack::None : Nack::UnsupportedType;
+    case MsgType::List:
+      if (!panel.audio) return Nack::UnsupportedType;
+      return h.payloadLength == 2 ? Nack::None : Nack::BadLength;
     default:
       return Nack::UnsupportedType;
   }

@@ -1,9 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { randomBytes } from "node:crypto";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { createHash, randomBytes } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { AudioService } from "./audio/audioService.js";
 import { runConformance } from "./displays/conformance.js";
 import { DisplayManager } from "./displays/manager.js";
 import { FirmwareHostProcess, freePort } from "./displays/firmwareHostProcess.js";
@@ -56,7 +57,7 @@ async function rig() {
     await fw.stop();
     rmSync(out, { recursive: true, force: true });
   };
-  return { fw, manager, lines, cleanup };
+  return { fw, db, manager, lines, cleanup };
 }
 
 test("прошивка для ПК проходит набор совместимости C1–C20", { skip }, async () => {
@@ -186,5 +187,164 @@ test("команды из дашборда: тест, подсветка, пер
     assert.equal(manager.get(fw.id)!.status, "ONLINE");
   } finally {
     await cleanup();
+  }
+});
+
+// ── Звук (docs/sound-nodes.md, З2): тот же сервер и та же прошивка для ПК с ролью audio; карта — каталог, динамик — журнал. ──
+
+/** WAV PCM16 моно 16 кГц, ms миллисекунд тона. */
+function wav(ms: number): Buffer {
+  const n = 16 * ms;
+  const b = Buffer.alloc(44 + n * 2);
+  b.write("RIFF", 0, "ascii");
+  b.writeUInt32LE(36 + n * 2, 4);
+  b.write("WAVEfmt ", 8, "ascii");
+  b.writeUInt32LE(16, 16);
+  b.writeUInt16LE(1, 20);
+  b.writeUInt16LE(1, 22);
+  b.writeUInt32LE(16000, 24);
+  b.writeUInt32LE(32000, 28);
+  b.writeUInt16LE(2, 32);
+  b.writeUInt16LE(16, 34);
+  b.write("data", 36, "ascii");
+  b.writeUInt32LE(n * 2, 40);
+  for (let i = 0; i < n; i++) b.writeInt16LE(Math.round(Math.sin(i / 7) * 9000), 44 + i * 2);
+  return b;
+}
+
+async function audioRig(extra: string[] = []) {
+  const r = await rig();
+  // Карта точки: три трека (по размеру — ≈ 1 с каждый «MP3 128 кбит/с»).
+  const tracks = join(r.fw.out, `${r.fw.id}-sd`, "tracks");
+  mkdirSync(tracks, { recursive: true });
+  for (const t of ["radio-1.mp3", "rain.mp3", "ad-arasaka.mp3"]) writeFileSync(join(tracks, t), Buffer.alloc(16_000, 1));
+  const audio = new AudioService(r.db, r.manager, { replyTimeoutMs: 1500 });
+  await r.fw.start(["--roles", "display,audio", ...extra]);
+  return { ...r, audio };
+}
+
+async function until(what: string, cond: () => boolean, ms = 5000) {
+  const deadline = Date.now() + ms;
+  while (!cond()) {
+    if (Date.now() > deadline) assert.fail(`не дождались: ${what}`);
+    await new Promise((res) => setTimeout(res, 20));
+  }
+}
+
+test("звук: первый HELLO — роль audio; канал доходит до прошивки, каталог карты — по LIST; перезагрузка — фон тот же до сети", { skip }, async () => {
+  const { fw, manager, audio, cleanup } = await audioRig();
+  try {
+    await manager.probe(fw.id);
+    await manager.idle();
+    assert.deepEqual(manager.get(fw.id)!.roles, ["display", "audio"]);
+    await until("каталог карты", () => audio.catalog().length === 3);
+    assert.deepEqual(audio.catalog().map((t) => t.name), ["ad-arasaka.mp3", "radio-1.mp3", "rain.mp3"]);
+
+    const ch = audio.repo.createChannel({ name: "Радио", tracks: ["radio-1.mp3", "lost.mp3", "rain.mp3"], shuffle: false, gapMs: 0, volume: 55 });
+    audio.repo.setDisplayAudio(fw.id, ch.id, null);
+    audio.sync();
+    await manager.idle();
+    await fw.waitLog(/AUDIO track radio-1\.mp3 vol=55/, 3000);
+    await manager.probe(fw.id);
+    const view = manager.get(fw.id)!.audio!;
+    assert.equal(view.applied, true);
+    assert.deepEqual(view.missing, ["lost.mp3"]);
+    assert.equal(view.sdOk, true);
+    assert.equal(view.tracksOnCard, 3);
+    // Трек доиграл (≈ 1 с) — следующий из канала, отсутствующий пропущен.
+    await fw.waitLog(/AUDIO track rain\.mp3/, 4000);
+
+    // Громкость — без перезапуска трека.
+    const before = fw.log.length;
+    audio.repo.setDisplayAudio(fw.id, ch.id, 30);
+    audio.sync();
+    await manager.idle();
+    await fw.waitLog(/AUDIO volume 30/, 3000, before);
+
+    // Перезагрузка: состояние из «flash», фон — сразу при загрузке, версия та же, сервер ничего не досылает.
+    const version = manager.get(fw.id)!.audio!.desiredVersion;
+    const rebootAt = fw.log.length;
+    assert.equal((await manager.reboot(fw.id)).outcome, "DISPLAYED");
+    await fw.waitLog(/listening on/, 5000, rebootAt);
+    assert.match(fw.log.slice(rebootAt), new RegExp(`audio boot: state v${version}`));
+    assert.match(fw.log.slice(rebootAt), /AUDIO track (radio-1|rain)\.mp3 vol=30/);
+    await manager.probe(fw.id);
+    assert.equal(manager.get(fw.id)!.audio!.reportedVersion, version);
+    assert.equal(manager.get(fw.id)!.audio!.applied, true);
+  } finally {
+    audio.stop();
+    await cleanup();
+  }
+});
+
+test("звук: объявление — клип докачивается после обрыва, фон приглушается, «доиграло» — по HELLO; повтор клипа не грузится", { skip }, async () => {
+  const { fw, manager, audio, cleanup } = await audioRig(["--drop-mid-clip", "1"]);
+  try {
+    await manager.probe(fw.id);
+    await manager.idle();
+    const ch = audio.repo.createChannel({ name: "Фон", tracks: ["radio-1.mp3"], shuffle: false, gapMs: 0, volume: 80 });
+    audio.repo.setDisplayAudio(fw.id, ch.id, null);
+    audio.sync();
+    await manager.idle();
+    await fw.waitLog(/AUDIO track radio-1\.mp3 vol=80/, 3000);
+
+    const data = wav(1200); // 38 444 байта — три куска
+    const id = createHash("sha256").update(data).digest("hex");
+    audio.repo.saveClip(id, "Игра началась", data, 1200, true, null);
+    const r = audio.announce(id, { displayIds: [fw.id] }, { volume: 90, chime: true, duck: 25 });
+    assert.ok(r && r.results[0].ok);
+    await fw.waitLog(/AUDIO clip [0-9a-f]{12} vol=90 chime=1 len=1200/, 5000);
+    assert.match(fw.log, /FAULT drop-mid-clip/);
+    assert.match(fw.log, /clip [0-9a-f]{12}: 16384 of 38444 bytes already here/, "докачка с места обрыва");
+    assert.match(fw.log, /AUDIO volume 20/, "фон приглушён до 25 % от 80");
+    await until("PLAYING", () => manager.get(fw.id)!.audio!.announce?.phase === "PLAYING");
+    // Длительность 1,2 с + сигнал 0,9 с; сервер сам опрашивает после неё.
+    await until("DONE", () => manager.get(fw.id)!.audio!.announce?.phase === "DONE", 8000);
+    assert.match(fw.log, /AUDIO clip finished/);
+    assert.match(fw.log, /AUDIO volume 80/, "фон вернулся");
+
+    const again = fw.log.length;
+    audio.announce(id, { displayIds: [fw.id] }, { chime: false });
+    await fw.waitLog(/AUDIO clip [0-9a-f]{12} vol=80 chime=0/, 4000, again);
+    assert.doesNotMatch(fw.log.slice(again), /already here/, "клип уже на карте — CLIP_BEGIN ответил полной длиной, кусков нет");
+    audio.stopAnnouncement({ displayIds: [fw.id] });
+    await fw.waitLog(/AUDIO clip stopped/, 3000, again);
+  } finally {
+    audio.stop();
+    await cleanup();
+  }
+});
+
+test("звук: карты нет — точка докладывает sd:false, фон молчит; дисплей без роли audio звуковых команд не получает", { skip }, async () => {
+  const { fw, manager, audio, cleanup } = await audioRig(["--no-sd"]);
+  try {
+    await manager.probe(fw.id);
+    await manager.idle();
+    const ch = audio.repo.createChannel({ name: "Фон", tracks: ["radio-1.mp3"], shuffle: false, gapMs: 0, volume: 50 });
+    audio.repo.setDisplayAudio(fw.id, ch.id, null);
+    audio.sync();
+    await manager.idle();
+    await manager.probe(fw.id);
+    const view = manager.get(fw.id)!.audio!;
+    assert.equal(view.sdOk, false);
+    assert.equal(view.applied, true, "состояние принято и сохранено — заиграет, когда вставят карту");
+    assert.deepEqual(view.missing, ["radio-1.mp3"]);
+    assert.doesNotMatch(fw.log, /AUDIO track/);
+  } finally {
+    audio.stop();
+    await cleanup();
+  }
+
+  const plain = await rig();
+  const plainAudio = new AudioService(plain.db, plain.manager);
+  try {
+    await plain.fw.start();
+    await plain.manager.probe(plain.fw.id);
+    assert.deepEqual(plain.manager.get(plain.fw.id)!.roles, ["display"]);
+    assert.equal(plain.manager.get(plain.fw.id)!.audio, null);
+    assert.equal(plainAudio.sync(), 0);
+  } finally {
+    plainAudio.stop();
+    await plain.cleanup();
   }
 });

@@ -5,6 +5,7 @@
 #include "hal.h"
 #include "protocol.h"
 #include "receiver.h"
+#include "sound.h"
 
 namespace mb10d {
 
@@ -16,6 +17,8 @@ struct Config {
   // Контракт docs/displays.md: молчащее соединение — 2 с, начатый кадр — 5 с.
   uint32_t headerTimeoutMs = 2000;
   uint32_t payloadTimeoutMs = 5000;
+  // Роль «звук» (docs/sound-nodes.md): приёмный буфер не меньше куска клипа, в HELLO — roles и audio.
+  bool audio = false;
 };
 
 // Кадр во «flash»: файл frame.bin = заголовок 20 байт (MBFB, версия, ширина, высота, длина, CRC32 кадра) + кадр.
@@ -40,10 +43,20 @@ class Device {
   const uint8_t* frame() const { return frame_; }
   uint8_t* incomingBuffer() { return incoming_; }
   size_t frameSize() const { return frameBytes(cfg_.width, cfg_.height); }
+  // Размер приёмного буфера: кадр панели, а у звуковой точки — не меньше куска клипа (CLIP_CHUNK).
+  static size_t incomingBytes(const Config& cfg) {
+    size_t n = frameBytes(cfg.width, cfg.height);
+    if (n < 64) n = 64;
+    if (cfg.audio && n < kAudioPayloadMax) n = kAudioPayloadMax;
+    return n;
+  }
+  // Звук: Sound живёт у вызывающего (main), Device только передаёт ему команды и статус.
+  void attachSound(Sound* sound) { sound_ = sound; }
+  Sound* sound() { return cfg_.audio ? sound_ : nullptr; }
   uint8_t backlightLevel() const { return backlight_level_; }
 
   // JSON-статус для HELLO: {"fw":…,"hw":…,"ip":…,"rssi":…,"batteryMv":…,"batteryPct":…,"batteryRate":…,"backlight":…}
-  // (отсутствующее — пропускается).
+  // (отсутствующее — пропускается); у звуковой точки ещё "roles":["display","audio"] и "audio":{…} (Sound::statusJson).
   size_t statusJson(char* out, size_t cap);
 
   // Новый кадр (уже проверенный): во flash, затем на панель. false — не записался или панель не обновилась.
@@ -70,7 +83,11 @@ class Device {
   uint32_t testUntil_ = 0;
   bool testShown_ = false;
   bool rebootRequested_ = false;
+  Sound* sound_ = nullptr;
 };
+
+// HELLO и ответы: статус звуковой точки со списком недостающих треков длиннее прежних 256 байт.
+constexpr size_t kReplyPayloadMax = 1280;
 
 // Отправка байтов в TCP и закрытие — у платы lwIP, у ПК POSIX-сокет.
 class Link {
@@ -92,6 +109,7 @@ class Session {
 
  private:
   void handle();
+  void handleAudio();
   void reply(MsgType type, uint32_t seq, const uint8_t* payload = nullptr, size_t len = 0);
   void nack(Nack code);
   void close(const char* why);

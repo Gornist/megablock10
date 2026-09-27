@@ -21,6 +21,14 @@ enum class MsgType : uint8_t {
   Test = 0x11,
   Backlight = 0x12,
   Reboot = 0x13,
+  // Звук (docs/sound-nodes.md) — только у точки с ролью audio; остальные отвечают UNSUPPORTED_TYPE.
+  AudioState = 0x14,
+  ClipBegin = 0x15,
+  ClipChunk = 0x16,
+  ClipCommit = 0x17,
+  Announce = 0x18,
+  AnnounceStop = 0x19,
+  List = 0x1a,
   Received = 0x20,
   Displayed = 0x21,
   Nack = 0x22,
@@ -41,6 +49,7 @@ enum class Nack : uint8_t {
   Busy = 9,
   DisplayFailed = 10,
   UnsupportedType = 11,
+  MissingClip = 12,
 };
 
 enum class Format : uint8_t { None = 0, Bpp1 = 1 };
@@ -68,6 +77,8 @@ struct PanelState {
   uint16_t width;
   uint16_t height;
   uint32_t displayedVersion;
+  // Точка со звуком: принимает AUDIO_STATE, CLIP_*, ANNOUNCE*, LIST.
+  bool audio = false;
 };
 
 inline size_t frameStride(uint16_t width) { return (size_t(width) + 7) / 8; }
