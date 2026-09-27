@@ -5,6 +5,13 @@
  */
 export type {
   AnnouncementItem,
+  AnnouncePhase,
+  AnnounceProgress,
+  AnnounceResponse,
+  AudioCatalogTrack,
+  AudioChannel,
+  AudioClip,
+  DisplayAudio,
   AnnouncementRecipient,
   Attention,
   Pulse,

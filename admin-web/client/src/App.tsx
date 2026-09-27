@@ -13,6 +13,7 @@ import { AnnouncementsScreen } from "./screens/AnnouncementsScreen";
 import { AuditScreen } from "./screens/AuditScreen";
 import { EventsScreen } from "./screens/EventsScreen";
 import { DisplaysScreen } from "./screens/DisplaysScreen";
+import { SoundScreen } from "./screens/SoundScreen";
 import { useHashRoute, navigate } from "./router";
 import { AppButton } from "./design/components";
 
@@ -49,7 +50,10 @@ const NAV: { title: string; items: { path: string; label: string }[] }[] = [
   },
   {
     title: "Площадка",
-    items: [{ path: "displays", label: "Дисплеи" }],
+    items: [
+      { path: "displays", label: "Дисплеи" },
+      { path: "sound", label: "Звук" },
+    ],
   },
 ];
 
@@ -112,6 +116,7 @@ function Shell() {
         {section === "audit" && <AuditScreen />}
         {section === "master" && <MasterScreen />}
         {section === "displays" && <DisplaysScreen />}
+        {section === "sound" && <SoundScreen />}
       </main>
     </div>
   );

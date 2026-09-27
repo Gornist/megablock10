@@ -213,8 +213,8 @@ describe("DisplayPushDialog", () => {
 
 describe("DisplaysScreen — группы", () => {
   const groups: DisplayGroup[] = [
-    { id: "g-bar", name: "Бар «Посмертие»", count: 2 },
-    { id: "g-clinic", name: "Клиника", count: 0 },
+    { id: "g-bar", name: "Бар «Посмертие»", count: 2, audioChannelId: null, audioVolume: null },
+    { id: "g-clinic", name: "Клиника", count: 0, audioChannelId: null, audioVolume: null },
   ];
   const inGroups: DisplayItem[] = [
     display({ id: "display-021", name: "Стойка", groupId: "g-bar", battery: "CRITICAL", batteryPct: 5, batterySource: "gauge", batteryHoursLeft: 1 }),

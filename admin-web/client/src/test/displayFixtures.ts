@@ -31,5 +31,7 @@ export const display = (over: Partial<DisplayItem> = {}): DisplayItem => ({
   batterySource: null,
   batteryHoursLeft: null,
   batteryCharging: false,
+  roles: ["display"],
+  audio: null,
   ...over,
 });

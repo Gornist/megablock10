@@ -70,6 +70,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+/** Двоичный ответ (клип громкой связи — прослушать в браузере): тот же заголовок сессии, что у JSON-запросов. */
+export async function fetchBlob(path: string): Promise<Blob> {
+  const session = loadSession();
+  const res = await fetch(path, { headers: session ? { authorization: `Bearer ${session.sessionToken}` } : {} });
+  if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status}`);
+  return res.blob();
+}
+
 export const api = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body?: unknown) => request<T>(path, { method: "POST", body: body ? JSON.stringify(body) : undefined }),
