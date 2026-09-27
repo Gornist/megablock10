@@ -19,6 +19,8 @@ export interface DisplayRow {
   battery_rate: number | null;
   /** display_groups.id; null — без группы. */
   group_id: string | null;
+  /** Узел (containers.id), которым точка стоит в мире; NULL — без узла. */
+  node_id: string | null;
   // ── Звук (audio/, миграция 6) ──
   /** Роли из HELLO, JSON-массив; null — ещё не было HELLO (или старая прошивка дисплея). */
   roles: string | null;
@@ -55,6 +57,8 @@ export interface DisplayConfigInput {
   enabled: boolean;
   /** Группа (display_groups.id); null или не задано — без группы. */
   groupId?: string | null;
+  /** Узел (containers.id); null или не задано — без узла. Одна точка — один узел (проверяет маршрут). */
+  nodeId?: string | null;
 }
 
 export interface DisplayGroupRow {
@@ -90,19 +94,34 @@ export class DisplayRepository {
     const now = Date.now();
     this.db
       .prepare(
-        `INSERT INTO displays (id, name, ip, port, width, height, enabled, group_id, secret, created_at, updated_at)
-         VALUES (@id, @name, @ip, @port, @width, @height, @enabled, @groupId, @secret, @now, @now)`,
+        `INSERT INTO displays (id, name, ip, port, width, height, enabled, group_id, node_id, secret, created_at, updated_at)
+         VALUES (@id, @name, @ip, @port, @width, @height, @enabled, @groupId, @nodeId, @secret, @now, @now)`,
       )
-      .run({ id, ...cfg, enabled: cfg.enabled ? 1 : 0, groupId: cfg.groupId ?? null, secret, now });
+      .run({ id, ...cfg, enabled: cfg.enabled ? 1 : 0, groupId: cfg.groupId ?? null, nodeId: cfg.nodeId ?? null, secret, now });
   }
 
   update(id: string, cfg: DisplayConfigInput): void {
     this.db
       .prepare(
         `UPDATE displays SET name = @name, ip = @ip, port = @port, width = @width, height = @height, enabled = @enabled, group_id = @groupId,
-           updated_at = @now WHERE id = @id`,
+           node_id = @nodeId, updated_at = @now WHERE id = @id`,
       )
-      .run({ id, ...cfg, enabled: cfg.enabled ? 1 : 0, groupId: cfg.groupId ?? null, now: Date.now() });
+      .run({ id, ...cfg, enabled: cfg.enabled ? 1 : 0, groupId: cfg.groupId ?? null, nodeId: cfg.nodeId ?? null, now: Date.now() });
+  }
+
+  // ── Узлы ──
+
+  setNode(id: string, nodeId: string | null): void {
+    this.db.prepare(`UPDATE displays SET node_id = ?, updated_at = ? WHERE id = ?`).run(nodeId, Date.now(), id);
+  }
+
+  /** Точка, уже привязанная к узлу (кроме exceptId), — одна точка на узел. */
+  displayOfNode(nodeId: string, exceptId?: string): DisplayRow | undefined {
+    return this.db.prepare(`SELECT * FROM displays WHERE node_id = ? AND id != ?`).get(nodeId, exceptId ?? "") as DisplayRow | undefined;
+  }
+
+  nodeExists(nodeId: string): boolean {
+    return this.db.prepare(`SELECT 1 FROM containers WHERE id = ?`).get(nodeId) !== undefined;
   }
 
   // ── Группы ──

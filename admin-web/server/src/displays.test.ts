@@ -313,3 +313,52 @@ test("группы: создать, назначить при создании, 
     await cleanup();
   }
 });
+
+test("точка ↔ узел: создать с узлом, чужой узел — 400, второй точке тот же узел — 409, перепривязать и отвязать", async () => {
+  const { app, headers, db, createContainer, cleanup } = await setup();
+  try {
+    await createContainer("nasos-4");
+    await createContainer("bar-7");
+    const add = (payload: Record<string, unknown>) => app.inject({ method: "POST", url: "/api/displays", headers, payload });
+    const base = { ip: "10.0.0.1", port: 47200 };
+    const created = await add({ id: "p-1", name: "Насосная", ...base, nodeId: "nasos-4" });
+    assert.equal(created.statusCode, 200, created.body);
+    assert.equal((created.json() as DisplaySecretResponse).display.nodeId, "nasos-4");
+
+    const unknown = await add({ id: "p-2", name: "Бар", ...base, nodeId: "no-such-node" });
+    assert.equal(unknown.statusCode, 400);
+    assert.match(unknown.body, /unknown node/);
+    assert.equal((await add({ id: "p-2", name: "Бар", ...base, nodeId: 7 })).statusCode, 400);
+
+    const taken = await add({ id: "p-2", name: "Бар", ...base, nodeId: "nasos-4" });
+    assert.equal(taken.statusCode, 409);
+    assert.match(taken.body, /p-1/);
+
+    // Точка без узла — норма; правкой — привязать к свободному узлу; к занятому — 409.
+    assert.equal((await add({ id: "p-2", name: "Бар", ...base })).statusCode, 200);
+    const put = (id: string, payload: Record<string, unknown>) => app.inject({ method: "PUT", url: `/api/displays/${id}`, headers, payload });
+    assert.equal((await put("p-2", { nodeId: "nasos-4" })).statusCode, 409);
+    const upd = await put("p-2", { nodeId: "bar-7" });
+    assert.equal(upd.statusCode, 200, upd.body);
+    assert.equal((upd.json() as DisplayItem).nodeId, "bar-7");
+    // Правка без nodeId узел не трогает; повторное сохранение той же точки со своим узлом — не конфликт.
+    assert.equal(((await put("p-2", { name: "Бар «Посмертие»" })).json() as DisplayItem).nodeId, "bar-7");
+    assert.equal((await put("p-1", { nodeId: "nasos-4" })).statusCode, 200);
+
+    // Быстрая привязка из карточки узла.
+    const node = (id: string, nodeId: unknown) => app.inject({ method: "PUT", url: `/api/displays/${id}/node`, headers, payload: { nodeId } });
+    assert.equal((await node("p-2", "nasos-4")).statusCode, 409);
+    assert.equal(((await node("p-1", null)).json() as DisplayItem).nodeId, null);
+    assert.equal(((await node("p-2", "nasos-4")).json() as DisplayItem).nodeId, "nasos-4");
+    assert.equal((await node("nope", null)).statusCode, 404);
+
+    const actions = db.prepare(`SELECT action, detail FROM audit_master WHERE action IN ('DISPLAY_SET_NODE', 'DISPLAY_UPDATE') ORDER BY at`).all() as {
+      action: string;
+      detail: string;
+    }[];
+    assert.ok(actions.some((a) => a.action === "DISPLAY_UPDATE" && JSON.parse(a.detail).nodeId === "bar-7"));
+    assert.equal(actions.filter((a) => a.action === "DISPLAY_SET_NODE").length, 2);
+  } finally {
+    await cleanup();
+  }
+});

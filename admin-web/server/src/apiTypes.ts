@@ -364,6 +364,8 @@ export interface DisplayItem {
   batteryMv: number | null;
   /** Группа (локация) — DisplayGroup.id; null — без группы. */
   groupId: string | null;
+  /** Узел (контейнер), которым точка стоит в мире — NodeSummary.id; null — без узла (просто динамик в локации). */
+  nodeId: string | null;
   /** Что умеет точка (из HELLO): "display", "audio". */
   roles: string[];
   /** Звук точки; null — точка без звука. */

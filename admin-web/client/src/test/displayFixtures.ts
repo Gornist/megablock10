@@ -10,6 +10,7 @@ export const display = (over: Partial<DisplayItem> = {}): DisplayItem => ({
   height: 272,
   enabled: true,
   groupId: null,
+  nodeId: null,
   status: "ONLINE",
   hardwareId: null,
   fwVersion: "0.1.0",

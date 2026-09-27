@@ -274,6 +274,11 @@ const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, "displays", "audio_catalog", "TEXT");
     },
   },
+  {
+    // Точка ↔ узел (контейнер): узел в мире и есть точка с QR-дисплеем и звуком. NULL — точка без узла (динамик в баре).
+    version: 7,
+    migrate: (db) => addColumnIfMissing(db, "displays", "node_id", "TEXT"),
+  },
 ];
 
 /** Версия схемы после всех миграций. */
