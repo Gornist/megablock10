@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { isIP } from "node:net";
-import type { DisplayItem, DisplayPreview, DisplayPushResponse, DisplayPushResult, DisplaySecretResponse } from "../apiTypes.js";
+import type { DisplayGroup, DisplayItem, DisplayPreview, DisplayPushResponse, DisplayPushResult, DisplaySecretResponse } from "../apiTypes.js";
 import type { Db } from "../db/index.js";
 import { BACKLIGHT_LEVELS, type DisplayManager, type OpResult } from "../displays/manager.js";
 import { DEFAULT_DISPLAY_PORT } from "../displays/protocol.js";
@@ -18,7 +18,7 @@ export const DEFAULT_DISPLAY_HEIGHT = 272;
 const DISPLAY_ID = /^[A-Za-z0-9_.-]{1,32}$/;
 
 type Source = { type?: unknown; id?: unknown; qr?: unknown; label?: unknown };
-type ConfigBody = { id?: unknown; name?: unknown; ip?: unknown; port?: unknown; width?: unknown; height?: unknown; enabled?: unknown };
+type ConfigBody = { id?: unknown; name?: unknown; ip?: unknown; port?: unknown; width?: unknown; height?: unknown; enabled?: unknown; groupId?: unknown };
 
 type Resolved = { ok: true; qr: string; label: string } | { ok: false; status: number; error: string };
 
@@ -53,12 +53,15 @@ function parseConfig(b: ConfigBody, current?: DisplayConfigInput): { ok: true; v
   const width = b.width ?? current?.width ?? DEFAULT_DISPLAY_WIDTH;
   const height = b.height ?? current?.height ?? DEFAULT_DISPLAY_HEIGHT;
   const enabled = b.enabled ?? current?.enabled ?? true;
+  // groupId: не передан — оставить как было; null — без группы; строка — группа (существование проверяет маршрут).
+  const groupId = b.groupId === undefined ? (current?.groupId ?? null) : b.groupId;
   if (typeof name !== "string" || !name.trim() || name.length > 64) return { ok: false, error: "name is required (max 64)" };
   if (typeof ip !== "string" || isIP(ip) === 0) return { ok: false, error: "ip must be an IP address (displays have fixed addresses)" };
   if (!intIn(port, 1, 65535)) return { ok: false, error: "port must be 1..65535" };
   if (!intIn(width, 8, 4096) || !intIn(height, 8, 4096)) return { ok: false, error: "width/height must be integers 8..4096" };
   if (typeof enabled !== "boolean") return { ok: false, error: "enabled must be boolean" };
-  return { ok: true, value: { name: name.trim(), ip, port, width, height, enabled } };
+  if (groupId !== null && typeof groupId !== "string") return { ok: false, error: "groupId must be a group id or null" };
+  return { ok: true, value: { name: name.trim(), ip, port, width, height, enabled, groupId } };
 }
 
 function preview(qr: string, label: string, width: number, height: number): DisplayPreview {
@@ -98,6 +101,7 @@ export function registerDisplayRoutes(app: FastifyInstance, db: Db, displays: Di
     if (repo.get(b.id)) return reply.code(409).send({ error: "display with this id already exists" });
     const cfg = parseConfig(b);
     if (!cfg.ok) return reply.code(400).send({ error: cfg.error });
+    if (cfg.value.groupId && !repo.getGroup(cfg.value.groupId)) return reply.code(400).send({ error: "unknown group" });
     const secret = newDisplaySecret();
     const id = b.id;
     db.transaction(() => {
@@ -112,11 +116,94 @@ export function registerDisplayRoutes(app: FastifyInstance, db: Db, displays: Di
     if (!master) return;
     const row = repo.get(request.params.id);
     if (!row) return reply.code(404).send({ error: "unknown display" });
-    const cfg = parseConfig(request.body ?? {}, { name: row.name, ip: row.ip, port: row.port, width: row.width, height: row.height, enabled: row.enabled === 1 });
+    const cfg = parseConfig(request.body ?? {}, {
+      name: row.name,
+      ip: row.ip,
+      port: row.port,
+      width: row.width,
+      height: row.height,
+      enabled: row.enabled === 1,
+      groupId: row.group_id,
+    });
     if (!cfg.ok) return reply.code(400).send({ error: cfg.error });
+    if (cfg.value.groupId && !repo.getGroup(cfg.value.groupId)) return reply.code(400).send({ error: "unknown group" });
     db.transaction(() => {
       repo.update(row.id, cfg.value);
       logMasterAction(db, master.id, "DISPLAY_UPDATE", { displayId: row.id, ...cfg.value });
+    })();
+    return displays.get(row.id)!;
+  });
+
+  // ── Группы (локации) ──
+
+  function groupList(): DisplayGroup[] {
+    const counts = new Map<string, number>();
+    for (const r of repo.list()) if (r.group_id) counts.set(r.group_id, (counts.get(r.group_id) ?? 0) + 1);
+    return repo.listGroups().map((g) => ({ id: g.id, name: g.name, count: counts.get(g.id) ?? 0 }));
+  }
+
+  function groupName(raw: unknown): string | null {
+    return typeof raw === "string" && raw.trim() && raw.trim().length <= 64 ? raw.trim() : null;
+  }
+
+  app.get("/api/display-groups", async (request, reply): Promise<DisplayGroup[] | void> => {
+    if (!requireMaster(db, request, reply)) return;
+    return groupList();
+  });
+
+  app.post<{ Body: { name?: unknown } }>("/api/display-groups", async (request, reply): Promise<DisplayGroup | void> => {
+    const master = requireMaster(db, request, reply);
+    if (!master) return;
+    const name = groupName(request.body?.name);
+    if (!name) return reply.code(400).send({ error: "name is required (max 64)" });
+    if (repo.groupByName(name)) return reply.code(409).send({ error: "group with this name already exists" });
+    const g = db.transaction(() => {
+      const created = repo.createGroup(name);
+      logMasterAction(db, master.id, "DISPLAY_GROUP_CREATE", { groupId: created.id, name });
+      return created;
+    })();
+    return { id: g.id, name: g.name, count: 0 };
+  });
+
+  app.put<{ Params: { id: string }; Body: { name?: unknown } }>("/api/display-groups/:id", async (request, reply): Promise<DisplayGroup | void> => {
+    const master = requireMaster(db, request, reply);
+    if (!master) return;
+    const g = repo.getGroup(request.params.id);
+    if (!g) return reply.code(404).send({ error: "unknown group" });
+    const name = groupName(request.body?.name);
+    if (!name) return reply.code(400).send({ error: "name is required (max 64)" });
+    const clash = repo.groupByName(name);
+    if (clash && clash.id !== g.id) return reply.code(409).send({ error: "group with this name already exists" });
+    db.transaction(() => {
+      repo.renameGroup(g.id, name);
+      logMasterAction(db, master.id, "DISPLAY_GROUP_RENAME", { groupId: g.id, from: g.name, name });
+    })();
+    return groupList().find((x) => x.id === g.id)!;
+  });
+
+  app.delete<{ Params: { id: string } }>("/api/display-groups/:id", async (request, reply) => {
+    const master = requireMaster(db, request, reply);
+    if (!master) return;
+    const g = repo.getGroup(request.params.id);
+    if (!g) return reply.code(404).send({ error: "unknown group" });
+    db.transaction(() => {
+      repo.deleteGroup(g.id);
+      logMasterAction(db, master.id, "DISPLAY_GROUP_DELETE", { groupId: g.id, name: g.name });
+    })();
+    return { ok: true };
+  });
+
+  /** Быстро переложить точку в другую группу (из карточки), не трогая остальные настройки. */
+  app.put<{ Params: { id: string }; Body: { groupId?: unknown } }>("/api/displays/:id/group", async (request, reply): Promise<DisplayItem | void> => {
+    const master = requireMaster(db, request, reply);
+    if (!master) return;
+    const row = repo.get(request.params.id);
+    if (!row) return reply.code(404).send({ error: "unknown display" });
+    const groupId = request.body?.groupId ?? null;
+    if (groupId !== null && (typeof groupId !== "string" || !repo.getGroup(groupId))) return reply.code(400).send({ error: "unknown group" });
+    db.transaction(() => {
+      repo.setGroup(row.id, groupId);
+      logMasterAction(db, master.id, "DISPLAY_SET_GROUP", { displayId: row.id, groupId });
     })();
     return displays.get(row.id)!;
   });

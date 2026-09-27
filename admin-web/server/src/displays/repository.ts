@@ -17,6 +17,8 @@ export interface DisplayRow {
   /** От топливомера; null — нет его (процент — по напряжению). */
   battery_pct: number | null;
   battery_rate: number | null;
+  /** display_groups.id; null — без группы. */
+  group_id: string | null;
   rssi: number | null;
   last_seen_at: number | null;
   last_connected_at: number | null;
@@ -38,6 +40,14 @@ export interface DisplayConfigInput {
   width: number;
   height: number;
   enabled: boolean;
+  /** Группа (display_groups.id); null или не задано — без группы. */
+  groupId?: string | null;
+}
+
+export interface DisplayGroupRow {
+  id: string;
+  name: string;
+  created_at: number;
 }
 
 /** 32 случайных байта в hex — индивидуальный секрет каждого дисплея (одинаковый на всю партию не годится). */
@@ -64,16 +74,57 @@ export class DisplayRepository {
     const now = Date.now();
     this.db
       .prepare(
-        `INSERT INTO displays (id, name, ip, port, width, height, enabled, secret, created_at, updated_at)
-         VALUES (@id, @name, @ip, @port, @width, @height, @enabled, @secret, @now, @now)`,
+        `INSERT INTO displays (id, name, ip, port, width, height, enabled, group_id, secret, created_at, updated_at)
+         VALUES (@id, @name, @ip, @port, @width, @height, @enabled, @groupId, @secret, @now, @now)`,
       )
-      .run({ id, ...cfg, enabled: cfg.enabled ? 1 : 0, secret, now });
+      .run({ id, ...cfg, enabled: cfg.enabled ? 1 : 0, groupId: cfg.groupId ?? null, secret, now });
   }
 
   update(id: string, cfg: DisplayConfigInput): void {
     this.db
-      .prepare(`UPDATE displays SET name = @name, ip = @ip, port = @port, width = @width, height = @height, enabled = @enabled, updated_at = @now WHERE id = @id`)
-      .run({ id, ...cfg, enabled: cfg.enabled ? 1 : 0, now: Date.now() });
+      .prepare(
+        `UPDATE displays SET name = @name, ip = @ip, port = @port, width = @width, height = @height, enabled = @enabled, group_id = @groupId,
+           updated_at = @now WHERE id = @id`,
+      )
+      .run({ id, ...cfg, enabled: cfg.enabled ? 1 : 0, groupId: cfg.groupId ?? null, now: Date.now() });
+  }
+
+  // ── Группы ──
+
+  listGroups(): DisplayGroupRow[] {
+    const rows = this.db.prepare(`SELECT * FROM display_groups`).all() as DisplayGroupRow[];
+    // По алфавиту с кириллицей (COLLATE NOCASE в SQLite тоже знает только латиницу).
+    return rows.sort((a, b) => a.name.localeCompare(b.name, "ru", { sensitivity: "base" }) || a.id.localeCompare(b.id));
+  }
+
+  getGroup(id: string): DisplayGroupRow | undefined {
+    return this.db.prepare(`SELECT * FROM display_groups WHERE id = ?`).get(id) as DisplayGroupRow | undefined;
+  }
+
+  /** Без учёта регистра — в JS: lower() в SQLite понижает только латиницу, «Бар» и «бар» для него разные. */
+  groupByName(name: string): DisplayGroupRow | undefined {
+    const key = name.trim().toLocaleLowerCase("ru");
+    return this.listGroups().find((g) => g.name.toLocaleLowerCase("ru") === key);
+  }
+
+  createGroup(name: string): DisplayGroupRow {
+    const row: DisplayGroupRow = { id: `g-${randomBytes(4).toString("hex")}`, name, created_at: Date.now() };
+    this.db.prepare(`INSERT INTO display_groups (id, name, created_at) VALUES (@id, @name, @created_at)`).run(row);
+    return row;
+  }
+
+  renameGroup(id: string, name: string): void {
+    this.db.prepare(`UPDATE display_groups SET name = ? WHERE id = ?`).run(name, id);
+  }
+
+  /** Точки группы остаются — без группы. */
+  deleteGroup(id: string): boolean {
+    this.db.prepare(`UPDATE displays SET group_id = NULL WHERE group_id = ?`).run(id);
+    return this.db.prepare(`DELETE FROM display_groups WHERE id = ?`).run(id).changes > 0;
+  }
+
+  setGroup(id: string, groupId: string | null): void {
+    this.db.prepare(`UPDATE displays SET group_id = ?, updated_at = ? WHERE id = ?`).run(groupId, Date.now(), id);
   }
 
   setSecret(id: string, secret: string): void {

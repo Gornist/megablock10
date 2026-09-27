@@ -16,6 +16,7 @@ export type {
   BulkPreview,
   ChangeRow,
   CharacterSnapshot,
+  DisplayGroup,
   DisplayItem,
   DisplayPreview,
   DisplayPushResponse,

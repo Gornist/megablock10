@@ -362,6 +362,8 @@ export interface DisplayItem {
   hardwareId: string | null;
   fwVersion: string | null;
   batteryMv: number | null;
+  /** Группа (локация) — DisplayGroup.id; null — без группы. */
+  groupId: string | null;
   /** Уровень: по проценту, остатку в часах и (без топливомера) напряжению — пороги DISPLAY_BATTERY_*. */
   battery: BatteryLevel | null;
   /** Заряд, %: от топливомера или по напряжению (batterySource). null — точка не шлёт заряд. */
@@ -411,6 +413,14 @@ export interface DisplayPushState {
   failedAt: DisplayPushPhase | null;
   /** RETRY: когда следующая попытка. */
   retryAt: number | null;
+}
+
+/** Группа точек (локация): дисплеи и звуковые точки раскладываются по ним в коллекторе. */
+export interface DisplayGroup {
+  id: string;
+  name: string;
+  /** Сколько точек в группе. */
+  count: number;
 }
 
 /** Ответ создания дисплея и смены секрета: секрет показывается только здесь, дальше его не отдаёт ни один запрос. */

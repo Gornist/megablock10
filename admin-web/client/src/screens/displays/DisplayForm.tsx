@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { api } from "../../api/client";
-import type { DisplayItem, DisplaySecretResponse } from "../../api/types";
+import type { DisplayGroup, DisplayItem, DisplaySecretResponse } from "../../api/types";
 import { useAsyncAction } from "../../api/useAsyncAction";
-import { AppButton, AppInput, Field, Panel } from "../../design/components";
+import { AppButton, AppInput, AppSelect, Field, Panel } from "../../design/components";
 import { ToggleField } from "../master/common";
 
 interface Draft {
@@ -13,34 +13,58 @@ interface Draft {
   width: string;
   height: string;
   enabled: boolean;
+  /** "" — без группы. */
+  groupId: string;
 }
 
-const NEW_DRAFT: Draft = { id: "", name: "", ip: "", port: "47200", width: "792", height: "272", enabled: true };
+const NEW_DRAFT: Draft = { id: "", name: "", ip: "", port: "47200", width: "792", height: "272", enabled: true, groupId: "" };
 
 function toDraft(d: DisplayItem): Draft {
-  return { id: d.id, name: d.name, ip: d.ip, port: String(d.port), width: String(d.width), height: String(d.height), enabled: d.enabled };
+  return {
+    id: d.id,
+    name: d.name,
+    ip: d.ip,
+    port: String(d.port),
+    width: String(d.width),
+    height: String(d.height),
+    enabled: d.enabled,
+    groupId: d.groupId ?? "",
+  };
 }
 
 const digits = (v: string) => v.replace(/\D/g, "");
 
-/** Новый дисплей (id задаётся один раз — он прошит в плату) или правка существующего: имя, постоянный IP, порт, размер панели. */
+/** Новый дисплей (id задаётся один раз — он прошит в плату) или правка существующего: имя, группа, постоянный IP, порт, размер панели. */
 export function DisplayForm({
   editing,
+  groups,
+  defaultGroupId,
   onCreated,
   onSaved,
   onCancel,
 }: {
   editing?: DisplayItem;
+  groups: DisplayGroup[];
+  /** Новый дисплей из группы («+ дисплей» в её заголовке) — сразу в неё. */
+  defaultGroupId?: string;
   onCreated: (r: DisplaySecretResponse) => void;
   onSaved: () => void;
   onCancel: () => void;
 }) {
-  const [draft, setDraft] = useState<Draft>(editing ? toDraft(editing) : NEW_DRAFT);
+  const [draft, setDraft] = useState<Draft>(editing ? toDraft(editing) : { ...NEW_DRAFT, groupId: defaultGroupId ?? "" });
   const { busy, error, run } = useAsyncAction({ fallbackError: "не удалось сохранить" });
   const set = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
 
   async function submit() {
-    const body = { name: draft.name, ip: draft.ip.trim(), port: Number(draft.port), width: Number(draft.width), height: Number(draft.height), enabled: draft.enabled };
+    const body = {
+      name: draft.name,
+      ip: draft.ip.trim(),
+      port: Number(draft.port),
+      width: Number(draft.width),
+      height: Number(draft.height),
+      enabled: draft.enabled,
+      groupId: draft.groupId || null,
+    };
     if (editing) {
       const res = await run(() => api.put<DisplayItem>(`/api/displays/${encodeURIComponent(editing.id)}`, body));
       if (res.ok) onSaved();
@@ -60,6 +84,16 @@ export function DisplayForm({
         )}
         <Field label="Название точки">
           <AppInput value={draft.name} onChange={(e) => set({ name: e.target.value })} placeholder="Точка 17, техэтаж" />
+        </Field>
+        <Field label="Группа (локация)">
+          <AppSelect value={draft.groupId} onChange={(e) => set({ groupId: e.target.value })} aria-label="группа">
+            <option value="">без группы</option>
+            {groups.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.name}
+              </option>
+            ))}
+          </AppSelect>
         </Field>
         <Field label="IP-адрес (постоянный, выдан роутером)">
           <AppInput value={draft.ip} onChange={(e) => set({ ip: e.target.value })} placeholder="10.10.0.217" />

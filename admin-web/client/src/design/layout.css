@@ -927,3 +927,85 @@
     animation: attn-crit-pulse 1.6s ease-in-out infinite;
   }
 }
+
+/* Карточка дисплея: статус связи и батарея — в правом верхнем углу, под id — название и группа. */
+.display-card .panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.display-card-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+.display-card-sub {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.display-card-sub .app-select {
+  max-width: 220px;
+}
+/* Группы дисплеев (локации) — сворачивающиеся секции. */
+.display-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.display-group {
+  border-top: 1px solid var(--chrome-soft);
+  padding-top: 10px;
+}
+.display-group-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.display-group.collapsed .display-group-head {
+  margin-bottom: 0;
+}
+.display-group-toggle {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 4px 0;
+  background: none;
+  border: 0;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.display-group-toggle:focus-visible {
+  outline: 1px solid var(--acc);
+  outline-offset: 2px;
+}
+.display-group-caret {
+  width: 12px;
+  color: var(--acc);
+}
+.display-group-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+.display-group-flags {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.display-group-actions {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
+}
+.display-group-empty {
+  margin: 0 0 6px 22px;
+}

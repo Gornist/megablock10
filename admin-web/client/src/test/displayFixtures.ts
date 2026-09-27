@@ -9,6 +9,7 @@ export const display = (over: Partial<DisplayItem> = {}): DisplayItem => ({
   width: 792, // висят горизонтально
   height: 272,
   enabled: true,
+  groupId: null,
   status: "ONLINE",
   hardwareId: null,
   fwVersion: "0.1.0",

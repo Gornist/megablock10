@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { DisplayItem, DisplayPreview, DisplayPushResponse, DisplaySecretResponse } from "./apiTypes.js";
+import type { DisplayGroup, DisplayItem, DisplayPreview, DisplayPushResponse, DisplaySecretResponse } from "./apiTypes.js";
 import { buildApp } from "./app.js";
 import { DisplayManager } from "./displays/manager.js";
 import { MockDisplay } from "./displays/mockDisplay.js";
@@ -252,6 +252,63 @@ test("команды: тест, подсветка (проверка уровн�
     assert.equal(probe.ok, true);
     assert.equal(probe.display.status, "ONLINE");
     assert.equal((await post("/api/displays/nope/reboot")).statusCode, 404);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("группы: создать, назначить при создании, из карточки и правкой; переименовать; удалить — дисплеи остаются без группы", async () => {
+  const { app, headers, addDisplay, cleanup } = await setup();
+  try {
+    const create = async (name: string) => app.inject({ method: "POST", url: "/api/display-groups", headers, payload: { name } });
+    const bar = (await create("Бар «Посмертие»")).json() as DisplayGroup;
+    assert.equal(bar.count, 0);
+    assert.equal((await create("  бар «посмертие» ")).statusCode, 409, "имя без учёта регистра и пробелов по краям");
+    assert.equal((await create("")).statusCode, 400);
+    const clinic = (await create("Клиника")).json() as DisplayGroup;
+
+    await addDisplay("display-001", { groupId: bar.id });
+    await addDisplay("display-002");
+    const get = async (id: string) => (await app.inject({ method: "GET", url: `/api/displays/${id}`, headers })).json() as DisplayItem;
+    assert.equal((await get("display-001")).groupId, bar.id);
+    assert.equal((await get("display-002")).groupId, null);
+    const bad = await app.inject({ method: "POST", url: "/api/displays", headers, payload: { id: "display-009", name: "x", ip: "127.0.0.1", groupId: "g-nope" } });
+    assert.equal(bad.statusCode, 400);
+
+    // Из карточки — только группа, остальное не трогается.
+    let res = await app.inject({ method: "PUT", url: "/api/displays/display-002/group", headers, payload: { groupId: clinic.id } });
+    assert.equal(res.statusCode, 200, res.body);
+    assert.equal((res.json() as DisplayItem).groupId, clinic.id);
+    assert.equal((await get("display-002")).name, "Точка display-002");
+    // Правка без groupId группу не сбрасывает; null — убирает.
+    res = await app.inject({ method: "PUT", url: "/api/displays/display-002", headers, payload: { name: "Клиника, вход" } });
+    assert.equal((res.json() as DisplayItem).groupId, clinic.id);
+    res = await app.inject({ method: "PUT", url: "/api/displays/display-002", headers, payload: { groupId: null } });
+    assert.equal((res.json() as DisplayItem).groupId, null);
+    await app.inject({ method: "PUT", url: "/api/displays/display-002/group", headers, payload: { groupId: clinic.id } });
+
+    const list = async () => (await app.inject({ method: "GET", url: "/api/display-groups", headers })).json() as DisplayGroup[];
+    assert.deepEqual(
+      (await list()).map((g) => [g.name, g.count]),
+      [
+        ["Бар «Посмертие»", 1],
+        ["Клиника", 1],
+      ],
+    );
+    res = await app.inject({ method: "PUT", url: `/api/display-groups/${clinic.id}`, headers, payload: { name: "Клиника Трамы" } });
+    assert.equal((res.json() as DisplayGroup).name, "Клиника Трамы");
+    res = await app.inject({ method: "PUT", url: `/api/display-groups/${clinic.id}`, headers, payload: { name: "бар «посмертие»" } });
+    assert.equal(res.statusCode, 409);
+
+    res = await app.inject({ method: "DELETE", url: `/api/display-groups/${bar.id}`, headers });
+    assert.equal(res.statusCode, 200);
+    assert.equal((await get("display-001")).groupId, null, "дисплей не удалён, просто без группы");
+    assert.deepEqual(
+      (await list()).map((g) => g.name),
+      ["Клиника Трамы"],
+    );
+    const audit = await app.inject({ method: "GET", url: "/api/audit?limit=50", headers });
+    assert.match(audit.body, /DISPLAY_GROUP_CREATE|Группа дисплеев создана/);
   } finally {
     await cleanup();
   }

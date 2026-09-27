@@ -46,6 +46,10 @@ const AUDIT_ACTIONS: Record<string, { label: string; describe: Describe }> = {
     describe: (d) => `дисплей ${str(d.displayId)} «${str(d.name)}», ${str(d.ip)}:${str(d.port)}${d.enabled === false ? ", выключен" : ""}`,
   },
   DISPLAY_DELETE: { label: "Дисплей удалён", describe: (d) => `дисплей ${str(d.displayId)} удалён` },
+  DISPLAY_GROUP_CREATE: { label: "Группа дисплеев создана", describe: (d) => `группа «${str(d.name)}»` },
+  DISPLAY_GROUP_RENAME: { label: "Группа дисплеев переименована", describe: (d) => `«${str(d.from)}» → «${str(d.name)}»` },
+  DISPLAY_GROUP_DELETE: { label: "Группа дисплеев удалена", describe: (d) => `группа «${str(d.name)}» удалена, её дисплеи — без группы` },
+  DISPLAY_SET_GROUP: { label: "Дисплей в группу", describe: (d) => `дисплей ${str(d.displayId)} → ${d.groupId ? `группа ${str(d.groupId)}` : "без группы"}` },
   DISPLAY_SECRET: { label: "Секрет дисплея сменён", describe: (d) => `дисплей ${str(d.displayId)}: новый секрет, нужно прошить заново` },
   DISPLAY_PUSH: { label: "QR на дисплей", describe: (d) => `${str(d.label)} → ${str(d.displays)}` },
   DISPLAY_COMMAND: {

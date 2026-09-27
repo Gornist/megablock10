@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { DisplayItem, DisplayPreview, DisplayPushResponse, DisplayPushState, DisplaySecretResponse } from "../api/types";
+import type { DisplayGroup, DisplayItem, DisplayPreview, DisplayPushResponse, DisplayPushState, DisplaySecretResponse } from "../api/types";
 import { mockApi } from "../test/mockApi";
 import { DisplaysScreen } from "./DisplaysScreen";
 import { DisplayPushDialog } from "./displays/DisplayPushDialog";
@@ -93,6 +93,7 @@ describe("DisplaysScreen", () => {
       width: 792,
       height: 272,
       enabled: true,
+      groupId: null,
     });
   });
 
@@ -207,5 +208,58 @@ describe("DisplayPushDialog", () => {
     // Клиент подменён целиком, так что ошибка — не ApiError: показывается общий текст.
     await screen.findByText("не удалось построить предпросмотр");
     expect((screen.getByText("Отправить").closest("button") as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe("DisplaysScreen — группы", () => {
+  const groups: DisplayGroup[] = [
+    { id: "g-bar", name: "Бар «Посмертие»", count: 2 },
+    { id: "g-clinic", name: "Клиника", count: 0 },
+  ];
+  const inGroups: DisplayItem[] = [
+    display({ id: "display-021", name: "Стойка", groupId: "g-bar", battery: "CRITICAL", batteryPct: 5, batterySource: "gauge", batteryHoursLeft: 1 }),
+    display({ id: "display-022", name: "Сцена", groupId: "g-bar", status: "OFFLINE" }),
+    display({ id: "display-023", name: "Склад", groupId: null }),
+  ];
+
+  beforeEach(() => localStorage.clear());
+
+  it("секции по группам сворачиваются (запоминается), в заголовке — сколько на связи и севшие; «Без группы» — в конце", async () => {
+    mockApi({ "GET /api/displays": inGroups, "GET /api/display-groups": groups });
+    const { container, unmount } = render(<DisplaysScreen />);
+    await waitFor(() => expect(container.querySelector(".display-group-title")).toBeTruthy());
+    const titles = () => [...container.querySelectorAll(".display-group-title")].map((t) => t.textContent);
+    expect(titles()).toEqual(["Бар «Посмертие»", "Клиника", "Без группы"]);
+    const bar = container.querySelector('[data-group="g-bar"]')!;
+    expect(bar.textContent).toContain("2 · на связи 1/2");
+    expect(bar.textContent).toContain("батарея: 1 критично");
+    expect(container.querySelector('[data-group="g-clinic"]')!.textContent).toContain("в группе пока нет дисплеев");
+    expect(screen.getByText("display-021")).toBeTruthy();
+
+    fireEvent.click(bar.querySelector(".display-group-toggle")!);
+    expect(screen.queryByText("display-021")).toBeNull();
+    expect(bar.querySelector(".display-group-toggle")!.getAttribute("aria-expanded")).toBe("false");
+    expect(bar.textContent).toContain("батарея: 1 критично");
+    unmount();
+    // Перезагрузили страницу — группа осталась свёрнутой.
+    render(<DisplaysScreen />);
+    await screen.findByText("display-023");
+    expect(screen.queryByText("display-021")).toBeNull();
+  });
+
+  it("карточка: статус и батарея — справа в шапке; группа меняется прямо из карточки", async () => {
+    const calls = mockApi({
+      "GET /api/displays": inGroups,
+      "GET /api/display-groups": groups,
+      "PUT /api/displays/display-023/group": { ...inGroups[2], groupId: "g-clinic" },
+    });
+    const { container } = render(<DisplaysScreen />);
+    await screen.findByText("display-023");
+    const header = screen.getByText("display-021").closest(".panel-header")!;
+    expect(header.querySelector(".display-card-status .badge")?.textContent).toBe("на связи");
+    expect(header.querySelector(".display-card-status .battery-text")?.textContent).toBe("5 % · ≈ 1 ч");
+    fireEvent.change(screen.getByLabelText("группа display-023"), { target: { value: "g-clinic" } });
+    await waitFor(() => expect(calls.find((c) => c.path === "/api/displays/display-023/group")?.body).toEqual({ groupId: "g-clinic" }));
+    expect(container.querySelector('[data-group="none"]')).toBeTruthy();
   });
 });

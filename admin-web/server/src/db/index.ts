@@ -151,6 +151,14 @@ CREATE TABLE IF NOT EXISTS displays (
   updated_at        INTEGER NOT NULL
 );
 
+-- Группы точек (локации): мастер раскладывает по ним дисплеи и звуковые точки (docs/sound-nodes.md); displays.group_id —
+-- миграция 5. Удалённая группа не удаляет точки — они становятся «без группы».
+CREATE TABLE IF NOT EXISTS display_groups (
+  id         TEXT PRIMARY KEY,
+  name       TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
 -- История заряда точек (displays/battery.ts): точка раз в DISPLAY_BATTERY_SAMPLE_MS из HELLO — по ней коллектор считает
 -- «примерно сколько часов осталось». Хранится DISPLAY_BATTERY_KEEP_MS (4 суток), старое чистится при записи.
 CREATE TABLE IF NOT EXISTS display_battery_samples (
@@ -222,6 +230,11 @@ const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, "displays", "battery_pct", "INTEGER");
       addColumnIfMissing(db, "displays", "battery_rate", "REAL");
     },
+  },
+  {
+    // Группа точки (display_groups, локация): коллектор показывает точки сворачивающимися группами.
+    version: 5,
+    migrate: (db) => addColumnIfMissing(db, "displays", "group_id", "TEXT"),
   },
 ];
 

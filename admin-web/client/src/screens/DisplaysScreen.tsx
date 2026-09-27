@@ -1,11 +1,13 @@
 import { useState } from "react";
-import type { DisplayItem, DisplaySecretResponse } from "../api/types";
+import type { DisplayGroup, DisplayItem, DisplaySecretResponse } from "../api/types";
 import { useApiData } from "../api/useApiData";
 import { POLL_LIVE_MS } from "../api/pollIntervals";
 import { AsyncPanel } from "../design/AsyncPanel";
 import { AppButton, AppSelect, Panel, StatTile } from "../design/components";
 import { DisplayCard } from "./displays/DisplayCard";
 import { DisplayForm, SecretPanel } from "./displays/DisplayForm";
+import { GroupDeleteDialog, GroupNameDialog, GroupSection } from "./displays/DisplayGroups";
+import { useCollapsedGroups } from "./displays/useCollapsedGroups";
 import { DisplayPushDialog } from "./displays/DisplayPushDialog";
 import { byBatteryFirst, type DisplaySource } from "./displays/displayUtil";
 
@@ -15,7 +17,10 @@ import { byBatteryFirst, type DisplaySource } from "./displays/displayUtil";
  */
 export function DisplaysScreen() {
   const { data: displays, error, reload } = useApiData<DisplayItem[]>("/api/displays", { pollMs: POLL_LIVE_MS });
-  const [form, setForm] = useState<"new" | DisplayItem | null>(null);
+  const { data: groups, reload: reloadGroups } = useApiData<DisplayGroup[]>("/api/display-groups", { pollMs: POLL_LIVE_MS });
+  const [form, setForm] = useState<{ edit?: DisplayItem; groupId?: string } | null>(null);
+  const [groupDialog, setGroupDialog] = useState<{ kind: "new" } | { kind: "rename" | "delete"; group: DisplayGroup } | null>(null);
+  const [collapsed, toggleCollapsed] = useCollapsedGroups();
   const [secret, setSecret] = useState<DisplaySecretResponse | null>(null);
   const [push, setPush] = useState<{ source: DisplaySource; title: string } | null>(null);
 
@@ -48,16 +53,20 @@ export function DisplaysScreen() {
       {secret && <SecretPanel result={secret} onClose={() => setSecret(null)} />}
       {form && (
         <DisplayForm
-          key={form === "new" ? "new" : form.id}
-          editing={form === "new" ? undefined : form}
+          key={form.edit?.id ?? `new-${form.groupId ?? ""}`}
+          editing={form.edit}
+          groups={groups ?? []}
+          defaultGroupId={form.groupId}
           onCreated={(r) => {
             setForm(null);
             setSecret(r);
             reload();
+            reloadGroups();
           }}
           onSaved={() => {
             setForm(null);
             reload();
+            reloadGroups();
           }}
           onCancel={() => setForm(null)}
         />
@@ -70,30 +79,87 @@ export function DisplaysScreen() {
               <option value="battery">сначала севшие</option>
               <option value="id">по номеру</option>
             </AppSelect>
-            <AppButton onClick={() => setForm("new")}>+ дисплей</AppButton>
+            <AppButton onClick={() => setGroupDialog({ kind: "new" })}>+ группа</AppButton>
+            <AppButton onClick={() => setForm({})}>+ дисплей</AppButton>
           </span>
         }
       >
         <AsyncPanel data={displays} error={error} isEmpty={(d) => d.length === 0} emptyLabel="дисплеев пока нет — добавьте первый">
-          {(list) => (
-            <div className="display-grid">
-              {(order === "battery" ? [...list].sort(byBatteryFirst) : list).map((d) => (
-                <DisplayCard
-                  key={d.id}
-                  display={d}
-                  onChanged={reload}
-                  onEdit={() => setForm(d)}
-                  onSecret={(r) => {
-                    setSecret(r);
-                    reload();
-                  }}
-                  onPush={(source, title) => setPush({ source, title })}
-                />
-              ))}
-            </div>
-          )}
+          {(list) => {
+            const sorted = order === "battery" ? [...list].sort(byBatteryFirst) : list;
+            const cards = (items: DisplayItem[]) => (
+              <div className="display-grid">
+                {items.map((d) => (
+                  <DisplayCard
+                    key={d.id}
+                    display={d}
+                    groups={groups ?? []}
+                    onChanged={() => {
+                      reload();
+                      reloadGroups();
+                    }}
+                    onEdit={() => setForm({ edit: d })}
+                    onSecret={(r) => {
+                      setSecret(r);
+                      reload();
+                    }}
+                    onPush={(source, title) => setPush({ source, title })}
+                  />
+                ))}
+              </div>
+            );
+            // Групп ещё нет — плоский список, как раньше.
+            if (!groups || groups.length === 0) return cards(sorted);
+            const known = new Set(groups.map((g) => g.id));
+            const ungrouped = sorted.filter((d) => !d.groupId || !known.has(d.groupId));
+            return (
+              <div className="display-groups">
+                {groups.map((g) => (
+                  <GroupSection
+                    key={g.id}
+                    title={g.name}
+                    group={g}
+                    displays={sorted.filter((d) => d.groupId === g.id)}
+                    collapsed={collapsed.has(g.id)}
+                    onToggle={() => toggleCollapsed(g.id)}
+                    onAdd={() => setForm({ groupId: g.id })}
+                    onRename={() => setGroupDialog({ kind: "rename", group: g })}
+                    onDelete={() => setGroupDialog({ kind: "delete", group: g })}
+                  >
+                    {cards(sorted.filter((d) => d.groupId === g.id))}
+                  </GroupSection>
+                ))}
+                {ungrouped.length > 0 && (
+                  <GroupSection title="Без группы" displays={ungrouped} collapsed={collapsed.has("")} onToggle={() => toggleCollapsed("")}>
+                    {cards(ungrouped)}
+                  </GroupSection>
+                )}
+              </div>
+            );
+          }}
         </AsyncPanel>
       </Panel>
+      {groupDialog?.kind === "delete" && (
+        <GroupDeleteDialog
+          group={groupDialog.group}
+          onCancel={() => setGroupDialog(null)}
+          onDone={() => {
+            setGroupDialog(null);
+            reloadGroups();
+            reload();
+          }}
+        />
+      )}
+      {groupDialog && groupDialog.kind !== "delete" && (
+        <GroupNameDialog
+          group={groupDialog.kind === "rename" ? groupDialog.group : undefined}
+          onCancel={() => setGroupDialog(null)}
+          onDone={() => {
+            setGroupDialog(null);
+            reloadGroups();
+          }}
+        />
+      )}
       {push && (
         <DisplayPushDialog
           source={push.source}

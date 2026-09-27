@@ -208,6 +208,7 @@ export class DisplayManager {
       width: row.width,
       height: row.height,
       enabled: row.enabled === 1,
+      groupId: row.group_id,
       status,
       hardwareId: row.hardware_id,
       fwVersion: row.fw_version,

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../../api/client";
-import type { DisplayItem, DisplayPreview, DisplaySecretResponse } from "../../api/types";
+import type { DisplayGroup, DisplayItem, DisplayPreview, DisplaySecretResponse } from "../../api/types";
 import { useAsyncAction } from "../../api/useAsyncAction";
 import { AppButton, AppDialog, AppSelect, Badge, Panel } from "../../design/components";
 import { formatAgo } from "../../format";
@@ -25,12 +25,14 @@ type Confirm = "reboot" | "secret" | "delete";
  */
 export function DisplayCard({
   display: d,
+  groups,
   onChanged,
   onEdit,
   onSecret,
   onPush,
 }: {
   display: DisplayItem;
+  groups: DisplayGroup[];
   onChanged: () => void;
   onEdit: () => void;
   onSecret: (r: DisplaySecretResponse) => void;
@@ -67,6 +69,12 @@ export function DisplayCard({
     onChanged();
   }
 
+  async function moveToGroup(groupId: string) {
+    setNote(null);
+    const res = await action.run(() => api.put<DisplayItem>(`${base}/group`, { groupId: groupId || null }));
+    if (res.ok) onChanged();
+  }
+
   async function resend() {
     const res = await action.run(() => api.get<DisplayPreview>(`${base}/preview`));
     if (res.ok) onPush({ type: "qr", qr: res.value.qr, label: res.value.label }, res.value.label);
@@ -90,15 +98,28 @@ export function DisplayCard({
 
   return (
     <Panel
-      title={
-        <span className="display-card-head">
-          <span className="mono">{d.id}</span>
+      className="display-card"
+      title={<span className="mono">{d.id}</span>}
+      action={
+        <span className="display-card-status">
           <Badge tone={STATUS_TONE[d.status]}>{STATUS_LABEL[d.status]}</Badge>
           <BatteryGauge d={d} />
         </span>
       }
     >
-      <div className="hint-text">{d.name}</div>
+      <div className="display-card-sub">
+        <span className="hint-text">{d.name}</span>
+        {groups.length > 0 && (
+          <AppSelect value={d.groupId ?? ""} onChange={(e) => moveToGroup(e.target.value)} disabled={action.busy} aria-label={`группа ${d.id}`}>
+            <option value="">без группы</option>
+            {groups.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.name}
+              </option>
+            ))}
+          </AppSelect>
+        )}
+      </div>
       <div className={`display-card-body${d.width > d.height ? " landscape" : ""}`}>
         {shownState && (
           <DisplayMock
