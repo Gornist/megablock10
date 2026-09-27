@@ -1,12 +1,11 @@
 // Прошивка QR-дисплея для CrowPanel 5.79″ (ESP32-S3 + e-paper 792×272). Вся логика протокола, проверок и состояния — в ядре
 // lib/core (то же, что проверено сборкой для ПК и набором совместимости C1–C20); здесь только драйверы платы: панель (GxEPD2),
-// Wi-Fi, TCP-сервер (lwIP), LittleFS, NVS, сторож, подсветка, кнопка, USB-консоль настройки (docs/displays.md).
+// Wi-Fi, TCP-сервер (lwIP), LittleFS, сторож, подсветка, кнопка, USB-консоль (docs/displays.md). Настройки в NVS —
+// settings.cpp, самопроверка для Wokwi — selftest_task.cpp, общее между ними — board.h.
 //
 // Порядок загрузки: питание панели → кадр из flash на экран → Wi-Fi → TCP-сервер. Без сети QR остаётся на экране.
 #include <Arduino.h>
-#include <ArduinoJson.h>
 #include <LittleFS.h>
-#include <Preferences.h>
 #include <SPI.h>
 #include <WiFi.h>
 #include <esp_system.h>
@@ -17,13 +16,10 @@
 #include <esp_wifi.h>
 #include <lwip/sockets.h>
 
+#include "board.h"
 #include "crc32.h"
 #include "device.h"
 #include "protocol.h"
-
-#ifdef MB10_SELFTEST
-#include "selftest.h"
-#endif
 
 #ifndef MB10_PANEL_STUB
 #include <Fonts/FreeMonoBold12pt7b.h>
@@ -31,10 +27,15 @@
 #endif
 
 using namespace mb10d;
+using namespace mb10esp;
+
+// Журнал в USB-консоль с отметкой времени — общий для всех файлов платы (board.h).
+void mb10esp::logLine(const char* line) {
+  Serial.printf("[%lu] %s\n", static_cast<unsigned long>(millis()), line);
+}
 
 namespace {
 
-constexpr uint16_t kDefaultPort = 47200;
 #ifdef MB10_SELFTEST
 // Самопроверка вешает цикл нарочно — ждать сторожа 30 с в эмуляторе незачем.
 constexpr uint32_t kWatchdogSeconds = 5;
@@ -42,78 +43,6 @@ constexpr uint32_t kWatchdogSeconds = 5;
 constexpr uint32_t kWatchdogSeconds = 30;
 #endif
 constexpr uint16_t kButtonBacklightSeconds = 15;
-
-void logLine(const char* line) {
-  Serial.printf("[%lu] %s\n", static_cast<unsigned long>(millis()), line);
-}
-
-// ── Настройки в NVS ──
-
-struct Settings {
-  bool configured = false;
-  Config cfg{};
-  uint16_t port = kDefaultPort;
-  String ssid, pass;
-  // Канал Wi-Fi: 0 — искать самой (у Wokwi-GUEST — 6, с ним подключение быстрее).
-  int channel = 0;
-  // Необязательный статический адрес (иначе DHCP с резервом на роутере).
-  String ip, gateway, subnet, dns;
-};
-
-Settings loadSettings() {
-  Settings s;
-  Preferences p;
-  if (!p.begin("mb10d", true)) return s;
-  String id = p.getString("id", "");
-  size_t keyLen = p.getBytes("key", s.cfg.key, sizeof s.cfg.key);
-  s.cfg.width = p.getUShort("w", 272);
-  s.cfg.height = p.getUShort("h", 792);
-  s.port = p.getUShort("port", kDefaultPort);
-  s.ssid = p.getString("ssid", "");
-  s.pass = p.getString("pass", "");
-  s.ip = p.getString("ip", "");
-  s.gateway = p.getString("gw", "");
-  s.subnet = p.getString("mask", "");
-  s.dns = p.getString("dns", "");
-  p.end();
-  if (id.isEmpty() || id.length() > kDeviceIdSize || keyLen != kKeySize || s.ssid.isEmpty()) return s;
-  snprintf(s.cfg.deviceId, sizeof s.cfg.deviceId, "%s", id.c_str());
-  s.configured = true;
-  return s;
-}
-
-// Строка из дашборда (DisplaySecretResponse.provisioning + Wi-Fi): config {"id":…,"secret":…,"port":…,"width":…,"height":…,
-// "wifiSsid":…,"wifiPassword":…[, "ip":…,"gateway":…,"subnet":…,"dns":…]}
-bool saveSettingsJson(const char* json, String& error) {
-  JsonDocument doc;
-  if (deserializeJson(doc, json)) {
-    error = "not JSON";
-    return false;
-  }
-  const char* id = doc["id"] | "";
-  const char* secret = doc["secret"] | "";
-  const char* ssid = doc["wifiSsid"] | "";
-  uint8_t key[kKeySize];
-  if (!*id || strlen(id) > kDeviceIdSize) error = "id: 1..32 chars";
-  else if (!parseHex(secret, key, sizeof key)) error = "secret: 64 hex chars";
-  else if (!*ssid) error = "wifiSsid is required";
-  if (error.length()) return false;
-  Preferences p;
-  p.begin("mb10d", false);
-  p.putString("id", id);
-  p.putBytes("key", key, sizeof key);
-  p.putUShort("w", doc["width"] | 272);
-  p.putUShort("h", doc["height"] | 792);
-  p.putUShort("port", doc["port"] | kDefaultPort);
-  p.putString("ssid", ssid);
-  p.putString("pass", doc["wifiPassword"] | "");
-  p.putString("ip", doc["ip"] | "");
-  p.putString("gw", doc["gateway"] | "");
-  p.putString("mask", doc["subnet"] | "");
-  p.putString("dns", doc["dns"] | "");
-  p.end();
-  return true;
-}
 
 // ── Панель ──
 
@@ -470,85 +399,6 @@ void setupWatchdog() {
   esp_task_wdt_add(nullptr);
 }
 
-#ifdef MB10_SELFTEST
-// ── Самопроверка в Wokwi (docs/firmware-plan.md, Ф4) ──
-// Wokwi не пробрасывает порт к плате снаружи, поэтому клиент протокола (lib/selftest, тот же, что display_selftest на ПК)
-// крутится в своей задаче и стучится в TCP-сервер этой же платы через 127.0.0.1. Фазы переживают перезагрузки в NVS:
-//   0 — Wi-Fi, проверки протокола, REBOOT;  1 — после программной перезагрузки кадр и версия восстановлены, затем цикл
-//   зависает;  2 — сброс сторожем (ESP_RST_TASK_WDT), кадр и версия снова восстановлены → SELFTEST ALL PASSED.
-constexpr char kSelftestId[] = "selftest-wokwi";
-constexpr char kSelftestSecret[] = "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a";
-volatile bool selftestHang = false;
-
-Settings selftestSettings() {
-  Settings s;
-  snprintf(s.cfg.deviceId, sizeof s.cfg.deviceId, "%s", kSelftestId);
-  parseHex(kSelftestSecret, s.cfg.key, sizeof s.cfg.key);
-  s.cfg.width = 272;
-  s.cfg.height = 792;
-  s.ssid = "Wokwi-GUEST";
-  s.channel = 6;
-  s.configured = true;
-  return s;
-}
-
-void selftestTask(void*) {
-  Preferences nvs;
-  nvs.begin("mb10st", false);
-  uint8_t phase = nvs.getUChar("phase", 0);
-  uint32_t version = nvs.getULong("ver", 0);
-  esp_reset_reason_t reason = esp_reset_reason();
-  Serial.printf("SELFTEST info: фаза %u, причина сброса %d, ожидаемая версия %lu\n", phase, int(reason), static_cast<unsigned long>(version));
-
-  selftest::Target t{};
-  t.host = "127.0.0.1";
-  t.port = settings.port;
-  t.deviceId = settings.cfg.deviceId;
-  memcpy(t.key, settings.cfg.key, sizeof t.key);
-  t.width = settings.cfg.width;
-  t.height = settings.cfg.height;
-  t.headerTimeoutMs = settings.cfg.headerTimeoutMs;
-  t.payloadTimeoutMs = settings.cfg.payloadTimeoutMs;
-  uint8_t* work = static_cast<uint8_t*>(malloc(selftest::Runner::workSize(t.width, t.height)));
-  selftest::Runner runner(t, work, [](const char* line, void*) { logLine(line); }, nullptr);
-  bool finished = false;
-  if (!work) {
-    runner.fail("memory", "нет памяти под кадр самопроверки");
-  } else if (phase == 0) {
-    uint32_t until = millis() + 30000;
-    while (WiFi.status() != WL_CONNECTED && int32_t(until - millis()) > 0) delay(100);
-    if (WiFi.status() == WL_CONNECTED) runner.pass("wifi");
-    else runner.fail("wifi", "не подключились к %s за 30 с", settings.ssid.c_str());
-    if (runner.runProtocol() == 0 && runner.failures() == 0) {
-      nvs.putUChar("phase", 1);
-      nvs.putULong("ver", runner.displayed());
-      runner.reboot();  // дальше — фаза 1 после загрузки
-    }
-  } else if (phase == 1) {
-    if (reason == ESP_RST_SW) runner.pass("reboot-reason");
-    else runner.fail("reboot-reason", "причина сброса %d, ждали ESP_RST_SW", int(reason));
-    if (runner.expectVersion("reboot-restores-frame", version, 30000) && runner.failures() == 0) {
-      nvs.putUChar("phase", 2);
-      logLine("SELFTEST info: вешаем основной цикл — ждём сброса сторожем");
-      selftestHang = true;
-    }
-  } else if (phase == 2) {
-    if (reason == ESP_RST_TASK_WDT) runner.pass("watchdog-reset");
-    else runner.fail("watchdog-reset", "причина сброса %d, ждали ESP_RST_TASK_WDT (%d)", int(reason), int(ESP_RST_TASK_WDT));
-    runner.expectVersion("watchdog-restores-frame", version, 30000);
-    nvs.putUChar("phase", 3);
-    finished = true;
-  } else {
-    logLine("SELFTEST info: самопроверка уже прошла; заново — стереть flash");
-  }
-  nvs.end();
-  free(work);
-  if (runner.failures() > 0) Serial.printf("SELFTEST DONE: %d FAIL\n", runner.failures());
-  else if (finished) logLine("SELFTEST ALL PASSED");
-  vTaskDelete(nullptr);
-}
-#endif
-
 }  // namespace
 
 void setup() {
@@ -590,7 +440,7 @@ void setup() {
   server->begin();
   printStatus();
 #ifdef MB10_SELFTEST
-  xTaskCreatePinnedToCore(selftestTask, "selftest", 8192, nullptr, 1, nullptr, 0);
+  startSelftest(settings);
 #endif
 }
 

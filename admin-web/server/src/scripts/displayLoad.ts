@@ -1,4 +1,4 @@
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type AddressInfo, type Server, type Socket } from "node:net";
@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { openDb } from "../db/index.js";
+import { FirmwareHostProcess, freePort } from "../displays/firmwareHostProcess.js";
 import { DisplayManager, displayConfigFromEnv, type OpResult } from "../displays/manager.js";
 import { MockDisplay } from "../displays/mockDisplay.js";
 
@@ -51,39 +52,10 @@ interface Target {
   stop(): Promise<void>;
 }
 
-async function freePort(): Promise<number> {
-  const s = createServer();
-  await new Promise<void>((r) => s.listen(0, "127.0.0.1", () => r()));
-  const port = (s.address() as AddressInfo).port;
-  await new Promise<void>((r) => s.close(() => r()));
-  return port;
-}
-
-async function startHost(id: string): Promise<Target & { proc: ChildProcess }> {
-  const secret = randomBytes(32).toString("hex");
-  const port = await freePort();
-  const proc = spawn(values.bin!, ["--id", id, "--secret", secret, "--host", "127.0.0.1", "--port", String(port), "--out", out, "--delay", String(delayMs)], {
-    stdio: ["ignore", "ignore", "pipe"],
-  });
-  let log = "";
-  proc.stderr!.on("data", (d: Buffer) => (log += d.toString()));
-  const deadline = Date.now() + 5000;
-  while (!log.includes("listening on")) {
-    if (Date.now() > deadline || proc.exitCode !== null) throw new Error(`${id}: display_host не запустился:\n${log}`);
-    await new Promise((r) => setTimeout(r, 10));
-  }
-  return {
-    id,
-    port,
-    secret,
-    proc,
-    stop: async () => {
-      if (proc.exitCode !== null || proc.signalCode !== null) return;
-      const done = new Promise((r) => proc.once("exit", r));
-      proc.kill("SIGKILL");
-      await done;
-    },
-  };
+async function startHost(id: string): Promise<Target & { proc: FirmwareHostProcess }> {
+  const fw = new FirmwareHostProcess({ bin: values.bin!, id, secret: randomBytes(32).toString("hex"), port: await freePort(), out, args: ["--delay", String(delayMs)] });
+  await fw.start();
+  return { id, port: fw.port, secret: fw.secret, proc: fw, stop: () => fw.stop() };
 }
 
 async function startMock(id: string): Promise<Target> {
@@ -97,14 +69,8 @@ async function startMock(id: string): Promise<Target> {
 async function startHung(id: string): Promise<Target> {
   if (useHost) {
     const t = await startHost(id);
-    t.proc.kill("SIGSTOP");
-    return {
-      ...t,
-      stop: async () => {
-        t.proc.kill("SIGCONT");
-        await t.stop();
-      },
-    };
+    t.proc.proc.kill("SIGSTOP"); // stop() сам шлёт SIGCONT перед SIGKILL
+    return t;
   }
   const sockets = new Set<Socket>();
   const server: Server = createServer((s) => sockets.add(s));

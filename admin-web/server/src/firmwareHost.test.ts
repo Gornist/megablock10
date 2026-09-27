@@ -1,14 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { createServer, type AddressInfo } from "node:net";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { inflateSync } from "node:zlib";
 import { runConformance } from "./displays/conformance.js";
 import { DisplayManager } from "./displays/manager.js";
+import { FirmwareHostProcess, freePort } from "./displays/firmwareHostProcess.js";
 import { renderQrForDisplay } from "./displays/renderer.js";
 import { testDb } from "./testUtil.js";
 
@@ -27,79 +25,17 @@ const QR_B = "MB10:RAM:v1:ram-bbbb:2";
 const W = 272;
 const H = 792;
 
-async function freePort(): Promise<number> {
-  const s = createServer();
-  await new Promise<void>((r) => s.listen(0, "127.0.0.1", () => r()));
-  const port = (s.address() as AddressInfo).port;
-  await new Promise<void>((r) => s.close(() => r()));
-  return port;
-}
-
-class Fw {
-  proc!: ChildProcess;
-  log = "";
-  constructor(
-    readonly id: string,
-    readonly secret: string,
-    readonly port: number,
-    readonly out: string,
-  ) {}
-
-  /** Запустить и дождаться «listening» (после загрузки кадра из «flash»). */
-  async start(extra: string[] = []): Promise<void> {
-    const from = this.log.length;
-    this.proc = spawn(
-      BIN!,
-      ["--id", this.id, "--secret", this.secret, "--host", "127.0.0.1", "--port", String(this.port), "--out", this.out, "--delay", "40", "--header-timeout", "400", "--payload-timeout", "600", ...extra],
-      { stdio: ["ignore", "ignore", "pipe"] },
-    );
-    this.proc.stderr!.on("data", (d: Buffer) => (this.log += d.toString()));
-    await this.waitLog(/listening on/, 5000, from);
-  }
-
-  /** Ждать строки журнала, появившейся после текущего конца журнала (или любой, если from = 0). */
-  async waitLog(re: RegExp, timeoutMs: number, from = 0): Promise<void> {
-    const deadline = Date.now() + timeoutMs;
-    while (!re.test(this.log.slice(from))) {
-      if (Date.now() > deadline) throw new Error(`нет ${re} в журнале прошивки:\n${this.log}`);
-      await new Promise((r) => setTimeout(r, 10));
-    }
-  }
-
-  get exited(): boolean {
-    return this.proc.exitCode !== null || this.proc.signalCode !== null;
-  }
-
-  async stop(): Promise<void> {
-    if (this.exited) return;
-    const done = new Promise((r) => this.proc.once("exit", r));
-    this.proc.kill("SIGKILL");
-    await done;
-  }
-
-  /** Кадр «панели» — PNG, который пишет прошивка; назад в 1-битный кадр (1 — чёрный). */
-  png(): Buffer {
-    const png = readFileSync(join(this.out, `${this.id}.png`));
-    let off = 8;
-    const idat: Buffer[] = [];
-    while (off < png.length) {
-      const len = png.readUInt32BE(off);
-      const type = png.toString("ascii", off + 4, off + 8);
-      if (type === "IDAT") idat.push(png.subarray(off + 8, off + 8 + len));
-      off += 12 + len;
-    }
-    const raw = inflateSync(Buffer.concat(idat));
-    const stride = Math.ceil(W / 8);
-    const frame = Buffer.alloc(stride * H);
-    for (let y = 0; y < H; y++) for (let i = 0; i < stride; i++) frame[y * stride + i] = ~raw[y * (stride + 1) + 1 + i] & 0xff;
-    return frame;
-  }
-}
-
 async function rig() {
   const out = mkdtempSync(join(tmpdir(), "mb10-fw-"));
   const secret = randomBytes(32).toString("hex");
-  const fw = new Fw("display-017", secret, await freePort(), out);
+  const fw = new FirmwareHostProcess({
+    bin: BIN!,
+    id: "display-017",
+    secret,
+    port: await freePort(),
+    out,
+    args: ["--delay", "40", "--header-timeout", "400", "--payload-timeout", "600"],
+  });
   const db = testDb();
   const lines: string[] = [];
   const manager = new DisplayManager(db, {
@@ -147,7 +83,7 @@ test("сервер мастера → прошивка: на «панели» р
     await fw.start();
     assert.deepEqual(await manager.pushImage(fw.id, QR_A, "a").result, { outcome: "DISPLAYED", version: 1 });
     const expected = renderQrForDisplay(QR_A, W, H).data;
-    assert.ok(fw.png().equals(expected), "PNG панели не совпал с кадром рендера");
+    assert.ok(fw.panelFrame(W, H).equals(expected), "PNG панели не совпал с кадром рендера");
     const item = manager.get(fw.id)!;
     assert.equal(item.fwVersion, "host-0.1.0");
     assert.equal(item.displayedVersion, 1);
@@ -176,12 +112,12 @@ test("питание пропало посреди записи кадра: по
 
     await fw.start();
     assert.match(fw.log, /boot: restoring frame 1/);
-    assert.ok(fw.png().equals(renderQrForDisplay(QR_A, W, H).data), "после сбоя на панели должен быть прежний целый кадр");
+    assert.ok(fw.panelFrame(W, H).equals(renderQrForDisplay(QR_A, W, H).data), "после сбоя на панели должен быть прежний целый кадр");
     // Плановый опрос видит, что на экране старое, и досылает то, что должно быть.
     await manager.probeAll();
     await manager.idle();
     assert.equal(manager.get(fw.id)!.displayedVersion, 2);
-    assert.ok(fw.png().equals(renderQrForDisplay(QR_B, W, H).data));
+    assert.ok(fw.panelFrame(W, H).equals(renderQrForDisplay(QR_B, W, H).data));
   } finally {
     await cleanup();
   }
@@ -197,7 +133,7 @@ test("зависание в обновлении панели: сторож пе
     assert.match(fw.log, /WATCHDOG RESET/);
     assert.match(fw.log, /boot: restoring frame 1/);
     assert.ok(lines.some((l) => l.includes("confirmed by HELLO")), lines.join("\n"));
-    assert.ok(fw.png().equals(renderQrForDisplay(QR_A, W, H).data));
+    assert.ok(fw.panelFrame(W, H).equals(renderQrForDisplay(QR_A, W, H).data));
   } finally {
     await cleanup();
   }

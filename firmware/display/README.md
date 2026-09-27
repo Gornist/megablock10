@@ -7,7 +7,8 @@
 ```
 lib/core/     ядро без Arduino: протокол, CRC32, SHA-256/HMAC, приём потока, сессия, устройство, Wi-Fi backoff; hal.h — интерфейсы платформы
 src/host/     та же прошивка программой для ПК: сокеты, каталог вместо flash, PNG вместо e-paper
-src/esp32/    драйверы CrowPanel 5.79″: GxEPD2, Wi-Fi, lwIP, LittleFS, NVS, сторож, подсветка, кнопка, USB-консоль
+src/esp32/    драйверы CrowPanel 5.79″: main.cpp — GxEPD2, Wi-Fi, lwIP, LittleFS, сторож, подсветка, кнопка, USB-консоль;
+              settings.cpp — настройки в NVS; selftest_task.cpp — самопроверка для Wokwi; board.h — общее
 lib/selftest/ самопроверка — клиент протокола на BSD-сокетах (POSIX и lwIP): внутри платы в Wokwi и display_selftest на ПК
 src/selftest/ display_selftest — та же самопроверка программой для ПК (против display_host или платы в сети)
 test/core/    тесты ядра; test/vectors/protocol-v1.json — общие векторы с сервером (пишет admin-web: npm run display-vectors)
