@@ -4,6 +4,7 @@ import type { DisplayItem, DisplayPreview, DisplaySecretResponse } from "../../a
 import { useAsyncAction } from "../../api/useAsyncAction";
 import { AppButton, AppDialog, AppSelect, Badge, Panel } from "../../design/components";
 import { formatAgo } from "../../format";
+import { BatteryGauge } from "./BatteryGauge";
 import { DisplayMock, PushSteps } from "./DisplayMock";
 import { phaseText, screenState, STATUS_LABEL, STATUS_TONE, type DisplaySource } from "./displayUtil";
 
@@ -15,8 +16,6 @@ const BACKLIGHT = [
 ];
 /** Подсветка из дашборда — для проверки на месте; гаснет сама, чтобы не посадить батарею забытой командой. */
 const BACKLIGHT_SECONDS = 20;
-
-const BATTERY_TONE = { OK: "ok", LOW: "warn", CRITICAL: "danger" } as const;
 
 type Confirm = "reboot" | "secret" | "delete";
 
@@ -95,7 +94,7 @@ export function DisplayCard({
         <span className="display-card-head">
           <span className="mono">{d.id}</span>
           <Badge tone={STATUS_TONE[d.status]}>{STATUS_LABEL[d.status]}</Badge>
-          {d.battery && <Badge tone={BATTERY_TONE[d.battery]}>{((d.batteryMv ?? 0) / 1000).toFixed(2)} В</Badge>}
+          <BatteryGauge d={d} />
         </span>
       }
     >

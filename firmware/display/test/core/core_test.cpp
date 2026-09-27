@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "battery.h"
 #include "crc32.h"
 #include "device.h"
 #include "protocol.h"
@@ -112,7 +113,12 @@ struct FakePlatform : Platform {
   const char* hardwareId() override { return "24:0a:c4:00:00:17"; }
   const char* ipAddress() override { return ""; }
   int rssi() override { return -61; }
-  int batteryMillivolts() override { return 3910; }
+  BatteryStatus bat = [] {
+    BatteryStatus b;
+    b.milliVolts = 3910;  // как делитель: только мВ — HELLO совпадает с общими векторами
+    return b;
+  }();
+  BatteryStatus battery() override { return bat; }
 };
 
 struct FakeLink : Link {
@@ -504,6 +510,46 @@ static void testConnectivity() {
   CHECK(c.retryAt() == t + 1000);  // после успеха backoff сброшен
 }
 
+static void testBattery() {
+  g_test = "battery";
+  // MAX17048: VCELL 78,125 мкВ/ед., SOC — старший байт %, CRATE — 0,208 %/ч (даташит).
+  CHECK(max17048::milliVolts(0) == 0);
+  CHECK(max17048::milliVolts(0xFFFF) == 5120);
+  CHECK(max17048::milliVolts(50048) == 3910);  // 50048 × 78,125 мкВ = 3,91 В
+  CHECK(max17048::percent(0x4B00) == 75);
+  CHECK(max17048::percent(0x4B80) == 76);  // 75,5 % → 76
+  CHECK(max17048::percent(0x4A7F) == 74);
+  CHECK(max17048::percent(0x6500) == 100);  // топливомер бывает выше 100 % — не показываем
+  CHECK(max17048::rateTenthsPerHour(0) == 0);
+  CHECK(max17048::rateTenthsPerHour(uint16_t(-10)) == -21);  // −2,08 %/ч
+  CHECK(max17048::rateTenthsPerHour(5) == 10);
+  CHECK(max17048::versionOk(0x0012));
+  CHECK(max17048::versionOk(0x0011));
+  CHECK(!max17048::versionOk(0x0000));
+  CHECK(!max17048::versionOk(0xFFFF));
+  // Кривая Li-ion: края, узлы, середина между узлами, обратимость.
+  CHECK(liionPercentFromMilliVolts(4300) == 100);
+  CHECK(liionPercentFromMilliVolts(3000) == 0);
+  CHECK(liionPercentFromMilliVolts(3840) == 50);
+  CHECK(liionPercentFromMilliVolts(3830) == 48);
+  CHECK(liionMilliVoltsFromPercent(50) == 3840);
+  CHECK(liionMilliVoltsFromPercent(0) == 3270);
+  for (int p = 0; p <= 100; p += 5) CHECK(liionPercentFromMilliVolts(liionMilliVoltsFromPercent(p)) == p);
+
+  // HELLO: с топливомером — процент и скорость; без него — прежний JSON (его сверяют общие векторы).
+  Rig rig;
+  rig.platform.bat.percent = 73;
+  rig.platform.bat.hasRate = true;
+  rig.platform.bat.rateTenthsPerHour = -21;
+  Device& device = *rig.device;
+  char json[256];
+  device.statusJson(json, sizeof json);
+  CHECK(std::strstr(json, "\"batteryMv\":3910,\"batteryPct\":73,\"batteryRate\":-2.1,") != nullptr);
+  rig.platform.bat.rateTenthsPerHour = 5;
+  device.statusJson(json, sizeof json);
+  CHECK(std::strstr(json, "\"batteryRate\":0.5,") != nullptr);
+}
+
 int main() {
   testCrcAndHash();
   testFrameVectors();
@@ -512,6 +558,7 @@ int main() {
   testTimeouts();
   testDevice();
   testConnectivity();
+  testBattery();
   std::printf("%d checks, %d failed\n", g_checks, g_failures);
   return g_failures == 0 ? 0 : 1;
 }

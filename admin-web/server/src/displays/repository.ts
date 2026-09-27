@@ -14,6 +14,9 @@ export interface DisplayRow {
   hardware_id: string | null;
   fw_version: string | null;
   battery_mv: number | null;
+  /** От топливомера; null — нет его (процент — по напряжению). */
+  battery_pct: number | null;
+  battery_rate: number | null;
   rssi: number | null;
   last_seen_at: number | null;
   last_connected_at: number | null;
@@ -78,6 +81,7 @@ export class DisplayRepository {
   }
 
   delete(id: string): boolean {
+    this.db.prepare(`DELETE FROM display_battery_samples WHERE display_id = ?`).run(id);
     return this.db.prepare(`DELETE FROM displays WHERE id = ?`).run(id).changes > 0;
   }
 
@@ -98,12 +102,16 @@ export class DisplayRepository {
   }
 
   /** Связь есть и подпись HELLO сошлась. */
-  markSeen(id: string, at: number, info: { hardwareId?: string; fw?: string; batteryMv?: number; rssi?: number; displayedVersion: number }): void {
+  markSeen(
+    id: string,
+    at: number,
+    info: { hardwareId?: string; fw?: string; batteryMv?: number; batteryPct?: number; batteryRate?: number; rssi?: number; displayedVersion: number },
+  ): void {
     this.db
       .prepare(
         `UPDATE displays SET last_seen_at = @at, last_connected_at = @at,
            hardware_id = COALESCE(@hw, hardware_id), fw_version = COALESCE(@fw, fw_version),
-           battery_mv = COALESCE(@battery, battery_mv), rssi = COALESCE(@rssi, rssi),
+           battery_mv = COALESCE(@battery, battery_mv), battery_pct = @pct, battery_rate = @rate, rssi = COALESCE(@rssi, rssi),
            displayed_version = @displayed
          WHERE id = @id`,
       )
@@ -113,9 +121,29 @@ export class DisplayRepository {
         hw: typeof info.hardwareId === "string" ? info.hardwareId.slice(0, 64) : null,
         fw: typeof info.fw === "string" ? info.fw.slice(0, 32) : null,
         battery: Number.isInteger(info.batteryMv) ? info.batteryMv : null,
+        // Процент и скорость — не COALESCE: вынули топливомер — точка перестаёт их слать, старые не должны висеть вечно.
+        pct: Number.isInteger(info.batteryPct) && info.batteryPct! >= 0 && info.batteryPct! <= 100 ? info.batteryPct : null,
+        rate: typeof info.batteryRate === "number" && Number.isFinite(info.batteryRate) ? info.batteryRate : null,
         rssi: Number.isInteger(info.rssi) ? info.rssi : null,
         displayed: info.displayedVersion,
       });
+  }
+
+  /** Точка истории заряда — не чаще раза в minIntervalMs; заодно чистит старше keepMs. */
+  recordBattery(id: string, at: number, mv: number | null, pct: number | null, minIntervalMs: number, keepMs: number): void {
+    if (mv === null && pct === null) return;
+    const last = this.db.prepare(`SELECT MAX(at) AS at FROM display_battery_samples WHERE display_id = ?`).get(id) as { at: number | null };
+    if (last.at !== null && at - last.at < minIntervalMs) return;
+    this.db.prepare(`INSERT OR REPLACE INTO display_battery_samples (display_id, at, mv, pct) VALUES (?, ?, ?, ?)`).run(id, at, mv, pct);
+    this.db.prepare(`DELETE FROM display_battery_samples WHERE display_id = ? AND at < ?`).run(id, at - keepMs);
+  }
+
+  batterySamples(id: string, since: number): { at: number; mv: number | null; pct: number | null }[] {
+    return this.db.prepare(`SELECT at, mv, pct FROM display_battery_samples WHERE display_id = ? AND at >= ? ORDER BY at`).all(id, since) as {
+      at: number;
+      mv: number | null;
+      pct: number | null;
+    }[];
   }
 
   /** TCP-соединение открылось (подпись ещё не проверена) — для «последнее соединение». */

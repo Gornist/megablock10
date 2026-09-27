@@ -201,7 +201,7 @@ export type Severity = "crit" | "warn" | "info";
 
 export interface AttentionItem {
   id: string;
-  kind: "negative_balance" | "balance_jump" | "went_silent" | "node_exhausted_hot" | "revoke_repeat" | "override_undelivered" | "override_failed" | "shard_copies" | "transfer_stuck" | "duplicate_receive" | "balance_chain_break" | "balance_unexplained" | "old_version" | "mass_silence" | "reject_spike" | "rate_limited" | "secret_denied" | "server_slow" | "clock_skew" | "transfer_amount_mismatch" | "emission_spike" | "player_outlier" | "provision_conflict" | "sync_stuck";
+  kind: "negative_balance" | "balance_jump" | "went_silent" | "node_exhausted_hot" | "revoke_repeat" | "override_undelivered" | "override_failed" | "shard_copies" | "transfer_stuck" | "duplicate_receive" | "balance_chain_break" | "balance_unexplained" | "old_version" | "mass_silence" | "reject_spike" | "rate_limited" | "secret_denied" | "server_slow" | "clock_skew" | "transfer_amount_mismatch" | "emission_spike" | "player_outlier" | "provision_conflict" | "sync_stuck" | "display_battery";
   severity: Severity;
   title: string;
   detail: string;
@@ -362,7 +362,14 @@ export interface DisplayItem {
   hardwareId: string | null;
   fwVersion: string | null;
   batteryMv: number | null;
+  /** Уровень: по проценту, остатку в часах и (без топливомера) напряжению — пороги DISPLAY_BATTERY_*. */
   battery: BatteryLevel | null;
+  /** Заряд, %: от топливомера или по напряжению (batterySource). null — точка не шлёт заряд. */
+  batteryPct: number | null;
+  batterySource: "gauge" | "voltage" | null;
+  /** Примерно сколько часов осталось — по истории заряда; null — не разряжается заметно или данных пока мало. */
+  batteryHoursLeft: number | null;
+  batteryCharging: boolean;
   rssi: number | null;
   lastSeenAt: number | null;
   lastConnectedAt: number | null;

@@ -117,7 +117,8 @@ HELLO. Секрет — 32 байта (в дашборде — 64 hex-симво
 | NACK | 0x22 | дисплей | u8 код ‖ необязательный текст; seq — показанная версия |
 | OK | 0x23 | дисплей | — ; команда принята |
 
-JSON-статус HELLO (все поля необязательны): `{"fw":"0.1.0","hw":"<MAC>","batteryMv":3910,"rssi":-61,"ip":"10.x.x.217","backlight":0}`.
+JSON-статус HELLO (все поля необязательны): `{"fw":"0.1.0","hw":"<MAC>","batteryMv":3910,"batteryPct":73,"batteryRate":-2.1,"rssi":-61,"ip":"10.x.x.217","backlight":0}`.
+`batteryPct` (0…100) и `batteryRate` (% в час, минус — разряд) — только с топливомером MAX17048; без него — одно `batteryMv`.
 
 Коды NACK: 1 BAD_MAGIC, 2 BAD_VERSION, 3 BAD_LENGTH, 4 BAD_CRC, 5 AUTH_FAILED, 6 STALE_VERSION, 7 BAD_FORMAT, 8 WRONG_DEVICE,
 9 BUSY, 10 DISPLAY_FAILED, 11 UNSUPPORTED_TYPE.
@@ -168,8 +169,12 @@ JSON-статус HELLO (все поля необязательны): `{"fw":"0.
   из flash.
 - **Подсветка:** GPIO → MOSFET → светодиоды, ШИМ (LEDC) на 4 уровня; при загрузке — выключена. Кнопка на корпусе: включить на
   10–20 с. Команда BACKLIGHT с секундами — включить и выключить по таймеру.
-- **Батарея:** если плата позволяет — напряжение (делитель на АЦП) в HELLO как `batteryMv`. Проценты не считать: сервер
-  показывает пороги OK / LOW (≤ 3,5 В) / CRITICAL (≤ 3,3 В), пороги — `DISPLAY_BATTERY_*_MV`.
+- **Батарея:** на CrowPanel измерения нет — доработка: топливомер **MAX17048** по I²C (SDA 8, SCL 9, питание от «+»
+  элементов) шлёт в HELLO `batteryMv`, `batteryPct`, `batteryRate`; запасной вариант — делитель 1:1 на вывод 8, тогда только
+  `batteryMv`, процент сервер считает по кривой Li-ion (со сглаживанием — под нагрузкой напряжение проседает). В коллекторе у
+  каждой точки — батарейка, % и «≈ N ч» (остаток по наклону заряда за 2 ч, пока истории мало — по `batteryRate`), севшие —
+  сверху и в «Требует внимания». Уровни: МАЛО — ≤ 25 % или < 12 ч, КРИТИЧНО — ≤ 10 % или < 4 ч (без топливомера ещё и
+  ≤ 3,5 / 3,3 В). Подробно — [sound-nodes.md](sound-nodes.md), «Питание и батарея».
 - **TEST:** экран «DISPLAY TEST / ID / Wi-Fi / IP / RSSI / FW» на N секунд, затем снова последний кадр.
 - **Serial-лог:** загрузка, Wi-Fi, каждое соединение, принятый/отвергнутый кадр с кодом, обновление панели.
 - **Настройки (NVS):** SSID, пароль Wi-Fi, id дисплея, секрет (32 байта), TCP-порт, ширина/высота. У каждой платы свой секрет —
@@ -231,7 +236,9 @@ retryAt}`; `phase` — `QUEUED` (очередь или лимит соедине
 Настройки сервера (переменные окружения): `DISPLAY_CONNECT_TIMEOUT_MS` (2000), `DISPLAY_HELLO_TIMEOUT_MS` (2000),
 `DISPLAY_RECEIVED_TIMEOUT_MS` (5000), `DISPLAY_DISPLAYED_TIMEOUT_MS` (10000), `DISPLAY_COMMAND_TIMEOUT_MS` (5000),
 `DISPLAY_RETRY_DELAYS_MS` (`1000,3000`), `DISPLAY_MAX_CONCURRENT` (20), `DISPLAY_PROBE_INTERVAL_MS` (30000, `0` — не опрашивать),
-`DISPLAY_ONLINE_WINDOW_MS`, `DISPLAY_BATTERY_LOW_MV` (3500), `DISPLAY_BATTERY_CRITICAL_MV` (3300).
+`DISPLAY_ONLINE_WINDOW_MS`, `DISPLAY_BATTERY_LOW_MV` (3500), `DISPLAY_BATTERY_CRITICAL_MV` (3300), `DISPLAY_BATTERY_LOW_PCT` (25),
+`DISPLAY_BATTERY_CRITICAL_PCT` (10), `DISPLAY_BATTERY_LOW_HOURS` (12), `DISPLAY_BATTERY_CRITICAL_HOURS` (4), история заряда —
+`DISPLAY_BATTERY_SAMPLE_MS` (5 мин), `DISPLAY_BATTERY_WINDOW_MS` (2 ч, по ней остаток), `DISPLAY_BATTERY_KEEP_MS` (4 суток).
 
 ## Без железа
 

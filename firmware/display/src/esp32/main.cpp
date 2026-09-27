@@ -200,12 +200,14 @@ class Esp32Platform : public Platform {
     return ip_;
   }
   int rssi() override { return WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0; }
-  int batteryMillivolts() override {
+  // Топливомер MAX17048, если впаян; иначе делитель на АЦП (только мВ, % посчитает сервер); иначе — ничего.
+  BatteryStatus battery() override {
+    BatteryStatus b;
+    if (fuelGaugeRead(b)) return b;
 #if MB10_BATTERY_ADC_PIN >= 0
-    return int(analogReadMilliVolts(MB10_BATTERY_ADC_PIN)) * MB10_BATTERY_DIVIDER;
-#else
-    return -1;
+    b.milliVolts = int(analogReadMilliVolts(MB10_BATTERY_ADC_PIN)) * MB10_BATTERY_DIVIDER;
 #endif
+    return b;
   }
 
  private:
@@ -419,6 +421,7 @@ void setup() {
   pinMode(MB10_BUTTON_PIN, INPUT_PULLUP);
 #endif
   backlight.begin();
+  fuelGaugeBegin();
   panel.begin();
   if (!storage.begin()) logLine("storage: LittleFS mount failed");
 #ifdef MB10_SELFTEST

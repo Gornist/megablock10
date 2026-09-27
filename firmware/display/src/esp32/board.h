@@ -2,6 +2,7 @@
 // Общее для файлов прошивки платы (src/esp32): журнал, настройки из NVS, самопроверка для Wokwi.
 #include <Arduino.h>
 
+#include "battery.h"
 #include "device.h"
 
 namespace mb10esp {
@@ -26,6 +27,10 @@ struct Settings {
 Settings loadSettings();
 // Строка из дашборда (DisplaySecretResponse.provisioning + Wi-Fi) → NVS. false — в error, что не так.
 bool saveSettingsJson(const char* json, String& error);
+
+// Топливомер MAX17048 (fuel_gauge.cpp): false — модуля нет на I²C.
+bool fuelGaugeBegin();
+bool fuelGaugeRead(mb10d::BatteryStatus& out);
 
 #ifdef MB10_SELFTEST
 // Сборка для Wokwi: вшитые настройки и самопроверка изнутри платы (selftest_task.cpp).

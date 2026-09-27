@@ -151,6 +151,16 @@ CREATE TABLE IF NOT EXISTS displays (
   updated_at        INTEGER NOT NULL
 );
 
+-- История заряда точек (displays/battery.ts): точка раз в DISPLAY_BATTERY_SAMPLE_MS из HELLO — по ней коллектор считает
+-- «примерно сколько часов осталось». Хранится DISPLAY_BATTERY_KEEP_MS (4 суток), старое чистится при записи.
+CREATE TABLE IF NOT EXISTS display_battery_samples (
+  display_id TEXT NOT NULL,
+  at         INTEGER NOT NULL,
+  mv         INTEGER,
+  pct        INTEGER,
+  PRIMARY KEY (display_id, at)
+);
+
 -- masters/sessions/audit_master — см. lib/auth.ts (ensureAuthSchema),
 -- появились позже основной схемы, вынесены отдельно, чтобы не мешать
 -- auth-логику с моделью данных игры.
@@ -203,6 +213,15 @@ const MIGRATIONS: Migration[] = [
     // По нему свёртка ставит правку между записями устройства, а не по времени прихода на сервер (см. lib/projection.ts).
     version: 3,
     migrate: (db) => addColumnIfMissing(db, "master_pending", "applied_at_seq", "INTEGER"),
+  },
+  {
+    // Заряд точки от топливомера MAX17048 (docs/sound-nodes.md, «Батарея»): процент и скорость, % в час (минус — разряд).
+    // Без топливомера точка шлёт только battery_mv, процент считает сервер (displays/battery.ts).
+    version: 4,
+    migrate: (db) => {
+      addColumnIfMissing(db, "displays", "battery_pct", "INTEGER");
+      addColumnIfMissing(db, "displays", "battery_rate", "REAL");
+    },
   },
 ];
 

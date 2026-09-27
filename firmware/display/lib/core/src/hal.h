@@ -2,6 +2,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "battery.h"
+
 // Всё, чем плата отличается от ПК, — за этими интерфейсами. Реализации: src/esp32 (CrowPanel) и src/host (программа для ПК).
 // В ядре (lib/core) нет ни одного #ifdef платформы.
 namespace mb10d {
@@ -50,8 +52,8 @@ class Platform {
   virtual const char* ipAddress() = 0;
   // 0 — неизвестно.
   virtual int rssi() = 0;
-  // < 0 — измерения нет на этой плате.
-  virtual int batteryMillivolts() = 0;
+  // Заряд батареи: топливомер MAX17048, делитель или ничего (поля < 0 — не измеряется на этой плате).
+  virtual BatteryStatus battery() = 0;
 };
 
 }  // namespace mb10d

@@ -42,7 +42,8 @@ class Device {
   size_t frameSize() const { return frameBytes(cfg_.width, cfg_.height); }
   uint8_t backlightLevel() const { return backlight_level_; }
 
-  // JSON-статус для HELLO: {"fw":…,"hw":…,"ip":…,"rssi":…,"batteryMv":…,"backlight":…} (отсутствующее — пропускается).
+  // JSON-статус для HELLO: {"fw":…,"hw":…,"ip":…,"rssi":…,"batteryMv":…,"batteryPct":…,"batteryRate":…,"backlight":…}
+  // (отсутствующее — пропускается).
   size_t statusJson(char* out, size_t cap);
 
   // Новый кадр (уже проверенный): во flash, затем на панель. false — не записался или панель не обновилась.

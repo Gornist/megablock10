@@ -1,6 +1,7 @@
 import type { AttentionItem, Severity } from "../apiTypes.js";
 import type { Db } from "../db/index.js";
 import { buildAttentionContext, type AttentionRule } from "./attentionRules/context.js";
+import { displayBatteryLow } from "./attentionRules/displayRules.js";
 import { versionMismatch, pulseAnomalies, playerOutliers, clockSkew, syncStuck } from "./attentionRules/fleetRules.js";
 import { balanceJump, negativeBalance, nodeExhaustedHot, overrideFailed, overrideUndelivered, repeatedRevoke, shardCopies, wentSilent } from "./attentionRules/gameRules.js";
 import {
@@ -28,6 +29,7 @@ const RULES: AttentionRule[] = [
   shardCopies,
   versionMismatch,
   syncStuck,
+  displayBatteryLow,
   pulseAnomalies,
   playerOutliers,
   clockSkew,

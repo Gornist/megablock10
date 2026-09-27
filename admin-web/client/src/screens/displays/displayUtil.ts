@@ -138,3 +138,32 @@ export function scaleWarning(scale: number): string | null {
   if (scale === 2) return "2 пикселя на модуль — читается только вблизи; проверьте телефоном на месте.";
   return null;
 }
+
+/** «≈ 40 мин», «≈ 31 ч», «≈ 4,5 сут» — остаток заряда. */
+export function formatHoursLeft(h: number): string {
+  if (h < 1) return `≈ ${Math.max(1, Math.round(h * 60))} мин`;
+  if (h < 72) return `≈ ${Math.round(h)} ч`;
+  return `≈ ${(h / 24).toFixed(1).replace(".", ",")} сут`;
+}
+
+/** «73 % · ≈ 31 ч», «73 % · заряжается», «~70 %» (по напряжению — приблизительно), «—». */
+export function batteryText(
+  d: Pick<DisplayItem, "batteryPct" | "batteryHoursLeft" | "batteryCharging"> & { batterySource?: DisplayItem["batterySource"] },
+): string {
+  if (d.batteryPct === null) return "—";
+  const tail = d.batteryCharging ? " · заряжается" : d.batteryHoursLeft !== null ? ` · ${formatHoursLeft(d.batteryHoursLeft)}` : "";
+  return `${d.batterySource === "voltage" ? "~" : ""}${d.batteryPct} %${tail}`;
+}
+
+const BATTERY_RANK = { CRITICAL: 0, LOW: 1, OK: 2 } as const;
+
+/** Порядок «сначала севшие»: КРИТИЧНО → МАЛО → НОРМА → без данных; внутри — меньше часов, затем меньше процентов. */
+export function byBatteryFirst(a: DisplayItem, b: DisplayItem): number {
+  const rank = (d: DisplayItem) => (d.battery ? BATTERY_RANK[d.battery] : 3);
+  return (
+    rank(a) - rank(b) ||
+    (a.batteryHoursLeft ?? Infinity) - (b.batteryHoursLeft ?? Infinity) ||
+    (a.batteryPct ?? Infinity) - (b.batteryPct ?? Infinity) ||
+    a.id.localeCompare(b.id)
+  );
+}

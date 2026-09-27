@@ -1,5 +1,6 @@
 import type { Socket } from "node:net";
-import type { BatteryLevel, DisplayItem, DisplayPushOutcome, DisplayPushPhase, DisplayPushState, DisplayStatus } from "../apiTypes.js";
+import { estimateBattery, type BatteryEstimate } from "./battery.js";
+import type { DisplayItem, DisplayPushOutcome, DisplayPushPhase, DisplayPushState, DisplayStatus } from "../apiTypes.js";
 import type { Db } from "../db/index.js";
 import { positiveNumber } from "../lib/envNumber.js";
 import { DisplayFailure, DisplaySession, expectReply } from "./connection.js";
@@ -36,6 +37,15 @@ export interface DisplayManagerConfig {
   onlineWindowMs: number;
   batteryLowMv: number;
   batteryCriticalMv: number;
+  /** МАЛО / КРИТИЧНО по проценту и по остатку в часах (docs/sound-nodes.md, «Батарея»). */
+  batteryLowPct: number;
+  batteryCriticalPct: number;
+  batteryLowHours: number;
+  batteryCriticalHours: number;
+  /** История заряда: точка не чаще раза в sampleMs, хранится keepMs, остаток — по последним windowMs. */
+  batterySampleMs: number;
+  batteryKeepMs: number;
+  batteryWindowMs: number;
   log: (line: string) => void;
 }
 
@@ -52,6 +62,13 @@ export const DEFAULT_DISPLAY_CONFIG: DisplayManagerConfig = {
   // Li-ion 21700: ниже 3,5 В остаётся немного, ниже 3,3 В — пора менять (без модели разряда — только пороги, не проценты).
   batteryLowMv: 3500,
   batteryCriticalMv: 3300,
+  batteryLowPct: 25,
+  batteryCriticalPct: 10,
+  batteryLowHours: 12,
+  batteryCriticalHours: 4,
+  batterySampleMs: 5 * 60_000,
+  batteryKeepMs: 4 * 24 * 3_600_000,
+  batteryWindowMs: 2 * 3_600_000,
   log: (line) => console.log(line),
 };
 
@@ -78,7 +95,34 @@ export function displayConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Omit
     onlineWindowMs: positiveNumber(env.DISPLAY_ONLINE_WINDOW_MS, probe > 0 ? Math.round(probe * 2.5) : d.onlineWindowMs),
     batteryLowMv: positiveNumber(env.DISPLAY_BATTERY_LOW_MV, d.batteryLowMv),
     batteryCriticalMv: positiveNumber(env.DISPLAY_BATTERY_CRITICAL_MV, d.batteryCriticalMv),
+    batteryLowPct: positiveNumber(env.DISPLAY_BATTERY_LOW_PCT, d.batteryLowPct),
+    batteryCriticalPct: positiveNumber(env.DISPLAY_BATTERY_CRITICAL_PCT, d.batteryCriticalPct),
+    batteryLowHours: positiveNumber(env.DISPLAY_BATTERY_LOW_HOURS, d.batteryLowHours),
+    batteryCriticalHours: positiveNumber(env.DISPLAY_BATTERY_CRITICAL_HOURS, d.batteryCriticalHours),
+    batterySampleMs: positiveNumber(env.DISPLAY_BATTERY_SAMPLE_MS, d.batterySampleMs),
+    batteryKeepMs: positiveNumber(env.DISPLAY_BATTERY_KEEP_MS, d.batteryKeepMs),
+    batteryWindowMs: positiveNumber(env.DISPLAY_BATTERY_WINDOW_MS, d.batteryWindowMs),
   };
+}
+
+/** Заряд точки по её строке и истории — общее для DisplayItem и правила «Требует внимания» (lib/attentionRules). */
+export function displayBattery(repo: DisplayRepository, row: DisplayRow, c: Omit<DisplayManagerConfig, "log">, now: number): BatteryEstimate {
+  if (row.battery_mv === null && row.battery_pct === null) return { percent: null, hoursLeft: null, charging: false, level: null, source: null };
+  const history = repo.batterySamples(row.id, now - Math.max(c.batteryWindowMs, 15 * 60_000));
+  return estimateBattery(
+    { mv: row.battery_mv, pct: row.battery_pct, rate: row.battery_rate, at: row.last_seen_at },
+    history,
+    {
+      lowMv: c.batteryLowMv,
+      criticalMv: c.batteryCriticalMv,
+      lowPct: c.batteryLowPct,
+      criticalPct: c.batteryCriticalPct,
+      lowHours: c.batteryLowHours,
+      criticalHours: c.batteryCriticalHours,
+      windowMs: c.batteryWindowMs,
+    },
+    now,
+  );
 }
 
 export interface OpResult {
@@ -155,10 +199,7 @@ export class DisplayManager {
     else if (row.last_error) status = "ERROR";
     else if (row.last_seen_at !== null && now - row.last_seen_at <= this.config.onlineWindowMs) status = "ONLINE";
     else status = "OFFLINE";
-    let battery: BatteryLevel | null = null;
-    if (row.battery_mv !== null) {
-      battery = row.battery_mv <= this.config.batteryCriticalMv ? "CRITICAL" : row.battery_mv <= this.config.batteryLowMv ? "LOW" : "OK";
-    }
+    const bat = this.batteryOf(row, now);
     return {
       id: row.id,
       name: row.name,
@@ -171,7 +212,11 @@ export class DisplayManager {
       hardwareId: row.hardware_id,
       fwVersion: row.fw_version,
       batteryMv: row.battery_mv,
-      battery,
+      battery: bat.level,
+      batteryPct: bat.percent,
+      batterySource: bat.source,
+      batteryHoursLeft: bat.hoursLeft,
+      batteryCharging: bat.charging,
       rssi: row.rssi,
       lastSeenAt: row.last_seen_at,
       lastConnectedAt: row.last_connected_at,
@@ -185,6 +230,11 @@ export class DisplayManager {
       pendingVersion: pendingImage?.version ?? null,
       push: this.progress.get(row.id) ?? null,
     };
+  }
+
+  /** Заряд для экрана: процент (топливомер или по напряжению), остаток по истории, уровень по порогам. */
+  batteryOf(row: DisplayRow, now = Date.now()): BatteryEstimate {
+    return displayBattery(this.repo, row, this.config, now);
   }
 
   list(): DisplayItem[] {
@@ -395,9 +445,13 @@ export class DisplayManager {
         hardwareId: hello.status.hw,
         fw: hello.status.fw,
         batteryMv: hello.status.batteryMv,
+        batteryPct: hello.status.batteryPct,
+        batteryRate: hello.status.batteryRate,
         rssi: hello.status.rssi,
         displayedVersion: hello.displayedVersion,
       });
+      const seen = this.repo.get(row.id);
+      if (seen) this.repo.recordBattery(row.id, now, seen.battery_mv, seen.battery_pct, this.config.batterySampleMs, this.config.batteryKeepMs);
       if (hello.width !== row.width || hello.height !== row.height) {
         throw new DisplayFailure("CONFIG", `panel is ${hello.width}×${hello.height}, display record says ${row.width}×${row.height}`, false, NackCode.BAD_FORMAT);
       }

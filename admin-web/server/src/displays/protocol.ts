@@ -119,6 +119,9 @@ export interface HelloStatus {
   /** Аппаратный id (MAC) — для сопоставления платы с записью дисплея. */
   hw?: string;
   batteryMv?: number;
+  /** Топливомер MAX17048: заряд, % (0…100) и скорость, % в час (минус — разряд). Без топливомера — не шлются. */
+  batteryPct?: number;
+  batteryRate?: number;
   rssi?: number;
   ip?: string;
   /** Состояние подсветки (BacklightLevel). */

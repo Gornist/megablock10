@@ -3,7 +3,10 @@
 // же, что у `npm run mock-display`, так что это прямая замена mock-дисплею.
 //
 //   display_host --id display-017 --secret <64 hex> [--port 47200] [--width 792 --height 272] [--delay 3000] [--out dir]
-//                [--header-timeout 2000 --payload-timeout 5000] [--watchdog-ms 15000] [--battery-mv 3900]
+//                [--header-timeout 2000 --payload-timeout 5000] [--watchdog-ms 15000]
+//                [--battery-pct 80 | --battery-mv 3900] [--battery-drain 1.5]
+//   батарея: --battery-pct — как с топливомером MAX17048 (%, мВ, скорость), --battery-mv — как с делителем (только мВ);
+//   --battery-drain — разряд, % в час от запуска (для проверки оценки остатка в коллекторе)
 //   сбои (снимаются при «перезагрузке»): --fail-display N, --crash-on-save N, --hang-on-image N
 //
 // Перезагрузка (REBOOT, сторож) — повторный exec самого себя: кадр и версия восстанавливаются из каталога, как из flash.
@@ -37,7 +40,8 @@ namespace {
 struct Options {
   std::string id, secret, host = "0.0.0.0", out = "./fw-host";
   int port = 47200, width = 792, height = 272, delayMs = 3000, headerTimeoutMs = 2000, payloadTimeoutMs = 5000, watchdogMs = 15000;
-  int batteryMv = -1, failDisplay = 0, crashOnSave = 0, hangOnImage = 0;
+  int batteryMv = -1, batteryPct = -1, failDisplay = 0, crashOnSave = 0, hangOnImage = 0;
+  double batteryDrain = 0;
 };
 
 // Для сторожа: обработчик сигнала может только exec — путь и аргументы готовятся заранее.
@@ -80,7 +84,7 @@ bool mkdirs(const std::string& dir) {
 
 class HostPlatform : public Platform {
  public:
-  HostPlatform(const Options& o) : o_(o) { hw_ = "host-" + o.id; }
+  HostPlatform(const Options& o) : o_(o), started_(nowMs()) { hw_ = "host-" + o.id; }
   uint32_t nowMs() override {
     timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -109,10 +113,26 @@ class HostPlatform : public Platform {
   const char* hardwareId() override { return hw_.c_str(); }
   const char* ipAddress() override { return o_.host == "0.0.0.0" ? "127.0.0.1" : o_.host.c_str(); }
   int rssi() override { return 0; }
-  int batteryMillivolts() override { return o_.batteryMv; }
+  BatteryStatus battery() override {
+    BatteryStatus b;
+    bool gauge = o_.batteryPct >= 0;
+    int start = gauge ? o_.batteryPct : o_.batteryMv >= 0 ? liionPercentFromMilliVolts(o_.batteryMv) : -1;
+    if (start < 0) return b;
+    double hours = double(nowMs() - started_) / 3.6e6;
+    double pct = double(start) - o_.batteryDrain * hours;
+    if (pct < 0) pct = 0;
+    b.milliVolts = o_.batteryDrain > 0 || gauge ? liionMilliVoltsFromPercent(int(pct + 0.5)) : o_.batteryMv;
+    if (gauge) {
+      b.percent = int(pct + 0.5);
+      b.hasRate = true;
+      b.rateTenthsPerHour = pct > 0 ? -int(o_.batteryDrain * 10 + 0.5) : 0;
+    }
+    return b;
+  }
 
  private:
   const Options& o_;
+  uint32_t started_;
   std::string hw_;
 };
 
@@ -257,6 +277,8 @@ bool parseArgs(int argc, char** argv, Options& o) {
     else if (a == "--payload-timeout") o.payloadTimeoutMs = std::atoi(val());
     else if (a == "--watchdog-ms") o.watchdogMs = std::atoi(val());
     else if (a == "--battery-mv") o.batteryMv = std::atoi(val());
+    else if (a == "--battery-pct") o.batteryPct = std::atoi(val());
+    else if (a == "--battery-drain") o.batteryDrain = std::atof(val());
     else if (a == "--fail-display") o.failDisplay = std::atoi(val());
     else if (a == "--crash-on-save") o.crashOnSave = std::atoi(val());
     else if (a == "--hang-on-image") o.hangOnImage = std::atoi(val());
@@ -307,7 +329,8 @@ int main(int argc, char** argv) {
   if (!parseArgs(argc, argv, o)) {
     std::fprintf(stderr,
                  "usage: display_host --id <id> --secret <64 hex> [--port 47200] [--width 792 --height 272] [--delay 3000] [--out dir]\n"
-                 "       [--header-timeout 2000 --payload-timeout 5000 --watchdog-ms 15000 --battery-mv N]\n"
+                 "       [--header-timeout 2000 --payload-timeout 5000 --watchdog-ms 15000]\n"
+                 "       [--battery-pct N | --battery-mv N] [--battery-drain PCT_PER_HOUR]\n"
                  "       [--fail-display N --crash-on-save N --hang-on-image N]\n");
     return 2;
   }

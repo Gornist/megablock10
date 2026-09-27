@@ -135,7 +135,16 @@ size_t Device::statusJson(char* out, size_t cap) {
   };
   if (platform_.ipAddress()[0]) append(",\"ip\":\"%s\"", platform_.ipAddress());
   if (platform_.rssi() != 0) append(",\"rssi\":%d", platform_.rssi());
-  if (platform_.batteryMillivolts() >= 0) append(",\"batteryMv\":%d", platform_.batteryMillivolts());
+  BatteryStatus bat = platform_.battery();
+  if (bat.milliVolts >= 0) append(",\"batteryMv\":%d", bat.milliVolts);
+  // Процент и скорость — только с топливомером; без него JSON прежний (общие векторы с сервером).
+  if (bat.percent >= 0) append(",\"batteryPct\":%d", bat.percent);
+  if (bat.hasRate) {
+    int r = bat.rateTenthsPerHour, a = r < 0 ? -r : r;
+    append(",\"batteryRate\":%s", r < 0 ? "-" : "");
+    append("%d", a / 10);
+    append(".%d", a % 10);
+  }
   append(",\"backlight\":%u", unsigned(backlight_level_));
   append("%s", "}");
   return n < 0 || size_t(n) >= cap ? 0 : size_t(n);

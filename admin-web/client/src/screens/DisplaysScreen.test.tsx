@@ -9,9 +9,32 @@ import { display } from "../test/displayFixtures";
 vi.mock("../api/client");
 
 const list: DisplayItem[] = [
-  display({ id: "display-017", name: "Точка 17", status: "ONLINE", displayedVersion: 5, desiredVersion: 5, batteryMv: 3900, battery: "OK" }),
+  display({
+    id: "display-017",
+    name: "Точка 17",
+    status: "ONLINE",
+    displayedVersion: 5,
+    desiredVersion: 5,
+    batteryMv: 3900,
+    battery: "OK",
+    batteryPct: 72,
+    batterySource: "gauge",
+    batteryHoursLeft: 31,
+  }),
   display({ id: "display-018", name: "Точка 18", status: "OFFLINE", lastSeenAt: null, displayedVersion: null, desiredVersion: null, desiredLabel: null }),
-  display({ id: "display-019", name: "Точка 19", status: "ERROR", lastError: "CONNECT: no TCP connection", displayedVersion: 2, desiredVersion: 3 }),
+  display({
+    id: "display-019",
+    name: "Точка 19",
+    status: "ERROR",
+    lastError: "CONNECT: no TCP connection",
+    displayedVersion: 2,
+    desiredVersion: 3,
+    batteryMv: 3650,
+    battery: "CRITICAL",
+    batteryPct: 6,
+    batterySource: "gauge",
+    batteryHoursLeft: 0.5,
+  }),
 ];
 
 const preview: DisplayPreview = {
@@ -33,7 +56,16 @@ describe("DisplaysScreen", () => {
     const { container } = render(<DisplaysScreen />);
     await screen.findByText("display-017");
     const badges = [...container.querySelectorAll(".panel .panel .badge")].map((b) => b.textContent);
-    expect(badges).toEqual(["на связи", "3.90 В", "нет связи", "ошибка"]);
+    // По умолчанию — «сначала севшие»: критичная батарея первой, без данных о заряде — последней.
+    expect(badges).toEqual(["ошибка", "на связи", "нет связи"]);
+    expect(screen.getByText("6 % · ≈ 30 мин")).toBeTruthy();
+    expect(screen.getByText("72 % · ≈ 31 ч")).toBeTruthy();
+    expect(container.querySelector(".battery-none .battery-text")?.textContent).toBe("—");
+    expect(container.querySelector(".battery-critical")).toBeTruthy();
+    const tiles = [...container.querySelectorAll(".stat-tile")].map((t) => t.textContent);
+    expect(tiles).toContain("1батарея: критично");
+    fireEvent.change(screen.getByLabelText("порядок"), { target: { value: "id" } });
+    expect([...container.querySelectorAll(".panel .panel .badge")].map((b) => b.textContent)).toEqual(["на связи", "нет связи", "ошибка"]);
     expect(screen.getByText(/CONNECT: no TCP connection/)).toBeTruthy();
     expect(screen.getByText(/не дошло/)).toBeTruthy();
     expect(screen.getAllByText("Повторить")).toHaveLength(1);

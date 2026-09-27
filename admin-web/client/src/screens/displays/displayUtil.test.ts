@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { display } from "../../test/displayFixtures";
 import type { DisplayPushState } from "../../api/types";
-import { phaseText, pushProgress, pushStep, scaleWarning, screenState } from "./displayUtil";
+import { batteryText, byBatteryFirst, formatHoursLeft, phaseText, pushProgress, pushStep, scaleWarning, screenState } from "./displayUtil";
 
 const push = (over: Partial<DisplayPushState> = {}): DisplayPushState => ({
   version: 5,
@@ -82,5 +82,32 @@ describe("scaleWarning", () => {
     expect(scaleWarning(1)).toMatch(/не прочтёт/);
     expect(scaleWarning(2)).toMatch(/вблизи/);
     expect(scaleWarning(3)).toBeNull();
+  });
+});
+
+describe("батарея", () => {
+  it("остаток: минуты, часы, сутки", () => {
+    expect(formatHoursLeft(0.4)).toBe("≈ 24 мин");
+    expect(formatHoursLeft(31.4)).toBe("≈ 31 ч");
+    expect(formatHoursLeft(108)).toBe("≈ 4,5 сут");
+  });
+
+  it("подпись: процент и остаток, зарядка, нет данных", () => {
+    expect(batteryText({ batteryPct: 73, batteryHoursLeft: 31, batteryCharging: false })).toBe("73 % · ≈ 31 ч");
+    expect(batteryText({ batteryPct: 40, batteryHoursLeft: null, batteryCharging: true })).toBe("40 % · заряжается");
+    expect(batteryText({ batteryPct: 90, batteryHoursLeft: null, batteryCharging: false })).toBe("90 %");
+    expect(batteryText({ batteryPct: null, batteryHoursLeft: null, batteryCharging: false })).toBe("—");
+    expect(batteryText({ batteryPct: 70, batteryHoursLeft: null, batteryCharging: false, batterySource: "voltage" })).toBe("~70 %");
+  });
+
+  it("сначала севшие: критично → мало → норма → без данных, внутри — по остатку", () => {
+    const list = [
+      display({ id: "a", battery: null, batteryPct: null }),
+      display({ id: "b", battery: "OK", batteryPct: 90, batteryHoursLeft: 60 }),
+      display({ id: "c", battery: "LOW", batteryPct: 30, batteryHoursLeft: 9 }),
+      display({ id: "d", battery: "CRITICAL", batteryPct: 8, batteryHoursLeft: 2 }),
+      display({ id: "e", battery: "LOW", batteryPct: 22, batteryHoursLeft: 20 }),
+    ];
+    expect([...list].sort(byBatteryFirst).map((d) => d.id)).toEqual(["d", "c", "e", "b", "a"]);
   });
 });
