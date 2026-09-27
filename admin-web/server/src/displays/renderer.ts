@@ -1,5 +1,5 @@
 import { deflateSync } from "node:zlib";
-import { qrMatrix } from "../lib/qrImage.js";
+import { qrMatrix, type QrErrorCorrection } from "../lib/qrImage.js";
 import { crc32 } from "./protocol.js";
 
 /**
@@ -52,9 +52,15 @@ function fillRect(data: Buffer, stride: number, x0: number, y0: number, w: numbe
   }
 }
 
-export function renderQrForDisplay(qrText: string, width: number, height: number, quietModules = DEFAULT_QUIET_MODULES): RenderedQr {
+export function renderQrForDisplay(
+  qrText: string,
+  width: number,
+  height: number,
+  quietModules = DEFAULT_QUIET_MODULES,
+  errorCorrection?: QrErrorCorrection,
+): RenderedQr {
   if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) throw new Error("display size must be positive integers");
-  const matrix = qrMatrix(qrText);
+  const matrix = qrMatrix(qrText, errorCorrection);
   const withQuiet = matrix.size + 2 * quietModules;
   const scale = Math.floor(Math.min(width, height) / withQuiet);
   if (scale < 1) {

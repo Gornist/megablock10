@@ -8,6 +8,8 @@ import QRCode from "qrcode";
  */
 export const QR_ERROR_CORRECTION = "M" as const;
 
+export type QrErrorCorrection = "L" | "M" | "Q" | "H";
+
 export interface QrMatrix {
   /** Модулей по стороне (без тихой зоны). */
   size: number;
@@ -17,8 +19,9 @@ export interface QrMatrix {
   dark(row: number, col: number): boolean;
 }
 
-export function qrMatrix(text: string): QrMatrix {
-  const qr = QRCode.create(text, { errorCorrectionLevel: QR_ERROR_CORRECTION });
+/** errorCorrection — только для экспериментов (лист печати для проверки читаемости); печать и дисплей всегда на QR_ERROR_CORRECTION. */
+export function qrMatrix(text: string, errorCorrection: QrErrorCorrection = QR_ERROR_CORRECTION): QrMatrix {
+  const qr = QRCode.create(text, { errorCorrectionLevel: errorCorrection });
   const { size } = qr.modules;
   return { size, version: qr.version, dark: (row, col) => qr.modules.get(row, col) === 1 };
 }
