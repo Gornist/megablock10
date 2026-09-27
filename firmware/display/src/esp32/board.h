@@ -32,12 +32,21 @@ bool saveSettingsJson(const char* json, String& error);
 bool fuelGaugeBegin();
 bool fuelGaugeRead(mb10d::BatteryStatus& out);
 
+// Звук (audio.cpp): карта microSD и вывод I²S. audioBegin — смонтировать карту и запустить задачу звука; audioPoll — из
+// основного цикла (карту вставили/вынули).
+mb10d::SoundCard& audioCard();
+mb10d::AudioOut* audioBegin();
+void audioPoll();
+
 #ifdef MB10_SELFTEST
 // Сборка для Wokwi: вшитые настройки и самопроверка изнутри платы (selftest_task.cpp).
 Settings selftestSettings();
 void startSelftest(const Settings& settings);
 // Самопроверка просит основной цикл зависнуть — проверить сброс сторожем.
 extern volatile bool selftestHang;
+// Звук в самопроверке: положить трек на карту; сколько сэмплов декодировал MP3 с загрузки.
+bool audioWriteTrack(const char* name, const uint8_t* data, size_t len);
+uint32_t audioDecodedSamples();
 #endif
 
 }  // namespace mb10esp

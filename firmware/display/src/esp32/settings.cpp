@@ -25,6 +25,7 @@ Settings mb10esp::loadSettings() {
   s.gateway = p.getString("gw", "");
   s.subnet = p.getString("mask", "");
   s.dns = p.getString("dns", "");
+  s.cfg.audio = p.getBool("audio", false);
   p.end();
   if (id.isEmpty() || id.length() > kDeviceIdSize || keyLen != kKeySize || s.ssid.isEmpty()) return s;
   snprintf(s.cfg.deviceId, sizeof s.cfg.deviceId, "%s", id.c_str());
@@ -33,7 +34,8 @@ Settings mb10esp::loadSettings() {
 }
 
 // Строка из дашборда (DisplaySecretResponse.provisioning + Wi-Fi): config {"id":…,"secret":…,"port":…,"width":…,"height":…,
-// "wifiSsid":…,"wifiPassword":…[, "ip":…,"gateway":…,"subnet":…,"dns":…]}
+// "wifiSsid":…,"wifiPassword":…[, "ip":…,"gateway":…,"subnet":…,"dns":…][, "roles":["display","audio"]]}
+// roles с "audio" (или "audio":true) — точка со звуковой платой (docs/sound-nodes.md).
 bool mb10esp::saveSettingsJson(const char* json, String& error) {
   JsonDocument doc;
   if (deserializeJson(doc, json)) {
@@ -61,6 +63,9 @@ bool mb10esp::saveSettingsJson(const char* json, String& error) {
   p.putString("gw", doc["gateway"] | "");
   p.putString("mask", doc["subnet"] | "");
   p.putString("dns", doc["dns"] | "");
+  bool audio = doc["audio"] | false;
+  for (JsonVariant r : doc["roles"].as<JsonArray>()) audio = audio || r == "audio";
+  p.putBool("audio", audio);
   p.end();
   return true;
 }

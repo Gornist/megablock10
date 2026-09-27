@@ -5,6 +5,9 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <vector>
+
+#include "sha256.h"
 
 // BSD-сокеты: на ESP32 — lwIP (close сокета — lwip_close, VFS не нужен), на ПК — POSIX.
 #if defined(ESP_PLATFORM)
@@ -54,8 +57,16 @@ const char* describe(const R& r, char* buf, size_t cap) {
   return buf;
 }
 
-// Ответы дисплея короткие: HELLO — nonce и JSON до 256 байт.
-constexpr size_t kReplyMax = kNonceSize + 256 + 64;
+// Ответы дисплея короткие: HELLO — nonce и JSON статуса (у звуковой точки — до 1280 байт, как в прошивке), LIST — до 1 КБ.
+constexpr size_t kReplyMax = kNonceSize + 1280 + 64;
+
+// Есть ли подстрока в JSON статуса / ответа (payload не завершён нулём).
+bool contains(const uint8_t* p, size_t len, const char* want) {
+  size_t n = std::strlen(want);
+  for (size_t i = 0; i + n <= len; i++)
+    if (std::memcmp(p + i, want, n) == 0) return true;
+  return false;
+}
 
 }  // namespace
 
@@ -261,6 +272,8 @@ void Runner::checkHello() {
     return fail(name, "панель %ux%u, ждали %ux%u", hello.h.width, hello.h.height, t_.width, t_.height);
   }
   displayed_ = hello.h.seq;
+  audio_ = contains(hello.payload + kNonceSize, hello.h.payloadLength - kNonceSize, "\"audio\":{");
+  sd_ = contains(hello.payload + kNonceSize, hello.h.payloadLength - kNonceSize, "\"sd\":true");
   log("SELFTEST info: дисплей %s показывает версию %u, статус %.*s", t_.deviceId, unsigned(displayed_), int(hello.h.payloadLength - kNonceSize),
       reinterpret_cast<const char*>(hello.payload + kNonceSize));
   pass(name);
@@ -396,6 +409,186 @@ int Runner::runProtocol() {
   // Отвергнутое не показано: версия на экране та же.
   expectVersion("rejected-not-shown", displayed_, 5000);
   return failures_ - before;
+}
+
+bool Runner::command(const char* name, MsgType type, uint32_t seq, const uint8_t* payload, size_t len, Reply& r) {
+  Conn c;
+  Reply hello;
+  const char* why = "";
+  if (!connectHello(c, hello, why)) {
+    fail(name, "%s", why);
+    return false;
+  }
+  FrameOut f{type, t_.deviceId, seq, 0, 0, Format::None, payload, len};
+  size_t n = encodeFrame(f, t_.key, hello.nonce, work_, workSize(t_.width, t_.height));
+  if (n == 0 || !c.send(work_, n) || !readReply(c, hello.nonce, r, 5000, why)) {
+    fail(name, "%s", why);
+    return false;
+  }
+  return true;
+}
+
+int Runner::runAudio(uint32_t version) {
+  if (!audio_) {
+    log("SELFTEST info: роли audio в HELLO нет — звук не проверяется");
+    return 0;
+  }
+  int before = failures_;
+  Reply r;
+  char got[48];
+  {
+    const char* name = "audio-state";
+    char json[160];
+    int n = std::snprintf(json, sizeof json, "{\"tracks\":[\"selftest-a.mp3\",\"selftest-b.mp3\"],\"shuffle\":false,\"gapMs\":0,\"volume\":42,\"fadeMs\":0}");
+    if (command(name, MsgType::AudioState, version, reinterpret_cast<const uint8_t*>(json), size_t(n), r)) {
+      if (r.h.type != uint8_t(MsgType::Ok) || r.h.seq != version) fail(name, "ждали OK %u, пришёл %s", unsigned(version), describe(r, got, sizeof got));
+      else pass(name);
+    }
+  }
+  {
+    const char* name = "audio-stale";
+    const char json[] = "{\"tracks\":[]}";
+    if (command(name, MsgType::AudioState, version - 1, reinterpret_cast<const uint8_t*>(json), sizeof json - 1, r)) {
+      if (r.h.type != uint8_t(MsgType::Nack) || r.payload[0] != uint8_t(Nack::StaleVersion)) fail(name, "ждали NACK STALE_VERSION, пришёл %s", describe(r, got, sizeof got));
+      else pass(name);
+    }
+  }
+  {
+    const char* name = "audio-list";
+    uint8_t start[2] = {0, 0};
+    if (command(name, MsgType::List, 0, start, sizeof start, r)) {
+      if (r.h.type != uint8_t(MsgType::Ok) || !contains(r.payload, r.h.payloadLength, "{\"total\":")) fail(name, "ждали OK с каталогом, пришёл %s", describe(r, got, sizeof got));
+      else pass(name);
+    }
+  }
+  {
+    const char* name = "audio-missing-clip";
+    char json[128];
+    int n = std::snprintf(json, sizeof json, "{\"clip\":\"%064d\",\"volume\":50}", 0);
+    if (command(name, MsgType::Announce, 1, reinterpret_cast<const uint8_t*>(json), size_t(n), r)) {
+      if (r.h.type != uint8_t(MsgType::Nack) || r.payload[0] != uint8_t(Nack::MissingClip)) fail(name, "ждали NACK MISSING_CLIP, пришёл %s", describe(r, got, sizeof got));
+      else pass(name);
+    }
+  }
+  expectAudioVersion("audio-version-in-hello", version, 5000);
+  if (sd_) checkClipAndAnnounce();
+  else log("SELFTEST info: карты в точке нет — клип и объявление не проверяются");
+  return failures_ - before;
+}
+
+bool Runner::exchange(Conn& c, const uint8_t* nonce, MsgType type, uint32_t seq, const uint8_t* payload, size_t len, Reply& r, const char*& why) {
+  FrameOut f{type, t_.deviceId, seq, 0, 0, Format::None, payload, len};
+  size_t n = encodeFrame(f, t_.key, nonce, work_, workSize(t_.width, t_.height));
+  if (n == 0 || !c.send(work_, n)) {
+    why = "не отправить кадр";
+    return false;
+  }
+  return readReply(c, nonce, r, 5000, why);
+}
+
+void Runner::checkClipAndAnnounce() {
+  // Клип: WAV PCM 16 кГц моно, 0,3 с (9644 байта) — два куска: 4096 и остаток.
+  const uint32_t samples = 4800, size = 44 + samples * 2;
+  std::vector<uint8_t> wav(size);
+  auto le = [&](size_t o, uint32_t v, int bytes) {
+    for (int i = 0; i < bytes; i++) wav[o + size_t(i)] = uint8_t(v >> (8 * i));
+  };
+  std::memcpy(wav.data(), "RIFF", 4);
+  le(4, size - 8, 4);
+  std::memcpy(wav.data() + 8, "WAVEfmt ", 8);
+  le(16, 16, 4), le(20, 1, 2), le(22, 1, 2), le(24, 16000, 4), le(28, 32000, 4), le(32, 2, 2), le(34, 16, 2);
+  std::memcpy(wav.data() + 36, "data", 4);
+  le(40, samples * 2, 4);
+  for (uint32_t i = 0; i < samples; i++) le(44 + 2 * i, uint16_t(int16_t((i % 40) * 600 - 12000)), 2);
+  uint8_t begin[36];
+  Sha256 sha;
+  sha.update(wav.data(), wav.size());
+  sha.finish(begin);
+  putU32(begin + 32, size);
+  char id[65];
+  for (int i = 0; i < 32; i++) std::snprintf(id + 2 * i, 3, "%02x", begin[i]);
+  std::vector<uint8_t> chunk(4 + size);
+  Reply hello, r;
+  const char* why = "";
+  char got[48];
+
+  const char* name = "audio-clip-resume";
+  {
+    Conn c;
+    if (!connectHello(c, hello, why) || !exchange(c, hello.nonce, MsgType::ClipBegin, 0, begin, sizeof begin, r, why)) return fail(name, "BEGIN: %s", why);
+    if (r.h.type != uint8_t(MsgType::Ok) || getU32(r.payload) != 0) return fail(name, "BEGIN: ждали OK 0, пришёл %s", describe(r, got, sizeof got));
+    putU32(chunk.data(), 0);
+    std::memcpy(chunk.data() + 4, wav.data(), 4096);
+    if (!exchange(c, hello.nonce, MsgType::ClipChunk, 0, chunk.data(), 4 + 4096, r, why)) return fail(name, "CHUNK: %s", why);
+    if (r.h.type != uint8_t(MsgType::Ok) || getU32(r.payload) != 4096) return fail(name, "CHUNK: ждали OK 4096, пришёл %s", describe(r, got, sizeof got));
+  }  // «Wi-Fi пропал»: соединение закрыто посреди загрузки
+  {
+    Conn c;
+    if (!connectHello(c, hello, why) || !exchange(c, hello.nonce, MsgType::ClipBegin, 0, begin, sizeof begin, r, why)) return fail(name, "BEGIN 2: %s", why);
+    if (r.h.type != uint8_t(MsgType::Ok) || getU32(r.payload) != 4096) {
+      return fail(name, "после обрыва ждали «уже есть 4096», пришло %s %u", describe(r, got, sizeof got), unsigned(r.h.payloadLength >= 4 ? getU32(r.payload) : 0));
+    }
+    putU32(chunk.data(), 4096);
+    std::memcpy(chunk.data() + 4, wav.data() + 4096, size - 4096);
+    if (!exchange(c, hello.nonce, MsgType::ClipChunk, 0, chunk.data(), 4 + size - 4096, r, why)) return fail(name, "CHUNK 2: %s", why);
+    if (r.h.type != uint8_t(MsgType::Ok) || getU32(r.payload) != size) return fail(name, "CHUNK 2: ждали OK %u, пришёл %s", unsigned(size), describe(r, got, sizeof got));
+    if (!exchange(c, hello.nonce, MsgType::ClipCommit, 0, nullptr, 0, r, why)) return fail(name, "COMMIT: %s", why);
+    if (r.h.type != uint8_t(MsgType::Ok)) return fail(name, "COMMIT: ждали OK, пришёл %s", describe(r, got, sizeof got));
+    // Клип уже на карте — BEGIN отвечает полной длиной, грузить нечего.
+    if (!exchange(c, hello.nonce, MsgType::ClipBegin, 0, begin, sizeof begin, r, why)) return fail(name, "BEGIN 3: %s", why);
+    if (r.h.type != uint8_t(MsgType::Ok) || getU32(r.payload) != size) return fail(name, "повторный BEGIN: ждали %u, пришёл %s", unsigned(size), describe(r, got, sizeof got));
+  }
+  pass(name);
+
+  name = "audio-announce";
+  const uint32_t annId = 9;
+  char json[160];
+  int n = std::snprintf(json, sizeof json, "{\"clip\":\"%s\",\"volume\":70,\"chime\":true,\"duck\":20}", id);
+  if (!command(name, MsgType::Announce, annId, reinterpret_cast<const uint8_t*>(json), size_t(n), r)) return;
+  if (r.h.type != uint8_t(MsgType::Ok) || !contains(r.payload, r.h.payloadLength, "{\"durationMs\":1200}")) {
+    return fail(name, "ждали OK {\"durationMs\":1200} (0,3 с + сигнал 0,9 с), пришёл %s %.*s", describe(r, got, sizeof got), int(r.h.payloadLength), r.payload);
+  }
+  pass(name);
+
+  name = "audio-announce-done";
+  char want[48];
+  std::snprintf(want, sizeof want, "\"ann\":{\"id\":%u,\"state\":\"done\"}", unsigned(annId));
+  uint32_t until = nowMs() + 6000;
+  for (;;) {
+    Conn c;
+    if (connectHello(c, hello, why) && contains(hello.payload + kNonceSize, hello.h.payloadLength - kNonceSize, want)) break;
+    if (int32_t(until - nowMs()) <= 0) {
+      return fail(name, "за 6 с в HELLO нет %s: %.*s", want, int(hello.h.payloadLength > kNonceSize ? hello.h.payloadLength - kNonceSize : 0),
+                  reinterpret_cast<const char*>(hello.payload + kNonceSize));
+    }
+    sleepMs(300);
+  }
+  pass(name);
+}
+
+bool Runner::expectAudioVersion(const char* name, uint32_t expected, uint32_t timeoutMs) {
+  uint32_t until = nowMs() + timeoutMs;
+  const char* why = "";
+  char want[40];
+  std::snprintf(want, sizeof want, "\"audio\":{\"v\":%u,", unsigned(expected));
+  for (;;) {
+    Conn c;
+    Reply hello;
+    if (connectHello(c, hello, why)) {
+      const uint8_t* json = hello.payload + kNonceSize;
+      size_t len = hello.h.payloadLength - kNonceSize;
+      if (!contains(json, len, want)) {
+        fail(name, "в HELLO нет %s: %.*s", want, int(len > 200 ? 200 : len), reinterpret_cast<const char*>(json));
+        return false;
+      }
+      pass(name);
+      return true;
+    }
+    if (int32_t(until - nowMs()) <= 0) break;
+    sleepMs(300);
+  }
+  fail(name, "%s за %u мс", why, unsigned(timeoutMs));
+  return false;
 }
 
 bool Runner::reboot() {

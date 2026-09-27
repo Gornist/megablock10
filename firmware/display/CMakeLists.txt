@@ -53,4 +53,10 @@ add_executable(display_selftest ${CMAKE_CURRENT_SOURCE_DIR}/src/selftest/main.cp
 target_link_libraries(display_selftest PRIVATE mb10d_selftest)
 if(TARGET display_host)
   add_test(NAME selftest_host COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/test/selftest_host.sh $<TARGET_FILE:display_host> $<TARGET_FILE:display_selftest>)
+  # Та же самопроверка у звуковой точки без карты (как плата в Wokwi): звук по протоколу и его версия после перезагрузки.
+  add_test(NAME selftest_host_audio COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/test/selftest_host.sh $<TARGET_FILE:display_host> $<TARGET_FILE:display_selftest>
+           --roles display,audio --no-sd)
+  # …и с картой: клип кусками с обрывом и докачкой, объявление до «доиграло».
+  add_test(NAME selftest_host_audio_sd COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/test/selftest_host.sh $<TARGET_FILE:display_host> $<TARGET_FILE:display_selftest>
+           --with-sd --roles display,audio)
 endif()

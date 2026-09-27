@@ -11,6 +11,7 @@
 
 #include "device.h"
 #include "json.h"
+#include "mixer.h"
 #include "protocol.h"
 #include "sha256.h"
 #include "sound.h"
@@ -591,8 +592,98 @@ static void testSession() {
   CHECK(validateIncoming(h, framed.data(), framed.data() + kHeaderSize, cfg.key, nonce, ps) == Nack::None);
 }
 
+// Источник для микшера: заданные сэмплы на заданной частоте.
+struct VecSource : PcmSource {
+  std::vector<int16_t> data;
+  size_t pos = 0;
+  uint32_t hz;
+  bool endless = false;
+  explicit VecSource(uint32_t r) : hz(r) {}
+  uint32_t rate() override { return hz; }
+  size_t read(int16_t* out, size_t n) override {
+    size_t k = 0;
+    while (k < n && (pos < data.size() || endless)) out[k++] = data[pos++ % data.size()];
+    return k;
+  }
+  bool finished() override { return !endless && pos >= data.size(); }
+};
+
+static void testMixer() {
+  g_test = "mixer";
+  CHECK(volumeToGain(100) == 32768);
+  CHECK(volumeToGain(50) == 8192);
+  CHECK(volumeToGain(0) == 0);
+  GainRamp r;
+  r.set(32768, 10, 1000);  // 10 шагов
+  for (int i = 0; i < 9; i++) r.next();
+  CHECK(!r.settled());
+  r.next();
+  CHECK(r.settled() && r.current() == 32768);
+
+  // 16 кГц → 44,1 кГц: длина × 2,756, постоянный сигнал остаётся постоянным, рост — монотонным.
+  VecSource ramp(16000);
+  for (int i = 0; i < 1600; i++) ramp.data.push_back(int16_t(i * 10));
+  Resampler rs;
+  std::vector<int16_t> out(6000);
+  size_t n = rs.pull(ramp, 44100, out.data(), out.size());
+  CHECK(n > 4400 && n < 4420);
+  bool mono = true;
+  for (size_t i = 1; i < n; i++) mono = mono && out[i] >= out[i - 1];
+  CHECK(mono);
+  CHECK(out[n - 1] > 15900);
+
+  // Фон на полной громкости проходит как есть; на 50 % — вчетверо тише.
+  Mixer m(44100);
+  VecSource bg(44100);
+  bg.endless = true;
+  bg.data = {1000, -1000};
+  m.setBackground(&bg);
+  m.jumpBackgroundVolume(100);
+  int16_t buf[512];
+  CHECK(m.render(buf, 512));
+  CHECK(buf[10] == 1000 || buf[10] == -1000);
+  m.setBackgroundVolume(50, 0);
+  m.render(buf, 512);
+  CHECK(buf[100] == 250 || buf[100] == -250);
+  // Затухание к нулю за 100 мс — после него фон молчит, можно менять трек.
+  m.setBackgroundVolume(0, 100);
+  for (int i = 0; i < 8; i++) m.render(buf, 512);
+  CHECK(!m.backgroundSilent());
+  for (int i = 0; i < 2; i++) m.render(buf, 512);
+  CHECK(m.backgroundSilent());
+  CHECK(!m.render(buf, 512));  // тишина — усилитель можно выключить
+
+  // Объявление: сигнал (0,9 с), затем клип; кончился — clipActive() false.
+  VecSource clip(16000);
+  clip.data.assign(1600, 3000);  // 0,1 с
+  m.startClip(&clip, 100, true);
+  size_t chimeSamples = 44100 * kChimeMs / 1000, total = 0, nonzero = 0;
+  while (m.clipActive() && total < 44100 * 3) {
+    m.render(buf, 441);
+    for (int16_t v : buf) nonzero += v != 0;
+    total += 441;
+  }
+  CHECK(!m.clipActive());
+  CHECK(total >= chimeSamples + 4410 && total < chimeSamples + 4410 + 2000);
+  CHECK(nonzero > 44100 / 2);
+  CHECK(clip.finished());
+
+  // Клип с карты: PCM WAV читается целиком, частота — из заголовка.
+  Card card;
+  Bytes w = wavPcm(250);
+  card.clips["c1"] = w;
+  ClipSource cs(card);
+  CHECK(cs.open("c1"));
+  CHECK(cs.rate() == 16000 && cs.durationMs() == 250);
+  std::vector<int16_t> pcm(10000);
+  size_t got = cs.read(pcm.data(), pcm.size());
+  CHECK(got == 4000 && cs.finished());
+  CHECK(pcm[7] == int16_t(w[44 + 14] | w[44 + 15] << 8));
+}
+
 int main() {
   testJson();
+  testMixer();
   testWav();
   testPlaylist();
   testGapShuffleAndBroken();

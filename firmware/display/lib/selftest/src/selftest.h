@@ -40,6 +40,13 @@ class Runner {
   // Подключаться до timeoutMs (дисплей грузится), HELLO должен нести версию expected — кадр восстановлен из flash.
   bool expectVersion(const char* name, uint32_t expected, uint32_t timeoutMs);
 
+  // Звук (docs/sound-nodes.md), если HELLO докладывает роль audio: AUDIO_STATE с версией version, старая версия отвергается,
+  // LIST, ANNOUNCE несуществующего клипа — MISSING_CLIP, версия видна в HELLO. Точка без звука — пропуск (0 провалов).
+  int runAudio(uint32_t version);
+  // HELLO несёт версию звука expected (состояние восстановлено из flash после перезагрузки).
+  bool expectAudioVersion(const char* name, uint32_t expected, uint32_t timeoutMs);
+  bool audio() const { return audio_; }
+
   uint32_t displayed() const { return displayed_; }
   int failures() const { return failures_; }
   void pass(const char* name);
@@ -67,6 +74,12 @@ class Runner {
   void checkClosesAfter(const char* name, bool sendPartial, uint32_t expectMs);
   void checkPreempt();
   void checkTestAndBacklight();
+  // Отправить команду в новом соединении и прочитать ответ; false — провал уже записан.
+  bool command(const char* name, MsgType type, uint32_t seq, const uint8_t* payload, size_t len, Reply& r);
+  // Отправить команду в уже открытом соединении и прочитать ответ.
+  bool exchange(Conn& c, const uint8_t* nonce, MsgType type, uint32_t seq, const uint8_t* payload, size_t len, Reply& r, const char*& why);
+  // Клип на карту кусками с обрывом посреди и докачкой, объявление, «доиграло» в HELLO (только если карта есть).
+  void checkClipAndAnnounce();
   void log(const char* fmt, ...);
 
   Target t_;
@@ -75,6 +88,8 @@ class Runner {
   void* ctx_;
   uint32_t displayed_ = 0;
   int failures_ = 0;
+  bool audio_ = false;
+  bool sd_ = false;
 };
 
 }  // namespace selftest

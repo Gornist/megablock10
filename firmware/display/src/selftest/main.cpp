@@ -51,7 +51,12 @@ int main(int argc, char** argv) {
   std::vector<uint8_t> work(selftest::Runner::workSize(t.width, t.height));
   selftest::Runner runner(t, work.data(), [](const char* line, void*) { std::printf("%s\n", line), std::fflush(stdout); }, nullptr);
   runner.runProtocol();
-  if (reboot && runner.failures() == 0 && runner.reboot()) runner.expectVersion("reboot-restores-frame", runner.displayed(), 15000);
+  // Звук — если точка его докладывает; версия 7 — выше нуля свежей точки.
+  if (runner.failures() == 0) runner.runAudio(7);
+  if (reboot && runner.failures() == 0 && runner.reboot()) {
+    runner.expectVersion("reboot-restores-frame", runner.displayed(), 15000);
+    if (runner.audio()) runner.expectAudioVersion("reboot-restores-audio", 7, 15000);
+  }
   if (runner.failures() > 0) {
     std::printf("SELFTEST DONE: %d FAIL\n", runner.failures());
     return 1;

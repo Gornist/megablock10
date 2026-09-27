@@ -6,6 +6,7 @@
 
 #include "board.h"
 #include "selftest.h"
+#include "selftest_mp3.h"
 
 using namespace mb10d;
 using namespace mb10esp;
@@ -18,9 +19,11 @@ Settings settings;  // копия настроек платы: задача жи
 // ── Самопроверка в Wokwi (docs/firmware-plan.md, Ф4) ──
 // Wokwi не пробрасывает порт к плате снаружи, поэтому клиент протокола (lib/selftest, тот же, что display_selftest на ПК)
 // крутится в своей задаче и стучится в TCP-сервер этой же платы через 127.0.0.1. Фазы переживают перезагрузки в NVS:
-//   0 — Wi-Fi, проверки протокола, REBOOT;  1 — после программной перезагрузки кадр и версия восстановлены, затем цикл
+//   0 — Wi-Fi, проверки протокола и звука, REBOOT;  1 — после программной перезагрузки кадр и версия восстановлены, затем цикл
 //   зависает;  2 — сброс сторожем (ESP_RST_TASK_WDT), кадр и версия снова восстановлены → SELFTEST ALL PASSED.
 constexpr char kSelftestId[] = "selftest-wokwi";
+// Версия состояния звука в самопроверке: выше нуля свежей платы.
+constexpr uint32_t kAudioVersion = 7;
 constexpr char kSelftestSecret[] = "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a";
 }  // namespace
 
@@ -30,6 +33,7 @@ Settings mb10esp::selftestSettings() {
   parseHex(kSelftestSecret, s.cfg.key, sizeof s.cfg.key);
   s.cfg.width = 792;  // дисплеи висят горизонтально
   s.cfg.height = 272;
+  s.cfg.audio = true;  // звук — без I²S (MB10_AUDIO_STUB) и без карты: проверяется протокол и сохранение состояния
   s.ssid = "Wokwi-GUEST";
   s.channel = 6;
   s.configured = true;
@@ -37,6 +41,23 @@ Settings mb10esp::selftestSettings() {
 }
 
 namespace {
+
+// Канал из двух треков по 1,5 с (66 150 сэмплов каждый): декодер должен выдать больше одного трека — значит, MP3 с карты
+// читается, декодируется и трек сменяется следующим. Эмулятор медленнее реального времени, поэтому срок с запасом — 15 с.
+bool checkMp3(selftest::Runner& runner, bool tracks) {
+  if (!tracks) return true;
+  constexpr uint32_t kWant = 66150 + 44100;
+  uint32_t start = audioDecodedSamples(), began = millis();
+  while (audioDecodedSamples() - start < kWant && millis() - began < 15000) delay(100);
+  uint32_t got = audioDecodedSamples() - start;
+  Serial.printf("SELFTEST info: MP3 декодировано %lu сэмплов за %lu мс\n", static_cast<unsigned long>(got), static_cast<unsigned long>(millis() - began));
+  if (got < kWant) {
+    runner.fail("audio-mp3-decode", "за 15 с декодировано %lu сэмплов, ждали ≥ %lu", static_cast<unsigned long>(got), static_cast<unsigned long>(kWant));
+    return false;
+  }
+  runner.pass("audio-mp3-decode");
+  return true;
+}
 
 void selftestTask(void*) {
   Preferences nvs;
@@ -65,7 +86,15 @@ void selftestTask(void*) {
     while (WiFi.status() != WL_CONNECTED && int32_t(until - millis()) > 0) delay(100);
     if (WiFi.status() == WL_CONNECTED) runner.pass("wifi");
     else runner.fail("wifi", "не подключились к %s за 30 с", settings.ssid.c_str());
-    if (runner.runProtocol() == 0 && runner.failures() == 0) {
+    // Каналу самопроверки нужны треки на карте: кладём вшитый MP3 (tools/gen_selftest_mp3.py) под обоими именами.
+    bool tracks = audioCard().present() && audioWriteTrack("selftest-a.mp3", kSelftestMp3, kSelftestMp3Size) &&
+                  audioWriteTrack("selftest-b.mp3", kSelftestMp3, kSelftestMp3Size);
+    if (audioCard().present()) {
+      if (tracks) runner.pass("sd-write-tracks");
+      else runner.fail("sd-write-tracks", "не записать трек на карту");
+    }
+    if (runner.runProtocol() == 0 && runner.failures() == 0 && runner.runAudio(kAudioVersion) == 0 && checkMp3(runner, tracks)) {
+      nvs.putBool("audio", runner.audio());
       nvs.putUChar("phase", 1);
       nvs.putULong("ver", runner.displayed());
       runner.reboot();  // дальше — фаза 1 после загрузки
@@ -73,15 +102,24 @@ void selftestTask(void*) {
   } else if (phase == 1) {
     if (reason == ESP_RST_SW) runner.pass("reboot-reason");
     else runner.fail("reboot-reason", "причина сброса %d, ждали ESP_RST_SW", int(reason));
-    if (runner.expectVersion("reboot-restores-frame", version, 30000) && runner.failures() == 0) {
+    if (runner.expectVersion("reboot-restores-frame", version, 30000) && (!nvs.getBool("audio", false) || runner.expectAudioVersion("reboot-restores-audio", kAudioVersion, 5000)) &&
+        runner.failures() == 0) {
       nvs.putUChar("phase", 2);
       logLine("SELFTEST info: вешаем основной цикл — ждём сброса сторожем");
       selftestHang = true;
     }
   } else if (phase == 2) {
-    if (reason == ESP_RST_TASK_WDT) runner.pass("watchdog-reset");
-    else runner.fail("watchdog-reset", "причина сброса %d, ждали ESP_RST_TASK_WDT (%d)", int(reason), int(ESP_RST_TASK_WDT));
+    // Сработал сторож задач (в журнале — «task_wdt … Aborting»). После паники IDF взводит TG1WDT на время перезапуска; в Wokwi
+    // загрузка образа ≈ 1 МБ (с декодером MP3) дольше его срока — тогда последним записан TG1WDT_SYS_RST → ESP_RST_INT_WDT.
+    // Оба — сброс сторожем; иначе (питание, программный) — провал.
+    if (reason == ESP_RST_TASK_WDT || reason == ESP_RST_INT_WDT) {
+      Serial.printf("SELFTEST info: причина сброса %s\n", reason == ESP_RST_TASK_WDT ? "TASK_WDT" : "INT_WDT (TG1 во время перезапуска после паники)");
+      runner.pass("watchdog-reset");
+    } else {
+      runner.fail("watchdog-reset", "причина сброса %d, ждали ESP_RST_TASK_WDT (%d) или ESP_RST_INT_WDT (%d)", int(reason), int(ESP_RST_TASK_WDT), int(ESP_RST_INT_WDT));
+    }
     runner.expectVersion("watchdog-restores-frame", version, 30000);
+    if (nvs.getBool("audio", false)) runner.expectAudioVersion("watchdog-restores-audio", kAudioVersion, 5000);
     nvs.putUChar("phase", 3);
     finished = true;
   } else {
@@ -98,6 +136,6 @@ void selftestTask(void*) {
 
 void mb10esp::startSelftest(const Settings& s) {
   settings = s;
-  xTaskCreatePinnedToCore(selftestTask, "selftest", 8192, nullptr, 1, nullptr, 0);
+  xTaskCreatePinnedToCore(selftestTask, "selftest", 16384, nullptr, 1, nullptr, 0);  // ответы до 1,3 КБ на стеке
 }
 #endif

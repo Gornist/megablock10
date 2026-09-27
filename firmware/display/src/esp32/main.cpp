@@ -3,7 +3,8 @@
 // Wi-Fi, TCP-сервер (lwIP), LittleFS, сторож, подсветка, кнопка, USB-консоль (docs/displays.md). Настройки в NVS —
 // settings.cpp, самопроверка для Wokwi — selftest_task.cpp, общее между ними — board.h.
 //
-// Порядок загрузки: питание панели → кадр из flash на экран → Wi-Fi → TCP-сервер. Без сети QR остаётся на экране.
+// Порядок загрузки: питание панели → кадр из flash на экран → звук (карта, фон из flash) → Wi-Fi → TCP-сервер. Без сети QR
+// остаётся на экране, фон играет. Звук — audio.cpp, только у точки с ролью audio (настройки).
 #include <Arduino.h>
 #include <LittleFS.h>
 #include <SPI.h>
@@ -257,6 +258,7 @@ FlashStorage storage;
 PwmBacklight backlight;
 Esp32Platform platform;
 Device* device = nullptr;
+Sound* sound = nullptr;
 WiFiServer* server = nullptr;
 ClientLink* link = nullptr;
 Session* session = nullptr;
@@ -307,8 +309,9 @@ void pollWifi() {
       break;
   }
   if (before != Connectivity::State::Online && connectivity.state() == Connectivity::State::Online) {
-    // Энергосбережение: модем спит между маяками точки доступа, TCP остаётся доступным.
-    esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+    // Энергосбережение: модем спит между маяками точки доступа, TCP остаётся доступным. Звуковой точке — без сна: команда
+    // «объявление» не должна ждать маяка, а питание всё равно тратит усилитель.
+    esp_wifi_set_ps(sound ? WIFI_PS_NONE : WIFI_PS_MIN_MODEM);
     char line[80];
     snprintf(line, sizeof line, "wifi: online %s rssi=%d", platform.ipAddress(), platform.rssi());
     logLine(line);
@@ -358,10 +361,11 @@ void pollButton() {
 }
 
 void printStatus() {
-  Serial.printf("id=%s configured=%d port=%u panel=%ux%u ssid=%s secret=%s wifi=%s ip=%s shows=%lu fw=%s\n", settings.cfg.deviceId,
+  Serial.printf("id=%s configured=%d port=%u panel=%ux%u ssid=%s secret=%s wifi=%s ip=%s shows=%lu audio=%s fw=%s\n", settings.cfg.deviceId,
                 settings.configured, settings.port, settings.cfg.width, settings.cfg.height, settings.ssid.c_str(),
                 settings.configured ? "set" : "-", WiFi.status() == WL_CONNECTED ? "up" : "down", platform.ipAddress(),
-                static_cast<unsigned long>(device ? device->displayedVersion() : 0), MB10_FW_VERSION);
+                static_cast<unsigned long>(device ? device->displayedVersion() : 0),
+                sound ? (audioCard().present() ? "on, card" : "on, no card") : "off", MB10_FW_VERSION);
 }
 
 // USB-консоль: config {json} | status | reboot | clear-frame
@@ -439,13 +443,19 @@ void setup() {
   panel.orient(settings.cfg.width, settings.cfg.height);
   size_t size = frameBytes(settings.cfg.width, settings.cfg.height);
   uint8_t* frame = static_cast<uint8_t*>(malloc(size));
-  uint8_t* incoming = static_cast<uint8_t*>(malloc(size < 64 ? 64 : size));
+  uint8_t* incoming = static_cast<uint8_t*>(malloc(Device::incomingBytes(settings.cfg)));
   if (!frame || !incoming) {
     logLine("out of memory for frame buffers");
     return;
   }
   device = new Device(settings.cfg, panel, storage, backlight, platform, frame, incoming);
   device->boot();  // кадр из flash — на экран до Wi-Fi
+  if (settings.cfg.audio) {
+    AudioOut* out = audioBegin();
+    sound = new Sound(audioCard(), *out, storage, platform);
+    device->attachSound(sound);
+    sound->boot();  // фон канала из flash — тоже до Wi-Fi
+  }
   // Стек lwIP поднимается вместе с Wi-Fi: сокет сервера до WiFi.mode роняет плату в assert «tcpip_send_msg_wait_sem
   // (Invalid mbox)» и цикл перезагрузок (нашёл Wokwi, Ф4). Слушающий сокет на INADDR_ANY переживает переподключения Wi-Fi.
   WiFi.mode(WIFI_STA);
@@ -472,6 +482,7 @@ void loop() {
   pollWifi();
   pollTcp();
   pollButton();
+  if (sound) audioPoll();
   device->tick();
   if (device->rebootRequested()) {
     dropClient();
