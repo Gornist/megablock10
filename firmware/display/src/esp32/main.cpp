@@ -21,6 +21,10 @@
 #include "device.h"
 #include "protocol.h"
 
+#ifdef MB10_SELFTEST
+#include "selftest.h"
+#endif
+
 #ifndef MB10_PANEL_STUB
 #include <Fonts/FreeMonoBold12pt7b.h>
 #include <GxEPD2_BW.h>
@@ -31,7 +35,12 @@ using namespace mb10d;
 namespace {
 
 constexpr uint16_t kDefaultPort = 47200;
+#ifdef MB10_SELFTEST
+// Самопроверка вешает цикл нарочно — ждать сторожа 30 с в эмуляторе незачем.
+constexpr uint32_t kWatchdogSeconds = 5;
+#else
 constexpr uint32_t kWatchdogSeconds = 30;
+#endif
 constexpr uint16_t kButtonBacklightSeconds = 15;
 
 void logLine(const char* line) {
@@ -45,6 +54,8 @@ struct Settings {
   Config cfg{};
   uint16_t port = kDefaultPort;
   String ssid, pass;
+  // Канал Wi-Fi: 0 — искать самой (у Wokwi-GUEST — 6, с ним подключение быстрее).
+  int channel = 0;
   // Необязательный статический адрес (иначе DHCP с резервом на роутере).
   String ip, gateway, subnet, dns;
 };
@@ -324,7 +335,7 @@ void dropClient() {
 }
 
 void startWifi() {
-  WiFi.disconnect(true);
+  WiFi.disconnect();  // не disconnect(true): тот выключает Wi-Fi целиком, а сервер уже слушает
   WiFi.mode(WIFI_STA);
   WiFi.persistent(false);
   WiFi.setAutoReconnect(false);  // переподключением управляет Connectivity (backoff 1…30 с)
@@ -333,7 +344,7 @@ void startWifi() {
     if (!dns.fromString(settings.dns)) dns = gw;
     WiFi.config(ip, gw, mask, dns);
   }
-  WiFi.begin(settings.ssid.c_str(), settings.pass.c_str());
+  WiFi.begin(settings.ssid.c_str(), settings.pass.c_str(), settings.channel);
   logLine("wifi: connecting");
 }
 
@@ -459,6 +470,85 @@ void setupWatchdog() {
   esp_task_wdt_add(nullptr);
 }
 
+#ifdef MB10_SELFTEST
+// ── Самопроверка в Wokwi (docs/firmware-plan.md, Ф4) ──
+// Wokwi не пробрасывает порт к плате снаружи, поэтому клиент протокола (lib/selftest, тот же, что display_selftest на ПК)
+// крутится в своей задаче и стучится в TCP-сервер этой же платы через 127.0.0.1. Фазы переживают перезагрузки в NVS:
+//   0 — Wi-Fi, проверки протокола, REBOOT;  1 — после программной перезагрузки кадр и версия восстановлены, затем цикл
+//   зависает;  2 — сброс сторожем (ESP_RST_TASK_WDT), кадр и версия снова восстановлены → SELFTEST ALL PASSED.
+constexpr char kSelftestId[] = "selftest-wokwi";
+constexpr char kSelftestSecret[] = "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a";
+volatile bool selftestHang = false;
+
+Settings selftestSettings() {
+  Settings s;
+  snprintf(s.cfg.deviceId, sizeof s.cfg.deviceId, "%s", kSelftestId);
+  parseHex(kSelftestSecret, s.cfg.key, sizeof s.cfg.key);
+  s.cfg.width = 272;
+  s.cfg.height = 792;
+  s.ssid = "Wokwi-GUEST";
+  s.channel = 6;
+  s.configured = true;
+  return s;
+}
+
+void selftestTask(void*) {
+  Preferences nvs;
+  nvs.begin("mb10st", false);
+  uint8_t phase = nvs.getUChar("phase", 0);
+  uint32_t version = nvs.getULong("ver", 0);
+  esp_reset_reason_t reason = esp_reset_reason();
+  Serial.printf("SELFTEST info: фаза %u, причина сброса %d, ожидаемая версия %lu\n", phase, int(reason), static_cast<unsigned long>(version));
+
+  selftest::Target t{};
+  t.host = "127.0.0.1";
+  t.port = settings.port;
+  t.deviceId = settings.cfg.deviceId;
+  memcpy(t.key, settings.cfg.key, sizeof t.key);
+  t.width = settings.cfg.width;
+  t.height = settings.cfg.height;
+  t.headerTimeoutMs = settings.cfg.headerTimeoutMs;
+  t.payloadTimeoutMs = settings.cfg.payloadTimeoutMs;
+  uint8_t* work = static_cast<uint8_t*>(malloc(selftest::Runner::workSize(t.width, t.height)));
+  selftest::Runner runner(t, work, [](const char* line, void*) { logLine(line); }, nullptr);
+  bool finished = false;
+  if (!work) {
+    runner.fail("memory", "нет памяти под кадр самопроверки");
+  } else if (phase == 0) {
+    uint32_t until = millis() + 30000;
+    while (WiFi.status() != WL_CONNECTED && int32_t(until - millis()) > 0) delay(100);
+    if (WiFi.status() == WL_CONNECTED) runner.pass("wifi");
+    else runner.fail("wifi", "не подключились к %s за 30 с", settings.ssid.c_str());
+    if (runner.runProtocol() == 0 && runner.failures() == 0) {
+      nvs.putUChar("phase", 1);
+      nvs.putULong("ver", runner.displayed());
+      runner.reboot();  // дальше — фаза 1 после загрузки
+    }
+  } else if (phase == 1) {
+    if (reason == ESP_RST_SW) runner.pass("reboot-reason");
+    else runner.fail("reboot-reason", "причина сброса %d, ждали ESP_RST_SW", int(reason));
+    if (runner.expectVersion("reboot-restores-frame", version, 30000) && runner.failures() == 0) {
+      nvs.putUChar("phase", 2);
+      logLine("SELFTEST info: вешаем основной цикл — ждём сброса сторожем");
+      selftestHang = true;
+    }
+  } else if (phase == 2) {
+    if (reason == ESP_RST_TASK_WDT) runner.pass("watchdog-reset");
+    else runner.fail("watchdog-reset", "причина сброса %d, ждали ESP_RST_TASK_WDT (%d)", int(reason), int(ESP_RST_TASK_WDT));
+    runner.expectVersion("watchdog-restores-frame", version, 30000);
+    nvs.putUChar("phase", 3);
+    finished = true;
+  } else {
+    logLine("SELFTEST info: самопроверка уже прошла; заново — стереть flash");
+  }
+  nvs.end();
+  free(work);
+  if (runner.failures() > 0) Serial.printf("SELFTEST DONE: %d FAIL\n", runner.failures());
+  else if (finished) logLine("SELFTEST ALL PASSED");
+  vTaskDelete(nullptr);
+}
+#endif
+
 }  // namespace
 
 void setup() {
@@ -472,7 +562,12 @@ void setup() {
   backlight.begin();
   panel.begin();
   if (!storage.begin()) logLine("storage: LittleFS mount failed");
+#ifdef MB10_SELFTEST
+  settings = selftestSettings();
+  logLine("SELFTEST build: встроенная конфигурация, Wokwi-GUEST");
+#else
   settings = loadSettings();
+#endif
   if (!settings.configured) {
     logLine("NOT CONFIGURED — send: config {\"id\":…,\"secret\":…,\"wifiSsid\":…,\"wifiPassword\":…}");
     const char* lines[] = {"NOT CONFIGURED", "USB: config {...}"};
@@ -488,12 +583,23 @@ void setup() {
   }
   device = new Device(settings.cfg, panel, storage, backlight, platform, frame, incoming);
   device->boot();  // кадр из flash — на экран до Wi-Fi
+  // Стек lwIP поднимается вместе с Wi-Fi: сокет сервера до WiFi.mode роняет плату в assert «tcpip_send_msg_wait_sem
+  // (Invalid mbox)» и цикл перезагрузок (нашёл Wokwi, Ф4). Слушающий сокет на INADDR_ANY переживает переподключения Wi-Fi.
+  WiFi.mode(WIFI_STA);
   server = new WiFiServer(settings.port);
   server->begin();
   printStatus();
+#ifdef MB10_SELFTEST
+  xTaskCreatePinnedToCore(selftestTask, "selftest", 8192, nullptr, 1, nullptr, 0);
+#endif
 }
 
 void loop() {
+#ifdef MB10_SELFTEST
+  // Зависание основного цикла: сторож не кормится — через kWatchdogSeconds сброс (фаза 2 самопроверки).
+  while (selftestHang) {
+  }
+#endif
   esp_task_wdt_reset();
   pollConsole();
   if (!device) {

@@ -1,6 +1,7 @@
 name: Прошивка QR-дисплея
 
-# docs/firmware-plan.md: ядро и сборка для ПК проверяются настоящим сервером мастера (Ф1–Ф2), сборка для платы — компиляцией (Ф3).
+# docs/firmware-plan.md: ядро и сборка для ПК проверяются настоящим сервером мастера (Ф1–Ф2), сборка для платы — компиляцией (Ф3)
+# и самопроверкой изнутри платы в эмуляторе Wokwi (Ф4).
 on:
   push:
     # Ветки агентов — тоже: workflow_dispatch работает только для workflow, который уже есть в main.
@@ -29,12 +30,12 @@ jobs:
           cmake --build build -j
           ctest --test-dir build --output-on-failure
 
-      - name: Тесты ядра под ASan/UBSan
+      - name: Ядро, прошивка для ПК и самопроверка под ASan/UBSan
         working-directory: firmware/display
         run: |
           cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
-          cmake --build build-asan -j --target core_test
-          ./build-asan/core_test
+          cmake --build build-asan -j
+          ctest --test-dir build-asan --output-on-failure
 
       - name: Сервер мастера ↔ прошивка для ПК — набор совместимости C1–C20 и сбои
         working-directory: admin-web/server
@@ -68,6 +69,28 @@ jobs:
         working-directory: firmware/display
         run: pio run -e crowpanel579 -e crowpanel579-wokwi
 
+      # Самопроверка изнутри платы (lib/selftest): протокол, перезагрузка, сброс сторожем. Токен — секрет WOKWI_CLI_TOKEN;
+      # без него (форк, секрет не заведён) шаг пропускается с пометкой, а не краснеет.
+      - name: Самопроверка в эмуляторе Wokwi
+        working-directory: firmware/display
+        env:
+          WOKWI_CLI_TOKEN: ${{ secrets.WOKWI_CLI_TOKEN }}
+          WOKWI_VERSION: v0.27.1
+        run: |
+          if [ -z "$WOKWI_CLI_TOKEN" ]; then
+            echo "::notice::Секрета WOKWI_CLI_TOKEN нет — самопроверка в Wokwi пропущена"
+            exit 0
+          fi
+          mkdir -p ~/.local/bin
+          curl -fsSL "https://github.com/wokwi/wokwi-cli/releases/download/$WOKWI_VERSION/wokwi-cli-linuxstatic-x64" -o ~/.local/bin/wokwi-cli
+          chmod +x ~/.local/bin/wokwi-cli
+          PATH=$HOME/.local/bin:$PATH tools/wokwi_selftest.sh --no-build --timeout-ms 180000 --log wokwi-serial.log
+
+      - name: Журнал Wokwi
+        if: always()
+        working-directory: firmware/display
+        run: '[ -f wokwi-serial.log ] && grep -a "SELFTEST\\|rst:\\|assert\\|Guru\\|task_wdt" wokwi-serial.log || true'
+
       - name: Размер прошивки
         working-directory: firmware/display
         run: pio run -e crowpanel579 -t size
@@ -81,3 +104,4 @@ jobs:
             firmware/display/.pio/build/crowpanel579/partitions.bin
             firmware/display/.pio/build/crowpanel579-wokwi/firmware.bin
             firmware/display/.pio/build/crowpanel579-wokwi/firmware.elf
+            firmware/display/wokwi-serial.log

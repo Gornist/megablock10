@@ -40,3 +40,13 @@ if(HOST_SOURCES)
   target_link_libraries(display_host PRIVATE mb10d_core)
   target_compile_definitions(display_host PRIVATE MB10_FW_VERSION="host-0.1.0")
 endif()
+
+# Самопроверка (Ф4): клиент протокола из lib/selftest — тот же, что внутри платы в Wokwi; на ПК — против display_host.
+add_library(mb10d_selftest STATIC ${CMAKE_CURRENT_SOURCE_DIR}/lib/selftest/src/selftest.cpp)
+target_include_directories(mb10d_selftest PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/lib/selftest/src)
+target_link_libraries(mb10d_selftest PUBLIC mb10d_core)
+add_executable(display_selftest ${CMAKE_CURRENT_SOURCE_DIR}/src/selftest/main.cpp)
+target_link_libraries(display_selftest PRIVATE mb10d_selftest)
+if(TARGET display_host)
+  add_test(NAME selftest_host COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/test/selftest_host.sh $<TARGET_FILE:display_host> $<TARGET_FILE:display_selftest>)
+endif()

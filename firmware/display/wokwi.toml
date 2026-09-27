@@ -1,0 +1,6 @@
+# Эмулятор Wokwi (docs/firmware-plan.md, Ф4): прошивка crowpanel579-wokwi с самопроверкой изнутри платы.
+# Запуск — tools/wokwi_selftest.sh (собирает, склеивает образ flash, гоняет wokwi-cli; токен — WOKWI_CLI_TOKEN).
+[wokwi]
+version = 1
+firmware = '.pio/build/crowpanel579-wokwi/merged.bin'
+elf = '.pio/build/crowpanel579-wokwi/firmware.elf'
