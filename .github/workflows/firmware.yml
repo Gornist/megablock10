@@ -78,6 +78,11 @@ jobs:
   esp32:
     name: Сборка для CrowPanel 5.79 (ESP32-S3)
     runs-on: ubuntu-latest
+    # Одна симуляция Wokwi на токен: второй прогон параллельно (push + ручной запуск той же ветки) рвётся на подключении
+    # («Connection to transport closed unexpectedly: code 1006»). Прогоны ждут друг друга, не отменяются.
+    concurrency:
+      group: wokwi-${{ github.repository }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7
 
