@@ -95,6 +95,11 @@ describe("DisplaysScreen", () => {
       enabled: true,
       groupId: null,
     });
+    // Строка настройки платы: со звуком — роль audio (точка появится на экране «Звук»).
+    const config = () => document.querySelector("pre.qr-raw")!.textContent!;
+    expect(config()).not.toContain("audio");
+    fireEvent.click(screen.getByLabelText(/со звуком/));
+    expect(JSON.parse(config()).roles).toEqual(["display", "audio"]);
   });
 
   it("команда дисплею: ответ показывается мастеру", async () => {

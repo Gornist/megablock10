@@ -120,15 +120,26 @@ export function DisplayForm({
   );
 }
 
-/** Секрет и что прошить в плату — показывается один раз, сервер его больше не отдаст. */
+/**
+ * Секрет и что прошить в плату — показывается один раз, сервер его больше не отдаст. «Со звуком» — точка со звуковой платой
+ * (microSD + MAX98357A, docs/sound-nodes.md): в строку настройки добавляется роль audio.
+ */
 export function SecretPanel({ result, onClose }: { result: DisplaySecretResponse; onClose: () => void }) {
-  const config = JSON.stringify({ ...result.provisioning, wifiSsid: "<SSID>", wifiPassword: "<пароль>" }, null, 2);
+  const [audio, setAudio] = useState(false);
+  const config = JSON.stringify(
+    { ...result.provisioning, wifiSsid: "<SSID>", wifiPassword: "<пароль>", ...(audio ? { roles: ["display", "audio"] } : {}) },
+    null,
+    2,
+  );
   return (
     <Panel title={`Секрет дисплея ${result.display.id}`} action={<AppButton onClick={onClose}>скрыть</AppButton>}>
       <p className="hint-text">
         Показывается один раз — запишите в плату сейчас (docs/displays.md, «Первичная настройка»). Потеряли — «Новый секрет» и прошить заново.
       </p>
       <code className="secret-box mono">{result.secret}</code>
+      <label className="sound-check">
+        <input type="checkbox" checked={audio} onChange={(e) => setAudio(e.target.checked)} /> со звуком (карта и усилитель) — точка появится на экране «Звук»
+      </label>
       <pre className="qr-raw mono">{config}</pre>
     </Panel>
   );
