@@ -203,7 +203,7 @@ dependencies {
     // host-кандидаты напрямую. org.webrtc:google-webrtc официально мёртв
     // (Google больше не публикует precompiled Android-сборки), этот форк —
     // активно поддерживаемая замена с тем же пакетом org.webrtc.*.
-    implementation("io.github.webrtc-sdk:android:144.7559.09")
+    implementation("io.github.webrtc-sdk:android:150.7871.01")
 
     // Связь с мастерским коллектором (admin-web) — обычный HTTP на ноутбуке
     // мастера в той же локальной сети, не P2P. См. CollectorClient.
