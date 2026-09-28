@@ -1,0 +1,28 @@
+# Обновления зависимостей — PR раз в неделю, по одному на экосистему (минорные и патчи вместе), мажорные — отдельно:
+# они ломают чаще, и их удобнее разбирать по одной. PR проверяет обычный CI (main.yml, e2e.yml при правке app/ и kit/,
+# firmware.yml). В main — как любую правку: по команде владельца, перемоткой, с зелёным CI.
+version: 2
+updates:
+  - package-ecosystem: gradle          # app/, kit/ и плагины сборки (build.gradle.kts)
+    directory: "/"
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 5
+    groups:
+      gradle-minor: { update-types: [minor, patch] }
+  - package-ecosystem: npm             # сервер коллектора
+    directory: "/admin-web/server"
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 5
+    groups:
+      server-minor: { update-types: [minor, patch] }
+  - package-ecosystem: npm             # клиент коллектора
+    directory: "/admin-web/client"
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 5
+    groups:
+      client-minor: { update-types: [minor, patch] }
+  - package-ecosystem: github-actions  # .github/workflows
+    directory: "/"
+    schedule: { interval: monthly }
+    groups:
+      actions: { patterns: ["*"] }
