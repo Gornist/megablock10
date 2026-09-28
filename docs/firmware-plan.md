@@ -148,7 +148,7 @@ npm run display-conformance -- --host 127.0.0.1 --port 47217 --id display-017 --
 - Скрипт векторов на сервере + серверный тест «векторы актуальны».
 - Тесты ядра (`ctest`, CMake + g++): векторы сервера, RFC 4231, разбор потока кусками произвольной длины, порядок проверок,
   монотонность версии, backoff, переходы состояний (включая «сбой → BACKOFF → WIFI_CONNECTING»).
-- CI: новый `firmware.yml` (правка `firmware/` или `admin-web/server/src/displays/`) — тесты ядра.
+- CI: `firmware.yml` (правка `firmware/`, `admin-web/server/src/displays/` или звука на сервере — `audio/`, `routes/audio.ts`) — тесты ядра.
 
 **Готово, когда:** все векторы сервера проходят в C++, ветвление по каждому NACK покрыто тестом.
 
