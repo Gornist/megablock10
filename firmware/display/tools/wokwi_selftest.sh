@@ -32,4 +32,18 @@ BOOT_APP0=$(find "${PLATFORMIO_CORE_DIR:-$HOME/.platformio}/packages/framework-a
 # ESP32-S3: загрузчик с 0x0 (у ESP32 — 0x1000); смещения — как у pio run -t upload.
 pio pkg exec -p tool-esptoolpy -- esptool.py --chip esp32s3 merge_bin -o "$OUT/merged.bin" --flash_mode dio --flash_size 8MB \
   0x0 "$OUT/bootloader.bin" 0x8000 "$OUT/partitions.bin" 0xe000 "$BOOT_APP0" 0x10000 "$OUT/firmware.bin" > /dev/null
-"$WOKWI" . --timeout "$TIMEOUT" --expect-text "SELFTEST ALL PASSED" --fail-text "SELFTEST FAIL" --serial-log-file "$LOG"
+# API Wokwi иногда рвёт соединение ещё до запуска платы («Connection to transport closed unexpectedly: code 1006», журнал
+# платы пуст) — и без второй симуляции на токене (CI 2026-09-27: задачи шли по очереди, а обрыв был). Такой обрыв — не
+# провал самопроверки: повторить до двух раз. Если плата успела что-то написать в журнал — итог как есть, без повторов.
+for attempt in 1 2 3; do
+  rm -f "$LOG"
+  set +e
+  "$WOKWI" . --timeout "$TIMEOUT" --expect-text "SELFTEST ALL PASSED" --fail-text "SELFTEST FAIL" --serial-log-file "$LOG" 2>&1 | tee wokwi-cli.out
+  code=${PIPESTATUS[0]}
+  set -e
+  [ "$code" -eq 0 ] && exit 0
+  if [ -s "$LOG" ] || ! grep -q "API Error" wokwi-cli.out; then exit "$code"; fi
+  echo "wokwi: обрыв API до запуска платы (попытка $attempt из 3)" >&2
+  [ "$attempt" -lt 3 ] && sleep 15
+done
+exit "$code"
