@@ -79,10 +79,10 @@ TCP на постоянный порт 47100. Каждая строка идёт
 
 ### Сборка
 
-Нужны JDK 17 и Android SDK command-line tools.
+Нужны JDK 21 (байткод — 17; Java 21 требует Paparazzi 2) и Android SDK command-line tools.
 
 ```bash
-sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"   # один раз
+sdkmanager "platform-tools" "platforms;android-36" "build-tools;35.0.0"   # один раз
 ./gradlew assembleDebug                                                    # → app/build/outputs/apk/debug/app-debug.apk
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```

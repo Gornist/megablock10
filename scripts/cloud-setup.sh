@@ -2,7 +2,7 @@
 # Скрипт настройки облачного окружения Claude Code (claude.ai/code) для MegaBlock10.
 # Копия того, что вставлено в настройки окружения (меню окружения в заголовке сессии → Edit → Setup script):
 # правите здесь — вставьте туда заново. Самодостаточный (не читает репозиторий) и идемпотентный: повторный запуск ничего не ломает.
-# Что даёт сессии: Android SDK 34 для :app, зеркало Maven Central для Gradle и Robolectric, UTF-8 в выводе Gradle,
+# Что даёт сессии: Android SDK 36 для :app, зеркало Maven Central для Gradle и Robolectric, UTF-8 в выводе Gradle,
 # kotlin-language-server для плагина KotlinSense, PlatformIO с платформой ESP32 и wokwi-cli для прошивки QR-дисплея
 # (firmware/display, docs/firmware-plan.md).
 #
@@ -32,7 +32,7 @@ fetch() {
 SDK=${ANDROID_HOME:-/root/android-sdk}
 MIRROR=https://maven-central.storage-download.googleapis.com/maven2/
 
-# 1. Android SDK: cmdline-tools → platform 34, build-tools 34.0.0, platform-tools (compileSdk/targetSdk = 34 в app/build.gradle.kts).
+# 1. Android SDK: cmdline-tools → platform 36, build-tools 35.0.0 (их требует AGP 8.13), platform-tools (compileSdk = 36 в app/build.gradle.kts).
 if [ ! -x "$SDK/cmdline-tools/latest/bin/sdkmanager" ]; then
   mkdir -p "$SDK/cmdline-tools"
   tmp=$(mktemp -d)
@@ -43,9 +43,9 @@ if [ ! -x "$SDK/cmdline-tools/latest/bin/sdkmanager" ]; then
   rm -rf "$tmp"
 fi
 if [ -x "$SDK/cmdline-tools/latest/bin/sdkmanager" ] &&
-  { [ ! -d "$SDK/platforms/android-34" ] || [ ! -d "$SDK/build-tools/34.0.0" ] || [ ! -x "$SDK/platform-tools/adb" ]; }; then
+  { [ ! -d "$SDK/platforms/android-36" ] || [ ! -d "$SDK/build-tools/35.0.0" ] || [ ! -x "$SDK/platform-tools/adb" ]; }; then
   yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses > /dev/null || true
-  "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" "platforms;android-34" "build-tools;34.0.0" "platform-tools" > /dev/null ||
+  "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" "platforms;android-36" "build-tools;35.0.0" "platform-tools" > /dev/null ||
     { echo "MB10 setup: sdkmanager не скачал пакеты (dl.google.com?)" >&2; MISSING+=("Android SDK packages (dl.google.com)"); }
 fi
 
