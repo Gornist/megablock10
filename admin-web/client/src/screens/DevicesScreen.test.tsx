@@ -98,7 +98,7 @@ describe("DevicesScreen", () => {
     expect(screen.getByText("display-019")).toBeTruthy();
   });
 
-  it("клик по строке открывает канонiчную карточку устройства с полным набором команд", async () => {
+  it("клик по строке открывает каноничную карточку устройства с полным набором команд", async () => {
     routes({ "GET /api/displays/display-017/preview": { qr: "q", label: "l", png: "p", width: 792, height: 272, qrVersion: 1, modules: 1, scale: 3 } });
     render(<DevicesScreen deviceId="display-017" />);
     await screen.findByText("Устройство «Точка 17»");
