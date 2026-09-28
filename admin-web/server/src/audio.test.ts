@@ -39,9 +39,9 @@ function wav(ms: number, rate = 16000, tone = 0): Buffer {
   return b;
 }
 
-async function waitFor(what: string, cond: () => boolean, ms = 3000) {
+async function waitFor(what: string, cond: () => boolean | Promise<boolean>, ms = 3000) {
   const until = Date.now() + ms;
-  while (!cond()) {
+  while (!(await cond())) {
     if (Date.now() > until) assert.fail(`не дождались: ${what}`);
     await new Promise((r) => setTimeout(r, 10));
   }
@@ -79,12 +79,23 @@ async function setup() {
     return mock;
   }
 
+  // displays.probe молча пропускает опрос, пока у точки идёт операция (досылка состояния, LIST): на медленном раннере CI
+  // сессия прошлой операции ещё не закрыта — HELLO не было, и проверка «после HELLO» читает старое. Ждём, пока опрос примут.
+  const probe = async (id: string) => {
+    const until = Date.now() + 3000;
+    for (;;) {
+      const run = displays.probe(id);
+      if (run) return run;
+      if (Date.now() > until) assert.fail(`точка ${id} занята — опрос не принят`);
+      await new Promise((r) => setTimeout(r, 10));
+    }
+  };
   const get = async (id: string) => (await app.inject({ method: "GET", url: `/api/displays/${id}`, headers })).json() as DisplayItem;
   const cleanup = async () => {
     await app.close();
     await Promise.all(mocks.map((m) => m.stop()));
   };
-  return { db, app, headers, displays, addPoint, get, cleanup };
+  return { db, app, headers, displays, addPoint, probe, get, cleanup };
 }
 
 test("wav: PCM16 и IMA ADPCM моно — длительность; стерео и 8 бит — отказ", () => {
@@ -135,14 +146,14 @@ test("без сессии мастера — 401 на звук", async () => {
 });
 
 test("фон: канал группы доходит до звуковой точки; исключение точки и тишина; дисплей без звука не трогается", async () => {
-  const { app, headers, displays, addPoint, get, cleanup } = await setup();
+  const { app, headers, displays, addPoint, probe, get, cleanup } = await setup();
   try {
     const group = (await app.inject({ method: "POST", url: "/api/display-groups", headers, payload: { name: "Бар «Посмертие»" } })).json() as DisplayGroup;
     const bar = await addPoint("bar-1", { groupId: group.id });
     const plain = await addPoint("qr-only", { audio: false, groupId: group.id });
     // Первый HELLO: сервер узнаёт, что точка звуковая, и шлёт её состояние (пока — тишина).
-    await displays.probe("bar-1");
-    await displays.probe("qr-only");
+    await probe("bar-1");
+    await probe("qr-only");
     await waitFor("первое состояние", () => bar.audioVersion >= 1);
     assert.deepEqual(bar.audioState!.tracks, []);
     assert.equal((await get("qr-only")).audio, null, "без роли audio звуковых полей нет");
@@ -166,7 +177,7 @@ test("фон: канал группы доходит до звуковой то�
     assert.equal(bar.audioState!.volume, 70, "громкость группы важнее громкости канала");
     assert.equal(plain.audioVersion, 0, "дисплею без звука звуковые команды не шлются");
 
-    await displays.probe("bar-1");
+    await probe("bar-1");
     let item = await get("bar-1");
     assert.equal(item.audio!.channelName, "Радио «Неон»");
     assert.equal(item.audio!.source, "group");
@@ -195,14 +206,14 @@ test("фон: канал группы доходит до звуковой то�
 });
 
 test("точка перезагрузилась и забыла состояние — после HELLO сервер досылает; каталог треков — по LIST", async () => {
-  const { app, headers, displays, addPoint, get, cleanup } = await setup();
+  const { app, headers, displays, addPoint, probe, get, cleanup } = await setup();
   try {
     const many = Array.from({ length: 70 }, (_, i) => `ambient-${String(i).padStart(2, "0")}-cyberpunk-city-at-night.mp3`);
     const p = await addPoint("hall", { tracks: many });
     const ch = (
       await app.inject({ method: "POST", url: "/api/audio/channels", headers, payload: { name: "Город", tracks: many.slice(0, 5) } })
     ).json() as AudioChannel;
-    await displays.probe("hall");
+    await probe("hall");
     await app.inject({ method: "PUT", url: "/api/displays/hall/audio", headers, payload: { channelId: ch.id, volume: 40 } });
     await waitFor("канал точки", () => p.audioState?.tracks.length === 5);
     const version = p.audioVersion;
@@ -216,23 +227,41 @@ test("точка перезагрузилась и забыла состояни
     // Перезагрузка без сохранённого состояния: HELLO с v=0.
     p.audioVersion = 0;
     p.audioState = null;
-    await displays.probe("hall");
+    await probe("hall");
     await waitFor("досылка после HELLO", () => p.audioVersion === version && p.audioState?.tracks.length === 5);
-    await displays.probe("hall");
+    await probe("hall");
     assert.equal((await get("hall")).audio!.applied, true);
   } finally {
     await cleanup();
   }
 });
 
+test("две правки фона подряд: вторая доходит, хотя первая ещё в пути", async () => {
+  const { app, headers, addPoint, probe, cleanup } = await setup();
+  try {
+    const p = await addPoint("stage");
+    await probe("stage");
+    await waitFor("первое состояние", () => p.audioVersion >= 1);
+    const put = (volume: number) => app.inject({ method: "PUT", url: "/api/displays/stage/audio", headers, payload: { channelId: "", volume } });
+    // Точка приняла громкость 30, а сервер ещё ждёт её OK — вторая правка в это время не должна потеряться до следующего опроса.
+    p.faults.audioStateReplyDelayMs = 300;
+    assert.equal((await put(30)).statusCode, 200);
+    await waitFor("первая правка на точке", () => p.audioState?.volume === 30);
+    assert.equal((await put(80)).statusCode, 200);
+    await waitFor("последняя правка на точке", () => p.audioState?.volume === 80);
+  } finally {
+    await cleanup();
+  }
+});
+
 test("громкая связь: клип докачивается после обрыва, играет, «доиграло» — по HELLO; повтор того же клипа не грузится заново", async () => {
-  const { app, headers, displays, addPoint, get, cleanup } = await setup();
+  const { app, headers, displays, addPoint, probe, get, cleanup } = await setup();
   try {
     const group = (await app.inject({ method: "POST", url: "/api/display-groups", headers, payload: { name: "Площадь" } })).json() as DisplayGroup;
     const a = await addPoint("sq-1", { groupId: group.id });
     const b = await addPoint("sq-2", { groupId: group.id });
     await addPoint("qr-only", { audio: false, groupId: group.id });
-    for (const id of ["sq-1", "sq-2", "qr-only"]) await displays.probe(id);
+    for (const id of ["sq-1", "sq-2", "qr-only"]) await probe(id);
 
     const data = wav(1500, 16000, 7); // 48 КБ — три куска
     const bad = await app.inject({ method: "POST", url: "/api/audio/clips", headers, payload: { name: "x", data: Buffer.from("junk").toString("base64") } });
@@ -262,10 +291,11 @@ test("громкая связь: клип докачивается после о
     assert.equal(a.announcement!.id, ann.id);
     assert.equal(a.faults.dropMidClip, 0, "обрыв посреди загрузки случился");
     assert.ok(a.clips.has(clip.id), "клип докачан после обрыва");
-    assert.equal((await get("sq-1")).audio!.announce!.phase, "PLAYING");
+    // Точка играет с момента CLIP_COMMIT, а фазу сервер ставит по её OK — чуть позже.
+    await waitFor("фаза PLAYING на сервере", async () => (await get("sq-1")).audio!.announce!.phase === "PLAYING");
 
     await waitFor("доиграли", () => a.announcement?.state === "done" && b.announcement?.state === "done");
-    await displays.probe("sq-1");
+    await probe("sq-1");
     const done = (await get("sq-1")).audio!.announce!;
     assert.equal(done.phase, "DONE");
     assert.equal(done.uploadedPct, 100);
@@ -282,7 +312,7 @@ test("громкая связь: клип докачивается после о
     const stop = await app.inject({ method: "POST", url: "/api/audio/announce/stop", headers, payload: { targets: { displayIds: ["sq-2"] } } });
     assert.equal(stop.statusCode, 200);
     await waitFor("остановлено", () => b.announcement?.state === "stopped");
-    assert.equal((await get("sq-2")).audio!.announce!.phase, "STOPPED");
+    await waitFor("фаза STOPPED на сервере", async () => (await get("sq-2")).audio!.announce!.phase === "STOPPED");
 
     const unknown = await app.inject({ method: "POST", url: "/api/audio/announce", headers, payload: { targets: { all: true }, clipId: "0".repeat(64) } });
     assert.equal(unknown.statusCode, 404);

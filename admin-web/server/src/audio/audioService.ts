@@ -110,13 +110,18 @@ export class AudioService {
       const version = Math.max(row.audio_version, reported?.v ?? 0) + 1;
       this.repo.setDesired(row.id, version, state);
       changed++;
-      if (row.enabled) this.sendState(row.id);
+      if (row.enabled) this.sendState(row.id, true);
     }
     return changed;
   }
 
-  private sendState(displayId: string): void {
-    if (this.displays.hasCustom(displayId, "audio-state")) return;
+  /**
+   * Досылка желаемого. changed — желаемое только что поменялось: отправка в работе несёт прежнее (строку она прочитала
+   * до правки), поэтому пропускаем только ждущую — та прочитает строку заново. После HELLO (changed=false) — и ту, что в
+   * работе: HELLO пришёл в её же сессии, вторая такая же не нужна.
+   */
+  private sendState(displayId: string, changed = false): void {
+    if (this.displays.hasCustom(displayId, "audio-state", changed)) return;
     void this.displays.enqueueCustom(displayId, {
       name: "AUDIO_STATE",
       key: "audio-state",

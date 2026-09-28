@@ -340,10 +340,13 @@ export class DisplayManager {
     });
   }
 
-  /** Есть ли в очереди точки (или в работе) своя операция с этим ключом — чтобы не ставить вторую такую же. */
-  hasCustom(displayId: string, key: string): boolean {
+  /**
+   * Есть ли в очереди точки (или в работе) своя операция с этим ключом — чтобы не ставить вторую такую же. queuedOnly —
+   * только ждущие: операция в работе уже прочитала строку, и новое желаемое она не отправит.
+   */
+  hasCustom(displayId: string, key: string, queuedOnly = false): boolean {
     const w = this.workers.get(displayId);
-    return !!w && [w.active, ...w.queue].some((o) => o?.kind === "custom" && o.key === key);
+    return !!w && [queuedOnly ? undefined : w.active, ...w.queue].some((o) => o?.kind === "custom" && o.key === key);
   }
 
   onHello(hook: HelloHook): void {

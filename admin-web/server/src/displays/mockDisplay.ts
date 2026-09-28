@@ -40,6 +40,8 @@ export interface MockFaults {
   corruptIncoming?: number;
   /** Звук: оборвать соединение после первого принятого куска клипа столько раз (Wi-Fi пропал посреди загрузки — докачка). */
   dropMidClip?: number;
+  /** Звук: ответить OK на AUDIO_STATE с задержкой (состояние уже принято, сервер ещё ждёт ответа). */
+  audioStateReplyDelayMs?: number;
 }
 
 export interface MockDisplayOptions {
@@ -329,7 +331,9 @@ export class MockDisplay {
         this.audioState = JSON.parse(payload.toString("utf8")) as AudioStatePayload;
         this.audioVersion = seq;
         this.log(`audio v${seq}: ${this.audioState.tracks.join(", ") || "тишина"} vol=${this.audioState.volume}`);
-        reply(MsgType.OK, seq);
+        const delay = this.faults.audioStateReplyDelayMs ?? 0;
+        if (delay > 0) setTimeout(() => reply(MsgType.OK, seq), delay);
+        else reply(MsgType.OK, seq);
         return true;
       }
       case MsgType.CLIP_BEGIN: {
