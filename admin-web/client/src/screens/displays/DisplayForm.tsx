@@ -166,7 +166,7 @@ export function SecretPanel({ result, onClose }: { result: DisplaySecretResponse
       </p>
       <code className="secret-box mono">{result.secret}</code>
       <label className="sound-check">
-        <input type="checkbox" checked={audio} onChange={(e) => setAudio(e.target.checked)} /> со звуком (карта и усилитель) — точка появится на экране «Звук»
+        <input type="checkbox" checked={audio} onChange={(e) => setAudio(e.target.checked)} /> со звуком (карта и усилитель) — точка появится в «Громкой связи»
       </label>
       <pre className="qr-raw mono">{config}</pre>
     </Panel>
