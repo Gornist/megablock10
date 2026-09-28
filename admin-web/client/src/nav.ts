@@ -20,6 +20,7 @@ export const NAV: { title: string; items: { path: string; label: string }[] }[] 
   {
     title: "Мир",
     items: [
+      { path: "devices", label: "Устройства" },
       { path: "nodes", label: "Узлы" },
       { path: "locations", label: "Локации" },
       { path: "announce", label: "Громкая связь" },
@@ -32,7 +33,7 @@ export const NAV: { title: string; items: { path: string; label: string }[] }[] 
 
 /** Прежние адреса экранов, которых больше нет в меню, — закладки мастеров не должны вести в пустоту. */
 export const REDIRECTS: Record<string, string> = {
-  displays: "nodes",
+  displays: "devices",
   sound: "announce",
 };
 

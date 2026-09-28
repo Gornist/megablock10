@@ -13,6 +13,7 @@ import { AuditScreen } from "./screens/AuditScreen";
 import { EventsScreen } from "./screens/EventsScreen";
 import { AnnounceScreen } from "./screens/AnnounceScreen";
 import { ChannelsScreen } from "./screens/ChannelsScreen";
+import { DevicesScreen } from "./screens/DevicesScreen";
 import { LocationsScreen } from "./screens/LocationsScreen";
 
 /**
@@ -28,6 +29,7 @@ export const SCREENS: Record<string, (route: string[]) => ReactNode> = {
   transfers: () => <TransfersScreen />,
   announcements: () => <AnnouncementsScreen />,
   audit: () => <AuditScreen />,
+  devices: (route) => <DevicesScreen deviceId={route[1]} />,
   nodes: (route) => <NodesScreen nodeId={route[1]} />,
   locations: () => <LocationsScreen />,
   announce: () => <AnnounceScreen />,
