@@ -99,7 +99,7 @@ function NodeDetailPanel({ nodeId }: { nodeId: string }) {
                 ))
               )}
             </div>
-            <NodePoint nodeId={nodeId} nodeName={n.name} />
+            <NodePoint nodeId={nodeId} />
           </>
         )}
       </AsyncPanel>

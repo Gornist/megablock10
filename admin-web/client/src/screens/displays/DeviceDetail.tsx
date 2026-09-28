@@ -1,11 +1,14 @@
 import { useState } from "react";
 import { api } from "../../api/client";
-import type { DisplayGroup, DisplayItem, DisplayPreview, DisplaySecretResponse } from "../../api/types";
+import type { AudioChannel, DisplayGroup, DisplayItem, DisplayPreview, DisplaySecretResponse } from "../../api/types";
 import { useAsyncAction } from "../../api/useAsyncAction";
 import { AppButton, AppDialog, AppSelect, Badge, Panel } from "../../design/components";
 import { formatAgo } from "../../format";
+import { navigate } from "../../router";
+import { PointAnnounce, PointAudioControls, PointAudioStatus } from "../audio/PointAudio";
 import { BatteryGauge } from "./BatteryGauge";
 import { DisplayMock, PushSteps } from "./DisplayMock";
+import { DisplayPushDialog } from "./DisplayPushDialog";
 import { isLagging, useDisplayFrame } from "./useDisplayFrame";
 import { phaseText, screenState, STATUS_LABEL, STATUS_TONE, type DisplaySource } from "./displayUtil";
 
@@ -21,32 +24,45 @@ const BACKLIGHT_SECONDS = 20;
 type Confirm = "reboot" | "secret" | "delete";
 
 /**
- * Карточка дисплея: состояние (связь, что на экране и что должно быть, последняя ошибка, батарея), команды (проверить связь, тест,
- * подсветка, перезагрузка) и управление записью. «Повторить» досылает то, что должно быть на экране, если прошлая отправка не дошла.
+ * Канонiчная карточка точки — одна на весь дашборд (экран «Устройства», разворот строки на «Локациях», секция «Точка узла»
+ * на «Узлах»): состояние (связь, что на экране и что должно быть, ошибка, батарея, прошивка), полный набор команд (проверить
+ * связь, тест, подсветка, перезагрузка, изменить, секрет, удалить), привязка к узлу (или выбор свободного, если точка ничья)
+ * и звук (что играет, фон, ход объявления). Раньше это были три разных места с разным набором возможностей — слияние убирает
+ * расхождение (полная карточка была только на «Локациях», в карточке узла — урезанная копия).
  */
-export function DisplayCard({
+export function DeviceDetail({
   display: d,
   groups,
+  channels,
+  nodes,
+  takenNodes,
   onChanged,
   onEdit,
   onSecret,
-  onPush,
 }: {
   display: DisplayItem;
   groups: DisplayGroup[];
+  channels: AudioChannel[];
+  /** Узлы (контейнеры) для привязки. */
+  nodes: { id: string; name: string }[];
+  /** Узел → id точки, которая на нём стоит (занятые недоступны в выборе). */
+  takenNodes: Map<string, string>;
   onChanged: () => void;
   onEdit: () => void;
   onSecret: (r: DisplaySecretResponse) => void;
-  onPush: (source: DisplaySource, title: string) => void;
 }) {
   const [level, setLevel] = useState("MEDIUM");
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [push, setPush] = useState<{ source: DisplaySource; title: string } | null>(null);
+  const [nodeChoice, setNodeChoice] = useState("");
   const action = useAsyncAction({ fallbackError: "дисплей не ответил" });
   const base = `/api/displays/${encodeURIComponent(d.id)}`;
   const framePng = useDisplayFrame(d);
   const shownState = screenState(d);
   const inFlight = d.push && d.push.version === d.desiredVersion && d.push.phase !== "DISPLAYED" ? d.push : null;
+  const boundNodeName = d.nodeId ? nodes.find((n) => n.id === d.nodeId)?.name ?? d.nodeId : null;
+  const freeNodes = nodes.filter((n) => !takenNodes.has(n.id) || takenNodes.get(n.id) === d.id);
 
   async function command(path: string, body: Record<string, unknown>, done: string) {
     setNote(null);
@@ -61,9 +77,18 @@ export function DisplayCard({
     if (res.ok) onChanged();
   }
 
+  async function bindNode(nodeId: string | null) {
+    setNote(null);
+    const res = await action.run(() => api.put<DisplayItem>(`${base}/node`, { nodeId }));
+    if (res.ok) {
+      setNodeChoice("");
+      onChanged();
+    }
+  }
+
   async function resend() {
     const res = await action.run(() => api.get<DisplayPreview>(`${base}/preview`));
-    if (res.ok) onPush({ type: "qr", qr: res.value.qr, label: res.value.label }, res.value.label);
+    if (res.ok) setPush({ source: { type: "qr", qr: res.value.qr, label: res.value.label }, title: res.value.label });
   }
 
   async function confirmed() {
@@ -104,6 +129,13 @@ export function DisplayCard({
               </option>
             ))}
           </AppSelect>
+        )}
+        {boundNodeName ? (
+          <button type="button" className="link-button" onClick={() => navigate("nodes", d.nodeId!)}>
+            узел «{boundNodeName}»
+          </button>
+        ) : (
+          <span className="hint-text">без узла — просто динамик в локации</span>
         )}
       </div>
       <div className={`display-card-body${d.width > d.height ? " landscape" : ""}`}>
@@ -165,6 +197,11 @@ export function DisplayCard({
         </div>
       )}
       <div className="display-actions">
+        {boundNodeName && (
+          <AppButton onClick={() => setPush({ source: { type: "container", id: d.nodeId! }, title: boundNodeName })} disabled={!d.enabled}>
+            На дисплей
+          </AppButton>
+        )}
         {lagging && (
           <AppButton variant="primary" onClick={resend} disabled={action.busy || !d.enabled}>
             Повторить
@@ -198,6 +235,27 @@ export function DisplayCard({
         <AppButton onClick={() => setConfirm("reboot")} disabled={action.busy || !d.enabled}>
           Перезагрузить
         </AppButton>
+        {boundNodeName ? (
+          <AppButton onClick={() => bindNode(null)} disabled={action.busy}>
+            Отвязать узел
+          </AppButton>
+        ) : (
+          freeNodes.length > 0 && (
+            <>
+              <AppSelect value={nodeChoice} onChange={(e) => setNodeChoice(e.target.value)} aria-label={`узел для ${d.id}`}>
+                <option value="">привязать к узлу…</option>
+                {freeNodes.map((n) => (
+                  <option key={n.id} value={n.id}>
+                    {n.name}
+                  </option>
+                ))}
+              </AppSelect>
+              <AppButton onClick={() => bindNode(nodeChoice)} disabled={action.busy || !nodeChoice}>
+                Привязать
+              </AppButton>
+            </>
+          )
+        )}
         <AppButton onClick={onEdit}>Изменить</AppButton>
         <AppButton onClick={() => setConfirm("secret")}>Новый секрет</AppButton>
         <AppButton variant="danger" onClick={() => setConfirm("delete")}>
@@ -207,6 +265,13 @@ export function DisplayCard({
       {action.busy && <p className="hint-text">жду ответа дисплея…</p>}
       {note && <p className="hint-text">{note}</p>}
       {action.error && <div className="login-error">{action.error}</div>}
+      {d.audio && (
+        <div className="node-point-audio">
+          <PointAudioStatus point={d} />
+          <PointAudioControls point={d} channels={channels} onSaved={onChanged} />
+          <PointAnnounce point={d} />
+        </div>
+      )}
       {confirm && (
         <AppDialog
           title={confirm === "reboot" ? "Перезагрузить дисплей?" : confirm === "secret" ? "Сменить секрет?" : "Удалить дисплей?"}
@@ -221,6 +286,17 @@ export function DisplayCard({
           confirmVariant="danger"
           onConfirm={confirmed}
           onCancel={() => setConfirm(null)}
+        />
+      )}
+      {push && (
+        <DisplayPushDialog
+          source={push.source}
+          title={push.title}
+          preselect={[d.id]}
+          onClose={() => {
+            setPush(null);
+            onChanged();
+          }}
         />
       )}
     </Panel>

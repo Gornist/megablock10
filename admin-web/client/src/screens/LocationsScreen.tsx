@@ -9,11 +9,10 @@ import { AppButton, AppSelect, Badge, Panel, StatTile } from "../design/componen
 import { navigate } from "../router";
 import { PointAnnounce, PointAudioControls, PointAudioStatus, VolumeInput } from "./audio/PointAudio";
 import { BatteryGauge } from "./displays/BatteryGauge";
-import { DisplayCard } from "./displays/DisplayCard";
+import { DeviceDetail } from "./displays/DeviceDetail";
 import { DisplayForm, SecretPanel } from "./displays/DisplayForm";
 import { GroupDeleteDialog, GroupNameDialog, GroupSection } from "./displays/DisplayGroups";
-import { DisplayPushDialog } from "./displays/DisplayPushDialog";
-import { byBatteryFirst, STATUS_LABEL, STATUS_TONE, type DisplaySource } from "./displays/displayUtil";
+import { byBatteryFirst, STATUS_LABEL, STATUS_TONE } from "./displays/displayUtil";
 import { useCollapsedGroups } from "./displays/useCollapsedGroups";
 
 /**
@@ -31,7 +30,6 @@ export function LocationsScreen() {
   const [collapsed, toggleCollapsed] = useCollapsedGroups();
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [secret, setSecret] = useState<DisplaySecretResponse | null>(null);
-  const [push, setPush] = useState<{ source: DisplaySource; title: string } | null>(null);
   // Севшие — сверху: на игре мастер первым делом смотрит, куда бежать менять батарею.
   const [order, setOrder] = useState<"battery" | "id">("battery");
 
@@ -80,16 +78,18 @@ export function LocationsScreen() {
             </div>
           )}
           {open.has(d.id) && (
-            <DisplayCard
+            <DeviceDetail
               display={d}
               groups={groups ?? []}
+              channels={channels ?? []}
+              nodes={(nodes ?? []).map((n) => ({ id: n.id, name: n.name }))}
+              takenNodes={takenNodes}
               onChanged={reloadAll}
               onEdit={() => setForm({ edit: d })}
               onSecret={(r) => {
                 setSecret(r);
                 reload();
               }}
-              onPush={(source, title) => setPush({ source, title })}
             />
           )}
         </li>
@@ -203,16 +203,6 @@ export function LocationsScreen() {
           onDone={() => {
             setGroupDialog(null);
             reloadGroups();
-          }}
-        />
-      )}
-      {push && (
-        <DisplayPushDialog
-          source={push.source}
-          title={push.title}
-          onClose={() => {
-            setPush(null);
-            reload();
           }}
         />
       )}
