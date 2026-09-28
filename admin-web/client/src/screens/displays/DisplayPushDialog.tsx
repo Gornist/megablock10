@@ -118,7 +118,7 @@ export function DisplayPushDialog({
           {warning && !sent && <div className="login-error">{warning}</div>}
           {previewError && <div className="login-error">{previewError}</div>}
           {listError && <div className="login-error">{listError}</div>}
-          {displays && usable.length === 0 && <EmptyState>нет включённых дисплеев — добавьте на вкладке «Дисплеи»</EmptyState>}
+          {displays && usable.length === 0 && <EmptyState>нет включённых дисплеев — добавьте на экране «Локации»</EmptyState>}
           {!sent &&
             usable.map((d) => (
               <label key={d.id}>
