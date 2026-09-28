@@ -120,6 +120,7 @@ CI — `.github/workflows/main.yml` (сборка, статика, тесты п
 | [docs/sound-nodes.md](docs/sound-nodes.md) | Звук точек: фон локаций, громкая связь, железо, питание и батарея |
 | [docs/firmware-plan.md](docs/firmware-plan.md) | Прошивка точки: как устроена и как проверяется без железа |
 | [docs/ux/ux-plan.md](docs/ux/ux-plan.md) | Интерфейс: план и статус |
+| [docs/netrun.md](docs/netrun.md) | «Сеть»: 3D-клиент нетраннера — решения владельца, архитектура, этапы (проект) |
 
 ### Осознанные ограничения
 
