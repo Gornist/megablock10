@@ -1,6 +1,7 @@
 package com.megablok10.app.screenshots
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -33,7 +34,7 @@ class BreachScreenTest {
     private fun snap(name: String, content: @Composable () -> Unit) {
         paparazzi.snapshot(name) {
             CompositionLocalProvider(LocalMbColors provides MbColorsBreach) {
-                Box(Modifier.background(MbColorsBreach.bg).padding(10.dp)) {
+                Box(Modifier.fillMaxSize().background(MbColorsBreach.bg).padding(10.dp)) {
                     Column { content() }
                 }
             }

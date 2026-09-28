@@ -39,8 +39,8 @@ dependencies {
     signature("net.sf.androidscents.signature:android-api-level-26:8.0.0_r2@signature")
 
     // api: типы корутин (CoroutineScope, Flow) — часть публичных сигнатур модуля.
-    api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+    api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
 
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
 }

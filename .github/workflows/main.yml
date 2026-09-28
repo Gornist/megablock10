@@ -5,18 +5,25 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]   # ветки агентов (agent/*) проверяются в PR до слияния
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      record_screenshots:
+        description: "Перезаписать эталоны скриншотов (Paparazzi) и закоммитить их в эту ветку — после намеренной правки интерфейса или обновления Compose/Paparazzi, когда снять локально нечем (облако без SDK). Эталоны потом просмотреть глазами."
+        type: boolean
+        default: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # только для record_screenshots: коммит новых эталонов в ветку запуска
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"   # Paparazzi 2 требует Java 21 для сборки; байткод приложения — 17 (app/build.gradle.kts)
 
       - uses: gradle/actions/setup-gradle@v6   # версия Gradle — из gradle/wrapper (та же, что локально)
 
@@ -63,6 +70,19 @@ jobs:
           name: lint-report
           path: app/build/reports/lint-results-debug.*
           if-no-files-found: ignore
+
+      - name: Эталоны скриншотов заново (только по кнопке record_screenshots)
+        if: inputs.record_screenshots
+        run: |
+          # Старые файлы — прочь: при смене имён у Paparazzi устаревшие эталоны остались бы лежать.
+          git rm -q -r --ignore-unmatch app/src/test/snapshots/images
+          ./gradlew recordPaparazziDebug --no-daemon
+          git add -A app/src/test/snapshots
+          if git diff --cached --quiet; then echo "эталоны не изменились"; exit 0; fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "Скриншоты: эталоны перезаписаны в CI (record_screenshots, запуск ${{ github.run_id }})" \
+                      -m "Снято recordPaparazziDebug на ${{ github.sha }} по кнопке в main.yml — облачная сессия без Android SDK снять их не может. Эталоны просмотреть глазами до слияния в main."
+          git push origin "HEAD:${{ github.ref_name }}"
 
       - name: Скриншот-тесты (Paparazzi, JVM)
         run: ./gradlew verifyPaparazziDebug --no-daemon

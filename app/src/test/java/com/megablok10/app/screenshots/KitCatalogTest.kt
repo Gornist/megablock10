@@ -2,6 +2,7 @@ package com.megablok10.app.screenshots
 
 import android.graphics.Bitmap
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -79,7 +80,7 @@ class KitCatalogTest {
     private fun snap(name: String, colors: MbColorScheme = MbColorsDefault, content: @Composable () -> Unit) {
         paparazzi.snapshot(name) {
             CompositionLocalProvider(LocalMbColors provides colors) {
-                Box(Modifier.background(colors.bg).padding(10.dp)) {
+                Box(Modifier.fillMaxSize().background(colors.bg).padding(10.dp)) {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { content() }
                 }
             }
