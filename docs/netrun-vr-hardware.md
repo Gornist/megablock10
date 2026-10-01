@@ -5,14 +5,18 @@
 из раздела 5 брифа, здесь повторно перепроверено только там, где указан новый источник.
 
 > **Решение владельца (октябрь 2026):** берём **обычную Pico 4**, не Ultra и не Enterprise. Рекомендация ниже про
-> Ultra Enterprise не принята; версии софта (Godot 4.7.2 и др.) остаются в силе. Досследование обычной Pico 4 — раздел 10.
+> Ultra Enterprise не принята; версии софта (Godot 4.7.2 и др.) остаются в силе. Досследование обычной Pico 4 — раздел 10, он главнее разделов 2–7 и 9.
 
 ## 1. Рекомендация одной строкой
 
-**Pico 4 Ultra Enterprise (12 ГБ / 256 ГБ), Godot 4.7.2-stable + OpenXR Vendors 5.1.0 (по необходимости), Gradle-экспорт на
-JDK 17 / build-tools 35.0.1 / platform android-35 / NDK 28.1.13356709, рендерер Mobile (Vulkan) с запасным Compatibility, прошивку
-закрепить на версии, на которой пройдёт чек-лист из п. 7**; на прототип купить 2 экземпляра. **Цена не укладывается в ориентир
-владельца (П1) в разы** — см. п. 3 и вопросы в п. 9.
+**Обычная Pico 4 (Snapdragon XR2 Gen 1, 8 ГБ, версия Global, 128 или 256 ГБ), Godot 4.7.2-stable (+ OpenXR Vendors 5.1.0 только
+при необходимости), Gradle-экспорт на JDK 17 / build-tools 35.0.1 / platform android-35 / NDK 28.1.13356709, рендерер Mobile
+(Vulkan) с запасным Compatibility, прошивку выровнять на самой новой из партии и закрепить офлайн (откат невозможен); на прототип
+купить 2 экземпляра.** Версию CN не брать. Цена — около 36–65 тыс. ₽ за штуку (парк из 14 — примерно 0,5–0,9 млн ₽), П1
+(20–25 тыс. ₽) не выполняется, но близко. Главный риск — Ж8 (возврат в приложение без Enterprise): штатного пути нет, самодельный
+путь не подтверждён на устройстве, запасной вариант — помощник у стойки; подробности, таблица требований и порядок подготовки
+парка — в разделе 10. Таблицы 2–7 ниже написаны под Ultra Enterprise: для обычной Pico 4 они уступают разделу 10, кроме строк
+про Godot, JDK, SDK, NDK, рендерер.
 
 ## 2. Таблица конфигурации
 
@@ -148,3 +152,118 @@ JDK 17 / build-tools 35.0.1 / platform android-35 / NDK 28.1.13356709, ренд�
 1. Цена. Pico с поддержкой киоска стоит 135–200 тыс. ₽ за штуку (парк ≈ 2,2 млн ₽), потребительская Ultra — около 60–69 тыс. ₽ (≈ 0,9 млн ₽ на 14), но без штатного автозапуска. Ориентир 20–25 тыс. ₽ недостижим ни в одном варианте. Что важнее: бюджет или «надел и играешь» (Ж8)?
 2. Готовы ли вы платить за Device Manager (≈ 99 $ / год / очки, облачный) или предпочитаете бесплатный Business Suite и самодельные скрипты?
 3. Разрешено ли купить сначала 2 Ultra Enterprise и 1 потребительскую Ultra для сравнения Ж8?
+
+## 10. Обычная Pico 4 (досследование)
+
+Дата — 2026-10-01, только чтение интернета, на устройстве ничего не проверялось. Решение владельца — обычная Pico 4 (не Ultra, не
+Enterprise) — не обсуждается. «Неизвестно» и «предположение» — не отказ, а то, что закрывает чек-лист п. 7 и п. 10.8.
+
+### 10.1. Наличие, цены, версия
+
+| Что | Данные | Источник |
+|---|---|---|
+| Варианты | 8 ГБ ОЗУ в обоих; 128 и 256 ГБ. Для нашего APK хватает 128 ГБ (предположение), разница в цене 4–10 тыс. ₽ | [iprofishop 128](https://iprofishop.ru/catalog/igrovye_pristavki/pico_vr/88818/), [portal-shop](https://portal-shop.com/catalog/vr_ochki/vr_shlemy/2277/) |
+| 128 ГБ, РФ | 35 990 ₽ («в наличии», iprofishop); 54 990 ₽ («в наличии», Москва, offo); 50–55 тыс. ₽ («под заказ», tech-iq); 42 900 ₽ (распродано, electrogor) | [iprofishop](https://iprofishop.ru/catalog/igrovye_pristavki/pico_vr/88818/), [offo](https://offo.ru/catalog/shlem-virtualnoy-realnosti/shlem-vr-pico-4-4320x2160-128-gb-90-gts-bazovaya-global/), [tech-iq](https://tech-iq.ru/product/avtonomnyj-vr-shlem-pico-4-128-gb/), [electrogor](https://www.electrogor.ru/shlemy-virtualnoi-realnosti/shlem-virtualnoi-realnosti-pico-4-128gb.html) |
+| 256 ГБ, РФ | 39 990 ₽ (iprofishop); 48 990 ₽ (под заказ, portal-shop); 57 900 ₽ (нет в наличии, formula-iq); 64 900–65 000 ₽ (под заказ, virtualnyeochki — **версия CN**, vr-zone) | [portal-shop](https://portal-shop.com/catalog/vr_ochki/vr_shlemy/2277/), [formula-iq](https://formula-iq.com/product-page/pico-4-256gb/), [virtualnyeochki](https://virtualnyeochki.ru/avtonomnyie-vr-ochki/avtonomnye-vr-ochki-pico/pico-neo-4-256-gb), [vr-zone](https://vr-zone.ru/avtonomnyy-vr-shlem-pico-4-256-gb/) |
+| Б/у | **Неизвестно**: объявления (Авито и др.) не удалось прочитать | — |
+| 13–15 одинаковых | **Неизвестно**: на страницах нет остатка по количеству, у большинства «под заказ». Нужен запрос поставщикам на 14 шт. и проверка, что все Global и из одной партии | — |
+| Версия CN | Не брать. Pico Store и часть приложений у CN недоступны; при обновлении «по воздуху» CN остаётся CN; региональная смена через OTA невозможна; при некоторых региональных настройках блокируется Wi-Fi 5 ГГц. Для Ж5 (UniFi, 5 ГГц) это недопустимо | [vr180g](https://vr180g.com/pico/picochina.php?l=en), [pico4.wiki](https://pico4.wiki/guides/ota/) |
+| Снятие с производства | Официального объявления не найдено; Pico 4 вышла в октябре 2022, Pico 5 по сообщениям отменена, преемник — Pico 4 Ultra | [MIXED](https://mixed-news.com/en/pico-5-canceled-report/), [Wikipedia](https://en.wikipedia.org/wiki/PICO_4) |
+| Прошивка | В магазинах указана «PICO OS 5.0» (устарело). Сообщество: Global 5.13.3 (и CN 5.13.3 Beta). Более свежая — неизвестно. Версии по Android: Pico 4 — Android 10 (одна вторичная публикация, надёжность низкая) | [owomushi](https://owomushi.com/Pico-Firmware/), [VRSleepDisableADB](https://github.com/MoonCherryFox/VRSleepDisableADB) |
+
+### 10.2. Ж1–Ж10 и П1–П7 для обычной Pico 4
+
+| # | Статус | Основание |
+|---|---|---|
+| Ж1 | **Да** | Автономная, 4 камеры трекинга, 6DoF, 2 контроллера в комплекте ([iprofishop](https://iprofishop.ru/catalog/igrovye_pristavki/pico_vr/88818/), [Wikipedia](https://en.wikipedia.org/wiki/PICO_4)) |
+| Ж2 | **Да** (оговорка) | Godot на Pico 4 собирается и работает; вендорские расширения нужны только для passthrough ([форум](https://forum.godotengine.org/t/no-passthrough-option-on-pico-4-using-openxr-vendor-plugin-godot-v4-4-1-stable/108379)). Ранний PR 2022 года описывал только частичную поддержку и баги драйвера Vulkan на тогдашней прошивке — на нынешней не перепроверено ([PR #68023](https://github.com/godotengine/godot/pull/68023/)) |
+| Ж3 | **Неизвестно** | Первичная настройка требует Wi-Fi и аккаунта Pico ([Pico](https://www.picoxr.com/global/blog/pico-4-setup)); работает ли потом неделями без интернета и не просит ли вход — источников нет. Проверка прав на приложения: «entitlement check» Pico убивает приложение без интернета через минуту, но он относится к приложениям, использующим Pico Platform SDK ([ALVR #1777](https://github.com/alvr-org/ALVR/issues/1777)); наш APK его не вызывает (предположение) |
+| Ж4 | **Частично** | Всё интернет-зависимое (аккаунт, обновление) — дома. Прошивка офлайн: папка `dload` и «Offline Update», без понижения и без смены региона ([pico4.wiki](https://pico4.wiki/guides/ota/)). Режим разработчика локальный: Настройки → Общие → нажимать «Версия ПО» → Developer → USB-отладка; нужен ли при этом интернет — в источниках не указано; число нажатий в источниках расходится (7–10) ([ArborXR](https://help.arborxr.com/en/articles/10771596-developer-mode-usb-debugging-on-pico-4-ultra-enterprise), [Matts Digital](https://knowledge.matts-digital.com/en/virtual-reality/pico/pico-4-ultra-enterprise/how-to-enable-usb-debugging-on-the-pico-4-ultra-enterprise/)). Эти источники про Enterprise/Ultra, не про обычную Pico 4 |
+| Ж5 | **Неизвестно** | Источник про Wi-Fi без интернета для Pico 4 не найден. Известен случай «No Network — Login authentication required» у пользователя, лечился сменой защиты роутера на WPA2-AES ([AVForums](https://www.avforums.com/threads/new-pico-4-user-wi-fi-cant-connect.2431810/)). Предположение: Android 10 остаётся в сети без интернета; ENet/UDP проверить |
+| Ж6 | **Да** | Режим разработчика, «Установка неизвестных приложений», adb install ([anexplorer](https://anexplorer.io/device/vr-headset/pico-xr)); для Ultra Enterprise подтверждено отдельно ([Matts Digital](https://knowledge.matts-digital.com/en/virtual-reality/pico/pico-4-ultra-enterprise/how-to-install-an-app-on-the-pico-4-ultra-enterprise/)) |
+| Ж7 | **Неизвестно** | Сохранение контура после сна/перезагрузки/замены очков на обычной Pico 4 источниками не подтверждено. Контур в очках привязан к конкретным очкам, не к стойке (предположение: при замене надо повторять быстрый круглый сидячий контур). Что у Enterprise есть отключение границы и «стационарная граница» ([ArborXR](https://help.arborxr.com/en/articles/6630022-configure-pico-system-settings)), у обычной — не подтверждено; у Neo 3 граница отключается в Developer ([VR Expert](https://knowledge.vr-expert.com/kb/how-to-turn-off-the-play-boundary-on-the-pico-neo-3/)) |
+| Ж8 | **Нет штатно / обход не подтверждён** | Автозапуск по загрузке для сторонних приложений блокируется системой (`FEAT_PROCESS_INTERCEPT`), киоска и Device Manager нет ([pico-webxr-kiosk](https://github.com/robinhuse/pico-webxr-kiosk)). Остаётся замена лаунчера и «не давать очкам спать» — см. 10.4 |
+| Ж9 | **Вероятно да** | XR2 Gen 1 такой же класс, как у Quest 2; на форуме Godot 90 кадров/с на Pico 4 в XR-шаблоне (июль 2024) ([форум](https://forum.godotengine.org/t/performance-considerations-for-stand-alone-xr/52324)). Свою сцену со светящимися материалами — замерить; 72 и 90 Гц заявлены в магазинах ([formula-iq](https://formula-iq.com/product-page/pico-4-256gb/)) |
+| Ж10 | **Частично / неизвестно** | В РФ продаётся, но 14 одинаковых Global сразу — не подтверждено (10.1) |
+| П1 | **Не выполняется, близко** | 36–65 тыс. ₽ за штуку против 20–25 тыс. ₽; в 2–4 раза дешевле Ultra Enterprise |
+| П2 | **Ориентировочно** | 5300 мА·ч, зарядка 20 Вт, «2–3 часа» по описаниям магазинов, около 2 ч (в брифе) ([formula-iq](https://formula-iq.com/product-page/pico-4-256gb/), [virtualnyeochki](https://virtualnyeochki.ru/avtonomnyie-vr-ochki/avtonomnye-vr-ochki-pico/pico-neo-4-256-gb)). Игра с зарядкой — не проверено |
+| П3 | **Неизвестно / риск** | Трекинг теряется в темноте и от ИК ([Reddit](https://www.reddit.com/r/PicoXR/comments/11q9jj5/new_pico_4_wont_track_anymore_limited_terrain/)); у Pico 4 нет дополнительных камер Ultra |
+| П4 | **Да, через плагин** | Passthrough в Godot на Pico 4 — плагин OpenXR Vendors ≥ 4.0.0-rc1 ([форум](https://forum.godotengine.org/t/no-passthrough-option-on-pico-4-using-openxr-vendor-plugin-godot-v4-4-1-stable/108379)) |
+| П5 | **Риск** | Модель 2022 года, преемник — Ultra; срок поддержки не публикуется (см. 10.1) |
+| П6 | **Неизвестно** | Встроенные динамики, громкость в шумной локации не измерена; предположение: наушники |
+| П7 | **Да** | 2×AA в контроллере ([iprofishop](https://iprofishop.ru/catalog/igrovye_pristavki/pico_vr/88818/)); время работы — неизвестно |
+
+### 10.3. Цена
+
+| | Количество | Цена за штуку | Итог |
+|---|---|---|---|
+| Прототип | 2 | 36–65 тыс. ₽ (реалистично 40–55 тыс.) | 72–130 тыс. ₽ (реалистично 80–110) |
+| Парк | 14 (10 + 4 запас) | то же | 504–910 тыс. ₽ (реалистично 560–770) |
+
+Цены — по страницам магазинов на 2026-10-01 с разбросом более чем в 1,5 раза; цену на 14 шт. узнавать у поставщика, снижает цену
+только покупка опта и версия Global.
+
+### 10.4. Ж8 на обычной Pico 4: основной способ и запасной
+
+Что известно:
+- Автозапуск по загрузке (BOOT_COMPLETED у стороннего приложения) на обычной Pico 4 системой блокируется ([pico-webxr-kiosk](https://github.com/robinhuse/pico-webxr-kiosk)) — свой receiver не поможет.
+- PicoKiosk (замена лаунчера, GPL-3.0) заявляет: тестировался на Pico 4, white-list приложений, блокирует Home и шторку, опция «start on boot»; готовых APK нет, нужна сборка в Android Studio; прошивка, на которой тестировался, не названа; **поведение после сна и перезагрузки в описании не раскрыто** ([PicoKiosk](https://github.com/it03lab-ops/PicoKiosk)). Назначается через `adb shell pm set-home-activity <пакет>/.MainActivity`. База — PicoZen, репозиторий в архиве с августа 2025 ([PicoZen](https://github.com/barnabwhy/PicoZen)).
+- Скрипт `pico4-adb-debloat` отключает системные пакеты через `pm disable-user` (и включает обратно `pm enable`), без root; сохраняет конфигурацию в файл и применяет к другим очкам; заявлен «для стоковой прошивки Pico 4», версии не названы ([pico4-adb-debloat](https://github.com/it03lab-ops/pico4-adb-debloat)).
+- Официальный киоск Pico: на Neo 2/G2 — свойство `persist.pxr.force.home <пакет>,<активность>` ([Pico Kiosk Mode](https://static.appstore.picovr.com/docs/KioskMode/chapter_two.html)); на Neo 3 — Developer → Industry settings → Launcher App ([chapter 3](http://static.appstore.picovr.com/docs/KioskMode/chapter_three.html)). Для Pico 4 — **не подтверждено**.
+- Сон: по умолчанию очки засыпают, когда их сняли (датчик на ремне), и просыпаются при надевании; затем глубокий сон ([руководство Pico](https://pico-web-tob.oss-cn-beijing.aliyuncs.com/20230825/document/1695015503416348672.pdf), цитата через поисковый ответ, сам PDF не прочитан). Что показывается после пробуждения — наше приложение или меню — **неизвестно**.
+- Не давать засыпать: SDK Pico — `setprop persist.psensor.sleep.delay -1` (системный сон) и `persist.psensor.screenoff.delay 65535` (экран) ([Pico SDK ADB](https://sdk.picovr.com/docs/ADBCommand/chapter_two.html)), версии прошивок не указаны. Для Pico 4 в той же логике — скрытые экраны настроек Android и приложение Pico-4/Settings ([VRSleepDisableADB](https://github.com/MoonCherryFox/VRSleepDisableADB), [Pico-4/Settings](https://github.com/Pico-4/Settings)); репозиторий VRSleepDisableADB — вторичный и не вызывает доверия, считать гипотезой. Свойство `pvr.factorytest.never.sleep` обнуляется при каждой загрузке и меняется модулем, который требует root и LSPosed — нам не подходит ([PicoNeverSleep](https://github.com/chaixshot/PicoNeverSleep)). Цикл `adb shell input keyevent 224` раз в 30 с сообщается рабочим на Ultra, на Pico 4 — неизвестно, требует подключённого adb.
+
+**Порядок (основной).** Не бороться с Pico, а убрать причины ухода из приложения:
+1. Сон: проверить в Настройках, есть ли «Никогда»; если нет — `setprop persist.psensor.sleep.delay -1`, `persist.psensor.screenoff.delay 65535`; помнить, что `persist.*` по документации переживает перезагрузку (предположение для Pico 4). Если сон отключить удалось, очки не засыпают, пока надеты на стойку или заряжаются, и возврат после сна не нужен — остаётся только перезагрузка.
+2. Лаунчер: собрать PicoKiosk, поставить, `pm set-home-activity`, в белом списке только наш APK. Проверка: Home и перезагрузка возвращают в приложение. Пробовать на одних очках; сначала без `pm disable-user` стокового лаунчера (его отключение может оставить очки без рабочего Home; при потере доступа вернуть через `adb shell pm enable`). Параллельно проверить `persist.pxr.force.home` как запасной системный механизм.
+3. Если приложение закрылось само — стойка запускает его командой с мини-ПК по Wi-Fi adb (`adb connect` + `am start`); Wi-Fi adb после перезагрузки очков по умолчанию выключается (стандарт Android 10), поэтому — только идея для проверки, **предположение**.
+
+**Запасной вариант (если 1–3 не прошли).** Помощник у стойки (мастер/организатор): перед сменой включить очки, выбрать приложение «Библиотека → Наше приложение» вручную, затем отдать игроку; очки после снятия считать «занятыми» до возврата помощнику. Цена вопроса — 10–20 с на смену и человек на каждой стойке; приложение должно само восстанавливать сессию на сервере по ключу игрока (это общая защита от сна и сбоя сети, и она нужна в любом случае).
+
+### 10.5. Сидячий контур и замена очков (Ж7)
+
+Что известно: у Enterprise при первом включении выбирается быстрый круговой контур (сидя/стоя) или собственный ([VR Expert](https://knowledge.vr-expert.com/kb/how-to-set-up-a-boundary-on-the-pico-4-enterprise/)); у Neo 3 границу можно отключить в Developer. Про Pico 4 (обычную) — подтверждений нет. Решения по убыванию надёжности: (1) играть сидя без сохранения мира и без привязки к стойке — в Godot использовать `local` reference space и пересчитывать позицию игрока в рывке начала забега, т.е. от контура не зависеть (предположение, зависит от клиента); (2) запретить границу в Developer, если пункт есть (на Pico 4 не подтверждён); (3) один быстрый сидячий круг в начале каждой сессии помощником. Проверка — п. 7 чек-листа, пункт 3.
+
+### 10.6. Godot на Pico 4 (Ж9)
+
+- Renderer: на Pico 4 работали и Mobile (Vulkan), и Compatibility; ранняя поддержка (2022) страдала от ошибок Vulkan-драйвера на тогдашней прошивке ([PR #68023](https://github.com/godotengine/godot/pull/68023/)). Форум Godot: март 2024 советовали Compatibility для автономных очков; в феврале 2026 (Godot 4.6) Mobile в тестах быстрее Compatibility на Quest 3 и признан реальным вариантом ([форум](https://forum.godotengine.org/t/performance-considerations-for-stand-alone-xr/52324)) — на Pico 4 сравнительных замеров не найдено. Решение — п. 7, пункт 6.
+- Частота: 72 и 90 Гц заявлены (Pico 4), стабильность на нашей сцене — неизвестно.
+- Фовеация (4.6+/4.7) на Pico 4 — не проверялась; ошибки в Godot на Quest описаны в #112988 и #112834.
+
+### 10.7. Порядок подготовки парка для обычной Pico 4
+
+**Дома, с интернетом (каждое устройство):**
+1. Купить Global; перед включением записать серийный номер и партию. Включить, язык, Wi-Fi, вход в аккаунт Pico (создаётся приложением Pico на телефоне; один общий аккаунт или по аккаунту на очки — решение владельца, для проверки Ж3 достаточно одного).
+2. Обновить прошивку: самую новую получить на первых очках через Settings → General → System Update, остальные — до неё же (офлайн из `dload`, файл брать из источника, не распаковывая). Не смешивать Global и CN, не понижать.
+3. Режим разработчика, USB-отладка, «Установка неизвестных приложений».
+4. На ПК: adb, Android Studio (для сборки PicoKiosk), шаблоны Godot 4.7.2 — всё заранее.
+5. Поставить PicoKiosk, назначить лаунчер, настроить отключение сна (10.4); применить скрипт `pm disable-user` — только на одних очках и после проверки, остальным — по сохранённой конфигурации.
+6. **Отключить обновления:** документированного способа для обычной Pico 4 нет. Рабочий вариант — после подготовки забыть домашнюю Wi-Fi-сеть на очках и держать их только в сети площадки без интернета; тогда обновлению неоткуда прийти (предположение, проверить).
+
+**На площадке, офлайн:** подключить к UniFi, `adb install -r` нашего APK по USB-C, настроить контур, проверить возврат из сна и перезагрузки. Запись «Ж3-ночь»: оставить включённой на 3 дня.
+
+### 10.8. Обновлённая закупка (обычная Pico 4)
+
+| Позиция | Прототип | Парк | Цена | Заметки |
+|---|---|---|---|---|
+| Pico 4 Global, 8/128 или 8/256 | 2 | 14 | 36–65 тыс. ₽ (10.3) | одна партия, не CN |
+| NiMH AA, комплекты | 8 + 8 запас | 112 | неизвестно | по 2×AA на контроллер, 2 комплекта на пару |
+| Зарядное для AA | 2 | 6 | неизвестно | |
+| Зарядные блоки и кабели USB-C (до 20 Вт, 5300 мА·ч) | 2 | 14 + 2 | неизвестно | брать комплектные |
+| Кабель USB-C для adb (данные) | 2 | 3 | неизвестно | |
+| Внешний аккумулятор/ремень | 1 по желанию | по необходимости | неизвестно | совместимость с Pico 4 не проверена |
+| Сменные накладки (комплектные + запас) | 2 | 14 | неизвестно | |
+| Проставки для очков | 2 | по потребности | неизвестно | не исследованы |
+| Дополнительно: ПК для сборки APK/PicoKiosk | 1 | 1 | — | Android Studio, Windows для adb-debloat |
+| Device Manager / Business Suite | — | — | — | не нужны (только Enterprise) |
+
+### 10.9. Дополнительные источники раздела 10
+
+- PicoKiosk: <https://github.com/it03lab-ops/PicoKiosk>, <https://github.com/it03lab-ops/pico4-adb-debloat>, <https://github.com/barnabwhy/PicoZen>
+- Отказ автозапуска у обычной Pico: <https://github.com/robinhuse/pico-webxr-kiosk>
+- Киоск Pico (Neo): <https://static.appstore.picovr.com/docs/KioskMode/chapter_two.html>, <http://static.appstore.picovr.com/docs/KioskMode/chapter_three.html>
+- Сон: <https://sdk.picovr.com/docs/ADBCommand/chapter_two.html>, <https://github.com/MoonCherryFox/VRSleepDisableADB>, <https://github.com/chaixshot/PicoNeverSleep>, <https://github.com/Pico-4/Settings>
+- CN/Global: <https://vr180g.com/pico/picochina.php?l=en>, <https://owomushi.com/Pico-Firmware/>, <https://pico4.wiki/guides/ota/>
+- Entitlement check: <https://github.com/alvr-org/ALVR/issues/1777>
+- Godot: <https://forum.godotengine.org/t/performance-considerations-for-stand-alone-xr/52324>, <https://github.com/godotengine/godot/pull/68023/>
+- Цены: <https://iprofishop.ru/catalog/igrovye_pristavki/pico_vr/88818/>, <https://offo.ru/catalog/shlem-virtualnoy-realnosti/shlem-vr-pico-4-4320x2160-128-gb-90-gts-bazovaya-global/>, <https://tech-iq.ru/product/avtonomnyj-vr-shlem-pico-4-128-gb/>, <https://portal-shop.com/catalog/vr_ochki/vr_shlemy/2277/>, <https://vr-zone.ru/avtonomnyy-vr-shlem-pico-4-256-gb/>, <https://formula-iq.com/product-page/pico-4-256gb/>, <https://virtualnyeochki.ru/avtonomnyie-vr-ochki/avtonomnye-vr-ochki-pico/pico-neo-4-256-gb>
