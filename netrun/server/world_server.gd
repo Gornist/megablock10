@@ -8,6 +8,8 @@ signal stopped
 var _exit_after: float = -1.0
 var _elapsed: float = 0.0
 var net: NetServer
+## Мост: FakeBridge (фикстура, по умолчанию) или BridgeClient (WebSocket). null — токены из --tokens (V2).
+var bridge: BridgeApi
 
 
 func start(args: PackedStringArray) -> void:
@@ -19,12 +21,42 @@ func start(args: PackedStringArray) -> void:
 	net = NetServer.new()
 	net.name = "Net"
 	add_child(net)
-	# Пока Моста нет — токены из аргументов (F1/M5 заменит верификатор).
-	net.start(cfg, DictTokenVerifier.new(cfg.tokens))
+	bridge = make_bridge(args, cfg)
+	if bridge != null:
+		bridge.start()
+	net.start(cfg, bridge if bridge != null else DictTokenVerifier.new(cfg.tokens))
 	set_process(true)
 
 
+## `--bridge=fake` (по умолчанию) | `--bridge=ws://хост:порт/netrun/v1`; ключ роли world — `--bridge-key=` или NETRUN_KEY_WORLD.
+## Старый путь `--tokens=` без `--bridge=` остаётся (словарь токен -> сессия, без Моста). Фикстура фейка — `--bridge-fixture=`.
+static func make_bridge(args: PackedStringArray, cfg: NetConfig) -> BridgeApi:
+	var spec := ""
+	var key := OS.get_environment("NETRUN_KEY_WORLD")
+	var fixture := FakeBridge.DEFAULT_FIXTURE
+	for a in args:
+		if a.begins_with("--bridge="):
+			spec = a.trim_prefix("--bridge=")
+		elif a.begins_with("--bridge-key="):
+			key = a.trim_prefix("--bridge-key=")
+		elif a.begins_with("--bridge-fixture="):
+			fixture = a.trim_prefix("--bridge-fixture=")
+	if spec.is_empty():
+		if not cfg.tokens.is_empty():
+			return null
+		spec = "fake"
+	if spec == "fake":
+		return FakeBridge.new(fixture)
+	if spec.begins_with("ws://") or spec.begins_with("wss://"):
+		var url := spec if spec.count("/") > 2 else spec + "/netrun/v1"
+		return BridgeClient.new(url, key)
+	push_error("[netrun-server] --bridge= принимает fake или ws://хост:порт, получено «%s»" % spec)
+	return FakeBridge.new(fixture)
+
+
 func _process(delta: float) -> void:
+	if bridge != null:
+		bridge.poll()
 	_elapsed += delta
 	if _exit_after >= 0.0 and _elapsed >= _exit_after:
 		stop("по таймеру --exit-after")

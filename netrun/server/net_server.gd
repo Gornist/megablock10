@@ -152,7 +152,9 @@ func _remove_avatar(session: String) -> void:
 
 func _on_auth(peer_id: int, data: PackedByteArray) -> void:
 	var mp := multiplayer as SceneMultiplayer
-	var session := verifier.verify(data.get_string_from_utf8())
+	# Настоящий Мост отвечает по сети: верификатор может быть сопрограммой (BridgeApi.verify_async).
+	@warning_ignore("redundant_await")
+	var session: String = await verifier.verify_async(data.get_string_from_utf8())
 	if session.is_empty() or not session.is_valid_identifier():
 		print("[netrun-server] отказ peer ", peer_id, ": токен не принят")
 		mp.disconnect_peer(peer_id)

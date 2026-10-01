@@ -1,0 +1,140 @@
+class_name BridgeApi
+extends TokenVerifier
+## Интерфейс Моста для сервера мира (docs/netrun-bridge-protocol.md). Две реализации: BridgeClient (WebSocket к настоящему
+## Мосту) и FakeBridge (в процессе, из JSON-фикстуры). Все методы-запросы — сопрограммы (`await`), ответ — словарь в форме
+## протокола: {"ok": true, ...поля} или {"ok": false, "err": {"code", "msg", "doc"?}}.
+## Номера запросов (`rid`) операций с ценностями детерминированные (раздел 6): после рестарта сервера мира повтор безопасен.
+
+## Тип документа и состояние сессии (раздел 5).
+const T_NODE := "node"
+const T_SESSION := "session"
+const T_ITEM := "item"
+const T_TERMINAL := "terminal"
+
+## Исходы забега для run.finish (раздел 6.5).
+const OUTCOMES: PackedStringArray = ["clean", "emergency", "soft_ice", "black_ice", "aborted"]
+
+
+static func ok(fields: Dictionary = {}) -> Dictionary:
+	var r := {"ok": true}
+	r.merge(fields)
+	return r
+
+
+static func err(code: String, msg: String = "", doc: Variant = null) -> Dictionary:
+	var e := {"code": code, "msg": msg}
+	if doc != null:
+		e["doc"] = doc
+	return {"ok": false, "err": e}
+
+
+static func err_code(resp: Dictionary) -> String:
+	if resp.get("ok", false):
+		return ""
+	return str((resp.get("err", {}) as Dictionary).get("code", "internal"))
+
+
+static func take_rid(session: String, item: String) -> String:
+	return "take:%s:%s" % [session, item]
+
+
+static func leave_rid(session: String, item: String) -> String:
+	return "leave:%s:%s" % [session, item]
+
+
+static func finish_rid(session: String) -> String:
+	return "finish:%s" % session
+
+
+## Токен, который очки кладут в auth: JSON {"terminal","token"} или «терминал:токен». Возвращает {terminal, token} или {}.
+static func parse_terminal_token(raw: String) -> Dictionary:
+	var t := raw.strip_edges()
+	if t.begins_with("{"):
+		var parsed: Variant = JSON.parse_string(t)
+		if parsed is Dictionary and parsed.has("terminal") and parsed.has("token"):
+			return {"terminal": str(parsed["terminal"]), "token": str(parsed["token"])}
+		return {}
+	var i := t.find(":")
+	if i <= 0 or i == t.length() - 1:
+		return {}
+	return {"terminal": t.substr(0, i), "token": t.substr(i + 1)}
+
+
+## Запускает соединение (для фейка — ничего не делает).
+func start() -> void:
+	pass
+
+
+## Вызывается из _process владельца: опрос сокета, таймауты.
+func poll() -> void:
+	pass
+
+
+func is_ready() -> bool:
+	return false
+
+
+## Синхронная проверка не поддерживается — Мост отвечает по сети. NetServer зовёт verify_async.
+func verify(_token: String) -> String:
+	return ""
+
+
+## Сессия игрока по токену терминала: id открытой сессии (pending/active) или "" (токен не принят, сессии нет).
+func verify_async(token: String) -> String:
+	var tt := parse_terminal_token(token)
+	if tt.is_empty():
+		return ""
+	var r: Dictionary = await terminal_auth(tt["terminal"], tt["token"])
+	if not r.get("ok", false):
+		return ""
+	var s: Variant = r.get("session")
+	if s is Dictionary:
+		return str(s.get("id", ""))
+	return ""
+
+
+func terminal_auth(_terminal: String, _token: String) -> Dictionary:
+	return err("internal", "не реализовано")
+
+
+func session_confirm(_session: String, _terminal: String) -> Dictionary:
+	return err("internal", "не реализовано")
+
+
+func session_abort(_session: String, _reason: String) -> Dictionary:
+	return err("internal", "не реализовано")
+
+
+## battery, fps, link — необязательные (-1 = не передавать).
+func terminal_beat(_terminal: String, _battery: int = -1, _fps: int = -1, _link: int = -1) -> Dictionary:
+	return err("internal", "не реализовано")
+
+
+func op_take_from_node(_session: String, _node: String, _item: String) -> Dictionary:
+	return err("internal", "не реализовано")
+
+
+func op_leave_in_node(_session: String, _node: String, _item: String) -> Dictionary:
+	return err("internal", "не реализовано")
+
+
+## moves: [{"item": id, "to": "phone"|"node"|"burned"}, ...].
+func run_finish(_session: String, _outcome: String, _node: String, _disconnect: bool, _moves: Array) -> Dictionary:
+	return err("internal", "не реализовано")
+
+
+func get_doc(_type: String, _id: String) -> Dictionary:
+	return err("internal", "не реализовано")
+
+
+func list_docs(_type: String) -> Dictionary:
+	return err("internal", "не реализовано")
+
+
+## Подписка на типы документов; ответ — снимок {"seq", "docs"}, дальше сигнал doc_changed.
+func subscribe(_types: Array) -> Dictionary:
+	return err("internal", "не реализовано")
+
+
+## Документ изменился: doc — как в протоколе, deleted — удалён.
+signal doc_changed(doc: Dictionary, deleted: bool)

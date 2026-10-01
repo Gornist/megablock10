@@ -1,0 +1,21 @@
+{
+  "settings": {"global": {"confirm_timeout_s": 120, "disconnect_grace_s": 20}},
+  "nodes": {
+    "node_07": {"title": "Склад «Арасаки»", "tier": "STANDARD", "lockdown_until": 0, "eddies": 100}
+  },
+  "terminals": {
+    "t03": {"node": "node_07", "label": "Подвал, стойка 3", "token_sha256": "4ab53a252c0eb82880fa8bda7a765e4e621bb9a8ac438c71c3986a001988868c", "silent": false},
+    "t04": {"node": "node_07", "label": "Подвал, стойка 4", "token_sha256": "4ab53a252c0eb82880fa8bda7a765e4e621bb9a8ac438c71c3986a001988868c", "silent": false}
+  },
+  "sessions": {
+    "s_fake000000000001": {"state": "active", "terminal": "t03", "node": "node_07", "runner": "KEY_ALICE", "callsign": "Призрак", "loot_eddies": 0, "outcome": null},
+    "s_fake000000000002": {"state": "pending", "terminal": "t04", "node": "node_07", "runner": "KEY_BOB", "callsign": "Лис", "loot_eddies": 0, "outcome": null}
+  },
+  "items": {
+    "it_fake000000d001": {"owner": "deck:s_fake000000000001", "kind": "DAEMON", "payload": "p1", "protected": true, "origin": "phone:KEY_ALICE"},
+    "it_fake000000d002": {"owner": "deck:s_fake000000000001", "kind": "DAEMON", "payload": "p2", "protected": false, "origin": "phone:KEY_ALICE"},
+    "it_fake000000d003": {"owner": "deck:s_fake000000000002", "kind": "DAEMON", "payload": "p3", "protected": true, "origin": "phone:KEY_BOB"},
+    "it_fake00000000a001": {"owner": "node:node_07", "kind": "SHARD", "payload": "shard-1", "protected": false, "origin": "node:node_07"},
+    "it_fake00000000a002": {"owner": "node:node_07", "kind": "SHARD", "payload": "shard-2", "protected": false, "origin": "node:node_07"}
+  }
+}

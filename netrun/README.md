@@ -44,6 +44,40 @@ godot --path netrun -- --flat --host=127.0.0.1 --port=7777 --token=t1    # пл�
 `node_07/avatar_<сессия>`, после окна — аватар убран, повторный вход — новый; плохой токен отклоняется. Окно в тесте 1,5 с;
 значение по умолчанию 20 с (`NetConfig.DEFAULT_GRACE_SEC`) проверяется отдельно. Тихий обрыв сеть замечает за ~5 с (`NetServer.PEER_TIMEOUT_MS`).
 
+## Мост (F1)
+
+Сервер мира берёт токен терминала и операции с ценностями у Моста (`:netrun-bridge`, протокол — `docs/netrun-bridge-protocol.md`).
+Выбор — аргументом `--bridge=`:
+
+- `--bridge=fake` (по умолчанию) — `FakeBridge` в том же процессе, данные из `tests/fixtures/bridge_fixture.json`
+  (другая фикстура — `--bridge-fixture=res://…`). Kotlin не нужен. Токены очков в фикстуре: `t03:token-t03` и `t04:token-t03`
+  (сессия `s_fake000000000001` active, `…02` pending). Без `--bridge`, но с `--tokens=` работает старая заглушка (токен -> сессия).
+- `--bridge=ws://хост:порт` — `BridgeClient` по WebSocket (`/netrun/v1` добавляется сам), ключ роли world — `--bridge-key=` или
+  переменная `NETRUN_KEY_WORLD`.
+
+Токен в `auth` очков — `терминал:токен` или JSON `{"terminal","token"}` (клиент: `--token=t03:token-t03`).
+
+С настоящим Мостом локально (два терминала, из корня репозитория; Java 17+):
+
+```sh
+# 1. Мост (ключи ролей — в окружении; --test нужен только фейковому серверу мира в тестах Kotlin)
+export NETRUN_KEY_WORLD=kw NETRUN_KEY_MASTER=km
+./gradlew :netrun-bridge:run --args="--port 7410 --db /tmp/netrun-bridge.db"
+
+# 2. Мастер заводит данные (put с ролью master по WebSocket, протокол раздел 5): узел node_07, терминал t03 с
+#    token_sha256 = sha256 токена очков. Сессию создаёт только приём карточек телефона (M2) — пока её нет,
+#    verify вернёт "" и очки получат отказ. Для проверки без телефона запустите Мост с --test и NETRUN_KEY_TEST
+#    и сдайте деку op.submit_deck ролью test (см. netrun-bridge/src/test/…/FakeWorldRunTest.kt).
+
+# 3. Сервер мира
+godot --headless --path netrun -- --bridge=ws://127.0.0.1:7410 --bridge-key=kw
+godot --path netrun -- --flat --host=127.0.0.1 --port=7777 --token=t03:<токен очков>
+```
+
+Если Мост не отвечает, сервер мира пробует снова раз в 2 с, а запрос токена получает отказ через 4 с (очки не пускаются).
+Повтор операций после обрыва безопасен: `rid` детерминированные (`take:<сессия>:<предмет>`, `leave:…`, `finish:<сессия>`).
+Тесты: `tests/fake_bridge_test.gd`, `tests/bridge_client_test.gd`; со стороны Моста — `FakeWorldRunTest` (фейковый сервер мира).
+
 Экспорт (нужны шаблоны 4.7.2): `godot --headless --path netrun --export-debug "Client Pico 4 (Android)"`,
 `--export-release "Server (dedicated)"`, `--export-debug "Flat debug (Linux)"`.
 
