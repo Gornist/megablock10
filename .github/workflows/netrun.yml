@@ -1,0 +1,137 @@
+name: Netrun (Godot)
+
+on:
+  push:
+    paths: [ "netrun/**", ".github/workflows/netrun.yml" ]
+  pull_request:
+    paths: [ "netrun/**", ".github/workflows/netrun.yml" ]
+  workflow_dispatch: {}
+
+env:
+  GODOT_VERSION: 4.7.2
+  GODOT_CHANNEL: stable
+  # Версии Android — как в docs/netrun-vr-hardware.md (инструкция Godot 4.7); менять только вместе с Godot.
+  ANDROID_BUILD_TOOLS: 35.0.1
+  ANDROID_PLATFORM: android-35
+  ANDROID_NDK: 28.1.13356709
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Godot (Linux)
+        run: |
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-${GODOT_CHANNEL}"
+          curl -fsSL -o godot.zip "$base/Godot_v${GODOT_VERSION}-${GODOT_CHANNEL}_linux.x86_64.zip"
+          unzip -q godot.zip
+          sudo install -m 755 "Godot_v${GODOT_VERSION}-${GODOT_CHANNEL}_linux.x86_64" /usr/local/bin/godot
+          godot --version
+
+      - name: Импорт проекта
+        run: godot --headless --path netrun --import
+
+      - name: Тесты gdUnit4 (без экрана)
+        run: godot --headless --path netrun -s -d res://addons/gdUnit4/bin/GdUnitCmdTool.gd --add res://tests --ignoreHeadlessMode
+
+      - name: Отчёты gdUnit4
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: netrun-test-reports
+          path: netrun/reports
+          if-no-files-found: ignore
+
+  export:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Godot (Linux)
+        run: |
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-${GODOT_CHANNEL}"
+          curl -fsSL -o godot.zip "$base/Godot_v${GODOT_VERSION}-${GODOT_CHANNEL}_linux.x86_64.zip"
+          unzip -q godot.zip
+          sudo install -m 755 "Godot_v${GODOT_VERSION}-${GODOT_CHANNEL}_linux.x86_64" /usr/local/bin/godot
+
+      - name: Шаблоны экспорта (кеш)
+        id: templates-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.local/share/godot/export_templates/${{ env.GODOT_VERSION }}.${{ env.GODOT_CHANNEL }}
+          key: godot-templates-${{ env.GODOT_VERSION }}-${{ env.GODOT_CHANNEL }}
+
+      - name: Шаблоны экспорта (скачивание)
+        if: steps.templates-cache.outputs.cache-hit != 'true'
+        run: |
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-${GODOT_CHANNEL}"
+          curl -fsSL -o templates.tpz "$base/Godot_v${GODOT_VERSION}-${GODOT_CHANNEL}_export_templates.tpz"
+          dest="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_CHANNEL}"
+          mkdir -p "$dest"
+          unzip -q templates.tpz -d templates-tmp
+          mv templates-tmp/templates/* "$dest"/
+
+      - name: Android SDK и NDK
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platform-tools" "build-tools;${ANDROID_BUILD_TOOLS}" "platforms;${ANDROID_PLATFORM}" \
+            "cmake;3.10.2.4988404" "ndk;${ANDROID_NDK}" > /dev/null
+
+      - name: Отладочный ключ (создаётся в CI, в репозиторий не попадает)
+        run: |
+          keytool -genkeypair -v -keystore "$RUNNER_TEMP/debug.keystore" -storepass android -keypass android \
+            -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          {
+            echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$RUNNER_TEMP/debug.keystore"
+            echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey"
+            echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android"
+          } >> "$GITHUB_ENV"
+
+      - name: Настройки редактора Godot (пути SDK/JDK) и шаблон Gradle-сборки
+        run: |
+          mkdir -p "$HOME/.config/godot"
+          cat > "$HOME/.config/godot/editor_settings-4.7.tres" <<TRES
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/java_sdk_path = "$JAVA_HOME"
+          TRES
+          # «Install Android Build Template» из редактора: распаковать android_source.zip в netrun/android/build
+          mkdir -p netrun/android/build
+          unzip -q "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_CHANNEL}/android_source.zip" -d netrun/android/build
+          echo -n "${GODOT_VERSION}.${GODOT_CHANNEL}" > netrun/android/.build_version
+          touch netrun/android/build/.gdignore
+
+      - name: Импорт проекта
+        run: godot --headless --path netrun --import
+
+      - name: Экспорт сервера (Server (dedicated))
+        run: |
+          mkdir -p netrun/build
+          godot --headless --path netrun --export-release "Server (dedicated)"
+          test -s netrun/build/netrun-server.x86_64
+
+      - name: Экспорт отладочного APK (Client Pico 4 (Android))
+        run: |
+          godot --headless --path netrun --export-debug "Client Pico 4 (Android)"
+          test -s netrun/build/netrun-client.apk
+
+      - name: Артефакт — сервер мира
+        uses: actions/upload-artifact@v7
+        with:
+          name: netrun-server
+          path: netrun/build/netrun-server.x86_64
+
+      - name: Артефакт — отладочный APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: netrun-client-debug-apk
+          path: netrun/build/netrun-client.apk
