@@ -93,6 +93,18 @@ func verify_async(token: String) -> String:
 	return ""
 
 
+## Терминал по токену, в том числе без открытой сессии (P6): {"terminal", "session"}; токен не принят — {"terminal": "", "session": ""}.
+func verify_terminal_async(token: String) -> Dictionary:
+	var tt := parse_terminal_token(token)
+	if tt.is_empty():
+		return {"terminal": "", "session": ""}
+	var r: Dictionary = await terminal_auth(tt["terminal"], tt["token"])
+	if not r.get("ok", false):
+		return {"terminal": "", "session": ""}
+	var s: Variant = r.get("session")
+	return {"terminal": tt["terminal"], "session": str(s.get("id", "")) if s is Dictionary else ""}
+
+
 func terminal_auth(_terminal: String, _token: String) -> Dictionary:
 	return err("internal", "не реализовано")
 

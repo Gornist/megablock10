@@ -5,7 +5,8 @@
   },
   "terminals": {
     "t03": {"node": "node_07", "label": "Подвал, стойка 3", "token_sha256": "4ab53a252c0eb82880fa8bda7a765e4e621bb9a8ac438c71c3986a001988868c", "silent": false},
-    "t04": {"node": "node_07", "label": "Подвал, стойка 4", "token_sha256": "4ab53a252c0eb82880fa8bda7a765e4e621bb9a8ac438c71c3986a001988868c", "silent": false}
+    "t04": {"node": "node_07", "label": "Подвал, стойка 4", "token_sha256": "4ab53a252c0eb82880fa8bda7a765e4e621bb9a8ac438c71c3986a001988868c", "silent": false},
+    "t05": {"node": "node_07", "label": "Подвал, стойка 5 (без игрока)", "token_sha256": "4ab53a252c0eb82880fa8bda7a765e4e621bb9a8ac438c71c3986a001988868c", "silent": false}
   },
   "sessions": {
     "s_fake000000000001": {"state": "active", "terminal": "t03", "node": "node_07", "runner": "KEY_ALICE", "callsign": "Призрак", "loot_eddies": 0, "outcome": null},

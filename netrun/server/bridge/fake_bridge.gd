@@ -11,6 +11,9 @@ var _rids: Dictionary = {}      # rid -> {"params": String, "resp": Dictionary}
 var _subs: Dictionary = {}      # тип -> true
 var _seq := 0
 var _load_error := ""
+## Последнее состояние по терминалу, как оно пришло в terminal.beat (-1 — поле не передано), и число вызовов (P6).
+var last_beat: Dictionary = {}
+var beat_count: Dictionary = {}
 
 
 func _init(fixture_path: String = DEFAULT_FIXTURE) -> void:
@@ -120,6 +123,8 @@ func terminal_beat(terminal: String, battery: int = -1, fps: int = -1, link: int
 	var t := doc(T_TERMINAL, terminal)
 	if t.is_empty():
 		return err("not_found", "терминала нет")
+	beat_count[terminal] = int(beat_count.get(terminal, 0)) + 1
+	last_beat[terminal] = {"battery": battery, "fps": fps, "link": link}
 	var d: Dictionary = (t["data"] as Dictionary).duplicate()
 	d["beat_at"] = Time.get_ticks_msec()
 	if battery >= 0:

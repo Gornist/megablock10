@@ -19,6 +19,9 @@ const EVENT := "ev"
 ## Сервер -> клиент: позиции ДРУГИХ аватаров своего узла (~20 раз/с, без гарантий): {t: av, k: время сервера, a: [[id, x, z], ...]}.
 ## id — короткий числовой id аватара (NetServer.avatar_id); пропавший из списка — вышел из узла. В `state` время сервера тоже в `k`.
 const AVATARS := "av"
+## Клиент -> сервер (P6): состояние очков раз в N секунд, от терминала с сессией и без неё (очки ждут игрока).
+## {t: beat, term, bat?, chg?, fps, worst, rtt?}; разбор и пересылка в Мост — NetServer / TerminalBeatRelay.
+const BEAT := "beat"
 ## Виды события: ended (выход: reason), daemon (ok, daemon, error), shard (id взят).
 const EV_ENDED := "ended"
 const EV_DAEMON := "daemon"

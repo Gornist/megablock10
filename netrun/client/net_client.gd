@@ -21,6 +21,14 @@ var is_connected_to_world := false
 ## Байты полезной нагрузки (без заголовков ENet): принято от сервера / отправлено ему. Для замеров трафика.
 var rx_bytes := 0
 var tx_bytes := 0
+## Датчик заряда (на ПК — «нет данных»); тесты подменяют provider.
+var battery := BatteryProbe.new()
+## Последнее отправленное состояние (для журнала и тестов).
+var last_beat_sent: Dictionary = {}
+var beats_sent := 0
+
+var _beat_window := BeatStats.new()
+var _beat_last_ms := -1
 
 
 func start_client(cfg: NetConfig) -> Error:
@@ -71,6 +79,39 @@ func request_leave() -> bool:
 	return _send(WorldMsg.encode_fields(WorldMsg.LEAVE))
 
 
+## Копим кадры; раз в config.beat_sec шлём состояние очков (P6). Работает и без сессии — терминал «idle» тоже на связи.
+func _process(delta: float) -> void:
+	_beat_window.add_frame(delta)
+	if config == null or not is_connected_to_world or config.terminal_id().is_empty():
+		return
+	var now := Time.get_ticks_msec()
+	if not BeatStats.due(now, _beat_last_ms, int(config.beat_sec * 1000.0)):
+		return
+	_beat_last_ms = now
+	send_beat()
+
+
+## Состояние очков сейчас: заряд, FPS и худший кадр за окно, RTT до сервера. Окно кадров начинается заново.
+func send_beat() -> bool:
+	var w := _beat_window.take()
+	var b := battery.read()
+	var fields := BeatStats.make_fields(config.terminal_id(), BeatStats.battery_pct(b["percent"]), b["charging"], int(w["fps"]), int(w["worst_ms"]), rtt_ms())
+	var ok := _send(WorldMsg.encode_fields(WorldMsg.BEAT, fields))
+	if ok:
+		last_beat_sent = fields
+		beats_sent += 1
+	return ok
+
+
+## RTT до сервера (мс) по статистике ENet; -1 — связи нет.
+func rtt_ms() -> int:
+	var enet := (multiplayer as SceneMultiplayer).multiplayer_peer as ENetMultiplayerPeer
+	var pp := enet.get_peer(1) if enet != null else null
+	if pp == null:
+		return -1
+	return int(pp.get_statistic(ENetPacketPeer.PEER_ROUND_TRIP_TIME))
+
+
 func _send(data: PackedByteArray, reliable: bool = true) -> bool:
 	if not is_connected_to_world:
 		return false
@@ -105,7 +146,8 @@ func drop() -> void:
 	var was := is_connected_to_world
 	is_connected_to_world = false  # пока прощаемся, ничего не отправляем (иначе «max channels: 0» в журнале)
 	if enet != null:
-		enet.disconnect_peer(1)
+		if was:
+			enet.disconnect_peer(1)
 		await get_tree().process_frame
 		await get_tree().process_frame
 		enet.close()
@@ -131,6 +173,7 @@ func _on_auth(peer_id: int, _data: PackedByteArray) -> void:
 
 
 func _on_connected() -> void:
+	_beat_last_ms = -1  # первое состояние — сразу после подключения
 	is_connected_to_world = true
 	connected.emit()
 

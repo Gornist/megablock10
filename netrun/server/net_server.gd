@@ -13,6 +13,8 @@ signal object_taken(object_id: String, session: String)
 ## Клиент просит применить демона / выйти чисто (решает узел: server/node/gray_node.gd).
 signal daemon_requested(session: String, daemon_id: String)
 signal leave_requested(session: String)
+## Состояние очков (P6) не чаще раза в период на терминал: {terminal, session ("" — очки без игрока), fps, worst, bat?, chg?, rtt?}.
+signal beat_received(beat: Dictionary)
 
 ## Тихий обрыв (Wi-Fi пропал) ENet по умолчанию замечает за десятки секунд; ужимаем до ~5 с.
 const PEER_TIMEOUT_MS := 5000
@@ -26,9 +28,13 @@ const DISCONNECT_DELAY_SEC := 0.3
 ## Узел может запретить взятие (далеко и т.п.): func(session, object_id) -> bool. Не задан — берётся откуда угодно.
 var grab_check: Callable
 var grace_sec: float = NetConfig.DEFAULT_GRACE_SEC
+var beat_sec: float = NetConfig.DEFAULT_BEAT_SEC
 
 var _world: Node3D
-var _pending: Dictionary = {}        # peer_id -> сессия: токен принят, ждём конца аутентификации
+var _pending: Dictionary = {}        # peer_id -> сессия ("" — терминал без сессии): токен принят, ждём конца аутентификации
+var _pending_terminal: Dictionary = {}  # peer_id -> терминал из токена
+var _peer_terminal: Dictionary = {}  # peer_id -> терминал (в том числе у «idle»-пиров без сессии и аватара)
+var _beat_last_ms: Dictionary = {}   # терминал -> момент последнего принятого состояния (мс)
 var _peer_session: Dictionary = {}   # peer_id -> сессия (после проверки)
 var _session_peer: Dictionary = {}   # сессия -> peer_id (-1, пока на связи никого)
 var _deadline_ms: Dictionary = {}    # сессия -> момент удаления аватара (мс)
@@ -50,6 +56,7 @@ static func avatar_name(session: String) -> String:
 func start(config: NetConfig, token_verifier: TokenVerifier) -> Error:
 	verifier = token_verifier
 	grace_sec = config.grace_sec
+	beat_sec = config.beat_sec
 	_world = Node3D.new()
 	_world.name = NetConfig.WORLD_NODE
 	add_child(_world)
@@ -66,7 +73,9 @@ func start(config: NetConfig, token_verifier: TokenVerifier) -> Error:
 	mp.peer_disconnected.connect(_on_peer_disconnected)
 	mp.peer_connected.connect(_on_peer_connected)
 	mp.peer_packet.connect(_on_packet)
-	mp.peer_authentication_failed.connect(func(i): _pending.erase(i))
+	mp.peer_authentication_failed.connect(func(i):
+		_pending.erase(i)
+		_pending_terminal.erase(i))
 	set_process(true)
 	print("[netrun-server] ENet слушает порт ", config.port)
 	return OK
@@ -173,6 +182,9 @@ func _add_object(object_id: String, pos: Vector3) -> void:
 func _on_packet(peer_id: int, data: PackedByteArray) -> void:
 	var session: String = _peer_session.get(peer_id, "")
 	var msg := WorldMsg.decode(data)
+	if msg.get("t", "") == WorldMsg.BEAT:
+		_handle_beat(peer_id, session, msg)
+		return
 	if session.is_empty():
 		return
 	match msg.get("t", ""):
@@ -190,6 +202,25 @@ func _on_packet(peer_id: int, data: PackedByteArray) -> void:
 				print("[netrun-server] сессия ", session, ": неизвестная причина выхода «", reason, "»")
 				return
 			_finish_exit(session, reason)
+
+
+## Состояние очков. Терминал берётся из проверенного токена, а не из сообщения; чаще допустимого — отбрасывается.
+func _handle_beat(peer_id: int, session: String, msg: Dictionary) -> void:
+	var terminal: String = _peer_terminal.get(peer_id, "")
+	if terminal.is_empty():
+		return
+	var now := Time.get_ticks_msec()
+	if not BeatStats.due(now, int(_beat_last_ms.get(terminal, -1)), BeatStats.server_gap_ms(beat_sec)):
+		return
+	_beat_last_ms[terminal] = now
+	var beat := {"terminal": terminal, "session": session, "fps": maxi(int(msg.get("fps", 0)), 0), "worst": maxi(int(msg.get("worst", 0)), 0)}
+	if msg.get("bat") is float or msg.get("bat") is int:
+		beat["bat"] = BeatStats.battery_pct(msg["bat"])
+	if msg.get("chg") is bool:
+		beat["chg"] = msg["chg"]
+	if msg.get("rtt") is float or msg.get("rtt") is int:
+		beat["rtt"] = maxi(int(msg["rtt"]), 0)
+	beat_received.emit(beat)
 
 
 ## Позиция от клиента: не дальше, чем позволяет скорость за прошедшее время; без выхода из комнаты.
@@ -264,12 +295,17 @@ func _on_auth(peer_id: int, data: PackedByteArray) -> void:
 	var mp := multiplayer as SceneMultiplayer
 	# Настоящий Мост отвечает по сети: верификатор может быть сопрограммой (BridgeApi.verify_async).
 	@warning_ignore("redundant_await")
-	var session: String = await verifier.verify_async(data.get_string_from_utf8())
-	if session.is_empty() or not session.is_valid_identifier():
+	var who: Dictionary = await verifier.verify_terminal_async(data.get_string_from_utf8())
+	var session: String = who["session"]
+	var terminal: String = who["terminal"]
+	# Терминал без сессии (очки ждут игрока, P6) пускаем «idle»: на связи ради состояния, аватара нет.
+	var idle := session.is_empty() and not terminal.is_empty()
+	if (session.is_empty() and not idle) or (not session.is_empty() and not session.is_valid_identifier()):
 		print("[netrun-server] отказ peer ", peer_id, ": токен не принят")
 		mp.disconnect_peer(peer_id)
 		return
 	_pending[peer_id] = session
+	_pending_terminal[peer_id] = terminal
 	mp.send_auth(peer_id, "ok".to_utf8_buffer())
 	mp.complete_auth(peer_id)
 
@@ -283,7 +319,14 @@ func _on_peer_connected(peer_id: int) -> void:
 	if not _pending.has(peer_id):
 		return
 	var session: String = _pending[peer_id]
+	var terminal: String = _pending_terminal.get(peer_id, "")
 	_pending.erase(peer_id)
+	_pending_terminal.erase(peer_id)
+	if not terminal.is_empty():
+		_peer_terminal[peer_id] = terminal
+	if session.is_empty():
+		print("[netrun-server] терминал ", terminal, " peer ", peer_id, " без сессии (ждёт игрока)")
+		return
 	# Та же сессия уже на связи (обрыв ещё не замечен) — старое соединение вытесняется.
 	var old := peer_of(session)
 	if old != -1 and old != peer_id:
@@ -305,6 +348,9 @@ func _on_peer_connected(peer_id: int) -> void:
 
 
 func _on_peer_disconnected(peer_id: int) -> void:
+	_peer_terminal.erase(peer_id)
+	_pending.erase(peer_id)
+	_pending_terminal.erase(peer_id)
 	if not _peer_session.has(peer_id):
 		return
 	var session: String = _peer_session[peer_id]
