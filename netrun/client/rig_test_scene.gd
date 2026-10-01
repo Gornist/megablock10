@@ -13,6 +13,7 @@ const FLAT_REACH := 3.0
 const STATS_PERIOD := 0.5
 
 var rig: XRRig
+var world_ui: WorldUI
 var pickup: MeshInstance3D
 var held := false
 var slow_frames := 0
@@ -48,6 +49,19 @@ func _ready() -> void:
 	add_child(_label)
 	rig = preload("res://client/xr_rig.tscn").instantiate()
 	add_child(rig)
+	# Интерфейс в мире (N4). Данные — заглушка, позже придут с сервера.
+	world_ui = WorldUI.new()
+	add_child(world_ui)
+	world_ui.attach(rig)
+	world_ui.deck.set_deck({
+		"daemons": [
+			{"id": "breach", "name": "Взлом", "cooldown_left": 0.0},
+			{"id": "ghost", "name": "Призрак", "cooldown_left": 12.4},
+			{"id": "spike", "name": "Шип", "cooldown_left": 75.0},
+		],
+		"selected": "breach",
+	})
+	world_ui.trace.set_trace(0.0)
 	for hand in [rig.left_hand, rig.right_hand]:
 		hand.button_pressed.connect(func(action: String):
 			if action == "grip_click":
