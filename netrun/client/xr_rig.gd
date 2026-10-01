@@ -5,10 +5,15 @@ extends XROrigin3D
 ## Логика — в shared/rig_math.gd. Камера двигается только по воле игрока.
 
 signal xr_failed(reason: String)
+## Экстренное отключение: причина — ExitLogic.REASON_*; подключает к сети тот, кто собрал клиент.
+signal exit_requested(reason: String)
 
 @export var smooth_turn_enabled := false
 @export var move_speed := RigMath.MOVE_SPEED
 @export var snap_step_deg := RigMath.SNAP_STEP_DEG
+## Кнопка удержания в VR (действие XRController3D); настройкой можно заменить, например на "grip_click".
+@export var exit_button := "menu_button"
+@export var exit_hold_sec := ExitLogic.HOLD_SEC
 
 var camera: XRCamera3D
 var left_hand: XRController3D
@@ -17,6 +22,9 @@ var xr_active := false
 var _snap_armed := true
 var _mouse_yaw := 0.0
 var _mouse_pitch := 0.0
+var _exit_state := ExitLogic.hold_new()
+var _exit_vr_pressed := false
+var _exit_bar: MeshInstance3D
 
 
 func _ready() -> void:
@@ -24,6 +32,11 @@ func _ready() -> void:
 	left_hand = $LeftHand
 	right_hand = $RightHand
 	right_hand.button_pressed.connect(_on_right_button)
+	left_hand.button_pressed.connect(_on_exit_button.bind(true))
+	left_hand.button_released.connect(_on_exit_button.bind(false))
+	right_hand.button_pressed.connect(_on_exit_button.bind(true))
+	right_hand.button_released.connect(_on_exit_button.bind(false))
+	_build_exit_bar()
 
 
 ## Пытается поднять OpenXR; без очков возвращает false и пишет понятную причину (риг остаётся плоским).
@@ -38,6 +51,10 @@ func start_xr() -> bool:
 	if "play_area_mode" in iface:
 		iface.play_area_mode = XRInterface.XR_PLAY_AREA_SITTING
 	xr_active = true
+	# Снял очки / потерян фокус — тот же запрос, что и удержание (сигналы есть не во всех версиях).
+	for sig in ["session_stopping", "focus_lost"]:
+		if iface.has_signal(sig):
+			iface.connect(sig, _request_exit.bind(ExitLogic.REASON_HEADSET_OFF))
 	recenter()
 	return true
 
@@ -64,7 +81,49 @@ func _on_right_button(action: String) -> void:
 		recenter()
 
 
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_PAUSED:
+		_request_exit(ExitLogic.REASON_HEADSET_OFF)
+
+
+func _request_exit(reason: String) -> void:
+	exit_requested.emit(reason)
+
+
+func _on_exit_button(action: String, pressed: bool) -> void:
+	if action == exit_button:
+		_exit_vr_pressed = pressed
+
+
+## Полоса удержания — предмет мира перед глазами (ребёнок камеры), не HUD: растёт слева направо.
+func _build_exit_bar() -> void:
+	_exit_bar = MeshInstance3D.new()
+	var b := BoxMesh.new()
+	b.size = Vector3(0.3, 0.01, 0.002)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color(1.0, 0.25, 0.2)
+	mat.no_depth_test = true
+	b.material = mat
+	_exit_bar.mesh = b
+	_exit_bar.position = Vector3(0, -0.15, -0.6)
+	_exit_bar.visible = false
+	camera.add_child(_exit_bar)
+
+
+func _update_exit_hold(delta: float) -> void:
+	var pressed := _exit_vr_pressed if xr_active else Input.is_physical_key_pressed(KEY_ESCAPE)
+	_exit_state = ExitLogic.hold_step(_exit_state, pressed, delta, exit_hold_sec)
+	var p: float = _exit_state["progress"]
+	_exit_bar.visible = p > 0.0
+	_exit_bar.scale.x = maxf(p, 0.001)
+	_exit_bar.position.x = -0.15 * (1.0 - p)
+	if _exit_state["just_fired"]:
+		_request_exit(ExitLogic.REASON_MANUAL_HOLD)
+
+
 func _process(delta: float) -> void:
+	_update_exit_hold(delta)
 	var move := Vector2.ZERO
 	var turn_x := 0.0
 	if xr_active:

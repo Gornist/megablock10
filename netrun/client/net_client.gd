@@ -52,6 +52,14 @@ func drop() -> void:
 		disconnected.emit()
 
 
+## Запрос экстренного отключения (удержание кнопки, снял очки). Возвращает false, если связи нет.
+func request_exit(reason: String) -> bool:
+	if not is_connected_to_world:
+		return false
+	var data := JSON.stringify({"t": "exit", "reason": reason}).to_utf8_buffer()
+	return (multiplayer as SceneMultiplayer).send_bytes(data, 1, MultiplayerPeer.TRANSFER_MODE_RELIABLE) == OK
+
+
 func _on_authenticating(peer_id: int) -> void:
 	(multiplayer as SceneMultiplayer).send_auth(peer_id, config.token.to_utf8_buffer())
 

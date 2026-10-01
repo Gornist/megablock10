@@ -56,3 +56,11 @@ godot --headless --path netrun -s -d res://addons/gdUnit4/bin/GdUnitCmdTool.gd -
 ```
 
 Код возврата 0 — все тесты прошли. Отчёты — в `netrun/reports/` (в git не попадают).
+
+## Выход (N6)
+
+Удержание 3 с (VR — `menu_button`, настройка `XRRig.exit_button`; плоская сборка — Esc) → клиент шлёт серверу пакет
+`{"t":"exit","reason":"manual_hold"}`; полоса прогресса — предмет мира перед глазами. Снятие очков (`NOTIFICATION_APPLICATION_PAUSED`,
+сигналы OpenXR `session_stopping`/`focus_lost`) — та же отправка с причиной `headset_off`. Сервер (`NetServer.exit_event`) отдаёт
+`{session, reason, under_hunt, deck_burned}`; флаг охоты ставит снаружи `set_under_hunt(session, bool)`. Обрыв связи выходом не
+считается: по истечении окна возврата — событие `connection_lost`. Логика — `shared/exit_logic.gd`, тесты `exit_logic_test.gd`, `net_exit_test.gd`.
