@@ -331,4 +331,30 @@ class PhoneChannelTest {
         val card = phone.itemCards().single()
         assertTrue(Ecdsa.verify(key1.publicB64, PhoneWire.itemSignedBytes(card), card.signature))
     }
+
+    @Test fun resendsAreByteIdenticalEvenAfterBridgeRestart() {
+        val db = tmp.root.resolve("wire.db").path
+        val key = WorldKey.generate()
+        val calls = CopyOnWriteArrayList<String>()
+        val sender = object : PhoneSender {
+            override fun isOnline(pubKeyB64: String) = true
+            override fun send(pubKeyB64: String, line: String): SendOutcome { calls.add(line); return SendOutcome.UNKNOWN }
+        }
+        val first = PhoneRig(db, deliveryResendMs = 0L, key = key) { sender }
+        first.store.put("item", "it_n1", 0, VJ.obj("owner" to VJ.p("node:node_07"), "kind" to VJ.p("SHARD"), "payload" to VJ.p(FakePhone.shardPayload("n1")), "protected" to VJ.p(false), "origin" to VJ.p("node:node_07"), "in_transfer" to VJ.p(null as String?), "out_transfer" to VJ.p(null as String?), "handover" to VJ.p(null as String?)))
+        first.ops.issueToPhone(first.master, "give:1", "KEY_P", listOf("it_n1"), 30, "x")
+        first.flush()
+        Thread.sleep(5) // другое время и другая подпись, если бы строку собирали заново
+        first.flush()
+        first.flush()
+        first.close()
+        val second = PhoneRig(db, deliveryResendMs = 0L, key = key) { sender }.track()
+        Thread.sleep(5)
+        second.flush()
+        // два адресата-карточки (предмет и эдди), каждая отправлена 4 раза: все повторы одной карточки совпадают байт в байт
+        assertEquals(8, calls.size)
+        val groups = calls.groupBy { PhoneWire.decodeChat(it)!!.body.split(":").let { p -> p[1] + p[3] } }
+        assertEquals(2, groups.size)
+        for ((_, lines) in groups) assertEquals(1, lines.toSet().size)
+    }
 }

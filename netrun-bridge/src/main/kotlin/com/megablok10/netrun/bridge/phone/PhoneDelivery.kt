@@ -20,7 +20,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonNull
 
 /** Что выдаём: предмет (документ `item` в `outbox:*`) или эдди (документ `payout`). */
-private class Outgoing(val id: String, val runner: String, val doc: Doc, val isItem: Boolean)
+private class Outgoing(val id: String, val runner: String, val doc: Doc, val isItem: Boolean) {
+    /** id документа с выдачей: предмет — свой id, выплата — id карточки. */
+    val docId: String get() = if (isItem) doc.id else id
+}
 
 /**
  * Журнал исходящих карточек Моста для kit [Handover] поверх документов: статус карточки — `item.handover` (`PENDING` →
@@ -145,9 +148,24 @@ class PhoneDelivery(
     }
 
     private suspend fun send(t: Outgoing): SendOutcome {
+        val line = wireOf(t)
+        return withContext(Dispatchers.IO) { sender.send(t.runner, line) }
+    }
+
+    /**
+     * Строка карточки целиком (личное сообщение с телом-карточкой): при первой отправке собирается (время, подпись) и сохраняется
+     * в документе (`wire`), дальше повторяется ровно она — как CardResender приложения. Новая метка времени и новая подпись ECDSA
+     * превратили бы повтор в «новое сообщение» (ChatStore.receive отсекает дубль по отправителю, времени и телу).
+     */
+    private fun wireOf(t: Outgoing): String = store.transaction { tx ->
+        val type = if (t.isItem) ValueOps.ITEM else ValueOps.PAYOUT
+        val doc = tx.get(type, t.docId) ?: return@transaction build(t)
+        VJ.str(doc.data, WIRE_FIELD) ?: build(t).also { tx.put(type, doc.id, doc.ver, VJ.with(doc.data, WIRE_FIELD to VJ.p(it))) }
+    }
+
+    private fun build(t: Outgoing): String {
         val body = if (t.isItem) PhoneWire.encodeItem(itemCard(t)) else PhoneWire.encodeMoney(moneyCard(t))
-        val dm = ChatDm(key.publicB64, BRIDGE_CALLSIGN, "", t.runner, clock(), body)
-        return withContext(Dispatchers.IO) { sender.send(t.runner, PhoneWire.encodeChat(dm)) }
+        return PhoneWire.encodeChat(ChatDm(key.publicB64, BRIDGE_CALLSIGN, "", t.runner, clock(), body))
     }
 
     private fun itemCard(t: Outgoing): ItemCard {
@@ -179,6 +197,7 @@ class PhoneDelivery(
 
     companion object {
         const val TAG = "BridgeHandover"
+        private const val WIRE_FIELD = "wire"
         const val DEFAULT_RESEND_MS = 30_000L
         private const val BRIDGE_CALLSIGN = "Мост"
         private const val PAYOUT_MEMO = "Добыча из Сети"
