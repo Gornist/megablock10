@@ -2,6 +2,7 @@ package com.megablok10.app.netrun
 
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
+import com.megablok10.app.qr.RackQrCodec
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -12,7 +13,7 @@ class RackQrTest {
 
     @Test fun `round-trips with a label that has colons and cyrillic`() {
         val rack = Mb10Qr.Rack("t03", "10.10.0.10", 7411, worldPub, "Подвал: стойка 3")
-        assertEquals(rack, Mb10QrCodec.decode(Mb10QrCodec.encodeRack(rack)))
+        assertEquals(rack, Mb10QrCodec.decode(RackQrCodec.encode(rack)))
     }
 
     @Test fun `label is optional`() {
@@ -22,7 +23,7 @@ class RackQrTest {
 
     @Test fun `ipv6 host keeps its colons because the address is base64`() {
         val rack = Mb10Qr.Rack("t01", "fd00::10", 7411, worldPub)
-        assertEquals(rack, Mb10QrCodec.decode(Mb10QrCodec.encodeRack(rack)))
+        assertEquals(rack, Mb10QrCodec.decode(RackQrCodec.encode(rack)))
     }
 
     @Test fun `broken codes are not racks`() {
