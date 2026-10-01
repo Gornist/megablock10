@@ -27,7 +27,9 @@ var deck_state: Array = []
 var ice_audio_enabled := false
 var selected_daemon := ""
 var _ice_nodes: Dictionary = {}      # id ICE -> Node3D
-var _ice_targets: Dictionary = {}    # id ICE -> {p: Vector3, f: Vector2}
+var _avatar_nodes: Dictionary = {}   # id чужого аватара -> Node3D
+## Чужие ICE и аватары показываются из буфера состояний с задержкой (RemoteTracks), а не прыжками по пакетам.
+var remote := RemoteTracks.new()
 var _pending_holder: Node3D
 var _label: Label3D
 var _acc := 0.0
@@ -81,13 +83,17 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	var now := Time.get_ticks_msec() / 1000.0
 	for id in _ice_nodes:
-		var n: Node3D = _ice_nodes[id]
-		var t: Dictionary = _ice_targets[id]
-		n.position = n.position.lerp(t["p"], clampf(delta * 12.0, 0.0, 1.0))
-		var f: Vector2 = t["f"]
-		if f.length() > 0.001:
-			n.rotation.y = lerp_angle(n.rotation.y, atan2(-f.x, -f.y), clampf(delta * 12.0, 0.0, 1.0))
+		var pose := remote.ice_pose(id, now)
+		if not pose.is_empty():
+			var n: Node3D = _ice_nodes[id]
+			n.position = pose["p"]
+			n.rotation.y = pose["yaw"]
+	for id in _avatar_nodes:
+		var pose := remote.avatar_pose(id, now)
+		if not pose.is_empty():
+			(_avatar_nodes[id] as Node3D).position = pose["p"]
 	_count += 1
 	_acc += delta
 	_max_ms = maxf(_max_ms, delta * 1000.0)
@@ -124,16 +130,51 @@ func apply_state(state: Dictionary) -> void:
 	if not selected_daemon in ids:
 		selected_daemon = ids[0] if not ids.is_empty() else ""
 	_refresh_deck()
+	remote.on_state(state, Time.get_ticks_msec() / 1000.0)
 	for ice in state.get("ice", []):
 		var id := str(ice["id"])
 		var p: Array = ice["p"]
-		var f: Array = ice["f"]
 		if not _ice_nodes.has(id):
 			_ice_nodes[id] = _make_ice(id)
 			_ice_nodes[id].position = Vector3(p[0], p[1], p[2])
-			_ice_targets[id] = {}
-		_ice_targets[id] = {"p": Vector3(p[0], p[1], p[2]), "f": Vector2(f[0], f[1])}
 		_paint_ice(_ice_nodes[id], int(ice["s"]))
+
+
+## Позиции других нетраннеров узла (WorldMsg.AVATARS): новым — фигура, вышедшим — убрать; двигает их _process по буферу.
+func apply_avatars(msg: Dictionary) -> void:
+	for id in remote.on_avatars(msg, Time.get_ticks_msec() / 1000.0):
+		var gone: Node3D = _avatar_nodes.get(id)
+		if gone != null:
+			gone.queue_free()
+		_avatar_nodes.erase(id)
+	for e in msg.get("a", []):
+		var id := str(int(e[0]))
+		if not _avatar_nodes.has(id):
+			_avatar_nodes[id] = _make_avatar(id, Vector3(float(e[1]), 0.0, float(e[2])))
+
+
+func avatar_node(id: String) -> Node3D:
+	return _avatar_nodes.get(id)
+
+
+func avatar_ids() -> Array:
+	return _avatar_nodes.keys()
+
+
+func _make_avatar(id: String, pos: Vector3) -> Node3D:
+	var n := Node3D.new()
+	n.name = "avatar_" + id
+	n.position = pos
+	var body := MeshInstance3D.new()
+	var cap := CapsuleMesh.new()
+	cap.radius = 0.25
+	cap.height = 1.6
+	cap.material = _unshaded_color(Color(0.2, 0.8, 0.9))
+	body.mesh = cap
+	body.position.y = 0.8
+	n.add_child(body)
+	add_child(n)
+	return n
 
 
 ## Сервер закончил забег (выход, выброс, флэтлайн): надпись перед глазами. Связь закроется сама.

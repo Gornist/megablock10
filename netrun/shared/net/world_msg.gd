@@ -16,6 +16,9 @@ const LEAVE := "leave"
 ## Сервер -> клиент: снимок узла (раз в 0.1 с, без гарантий порядка доставки) и события (надёжно).
 const STATE := "state"
 const EVENT := "ev"
+## Сервер -> клиент: позиции ДРУГИХ аватаров своего узла (~20 раз/с, без гарантий): {t: av, k: время сервера, a: [[id, x, z], ...]}.
+## id — короткий числовой id аватара (NetServer.avatar_id); пропавший из списка — вышел из узла. В `state` время сервера тоже в `k`.
+const AVATARS := "av"
 ## Виды события: ended (выход: reason), daemon (ok, daemon, error), shard (id взят).
 const EV_ENDED := "ended"
 const EV_DAEMON := "daemon"

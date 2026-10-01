@@ -10,9 +10,15 @@ extends Node
 signal event(ev: Dictionary)
 
 const STATE_INTERVAL := 0.1
+## Позиции других аватаров — вдвое чаще (docs/netrun.md: ~20 раз/с).
+const AVATAR_INTERVAL := 0.05
+## Допуск на дробное число физических тиков в интервале (60 Гц: 0.1 с — 6 тиков с погрешностью).
+const TICK_EPS := 0.001
 const NODE_ID := "node_07"
 
 var net: NetServer
+## Узел, которому служит этот GrayNode: снимки и аватары получают только сессии, чей узел (NetServer.node_of) — он.
+var node_id: String = NODE_ID
 var bridge: BridgeApi
 var daemons := DaemonService.new()
 ## Настройки ICE и trace (подбираются на этапе 2); пусто — значения по умолчанию.
@@ -21,6 +27,10 @@ var trace_settings: Dictionary = {}
 
 var _now := 0.0
 var _state_acc := 0.0
+var _avatar_acc := 0.0
+var _step_count := 0
+var _step_us_total := 0
+var _step_us_max := 0
 var _ices: Array[IceNode] = []
 var _sessions: Dictionary = {}       # сессия -> DaemonSession (в нём trace)
 var _shard_items: Dictionary = {}    # id объекта -> id предмета в Мосте
@@ -59,6 +69,20 @@ func ices() -> Array[IceNode]:
 	return _ices
 
 
+## Сколько времени занимает шаг сервера узла (_physics_process целиком, мкс): {count, avg_us, max_us}.
+func step_stats() -> Dictionary:
+	return {"count": _step_count, "avg_us": _step_us_total / maxi(_step_count, 1), "max_us": _step_us_max}
+
+
+## Сессии, которым сейчас что-то уходит: в этом узле и с аватаром.
+func _live_sessions() -> Array:
+	var out: Array = []
+	for session in _sessions:
+		if net.node_of(session) == node_id and net.has_avatar(session):
+			out.append(session)
+	return out
+
+
 func _add_ice(id: String, waypoints: Array) -> void:
 	var wps: Array[Vector3] = []
 	for w in waypoints:
@@ -88,10 +112,19 @@ func _bind_shard() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	var t0 := Time.get_ticks_usec()
+	_step(delta)
+	var us := Time.get_ticks_usec() - t0
+	_step_count += 1
+	_step_us_total += us
+	_step_us_max = maxi(_step_us_max, us)
+
+
+func _step(delta: float) -> void:
 	_now += delta
 	var targets := {}
 	var meters := {}
-	for session in _sessions:
+	for session in _live_sessions():
 		var avatar := net.get_avatar(session)
 		if avatar == null:
 			continue
@@ -104,10 +137,14 @@ func _physics_process(delta: float) -> void:
 		ice.targets = targets
 		ice.meters = meters
 	_state_acc += delta
-	if _state_acc >= STATE_INTERVAL:
-		_state_acc = 0.0
+	if _state_acc >= STATE_INTERVAL - TICK_EPS:
+		_state_acc = maxf(_state_acc - STATE_INTERVAL, 0.0)
 		_tick_traces()
 		_broadcast_state()
+	_avatar_acc += delta
+	if _avatar_acc >= AVATAR_INTERVAL - TICK_EPS:
+		_avatar_acc = maxf(_avatar_acc - AVATAR_INTERVAL, 0.0)
+		_broadcast_avatars()
 
 
 ## Спад trace, пока никто из ICE не следит за игроком.
@@ -130,7 +167,7 @@ func _broadcast_state() -> void:
 			"f": [b.facing.x, b.facing.z],
 			"s": b.state(),
 		})
-	for session in _sessions:
+	for session in _live_sessions():
 		var ds: DaemonSession = _sessions[session]
 		var cd: Array = []
 		for id in ds.deck:
@@ -139,10 +176,27 @@ func _broadcast_state() -> void:
 			"trace": ds.trace.value(),
 			"level": ds.trace.level(),
 			"ghost": ds.is_ghost(_now),
+			"k": snappedf(_now, 0.001),
 			"ice": ice_list,
 			"cd": cd,
 		})
 		net.send_to(session, msg, false)
+
+
+## Позиции аватаров узла: каждому игроку — все остальные в его узле (себя клиент знает сам).
+func _broadcast_avatars() -> void:
+	var live := _live_sessions()
+	var entries := {}
+	for session in live:
+		var p := net.get_avatar(session).position
+		entries[session] = [net.avatar_id(session), snappedf(p.x, 0.01), snappedf(p.z, 0.01)]
+	var k := snappedf(_now, 0.001)
+	for session in live:
+		var others: Array = []
+		for other in live:
+			if other != session:
+				others.append(entries[other])
+		net.send_to(session, WorldMsg.encode_fields(WorldMsg.AVATARS, {"k": k, "a": others}), false)
 
 
 func _on_joined(session: String, _peer: int, _resumed: bool) -> void:

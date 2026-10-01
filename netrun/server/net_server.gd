@@ -35,6 +35,12 @@ var _deadline_ms: Dictionary = {}    # сессия -> момент удален
 var _under_hunt: Dictionary = {}     # сессия -> true, пока за ней охотится Black ICE (ставит охота снаружи)
 var _objects: Dictionary = {}        # id объекта -> сессия, которая его держит ("" — лежит)
 var _pos_time_ms: Dictionary = {}    # сессия -> момент последней принятой позиции (мс)
+var _session_node: Dictionary = {}   # сессия -> id узла (нет записи — NetConfig.WORLD_NODE); снимки уходят только своему узлу
+var _avatar_ids: Dictionary = {}     # сессия -> короткий числовой id аватара для других игроков (в сообщениях вместо длинной сессии)
+var _next_avatar_id := 1
+## Сколько байт полезной нагрузки ушло игроку через send_to (без служебных заголовков ENet): сессия -> байты, и всего.
+var bytes_sent: Dictionary = {}
+var bytes_sent_total := 0
 
 
 static func avatar_name(session: String) -> String:
@@ -106,6 +112,25 @@ func object_position(object_id: String) -> Vector3:
 	return o.position if o != null else Vector3.ZERO
 
 
+## Узел игрока. Снимки и позиции чужих аватаров получают только сессии того же узла.
+func node_of(session: String) -> String:
+	return str(_session_node.get(session, NetConfig.WORLD_NODE))
+
+
+func set_node(session: String, node_id: String) -> void:
+	_session_node[session] = node_id
+
+
+## Сессии с аватаром в этом узле.
+func sessions_in(node_id: String) -> Array:
+	return sessions().filter(func(s: String) -> bool: return node_of(s) == node_id)
+
+
+## Короткий id аватара (0 — аватара нет). Не меняется, пока аватар жив, в том числе при возврате после обрыва.
+func avatar_id(session: String) -> int:
+	return int(_avatar_ids.get(session, 0))
+
+
 ## Сессии с аватаром (в том числе в окне возврата).
 func sessions() -> Array:
 	var out: Array = []
@@ -121,7 +146,11 @@ func send_to(session: String, data: PackedByteArray, reliable: bool = true) -> b
 	if peer == -1 or not peer in (multiplayer as SceneMultiplayer).get_peers():
 		return false
 	var mode := MultiplayerPeer.TRANSFER_MODE_RELIABLE if reliable else MultiplayerPeer.TRANSFER_MODE_UNRELIABLE_ORDERED
-	return (multiplayer as SceneMultiplayer).send_bytes(data, peer, mode) == OK
+	var ok := (multiplayer as SceneMultiplayer).send_bytes(data, peer, mode) == OK
+	if ok:
+		bytes_sent[session] = int(bytes_sent.get(session, 0)) + data.size()
+		bytes_sent_total += data.size()
+	return ok
 
 
 ## Серверный выход (чистый, выброс ICE, флэтлайн): игроку — сообщение с причиной, затем обычный выход.
@@ -202,6 +231,7 @@ func _finish_exit(session: String, reason: String, disconnect_delay: float = 0.0
 	_under_hunt.erase(session)
 	_deadline_ms.erase(session)
 	_pos_time_ms.erase(session)
+	_session_node.erase(session)
 	var peer := peer_of(session)
 	_session_peer.erase(session)
 	if peer != -1:
@@ -222,6 +252,7 @@ func _remove_avatar(session: String) -> void:
 	for id in _objects:
 		if _objects[id] == session:
 			_objects[id] = ""  # аватара нет — объект снова лежит
+	_avatar_ids.erase(session)
 	var a := get_avatar(session)
 	if a != null:
 		_world.remove_child(a)
@@ -266,6 +297,8 @@ func _on_peer_connected(peer_id: int) -> void:
 		var a := Node3D.new()
 		a.name = avatar_name(session)
 		_world.add_child(a)
+		_avatar_ids[session] = _next_avatar_id
+		_next_avatar_id += 1
 		avatar_spawned.emit(session)
 	print("[netrun-server] сессия ", session, " peer ", peer_id, " (вернулась)" if resumed else " (новый аватар)")
 	session_joined.emit(session, peer_id, resumed)

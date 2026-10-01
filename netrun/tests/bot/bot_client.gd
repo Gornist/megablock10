@@ -2,11 +2,11 @@ class_name BotClient
 extends Node
 ## Бот: headless-клиент серого узла без экрана и без сцены. Тот же NetClient, что у игрока, свой «ход» по комнате.
 ## Сценарии: GHOST_RUN — применить GHOST, дойти до шарда, взять, дойти до выхода, выйти чисто;
-## EXPOSED_RUN — то же без GHOST (ICE замечает, выбрасывает). Итог — result и сигнал finished.
+## EXPOSED_RUN — то же без GHOST (ICE замечает, выбрасывает). LOITER — ходит кругами у входа, не заканчивается (нагрузка, P1). Итог — result и сигнал finished.
 
 signal finished(result: String)
 
-enum Scenario { GHOST_RUN, EXPOSED_RUN }
+enum Scenario { GHOST_RUN, EXPOSED_RUN, LOITER }
 
 const SPEED := 4.0         # м/с (ходьба игрока в плоской сборке — около 2.5)
 const SEND_PERIOD := 0.05
@@ -22,6 +22,14 @@ var last_state: Dictionary = {}
 var events: Array = []
 var shard_taken := false
 var steps: Array[String] = []
+## Чужие аватары и ICE так, как их видит клиент (буфер состояний), и сколько пакетов позиций пришло.
+var remote := RemoteTracks.new()
+var avatar_packets := 0
+## Для LOITER: центр и радиус круга, скорость обхода (рад/с).
+var loiter_center := Vector3(0, 0, -1)
+var loiter_radius := 1.0
+var loiter_omega := 1.0
+var _loiter_angle := 0.0
 
 var _step := "connect"
 var _step_started := 0.0
@@ -35,7 +43,12 @@ func start(cfg: NetConfig, scenario_kind: int = Scenario.GHOST_RUN) -> void:
 	net = NetClient.new()
 	net.name = "Net"
 	add_child(net)
-	net.state_received.connect(func(s: Dictionary): last_state = s)
+	net.state_received.connect(func(s: Dictionary):
+		last_state = s
+		remote.on_state(s, _clock))
+	net.avatars_received.connect(func(m: Dictionary):
+		avatar_packets += 1
+		remote.on_avatars(m, _clock))
 	net.event_received.connect(_on_event)
 	net.grab_confirmed.connect(func(_id: String): shard_taken = true)
 	net.disconnected.connect(_on_disconnected)
@@ -91,7 +104,16 @@ func _process(delta: float) -> void:
 	match _step:
 		"connect":
 			if net.is_connected_to_world:
-				_enter("ghost" if scenario == Scenario.GHOST_RUN else "to_shard")
+				if scenario == Scenario.LOITER:
+					_enter("loiter")
+				else:
+					_enter("ghost" if scenario == Scenario.GHOST_RUN else "to_shard")
+		"loiter":
+			_step_started = _clock  # без таймаута шага: бот гуляет, пока его не остановят
+			var start := loiter_center + Vector3(loiter_radius * sin(_loiter_angle), 0, loiter_radius * (1.0 - cos(_loiter_angle)) - loiter_radius)
+			if _walk_to(start, delta, 0.05):
+				_loiter_angle += loiter_omega * delta
+				position = loiter_center + Vector3(loiter_radius * sin(_loiter_angle), 0, loiter_radius * (1.0 - cos(_loiter_angle)) - loiter_radius)
 		"ghost":
 			if not _asked:
 				_asked = net.request_use("ghost_1")

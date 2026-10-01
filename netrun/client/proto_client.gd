@@ -10,7 +10,7 @@ var scene: Node3D
 var net: NetClient
 var trace_audio: TraceAudio
 
-const POS_PERIOD := 0.1
+const POS_PERIOD := 0.05  # 20 раз/с: чужие клиенты видят нас со сглаживанием по буферу
 
 var _last_level := -1
 var _pos_acc := 0.0
@@ -46,6 +46,7 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	net.rejected.connect(func(): log_file.log("net.rejected", {"host": cfg.host, "port": cfg.port}))
 	net.disconnected.connect(func(): log_file.log("net.disconnected", {"host": cfg.host, "port": cfg.port}))
 	net.state_received.connect(_on_state)
+	net.avatars_received.connect(func(msg: Dictionary): scene.apply_avatars(msg))
 	net.event_received.connect(_on_event)
 	scene.daemon_use_requested.connect(func(id: String): net.request_use(id))
 	scene.leave_requested.connect(func(): net.request_leave())
@@ -55,7 +56,7 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	net.start_client(cfg)
 
 
-## Снимок узла: интерфейс, ICE и звук получают данные с сервера. Свою позицию клиент шлёт сам (10 раз/с).
+## Снимок узла: интерфейс, ICE и звук получают данные с сервера. Свою позицию клиент шлёт сам (20 раз/с).
 func _on_state(state: Dictionary) -> void:
 	scene.apply_state(state)
 	var level := int(state.get("level", 0))

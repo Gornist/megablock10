@@ -13,9 +13,14 @@ signal grab_denied(object_id: String, reason: String)
 ## Снимок узла от сервера (WorldMsg.STATE) и событие (WorldMsg.EVENT: ended, daemon).
 signal state_received(state: Dictionary)
 signal event_received(ev: Dictionary)
+## Позиции других аватаров узла (WorldMsg.AVATARS).
+signal avatars_received(msg: Dictionary)
 
 var config: NetConfig
 var is_connected_to_world := false
+## Байты полезной нагрузки (без заголовков ENet): принято от сервера / отправлено ему. Для замеров трафика.
+var rx_bytes := 0
+var tx_bytes := 0
 
 
 func start_client(cfg: NetConfig) -> Error:
@@ -70,10 +75,14 @@ func _send(data: PackedByteArray, reliable: bool = true) -> bool:
 	if not is_connected_to_world:
 		return false
 	var mode := MultiplayerPeer.TRANSFER_MODE_RELIABLE if reliable else MultiplayerPeer.TRANSFER_MODE_UNRELIABLE_ORDERED
-	return (multiplayer as SceneMultiplayer).send_bytes(data, 1, mode) == OK
+	var ok := (multiplayer as SceneMultiplayer).send_bytes(data, 1, mode) == OK
+	if ok:
+		tx_bytes += data.size()
+	return ok
 
 
 func _on_packet(_peer_id: int, data: PackedByteArray) -> void:
+	rx_bytes += data.size()
 	var msg := WorldMsg.decode(data)
 	match msg.get("t", ""):
 		WorldMsg.GRAB_OK:
@@ -82,6 +91,8 @@ func _on_packet(_peer_id: int, data: PackedByteArray) -> void:
 			grab_denied.emit(str(msg.get("id", "")), str(msg.get("reason", "")))
 		WorldMsg.STATE:
 			state_received.emit(msg)
+		WorldMsg.AVATARS:
+			avatars_received.emit(msg)
 		WorldMsg.EVENT:
 			event_received.emit(msg)
 
@@ -91,14 +102,14 @@ func _on_packet(_peer_id: int, data: PackedByteArray) -> void:
 func drop() -> void:
 	var mp := multiplayer as SceneMultiplayer
 	var enet := mp.multiplayer_peer as ENetMultiplayerPeer
+	var was := is_connected_to_world
+	is_connected_to_world = false  # пока прощаемся, ничего не отправляем (иначе «max channels: 0» в журнале)
 	if enet != null:
 		enet.disconnect_peer(1)
 		await get_tree().process_frame
 		await get_tree().process_frame
 		enet.close()
 		mp.multiplayer_peer = null
-	var was := is_connected_to_world
-	is_connected_to_world = false
 	if was:
 		disconnected.emit()
 
