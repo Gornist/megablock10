@@ -189,7 +189,7 @@ ln -sf "$GODOT_HOME/godot-$GODOT_VERSION-stable" "$HOME/.local/bin/godot"
 # 10. Claude Code CLI
 echo -e "${YELLOW}[10/10] Установка Claude Code CLI...${NC}"
 if ! command -v claude > /dev/null; then
-  curl -fsSL https://cdn.claude.ai/claude-code/install.sh | bash 2>&1 | grep -v "^Download\|^Extract" || \
+  curl -fsSL https://claude.ai/install.sh | bash 2>&1 | grep -v "^Download\|^Extract" || \
     echo -e "${YELLOW}Claude Code CLI уже установлен или ошибка установки (проверьте вручную)${NC}"
 fi
 
