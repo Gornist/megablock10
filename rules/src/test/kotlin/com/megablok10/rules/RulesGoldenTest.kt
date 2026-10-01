@@ -35,7 +35,11 @@ class RulesGoldenTest {
     fun `tiers and effects keep names and order`() {
         assertEquals(listOf(1, 2, 3), Tier.entries.map { it.level })
         assertEquals(Tier.BASE, Tier.fromLevel(99))
-        assertEquals(8, DaemonEffect.entries.size)
+        assertEquals(listOf("BASE", "HARD", "NIGHTMARE"), Tier.entries.map { it.name })
+        assertEquals(
+            listOf("EXTRACT_SHARD", "EXTRACT_DAEMON", "GHOST", "TIMESKEW", "BLACKOUT", "JITTER", "DECRYPT", "MINER"),
+            DaemonEffect.entries.map { it.name }
+        )
     }
 
     @Test
