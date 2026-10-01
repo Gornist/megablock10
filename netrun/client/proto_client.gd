@@ -8,7 +8,12 @@ const SLOW_LOG_MIN_GAP_MS := 250  # кадры дольше 1/72 с в журн�
 var log_file := MbLog.new()
 var scene: Node3D
 var net: NetClient
+var trace_audio: TraceAudio
 
+const POS_PERIOD := 0.1
+
+var _last_level := -1
+var _pos_acc := 0.0
 var _paused_at_ms := -1
 var _slow_skipped := 0
 var _last_slow_log_ms := -SLOW_LOG_MIN_GAP_MS
@@ -23,6 +28,7 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	scene.rig.recentered.connect(func(xr: bool): log_file.log("rig.recenter", {"xr": xr}))
 	scene.frame_slow.connect(_on_frame_slow)
 	scene.grab_requested.connect(_on_grab_requested)
+	scene.ice_audio_enabled = true
 	if want_xr:
 		if scene.rig.start_xr():
 			log_file.log("xr", {"enabled": true, "reason": "ok", "play_area": "sitting"})
@@ -39,10 +45,43 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	net.connected.connect(func(): log_file.log("net.connected", {"host": cfg.host, "port": cfg.port}))
 	net.rejected.connect(func(): log_file.log("net.rejected", {"host": cfg.host, "port": cfg.port}))
 	net.disconnected.connect(func(): log_file.log("net.disconnected", {"host": cfg.host, "port": cfg.port}))
+	net.state_received.connect(_on_state)
+	net.event_received.connect(_on_event)
+	scene.daemon_use_requested.connect(func(id: String): net.request_use(id))
+	scene.leave_requested.connect(func(): net.request_leave())
 	net.grab_confirmed.connect(_on_grab_confirmed)
 	net.grab_denied.connect(_on_grab_denied)
 	log_file.log("net.connect", {"host": cfg.host, "port": cfg.port})
 	net.start_client(cfg)
+
+
+## Снимок узла: интерфейс, ICE и звук получают данные с сервера. Свою позицию клиент шлёт сам (10 раз/с).
+func _on_state(state: Dictionary) -> void:
+	scene.apply_state(state)
+	var level := int(state.get("level", 0))
+	if level != _last_level:
+		log_file.log("trace.level", {"level": level, "value": snappedf(float(state.get("trace", 0.0)), 0.1)})
+		_last_level = level
+	if trace_audio == null:  # звук — только когда есть связь с сервером и снимки
+		trace_audio = TraceAudio.new()
+		add_child(trace_audio)
+	trace_audio.set_level(level)
+
+
+func _on_event(ev: Dictionary) -> void:
+	log_file.log("node.event", {"kind": ev.get("kind", ""), "reason": ev.get("reason", ""), "daemon": ev.get("daemon", ""), "ok": ev.get("ok", "")})
+	if ev.get("kind") == WorldMsg.EV_ENDED:
+		scene.show_ended(str(ev.get("reason", "")))
+
+
+func _process(delta: float) -> void:
+	if net == null or not net.is_connected_to_world:
+		return
+	_pos_acc += delta
+	if _pos_acc >= POS_PERIOD:
+		_pos_acc = 0.0
+		var p: Vector3 = scene.rig.global_position
+		net.send_pos(Vector3(p.x, 0.0, p.z))
 
 
 func _on_grab_requested(object_id: String) -> void:

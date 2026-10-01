@@ -126,3 +126,20 @@ func test_outcome_plan_by_reason() -> void:
 	assert_str(lost["outcome"]).is_equal("emergency")
 	assert_bool(lost["disconnect"]).is_true()
 	assert_str(lost["daemon"]).is_equal("burned")
+
+
+## Настоящий клиент (сцена, интерфейс, звук) получает снимки узла с сервера и применяет демона из деки.
+func test_flat_client_scene_follows_server_state() -> void:
+	var croot := _root.get_node("C")
+	var proto := ProtoClient.new()
+	croot.add_child(proto)
+	proto.start(PackedStringArray(["--token=" + _cfg.token, "--port=%d" % _cfg.port]), "flat", false)
+	var scene: Node3D = proto.scene
+	assert_bool(await _wait_for(func(): return scene.ice_node("ice_1") != null, 10.0)).is_true()
+	assert_int(scene.deck_state.size()).is_equal(2)
+	assert_str(scene.world_ui.deck.row_texts()[1]).contains("Призрак")
+	scene.use_slot(0)  # ghost_1
+	var ds := _node.session_state(SESSION)
+	assert_bool(await _wait_for(func(): return ds.is_ghost(_node.now()), 5.0)).is_true()
+	assert_bool(await _wait_for(func(): return str(scene.world_ui.deck.row_texts()[1]).contains("с"), 5.0)).is_true()
+	await proto.net.drop()

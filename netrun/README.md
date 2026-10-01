@@ -98,3 +98,14 @@ godot --headless --path netrun -s -d res://addons/gdUnit4/bin/GdUnitCmdTool.gd -
 сигналы OpenXR `session_stopping`/`focus_lost`) — та же отправка с причиной `headset_off`. Сервер (`NetServer.exit_event`) отдаёт
 `{session, reason, under_hunt, deck_burned}`; флаг охоты ставит снаружи `set_under_hunt(session, bool)`. Обрыв связи выходом не
 считается: по истечении окна возврата — событие `connection_lost`. Логика — `shared/exit_logic.gd`, тесты `exit_logic_test.gd`, `net_exit_test.gd`.
+
+## Серый узел (N7)
+
+`server/node/gray_node.gd` собирает узел node_07 (геометрия — `shared/node_layout.gd`: комната, укрытия, шард, площадка выхода,
+2 ICE с патрулём): на сессию TraceMeter и DaemonSession (дека `ghost_1`, `jitter_1`), ICE шагает 10 раз/с и не видит игрока под
+GHOST, сервер раз в 0.1 с шлёт снимок (`WorldMsg.STATE`: trace, ICE, перезарядки) и события (`WorldMsg.EVENT`). Шард берётся
+через сервер (`grab`, не дальше 3.5 м), в Мосте это `op.take_from_node`; забег закрывает одна `run.finish`: чистый выход на
+площадке (`leave`) — добыча на телефон, выброс ICE / флэтлайн / обрыв — добыча остаётся в узле.
+
+Плоская сборка: 1–9 — применить демона из деки, X — выйти чисто на площадке, F / ЛКМ — взять шард; VR: левый X — применить
+выбранного, Y — выбрать следующего. Бот — `tests/bot/bot_client.gd` (сценарии GHOST_RUN и EXPOSED_RUN), тест — `tests/gray_node_test.gd`.
