@@ -1,15 +1,32 @@
 package com.megablok10.netrun.bridge
 
+import com.megablok10.kit.log.KitLog
+import com.megablok10.netrun.bridge.phone.PhoneDelivery
+import com.megablok10.netrun.bridge.phone.PhoneInbox
+import com.megablok10.netrun.bridge.phone.PhoneNetwork
+import com.megablok10.netrun.bridge.phone.StderrLog
+import com.megablok10.netrun.bridge.phone.WorldKey
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlin.system.exitProcess
 
-/** Параметры запуска Моста: `--port`, `--db`, `--test`, `--world-pub`; ключи ролей — `NETRUN_KEY_WORLD|MASTER|TEST` из окружения. */
-data class LaunchOptions(val port: Int, val db: String, val config: BridgeConfig)
+/** Параметры запуска Моста: `--port`, `--line-port`, `--db`, `--test`, `--world-pub`; ключи ролей — `NETRUN_KEY_WORLD|MASTER|TEST` из окружения. */
+data class LaunchOptions(val port: Int, val db: String, val config: BridgeConfig, val linePort: Int = DEFAULT_LINE_PORT)
+
+/** Порт, на котором Мост принимает строки телефонов (карточки сдачи, чеки, запрос входа); его телефон берёт из QR стойки. */
+const val DEFAULT_LINE_PORT = 7411
 
 private fun bad(msg: String): Nothing = throw IllegalArgumentException(msg)
 
 internal fun parseLaunch(args: List<String>, env: Map<String, String>): LaunchOptions {
     var port = 7410
     var db = "netrun-bridge.db"
+    var linePort = DEFAULT_LINE_PORT
     var test = false
     var pub: String? = null
     val it = args.iterator()
@@ -17,6 +34,7 @@ internal fun parseLaunch(args: List<String>, env: Map<String, String>): LaunchOp
     while (it.hasNext()) {
         when (val a = it.next()) {
             "--port" -> port = value(a).toIntOrNull() ?: bad("--port — число")
+            "--line-port" -> linePort = value(a).toIntOrNull() ?: bad("--line-port — число")
             "--db" -> db = value(a)
             "--test" -> test = true
             "--world-pub" -> pub = value(a)
@@ -26,32 +44,57 @@ internal fun parseLaunch(args: List<String>, env: Map<String, String>): LaunchOp
     val keys = listOf("world", "master", "test").mapNotNull { r -> env["NETRUN_KEY_" + r.uppercase()]?.takeIf { it.isNotEmpty() }?.let { r to it } }.toMap()
     if ("world" !in keys || "master" !in keys) bad("нужны NETRUN_KEY_WORLD и NETRUN_KEY_MASTER")
     if (test && "test" !in keys) bad("с --test нужен NETRUN_KEY_TEST")
-    return LaunchOptions(port, db, BridgeConfig(port = port, roleKeys = keys, testMode = test, worldPub = pub))
+    return LaunchOptions(port, db, BridgeConfig(port = port, roleKeys = keys, testMode = test, worldPub = pub), linePort)
 }
 
-/** Настройки по умолчанию (протокол, раздел 5), создаются при первом старте; мастер правит на ходу. */
-internal fun ensureDefaultSettings(store: DocStore) {
-    if (store.get(ValueOps.SETTINGS, "global") != null) return
+/**
+ * Настройки по умолчанию (протокол, раздел 5), создаются при первом старте; мастер правит на ходу. [worldPub] — публичный ключ
+ * мира: пишется при создании и обновляется, если ключ сменился (потеряли файл ключа), чтобы дашборд и сервер мира читали актуальный.
+ */
+internal fun ensureDefaultSettings(store: DocStore, worldPub: String? = null) {
+    val cur = store.get(ValueOps.SETTINGS, "global")
+    if (cur != null) {
+        if (worldPub != null && VJ.str(cur.data, "world_pub") != worldPub) {
+            store.put(ValueOps.SETTINGS, "global", cur.ver, VJ.with(cur.data, "world_pub" to VJ.p(worldPub)))
+        }
+        return
+    }
     store.put(
         ValueOps.SETTINGS, "global", 0,
         VJ.obj(
             "confirm_timeout_s" to VJ.p(120L), "inbox_timeout_s" to VJ.p(300L), "disconnect_grace_s" to VJ.p(20L),
             "soft_ice_reentry_pause_s" to VJ.p(600L), "terminal_silent_s" to VJ.p(30L), "auditor_period_s" to VJ.p(60L),
-            "tutorial_node" to VJ.p("node_00"),
+            "tutorial_node" to VJ.p("node_00"), "world_pub" to VJ.p(worldPub),
         ),
     )
 }
 
-/** Мост целиком: хранилище, API, правила, аудитор. [close] останавливает всё. */
+/** Как часто Мост досылает неподтверждённые карточки выдачи и сверяет `inbox` с тайм-аутом. */
+private const val PHONE_TICK_MS = 10_000L
+
+/** Мост целиком: хранилище, API, правила, аудитор и обмен карточками с телефонами. [close] останавливает всё. */
 class BridgeApp(private val options: LaunchOptions) : AutoCloseable {
     val store: DocStore = DocStore.open(options.db)
     private val server: BridgeServer
     private val rules: RuleEngine
     private val auditor: Auditor
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val log: KitLog = StderrLog
+
+    /** Ключ мира: создаётся при первом старте, лежит в `<база>.worldkey`. */
+    val worldKey: WorldKey = WorldKey.fileFor(options.db)?.let(WorldKey::loadOrCreate) ?: WorldKey.generate()
+    private lateinit var inbox: PhoneInbox
+    val phones = PhoneNetwork(worldKey, scope, { inbox.routes() }, options.linePort, log)
+    val delivery = PhoneDelivery(store, worldKey, phones, log = log, scope = scope)
 
     init {
-        ensureDefaultSettings(store)
-        server = BridgeServer(store, options.config)
+        require(options.config.worldPub == null || options.config.worldPub == worldKey.publicB64) {
+            "--world-pub не совпадает с ключом мира из файла рядом с базой"
+        }
+        ensureDefaultSettings(store, worldKey.publicB64)
+        val ops = ValueOps(store, gateway = delivery)
+        inbox = PhoneInbox(store, ops, worldKey, phones, delivery, log = log)
+        server = BridgeServer(store, options.config.copy(worldPub = worldKey.publicB64), ops)
         rules = RuleEngine(store)
         TerminalSilentRule(rules).register()
         auditor = Auditor(store)
@@ -60,14 +103,25 @@ class BridgeApp(private val options: LaunchOptions) : AutoCloseable {
     val port: Int get() = server.port
 
     fun start() {
+        // Сервер строк — до всего остального: адрес Моста для телефонов постоянный и открыт к моменту первой выдачи.
+        phones.start()
         server.start()
         rules.start()
         auditor.start()
+        // Восстановление после рестарта: PENDING (и DELIVERED без чека) из документов досылаются сразу и затем по таймеру.
+        scope.launch {
+            while (isActive) {
+                runCatching { delivery.flush(); inbox.sweep() }.onFailure { log.warnEvent("Bridge", "bridge.tick_failed", "error" to it.javaClass.simpleName) }
+                delay(PHONE_TICK_MS)
+            }
+        }
     }
 
     override fun close() {
+        scope.cancel()
         auditor.close()
         rules.close()
+        phones.close()
         server.stop()
         store.close()
     }
@@ -77,7 +131,7 @@ fun main(args: Array<String>) {
     val options = try {
         parseLaunch(args.toList(), System.getenv())
     } catch (e: IllegalArgumentException) {
-        System.err.println("Мост: ${e.message}\nИспользование: --port N --db путь.db [--test] [--world-pub КЛЮЧ]; ключи — в окружении")
+        System.err.println("Мост: ${e.message}\nИспользование: --port N [--line-port N] --db путь.db [--test] [--world-pub КЛЮЧ]; ключи — в окружении")
         exitProcess(2)
     }
     val app = BridgeApp(options)

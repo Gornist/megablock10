@@ -27,6 +27,8 @@ detekt {
 
 dependencies {
     api(project(":kit"))
+    // Кодек предмета в карточке (ItemPayloadCodec): Мост принимает карточки телефонов в том же формате и разбирает payload по тем же правилам.
+    implementation(project(":rules"))
     // JsonObject — тип поля data документа; плагин сериализации не нужен, только разбор и сборка дерева JSON.
     api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
     // SQLite через JDBC: драйвер несёт нативную библиотеку для Linux/macOS/Windows.
