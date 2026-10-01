@@ -155,6 +155,26 @@ class ValueOpsTest {
         f.assertConserved()
     }
 
+    @Test fun tutorialNodeLockdownRefundsRookieDeck() {
+        val f = fx()
+        val rk = "KEY_NEW"
+        f.store.put("node", "node_00", 0, f.obj("tier" to "TUTORIAL", "lockdown_until" to 1_000_000L, "eddies" to 0L))
+        f.item("it_n1", "inbox:$rk", "phone:$rk")
+        f.item("it_n2", "inbox:$rk", "phone:$rk")
+        val r = f.ops.submitDeck(f.test, "enter:e-new", rk, "Новичок", "t03", listOf("it_n1", "it_n2"), "it_n1")
+        assertFalse(r.ok)
+        assertEquals("session_state", r.code)
+        assertEquals("outbox:$rk", f.owner("it_n1"))
+        assertEquals("outbox:$rk", f.owner("it_n2"))
+        assertEquals(2, f.issued.count { it.runner == rk })
+        f.issued.clear()
+        val again = f.ops.submitDeck(f.test, "enter:e-new", rk, "Новичок", "t03", listOf("it_n1", "it_n2"), "it_n1")
+        assertTrue(again.replayed)
+        assertEquals(r.body, again.body)
+        assertTrue(f.issued.isEmpty())
+        assertEquals(emptyList<Violation>(), Auditor(f.store).check())
+    }
+
     @Test fun abortReturnsDeckOnce() {
         val f = fx()
         val r = f.ops.submitDeck(f.test, "enter:e1", f.keyA, "A", "t03", listOf("it_dA1", "it_dA2"), "it_dA1")

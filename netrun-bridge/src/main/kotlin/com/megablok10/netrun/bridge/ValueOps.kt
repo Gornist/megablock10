@@ -80,7 +80,7 @@ class ValueOps(
         )
         return execute(caller, "submit_deck", rid, params) { tx, ctx ->
             val docs = items.map { tx.get(ITEM, it) ?: throw StoreException("not_found", "предмета $it нет") }
-            try {
+            val nodeId = try {
                 checkSubmit(tx, runner, terminal, docs)
             } catch (f: Fail) {
                 // Отказ: предметы остаются в inbox, Мост сам выдаёт их обратно в этой же транзакции.
@@ -92,7 +92,7 @@ class ValueOps(
                 }
                 throw f
             }
-            doSubmit(tx, caller, rid, runner, callsign, terminal, docs, protectedItem)
+            doSubmit(tx, caller, rid, runner, callsign, terminal, nodeId, docs, protectedItem)
         }
     }
 
@@ -102,7 +102,8 @@ class ValueOps(
     private fun validIssue(items: List<String>, eddies: Long): Boolean =
         items.toSet().size == items.size && eddies >= 0 && (items.isNotEmpty() || eddies > 0)
 
-    private fun checkSubmit(tx: DocStore.Tx, runner: String, terminal: String, docs: List<Doc>) {
+    /** Все проверки входа, включая выбор узла (учебный или терминала); возвращает узел сессии. Любой отказ ведёт к возврату. */
+    private fun checkSubmit(tx: DocStore.Tx, runner: String, terminal: String, docs: List<Doc>): String {
         for (d in docs) {
             if (VJ.str(d.data, "owner") != "inbox:$runner") fail("wrong_owner", "${d.id} не в inbox игрока", d)
         }
@@ -115,6 +116,12 @@ class ValueOps(
         val termNode = VJ.str(term.data, "node") ?: fail("session_state", "у терминала нет узла")
         val nd = tx.get(NODE, termNode) ?: fail("session_state", "узла терминала нет")
         if (VJ.lng(nd.data, "lockdown_until") > clock()) fail("session_state", "узел в локдауне")
+        val tutorialDone = rd != null && VJ.bool(rd.data, "tutorial_done")
+        if (tutorialDone) return termNode
+        val tutorial = VJ.str(tx.get(SETTINGS, "global")?.data ?: VJ.obj(), "tutorial_node") ?: "node_00"
+        val tn = tx.get(NODE, tutorial) ?: fail("session_state", "учебного узла $tutorial нет")
+        if (VJ.lng(tn.data, "lockdown_until") > clock()) fail("session_state", "учебный узел в локдауне")
+        return tutorial
     }
 
     @Suppress("LongParameterList")
@@ -125,19 +132,11 @@ class ValueOps(
         runner: String,
         callsign: String,
         terminal: String,
+        nodeId: String,
         docs: List<Doc>,
         protectedItem: String,
     ): JsonObject {
-        val term = tx.get(TERMINAL, terminal)!!
         val rd = tx.get(RUNNER, runnerDocId(runner))
-        val tutorialDone = rd != null && VJ.bool(rd.data, "tutorial_done")
-        val nodeId = if (tutorialDone) {
-            VJ.str(term.data, "node")!!
-        } else {
-            VJ.str(tx.get(SETTINGS, "global")?.data ?: VJ.obj(), "tutorial_node") ?: "node_00"
-        }
-        val nd = tx.get(NODE, nodeId) ?: fail("session_state", "узла $nodeId нет")
-        if (VJ.lng(nd.data, "lockdown_until") > clock()) fail("session_state", "узел в локдауне")
         val now = clock()
         val sid = "s_" + VJ.sha256Hex("${caller.namespace}|$rid").take(16)
         tx.put(

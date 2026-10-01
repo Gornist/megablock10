@@ -14,19 +14,34 @@ data class Violation(val kind: String, val subject: String, val msg: String, val
  * (`al_a_<хеш>`, повторный проход тревогу не дублирует; мастер снимает её удалением, и если расхождение живо — она вернётся).
  * Аудитор ценности **не чинит** и ничего, кроме `alert`, не пишет.
  */
-class Auditor(private val store: DocStore) : AutoCloseable {
+class Auditor(
+    private val store: DocStore,
+    private val clock: () -> Long = System::currentTimeMillis,
+) : AutoCloseable {
     private var pool: ScheduledExecutorService? = null
+
+    /** Сбоев прохода подряд (0 после успешного). */
+    @Volatile var consecutiveFailures: Int = 0
+        private set
+
+    /** Время последнего успешного прохода, 0 — ещё не было. */
+    @Volatile var lastSuccessAt: Long = 0L
+        private set
 
     /** Чистая проверка без записи. */
     fun check(): List<Violation> {
-        val items = store.list(ValueOps.ITEM)
-        val sessions = store.list(ValueOps.SESSION).associateBy { it.id }
-        val nodes = store.list(ValueOps.NODE).map { it.id }.toSet()
-        val decks = store.list(ValueOps.DECK).associateBy { it.id }
+        // Один снимок на проход: отдельные list() видели бы разные моменты, и run.finish между ними давал бы ложные тревоги.
+        val all = store.snapshot(TYPES).second.groupBy { it.type }
+        fun of(t: String) = all[t].orEmpty()
+        val items = of(ValueOps.ITEM)
+        val sessions = of(ValueOps.SESSION).associateBy { it.id }
+        val nodeDocs = of(ValueOps.NODE)
+        val nodes = nodeDocs.map { it.id }.toSet()
+        val decks = of(ValueOps.DECK).associateBy { it.id }
         val out = ArrayList<Violation>()
         for (it in items) checkItem(it, sessions, nodes, out)
         checkDecks(items, sessions, decks, out)
-        checkEddies(sessions, store.list(ValueOps.NODE), store.list(ValueOps.PAYOUT), out)
+        checkEddies(sessions, nodeDocs, of(ValueOps.PAYOUT), out)
         return out
     }
 
@@ -114,9 +129,45 @@ class Auditor(private val store: DocStore) : AutoCloseable {
     fun start(periodSeconds: Long = periodFromSettings()) {
         check(pool == null) { "аудитор уже запущен" }
         val p = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "netrun-auditor").apply { isDaemon = true } }
-        p.scheduleWithFixedDelay({ runCatching { run() } }, periodSeconds, periodSeconds, TimeUnit.SECONDS)
+        p.scheduleWithFixedDelay({ tick() }, periodSeconds, periodSeconds, TimeUnit.SECONDS)
         pool = p
     }
+
+    /**
+     * Один проход по таймеру. Исключение не должно убить расписание (иначе `scheduleWithFixedDelay` отменит проходы),
+     * поэтому оно ловится, но не теряется: в stderr, в [consecutiveFailures], а после N подряд
+     * (`settings/global.auditor_fail_alert_after`, по умолчанию 3) — тревога «аудитор не работает».
+     */
+    @Suppress("TooGenericExceptionCaught")
+    internal fun tick(action: () -> Unit = { run() }) {
+        try {
+            action()
+            consecutiveFailures = 0
+            lastSuccessAt = clock()
+        } catch (e: Exception) {
+            val n = ++consecutiveFailures
+            // TODO: писать в журнал Моста, когда он появится; пока в модуле журнала нет.
+            System.err.println("[netrun-auditor] сбой прохода №$n подряд: $e")
+            if (n >= failAlertAfter()) raiseDeadAlert(n, e)
+        }
+    }
+
+    @Suppress("TooGenericExceptionCaught")
+    private fun raiseDeadAlert(n: Int, cause: Exception) {
+        try {
+            store.transaction { tx ->
+                if (tx.get(ValueOps.ALERT, DEAD_ALERT_ID) == null) {
+                    val msg = "аудитор не работает: $n сбоев подряд, последний: $cause"
+                    tx.put(ValueOps.ALERT, DEAD_ALERT_ID, 0, VJ.obj("kind" to VJ.p("auditor_dead"), "msg" to VJ.p(msg), "items" to VJ.arr(emptyList())))
+                }
+            }
+        } catch (e: Exception) {
+            System.err.println("[netrun-auditor] тревогу «аудитор не работает» записать не удалось: $e")
+        }
+    }
+
+    private fun failAlertAfter(): Int =
+        store.get(ValueOps.SETTINGS, "global")?.let { VJ.lng(it.data, "auditor_fail_alert_after") }?.takeIf { it > 0 }?.toInt() ?: DEFAULT_FAIL_ALERT
 
     private fun periodFromSettings(): Long =
         store.get(ValueOps.SETTINGS, "global")?.let { VJ.lng(it.data, "auditor_period_s") }?.takeIf { it > 0 } ?: DEFAULT_PERIOD_S
@@ -129,5 +180,8 @@ class Auditor(private val store: DocStore) : AutoCloseable {
 
     private companion object {
         const val DEFAULT_PERIOD_S = 60L
+        const val DEFAULT_FAIL_ALERT = 3
+        const val DEAD_ALERT_ID = "al_a_auditor_dead"
+        val TYPES = setOf(ValueOps.ITEM, ValueOps.SESSION, ValueOps.NODE, ValueOps.DECK, ValueOps.PAYOUT)
     }
 }

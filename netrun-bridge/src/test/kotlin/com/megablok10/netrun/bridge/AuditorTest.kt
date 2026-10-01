@@ -87,4 +87,31 @@ class AuditorTest {
             assertTrue(alerts(f).isNotEmpty())
         }
     }
+
+    @Test fun failuresAreCountedAndRaiseAlertAfterThreshold() {
+        val f = fx()
+        val a = Auditor(f.store) { 5_000L }
+        a.tick()
+        assertEquals(5_000L, a.lastSuccessAt)
+        assertEquals(0, a.consecutiveFailures)
+        repeat(2) { a.tick { error("сбой") } }
+        assertEquals(2, a.consecutiveFailures)
+        assertEquals(5_000L, a.lastSuccessAt)
+        assertTrue(alerts(f).isEmpty())
+        a.tick { error("сбой") }
+        assertEquals(3, a.consecutiveFailures)
+        assertEquals("auditor_dead", VJ.str(alerts(f).single().data, "kind"))
+        a.tick { error("сбой") } // тревога не дублируется
+        assertEquals(1, alerts(f).size)
+        a.tick()
+        assertEquals(0, a.consecutiveFailures)
+    }
+
+    @Test fun thresholdComesFromSettings() {
+        val f = fx()
+        f.store.put("settings", "global", 0, f.obj("auditor_fail_alert_after" to 1))
+        val a = Auditor(f.store)
+        a.tick { error("сбой") }
+        assertEquals(1, alerts(f).size)
+    }
 }
