@@ -12,7 +12,7 @@ import java.io.File
  */
 class EventCatalogTest {
     private val moduleDir = File(System.getProperty("user.dir")).absolutePath
-    private val eventsFile = File(moduleDir).parentFile?.let { File(it, "events.tsv") } ?: File("events.tsv")
+    private val eventsFile = File(moduleDir, "events.tsv")
     private val srcDir = File(moduleDir).let { File(it, "src/main/kotlin") }
 
     @Test
@@ -122,7 +122,14 @@ class EventCatalogTest {
         return srcDir.walkTopDown()
             .filter { it.isFile && it.extension == "kt" }
             .any { file ->
-                file.readText().contains("\"$name\"")
+                val text = file.readText()
+                // Тревоги аудитора собираются как "auditor_${v.kind}": ищем сам вид нарушения в Violation("…").
+                text.contains("\"$name\"") ||
+                    (name.startsWith(AUDITOR_PREFIX) && text.contains("Violation(\"${name.removePrefix(AUDITOR_PREFIX)}\""))
             }
+    }
+
+    private companion object {
+        const val AUDITOR_PREFIX = "auditor_"
     }
 }
