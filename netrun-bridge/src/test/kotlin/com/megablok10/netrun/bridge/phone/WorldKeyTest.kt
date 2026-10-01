@@ -30,4 +30,12 @@ class WorldKeyTest {
         file.writeText("только одна строка\n")
         WorldKey.loadOrCreate(file)
     }
+
+    @Test fun keyFileIsOwnerOnlyAndStaleTmpIsReplaced() {
+        val file = tmp.root.resolve("p.worldkey")
+        java.io.File(file.path + ".tmp").writeText("остаток прошлого падения")
+        WorldKey.loadOrCreate(file) { error("на POSIX предупреждения быть не должно: $it") }
+        assertEquals("rw-------", java.nio.file.attribute.PosixFilePermissions.toString(java.nio.file.Files.getPosixFilePermissions(file.toPath())))
+        assertTrue(!java.io.File(file.path + ".tmp").exists())
+    }
 }

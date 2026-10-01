@@ -24,14 +24,24 @@ class WorldKey(val publicB64: String, private val privateKey: PrivateKey) {
             return WorldKey(Ecdsa.encodeKey(pair.public), pair.private)
         }
 
-        /** Читает ключ из [file]; нет файла — создаёт новый атомарно (временный файл → перемещение) и возвращает его. */
-        fun loadOrCreate(file: File): WorldKey {
+        /**
+         * Читает ключ из [file]; нет файла — создаёт новый атомарно (временный файл → перемещение). Временный файл сразу
+         * создаётся с правами rw------- (закрытый ключ не лежит ни мгновения с чужими правами). Файловая система без POSIX-прав —
+         * ключ создаётся обычным файлом и сообщается через [warn].
+         */
+        fun loadOrCreate(file: File, warn: (String) -> Unit = {}): WorldKey {
             if (file.exists()) return read(file)
             val pair = Ecdsa.generateKeyPair()
-            val tmp = File(file.path + ".tmp")
-            tmp.writeText("${Ecdsa.encodeKey(pair.public)}\n${Ecdsa.encodeKey(pair.private)}\n")
-            runCatching { Files.setPosixFilePermissions(tmp.toPath(), PosixFilePermissions.fromString("rw-------")) }
-            Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            val tmp = File(file.path + ".tmp").toPath()
+            Files.deleteIfExists(tmp)
+            try {
+                Files.createFile(tmp, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")))
+            } catch (e: UnsupportedOperationException) {
+                warn("файловая система без POSIX-прав: файл ключа мира ${file.path} создан без ограничения доступа")
+                Files.createFile(tmp)
+            }
+            Files.write(tmp, "${Ecdsa.encodeKey(pair.public)}\n${Ecdsa.encodeKey(pair.private)}\n".toByteArray())
+            Files.move(tmp, file.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
             return WorldKey(Ecdsa.encodeKey(pair.public), pair.private)
         }
 

@@ -82,7 +82,7 @@ class BridgeApp(private val options: LaunchOptions) : AutoCloseable {
     private val log: KitLog = StderrLog
 
     /** Ключ мира: создаётся при первом старте, лежит в `<база>.worldkey`. */
-    val worldKey: WorldKey = WorldKey.fileFor(options.db)?.let(WorldKey::loadOrCreate) ?: WorldKey.generate()
+    val worldKey: WorldKey = WorldKey.fileFor(options.db)?.let { WorldKey.loadOrCreate(it) { msg -> log.warnEvent("Bridge", "bridge.worldkey_perms", "msg" to msg) } } ?: WorldKey.generate()
     private lateinit var inbox: PhoneInbox
     val phones = PhoneNetwork(worldKey, scope, { inbox.routes() }, options.linePort, log)
     val delivery = PhoneDelivery(store, worldKey, phones, log = log, scope = scope)
