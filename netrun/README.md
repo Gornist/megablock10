@@ -32,6 +32,17 @@ godot --path netrun -- --flat                          # плоская отла
 godot --headless --path netrun --import                # импорт проекта (CI, первая загрузка)
 ```
 
+Сеть (V2): сервер слушает ENet-порт 7777; токены пока из аргумента (вместо Моста, F1/M5), клиент берёт адрес и токен из аргументов.
+
+```sh
+godot --headless --path netrun -- --tokens=t1:alice,t2:bob --grace=20    # сервер: токен:сессия, окно возврата аватара, с
+godot --path netrun -- --flat --host=127.0.0.1 --port=7777 --token=t1    # плоский клиент
+```
+
+Тест переподключения (сервер и клиент в одном процессе, `tests/net_reconnect_test.gd`): возврат в окно — тот же аватар
+`node_07/avatar_<сессия>`, после окна — аватар убран, повторный вход — новый; плохой токен отклоняется. Окно в тесте 1,5 с;
+значение по умолчанию 20 с (`NetConfig.DEFAULT_GRACE_SEC`) проверяется отдельно. Тихий обрыв сеть замечает за ~5 с (`NetServer.PEER_TIMEOUT_MS`).
+
 Экспорт (нужны шаблоны 4.7.2): `godot --headless --path netrun --export-debug "Client Pico 4 (Android)"`,
 `--export-release "Server (dedicated)"`, `--export-debug "Flat debug (Linux)"`.
 
