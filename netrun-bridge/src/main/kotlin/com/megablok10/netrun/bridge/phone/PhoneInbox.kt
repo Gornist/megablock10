@@ -39,6 +39,13 @@ class PhoneInbox(
 ) {
     private val caller = Caller(Role.BRIDGE, "bridge")
 
+    /** Один замок на сдачу деки, ответы и возврат: [sweep] и [tryEnter] не пересекаются, ответ на один `rid` — один. */
+    private val entryLock = Any()
+
+    /** Только для тестов: вызывается в [sweep] сразу под замком и после выборки просроченных, до возврата. */
+    @Volatile internal var onSweepLocked: (() -> Unit)? = null
+    @Volatile internal var afterStaleRead: (() -> Unit)? = null
+
     /** Запросы входа, которые ждут недостающие карточки (rid → запрос и время получения); при рестарте телефон шлёт запрос заново. */
     private val waiting = ConcurrentHashMap<String, Pair<EnterRequest, Long>>()
 
@@ -105,23 +112,26 @@ class PhoneInbox(
             log.warnEvent(TAG, "bridge.enter_rejected", "rid" to req.rid, "why" to "подпись не сошлась")
             return
         }
-        waiting.putIfAbsent(req.rid, req to clock())
-        tryEnter(req)
+        synchronized(entryLock) {
+            waiting.putIfAbsent(req.rid, req to clock())
+            tryEnter(req)
+        }
     }
 
     /** Все карточки запроса уже в документах — сдаём деку (повтор по `rid` вернёт прежний ответ) и отвечаем телефону. */
-    private fun tryEnter(req: EnterRequest) {
+    private fun tryEnter(req: EnterRequest) = synchronized(entryLock) {
+        if (!waiting.containsKey(req.rid)) return@synchronized // уже получил ответ (в том числе тайм-аут из [sweep]) — второго, противоречащего, не шлём
         if (req.protectedTransfer !in req.transfers || req.transfers.isEmpty()) {
-            return reply(req, fail("bad_request", "защищённого демона нет среди переданных карточек"))
+            return@synchronized reply(req, fail("bad_request", "защищённого демона нет среди переданных карточек"))
         }
         val items = req.transfers.map { tid -> store.list(ValueOps.ITEM).firstOrNull { VJ.str(it.data, "in_transfer") == tid && VJ.str(it.data, "origin") == "phone:${req.runner}" } }
-        if (items.any { it == null }) return // ждём остальные карточки
+        if (items.any { it == null }) return@synchronized // ждём остальные карточки
         val ids = items.map { it!!.id }
         val protectedId = items[req.transfers.indexOf(req.protectedTransfer)]!!.id
         val result = try {
             ops.submitDeck(caller, "enter:${req.rid}", req.runner, req.callsign, req.terminal, ids, protectedId)
         } catch (e: StoreException) {
-            return reply(req, fail(e.code, e.message.orEmpty()))
+            return@synchronized reply(req, fail(e.code, e.message.orEmpty()))
         }
         reply(req, if (result.ok) Triple(true, VJ.str(result.body, "session").orEmpty(), "" to "") else failOf(result))
     }
@@ -143,10 +153,11 @@ class PhoneInbox(
 
     /**
      * Раз в период: запрос, не дождавшийся карточек за `inbox_timeout_s`, получает отказ `inbox_timeout`; карточки в `inbox`
-     * старше срока и без ожидающего запроса возвращаются на телефон (`op.issue_to_phone`, `rid` = `refund:<in_transfer>`).
+     * старше срока и без ожидающего запроса возвращаются на телефон (`ValueOps.refundFromInbox`, `rid` = `refund:<in_transfer>`: только из `inbox`, проверка в транзакции).
      * Возвращает число возвращённых предметов. Выдачу потом отправляет [PhoneDelivery].
      */
-    fun sweep(): Int {
+    fun sweep(): Int = synchronized(entryLock) {
+        onSweepLocked?.invoke()
         val settings = store.get(ValueOps.SETTINGS, "global")?.data ?: VJ.obj()
         val timeoutMs = if ("inbox_timeout_s" in settings) VJ.lng(settings, "inbox_timeout_s") * MS else DEFAULT_INBOX_MS
         val now = clock()
@@ -156,17 +167,18 @@ class PhoneInbox(
             val transfer = VJ.str(d.data, "in_transfer")
             VJ.str(d.data, "owner").orEmpty().startsWith("inbox:") && transfer != null && transfer !in claimed && now - d.created > timeoutMs
         }
-        val refunded = stale.count { refund(it) }
-        return refunded
+        afterStaleRead?.invoke()
+        stale.count { refund(it) }
     }
 
     private fun refund(d: Doc): Boolean {
         val owner = VJ.str(d.data, "owner").orEmpty().removePrefix("inbox:")
         val transfer = VJ.str(d.data, "in_transfer").orEmpty()
         return try {
-            ops.issueToPhone(caller, "refund:$transfer", owner, listOf(d.id), 0L, "карточка без запроса входа").ok
+            // Только из inbox, проверка внутри транзакции: пока sweep считал, предмет могли сдать в деку (тогда пропуск).
+            ops.refundFromInbox(caller, "refund:$transfer", owner, d.id).ok
         } catch (e: StoreException) {
-            log.warnEvent(TAG, "bridge.refund_failed", "id" to d.id, "code" to e.code)
+            log.warnEvent(TAG, "bridge.refund_skipped", "id" to d.id, "code" to e.code)
             false
         }
     }

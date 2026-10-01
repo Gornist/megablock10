@@ -236,6 +236,20 @@ class ValueOps(
         }
     }
 
+    /**
+     * Вернуть на телефон карточку из `inbox:<runner>` (тайм-аут: запроса входа не было). В отличие от [issueToPhone] источник
+     * только `inbox` того же игрока: проверка внутри транзакции, поэтому предмет, который успели сдать в деку, не уйдёт. Не в
+     * `inbox` — [StoreException] `wrong_owner` до записей (и без записи `rid`): вызывающий пропускает предмет.
+     */
+    fun refundFromInbox(caller: Caller, rid: String, runner: String, item: String): OpResult {
+        val params = VJ.obj("op" to VJ.p("refund_inbox"), "runner" to VJ.p(runner), "item" to VJ.p(item))
+        return execute(caller, "refund_inbox", rid, params) { tx, ctx ->
+            val d = tx.get(ITEM, item) ?: throw StoreException("not_found", "предмета $item нет")
+            if (VJ.str(d.data, "owner") != "inbox:$runner") throw StoreException("wrong_owner", "$item уже не в inbox игрока")
+            issueItems(tx, ctx, caller, rid, runner, listOf(d), 0L)
+        }
+    }
+
     /** Общая часть выдачи: проверки источников, затем записи. Колоды уменьшаются, предметы уходят в `outbox`. */
     private fun issueItems(
         tx: DocStore.Tx,

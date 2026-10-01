@@ -357,4 +357,50 @@ class PhoneChannelTest {
         assertEquals(2, groups.size)
         for ((_, lines) in groups) assertEquals(1, lines.toSet().size)
     }
+
+    private fun setInboxTimeoutZero(r: PhoneRig) {
+        r.store.get("settings", "global")!!.let { r.store.put("settings", "global", it.ver, VJ.with(it.data, "inbox_timeout_s" to JsonPrimitive(0L))) }
+        Thread.sleep(5)
+    }
+
+    /** Сценарий А: пока sweep считал просроченное, предмет сдали в деку — возврат его не трогает (источник только inbox, проверка в транзакции). */
+    @Test fun sweepDoesNotRefundItemMovedToDeckAfterItWasSelected() {
+        val r = rig()
+        val p = r.phone().track()
+        p.sendCard(p.itemCard("tr-1", "DAEMON", FakePhone.daemonPayload("d1")))
+        setInboxTimeoutZero(r)
+        val id = r.itemOf("tr-1").id
+        var sid = ""
+        r.inbox.afterStaleRead = {
+            // сдача деки мимо замка Моста (напрямую операцией): ровно между чтением и возвратом
+            val res = r.ops.submitDeck(com.megablok10.netrun.bridge.Caller(com.megablok10.netrun.bridge.Role.BRIDGE, "other"), "enter:x", p.key, "c", "t03", listOf(id), id)
+            assertTrue(res.body.toString(), res.ok)
+            sid = VJ.str(res.body, "session")!!
+        }
+        assertEquals(0, r.inbox.sweep())
+        assertEquals("deck:$sid", r.owner(id))
+        assertEquals(listOf(id), VJ.list(r.store.get("deck", sid)!!.data, "items"))
+        assertEquals(id, VJ.str(r.store.get("deck", sid)!!.data, "protected"))
+        assertTrue(r.log.has("bridge.refund_skipped"))
+    }
+
+    /** Сценарий Б: последняя карточка приходит, пока sweep держит замок и отвечает тайм-аутом, — второго ответа нет. */
+    @Test fun lateCardDuringSweepGivesNoSecondContradictingReply() {
+        val r = rig()
+        val p = r.phone().track()
+        p.sendCard(p.itemCard("tr-1", "DAEMON", FakePhone.daemonPayload("d1")))
+        p.sendEnter(p.enterRequest("e-1", "t03", listOf("tr-1", "tr-2"), "tr-1"))
+        r.await("запрос ждёт") { r.log.all.none { "enter_reply" in it } }
+        setInboxTimeoutZero(r)
+        r.inbox.onSweepLocked = {
+            r.inbox.onSweepLocked = null
+            Thread { p.sendCard(p.itemCard("tr-2", "SHARD", FakePhone.shardPayload("s1"))) }.start()
+            r.await("карточка записана, пока sweep держит замок") { r.store.list("item").size == 2 }
+        }
+        r.inbox.sweep()
+        Thread.sleep(500)
+        assertEquals(1, p.entered.size)
+        assertEquals("inbox_timeout", p.entered.single().code)
+        assertEquals(0, r.store.list("session").size)
+    }
 }
