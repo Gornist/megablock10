@@ -6,7 +6,10 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 plugins {
     id("org.jetbrains.kotlin.jvm")
     id("io.gitlab.arturbosch.detekt")
+    application
 }
+
+application { mainClass.set("com.megablok10.netrun.bridge.MainKt") }
 
 java {
     sourceCompatibility = JavaVersion.VERSION_17

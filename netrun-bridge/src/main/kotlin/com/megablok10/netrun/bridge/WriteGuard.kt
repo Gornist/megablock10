@@ -4,11 +4,11 @@ import kotlinx.serialization.json.JsonObject
 
 /**
  * Проверки общего `put`/`del` (протокол, разделы 3 и 5): какие типы роли можно писать и что считается ценностью.
- * Ценности (`item`, `deck`, `session` кроме `data.world`, `node.data.eddies`) общий путь не трогает — только операции B3.
+ * Ценности (`item`, `deck`, `payout`, `op_rid`, `session` кроме `data.world`, `node.data.eddies`) общий путь не трогает — только операции B3.
  */
 internal object WriteGuard {
     private val worldTypes = setOf("node", "session", "alert")
-    private val bridgeOnly = setOf("deck", "item")
+    private val bridgeOnly = setOf("deck", "item", "payout", "op_rid")
 
     fun checkRole(role: String, type: String) {
         if (role == "world" && type !in worldTypes) throw StoreException("forbidden", "роль world не пишет тип $type")

@@ -21,10 +21,15 @@ import java.util.concurrent.TimeUnit
 
 /**
  * API Моста по WebSocket `/netrun/v1` (docs/netrun-bridge-protocol.md): `hello` с ролью, `get`/`list`, `put`/`del` с версией,
- * `sub`/`unsub` с потоком `chg`. Операции с ценностями (раздел 6), токен терминала и сессии (раздел 7) — B3, пока отвечают
- * `not_implemented`.
+ * `sub`/`unsub` с потоком `chg`. Операции с ценностями (раздел 6) идут через [ValueOps], терминал и сессия (раздел 7) — через
+ * [TerminalOps]; роль из `hello` становится [Caller] операции.
  */
-class BridgeServer(private val store: DocStore, private val config: BridgeConfig) {
+class BridgeServer(
+    private val store: DocStore,
+    private val config: BridgeConfig,
+    private val ops: ValueOps = ValueOps(store),
+    private val terminals: TerminalOps = TerminalOps(store),
+) {
     private class Conn {
         @Volatile var role: String? = null
         @Volatile var client: String? = null
@@ -32,6 +37,7 @@ class BridgeServer(private val store: DocStore, private val config: BridgeConfig
         val subs: MutableSet<String> = ConcurrentHashMap.newKeySet()
     }
 
+    private val router = OpRouter(ops, terminals)
     private val conns = ConcurrentHashMap<WebSocket, Conn>()
     private val started = CountDownLatch(1)
     private var startError: Exception? = null
@@ -153,9 +159,14 @@ class BridgeServer(private val store: DocStore, private val config: BridgeConfig
             "del" -> del(role, msg)
             "sub" -> sub(s, msg)
             "unsub" -> unsub(s, msg)
-            in NOT_IMPLEMENTED -> notImplemented(role, op)
-            else -> throw StoreException("bad_request", "неизвестный op: $op")
+            else -> router.handle(Caller(callerRole(role), s.client ?: ""), op, msg)
         }
+    }
+
+    private fun callerRole(role: String) = when (role) {
+        "world" -> Role.WORLD
+        "master" -> Role.MASTER
+        else -> Role.TEST
     }
 
     private fun hello(s: Conn, msg: JsonObject): Map<String, JsonElement> {
@@ -252,23 +263,9 @@ class BridgeServer(private val store: DocStore, private val config: BridgeConfig
         return emptyMap()
     }
 
-    private fun notImplemented(role: String, op: String): Nothing {
-        val allowed = when (op) {
-            "op.submit_deck" -> role == "test"
-            "session.confirm", "terminal.auth" -> role != "master"
-            else -> true
-        }
-        if (!allowed) throw StoreException("forbidden", "роли $role операция $op не разрешена")
-        throw StoreException("not_implemented", "операция $op ещё не реализована")
-    }
-
     companion object {
         const val PATH = "/netrun/v1"
         private const val MAX_CID = 64
         private val ROLES = setOf("world", "master", "test")
-        private val NOT_IMPLEMENTED = setOf(
-            "terminal.auth", "session.confirm", "session.abort",
-            "op.take_from_node", "op.leave_in_node", "op.issue_to_phone", "op.submit_deck", "run.finish",
-        )
     }
 }

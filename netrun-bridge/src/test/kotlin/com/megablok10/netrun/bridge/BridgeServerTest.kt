@@ -192,13 +192,12 @@ class BridgeServerTest {
         assertEquals("value_field", m.req("del", """"type":"item","id":"it_1","ver":1""").code())
     }
 
-    @Test fun valueOpsReplyNotImplementedInProtocolFormat() {
+    @Test fun valueOpsRolesAndUnknownOp() {
         val m = Client(); m.hello("master")
-        val r = m.req("op.take_from_node", """"rid":"take:s:i","session":"s","node":"n","item":"i"""")
-        assertEquals("not_implemented", r.code())
-        assertEquals("forbidden", m.req("op.submit_deck").code())
-        assertEquals("forbidden", m.req("session.confirm").code())
-        assertEquals("not_implemented", m.req("session.abort").code())
+        assertEquals("not_found", m.req("op.take_from_node", """"rid":"take:s:i","session":"s","node":"n","item":"i"""").code())
+        assertEquals("bad_request", m.req("op.take_from_node").code())
+        assertEquals("forbidden", m.req("op.submit_deck", """"rid":"r","runner":"k","callsign":"c","terminal":"t","items":["i"],"protected":"i"""").code())
+        assertEquals("forbidden", m.req("session.confirm", """"session":"s","terminal":"t"""").code())
         assertEquals("bad_request", m.req("frobnicate").code())
     }
 
