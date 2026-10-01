@@ -1,0 +1,26 @@
+; Файл проекта Godot (версия закреплена в README).
+config_version=5
+
+[application]
+
+config/name="Мегаблок 10: Сеть"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.7", "Mobile")
+
+[autoload]
+
+; Autoload-ов нет: режимы подключаются из main.gd, чтобы сервер не тащил клиентский код.
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/gdUnit4/plugin.cfg")
+
+[rendering]
+
+renderer/rendering_method="mobile"
+renderer/rendering_method.mobile="mobile"
+
+[xr]
+
+openxr/enabled=false
+shaders/enabled=true

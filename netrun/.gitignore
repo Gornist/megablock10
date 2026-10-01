@@ -1,0 +1,11 @@
+# Кэш импорта и сборки Godot — не коммитим
+.godot/
+build/
+*.apk
+*.aab
+*.translation
+export_credentials.cfg
+*.keystore
+*.jks
+# gdUnit4: отчёты прогонов
+reports/

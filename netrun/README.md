@@ -1,0 +1,46 @@
+# netrun — проект Godot (VR-клиент, сервер мира, плоская сборка)
+
+Один проект Godot, три сборки (docs/netrun.md, «Сервер мира и клиент»). Рендерер — Mobile.
+
+## Версии (закреплены на сезон)
+
+- **Godot 4.7.2-stable** (из docs/netrun-vr-hardware.md). Шаблоны экспорта — той же версии; на машине разработки их может не быть,
+  экспорт APK проверяет CI (задача G1).
+- **gdUnit4 6.2.1** — лежит в `addons/gdUnit4` (источник: github.com/MikeSchulze/gdUnit4, тег v6.2.1). Проверен на Godot 4.7.2.
+  Обновлять только осознанно, вместе с версией Godot.
+- **OpenXR Vendors 5.1.0** — пока НЕ добавлен. Понадобится, если потребуется passthrough на Pico (П4) или вендорские
+  расширения; требует Gradle-сборку и один вендор на шаблон экспорта. Для MVP на стандартном OpenXR не нужен.
+- Очки — обычная Pico 4 (стандартный OpenXR).
+
+## Структура
+
+- `main.tscn`, `main.gd` — точка входа, выбирает режим.
+- `shared/` — код, общий для сервера и клиента (в т.ч. `run_mode.gd` — выбор режима).
+- `server/` — сервер мира. `client/` — клиент Pico 4 и плоская сборка. `tests/` — тесты gdUnit4.
+- `export_presets.cfg` — пресеты: «Client Pico 4 (Android)» (OpenXR, arm64), «Server (dedicated)» (метка `dedicated_server`),
+  «Flat debug (Linux)». Ключ подписи Android в репозиторий не кладём (в CI — ключ отладки).
+
+## Как запускать
+
+Режим: сервер, если `--headless` или метка `dedicated_server`/аргумент `--server`; клиент — на Android или `-- --client`;
+иначе плоская сборка (`-- --flat`). Аргументы пользователя идут после `--`.
+
+```sh
+godot --headless --path netrun                         # сервер мира; выход по Ctrl+C / SIGTERM
+godot --headless --path netrun -- --exit-after=5       # сервер, сам выйдет через 5 с
+godot --path netrun -- --flat                          # плоская отладочная сборка (с окном)
+godot --headless --path netrun --import                # импорт проекта (CI, первая загрузка)
+```
+
+Экспорт (нужны шаблоны 4.7.2): `godot --headless --path netrun --export-debug "Client Pico 4 (Android)"`,
+`--export-release "Server (dedicated)"`, `--export-debug "Flat debug (Linux)"`.
+
+## Тесты (gdUnit4, без экрана)
+
+Сначала один раз `godot --headless --path netrun --import`, затем:
+
+```sh
+godot --headless --path netrun -s -d res://addons/gdUnit4/bin/GdUnitCmdTool.gd --add res://tests --ignoreHeadlessMode
+```
+
+Код возврата 0 — все тесты прошли. Отчёты — в `netrun/reports/` (в git не попадают).
