@@ -9,6 +9,11 @@ const REASON_HEADSET_OFF := "headset_off"
 ## Серверная причина: клиент прислать её не может, её ставит сам сервер по истечении окна возврата.
 const REASON_CONNECTION_LOST := "connection_lost"
 
+## Серверные причины узла (N7): чистый выход на площадке, выброс ICE, флэтлайн (trace 100).
+const REASON_CLEAN := "clean"
+const REASON_EJECTED := "ejected"
+const REASON_FLATLINE := "flatline"
+
 const CLIENT_REASONS := [REASON_MANUAL_HOLD, REASON_HEADSET_OFF]
 
 

@@ -14,6 +14,9 @@ var netrunner_count := 0
 var targets: Dictionary = {}
 var meters: Dictionary = {}
 
+## Общие часы узла (секунды): TraceMeter сессий и демоны живут по ним же. Не задан — свои часы ICE.
+var time_source: Callable
+
 var _acc := 0.0
 var _clock := 0.0
 
@@ -31,5 +34,5 @@ func _physics_process(delta: float) -> void:
 	while _acc >= THINK_INTERVAL:
 		_acc -= THINK_INTERVAL
 		_clock += THINK_INTERVAL
-		brain.step(_clock, targets, meters)
+		brain.step(time_source.call() if time_source.is_valid() else _clock, targets, meters)
 	position = brain.position

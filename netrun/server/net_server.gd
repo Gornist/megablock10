@@ -10,11 +10,21 @@ signal session_lost(session: String)
 ## Выход из забега: {session, reason, under_hunt, deck_burned} (ExitLogic.build_event).
 signal exit_event(event: Dictionary)
 signal object_taken(object_id: String, session: String)
+## Клиент просит применить демона / выйти чисто (решает узел: server/node/gray_node.gd).
+signal daemon_requested(session: String, daemon_id: String)
+signal leave_requested(session: String)
 
 ## Тихий обрыв (Wi-Fi пропал) ENet по умолчанию замечает за десятки секунд; ужимаем до ~5 с.
 const PEER_TIMEOUT_MS := 5000
 
 var verifier: TokenVerifier
+## Предел скорости аватара (м/с): позицию присылает клиент, сервер не даёт телепортироваться.
+const MAX_SPEED := 8.0
+## ENet при disconnect_peer сбрасывает неотправленную очередь: после последнего сообщения даём ему уйти.
+const DISCONNECT_DELAY_SEC := 0.3
+
+## Узел может запретить взятие (далеко и т.п.): func(session, object_id) -> bool. Не задан — берётся откуда угодно.
+var grab_check: Callable
 var grace_sec: float = NetConfig.DEFAULT_GRACE_SEC
 
 var _world: Node3D
@@ -24,6 +34,7 @@ var _session_peer: Dictionary = {}   # сессия -> peer_id (-1, пока н�
 var _deadline_ms: Dictionary = {}    # сессия -> момент удаления аватара (мс)
 var _under_hunt: Dictionary = {}     # сессия -> true, пока за ней охотится Black ICE (ставит охота снаружи)
 var _objects: Dictionary = {}        # id объекта -> сессия, которая его держит ("" — лежит)
+var _pos_time_ms: Dictionary = {}    # сессия -> момент последней принятой позиции (мс)
 
 
 static func avatar_name(session: String) -> String:
@@ -83,6 +94,44 @@ func holder_of(object_id: String) -> String:
 	return str(_objects.get(object_id, ""))
 
 
+## Переставить объект (шард узла); держит его кто-то или нет — не меняется.
+func place_object(object_id: String, pos: Vector3) -> void:
+	var o := _world.get_node_or_null(object_id) as Node3D
+	if o != null:
+		o.position = pos
+
+
+func object_position(object_id: String) -> Vector3:
+	var o := _world.get_node_or_null(object_id) as Node3D
+	return o.position if o != null else Vector3.ZERO
+
+
+## Сессии с аватаром (в том числе в окне возврата).
+func sessions() -> Array:
+	var out: Array = []
+	for a in _world.get_children():
+		if str(a.name).begins_with("avatar_"):
+			out.append(str(a.name).trim_prefix("avatar_"))
+	return out
+
+
+## Сообщение игроку; false — связи сейчас нет. Снимки — ненадёжно (старый не нужен), события — надёжно.
+func send_to(session: String, data: PackedByteArray, reliable: bool = true) -> bool:
+	var peer := peer_of(session)
+	if peer == -1 or not peer in (multiplayer as SceneMultiplayer).get_peers():
+		return false
+	var mode := MultiplayerPeer.TRANSFER_MODE_RELIABLE if reliable else MultiplayerPeer.TRANSFER_MODE_UNRELIABLE_ORDERED
+	return (multiplayer as SceneMultiplayer).send_bytes(data, peer, mode) == OK
+
+
+## Серверный выход (чистый, выброс ICE, флэтлайн): игроку — сообщение с причиной, затем обычный выход.
+func end_session(session: String, reason: String) -> void:
+	if not has_avatar(session):
+		return
+	send_to(session, WorldMsg.encode_fields(WorldMsg.EVENT, {"kind": WorldMsg.EV_ENDED, "reason": reason}))
+	_finish_exit(session, reason, DISCONNECT_DELAY_SEC)
+
+
 func _add_object(object_id: String, pos: Vector3) -> void:
 	var o := Node3D.new()
 	o.name = object_id
@@ -100,12 +149,34 @@ func _on_packet(peer_id: int, data: PackedByteArray) -> void:
 	match msg.get("t", ""):
 		WorldMsg.GRAB:
 			_handle_grab(peer_id, session, str(msg.get("id", "")))
+		WorldMsg.POS:
+			_handle_pos(session, WorldMsg.decode_vec3(msg.get("p")))
+		WorldMsg.USE:
+			daemon_requested.emit(session, str(msg.get("id", "")))
+		WorldMsg.LEAVE:
+			leave_requested.emit(session)
 		WorldMsg.EXIT:
 			var reason := str(msg.get("reason", ""))
 			if not ExitLogic.is_client_reason(reason):
 				print("[netrun-server] сессия ", session, ": неизвестная причина выхода «", reason, "»")
 				return
 			_finish_exit(session, reason)
+
+
+## Позиция от клиента: не дальше, чем позволяет скорость за прошедшее время; без выхода из комнаты.
+func _handle_pos(session: String, p: Variant) -> void:
+	var a := get_avatar(session)
+	if a == null or p == null:
+		return
+	var now := Time.get_ticks_msec()
+	var dt := minf((now - int(_pos_time_ms.get(session, now))) / 1000.0, 1.0)
+	_pos_time_ms[session] = now
+	var target := NodeLayout.clamp_to_room(Vector3(p.x, 0.0, p.z))
+	var allowed := MAX_SPEED * dt + 0.3
+	var d := target - a.position
+	if d.length() > allowed:
+		target = a.position + d.normalized() * allowed
+	a.position = target
 
 
 ## Объект берётся, только если лежит (или уже у этого игрока).
@@ -115,6 +186,8 @@ func _handle_grab(peer_id: int, session: String, id: String) -> void:
 		reply = WorldMsg.encode(WorldMsg.GRAB_NO, id, {"reason": WorldMsg.REASON_UNKNOWN})
 	elif _objects[id] != "" and _objects[id] != session:
 		reply = WorldMsg.encode(WorldMsg.GRAB_NO, id, {"reason": WorldMsg.REASON_HELD})
+	elif grab_check.is_valid() and not grab_check.call(session, id):
+		reply = WorldMsg.encode(WorldMsg.GRAB_NO, id, {"reason": WorldMsg.REASON_FAR})
 	else:
 		_objects[id] = session
 		reply = WorldMsg.encode(WorldMsg.GRAB_OK, id)
@@ -124,10 +197,11 @@ func _handle_grab(peer_id: int, session: String, id: String) -> void:
 
 
 ## Выход: событие, затем аватар убирается, связь закрывается. Обрыв сюда не попадает до конца окна возврата.
-func _finish_exit(session: String, reason: String) -> void:
+func _finish_exit(session: String, reason: String, disconnect_delay: float = 0.0) -> void:
 	var ev := ExitLogic.build_event(session, reason, _under_hunt.has(session))
 	_under_hunt.erase(session)
 	_deadline_ms.erase(session)
+	_pos_time_ms.erase(session)
 	var peer := peer_of(session)
 	_session_peer.erase(session)
 	if peer != -1:
@@ -135,8 +209,13 @@ func _finish_exit(session: String, reason: String) -> void:
 	_remove_avatar(session)
 	print("[netrun-server] выход ", session, ": ", reason, ", дека сгорела" if ev["deck_burned"] else "")
 	exit_event.emit(ev)
-	if peer != -1:
-		(multiplayer as SceneMultiplayer).disconnect_peer(peer)
+	if peer == -1:
+		return
+	if disconnect_delay > 0.0:
+		await get_tree().create_timer(disconnect_delay).timeout
+	var mp := multiplayer as SceneMultiplayer
+	if mp.multiplayer_peer != null and peer in mp.get_peers():
+		mp.disconnect_peer(peer)
 
 
 func _remove_avatar(session: String) -> void:

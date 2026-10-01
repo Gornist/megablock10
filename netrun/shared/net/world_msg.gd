@@ -9,6 +9,17 @@ const GRAB_OK := "grab_ok"
 const GRAB_NO := "grab_no"
 ## Экстренный выход (N6): {t: exit, reason}; id нет.
 const EXIT := "exit"
+## Узел (N7). Клиент -> сервер: позиция, применить демона, выйти чисто (на площадке выхода).
+const POS := "pos"
+const USE := "use"
+const LEAVE := "leave"
+## Сервер -> клиент: снимок узла (раз в 0.1 с, без гарантий порядка доставки) и события (надёжно).
+const STATE := "state"
+const EVENT := "ev"
+## Виды события: ended (выход: reason), daemon (ok, daemon, error), shard (id взят).
+const EV_ENDED := "ended"
+const EV_DAEMON := "daemon"
+const REASON_FAR := "far"
 const REASON_HELD := "held"
 const REASON_UNKNOWN := "unknown"
 
@@ -29,3 +40,20 @@ static func decode(data: PackedByteArray) -> Dictionary:
 	if v is Dictionary and v.has("t"):
 		return v
 	return {}
+
+
+## Произвольное сообщение: {t, ...поля}.
+static func encode_fields(type: String, fields: Dictionary = {}) -> PackedByteArray:
+	var d := {"t": type}
+	d.merge(fields)
+	return JSON.stringify(d).to_utf8_buffer()
+
+
+static func encode_pos(p: Vector3) -> PackedByteArray:
+	return encode_fields(POS, {"p": [snappedf(p.x, 0.001), snappedf(p.y, 0.001), snappedf(p.z, 0.001)]})
+
+
+static func decode_vec3(v: Variant) -> Variant:
+	if v is Array and v.size() == 3:
+		return Vector3(float(v[0]), float(v[1]), float(v[2]))
+	return null

@@ -10,6 +10,8 @@ var _elapsed: float = 0.0
 var net: NetServer
 ## Мост: FakeBridge (фикстура, по умолчанию) или BridgeClient (WebSocket). null — токены из --tokens (V2).
 var bridge: BridgeApi
+## Серый узел node_07 (N7): ICE, trace, демоны, шард, выход.
+var node: GrayNode
 
 
 func start(args: PackedStringArray) -> void:
@@ -25,6 +27,10 @@ func start(args: PackedStringArray) -> void:
 	if bridge != null:
 		bridge.start()
 	net.start(cfg, bridge if bridge != null else DictTokenVerifier.new(cfg.tokens))
+	node = GrayNode.new()
+	node.name = "GrayNode"
+	add_child(node)
+	node.start(net, bridge)
 	set_process(true)
 
 

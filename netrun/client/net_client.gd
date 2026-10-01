@@ -10,6 +10,10 @@ signal disconnected
 signal grab_confirmed(object_id: String)
 signal grab_denied(object_id: String, reason: String)
 
+## Снимок узла от сервера (WorldMsg.STATE) и событие (WorldMsg.EVENT: ended, daemon).
+signal state_received(state: Dictionary)
+signal event_received(ev: Dictionary)
+
 var config: NetConfig
 var is_connected_to_world := false
 
@@ -47,6 +51,28 @@ func request_grab(object_id: String) -> bool:
 	return true
 
 
+## Своя позиция (пол под ногами) — сервер решает, что с ней делать (предел скорости, комната).
+func send_pos(p: Vector3) -> bool:
+	return _send(WorldMsg.encode_pos(p), false)
+
+
+## Просьба применить демона из деки.
+func request_use(daemon_id: String) -> bool:
+	return _send(WorldMsg.encode_fields(WorldMsg.USE, {"id": daemon_id}))
+
+
+## Просьба выйти чисто (сервер проверяет, что игрок на площадке выхода).
+func request_leave() -> bool:
+	return _send(WorldMsg.encode_fields(WorldMsg.LEAVE))
+
+
+func _send(data: PackedByteArray, reliable: bool = true) -> bool:
+	if not is_connected_to_world:
+		return false
+	var mode := MultiplayerPeer.TRANSFER_MODE_RELIABLE if reliable else MultiplayerPeer.TRANSFER_MODE_UNRELIABLE_ORDERED
+	return (multiplayer as SceneMultiplayer).send_bytes(data, 1, mode) == OK
+
+
 func _on_packet(_peer_id: int, data: PackedByteArray) -> void:
 	var msg := WorldMsg.decode(data)
 	match msg.get("t", ""):
@@ -54,6 +80,10 @@ func _on_packet(_peer_id: int, data: PackedByteArray) -> void:
 			grab_confirmed.emit(str(msg.get("id", "")))
 		WorldMsg.GRAB_NO:
 			grab_denied.emit(str(msg.get("id", "")), str(msg.get("reason", "")))
+		WorldMsg.STATE:
+			state_received.emit(msg)
+		WorldMsg.EVENT:
+			event_received.emit(msg)
 
 
 ## Явное отключение (снял очки, тесты): корректно прощается с сервером, затем закрывает сокет.
