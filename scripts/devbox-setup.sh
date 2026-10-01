@@ -215,6 +215,12 @@ EOF
     if [ -x "$REPO_DIR/scripts/setup-hooks.sh" ]; then
       bash "$REPO_DIR/scripts/setup-hooks.sh" 2>&1 | grep -v "^Setting\|^Hook" || true
     fi
+
+    # Зависимости коллектора: без них check.sh падает на «tsx: not found»
+    echo "Установка зависимостей admin-web (npm ci)..."
+    for m in server client; do
+      (cd "$REPO_DIR/admin-web/$m" && npm ci --no-audit --no-fund --silent) || echo -e "${RED}npm ci в admin-web/$m не прошёл${NC}"
+    done
   fi
 fi
 
