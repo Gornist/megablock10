@@ -80,6 +80,8 @@ jobs:
 
       - name: Android SDK и NDK
         run: |
+          # Как в e2e.yml: на раннере cmdline-tools есть, но не в PATH.
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
           yes | sdkmanager --licenses > /dev/null || true
           sdkmanager "platform-tools" "build-tools;${ANDROID_BUILD_TOOLS}" "platforms;${ANDROID_PLATFORM}" \
             "cmake;3.10.2.4988404" "ndk;${ANDROID_NDK}" > /dev/null
