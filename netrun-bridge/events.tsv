@@ -1,0 +1,6 @@
+kind	source	description
+flatline	ValueOps	Нетраннер получил флэтлайн (чёрный лёд)
+auditor_dead	Auditor	Аудитор не работает: критическое число сбоев подряд
+auditor_item_owner	Auditor	Предмет: неверный владелец (динамическая, генерируется из Violation.kind="item_owner")
+auditor_deck_items	Auditor	Дека: список не совпадает (динамическая, генерируется из Violation.kind="deck_items")
+auditor_eddies	Auditor	Эдди: отрицательное значение (динамическая, генерируется из Violation.kind="eddies")
