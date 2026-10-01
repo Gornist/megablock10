@@ -32,6 +32,9 @@ interface ItemLedger {
     /** Принять входящую карточку: проверить подпись и адресата, положить предмет в коллекцию. false — отказ или уже принята. */
     suspend fun acceptIncoming(myPubKeyB64: String, card: Mb10Qr.ItemTransfer): Boolean
 
+    /** Входящая карточка [id] уже принята этим телефоном (повторный чек для досылки отправителя). */
+    suspend fun hasIncoming(id: String): Boolean
+
     /** Чек получателя [me] по передаче [id] — ответ отправителю. */
     fun buildReceipt(me: Identity, id: String): Mb10Qr.Receipt
 }

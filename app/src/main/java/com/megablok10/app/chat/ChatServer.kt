@@ -5,6 +5,8 @@ import com.megablok10.app.call.CallProtocol
 import com.megablok10.app.call.CallSignal
 import com.megablok10.app.data.SlotClaimEntity
 import com.megablok10.app.log.Mb10Log
+import com.megablok10.app.netrun.EnterReply
+import com.megablok10.app.netrun.NetrunWire
 import com.megablok10.kit.net.LineRoute
 import com.megablok10.kit.net.LineServer
 import kotlinx.coroutines.CoroutineScope
@@ -33,6 +35,8 @@ class ChatServer(
     onCallSignal: suspend (CallSignal) -> Unit = {},
     onSlotClaim: suspend (SlotClaimEntity) -> Unit = {},
     onReadReceipt: suspend (ReadReceipt) -> Unit = {},
+    /** Ответ Моста «Сети» на вход (`MB10ENTERED`): подпись проверяет NetrunEntry. */
+    onEntered: suspend (EnterReply) -> Unit = {},
     /** Строка известного протокола, но другой версии (телефон со старым/новым приложением): сообщается игроку, см. WireVersion. */
     onIncompatible: (String) -> Unit = {},
     myKey: () -> String? = { null },
@@ -44,6 +48,7 @@ class ChatServer(
             LineRoute("call", CallProtocol::decode, onCallSignal),
             LineRoute("claim", ClaimProtocol::decode, onSlotClaim),
             LineRoute("read", ReadReceiptProtocol::decode, onReadReceipt),
+            LineRoute("entered", NetrunWire::decodeEntered, onEntered),
         ),
         onUnrecognized = onIncompatible,
         log = Mb10Log,

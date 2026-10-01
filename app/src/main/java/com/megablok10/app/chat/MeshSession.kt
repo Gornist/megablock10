@@ -6,6 +6,8 @@ import com.megablok10.app.call.CallManager
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.items.ItemLedger
 import com.megablok10.app.log.Mb10Log
+import com.megablok10.app.netrun.NetrunEntry
+import com.megablok10.app.netrun.WorldAutoAccept
 import com.megablok10.app.presence.PresenceService
 import com.megablok10.app.presence.WifiBinder
 import com.megablok10.app.qr.Mb10Qr
@@ -42,6 +44,10 @@ class MeshSession(
     private val slotClaims: SlotClaimStore,
     private val receipts: ReceiptConfirmer,
     private val readReceipts: ReadReceipts,
+    /** Вход в «Сеть»: ответ Моста по сети (M3). */
+    private val netrun: NetrunEntry,
+    /** Добыча и эдди от Моста принимаются без «Принять» (M3). */
+    private val worldCards: WorldAutoAccept,
     /** Строка известного протокола, но другой версии (телефон со старым/новым приложением) — сказать игроку (kit IncompatibleVersionReporter). */
     private val onIncompatible: (String) -> Unit,
     /** Фоновые задачи на время сессии (отложенные сигналы СБ, снимки состояния): стартуют после сервера, гаснут с сессией. */
@@ -70,7 +76,7 @@ class MeshSession(
             val srv = ChatServer(
                 // Сохранение — до возврата: отправитель получит «доставлено» только после него (D2). Звук и уведомление — потом.
                 onMessage = { msg ->
-                    onChatMessage(msg)
+                    onChatMessage(identity, msg)
                     // Звук — только для реально пришедших по сети сообщений (этот колбэк
                     // и есть приём с провода), свои же исходящие не должны пищать.
                     SoundPlayer.playMessageReceived(app)
@@ -78,6 +84,7 @@ class MeshSession(
                 onCallSignal = { signal -> calls.onSignalReceived(identity, signal) },
                 onSlotClaim = { claim -> slotClaims.receive(claim) },
                 onReadReceipt = { r -> readReceipts.onReceived(identity.publicKeyB64, r) },
+                onEntered = { reply -> netrun.onEntered(reply) },
                 onIncompatible = onIncompatible,
                 myKey = { identity.publicKeyB64 },
                 onHeard = presence::heard,
@@ -111,10 +118,12 @@ class MeshSession(
         startedForKey = null
     }
 
-    private suspend fun onChatMessage(msg: ChatWireMessage) {
+    private suspend fun onChatMessage(identity: Identity, msg: ChatWireMessage) {
         // Повторная доставка того же сообщения (отправитель не увидел подтверждения и переслал из очереди) не дублируется.
         val fresh = chat.receive(msg)
         Mb10Log.event(TAG, "chat.recv", "type" to msg.type.name, "from" to Mb10Log.short(msg.fromPubKeyB64), "chars" to msg.body.length, "duplicate" to !fresh, "ageMs" to (System.currentTimeMillis() - msg.timestamp))
+        // Карточка от Моста «Сети» принимается сразу — и повтор тоже (чек мог не дойти). Сохранено выше, до «доставлено» отправителю.
+        worldCards.onDirect(identity, msg)
         if (!fresh) return
         receipts.onIncoming(msg)
         ChatNotifier.show(app, msg)

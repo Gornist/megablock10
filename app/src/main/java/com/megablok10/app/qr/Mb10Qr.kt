@@ -141,6 +141,13 @@ sealed interface Mb10Qr {
     ) : Mb10Qr
 
     /**
+     * QR стойки «Сети» (docs/netrun-bridge-protocol.md, раздел 8): печатается на стойке терминала. [terminal] — номер терминала
+     * (`t03`), [host]/[port] — адрес Моста (строки телефона), [worldPub] — ключ мира: получатель карточек сдачи и подпись ответов
+     * Моста. [label] — подпись для игрока («Подвал, стойка 3»), может быть пустой.
+     */
+    data class Rack(val terminal: String, val host: String, val port: Int, val worldPub: String, val label: String = "") : Mb10Qr
+
+    /**
      * Подтверждение получения — показывает получатель в ответ, отправитель
      * сканирует его, чтобы зафиксировать транзакцию (см. TransactionStore).
      * До этого момента отправитель ещё может отменить платёж и вернуть себе
@@ -173,6 +180,7 @@ object Mb10QrCodec {
                 "ITEM" -> decodeItemTransfer(parts)
                 "PROV" -> decodeProvision(parts)
                 "RCPT" -> decodeReceipt(parts)
+                "RACK" -> decodeRack(parts)
                 else -> null
             }
         } catch (e: Exception) {
@@ -291,6 +299,22 @@ object Mb10QrCodec {
             startBalance = parts[8].toLongOrNull() ?: return null,
             ramCapacity = parts[9].toIntOrNull() ?: return null
         )
+    }
+
+    /** `MB10:RACK:v1:<терминал>:<b64 host:port>:<world_pub>[:<b64 подпись>]` — адрес в base64, чтобы двоеточие IPv6 не ломало разбор. */
+    fun encodeRack(r: Mb10Qr.Rack): String =
+        listOf(MAGIC, "RACK", "v1", r.terminal, b64("${r.host}:${r.port}"), r.worldPub, b64(r.label)).joinToString(":")
+
+    private fun decodeRack(parts: List<String>): Mb10Qr.Rack? {
+        if (parts.size < 6 || parts[2] != "v1") return null
+        val terminal = parts[3].takeIf { it.isNotEmpty() } ?: return null
+        val address = unb64(parts[4])
+        val sep = address.lastIndexOf(':')
+        if (sep <= 0) return null
+        val port = address.substring(sep + 1).toIntOrNull()?.takeIf { it in 1..65535 } ?: return null
+        val worldPub = parts[5].takeIf { it.isNotEmpty() } ?: return null
+        val label = parts.getOrNull(6)?.let { unb64(it) }.orEmpty()
+        return Mb10Qr.Rack(terminal, address.substring(0, sep), port, worldPub, label)
     }
 
     fun encodeTransaction(tx: Mb10Qr.Transaction): String =

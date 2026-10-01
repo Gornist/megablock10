@@ -83,8 +83,8 @@ class PresenceService(private val app: Context, private val wifi: WifiBinder) {
     fun describePeers(): String = table.describe()
 
     /**
-     * Добавляет пира вручную, минуя NSD — только для прогонов на эмуляторах, где mDNS между
-     * устройствами не ходит (см. DebugQrReceiver). В боевом коде не вызывается.
+     * Добавляет пира вручную, минуя NSD: на эмуляторах, где mDNS между устройствами не ходит (см. DebugQrReceiver), и Мост «Сети» —
+     * его адрес берётся из QR стойки (netrun.NetrunEntry), NSD он не объявляет.
      */
     fun addStaticPeer(peer: PeerInfo) {
         table.addStatic(peer)

@@ -36,7 +36,10 @@ import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.rememberMb10QrScanner
 import com.megablok10.app.di.breachViewModel
 import com.megablok10.app.di.cyberdeckViewModel
+import com.megablok10.app.di.netrunViewModel
+import com.megablok10.app.netrun.NetrunEntryState
 import com.megablok10.app.ui.appViewModel
+import com.megablok10.app.ui.theme.AppSnack
 import com.megablok10.app.ui.theme.LocalMbColors
 import com.megablok10.app.ui.theme.MbBanner
 import com.megablok10.app.ui.theme.MbBannerTone
@@ -73,6 +76,10 @@ fun CyberdeckScreen(
     val deck = appViewModel { cyberdeckViewModel() }
     // Открытый контейнер и отказ при скане — у персонажа свои (ключ ViewModel — ключ личности), см. BreachViewModel.
     val breach = appViewModel(key = "breach:${identity.publicKeyB64}") { breachViewModel() }
+    // Вход в «Сеть»: выбор деки после скана QR стойки и ход входа — у персонажа свои.
+    val netrun = appViewModel(key = "netrun:${identity.publicKeyB64}") { netrunViewModel() }
+    val rack by netrun.rack.collectAsStateWithLifecycle()
+    val netrunState by netrun.entryState.collectAsStateWithLifecycle()
     val state by deck.state.collectAsStateWithLifecycle()
     val daemons = state.daemons
     val shards = state.shards
@@ -98,11 +105,19 @@ fun CyberdeckScreen(
     var transferDaemon by remember { mutableStateOf<Daemon?>(null) }
     // Идёт таймер взлома: шапка и навигация приложения прячутся, взлом получает весь экран.
     var breachRunning by remember { mutableStateOf(false) }
+    // Выбор деки для входа в Сеть: отмеченные демоны и защищённый слот (сбрасываются, когда стойка закрыта).
+    var netrunChosen by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var netrunProtected by remember { mutableStateOf<String?>(null) }
+    // Кнопка «Войти в Сеть» ждёт именно QR стойки; общий «Сканер» принимает и стойку, и всё остальное.
+    var wantRack by remember { mutableStateOf(false) }
 
     // Системная «Назад» ведёт на уровень выше, а не выкидывает из приложения. Во время таймера взлома она заблокирована:
     // случайный жест не должен сжигать попытку — выйти можно только кнопками экрана.
-    BackHandler(enabled = decryptingShard != null || container != null) {
+    val inNetrun = rack != null || netrunState != NetrunEntryState.Idle
+    BackHandler(enabled = decryptingShard != null || container != null || inNetrun) {
         when {
+            rack != null -> netrun.closePicker()
+            netrunState != NetrunEntryState.Idle -> netrun.dismiss()
             breachRunning -> Unit
             decryptingShard != null -> decryptingShard = null
             else -> breach.close()
@@ -110,13 +125,43 @@ fun CyberdeckScreen(
     }
 
     // Мини-взлом дешифровки — полноэкранный, со своим back-заголовком; шапка оболочки над ним была бы дублем.
-    LaunchedEffect(decryptingShard, breachRunning) { onNestedChange(decryptingShard != null || breachRunning) }
+    LaunchedEffect(decryptingShard, breachRunning, inNetrun) { onNestedChange(decryptingShard != null || breachRunning || inNetrun) }
 
     // Одна кнопка скана на всё: контейнер проверяется перед взломом (BreachViewModel → CheckBreachAccess — связь, остывание узла,
     // остаток слотов), остальное — шард, RAM-токен, фрагмент лута — применяет Кибердека.
     val scanObject = rememberMb10QrScanner { qr ->
         breach.dismissIssue()
-        if (qr is Mb10Qr.ContainerQr) breach.open(qr.container) else deck.onScan(qr)
+        val rackOnly = wantRack
+        wantRack = false
+        when {
+            qr is Mb10Qr.Rack -> { netrunChosen = emptySet(); netrunProtected = null; netrun.openRack(qr) }
+            rackOnly -> AppSnack.show("Это не QR стойки")
+            qr is Mb10Qr.ContainerQr -> breach.open(qr.container)
+            else -> deck.onScan(qr)
+        }
+    }
+
+    // Вход в Сеть: сначала выбор деки, потом ход входа — оба на весь экран, как взлом.
+    val activeRack = rack
+    if (activeRack != null) {
+        NetrunDeckPicker(
+            rack = activeRack, daemons = daemons, ramCapacity = identity.ramCapacity,
+            chosen = netrunChosen, protectedId = netrunProtected,
+            onToggle = { id ->
+                netrunChosen = if (id in netrunChosen) netrunChosen - id else netrunChosen + id
+                // Первый выбранный демон становится защищённым сам; снятый с деки теряет защиту.
+                if (netrunProtected == id && id !in netrunChosen) netrunProtected = null
+                if (netrunProtected == null) netrunProtected = netrunChosen.firstOrNull()
+            },
+            onProtect = { netrunProtected = it },
+            onEnter = { netrun.enter(daemons.filter { it.id in netrunChosen }, netrunProtected.orEmpty()) },
+            onCancel = netrun::closePicker
+        )
+        return
+    }
+    if (netrunState != NetrunEntryState.Idle) {
+        NetrunStatus(netrunState, onRetry = netrun::retry, onClose = netrun::dismiss)
+        return
     }
 
     val decrypting = decryptingShard
@@ -191,7 +236,8 @@ fun CyberdeckScreen(
                 ShardsSegment(shards = shards, onOpen = { openedShard = it })
             }
         }
-        MbButton("Сканер", onClick = scanObject, keyIcon = MbIcons.Scan, modifier = Modifier.padding(vertical = MbDimens.blockGap))
+        MbButton("Войти в Сеть", onClick = { wantRack = true; scanObject() }, kind = MbButtonKind.Ghost, keyIcon = MbIcons.Hack, modifier = Modifier.padding(top = MbDimens.blockGap))
+        MbButton("Сканер", onClick = { wantRack = false; scanObject() }, keyIcon = MbIcons.Scan, modifier = Modifier.padding(vertical = MbDimens.blockGap))
     }
 
     val opened = openedShard

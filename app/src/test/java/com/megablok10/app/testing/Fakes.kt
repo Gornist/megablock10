@@ -151,6 +151,8 @@ class FakePaymentLedger(private val me: TestPlayer, balance: Long = 100) : Payme
     override fun buildReceipt(me: Identity, transactionId: String) =
         Mb10Qr.Receipt(transactionId, me.publicKeyB64, this.me.sign(HandoverRules.receiptSignaturePayload(transactionId, me.publicKeyB64)))
 
+    override suspend fun hasIncoming(id: String): Boolean = credited.any { it.id == id }
+
     override suspend fun recordIncoming(myPublicKeyB64: String, tx: Mb10Qr.Transaction): Boolean {
         if (tx.toPubKeyB64 != myPublicKeyB64 || credited.any { it.id == tx.id }) return false
         credited += tx
@@ -196,6 +198,8 @@ class FakeItemLedger(private val me: TestPlayer, vararg owned: String) : ItemLed
         owned += card.payload
         return true
     }
+
+    override suspend fun hasIncoming(id: String): Boolean = accepted.any { it.id == id }
 
     override fun buildReceipt(me: Identity, id: String) =
         Mb10Qr.Receipt(id, me.publicKeyB64, this.me.sign(HandoverRules.receiptSignaturePayload(id, me.publicKeyB64)))

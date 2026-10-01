@@ -6,6 +6,7 @@ import com.megablok10.app.ui.screens.AnnouncementsViewModel
 import com.megablok10.app.ui.screens.CallsViewModel
 import com.megablok10.app.ui.screens.ChatViewModel
 import com.megablok10.app.ui.screens.ContactsViewModel
+import com.megablok10.app.ui.screens.NetrunViewModel
 import com.megablok10.app.ui.screens.CyberdeckViewModel
 import com.megablok10.app.ui.screens.DirectThreadViewModel
 import com.megablok10.app.ui.screens.SettingsViewModel
@@ -56,6 +57,8 @@ fun AppGraph.directThreadViewModel(myKey: String, peerKey: String) = DirectThrea
 
 fun AppGraph.cyberdeckViewModel() =
     CyberdeckViewModel(identity.state, daemons, shards, directory, ramUpgrades::apply, rewards::applyGrant, sendItem, notices, processScope)
+
+fun AppGraph.netrunViewModel() = NetrunViewModel(identity.state, netrun, processScope)
 
 fun AppGraph.breachViewModel() = BreachViewModel(identity.state, checkBreachAccess, finishBreach, processScope)
 

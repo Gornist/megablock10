@@ -141,6 +141,8 @@ class TransactionStore(
      * сумма некорректна, это своя же транзакция или она уже была зачислена
      * раньше (защита от повторного скана одного QR).
      */
+    override suspend fun hasIncoming(id: String): Boolean = (dao.amountOf(id) ?: 0) > 0
+
     override suspend fun recordIncoming(myPublicKeyB64: String, tx: Mb10Qr.Transaction): Boolean {
         fun reject(why: String): Boolean { Mb10Log.warnEvent(TAG, "tx.in_rejected", "id" to tx.id, "from" to Mb10Log.short(tx.fromPubKeyB64), "amount" to tx.amount, "why" to why); return false }
         if (tx.amount <= 0) return reject("сумма<=0")

@@ -125,6 +125,8 @@ class ItemTransferStore(
         return true
     }
 
+    override suspend fun hasIncoming(id: String): Boolean = dao.get(id)?.outgoing == false
+
     /** Чек получателя [me] по передаче [id] — тот же формат, что у денег (kit HandoverRules.receiptSignaturePayload). */
     override fun buildReceipt(me: Identity, id: String): Mb10Qr.Receipt =
         Mb10Qr.Receipt(id = id, receiverPubKeyB64 = me.publicKeyB64, signatureB64 = identity.sign(HandoverRules.receiptSignaturePayload(id, me.publicKeyB64)))

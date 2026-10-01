@@ -42,6 +42,9 @@ import com.megablok10.app.items.ItemTransferStore
 import com.megablok10.app.items.SendItem
 import com.megablok10.app.log.DeviceDiagnostics
 import com.megablok10.app.log.Mb10Log
+import com.megablok10.app.netrun.NetrunEntry
+import com.megablok10.app.netrun.NetrunStore
+import com.megablok10.app.netrun.WorldAutoAccept
 import com.megablok10.app.presence.MeshForegroundService
 import com.megablok10.app.session.SessionActions
 import com.megablok10.app.session.SessionController
@@ -160,20 +163,34 @@ class AppGraph(private val app: Application) {
     val checkBreachAccess = CheckBreachAccess({ MeshLink.isOnline(app) }, cooldowns::remainingCooldownMs, slotClaims::isExhausted, changes)
     val finishBreach = FinishBreach(changes, rewards::apply, cooldowns::markRewarded, secAlerts::dispatch)
 
+    // «Сеть»: вход со стойки (карточки демонов + запрос Мосту) и автоприём добычи от Моста
+    val netrunStore = NetrunStore(prefs(NetrunStore.PREFS))
+    val netrun = NetrunEntry(
+        store = netrunStore, ledger = items, messenger = chat,
+        sendLine = { key, line -> peerDirectory.send(key, line) },
+        addPeer = presence::addStaticPeer,
+        sign = identity::sign,
+        work = processScope,
+    )
+    val worldCards = WorldAutoAccept(netrunStore::worldPub, acceptItem, acceptPayment, items, wallet, chat)
+
     // Сессия и жизненный цикл персонажа
     val mesh: MeshSession = MeshSession(
         app, chat, presence, wifi, calls, slotClaims,
         receipts = receipts,
         readReceipts = readReceipts,
+        netrun = netrun,
+        worldCards = worldCards,
         onIncompatible = IncompatibleVersionReporter(WireVersion.protocols, WireVersion.INCOMPATIBLE_MESSAGE) { notices.show(it) }::report,
         sessionTasks = listOf(
             { scope -> secAlerts.start(scope) },
             { scope -> cardResender.start(scope) },
+            { _ -> netrun.restorePeer() },
             { scope -> DeviceDiagnostics.startSnapshots(app, scope, this) },
         ),
     )
     val provisioning = ProvisionStore(identity, collectorSettings, changes, wallet, db.consumedTokenDao(), transactor)
-    val sessionReset = SessionReset(db, identity, collectorSettings, changes, announcements) { session.onSessionReset() }
+    val sessionReset = SessionReset(db, identity, collectorSettings, changes, announcements, netrunStore) { session.onSessionReset() }
 
     /**
      * Что работает в фоне — решает только он (B3): сеть на личность, синк на процесс, foreground-сервис с правилами Android 12+.

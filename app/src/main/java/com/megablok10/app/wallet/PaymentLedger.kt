@@ -35,6 +35,9 @@ interface PaymentLedger {
     /** Чек получателя [me] по переводу [transactionId] — ответ отправителю. */
     fun buildReceipt(me: Identity, transactionId: String): Mb10Qr.Receipt
 
+    /** Входящий перевод [id] уже зачислен этим телефоном (повторный чек для досылки отправителя). */
+    suspend fun hasIncoming(id: String): Boolean
+
     /** Принять входящий перевод: проверить подпись и адресата, зачислить. false — отказ или уже принят. */
     suspend fun recordIncoming(myPublicKeyB64: String, tx: Mb10Qr.Transaction): Boolean
 }
