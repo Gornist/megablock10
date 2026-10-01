@@ -9,6 +9,7 @@ on:
     paths:
       - "app/**"
       - "kit/**"
+      - "rules/**"
       - "scripts/e2e/**"
       - ".github/workflows/e2e.yml"
   schedule:

@@ -35,7 +35,8 @@ data class BreachAttemptState(
     }
 }
 
-enum class BreachOutcome { SUCCESS, PARTIAL, FAIL }
+/** Исход взлома живёт в общем модуле правил (:rules); псевдоним — чтобы код приложения не менял импорты. */
+typealias BreachOutcome = com.megablok10.rules.BreachOutcome
 
 data class BreachResult(val allDaemons: List<Daemon>, val matchedIds: Set<String>) {
     val outcome: BreachOutcome

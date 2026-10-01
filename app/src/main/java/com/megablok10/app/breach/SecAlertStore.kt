@@ -10,6 +10,8 @@ import com.megablok10.app.identity.Identity
 import com.megablok10.app.log.Mb10Log
 import com.megablok10.kit.mesh.OnlinePlayer
 import com.megablok10.kit.sync.ChangeRecorder
+import com.megablok10.rules.AlertPlan
+import com.megablok10.rules.SecAlertRules
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
 import java.util.concurrent.ConcurrentHashMap
@@ -39,9 +41,6 @@ class SecAlertStore(
     /** containerId → окно агрегации: полное сообщение раз в 15 минут, дальше счётчик повторов. Живёт в памяти на время сессии приложения — не переживает перезапуск, это осознанно (см. ревизию v9 §4). */
     private val aggregation = ConcurrentHashMap<String, AggState>()
     private data class AggState(var lastFullSentAt: Long = 0, var suppressed: Int = 0)
-
-    /** Что решено про конкретный взлом — результат [decide], ещё без привязки к Context/БД. */
-    data class AlertPlan(val sendAt: Long, val revealCallsign: Boolean, val revealPreciseTime: Boolean)
 
     /**
      * Сброс очереди — по изменению списка пиров И по таймеру: раньше только по первому, и отложенный
@@ -133,14 +132,7 @@ class SecAlertStore(
         private const val SYSTEM_PUBKEY = "SEC-SYSTEM"
         private const val SYSTEM_CALLSIGN = "SEC//MB10"
 
-        /**
-         * Правила ревизии v9 §4, вынесены в чистую функцию без Context/БД —
-         * именно тут решается, будет ли сигнал вообще, и что в нём раскроется.
-         * null — сигнала не будет: свой узел (ownerFaction взломщика), FAIL на
-         * тире BASE, либо BLACKOUT среди совпавших эффектов гасит его полностью.
-         * TIMESKEW добавляет 10 минут к задержке; GHOST убирает позывной
-         * взломщика из содержимого, даже если тир его обычно раскрывает.
-         */
+        /** Правила ревизии v9 §4 — в общем модуле (:rules, [SecAlertRules.decide]); здесь тонкая передача для вызовов приложения. */
         fun decide(
             ownerFaction: String,
             intruderFaction: String,
@@ -148,18 +140,6 @@ class SecAlertStore(
             outcome: BreachOutcome,
             matchedEffects: Set<DaemonEffect>,
             now: Long
-        ): AlertPlan? {
-            if (ownerFaction.isBlank() || ownerFaction == intruderFaction) return null
-            if (outcome == BreachOutcome.FAIL && tier == Tier.BASE) return null
-            if (DaemonEffect.BLACKOUT in matchedEffects) return null
-
-            val baseDelayMs = if (tier == Tier.NIGHTMARE) 0L else 2 * 60_000L
-            val timeskewBonus = if (DaemonEffect.TIMESKEW in matchedEffects) 10 * 60_000L else 0L
-            return AlertPlan(
-                sendAt = now + baseDelayMs + timeskewBonus,
-                revealCallsign = tier != Tier.BASE && DaemonEffect.GHOST !in matchedEffects,
-                revealPreciseTime = tier == Tier.NIGHTMARE
-            )
-        }
+        ): AlertPlan? = SecAlertRules.decide(ownerFaction, intruderFaction, tier, outcome, matchedEffects, now)
     }
 }

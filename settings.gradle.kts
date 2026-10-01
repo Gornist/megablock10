@@ -18,3 +18,5 @@ include(":app")
 include(":kit")
 // Мост «Сеть» (docs/netrun-bridge-protocol.md): документы и хранилище на мини-ПК площадки. Чистая JVM, зависит от :kit.
 include(":netrun-bridge")
+// Общие правила игры без Android (rules/README.md): тиры, эффекты демонов, кодек предмета, решение о сигнале СБ.
+include(":rules")

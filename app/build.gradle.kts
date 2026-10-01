@@ -175,6 +175,8 @@ ksp {
 dependencies {
     // Переиспользуемое ядро (kit/README.md): журнал, подписи, шифрование, сеть на площадке, передачи, синхронизация с сервером.
     implementation(project(":kit"))
+    // Общие правила игры (тиры, эффекты демонов, кодек предмета, решение о сигнале СБ) — rules/README.md.
+    implementation(project(":rules"))
 
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.activity:activity-compose:1.9.0")

@@ -26,11 +26,11 @@ step() { # step "имя" команда...
 skip() { TIMES+=("$1: пропущено (нет изменений)"); }
 
 # kit/ — часть приложения (подключён к :app), поэтому любая его правка тоже гоняет проверки приложения.
-if changed app || changed kit; then
-  step "app+kit: detekt" ./gradlew -q --console=plain :app:detekt :kit:detekt   # статический анализ; старые находки в app/detekt-baseline.xml, новые ломают проверку
-  step "kit: API Android 8.0" ./gradlew -q --console=plain :kit:animalsnifferMain   # kit собирается JDK 17+, но работает на Android 26: вызов более нового API ломает проверку
+if changed app || changed kit || changed rules; then
+  step "app+kit: detekt" ./gradlew -q --console=plain :app:detekt :kit:detekt :rules:detekt   # статический анализ; старые находки в app/detekt-baseline.xml, новые ломают проверку
+  step "kit: API Android 8.0" ./gradlew -q --console=plain :kit:animalsnifferMain :rules:animalsnifferMain   # kit собирается JDK 17+, но работает на Android 26: вызов более нового API ломает проверку
   step "app: Android Lint" ./gradlew -q --console=plain :app:lintDebug   # полный набор (включая NewApi — API новее Android 8.0); baseline app/lint-baseline.xml
-  step "kit: unit-тесты" ./gradlew -q --console=plain :kit:test
+  step "kit: unit-тесты" ./gradlew -q --console=plain :kit:test :rules:test
   # verifyPaparazziDebug прогоняет ВСЕ unit-тесты приложения: скриншоты (testDebugUnitTest) и остальное (testDebugUnitTestNoScreenshots)
   # — в разных JVM, каждый тест один раз. Эталоны: app/src/test/snapshots; обновить: ./gradlew recordPaparazziDebug
   # Не cleanTestDebugUnitTest: Paparazzi считает эталоны выходом задачи, и clean их удаляет (заново без кэша — --rerun-tasks).
