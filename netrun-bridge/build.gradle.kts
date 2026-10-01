@@ -29,5 +29,10 @@ dependencies {
     // SQLite через JDBC: драйвер несёт нативную библиотеку для Linux/macOS/Windows.
     implementation("org.xerial:sqlite-jdbc:3.46.1.3")
 
+    // WebSocket-сервер: Java-WebSocket — один небольшой JAR на чистой Java (без Netty/Ktor-рантайма), сервер и клиент по RFC 6455.
+    implementation("org.java-websocket:Java-WebSocket:1.5.7")
+    // Java-WebSocket пишет через slf4j; своё логирование Мост ведёт сам, поэтому привязка «в никуда».
+    runtimeOnly("org.slf4j:slf4j-nop:2.0.13")
+
     testImplementation("junit:junit:4.13.2")
 }
