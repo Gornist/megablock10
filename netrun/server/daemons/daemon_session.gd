@@ -1,0 +1,35 @@
+class_name DaemonSession
+extends RefCounted
+## Состояние нетраннера, которое трогают демоны: дека, перезарядки, флаги, добыча.
+## Время подаётся снаружи (секунды).
+
+var deck: Array[String] = []  # id демонов, выбранных в деку
+var trace: TraceMeter
+var ghost_until: float = -INF  # ICE читает is_ghost(now)
+var loot: Array[Dictionary] = []  # добыча забега (события; настоящую выдачу делает Мост)
+var _ready_at: Dictionary = {}  # id демона -> время конца перезарядки
+
+
+func _init(deck_ids: Array = [], meter: TraceMeter = null) -> void:
+	for d in deck_ids:
+		deck.append(str(d))
+	trace = meter if meter != null else TraceMeter.new()
+
+
+func is_ghost(now: float) -> bool:
+	return now < ghost_until
+
+
+func cooldown_left(daemon_id: String, now: float) -> float:
+	return maxf(0.0, float(_ready_at.get(daemon_id, -INF)) - now)
+
+
+func start_cooldown(daemon_id: String, now: float, seconds: float) -> void:
+	_ready_at[daemon_id] = now + seconds
+
+
+func has_looted(item_id: String) -> bool:
+	for l in loot:
+		if l.get("id") == item_id:
+			return true
+	return false
