@@ -15,6 +15,7 @@
 ## Структура
 
 - `main.tscn`, `main.gd` — точка входа, выбирает режим.
+- OpenXR включён только на Android (`openxr/enabled.android` в project.godot): плоская сборка и сервер его не поднимают. Риг — `client/xr_rig.tscn`, математика — `shared/rig_math.gd`. На ПК с рантаймом OpenXR: `-- --client --xr-mode on`.
 - `shared/` — код, общий для сервера и клиента (в т.ч. `run_mode.gd` — выбор режима).
 - `server/` — сервер мира. `client/` — клиент Pico 4 и плоская сборка. `tests/` — тесты gdUnit4.
 - `export_presets.cfg` — пресеты: «Client Pico 4 (Android)» (OpenXR, arm64), «Server (dedicated)» (метка `dedicated_server`),

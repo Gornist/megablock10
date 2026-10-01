@@ -23,4 +23,5 @@ renderer/rendering_method.mobile="mobile"
 [xr]
 
 openxr/enabled=false
+openxr/enabled.android=true
 shaders/enabled=true
