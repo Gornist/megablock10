@@ -6,3 +6,5 @@ func start(args: PackedStringArray) -> void:
 	p.name = "Proto"
 	add_child(p)
 	p.start(args, "client", true)
+	if p.net != null:
+		p.scene.rig.exit_requested.connect(p.net.request_exit)
