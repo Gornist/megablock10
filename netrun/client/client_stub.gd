@@ -1,10 +1,8 @@
 extends Node
-## Клиент для Pico 4: тестовая сцена и XR-риг; без очков остаётся плоский риг с понятной ошибкой в журнале.
+## Клиент для Pico 4: сцена прототипа и XR-риг; без очков остаётся плоский риг, причина — в журнале.
 
-func start(_args: PackedStringArray) -> void:
-	var scene := preload("res://client/rig_test_scene.gd").new()
-	add_child(scene)
-	if not scene.rig.start_xr():
-		print("[netrun-client] OpenXR недоступен — плоский режим")
-	else:
-		print("[netrun-client] OpenXR запущен, сидячий режим")
+func start(args: PackedStringArray) -> void:
+	var p := ProtoClient.new()
+	p.name = "Proto"
+	add_child(p)
+	p.start(args, "client", true)

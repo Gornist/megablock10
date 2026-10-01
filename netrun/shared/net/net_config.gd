@@ -9,6 +9,8 @@ const DEFAULT_PORT := 7777
 const DEFAULT_GRACE_SEC := 20.0
 ## Узел мира, в котором появляются аватары (один мир, узлы разнесены в пространстве).
 const WORLD_NODE := "node_07"
+## Единственный берущийся объект прототипа (V3).
+const PICKUP_ID := "pickup_01"
 
 var host: String = DEFAULT_HOST
 var port: int = DEFAULT_PORT

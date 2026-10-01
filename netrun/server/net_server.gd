@@ -9,6 +9,7 @@ signal session_joined(session: String, peer_id: int, resumed: bool)
 signal session_lost(session: String)
 ## Выход из забега: {session, reason, under_hunt, deck_burned} (ExitLogic.build_event).
 signal exit_event(event: Dictionary)
+signal object_taken(object_id: String, session: String)
 
 ## Тихий обрыв (Wi-Fi пропал) ENet по умолчанию замечает за десятки секунд; ужимаем до ~5 с.
 const PEER_TIMEOUT_MS := 5000
@@ -22,6 +23,7 @@ var _peer_session: Dictionary = {}   # peer_id -> сессия (после пр�
 var _session_peer: Dictionary = {}   # сессия -> peer_id (-1, пока на связи никого)
 var _deadline_ms: Dictionary = {}    # сессия -> момент удаления аватара (мс)
 var _under_hunt: Dictionary = {}     # сессия -> true, пока за ней охотится Black ICE (ставит охота снаружи)
+var _objects: Dictionary = {}        # id объекта -> сессия, которая его держит ("" — лежит)
 
 
 static func avatar_name(session: String) -> String:
@@ -34,6 +36,7 @@ func start(config: NetConfig, token_verifier: TokenVerifier) -> Error:
 	_world = Node3D.new()
 	_world.name = NetConfig.WORLD_NODE
 	add_child(_world)
+	_add_object(NetConfig.PICKUP_ID, Vector3(0, 1.0, -1.5))
 	var enet := ENetMultiplayerPeer.new()
 	var err := enet.create_server(config.port, 32)
 	if err != OK:
@@ -76,18 +79,48 @@ func set_under_hunt(session: String, hunted: bool) -> void:
 		_under_hunt.erase(session)
 
 
+func holder_of(object_id: String) -> String:
+	return str(_objects.get(object_id, ""))
+
+
+func _add_object(object_id: String, pos: Vector3) -> void:
+	var o := Node3D.new()
+	o.name = object_id
+	o.position = pos
+	_world.add_child(o)
+	_objects[object_id] = ""
+
+
+## Клиент просит — сервер решает (grab) или исполняет выход (exit). Разбор — WorldMsg.
 func _on_packet(peer_id: int, data: PackedByteArray) -> void:
 	var session: String = _peer_session.get(peer_id, "")
+	var msg := WorldMsg.decode(data)
 	if session.is_empty():
 		return
-	var msg = JSON.parse_string(data.get_string_from_utf8())
-	if not (msg is Dictionary) or msg.get("t", "") != "exit":
-		return
-	var reason := str(msg.get("reason", ""))
-	if not ExitLogic.is_client_reason(reason):
-		print("[netrun-server] сессия ", session, ": неизвестная причина выхода «", reason, "»")
-		return
-	_finish_exit(session, reason)
+	match msg.get("t", ""):
+		WorldMsg.GRAB:
+			_handle_grab(peer_id, session, str(msg.get("id", "")))
+		WorldMsg.EXIT:
+			var reason := str(msg.get("reason", ""))
+			if not ExitLogic.is_client_reason(reason):
+				print("[netrun-server] сессия ", session, ": неизвестная причина выхода «", reason, "»")
+				return
+			_finish_exit(session, reason)
+
+
+## Объект берётся, только если лежит (или уже у этого игрока).
+func _handle_grab(peer_id: int, session: String, id: String) -> void:
+	var reply: PackedByteArray
+	if not _objects.has(id):
+		reply = WorldMsg.encode(WorldMsg.GRAB_NO, id, {"reason": WorldMsg.REASON_UNKNOWN})
+	elif _objects[id] != "" and _objects[id] != session:
+		reply = WorldMsg.encode(WorldMsg.GRAB_NO, id, {"reason": WorldMsg.REASON_HELD})
+	else:
+		_objects[id] = session
+		reply = WorldMsg.encode(WorldMsg.GRAB_OK, id)
+		print("[netrun-server] ", session, " взял ", id)
+		object_taken.emit(id, session)
+	(multiplayer as SceneMultiplayer).send_bytes(reply, peer_id, MultiplayerPeer.TRANSFER_MODE_RELIABLE)
 
 
 ## Выход: событие, затем аватар убирается, связь закрывается. Обрыв сюда не попадает до конца окна возврата.
@@ -107,6 +140,9 @@ func _finish_exit(session: String, reason: String) -> void:
 
 
 func _remove_avatar(session: String) -> void:
+	for id in _objects:
+		if _objects[id] == session:
+			_objects[id] = ""  # аватара нет — объект снова лежит
 	var a := get_avatar(session)
 	if a != null:
 		_world.remove_child(a)

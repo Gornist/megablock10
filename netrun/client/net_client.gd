@@ -6,6 +6,9 @@ extends Node
 signal connected
 signal rejected
 signal disconnected
+## Сервер подтвердил взятие / отказал. Клиент сам объект не берёт — ждёт этих сигналов.
+signal grab_confirmed(object_id: String)
+signal grab_denied(object_id: String, reason: String)
 
 var config: NetConfig
 var is_connected_to_world := false
@@ -27,12 +30,30 @@ func reconnect() -> Error:
 		mp.connected_to_server.connect(_on_connected)
 		mp.server_disconnected.connect(_on_server_disconnected)
 		mp.connection_failed.connect(_on_failed)
+		mp.peer_packet.connect(_on_packet)
 	var enet := ENetMultiplayerPeer.new()
 	var err := enet.create_client(config.host, config.port)
 	if err != OK:
 		return err
 	mp.multiplayer_peer = enet
 	return OK
+
+
+## Просьба взять объект; false — связи нет, просить некого.
+func request_grab(object_id: String) -> bool:
+	if not is_connected_to_world:
+		return false
+	(multiplayer as SceneMultiplayer).send_bytes(WorldMsg.encode(WorldMsg.GRAB, object_id), 1, MultiplayerPeer.TRANSFER_MODE_RELIABLE)
+	return true
+
+
+func _on_packet(_peer_id: int, data: PackedByteArray) -> void:
+	var msg := WorldMsg.decode(data)
+	match msg.get("t", ""):
+		WorldMsg.GRAB_OK:
+			grab_confirmed.emit(str(msg.get("id", "")))
+		WorldMsg.GRAB_NO:
+			grab_denied.emit(str(msg.get("id", "")), str(msg.get("reason", "")))
 
 
 ## Явное отключение (снял очки, тесты): корректно прощается с сервером, затем закрывает сокет.
@@ -56,7 +77,7 @@ func drop() -> void:
 func request_exit(reason: String) -> bool:
 	if not is_connected_to_world:
 		return false
-	var data := JSON.stringify({"t": "exit", "reason": reason}).to_utf8_buffer()
+	var data := WorldMsg.encode_exit(reason)
 	return (multiplayer as SceneMultiplayer).send_bytes(data, 1, MultiplayerPeer.TRANSFER_MODE_RELIABLE) == OK
 
 

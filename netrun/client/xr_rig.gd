@@ -7,6 +7,7 @@ extends XROrigin3D
 signal xr_failed(reason: String)
 ## Экстренное отключение: причина — ExitLogic.REASON_*; подключает к сети тот, кто собрал клиент.
 signal exit_requested(reason: String)
+signal recentered(xr: bool)
 
 @export var smooth_turn_enabled := false
 @export var move_speed := RigMath.MOVE_SPEED
@@ -74,6 +75,7 @@ func recenter() -> void:
 		_mouse_pitch = 0.0
 		camera.rotation = Vector3.ZERO
 	position = RigMath.recenter_origin(position, camera.global_position, global_position)
+	recentered.emit(xr_active)
 
 
 func _on_right_button(action: String) -> void:
