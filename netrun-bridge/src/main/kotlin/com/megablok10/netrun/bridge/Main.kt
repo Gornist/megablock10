@@ -15,8 +15,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.system.exitProcess
 
-/** Параметры запуска Моста: `--port`, `--line-port`, `--db`, `--test`, `--world-pub`; ключи ролей — `NETRUN_KEY_WORLD|MASTER|TEST` из окружения. */
-data class LaunchOptions(val port: Int, val db: String, val config: BridgeConfig, val linePort: Int = DEFAULT_LINE_PORT)
+/** Параметры запуска Моста: `--port`, `--line-port`, `--db`, `--test`, `--seed` (стенд, только с `--test`), `--world-pub`; ключи ролей — `NETRUN_KEY_WORLD|MASTER|TEST` из окружения. */
+data class LaunchOptions(val port: Int, val db: String, val config: BridgeConfig, val linePort: Int = DEFAULT_LINE_PORT, val seed: String? = null)
 
 /** Порт, на котором Мост принимает строки телефонов (карточки сдачи, чеки, запрос входа); его телефон берёт из QR стойки. */
 const val DEFAULT_LINE_PORT = 7411
@@ -29,6 +29,7 @@ internal fun parseLaunch(args: List<String>, env: Map<String, String>): LaunchOp
     var linePort = DEFAULT_LINE_PORT
     var test = false
     var pub: String? = null
+    var seed: String? = null
     val it = args.iterator()
     fun value(name: String) = if (it.hasNext()) it.next() else bad("у $name нет значения")
     while (it.hasNext()) {
@@ -38,13 +39,15 @@ internal fun parseLaunch(args: List<String>, env: Map<String, String>): LaunchOp
             "--db" -> db = value(a)
             "--test" -> test = true
             "--world-pub" -> pub = value(a)
+            "--seed" -> seed = value(a)
             else -> bad("неизвестный аргумент $a")
         }
     }
     val keys = listOf("world", "master", "test").mapNotNull { r -> env["NETRUN_KEY_" + r.uppercase()]?.takeIf { it.isNotEmpty() }?.let { r to it } }.toMap()
     if ("world" !in keys || "master" !in keys) bad("нужны NETRUN_KEY_WORLD и NETRUN_KEY_MASTER")
     if (test && "test" !in keys) bad("с --test нужен NETRUN_KEY_TEST")
-    return LaunchOptions(port, db, BridgeConfig(port = port, roleKeys = keys, testMode = test, worldPub = pub), linePort)
+    if (seed != null && !test) bad("--seed работает только с --test")
+    return LaunchOptions(port, db, BridgeConfig(port = port, roleKeys = keys, testMode = test, worldPub = pub), linePort, seed)
 }
 
 /**
@@ -133,10 +136,11 @@ fun main(args: Array<String>) {
     val options = try {
         parseLaunch(args.toList(), System.getenv())
     } catch (e: IllegalArgumentException) {
-        System.err.println("Мост: ${e.message}\nИспользование: --port N [--line-port N] --db путь.db [--test] [--world-pub КЛЮЧ]; ключи — в окружении")
+        System.err.println("Мост: ${e.message}\nИспользование: --port N [--line-port N] --db путь.db [--test [--seed файл.json]] [--world-pub КЛЮЧ]; ключи — в окружении")
         exitProcess(2)
     }
     val app = BridgeApp(options)
+    options.seed?.let { System.err.println("Мост: из ${it} добавлено документов: ${seedDocs(app.store, java.io.File(it).readText())}") }
     Runtime.getRuntime().addShutdownHook(Thread { app.close() })
     app.start()
     System.err.println("Мост запущен: порт ${app.port}, база ${options.db}${if (options.config.testMode) ", режим --test" else ""}")

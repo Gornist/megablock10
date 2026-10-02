@@ -44,4 +44,25 @@ class MainTest {
             assertEquals(VJ.str(app.store.get("settings", "global")!!.data, "world_pub"), app.worldKey.publicB64) // тот же ключ
         }
     }
+
+    @Test fun seedNeedsTestModeAndIsIdempotent() {
+        val bad = runCatching { parseLaunch(listOf("--seed", "s.json"), env) }
+        assertTrue(bad.exceptionOrNull() is IllegalArgumentException)
+        assertEquals("s.json", parseLaunch(listOf("--test", "--seed", "s.json"), env).seed)
+
+        val db = tmp.root.resolve("s.db").path
+        val json = """{"node": {"node_07": {"eddies": 5}}, "settings": {"global": {"auditor_period_s": 2}}}"""
+        BridgeApp(parseLaunch(listOf("--port", "0", "--line-port", "0", "--db", db), env)).use { app ->
+            assertEquals(2, seedDocs(app.store, json))
+            assertEquals(5L, VJ.lng(app.store.get("node", "node_07")!!.data, "eddies"))
+            // настройки дополнены, world_pub на месте
+            val g = app.store.get("settings", "global")!!
+            assertEquals(2L, VJ.lng(g.data, "auditor_period_s"))
+            assertEquals(app.worldKey.publicB64, VJ.str(g.data, "world_pub"))
+            // существующий узел не затирается
+            val ver = app.store.get("node", "node_07")!!.ver
+            seedDocs(app.store, json)
+            assertEquals(ver, app.store.get("node", "node_07")!!.ver)
+        }
+    }
 }
