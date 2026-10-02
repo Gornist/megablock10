@@ -115,6 +115,25 @@ class ValueOpsTest {
         f.assertConserved()
     }
 
+    @Test fun operationsFollowTheNodeWhereTheSessionIsNow() {
+        val f = fx()
+        val sid = f.enterActive(f.keyA, "t03", "it_dA1", "it_dA2")
+        f.store.put("node", "node_09", 0, f.obj("tier" to "HARD", "lockdown_until" to 0L, "eddies" to 0L))
+        f.item("it_sh9", "node:node_09", "node:node_09", kind = "SHARD")
+        // пока world.node нет — узел сессии прежний, чужой узел отказывает
+        assertEquals("bad_request", code { f.ops.takeFromNode(f.world, "w1", sid, "node_09", "it_sh9") })
+        // сервер мира провёл игрока через тоннель и записал world.node
+        val s = f.store.get("session", sid)!!
+        f.store.put("session", sid, s.ver, VJ.with(s.data, "world" to f.obj("node" to "node_09", "connected" to true)))
+        assertTrue(f.ops.takeFromNode(f.world, "w2", sid, "node_09", "it_sh9").ok)
+        assertEquals("bad_request", code { f.ops.takeFromNode(f.world, "w3", sid, "node_07", "it_sh1") })
+        assertTrue(f.ops.leaveInNode(f.world, "w4", sid, "node_09", "it_dA2").ok)
+        assertEquals("node:node_09", f.owner("it_dA2"))
+        val r = f.ops.finishRun(f.world, "w5", sid, "clean", "node_09", false, listOf(Move("it_sh9", MoveTo.PHONE)))
+        assertTrue(r.body.toString(), r.ok)
+        assertEquals("outbox:${f.keyA}", f.owner("it_sh9"))
+    }
+
     @Test fun issueToPhoneAndPermissions() {
         val f = fx()
         val r = f.ops.issueToPhone(f.master, "give:1", f.keyA, listOf("it_sh1"), 0, "ручная выдача")

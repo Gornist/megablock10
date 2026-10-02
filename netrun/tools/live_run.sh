@@ -3,7 +3,8 @@
 # снова, бот возвращается в тот же забег и выходит чисто. В конце — проверка документов Моста.
 # Запускать на devbox (Linux; Gradle и Godot на Mac не гонять): `timeout 1200 netrun/tools/live_run.sh`.
 # Итог — одна строка `LIVE_RUN PASS|FAIL: ...` и код 0|1. Все процессы с жёсткими пределами времени, в конце всё гасится.
-# Окружение: BRIDGE_PORT (7410), LINE_PORT (7411), ENET_PORT (7777), GODOT (godot), KEEP_LOGS=1 (не удалять каталог журналов).
+# Окружение: BRIDGE_PORT (7410), LINE_PORT (7411), ENET_PORT (7777), GODOT (godot), KEEP_LOGS=1 (не удалять каталог журналов),
+# GRAPH=1 (граф узлов W1: сервер мира с --graph, бот graph_run идёт тоннелем node_07 -> node_04, шард берёт в node_04).
 set -u
 set -m  # у каждого фонового процесса своя группа: kill -- -PID гасит и timeout, и то, что он запустил
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -74,11 +75,21 @@ tmo 600 ./gradlew -q :netrun-bridge:installDist >"$WORK/gradle.log" 2>&1 || { ta
 [ -d netrun/.godot ] || { log "импорт проекта Godot"; tmo 180 "$GODOT" --headless --path netrun --import >"$WORK/import.log" 2>&1; }
 
 # --- Данные стенда: узел, терминал с токеном, игрок (обучение пройдено), активная сессия, дека, шард в узле ---
+SHARD_NODE=node_07
+SERVER_GRAPH=""
+BOT_ARGS="--bot=ghost_run"
+EXTRA_NODE=""
+if [ "${GRAPH:-0}" = 1 ]; then
+  SHARD_NODE=node_04
+  SERVER_GRAPH="--graph"
+  BOT_ARGS="--bot=graph_run --bot-route=node_04"
+  EXTRA_NODE=', "node_04": {"title": "Склад запчастей", "tier": "BASE", "tutorial": false, "lockdown_until": 0, "eddies": 0}'
+fi
 RKEY_DOC="r_$(sha256 "$RUNNER" | cut -c1-32)"
 cat >"$WORK/seed.json" <<JSON
 {
   "settings": {"global": {"auditor_period_s": 2}},
-  "node": {"node_07": {"title": "Серый узел", "tier": "STANDARD", "tutorial": false, "lockdown_until": 0, "eddies": 0}},
+  "node": {"node_07": {"title": "Серый узел", "tier": "STANDARD", "tutorial": false, "lockdown_until": 0, "eddies": 0}$EXTRA_NODE},
   "terminal": {"t03": {"node": "node_07", "label": "стенд", "token_sha256": "$(sha256 "$TOKEN")", "silent": false}},
   "runner": {"$RKEY_DOC": {"key": "$RUNNER", "callsign": "Призрак", "blocked": false, "runs": 1, "tutorial_done": true}},
   "session": {"$SESSION": {"state": "active", "terminal": "t03", "node": "node_07", "runner": "$RUNNER", "callsign": "Призрак",
@@ -87,7 +98,7 @@ cat >"$WORK/seed.json" <<JSON
   "item": {
     "it_live0000000d001": {"owner": "deck:$SESSION", "kind": "DAEMON", "payload": "daemon:ghost_1", "protected": true, "origin": "phone:$RUNNER", "in_transfer": null, "out_transfer": null, "handover": null},
     "it_live0000000d002": {"owner": "deck:$SESSION", "kind": "DAEMON", "payload": "daemon:jitter_1", "protected": false, "origin": "phone:$RUNNER", "in_transfer": null, "out_transfer": null, "handover": null},
-    "$SHARD": {"owner": "node:node_07", "kind": "SHARD", "payload": "shard-live", "protected": false, "origin": "node:node_07", "in_transfer": null, "out_transfer": null, "handover": null}
+    "$SHARD": {"owner": "node:$SHARD_NODE", "kind": "SHARD", "payload": "shard-live", "protected": false, "origin": "node:$SHARD_NODE", "in_transfer": null, "out_transfer": null, "handover": null}
   }
 }
 JSON
@@ -101,7 +112,7 @@ wait_for 60 "порт Моста $BRIDGE_PORT" port_open "$BRIDGE_PORT"
 alive "$BRIDGE_PID" || fail "Мост завершился при запуске"
 
 start_world() { # $1 — имя журнала
-  tmo 600 "$GODOT" --headless --path netrun -- --bridge="ws://127.0.0.1:$BRIDGE_PORT" --bridge-key=kw --port="$ENET_PORT" --grace=20 >"$WORK/$1.log" 2>&1 &
+  tmo 600 "$GODOT" --headless --path netrun -- --bridge="ws://127.0.0.1:$BRIDGE_PORT" --bridge-key=kw --port="$ENET_PORT" --grace=20 $SERVER_GRAPH >"$WORK/$1.log" 2>&1 &
   WORLD_PID=$!; PIDS+=("$WORLD_PID")
 }
 
@@ -113,7 +124,7 @@ wait_for 90 "снимок Моста у сервера мира №1" has "$WORK
 has "$WORK/world1.log" "активных сессий 1" || fail "сервер мира №1 не увидел активную сессию"
 
 log "бот"
-tmo 240 "$GODOT" --headless --path netrun -- --bot=ghost_run --bot-reconnect --host=127.0.0.1 --port="$ENET_PORT" \
+tmo 240 "$GODOT" --headless --path netrun -- $BOT_ARGS --bot-reconnect --host=127.0.0.1 --port="$ENET_PORT" \
   --token="t03:$TOKEN" --bot-hold=10 --exit-after=200 >"$WORK/bot.log" 2>&1 &
 BOT_PID=$!; PIDS+=("$BOT_PID")
 wait_for 90 "шард взят и записан в Мосте" has "$WORK/world1.log" "take $SHARD ok"

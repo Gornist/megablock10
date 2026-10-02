@@ -202,7 +202,7 @@ class ValueOps(
         return execute(caller, "leave_in_node", rid, params) { tx, _ ->
             val s = loadSession(tx, session)
             if (VJ.str(s.data, "state") == "closed") fail("session_state", "сессия закрыта", s)
-            if (VJ.str(s.data, "node") != node) throw StoreException("bad_request", "узел не тот")
+            if (currentNode(s) != node) throw StoreException("bad_request", "узел не тот")
             if (tx.get(NODE, node) == null) throw StoreException("not_found", "узла нет")
             val it = tx.get(ITEM, item) ?: throw StoreException("not_found", "предмета нет")
             if (VJ.str(it.data, "owner") != "deck:$session") fail("wrong_owner", "предмет не в деке сессии", it)
@@ -536,9 +536,12 @@ class ValueOps(
     private fun activeSession(tx: DocStore.Tx, id: String, node: String): Doc {
         val s = loadSession(tx, id)
         if (VJ.str(s.data, "state") != "active") fail("session_state", "сессия не active", s)
-        if (VJ.str(s.data, "node") != node) throw StoreException("bad_request", "узел не тот")
+        if (currentNode(s) != node) throw StoreException("bad_request", "узел не тот")
         return s
     }
+
+    /** Узел, где сессия сейчас: `world.node` (пишет сервер мира при переходе по графу узлов), иначе узел, куда её приняли. */
+    private fun currentNode(s: Doc): String? = (s.data["world"] as? JsonObject)?.let { VJ.str(it, "node") } ?: VJ.str(s.data, "node")
 
     private fun loadDeck(tx: DocStore.Tx, sid: String): Doc =
         tx.get(DECK, sid) ?: throw StoreException("internal", "у сессии $sid нет деки")

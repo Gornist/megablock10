@@ -243,7 +243,7 @@ func _process(delta: float) -> void:
 			if not _asked:
 				_asked = net.request_grab(_goal_shard)
 			elif shard_taken:
-				_enter("to_exit")
+				_enter("hold" if hold_after_grab > 0.0 else "to_exit")
 		"to_shard":
 			# Без GHOST идём осторожно: ICE успевает заметить и догнать раньше шарда.
 			var speed_scale := 1.0 if scenario == Scenario.GHOST_RUN else 0.25
