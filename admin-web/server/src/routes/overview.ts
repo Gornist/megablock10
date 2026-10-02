@@ -4,6 +4,7 @@ import type { Overview } from "../apiTypes.js";
 import { presentSince } from "../lib/presence.js";
 import { ONLINE_WINDOW_MS, getPlayerBase, isActivePlayer } from "../lib/playerSummary.js";
 import type { FastifyInstance } from "fastify";
+import { notWorldSql } from "../lib/changeRecord.js";
 import type { Db } from "../db/index.js";
 import { requireMaster } from "../lib/auth.js";
 import { parseSafe } from "../lib/json.js";
@@ -21,7 +22,7 @@ const ALERTS_SCAN_LIMIT = 2000;
 
 /** Части сводки, зависящие только от БД — годятся под cachedByDbVersion (см. players.ts/nodes.ts/slots.ts). */
 function computeOverviewBase(db: Db) {
-  const totalPlayers = (db.prepare(`SELECT COUNT(DISTINCT subject_key) AS n FROM changes`).get() as { n: number }).n;
+  const totalPlayers = (db.prepare(`SELECT COUNT(DISTINCT subject_key) AS n FROM changes WHERE ${notWorldSql()}`).get() as { n: number }).n;
 
   const alertRows = db
     .prepare(`SELECT new_value AS payload FROM changes WHERE field = 'counters.alert' ORDER BY received_at DESC LIMIT ?`)
@@ -44,7 +45,7 @@ function computeOverviewBase(db: Db) {
   const slotsClaimed = (db.prepare(`SELECT COUNT(*) AS n FROM slot_claims WHERE revoked = 0`).get() as { n: number }).n;
 
   // Все известные ключи одним запросом: раньше на каждого замеченного по heartbeat игрока шёл отдельный SELECT (каждые 3 с на 100 игроков).
-  const knownKeys = new Set((db.prepare(`SELECT DISTINCT subject_key FROM changes`).all() as { subject_key: string }[]).map((r) => r.subject_key));
+  const knownKeys = new Set((db.prepare(`SELECT DISTINCT subject_key FROM changes WHERE ${notWorldSql()}`).all() as { subject_key: string }[]).map((r) => r.subject_key));
 
   return { totalPlayers, alertsSent, alertsSuppressed, slotsPrinted, slotsClaimed, knownKeys };
 }
@@ -64,7 +65,7 @@ export function registerOverviewRoutes(app: FastifyInstance, db: Db) {
     const base = cachedBase();
     // «На связи» = были свежие записи ИЛИ heartbeat телефона (пустой батч), причём только игроки, которых мы уже знаем по истории.
     const online = new Set(
-      (db.prepare(`SELECT DISTINCT subject_key FROM changes WHERE received_at > ? AND reason != 'MASTER_OVERRIDE'`).all(now - ONLINE_WINDOW_MS) as { subject_key: string }[]).map(
+      (db.prepare(`SELECT DISTINCT subject_key FROM changes WHERE received_at > ? AND reason != 'MASTER_OVERRIDE' AND ${notWorldSql()}`).all(now - ONLINE_WINDOW_MS) as { subject_key: string }[]).map(
         (r) => r.subject_key,
       ),
     );

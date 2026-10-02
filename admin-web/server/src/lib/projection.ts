@@ -1,5 +1,5 @@
 import type { Db } from "../db/index.js";
-import type { Field, StoredChangeRow } from "./changeRecord.js";
+import { notWorldSql, type Field, type StoredChangeRow } from "./changeRecord.js";
 import { RAM_CAPACITY_DEFAULT } from "./identityDefaults.js";
 import { parseSafe } from "./json.js";
 
@@ -33,7 +33,8 @@ const PROJECTION_COLUMNS =
  * until — состояние «на момент T» по часам сервера: ровно то, что видел бы дашборд в тот момент. key — только один игрок.
  */
 function selectRows(db: Db, until?: number, key?: string): Iterable<ProjectionRow> {
-  const clauses: string[] = ["mp.failed_at IS NULL"];
+  // Записи мира (net.*) — не персонаж: их субъект — ключ мира, и в свёртку он попасть не должен.
+  const clauses: string[] = ["mp.failed_at IS NULL", notWorldSql("c")];
   const params: unknown[] = [];
   if (key !== undefined) {
     clauses.push("c.subject_key = ?");

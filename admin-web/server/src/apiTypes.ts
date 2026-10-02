@@ -31,7 +31,7 @@ export interface Overview {
   alerts: { sent: number; suppressed: number };
 }
 
-export type ChangeKind = "money" | "item" | "breach" | "alert" | "master" | "system";
+export type ChangeKind = "money" | "item" | "breach" | "alert" | "master" | "system" | "net";
 
 /** Человекочитаемая часть записи изменения — собирает сервер (lib/humanize.ts); сырые поля остаются рядом для «деталей». */
 export interface HumanChange {
