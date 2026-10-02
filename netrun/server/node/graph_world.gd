@@ -41,6 +41,7 @@ func start(server: NetServer, bridge_api: BridgeApi, node_graph: NodeGraph) -> v
 		var gn := GrayNode.new()
 		gn.name = str(id)
 		gn.manage_net_hooks = false
+		gn.manage_sync = false
 		gn.shared_clock = clock
 		gn.daemons = daemons
 		gn.ice_settings = ice_settings
@@ -54,7 +55,27 @@ func start(server: NetServer, bridge_api: BridgeApi, node_graph: NodeGraph) -> v
 		gn.portal_requested.connect(_on_portal_requested.bind(id))
 		for slot in gn.slot_ids():
 			_object_node[slot] = id
+	_sync_all()
 	print("[graph] узлов ", nodes.size(), ", входов по терминалам ", graph.entries.size(), ", по умолчанию ", graph.default_entry)
+
+
+## Один снимок Моста на весь граф: подписка на типы, затем каждый узел берёт из него своё (сессии, шарды, локдаун).
+func _sync_all() -> void:
+	if bridge == null:
+		return
+	while not bridge.is_ready():
+		await get_tree().create_timer(0.1).timeout
+		if not is_inside_tree():
+			return
+	@warning_ignore("redundant_await")
+	var snap: Dictionary = await bridge.subscribe(GrayNode.SYNC_TYPES)
+	if not is_inside_tree():
+		return
+	if not snap.get("ok", false):
+		push_warning("[graph] подписка на Мост не удалась: %s" % BridgeApi.err_code(snap))
+		return
+	for gn in nodes.values():
+		(gn as GrayNode).apply_snapshot(snap.get("docs", []))
 
 
 func _physics_process(delta: float) -> void:

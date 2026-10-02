@@ -51,6 +51,8 @@ var settings: Dictionary = NodeGraph.DEFAULT_SETTINGS
 var shared_clock: GraphClock
 ## Сети и вход игроков подключает граф (GraphWorld): один узел из многих не должен перетирать обработчики NetServer.
 var manage_net_hooks := true
+## Подписку на Мост и снимок берёт сам узел; в графе — GraphWorld один раз на всех (повторная подписка на те же типы снимка не даёт).
+var manage_sync := true
 var bridge: BridgeApi
 var daemons := DaemonService.new()
 ## Настройки ICE и trace (подбираются на этапе 2); пусто — значения по умолчанию.
@@ -149,7 +151,8 @@ func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 	net.session_lost.connect(_on_session_lost)
 	if bridge != null:
 		bridge.doc_changed.connect(_on_doc_changed)
-	_sync_from_bridge()
+	if manage_sync:
+		_sync_from_bridge()
 	set_physics_process(true)
 	_ready_done = true
 
@@ -249,7 +252,12 @@ func _sync_from_bridge() -> void:
 	if not snap.get("ok", false):
 		push_warning("[gray-node] подписка на Мост не удалась: %s" % BridgeApi.err_code(snap))
 		return
-	recover(snap.get("docs", []))
+	apply_snapshot(snap.get("docs", []))
+
+
+## Снимок Моста принят: восстановление и первая запись состояния узла.
+func apply_snapshot(docs: Array) -> void:
+	recover(docs)
 	synced = true
 	_write_node_state()
 
