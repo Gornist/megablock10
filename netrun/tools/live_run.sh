@@ -16,6 +16,9 @@ PIDS=()
 RESULT=FAIL
 REASON="не дошли до конца"
 
+# Без UTF-8 Java пишет в журнал вопросительные знаки.
+export LC_ALL=C.UTF-8 LANG=C.UTF-8
+
 # Ключи ролей и данные стенда — тестовые, только для этого прогона.
 export NETRUN_KEY_WORLD=kw NETRUN_KEY_MASTER=km NETRUN_KEY_TEST=kt
 TOKEN="live-token-t03"
@@ -92,7 +95,9 @@ log "Мост на порту $BRIDGE_PORT"
 tmo 900 netrun-bridge/build/install/netrun-bridge/bin/netrun-bridge --port "$BRIDGE_PORT" --line-port "$LINE_PORT" \
   --db "$WORK/bridge.db" --test --seed "$WORK/seed.json" >"$WORK/bridge.log" 2>&1 &
 BRIDGE_PID=$!; PIDS+=("$BRIDGE_PID")
-wait_for 60 "запуск Моста" has "$WORK/bridge.log" "Мост запущен"
+port_open() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
+wait_for 60 "порт Моста $BRIDGE_PORT" port_open "$BRIDGE_PORT"
+alive "$BRIDGE_PID" || fail "Мост завершился при запуске"
 
 start_world() { # $1 — имя журнала
   tmo 600 "$GODOT" --headless --path netrun -- --bridge="ws://127.0.0.1:$BRIDGE_PORT" --bridge-key=kw --port="$ENET_PORT" --grace=20 >"$WORK/$1.log" 2>&1 &
