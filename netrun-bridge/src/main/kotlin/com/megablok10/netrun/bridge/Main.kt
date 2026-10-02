@@ -23,31 +23,46 @@ const val DEFAULT_LINE_PORT = 7411
 
 private fun bad(msg: String): Nothing = throw IllegalArgumentException(msg)
 
-internal fun parseLaunch(args: List<String>, env: Map<String, String>): LaunchOptions {
+/** Значения флагов командной строки до проверки сочетаний. */
+private class Flags {
     var port = 7410
     var db = "netrun-bridge.db"
     var linePort = DEFAULT_LINE_PORT
     var test = false
     var pub: String? = null
     var seed: String? = null
+}
+
+private fun parseFlags(args: List<String>): Flags {
+    val f = Flags()
     val it = args.iterator()
     fun value(name: String) = if (it.hasNext()) it.next() else bad("у $name нет значения")
     while (it.hasNext()) {
         when (val a = it.next()) {
-            "--port" -> port = value(a).toIntOrNull() ?: bad("--port — число")
-            "--line-port" -> linePort = value(a).toIntOrNull() ?: bad("--line-port — число")
-            "--db" -> db = value(a)
-            "--test" -> test = true
-            "--world-pub" -> pub = value(a)
-            "--seed" -> seed = value(a)
+            "--port" -> f.port = value(a).toIntOrNull() ?: bad("--port — число")
+            "--line-port" -> f.linePort = value(a).toIntOrNull() ?: bad("--line-port — число")
+            "--db" -> f.db = value(a)
+            "--test" -> f.test = true
+            "--world-pub" -> f.pub = value(a)
+            "--seed" -> f.seed = value(a)
             else -> bad("неизвестный аргумент $a")
         }
     }
+    return f
+}
+
+private fun roleKeys(env: Map<String, String>, test: Boolean): Map<String, String> {
     val keys = listOf("world", "master", "test").mapNotNull { r -> env["NETRUN_KEY_" + r.uppercase()]?.takeIf { it.isNotEmpty() }?.let { r to it } }.toMap()
     if ("world" !in keys || "master" !in keys) bad("нужны NETRUN_KEY_WORLD и NETRUN_KEY_MASTER")
     if (test && "test" !in keys) bad("с --test нужен NETRUN_KEY_TEST")
-    if (seed != null && !test) bad("--seed работает только с --test")
-    return LaunchOptions(port, db, BridgeConfig(port = port, roleKeys = keys, testMode = test, worldPub = pub), linePort, seed)
+    return keys
+}
+
+internal fun parseLaunch(args: List<String>, env: Map<String, String>): LaunchOptions {
+    val f = parseFlags(args)
+    val keys = roleKeys(env, f.test)
+    if (f.seed != null && !f.test) bad("--seed работает только с --test")
+    return LaunchOptions(f.port, f.db, BridgeConfig(port = f.port, roleKeys = keys, testMode = f.test, worldPub = f.pub), f.linePort, f.seed)
 }
 
 /**
