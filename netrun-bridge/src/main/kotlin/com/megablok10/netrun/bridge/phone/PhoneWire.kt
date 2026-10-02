@@ -76,6 +76,17 @@ object PhoneWire {
         }
     }
 
+    // ---------- сигнал СБ ----------
+
+    /** Сообщение фракции (`MB10CHAT … FACTION`): ровно то, что собирает `ChatProtocol.encode` приложения для `sendFaction`. */
+    fun encodeFactionChat(from: String, callsign: String, faction: String, timestamp: Long, body: String): String =
+        listOf(CHAT_MAGIC, "v$CHAT_VERSION", "FACTION", from, b64(callsign), b64(faction), "", timestamp.toString(), b64(body)).joinToString(":")
+
+    /** Тело сигнала СБ (`MB10:SECALERT:v1`) — как `Mb10QrCodec.encodeSecurityAlert`; позывной и точное время — null, если не раскрываются. */
+    fun encodeSecAlert(containerId: String, containerName: String, tier: Int, callsign: String?, preciseAt: Long?): String =
+        listOf(CARD_MAGIC, "SECALERT", "v1", containerId, b64(containerName), tier.toString(), callsign?.let { b64(it) } ?: "", preciseAt?.toString() ?: "")
+            .joinToString(":")
+
     // ---------- карточки ----------
 
     fun encodeItem(c: ItemCard): String = "$CARD_MAGIC:ITEM:v2:${c.id}:${c.from}:${c.to}:${c.kind}:${b64(c.payload)}:${c.signature}"

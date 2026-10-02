@@ -141,6 +141,7 @@ class BridgeApp(private val options: LaunchOptions) : AutoCloseable {
         rules = RuleEngine(store)
         TerminalSilentRule(rules).register()
         MasterRules(rules, master).register()
+        SecAlertRule(rules, store, phones, log = { log.event("Bridge", it) }, dispatch = { job -> scope.launch { job() } }).register()
         auditor = Auditor(store)
     }
 

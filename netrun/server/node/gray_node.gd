@@ -456,6 +456,9 @@ func _on_avatar_removed(session: String) -> void:
 
 func _on_level_changed(old_level: int, new_level: int, value: float, session: String) -> void:
 	event.emit({"kind": "level", "session": session, "from": old_level, "to": new_level, "value": value})
+	# Мост (правило сигнала СБ, P3) читает session.world.trace_level: с уровня TRACE шлёт сигнал с номером терминала.
+	if bridge != null and synced:
+		_mark_trace_level(session, new_level, value)
 	# trace 100: ICE хватает. С Black ICE в узле это делает охота (она идёт с уровня TRACE); без него Soft ICE выбрасывает.
 	if new_level == TraceMeter.Level.FLATLINE and not has_black_ice():
 		_end(session, ExitLogic.REASON_EJECTED, "ice_eject")
@@ -556,6 +559,31 @@ static func outcome_plan(ev: Dictionary) -> Dictionary:
 ## Ошибки связи (Мост недоступен, обрыв, таймаут): запрос повторяют с тем же rid; всё остальное — окончательный ответ.
 static func is_transient(resp: Dictionary) -> bool:
 	return BridgeApi.err_code(resp) in ["unavailable", "timeout", "disconnected", "internal"]
+
+
+## Уровень trace в session.data.world (trace_level — число TraceMeter.Level, trace — значение): Мост по нему решает про сигнал СБ.
+## Остальные поля world сохраняются; повтор при version_conflict и обрыве, не вышло окончательно — без записи (уровень не критичен для хода).
+func _mark_trace_level(session: String, level: int, value: float) -> void:
+	for attempt in FINISH_ATTEMPTS:
+		@warning_ignore("redundant_await")
+		var g: Dictionary = await bridge.get_doc(BridgeApi.T_SESSION, session)
+		if g.get("ok", false):
+			var cur: Dictionary = g["doc"]
+			var data: Dictionary = (cur.get("data", {}) as Dictionary).duplicate(true)
+			var w: Dictionary = (data.get("world", {}) as Dictionary).duplicate(true) if data.get("world") is Dictionary else {}
+			w["trace_level"] = level
+			w["trace"] = int(value)
+			data["world"] = w
+			@warning_ignore("redundant_await")
+			var r: Dictionary = await bridge.put_doc(BridgeApi.T_SESSION, session, int(cur["ver"]), data)
+			if r.get("ok", false):
+				return
+			g = r
+		if not is_transient(g) and BridgeApi.err_code(g) != "version_conflict":
+			push_warning("[gray-node] trace_level %s: %s" % [session, BridgeApi.err_code(g)])
+			return
+		if not is_inside_tree():
+			return
 
 
 ## Пометка в session.data.world: что сервер мира закрывает эту сессию (finish, disconnect). Остальные поля world сохраняются.
