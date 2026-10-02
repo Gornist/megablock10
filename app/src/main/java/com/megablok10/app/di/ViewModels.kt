@@ -21,7 +21,7 @@ import kotlinx.coroutines.flow.combine
 
 fun AppGraph.sessionViewModel() = SessionViewModel(
     identityStore = identity,
-    peers = peerDirectory.online,
+    peers = visiblePlayers,
     provisioning = provisioning::apply,
     create = createCharacter,
     reset = { sessionReset.perform(it) },
@@ -63,4 +63,4 @@ fun AppGraph.netrunViewModel() = NetrunViewModel(identity.state, netrun, process
 fun AppGraph.breachViewModel() = BreachViewModel(identity.state, checkBreachAccess, finishBreach, processScope)
 
 fun AppGraph.settingsViewModel() =
-    SettingsViewModel(collectorSettings, observePendingChanges(), peerDirectory.online, { collectorSync.wake() }, ::deviceReport, readReceiptSetting, collectorClient.reachable)
+    SettingsViewModel(collectorSettings, observePendingChanges(), visiblePlayers, { collectorSync.wake() }, ::deviceReport, readReceiptSetting, collectorClient.reachable)

@@ -3,7 +3,7 @@ package com.megablok10.app.netrun
 import android.content.SharedPreferences
 import com.megablok10.app.qr.Mb10Qr
 
-/** Запрос входа, ждущий ответа Моста: переживает перезапуск процесса, пока не пришёл подписанный `MB10ENTERED` или игрок не закрыл. */
+/** Запрос входа, ждущий ответа Моста, вместе со стойкой на момент запроса (последний скан другой стойки его не меняет): переживает перезапуск процесса, пока не пришёл подписанный `MB10ENTERED` или игрок не закрыл. */
 data class EnterAttempt(val request: EnterRequest, val rack: Mb10Qr.Rack)
 
 /**
@@ -29,7 +29,13 @@ class NetrunStore(private val prefs: SharedPreferences) {
 
     fun attempt(): EnterAttempt? {
         val rid = prefs.getString(RID, null) ?: return null
-        val rack = rack() ?: return null
+        val rack = Mb10Qr.Rack(
+            terminal = prefs.getString(A_TERMINAL, "").orEmpty(),
+            host = prefs.getString(A_HOST, null) ?: return null,
+            port = prefs.getInt(A_PORT, 0).takeIf { it > 0 } ?: return null,
+            worldPub = prefs.getString(A_WORLD, null) ?: return null,
+            label = prefs.getString(A_LABEL, "").orEmpty(),
+        )
         val request = EnterRequest(
             rid = rid,
             terminal = prefs.getString(A_TERMINAL, "").orEmpty(),
@@ -43,15 +49,15 @@ class NetrunStore(private val prefs: SharedPreferences) {
         return EnterAttempt(request, rack)
     }
 
-    fun saveAttempt(request: EnterRequest) {
-        prefs.edit().putString(RID, request.rid).putString(A_TERMINAL, request.terminal).putString(A_RUNNER, request.runner)
+    fun saveAttempt(request: EnterRequest, rack: Mb10Qr.Rack) {
+        prefs.edit().putString(A_HOST, rack.host).putInt(A_PORT, rack.port).putString(A_WORLD, rack.worldPub).putString(A_LABEL, rack.label).putString(RID, request.rid).putString(A_TERMINAL, request.terminal).putString(A_RUNNER, request.runner)
             .putString(A_CALLSIGN, request.callsign).putString(A_TRANSFERS, request.transfers.joinToString(","))
             .putString(A_PROTECTED, request.protectedTransfer).putLong(A_TS, request.timestamp).putString(A_SIG, request.signature).commit()
     }
 
     fun clearAttempt() {
         prefs.edit().remove(RID).remove(A_TERMINAL).remove(A_RUNNER).remove(A_CALLSIGN).remove(A_TRANSFERS).remove(A_PROTECTED)
-            .remove(A_TS).remove(A_SIG).commit()
+            .remove(A_TS).remove(A_SIG).remove(A_HOST).remove(A_PORT).remove(A_WORLD).remove(A_LABEL).commit()
     }
 
     /** Сброс сессии персонажа: стойка, ключ мира и запрос входа прежнего игрока не нужны новому. */
@@ -74,5 +80,9 @@ class NetrunStore(private val prefs: SharedPreferences) {
         private const val A_PROTECTED = "attempt_protected"
         private const val A_TS = "attempt_ts"
         private const val A_SIG = "attempt_sig"
+        private const val A_HOST = "attempt_host"
+        private const val A_PORT = "attempt_port"
+        private const val A_WORLD = "attempt_world"
+        private const val A_LABEL = "attempt_label"
     }
 }

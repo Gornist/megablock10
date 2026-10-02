@@ -116,7 +116,7 @@ class NetrunEntry(
 
         val unsigned = EnterRequest(newRid(), rack.terminal, me.publicKeyB64, me.callsign, transfers, protectedTransfer, now())
         val request = unsigned.copy(signature = sign(NetrunWire.enterSignedBytes(unsigned)))
-        store.saveAttempt(request)
+        store.saveAttempt(request, rack)
         _state.value = NetrunEntryState.Waiting(rack)
         Mb10Log.event(TAG, "netrun.enter_sent", "rid" to request.rid, "terminal" to rack.terminal, "transfers" to transfers.size)
         work.launch { retryLoop(request) }
@@ -149,6 +149,12 @@ class NetrunEntry(
         work.launch { retryLoop(attempt.request) }
     }
 
+    /** Сброс сессии персонажа: стойка, запрос и показанное состояние прежнего игрока не достаются новому. */
+    fun reset() {
+        store.clearAll()
+        _state.value = NetrunEntryState.Idle
+    }
+
     /** Закрыть результат или отказаться ждать. Запрос без ответа забывается: поздний ответ Моста уже не принимается. */
     fun dismiss() {
         if (_state.value is NetrunEntryState.Waiting) store.clearAttempt()
@@ -156,10 +162,11 @@ class NetrunEntry(
     }
 
     private suspend fun retryLoop(request: EnterRequest) {
+        val worldKey = store.attempt()?.rack?.worldPub ?: return
         val deadline = now() + waitMs
         val line = NetrunWire.encodeEnter(request)
         while (store.attempt()?.request?.rid == request.rid) {
-            val outcome = withContext(io) { sendLine(store.worldPub().orEmpty(), line) }
+            val outcome = withContext(io) { sendLine(worldKey, line) }
             Mb10Log.event(TAG, "netrun.enter_line", "rid" to request.rid, "outcome" to outcome.name)
             delay(retryMs)
             if (store.attempt()?.request?.rid != request.rid) return

@@ -7,7 +7,7 @@ import com.megablok10.app.collector.ChangeReason
 import com.megablok10.app.collector.CollectorSettings
 import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.log.Mb10Log
-import com.megablok10.app.netrun.NetrunStore
+import com.megablok10.app.netrun.NetrunEntry
 import com.megablok10.kit.sync.ChangeRecorder
 
 /**
@@ -29,7 +29,7 @@ class SessionReset(
     private val changes: ChangeRecorder,
     private val announcements: AnnouncementStore,
     /** Стойка и запрос входа в «Сеть» прежнего персонажа. */
-    private val netrun: NetrunStore,
+    private val netrun: NetrunEntry,
     /** Остановить сеть до стирания данных (session.SessionController.onSessionReset). */
     private val stopSession: () -> Unit,
 ) {
@@ -50,7 +50,7 @@ class SessionReset(
             wipeStatements(tables).forEach { db1.execSQL(it) }
         }
         announcements.clear()
-        netrun.clearAll()
+        netrun.reset()
         identityStore.clear()
         settings.setProvisioned(false)
         settings.setProvisionRejected(false)

@@ -2,7 +2,6 @@ package com.megablok10.app.netrun
 
 import com.megablok10.app.chat.ChatMessageType
 import com.megablok10.app.chat.ChatWireMessage
-import com.megablok10.app.items.AcceptItem
 import com.megablok10.app.items.OutgoingItem
 import com.megablok10.app.items.SendItem
 import com.megablok10.app.qr.Mb10Qr
@@ -11,7 +10,9 @@ import com.megablok10.app.testing.FakeItemLedger
 import com.megablok10.app.testing.FakeMessenger
 import com.megablok10.app.testing.FakePaymentLedger
 import com.megablok10.app.testing.TestPlayer
-import com.megablok10.app.wallet.AcceptPayment
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -19,6 +20,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Добыча и эдди принимаются сами — только от ключа мира из QR стойки; от остальных карточка ждёт «Принять». */
+@OptIn(ExperimentalCoroutinesApi::class)
 class WorldAutoAcceptTest {
     private val me = TestPlayer("Призрак")
     private val world = TestPlayer("Мост")
@@ -28,7 +30,11 @@ class WorldAutoAcceptTest {
     private val myMoney = FakePaymentLedger(me, balance = 0)
     private val myChat = FakeMessenger(world.peer, stranger.peer)
     private var worldKey: String? = world.key
-    private val auto = WorldAutoAccept({ worldKey }, AcceptItem(myItems, myChat), AcceptPayment(myMoney, myChat), myItems, myMoney, myChat)
+    private val work = TestScope()
+    private val auto = WorldAutoAccept({ worldKey }, myItems, myMoney, myChat, work)
+
+    /** Обработчик строки (возвращается после сохранения) и затем фоновая отправка чека. */
+    private suspend fun handle(msg: ChatWireMessage): Boolean = handle(msg).also { work.advanceUntilIdle() }
 
     private fun dm(from: TestPlayer, body: String, to: TestPlayer = me) =
         ChatWireMessage(ChatMessageType.DM, from.key, from.callsign, "", to.key, 1_000, body)
@@ -42,7 +48,7 @@ class WorldAutoAcceptTest {
     @Test fun `loot from the world key is accepted without a tap and the receipt goes back`() = runTest {
         val card = itemFrom(world, "loot-1")
 
-        assertTrue(auto.onDirect(me.identity, dm(world, Mb10QrCodec.encodeItemTransfer(card))))
+        assertTrue(handle(dm(world, Mb10QrCodec.encodeItemTransfer(card))))
 
         assertEquals(setOf("loot-1"), myItems.owned)
         val receipt = Mb10QrCodec.decode(myChat.sent.single().body) as Mb10Qr.Receipt
@@ -50,10 +56,21 @@ class WorldAutoAcceptTest {
         assertEquals(world.key, myChat.sent.single().to)
     }
 
+    @Test fun `the receipt leaves the handler and goes out from the work scope after the card is saved`() = runTest {
+        val card = itemFrom(world, "loot-0")
+
+        assertTrue(auto.onDirect(me.identity, dm(world, Mb10QrCodec.encodeItemTransfer(card))))
+
+        assertEquals("предмет сохранён, а чек по сети ещё не ушёл", setOf("loot-0"), myItems.owned)
+        assertTrue(myChat.sent.isEmpty())
+        work.advanceUntilIdle()
+        assertEquals(1, myChat.sent.size)
+    }
+
     @Test fun `eddies from the world key are credited and acknowledged`() = runTest {
         val tx = payFrom(world, 120)
 
-        assertTrue(auto.onDirect(me.identity, dm(world, Mb10QrCodec.encodeTransaction(tx))))
+        assertTrue(handle(dm(world, Mb10QrCodec.encodeTransaction(tx))))
 
         assertEquals(120L, myMoney.balance)
         assertEquals(tx.id, (Mb10QrCodec.decode(myChat.sent.single().body) as Mb10Qr.Receipt).id)
@@ -64,7 +81,7 @@ class WorldAutoAcceptTest {
         val card = itemFrom(world, "loot-2")
         val bodies = listOf(Mb10QrCodec.encodeTransaction(tx), Mb10QrCodec.encodeItemTransfer(card))
 
-        repeat(2) { bodies.forEach { auto.onDirect(me.identity, dm(world, it)) } }
+        repeat(2) { bodies.forEach { handle(dm(world, it)) } }
 
         assertEquals(50L, myMoney.balance)
         assertEquals(setOf("loot-2"), myItems.owned)
@@ -75,8 +92,8 @@ class WorldAutoAcceptTest {
         val card = itemFrom(stranger, "loot-3")
         val tx = payFrom(stranger, 500)
 
-        assertFalse(auto.onDirect(me.identity, dm(stranger, Mb10QrCodec.encodeItemTransfer(card))))
-        assertFalse(auto.onDirect(me.identity, dm(stranger, Mb10QrCodec.encodeTransaction(tx))))
+        assertFalse(handle(dm(stranger, Mb10QrCodec.encodeItemTransfer(card))))
+        assertFalse(handle(dm(stranger, Mb10QrCodec.encodeTransaction(tx))))
 
         assertTrue(myItems.owned.isEmpty())
         assertEquals(0L, myMoney.balance)
@@ -87,7 +104,7 @@ class WorldAutoAcceptTest {
         worldKey = null
         val card = itemFrom(world, "loot-4")
 
-        assertFalse(auto.onDirect(me.identity, dm(world, Mb10QrCodec.encodeItemTransfer(card))))
+        assertFalse(handle(dm(world, Mb10QrCodec.encodeItemTransfer(card))))
 
         assertTrue(myItems.owned.isEmpty())
     }
@@ -97,15 +114,15 @@ class WorldAutoAcceptTest {
         val forged = dm(world, Mb10QrCodec.encodeItemTransfer(strangersCard))
         val forOther = dm(world, Mb10QrCodec.encodeItemTransfer(itemFrom(world, "loot-6")), to = stranger)
 
-        assertFalse("карточка не от ключа мира, хоть и пришла его сообщением", auto.onDirect(me.identity, forged))
-        assertFalse("сообщение не мне", auto.onDirect(me.identity, forOther))
+        assertFalse("карточка не от ключа мира, хоть и пришла его сообщением", handle(forged))
+        assertFalse("сообщение не мне", handle(forOther))
 
         assertTrue(myItems.owned.isEmpty())
     }
 
     @Test fun `chat text and receipts from the world are not cards`() = runTest {
-        assertFalse(auto.onDirect(me.identity, dm(world, "привет")))
-        assertFalse(auto.onDirect(me.identity, dm(world, Mb10QrCodec.encodeReceipt(Mb10Qr.Receipt("x", world.key, "sig")))))
-        assertFalse("общий чат фракции", auto.onDirect(me.identity, dm(world, "привет").copy(type = ChatMessageType.FACTION)))
+        assertFalse(handle(dm(world, "привет")))
+        assertFalse(handle(dm(world, Mb10QrCodec.encodeReceipt(Mb10Qr.Receipt("x", world.key, "sig")))))
+        assertFalse("общий чат фракции", handle(dm(world, "привет").copy(type = ChatMessageType.FACTION)))
     }
 }

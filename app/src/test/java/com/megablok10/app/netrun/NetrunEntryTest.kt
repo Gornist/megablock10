@@ -182,4 +182,29 @@ class NetrunEntryTest {
         restarted.onEntered(reply("e-test", ok = true))
         assertTrue(restarted.state.value is NetrunEntryState.Connected)
     }
+
+    @Test fun `the reply is checked against the rack of the request, not the last scanned one`() = runTest {
+        val r = rig()
+        r.entry.enter(me.identity, rack, listOf(ghost), "d1")
+        val other = TestPlayer("Чужой мир")
+        r.entry.onRackScanned(Mb10Qr.Rack("t09", "10.10.0.99", 7411, other.key))
+
+        r.entry.onEntered(reply("e-test", ok = true, signer = other))
+        assertEquals(NetrunEntryState.Waiting(rack), r.entry.state.value)
+        assertEquals(rack, r.store.attempt()!!.rack)
+
+        r.entry.onEntered(reply("e-test", ok = true))
+        assertEquals(NetrunEntryState.Connected(rack, "s_1"), r.entry.state.value)
+    }
+
+    @Test fun `session reset drops the state of the previous character`() = runTest {
+        val r = rig()
+        r.entry.enter(me.identity, rack, listOf(ghost), "d1")
+
+        r.entry.reset()
+
+        assertEquals(NetrunEntryState.Idle, r.entry.state.value)
+        assertNull(r.store.attempt())
+        assertNull(r.store.worldPub())
+    }
 }

@@ -69,7 +69,12 @@ import com.megablok10.kit.sync.Transactor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import com.megablok10.kit.mesh.OnlinePlayer
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
@@ -99,6 +104,7 @@ class AppGraph(private val app: Application) {
     val collectorSettings = CollectorSettings(prefs(CollectorSettings.PREFS), defaultUrl = BuildConfig.DEFAULT_COLLECTOR_URL)
     val announcements = AnnouncementStore(prefs(AnnouncementStore.PREFS))
     val contacts = ContactStore(db.characterDao())
+    val netrunStore = NetrunStore(prefs(NetrunStore.PREFS))
 
     // Записи для мастерского коллектора. Будят синхронизацию, чтобы запись ушла без ожидания следующего опроса.
     private val changeQueue = RoomChangeQueue(db.pendingChangeRecordDao(), db.sequenceDao(), identity::legacyChangeSeq, db.acceptedChangeRecordDao(), transactor)
@@ -127,7 +133,11 @@ class AppGraph(private val app: Application) {
     /** Отчёты о прочтении (D4) и переключатель «как в мессенджерах». */
     val readReceiptSetting = ReadReceiptSetting(prefs(ReadReceiptSetting.PREFS))
     val readReceipts = ReadReceipts(db.chatMessageDao(), peerDirectory, outbox, readReceiptSetting)
-    val directory = ContactDirectory(contacts, peerDirectory.online)
+    /** Игроки в сети для экранов и рассылок: без Моста «Сети» (он в PeerDirectory ради отправки, но не игрок). */
+    val visiblePlayers: StateFlow<List<OnlinePlayer>> = peerDirectory.online
+        .map { list -> list.filter { it.pubKeyB64 != netrunStore.worldPub() } }
+        .stateIn(processScope, SharingStarted.Eagerly, emptyList())
+    val directory = ContactDirectory(contacts, visiblePlayers)
     /** Бейджи меню новой оболочки (docs/ux/ui-migration-plan.md, «Нужны данные» перед M3) — локальный водяной знак, не read-receipt. */
     val shellBadges = ShellBadges(db.chatMessageDao(), db.callLogDao(), prefs(ShellBadges.PREFS))
 
@@ -151,7 +161,7 @@ class AppGraph(private val app: Application) {
     val collectorClient = CollectorClient()
     val cooldowns = ContainerCooldownStore(db.containerBreachDao())
     val slotClaims = SlotClaimStore(db.slotClaimDao(), identity, collectorSettings, collectorClient, peerDirectory)
-    val secAlerts = SecAlertStore(db.pendingAlertDao(), chat, changes, peerDirectory.online)
+    val secAlerts = SecAlertStore(db.pendingAlertDao(), chat, changes, visiblePlayers)
     val rewards = DaemonRewards(wallet, shards, daemons, slotClaims, collectorSettings)
 
     // Сценарии (use cases): потоки из нескольких шагов, одинаковые для интерфейса и стенда e2e (DebugQrReceiver)
@@ -164,7 +174,6 @@ class AppGraph(private val app: Application) {
     val finishBreach = FinishBreach(changes, rewards::apply, cooldowns::markRewarded, secAlerts::dispatch)
 
     // «Сеть»: вход со стойки (карточки демонов + запрос Мосту) и автоприём добычи от Моста
-    val netrunStore = NetrunStore(prefs(NetrunStore.PREFS))
     val netrun = NetrunEntry(
         store = netrunStore, ledger = items, messenger = chat,
         sendLine = { key, line -> peerDirectory.send(key, line) },
@@ -172,7 +181,7 @@ class AppGraph(private val app: Application) {
         sign = identity::sign,
         work = processScope,
     )
-    val worldCards = WorldAutoAccept(netrunStore::worldPub, acceptItem, acceptPayment, items, wallet, chat)
+    val worldCards = WorldAutoAccept(netrunStore::worldPub, items, wallet, chat, processScope)
 
     // Сессия и жизненный цикл персонажа
     val mesh: MeshSession = MeshSession(
@@ -190,7 +199,7 @@ class AppGraph(private val app: Application) {
         ),
     )
     val provisioning = ProvisionStore(identity, collectorSettings, changes, wallet, db.consumedTokenDao(), transactor)
-    val sessionReset = SessionReset(db, identity, collectorSettings, changes, announcements, netrunStore) { session.onSessionReset() }
+    val sessionReset = SessionReset(db, identity, collectorSettings, changes, announcements, netrun) { session.onSessionReset() }
 
     /**
      * Что работает в фоне — решает только он (B3): сеть на личность, синк на процесс, foreground-сервис с правилами Android 12+.
