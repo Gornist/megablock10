@@ -82,8 +82,8 @@ class MasterOps(private val store: DocStore, private val clock: () -> Long = Sys
         if (delta == 0L) return
         for (t in targets) {
             val cur = tx.get(NODE_CFG, t.id)
-            val goal = cur?.data?.get("goal") as? JsonObject
-            if (cur == null || goal == null || VJ.bool(goal, "done") || VJ.lng(goal, "deadline") == 0L) continue
+            val goal = cur?.let { activeGoal(it) }
+            if (cur == null || goal == null) continue
             val shifted = VJ.with(goal, "deadline" to VJ.p(VJ.lng(goal, "deadline") + delta))
             tx.put(NODE_CFG, cur.id, cur.ver, VJ.with(cur.data, "goal" to shifted))
         }
@@ -145,13 +145,16 @@ class MasterOps(private val store: DocStore, private val clock: () -> Long = Sys
         return done
     }
 
+    /** Цель узла, если она не выполнена и у неё есть срок. */
+    private fun activeGoal(cfg: Doc): JsonObject? =
+        (cfg.data["goal"] as? JsonObject)?.takeIf { !VJ.bool(it, "done") && VJ.lng(it, "deadline") > 0L }
+
     private fun applyGoal(tx: DocStore.Tx, node: String): Boolean {
         val cfg = tx.get(NODE_CFG, node)
-        val goal = cfg?.data?.get("goal") as? JsonObject
+        val goal = cfg?.let { activeGoal(it) }
         val kind = goal?.let { VJ.str(it, "kind") }
-        val due = goal != null && !VJ.bool(goal, "done") && VJ.lng(goal, "deadline") in 1..clock()
-        val handled = kind == "open" || kind == "lockdown"
-        if (cfg == null || goal == null || !due || !handled || isPausedIn(tx, node)) return false
+        val ready = goal != null && VJ.lng(goal, "deadline") <= clock() && (kind == "open" || kind == "lockdown")
+        if (cfg == null || goal == null || !ready || isPausedIn(tx, node)) return false
         val nodeDoc = tx.get(NODE, node)
         val result = when {
             nodeDoc == null -> "no_node"
