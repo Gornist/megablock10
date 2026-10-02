@@ -60,10 +60,10 @@ func _boot(black_extra: Dictionary = {}, blind_black: bool = true) -> void:
 	if not blind_black:
 		bs["sight_range"] = 12.0
 	_node.black_ice_settings = bs
+	_events = []
+	_node.event.connect(func(ev: Dictionary): _events.append(ev))  # до start: с фейковым Мостом recover идёт синхронно
 	_node.start(_server, _bridge)
 	_node.enable_black_ice()
-	_events = []
-	_node.event.connect(func(ev: Dictionary): _events.append(ev))
 
 
 ## «Убийство» сервера мира: сокет закрыт без прощания, сопрограммы исчезают вместе с узлами.
