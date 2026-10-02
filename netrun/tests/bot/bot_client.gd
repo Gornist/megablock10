@@ -3,6 +3,9 @@ extends Node
 ## Бот: headless-клиент серого узла без экрана и без сцены. Тот же NetClient, что у игрока, свой «ход» по комнате.
 ## Сценарии: GHOST_RUN — применить GHOST, дойти до шарда, взять, дойти до выхода, выйти чисто;
 ## EXPOSED_RUN — то же без GHOST (ICE замечает, выбрасывает). LOITER — ходит кругами у входа, не заканчивается (нагрузка, P1). Итог — result и сигнал finished.
+## С reconnect = true бот переживает перезапуск сервера мира (M5): связь пропала без причины — повторяет подключение с тем же
+## токеном, начинает путь с точки входа и продолжает сценарий (шард уже взят — идёт к выходу). Из командной строки —
+## `godot --headless --path netrun -- --bot=ghost_run --host=… --port=… --token=t03:… [--bot-reconnect]` (main.gd, run_bot).
 
 signal finished(result: String)
 
@@ -13,6 +16,7 @@ const SEND_PERIOD := 0.05
 const ARRIVE := 1.0
 const GRAB_FROM := 1.5     # на таком расстоянии от шарда просим взять
 const STEP_TIMEOUT := 25.0 # с на один шаг сценария — иначе result = "timeout:<шаг>"
+const RECONNECT_SEC := 1.0 # пауза между попытками подключения после обрыва
 
 var net: NetClient
 var scenario: int = Scenario.GHOST_RUN
@@ -29,7 +33,13 @@ var avatar_packets := 0
 var loiter_center := Vector3(0, 0, -1)
 var loiter_radius := 1.0
 var loiter_omega := 1.0
+## Переподключаться после обрыва связи (перезапуск сервера мира); сколько раз уже вернулись.
+var reconnect := false
+var reconnects := 0
+## Печатать шаги и события в stdout (запуск из командной строки: по этим строкам скрипт знает, когда убивать сервер).
+var verbose := false
 var _loiter_angle := 0.0
+var _reconnect_at := -1.0
 
 var _step := "connect"
 var _step_started := 0.0
@@ -50,7 +60,10 @@ func start(cfg: NetConfig, scenario_kind: int = Scenario.GHOST_RUN) -> void:
 		avatar_packets += 1
 		remote.on_avatars(m, _clock))
 	net.event_received.connect(_on_event)
-	net.grab_confirmed.connect(func(_id: String): shard_taken = true)
+	net.grab_confirmed.connect(func(_id: String):
+		shard_taken = true
+		if verbose:
+			print("[bot] шард взят"))
 	net.disconnected.connect(_on_disconnected)
 	net.start_client(cfg)
 	_enter("connect")
@@ -61,6 +74,8 @@ func _enter(step: String) -> void:
 	_step_started = _clock
 	_asked = false
 	steps.append(step)
+	if verbose:
+		print("[bot] шаг ", step)
 
 
 func _finish(r: String) -> void:
@@ -78,8 +93,25 @@ func _on_event(ev: Dictionary) -> void:
 
 func _on_disconnected() -> void:
 	# Событие «ended» приходит раньше разрыва; пустой результат здесь — связь пропала без причины.
-	if result.is_empty():
-		_finish("lost")
+	if not result.is_empty():
+		return
+	if reconnect:
+		_reconnect_at = _clock + RECONNECT_SEC
+		if verbose:
+			print("[bot] связь потеряна, переподключаюсь")
+		return
+	_finish("lost")
+
+
+## Вернулись после обрыва: сервер мира новый, аватар в точке входа, демоны без перезарядки — путь с начала, шард не берём повторно.
+func _resume() -> void:
+	reconnects += 1
+	position = NodeLayout.SPAWN
+	last_state = {}  # «ghost: true» от прошлого сервера не в счёт
+	if scenario == Scenario.GHOST_RUN:
+		_enter("ghost")
+	else:
+		_enter("to_exit" if shard_taken else "to_shard")
 
 
 func _walk_to(goal: Vector3, delta: float, stop_at: float) -> bool:
@@ -94,6 +126,15 @@ func _process(delta: float) -> void:
 	if net == null or not result.is_empty():
 		return
 	_clock += delta
+	if _reconnect_at >= 0.0:
+		_step_started = _clock  # без связи таймаут шага не идёт
+		if net.is_connected_to_world:
+			_reconnect_at = -1.0
+			_resume()
+		elif _clock >= _reconnect_at:
+			net.reconnect()
+			_reconnect_at = _clock + RECONNECT_SEC * 3.0
+		return
 	if _clock - _step_started > STEP_TIMEOUT:
 		_finish("timeout:" + _step)
 		return
@@ -118,7 +159,7 @@ func _process(delta: float) -> void:
 			if not _asked:
 				_asked = net.request_use("ghost_1")
 			elif last_state.get("ghost", false):
-				_enter("to_shard")
+				_enter("to_exit" if shard_taken else "to_shard")
 		"to_shard":
 			# Без GHOST идём осторожно: ICE успевает заметить и догнать раньше шарда.
 			var speed_scale := 1.0 if scenario == Scenario.GHOST_RUN else 0.25

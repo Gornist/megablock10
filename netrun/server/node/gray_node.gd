@@ -5,6 +5,9 @@ extends Node
 ## игрокам раз в 0.1 с уходит снимок (trace, ICE, перезарядки), события — отдельными сообщениями.
 ## Добыча: взяли шард — op.take_from_node (в деку); выход — одна операция run.finish: при чистом выходе добыча на телефон,
 ## при выбросе/флэтлайне/обрыве остаётся в узле (и физически лежит на постаменте). Без Моста ценности не трогаем.
+## Сервер мира одноразовый (M5): всё, что должно пережить рестарт, лежит в Мосте. При старте узел подписывается на
+## session/deck/node/item, берёт снимок и продолжает: активные сессии ждут возврата игрока, шард на месте или у держателя,
+## локдаун узла запомнен. Своё состояние узел пишет в node.data.world, связь игрока — в session.data.world.
 
 ## Что произошло в узле: {kind: ice_eject|flatline|exit|shard_taken|daemon|level, session, ...}. Для журнала и тестов.
 signal event(ev: Dictionary)
@@ -15,6 +18,11 @@ const AVATAR_INTERVAL := 0.05
 ## Допуск на дробное число физических тиков в интервале (60 Гц: 0.1 с — 6 тиков с погрешностью).
 const TICK_EPS := 0.001
 const NODE_ID := "node_07"
+## Исход забега не теряем, если Мост недоступен: повтор с тем же rid (finish:<сессия>) раз в FINISH_RETRY_SEC.
+const FINISH_ATTEMPTS := 60
+const FINISH_RETRY_SEC := 2.0
+## Типы документов, на которые узел подписывается в Мосте.
+const SYNC_TYPES: Array = ["session", "deck", "node", "item"]
 
 var net: NetServer
 ## Узел, которому служит этот GrayNode: снимки и аватары получают только сессии, чей узел (NetServer.node_of) — он.
@@ -36,6 +44,15 @@ var _sessions: Dictionary = {}       # сессия -> DaemonSession (в нём 
 var _shard_items: Dictionary = {}    # id объекта -> id предмета в Мосте
 var _takes_inflight: Dictionary = {} # сессия -> число незавершённых op.take_from_node
 var _ready_done := false
+## Снимок Моста принят (после рестарта — активные сессии и шард восстановлены).
+var synced := false
+## Сессии, взятые из снимка Моста: ждали возврата игрока.
+var recovered_sessions: Array[String] = []
+## Конец локдауна узла (мс Unix, время Моста; 0 — нет) — из документа node.
+var lockdown_until := 0
+var node_writes := 0
+var _node_write_busy := false
+var _node_write_again := false
 
 
 func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
@@ -52,7 +69,10 @@ func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 	net.leave_requested.connect(_on_leave_requested)
 	for d in NodeLayout.ICE:
 		_add_ice(d["id"], d["waypoints"])
-	_bind_shard()
+	net.session_lost.connect(_on_session_lost)
+	if bridge != null:
+		bridge.doc_changed.connect(_on_doc_changed)
+	_sync_from_bridge()
 	set_physics_process(true)
 	_ready_done = true
 
@@ -97,18 +117,133 @@ func _add_ice(id: String, waypoints: Array) -> void:
 	_ices.append(ice)
 
 
-## Какой предмет Моста лежит на постаменте: первый шард узла. Нет Моста или предмета — шард только игровой.
-func _bind_shard() -> void:
+## Снимок Моста: ждём связи, подписываемся, восстанавливаем (после рестарта сервера мира здесь же приходит прошлый забег).
+func _sync_from_bridge() -> void:
+	if bridge == null:
+		return
+	while not bridge.is_ready():
+		await get_tree().create_timer(0.1).timeout
+		if not is_inside_tree():
+			return
+	@warning_ignore("redundant_await")
+	var snap: Dictionary = await bridge.subscribe(SYNC_TYPES)
+	if not is_inside_tree():
+		return
+	if not snap.get("ok", false):
+		push_warning("[gray-node] подписка на Мост не удалась: %s" % BridgeApi.err_code(snap))
+		return
+	recover(snap.get("docs", []))
+	synced = true
+	_write_node_state()
+
+
+## Разбор снимка: узел (локдаун), шард, активные сессии этого узла. Публичный — для тестов.
+func recover(docs: Array) -> void:
+	var shard_node := ""
+	var shard_held := ""
+	var held_by := ""
+	var active: Array[String] = []
+	for d in docs:
+		var data: Dictionary = d.get("data", {})
+		match str(d.get("type", "")):
+			BridgeApi.T_NODE:
+				if d["id"] == node_id:
+					lockdown_until = int(data.get("lockdown_until", 0))
+			BridgeApi.T_SESSION:
+				if data.get("state") == "active" and str(data.get("node", node_id)) == node_id:
+					active.append(str(d["id"]))
+			BridgeApi.T_ITEM:
+				if data.get("kind") != "SHARD":
+					continue
+				var owner := str(data.get("owner", ""))
+				if owner == "node:" + node_id and shard_node.is_empty():
+					shard_node = str(d["id"])
+				elif owner.begins_with("deck:") and str(data.get("origin", "")).begins_with("node:") and shard_held.is_empty():
+					shard_held = str(d["id"])
+					held_by = owner.trim_prefix("deck:")
+	# Шард, который игрок уже несёт, остаётся у него: клиент второй раз его не возьмёт, выход вернёт его по moves.
+	if not shard_held.is_empty() and held_by in active:
+		_shard_items[NetConfig.PICKUP_ID] = shard_held
+		net.restore_holder(NetConfig.PICKUP_ID, held_by)
+	elif not shard_node.is_empty():
+		_shard_items[NetConfig.PICKUP_ID] = shard_node
+	else:
+		push_warning("[gray-node] в Мосте нет шарда в узле %s: добыча останется только игровой" % node_id)
+	for s in active:
+		recovered_sessions.append(s)
+		net.expect_session(s)
+	print("[gray-node] снимок Моста: активных сессий ", active.size(), ", шард ", _shard_items.get(NetConfig.PICKUP_ID, "—"), ", локдаун до ", lockdown_until)
+
+
+func _on_doc_changed(doc: Dictionary, deleted: bool) -> void:
+	if deleted or doc.get("type") != BridgeApi.T_NODE or doc.get("id") != node_id:
+		return
+	lockdown_until = int((doc.get("data", {}) as Dictionary).get("lockdown_until", 0))
+
+
+## node.data.world = {up, players}: что видит мастер. Мост — источник правды, остальные поля узла не трогаем.
+func _write_node_state() -> void:
+	if bridge == null or not synced:
+		return
+	if _node_write_busy:
+		_node_write_again = true
+		return
+	_node_write_busy = true
+	while true:
+		_node_write_again = false
+		var ok := await put_field(BridgeApi.T_NODE, node_id, "world", {"up": true, "players": _live_sessions().size()})
+		if ok:
+			node_writes += 1
+		if not _node_write_again or not is_inside_tree():
+			break
+	_node_write_busy = false
+
+
+## Чтение-правка-запись одного поля data документа с повтором при version_conflict. false — не вышло (документа нет, отказ).
+func put_field(type: String, id: String, key: String, value: Variant) -> bool:
+	for attempt in 3:
+		@warning_ignore("redundant_await")
+		var g: Dictionary = await bridge.get_doc(type, id)
+		if not g.get("ok", false):
+			return false
+		var cur: Dictionary = g["doc"]
+		var data: Dictionary = (cur.get("data", {}) as Dictionary).duplicate(true)
+		data[key] = value
+		@warning_ignore("redundant_await")
+		var r: Dictionary = await bridge.put_doc(type, id, int(cur["ver"]), data)
+		if r.get("ok", false):
+			return true
+		if BridgeApi.err_code(r) != "version_conflict":
+			push_warning("[gray-node] put %s/%s: %s" % [type, id, BridgeApi.err_code(r)])
+			return false
+	return false
+
+
+## Дека игрока из Моста: id демонов из payload предметов deck:<сессия>. Формат payload (ItemPayload) серверу мира пока не
+## известен — берём демонов, чей id встречается в payload; не нашли ни одного — дека по умолчанию.
+static func deck_from_items(items: Array, session: String, known_ids: Array) -> Array[String]:
+	var out: Array[String] = []
+	for d in items:
+		var data: Dictionary = d.get("data", {})
+		if data.get("owner") != "deck:" + session or data.get("kind") != "DAEMON":
+			continue
+		for id in known_ids:
+			if str(data.get("payload", "")).contains(str(id)) and not out.has(str(id)):
+				out.append(str(id))
+	return out
+
+
+func _load_deck(session: String) -> void:
 	if bridge == null or not bridge.is_ready():
 		return
 	@warning_ignore("redundant_await")
 	var r: Dictionary = await bridge.list_docs(BridgeApi.T_ITEM)
-	for d in r.get("docs", []):
-		var data: Dictionary = d.get("data", {})
-		if data.get("kind") == "SHARD" and data.get("owner") == "node:" + NODE_ID:
-			_shard_items[NetConfig.PICKUP_ID] = str(d["id"])
-			return
-	push_warning("[gray-node] в Мосте нет шарда в узле %s: добыча останется только игровой" % NODE_ID)
+	var ds: DaemonSession = _sessions.get(session)
+	if ds == null or not r.get("ok", false):
+		return
+	var ids := deck_from_items(r.get("docs", []), session, NodeLayout.DAEMON_NAMES.keys())
+	if not ids.is_empty():
+		ds.deck = ids
 
 
 func _physics_process(delta: float) -> void:
@@ -201,16 +336,28 @@ func _broadcast_avatars() -> void:
 
 func _on_joined(session: String, _peer: int, _resumed: bool) -> void:
 	if _sessions.has(session):
+		if bridge != null and synced:
+			put_field(BridgeApi.T_SESSION, session, "world", {"connected": true, "trace": 0})
 		return
 	var meter := TraceMeter.new(trace_settings)
 	meter.reset(_now)
 	meter.level_changed.connect(_on_level_changed.bind(session))
 	_sessions[session] = DaemonSession.new(NodeLayout.DEFAULT_DECK, meter)
 	print("[gray-node] ", session, " вошёл в ", NODE_ID)
+	if bridge != null:
+		_load_deck(session)
+		put_field(BridgeApi.T_SESSION, session, "world", {"connected": true, "trace": 0})
+		_write_node_state()
+
+
+func _on_session_lost(session: String) -> void:
+	if bridge != null and synced:
+		put_field(BridgeApi.T_SESSION, session, "world", {"connected": false, "trace": 0})
 
 
 func _on_avatar_removed(session: String) -> void:
 	_sessions.erase(session)
+	_write_node_state()
 	for ice in _ices:
 		if ice.brain != null:
 			ice.brain.forget(session)
@@ -269,8 +416,13 @@ func _on_object_taken(object_id: String, session: String) -> void:
 	if bridge == null or item.is_empty():
 		return
 	_takes_inflight[session] = int(_takes_inflight.get(session, 0)) + 1
-	@warning_ignore("redundant_await")
-	var r: Dictionary = await bridge.op_take_from_node(session, NODE_ID, item)
+	var r: Dictionary = {}
+	for attempt in FINISH_ATTEMPTS:
+		@warning_ignore("redundant_await")
+		r = await bridge.op_take_from_node(session, NODE_ID, item)
+		if not is_transient(r) or not is_inside_tree():
+			break
+		await get_tree().create_timer(FINISH_RETRY_SEC).timeout
 	_takes_inflight[session] = int(_takes_inflight[session]) - 1
 	if not r.get("ok", false):
 		push_warning("[gray-node] take %s: %s" % [item, BridgeApi.err_code(r)])
@@ -295,15 +447,25 @@ static func outcome_plan(ev: Dictionary) -> Dictionary:
 	return {"outcome": "emergency", "disconnect": reason == ExitLogic.REASON_CONNECTION_LOST, "loot": "node", "daemon": daemon}
 
 
+## Ошибки связи (Мост недоступен, обрыв, таймаут): запрос повторяют с тем же rid; всё остальное — окончательный ответ.
+static func is_transient(resp: Dictionary) -> bool:
+	return BridgeApi.err_code(resp) in ["unavailable", "timeout", "disconnected", "internal"]
+
+
 func _finish_in_bridge(ev: Dictionary) -> void:
-	if bridge == null or not bridge.is_ready():
+	if bridge == null:
 		return
 	var session: String = ev["session"]
 	while int(_takes_inflight.get(session, 0)) > 0:
 		await get_tree().process_frame
 	var plan := outcome_plan(ev)
-	@warning_ignore("redundant_await")
-	var listed: Dictionary = await bridge.list_docs(BridgeApi.T_ITEM)
+	var listed: Dictionary = {}
+	for attempt in FINISH_ATTEMPTS:
+		@warning_ignore("redundant_await")
+		listed = await bridge.list_docs(BridgeApi.T_ITEM)
+		if listed.get("ok", false) or not is_transient(listed) or not is_inside_tree():
+			break
+		await get_tree().create_timer(FINISH_RETRY_SEC).timeout
 	var moves: Array = []
 	for d in listed.get("docs", []):
 		var data: Dictionary = d.get("data", {})
@@ -311,7 +473,12 @@ func _finish_in_bridge(ev: Dictionary) -> void:
 			continue
 		var is_loot := str(data.get("origin", "")).begins_with("node:")
 		moves.append({"item": str(d["id"]), "to": plan["loot"] if is_loot else plan["daemon"]})
-	@warning_ignore("redundant_await")
-	var r: Dictionary = await bridge.run_finish(session, plan["outcome"], NODE_ID, plan["disconnect"], moves)
+	var r: Dictionary = {}
+	for attempt in FINISH_ATTEMPTS:
+		@warning_ignore("redundant_await")
+		r = await bridge.run_finish(session, plan["outcome"], NODE_ID, plan["disconnect"], moves)
+		if not is_transient(r) or not is_inside_tree():
+			break
+		await get_tree().create_timer(FINISH_RETRY_SEC).timeout
 	print("[gray-node] run.finish ", session, " ", plan["outcome"], ": ", "ok" if r.get("ok", false) else BridgeApi.err_code(r))
 	event.emit({"kind": "finished", "session": session, "outcome": plan["outcome"], "ok": r.get("ok", false)})

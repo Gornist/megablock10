@@ -203,6 +203,31 @@ func run_finish(session: String, outcome: String, node: String, disconnect: bool
 		return ok({"session": _put(T_SESSION, session, sd).duplicate(true), "transfers": transfers, "eddies_transfer": null}))
 
 
+## Как put Моста: ver 0 — создать, иначе версия должна совпасть; eddies узла и всё, кроме data.world сессии, не меняются.
+func put_doc(type: String, id: String, ver: int, data: Dictionary) -> Dictionary:
+	var d := doc(type, id)
+	if ver == 0:
+		if not d.is_empty():
+			return err("exists", "документ уже есть", d.duplicate(true))
+		if not _docs.has(type):
+			_docs[type] = {}
+		_docs[type][id] = {"type": type, "id": id, "ver": 0, "data": {}}
+	elif d.is_empty():
+		return err("not_found", "документа нет")
+	elif int(d["ver"]) != ver:
+		return err("version_conflict", "версия %d, а не %d" % [int(d["ver"]), ver], d.duplicate(true))
+	if type == T_NODE and not d.is_empty() and d["data"].get("eddies") != data.get("eddies"):
+		return err("value_field", "eddies меняет только операция")
+	if type == T_SESSION:
+		var a: Dictionary = (d["data"] as Dictionary).duplicate()
+		var b := data.duplicate()
+		a.erase("world")
+		b.erase("world")
+		if a != b:
+			return err("value_field", "в сессии пишется только data.world")
+	return ok({"doc": _put(type, id, ints_of(data.duplicate(true))).duplicate(true)})
+
+
 func get_doc(type: String, id: String) -> Dictionary:
 	var d := doc(type, id)
 	if d.is_empty():

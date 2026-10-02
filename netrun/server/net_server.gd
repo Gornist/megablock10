@@ -105,6 +105,22 @@ func set_under_hunt(session: String, hunted: bool) -> void:
 		_under_hunt.erase(session)
 
 
+## Восстановление после перезапуска сервера мира (M5): Мост считает сессию active, а аватара и связи уже нет. Начинаем окно
+## возврата как после обрыва: вернётся клиент — тот же забег, нет — по истечении выход connection_lost (run.finish emergency).
+func expect_session(session: String) -> void:
+	if has_avatar(session) or _session_peer.has(session):
+		return  # игрок уже вернулся или окно уже идёт
+	_session_peer[session] = -1
+	_deadline_ms[session] = Time.get_ticks_msec() + int(grace_sec * 1000.0)
+	print("[netrun-server] сессия ", session, " из Моста: ждём возврата игрока ", grace_sec, " с")
+
+
+## Объект (шард) уже у игрока по данным Моста. Не трогает объект, который держит кто-то другой.
+func restore_holder(object_id: String, session: String) -> void:
+	if _objects.has(object_id) and _objects[object_id] == "":
+		_objects[object_id] = session
+
+
 func holder_of(object_id: String) -> String:
 	return str(_objects.get(object_id, ""))
 

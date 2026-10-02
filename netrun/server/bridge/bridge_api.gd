@@ -135,6 +135,26 @@ func run_finish(_session: String, _outcome: String, _node: String, _disconnect: 
 	return err("internal", "не реализовано")
 
 
+## Запись документа с проверкой версии (раздел 4): data заменяется целиком; ver 0 — создать. Ценности менять нельзя.
+func put_doc(_type: String, _id: String, _ver: int, _data: Dictionary) -> Dictionary:
+	return err("internal", "не реализовано")
+
+
+## JSON отдаёт целые как float, а JSON.stringify пишет 300.0: Мост сравнил бы это с 300 как другое значение (ценность!).
+## Приводит целые float к int во всём дереве — вызывать перед отправкой документа.
+static func ints_of(v: Variant) -> Variant:
+	if v is float and is_equal_approx(v, roundf(v)) and absf(v) < 9.0e15:
+		return int(v)
+	if v is Dictionary:
+		var out := {}
+		for k in v:
+			out[k] = ints_of(v[k])
+		return out
+	if v is Array:
+		return v.map(func(x): return ints_of(x))
+	return v
+
+
 func get_doc(_type: String, _id: String) -> Dictionary:
 	return err("internal", "не реализовано")
 

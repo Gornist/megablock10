@@ -124,3 +124,28 @@ func test_beat_and_get() -> void:
 	var t: Dictionary = (await _b.get_doc("terminal", "t03"))["doc"]
 	assert_int(t["data"]["battery"]).is_equal(80)
 	assert_str(BridgeApi.err_code(await _b.terminal_beat("t99"))).is_equal("not_found")
+
+
+func test_put_doc_checks_version_and_values() -> void:
+	var n: Dictionary = (await _b.get_doc("node", "node_07"))["doc"]
+	var data: Dictionary = (n["data"] as Dictionary).duplicate()
+	data["world"] = {"up": true}
+	var ok: Dictionary = await _b.put_doc("node", "node_07", int(n["ver"]), data)
+	assert_bool(ok["ok"]).is_true()
+	# версия устарела: version_conflict с текущим документом
+	var stale: Dictionary = await _b.put_doc("node", "node_07", int(n["ver"]), data)
+	assert_str(BridgeApi.err_code(stale)).is_equal("version_conflict")
+	assert_bool(stale["err"]["doc"]["data"]["world"]["up"]).is_true()
+	# эдди — ценность
+	data["eddies"] = 999
+	assert_str(BridgeApi.err_code(await _b.put_doc("node", "node_07", int(ok["doc"]["ver"]), data))).is_equal("value_field")
+	# в сессии пишется только world
+	var s: Dictionary = (await _b.get_doc("session", S1))["doc"]
+	var sd: Dictionary = (s["data"] as Dictionary).duplicate()
+	sd["state"] = "closed"
+	assert_str(BridgeApi.err_code(await _b.put_doc("session", S1, int(s["ver"]), sd))).is_equal("value_field")
+
+
+func test_ints_of_turns_whole_floats_into_ints() -> void:
+	var v: Variant = BridgeApi.ints_of({"eddies": 300.0, "x": [1.0, 2.5], "n": {"a": 7.0}})
+	assert_str(JSON.stringify(v)).is_equal('{"eddies":300,"n":{"a":7},"x":[1,2.5]}')

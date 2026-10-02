@@ -258,6 +258,10 @@ func run_finish(session: String, outcome: String, node: String, disconnect: bool
 	})
 
 
+func put_doc(type: String, id: String, ver: int, data: Dictionary) -> Dictionary:
+	return await _request("put", {"type": type, "id": id, "ver": ver, "data": ints_of(data)})
+
+
 func get_doc(type: String, id: String) -> Dictionary:
 	return await _request("get", {"type": type, "id": id})
 

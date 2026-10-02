@@ -172,7 +172,15 @@ func _on_auth(peer_id: int, _data: PackedByteArray) -> void:
 	(multiplayer as SceneMultiplayer).complete_auth(peer_id)
 
 
+## Тихий обрыв (сервер убит, Wi-Fi пропал) ENet по умолчанию замечает за десятки секунд; как на сервере — ~5 с.
+const PEER_TIMEOUT_MS := 5000
+
+
 func _on_connected() -> void:
+	var enet := (multiplayer as SceneMultiplayer).multiplayer_peer as ENetMultiplayerPeer
+	var pp := enet.get_peer(1) if enet != null else null
+	if pp != null:
+		pp.set_timeout(PEER_TIMEOUT_MS, PEER_TIMEOUT_MS, PEER_TIMEOUT_MS)
 	_beat_last_ms = -1  # первое состояние — сразу после подключения
 	is_connected_to_world = true
 	connected.emit()
