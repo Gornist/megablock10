@@ -34,7 +34,7 @@ class WorldAutoAcceptTest {
     private val auto = WorldAutoAccept({ worldKey }, myItems, myMoney, myChat, work)
 
     /** Обработчик строки (возвращается после сохранения) и затем фоновая отправка чека. */
-    private suspend fun handle(msg: ChatWireMessage): Boolean = handle(msg).also { work.advanceUntilIdle() }
+    private suspend fun handle(msg: ChatWireMessage): Boolean = auto.onDirect(me.identity, msg).also { work.advanceUntilIdle() }
 
     private fun dm(from: TestPlayer, body: String, to: TestPlayer = me) =
         ChatWireMessage(ChatMessageType.DM, from.key, from.callsign, "", to.key, 1_000, body)
