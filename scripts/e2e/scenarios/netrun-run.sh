@@ -28,6 +28,8 @@ nr_cleanup() {
   local p; for p in "${PIDS[@]:-}"; do [ -n "$p" ] && kill -KILL -- "-$p" 2>/dev/null; done
   [ -n "$PA" ] && adb_ $A emu redir del tcp:$PA >/dev/null 2>&1
   wait 2>/dev/null
+  # Баннер «Подключено к стойке…» на Кибердеке остаётся, пока игрок его не закроет, и мешает UI-сценариям после этого (sec-alert, slot-race)
+  dbg $A DEBUG_SET --es netrun dismiss
 }
 trap nr_cleanup EXIT
 nr_save_logs() { mkdir -p "$E2E_DIR/journals"; for f in "$NR_DIR"/*.log; do [ -f "$f" ] && cp "$f" "$E2E_DIR/journals/netrun-$(basename "$f")"; done; }
