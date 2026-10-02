@@ -31,6 +31,7 @@ import { registerNetRoutes } from "./routes/net.js";
 import { registerWorldEventsRoutes } from "./routes/worldEvents.js";
 import { registerNetBridgeRoutes } from "./routes/netBridge.js";
 import { NetService } from "./net/netService.js";
+import { SecSync } from "./net/secSync.js";
 
 /**
  * Собирает Fastify-приложение без побочного listen() — раньше вся сборка
@@ -67,7 +68,9 @@ export function buildApp(db: Db, options: { clientDist?: string; logger?: boolea
   registerNetRoutes(app, db);
   // Мост «Сети» (docs/netrun.md): без BRIDGE_MASTER_KEY клиента нет — экран «Сеть» пишет «Мост не настроен», остальное работает как раньше.
   const net = options.net ?? new NetService();
-  registerNetBridgeRoutes(app, db, net);
+  const secSync = new SecSync(db, net);
+  secSync.start();
+  registerNetBridgeRoutes(app, db, net, secSync);
   registerPlayersRoutes(app, db);
   registerAuthRoute(app, db);
   registerContainersRoute(app, db);
@@ -97,6 +100,7 @@ export function buildApp(db: Db, options: { clientDist?: string; logger?: boolea
   app.addHook("onClose", async () => {
     audio.stop();
     displays.stop();
+    secSync.stop();
     net.stop();
   });
 
