@@ -4,7 +4,7 @@
 мастера (`admin-web/`), прошивка точек на площадке — QR-дисплей и звук на ESP32 (`firmware/display/`), стенд e2e на двух
 эмуляторах (`scripts/e2e/`). Всё здесь выверено на реальных сбоях — не обходите.
 
-Прочитать перед работой: [docs/android-handoff.md](docs/android-handoff.md) (состояние и план),
+Прочитать перед работой: [docs/progress.md](docs/progress.md) (где мы сейчас, коротко), [docs/android-handoff.md](docs/android-handoff.md) (состояние и план),
 [docs/architecture.md](docs/architecture.md) (слои, правила), [docs/refactor-plan.md](docs/refactor-plan.md) (что в работе),
 [scripts/e2e/README.md](scripts/e2e/README.md) (стенд).
 
