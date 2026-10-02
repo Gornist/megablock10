@@ -6,6 +6,8 @@ extends BridgeApi
 
 const PROTO := 1
 const ROLE := "world"
+## Роль в hello: world (сервер мира); test — только стенды и долгий прогон (Мост с --test), tools/soak_run.gd.
+var role := ROLE
 const REQUEST_TIMEOUT_MS := 4000
 const RECONNECT_MS := 2000
 const PING_SEC := 10.0
@@ -142,7 +144,7 @@ func poll() -> void:
 ## hello, затем повторная подписка (после обрыва снимок заменяет локальную копию).
 func _handshake() -> void:
 	state = State.HELLO
-	var r: Dictionary = await _send("hello", {"proto": PROTO, "role": ROLE, "client": client_name, "key": key})
+	var r: Dictionary = await _send("hello", {"proto": PROTO, "role": role, "client": client_name, "key": key})
 	if not r.get("ok", false):
 		push_error("[bridge] hello отклонён: %s" % str(r.get("err", {})))
 		_ws.close()

@@ -45,7 +45,17 @@ var verbose := false
 ## Какого демона бот применяет как GHOST. У деки из Моста id демонов — id предметов (M5), стенд e2e с настоящим телефоном (M6)
 ## подставляет id предмета через `--bot-daemon=`; без него — `ghost_1` из деки по умолчанию.
 var ghost_daemon := "ghost_1"
+## Не брать шард (P7: шард в узле один, остальным ботам он не нужен): после GHOST/осторожного пути — сразу к выходу.
+var no_shard := false
+## Сбой по ходу пути (P7), срабатывает один раз через chaos_after секунд после выхода на последний отрезок (to_exit):
+## "emergency" — удержание кнопки (причина manual_hold), "drop_return" — обрыв связи и возврат через 2–8 с,
+## "drop_gone" — обрыв без возврата (сервер закроет забег по окну возврата). "" — без сбоя.
+var chaos := ""
+var chaos_after := 2.0
 var _loiter_angle := 0.0
+var _chaos_done := false
+var _chaos_gap := 0.0
+var _resume_keep_ghost := false
 var _reconnect_at := -1.0
 
 var _step := "connect"
@@ -104,7 +114,8 @@ func _on_disconnected() -> void:
 	if not result.is_empty():
 		return
 	if reconnect:
-		_reconnect_at = _clock + RECONNECT_SEC
+		_reconnect_at = _clock + (_chaos_gap if _chaos_gap > 0.0 else RECONNECT_SEC)
+		_chaos_gap = 0.0
 		if verbose:
 			print("[bot] связь потеряна, переподключаюсь")
 		return
@@ -116,10 +127,11 @@ func _resume() -> void:
 	reconnects += 1
 	position = NodeLayout.SPAWN
 	last_state = {}  # «ghost: true» от прошлого сервера не в счёт
-	if scenario == Scenario.GHOST_RUN:
+	if scenario == Scenario.GHOST_RUN and not _resume_keep_ghost:
 		_enter("ghost")
 	else:
-		_enter("to_exit" if shard_taken else "to_shard")
+		_enter("to_exit" if shard_taken or (no_shard and _resume_keep_ghost) else "to_shard")
+	_resume_keep_ghost = false
 
 
 func _walk_to(goal: Vector3, delta: float, stop_at: float) -> bool:
@@ -174,7 +186,7 @@ func _process(delta: float) -> void:
 			# Дека из Моста приходит серверу мира асинхронно (список предметов): первый запрос может прийти раньше деки
 			# (not_in_deck) — повторяем раз в секунду, пока ghost не включился.
 			if last_state.get("ghost", false):
-				_enter("to_exit" if shard_taken else "to_shard")
+				_enter("to_exit" if shard_taken or no_shard else "to_shard")
 			elif not _asked or _clock - _asked_at >= GHOST_RETRY_SEC:
 				_asked = net.request_use(ghost_daemon)
 				_asked_at = _clock
@@ -182,7 +194,7 @@ func _process(delta: float) -> void:
 			# Без GHOST идём осторожно: ICE успевает заметить и догнать раньше шарда.
 			var speed_scale := 1.0 if scenario == Scenario.GHOST_RUN else 0.25
 			if _walk_to(NodeLayout.SHARD_POS, delta * speed_scale, GRAB_FROM):
-				_enter("grab")
+				_enter("to_exit" if no_shard else "grab")
 		"grab":
 			if not _asked:
 				_asked = net.request_grab(NetConfig.PICKUP_ID)
@@ -192,8 +204,28 @@ func _process(delta: float) -> void:
 			if _clock - _step_started >= hold_after_grab:
 				_enter("to_exit")
 		"to_exit":
+			if chaos != "" and not _chaos_done and _clock - _step_started >= chaos_after:
+				_chaos_done = true
+				_do_chaos()
+				return
 			if _walk_to(NodeLayout.EXIT_POS, delta, ARRIVE):
 				_enter("leave")
 		"leave":
 			if not _asked:
 				_asked = net.request_leave()
+
+
+func _do_chaos() -> void:
+	if verbose:
+		print("[bot] сбой ", chaos)
+	match chaos:
+		"emergency":
+			net.request_exit(ExitLogic.REASON_MANUAL_HOLD)
+		"drop_return":
+			_chaos_gap = randf_range(2.0, 8.0)
+			_resume_keep_ghost = true
+			reconnect = true
+			net.drop()
+		"drop_gone":
+			reconnect = false
+			net.drop()

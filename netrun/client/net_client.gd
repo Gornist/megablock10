@@ -27,8 +27,25 @@ var battery := BatteryProbe.new()
 var last_beat_sent: Dictionary = {}
 var beats_sent := 0
 
+## Эмуляция плохой сети на стороне клиента (P7, tools/soak.sh; tc netem без root недоступен). По умолчанию выключена.
+## Потеря — доля 0..1 ненадёжных пакетов (позиции вверх; снимки и позиции чужих вниз); у надёжных потеря — это
+## повтор ENet, он выглядит как лишние ~RETRANSMIT_MS задержки. Задержка (+ случайные 0..jitter) — в каждую сторону, порядок сохраняется.
+var impair_loss := 0.0
+var impair_delay_ms := 0
+var impair_jitter_ms := 0
+## Сколько пакетов съела эмуляция потерь (вверх, вниз) — для сводки прогона.
+var impair_dropped_up := 0
+var impair_dropped_down := 0
+
+const RETRANSMIT_MS := 200
+
 var _beat_window := BeatStats.new()
 var _beat_last_ms := -1
+var _impair_rng := RandomNumberGenerator.new()
+var _out_queue: Array = []  # [момент отправки мс, данные, надёжно]
+var _in_queue: Array = []   # [момент разбора мс, данные]
+var _out_last_due := 0
+var _in_last_due := 0
 
 
 func start_client(cfg: NetConfig) -> Error:
@@ -37,6 +54,8 @@ func start_client(cfg: NetConfig) -> Error:
 
 
 func reconnect() -> Error:
+	_out_queue.clear()  # что копилось у прошлого соединения, новому не нужно
+	_in_queue.clear()
 	var mp := multiplayer as SceneMultiplayer
 	if mp.multiplayer_peer != null:
 		mp.multiplayer_peer.close()
@@ -60,8 +79,7 @@ func reconnect() -> Error:
 func request_grab(object_id: String) -> bool:
 	if not is_connected_to_world:
 		return false
-	(multiplayer as SceneMultiplayer).send_bytes(WorldMsg.encode(WorldMsg.GRAB, object_id), 1, MultiplayerPeer.TRANSFER_MODE_RELIABLE)
-	return true
+	return _send(WorldMsg.encode(WorldMsg.GRAB, object_id))
 
 
 ## Своя позиция (пол под ногами) — сервер решает, что с ней делать (предел скорости, комната).
@@ -81,6 +99,7 @@ func request_leave() -> bool:
 
 ## Копим кадры; раз в config.beat_sec шлём состояние очков (P6). Работает и без сессии — терминал «idle» тоже на связи.
 func _process(delta: float) -> void:
+	_flush_impaired()
 	_beat_window.add_frame(delta)
 	if config == null or not is_connected_to_world or config.terminal_id().is_empty():
 		return
@@ -115,6 +134,21 @@ func rtt_ms() -> int:
 func _send(data: PackedByteArray, reliable: bool = true) -> bool:
 	if not is_connected_to_world:
 		return false
+	if impair_loss > 0.0 or impair_delay_ms > 0:
+		var extra := 0
+		if _impair_rng.randf() < impair_loss:
+			if not reliable:
+				impair_dropped_up += 1
+				return true
+			extra = RETRANSMIT_MS
+		var due := maxi(Time.get_ticks_msec() + _impair_delay() + extra, _out_last_due)
+		_out_last_due = due
+		_out_queue.append([due, data, reliable])
+		return true
+	return _send_now(data, reliable)
+
+
+func _send_now(data: PackedByteArray, reliable: bool) -> bool:
 	var mode := MultiplayerPeer.TRANSFER_MODE_RELIABLE if reliable else MultiplayerPeer.TRANSFER_MODE_UNRELIABLE_ORDERED
 	var ok := (multiplayer as SceneMultiplayer).send_bytes(data, 1, mode) == OK
 	if ok:
@@ -124,6 +158,36 @@ func _send(data: PackedByteArray, reliable: bool = true) -> bool:
 
 func _on_packet(_peer_id: int, data: PackedByteArray) -> void:
 	rx_bytes += data.size()
+	if impair_loss > 0.0 or impair_delay_ms > 0:
+		var t: String = WorldMsg.decode(data).get("t", "")
+		if (t == WorldMsg.STATE or t == WorldMsg.AVATARS) and _impair_rng.randf() < impair_loss:
+			impair_dropped_down += 1
+			return
+		var due := maxi(Time.get_ticks_msec() + _impair_delay(), _in_last_due)
+		_in_last_due = due
+		_in_queue.append([due, data])
+		return
+	_dispatch(data)
+
+
+func _impair_delay() -> int:
+	return impair_delay_ms + (_impair_rng.randi_range(0, impair_jitter_ms) if impair_jitter_ms > 0 else 0)
+
+
+## Выдать накопленное, чему пришёл срок (эмуляция задержки). Вызывается каждый кадр и из тестов.
+func _flush_impaired() -> void:
+	if _out_queue.is_empty() and _in_queue.is_empty():
+		return
+	var now := Time.get_ticks_msec()
+	while not _out_queue.is_empty() and int(_out_queue[0][0]) <= now:
+		var e: Array = _out_queue.pop_front()
+		if is_connected_to_world:
+			_send_now(e[1], e[2])
+	while not _in_queue.is_empty() and int(_in_queue[0][0]) <= now:
+		_dispatch(_in_queue.pop_front()[1])
+
+
+func _dispatch(data: PackedByteArray) -> void:
 	var msg := WorldMsg.decode(data)
 	match msg.get("t", ""):
 		WorldMsg.GRAB_OK:
@@ -160,8 +224,7 @@ func drop() -> void:
 func request_exit(reason: String) -> bool:
 	if not is_connected_to_world:
 		return false
-	var data := WorldMsg.encode_exit(reason)
-	return (multiplayer as SceneMultiplayer).send_bytes(data, 1, MultiplayerPeer.TRANSFER_MODE_RELIABLE) == OK
+	return _send(WorldMsg.encode_exit(reason))
 
 
 func _on_authenticating(peer_id: int) -> void:
