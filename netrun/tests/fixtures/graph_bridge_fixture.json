@@ -1,0 +1,27 @@
+{
+  "settings": {"global": {"confirm_timeout_s": 120, "disconnect_grace_s": 20}},
+  "nodes": {
+    "g_a": {"title": "Фойе", "tier": "BASE", "lockdown_until": 0, "eddies": 0},
+    "g_b": {"title": "Архив", "tier": "BASE", "lockdown_until": 0, "eddies": 0},
+    "g_c": {"title": "Серверная", "tier": "HARD", "lockdown_until": 0, "eddies": 0},
+    "g_d": {"title": "Ядро", "tier": "NIGHTMARE", "lockdown_until": 0, "eddies": 0}
+  },
+  "terminals": {
+    "t03": {"node": "g_a", "label": "Стойка 3", "token_sha256": "4ab53a252c0eb82880fa8bda7a765e4e621bb9a8ac438c71c3986a001988868c", "silent": false},
+    "t04": {"node": "g_b", "label": "Стойка 4", "token_sha256": "4ab53a252c0eb82880fa8bda7a765e4e621bb9a8ac438c71c3986a001988868c", "silent": false}
+  },
+  "sessions": {
+    "s_fake000000000001": {"state": "active", "terminal": "t03", "node": "g_a", "runner": "KEY_ALICE", "callsign": "Призрак", "loot_eddies": 0, "outcome": null},
+    "s_fake000000000002": {"state": "pending", "terminal": "t04", "node": "g_a", "runner": "KEY_BOB", "callsign": "Лис", "loot_eddies": 0, "outcome": null}
+  },
+  "items": {
+    "it_fake000000d001": {"owner": "deck:s_fake000000000001", "kind": "DAEMON", "payload": "p1", "protected": true, "origin": "phone:KEY_ALICE"},
+    "it_fake000000d002": {"owner": "deck:s_fake000000000001", "kind": "DAEMON", "payload": "p2", "protected": false, "origin": "phone:KEY_ALICE"},
+    "it_fake000000d003": {"owner": "deck:s_fake000000000002", "kind": "DAEMON", "payload": "p3", "protected": true, "origin": "phone:KEY_BOB"},
+    "it_g_a_1": {"owner": "node:g_a", "kind": "SHARD", "payload": "shard-a1", "protected": false, "origin": "node:g_a"},
+    "it_g_b_1": {"owner": "node:g_b", "kind": "SHARD", "payload": "shard-b1", "protected": false, "origin": "node:g_b"},
+    "it_g_c_1": {"owner": "node:g_c", "kind": "SHARD", "payload": "shard-c1", "protected": false, "origin": "node:g_c"},
+    "it_g_c_2": {"owner": "node:g_c", "kind": "SHARD", "payload": "shard-c2", "protected": false, "origin": "node:g_c"},
+    "it_g_d_1": {"owner": "node:g_d", "kind": "SHARD", "payload": "shard-d1", "protected": false, "origin": "node:g_d"}
+  }
+}

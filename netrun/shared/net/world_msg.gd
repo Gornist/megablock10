@@ -23,11 +23,21 @@ const AVATARS := "av"
 ## {t: beat, term, bat?, chg?, fps, worst, rtt?}; разбор и пересылка в Мост — NetServer / TerminalBeatRelay.
 const BEAT := "beat"
 ## Виды события: ended (выход: reason), daemon (ok, daemon, error), shard (id взят).
+## Граф узлов (W1): node — вход в узел (title, tier, alert, shards [{id, p, ready}], portals [{to, title, tier, p, open}], r — радиус
+## портала, arrive [x, z] — куда поставить риг; нет arrive — игрок остаётся где стоит); tunnel — переход начался (to, title, tier,
+## sec — сколько длится: клиент затемняет экран без движения камеры, затем придёт node); portal_denied — портал не открылся
+## (to, reason: lockdown | hunt | busy | not_linked, left — секунд до конца локдауна); shards — слоты шардов узла изменились.
+const EV_NODE := "node"
+const EV_TUNNEL := "tunnel"
+const EV_PORTAL_DENIED := "portal_denied"
+const EV_SHARDS := "shards"
 const EV_ENDED := "ended"
 const EV_DAEMON := "daemon"
 const REASON_FAR := "far"
 const REASON_HELD := "held"
 const REASON_UNKNOWN := "unknown"
+## Слот шарда пуст: вынесен, ждёт пополнения (W1).
+const REASON_EMPTY := "empty"
 
 
 static func encode(type: String, id: String, extra: Dictionary = {}) -> PackedByteArray:

@@ -36,6 +36,16 @@ const BLACK_ICE := [
 	{"id": "black_1", "waypoints": [Vector3(-6, 0, -12), Vector3(0, 0, -12), Vector3(6, 0, -12)]},
 ]
 
+## Граф узлов (W1): общая комната у всех узлов, различаются тир, ICE, шарды и порталы. Шарды узла — по слотам (id объектов
+## строит сервер), порталы-тоннели — по слотам площадок: у узла до трёх связей, i-я связь — слот i.
+const SHARD_SLOTS := [Vector3(0, 1.0, -10.0), Vector3(-6, 1.0, -12.0), Vector3(6, 1.0, -10.0)]
+const PORTAL_SLOTS := [Vector3(-6, 0, -1), Vector3(-7, 0, -6), Vector3(4, 0, -13)]
+## Нетраннер у портала — в этом радиусе по плоскости XZ (сервер по нему начинает переход); приходит он на ARRIVE_DIST от своего портала.
+const PORTAL_RADIUS := 1.5
+const ARRIVE_DIST := 3.0
+## К какой точке комнаты смотрит «внутрь» вход от портала.
+const ROOM_CENTER := Vector3(0, 0, -6)
+
 ## Колода по умолчанию (демоны из data/daemons) и названия для деки.
 const DEFAULT_DECK := ["ghost_1", "jitter_1"]
 const DAEMON_NAMES := {"ghost_1": "Призрак", "jitter_1": "Дрожь", "extract_shard_1": "Извлечение"}
@@ -55,3 +65,13 @@ static func flat_distance(a: Vector3, b: Vector3) -> float:
 
 static func on_exit_pad(p: Vector3) -> bool:
 	return flat_distance(p, EXIT_POS) <= EXIT_RADIUS
+
+
+## Где игрок появляется, пройдя через портал слота: на ARRIVE_DIST от него в сторону центра комнаты (вне радиуса портала —
+## иначе переход сработал бы заново).
+static func arrival_for_slot(slot: int) -> Vector3:
+	if slot < 0 or slot >= PORTAL_SLOTS.size():
+		return SPAWN
+	var p: Vector3 = PORTAL_SLOTS[slot]
+	var d := Vector3(ROOM_CENTER.x - p.x, 0.0, ROOM_CENTER.z - p.z).normalized()
+	return clamp_to_room(p + d * ARRIVE_DIST)

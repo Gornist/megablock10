@@ -16,6 +16,11 @@ signal leave_requested(session: String)
 ## Состояние очков (P6) не чаще раза в период на терминал: {terminal, session ("" — очки без игрока), fps, worst, bat?, chg?, rtt?}.
 signal beat_received(beat: Dictionary)
 
+## «Узел» сессии в цифровом тоннеле между узлами (W1): ни в одном узле, снимков и ICE нет, позиции от клиента не принимаются.
+const TUNNEL_NODE := "~tunnel"
+## Держатель опустевшего слота шарда (W1, пополнение): взять нельзя, пока слот не пополнится.
+const EMPTY_HOLDER := "#empty"
+
 ## Тихий обрыв (Wi-Fi пропал) ENet по умолчанию замечает за десятки секунд; ужимаем до ~5 с.
 const PEER_TIMEOUT_MS := 5000
 
@@ -29,6 +34,9 @@ const DISCONNECT_DELAY_SEC := 0.3
 var grab_check: Callable
 ## Узел может не пустить сессию: func(session) -> bool (false — отказ в auth: забег уже завершается, исход пишется в Мост).
 var join_check: Callable
+## Узел входа для нового аватара (W1, граф узлов): func(терминал, сессия) -> id узла ("" — как по умолчанию). Не вызывается для
+## вернувшегося после обрыва и для сессии, чей узел уже известен (восстановление после рестарта).
+var entry_node_for: Callable
 var grace_sec: float = NetConfig.DEFAULT_GRACE_SEC
 var beat_sec: float = NetConfig.DEFAULT_BEAT_SEC
 
@@ -115,6 +123,43 @@ func expect_session(session: String) -> void:
 	_session_peer[session] = -1
 	_deadline_ms[session] = Time.get_ticks_msec() + int(grace_sec * 1000.0)
 	print("[netrun-server] сессия ", session, " из Моста: ждём возврата игрока ", grace_sec, " с")
+
+
+## Новый берущийся объект (шард узла графа). Уже есть — ничего не меняет.
+func add_object(object_id: String, pos: Vector3) -> void:
+	if not _objects.has(object_id):
+		_add_object(object_id, pos)
+
+
+func remove_object(object_id: String) -> void:
+	var o := _world.get_node_or_null(object_id)
+	if o != null:
+		_world.remove_child(o)
+		o.queue_free()
+	_objects.erase(object_id)
+
+
+## Слот пуст (шард вынесен, ждёт пополнения): взять нельзя, ответ клиенту — empty. Объект, который кто-то держит, не трогаем.
+func lock_object(object_id: String) -> void:
+	if _objects.has(object_id) and _objects[object_id] == "":
+		_objects[object_id] = EMPTY_HOLDER
+
+
+func unlock_object(object_id: String) -> void:
+	if _objects.get(object_id) == EMPTY_HOLDER:
+		_objects[object_id] = ""
+
+
+func is_object_locked(object_id: String) -> bool:
+	return _objects.get(object_id) == EMPTY_HOLDER
+
+
+## Поставить аватар в точку (переход через портал): сервер двигает его сам, предел скорости не мешает следующим позициям клиента.
+func teleport(session: String, pos: Vector3) -> void:
+	var a := get_avatar(session)
+	if a != null:
+		a.position = NodeLayout.clamp_to_room(Vector3(pos.x, 0.0, pos.z))
+		_pos_time_ms[session] = Time.get_ticks_msec()
 
 
 ## Объект (шард) уже у игрока по данным Моста. Не трогает объект, который держит кто-то другой.
@@ -249,7 +294,7 @@ func _handle_beat(peer_id: int, session: String, msg: Dictionary) -> void:
 ## Позиция от клиента: не дальше, чем позволяет скорость за прошедшее время; без выхода из комнаты.
 func _handle_pos(session: String, p: Variant) -> void:
 	var a := get_avatar(session)
-	if a == null or p == null:
+	if a == null or p == null or node_of(session) == TUNNEL_NODE:
 		return
 	var now := Time.get_ticks_msec()
 	var dt := minf((now - int(_pos_time_ms.get(session, now))) / 1000.0, 1.0)
@@ -267,6 +312,8 @@ func _handle_grab(peer_id: int, session: String, id: String) -> void:
 	var reply: PackedByteArray
 	if not _objects.has(id):
 		reply = WorldMsg.encode(WorldMsg.GRAB_NO, id, {"reason": WorldMsg.REASON_UNKNOWN})
+	elif _objects[id] == EMPTY_HOLDER:
+		reply = WorldMsg.encode(WorldMsg.GRAB_NO, id, {"reason": WorldMsg.REASON_EMPTY})
 	elif _objects[id] != "" and _objects[id] != session:
 		reply = WorldMsg.encode(WorldMsg.GRAB_NO, id, {"reason": WorldMsg.REASON_HELD})
 	elif grab_check.is_valid() and not grab_check.call(session, id):
@@ -363,6 +410,10 @@ func _on_peer_connected(peer_id: int) -> void:
 	var resumed := has_avatar(session)
 	_session_peer[session] = peer_id
 	_deadline_ms.erase(session)
+	if not resumed and entry_node_for.is_valid() and not _session_node.has(session):
+		var entry := str(entry_node_for.call(terminal, session))
+		if not entry.is_empty():
+			_session_node[session] = entry
 	if not resumed:
 		var a := Node3D.new()
 		a.name = avatar_name(session)

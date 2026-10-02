@@ -12,6 +12,8 @@ var net: NetServer
 var bridge: BridgeApi
 ## Серый узел node_07 (N7): ICE, trace, демоны, шард, выход.
 var node: GrayNode
+## Граф узлов (W1, `--graph` или `--graph=<путь>`): вместо одного серого узла — узлы из data/graph.json с тоннелями между ними.
+var graph_world: GraphWorld
 ## Состояние очков -> Мост (P6).
 var beat_relay: TerminalBeatRelay
 
@@ -31,11 +33,38 @@ func start(args: PackedStringArray) -> void:
 	net.start(cfg, bridge if bridge != null else DictTokenVerifier.new(cfg.tokens))
 	if bridge != null:
 		beat_relay = TerminalBeatRelay.new(net, bridge)
-	node = GrayNode.new()
-	node.name = "GrayNode"
-	add_child(node)
-	node.start(net, bridge)
+	var graph := load_graph(args)
+	if graph != null:
+		graph_world = GraphWorld.new()
+		graph_world.name = "GraphWorld"
+		add_child(graph_world)
+		graph_world.start(net, bridge, graph)
+	else:
+		node = GrayNode.new()
+		node.name = "GrayNode"
+		add_child(node)
+		node.start(net, bridge)
 	set_process(true)
+
+
+## Граф узлов по аргументу `--graph` (data/graph.json) или `--graph=<путь>`. null — аргумента нет или граф не прошёл проверку
+## (ошибки в журнал, сервер работает одним серым узлом: лучше один узел, чем ни одного).
+static func load_graph(args: PackedStringArray) -> NodeGraph:
+	var path := ""
+	for a in args:
+		if a == "--graph":
+			path = NodeGraph.DEFAULT_PATH
+		elif a.begins_with("--graph="):
+			path = a.trim_prefix("--graph=")
+	if path.is_empty():
+		return null
+	var g := NodeGraph.load_file(path)
+	var errs := g.errors()
+	if not errs.is_empty():
+		for e in errs:
+			push_error("[netrun-server] граф %s: %s" % [path, e])
+		return null
+	return g
 
 
 ## `--bridge=fake` (по умолчанию) | `--bridge=ws://хост:порт/netrun/v1`; ключ роли world — `--bridge-key=` или NETRUN_KEY_WORLD.

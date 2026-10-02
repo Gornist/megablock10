@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "default_entry": "node_07",
+  "entries": {
+    "t01": "node_01",
+    "t02": "node_02",
+    "t03": "node_07",
+    "t04": "node_07",
+    "t05": "node_07",
+    "t06": "node_10"
+  },
+  "settings": {
+    "tunnel_sec": 2.5,
+    "portal_dwell_sec": 1.0,
+    "portal_radius": 1.5,
+    "portal_deny_repeat_sec": 3.0,
+    "shard_refill_sec": {"BASE": 600, "HARD": 900, "NIGHTMARE": 1200},
+    "refill_retry_sec": 30,
+    "alert_per_trace": 0.3,
+    "alert_per_eject": 0.6,
+    "alert_cool_sec": 300,
+    "alert_boost": 0.5,
+    "lockdown_sec": 600
+  },
+  "nodes": {
+    "node_01": {"title": "Фойе «Милитех»", "tier": "BASE", "ice": 1, "shards": 1, "links": ["node_02", "node_04"]},
+    "node_02": {"title": "Бухгалтерия", "tier": "BASE", "ice": 1, "shards": 1, "links": ["node_01", "node_03", "node_05"]},
+    "node_03": {"title": "Архив", "tier": "BASE", "ice": 2, "shards": 2, "links": ["node_02", "node_06"]},
+    "node_04": {"title": "Склад запчастей", "tier": "BASE", "ice": 1, "shards": 1, "links": ["node_01", "node_05", "node_07"]},
+    "node_05": {"title": "Серверная", "tier": "HARD", "ice": 2, "shards": 2, "links": ["node_02", "node_04", "node_06"]},
+    "node_06": {"title": "Лаборатория", "tier": "HARD", "ice": 2, "shards": 2, "links": ["node_03", "node_05", "node_09"]},
+    "node_07": {"title": "Склад «Арасаки»", "tier": "BASE", "ice": 2, "shards": 1, "links": ["node_04", "node_08", "node_10"]},
+    "node_08": {"title": "Сервисная шахта", "tier": "HARD", "ice": 2, "shards": 2, "links": ["node_07", "node_09", "node_11"]},
+    "node_09": {"title": "Кабинет директора", "tier": "HARD", "ice": 2, "shards": 2, "links": ["node_06", "node_08", "node_12"]},
+    "node_10": {"title": "Подвал", "tier": "BASE", "ice": 1, "shards": 1, "links": ["node_07", "node_11"]},
+    "node_11": {"title": "Реактор", "tier": "NIGHTMARE", "ice": 2, "shards": 3, "links": ["node_08", "node_10", "node_12"]},
+    "node_12": {"title": "Сейф-ядро", "tier": "NIGHTMARE", "ice": 2, "shards": 3, "links": ["node_09", "node_11"]}
+  }
+}

@@ -33,12 +33,12 @@ func _ready() -> void:
 			f.start(args)
 
 
-## `--bot=ghost_run|exposed_run|black_run` (+ `--host=`, `--port=`, `--token=`, `--bot-reconnect`, `--bot-hold=<с после шарда>`, `--bot-daemon=<id GHOST-демона>`, `--exit-after=`): бот проходит узел и выходит
+## `--bot=ghost_run|exposed_run|black_run|graph_run` (+ `--bot-route=node_02,node_03`, `--bot-ghost`, `--host=`, `--port=`, `--token=`, `--bot-reconnect`, `--bot-hold=<с после шарда>`, `--bot-daemon=<id GHOST-демона>`, `--exit-after=`): бот проходит узел и выходит
 ## из процесса: код 0 — чистый выход, 1 — любой другой итог. Итог печатается строкой `[bot] итог: <result>`.
 func run_bot(args: PackedStringArray, kind: String) -> void:
-	var scenarios := {"ghost_run": BotClient.Scenario.GHOST_RUN, "exposed_run": BotClient.Scenario.EXPOSED_RUN, "black_run": BotClient.Scenario.BLACK_RUN}
+	var scenarios := {"ghost_run": BotClient.Scenario.GHOST_RUN, "exposed_run": BotClient.Scenario.EXPOSED_RUN, "black_run": BotClient.Scenario.BLACK_RUN, "graph_run": BotClient.Scenario.GRAPH_RUN}
 	if not scenarios.has(kind):
-		push_error("[bot] --bot= принимает ghost_run, exposed_run или black_run, получено «%s»" % kind)
+		push_error("[bot] --bot= принимает ghost_run, exposed_run, black_run или graph_run, получено «%s»" % kind)
 		get_tree().quit(2)
 		return
 	var bot := BotClient.new()
@@ -50,6 +50,11 @@ func run_bot(args: PackedStringArray, kind: String) -> void:
 			bot.hold_after_grab = float(a.trim_prefix("--bot-hold="))
 		elif a.begins_with("--bot-daemon="):
 			bot.ghost_daemon = a.trim_prefix("--bot-daemon=")
+		elif a.begins_with("--bot-route="):  # graph_run: узлы через запятую, в которые пройти порталами; шард — в последнем
+			for id in a.trim_prefix("--bot-route=").split(",", false):
+				bot.route.append(id)
+		elif a == "--bot-ghost":
+			bot.use_ghost = true
 	add_child(bot)
 	bot.finished.connect(func(r: String):
 		print("[bot] итог: ", r, ", переподключений: ", bot.reconnects)

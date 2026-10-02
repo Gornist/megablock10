@@ -30,6 +30,8 @@ const DEFAULT_SETTINGS := {
 	"hunt_speed": 2.0,  # м/с: медленнее бега игрока (≈2.5 в плоской сборке) — от охоты можно уйти к выходу
 }
 
+## Тревога узла (W1): множитель дальности зрения и скорости внимания, ≥ 1. Ставит узел, 1 — без тревоги.
+var alert_scale := 1.0
 var position := Vector3.ZERO
 var facing := Vector3.FORWARD  ## единичный, в плоскости XZ
 
@@ -131,7 +133,7 @@ func _closest_visible(targets: Dictionary) -> String:
 	var best_d := INF
 	for session in targets:
 		var p: Vector3 = targets[session]
-		if not can_see(position, facing, p, _s["sight_range"], _s["sight_half_angle_deg"]):
+		if not can_see(position, facing, p, float(_s["sight_range"]) * alert_scale, _s["sight_half_angle_deg"]):
 			continue
 		var d := position.distance_to(p)
 		if d < best_d:
@@ -169,7 +171,7 @@ func _hunt(session: String, pos: Vector3, _now: float, dt: float) -> void:
 func _on_seen(session: String, pos: Vector3, now: float, dt: float, meters: Dictionary) -> void:
 	_target = session
 	_last_seen = pos
-	_awareness = minf(_awareness + float(_s["notice_per_sec"]) * dt, 1.0)
+	_awareness = minf(_awareness + float(_s["notice_per_sec"]) * alert_scale * dt, 1.0)
 	if _state == State.PATROL:
 		_set_state(State.SUSPICIOUS)
 	if _state == State.SUSPICIOUS and _awareness >= 1.0:

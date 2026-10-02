@@ -71,6 +71,18 @@ func _on_state(state: Dictionary) -> void:
 
 func _on_event(ev: Dictionary) -> void:
 	log_file.log("node.event", {"kind": ev.get("kind", ""), "reason": ev.get("reason", ""), "daemon": ev.get("daemon", ""), "ok": ev.get("ok", "")})
+	match str(ev.get("kind", "")):
+		WorldMsg.EV_NODE:
+			scene.apply_node(ev)
+			log_file.log("graph.node", {"node": ev.get("node", ""), "tier": ev.get("tier", ""), "arrive": ev.has("arrive")})
+		WorldMsg.EV_TUNNEL:
+			scene.begin_tunnel(str(ev.get("title", "")), float(ev.get("sec", 0.0)))
+			log_file.log("graph.tunnel", {"from": ev.get("from", ""), "to": ev.get("to", ""), "sec": ev.get("sec", 0.0)})
+		WorldMsg.EV_SHARDS:
+			scene.apply_shards(ev.get("shards", []))
+		WorldMsg.EV_PORTAL_DENIED:
+			scene.show_portal_denied(ev)
+			log_file.log("graph.portal_denied", {"to": ev.get("to", ""), "reason": ev.get("reason", "")})
 	if ev.get("kind") == WorldMsg.EV_ENDED:
 		scene.show_ended(str(ev.get("reason", "")))
 		if ev.get("reason") == ExitLogic.REASON_FLATLINE:

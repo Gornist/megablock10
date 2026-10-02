@@ -18,6 +18,9 @@ extends Node
 ## Что произошло в узле: {kind: ice_eject|flatline|hunt|waiting_master|exit|shard_taken|daemon|level, session, ...}. Для журнала и тестов.
 signal event(ev: Dictionary)
 
+## Игрок простоял в радиусе портала достаточно (W1): граф переводит его в узел `to`.
+signal portal_requested(session: String, to: String)
+
 const STATE_INTERVAL := 0.1
 ## Позиции других аватаров — вдвое чаще (docs/netrun.md: ~20 раз/с).
 const AVATAR_INTERVAL := 0.05
@@ -40,6 +43,14 @@ const GATE_GRACE_SEC := 30.0
 var net: NetServer
 ## Узел, которому служит этот GrayNode: снимки и аватары получают только сессии, чей узел (NetServer.node_of) — он.
 var node_id: String = NODE_ID
+## Описание узла из графа (NodeGraph.nodes[id]: title, tier, ice, shards, links); пусто — прежний одиночный серый узел.
+var node_def: Dictionary = {}
+## Числа графа (NodeGraph.settings): переход, пополнение, тревога, локдаун. Работают только вместе с node_def.
+var settings: Dictionary = NodeGraph.DEFAULT_SETTINGS
+## Узлы графа ходят по общим часам (GraphClock), чтобы перезарядки демонов и trace сессии при переходе оставались верными.
+var shared_clock: GraphClock
+## Сети и вход игроков подключает граф (GraphWorld): один узел из многих не должен перетирать обработчики NetServer.
+var manage_net_hooks := true
 var bridge: BridgeApi
 var daemons := DaemonService.new()
 ## Настройки ICE и trace (подбираются на этапе 2); пусто — значения по умолчанию.
@@ -57,7 +68,17 @@ var _step_us_max := 0
 var _ices: Array[IceNode] = []
 var _sessions: Dictionary = {}       # сессия -> DaemonSession (в нём trace)
 var _shard_items: Dictionary = {}    # id объекта -> id предмета в Мосте
-var _takes_inflight: Dictionary = {} # сессия -> число незавершённых op.take_from_node
+var _takes_inflight: Dictionary = {} # сессия -> число незавершённых op.take_from_node (в графе общий на все узлы)
+var _slot_pos: Dictionary = {}       # id объекта (слот шарда узла) -> позиция
+var _taken_by: Dictionary = {}       # сессия -> [id слотов этого узла, которые она взяла]
+var _refill_at: Dictionary = {}      # id пустого слота -> когда пробовать пополнить (время узла)
+var _refill_busy: Dictionary = {}    # id слота -> идёт запрос шарда в Мосте
+var _portals: Array = []             # [{to, slot, pos}] порталы узла графа
+var _portal_state: Dictionary = {}   # сессия -> {to, since, fired} — сколько стоит у портала
+var _exiting: Dictionary = {}        # сессия -> true между «аватар убран» и событием выхода: её забег закрывает этот узел
+var _level_cbs: Dictionary = {}      # сессия -> Callable, подключённый к trace.level_changed (при переходе переподключается)
+var _local_lock_until := 0.0         # локдаун узла от сервера мира (время узла), когда Моста нет
+var _alert_t := 0.0
 var _ready_done := false
 ## Сессии, чей исход уже уходит в Мост (в том числе восстановленный флэтлайн): второй исход и повторный вход не допускаем.
 var _finishing: Dictionary = {}
@@ -74,29 +95,75 @@ var lockdown_until := 0
 var node_writes := 0
 var _node_write_busy := false
 var _node_write_again := false
+## Тревога узла 0…1 (граф): растёт от trace игроков и выбросов, остывает; усиливает зрение ICE.
+var alert := 0.0
+
+
+## Узел графа (W1): id, тир, число Soft ICE, шарды, порталы. Вызывается до start(); Black ICE ставится по тиру NIGHTMARE.
+func apply_def(id: String, def: Dictionary, graph_settings: Dictionary, graph: NodeGraph) -> void:
+	node_id = id
+	node_def = def
+	settings = graph_settings
+	_portals.clear()
+	for i in (def.get("links", []) as Array).size():
+		var to := str(def["links"][i])
+		_portals.append({"to": to, "slot": i, "pos": NodeLayout.PORTAL_SLOTS[i], "title": graph.title_of(to), "tier": graph.tier_of(to)})
+
+
+func is_graph_node() -> bool:
+	return not node_def.is_empty()
+
+
+func tier() -> String:
+	return str(node_def.get("tier", ""))
+
+
+## Общий словарь «сессия -> незавершённые take» на весь граф: итог забега ждёт take, начатый в предыдущем узле.
+func share_takes_inflight(d: Dictionary) -> void:
+	_takes_inflight = d
+
+
+static func shard_id(node: String, k: int) -> String:
+	return "%s_pk%d" % [node, k]
 
 
 func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 	net = server
 	bridge = bridge_api
 	daemons.load_dir()
-	net.place_object(NetConfig.PICKUP_ID, NodeLayout.SHARD_POS)
-	net.grab_check = _can_grab
-	net.join_check = func(session: String) -> bool: return not join_blocked(session)
+	_build_slots()
+	if manage_net_hooks:
+		net.grab_check = can_grab
+		net.join_check = func(session: String) -> bool: return not join_blocked(session)
 	net.session_joined.connect(_on_joined)
 	net.avatar_removed.connect(_on_avatar_removed)
 	net.object_taken.connect(_on_object_taken)
 	net.exit_event.connect(_on_exit_event)
 	net.daemon_requested.connect(_on_daemon_requested)
 	net.leave_requested.connect(_on_leave_requested)
-	for d in NodeLayout.ICE:
-		_add_ice(d["id"], d["waypoints"])
+	var soft := NodeLayout.ICE.size() if node_def.is_empty() else int(node_def.get("ice", 1))
+	for i in soft:
+		_add_ice(NodeLayout.ICE[i]["id"], NodeLayout.ICE[i]["waypoints"])
+	if tier() == NodeGraph.TIER_BLACK:
+		enable_black_ice()
 	net.session_lost.connect(_on_session_lost)
 	if bridge != null:
 		bridge.doc_changed.connect(_on_doc_changed)
 	_sync_from_bridge()
 	set_physics_process(true)
 	_ready_done = true
+
+
+## Слоты шардов: одиночный узел — один объект pickup_01 на постаменте, узел графа — по числу шардов в def.
+func _build_slots() -> void:
+	if node_def.is_empty():
+		_slot_pos[NetConfig.PICKUP_ID] = NodeLayout.SHARD_POS
+		net.place_object(NetConfig.PICKUP_ID, NodeLayout.SHARD_POS)
+		return
+	for k in int(node_def.get("shards", 1)):
+		var id := shard_id(node_id, k)
+		_slot_pos[id] = NodeLayout.SHARD_SLOTS[k]
+		net.add_object(id, NodeLayout.SHARD_SLOTS[k])
 
 
 func now() -> float:
@@ -189,9 +256,8 @@ func _sync_from_bridge() -> void:
 
 ## Разбор снимка: узел (локдаун), шард, активные сессии этого узла. Публичный — для тестов.
 func recover(docs: Array) -> void:
-	var shard_node := ""
-	var shard_held := ""
-	var held_by := ""
+	var node_items: Array[String] = []   # свободные шарды узла
+	var held: Array = []                 # [{item, by}] шарды этого узла у игроков
 	var active: Array[String] = []
 	var flatlined: Dictionary = {}  # сессия -> disconnect: сервер упал, пока ждал мастера (пометка world.finish)
 	for d in docs:
@@ -200,10 +266,10 @@ func recover(docs: Array) -> void:
 			BridgeApi.T_NODE:
 				if d["id"] == node_id:
 					lockdown_until = int(data.get("lockdown_until", 0))
-					if str(data.get("tier", "")) == TIER_BLACK:
-						enable_black_ice()
+					if node_def.is_empty() and str(data.get("tier", "")) == TIER_BLACK:
+						enable_black_ice()  # у узла графа тир задаёт graph.json
 			BridgeApi.T_SESSION:
-				if data.get("state") == "active" and str(data.get("node", node_id)) == node_id:
+				if data.get("state") == "active" and _session_location(data) == node_id:
 					var w: Variant = data.get("world")
 					if w is Dictionary and (w as Dictionary).get("finish") == "flatline":
 						flatlined[str(d["id"])] = bool((w as Dictionary).get("disconnect", false))
@@ -213,21 +279,32 @@ func recover(docs: Array) -> void:
 				if data.get("kind") != "SHARD":
 					continue
 				var owner := str(data.get("owner", ""))
-				if owner == "node:" + node_id and shard_node.is_empty():
-					shard_node = str(d["id"])
-				elif owner.begins_with("deck:") and str(data.get("origin", "")).begins_with("node:") and shard_held.is_empty():
-					shard_held = str(d["id"])
-					held_by = owner.trim_prefix("deck:")
+				if owner == "node:" + node_id:
+					node_items.append(str(d["id"]))
+				elif owner.begins_with("deck:") and _origin_is_mine(str(data.get("origin", ""))):
+					held.append({"item": str(d["id"]), "by": owner.trim_prefix("deck:")})
+	node_items.sort()
+	var free_slots: Array = _slot_pos.keys()
 	# Шард, который игрок уже несёт, остаётся у него: клиент второй раз его не возьмёт, выход вернёт его по moves.
-	if not shard_held.is_empty() and held_by in active:
-		_shard_items[NetConfig.PICKUP_ID] = shard_held
-		net.restore_holder(NetConfig.PICKUP_ID, held_by)
-	elif not shard_node.is_empty():
-		_shard_items[NetConfig.PICKUP_ID] = shard_node
-	else:
-		push_warning("[gray-node] в Мосте нет шарда в узле %s: добыча останется только игровой" % node_id)
+	for h in held:
+		if h["by"] in active and not free_slots.is_empty():
+			var sid: String = free_slots.pop_front()
+			_shard_items[sid] = h["item"]
+			net.restore_holder(sid, h["by"])
+			_taken_by[h["by"]] = _taken_by.get(h["by"], []) + [sid]
+	for item in node_items:
+		if free_slots.is_empty():
+			break
+		_shard_items[free_slots.pop_front()] = item
+	if not free_slots.is_empty():
+		if node_def.is_empty():
+			push_warning("[gray-node] в Мосте нет шарда в узле %s: добыча останется только игровой" % node_id)
+		else:
+			for sid in free_slots:  # слот без шарда пуст, пока в Мосте не появится свободный (пополнение)
+				_deplete(sid, 0.0)
 	for s in active:
 		recovered_sessions.append(s)
+		net.set_node(s, node_id)
 		net.expect_session(s)
 	# Флэтлайн, начатый прошлым процессом: окна возврата нет, ждём мастера дальше и закрываем забег тем же исходом.
 	for s in flatlined:
@@ -236,7 +313,22 @@ func recover(docs: Array) -> void:
 		print("[gray-node] сессия ", s, ": флэтлайн из прошлого процесса, продолжаем ожидание мастера")
 		_finish_in_bridge({"session": s, "reason": ExitLogic.REASON_FLATLINE, "under_hunt": false, "deck_burned": false,
 			"disconnect": flatlined[s]})
-	print("[gray-node] снимок Моста: активных сессий ", active.size(), ", шард ", _shard_items.get(NetConfig.PICKUP_ID, "—"), ", локдаун до ", lockdown_until)
+	print("[gray-node] снимок Моста (", node_id, "): активных сессий ", active.size(), ", шардов ", _shard_items.size(), ", локдаун до ", lockdown_until)
+
+
+## Где сессия сейчас: последняя запись сервера мира (world.node), иначе узел из документа Моста (куда её приняли).
+func _session_location(data: Dictionary) -> String:
+	var w: Variant = data.get("world")
+	if w is Dictionary and (w as Dictionary).has("node"):
+		return str((w as Dictionary)["node"])
+	return str(data.get("node", node_id))
+
+
+## Шард «из этого узла»: в графе — точно этот, у одиночного узла — любой с узла (как было).
+func _origin_is_mine(origin: String) -> bool:
+	if node_def.is_empty():
+		return origin.begins_with("node:")
+	return origin == "node:" + node_id
 
 
 func _on_doc_changed(doc: Dictionary, deleted: bool) -> void:
@@ -255,7 +347,11 @@ func _write_node_state() -> void:
 	_node_write_busy = true
 	while true:
 		_node_write_again = false
-		var ok := await put_field(BridgeApi.T_NODE, node_id, "world", {"up": true, "players": _live_sessions().size()})
+		var world := {"up": true, "players": _live_sessions().size()}
+		if is_graph_node():
+			world["alert"] = snappedf(alert, 0.01)
+			world["slots_empty"] = _refill_at.size()
+		var ok := await put_field(BridgeApi.T_NODE, node_id, "world", world)
 		if ok:
 			node_writes += 1
 		if not _node_write_again or not is_inside_tree():
@@ -326,7 +422,10 @@ func _physics_process(delta: float) -> void:
 
 
 func _step(delta: float) -> void:
-	_now += delta
+	if shared_clock != null:
+		_now = shared_clock.now
+	else:
+		_now += delta
 	var targets := {}
 	var meters := {}
 	for session in _live_sessions():
@@ -342,6 +441,10 @@ func _step(delta: float) -> void:
 		ice.targets = targets
 		ice.meters = meters
 	_update_hunts()
+	if is_graph_node():
+		_check_portals()
+		_tick_refill()
+		_tick_alert()
 	_state_acc += delta
 	if _state_acc >= STATE_INTERVAL - TICK_EPS:
 		_state_acc = maxf(_state_acc - STATE_INTERVAL, 0.0)
@@ -369,6 +472,8 @@ func _update_hunts() -> void:
 ## Спад trace, пока никто из ICE не следит за игроком.
 func _tick_traces() -> void:
 	for session in _sessions.keys():
+		if net.node_of(session) != node_id:
+			continue  # в тоннеле между узлами trace стоит
 		var watched := false
 		for ice in _ices:
 			if ice.brain != null and ice.brain.target() == session:
@@ -425,28 +530,41 @@ func join_blocked(session: String) -> bool:
 
 
 func _on_joined(session: String, _peer: int, _resumed: bool) -> void:
+	if net.node_of(session) != node_id:
+		return  # игрок в другом узле (граф): это дело того узла
 	if _sessions.has(session):
 		if bridge != null and synced:
-			put_field(BridgeApi.T_SESSION, session, "world", {"connected": true, "trace": 0})
+			_merge_world(session, {"connected": true, "trace": 0, "node": node_id})
 		return
 	var meter := TraceMeter.new(trace_settings)
 	meter.reset(_now)
-	meter.level_changed.connect(_on_level_changed.bind(session))
+	_connect_meter(session, meter)
 	_sessions[session] = DaemonSession.new(NodeLayout.DEFAULT_DECK, meter)
-	print("[gray-node] ", session, " вошёл в ", NODE_ID)
+	print("[gray-node] ", session, " вошёл в ", node_id)
 	if bridge != null:
 		_load_deck(session)
-		put_field(BridgeApi.T_SESSION, session, "world", {"connected": true, "trace": 0})
+		_merge_world(session, {"connected": true, "trace": 0, "node": node_id})
 		_write_node_state()
 
 
+func _connect_meter(session: String, meter: TraceMeter) -> void:
+	var cb := _on_level_changed.bind(session)
+	_level_cbs[session] = cb
+	meter.level_changed.connect(cb)
+
+
 func _on_session_lost(session: String) -> void:
-	if bridge != null and synced:
-		put_field(BridgeApi.T_SESSION, session, "world", {"connected": false, "trace": 0})
+	if bridge != null and synced and _sessions.has(session):
+		_merge_world(session, {"connected": false, "trace": 0, "node": node_id})
 
 
 func _on_avatar_removed(session: String) -> void:
+	_portal_state.erase(session)
+	if not _sessions.has(session):
+		return
 	_sessions.erase(session)
+	_exiting[session] = true
+	_level_cbs.erase(session)
 	_hunted.erase(session)
 	_write_node_state()
 	for ice in _ices:
@@ -459,6 +577,8 @@ func _on_level_changed(old_level: int, new_level: int, value: float, session: St
 	# Мост (правило сигнала СБ, P3) читает session.world.trace_level: с уровня TRACE шлёт сигнал с номером терминала.
 	if bridge != null and synced:
 		_mark_trace_level(session, new_level, value, _sessions[session].active_effects(_now) if _sessions.has(session) else [])
+	if is_graph_node() and old_level < TraceMeter.Level.TRACE and new_level >= TraceMeter.Level.TRACE:
+		raise_alert(float(settings["alert_per_trace"]))
 	# trace 100: ICE хватает. С Black ICE в узле это делает охота (она идёт с уровня TRACE); без него Soft ICE выбрасывает.
 	if new_level == TraceMeter.Level.FLATLINE and not has_black_ice():
 		_end(session, ExitLogic.REASON_EJECTED, "ice_eject")
@@ -479,11 +599,17 @@ func _on_ice_ejected(session: String, reason: String) -> void:
 func _end(session: String, exit_reason: String, kind: String) -> void:
 	if not net.has_avatar(session):
 		return
+	if is_graph_node():
+		raise_alert(float(settings["alert_per_eject"]))
+		if kind == "ice_eject" and bridge == null:
+			lock_for(float(settings["lockdown_sec"]))  # с Мостом локдаун выставляет он (run.finish soft_ice)
 	event.emit({"kind": kind, "session": session})
 	net.end_session(session, exit_reason)
 
 
 func _on_leave_requested(session: String) -> void:
+	if not _sessions.has(session):
+		return
 	var avatar := net.get_avatar(session)
 	if avatar == null or not NodeLayout.on_exit_pad(avatar.position):
 		return
@@ -504,15 +630,19 @@ func _on_daemon_requested(session: String, daemon_id: String) -> void:
 	event.emit({"kind": "daemon", "session": session, "daemon": daemon_id, "ok": reply["ok"]})
 
 
-func _can_grab(session: String, object_id: String) -> bool:
+## Может ли игрок взять объект: он в этом узле, объект — слот этого узла и достаточно близко.
+func can_grab(session: String, object_id: String) -> bool:
 	var avatar := net.get_avatar(session)
-	if avatar == null:
+	if avatar == null or net.node_of(session) != node_id or not _slot_pos.has(object_id):
 		return false
 	return NodeLayout.flat_distance(avatar.position, net.object_position(object_id)) <= NodeLayout.GRAB_REACH
 
 
 ## Шард взят: игровая часть уже сделана (NetServer), в Мосте он переходит из узла в деку.
 func _on_object_taken(object_id: String, session: String) -> void:
+	if not _slot_pos.has(object_id):
+		return
+	_taken_by[session] = _taken_by.get(session, []) + [object_id]
 	event.emit({"kind": "shard_taken", "session": session, "id": object_id})
 	var item: String = _shard_items.get(object_id, "")
 	if bridge == null or item.is_empty():
@@ -521,7 +651,7 @@ func _on_object_taken(object_id: String, session: String) -> void:
 	var r: Dictionary = {}
 	for attempt in FINISH_ATTEMPTS:
 		@warning_ignore("redundant_await")
-		r = await bridge.op_take_from_node(session, NODE_ID, item)
+		r = await bridge.op_take_from_node(session, node_id, item)
 		if not is_transient(r) or not is_inside_tree():
 			break
 		await get_tree().create_timer(FINISH_RETRY_SEC).timeout
@@ -533,6 +663,10 @@ func _on_object_taken(object_id: String, session: String) -> void:
 
 
 func _on_exit_event(ev: Dictionary) -> void:
+	_portal_state.erase(ev["session"])
+	# Граф: сигнал приходит всем узлам, забег закрывает тот, чей игрок это был (метка _exiting из _on_avatar_removed).
+	if not _exiting.erase(ev["session"]) and is_graph_node():
+		return
 	event.emit({"kind": "exit", "session": ev["session"], "reason": ev["reason"]})
 	_finishing[ev["session"]] = true
 	if ev["reason"] == ExitLogic.REASON_FLATLINE:
@@ -584,6 +718,24 @@ func _mark_trace_level(session: String, level: int, value: float, effects: Array
 			push_warning("[gray-node] trace_level %s: %s" % [session, BridgeApi.err_code(g)])
 			return
 		if not is_inside_tree():
+			return
+
+
+## Слить поля в session.data.world, не трогая остальные (trace_level, effects, finish). Повтор при version_conflict.
+func _merge_world(session: String, fields: Dictionary) -> void:
+	for attempt in 3:
+		@warning_ignore("redundant_await")
+		var g: Dictionary = await bridge.get_doc(BridgeApi.T_SESSION, session)
+		if not g.get("ok", false):
+			return
+		var cur: Dictionary = g["doc"]
+		var data: Dictionary = (cur.get("data", {}) as Dictionary).duplicate(true)
+		var w: Dictionary = (data.get("world", {}) as Dictionary).duplicate(true) if data.get("world") is Dictionary else {}
+		w.merge(fields, true)
+		data["world"] = w
+		@warning_ignore("redundant_await")
+		var r: Dictionary = await bridge.put_doc(BridgeApi.T_SESSION, session, int(cur["ver"]), data)
+		if r.get("ok", false) or BridgeApi.err_code(r) != "version_conflict":
 			return
 
 
@@ -715,7 +867,7 @@ func _finish_in_bridge(ev: Dictionary) -> void:
 	var r: Dictionary = {}
 	for attempt in FINISH_ATTEMPTS:
 		@warning_ignore("redundant_await")
-		r = await bridge.run_finish(session, plan["outcome"], NODE_ID, plan["disconnect"], moves)
+		r = await bridge.run_finish(session, plan["outcome"], node_id, plan["disconnect"], moves)
 		if not is_transient(r) or not is_inside_tree():
 			break
 		await get_tree().create_timer(FINISH_RETRY_SEC).timeout
@@ -723,3 +875,217 @@ func _finish_in_bridge(ev: Dictionary) -> void:
 	if r.get("ok", false):
 		_finishing.erase(session)  # сессия закрыта в Мосте: terminal.auth её уже не отдаст
 	event.emit({"kind": "finished", "session": session, "outcome": plan["outcome"], "ok": r.get("ok", false)})
+
+
+# ---------------------------------------------------------------- граф узлов (W1)
+
+func portals() -> Array:
+	return _portals
+
+
+func slot_ids() -> Array:
+	return _slot_pos.keys()
+
+
+## Слоты шардов для клиента: [{id, p, ready}]; ready — шард лежит и его можно взять.
+func shard_view() -> Array:
+	var out: Array = []
+	for id in _slot_pos:
+		var p: Vector3 = _slot_pos[id]
+		out.append({"id": id, "p": [p.x, p.y, p.z], "ready": net.holder_of(id) == ""})
+	return out
+
+
+## Сколько слотов шардов ждут пополнения.
+func empty_slots() -> int:
+	return _refill_at.size()
+
+
+func is_hunted(session: String) -> bool:
+	return bool(_hunted.get(session, false))
+
+
+## Портал: игрок простоял в радиусе `portal_dwell_sec` (повтор отказа — не чаще `portal_deny_repeat_sec`).
+func _check_portals() -> void:
+	if _portals.is_empty():
+		return
+	var radius := float(settings["portal_radius"])
+	var dwell := float(settings["portal_dwell_sec"])
+	var repeat := float(settings["portal_deny_repeat_sec"])
+	for session in _live_sessions():
+		var p := net.get_avatar(session).position
+		var near := ""
+		for pt in _portals:
+			if NodeLayout.flat_distance(p, pt["pos"]) <= radius:
+				near = pt["to"]
+				break
+		if near.is_empty():
+			_portal_state.erase(session)
+			continue
+		var st: Dictionary = _portal_state.get(session, {})
+		if st.get("to", "") != near:
+			st = {"to": near, "since": _now, "fired": -INF}
+		if _now - float(st["since"]) >= dwell and _now - float(st["fired"]) >= repeat:
+			st["fired"] = _now
+			portal_requested.emit(session, near)
+		_portal_state[session] = st
+
+
+# --- тревога и локдаун узла
+
+## Тревога узла растёт (0…1) и усиливает ICE: зрение и внимание выше на alert_boost при полной.
+func raise_alert(amount: float) -> void:
+	alert = minf(alert + amount, 1.0)
+	_apply_alert()
+	event.emit({"kind": "alert", "node": node_id, "value": alert})
+
+
+func _apply_alert() -> void:
+	var k := 1.0 + alert * float(settings["alert_boost"])
+	for ice in _ices:
+		if ice.brain != null:
+			ice.brain.alert_scale = k
+
+
+## Остывание: за alert_cool_sec от полной до нуля, по общим часам.
+func _tick_alert() -> void:
+	var dt := _now - _alert_t
+	_alert_t = _now
+	if alert <= 0.0 or dt <= 0.0:
+		return
+	alert = maxf(alert - dt / maxf(float(settings["alert_cool_sec"]), 0.001), 0.0)
+	_apply_alert()
+
+
+## Закрыть узел сервером мира на sec секунд (когда Моста нет; с Мостом локдаун — lockdown_until узла).
+func lock_for(sec: float) -> void:
+	_local_lock_until = maxf(_local_lock_until, _now + sec)
+	event.emit({"kind": "lockdown", "node": node_id, "sec": sec})
+
+
+## Сколько секунд узел ещё закрыт (0 — открыт): большее из локдауна сервера мира и lockdown_until Моста (мс Unix).
+func lockdown_left_sec() -> float:
+	var left := maxf(_local_lock_until - _now, 0.0)
+	var ms := lockdown_until - int(Time.get_unix_time_from_system() * 1000.0)
+	if ms > 0:
+		left = maxf(left, ms / 1000.0)
+	return left
+
+
+func is_locked_down() -> bool:
+	return lockdown_left_sec() > 0.0
+
+
+# --- шарды: вынос и пополнение
+
+## Шард слота ушёл навсегда (на телефон или в другой узел) — слот пуст, пополнится через delay секунд (если в Мосте найдётся шард).
+func _deplete(id: String, delay: float) -> void:
+	net.lock_object(id)
+	_shard_items.erase(id)
+	_refill_at[id] = _now + delay
+	event.emit({"kind": "shard_depleted", "id": id})
+
+
+## Забег игрока закончился (GraphWorld зовёт все узлы): слоты, где он взял шард, пустеют — кроме случая, когда добыча осталась
+## в этом же узле (выброс/флэтлайн/обрыв: предмет вернулся в узел, слот снова с шардом).
+func settle_shards(session: String, end_node: String, loot: String) -> void:
+	var ids: Array = _taken_by.get(session, [])
+	_taken_by.erase(session)
+	if ids.is_empty():
+		return
+	var delay := float((settings["shard_refill_sec"] as Dictionary).get(tier(), 0.0))
+	for id in ids:
+		if loot == "node" and end_node == node_id:
+			continue
+		_deplete(id, delay)
+	_push_shards()
+	_write_node_state()
+
+
+func _tick_refill() -> void:
+	if _refill_at.is_empty():
+		return
+	for id in _refill_at.keys():
+		if _now >= float(_refill_at[id]) and not _refill_busy.has(id):
+			_refill(id)
+
+
+## Пополнение слота: с Мостом нужен свободный шард `node:<узел>` (Мост выпускает шарды; сервер мира их не создаёт), без Моста
+## слот просто оживает. Нет свободного — повтор через refill_retry_sec.
+func _refill(id: String) -> void:
+	_refill_busy[id] = true
+	var item := ""
+	if bridge != null:
+		item = await _free_shard_item()
+		if item.is_empty() or item in _shard_items.values():
+			_refill_busy.erase(id)
+			if _refill_at.has(id):
+				_refill_at[id] = _now + float(settings["refill_retry_sec"])
+			return
+	_refill_busy.erase(id)
+	if not _refill_at.has(id):
+		return
+	_refill_at.erase(id)
+	if not item.is_empty():
+		_shard_items[id] = item
+	net.unlock_object(id)
+	event.emit({"kind": "shard_refilled", "id": id, "item": item})
+	_push_shards()
+	_write_node_state()
+
+
+## Свободный шард узла в Мосте: owner node:<узел>, не привязанный к слоту. "" — нет.
+func _free_shard_item() -> String:
+	if not synced or not bridge.is_ready():
+		return ""
+	@warning_ignore("redundant_await")
+	var r: Dictionary = await bridge.list_docs(BridgeApi.T_ITEM)
+	if not r.get("ok", false):
+		return ""
+	var ids: Array[String] = []
+	for d in r.get("docs", []):
+		var data: Dictionary = d.get("data", {})
+		if data.get("kind") == "SHARD" and data.get("owner") == "node:" + node_id and not (str(d["id"]) in _shard_items.values()):
+			ids.append(str(d["id"]))
+	ids.sort()
+	return ids[0] if not ids.is_empty() else ""
+
+
+func _push_shards() -> void:
+	var msg := WorldMsg.encode_fields(WorldMsg.EVENT, {"kind": WorldMsg.EV_SHARDS, "shards": shard_view()})
+	for session in _live_sessions():
+		net.send_to(session, msg)
+
+
+# --- переход игрока между узлами: GraphWorld забирает сессию из одного узла и отдаёт другому
+
+## Снять сессию с узла (уходит в тоннель/в другой узел): состояние (trace, дека, перезарядки) возвращается вызывающему целым.
+func release_session(session: String) -> DaemonSession:
+	var ds: DaemonSession = _sessions.get(session)
+	if ds == null:
+		return null
+	var cb: Callable = _level_cbs.get(session, Callable())
+	if cb.is_valid() and ds.trace.level_changed.is_connected(cb):
+		ds.trace.level_changed.disconnect(cb)
+	_level_cbs.erase(session)
+	_sessions.erase(session)
+	_hunted.erase(session)
+	_portal_state.erase(session)
+	net.set_under_hunt(session, false)
+	for ice in _ices:
+		if ice.brain != null:
+			ice.brain.forget(session)
+	_write_node_state()
+	return ds
+
+
+## Принять сессию с её состоянием: trace и дека те же объекты, что были в прошлом узле.
+func adopt_session(session: String, ds: DaemonSession) -> void:
+	_sessions[session] = ds
+	_connect_meter(session, ds.trace)
+	print("[gray-node] ", session, " вошёл в ", node_id, " (переход)")
+	if bridge != null and synced:
+		# Мост читает world.node (где игрок сейчас) и trace_level/effects (сигнал СБ): после перехода пишем их для нового узла.
+		_merge_world(session, {"connected": net.peer_of(session) != -1, "trace": int(ds.trace.value()), "node": node_id,
+			"trace_level": ds.trace.level(), "effects": ds.active_effects(_now)})
+		_write_node_state()

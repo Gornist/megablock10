@@ -18,8 +18,17 @@ const FLATLINE_FADE_SEC := 0.8
 
 var rig: XRRig
 var world_ui: WorldUI
+## Шард прототипа (pickup_01) — единственный в одиночном узле; в графе узлов шардов несколько (_pickups).
 var pickup: MeshInstance3D
 var held := false
+## Какой узел графа сейчас показан и что про него сказал сервер (WorldMsg.EV_NODE); в одиночном узле пусто.
+var current_node := ""
+var node_info: Dictionary = {}
+var tunnel: TunnelFx
+var _pickups: Dictionary = {}        # id слота шарда -> меш (в том числе тот, что в руке)
+var _held_ids: Dictionary = {}       # id шардов в руке: из узла в узел они идут с игроком
+var _pending_id := ""
+var _node_props: Array[Node3D] = []  # то, что принадлежит узлу: постаменты шардов, порталы
 var slow_frames := 0
 ## Показан экран флэтлайна (для тестов).
 var flatline_shown := false
@@ -47,17 +56,13 @@ func _ready() -> void:
 	env.environment.background_color = Color(0.02, 0.03, 0.06)
 	add_child(env)
 	_add_box(Vector3(40, 0.1, 40), Vector3(0, -0.05, 0), Color(0.1, 0.12, 0.18))
-	# Узел (shared/node_layout.gd): площадка и постамент шарда, укрытия, площадка выхода.
-	var sp := NodeLayout.SHARD_POS
-	_add_mesh(_cylinder(2.0, 0.1), Vector3(sp.x, 0.05, sp.z), Color(0.1, 0.35, 0.45))
-	_add_mesh(_cylinder(0.25, 0.9), Vector3(sp.x, 0.45, sp.z), Color(0.2, 0.2, 0.3))
+	# Узел (shared/node_layout.gd): укрытия, площадка выхода; постаменты шардов и порталы — build_node (до ответа сервера: один шард).
 	for c in NodeLayout.COVERS:
 		_add_box(c[1], c[0], Color(0.18, 0.2, 0.3))
 	_add_mesh(_cylinder(NodeLayout.EXIT_RADIUS, 0.06), NodeLayout.EXIT_POS + Vector3(0, 0.03, 0), Color(0.1, 0.6, 0.3))
-	pickup = _add_mesh(SphereMesh.new(), sp, Color(1.0, 0.6, 0.1))
-	pickup.name = NetConfig.PICKUP_ID
-	(pickup.mesh as SphereMesh).radius = 0.1
-	(pickup.mesh as SphereMesh).height = 0.2
+	var sp := NodeLayout.SHARD_POS
+	_build_node([{"id": NetConfig.PICKUP_ID, "p": [sp.x, sp.y, sp.z], "ready": true}], [], NodeLayout.PORTAL_RADIUS)
+	pickup = _pickups[NetConfig.PICKUP_ID]
 	# Счётчик кадра — надпись на панели в мире, не HUD.
 	_add_box(Vector3(2.4, 0.5, 0.03), Vector3(0, 1.8, -3.5), Color(0.03, 0.03, 0.05))
 	_label = Label3D.new()
@@ -68,6 +73,8 @@ func _ready() -> void:
 	add_child(_label)
 	rig = preload("res://client/xr_rig.tscn").instantiate()
 	add_child(rig)
+	tunnel = TunnelFx.new()
+	rig.camera.add_child(tunnel)
 	# Интерфейс в мире (N4). Данные приходят с сервера (apply_state); до первого снимка — пустая дека и trace 0.
 	world_ui = WorldUI.new()
 	add_child(world_ui)
@@ -308,10 +315,23 @@ func _unshaded_color(c: Color) -> StandardMaterial3D:
 
 ## Просит сервер отдать объект, если он лежит и достаточно близко. Сам объект не двигает.
 func try_grab(origin: Vector3, reach: float, holder: Node3D) -> bool:
-	if held or _pending_holder != null or origin.distance_to(pickup.global_position) > reach:
+	if _pending_holder != null:
+		return false
+	var best := ""
+	var best_d := reach
+	for id in _pickups:
+		var m: MeshInstance3D = _pickups[id]
+		if _held_ids.has(id) or not m.visible:
+			continue
+		var d := origin.distance_to(m.global_position)
+		if d <= best_d:
+			best = id
+			best_d = d
+	if best.is_empty():
 		return false
 	_pending_holder = holder
-	grab_requested.emit(NetConfig.PICKUP_ID)
+	_pending_id = best
+	grab_requested.emit(best)
 	return true
 
 
@@ -319,14 +339,125 @@ func try_grab(origin: Vector3, reach: float, holder: Node3D) -> bool:
 func confirm_grab() -> void:
 	if _pending_holder == null:
 		return
-	pickup.reparent(_pending_holder, false)
-	pickup.position = Vector3(0.25, -0.25, -0.7) if _pending_holder is Camera3D else Vector3.ZERO
+	var m: MeshInstance3D = _pickups[_pending_id]
+	m.reparent(_pending_holder, false)
+	m.position = Vector3(0.25, -0.25, -0.7) if _pending_holder is Camera3D else Vector3.ZERO
+	_held_ids[_pending_id] = true
 	held = true
 	_pending_holder = null
+	_pending_id = ""
 
 
 func deny_grab() -> void:
 	_pending_holder = null
+	_pending_id = ""
+
+
+# ---------------------------------------------------------------- граф узлов (W1)
+
+## Сервер рассказал узел (WorldMsg.EV_NODE): шарды, порталы; после перехода — риг на место входа, тоннель открывается.
+func apply_node(info: Dictionary) -> void:
+	node_info = info
+	current_node = str(info.get("node", ""))
+	_build_node(info.get("shards", []), info.get("portals", []), float(info.get("r", NodeLayout.PORTAL_RADIUS)))
+	var arrive: Variant = info.get("arrive")
+	if arrive is Array and (arrive as Array).size() == 2:
+		rig.global_position = Vector3(float(arrive[0]), rig.global_position.y, float(arrive[1]))
+	end_tunnel()
+
+
+## Слоты шардов узла изменились (вынесли, пополнилось): лежащий шард виден, вынесенный — нет.
+func apply_shards(shards: Array) -> void:
+	for sh in shards:
+		var m: MeshInstance3D = _pickups.get(str(sh["id"]))
+		if m != null and not _held_ids.has(str(sh["id"])):
+			m.visible = bool(sh.get("ready", true))
+
+
+## Тоннель: затемнение вокруг головы и блок хода (камеру не двигаем); надпись «куда».
+func begin_tunnel(title: String, sec: float) -> void:
+	rig.movement_locked = true
+	tunnel.begin()
+	show_notice("→ " + title, maxf(sec, 1.5))
+
+
+func end_tunnel() -> void:
+	rig.movement_locked = false
+	if tunnel.is_active():
+		tunnel.finish()
+
+
+## Короткая надпись перед глазами (портал закрыт, куда ведёт тоннель).
+func show_notice(text: String, sec: float = 2.5) -> void:
+	var l := Label3D.new()
+	l.text = text
+	l.font_size = 48
+	l.pixel_size = 0.0008
+	l.no_depth_test = true
+	l.render_priority = 120
+	l.modulate = Color(0.5, 0.95, 1.0)
+	l.position = Vector3(0, -0.12, -0.9)
+	rig.camera.add_child(l)
+	if is_inside_tree():
+		get_tree().create_timer(sec).timeout.connect(l.queue_free)
+
+
+func show_portal_denied(ev: Dictionary) -> void:
+	var text := {
+		"lockdown": "Узел закрыт: локдаун (ещё %d с)" % int(ev.get("left", 0)),
+		"hunt": "Портал закрыт: за вами охота",
+	}.get(str(ev.get("reason", "")), "") as String
+	if text != "":
+		show_notice(text)
+
+
+## Постаменты шардов и порталы узла. Старые убираются; шарды в руке остаются в руке; одиночный pickup_01 не освобождается никогда.
+func _build_node(shards: Array, portals: Array, portal_radius: float) -> void:
+	for n in _node_props:
+		n.queue_free()
+	_node_props.clear()
+	var ids: Array = shards.map(func(sh): return str(sh["id"]))
+	for id in _pickups.keys():
+		var m: MeshInstance3D = _pickups[id]
+		if _held_ids.has(id) or id in ids:
+			continue
+		if m == pickup:
+			m.visible = false
+		else:
+			m.queue_free()
+			_pickups.erase(id)
+	for sh in shards:
+		var id := str(sh["id"])
+		var p: Array = sh["p"]
+		_node_props.append(_add_mesh(_cylinder(2.0, 0.1), Vector3(p[0], 0.05, p[2]), Color(0.1, 0.35, 0.45)))
+		_node_props.append(_add_mesh(_cylinder(0.25, 0.9), Vector3(p[0], 0.45, p[2]), Color(0.2, 0.2, 0.3)))
+		if _held_ids.has(id):
+			continue
+		var m: MeshInstance3D = _pickups.get(id)
+		if m == null:
+			m = _add_mesh(SphereMesh.new(), Vector3.ZERO, Color(1.0, 0.6, 0.1))
+			m.name = id
+			(m.mesh as SphereMesh).radius = 0.1
+			(m.mesh as SphereMesh).height = 0.2
+			_pickups[id] = m
+		m.position = Vector3(p[0], p[1], p[2])
+		m.visible = bool(sh.get("ready", true))
+	for pt in portals:
+		var pos: Array = pt["p"]
+		var open: bool = bool(pt.get("open", true))
+		var color := Color(0.25, 0.1, 0.5) if open else Color(0.3, 0.3, 0.33)
+		match str(pt.get("tier", "")):
+			"HARD": color = Color(0.6, 0.4, 0.05) if open else color
+			"NIGHTMARE": color = Color(0.6, 0.05, 0.25) if open else color
+		_node_props.append(_add_mesh(_cylinder(portal_radius, 0.08), Vector3(pos[0], 0.04, pos[1]), color))
+		var l := Label3D.new()
+		l.text = "%s\n%s%s" % [pt.get("title", ""), pt.get("tier", ""), "" if open else " — закрыт"]
+		l.font_size = 40
+		l.pixel_size = 0.004
+		l.position = Vector3(pos[0], 2.0, pos[1])
+		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		add_child(l)
+		_node_props.append(l)
 
 
 func _cylinder(radius: float, height: float) -> CylinderMesh:

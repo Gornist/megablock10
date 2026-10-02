@@ -9,7 +9,9 @@ extends Node
 
 signal finished(result: String)
 
-enum Scenario { GHOST_RUN, EXPOSED_RUN, LOITER, BLACK_RUN }
+## GRAPH_RUN (W1): идёт по графу узлов по маршруту `route` (id узлов, в которые надо пройти порталами), в последнем берёт шард
+## и выходит чисто там же; `use_ghost` — сначала GHOST. Видит узел так, как его описал сервер (событие node): порталы и шарды.
+enum Scenario { GHOST_RUN, EXPOSED_RUN, LOITER, BLACK_RUN, GRAPH_RUN }
 
 const SPEED := 4.0         # м/с (ходьба игрока в плоской сборке — около 2.5)
 const SEND_PERIOD := 0.05
@@ -52,6 +54,16 @@ var no_shard := false
 ## "drop_gone" — обрыв без возврата (сервер закроет забег по окну возврата). "" — без сбоя.
 var chaos := ""
 var chaos_after := 2.0
+## Для GRAPH_RUN: куда идти дальше (первый — следующий узел), где бот сейчас, какие узлы прошёл, что видел о узле, сколько туннелей.
+var route: Array[String] = []
+var use_ghost := false
+var current_node := ""
+var visited: Array[String] = []
+var node_info: Dictionary = {}
+var tunnels_seen := 0
+var denied_reasons: Array[String] = []
+var _goal := Vector3.ZERO
+var _goal_shard := ""
 var _loiter_angle := 0.0
 var _chaos_done := false
 var _chaos_gap := 0.0
@@ -105,8 +117,26 @@ func _finish(r: String) -> void:
 
 func _on_event(ev: Dictionary) -> void:
 	events.append(ev)
-	if ev.get("kind") == WorldMsg.EV_ENDED:
-		_finish("clean" if ev.get("reason") == ExitLogic.REASON_CLEAN else str(ev.get("reason")))
+	match str(ev.get("kind", "")):
+		WorldMsg.EV_ENDED:
+			_finish("clean" if ev.get("reason") == ExitLogic.REASON_CLEAN else str(ev.get("reason")))
+		WorldMsg.EV_NODE:
+			node_info = ev
+			current_node = str(ev.get("node", ""))
+			visited.append(current_node)
+			var a: Variant = ev.get("arrive")
+			if a is Array and (a as Array).size() == 2:
+				position = Vector3(float(a[0]), 0.0, float(a[1]))
+			if _step == "g_tunnel":
+				route.pop_front()
+				_enter("g_wait")
+		WorldMsg.EV_TUNNEL:
+			tunnels_seen += 1
+			_enter("g_tunnel")
+		WorldMsg.EV_SHARDS:
+			node_info["shards"] = ev.get("shards", [])
+		WorldMsg.EV_PORTAL_DENIED:
+			denied_reasons.append(str(ev.get("reason", "")))
 
 
 func _on_disconnected() -> void:
@@ -169,6 +199,8 @@ func _process(delta: float) -> void:
 					_enter("loiter")
 				elif scenario == Scenario.BLACK_RUN:
 					_enter("to_black")
+				elif scenario == Scenario.GRAPH_RUN:
+					_enter("ghost" if use_ghost else "g_wait")
 				else:
 					_enter("ghost" if scenario == Scenario.GHOST_RUN else "to_shard")
 		"loiter":
@@ -186,10 +218,32 @@ func _process(delta: float) -> void:
 			# Дека из Моста приходит серверу мира асинхронно (список предметов): первый запрос может прийти раньше деки
 			# (not_in_deck) — повторяем раз в секунду, пока ghost не включился.
 			if last_state.get("ghost", false):
-				_enter("to_exit" if shard_taken or no_shard else "to_shard")
+				if scenario == Scenario.GRAPH_RUN:
+					_enter("g_wait")
+				else:
+					_enter("to_exit" if shard_taken or no_shard else "to_shard")
 			elif not _asked or _clock - _asked_at >= GHOST_RETRY_SEC:
 				_asked = net.request_use(ghost_daemon)
 				_asked_at = _clock
+		"g_wait":
+			# Узел известен (событие node) — решаем, куда идти: к порталу следующего узла маршрута или к шарду.
+			if not node_info.is_empty():
+				_graph_next()
+		"g_portal":
+			if _walk_to(_goal, delta, 0.4):
+				_enter("g_stand")
+		"g_stand":
+			pass  # сервер сам запускает переход, когда простоял у портала; шаг кончается событием tunnel/node или таймаутом шага
+		"g_tunnel":
+			_step_started = _clock  # тоннель идёт, ход заблокирован; таймаут шага не идёт
+		"g_shard":
+			if _walk_to(_goal, delta, GRAB_FROM):
+				_enter("g_grab")
+		"g_grab":
+			if not _asked:
+				_asked = net.request_grab(_goal_shard)
+			elif shard_taken:
+				_enter("to_exit")
 		"to_shard":
 			# Без GHOST идём осторожно: ICE успевает заметить и догнать раньше шарда.
 			var speed_scale := 1.0 if scenario == Scenario.GHOST_RUN else 0.25
@@ -213,6 +267,27 @@ func _process(delta: float) -> void:
 		"leave":
 			if not _asked:
 				_asked = net.request_leave()
+
+
+## GRAPH_RUN: следующий шаг в узле. Маршрут не кончился — к порталу в следующий узел; кончился — к первому лежащему шарду
+## (нет шарда — сразу к выходу).
+func _graph_next() -> void:
+	if not route.is_empty():
+		var next: String = route[0]
+		for pt in node_info.get("portals", []):
+			if pt["to"] == next:
+				_goal = Vector3(float(pt["p"][0]), 0.0, float(pt["p"][1]))
+				_enter("g_portal")
+				return
+		_finish("no_portal:" + next)
+		return
+	for sh in node_info.get("shards", []):
+		if sh.get("ready", false):
+			_goal_shard = str(sh["id"])
+			_goal = Vector3(float(sh["p"][0]), 0.0, float(sh["p"][2]))
+			_enter("g_shard")
+			return
+	_enter("to_exit")
 
 
 func _do_chaos() -> void:

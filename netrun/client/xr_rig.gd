@@ -20,6 +20,8 @@ var camera: XRCamera3D
 var left_hand: XRController3D
 var right_hand: XRController3D
 var xr_active := false
+## Идёт цифровой тоннель (W1): ход заблокирован, пока сервер не поставит игрока в новый узел. Поворот головы и рывки — как всегда.
+var movement_locked := false
 var _snap_armed := true
 var _mouse_yaw := 0.0
 var _mouse_pitch := 0.0
@@ -136,7 +138,8 @@ func _process(delta: float) -> void:
 		turn_x = _flat_turn()
 	_apply_turn(turn_x, delta)
 	var yaw := camera.global_rotation.y
-	global_position += RigMath.move_velocity(move, yaw, move_speed) * delta
+	if not movement_locked:
+		global_position += RigMath.move_velocity(move, yaw, move_speed) * delta
 
 
 func _apply_turn(stick_x: float, delta: float) -> void:
