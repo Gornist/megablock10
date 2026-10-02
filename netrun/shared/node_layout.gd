@@ -31,6 +31,11 @@ const ICE := [
 	{"id": "ice_2", "waypoints": [Vector3(6, 0, -12), Vector3(6, 0, -4)]},
 ]
 
+## Black ICE: есть только в узлах тира NIGHTMARE (GrayNode добавляет их по tier документа node).
+const BLACK_ICE := [
+	{"id": "black_1", "waypoints": [Vector3(-6, 0, -12), Vector3(0, 0, -12), Vector3(6, 0, -12)]},
+]
+
 ## Колода по умолчанию (демоны из data/daemons) и названия для деки.
 const DEFAULT_DECK := ["ghost_1", "jitter_1"]
 const DAEMON_NAMES := {"ghost_1": "Призрак", "jitter_1": "Дрожь", "extract_shard_1": "Извлечение"}

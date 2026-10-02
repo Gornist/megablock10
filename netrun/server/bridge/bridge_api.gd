@@ -135,6 +135,12 @@ func run_finish(_session: String, _outcome: String, _node: String, _disconnect: 
 	return err("internal", "не реализовано")
 
 
+## «Ждём мастера» (раздел 6a): критический шаг (kind: flatline, lockdown…) спрашивает, можно ли применять исход самому.
+## Ответ {mode: "auto" | "wait" | "decided", decision: "approve" | "deny" | null, req}. wait — исход не применять, спросить позже.
+func master_gate(_kind: String, _ref: String, _node: String, _summary: String) -> Dictionary:
+	return err("internal", "не реализовано")
+
+
 ## Запись документа с проверкой версии (раздел 4): data заменяется целиком; ver 0 — создать. Ценности менять нельзя.
 func put_doc(_type: String, _id: String, _ver: int, _data: Dictionary) -> Dictionary:
 	return err("internal", "не реализовано")

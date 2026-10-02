@@ -2,18 +2,19 @@ class_name BotClient
 extends Node
 ## Бот: headless-клиент серого узла без экрана и без сцены. Тот же NetClient, что у игрока, свой «ход» по комнате.
 ## Сценарии: GHOST_RUN — применить GHOST, дойти до шарда, взять, дойти до выхода, выйти чисто;
-## EXPOSED_RUN — то же без GHOST (ICE замечает, выбрасывает). LOITER — ходит кругами у входа, не заканчивается (нагрузка, P1). Итог — result и сигнал finished.
+## EXPOSED_RUN — то же без GHOST (ICE замечает, выбрасывает). BLACK_RUN — идёт к патрулю Black ICE и ждёт: result = flatline (P4). LOITER — ходит кругами у входа, не заканчивается (нагрузка, P1). Итог — result и сигнал finished.
 ## С reconnect = true бот переживает перезапуск сервера мира (M5): связь пропала без причины — повторяет подключение с тем же
 ## токеном, начинает путь с точки входа и продолжает сценарий (шард уже взят — идёт к выходу). Из командной строки —
 ## `godot --headless --path netrun -- --bot=ghost_run --host=… --port=… --token=t03:… [--bot-reconnect]` (main.gd, run_bot).
 
 signal finished(result: String)
 
-enum Scenario { GHOST_RUN, EXPOSED_RUN, LOITER }
+enum Scenario { GHOST_RUN, EXPOSED_RUN, LOITER, BLACK_RUN }
 
 const SPEED := 4.0         # м/с (ходьба игрока в плоской сборке — около 2.5)
 const SEND_PERIOD := 0.05
 const ARRIVE := 1.0
+const BLACK_SPOT := Vector3(0, 0, -9)  # у линии патруля Black ICE (NodeLayout.BLACK_ICE), в его конусе
 const GRAB_FROM := 1.5     # на таком расстоянии от шарда просим взять
 const STEP_TIMEOUT := 25.0 # с на один шаг сценария — иначе result = "timeout:<шаг>"
 const RECONNECT_SEC := 1.0 # пауза между попытками подключения после обрыва
@@ -154,6 +155,8 @@ func _process(delta: float) -> void:
 			if net.is_connected_to_world:
 				if scenario == Scenario.LOITER:
 					_enter("loiter")
+				elif scenario == Scenario.BLACK_RUN:
+					_enter("to_black")
 				else:
 					_enter("ghost" if scenario == Scenario.GHOST_RUN else "to_shard")
 		"loiter":
@@ -162,6 +165,11 @@ func _process(delta: float) -> void:
 			if _walk_to(start, delta, 0.05):
 				_loiter_angle += loiter_omega * delta
 				position = loiter_center + Vector3(loiter_radius * sin(_loiter_angle), 0, loiter_radius * (1.0 - cos(_loiter_angle)) - loiter_radius)
+		"to_black":
+			if _walk_to(BLACK_SPOT, delta, 0.5):
+				_enter("lurk")
+		"lurk":
+			pass  # стоим на виду у Black ICE; шаг кончается событием «ended» или таймаутом шага
 		"ghost":
 			# Дека из Моста приходит серверу мира асинхронно (список предметов): первый запрос может прийти раньше деки
 			# (not_in_deck) — повторяем раз в секунду, пока ghost не включился.

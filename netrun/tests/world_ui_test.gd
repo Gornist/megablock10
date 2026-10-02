@@ -35,3 +35,36 @@ func test_scene_applies_server_state() -> void:
 	scene.select_next()
 	scene.use_selected()
 	assert_array(used).is_equal(["jitter_1", "ghost_1"])
+
+
+func test_flatline_screen_fades_without_moving_camera() -> void:
+	var scene: Node3D = auto_free(preload("res://client/rig_test_scene.gd").new())
+	add_child(scene)
+	var cam_before: Vector3 = scene.rig.camera.position
+	scene.show_ended("flatline")
+	assert_bool(scene.flatline_shown).is_true()
+	assert_object(scene.rig.camera.get_node_or_null("FlatlineVeil")).is_not_null()
+	assert_str((scene.rig.camera.get_node("FlatlineText") as Label3D).text).is_equal("ФЛЭТЛАЙН")
+	assert_vector(scene.rig.camera.position).is_equal(cam_before)  # камеру подача не трогает
+	await get_tree().create_timer(1.0).timeout
+	var mat := ((scene.rig.camera.get_node("FlatlineVeil") as MeshInstance3D).mesh as QuadMesh).material as StandardMaterial3D
+	assert_float(mat.albedo_color.a).is_equal(1.0)
+
+
+func test_clean_exit_has_no_flatline_screen() -> void:
+	var scene: Node3D = auto_free(preload("res://client/rig_test_scene.gd").new())
+	add_child(scene)
+	scene.show_ended("clean")
+	assert_bool(scene.flatline_shown).is_false()
+
+
+func test_black_ice_is_painted_differently_and_hunt_state_is_accepted() -> void:
+	var scene: Node3D = auto_free(preload("res://client/rig_test_scene.gd").new())
+	add_child(scene)
+	scene.apply_state({"trace": 0.0, "level": 0, "ghost": false,
+		"ice": [{"id": "black_1", "p": [0.0, 0.0, -9.0], "f": [1.0, 0.0], "s": 3, "b": 1},
+			{"id": "ice_1", "p": [1.0, 0.0, -6.0], "f": [1.0, 0.0], "s": 2, "b": 0}], "cd": []})
+	var black := ((scene.ice_node("black_1").get_node("Body") as MeshInstance3D).mesh as CapsuleMesh).material as StandardMaterial3D
+	var soft := ((scene.ice_node("ice_1").get_node("Body") as MeshInstance3D).mesh as CapsuleMesh).material as StandardMaterial3D
+	assert_bool(black.albedo_color.is_equal_approx(soft.albedo_color)).is_false()
+	assert_float(black.albedo_color.b).is_greater(0.4)

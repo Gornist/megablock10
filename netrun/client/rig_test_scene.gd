@@ -14,12 +14,15 @@ const SLOW_FRAME_SEC := 1.0 / 72.0
 const VR_REACH := 0.4
 const FLAT_REACH := 3.0
 const STATS_PERIOD := 0.5
+const FLATLINE_FADE_SEC := 0.8
 
 var rig: XRRig
 var world_ui: WorldUI
 var pickup: MeshInstance3D
 var held := false
 var slow_frames := 0
+## Показан экран флэтлайна (для тестов).
+var flatline_shown := false
 
 ## Что показывает дека сейчас (с сервера): [{id, name, left}] и выбранный демон (VR: Y — следующий, X — применить).
 var deck_state: Array = []
@@ -137,7 +140,7 @@ func apply_state(state: Dictionary) -> void:
 		if not _ice_nodes.has(id):
 			_ice_nodes[id] = _make_ice(id)
 			_ice_nodes[id].position = Vector3(p[0], p[1], p[2])
-		_paint_ice(_ice_nodes[id], int(ice["s"]))
+		_paint_ice(_ice_nodes[id], int(ice["s"]), int(ice.get("b", 0)) == 1)
 
 
 ## Позиции других нетраннеров узла (WorldMsg.AVATARS): новым — фигура, вышедшим — убрать; двигает их _process по буферу.
@@ -179,6 +182,9 @@ func _make_avatar(id: String, pos: Vector3) -> Node3D:
 
 ## Сервер закончил забег (выход, выброс, флэтлайн): надпись перед глазами. Связь закроется сама.
 func show_ended(reason: String) -> void:
+	if reason == ExitLogic.REASON_FLATLINE:
+		_show_flatline()
+		return
 	var text := {"clean": "ВЫХОД", "ejected": "ICE ВЫБРОСИЛ ВАС", "flatline": "ФЛЭТЛАЙН"}.get(reason, "ВЫХОД: " + reason) as String
 	var l := Label3D.new()
 	l.text = text
@@ -188,6 +194,39 @@ func show_ended(reason: String) -> void:
 	l.modulate = Color(1.0, 0.3, 0.3) if reason != "clean" else Color(0.3, 1.0, 0.5)
 	l.position = Vector3(0, 0, -0.9)
 	rig.camera.add_child(l)
+
+
+## Флэтлайн: экран плавно гаснет (чёрный экран на голове, камера не двигается и не трясётся), поверх — «ФЛЭТЛАЙН».
+## Ничего не мигает и не шатается: в VR резкая подача рядом с головой хуже, чем тишина.
+func _show_flatline() -> void:
+	var veil := MeshInstance3D.new()
+	veil.name = "FlatlineVeil"
+	var quad := QuadMesh.new()
+	quad.size = Vector2(4.0, 4.0)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_color = Color(0, 0, 0, 0)
+	mat.no_depth_test = true
+	mat.render_priority = 100
+	quad.material = mat
+	veil.mesh = quad
+	veil.position = Vector3(0, 0, -0.25)
+	rig.camera.add_child(veil)
+	var l := Label3D.new()
+	l.name = "FlatlineText"
+	l.text = "ФЛЭТЛАЙН"
+	l.font_size = 64
+	l.pixel_size = 0.0008
+	l.no_depth_test = true
+	l.render_priority = 101
+	l.modulate = Color(1.0, 0.15, 0.2, 0.0)
+	l.position = Vector3(0, 0, -0.9)
+	rig.camera.add_child(l)
+	flatline_shown = true
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(mat, "albedo_color:a", 1.0, FLATLINE_FADE_SEC)
+	tw.tween_property(l, "modulate:a", 1.0, FLATLINE_FADE_SEC).set_delay(FLATLINE_FADE_SEC * 0.5)
 
 
 func ice_node(id: String) -> Node3D:
@@ -249,9 +288,12 @@ func _make_ice(id: String) -> Node3D:
 	return n
 
 
-func _paint_ice(n: Node3D, state: int) -> void:
+func _paint_ice(n: Node3D, state: int, black: bool = false) -> void:
 	var mat := ((n.get_node("Body") as MeshInstance3D).mesh as CapsuleMesh).material as StandardMaterial3D
-	mat.albedo_color = [Color(0.5, 0.15, 0.2), Color(1.0, 0.8, 0.1), Color(1.0, 0.1, 0.1)][clampi(state, 0, 2)]
+	if black:  # Black ICE — темно-фиолетовый, на охоте — яркая маджента
+		mat.albedo_color = [Color(0.2, 0.0, 0.3), Color(0.45, 0.0, 0.6), Color(0.7, 0.0, 0.9), Color(1.0, 0.0, 0.55)][clampi(state, 0, 3)]
+	else:
+		mat.albedo_color = [Color(0.5, 0.15, 0.2), Color(1.0, 0.8, 0.1), Color(1.0, 0.1, 0.1)][clampi(state, 0, 2)]
 	var audio := n.get_node_or_null("Audio") as IceAudio
 	if audio != null and audio.state != state:
 		audio.set_state(state)

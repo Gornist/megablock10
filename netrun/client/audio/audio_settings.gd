@@ -17,10 +17,16 @@ const DEFAULTS := {
 		"far_m": 14.0,  # дальше — тишина (чуть больше дальности взгляда ICE, 12 м)
 		"max_db": -8.0,
 		"min_db": -50.0,
-		# индекс = IceBrain.State: PATROL, SUSPICIOUS, SEARCH
-		"base_hz": [140.0, 220.0, 330.0],
-		"warble_hz": [0.5, 3.0, 7.0],  # частота подрагивания тона
-		"state_gain_db": [0.0, 3.0, 6.0],  # прибавка к громкости по состоянию
+		# индекс = IceBrain.State: PATROL, SUSPICIOUS, SEARCH, HUNT (охота Black ICE)
+		"base_hz": [140.0, 220.0, 330.0, 90.0],
+		"warble_hz": [0.5, 3.0, 7.0, 11.0],  # частота подрагивания тона
+		"state_gain_db": [0.0, 3.0, 6.0, 9.0],  # прибавка к громкости по состоянию
+	},
+	"flatline": {
+		"duration_s": 1.6,  # звук флэтлайна: тон падает от start_hz к end_hz и гаснет
+		"start_hz": 520.0,
+		"end_hz": 40.0,
+		"volume_db": -6.0,
 	},
 }
 

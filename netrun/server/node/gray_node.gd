@@ -9,7 +9,13 @@ extends Node
 ## session/deck/node/item, берёт снимок и продолжает: активные сессии ждут возврата игрока, шард на месте или у держателя,
 ## локдаун узла запомнен. Своё состояние узел пишет в node.data.world, связь игрока — в session.data.world.
 
-## Что произошло в узле: {kind: ice_eject|flatline|exit|shard_taken|daemon|level, session, ...}. Для журнала и тестов.
+## Black ICE (P4): живёт только в узлах тира NIGHTMARE. Поймал — флэтлайн: клиенту «ended flatline», а в Мосте перед
+## run.finish(black_ice) — «ждём мастера» (master.gate flatline, если включено await_flatline): approve → флэтлайн как есть
+## (мёртвая дека остаётся в узле, защищённый демон — на телефон, карточка «ФЛЭТЛАЙН»), deny («пощадить до применения») →
+## исход как при выбросе Soft ICE. Персонажа код не убивает: это только карточка мастеру. Охота: за нетраннером с trace ≥ TRACE
+## Black ICE идёт по позиции; пока она идёт, NetServer считает выход аварийным «под охотой» — дека сгорает.
+
+## Что произошло в узле: {kind: ice_eject|flatline|hunt|waiting_master|exit|shard_taken|daemon|level, session, ...}. Для журнала и тестов.
 signal event(ev: Dictionary)
 
 const STATE_INTERVAL := 0.1
@@ -23,6 +29,11 @@ const FINISH_ATTEMPTS := 60
 const FINISH_RETRY_SEC := 2.0
 ## Типы документов, на которые узел подписывается в Мосте.
 const SYNC_TYPES: Array = ["session", "deck", "node", "item"]
+## Тир узла, где живёт Black ICE (документ node, поле tier).
+const TIER_BLACK := "NIGHTMARE"
+## Как часто спрашиваем Мост «решил ли мастер», пока он не решил (срок и действие по таймауту ведёт сам Мост).
+const GATE_POLL_SEC := 1.0
+const GATE_ATTEMPTS := 60
 
 var net: NetServer
 ## Узел, которому служит этот GrayNode: снимки и аватары получают только сессии, чей узел (NetServer.node_of) — он.
@@ -32,6 +43,8 @@ var daemons := DaemonService.new()
 ## Настройки ICE и trace (подбираются на этапе 2); пусто — значения по умолчанию.
 var ice_settings: Dictionary = {}
 var trace_settings: Dictionary = {}
+## Поверх ice_settings — только для Black ICE (hunt_speed, hunt_level, дальность взгляда…).
+var black_ice_settings: Dictionary = {}
 
 var _now := 0.0
 var _state_acc := 0.0
@@ -44,6 +57,8 @@ var _sessions: Dictionary = {}       # сессия -> DaemonSession (в нём 
 var _shard_items: Dictionary = {}    # id объекта -> id предмета в Мосте
 var _takes_inflight: Dictionary = {} # сессия -> число незавершённых op.take_from_node
 var _ready_done := false
+var _hunted: Dictionary = {}         # сессия -> true, пока за ней идёт охота Black ICE
+var _flat_disconnect: Dictionary = {} # сессия -> true: Black ICE догнал в окне возврата после обрыва («обрыв до флэтлайна»)
 ## Снимок Моста принят (после рестарта — активные сессии и шард восстановлены).
 var synced := false
 ## Сессии, взятые из снимка Моста: ждали возврата игрока.
@@ -103,7 +118,31 @@ func _live_sessions() -> Array:
 	return out
 
 
-func _add_ice(id: String, waypoints: Array) -> void:
+## Есть ли в узле Black ICE (тир NIGHTMARE или добавлен тестом).
+func has_black_ice() -> bool:
+	for ice in _ices:
+		if ice.brain != null and ice.brain.is_black():
+			return true
+	return false
+
+
+## Поселить Black ICE узла (NodeLayout.BLACK_ICE); повторный вызов ничего не добавляет.
+func enable_black_ice() -> void:
+	if has_black_ice():
+		return
+	for d in NodeLayout.BLACK_ICE:
+		_add_ice(d["id"], d["waypoints"], true)
+
+
+## Для тестов: убрать Black ICE (узел без него).
+func queue_free_black_for_test() -> void:
+	for ice in _ices.duplicate():
+		if ice.brain != null and ice.brain.is_black():
+			_ices.erase(ice)
+			ice.queue_free()
+
+
+func _add_ice(id: String, waypoints: Array, black: bool = false) -> void:
 	var wps: Array[Vector3] = []
 	for w in waypoints:
 		wps.append(w)
@@ -111,7 +150,11 @@ func _add_ice(id: String, waypoints: Array) -> void:
 	ice.name = id
 	ice.position = wps[0]
 	ice.time_source = now
-	ice.setup(ice_settings, wps)
+	var settings := ice_settings.duplicate(true)
+	if black:
+		settings.merge(black_ice_settings, true)
+		settings["black"] = true
+	ice.setup(settings, wps)
 	ice.ejected.connect(_on_ice_ejected)
 	add_child(ice)
 	_ices.append(ice)
@@ -149,6 +192,8 @@ func recover(docs: Array) -> void:
 			BridgeApi.T_NODE:
 				if d["id"] == node_id:
 					lockdown_until = int(data.get("lockdown_until", 0))
+					if str(data.get("tier", "")) == TIER_BLACK:
+						enable_black_ice()
 			BridgeApi.T_SESSION:
 				if data.get("state") == "active" and str(data.get("node", node_id)) == node_id:
 					active.append(str(d["id"]))
@@ -277,6 +322,7 @@ func _step(delta: float) -> void:
 		ice.netrunner_count = meters.size()
 		ice.targets = targets
 		ice.meters = meters
+	_update_hunts()
 	_state_acc += delta
 	if _state_acc >= STATE_INTERVAL - TICK_EPS:
 		_state_acc = maxf(_state_acc - STATE_INTERVAL, 0.0)
@@ -286,6 +332,19 @@ func _step(delta: float) -> void:
 	if _avatar_acc >= AVATAR_INTERVAL - TICK_EPS:
 		_avatar_acc = maxf(_avatar_acc - AVATAR_INTERVAL, 0.0)
 		_broadcast_avatars()
+
+
+## Охота Black ICE → флаг «под охотой» у NetServer (аварийный выход сожжёт деку). Каждый тик: выход не ждёт 0,1 с.
+func _update_hunts() -> void:
+	for session in _live_sessions():
+		var hunted := false
+		for ice in _ices:
+			if ice.brain != null and ice.brain.is_black() and ice.brain.is_hunting(session):
+				hunted = true
+		if hunted != bool(_hunted.get(session, false)):
+			_hunted[session] = hunted
+			net.set_under_hunt(session, hunted)
+			event.emit({"kind": "hunt", "session": session, "on": hunted})
 
 
 ## Спад trace, пока никто из ICE не следит за игроком.
@@ -307,6 +366,7 @@ func _broadcast_state() -> void:
 			"p": [ice.position.x, ice.position.y, ice.position.z],
 			"f": [b.facing.x, b.facing.z],
 			"s": b.state(),
+			"b": 1 if b.is_black() else 0,
 		})
 	for session in _live_sessions():
 		var ds: DaemonSession = _sessions[session]
@@ -363,6 +423,7 @@ func _on_session_lost(session: String) -> void:
 
 func _on_avatar_removed(session: String) -> void:
 	_sessions.erase(session)
+	_hunted.erase(session)
 	_write_node_state()
 	for ice in _ices:
 		if ice.brain != null:
@@ -371,13 +432,19 @@ func _on_avatar_removed(session: String) -> void:
 
 func _on_level_changed(old_level: int, new_level: int, value: float, session: String) -> void:
 	event.emit({"kind": "level", "session": session, "from": old_level, "to": new_level, "value": value})
-	if new_level == TraceMeter.Level.FLATLINE:
-		_end(session, ExitLogic.REASON_FLATLINE, "flatline")
+	# trace 100: ICE хватает. С Black ICE в узле это делает охота (она идёт с уровня TRACE); без него Soft ICE выбрасывает.
+	if new_level == TraceMeter.Level.FLATLINE and not has_black_ice():
+		_end(session, ExitLogic.REASON_EJECTED, "ice_eject")
 
 
 func _on_ice_ejected(session: String, reason: String) -> void:
-	if reason == "flatline":
+	if reason == "black_caught":
+		# Поймали в окне возврата после обрыва — в карточке мастеру «обрыв до флэтлайна».
+		if net.peer_of(session) == -1:
+			_flat_disconnect[session] = true
 		_end(session, ExitLogic.REASON_FLATLINE, "flatline")
+	elif reason == "flatline" and has_black_ice():
+		return  # Soft ICE при trace 100 в узле с Black ICE не выбрасывает: добивает охота
 	else:
 		_end(session, ExitLogic.REASON_EJECTED, "ice_eject")
 
@@ -452,7 +519,7 @@ static func outcome_plan(ev: Dictionary) -> Dictionary:
 		ExitLogic.REASON_EJECTED:
 			return {"outcome": "soft_ice", "disconnect": false, "loot": "node", "daemon": "phone"}
 		ExitLogic.REASON_FLATLINE:
-			return {"outcome": "black_ice", "disconnect": false, "loot": "node", "daemon": "node"}
+			return {"outcome": "black_ice", "disconnect": bool(ev.get("disconnect", false)), "loot": "node", "daemon": "node"}
 	var daemon := "burned" if ev.get("deck_burned", false) else "phone"
 	return {"outcome": "emergency", "disconnect": reason == ExitLogic.REASON_CONNECTION_LOST, "loot": "node", "daemon": daemon}
 
@@ -462,12 +529,62 @@ static func is_transient(resp: Dictionary) -> bool:
 	return BridgeApi.err_code(resp) in ["unavailable", "timeout", "disconnected", "internal"]
 
 
+## «Ждём мастера» перед флэтлайном. Возвращает "approve" (применять) или "deny" (пощадить). Мост сам ведёт срок и решение по
+## таймауту; нам остаётся спрашивать раз в GATE_POLL_SEC, пока он отвечает wait. Мост недоступен/отказ — approve: флэтлайн
+## всё равно только карточка мастеру, а не смерть, и вечно висеть нельзя.
+func _await_master_flatline(session: String) -> String:
+	var announced := false
+	var summary := "ФЛЭТЛАЙН: %s" % str(_callsign_of(session))
+	for attempt in GATE_ATTEMPTS * 60:
+		@warning_ignore("redundant_await")
+		var r: Dictionary = await bridge.master_gate("flatline", session, node_id, summary)
+		if not r.get("ok", false):
+			if not is_transient(r) or attempt >= GATE_ATTEMPTS or not is_inside_tree():
+				push_warning("[gray-node] master.gate flatline %s: %s" % [session, BridgeApi.err_code(r)])
+				return "approve"
+		else:
+			var mode := str(r.get("mode", "auto"))
+			if mode != "wait":
+				var decision := str(r.get("decision", "approve")) if r.get("decision") != null else "approve"
+				print("[gray-node] flatline ", session, ": ", mode, " ", decision)
+				event.emit({"kind": "flatline_gate", "session": session, "mode": mode, "decision": decision})
+				return decision
+			if not announced:
+				announced = true
+				print("[gray-node] flatline ", session, ": ждём мастера")
+				event.emit({"kind": "waiting_master", "session": session})
+		if not is_inside_tree():
+			return "approve"
+		await get_tree().create_timer(GATE_POLL_SEC).timeout
+	return "approve"
+
+
+func _callsign_of(session: String) -> String:
+	if bridge == null:
+		return session
+	var d: Variant = bridge.get("docs")
+	if d is Dictionary:
+		var s: Dictionary = ((d as Dictionary).get(BridgeApi.T_SESSION, {}) as Dictionary).get(session, {})
+		var cs := str((s.get("data", {}) as Dictionary).get("callsign", ""))
+		if cs != "":
+			return cs
+	return session
+
+
 func _finish_in_bridge(ev: Dictionary) -> void:
 	if bridge == null:
 		return
 	var session: String = ev["session"]
 	while int(_takes_inflight.get(session, 0)) > 0:
 		await get_tree().process_frame
+	if ev["reason"] == ExitLogic.REASON_FLATLINE:
+		ev = ev.duplicate()
+		ev["disconnect"] = bool(_flat_disconnect.get(session, false))
+		_flat_disconnect.erase(session)
+		var verdict := await _await_master_flatline(session)
+		if verdict == "deny":
+			ev["reason"] = ExitLogic.REASON_EJECTED  # мастер пощадил до применения: как Soft ICE, без блокировки
+			ev["disconnect"] = false
 	var plan := outcome_plan(ev)
 	var listed: Dictionary = {}
 	for attempt in FINISH_ATTEMPTS:

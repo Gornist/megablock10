@@ -50,3 +50,23 @@ func test_settings_override_merges() -> void:
 	assert_float(st["ice"]["far_m"]).is_equal(30.0)
 	assert_float(st["ice"]["near_m"]).is_equal(AudioSettings.DEFAULTS["ice"]["near_m"])
 	assert_bool(AudioParams.ice_params(S.PATROL, 20.0, st)["audible"]).is_true()
+
+
+func test_flatline_sound_falls_then_goes_silent() -> void:
+	var start := AudioParams.flatline_params(0.0)
+	var mid := AudioParams.flatline_params(0.8)
+	var late := AudioParams.flatline_params(1.5)
+	assert_bool(start["active"]).is_true()
+	assert_float(mid["hz"]).is_less(start["hz"])
+	assert_float(late["hz"]).is_less(mid["hz"])
+	assert_float(late["volume_db"]).is_less(start["volume_db"])
+	var done := AudioParams.flatline_params(AudioSettings.DEFAULTS["flatline"]["duration_s"])
+	assert_bool(done["active"]).is_false()
+	assert_bool(AudioParams.flatline_params(-1.0)["active"]).is_false()
+
+
+func test_ice_hunt_state_is_loudest_and_lowest() -> void:
+	var s := AudioParams.ice_params(IceBrain.State.SEARCH, 5.0)
+	var h := AudioParams.ice_params(IceBrain.State.HUNT, 5.0)
+	assert_float(h["volume_db"]).is_greater(s["volume_db"])
+	assert_float(h["base_hz"]).is_less(s["base_hz"])

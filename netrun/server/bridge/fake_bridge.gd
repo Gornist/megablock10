@@ -14,6 +14,9 @@ var _load_error := ""
 ## Последнее состояние по терминалу, как оно пришло в terminal.beat (-1 — поле не передано), и число вызовов (P6).
 var last_beat: Dictionary = {}
 var beat_count: Dictionary = {}
+## «Ждём мастера»: ключ "<kind>:<ref>" -> "wait" | "approve" | "deny"; число вызовов master_gate по тому же ключу.
+var gates: Dictionary = {}
+var gate_calls: Dictionary = {}
 
 
 func _init(fixture_path: String = DEFAULT_FIXTURE) -> void:
@@ -201,6 +204,25 @@ func run_finish(session: String, outcome: String, node: String, disconnect: bool
 		sd["outcome"] = outcome
 		sd["disconnect"] = disconnect
 		return ok({"session": _put(T_SESSION, session, sd).duplicate(true), "transfers": transfers, "eddies_transfer": null}))
+
+
+## Как master.gate Моста, но без таймаутов: await_<kind> в settings/global (1 — ждём), решение — decide_gate().
+func master_gate(kind: String, ref: String, _node: String, _summary: String) -> Dictionary:
+	var key := "%s:%s" % [kind, ref]
+	gate_calls[key] = int(gate_calls.get(key, 0)) + 1
+	if int(doc("settings", "global").get("data", {}).get("await_" + kind, 0)) != 1:
+		return ok({"mode": "auto", "decision": "approve", "req": null})
+	if not gates.has(key):
+		gates[key] = "wait"
+	var st: String = gates[key]
+	if st == "wait":
+		return ok({"mode": "wait", "decision": null, "req": {"id": key}})
+	return ok({"mode": "decided", "decision": st, "req": {"id": key}})
+
+
+## Мастер решил (master.decide): approve | deny. Запроса ещё нет — решение будет ждать его.
+func decide_gate(kind: String, ref: String, decision: String) -> void:
+	gates["%s:%s" % [kind, ref]] = decision
 
 
 ## Как put Моста: ver 0 — создать, иначе версия должна совпасть; eddies узла и всё, кроме data.world сессии, не меняются.

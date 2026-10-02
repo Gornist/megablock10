@@ -73,6 +73,10 @@ func _on_event(ev: Dictionary) -> void:
 	log_file.log("node.event", {"kind": ev.get("kind", ""), "reason": ev.get("reason", ""), "daemon": ev.get("daemon", ""), "ok": ev.get("ok", "")})
 	if ev.get("kind") == WorldMsg.EV_ENDED:
 		scene.show_ended(str(ev.get("reason", "")))
+		if ev.get("reason") == ExitLogic.REASON_FLATLINE:
+			if trace_audio != null:
+				trace_audio.set_level(TraceMeter.Level.FLATLINE)  # фон уже пропадает; добавляем падающий тон
+			add_child(FlatlineAudio.new())
 
 
 func _process(delta: float) -> void:

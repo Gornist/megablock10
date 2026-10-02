@@ -1,13 +1,16 @@
 class_name IceBrain
 extends RefCounted
 ## Soft ICE: патруль → подозрение → поиск → выброс (docs/netrun.md, «Обнаружение и сигнал СБ»).
+## Black ICE (настройка black): то же зрение, но поймал — не выброс, а флэтлайн (причина black_caught), и есть охота:
+## пока trace нетраннера не ниже уровня TRACE, ICE идёт на него по позиции (зрение не нужно), медленнее бега игрока.
 ## Чистая логика: без физики и сцены. Время подаётся снаружи (секунды), шаг — IceNode, 10 раз в секунду.
 ## Видимость — функция позиций: расстояние и конус перед ICE (препятствия не учитываем).
 ## Добычу не трогаем: «выброшен» — только событие, предметы остаются в узле (решает вызывающий).
 
-enum State { PATROL, SUSPICIOUS, SEARCH }
+enum State { PATROL, SUSPICIOUS, SEARCH, HUNT }
 
-## ICE выбросил нетраннера: сессия и причина ("caught" — поймал вблизи, "flatline" — trace 100).
+## ICE поймал нетраннера: сессия и причина ("caught" — Soft поймал вблизи, "flatline" — Soft при trace 100,
+## "black_caught" — Black ICE догнал: флэтлайн, а не выброс).
 signal ejected(session: String, reason: String)
 signal state_changed(old_state: int, new_state: int)
 
@@ -22,6 +25,9 @@ const DEFAULT_SETTINGS := {
 	"chase_speed": 2.5,
 	"waypoint_reach": 0.5,
 	"trace_action": "seen_by_ice",  # действие trace, пока цель на виду (вес — в настройках TraceMeter)
+	"black": false,  # Black ICE: поимка = флэтлайн, есть охота
+	"hunt_level": TraceMeter.Level.TRACE,  # с какого уровня trace Black ICE охотится
+	"hunt_speed": 2.0,  # м/с: медленнее бега игрока (≈2.5 в плоской сборке) — от охоты можно уйти к выходу
 }
 
 var position := Vector3.ZERO
@@ -58,6 +64,15 @@ func target() -> String:
 	return _target
 
 
+func is_black() -> bool:
+	return bool(_s["black"])
+
+
+## Идёт охота за этим нетраннером (только Black ICE).
+func is_hunting(session: String) -> bool:
+	return _state == State.HUNT and _target == session
+
+
 func last_seen() -> Vector3:
 	return _last_seen
 
@@ -84,6 +99,15 @@ func step(now: float, targets: Dictionary, meters: Dictionary = {}) -> void:
 	_has_time = true
 	_last_time = now
 
+	if is_black():
+		var hunted := _hunted_session(targets, meters)
+		if hunted != "":
+			_hunt(hunted, targets[hunted], now, dt)
+			return
+		if _state == State.HUNT:
+			# Trace упал ниже порога: идём к последнему месту поиска, как после потери из виду.
+			_search_until = now + float(_s["search_duration"])
+			_set_state(State.SEARCH)
 	var seen := _closest_visible(targets)
 	if seen != "":
 		_on_seen(seen, targets[seen], now, dt, meters)
@@ -114,6 +138,32 @@ func _closest_visible(targets: Dictionary) -> String:
 			best_d = d
 			best = session
 	return best
+
+
+## Ближайший нетраннер, чей trace дошёл до порога охоты. Скрытого GHOST'ом в targets нет — охота его не видит.
+func _hunted_session(targets: Dictionary, meters: Dictionary) -> String:
+	var best := ""
+	var best_d := INF
+	for session in targets:
+		var meter: TraceMeter = meters.get(session)
+		if meter == null or meter.level() < int(_s["hunt_level"]):
+			continue
+		var d := position.distance_to(targets[session])
+		if d < best_d:
+			best_d = d
+			best = session
+	return best
+
+
+func _hunt(session: String, pos: Vector3, _now: float, dt: float) -> void:
+	_target = session
+	_last_seen = pos
+	_awareness = 1.0
+	_set_state(State.HUNT)
+	if position.distance_to(pos) <= float(_s["catch_range"]):
+		_eject(session, "black_caught")
+		return
+	_move(dt)
 
 
 func _on_seen(session: String, pos: Vector3, now: float, dt: float, meters: Dictionary) -> void:
@@ -155,7 +205,7 @@ func _check_eject(_now: float, session: String, meters: Dictionary) -> bool:
 	var flat := meter != null and meter.level() == TraceMeter.Level.FLATLINE
 	var close := position.distance_to(_last_seen) <= float(_s["catch_range"])
 	if _state == State.SEARCH and close:
-		_eject(session, "caught")
+		_eject(session, "black_caught" if is_black() else "caught")
 		return true
 	if flat:
 		_eject(session, "flatline")
@@ -199,6 +249,9 @@ func _move(dt: float) -> void:
 		State.SEARCH:
 			goal = _last_seen
 			speed = _s["chase_speed"]
+		State.HUNT:
+			goal = _last_seen
+			speed = _s["hunt_speed"]
 		_:
 			# Подозрение: стоит и смотрит на цель.
 			goal = _last_seen
