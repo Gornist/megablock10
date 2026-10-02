@@ -57,6 +57,10 @@ for s in $A $B; do
   # анимации выключены — заметно ускоряет тапы; лишние системные окна убираем
   for k in window_animation_scale transition_animation_scale animator_duration_scale; do adb_ $s shell settings put global $k 0; done
   adb_ $s shell pm disable-user --user 0 com.google.android.apps.messaging >/dev/null 2>&1
+  # Проверка «есть ли интернет» у виртуального Wi-Fi выключена (E1): без внешней сети (devbox, офлайн-стенд) Android после неудачной проверки
+  # навсегда отключает сохранённую сеть AndroidWifi (NETWORK_SELECTION_DISABLED_NO_INTERNET_PERMANENT) — wlan0 остаётся без связи (nets=[cell]),
+  # приложение не «привязано к Wi-Fi», сценарии wifi-bind/sec-alert/slot-race краснеют. Сеть игры (docs/network-spec.md) тоже без интернета.
+  adb_ $s shell settings put global captive_portal_mode 0 >/dev/null 2>&1
   adb_ $s shell svc power stayon true >/dev/null 2>&1   # экран не засыпает во время длинных прогонов и записи
   adb_ $s shell settings put system screen_off_timeout 2147483647 >/dev/null 2>&1
 done
