@@ -84,7 +84,8 @@ PY
 if [ ! -x "$ROOT/netrun-bridge/build/install/netrun-bridge/bin/netrun-bridge" ] || [ -n "$(find "$ROOT/netrun-bridge/src" "$ROOT/kit/src" -newer "$ROOT/netrun-bridge/build/install/netrun-bridge/lib" -type f 2>/dev/null | head -1)" ]; then
   log "сборка Моста…"; (cd "$ROOT" && timeout 600 ./gradlew -q :netrun-bridge:installDist) > "$NR_DIR/gradle.log" 2>&1 || { tail -20 "$NR_DIR/gradle.log"; die "не собрался Мост"; }
 fi
-[ -d "$ROOT/netrun/.godot" ] || { log "импорт проекта Godot…"; timeout 240 godot --headless --path "$ROOT/netrun" --import > "$NR_DIR/import.log" 2>&1; }
+# Импорт каждый раз: старый кеш .godot не знает новых class_name, и main.gd не компилируется (журнал devbox: «FlatlineAudio not declared»).
+log "импорт проекта Godot…"; timeout 240 godot --headless --path "$ROOT/netrun" --import > "$NR_DIR/import.log" 2>&1
 # ── 4. Мост ↔ эмулятор: адрес телефона Мост по строкам не узнает (эмулятор за NAT виден ему как 127.0.0.1, а такой адрес kit
 #      пропускает), поэтому порт приложения пробрасывается на хост под тем же номером (как link.sh для пиров), а Мост получает
 #      статическую запись `--phone 127.0.0.1:порт=ключ Alice` ──
