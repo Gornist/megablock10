@@ -55,6 +55,7 @@ class NetrunEntryTest {
         val r = rig()
 
         r.entry.enter(me.identity, rack, listOf(ghost, miner), protectedId = "d2")
+        testScheduler.runCurrent()
 
         assertEquals("адрес Моста — статический пир из QR", listOf(PeerInfo(world.key, "Мост", "", "10.10.0.10", 7411)), r.peers)
         val cards = r.messenger.sent.map { Mb10QrCodec.decode(it.body) as Mb10Qr.ItemTransfer }
@@ -145,6 +146,7 @@ class NetrunEntryTest {
         r.messenger.outcome = SendOutcome.UNKNOWN
 
         r.entry.enter(me.identity, rack, listOf(ghost), "d1")
+        testScheduler.runCurrent()
 
         assertEquals(NetrunEntryState.Waiting(rack), r.entry.state.value)
         assertTrue("могло дойти — демон не возвращается", "d1" !in r.ledger.owned)
