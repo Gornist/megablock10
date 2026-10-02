@@ -78,6 +78,22 @@ godot --path netrun -- --flat --host=127.0.0.1 --port=7777 --token=t03:<токе
 Повтор операций после обрыва безопасен: `rid` детерминированные (`take:<сессия>:<предмет>`, `leave:…`, `finish:<сессия>`).
 Тесты: `tests/fake_bridge_test.gd`, `tests/bridge_client_test.gd`; со стороны Моста — `FakeWorldRunTest` (фейковый сервер мира).
 
+### Сервер мира одноразовый (M5)
+
+Всё, что должно пережить рестарт, лежит в Мосте. `GrayNode` при старте ждёт связи, подписывается на `session/deck/node/item` и по
+снимку: ставит активные сессии своего узла в окно возврата (`NetServer.expect_session`, `--grace=` секунд; вернулся клиент с тем же
+токеном — тот же забег, нет — `run.finish` emergency/`disconnect`), возвращает шард держателю (`restore_holder`) или на постамент,
+запоминает `lockdown_until`. Игрок возвращается в точку входа; перезарядки демонов и trace начинаются заново (в Мосте их нет).
+Узел пишет `node.data.world = {up, players}`, связь игрока — `session.data.world` (`put_doc` с повтором при `version_conflict`).
+`take` и `run.finish` при недоступном Мосте повторяются с тем же детерминированным `rid`. Дека берётся из `payload` предметов
+`deck:<сессия>`, если там есть id демона (формат `ItemPayload` серверу мира пока неизвестен), иначе дека по умолчанию.
+Тест без сети — `tests/restart_test.gd` (FakeBridge переживает «убитый» сервер).
+
+Живой прогон с настоящим Мостом — `netrun/tools/live_run.sh` (на devbox, Gradle не на Mac): Мост (`--test --seed`, активная сессия,
+дека и шард кладутся файлом), сервер мира, бот `--bot=ghost_run --bot-reconnect --bot-hold=10`; после взятия шарда сервер убивается
+`kill -9` и поднимается снова, бот возвращается и выходит чисто, `tools/check_bridge.gd` проверяет документы (сессия closed/clean,
+шард и дека у игрока в `outbox`, тревог аудитора нет). Итог — строка `LIVE_RUN PASS|FAIL: …`.
+
 Экспорт (нужны шаблоны 4.7.2): `godot --headless --path netrun --export-debug "Client Pico 4 (Android)"`,
 `--export-release "Server (dedicated)"`, `--export-debug "Flat debug (Linux)"`.
 
