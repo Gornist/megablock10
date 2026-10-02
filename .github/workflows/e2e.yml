@@ -10,6 +10,8 @@ on:
       - "app/**"
       - "kit/**"
       - "rules/**"
+      - "netrun/**"
+      - "netrun-bridge/**"
       - "scripts/e2e/**"
       - ".github/workflows/e2e.yml"
   schedule:
@@ -37,6 +39,10 @@ jobs:
       ANDROID_AVD_HOME: /home/runner/.android/avd   # одно место и для avdmanager (создание), и для emulator (запуск) — иначе «Unknown AVD name»
       EMU_EXTRA_ARGS: "-memory 2048 -cores 2 -no-metrics"
       E2E_DIR: /tmp/mb10-e2e
+      # Сквозной сценарий «Сети» (netrun-run.sh) обязателен: без godot он красный, а не «пропущен» (решение владельца).
+      E2E_NETRUN_REQUIRED: "1"
+      GODOT_VERSION: 4.7.2
+      GODOT_CHANNEL: stable
       # Строкой, не inputs.static_peers: у ночного и PR-запуска входов нет (null), им — как по умолчанию, со статическими пирами.
       # e2e проверяет логику приложения, а не mDNS эмуляторов (решение владельца 25.09); NSD — JVM-тесты и телефоны.
       E2E_STATIC_PEERS: ${{ github.event.inputs.static_peers == 'false' && '0' || '1' }}
@@ -53,6 +59,29 @@ jobs:
           node-version: "22"
 
       - uses: gradle/actions/setup-gradle@v6
+
+      # Версия и способ установки — как в netrun.yml; бинарник кешируется, чтобы не качать ≈60 МБ при каждом прогоне.
+      - name: Godot (кеш)
+        id: godot-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/godot-bin
+          key: godot-bin-${{ env.GODOT_VERSION }}-${{ env.GODOT_CHANNEL }}
+
+      - name: Godot (скачивание)
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-${GODOT_CHANNEL}"
+          curl -fsSL -o godot.zip "$base/Godot_v${GODOT_VERSION}-${GODOT_CHANNEL}_linux.x86_64.zip"
+          unzip -q godot.zip
+          mkdir -p ~/godot-bin
+          install -m 755 "Godot_v${GODOT_VERSION}-${GODOT_CHANNEL}_linux.x86_64" ~/godot-bin/godot
+
+      - name: Godot (PATH) и импорт проекта «Сети»
+        run: |
+          echo "$HOME/godot-bin" >> "$GITHUB_PATH"
+          "$HOME/godot-bin/godot" --version
+          "$HOME/godot-bin/godot" --headless --path netrun --import
 
       - name: KVM для эмуляторов
         run: |
