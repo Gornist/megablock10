@@ -23,6 +23,14 @@ func test_ghost_sets_flag_for_duration() -> void:
 	assert_bool(s.is_ghost(5.0)).is_true()  # до применения флаг не «отматывается», но и не требуется
 
 
+func test_active_effects_lists_ghost_only_while_active() -> void:
+	var s := _session()
+	assert_array(s.active_effects(5.0)).is_empty()
+	_svc.apply(s, "ghost_1", {}, 10.0)
+	assert_array(s.active_effects(15.0)).is_equal(["GHOST"])
+	assert_array(s.active_effects(30.0)).is_empty()
+
+
 func test_jitter_freezes_trace() -> void:
 	var s := _session()
 	s.trace.add_action("noise", 1.0)  # 3

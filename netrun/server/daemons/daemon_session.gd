@@ -20,6 +20,15 @@ func is_ghost(now: float) -> bool:
 	return now < ghost_until
 
 
+## Имена активных эффектов (как `DaemonEffect` в :rules) для Моста: правило сигнала СБ читает их из session.world.effects.
+## Сейчас у сервера мира есть только GHOST; TIMESKEW и BLACKOUT добавятся вместе со своими обработчиками.
+func active_effects(now: float) -> Array:
+	var out: Array = []
+	if is_ghost(now):
+		out.append("GHOST")
+	return out
+
+
 func cooldown_left(daemon_id: String, now: float) -> float:
 	return maxf(0.0, float(_ready_at.get(daemon_id, -INF)) - now)
 
