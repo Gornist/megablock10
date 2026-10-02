@@ -41,7 +41,7 @@ WORLD_KILL_S=$(awk -v m="$WORLD_KILL_MIN" -v d="$DUR" 'BEGIN{w=m*60; if (d/3 < w
 BOT_KILL_S=$(awk -v m="$BOT_KILL_MIN" -v d="$DUR" 'BEGIN{w=m*60; if (d/4 < w) w=d/4; printf "%d", w}')
 AUDIT_S=300
 [ "$DUR" -lt 900 ] && AUDIT_S=$((DUR / 3 > 60 ? DUR / 3 : 60))
-POOL=$((DUR / 18 + 20))  # забегов на бота в запасе (по 2 предмета на забег; реально бот делает один забег за 20–40 с)
+POOL=$((DUR / 12 + 20))  # забегов на бота в запасе (2 предмета на забег; бот делает забег раз в 15–25 с — пауза 5–20 с между забегами)
 
 WORK="${DIR:-${TMPDIR:-/tmp}/netrun-soak.$(date +%Y%m%d-%H%M%S)}"
 mkdir -p "$WORK" || exit 2
@@ -184,7 +184,7 @@ bot_loop() { # $1 — номер бота; бот 1 единственный б�
       --host=127.0.0.1 --port="$ENET_PORT" --scenario="$scen" --tag="b$b-r$k" $flags --soak-dir="$WORK" >>"$WORK/bot_$b.log" 2>&1
     rc=$?
     echo "[soak-loop] bot=$b run=$k scenario=$scen chaos=${chaos:--} rc=$rc" >>"$WORK/bot_$b.log"
-    sleep $((2 + RANDOM % 6))
+    sleep $((5 + RANDOM % 16))
   done
 }
 ev "боты: $BOTS"
