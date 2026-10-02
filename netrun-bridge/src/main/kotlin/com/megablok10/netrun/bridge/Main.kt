@@ -44,8 +44,7 @@ private class Flags {
 }
 
 /** Части `host:port=ключ` разобраны: есть и адрес, и порт, и непустой ключ после `=`. */
-private fun isPhoneSpec(spec: String, eq: Int, sep: Int, port: Int?): Boolean =
-    eq > 0 && sep > 0 && port != null && eq != spec.length - 1
+private fun isPhoneSpec(spec: String, eq: Int, sep: Int): Boolean = eq > 0 && sep > 0 && eq != spec.length - 1
 
 /** `host:port=ключ` — ключ base64 и сам содержит `=`, поэтому делим по первому. */
 private fun parsePhone(spec: String): StaticPhone {
@@ -53,7 +52,7 @@ private fun parsePhone(spec: String): StaticPhone {
     val addr = if (eq > 0) spec.substring(0, eq) else ""
     val sep = addr.lastIndexOf(':')
     val port = addr.substring(sep + 1).toIntOrNull()
-    if (!isPhoneSpec(spec, eq, sep, port)) bad("--phone: нужен host:port=ключ, получено «$spec»")
+    if (!isPhoneSpec(spec, eq, sep) || port == null) bad("--phone: нужен host:port=ключ, получено «$spec»")
     return StaticPhone(addr.substring(0, sep), port, spec.substring(eq + 1))
 }
 
