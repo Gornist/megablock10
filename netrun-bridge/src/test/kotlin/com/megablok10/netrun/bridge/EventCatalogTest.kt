@@ -69,6 +69,8 @@ class EventCatalogTest {
         val literalKinds = listOf(
             "flatline",           // ValueOps.kt:435
             "auditor_dead",       // Auditor.kt:161
+            "master_request",     // MasterOps: «ждём мастера»
+            "net_query",          // MasterOps: запрос к Сети
         )
 
         // 2. Динамически генерируемые виды: "auditor_${v.kind}" где v.kind из Violation

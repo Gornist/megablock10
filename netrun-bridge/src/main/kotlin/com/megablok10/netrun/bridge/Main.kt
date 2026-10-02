@@ -94,9 +94,11 @@ class BridgeApp(private val options: LaunchOptions) : AutoCloseable {
         ensureDefaultSettings(store, worldKey.publicB64)
         val ops = ValueOps(store, gateway = delivery)
         inbox = PhoneInbox(store, ops, worldKey, phones, delivery, log = log)
-        server = BridgeServer(store, options.config.copy(worldPub = worldKey.publicB64), ops)
+        val master = MasterOps(store)
+        server = BridgeServer(store, options.config.copy(worldPub = worldKey.publicB64), ops, master = master)
         rules = RuleEngine(store)
         TerminalSilentRule(rules).register()
+        MasterRules(rules, master).register()
         auditor = Auditor(store)
     }
 

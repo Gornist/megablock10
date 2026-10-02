@@ -29,6 +29,7 @@ class BridgeServer(
     private val config: BridgeConfig,
     private val ops: ValueOps = ValueOps(store),
     private val terminals: TerminalOps = TerminalOps(store),
+    private val master: MasterOps = MasterOps(store),
 ) {
     private class Conn {
         @Volatile var role: String? = null
@@ -37,7 +38,7 @@ class BridgeServer(
         val subs: MutableSet<String> = ConcurrentHashMap.newKeySet()
     }
 
-    private val router = OpRouter(ops, terminals)
+    private val router = OpRouter(ops, terminals, master)
     private val conns = ConcurrentHashMap<WebSocket, Conn>()
     private val started = CountDownLatch(1)
     private var startError: Exception? = null

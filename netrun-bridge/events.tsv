@@ -4,3 +4,5 @@ auditor_dead	Auditor	Аудитор не работает: критическо�
 auditor_item_owner	Auditor	Предмет: неверный владелец (динамическая, генерируется из Violation.kind="item_owner")
 auditor_deck_items	Auditor	Дека: список не совпадает (динамическая, генерируется из Violation.kind="deck_items")
 auditor_eddies	Auditor	Эдди: отрицательное значение (динамическая, генерируется из Violation.kind="eddies")
+master_request	MasterOps	Ждём мастера: критический шаг ждёт решения (документ master_req)
+net_query	MasterOps	Запрос к Сети от нетраннера (документ net_query)
