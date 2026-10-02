@@ -33,7 +33,9 @@ const SYNC_TYPES: Array = ["session", "deck", "node", "item"]
 const TIER_BLACK := "NIGHTMARE"
 ## Как часто спрашиваем Мост «решил ли мастер», пока он не решил (срок и действие по таймауту ведёт сам Мост).
 const GATE_POLL_SEC := 1.0
-const GATE_ATTEMPTS := 60
+## Срок ожидания по умолчанию и запас сверх него (с): дольше — запись в журнал и дальше те же опросы, исхода сами не назначаем.
+const GATE_DEFAULT_TIMEOUT_SEC := 60.0
+const GATE_GRACE_SEC := 30.0
 
 var net: NetServer
 ## Узел, которому служит этот GrayNode: снимки и аватары получают только сессии, чей узел (NetServer.node_of) — он.
@@ -57,12 +59,16 @@ var _sessions: Dictionary = {}       # сессия -> DaemonSession (в нём 
 var _shard_items: Dictionary = {}    # id объекта -> id предмета в Мосте
 var _takes_inflight: Dictionary = {} # сессия -> число незавершённых op.take_from_node
 var _ready_done := false
+## Сессии, чей исход уже уходит в Мост (в том числе восстановленный флэтлайн): второй исход и повторный вход не допускаем.
+var _finishing: Dictionary = {}
 var _hunted: Dictionary = {}         # сессия -> true, пока за ней идёт охота Black ICE
 var _flat_disconnect: Dictionary = {} # сессия -> true: Black ICE догнал в окне возврата после обрыва («обрыв до флэтлайна»)
 ## Снимок Моста принят (после рестарта — активные сессии и шард восстановлены).
 var synced := false
 ## Сессии, взятые из снимка Моста: ждали возврата игрока.
 var recovered_sessions: Array[String] = []
+## Сессии с недовершённым флэтлайном из прошлого процесса (пометка world.finish в Мосте).
+var recovered_flatlines: Array[String] = []
 ## Конец локдауна узла (мс Unix, время Моста; 0 — нет) — из документа node.
 var lockdown_until := 0
 var node_writes := 0
@@ -76,6 +82,7 @@ func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 	daemons.load_dir()
 	net.place_object(NetConfig.PICKUP_ID, NodeLayout.SHARD_POS)
 	net.grab_check = _can_grab
+	net.join_check = func(session: String) -> bool: return not join_blocked(session)
 	net.session_joined.connect(_on_joined)
 	net.avatar_removed.connect(_on_avatar_removed)
 	net.object_taken.connect(_on_object_taken)
@@ -186,6 +193,7 @@ func recover(docs: Array) -> void:
 	var shard_held := ""
 	var held_by := ""
 	var active: Array[String] = []
+	var flatlined: Dictionary = {}  # сессия -> disconnect: сервер упал, пока ждал мастера (пометка world.finish)
 	for d in docs:
 		var data: Dictionary = d.get("data", {})
 		match str(d.get("type", "")):
@@ -196,7 +204,11 @@ func recover(docs: Array) -> void:
 						enable_black_ice()
 			BridgeApi.T_SESSION:
 				if data.get("state") == "active" and str(data.get("node", node_id)) == node_id:
-					active.append(str(d["id"]))
+					var w: Variant = data.get("world")
+					if w is Dictionary and (w as Dictionary).get("finish") == "flatline":
+						flatlined[str(d["id"])] = bool((w as Dictionary).get("disconnect", false))
+					else:
+						active.append(str(d["id"]))
 			BridgeApi.T_ITEM:
 				if data.get("kind") != "SHARD":
 					continue
@@ -217,6 +229,13 @@ func recover(docs: Array) -> void:
 	for s in active:
 		recovered_sessions.append(s)
 		net.expect_session(s)
+	# Флэтлайн, начатый прошлым процессом: окна возврата нет, ждём мастера дальше и закрываем забег тем же исходом.
+	for s in flatlined:
+		recovered_flatlines.append(s)
+		_finishing[s] = true
+		print("[gray-node] сессия ", s, ": флэтлайн из прошлого процесса, продолжаем ожидание мастера")
+		_finish_in_bridge({"session": s, "reason": ExitLogic.REASON_FLATLINE, "under_hunt": false, "deck_burned": false,
+			"disconnect": flatlined[s]})
 	print("[gray-node] снимок Моста: активных сессий ", active.size(), ", шард ", _shard_items.get(NetConfig.PICKUP_ID, "—"), ", локдаун до ", lockdown_until)
 
 
@@ -400,6 +419,11 @@ func _broadcast_avatars() -> void:
 		net.send_to(session, WorldMsg.encode_fields(WorldMsg.AVATARS, {"k": k, "a": others}), false)
 
 
+## Сессию не пускаем: её исход уже уходит в Мост.
+func join_blocked(session: String) -> bool:
+	return _finishing.has(session)
+
+
 func _on_joined(session: String, _peer: int, _resumed: bool) -> void:
 	if _sessions.has(session):
 		if bridge != null and synced:
@@ -507,6 +531,11 @@ func _on_object_taken(object_id: String, session: String) -> void:
 
 func _on_exit_event(ev: Dictionary) -> void:
 	event.emit({"kind": "exit", "session": ev["session"], "reason": ev["reason"]})
+	_finishing[ev["session"]] = true
+	if ev["reason"] == ExitLogic.REASON_FLATLINE:
+		ev = ev.duplicate()
+		ev["disconnect"] = bool(_flat_disconnect.get(ev["session"], false))
+		_flat_disconnect.erase(ev["session"])
 	_finish_in_bridge(ev)
 
 
@@ -529,20 +558,55 @@ static func is_transient(resp: Dictionary) -> bool:
 	return BridgeApi.err_code(resp) in ["unavailable", "timeout", "disconnected", "internal"]
 
 
-## «Ждём мастера» перед флэтлайном. Возвращает "approve" (применять) или "deny" (пощадить). Мост сам ведёт срок и решение по
-## таймауту; нам остаётся спрашивать раз в GATE_POLL_SEC, пока он отвечает wait. Мост недоступен/отказ — approve: флэтлайн
-## всё равно только карточка мастеру, а не смерть, и вечно висеть нельзя.
+## Пометка в session.data.world: что сервер мира закрывает эту сессию (finish, disconnect). Остальные поля world сохраняются.
+## Повтор при version_conflict и обрыве связи; не вышло окончательно (документа нет, отказ) — продолжаем без пометки.
+func _mark_finish(session: String, finish: String, disconnect: bool) -> void:
+	if bridge == null:
+		return
+	for attempt in FINISH_ATTEMPTS:
+		@warning_ignore("redundant_await")
+		var g: Dictionary = await bridge.get_doc(BridgeApi.T_SESSION, session)
+		if g.get("ok", false):
+			var cur: Dictionary = g["doc"]
+			var data: Dictionary = (cur.get("data", {}) as Dictionary).duplicate(true)
+			var w: Dictionary = (data.get("world", {}) as Dictionary).duplicate(true) if data.get("world") is Dictionary else {}
+			w["finish"] = finish
+			w["disconnect"] = disconnect
+			data["world"] = w
+			@warning_ignore("redundant_await")
+			var r: Dictionary = await bridge.put_doc(BridgeApi.T_SESSION, session, int(cur["ver"]), data)
+			if r.get("ok", false):
+				return
+			g = r
+		if not is_transient(g) and BridgeApi.err_code(g) != "version_conflict":
+			push_warning("[gray-node] пометка finish %s: %s" % [session, BridgeApi.err_code(g)])
+			return
+		if not is_inside_tree():
+			return
+		await get_tree().create_timer(FINISH_RETRY_SEC if is_transient(g) else 0.05).timeout
+	push_warning("[gray-node] пометка finish %s не записана" % session)
+
+
+## «Ждём мастера» перед флэтлайном. Возвращает "approve" (применять), "deny" (пощадить) или "" (узел закрывается).
+## Мост сам ведёт срок и решение по таймауту; нам остаётся спрашивать раз в GATE_POLL_SEC, пока он отвечает wait.
+## Сбой связи или отказ Моста решения не заменяют: опрос продолжается, исход сами не назначаем (run.finish без Моста
+## всё равно не пройдёт). Дольше срока await_timeout_s + запас — запись в журнал и дальше те же опросы.
 func _await_master_flatline(session: String) -> String:
 	var announced := false
 	var summary := "ФЛЭТЛАЙН: %s" % str(_callsign_of(session))
-	for attempt in GATE_ATTEMPTS * 60:
+	var started := Time.get_ticks_msec()
+	var limit_sec := await _gate_limit_sec()
+	var warned_at := 0.0
+	var failures := 0
+	while is_inside_tree():
 		@warning_ignore("redundant_await")
 		var r: Dictionary = await bridge.master_gate("flatline", session, node_id, summary)
 		if not r.get("ok", false):
-			if not is_transient(r) or attempt >= GATE_ATTEMPTS or not is_inside_tree():
-				push_warning("[gray-node] master.gate flatline %s: %s" % [session, BridgeApi.err_code(r)])
-				return "approve"
+			failures += 1
+			if failures == 1 or failures % 60 == 0:
+				push_warning("[gray-node] master.gate flatline %s: %s (опрос продолжается)" % [session, BridgeApi.err_code(r)])
 		else:
+			failures = 0
 			var mode := str(r.get("mode", "auto"))
 			if mode != "wait":
 				var decision := str(r.get("decision", "approve")) if r.get("decision") != null else "approve"
@@ -553,10 +617,27 @@ func _await_master_flatline(session: String) -> String:
 				announced = true
 				print("[gray-node] flatline ", session, ": ждём мастера")
 				event.emit({"kind": "waiting_master", "session": session})
+		var waited := (Time.get_ticks_msec() - started) / 1000.0
+		if waited >= limit_sec + warned_at:
+			warned_at += limit_sec
+			push_warning("[gray-node] flatline %s: ждём решения уже %d с (срок %d с) — Мост должен решить по таймауту, опрос продолжается" % [session, int(waited), int(limit_sec)])
+			event.emit({"kind": "gate_overdue", "session": session, "waited": waited})
 		if not is_inside_tree():
-			return "approve"
+			break
 		await get_tree().create_timer(GATE_POLL_SEC).timeout
-	return "approve"
+	return ""
+
+
+## Срок «ждём мастера» из настроек Моста (settings/global.await_timeout_s) плюс запас; нет связи — по умолчанию.
+func _gate_limit_sec() -> float:
+	var timeout := GATE_DEFAULT_TIMEOUT_SEC
+	@warning_ignore("redundant_await")
+	var g: Dictionary = await bridge.get_doc("settings", "global")
+	if g.get("ok", false):
+		var t: Variant = ((g["doc"] as Dictionary).get("data", {}) as Dictionary).get("await_timeout_s")
+		if t is int or t is float:
+			timeout = maxf(float(t), 1.0)
+	return timeout + GATE_GRACE_SEC
 
 
 func _callsign_of(session: String) -> String:
@@ -578,11 +659,13 @@ func _finish_in_bridge(ev: Dictionary) -> void:
 	while int(_takes_inflight.get(session, 0)) > 0:
 		await get_tree().process_frame
 	if ev["reason"] == ExitLogic.REASON_FLATLINE:
-		ev = ev.duplicate()
-		ev["disconnect"] = bool(_flat_disconnect.get(session, false))
-		_flat_disconnect.erase(session)
+		# Пометка в Мосте ДО ожидания: рестарт сервера мира посреди него продолжит этот же флэтлайн (recover).
+		await _mark_finish(session, "flatline", bool(ev.get("disconnect", false)))
 		var verdict := await _await_master_flatline(session)
+		if verdict == "":
+			return  # узел закрывается: продолжит следующий процесс по пометке
 		if verdict == "deny":
+			ev = ev.duplicate()
 			ev["reason"] = ExitLogic.REASON_EJECTED  # мастер пощадил до применения: как Soft ICE, без блокировки
 			ev["disconnect"] = false
 	var plan := outcome_plan(ev)
@@ -608,4 +691,6 @@ func _finish_in_bridge(ev: Dictionary) -> void:
 			break
 		await get_tree().create_timer(FINISH_RETRY_SEC).timeout
 	print("[gray-node] run.finish ", session, " ", plan["outcome"], ": ", "ok" if r.get("ok", false) else BridgeApi.err_code(r))
+	if r.get("ok", false):
+		_finishing.erase(session)  # сессия закрыта в Мосте: terminal.auth её уже не отдаст
 	event.emit({"kind": "finished", "session": session, "outcome": plan["outcome"], "ok": r.get("ok", false)})

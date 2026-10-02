@@ -17,6 +17,10 @@ var beat_count: Dictionary = {}
 ## «Ждём мастера»: ключ "<kind>:<ref>" -> "wait" | "approve" | "deny"; число вызовов master_gate по тому же ключу.
 var gates: Dictionary = {}
 var gate_calls: Dictionary = {}
+## Тест: связь с Мостом «пропала» — master_gate отвечает unavailable. finish_calls — сколько раз run_finish реально выполнился.
+var gate_offline := false
+var finish_calls := 0
+var finish_attempts: Array = []  # [{session, outcome}] — все вызовы, в том числе повторы и отказы
 
 
 func _init(fixture_path: String = DEFAULT_FIXTURE) -> void:
@@ -172,7 +176,9 @@ func op_leave_in_node(session: String, node: String, item: String) -> Dictionary
 
 func run_finish(session: String, outcome: String, node: String, disconnect: bool, moves: Array) -> Dictionary:
 	var params := {"op": "finish", "session": session, "outcome": outcome, "node": node, "disconnect": disconnect, "moves": moves}
+	finish_attempts.append({"session": session, "outcome": outcome})
 	return _once(finish_rid(session), params, func():
+		finish_calls += 1
 		var s := doc(T_SESSION, session)
 		if s.is_empty():
 			return err("not_found", "сессии нет")
@@ -208,6 +214,8 @@ func run_finish(session: String, outcome: String, node: String, disconnect: bool
 
 ## Как master.gate Моста, но без таймаутов: await_<kind> в settings/global (1 — ждём), решение — decide_gate().
 func master_gate(kind: String, ref: String, _node: String, _summary: String) -> Dictionary:
+	if gate_offline:
+		return err("unavailable", "Мост недоступен")
 	var key := "%s:%s" % [kind, ref]
 	gate_calls[key] = int(gate_calls.get(key, 0)) + 1
 	if int(doc("settings", "global").get("data", {}).get("await_" + kind, 0)) != 1:

@@ -27,6 +27,8 @@ const DISCONNECT_DELAY_SEC := 0.3
 
 ## Узел может запретить взятие (далеко и т.п.): func(session, object_id) -> bool. Не задан — берётся откуда угодно.
 var grab_check: Callable
+## Узел может не пустить сессию: func(session) -> bool (false — отказ в auth: забег уже завершается, исход пишется в Мост).
+var join_check: Callable
 var grace_sec: float = NetConfig.DEFAULT_GRACE_SEC
 var beat_sec: float = NetConfig.DEFAULT_BEAT_SEC
 
@@ -318,6 +320,10 @@ func _on_auth(peer_id: int, data: PackedByteArray) -> void:
 	var idle := session.is_empty() and not terminal.is_empty()
 	if (session.is_empty() and not idle) or (not session.is_empty() and not session.is_valid_identifier()):
 		print("[netrun-server] отказ peer ", peer_id, ": токен не принят")
+		mp.disconnect_peer(peer_id)
+		return
+	if not session.is_empty() and join_check.is_valid() and not join_check.call(session):
+		print("[netrun-server] отказ peer ", peer_id, ": сессия ", session, " завершается")
 		mp.disconnect_peer(peer_id)
 		return
 	_pending[peer_id] = session
