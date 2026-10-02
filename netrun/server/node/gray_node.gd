@@ -219,17 +219,17 @@ func put_field(type: String, id: String, key: String, value: Variant) -> bool:
 	return false
 
 
-## Дека игрока из Моста: id демонов из payload предметов deck:<сессия>. Формат payload (ItemPayload) серверу мира пока не
-## известен — берём демонов, чей id встречается в payload; не нашли ни одного — дека по умолчанию.
-static func deck_from_items(items: Array, session: String, known_ids: Array) -> Array[String]:
-	var out: Array[String] = []
+## Дека игрока из Моста: демоны предметов deck:<сессия> с полем `daemon` ({effect, tier, name, cells}, его пишет Мост
+## при приёме карточки). Возвращает [{id: id предмета, daemon: {...}}]; нет ни одного — вызывающий оставляет деку по умолчанию.
+static func deck_from_items(items: Array, session: String) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
 	for d in items:
 		var data: Dictionary = d.get("data", {})
 		if data.get("owner") != "deck:" + session or data.get("kind") != "DAEMON":
 			continue
-		for id in known_ids:
-			if str(data.get("payload", "")).contains(str(id)) and not out.has(str(id)):
-				out.append(str(id))
+		var daemon: Variant = data.get("daemon")
+		if daemon is Dictionary and str(d.get("id", "")) != "":
+			out.append({"id": str(d["id"]), "daemon": daemon})
 	return out
 
 
@@ -241,7 +241,13 @@ func _load_deck(session: String) -> void:
 	var ds: DaemonSession = _sessions.get(session)
 	if ds == null or not r.get("ok", false):
 		return
-	var ids := deck_from_items(r.get("docs", []), session, NodeLayout.DAEMON_NAMES.keys())
+	var ids: Array[String] = []
+	for e in deck_from_items(r.get("docs", []), session):
+		var def := daemons.add_item_daemon(e["id"], e["daemon"])
+		if def != null:
+			ids.append(def.id)
+			if def.unsupported_reason != "":
+				print("[gray-node] ", session, ": демон ", def.display_name, " (", def.effect, ") не работает в Сети: ", def.unsupported_reason)
 	if not ids.is_empty():
 		ds.deck = ids
 
@@ -306,7 +312,7 @@ func _broadcast_state() -> void:
 		var ds: DaemonSession = _sessions[session]
 		var cd: Array = []
 		for id in ds.deck:
-			cd.append({"id": id, "name": NodeLayout.DAEMON_NAMES.get(id, id), "left": ds.cooldown_left(id, _now)})
+			cd.append({"id": id, "name": daemons.display_name(id, NodeLayout.DAEMON_NAMES.get(id, id)), "left": ds.cooldown_left(id, _now)})
 		var msg := WorldMsg.encode_fields(WorldMsg.STATE, {
 			"trace": ds.trace.value(),
 			"level": ds.trace.level(),
@@ -398,6 +404,8 @@ func _on_daemon_requested(session: String, daemon_id: String) -> void:
 	var reply := {"kind": WorldMsg.EV_DAEMON, "daemon": daemon_id, "ok": bool(res.get("ok", false))}
 	if not reply["ok"]:
 		reply["error"] = str(res.get("error", ""))
+		if res.has("reason"):
+			reply["reason"] = str(res["reason"])
 	net.send_to(session, WorldMsg.encode_fields(WorldMsg.EVENT, reply))
 	event.emit({"kind": "daemon", "session": session, "daemon": daemon_id, "ok": reply["ok"]})
 

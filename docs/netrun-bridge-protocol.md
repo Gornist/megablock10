@@ -247,7 +247,14 @@ B0 (хранилище), B1 (WebSocket), B3 (операции с ценност�
  "data": {"owner": "deck:s_9f2c41d07a3e5b60", "kind": "DAEMON", "payload": "<строка ItemPayload как в карточке>",
           "protected": false, "origin": "phone:MFkwEwYH…", "in_transfer": "tr_88e1", "out_transfer": null, "handover": null}}
 ```
-- `payload` — строка содержимого из карточки (`ItemPayload`) **байт в байт**: Мост её не разбирает, кроме `kind`.
+- `payload` — строка содержимого из карточки (`ItemPayload`) **байт в байт**; менять её никто не вправе.
+- `daemon` / `shard` (M5b) — разбор `payload` для сервера мира, который формата карточки не знает. Мост пишет поле сам: при
+  приёме карточки (`op.submit_deck`-путь, раздел 8) и при старте — документам без поля (принятым раньше), через `:rules`
+  `ItemPayloadCodec`. Не разобралось — поля нет. Для `kind: "DAEMON"` — `"daemon": {"effect": "GHOST", "tier": 2,
+  "name": "Призрак", "cells": ["1C", "BD"]}` (`effect` — имя `DaemonEffect`, `tier` — 1..3, `cells` — цепочка кодов).
+  Для `kind: "SHARD"` — `"shard": {"tier": 1, "title": "…", "decrypted": true}` (тело и сумма не выносятся). Сервер мира
+  берёт параметры эффекта по уровню из своих данных (`netrun/data/daemons/effects/<ЭФФЕКТ>.json`); эффект, которого в Сети
+  ещё нет, — демон в деке виден, но применение отвечает `effect_unsupported` с причиной.
 - `owner` — ровно один, из списка:
 
 | `owner` | Значит |

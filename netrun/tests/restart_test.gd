@@ -140,15 +140,19 @@ func test_snapshot_gives_lockdown_and_node_state_is_written() -> void:
 	assert_int(_node.lockdown_until).is_equal(0)
 
 
-func test_deck_from_items_picks_known_daemons() -> void:
+func test_deck_from_items_takes_daemon_field() -> void:
+	var g := {"effect": "GHOST", "tier": 2, "name": "Призрак", "cells": ["1C"]}
 	var items := [
-		{"data": {"owner": "deck:s1", "kind": "DAEMON", "payload": "daemon:ghost_1:v1"}},
-		{"data": {"owner": "deck:s2", "kind": "DAEMON", "payload": "daemon:jitter_1"}},
-		{"data": {"owner": "deck:s1", "kind": "SHARD", "payload": "ghost_1"}},
-		{"data": {"owner": "deck:s1", "kind": "DAEMON", "payload": "незнакомый"}},
+		{"id": "it_a", "data": {"owner": "deck:s1", "kind": "DAEMON", "daemon": g}},
+		{"id": "it_b", "data": {"owner": "deck:s2", "kind": "DAEMON", "daemon": g}},
+		{"id": "it_c", "data": {"owner": "deck:s1", "kind": "SHARD", "shard": {"tier": 1}}},
+		{"id": "it_d", "data": {"owner": "deck:s1", "kind": "DAEMON", "payload": "без поля daemon"}},
 	]
-	assert_array(GrayNode.deck_from_items(items, "s1", ["ghost_1", "jitter_1"])).is_equal(["ghost_1"])
-	assert_array(GrayNode.deck_from_items(items, "s9", ["ghost_1"])).is_empty()
+	var deck := GrayNode.deck_from_items(items, "s1")
+	assert_int(deck.size()).is_equal(1)
+	assert_str(deck[0]["id"]).is_equal("it_a")
+	assert_str(deck[0]["daemon"]["effect"]).is_equal("GHOST")
+	assert_array(GrayNode.deck_from_items(items, "s9")).is_empty()
 
 
 func test_transient_errors_are_retried_final_are_not() -> void:

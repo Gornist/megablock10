@@ -1,0 +1,4 @@
+{"effect": "JITTER", "tiers": {
+  "1": {"cooldown_sec": 45.0, "params": {"duration_sec": 15.0}},
+  "2": {"cooldown_sec": 45.0, "params": {"duration_sec": 20.0}},
+  "3": {"cooldown_sec": 40.0, "params": {"duration_sec": 30.0}}}}
