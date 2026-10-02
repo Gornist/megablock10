@@ -274,12 +274,15 @@ func recover(docs: Array) -> void:
 	var held: Array = []                 # [{item, by}] шарды этого узла у игроков
 	var active: Array[String] = []
 	var flatlined: Dictionary = {}  # сессия -> disconnect: сервер упал, пока ждал мастера (пометка world.finish)
+	var saved_world: Dictionary = {}     # node.data.world прошлого процесса: тревога и сроки пополнения слотов
 	for d in docs:
 		var data: Dictionary = d.get("data", {})
 		match str(d.get("type", "")):
 			BridgeApi.T_NODE:
 				if d["id"] == node_id:
 					lockdown_until = int(data.get("lockdown_until", 0))
+					if data.get("world") is Dictionary:
+						saved_world = data["world"]
 					if node_def.is_empty() and str(data.get("tier", "")) == TIER_BLACK:
 						enable_black_ice()  # у узла графа тир задаёт graph.json
 			BridgeApi.T_SESSION:
@@ -302,6 +305,10 @@ func recover(docs: Array) -> void:
 		held.clear()
 	node_items.sort()
 	var free_slots: Array = _slot_pos.keys()
+	_restore_alert(saved_world)
+	var pending := _restore_refill_slots(saved_world)  # слоты, чьё пополнение ещё не подошло: остаются пустыми
+	for sid in pending:
+		free_slots.erase(sid)
 	# Шард, который игрок уже несёт, остаётся у него: клиент второй раз его не возьмёт, выход вернёт его по moves.
 	for h in held:
 		if h["by"] in active and not free_slots.is_empty():
@@ -319,6 +326,8 @@ func recover(docs: Array) -> void:
 		else:
 			for sid in free_slots:  # слот без шарда пуст, пока в Мосте не появится свободный (пополнение)
 				_deplete(sid, 0.0)
+	for sid in pending:
+		_deplete(sid, float(pending[sid]))
 	for s in active:
 		recovered_sessions.append(s)
 		net.set_node(s, node_id)
@@ -331,6 +340,30 @@ func recover(docs: Array) -> void:
 		_finish_in_bridge({"session": s, "reason": ExitLogic.REASON_FLATLINE, "under_hunt": false, "deck_burned": false,
 			"disconnect": flatlined[s]})
 	print("[gray-node] снимок Моста (", node_id, "): активных сессий ", active.size(), ", шард ", ",".join(_shard_items.values()) if not _shard_items.is_empty() else "—", ", локдаун до ", lockdown_until)
+
+
+## Тревога из прошлого процесса: остывала по alert_cool_sec с момента записи (alert_at, мс Unix), пока сервера мира не было.
+func _restore_alert(saved_world: Dictionary) -> void:
+	var a := float(saved_world.get("alert", 0.0))
+	if a <= 0.0 or not saved_world.has("alert_at"):
+		return
+	var elapsed := maxf(Time.get_unix_time_from_system() - float(saved_world["alert_at"]) / 1000.0, 0.0)
+	alert = clampf(a - elapsed / maxf(float(settings["alert_cool_sec"]), 0.001), 0.0, 1.0)
+	_apply_alert()
+
+
+## Слоты, которые к рестарту ждали пополнения: id слота -> сколько секунд осталось (refill — {слот: срок, мс Unix}).
+## Без этого пополнение после рестарта начиналось бы сразу, а не по таймеру узла.
+func _restore_refill_slots(saved_world: Dictionary) -> Dictionary:
+	var out: Dictionary = {}
+	var saved: Variant = saved_world.get("refill")
+	if not saved is Dictionary:
+		return out
+	var now_ms := Time.get_unix_time_from_system() * 1000.0
+	for sid in saved:
+		if _slot_pos.has(sid):
+			out[sid] = maxf((float(saved[sid]) - now_ms) / 1000.0, 0.0)
+	return out
 
 
 ## Где сессия сейчас: последняя запись сервера мира (world.node), иначе узел из документа Моста (куда её приняли).
@@ -368,6 +401,12 @@ func _write_node_state() -> void:
 		if is_graph_node():
 			world["alert"] = snappedf(alert, 0.01)
 			world["slots_empty"] = _refill_at.size()
+			world["alert_at"] = int(Time.get_unix_time_from_system() * 1000.0)
+			var refill: Dictionary = {}
+			var now_ms := Time.get_unix_time_from_system() * 1000.0
+			for sid in _refill_at:
+				refill[sid] = int(now_ms + maxf(float(_refill_at[sid]) - _now, 0.0) * 1000.0)
+			world["refill"] = refill
 		var ok := await put_field(BridgeApi.T_NODE, node_id, "world", world)
 		if ok:
 			node_writes += 1
@@ -955,6 +994,7 @@ func raise_alert(amount: float) -> void:
 	alert = minf(alert + amount, 1.0)
 	_apply_alert()
 	event.emit({"kind": "alert", "node": node_id, "value": alert})
+	_write_node_state()  # тревога переживает рестарт сервера мира (node.data.world.alert + alert_at)
 
 
 func _apply_alert() -> void:

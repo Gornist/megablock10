@@ -260,3 +260,28 @@ func test_twelve_node_graph_builds_by_tier() -> void:
 				soft += 1
 		assert_int(soft).is_equal(int(g.nodes[id]["ice"]))
 	srv.stop_net()
+
+
+## L1: тревога и сроки пополнения слотов переживают рестарт сервера мира (их пишет узел в node.data.world, снимок отдаёт обратно).
+func test_alert_and_refill_deadlines_survive_restart() -> void:
+	var gc := _world.node_of("g_c")
+	var pk0 := GrayNode.shard_id("g_c", 0)
+	var pk1 := GrayNode.shard_id("g_c", 1)
+	var now_ms := int(Time.get_unix_time_from_system() * 1000.0)
+	var saved := {"alert": 0.9, "alert_at": now_ms - 1000, "refill": {pk0: now_ms + 600000}}
+	gc.recover([
+		{"type": "node", "id": "g_c", "ver": 1, "data": {"tier": "HARD", "lockdown_until": 0, "world": saved}},
+		{"type": "item", "id": "it_g_c_1", "ver": 1, "data": {"owner": "node:g_c", "kind": "SHARD", "origin": "node:g_c"}},
+		{"type": "item", "id": "it_g_c_2", "ver": 1, "data": {"owner": "node:g_c", "kind": "SHARD", "origin": "node:g_c"}},
+	])
+	# alert_cool_sec 2: за секунду тревога остыла на половину
+	assert_float(gc.alert).is_between(0.3, 0.5)
+	# слот pk0 ждёт срока (10 минут), хотя свободный шард в Мосте есть; pk1 получил шард сразу
+	assert_bool(_server.is_object_locked(pk0)).is_true()
+	assert_bool(_server.is_object_locked(pk1)).is_false()
+	assert_bool(gc._refill_at.has(pk0)).is_true()
+	assert_float(float(gc._refill_at[pk0]) - gc.now()).is_greater(500.0)
+	assert_str(str(gc._shard_items[pk1])).is_equal("it_g_c_1")
+	gc._write_node_state()
+	# и пишется обратно: срок и время записи тревоги лежат в документе узла
+	assert_bool(await _wait_for(func(): return _bridge.doc(BridgeApi.T_NODE, "g_c")["data"].get("world", {}).has("refill"), 5.0)).is_true()
