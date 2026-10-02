@@ -64,6 +64,7 @@ B0 (хранилище), B1 (WebSocket), B3 (операции с ценност�
 | `protected_item` | операция уводит защищённого демона не на телефон | ошибка логики сервера мира |
 | `session_state` | сессия не в нужном состоянии (например, `take` в закрытой) | перечитать сессию |
 | `rid_mismatch` | `rid` уже использован с **другими** параметрами; ничего не сделано | ошибка в коде клиента |
+| `req_state` | `master.decide` по уже решённому запросу другим решением (раздел 6a); в `err.doc` — запрос | показать мастеру итог |
 | `bad_token` | токен терминала не сошёлся | очки не пускать |
 | `internal` | сбой Моста; транзакция откатилась целиком | повторить **тот же** запрос (с тем же `rid`) |
 
@@ -91,6 +92,9 @@ B0 (хранилище), B1 (WebSocket), B3 (операции с ценност�
 | `terminal.auth`, `session.confirm`, `session.abort` | да | `session.abort` | да |
 | `terminal.beat` | да | нет | да |
 | `op.take_from_node`, `op.leave_in_node`, `op.issue_to_phone`, `run.finish` | да | да (ручной запуск — «кнопка раньше автоматики») | да |
+| `master.pause`, `master.link`, `master.goal`, `master.goal_clear`, `master.template_apply` | нет | да | да |
+| `master.decide`, `master.reply` | нет | да | да |
+| `master.gate`, `net.query` | да | да | да |
 | `op.submit_deck` | нет | нет | да (у настоящего Моста его вызывает только приём карточек с телефона, раздел 8) |
 
 ## 4. Документы: чтение, запись, подписка
@@ -195,7 +199,9 @@ B0 (хранилище), B1 (WebSocket), B3 (операции с ценност�
 | `item` | `it_<16 hex>` | только Мост | весь документ |
 | `runner` | ключ игрока (base64url без `=`) | Мост, мастер | — |
 | `settings` | `global`, `rules`, … | мастер | — |
-| `alert` | `al_<n>` | Мост (аудитор), сервер мира; снимает мастер | — |
+| `alert` | `al_<n>` | Мост (аудитор, раздел 6a), сервер мира; снимает мастер | — |
+| `master_req`, `net_query` | `<вид>:<ссылка>`, `nq_<n>` | только Мост (раздел 6a) | — |
+| `template` | `tpl_<имя>` | мастер | — |
 
 **`node`** — постоянное состояние узла.
 ```json
@@ -397,6 +403,59 @@ B0 (хранилище), B1 (WebSocket), B3 (операции с ценност�
   «ФЛЭТЛАЙН» (`disconnect: true` — «обрыв до флэтлайна»); `runner.runs` +1, `tutorial_done: true`.
 - **Повтор**: тот же ответ. **Обрыв**: повторить `finish:<сессия>`; если сессия уже `closed` другим `rid` — `session_state`
   с документом сессии (исход уже записан).
+
+## 6a. Инструменты мастера (роль `master`)
+
+«Кнопка раньше автоматики» (`docs/netrun.md`, «Устройство Моста»): каждая ручная операция — сообщение ниже; правила Моста
+(`MasterRules`) вызывают те же методы, а не пишут документы мимо них. Роль проверяется: `master.*` из `world` — `forbidden`;
+`test` разрешён везде (фейки). Операции задают состояние, поэтому повтор безопасен и без `rid`; единственное исключение —
+сообщения канала (`mid`). Все ответы — `{"doc": …}` изменённого документа, если не сказано иное. Каждая — одна транзакция.
+
+**Пауза Сети.** `{"op": "master.pause", "on": true, "node": "node_07"}`; без `node` — вся Сеть. Пишет `settings/global.paused`
+(+ `paused_at`) или `node_cfg/<узел>.paused`; узла нет — `not_found`. Сервер мира перед шагом ICE и trace читает оба флага:
+пауза узла = `settings.global.paused` **или** `node_cfg.<узел>.paused` (`MasterOps.isPaused`); на паузе ICE и trace замирают.
+При снятии паузы сроки активных целей (`goal.deadline`) сдвигаются на время паузы; на паузе цели не срабатывают.
+
+**Рубильник связи с площадкой.** `{"op": "master.link", "on": false}` → `settings/global.venue_link` (по умолчанию `true`).
+Пока `false`, быстрые события на точки (`netrun-world-records.md`, раздел 3) не отправляются; записи синка и данные мира это
+не затрагивает (`MasterOps.venueLinkOn`).
+
+**Цели и сроки узла.** `{"op": "master.goal", "node": "node_07", "kind": "open", "value": 120, "in_s": 600}` (или абсолютный
+`"deadline": <мс>`). Пишет `node_cfg/<узел>.goal = {kind, value, deadline, set_at, done, result}`; новая цель заменяет прежнюю,
+`master.goal_clear` (`node`) убирает. Правила используют цель вместо сырых чисел: `open` — к сроку снять локдаун узла;
+`lockdown` — к сроку закрыть узел на `value` секунд (по умолчанию `soft_ice_reentry_pause_s`), критический шаг — через
+«ждём мастера» ниже. Остальные `kind` (`trace`, `ice`, …) читает сервер мира: «к значению `value` примерно к `deadline`».
+Выполненная цель получает `done: true` и `result` (`applied` | `denied` | `no_node`). `eddies` узла автоматика не трогает.
+
+**«Ждём мастера».** Перед критическим шагом (`flatline`, `lockdown`, `nightmare`, …) сервер мира или правило спрашивает
+`{"op": "master.gate", "kind": "flatline", "ref": "<сессия>", "node": "node_07", "summary": "ФЛЭТЛАЙН: Призрак"}`. Ответ
+`{"mode": "auto" | "wait" | "decided", "decision": "approve" | "deny" | null, "req": <документ master_req> | null}`:
+
+- `auto` — для вида выключено (`settings.global.await_<kind>` ≠ 1): применять исход сразу;
+- `wait` — создан (или ещё не решён) запрос `master_req/<kind>:<ref>`, исход **не применять**, повторить вызов позже; при
+  создании поднимается тревога `master_request` (панель мастера звонит);
+- `decided` — мастер решил (`master.decide`) или вышел срок; поступать по `decision`.
+
+`master_req.data`: `kind`, `ref`, `node`, `summary`, `state` (`pending` | `decided`), `default`, `expires_at`, `decision`,
+`decided_by` (`master` | `timeout`), `decided_at`. Срок — `settings.global.await_timeout_s` (по умолчанию 60), действие по
+таймауту — `await_default_<kind>` (`approve` | `deny`, по умолчанию `approve`); таймаут решает правило `master_req_timeout`
+(раз в `master_poll_s`, по умолчанию 1 с), а также любое обращение к просроченному запросу. Новый шаг — новый `ref` (иначе
+вернётся старое решение). Ничего в Мосте не убивает персонажа само: флэтлайн по-прежнему применяет вызывающий после `decided`.
+Решение: `{"op": "master.decide", "req": "flatline:s_1", "decision": "approve"}`; то же решение повторно — тот же ответ,
+другое (или опоздавшее после таймаута) — `req_state`. Автоматика (`bridge`) решать за мастера не может.
+
+**Заготовки.** Документы `template/<id>` (мастер пишет обычным `put`): `{"title", "settings": {…}, "node_cfg": {…}}`.
+`{"op": "master.template_apply", "template": "tpl_night", "nodes": ["node_07", "node_08"]}` — одна транзакция: `settings`
+сливается в `settings/global` (`world_pub` игнорируется; пишется `template_applied = {id, at}`), `node_cfg` — в
+`node_cfg/<узел>` каждого узла. Нет заготовки или узла — `not_found`, ничего не записано; `node_cfg` без `nodes` — `bad_request`.
+Ответ: `{"template", "nodes", "settings": [ключи]}`.
+
+**Запрос к Сети.** Канал мастер ↔ нетраннер — документы `net_query/nq_<n>`: `{"runner", "state": "open" | "answered",
+"messages": [{"mid", "from": "runner" | "master", "text", "at"}]}`.
+`{"op": "net.query", "runner": "Призрак", "mid": "m1", "text": "Где шард?"}` (роли `world`, `master`, `test`; `query` — id,
+чтобы дописать в существующий, иначе создаётся новый и поднимается тревога `net_query`) и
+`{"op": "master.reply", "query": "nq_5", "mid": "r1", "text": "…"}` (ответ → `answered`). Повтор с тем же `mid` не дублирует
+сообщение; текст ≤ 2000 символов.
 
 ## 7. Терминал и сессия игрока
 

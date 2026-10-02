@@ -81,9 +81,9 @@ class MasterOps(private val store: DocStore, private val clock: () -> Long = Sys
         val delta = (now - VJ.lng(pausedData, "paused_at")).coerceAtLeast(0L)
         if (delta == 0L) return
         for (t in targets) {
-            val cur = tx.get(NODE_CFG, t.id) ?: continue
-            val goal = cur.data["goal"] as? JsonObject ?: continue
-            if (VJ.bool(goal, "done") || VJ.lng(goal, "deadline") == 0L) continue
+            val cur = tx.get(NODE_CFG, t.id)
+            val goal = cur?.data?.get("goal") as? JsonObject
+            if (cur == null || goal == null || VJ.bool(goal, "done") || VJ.lng(goal, "deadline") == 0L) continue
             val shifted = VJ.with(goal, "deadline" to VJ.p(VJ.lng(goal, "deadline") + delta))
             tx.put(NODE_CFG, cur.id, cur.ver, VJ.with(cur.data, "goal" to shifted))
         }
@@ -146,27 +146,29 @@ class MasterOps(private val store: DocStore, private val clock: () -> Long = Sys
     }
 
     private fun applyGoal(tx: DocStore.Tx, node: String): Boolean {
-        val cfg = tx.get(NODE_CFG, node) ?: return false
-        val goal = cfg.data["goal"] as? JsonObject ?: return false
-        val now = clock()
-        val kind = VJ.str(goal, "kind")
-        val due = !VJ.bool(goal, "done") && VJ.lng(goal, "deadline") in 1..now
-        if (!due || (kind != "open" && kind != "lockdown") || isPausedIn(tx, node)) return false
-        val nodeDoc = tx.get(NODE, node) ?: return finishGoal(tx, cfg, goal, "no_node")
-        var result = "applied"
-        if (kind == "open") {
-            setLockdown(tx, nodeDoc, 0L)
-        } else {
-            val g = gateIn(tx, "lockdown", "$node.${VJ.lng(goal, "set_at")}", node, "локдаун узла $node по цели мастера")
-            if (g.mode == GateResult.Mode.WAIT) return false
-            if (g.approved) {
-                val secs = goal["value"].long() ?: settingLong(tx, "soft_ice_reentry_pause_s", DEFAULT_LOCKDOWN_S)
-                setLockdown(tx, nodeDoc, now + secs * MS)
-            } else {
-                result = "denied"
-            }
+        val cfg = tx.get(NODE_CFG, node)
+        val goal = cfg?.data?.get("goal") as? JsonObject
+        val kind = goal?.let { VJ.str(it, "kind") }
+        val due = goal != null && !VJ.bool(goal, "done") && VJ.lng(goal, "deadline") in 1..clock()
+        val handled = kind == "open" || kind == "lockdown"
+        if (cfg == null || goal == null || !due || !handled || isPausedIn(tx, node)) return false
+        val nodeDoc = tx.get(NODE, node)
+        val result = when {
+            nodeDoc == null -> "no_node"
+            kind == "open" -> setLockdown(tx, nodeDoc, 0L).let { "applied" }
+            else -> lockdownByGoal(tx, nodeDoc, goal) ?: return false
         }
         return finishGoal(tx, cfg, goal, result)
+    }
+
+    /** Локдаун по цели — критический шаг: идёт через [gateIn]; null — мастер ещё не решил, цель ждёт. */
+    private fun lockdownByGoal(tx: DocStore.Tx, nd: Doc, goal: JsonObject): String? {
+        val g = gateIn(tx, "lockdown", "${nd.id}.${VJ.lng(goal, "set_at")}", nd.id, "локдаун узла ${nd.id} по цели мастера")
+        if (g.mode == GateResult.Mode.WAIT) return null
+        if (!g.approved) return "denied"
+        val secs = goal["value"].long() ?: settingLong(tx, "soft_ice_reentry_pause_s", DEFAULT_LOCKDOWN_S)
+        setLockdown(tx, nd, clock() + secs * MS)
+        return "applied"
     }
 
     private fun setLockdown(tx: DocStore.Tx, nd: Doc, until: Long) {

@@ -10,6 +10,7 @@ import kotlinx.serialization.json.booleanOrNull
 internal class OpRouter(private val ops: ValueOps, private val terminals: TerminalOps, private val master: MasterOps) {
     fun handle(caller: Caller, op: String, msg: JsonObject): Map<String, JsonElement> {
         val role = caller.role
+        if (op in MASTER_OPS) return handleMaster(caller, op, msg)
         return when (op) {
             "op.submit_deck" -> opReply(
                 ops.submitDeck(
@@ -46,7 +47,7 @@ internal class OpRouter(private val ops: ValueOps, private val terminals: Termin
                 if (role == Role.MASTER) throw StoreException("forbidden", "роли master операция $op не разрешена")
                 terminals.beat(req(msg, "terminal"), msg["battery"].long(), msg["fps"].long(), msg["link"].long())
             }
-            else -> if (op.startsWith("master.") || op == "net.query") handleMaster(caller, op, msg) else throw StoreException("bad_request", "неизвестный op: $op")
+            else -> throw StoreException("bad_request", "неизвестный op: $op")
         }
     }
 
@@ -105,4 +106,11 @@ internal class OpRouter(private val ops: ValueOps, private val terminals: Termin
         VJ.str(j, "type").orEmpty(), VJ.str(j, "id").orEmpty(), VJ.lng(j, "ver"), VJ.lng(j, "created"), VJ.lng(j, "updated"),
         j["data"] as? JsonObject ?: JsonObject(emptyMap()),
     )
+
+    private companion object {
+        val MASTER_OPS = setOf(
+            "master.pause", "master.link", "master.goal", "master.goal_clear", "master.gate", "master.decide",
+            "master.template_apply", "master.reply", "net.query",
+        )
+    }
 }
