@@ -48,9 +48,8 @@ class SecAlertRule(
     private fun onSession(d: Doc) {
         val world = d.data["world"] as? JsonObject ?: return
         val level = (world["trace_level"] as? JsonPrimitive)?.content?.toIntOrNull() ?: return
-        if (level < TRACE_LEVEL || VJ.str(d.data, "state") != "active") return
-        if (!MasterOps.venueLinkOn(store)) return
-        if (!sent.add("${d.id}:$level")) return
+        val eligible = level >= TRACE_LEVEL && VJ.str(d.data, "state") == "active" && MasterOps.venueLinkOn(store)
+        if (!eligible || !sent.add("${d.id}:$level")) return
         val node = VJ.str(d.data, "node").orEmpty()
         val nodeDoc = store.get(ValueOps.NODE, node)
         val sec = store.get(ValueOps.SETTINGS, "sec")?.data
