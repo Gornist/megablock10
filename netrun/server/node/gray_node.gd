@@ -424,7 +424,9 @@ func _on_object_taken(object_id: String, session: String) -> void:
 			break
 		await get_tree().create_timer(FINISH_RETRY_SEC).timeout
 	_takes_inflight[session] = int(_takes_inflight[session]) - 1
-	if not r.get("ok", false):
+	if r.get("ok", false):
+		print("[gray-node] take ", item, " ok (", session, ")")
+	else:
 		push_warning("[gray-node] take %s: %s" % [item, BridgeApi.err_code(r)])
 
 
