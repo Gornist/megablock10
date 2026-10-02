@@ -4,7 +4,7 @@
 # Запускать на devbox (Linux; Gradle и Godot на Mac не гонять): `timeout 1200 netrun/tools/live_run.sh`.
 # Итог — одна строка `LIVE_RUN PASS|FAIL: ...` и код 0|1. Все процессы с жёсткими пределами времени, в конце всё гасится.
 # Окружение: BRIDGE_PORT (7410), LINE_PORT (7411), ENET_PORT (7777), GODOT (godot), KEEP_LOGS=1 (не удалять каталог журналов),
-# GRAPH=1 (граф узлов W1: сервер мира с --graph, бот graph_run идёт тоннелем node_07 -> node_04, шард берёт в node_04).
+# Граф узлов — режим по умолчанию. GRAPH=1: бот graph_run идёт тоннелем node_07 -> node_04, шард берёт в node_04.
 set -u
 set -m  # у каждого фонового процесса своя группа: kill -- -PID гасит и timeout, и то, что он запустил
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -81,7 +81,6 @@ BOT_ARGS="--bot=ghost_run"
 EXTRA_NODE=""
 if [ "${GRAPH:-0}" = 1 ]; then
   SHARD_NODE=node_04
-  SERVER_GRAPH="--graph"
   BOT_ARGS="--bot=graph_run --bot-route=node_04"
   EXTRA_NODE=', "node_04": {"title": "Склад запчастей", "tier": "BASE", "tutorial": false, "lockdown_until": 0, "eddies": 0}'
 fi

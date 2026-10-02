@@ -77,3 +77,9 @@ func test_portal_and_arrival_geometry() -> void:
 			assert_float(NodeLayout.flat_distance(p, slots[j])).is_greater(2.0 * NodeLayout.PORTAL_RADIUS)
 	for sp in NodeLayout.SHARD_SLOTS:
 		assert_bool(NodeLayout.in_room(sp)).is_true()
+
+
+func test_server_loads_graph_by_default_and_single_node_flag_disables_it() -> void:
+	assert_object(WorldServer.load_graph(PackedStringArray())).is_not_null()
+	assert_object(WorldServer.load_graph(PackedStringArray(["--exit-after=5"]))).is_not_null()
+	assert_object(WorldServer.load_graph(PackedStringArray(["--single-node"]))).is_null()

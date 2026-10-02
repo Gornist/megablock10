@@ -12,7 +12,7 @@ var net: NetServer
 var bridge: BridgeApi
 ## Серый узел node_07 (N7): ICE, trace, демоны, шард, выход.
 var node: GrayNode
-## Граф узлов (W1, `--graph` или `--graph=<путь>`): вместо одного серого узла — узлы из data/graph.json с тоннелями между ними.
+## Граф узлов (по умолчанию; `--graph=<путь>` — другой файл, `--single-node` — прежний одиночный узел): узлы из data/graph.json с тоннелями.
 var graph_world: GraphWorld
 ## Состояние очков -> Мост (P6).
 var beat_relay: TerminalBeatRelay
@@ -47,17 +47,15 @@ func start(args: PackedStringArray) -> void:
 	set_process(true)
 
 
-## Граф узлов по аргументу `--graph` (data/graph.json) или `--graph=<путь>`. null — аргумента нет или граф не прошёл проверку
-## (ошибки в журнал, сервер работает одним серым узлом: лучше один узел, чем ни одного).
+## Граф узлов: по умолчанию data/graph.json, `--graph=<путь>` — другой файл, `--single-node` — без графа. null — одиночный режим
+## или граф не прошёл проверку (ошибки в журнал, сервер работает одним серым узлом: лучше один узел, чем ни одного).
 static func load_graph(args: PackedStringArray) -> NodeGraph:
-	var path := ""
+	var path := NodeGraph.DEFAULT_PATH
 	for a in args:
-		if a == "--graph":
-			path = NodeGraph.DEFAULT_PATH
+		if a == "--single-node":
+			return null
 		elif a.begins_with("--graph="):
 			path = a.trim_prefix("--graph=")
-	if path.is_empty():
-		return null
 	var g := NodeGraph.load_file(path)
 	var errs := g.errors()
 	if not errs.is_empty():

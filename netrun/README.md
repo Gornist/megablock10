@@ -134,7 +134,8 @@ GHOST, сервер раз в 0.1 с шлёт снимок (`WorldMsg.STATE`: tr
 `settings` — все числа: `tunnel_sec`, `portal_dwell_sec`, `shard_refill_sec` по тирам, `refill_retry_sec`, `alert_*`, `lockdown_sec`.
 Проверка данных — `NodeGraph.errors()` (симметрия, связность, слоты, тир входа); тест `node_graph_test.gd`.
 
-Запуск: `godot --headless --path netrun -- --graph` (или `--graph=<путь>`); без аргумента — как раньше, один серый узел node_07.
+Граф — режим по умолчанию: `godot --headless --path netrun` (или `-- --graph=<путь>`); прежний одиночный серый узел node_07 — `-- --single-node`.
+Шарды сервер мира не создаёт: узел пополняется только из запаса, заложенного мастером (предметы `node:<узел>` в Мосте); пустой узел просто ждёт.
 Битый граф в журнал (`push_error`) и сервер работает одним узлом.
 
 - **Переход.** Игрок простоял `portal_dwell_sec` в радиусе портала → `GraphWorld.transit_check` (связь есть, узел не в локдауне,
