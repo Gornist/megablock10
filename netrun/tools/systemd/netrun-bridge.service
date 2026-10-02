@@ -1,0 +1,23 @@
+# Мост netrun на мини-ПК площадки. Установка (от root): cp netrun-bridge.service /etc/systemd/system/ && systemctl daemon-reload &&
+# systemctl enable --now netrun-bridge. Ключи ролей — в /etc/netrun/keys.env (права 600): NETRUN_KEY_WORLD=…, NETRUN_KEY_MASTER=… .
+# Путь установки и пользователь — под машину площадки (здесь /opt/netrun, пользователь netrun).
+[Unit]
+Description=Мост netrun (документы, ценности, WebSocket)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=netrun
+EnvironmentFile=/etc/netrun/keys.env
+ExecStart=/opt/netrun/bridge/bin/netrun-bridge --port 7410 --line-port 7411 --db /var/lib/netrun/bridge.db
+WorkingDirectory=/var/lib/netrun
+StateDirectory=netrun
+# Питание выдернули или процесс упал — поднимается сам; SQLite в WAL с synchronous=FULL, подтверждённое не теряется.
+Restart=always
+RestartSec=2
+# Мост останавливается сигналом: при штатной остановке WAL сливается в базу.
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

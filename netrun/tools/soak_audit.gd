@@ -55,9 +55,27 @@ func _run() -> void:
 			outcomes[o] = int(outcomes.get(o, 0)) + 1
 		else:
 			open += 1
+	if _args.has("dump"):
+		await _dump(str(_args["dump"]), items, sessions)
 	var parts: Array = []
 	for k in outcomes:
 		parts.append("%s:%d" % [k, outcomes[k]])
 	print("[audit] alerts_auditor=%d alerts_other=%d items=%d sessions_open=%d sessions_closed=%d outcomes=%s" % [n_aud, n_other, n_items, open, closed, ",".join(parts)])
 	var expected := int(_args.get("items", "-1"))
 	quit(1 if expected >= 0 and expected != n_items else 0)
+
+
+## `--dump=<файл>`: слепок для учений «выдернули питание» (tools/power_cut.sh): владельцы предметов, состояния сессий, документы узлов и их цели.
+func _dump(path: String, items: Dictionary, sessions: Dictionary) -> void:
+	var out := {"items": {}, "sessions": {}, "node": {}, "node_cfg": {}}
+	for d in items.get("docs", []):
+		out["items"][d["id"]] = str(d["data"].get("owner", ""))
+	for d in sessions.get("docs", []):
+		out["sessions"][d["id"]] = str(d["data"].get("state", ""))
+	for t in ["node", "node_cfg"]:
+		var r: Dictionary = await _client.list_docs(t)
+		for d in r.get("docs", []):
+			out[t][d["id"]] = {"ver": d["ver"], "data": d["data"]}
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	if f != null:
+		f.store_string(JSON.stringify(out))

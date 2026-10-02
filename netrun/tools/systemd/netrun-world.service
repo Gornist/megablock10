@@ -1,0 +1,20 @@
+# Сервер мира netrun (Godot --headless, метка dedicated_server). Установка — как у netrun-bridge.service.
+# Стартует после Моста; Мост упал — сервер мира перезапускается вместе с ним (Requires=), забег продолжается по снимку Моста.
+[Unit]
+Description=Сервер мира netrun (Godot, headless)
+After=network-online.target netrun-bridge.service
+Wants=network-online.target
+Requires=netrun-bridge.service
+
+[Service]
+User=netrun
+EnvironmentFile=/etc/netrun/keys.env
+# NETRUN_KEY_WORLD — тот же ключ роли world, что у Моста; в Godot его читает --bridge-key.
+ExecStart=/bin/sh -c 'exec /opt/netrun/world/netrun-server.x86_64 --headless -- --bridge=ws://127.0.0.1:7410 --bridge-key="$NETRUN_KEY_WORLD" --port=7777'
+Restart=always
+RestartSec=2
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

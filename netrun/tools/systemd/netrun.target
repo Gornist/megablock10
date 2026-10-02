@@ -1,0 +1,7 @@
+# Всё netrun разом: systemctl enable --now netrun.target (поднимает Мост и сервер мира при загрузке).
+[Unit]
+Description=Сеть netrun (Мост и сервер мира)
+Wants=netrun-bridge.service netrun-world.service
+
+[Install]
+WantedBy=multi-user.target
