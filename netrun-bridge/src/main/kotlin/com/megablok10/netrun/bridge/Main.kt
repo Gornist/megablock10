@@ -15,8 +15,17 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.system.exitProcess
 
-/** Параметры запуска Моста: `--port`, `--line-port`, `--db`, `--test`, `--seed` (стенд, только с `--test`), `--world-pub`; ключи ролей — `NETRUN_KEY_WORLD|MASTER|TEST` из окружения. */
-data class LaunchOptions(val port: Int, val db: String, val config: BridgeConfig, val linePort: Int = DEFAULT_LINE_PORT, val seed: String? = null)
+/** Известный заранее адрес телефона (стенд e2e): `host:port=ключ`. Эмулятор за NAT виден Мосту как 127.0.0.1, такой адрес по строкам не узнать. */
+data class StaticPhone(val host: String, val port: Int, val key: String)
+
+/**
+ * Параметры запуска Моста: `--port`, `--line-port`, `--db`, `--test`, `--seed` и `--phone host:port=ключ` (стенд, только с `--test`), `--world-pub`;
+ * ключи ролей — `NETRUN_KEY_WORLD|MASTER|TEST` из окружения.
+ */
+data class LaunchOptions(
+    val port: Int, val db: String, val config: BridgeConfig, val linePort: Int = DEFAULT_LINE_PORT, val seed: String? = null,
+    val phones: List<StaticPhone> = emptyList(),
+)
 
 /** Порт, на котором Мост принимает строки телефонов (карточки сдачи, чеки, запрос входа); его телефон берёт из QR стойки. */
 const val DEFAULT_LINE_PORT = 7411
@@ -31,6 +40,17 @@ private class Flags {
     var test = false
     var pub: String? = null
     var seed: String? = null
+    val phones = mutableListOf<StaticPhone>()
+}
+
+/** `host:port=ключ` — ключ base64 и сам содержит `=`, поэтому делим по первому. */
+private fun parsePhone(spec: String): StaticPhone {
+    val eq = spec.indexOf('=')
+    val addr = if (eq > 0) spec.substring(0, eq) else ""
+    val sep = addr.lastIndexOf(':')
+    val port = addr.substring(sep + 1).toIntOrNull()
+    if (eq <= 0 || sep <= 0 || port == null || eq == spec.length - 1) bad("--phone: нужен host:port=ключ, получено «$spec»")
+    return StaticPhone(addr.substring(0, sep), port, spec.substring(eq + 1))
 }
 
 private fun parseFlags(args: List<String>): Flags {
@@ -45,6 +65,7 @@ private fun parseFlags(args: List<String>): Flags {
             "--test" -> f.test = true
             "--world-pub" -> f.pub = value(a)
             "--seed" -> f.seed = value(a)
+            "--phone" -> f.phones += parsePhone(value(a))
             else -> bad("неизвестный аргумент $a")
         }
     }
@@ -62,7 +83,8 @@ internal fun parseLaunch(args: List<String>, env: Map<String, String>): LaunchOp
     val f = parseFlags(args)
     val keys = roleKeys(env, f.test)
     if (f.seed != null && !f.test) bad("--seed работает только с --test")
-    return LaunchOptions(f.port, f.db, BridgeConfig(port = f.port, roleKeys = keys, testMode = f.test, worldPub = f.pub), f.linePort, f.seed)
+    if (f.phones.isNotEmpty() && !f.test) bad("--phone работает только с --test")
+    return LaunchOptions(f.port, f.db, BridgeConfig(port = f.port, roleKeys = keys, testMode = f.test, worldPub = f.pub), f.linePort, f.seed, f.phones)
 }
 
 /**
@@ -106,6 +128,7 @@ class BridgeApp(private val options: LaunchOptions) : AutoCloseable {
     val delivery = PhoneDelivery(store, worldKey, phones, log = log, scope = scope)
 
     init {
+        options.phones.forEach { phones.addStatic(it.key, it.host, it.port) }
         require(options.config.worldPub == null || options.config.worldPub == worldKey.publicB64) {
             "--world-pub не совпадает с ключом мира из файла рядом с базой"
         }
@@ -152,7 +175,7 @@ fun main(args: Array<String>) {
     val options = try {
         parseLaunch(args.toList(), System.getenv())
     } catch (e: IllegalArgumentException) {
-        System.err.println("Мост: ${e.message}\nИспользование: --port N [--line-port N] --db путь.db [--test [--seed файл.json]] [--world-pub КЛЮЧ]; ключи — в окружении")
+        System.err.println("Мост: ${e.message}\nИспользование: --port N [--line-port N] --db путь.db [--test [--seed файл.json] [--phone host:port=ключ]] [--world-pub КЛЮЧ]; ключи — в окружении")
         exitProcess(2)
     }
     val app = BridgeApp(options)

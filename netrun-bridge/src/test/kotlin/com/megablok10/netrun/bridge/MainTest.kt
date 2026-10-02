@@ -65,4 +65,14 @@ class MainTest {
             assertEquals(ver, app.store.get("node", "node_07")!!.ver)
         }
     }
+
+    @Test fun phoneAddressNeedsTestModeAndKeepsEqualsOfKey() {
+        val bad = runCatching { parseLaunch(listOf("--phone", "127.0.0.1:4000=KEY"), env) }
+        assertTrue(bad.exceptionOrNull() is IllegalArgumentException)
+        val o = parseLaunch(listOf("--test", "--phone", "127.0.0.1:4000=MFkw+/Ew==", "--phone", "10.0.0.5:5000=K2"), env)
+        assertEquals(listOf(StaticPhone("127.0.0.1", 4000, "MFkw+/Ew=="), StaticPhone("10.0.0.5", 5000, "K2")), o.phones)
+        for (spec in listOf("127.0.0.1=KEY", "127.0.0.1:x=KEY", "127.0.0.1:4000=", "127.0.0.1:4000")) {
+            assertTrue(spec, runCatching { parseLaunch(listOf("--test", "--phone", spec), env) }.exceptionOrNull() is IllegalArgumentException)
+        }
+    }
 }

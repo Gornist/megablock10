@@ -79,8 +79,13 @@ if [ ! -x "$ROOT/netrun-bridge/build/install/netrun-bridge/bin/netrun-bridge" ] 
   log "сборка Моста…"; (cd "$ROOT" && timeout 600 ./gradlew -q :netrun-bridge:installDist) > "$NR_DIR/gradle.log" 2>&1 || { tail -20 "$NR_DIR/gradle.log"; die "не собрался Мост"; }
 fi
 [ -d "$ROOT/netrun/.godot" ] || { log "импорт проекта Godot…"; timeout 240 godot --headless --path "$ROOT/netrun" --import > "$NR_DIR/import.log" 2>&1; }
+# ── 4. Мост ↔ эмулятор: адрес телефона Мост по строкам не узнает (эмулятор за NAT виден ему как 127.0.0.1, а такой адрес kit
+#      пропускает), поэтому порт приложения пробрасывается на хост под тем же номером (как link.sh для пиров), а Мост получает
+#      статическую запись `--phone 127.0.0.1:порт=ключ Alice` ──
+PA=$(await 30 port_of $A); [ -n "$PA" ] || { nr_save_logs; die "порт приложения Alice не найден"; }
+adb_ $A emu redir add tcp:$PA:$PA >/dev/null || die "emu redir tcp:$PA не добавился (порт занят на хосте?)"
 timeout 1200 "$ROOT/netrun-bridge/build/install/netrun-bridge/bin/netrun-bridge" --port $NR_BRIDGE --line-port $NR_LINE \
-  --db "$NR_DIR/bridge.db" --test --seed "$NR_DIR/seed.json" > "$NR_DIR/bridge.log" 2>&1 &
+  --db "$NR_DIR/bridge.db" --test --seed "$NR_DIR/seed.json" --phone "127.0.0.1:$PA=$PKA" > "$NR_DIR/bridge.log" 2>&1 &
 PIDS+=($!)
 check "Мост поднялся" wait_until 60 port_open $NR_BRIDGE
 WORLD_PUB=$(node "$ROOT/scripts/e2e/netrun-bridge.mjs" $NR_BRIDGE kt hello | python3 -c "import sys,json;print(json.load(sys.stdin)['world_pub'])")
@@ -91,10 +96,6 @@ timeout 1200 godot --headless --path "$ROOT/netrun" -- --bridge="ws://127.0.0.1:
 PIDS+=($!)
 check "сервер мира получил снимок Моста" wait_until 120 grep -q "снимок Моста" "$NR_DIR/world.log"
 
-# ── 4. Мост ↔ эмулятор: адрес телефона Мост узнаёт из строк (127.0.0.1 и порт приложения из конверта), поэтому порт приложения
-#      пробрасывается на хост под тем же номером (как link.sh делает для пиров) ──
-PA=$(await 30 port_of $A); [ -n "$PA" ] || { nr_save_logs; die "порт приложения Alice не найден"; }
-adb_ $A emu redir add tcp:$PA:$PA >/dev/null || die "emu redir tcp:$PA не добавился (порт занят на хосте?)"
 RACK="MB10:RACK:v1:$TERM_ID:$(printf %s "10.0.2.2:$NR_LINE" | base64 | tr -d '\n'):$WORLD_PUB:$(printf %s "стенд e2e" | base64 | tr -d '\n')"
 
 enter() { # enter <сколько входов уже было>: Alice сдаёт обоих демонов, защищённый — JITTER; ждём подписанный MB10ENTERED
