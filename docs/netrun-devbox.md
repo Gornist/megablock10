@@ -162,3 +162,10 @@ df -h $HOME                      # диск (нужно ≥ 10 ГБ свобод
 | AVD эмуляторов | `$HOME/.android/avd/` (Medium_Phone_API_35.avd, Second_API_35.avd) |
 | Логи эмулятора | `$HOME/.android/avd/Medium_Phone_API_35.avd/` (файлы logs в конфиге) |
 | Репозиторий | `$HOME/megablock10` (по умолчанию, если установлено) |
+
+## Стенд e2e на devbox (E1)
+
+Полный `scripts/e2e/run-all.sh` на devbox зелёный (образ android-35, менять на 34 не пришлось). Две причины прежних красных сценариев были в стенде, не в приложении:
+
+- **Локаль POSIX** (ssh без `LANG`): `grep -i` в `screen_has` не сворачивает регистр кириллицы, а заголовки рисуются заглавными, поэтому «Сообщение от мастера» (announcement, а за ним zz-provisioning) «не находилось» при том, что окно было на экране. `lib.sh` сам выставляет `LC_ALL=C.UTF-8`, если локаль не UTF-8.
+- **Виртуальный Wi-Fi без интернета**: Android навсегда отключал сохранённую сеть `AndroidWifi` (`NETWORK_SELECTION_DISABLED_NO_INTERNET_PERMANENT`), `wlan0` оставался `NO-CARRIER`, в журнале `nets=[cell:IV]`, «привязано к Wi-Fi» не появлялось (wifi-bind, sec-alert, slot-race). `up.sh` выключает проверку (`settings put global captive_portal_mode 0`).
