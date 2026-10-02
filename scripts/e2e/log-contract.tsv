@@ -19,3 +19,6 @@ CollectorClient	sync.unreachable
 WifiBinder	привязано к Wi-Fi
 *	chat.recv
 *	peer.found
+*	netrun.entered
+*	netrun.enter_start
+*	netrun.world_item

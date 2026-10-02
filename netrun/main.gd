@@ -33,7 +33,7 @@ func _ready() -> void:
 			f.start(args)
 
 
-## `--bot=ghost_run|exposed_run` (+ `--host=`, `--port=`, `--token=`, `--bot-reconnect`, `--bot-hold=<с после шарда>`, `--exit-after=`): бот проходит узел и выходит
+## `--bot=ghost_run|exposed_run` (+ `--host=`, `--port=`, `--token=`, `--bot-reconnect`, `--bot-hold=<с после шарда>`, `--bot-daemon=<id GHOST-демона>`, `--exit-after=`): бот проходит узел и выходит
 ## из процесса: код 0 — чистый выход, 1 — любой другой итог. Итог печатается строкой `[bot] итог: <result>`.
 func run_bot(args: PackedStringArray, kind: String) -> void:
 	var scenarios := {"ghost_run": BotClient.Scenario.GHOST_RUN, "exposed_run": BotClient.Scenario.EXPOSED_RUN}
@@ -48,6 +48,8 @@ func run_bot(args: PackedStringArray, kind: String) -> void:
 	for a in args:
 		if a.begins_with("--bot-hold="):
 			bot.hold_after_grab = float(a.trim_prefix("--bot-hold="))
+		elif a.begins_with("--bot-daemon="):
+			bot.ghost_daemon = a.trim_prefix("--bot-daemon=")
 	add_child(bot)
 	bot.finished.connect(func(r: String):
 		print("[bot] итог: ", r, ", переподключений: ", bot.reconnects)

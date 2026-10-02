@@ -27,6 +27,7 @@ import kotlinx.coroutines.launch
  *  - DEBUG_QR     --es qr <строка>                      подать QR-строку как скан
  *  - DEBUG_PEER   --es pk --es cs --es fac --es host --ei port   добавить пира без NSD
  *  - DEBUG_CONFIG --es clock <N> --es timer <N> --es autosolve true|false / port ? (напечатать порт приложения: "port=N")   см. DebugConfig
+ *  - DEBUG_SET    --es netrun "QR стойки|id демона,id демона|id защищённого" — вход в «Сеть» (e2e netrun-run): скан стойки и сдача выбранных демонов Мосту, как из экрана выбора деки
  *  - DEBUG_SET    … / readreceipts on|off / readthread <pubKeyB64> (как открыть тред: отчёт о прочтении)
  *  - DEBUG_SET    --es create "Позывной:Фракция" / collector <url> / cs / fac / ram / balance / daemon "имя:1C,55:тир:ЭФФЕКТ" / pay "получатель:сумма:online|offline" [--ei burst N — N одновременных переводов] / contact "pk:позывной:фракция" / say "получатель|текст" / sayas "получатель|pk|позывной|фракция|текст" / give "daemon|shard:id:получатель[:offline]" / cancelitem <id> / cancel <txId> / cooldowns reset
  * Итог DEBUG_CONFIG / DEBUG_SET пишется в logcat с тегом MB10DBG (строки разбирает scripts/e2e/lib.sh — формат не менять).
@@ -153,6 +154,21 @@ class DebugQrReceiver : BroadcastReceiver() {
             }
             val card = item?.let { graph.sendItem(me, it, to, offline) }
             if (card == null) Log.i(TAG, "give rejected") else Log.i(TAG, "give id=${card.id}")
+        }
+        // Вход в «Сеть» тем же путём, что экран выбора деки (NetrunViewModel.enter → NetrunEntry.enter): "QR стойки|id,id,…|id защищённого".
+        // Ход и итог — в журнале (netrun.enter_start, netrun.entered); здесь только отказ до начала: "netrun rejected <причина>".
+        intent.getStringExtra("netrun")?.let { spec ->
+            val p = spec.split("|")
+            val me = graph.identity.current
+            val rack = Mb10QrCodec.decode(p[0]) as? Mb10Qr.Rack
+            val ids = p.getOrElse(1) { "" }.split(",").filter { it.isNotEmpty() }
+            val daemons = ids.mapNotNull { graph.daemons.get(it) }
+            when {
+                me == null -> Log.i(TAG, "netrun rejected нет личности")
+                rack == null -> Log.i(TAG, "netrun rejected QR стойки не разобран")
+                daemons.size != ids.size || daemons.isEmpty() -> Log.i(TAG, "netrun rejected демоны найдены ${daemons.size} из ${ids.size}")
+                else -> graph.netrun.enter(me, rack, daemons, p.getOrElse(2) { "" })
+            }
         }
         intent.getStringExtra("cancelitem")?.let { Log.i(TAG, "cancelitem $it -> ${graph.items.cancelOutgoing(it)}") }
         intent.getStringExtra("cancel")?.let { Log.i(TAG, "cancel ${it} -> ${graph.wallet.cancelOutgoing(it)}") }

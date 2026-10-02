@@ -17,6 +17,7 @@ const ARRIVE := 1.0
 const GRAB_FROM := 1.5     # на таком расстоянии от шарда просим взять
 const STEP_TIMEOUT := 25.0 # с на один шаг сценария — иначе result = "timeout:<шаг>"
 const RECONNECT_SEC := 1.0 # пауза между попытками подключения после обрыва
+const GHOST_RETRY_SEC := 1.0 # повтор запроса GHOST, пока он не включился
 
 var net: NetClient
 var scenario: int = Scenario.GHOST_RUN
@@ -40,6 +41,9 @@ var reconnects := 0
 var hold_after_grab := 0.0
 ## Печатать шаги и события в stdout (запуск из командной строки: по этим строкам скрипт знает, когда убивать сервер).
 var verbose := false
+## Какого демона бот применяет как GHOST. У деки из Моста id демонов — id предметов (M5), стенд e2e с настоящим телефоном (M6)
+## подставляет id предмета через `--bot-daemon=`; без него — `ghost_1` из деки по умолчанию.
+var ghost_daemon := "ghost_1"
 var _loiter_angle := 0.0
 var _reconnect_at := -1.0
 
@@ -48,6 +52,7 @@ var _step_started := 0.0
 var _clock := 0.0
 var _send_acc := 0.0
 var _asked := false
+var _asked_at := 0.0
 
 
 func start(cfg: NetConfig, scenario_kind: int = Scenario.GHOST_RUN) -> void:
@@ -158,10 +163,13 @@ func _process(delta: float) -> void:
 				_loiter_angle += loiter_omega * delta
 				position = loiter_center + Vector3(loiter_radius * sin(_loiter_angle), 0, loiter_radius * (1.0 - cos(_loiter_angle)) - loiter_radius)
 		"ghost":
-			if not _asked:
-				_asked = net.request_use("ghost_1")
-			elif last_state.get("ghost", false):
+			# Дека из Моста приходит серверу мира асинхронно (список предметов): первый запрос может прийти раньше деки
+			# (not_in_deck) — повторяем раз в секунду, пока ghost не включился.
+			if last_state.get("ghost", false):
 				_enter("to_exit" if shard_taken else "to_shard")
+			elif not _asked or _clock - _asked_at >= GHOST_RETRY_SEC:
+				_asked = net.request_use(ghost_daemon)
+				_asked_at = _clock
 		"to_shard":
 			# Без GHOST идём осторожно: ICE успевает заметить и догнать раньше шарда.
 			var speed_scale := 1.0 if scenario == Scenario.GHOST_RUN else 0.25
