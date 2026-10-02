@@ -54,6 +54,14 @@ const AUDIT_ACTIONS: Record<string, { label: string; describe: Describe }> = {
   DISPLAY_SET_GROUP: { label: "Дисплей в группу", describe: (d) => `дисплей ${str(d.displayId)} → ${d.groupId ? `группа ${str(d.groupId)}` : "без группы"}` },
   DISPLAY_SECRET: { label: "Секрет дисплея сменён", describe: (d) => `дисплей ${str(d.displayId)}: новый секрет, нужно прошить заново` },
   DISPLAY_PUSH: { label: "QR на дисплей", describe: (d) => `${str(d.label)} → ${str(d.displays)}` },
+  NET_RUNNER_SPARE: {
+    label: "Нетраннер пощажён",
+    describe: (d, playerName) => `${playerName(str(d.runnerKey, ""))}: допуск в Сеть возвращён${d.note ? `. ${str(d.note)}` : ""}`,
+  },
+  NET_RUNNER_BLOCK: {
+    label: "Нетраннер заблокирован",
+    describe: (d, playerName) => `${playerName(str(d.runnerKey, ""))}: допуск в Сеть закрыт${d.reason ? `. ${str(d.reason)}` : ""}`,
+  },
   DISPLAY_COMMAND: {
     label: "Команда дисплею",
     describe: (d) => `дисплей ${str(d.displayId)}: ${str(d.command)}${d.level ? ` ${str(d.level)}` : ""}`,

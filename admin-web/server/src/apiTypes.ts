@@ -201,7 +201,7 @@ export type Severity = "crit" | "warn" | "info";
 
 export interface AttentionItem {
   id: string;
-  kind: "negative_balance" | "balance_jump" | "went_silent" | "node_exhausted_hot" | "revoke_repeat" | "override_undelivered" | "override_failed" | "shard_copies" | "transfer_stuck" | "duplicate_receive" | "balance_chain_break" | "balance_unexplained" | "old_version" | "mass_silence" | "reject_spike" | "rate_limited" | "secret_denied" | "server_slow" | "clock_skew" | "transfer_amount_mismatch" | "emission_spike" | "player_outlier" | "provision_conflict" | "sync_stuck" | "display_battery";
+  kind: "negative_balance" | "balance_jump" | "went_silent" | "node_exhausted_hot" | "revoke_repeat" | "override_undelivered" | "override_failed" | "shard_copies" | "transfer_stuck" | "duplicate_receive" | "balance_chain_break" | "balance_unexplained" | "old_version" | "mass_silence" | "reject_spike" | "rate_limited" | "secret_denied" | "server_slow" | "clock_skew" | "transfer_amount_mismatch" | "emission_spike" | "player_outlier" | "provision_conflict" | "sync_stuck" | "display_battery" | "net_flatline" | "net_alert";
   severity: Severity;
   title: string;
   detail: string;
@@ -542,4 +542,27 @@ export interface DisplayPushResult {
 export interface DisplayPushResponse {
   label: string;
   results: DisplayPushResult[];
+}
+
+// ── «Сеть» (docs/netrun.md): допуск нетраннера ──
+
+/** Флаг допуска нетраннера в Сеть: заблокирован после флэтлайна или мастером; «пощадить» снимает (коллектор — источник правды). */
+export interface NetRunnerFlagItem {
+  runnerKey: string;
+  /** Позывной из записи флэтлайна, а если его нет — из истории игрока. */
+  callsign: string;
+  blocked: boolean;
+  reason: string | null;
+  session: string | null;
+  node: string | null;
+  terminal: string | null;
+  /** Подробности флэтлайна (cause, disconnect, left_in_node, alert) — для карточки мастера. */
+  detail: Record<string, unknown> | null;
+  blockedAt: number | null;
+  sparedAt: number | null;
+  sparedBy: string | null;
+  /** false — Мост ещё не знает об этом решении (догонится при следующем подключении). */
+  bridgeSynced: boolean;
+  /** Игрок с таким ключом известен коллектору — карточка игрока доступна. */
+  knownPlayer: boolean;
 }

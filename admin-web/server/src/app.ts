@@ -27,6 +27,7 @@ import { DisplayManager } from "./displays/manager.js";
 import { AudioService } from "./audio/audioService.js";
 import { registerAudioRoutes } from "./routes/audio.js";
 import { registerCapabilitiesRoute } from "./routes/capabilities.js";
+import { registerNetRoutes } from "./routes/net.js";
 
 /**
  * Собирает Fastify-приложение без побочного listen() — раньше вся сборка
@@ -60,6 +61,7 @@ export function buildApp(db: Db, options: { clientDist?: string; logger?: boolea
 
   registerChangesRoute(app, db);
   registerCapabilitiesRoute(app);
+  registerNetRoutes(app, db);
   registerPlayersRoutes(app, db);
   registerAuthRoute(app, db);
   registerContainersRoute(app, db);
