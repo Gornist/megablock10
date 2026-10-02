@@ -176,7 +176,7 @@ class NetrunEntryTest {
 
         val restarted = NetrunEntry(
             r.store, r.ledger, r.messenger, { _, _ -> SendOutcome.DELIVERED }, {}, me::sign, this,
-            now = { testScheduler.currentTime }, retryMs = 1_000, waitMs = 10_000, connectedMs = connectedMs, io = StandardTestDispatcher(testScheduler),
+            now = { testScheduler.currentTime }, retryMs = 1_000, waitMs = 10_000, io = StandardTestDispatcher(testScheduler),
         )
         assertEquals(NetrunEntryState.Waiting(rack, timedOut = true), restarted.state.value)
         restarted.onEntered(reply("e-test", ok = true))
