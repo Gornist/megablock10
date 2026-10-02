@@ -95,6 +95,7 @@ class BridgeApp(private val options: LaunchOptions) : AutoCloseable {
             "--world-pub не совпадает с ключом мира из файла рядом с базой"
         }
         ensureDefaultSettings(store, worldKey.publicB64)
+        ItemDecode.backfill(store) // предметы, принятые до M5b, без daemon/shard
         val ops = ValueOps(store, gateway = delivery)
         inbox = PhoneInbox(store, ops, worldKey, phones, delivery, log = log)
         val master = MasterOps(store)

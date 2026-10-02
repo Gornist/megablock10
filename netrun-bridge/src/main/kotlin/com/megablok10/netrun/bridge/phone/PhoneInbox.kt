@@ -9,6 +9,7 @@ import com.megablok10.kit.net.LineRoute
 import com.megablok10.netrun.bridge.Caller
 import com.megablok10.netrun.bridge.Doc
 import com.megablok10.netrun.bridge.DocStore
+import com.megablok10.netrun.bridge.ItemDecode
 import com.megablok10.netrun.bridge.OpResult
 import com.megablok10.netrun.bridge.Role
 import com.megablok10.netrun.bridge.StoreException
@@ -16,6 +17,7 @@ import com.megablok10.netrun.bridge.VJ
 import com.megablok10.netrun.bridge.ValueOps
 import com.megablok10.rules.ItemPayloadCodec
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -77,10 +79,12 @@ class PhoneInbox(
             if (tx.get(ValueOps.ITEM, id) != null) return@transaction false
             tx.put(
                 ValueOps.ITEM, id, 0,
-                VJ.obj(
-                    "owner" to VJ.p("inbox:${card.from}"), "kind" to VJ.p(card.kind), "payload" to VJ.p(card.payload),
-                    "protected" to VJ.p(false), "origin" to VJ.p("phone:${card.from}"), "in_transfer" to VJ.p(card.id),
-                    "out_transfer" to JsonNull, "handover" to JsonNull,
+                JsonObject(
+                    VJ.obj(
+                        "owner" to VJ.p("inbox:${card.from}"), "kind" to VJ.p(card.kind), "payload" to VJ.p(card.payload),
+                        "protected" to VJ.p(false), "origin" to VJ.p("phone:${card.from}"), "in_transfer" to VJ.p(card.id),
+                        "out_transfer" to JsonNull, "handover" to JsonNull,
+                    ) + ItemDecode.fields(card.kind, card.payload), // daemon/shard — для сервера мира, он формата карточки не знает
                 ),
             )
             true

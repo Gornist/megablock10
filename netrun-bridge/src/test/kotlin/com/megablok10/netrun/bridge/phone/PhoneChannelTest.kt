@@ -48,6 +48,13 @@ class PhoneChannelTest {
         assertEquals(daemon.payload, VJ.str(d.data, "payload")) // payload байт в байт
         assertEquals("phone:${p.key}", VJ.str(d.data, "origin"))
         assertEquals("DAEMON", VJ.str(d.data, "kind"))
+        // разобранный демон для сервера мира: эффект и уровень из карточки (Daemon.effect по умолчанию — EXTRACT_SHARD)
+        val dj = d.data["daemon"] as kotlinx.serialization.json.JsonObject
+        assertEquals("EXTRACT_SHARD", VJ.str(dj, "effect"))
+        assertEquals(1L, VJ.lng(dj, "tier"))
+        assertEquals("Демон d1", VJ.str(dj, "name"))
+        assertEquals(listOf("1C", "BD"), (dj["cells"] as kotlinx.serialization.json.JsonArray).map { (it as JsonPrimitive).content })
+        assertEquals(1L, VJ.lng(r.itemOf("tr-2").data["shard"] as kotlinx.serialization.json.JsonObject, "tier"))
         // чеки Моста подписаны ключом мира
         r.await("два чека Моста") { p.bodies.mapNotNull { PhoneWire.decodeReceipt(it) }.size == 2 }
         for (c in p.bodies.mapNotNull { PhoneWire.decodeReceipt(it) }) {
