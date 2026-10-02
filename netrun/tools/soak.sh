@@ -98,12 +98,13 @@ ev "сборка Моста"
 tmo 900 ./gradlew -q :netrun-bridge:installDist >"$WORK/gradle.log" 2>&1 || { tail -n 30 "$WORK/gradle.log"; fail "не собрался Мост"; }
 [ -d netrun/.godot ] || { ev "импорт проекта Godot"; tmo 180 "$GODOT" --headless --path netrun --import >"$WORK/import.log" 2>&1; }
 
+# Пауза после выброса ICE (локдаун узла) сжата с 10 минут до 2 с: иначе после первого выброса весь узел закрыт для входа.
 # --- Данные: узел, шард, по терминалу и игроку на бота, запас предметов в inbox каждого игрока (забег сдаёт 2) ---
 python3 - "$WORK/seed.json" "$BOTS" "$POOL" <<'PY'
 import hashlib, json, sys
 out, bots, pool = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
 sha = lambda s: hashlib.sha256(s.encode()).hexdigest()
-d = {"settings": {"global": {"auditor_period_s": 5}},
+d = {"settings": {"global": {"auditor_period_s": 5, "soft_ice_reentry_pause_s": 2}},
      "node": {"node_07": {"title": "Серый узел", "tier": "STANDARD", "tutorial": False, "lockdown_until": 0, "eddies": 0}},
      "terminal": {}, "runner": {}, "session": {}, "deck": {}, "item": {}}
 d["item"]["it_soak_shard00000"] = {"owner": "node:node_07", "kind": "SHARD", "payload": "shard-soak", "protected": False,

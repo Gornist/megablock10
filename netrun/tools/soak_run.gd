@@ -65,6 +65,14 @@ func _run() -> void:
 	var wait_until := Time.get_ticks_msec() + 60000
 	while Time.get_ticks_msec() < wait_until and await _terminal_busy(terminal):
 		await create_timer(1.0).timeout
+	# Узел в локдауне (после выброса ICE): вход откажет, а отказ возвращает деку на телефон — запас предметов тратится зря.
+	var lock_until := Time.get_ticks_msec() + 60000
+	while Time.get_ticks_msec() < lock_until:
+		var nd: Dictionary = await _bridge.get_doc("node", "node_07")
+		var locked_ms := int(nd.get("doc", {}).get("data", {}).get("lockdown_until", 0)) - int(Time.get_unix_time_from_system() * 1000.0)
+		if locked_ms <= 0:
+			break
+		await create_timer(minf(locked_ms / 1000.0 + 0.2, 2.0)).timeout
 	var items: Array = str(_args.get("items", "")).split(",", false)
 	var sub: Dictionary = await _bridge._request("op.submit_deck", {
 		"rid": "enter:soak-%s-%d" % [_tag(), Time.get_ticks_msec()], "runner": str(_args.get("runner", "")), "callsign": "Soak",
