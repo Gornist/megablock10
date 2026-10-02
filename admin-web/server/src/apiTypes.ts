@@ -608,3 +608,31 @@ export interface WorldEventsTestResult {
   /** Точки, на которые ушло объявление; пусто — нет настройки, связи точки или звуковой точки. */
   playedOn: string[];
 }
+
+// ── «Сеть»: состояние Моста для экрана (docs/netrun-bridge-protocol.md) ──
+
+/** Документ Моста как есть: type+id, версия и данные (схема — по типу, раздел 5 протокола). */
+export interface NetDoc {
+  type: string;
+  id: string;
+  ver: number;
+  created: number;
+  updated: number;
+  data: Record<string, unknown>;
+}
+
+/**
+ * Снимок «Сети» для экрана. docs — по типам (node, node_cfg, session, deck, terminal, alert, master_req, net_query, template,
+ * settings) и только пока Мост на связи: нет связи — docs пуст, экран пишет «Мост недоступен», а не показывает старое как живое.
+ */
+export interface NetState {
+  /** false — BRIDGE_MASTER_KEY не задан, функции Моста выключены. */
+  configured: boolean;
+  bridge: "disabled" | "connecting" | "connected" | "down";
+  /** Почему нет связи (последняя ошибка), если она известна. */
+  error: string | null;
+  info: { version: string; worldPub: string; seq: number } | null;
+  docs: Record<string, NetDoc[]>;
+  /** Часы сервера: сроки (expires_at, lockdown_until) экран считает от них, а не от часов браузера. */
+  serverNow: number;
+}
