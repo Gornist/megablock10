@@ -31,6 +31,8 @@ class WorldAutoAccept(
     private val messenger: DirectMessenger,
     /** Скоуп процесса: чек уходит из него, уже после того как обработчик сохранил карточку и вернулся (правило D2: «доставлено» — после сохранения). */
     private val work: CoroutineScope,
+    /** Принята (или повторена) карточка Моста — забег окончен (NetrunEntry.onWorldCard). */
+    private val onWorldCard: () -> Unit = {},
 ) {
     /** true — сообщение было карточкой от Моста и разобрано здесь (принята или отклонена); false — это не наш случай. */
     suspend fun onDirect(me: Identity, message: ChatWireMessage): Boolean {
@@ -46,7 +48,7 @@ class WorldAutoAccept(
     private suspend fun handleItem(me: Identity, world: String, card: Mb10Qr.ItemTransfer): Boolean {
         val accepted = items.acceptIncoming(me.publicKeyB64, card)
         val repeat = !accepted && items.hasIncoming(card.id)
-        if (accepted || repeat) sendReceiptLater(me, world, items.buildReceipt(me, card.id))
+        if (accepted || repeat) { sendReceiptLater(me, world, items.buildReceipt(me, card.id)); onWorldCard() }
         Mb10Log.event(TAG, "netrun.world_item", "id" to card.id, "kind" to card.kind.name, "accepted" to accepted, "repeat" to repeat)
         return true
     }
@@ -54,7 +56,7 @@ class WorldAutoAccept(
     private suspend fun handlePayment(me: Identity, world: String, card: Mb10Qr.Transaction): Boolean {
         val accepted = payments.recordIncoming(me.publicKeyB64, card)
         val repeat = !accepted && payments.hasIncoming(card.id)
-        if (accepted || repeat) sendReceiptLater(me, world, payments.buildReceipt(me, card.id))
+        if (accepted || repeat) { sendReceiptLater(me, world, payments.buildReceipt(me, card.id)); onWorldCard() }
         Mb10Log.event(TAG, "netrun.world_eddies", "id" to card.id, "amount" to card.amount, "accepted" to accepted, "repeat" to repeat)
         return true
     }

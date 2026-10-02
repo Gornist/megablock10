@@ -28,7 +28,7 @@ nr_cleanup() {
   local p; for p in "${PIDS[@]:-}"; do [ -n "$p" ] && kill -KILL -- "-$p" 2>/dev/null; done
   [ -n "$PA" ] && adb_ $A emu redir del tcp:$PA >/dev/null 2>&1
   wait 2>/dev/null
-  # Баннер «Подключено к стойке…» на Кибердеке остаётся, пока игрок его не закроет, и мешает UI-сценариям после этого (sec-alert, slot-race)
+  # Баннер «Подключено» на Кибердеке гаснет сам по добыче Моста или через 2 часа; не ждём и закрываем сразу, иначе он мешает UI-сценариям после этого (sec-alert, slot-race)
   dbg $A DEBUG_SET --es netrun dismiss
 }
 trap nr_cleanup EXIT

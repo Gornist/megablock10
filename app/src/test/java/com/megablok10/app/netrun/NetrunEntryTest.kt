@@ -30,7 +30,7 @@ class NetrunEntryTest {
     private val ghost = Daemon("d1", "Призрак", listOf("1C", "BD"))
     private val miner = Daemon("d2", "Шахтёр", listOf("55", "E9"))
 
-    private class Rig(val me: TestPlayer, val world: TestPlayer, scope: TestScope, bridgeReachable: Boolean = true, vararg owned: String) {
+    private class Rig(val me: TestPlayer, val world: TestPlayer, scope: TestScope, bridgeReachable: Boolean = true, connectedMs: Long = 7_200_000, vararg owned: String) {
         val ledger = FakeItemLedger(me, *owned)
         val messenger = FakeMessenger(*(if (bridgeReachable) arrayOf(world.peer) else emptyArray()))
         val store = NetrunStore(MemoryPrefs())
@@ -40,11 +40,11 @@ class NetrunEntryTest {
             store, ledger, messenger,
             sendLine = { _, line -> lines += line; SendOutcome.DELIVERED },
             addPeer = { peers += it }, sign = me::sign, work = scope,
-            now = { scope.testScheduler.currentTime }, newRid = { "e-test" }, retryMs = 1_000, waitMs = 10_000, io = StandardTestDispatcher(scope.testScheduler),
+            now = { scope.testScheduler.currentTime }, newRid = { "e-test" }, retryMs = 1_000, waitMs = 10_000, connectedMs = connectedMs, io = StandardTestDispatcher(scope.testScheduler),
         )
     }
 
-    private fun TestScope.rig(reachable: Boolean = true) = Rig(me, world, this, reachable, "d1", "d2")
+    private fun TestScope.rig(reachable: Boolean = true) = Rig(me, world, this, reachable, 7_200_000, "d1", "d2")
 
     private fun reply(rid: String, ok: Boolean, signer: TestPlayer = world, session: String = "s_1", code: String = "", msg: String = ""): EnterReply {
         val unsigned = EnterReply(rid, ok, session, code, msg, "")
@@ -176,7 +176,7 @@ class NetrunEntryTest {
 
         val restarted = NetrunEntry(
             r.store, r.ledger, r.messenger, { _, _ -> SendOutcome.DELIVERED }, {}, me::sign, this,
-            now = { testScheduler.currentTime }, retryMs = 1_000, waitMs = 10_000, io = StandardTestDispatcher(testScheduler),
+            now = { testScheduler.currentTime }, retryMs = 1_000, waitMs = 10_000, connectedMs = connectedMs, io = StandardTestDispatcher(testScheduler),
         )
         assertEquals(NetrunEntryState.Waiting(rack, timedOut = true), restarted.state.value)
         restarted.onEntered(reply("e-test", ok = true))
@@ -206,5 +206,59 @@ class NetrunEntryTest {
         assertEquals(NetrunEntryState.Idle, r.entry.state.value)
         assertNull(r.store.attempt())
         assertNull(r.store.worldPub())
+    }
+
+    private suspend fun TestScope.connected(r: Rig) {
+        r.entry.enter(me.identity, rack, listOf(ghost), "d1")
+        testScheduler.runCurrent()
+        r.entry.onEntered(reply("e-test", ok = true))
+        assertTrue(r.entry.state.value is NetrunEntryState.Connected)
+    }
+
+    @Test fun `the connected banner goes out when the world returns loot`() = runTest {
+        val r = rig()
+        connected(r)
+
+        r.entry.onWorldCard()
+
+        assertEquals(NetrunEntryState.Idle, r.entry.state.value)
+    }
+
+    @Test fun `a world card does not touch a failed entry`() = runTest {
+        val r = rig()
+        r.entry.enter(me.identity, rack, listOf(ghost), "d1")
+        testScheduler.runCurrent()
+        r.entry.onEntered(reply("e-test", ok = false, code = "busy"))
+
+        r.entry.onWorldCard()
+
+        assertTrue(r.entry.state.value is NetrunEntryState.Failed)
+    }
+
+    @Test fun `the connected banner expires by timeout`() = runTest {
+        val r = rig()
+        connected(r)
+
+        testScheduler.advanceTimeBy(7_199_000)
+        testScheduler.runCurrent()
+        assertTrue(r.entry.state.value is NetrunEntryState.Connected)
+
+        testScheduler.advanceTimeBy(2_000)
+        testScheduler.runCurrent()
+        assertEquals(NetrunEntryState.Idle, r.entry.state.value)
+    }
+
+    @Test fun `the expiry timer of an old banner does not close a later failure`() = runTest {
+        val r = rig()
+        connected(r)
+        r.entry.reset()
+        r.entry.enter(me.identity, rack, listOf(ghost), "d1")
+        testScheduler.runCurrent()
+        r.entry.onEntered(reply("e-test", ok = false, code = "busy"))
+
+        testScheduler.advanceTimeBy(7_300_000)
+        testScheduler.runCurrent()
+
+        assertTrue(r.entry.state.value is NetrunEntryState.Failed)
     }
 }

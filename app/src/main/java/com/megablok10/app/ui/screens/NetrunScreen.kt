@@ -42,7 +42,7 @@ import com.megablok10.app.ui.theme.MbTag
 import com.megablok10.app.ui.theme.MbTypography
 
 /** Название стойки для игрока: «стойка t03» (подпись из QR — отдельной строкой, если есть). */
-fun rackTitle(rack: Mb10Qr.Rack): String = "стойка ${rack.terminal}"
+fun rackTitle(rack: Mb10Qr.Rack): String = rack.label.ifBlank { "Стойка ${rack.terminal}" }
 
 /**
  * Выбор деки перед входом в «Сеть»: демоны из коллекции в пределах RAM и один из выбранных — в защищённый слот (он возвращается
@@ -70,7 +70,6 @@ fun NetrunDeckPicker(
         MbBreadcrumb(parts = listOf("Кибердека", rackTitle(rack)), icon = MbIcons.Hack) {
             MbIconButton(MbIcons.Close, "Отмена", onCancel)
         }
-        if (rack.label.isNotBlank()) Text(rack.label, style = MbTypography.rowSub, color = LocalMbColors.current.ink2, modifier = Modifier.padding(top = MbDimens.rowGap))
         Spacer(Modifier.height(MbDimens.blockGap))
         MbPanel("Дека", meta = "$used / $ramCapacity" + if (used > ramCapacity) " — снимите демон" else "") {
             MbBuffer(codes = picked.flatMap { it.sequence }, size = ramCapacity)
@@ -149,7 +148,7 @@ fun NetrunStatus(state: NetrunEntryState, onRetry: () -> Unit, onClose: () -> Un
             }
             is NetrunEntryState.Connected -> MbBanner(
                 lead = { Icon(painterResource(MbIcons.Check), contentDescription = null, tint = c.ok) },
-                title = "Подключено к ${rackTitle(state.rack)}",
+                title = "Подключено: ${rackTitle(state.rack)}",
                 sub = "Наденьте очки. Телефон можно убрать в карман: добыча придёт сама.",
                 action = { MbIconButton(MbIcons.Close, "Закрыть", onClose) }
             )

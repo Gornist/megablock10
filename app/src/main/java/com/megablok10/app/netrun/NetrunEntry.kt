@@ -66,6 +66,8 @@ class NetrunEntry(
     private val newRid: () -> String = { "e-" + UUID.randomUUID().toString().take(RID_CHARS) },
     private val retryMs: Long = RETRY_MS,
     private val waitMs: Long = WAIT_MS,
+    /** Через сколько баннер «Подключено» гаснет сам, если добыча так и не пришла. */
+    private val connectedMs: Long = CONNECTED_MS,
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private val _state = MutableStateFlow<NetrunEntryState>(store.attempt()?.let { NetrunEntryState.Waiting(it.rack, timedOut = true) } ?: NetrunEntryState.Idle)
@@ -136,9 +138,32 @@ class NetrunEntry(
         store.clearAttempt()
         Mb10Log.event(TAG, "netrun.entered", "rid" to reply.rid, "ok" to reply.ok, "code" to reply.code.ifEmpty { null })
         _state.value = if (reply.ok) {
-            NetrunEntryState.Connected(attempt.rack, reply.session)
+            NetrunEntryState.Connected(attempt.rack, reply.session).also { expireLater(it) }
         } else {
             NetrunEntryState.Failed("Вход отклонён: ${reply.msg.ifEmpty { reply.code }}. Деки вернутся на телефон.")
+        }
+    }
+
+    /**
+     * Мост вернул добычу или демонов (карточка от ключа мира принята): забег окончен, баннер «Подключено» не нужен. Карточки,
+     * пришедшие в другом состоянии (возврат демонов после отказа), состояние не трогают.
+     */
+    fun onWorldCard() {
+        val s = _state.value
+        if (s is NetrunEntryState.Connected) {
+            _state.value = NetrunEntryState.Idle
+            Mb10Log.event(TAG, "netrun.connected_done", "why" to "loot", "session" to s.session)
+        }
+    }
+
+    /** Баннер «Подключено» гаснет сам по таймауту: забег мог закончиться без добычи (например, выброс из пустого узла). */
+    private fun expireLater(connected: NetrunEntryState.Connected) {
+        work.launch {
+            delay(connectedMs)
+            if (_state.value === connected) {
+                _state.value = NetrunEntryState.Idle
+                Mb10Log.event(TAG, "netrun.connected_done", "why" to "timeout", "session" to connected.session)
+            }
         }
     }
 
@@ -191,6 +216,7 @@ class NetrunEntry(
     companion object {
         const val RETRY_MS = 4_000L
         const val WAIT_MS = 120_000L
+        const val CONNECTED_MS = 2 * 60 * 60 * 1000L
         private const val RID_CHARS = 12
         private const val WORLD_CALLSIGN = "Мост"
     }

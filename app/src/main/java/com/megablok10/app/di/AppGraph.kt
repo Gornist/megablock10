@@ -181,7 +181,7 @@ class AppGraph(private val app: Application) {
         sign = identity::sign,
         work = processScope,
     )
-    val worldCards = WorldAutoAccept(netrunStore::worldPub, items, wallet, chat, processScope)
+    val worldCards = WorldAutoAccept(netrunStore::worldPub, items, wallet, chat, processScope, onWorldCard = netrun::onWorldCard)
 
     // Сессия и жизненный цикл персонажа
     val mesh: MeshSession = MeshSession(

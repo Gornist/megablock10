@@ -59,5 +59,14 @@ class NetrunScreenTest {
     fun statusConnected() = snap("netrun_status_connected") { NetrunStatus(NetrunEntryState.Connected(rack, "s_9f2c41d07a3e5b60"), {}, {}) }
 
     @Test
+    fun statusConnectedNoLabel() = snap("netrun_status_connected_no_label") { NetrunStatus(NetrunEntryState.Connected(rack.copy(label = ""), "s_9f2c41d07a3e5b60"), {}, {}) }
+
+    @Test
+    fun rackTitleIsLabelOrId() {
+        org.junit.Assert.assertEquals("Подвал, стойка 3", com.megablok10.app.ui.screens.rackTitle(rack))
+        org.junit.Assert.assertEquals("Стойка t03", com.megablok10.app.ui.screens.rackTitle(rack.copy(label = " ")))
+    }
+
+    @Test
     fun statusFailed() = snap("netrun_status_failed") { NetrunStatus(NetrunEntryState.Failed("Вход отклонён: терминал занят. Деки вернутся на телефон."), {}, {}) }
 }

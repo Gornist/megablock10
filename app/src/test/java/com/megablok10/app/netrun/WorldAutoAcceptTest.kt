@@ -31,7 +31,8 @@ class WorldAutoAcceptTest {
     private val myChat = FakeMessenger(world.peer, stranger.peer)
     private var worldKey: String? = world.key
     private val work = TestScope()
-    private val auto = WorldAutoAccept({ worldKey }, myItems, myMoney, myChat, work)
+    private var worldCards = 0
+    private val auto = WorldAutoAccept({ worldKey }, myItems, myMoney, myChat, work, onWorldCard = { worldCards++ })
 
     /** Обработчик строки (возвращается после сохранения) и затем фоновая отправка чека. */
     private suspend fun handle(msg: ChatWireMessage): Boolean = auto.onDirect(me.identity, msg).also { work.advanceUntilIdle() }
@@ -65,6 +66,14 @@ class WorldAutoAcceptTest {
         assertTrue(myChat.sent.isEmpty())
         work.advanceUntilIdle()
         assertEquals(1, myChat.sent.size)
+    }
+
+    @Test fun `an accepted world card reports the end of the run, a stranger's card does not`() = runTest {
+        handle(dm(stranger, Mb10QrCodec.encodeItemTransfer(itemFrom(stranger, "x-1"))))
+        assertEquals(0, worldCards)
+
+        handle(dm(world, Mb10QrCodec.encodeItemTransfer(itemFrom(world, "loot-9"))))
+        assertEquals(1, worldCards)
     }
 
     @Test fun `eddies from the world key are credited and acknowledged`() = runTest {

@@ -157,8 +157,8 @@ class DebugQrReceiver : BroadcastReceiver() {
         }
         // Вход в «Сеть» тем же путём, что экран выбора деки (NetrunViewModel.enter → NetrunEntry.enter): "QR стойки|id,id,…|id защищённого".
         // Ход и итог — в журнале (netrun.enter_start, netrun.entered); здесь только отказ до начала: "netrun rejected <причина>".
-        // "dismiss" — закрыть итог входа (баннер «Подключено к стойке…» на Кибердеке остаётся, пока игрок его не закроет, и закрывает
-        // экран для UI-сценариев стенда, которые идут дальше).
+        // "dismiss" — закрыть итог входа сразу (баннер «Подключено» гаснет и сам — по добыче Моста или таймауту, — но стенду ждать
+        // незачем: он мешает UI-сценариям, которые идут дальше).
         intent.getStringExtra("netrun")?.takeIf { it == "dismiss" }?.let { graph.netrun.dismiss() }
         intent.getStringExtra("netrun")?.takeIf { it != "dismiss" }?.let { spec ->
             val p = spec.split("|")
