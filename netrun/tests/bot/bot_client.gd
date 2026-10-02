@@ -247,11 +247,11 @@ func _process(delta: float) -> void:
 		"to_shard":
 			# Без GHOST идём осторожно: ICE успевает заметить и догнать раньше шарда.
 			var speed_scale := 1.0 if scenario == Scenario.GHOST_RUN else 0.25
-			if _walk_to(NodeLayout.SHARD_POS, delta * speed_scale, GRAB_FROM):
+			if _walk_to(_plain_shard()["pos"], delta * speed_scale, GRAB_FROM):
 				_enter("to_exit" if no_shard else "grab")
 		"grab":
 			if not _asked:
-				_asked = net.request_grab(NetConfig.PICKUP_ID)
+				_asked = net.request_grab(_plain_shard()["id"])
 			elif shard_taken:
 				_enter("hold" if hold_after_grab > 0.0 else "to_exit")
 		"hold":
@@ -267,6 +267,14 @@ func _process(delta: float) -> void:
 		"leave":
 			if not _asked:
 				_asked = net.request_leave()
+
+
+## Шард для сценариев GHOST/EXPOSED: в узле графа — первый лежащий из события node (id слота), в одиночном — pickup_01.
+func _plain_shard() -> Dictionary:
+	for sh in node_info.get("shards", []):
+		if sh.get("ready", false):
+			return {"id": str(sh["id"]), "pos": Vector3(float(sh["p"][0]), 0.0, float(sh["p"][2]))}
+	return {"id": NetConfig.PICKUP_ID, "pos": NodeLayout.SHARD_POS}
 
 
 ## GRAPH_RUN: следующий шаг в узле. Маршрут не кончился — к порталу в следующий узел; кончился — к первому лежащему шарду
