@@ -217,6 +217,23 @@ CREATE TABLE IF NOT EXISTS collector_settings (
   value TEXT NOT NULL
 );
 
+-- «Сеть» → площадка (docs/netrun-world-records.md, §3): какая точка стоит у какого узла Сети и/или терминала — по этому коллектор
+-- решает, КОМУ из точек идёт быстрое событие (Мост знает только узел и терминал). Это отдельно от displays.node_id: тот — узел
+-- коллектора (контейнер из «Мастерской»), а node здесь — id узла в документе Моста (node_07).
+CREATE TABLE IF NOT EXISTS net_point_links (
+  display_id TEXT PRIMARY KEY,
+  net_node   TEXT,
+  terminal   TEXT
+);
+-- Что делает событие: проиграть клип громкой связи на подходящих точках. По умолчанию строк нет — события ничего не делают.
+CREATE TABLE IF NOT EXISTS world_event_actions (
+  kind    TEXT PRIMARY KEY,
+  clip_id TEXT,
+  volume  INTEGER,
+  chime   INTEGER NOT NULL DEFAULT 1,
+  enabled INTEGER NOT NULL DEFAULT 1
+);
+
 -- masters/sessions/audit_master — см. lib/auth.ts (ensureAuthSchema),
 -- появились позже основной схемы, вынесены отдельно, чтобы не мешать
 -- auth-логику с моделью данных игры.

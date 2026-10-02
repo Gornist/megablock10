@@ -201,7 +201,7 @@ export type Severity = "crit" | "warn" | "info";
 
 export interface AttentionItem {
   id: string;
-  kind: "negative_balance" | "balance_jump" | "went_silent" | "node_exhausted_hot" | "revoke_repeat" | "override_undelivered" | "override_failed" | "shard_copies" | "transfer_stuck" | "duplicate_receive" | "balance_chain_break" | "balance_unexplained" | "old_version" | "mass_silence" | "reject_spike" | "rate_limited" | "secret_denied" | "server_slow" | "clock_skew" | "transfer_amount_mismatch" | "emission_spike" | "player_outlier" | "provision_conflict" | "sync_stuck" | "display_battery" | "net_flatline" | "net_alert";
+  kind: "negative_balance" | "balance_jump" | "went_silent" | "node_exhausted_hot" | "revoke_repeat" | "override_undelivered" | "override_failed" | "shard_copies" | "transfer_stuck" | "duplicate_receive" | "balance_chain_break" | "balance_unexplained" | "old_version" | "mass_silence" | "reject_spike" | "rate_limited" | "secret_denied" | "server_slow" | "clock_skew" | "transfer_amount_mismatch" | "emission_spike" | "player_outlier" | "provision_conflict" | "sync_stuck" | "display_battery" | "net_flatline" | "net_alert" | "net_master_alert";
   severity: Severity;
   title: string;
   detail: string;
@@ -565,4 +565,46 @@ export interface NetRunnerFlagItem {
   bridgeSynced: boolean;
   /** Игрок с таким ключом известен коллектору — карточка игрока доступна. */
   knownPlayer: boolean;
+}
+
+// ── «Сеть» → площадка: быстрые события на точки (docs/netrun-world-records.md, §3) ──
+
+export interface WorldEventKindInfo {
+  kind: "run.enter" | "run.exit" | "trace.level" | "ice.hunt" | "flatline" | "lockdown" | "alert.master";
+  label: string;
+  /** Когда возникает. */
+  when: string;
+  /** На какие точки идёт: по терминалу и/или по узлу Сети (alert.master — ни на какие, только панель мастера). */
+  byTerminal: boolean;
+  byNode: boolean;
+}
+
+export interface WorldEventActionItem {
+  kind: WorldEventKindInfo["kind"];
+  clipId: string | null;
+  clipName: string | null;
+  /** null — громкость по умолчанию (80). */
+  volume: number | null;
+  chime: boolean;
+  enabled: boolean;
+}
+
+/** Точка ↔ узел и/или терминал Сети: по этой связи коллектор решает, кому идёт событие. */
+export interface NetPointLinkItem {
+  displayId: string;
+  displayName: string;
+  netNode: string | null;
+  terminal: string | null;
+}
+
+export interface WorldEventsConfig {
+  kinds: WorldEventKindInfo[];
+  actions: WorldEventActionItem[];
+  links: NetPointLinkItem[];
+}
+
+export interface WorldEventsTestResult {
+  accepted: number;
+  /** Точки, на которые ушло объявление; пусто — нет настройки, связи точки или звуковой точки. */
+  playedOn: string[];
 }

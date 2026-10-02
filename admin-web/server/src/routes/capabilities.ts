@@ -9,8 +9,8 @@ import { RateLimiter } from "../lib/rateLimit.js";
 export const CAPABILITIES = {
   /** net.run / net.item / net.alert и причины NET_* принимаются приёмом /api/changes. */
   world_records: 1,
-  /** POST /api/world-events (быстрые события на точки) — включается вместе с самим эндпоинтом. */
-  world_events: 0,
+  /** POST /api/world-events: быстрые события на точки (routes/worldEvents.ts). */
+  world_events: 1,
 } as const;
 
 /**

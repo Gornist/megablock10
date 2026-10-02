@@ -28,6 +28,7 @@ import { AudioService } from "./audio/audioService.js";
 import { registerAudioRoutes } from "./routes/audio.js";
 import { registerCapabilitiesRoute } from "./routes/capabilities.js";
 import { registerNetRoutes } from "./routes/net.js";
+import { registerWorldEventsRoutes } from "./routes/worldEvents.js";
 
 /**
  * Собирает Fastify-приложение без побочного listen() — раньше вся сборка
@@ -87,6 +88,7 @@ export function buildApp(db: Db, options: { clientDist?: string; logger?: boolea
   const audio = options.audio ?? new AudioService(db, displays);
   registerDisplayRoutes(app, db, displays, () => audio.sync());
   registerAudioRoutes(app, db, displays, audio);
+  registerWorldEventsRoutes(app, db, displays, audio);
   app.addHook("onClose", async () => {
     audio.stop();
     displays.stop();

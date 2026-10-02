@@ -45,11 +45,12 @@ function worldRecords(world: Device) {
 
 const post = (app: Awaited<ReturnType<typeof setup>>["app"], records: unknown[]) => app.inject({ method: "POST", url: "/api/changes", payload: { records } });
 
-test("capabilities: открытый, без сессии мастера, объявляет world_records", async () => {
+test("capabilities: открытый, без сессии мастера, объявляет world_records и world_events", async () => {
   const { app } = await setup();
   const res = await app.inject({ method: "GET", url: "/api/capabilities" });
   assert.equal(res.statusCode, 200);
   assert.equal(res.json().world_records, 1);
+  assert.equal(res.json().world_events, 1);
 });
 
 test("записи мира из контракта принимаются, а не уходят в rejected (иначе kit молча удалит их из очереди)", async () => {

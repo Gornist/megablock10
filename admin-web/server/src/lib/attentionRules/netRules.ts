@@ -1,6 +1,7 @@
 import type { AttentionItem } from "../../apiTypes.js";
 import { parseSafe } from "../json.js";
 import { createNetRunners } from "../netRunners.js";
+import { recentMasterAlerts } from "../worldEventLog.js";
 import type { AttentionRule } from "./context.js";
 
 /** Правила про «Сеть» (Мост, нетраннеры): то, на что мастер должен отреагировать сразу. Тревоги Моста поверх сюда добавит экран «Сеть». */
@@ -54,3 +55,20 @@ export const netAuditorAlerts: AttentionRule = ({ db, now, t }) => {
   }
   return items;
 };
+
+/**
+ * Быстрое событие `alert.master` — новая тревога аудитора, «звонок мастеру» (docs/netrun-world-records.md, §3): на площадку оно не
+ * идёт, живёт секунды и в записи синка не дублируется (тревога аудитора приходит отдельно, NET_ALERT). Здесь оно просто заметно
+ * сразу, пока мастер у экрана.
+ */
+export const netMasterAlert: AttentionRule = ({ now }) =>
+  recentMasterAlerts(now).map(
+    (a): AttentionItem => ({
+      id: `net-master-alert:${a.id}`,
+      kind: "net_master_alert",
+      severity: "crit",
+      title: "Сеть зовёт мастера",
+      detail: [a.node ? `узел ${a.node}` : null, a.terminal ? `терминал ${a.terminal}` : null].filter(Boolean).join(", ") || "новая тревога аудитора",
+      at: a.at,
+    }),
+  );
