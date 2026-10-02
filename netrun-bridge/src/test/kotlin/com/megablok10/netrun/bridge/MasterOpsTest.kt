@@ -226,7 +226,7 @@ class MasterOpsTest {
         now += 1_000; rules.tick()
         assertEquals(1, store.list("master_req").size) // повторный тик не плодит запросов
         assertTrue(m.req("master.decide", """"req":"$reqId","decision":"approve"""").ok())
-        rules.tick()
+        now += 1_000; rules.tick()
         assertEquals((now + 120_000).toString(), flag("node", "node_08", "lockdown_until"))
         assertEquals("applied", (data("node_cfg", "node_08")["goal"] as JsonObject).str("result"))
     }
@@ -262,7 +262,7 @@ class MasterOpsTest {
         assertEquals("tpl_night", (data("settings", "global")["template_applied"] as JsonObject).str("id"))
 
         // нет узла — ничего не записано
-        store.put("template", "tpl_b", 0, obj("settings" to JsonObject(mapOf("zzz" to JsonPrimitive(1))), "node_cfg" to JsonObject(mapOf("a" to JsonPrimitive(1)))))
+        store.put("template", "tpl_b", 0, JsonObject(mapOf("settings" to JsonObject(mapOf("zzz" to JsonPrimitive(1))), "node_cfg" to JsonObject(mapOf("a" to JsonPrimitive(1))))))
         assertEquals("not_found", m.req("master.template_apply", """"template":"tpl_b","nodes":["node_07","node_99"]""").code())
         assertFalse(data("settings", "global").containsKey("zzz"))
         assertEquals("bad_request", m.req("master.template_apply", """"template":"tpl_b"""").code())
