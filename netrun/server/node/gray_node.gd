@@ -313,7 +313,7 @@ func recover(docs: Array) -> void:
 		print("[gray-node] сессия ", s, ": флэтлайн из прошлого процесса, продолжаем ожидание мастера")
 		_finish_in_bridge({"session": s, "reason": ExitLogic.REASON_FLATLINE, "under_hunt": false, "deck_burned": false,
 			"disconnect": flatlined[s]})
-	print("[gray-node] снимок Моста (", node_id, "): активных сессий ", active.size(), ", шардов ", _shard_items.size(), ", локдаун до ", lockdown_until)
+	print("[gray-node] снимок Моста (", node_id, "): активных сессий ", active.size(), ", шард ", ",".join(_shard_items.values()) if not _shard_items.is_empty() else "—", ", локдаун до ", lockdown_until)
 
 
 ## Где сессия сейчас: последняя запись сервера мира (world.node), иначе узел из документа Моста (куда её приняли).
