@@ -150,11 +150,11 @@ class MasterOps(private val store: DocStore, private val clock: () -> Long = Sys
         (cfg.data["goal"] as? JsonObject)?.takeIf { !VJ.bool(it, "done") && VJ.lng(it, "deadline") > 0L }
 
     private fun applyGoal(tx: DocStore.Tx, node: String): Boolean {
-        val cfg = tx.get(NODE_CFG, node)
-        val goal = cfg?.let { activeGoal(it) }
-        val kind = goal?.let { VJ.str(it, "kind") }
-        val ready = goal != null && VJ.lng(goal, "deadline") <= clock() && (kind == "open" || kind == "lockdown")
-        if (cfg == null || goal == null || !ready || isPausedIn(tx, node)) return false
+        val cfg = tx.get(NODE_CFG, node) ?: return false
+        val goal = activeGoal(cfg) ?: return false
+        val kind = VJ.str(goal, "kind")
+        val ready = VJ.lng(goal, "deadline") <= clock() && (kind == "open" || kind == "lockdown")
+        if (!ready || isPausedIn(tx, node)) return false
         val nodeDoc = tx.get(NODE, node)
         val result = when {
             nodeDoc == null -> "no_node"
