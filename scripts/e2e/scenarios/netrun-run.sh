@@ -52,6 +52,10 @@ world_accepted() { journal_cat $A | grep -c 'netrun.world_item .*accepted=true';
 entered_ok() { journal_cat $A | grep -c 'netrun.entered rid=.* ok=true'; }
 
 # ── 1. Alice: два демона для деки ──
+# Стартовый Datamine засевается при первом открытии Кибердеки, и только в пустую коллекцию (DaemonStore.ensureSeeded): выданные до этого
+# демоны оставили бы Alice без Datamine, и UI-сценарии взлома после нас (sec-alert, slot-race) не нашли бы его на экране.
+open_deck $A
+eq_wait 30 "у Alice засеян стартовый Datamine" 1 phone_has daemons datamine_v1
 dbg $A DEBUG_SET --es daemon "NRghost:1C,55:1:GHOST"
 dbg $A DEBUG_SET --es daemon "NRjitter:1C,E9:1:JITTER"
 D_GHOST="debug-NRghost"; D_JITTER="debug-NRjitter"
