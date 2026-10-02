@@ -10,8 +10,11 @@
 - `main`: Android (kit + app на архитектурном слое), Kotlin 2.4 / AGP 8.13 / Gradle 8.14 / compileSdk 36 (миграция M1–M6 слита),
   дашборд мастера и «Устройства», прошивка QR-дисплея. CI зелёный.
 - Параллельные потоки (у каждого своя сессия и ветка; в `main` — только по команде владельца):
-  - **Cyberspace («Сеть», VR-клиент нетраннера)** — `agent/netrun` и ~40 веток-задач `agent/netrun-*`, каталог `netrun/`,
+  - **Cyberspace («Сеть», VR-клиент нетраннера)** — `agent/netrun` и ~45 веток-задач `agent/netrun-*`, каталог `netrun/`,
     `netrun-bridge/`, `docs/netrun*.md`. План по карточкам: `docs/netrun-tasks.md` (в ветке `agent/netrun`).
+    Статус: Мост B0–B4, обмен карточками с телефоном (M2), P5; приложение — M1 (`:rules`), M3 (вход по QR стойки); Godot — серый
+    узел, 10 клиентов, Black ICE на ревью; сквозной e2e `netrun-run` на devbox зелёный. В `main` и на GitHub пока ничего
+    (кроме веток `agent/netrun-m1`, `-g1`).
   - **Дашборд мастера** — только `admin-web/`.
   - **UI на новой дизайн-системе** — `agent/ui-kit`.
 - Тяжёлое (Gradle, Paparazzi, e2e, Godot) — на devbox, см. `.claude/skills/devbox/`.
