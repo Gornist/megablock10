@@ -38,9 +38,6 @@ Mac (8 ГБ) — только правка, git и `scripts/check.sh --fast`. Gr
 - Эмулятор завис: `scripts/e2e/down.sh; pkill -f emulator; scripts/e2e/up.sh`.
 - Порты: стенд e2e — 5554/5556, коллектор 2517 (`scripts/e2e`); Мост в `live_run.sh` — 7410/7411, сервер мира 7777. Параллельный
   `live_run` конфликтует: задачи брали 7510/7511/7877.
-- **Лечение стенда пока только в `agent/netrun`** (коммиты E1: `LC_ALL` в `lib.sh`, `captive_portal_mode 0` в `up.sh`). В `main`
-  их нет: стенд на devbox от `main` даёт 5 красных (announcement, sec-alert, slot-race, wifi-bind, zz-provisioning) — это не баг
-  приложения. Описанное ниже верно после слияния.
 - Красные сценарии, не связанные с приложением: локаль без UTF-8 (lib.sh ставит `LC_ALL=C.UTF-8`) и отключённый Android
   виртуальный Wi-Fi без интернета (`up.sh` выставляет `captive_portal_mode 0`). Подробности и первичная настройка —
   `docs/netrun-devbox.md`, `scripts/devbox-setup.sh` (идемпотентный).
