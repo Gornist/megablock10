@@ -41,7 +41,7 @@ WORLD_KILL_S=$(awk -v m="$WORLD_KILL_MIN" -v d="$DUR" 'BEGIN{w=m*60; if (d/3 < w
 BOT_KILL_S=$(awk -v m="$BOT_KILL_MIN" -v d="$DUR" 'BEGIN{w=m*60; if (d/4 < w) w=d/4; printf "%d", w}')
 AUDIT_S=300
 [ "$DUR" -lt 900 ] && AUDIT_S=$((DUR / 3 > 60 ? DUR / 3 : 60))
-POOL=$((DUR / 15 + 30))  # забегов на бота в запасе (по 2 предмета на забег; реально бот делает один забег за 20–40 с)
+POOL=$((DUR / 18 + 20))  # забегов на бота в запасе (по 2 предмета на забег; реально бот делает один забег за 20–40 с)
 
 WORK="${DIR:-${TMPDIR:-/tmp}/netrun-soak.$(date +%Y%m%d-%H%M%S)}"
 mkdir -p "$WORK" || exit 2

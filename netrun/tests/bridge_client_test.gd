@@ -90,3 +90,10 @@ func test_make_bridge_choice() -> void:
 	assert_str((ws as BridgeClient).key).is_equal("kw")
 	cfg.tokens = {"t1": "alice"}
 	assert_object(WorldServer.make_bridge(PackedStringArray([]), cfg)).is_null()
+
+
+func test_socket_buffer_fits_big_snapshot() -> void:
+	# Снимок `sub` с тысячами документов приходит одним кадром; 64 КиБ Godot по умолчанию хватало на ~200 документов.
+	var ws := BridgeClient.new_socket()
+	assert_int(ws.inbound_buffer_size).is_greater_equal(8 << 20)
+	assert_int(ws.outbound_buffer_size).is_greater_equal(1 << 20)

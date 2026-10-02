@@ -8,6 +8,7 @@ const PROTO := 1
 const ROLE := "world"
 ## Роль в hello: world (сервер мира); test — только стенды и долгий прогон (Мост с --test), tools/soak_run.gd.
 var role := ROLE
+const WS_BUFFER_BYTES := 1 << 24  # 16 МиБ
 const REQUEST_TIMEOUT_MS := 4000
 const RECONNECT_MS := 2000
 const PING_SEC := 10.0
@@ -51,7 +52,19 @@ func _init(bridge_url: String = "ws://127.0.0.1:7410/netrun/v1", role_key: Strin
 	url = bridge_url
 	key = role_key
 	client_name = name_of_client
-	_ws.heartbeat_interval = PING_SEC
+	_ws = new_socket()
+
+
+## Сокет с буферами под снимок всех документов. У Godot входной буфер по умолчанию 64 КиБ, а подписка `sub` присылает снимок
+## одним кадром: с тысячей документов он больше, Godot закрывал соединение кодом 1009 («слишком большое»), и сервер мира не мог
+## взять снимок вовсе (нашёл долгий прогон, P7).
+static func new_socket() -> WebSocketPeer:
+	var ws := WebSocketPeer.new()
+	ws.heartbeat_interval = PING_SEC
+	ws.inbound_buffer_size = WS_BUFFER_BYTES
+	ws.outbound_buffer_size = WS_BUFFER_BYTES
+	ws.max_queued_packets = 8192
+	return ws
 
 
 ## Разбор кадра Моста: {"kind": "reply"|"push"|"invalid", ...}. reply — с полем "re" (cid) и полным телом;
@@ -101,8 +114,7 @@ func is_ready() -> bool:
 
 func _connect() -> void:
 	state = State.CONNECTING
-	_ws = WebSocketPeer.new()
-	_ws.heartbeat_interval = PING_SEC
+	_ws = new_socket()
 	var e := _ws.connect_to_url(url)
 	if e != OK:
 		push_warning("[bridge] не начать соединение с %s: %s" % [url, error_string(e)])
