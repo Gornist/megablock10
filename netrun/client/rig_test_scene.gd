@@ -360,6 +360,7 @@ func apply_node(info: Dictionary) -> void:
 	node_info = info
 	current_node = str(info.get("node", ""))
 	_build_node(info.get("shards", []), info.get("portals", []), float(info.get("r", NodeLayout.PORTAL_RADIUS)))
+	_build_signs(info.get("signs", []))
 	var arrive: Variant = info.get("arrive")
 	if arrive is Array and (arrive as Array).size() == 2:
 		rig.global_position = Vector3(float(arrive[0]), rig.global_position.y, float(arrive[1]))
@@ -455,6 +456,21 @@ func _build_node(shards: Array, portals: Array, portal_radius: float) -> void:
 		l.font_size = 40
 		l.pixel_size = 0.004
 		l.position = Vector3(pos[0], 2.0, pos[1])
+		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		add_child(l)
+		_node_props.append(l)
+
+
+## Таблички учебного узла (диегетические подсказки, без HUD): надпись в мире на уровне глаз, поворачивается к игроку.
+func _build_signs(signs: Array) -> void:
+	for sg in signs:
+		var p: Array = sg["p"]
+		var l := Label3D.new()
+		l.text = str(sg.get("text", ""))
+		l.font_size = 36
+		l.pixel_size = 0.004
+		l.modulate = Color(0.6, 1.0, 0.8)
+		l.position = Vector3(p[0], 1.6, p[1])
 		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		add_child(l)
 		_node_props.append(l)

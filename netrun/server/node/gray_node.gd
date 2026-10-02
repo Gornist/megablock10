@@ -116,6 +116,11 @@ func is_graph_node() -> bool:
 	return not node_def.is_empty()
 
 
+## Учебный узел: шард-заглушка без ценности (в Мосте предмета нет, слот не пустеет), выброс не закрывает узел.
+func is_tutorial() -> bool:
+	return bool(node_def.get("tutorial", false))
+
+
 func tier() -> String:
 	return str(node_def.get("tier", ""))
 
@@ -228,6 +233,7 @@ func _add_ice(id: String, waypoints: Array, black: bool = false) -> void:
 	ice.position = wps[0]
 	ice.time_source = now
 	var settings := ice_settings.duplicate(true)
+	settings.merge(node_def.get("ice_settings", {}), true)  # узел может смягчить ICE (учебный)
 	if black:
 		settings.merge(black_ice_settings, true)
 		settings["black"] = true
@@ -291,6 +297,9 @@ func recover(docs: Array) -> void:
 					node_items.append(str(d["id"]))
 				elif owner.begins_with("deck:") and _origin_is_mine(str(data.get("origin", ""))):
 					held.append({"item": str(d["id"]), "by": owner.trim_prefix("deck:")})
+	if is_tutorial():
+		node_items.clear()  # шард учебного узла — заглушка: предметов Моста к нему не привязываем
+		held.clear()
 	node_items.sort()
 	var free_slots: Array = _slot_pos.keys()
 	# Шард, который игрок уже несёт, остаётся у него: клиент второй раз его не возьмёт, выход вернёт его по moves.
@@ -304,7 +313,7 @@ func recover(docs: Array) -> void:
 		if free_slots.is_empty():
 			break
 		_shard_items[free_slots.pop_front()] = item
-	if not free_slots.is_empty():
+	if not free_slots.is_empty() and not is_tutorial():
 		if node_def.is_empty():
 			push_warning("[gray-node] в Мосте нет шарда в узле %s: добыча останется только игровой" % node_id)
 		else:
@@ -609,7 +618,7 @@ func _end(session: String, exit_reason: String, kind: String) -> void:
 		return
 	if is_graph_node():
 		raise_alert(float(settings["alert_per_eject"]))
-		if kind == "ice_eject" and bridge == null:
+		if kind == "ice_eject" and bridge == null and not is_tutorial():
 			lock_for(float(settings["lockdown_sec"]))  # с Мостом локдаун выставляет он (run.finish soft_ice)
 	event.emit({"kind": kind, "session": session})
 	net.end_session(session, exit_reason)
@@ -999,7 +1008,7 @@ func _deplete(id: String, delay: float) -> void:
 func settle_shards(session: String, end_node: String, loot: String) -> void:
 	var ids: Array = _taken_by.get(session, [])
 	_taken_by.erase(session)
-	if ids.is_empty():
+	if ids.is_empty() or is_tutorial():  # заглушка учебного узла лежит снова — пополнять нечего
 		return
 	var delay := float((settings["shard_refill_sec"] as Dictionary).get(tier(), 0.0))
 	for id in ids:

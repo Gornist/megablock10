@@ -54,6 +54,9 @@ static func from_dict(d: Dictionary) -> NodeGraph:
 				"ice": int(n.get("ice", 1)),
 				"shards": int(n.get("shards", 1)),
 				"links": links,
+				"tutorial": bool(n.get("tutorial", false)),
+				"ice_settings": n["ice_settings"] if n.get("ice_settings") is Dictionary else {},
+				"signs": n["signs"] if n.get("signs") is Array else [],
 			}
 	var e: Variant = d.get("entries")
 	if e is Dictionary:
@@ -95,8 +98,13 @@ func errors() -> Array[String]:
 		var links: Array = n["links"]
 		if links.size() > NodeLayout.PORTAL_SLOTS.size():
 			out.append("%s: связей %d, слотов порталов %d" % [id, links.size(), NodeLayout.PORTAL_SLOTS.size()])
-		if links.is_empty():
+		if links.is_empty() and not bool(n.get("tutorial", false)):
 			out.append("%s: нет связей" % id)
+		if bool(n.get("tutorial", false)):
+			if not links.is_empty():
+				out.append("%s: учебный узел без связей с графом" % id)
+			if n["tier"] == TIER_BLACK:
+				out.append("%s: в учебном узле нет Black ICE" % id)
 		for l in links:
 			if l == id:
 				out.append("%s: связь с самим собой" % id)
@@ -116,7 +124,14 @@ func errors() -> Array[String]:
 	for id in [default_entry] + entries.values():
 		if nodes.has(id) and nodes[id]["tier"] == TIER_BLACK:
 			out.append("вход в узле %s (NIGHTMARE): с Black ICE не начинают" % id)
+		if is_tutorial(id):
+			out.append("вход терминала в учебном узле %s: его выбирает Мост по tutorial_done" % id)
 	return out
+
+
+## Учебный узел (первый вход новичка): без связей, вне связности графа, не вход по умолчанию.
+func is_tutorial(id: String) -> bool:
+	return bool((nodes.get(id, {}) as Dictionary).get("tutorial", false))
 
 
 func has_node(id: String) -> bool:
@@ -164,7 +179,10 @@ func _unique(a: Array) -> Array:
 
 
 func _connected() -> bool:
-	var start: String = nodes.keys()[0]
+	var main: Array = nodes.keys().filter(func(id): return not is_tutorial(id))
+	if main.is_empty():
+		return true
+	var start: String = main[0]
 	var seen := {start: true}
 	var queue: Array = [start]
 	while not queue.is_empty():
@@ -173,4 +191,4 @@ func _connected() -> bool:
 			if nodes.has(l) and not seen.has(l):
 				seen[l] = true
 				queue.append(l)
-	return seen.size() == nodes.size()
+	return seen.size() == main.size()

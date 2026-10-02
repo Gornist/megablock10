@@ -5,7 +5,7 @@ extends GdUnitTestSuite
 func test_real_graph_is_valid() -> void:
 	var g := NodeGraph.load_file()
 	assert_array(g.errors()).is_empty()
-	assert_int(g.nodes.size()).is_between(10, 12)
+	assert_int(g.nodes.size()).is_between(11, 13)  # 10–12 узлов графа и учебный узел node_00
 	var tiers := {}
 	for id in g.nodes:
 		tiers[g.tier_of(id)] = int(tiers.get(g.tier_of(id), 0)) + 1

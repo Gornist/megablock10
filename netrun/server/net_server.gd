@@ -37,6 +37,8 @@ var join_check: Callable
 ## Узел входа для нового аватара (W1, граф узлов): func(терминал, сессия) -> id узла ("" — как по умолчанию). Не вызывается для
 ## вернувшегося после обрыва и для сессии, чей узел уже известен (восстановление после рестарта).
 var entry_node_for: Callable
+## Узел сессии из документа Моста (session.node), как пришёл при входе: сессия -> id узла. Граф берёт из него учебный узел.
+var session_node_hint: Dictionary = {}
 var grace_sec: float = NetConfig.DEFAULT_GRACE_SEC
 var beat_sec: float = NetConfig.DEFAULT_BEAT_SEC
 
@@ -380,6 +382,8 @@ func _on_auth(peer_id: int, data: PackedByteArray) -> void:
 		return
 	_pending[peer_id] = session
 	_pending_terminal[peer_id] = terminal
+	if not session.is_empty() and not str(who.get("node", "")).is_empty():
+		session_node_hint[session] = str(who["node"])
 	mp.send_auth(peer_id, "ok".to_utf8_buffer())
 	mp.complete_auth(peer_id)
 

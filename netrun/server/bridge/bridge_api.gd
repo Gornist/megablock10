@@ -102,7 +102,11 @@ func verify_terminal_async(token: String) -> Dictionary:
 	if not r.get("ok", false):
 		return {"terminal": "", "session": ""}
 	var s: Variant = r.get("session")
-	return {"terminal": tt["terminal"], "session": str(s.get("id", "")) if s is Dictionary else ""}
+	# node — узел из документа сессии: Мост сам подменяет его на учебный при первом входе нетраннера (tutorial_done: false).
+	var node := ""
+	if s is Dictionary and s.get("data") is Dictionary:
+		node = str((s["data"] as Dictionary).get("node", ""))
+	return {"terminal": tt["terminal"], "session": str(s.get("id", "")) if s is Dictionary else "", "node": node}
 
 
 func terminal_auth(_terminal: String, _token: String) -> Dictionary:

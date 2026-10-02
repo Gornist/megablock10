@@ -9,6 +9,7 @@ extends Node
 
 signal finished(result: String)
 
+## Учебный узел (W2) — GRAPH_RUN с read_signs и use_ghost: бот обходит таблички, применяет демона, берёт шард-заглушку, выходит.
 ## GRAPH_RUN (W1): идёт по графу узлов по маршруту `route` (id узлов, в которые надо пройти порталами), в последнем берёт шард
 ## и выходит чисто там же; `use_ghost` — сначала GHOST. Видит узел так, как его описал сервер (событие node): порталы и шарды.
 enum Scenario { GHOST_RUN, EXPOSED_RUN, LOITER, BLACK_RUN, GRAPH_RUN }
@@ -17,6 +18,7 @@ const SPEED := 4.0         # м/с (ходьба игрока в плоской 
 const SEND_PERIOD := 0.05
 const ARRIVE := 1.0
 const BLACK_SPOT := Vector3(0, 0, -9)  # у линии патруля Black ICE (NodeLayout.BLACK_ICE), в его конусе
+const SIGN_REACH := 2.0    # на таком расстоянии от таблички она прочитана
 const GRAB_FROM := 1.5     # на таком расстоянии от шарда просим взять
 const STEP_TIMEOUT := 25.0 # с на один шаг сценария — иначе result = "timeout:<шаг>"
 const RECONNECT_SEC := 1.0 # пауза между попытками подключения после обрыва
@@ -57,6 +59,9 @@ var chaos_after := 2.0
 ## Для GRAPH_RUN: куда идти дальше (первый — следующий узел), где бот сейчас, какие узлы прошёл, что видел о узле, сколько туннелей.
 var route: Array[String] = []
 var use_ghost := false
+## Учебный узел: сначала обойти все таблички из события node (signs), считая прочитанные.
+var read_signs := false
+var signs_read := 0
 var current_node := ""
 var visited: Array[String] = []
 var node_info: Dictionary = {}
@@ -200,7 +205,7 @@ func _process(delta: float) -> void:
 				elif scenario == Scenario.BLACK_RUN:
 					_enter("to_black")
 				elif scenario == Scenario.GRAPH_RUN:
-					_enter("ghost" if use_ghost else "g_wait")
+					_enter("tut_signs" if read_signs else ("ghost" if use_ghost else "g_wait"))
 				else:
 					_enter("ghost" if scenario == Scenario.GHOST_RUN else "to_shard")
 		"loiter":
@@ -225,6 +230,15 @@ func _process(delta: float) -> void:
 			elif not _asked or _clock - _asked_at >= GHOST_RETRY_SEC:
 				_asked = net.request_use(ghost_daemon)
 				_asked_at = _clock
+		"tut_signs":
+			# Новичок обходит таблички учебного узла по порядку (подошёл на SIGN_REACH — прочитал), потом GHOST и дальше как GRAPH_RUN.
+			if node_info.is_empty():
+				return
+			var signs: Array = node_info.get("signs", [])
+			if signs_read >= signs.size():
+				_enter("ghost" if use_ghost else "g_wait")
+			elif _walk_to(Vector3(float(signs[signs_read]["p"][0]), 0.0, float(signs[signs_read]["p"][1])), delta, SIGN_REACH):
+				signs_read += 1
 		"g_wait":
 			# Узел известен (событие node) — решаем, куда идти: к порталу следующего узла маршрута или к шарду.
 			if not node_info.is_empty():

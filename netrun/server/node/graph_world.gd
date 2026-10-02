@@ -105,8 +105,10 @@ func join_blocked(session: String) -> bool:
 	return false
 
 
+## Узел входа: Мост поставил сессии учебный узел (первый вход новичка) — идём туда, иначе узел по терминалу (graph.entries).
 func _entry_node(terminal: String, session: String) -> String:
-	var id := graph.entry_for(terminal)
+	var hint := str(net.session_node_hint.get(session, ""))
+	var id := hint if graph.is_tutorial(hint) else graph.entry_for(terminal)
 	_where[session] = id
 	return id
 
@@ -137,6 +139,9 @@ func node_event(id: String, arrive: Variant = null) -> Dictionary:
 		"kind": WorldMsg.EV_NODE, "node": id, "title": graph.title_of(id), "tier": graph.tier_of(id),
 		"alert": snappedf(gn.alert, 0.01), "shards": gn.shard_view(), "portals": portals, "r": float(graph.settings["portal_radius"]),
 	}
+	var signs: Array = graph.nodes[id].get("signs", [])
+	if not signs.is_empty():
+		ev["signs"] = signs  # таблички учебного узла: [{p: [x, z], text}], клиент рисует их в мире
 	if arrive is Vector3:
 		ev["arrive"] = [arrive.x, arrive.z]
 	return ev

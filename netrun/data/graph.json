@@ -34,6 +34,17 @@
     "node_09": {"title": "Кабинет директора", "tier": "HARD", "ice": 2, "shards": 2, "links": ["node_06", "node_08", "node_12"]},
     "node_10": {"title": "Подвал", "tier": "BASE", "ice": 1, "shards": 1, "links": ["node_07", "node_11"]},
     "node_11": {"title": "Реактор", "tier": "NIGHTMARE", "ice": 2, "shards": 3, "links": ["node_08", "node_10", "node_12"]},
-    "node_12": {"title": "Сейф-ядро", "tier": "NIGHTMARE", "ice": 2, "shards": 3, "links": ["node_09", "node_11"]}
+    "node_12": {"title": "Сейф-ядро", "tier": "NIGHTMARE", "ice": 2, "shards": 3, "links": ["node_09", "node_11"]},
+    "node_00": {
+      "title": "Учебный узел", "tier": "BASE", "ice": 1, "shards": 1, "links": [], "tutorial": true,
+      "ice_settings": {"sight_range": 5.0, "notice_per_sec": 0.15, "forget_per_sec": 0.5, "catch_range": 1.0, "chase_speed": 1.2, "search_duration": 3.0},
+      "signs": [
+        {"p": [0.0, -0.8], "text": "ГОЛОС: Добро пожаловать в Сеть.\nИдите вперёд: левый стик (WASD).\nПоворот: правый стик (мышь)."},
+        {"p": [-5.0, -3.0], "text": "ICE — красные стражи.\nОни видят только перед собой.\nУчебный ICE медленный и слепой —\nне стойте у него на виду."},
+        {"p": [0.0, -5.0], "text": "ДЕМОН: «Призрак» из деки\nделает вас невидимым для ICE.\nПрименить: кнопка деки (1)."},
+        {"p": [0.0, -8.5], "text": "ШАРД: подойдите и возьмите.\nЗдесь он учебный: пустой,\nценности в нём нет."},
+        {"p": [5.0, -1.5], "text": "ВЫХОД: встаньте на площадку\nи удерживайте кнопку выхода.\nТак забег кончается чисто."}
+      ]
+    }
   }
 }
