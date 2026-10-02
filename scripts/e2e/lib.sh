@@ -1,6 +1,15 @@
 #!/bin/bash
 # Общие функции для прогонов на двух эмуляторах + дашборд. Подключается через `source`.
 E2E_DIR=${E2E_DIR:-/tmp/mb10-e2e}
+# Локаль UTF-8 обязательна: стенд ищет по UI-дампу кириллицу через `grep -i` (screen_has), а в локали C/POSIX (devbox, ssh без LANG)
+# `grep -i` не сворачивает регистр русских букв: заголовок «СООБЩЕНИЕ ОТ МАСТЕРА» (дизайн-система рисует заглавными) не находился, и
+# announcement/sec-alert/slot-race/wifi-bind/zz-provisioning краснели на «окно не появилось», хотя оно было на экране (E1).
+case "$(locale charmap 2>/dev/null)" in
+  UTF-8) ;;
+  *) for _l in C.UTF-8 C.utf8 en_US.UTF-8 en_US.utf8; do
+       locale -a 2>/dev/null | grep -qx "$_l" && { export LC_ALL=$_l; break; }
+     done ;;
+esac
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 SDK=${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}
 ADB=$SDK/platform-tools/adb
