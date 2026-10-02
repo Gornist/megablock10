@@ -220,7 +220,9 @@ func _do_chaos() -> void:
 		print("[bot] сбой ", chaos)
 	match chaos:
 		"emergency":
-			net.request_exit(ExitLogic.REASON_MANUAL_HOLD)
+			# Сервер на клиентский выход «ended» не шлёт (клиент сам знает причину) — итог ставим сами.
+			if net.request_exit(ExitLogic.REASON_MANUAL_HOLD):
+				_finish(ExitLogic.REASON_MANUAL_HOLD)
 		"drop_return":
 			_chaos_gap = randf_range(2.0, 8.0)
 			_resume_keep_ghost = true

@@ -177,7 +177,7 @@ bot_loop() { # $1 — номер бота; бот 1 единственный б�
     k=$((k + 1))
     [ "$k" -gt "$POOL" ] && { echo "[soak-loop] bot=$b запас предметов кончился" >>"$WORK/bot_$b.log"; break; }
     pick=$(pick_run); scen=${pick%%|*}; chaos=${pick##*|}
-    flags="$(netem_flags "$b")"; [ "$b" -ne 1 ] && flags="$flags --no-shard"; [ -n "$chaos" ] && flags="$flags --chaos=$chaos"
+    flags="$(netem_flags "$b")"; [ "$b" -ne 1 ] && flags="$flags --no-shard"; [ -n "$chaos" ] && flags="$flags --chaos=$chaos --chaos-after=0.$((3 + RANDOM % 6))"
     # shellcheck disable=SC2086
     tmo 200 "$GODOT" --headless --path netrun -s res://tools/soak_run.gd -- --bridge="ws://127.0.0.1:$BRIDGE_PORT/netrun/v1" --key=kt \
       --runner="KEY_SOAK_B$b" --terminal="$(printf 't%02d' "$b")" --token="soak-token-$b" --items="it_soak_b${b}_${k}a,it_soak_b${b}_${k}b" \
@@ -275,8 +275,8 @@ UNCLOSED=$(cat "$WORK"/bot_*.log 2>/dev/null | grep -c '^\[soak-run\] .*unclosed
 ENGINE_ERR=$(cat "$WORK"/world_*.log 2>/dev/null | grep -c 'SCRIPT ERROR\|^ERROR:')
 # Утечка: в экземпляре, прожившем ≥ 600 с, RSS в конце против RSS после прогрева (первый замер ≥ 120 с жизни).
 RSS_INFO=$(awk -F, '
-  { n=$1; t=$2; kb=$3; if (kb<=0) next; last[n]=kb; lt[n]=t; if (t>=120 && !(n in base)) { base[n]=kb; bt[n]=t } if (!(n in first)) first[n]=kb }
-  END { best=0; for (n in last) { span=lt[n]-(n in bt?bt[n]:0); if (span>best) { best=span; bn=n } }
+  { n=$1; t=$2; kb=$3; if (kb<=0) next; last[n]=kb; lt[n]=t; if (!(n in first)) first[n]=kb; if (t>=120 && !(n in base)) base[n]=kb }
+  END { best=-1; for (n in last) if (lt[n]>best) { best=lt[n]; bn=n }
         if (bn=="") { print "n/a 0 0 0"; exit }
         b=(bn in base?base[bn]:first[bn]); l=last[bn];
         leak = (lt[bn]>=600 && (bn in base) && l>1.5*b && l-b>51200) ? 1 : 0;
@@ -291,6 +291,7 @@ VERDICT=PASS; WHY=""
 [ "${OPEN_END:-1}" != 0 ] && { VERDICT=FAIL; WHY="$WHY открытых сессий в конце: $OPEN_END;"; }
 [ "$RSS_LEAK" = 1 ] && { VERDICT=FAIL; WHY="$WHY утечка памяти мира;"; }
 [ "$RUNS" -lt "$BOTS" ] && { VERDICT=FAIL; WHY="$WHY забегов меньше числа ботов;"; }
+[ $((STUCK * 50)) -gt "$RUNS" ] && { VERDICT=FAIL; WHY="$WHY зависших ботов $STUCK из $RUNS забегов;"; }
 [ "$UNCLOSED" -gt 0 ] && { VERDICT=FAIL; WHY="$WHY сессий не закрылось: $UNCLOSED;"; }
 {
   echo "исходы забегов: $RESULTS"

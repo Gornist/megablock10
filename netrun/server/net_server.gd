@@ -172,6 +172,11 @@ func send_to(session: String, data: PackedByteArray, reliable: bool = true) -> b
 	var peer := peer_of(session)
 	if peer == -1 or not peer in (multiplayer as SceneMultiplayer).get_peers():
 		return false
+	# Клиент уже попрощался, а ENet ещё держит его в списке: отправка даёт «Unable to send packet on channel 0, max channels: 0».
+	var enet := (multiplayer as SceneMultiplayer).multiplayer_peer as ENetMultiplayerPeer
+	var pp := enet.get_peer(peer) if enet != null else null
+	if pp != null and pp.get_state() != ENetPacketPeer.STATE_CONNECTED:
+		return false
 	var mode := MultiplayerPeer.TRANSFER_MODE_RELIABLE if reliable else MultiplayerPeer.TRANSFER_MODE_UNRELIABLE_ORDERED
 	var ok := (multiplayer as SceneMultiplayer).send_bytes(data, peer, mode) == OK
 	if ok:
