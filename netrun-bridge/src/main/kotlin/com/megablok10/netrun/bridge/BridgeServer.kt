@@ -252,9 +252,8 @@ class BridgeServer(
     private fun sub(s: Conn, msg: JsonObject): Map<String, JsonElement> {
         val want = types(msg)
         synchronized(store) {
-            val fresh = want - s.subs
-            val (seq, docs) = store.snapshot(fresh)
-            s.subs.addAll(fresh)
+            val (seq, docs) = store.snapshot(want)  // по всем запрошенным типам, и по уже подписанным тоже
+            s.subs.addAll(want)
             return mapOf("seq" to JsonPrimitive(seq), "docs" to JsonArray(docs.map { it.toJson() }))
         }
     }

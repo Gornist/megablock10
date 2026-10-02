@@ -134,6 +134,26 @@ class ValueOpsTest {
         assertEquals("outbox:${f.keyA}", f.owner("it_sh9"))
     }
 
+    @Test fun softIcePauseHoldsTheRunnerAnywhere() {
+        val f = fx()
+        val sid = f.enterActive(f.keyA, "t03", "it_dA1", "it_dA2")
+        f.store.put("node", "node_09", 0, f.obj("tier" to "HARD", "lockdown_until" to 0L, "eddies" to 0L))
+        val s = f.store.get("session", sid)!!
+        f.store.put("session", sid, s.ver, VJ.with(s.data, "world" to f.obj("node" to "node_09")))
+        val moves = listOf(Move("it_dA2", MoveTo.PHONE))
+        assertTrue(f.ops.finishRun(f.world, "pause-fin", sid, "soft_ice", "node_09", false, moves).ok)
+        assertTrue(VJ.lng(f.store.get("node", "node_09")!!.data, "lockdown_until") > 1_000L)
+        assertEquals(0L, VJ.lng(f.store.get("node", "node_07")!!.data, "lockdown_until"))  // терминал в другом узле не закрыт
+        assertTrue(VJ.lng(f.store.get("runner", ValueOps.runnerDocId(f.keyA))!!.data, "re_entry_after") > 1_000L)
+        // но игрока пауза держит: вход на терминал в чистом узле отказан
+        f.item("it_dA3", "inbox:${f.keyA}", "phone:${f.keyA}")
+        val r = f.ops.submitDeck(f.test, "enter:again", f.keyA, f.keyA, "t04", listOf("it_dA3"), "it_dA3")
+        assertFalse(r.ok)
+        assertEquals("session_state", r.code)
+        // другой игрок на тот же терминал входит свободно
+        assertTrue(f.ops.submitDeck(f.test, "enter:b", f.keyB, f.keyB, "t04", listOf("it_dB1"), "it_dB1").ok)
+    }
+
     @Test fun issueToPhoneAndPermissions() {
         val f = fx()
         val r = f.ops.issueToPhone(f.master, "give:1", f.keyA, listOf("it_sh1"), 0, "ручная выдача")

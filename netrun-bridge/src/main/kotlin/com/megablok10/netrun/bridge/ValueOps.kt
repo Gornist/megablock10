@@ -109,6 +109,7 @@ class ValueOps(
         }
         val rd = tx.get(RUNNER, runnerDocId(runner))
         if (rd != null && VJ.bool(rd.data, "blocked")) fail("session_state", "нетраннер заблокирован")
+        if (rd != null && VJ.lng(rd.data, "re_entry_after") > clock()) fail("session_state", "пауза повторного входа после Soft ICE")
         val open = store.list(SESSION).filter { VJ.str(it.data, "state") != "closed" }
         if (open.any { VJ.str(it.data, "runner") == runner }) fail("session_state", "у игрока уже есть открытая сессия")
         val term = tx.get(TERMINAL, terminal) ?: fail("session_state", "терминала нет")
@@ -381,13 +382,15 @@ class ValueOps(
         } else if (loot > 0) {
             nodeData = VJ.with(nodeData, "eddies" to VJ.p(VJ.lng(nodeData, "eddies") + loot))
         }
+        var reEntryAfter = 0L
         if (outcome == "soft_ice") {
             val pause = settings["soft_ice_reentry_pause_s"]?.let { VJ.lng(settings, "soft_ice_reentry_pause_s") } ?: DEFAULT_PAUSE_S
             nodeData = VJ.with(nodeData, "lockdown_until" to VJ.p(now + pause * MS))
+            reEntryAfter = now + pause * MS  // пауза на нетраннере: действует на вход в любой узел, а не только на узел, где сработал ICE
         }
         if (nodeData != nd.data) tx.put(NODE, nd.id, nd.ver, nodeData)
 
-        updateRunnerAfterFinish(tx, ctx, s, outcome, disconnect, node)
+        updateRunnerAfterFinish(tx, ctx, s, outcome, disconnect, node, reEntryAfter)
         val closed = tx.put(
             SESSION, s.id, s.ver,
             VJ.with(
@@ -436,11 +439,12 @@ class ValueOps(
         else -> setOf(MoveTo.PHONE)
     }
 
-    private fun updateRunnerAfterFinish(tx: DocStore.Tx, ctx: Ctx, s: Doc, outcome: String, disconnect: Boolean, node: String) {
+    private fun updateRunnerAfterFinish(tx: DocStore.Tx, ctx: Ctx, s: Doc, outcome: String, disconnect: Boolean, node: String, reEntryAfter: Long) {
         val key = VJ.str(s.data, "runner")!!
         val cur = tx.get(RUNNER, runnerDocId(key))
         val base = cur?.data ?: newRunner(key, VJ.str(s.data, "callsign") ?: "")
         var next = VJ.with(base, "runs" to VJ.p(VJ.lng(base, "runs") + 1), "tutorial_done" to VJ.p(true))
+        if (reEntryAfter > 0L) next = VJ.with(next, "re_entry_after" to VJ.p(reEntryAfter))
         if (outcome == "black_ice") {
             next = VJ.with(next, "blocked" to VJ.p(true), "blocked_reason" to VJ.p("флэтлайн, сессия ${s.id}"))
             val cause = if (disconnect) "обрыв до флэтлайна" else "флэтлайн"

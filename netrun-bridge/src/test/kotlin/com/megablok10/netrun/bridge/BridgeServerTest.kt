@@ -161,6 +161,17 @@ class BridgeServerTest {
         assertEquals("chg", b.next()["push"]!!.jsonPrimitive.content)
     }
 
+    @Test fun repeatedSubGivesSnapshotOfAllRequestedTypes() {
+        val w = Client(); w.hello()
+        w.req("put", """"type":"node","id":"n1","ver":0,"data":{"x":1}""")
+        w.req("put", """"type":"alert","id":"a1","ver":0,"data":{}""")
+        val a = Client(); a.hello()
+        assertEquals(1, a.req("sub", """"types":["node"]""")["docs"]!!.jsonArray.size)
+        // тот же тип ещё раз вместе с новым: снимок и по node, и по alert (сервер мира с несколькими узлами подписывается много раз)
+        assertEquals(2, a.req("sub", """"types":["node","alert"]""")["docs"]!!.jsonArray.size)
+        assertEquals(1, a.req("sub", """"types":["node"]""")["docs"]!!.jsonArray.size)
+    }
+
     @Test fun transactionArrivesAsBatchWithLastFlag() {
         val a = Client(); a.hello()
         a.req("sub", """"types":["item","deck"]""")

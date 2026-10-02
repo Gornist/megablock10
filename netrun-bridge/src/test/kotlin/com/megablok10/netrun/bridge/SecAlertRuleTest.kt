@@ -107,6 +107,16 @@ class SecAlertRuleTest {
         assertTrue(snd.sent.isEmpty())
     }
 
+    @Test fun signalFollowsTheCurrentNodeAfterATunnel() = run { s, e, snd ->
+        // игрок прошёл тоннелем в узел своей фракции (world.node): сигнала нет, хотя принят он был в узле СБ
+        s.put("node", "n8", 0, VJ.obj("title" to VJ.p("Лаборатория"), "tier" to VJ.p("NIGHTMARE"), "owner_faction" to VJ.p("Корпа")))
+        val d = s.get("session", "s1")!!
+        val w = d.data["world"] as JsonObject
+        s.put("session", "s1", d.ver, JsonObject(d.data + ("world" to JsonObject(w + ("node" to JsonPrimitive("n8"))))))
+        setLevel(s, 2); e.tick()
+        assertTrue(snd.sent.isEmpty())
+    }
+
     @Test fun venueLinkOffSendsNothingUntilOn() = run { s, e, snd ->
         s.put("settings", "global", 0, VJ.obj("venue_link" to VJ.p(false)))
         setLevel(s, 2); e.tick(); now += 2_000; e.tick()

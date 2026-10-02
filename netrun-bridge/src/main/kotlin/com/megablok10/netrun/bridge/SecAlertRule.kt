@@ -50,7 +50,8 @@ class SecAlertRule(
         val level = (world["trace_level"] as? JsonPrimitive)?.content?.toIntOrNull() ?: return
         val eligible = level >= TRACE_LEVEL && VJ.str(d.data, "state") == "active" && MasterOps.venueLinkOn(store)
         if (!eligible || !sent.add("${d.id}:$level")) return
-        val node = VJ.str(d.data, "node").orEmpty()
+        // текущий узел (world.node, его пишет сервер мира при переходе по графу), иначе узел, куда сессию приняли
+        val node = ((d.data["world"] as? JsonObject)?.let { VJ.str(it, "node") } ?: VJ.str(d.data, "node")).orEmpty()
         val nodeDoc = store.get(ValueOps.NODE, node)
         val sec = store.get(ValueOps.SETTINGS, "sec")?.data
         val owner = nodeDoc?.let { VJ.str(it.data, "owner_faction") }?.takeIf { it.isNotBlank() } ?: sec?.let { VJ.str(it, "default_faction") }.orEmpty()
