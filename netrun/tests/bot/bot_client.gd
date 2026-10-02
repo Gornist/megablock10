@@ -36,6 +36,8 @@ var loiter_omega := 1.0
 ## Переподключаться после обрыва связи (перезапуск сервера мира); сколько раз уже вернулись.
 var reconnect := false
 var reconnects := 0
+## Сколько секунд стоять после взятия шарда (до выхода): окно, в которое стенд убивает сервер мира (M5). 0 — не ждать.
+var hold_after_grab := 0.0
 ## Печатать шаги и события в stdout (запуск из командной строки: по этим строкам скрипт знает, когда убивать сервер).
 var verbose := false
 var _loiter_angle := 0.0
@@ -169,6 +171,9 @@ func _process(delta: float) -> void:
 			if not _asked:
 				_asked = net.request_grab(NetConfig.PICKUP_ID)
 			elif shard_taken:
+				_enter("hold" if hold_after_grab > 0.0 else "to_exit")
+		"hold":
+			if _clock - _step_started >= hold_after_grab:
 				_enter("to_exit")
 		"to_exit":
 			if _walk_to(NodeLayout.EXIT_POS, delta, ARRIVE):

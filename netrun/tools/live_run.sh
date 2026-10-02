@@ -31,8 +31,8 @@ sha256() { if command -v sha256sum >/dev/null; then printf %s "$1" | sha256sum |
 # Предел времени: timeout (Linux), gtimeout (Mac с coreutils) или perl alarm.
 tmo() {
   local secs=$1; shift
-  if command -v timeout >/dev/null; then timeout -k 5 "$secs" "$@"
-  elif command -v gtimeout >/dev/null; then gtimeout -k 5 "$secs" "$@"
+  if command -v timeout >/dev/null; then timeout --foreground -k 5 "$secs" "$@"
+  elif command -v gtimeout >/dev/null; then gtimeout --foreground -k 5 "$secs" "$@"
   else perl -e 'alarm shift; exec @ARGV' "$secs" "$@"; fi
 }
 
@@ -64,6 +64,8 @@ wait_for() {
 has() { grep -q -- "$2" "$1" 2>/dev/null; }
 alive() { kill -0 "$1" 2>/dev/null; }
 
+port_open() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
+for p in "$BRIDGE_PORT" "$ENET_PORT"; do port_open "$p" && fail "порт $p уже занят (остался процесс прошлого прогона?)"; done
 command -v "$GODOT" >/dev/null || fail "нет $GODOT в PATH (на devbox: . ~/netrun-env.sh)"
 cd "$ROOT" || fail "нет каталога $ROOT"
 
@@ -95,7 +97,6 @@ log "Мост на порту $BRIDGE_PORT"
 tmo 900 netrun-bridge/build/install/netrun-bridge/bin/netrun-bridge --port "$BRIDGE_PORT" --line-port "$LINE_PORT" \
   --db "$WORK/bridge.db" --test --seed "$WORK/seed.json" >"$WORK/bridge.log" 2>&1 &
 BRIDGE_PID=$!; PIDS+=("$BRIDGE_PID")
-port_open() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
 wait_for 60 "порт Моста $BRIDGE_PORT" port_open "$BRIDGE_PORT"
 alive "$BRIDGE_PID" || fail "Мост завершился при запуске"
 
@@ -113,9 +114,10 @@ has "$WORK/world1.log" "активных сессий 1" || fail "сервер �
 
 log "бот"
 tmo 240 "$GODOT" --headless --path netrun -- --bot=ghost_run --bot-reconnect --host=127.0.0.1 --port="$ENET_PORT" \
-  --token="t03:$TOKEN" --exit-after=200 >"$WORK/bot.log" 2>&1 &
+  --token="t03:$TOKEN" --bot-hold=10 --exit-after=200 >"$WORK/bot.log" 2>&1 &
 BOT_PID=$!; PIDS+=("$BOT_PID")
 wait_for 90 "шард взят и записан в Мосте" has "$WORK/world1.log" "take $SHARD ok"
+has "$WORK/bot.log" "итог" && fail "бот закончил до убийства сервера"
 
 # --- 3. Убиваем сервер мира посреди забега и поднимаем заново ---
 log "kill -9 сервера мира №1 (бот несёт шард)"
