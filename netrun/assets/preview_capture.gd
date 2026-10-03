@@ -52,6 +52,8 @@ func _room() -> Array:
 		for z in [-4.0, 4.0]:
 			items.append(["env/pillar", Vector3(x, 0, z), 0.0, "BASE", 1.0])
 	items.append(["props/vault_closed", Vector3(0.0, 0, 0.0), 180.0, "BASE", 1.0])  # яркость ×1,5 задаётся в _setup  # хранилище в центре лицом ко входу; шард встаёт на якорь внутри
+	items.append(["props/sensor", Vector3(3.2, 0, -2.2), 0.0, "BASE", 1.0])  # стационарный датчик узла у восточной стены
+	items.append(["props/dead_deck", Vector3(-1.3, 0.0, 1.4), 40.0, "BASE", 1.0])  # мёртвую деку можно подобрать: лежит на полу
 	items.append(["props/portal_open", Vector3(-4.0, 0, 0.0), -90.0, "BASE", 1.0])  # портал в западной стене, лицом в комнату
 	items.append(["ice/soft_ice", ICE_POS, 15.0, "", 1.0])
 	# другие нетраннеры в узле: лицом к Godot −Z при повороте 0°; варианты чередуются
