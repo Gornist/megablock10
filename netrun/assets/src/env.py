@@ -79,37 +79,41 @@ def build_doorway(out, name="doorway", seed=8):
     return lib.export(name, "env", objs, out, budget_tris=300, budget_points=40, budget_streaks=80, origin="floor")
 
 
-def build_floor(out, name="floor", seed=2):
-    """Плитка пола 2×2 м: ~22% площади занимают чёрные непрозрачные тайлы-блоки (5 из 16 ячеек, расстановка зависит от seed: три
-    варианта floor, floor_b, floor_c, чтобы узор не повторялся). Тайлы на разной высоте, но ВЕРХ НЕ ВЫШЕ ПОВЕРХНОСТИ ПОЛА (0…−0,45 м): никаких выступов, коллизий нет. Верх чёрный,
-    рёбра — цепочки частиц; штрихи висят вниз из рёбер под тайлы, в пустоту под полом (якорь сверху). Остальной пол — редкая решётка точек. Origin на поверхности пола в центре."""
+def build_floor(out, name="floor", seed=2, ceiling=False):
+    """Плитка пола (или потолка при ceiling=True) 2×2 м: ~22% площади занимают чёрные непрозрачные тайлы-блоки (5 из 16 ячеек,
+    расстановка зависит от seed: три варианта на пол и три на потолок, чтобы узор не повторялся). Верх тайла чёрный, рёбра — цепочки
+    частиц. Пол: верх тайла НЕ ВЫШЕ поверхности пола (0…−0,45 м), штрихи висят вниз из рёбер, точки на полу чуть ниже поверхности.
+    Потолок — то же, инвертированное (знак высоты меняется): низ тайла НЕ НИЖЕ плоскости потолка (0…+0,45 м), штрихи растут вверх из
+    рёбер, точки чуть выше плоскости; ничего не выступает в комнату, коллизий нет. Origin на поверхности в центре."""
     lib.reset()
     rng = random.Random(seed)
     cy = lib.lin("cyan")
+    sg = -1.0 if ceiling else 1.0  # знак по высоте: пол смотрит вниз от поверхности, потолок вверх
     chosen = rng.sample([(i, j) for i in range(4) for j in range(4)], 5)
     tiles, streaks, edge, covered = [], [], [], []
     for i, j in chosen:
         cx, cyy = -0.75 + i * 0.5, -0.75 + j * 0.5
-        hh = 0.0 if rng.random() < 0.3 else -rng.uniform(0.05, 0.45)  # верх тайла на разной высоте, но не выше пола (0): без выступов и коллизий
+        hh = 0.0 if rng.random() < 0.3 else -rng.uniform(0.05, 0.45)  # поверхность тайла на разной высоте, но не в сторону комнаты
         covered.append((cx, cyy))
-        tiles.append(lib.box_bm((0.42, 0.42, 0.3), center=(cx, cyy, hh - 0.15)))
-        for a, b in (((cx - 0.21, cyy - 0.21, hh), (cx + 0.21, cyy - 0.21, hh)), ((cx - 0.21, cyy - 0.21, hh), (cx - 0.21, cyy + 0.21, hh))):
+        tiles.append(lib.box_bm((0.42, 0.42, 0.3), center=(cx, cyy, sg * (hh - 0.15))))
+        for a, b in (((cx - 0.21, cyy - 0.21, sg * hh), (cx + 0.21, cyy - 0.21, sg * hh)), ((cx - 0.21, cyy - 0.21, sg * hh), (cx - 0.21, cyy + 0.21, sg * hh))):
             edge += lib.sample_line(a, b, 22, spread=0.004, seed=len(edge) + 1)  # две видимые грани тайла — цепочка частиц
-        for _ in range(10):  # штрихи уходят вниз из рёбер тайла, под пол
+        for _ in range(10):  # штрихи из рёбер: у пола вниз, у потолка вверх
             if rng.random() < 0.5:
                 ex, ey = cx + rng.choice((-0.21, 0.21)), cyy + rng.uniform(-0.21, 0.21)
             else:
                 ex, ey = cx + rng.uniform(-0.21, 0.21), cyy + rng.choice((-0.21, 0.21))
             ln = rng.uniform(0.2, 0.45)
-            streaks.append((Vector((ex, ey, hh - ln / 2)), rng.uniform(0.006, 0.012), ln / 2, rng.uniform(0.3, 0.85)))
-    objs = [lib.obj_from_bm("floor_tiles", lib.merge_bm(*tiles), "solid_dark", lib.lin("void"), alpha=1.0)]  # верх чёрный: кайма не нужна
-    objs.append(lib.streak_set("floor_streaks_hang", streaks, cy))
-    objs.append(lib.point_cloud("floor_edges", edge, cy, half_size=0.011, seed=4, a_min=0.5, a_max=1.0))
-    # Точки пола: шаг по горизонтали постоянный, часть точек пропущена (~15%), высота слегка разная, но не выше поверхности пола
-    dots = [Vector((-0.875 + i * 0.25, -0.875 + j * 0.25, -rng.uniform(0.016, 0.09))) for i in range(8) for j in range(8) if rng.random() > 0.15]
+            streaks.append((Vector((ex, ey, sg * (hh - ln / 2))), rng.uniform(0.006, 0.012), ln / 2, rng.uniform(0.3, 0.85)))
+    objs = [lib.obj_from_bm("tiles", lib.merge_bm(*tiles), "solid_dark", lib.lin("void"), alpha=1.0)]  # верх чёрный: кайма не нужна
+    # пол: якорь сверху (имя *_hang); потолок: штрихи растут вверх от рёбер, якорь по умолчанию у основания
+    objs.append(lib.streak_set(("ceiling_streaks" if ceiling else "floor_streaks_hang"), streaks, cy))
+    objs.append(lib.point_cloud("edges", edge, cy, half_size=0.011, seed=4, a_min=0.5, a_max=1.0))
+    # точки: шаг постоянный, ~15% пропущено, высота слегка разная, но не в сторону комнаты
+    dots = [Vector((-0.875 + i * 0.25, -0.875 + j * 0.25, sg * -rng.uniform(0.016, 0.09))) for i in range(8) for j in range(8) if rng.random() > 0.15]
     dots = [d for d in dots if not any(abs(d.x - cx) < 0.25 and abs(d.y - cyy) < 0.25 for cx, cyy in covered)]  # не под тайлами
-    objs.append(lib.point_cloud("floor_dots", dots, cy, half_size=0.016, seed=2, a_min=0.4, a_max=0.9))
-    return lib.export(name, "env", objs, out, budget_tris=300, budget_points=170, budget_streaks=60, origin="surface",
+    objs.append(lib.point_cloud("dots", dots, cy, half_size=0.016, seed=2, a_min=0.4, a_max=0.9))
+    return lib.export(name, "env", objs, out, budget_tris=300, budget_points=170, budget_streaks=60, origin=("ceiling" if ceiling else "surface"),
                       notes=f"тайлы покрывают {5 * 0.42 * 0.42 / 4.0 * 100:.0f}% плитки 2×2 м")
 
 
@@ -136,3 +140,5 @@ if __name__ == "__main__":
         build_doorway(o, name, seed)
     for name, seed in (("floor", 2), ("floor_b", 5), ("floor_c", 9)):
         build_floor(o, name, seed)
+    for name, seed in (("ceiling", 3), ("ceiling_b", 6), ("ceiling_c", 11)):
+        build_floor(o, name, seed, ceiling=True)

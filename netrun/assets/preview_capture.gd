@@ -9,6 +9,7 @@ const BG := Color(0.004, 0.008, 0.016)
 ## Комната 6×6 м из модулей 2×2 м: пол 3×3, стены по периметру, колонны в углах, вход с юга (z=+3), выход на север (z=-3),
 ## в центре шард, у выхода ICE. Предмет: [путь, позиция, поворот Y (°), тир, масштаб].
 const REFLECT := ["env/wall", "env/wall_b", "env/wall_c", "env/doorway", "env/doorway_b", "env/pillar", "ice/soft_ice"]
+const CEILING_H := 2.6
 const ICE_POS := Vector3(0.75, 0.0, -2.0)
 
 
@@ -20,6 +21,12 @@ func _room() -> Array:
 		for z in [-2.0, 0.0, 2.0]:
 			items.append([variants[n % 3], Vector3(x, 0, z), 90.0 * (n % 4), "BASE", 1.0])  # вариант и поворот по кругу: узор не повторяется
 			n += 1
+	var cv := ["env/ceiling", "env/ceiling_b", "env/ceiling_c"]
+	var m := 0
+	for x in [-2.0, 0.0, 2.0]:
+		for z in [-2.0, 0.0, 2.0]:
+			items.append([cv[m % 3], Vector3(x, CEILING_H, z), 90.0 * ((m + 1) % 4), "BASE", 1.0])  # потолок: тот же принцип, что у пола, инвертированный
+			m += 1
 	var wv := ["env/wall", "env/wall_b", "env/wall_c"]
 	var k := 0
 	for x in [-2.0, 2.0]:
