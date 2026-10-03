@@ -9,3 +9,6 @@ export_credentials.cfg
 *.jks
 # gdUnit4: отчёты прогонов
 reports/
+
+# Плагин Godot AI (MCP) ставит scripts/devbox-godot-ai.sh только на devbox: он правит project.godot и открывает порты
+addons/godot_ai/

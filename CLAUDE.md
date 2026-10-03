@@ -38,6 +38,7 @@
 | CI | `.github/workflows/main.yml` (push/PR в `main`, вручную) | ≈4 мин |
 | e2e | `scripts/e2e/up.sh && scripts/e2e/run-all.sh`; CI — `e2e.yml` (PR в `main` с правкой `app/`, `kit/`, `scripts/e2e/`; ночью; вручную) | ≈17 мин |
 | Коллектор | `admin-web/server`: `npm test`; `admin-web/client`: `npm test`, `npm run lint`, `npm run build` | в CI — `main.yml`, job admin-web |
+| Godot (netrun) | `ssh devbox 'cd ~/wt-godot && netrun/tools/gdunit.sh'`; правки и запуск игры — агент `godot-dev` (живой редактор + MCP, `.claude/agents/godot-dev.md`) | devbox; CI — `netrun.yml` (правка `netrun/`); подробности — `docs/netrun-devbox.md`, «Godot AI» |
 | Прошивка | `cmake -S firmware/display -B firmware/display/build && cmake --build … && ctest --test-dir …`; плата — `pio run -e crowpanel579`; Wokwi — `firmware/display/tools/wokwi_selftest.sh` | CI — `firmware.yml` (правка `firmware/`, `admin-web/server/src/displays/`, звука на сервере — `audio/`, `routes/audio.ts`); ≈5 мин |
 
 - **Облачная сессия без Android SDK** не соберёт `:app` (и даже `:kit` — Gradle конфигурирует весь проект). Проверка —

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "godot-ai": {
+      "command": "ssh",
+      "args": [
+        "-o", "BatchMode=yes",
+        "devbox",
+        "PATH=$HOME/.local/bin:$PATH exec uvx godot-ai==4.2.3 attach --disable-telemetry"
+      ]
+    }
+  }
+}

@@ -118,6 +118,24 @@ godot -- --flat --host=127.0.0.1 --port=7777 --token=t1
 
 Управление: W/A/S/D движение, мышь поворот, левый клик взятие предметов.
 
+## Godot AI: агент `godot-dev` и тесты Godot-части
+
+Живой редактор Godot с плагином [Godot AI](https://github.com/hi-godot/godot-ai) (MCP, v4.2.3) на devbox, на реальном дисплее (GNOME `:0`,
+GTX 1650). Через него агент `godot-dev` (`.claude/agents/godot-dev.md`) правит сцены и ноды, запускает игру, снимает кадры и читает журналы.
+
+- **Рабочая копия:** git worktree `~/wt-godot`, ветка `agent/godot` (от `agent/netrun`). Принести на Mac: `git fetch devbox agent/godot`.
+- **Редактор:** `scripts/devbox-godot-ai.sh setup` (один раз: worktree, плагин с проверкой sha256, импорт), затем `start|stop|status`;
+  `autostart` — поднимать при входе nick. Плагин в репозиторий не кладём (`netrun/.gitignore`): `start` дописывает в `project.godot`
+  плагин, автозагрузку `_mcp_game_helper` и `run/main_run_args`, `stop` снимает. Редактор сам переписывает `project.godot` — если настройки
+  проекта не меняли, перед коммитом `git checkout netrun/project.godot`.
+- **Клиент (Claude Code на Mac):** `.mcp.json` запускает `ssh devbox … uvx godot-ai attach` (stdio-мост) — туннеля и токенов нет. Телеметрию
+  плагина отключает `GODOT_AI_DISABLE_TELEMETRY=1`.
+- **Тесты — gdUnit4, как в CI:** `ssh devbox 'cd ~/wt-godot && netrun/tools/gdunit.sh [res://tests/файл_test.gd]'` (весь набор — 223 теста,
+  зелёный при открытом редакторе; долго — через `devjob start`). Встроенный `test_run` плагина не используем: он не знает gdUnit4.
+- **Что не покрыто:** снимки кадра идут из плоской сборки, VR (OpenXR, трекинг, кадр на Pico 4) на devbox не проверить.
+- **Ловушки:** не искать редактор через `pkill -f`/`ps | grep` по строке из самой ssh-команды (убьёте сессию); после остановки ждать
+  освобождения портов 8000/9500, lock в `~/.config/godot-ai/capabilities` не удалять — иначе «server start blocked».
+
 ## Диагностика
 
 ### Эмулятор не стартует
