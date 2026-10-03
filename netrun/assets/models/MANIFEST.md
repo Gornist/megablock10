@@ -5,6 +5,7 @@
 
 | Файл | Треуг. / бюджет | Точек / бюджет | Штрихов / бюджет | Слоёв | Вызовов | Размер, м (x, y, z) | Материалы | Анимации | Origin | Статус |
 |---|---|---|---|---|---|---|---|---|---|---|
+| `models/ice/black_ice.glb` | 0 / 300 | 157 / 600 | 248 / 350 | 0 | 3 | 1.4333 × 3.4 × 1.6587 | points, streaks | — | feet | ок |
 | `models/env/ceiling.glb` | 140 / 300 | 36 / 170 | 121 / 160 | 0 | 3 | 1.8615 × 0.7576 × 1.92 | points, solid_dark, streaks | — | ceiling | ок |
 | `models/env/ceiling_b.glb` | 140 / 300 | 34 / 170 | 108 / 160 | 0 | 3 | 1.9397 × 0.6636 × 1.92 | points, solid_dark, streaks | — | ceiling | ок |
 | `models/env/ceiling_c.glb` | 140 / 300 | 41 / 170 | 105 / 160 | 0 | 3 | 1.8616 × 0.7154 × 1.92 | points, solid_dark, streaks | — | ceiling | ок |
