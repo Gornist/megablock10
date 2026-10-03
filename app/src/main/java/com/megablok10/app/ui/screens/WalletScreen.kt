@@ -43,6 +43,7 @@ import com.megablok10.app.ui.theme.MbStatusTone
 import com.megablok10.app.ui.theme.MbTile
 import com.megablok10.app.ui.theme.MbTileTone
 import com.megablok10.app.ui.theme.MbTypography
+import com.megablok10.app.ui.theme.dayLabel
 import com.megablok10.app.ui.theme.formatMoney
 import com.megablok10.app.ui.theme.groupThousands
 import java.text.SimpleDateFormat
@@ -139,20 +140,10 @@ private fun groupByDay(transactions: List<TransactionEntity>): List<Pair<String,
     val groups = LinkedHashMap<String, MutableList<TransactionEntity>>()
     transactions.forEach { tx ->
         cal.timeInMillis = tx.timestamp
-        val label = dayLabelFor(cal, today)
+        val label = dayLabel(cal, today)
         groups.getOrPut(label) { mutableListOf() } += tx
     }
     return groups.map { it.key to it.value }
-}
-
-private fun dayLabelFor(day: Calendar, today: Calendar): String {
-    val sameYear = today.get(Calendar.YEAR) == day.get(Calendar.YEAR)
-    val diff = today.get(Calendar.DAY_OF_YEAR) - day.get(Calendar.DAY_OF_YEAR)
-    return when {
-        sameYear && diff == 0 -> "Сегодня"
-        sameYear && diff == 1 -> "Вчера"
-        else -> SimpleDateFormat("d MMMM", Locale("ru")).format(day.time)
-    }
 }
 
 @Composable
