@@ -664,3 +664,31 @@ export interface NetSecView {
     lastError: string | null;
   };
 }
+
+/** Предмет, лежащий в узле Сети (документ item с owner node:<узел>): без payload — тело шарда в списке не нужно. */
+export interface NodeStockItem {
+  id: string;
+  ver: number;
+  kind: string;
+  /** Заголовок шарда или имя демона — как разобрал Мост; пусто, если не разобралось. */
+  title: string;
+  tier: number | null;
+  /** Эффект демона. */
+  effect: string | null;
+  origin: string;
+}
+
+export interface NodeStockView {
+  node: string;
+  /** Запас эдди в узле; null — узла нет в копии Моста. */
+  eddies: number | null;
+  items: NodeStockItem[];
+}
+
+/** Ответ Моста на наполнение/разгрузку узла: какие предметы затронуты, остаток эдди, и был ли это повтор по тому же rid. */
+export interface NetStockResult {
+  node: string;
+  items: string[];
+  eddies: number;
+  replayed?: boolean;
+}

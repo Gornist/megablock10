@@ -81,6 +81,8 @@ const AUDIT_ACTIONS: Record<string, { label: string; describe: Describe }> = {
     describe: (d, playerName) => `${playerName(str(d.runnerKey, ""))}: ${d.allowed ? "может входить в Сеть" : "больше не может входить в Сеть"}`,
   },
   NET_REQUIRE_ALLOWED: { label: "Сеть: проверка допуска", describe: (d) => (d.on ? "в Сеть входят только отмеченные нетраннеры" : "проверка допуска выключена — входят все, кроме заблокированных") },
+  NET_STOCK: { label: "Сеть: узел наполнен", describe: (d) => `узел ${str(d.node)}: предметов ${str(d.items)}, эдди +${str(d.eddies)}${d.replayed ? " (повтор)" : ""}` },
+  NET_UNSTOCK: { label: "Сеть: из узла убрано", describe: (d) => `узел ${str(d.node)}: предметов ${str(d.items)}, эдди −${str(d.eddies)}${d.replayed ? " (повтор)" : ""}` },
   NET_ALERT_CLEAR: { label: "Сеть: тревога снята", describe: (d) => `тревога ${str(d.alert)} принята к сведению` },
   NET_OP: { label: "Сеть: ручная операция", describe: (d) => `${str(d.op)} (rid ${str(d.rid)})${d.replayed ? ", повтор" : ""}` },
   DISPLAY_COMMAND: {

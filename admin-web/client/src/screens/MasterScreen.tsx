@@ -5,8 +5,9 @@ import { MastersTab } from "./master/MastersTab";
 import { ProvisionForm } from "./master/ProvisionForm";
 import { RamForm } from "./master/RamForm";
 import { ShardForm } from "./master/ShardForm";
+import { StockForm } from "./master/StockForm";
 
-const SUB_TABS = ["Персонаж", "Контейнер", "Шард", "RAM", "Мастера"] as const;
+const SUB_TABS = ["Персонаж", "Контейнер", "Шард", "RAM", "Узел Сети", "Мастера"] as const;
 
 export function MasterScreen() {
   const [tab, setTab] = useState<(typeof SUB_TABS)[number]>("Персонаж");
@@ -27,6 +28,7 @@ export function MasterScreen() {
       {tab === "Контейнер" && <ContainerForm />}
       {tab === "Шард" && <ShardForm />}
       {tab === "RAM" && <RamForm />}
+      {tab === "Узел Сети" && <StockForm />}
       {tab === "Мастера" && <MastersTab />}
     </div>
   );

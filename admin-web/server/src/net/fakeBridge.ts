@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { BridgeDoc } from "./bridgeProtocol.js";
 
@@ -156,6 +157,10 @@ export class FakeBridge {
       }
     }
 
+    if (m.op === "master.stock_node" || m.op === "master.unstock_node") {
+      if (!isMaster) return fail("forbidden", "только master");
+      return this.stock(c, m, reply, fail);
+    }
     if (typeof m.op === "string" && m.op.startsWith("master.")) {
       if (!isMaster) return fail("forbidden", "только master");
       return this.master(m, reply, fail);
@@ -172,6 +177,49 @@ export class FakeBridge {
       return reply(body);
     }
     return fail("bad_request", `неизвестный op: ${String(m.op)}`);
+  }
+
+  /** master.stock_node / master.unstock_node (раздел 6a): наполнение и разгрузка узла с rid — повтор тех же параметров возвращает прежний ответ. */
+  private stock(c: Conn, m: Record<string, unknown>, reply: (b: Record<string, unknown>) => void, fail: (code: string, msg: string, doc?: BridgeDoc) => void): void {
+    const rid = String(m.rid ?? "");
+    const { cid: _cid, rid: _rid, ...params } = m;
+    const sig = JSON.stringify(params);
+    const seen = this.rids.get(`${c.role}/${c.client}/${rid}`);
+    if (seen) return seen.params === sig ? reply({ ...seen.reply, replayed: true }) : fail("rid_mismatch", "rid уже использован с другими параметрами");
+    const node = this.docs.get(`node/${String(m.node)}`);
+    if (!node) return fail("not_found", String(m.node));
+    const eddies = Number(m.eddies ?? 0);
+    const items = (Array.isArray(m.items) ? m.items : []) as unknown[];
+    if (!Number.isInteger(eddies) || eddies < 0 || (items.length === 0 && eddies === 0)) return fail("bad_request", "нечего класть/убирать");
+    const have = Number(node.data.eddies ?? 0);
+    const ids: string[] = [];
+    if (m.op === "master.stock_node") {
+      for (const [i, raw] of items.entries()) {
+        const it = raw as { kind?: unknown; payload?: unknown };
+        if ((it.kind !== "SHARD" && it.kind !== "DAEMON") || typeof it.payload !== "string" || it.payload === "") return fail("bad_request", `предмет ${i}: kind/payload`);
+      }
+      for (const [i, raw] of items.entries()) {
+        const it = raw as { kind: string; payload: string };
+        const id = `it_${createHash("sha256").update(`master|${rid}|${i}`).digest("hex").slice(0, 16)}`;
+        this.setDoc("item", id, { owner: `node:${String(m.node)}`, kind: it.kind, payload: it.payload, protected: false, origin: "master:collector", in_transfer: null, out_transfer: null, handover: null });
+        ids.push(id);
+      }
+      this.setDoc("node", String(m.node), { ...node.data, eddies: have + eddies });
+    } else {
+      for (const id of items as string[]) {
+        const it = this.docs.get(`item/${id}`);
+        if (!it || it.data.owner !== `node:${String(m.node)}`) return fail("wrong_owner", String(id), it);
+      }
+      if (eddies > have) return fail("bad_request", "эдди больше запаса узла");
+      for (const id of items as string[]) {
+        this.setDoc("item", id, { ...this.docs.get(`item/${id}`)!.data, owner: "burned:master" });
+        ids.push(id);
+      }
+      this.setDoc("node", String(m.node), { ...node.data, eddies: have - eddies });
+    }
+    const body = { replayed: false, node: m.node, items: ids, eddies: Number(this.docs.get(`node/${String(m.node)}`)!.data.eddies) };
+    this.rids.set(`${c.role}/${c.client}/${rid}`, { params: sig, reply: body });
+    return reply(body);
   }
 
   private master(m: Record<string, unknown>, reply: (b: Record<string, unknown>) => void, fail: (code: string, msg: string, doc?: BridgeDoc) => void): void {
