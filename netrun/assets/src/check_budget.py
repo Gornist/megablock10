@@ -3,9 +3,11 @@
 
     python3 netrun/assets/src/check_budget.py [каталог_models]    # код 1, если что-то вне бюджета
 
-Проверяет для каждого .glb: число треугольников (по всем узлам-экземплярам), не больше двух материалов, нет текстур/картинок,
-нет прозрачности (BLEND/MASK), в env и props нет анимаций, скелет не больше 20 костей, у трёх тиров env одинаковые меши.
-Бюджеты — из docs/netrun-assets-brief.md; где ТЗ числа не задаёт, взят потолок «предметы ≤ 2000» (помечено в таблице).
+Проверяет для каждого .glb: число треугольников (по всем узлам-экземплярам), не больше двух материалов, нет текстур/картинок
+(плоскость под экран деки — исключение: у неё есть UV, но нет картинок), нет прозрачности (BLEND/MASK), анимации только у ICE
+(имена из ТЗ, короткие, зацикленные: последний ключ равен первому), скелет не больше 20 костей и только у ICE и аватара, у трёх
+тиров env одинаковые меши, есть все файлы набора из ТЗ.
+Бюджеты — из docs/netrun-assets-brief.md; где ТЗ числа не задаёт, взят потолок «предметы ≤ 2000» (жетоны демонов — 500).
 """
 import json
 import math
@@ -32,6 +34,18 @@ BUDGETS = [
     ("deck", r"daemon_.*", 500, False),
 ]
 DEFAULT_BUDGET = (2000, False)
+DAEMON_EFFECTS = ["EXTRACT_SHARD", "EXTRACT_DAEMON", "GHOST", "TIMESKEW", "BLACKOUT", "JITTER", "DECRYPT", "MINER"]
+# клипы ICE: имена и допустимая длина — ТЗ («короткие зацикленные клипы с именами из списка»)
+ICE_CLIPS = {"soft_ice": {"idle", "patrol"}, "black_ice": {"idle", "hunt", "catch"}}
+MAX_CLIP_SECONDS = 4.0
+# файлы набора (ТЗ): без них приёмка красная; тиры env проверяются отдельно
+REQUIRED = (
+    ["env/" + n for n in ("floor", "wall", "corner", "pillar", "doorway", "platform", "lockdown_gate", "cable_straight", "cable_curve", "tunnel_ring")]
+    + ["props/" + n for n in ("vault_closed", "vault_open", "shard", "shard_encrypted", "dead_deck", "portal", "portal_locked", "sensor", "seat")]
+    + ["ice/soft_ice", "ice/black_ice", "avatar/runner", "deck/wrist_deck"]
+    + ["deck/daemon_" + e for e in DAEMON_EFFECTS]
+)
+SKINNED = ("ice", "avatar")
 TIER_SUFFIX = re.compile(r"_(hard|nightmare)$")
 MAX_MATERIALS = 2
 MAX_BONES = 20
@@ -50,15 +64,49 @@ def load_glb(path):
     magic, version, _length = struct.unpack_from("<4sII", data, 0)
     if magic != b"glTF" or version != 2:
         raise ValueError("не glTF 2.0 .glb")
-    off, doc = 12, None
+    off, doc, blob = 12, None, b""
     while off < len(data):
         clen, ctype = struct.unpack_from("<II", data, off)
         if ctype == 0x4E4F534A:  # JSON
             doc = json.loads(data[off + 8: off + 8 + clen].decode("utf-8"))
+        elif ctype == 0x004E4942:  # BIN
+            blob = data[off + 8: off + 8 + clen]
         off += 8 + clen
     if doc is None:
         raise ValueError("нет JSON-чанка")
-    return doc
+    return doc, blob
+
+
+def read_floats(doc, blob, idx):
+    """Значения FLOAT-акцессора как список кортежей (для выходов анимаций: VEC3 / VEC4)."""
+    a = doc["accessors"][idx]
+    if a["componentType"] != 5126:
+        raise ValueError("ожидался FLOAT-акцессор")
+    n = {"SCALAR": 1, "VEC3": 3, "VEC4": 4}[a["type"]]
+    bv = doc["bufferViews"][a["bufferView"]]
+    off = bv.get("byteOffset", 0) + a.get("byteOffset", 0)
+    stride = bv.get("byteStride") or n * 4
+    return [struct.unpack_from("<%df" % n, blob, off + i * stride) for i in range(a["count"])]
+
+
+def clip_report(doc, blob):
+    """[(имя, секунд, зациклен ли)] по анимациям: зациклен, если у каждого канала последнее значение совпадает с первым."""
+    out = []
+    for anim in doc.get("animations", []):
+        length, looped = 0.0, True
+        for ch in anim["channels"]:
+            sm = anim["samplers"][ch["sampler"]]
+            times = read_floats(doc, blob, sm["input"])
+            length = max(length, times[-1][0])
+            vals = read_floats(doc, blob, sm["output"])
+            first, last = vals[0], vals[-1]
+            if len(first) == 4:   # кватернион: q и -q — один и тот же поворот
+                same = abs(sum(x * y for x, y in zip(first, last))) > 1 - 1e-5
+            else:
+                same = all(abs(x - y) < 1e-4 for x, y in zip(first, last))
+            looped = looped and same
+        out.append((anim.get("name", "?"), round(length, 3), looped))
+    return out
 
 
 def _mat_mul(a, b):
@@ -81,7 +129,7 @@ def _node_matrix(node):
     return [[r[i][0] * s[0], r[i][1] * s[1], r[i][2] * s[2], t[i]] for i in range(3)] + [[0, 0, 0, 1]]
 
 
-def analyse(doc):
+def analyse(doc, blob=b""):
     """Треугольники, материалы, габариты (мировые AABB по узлам), анимации, кости."""
     acc = doc.get("accessors", [])
     meshes = doc.get("meshes", [])
@@ -133,6 +181,8 @@ def analyse(doc):
         "min": [round(v, 3) for v in lo] if mesh_nodes else [0, 0, 0],
         "max": [round(v, 3) for v in hi] if mesh_nodes else [0, 0, 0],
         "animations": [a.get("name", "?") for a in doc.get("animations", [])],
+        "clips": clip_report(doc, blob),
+        "skins": len(doc.get("skins", [])),
         "bones": bones,
         "images": len(doc.get("images", [])) + len(doc.get("textures", [])),
         "nodes": [n.get("name", "?") for n in nodes],
@@ -148,7 +198,7 @@ def scan(models):
         for fn in sorted(os.listdir(gdir)):
             if fn.endswith(".glb"):
                 path = os.path.join(gdir, fn)
-                info = analyse(load_glb(path))
+                info = analyse(*load_glb(path))
                 info.update(group=group, name=fn[:-4], path=path)
                 out.append(info)
     return out
@@ -166,8 +216,22 @@ def violations(info):
     for m in info["mat_docs"]:
         if m.get("alphaMode", "OPAQUE") != "OPAQUE":
             errs.append("прозрачность у материала %s (%s)" % (m.get("name"), m.get("alphaMode")))
-    if info["group"] in ("env", "props") and info["animations"]:
-        errs.append("анимации в %s не нужны: %s" % (info["group"], info["animations"]))
+    group, name = info["group"], info["name"]
+    if group != "ice" and info["animations"]:
+        errs.append("анимации в %s не нужны: %s" % (group, info["animations"]))
+    if group == "ice":
+        want = ICE_CLIPS.get(name, set())
+        if set(info["animations"]) != want:
+            errs.append("клипы %s, по ТЗ нужны %s" % (sorted(info["animations"]), sorted(want)))
+        for clip, seconds, looped in info["clips"]:
+            if not 0 < seconds <= MAX_CLIP_SECONDS:
+                errs.append("клип %s: длина %.2f с, нужно короткий (до %.0f с)" % (clip, seconds, MAX_CLIP_SECONDS))
+            if not looped:
+                errs.append("клип %s не зациклен: последний ключ не равен первому" % clip)
+    if group in SKINNED and not info["skins"]:
+        errs.append("у существа нет скелета")
+    if group not in SKINNED and info["skins"]:
+        errs.append("скелет в %s не нужен" % group)
     if info["bones"] > MAX_BONES:
         errs.append("костей %d > %d" % (info["bones"], MAX_BONES))
     return errs
@@ -178,16 +242,24 @@ def main(argv):
     infos = scan(models)
     bad = 0
     tiers = {}
-    print("%-34s %6s %7s  %s" % ("файл", "треуг.", "бюджет", "размер X*Y*Z, м"))
+    print("%-34s %6s %7s  %s" % ("файл", "треуг.", "бюджет", "размер X*Y*Z, м"))   # кости/клипы — в конце строки
     for i in infos:
         limit, from_brief = budget_for(i["group"], i["name"])
         errs = violations(i)
         mark = "" if from_brief else " *"
-        print("%-34s %6d %7s  %s %s" % ("%s/%s" % (i["group"], i["name"]), i["tris"], str(limit) + mark,
-                                       "x".join("%.2f" % v for v in i["size"]), "  <-- " + "; ".join(errs) if errs else ""))
+        extra = ""
+        if i["bones"]:
+            extra = "  костей %d" % i["bones"] + "".join(", %s %.1f с" % (c, sec) for c, sec, _ in i["clips"])
+        print("%-34s %6d %7s  %s%s%s" % ("%s/%s" % (i["group"], i["name"]), i["tris"], str(limit) + mark,
+                                        "x".join("%.2f" % v for v in i["size"]), extra, "  <-- " + "; ".join(errs) if errs else ""))
         bad += bool(errs)
         if i["group"] == "env":
             tiers.setdefault(TIER_SUFFIX.sub("", i["name"]), set()).add(i["tris"])
+    have = {"%s/%s" % (i["group"], i["name"]) for i in infos}
+    for need in REQUIRED:
+        if need not in have:
+            bad += 1
+            print("нет файла из набора ТЗ:", need + ".glb")
     for base, counts in tiers.items():
         if len(counts) > 1:
             bad += 1

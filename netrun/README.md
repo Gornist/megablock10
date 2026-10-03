@@ -23,11 +23,15 @@
 
 ## 3D-ассеты
 
-`assets/models/<группа>/*.glb` — модели для Pico 4 (окружение, предметы; существа, аватар и дека — следующая часть). Каталог, соглашения
-(оси, сетка 2x2 м, тиры, палитра, метки), числа треугольников и размеры — `assets/models/MANIFEST.md`; исходники — Blender-скрипты в
-`assets/src/` (Blender запускается только на devbox, `assets/src/build_all.sh`); превью для приёмки — `assets/previews/`. Бюджет без
-Blender: `python3 netrun/assets/src/check_budget.py`; импорт и метки проверяет `tests/assets_models_test.gd`. Файлы `.glb.import` лежат в
-git (стабильные uid); после смены .glb — `godot --headless --path netrun --import`.
+`assets/models/<группа>/*.glb` — модели для Pico 4: окружение (env, три тира), предметы (props), существа (ice: Soft и Black ICE со
+скелетом и клипами), аватар (avatar), дека на запястье и жетоны демонов (deck). Каталог, соглашения (оси, сетка 2x2 м, тиры, палитра,
+метки, скелеты и клипы), числа треугольников и размеры — `assets/models/MANIFEST.md`; исходники — Blender-скрипты в `assets/src/`
+(Blender запускается только на devbox, `assets/src/build_all.sh`); превью для приёмки — `assets/previews/`, собранная сцена со всеми
+ассетами — `assets/preview.tscn` (её собирает `assets/src/make_preview_scene.py`; кадры камер снимает `assets/preview_shot.tscn`
+отдельным процессом Godot на дисплее devbox). Бюджет без Blender: `python3 netrun/assets/src/check_budget.py`; импорт, скелеты, клипы
+и метки проверяет `tests/assets_models_test.gd`. Файлы `.glb.import` лежат в git (стабильные uid); после смены .glb —
+`godot --headless --path netrun --import`, затем `python3 netrun/assets/src/patch_imports.py` (облегчённый импорт и зацикливание
+клипов) и ещё один импорт.
 
 ## Тесты
 
