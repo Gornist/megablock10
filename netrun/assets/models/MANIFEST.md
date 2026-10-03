@@ -11,9 +11,15 @@
 | `models/env/column_field.glb` | 0 / 300 | 0 / 0 | 1345 / 1700 | 0 | 1 | 3.9398 × 2.8539 × 3.9 | streaks | — | floor | ок |
 | `models/env/doorway.glb` | 0 / 300 | 18 / 40 | 46 / 80 | 0 | 3 | 1.9678 × 2.6921 × 0.1873 | points, streaks | — | floor | ок |
 | `models/env/doorway_b.glb` | 0 / 300 | 18 / 40 | 50 / 80 | 0 | 3 | 1.9513 × 2.6668 × 0.2822 | points, streaks | — | floor | ок |
-| `models/env/far_field.glb` | 0 / 100 | 114 / 140 | 43 / 160 | 0 | 2 | 10.76 × 6.5603 × 10.7 | points, streaks | — | floor | ок |
-| `models/env/far_field_b.glb` | 0 / 100 | 114 / 140 | 45 / 160 | 0 | 2 | 10.76 × 6.6378 × 10.7 | points, streaks | — | floor | ок |
-| `models/env/far_field_c.glb` | 0 / 100 | 114 / 140 | 29 / 160 | 0 | 2 | 10.76 × 6.4587 × 10.7 | points, streaks | — | floor | ок |
+| `models/env/far_ceiling.glb` | 408 / 600 | 283 / 700 | 136 / 200 | 0 | 3 | 10.84 × 0.8919 × 10.8 | points, solid_dark, streaks | — | ceiling | ок |
+| `models/env/far_ceiling_b.glb` | 408 / 600 | 292 / 700 | 136 / 200 | 0 | 3 | 10.84 × 0.9065 × 10.8 | points, solid_dark, streaks | — | ceiling | ок |
+| `models/env/far_ceiling_c.glb` | 408 / 600 | 285 / 700 | 136 / 200 | 0 | 3 | 10.84 × 0.8839 × 10.8 | points, solid_dark, streaks | — | ceiling | ок |
+| `models/env/far_field.glb` | 0 / 100 | 114 / 140 | 43 / 160 | 0 | 2 | 10.76 × 3.5121 × 10.7 | points, streaks | — | floor | ок |
+| `models/env/far_field_b.glb` | 0 / 100 | 114 / 140 | 45 / 160 | 0 | 2 | 10.76 × 3.5276 × 10.7 | points, streaks | — | floor | ок |
+| `models/env/far_field_c.glb` | 0 / 100 | 114 / 140 | 29 / 160 | 0 | 2 | 10.76 × 3.4917 × 10.7 | points, streaks | — | floor | ок |
+| `models/env/far_floor.glb` | 408 / 600 | 289 / 700 | 136 / 200 | 0 | 3 | 10.84 × 0.8895 × 10.8 | points, solid_dark, streaks | — | surface | ок |
+| `models/env/far_floor_b.glb` | 408 / 600 | 287 / 700 | 136 / 200 | 0 | 3 | 10.84 × 0.8623 × 10.8 | points, solid_dark, streaks | — | surface | ок |
+| `models/env/far_floor_c.glb` | 408 / 600 | 294 / 700 | 136 / 200 | 0 | 3 | 10.84 × 0.8756 × 10.8 | points, solid_dark, streaks | — | surface | ок |
 | `models/env/floor.glb` | 60 / 300 | 126 / 170 | 50 / 60 | 0 | 4 | 1.9486 × 0.8162 × 1.835 | points, solid_dark, streaks | — | surface | ок |
 | `models/env/floor_b.glb` | 60 / 300 | 126 / 170 | 50 / 60 | 0 | 4 | 1.8613 × 0.8693 × 1.9269 | points, solid_dark, streaks | — | surface | ок |
 | `models/env/floor_c.glb` | 60 / 300 | 129 / 170 | 50 / 60 | 0 | 4 | 1.9471 × 0.8773 × 1.8419 | points, solid_dark, streaks | — | surface | ок |

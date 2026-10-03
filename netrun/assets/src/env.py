@@ -103,7 +103,7 @@ def build_portal_wall(out, name="portal_wall", seed=33, R=1.5, cz=1.5, gap=0.12)
 
 
 def build_far_field(out, name="far_field", seed=41, size=11.0):
-    """Дальний план: участок 11×11 м «города данных» за пределами комнаты. Редкие пучки вертикальных штрихов разной высоты (башни, 1,5–7,5 м, тусклые),
+    """Дальний план: участок 11×11 м «города данных» за пределами комнаты. Редкие пучки вертикальных штрихов разной высоты (башни до 3,6 м: с дыханием ×1,3 ≤ 4,7 м, под потолком 5 м),
     между ними россыпь точек у пола. Без плотных стен: на расстоянии читается как далёкие столбы света, не закрывает комнату.
     Кладётся кольцами вокруг комнаты (вариантами seed, поворотами, масштабом ×1…×2); цвет задаёт тир (в комнате дальний план — HARD, голубой темнее).
     Origin на полу в центре."""
@@ -114,13 +114,13 @@ def build_far_field(out, name="far_field", seed=41, size=11.0):
     st = []
     for _ in range(rng.randint(5, 7)):
         cx, cy_ = rng.uniform(-half, half), rng.uniform(-half, half)
-        top = rng.choice([rng.uniform(1.5, 3.0), rng.uniform(3.0, 5.0), rng.uniform(5.0, 7.5)])
+        top = rng.choice([rng.uniform(1.2, 2.0), rng.uniform(2.0, 3.0), rng.uniform(3.0, 3.6)])
         for _ in range(rng.randint(4, 8)):
             hh = top * rng.uniform(0.35, 1.0)
             st.append((Vector((cx + rng.uniform(-0.35, 0.35), cy_ + rng.uniform(-0.35, 0.35), hh / 2)), rng.uniform(0.02, 0.05), hh / 2, rng.uniform(0.08, 0.3)))
     # три-четыре белых «маяка» (высокие тонкие) вместо яркости по всему полю
     for _ in range(2):
-        hh = rng.uniform(4.0, 7.0)
+        hh = rng.uniform(3.0, 3.6)
         st.append((Vector((rng.uniform(-half, half), rng.uniform(-half, half), hh / 2)), 0.03, hh / 2, 0.6, ice))
     objs = [lib.streak_set("far_towers", st, cy)]
     pts = lib.sample_box((0, 0, 0.15), (size - 0.6, size - 0.6, 0.3), 110, seed=seed + 3, min_z=0.01)
@@ -184,6 +184,43 @@ def build_floor(out, name="floor", seed=2, ceiling=False):
                       notes=f"тайлы покрывают {5 * 0.42 * 0.42 / 4.0 * 100:.0f}% плитки 2×2 м")
 
 
+def build_far_surface(out, name="far_floor", seed=61, ceiling=False, size=11.0, cover=0.05):
+    """Пол (или потолок при ceiling=True) дальнего плана: участок 11×11 м того же устройства, что плитка комнаты (build_floor), но разреженный:
+    чёрные тайлы занимают ~5% площади вместо 22% (cover). Тайлы на разной высоте, но не в сторону комнаты; штрихи из рёбер вниз (вверх у потолка);
+    точки на полу реже (шаг 0,75 м, ~15% пропусков). Нужен, чтобы пол и потолок были везде, а не только в комнате; в игре берутся участки сеткой 11 м.
+    Origin на поверхности (потолок: на плоскости потолка) в центре."""
+    lib.reset()
+    rng = random.Random(seed)
+    cy = lib.lin("cyan")
+    sg = -1.0 if ceiling else 1.0
+    half = size / 2 - 0.5
+    n = int(cover * size * size / (0.42 * 0.42))
+    tiles, streaks, edge, covered = [], [], [], []
+    for _ in range(n):
+        cx, cyy = rng.uniform(-half, half), rng.uniform(-half, half)
+        hh = 0.0 if rng.random() < 0.3 else -rng.uniform(0.05, 0.45)
+        covered.append((cx, cyy))
+        tiles.append(lib.box_bm((0.42, 0.42, 0.3), center=(cx, cyy, sg * (hh - 0.15))))
+        for a, b in (((cx - 0.21, cyy - 0.21, sg * hh), (cx + 0.21, cyy - 0.21, sg * hh)), ((cx - 0.21, cyy - 0.21, sg * hh), (cx - 0.21, cyy + 0.21, sg * hh))):
+            edge += lib.sample_line(a, b, 6, spread=0.004, seed=len(edge) + 1)
+        for _ in range(4):
+            if rng.random() < 0.5:
+                ex, ey = cx + rng.choice((-0.21, 0.21)), cyy + rng.uniform(-0.21, 0.21)
+            else:
+                ex, ey = cx + rng.uniform(-0.21, 0.21), cyy + rng.choice((-0.21, 0.21))
+            ln = rng.uniform(0.2, 0.45)
+            streaks.append((Vector((ex, ey, sg * (hh - ln / 2))), rng.uniform(0.008, 0.014), ln / 2, rng.uniform(0.25, 0.7)))
+    objs = [lib.obj_from_bm("tiles", lib.merge_bm(*tiles), "solid_dark", lib.lin("void"), alpha=1.0)]
+    objs.append(lib.streak_set(("far_ceiling_streaks" if ceiling else "far_floor_streaks_hang"), streaks, cy))
+    steps = int(size / 0.75)
+    dots = [Vector((-size / 2 + 0.375 + i * 0.75, -size / 2 + 0.375 + j * 0.75, sg * -rng.uniform(0.016, 0.09))) for i in range(steps) for j in range(steps) if rng.random() > 0.15]
+    dots = [d for d in dots if not any(abs(d.x - cx) < 0.3 and abs(d.y - cyy) < 0.3 for cx, cyy in covered)]
+    dots += [Vector((sx * (size / 2 - 0.1), sy * (size / 2 - 0.1), sg * -0.03)) for sx in (-1, 1) for sy in (-1, 1)]  # угловые точки: габарит симметричен, участки стыкуются
+    objs.append(lib.point_cloud("far_surface_pts", dots + edge, cy, half_size=0.02, seed=2, a_min=0.3, a_max=0.8))
+    return lib.export(name, "env", objs, out, budget_tris=600, budget_points=700, budget_streaks=200, origin=("ceiling" if ceiling else "surface"),
+                      notes=f"тайлы {n * 0.42 * 0.42 / (size * size) * 100:.1f}% площади участка {size:g}×{size:g} м")
+
+
 def build_column_field(out, name="column_field", seed=77):
     """Поле колонн 4×4 м для дальнего плана (эксперимент «объёмный дисплей»): решётка шагом 0,1 м, один штрих на узел, высота по карте
     крупных «холмов» × шум (как cyan space в референсе), ~15% узлов пропущено. Один примитив, 2 треугольника на колонну. Origin на полу в центре."""
@@ -224,6 +261,10 @@ if __name__ == "__main__":
     for name, seed in (("wall", 21), ("wall_b", 34), ("wall_c", 55)):
         build_wall(o, name, seed)
     build_portal_wall(o)
+    for name, seed in (("far_floor", 61), ("far_floor_b", 62), ("far_floor_c", 63)):
+        build_far_surface(o, name, seed)
+    for name, seed in (("far_ceiling", 71), ("far_ceiling_b", 72), ("far_ceiling_c", 73)):
+        build_far_surface(o, name, seed, ceiling=True)
     for name, seed in (("far_field", 41), ("far_field_b", 42), ("far_field_c", 43)):
         build_far_field(o, name, seed)
     for name, seed in (("doorway", 8), ("doorway_b", 17)):

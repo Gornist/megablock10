@@ -63,20 +63,20 @@ func _room() -> Array:
 		for fz in [-12.0, -16.0]:
 			for fx in [-8.0, -4.0, 0.0, 4.0, 8.0]:
 				items.append(["env/column_field", Vector3(fx, 0, fz), 0.0, "HARD", 1.0])
-	else:  # дальний план: два кольца участков far_field вокруг комнаты (11 м, шаг 16 м; потом ×2 и шаг 36 м)
+	else:  # дальний план: участки 11 м сеткой 5×5 без центрального (там комната): пол и потолок везде (тайлов ~5% вместо 22%), башни света на каждом
 		var fv := ["env/far_field", "env/far_field_b", "env/far_field_c"]
+		var ff := ["env/far_floor", "env/far_floor_b", "env/far_floor_c"]
+		var fc := ["env/far_ceiling", "env/far_ceiling_b", "env/far_ceiling_c"]
 		var fi := 0
-		for gx in [-1, 0, 1]:
-			for gz in [-1, 0, 1]:
+		for gx in [-2, -1, 0, 1, 2]:
+			for gz in [-2, -1, 0, 1, 2]:
 				if gx == 0 and gz == 0:
 					continue
-				items.append([fv[fi % 3], Vector3(gx * 16.0, 0, gz * 16.0), 90.0 * (fi % 4), "HARD", 1.0])
-				fi += 1
-		for gx in [-1, 0, 1]:
-			for gz in [-1, 0, 1]:
-				if gx == 0 and gz == 0:
-					continue
-				items.append([fv[fi % 3], Vector3(gx * 36.0, 0, gz * 36.0), 90.0 * (fi % 4), "HARD", 2.0])
+				var pos := Vector3(gx * 11.0, 0, gz * 11.0)
+				var rot := 90.0 * (fi % 4)
+				items.append([fv[fi % 3], pos, rot, "HARD", 1.0])
+				items.append([ff[fi % 3], pos, rot, "HARD", 1.0])
+				items.append([fc[(fi + 1) % 3], pos + Vector3(0, CEILING_H, 0), rot, "HARD", 1.0])
 				fi += 1
 	return items
 
