@@ -14,9 +14,12 @@ const ICE_POS := Vector3(0.75, 0.0, -2.0)
 
 func _room() -> Array:
 	var items: Array = []
+	var variants := ["env/floor", "env/floor_b", "env/floor_c"]
+	var n := 0
 	for x in [-2.0, 0.0, 2.0]:
 		for z in [-2.0, 0.0, 2.0]:
-			items.append(["env/floor", Vector3(x, 0, z), 0.0, "BASE", 1.0])
+			items.append([variants[n % 3], Vector3(x, 0, z), 90.0 * (n % 4), "BASE", 1.0])  # вариант и поворот по кругу: узор не повторяется
+			n += 1
 	for x in [-2.0, 2.0]:
 		items.append(["env/wall", Vector3(x, 0, -3.0), 0.0, "BASE", 1.0])
 		items.append(["env/wall", Vector3(x, 0, 3.0), 0.0, "BASE", 1.0])
@@ -50,6 +53,7 @@ var out_dir := "/tmp/shots"
 
 
 var _movie := false
+var _static := false
 var _t := 0.0
 var _cam: Camera3D
 var _insts: Array = []
@@ -61,6 +65,8 @@ func _ready() -> void:
 			out_dir = a.trim_prefix("--out=")
 		if a == "--movie":
 			_movie = true
+		if a == "--static":  # камера неподвижна: нужно, чтобы по разнице кадров проверять движение штрихов
+			_static = true
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
@@ -120,6 +126,9 @@ func _build(shot: Dictionary, root: Node) -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
+	if _static:
+		_cam.look_at_from_position(Vector3(0.0, 1.25, 6.4), Vector3(0.0, 1.0, -2.0))
+		return
 	var p: Vector3
 	var look: Vector3
 	if _t < 2.0:

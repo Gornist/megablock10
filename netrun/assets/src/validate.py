@@ -60,6 +60,12 @@ def check(rep):
     tol = 0.05 + 0.02 * max(size)  # облака точек не бывают идеально центрированы: допуск растёт с размером
     if rep["origin"] == "center" and any(abs(m) > tol for m in mid):
         bad.append(f"origin не в центре: центр={[round(m, 3) for m in mid]}, допуск {tol:.3f}")
+    # «surface» — поверхность пола: геометрия может уходить вниз (штрихи под тайлами), но не глубже 1 м; центр по XZ как у модуля
+    if rep["origin"] == "surface":
+        if lo[1] < -1.0 or hi[1] < -0.01:
+            bad.append(f"origin «surface»: min.y={lo[1]:.2f} (глубже 1 м) или всё под полом, max.y={hi[1]:.2f}")
+        if abs(mid[0]) > 0.05 or abs(mid[2]) > 0.05:
+            bad.append(f"origin не в центре плитки: центр xz=({mid[0]:.3f},{mid[2]:.3f})")
     # «feet» — существа: ноги/якорь в (0,0) внутри габарита по XZ и на полу; центр габарита не требуем (существо асимметрично)
     if rep["origin"] == "feet" and (abs(lo[1]) > 0.01 or not (lo[0] - 0.05 <= 0 <= hi[0] + 0.05 and lo[2] - 0.05 <= 0 <= hi[2] + 0.05)):
         bad.append(f"origin не у ног: min.y={lo[1]:.3f}, якорь (0,0) вне габарита xz")

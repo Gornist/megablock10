@@ -63,33 +63,37 @@ def build_doorway(out):
     return lib.export("doorway", "env", objs, out, budget_tris=300, budget_points=40, budget_streaks=80, origin="floor")
 
 
-def build_floor(out):
-    """Плитка пола 2×2 м: поле чёрных непрозрачных тайлов-блоков разной высоты (как в референсе cyan space), из их рёбер поднимаются
-    короткие штрихи, в щелях редкие точки. Чёрные тайлы — только на полу. Origin на полу в центре."""
+def build_floor(out, name="floor", seed=2):
+    """Плитка пола 2×2 м: ~22% площади занимают чёрные непрозрачные тайлы-блоки (5 из 16 ячеек, расстановка зависит от seed: три
+    варианта floor, floor_b, floor_c, чтобы узор не повторялся). Верх тайла чёрный, рёбра — цепочки частиц; штрихи уходят ВНИЗ из
+    рёбер под тайлы, в пустоту под полом. Остальной пол — редкая решётка точек. Origin на поверхности пола в центре."""
     lib.reset()
-    rng = random.Random(2)
+    rng = random.Random(seed)
     cy = lib.lin("cyan")
-    tiles, streaks, edge = [], [], []
-    for i in range(4):
-        for j in range(4):
-            cx, cyy = -0.75 + i * 0.5, -0.75 + j * 0.5
-            hh = rng.uniform(0.02, 0.12)
-            tiles.append(lib.box_bm((0.42, 0.42, hh), center=(cx, cyy, hh / 2)))
-            for a, b in (((cx - 0.21, cyy - 0.21, hh), (cx + 0.21, cyy - 0.21, hh)), ((cx - 0.21, cyy - 0.21, hh), (cx - 0.21, cyy + 0.21, hh))):
-                edge += lib.sample_line(a, b, 22, spread=0.004, seed=len(edge) + 1)  # две видимые грани тайла — цепочка частиц
-            for _ in range(6):  # штрихи строго на рёбрах тайла
-                if rng.random() < 0.5:
-                    ex, ey = cx + rng.choice((-0.21, 0.21)), cyy + rng.uniform(-0.21, 0.21)
-                else:
-                    ex, ey = cx + rng.uniform(-0.21, 0.21), cyy + rng.choice((-0.21, 0.21))
-                top = rng.uniform(0.12, 0.42)
-                streaks.append((Vector((ex, ey, hh + top / 2)), rng.uniform(0.006, 0.012), top / 2, rng.uniform(0.3, 0.85)))
+    chosen = rng.sample([(i, j) for i in range(4) for j in range(4)], 5)
+    tiles, streaks, edge, covered = [], [], [], []
+    for i, j in chosen:
+        cx, cyy = -0.75 + i * 0.5, -0.75 + j * 0.5
+        hh = rng.uniform(0.03, 0.12)
+        covered.append((cx, cyy))
+        tiles.append(lib.box_bm((0.42, 0.42, hh), center=(cx, cyy, hh / 2)))
+        for a, b in (((cx - 0.21, cyy - 0.21, hh), (cx + 0.21, cyy - 0.21, hh)), ((cx - 0.21, cyy - 0.21, hh), (cx - 0.21, cyy + 0.21, hh))):
+            edge += lib.sample_line(a, b, 22, spread=0.004, seed=len(edge) + 1)  # две видимые грани тайла — цепочка частиц
+        for _ in range(10):  # штрихи уходят вниз из рёбер тайла, под пол
+            if rng.random() < 0.5:
+                ex, ey = cx + rng.choice((-0.21, 0.21)), cyy + rng.uniform(-0.21, 0.21)
+            else:
+                ex, ey = cx + rng.uniform(-0.21, 0.21), cyy + rng.choice((-0.21, 0.21))
+            ln = rng.uniform(0.25, 0.9)
+            streaks.append((Vector((ex, ey, hh - ln / 2)), rng.uniform(0.006, 0.012), ln / 2, rng.uniform(0.3, 0.85)))
     objs = [lib.obj_from_bm("floor_tiles", lib.merge_bm(*tiles), "solid_dark", lib.lin("void"), alpha=1.0)]  # верх чёрный: кайма не нужна
-    objs.append(lib.point_cloud("floor_edges", edge, cy, half_size=0.011, seed=4, a_min=0.5, a_max=1.0))
     objs.append(lib.streak_set("floor_streaks", streaks, cy))
-    dots = [Vector((-0.75 + i * 0.5 + 0.25 + rng.uniform(-0.02, 0.02), -0.75 + j * 0.5 + 0.25 + rng.uniform(-0.02, 0.02), 0.0)) for i in range(3) for j in range(3)]
-    objs.append(lib.point_cloud("floor_dots", dots, cy, half_size=0.016, seed=2, a_min=0.5, a_max=0.9, on_floor=True))
-    return lib.export("floor", "env", objs, out, budget_tris=300, budget_points=340, budget_streaks=110, origin="floor")
+    objs.append(lib.point_cloud("floor_edges", edge, cy, half_size=0.011, seed=4, a_min=0.5, a_max=1.0))
+    dots = [Vector((-0.875 + i * 0.25 + rng.uniform(-0.01, 0.01), -0.875 + j * 0.25 + rng.uniform(-0.01, 0.01), 0.0)) for i in range(8) for j in range(8)]
+    dots = [d for d in dots if not any(abs(d.x - cx) < 0.25 and abs(d.y - cyy) < 0.25 for cx, cyy in covered)]  # не под тайлами
+    objs.append(lib.point_cloud("floor_dots", dots, cy, half_size=0.016, seed=2, a_min=0.4, a_max=0.9, on_floor=True))
+    return lib.export(name, "env", objs, out, budget_tris=300, budget_points=170, budget_streaks=60, origin="surface",
+                      notes=f"тайлы покрывают {5 * 0.42 * 0.42 / 4.0 * 100:.0f}% плитки 2×2 м")
 
 
 def build_pillar(out):
@@ -108,5 +112,7 @@ def build_pillar(out):
 
 if __name__ == "__main__":
     o = lib.args()
-    for f in (build_wall, build_doorway, build_floor, build_pillar):
+    for f in (build_wall, build_doorway, build_pillar):
         f(o)
+    for name, seed in (("floor", 2), ("floor_b", 5), ("floor_c", 9)):
+        build_floor(o, name, seed)

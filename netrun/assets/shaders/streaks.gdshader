@@ -3,7 +3,7 @@
 // Контракт с lib.py: квадрат в плоскости XZ Blender (в Godot XY) с центром c, полуширина w, полувысота h; UV0 — углы,
 // UV1 = (w, h). Вертикаль — мировая ось Y, к камере разворачивается только по горизонтали (цилиндрический биллборд).
 // Анимация целиком в шейдере (по гифкам референса): бегущая волна яркости вдоль стены, ползущие бусины, «дыхание» длины
-// (для существ), реакция на касание: штрихи прогибаются от точки касания, по высоте касания идёт красная полоса.
+// и покачивание (стены живые, не статика), реакция на касание: штрихи прогибаются от точки касания, по высоте касания идёт красная полоса.
 // Всё медленное и неглубокое (комфорт в VR: никаких вспышек и резких движений).
 shader_type spatial;
 render_mode blend_add, unshaded, depth_draw_never, cull_disabled, fog_disabled;
@@ -11,14 +11,16 @@ render_mode blend_add, unshaded, depth_draw_never, cull_disabled, fog_disabled;
 uniform float glow : hint_range(0.0, 6.0) = 1.6;
 uniform float bead_freq : hint_range(0.0, 60.0) = 14.0;   // бусин на метр
 uniform float bead_depth : hint_range(0.0, 1.0) = 0.35;
-uniform float bead_speed : hint_range(0.0, 2.0) = 0.25;   // бусины ползут вверх, м/с
+uniform float bead_speed : hint_range(0.0, 2.0) = 0.12;   // бусины ползут вверх, м/с
 uniform float end_fade : hint_range(0.05, 1.0) = 0.35;
 uniform float edge_sharp : hint_range(1.0, 12.0) = 5.0;   // больше — тоньше ядро
-uniform float pulse : hint_range(0.0, 1.0) = 0.3;         // глубина бегущей волны яркости
-uniform float pulse_speed : hint_range(0.0, 3.0) = 0.7;
+uniform float pulse : hint_range(0.0, 1.0) = 0.45;        // глубина бегущей волны яркости
+uniform float pulse_speed : hint_range(0.0, 3.0) = 1.0;
 uniform float pulse_scale : hint_range(0.0, 8.0) = 1.6;   // волн на метр вдоль стены
-uniform float breathe : hint_range(0.0, 0.4) = 0.0;       // «дыхание» длины штриха (существа)
-uniform float breathe_speed : hint_range(0.0, 3.0) = 0.9;
+uniform float breathe : hint_range(0.0, 0.4) = 0.07;      // «дыхание» длины штриха; у существ сильнее
+uniform float breathe_speed : hint_range(0.0, 3.0) = 0.7;
+uniform float sway : hint_range(0.0, 0.1) = 0.012;       // покачивание штриха из стороны в сторону, м
+uniform float sway_speed : hint_range(0.0, 3.0) = 0.6;
 uniform vec3 touch_pos = vec3(0.0);                       // касание: мировая точка
 uniform float touch_radius = 0.0;                         // 0 — выключено
 uniform vec4 touch_color : source_color = vec4(1.0, 0.12, 0.24, 1.0);
@@ -81,6 +83,7 @@ void vertex() {
 		float tk = 1.0 - smoothstep(0.0, touch_radius, distance(wc, touch_pos));
 		wp -= normalize(to_cam + vec3(0.00001, 0.0, 0.0)) * 0.18 * tk * s;
 	}
+	wp += right * sway * sin(TIME * sway_speed + v_phase * 1.3) * s;
 	v_wp = wc;
 	v_wy = wp.y;
 	v_dist = -(VIEW_MATRIX * vec4(wp, 1.0)).z;
