@@ -7,6 +7,7 @@ import { MockDisplay } from "./displays/mockDisplay.js";
 import { secretKey } from "./displays/repository.js";
 import { parseWorldEvent } from "./lib/worldEvents.js";
 import { resetWorldEventLog } from "./lib/worldEventLog.js";
+import { waitFor } from "./testNet.js";
 import { loginAs, testDb, testMaster } from "./testUtil.js";
 
 /** Быстрые события «Сети» (docs/netrun-world-records.md, §3) на настоящих mock-точках — тот же стенд, что у audio.test.ts. */
@@ -29,14 +30,6 @@ function wav(ms: number, rate = 16000): Buffer {
   b.write("data", 36, "ascii");
   b.writeUInt32LE(samples * 2, 40);
   return b;
-}
-
-async function waitFor(what: string, cond: () => boolean | Promise<boolean>, ms = 3000) {
-  const until = Date.now() + ms;
-  while (!(await cond())) {
-    if (Date.now() > until) assert.fail(`не дождались: ${what}`);
-    await new Promise((r) => setTimeout(r, 10));
-  }
 }
 
 async function setup() {

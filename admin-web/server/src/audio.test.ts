@@ -6,6 +6,7 @@ import { parseWav } from "./audio/wav.js";
 import { DisplayManager } from "./displays/manager.js";
 import { MockDisplay } from "./displays/mockDisplay.js";
 import { secretKey } from "./displays/repository.js";
+import { waitFor } from "./testNet.js";
 import { loginAs, testDb, testMaster } from "./testUtil.js";
 
 const FAST = {
@@ -37,14 +38,6 @@ function wav(ms: number, rate = 16000, tone = 0): Buffer {
   b.writeUInt32LE(samples * 2, 40);
   for (let i = 0; i < samples; i++) b.writeInt16LE(tone ? Math.round(Math.sin(i / tone) * 8000) : 0, 44 + i * 2);
   return b;
-}
-
-async function waitFor(what: string, cond: () => boolean | Promise<boolean>, ms = 3000) {
-  const until = Date.now() + ms;
-  while (!(await cond())) {
-    if (Date.now() > until) assert.fail(`не дождались: ${what}`);
-    await new Promise((r) => setTimeout(r, 10));
-  }
 }
 
 async function setup() {

@@ -1,50 +1,20 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildApp } from "./app.js";
 import { buildStockItem } from "./lib/netPayload.js";
-import { BridgeClient } from "./net/bridgeClient.js";
-import { FakeBridge } from "./net/fakeBridge.js";
-import { NetService } from "./net/netService.js";
-import { loginAs, testDb, testMaster } from "./testUtil.js";
+import { setupNet } from "./testNet.js";
 
 /** Наполнение узлов «Сети» из «Мастерской»: payload по ItemPayloadCodec Моста, rid-контракт, запас и разгрузка узла. */
-
-async function waitFor(what: string, cond: () => boolean | Promise<boolean>, ms = 4000) {
-  const until = Date.now() + ms;
-  while (!(await cond())) {
-    if (Date.now() > until) assert.fail(`не дождались: ${what}`);
-    await new Promise((r) => setTimeout(r, 10));
-  }
-}
 
 const b64 = (t: string) => Buffer.from(t, "utf8").toString("base64");
 const SHARD = { type: "SHARD", tier: "HARD", title: "Служебный лог", meta: "клиника", body: "Текст: с | разделителем", valueHint: "ценный", decryptAction: true, moneyAmount: 250, id: "shard-test1" };
 const DAEMON = { type: "DAEMON", tier: "BASE", name: "Призрак", sequence: ["1C", "BD"], effect: "GHOST", id: "daemon-test1" };
 
 async function setup(withBridge = true) {
-  const bridge = new FakeBridge({ docs: [{ type: "node", id: "node_07", data: { title: "Склад", eddies: 100 } }] });
-  await bridge.start();
-  const net = new NetService(new BridgeClient({ url: bridge.url, key: "master-key", backoffMinMs: 20, backoffMaxMs: 60, requestTimeoutMs: 1500 }));
-  const db = testDb();
-  const app = buildApp(db, { logger: false, net });
-  const master = testMaster(db, "Мастер-1");
-  const headers = { authorization: `Bearer ${await loginAs(app, master.name, master.token)}` };
-  if (withBridge) {
-    net.start();
-    await waitFor("Мост на связи", () => net.connected);
-  }
-  const post = (url: string, payload: unknown) => app.inject({ method: "POST", url, headers, payload: payload as object });
-  return {
-    bridge,
-    db,
-    app,
-    headers,
-    post,
-    cleanup: async () => {
-      await app.close();
-      await bridge.stop();
-    },
-  };
+  const { bridge, db, app, headers, post, cleanup } = await setupNet({
+    bridge: { docs: [{ type: "node", id: "node_07", data: { title: "Склад", eddies: 100 } }] },
+    connect: withBridge,
+  });
+  return { bridge, db, app, headers, post, cleanup };
 }
 
 test("payload предмета — ровно формат ItemPayloadCodec: шард и демон, base64 свободного текста, расшифровка по требованию взлома", () => {
