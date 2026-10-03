@@ -164,6 +164,27 @@
 
 ## Этап E — после UI-миграции (03.10)
 
-Заполняется по ходу: см. `git log` ветки `agent/refactor-2`.
+Рефакторинг приложения (`app/`, `kit/`) под код, дописанный после этапов A–D: UI-миграция на `Mb*`, статусы сообщений, оболочка.
+Поведение, форматы, схема Room, prefs, события журнала и эталоны скриншотов не менялись. Коллектор (`app/collector/`), `netrun/`,
+`admin-web/` и прошивка — чужие потоки, сюда не входят.
+
+~~**E1. Тесты вперёд.**~~ `TransactionStoreTest` (зачисления шарда/взлома, стартовый баланс, правка мастера), `ContainerCooldownStoreTest`.
+Закреплены три особенности `TransactionStore`, которые не чинили: `applyBalanceOverride` не пишет `changes.record` («нет эха»), принимает
+отрицательный баланс и при равном балансе вставляет строку с нулевой суммой; повторный `setStartingBalance` с тем же id после движения денег
+ничего не делает.
+~~**E2. Инварианты.**~~ `SessionReset` — через `Transactor`, а не прямым `db.withTransaction`; `DeviceDiagnostics` получает узкий `AppState`
+вместо всего `AppGraph`.
+~~**E3. Логика из composable.**~~ Журнал приложения → `SettingsViewModel` (порт `LogStore`); баланс, бейджи и «прочитано» оболочки →
+`ShellViewModel`, микрофон → `rememberCallPermission()`; проверка суммы и id платежа → `WalletViewModel`, итоги дня → `WalletHistory`.
+~~**E4. Большие экраны.**~~ `BreachScreen` 630→439 строк (`BreachRun` — чистый ход попытки, `BreachHintStore`, матрица/последовательности/итог
+в своих файлах), `CyberdeckScreen` ~330→206 (`CyberdeckMain`).
+~~**E5. Дубли.**~~ `MbFormat` (`dayLabel`, `shortKey`), `MbContactItem`, `Mb10QrCodec.receipt` для чеков денег и предметов; общие
+`insertConfirmed`/`creditConfirmed` в `TransactionStore`; удалён мёртвый `MbValue`.
+~~**E6. Тесты.**~~ `testPeerDirectory`, `ManualNsdScheduler`, `ManualClock` вместо самодельных часов, `Thread.sleep` и опроса сном убраны.
+
+Не делали (риск выше пользы или чужая область): перенос `Mb10Qr` в `:rules` (общий с netrun), разбиение `AppGraph` (его текст читает
+`SessionGuardTest`), `CallRules`/`CallMediaPort` (у `CallManager` нет тестов — сначала они), `CollectorWire`/разбиение `CollectorSync` и ключи
+`NetrunStore` (чужой поток), общие фейки kit↔app через `java-test-fixtures` (правка сборки), `StatusScreen.ContactRow`/`DaemonRow`/`ShardRow` в
+`MbContactItem` (разметка другая — картинка бы изменилась). Не покрыты JVM-тестами: `ChatServer`, `MeshSession`, `PresenceService`, `CallMedia`.
 
 Не делаем без нового решения: `kit` отдельной библиотекой (пока нет второго приложения), подписи и реестр ключей (модель угроз).
