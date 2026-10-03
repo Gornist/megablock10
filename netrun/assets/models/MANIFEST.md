@@ -22,8 +22,8 @@
 | `models/avatar/runner_c.glb` | 0 / 300 | 140 / 160 | 318 / 360 | 0 | 2 | 0.6494 × 1.4711 × 0.6036 | points, streaks | — | feet | ок |
 | `models/props/shard.glb` | 60 / 300 | 70 / 120 | 0 / 0 | 3 | 4 | 0.1303 × 0.1496 × 0.123 | points, shell_soft | — | center | ок |
 | `models/ice/soft_ice.glb` | 0 / 300 | 160 / 200 | 179 / 200 | 0 | 3 | 1.2214 × 2.15 × 0.7577 | points, streaks | — | feet | ок |
-| `models/props/vault_closed.glb` | 88 / 2000 | 184 / 260 | 26 / 80 | 2 | 5 | 0.7388 × 0.9786 × 0.7207 | points, shell_soft, streaks | — | floor | ок |
-| `models/props/vault_open.glb` | 88 / 2000 | 184 / 260 | 31 / 80 | 2 | 5 | 0.7388 × 1.0987 × 0.7207 | points, shell_soft, streaks | — | floor | ок |
+| `models/props/vault_closed.glb` | 0 / 500 | 248 / 420 | 111 / 160 | 0 | 2 | 0.7878 × 0.8098 × 0.76 | points, streaks | — | floor | ок |
+| `models/props/vault_open.glb` | 0 / 500 | 248 / 420 | 105 / 160 | 0 | 2 | 0.7878 × 0.9982 × 0.76 | points, streaks | — | floor | ок |
 | `models/env/wall.glb` | 0 / 300 | 50 / 80 | 80 / 120 | 0 | 3 | 2.004 × 2.9716 × 0.5351 | points, streaks | — | floor | ок |
 | `models/env/wall_b.glb` | 0 / 300 | 50 / 80 | 85 / 120 | 0 | 3 | 2.004 × 2.9653 × 0.4939 | points, streaks | — | floor | ок |
 | `models/env/wall_c.glb` | 0 / 300 | 50 / 80 | 82 / 120 | 0 | 3 | 2.004 × 2.9582 × 0.5135 | points, streaks | — | floor | ок |

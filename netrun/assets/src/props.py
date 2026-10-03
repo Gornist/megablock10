@@ -8,6 +8,7 @@ from mathutils import Vector
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import lib  # noqa: E402
+from env import curtain  # noqa: E402
 
 
 def build_shard(out):
@@ -21,42 +22,44 @@ def build_shard(out):
 
 
 def build_vault(out, name="vault_closed", opened=False, seed=12):
-    """Хранилище узла (сейф данных): полупрозрачный стеклянный блок 0,7×0,7×0,95 м (выше сидящей руки не уходит) с окном-нишей на лицевой стороне (Blender +Y = Godot −Z),
-    в нише виден шард («без демона предмет видно, но не взять»). Закрытое: перед нишей занавес ярких штрихов («замок»); открытое: занавес
-    ушёл на порог, из ниши льётся свет. Грани блока и ниши — цепочки частиц. Якорь Anchor_Shard в нише. Тиры красят как окружение. Origin на полу."""
+    """Хранилище узла (сейф данных): прозрачный объём 0,7×0,7 м, высота ~0,7 м (с дыханием штрихов до ~0,95 м, выше сидящей руки не уходит).
+    Поверхность — как у стен: четыре занавеса штрихов (шаг постоянный, пропуски, разброс в глубину, дыхание шейдером), без ниши и без чёрных блоков.
+    Грани — цепочки точек, верх — редкая сетка точек. Внутри в центре виден шард (якорь Anchor_Shard, z = 0,5 м).
+    Закрытое: передняя грань плотнее, каждый пятый штрих белый и выше («замок»). Открытое: на передней грани проём без штрихов, из объёма вверх уходят
+    лёгкие штрихи света. Лицом к Blender +Y (Godot −Z). Тиры красят как окружение. Origin на полу."""
     lib.reset()
     rng = random.Random(seed)
-    cy, ice, void = lib.lin("cyan"), lib.lin("ice_white"), lib.lin("void")
-    # Корпус — не чёрный ящик, а стекло: две вложенные оболочки (аддитивный Френель, ярче у силуэта) и редкие штрихи-«колонны данных» внутри.
-    # Нишу не вырезаем: сквозь стекло шард виден с любой стороны; перед нишей колонн нет.
-    box = lambda: lib.box_bm((0.70, 0.70, 0.95), bevel=0.02, center=(0, 0, 0.475))
-    objs = lib.shell_stack(box, "vault_glass", cy, layers=2, grow=0.025, a_inner=0.09, a_outer=0.04, pivot=(0, 0, 0))
-    fill = []
-    for ix in range(5):
-        for iy in range(5):
-            x, y = -0.28 + 0.14 * ix, -0.28 + 0.14 * iy
-            if abs(x) < 0.21 and y > -0.05 or rng.random() < 0.3:  # перед нишей и на 30% мест пусто
-                continue
-            h = rng.uniform(0.08, 0.3)
-            fill.append((Vector((x + rng.uniform(-0.02, 0.02), y + rng.uniform(-0.02, 0.02), 0.04 + rng.uniform(0, 0.8) + h / 2)), rng.uniform(0.006, 0.010), h / 2, rng.uniform(0.2, 0.5)))
-    objs.append(lib.streak_set("vault_fill", fill, cy))
-    t, f = 0.35, 0.17  # половина стороны блока и половина ширины ниши
-    segs = [((sx * t, t, 0.0), (sx * t, t, 0.95)) for sx in (-1, 1)]                                   # передние вертикальные рёбра
-    segs += [((-t, t, 0.95), (t, t, 0.95)), ((-t, t, 0.0), (t, t, 0.0))] + [((sx * t, -t, 0.95), (sx * t, t, 0.95)) for sx in (-1, 1)]
-    segs += [((-f, t, 0.42), (f, t, 0.42)), ((-f, t, 0.80), (f, t, 0.80)), ((-f, t, 0.42), (-f, t, 0.80)), ((f, t, 0.42), (f, t, 0.80))]  # рамка ниши
-    edge = lib.sample_lines(segs, 26, spread=0.006, seed=seed, min_z=0.006)
-    edge += lib.sample_box((0, 0.12, 0.61), (0.26, 0.20, 0.30), 30, seed=seed + 1)  # свечение внутри ниши
-    objs.append(lib.point_cloud("vault_pts", edge, cy, half_size=0.009, seed=seed, a_min=0.45, a_max=1.0, on_floor=True))
-    if not opened:  # «замок»: занавес штрихов поперёк ниши (плоскость y = 0,33), каждый четвёртый белый
-        gate = [(Vector((-0.155 + 0.0225 * i, 0.33 + rng.uniform(-0.008, 0.008), 0.61)), rng.uniform(0.007, 0.011), 0.19, rng.uniform(0.6, 1.0), (ice if i % 4 == 0 else cy)) for i in range(14)]
-    else:  # открыт: занавес ушёл на порог, из ниши льётся свет
-        gate = [(Vector((rng.uniform(-0.15, 0.15), 0.33, 0.42 + h / 2)), 0.008, h / 2, 0.3, cy) for h in [rng.uniform(0.03, 0.07) for _ in range(7)]]
-        gate += [(Vector((rng.uniform(-0.14, 0.14), rng.uniform(0.34, 0.355), 0.42 + h / 2)), rng.uniform(0.008, 0.014), h / 2, rng.uniform(0.4, 0.9), (ice if rng.random() < 0.3 else cy))
-                 for h in [rng.uniform(0.3, 0.7) for _ in range(12)]]
-    objs.append(lib.streak_set("vault_gate", gate, cy))
-    objs.append(lib.anchor("Anchor_Shard", (0, 0.12, 0.61)))
-    return lib.export(name, "props", objs, out, budget_tris=2000, budget_points=260, budget_streaks=80, origin="floor",
-                      notes="якорь Anchor_Shard в нише; лицом к Blender +Y (Godot −Z)")
+    cy, ice = lib.lin("cyan"), lib.lin("ice_white")
+    t, hmax = 0.35, 0.7
+    streaks = []
+    for face in range(4):  # 0 перед (+Y), 1 зад, 2 и 3 боковые
+        for c, w, h, a in curtain(rng, -t + 0.01, t - 0.01, 30, hmax, depth=0.03, w_range=(0.007, 0.014), p_gap=0.1 if face else (0.05 if not opened else 0.1)):
+            if face == 0:
+                if opened and abs(c.x) < 0.15:  # проём: штрихов нет
+                    continue
+                pos = Vector((c.x, t + c.y, c.z))
+            elif face == 1:
+                pos = Vector((c.x, -t + c.y, c.z))
+            else:
+                pos = Vector(((t if face == 2 else -t) + c.y, c.x, c.z))
+            streaks.append((pos, w, h, min(a, 0.7)))
+    if not opened:  # «замок»: белые высокие штрихи на лицевой грани
+        for i in range(-3, 4, 2):
+            streaks.append((Vector((i * 0.09, t + 0.02, 0.4)), 0.010, 0.4, 0.95, ice))
+    else:  # свет вверх из объёма
+        for _ in range(8):
+            h = rng.uniform(0.15, 0.3)
+            streaks.append((Vector((rng.uniform(-0.2, 0.2), rng.uniform(-0.2, 0.2), 0.7 + h / 2)), rng.uniform(0.007, 0.012), h / 2, rng.uniform(0.25, 0.6)))
+    objs = [lib.streak_set("vault_curtain", streaks, cy)]
+    segs = [((sx * t, sy * t, 0.0), (sx * t, sy * t, 0.8)) for sx in (-1, 1) for sy in (-1, 1)]  # вертикальные рёбра
+    segs += [((-t, sy * t, 0.7), (t, sy * t, 0.7)) for sy in (-1, 1)] + [((sx * t, -t, 0.7), (sx * t, t, 0.7)) for sx in (-1, 1)]  # рамка верха
+    segs += [((-t, sy * t, 0.0), (t, sy * t, 0.0)) for sy in (-1, 1)] + [((sx * t, -t, 0.0), (sx * t, t, 0.0)) for sx in (-1, 1)]  # основание
+    pts = lib.sample_lines(segs, 26, spread=0.006, seed=seed, min_z=0.006)
+    pts += lib.sample_box((0, 0, 0.7), (0.66, 0.66, 0.02), 24, seed=seed + 1)  # верх: редкая сетка точек
+    objs.append(lib.point_cloud("vault_pts", pts, cy, half_size=0.009, seed=seed, a_min=0.45, a_max=1.0, on_floor=True))
+    objs.append(lib.anchor("Anchor_Shard", (0, 0, 0.5)))
+    return lib.export(name, "props", objs, out, budget_tris=500, budget_points=420, budget_streaks=160, origin="floor",
+                      notes="якорь Anchor_Shard в центре (z 0,5); лицом к Blender +Y (Godot −Z)")
 
 
 def build_portal(out, name="portal_open", opened=True, seed=5):
