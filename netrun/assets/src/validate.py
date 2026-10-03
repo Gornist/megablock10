@@ -53,8 +53,12 @@ def check(rep):
     mid = [(lo[i] + hi[i]) / 2 for i in range(3)]
     if rep["origin"] == "floor" and (abs(lo[1]) > 0.01 or abs(mid[0]) > 0.05 or abs(mid[2]) > 0.05):
         bad.append(f"origin не на полу в центре: min.y={lo[1]:.3f}, центр xz=({mid[0]:.3f},{mid[2]:.3f})")
-    if rep["origin"] == "center" and any(abs(m) > 0.05 for m in mid):
-        bad.append(f"origin не в центре: центр={[round(m, 3) for m in mid]}")
+    tol = 0.05 + 0.02 * max(size)  # облака точек не бывают идеально центрированы: допуск растёт с размером
+    if rep["origin"] == "center" and any(abs(m) > tol for m in mid):
+        bad.append(f"origin не в центре: центр={[round(m, 3) for m in mid]}, допуск {tol:.3f}")
+    # «feet» — существа: ноги/якорь в (0,0) внутри габарита по XZ и на полу; центр габарита не требуем (существо асимметрично)
+    if rep["origin"] == "feet" and (abs(lo[1]) > 0.01 or not (lo[0] - 0.05 <= 0 <= hi[0] + 0.05 and lo[2] - 0.05 <= 0 <= hi[2] + 0.05)):
+        bad.append(f"origin не у ног: min.y={lo[1]:.3f}, якорь (0,0) вне габарита xz")
     return bad, {**s, "draws": draws, "size": size, "materials": sorted(mats), "animations": info["animations"]}
 
 

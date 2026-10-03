@@ -36,3 +36,30 @@ static func apply(root: Node, tier: String = "") -> void:
 				m.set_shader_parameter("tint", TIER_TINT[tier])
 				m.set_shader_parameter("tint_amount", 1.0)
 			mi.set_surface_override_material(s, m)
+
+
+## Красный «шрам»: в радиусе вокруг точки (мировые координаты) свечение уходит в красный, часть клеток пропадает.
+## Вызывать после apply(); radius = 0 выключает. Так ICE «ломает» соседнюю геометрию, а не рисует наклеенный эффект.
+static func set_corruption(root: Node, world_pos: Vector3, radius: float) -> void:
+	for n in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		for s in mi.mesh.get_surface_count():
+			var m := mi.get_surface_override_material(s) as ShaderMaterial
+			if m != null:
+				m.set_shader_parameter("corrupt_pos", world_pos)
+				m.set_shader_parameter("corrupt_radius", radius)
+
+
+## Затухание по расстоянию до камеры (вместо depth-fade): дальние слои растворяются в темноте.
+static func set_distance_fade(root: Node, start: float, end: float) -> void:
+	for n in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		for s in mi.mesh.get_surface_count():
+			var m := mi.get_surface_override_material(s) as ShaderMaterial
+			if m != null:
+				m.set_shader_parameter("fade_start", start)
+				m.set_shader_parameter("fade_end", end)

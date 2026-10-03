@@ -3,29 +3,56 @@ import math
 import os
 import sys
 
+from mathutils import Euler, Vector
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import lib  # noqa: E402
 
 
+def _tendril(start, length, tilt, azimuth, r=0.035):
+    """Тонкий конус остриём вниз от start, наклон tilt (°) в сторону azimuth (°): «кабель-щупальце»."""
+    m = Euler([0, math.radians(tilt), math.radians(azimuth)]).to_matrix()
+    d = m @ Vector((0, 0, -1))
+    bm = lib.cone_bm(r, 0.0, length, segments=3)
+    return lib.xform_bm(bm, rot=(180, tilt, azimuth), offset=Vector(start) + d * (length / 2)), Vector(start) + d * length
+
+
 def build_soft_ice(out):
-    """Soft ICE: строгая симметрия, не человек. Парящее ядро, вертикальное кольцо, 4 шипа, красная кайма на полу и аура точек.
-    Читается силуэтом: «крест из шипов вокруг кольца». Анимации idle/patrol — следующим этапом (скелет ≤ 20 костей)."""
+    """Soft ICE: ассиметричный охотник, не иконка. Тёмный наклонённый корпус (закрывает cyan за собой и режет силуэт),
+    красная кайма, «корона» из неравных лезвий, шлейф кабелей-щупалец и поток точек. Без колец и шипов-иконок.
+    Анимации idle/patrol — следующим этапом (скелет ≤ 20 костей)."""
     lib.reset()
     red, hot = lib.lin("threat"), lib.lin("threat_hot")
-    core_z = 1.15
-    core = lambda: lib.ico_bm(0.22, subdiv=1, scale=(1, 1, 1.25), center=(0, 0, core_z))
-    objs = lib.shell_stack(core, "ice_core", red, layers=3, grow=0.14, a_inner=0.85, a_outer=0.2, pivot=(0, 0, core_z))
-    objs.append(lib.obj_from_bm("ice_dark", lib.ico_bm(0.16, subdiv=1, scale=(1, 1, 1.25), center=(0, 0, core_z)), "solid_dark", red, alpha=0.6))
-    ring = lib.xform_bm(lib.band_bm(0.46, 0.05, segments=16), rot=(90, 0, 0), offset=(0, 0, core_z))
-    spikes = [
-        lib.xform_bm(lib.cone_bm(0.07, 0.0, 0.42, segments=5), rot=(0, 90, a), offset=(0.62 * math.cos(math.radians(a)), 0.62 * math.sin(math.radians(a)), core_z))
-        for a in (0, 90, 180, 270)
-    ]
-    floor_ring = lib.band_bm(0.38, 0.02, segments=16, center=(0, 0, 0.01))
-    objs.append(lib.obj_from_bm("ice_edges", lib.merge_bm(ring, *spikes, floor_ring), "glow_edge", hot, alpha_fn=lambda co: 0.5 + 0.5 * min(co.z / 1.2, 1.0)))
-    aura = lib.sample_surface(lib.ico_bm(0.5, subdiv=2, scale=(1, 1, 1.3), center=(0, 0, core_z)), 700, seed=5, push=0.2)
-    objs.append(lib.point_cloud("ice_pts", aura, red, half_size=0.012, seed=5))
-    return lib.export("soft_ice", "ice", objs, out, budget_tris=3000, budget_points=1500, origin="floor", notes="без анимаций (пилот)")
+    lean = 14
+    cz = 0.95  # центр корпуса по высоте
+    body = lambda: lib.xform_bm(lib.cone_bm(0.22, 0.05, 1.2, segments=6), rot=(0, lean, 0), offset=(0.0, 0.0, cz))
+    objs = [lib.obj_from_bm("ice_body", body(), "solid_dark", red, alpha=0.75, smooth=True)]
+    aura = lambda: lib.xform_bm(lib.cone_bm(0.26, 0.1, 1.3, segments=6), rot=(0, lean, 0), offset=(0.0, 0.0, cz))
+    objs += lib.shell_stack(aura, "ice_aura", red, layers=2, grow=0.1, a_inner=0.22, a_outer=0.06, pivot=(0, 0, cz))
+    # корона: три неравных лезвия вверх-назад, разной длины и наклона
+    top = Vector((math.sin(math.radians(lean)) * 0.6, 0, cz + math.cos(math.radians(lean)) * 0.6))
+    blades = []
+    for length, tilt, az in ((0.45, 28, 200), (0.3, 55, 120), (0.55, 18, 300)):
+        m = Euler([0, math.radians(tilt), math.radians(az)]).to_matrix()
+        d = m @ Vector((0, 0, 1))
+        blades.append(lib.xform_bm(lib.cone_bm(0.025, 0.0, length, segments=3), rot=(0, tilt, az), offset=top + d * (length / 2)))
+    # щупальца: неравные; кончик первого ровно на полу (origin «feet»), остальные выше. Начало: z = кончик + length·cos(tilt)
+    tendrils, tips = [], []
+    for sx, sy, length, tilt, az, tip_z in ((0.14, 0.0, 0.9, 6, 20, 0.0), (0.0, 0.1, 0.7, 22, 150, 0.12), (-0.1, -0.1, 0.8, 30, 250, 0.25), (0.05, 0.0, 0.6, 40, 80, 0.4)):
+        start = (sx, sy, tip_z + length * math.cos(math.radians(tilt)))
+        bm, tip = _tendril(start, length, tilt, az)
+        tendrils.append(bm)
+        tips.append((start, tip))
+    objs.append(lib.obj_from_bm("ice_edges", lib.merge_bm(*blades, *tendrils), "glow_edge", hot, alpha_fn=lambda co: 0.25 + 0.55 * min(max(co.z, 0) / 2.0, 1.0)))
+    # поток точек: вокруг корпуса и шлейфом вдоль щупалец
+    pts = lib.sample_surface(aura(), 600, seed=5, push=0.25)
+    for start, tip in tips:
+        for i in range(120):
+            t = (i / 120.0) ** 0.8
+            p = Vector(start).lerp(tip, t)
+            pts.append(p + Vector(((i * 7 % 11 - 5) * 0.012, (i * 5 % 13 - 6) * 0.012, 0)))
+    objs.append(lib.point_cloud("ice_pts", [p if p.z > 0.004 else Vector((p.x, p.y, 0.004)) for p in pts][:1100], red, half_size=0.011, seed=5, a_min=0.2, a_max=0.9))
+    return lib.export("soft_ice", "ice", objs, out, budget_tris=3000, budget_points=1500, origin="feet", notes="без анимаций (пилот)")
 
 
 if __name__ == "__main__":

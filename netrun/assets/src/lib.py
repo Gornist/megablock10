@@ -196,6 +196,19 @@ def sample_surface(bm, count, seed=1, push=0.0, min_z=None):
     return pts
 
 
+def sample_box(center, size, count, seed=1, min_z=None):
+    """Случайные точки внутри параллелепипеда (объёмная «пыль»), не на поверхности."""
+    rng = random.Random(seed)
+    c = Vector(center)
+    out = []
+    for _ in range(count):
+        p = c + Vector(((rng.random() - 0.5) * size[0], (rng.random() - 0.5) * size[1], (rng.random() - 0.5) * size[2]))
+        if min_z is not None:
+            p.z = max(p.z, min_z)
+        out.append(p)
+    return out
+
+
 def point_cloud(name, points, rgb, half_size=0.01, seed=1, a_min=0.4, a_max=1.0):
     """Облако из квадратиков (материал points); контракт — в докстринге модуля."""
     rng = random.Random(seed)

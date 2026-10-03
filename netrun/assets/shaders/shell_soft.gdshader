@@ -3,15 +3,50 @@
 shader_type spatial;
 render_mode blend_add, unshaded, depth_draw_never, cull_back, fog_disabled;
 
-uniform float glow : hint_range(0.0, 4.0) = 1.2;
+uniform float glow : hint_range(0.0, 4.0) = 0.9;
 uniform float fresnel_power : hint_range(0.5, 6.0) = 2.5;
-uniform float center_alpha : hint_range(0.0, 1.0) = 0.15;
+uniform float center_alpha : hint_range(0.0, 1.0) = 0.1;
 uniform vec4 tint : source_color = vec4(1.0);
 uniform float tint_amount : hint_range(0.0, 1.0) = 0.0; // тир: 1.0 перекрашивает в tint
 
+// Corruption: красный «шрам» в радиусе от точки (мировые координаты): цвет уходит в corrupt_color, часть клеток пропадает.
+// Дискретные клетки по сетке, без анимации: комфорт в VR (никаких вспышек). Выключено при corrupt_radius = 0.
+uniform vec3 corrupt_pos = vec3(0.0);
+uniform float corrupt_radius = 0.0;
+uniform vec4 corrupt_color : source_color = vec4(1.0, 0.12, 0.24, 1.0);
+// Затухание по расстоянию до камеры (замена depth-fade: буфер глубины не читаем, на мобильном дорого).
+uniform float fade_start = 60.0;
+uniform float fade_end = 90.0;
+
+varying vec3 v_wp;
+varying float v_dist;
+
+float corrupt_k() {
+	return corrupt_radius > 0.0 ? 1.0 - smoothstep(corrupt_radius * 0.12, corrupt_radius, distance(v_wp, corrupt_pos)) : 0.0;
+}
+float cell_hash(float salt) {
+	return fract(sin(dot(floor(v_wp * 9.0) + salt, vec3(12.9, 78.2, 37.7))) * 43758.5);
+}
+// Порча по клеткам: клетка либо цвета ассета, либо corrupt_color (вероятность растёт к центру), без серого посередине.
+float corrupt_mask(float k) {
+	return step(cell_hash(0.0), k);
+}
+float corrupt_hole(float m) {
+	return 1.0 - m * step(cell_hash(7.0), 0.4); // часть порченых клеток пропадает
+}
+float dist_fade() {
+	return 1.0 - smoothstep(fade_start, fade_end, v_dist);
+}
+
+void vertex() {
+	v_wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	v_dist = -(MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).z;
+}
+
 void fragment() {
 	float f = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), fresnel_power);
-	vec3 base = mix(COLOR.rgb, tint.rgb, tint_amount);
+	float k = corrupt_k();
+	vec3 base = mix(mix(COLOR.rgb, tint.rgb, tint_amount), corrupt_color.rgb, corrupt_mask(k));
 	ALBEDO = base * glow;
-	ALPHA = COLOR.a * mix(center_alpha, 1.0, f);
+	ALPHA = COLOR.a * mix(center_alpha, 1.0, f) * corrupt_hole(corrupt_mask(k)) * dist_fade();
 }
