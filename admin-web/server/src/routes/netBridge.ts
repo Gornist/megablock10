@@ -1,65 +1,24 @@
-import type { FastifyInstance, FastifyReply } from "fastify";
-import type { NetDoc, NetSecView, NetState, NetStockResult, NodeStockView } from "../apiTypes.js";
-import { buildStockItem, type StockPayload } from "../lib/netPayload.js";
+import type { FastifyInstance } from "fastify";
+import type { NetDoc, NetState } from "../apiTypes.js";
 import type { Db } from "../db/index.js";
-import { logMasterAction, requireMaster } from "../lib/auth.js";
+import { requireMaster } from "../lib/auth.js";
 import { isIntIn, isRef } from "../lib/refs.js";
-import { BridgeError, BridgeUnavailableError } from "../net/bridgeProtocol.js";
+import { BridgeError } from "../net/bridgeProtocol.js";
 import type { NetService } from "../net/netService.js";
-import { computeSecDoc, getDefaultFaction, setDefaultFaction, type SecSync } from "../net/secSync.js";
+import type { SecSync } from "../net/secSync.js";
+import { makeAct, RID_MAX } from "./netAct.js";
+import { registerNetSecRoutes } from "./netSec.js";
+import { registerNetStockRoutes } from "./netStock.js";
 
 /** Операции с ценностями, которые мастер вправе вызвать вручную («кнопка раньше автоматики»); сдача деки (`op.submit_deck`) — нет, она только от телефона. */
 const VALUE_OPS = ["op.issue_to_phone", "op.take_from_node", "op.leave_in_node", "run.finish"] as const;
-
-const RID_MAX = 128;
-
-const HTTP_BY_CODE: Record<string, number> = {
-  not_found: 404,
-  version_conflict: 409,
-  exists: 409,
-  req_state: 409,
-  rid_mismatch: 409,
-  wrong_owner: 409,
-  session_state: 409,
-  protected_item: 409,
-  bad_request: 400,
-  value_field: 400,
-};
-
-/**
- * Ответ мастеру на отказ Моста. «Мост недоступен» — 503 (повторить позже; для операций с ценностями — с тем же rid);
- * ответ Моста с кодом — как есть, с понятным статусом и документом из ответа (его показывает экран при конфликте).
- * Неожиданное пробрасываем дальше — общий обработчик ошибок отдаст 500 без деталей.
- */
-function bridgeFail(reply: FastifyReply, e: unknown): void {
-  if (e instanceof BridgeUnavailableError) {
-    reply.code(503).send({ error: e.message, code: "bridge_unavailable" });
-  } else if (e instanceof BridgeError) {
-    reply.code(HTTP_BY_CODE[e.code] ?? 502).send({ error: e.message, code: e.code, ...(e.doc ? { doc: e.doc } : {}) });
-  } else throw e;
-}
 
 /**
  * Инструменты мастера «Сети» (docs/netrun-bridge-protocol.md, §6a): браузер вызывает REST коллектора под сессией мастера, а
  * коллектор отправляет в Мост master.* / op.* по своему единственному соединению (роль master). Каждое действие — в журнале.
  */
 export function registerNetBridgeRoutes(app: FastifyInstance, db: Db, net: NetService, secSync: SecSync) {
-  /** Мастер + вызов Моста + журнал; отказ Моста — в ответ мастеру, без записи в журнал (ничего не сделано). */
-  const act = async <T>(
-    request: Parameters<typeof requireMaster>[1],
-    reply: FastifyReply,
-    run: () => Promise<{ result: T; audit?: { action: string; detail: unknown } }>,
-  ): Promise<T | void> => {
-    const master = requireMaster(db, request, reply);
-    if (!master) return;
-    try {
-      const { result, audit } = await run();
-      if (audit) logMasterAction(db, master.id, audit.action, audit.detail);
-      return result;
-    } catch (e) {
-      bridgeFail(reply, e);
-    }
-  };
+  const act = makeAct(db);
 
   app.get("/api/net/state", async (request, reply): Promise<NetState | void> => {
     if (!requireMaster(db, request, reply)) return;
@@ -191,129 +150,6 @@ export function registerNetBridgeRoutes(app: FastifyInstance, db: Db, net: NetSe
     });
   });
 
-  // ── Наполнение узлов из «Мастерской» (docs/netrun-bridge-protocol.md, master.stock_node / master.unstock_node) ──
-
-  /** Что лежит в узле сейчас — документы item с owner node:<узел>; нужен, чтобы мастер выбрал, что убрать. Типа item в подписке нет, читаем list. */
-  app.get<{ Params: { id: string } }>("/api/net/nodes/:id/items", async (request, reply) => {
-    const id = request.params.id;
-    if (!isRef(id)) return reply.code(400).send({ error: "bad node id" });
-    return act<NodeStockView>(request, reply, async () => {
-      const docs = await net.listDocs("item");
-      const items = docs
-        .filter((d) => d.data.owner === `node:${id}`)
-        .map((d) => {
-          const shard = (d.data.shard ?? {}) as { tier?: number; title?: string };
-          const daemon = (d.data.daemon ?? {}) as { tier?: number; name?: string; effect?: string };
-          return {
-            id: d.id,
-            ver: d.ver,
-            kind: String(d.data.kind ?? ""),
-            title: String(shard.title ?? daemon.name ?? ""),
-            tier: shard.tier ?? daemon.tier ?? null,
-            effect: daemon.effect ?? null,
-            origin: String(d.data.origin ?? ""),
-          };
-        })
-        .sort((a, b) => a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id));
-      const eddies = net.doc("node", id)?.data.eddies;
-      return { result: { node: id, eddies: typeof eddies === "number" ? eddies : null, items } };
-    });
-  });
-
-  /** Из ответа Моста — только то, что нужно экрану (без служебного конверта v/re/ok). */
-  const stockResult = (r: Record<string, unknown>): NetStockResult => ({ node: String(r.node), items: (r.items as string[]) ?? [], eddies: Number(r.eddies), ...(r.replayed === true ? { replayed: true } : {}) });
-
-  const ridOk = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= RID_MAX;
-  const eddiesOk = (v: unknown) => v === undefined || isIntIn(v, 0, 1_000_000_000);
-
-  /**
-   * Положить в узел шарды, демонов и эдди. Экран присылает предметы в человеческом виде, коллектор собирает payload (ItemPayloadCodec) по
-   * правилам «Мастерской». rid создаёт экран один раз на нажатие: повтор после обрыва уйдёт с тем же rid и теми же байтами, и Мост
-   * не создаст копий (replayed: true).
-   */
-  app.post<{ Params: { id: string }; Body: { rid?: unknown; items?: unknown; eddies?: unknown } }>("/api/net/nodes/:id/stock", async (request, reply) => {
-    const node = request.params.id;
-    if (!isRef(node)) return reply.code(400).send({ error: "bad node id" });
-    const b = request.body ?? {};
-    if (!ridOk(b.rid)) return reply.code(400).send({ error: `rid is required (max ${RID_MAX})` });
-    if (!eddiesOk(b.eddies)) return reply.code(400).send({ error: "eddies must be a non-negative integer" });
-    if (b.items !== undefined && !(Array.isArray(b.items) && b.items.length <= 50)) return reply.code(400).send({ error: "items must be a list (max 50)" });
-    const input = (b.items as unknown[] | undefined) ?? [];
-    const eddies = (b.eddies as number | undefined) ?? 0;
-    if (input.length === 0 && eddies === 0) return reply.code(400).send({ error: "nothing to stock: add items or eddies" });
-    const items: StockPayload[] = [];
-    for (const [i, raw] of input.entries()) {
-      const r = buildStockItem(raw, b.rid, i);
-      if (!r.ok) return reply.code(400).send({ error: r.error });
-      items.push(r.item);
-    }
-    return act<NetStockResult>(request, reply, async () => {
-      const r = stockResult(await net.request({ op: "master.stock_node", rid: b.rid, node, items, eddies }));
-      return { result: r, audit: { action: "NET_STOCK", detail: { node, rid: b.rid, items: items.length, eddies, replayed: r.replayed === true } } };
-    });
-  });
-
-  /** Убрать из узла предметы (в `burned:master`, документ остаётся в журнале Моста) и/или часть запаса эдди. Тот же rid-контракт. */
-  app.post<{ Params: { id: string }; Body: { rid?: unknown; items?: unknown; eddies?: unknown } }>("/api/net/nodes/:id/unstock", async (request, reply) => {
-    const node = request.params.id;
-    if (!isRef(node)) return reply.code(400).send({ error: "bad node id" });
-    const b = request.body ?? {};
-    if (!ridOk(b.rid)) return reply.code(400).send({ error: `rid is required (max ${RID_MAX})` });
-    if (!eddiesOk(b.eddies)) return reply.code(400).send({ error: "eddies must be a non-negative integer" });
-    if (b.items !== undefined && !(Array.isArray(b.items) && b.items.length <= 100 && b.items.every(isRef))) return reply.code(400).send({ error: "items must be a list of item ids (max 100)" });
-    const items = (b.items as string[] | undefined) ?? [];
-    const eddies = (b.eddies as number | undefined) ?? 0;
-    if (items.length === 0 && eddies === 0) return reply.code(400).send({ error: "nothing to remove: pick items or eddies" });
-    return act<NetStockResult>(request, reply, async () => {
-      const r = stockResult(await net.request({ op: "master.unstock_node", rid: b.rid, node, items, eddies }));
-      return { result: r, audit: { action: "NET_UNSTOCK", detail: { node, rid: b.rid, items: items.length, eddies, replayed: r.replayed === true } } };
-    });
-  });
-
-  // ── Получатели сигнала СБ и владелец узла (docs/netrun-collector-brief.md, задача 3) ──
-
-  const secView = (): NetSecView => ({
-    defaultFaction: getDefaultFaction(db),
-    recipients: Object.entries(computeSecDoc(db).factions)
-      .map(([faction, keys]) => ({ faction, count: keys.length }))
-      .sort((a, b) => a.faction.localeCompare(b.faction)),
-    sync: secSync.status(),
-  });
-
-  app.get("/api/net/sec", async (request, reply): Promise<NetSecView | void> => {
-    if (!requireMaster(db, request, reply)) return;
-    return secView();
-  });
-
-  /** Фракция СБ по умолчанию: получатель сигнала, если у узла нет владельца. Сохраняется всегда; в Мост уходит, как только он на связи. */
-  app.put<{ Body: { defaultFaction?: unknown } }>("/api/net/sec", async (request, reply): Promise<NetSecView | void> => {
-    const master = requireMaster(db, request, reply);
-    if (!master) return;
-    const f = request.body?.defaultFaction;
-    if (f !== null && (typeof f !== "string" || f.trim().length > 64)) return reply.code(400).send({ error: "defaultFaction must be a faction name (max 64) or null" });
-    const faction = f === null || f.trim() === "" ? null : f.trim();
-    setDefaultFaction(db, faction);
-    logMasterAction(db, master.id, "NET_SEC_FACTION", { faction });
-    await secSync.sync();
-    return secView();
-  });
-
-  /** Владелец узла Сети (фракция) — документ node в Мосте: от неё Мост выбирает получателей сигнала СБ. null — владельца нет. */
-  app.put<{ Params: { id: string }; Body: { faction?: unknown } }>("/api/net/nodes/:id/owner", async (request, reply) => {
-    const id = request.params.id;
-    if (!isRef(id)) return reply.code(400).send({ error: "bad node id" });
-    const f = request.body?.faction;
-    if (f !== null && (typeof f !== "string" || f.trim().length > 64)) return reply.code(400).send({ error: "faction must be a name (max 64) or null" });
-    const faction = f === null || f.trim() === "" ? null : f.trim();
-    return act(request, reply, async () => {
-      const doc = await net.putDoc("node", id, (cur) => {
-        if (cur === null) return null; // узла нет — создавать его владельцем незачем
-        if ((cur.owner_faction ?? null) === faction) return null;
-        const { owner_faction: _old, ...rest } = cur;
-        return faction === null ? rest : { ...rest, owner_faction: faction };
-      });
-      if (!doc) throw new BridgeError("not_found", `node/${id}`);
-      return { result: { doc: doc as NetDoc }, audit: { action: "NET_NODE_OWNER", detail: { node: id, faction } } };
-    });
-  });
+  registerNetStockRoutes(app, db, net);
+  registerNetSecRoutes(app, db, net, secSync);
 }
