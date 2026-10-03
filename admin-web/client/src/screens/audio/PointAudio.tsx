@@ -4,15 +4,48 @@ import type { AudioChannel, DisplayItem } from "../../api/types";
 import { useAsyncAction } from "../../api/useAsyncAction";
 import { AppSelect, Badge } from "../../design/components";
 import { isOnline } from "../displays/displayUtil";
-import { announceActive, announcePhaseText, announceTone, nowPlaying } from "./audioUtil";
+import { announcePhaseText, announceTone, nowPlaying } from "./audioUtil";
 
 /**
  * Звук одной точки — общий для строки точки в «Локациях» и секции «Точка» в карточке узла: что играет, дошло ли, чего нет
  * на карте, и фон точки (канал «как у локации / тишина / свой» и громкость). Сохраняется сразу — сервер доводит точку сам.
  */
 
+/**
+ * Звуковой блок точки целиком: что играет, фон точки, ход объявления. `className` — обёртка того места, где он стоит
+ * (строка точки на «Локациях» или карточка точки).
+ */
+export function PointAudioBlock({
+  point,
+  channels,
+  onSaved,
+  className,
+}: {
+  point: DisplayItem;
+  channels: AudioChannel[];
+  onSaved: () => void;
+  className: string;
+}) {
+  return (
+    <div className={className}>
+      <PointAudioStatus point={point} />
+      <PointAudioControls point={point} channels={channels} onSaved={onSaved} />
+      <PointAnnounce point={point} />
+    </div>
+  );
+}
+
+/** Полоска загрузки клипа на точку (ход объявления). */
+export function UploadBar({ pct }: { pct: number }) {
+  return (
+    <span className="sound-bar" aria-hidden>
+      <span style={{ width: `${pct}%` }} />
+    </span>
+  );
+}
+
 /** Что играет и в каком состоянии: «применено / доходит», нет карты, недостающие треки, громкость. */
-export function PointAudioStatus({ point }: { point: DisplayItem }) {
+function PointAudioStatus({ point }: { point: DisplayItem }) {
   const a = point.audio!;
   const online = isOnline(point);
   return (
@@ -33,7 +66,7 @@ export function PointAudioStatus({ point }: { point: DisplayItem }) {
 }
 
 /** Фон точки: исключение поверх локации. «как у локации» — null, «тишина» — "", иначе id канала. */
-export function PointAudioControls({ point, channels, onSaved }: { point: DisplayItem; channels: AudioChannel[]; onSaved: () => void }) {
+function PointAudioControls({ point, channels, onSaved }: { point: DisplayItem; channels: AudioChannel[]; onSaved: () => void }) {
   const a = point.audio!;
   const { error, run } = useAsyncAction({ fallbackError: "не удалось сохранить" });
   const save = (channelId: string | null, volume: number | null) =>
@@ -67,18 +100,14 @@ export function PointAudioControls({ point, channels, onSaved }: { point: Displa
 }
 
 /** Последнее объявление на точке: «загрузка 40 %», «играет», «доиграло»… Нет объявлений — ничего. */
-export function PointAnnounce({ point }: { point: DisplayItem }) {
+function PointAnnounce({ point }: { point: DisplayItem }) {
   const p = point.audio?.announce;
   if (!p) return null;
   return (
     <span className="sound-point-flags">
       <span className="hint-text">📢 {p.clipName}</span>
       <Badge tone={announceTone(p)}>{announcePhaseText(p)}</Badge>
-      {announceActive(p) && p.phase === "UPLOADING" && (
-        <span className="sound-bar" aria-hidden>
-          <span style={{ width: `${p.uploadedPct}%` }} />
-        </span>
-      )}
+      {p.phase === "UPLOADING" && <UploadBar pct={p.uploadedPct} />}
     </span>
   );
 }

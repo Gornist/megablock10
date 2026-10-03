@@ -5,7 +5,7 @@ import { useAsyncAction } from "../../api/useAsyncAction";
 import { AppButton, AppDialog, AppSelect, Panel } from "../../design/components";
 import { formatAgo } from "../../format";
 import { navigate } from "../../router";
-import { PointAnnounce, PointAudioControls, PointAudioStatus } from "../audio/PointAudio";
+import { PointAudioBlock } from "../audio/PointAudio";
 import { DisplayMock, PushSteps } from "./DisplayMock";
 import { DisplayPushDialog } from "./DisplayPushDialog";
 import { isLagging, useDisplayFrame } from "./useDisplayFrame";
@@ -260,13 +260,7 @@ export function DeviceDetail({
       {action.busy && <p className="hint-text">жду ответа дисплея…</p>}
       {note && <p className="hint-text">{note}</p>}
       {action.error && <div className="login-error">{action.error}</div>}
-      {d.audio && (
-        <div className="node-point-audio">
-          <PointAudioStatus point={d} />
-          <PointAudioControls point={d} channels={channels} onSaved={onChanged} />
-          <PointAnnounce point={d} />
-        </div>
-      )}
+      {d.audio && <PointAudioBlock className="node-point-audio" point={d} channels={channels} onSaved={onChanged} />}
       {confirm && (
         <AppDialog
           title={confirm === "reboot" ? "Перезагрузить дисплей?" : confirm === "secret" ? "Сменить секрет?" : "Удалить дисплей?"}

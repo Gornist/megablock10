@@ -5,6 +5,7 @@ import { useAsyncAction } from "../../api/useAsyncAction";
 import { AppButton, AppDialog, AppInput, Badge, Panel } from "../../design/components";
 import { isOnline } from "../displays/displayUtil";
 import { announceActive, announcePhaseText, announceTone, formatDuration } from "./audioUtil";
+import { UploadBar } from "./PointAudio";
 import { useRecorder } from "./useRecorder";
 import { toBase64, toClipWav } from "./wavEncoder";
 
@@ -208,11 +209,7 @@ export function AnnouncePanel({
                   <li key={p.id}>
                     <span className="sound-progress-name">{p.name}</span>
                     <Badge tone={announceTone(a)}>{announcePhaseText(a)}</Badge>
-                    {a.phase === "UPLOADING" && (
-                      <span className="sound-bar" aria-hidden>
-                        <span style={{ width: `${a.uploadedPct}%` }} />
-                      </span>
-                    )}
+                    {a.phase === "UPLOADING" && <UploadBar pct={a.uploadedPct} />}
                   </li>
                 );
               })}

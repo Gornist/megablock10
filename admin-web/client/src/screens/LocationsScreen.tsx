@@ -6,7 +6,7 @@ import { useAsyncAction } from "../api/useAsyncAction";
 import { AsyncPanel } from "../design/AsyncPanel";
 import { AppButton, AppSelect, Panel } from "../design/components";
 import { navigate } from "../router";
-import { PointAnnounce, PointAudioControls, PointAudioStatus, VolumeInput } from "./audio/PointAudio";
+import { PointAudioBlock, VolumeInput } from "./audio/PointAudio";
 import { DeviceDetail } from "./displays/DeviceDetail";
 import { DeviceStats } from "./displays/DeviceStats";
 import { GroupDeleteDialog, GroupNameDialog, GroupSection } from "./displays/DisplayGroups";
@@ -56,13 +56,7 @@ export function LocationsScreen() {
             )}
             <StatusAndBattery d={d} />
           </div>
-          {d.audio && (
-            <div className="location-point-audio">
-              <PointAudioStatus point={d} />
-              <PointAudioControls point={d} channels={channels} onSaved={reloadAll} />
-              <PointAnnounce point={d} />
-            </div>
-          )}
+          {d.audio && <PointAudioBlock className="location-point-audio" point={d} channels={channels} onSaved={reloadAll} />}
           {open.has(d.id) && (
             <DeviceDetail display={d} {...editor.detailProps(d)} />
           )}
