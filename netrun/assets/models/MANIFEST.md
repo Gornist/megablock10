@@ -8,10 +8,13 @@
 | `models/ice/black_ice.glb` | 0 / 300 | 157 / 600 | 256 / 350 | 0 | 3 | 1.4096 × 3.3711 × 1.68 | points, streaks | — | feet | ок |
 | `models/ice/black_ice_catch.glb` | 0 / 300 | 156 / 600 | 331 / 350 | 0 | 3 | 2.3818 × 3.3707 × 2.7782 | points, streaks | — | feet | ок |
 | `models/ice/black_ice_hunt.glb` | 0 / 300 | 162 / 600 | 282 / 350 | 0 | 3 | 1.3545 × 3.2935 × 2.1668 | points, streaks | — | feet | ок |
+| `models/env/cable_curve.glb` | 0 / 300 | 354 / 420 | 0 / 0 | 0 | 2 | 1.9817 × 0.2306 × 1.9636 | points | — | floor | ок |
+| `models/env/cable_straight.glb` | 0 / 300 | 354 / 420 | 0 / 0 | 0 | 2 | 1.952 × 0.2306 × 1.9827 | points | — | floor | ок |
 | `models/env/ceiling.glb` | 140 / 300 | 36 / 170 | 121 / 160 | 0 | 3 | 1.8615 × 0.7576 × 1.92 | points, solid_dark, streaks | — | ceiling | ок |
 | `models/env/ceiling_b.glb` | 140 / 300 | 34 / 170 | 108 / 160 | 0 | 3 | 1.9397 × 0.6636 × 1.92 | points, solid_dark, streaks | — | ceiling | ок |
 | `models/env/ceiling_c.glb` | 140 / 300 | 41 / 170 | 105 / 160 | 0 | 3 | 1.8616 × 0.7154 × 1.92 | points, solid_dark, streaks | — | ceiling | ок |
 | `models/env/column_field.glb` | 0 / 300 | 0 / 0 | 1345 / 1700 | 0 | 1 | 3.9398 × 2.8539 × 3.9 | streaks | — | floor | ок |
+| `models/env/corner.glb` | 0 / 300 | 4 / 40 | 167 / 240 | 0 | 3 | 2.0312 × 2.8919 × 1.9991 | points, streaks | — | floor | ок |
 | `models/props/dead_deck.glb` | 68 / 300 | 9 / 20 | 2 / 4 | 0 | 3 | 0.18 × 0.065 × 0.11 | points, solid_dark, streaks | — | center | ок |
 | `models/env/doorway.glb` | 0 / 300 | 18 / 40 | 46 / 80 | 0 | 3 | 1.9678 × 2.6921 × 0.1873 | points, streaks | — | floor | ок |
 | `models/env/doorway_b.glb` | 0 / 300 | 18 / 40 | 50 / 80 | 0 | 3 | 1.9513 × 2.6668 × 0.2822 | points, streaks | — | floor | ок |
@@ -28,7 +31,10 @@
 | `models/env/floor_b.glb` | 140 / 300 | 34 / 170 | 109 / 160 | 0 | 3 | 1.862 × 0.95 × 1.92 | points, solid_dark, streaks | — | surface | ок |
 | `models/env/floor_c.glb` | 140 / 300 | 37 / 170 | 105 / 160 | 0 | 3 | 1.9403 × 0.9379 × 1.835 | points, solid_dark, streaks | — | surface | ок |
 | `models/env/floor_clear.glb` | 0 / 300 | 56 / 170 | 0 / 160 | 0 | 1 | 1.782 × 0.1032 × 1.75 | points | — | surface | ок |
+| `models/env/lockdown_gate.glb` | 0 / 300 | 18 / 40 | 79 / 120 | 0 | 4 | 1.98 × 2.7226 × 0.328 | points, streaks | — | floor | ок |
+| `models/env/lockdown_gate_open.glb` | 0 / 300 | 18 / 40 | 48 / 120 | 0 | 4 | 1.98 × 2.7226 × 0.328 | points, streaks | — | floor | ок |
 | `models/env/pillar.glb` | 0 / 300 | 0 / 0 | 11 / 16 | 0 | 2 | 0.1166 × 3 × 0.0709 | streaks | — | floor | ок |
+| `models/env/platform.glb` | 28 / 300 | 25 / 40 | 39 / 60 | 0 | 3 | 1.9203 × 0.322 × 1.9 | points, solid_dark, streaks | — | floor | ок |
 | `models/props/portal_closed.glb` | 0 / 2000 | 157 / 260 | 27 / 40 | 0 | 2 | 3.0273 × 3.0139 × 0.1508 | points, streaks | — | floor | ок |
 | `models/props/portal_open.glb` | 0 / 2000 | 358 / 400 | 82 / 100 | 0 | 2 | 3.028 × 3.014 × 0.1571 | points, streaks | — | floor | ок |
 | `models/env/portal_wall.glb` | 0 / 300 | 34 / 150 | 105 / 300 | 0 | 2 | 3.9653 × 2.9735 × 0.5252 | points, streaks | — | floor | ок |
@@ -39,6 +45,7 @@
 | `models/props/sensor.glb` | 88 / 500 | 16 / 40 | 2 / 8 | 3 | 6 | 0.342 × 1.45 × 0.32 | points, shell_soft, solid_dark, streaks | — | floor | ок |
 | `models/props/shard.glb` | 60 / 300 | 70 / 120 | 0 / 0 | 3 | 4 | 0.1303 × 0.1496 × 0.123 | points, shell_soft | — | center | ок |
 | `models/ice/soft_ice.glb` | 0 / 300 | 160 / 200 | 179 / 200 | 0 | 3 | 1.2214 × 2.15 × 0.7577 | points, streaks | — | feet | ок |
+| `models/env/tunnel_ring.glb` | 0 / 300 | 188 / 320 | 78 / 120 | 0 | 2 | 3.026 × 3.016 × 1.96 | points, streaks | — | floor | ок |
 | `models/props/vault_closed.glb` | 0 / 500 | 248 / 420 | 111 / 160 | 0 | 2 | 0.7878 × 0.8098 × 0.76 | points, streaks | — | floor | ок |
 | `models/props/vault_open.glb` | 0 / 500 | 248 / 420 | 105 / 160 | 0 | 2 | 0.7878 × 0.9982 × 0.76 | points, streaks | — | floor | ок |
 | `models/env/wall.glb` | 0 / 300 | 50 / 80 | 80 / 120 | 0 | 3 | 2.004 × 2.9716 × 0.5351 | points, streaks | — | floor | ок |

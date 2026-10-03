@@ -102,7 +102,14 @@ func _shots() -> Array:
 	var nodeprops := [["env/floor_clear", Vector3(0, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(2.4, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(-2.4, 0, 0), 0.0, "BASE", 1.0],
 		["props/seat", Vector3(-1.6, 0, 0.0), 0.0, "BASE", 1.0], ["props/sensor", Vector3(0.0, 0, 0.0), 0.0, "BASE", 1.0], ["props/dead_deck", Vector3(1.2, 0.02, 0.4), 30.0, "BASE", 3.0],
 		["avatar/runner", Vector3(-1.6, 0.14, 0.0), 0.0, "", 1.0]]
+	var envmore := [["env/floor_clear", Vector3(0, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(-2, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(2, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(4, 0, 0), 0.0, "BASE", 1.0],
+		["env/lockdown_gate", Vector3(-3.0, 0, -2.0), 0.0, "", 1.0], ["env/lockdown_gate_open", Vector3(-1.0, 0, -2.0), 0.0, "", 1.0], ["env/corner", Vector3(1.0, 0, -2.0), 0.0, "BASE", 1.0],
+		["env/platform", Vector3(3.0, 0, -2.0), 0.0, "BASE", 1.0], ["env/cable_straight", Vector3(-3.0, 0, 0.0), 0.0, "BASE", 1.0], ["env/cable_curve", Vector3(-1.0, 0, 0.0), 0.0, "BASE", 1.0],
+		["env/tunnel_ring", Vector3(2.0, 0, 0.5), 0.0, "HARD", 1.0]]
 	return [
+		{"name": "gate_close", "cam": Vector3(-2.0, 1.3, 1.5), "look": Vector3(-2.0, 1.0, -2.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": envmore},
+		{"name": "corner_platform", "cam": Vector3(2.0, 1.5, 1.5), "look": Vector3(2.0, 0.6, -2.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": envmore},
+		{"name": "env_more", "cam": Vector3(0.0, 1.5, 5.5), "look": Vector3(0.0, 1.0, -1.0), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": envmore},
 		{"name": "node_props", "cam": Vector3(0.0, 1.25, 4.8), "look": Vector3(0.0, 0.8, 0.0), "fov": 60.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": nodeprops},
 		{"name": "ice_states", "cam": Vector3(0.0, 1.3, 6.5), "look": Vector3(0.0, 1.4, 0.0), "fov": 60.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": icestates},
 		{"name": "ice_stage", "cam": Vector3(0.0, 1.25, 6.0), "look": Vector3(0.0, 1.2, 0.0), "fov": 60.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": icestage},
