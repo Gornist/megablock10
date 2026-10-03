@@ -223,6 +223,9 @@ export function registerNetBridgeRoutes(app: FastifyInstance, db: Db, net: NetSe
     });
   });
 
+  /** Из ответа Моста — только то, что нужно экрану (без служебного конверта v/re/ok). */
+  const stockResult = (r: Record<string, unknown>): NetStockResult => ({ node: String(r.node), items: (r.items as string[]) ?? [], eddies: Number(r.eddies), ...(r.replayed === true ? { replayed: true } : {}) });
+
   const ridOk = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= RID_MAX;
   const eddiesOk = (v: unknown) => v === undefined || isInt(v, 0, 1_000_000_000);
 
@@ -248,7 +251,7 @@ export function registerNetBridgeRoutes(app: FastifyInstance, db: Db, net: NetSe
       items.push(r.item);
     }
     return act<NetStockResult>(request, reply, async () => {
-      const r = (await net.request({ op: "master.stock_node", rid: b.rid, node, items, eddies })) as unknown as NetStockResult;
+      const r = stockResult(await net.request({ op: "master.stock_node", rid: b.rid, node, items, eddies }));
       return { result: r, audit: { action: "NET_STOCK", detail: { node, rid: b.rid, items: items.length, eddies, replayed: r.replayed === true } } };
     });
   });
@@ -265,7 +268,7 @@ export function registerNetBridgeRoutes(app: FastifyInstance, db: Db, net: NetSe
     const eddies = (b.eddies as number | undefined) ?? 0;
     if (items.length === 0 && eddies === 0) return reply.code(400).send({ error: "nothing to remove: pick items or eddies" });
     return act<NetStockResult>(request, reply, async () => {
-      const r = (await net.request({ op: "master.unstock_node", rid: b.rid, node, items, eddies })) as unknown as NetStockResult;
+      const r = stockResult(await net.request({ op: "master.unstock_node", rid: b.rid, node, items, eddies }));
       return { result: r, audit: { action: "NET_UNSTOCK", detail: { node, rid: b.rid, items: items.length, eddies, replayed: r.replayed === true } } };
     });
   });

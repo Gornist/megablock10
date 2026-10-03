@@ -98,6 +98,7 @@ test("наполнение: предметы и эдди ложатся в уз�
     assert.equal(first.statusCode, 200);
     assert.equal(first.json().eddies, 150);
     assert.equal(first.json().items.length, 2);
+    assert.deepEqual(Object.keys(first.json()).sort(), ["eddies", "items", "node"], "служебный конверт Моста наружу не отдаём");
     const items = [...bridge.docs.values()].filter((d) => d.type === "item");
     assert.equal(items.length, 2);
     assert.ok(items.every((d) => d.data.owner === "node:node_07" && d.data.origin === "master:collector"));
