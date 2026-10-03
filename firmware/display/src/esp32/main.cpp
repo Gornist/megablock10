@@ -21,6 +21,7 @@
 #include "connectivity.h"
 #include "crc32.h"
 #include "device.h"
+#include "endpoint.h"
 #include "protocol.h"
 #include "session.h"
 
@@ -231,8 +232,7 @@ class ClientLink : public Link {
       len -= n;
     }
   }
-  void close() override { closeRequested_ = true; }
-  bool closeRequested() const { return closeRequested_; }
+  void close() override {}  // закрывает Endpoint, увидев Session::closed()
   WiFiClient& client() { return client_; }
 
   // Сначала FIN, непрочитанное — выбросить: close() с данными в приёмном буфере шлёт RST, и последний NACK может потеряться.
@@ -249,7 +249,39 @@ class ClientLink : public Link {
 
  private:
   WiFiClient client_;
-  bool closeRequested_ = false;
+};
+
+// WiFiServer/WiFiClient для Endpoint: accept и available не ждут.
+class WifiTransport : public Transport {
+ public:
+  explicit WifiTransport(WiFiServer& server) : server_(server) {}
+  Link* accept() override {
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+    WiFiClient incoming = server_.accept();
+#else
+    WiFiClient incoming = server_.available();
+#endif
+    if (!incoming) return nullptr;
+    incoming.setNoDelay(true);
+    return new ClientLink(incoming);
+  }
+  bool readable(Link& link) override {
+    WiFiClient& c = static_cast<ClientLink&>(link).client();
+    return c.available() > 0 || !c.connected();
+  }
+  size_t read(Link& link, uint8_t* buf, size_t cap) override {
+    int n = static_cast<ClientLink&>(link).client().read(buf, cap);
+    return n > 0 ? size_t(n) : 0;
+  }
+  void release(Link* link, bool graceful) override {
+    auto* l = static_cast<ClientLink*>(link);
+    if (graceful) l->closeGracefully();
+    else l->client().stop();
+    delete l;
+  }
+
+ private:
+  WiFiServer& server_;
 };
 
 // ── Состояние ──
@@ -262,20 +294,15 @@ Esp32Platform platform;
 Device* device = nullptr;
 Sound* sound = nullptr;
 WiFiServer* server = nullptr;
-ClientLink* link = nullptr;
-Session* session = nullptr;
+WifiTransport* transport = nullptr;
+Endpoint* endpoint = nullptr;
 Connectivity connectivity;
 String consoleLine;
 bool buttonWasDown = false;
 uint32_t buttonChangedAt = 0;
 
 void dropClient() {
-  if (!link) return;
-  delete session;
-  session = nullptr;
-  link->closeGracefully();
-  delete link;
-  link = nullptr;
+  if (endpoint) endpoint->drop();
 }
 
 void startWifi() {
@@ -321,34 +348,7 @@ void pollWifi() {
 }
 
 void pollTcp() {
-  if (!server) return;
-#if ESP_ARDUINO_VERSION_MAJOR >= 3
-  WiFiClient incoming = server->accept();
-#else
-  WiFiClient incoming = server->available();
-#endif
-  if (incoming) {
-    if (link) {
-      logLine("new connection replaces the previous one");
-      delete session;
-      session = nullptr;
-      link->client().stop();
-      delete link;
-    }
-    incoming.setNoDelay(true);
-    link = new ClientLink(incoming);
-    session = new Session(*device, *link);
-  }
-  if (!link) return;
-  uint8_t buf[1460];
-  while (session && !session->closed() && link->client().available()) {
-    int n = link->client().read(buf, sizeof buf);
-    if (n <= 0) break;
-    session->onData(buf, size_t(n));
-    esp_task_wdt_reset();
-  }
-  if (session) session->poll();
-  if (!link->client().connected() || link->closeRequested() || (session && session->closed())) dropClient();
+  if (endpoint) endpoint->step();
 }
 
 void pollButton() {
@@ -463,6 +463,8 @@ void setup() {
   WiFi.mode(WIFI_STA);
   server = new WiFiServer(settings.port);
   server->begin();
+  transport = new WifiTransport(*server);
+  endpoint = new Endpoint(*device, *transport);
   printStatus();
 #ifdef MB10_SELFTEST
   startSelftest(settings);

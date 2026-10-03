@@ -11,6 +11,7 @@
 #include "connectivity.h"
 #include "crc32.h"
 #include "device.h"
+#include "endpoint.h"
 #include "protocol.h"
 #include "receiver.h"
 #include "session.h"
@@ -552,6 +553,127 @@ static void testBattery() {
   CHECK(std::strstr(json, "\"batteryRate\":0.5,") != nullptr);
 }
 
+// Соединение глазами драйвера: что пришло от сервера мастера, закрыл ли он, что ему отправлено, как закрыто прошивкой.
+struct FakeConn : Link {
+  Bytes sent, inbox;
+  bool peerClosed = false;  // сервер закрыл: read вернёт 0
+  bool released = false, graceful = false;
+  void send(const uint8_t* d, size_t n) override { sent.insert(sent.end(), d, d + n); }
+  void close() override {}
+  size_t helloCount() const {
+    size_t n = 0;
+    for (size_t i = 0; i + kHeaderSize <= sent.size(); i += kHeaderSize + getU32(sent.data() + i + 52))
+      if (sent[i + 6] == uint8_t(MsgType::Hello)) n++;
+    return n;
+  }
+};
+
+// Сокеты как у ядра ОС: read без данных и без закрытия — блокирующий recv, цикл прошивки встал бы навсегда (hangs).
+struct FakeTransport : Transport {
+  std::vector<FakeConn*> pending;
+  int hangs = 0;
+  Link* accept() override {
+    if (pending.empty()) return nullptr;
+    FakeConn* c = pending.front();
+    pending.erase(pending.begin());
+    return c;
+  }
+  bool readable(Link& l) override {
+    auto& c = static_cast<FakeConn&>(l);
+    return !c.inbox.empty() || c.peerClosed;
+  }
+  size_t read(Link& l, uint8_t* buf, size_t cap) override {
+    auto& c = static_cast<FakeConn&>(l);
+    CHECK(!c.released);
+    if (c.inbox.empty()) {
+      if (!c.peerClosed) hangs++;
+      return 0;
+    }
+    size_t n = c.inbox.size() < cap ? c.inbox.size() : cap;
+    std::memcpy(buf, c.inbox.data(), n);
+    c.inbox.erase(c.inbox.begin(), c.inbox.begin() + long(n));
+    return n;
+  }
+  void release(Link* l, bool graceful) override {
+    auto* c = static_cast<FakeConn*>(l);
+    CHECK(!c->released);
+    c->released = true;
+    c->graceful = graceful;
+  }
+};
+
+static bool logged(const Rig& rig, const char* line) {
+  for (const auto& l : rig.platform.logs)
+    if (l == line) return true;
+  return false;
+}
+
+static void testEndpoint() {
+  g_test = "endpoint: new connection replaces the previous one";
+  {
+    Rig rig;
+    rig.showVersion(kVecDisplayed);
+    FakeTransport t;
+    FakeConn a, b;  // живут дольше Endpoint: его деструктор закрывает текущее
+    Endpoint ep(*rig.device, t);
+    t.pending = {&a};
+    ep.step();
+    CHECK(a.helloCount() == 1 && !a.released);
+    b.inbox = fromHex(vec("backlight_ok").hex);  // запрос пришёл сразу за соединением
+    t.pending = {&b};
+    ep.step();
+    CHECK(a.released && !a.graceful);
+    CHECK(logged(rig, "new connection replaces the previous one"));
+    CHECK(b.helloCount() == 1 && rig.backlight.level == 2 && !b.released);
+    CHECK(t.hangs == 0);
+  }
+  // Сбой C18 набора совместимости под нагрузкой: сервер закрыл соединение C17 и сразу открыл молчащее C18, а прошивка проснулась
+  // один раз на оба события. Готовность старого сокета применялась к новому — recv на молчащем соединении ждал вечно: ни
+  // таймаута заголовка, ни приёма C19/C20 (gdb: стоит в recv, src/host/main.cpp).
+  g_test = "endpoint: peer close and new silent connection in one step";
+  {
+    Rig rig;
+    FakeTransport t;
+    FakeConn b, c, d;
+    Endpoint ep(*rig.device, t);
+    t.pending = {&b};
+    ep.step();
+    b.peerClosed = true;
+    t.pending = {&c};
+    ep.step();
+    CHECK(t.hangs == 0);
+    CHECK(b.released && c.helloCount() == 1 && !c.released);
+    rig.platform.now += 1999;
+    ep.step();
+    CHECK(!c.released);
+    rig.platform.now += 1;
+    ep.step();
+    CHECK(c.released && c.graceful && logged(rig, "header timeout — closing"));
+    t.pending = {&d};
+    ep.step();
+    CHECK(d.helloCount() == 1 && !d.released && ep.connected());
+    CHECK(t.hangs == 0);
+  }
+  g_test = "endpoint: peer close and broken stream";
+  {
+    Rig rig;
+    FakeTransport t;
+    FakeConn a, b;
+    Endpoint ep(*rig.device, t);
+    t.pending = {&a};
+    ep.step();
+    a.peerClosed = true;
+    ep.step();
+    CHECK(a.released && !ep.connected());
+    t.pending = {&b};
+    ep.step();
+    b.inbox = Bytes(kHeaderSize, 0xEE);  // не MAGIC — NACK, закрыть «мягко», чтобы NACK дошёл
+    ep.step();
+    CHECK(b.released && b.graceful && logged(rig, "stream broken — closing"));
+    CHECK(t.hangs == 0);
+  }
+}
+
 int main() {
   testCrcAndHash();
   testFrameVectors();
@@ -561,6 +683,7 @@ int main() {
   testDevice();
   testConnectivity();
   testBattery();
+  testEndpoint();
   std::printf("%d checks, %d failed\n", g_checks, g_failures);
   return g_failures == 0 ? 0 : 1;
 }

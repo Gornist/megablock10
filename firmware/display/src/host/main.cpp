@@ -39,6 +39,7 @@
 #include <vector>
 
 #include "device.h"
+#include "endpoint.h"
 #include "png.h"
 #include "session.h"
 #include "sound.h"
@@ -391,13 +392,12 @@ class SocketLink : public Link {
       len -= size_t(n);
     }
   }
-  void close() override { closeRequested_ = true; }
-  bool closeRequested() const { return closeRequested_ || failed_; }
+  void close() override {}  // закрывает Endpoint, увидев Session::closed()
+  bool broken() const override { return failed_; }
   int fd() const { return fd_; }
 
  private:
   int fd_;
-  bool closeRequested_ = false;
   bool failed_ = false;
 };
 
@@ -418,6 +418,46 @@ void gracefulClose(int fd) {
   }
   ::close(fd);
 }
+
+// Сокеты ПК для Endpoint: готовность — свежий poll с нулевым ожиданием по самому сокету, чтение — без ожидания.
+class SocketTransport : public Transport {
+ public:
+  explicit SocketTransport(int lfd) : lfd_(lfd) {}
+  // Сокет текущего соединения — разбудить цикл, когда на нём что-то есть; -1 — соединения нет.
+  int currentFd() const { return current_; }
+  Link* accept() override {
+    // Слушающий сокет — O_NONBLOCK (listenOn): нет соединения — EAGAIN. Сам сокет соединения блокирующий: отправка ждёт
+    // (ответы маленькие, сервер их читает), чтение — MSG_DONTWAIT.
+    int cfd = accept4(lfd_, nullptr, nullptr, SOCK_CLOEXEC);
+    if (cfd < 0) return nullptr;
+    int one = 1;
+    setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
+    current_ = cfd;
+    return new SocketLink(cfd);
+  }
+  bool readable(Link& link) override {
+    pollfd p{static_cast<SocketLink&>(link).fd(), POLLIN, 0};
+    return poll(&p, 1, 0) > 0 && (p.revents & (POLLIN | POLLHUP | POLLERR));
+  }
+  size_t read(Link& link, uint8_t* buf, size_t cap) override {
+    for (;;) {
+      ssize_t n = recv(static_cast<SocketLink&>(link).fd(), buf, cap, MSG_DONTWAIT);
+      if (n < 0 && errno == EINTR) continue;
+      return n > 0 ? size_t(n) : 0;  // 0 — закрыто или ошибка (EAGAIN после POLLIN у TCP не бывает)
+    }
+  }
+  void release(Link* link, bool graceful) override {
+    int fd = static_cast<SocketLink*>(link)->fd();
+    if (fd == current_) current_ = -1;
+    if (graceful) gracefulClose(fd);
+    else ::close(fd);
+    delete link;
+  }
+
+ private:
+  int lfd_;
+  int current_ = -1;
+};
 
 bool parseArgs(int argc, char** argv, Options& o) {
   for (int i = 1; i < argc; i++) {
@@ -472,7 +512,8 @@ void prepareReboot(int argc, char** argv) {
 }
 
 int listenOn(const Options& o) {
-  int fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+  // Не блокирующий: Endpoint спрашивает accept на каждом проходе цикла (у Linux accept4 этот флаг соединению не передаёт).
+  int fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
   int one = 1;
   setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
   sockaddr_in addr{};
@@ -545,46 +586,18 @@ int main(int argc, char** argv) {
                 o.out.c_str(), o.id.c_str());
   logLine(line);
 
-  std::unique_ptr<SocketLink> link;
-  std::unique_ptr<Session> session;
-  auto drop = [&]() {
-    if (!link) return;
-    session.reset();
-    gracefulClose(link->fd());
-    link.reset();
-  };
+  SocketTransport transport(lfd);
+  Endpoint endpoint(device, transport);
 
   for (;;) {
     platform.feedWatchdog();
-    pollfd fds[2] = {{lfd, POLLIN, 0}, {link ? link->fd() : -1, POLLIN, 0}};
-    int ready = poll(fds, link ? 2 : 1, 20);
-    if (ready < 0 && errno != EINTR) break;
-    if (fds[0].revents & POLLIN) {
-      int cfd = accept4(lfd, nullptr, nullptr, SOCK_CLOEXEC);
-      if (cfd >= 0) {
-        if (link) {
-          logLine("new connection replaces the previous one");
-          session.reset();
-          ::close(link->fd());
-          link.reset();
-        }
-        int one = 1;
-        setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
-        link.reset(new SocketLink(cfd));
-        session.reset(new Session(device, *link));
-      }
-    }
-    if (link && (fds[1].revents & (POLLIN | POLLHUP | POLLERR))) {
-      uint8_t buf[4096];
-      ssize_t n = recv(link->fd(), buf, sizeof buf, 0);
-      if (n <= 0) drop();
-      else session->onData(buf, size_t(n));
-    }
-    if (session) session->poll();
-    if (link && (session->closed() || link->closeRequested())) drop();
+    // poll здесь только усыпляет цикл до события (≤ 20 мс): что готово, Endpoint спрашивает у сокетов сам, после accept.
+    pollfd fds[2] = {{lfd, POLLIN, 0}, {transport.currentFd(), POLLIN, 0}};
+    if (poll(fds, 2, 20) < 0 && errno != EINTR) break;
+    endpoint.step();
     device.tick();
     if (device.rebootRequested()) {
-      drop();
+      endpoint.drop();
       ::close(lfd);
       platform.reboot();
     }

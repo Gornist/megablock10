@@ -52,6 +52,7 @@ firmware/display/
     receiver.h/.cpp         # сборка кадров из TCP-потока кусками любой длины
     device.h/.cpp           # Device: кадр во flash, восстановление, тест, подсветка, статус для HELLO
     session.h/.cpp          # Session — одно соединение: HELLO с nonce → проверки → ответы, таймауты 2/5 с; Link
+    endpoint.h/.cpp         # Endpoint — общий цикл соединений платы и ПК: новое вытесняет старое; Transport — сокеты драйвера
     connectivity.h/.cpp     # Backoff и Connectivity (Wi-Fi 1…30 с)
     util.h/.cpp             # общее ядра: время с переполнением millis(), журнал через Platform, hex
     battery.h/.cpp          # топливомер MAX17048 (разбор регистров) и кривая Li-ion

@@ -17,6 +17,8 @@ class Link {
   virtual ~Link() = default;
   virtual void send(const uint8_t* data, size_t len) = 0;
   virtual void close() = 0;
+  // Отправка не прошла (собеседник пропал) — соединение закрыть, не дожидаясь таймаута.
+  virtual bool broken() const { return false; }
 };
 
 // Одно TCP-соединение: HELLO с новым nonce → приём кадров → проверки → ответы. Обработка синхронная: пока обновляется панель,
