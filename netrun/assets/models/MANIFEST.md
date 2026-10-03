@@ -6,8 +6,8 @@
 | Файл | Треуг. / бюджет | Точек / бюджет | Штрихов / бюджет | Слоёв | Вызовов | Размер, м (x, y, z) | Материалы | Анимации | Origin | Статус |
 |---|---|---|---|---|---|---|---|---|---|---|
 | `models/env/doorway.glb` | 0 / 300 | 18 / 40 | 54 / 80 | 0 | 3 | 1.9806 × 2 × 0.2321 | points, streaks | — | floor | ок |
-| `models/env/floor.glb` | 0 / 300 | 64 / 70 | 0 / 0 | 0 | 1 | 1.8007 × 0.032 × 1.7684 | points | — | floor | ок |
+| `models/env/floor.glb` | 192 / 300 | 297 / 340 | 96 / 110 | 0 | 4 | 1.9498 × 0.5209 × 1.9301 | points, solid_dark, streaks | — | floor | ок |
 | `models/env/pillar.glb` | 0 / 300 | 0 / 0 | 11 / 16 | 0 | 2 | 0.1166 × 2.2034 × 0.0709 | streaks | — | floor | ок |
 | `models/props/shard.glb` | 60 / 300 | 70 / 120 | 0 / 0 | 3 | 4 | 0.1303 × 0.1496 × 0.123 | points, shell_soft | — | center | ок |
-| `models/ice/soft_ice.glb` | 0 / 300 | 160 / 200 | 179 / 200 | 0 | 3 | 1.1114 × 2.15 × 0.7577 | points, streaks | — | feet | ок |
-| `models/env/wall.glb` | 36 / 300 | 50 / 80 | 106 / 120 | 0 | 4 | 2.004 × 2 × 0.3945 | points, solid_dark, streaks | — | floor | ок |
+| `models/ice/soft_ice.glb` | 0 / 300 | 160 / 200 | 179 / 200 | 0 | 3 | 1.2214 × 2.15 × 0.7577 | points, streaks | — | feet | ок |
+| `models/env/wall.glb` | 0 / 300 | 50 / 80 | 106 / 120 | 0 | 3 | 2.004 × 2 × 0.3945 | points, streaks | — | floor | ок |

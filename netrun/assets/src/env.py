@@ -1,8 +1,8 @@
 """Группа env: модули окружения, сетка 2×2 м. Запуск: blender -b --python env.py -- --out <корень netrun/assets>
 
 Стиль по референсам Blackwall (STYLE.md): свет живёт в вертикальных штрихах, поверхности чёрные и непрозрачные, пол — ряды точек.
-Стена — занавес из штрихов (яркость плывёт вдоль стены) плюс несколько чёрных плит-перекрытий с каймой; сплошных реек и стеклянных
-плиток нет. Граница модуля — яркие штрихи у краёв, остальное рваное."""
+Стена — только занавес из штрихов (яркость плывёт вдоль стены); чёрные тайлы лежат на ПОЛУ, не на стенах; сплошных реек и
+стеклянных плиток нет. Граница модуля — яркие штрихи у краёв, остальное рваное."""
 import math
 import os
 import random
@@ -30,12 +30,6 @@ def curtain(rng, x0, x1, n, hmax, depth=0.12, w_range=(0.008, 0.02)):
     return out
 
 
-def slabs(objs, rng, specs, rgb):
-    """Чёрные непрозрачные плиты-перекрытия (solid_dark): закрывают штрихи за собой, кайма цветом rgb. specs [(w, h, x, глубина, z)]."""
-    parts = [lib.box_bm((w, 0.04, h), center=(x, d, z)) for w, h, x, d, z in specs]
-    objs.append(lib.obj_from_bm("slabs", lib.merge_bm(*parts), "solid_dark", rgb, alpha=0.9))
-
-
 def build_wall(out):
     """Стена 2×2 м: занавес ~64 штрихов с плывущей яркостью, 6 ярких белых (две опоры по краям модуля), 3 чёрные плиты-перекрытия.
     Origin на полу в центре."""
@@ -48,7 +42,6 @@ def build_wall(out):
         hh = rng.uniform(0.7, 1.0)
         accents.append((Vector((x, rng.uniform(-0.08, 0.08), hh)), 0.011, hh, 0.95))
     objs.append(lib.streak_set("wall_accents", accents, ice))
-    slabs(objs, rng, [(0.55, 0.8, -0.35, 0.10, 0.9), (0.4, 0.55, 0.45, -0.08, 1.2), (0.6, 0.4, 0.05, 0.06, 0.3)], cy)
     fill = lib.sample_box((0, 0, 1.0), (2.0, 0.4, 2.0), 50, seed=5, min_z=0.01)
     objs.append(lib.point_cloud("wall_pts", fill, cy, half_size=0.007, seed=11, a_min=0.15, a_max=0.5, on_floor=True))
     return lib.export("wall", "env", objs, out, budget_tris=300, budget_points=80, budget_streaks=120, origin="floor")
@@ -71,13 +64,32 @@ def build_doorway(out):
 
 
 def build_floor(out):
-    """Плитка пола 2×2 м: ряды точек в решётке (как пол в референсе Blackwall), без плоскости и без рамок. Origin на полу в центре."""
+    """Плитка пола 2×2 м: поле чёрных непрозрачных тайлов-блоков разной высоты (как в референсе cyan space), из их рёбер поднимаются
+    короткие штрихи, в щелях редкие точки. Чёрные тайлы — только на полу. Origin на полу в центре."""
     lib.reset()
     rng = random.Random(2)
     cy = lib.lin("cyan")
-    pts = [Vector((-0.875 + i * 0.25 + rng.uniform(-0.01, 0.01), -0.875 + j * 0.25 + rng.uniform(-0.01, 0.01), 0.0)) for i in range(8) for j in range(8)]
-    objs = [lib.point_cloud("floor_dots", pts, cy, half_size=0.016, seed=2, a_min=0.4, a_max=0.9, on_floor=True)]
-    return lib.export("floor", "env", objs, out, budget_tris=300, budget_points=70, origin="floor")
+    tiles, streaks, edge = [], [], []
+    for i in range(4):
+        for j in range(4):
+            cx, cyy = -0.75 + i * 0.5, -0.75 + j * 0.5
+            hh = rng.uniform(0.02, 0.12)
+            tiles.append(lib.box_bm((0.42, 0.42, hh), center=(cx, cyy, hh / 2)))
+            for a, b in (((cx - 0.21, cyy - 0.21, hh), (cx + 0.21, cyy - 0.21, hh)), ((cx - 0.21, cyy - 0.21, hh), (cx - 0.21, cyy + 0.21, hh))):
+                edge += lib.sample_line(a, b, 22, spread=0.004, seed=len(edge) + 1)  # две видимые грани тайла — цепочка частиц
+            for _ in range(6):  # штрихи строго на рёбрах тайла
+                if rng.random() < 0.5:
+                    ex, ey = cx + rng.choice((-0.21, 0.21)), cyy + rng.uniform(-0.21, 0.21)
+                else:
+                    ex, ey = cx + rng.uniform(-0.21, 0.21), cyy + rng.choice((-0.21, 0.21))
+                top = rng.uniform(0.12, 0.42)
+                streaks.append((Vector((ex, ey, hh + top / 2)), rng.uniform(0.006, 0.012), top / 2, rng.uniform(0.3, 0.85)))
+    objs = [lib.obj_from_bm("floor_tiles", lib.merge_bm(*tiles), "solid_dark", lib.lin("void"), alpha=1.0)]  # верх чёрный: кайма не нужна
+    objs.append(lib.point_cloud("floor_edges", edge, cy, half_size=0.011, seed=4, a_min=0.5, a_max=1.0))
+    objs.append(lib.streak_set("floor_streaks", streaks, cy))
+    dots = [Vector((-0.75 + i * 0.5 + 0.25 + rng.uniform(-0.02, 0.02), -0.75 + j * 0.5 + 0.25 + rng.uniform(-0.02, 0.02), 0.0)) for i in range(3) for j in range(3)]
+    objs.append(lib.point_cloud("floor_dots", dots, cy, half_size=0.016, seed=2, a_min=0.5, a_max=0.9, on_floor=True))
+    return lib.export("floor", "env", objs, out, budget_tris=300, budget_points=340, budget_streaks=110, origin="floor")
 
 
 def build_pillar(out):

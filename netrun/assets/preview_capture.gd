@@ -49,10 +49,18 @@ func _shots() -> Array:
 var out_dir := "/tmp/shots"
 
 
+var _movie := false
+var _t := 0.0
+var _cam: Camera3D
+var _insts: Array = []
+
+
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			out_dir = a.trim_prefix("--out=")
+		if a == "--movie":
+			_movie = true
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
@@ -61,27 +69,23 @@ func _ready() -> void:
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
-	var cam := Camera3D.new()
-	cam.fov = 75.0
-	add_child(cam)
+	_cam = Camera3D.new()
+	_cam.fov = 75.0
+	add_child(_cam)
+	if _movie:
+		# Видео: godot --write-movie <файл.avi> --fixed-fps 24 --quit-after 160 -- --movie. Камера идёт ко входу и в комнату,
+		# на 2,5 с «касание» стены у выхода: прогиб штрихов и красная полоса расходятся (как в референсе «contact»).
+		var shot: Dictionary = _shots()[0]
+		_build(shot, add_child_ret(Node3D.new()))
+		set_process(true)
+		return
+	set_process(false)
 	for shot in _shots():
 		var root := Node3D.new()
 		add_child(root)
-		for it in shot["items"]:
-			var scene: PackedScene = load("res://assets/models/%s.glb" % it[0])
-			var inst: Node3D = scene.instantiate()
-			inst.position = it[1]
-			inst.rotation_degrees.y = it[2]
-			inst.scale = Vector3.ONE * it[4]
-			root.add_child(inst)
-			_setup(inst, it, shot, 1.0)
-			if String(it[0]) in REFLECT:  # отражение в полу: зеркальная копия, тусклая (в референсе Blackwall пол — мутное зеркало)
-				var mir: Node3D = scene.instantiate()
-				mir.transform = Transform3D(Basis.from_scale(Vector3(1, -1, 1)), Vector3.ZERO) * inst.transform
-				root.add_child(mir)
-				_setup(mir, it, shot, 0.18)
-		cam.fov = shot["fov"]
-		cam.look_at_from_position(shot["cam"], shot["look"])
+		_build(shot, root)
+		_cam.fov = shot["fov"]
+		_cam.look_at_from_position(shot["cam"], shot["look"])
 		await get_tree().create_timer(0.6).timeout
 		await RenderingServer.frame_post_draw
 		var img := get_viewport().get_texture().get_image()
@@ -92,8 +96,56 @@ func _ready() -> void:
 	get_tree().quit()
 
 
+func add_child_ret(n: Node) -> Node:
+	add_child(n)
+	return n
+
+
+func _build(shot: Dictionary, root: Node) -> void:
+	_insts.clear()
+	for it in shot["items"]:
+		var scene: PackedScene = load("res://assets/models/%s.glb" % it[0])
+		var inst: Node3D = scene.instantiate()
+		inst.position = it[1]
+		inst.rotation_degrees.y = it[2]
+		inst.scale = Vector3.ONE * it[4]
+		root.add_child(inst)
+		_setup(inst, it, shot, 1.0)
+		if String(it[0]) in REFLECT:  # отражение в полу: зеркальная копия, тусклая (в референсе Blackwall пол — мутное зеркало)
+			var mir: Node3D = scene.instantiate()
+			mir.transform = Transform3D(Basis.from_scale(Vector3(1, -1, 1)), Vector3.ZERO) * inst.transform
+			root.add_child(mir)
+			_setup(mir, it, shot, 0.18)
+
+
+func _process(delta: float) -> void:
+	_t += delta
+	var p: Vector3
+	var look: Vector3
+	if _t < 2.0:
+		p = Vector3(0.0, 1.25, 6.4).lerp(Vector3(0.0, 1.25, 3.6), _t / 2.0)
+		look = Vector3(0.0, 1.0, -2.0)
+	else:
+		var u: float = clampf((_t - 2.0) / 4.0, 0.0, 1.0)
+		u = u * u * (3.0 - 2.0 * u)
+		p = Vector3(0.0, 1.25, 3.6).lerp(Vector3(-1.4, 1.25, 1.0), u)
+		look = Vector3(0.0, 1.0, -2.0).lerp(Vector3(1.0, 1.0, -2.6), u)
+	_cam.look_at_from_position(p, look)
+	# касание: радиус растёт 0 → 2,8 м за 2 с, держится, затухает
+	var r := 0.0
+	if _t > 2.5 and _t < 6.5:
+		var k: float = clampf((_t - 2.5) / 2.0, 0.0, 1.0)
+		r = 2.8 * k * (1.0 - clampf((_t - 5.5) / 1.0, 0.0, 1.0))
+	for inst in _insts:
+		AM.set_param(inst, "touch_pos", Vector3(1.2, 1.0, -2.9))
+		AM.set_param(inst, "touch_radius", r)
+
+
 func _setup(inst: Node3D, it: Array, shot: Dictionary, intensity: float) -> void:
+	_insts.append(inst)
 	AM.apply(inst, it[3])
+	if String(it[0]).begins_with("ice/"):
+		AM.set_param(inst, "breathe", 0.12)  # существа «дышат»: длина штрихов медленно плывёт
 	AM.set_distance_fade(inst, shot["fade"][0], shot["fade"][1])
 	if String(it[0]).begins_with("env/"):
 		AM.set_corruption(inst, shot["corrupt"][0], shot["corrupt"][1])

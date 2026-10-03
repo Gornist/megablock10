@@ -63,7 +63,7 @@ void vertex() {
 void fragment() {
 	float d = length(UV - vec2(0.5)) * 2.0;
 	float soft = smoothstep(1.0, 0.25, d);
-	float tw = 1.0 - twinkle + twinkle * sin(TIME * twinkle_speed + v_phase);
+	float tw = 1.0 - twinkle + twinkle * sin(TIME * twinkle_speed + v_phase + (v_wp.x + v_wp.z) * 1.7); // волны мерцания бегут по полу
 	float k = corrupt_k();
 	ALBEDO = mix(mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount), corrupt_color.rgb, corrupt_mask(k)) * glow;
 	ALPHA = soft * COLOR.a * tw * dist_fade() * intensity;

@@ -76,3 +76,15 @@ static func set_intensity(root: Node, value: float) -> void:
 			var m := mi.get_surface_override_material(s) as ShaderMaterial
 			if m != null:
 				m.set_shader_parameter("intensity", value)
+
+
+## Параметр шейдера на всех материалах ассета (анимация и настройка из кода: touch_pos, touch_radius, breathe, pulse…).
+static func set_param(root: Node, param: StringName, value: Variant) -> void:
+	for n in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		for s in mi.mesh.get_surface_count():
+			var m := mi.get_surface_override_material(s) as ShaderMaterial
+			if m != null and m.shader.get_shader_uniform_list().any(func(u): return u["name"] == param):
+				m.set_shader_parameter(param, value)

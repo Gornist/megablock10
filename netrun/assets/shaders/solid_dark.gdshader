@@ -8,7 +8,14 @@ uniform float rim_power : hint_range(0.5, 6.0) = 3.0;
 uniform vec4 tint : source_color = vec4(1.0);
 uniform float tint_amount : hint_range(0.0, 1.0) = 0.0;
 
+// Перекраска тиром сохраняет чёрное и белое: у чёрных вершин (тайлы пола) кайма остаётся нулевой.
+vec3 recolor(vec3 c) {
+	float mx = max(c.r, max(c.g, c.b));
+	float mn = min(c.r, min(c.g, c.b));
+	return mix(tint.rgb * mx, c, mn / max(mx, 0.0001));
+}
+
 void fragment() {
 	float f = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), rim_power);
-	ALBEDO = base_color.rgb + mix(COLOR.rgb, tint.rgb, tint_amount) * rim * f;
+	ALBEDO = base_color.rgb + mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount) * rim * f;
 }

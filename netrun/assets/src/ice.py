@@ -30,7 +30,7 @@ def build_soft_ice(out):
         core.append((Vector((dx, rng.uniform(-0.05, 0.05), hh / 2)), 0.009, hh / 2, 0.9))
     objs = [lib.streak_set("ice_body", body, red), lib.streak_set("ice_core", core, hot)]
     haze = [Vector((0.55 * math.sqrt(rng.random()) * math.cos(a), 0.4 * math.sqrt(rng.random()) * math.sin(a), 0.0)) for a in [rng.uniform(0, math.tau) for _ in range(160)]]
-    objs.append(lib.point_cloud("ice_haze", haze, red, half_size=0.02, seed=3, a_min=0.2, a_max=0.7, on_floor=True))
+    objs.append(lib.point_cloud("ice_haze", haze, red, half_size=0.075, seed=3, a_min=0.1, a_max=0.35, on_floor=True))
     return lib.export("soft_ice", "ice", objs, out, budget_tris=300, budget_points=200, budget_streaks=200, origin="feet", notes="без анимаций (пилот)")
 
 
