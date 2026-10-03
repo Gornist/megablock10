@@ -2,6 +2,7 @@ package com.megablok10.app.di
 
 import com.megablok10.app.breach.BreachViewModel
 import com.megablok10.app.ui.SessionViewModel
+import com.megablok10.app.ui.ShellViewModel
 import com.megablok10.app.ui.screens.AnnouncementsViewModel
 import com.megablok10.app.ui.screens.CallsViewModel
 import com.megablok10.app.ui.screens.ChatViewModel
@@ -28,6 +29,15 @@ fun AppGraph.sessionViewModel() = SessionViewModel(
     onUiStarted = { announcements.load(); session.onUiStarted() },
     notices = notices,
     work = processScope,
+)
+
+fun AppGraph.shellViewModel() = ShellViewModel(
+    identity = identity.state,
+    balance = wallet.observeBalance(),
+    unreadChatThreads = shellBadges::unreadChatThreads,
+    missedCalls = shellBadges.missedCalls(),
+    markChatSeen = shellBadges::markChatSeen,
+    markCallsSeen = shellBadges::markCallsSeen,
 )
 
 fun AppGraph.announcementsViewModel() = AnnouncementsViewModel(announcements)
