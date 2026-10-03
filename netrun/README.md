@@ -21,6 +21,14 @@
 - `export_presets.cfg` — пресеты: «Client Pico 4 (Android)» (OpenXR, arm64), «Server (dedicated)» (метка `dedicated_server`),
   «Flat debug (Linux)». Ключ подписи Android в репозиторий не кладём (в CI — ключ отладки).
 
+## 3D-ассеты
+
+`assets/models/<группа>/*.glb` — модели для Pico 4 (окружение, предметы; существа, аватар и дека — следующая часть). Каталог, соглашения
+(оси, сетка 2x2 м, тиры, палитра, метки), числа треугольников и размеры — `assets/models/MANIFEST.md`; исходники — Blender-скрипты в
+`assets/src/` (Blender запускается только на devbox, `assets/src/build_all.sh`); превью для приёмки — `assets/previews/`. Бюджет без
+Blender: `python3 netrun/assets/src/check_budget.py`; импорт и метки проверяет `tests/assets_models_test.gd`. Файлы `.glb.import` лежат в
+git (стабильные uid); после смены .glb — `godot --headless --path netrun --import`.
+
 ## Тесты
 
 gdUnit4, как в CI (`.github/workflows/netrun.yml`): `netrun/tools/gdunit.sh [res://tests/файл_test.gd]` на devbox (весь набор — 223 теста,
