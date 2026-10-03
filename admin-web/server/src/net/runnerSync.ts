@@ -15,7 +15,6 @@ import { PeriodicSync } from "./periodicSync.js";
  * несинхронизированными (`bridge_synced = 0`) и догоняются при подключении, после действия мастера и раз в `NET_RUNNER_SYNC_MS`.
  */
 export class RunnerSync extends PeriodicSync {
-  private again = false;
   private readonly runners: NetRunners;
 
   constructor(
@@ -37,27 +36,15 @@ export class RunnerSync extends PeriodicSync {
    * второй проход, а просит первый пройти ещё раз (мастер мог нажать ещё одну кнопку, пока шла запись).
    */
   async sync(): Promise<number> {
-    if (!this.net.connected) return 0;
-    if (this.running) {
-      this.again = true;
-      return 0;
-    }
-    this.running = true;
-    let written = 0;
-    try {
-      do {
-        this.again = false;
-        written += await this.pass();
-      } while (this.again);
-      this.lastError = null;
-    } catch (e) {
+    return this.exclusive(
+      () => this.pass(),
+      0,
+      (total, next) => total + next,
       // Мост пропал или отказал посреди прохода: остальное догонится при следующем подключении или по таймеру.
-      this.lastError = e instanceof Error ? e.message : String(e);
-      if (!(e instanceof BridgeUnavailableError)) console.warn(`[NET] документы runner не записаны в Мост: ${this.lastError}`);
-    } finally {
-      this.running = false;
-    }
-    return written;
+      (e) => {
+        if (!(e instanceof BridgeUnavailableError)) console.warn(`[NET] документы runner не записаны в Мост: ${e instanceof Error ? e.message : String(e)}`);
+      },
+    );
   }
 
   private async pass(): Promise<number> {

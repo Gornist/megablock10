@@ -81,9 +81,7 @@ export class SecSync extends PeriodicSync {
 
   /** Привести документ к нужному виду. true — записали; false — менять нечего или Моста нет (догонится при подключении/по таймеру). */
   async sync(): Promise<boolean> {
-    if (!this.net.connected || this.running) return false;
-    this.running = true;
-    try {
+    return this.exclusive(async () => {
       const want = computeSecDoc(this.db);
       let wrote = false;
       await this.net.putDoc("settings", "sec", (cur) => {
@@ -92,14 +90,7 @@ export class SecSync extends PeriodicSync {
         wrote = true;
         return { ...(cur ?? {}), ...withMeta(want) };
       });
-      this.lastError = null;
       return wrote;
-    } catch (e) {
-      // Мост отказал или пропал посреди записи — не страшно: повтор по таймеру и при следующем подключении.
-      this.lastError = e instanceof Error ? e.message : String(e);
-      return false;
-    } finally {
-      this.running = false;
-    }
+    }, false, (total, next) => total || next);
   }
 }

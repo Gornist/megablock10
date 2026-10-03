@@ -6,8 +6,9 @@ import type { NetService } from "./netService.js";
  */
 export abstract class PeriodicSync {
   private timer: NodeJS.Timeout | null = null;
-  /** Идёт проход синка. */
-  protected running = false;
+  private running = false;
+  /** Во время прохода кто-то снова вызвал sync(): после него нужен ещё один, иначе правка, пришедшая посреди записи, ждала бы таймера. */
+  private again = false;
   lastError: string | null = null;
 
   protected constructor(
@@ -27,6 +28,34 @@ export abstract class PeriodicSync {
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+  }
+
+  /**
+   * Один проход за раз. Вызов во время прохода не запускает второй параллельно, а просит первый повторить (и возвращает `idle`).
+   * Ошибка прохода не падает наружу: она в `lastError`, а повтор — по таймеру и при следующем подключении Моста.
+   */
+  protected async exclusive<T>(pass: () => Promise<T>, idle: T, add?: (total: T, next: T) => T, onError?: (e: unknown) => void): Promise<T> {
+    if (!this.net.connected) return idle;
+    if (this.running) {
+      this.again = true;
+      return idle;
+    }
+    this.running = true;
+    let total = idle;
+    try {
+      do {
+        this.again = false;
+        const r = await pass();
+        total = add ? add(total, r) : r;
+      } while (this.again);
+      this.lastError = null;
+    } catch (e) {
+      this.lastError = e instanceof Error ? e.message : String(e);
+      onError?.(e);
+    } finally {
+      this.running = false;
+    }
+    return total;
   }
 
   abstract sync(): Promise<unknown>;
