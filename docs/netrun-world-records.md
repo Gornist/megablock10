@@ -236,3 +236,31 @@
   нужен, но это сообщение, не запись коллектору — вне этого документа.
 - **Нужна ли отдельная запись о подтверждении курком** (`pending → active`) для мастера — пока нет (видно по терминалу).
 - Тревоги сервера мира (`alert` с `al_<n>`): виды определят G/N-карточки; формат записи `net.alert` их вместит (`kind`, `msg`, `items`).
+
+## 7. Как это сделано в Мосте (M4)
+
+Код — `netrun-bridge/src/main/kotlin/com/megablok10/netrun/bridge/collector/`. Операции с ценностями о записях **не знают**: расширение
+коммита `DocStore` (`CommitHook`) в той же транзакции SQLite сравнивает документы «до» и «после» (`WorldRecordDeriver`), подписывает
+события ключом мира и кладёт в таблицу `world_records` (kit `ChangeQueue`; `seq` — строка `world_record_seq` в `meta`). Откат
+транзакции откатывает и записи; повтор операции по `rid` документов не меняет, значит записей нет. Отправляет kit `SyncEngine`
+(`WorldSync`), HTTP — `WorldCollectorTransport` на `java.net.http`; подтверждённые записи 6 часов лежат в журнале (`accepted_at`) и
+возвращаются, если коллектор сообщил меньший `knownSeq`.
+
+| Запись | Рождается, когда в транзакции… |
+|---|---|
+| `NET_ENTER` | создан документ `session` в `pending`; `deck`/`protected` — из документа `deck` этой же транзакции |
+| `NET_EXIT` / `NET_FLATLINE` | `session` стал `closed` (`black_ice` — флэтлайн); `returned/burned/left_in_node` — по предметам, вышедшим из `deck:<s>` в `outbox:`/`burned:`/`node:`; `node` — текущий (`world.node`, иначе узел входа); `duration_s` — от курка (`confirmed_at`, нет — от создания) до `finished_at`; `lockdown_until` — из документа узла (только `soft_ice`); `alert` — тревога `flatline` этой же транзакции |
+| `NET_ITEM_OWNER` | `item.owner` сменился на значимый переход (раздел 2.5); `op`/`rid` — из документа `op_rid` этой транзакции |
+| `NET_ALERT` | создан документ `alert` любого вида, кроме `flatline` |
+
+Решения при чтении C2, которых текст не фиксировал: (1) чек телефона (`outbox → phone:`) идёт без операции — пишется `op = issue_to_phone`,
+`rid` = id карточки (`out_transfer`); (2) `master.unstock_node` (`→ burned:master`) пишется как «сгорел» с `op = master.unstock_node`, а создание
+предмета в узле (`master.stock_node`) — нет; (3) тревоги `master_request` и `net_query` (MasterOps) — тоже `alert`-документы, значит `NET_ALERT`;
+(4) `id` детерминирован (`w:<field>:<sourceRef>:<ver>`), поэтому после сброса базы Моста (новый ключ мира) записи с теми же `id`, например
+`al_a_*` с `ver = 1`, коллектор отклонит как `id already used by a different record`.
+
+Запуск: `--collector http://хост:порт`, секрет игры — `NETRUN_COLLECTOR_SECRET` (тот же, что `GAME_SECRET` коллектора). Без флага Мост
+записи всё равно ставит в очередь (она переживает рестарт) и отправит, когда коллектор появится. Перед отправкой транспорт читает
+открытый `GET /api/capabilities` и шлёт, только если `world_records` равен 1 (раздел 5, п. 5); иначе очередь стоит, а повтор идёт по
+бэкоффу `SyncEngine`. Быстрые события на точки (раздел 3) в M4 не входят.
+

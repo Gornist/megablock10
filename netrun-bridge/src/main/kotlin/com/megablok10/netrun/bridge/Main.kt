@@ -1,6 +1,9 @@
 package com.megablok10.netrun.bridge
 
 import com.megablok10.kit.log.KitLog
+import com.megablok10.kit.sync.CollectorEndpoint
+import com.megablok10.kit.sync.SyncConfig
+import com.megablok10.netrun.bridge.collector.WorldSync
 import com.megablok10.netrun.bridge.phone.PhoneDelivery
 import com.megablok10.netrun.bridge.phone.PhoneInbox
 import com.megablok10.netrun.bridge.phone.PhoneNetwork
@@ -19,12 +22,13 @@ import kotlin.system.exitProcess
 data class StaticPhone(val host: String, val port: Int, val key: String)
 
 /**
- * Параметры запуска Моста: `--port`, `--line-port`, `--db`, `--test`, `--seed` и `--phone host:port=ключ` (стенд, только с `--test`), `--world-pub`;
- * ключи ролей — `NETRUN_KEY_WORLD|MASTER|TEST` из окружения.
+ * Параметры запуска Моста: `--port`, `--line-port`, `--db`, `--test`, `--seed` и `--phone host:port=ключ` (стенд, только с `--test`), `--world-pub`,
+ * `--collector URL` (куда слать записи мира, M4; нет флага — записи копятся в базе Моста); ключи ролей — `NETRUN_KEY_WORLD|MASTER|TEST`
+ * и секрет игры для коллектора `NETRUN_COLLECTOR_SECRET` (тот же, что `GAME_SECRET` коллектора) из окружения.
  */
 data class LaunchOptions(
     val port: Int, val db: String, val config: BridgeConfig, val linePort: Int = DEFAULT_LINE_PORT, val seed: String? = null,
-    val phones: List<StaticPhone> = emptyList(),
+    val phones: List<StaticPhone> = emptyList(), val collector: CollectorEndpoint? = null,
 )
 
 /** Порт, на котором Мост принимает строки телефонов (карточки сдачи, чеки, запрос входа); его телефон берёт из QR стойки. */
@@ -40,6 +44,7 @@ private class Flags {
     var test = false
     var pub: String? = null
     var seed: String? = null
+    var collector: String? = null
     val phones = mutableListOf<StaticPhone>()
 }
 
@@ -56,6 +61,13 @@ private fun parsePhone(spec: String): StaticPhone {
     return StaticPhone(addr.substring(0, sep), port, spec.substring(eq + 1))
 }
 
+/** Адрес коллектора `http://host:port` (без завершающего `/`). */
+private fun parseCollector(raw: String): String {
+    val url = raw.trimEnd('/')
+    if (!url.startsWith("http://") && !url.startsWith("https://")) bad("--collector: нужен адрес http://host:port, получено «$raw»")
+    return url
+}
+
 private fun parseFlags(args: List<String>): Flags {
     val f = Flags()
     val it = args.iterator()
@@ -69,6 +81,7 @@ private fun parseFlags(args: List<String>): Flags {
             "--world-pub" -> f.pub = value(a)
             "--seed" -> f.seed = value(a)
             "--phone" -> f.phones += parsePhone(value(a))
+            "--collector" -> f.collector = parseCollector(value(a))
             else -> bad("неизвестный аргумент $a")
         }
     }
@@ -87,7 +100,8 @@ internal fun parseLaunch(args: List<String>, env: Map<String, String>): LaunchOp
     val keys = roleKeys(env, f.test)
     if (f.seed != null && !f.test) bad("--seed работает только с --test")
     if (f.phones.isNotEmpty() && !f.test) bad("--phone работает только с --test")
-    return LaunchOptions(f.port, f.db, BridgeConfig(port = f.port, roleKeys = keys, testMode = f.test, worldPub = f.pub), f.linePort, f.seed, f.phones)
+    val collector = f.collector?.let { CollectorEndpoint(it, env["NETRUN_COLLECTOR_SECRET"]?.takeIf { s -> s.isNotBlank() }) }
+    return LaunchOptions(f.port, f.db, BridgeConfig(port = f.port, roleKeys = keys, testMode = f.test, worldPub = f.pub), f.linePort, f.seed, f.phones, collector)
 }
 
 /**
@@ -116,7 +130,7 @@ internal fun ensureDefaultSettings(store: DocStore, worldPub: String? = null) {
 private const val PHONE_TICK_MS = 10_000L
 
 /** Мост целиком: хранилище, API, правила, аудитор и обмен карточками с телефонами. [close] останавливает всё. */
-class BridgeApp(private val options: LaunchOptions) : AutoCloseable {
+class BridgeApp(private val options: LaunchOptions, syncConfig: SyncConfig = SyncConfig()) : AutoCloseable {
     val store: DocStore = DocStore.open(options.db)
     private val server: BridgeServer
     private val rules: RuleEngine
@@ -126,6 +140,9 @@ class BridgeApp(private val options: LaunchOptions) : AutoCloseable {
 
     /** Ключ мира: создаётся при первом старте, лежит в `<база>.worldkey`. */
     val worldKey: WorldKey = WorldKey.fileFor(options.db)?.let { WorldKey.loadOrCreate(it) { msg -> log.warnEvent("Bridge", "bridge.worldkey_perms", "msg" to msg) } } ?: WorldKey.generate()
+
+    /** Записи мира для коллектора (M4): ставит расширение коммита хранилища, поэтому создаётся до любой записи документов. */
+    val worldSync = WorldSync(store, worldKey, options.collector, scope, log = log, config = syncConfig)
     private lateinit var inbox: PhoneInbox
     val phones = PhoneNetwork(worldKey, scope, { inbox.routes() }, options.linePort, log)
     val delivery = PhoneDelivery(store, worldKey, phones, log = log, scope = scope)
@@ -156,6 +173,7 @@ class BridgeApp(private val options: LaunchOptions) : AutoCloseable {
         server.start()
         rules.start()
         auditor.start()
+        worldSync.start()
         // Восстановление после рестарта: PENDING (и DELIVERED без чека) из документов досылаются сразу и затем по таймеру.
         scope.launch {
             while (isActive) {
@@ -179,7 +197,7 @@ fun main(args: Array<String>) {
     val options = try {
         parseLaunch(args.toList(), System.getenv())
     } catch (e: IllegalArgumentException) {
-        System.err.println("Мост: ${e.message}\nИспользование: --port N [--line-port N] --db путь.db [--test [--seed файл.json] [--phone host:port=ключ]] [--world-pub КЛЮЧ]; ключи — в окружении")
+        System.err.println("Мост: ${e.message}\nИспользование: --port N [--line-port N] --db путь.db [--test [--seed файл.json] [--phone host:port=ключ]] [--world-pub КЛЮЧ] [--collector http://хост:порт]; ключи и NETRUN_COLLECTOR_SECRET — в окружении")
         exitProcess(2)
     }
     val app = BridgeApp(options)
