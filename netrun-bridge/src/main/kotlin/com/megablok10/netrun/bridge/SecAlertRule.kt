@@ -55,7 +55,7 @@ class SecAlertRule(
         val nodeDoc = store.get(ValueOps.NODE, node)
         val sec = store.get(ValueOps.SETTINGS, "sec")?.data
         val owner = nodeDoc?.let { VJ.str(it.data, "owner_faction") }?.takeIf { it.isNotBlank() } ?: sec?.let { VJ.str(it, "default_faction") }.orEmpty()
-        val runner = store.get(ValueOps.RUNNER, VJ.str(d.data, "runner").orEmpty())
+        val runner = store.get(ValueOps.RUNNER, ValueOps.runnerDocId(VJ.str(d.data, "runner").orEmpty()))
         val intruderFaction = runner?.let { VJ.str(it.data, "faction") }.orEmpty()
         val tier = runCatching { Tier.valueOf(nodeDoc?.let { VJ.str(it.data, "tier") }.orEmpty()) }.getOrDefault(Tier.BASE)
         val effects = (world["effects"] as? JsonArray).orEmpty().mapNotNull { e -> DaemonEffect.entries.firstOrNull { it.name == (e as? JsonPrimitive)?.content } }.toSet()

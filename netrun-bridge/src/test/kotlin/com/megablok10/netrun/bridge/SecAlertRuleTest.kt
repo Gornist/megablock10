@@ -33,7 +33,7 @@ class SecAlertRuleTest {
                 SecAlertRule(e, s, sender, { now }, { }).register()
                 s.put("node", "n7", 0, VJ.obj("title" to VJ.p("Склад"), "tier" to VJ.p(tier), "owner_faction" to VJ.p("СБ")))
                 s.put("settings", "sec", 0, VJ.obj("factions" to JsonObject(mapOf("СБ" to arr("k1", "k2")))))
-                s.put("runner", "r1", 0, VJ.obj("faction" to VJ.p("Корпа")))
+                s.put("runner", ValueOps.runnerDocId("r1"), 0, VJ.obj("key" to VJ.p("r1"), "faction" to VJ.p("Корпа")))
                 s.put(
                     "session", "s1", 0,
                     VJ.obj(
@@ -101,8 +101,10 @@ class SecAlertRuleTest {
     }
 
     @Test fun ownNodeGivesNoSignal() = run { s, e, snd ->
-        val r = s.get("runner", "r1")!!
-        s.put("runner", "r1", r.ver, VJ.with(r.data, "faction" to VJ.p("СБ")))
+        // фракция взломщика ищется по id документа runner (r_ + SHA-256 ключа), а не по сырому ключу сессии
+        val id = ValueOps.runnerDocId("r1")
+        val r = s.get("runner", id)!!
+        s.put("runner", id, r.ver, VJ.with(r.data, "faction" to VJ.p("СБ")))
         setLevel(s, 2); e.tick()
         assertTrue(snd.sent.isEmpty())
     }
