@@ -24,7 +24,7 @@ export const STATUS_TONE: Record<DisplayStatus, "ok" | "danger" | "warn" | "acce
  * shown — на экране; failed — не дошло; superseded — обогнала более новая отправка.
  */
 export type PushState = "sending" | "loaded" | "shown" | "failed" | "superseded";
-export type PushProgress = {
+type PushProgress = {
   state: PushState;
   text: string;
   push?: DisplayPushState;
