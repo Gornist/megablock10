@@ -3,14 +3,14 @@ import { api } from "../../api/client";
 import type { AudioChannel, DisplayGroup, DisplayItem, DisplayPreview, DisplaySecretResponse } from "../../api/types";
 import { useAsyncAction } from "../../api/useAsyncAction";
 import { AppButton, AppDialog, AppSelect, Panel } from "../../design/components";
-import { formatAgo } from "../../format";
 import { navigate } from "../../router";
 import { PointAudioBlock } from "../audio/PointAudio";
-import { DisplayMock, PushSteps } from "./DisplayMock";
+import { DeviceFacts } from "./DeviceFacts";
+import { PushSteps } from "./DisplayMock";
 import { DisplayPushDialog } from "./DisplayPushDialog";
-import { isLagging, useDisplayFrame } from "./useDisplayFrame";
+import { isLagging } from "./useDisplayFrame";
 import { StatusAndBattery } from "./DeviceStatus";
-import { phaseText, screenState, type DisplaySource } from "./displayUtil";
+import { phaseText, type DisplaySource } from "./displayUtil";
 
 const BACKLIGHT = [
   { value: "OFF", label: "выкл" },
@@ -22,6 +22,17 @@ const BACKLIGHT = [
 const BACKLIGHT_SECONDS = 20;
 
 type Confirm = "reboot" | "secret" | "delete";
+
+/** Опасные команды карточки — спрашиваем подтверждение. */
+const CONFIRM: Record<Confirm, { title: string; body: (id: string) => string; confirmText: string }> = {
+  reboot: { title: "Перезагрузить дисплей?", body: (id) => `${id} перезагрузится и восстановит последний кадр.`, confirmText: "Перезагрузить" },
+  secret: {
+    title: "Сменить секрет?",
+    body: (id) => `Старый секрет перестанет работать: ${id} придётся прошить новым, до этого он не примет ни одной картинки.`,
+    confirmText: "Сменить",
+  },
+  delete: { title: "Удалить дисплей?", body: (id) => `${id} пропадёт из списка; на панели останется последний кадр.`, confirmText: "Удалить" },
+};
 
 /**
  * Канонiчная карточка точки — одна на весь дашборд (экран «Устройства», разворот строки на «Локациях», секция «Точка узла»
@@ -58,8 +69,6 @@ export function DeviceDetail({
   const [nodeChoice, setNodeChoice] = useState("");
   const action = useAsyncAction({ fallbackError: "дисплей не ответил" });
   const base = `/api/displays/${encodeURIComponent(d.id)}`;
-  const framePng = useDisplayFrame(d);
-  const shownState = screenState(d);
   const inFlight = d.push && d.push.version === d.desiredVersion && d.push.phase !== "DISPLAYED" ? d.push : null;
   const boundNodeName = d.nodeId ? nodes.find((n) => n.id === d.nodeId)?.name ?? d.nodeId : null;
   const freeNodes = nodes.filter((n) => !takenNodes.has(n.id) || takenNodes.get(n.id) === d.id);
@@ -108,11 +117,7 @@ export function DeviceDetail({
   const lagging = isLagging(d);
 
   return (
-    <Panel
-      className="display-card"
-      title={<span className="mono">{d.id}</span>}
-      action={<StatusAndBattery d={d} />}
-    >
+    <Panel className="display-card" title={<span className="mono">{d.id}</span>} action={<StatusAndBattery d={d} />}>
       <div className="display-card-sub">
         <span className="hint-text">{d.name}</span>
         {groups.length > 0 && (
@@ -133,58 +138,7 @@ export function DeviceDetail({
           <span className="hint-text">без узла — просто динамик в локации</span>
         )}
       </div>
-      <div className={`display-card-body${d.width > d.height ? " landscape" : ""}`}>
-        {shownState && (
-          <DisplayMock
-            png={framePng}
-            width={d.width}
-            height={d.height}
-            state={shownState}
-            note={shownState === "shown" ? `v${d.displayedVersion}` : d.displayedVersion ? `на экране пока v${d.displayedVersion}` : undefined}
-          />
-        )}
-        <dl className="display-facts">
-          <dt>адрес</dt>
-          <dd className="mono">
-            {d.ip}:{d.port}
-          </dd>
-          <dt>на связи</dt>
-          <dd>{formatAgo(d.lastSeenAt)}</dd>
-          <dt>на экране</dt>
-          <dd>
-            {d.displayedVersion ? `v${d.displayedVersion}` : "—"}
-            {d.desiredLabel && d.displayedVersion === d.desiredVersion ? ` · ${d.desiredLabel}` : ""}
-            {d.displayedAt ? ` · ${formatAgo(d.displayedAt)}` : ""}
-          </dd>
-          {d.desiredVersion !== null && d.desiredVersion !== d.displayedVersion && (
-            <>
-              <dt>должно быть</dt>
-              <dd>
-                v{d.desiredVersion} · {d.desiredLabel}
-                {d.activeVersion !== null ? " · отправляется" : d.pendingVersion !== null ? " · в очереди" : " · не дошло"}
-              </dd>
-            </>
-          )}
-          {d.lastError && (
-            <>
-              <dt>ошибка</dt>
-              <dd className="login-error">
-                {d.lastError} ({formatAgo(d.lastErrorAt)})
-              </dd>
-            </>
-          )}
-          <dt>прошивка</dt>
-          <dd className="mono">
-            {d.fwVersion ?? "—"}
-            {d.rssi !== null ? ` · Wi-Fi ${d.rssi} дБм` : ""}
-            {d.hardwareId ? ` · ${d.hardwareId}` : ""}
-          </dd>
-          <dt>панель</dt>
-          <dd className="mono">
-            {d.width}×{d.height}
-          </dd>
-        </dl>
-      </div>
+      <DeviceFacts d={d} />
       {inFlight && (
         <div className="display-inflight">
           <PushSteps phase={inFlight.phase} failedAt={inFlight.failedAt} />
@@ -263,15 +217,9 @@ export function DeviceDetail({
       {d.audio && <PointAudioBlock className="node-point-audio" point={d} channels={channels} onSaved={onChanged} />}
       {confirm && (
         <AppDialog
-          title={confirm === "reboot" ? "Перезагрузить дисплей?" : confirm === "secret" ? "Сменить секрет?" : "Удалить дисплей?"}
-          body={
-            confirm === "reboot"
-              ? `${d.id} перезагрузится и восстановит последний кадр.`
-              : confirm === "secret"
-                ? `Старый секрет перестанет работать: ${d.id} придётся прошить новым, до этого он не примет ни одной картинки.`
-                : `${d.id} пропадёт из списка; на панели останется последний кадр.`
-          }
-          confirmText={confirm === "reboot" ? "Перезагрузить" : confirm === "secret" ? "Сменить" : "Удалить"}
+          title={CONFIRM[confirm].title}
+          body={CONFIRM[confirm].body(d.id)}
+          confirmText={CONFIRM[confirm].confirmText}
           confirmVariant="danger"
           onConfirm={confirmed}
           onCancel={() => setConfirm(null)}
