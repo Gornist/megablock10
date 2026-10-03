@@ -209,7 +209,7 @@ dependencies {
 
     // Связь с мастерским коллектором (admin-web) — обычный HTTP на ноутбуке
     // мастера в той же локальной сети, не P2P. См. CollectorClient.
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:5.5.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
