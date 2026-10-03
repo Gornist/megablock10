@@ -19,7 +19,7 @@ import glbinfo  # noqa: E402
 
 ROLES = {"glow_edge", "shell_soft", "points", "solid_dark"}
 MAX_LAYERS = 3  # вложенных прозрачных оболочек на один ассет (STYLE.md)
-MAX_ROLES = 3   # разных материалов на ассет
+MAX_DRAWS = 8   # примитивов (≈ вызовов отрисовки) на ассет; предварительно, уточнить замером
 
 
 def check(rep):
@@ -38,8 +38,9 @@ def check(rep):
     mats = set(info["materials"])
     if not mats <= ROLES:
         bad.append(f"неизвестные материалы {sorted(mats - ROLES)}")
-    if len(mats) > MAX_ROLES:
-        bad.append(f"материалов {len(mats)} > {MAX_ROLES}")
+    draws = len(info["prims"])
+    if draws > MAX_DRAWS:
+        bad.append(f"примитивов {draws} > {MAX_DRAWS} (каждый — вызов отрисовки)")
     if info["moved_nodes"]:
         bad.append(f"узлов с трансформацией: {info['moved_nodes']} (применить трансформации)")
     for p in info["prims"]:
@@ -54,7 +55,7 @@ def check(rep):
         bad.append(f"origin не на полу в центре: min.y={lo[1]:.3f}, центр xz=({mid[0]:.3f},{mid[2]:.3f})")
     if rep["origin"] == "center" and any(abs(m) > 0.05 for m in mid):
         bad.append(f"origin не в центре: центр={[round(m, 3) for m in mid]}")
-    return bad, {**s, "size": size, "materials": sorted(mats), "animations": info["animations"]}
+    return bad, {**s, "draws": draws, "size": size, "materials": sorted(mats), "animations": info["animations"]}
 
 
 def main():
@@ -78,15 +79,15 @@ def main():
             "# Манифест ассетов «Сети»", "",
             "Собирается `src/validate.py --manifest`, руками не править. Числа взяты из самих `.glb`.",
             "Частота кадров на Pico 4 **не проверена** (нет устройства).", "",
-            "| Файл | Треуг. / бюджет | Точек / бюджет | Слоёв | Размер, м (x, y, z) | Материалы | Анимации | Origin | Статус |",
-            "|---|---|---|---|---|---|---|---|---|",
+            "| Файл | Треуг. / бюджет | Точек / бюджет | Слоёв | Вызовов | Размер, м (x, y, z) | Материалы | Анимации | Origin | Статус |",
+            "|---|---|---|---|---|---|---|---|---|---|",
         ]
         for rep, m, bad in rows:
             if not m:
                 continue
             lines.append(
                 f"| `{rep['file']}` | {m['tris']} / {rep['budget_tris']} | {m['points']} / {rep.get('budget_points', 0)} | "
-                f"{m['layers']} | {' × '.join(str(x) for x in m['size'])} | {', '.join(m['materials'])} | "
+                f"{m['layers']} | {m['draws']} | {' × '.join(str(x) for x in m['size'])} | {', '.join(m['materials'])} | "
                 f"{', '.join(m['animations']) or '—'} | {rep['origin']} | {'ошибки: ' + '; '.join(bad) if bad else 'ок'} |"
             )
         out = os.path.join(ROOT, "models", "MANIFEST.md")

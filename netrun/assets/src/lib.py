@@ -22,7 +22,7 @@ import sys
 
 import bmesh
 import bpy
-from mathutils import Vector
+from mathutils import Euler, Vector
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ASSETS_ROOT = os.path.dirname(HERE)
@@ -79,6 +79,22 @@ def _scale_move(bm, scale=(1, 1, 1), offset=(0, 0, 0)):
     for v in bm.verts:
         v.co = Vector((v.co.x * scale[0], v.co.y * scale[1], v.co.z * scale[2])) + off
     return bm
+
+
+def xform_bm(bm, rot=(0, 0, 0), scale=(1, 1, 1), offset=(0, 0, 0)):
+    """Масштаб → поворот (градусы, Euler XYZ: сначала вокруг X, потом Y, потом Z) → смещение."""
+    m = Euler([math.radians(a) for a in rot]).to_matrix()
+    off = Vector(offset)
+    for v in bm.verts:
+        v.co = m @ Vector((v.co.x * scale[0], v.co.y * scale[1], v.co.z * scale[2])) + off
+    return bm
+
+
+def band_bm(radius, height, segments=12, center=(0, 0, 0)):
+    """Открытое кольцо-«обечайка» без крышек (ось Z): контур ринга, края видны с обеих сторон."""
+    bm = bmesh.new()
+    bmesh.ops.create_cone(bm, cap_ends=False, segments=segments, radius1=radius, radius2=radius, depth=height)
+    return _scale_move(bm, (1, 1, 1), center)
 
 
 def box_bm(size, bevel=0.0, center=(0, 0, 0)):
