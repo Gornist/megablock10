@@ -8,7 +8,7 @@ const BG := Color(0.004, 0.008, 0.016)
 
 ## Комната 6×6 м из модулей 2×2 м: пол 3×3, стены по периметру, колонны в углах, вход с юга (z=+3), выход на север (z=-3),
 ## в центре шард, у выхода ICE. Предмет: [путь, позиция, поворот Y (°), тир, масштаб].
-const REFLECT := ["props/vault_closed", "props/vault_open", "props/portal_open", "props/portal_closed", "env/wall", "env/wall_b", "env/wall_c", "env/portal_wall", "env/doorway", "env/doorway_b", "env/pillar", "ice/soft_ice", "avatar/runner", "avatar/runner_b", "avatar/runner_c"]
+const REFLECT := ["props/vault_closed", "props/vault_open", "props/portal_open", "props/portal_closed", "env/wall", "env/wall_b", "env/wall_c", "env/portal_wall", "env/far_field", "env/far_field_b", "env/far_field_c", "env/doorway", "env/doorway_b", "env/pillar", "ice/soft_ice", "avatar/runner", "avatar/runner_b", "avatar/runner_c"]
 const CEILING_H := 5.0
 const ICE_POS := Vector3(1.0, 0.0, -2.8)
 
@@ -59,13 +59,25 @@ func _room() -> Array:
 		var rv := ["avatar/runner", "avatar/runner_b", "avatar/runner_c"]
 		for i in 7:
 			items.append([rv[i % 3], Vector3(-2.0 + (i % 4) * 1.3, 0, -0.9 + (i / 4) * 1.3), 40.0 * i, "", 1.0])
-	if _field:  # эксперимент: дальний план — поле колонн на решётке 0,1 м вместо двух увеличенных стен
+	if _field:  # эксперимент: дальний план — поле колонн на решётке 0,1 м
 		for fz in [-12.0, -16.0]:
 			for fx in [-8.0, -4.0, 0.0, 4.0, 8.0]:
 				items.append(["env/column_field", Vector3(fx, 0, fz), 0.0, "HARD", 1.0])
-	else:
-		items.append(["env/wall", Vector3(-6.0, 0, -16.0), 0.0, "HARD", 4.0])
-		items.append(["env/wall", Vector3(7.0, 0, -21.0), 0.0, "HARD", 5.0])
+	else:  # дальний план: два кольца участков far_field вокруг комнаты (11 м, шаг 16 м; потом ×2 и шаг 36 м)
+		var fv := ["env/far_field", "env/far_field_b", "env/far_field_c"]
+		var fi := 0
+		for gx in [-1, 0, 1]:
+			for gz in [-1, 0, 1]:
+				if gx == 0 and gz == 0:
+					continue
+				items.append([fv[fi % 3], Vector3(gx * 16.0, 0, gz * 16.0), 90.0 * (fi % 4), "HARD", 1.0])
+				fi += 1
+		for gx in [-1, 0, 1]:
+			for gz in [-1, 0, 1]:
+				if gx == 0 and gz == 0:
+					continue
+				items.append([fv[fi % 3], Vector3(gx * 36.0, 0, gz * 36.0), 90.0 * (fi % 4), "HARD", 2.0])
+				fi += 1
 	return items
 
 
