@@ -24,7 +24,7 @@ React-дашборд ──HTTP──▶ Fastify (admin-web/server) ──TCP 47
 | Этап (ТЗ §50) | Что есть | Где |
 |---|---|---|
 | 1. Рендер | ✅ строка QR → кадр 792×272 (дисплей висит горизонтально), 1 бит, предпросмотр в браузере | `admin-web/server/src/displays/renderer.ts` |
-| 2. Протокол + mock | ✅ протокол v1, менеджер (очередь, повторы, таймауты, опрос), mock-дисплей, тесты | `displays/protocol.ts`, `manager.ts`, `connection.ts`, `mockDisplay.ts` |
+| 2. Протокол + mock | ✅ протокол v1, менеджер (очередь, повторы, таймауты, опрос), mock-дисплей, тесты | `displays/protocol.ts`, `manager.ts` (очередь, попытки, опрос), `config.ts` (таймауты, `DISPLAY_*`), `pushProgress.ts` (ход отправки), `connection.ts`, `mockDisplay.ts` |
 | UI | ✅ меню «Мир»: «Локации» (точки по местам), точка в карточке узла («Узлы»), «На дисплей» у готового QR в Мастерской и в карточке узла | `admin-web/client/src/screens/LocationsScreen.tsx`, `screens/nodes/NodePoint.tsx`, `screens/displays/` |
 | 3. Прошивка | ✅ ядро и сборка для ПК проверены сервером (набор C1–C20, сбои, звук); сборка для CrowPanel проходит самопроверку в эмуляторе Wokwi (протокол, звук с microSD, перезагрузка, сторож, восстановление кадра и звука); на плате не запускалась — [firmware-plan.md](firmware-plan.md) | `firmware/display/` |
 | Батарея | ✅ без железа: топливомер MAX17048 или делитель в прошивке, история и остаток на сервере, в коллекторе и «Требует внимания» | `displays/battery.ts`, `lib/core/src/battery.*` |
