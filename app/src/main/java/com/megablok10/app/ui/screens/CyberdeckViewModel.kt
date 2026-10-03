@@ -97,6 +97,16 @@ class CyberdeckViewModel(
         }
     }
 
+    /** Передача того, что выбрал экран: шард или демон (что-то одно; обоих нет — ничего не делает). Остальное — как [transfer]. */
+    fun transferChosen(shard: Mb10Qr.Shard?, daemon: Daemon?, toPubKeyB64: String, label: String, onSent: () -> Unit) {
+        val item = shard?.let { OutgoingItem.Shard(it.id) } ?: daemon?.let { OutgoingItem.Daemon(it) } ?: return
+        transfer(item, toPubKeyB64, label, onSent)
+    }
+
+    /** Как назвать в уведомлении получателя, известного только по ключу (пришли из чата с заранее выбранным игроком). */
+    fun recipientLabel(pubKeyB64: String): String =
+        state.value.contacts.contacts.find { it.publicKeyB64 == pubKeyB64 }?.callsign ?: "получателю"
+
     companion object {
         const val SEGMENT_DAEMONS = 0
         const val SEGMENT_SHARDS = 1
