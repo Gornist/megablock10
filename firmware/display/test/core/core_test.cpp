@@ -8,10 +8,12 @@
 #include <vector>
 
 #include "battery.h"
+#include "connectivity.h"
 #include "crc32.h"
 #include "device.h"
 #include "protocol.h"
 #include "receiver.h"
+#include "session.h"
 #include "sha256.h"
 #include "vectors.inc"
 

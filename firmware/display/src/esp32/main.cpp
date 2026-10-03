@@ -18,9 +18,11 @@
 #include <lwip/sockets.h>
 
 #include "board.h"
+#include "connectivity.h"
 #include "crc32.h"
 #include "device.h"
 #include "protocol.h"
+#include "session.h"
 
 #ifndef MB10_PANEL_STUB
 #include <Fonts/FreeMonoBold12pt7b.h>

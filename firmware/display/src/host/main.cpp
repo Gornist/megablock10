@@ -40,6 +40,7 @@
 
 #include "device.h"
 #include "png.h"
+#include "session.h"
 #include "sound.h"
 #include "wav.h"
 
