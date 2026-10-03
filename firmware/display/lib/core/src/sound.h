@@ -20,10 +20,23 @@ constexpr size_t kAudioPayloadMax = 4 + kClipChunkMax;
 constexpr size_t kListReplyMax = 1024;
 // Сигнал перед объявлением — его длительность прибавляется к длительности клипа в ответе ANNOUNCE.
 constexpr uint32_t kChimeMs = 900;
+// Что не задано в AUDIO_STATE / ANNOUNCE (docs/sound-nodes.md): громкость канала, переход между треками, громкость объявления
+// и до скольки процентов приглушается фон на время объявления.
+constexpr uint8_t kDefaultVolume = 60;
+constexpr uint32_t kDefaultFadeMs = 1500;
+constexpr uint8_t kDefaultAnnounceVolume = 80;
+constexpr uint8_t kDefaultDuckPct = 15;
 extern const char* const kAudioFile;
 
-// Карта памяти. Треки — /mb10/tracks (только чтение, заливаются руками), клипы — /mb10/clips/<sha256>.wav, недокачанный —
-// <sha256>.part. Список треков реализация держит в памяти (сканирует при вставке карты), здесь — только из него.
+// Раскладка карты — общая для реализаций SoundCard (src/esp32: корень /mb10, src/host: корень --sd): <корень>/tracks/<имя>,
+// <корень>/clips/<sha256>.wav, недокачанный — <sha256>.part.
+constexpr char kSdTracksDir[] = "/tracks";
+constexpr char kSdClipsDir[] = "/clips";
+constexpr char kClipExt[] = ".wav";
+constexpr char kPartExt[] = ".part";
+
+// Карта памяти. Треки — только чтение, заливаются руками; клипы — сервер по CLIP_*. Список треков реализация держит в памяти
+// (сканирует при вставке карты), здесь — только из него.
 class SoundCard {
  public:
   virtual ~SoundCard() = default;
@@ -60,6 +73,27 @@ class AudioOut {
   virtual bool clipPlaying() = 0;
 };
 
+// Id клипа — sha256 его WAV в hex: 64 строчных hex-символа.
+bool isClipId(const char* s);
+
+// Приём клипа кусками с докачкой: CLIP_BEGIN (sha256 ‖ u32 длина) → have — сколько уже есть на карте; CLIP_CHUNK (u32 смещение
+// ‖ данные) → have; CLIP_COMMIT — sha256 .part совпал → клип на карте (rename). Загрузка — одна на соединение.
+class ClipUpload {
+ public:
+  ClipUpload(SoundCard& card, Platform& platform) : card_(card), platform_(platform) {}
+  Nack begin(const uint8_t* payload, uint32_t& have);
+  Nack chunk(const uint8_t* payload, size_t len, uint32_t& have);
+  Nack commit();
+  void reset() { active_ = false; }
+
+ private:
+  SoundCard& card_;
+  Platform& platform_;
+  bool active_ = false;
+  char id_[kClipIdLen + 1] = {0};
+  uint32_t len_ = 0;
+};
+
 class Sound {
  public:
   Sound(SoundCard& card, AudioOut& out, Storage& storage, Platform& platform);
@@ -79,10 +113,10 @@ class Sound {
 
   // Клип: CLIP_BEGIN (sha256 ‖ u32 длина) → have — сколько уже есть; CLIP_CHUNK (u32 смещение ‖ данные) → have;
   // CLIP_COMMIT — sha256 совпал → клип на карте. Загрузка — одна на соединение (resetUpload при новом).
-  Nack clipBegin(const uint8_t* payload, uint32_t& have);
-  Nack clipChunk(const uint8_t* payload, size_t len, uint32_t& have);
-  Nack clipCommit();
-  void resetUpload() { uploading_ = false; }
+  Nack clipBegin(const uint8_t* payload, uint32_t& have) { return upload_.begin(payload, have); }
+  Nack clipChunk(const uint8_t* payload, size_t len, uint32_t& have) { return upload_.chunk(payload, len, have); }
+  Nack clipCommit() { return upload_.commit(); }
+  void resetUpload() { upload_.reset(); }
 
   // ANNOUNCE: JSON {clip, volume, chime, duck}; id — seq. durationMs — сколько будет звучать (со сигналом).
   Nack announce(uint32_t id, const uint8_t* json, size_t len, uint32_t& durationMs);
@@ -98,12 +132,16 @@ class Sound {
   enum class AnnState { None, Playing, Done, Failed, Stopped };
 
   bool parseState(const char* json, size_t len);
+  // audio.bin: прочитать сохранённое состояние (false — нет или битое) / записать новое.
+  bool loadSaved();
+  void save(uint32_t version, const uint8_t* json, size_t len);
+  // Фон — обратно на громкость канала после объявления.
+  void unduck();
   void rebuildOrder(const char* keep);
   void refreshMissing();
   void playNext();
   uint8_t bgVolume() const;
   uint32_t rand32();
-  void logf(const char* fmt, ...);
   const char* track(size_t i) const { return names_ + offs_[i]; }
 
   SoundCard& card_;
@@ -120,8 +158,8 @@ class Sound {
   uint16_t count_ = 0;
   bool shuffle_ = false;
   uint32_t gapMs_ = 0;
-  uint32_t fadeMs_ = 1500;
-  uint8_t volume_ = 60;
+  uint32_t fadeMs_ = kDefaultFadeMs;
+  uint8_t volume_ = kDefaultVolume;
   bool missing_[kMaxTracks];
 
   uint16_t order_[kMaxTracks];
@@ -135,11 +173,9 @@ class Sound {
 
   AnnState annState_ = AnnState::None;
   uint32_t annId_ = 0;
-  uint8_t duck_ = 15;
+  uint8_t duck_ = kDefaultDuckPct;
 
-  bool uploading_ = false;
-  char uploadId_[kClipIdLen + 1] = {0};
-  uint32_t uploadLen_ = 0;
+  ClipUpload upload_;
 };
 
 }  // namespace mb10d

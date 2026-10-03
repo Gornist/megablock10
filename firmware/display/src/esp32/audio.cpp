@@ -32,6 +32,10 @@ namespace mb10esp {
 namespace {
 
 constexpr uint32_t kOutRate = 44100;
+// Корень звука на карте; внутри — раскладка из sound.h (kSdTracksDir, kSdClipsDir).
+constexpr char kSdRoot[] = "/mb10";
+String tracksDir() { return String(kSdRoot) + kSdTracksDir; }
+String trackPath(const char* name) { return tracksDir() + "/" + name; }
 constexpr size_t kRing = 16384;  // ≈ 0,37 с фона на 44,1 кГц — хватает с запасом: декодер в той же задаче
 constexpr size_t kFrames = 256;  // сэмплов за проход задачи (≈ 5,8 мс)
 constexpr uint32_t kAmpOffAfterMs = 2000;
@@ -71,7 +75,7 @@ class SdCard : public SoundCard {
     if (!mounted_) {
       mount();
     } else {
-      File d = SD.open("/mb10/tracks");
+      File d = SD.open(tracksDir());
       bool ok = d && d.isDirectory();
       if (d) d.close();
       if (!ok) {
@@ -168,14 +172,14 @@ class SdCard : public SoundCard {
     struct stat st;
     return stat((String("/sd") + path).c_str(), &st) == 0 && S_ISREG(st.st_mode) ? long(st.st_size) : -1;
   }
-  static String clipPath(const char* id) { return String("/mb10/clips/") + id + ".wav"; }
-  static String partPath(const char* id) { return String("/mb10/clips/") + id + ".part"; }
+  static String clipPath(const char* id) { return String(kSdRoot) + kSdClipsDir + "/" + id + kClipExt; }
+  static String partPath(const char* id) { return String(kSdRoot) + kSdClipsDir + "/" + id + kPartExt; }
   void mount() {
     if (!SD.begin(MB10_SD_CS, sdSpi, 20000000, "/sd", 4)) return;
     mounted_ = true;
-    SD.mkdir("/mb10");
-    SD.mkdir("/mb10/tracks");
-    SD.mkdir("/mb10/clips");
+    SD.mkdir(kSdRoot);
+    SD.mkdir(tracksDir());
+    SD.mkdir(String(kSdRoot) + kSdClipsDir);
     scan();
     char line[80];
     snprintf(line, sizeof line, "sd: card mounted, %u tracks, %llu MB", unsigned(tracks_.size()), SD.cardSize() >> 20);
@@ -183,7 +187,7 @@ class SdCard : public SoundCard {
   }
   void scan() {
     tracks_.clear();
-    File d = SD.open("/mb10/tracks");
+    File d = SD.open(tracksDir());
     if (!d) return;
     for (File f = d.openNextFile(); f; f = d.openNextFile()) {
       const char* n = f.name();
@@ -406,7 +410,7 @@ class I2sAudio : public AudioOut {
       trackActive_ = false;
       return;
     }
-    String path = String("/mb10/tracks/") + name;
+    String path = trackPath(name);
     bool ok = file_.open(path.c_str()) && mp3_.begin(&file_, &ring_);
     xSemaphoreTake(lock_, portMAX_DELAY);
     if (ok) {
@@ -496,7 +500,7 @@ AudioOut* audioBegin() {
 void audioPoll() { card.poll(); }
 
 #ifdef MB10_SELFTEST
-bool audioWriteTrack(const char* name, const uint8_t* data, size_t len) { return card.writeFile((String("/mb10/tracks/") + name).c_str(), data, len); }
+bool audioWriteTrack(const char* name, const uint8_t* data, size_t len) { return card.writeFile(trackPath(name).c_str(), data, len); }
 uint32_t audioDecodedSamples() { return decodedSamples; }
 #endif
 

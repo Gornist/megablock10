@@ -50,10 +50,13 @@ firmware/display/
     crc32.h/.cpp            # та же таблица, что на сервере
     sha256.h/.cpp           # SHA-256 и HMAC — одна реализация для платы и ПК (RFC 4231)
     receiver.h/.cpp         # сборка кадров из TCP-потока кусками любой длины
-    device.h/.cpp           # Device (кадр во flash, восстановление, тест, подсветка), Session (одно соединение: HELLO
-                            # с nonce → проверки → ответы, таймауты 2/5 с), Backoff и Connectivity (Wi-Fi 1…30 с)
+    device.h/.cpp           # Device: кадр во flash, восстановление, тест, подсветка, статус для HELLO
+    session.h/.cpp          # Session — одно соединение: HELLO с nonce → проверки → ответы, таймауты 2/5 с; Link
+    connectivity.h/.cpp     # Backoff и Connectivity (Wi-Fi 1…30 с)
+    util.h/.cpp             # общее ядра: время с переполнением millis(), журнал через Platform, hex
     battery.h/.cpp          # топливомер MAX17048 (разбор регистров) и кривая Li-ion
     sound.h/.cpp            # звук: состояние с версией, плейлист, клип с докачкой, объявление; SoundCard, AudioOut
+    clip_upload.cpp         # ClipUpload (из sound.h): приём клипа кусками с докачкой и проверкой sha256
     mixer.h/.cpp            # микшер фона, сигнала и объявления, громкость с переходом, пересчёт частоты
     wav.h/.cpp, json.h/.cpp # заголовок WAV и IMA ADPCM; разбор JSON-команд без кучи
     hal.h                   # интерфейсы платформы: Panel, Storage, Backlight, Platform (время, RNG, сторож, журнал, сеть, батарея)

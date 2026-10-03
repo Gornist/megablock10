@@ -1,12 +1,11 @@
 #include "sound.h"
 
-#include <cstdarg>
 #include <cstdio>
 #include <cstring>
 
 #include "crc32.h"
 #include "json.h"
-#include "sha256.h"
+#include "util.h"
 #include "wav.h"
 
 namespace mb10d {
@@ -16,23 +15,12 @@ const char* const kAudioFile = "audio.bin";
 namespace {
 const uint8_t kAudioMagic[4] = {'M', 'B', 'A', 'U'};
 constexpr size_t kAudioHead = 16;  // MBAU, версия, длина JSON, CRC32 JSON
-inline bool reached(uint32_t now, uint32_t t) { return int32_t(now - t) >= 0; }
-
-void toHex(const uint8_t* p, size_t n, char* out) {
-  static const char* d = "0123456789abcdef";
-  for (size_t i = 0; i < n; i++) {
-    out[2 * i] = d[p[i] >> 4];
-    out[2 * i + 1] = d[p[i] & 15];
-  }
-  out[2 * n] = '\0';
-}
-
-bool isHexId(const char* s) {
-  if (std::strlen(s) != kClipIdLen) return false;
-  for (const char* p = s; *p; p++)
-    if (!((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f'))) return false;
-  return true;
-}
+// Пределы AUDIO_STATE: пауза между треками до 10 мин, переход до 30 с.
+constexpr uint32_t kMaxGapMs = 600000;
+constexpr uint32_t kMaxFadeMs = 30000;
+// Фон на время объявления: приглушить быстро, вернуть плавнее.
+constexpr uint32_t kDuckFadeMs = 300;
+constexpr uint32_t kUnduckFadeMs = 600;
 
 // Имя трека — путь внутри /mb10/tracks: без каталогов и управляющих символов (сервер проверяет так же).
 bool safeTrackName(const char* s) {
@@ -45,18 +33,9 @@ bool safeTrackName(const char* s) {
 uint8_t clampPct(double v) { return v < 0 ? 0 : v > 100 ? 100 : uint8_t(v + 0.5); }
 }  // namespace
 
-Sound::Sound(SoundCard& card, AudioOut& out, Storage& storage, Platform& platform) : card_(card), out_(out), storage_(storage), platform_(platform) {
+Sound::Sound(SoundCard& card, AudioOut& out, Storage& storage, Platform& platform) : card_(card), out_(out), storage_(storage), platform_(platform), upload_(card, platform) {
   json_[0] = '\0';
   std::memset(missing_, 0, sizeof missing_);
-}
-
-void Sound::logf(const char* fmt, ...) {
-  char line[200];
-  va_list ap;
-  va_start(ap, fmt);
-  std::vsnprintf(line, sizeof line, fmt, ap);
-  va_end(ap);
-  platform_.log(line);
 }
 
 uint32_t Sound::rand32() {
@@ -76,7 +55,7 @@ bool Sound::parseState(const char* json, size_t len) {
   uint16_t count = 0;
   size_t used = 0;
   bool shuffle = false;
-  double gap = 0, vol = 60, fade = 1500;
+  double gap = 0, vol = kDefaultVolume, fade = kDefaultFadeMs;
   static char names[kAudioJsonMax];
   static uint16_t offs[kMaxTracks];
   while (c.nextKey(key, sizeof key)) {
@@ -108,8 +87,8 @@ bool Sound::parseState(const char* json, size_t len) {
   std::memcpy(offs_, offs, count * sizeof offs[0]);
   count_ = count;
   shuffle_ = shuffle;
-  gapMs_ = gap < 0 ? 0 : gap > 600000 ? 600000 : uint32_t(gap);
-  fadeMs_ = fade < 0 ? 0 : fade > 30000 ? 30000 : uint32_t(fade);
+  gapMs_ = gap < 0 ? 0 : gap > kMaxGapMs ? kMaxGapMs : uint32_t(gap);
+  fadeMs_ = fade < 0 ? 0 : fade > kMaxFadeMs ? kMaxFadeMs : uint32_t(fade);
   volume_ = clampPct(vol);
   return true;
 }
@@ -168,39 +147,57 @@ void Sound::playNext() {
     if (out_.startTrack(track(idx), bgVolume(), fadeMs_)) {
       std::snprintf(current_, sizeof current_, "%s", track(idx));
       bg_ = Bg::Playing;
-      logf("audio: track %s vol=%u", current_, unsigned(bgVolume()));
+      logFmt(platform_, "audio: track %s vol=%u", current_, unsigned(bgVolume()));
       return;
     }
-    logf("audio: track %s failed to start — skipped", track(idx));
+    logFmt(platform_, "audio: track %s failed to start — skipped", track(idx));
   }
-  logf("audio: no playable tracks in channel — silence");
+  logFmt(platform_, "audio: no playable tracks in channel — silence");
   bg_ = Bg::Silent;
   current_[0] = '\0';
 }
 
-void Sound::boot() {
-  cardWasPresent_ = card_.present();
+bool Sound::loadSaved() {
   uint8_t head[kAudioHead];
   if (!storage_.read(kAudioFile, 0, head, sizeof head)) {
-    logf("audio boot: no saved state — silence");
-    return;
+    logFmt(platform_, "audio boot: no saved state — silence");
+    return false;
   }
   uint32_t version = getU32(head + 4), len = getU32(head + 8);
   if (std::memcmp(head, kAudioMagic, 4) != 0 || len > kAudioJsonMax || !storage_.read(kAudioFile, kAudioHead, reinterpret_cast<uint8_t*>(json_), len) ||
       crc32(reinterpret_cast<uint8_t*>(json_), len) != getU32(head + 12) || !parseState(json_, len)) {
-    logf("audio boot: saved state corrupt — ignored");
+    logFmt(platform_, "audio boot: saved state corrupt — ignored");
     json_[0] = '\0';
-    return;
+    return false;
   }
   json_[len] = '\0';
   jsonLen_ = len;
   version_ = version;
+  return true;
+}
+
+void Sound::save(uint32_t version, const uint8_t* json, size_t len) {
+  uint8_t head[kAudioHead];
+  std::memcpy(head, kAudioMagic, 4);
+  putU32(head + 4, version);
+  putU32(head + 8, uint32_t(len));
+  putU32(head + 12, crc32(json, len));
+  if (!storage_.writeAtomic(kAudioFile, head, sizeof head, json, len)) logFmt(platform_, "audio v%u: state not saved (storage)", unsigned(version));
+}
+
+void Sound::unduck() {
+  if (bg_ == Bg::Playing) out_.setTrackVolume(volume_, kUnduckFadeMs);
+}
+
+void Sound::boot() {
+  cardWasPresent_ = card_.present();
+  if (!loadSaved()) return;
   uint8_t seed[4];
   platform_.random(seed, sizeof seed);
   rng_ ^= getU32(seed) | 1;
   refreshMissing();
   rebuildOrder(nullptr);
-  logf("audio boot: state v%u, %u tracks, card %s", unsigned(version_), unsigned(count_), cardWasPresent_ ? "present" : "missing");
+  logFmt(platform_, "audio boot: state v%u, %u tracks, card %s", unsigned(version_), unsigned(count_), cardWasPresent_ ? "present" : "missing");
   playNext();
 }
 
@@ -217,7 +214,7 @@ Nack Sound::applyState(uint32_t version, const uint8_t* json, size_t len) {
   std::memcpy(oldNames, names_, sizeof names_);
   std::memcpy(oldOffs, offs_, sizeof offs_);
   if (!parseState(s, len)) {
-    logf("audio v%u: bad JSON — rejected", unsigned(version));
+    logFmt(platform_, "audio v%u: bad JSON — rejected", unsigned(version));
     return Nack::BadFormat;
   }
   if (oldCount == count_ && oldShuffle == shuffle_) {
@@ -225,12 +222,7 @@ Nack Sound::applyState(uint32_t version, const uint8_t* json, size_t len) {
     for (uint16_t i = 0; i < count_ && sameList; i++) sameList = std::strcmp(oldNames + oldOffs[i], track(i)) == 0;
   }
   // Сначала на flash, потом играть: перезагрузка сразу после OK заиграет уже новое.
-  uint8_t head[kAudioHead];
-  std::memcpy(head, kAudioMagic, 4);
-  putU32(head + 4, version);
-  putU32(head + 8, uint32_t(len));
-  putU32(head + 12, crc32(json, len));
-  if (!storage_.writeAtomic(kAudioFile, head, sizeof head, json, len)) logf("audio v%u: state not saved (storage)", unsigned(version));
+  save(version, json, len);
   std::memcpy(json_, s, len);
   json_[len] = '\0';
   jsonLen_ = len;
@@ -238,7 +230,7 @@ Nack Sound::applyState(uint32_t version, const uint8_t* json, size_t len) {
   refreshMissing();
   if (sameList && bg_ != Bg::Silent) {
     out_.setTrackVolume(bgVolume(), fadeMs_);
-    logf("audio v%u: volume %u", unsigned(version), unsigned(volume_));
+    logFmt(platform_, "audio v%u: volume %u", unsigned(version), unsigned(volume_));
     return Nack::None;
   }
   // Текущий трек остаётся в новом канале — не обрывать его, дальше по новому списку.
@@ -248,7 +240,7 @@ Nack Sound::applyState(uint32_t version, const uint8_t* json, size_t len) {
       if (!missing_[i] && std::strcmp(track(i), current_) == 0) keep = current_;
   }
   rebuildOrder(keep);
-  logf("audio v%u: %u tracks%s, vol=%u", unsigned(version), unsigned(count_), shuffle_ ? " shuffled" : "", unsigned(volume_));
+  logFmt(platform_, "audio v%u: %u tracks%s, vol=%u", unsigned(version), unsigned(count_), shuffle_ ? " shuffled" : "", unsigned(volume_));
   if (keep) {
     out_.setTrackVolume(bgVolume(), fadeMs_);
   } else {
@@ -264,7 +256,7 @@ void Sound::tick() {
   bool present = card_.present();
   if (present != cardWasPresent_) {
     cardWasPresent_ = present;
-    logf("audio: card %s", present ? "inserted" : "removed");
+    logFmt(platform_, "audio: card %s", present ? "inserted" : "removed");
     refreshMissing();
     if (!present) {
       out_.stopTrack(0);
@@ -276,8 +268,8 @@ void Sound::tick() {
   }
   if (annState_ == AnnState::Playing && !out_.clipPlaying()) {
     annState_ = AnnState::Done;
-    logf("announce %u done", unsigned(annId_));
-    if (bg_ == Bg::Playing) out_.setTrackVolume(volume_, 600);
+    logFmt(platform_, "announce %u done", unsigned(annId_));
+    unduck();
   }
   if (bg_ == Bg::Playing && !out_.trackPlaying()) {
     if (gapMs_ > 0) {
@@ -291,68 +283,11 @@ void Sound::tick() {
   }
 }
 
-Nack Sound::clipBegin(const uint8_t* p, uint32_t& have) {
-  if (!card_.present()) return Nack::DisplayFailed;
-  toHex(p, 32, uploadId_);
-  uploadLen_ = getU32(p + 32);
-  if (card_.hasClip(uploadId_) && card_.clipSize(uploadId_) == uploadLen_) {
-    uploading_ = false;
-    have = uploadLen_;
-    return Nack::None;
-  }
-  have = card_.partSize(uploadId_);
-  if (have > uploadLen_) {
-    card_.removePart(uploadId_);
-    have = 0;
-  }
-  uploading_ = true;
-  logf("clip %.12s: %u of %u bytes already here", uploadId_, unsigned(have), unsigned(uploadLen_));
-  return Nack::None;
-}
-
-Nack Sound::clipChunk(const uint8_t* p, size_t len, uint32_t& have) {
-  if (!uploading_ || len <= 4) return Nack::BadLength;
-  uint32_t offset = getU32(p);
-  uint32_t part = card_.partSize(uploadId_);
-  size_t n = len - 4;
-  if (offset != part || offset + n > uploadLen_) return Nack::BadLength;
-  if (!card_.writePart(uploadId_, offset, p + 4, n)) return Nack::DisplayFailed;
-  have = offset + uint32_t(n);
-  return Nack::None;
-}
-
-Nack Sound::clipCommit() {
-  if (!uploading_) return Nack::BadLength;
-  uploading_ = false;
-  if (card_.partSize(uploadId_) != uploadLen_) return Nack::BadLength;
-  Sha256 sha;
-  uint8_t buf[1024];
-  for (uint32_t off = 0; off < uploadLen_;) {
-    size_t n = uploadLen_ - off < sizeof buf ? uploadLen_ - off : sizeof buf;
-    if (!card_.readPart(uploadId_, off, buf, n)) return Nack::DisplayFailed;
-    sha.update(buf, n);
-    off += uint32_t(n);
-    platform_.feedWatchdog();
-  }
-  uint8_t digest[32];
-  sha.finish(digest);
-  char hex[kClipIdLen + 1];
-  toHex(digest, 32, hex);
-  if (std::strcmp(hex, uploadId_) != 0) {
-    card_.removePart(uploadId_);
-    logf("clip %.12s: sha256 mismatch — discarded", uploadId_);
-    return Nack::BadCrc;
-  }
-  if (!card_.commitPart(uploadId_)) return Nack::DisplayFailed;
-  logf("clip %.12s: stored, %u bytes", uploadId_, unsigned(uploadLen_));
-  return Nack::None;
-}
-
 Nack Sound::announce(uint32_t id, const uint8_t* json, size_t len, uint32_t& durationMs) {
   JsonCursor c(reinterpret_cast<const char*>(json), len);
   if (!c.beginObject()) return Nack::BadFormat;
   char key[16], clip[kClipIdLen + 1] = {0};
-  double vol = 80, duck = 15;
+  double vol = kDefaultAnnounceVolume, duck = kDefaultDuckPct;
   bool chime = true;
   while (c.nextKey(key, sizeof key)) {
     bool ok = std::strcmp(key, "clip") == 0     ? c.readString(clip, sizeof clip)
@@ -362,7 +297,7 @@ Nack Sound::announce(uint32_t id, const uint8_t* json, size_t len, uint32_t& dur
                                                 : c.skip();
     if (!ok) return Nack::BadFormat;
   }
-  if (!c.ok() || !isHexId(clip)) return Nack::BadFormat;
+  if (!c.ok() || !isClipId(clip)) return Nack::BadFormat;
   if (!card_.present() || !card_.hasClip(clip)) return Nack::MissingClip;
   uint8_t head[128];
   uint32_t size = card_.clipSize(clip);
@@ -374,13 +309,13 @@ Nack Sound::announce(uint32_t id, const uint8_t* json, size_t len, uint32_t& dur
   duck_ = clampPct(duck);
   if (!out_.startClip(clip, clampPct(vol), chime)) {
     annState_ = AnnState::Failed;
-    logf("announce %u: clip %.12s failed to start", unsigned(id), clip);
+    logFmt(platform_, "announce %u: clip %.12s failed to start", unsigned(id), clip);
     return Nack::DisplayFailed;
   }
   annState_ = AnnState::Playing;
-  if (bg_ == Bg::Playing) out_.setTrackVolume(bgVolume(), 300);
+  if (bg_ == Bg::Playing) out_.setTrackVolume(bgVolume(), kDuckFadeMs);
   durationMs = info.durationMs + (chime ? kChimeMs : 0);
-  logf("announce %u: clip %.12s %u ms, background to %u%%", unsigned(id), clip, unsigned(durationMs), unsigned(duck_));
+  logFmt(platform_, "announce %u: clip %.12s %u ms, background to %u%%", unsigned(id), clip, unsigned(durationMs), unsigned(duck_));
   return Nack::None;
 }
 
@@ -388,8 +323,8 @@ void Sound::stopAnnounce() {
   if (annState_ != AnnState::Playing) return;
   out_.stopClip();
   annState_ = AnnState::Stopped;
-  if (bg_ == Bg::Playing) out_.setTrackVolume(volume_, 600);
-  logf("announce %u stopped", unsigned(annId_));
+  unduck();
+  logFmt(platform_, "announce %u stopped", unsigned(annId_));
 }
 
 size_t Sound::listJson(uint16_t start, char* out, size_t cap) {

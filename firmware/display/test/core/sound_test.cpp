@@ -13,6 +13,7 @@
 #include "json.h"
 #include "mixer.h"
 #include "protocol.h"
+#include "session.h"
 #include "sha256.h"
 #include "sound.h"
 #include "wav.h"
