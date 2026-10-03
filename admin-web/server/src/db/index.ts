@@ -193,7 +193,7 @@ CREATE TABLE IF NOT EXISTS display_battery_samples (
 
 -- «Сеть» (docs/netrun-world-records.md): допуск нетраннера. blocked ставит приём NET_FLATLINE или мастер, «пощадить» снимает —
 -- коллектор источник правды, Мост читает флаг (bridge_synced = 0 — ещё не записан в документ runner Моста, lib/netRunners.ts).
--- runner_key — ключ игрока в base64, как subject_key в changes (в Мосте он base64url без «=»).
+-- runner_key — ключ игрока в base64, как subject_key в changes; в Мосте документ runner — r_<sha256 ключа> (lib/netRunners.ts).
 CREATE TABLE IF NOT EXISTS net_runner_flags (
   runner_key       TEXT PRIMARY KEY,
   blocked          INTEGER NOT NULL DEFAULT 0,
@@ -209,6 +209,15 @@ CREATE TABLE IF NOT EXISTS net_runner_flags (
   spared_by        TEXT,
   bridge_synced    INTEGER NOT NULL DEFAULT 0,
   updated_at       INTEGER NOT NULL
+);
+
+-- «Может входить в Сеть» — решение мастера по игроку (белый список, docs/netrun.md: в Сеть входят только нетраннеры). Мост проверяет его,
+-- когда включено settings/global.require_allowed; по умолчанию выключено. Нет строки — мастер ещё не решал.
+CREATE TABLE IF NOT EXISTS net_runner_access (
+  runner_key TEXT PRIMARY KEY,
+  allowed    INTEGER NOT NULL,
+  updated_by TEXT,
+  updated_at INTEGER NOT NULL
 );
 
 -- Настройки самого коллектора, которых нет в окружении и которые мастер правит из дашборда (получатель СБ по умолчанию и т. п.).

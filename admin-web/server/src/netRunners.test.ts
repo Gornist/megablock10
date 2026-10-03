@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { seedPlayer, setup, type App } from "./testHelpers.js";
 import { testDevice } from "./testUtil.js";
-import { normalizeRunnerKey, toBridgeRunnerKey } from "./lib/netRunners.js";
+import { bridgeRunnerDocId, normalizeRunnerKey } from "./lib/netRunners.js";
 
 /** Флаг нетраннера и карточка флэтлайна: приём NET_FLATLINE ставит флаг, мастер «щадит» — коллектор источник правды. */
 
@@ -19,20 +19,21 @@ const flatline = (world: ReturnType<typeof testDevice>, runner: string, over: Re
 const post = (app: App, records: unknown[]) => app.inject({ method: "POST", url: "/api/changes", payload: { records } });
 const enc = encodeURIComponent;
 
-test("ключ нетраннера: base64 (коллектор) и base64url без «=» (Мост) приводятся друг к другу", () => {
+test("ключ нетраннера: обычный base64 как есть, base64url без «=» (адрес в браузере) приводится к нему; id документа Моста — r_ + sha256", () => {
   const std = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE+/ab+c==";
-  const url = toBridgeRunnerKey(std);
-  assert.equal(url, "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE-_ab-c");
-  assert.equal(normalizeRunnerKey(url), "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE+/ab+c==");
+  assert.equal(normalizeRunnerKey("MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE-_ab-c"), std);
   assert.equal(normalizeRunnerKey(std), std);
   assert.equal(normalizeRunnerKey("не ключ!"), null);
+  // Эталон — как считает live_run.sh Моста: printf %s KEY_LIVE_ALICE | sha256sum | cut -c1-32.
+  assert.equal(bridgeRunnerDocId("KEY_LIVE_ALICE"), "r_dab70cd3b302c608e7cd46839fe1b0e2");
+  assert.match(bridgeRunnerDocId(std), /^r_[0-9a-f]{32}$/);
 });
 
 test("NET_FLATLINE ставит флаг и срочную тревогу со ссылкой на игрока; мир в игроки не попадает", async () => {
   const { app, headers } = await setup();
   const runner = await seedPlayer(app, { callsign: "Призрак", faction: "NEON", balance: 10 });
   const world = testDevice();
-  const res = await post(app, [flatline(world, toBridgeRunnerKey(runner.publicKeyB64))]);
+  const res = await post(app, [flatline(world, runner.publicKeyB64)]);
   assert.deepEqual(res.json().rejected, []);
 
   const flags = (await app.inject({ method: "GET", url: "/api/net/runners", headers })).json() as { runnerKey: string; blocked: boolean; knownPlayer: boolean; reason: string; callsign: string }[];
@@ -51,7 +52,7 @@ test("NET_FLATLINE ставит флаг и срочную тревогу со �
 test("обрыв до флэтлайна — причина «обрыв до флэтлайна»", async () => {
   const { app, headers } = await setup();
   const runner = await seedPlayer(app, { callsign: "Призрак", faction: "NEON" });
-  await post(app, [flatline(testDevice(), toBridgeRunnerKey(runner.publicKeyB64), { disconnect: true, cause: "обрыв до флэтлайна" })]);
+  await post(app, [flatline(testDevice(), runner.publicKeyB64, { disconnect: true, cause: "обрыв до флэтлайна" })]);
   const [f] = (await app.inject({ method: "GET", url: "/api/net/runners", headers })).json() as { reason: string }[];
   assert.equal(f.reason, "обрыв до флэтлайна");
 });
@@ -59,7 +60,7 @@ test("обрыв до флэтлайна — причина «обрыв до ф
 test("«пощадить» снимает флаг и тревогу, пишет журнал; повтор безопасен и журнал не дублирует", async () => {
   const { app, headers, db } = await setup();
   const runner = await seedPlayer(app, { callsign: "Призрак", faction: "NEON" });
-  await post(app, [flatline(testDevice(), toBridgeRunnerKey(runner.publicKeyB64))]);
+  await post(app, [flatline(testDevice(), runner.publicKeyB64)]);
 
   const url = `/api/net/runners/${enc(runner.publicKeyB64)}/spare`;
   const first = await app.inject({ method: "POST", url, headers, payload: { note: "вытащили сами" } });
@@ -80,7 +81,7 @@ test("старая запись флэтлайна, пришедшая посл�
   const { app, headers } = await setup();
   const runner = await seedPlayer(app, { callsign: "Призрак", faction: "NEON" });
   const world = testDevice();
-  const key = toBridgeRunnerKey(runner.publicKeyB64);
+  const key = runner.publicKeyB64;
   const old = flatline(world, key, { session: "s_old" }, Date.now() - 60_000);
   await post(app, [flatline(world, key, { session: "s_1" }, Date.now() - 30_000)]);
   await app.inject({ method: "POST", url: `/api/net/runners/${enc(runner.publicKeyB64)}/spare`, headers, payload: {} });
@@ -110,7 +111,7 @@ test("мастер закрывает допуск вручную — тольк
   const one = (await app.inject({ method: "GET", url: `/api/net/runners/${k}`, headers })).json();
   assert.equal(one.blocked, true);
   const none = (await app.inject({ method: "GET", url: `/api/net/runners/${enc("QUJD")}`, headers })).json();
-  assert.deepEqual(none, { blocked: false });
+  assert.deepEqual(none, { blocked: false, allowed: false });
 
   assert.equal((await app.inject({ method: "GET", url: "/api/net/runners" })).statusCode, 401);
   assert.equal((await app.inject({ method: "POST", url: `/api/net/runners/${k}/spare`, payload: {} })).statusCode, 401);

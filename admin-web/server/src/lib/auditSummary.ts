@@ -76,6 +76,11 @@ const AUDIT_ACTIONS: Record<string, { label: string; describe: Describe }> = {
   NET_TEMPLATE: { label: "Сеть: заготовка", describe: (d) => `${str(d.template)} → узлы: ${Array.isArray(d.nodes) && d.nodes.length > 0 ? d.nodes.join(", ") : "—"}` },
   NET_SEC_FACTION: { label: "Сеть: фракция СБ", describe: (d) => (d.faction ? `получатель сигнала СБ по умолчанию — «${str(d.faction)}»` : "фракция СБ по умолчанию не задана") },
   NET_NODE_OWNER: { label: "Сеть: владелец узла", describe: (d) => `узел ${str(d.node)}: ${d.faction ? `владелец «${str(d.faction)}»` : "владелец снят"}` },
+  NET_RUNNER_ALLOWED: {
+    label: "Нетраннер отмечен",
+    describe: (d, playerName) => `${playerName(str(d.runnerKey, ""))}: ${d.allowed ? "может входить в Сеть" : "больше не может входить в Сеть"}`,
+  },
+  NET_REQUIRE_ALLOWED: { label: "Сеть: проверка допуска", describe: (d) => (d.on ? "в Сеть входят только отмеченные нетраннеры" : "проверка допуска выключена — входят все, кроме заблокированных") },
   NET_ALERT_CLEAR: { label: "Сеть: тревога снята", describe: (d) => `тревога ${str(d.alert)} принята к сведению` },
   NET_OP: { label: "Сеть: ручная операция", describe: (d) => `${str(d.op)} (rid ${str(d.rid)})${d.replayed ? ", повтор" : ""}` },
   DISPLAY_COMMAND: {

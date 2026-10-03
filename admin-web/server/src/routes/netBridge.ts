@@ -144,6 +144,24 @@ export function registerNetBridgeRoutes(app: FastifyInstance, db: Db, net: NetSe
     }));
   });
 
+  /**
+   * Проверка «в Сеть входят только отмеченные нетраннеры» — settings/global.require_allowed. Включает мастер: пока выключено, Мост
+   * проверяет только блокировку. Остальные поля настроек сохраняются; нет документа настроек — 404, создавать его за Мост незачем.
+   */
+  app.post<{ Body: { on?: unknown } }>("/api/net/require-allowed", async (request, reply) => {
+    const on = request.body?.on;
+    if (typeof on !== "boolean") return reply.code(400).send({ error: "on must be boolean" });
+    return act(request, reply, async () => {
+      const doc = await net.putDoc("settings", "global", (cur) => {
+        if (cur === null) return null;
+        if ((cur.require_allowed === true) === on) return null;
+        return { ...cur, require_allowed: on };
+      });
+      if (!doc) throw new BridgeError("not_found", "settings/global");
+      return { result: { doc: doc as NetDoc }, audit: { action: "NET_REQUIRE_ALLOWED", detail: { on } } };
+    });
+  });
+
   /** Снять тревогу (аудитора, сервера мира) — мастер «принял к сведению». Версию присылает экран: если тревога успела измениться, Мост ответит version_conflict. */
   app.delete<{ Params: { id: string }; Querystring: { ver?: string } }>("/api/net/alerts/:id", async (request, reply) => {
     const id = request.params.id;

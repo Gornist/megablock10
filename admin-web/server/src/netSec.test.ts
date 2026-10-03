@@ -72,7 +72,6 @@ test("синк: документа нет — создаётся при подк
     assert.equal(first.ver, 1);
     assert.deepEqual(first.data.factions, { ARASAKA: [a.publicKeyB64] });
     assert.equal(first.data.default_faction, null);
-    assert.equal(first.data.key_format, "base64");
 
     const puts = () => bridge.requests.filter((r) => r.op === "put" && r.id === "sec").length;
     const before = puts();

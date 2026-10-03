@@ -4,9 +4,11 @@
  * импорт, в бандл ничего не попадает. Не дублируйте интерфейсы в этом файле.
  */
 export type {
+  NetAccessSummary,
   NetDoc,
   NetPointLinkItem,
   NetRunnerFlagItem,
+  NetRunnerOpen,
   NetSecView,
   NetState,
   WorldEventActionItem,

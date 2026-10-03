@@ -69,8 +69,15 @@ export class NetService {
    * (null — документа нет) и возвращает новые, либо null — «менять нечего». data при put заменяется целиком, поэтому mutate
    * обязан вернуть полный объект, сохранив чужие поля.
    */
-  async putDoc(type: string, id: string, mutate: (current: Record<string, unknown> | null) => Record<string, unknown> | null, attempts = 4): Promise<BridgeDoc | null> {
-    let current: BridgeDoc | null = this.doc(type, id) ?? (await this.getDoc(type, id));
+  async putDoc(
+    type: string,
+    id: string,
+    mutate: (current: Record<string, unknown> | null) => Record<string, unknown> | null,
+    attempts = 4,
+    /** Уже прочитанный документ (null — известно, что его нет): не перечитывать, когда вызывающий только что получил весь список. */
+    initial?: BridgeDoc | null,
+  ): Promise<BridgeDoc | null> {
+    let current: BridgeDoc | null = initial !== undefined ? initial : (this.doc(type, id) ?? (await this.getDoc(type, id)));
     for (let i = 0; i < attempts; i++) {
       const next = mutate(current?.data ?? null);
       if (next === null) return current;
@@ -83,6 +90,11 @@ export class NetService {
       }
     }
     throw new BridgeError("version_conflict", `${type}/${id}: документ меняется быстрее, чем коллектор успевает записать`);
+  }
+
+  /** Все документы одного типа прямо из Моста (для типов, на которые коллектор не подписан, например runner). */
+  async listDocs(type: string): Promise<BridgeDoc[]> {
+    return ((await this.request({ op: "list", type })).docs as BridgeDoc[] | undefined) ?? [];
   }
 
   private async getDoc(type: string, id: string): Promise<BridgeDoc | null> {

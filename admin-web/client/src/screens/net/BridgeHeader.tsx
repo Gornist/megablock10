@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { api } from "../../api/client";
-import type { NetState } from "../../api/types";
+import type { NetAccessSummary, NetState } from "../../api/types";
+import { POLL_RELAXED_MS } from "../../api/pollIntervals";
+import { useApiData } from "../../api/useApiData";
 import { AppButton, AppDialog, Badge, ErrorNote, Panel } from "../../design/components";
 import { docsOf, obj, useNetCall } from "./netUtil";
 
@@ -15,9 +17,12 @@ const STATUS: Record<NetState["bridge"], { label: string; tone: "ok" | "danger" 
 export function BridgeHeader({ state, reload }: { state: NetState; reload: () => void }) {
   const { busy, error, call } = useNetCall(reload);
   const [confirmPause, setConfirmPause] = useState(false);
+  const [confirmGate, setConfirmGate] = useState(false);
+  const { data: access } = useApiData<NetAccessSummary>("/api/net/access", { pollMs: POLL_RELAXED_MS });
   const global = obj(docsOf(state, "settings").find((d) => d.id === "global")?.data);
   const paused = global.paused === true;
   const venueLink = global.venue_link !== false;
+  const gate = global.require_allowed === true;
   const st = STATUS[state.bridge];
   const live = state.bridge === "connected";
 
@@ -29,6 +34,7 @@ export function BridgeHeader({ state, reload }: { state: NetState; reload: () =>
           <Badge tone={st.tone}>{st.label}</Badge>
           {live && paused && <Badge tone="danger">Сеть на паузе</Badge>}
           {live && !venueLink && <Badge tone="warn">связь с площадкой выключена</Badge>}
+          {live && gate && <Badge tone="info">вход только нетраннерам</Badge>}
           {live && state.info && <span className="hint-text mono">v{state.info.version} · seq {state.info.seq}</span>}
           {live && (
             <>
@@ -37,6 +43,9 @@ export function BridgeHeader({ state, reload }: { state: NetState; reload: () =>
               </AppButton>
               <AppButton disabled={busy} onClick={() => void call(() => api.post("/api/net/link", { on: !venueLink }))}>
                 {venueLink ? "отключить площадку" : "включить площадку"}
+              </AppButton>
+              <AppButton disabled={busy} onClick={() => (gate ? void call(() => api.post("/api/net/require-allowed", { on: false })) : setConfirmGate(true))}>
+                {gate ? "пускать всех" : "только нетраннерам"}
               </AppButton>
             </>
           )}
@@ -52,6 +61,18 @@ export function BridgeHeader({ state, reload }: { state: NetState; reload: () =>
         </p>
       )}
       {error && <ErrorNote>{error}</ErrorNote>}
+      {confirmGate && (
+        <AppDialog
+          title="Пускать в Сеть только нетраннеров?"
+          body={`Войти смогут только игроки с отметкой «нетраннер» на карточке (сейчас таких: ${access?.allowedCount ?? "?"}). Остальных очки не пустят, пока вы не отметите их или не выключите проверку.`}
+          confirmText="Включить проверку"
+          onCancel={() => setConfirmGate(false)}
+          onConfirm={() => {
+            setConfirmGate(false);
+            void call(() => api.post("/api/net/require-allowed", { on: true }));
+          }}
+        />
+      )}
       {confirmPause && (
         <AppDialog
           title="Поставить всю Сеть на паузу?"

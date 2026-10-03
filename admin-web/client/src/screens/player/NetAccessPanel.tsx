@@ -1,16 +1,17 @@
 import { useState } from "react";
 import { api } from "../../api/client";
-import type { NetRunnerFlagItem } from "../../api/types";
+import type { NetRunnerFlagItem, NetRunnerOpen } from "../../api/types";
 import { POLL_RELAXED_MS } from "../../api/pollIntervals";
 import { useApiData } from "../../api/useApiData";
 import { AppButton, AppDialog, AppInput, Badge, ErrorNote, Panel } from "../../design/components";
 import { formatAgo } from "../../format";
 import { useNetCall } from "../net/netUtil";
 
-type Flag = NetRunnerFlagItem | { blocked: false };
+type Flag = NetRunnerFlagItem | NetRunnerOpen;
 
 /**
- * Допуск игрока в Сеть (VR-забеги): открыт или закрыт. Закрывает Мост после флэтлайна или мастер руками; «пощадить» открывает.
+ * Допуск игрока в Сеть (VR-забеги). Два независимых решения мастера: «нетраннер» (может входить — белый список, Мост проверяет его,
+ * когда включена проверка допуска) и блокировка (Мост закрывает после флэтлайна или мастер руками; «пощадить» открывает).
  * Коллектор — источник правды: решение пишется здесь и догоняется в Мосте при следующем подключении.
  */
 export function NetAccessPanel({ publicKeyB64 }: { publicKeyB64: string }) {
@@ -22,6 +23,7 @@ export function NetAccessPanel({ publicKeyB64 }: { publicKeyB64: string }) {
   if (error) return <ErrorNote>{error}</ErrorNote>;
   if (!data) return null;
   const flag = data.blocked ? (data as NetRunnerFlagItem) : null;
+  const allowed = data.allowed;
   const base = `/api/net/runners/${encodeURIComponent(publicKeyB64)}`;
   const close = () => {
     setDialog(null);
@@ -33,6 +35,10 @@ export function NetAccessPanel({ publicKeyB64 }: { publicKeyB64: string }) {
       title="Допуск в Сеть"
       action={
         <span className="filter-row filter-wrap">
+          <Badge tone={allowed ? "ok" : "neutral"}>{allowed ? "нетраннер" : "не нетраннер"}</Badge>
+          <AppButton disabled={busy} onClick={() => void call(() => api.put(`${base}/allowed`, { allowed: !allowed }))}>
+            {allowed ? "снять отметку" : "отметить нетраннером"}
+          </AppButton>
           {flag ? <Badge tone="danger">закрыт</Badge> : <Badge tone="ok">открыт</Badge>}
           {flag ? (
             <AppButton variant="primary" disabled={busy} onClick={() => setDialog("spare")}>пощадить</AppButton>
@@ -50,7 +56,7 @@ export function NetAccessPanel({ publicKeyB64 }: { publicKeyB64: string }) {
           {!flag.bridgeSynced ? " · Мост ещё не знает об этом решении" : ""}
         </p>
       )}
-      {!flag && <p className="hint-text">Игрок может входить в Сеть. Допуск закрывается автоматически после флэтлайна или вручную здесь.</p>}
+      {!flag && <p className="hint-text">Блокировки нет. Допуск закрывается автоматически после флэтлайна или вручную здесь. «Нетраннер» нужен, когда в шапке «Сети» включена проверка допуска.</p>}
       {actionError && <ErrorNote>{actionError}</ErrorNote>}
       {dialog && (
         <AppDialog

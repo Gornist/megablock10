@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { Db } from "../db/index.js";
 import { parseSafe } from "./json.js";
 
@@ -59,8 +60,8 @@ const toFlag = (r: Row): NetRunnerFlag => ({
 });
 
 /**
- * Ключ игрока в коллекторе — обычный base64 (как subject_key в changes), а в Мосте `runner` — base64url без «=» (протокол, тип runner).
- * Принимаем любой из двух видов и приводим к виду коллектора; пустое и мусор — null.
+ * Ключ игрока в коллекторе — обычный base64 с «=» (как subject_key в changes и как его пишут телефоны). Принимаем и base64url без «=»
+ * (адрес в браузере, старые записи) и приводим к виду коллектора; пустое и мусор — null.
  */
 export function normalizeRunnerKey(raw: string): string | null {
   if (!/^[A-Za-z0-9+/_-]+={0,2}$/.test(raw) || raw.length > 400) return null;
@@ -68,9 +69,12 @@ export function normalizeRunnerKey(raw: string): string | null {
   return std + "=".repeat((4 - (std.length % 4)) % 4);
 }
 
-/** Ключ в виде, как его хранит и ждёт Мост: base64url без «=». */
-export function toBridgeRunnerKey(key: string): string {
-  return key.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+/**
+ * Идентификатор документа `runner` в Мосте: `r_` + первые 32 hex SHA-256 строки ключа (так Мост хранит нетраннеров; сам ключ
+ * лежит в `data.key`). Ключ — обычный base64, как у телефона.
+ */
+export function bridgeRunnerDocId(key: string): string {
+  return `r_${createHash("sha256").update(key).digest("hex").slice(0, 32)}`;
 }
 
 export interface FlatlineInput {
@@ -88,7 +92,24 @@ export interface FlatlineInput {
   alert: string | null;
 }
 
+/** Допуск «может входить в Сеть» (белый список): решение мастера по игроку, независимо от блокировки после флэтлайна. */
+export interface NetRunnerAccess {
+  runnerKey: string;
+  allowed: boolean;
+  updatedBy: string | null;
+  updatedAt: number;
+}
+
 export function createNetRunners(db: Db) {
+  const accessGetStmt = db.prepare(`SELECT runner_key, allowed, updated_by, updated_at FROM net_runner_access WHERE runner_key = ?`);
+  const accessListStmt = db.prepare(`SELECT runner_key, allowed, updated_by, updated_at FROM net_runner_access`);
+  const accessSetStmt = db.prepare(`
+    INSERT INTO net_runner_access (runner_key, allowed, updated_by, updated_at) VALUES (@key, @allowed, @by, @at)
+    ON CONFLICT(runner_key) DO UPDATE SET allowed = @allowed, updated_by = @by, updated_at = @at
+  `);
+  type AccessRow = { runner_key: string; allowed: number; updated_by: string | null; updated_at: number };
+  const toAccess = (r: AccessRow): NetRunnerAccess => ({ runnerKey: r.runner_key, allowed: r.allowed === 1, updatedBy: r.updated_by, updatedAt: r.updated_at });
+
   const getStmt = db.prepare(`SELECT * FROM net_runner_flags WHERE runner_key = ?`);
   const listStmt = db.prepare(`SELECT * FROM net_runner_flags ORDER BY blocked DESC, COALESCE(blocked_at, spared_at, 0) DESC`);
   const upsertBlockStmt = db.prepare(`
@@ -103,6 +124,20 @@ export function createNetRunners(db: Db) {
   const unsyncedStmt = db.prepare(`SELECT * FROM net_runner_flags WHERE bridge_synced = 0`);
 
   return {
+    /** Допуск игрока; нет записи — мастер ещё не решал (в Мост «allowed» тогда не пишется, пока игрок не отмечен нетраннером). */
+    access(key: string): NetRunnerAccess | null {
+      const r = accessGetStmt.get(key) as AccessRow | undefined;
+      return r ? toAccess(r) : null;
+    },
+
+    accessList(): NetRunnerAccess[] {
+      return (accessListStmt.all() as AccessRow[]).map(toAccess);
+    },
+
+    setAllowed(key: string, allowed: boolean, by: string, now: number): void {
+      accessSetStmt.run({ key, allowed: allowed ? 1 : 0, by, at: now });
+    },
+
     get(key: string): NetRunnerFlag | null {
       const r = getStmt.get(key) as Row | undefined;
       return r ? toFlag(r) : null;

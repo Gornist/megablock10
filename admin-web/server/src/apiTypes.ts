@@ -565,6 +565,19 @@ export interface NetRunnerFlagItem {
   bridgeSynced: boolean;
   /** Игрок с таким ключом известен коллектору — карточка игрока доступна. */
   knownPlayer: boolean;
+  /** Мастер отметил игрока «может входить в Сеть» (белый список). */
+  allowed: boolean;
+}
+
+/** Допуск игрока в Сеть без блокировки: ответ карточки игрока, когда флага блокировки нет. */
+export interface NetRunnerOpen {
+  blocked: false;
+  allowed: boolean;
+}
+
+/** Сводка белого списка: сколько игроков отмечено «нетраннер» — для подтверждения включения проверки в Мосте. */
+export interface NetAccessSummary {
+  allowedCount: number;
 }
 
 // ── «Сеть» → площадка: быстрые события на точки (docs/netrun-world-records.md, §3) ──

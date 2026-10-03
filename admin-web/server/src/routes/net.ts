@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import type { NetRunnerFlagItem } from "../apiTypes.js";
+import type { NetAccessSummary, NetRunnerFlagItem, NetRunnerOpen } from "../apiTypes.js";
 import type { Db } from "../db/index.js";
 import { logMasterAction, requireMaster } from "../lib/auth.js";
 import { makeHumanizeContext } from "../lib/humanize.js";
@@ -15,6 +15,7 @@ export function registerNetRoutes(app: FastifyInstance, db: Db, onFlagChanged: (
   const names = () => makeHumanizeContext(db);
 
   const view = (f: NetRunnerFlag, playerName: (k: string) => string, known: Set<string>): NetRunnerFlagItem => ({
+    allowed: runners.access(f.runnerKey)?.allowed === true,
     runnerKey: f.runnerKey,
     callsign: f.callsign || playerName(f.runnerKey),
     blocked: f.blocked,
@@ -39,12 +40,12 @@ export function registerNetRoutes(app: FastifyInstance, db: Db, onFlagChanged: (
   });
 
   /** Флаг одного игрока; нет флага — допуск открыт (blocked: false), а не 404: так экрану игрока не нужна особая ветка. */
-  app.get<{ Params: { key: string } }>("/api/net/runners/:key", async (request, reply): Promise<NetRunnerFlagItem | { blocked: false } | void> => {
+  app.get<{ Params: { key: string } }>("/api/net/runners/:key", async (request, reply): Promise<NetRunnerFlagItem | NetRunnerOpen | void> => {
     if (!requireMaster(db, request, reply)) return;
     const key = normalizeRunnerKey(request.params.key);
     if (!key) return reply.code(400).send({ error: "bad runner key" });
     const flag = runners.get(key);
-    if (!flag) return { blocked: false };
+    if (!flag) return { blocked: false, allowed: runners.access(key)?.allowed === true };
     return view(flag, names().playerName, knownKeys());
   });
 
@@ -76,5 +77,28 @@ export function registerNetRoutes(app: FastifyInstance, db: Db, onFlagChanged: (
     logMasterAction(db, master.id, "NET_RUNNER_BLOCK", { runnerKey: key, reason: reason || undefined });
     onFlagChanged();
     return view(runners.get(key)!, names().playerName, knownKeys());
+  });
+
+  /** «Может входить в Сеть»: отметка нетраннера на карточке игрока. Мост проверяет её, когда включена settings/global.require_allowed. */
+  app.put<{ Params: { key: string }; Body: { allowed?: unknown } }>("/api/net/runners/:key/allowed", async (request, reply): Promise<NetRunnerOpen | void> => {
+    const master = requireMaster(db, request, reply);
+    if (!master) return;
+    const key = normalizeRunnerKey(request.params.key);
+    if (!key) return reply.code(400).send({ error: "bad runner key" });
+    const allowed = request.body?.allowed;
+    if (typeof allowed !== "boolean") return reply.code(400).send({ error: "allowed must be boolean" });
+    // Отметить можно только игрока, которого коллектор знает: иначе мастер вносил бы в список опечатку в ключе.
+    if (!knownKeys().has(key)) return reply.code(404).send({ error: "unknown player" });
+    if ((runners.access(key)?.allowed ?? false) !== allowed || runners.access(key) === null) {
+      runners.setAllowed(key, allowed, master.name, Date.now());
+      logMasterAction(db, master.id, "NET_RUNNER_ALLOWED", { runnerKey: key, allowed });
+      onFlagChanged();
+    }
+    return { blocked: false, allowed };
+  });
+
+  app.get("/api/net/access", async (request, reply): Promise<NetAccessSummary | void> => {
+    if (!requireMaster(db, request, reply)) return;
+    return { allowedCount: runners.accessList().filter((a) => a.allowed).length };
   });
 }

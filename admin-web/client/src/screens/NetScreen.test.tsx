@@ -46,6 +46,7 @@ const flag = (over: Partial<NetRunnerFlagItem> = {}): NetRunnerFlagItem => ({
   sparedBy: null,
   bridgeSynced: false,
   knownPlayer: true,
+  allowed: false,
   ...over,
 });
 
@@ -64,6 +65,7 @@ function routes(over: Record<string, unknown> = {}) {
     "GET /api/net/state": state(),
     "GET /api/net/runners": [flag()],
     "GET /api/net/sec": sec,
+    "GET /api/net/access": { allowedCount: 3 },
     "GET /api/net/world-events/config": venue,
     "GET /api/audio/clips": [],
     ...over,
@@ -132,6 +134,16 @@ describe("NetScreen", () => {
     fireEvent.click(screen.getByText("пощадить"));
     fireEvent.click(screen.getByText("Пощадить"));
     await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path.endsWith("/spare"))).toBe(true));
+  });
+
+  it("проверка допуска: включение просит подтверждение с числом нетраннеров, затем POST /api/net/require-allowed", async () => {
+    const calls = routes({ "POST /api/net/require-allowed": { doc: {} } });
+    render(<NetScreen />);
+    fireEvent.click(await screen.findByText("только нетраннерам"));
+    expect(await screen.findByText(/сейчас таких: 3/)).toBeTruthy();
+    expect(calls.some((c) => c.path === "/api/net/require-allowed")).toBe(false);
+    fireEvent.click(screen.getByText("Включить проверку"));
+    await waitFor(() => expect(calls.find((c) => c.path === "/api/net/require-allowed")).toMatchObject({ body: { on: true } }));
   });
 
   it("тревога аудитора: «принять» снимает тревогу с её версией", async () => {
