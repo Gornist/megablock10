@@ -4,7 +4,8 @@ import { POLL_LIVE_MS } from "../api/pollIntervals";
 import { AsyncPanel } from "../design/AsyncPanel";
 import { Panel, StatTile } from "../design/components";
 import { AnnouncePanel } from "./audio/AnnouncePanel";
-import { announceActive, isAudioPoint, isOnline } from "./audio/audioUtil";
+import { announceActive, isAudioPoint } from "./audio/audioUtil";
+import { isOnline } from "./displays/displayUtil";
 
 /**
  * Громкая связь (docs/sound-nodes.md): записать объявление или взять заготовку, выбрать, где его услышат (все / локации /

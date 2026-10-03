@@ -3,7 +3,8 @@ import { api, fetchBlob } from "../../api/client";
 import type { AnnounceResponse, AudioClip, DisplayGroup, DisplayItem } from "../../api/types";
 import { useAsyncAction } from "../../api/useAsyncAction";
 import { AppButton, AppDialog, AppInput, Badge, Panel } from "../../design/components";
-import { announceActive, announcePhaseText, announceTone, formatDuration, isOnline } from "./audioUtil";
+import { isOnline } from "../displays/displayUtil";
+import { announceActive, announcePhaseText, announceTone, formatDuration } from "./audioUtil";
 import { useRecorder } from "./useRecorder";
 import { toBase64, toClipWav } from "./wavEncoder";
 

@@ -1,23 +1,20 @@
 import { useMemo, useState } from "react";
 import type { DisplayItem, DisplayStatus } from "../api/types";
 import { AsyncPanel } from "../design/AsyncPanel";
-import { AppButton, AppInput, AppSelect, Badge, Panel } from "../design/components";
+import { AppButton, AppInput, AppSelect, Panel } from "../design/components";
 import { DataTable, type Column } from "../design/DataTable";
 import { navigate } from "../router";
 import { BatteryGauge } from "./displays/BatteryGauge";
 import { DeviceDetail } from "./displays/DeviceDetail";
 import { DeviceStats } from "./displays/DeviceStats";
-import { byBatteryFirst, STATUS_LABEL, STATUS_TONE } from "./displays/displayUtil";
+import { StatusBadge } from "./displays/DeviceStatus";
+import { byBatteryFirst, STATUS_LABEL } from "./displays/displayUtil";
 import { useDeviceData } from "./displays/useDeviceData";
 import { useDeviceEditor } from "./displays/useDeviceEditor";
 
 const STATUS_FILTERS: { value: DisplayStatus | ""; label: string }[] = [
   { value: "", label: "любая связь" },
-  { value: "ONLINE", label: "на связи" },
-  { value: "OFFLINE", label: "нет связи" },
-  { value: "UPDATING", label: "обновляется" },
-  { value: "ERROR", label: "ошибка" },
-  { value: "DISABLED", label: "выключен" },
+  ...(Object.entries(STATUS_LABEL) as [DisplayStatus, string][]).map(([value, label]) => ({ value, label })),
 ];
 
 /**
@@ -50,7 +47,7 @@ export function DevicesScreen({ deviceId }: { deviceId?: string }) {
   const columns: Column<DisplayItem>[] = [
     { key: "id", label: "Устройство", render: (d) => <span className="mono">{d.id}</span>, sortValue: (d) => d.id },
     { key: "name", label: "Имя", render: (d) => d.name, sortValue: (d) => d.name },
-    { key: "status", label: "Связь", render: (d) => <Badge tone={STATUS_TONE[d.status]}>{STATUS_LABEL[d.status]}</Badge>, sortValue: (d) => d.status },
+    { key: "status", label: "Связь", render: (d) => <StatusBadge status={d.status} />, sortValue: (d) => d.status },
     { key: "battery", label: "Батарея", render: (d) => <BatteryGauge d={d} />, sortValue: (d) => d.batteryPct ?? -1 },
     { key: "location", label: "Локация", render: (d) => (d.groupId && groupName.get(d.groupId)) || "—", sortValue: (d) => (d.groupId && groupName.get(d.groupId)) || "" },
     { key: "node", label: "Узел", render: (d) => (d.nodeId && nodeName.get(d.nodeId)) || "—", sortValue: (d) => (d.nodeId && nodeName.get(d.nodeId)) || "" },

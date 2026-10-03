@@ -3,7 +3,8 @@ import { api } from "../../api/client";
 import type { AudioChannel, DisplayItem } from "../../api/types";
 import { useAsyncAction } from "../../api/useAsyncAction";
 import { AppSelect, Badge } from "../../design/components";
-import { announceActive, announcePhaseText, announceTone, isOnline, nowPlaying } from "./audioUtil";
+import { isOnline } from "../displays/displayUtil";
+import { announceActive, announcePhaseText, announceTone, nowPlaying } from "./audioUtil";
 
 /**
  * Звук одной точки — общий для строки точки в «Локациях» и секции «Точка» в карточке узла: что играет, дошло ли, чего нет

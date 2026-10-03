@@ -2,9 +2,9 @@ import { useState } from "react";
 import { api } from "../../api/client";
 import type { DisplayItem } from "../../api/types";
 import { useAsyncAction } from "../../api/useAsyncAction";
-import { AppButton, AppSelect, Badge } from "../../design/components";
+import { AppButton, AppSelect } from "../../design/components";
 import { DeviceDetail } from "../displays/DeviceDetail";
-import { STATUS_LABEL, STATUS_TONE } from "../displays/displayUtil";
+import { StatusBadge } from "../displays/DeviceStatus";
 import { useDeviceData } from "../displays/useDeviceData";
 import { useDeviceEditor } from "../displays/useDeviceEditor";
 
@@ -71,7 +71,7 @@ export function PointBadges({ point }: { point: DisplayItem | undefined }) {
   if (!point) return <span className="hint-text">—</span>;
   return (
     <span className="point-badges" data-point={point.id}>
-      <Badge tone={STATUS_TONE[point.status]}>{STATUS_LABEL[point.status]}</Badge>
+      <StatusBadge status={point.status} />
       {point.batteryPct !== null && (
         <span className={`hint-text mono${point.battery === "CRITICAL" ? " login-error" : ""}`} title="батарея">
           {point.batteryPct}%

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { display } from "../../test/displayFixtures";
 import type { DisplayPushState } from "../../api/types";
-import { batteryText, byBatteryFirst, formatHoursLeft, phaseText, pushProgress, pushStep, scaleWarning, screenState } from "./displayUtil";
+import { batteryText, byBatteryFirst, formatHoursLeft, isOnline, phaseText, pushProgress, pushStep, scaleWarning, screenState } from "./displayUtil";
 
 const push = (over: Partial<DisplayPushState> = {}): DisplayPushState => ({
   version: 5,
@@ -109,5 +109,12 @@ describe("батарея", () => {
       display({ id: "e", battery: "LOW", batteryPct: 22, batteryHoursLeft: 20 }),
     ];
     expect([...list].sort(byBatteryFirst).map((d) => d.id)).toEqual(["d", "c", "e", "b", "a"]);
+  });
+});
+
+describe("isOnline", () => {
+  it("на связи — и пока точка принимает кадр; нет связи, ошибка, выключена — нет", () => {
+    const statuses = ["ONLINE", "UPDATING", "OFFLINE", "ERROR", "DISABLED"] as const;
+    expect(statuses.map((status) => isOnline({ status }))).toEqual([true, true, false, false, false]);
   });
 });

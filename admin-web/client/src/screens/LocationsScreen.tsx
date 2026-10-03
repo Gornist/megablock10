@@ -4,14 +4,14 @@ import type { AudioChannel, DisplayGroup, DisplayItem } from "../api/types";
 import { POLL_LIVE_MS } from "../api/pollIntervals";
 import { useAsyncAction } from "../api/useAsyncAction";
 import { AsyncPanel } from "../design/AsyncPanel";
-import { AppButton, AppSelect, Badge, Panel } from "../design/components";
+import { AppButton, AppSelect, Panel } from "../design/components";
 import { navigate } from "../router";
 import { PointAnnounce, PointAudioControls, PointAudioStatus, VolumeInput } from "./audio/PointAudio";
-import { BatteryGauge } from "./displays/BatteryGauge";
 import { DeviceDetail } from "./displays/DeviceDetail";
 import { DeviceStats } from "./displays/DeviceStats";
 import { GroupDeleteDialog, GroupNameDialog, GroupSection } from "./displays/DisplayGroups";
-import { byBatteryFirst, STATUS_LABEL, STATUS_TONE } from "./displays/displayUtil";
+import { StatusAndBattery } from "./displays/DeviceStatus";
+import { byBatteryFirst } from "./displays/displayUtil";
 import { useCollapsedGroups } from "./displays/useCollapsedGroups";
 import { useDeviceData } from "./displays/useDeviceData";
 import { useDeviceEditor } from "./displays/useDeviceEditor";
@@ -54,10 +54,7 @@ export function LocationsScreen() {
                 узел «{nodeName.get(d.nodeId) ?? d.nodeId}»
               </button>
             )}
-            <span className="display-card-status">
-              <Badge tone={STATUS_TONE[d.status]}>{STATUS_LABEL[d.status]}</Badge>
-              <BatteryGauge d={d} />
-            </span>
+            <StatusAndBattery d={d} />
           </div>
           {d.audio && (
             <div className="location-point-audio">

@@ -11,6 +11,9 @@ export const STATUS_LABEL: Record<DisplayStatus, string> = {
   DISABLED: "выключен",
 };
 
+/** На связи — в том числе пока принимает кадр («обновляется»). */
+export const isOnline = (d: Pick<DisplayItem, "status">) => d.status === "ONLINE" || d.status === "UPDATING";
+
 export const STATUS_TONE: Record<DisplayStatus, "ok" | "danger" | "warn" | "accent" | "neutral"> = {
   ONLINE: "ok",
   OFFLINE: "neutral",

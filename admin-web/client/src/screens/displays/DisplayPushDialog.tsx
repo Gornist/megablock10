@@ -5,7 +5,8 @@ import { useApiData } from "../../api/useApiData";
 import { useAsyncAction } from "../../api/useAsyncAction";
 import { AppDialog, Badge, EmptyState } from "../../design/components";
 import { DisplayMock, PushSteps } from "./DisplayMock";
-import { PUSH_TONE, pushProgress, scaleWarning, STATUS_LABEL, STATUS_TONE, type DisplaySource } from "./displayUtil";
+import { StatusBadge } from "./DeviceStatus";
+import { PUSH_TONE, pushProgress, scaleWarning, type DisplaySource } from "./displayUtil";
 
 // Этапы «отправлено → загружено» на месте длятся секунды — опрос чаще, чтобы их было видно.
 const POLL_PUSH_MS = 1000;
@@ -124,7 +125,7 @@ export function DisplayPushDialog({
               <label key={d.id}>
                 <input type="checkbox" checked={selected.includes(d.id)} onChange={() => toggle(d.id)} />
                 <span className="mono">{d.id}</span> {d.name}
-                <Badge tone={STATUS_TONE[d.status]}>{STATUS_LABEL[d.status]}</Badge>
+                <StatusBadge status={d.status} />
               </label>
             ))}
           {sent &&

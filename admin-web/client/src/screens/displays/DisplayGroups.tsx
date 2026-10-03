@@ -3,6 +3,7 @@ import { api } from "../../api/client";
 import type { DisplayGroup, DisplayItem } from "../../api/types";
 import { useAsyncAction } from "../../api/useAsyncAction";
 import { AppButton, AppDialog, AppInput, Badge } from "../../design/components";
+import { isOnline } from "./displayUtil";
 
 /**
  * Группа дисплеев сворачивающимся списком. В заголовке — то, что нужно видеть и свёрнутым: сколько точек, сколько на связи,
@@ -32,7 +33,7 @@ export function GroupSection({
   extra?: ReactNode;
   children: ReactNode;
 }) {
-  const online = displays.filter((d) => d.status === "ONLINE" || d.status === "UPDATING").length;
+  const online = displays.filter(isOnline).length;
   const critical = displays.filter((d) => d.battery === "CRITICAL").length;
   const low = displays.filter((d) => d.battery === "LOW").length;
   const errors = displays.filter((d) => d.status === "ERROR").length;

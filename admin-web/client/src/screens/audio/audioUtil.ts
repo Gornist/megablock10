@@ -2,8 +2,6 @@ import type { AnnounceProgress, DisplayItem } from "../../api/types";
 
 export const isAudioPoint = (d: DisplayItem) => d.roles.includes("audio") && d.audio !== null;
 
-export const isOnline = (d: DisplayItem) => d.status === "ONLINE" || d.status === "UPDATING";
-
 /** Объявление ещё идёт — ждёт очереди, грузится или играет. */
 export const announceActive = (p: AnnounceProgress | null | undefined) => !!p && (p.phase === "QUEUED" || p.phase === "UPLOADING" || p.phase === "PLAYING");
 

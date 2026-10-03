@@ -2,15 +2,15 @@ import { useState } from "react";
 import { api } from "../../api/client";
 import type { AudioChannel, DisplayGroup, DisplayItem, DisplayPreview, DisplaySecretResponse } from "../../api/types";
 import { useAsyncAction } from "../../api/useAsyncAction";
-import { AppButton, AppDialog, AppSelect, Badge, Panel } from "../../design/components";
+import { AppButton, AppDialog, AppSelect, Panel } from "../../design/components";
 import { formatAgo } from "../../format";
 import { navigate } from "../../router";
 import { PointAnnounce, PointAudioControls, PointAudioStatus } from "../audio/PointAudio";
-import { BatteryGauge } from "./BatteryGauge";
 import { DisplayMock, PushSteps } from "./DisplayMock";
 import { DisplayPushDialog } from "./DisplayPushDialog";
 import { isLagging, useDisplayFrame } from "./useDisplayFrame";
-import { phaseText, screenState, STATUS_LABEL, STATUS_TONE, type DisplaySource } from "./displayUtil";
+import { StatusAndBattery } from "./DeviceStatus";
+import { phaseText, screenState, type DisplaySource } from "./displayUtil";
 
 const BACKLIGHT = [
   { value: "OFF", label: "выкл" },
@@ -111,12 +111,7 @@ export function DeviceDetail({
     <Panel
       className="display-card"
       title={<span className="mono">{d.id}</span>}
-      action={
-        <span className="display-card-status">
-          <Badge tone={STATUS_TONE[d.status]}>{STATUS_LABEL[d.status]}</Badge>
-          <BatteryGauge d={d} />
-        </span>
-      }
+      action={<StatusAndBattery d={d} />}
     >
       <div className="display-card-sub">
         <span className="hint-text">{d.name}</span>
