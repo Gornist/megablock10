@@ -108,6 +108,9 @@ class ValueOps(
             if (VJ.str(d.data, "owner") != "inbox:$runner") fail("wrong_owner", "${d.id} не в inbox игрока", d)
         }
         val rd = tx.get(RUNNER, runnerDocId(runner))
+        // допуск в Сеть: при settings/global.require_allowed вход только у нетраннера с флагом `allowed` (его ставит мастер)
+        val requireAllowed = tx.get(SETTINGS, "global")?.data?.let { VJ.bool(it, "require_allowed") } ?: false
+        if (requireAllowed && (rd == null || !VJ.bool(rd.data, "allowed"))) fail("session_state", "нет допуска в Сеть")
         if (rd != null && VJ.bool(rd.data, "blocked")) fail("session_state", "нетраннер заблокирован")
         if (rd != null && VJ.lng(rd.data, "re_entry_after") > clock()) fail("session_state", "пауза повторного входа после Soft ICE")
         val open = store.list(SESSION).filter { VJ.str(it.data, "state") != "closed" }

@@ -214,6 +214,41 @@ class ValueOpsTest {
         assertEquals(emptyList<Violation>(), Auditor(f.store).check())
     }
 
+    @Test fun requireAllowedLetsOnlyFlaggedRunnersIn() {
+        val f = fx()
+        // флага require_allowed нет — поведение прежнее: допуск не нужен
+        assertTrue(f.ops.submitDeck(f.test, "enter:e-a", f.keyA, "A", "t03", listOf("it_dA1", "it_dA2"), "it_dA1").ok)
+        f.store.put("settings", "global", 0, f.obj("require_allowed" to true))
+        // у игрока B документ runner есть, но без allowed: отказ, карточки возвращены в той же транзакции
+        val denied = f.ops.submitDeck(f.test, "enter:e-b", f.keyB, "B", "t04", listOf("it_dB1", "it_dB2"), "it_dB1")
+        assertEquals("session_state", denied.code)
+        assertTrue(VJ.str(denied.body, "msg")!!.contains("нет допуска"))
+        assertEquals("outbox:${f.keyB}", f.owner("it_dB1"))
+        // допуск ставит мастер: следующий вход (новые предметы и rid) проходит
+        val rid = ValueOps.runnerDocId(f.keyB)
+        val rd = f.store.get("runner", rid)!!
+        f.store.put("runner", rid, rd.ver, VJ.with(rd.data, "allowed" to VJ.p(true)))
+        f.item("it_dB3", "inbox:${f.keyB}", "phone:${f.keyB}")
+        assertTrue(f.ops.submitDeck(f.test, "enter:e-b2", f.keyB, "B", "t04", listOf("it_dB3"), "it_dB3").ok)
+    }
+
+    @Test fun requireAllowedRefusesRunnerWithoutDocument() {
+        val f = fx()
+        f.store.put("settings", "global", 0, f.obj("require_allowed" to true))
+        f.item("it_dN1", "inbox:KEY_NEW", "phone:KEY_NEW")
+        val r = f.ops.submitDeck(f.test, "enter:e-n", "KEY_NEW", "N", "t03", listOf("it_dN1"), "it_dN1")
+        assertEquals("session_state", r.code)
+        assertEquals("outbox:KEY_NEW", f.owner("it_dN1"))
+        // отказ не создаёт документ runner: допуск ставит мастер, а не вход
+        assertNull(f.store.get("runner", ValueOps.runnerDocId("KEY_NEW")))
+    }
+
+    @Test fun requireAllowedFalseKeepsOldBehaviour() {
+        val f = fx()
+        f.store.put("settings", "global", 0, f.obj("require_allowed" to false))
+        assertTrue(f.ops.submitDeck(f.test, "enter:e-a", f.keyA, "A", "t03", listOf("it_dA1", "it_dA2"), "it_dA1").ok)
+    }
+
     @Test fun abortReturnsDeckOnce() {
         val f = fx()
         val r = f.ops.submitDeck(f.test, "enter:e1", f.keyA, "A", "t03", listOf("it_dA1", "it_dA2"), "it_dA1")
