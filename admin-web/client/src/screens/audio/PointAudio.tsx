@@ -35,8 +35,27 @@ export function PointAudioBlock({
   );
 }
 
+/** Ход объявления по точкам (шаг «3 · сказать»): имя, фаза, полоска загрузки. Пусто — ничего. */
+export function AnnounceProgressList({ points }: { points: DisplayItem[] }) {
+  if (points.length === 0) return null;
+  return (
+    <ul className="sound-progress" aria-label="ход объявления">
+      {points.map((p) => {
+        const a = p.audio!.announce!;
+        return (
+          <li key={p.id}>
+            <span className="sound-progress-name">{p.name}</span>
+            <Badge tone={announceTone(a)}>{announcePhaseText(a)}</Badge>
+            {a.phase === "UPLOADING" && <UploadBar pct={a.uploadedPct} />}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 /** Полоска загрузки клипа на точку (ход объявления). */
-export function UploadBar({ pct }: { pct: number }) {
+function UploadBar({ pct }: { pct: number }) {
   return (
     <span className="sound-bar" aria-hidden>
       <span style={{ width: `${pct}%` }} />

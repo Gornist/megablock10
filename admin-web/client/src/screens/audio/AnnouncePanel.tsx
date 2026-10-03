@@ -1,22 +1,15 @@
 import { useCallback, useRef, useState } from "react";
-import { api, fetchBlob } from "../../api/client";
+import { api } from "../../api/client";
 import type { AnnounceResponse, AudioClip, DisplayGroup, DisplayItem } from "../../api/types";
 import { useAsyncAction } from "../../api/useAsyncAction";
-import { AppButton, AppDialog, AppInput, Badge, Panel } from "../../design/components";
-import { isOnline } from "../displays/displayUtil";
-import { announceActive, announcePhaseText, announceTone, formatDuration } from "./audioUtil";
-import { UploadBar } from "./PointAudio";
+import { AppButton, Panel } from "../../design/components";
+import { ClipRow, SaveClipDialog, type ClipDraft } from "./AnnounceClips";
+import { AnnounceTargets } from "./AnnounceTargets";
+import { announceActive } from "./audioUtil";
+import { AnnounceProgressList } from "./PointAudio";
+import { useAnnounceTargets } from "./useAnnounceTargets";
 import { useRecorder } from "./useRecorder";
-import { toBase64, toClipWav } from "./wavEncoder";
-
-type TargetMode = "all" | "groups" | "points";
-
-/** Готовый к сохранению клип: WAV для точек и адрес для прослушивания в браузере. */
-interface Draft {
-  wav: Uint8Array;
-  durationMs: number;
-  url: string;
-}
+import { toClipWav } from "./wavEncoder";
 
 /**
  * Громкая связь: записать объявление (или взять заготовку), выбрать, где его услышат, — и видеть по каждой точке, дошло ли и
@@ -37,12 +30,10 @@ export function AnnouncePanel({
   onAnnounced?: () => void;
 }) {
   const [clipId, setClipId] = useState<string | null>(null);
-  const [mode, setMode] = useState<TargetMode>("all");
-  const [groupIds, setGroupIds] = useState<Set<string>>(new Set());
-  const [pointIds, setPointIds] = useState<Set<string>>(new Set());
+  const t = useAnnounceTargets(points);
   const [volume, setVolume] = useState(80);
   const [chime, setChime] = useState(true);
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [draft, setDraft] = useState<ClipDraft | null>(null);
   const [last, setLast] = useState<AnnounceResponse | null>(null);
   const [prepError, setPrepError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -60,9 +51,7 @@ export function AnnouncePanel({
   const recorder = useRecorder(prepare);
 
   const selected = clips.find((c) => c.id === clipId) ?? null;
-  const groupsWithAudio = groups.filter((g) => points.some((p) => p.groupId === g.id));
-  const targets = mode === "all" ? { all: true } : mode === "groups" ? { groupIds: [...groupIds] } : { displayIds: [...pointIds] };
-  const targetCount = mode === "all" ? points.length : mode === "groups" ? points.filter((p) => p.groupId && groupIds.has(p.groupId)).length : pointIds.size;
+  const { targets, targetCount } = t;
 
   async function announce() {
     if (!selected) return;
@@ -77,13 +66,6 @@ export function AnnouncePanel({
     const res = await run(() => api.post("/api/audio/announce/stop", { targets }));
     if (res.ok) onAnnounced?.();
   }
-
-  const toggle = (set: Set<string>, id: string, apply: (s: Set<string>) => void) => {
-    const next = new Set(set);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    apply(next);
-  };
 
   // Ход — по последнему объявлению этого экрана, либо по любому, что ещё идёт (запустил другой мастер).
   const tracked = points.filter((p) => p.audio?.announce && (p.audio.announce.id === last?.id || announceActive(p.audio.announce)));
@@ -132,40 +114,7 @@ export function AnnouncePanel({
 
         <section>
           <div className="status-caps sound-step">2 · где</div>
-          <div className="sound-target-modes" role="radiogroup" aria-label="кому">
-            {(
-              [
-                ["all", `все точки (${points.length})`],
-                ["groups", "группы"],
-                ["points", "отдельные точки"],
-              ] as const
-            ).map(([m, label]) => (
-              <label key={m} className="sound-check">
-                <input type="radio" name="announce-mode" checked={mode === m} onChange={() => setMode(m)} /> {label}
-              </label>
-            ))}
-          </div>
-          {mode === "groups" && (
-            <div className="sound-checklist">
-              {groupsWithAudio.length === 0 && <span className="hint-text">в группах нет звуковых точек</span>}
-              {groupsWithAudio.map((g) => (
-                <label key={g.id} className="sound-check">
-                  <input type="checkbox" checked={groupIds.has(g.id)} onChange={() => toggle(groupIds, g.id, setGroupIds)} /> {g.name}
-                  <span className="hint-text"> · {points.filter((p) => p.groupId === g.id).length}</span>
-                </label>
-              ))}
-            </div>
-          )}
-          {mode === "points" && (
-            <div className="sound-checklist">
-              {points.map((p) => (
-                <label key={p.id} className="sound-check">
-                  <input type="checkbox" checked={pointIds.has(p.id)} onChange={() => toggle(pointIds, p.id, setPointIds)} /> {p.name}
-                  {!isOnline(p) && <span className="hint-text"> · нет связи</span>}
-                </label>
-              ))}
-            </div>
-          )}
+          <AnnounceTargets t={t} groups={groups} points={points} />
           <div className="sound-options">
             <label className="sound-check">
               громкость
@@ -201,20 +150,7 @@ export function AnnouncePanel({
                 .join(", ")}
             </p>
           )}
-          {tracked.length > 0 && (
-            <ul className="sound-progress" aria-label="ход объявления">
-              {tracked.map((p) => {
-                const a = p.audio!.announce!;
-                return (
-                  <li key={p.id}>
-                    <span className="sound-progress-name">{p.name}</span>
-                    <Badge tone={announceTone(a)}>{announcePhaseText(a)}</Badge>
-                    {a.phase === "UPLOADING" && <UploadBar pct={a.uploadedPct} />}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+          <AnnounceProgressList points={tracked} />
         </section>
       </div>
       {draft && (
@@ -233,85 +169,5 @@ export function AnnouncePanel({
         />
       )}
     </Panel>
-  );
-}
-
-function ClipRow({ clip, selected, onSelect, onChanged }: { clip: AudioClip; selected: boolean; onSelect: () => void; onChanged: () => void }) {
-  const { busy, run } = useAsyncAction({ fallbackError: "не удалось" });
-  async function play() {
-    const blob = await fetchBlob(`/api/audio/clips/${clip.id}/data`);
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    audio.onended = () => URL.revokeObjectURL(url);
-    await audio.play();
-  }
-  return (
-    <li className={`sound-clip${selected ? " selected" : ""}`}>
-      <label className="sound-check">
-        <input type="radio" name="announce-clip" checked={selected} onChange={onSelect} />
-        <span className="sound-clip-name">{clip.name}</span>
-        <span className="hint-text mono">{formatDuration(clip.durationMs)}</span>
-        {clip.preset && <Badge tone="info">заготовка</Badge>}
-      </label>
-      <span className="sound-clip-actions">
-        <button type="button" className="icon-button" title="прослушать" onClick={() => void play()}>
-          ▶
-        </button>
-        <button
-          type="button"
-          className="icon-button"
-          title={clip.preset ? "убрать из заготовок" : "в заготовки"}
-          disabled={busy}
-          onClick={async () => {
-            const r = await run(() => api.put(`/api/audio/clips/${clip.id}`, { preset: !clip.preset }));
-            if (r.ok) onChanged();
-          }}
-        >
-          {clip.preset ? "★" : "☆"}
-        </button>
-        <button
-          type="button"
-          className="icon-button"
-          title="удалить"
-          disabled={busy}
-          onClick={async () => {
-            const r = await run(() => api.delete(`/api/audio/clips/${clip.id}`));
-            if (r.ok) onChanged();
-          }}
-        >
-          ✕
-        </button>
-      </span>
-    </li>
-  );
-}
-
-function SaveClipDialog({ draft, onCancel, onSaved }: { draft: Draft; onCancel: () => void; onSaved: (c: AudioClip) => void }) {
-  const [name, setName] = useState("");
-  const [preset, setPreset] = useState(false);
-  const { busy, error, run } = useAsyncAction({ fallbackError: "не удалось сохранить клип" });
-  async function save() {
-    const r = await run(() => api.post<AudioClip>("/api/audio/clips", { name: name.trim(), data: toBase64(draft.wav), preset }));
-    if (r.ok) onSaved(r.value);
-  }
-  return (
-    <AppDialog
-      title="Новое объявление"
-      body={`${formatDuration(draft.durationMs)} · ${Math.ceil(draft.wav.length / 1024)} КБ — столько уйдёт на каждую точку`}
-      confirmText={busy ? "Сохраняю…" : "Сохранить"}
-      confirmDisabled={busy || !name.trim()}
-      onConfirm={save}
-      onCancel={onCancel}
-    >
-      <div className="master-form">
-        <audio controls src={draft.url} className="sound-draft-player" />
-        <label className="status-caps">Название</label>
-        <AppInput autoFocus value={name} maxLength={80} onChange={(e) => setName(e.target.value)} placeholder="Игра началась" />
-        <label className="sound-check">
-          <input type="checkbox" checked={preset} onChange={(e) => setPreset(e.target.checked)} /> заготовка — держать вверху списка
-        </label>
-        {error && <div className="login-error">{error}</div>}
-      </div>
-    </AppDialog>
   );
 }
