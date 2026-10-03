@@ -42,7 +42,7 @@ HEX = {
     "amber": "#ff7a1a",       # экран деки
 }
 TIERS = {"BASE": "cyan", "HARD": "blue", "NIGHTMARE": "violet"}
-ROLES = ("glow_edge", "shell_soft", "points", "solid_dark")
+ROLES = ("glow_edge", "shell_soft", "points", "streaks", "solid_dark")
 
 
 def lin(name):
@@ -264,6 +264,35 @@ def point_cloud(name, points, rgb, half_size=0.01, seed=1, a_min=0.4, a_max=1.0,
     return ob
 
 
+def streak_set(name, streaks, rgb):
+    """Штрихи — основной примитив (STYLE.md): [(центр Vector, полуширина, полувысота, яркость)]. Один квадрат на штрих, в плоскости XZ.
+    Для штриха от пола: центр.z = полувысота. UV0 — углы, UV1 = (w, 1-h): экспортёр glTF переворачивает V у всех развёрток, в файле
+    получится (w, h), то есть в шейдере UV2 = (полуширина, полувысота)."""
+    bm = bmesh.new()
+    uv0 = bm.loops.layers.uv.new("UV0")
+    uv1 = bm.loops.layers.uv.new("UV1")
+    cols = []
+    for c, w, h, a in streaks:
+        c = Vector(c)
+        vs = [bm.verts.new(c + Vector(d)) for d in ((-w, 0, -h), (w, 0, -h), (w, 0, h), (-w, 0, h))]
+        f = bm.faces.new(vs)
+        for loop, uv in zip(f.loops, ((0, 0), (1, 0), (1, 1), (0, 1))):
+            loop[uv0].uv = uv
+            loop[uv1].uv = (w, 1.0 - h)
+        cols.append(a)
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    ob = bpy.data.objects.new(name, me)
+    bpy.context.collection.objects.link(ob)
+    me.materials.append(material("streaks"))
+    attr = me.color_attributes.new("Color", "FLOAT_COLOR", "POINT")
+    for i, v in enumerate(me.vertices):
+        attr.data[i].color = (*rgb, cols[i // 4])
+    me.color_attributes.active_color = attr
+    return ob
+
+
 # ---------------------------------------------------------------- экспорт и отчёт
 
 def args():
@@ -274,7 +303,7 @@ def args():
     return out
 
 
-def export(name, group, objs, out_root, budget_tris, budget_points=0, origin="floor", animations=False, notes=""):
+def export(name, group, objs, out_root, budget_tris, budget_points=0, origin="floor", animations=False, notes="", budget_streaks=0):
     """Записать models/<group>/<name>.glb и reports/<name>.json (числа берём из самого .glb)."""
     path = os.path.join(out_root, "models", group, f"{name}.glb")
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -291,7 +320,7 @@ def export(name, group, objs, out_root, budget_tris, budget_points=0, origin="fl
     s = glbinfo.summary(info)
     report = {
         "name": name, "group": group, "file": f"models/{group}/{name}.glb", "origin": origin,
-        "budget_tris": budget_tris, "budget_points": budget_points, **s,
+        "budget_tris": budget_tris, "budget_points": budget_points, "budget_streaks": budget_streaks, **s,
         "size": info["size"], "bbox_min": info["bbox_min"], "bbox_max": info["bbox_max"],
         "materials": info["materials"], "animations": info["animations"],
         "moved_nodes": info["moved_nodes"], "notes": notes,
@@ -299,5 +328,5 @@ def export(name, group, objs, out_root, budget_tris, budget_points=0, origin="fl
     rp = os.path.join(out_root, "reports", f"{name}.json")
     os.makedirs(os.path.dirname(rp), exist_ok=True)
     json.dump(report, open(rp, "w"), ensure_ascii=False, indent=1)
-    print("EXPORT", json.dumps({k: report[k] for k in ("name", "tris", "points", "layers", "size")}, ensure_ascii=False))
+    print("EXPORT", json.dumps({k: report[k] for k in ("name", "tris", "points", "streaks", "layers", "size")}, ensure_ascii=False))
     return report

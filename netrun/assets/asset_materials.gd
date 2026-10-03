@@ -1,6 +1,6 @@
 class_name AssetMaterials
 extends RefCounted
-## Подмена материалов импортированного ассета «Сети» по имени роли (shell_soft, glow_edge, points, solid_dark)
+## Подмена материалов импортированного ассета «Сети» по имени роли (shell_soft, points, streaks, solid_dark; glow_edge — устаревшая)
 ## на ShaderMaterial из `res://assets/shaders/`. .glb аддитивное смешивание и шейдеры не переносит,
 ## поэтому ассет приходит с материалами-ролями, а вид задают эти шейдеры (STYLE.md, «Что отдаёт Blender, что делает Godot»).
 ## Подмена идёт на экземпляре (set_surface_override_material): импортированный меш не меняется.
@@ -9,6 +9,7 @@ const SHADERS := {
 	"shell_soft": preload("res://assets/shaders/shell_soft.gdshader"),
 	"glow_edge": preload("res://assets/shaders/glow_edge.gdshader"),
 	"points": preload("res://assets/shaders/points.gdshader"),
+	"streaks": preload("res://assets/shaders/streaks.gdshader"),
 	"solid_dark": preload("res://assets/shaders/solid_dark.gdshader"),
 }
 
@@ -63,3 +64,15 @@ static func set_distance_fade(root: Node, start: float, end: float) -> void:
 			if m != null:
 				m.set_shader_parameter("fade_start", start)
 				m.set_shader_parameter("fade_end", end)
+
+
+## Общая яркость ассета (множитель): так делается отражение в полу (зеркальная копия с intensity ≈ 0.2).
+static func set_intensity(root: Node, value: float) -> void:
+	for n in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		for s in mi.mesh.get_surface_count():
+			var m := mi.get_surface_override_material(s) as ShaderMaterial
+			if m != null:
+				m.set_shader_parameter("intensity", value)

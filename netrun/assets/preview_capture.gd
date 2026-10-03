@@ -8,6 +8,7 @@ const BG := Color(0.004, 0.008, 0.016)
 
 ## Комната 6×6 м из модулей 2×2 м: пол 3×3, стены по периметру, колонны в углах, вход с юга (z=+3), выход на север (z=-3),
 ## в центре шард, у выхода ICE. Предмет: [путь, позиция, поворот Y (°), тир, масштаб].
+const REFLECT := ["env/wall", "env/doorway", "env/pillar", "ice/soft_ice"]
 const ICE_POS := Vector3(0.75, 0.0, -2.0)
 
 
@@ -30,9 +31,6 @@ func _room() -> Array:
 	items.append(["env/pillar", Vector3(0.0, 0, 0.0), 0.0, "BASE", 0.4])  # подставка: колонна ×0.4, высота ≈ 0,9 м
 	items.append(["props/shard", Vector3(0.0, 1.2, 0.0), 0.0, "", 3.5])  # ×3,5: на 6 м шард в 8 см иначе не разглядеть
 	items.append(["ice/soft_ice", ICE_POS, 15.0, "", 1.0])
-	items.append(["env/dust", Vector3(0.0, 1.5, 0.5), 0.0, "", 1.7])
-	items.append(["env/dust", Vector3(0.0, 1.5, 7.0), 0.0, "", 2.2])
-	items.append(["env/dust", Vector3(0.0, 1.6, -8.0), 0.0, "", 2.6])
 	items.append(["env/wall", Vector3(-6.0, 0, -14.0), 0.0, "HARD", 4.0])
 	items.append(["env/wall", Vector3(7.0, 0, -19.0), 0.0, "HARD", 5.0])
 	return items
@@ -76,10 +74,12 @@ func _ready() -> void:
 			inst.rotation_degrees.y = it[2]
 			inst.scale = Vector3.ONE * it[4]
 			root.add_child(inst)
-			AM.apply(inst, it[3])
-			AM.set_distance_fade(inst, shot["fade"][0], shot["fade"][1])
-			if String(it[0]).begins_with("env/") and it[0] != "env/dust":
-				AM.set_corruption(inst, shot["corrupt"][0], shot["corrupt"][1])
+			_setup(inst, it, shot, 1.0)
+			if String(it[0]) in REFLECT:  # отражение в полу: зеркальная копия, тусклая (в референсе Blackwall пол — мутное зеркало)
+				var mir: Node3D = scene.instantiate()
+				mir.transform = Transform3D(Basis.from_scale(Vector3(1, -1, 1)), Vector3.ZERO) * inst.transform
+				root.add_child(mir)
+				_setup(mir, it, shot, 0.18)
 		cam.fov = shot["fov"]
 		cam.look_at_from_position(shot["cam"], shot["look"])
 		await get_tree().create_timer(0.6).timeout
@@ -90,3 +90,12 @@ func _ready() -> void:
 		root.queue_free()
 		await get_tree().process_frame
 	get_tree().quit()
+
+
+func _setup(inst: Node3D, it: Array, shot: Dictionary, intensity: float) -> void:
+	AM.apply(inst, it[3])
+	AM.set_distance_fade(inst, shot["fade"][0], shot["fade"][1])
+	if String(it[0]).begins_with("env/"):
+		AM.set_corruption(inst, shot["corrupt"][0], shot["corrupt"][1])
+	if intensity != 1.0:
+		AM.set_intensity(inst, intensity)

@@ -1,11 +1,17 @@
-// Светящиеся рёбра и контуры: аддитивные, без освещения, без записи глубины. Яркость — из A цвета вершин.
+// Штрих: вертикальная светящаяся чёрточка (основной примитив стиля, по референсам Blackwall): мягкий поперечный профиль,
+// затухание к концам, «бусины» вдоль длины. Один квадрат (2 треугольника) заменяет цепочку из десятков точек.
+// Контракт с lib.py: квадрат в плоскости XZ Blender (в Godot XY) с центром c, полуширина w, полувысота h; UV0 — углы,
+// UV1 = (w, h). Вертикаль — мировая ось Y, к камере разворачивается только по горизонтали (цилиндрический биллборд).
 shader_type spatial;
 render_mode blend_add, unshaded, depth_draw_never, cull_disabled, fog_disabled;
 
-uniform float glow : hint_range(0.0, 6.0) = 1.1;
+uniform float glow : hint_range(0.0, 6.0) = 1.6;
+uniform float bead_freq : hint_range(0.0, 60.0) = 14.0;   // бусин на метр
+uniform float bead_depth : hint_range(0.0, 1.0) = 0.35;
+uniform float end_fade : hint_range(0.05, 1.0) = 0.35;
+uniform float edge_sharp : hint_range(1.0, 12.0) = 5.0;   // больше — тоньше ядро
 uniform vec4 tint : source_color = vec4(1.0);
 uniform float tint_amount : hint_range(0.0, 1.0) = 0.0;
-
 // Corruption: красный «шрам» в радиусе от точки (мировые координаты): цвет уходит в corrupt_color, часть клеток пропадает.
 // Дискретные клетки по сетке, без анимации: комфорт в VR (никаких вспышек). Выключено при corrupt_radius = 0.
 uniform vec3 corrupt_pos = vec3(0.0);
@@ -42,13 +48,32 @@ float dist_fade() {
 	return 1.0 - smoothstep(fade_start, fade_end, v_dist);
 }
 
+
+varying float v_wy;
+varying vec2 v_q;
+
 void vertex() {
-	v_wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	v_dist = -(MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).z;
+	float w = UV2.x;
+	float h = UV2.y;
+	float s = length(MODEL_MATRIX[0].xyz);
+	vec3 c = VERTEX - vec3((UV.x - 0.5) * 2.0 * w, (0.5 - UV.y) * 2.0 * h, 0.0);
+	vec3 wc = (MODEL_MATRIX * vec4(c, 1.0)).xyz;
+	vec3 to_cam = CAMERA_POSITION_WORLD - wc;
+	to_cam.y = 0.0;
+	vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), to_cam + vec3(0.00001, 0.0, 0.0)));
+	vec3 wp = wc + right * (UV.x - 0.5) * 2.0 * w * s + vec3(0.0, 1.0, 0.0) * (0.5 - UV.y) * 2.0 * h * s;
+	v_wp = wc;
+	v_wy = wp.y;
+	v_dist = -(VIEW_MATRIX * vec4(wp, 1.0)).z;
+	v_q = vec2((UV.x - 0.5) * 2.0, (0.5 - UV.y) * 2.0);
+	POSITION = PROJECTION_MATRIX * VIEW_MATRIX * vec4(wp, 1.0);
 }
 
 void fragment() {
+	float across = exp(-v_q.x * v_q.x * edge_sharp);
+	float along = smoothstep(1.0, 1.0 - end_fade, abs(v_q.y));
+	float bead = 1.0 - bead_depth + bead_depth * step(0.5, fract(v_wy * bead_freq));
 	float k = corrupt_k();
 	ALBEDO = mix(mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount), corrupt_color.rgb, corrupt_mask(k)) * glow;
-	ALPHA = COLOR.a * corrupt_hole(corrupt_mask(k)) * dist_fade() * intensity;
+	ALPHA = COLOR.a * across * along * bead * corrupt_hole(corrupt_mask(k)) * dist_fade() * intensity;
 }

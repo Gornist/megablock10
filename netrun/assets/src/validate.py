@@ -17,7 +17,7 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 import glbinfo  # noqa: E402
 
-ROLES = {"glow_edge", "shell_soft", "points", "solid_dark"}
+ROLES = {"glow_edge", "shell_soft", "points", "streaks", "solid_dark"}
 MAX_LAYERS = 3  # вложенных прозрачных оболочек на один ассет (STYLE.md)
 MAX_DRAWS = 8   # примитивов (≈ вызовов отрисовки) на ассет; предварительно, уточнить замером
 
@@ -33,6 +33,8 @@ def check(rep):
         bad.append(f"треугольников {s['tris']} > {rep['budget_tris']}")
     if s["points"] > rep.get("budget_points", 0):
         bad.append(f"точек {s['points']} > {rep.get('budget_points', 0)}")
+    if s["streaks"] > rep.get("budget_streaks", 0):
+        bad.append(f"штрихов {s['streaks']} > {rep.get('budget_streaks', 0)}")
     if s["layers"] > MAX_LAYERS:
         bad.append(f"слоёв прозрачности {s['layers']} > {MAX_LAYERS}")
     mats = set(info["materials"])
@@ -46,7 +48,7 @@ def check(rep):
     if info["moved_nodes"]:
         bad.append(f"узлов с трансформацией: {info['moved_nodes']} (применить трансформации)")
     for p in info["prims"]:
-        need = {"COLOR_0", "NORMAL"} | ({"TEXCOORD_1"} if p["material"] == "points" else set())
+        need = {"COLOR_0", "NORMAL"} | ({"TEXCOORD_1"} if p["material"] in ("points", "streaks") else set())
         if not need <= set(p["attrs"]):
             bad.append(f"{p['mesh']}: нет атрибутов {sorted(need - set(p['attrs']))}")
     lo, hi, size = info["bbox_min"], info["bbox_max"], info["size"]
@@ -85,14 +87,14 @@ def main():
             "# Манифест ассетов «Сети»", "",
             "Собирается `src/validate.py --manifest`, руками не править. Числа взяты из самих `.glb`.",
             "Частота кадров на Pico 4 **не проверена** (нет устройства).", "",
-            "| Файл | Треуг. / бюджет | Точек / бюджет | Слоёв | Вызовов | Размер, м (x, y, z) | Материалы | Анимации | Origin | Статус |",
-            "|---|---|---|---|---|---|---|---|---|---|",
+            "| Файл | Треуг. / бюджет | Точек / бюджет | Штрихов / бюджет | Слоёв | Вызовов | Размер, м (x, y, z) | Материалы | Анимации | Origin | Статус |",
+            "|---|---|---|---|---|---|---|---|---|---|---|",
         ]
         for rep, m, bad in rows:
             if not m:
                 continue
             lines.append(
-                f"| `{rep['file']}` | {m['tris']} / {rep['budget_tris']} | {m['points']} / {rep.get('budget_points', 0)} | "
+                f"| `{rep['file']}` | {m['tris']} / {rep['budget_tris']} | {m['points']} / {rep.get('budget_points', 0)} | {m['streaks']} / {rep.get('budget_streaks', 0)} | "
                 f"{m['layers']} | {m['draws']} | {' × '.join(str(x) for x in m['size'])} | {', '.join(m['materials'])} | "
                 f"{', '.join(m['animations']) or '—'} | {rep['origin']} | {'ошибки: ' + '; '.join(bad) if bad else 'ок'} |"
             )

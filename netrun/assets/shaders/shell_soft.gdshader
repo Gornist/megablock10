@@ -17,6 +17,7 @@ uniform vec4 corrupt_color : source_color = vec4(1.0, 0.12, 0.24, 1.0);
 // Затухание по расстоянию до камеры (замена depth-fade: буфер глубины не читаем, на мобильном дорого).
 uniform float fade_start = 60.0;
 uniform float fade_end = 90.0;
+uniform float intensity = 1.0; // общий множитель яркости (отражение в полу = 0.2)
 
 varying vec3 v_wp;
 varying float v_dist;
@@ -25,9 +26,9 @@ float corrupt_k() {
 	return corrupt_radius > 0.0 ? 1.0 - smoothstep(corrupt_radius * 0.12, corrupt_radius, distance(v_wp, corrupt_pos)) : 0.0;
 }
 float cell_hash(float salt) {
-	return fract(sin(dot(floor(v_wp * 9.0) + salt, vec3(12.9, 78.2, 37.7))) * 43758.5);
+	return fract(sin(dot(floor(v_wp * vec3(2.5, 16.0, 2.5)) + salt, vec3(12.9, 78.2, 37.7))) * 43758.5);
 }
-// Порча по клеткам: клетка либо цвета ассета, либо corrupt_color (вероятность растёт к центру), без серого посередине.
+// Порча горизонтальными полосами (глитч, как в референсе Blackwall): полоса либо цвета ассета, либо corrupt_color, без серого посередине.
 float corrupt_mask(float k) {
 	return step(cell_hash(0.0), k);
 }
@@ -54,5 +55,5 @@ void fragment() {
 	float k = corrupt_k();
 	vec3 base = mix(mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount), corrupt_color.rgb, corrupt_mask(k));
 	ALBEDO = base * glow;
-	ALPHA = COLOR.a * mix(center_alpha, 1.0, f) * corrupt_hole(corrupt_mask(k)) * dist_fade();
+	ALPHA = COLOR.a * mix(center_alpha, 1.0, f) * corrupt_hole(corrupt_mask(k)) * dist_fade() * intensity;
 }

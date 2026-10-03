@@ -49,11 +49,12 @@ def parse(path):
 
 
 def summary(info):
-    """Сводка по ролям материалов: треугольники и точки (квадрат точки = 4 вершины)."""
-    tris = sum(p["tris"] for p in info["prims"] if p["material"] != "points")
+    """Сводка по ролям материалов: треугольники, точки и штрихи (квадрат точки или штриха = 4 вершины, 2 треугольника)."""
+    tris = sum(p["tris"] for p in info["prims"] if p["material"] not in ("points", "streaks"))
     points = sum(p["verts"] // 4 for p in info["prims"] if p["material"] == "points")
+    streaks = sum(p["verts"] // 4 for p in info["prims"] if p["material"] == "streaks")
     layers = sum(1 for p in info["prims"] if p["material"] == "shell_soft")
-    return {"tris": tris, "points": points, "layers": layers}
+    return {"tris": tris, "points": points, "streaks": streaks, "layers": layers}
 
 
 if __name__ == "__main__":
