@@ -78,6 +78,10 @@ d = {"settings": {"global": {"auditor_period_s": 5, "soft_ice_reentry_pause_s": 
               "node_cold": {"title": "Холодный узел", "tier": "STANDARD", "tutorial": False, "lockdown_until": far, "eddies": 0}},
      "node_cfg": {"node_07": {"goal": {"kind": "open", "value": 0, "deadline": far, "set_at": 1, "done": False, "result": None}}},
      "terminal": {}, "runner": {}, "session": {}, "deck": {}, "item": {}}
+for n in range(1, 13):  # граф data/graph.json — 12 узлов; run.finish в узле без документа Моста даёт not_found
+    nid = "node_%02d" % n
+    if nid not in d["node"]:
+        d["node"][nid] = {"title": nid, "tier": "STANDARD", "tutorial": False, "lockdown_until": 0, "eddies": 0}
 d["item"]["it_soak_shard00000"] = {"owner": "node:node_07", "kind": "SHARD", "payload": "shard-soak", "protected": False,
     "origin": "node:node_07", "in_transfer": None, "out_transfer": None, "handover": None}
 for b in range(1, bots + 1):
