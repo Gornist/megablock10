@@ -20,9 +20,22 @@ const TIER_TINT := {
 	"NIGHTMARE": Color("8a5cff"),
 }
 
+## Решётка «объёмного дисплея» (решение владельца по эксперименту): сущности (аватар, ICE) выводятся на мировой решётке 4 см, мир не квантуется,
+## иначе он теряет вариативность. Шаг 10 см ломает силуэт аватара. Определяется по пути сцены ассета.
+const ENTITY_LATTICE := 0.04
+const ENTITY_DIRS := ["/avatar/", "/ice/"]
+
+
+static func _is_entity(root: Node) -> bool:
+	for d in ENTITY_DIRS:
+		if root.scene_file_path.contains(d):
+			return true
+	return false
+
 
 ## tier — "BASE"/"HARD"/"NIGHTMARE" для окружения (перекрашивает свечение); пусто — цвета из вершин (ICE, аватар, дека).
 static func apply(root: Node, tier: String = "") -> void:
+	var entity := _is_entity(root)
 	for n in root.find_children("*", "MeshInstance3D", true, false):
 		var mi := n as MeshInstance3D
 		if mi.mesh == null:
@@ -36,6 +49,8 @@ static func apply(root: Node, tier: String = "") -> void:
 			if tier != "" and TIER_TINT.has(tier):
 				m.set_shader_parameter("tint", TIER_TINT[tier])
 				m.set_shader_parameter("tint_amount", 1.0)
+			if entity and (src.resource_name == "streaks" or src.resource_name == "points"):
+				m.set_shader_parameter("lattice", ENTITY_LATTICE)
 			if String(mi.name).ends_with("_hang"):  # подвесные штрихи (под полом): длина меняется от верхнего конца
 				m.set_shader_parameter("anchor", 1.0)
 			mi.set_surface_override_material(s, m)
