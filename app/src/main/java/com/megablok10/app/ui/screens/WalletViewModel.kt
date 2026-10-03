@@ -15,12 +15,34 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 data class WalletUiState(
     val balance: Long = 0,
     val transactions: List<TransactionEntity> = emptyList(),
     val contacts: ContactsView = ContactsView(),
 )
+
+/** Итог проверки суммы в форме перевода. */
+sealed interface AmountCheck {
+    /** Поле пустое: подсказки нет, «Отправить» неактивна. */
+    data object Empty : AmountCheck
+
+    data class Valid(val amount: Long) : AmountCheck
+
+    /** Не число, ноль или отрицательная сумма. */
+    data object NotPositive : AmountCheck
+
+    data object ExceedsBalance : AmountCheck
+
+    /** Подсказка под полем суммы; null — ошибки нет. */
+    val errorText: String?
+        get() = when (this) {
+            ExceedsBalance -> "недостаточно средств"
+            NotPositive -> "введите сумму больше нуля"
+            Empty, is Valid -> null
+        }
+}
 
 /**
  * «Финансы»: баланс, операции, перевод игроку (сценарий SendPayment) и отмена недоставленного. Перевод идёт в [work] (скоуп процесса):
@@ -36,6 +58,20 @@ class WalletViewModel(
 ) : ViewModel() {
     val state: StateFlow<WalletUiState> = combine(ledger.observeBalance(), ledger.observeAll(), directory.view, ::WalletUiState)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_MS), WalletUiState())
+
+    /** Проверка введённой суммы против баланса [balance] — форма не решает сама, можно ли отправлять. */
+    fun validate(amountText: String, balance: Long): AmountCheck {
+        if (amountText.isEmpty()) return AmountCheck.Empty
+        val amount = amountText.toLongOrNull()
+        return when {
+            amount == null || amount <= 0 -> AmountCheck.NotPositive
+            amount > balance -> AmountCheck.ExceedsBalance
+            else -> AmountCheck.Valid(amount)
+        }
+    }
+
+    /** Идентификатор нового перевода: по нему форма следит за статусом именно этого платежа. */
+    fun newPaymentId(): String = UUID.randomUUID().toString()
 
     /** [id] задаёт форма: по нему она показывает статус именно этого перевода. */
     fun send(toPubKeyB64: String, id: String, amount: Long, memo: String) {
