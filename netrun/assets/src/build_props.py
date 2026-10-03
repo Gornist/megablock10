@@ -1,4 +1,4 @@
-"""Предметы «Сети»: хранилище, шард, мёртвая дека, портал, датчик, кресло. По одному телу (графит) и одному неону.
+"""Предметы «Сети»: хранилище, шард, мёртвая дека, портал (и закрытый портал), датчик, кресло. По одному телу (графит) и одному неону.
 
 Запуск: blender -b -P netrun/assets/src/build_props.py   (на devbox; результат — netrun/assets/models/props/*.glb)
 
@@ -95,17 +95,23 @@ def dead_deck(m):
 
 
 # --- портал ----------------------------------------------------------------------------------------------------------
-def portal(m):
+def portal(m, locked=False):
     """Арка 3,4 x 3,0 м с площадкой радиусом 1,5 м (радиус прохода из graph.json): игрок стоит на площадке, арка в плоскости XY,
-    лицо +Z, проходить в -Z. Шевроны на площадке указывают к арке."""
+    лицо +Z, проходить в -Z. Шевроны на площадке указывают к арке.
+    locked — «закрыт» (пока за нетраннером охотится Black ICE): та же арка и площадка, неон красный, проём перекрыт решёткой из
+    красных прутьев и тёмных перекладин, вместо шевронов на площадке крест. Решётка только для глаз — проход закрывает сервер."""
     p = Part("Mesh", m)
     p.frustum(0, 0, 0, 0.06, 1.5, 1.44, 24, B, 0.0, caps="top")
     p.ring((0, 0.06, 0), 1.28, 1.38, 24, Y, N)
     p.ring((0, 0.06, 0), 0.55, 0.62, 24, Y, N)
-    for z in (0.95, 1.2):
-        for sx in (-1, 1):
-            u = Vector((-sx * 0.28, 0, -0.2))
-            p.strip((sx * 0.14, 0.06, z), 0.35, 0.07, u, Y, N)
+    if locked:
+        for sgn in (-1, 1):
+            p.strip((0, 0.06, 0), 0.98, 0.11, Vector((1, 0, sgn)), Y, N, tip=0.05)
+    else:
+        for z in (0.95, 1.2):
+            for sx in (-1, 1):
+                u = Vector((-sx * 0.28, 0, -0.2))
+                p.strip((sx * 0.14, 0.06, z), 0.35, 0.07, u, Y, N)
     c = Vector((0, 1.3, 0))
     for r_in, r_out, hd, mat in ((1.5, 1.7, 0.12, B), (1.475, 1.5, 0.05, N)):
         rings = []
@@ -119,6 +125,14 @@ def portal(m):
         p.box((sx * 1.6, 0.75, 0), (0.2, 1.1, 0.24), B, 0.02, "vert")         # стойка
         p.box((sx * 1.4875, 0.75, 0), (0.025, 1.1, 0.1), N)                   # неон внутри стойки
     p.disc((0, 2.9, 0.12), 0.06, 8, Z, N, rot=R22)                            # замковый камень
+    if locked:
+        for i in range(-4, 5):                                                # прутья по высоте проёма
+            x = 0.3 * i
+            top = 1.3 + math.sqrt(1.475 ** 2 - x ** 2) - 0.03
+            p.box((x, (0.06 + top) / 2, 0), (0.07, top - 0.06, 0.06), N)
+        for y in (0.55, 1.25, 1.95):                                          # перекладины
+            half = 1.48 if y <= 1.3 else math.sqrt(1.475 ** 2 - (y - 1.3) ** 2)
+            p.box((0, y, 0), (2 * half, 0.07, 0.07), B)
     return [p.build()]
 
 
@@ -170,6 +184,7 @@ def main():
         ("vault_closed", lambda m: vault(m, False), palette.WARN, palette.NEON_PROP),
         ("vault_open", lambda m: vault(m, True), palette.OK, palette.NEON_PROP),
         ("portal", portal, palette.ACC, palette.NEON_PROP),
+        ("portal_locked", lambda m: portal(m, True), palette.BAD, palette.NEON_PROP),
         ("sensor", sensor, palette.BAD, palette.NEON_PROP),
         ("seat", seat, palette.ACC, palette.NEON_PROP),
         ("dead_deck", dead_deck, palette.CHROME, 1.0),
