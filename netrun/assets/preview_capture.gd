@@ -62,6 +62,10 @@ var out_dir := "/tmp/shots"
 
 var _movie := false
 var _static := false
+var _fps := false
+var _ft: Array = []  # времена кадров, мс (после прогрева)
+var _gpu: Array = []  # время кадра на видеокарте, мс
+var _cpu: Array = []  # время подготовки кадра на процессоре, мс
 var _static_cam := PackedFloat64Array([0.0, 1.25, 6.4, 0.0, 1.0, -2.0])  # x,y,z камеры и x,y,z точки взгляда; --cam=… переопределяет
 var _t := 0.0
 var _cam: Camera3D
@@ -76,6 +80,8 @@ func _ready() -> void:
 			_movie = true
 		if a.begins_with("--cam="):
 			_static_cam = PackedFloat64Array(Array(a.trim_prefix("--cam=").split(",")).map(func(v): return float(v)))
+		if a == "--fps":  # замер: 6 с без записи видео, печатает средний fps, худшие кадры и число вызовов отрисовки
+			_fps = true
 		if a == "--static":  # камера неподвижна: нужно, чтобы по разнице кадров проверять движение штрихов
 			_static = true
 	DirAccess.make_dir_recursive_absolute(out_dir)
@@ -86,6 +92,8 @@ func _ready() -> void:
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
+	if _fps:
+		RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	_cam = Camera3D.new()
 	_cam.fov = 75.0
 	add_child(_cam)
@@ -137,6 +145,31 @@ func _build(shot: Dictionary, root: Node) -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
+	if _fps and _t > 1.0:
+		_ft.append(delta * 1000.0)
+		_gpu.append(RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid()))
+		_cpu.append(RenderingServer.viewport_get_measured_render_time_cpu(get_viewport().get_viewport_rid()))
+		if _t > 7.0:
+			_ft.sort()
+			var sum := 0.0
+			for f in _ft:
+				sum += f
+			var avg: float = sum / _ft.size()
+			var info := func(k): return RenderingServer.get_rendering_info(k)
+			_gpu.sort()
+			_cpu.sort()
+			var ga := 0.0
+			var ca := 0.0
+			for g in _gpu:
+				ga += g
+			for c in _cpu:
+				ca += c
+			print("GPU мс: avg=%.2f p95=%.2f max=%.2f | CPU мс: avg=%.2f p95=%.2f max=%.2f" % [ga / _gpu.size(), _gpu[int(_gpu.size() * 0.95)], _gpu[-1], ca / _cpu.size(), _cpu[int(_cpu.size() * 0.95)], _cpu[-1]])
+			print("FPS avg=%.1f  p95=%.2f мс  p99=%.2f мс  max=%.2f мс  кадров=%d  вызовов отрисовки=%d  примитивов=%d  объектов=%d  окно=%s" % [
+				1000.0 / avg, _ft[int(_ft.size() * 0.95)], _ft[int(_ft.size() * 0.99)], _ft[-1], _ft.size(),
+				info.call(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME), info.call(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME),
+				info.call(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME), str(get_window().size)])
+			get_tree().quit()
 	if _static:
 		_cam.look_at_from_position(Vector3(_static_cam[0], _static_cam[1], _static_cam[2]), Vector3(_static_cam[3], _static_cam[4], _static_cam[5]))
 		return
