@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { DisplayItem, DisplaySecretResponse, DisplayStatus } from "../api/types";
+import type { DisplayItem, DisplayStatus } from "../api/types";
 import { AsyncPanel } from "../design/AsyncPanel";
 import { AppButton, AppInput, AppSelect, Badge, Panel } from "../design/components";
 import { DataTable, type Column } from "../design/DataTable";
@@ -7,9 +7,9 @@ import { navigate } from "../router";
 import { BatteryGauge } from "./displays/BatteryGauge";
 import { DeviceDetail } from "./displays/DeviceDetail";
 import { DeviceStats } from "./displays/DeviceStats";
-import { DisplayForm, SecretPanel } from "./displays/DisplayForm";
 import { byBatteryFirst, STATUS_LABEL, STATUS_TONE } from "./displays/displayUtil";
 import { useDeviceData } from "./displays/useDeviceData";
+import { useDeviceEditor } from "./displays/useDeviceEditor";
 
 const STATUS_FILTERS: { value: DisplayStatus | ""; label: string }[] = [
   { value: "", label: "любая связь" },
@@ -27,13 +27,13 @@ const STATUS_FILTERS: { value: DisplayStatus | ""; label: string }[] = [
  * что и на «Локациях»/«Узлах».
  */
 export function DevicesScreen({ deviceId }: { deviceId?: string }) {
-  const { displays, error, groups, channels, namedNodes, nodeName, takenNodes, reload, reloadAll } = useDeviceData();
+  const data = useDeviceData();
+  const { displays, error, groups, nodeName } = data;
+  const editor = useDeviceEditor(data);
   const [status, setStatus] = useState<DisplayStatus | "">("");
   const [groupId, setGroupId] = useState("");
   const [audioOnly, setAudioOnly] = useState(false);
   const [search, setSearch] = useState("");
-  const [form, setForm] = useState<{ edit?: DisplayItem } | null>(null);
-  const [secret, setSecret] = useState<DisplaySecretResponse | null>(null);
 
   const groupName = new Map(groups.map((g) => [g.id, g.name]));
 
@@ -66,41 +66,11 @@ export function DevicesScreen({ deviceId }: { deviceId?: string }) {
         Локация (фон площадки) и узел (что показывает точка в мире) — на своих экранах, «Локации» и «Узлы».
       </p>
       <DeviceStats displays={displays ?? []} />
-      {secret && <SecretPanel result={secret} onClose={() => setSecret(null)} />}
-      {form && (
-        <DisplayForm
-          key={form.edit?.id ?? "new"}
-          editing={form.edit}
-          groups={groups}
-          nodes={namedNodes}
-          takenNodes={takenNodes}
-          onCreated={(r) => {
-            setForm(null);
-            setSecret(r);
-            reloadAll();
-          }}
-          onSaved={() => {
-            setForm(null);
-            reloadAll();
-          }}
-          onCancel={() => setForm(null)}
-        />
-      )}
+      {editor.secretPanel}
+      {editor.formPanel}
       {device && (
         <Panel title={`Устройство «${device.name}»`} action={<AppButton onClick={() => navigate("devices")}>закрыть</AppButton>}>
-          <DeviceDetail
-            display={device}
-            groups={groups}
-            channels={channels}
-            nodes={namedNodes}
-            takenNodes={takenNodes}
-            onChanged={reloadAll}
-            onEdit={() => setForm({ edit: device })}
-            onSecret={(r) => {
-              setSecret(r);
-              reload();
-            }}
-          />
+          <DeviceDetail display={device} {...editor.detailProps(device)} />
         </Panel>
       )}
       <Panel
@@ -126,7 +96,7 @@ export function DevicesScreen({ deviceId }: { deviceId?: string }) {
             <label className="sound-check">
               <input type="checkbox" checked={audioOnly} onChange={(e) => setAudioOnly(e.target.checked)} /> только со звуком
             </label>
-            <AppButton variant="primary" onClick={() => setForm({})}>
+            <AppButton variant="primary" onClick={() => editor.openNew()}>
               + устройство
             </AppButton>
           </span>

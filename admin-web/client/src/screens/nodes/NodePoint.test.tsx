@@ -90,6 +90,36 @@ describe("NodePoint", () => {
     await waitFor(() => expect(calls.find((c) => c.path === "/api/displays/p-nasos/node")?.body).toEqual({ nodeId: null }));
   });
 
+  it("«Новый секрет» и «Изменить» в карточке узла: секрет показан, после правки перечитываются только точки", async () => {
+    const calls = mockApi({
+      "GET /api/displays": [bound, free],
+      "GET /api/display-groups": [],
+      "GET /api/audio/channels": channels,
+      "GET /api/nodes": nodes,
+      "POST /api/displays/p-nasos/secret": {
+        display: bound,
+        secret: "s3cr3t",
+        provisioning: { id: "p-nasos", secret: "s3cr3t", port: 47200, width: 792, height: 272 },
+      },
+      "PUT /api/displays/p-nasos": bound,
+    });
+    render(<NodePoint nodeId="nasos-4" />);
+    const section = await screen.findByLabelText("точка узла");
+    fireEvent.click(await within(section).findByText("Новый секрет"));
+    fireEvent.click(await screen.findByText("Сменить"));
+    await within(section).findByText("Секрет дисплея p-nasos");
+    expect(within(section).getByText("s3cr3t")).toBeTruthy();
+
+    fireEvent.click(within(section).getByText("Изменить"));
+    await within(section).findByText("Точка p-nasos");
+    const before = calls.length;
+    fireEvent.click(within(section).getByText("Сохранить"));
+    await waitFor(() => expect(within(section).queryByText("Точка p-nasos")).toBeNull());
+    expect(calls.find((c) => c.method === "PUT" && c.path === "/api/displays/p-nasos")).toBeTruthy();
+    await waitFor(() => expect(calls.slice(before).some((c) => c.method === "GET" && c.path === "/api/displays")).toBe(true));
+    expect(calls.slice(before).some((c) => c.path === "/api/display-groups")).toBe(false);
+  });
+
   it("узел без точки: привязать одну из свободных", async () => {
     const calls = mockApi({
       "GET /api/displays": [bound, free],

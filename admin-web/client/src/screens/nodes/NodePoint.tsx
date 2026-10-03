@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { api } from "../../api/client";
-import type { DisplayItem, DisplaySecretResponse } from "../../api/types";
+import type { DisplayItem } from "../../api/types";
 import { useAsyncAction } from "../../api/useAsyncAction";
 import { AppButton, AppSelect, Badge } from "../../design/components";
 import { DeviceDetail } from "../displays/DeviceDetail";
-import { DisplayForm, SecretPanel } from "../displays/DisplayForm";
 import { STATUS_LABEL, STATUS_TONE } from "../displays/displayUtil";
 import { useDeviceData } from "../displays/useDeviceData";
+import { useDeviceEditor } from "../displays/useDeviceEditor";
 
 /**
  * Точка узла — узел-контейнер в мире и есть QR-дисплей со звуком (владелец). Секция карточки узла: та же каноничная
@@ -14,46 +14,22 @@ import { useDeviceData } from "../displays/useDeviceData";
  * не только на «Локациях». Узел без точки — «Привязать точку» из непривязанных.
  */
 export function NodePoint({ nodeId }: { nodeId: string }) {
-  const { displays, groups, channels, namedNodes, takenNodes, reload } = useDeviceData();
+  const data = useDeviceData();
+  const { displays, reload } = data;
+  // Как и раньше, здесь перечитываются только точки: список локаций от правки точки не меняется.
+  const editor = useDeviceEditor(data, { reloadAfterSave: reload, reloadAfterChange: reload });
   const point = (displays ?? []).find((d) => d.nodeId === nodeId);
-  const [editing, setEditing] = useState(false);
-  const [secret, setSecret] = useState<DisplaySecretResponse | null>(null);
   if (!displays) return null;
   return (
     <section className="node-point" aria-label="точка узла">
       <div className="status-caps sound-step">Точка</div>
       {point ? (
-        <DeviceDetail
-          display={point}
-          groups={groups}
-          channels={channels}
-          nodes={namedNodes}
-          takenNodes={takenNodes}
-          onChanged={reload}
-          onEdit={() => setEditing(true)}
-          onSecret={(r) => {
-            setSecret(r);
-            reload();
-          }}
-        />
+        <DeviceDetail display={point} {...editor.detailProps(point)} />
       ) : (
         <BindPoint nodeId={nodeId} free={displays.filter((d) => !d.nodeId)} onChanged={reload} />
       )}
-      {secret && <SecretPanel result={secret} onClose={() => setSecret(null)} />}
-      {editing && point && (
-        <DisplayForm
-          editing={point}
-          groups={groups}
-          nodes={namedNodes}
-          takenNodes={takenNodes}
-          onCreated={() => setEditing(false)}
-          onSaved={() => {
-            setEditing(false);
-            reload();
-          }}
-          onCancel={() => setEditing(false)}
-        />
-      )}
+      {editor.secretPanel}
+      {point && editor.formPanel}
     </section>
   );
 }

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api } from "../api/client";
-import type { AudioChannel, DisplayGroup, DisplayItem, DisplaySecretResponse } from "../api/types";
+import type { AudioChannel, DisplayGroup, DisplayItem } from "../api/types";
 import { POLL_LIVE_MS } from "../api/pollIntervals";
 import { useAsyncAction } from "../api/useAsyncAction";
 import { AsyncPanel } from "../design/AsyncPanel";
@@ -10,11 +10,11 @@ import { PointAnnounce, PointAudioControls, PointAudioStatus, VolumeInput } from
 import { BatteryGauge } from "./displays/BatteryGauge";
 import { DeviceDetail } from "./displays/DeviceDetail";
 import { DeviceStats } from "./displays/DeviceStats";
-import { DisplayForm, SecretPanel } from "./displays/DisplayForm";
 import { GroupDeleteDialog, GroupNameDialog, GroupSection } from "./displays/DisplayGroups";
 import { byBatteryFirst, STATUS_LABEL, STATUS_TONE } from "./displays/displayUtil";
 import { useCollapsedGroups } from "./displays/useCollapsedGroups";
 import { useDeviceData } from "./displays/useDeviceData";
+import { useDeviceEditor } from "./displays/useDeviceEditor";
 
 /**
  * Локации — точки на площадке по местам: локация сворачивается, в заголовке — её фон (канал и громкость), внутри — точки
@@ -22,14 +22,12 @@ import { useDeviceData } from "./displays/useDeviceData";
  * Точки без узла (просто динамик в баре) живут только здесь. Узел с его точкой — на экране «Узлы».
  */
 export function LocationsScreen() {
-  const { displays, error, groups, channels, namedNodes, nodeName, takenNodes, reload, reloadGroups, reloadAll } = useDeviceData({
-    groupsPollMs: POLL_LIVE_MS,
-  });
-  const [form, setForm] = useState<{ edit?: DisplayItem; groupId?: string } | null>(null);
+  const data = useDeviceData({ groupsPollMs: POLL_LIVE_MS });
+  const { displays, error, groups, channels, nodeName, reloadGroups, reloadAll } = data;
+  const editor = useDeviceEditor(data);
   const [groupDialog, setGroupDialog] = useState<{ kind: "new" } | { kind: "rename" | "delete"; group: DisplayGroup } | null>(null);
   const [collapsed, toggleCollapsed] = useCollapsedGroups();
   const [open, setOpen] = useState<Set<string>>(new Set());
-  const [secret, setSecret] = useState<DisplaySecretResponse | null>(null);
   // Севшие — сверху: на игре мастер первым делом смотрит, куда бежать менять батарею.
   const [order, setOrder] = useState<"battery" | "id">("battery");
 
@@ -69,19 +67,7 @@ export function LocationsScreen() {
             </div>
           )}
           {open.has(d.id) && (
-            <DeviceDetail
-              display={d}
-              groups={groups}
-              channels={channels}
-              nodes={namedNodes}
-              takenNodes={takenNodes}
-              onChanged={reloadAll}
-              onEdit={() => setForm({ edit: d })}
-              onSecret={(r) => {
-                setSecret(r);
-                reload();
-              }}
-            />
+            <DeviceDetail display={d} {...editor.detailProps(d)} />
           )}
         </li>
       ))}
@@ -95,27 +81,8 @@ export function LocationsScreen() {
         узлом-контейнером, видна и в карточке узла.
       </p>
       <DeviceStats displays={displays ?? []} />
-      {secret && <SecretPanel result={secret} onClose={() => setSecret(null)} />}
-      {form && (
-        <DisplayForm
-          key={form.edit?.id ?? `new-${form.groupId ?? ""}`}
-          editing={form.edit}
-          groups={groups}
-          nodes={namedNodes}
-          takenNodes={takenNodes}
-          defaultGroupId={form.groupId}
-          onCreated={(r) => {
-            setForm(null);
-            setSecret(r);
-            reloadAll();
-          }}
-          onSaved={() => {
-            setForm(null);
-            reloadAll();
-          }}
-          onCancel={() => setForm(null)}
-        />
-      )}
+      {editor.secretPanel}
+      {editor.formPanel}
       <Panel
         title={`Локации${displays ? ` · точек ${displays.length}` : ""}`}
         action={
@@ -125,7 +92,7 @@ export function LocationsScreen() {
               <option value="id">по номеру</option>
             </AppSelect>
             <AppButton onClick={() => setGroupDialog({ kind: "new" })}>+ локация</AppButton>
-            <AppButton onClick={() => setForm({})}>+ точка</AppButton>
+            <AppButton onClick={() => editor.openNew()}>+ точка</AppButton>
           </span>
         }
       >
@@ -146,7 +113,7 @@ export function LocationsScreen() {
                       displays={members}
                       collapsed={collapsed.has(g.id)}
                       onToggle={() => toggleCollapsed(g.id)}
-                      onAdd={() => setForm({ groupId: g.id })}
+                      onAdd={() => editor.openNew(g.id)}
                       onRename={() => setGroupDialog({ kind: "rename", group: g })}
                       onDelete={() => setGroupDialog({ kind: "delete", group: g })}
                       extra={<LocationAudio group={g} channels={channels} onSaved={reloadGroups} />}
