@@ -34,6 +34,9 @@ class MainTest {
             val s = app.store.get("settings", "global")
             assertNotNull(s)
             assertEquals(120L, VJ.lng(s!!.data, "confirm_timeout_s"))
+            // два рычага Soft ICE (D1): пауза нетраннера 3 минуты, локдаун узла 10 минут
+            assertEquals(180L, VJ.lng(s.data, "soft_ice_reentry_pause_s"))
+            assertEquals(600L, VJ.lng(s.data, "node_lockdown_s"))
             // ключ мира: создан при старте, лежит рядом с базой, публичная часть — в settings
             assertEquals(app.worldKey.publicB64, VJ.str(s.data, "world_pub"))
             assertTrue(java.io.File("$db.worldkey").exists())

@@ -91,7 +91,7 @@
 
 `outcome` — `clean|emergency|soft_ice|aborted`; `returned/burned/left_in_node` — число предметов по ветвям `moves`;
 `eddies_paid` — эдди, ушедшие на телефон (сумма совпадает с `TRANSFER_IN` на телефоне, это сверка, а не движение денег);
-`lockdown_until` — для `soft_ice` (из `ValueOps`: `now + soft_ice_reentry_pause_s`).
+`lockdown_until` — для `soft_ice` (из `ValueOps`: `now + node_lockdown_s`, по умолчанию 600 с; пауза нетраннера `soft_ice_reentry_pause_s` — отдельная настройка).
 
 ### 2.4 Флэтлайн: `net.run` / `NET_FLATLINE`
 

@@ -76,6 +76,47 @@ class ValueOpsTest {
         f.assertConserved()
     }
 
+    /** Закрыть забег `soft_ice` в узле node_07 и вернуть (срок паузы нетраннера, срок локдауна узла, момент закрытия), все в мс. */
+    private fun softIceDeadlines(f: ValueFixture): Triple<Long, Long, Long> {
+        val sid = f.enterActive(f.keyA, "t03", "it_dA1", "it_dA2")
+        assertTrue(f.ops.finishRun(f.world, "finish:$sid", sid, "soft_ice", "node_07", false, listOf(Move("it_dA2", MoveTo.PHONE))).ok)
+        val finishedAt = VJ.lng(f.store.get("session", sid)!!.data, "finished_at")
+        val pauseUntil = VJ.lng(f.store.get("runner", ValueOps.runnerDocId(f.keyA))!!.data, "re_entry_after")
+        val lockdownUntil = VJ.lng(f.store.get("node", "node_07")!!.data, "lockdown_until")
+        return Triple(pauseUntil - finishedAt, lockdownUntil - finishedAt, finishedAt)
+    }
+
+    @Test fun softIcePauseAndNodeLockdownDefaultToThreeAndTenMinutes() {
+        val f = fx() // документа настроек нет вовсе
+        val (pause, lockdown, _) = softIceDeadlines(f)
+        assertEquals(180_000L, pause)
+        assertEquals(600_000L, lockdown)
+    }
+
+    @Test fun softIcePauseAndNodeLockdownComeFromDifferentSettings() {
+        val f = fx()
+        f.store.put("settings", "global", 0, f.obj("soft_ice_reentry_pause_s" to 60L, "node_lockdown_s" to 900L))
+        val (pause, lockdown, _) = softIceDeadlines(f)
+        assertEquals(60_000L, pause) // пауза нетраннера — из soft_ice_reentry_pause_s
+        assertEquals(900_000L, lockdown) // локдаун узла — из node_lockdown_s
+    }
+
+    @Test fun settingsCreatedBeforeNodeLockdownExistedGiveTenMinutesNotThePause() {
+        val f = fx()
+        f.store.put("settings", "global", 0, f.obj("soft_ice_reentry_pause_s" to 60L, "confirm_timeout_s" to 120L))
+        val (pause, lockdown, _) = softIceDeadlines(f)
+        assertEquals(60_000L, pause)
+        assertEquals(600_000L, lockdown) // node_lockdown_s нет: 600 с, а не пауза в 60 с
+    }
+
+    @Test fun nodeLockdownSettingAloneLeavesThePauseAtThreeMinutes() {
+        val f = fx()
+        f.store.put("settings", "global", 0, f.obj("node_lockdown_s" to 300L))
+        val (pause, lockdown, _) = softIceDeadlines(f)
+        assertEquals(180_000L, pause)
+        assertEquals(300_000L, lockdown)
+    }
+
     @Test fun finishViolationsAreBadRequestAndChangeNothing() {
         val f = fx()
         val sid = f.enterActive(f.keyA, "t03", "it_dA1", "it_dA2")

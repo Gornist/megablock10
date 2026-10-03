@@ -120,7 +120,7 @@ internal fun ensureDefaultSettings(store: DocStore, worldPub: String? = null) {
         ValueOps.SETTINGS, "global", 0,
         VJ.obj(
             "confirm_timeout_s" to VJ.p(120L), "inbox_timeout_s" to VJ.p(300L), "disconnect_grace_s" to VJ.p(20L),
-            "soft_ice_reentry_pause_s" to VJ.p(600L), "terminal_silent_s" to VJ.p(30L), "auditor_period_s" to VJ.p(60L),
+            "soft_ice_reentry_pause_s" to VJ.p(180L), "node_lockdown_s" to VJ.p(600L), "terminal_silent_s" to VJ.p(30L), "auditor_period_s" to VJ.p(60L),
             "tutorial_node" to VJ.p("node_00"), "world_pub" to VJ.p(worldPub),
         ),
     )

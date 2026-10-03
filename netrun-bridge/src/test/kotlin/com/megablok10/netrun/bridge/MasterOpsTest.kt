@@ -248,6 +248,29 @@ class MasterOpsTest {
         assertEquals("applied", (data("node_cfg", "node_08")["goal"] as JsonObject).str("result"))
     }
 
+    @Test fun lockdownGoalWithoutValueTakesNodeLockdownSettingNotTheRunnerPause() {
+        val m = Client("master")
+        store.put(
+            "settings", "global", store.get("settings", "global")!!.ver,
+            JsonObject(data("settings", "global") + obj("soft_ice_reentry_pause_s" to 60, "node_lockdown_s" to 300)),
+        )
+        assertTrue(m.req("master.goal", """"node":"node_08","kind":"lockdown","in_s":5""").ok())
+        now += 6_000; rules.tick()
+        assertEquals((now + 300_000).toString(), flag("node", "node_08", "lockdown_until"))
+        assertEquals("applied", (data("node_cfg", "node_08")["goal"] as JsonObject).str("result"))
+    }
+
+    @Test fun lockdownGoalFallsBackToTenMinutesWhenSettingsHaveNoNodeLockdown() {
+        val m = Client("master")
+        store.put(
+            "settings", "global", store.get("settings", "global")!!.ver,
+            JsonObject(data("settings", "global") + obj("soft_ice_reentry_pause_s" to 60)),
+        )
+        assertTrue(m.req("master.goal", """"node":"node_08","kind":"lockdown","in_s":5""").ok())
+        now += 6_000; rules.tick()
+        assertEquals((now + 600_000).toString(), flag("node", "node_08", "lockdown_until")) // не 60 с паузы
+    }
+
     @Test fun lockdownGoalDeniedByTimeoutDefault() {
         val m = Client("master")
         store.put(

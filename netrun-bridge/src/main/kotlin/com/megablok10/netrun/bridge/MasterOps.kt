@@ -102,7 +102,7 @@ class MasterOps(private val store: DocStore, private val clock: () -> Long = Sys
 
     /**
      * `master.goal`: узел [node] «к цели [kind] [value] за [inS] секунд» или к абсолютному [deadlineAt]. `open` — открыть узел
-     * к сроку (снять локдаун), `lockdown` — закрыть на [value] секунд (по умолчанию как после Soft ICE) через «ждём мастера»;
+     * к сроку (снять локдаун), `lockdown` — закрыть на [value] секунд (по умолчанию `node_lockdown_s` — как после Soft ICE) через «ждём мастера»;
      * остальные виды (`trace`, `ice` и т. п.) читает сервер мира. Новая цель заменяет прежнюю.
      */
     fun setGoal(caller: Caller, node: String, kind: String, value: Long?, inS: Long?, deadlineAt: Long?): Map<String, JsonElement> {
@@ -169,7 +169,7 @@ class MasterOps(private val store: DocStore, private val clock: () -> Long = Sys
         val g = gateIn(tx, "lockdown", "${nd.id}.${VJ.lng(goal, "set_at")}", nd.id, "локдаун узла ${nd.id} по цели мастера")
         if (g.mode == GateResult.Mode.WAIT) return null
         if (!g.approved) return "denied"
-        val secs = goal["value"].long() ?: settingLong(tx, "soft_ice_reentry_pause_s", DEFAULT_LOCKDOWN_S)
+        val secs = goal["value"].long() ?: settingLong(tx, "node_lockdown_s", DEFAULT_LOCKDOWN_S)
         setLockdown(tx, nd, clock() + secs * MS)
         return "applied"
     }
