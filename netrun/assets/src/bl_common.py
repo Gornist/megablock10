@@ -11,7 +11,7 @@ from contextlib import contextmanager
 
 import bmesh
 import bpy
-from mathutils import Matrix, Vector
+from mathutils import Euler, Matrix, Quaternion, Vector
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import palette  # noqa: E402
@@ -21,6 +21,14 @@ MODELS = os.path.join(ASSETS, "models")
 EPS = 0.006  # на столько декаль-неон приподнят над поверхностью (z-fighting на мобильном рендерере)
 
 X, Y, Z = Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))
+
+
+def T_(x, y, z):
+    return Matrix.Translation((x, y, z))
+
+
+def R_(deg, axis):
+    return Matrix.Rotation(math.radians(deg), 4, axis)
 
 
 def to_blender(v):
@@ -96,6 +104,32 @@ class Part:
         self._stack = []
         self._gid = 0
         self._weld = {}
+        self.eps = EPS         # на сколько декали приподняты над поверхностью (у мелких предметов — меньше)
+        self.cur_bone = None   # кость, которой принадлежат новые вершины (жёсткий скининг: вес 1.0)
+        self.groups = []       # имена костей в порядке вершинных групп
+
+    # --- кости ---------------------------------------------------------------------------------------------------
+    @contextmanager
+    def on_bone(self, name):
+        """Всё внутри блока привязано к кости name (вес 1.0): меш цельный, двигают его кости скелета."""
+        prev, self.cur_bone = self.cur_bone, name
+        if name not in self.groups:
+            self.groups.append(name)
+        self.bm.verts.layers.deform.verify()  # слой заводим до любых ссылок на вершины: новый слой делает старые BMVert недействительными
+        try:
+            yield self
+        finally:
+            self.cur_bone = prev
+
+    def _weigh(self, v):
+        if self.cur_bone is not None:
+            v[self.bm.verts.layers.deform.verify()][self.groups.index(self.cur_bone)] = 1.0
+
+    def _weigh_new(self, before):
+        if self.cur_bone is not None:
+            for v in self.bm.verts:
+                if v not in before:
+                    self._weigh(v)
 
     # --- система координат ---------------------------------------------------------------------------------------
     @contextmanager
@@ -117,6 +151,7 @@ class Part:
         v = self._weld.get(key)
         if v is None:
             v = self.bm.verts.new(co)
+            self._weigh(v)
             self._weld[key] = v
         return v
 
@@ -141,6 +176,7 @@ class Part:
     def box(self, center, size, mat, bevel=0.0, edges="all"):
         """Параллелепипед; bevel — фаска (м), edges: 'all' или набор через '+': top, bot, vert."""
         bm = self.bm
+        before = set(bm.verts)
         c, s = Vector(center), Vector(size)
         verts = bmesh.ops.create_cube(bm, size=1.0)["verts"]
         for v in verts:
@@ -163,6 +199,7 @@ class Part:
             v.co = self._p(v.co)
         if sel:
             bmesh.ops.bevel(bm, geom=sel, offset=bevel, offset_type="OFFSET", segments=1, profile=0.5, affect="EDGES")
+        self._weigh_new(before)
 
     def frustum(self, cx, cz, y0, y1, r0, r1, n, mat, rot=0.0, caps="both"):
         """Усечённый конус/призма вокруг оси Y (n сторон, вершины на радиусе r). r1=0 — остриё. caps: both/bot/top/none."""
@@ -219,10 +256,50 @@ class Part:
             self._face(gid, [i0[k], i0[k2], o0[k2], o0[k]], mat, -Z)
             self._face(gid, [i1[k], i1[k2], o1[k2], o1[k]], mat, Z)
 
+    def limb(self, a, b, r0, r1, n, mat, rot=0.0, caps="both"):
+        """Усечённый конус между точками a и b (звенья рук, шипы, когти): ось вдоль a->b, r1=0 — остриё."""
+        a, d = Vector(a), Vector(b) - Vector(a)
+        q = Y.rotation_difference(d.normalized())
+        with self.frame(Matrix.Translation(a) @ q.to_matrix().to_4x4()):
+            self.frustum(0, 0, 0, d.length, r0, r1, n, mat, rot, caps)
+
+    def extrude(self, outline, depth, mat, mat_front=None, z=0.0):
+        """Призма из плоского контура (в локальной плоскости XY, любой простой многоугольник, в том числе вогнутый): толщина
+        depth вдоль Z вокруг z, лицо в +Z. mat_front — материал лицевой грани (по умолчанию как у боков)."""
+        gid = self._next_gid()
+        pts = [Vector((px, py, 0)) for px, py in outline]
+        area = sum(p.x * q.y - q.x * p.y for p, q in zip(pts, pts[1:] + pts[:1]))
+        sign = 1.0 if area > 0 else -1.0  # CCW -> наружу от ребра d=(dx,dy) смотрит (dy,-dx)
+        zf, zb = z + depth / 2, z - depth / 2
+        front = [Vector((p.x, p.y, zf)) for p in pts]
+        back = [Vector((p.x, p.y, zb)) for p in pts]
+        self._face(gid, front, mat if mat_front is None else mat_front, Z)
+        self._face(gid, back, mat, -Z)
+        for k in range(len(pts)):
+            k2 = (k + 1) % len(pts)
+            d = pts[k2] - pts[k]
+            self._face(gid, [back[k], back[k2], front[k2], front[k]], mat, Vector((d.y, -d.x, 0)) * sign)
+
+    def screen(self, center, w, h, u, normal, mat):
+        """Плоскость под экран (SubViewport): w x h, u — «вправо» на экране, normal — куда смотрит. UV: (0,0) — левый верхний угол
+        для зрителя (как у текстуры Godot), (1,1) — правый нижний."""
+        n, u = Vector(normal).normalized(), Vector(u).normalized()
+        v = n.cross(u)  # «вверх» на экране
+        c = Vector(center)
+        tl, tr, br, bl = c - u * w / 2 + v * h / 2, c + u * w / 2 + v * h / 2, c + u * w / 2 - v * h / 2, c - u * w / 2 - v * h / 2
+        f = self._face(self._next_gid(), [tl, tr, br, bl], mat, n)
+        uvl = self.bm.loops.layers.uv.verify()
+        uw, vw = self.T.to_3x3() @ u, self.T.to_3x3() @ v
+        tlw = self._p(tl)
+        for loop in f.loops:
+            d = loop.vert.co - tlw
+            loop[uvl].uv = (d.dot(uw) / w, 1.0 - d.dot(-vw) / h)
+        return f
+
     # --- неоновые декали (плоские грани над поверхностью) ---------------------------------------------------------
     def poly(self, pts, normal, mat):
         n = Vector(normal).normalized()
-        self._face(self._next_gid(), [Vector(p) + n * EPS for p in pts], mat, n)
+        self._face(self._next_gid(), [Vector(p) + n * self.eps for p in pts], mat, n)
 
     def strip(self, center, length, width, u, normal, mat, tip=None):
         """Вытянутый шестиугольник (полоса со скошенными концами). u — направление длины, normal — куда смотрит."""
@@ -244,7 +321,7 @@ class Part:
     def ring(self, center, r_in, r_out, n, normal, mat, rot=0.0):
         """Плоское кольцо-декаль (n-угольник с вершинами на радиусах)."""
         u, v = basis_for(normal)
-        c = Vector(center) + Vector(normal).normalized() * EPS
+        c = Vector(center) + Vector(normal).normalized() * self.eps
         gid = self._next_gid()
         nn = Vector(normal).normalized()
 
@@ -290,6 +367,11 @@ class Part:
         bm.faces.index_update()
         bm.verts.index_update()
         self._validate()
+        if self.groups:
+            dl = bm.verts.layers.deform.verify()
+            loose = sum(1 for v in bm.verts if not v[dl])
+            if loose:
+                raise RuntimeError("%s: вершин без кости: %d (всё в скелетной модели должно быть внутри on_bone)" % (self.name, loose))
         for v in bm.verts:
             v.co = to_blender(v.co)
         mesh = bpy.data.meshes.new(self.name)
@@ -299,6 +381,8 @@ class Part:
             mesh.materials.append(m)
         obj = bpy.data.objects.new(self.name, mesh)
         bpy.context.scene.collection.objects.link(obj)
+        for g in self.groups:
+            obj.vertex_groups.new(name=g)
         return obj
 
 
@@ -318,8 +402,87 @@ def tri_count(obj):
     return sum(len(p.vertices) - 2 for p in obj.data.polygons)
 
 
-def export_glb(path, objs):
-    """Записать объекты в .glb: без камер, света, анимаций, текстур; материалы как есть."""
+class Rig:
+    """Скелет модели: кости [(имя, родитель|None, голова, хвост)] в осях Godot. Меш привязывается жёстко (Part.on_bone, вес 1.0),
+    клипы — периодические функции фазы t в [0, 1): ключи в кадрах 0..N, последний равен первому (Godot крутит клип по кругу)."""
+
+    FPS = 30
+
+    def __init__(self, name, bones):
+        self.name, self.spec, self.obj = name, bones, None
+        self.clips = []
+
+    def build(self):
+        arm = bpy.data.armatures.new(self.name)
+        obj = bpy.data.objects.new(self.name, arm)
+        bpy.context.scene.collection.objects.link(obj)
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.object.mode_set(mode="EDIT")
+        made = {}
+        for name, parent, head, tail in self.spec:
+            b = arm.edit_bones.new(name)
+            b.head, b.tail = to_blender(head), to_blender(tail)
+            if (b.tail - b.head).length < 1e-3:
+                raise RuntimeError("кость %s нулевой длины" % name)
+            b.roll = 0.0
+            if parent:
+                b.parent = made[parent]
+            made[name] = b
+        bpy.ops.object.mode_set(mode="OBJECT")
+        self.obj = obj
+        sc = bpy.context.scene
+        sc.render.fps, sc.render.fps_base = self.FPS, 1.0   # время в glTF = кадр / fps: без этого клипы выйдут вдвое длиннее
+        return obj
+
+    def attach(self, mesh_obj):
+        """Привязать меш: родитель — скелет, модификатор Armature (вершинные группы заданы костями Part.on_bone)."""
+        names = {b[0] for b in self.spec}
+        missing = [g.name for g in mesh_obj.vertex_groups if g.name not in names]
+        if missing:
+            raise RuntimeError("в меше группы без костей: %s" % missing)
+        mesh_obj.parent = self.obj
+        mod = mesh_obj.modifiers.new("Armature", "ARMATURE")
+        mod.object = self.obj
+
+    def _local(self, pb, pose):
+        """Поза в осях Godot (поворот rot=(rx, ry, rz) градусы вокруг головы кости, смещение loc, масштаб scale) -> локальный базис кости."""
+        q_rest = pb.bone.matrix_local.to_quaternion()
+        rx, ry, rz = (math.radians(a) for a in pose.get("rot", (0, 0, 0)))
+        d = Quaternion(to_blender(Y), ry) @ Quaternion(to_blender(X), rx) @ Quaternion(to_blender(Z), rz)
+        q = q_rest.inverted() @ d @ q_rest
+        loc = q_rest.inverted() @ to_blender(pose.get("loc", (0, 0, 0)))
+        s = pose.get("scale", 1.0)
+        return q, loc, (s, s, s)
+
+    def clip(self, name, seconds, fn, step=2):
+        """Клип name длиной seconds: fn(кость, t) -> {'rot': (rx, ry, rz), 'loc': (x, y, z), 'scale': k} или None (кость не анимируется)."""
+        frames = int(round(seconds * self.FPS))
+        ad = self.obj.animation_data_create()
+        act = bpy.data.actions.new(name)
+        ad.action = act
+        for pb in self.obj.pose.bones:
+            pb.rotation_mode = "QUATERNION"
+        keys = list(range(0, frames, step)) + [frames]
+        for f in keys:
+            for pb in self.obj.pose.bones:
+                pose = fn(pb.name, f / frames)
+                if pose is None:
+                    continue
+                pb.rotation_quaternion, pb.location, pb.scale = self._local(pb, pose)
+                for path in ("rotation_quaternion", "location", "scale"):
+                    pb.keyframe_insert(path, frame=f)
+        track = ad.nla_tracks.new()
+        track.name = name
+        track.strips.new(name, 0, act)
+        ad.action = None
+        for pb in self.obj.pose.bones:
+            pb.rotation_quaternion, pb.location, pb.scale = (1, 0, 0, 0), (0, 0, 0), (1, 1, 1)
+        self.clips.append((name, frames))
+
+
+def export_glb(path, objs, skinned=False, uv=False):
+    """Записать объекты в .glb: без камер, света, текстур; материалы как есть. skinned — со скелетом и клипами (NLA-дорожки Rig.clip),
+    uv — с развёрткой (нужна плоскости под SubViewport)."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     bpy.ops.object.select_all(action="DESELECT")
     for o in objs:
@@ -333,12 +496,16 @@ def export_glb(path, objs):
         export_yup=True,
         export_cameras=False,
         export_lights=False,
-        export_animations=False,
-        export_skins=False,
+        export_animations=skinned,
+        export_animation_mode="NLA_TRACKS",
+        export_nla_strips=True,
+        export_force_sampling=True,
+        export_optimize_animation_size=False,
+        export_skins=skinned,
         export_morph=False,
         export_extras=False,
         export_image_format="NONE",
-        export_texcoords=False,
+        export_texcoords=uv,
         export_normals=True,
         export_tangents=False,
         export_materials="EXPORT",
