@@ -130,8 +130,9 @@ def merge_bm(*parts):
     return out
 
 
-def obj_from_bm(name, bm, role, rgb, alpha=1.0, alpha_fn=None, smooth=False):
-    """Объект из bmesh: роль материала + цвет вершин (RGB свечения, A плотность). alpha_fn(co) — градиент по вершинам."""
+def obj_from_bm(name, bm, role, rgb, alpha=1.0, alpha_fn=None, smooth=False, rgb_fn=None):
+    """Объект из bmesh: роль материала + цвет вершин (RGB свечения, A плотность). alpha_fn(co) — градиент по вершинам; rgb_fn(co) — цвет по вершинам
+    (альфа цвета вершин до Godot у непрозрачных материалов не доходит, поэтому метку света у solid_dark несёт RGB)."""
     me = bpy.data.meshes.new(name)
     bm.to_mesh(me)
     bm.free()
@@ -143,7 +144,7 @@ def obj_from_bm(name, bm, role, rgb, alpha=1.0, alpha_fn=None, smooth=False):
             p.use_smooth = True
     attr = me.color_attributes.new("Color", "FLOAT_COLOR", "POINT")
     for i, v in enumerate(me.vertices):
-        attr.data[i].color = (*rgb, alpha_fn(v.co) if alpha_fn else alpha)
+        attr.data[i].color = (*(rgb_fn(v.co) if rgb_fn else rgb), alpha_fn(v.co) if alpha_fn else alpha)
     me.color_attributes.active_color = attr
     return ob
 
