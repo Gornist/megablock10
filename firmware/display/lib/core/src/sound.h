@@ -28,8 +28,15 @@ constexpr uint8_t kDefaultAnnounceVolume = 80;
 constexpr uint8_t kDefaultDuckPct = 15;
 extern const char* const kAudioFile;
 
-// Карта памяти. Треки — /mb10/tracks (только чтение, заливаются руками), клипы — /mb10/clips/<sha256>.wav, недокачанный —
-// <sha256>.part. Список треков реализация держит в памяти (сканирует при вставке карты), здесь — только из него.
+// Раскладка карты — общая для реализаций SoundCard (src/esp32: корень /mb10, src/host: корень --sd): <корень>/tracks/<имя>,
+// <корень>/clips/<sha256>.wav, недокачанный — <sha256>.part.
+constexpr char kSdTracksDir[] = "/tracks";
+constexpr char kSdClipsDir[] = "/clips";
+constexpr char kClipExt[] = ".wav";
+constexpr char kPartExt[] = ".part";
+
+// Карта памяти. Треки — только чтение, заливаются руками; клипы — сервер по CLIP_*. Список треков реализация держит в памяти
+// (сканирует при вставке карты), здесь — только из него.
 class SoundCard {
  public:
   virtual ~SoundCard() = default;

@@ -87,6 +87,26 @@ void onWatchdog(int) {
   reexec();
 }
 
+// Записать всё (write может записать меньше).
+bool writeAll(int fd, const uint8_t* p, size_t n) {
+  while (n > 0) {
+    ssize_t w = write(fd, p, n);
+    if (w <= 0) return false;
+    p += w;
+    n -= size_t(w);
+  }
+  return true;
+}
+
+// Прочитать ровно len байт с off; false — нет файла или он короче.
+bool readAt(const std::string& path, size_t off, uint8_t* buf, size_t len) {
+  FILE* f = std::fopen(path.c_str(), "rb");
+  if (!f) return false;
+  bool ok = std::fseek(f, long(off), SEEK_SET) == 0 && std::fread(buf, 1, len, f) == len;
+  std::fclose(f);
+  return ok;
+}
+
 bool mkdirs(const std::string& dir) {
   std::string path;
   for (size_t i = 0; i <= dir.size(); i++) {
@@ -171,24 +191,9 @@ class DirStorage : public Storage {
     ok = close(fd) == 0 && ok;
     return ok && rename(tmp.c_str(), path.c_str()) == 0;
   }
-  bool read(const char* name, size_t offset, uint8_t* buf, size_t len) override {
-    FILE* f = std::fopen((dir_ + "/" + name).c_str(), "rb");
-    if (!f) return false;
-    bool ok = std::fseek(f, long(offset), SEEK_SET) == 0 && std::fread(buf, 1, len, f) == len;
-    std::fclose(f);
-    return ok;
-  }
+  bool read(const char* name, size_t offset, uint8_t* buf, size_t len) override { return readAt(dir_ + "/" + name, offset, buf, len); }
 
  private:
-  static bool writeAll(int fd, const uint8_t* p, size_t n) {
-    while (n > 0) {
-      ssize_t w = write(fd, p, n);
-      if (w <= 0) return false;
-      p += w;
-      n -= size_t(w);
-    }
-    return true;
-  }
   std::string dir_;
   int& crashOnSave_;
 };
@@ -259,18 +264,10 @@ class DirSoundCard : public SoundCard {
   bool readClip(const char* id, uint32_t off, uint8_t* buf, size_t len) override { return readAt(clip(id), off, buf, len); }
   uint32_t partSize(const char* id) override { return uint32_t(std::max<long>(0, fileSize(part(id)))); }
   bool writePart(const char* id, uint32_t off, const uint8_t* d, size_t len) override {
-    mkdirs(root_ + "/clips");
+    mkdirs(root_ + kSdClipsDir);
     int fd = open(part(id).c_str(), O_WRONLY | O_CREAT | O_CLOEXEC, 0644);
     if (fd < 0) return false;
-    bool ok = ftruncate(fd, off_t(off)) == 0 && lseek(fd, off_t(off), SEEK_SET) == off_t(off);
-    while (ok && len > 0) {
-      ssize_t w = write(fd, d, len);
-      if (w <= 0) ok = false;
-      else {
-        d += w;
-        len -= size_t(w);
-      }
-    }
+    bool ok = ftruncate(fd, off_t(off)) == 0 && lseek(fd, off_t(off), SEEK_SET) == off_t(off) && writeAll(fd, d, len);
     ok = close(fd) == 0 && ok;
     if (ok && drop_ > 0 && --drop_ == 0) g_dropConnection = true;
     return ok;
@@ -278,21 +275,14 @@ class DirSoundCard : public SoundCard {
   bool readPart(const char* id, uint32_t off, uint8_t* buf, size_t len) override { return readAt(part(id), off, buf, len); }
   bool commitPart(const char* id) override { return rename(part(id).c_str(), clip(id).c_str()) == 0; }
   void removePart(const char* id) override { unlink(part(id).c_str()); }
-  std::string clip(const char* id) const { return root_ + "/clips/" + id + ".wav"; }
-  std::string track(const char* name) const { return root_ + "/tracks/" + name; }
+  std::string clip(const char* id) const { return root_ + kSdClipsDir + "/" + id + kClipExt; }
+  std::string track(const char* name) const { return root_ + kSdTracksDir + "/" + name; }
 
  private:
-  std::string part(const char* id) const { return root_ + "/clips/" + id + ".part"; }
+  std::string part(const char* id) const { return root_ + kSdClipsDir + "/" + id + kPartExt; }
   static long fileSize(const std::string& path) {
     struct stat st;
     return stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode) ? long(st.st_size) : -1;
-  }
-  static bool readAt(const std::string& path, uint32_t off, uint8_t* buf, size_t len) {
-    FILE* f = std::fopen(path.c_str(), "rb");
-    if (!f) return false;
-    bool ok = std::fseek(f, long(off), SEEK_SET) == 0 && std::fread(buf, 1, len, f) == len;
-    std::fclose(f);
-    return ok;
   }
   void rescan() {
     uint32_t now = platform_.nowMs();
@@ -300,12 +290,12 @@ class DirSoundCard : public SoundCard {
     scanned_ = true;
     lastScan_ = now;
     tracks_.clear();
-    DIR* d = noSd_ ? nullptr : opendir((root_ + "/tracks").c_str());
+    DIR* d = noSd_ ? nullptr : opendir((root_ + kSdTracksDir).c_str());
     present_ = d != nullptr;
     if (!d) return;
     while (dirent* e = readdir(d)) {
       if (e->d_name[0] == '.') continue;
-      if (fileSize(root_ + "/tracks/" + e->d_name) >= 0) tracks_.push_back(e->d_name);
+      if (fileSize(track(e->d_name)) >= 0) tracks_.push_back(e->d_name);
     }
     closedir(d);
     std::sort(tracks_.begin(), tracks_.end());
