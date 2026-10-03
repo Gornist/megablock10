@@ -15,6 +15,8 @@
     Статус: Мост B0–B4, обмен карточками с телефоном (M2), P5; приложение — M1 (`:rules`), M3 (вход по QR стойки); Godot — серый
     узел, 10 клиентов, Black ICE на ревью; сквозной e2e `netrun-run` на devbox зелёный. Каталог `netrun/` и документы уже в `main`;
     ветки-задачи `agent/netrun-*` вливаются по команде владельца.
+    **MVP без очков собран в ветке `agent/mvp`** (записи мира у коллектора, быстрые события, исходы и обрыв, ассеты и одетый узел,
+    чек-листы, e2e): итоги — `docs/netrun-tasks.md`, «MVP без очков»; в `main` — по команде владельца. Дальше — очки: V6б, N9, P9.
     Godot-часть ведёт агент `godot-dev` (`.claude/agents/godot-dev.md`): живой редактор Godot с плагином Godot AI (MCP) на devbox,
     тесты — gdUnit4 (`netrun/tools/gdunit.sh`, 223 теста); подробности — `docs/netrun-devbox.md`, «Godot AI».
   - **3D-ассеты «Сети»** (Blender → `.glb` → Godot) — ТЗ `docs/netrun-assets-brief.md`; моделлер работает в своей ветке (`scripts/agent-worktree.sh new assets`).
