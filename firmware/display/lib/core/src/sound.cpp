@@ -5,7 +5,6 @@
 
 #include "crc32.h"
 #include "json.h"
-#include "sha256.h"
 #include "util.h"
 #include "wav.h"
 
@@ -23,13 +22,6 @@ constexpr uint32_t kMaxFadeMs = 30000;
 constexpr uint32_t kDuckFadeMs = 300;
 constexpr uint32_t kUnduckFadeMs = 600;
 
-bool isHexId(const char* s) {
-  if (std::strlen(s) != kClipIdLen) return false;
-  for (const char* p = s; *p; p++)
-    if (!((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f'))) return false;
-  return true;
-}
-
 // Имя трека — путь внутри /mb10/tracks: без каталогов и управляющих символов (сервер проверяет так же).
 bool safeTrackName(const char* s) {
   if (!*s) return false;
@@ -41,7 +33,7 @@ bool safeTrackName(const char* s) {
 uint8_t clampPct(double v) { return v < 0 ? 0 : v > 100 ? 100 : uint8_t(v + 0.5); }
 }  // namespace
 
-Sound::Sound(SoundCard& card, AudioOut& out, Storage& storage, Platform& platform) : card_(card), out_(out), storage_(storage), platform_(platform) {
+Sound::Sound(SoundCard& card, AudioOut& out, Storage& storage, Platform& platform) : card_(card), out_(out), storage_(storage), platform_(platform), upload_(card, platform) {
   json_[0] = '\0';
   std::memset(missing_, 0, sizeof missing_);
 }
@@ -291,63 +283,6 @@ void Sound::tick() {
   }
 }
 
-Nack Sound::clipBegin(const uint8_t* p, uint32_t& have) {
-  if (!card_.present()) return Nack::DisplayFailed;
-  toHex(p, 32, uploadId_);
-  uploadLen_ = getU32(p + 32);
-  if (card_.hasClip(uploadId_) && card_.clipSize(uploadId_) == uploadLen_) {
-    uploading_ = false;
-    have = uploadLen_;
-    return Nack::None;
-  }
-  have = card_.partSize(uploadId_);
-  if (have > uploadLen_) {
-    card_.removePart(uploadId_);
-    have = 0;
-  }
-  uploading_ = true;
-  logFmt(platform_, "clip %.12s: %u of %u bytes already here", uploadId_, unsigned(have), unsigned(uploadLen_));
-  return Nack::None;
-}
-
-Nack Sound::clipChunk(const uint8_t* p, size_t len, uint32_t& have) {
-  if (!uploading_ || len <= 4) return Nack::BadLength;
-  uint32_t offset = getU32(p);
-  uint32_t part = card_.partSize(uploadId_);
-  size_t n = len - 4;
-  if (offset != part || offset + n > uploadLen_) return Nack::BadLength;
-  if (!card_.writePart(uploadId_, offset, p + 4, n)) return Nack::DisplayFailed;
-  have = offset + uint32_t(n);
-  return Nack::None;
-}
-
-Nack Sound::clipCommit() {
-  if (!uploading_) return Nack::BadLength;
-  uploading_ = false;
-  if (card_.partSize(uploadId_) != uploadLen_) return Nack::BadLength;
-  Sha256 sha;
-  uint8_t buf[1024];
-  for (uint32_t off = 0; off < uploadLen_;) {
-    size_t n = uploadLen_ - off < sizeof buf ? uploadLen_ - off : sizeof buf;
-    if (!card_.readPart(uploadId_, off, buf, n)) return Nack::DisplayFailed;
-    sha.update(buf, n);
-    off += uint32_t(n);
-    platform_.feedWatchdog();
-  }
-  uint8_t digest[32];
-  sha.finish(digest);
-  char hex[kClipIdLen + 1];
-  toHex(digest, 32, hex);
-  if (std::strcmp(hex, uploadId_) != 0) {
-    card_.removePart(uploadId_);
-    logFmt(platform_, "clip %.12s: sha256 mismatch — discarded", uploadId_);
-    return Nack::BadCrc;
-  }
-  if (!card_.commitPart(uploadId_)) return Nack::DisplayFailed;
-  logFmt(platform_, "clip %.12s: stored, %u bytes", uploadId_, unsigned(uploadLen_));
-  return Nack::None;
-}
-
 Nack Sound::announce(uint32_t id, const uint8_t* json, size_t len, uint32_t& durationMs) {
   JsonCursor c(reinterpret_cast<const char*>(json), len);
   if (!c.beginObject()) return Nack::BadFormat;
@@ -362,7 +297,7 @@ Nack Sound::announce(uint32_t id, const uint8_t* json, size_t len, uint32_t& dur
                                                 : c.skip();
     if (!ok) return Nack::BadFormat;
   }
-  if (!c.ok() || !isHexId(clip)) return Nack::BadFormat;
+  if (!c.ok() || !isClipId(clip)) return Nack::BadFormat;
   if (!card_.present() || !card_.hasClip(clip)) return Nack::MissingClip;
   uint8_t head[128];
   uint32_t size = card_.clipSize(clip);

@@ -56,6 +56,7 @@ firmware/display/
     util.h/.cpp             # общее ядра: время с переполнением millis(), журнал через Platform, hex
     battery.h/.cpp          # топливомер MAX17048 (разбор регистров) и кривая Li-ion
     sound.h/.cpp            # звук: состояние с версией, плейлист, клип с докачкой, объявление; SoundCard, AudioOut
+    clip_upload.cpp         # ClipUpload (из sound.h): приём клипа кусками с докачкой и проверкой sha256
     mixer.h/.cpp            # микшер фона, сигнала и объявления, громкость с переходом, пересчёт частоты
     wav.h/.cpp, json.h/.cpp # заголовок WAV и IMA ADPCM; разбор JSON-команд без кучи
     hal.h                   # интерфейсы платформы: Panel, Storage, Backlight, Platform (время, RNG, сторож, журнал, сеть, батарея)

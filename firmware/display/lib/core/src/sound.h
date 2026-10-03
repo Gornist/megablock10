@@ -66,6 +66,27 @@ class AudioOut {
   virtual bool clipPlaying() = 0;
 };
 
+// Id клипа — sha256 его WAV в hex: 64 строчных hex-символа.
+bool isClipId(const char* s);
+
+// Приём клипа кусками с докачкой: CLIP_BEGIN (sha256 ‖ u32 длина) → have — сколько уже есть на карте; CLIP_CHUNK (u32 смещение
+// ‖ данные) → have; CLIP_COMMIT — sha256 .part совпал → клип на карте (rename). Загрузка — одна на соединение.
+class ClipUpload {
+ public:
+  ClipUpload(SoundCard& card, Platform& platform) : card_(card), platform_(platform) {}
+  Nack begin(const uint8_t* payload, uint32_t& have);
+  Nack chunk(const uint8_t* payload, size_t len, uint32_t& have);
+  Nack commit();
+  void reset() { active_ = false; }
+
+ private:
+  SoundCard& card_;
+  Platform& platform_;
+  bool active_ = false;
+  char id_[kClipIdLen + 1] = {0};
+  uint32_t len_ = 0;
+};
+
 class Sound {
  public:
   Sound(SoundCard& card, AudioOut& out, Storage& storage, Platform& platform);
@@ -85,10 +106,10 @@ class Sound {
 
   // Клип: CLIP_BEGIN (sha256 ‖ u32 длина) → have — сколько уже есть; CLIP_CHUNK (u32 смещение ‖ данные) → have;
   // CLIP_COMMIT — sha256 совпал → клип на карте. Загрузка — одна на соединение (resetUpload при новом).
-  Nack clipBegin(const uint8_t* payload, uint32_t& have);
-  Nack clipChunk(const uint8_t* payload, size_t len, uint32_t& have);
-  Nack clipCommit();
-  void resetUpload() { uploading_ = false; }
+  Nack clipBegin(const uint8_t* payload, uint32_t& have) { return upload_.begin(payload, have); }
+  Nack clipChunk(const uint8_t* payload, size_t len, uint32_t& have) { return upload_.chunk(payload, len, have); }
+  Nack clipCommit() { return upload_.commit(); }
+  void resetUpload() { upload_.reset(); }
 
   // ANNOUNCE: JSON {clip, volume, chime, duck}; id — seq. durationMs — сколько будет звучать (со сигналом).
   Nack announce(uint32_t id, const uint8_t* json, size_t len, uint32_t& durationMs);
@@ -147,9 +168,7 @@ class Sound {
   uint32_t annId_ = 0;
   uint8_t duck_ = kDefaultDuckPct;
 
-  bool uploading_ = false;
-  char uploadId_[kClipIdLen + 1] = {0};
-  uint32_t uploadLen_ = 0;
+  ClipUpload upload_;
 };
 
 }  // namespace mb10d
