@@ -13,3 +13,6 @@ local.properties
 # Кэш kotlin-language-server (плагин KotlinSense, .claude/settings.json)
 .kotlin-ls/
 /display-print-sheet.pdf
+
+# Вывод lint (textOutput = file("stdout") в app/build.gradle.kts) — Gradle пишет его файлом app/stdout
+/app/stdout
