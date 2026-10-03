@@ -10,9 +10,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
+import android.content.Context
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -22,7 +23,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.megablok10.app.di.settingsViewModel
-import com.megablok10.app.log.Mb10Log
 import com.megablok10.app.ui.appViewModel
 import com.megablok10.app.ui.theme.LocalMbColors
 import com.megablok10.app.ui.theme.MbButton
@@ -37,9 +37,8 @@ import com.megablok10.app.ui.theme.MbSectionTitle
 import com.megablok10.app.ui.theme.MbTile
 import com.megablok10.app.ui.theme.MbTileTone
 import com.megablok10.app.ui.theme.MbTypography
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
  * M4.6 плана миграции: узлы рядом (мешь-сеть), очередь синка и журнал — раньше жили внутри «Настроек» одним длинным
@@ -50,20 +49,60 @@ import kotlinx.coroutines.withContext
 fun NetworkScreen() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val c = LocalMbColors.current
     val settings = appViewModel { settingsViewModel() }
     val onlinePeers by settings.peers.collectAsStateWithLifecycle()
     val pendingChanges by settings.pendingChanges.collectAsStateWithLifecycle()
     val collectorReachable by settings.collectorReachable.collectAsStateWithLifecycle()
-    var collectorUrl by remember { mutableStateOf(settings.collectorUrl()) }
-    var gameSecret by remember { mutableStateOf(settings.gameSecret()) }
+    val logSizeKb by settings.logSizeKb.collectAsStateWithLifecycle()
+    val status by settings.logStatus.collectAsStateWithLifecycle()
+    LaunchedEffect(settings) { settings.onLogScreenShown() }
+    NetworkContent(
+        onlineCount = onlinePeers.size, pendingChanges = pendingChanges, collectorReachable = collectorReachable,
+        logSizeKb = logSizeKb, status = status,
+        provisioned = remember { settings.isProvisioned() }, provisionRejected = remember { settings.isProvisionRejected() },
+        initialUrl = remember { settings.collectorUrl() }, initialSecret = remember { settings.gameSecret() },
+        defaultUrl = settings.defaultUrl,
+        onSaveUrl = settings::saveCollectorUrl, onSaveSecret = settings::saveGameSecret,
+        onMark = settings::markLog, onClearLog = settings::clearLog,
+        onExportLog = { scope.launch { settings.exportLog()?.let { shareLogArchive(context, it) } } }
+    )
+}
+
+private fun shareLogArchive(context: Context, zip: File) {
+    val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.logs", zip)
+    val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+        type = "application/zip"
+        putExtra(android.content.Intent.EXTRA_STREAM, uri)
+        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(android.content.Intent.createChooser(send, "Отправить журнал").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+}
+
+@Suppress("LongParameterList", "LongMethod")
+@Composable
+internal fun NetworkContent(
+    onlineCount: Int,
+    pendingChanges: Int,
+    collectorReachable: Boolean,
+    logSizeKb: Long,
+    status: String?,
+    provisioned: Boolean,
+    provisionRejected: Boolean,
+    initialUrl: String,
+    initialSecret: String,
+    defaultUrl: String,
+    onSaveUrl: (String) -> Unit,
+    onSaveSecret: (String) -> Unit,
+    onMark: (String) -> Boolean,
+    onClearLog: () -> Unit,
+    onExportLog: () -> Unit,
+) {
+    val c = LocalMbColors.current
+    var collectorUrl by remember { mutableStateOf(initialUrl) }
+    var gameSecret by remember { mutableStateOf(initialSecret) }
     var collectorHelp by remember { mutableStateOf(false) }
-    var sizeKb by remember { mutableLongStateOf(Mb10Log.sizeBytes() / 1024) }
     var mark by remember { mutableStateOf("") }
-    var status by remember { mutableStateOf<String?>(null) }
     var confirmingClear by remember { mutableStateOf(false) }
-    val provisioned = remember { settings.isProvisioned() }
-    val provisionRejected = remember { settings.isProvisionRejected() }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = MbDimens.blockGap),
@@ -72,8 +111,8 @@ fun NetworkScreen() {
         Row(horizontalArrangement = Arrangement.spacedBy(MbDimens.rowGap)) {
             MbTile(
                 "Мешь-сеть", modifier = Modifier.weight(1f),
-                value = "${onlinePeers.size}", valueUnit = "в сети",
-                tone = if (onlinePeers.isNotEmpty()) MbTileTone.Ok else MbTileTone.Neutral,
+                value = "$onlineCount", valueUnit = "в сети",
+                tone = if (onlineCount > 0) MbTileTone.Ok else MbTileTone.Neutral,
                 subItems = listOf("рядом через NSD")
             )
             MbTile(
@@ -83,7 +122,7 @@ fun NetworkScreen() {
                 subItems = listOf(if (pendingChanges > 0) "ждут коллектора" else "всё отправлено")
             )
         }
-        MbTile("Журнал", modifier = Modifier.fillMaxWidth(), value = "$sizeKb", valueUnit = "КБ", subItems = listOf("хранится ~16 МБ, старое вытесняется"))
+        MbTile("Журнал", modifier = Modifier.fillMaxWidth(), value = "$logSizeKb", valueUnit = "КБ", subItems = listOf("хранится ~16 МБ, старое вытесняется"))
 
         MbSectionTitle("Мастерский коллектор", meta = if (collectorReachable) "на связи" else "нет связи")
         Text(
@@ -112,10 +151,10 @@ fun NetworkScreen() {
                 style = MbTypography.meta, color = c.ink2
             )
         } else {
-            MbField(value = collectorUrl, onValueChange = { collectorUrl = it }, placeholder = settings.defaultUrl.ifBlank { "http://адрес-сервера:порт" })
-            MbButton("Сохранить адрес коллектора", kind = MbButtonKind.Ghost, onClick = { settings.saveCollectorUrl(collectorUrl) })
+            MbField(value = collectorUrl, onValueChange = { collectorUrl = it }, placeholder = defaultUrl.ifBlank { "http://адрес-сервера:порт" })
+            MbButton("Сохранить адрес коллектора", kind = MbButtonKind.Ghost, onClick = { onSaveUrl(collectorUrl) })
             MbField(value = gameSecret, onValueChange = { gameSecret = it }, placeholder = "код игры")
-            MbButton("Сохранить код игры", kind = MbButtonKind.Ghost, onClick = { settings.saveGameSecret(gameSecret) })
+            MbButton("Сохранить код игры", kind = MbButtonKind.Ghost, onClick = { onSaveSecret(gameSecret) })
         }
 
         MbSectionTitle("Журнал приложения")
@@ -127,31 +166,11 @@ fun NetworkScreen() {
         Row(horizontalArrangement = Arrangement.spacedBy(MbDimens.rowGap)) {
             MbButton(
                 "Метка в журнал", kind = MbButtonKind.Ghost, keyIcon = MbIcons.Pen, modifier = Modifier.weight(1f),
-                onClick = {
-                    if (mark.isNotBlank()) {
-                        Mb10Log.event("MARK", "mark", "text" to mark.trim())
-                        mark = ""; status = "Метка записана"
-                        scope.launch { Mb10Log.flush(); sizeKb = Mb10Log.sizeBytes() / 1024 }
-                    }
-                }
+                onClick = { if (onMark(mark)) mark = "" }
             )
             MbButton(
                 "Отправить журнал", keyIcon = MbIcons.Upload, modifier = Modifier.weight(1f),
-                onClick = {
-                    scope.launch {
-                        Mb10Log.event("Settings", "log_export_requested")
-                        val zip = withContext(Dispatchers.IO) { runCatching { Mb10Log.exportZip(context, settings.deviceReport()) }.getOrNull() }
-                        if (zip == null) { status = "Не удалось собрать архив"; return@launch }
-                        val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.logs", zip)
-                        val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                            type = "application/zip"
-                            putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        }
-                        context.startActivity(android.content.Intent.createChooser(send, "Отправить журнал").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
-                        status = "Архив: ${zip.length() / 1024} КБ"
-                    }
-                }
+                onClick = onExportLog
             )
         }
         MbButton("Очистить журнал", kind = MbButtonKind.Ghost, onClick = { confirmingClear = true })
@@ -167,9 +186,7 @@ fun NetworkScreen() {
             actions = listOf(
                 MbDialogAction("Очистить", MbButtonKind.Danger) {
                     confirmingClear = false
-                    Mb10Log.clear()
-                    Mb10Log.event("Settings", "log_cleared")
-                    scope.launch { Mb10Log.flush(); sizeKb = Mb10Log.sizeBytes() / 1024; status = "Журнал очищен" }
+                    onClearLog()
                 },
                 MbDialogAction("Отмена", MbButtonKind.Quiet) { confirmingClear = false }
             )

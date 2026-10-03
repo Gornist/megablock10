@@ -41,7 +41,9 @@ import com.megablok10.app.items.AcceptItem
 import com.megablok10.app.items.ItemTransferStore
 import com.megablok10.app.items.SendItem
 import com.megablok10.app.log.DeviceDiagnostics
+import com.megablok10.app.log.LogStore
 import com.megablok10.app.log.Mb10Log
+import com.megablok10.app.log.Mb10LogStore
 import com.megablok10.app.netrun.NetrunEntry
 import com.megablok10.app.netrun.NetrunStore
 import com.megablok10.app.netrun.WorldAutoAccept
@@ -130,6 +132,7 @@ class AppGraph(private val app: Application) {
     val outbox: OutboxStore = OutboxStore(db.outboxDao(), peerDirectory) { line -> chat.markDelivered(line) }
     val chat: ChatStore = ChatStore(db.chatMessageDao(), outbox, peerDirectory)
     val calls = CallManager(app, peerDirectory, db.callLogDao())
+    val logStore: LogStore = Mb10LogStore(app)
     /** Отчёты о прочтении (D4) и переключатель «как в мессенджерах». */
     val readReceiptSetting = ReadReceiptSetting(prefs(ReadReceiptSetting.PREFS))
     val readReceipts = ReadReceipts(db.chatMessageDao(), peerDirectory, outbox, readReceiptSetting)
