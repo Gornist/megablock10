@@ -1,27 +1,17 @@
 package com.megablok10.app.presence
 
+import com.megablok10.app.testing.ManualNsdScheduler
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /** Операции NSD по одной (B3): снять незавершённую регистрацию нельзя по построению — ровно то, что теряло устройство в сети. */
 class NsdSlotTest {
     private val calls = mutableListOf<String>()
-    private var now = 0L
-    private val timers = mutableListOf<Pair<Long, () -> Unit>>()
-    private val scheduler = NsdScheduler { delay, block ->
-        val timer = (now + delay) to block
-        timers += timer
-        return@NsdScheduler { timers.remove(timer) }
-    }
+    private val scheduler = ManualNsdScheduler()
     private val slot = NsdSlot(object : NsdSlot.Ops<Int> {
         override fun start(value: Int, token: Int) { calls += "start($value)#$token" }
         override fun stop(token: Int) { calls += "stop#$token" }
     }, scheduler, opTimeoutMs = 10_000, retryMs = 5_000)
-
-    private fun advance(ms: Long) {
-        now += ms
-        timers.filter { it.first <= now }.forEach { t -> if (timers.remove(t)) t.second() }
-    }
 
     @Test fun startsOnceAndWaitsForTheAnswer() {
         slot.want(47100)
@@ -65,15 +55,15 @@ class NsdSlotTest {
         slot.want(47100)
         slot.onStartFailed(1)
         assertEquals(NsdSlot.Phase.IDLE, slot.phase)
-        advance(4_999)
+        scheduler.advance(4_999)
         assertEquals(1, calls.size)
-        advance(1)
+        scheduler.advance(1)
         assertEquals(listOf("start(47100)#1", "start(47100)#2"), calls)
     }
 
     @Test fun lostAnswerTimesOutAndStartsAgain() {
         slot.want(47100)
-        advance(10_000)
+        scheduler.advance(10_000)
         assertEquals("без ответа: снять на всякий случай и начать заново", listOf("start(47100)#1", "stop#1", "start(47100)#2"), calls)
         slot.onStarted(1) // запоздалый ответ на потерянную операцию — не в счёт
         assertEquals(NsdSlot.Phase.STARTING, slot.phase)
@@ -84,7 +74,7 @@ class NsdSlotTest {
     @Test fun answeredOperationCancelsItsTimeout() {
         slot.want(47100)
         slot.onStarted(1)
-        advance(60_000)
+        scheduler.advance(60_000)
         assertEquals(listOf("start(47100)#1"), calls)
     }
 
