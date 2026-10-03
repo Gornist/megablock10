@@ -13,23 +13,24 @@ import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * Запись мира до подписи (docs/netrun-world-records.md, раздел 2): [field] и [reason] из C2, [sourceRef] — id документа Моста,
- * из-за которого она пишется, [ver] — его версия после изменения, [happenedAt] — его `updated`, [value] — тело `newValue`.
- * Эпоха базы (`DocStore.epoch`) в событие не входит: она нужна только для [id].
+ * из-за которого она пишется, [txSeq] — номер транзакции хранилища, в которой документ изменился (`Change.seq`), [happenedAt] — `updated`
+ * документа, [value] — тело `newValue`. Эпоха базы (`DocStore.epoch`) в событие не входит: она нужна только для [id].
  */
 internal class WorldEvent(
     val field: String,
     val reason: String,
     val sourceRef: String,
-    val ver: Long,
+    val txSeq: Long,
     val happenedAt: Long,
     val value: JsonObject,
 ) {
     /**
-     * `id` записи: `w:<field>:<эпоха>:<sourceRef>:<ver>`. В пределах одной базы он детерминирован, поэтому повтор после сбоя Моста
-     * не плодит дублей; эпоха базы [epoch] отличает «жизни» базы, чтобы после сброса (тот же ключ мира, `ver` снова с 1) коллектор
-     * не отверг новые записи как «id already used», а kit не удалил их как отвергнутые.
+     * `id` записи: `w:<field>:<эпоха>:<txSeq>:<sourceRef>`. Одно событие — одна транзакция, поэтому в пределах базы `id` уникален для
+     * каждого появления события (тревога, снятая мастером и поднятая снова с тем же id документа и `ver = 1`, — два события, два `id`),
+     * а повтор отправки уже поставленной в очередь записи `id` не меняет. Эпоха базы [epoch] отличает «жизни» базы после её сброса
+     * (тот же ключ мира, `Change.seq` снова с 1). Длина ≤ 2 + 9 + 1 + 8 + 1 + 10 + 1 + 64 = 96 символов (предел коллектора — 100).
      */
-    fun id(epoch: String): String = "w:$field:$epoch:$sourceRef:$ver"
+    fun id(epoch: String): String = "w:$field:$epoch:$txSeq:$sourceRef"
 }
 
 /** Названия полей и причин записей мира: ровно те, что принимает коллектор (`lib/changeRecord.ts`). */
@@ -70,6 +71,9 @@ private object Words {
 
 /** Один разбор транзакции: что было, что стало, какая операция её породила. */
 private class Derivation(changes: List<Change>, private val previous: (DocKey) -> Doc?) {
+    /** Номер транзакции хранилища: у всех изменений одной транзакции он общий. */
+    private val txSeq: Long = changes.firstOrNull()?.seq ?: 0L
+
     private val now: Map<DocKey, Doc> = changes.filterNot { it.deleted }.associate { DocKey(it.doc.type, it.doc.id) to it.doc }
 
     /** Операция, записавшая `op_rid` в этой транзакции (`rid` и имя операции); null — транзакция не от операции с ценностями. */
@@ -208,7 +212,7 @@ private class Derivation(changes: List<Change>, private val previous: (DocKey) -
     // ---------- сборка ----------
 
     private fun event(field: String, reason: String, source: Doc, value: MutableMap<String, JsonElement>): WorldEvent =
-        WorldEvent(field, reason, source.id, source.ver, source.updated, fitted(value))
+        WorldEvent(field, reason, source.id, txSeq, source.updated, fitted(value))
 }
 
 private fun owner(d: Doc?): String? = d?.let { VJ.str(it.data, "owner") }
