@@ -4,9 +4,11 @@
     python3 netrun/assets/src/patch_imports.py [каталог_models]
 
 Для автономных очков (Mobile, Pico 4) в наших ассетах не нужны: тангенты (нет карт нормалей), LOD (меши до нескольких тысяч
-треугольников), теневые меши (динамических теней нет). Остальные параметры и uid не трогаем. Идемпотентно.
-Правки в .import вступают в силу при следующем импорте — тогда Godot пересоберёт ассеты.
+треугольников), теневые меши (динамических теней нет). Клипы существ (ice) зацикливаются здесь: glTF не хранит петлю, поэтому у
+каждой анимации .glb в `_subresources` ставится `settings/loop_mode = 1` (линейная петля Godot). Остальные параметры и uid не
+трогаем. Идемпотентно. Правки в .import вступают в силу при следующем импорте — тогда Godot пересоберёт ассеты.
 """
+import json
 import os
 import sys
 
@@ -19,10 +21,41 @@ WANT = {
 }
 
 
+def loop_subresources(glb_path):
+    """Текст значения `_subresources` для .glb: пусто, если анимаций нет; иначе loop_mode=1 у каждой (имена по алфавиту, как пишет Godot)."""
+    sys.path.insert(0, HERE)
+    import check_budget as cb
+    names = sorted({a.get("name", "?") for a in cb.load_glb(glb_path)[0].get("animations", [])})
+    if not names:
+        return "{}"
+    body = ",\n".join('"%s": {\n"settings/loop_mode": 1\n}' % n for n in names)
+    return '{\n"animations": {\n%s\n}\n}' % body
+
+
+def patch_subresources(lines, glb_path):
+    """Заменить блок `_subresources=...` (до следующего ключа `ключ=значение` верхнего уровня) на нужный."""
+    start = next(i for i, ln in enumerate(lines) if ln.startswith("_subresources="))
+    end = start + 1
+    while end < len(lines) and not lines[end][:1].isalpha():   # строки блока начинаются с кавычки или скобки
+        end += 1
+    want = ("_subresources=" + loop_subresources(glb_path)).split("\n")
+    if lines[start:end] == want:
+        return False
+    try:   # Godot при реимпорте раскрывает блок до всех своих ключей — смотрим по смыслу, чтобы не воевать с ним
+        have = json.loads("\n".join(lines[start:end])[len("_subresources="):])
+        if {k: v.get("settings/loop_mode") for k, v in have.get("animations", {}).items()} == \
+                {k: 1 for k in json.loads(loop_subresources(glb_path)).get("animations", {})}:
+            return False
+    except (ValueError, AttributeError):
+        pass
+    lines[start:end] = want
+    return True
+
+
 def patch(path):
     with open(path, encoding="utf-8") as f:
         lines = f.read().split("\n")
-    changed = False
+    changed = patch_subresources(lines, path[: -len(".import")])
     seen = set()
     for i, ln in enumerate(lines):
         key = ln.split("=", 1)[0]
