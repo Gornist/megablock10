@@ -290,9 +290,14 @@ B0 (хранилище), B1 (WebSocket), B3 (операции с ценност�
 **`settings`** — числа правил и Моста; мастер правит на ходу.
 ```json
 {"type": "settings", "id": "global", "ver": 7, "created": 1789990000000, "updated": 1790000000000,
- "data": {"confirm_timeout_s": 120, "inbox_timeout_s": 300, "disconnect_grace_s": 20, "soft_ice_reentry_pause_s": 600,
-          "terminal_silent_s": 30, "auditor_period_s": 60, "tutorial_node": "node_00", "require_allowed": false}}
+ "data": {"confirm_timeout_s": 120, "inbox_timeout_s": 300, "disconnect_grace_s": 20, "soft_ice_reentry_pause_s": 180,
+          "node_lockdown_s": 600, "terminal_silent_s": 30, "auditor_period_s": 60, "tutorial_node": "node_00", "require_allowed": false}}
 ```
+- `soft_ice_reentry_pause_s` (по умолчанию 180) — пауза **нетраннера** после выброса Soft ICE: `runner.re_entry_after = конец забега + пауза`, вход
+  в любой узел отказан (`session_state`) до этого срока.
+- `node_lockdown_s` (по умолчанию 600) — локдаун **узла** для всех после выброса: `node.lockdown_until = конец забега + node_lockdown_s`.
+  Это отдельная настройка (решение D1, netrun.md «Открытые вопросы», п. 1). Если в уже созданном документе настроек её нет — берётся 600,
+  а не `soft_ice_reentry_pause_s`. Те же 600 — срок цели `lockdown` мастера без `value` (`master.goal`).
 `require_allowed` — вход в Сеть только у нетраннеров с `runner.data.allowed == true` (по умолчанию нет/`false`: допуск не проверяется).
 
 **`alert`** — тревога для дашборда (аудитор, сервер мира).
@@ -422,7 +427,7 @@ B0 (хранилище), B1 (WebSocket), B3 (операции с ценност�
   (сервер мира знает, была ли охота), при `clean`/`soft_ice` — только `phone`. Нарушение — `bad_request`.
 - `loot_eddies` уходят на телефон только при `clean`, иначе возвращаются в `node.eddies`.
 - `node` — текущий узел сессии (`world.node`, иначе `session.node`), иначе `bad_request`; `to: node` кладёт предмет в него.
-- Побочные изменения той же транзакции: `soft_ice` → `node.lockdown_until` узла `node` и `runner.re_entry_after` (пауза повторного входа на нетраннере: `op.submit_deck` в любой узел отказывает `session_state`, пока она не кончилась); `black_ice` → `runner.blocked`, `alert`
+- Побочные изменения той же транзакции: `soft_ice` → `node.lockdown_until` узла `node` (срок `node_lockdown_s`) и `runner.re_entry_after` (срок `soft_ice_reentry_pause_s`) (пауза повторного входа на нетраннере: `op.submit_deck` в любой узел отказывает `session_state`, пока она не кончилась); `black_ice` → `runner.blocked`, `alert`
   «ФЛЭТЛАЙН» (`disconnect: true` — «обрыв до флэтлайна»); `runner.runs` +1, `tutorial_done: true`.
 - **Повтор**: тот же ответ. **Обрыв**: повторить `finish:<сессия>`; если сессия уже `closed` другим `rid` — `session_state`
   с документом сессии (исход уже записан).
@@ -446,7 +451,7 @@ B0 (хранилище), B1 (WebSocket), B3 (операции с ценност�
 **Цели и сроки узла.** `{"op": "master.goal", "node": "node_07", "kind": "open", "value": 120, "in_s": 600}` (или абсолютный
 `"deadline": <мс>`). Пишет `node_cfg/<узел>.goal = {kind, value, deadline, set_at, done, result}`; новая цель заменяет прежнюю,
 `master.goal_clear` (`node`) убирает. Правила используют цель вместо сырых чисел: `open` — к сроку снять локдаун узла;
-`lockdown` — к сроку закрыть узел на `value` секунд (по умолчанию `soft_ice_reentry_pause_s`), критический шаг — через
+`lockdown` — к сроку закрыть узел на `value` секунд (по умолчанию `node_lockdown_s`, иначе 600), критический шаг — через
 «ждём мастера» ниже. Остальные `kind` (`trace`, `ice`, …) читает сервер мира: «к значению `value` примерно к `deadline`».
 Выполненная цель получает `done: true` и `result` (`applied` | `denied` | `no_node`). `eddies` узла автоматика не трогает.
 

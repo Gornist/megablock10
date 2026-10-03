@@ -397,8 +397,10 @@ class ValueOps(
         }
         var reEntryAfter = 0L
         if (outcome == "soft_ice") {
+            // Два разных рычага (netrun.md, «Открытые вопросы», п. 1): пауза нетраннера и локдаун узла для всех — свои настройки.
             val pause = settings["soft_ice_reentry_pause_s"]?.let { VJ.lng(settings, "soft_ice_reentry_pause_s") } ?: DEFAULT_PAUSE_S
-            nodeData = VJ.with(nodeData, "lockdown_until" to VJ.p(now + pause * MS))
+            val lockdown = settings["node_lockdown_s"]?.let { VJ.lng(settings, "node_lockdown_s") } ?: DEFAULT_LOCKDOWN_S
+            nodeData = VJ.with(nodeData, "lockdown_until" to VJ.p(now + lockdown * MS))
             reEntryAfter = now + pause * MS  // пауза на нетраннере: действует на вход в любой узел, а не только на узел, где сработал ICE
         }
         if (nodeData != nd.data) tx.put(NODE, nd.id, nd.ver, nodeData)
@@ -656,7 +658,8 @@ class ValueOps(
         private val STOCK_KINDS = setOf("SHARD", "DAEMON")
         private const val MAX_RID = 128
         private const val MS = 1000L
-        private const val DEFAULT_PAUSE_S = 600L
+        private const val DEFAULT_PAUSE_S = 180L // пауза нетраннера после выброса Soft ICE (`soft_ice_reentry_pause_s`)
+        private const val DEFAULT_LOCKDOWN_S = 600L // локдаун узла для всех после выброса (`node_lockdown_s`)
         private val FINISH_OUTCOMES = setOf("clean", "emergency", "soft_ice", "black_ice")
 
         /**
