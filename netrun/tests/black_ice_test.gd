@@ -142,6 +142,16 @@ func test_hunt_starts_at_trace_level_and_marks_session_hunted() -> void:
 	assert_bool(black.brain.is_hunting(SESSION)).is_true()
 
 
+func test_state_tells_the_client_when_it_is_hunted() -> void:
+	# клиент по полю hunt закрывает порталы (portal_locked): охота идёт за этим игроком, а не вообще в узле
+	_setup({"hunt_speed": 0.2})
+	_bot.start(_cfg, BotClient.Scenario.LOITER)
+	assert_bool(await _wait_for(func(): return _node.session_state(SESSION) != null and _bot.last_state.has("ice"))).is_true()
+	assert_bool(_bot.last_state.get("hunt", true)).is_false()  # ключ есть, охоты нет
+	(_node.session_state(SESSION) as DaemonSession).trace.add_action("door_forced", _node.now(), 6.0)
+	assert_bool(await _wait_for(func(): return _bot.last_state.get("hunt", false))).is_true()
+
+
 func test_black_ice_catch_is_flatline_dead_deck_stays_protected_goes_home() -> void:
 	_setup({"hunt_speed": 8.0})
 	await _bot_in_node_with_trace(60.0)

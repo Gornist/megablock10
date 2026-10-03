@@ -558,6 +558,7 @@ func _broadcast_state() -> void:
 			"trace": ds.trace.value(),
 			"level": ds.trace.level(),
 			"ghost": ds.is_ghost(_now),
+			"hunt": is_hunted(session),  # за этим игроком идёт охота Black ICE: клиент закрывает порталы (portal_locked)
 			"k": snappedf(_now, 0.001),
 			"ice": ice_list,
 			"cd": cd,

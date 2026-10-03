@@ -422,6 +422,7 @@ func _on_peer_connected(peer_id: int) -> void:
 	if not resumed:
 		var a := Node3D.new()
 		a.name = avatar_name(session)
+		a.position = NodeLayout.SPAWN  # клиент ставит риг в ту же точку; иначе первые позиции упрутся в предел скорости
 		_world.add_child(a)
 		_avatar_ids[session] = _next_avatar_id
 		_next_avatar_id += 1

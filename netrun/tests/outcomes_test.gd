@@ -106,7 +106,7 @@ func _hunt_events(on: bool) -> Array:
 ## Бот в узле (ходит кругами у входа). take_shard — идёт к постаменту, берёт шард: он у игрока в деке (в Мосте deck:<сессия>).
 func _enter_node(take_shard: bool = false) -> void:
 	if take_shard:
-		_bot.loiter_center = Vector3(0, 0, -9)
+		_bot.loiter_center = Vector3(NodeLayout.SHARD_POS.x, 0, NodeLayout.SHARD_POS.z + 1.0)  # круг у хранилища шарда
 		_bot.loiter_radius = 0.5
 	_bot.start(_cfg, BotClient.Scenario.LOITER)
 	assert_bool(await _wait_for(func(): return _node.session_state(SESSION) != null and _bot.net.is_connected_to_world)).is_true()
@@ -149,7 +149,7 @@ func test_clean_exit_brings_loot_and_whole_deck_to_phone() -> void:
 
 func test_leave_works_only_on_the_exit_pad() -> void:
 	_setup()
-	_bot.loiter_center = Vector3(5, 0, 1.5)  # круг радиуса 0.5 на площадке выхода
+	_bot.loiter_center = NodeLayout.EXIT_POS + Vector3(0, 0, 0.5)  # круг радиуса 0.5 на площадке выхода
 	_bot.loiter_radius = 0.5
 	_bot.start(_cfg, BotClient.Scenario.LOITER)
 	assert_bool(await _wait_for(func(): return _node.session_state(SESSION) != null and _bot.net.is_connected_to_world)).is_true()

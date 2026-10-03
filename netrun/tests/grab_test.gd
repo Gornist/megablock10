@@ -61,6 +61,13 @@ func _both_online() -> bool:
 	return await _wait_for(func(): return _alice.is_connected_to_world and _bob.is_connected_to_world)
 
 
+func test_new_avatar_starts_at_the_node_spawn() -> void:
+	# клиент ставит риг в кресло у NodeLayout.SPAWN; аватар на сервере стоит там же, иначе первые позиции упрутся в предел скорости
+	assert_bool(await _both_online()).is_true()
+	assert_bool(await _wait_for(func(): return _server.has_avatar("alice"))).is_true()
+	assert_vector(_server.get_avatar("alice").position).is_equal(NodeLayout.SPAWN)
+
+
 func test_server_confirms_grab_and_records_holder() -> void:
 	assert_bool(await _both_online()).is_true()
 	var got: Array[String] = []

@@ -10,11 +10,12 @@ func _scene() -> Node3D:
 func _node_info(node: String, shard_ids: Array, arrive: Variant = null) -> Dictionary:
 	var shards: Array = []
 	for i in shard_ids.size():
-		shards.append({"id": shard_ids[i], "p": [0.0, 1.0, -10.0 + i], "ready": true})
+		var slot: Vector3 = NodeLayout.SHARD_SLOTS[i]
+		shards.append({"id": shard_ids[i], "p": [slot.x, slot.y, slot.z], "ready": true})
 	var info := {
 		"kind": "node", "node": node, "title": "Архив", "tier": "HARD", "r": 1.5, "shards": shards,
-		"portals": [{"to": "node_02", "title": "Бухгалтерия", "tier": "BASE", "p": [-6.0, -1.0], "open": true},
-			{"to": "node_03", "title": "Архив", "tier": "NIGHTMARE", "p": [-7.0, -6.0], "open": false}],
+		"portals": [{"to": "node_02", "title": "Бухгалтерия", "tier": "BASE", "p": [NodeLayout.PORTAL_SLOTS[0].x, NodeLayout.PORTAL_SLOTS[0].z], "open": true},
+			{"to": "node_03", "title": "Архив", "tier": "NIGHTMARE", "p": [NodeLayout.PORTAL_SLOTS[1].x, NodeLayout.PORTAL_SLOTS[1].z], "open": false}],
 	}
 	if arrive != null:
 		info["arrive"] = arrive
@@ -51,7 +52,7 @@ func test_arrive_moves_rig_and_closes_tunnel_without_turning_camera() -> void:
 func test_grabbed_shard_stays_in_hand_across_nodes() -> void:
 	var scene := _scene()
 	scene.apply_node(_node_info("node_05", ["node_05_pk0"]))
-	var m: MeshInstance3D = scene._pickups["node_05_pk0"]
+	var m: Node3D = scene._pickups["node_05_pk0"]
 	assert_bool(scene.try_grab(m.global_position, 0.4, scene.rig.camera)).is_true()
 	scene.confirm_grab()
 	assert_object(m.get_parent()).is_same(scene.rig.camera)
@@ -65,8 +66,8 @@ func test_shards_event_hides_taken_slot() -> void:
 	var scene := _scene()
 	scene.apply_node(_node_info("node_05", ["node_05_pk0", "node_05_pk1"]))
 	scene.apply_shards([{"id": "node_05_pk0", "ready": false}, {"id": "node_05_pk1", "ready": true}])
-	assert_bool((scene._pickups["node_05_pk0"] as MeshInstance3D).visible).is_false()
-	assert_bool((scene._pickups["node_05_pk1"] as MeshInstance3D).visible).is_true()
+	assert_bool((scene._pickups["node_05_pk0"] as Node3D).visible).is_false()
+	assert_bool((scene._pickups["node_05_pk1"] as Node3D).visible).is_true()
 	# пустой слот не берётся
-	var near: Vector3 = (scene._pickups["node_05_pk0"] as MeshInstance3D).global_position
+	var near: Vector3 = (scene._pickups["node_05_pk0"] as Node3D).global_position
 	assert_bool(scene.try_grab(near, 0.4, scene.rig.camera)).is_false()

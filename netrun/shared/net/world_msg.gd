@@ -13,7 +13,8 @@ const EXIT := "exit"
 const POS := "pos"
 const USE := "use"
 const LEAVE := "leave"
-## Сервер -> клиент: снимок узла (раз в 0.1 с, без гарантий порядка доставки) и события (надёжно).
+## Сервер -> клиент: снимок узла (раз в 0.1 с, без гарантий порядка доставки) и события (надёжно). В снимке: trace, level, ghost, cd, ice
+## [{id, p, f, s, b}] и hunt — за этим игроком идёт охота Black ICE (клиент рисует порталы закрытыми, props/portal_locked).
 const STATE := "state"
 const EVENT := "ev"
 ## Сервер -> клиент: позиции ДРУГИХ аватаров своего узла (~20 раз/с, без гарантий): {t: av, k: время сервера, a: [[id, x, z], ...]}.
@@ -23,7 +24,8 @@ const AVATARS := "av"
 ## {t: beat, term, bat?, chg?, fps, worst, rtt?}; разбор и пересылка в Мост — NetServer / TerminalBeatRelay.
 const BEAT := "beat"
 ## Виды события: ended (выход: reason), daemon (ok, daemon, error), shard (id взят).
-## Граф узлов (W1): node — вход в узел (title, tier, alert, shards [{id, p, ready}], portals [{to, title, tier, p, open}], r — радиус
+## Граф узлов (W1): node — вход в узел (title, tier, alert, shards [{id, p, ready, enc?}] (enc — зашифрованный шард, модель shard_encrypted), dead [[x, z]] (мёртвые деки в узле, необязательно),
+## portals [{to, title, tier, p, open}], r — радиус
 ## портала, arrive [x, z] — куда поставить риг; нет arrive — игрок остаётся где стоит); tunnel — переход начался (to, title, tier,
 ## sec — сколько длится: клиент затемняет экран без движения камеры, затем придёт node); portal_denied — портал не открылся
 ## (to, reason: lockdown | hunt | busy | not_linked, left — секунд до конца локдауна); shards — слоты шардов узла изменились.

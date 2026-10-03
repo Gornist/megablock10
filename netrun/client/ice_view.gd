@@ -1,0 +1,100 @@
+class_name IceView
+extends Node3D
+## ICE в узле: модель из ассетов (ice/soft_ice.glb, ice/black_ice.glb) со скелетом и клипами. Клип выбирается по состоянию ICE из
+## снимка сервера (WorldMsg.STATE, поле s — IceBrain.State; b = 1 — Black ICE): клиент server/ не читает, номера состояний
+## продублированы ниже. Позу и поворот двигает сцена по буферу состояний (RemoteTracks).
+##
+## Soft ICE (клипы idle, patrol): патруль — patrol; подозрение — стоит и смотрит (idle); поиск идёт к последней точке (patrol, быстрее).
+## Black ICE (idle, hunt, catch): парит (idle), пока не вышел на цель; поиск и охота — hunt; охота вплотную к игроку — catch.
+## «Что изменилось» читается и без цвета: над головой знак (AlertAnchor) — «?» подозревает, «!» ищет, «!!» охотится.
+
+const STATE_PATROL := 0
+const STATE_SUSPICIOUS := 1
+const STATE_SEARCH := 2
+const STATE_HUNT := 3
+## Охота вплотную: ближе этого до игрока Black ICE показывает catch (сервер ловит с 1,5 м — IceBrain catch_range).
+const CATCH_NEAR := 2.0
+const SEARCH_SPEED := 1.6
+const ALERT_TEXT := ["", "?", "!", "!!"]
+const ALERT_COLOR := [Color.WHITE, Color(1.0, 0.62, 0.26), Color(1.0, 0.35, 0.31), Color(1.0, 0.35, 0.31)]
+
+var black := false
+var asset := ""
+var state := STATE_PATROL
+var near_target := false
+
+var _model: Node3D
+var _player: AnimationPlayer
+var _alert: Label3D
+var _clip := ""
+
+
+func _init(is_black: bool = false) -> void:
+	black = is_black
+	asset = NodeAssets.BLACK_ICE if black else NodeAssets.SOFT_ICE
+	_model = NodeAssets.instance(asset)
+	_model.name = "Model"
+	add_child(_model)
+	_player = _model.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	_alert = Label3D.new()
+	_alert.name = "Alert"
+	_alert.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_alert.font_size = 96
+	_alert.pixel_size = 0.006
+	_alert.outline_size = 12
+	var anchor := _model.get_node_or_null("AlertAnchor") as Node3D  # метка модели: над головой
+	_alert.position = anchor.position + Vector3(0, 0.25, 0) if anchor != null else Vector3(0, 2.4, 0)
+	_alert.visible = false
+	add_child(_alert)
+	_choose(false)
+
+
+func _ready() -> void:
+	_start_clip()
+
+
+## Состояние ICE с сервера; near — рядом с игроком (для catch). Повтор того же состояния ничего не перезапускает.
+func apply_state(new_state: int, near: bool = false) -> void:
+	state = new_state
+	near_target = near
+	_choose(true)
+
+
+## Клип, который сейчас выбран (играет, когда ICE в дереве).
+func current_clip() -> String:
+	return _clip
+
+
+func alert_visible() -> bool:
+	return _alert.visible
+
+
+func _choose(play: bool) -> void:
+	var clip := clip_for(black, state, near_target)
+	var s := clampi(state, 0, ALERT_TEXT.size() - 1)
+	_alert.visible = s >= STATE_SUSPICIOUS
+	_alert.text = ALERT_TEXT[s]
+	_alert.modulate = ALERT_COLOR[s]
+	if _player != null:
+		_player.speed_scale = speed_for(black, state)
+	if clip != _clip:
+		_clip = clip
+		if play:
+			_start_clip()
+
+
+func _start_clip() -> void:
+	if _player != null and is_inside_tree() and _player.has_animation(_clip) and _player.current_animation != _clip:
+		_player.play(_clip, 0.2)
+
+
+static func clip_for(is_black: bool, ice_state: int, near: bool) -> String:
+	if is_black:
+		if ice_state == STATE_HUNT:
+			return "catch" if near else "hunt"
+		return "hunt" if ice_state == STATE_SEARCH else "idle"
+	return "idle" if ice_state == STATE_SUSPICIOUS else "patrol"
+
+
+static func speed_for(is_black: bool, ice_state: int) -> float:
+	return SEARCH_SPEED if not is_black and ice_state == STATE_SEARCH else 1.0
