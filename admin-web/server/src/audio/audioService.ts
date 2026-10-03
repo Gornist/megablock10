@@ -35,6 +35,13 @@ export interface AudioConfig {
 
 const DEFAULTS: AudioConfig = { fadeMs: 1500, replyTimeoutMs: 5000, defaultVolume: 60 };
 
+/** Объявление, если мастер не задал: громкость, сигнал перед ним и до скольких % приглушить фон. */
+const ANNOUNCE_DEFAULTS = { volume: 80, chime: true, duck: 15 };
+/** «Доиграло?» — опрос точки через столько мс после конца клипа: сразу и ещё раз позже, если точка была занята. */
+const ANNOUNCE_DONE_PROBES_MS = [1500, 8000];
+/** Страниц LIST за одну операцию — предел на случай точки, у которой total не сходится с выдачей. */
+const LIST_MAX_PAGES = 200;
+
 export interface AnnounceTargets {
   all?: boolean;
   groupIds?: string[];
@@ -184,7 +191,7 @@ export class AudioService {
       quiet: true,
       run: async (s, row) => {
         const names: string[] = [];
-        for (let page = 0; page < 200; page++) {
+        for (let page = 0; page < LIST_MAX_PAGES; page++) {
           const reply = await s.request({ type: MsgType.LIST, payload: encodeListPayload(names.length) }, this.cfg.replyTimeoutMs);
           const body = JSON.parse(reply.payload.toString("utf8")) as { total: number; names: string[] };
           names.push(...body.names.filter((n) => typeof n === "string"));
@@ -235,9 +242,9 @@ export class AudioService {
     const { ids, skipped } = this.resolveTargets(targets);
     const payload: AnnouncePayload = {
       clip: clip.id,
-      volume: clamp(opts.volume ?? 80, 0, 100),
-      chime: opts.chime ?? true,
-      duck: clamp(opts.duck ?? 15, 0, 100),
+      volume: clamp(opts.volume ?? ANNOUNCE_DEFAULTS.volume, 0, 100),
+      chime: opts.chime ?? ANNOUNCE_DEFAULTS.chime,
+      duck: clamp(opts.duck ?? ANNOUNCE_DEFAULTS.duck, 0, 100),
     };
     for (const displayId of ids) {
       const p: AnnounceProgress = {
@@ -299,11 +306,11 @@ export class AudioService {
     p.durationMs = durationMs;
     p.playingSince = Date.now();
     // «Доиграло» — по HELLO после длительности (и ещё раз позже, если точка была занята).
-    for (const after of [durationMs + 1500, durationMs + 8000]) {
+    for (const delay of ANNOUNCE_DONE_PROBES_MS) {
       const t = setTimeout(() => {
         this.timers.delete(t);
         if (p.phase === "PLAYING") void this.displays.probe(displayId);
-      }, after);
+      }, durationMs + delay);
       t.unref();
       this.timers.add(t);
     }
