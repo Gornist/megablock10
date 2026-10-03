@@ -34,6 +34,12 @@ float corrupt_mask(float k) {
 float corrupt_hole(float m) {
 	return 1.0 - m * step(cell_hash(7.0), 0.4); // часть порченых клеток пропадает
 }
+// Тир перекрашивает цвет ассета в tint, но белые акценты (проёмы, порог, узлы) остаются белыми: чем ближе цвет к белому, тем меньше перекраска.
+vec3 recolor(vec3 c) {
+	float mx = max(c.r, max(c.g, c.b));
+	float mn = min(c.r, min(c.g, c.b));
+	return mix(tint.rgb * mx, c, mn / max(mx, 0.0001));
+}
 float dist_fade() {
 	return 1.0 - smoothstep(fade_start, fade_end, v_dist);
 }
@@ -46,7 +52,7 @@ void vertex() {
 void fragment() {
 	float f = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), fresnel_power);
 	float k = corrupt_k();
-	vec3 base = mix(mix(COLOR.rgb, tint.rgb, tint_amount), corrupt_color.rgb, corrupt_mask(k));
+	vec3 base = mix(mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount), corrupt_color.rgb, corrupt_mask(k));
 	ALBEDO = base * glow;
 	ALPHA = COLOR.a * mix(center_alpha, 1.0, f) * corrupt_hole(corrupt_mask(k)) * dist_fade();
 }

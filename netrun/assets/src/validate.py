@@ -38,6 +38,8 @@ def check(rep):
     mats = set(info["materials"])
     if not mats <= ROLES:
         bad.append(f"неизвестные материалы {sorted(mats - ROLES)}")
+    if "glow_edge" in mats:
+        bad.append("glow_edge: сплошные рейки запрещены (STYLE.md), грань — плотность частиц")
     draws = len(info["prims"])
     if draws > MAX_DRAWS:
         bad.append(f"примитивов {draws} > {MAX_DRAWS} (каждый — вызов отрисовки)")

@@ -196,6 +196,29 @@ def sample_surface(bm, count, seed=1, push=0.0, min_z=None):
     return pts
 
 
+def sample_line(a, b, per_meter, spread=0.01, seed=1, min_z=None):
+    """Грань как цепочка частиц: точки вдоль отрезка a→b (равномерно с шумом), небольшой разброс поперёк.
+    Сплошных реек в ассетах нет (STYLE.md): линия = плотность точек."""
+    rng = random.Random(seed)
+    a, b = Vector(a), Vector(b)
+    n = max(2, int((b - a).length * per_meter))
+    out = []
+    for i in range(n):
+        p = a + (b - a) * ((i + rng.random()) / n) + Vector((rng.gauss(0, spread), rng.gauss(0, spread), rng.gauss(0, spread)))
+        if min_z is not None:
+            p.z = max(p.z, min_z)
+        out.append(p)
+    return out
+
+
+def sample_lines(segments, per_meter, spread=0.01, seed=1, min_z=None):
+    """Несколько отрезков [(a, b), ...] одним списком точек."""
+    out = []
+    for i, (a, b) in enumerate(segments):
+        out += sample_line(a, b, per_meter, spread, seed + i, min_z)
+    return out
+
+
 def sample_box(center, size, count, seed=1, min_z=None):
     """Случайные точки внутри параллелепипеда (объёмная «пыль»), не на поверхности."""
     rng = random.Random(seed)
@@ -209,7 +232,7 @@ def sample_box(center, size, count, seed=1, min_z=None):
     return out
 
 
-def point_cloud(name, points, rgb, half_size=0.01, seed=1, a_min=0.4, a_max=1.0):
+def point_cloud(name, points, rgb, half_size=0.01, seed=1, a_min=0.4, a_max=1.0, on_floor=False):
     """Облако из квадратиков (материал points); контракт — в докстринге модуля."""
     rng = random.Random(seed)
     bm = bmesh.new()
@@ -218,6 +241,9 @@ def point_cloud(name, points, rgb, half_size=0.01, seed=1, a_min=0.4, a_max=1.0)
     cols = []
     h = half_size
     for c in points:
+        c = Vector(c)
+        if on_floor:  # квадрат не уходит ниже пола: центр не ниже полуразмера
+            c.z = max(c.z, half_size)
         vs = [bm.verts.new(c + Vector(d)) for d in ((-h, 0, -h), (h, 0, -h), (h, 0, h), (-h, 0, h))]
         f = bm.faces.new(vs)
         for loop, uv in zip(f.loops, ((0, 0), (1, 0), (1, 1), (0, 1))):
