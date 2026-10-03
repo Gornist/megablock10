@@ -17,6 +17,9 @@ class ValueFixture(val path: String) {
         if (calls == failAt) error("сбой на вызове часов $calls")
         now++
     }
+    /** Перевести часы стенда вперёд на [ms] (длительности забегов в тестах считаются секундами). */
+    fun advance(ms: Long) { now += ms }
+
     val store: DocStore = DocStore.open(path, clock)
     val issued: MutableList<IssuedTransfer> = Collections.synchronizedList(ArrayList())
     val ops = ValueOps(store, clock) { issued.addAll(it) }
