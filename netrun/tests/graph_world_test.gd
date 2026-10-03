@@ -288,12 +288,9 @@ func test_alert_and_refill_deadlines_survive_restart() -> void:
 
 
 ## Сессия из снимка Моста без вернувшегося игрока (рестарт сервера мира): по окну возврата её закрывает узел графа (run.finish emergency).
+## Фейковый Мост отдаёт снимок при старте узлов, окно возврата уже идёт; сокращаем его напрямую.
 func test_recovered_session_without_player_is_closed_after_grace() -> void:
-	_server.grace_sec = 1.0
-	var snapshot: Array = []
-	for t in [BridgeApi.T_NODE, BridgeApi.T_SESSION, BridgeApi.T_ITEM]:
-		snapshot.append_array((_bridge.list_docs(t) as Dictionary).get("docs", []))
-	_world.node_of("g_a").recover(snapshot)
 	assert_array(_world.node_of("g_a").recovered_sessions).contains([SESSION])
+	_server._deadline_ms[SESSION] = Time.get_ticks_msec() + 1000
 	assert_bool(await _wait_for(func(): return str(_session_data()["state"]) == "closed", 10.0)).is_true()
 	assert_str(str(_session_data()["outcome"])).is_equal("emergency")
