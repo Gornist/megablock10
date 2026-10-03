@@ -1,5 +1,6 @@
 import { api } from "../../api/client";
 import type { NetState } from "../../api/types";
+import { AttnRow } from "../../design/AttnRow";
 import { AppButton, ErrorNote, Panel } from "../../design/components";
 import { formatAgo } from "../../format";
 import { alertTone, docsOf, text, useNetCall } from "./netUtil";
@@ -18,14 +19,12 @@ export function AlertsPanel({ state, reload }: { state: NetState; reload: () => 
       {alerts.map((a) => {
         const kind = text(a.data.kind) || "без вида";
         return (
-          <div key={a.id} className={`attn-item sev-${alertTone(kind) === "danger" ? "crit" : "warn"}`}>
-            <span className="attn-title">{kind}</span>
-            <span className="attn-detail">{text(a.data.msg) || a.id}</span>
+          <AttnRow key={a.id} severity={alertTone(kind) === "danger" ? "crit" : "warn"} title={kind} detail={text(a.data.msg) || a.id}>
             <span className="attn-time mono">{formatAgo(a.created)}</span>
             <AppButton disabled={busy} onClick={() => void call(() => api.delete(`/api/net/alerts/${encodeURIComponent(a.id)}?ver=${a.ver}`))}>
               принять
             </AppButton>
-          </div>
+          </AttnRow>
         );
       })}
     </Panel>

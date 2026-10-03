@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../../api/client";
 import type { NetDoc, NetState } from "../../api/types";
+import { AttnRow } from "../../design/AttnRow";
 import { AppButton, AppInput, Badge, ErrorNote, Panel } from "../../design/components";
 import { formatAgo } from "../../format";
 import { docsOf, newRef, numOf, obj, text, useNetCall } from "./netUtil";
@@ -33,16 +34,19 @@ function Thread({ q, reload }: { q: NetDoc; reload: () => void }) {
   };
 
   return (
-    <div className={`attn-item sev-${open ? "warn" : "info"}`} style={{ flexWrap: "wrap" }}>
-      <span className="attn-title">{text(q.data.runner) || q.id}</span>
-      <Badge tone={open ? "warn" : "ok"}>{open ? "ждёт ответа" : "отвечено"}</Badge>
-      <div className="attn-detail" style={{ flexBasis: "100%" }}>
-        {messages.map((m) => (
-          <div key={m.mid || m.at}>
-            <span className="hint-text">{m.from === "master" ? "мастер" : "нетраннер"} · {formatAgo(m.at)}:</span> {m.text}
-          </div>
-        ))}
-      </div>
+    <AttnRow
+      severity={open ? "warn" : "info"}
+      style={{ flexWrap: "wrap" }}
+      title={text(q.data.runner) || q.id}
+      afterTitle={<Badge tone={open ? "warn" : "ok"}>{open ? "ждёт ответа" : "отвечено"}</Badge>}
+      detailAs="div"
+      detailStyle={{ flexBasis: "100%" }}
+      detail={messages.map((m) => (
+        <div key={m.mid || m.at}>
+          <span className="hint-text">{m.from === "master" ? "мастер" : "нетраннер"} · {formatAgo(m.at)}:</span> {m.text}
+        </div>
+      ))}
+    >
       <span className="filter-row" style={{ flexBasis: "100%" }}>
         <AppInput
           value={reply}
@@ -58,7 +62,7 @@ function Thread({ q, reload }: { q: NetDoc; reload: () => void }) {
         </AppButton>
       </span>
       {error && <ErrorNote>{error}</ErrorNote>}
-    </div>
+    </AttnRow>
   );
 }
 

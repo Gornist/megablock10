@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../../api/client";
 import type { NetRunnerFlagItem } from "../../api/types";
+import { AttnRow } from "../../design/AttnRow";
 import { AppButton, AppDialog, AppInput, Badge, ErrorNote, Panel } from "../../design/components";
 import { formatAgo, shortKey } from "../../format";
 import { navigate } from "../../router";
@@ -33,14 +34,19 @@ export function FlatlinePanel({ flags, reload }: { flags: NetRunnerFlagItem[]; r
     <Panel title={`Флэтлайн: допуск закрыт (${blocked.length})`}>
       {error && <ErrorNote>{error}</ErrorNote>}
       {blocked.map((f) => (
-        <div key={f.runnerKey} className="attn-item sev-crit">
-          <span className="attn-title">{f.callsign || shortKey(f.runnerKey)}</span>
-          <span className="attn-detail">
-            {f.reason ?? "заблокирован"}
-            {f.node ? ` · узел ${f.node}` : ""}
-            {f.terminal ? ` · терминал ${f.terminal}` : ""}
-            {detailLine(f) && <span className="hint-text"> · {detailLine(f)}</span>}
-          </span>
+        <AttnRow
+          key={f.runnerKey}
+          severity="crit"
+          title={f.callsign || shortKey(f.runnerKey)}
+          detail={
+            <>
+              {f.reason ?? "заблокирован"}
+              {f.node ? ` · узел ${f.node}` : ""}
+              {f.terminal ? ` · терминал ${f.terminal}` : ""}
+              {detailLine(f) && <span className="hint-text"> · {detailLine(f)}</span>}
+            </>
+          }
+        >
           {!f.bridgeSynced && <Badge tone="warn">Мост ещё не знает</Badge>}
           <span className="attn-time mono">{formatAgo(f.blockedAt)}</span>
           {f.knownPlayer && (
@@ -51,7 +57,7 @@ export function FlatlinePanel({ flags, reload }: { flags: NetRunnerFlagItem[]; r
           <AppButton variant="primary" disabled={busy} onClick={() => setSpare(f)}>
             пощадить
           </AppButton>
-        </div>
+        </AttnRow>
       ))}
       {spare && (
         <AppDialog
