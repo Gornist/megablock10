@@ -1,6 +1,6 @@
 """Превью PNG ассетов «Сети» (Workbench, без GPU-свечения): для приёмки формы, размеров и фасок.
 
-    blender -b -P netrun/assets/src/preview.py -- env|props|assembly [имя ...]
+    blender -b -P netrun/assets/src/preview.py -- env|props|ice|avatar|deck|assembly [имя ...]
 
 Берёт готовые .glb из models/ (то есть проверяет и сам экспорт), кладёт PNG в previews/<группа>/.
 Серый столбик слева — высота глаз сидящего (1,2 м), планка на полу — 1 м. Тёмные тела в превью осветлены (иначе формы
@@ -47,6 +47,11 @@ def place(path, loc=(0, 0, 0), rot_y=0.0):
     before = set(bpy.data.objects)
     bpy.ops.import_scene.gltf(filepath=path)
     new = [o for o in bpy.data.objects if o not in before]
+    for o in new:
+        if o.type == "ARMATURE":  # превью — поза покоя, без клипа
+            o.animation_data_clear()
+            o.data.pose_position = "REST"
+            o.hide_viewport = False
     m = Matrix.Translation(bc.to_blender(loc)) @ Matrix.Rotation(math.radians(rot_y), 4, "Z")
     for o in new:
         if o.parent is None:
@@ -163,6 +168,68 @@ def preview_props(names):
         render(sc, meshes + [ref], os.path.join(PREVIEWS, "props", name + ".png"), 720, 560, VIEW_AZ.get(name, 32), 22, 1.15)
 
 
+def preview_rigs(group, names, ref_big=True):
+    """Существа и аватар: два вида (спереди-справа и сбоку) каждого; лицо смотрит в -Z, поэтому азимут 215 / 90."""
+    for name in names:
+        for az, suffix in ((215, ""), (90, "_side")):
+            sc = fresh()
+            new = place(glb(group, name))
+            meshes = [o for o in new if o.type == "MESH"]
+            add_ground(sc)
+            half = max(max(o.dimensions.x, o.dimensions.y) for o in meshes) / 2.2
+            rx, rz = math.cos(math.radians(az)), -math.sin(math.radians(az))   # «вправо» на экране в осях Godot; эталон — слева
+            ref = add_ref(-rx * (half + 0.3), -rz * (half + 0.3)) if ref_big else add_ref_small(-0.05 - half, 0.0)
+            render(sc, meshes + [ref], os.path.join(PREVIEWS, group, name + suffix + ".png"), 720, 640, az, 16, 1.1)
+
+
+def preview_silhouettes():
+    """Soft ICE, Black ICE и аватар в ряд, плоские силуэты на светлом фоне: так их видно издалека. Эталон — столбик 1,2 м."""
+    sc = fresh()
+    sc.display.shading.light = "FLAT"
+    sc.display.shading.color_type = "SINGLE"
+    sc.display.shading.single_color = (0.04, 0.04, 0.05)
+    sc.display.shading.show_object_outline = False
+    sc.world.color = (0.82, 0.86, 0.87)
+    objs = []
+    for k, (group, name) in enumerate((("ice", "soft_ice"), ("ice", "black_ice"), ("avatar", "runner"))):
+        if not os.path.exists(glb(group, name)):
+            continue
+        new = place(glb(group, name), (k * 2.4, 0, 0), 180)
+        objs += [o for o in new if o.type == "MESH"]
+    gm = bc.make_material("ref", "#8A9B98")
+    p = bc.Part("ref", [gm])
+    p.box((-1.2, 0.6, 0), (0.05, 1.2, 0.05), 0)
+    objs.append(p.build())
+    render(sc, objs, os.path.join(PREVIEWS, "ice", "silhouettes.png"), 1000, 560, 0, 6, 1.1)
+
+
+def preview_deck():
+    """Дека с жетонами в слотах (позиции — из меток Slot1..Slot5) и ряд из восьми жетонов крупнее: проверка форм и цвета."""
+    sc = fresh()
+    new = place(glb("deck", "wrist_deck"), (0, 0, 0))
+    meshes = [o for o in new if o.type == "MESH"]
+    slots = sorted((o for o in new if o.name.startswith("Slot")), key=lambda o: o.name)
+    order = ["EXTRACT_SHARD", "GHOST", "JITTER", "DECRYPT", "MINER"]
+    for o, eff in zip(slots, order):
+        wl = o.matrix_world.translation                       # оси Blender: (x, -z_godot, y_godot)
+        meshes += [m for m in place(glb("deck", "daemon_" + eff), (wl.x, wl.z, -wl.y)) if m.type == "MESH"]
+    gm = bc.make_material("ground", "#2A3138")
+    pp = bc.Part("ground", [gm])
+    pp.box((0, -0.06, 0.1), (0.4, 0.01, 0.5), 0)
+    meshes.append(pp.build())
+    render(sc, meshes, os.path.join(PREVIEWS, "deck", "wrist_deck.png"), 900, 640, 160, 42, 1.1)
+    sc = fresh()
+    effects = ["EXTRACT_SHARD", "EXTRACT_DAEMON", "GHOST", "TIMESKEW", "BLACKOUT", "JITTER", "DECRYPT", "MINER"]
+    objs = []
+    for k, eff in enumerate(effects):
+        objs += [m for m in place(glb("deck", "daemon_" + eff), (k * 0.045, 0, 0)) if m.type == "MESH"]
+    gm = bc.make_material("ground", "#2A3138")
+    pp = bc.Part("ground", [gm])
+    pp.box((0.158, -0.026, 0), (0.4, 0.01, 0.1), 0)
+    objs.append(pp.build())
+    render(sc, objs, os.path.join(PREVIEWS, "deck", "daemons.png"), 1400, 320, 0, 8, 1.05)
+
+
 def preview_assembly():
     """Собранный уголок узла: проверка стыков сетки и соотношения размеров."""
     sc = fresh()
@@ -212,6 +279,13 @@ def main():
         if not names:
             names = sorted(f[:-4] for f in os.listdir(os.path.join(bc.MODELS, "props")) if f.endswith(".glb"))
         preview_props(names)
+    elif what == "ice":
+        preview_rigs("ice", names or ["soft_ice", "black_ice"])
+        preview_silhouettes()
+    elif what == "avatar":
+        preview_rigs("avatar", names or ["runner"])
+    elif what == "deck":
+        preview_deck()
     elif what == "assembly":
         preview_assembly()
 
