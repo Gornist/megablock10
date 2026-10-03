@@ -1,19 +1,20 @@
 import { useState } from "react";
 import { api } from "../api/client";
-import type { AudioChannel, DisplayGroup, DisplayItem, DisplaySecretResponse, NodeSummary } from "../api/types";
-import { POLL_LIVE_MS, POLL_RELAXED_MS } from "../api/pollIntervals";
-import { useApiData } from "../api/useApiData";
+import type { AudioChannel, DisplayGroup, DisplayItem, DisplaySecretResponse } from "../api/types";
+import { POLL_LIVE_MS } from "../api/pollIntervals";
 import { useAsyncAction } from "../api/useAsyncAction";
 import { AsyncPanel } from "../design/AsyncPanel";
-import { AppButton, AppSelect, Badge, Panel, StatTile } from "../design/components";
+import { AppButton, AppSelect, Badge, Panel } from "../design/components";
 import { navigate } from "../router";
 import { PointAnnounce, PointAudioControls, PointAudioStatus, VolumeInput } from "./audio/PointAudio";
 import { BatteryGauge } from "./displays/BatteryGauge";
 import { DeviceDetail } from "./displays/DeviceDetail";
+import { DeviceStats } from "./displays/DeviceStats";
 import { DisplayForm, SecretPanel } from "./displays/DisplayForm";
 import { GroupDeleteDialog, GroupNameDialog, GroupSection } from "./displays/DisplayGroups";
 import { byBatteryFirst, STATUS_LABEL, STATUS_TONE } from "./displays/displayUtil";
 import { useCollapsedGroups } from "./displays/useCollapsedGroups";
+import { useDeviceData } from "./displays/useDeviceData";
 
 /**
  * Локации — точки на площадке по местам: локация сворачивается, в заголовке — её фон (канал и громкость), внутри — точки
@@ -21,10 +22,9 @@ import { useCollapsedGroups } from "./displays/useCollapsedGroups";
  * Точки без узла (просто динамик в баре) живут только здесь. Узел с его точкой — на экране «Узлы».
  */
 export function LocationsScreen() {
-  const { data: displays, error, reload } = useApiData<DisplayItem[]>("/api/displays", { pollMs: POLL_LIVE_MS });
-  const { data: groups, reload: reloadGroups } = useApiData<DisplayGroup[]>("/api/display-groups", { pollMs: POLL_LIVE_MS });
-  const { data: channels } = useApiData<AudioChannel[]>("/api/audio/channels", { pollMs: POLL_RELAXED_MS });
-  const { data: nodes } = useApiData<NodeSummary[]>("/api/nodes", { pollMs: POLL_RELAXED_MS });
+  const { displays, error, groups, channels, namedNodes, nodeName, takenNodes, reload, reloadGroups, reloadAll } = useDeviceData({
+    groupsPollMs: POLL_LIVE_MS,
+  });
   const [form, setForm] = useState<{ edit?: DisplayItem; groupId?: string } | null>(null);
   const [groupDialog, setGroupDialog] = useState<{ kind: "new" } | { kind: "rename" | "delete"; group: DisplayGroup } | null>(null);
   const [collapsed, toggleCollapsed] = useCollapsedGroups();
@@ -33,15 +33,6 @@ export function LocationsScreen() {
   // Севшие — сверху: на игре мастер первым делом смотрит, куда бежать менять батарею.
   const [order, setOrder] = useState<"battery" | "id">("battery");
 
-  const reloadAll = () => {
-    reload();
-    reloadGroups();
-  };
-  const count = (s: DisplayItem["status"]) => (displays ?? []).filter((d) => d.status === s).length;
-  const withBattery = (displays ?? []).filter((d) => d.battery !== null);
-  const batteryCount = (l: DisplayItem["battery"]) => withBattery.filter((d) => d.battery === l).length;
-  const nodeName = new Map((nodes ?? []).map((n) => [n.id, n.name]));
-  const takenNodes = new Map((displays ?? []).filter((d) => d.nodeId).map((d) => [d.nodeId!, d.id]));
   const toggleOpen = (id: string) =>
     setOpen((prev) => {
       const next = new Set(prev);
@@ -73,16 +64,16 @@ export function LocationsScreen() {
           {d.audio && (
             <div className="location-point-audio">
               <PointAudioStatus point={d} />
-              <PointAudioControls point={d} channels={channels ?? []} onSaved={reloadAll} />
+              <PointAudioControls point={d} channels={channels} onSaved={reloadAll} />
               <PointAnnounce point={d} />
             </div>
           )}
           {open.has(d.id) && (
             <DeviceDetail
               display={d}
-              groups={groups ?? []}
-              channels={channels ?? []}
-              nodes={(nodes ?? []).map((n) => ({ id: n.id, name: n.name }))}
+              groups={groups}
+              channels={channels}
+              nodes={namedNodes}
               takenNodes={takenNodes}
               onChanged={reloadAll}
               onEdit={() => setForm({ edit: d })}
@@ -103,26 +94,14 @@ export function LocationsScreen() {
         Точки на площадке по локациям: QR-дисплей и звук. Фон локации меняется здесь за секунды; точка может играть своё поверх локации. Точка, стоящая
         узлом-контейнером, видна и в карточке узла.
       </p>
-      <div className="stat-row">
-        <StatTile label="на связи" value={count("ONLINE")} tone="ok" />
-        <StatTile label="обновляются" value={count("UPDATING")} tone="accent" />
-        <StatTile label="ошибка" value={count("ERROR")} tone="danger" />
-        <StatTile label="нет связи" value={count("OFFLINE")} />
-      </div>
-      {withBattery.length > 0 && (
-        <div className="stat-row">
-          <StatTile label="батарея в норме" value={batteryCount("OK")} tone="ok" />
-          <StatTile label="батарея: мало" value={batteryCount("LOW")} tone="money" />
-          <StatTile label="батарея: критично" value={batteryCount("CRITICAL")} tone="danger" />
-        </div>
-      )}
+      <DeviceStats displays={displays ?? []} />
       {secret && <SecretPanel result={secret} onClose={() => setSecret(null)} />}
       {form && (
         <DisplayForm
           key={form.edit?.id ?? `new-${form.groupId ?? ""}`}
           editing={form.edit}
-          groups={groups ?? []}
-          nodes={(nodes ?? []).map((n) => ({ id: n.id, name: n.name }))}
+          groups={groups}
+          nodes={namedNodes}
           takenNodes={takenNodes}
           defaultGroupId={form.groupId}
           onCreated={(r) => {
@@ -150,14 +129,14 @@ export function LocationsScreen() {
           </span>
         }
       >
-        <AsyncPanel data={displays} error={error} isEmpty={(d) => d.length === 0 && (groups ?? []).length === 0} emptyLabel="точек пока нет — добавьте первую">
+        <AsyncPanel data={displays} error={error} isEmpty={(d) => d.length === 0 && groups.length === 0} emptyLabel="точек пока нет — добавьте первую">
           {(list) => {
             const sorted = order === "battery" ? [...list].sort(byBatteryFirst) : list;
-            const known = new Set((groups ?? []).map((g) => g.id));
+            const known = new Set(groups.map((g) => g.id));
             const ungrouped = sorted.filter((d) => !d.groupId || !known.has(d.groupId));
             return (
               <div className="display-groups">
-                {(groups ?? []).map((g) => {
+                {groups.map((g) => {
                   const members = sorted.filter((d) => d.groupId === g.id);
                   return (
                     <GroupSection
@@ -170,7 +149,7 @@ export function LocationsScreen() {
                       onAdd={() => setForm({ groupId: g.id })}
                       onRename={() => setGroupDialog({ kind: "rename", group: g })}
                       onDelete={() => setGroupDialog({ kind: "delete", group: g })}
-                      extra={<LocationAudio group={g} channels={channels ?? []} onSaved={reloadGroups} />}
+                      extra={<LocationAudio group={g} channels={channels} onSaved={reloadGroups} />}
                     >
                       {points(members)}
                     </GroupSection>

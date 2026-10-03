@@ -1,13 +1,12 @@
 import { useState } from "react";
 import { api } from "../../api/client";
-import type { AudioChannel, DisplayGroup, DisplayItem, DisplaySecretResponse, NodeSummary } from "../../api/types";
-import { POLL_LIVE_MS, POLL_RELAXED_MS } from "../../api/pollIntervals";
-import { useApiData } from "../../api/useApiData";
+import type { DisplayItem, DisplaySecretResponse } from "../../api/types";
 import { useAsyncAction } from "../../api/useAsyncAction";
 import { AppButton, AppSelect, Badge } from "../../design/components";
 import { DeviceDetail } from "../displays/DeviceDetail";
 import { DisplayForm, SecretPanel } from "../displays/DisplayForm";
 import { STATUS_LABEL, STATUS_TONE } from "../displays/displayUtil";
+import { useDeviceData } from "../displays/useDeviceData";
 
 /**
  * Точка узла — узел-контейнер в мире и есть QR-дисплей со звуком (владелец). Секция карточки узла: та же каноничная
@@ -15,15 +14,10 @@ import { STATUS_LABEL, STATUS_TONE } from "../displays/displayUtil";
  * не только на «Локациях». Узел без точки — «Привязать точку» из непривязанных.
  */
 export function NodePoint({ nodeId }: { nodeId: string }) {
-  const { data: displays, reload } = useApiData<DisplayItem[]>("/api/displays", { pollMs: POLL_LIVE_MS });
-  const { data: groups } = useApiData<DisplayGroup[]>("/api/display-groups", { pollMs: POLL_RELAXED_MS });
-  const { data: channels } = useApiData<AudioChannel[]>("/api/audio/channels", { pollMs: POLL_RELAXED_MS });
-  const { data: nodes } = useApiData<NodeSummary[]>("/api/nodes", { pollMs: POLL_RELAXED_MS });
+  const { displays, groups, channels, namedNodes, takenNodes, reload } = useDeviceData();
   const point = (displays ?? []).find((d) => d.nodeId === nodeId);
   const [editing, setEditing] = useState(false);
   const [secret, setSecret] = useState<DisplaySecretResponse | null>(null);
-  const takenNodes = new Map((displays ?? []).filter((d) => d.nodeId).map((d) => [d.nodeId!, d.id]));
-  const namedNodes = (nodes ?? []).map((n) => ({ id: n.id, name: n.name }));
   if (!displays) return null;
   return (
     <section className="node-point" aria-label="точка узла">
@@ -31,8 +25,8 @@ export function NodePoint({ nodeId }: { nodeId: string }) {
       {point ? (
         <DeviceDetail
           display={point}
-          groups={groups ?? []}
-          channels={channels ?? []}
+          groups={groups}
+          channels={channels}
           nodes={namedNodes}
           takenNodes={takenNodes}
           onChanged={reload}
@@ -49,7 +43,7 @@ export function NodePoint({ nodeId }: { nodeId: string }) {
       {editing && point && (
         <DisplayForm
           editing={point}
-          groups={groups ?? []}
+          groups={groups}
           nodes={namedNodes}
           takenNodes={takenNodes}
           onCreated={() => setEditing(false)}

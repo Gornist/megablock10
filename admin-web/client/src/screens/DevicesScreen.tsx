@@ -1,15 +1,15 @@
 import { useMemo, useState } from "react";
-import type { AudioChannel, DisplayGroup, DisplayItem, DisplaySecretResponse, DisplayStatus, NodeSummary } from "../api/types";
-import { POLL_LIVE_MS, POLL_RELAXED_MS } from "../api/pollIntervals";
-import { useApiData } from "../api/useApiData";
+import type { DisplayItem, DisplaySecretResponse, DisplayStatus } from "../api/types";
 import { AsyncPanel } from "../design/AsyncPanel";
-import { AppButton, AppInput, AppSelect, Badge, Panel, StatTile } from "../design/components";
+import { AppButton, AppInput, AppSelect, Badge, Panel } from "../design/components";
 import { DataTable, type Column } from "../design/DataTable";
 import { navigate } from "../router";
 import { BatteryGauge } from "./displays/BatteryGauge";
 import { DeviceDetail } from "./displays/DeviceDetail";
+import { DeviceStats } from "./displays/DeviceStats";
 import { DisplayForm, SecretPanel } from "./displays/DisplayForm";
 import { byBatteryFirst, STATUS_LABEL, STATUS_TONE } from "./displays/displayUtil";
+import { useDeviceData } from "./displays/useDeviceData";
 
 const STATUS_FILTERS: { value: DisplayStatus | ""; label: string }[] = [
   { value: "", label: "любая связь" },
@@ -27,10 +27,7 @@ const STATUS_FILTERS: { value: DisplayStatus | ""; label: string }[] = [
  * что и на «Локациях»/«Узлах».
  */
 export function DevicesScreen({ deviceId }: { deviceId?: string }) {
-  const { data: displays, error, reload } = useApiData<DisplayItem[]>("/api/displays", { pollMs: POLL_LIVE_MS });
-  const { data: groups, reload: reloadGroups } = useApiData<DisplayGroup[]>("/api/display-groups", { pollMs: POLL_RELAXED_MS });
-  const { data: channels } = useApiData<AudioChannel[]>("/api/audio/channels", { pollMs: POLL_RELAXED_MS });
-  const { data: nodes } = useApiData<NodeSummary[]>("/api/nodes", { pollMs: POLL_RELAXED_MS });
+  const { displays, error, groups, channels, namedNodes, nodeName, takenNodes, reload, reloadAll } = useDeviceData();
   const [status, setStatus] = useState<DisplayStatus | "">("");
   const [groupId, setGroupId] = useState("");
   const [audioOnly, setAudioOnly] = useState(false);
@@ -38,18 +35,7 @@ export function DevicesScreen({ deviceId }: { deviceId?: string }) {
   const [form, setForm] = useState<{ edit?: DisplayItem } | null>(null);
   const [secret, setSecret] = useState<DisplaySecretResponse | null>(null);
 
-  const reloadAll = () => {
-    reload();
-    reloadGroups();
-  };
-  const groupName = new Map((groups ?? []).map((g) => [g.id, g.name]));
-  const nodeName = new Map((nodes ?? []).map((n) => [n.id, n.name]));
-  const takenNodes = new Map((displays ?? []).filter((d) => d.nodeId).map((d) => [d.nodeId!, d.id]));
-  const namedNodes = (nodes ?? []).map((n) => ({ id: n.id, name: n.name }));
-
-  const count = (s: DisplayStatus) => (displays ?? []).filter((d) => d.status === s).length;
-  const withBattery = (displays ?? []).filter((d) => d.battery !== null);
-  const batteryCount = (l: DisplayItem["battery"]) => withBattery.filter((d) => d.battery === l).length;
+  const groupName = new Map(groups.map((g) => [g.id, g.name]));
 
   const filtered = useMemo(() => {
     if (!displays) return [];
@@ -79,25 +65,13 @@ export function DevicesScreen({ deviceId }: { deviceId?: string }) {
         Все физические точки (ESP32 + e-paper + звук) списком, без привязки к локации или узлу — состояние и полный набор команд.
         Локация (фон площадки) и узел (что показывает точка в мире) — на своих экранах, «Локации» и «Узлы».
       </p>
-      <div className="stat-row">
-        <StatTile label="на связи" value={count("ONLINE")} tone="ok" />
-        <StatTile label="обновляются" value={count("UPDATING")} tone="accent" />
-        <StatTile label="ошибка" value={count("ERROR")} tone="danger" />
-        <StatTile label="нет связи" value={count("OFFLINE")} />
-      </div>
-      {withBattery.length > 0 && (
-        <div className="stat-row">
-          <StatTile label="батарея в норме" value={batteryCount("OK")} tone="ok" />
-          <StatTile label="батарея: мало" value={batteryCount("LOW")} tone="money" />
-          <StatTile label="батарея: критично" value={batteryCount("CRITICAL")} tone="danger" />
-        </div>
-      )}
+      <DeviceStats displays={displays ?? []} />
       {secret && <SecretPanel result={secret} onClose={() => setSecret(null)} />}
       {form && (
         <DisplayForm
           key={form.edit?.id ?? "new"}
           editing={form.edit}
-          groups={groups ?? []}
+          groups={groups}
           nodes={namedNodes}
           takenNodes={takenNodes}
           onCreated={(r) => {
@@ -116,8 +90,8 @@ export function DevicesScreen({ deviceId }: { deviceId?: string }) {
         <Panel title={`Устройство «${device.name}»`} action={<AppButton onClick={() => navigate("devices")}>закрыть</AppButton>}>
           <DeviceDetail
             display={device}
-            groups={groups ?? []}
-            channels={channels ?? []}
+            groups={groups}
+            channels={channels}
             nodes={namedNodes}
             takenNodes={takenNodes}
             onChanged={reloadAll}
@@ -143,7 +117,7 @@ export function DevicesScreen({ deviceId }: { deviceId?: string }) {
             </AppSelect>
             <AppSelect value={groupId} onChange={(e) => setGroupId(e.target.value)} aria-label="фильтр по локации">
               <option value="">любая локация</option>
-              {(groups ?? []).map((g) => (
+              {groups.map((g) => (
                 <option key={g.id} value={g.id}>
                   {g.name}
                 </option>
