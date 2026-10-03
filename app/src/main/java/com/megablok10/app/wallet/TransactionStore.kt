@@ -177,19 +177,7 @@ class TransactionStore(
      */
     suspend fun creditShardMoney(shardId: String, amount: Long, shardTitle: String) {
         if (amount <= 0) return
-        tx.inTransaction {
-            val rowId = dao.insertIfAbsent(
-                TransactionEntity(
-                    id = "shard:$shardId",
-                    counterpartyPubKeyB64 = "",
-                    amount = amount,
-                    memo = "Шард: $shardTitle",
-                    timestamp = System.currentTimeMillis(),
-                    status = TransactionStatus.CONFIRMED
-                )
-            )
-            if (rowId != -1L) emitBalanceChange(amount, ChangeReason.SHARD_SCAN, sourceRef = shardId)
-        }
+        tx.inTransaction { creditConfirmed("shard:$shardId", amount, "Шард: $shardTitle", ChangeReason.SHARD_SCAN, sourceRef = shardId) }
     }
 
     /**
@@ -203,19 +191,7 @@ class TransactionStore(
      */
     suspend fun creditContainerEddies(attemptId: String, amount: Long, containerName: String) {
         if (amount <= 0) return
-        tx.inTransaction {
-            val rowId = dao.insertIfAbsent(
-                TransactionEntity(
-                    id = "breach:$attemptId",
-                    counterpartyPubKeyB64 = "",
-                    amount = amount,
-                    memo = "Взлом: $containerName",
-                    timestamp = System.currentTimeMillis(),
-                    status = TransactionStatus.CONFIRMED
-                )
-            )
-            if (rowId != -1L) emitBalanceChange(amount, ChangeReason.BREACH_EDDIES, sourceRef = attemptId)
-        }
+        tx.inTransaction { creditConfirmed("breach:$attemptId", amount, "Взлом: $containerName", ChangeReason.BREACH_EDDIES, sourceRef = attemptId) }
     }
 
     /**
@@ -226,17 +202,7 @@ class TransactionStore(
     suspend fun setStartingBalance(provisionId: String, balance: Long): Unit = tx.inTransaction {
         val delta = balance - dao.currentBalance()
         if (delta == 0L) return@inTransaction
-        val rowId = dao.insertIfAbsent(
-            TransactionEntity(
-                id = "prov:$provisionId",
-                counterpartyPubKeyB64 = "",
-                amount = delta,
-                memo = "Стартовый баланс",
-                timestamp = System.currentTimeMillis(),
-                status = TransactionStatus.CONFIRMED
-            )
-        )
-        if (rowId != -1L) emitBalanceChange(delta, ChangeReason.CHARACTER_CREATED, sourceRef = provisionId)
+        creditConfirmed("prov:$provisionId", delta, "Стартовый баланс", ChangeReason.CHARACTER_CREATED, sourceRef = provisionId)
     }
 
     /**
@@ -251,16 +217,25 @@ class TransactionStore(
         // Баланс читается в той же транзакции, что и вставка: перевод, пришедший между ними, иначе увёл бы итог мимо значения мастера.
         val currentBalance = dao.currentBalance()
         Mb10Log.event(TAG, "balance.master_override", "change" to changeId, "old" to currentBalance, "new" to newBalance)
+        insertConfirmed("override:$changeId", newBalance - currentBalance, "Правка мастера: $memo")
+    }
+
+    /** Вставляет подтверждённую запись без контрагента (находка, награда, выдача, правка мастера). -1 — запись с таким [id] уже есть. */
+    private suspend fun insertConfirmed(id: String, amount: Long, memo: String): Long =
         dao.insertIfAbsent(
             TransactionEntity(
-                id = "override:$changeId",
+                id = id,
                 counterpartyPubKeyB64 = "",
-                amount = newBalance - currentBalance,
-                memo = "Правка мастера: $memo",
+                amount = amount,
+                memo = memo,
                 timestamp = System.currentTimeMillis(),
-                status = TransactionStatus.CONFIRMED,
-            ),
+                status = TransactionStatus.CONFIRMED
+            )
         )
+
+    /** [insertConfirmed] и, если запись новая, запись баланса для мастера. Вызывать только внутри транзакции. */
+    private suspend fun creditConfirmed(id: String, amount: Long, memo: String, reason: String, sourceRef: String) {
+        if (insertConfirmed(id, amount, memo) != -1L) emitBalanceChange(amount, reason, sourceRef = sourceRef)
     }
 
     /**
