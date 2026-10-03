@@ -31,7 +31,7 @@ git (стабильные uid); после смены .glb — `godot --headless
 
 ## Тесты
 
-gdUnit4, как в CI (`.github/workflows/netrun.yml`): `netrun/tools/gdunit.sh [res://tests/файл_test.gd]` на devbox (весь набор — 223 теста,
+gdUnit4, как в CI (`.github/workflows/netrun.yml`): `netrun/tools/gdunit.sh [res://tests/файл_test.gd]` на devbox (весь набор — 257 тестов,
 несколько минут; долгое — через `devjob`). Код выхода: 0 — зелёно, 100 — упавшие, 101 — предупреждения (CI красит и их). Встроенный
 `test_run` плагина Godot AI проект не видит — не использовать. Правки сцен и запуск игры — агент `godot-dev`.
 
