@@ -106,7 +106,17 @@ func _shots() -> Array:
 		["env/lockdown_gate", Vector3(-3.0, 0, -2.0), 0.0, "", 1.0], ["env/lockdown_gate_open", Vector3(-1.0, 0, -2.0), 0.0, "", 1.0], ["env/corner", Vector3(1.0, 0, -2.0), 0.0, "BASE", 1.0],
 		["env/platform", Vector3(3.0, 0, -2.0), 0.0, "BASE", 1.0], ["env/cable_straight", Vector3(-3.0, 0, 0.0), 0.0, "BASE", 1.0], ["env/cable_curve", Vector3(-1.0, 0, 0.0), 0.0, "BASE", 1.0],
 		["env/tunnel_ring", Vector3(2.0, 0, 0.5), 0.0, "HARD", 1.0]]
+	var tk := ["EXTRACT_SHARD", "EXTRACT_DAEMON", "GHOST", "TIMESKEW", "BLACKOUT", "JITTER", "DECRYPT", "MINER"]
+	var decks := [["env/floor_clear", Vector3(0, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(-2, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(2, 0, 0), 0.0, "BASE", 1.0],
+		["deck/wrist_deck", Vector3(0.0, 1.1, 0.4), 90.0, "", 6.0]]
+	for i in tk.size():
+		decks.append(["deck/daemon_" + tk[i], Vector3(-1.75 + 0.5 * i, 0.55, 0.0), 0.0, "", 8.0])
 	return [
+		{"name": "red_probe", "cam": Vector3(0.0, 0.9, 2.2), "look": Vector3(0.0, 0.7, 0.0), "fov": 40.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": [
+			["deck/daemon_EXTRACT_DAEMON", Vector3(-0.8, 0.5, 0.0), 0.0, "", 8.0], ["deck/daemon_EXTRACT_DAEMON", Vector3(0.0, 0.9, 0.0), 0.0, "", 8.0], ["deck/daemon_EXTRACT_DAEMON", Vector3(0.8, 1.4, 0.3), 0.0, "", 8.0]]},
+		{"name": "deck_close", "cam": Vector3(0.9, 1.5, 1.0), "look": Vector3(0.0, 1.1, 0.4), "fov": 45.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": decks},
+		{"name": "token_close", "cam": Vector3(-1.2, 0.7, 1.0), "look": Vector3(-1.2, 0.55, 0.0), "fov": 40.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": decks},
+		{"name": "deck_stage", "cam": Vector3(0.0, 1.0, 2.9), "look": Vector3(0.0, 0.85, 0.0), "fov": 60.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": decks},
 		{"name": "gate_close", "cam": Vector3(-2.0, 1.3, 1.5), "look": Vector3(-2.0, 1.0, -2.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": envmore},
 		{"name": "corner_platform", "cam": Vector3(2.0, 1.5, 1.5), "look": Vector3(2.0, 0.6, -2.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": envmore},
 		{"name": "env_more", "cam": Vector3(0.0, 1.5, 5.5), "look": Vector3(0.0, 1.0, -1.0), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": envmore},
@@ -378,6 +388,9 @@ func _setup(inst: Node3D, it: Array, shot: Dictionary, intensity: float) -> void
 		AM.set_param(inst, "lattice", _lattice)
 	if String(it[0]).begins_with("props/vault"):
 		intensity *= 1.5  # хранилище главный предмет узла: чуть ярче окружения
+	if String(it[0]).begins_with("deck/") or String(it[0]) == "props/dead_deck":  # мелкие предметы: шум контура (пятна 7 см) на них не нужен, контур ровнее и ярче
+		AM.set_param(inst, "edge_uneven", 0.0)
+		AM.set_param(inst, "edge_glow", 2.0)
 	if String(it[0]).begins_with("avatar/"):
 		AM.set_param(inst, "breathe", 0.25)  # аватар дышит заметнее стены: штрихи короткие
 	if String(it[0]).begins_with("ice/"):

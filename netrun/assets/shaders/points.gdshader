@@ -38,7 +38,7 @@ float cell_hash(float salt) {
 }
 // Порча горизонтальными полосами (глитч, как в референсе Blackwall): полоса либо цвета ассета, либо corrupt_color, без серого посередине.
 float corrupt_mask(float k) {
-	return step(cell_hash(0.0), k);
+	return k > 0.0 ? step(cell_hash(0.0), k) : 0.0;  // при k = 0 шрама нет: без защиты клетка с нулевым хешем краснела бы сама
 }
 float corrupt_hole(float m) {
 	return 1.0 - m * step(cell_hash(7.0), 0.4); // часть порченых клеток пропадает

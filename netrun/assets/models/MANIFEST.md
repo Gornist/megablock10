@@ -15,6 +15,14 @@
 | `models/env/ceiling_c.glb` | 140 / 300 | 41 / 170 | 105 / 160 | 0 | 3 | 1.8616 × 0.7154 × 1.92 | points, solid_dark, streaks | — | ceiling | ок |
 | `models/env/column_field.glb` | 0 / 300 | 0 / 0 | 1345 / 1700 | 0 | 1 | 3.9398 × 2.8539 × 3.9 | streaks | — | floor | ок |
 | `models/env/corner.glb` | 0 / 300 | 4 / 40 | 167 / 240 | 0 | 3 | 2.0312 × 2.8919 × 1.9991 | points, streaks | — | floor | ок |
+| `models/deck/daemon_BLACKOUT.glb` | 80 / 300 | 72 / 140 | 0 / 8 | 0 | 2 | 0.0579 × 0.036 × 0.0512 | points, solid_dark | — | center | ок |
+| `models/deck/daemon_DECRYPT.glb` | 88 / 300 | 24 / 140 | 0 / 8 | 2 | 3 | 0.0292 × 0.0292 × 0.0291 | points, shell_soft | — | center | ок |
+| `models/deck/daemon_EXTRACT_DAEMON.glb` | 60 / 300 | 56 / 140 | 0 / 8 | 3 | 4 | 0.0472 × 0.0474 × 0.0449 | points, shell_soft | — | center | ок |
+| `models/deck/daemon_EXTRACT_SHARD.glb` | 60 / 300 | 20 / 140 | 0 / 8 | 3 | 4 | 0.0219 × 0.0408 × 0.0203 | points, shell_soft | — | center | ок |
+| `models/deck/daemon_GHOST.glb` | 40 / 300 | 46 / 140 | 0 / 8 | 2 | 3 | 0.0543 × 0.0846 × 0.0544 | points, shell_soft | — | center | ок |
+| `models/deck/daemon_JITTER.glb` | 0 / 300 | 54 / 140 | 0 / 8 | 0 | 2 | 0.0436 × 0.0235 × 0.006 | points | — | center | ок |
+| `models/deck/daemon_MINER.glb` | 48 / 300 | 14 / 140 | 0 / 8 | 0 | 2 | 0.034 × 0.0391 × 0.034 | points, solid_dark | — | center | ок |
+| `models/deck/daemon_TIMESKEW.glb` | 176 / 300 | 14 / 140 | 0 / 8 | 2 | 3 | 0.0358 × 0.0448 × 0.0358 | points, shell_soft | — | center | ок |
 | `models/props/dead_deck.glb` | 68 / 300 | 9 / 20 | 2 / 4 | 0 | 3 | 0.18 × 0.065 × 0.11 | points, solid_dark, streaks | — | center | ок |
 | `models/env/doorway.glb` | 0 / 300 | 18 / 40 | 46 / 80 | 0 | 3 | 1.9678 × 2.6921 × 0.1873 | points, streaks | — | floor | ок |
 | `models/env/doorway_b.glb` | 0 / 300 | 18 / 40 | 50 / 80 | 0 | 3 | 1.9513 × 2.6668 × 0.2822 | points, streaks | — | floor | ок |
@@ -51,3 +59,4 @@
 | `models/env/wall.glb` | 0 / 300 | 50 / 80 | 80 / 120 | 0 | 3 | 2.004 × 2.9716 × 0.5351 | points, streaks | — | floor | ок |
 | `models/env/wall_b.glb` | 0 / 300 | 50 / 80 | 85 / 120 | 0 | 3 | 2.004 × 2.9653 × 0.4939 | points, streaks | — | floor | ок |
 | `models/env/wall_c.glb` | 0 / 300 | 50 / 80 | 82 / 120 | 0 | 3 | 2.004 × 2.9582 × 0.5135 | points, streaks | — | floor | ок |
+| `models/deck/wrist_deck.glb` | 80 / 2000 | 184 / 200 | 2 / 8 | 0 | 7 | 0.1085 × 0.0919 × 0.06 | points, solid_dark, streaks | — | center | ок |
