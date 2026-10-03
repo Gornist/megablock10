@@ -8,7 +8,7 @@ const BG := Color(0.004, 0.008, 0.016)
 
 ## Комната 6×6 м из модулей 2×2 м: пол 3×3, стены по периметру, колонны в углах, вход с юга (z=+3), выход на север (z=-3),
 ## в центре шард, у выхода ICE. Предмет: [путь, позиция, поворот Y (°), тир, масштаб].
-const REFLECT := ["env/wall", "env/doorway", "env/pillar", "ice/soft_ice"]
+const REFLECT := ["env/wall", "env/wall_b", "env/wall_c", "env/doorway", "env/doorway_b", "env/pillar", "ice/soft_ice"]
 const ICE_POS := Vector3(0.75, 0.0, -2.0)
 
 
@@ -20,14 +20,20 @@ func _room() -> Array:
 		for z in [-2.0, 0.0, 2.0]:
 			items.append([variants[n % 3], Vector3(x, 0, z), 90.0 * (n % 4), "BASE", 1.0])  # вариант и поворот по кругу: узор не повторяется
 			n += 1
+	var wv := ["env/wall", "env/wall_b", "env/wall_c"]
+	var k := 0
 	for x in [-2.0, 2.0]:
-		items.append(["env/wall", Vector3(x, 0, -3.0), 0.0, "BASE", 1.0])
-		items.append(["env/wall", Vector3(x, 0, 3.0), 0.0, "BASE", 1.0])
+		items.append([wv[k % 3], Vector3(x, 0, -3.0), 180.0 * (k % 2), "BASE", 1.0])
+		k += 1
+		items.append([wv[k % 3], Vector3(x, 0, 3.0), 180.0 * (k % 2), "BASE", 1.0])
+		k += 1
 	for z in [-2.0, 0.0, 2.0]:
-		items.append(["env/wall", Vector3(-3.0, 0, z), 90.0, "BASE", 1.0])
-		items.append(["env/wall", Vector3(3.0, 0, z), 90.0, "BASE", 1.0])
-	items.append(["env/doorway", Vector3(0.0, 0, 3.0), 0.0, "BASE", 1.0])   # вход
-	items.append(["env/doorway", Vector3(0.0, 0, -3.0), 0.0, "HARD", 1.0])  # выход
+		items.append([wv[k % 3], Vector3(-3.0, 0, z), 90.0 + 180.0 * (k % 2), "BASE", 1.0])
+		k += 1
+		items.append([wv[k % 3], Vector3(3.0, 0, z), 90.0 + 180.0 * (k % 2), "BASE", 1.0])
+		k += 1
+	items.append(["env/doorway", Vector3(0.0, 0, 3.0), 0.0, "BASE", 1.0])     # вход
+	items.append(["env/doorway_b", Vector3(0.0, 0, -3.0), 0.0, "HARD", 1.0])  # выход
 	for x in [-3.0, 3.0]:
 		for z in [-3.0, 3.0]:
 			items.append(["env/pillar", Vector3(x, 0, z), 0.0, "BASE", 1.0])
@@ -45,6 +51,8 @@ func _shots() -> Array:
 	return [
 		{"name": "room_entrance", "cam": Vector3(0.0, 1.25, 6.4), "look": Vector3(0.0, 1.0, -2.0), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
 		{"name": "room_overview", "cam": Vector3(8.5, 8.0, 8.5), "look": Vector3(0.0, 0.4, -0.5), "fov": 50.0, "fade": [30.0, 80.0], "corrupt": scar, "items": room},
+		{"name": "room_wall", "cam": Vector3(2.4, 1.4, 1.2), "look": Vector3(-1.4, 1.0, -3.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
+		{"name": "room_floor", "cam": Vector3(0.3, 1.6, 1.6), "look": Vector3(0.0, 0.0, -0.4), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
 		{"name": "room_inside", "cam": Vector3(-2.2, 1.25, 2.3), "look": Vector3(0.3, 0.9, -2.4), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
 	]
 
