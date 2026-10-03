@@ -2,6 +2,7 @@ import type { Db } from "../db/index.js";
 import { getSetting, setSetting } from "../lib/collectorSettings.js";
 import { activePlayers, getPlayerBase } from "../lib/playerSummary.js";
 import type { NetService } from "./netService.js";
+import { PeriodicSync } from "./periodicSync.js";
 
 /** Фракция СБ по умолчанию (получатель сигнала, если у узла нет владельца) — настройка мастера. */
 const DEFAULT_FACTION_KEY = "net.sec_default_faction";
@@ -61,29 +62,13 @@ export interface SecSyncStatus {
  * перезапуска Моста) и раз в `intervalMs`. Пишет только когда документ отличается — игроки меняются редко, а Мост не должен
  * получать put впустую. Пока документа нет, Мост сигнал СБ никуда не отправляет — это сознательная безопасная сторона.
  */
-export class SecSync {
-  private timer: NodeJS.Timeout | null = null;
-  private running = false;
-  lastError: string | null = null;
-
+export class SecSync extends PeriodicSync {
   constructor(
     private readonly db: Db,
-    private readonly net: NetService,
-    private readonly intervalMs = Number(process.env.NET_SEC_SYNC_MS ?? 30_000),
-  ) {}
-
-  start(): void {
-    if (!this.net.configured || this.timer) return;
-    this.net.onConnected(() => void this.sync());
-    if (this.intervalMs > 0) {
-      this.timer = setInterval(() => void this.sync(), this.intervalMs);
-      this.timer.unref();
-    }
-  }
-
-  stop(): void {
-    if (this.timer) clearInterval(this.timer);
-    this.timer = null;
+    net: NetService,
+    intervalMs = Number(process.env.NET_SEC_SYNC_MS ?? 30_000),
+  ) {
+    super(net, intervalMs);
   }
 
   status(): SecSyncStatus {

@@ -3,6 +3,7 @@ import { activePlayers, getPlayerBase } from "../lib/playerSummary.js";
 import { bridgeRunnerDocId, createNetRunners, type NetRunnerAccess, type NetRunnerFlag, type NetRunners } from "../lib/netRunners.js";
 import { BridgeUnavailableError, type BridgeDoc } from "./bridgeProtocol.js";
 import type { NetService } from "./netService.js";
+import { PeriodicSync } from "./periodicSync.js";
 
 /**
  * Держит документы `runner` Моста в согласии с решениями мастера (docs/netrun-collector-brief.md): блокировка («пощадить», ручное закрытие
@@ -13,33 +14,17 @@ import type { NetService } from "./netService.js";
  * отметка «нетраннер»): остальным документов не заводим, Мост создаст их сам при первом входе. Пока Моста нет, решения остаются
  * несинхронизированными (`bridge_synced = 0`) и догоняются при подключении, после действия мастера и раз в `NET_RUNNER_SYNC_MS`.
  */
-export class RunnerSync {
-  private timer: NodeJS.Timeout | null = null;
-  private running = false;
+export class RunnerSync extends PeriodicSync {
   private again = false;
-  lastError: string | null = null;
   private readonly runners: NetRunners;
 
   constructor(
     private readonly db: Db,
-    private readonly net: NetService,
-    private readonly intervalMs = Number(process.env.NET_RUNNER_SYNC_MS ?? 30_000),
+    net: NetService,
+    intervalMs = Number(process.env.NET_RUNNER_SYNC_MS ?? 30_000),
   ) {
+    super(net, intervalMs);
     this.runners = createNetRunners(db);
-  }
-
-  start(): void {
-    if (!this.net.configured || this.timer) return;
-    this.net.onConnected(() => void this.sync());
-    if (this.intervalMs > 0) {
-      this.timer = setInterval(() => void this.sync(), this.intervalMs);
-      this.timer.unref();
-    }
-  }
-
-  stop(): void {
-    if (this.timer) clearInterval(this.timer);
-    this.timer = null;
   }
 
   /** Сколько флагов блокировки ещё не доставлено в Мост. */
