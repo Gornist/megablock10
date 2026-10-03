@@ -119,7 +119,7 @@ class WorldRecordsTest {
         assertEquals(0L, VJ.lng(v, "left_in_node"))
         assertEquals(50L, VJ.lng(v, "eddies_paid"))
         assertEquals(0L, VJ.lng(v, "lockdown_until"))
-        assertTrue(VJ.lng(v, "duration_s") >= 0)
+        assertEquals(0L, VJ.lng(v, "duration_s")) // часы стенда идут по миллисекунде: забег короче секунды
         val take = value(rig.of("NET_ITEM_OWNER").single())
         assertEquals("node:node_07", VJ.str(take, "from"))
         assertEquals("deck:$sid", VJ.str(take, "to"))
@@ -147,6 +147,33 @@ class WorldRecordsTest {
         assertEquals("finish:$sid", VJ.str(burned, "rid"))
         assertEquals(sid, VJ.str(burned, "session"))
         assertEquals("node:node_07", VJ.str(items.getValue("it_sh1"), "to"))
+    }
+
+    @Test fun durationIsExactlyFromTheTriggerWhenConfirmed() {
+        val rig = rig()
+        val sid = rig.submit()
+        rig.f.advance(30_000) // игрок ещё не нажал курок
+        val s = rig.f.store.get("session", sid)!!
+        rig.f.store.put("session", sid, s.ver, VJ.with(s.data, "state" to VJ.p("active"), "confirmed_at" to VJ.p(rig.f.clock())))
+        rig.f.advance(95_000)
+        rig.finish(sid, "clean", false, Move("it_dA2", MoveTo.PHONE))
+        assertEquals(95L, VJ.lng(value(rig.of("NET_EXIT").single()), "duration_s")) // от курка, не от создания (125)
+    }
+
+    @Test fun durationIsExactlyFromCreationWhenThereWasNoTrigger() {
+        val rig = rig()
+        val sid = rig.enterActive() // confirmed_at = 0: курка в документе нет
+        rig.f.advance(125_000)
+        rig.finish(sid, "emergency", false, Move("it_dA2", MoveTo.BURNED))
+        assertEquals(125L, VJ.lng(value(rig.of("NET_EXIT").single()), "duration_s"))
+    }
+
+    @Test fun flatlineDurationIsExactToo() {
+        val rig = rig()
+        val sid = rig.enterActive()
+        rig.f.advance(41_000)
+        rig.finish(sid, "black_ice", false, Move("it_dA2", MoveTo.NODE))
+        assertEquals(41L, VJ.lng(value(rig.of("NET_FLATLINE").single()), "duration_s"))
     }
 
     @Test fun softIceReportsLockdownDeadline() {
