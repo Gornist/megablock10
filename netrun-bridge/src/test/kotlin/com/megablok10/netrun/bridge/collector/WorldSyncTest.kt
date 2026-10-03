@@ -100,6 +100,21 @@ class WorldSyncTest {
         assertTrue(hb.getValue("presence").jsonObject.containsKey("pendingCount"))
     }
 
+    @Test fun recordIsSentOnCommitNotOnTheIdlePoll() {
+        // С быстрым опросом (fast) пропавшее пробуждение незаметно: простой в 30 мс сам находит запись. Здесь пауза простоя — минута,
+        // так что запись уходит только если коммит разбудил отправку (store.addListener { recorder.committed(engine::wake) }).
+        val f = ValueFixture(":memory:")
+        val slow = SyncConfig(backoffMs = longArrayOf(20), idlePollMs = 60_000, noEndpointPollMs = 60_000, jitter = 0.0)
+        val w = WorldSync(f.store, key, endpoint(), scope, config = slow, log = log)
+        w.start()
+        await("первый обмен с пустой очередью") { collector.changePosts.get() >= 1 && w.lastSummary.startsWith("ok") }
+        Thread.sleep(SETTLE_MS) // цикл ушёл ждать паузу простоя: сигнал, пришедший раньше, потерялся бы
+        val r = f.ops.submitDeck(f.test, "enter:e1", f.keyA, "Призрак", "t03", listOf("it_dA1", "it_dA2"), "it_dA1") // один коммит — одно пробуждение
+        assertTrue(r.body.toString(), r.ok)
+        await("запись у коллектора по коммиту", 5_000) { collector.stored.size == 1 && queued(w) == 0 }
+        assertEquals(listOf("NET_ENTER"), reasonsAtCollector())
+    }
+
     @Test fun lostResponseDoesNotDuplicateRecordsOnRetry() {
         val f = ValueFixture(":memory:")
         val w = sync(f)
@@ -254,6 +269,7 @@ class WorldSyncTest {
 
     private companion object {
         const val POLL_MS = 15L
+        const val SETTLE_MS = 300L
         const val HOUR_MS = 3_600_000L
     }
 }
