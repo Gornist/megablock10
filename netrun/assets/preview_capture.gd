@@ -127,6 +127,7 @@ var _walker_mir: Node3D
 var _walker_base := Vector3.ZERO
 var _crowd := false  # --crowd: в комнате девять аватаров (худший случай по ТЗ), для замера
 var _movie := false
+var _demo := false  # --demo: длинный проход по комнате (вход → хранилище → портал → ICE → вверх), 34 с
 var _batch_on := true  # --nobatch: не клеить дальние пласты в MultiMesh
 var _static := false
 var _fps := false
@@ -149,6 +150,10 @@ func _ready() -> void:
 			_static_cam = PackedFloat64Array(Array(a.trim_prefix("--cam=").split(",")).map(func(v): return float(v)))
 		if a.begins_with("--lattice="):
 			_lattice = float(a.trim_prefix("--lattice="))
+		if a == "--demo":
+			_demo = true
+			_movie = true
+			_walk = true
 		if a == "--nobatch":
 			_batch_on = false
 		if a == "--field":
@@ -304,6 +309,9 @@ func _process(delta: float) -> void:
 	_update_walker()
 	var p: Vector3
 	var look: Vector3
+	if _demo:
+		_demo_camera()
+		return
 	if _t < 2.0:
 		p = Vector3(0.0, 1.25, 6.4).lerp(Vector3(0.0, 1.25, 3.6), _t / 2.0)
 		look = Vector3(0.0, 1.0, -2.0)
@@ -321,6 +329,32 @@ func _process(delta: float) -> void:
 	for inst in _insts:
 		AM.set_param(inst, "touch_pos", Vector3(1.2, 1.0, -2.9))
 		AM.set_param(inst, "touch_radius", r)
+
+
+## Маршрут демо: (время с, позиция глаз сидящего, точка взгляда). Между ключами плавно (smoothstep); на стыках камера почти стоит.
+const DEMO_KEYS := [
+	[0.0, Vector3(-1.0, 1.25, 10.5), Vector3(-1.0, 1.2, 2.0)],
+	[4.0, Vector3(-1.0, 1.25, 5.0), Vector3(0.0, 1.0, 0.0)],
+	[8.0, Vector3(-0.9, 1.2, 2.6), Vector3(0.0, 0.55, 0.0)],
+	[12.0, Vector3(-1.2, 1.2, 1.6), Vector3(0.0, 0.7, 0.0)],
+	[16.0, Vector3(-1.0, 1.2, 0.6), Vector3(-4.0, 1.4, 0.0)],
+	[20.0, Vector3(-1.0, 1.2, 0.4), Vector3(-3.0, 1.5, -0.5)],
+	[24.0, Vector3(0.2, 1.2, 0.6), Vector3(1.0, 1.2, -2.8)],
+	[28.0, Vector3(0.2, 1.2, 0.6), Vector3(1.0, 1.2, -2.8)],
+	[32.0, Vector3(0.0, 1.2, 0.2), Vector3(0.0, 4.2, -1.5)],
+	[34.0, Vector3(0.0, 1.2, 0.2), Vector3(0.0, 4.2, -1.5)],
+]
+
+
+func _demo_camera() -> void:
+	var i := 0
+	while i < DEMO_KEYS.size() - 2 and _t > DEMO_KEYS[i + 1][0]:
+		i += 1
+	var a: Array = DEMO_KEYS[i]
+	var b: Array = DEMO_KEYS[i + 1]
+	var u: float = clampf((_t - a[0]) / (b[0] - a[0]), 0.0, 1.0)
+	u = u * u * (3.0 - 2.0 * u)
+	_cam.look_at_from_position((a[1] as Vector3).lerp(b[1], u), (a[2] as Vector3).lerp(b[2], u))
 
 
 func _setup(inst: Node3D, it: Array, shot: Dictionary, intensity: float) -> void:

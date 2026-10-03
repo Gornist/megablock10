@@ -3,6 +3,7 @@
 #   pipeline.sh build            — собрать ВСЕ ассеты из src/*.py на devbox, проверить, забрать .glb и отчёты, пересобрать MANIFEST.md
 #   pipeline.sh shots [каталог] [флаги сцены] — снять кадры комнаты из Godot (по умолчанию /tmp/assets-shots); флаги: --only=a,b --lattice=0.05 --field --crowd
 #   pipeline.sh movie [файл.mp4] [флаги сцены] — записать видео комнаты (7 с) и сконвертировать (нужен ffmpeg на Mac); флаги: --walk --static --cam=…
+#   pipeline.sh demo [файл.mp4] — длинный проход по комнате (34 с, 1920×1080): вход → хранилище → портал → ICE → вверх
 #   pipeline.sh fps              — замер времени кадра GPU/CPU и числа вызовов отрисовки на трёх ракурсах
 # Требует: devbox доступен (Tailscale), на нём Blender (~/.local/bin/blender) и Godot (~/.local/bin/godot), графический сеанс nick.
 # Стенд просмотра — минимальный проект Godot ~/assets-gd на devbox (создаётся сам); это не проект netrun/. Тяжёлого параллельно
@@ -42,6 +43,11 @@ python3 src/validate.py --root out'
     ssh "$HOST" "$GD_ENV; cd ~/assets-gd && rm -f room.avi && timeout 240 ~/.local/bin/godot --display-driver wayland --path . --resolution 1280x720 --write-movie /home/nick/assets-gd/room.avi --fixed-fps 24 --quit-after 168 -- --movie $extra 2>&1 | grep -E 'ERROR|SCRIPT|Parse' || true"
     scp -q "$HOST:~/assets-gd/room.avi" /tmp/assets-room.avi
     ffmpeg -v error -y -i /tmp/assets-room.avi -c:v libx264 -pix_fmt yuv420p -crf 20 -an "$mp4"; echo "видео: $mp4" ;;
+  demo)
+    mp4=${2:-/tmp/assets-demo.mp4}; extra=${*:3}; ensure_project
+    ssh "$HOST" "$GD_ENV; cd ~/assets-gd && rm -f demo.avi && timeout 420 ~/.local/bin/godot --display-driver wayland --path . --resolution 1920x1080 --write-movie /home/nick/assets-gd/demo.avi --fixed-fps 24 --quit-after 816 -- --demo $extra 2>&1 | grep -E 'ERROR|SCRIPT|Parse' | grep -v 'leaked\|still in use' || true"
+    scp -q "$HOST:~/assets-gd/demo.avi" /tmp/assets-demo.avi
+    ffmpeg -v error -y -i /tmp/assets-demo.avi -c:v libx264 -pix_fmt yuv420p -crf 20 -an "$mp4"; echo "демо: $mp4 (34 с, 24 к/с, 1920×1080)" ;;
   fps)
     ensure_project
     for cam in "-1.0,1.25,8.6,0.0,1.0,-2.5" "11.0,10.5,11.0,0.0,0.4,-0.5" "0.3,1.6,1.6,0.0,0.0,-0.4"; do
