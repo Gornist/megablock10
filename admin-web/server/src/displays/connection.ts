@@ -137,6 +137,16 @@ export class DisplaySession {
     return frame;
   }
 
+  /**
+   * Запрос с ответом OK (команды, звук): отправить и дождаться OK. NACK и чужой тип — DisplayFailure (expectReply); имя
+   * в текстах ошибок — имя типа кадра («no OK for LIST within …», «LIST: display refused»).
+   */
+  async request(fields: Omit<FrameFields, "deviceId">, timeoutMs: number): Promise<Frame> {
+    const name = MsgType[fields.type];
+    this.send(fields);
+    return expectReply(await this.next(timeoutMs, `OK for ${name}`), MsgType.OK, name);
+  }
+
   private nextRaw(timeoutMs: number, stage: string): Promise<Frame> {
     const queued = this.frames.shift();
     if (queued) return Promise.resolve(queued);

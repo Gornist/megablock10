@@ -559,8 +559,7 @@ export class DisplayManager {
   private async sendCommand(session: DisplaySession, row: DisplayRow, op: Extract<Op, { kind: "command" }>): Promise<OpResult> {
     const name = MsgType[op.type];
     this.log("DISPLAY_COMMAND", row.id, `cmd=${name}`);
-    session.send({ type: op.type, payload: op.payload });
-    expectReply(await session.next(this.config.commandTimeoutMs, `OK for ${name}`), MsgType.OK, name);
+    await session.request({ type: op.type, payload: op.payload }, this.config.commandTimeoutMs);
     this.log("DISPLAY_COMMAND_OK", row.id, `cmd=${name}`);
     return { outcome: "DISPLAYED" };
   }

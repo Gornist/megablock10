@@ -184,8 +184,7 @@ export class AudioService {
       run: async (s, row) => {
         const names: string[] = [];
         for (let page = 0; page < 200; page++) {
-          s.send({ type: MsgType.LIST, payload: encodeListPayload(names.length) });
-          const reply = expectReply(await s.next(this.cfg.replyTimeoutMs, "OK for LIST"), MsgType.OK, "LIST");
+          const reply = await s.request({ type: MsgType.LIST, payload: encodeListPayload(names.length) }, this.cfg.replyTimeoutMs);
           const body = JSON.parse(reply.payload.toString("utf8")) as { total: number; names: string[] };
           names.push(...body.names.filter((n) => typeof n === "string"));
           if (body.names.length === 0 || names.length >= body.total) break;
@@ -275,23 +274,20 @@ export class AudioService {
 
   private async runAnnounce(s: DisplaySession, displayId: string, p: AnnounceProgress, data: Buffer, payload: AnnouncePayload): Promise<OpResult> {
     const sha = Buffer.from(p.clipId, "hex");
-    s.send({ type: MsgType.CLIP_BEGIN, payload: encodeClipBeginPayload(sha, data.length) });
-    let have = expectReply(await s.next(this.cfg.replyTimeoutMs, "OK for CLIP_BEGIN"), MsgType.OK, "CLIP_BEGIN").payload.readUInt32BE(0);
+    const timeoutMs = this.cfg.replyTimeoutMs;
+    let have = (await s.request({ type: MsgType.CLIP_BEGIN, payload: encodeClipBeginPayload(sha, data.length) }, timeoutMs)).payload.readUInt32BE(0);
     if (have < data.length) {
       p.phase = "UPLOADING";
       p.uploadedPct = Math.floor((have / data.length) * 100);
       while (have < data.length) {
         const chunk = data.subarray(have, Math.min(data.length, have + CLIP_CHUNK_MAX));
-        s.send({ type: MsgType.CLIP_CHUNK, payload: encodeClipChunkPayload(have, chunk) });
-        have = expectReply(await s.next(this.cfg.replyTimeoutMs, "OK for CLIP_CHUNK"), MsgType.OK, "CLIP_CHUNK").payload.readUInt32BE(0);
+        have = (await s.request({ type: MsgType.CLIP_CHUNK, payload: encodeClipChunkPayload(have, chunk) }, timeoutMs)).payload.readUInt32BE(0);
         p.uploadedPct = Math.floor((have / data.length) * 100);
       }
-      s.send({ type: MsgType.CLIP_COMMIT });
-      expectReply(await s.next(this.cfg.replyTimeoutMs, "OK for CLIP_COMMIT"), MsgType.OK, "CLIP_COMMIT");
+      await s.request({ type: MsgType.CLIP_COMMIT }, timeoutMs);
     }
     p.uploadedPct = 100;
-    s.send({ type: MsgType.ANNOUNCE, seq: p.id, payload: encodeJsonPayload(payload) });
-    const ok = expectReply(await s.next(this.cfg.replyTimeoutMs, "OK for ANNOUNCE"), MsgType.OK, "ANNOUNCE");
+    const ok = await s.request({ type: MsgType.ANNOUNCE, seq: p.id, payload: encodeJsonPayload(payload) }, timeoutMs);
     let durationMs = p.durationMs ?? 0;
     try {
       durationMs = (JSON.parse(ok.payload.toString("utf8")) as { durationMs?: number }).durationMs ?? durationMs;
@@ -322,8 +318,7 @@ export class AudioService {
           name: "ANNOUNCE_STOP",
           front: true,
           run: async (s) => {
-            s.send({ type: MsgType.ANNOUNCE_STOP });
-            expectReply(await s.next(this.cfg.replyTimeoutMs, "OK for ANNOUNCE_STOP"), MsgType.OK, "ANNOUNCE_STOP");
+            await s.request({ type: MsgType.ANNOUNCE_STOP }, this.cfg.replyTimeoutMs);
             if (p && (p.phase === "PLAYING" || p.phase === "QUEUED" || p.phase === "UPLOADING")) p.phase = "STOPPED";
             return { outcome: "DISPLAYED" };
           },
