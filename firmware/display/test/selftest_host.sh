@@ -15,12 +15,26 @@ if [ "${1:-}" = "--with-sd" ]; then
   head -c 16000 /dev/zero > "$DIR/sd/tracks/selftest-b.mp3"
   EXTRA=(--sd "$DIR/sd")
 fi
-PORT=$((20000 + RANDOM % 20000))
 SECRET=$(printf '5a%.0s' $(seq 32))
-"$HOST_BIN" --id selftest-host --secret "$SECRET" --port "$PORT" --host 127.0.0.1 --out "$DIR" --delay 50 \
-  --header-timeout 700 --payload-timeout 1200 "$@" "${EXTRA[@]}" > "$DIR/host.log" 2>&1 &
-PID=$!
+# Порт — ниже эфемерного диапазона Linux (32768–60999): раньше брался из 20000–39999, и в CI прошивка не могла его занять —
+# «cannot listen on 127.0.0.1:39608: Address already in use» (чужое исходящее соединение). Занят всё равно — другой порт.
+PID=
 trap 'kill $PID 2> /dev/null || true; rm -rf "$DIR"' EXIT
+for attempt in 1 2 3 4 5; do
+  PORT=$((20000 + RANDOM % 12000))
+  "$HOST_BIN" --id selftest-host --secret "$SECRET" --port "$PORT" --host 127.0.0.1 --out "$DIR" --delay 50 \
+    --header-timeout 700 --payload-timeout 1200 "$@" "${EXTRA[@]}" > "$DIR/host.log" 2>&1 &
+  PID=$!
+  # Не смогла занять порт — выходит сразу; ждём это до 1 с, иначе порт её.
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    kill -0 "$PID" 2> /dev/null || break
+    grep -q "cannot listen" "$DIR/host.log" && break
+    sleep 0.1
+  done
+  grep -q "cannot listen" "$DIR/host.log" || break
+  wait "$PID" 2> /dev/null || true
+  echo "порт $PORT занят (попытка $attempt из 5), другой" >&2
+done
 code=0
 "$SELFTEST_BIN" --id selftest-host --secret "$SECRET" --port "$PORT" --header-timeout 700 --payload-timeout 1200 --reboot || code=$?
 if [ "$code" -ne 0 ]; then
