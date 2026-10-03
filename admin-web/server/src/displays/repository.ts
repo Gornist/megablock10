@@ -79,6 +79,22 @@ export function secretKey(row: Pick<DisplayRow, "secret">): Buffer {
   return Buffer.from(row.secret, "hex");
 }
 
+/** Роли точки из HELLO (displays.roles, JSON); нет — старая прошивка дисплея. */
+export function parseRoles(raw: string | null): string[] {
+  if (!raw) return ["display"];
+  try {
+    const v = JSON.parse(raw) as unknown;
+    return Array.isArray(v) && v.every((x) => typeof x === "string") ? v : ["display"];
+  } catch {
+    return ["display"];
+  }
+}
+
+/** Есть ли у точки роль (displays.roles): «audio» — звуковая точка. */
+export function hasRole(row: Pick<DisplayRow, "roles">, role: string): boolean {
+  return parseRoles(row.roles).includes(role);
+}
+
 export class DisplayRepository {
   constructor(private readonly db: Db) {}
 
@@ -238,11 +254,6 @@ export class DisplayRepository {
       mv: number | null;
       pct: number | null;
     }[];
-  }
-
-  /** TCP-соединение открылось (подпись ещё не проверена) — для «последнее соединение». */
-  markConnected(id: string, at: number): void {
-    this.db.prepare(`UPDATE displays SET last_connected_at = ? WHERE id = ?`).run(at, id);
   }
 
   markDisplayed(id: string, version: number, at: number): void {

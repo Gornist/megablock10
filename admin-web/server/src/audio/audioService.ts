@@ -1,7 +1,7 @@
 import type { AnnounceProgress, AudioCatalogTrack, DisplayAudio } from "../apiTypes.js";
 import type { Db } from "../db/index.js";
 import { DisplayFailure, expectReply, type DisplaySession, type HelloInfo } from "../displays/connection.js";
-import { parseRoles, type DisplayManager, type OpResult } from "../displays/manager.js";
+import type { DisplayManager, OpResult } from "../displays/manager.js";
 import {
   CLIP_CHUNK_MAX,
   encodeClipBeginPayload,
@@ -14,7 +14,7 @@ import {
   type AudioHelloStatus,
   type AudioStatePayload,
 } from "../displays/protocol.js";
-import type { DisplayRow } from "../displays/repository.js";
+import { hasRole, type DisplayRow } from "../displays/repository.js";
 import { AudioRepository, safeList } from "./audioRepository.js";
 
 /**
@@ -74,7 +74,7 @@ export class AudioService {
   }
 
   static isAudio(row: Pick<DisplayRow, "roles">): boolean {
-    return parseRoles(row.roles).includes("audio");
+    return hasRole(row, "audio");
   }
 
   private audioRows(): DisplayRow[] {
@@ -181,6 +181,7 @@ export class AudioService {
     void this.displays.enqueueCustom(displayId, {
       name: "LIST",
       key: "audio-list",
+      quiet: true,
       run: async (s, row) => {
         const names: string[] = [];
         for (let page = 0; page < 200; page++) {

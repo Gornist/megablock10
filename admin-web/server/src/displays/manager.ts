@@ -6,7 +6,7 @@ import { positiveNumber } from "../lib/envNumber.js";
 import { DisplayFailure, DisplaySession, expectReply, type HelloInfo } from "./connection.js";
 import { BacklightLevel, encodeBacklightPayload, encodeSecondsPayload, Format, MsgType, NackCode } from "./protocol.js";
 import { renderQrForDisplay } from "./renderer.js";
-import { DisplayRepository, secretKey, type DisplayRow } from "./repository.js";
+import { DisplayRepository, parseRoles, secretKey, type DisplayRow } from "./repository.js";
 
 /**
  * Единственный владелец связи с физическими дисплеями: очередь на каждый дисплей, общий лимит одновременных соединений,
@@ -125,17 +125,6 @@ export function displayBattery(repo: DisplayRepository, row: DisplayRow, c: Omit
   );
 }
 
-/** Роли точки из HELLO (displays.roles, JSON); нет — старая прошивка дисплея. */
-export function parseRoles(raw: string | null): string[] {
-  if (!raw) return ["display"];
-  try {
-    const v = JSON.parse(raw) as unknown;
-    return Array.isArray(v) && v.every((x) => typeof x === "string") ? v : ["display"];
-  } catch {
-    return ["display"];
-  }
-}
-
 export interface OpResult {
   outcome: DisplayPushOutcome;
   version?: number;
@@ -159,6 +148,8 @@ export interface CustomOp {
   name: string;
   key?: string;
   front?: boolean;
+  /** Без DISPLAY_CONNECT/DISCONNECT в журнале — для частых служебных операций (как опрос). */
+  quiet?: boolean;
   run: (session: DisplaySession, row: DisplayRow) => Promise<OpResult>;
 }
 
@@ -507,7 +498,7 @@ export class DisplayManager {
     );
     const now = Date.now();
     const hello = session.hello;
-    const quiet = op.kind === "probe" || (op.kind === "custom" && op.name === "LIST");
+    const quiet = op.kind === "probe" || (op.kind === "custom" && op.quiet === true);
     if (!quiet) this.log("DISPLAY_CONNECT", row.id, `ip=${row.ip}:${row.port} shows=${hello.displayedVersion} fw=${hello.status.fw ?? "?"}`);
     try {
       this.repo.markSeen(row.id, now, {
