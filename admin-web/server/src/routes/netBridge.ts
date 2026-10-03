@@ -3,6 +3,7 @@ import type { NetDoc, NetSecView, NetState, NetStockResult, NodeStockView } from
 import { buildStockItem, type StockPayload } from "../lib/netPayload.js";
 import type { Db } from "../db/index.js";
 import { logMasterAction, requireMaster } from "../lib/auth.js";
+import { isIntIn, isRef } from "../lib/refs.js";
 import { BridgeError, BridgeUnavailableError } from "../net/bridgeProtocol.js";
 import type { NetService } from "../net/netService.js";
 import { computeSecDoc, getDefaultFaction, setDefaultFaction, type SecSync } from "../net/secSync.js";
@@ -10,7 +11,6 @@ import { computeSecDoc, getDefaultFaction, setDefaultFaction, type SecSync } fro
 /** Операции с ценностями, которые мастер вправе вызвать вручную («кнопка раньше автоматики»); сдача деки (`op.submit_deck`) — нет, она только от телефона. */
 const VALUE_OPS = ["op.issue_to_phone", "op.take_from_node", "op.leave_in_node", "run.finish"] as const;
 
-const REF = /^[A-Za-z0-9_.:-]{1,64}$/;
 const RID_MAX = 128;
 
 const HTTP_BY_CODE: Record<string, number> = {
@@ -38,9 +38,6 @@ function bridgeFail(reply: FastifyReply, e: unknown): void {
     reply.code(HTTP_BY_CODE[e.code] ?? 502).send({ error: e.message, code: e.code, ...(e.doc ? { doc: e.doc } : {}) });
   } else throw e;
 }
-
-const isRef = (v: unknown): v is string => typeof v === "string" && REF.test(v);
-const isInt = (v: unknown, min: number, max: number): v is number => Number.isInteger(v) && (v as number) >= min && (v as number) <= max;
 
 /**
  * Инструменты мастера «Сети» (docs/netrun-bridge-protocol.md, §6a): браузер вызывает REST коллектора под сессией мастера, а
@@ -94,8 +91,8 @@ export function registerNetBridgeRoutes(app: FastifyInstance, db: Db, net: NetSe
     if (typeof b.kind !== "string" || !/^[a-z_]{1,32}$/.test(b.kind)) return reply.code(400).send({ error: "kind is required (open, lockdown, trace, ice…)" });
     if (b.value !== undefined && (typeof b.value !== "number" || !Number.isFinite(b.value))) return reply.code(400).send({ error: "value must be a number" });
     if ((b.in_s === undefined) === (b.deadline === undefined)) return reply.code(400).send({ error: "set either in_s or deadline" });
-    if (b.in_s !== undefined && !isInt(b.in_s, 1, 86_400)) return reply.code(400).send({ error: "in_s must be 1..86400" });
-    if (b.deadline !== undefined && !isInt(b.deadline, 1, Number.MAX_SAFE_INTEGER)) return reply.code(400).send({ error: "deadline must be a time in ms" });
+    if (b.in_s !== undefined && !isIntIn(b.in_s, 1, 86_400)) return reply.code(400).send({ error: "in_s must be 1..86400" });
+    if (b.deadline !== undefined && !isIntIn(b.deadline, 1, Number.MAX_SAFE_INTEGER)) return reply.code(400).send({ error: "deadline must be a time in ms" });
     const goal = { node: b.node, kind: b.kind, ...(b.value !== undefined ? { value: b.value } : {}), ...(b.in_s !== undefined ? { in_s: b.in_s } : { deadline: b.deadline }) };
     return act(request, reply, async () => ({
       result: { doc: (await net.request({ op: "master.goal", ...goal })).doc as NetDoc },
@@ -168,7 +165,7 @@ export function registerNetBridgeRoutes(app: FastifyInstance, db: Db, net: NetSe
     const id = request.params.id;
     if (!isRef(id)) return reply.code(400).send({ error: "bad alert id" });
     const ver = Number(request.query.ver);
-    if (!isInt(ver, 1, Number.MAX_SAFE_INTEGER)) return reply.code(400).send({ error: "ver is required" });
+    if (!isIntIn(ver, 1, Number.MAX_SAFE_INTEGER)) return reply.code(400).send({ error: "ver is required" });
     return act(request, reply, async () => {
       await net.request({ op: "del", type: "alert", id, ver });
       return { result: { ok: true }, audit: { action: "NET_ALERT_CLEAR", detail: { alert: id } } };
@@ -227,7 +224,7 @@ export function registerNetBridgeRoutes(app: FastifyInstance, db: Db, net: NetSe
   const stockResult = (r: Record<string, unknown>): NetStockResult => ({ node: String(r.node), items: (r.items as string[]) ?? [], eddies: Number(r.eddies), ...(r.replayed === true ? { replayed: true } : {}) });
 
   const ridOk = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= RID_MAX;
-  const eddiesOk = (v: unknown) => v === undefined || isInt(v, 0, 1_000_000_000);
+  const eddiesOk = (v: unknown) => v === undefined || isIntIn(v, 0, 1_000_000_000);
 
   /**
    * Положить в узел шарды, демонов и эдди. Экран присылает предметы в человеческом виде, коллектор собирает payload (ItemPayloadCodec) по

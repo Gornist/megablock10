@@ -7,15 +7,14 @@ import type { DisplayManager } from "../displays/manager.js";
 import { logMasterAction, requireMaster } from "../lib/auth.js";
 import { checkGameSecret } from "../lib/gameSecret.js";
 import { RateLimiter } from "../lib/rateLimit.js";
+import { isIntIn, REF_LONG } from "../lib/refs.js";
 import { createWorldEvents, WORLD_EVENT_INFO, WORLD_EVENT_KINDS, type WorldEventKind } from "../lib/worldEvents.js";
 
 const CLIP_ID = /^[0-9a-f]{64}$/;
 /** Событий в одном запросе: Мост шлёт единицы, пачка в сотни — это уже не он. */
 const MAX_EVENTS = 50;
-const REF = /^[A-Za-z0-9_.:-]{1,100}$/;
 
 const isKind = (v: unknown): v is WorldEventKind => typeof v === "string" && (WORLD_EVENT_KINDS as readonly string[]).includes(v);
-const isIntIn = (v: unknown, min: number, max: number): v is number => Number.isInteger(v) && (v as number) >= min && (v as number) <= max;
 
 /**
  * Быстрые события «Сети» на точки площадки. `POST /api/world-events` — от Моста: `X-Game-Secret`, без сессии мастера (Мост — машина),
@@ -105,7 +104,7 @@ export function registerWorldEventsRoutes(app: FastifyInstance, db: Db, displays
       if (!master) return;
       const id = request.params.id;
       if (!displays.repo.get(id)) return reply.code(404).send({ error: "unknown point" });
-      const ref = (v: unknown): string | null | undefined => (v === undefined || v === null || v === "" ? null : typeof v === "string" && REF.test(v) ? v : undefined);
+      const ref = (v: unknown): string | null | undefined => (v === undefined || v === null || v === "" ? null : typeof v === "string" && REF_LONG.test(v) ? v : undefined);
       const netNode = ref(request.body?.netNode);
       const terminal = ref(request.body?.terminal);
       if (netNode === undefined || terminal === undefined) return reply.code(400).send({ error: "netNode/terminal: letters, digits, '_', '-', '.', ':' (max 100)" });
@@ -121,7 +120,7 @@ export function registerWorldEventsRoutes(app: FastifyInstance, db: Db, displays
     if (!master) return;
     const b = request.body ?? {};
     if (!isKind(b.kind)) return reply.code(400).send({ error: "unknown event kind" });
-    const ref = (v: unknown) => (typeof v === "string" && REF.test(v) ? v : null);
+    const ref = (v: unknown) => (typeof v === "string" && REF_LONG.test(v) ? v : null);
     const r = worldEvents.handle([{ id: `test-${randomUUID()}`, kind: b.kind, ts: Date.now(), ttl_ms: 5000, node: ref(b.node), terminal: ref(b.terminal), session: null, level: null }]);
     logMasterAction(db, master.id, "NET_EVENT_TEST", { kind: b.kind, node: ref(b.node), terminal: ref(b.terminal) });
     return { accepted: r.accepted, playedOn: r.played.flatMap((p) => p.displayIds) };
