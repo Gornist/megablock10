@@ -46,10 +46,10 @@ python3 src/validate.py --root out'
     ensure_project
     for cam in "-1.0,1.25,8.6,0.0,1.0,-2.5" "11.0,10.5,11.0,0.0,0.4,-0.5" "0.3,1.6,1.6,0.0,0.0,-0.4"; do
       echo "== камера $cam"
-      ssh "$HOST" "$GD_ENV; cd ~/assets-gd && timeout 60 ~/.local/bin/godot --display-driver wayland --path . --resolution 1920x1080 -- --movie --static --fps --cam=$cam 2>&1 | grep -E 'GPU мс|вызовов' || true"
+      ssh "$HOST" "$GD_ENV; cd ~/assets-gd && timeout 60 ~/.local/bin/godot --display-driver wayland --path . --resolution 1920x1080 -- --movie --static --fps ${FPS_EXTRA:-} --cam=$cam 2>&1 | grep -E 'GPU мс|вызовов' || true"
     done
     echo "== толпа: 9 аватаров в комнате (--crowd)"
-    ssh "$HOST" "$GD_ENV; cd ~/assets-gd && timeout 60 ~/.local/bin/godot --display-driver wayland --path . --resolution 1920x1080 -- --movie --static --fps --crowd --cam=-1.0,1.25,8.6,0.0,1.0,-2.5 2>&1 | grep -E 'GPU мс|вызовов' || true"
+    ssh "$HOST" "$GD_ENV; cd ~/assets-gd && timeout 60 ~/.local/bin/godot --display-driver wayland --path . --resolution 1920x1080 -- --movie --static --fps ${FPS_EXTRA:-} --crowd --cam=-1.0,1.25,8.6,0.0,1.0,-2.5 2>&1 | grep -E 'GPU мс|вызовов' || true"
     echo "ЭТО НЕ Pico 4: настольная видеокарта devbox, окно с вертикальной синхронизацией." ;;
   *) sed -n 2,10p "$0"; exit 2 ;;
 esac

@@ -122,6 +122,7 @@ var _walker_mir: Node3D
 var _walker_base := Vector3.ZERO
 var _crowd := false  # --crowd: в комнате девять аватаров (худший случай по ТЗ), для замера
 var _movie := false
+var _batch_on := true  # --nobatch: не клеить дальние пласты в MultiMesh
 var _static := false
 var _fps := false
 var _ft: Array = []  # времена кадров, мс (после прогрева)
@@ -143,6 +144,8 @@ func _ready() -> void:
 			_static_cam = PackedFloat64Array(Array(a.trim_prefix("--cam=").split(",")).map(func(v): return float(v)))
 		if a.begins_with("--lattice="):
 			_lattice = float(a.trim_prefix("--lattice="))
+		if a == "--nobatch":
+			_batch_on = false
 		if a == "--field":
 			_field = true
 		if a == "--walk":
@@ -202,10 +205,31 @@ func add_child_ret(n: Node) -> Node:
 	return n
 
 
+func _batched(it: Array) -> bool:  # всё окружение (env/) клеим в MultiMesh (--nobatch отключает: для сравнения вызовов отрисовки)
+	return _batch_on and String(it[0]).begins_with("env/")
+
+
+func _batch_item(batch: AssetBatch, scene: PackedScene, it: Array, shot: Dictionary, xf: Transform3D, intensity: float, layer: int) -> void:
+	var key := "%s|%s|%.2f|%d" % [it[0], it[3], intensity, layer]  # группа: ассет, тир, яркость, пласт
+	if not batch.has(key):
+		var proto: Node3D = scene.instantiate()
+		_setup(proto, it, shot, intensity)
+		batch.register(key, proto)
+	batch.add(key, xf)
+
+
 func _build(shot: Dictionary, root: Node) -> void:
 	_insts.clear()
+	var batch := AssetBatch.new()
 	for it in shot["items"]:
 		var scene: PackedScene = load("res://assets/models/%s.glb" % it[0])
+		if _batched(it):
+			var bxf := Transform3D(Basis(Vector3.UP, deg_to_rad(it[2])).scaled(Vector3.ONE * it[4]), it[1])
+			var layer := int(roundf(it[1].y / 6.0))
+			_batch_item(batch, scene, it, shot, bxf, 1.0, layer)
+			if String(it[0]) in REFLECT and absf(it[1].y) < 0.01:
+				_batch_item(batch, scene, it, shot, Transform3D(Basis.from_scale(Vector3(1, -1, 1)), Vector3.ZERO) * bxf, 0.18, layer)
+			continue
 		var inst: Node3D = scene.instantiate()
 		inst.position = it[1]
 		inst.rotation_degrees.y = it[2]
@@ -230,6 +254,7 @@ func _build(shot: Dictionary, root: Node) -> void:
 			_setup(mir, it, shot, 0.18)
 			if is_walker:
 				_walker_mir = mir
+	batch.flush(root)
 
 
 func _update_walker() -> void:
