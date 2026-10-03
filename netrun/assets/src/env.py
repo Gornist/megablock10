@@ -165,13 +165,20 @@ def build_floor(out, name="floor", seed=2, ceiling=False):
         tiles.append(lib.box_bm((0.42, 0.42, 0.3), center=(cx, cyy, sg * (hh - 0.15))))
         for a, b in (((cx - 0.21, cyy - 0.21, sg * hh), (cx + 0.21, cyy - 0.21, sg * hh)), ((cx - 0.21, cyy - 0.21, sg * hh), (cx - 0.21, cyy + 0.21, sg * hh))):
             edge += lib.sample_line(a, b, 22, spread=0.004, seed=len(edge) + 1)  # две видимые грани тайла — цепочка частиц
-        for _ in range(10):  # штрихи из рёбер: у пола вниз, у потолка вверх
-            if rng.random() < 0.5:
-                ex, ey = cx + rng.choice((-0.21, 0.21)), cyy + rng.uniform(-0.21, 0.21)
-            else:
-                ex, ey = cx + rng.uniform(-0.21, 0.21), cyy + rng.choice((-0.21, 0.21))
-            ln = rng.uniform(0.2, 0.45)
-            streaks.append((Vector((ex, ey, sg * (hh - ln / 2))), rng.uniform(0.006, 0.012), ln / 2, rng.uniform(0.3, 0.85)))
+        # занавес на боковых гранях тайла (те же штрихи, что у стен, но в разы тише): по 7 штрихов на грань вдоль ребра, ~20% пропусков,
+        # длина плывёт плавной волной (до 0,7 м), яркость 0,12–0.4 (у стен 0,2–1,0); у пола вниз от ребра, у потолка вверх. Дыхание, бусины и
+        # мерцание дают те же параметры шейдера, что у стен (без отдельной настройки). Вглубь штрих не уходит ниже −0,95 м от плоскости.
+        base = rng.uniform(0.25, 0.7)
+        ph = rng.uniform(0, 6.28)
+        for side in range(4):
+            for q in range(7):
+                if rng.random() < 0.2:
+                    continue
+                t = -0.2 + 0.4 * (q + 0.5) / 7
+                ex, ey = [(cx + t, cyy - 0.21), (cx + 0.21, cyy + t), (cx + t, cyy + 0.21), (cx - 0.21, cyy + t)][side]
+                ln = base * (0.55 + 0.45 * (0.5 + 0.5 * math.sin(q * 1.3 + side * 1.9 + ph))) * rng.uniform(0.7, 1.0)
+                ln = min(ln, 0.95 + hh)
+                streaks.append((Vector((ex, ey, sg * (hh - ln / 2))), rng.uniform(0.006, 0.011), ln / 2, rng.uniform(0.12, 0.4)))
     objs = [lib.obj_from_bm("tiles", lib.merge_bm(*tiles), "solid_dark", lib.lin("void"), alpha=1.0)]  # верх чёрный: кайма не нужна
     # пол: якорь сверху (имя *_hang); потолок: штрихи растут вверх от рёбер, якорь по умолчанию у основания
     objs.append(lib.streak_set(("ceiling_streaks" if ceiling else "floor_streaks_hang"), streaks, cy))
@@ -180,7 +187,7 @@ def build_floor(out, name="floor", seed=2, ceiling=False):
     dots = [Vector((-0.875 + i * 0.25, -0.875 + j * 0.25, sg * -rng.uniform(0.016, 0.09))) for i in range(8) for j in range(8) if rng.random() > 0.15]
     dots = [d for d in dots if not any(abs(d.x - cx) < 0.25 and abs(d.y - cyy) < 0.25 for cx, cyy in covered)]  # не под тайлами
     objs.append(lib.point_cloud("dots", dots, cy, half_size=0.016, seed=2, a_min=0.4, a_max=0.9))
-    return lib.export(name, "env", objs, out, budget_tris=300, budget_points=170, budget_streaks=60, origin=("ceiling" if ceiling else "surface"),
+    return lib.export(name, "env", objs, out, budget_tris=300, budget_points=170, budget_streaks=160, origin=("ceiling" if ceiling else "surface"),
                       notes=f"тайлы покрывают {5 * 0.42 * 0.42 / 4.0 * 100:.0f}% плитки 2×2 м")
 
 

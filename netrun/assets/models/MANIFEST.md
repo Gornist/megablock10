@@ -5,9 +5,9 @@
 
 | Файл | Треуг. / бюджет | Точек / бюджет | Штрихов / бюджет | Слоёв | Вызовов | Размер, м (x, y, z) | Материалы | Анимации | Origin | Статус |
 |---|---|---|---|---|---|---|---|---|---|---|
-| `models/env/ceiling.glb` | 60 / 300 | 126 / 170 | 50 / 60 | 0 | 4 | 1.865 × 0.8527 × 1.9273 | points, solid_dark, streaks | — | ceiling | ок |
-| `models/env/ceiling_b.glb` | 60 / 300 | 126 / 170 | 50 / 60 | 0 | 4 | 1.9467 × 0.762 × 1.9273 | points, solid_dark, streaks | — | ceiling | ок |
-| `models/env/ceiling_c.glb` | 60 / 300 | 128 / 170 | 50 / 60 | 0 | 4 | 1.8618 × 0.841 × 1.9273 | points, solid_dark, streaks | — | ceiling | ок |
+| `models/env/ceiling.glb` | 60 / 300 | 126 / 170 | 121 / 160 | 0 | 4 | 1.865 × 0.7735 × 1.9273 | points, solid_dark, streaks | — | ceiling | ок |
+| `models/env/ceiling_b.glb` | 60 / 300 | 124 / 170 | 108 / 160 | 0 | 4 | 1.9462 × 0.6808 × 1.9273 | points, solid_dark, streaks | — | ceiling | ок |
+| `models/env/ceiling_c.glb` | 60 / 300 | 131 / 170 | 105 / 160 | 0 | 4 | 1.8616 × 0.7326 × 1.9273 | points, solid_dark, streaks | — | ceiling | ок |
 | `models/env/column_field.glb` | 0 / 300 | 0 / 0 | 1345 / 1700 | 0 | 1 | 3.9398 × 2.8539 × 3.9 | streaks | — | floor | ок |
 | `models/env/doorway.glb` | 0 / 300 | 18 / 40 | 46 / 80 | 0 | 3 | 1.9678 × 2.6921 × 0.1873 | points, streaks | — | floor | ок |
 | `models/env/doorway_b.glb` | 0 / 300 | 18 / 40 | 50 / 80 | 0 | 3 | 1.9513 × 2.6668 × 0.2822 | points, streaks | — | floor | ок |
@@ -20,9 +20,9 @@
 | `models/env/far_floor.glb` | 408 / 600 | 289 / 700 | 136 / 200 | 0 | 3 | 10.84 × 0.8895 × 10.8 | points, solid_dark, streaks | — | surface | ок |
 | `models/env/far_floor_b.glb` | 408 / 600 | 287 / 700 | 136 / 200 | 0 | 3 | 10.84 × 0.8623 × 10.8 | points, solid_dark, streaks | — | surface | ок |
 | `models/env/far_floor_c.glb` | 408 / 600 | 294 / 700 | 136 / 200 | 0 | 3 | 10.84 × 0.8756 × 10.8 | points, solid_dark, streaks | — | surface | ок |
-| `models/env/floor.glb` | 60 / 300 | 126 / 170 | 50 / 60 | 0 | 4 | 1.9486 × 0.8162 × 1.835 | points, solid_dark, streaks | — | surface | ок |
-| `models/env/floor_b.glb` | 60 / 300 | 126 / 170 | 50 / 60 | 0 | 4 | 1.8613 × 0.8693 × 1.9269 | points, solid_dark, streaks | — | surface | ок |
-| `models/env/floor_c.glb` | 60 / 300 | 129 / 170 | 50 / 60 | 0 | 4 | 1.9471 × 0.8773 × 1.8419 | points, solid_dark, streaks | — | surface | ок |
+| `models/env/floor.glb` | 60 / 300 | 129 / 170 | 112 / 160 | 0 | 4 | 1.9478 × 0.8708 × 1.835 | points, solid_dark, streaks | — | surface | ок |
+| `models/env/floor_b.glb` | 60 / 300 | 124 / 170 | 109 / 160 | 0 | 4 | 1.862 × 0.9658 × 1.9269 | points, solid_dark, streaks | — | surface | ок |
+| `models/env/floor_c.glb` | 60 / 300 | 127 / 170 | 105 / 160 | 0 | 4 | 1.9474 × 0.9617 × 1.8419 | points, solid_dark, streaks | — | surface | ок |
 | `models/env/pillar.glb` | 0 / 300 | 0 / 0 | 11 / 16 | 0 | 2 | 0.1166 × 3 × 0.0709 | streaks | — | floor | ок |
 | `models/props/portal_closed.glb` | 0 / 2000 | 157 / 260 | 27 / 40 | 0 | 2 | 3.0273 × 3.0139 × 0.1508 | points, streaks | — | floor | ок |
 | `models/props/portal_open.glb` | 0 / 2000 | 358 / 400 | 82 / 100 | 0 | 2 | 3.028 × 3.014 × 0.1571 | points, streaks | — | floor | ок |
