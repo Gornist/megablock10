@@ -15,6 +15,7 @@ import { AnnounceScreen } from "./screens/AnnounceScreen";
 import { ChannelsScreen } from "./screens/ChannelsScreen";
 import { DevicesScreen } from "./screens/DevicesScreen";
 import { LocationsScreen } from "./screens/LocationsScreen";
+import { NetScreen } from "./screens/NetScreen";
 
 /**
  * Экран по адресу: section → что показать (route — весь путь, #/nodes/<id> и т. п.). Каждый пункт меню (nav.ts) должен
@@ -31,6 +32,7 @@ export const SCREENS: Record<string, (route: string[]) => ReactNode> = {
   audit: () => <AuditScreen />,
   devices: (route) => <DevicesScreen deviceId={route[1]} />,
   nodes: (route) => <NodesScreen nodeId={route[1]} />,
+  net: () => <NetScreen />,
   locations: () => <LocationsScreen />,
   announce: () => <AnnounceScreen />,
   channels: () => <ChannelsScreen />,

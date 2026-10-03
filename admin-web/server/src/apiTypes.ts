@@ -636,3 +636,18 @@ export interface NetState {
   /** Часы сервера: сроки (expires_at, lockdown_until) экран считает от них, а не от часов браузера. */
   serverNow: number;
 }
+
+/** Получатели сигнала СБ: фракция по умолчанию, сколько телефонов получит сигнал по каждой фракции и состояние документа settings/sec в Мосте. */
+export interface NetSecView {
+  defaultFaction: string | null;
+  recipients: { faction: string; count: number }[];
+  sync: {
+    /** Мост на связи; нет — остальное неизвестно, запись ждёт подключения. */
+    connected: boolean;
+    /** Документ в Мосте совпадает с составом фракций коллектора. */
+    inSync: boolean;
+    /** Версия документа в Мосте; null — документа нет (сигнал СБ пока никуда не уходит). */
+    docVer: number | null;
+    lastError: string | null;
+  };
+}

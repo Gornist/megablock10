@@ -6,7 +6,7 @@ describe("меню коллектора", () => {
   it("две группы: «Игра» и «Мир», без «Дисплеев» и «Звука»", () => {
     expect(NAV.map((g) => g.title)).toEqual(["Игра", "Мир"]);
     expect(NAV[0].items.map((i) => i.label)).toEqual(["Обзор", "События", "Игроки", "Фракции", "Экономика", "Переводы", "Объявления", "Журнал"]);
-    expect(NAV[1].items.map((i) => i.label)).toEqual(["Устройства", "Узлы", "Локации", "Громкая связь", "Каналы звука", "Мастерская", "Реестр тиражей"]);
+    expect(NAV[1].items.map((i) => i.label)).toEqual(["Устройства", "Узлы", "Сеть", "Локации", "Громкая связь", "Каналы звука", "Мастерская", "Реестр тиражей"]);
     const paths = NAV.flatMap((g) => g.items.map((i) => i.path));
     expect(paths).not.toContain("displays");
     expect(paths).not.toContain("sound");

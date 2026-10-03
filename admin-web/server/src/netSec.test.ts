@@ -106,6 +106,7 @@ test("синк: без Моста ничего не делает и не пад�
 
     bridge.dropClients();
     await waitFor("обрыв", () => !net.connected);
+    assert.deepEqual(sec.status(), { connected: false, inSync: false, docVer: null, lastError: null }, "при обрыве устаревшую копию за «актуально» не выдаём");
     const c = await seedPlayer(app, { callsign: "Вова", faction: "NEON" });
     await waitFor("снова на связи", () => net.connected);
     await waitFor("документ догнан", () => ((bridge.doc("settings", "sec")!.data.factions as Record<string, string[]>).NEON ?? []).includes(c.publicKeyB64));
@@ -149,6 +150,7 @@ test("без Моста настройка СБ всё равно сохраня
   const headers = { authorization: `Bearer ${await loginAs(app, master.name, master.token)}` };
   const set = await app.inject({ method: "PUT", url: "/api/net/sec", headers, payload: { defaultFaction: "Security" } });
   assert.equal(set.statusCode, 200);
+  assert.equal(set.json().sync.connected, false);
   assert.equal(set.json().sync.docVer, null);
   assert.equal(set.json().sync.inSync, false);
   await app.close();

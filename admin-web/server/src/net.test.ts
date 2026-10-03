@@ -26,6 +26,7 @@ const SAMPLE = [
   { type: "node", id: "node_07", data: { title: "Склад", tier: "STANDARD", lockdown_until: 0, eddies: 300 } },
   { type: "terminal", id: "t03", data: { label: "Подвал", node: "node_07", silent: false } },
   { type: "master_req", id: "flatline:s_1", data: { kind: "flatline", ref: "s_1", node: "node_07", summary: "ФЛЭТЛАЙН: Призрак", state: "pending", default: "approve", decision: null } },
+  { type: "alert", id: "al_17", data: { kind: "auditor_item_owner", msg: "it_02bb: владелец deck:s_9f2c, но сессия закрыта" } },
   { type: "net_query", id: "nq_1", data: { runner: "Призрак", state: "open", messages: [{ mid: "m1", from: "runner", text: "Где шард?", at: 1 }] } },
   { type: "template", id: "tpl_night", data: { title: "Ночь", settings: { await_flatline: 1 }, node_cfg: { trace_per_s: 3 } } },
 ];
@@ -103,7 +104,7 @@ test("клиент: hello и sub, снимок в копии; изменения
     assert.equal(s.configured, true);
     assert.equal(s.bridge, "connected");
     assert.equal(s.info!.version, "fake-0.1");
-    assert.deepEqual(Object.keys(s.docs).sort(), ["master_req", "net_query", "node", "settings", "template", "terminal"]);
+    assert.deepEqual(Object.keys(s.docs).sort(), ["alert", "master_req", "net_query", "node", "settings", "template", "terminal"]);
     assert.equal(s.docs.node[0].id, "node_07");
     assert.ok(!JSON.stringify(s).includes("master-key"));
 
@@ -272,6 +273,22 @@ test("запрос к Сети: ответ мастера; повтор с те�
     const q = bridge.doc("net_query", "nq_1")!.data as { state: string; messages: { mid: string; text: string }[] };
     assert.equal(q.state, "answered");
     assert.equal(q.messages.filter((m) => m.mid === "r1").length, 1);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("тревога аудитора: мастер снимает с версией; устаревшая версия — 409, нет тревоги — 404, без версии — 400", async () => {
+  const { bridge, headers, app, db, cleanup } = await setup();
+  try {
+    const del = (id: string, q: string) => app.inject({ method: "DELETE", url: `/api/net/alerts/${id}${q}`, headers });
+    assert.equal((await del("al_17", "")).statusCode, 400);
+    assert.equal((await del("al_17", "?ver=7")).statusCode, 409);
+    assert.equal((await del("al_404", "?ver=1")).statusCode, 404);
+    assert.ok(bridge.doc("alert", "al_17"));
+    assert.equal((await del("al_17", "?ver=1")).statusCode, 200);
+    assert.equal(bridge.doc("alert", "al_17"), undefined);
+    assert.equal((db.prepare("SELECT COUNT(*) AS n FROM audit_master WHERE action = 'NET_ALERT_CLEAR'").get() as { n: number }).n, 1);
   } finally {
     await cleanup();
   }

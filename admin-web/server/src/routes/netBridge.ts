@@ -1,10 +1,10 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
-import type { NetDoc, NetState } from "../apiTypes.js";
+import type { NetDoc, NetSecView, NetState } from "../apiTypes.js";
 import type { Db } from "../db/index.js";
 import { logMasterAction, requireMaster } from "../lib/auth.js";
 import { BridgeError, BridgeUnavailableError } from "../net/bridgeProtocol.js";
 import type { NetService } from "../net/netService.js";
-import { computeSecDoc, getDefaultFaction, setDefaultFaction, type SecSync, type SecSyncStatus } from "../net/secSync.js";
+import { computeSecDoc, getDefaultFaction, setDefaultFaction, type SecSync } from "../net/secSync.js";
 
 /** Операции с ценностями, которые мастер вправе вызвать вручную («кнопка раньше автоматики»); сдача деки (`op.submit_deck`) — нет, она только от телефона. */
 const VALUE_OPS = ["op.issue_to_phone", "op.take_from_node", "op.leave_in_node", "run.finish"] as const;
@@ -144,6 +144,18 @@ export function registerNetBridgeRoutes(app: FastifyInstance, db: Db, net: NetSe
     }));
   });
 
+  /** Снять тревогу (аудитора, сервера мира) — мастер «принял к сведению». Версию присылает экран: если тревога успела измениться, Мост ответит version_conflict. */
+  app.delete<{ Params: { id: string }; Querystring: { ver?: string } }>("/api/net/alerts/:id", async (request, reply) => {
+    const id = request.params.id;
+    if (!isRef(id)) return reply.code(400).send({ error: "bad alert id" });
+    const ver = Number(request.query.ver);
+    if (!isInt(ver, 1, Number.MAX_SAFE_INTEGER)) return reply.code(400).send({ error: "ver is required" });
+    return act(request, reply, async () => {
+      await net.request({ op: "del", type: "alert", id, ver });
+      return { result: { ok: true }, audit: { action: "NET_ALERT_CLEAR", detail: { alert: id } } };
+    });
+  });
+
   /**
    * Ручная операция с ценностями. rid создаёт экран ОДИН раз на нажатие и при повторе (обрыв, двойное нажатие) шлёт тот же:
    * Мост по rid не выполнит второй раз, а вернёт сохранённый ответ с replayed: true. Коллектор rid не придумывает и не меняет —
@@ -165,13 +177,7 @@ export function registerNetBridgeRoutes(app: FastifyInstance, db: Db, net: NetSe
 
   // ── Получатели сигнала СБ и владелец узла (docs/netrun-collector-brief.md, задача 3) ──
 
-  interface SecView {
-    defaultFaction: string | null;
-    /** Сколько телефонов получит сигнал СБ по каждой фракции (действующие игроки). */
-    recipients: { faction: string; count: number }[];
-    sync: SecSyncStatus;
-  }
-  const secView = (): SecView => ({
+  const secView = (): NetSecView => ({
     defaultFaction: getDefaultFaction(db),
     recipients: Object.entries(computeSecDoc(db).factions)
       .map(([faction, keys]) => ({ faction, count: keys.length }))
@@ -179,13 +185,13 @@ export function registerNetBridgeRoutes(app: FastifyInstance, db: Db, net: NetSe
     sync: secSync.status(),
   });
 
-  app.get("/api/net/sec", async (request, reply): Promise<SecView | void> => {
+  app.get("/api/net/sec", async (request, reply): Promise<NetSecView | void> => {
     if (!requireMaster(db, request, reply)) return;
     return secView();
   });
 
   /** Фракция СБ по умолчанию: получатель сигнала, если у узла нет владельца. Сохраняется всегда; в Мост уходит, как только он на связи. */
-  app.put<{ Body: { defaultFaction?: unknown } }>("/api/net/sec", async (request, reply): Promise<SecView | void> => {
+  app.put<{ Body: { defaultFaction?: unknown } }>("/api/net/sec", async (request, reply): Promise<NetSecView | void> => {
     const master = requireMaster(db, request, reply);
     if (!master) return;
     const f = request.body?.defaultFaction;

@@ -48,6 +48,8 @@ export function computeSecDoc(db: Db): SecDoc {
 }
 
 export interface SecSyncStatus {
+  /** Мост на связи. Нет — остальные поля неизвестны (копия документов устарела), запись ждёт подключения. */
+  connected: boolean;
   /** Документ в Мосте совпадает с тем, что коллектор хочет в нём видеть. */
   inSync: boolean;
   /** Версия документа в Мосте; null — документа нет (сигнал СБ пока никуда не уходит). */
@@ -86,10 +88,11 @@ export class SecSync {
   }
 
   status(): SecSyncStatus {
+    if (!this.net.connected) return { connected: false, inSync: false, docVer: null, lastError: this.lastError };
     const cur = this.net.doc("settings", "sec");
     const want = computeSecDoc(this.db);
     const have = cur ? ({ factions: (cur.data.factions as Record<string, string[]>) ?? {}, default_faction: (cur.data.default_faction as string | null) ?? null } satisfies SecDoc) : null;
-    return { inSync: have !== null && normalize(have) === normalize(want), docVer: cur?.ver ?? null, lastError: this.lastError };
+    return { connected: true, inSync: have !== null && normalize(have) === normalize(want), docVer: cur?.ver ?? null, lastError: this.lastError };
   }
 
   /** Привести документ к нужному виду. true — записали; false — менять нечего или Моста нет (догонится при подключении/по таймеру). */
