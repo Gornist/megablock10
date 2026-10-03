@@ -24,7 +24,7 @@ data class StaticPhone(val host: String, val port: Int, val key: String)
 
 /**
  * Параметры запуска Моста: `--port`, `--line-port`, `--db`, `--test`, `--seed` и `--phone host:port=ключ` (стенд, только с `--test`), `--world-pub`,
- * `--collector URL` (куда слать записи мира, M4; нет флага — записи копятся в базе Моста); ключи ролей — `NETRUN_KEY_WORLD|MASTER|TEST`
+ * `--collector URL` (куда слать записи мира, M4, и быстрые события на точки, L3; нет флага — записи копятся в базе Моста, события не выводятся); ключи ролей — `NETRUN_KEY_WORLD|MASTER|TEST`
  * и секрет игры для коллектора `NETRUN_COLLECTOR_SECRET` (тот же, что `GAME_SECRET` коллектора) из окружения.
  */
 data class LaunchOptions(
