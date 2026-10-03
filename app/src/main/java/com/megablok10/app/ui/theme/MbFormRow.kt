@@ -21,11 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 /** Строка настройки: подпись слева, элемент справа в колонке 128 dp, высота 48 dp. */
 @Composable
@@ -91,18 +87,6 @@ fun MbSlider(percent: Int, value: String, modifier: Modifier = Modifier) {
         )
         Text(value, style = MbTypography.tagLabel, color = c.acc, modifier = Modifier.align(Alignment.Center))
     }
-}
-
-/** Значение только для чтения — моношрифт, акцентный цвет, выравнивание вправо. */
-@Composable
-fun MbValue(text: String, modifier: Modifier = Modifier, tone: Color = LocalMbColors.current.acc) {
-    Text(
-        text,
-        style = TextStyle(fontFamily = IBMPlexMono, fontWeight = FontWeight.Medium, fontSize = 12.sp),
-        color = tone,
-        textAlign = TextAlign.End,
-        modifier = modifier
-    )
 }
 
 /** Однострочное текстовое поле — та же форма tab, что у поля Composer, просто без кнопки отправки рядом. */
