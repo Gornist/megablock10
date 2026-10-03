@@ -53,6 +53,8 @@ class Auditor(
             owner == null || ref.isEmpty() -> "нет владельца или он пуст"
             kind == "inbox" || kind == "phone" -> null
             kind == "deck" -> if (isOpen(sessions[ref])) null else "владелец $owner, но сессия закрыта или её нет"
+            // burned:master — убрано мастером из узла (master.unstock_node), сессии у такого предмета нет
+            owner == ValueOps.BURNED_BY_MASTER -> null
             kind == "burned" -> if (sessions.containsKey(ref)) null else "сгорел в несуществующей сессии $ref"
             kind == "node" -> if (ref in nodes) null else "лежит в несуществующем узле $ref"
             kind == "outbox" -> outboxProblem(item)

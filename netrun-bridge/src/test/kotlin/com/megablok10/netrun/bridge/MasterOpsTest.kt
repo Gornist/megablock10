@@ -110,6 +110,23 @@ class MasterOpsTest {
         assertEquals("bad_request", m.req("master.pause", """"node":"node_08"""").code())
     }
 
+    @Test fun stockAndUnstockNodeOverTheWire() {
+        val m = Client("master")
+        val body = """"rid":"st1","node":"node_08","items":[{"kind":"DAEMON","payload":"p-x"}],"eddies":40"""
+        val r = m.req("master.stock_node", body)
+        assertTrue(r.toString(), r.ok())
+        assertEquals("false", r.str("replayed"))
+        assertEquals("40", flag("node", "node_08", "eddies"))
+        val id = r["items"]!!.jsonArray[0].jsonPrimitive.content
+        assertEquals("node:node_08", flag("item", id, "owner"))
+        assertEquals("true", m.req("master.stock_node", body).str("replayed"))
+        assertEquals("rid_mismatch", m.req("master.stock_node", """"rid":"st1","node":"node_08","items":[],"eddies":1""").code())
+        assertEquals("forbidden", Client("world").req("master.stock_node", body).code())
+        assertTrue(m.req("master.unstock_node", """"rid":"un1","node":"node_08","items":["$id"],"eddies":10""").ok())
+        assertEquals("burned:master", flag("item", id, "owner"))
+        assertEquals("30", flag("node", "node_08", "eddies"))
+    }
+
     @Test fun venueLinkSwitch() {
         val m = Client("master")
         assertTrue(MasterOps.venueLinkOn(store)) // по умолчанию связь есть

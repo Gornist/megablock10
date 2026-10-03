@@ -34,6 +34,15 @@ internal class OpRouter(private val ops: ValueOps, private val terminals: Termin
                     (msg["disconnect"] as? JsonPrimitive)?.booleanOrNull ?: false, moves(msg),
                 ),
             )
+            "master.stock_node" -> opReply(
+                ops.stockNode(caller, req(msg, "rid"), req(msg, "node"), stockItems(msg), msg["eddies"].long() ?: 0L),
+            )
+            "master.unstock_node" -> opReply(
+                ops.unstockNode(
+                    caller, req(msg, "rid"), req(msg, "node"), if (msg["items"] == null) emptyList() else strings(msg, "items"),
+                    msg["eddies"].long() ?: 0L,
+                ),
+            )
             "session.abort" -> opReply(ops.abortSession(caller, req(msg, "session"), msg["reason"].string().orEmpty()))
             "terminal.auth" -> {
                 if (role == Role.MASTER) throw StoreException("forbidden", "роли master операция $op не разрешена")
@@ -77,6 +86,14 @@ internal class OpRouter(private val ops: ValueOps, private val terminals: Termin
     private fun strings(msg: JsonObject, key: String): List<String> {
         val arr = msg[key] as? JsonArray ?: throw StoreException("bad_request", "$key — массив строк")
         return arr.map { it.string() ?: throw StoreException("bad_request", "$key — массив строк") }
+    }
+
+    private fun stockItems(msg: JsonObject): List<StockItem> {
+        val arr = msg["items"] as? JsonArray ?: if (msg["items"] == null) return emptyList() else throw StoreException("bad_request", "items — массив")
+        return arr.map { e ->
+            val o = e as? JsonObject ?: throw StoreException("bad_request", "предмет — объект")
+            StockItem(req(o, "kind"), req(o, "payload"))
+        }
     }
 
     private fun moves(msg: JsonObject): List<Move> {

@@ -11,6 +11,9 @@ data class Caller(val role: Role, val client: String) {
     val namespace: String get() = "${role.name.lowercase()}/$client"
 }
 
+/** Предмет, который мастер закладывает в узел (`master.stock_node`): [kind] SHARD или DAEMON и [payload] — строка `ItemPayloadCodec`. */
+data class StockItem(val kind: String, val payload: String)
+
 /** Куда деть предмет при `run.finish`. */
 enum class MoveTo { PHONE, NODE, BURNED }
 
@@ -42,7 +45,7 @@ class OpResult(val ok: Boolean, val body: JsonObject, val replayed: Boolean) {
  * `rid`; исключение посреди операции откатывает всё. Повтор `rid` с теми же параметрами возвращает сохранённый ответ,
  * с другими — `rid_mismatch`. Сам [DocStore] не меняется: записи `rid` — документы типа [RID_TYPE].
  *
- * Мост не создаёт и не уничтожает предметы, кроме [submitDeck] (там предметы уже есть в `inbox`) — только меняет `owner`.
+ * Мост не создаёт и не уничтожает предметы по своей воле — только меняет `owner`; предмет создаётся лишь по операции мастера ([stockNode]).
  */
 @Suppress("TooManyFunctions")
 class ValueOps(
@@ -481,12 +484,74 @@ class ValueOps(
         }
     }
 
+    // ---------- 6a: наполнение узла мастером ----------
+
+    /**
+     * `master.stock_node`: мастер закладывает в [node] предметы ([StockItem]) и [eddies]. Единственное место, где Мост создаёт предметы:
+     * сам он их не выдумывает. Id предмета детерминирован (`it_` + 16 hex от `<namespace>|<rid>|<индекс>`), поэтому повтор `rid` не
+     * плодит копий; `origin` — `master:<client>`, разбор `daemon`/`shard` — как при приёме карточки ([ItemDecode]).
+     */
+    fun stockNode(caller: Caller, rid: String, node: String, items: List<StockItem>, eddies: Long): OpResult {
+        if (eddies < 0 || (items.isEmpty() && eddies == 0L)) throw StoreException("bad_request", "нужны предметы или эдди > 0")
+        if (items.any { it.kind !in STOCK_KINDS || it.payload.isEmpty() }) {
+            throw StoreException("bad_request", "предмет: kind SHARD или DAEMON и непустой payload")
+        }
+        val params = VJ.obj(
+            "op" to VJ.p("master.stock_node"), "node" to VJ.p(node), "eddies" to VJ.p(eddies),
+            "items" to JsonArray(items.map { VJ.obj("kind" to VJ.p(it.kind), "payload" to VJ.p(it.payload)) }),
+        )
+        return execute(caller, "master.stock_node", rid, params) { tx, _ ->
+            val nd = tx.get(NODE, node) ?: throw StoreException("not_found", "узла $node нет")
+            val ids = items.mapIndexed { i, st ->
+                val id = "it_" + VJ.sha256Hex("${caller.namespace}|$rid|$i").take(16)
+                tx.put(
+                    ITEM, id, 0,
+                    JsonObject(
+                        VJ.obj(
+                            "owner" to VJ.p("node:$node"), "kind" to VJ.p(st.kind), "payload" to VJ.p(st.payload),
+                            "protected" to VJ.p(false), "origin" to VJ.p("master:${caller.client}"),
+                            "in_transfer" to JsonNull, "out_transfer" to JsonNull, "handover" to JsonNull,
+                        ) + ItemDecode.fields(st.kind, st.payload),
+                    ),
+                )
+                id
+            }
+            val total = VJ.lng(nd.data, "eddies") + eddies
+            if (eddies > 0) tx.put(NODE, nd.id, nd.ver, VJ.with(nd.data, "eddies" to VJ.p(total)))
+            VJ.obj("node" to VJ.p(node), "items" to VJ.arr(ids), "eddies" to VJ.p(total))
+        }
+    }
+
+    /**
+     * `master.unstock_node`: убрать из [node] предметы [items] (они остаются документами с `owner = burned:master`, для журнала)
+     * и вычесть [eddies] из запаса. Чужой предмет — `wrong_owner` без изменений; эдди больше запаса — `bad_request`.
+     */
+    fun unstockNode(caller: Caller, rid: String, node: String, items: List<String>, eddies: Long): OpResult {
+        if (eddies < 0 || items.toSet().size != items.size || (items.isEmpty() && eddies == 0L)) {
+            throw StoreException("bad_request", "нужны предметы без повторов или эдди > 0")
+        }
+        val params = VJ.obj(
+            "op" to VJ.p("master.unstock_node"), "node" to VJ.p(node), "items" to VJ.arr(items), "eddies" to VJ.p(eddies),
+        )
+        return execute(caller, "master.unstock_node", rid, params) { tx, _ ->
+            val nd = tx.get(NODE, node) ?: throw StoreException("not_found", "узла $node нет")
+            val docs = items.map { tx.get(ITEM, it) ?: throw StoreException("not_found", "предмета $it нет") }
+            docs.firstOrNull { VJ.str(it.data, "owner") != "node:$node" }?.let { fail("wrong_owner", "${it.id} не в узле $node", it) }
+            val have = VJ.lng(nd.data, "eddies")
+            if (eddies > have) throw StoreException("bad_request", "в узле эдди $have, а убрать $eddies")
+            for (d in docs) tx.put(ITEM, d.id, d.ver, VJ.with(d.data, "owner" to VJ.p(BURNED_BY_MASTER)))
+            if (eddies > 0) tx.put(NODE, nd.id, nd.ver, VJ.with(nd.data, "eddies" to VJ.p(have - eddies)))
+            VJ.obj("node" to VJ.p(node), "items" to VJ.arr(items), "eddies" to VJ.p(have - eddies))
+        }
+    }
+
     // ---------- каркас: права, rid, транзакция ----------
 
     private fun requireAllowed(caller: Caller, op: String) {
         val ok = when (op) {
             "submit_deck" -> caller.role == Role.TEST || caller.role == Role.BRIDGE
             "take_from_node", "leave_in_node", "run.finish" -> caller.role != Role.BRIDGE
+            "master.stock_node", "master.unstock_node" -> caller.role == Role.MASTER || caller.role == Role.TEST
             else -> true
         }
         if (!ok) throw StoreException("forbidden", "роль ${caller.role} не может $op")
@@ -579,13 +644,16 @@ class ValueOps(
         const val TERMINAL = "terminal"
         const val PAYOUT = "payout"
 
+        /** Владелец предметов, убранных мастером из узла (`master.unstock_node`); документ остаётся для журнала. */
+        const val BURNED_BY_MASTER = "burned:master"
+        private val STOCK_KINDS = setOf("SHARD", "DAEMON")
         private const val MAX_RID = 128
         private const val MS = 1000L
         private const val DEFAULT_PAUSE_S = 600L
         private val FINISH_OUTCOMES = setOf("clean", "emergency", "soft_ice", "black_ice")
 
         /**
-         * Id документа `runner`. Ключ игрока (X.509 base64url, ~120 символов) длиннее предела id в 64 символа, поэтому
+         * Id документа `runner`. Ключ игрока (X.509, обычный base64, ~120 символов) длиннее предела id в 64 символа, поэтому
          * id — `r_` + 32 hex от SHA-256 ключа; сам ключ лежит в `data.key`.
          */
         fun runnerDocId(key: String): String = "r_" + VJ.sha256Hex(key).take(32)
