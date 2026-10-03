@@ -340,7 +340,8 @@ func _finish_exit(session: String, reason: String, disconnect_delay: float = 0.0
 	if peer != -1:
 		_peer_session.erase(peer)
 	_remove_avatar(session)
-	print("[netrun-server] выход ", session, ": ", reason, ", дека сгорела" if ev["deck_burned"] else "")
+	var deck_note := ExitLogic.deck_note(ev)
+	print("[netrun-server] выход ", session, ": ", reason, ", " + deck_note if not deck_note.is_empty() else "")
 	exit_event.emit(ev)
 	if peer == -1:
 		return

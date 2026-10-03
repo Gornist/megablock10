@@ -47,3 +47,11 @@ static func is_client_reason(reason: String) -> bool:
 ## никому, судится по тому же правилу: connection_lost под охотой тоже сжигает (иначе обрыв — бесплатное бегство).
 static func build_event(session: String, reason: String, under_hunt: bool) -> Dictionary:
 	return {"session": session, "reason": reason, "under_hunt": under_hunt, "deck_burned": under_hunt}
+
+
+## Что про деку писать в журнале сервера. Сгорает дека только при аварийном выходе или обрыве под охотой; при флэтлайне она не горит,
+## а остаётся в узле мёртвой (её может подобрать другой, docs/netrun.md, «Забег»), поэтому «сгорела» про флэтлайн было бы неверно.
+static func deck_note(ev: Dictionary) -> String:
+	if ev.get("reason", "") == REASON_FLATLINE:
+		return "дека остаётся в узле мёртвой"
+	return "дека сгорела" if ev.get("deck_burned", false) else ""
