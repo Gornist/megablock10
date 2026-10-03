@@ -16,8 +16,9 @@
 - Kit на этот ответ **удаляет запись из очереди**: `SyncEngine.kt:188` — `queue.deleteByIds(result.rejected.keys)`, плюс
   предупреждение `sync.rejected` (стр. 193-196). Повтора нет — запись потеряна навсегда.
 - Остальные проверки (`changeIngest.ts:109-118`): `reason = MASTER_OVERRIDE` запрещён устройству; для всего, кроме `TRANSFER_IN`,
-  `actor == subjectKeyB64`; подпись Ed25519 по pipe-строке (`ChangeRecord.signaturePayload`, kit `ChangeRecord.kt:29-34`,
-  тот же формат на сервере `changeRecord.ts:75-90`) проверяется ключом `actor`; у одного `subject` `seq` уникален
+  `actor == subjectKeyB64`; подпись ECDSA P-256 (`SHA256withECDSA`, DER, base64; kit `Ecdsa`) по pipe-строке (`ChangeRecord.signaturePayload`,
+  kit `ChangeRecord.kt:29-34`, тот же формат на сервере `changeRecord.ts:75-90`; проверка `lib/crypto.ts`) проверяется ключом `actor` —
+  открытым ключом SPKI в обычном base64 (не base64url); ключ мира Моста (`WorldKey`) — такая же пара P-256, не Ed25519; у одного `subject` `seq` уникален
   (`changeIngest.ts:186`); дубль того же `id` с теми же полями — «принято» без второй записи (стр. 177-181), с другими —
   `id already used by a different record`.
 - Значения: `valueProblem` (`changeIngest.ts:73-110`) — для полей вне `balance/ramCapacity/callsign/faction` `newValue` обязан

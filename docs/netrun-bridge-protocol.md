@@ -197,7 +197,7 @@ B0 (хранилище), B1 (WebSocket), B3 (операции с ценност�
 | `session` | `s_<16 hex>` | Мост; сервер мира — только `data.world` | весь документ, кроме `data.world` |
 | `deck` | как у сессии | только Мост | весь документ |
 | `item` | `it_<16 hex>` | только Мост | весь документ |
-| `runner` | ключ игрока (base64url без `=`) | Мост, мастер | — |
+| `runner` | `r_<32 hex>` — первые 32 hex SHA-256 ключа игрока (ключ — в `data.key`) | Мост, мастер | — |
 | `settings` | `global`, `rules`, … | мастер | — |
 | `alert` | `al_<n>` | Мост (аудитор, раздел 6a), сервер мира; снимает мастер | — |
 | `master_req`, `net_query` | `<вид>:<ссылка>`, `nq_<n>` | только Мост (раздел 6a) | — |
@@ -251,6 +251,7 @@ B0 (хранилище), B1 (WebSocket), B3 (операции с ценност�
  "data": {"owner": "deck:s_9f2c41d07a3e5b60", "kind": "DAEMON", "payload": "<строка ItemPayload как в карточке>",
           "protected": false, "origin": "phone:MFkwEwYH…", "in_transfer": "tr_88e1", "out_transfer": null, "handover": null}}
 ```
+- `origin` — откуда предмет: `phone:<ключ>` (принесён игроком), `node:<узел>` (добыча/наполнение узла), `master:<client>` (создан мастером, `master.stock_node`).
 - `payload` — строка содержимого из карточки (`ItemPayload`) **байт в байт**; менять её никто не вправе.
 - `daemon` / `shard` (M5b) — разбор `payload` для сервера мира, который формата карточки не знает. Мост пишет поле сам: при
   приёме карточки (`op.submit_deck`-путь, раздел 8) и при старте — документам без поля (принятым раньше), через `:rules`
@@ -265,24 +266,34 @@ B0 (хранилище), B1 (WebSocket), B3 (операции с ценност�
 |---|---|
 | `inbox:<ключ>` | карточка с телефона принята (чек отправлен), деку ещё не собрали |
 | `deck:<сессия>` | в деке забега (принесённое и взятое в узле) |
-| `node:<узел>` | лежит в узле (наполнение, оставленная добыча, «мёртвая дека») |
+| `node:<узел>` | лежит в узле (наполнение мастером, оставленная добыча, «мёртвая дека») |
 | `outbox:<ключ>` | выдаётся на телефон: карточка Handover в пути; `handover` — `PENDING`/`DELIVERED` |
 | `phone:<ключ>` | чек получен — предмет ушёл из Сети; документ остаётся для журнала и аудитора |
 | `burned:<сессия>` | сгорел (аварийный выход под охотой Black ICE); документ остаётся |
+| `burned:master` | убран мастером из узла (`master.unstock_node`); документ остаётся для журнала, сессии у него нет |
 
-**`runner`** — нетраннер с точки зрения Сети.
+**`runner`** — нетраннер с точки зрения Сети. Id документа — `r_` + первые 32 hex SHA-256 ключа игрока (сам ключ длиннее предела id в
+64 символа); ключ — **обычный base64** X.509/SPKI, как `Ecdsa.encodeKey` в kit и у телефонов (не base64url), лежит в `data.key`.
 ```json
-{"type": "runner", "id": "MFkwEwYH…", "ver": 5, "created": 1789990000000, "updated": 1790000600000,
- "data": {"callsign": "Призрак", "blocked": false, "blocked_reason": null, "runs": 3, "tutorial_done": true, "re_entry_after": 0}}
+{"type": "runner", "id": "r_3f9a…(32 hex)", "ver": 5, "created": 1789990000000, "updated": 1790000600000,
+ "data": {"key": "MFkwEwYH…", "callsign": "Призрак", "blocked": false, "blocked_reason": null, "runs": 3, "tutorial_done": true,
+          "re_entry_after": 0, "allowed": true, "faction": "Корпа"}}
 ```
-`blocked` ставит Мост при `black_ice`, снимает мастер. `re_entry_after` — мс Unix конца паузы повторного входа после `soft_ice` (0 — нет). `tutorial_done: false` — первый вход идёт в учебный узел.
+- `key`, `callsign`, `runs`, `tutorial_done` — Мост (`runs` +1 и `tutorial_done: true` при `run.finish`; при входе обновляется только `callsign`).
+- `blocked` ставит Мост при `black_ice`, снимает мастер; `blocked_reason` — текст причины. `re_entry_after` — мс Unix конца паузы повторного входа после `soft_ice` (0 — нет). `tutorial_done: false` — первый вход идёт в учебный узел.
+- `allowed` — допуск нетраннера в Сеть, ставит мастер (коллектор). Учитывается только при `settings/global.require_allowed == true`:
+  тогда `op.submit_deck` без документа `runner` или без `allowed: true` отказывает `session_state` («нет допуска в Сеть»), предметы
+  возвращаются на телефон, как при `blocked`. `newRunner` его не ставит.
+- `faction` — фракция нетраннера, пишет мастер/коллектор; нужна правилу сигнала СБ (`SecAlertRules.decide`: на своём узле фракции сигнала нет).
+- Мастер может создать документ `runner` до первого входа (`runs: 0`, `tutorial_done: false`, нужны `key` и `allowed`/`faction`): Мост при входе обновит только `callsign`.
 
 **`settings`** — числа правил и Моста; мастер правит на ходу.
 ```json
 {"type": "settings", "id": "global", "ver": 7, "created": 1789990000000, "updated": 1790000000000,
  "data": {"confirm_timeout_s": 120, "inbox_timeout_s": 300, "disconnect_grace_s": 20, "soft_ice_reentry_pause_s": 600,
-          "terminal_silent_s": 30, "auditor_period_s": 60, "tutorial_node": "node_00"}}
+          "terminal_silent_s": 30, "auditor_period_s": 60, "tutorial_node": "node_00", "require_allowed": false}}
 ```
+`require_allowed` — вход в Сеть только у нетраннеров с `runner.data.allowed == true` (по умолчанию нет/`false`: допуск не проверяется).
 
 **`alert`** — тревога для дашборда (аудитор, сервер мира).
 ```json
@@ -467,6 +478,19 @@ B0 (хранилище), B1 (WebSocket), B3 (операции с ценност�
 сливается в `settings/global` (`world_pub` игнорируется; пишется `template_applied = {id, at}`), `node_cfg` — в
 `node_cfg/<узел>` каждого узла. Нет заготовки или узла — `not_found`, ничего не записано; `node_cfg` без `nodes` — `bad_request`.
 Ответ: `{"template", "nodes", "settings": [ключи]}`.
+
+**Наполнение узла.** Запас шардов, демонов и эдди закладывает мастер через коллектор; Мост предметы сам не выдумывает. Это операции
+с ценностями: `rid` по общим правилам раздела 6 (повтор с теми же параметрами — сохранённый ответ с `replayed: true`, другие
+параметры — `rid_mismatch`), роли `master` и `test`, из `world` — `forbidden`; одна транзакция.
+`{"op": "master.stock_node", "rid": "stock:17", "node": "node_07", "items": [{"kind": "SHARD" | "DAEMON", "payload": "<ItemPayloadCodec>"}], "eddies": 100}` —
+узла нет → `not_found`; пустой список и `eddies` 0, `eddies` < 0, неизвестный `kind`, пустой `payload` → `bad_request`. Создаёт документы
+`item` с id `it_` + 16 hex от `sha256("<namespace>|<rid>|<индекс>")` (детерминированно: повтор не плодит копий), `owner: "node:<узел>"`,
+`origin: "master:<client>"`, `protected: false`, `in_transfer`/`out_transfer`/`handover` — `null`, `daemon`/`shard` разобраны из
+`payload` как при приёме карточки. `eddies` прибавляется к `node.eddies`. Ответ: `{"node", "items": [id…], "eddies": <новый запас>}`.
+`{"op": "master.unstock_node", "rid": "unstock:17", "node": "node_07", "items": ["it_…"], "eddies": 50}` (`items`, `eddies` необязательны, но
+что-то одно нужно) — убирает предметы, лежащие в `node:<узел>` (иначе `wrong_owner`, ничего не меняется): `owner` → `burned:master`, документ
+остаётся для журнала (аудитор такой предмет не считает нарушением). `eddies` вычитается из запаса; больше запаса или < 0 — `bad_request`.
+Ответ: `{"node", "items", "eddies": <остаток>}`.
 
 **Запрос к Сети.** Канал мастер ↔ нетраннер — документы `net_query/nq_<n>`: `{"runner", "state": "open" | "answered",
 "messages": [{"mid", "from": "runner" | "master", "text", "at"}]}`.
