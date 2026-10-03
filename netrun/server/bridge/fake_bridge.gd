@@ -21,6 +21,9 @@ var gate_calls: Dictionary = {}
 var gate_offline := false
 var finish_calls := 0
 var finish_attempts: Array = []  # [{session, outcome}] — все вызовы, в том числе повторы и отказы
+## Тест: связь на запись «пропала» — put_doc отвечает unavailable. put_log — все вызовы put_doc (и отказы): [{type, id, ok, data}].
+var put_offline := false
+var put_log: Array = []
 
 
 func _init(fixture_path: String = DEFAULT_FIXTURE) -> void:
@@ -235,6 +238,14 @@ func decide_gate(kind: String, ref: String, decision: String) -> void:
 
 ## Как put Моста: ver 0 — создать, иначе версия должна совпасть; eddies узла и всё, кроме data.world сессии, не меняются.
 func put_doc(type: String, id: String, ver: int, data: Dictionary) -> Dictionary:
+	var r := _put_doc(type, id, ver, data)
+	put_log.append({"type": type, "id": id, "ok": r.get("ok", false), "data": data.duplicate(true)})
+	return r
+
+
+func _put_doc(type: String, id: String, ver: int, data: Dictionary) -> Dictionary:
+	if put_offline:
+		return err("unavailable", "Моста нет (тест)")
 	var d := doc(type, id)
 	if ver == 0:
 		if not d.is_empty():

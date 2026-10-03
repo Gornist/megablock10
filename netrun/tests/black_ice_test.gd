@@ -152,6 +152,156 @@ func test_state_tells_the_client_when_it_is_hunted() -> void:
 	assert_bool(await _wait_for(func(): return _bot.last_state.get("hunt", false))).is_true()
 
 
+## session.data.world как его видит Мост (пусто, пока сервер мира ничего не писал).
+func _world_of_session() -> Dictionary:
+	var w: Variant = _session_data().get("world")
+	return w if w is Dictionary else {}
+
+
+## Записи world.hunt в сессию, в порядке вызовов: [{ok, hunt}] (отказанные тоже).
+func _hunt_puts() -> Array:
+	var out: Array = []
+	for p in _bridge.put_log:
+		if p["type"] != BridgeApi.T_SESSION or p["id"] != SESSION:
+			continue
+		var w: Variant = (p["data"] as Dictionary).get("world")
+		if w is Dictionary and (w as Dictionary).has("hunt"):
+			out.append({"ok": p["ok"], "hunt": (w as Dictionary)["hunt"]})
+	return out
+
+
+func _hunt_values() -> Array:
+	return _hunt_puts().map(func(p): return p["hunt"])
+
+
+## GHOST: Black ICE перестаёт видеть нетраннера (он выпадает из целей), охота кончается.
+func _ghost_for(sec: float) -> void:
+	(_node.session_state(SESSION) as DaemonSession).ghost_until = _node.now() + sec
+
+
+## H1: Мост шлёт ice.hunt, когда у активной сессии world.hunt становится true. Сервер мира пишет его в начале охоты за сессией
+## и снимает в конце; world.node и world.trace_level при этом остаются.
+func test_hunt_is_written_to_session_world_and_cleared_when_it_ends() -> void:
+	_setup({"hunt_speed": 0.2})
+	await _bot_in_node_with_trace(60.0)
+	assert_bool(await _wait_for(func(): return _world_of_session().get("hunt", false) == true)).is_true()
+	var w := _world_of_session()
+	assert_str(str(w.get("node", ""))).is_equal(NODE)
+	assert_int(int(w.get("trace_level", -1))).is_equal(TraceMeter.Level.TRACE)
+	_ghost_for(60.0)
+	assert_bool(await _wait_for(func(): return _world_of_session().get("hunt", true) == false)).is_true()
+	assert_str(str(_world_of_session().get("node", ""))).is_equal(NODE)  # снятие охоты остальное в world не трогает
+	assert_int(int(_world_of_session().get("trace_level", -1))).is_equal(TraceMeter.Level.TRACE)
+
+
+## Пишется смена охоты, а не каждый тик: за время охоты ровно одна запись true, на конце — одна false.
+func test_hunt_is_written_only_when_it_changes() -> void:
+	_setup({"hunt_speed": 0.2})
+	await _bot_in_node_with_trace(60.0)
+	assert_bool(await _wait_for(func(): return _world_of_session().get("hunt", false) == true)).is_true()
+	await get_tree().create_timer(1.0).timeout  # десяток тиков охоты
+	assert_array(_hunt_values()).is_equal([true])
+	_ghost_for(60.0)
+	assert_bool(await _wait_for(func(): return _world_of_session().get("hunt", true) == false)).is_true()
+	await get_tree().create_timer(1.0).timeout
+	assert_array(_hunt_values()).is_equal([true, false])
+
+
+## Узел без охоты (trace ниже порога) в world.hunt не пишет вообще: ни true, ни лишнего false.
+func test_no_hunt_no_world_hunt_writes() -> void:
+	_setup({"hunt_speed": 0.2})
+	_bot.start(_cfg, BotClient.Scenario.LOITER)
+	assert_bool(await _wait_for(func(): return _node.session_state(SESSION) != null and _bot.last_state.has("ice"))).is_true()
+	await get_tree().create_timer(1.0).timeout
+	assert_array(_hunt_values()).is_empty()
+	assert_bool(_world_of_session().has("hunt")).is_false()
+
+
+## Выход игрока под охотой снимает отметку: сессия закрывается, но охота за ней кончилась.
+func test_hunt_is_cleared_when_the_player_leaves() -> void:
+	_setup({"hunt_speed": 0.2})
+	await _bot_in_node_with_trace(60.0)
+	assert_bool(await _wait_for(func(): return _world_of_session().get("hunt", false) == true)).is_true()
+	assert_bool(_bot.net.request_exit(ExitLogic.REASON_HEADSET_OFF)).is_true()
+	assert_bool(await _wait_for(func(): return "finished" in _kinds())).is_true()
+	assert_bool(await _wait_for(func(): return _world_of_session().get("hunt", true) == false)).is_true()
+	assert_array(_hunt_values()).is_equal([true, false])
+
+
+## Сессия уходит в другой узел (release_session при переходе по тоннелю): охота этого узла за ней кончилась.
+func test_hunt_is_cleared_when_the_session_leaves_the_node() -> void:
+	_setup({"hunt_speed": 0.2})
+	await _bot_in_node_with_trace(60.0)
+	assert_bool(await _wait_for(func(): return _world_of_session().get("hunt", false) == true)).is_true()
+	assert_object(_node.release_session(SESSION)).is_not_null()
+	assert_bool(await _wait_for(func(): return _world_of_session().get("hunt", true) == false)).is_true()
+	assert_array(_hunt_values()).is_equal([true, false])
+
+
+## Рестарт сервера мира: отметка охоты из прошлого процесса снимается, иначе следующая охота за сессией не дала бы ice.hunt
+## (Мост ждёт перехода «не true → true»).
+func test_stale_hunt_from_previous_process_is_cleared_on_restart() -> void:
+	_setup({"hunt_speed": 0.2})
+	_kill_server()
+	_bridge.doc(BridgeApi.T_SESSION, SESSION)["data"]["world"] = {"connected": false, "hunt": true}
+	_boot()
+	assert_bool(await _wait_for(func(): return _node.synced)).is_true()
+	assert_array(_node.recovered_sessions).is_equal([SESSION])
+	assert_bool(await _wait_for(func(): return _world_of_session().get("hunt", true) == false)).is_true()
+	assert_bool(_world_of_session().get("connected", true)).is_false()  # остальное в world не тронуто
+
+
+## Поимка Black ICE (флэтлайн) — тоже конец охоты.
+func test_hunt_is_cleared_when_black_ice_catches() -> void:
+	_setup({"hunt_speed": 3.0})
+	await _bot_in_node_with_trace(60.0)
+	assert_bool(await _wait_for(func(): return "finished" in _kinds())).is_true()
+	assert_bool(await _wait_for(func(): return _world_of_session().get("hunt", true) == false)).is_true()
+	# Пометка флэтлайна (_mark_finish) переписывает весь world и несёт hunt с собой, поэтому точный список не сравниваем.
+	var values := _hunt_values()
+	assert_bool(values.front()).is_true()
+	assert_bool(values.back()).is_false()
+	assert_int(values.count(true)).is_equal(1)
+
+
+## Мост не отвечает на запись: игра идёт дальше (клиент получает hunt в снимке), попыток ограниченное число, очереди нет;
+## связь вернулась — следующая смена охоты записывается.
+func test_hunt_write_to_unreachable_bridge_is_bounded_and_recovers() -> void:
+	_setup({"hunt_speed": 0.2})
+	_node.hunt_retry_sec = 0.01
+	_bot.start(_cfg, BotClient.Scenario.LOITER)
+	assert_bool(await _wait_for(func(): return _node.session_state(SESSION) != null and _bot.last_state.has("ice"))).is_true()
+	_bridge.put_offline = true
+	(_node.session_state(SESSION) as DaemonSession).trace.add_action("door_forced", _node.now(), 6.0)
+	assert_bool(await _wait_for(func(): return _bot.last_state.get("hunt", false))).is_true()  # игра охоту ведёт и без Моста
+	assert_bool(await _wait_for(func(): return not _hunt_puts().is_empty())).is_true()
+	assert_bool(await _wait_for(func(): return not _node.is_hunt_writing())).is_true()  # писатель сдался
+	var tried := _hunt_puts().size()
+	assert_int(tried).is_less_equal(GrayNode.HUNT_ATTEMPTS)
+	await get_tree().create_timer(1.0).timeout
+	assert_int(_hunt_puts().size()).is_equal(tried)  # сдался насовсем: тики не плодят попыток
+	assert_bool(_hunt_puts().all(func(p): return not p["ok"])).is_true()
+	assert_bool(_world_of_session().has("hunt")).is_false()
+	_bridge.put_offline = false
+	_ghost_for(60.0)  # охота кончилась (в Мосте её и не было) — писать нечего
+	assert_bool(await _wait_for(func(): return not _bot.last_state.get("hunt", true))).is_true()
+	await get_tree().create_timer(0.5).timeout
+	assert_int(_hunt_puts().size()).is_equal(tried)
+	(_node.session_state(SESSION) as DaemonSession).ghost_until = -INF  # охота началась снова: Мост уже отвечает
+	assert_bool(await _wait_for(func(): return _world_of_session().get("hunt", false) == true)).is_true()
+
+
+## world.node и trace_level пишутся по-прежнему (Мост по ним решает про сигнал СБ и ценности).
+func test_session_world_keeps_node_and_trace_level() -> void:
+	_setup({"hunt_speed": 0.2})
+	await _bot_in_node_with_trace(60.0)
+	assert_bool(await _wait_for(func(): return int(_world_of_session().get("trace_level", -1)) == TraceMeter.Level.TRACE)).is_true()
+	var w := _world_of_session()
+	assert_str(str(w.get("node", ""))).is_equal(NODE)
+	assert_int(int(w.get("trace", -1))).is_equal(60)
+	assert_bool(w.get("connected", false)).is_true()
+
+
 func test_black_ice_catch_is_flatline_dead_deck_stays_protected_goes_home() -> void:
 	_setup({"hunt_speed": 8.0})
 	await _bot_in_node_with_trace(60.0)

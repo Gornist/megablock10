@@ -30,6 +30,10 @@ const NODE_ID := "node_07"
 ## Исход забега не теряем, если Мост недоступен: повтор с тем же rid (finish:<сессия>) раз в FINISH_RETRY_SEC.
 const FINISH_ATTEMPTS := 60
 const FINISH_RETRY_SEC := 2.0
+## Запись охоты в сессию (world.hunt): охота не критична для хода — при недоступном Мосте HUNT_ATTEMPTS попыток с паузой
+## hunt_retry_sec, потом пропускаем (не копим очередь); следующая смена охоты запишется заново.
+const HUNT_ATTEMPTS := 6
+const HUNT_RETRY_SEC := 0.5
 ## Типы документов, на которые узел подписывается в Мосте.
 const SYNC_TYPES: Array = ["session", "deck", "node", "item"]
 ## Тир узла, где живёт Black ICE (документ node, поле tier).
@@ -85,6 +89,9 @@ var _ready_done := false
 ## Сессии, чей исход уже уходит в Мост (в том числе восстановленный флэтлайн): второй исход и повторный вход не допускаем.
 var _finishing: Dictionary = {}
 var _hunted: Dictionary = {}         # сессия -> true, пока за ней идёт охота Black ICE
+var hunt_retry_sec := HUNT_RETRY_SEC # пауза между попытками записи охоты (тест ставит поменьше)
+var _hunt_written: Dictionary = {}   # сессия -> bool: что Мост подтвердил в world.hunt (нет записи — не писали, то есть false)
+var _hunt_writing: Dictionary = {}   # сессия -> true, пока идёт запись: она одна на сессию и сама перечитывает нужное значение
 var _flat_disconnect: Dictionary = {} # сессия -> true: Black ICE догнал в окне возврата после обрыва («обрыв до флэтлайна»)
 ## Снимок Моста принят (после рестарта — активные сессии и шард восстановлены).
 var synced := false
@@ -265,6 +272,8 @@ func _sync_from_bridge() -> void:
 func apply_snapshot(docs: Array) -> void:
 	recover(docs)
 	synced = true
+	for session in _hunt_written.keys():
+		_sync_hunt(session)  # охота прошлого процесса не продолжается: снять её отметку в Мосте
 	_write_node_state()
 
 
@@ -292,6 +301,8 @@ func recover(docs: Array) -> void:
 						flatlined[str(d["id"])] = bool((w as Dictionary).get("disconnect", false))
 					else:
 						active.append(str(d["id"]))
+						if w is Dictionary and (w as Dictionary).get("hunt") == true:
+							_hunt_written[str(d["id"])] = true  # отметка прошлого процесса: его охоты нет, apply_snapshot её снимет
 			BridgeApi.T_ITEM:
 				if data.get("kind") != "SHARD":
 					continue
@@ -524,6 +535,7 @@ func _update_hunts() -> void:
 			_hunted[session] = hunted
 			net.set_under_hunt(session, hunted)
 			event.emit({"kind": "hunt", "session": session, "on": hunted})
+			_sync_hunt(session)
 
 
 ## Спад trace, пока никто из ICE не следит за игроком.
@@ -625,6 +637,7 @@ func _on_avatar_removed(session: String) -> void:
 	_exiting[session] = true
 	_level_cbs.erase(session)
 	_hunted.erase(session)
+	_sync_hunt(session)  # игрок ушёл: охоты за сессией больше нет (Мосту сказать «false»)
 	_write_node_state()
 	for ice in _ices:
 		if ice.brain != null:
@@ -778,6 +791,54 @@ func _mark_trace_level(session: String, level: int, value: float, effects: Array
 			return
 		if not is_inside_tree():
 			return
+
+
+## Охота Black ICE в session.data.world.hunt: Мост по true шлёт быстрое событие ice.hunt, конец охоты событием не является.
+## Пишем смену, а не каждый тик: нужное значение берётся из _hunted, подтверждённое Мостом — из _hunt_written. Писатель один на
+## сессию: пока он ждёт Мост, смена охоты только меняет _hunted, а он по возвращении видит свежее значение (true и сразу false
+## не обгоняют друг друга и очередь запросов не растёт). Мост недоступен — HUNT_ATTEMPTS попыток и отказ без записи: охота не
+## критична для хода, а следующая смена охоты запишется заново.
+func _sync_hunt(session: String) -> void:
+	if bridge == null or not synced or _hunt_writing.has(session):
+		return
+	_hunt_writing[session] = true
+	while bool(_hunted.get(session, false)) != bool(_hunt_written.get(session, false)):
+		var want := bool(_hunted.get(session, false))
+		if not await _put_hunt(session, want):
+			break
+		_hunt_written[session] = want
+	_hunt_writing.erase(session)
+	if not _sessions.has(session):
+		_hunt_written.erase(session)  # игрока в узле нет: помнить нечего
+
+
+## Один раз записать world.hunt (чтение-правка-запись, остальные поля world сохраняются). Повтор при version_conflict и обрыве
+## связи, но не больше HUNT_ATTEMPTS. false — не вышло.
+func _put_hunt(session: String, hunt: bool) -> bool:
+	for attempt in HUNT_ATTEMPTS:
+		@warning_ignore("redundant_await")
+		var g: Dictionary = await bridge.get_doc(BridgeApi.T_SESSION, session)
+		if g.get("ok", false):
+			var cur: Dictionary = g["doc"]
+			var data: Dictionary = (cur.get("data", {}) as Dictionary).duplicate(true)
+			var w: Dictionary = (data.get("world", {}) as Dictionary).duplicate(true) if data.get("world") is Dictionary else {}
+			w["hunt"] = hunt
+			data["world"] = w
+			@warning_ignore("redundant_await")
+			var r: Dictionary = await bridge.put_doc(BridgeApi.T_SESSION, session, int(cur["ver"]), data)
+			if r.get("ok", false):
+				return true
+			g = r
+		var code := BridgeApi.err_code(g)
+		if is_transient(g):
+			if not is_inside_tree():
+				return false
+			await get_tree().create_timer(hunt_retry_sec).timeout
+		elif code != "version_conflict":
+			push_warning("[gray-node] hunt %s: %s" % [session, code])
+			return false
+	push_warning("[gray-node] hunt %s: не записано за %d попыток" % [session, HUNT_ATTEMPTS])
+	return false
 
 
 ## Слить поля в session.data.world, не трогая остальные (trace_level, effects, finish). Повтор при version_conflict.
@@ -958,6 +1019,11 @@ func shard_view() -> Array:
 ## Сколько слотов шардов ждут пополнения.
 func empty_slots() -> int:
 	return _refill_at.size()
+
+
+## Идёт ли запись охоты в Мост (тест ждёт, пока писатель закончит или сдастся).
+func is_hunt_writing() -> bool:
+	return not _hunt_writing.is_empty()
 
 
 func is_hunted(session: String) -> bool:
@@ -1144,6 +1210,7 @@ func release_session(session: String) -> DaemonSession:
 	_level_cbs.erase(session)
 	_sessions.erase(session)
 	_hunted.erase(session)
+	_sync_hunt(session)  # сессия уходит в другой узел: охота этого узла за ней кончилась
 	_portal_state.erase(session)
 	net.set_under_hunt(session, false)
 	for ice in _ices:
