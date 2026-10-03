@@ -139,7 +139,7 @@
 | `auditor_eddies` | `Auditor.checkEddies` | эдди в минус, закрытая сессия держит эдди, выплата ≤ 0 |
 | `auditor_dead` | `Auditor.raiseDeadAlert` | аудитор не работает N проходов подряд |
 
-(Тревоги сервера мира, документ `alert` с `al_<n>`, тоже проходят этим путём; виды — в G/N-карточках.) Кто читает: «внимание»
+(Тревоги сервера мира, документ `alert` с `al_<n>`, тоже проходят этим путём; виды — в G/N-карточках. Документы `alert` видов `master_request` и `net_query` — вызовы панели мастера («ждём мастера», «запрос к Сети») — записью не становятся.) Кто читает: «внимание»
 мастера (`lib/attention*` на коллекторе) — это единственные записи мира, на которые мастер должен реагировать сразу.
 
 ```json
@@ -256,11 +256,11 @@
 | `NET_ENTER` | создан документ `session` в `pending`; `deck`/`protected` — из документа `deck` этой же транзакции |
 | `NET_EXIT` / `NET_FLATLINE` | `session` стал `closed` (`black_ice` — флэтлайн); `returned/burned/left_in_node` — по предметам, вышедшим из `deck:<s>` в `outbox:`/`burned:`/`node:`; `node` — текущий (`world.node`, иначе узел входа); `duration_s` — от курка (`confirmed_at`, нет — от создания) до `finished_at`; `lockdown_until` — из документа узла (только `soft_ice`); `alert` — тревога `flatline` этой же транзакции |
 | `NET_ITEM_OWNER` | `item.owner` сменился на значимый переход (раздел 2.5); `op`/`rid` — из документа `op_rid` этой транзакции |
-| `NET_ALERT` | создан документ `alert` любого вида, кроме `flatline` |
+| `NET_ALERT` | создан документ `alert` любого вида, кроме `flatline` (он уже `NET_FLATLINE`), `master_request` и `net_query` (вызовы мастера) |
 
 Решения при чтении C2, которых текст не фиксировал: (1) чек телефона (`outbox → phone:`) идёт без операции — пишется `op = issue_to_phone`,
 `rid` = id карточки (`out_transfer`); (2) `master.unstock_node` (`→ burned:master`) пишется как «сгорел» с `op = master.unstock_node`, а создание
-предмета в узле (`master.stock_node`) — нет; (3) тревоги `master_request` и `net_query` (MasterOps) — тоже `alert`-документы, значит `NET_ALERT`;
+предмета в узле (`master.stock_node`) — нет; (3) тревоги `master_request` и `net_query` (MasterOps) — тоже `alert`-документы, но это звонок панели мастера («ждём мастера», «запрос к Сети»), а не тревога аудитора: `NET_ALERT` для них не пишется (M4b), документы остаются;
 (4) `id` = `w:<field>:<epoch>:<txSeq>:<sourceRef>` (M4b). Прежний вариант с `ver` документа (`w:<field>:<sourceRef>:<ver>`) ломался дважды:
 после сброса базы Моста при том же ключе мира `ver` снова с 1 (те же `id`, коллектор отвечает `id already used by a different record`),
 а тревога, снятая мастером и поднятая аудитором заново, получала прежний `id` с `ver = 1` — `WorldRecorder` отбрасывал её как повтор,
