@@ -152,4 +152,30 @@ class DocStoreTest {
             assertEquals(listOf("a", "b"), docs.map { it.id })
         }
     }
+
+    @Test fun epochIsCreatedOnceAndSurvivesRestart() {
+        val path = tmp.root.resolve("epoch.db").path
+        val first = open(path).use { s ->
+            assertTrue(s.epoch, Regex("[0-9a-z]{8}").matches(s.epoch))
+            s.put("node", "n", 0, obj())
+            s.epoch
+        }
+        open(path).use { s -> assertEquals(first, s.epoch) }
+        open(path).use { s -> assertEquals(first, s.epoch) }
+    }
+
+    @Test fun everyFreshBaseGetsItsOwnEpoch() {
+        val epochs = (1..20).map { open(tmp.root.resolve("fresh$it.db").path).use { s -> s.epoch } }
+        assertEquals(epochs.size, epochs.toSet().size)
+        assertTrue(open(":memory:").use { a -> open(":memory:").use { b -> a.epoch != b.epoch } })
+    }
+
+    @Test fun baseWithoutEpochGetsOneWhenOpened() {
+        val path = tmp.root.resolve("old.db").path
+        open(path).use { s -> s.put("node", "n", 0, obj()) }
+        java.sql.DriverManager.getConnection("jdbc:sqlite:$path").use { c -> c.createStatement().use { it.execute("DELETE FROM meta WHERE key='epoch'") } }
+        val epoch = open(path).use { s -> s.epoch }
+        assertTrue(epoch, Regex("[0-9a-z]{8}").matches(epoch))
+        open(path).use { s -> assertEquals(epoch, s.epoch) } // и дальше она не меняется
+    }
 }

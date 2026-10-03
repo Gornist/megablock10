@@ -21,6 +21,7 @@ import java.sql.Connection
 internal class WorldRecorder(
     private val queue: WorldRecordQueue,
     private val key: WorldKey,
+    private val epoch: String,
     private val log: KitLog = NoopLog,
 ) : CommitHook {
     /** Записи последней транзакции: журнал и пробуждение отправки — только после её `COMMIT` ([committed]), откат их стирает. */
@@ -39,12 +40,13 @@ internal class WorldRecorder(
 
     /** null — запись с таким id уже есть (повтор того же события): `seq` на неё не тратится. */
     private fun enqueue(conn: Connection, e: WorldEvent): ChangeRecord? {
-        if (queue.contains(conn, e.id)) {
-            log.warnEvent(TAG, "world.record_duplicate", "id" to e.id)
+        val id = e.id(epoch)
+        if (queue.contains(conn, id)) {
+            log.warnEvent(TAG, "world.record_duplicate", "id" to id)
             return null
         }
         val unsigned = ChangeRecord(
-            id = e.id, subjectKeyB64 = key.publicB64, seq = queue.nextSeq(conn), happenedAt = e.happenedAt, field = e.field,
+            id = id, subjectKeyB64 = key.publicB64, seq = queue.nextSeq(conn), happenedAt = e.happenedAt, field = e.field,
             oldValue = null, newValue = e.value.toString(), reason = e.reason, sourceRef = e.sourceRef, actor = key.publicB64, signature = "",
         )
         return unsigned.copy(signature = key.sign(unsigned.signaturePayload())).also { queue.insert(conn, it) }

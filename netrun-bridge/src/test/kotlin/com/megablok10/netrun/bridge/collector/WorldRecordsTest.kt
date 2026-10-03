@@ -60,7 +60,7 @@ class WorldRecordsTest {
         val rig = rig()
         val sid = rig.submit()
         val r = rig.records().single()
-        assertEquals("w:net.run:$sid:1", r.id)
+        assertEquals("w:net.run:${rig.f.store.epoch}:$sid:1", r.id)
         assertEquals("net.run", r.field)
         assertEquals("NET_ENTER", r.reason)
         assertEquals(sid, r.sourceRef)
@@ -108,7 +108,7 @@ class WorldRecordsTest {
         assertEquals(listOf("NET_ENTER", "NET_ITEM_OWNER", "NET_EXIT"), rig.reasons())
         assertEquals(listOf(1L, 2L, 3L), rig.records().map { it.seq })
         val exit = rig.of("NET_EXIT").single()
-        assertEquals("w:net.run:$sid:${rig.f.store.get("session", sid)!!.ver}", exit.id)
+        assertEquals("w:net.run:${rig.f.store.epoch}:$sid:${rig.f.store.get("session", sid)!!.ver}", exit.id)
         val v = value(exit)
         assertEquals("clean", VJ.str(v, "outcome"))
         assertEquals(3L, VJ.lng(v, "returned"))
@@ -250,7 +250,7 @@ class WorldRecordsTest {
         val r = rig.of("NET_ALERT").single()
         assertEquals("net.alert", r.field)
         val alert = rig.f.store.list("alert").single()
-        assertEquals("w:net.alert:${alert.id}:1", r.id)
+        assertEquals("w:net.alert:${rig.f.store.epoch}:${alert.id}:1", r.id)
         assertEquals(alert.id, r.sourceRef)
         val v = value(r)
         assertEquals(alert.id, VJ.str(v, "alert"))
@@ -312,6 +312,51 @@ class WorldRecordsTest {
             assertTrue(r.newValue!!.length <= WorldRecords.MAX_VALUE_CHARS)
         }
         assertEquals(all.map { it.seq }, (1..all.size).map { it.toLong() })
+    }
+
+    // ---------- эпоха базы: сброс базы Моста не возвращает старые id ----------
+
+    /** Один и тот же ход событий на пустой базе под данным ключом мира: вход, взятие, выход, тревога аудитора. */
+    private fun idsOfFreshBase(key: WorldKey): List<String> {
+        val rig = Rig(ValueFixture(":memory:"), key)
+        val sid = rig.enterActive()
+        rig.f.ops.takeFromNode(rig.f.world, "take:$sid:it_sh1", sid, "node_07", "it_sh1")
+        rig.finish(sid, "clean", false, Move("it_dA2", MoveTo.PHONE), Move("it_sh1", MoveTo.PHONE))
+        rig.f.item("it_weird", "weird:1", "x")
+        Auditor(rig.f.store).run()
+        return rig.records().map { it.id }.also { rig.f.store.close() }
+    }
+
+    /** Эпоха в id: `w:<field>:<эпоха>:<sourceRef>:<ver>`. */
+    private fun epochOf(id: String): String = id.split(":")[2]
+
+    @Test fun resetBaseWithSameKeyDoesNotReuseRecordIds() {
+        // Сбросили базу Моста, ключ мира тот же, `ver` снова с 1: иначе коллектор отвергнет такие id («id already used»), kit удалит запись.
+        val key = WorldKey.generate()
+        val first = idsOfFreshBase(key)
+        val second = idsOfFreshBase(key)
+        assertTrue(first.size >= 4)
+        assertEquals(first.size, second.size)
+        assertEquals(emptySet<String>(), first.toSet() intersect second.toSet())
+    }
+
+    @Test fun restartKeepsTheEpochSoRecordIdsStayStable() {
+        val path = tmp.root.resolve("epoch.db").path
+        val key = WorldKey.generate()
+        val first = Rig(ValueFixture(path), key)
+        first.enterActive()
+        val before = first.records().map { it.id }
+        first.f.store.close()
+
+        val store = DocStore.open(path)
+        val second = WorldSync(store, key, null, CoroutineScope(Dispatchers.Unconfined))
+        store.put("alert", "al_next", 0, VJ.obj("kind" to VJ.p("auditor_x"), "msg" to VJ.p("m")))
+        val after = runBlocking { second.queue.nextBatch(10) }.map { it.id }
+        store.close()
+        assertEquals(2, after.size)
+        assertEquals(before, after.take(1))
+        assertEquals(epochOf(before.single()), epochOf(after.last()))
+        assertEquals(store.epoch, epochOf(after.last()))
     }
 
     @Test fun queueAndSeqSurviveRestart() {

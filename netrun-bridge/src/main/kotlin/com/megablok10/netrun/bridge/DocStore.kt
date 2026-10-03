@@ -5,6 +5,7 @@ import kotlinx.serialization.json.JsonObject
 import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.SQLException
+import java.util.concurrent.ThreadLocalRandom
 
 /**
  * Расширение коммита: пишет в ту же базу SQLite и в той же транзакции, что и документы (например, очередь записей мира для
@@ -24,6 +25,9 @@ fun interface CommitHook {
  * Память меняется только после успешного коммита SQLite, поэтому оборванная транзакция не оставляет половины ни там, ни там.
  * Сквозной счётчик [seq] хранится в SQLite и продолжается после перезапуска; одна транзакция получает один `seq`.
  * Операции с ценностями (B3) и правила (B2) строятся поверх [transaction]; подписчики (B1) — через [addListener].
+ *
+ * У базы есть [epoch] — короткий случайный идентификатор, который создаётся при первой инициализации файла и живёт в нём
+ * (строка `epoch` в `meta`). Он различает «жизни» базы: сбросили файл — `seq` и `ver` документов снова с 1, эпоха новая.
  */
 class DocStore private constructor(
     private val conn: Connection,
@@ -31,6 +35,7 @@ class DocStore private constructor(
 ) : AutoCloseable {
     private val docs = HashMap<DocKey, Doc>()
     private var seqValue = 0L
+    private var epochValue = 0L
     private val listeners = ArrayList<(List<Change>) -> Unit>()
 
     /** Расширение коммита (см. [CommitHook]); ставится сразу после [open], до первой записи. */
@@ -38,6 +43,12 @@ class DocStore private constructor(
 
     /** Номер последнего изменения. */
     val seq: Long @Synchronized get() = seqValue
+
+    /**
+     * Эпоха базы: 8 символов `0-9a-z`, создаётся один раз при первой инициализации файла и не меняется при перезапусках. По ней
+     * id записей мира отличаются между «жизнями» базы под одним ключом мира (docs/netrun-world-records.md, раздел 7).
+     */
+    val epoch: String get() = epochValue.toString(EPOCH_RADIX)
 
     @Synchronized
     fun get(type: String, id: String): Doc? = docs[DocKey(type, id)]
@@ -185,6 +196,13 @@ class DocStore private constructor(
     }
 
     companion object {
+        private const val EPOCH_KEY = "epoch"
+        private const val EPOCH_RADIX = 36
+
+        // [36^7, 36^8): ровно 8 символов в системе по основанию 36, около 41 бита случайности.
+        private const val EPOCH_MIN = 78_364_164_096L
+        private const val EPOCH_MAX = 2_821_109_907_456L
+
         /** Открывает базу [path] (или `:memory:`), создаёт таблицы и читает документы в память. */
         fun open(path: String, clock: () -> Long = System::currentTimeMillis): DocStore {
             val conn = DriverManager.getConnection("jdbc:sqlite:$path")
@@ -218,6 +236,20 @@ class DocStore private constructor(
                 }
             }
             st.executeQuery("SELECT value FROM meta WHERE key='seq'").use { rs -> if (rs.next()) seqValue = rs.getLong(1) }
+            st.executeQuery("SELECT value FROM meta WHERE key='$EPOCH_KEY'").use { rs -> if (rs.next()) epochValue = rs.getLong(1) }
+        }
+        if (epochValue == 0L) createEpoch()
+    }
+
+    /** Первая инициализация файла (или база до появления эпохи): выбрать эпоху и сразу сохранить, чтобы рестарт её не менял. */
+    private fun createEpoch() {
+        val fresh = ThreadLocalRandom.current().nextLong(EPOCH_MIN, EPOCH_MAX)
+        conn.prepareStatement("INSERT OR IGNORE INTO meta(key,value) VALUES ('$EPOCH_KEY',?)").use {
+            it.setLong(1, fresh)
+            it.executeUpdate()
+        }
+        conn.createStatement().use { st ->
+            st.executeQuery("SELECT value FROM meta WHERE key='$EPOCH_KEY'").use { rs -> rs.next(); epochValue = rs.getLong(1) }
         }
     }
 }
