@@ -23,6 +23,11 @@ import java.util.concurrent.TimeUnit
 
 /** Настоящий клиент WebSocket (JDK `java.net.http`, не та библиотека, что у сервера) против настоящего сервера. */
 class BridgeServerTest {
+    private companion object {
+        /** Ожидание ответа: запас под нагрузку раннера CI (на машине разработки хватало 5 с, один прогон на L3 упал). */
+        const val WAIT_S = 15L
+    }
+
     @get:Rule val tmp = TemporaryFolder()
 
     private lateinit var store: DocStore
@@ -66,11 +71,11 @@ class BridgeServerTest {
                         return null
                     }
                 },
-            ).get(5, TimeUnit.SECONDS)
+            ).get(WAIT_S, TimeUnit.SECONDS)
         init { clients.add(this) }
 
-        fun send(json: String) { ws.sendText(json, true).get(5, TimeUnit.SECONDS) }
-        fun next(): JsonObject = inbox.poll(5, TimeUnit.SECONDS) ?: error("нет сообщения за 5 с")
+        fun send(json: String) { ws.sendText(json, true).get(WAIT_S, TimeUnit.SECONDS) }
+        fun next(): JsonObject = inbox.poll(WAIT_S, TimeUnit.SECONDS) ?: error("нет сообщения за $WAIT_S с")
         fun req(op: String, body: String = ""): JsonObject {
             val cid = "c${++n}"
             send("""{"v":1,"cid":"$cid","op":"$op"${if (body.isEmpty()) "" else ",$body"}}""")
@@ -220,12 +225,12 @@ class BridgeServerTest {
         assertNull(r["re"])
         c.ws.sendBinary(java.nio.ByteBuffer.wrap(byteArrayOf(1)), true)
         assertEquals("bad_request", c.next().code())
-        val deadline = System.currentTimeMillis() + 5000
+        val deadline = System.currentTimeMillis() + WAIT_S * 1000
         while (c.closeCode == null && System.currentTimeMillis() < deadline) Thread.sleep(20)
         assertEquals(1003, c.closeCode)
 
         val wrong = Client("/other")
-        val d2 = System.currentTimeMillis() + 5000
+        val d2 = System.currentTimeMillis() + WAIT_S * 1000
         while (wrong.closeCode == null && System.currentTimeMillis() < d2) Thread.sleep(20)
         assertEquals(1008, wrong.closeCode)
     }
@@ -235,7 +240,7 @@ class BridgeServerTest {
         server = BridgeServer(store, config(idle = 600))
         server.start()
         val c = Client(); c.hello()
-        val deadline = System.currentTimeMillis() + 5000
+        val deadline = System.currentTimeMillis() + WAIT_S * 1000
         while (c.closeCode == null && System.currentTimeMillis() < deadline) Thread.sleep(50)
         assertEquals(1001, c.closeCode)
     }
