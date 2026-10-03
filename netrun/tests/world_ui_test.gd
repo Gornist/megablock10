@@ -9,6 +9,26 @@ func test_deck_panel_uses_viewport_surface() -> void:
 	assert_str(d.row_texts()[1]).is_equal("> Взлом  готово")
 
 
+func test_deck_redraws_only_on_change_and_not_faster_than_cap() -> void:
+	var d: DeckPanel = auto_free(DeckPanel.new())
+	add_child(d)
+	var deck := {"daemons": [{"id": "x", "name": "Взлом", "cooldown_left": 0.0}], "selected": "x"}
+	d.set_deck(deck)
+	d._process(1.0)
+	assert_int(d.redraw_count).is_equal(1)
+	# То же состояние ещё раз: ничего не рисуем и не перестраиваем.
+	d.set_deck(deck.duplicate(true))
+	d._process(0.001)
+	assert_int(d.redraw_count).is_equal(1)
+	# Изменение, но с прошлой перерисовки прошло меньше 1/30 с: ждём.
+	d.set_deck({"daemons": [{"id": "x", "name": "Взлом", "cooldown_left": 5.0}], "selected": "x"})
+	d._process(0.001)
+	assert_int(d.redraw_count).is_equal(1)
+	d._process(1.0 / DeckPanel.MAX_FPS)
+	assert_int(d.redraw_count).is_equal(2)
+	assert_str(d.row_texts()[1]).contains("5")
+
+
 func test_trace_indicator_text() -> void:
 	var t: TraceIndicator = auto_free(TraceIndicator.new())
 	add_child(t)

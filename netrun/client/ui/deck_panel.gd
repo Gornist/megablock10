@@ -4,17 +4,26 @@ extends Node3D
 ## Данные — словарь {"daemons": [{id, name, cooldown_left}], "selected": id}; позже придут с сервера.
 
 const VIEW_SIZE := Vector2i(320, 240)
+## Не чаще стольких перерисовок деки в секунду: на Pico кадр рендерится дважды, а текст деки меняется раз в секунду.
+const MAX_FPS := 30.0
+
+## Сколько раз содержимое деки рисовалось в текстуру (для проверки).
+var redraw_count := 0
 
 var _list: VBoxContainer
 var _viewport: SubViewport
 var _surface: Sprite3D
+var _shown_rows: Array = []
+var _dirty := true
+var _since_draw := 0.0
 
 
 func _ready() -> void:
 	_viewport = SubViewport.new()
 	_viewport.size = VIEW_SIZE
 	_viewport.transparent_bg = true
-	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	# Рисуем по требованию (см. _process), а не каждый кадр.
+	_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	add_child(_viewport)
 	var bg := PanelContainer.new()
 	bg.size = Vector2(VIEW_SIZE)
@@ -35,7 +44,23 @@ func _ready() -> void:
 	set_deck({"daemons": [], "selected": ""})
 
 
+## Перерисовка по требованию, не чаще MAX_FPS: UPDATE_ALWAYS гнал бы лишний рендер каждого кадра в обоих глазах.
+func _process(delta: float) -> void:
+	_since_draw += delta
+	if _dirty and _since_draw >= 1.0 / MAX_FPS:
+		_dirty = false
+		_since_draw = 0.0
+		redraw_count += 1
+		_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
+
+
 func set_deck(deck: Dictionary) -> void:
+	var rows := HudLogic.deck_rows(deck)
+	# Сервер шлёт состояние чаще, чем меняется текст: то же самое не перестраиваем и не перерисовываем.
+	if rows == _shown_rows and _list.get_child_count() > 0:
+		return
+	_shown_rows = rows
+	_dirty = true
 	for c in _list.get_children():
 		c.queue_free()
 		_list.remove_child(c)
@@ -43,7 +68,7 @@ func set_deck(deck: Dictionary) -> void:
 	title.text = "ДЕКА"
 	title.add_theme_color_override("font_color", Color(0.1, 0.8, 0.9))
 	_list.add_child(title)
-	for row in HudLogic.deck_rows(deck):
+	for row in rows:
 		var l := Label.new()
 		l.text = ("> " if row["selected"] else "  ") + row["text"]
 		l.add_theme_color_override("font_color", Color(0.3, 1.0, 0.6) if row["ready"] else Color(0.7, 0.7, 0.75))
