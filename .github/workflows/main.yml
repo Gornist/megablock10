@@ -27,8 +27,8 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6   # версия Gradle — из gradle/wrapper (та же, что локально)
 
-      - name: Статический анализ Kotlin (detekt; kit — ещё и API Android 8.0 через Animal Sniffer)
-        run: ./gradlew :app:detekt :kit:detekt :rules:detekt :kit:animalsnifferMain :rules:animalsnifferMain --no-daemon
+      - name: Статический анализ Kotlin (detekt; kit — ещё и API Android 8.0 через Animal Sniffer; Мост «Сети» — на мини-ПК, Animal Sniffer не нужен)
+        run: ./gradlew :app:detekt :kit:detekt :rules:detekt :netrun-bridge:detekt :kit:animalsnifferMain :rules:animalsnifferMain --no-daemon
 
       - name: Отчёт detekt
         if: always()
@@ -41,6 +41,7 @@ jobs:
             kit/build/reports/animalsniffer
             rules/build/reports/detekt
             rules/build/reports/animalsniffer
+            netrun-bridge/build/reports/detekt
           if-no-files-found: ignore
 
       # Все тесты приложения, кроме скриншотов (у тех своя JVM и свой шаг ниже). Раньше здесь был testDebugUnitTest, и шаг скриншотов
@@ -48,7 +49,7 @@ jobs:
       - name: Run unit tests
         run: |
           yes | sdkmanager --licenses > /dev/null || true
-          ./gradlew testDebugUnitTestNoScreenshots :kit:test :rules:test --no-daemon
+          ./gradlew testDebugUnitTestNoScreenshots :kit:test :rules:test :netrun-bridge:test --no-daemon
 
       # Room заново пишет схему в app/schemas при каждой сборке. Отличие от закоммиченной — схему забыли закоммитить или правили руками:
       # миграции и MigrationDataTest опираются на закоммиченную, а не на настоящую. Настоящая печатается прямо в журнал.
