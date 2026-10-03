@@ -140,7 +140,7 @@ case "$CMD" in
 [Desktop Entry]
 Type=Application
 Name=Godot AI
-Exec=bash -c 'sleep 20; $REPO/scripts/devbox-godot-ai.sh start'
+Exec=bash -c 'sleep 20; $WT/scripts/devbox-godot-ai.sh start'
 X-GNOME-Autostart-enabled=true
 EOF
     echo "автозапуск включён (~/.config/autostart/godot-ai.desktop)" ;;

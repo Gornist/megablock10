@@ -131,6 +131,10 @@ GTX 1650). Через него агент `godot-dev` (`.claude/agents/godot-dev
   `autostart` — поднимать при входе nick. Плагин в репозиторий не кладём (`netrun/.gitignore`): `start` дописывает в `project.godot`
   плагин, автозагрузку `_mcp_game_helper` и `run/main_run_args`, `stop` снимает. Редактор сам переписывает `project.godot` — если настройки
   проекта не меняли, перед коммитом `git checkout netrun/project.godot`.
+- **Автозапуск сеанса.** После входа nick в GNOME `~/.config/autostart/devbox-session.desktop` запускает `scripts/devbox-session-start.sh`:
+  incy (VPN) → Tailscale → Blender (blender-mcp на 9876); журнал — `~/.local/state/devbox-session.log`. Редактор Godot AI поднимает
+  отдельный `godot-ai.desktop` (`scripts/devbox-godot-ai.sh autostart`, через 20 с после входа). Нужны: autoConnect в incy и sudo без пароля
+  на перезапуск `tailscaled` (`/etc/sudoers.d/devbox-tailscale`).
 - **Клиент (Claude Code на Mac):** `.mcp.json` запускает `ssh devbox … uvx godot-ai attach` (stdio-мост) — туннеля и токенов нет. Телеметрию
   плагина отключает `GODOT_AI_DISABLE_TELEMETRY=1`.
 - **Тесты — gdUnit4, как в CI:** `ssh devbox 'cd ~/wt-godot && netrun/tools/gdunit.sh [res://tests/файл_test.gd]'` (весь набор — 223 теста,
