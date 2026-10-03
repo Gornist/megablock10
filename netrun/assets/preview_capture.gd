@@ -35,7 +35,8 @@ func _room() -> Array:
 		items.append([wv[k % 3], Vector3(x, 0, 3.0), 180.0 * (k % 2), "BASE", 1.0])
 		k += 1
 	for z in [-2.0, 0.0, 2.0]:
-		items.append([wv[k % 3], Vector3(-3.0, 0, z), 90.0 + 180.0 * (k % 2), "BASE", 1.0])
+		if z != 0.0:  # в середине западной стены вместо секции — портал
+			items.append([wv[k % 3], Vector3(-3.0, 0, z), 90.0 + 180.0 * (k % 2), "BASE", 1.0])
 		k += 1
 		items.append([wv[k % 3], Vector3(3.0, 0, z), 90.0 + 180.0 * (k % 2), "BASE", 1.0])
 		k += 1
@@ -44,8 +45,8 @@ func _room() -> Array:
 	for x in [-3.0, 3.0]:
 		for z in [-3.0, 3.0]:
 			items.append(["env/pillar", Vector3(x, 0, z), 0.0, "BASE", 1.0])
-	items.append(["env/pillar", Vector3(0.0, 0, 0.0), 0.0, "BASE", 0.4])  # подставка: колонна ×0.4, высота ≈ 0,9 м
-	items.append(["props/shard", Vector3(0.0, 1.2, 0.0), 0.0, "", 3.5])  # ×3,5: на 6 м шард в 8 см иначе не разглядеть
+	items.append(["props/vault_closed", Vector3(0.0, 0, 0.0), 180.0, "BASE", 1.0])  # хранилище в центре лицом ко входу; шард встаёт на якорь внутри
+	items.append(["props/portal_open", Vector3(-3.0, 0, 0.0), -90.0, "BASE", 1.0])  # портал в западной стене, лицом в комнату
 	items.append(["ice/soft_ice", ICE_POS, 15.0, "", 1.0])
 	# другие нетраннеры в узле: лицом к Godot −Z при повороте 0°; варианты чередуются
 	items.append(["avatar/runner", Vector3(-1.2, 0, 1.0), 150.0, "", 1.0])
