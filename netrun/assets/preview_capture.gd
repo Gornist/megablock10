@@ -10,6 +10,7 @@ const BG := Color(0.004, 0.008, 0.016)
 ## в центре шард, у выхода ICE. Предмет: [путь, позиция, поворот Y (°), тир, масштаб].
 const REFLECT := ["props/vault_closed", "props/vault_open", "props/portal_open", "props/portal_closed", "env/wall", "env/wall_b", "env/wall_c", "env/portal_wall", "env/far_field", "env/far_field_b", "env/far_field_c", "env/doorway", "env/doorway_b", "env/pillar", "ice/soft_ice", "avatar/runner", "avatar/runner_b", "avatar/runner_c"]
 const CEILING_H := 5.0
+const LAYER_PITCH := 7.0  # шаг между пластами данных: потолок 5 м + 2 м пустоты
 const ICE_POS := Vector3(1.0, 0.0, -2.8)
 
 
@@ -63,21 +64,24 @@ func _room() -> Array:
 		for fz in [-12.0, -16.0]:
 			for fx in [-8.0, -4.0, 0.0, 4.0, 8.0]:
 				items.append(["env/column_field", Vector3(fx, 0, fz), 0.0, "HARD", 1.0])
-	else:  # дальний план: участки 11 м сеткой 5×5 без центрального (там комната): пол и потолок везде (тайлов ~5% вместо 22%), башни света на каждом
+	else:  # дальний план: пласты данных. Наш пласт (y = 0) продолжается за комнатой участками 11 м (сетка 5×5 без центрального), выше и ниже лежат такие же
+		# пласты с шагом LAYER_PITCH (потолок нашего 5 м + 2 м пустоты); в них сетка 3×3. Пол и потолок везде (тайлов ~5%), в каждом пласте башни света.
 		var fv := ["env/far_field", "env/far_field_b", "env/far_field_c"]
 		var ff := ["env/far_floor", "env/far_floor_b", "env/far_floor_c"]
 		var fc := ["env/far_ceiling", "env/far_ceiling_b", "env/far_ceiling_c"]
 		var fi := 0
-		for gx in [-2, -1, 0, 1, 2]:
-			for gz in [-2, -1, 0, 1, 2]:
-				if gx == 0 and gz == 0:
-					continue
-				var pos := Vector3(gx * 11.0, 0, gz * 11.0)
-				var rot := 90.0 * (fi % 4)
-				items.append([fv[fi % 3], pos, rot, "HARD", 1.0])
-				items.append([ff[fi % 3], pos, rot, "HARD", 1.0])
-				items.append([fc[(fi + 1) % 3], pos + Vector3(0, CEILING_H, 0), rot, "HARD", 1.0])
-				fi += 1
+		for ly in [0.0, LAYER_PITCH, -LAYER_PITCH]:
+			var r := 2 if ly == 0.0 else 1
+			for gx in range(-r, r + 1):
+				for gz in range(-r, r + 1):
+					if ly == 0.0 and gx == 0 and gz == 0:
+						continue
+					var pos := Vector3(gx * 11.0, ly, gz * 11.0)
+					var rot := 90.0 * (fi % 4)
+					items.append([fv[fi % 3], pos, rot, "HARD", 1.0])
+					items.append([ff[fi % 3], pos, rot, "HARD", 1.0])
+					items.append([fc[(fi + 1) % 3], pos + Vector3(0, CEILING_H, 0), rot, "HARD", 1.0])
+					fi += 1
 	return items
 
 
@@ -219,7 +223,7 @@ func _build(shot: Dictionary, root: Node) -> void:
 		if is_walker:
 			_walker = inst
 			_walker_base = inst.position
-		if String(it[0]) in REFLECT:  # отражение в полу: зеркальная копия, тусклая (в референсе Blackwall пол — мутное зеркало)
+		if String(it[0]) in REFLECT and absf(it[1].y) < 0.01:  # отражаем только наш пласт  # отражение в полу: зеркальная копия, тусклая (в референсе Blackwall пол — мутное зеркало)
 			var mir: Node3D = scene.instantiate()
 			mir.transform = Transform3D(Basis.from_scale(Vector3(1, -1, 1)), Vector3.ZERO) * inst.transform
 			root.add_child(mir)
