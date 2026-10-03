@@ -4,7 +4,8 @@ import com.megablok10.app.qr.Mb10QrCodec
 import com.megablok10.app.testing.RoomTest
 import com.megablok10.app.testing.TestPlayer
 import com.megablok10.app.testing.testPeerDirectory
-import kotlinx.coroutines.runBlocking
+import com.megablok10.kit.time.ManualClock
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -16,27 +17,27 @@ class CardResenderRoomTest : RoomTest() {
     private val bob = TestPlayer("Bob")
     private val chat = ChatStore(db.chatMessageDao(), OutboxStore(db.outboxDao(), testPeerDirectory()), testPeerDirectory())
     private val sent = mutableListOf<ChatWireMessage>()
-    private var now = 0L
+    private val resenderClock = ManualClock()
     private val resender get() = CardResender(
         stuck = { before -> wallet.deliveredUnconfirmed(before) + items.deliveredUnconfirmed(before) },
         originalMessage = chat::outgoingCard,
         send = { _, msg -> sent += msg; true },
         online = { it == bob.key },
         me = { me.publicKeyB64 },
-        now = { now },
+        now = resenderClock::nowMs,
     )
 
-    @Test fun deliveredPaymentWithoutReceiptIsResentAsTheSameMessage() = runBlocking {
+    @Test fun deliveredPaymentWithoutReceiptIsResentAsTheSameMessage() = runTest {
         wallet.creditShardMoney("s1", 100, "Шард")
         val tx = wallet.signedTransaction(me, bob.key, 30, "за чертёж", "tx-1")
         wallet.recordOutgoingPending(tx, bob.key)
         chat.sendDirectOutcome(me, bob.key, null, Mb10QrCodec.encodeTransaction(tx))   // карточка в своём треде
         db.transactionDao().markDelivered(tx.id)                                          // «записали в сокет»
-        now = System.currentTimeMillis()   // часы теста — после создания перевода: его время записано по настоящим часам
+        resenderClock.now = System.currentTimeMillis()   // часы теста — после создания перевода: его время записано по настоящим часам
         val original = chat.outgoingCard(me.publicKeyB64, bob.key, tx.id)!!
 
         assertEquals("свежую карточку не трогаем — чек обычно приходит за секунды", 0, resender.resendOnce())
-        now += CardResender.GRACE_MS + 1
+        resenderClock.advance(CardResender.GRACE_MS + 1)
         assertEquals(1, resender.resendOnce())
         assertEquals(listOf(original), sent)
         assertEquals(Mb10QrCodec.encodeTransaction(tx), sent.single().body)
