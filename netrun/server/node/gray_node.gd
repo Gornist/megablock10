@@ -963,6 +963,14 @@ func is_hunted(session: String) -> bool:
 	return bool(_hunted.get(session, false))
 
 
+## Идёт ли в узле охота Black ICE (за кем-то из игроков узла).
+func is_hunt_active() -> bool:
+	for session in _hunted:
+		if bool(_hunted[session]):
+			return true
+	return false
+
+
 ## Портал: игрок простоял в радиусе `portal_dwell_sec` (повтор отказа — не чаще `portal_deny_repeat_sec`).
 func _check_portals() -> void:
 	if _portals.is_empty():
@@ -1061,8 +1069,14 @@ func settle_shards(session: String, end_node: String, loot: String) -> void:
 	_write_node_state()
 
 
+## Автопополнение стоит, пока узел в локдауне и пока в нём идёт охота Black ICE (docs/netrun.md, «Открытые вопросы», п. 2): сроки слотов
+## не сбрасываются, слот оживает на ближайшем тике после конца локдауна/охоты. Сколько слотов — решает граф: сверх его числа шардов не будет.
+func is_refill_paused() -> bool:
+	return is_locked_down() or is_hunt_active()
+
+
 func _tick_refill() -> void:
-	if _refill_at.is_empty():
+	if _refill_at.is_empty() or is_refill_paused():
 		return
 	for id in _refill_at.keys():
 		if _now >= float(_refill_at[id]) and not _refill_busy.has(id):
@@ -1082,8 +1096,8 @@ func _refill(id: String) -> void:
 				_refill_at[id] = _now + float(settings["refill_retry_sec"])
 			return
 	_refill_busy.erase(id)
-	if not _refill_at.has(id):
-		return
+	if not _refill_at.has(id) or is_refill_paused():
+		return  # пока шард искали в Мосте, узел закрылся или началась охота: слот остаётся пустым, повторит тик
 	_refill_at.erase(id)
 	if not item.is_empty():
 		_shard_items[id] = item

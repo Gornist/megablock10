@@ -144,6 +144,57 @@ func test_depleted_slot_refills_when_bridge_has_free_shard() -> void:
 	assert_array(_kinds()).contains(["shard_depleted", "shard_refilled"])
 
 
+## Автопополнение не идёт, пока узел в локдауне (docs/netrun.md, «Открытые вопросы», п. 2): срок слота прошёл, шард в Мосте есть —
+## слот ждёт конца локдауна и только тогда оживает.
+func test_refill_waits_while_node_is_locked_down() -> void:
+	await _run_through_three_nodes()
+	assert_bool(await _wait_for(func(): return "shard_depleted" in _kinds())).is_true()
+	var gc := _world.node_of("g_c")
+	var pk0 := GrayNode.shard_id("g_c", 0)
+	_bridge.put_doc(BridgeApi.T_ITEM, "it_g_c_3", 0, {"owner": "node:g_c", "kind": "SHARD", "payload": "shard-c3", "protected": false, "origin": "node:g_c"})
+	gc.lock_for(4.0)
+	await get_tree().create_timer(2.2).timeout  # срок (1 с) и повтор (0,4 с) давно прошли
+	assert_bool(gc.is_locked_down()).is_true()
+	assert_bool(_server.is_object_locked(pk0)).is_true()
+	assert_int(gc.empty_slots()).is_equal(1)
+	assert_bool(await _wait_for(func(): return not _server.is_object_locked(pk0), 6.0)).is_true()
+	assert_bool(gc.is_locked_down()).is_false()
+	assert_str(str(gc._shard_items[pk0])).is_equal("it_g_c_3")
+
+
+## То же при охоте Black ICE в узле: пока за кем-то в узле идёт охота, слот не пополняется; охота кончилась — пополняется.
+func test_refill_waits_while_black_ice_hunts_in_the_node() -> void:
+	await _run_through_three_nodes()
+	assert_bool(await _wait_for(func(): return "shard_depleted" in _kinds())).is_true()
+	var gc := _world.node_of("g_c")
+	var pk0 := GrayNode.shard_id("g_c", 0)
+	_bridge.put_doc(BridgeApi.T_ITEM, "it_g_c_3", 0, {"owner": "node:g_c", "kind": "SHARD", "payload": "shard-c3", "protected": false, "origin": "node:g_c"})
+	assert_bool(gc.is_hunt_active()).is_false()
+	gc._hunted["s_hunted"] = true
+	assert_bool(gc.is_hunt_active()).is_true()
+	await get_tree().create_timer(2.2).timeout
+	assert_bool(_server.is_object_locked(pk0)).is_true()
+	assert_int(gc.empty_slots()).is_equal(1)
+	gc._hunted.erase("s_hunted")
+	assert_bool(await _wait_for(func(): return not _server.is_object_locked(pk0), 6.0)).is_true()
+	assert_int(gc.empty_slots()).is_equal(0)
+
+
+## Пополнение — только до числа шардов узла из графа: лишние свободные шарды Моста слотов не получают.
+func test_refill_never_exceeds_graph_shard_count() -> void:
+	await _run_through_three_nodes()
+	assert_bool(await _wait_for(func(): return "shard_depleted" in _kinds())).is_true()
+	var gc := _world.node_of("g_c")  # в графе у g_c 2 шарда
+	for n in ["it_g_c_3", "it_g_c_4", "it_g_c_5"]:
+		_bridge.put_doc(BridgeApi.T_ITEM, n, 0, {"owner": "node:g_c", "kind": "SHARD", "payload": "shard-" + n, "protected": false, "origin": "node:g_c"})
+	assert_bool(await _wait_for(func(): return gc.empty_slots() == 0, 6.0)).is_true()
+	await get_tree().create_timer(1.5).timeout  # ещё несколько проходов пополнения
+	assert_int(gc.slot_ids().size()).is_equal(2)
+	assert_int(gc._shard_items.size()).is_equal(2)
+	assert_int(gc.empty_slots()).is_equal(0)
+	assert_str(_item_owner("it_g_c_5")).is_equal("node:g_c")  # лишний шард так и лежит свободным
+
+
 func test_emergency_exit_keeps_shard_in_the_node() -> void:
 	_bot.route.assign(["g_b", "g_c"])
 	_bot.chaos = "emergency"

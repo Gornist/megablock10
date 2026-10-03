@@ -36,3 +36,15 @@ func test_event_deck_burned_only_under_hunt() -> void:
 	var e := ExitLogic.build_event("a", "headset_off", true)
 	assert_bool(e["deck_burned"]).is_true()
 	assert_str(e["reason"]).is_equal("headset_off")
+
+
+func test_deck_note_distinguishes_burned_from_dead_in_node() -> void:
+	# Аварийный выход или обрыв под охотой: дека сгорела
+	assert_str(ExitLogic.deck_note(ExitLogic.build_event("a", "manual_hold", true))).is_equal("дека сгорела")
+	assert_str(ExitLogic.deck_note(ExitLogic.build_event("a", "connection_lost", true))).is_equal("дека сгорела")
+	# Флэтлайн: дека не горит, а остаётся в узле мёртвой (её может подобрать другой) — и под охотой, и без неё
+	assert_str(ExitLogic.deck_note(ExitLogic.build_event("a", "flatline", true))).is_equal("дека остаётся в узле мёртвой")
+	assert_str(ExitLogic.deck_note(ExitLogic.build_event("a", "flatline", false))).is_equal("дека остаётся в узле мёртвой")
+	# Без охоты деке ничего не грозит
+	assert_str(ExitLogic.deck_note(ExitLogic.build_event("a", "manual_hold", false))).is_empty()
+	assert_str(ExitLogic.deck_note(ExitLogic.build_event("a", "ejected", false))).is_empty()
