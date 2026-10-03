@@ -14,6 +14,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import lib  # noqa: E402
 
 
+WALL_H = 3.0  # базовая высота штрихов стены, м; дыхание (breathe 0.3) даёт до ×1.3 → максимум 3.9 м, не выше 4 м
+
+
 def _env(x, phase=0.0):
     """Плавная огибающая яркости вдоль стены 0..1 (кластеры ярче, провалы темнее)."""
     return 0.5 + 0.5 * math.sin(x * 3.1 + 1.3 + phase) * math.sin(x * 7.7 + 0.4 + phase)
@@ -40,7 +43,7 @@ def curtain(rng, x0, x1, n, hmax, depth=0.3, w_range=(0.008, 0.02), p_gap=0.1):
         y = depth * (0.35 * math.sin(x * 2.3 + ph[0]) + 0.2 * math.sin(x * 5.9 + ph[1])) + push + rng.uniform(-0.08, 0.08)
         y = max(-depth, min(depth, y))
         e = _env(x)
-        full = hmax * rng.uniform(0.82, 1.0) * (0.8 + 0.2 * e)  # высота почти ровная (занавес), яркость плывёт по огибающей
+        full = hmax * rng.uniform(0.6, 1.0) * (0.8 + 0.2 * e)  # занавес: высота в пределах 60–100% от базовой, яркость плывёт по огибающей
         out.append((Vector((x, y, full / 2)), rng.uniform(*w_range), full / 2, 0.2 + 0.8 * e * rng.uniform(0.45, 1.0)))
     mid = (min(c[0].y for c in out) + max(c[0].y for c in out)) / 2  # центр разброса по глубине в нуле: модули стыкуются ровно
     return [(Vector((c.x, c.y - mid, c.z)), w, h, a) for c, w, h, a in out]
@@ -52,13 +55,13 @@ def build_wall(out, name="wall", seed=21):
     lib.reset()
     rng = random.Random(seed)
     cy, ice = lib.lin("cyan"), lib.lin("ice_white")
-    objs = [lib.streak_set("wall_curtain", curtain(rng, -0.97, 0.97, 100, 2.0), cy)]
-    accents = [(Vector((-0.99, rng.uniform(-0.12, 0.12), 0.95)), 0.012, 0.95, 1.0), (Vector((0.99, rng.uniform(-0.12, 0.12), 1.0)), 0.012, rng.uniform(0.85, 1.0), 1.0)]
+    objs = [lib.streak_set("wall_curtain", curtain(rng, -0.97, 0.97, 100, WALL_H), cy)]
+    accents = [(Vector((-0.99, rng.uniform(-0.12, 0.12), 1.4)), 0.012, 1.4, 1.0), (Vector((0.99, rng.uniform(-0.12, 0.12), 1.5)), 0.012, rng.uniform(1.3, 1.5), 1.0)]
     for x in sorted(rng.uniform(-0.8, 0.8) for _ in range(rng.randint(3, 5))):
-        hh = rng.uniform(0.7, 1.0)
+        hh = rng.uniform(1.0, 1.5)
         accents.append((Vector((x, rng.uniform(-0.25, 0.25), hh)), 0.011, hh, 0.95))
     objs.append(lib.streak_set("wall_accents", accents, ice))
-    fill = lib.sample_box((0, 0, 1.0), (2.0, 0.4, 2.0), 50, seed=5, min_z=0.01)
+    fill = lib.sample_box((0, 0, WALL_H / 2), (2.0, 0.4, WALL_H), 50, seed=5, min_z=0.01)  # россыпь точек по всей высоте стены
     objs.append(lib.point_cloud("wall_pts", fill, cy, half_size=0.007, seed=11, a_min=0.15, a_max=0.5, on_floor=True))
     return lib.export(name, "env", objs, out, budget_tris=300, budget_points=80, budget_streaks=120, origin="floor")
 
@@ -69,7 +72,7 @@ def build_doorway(out, name="doorway", seed=8):
     lib.reset()
     rng = random.Random(seed)
     cy, ice = lib.lin("cyan"), lib.lin("ice_white")
-    side = curtain(rng, -0.98, -0.66, 18, 2.0, depth=0.22, p_gap=0.07) + curtain(rng, 0.66, 0.98, 18, 2.0, depth=0.22, p_gap=0.07)
+    side = curtain(rng, -0.98, -0.66, 18, WALL_H, depth=0.22, p_gap=0.07) + curtain(rng, 0.66, 0.98, 18, WALL_H, depth=0.22, p_gap=0.07)
     objs = [lib.streak_set("door_curtain", side, cy)]
     jambs = [(Vector((sx * d, 0, 1.0)), 0.016, 1.0, 1.0) for sx in (-1, 1) for d in (0.52, 0.57, 0.62)]
     fringe = [(Vector((-0.55 + i * 0.1, rng.uniform(-0.03, 0.03), 2.0 - hh)), 0.008, hh, 0.7) for i in range(12) for hh in [rng.uniform(0.2, 0.55)]]
@@ -118,16 +121,16 @@ def build_floor(out, name="floor", seed=2, ceiling=False):
 
 
 def build_pillar(out):
-    """Колонна на углу: пучок высоких штрихов (два белых) и несколько точек у основания. Высота до 2,4 м. Origin на полу в центре."""
+    """Колонна на углу: пучок высоких штрихов (два белых) и несколько точек у основания. Высота до 3 м. Origin на полу в центре."""
     lib.reset()
     rng = random.Random(6)
     cy, ice = lib.lin("cyan"), lib.lin("ice_white")
     st = []
     for _ in range(9):
-        hh = rng.uniform(0.7, 1.2)
+        hh = rng.uniform(1.0, 1.5)
         st.append((Vector((rng.uniform(-0.07, 0.07), rng.uniform(-0.07, 0.07), hh)), rng.uniform(0.01, 0.018), hh, rng.uniform(0.4, 0.9)))
     objs = [lib.streak_set("pillar_streaks", st, cy)]
-    objs.append(lib.streak_set("pillar_core", [(Vector((0, 0, 1.1)), 0.012, 1.1, 1.0), (Vector((0.03, 0.02, 0.9)), 0.01, 0.9, 0.9)], ice))
+    objs.append(lib.streak_set("pillar_core", [(Vector((0, 0, 1.5)), 0.012, 1.5, 1.0), (Vector((0.03, 0.02, 1.2)), 0.01, 1.2, 0.9)], ice))
     return lib.export("pillar", "env", objs, out, budget_tris=300, budget_streaks=16, origin="floor")
 
 

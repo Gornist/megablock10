@@ -9,7 +9,7 @@ const BG := Color(0.004, 0.008, 0.016)
 ## Комната 6×6 м из модулей 2×2 м: пол 3×3, стены по периметру, колонны в углах, вход с юга (z=+3), выход на север (z=-3),
 ## в центре шард, у выхода ICE. Предмет: [путь, позиция, поворот Y (°), тир, масштаб].
 const REFLECT := ["env/wall", "env/wall_b", "env/wall_c", "env/doorway", "env/doorway_b", "env/pillar", "ice/soft_ice"]
-const CEILING_H := 2.6
+const CEILING_H := 5.0
 const ICE_POS := Vector3(0.75, 0.0, -2.0)
 
 
