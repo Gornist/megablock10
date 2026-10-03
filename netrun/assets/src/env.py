@@ -66,6 +66,42 @@ def build_wall(out, name="wall", seed=21):
     return lib.export(name, "env", objs, out, budget_tris=300, budget_points=80, budget_streaks=120, origin="floor")
 
 
+def build_portal_wall(out, name="portal_wall", seed=33, R=1.5, cz=1.5, gap=0.12):
+    """Стена 6×3 м (три модуля) с круглым вырезом под портал (props/portal_*, диск R=1,5 м, центр z=1,5 м). Штрихи не пересекают круг:
+    внутри колонки |x|<R+зазор штрих разбит на нижний (от пола, короче зазора с запасом на дыхание ×1,3) и верхний (от дуги вверх, дышит вверх).
+    Вокруг выреза зазор gap, чтобы мембрана и обод портала не тонули в стене. Origin на полу в центре. Портал ставится в начало координат этого ассета."""
+    lib.reset()
+    rng = random.Random(seed)
+    cy, ice = lib.lin("cyan"), lib.lin("ice_white")
+    Rh = R + gap
+    out_st = []
+    for c, w, h, a in curtain(rng, -2.97, 2.97, 300, WALL_H):
+        top = 2 * h  # полная высота штриха из занавеса
+        if abs(c.x) >= Rh:
+            out_st.append((c, w, h, a))
+            continue
+        ch = math.sqrt(Rh * Rh - c.x * c.x)
+        lo = cz - ch  # нижняя дуга выреза
+        hi = cz + ch  # верхняя дуга выреза
+        L = lo / 1.3 * 0.95  # с дыханием (до ×1,3) нижний штрих не доходит до дуги
+        if L > 0.1:
+            out_st.append((Vector((c.x, c.y, L / 2)), w, L / 2, a))
+        if top - hi > 0.1:  # верхний: основание на дуге, растёт вверх
+            out_st.append((Vector((c.x, c.y, (hi + top) / 2)), w, (top - hi) / 2, a))
+    objs = [lib.streak_set("wall_curtain", out_st, cy)]
+    accents = []
+    for x in sorted(rng.uniform(-2.8, 2.8) for _ in range(9)):
+        if abs(x) < Rh + 0.2:
+            continue
+        hh = rng.uniform(1.0, 1.5)
+        accents.append((Vector((x, rng.uniform(-0.25, 0.25), hh)), 0.011, hh, 0.95))
+    objs.append(lib.streak_set("wall_accents", accents, ice))
+    fill = [p for p in lib.sample_box((0, 0, WALL_H / 2), (6.0, 0.4, WALL_H), 150, seed=5, min_z=0.01) if (p.x ** 2 + (p.z - cz) ** 2) > (Rh + 0.05) ** 2]
+    objs.append(lib.point_cloud("wall_pts", fill, cy, half_size=0.007, seed=11, a_min=0.15, a_max=0.5, on_floor=True))
+    return lib.export(name, "env", objs, out, budget_tris=300, budget_points=220, budget_streaks=420, origin="floor",
+                      notes="вырез под портал R=1,5 м, центр z=1,5; портал ставить в начало координат ассета")
+
+
 def build_doorway(out, name="doorway", seed=8):
     """Проём 2×2 м (вход/выход): два занавеса по бокам, яркие белые штрихи — косяки, короткая бахрома сверху, ряды точек порога.
     Ширина прохода 1,1 м. Origin на полу в центре. Проход вдоль оси Z Godot."""
@@ -159,6 +195,7 @@ if __name__ == "__main__":
     build_column_field(o)
     for name, seed in (("wall", 21), ("wall_b", 34), ("wall_c", 55)):
         build_wall(o, name, seed)
+    build_portal_wall(o)
     for name, seed in (("doorway", 8), ("doorway_b", 17)):
         build_doorway(o, name, seed)
     for name, seed in (("floor", 2), ("floor_b", 5), ("floor_c", 9)):

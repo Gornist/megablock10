@@ -8,7 +8,7 @@ const BG := Color(0.004, 0.008, 0.016)
 
 ## Комната 6×6 м из модулей 2×2 м: пол 3×3, стены по периметру, колонны в углах, вход с юга (z=+3), выход на север (z=-3),
 ## в центре шард, у выхода ICE. Предмет: [путь, позиция, поворот Y (°), тир, масштаб].
-const REFLECT := ["props/vault_closed", "props/vault_open", "props/portal_open", "props/portal_closed", "env/wall", "env/wall_b", "env/wall_c", "env/doorway", "env/doorway_b", "env/pillar", "ice/soft_ice", "avatar/runner", "avatar/runner_b", "avatar/runner_c"]
+const REFLECT := ["props/vault_closed", "props/vault_open", "props/portal_open", "props/portal_closed", "env/wall", "env/wall_b", "env/wall_c", "env/portal_wall", "env/doorway", "env/doorway_b", "env/pillar", "ice/soft_ice", "avatar/runner", "avatar/runner_b", "avatar/runner_c"]
 const CEILING_H := 5.0
 const ICE_POS := Vector3(0.75, 0.0, -2.0)
 
@@ -34,10 +34,9 @@ func _room() -> Array:
 		k += 1
 		items.append([wv[k % 3], Vector3(x, 0, 3.0), 180.0 * (k % 2), "BASE", 1.0])
 		k += 1
+	items.append(["env/portal_wall", Vector3(-3.0, 0, 0.0), -90.0, "BASE", 1.0])  # западная стена целиком: три модуля с вырезом под портал
+	k += 3
 	for z in [-2.0, 0.0, 2.0]:
-		if z != 0.0:  # в середине западной стены вместо секции — портал
-			items.append([wv[k % 3], Vector3(-3.0, 0, z), 90.0 + 180.0 * (k % 2), "BASE", 1.0])
-		k += 1
 		items.append([wv[k % 3], Vector3(3.0, 0, z), 90.0 + 180.0 * (k % 2), "BASE", 1.0])
 		k += 1
 	items.append(["env/doorway", Vector3(0.0, 0, 3.0), 0.0, "BASE", 1.0])     # вход
@@ -83,6 +82,7 @@ func _shots() -> Array:
 		{"name": "far_view", "cam": Vector3(0.0, 1.4, -2.6), "look": Vector3(0.0, 2.2, -18.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
 		{"name": "room_entrance", "cam": Vector3(0.0, 1.25, 6.4), "look": Vector3(0.0, 1.0, -2.0), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
 		{"name": "room_overview", "cam": Vector3(8.5, 8.0, 8.5), "look": Vector3(0.0, 0.4, -0.5), "fov": 50.0, "fade": [30.0, 80.0], "corrupt": scar, "items": room},
+		{"name": "portal_view", "cam": Vector3(1.8, 1.4, 0.2), "look": Vector3(-3.0, 1.4, 0.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": room},
 		{"name": "room_wall", "cam": Vector3(2.4, 1.4, 1.2), "look": Vector3(-1.4, 1.0, -3.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
 		{"name": "room_floor", "cam": Vector3(0.3, 1.6, 1.6), "look": Vector3(0.0, 0.0, -0.4), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
 		{"name": "room_inside", "cam": Vector3(-2.2, 1.25, 2.3), "look": Vector3(0.3, 0.9, -2.4), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
