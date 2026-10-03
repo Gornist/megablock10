@@ -151,8 +151,9 @@ def shell_stack(make_bm, name, rgb, layers=3, grow=0.06, a_inner=0.55, a_outer=0
 
 # ---------------------------------------------------------------- облако точек
 
-def sample_surface(bm, count, seed=1, push=0.0):
-    """Случайные точки на поверхности (по площади треугольников), сдвинутые наружу по нормали на случайное [0, push]."""
+def sample_surface(bm, count, seed=1, push=0.0, min_z=None):
+    """Случайные точки на поверхности (по площади треугольников), сдвинутые наружу по нормали на случайное [0, push].
+    min_z — нижняя граница высоты (для предметов на полу: ниже пола точки не уходят)."""
     rng = random.Random(seed)
     tmp = bm.copy()
     bmesh.ops.triangulate(tmp, faces=tmp.faces)
@@ -172,7 +173,10 @@ def sample_surface(bm, count, seed=1, push=0.0):
         if a + b > 1:
             a, b = 1 - a, 1 - b
         p = vs[0] + (vs[1] - vs[0]) * a + (vs[2] - vs[0]) * b
-        pts.append(p + n * (rng.random() * push))
+        p = p + n * (rng.random() * push)
+        if min_z is not None:
+            p.z = max(p.z, min_z)
+        pts.append(p)
     return pts
 
 
