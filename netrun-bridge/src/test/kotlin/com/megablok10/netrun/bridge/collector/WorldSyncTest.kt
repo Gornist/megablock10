@@ -3,6 +3,7 @@ package com.megablok10.netrun.bridge.collector
 import com.megablok10.kit.log.RecordingLog
 import com.megablok10.kit.sync.CollectorEndpoint
 import com.megablok10.kit.sync.SyncConfig
+import com.megablok10.kit.time.Clock
 import com.megablok10.netrun.bridge.BridgeApp
 import com.megablok10.netrun.bridge.Caller
 import com.megablok10.netrun.bridge.DocStore
@@ -90,7 +91,9 @@ class WorldSyncTest {
         assertEquals(expected, reasonsAtCollector())
         // коллектор сам проверил подпись и автора; здесь — что субъект один, ключ мира, и seq идёт подряд
         assertTrue(collector.stored.values.all { it.str("subjectKeyB64") == key.publicB64 && it.str("actor") == key.publicB64 })
-        assertEquals((1L..expected.size).toList(), collector.stored.values.map { it.long("seq") }.sorted())
+        val seqs = collector.stored.values.map { it.long("seq") }.sorted()
+        assertEquals((seqs.first() until seqs.first() + expected.size).toList(), seqs)
+        assertTrue("свежая база начинает не с 1: $seqs", seqs.first() > 1_000_000L)
         // heartbeat: Мост называет себя ключом мира и сообщает глубину очереди
         val hb = collector.bodies.last()
         assertEquals(key.publicB64, hb.str("subjectKeyB64"))
@@ -151,6 +154,27 @@ class WorldSyncTest {
         await("записи вернулись") { collector.stored.size == expected.size }
         assertEquals(expected, reasonsAtCollector())
         assertEquals(expected.size, collector.stored.size)
+    }
+
+    @Test fun resetBaseUnderTheSameKeyStillDeliversEverythingToTheCollector() {
+        // Удалили только файл базы: ключ мира тот же, те же события, `ver` и номера транзакций снова с начала. Коллектор — как настоящий:
+        // отвергает занятые id и занятые seq у этого ключа, а kit такие записи удаляет.
+        val first = ValueFixture(":memory:")
+        val w1 = sync(first)
+        val expected = playRun(first)
+        w1.start()
+        await("первая база доставлена") { collector.stored.size == expected.size && queued(w1) == 0 }
+        scope.cancel()
+        first.store.close()
+
+        val second = ValueFixture(":memory:")
+        val later = Clock { System.currentTimeMillis() + HOUR_MS } // сброс случился позже: время идёт вперёд
+        val w2 = WorldSync(second.store, key, endpoint(), scope2, clock = later, config = fast, log = log)
+        playRun(second)
+        w2.start()
+        await("вторая база доставлена") { collector.stored.size == expected.size * 2 && queued(w2) == 0 }
+        assertEquals(expected.size * 2, collector.stored.keys.toSet().size)
+        assertTrue(log.all.toString(), !log.has("sync.rejected"))
     }
 
     @Test fun gameSecretIsSentAndWrongSecretKeepsTheQueue() {
@@ -217,5 +241,6 @@ class WorldSyncTest {
 
     private companion object {
         const val POLL_MS = 15L
+        const val HOUR_MS = 3_600_000L
     }
 }
