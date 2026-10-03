@@ -88,6 +88,22 @@ class MainTest {
         assertEquals(null, parseLaunch(listOf("--collector", "http://c:1"), env + ("NETRUN_COLLECTOR_SECRET" to " ")).collector!!.secret)
     }
 
+    @Test fun collectorSecretIsTrimmedAndOnlyPrintableAsciiStartsTheBridge() {
+        // перевод строки в конце (секрет из файла или echo) и пробелы по краям срезаются
+        val trimmed = parseLaunch(listOf("--collector", "http://c:1"), env + ("NETRUN_COLLECTOR_SECRET" to " game\n"))
+        assertEquals("game", trimmed.collector!!.secret)
+        // всё прочее для HTTP-заголовка не годится: JDK бросил бы исключение с секретом в тексте. Старт отказывает, значения в ошибке нет.
+        for (secret in listOf("tok\nQQMARKER", "tok\r\nQQMARKER", "ЗАПРЕТQQMARKER", "tok\u0100QQMARKER", "tok\u0000QQMARKER", "tok\tQQMARKER")) {
+            val e = runCatching { parseLaunch(listOf("--collector", "http://c:1"), env + ("NETRUN_COLLECTOR_SECRET" to secret)) }.exceptionOrNull()
+            assertTrue(secret, e is IllegalArgumentException)
+            val message = e!!.message!!
+            assertTrue(message, message.contains("NETRUN_COLLECTOR_SECRET"))
+            assertTrue(message, !message.contains("QQMARKER") && !message.contains("tok") && !message.contains("ЗАПРЕТ"))
+        }
+        // без --collector секрет не используется и старт не ломает
+        assertEquals(null, parseLaunch(emptyList(), env + ("NETRUN_COLLECTOR_SECRET" to "tok\nx")).collector)
+    }
+
     @Test fun collectorNeedsHttpAddress() {
         for (bad in listOf("10.10.0.10:2517", "ftp://x", "")) {
             assertTrue(bad, runCatching { parseLaunch(listOf("--collector", bad), env) }.exceptionOrNull() is IllegalArgumentException)

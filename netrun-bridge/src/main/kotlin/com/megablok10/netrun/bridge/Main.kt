@@ -3,6 +3,7 @@ package com.megablok10.netrun.bridge
 import com.megablok10.kit.log.KitLog
 import com.megablok10.kit.sync.CollectorEndpoint
 import com.megablok10.kit.sync.SyncConfig
+import com.megablok10.netrun.bridge.collector.WorldCollectorTransport
 import com.megablok10.netrun.bridge.collector.WorldSync
 import com.megablok10.netrun.bridge.phone.PhoneDelivery
 import com.megablok10.netrun.bridge.phone.PhoneInbox
@@ -95,12 +96,24 @@ private fun roleKeys(env: Map<String, String>, test: Boolean): Map<String, Strin
     return keys
 }
 
+/**
+ * Секрет игры для коллектора из окружения: края (перевод строки из файла, пробелы) срезаются, пустой — как отсутствующий. Дальше он идёт в
+ * HTTP-заголовок, поэтому допустимы только печатные ASCII-символы; иначе старт отказывает, а значение в ошибку и в журнал не попадает.
+ */
+private fun collectorSecret(raw: String?): String? {
+    val secret = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    if (!WorldCollectorTransport.isValidSecret(secret)) {
+        bad("NETRUN_COLLECTOR_SECRET: секрет игры должен состоять из печатных ASCII-символов (без переводов строки, кириллицы и т. п.); значение не показано")
+    }
+    return secret
+}
+
 internal fun parseLaunch(args: List<String>, env: Map<String, String>): LaunchOptions {
     val f = parseFlags(args)
     val keys = roleKeys(env, f.test)
     if (f.seed != null && !f.test) bad("--seed работает только с --test")
     if (f.phones.isNotEmpty() && !f.test) bad("--phone работает только с --test")
-    val collector = f.collector?.let { CollectorEndpoint(it, env["NETRUN_COLLECTOR_SECRET"]?.takeIf { s -> s.isNotBlank() }) }
+    val collector = f.collector?.let { CollectorEndpoint(it, collectorSecret(env["NETRUN_COLLECTOR_SECRET"])) }
     return LaunchOptions(f.port, f.db, BridgeConfig(port = f.port, roleKeys = keys, testMode = f.test, worldPub = f.pub), f.linePort, f.seed, f.phones, collector)
 }
 

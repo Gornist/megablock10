@@ -194,6 +194,19 @@ class WorldSyncTest {
         await("доставка с верным секретом") { collector.stored.size == expected.size }
     }
 
+    @Test fun secretThatCannotBeAHeaderNeverReachesTheLogAndKeepsTheQueue() {
+        // Старт такой секрет отвергает (MainTest); если он всё же дошёл до транспорта, JDK бросает исключение с секретом в тексте,
+        // а журнал не должен его повторять: ни значения, ни сообщения исключения.
+        val f = ValueFixture(":memory:")
+        val w = sync(f, endpoint("СЕКРЕТ\nQQMARKER"))
+        val expected = playRun(f)
+        w.start()
+        await("отказ отправки записан в журнал") { log.has("sync.bad_") }
+        assertTrue(log.all.toString(), log.all.none { "QQMARKER" in it || "СЕКРЕТ" in it })
+        assertEquals(0, collector.changePosts.get())
+        assertEquals(expected.size, queued(w)) // записи целы
+    }
+
     @Test fun queueWaitsForCollectorAcrossBridgeRestart() {
         val path = tmp.root.resolve("q.db").path
         val first = ValueFixture(path)
