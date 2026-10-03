@@ -105,7 +105,7 @@ def build_portal_wall(out, name="portal_wall", seed=33, R=1.5, cz=1.5, gap=0.12)
 
 
 def build_far_field(out, name="far_field", seed=41, size=11.0):
-    """Дальний план: участок 11×11 м «города данных» за пределами комнаты. Редкие пучки вертикальных штрихов разной высоты (башни до 3,6 м: с дыханием ×1,3 ≤ 4,7 м, под потолком 5 м),
+    """Дальний план: участок 11×11 м «города данных» за пределами комнаты. Пучки вертикальных штрихов (11–14 на участок) разной высоты (башни до 3,6 м: с дыханием ×1,3 ≤ 4,7 м, под потолком 5 м),
     между ними россыпь точек у пола. Без плотных стен: на расстоянии читается как далёкие столбы света, не закрывает комнату.
     Кладётся кольцами вокруг комнаты (вариантами seed, поворотами, масштабом ×1…×2); цвет задаёт тир (в комнате дальний план — HARD, голубой темнее).
     Origin на полу в центре."""
@@ -114,12 +114,12 @@ def build_far_field(out, name="far_field", seed=41, size=11.0):
     cy, ice = lib.lin("cyan"), lib.lin("ice_white")
     half = size / 2 - 0.8
     st = []
-    for _ in range(rng.randint(5, 7)):
+    for _ in range(rng.randint(11, 14)):
         cx, cy_ = rng.uniform(-half, half), rng.uniform(-half, half)
         top = rng.choice([rng.uniform(1.2, 2.0), rng.uniform(2.0, 3.0), rng.uniform(3.0, 3.6)])
         for _ in range(rng.randint(4, 8)):
             hh = top * rng.uniform(0.35, 1.0)
-            st.append((Vector((cx + rng.uniform(-0.35, 0.35), cy_ + rng.uniform(-0.35, 0.35), hh / 2)), rng.uniform(0.02, 0.05), hh / 2, rng.uniform(0.08, 0.3)))
+            st.append((Vector((cx + rng.uniform(-0.35, 0.35), cy_ + rng.uniform(-0.35, 0.35), hh / 2)), rng.uniform(0.02, 0.05), hh / 2, rng.uniform(0.12, 0.42)))
     # три-четыре белых «маяка» (высокие тонкие) вместо яркости по всему полю
     for _ in range(2):
         hh = rng.uniform(3.0, 3.6)
@@ -128,7 +128,7 @@ def build_far_field(out, name="far_field", seed=41, size=11.0):
     pts = lib.sample_box((0, 0, 0.15), (size - 0.6, size - 0.6, 0.3), 110, seed=seed + 3, min_z=0.01)
     pts += [Vector((sx * (size / 2 - 0.15), sy * (size / 2 - 0.15), 0.03)) for sx in (-1, 1) for sy in (-1, 1)]  # угловые точки: габарит симметричен, участки стыкуются по центру
     objs.append(lib.point_cloud("far_pts", pts, cy, half_size=0.03, seed=seed, a_min=0.2, a_max=0.7, on_floor=True))
-    return lib.export(name, "env", objs, out, budget_tris=100, budget_points=140, budget_streaks=160, origin="floor",
+    return lib.export(name, "env", objs, out, budget_tris=100, budget_points=140, budget_streaks=320, origin="floor",
                       notes="дальний план: класть кольцами вокруг комнаты, не ближе 2 м до стен")
 
 

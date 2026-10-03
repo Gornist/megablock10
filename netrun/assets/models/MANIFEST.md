@@ -14,9 +14,9 @@
 | `models/env/far_ceiling.glb` | 952 / 1100 | 147 / 700 | 136 / 200 | 0 | 3 | 10.84 × 0.8644 × 10.8 | points, solid_dark, streaks | — | ceiling | ок |
 | `models/env/far_ceiling_b.glb` | 952 / 1100 | 156 / 700 | 136 / 200 | 0 | 3 | 10.84 × 0.8794 × 10.8 | points, solid_dark, streaks | — | ceiling | ок |
 | `models/env/far_ceiling_c.glb` | 952 / 1100 | 149 / 700 | 136 / 200 | 0 | 3 | 10.84 × 0.8566 × 10.8 | points, solid_dark, streaks | — | ceiling | ок |
-| `models/env/far_field.glb` | 0 / 100 | 114 / 140 | 43 / 160 | 0 | 2 | 10.76 × 3.5121 × 10.7 | points, streaks | — | floor | ок |
-| `models/env/far_field_b.glb` | 0 / 100 | 114 / 140 | 45 / 160 | 0 | 2 | 10.76 × 3.5276 × 10.7 | points, streaks | — | floor | ок |
-| `models/env/far_field_c.glb` | 0 / 100 | 114 / 140 | 29 / 160 | 0 | 2 | 10.76 × 3.4917 × 10.7 | points, streaks | — | floor | ок |
+| `models/env/far_field.glb` | 0 / 100 | 114 / 140 | 91 / 320 | 0 | 2 | 10.76 × 3.5104 × 10.7 | points, streaks | — | floor | ок |
+| `models/env/far_field_b.glb` | 0 / 100 | 114 / 140 | 67 / 320 | 0 | 2 | 10.76 × 3.4001 × 10.7 | points, streaks | — | floor | ок |
+| `models/env/far_field_c.glb` | 0 / 100 | 114 / 140 | 63 / 320 | 0 | 2 | 10.76 × 3.4686 × 10.7 | points, streaks | — | floor | ок |
 | `models/env/far_floor.glb` | 952 / 1100 | 153 / 700 | 136 / 200 | 0 | 3 | 10.84 × 0.8622 × 10.8 | points, solid_dark, streaks | — | surface | ок |
 | `models/env/far_floor_b.glb` | 952 / 1100 | 151 / 700 | 136 / 200 | 0 | 3 | 10.84 × 0.8388 × 10.8 | points, solid_dark, streaks | — | surface | ок |
 | `models/env/far_floor_c.glb` | 952 / 1100 | 158 / 700 | 136 / 200 | 0 | 3 | 10.84 × 0.8513 × 10.8 | points, solid_dark, streaks | — | surface | ок |
