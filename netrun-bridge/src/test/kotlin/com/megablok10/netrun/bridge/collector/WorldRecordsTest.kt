@@ -60,7 +60,7 @@ class WorldRecordsTest {
         val rig = rig()
         val sid = rig.submit()
         val r = rig.records().single()
-        assertEquals("w:net.run:${rig.f.store.epoch}:$sid:1", r.id)
+        assertEquals("w:net.run:${rig.f.store.epoch}:${rig.f.store.seq}:$sid", r.id) // номер транзакции входа — последней в базе
         assertEquals("net.run", r.field)
         assertEquals("NET_ENTER", r.reason)
         assertEquals(sid, r.sourceRef)
@@ -108,7 +108,7 @@ class WorldRecordsTest {
         assertEquals(listOf("NET_ENTER", "NET_ITEM_OWNER", "NET_EXIT"), rig.reasons())
         assertEquals(listOf(1L, 2L, 3L), rig.records().map { it.seq })
         val exit = rig.of("NET_EXIT").single()
-        assertEquals("w:net.run:${rig.f.store.epoch}:$sid:${rig.f.store.get("session", sid)!!.ver}", exit.id)
+        assertEquals("w:net.run:${rig.f.store.epoch}:${rig.f.store.seq}:$sid", exit.id) // выход — последняя транзакция
         val v = value(exit)
         assertEquals("clean", VJ.str(v, "outcome"))
         assertEquals(3L, VJ.lng(v, "returned"))
@@ -250,13 +250,33 @@ class WorldRecordsTest {
         val r = rig.of("NET_ALERT").single()
         assertEquals("net.alert", r.field)
         val alert = rig.f.store.list("alert").single()
-        assertEquals("w:net.alert:${rig.f.store.epoch}:${alert.id}:1", r.id)
+        assertEquals("w:net.alert:${rig.f.store.epoch}:${rig.f.store.seq}:${alert.id}", r.id)
         assertEquals(alert.id, r.sourceRef)
         val v = value(r)
         assertEquals(alert.id, VJ.str(v, "alert"))
         assertEquals("auditor_item_owner", VJ.str(v, "kind"))
         assertEquals(listOf("it_weird"), VJ.list(v, "items"))
         assertTrue(VJ.str(v, "msg")!!.contains("it_weird"))
+    }
+
+    @Test fun alertRaisedAgainAfterTheMasterRemovedItGetsANewRecordId() {
+        // Обычный жизненный цикл: аудитор поднял тревогу, мастер её снял (удалил документ), расхождение живо — аудитор поднял снова
+        // с тем же id документа и ver = 1. Это второе появление: нужна вторая запись и другой id, иначе коллектор отвергнет «id already used».
+        val rig = rig()
+        rig.f.item("it_weird", "weird:1", "x")
+        Auditor(rig.f.store).run()
+        val first = rig.f.store.list("alert").single()
+        rig.f.store.delete("alert", first.id, first.ver)
+        Auditor(rig.f.store).run()
+        val second = rig.f.store.list("alert").single()
+        assertEquals(first.id, second.id)
+        assertEquals(1L, second.ver)
+        val records = rig.of("NET_ALERT")
+        assertEquals(2, records.size)
+        assertEquals(2, records.map { it.id }.toSet().size)
+        assertEquals(listOf(first.id, first.id), records.map { it.sourceRef })
+        // повтор отправки той же записи id не меняет
+        assertEquals(records.map { it.id }, rig.of("NET_ALERT").map { it.id })
     }
 
     @Test fun veryLongAlertMessageStillFitsTheCollectorLimit() {
@@ -327,7 +347,7 @@ class WorldRecordsTest {
         return rig.records().map { it.id }.also { rig.f.store.close() }
     }
 
-    /** Эпоха в id: `w:<field>:<эпоха>:<sourceRef>:<ver>`. */
+    /** Эпоха в id: `w:<field>:<эпоха>:<txSeq>:<sourceRef>`. */
     private fun epochOf(id: String): String = id.split(":")[2]
 
     @Test fun resetBaseWithSameKeyDoesNotReuseRecordIds() {
