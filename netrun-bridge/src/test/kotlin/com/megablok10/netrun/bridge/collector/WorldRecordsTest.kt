@@ -1,0 +1,332 @@
+package com.megablok10.netrun.bridge.collector
+
+import com.megablok10.kit.crypto.Ecdsa
+import com.megablok10.kit.sync.ChangeRecord
+import com.megablok10.kit.sync.signaturePayload
+import com.megablok10.netrun.bridge.Auditor
+import com.megablok10.netrun.bridge.CommitHook
+import com.megablok10.netrun.bridge.DocStore
+import com.megablok10.netrun.bridge.Move
+import com.megablok10.netrun.bridge.MoveTo
+import com.megablok10.netrun.bridge.StockItem
+import com.megablok10.netrun.bridge.VJ
+import com.megablok10.netrun.bridge.ValueFixture
+import com.megablok10.netrun.bridge.phone.WorldJournal
+import com.megablok10.netrun.bridge.phone.WorldKey
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.rules.TemporaryFolder
+
+/**
+ * Записи мира (C2, раздел 2) выводятся из документов Моста: настоящие операции `ValueOps` на настоящей базе, затем очередь
+ * [WorldRecordQueue]. Операции с ценностями о записях не знают — проверяем и то, что они появились, и то, что их нет там, где C2 их не просит.
+ */
+class WorldRecordsTest {
+    @get:Rule val tmp = TemporaryFolder()
+
+    private class Rig(val f: ValueFixture, val key: WorldKey = WorldKey.generate()) {
+        val sync = WorldSync(f.store, key, null, CoroutineScope(Dispatchers.Unconfined))
+        fun records(): List<ChangeRecord> = runBlocking { sync.queue.nextBatch(1000) }
+        fun reasons(): List<String> = records().map { it.reason }
+        fun of(reason: String): List<ChangeRecord> = records().filter { it.reason == reason }
+    }
+
+    private fun rig(path: String = ":memory:") = Rig(ValueFixture(path))
+
+    private fun value(r: ChangeRecord): JsonObject = Json.parseToJsonElement(r.newValue!!) as JsonObject
+
+    private fun Rig.submit(rid: String = "enter:e1"): String {
+        val r = f.ops.submitDeck(f.test, rid, f.keyA, "Призрак", "t03", listOf("it_dA1", "it_dA2"), "it_dA1")
+        assertTrue(r.body.toString(), r.ok)
+        return f.sessionOf(r)
+    }
+
+    private fun Rig.enterActive(): String = submit().also { f.activate(it) }
+
+    private fun Rig.finish(sid: String, outcome: String, disconnect: Boolean, vararg moves: Move) =
+        f.ops.finishRun(f.world, "finish:$sid", sid, outcome, "node_07", disconnect, moves.toList()).also { assertTrue(it.body.toString(), it.ok) }
+
+    // ---------- вход ----------
+
+    @Test fun enterWritesOneSignedNetEnter() {
+        val rig = rig()
+        val sid = rig.submit()
+        val r = rig.records().single()
+        assertEquals("w:net.run:$sid:1", r.id)
+        assertEquals("net.run", r.field)
+        assertEquals("NET_ENTER", r.reason)
+        assertEquals(sid, r.sourceRef)
+        assertEquals(rig.key.publicB64, r.subjectKeyB64)
+        assertEquals(rig.key.publicB64, r.actor)
+        assertNull(r.oldValue)
+        assertEquals(1L, r.seq)
+        assertTrue(Ecdsa.verify(rig.key.publicB64, r.signaturePayload(), r.signature))
+        val v = value(r)
+        assertEquals(sid, VJ.str(v, "session"))
+        assertEquals(rig.f.keyA, VJ.str(v, "runner"))
+        assertEquals("Призрак", VJ.str(v, "callsign"))
+        assertEquals("t03", VJ.str(v, "terminal"))
+        assertEquals("node_07", VJ.str(v, "node"))
+        assertEquals(2L, VJ.lng(v, "deck"))
+        assertTrue(VJ.bool(v, "protected"))
+        assertEquals(rig.f.store.get("session", sid)!!.updated, r.happenedAt)
+    }
+
+    @Test fun confirmByTriggerAndPlainWritesAddNothing() {
+        val rig = rig()
+        val sid = rig.submit()
+        rig.f.activate(sid)
+        rig.f.store.put("node", "node_09", 0, rig.f.obj("tier" to "STANDARD", "eddies" to 5L))
+        assertEquals(listOf("NET_ENTER"), rig.reasons())
+    }
+
+    @Test fun refusedEntryWritesNothing() {
+        val rig = rig()
+        // терминала нет: отказ, предметы возвращаются в outbox, записей мира нет
+        val r = rig.f.ops.submitDeck(rig.f.test, "enter:bad", rig.f.keyA, "Призрак", "t99", listOf("it_dA1", "it_dA2"), "it_dA1")
+        assertTrue(!r.ok)
+        assertEquals(emptyList<ChangeRecord>(), rig.records())
+    }
+
+    // ---------- выход ----------
+
+    @Test fun cleanFinishWritesTakeAndExit() {
+        val rig = rig()
+        val sid = rig.enterActive()
+        rig.f.ops.takeFromNode(rig.f.world, "take:$sid:it_sh1", sid, "node_07", "it_sh1")
+        rig.f.ops.takeFromNode(rig.f.world, "take:$sid:eddies", sid, "node_07", null, 50)
+        rig.finish(sid, "clean", false, Move("it_dA2", MoveTo.PHONE), Move("it_sh1", MoveTo.PHONE))
+        // эдди и переходы deck → outbox записей предмета не дают; взятие шарда из узла — даёт
+        assertEquals(listOf("NET_ENTER", "NET_ITEM_OWNER", "NET_EXIT"), rig.reasons())
+        assertEquals(listOf(1L, 2L, 3L), rig.records().map { it.seq })
+        val exit = rig.of("NET_EXIT").single()
+        assertEquals("w:net.run:$sid:${rig.f.store.get("session", sid)!!.ver}", exit.id)
+        val v = value(exit)
+        assertEquals("clean", VJ.str(v, "outcome"))
+        assertEquals(3L, VJ.lng(v, "returned"))
+        assertEquals(0L, VJ.lng(v, "burned"))
+        assertEquals(0L, VJ.lng(v, "left_in_node"))
+        assertEquals(50L, VJ.lng(v, "eddies_paid"))
+        assertEquals(0L, VJ.lng(v, "lockdown_until"))
+        assertTrue(VJ.lng(v, "duration_s") >= 0)
+        val take = value(rig.of("NET_ITEM_OWNER").single())
+        assertEquals("node:node_07", VJ.str(take, "from"))
+        assertEquals("deck:$sid", VJ.str(take, "to"))
+        assertEquals("take_from_node", VJ.str(take, "op"))
+        assertEquals("take:$sid:it_sh1", VJ.str(take, "rid"))
+        assertEquals("SHARD", VJ.str(take, "kind"))
+        assertEquals(rig.f.keyA, VJ.str(take, "runner"))
+    }
+
+    @Test fun emergencyCountsBurnedAndLeftInNode() {
+        val rig = rig()
+        val sid = rig.enterActive()
+        rig.f.ops.takeFromNode(rig.f.world, "take:$sid:it_sh1", sid, "node_07", "it_sh1")
+        rig.finish(sid, "emergency", false, Move("it_dA2", MoveTo.BURNED), Move("it_sh1", MoveTo.NODE))
+        val v = value(rig.of("NET_EXIT").single())
+        assertEquals("emergency", VJ.str(v, "outcome"))
+        assertEquals(1L, VJ.lng(v, "returned"))
+        assertEquals(1L, VJ.lng(v, "burned"))
+        assertEquals(1L, VJ.lng(v, "left_in_node"))
+        val items = rig.of("NET_ITEM_OWNER").map { value(it) }.associateBy { VJ.str(it, "item") }
+        val burned = items.getValue("it_dA2")
+        assertEquals("deck:$sid", VJ.str(burned, "from"))
+        assertEquals("burned:$sid", VJ.str(burned, "to"))
+        assertEquals("run.finish", VJ.str(burned, "op"))
+        assertEquals("finish:$sid", VJ.str(burned, "rid"))
+        assertEquals(sid, VJ.str(burned, "session"))
+        assertEquals("node:node_07", VJ.str(items.getValue("it_sh1"), "to"))
+    }
+
+    @Test fun softIceReportsLockdownDeadline() {
+        val rig = rig()
+        val sid = rig.enterActive()
+        rig.finish(sid, "soft_ice", false, Move("it_dA2", MoveTo.PHONE))
+        val v = value(rig.of("NET_EXIT").single())
+        assertEquals("soft_ice", VJ.str(v, "outcome"))
+        val until = VJ.lng(rig.f.store.get("node", "node_07")!!.data, "lockdown_until")
+        assertTrue(until > 0)
+        assertEquals(until, VJ.lng(v, "lockdown_until"))
+    }
+
+    @Test fun abortedEntryWritesExit() {
+        val rig = rig()
+        val sid = rig.submit()
+        assertTrue(rig.f.ops.abortSession(rig.f.test, sid, "терминал не подтвердил").ok)
+        assertEquals(listOf("NET_ENTER", "NET_EXIT"), rig.reasons())
+        val v = value(rig.of("NET_EXIT").single())
+        assertEquals("aborted", VJ.str(v, "outcome"))
+        assertEquals(2L, VJ.lng(v, "returned"))
+    }
+
+    // ---------- флэтлайн ----------
+
+    @Test fun blackIceWritesFlatlineInsteadOfExitAndNoSecondAlert() {
+        val rig = rig()
+        val sid = rig.enterActive()
+        rig.f.ops.takeFromNode(rig.f.world, "take:$sid:it_sh1", sid, "node_07", "it_sh1")
+        rig.finish(sid, "black_ice", false, Move("it_dA2", MoveTo.NODE), Move("it_sh1", MoveTo.NODE))
+        assertEquals(emptyList<ChangeRecord>(), rig.of("NET_EXIT"))
+        assertEquals(emptyList<ChangeRecord>(), rig.of("NET_ALERT")) // тревога флэтлайна — это NET_FLATLINE
+        val flat = rig.of("NET_FLATLINE").single()
+        assertEquals("net.run", flat.field)
+        assertEquals(sid, flat.sourceRef)
+        val v = value(flat)
+        assertEquals("black_ice", VJ.str(v, "outcome"))
+        assertEquals(2L, VJ.lng(v, "left_in_node"))
+        assertEquals("флэтлайн", VJ.str(v, "cause"))
+        assertTrue(!VJ.bool(v, "disconnect"))
+        assertEquals(rig.f.store.list("alert").single().id, VJ.str(v, "alert"))
+        assertEquals(rig.f.keyA, VJ.str(v, "runner"))
+        // оба предмета легли в узел: по записи на каждый (плюс взятие шарда до этого)
+        assertEquals(3, rig.of("NET_ITEM_OWNER").size)
+    }
+
+    @Test fun disconnectBeforeFlatlineIsMarked() {
+        val rig = rig()
+        val sid = rig.enterActive()
+        rig.finish(sid, "black_ice", true, Move("it_dA2", MoveTo.NODE))
+        val v = value(rig.of("NET_FLATLINE").single())
+        assertTrue(VJ.bool(v, "disconnect"))
+        assertEquals("обрыв до флэтлайна", VJ.str(v, "cause"))
+    }
+
+    // ---------- предметы ----------
+
+    @Test fun leaveInNodeWritesItemOwner() {
+        val rig = rig()
+        val sid = rig.enterActive()
+        assertTrue(rig.f.ops.leaveInNode(rig.f.world, "leave:$sid:it_dA2", sid, "node_07", "it_dA2").ok)
+        val v = value(rig.of("NET_ITEM_OWNER").single())
+        assertEquals("it_dA2", VJ.str(v, "item"))
+        assertEquals("deck:$sid", VJ.str(v, "from"))
+        assertEquals("node:node_07", VJ.str(v, "to"))
+        assertEquals("leave_in_node", VJ.str(v, "op"))
+        assertEquals("leave:$sid:it_dA2", VJ.str(v, "rid"))
+    }
+
+    @Test fun receiptFromPhoneWritesItemLeftTheNet() {
+        val rig = rig()
+        val sid = rig.enterActive()
+        rig.finish(sid, "clean", false, Move("it_dA2", MoveTo.PHONE))
+        assertEquals(emptyList<ChangeRecord>(), rig.of("NET_ITEM_OWNER")) // deck → outbox внутри Сети не пишется
+        val tid = VJ.str(rig.f.store.get("item", "it_dA2")!!.data, "out_transfer")!!
+        assertEquals(1, runBlocking { WorldJournal(rig.f.store).confirm(tid) })
+        val v = value(rig.of("NET_ITEM_OWNER").single())
+        assertEquals("outbox:${rig.f.keyA}", VJ.str(v, "from"))
+        assertEquals("phone:${rig.f.keyA}", VJ.str(v, "to"))
+        assertEquals("issue_to_phone", VJ.str(v, "op"))
+        assertEquals(tid, VJ.str(v, "rid"))
+        assertEquals(rig.f.keyA, VJ.str(v, "runner"))
+    }
+
+    @Test fun masterStockAndUnstockAreNotRunEventsButBurnedIsRecorded() {
+        val rig = rig()
+        val stocked = rig.f.ops.stockNode(rig.f.master, "stock:1", "node_07", listOf(StockItem("SHARD", "payload-1")), 0)
+        assertTrue(stocked.ok)
+        assertEquals(emptyList<ChangeRecord>(), rig.records()) // создание предмета в узле — не смена владельца
+        val id = VJ.list(stocked.body, "items").single()
+        assertTrue(rig.f.ops.unstockNode(rig.f.master, "unstock:1", "node_07", listOf(id), 0).ok)
+        val v = value(rig.of("NET_ITEM_OWNER").single())
+        assertEquals("burned:master", VJ.str(v, "to"))
+        assertEquals("master.unstock_node", VJ.str(v, "op"))
+    }
+
+    // ---------- тревоги ----------
+
+    @Test fun auditorAlertWritesOneNetAlert() {
+        val rig = rig()
+        rig.f.item("it_weird", "weird:1", "x")
+        Auditor(rig.f.store).run()
+        Auditor(rig.f.store).run() // повторный проход тревогу не дублирует
+        val r = rig.of("NET_ALERT").single()
+        assertEquals("net.alert", r.field)
+        val alert = rig.f.store.list("alert").single()
+        assertEquals("w:net.alert:${alert.id}:1", r.id)
+        assertEquals(alert.id, r.sourceRef)
+        val v = value(r)
+        assertEquals(alert.id, VJ.str(v, "alert"))
+        assertEquals("auditor_item_owner", VJ.str(v, "kind"))
+        assertEquals(listOf("it_weird"), VJ.list(v, "items"))
+        assertTrue(VJ.str(v, "msg")!!.contains("it_weird"))
+    }
+
+    @Test fun veryLongAlertMessageStillFitsTheCollectorLimit() {
+        val rig = rig()
+        rig.f.store.put("alert", "al_big", 0, rig.f.obj("kind" to "auditor_x", "msg" to "я".repeat(10_000)))
+        val r = rig.of("NET_ALERT").single()
+        assertTrue(r.newValue!!.length <= WorldRecords.MAX_VALUE_CHARS)
+        assertEquals("auditor_x", VJ.str(value(r), "kind"))
+    }
+
+    // ---------- идемпотентность и атомарность ----------
+
+    @Test fun replayedOperationAndFailedOperationAddNothing() {
+        val rig = rig()
+        val sid = rig.enterActive()
+        rig.finish(sid, "clean", false, Move("it_dA2", MoveTo.PHONE))
+        val before = rig.records().size
+        val again = rig.f.ops.finishRun(rig.f.world, "finish:$sid", sid, "clean", "node_07", false, listOf(Move("it_dA2", MoveTo.PHONE)))
+        assertTrue(again.replayed)
+        val wrong = rig.f.ops.takeFromNode(rig.f.world, "take:wrong", sid, "node_07", "it_dB1")
+        assertTrue(!wrong.ok)
+        assertEquals(before, rig.records().size)
+    }
+
+    @Test fun failedCommitLeavesNeitherDocumentsNorRecordsNorSeq() {
+        val rig = rig()
+        val inner = rig.f.store.commitHook!!
+        rig.f.store.commitHook = CommitHook { c, ch, prev ->
+            inner.beforeCommit(c, ch, prev)
+            error("сбой после записи в очередь")
+        }
+        val failed = runCatching { rig.submit("enter:boom") }
+        assertTrue(failed.isFailure)
+        assertEquals(emptyList<ChangeRecord>(), rig.records())
+        assertEquals("inbox:${rig.f.keyA}", rig.f.owner("it_dA1")) // документы откатились вместе с очередью
+        rig.f.store.commitHook = inner
+        rig.submit("enter:ok")
+        assertEquals(1L, rig.records().single().seq) // откатился и счётчик: номер не потерян
+    }
+
+    @Test fun everyKindOfRecordIsSignedByTheWorldKey() {
+        val rig = rig()
+        val sid = rig.enterActive()
+        rig.f.ops.takeFromNode(rig.f.world, "take:$sid:it_sh1", sid, "node_07", "it_sh1")
+        rig.finish(sid, "black_ice", false, Move("it_dA2", MoveTo.NODE), Move("it_sh1", MoveTo.NODE))
+        rig.f.item("it_weird", "weird:1", "x")
+        Auditor(rig.f.store).run()
+        val all = rig.records()
+        assertEquals(setOf("NET_ENTER", "NET_ITEM_OWNER", "NET_FLATLINE", "NET_ALERT"), all.map { it.reason }.toSet())
+        for (r in all) {
+            assertTrue(r.id, Ecdsa.verify(rig.key.publicB64, r.signaturePayload(), r.signature))
+            assertTrue(r.id, r.id.length <= 100)
+            assertTrue(r.newValue!!.length <= WorldRecords.MAX_VALUE_CHARS)
+        }
+        assertEquals(all.map { it.seq }, (1..all.size).map { it.toLong() })
+    }
+
+    @Test fun queueAndSeqSurviveRestart() {
+        val path = tmp.root.resolve("w.db").path
+        val key = WorldKey.generate()
+        val first = Rig(ValueFixture(path), key)
+        first.enterActive()
+        first.f.store.close()
+
+        val store = DocStore.open(path)
+        val second = WorldSync(store, key, null, CoroutineScope(Dispatchers.Unconfined))
+        assertEquals(listOf("NET_ENTER"), runBlocking { second.queue.nextBatch(10) }.map { it.reason })
+        // и новая запись продолжает нумерацию
+        store.put("alert", "al_next", 0, VJ.obj("kind" to VJ.p("auditor_x"), "msg" to VJ.p("m")))
+        assertEquals(listOf(1L, 2L), runBlocking { second.queue.nextBatch(10) }.map { it.seq })
+        store.close()
+    }
+}

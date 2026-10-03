@@ -75,4 +75,19 @@ class MainTest {
             assertTrue(spec, runCatching { parseLaunch(listOf("--test", "--phone", spec), env) }.exceptionOrNull() is IllegalArgumentException)
         }
     }
+
+    @Test fun collectorIsOptionalAndTakesSecretFromEnvironment() {
+        assertEquals(null, parseLaunch(emptyList(), env).collector)
+        val o = parseLaunch(listOf("--collector", "http://10.10.0.10:2517/"), env + ("NETRUN_COLLECTOR_SECRET" to "game"))
+        assertEquals("http://10.10.0.10:2517", o.collector!!.baseUrl)
+        assertEquals("game", o.collector.secret)
+        // пустой секрет — как отсутствующий: коллектор без GAME_SECRET заголовка не ждёт
+        assertEquals(null, parseLaunch(listOf("--collector", "http://c:1"), env + ("NETRUN_COLLECTOR_SECRET" to " ")).collector!!.secret)
+    }
+
+    @Test fun collectorNeedsHttpAddress() {
+        for (bad in listOf("10.10.0.10:2517", "ftp://x", "")) {
+            assertTrue(bad, runCatching { parseLaunch(listOf("--collector", bad), env) }.exceptionOrNull() is IllegalArgumentException)
+        }
+    }
 }

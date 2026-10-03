@@ -4,6 +4,19 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import java.sql.Connection
 import java.sql.DriverManager
+import java.sql.SQLException
+
+/**
+ * Расширение коммита: пишет в ту же базу SQLite и в той же транзакции, что и документы (например, очередь записей мира для
+ * коллектора). Изменения документов и производные от них строки фиксируются одним `COMMIT` или не фиксируются вовсе.
+ */
+fun interface CommitHook {
+    /**
+     * Зовётся под замком хранилища после записи документов и до `COMMIT`. [conn] — то же соединение, транзакция открыта.
+     * [previous] — документ в состоянии до этой транзакции (null — документа не было). Исключение откатывает и документы.
+     */
+    fun beforeCommit(conn: Connection, changes: List<Change>, previous: (DocKey) -> Doc?)
+}
 
 /**
  * Хранилище документов: всё в памяти, каждое изменение — транзакцией в SQLite, при открытии читается обратно.
@@ -19,6 +32,9 @@ class DocStore private constructor(
     private val docs = HashMap<DocKey, Doc>()
     private var seqValue = 0L
     private val listeners = ArrayList<(List<Change>) -> Unit>()
+
+    /** Расширение коммита (см. [CommitHook]); ставится сразу после [open], до первой записи. */
+    @Volatile var commitHook: CommitHook? = null
 
     /** Номер последнего изменения. */
     val seq: Long @Synchronized get() = seqValue
@@ -42,6 +58,13 @@ class DocStore private constructor(
     fun addListener(l: (List<Change>) -> Unit) {
         listeners.add(l)
     }
+
+    /**
+     * Соединение SQLite под замком хранилища — для таблиц-расширений в той же базе (очередь записей мира). Вне [transaction] каждый
+     * оператор фиксируется сам; внутри [CommitHook.beforeCommit] транзакция уже открыта и принадлежит хранилищу.
+     */
+    @Synchronized
+    fun <T> withConnection(block: (Connection) -> T): T = block(conn)
 
     /** Запись с проверкой версии: [ver] = 0 — создать, иначе версия, которую клиент видел. `data` заменяется целиком. */
     fun put(type: String, id: String, ver: Long, data: JsonObject): Doc =
@@ -95,10 +118,15 @@ class DocStore private constructor(
             conn.prepareStatement("INSERT OR REPLACE INTO meta(key,value) VALUES ('seq',?)").use {
                 it.setLong(1, newSeq); it.executeUpdate()
             }
+            commitHook?.beforeCommit(conn, changes) { k -> docs[k] }
             conn.commit()
-        } catch (e: java.sql.SQLException) {
+        } catch (e: SQLException) {
             runCatching { conn.rollback() }
             throw StoreException("internal", "сбой SQLite: ${e.message}")
+        } catch (e: Exception) {
+            // Сбой расширения коммита: документы откатываются вместе с его строками, исключение уходит вызывающему как есть.
+            runCatching { conn.rollback() }
+            throw e
         } finally {
             conn.autoCommit = true
         }
