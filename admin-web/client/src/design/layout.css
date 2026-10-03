@@ -439,6 +439,8 @@
 .change-line.kind-breach { --kind: var(--acc); }
 .change-line.kind-alert { --kind: var(--bad); }
 .change-line.kind-master { --kind: var(--chrome); }
+/* Записи мира (Мост «Сети») — по текстовой метке «СЕТЬ», цвет нейтральный: у acc/ok/bad уже свои роли. */
+.change-line.kind-net { --kind: var(--ink-2); }
 .change-line-main {
   display: flex;
   align-items: baseline;

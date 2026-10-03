@@ -13,6 +13,7 @@ export const KIND_SQL: Record<string, string> = {
   alert: `field = 'counters.alert'`,
   master: M,
   system: `(field IN ('callsign','faction','ramCapacity') AND NOT ${M})`,
+  net: `field LIKE 'net.%'`,
 };
 
 /** Подписи типов для фильтров (порядок — порядок в выпадающем списке). */
@@ -23,4 +24,5 @@ export const KIND_LABEL_RU: Record<string, string> = {
   alert: "Сигналы СБ",
   master: "Действия мастера",
   system: "Профиль (позывной, фракция, RAM)",
+  net: "Сеть (забеги, предметы, тревоги аудитора)",
 };

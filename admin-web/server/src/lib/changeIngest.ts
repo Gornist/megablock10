@@ -4,6 +4,8 @@ import { verifySignature } from "./crypto.js";
 import { ipv4Of, parseClientVersions, parseSyncState, peersSince, touchPresence } from "./presence.js";
 import { RAM_CAPACITY_DEFAULT, RAM_CAPACITY_MAX } from "./identityDefaults.js";
 import { bindProvision } from "./provisions.js";
+import { parseSafe } from "./json.js";
+import { createNetRunners } from "./netRunners.js";
 
 /**
  * Приём записей с устройств (то, что стоит за POST /api/changes), разложенный на шаги: разбор записи → статическая проверка →
@@ -138,7 +140,22 @@ function sameRecord(e: ExistingRow, r: ChangeRecordInput): boolean {
   );
 }
 
+/** Что нужно из newValue записи NET_FLATLINE (docs/netrun-world-records.md, §2.4); форма уже проверена как JSON-объект. */
+interface FlatlineValue {
+  session?: unknown;
+  runner?: unknown;
+  callsign?: unknown;
+  terminal?: unknown;
+  node?: unknown;
+  cause?: unknown;
+  disconnect?: unknown;
+  left_in_node?: unknown;
+  alert?: unknown;
+}
+const strOrNull = (v: unknown) => (typeof v === "string" && v !== "" ? v : null);
+
 export function createChangeIngest(db: Db) {
+  const netRunners = createNetRunners(db);
   const insertStmt = db.prepare(`
     INSERT INTO changes (id, subject_key, seq, happened_at, received_at, field, old_value, new_value, reason, source_ref, actor, signature)
     VALUES (@id, @subject_key, @seq, @happened_at, @received_at, @field, @old_value, @new_value, @reason, @source_ref, @actor, @signature)
@@ -205,6 +222,26 @@ export function createChangeIngest(db: Db) {
       actor: r.actor,
       signature: r.signature,
     });
+    // Флэтлайн нетраннера: допуск в Сеть закрывается до решения мастера (в той же транзакции, что и сама запись).
+    if (r.reason === "NET_FLATLINE") {
+      const v = parseSafe<FlatlineValue>(r.newValue ?? null);
+      const runner = strOrNull(v?.runner);
+      if (v && runner) {
+        netRunners.onFlatline({
+          runner,
+          happenedAt: r.happenedAt,
+          receivedAt,
+          session: strOrNull(v.session),
+          node: strOrNull(v.node),
+          terminal: strOrNull(v.terminal),
+          callsign: strOrNull(v.callsign),
+          cause: strOrNull(v.cause),
+          disconnect: v.disconnect === true,
+          leftInNode: typeof v.left_in_node === "number" ? v.left_in_node : null,
+          alert: strOrNull(v.alert),
+        });
+      }
+    }
     return { ok: true, id: r.id, subjectKeyB64: r.subjectKeyB64 };
   }
 

@@ -12,6 +12,8 @@ describe("куда ведёт тревога", () => {
     expect(go({ nodeId: "nasos-4" })).toBe("#/nodes/nasos-4");
     expect(go({ nodeId: "nasos-4", displayId: "p-1" })).toBe("#/nodes/nasos-4");
     expect(go({ displayId: "p-1" })).toBe("#/devices/p-1");
+    expect(go({ kind: "net_alert" })).toBe("#/net");
+    expect(go({ kind: "net_master_alert" })).toBe("#/net");
     expect(attentionTarget({})).toBeUndefined();
   });
 });

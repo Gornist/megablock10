@@ -1,4 +1,5 @@
 import type { Db } from "../db/index.js";
+import { isWorldField } from "./changeRecord.js";
 
 /**
  * Перевод сырой записи изменения (field/reason/source_ref/JSON) в фразу для мастера.
@@ -52,6 +53,11 @@ export const REASON_LABEL_RU: Record<string, string> = {
   ALERT_SENT: "Сигнал СБ отправлен",
   ALERT_SUPPRESSED: "Сигнал СБ подавлен",
   MASTER_OVERRIDE: "Правка мастера",
+  NET_ENTER: "Сеть: вход",
+  NET_EXIT: "Сеть: выход",
+  NET_FLATLINE: "Сеть: флэтлайн",
+  NET_ITEM_OWNER: "Сеть: предмет сменил владельца",
+  NET_ALERT: "Сеть: тревога аудитора",
 };
 
 function parse<T>(raw: string | null): T | null {
@@ -169,6 +175,63 @@ const formatAlert: Formatter = ({ row, done, node }) =>
     ? done("alert", `сигнал СБ по узлу ${node()} не отправлен (подавлен демоном или узел свой)`)
     : done("alert", `сигнал СБ по узлу ${node()} отправлен владельцам`);
 
+const NET_OUTCOME_RU: Record<string, string> = {
+  clean: "чистый выход",
+  emergency: "аварийный выход",
+  soft_ice: "поймал Soft ICE",
+  aborted: "вход отменён",
+  black_ice: "Black ICE",
+};
+const NET_ITEM_RU: Record<string, string> = { SHARD: "шард", DAEMON: "демон" };
+
+/** Владелец предмета из протокола Моста («deck:s_9f2c», «node:node_07»…) — коротко для мастера. */
+function netOwnerRu(owner: string | undefined): string {
+  if (!owner) return "?";
+  const [kind, ref] = [owner.slice(0, owner.indexOf(":")), owner.slice(owner.indexOf(":") + 1)];
+  switch (kind) {
+    case "inbox":
+      return "ожидает деку";
+    case "deck":
+      return "дека";
+    case "node":
+      return `узел ${ref}`;
+    case "outbox":
+      return "выдаётся на телефон";
+    case "phone":
+      return "ушёл на телефон";
+    case "burned":
+      return "сгорел";
+    default:
+      return owner;
+  }
+}
+
+const netWho = (p: { callsign?: string } | null) => (p?.callsign ? `«${p.callsign}»` : "нетраннер");
+const netPlace = (p: { terminal?: string; node?: string } | null) =>
+  [p?.terminal ? `терминал ${p.terminal}` : null, p?.node ? `узел ${p.node}` : null].filter(Boolean).join(", ");
+
+/** Записи мира (Мост «Сети», docs/netrun-world-records.md): забеги, предметы и тревоги аудитора. */
+const formatNetRun: Formatter = ({ row, done }) => {
+  const p = parse<{ callsign?: string; terminal?: string; node?: string; deck?: number; outcome?: string; returned?: number; burned?: number; left_in_node?: number; cause?: string }>(row.new_value);
+  const place = netPlace(p);
+  if (row.reason === "NET_ENTER") return done("net", `${netWho(p)} сдал деку${p?.deck != null ? ` (предметов: ${p.deck})` : ""} и входит в Сеть${place ? `: ${place}` : ""}`);
+  if (row.reason === "NET_FLATLINE") return done("alert", `ФЛЭТЛАЙН: ${netWho(p)}${place ? ` — ${place}` : ""}${p?.cause ? `. ${p.cause}` : ""}${p?.left_in_node ? `; в узле осталось предметов: ${p.left_in_node}` : ""}`);
+  const outcome = NET_OUTCOME_RU[p?.outcome ?? ""] ?? p?.outcome ?? "исход неизвестен";
+  const items = [p?.returned != null ? `вернулось ${p.returned}` : null, p?.burned ? `сгорело ${p.burned}` : null, p?.left_in_node ? `осталось в узле ${p.left_in_node}` : null].filter(Boolean).join(", ");
+  return done("net", `${netWho(p)} вышел из Сети: ${outcome}${place ? ` (${place})` : ""}${items ? `. ${items}` : ""}`);
+};
+
+const formatNetItem: Formatter = ({ row, done }) => {
+  const p = parse<{ kind?: string; from?: string; to?: string; op?: string }>(row.new_value);
+  const what = [NET_ITEM_RU[p?.kind ?? ""] ?? "предмет", row.source_ref].filter(Boolean).join(" ");
+  return done("net", `${what}: ${netOwnerRu(p?.from)} → ${netOwnerRu(p?.to)}`);
+};
+
+const formatNetAlert: Formatter = ({ row, done }) => {
+  const p = parse<{ kind?: string; msg?: string }>(row.new_value);
+  return done("alert", `тревога аудитора${p?.kind ? ` (${p.kind})` : ""}: ${p?.msg ?? row.source_ref ?? "без описания"}`);
+};
+
 /** Форматтеры по полю записи; неизвестное поле показывается как есть. */
 const FORMATTERS: Record<string, Formatter> = {
   balance: formatBalance,
@@ -184,10 +247,14 @@ const FORMATTERS: Record<string, Formatter> = {
   "counters.blocked": formatBlocked,
   "counters.alert": formatAlert,
   announcement: ({ row, done }) => done("master", `сообщение от мастера: «${row.new_value ?? ""}»`),
+  "net.run": formatNetRun,
+  "net.item": formatNetItem,
+  "net.alert": formatNetAlert,
 };
 
 export function humanizeChange(row: ChangeRowLike, ctx: HumanizeContext): HumanChange {
-  const subject = ctx.playerName(row.subject_key);
+  // У записи мира субъект — ключ Моста, не игрок: в ленте это просто «Сеть», а не обрезок base64-ключа.
+  const subject = isWorldField(row.field) ? "Сеть" : ctx.playerName(row.subject_key);
   const f: Fmt = {
     row,
     ctx,

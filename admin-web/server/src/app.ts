@@ -26,6 +26,13 @@ import { registerDisplayRoutes } from "./routes/displays.js";
 import { DisplayManager } from "./displays/manager.js";
 import { AudioService } from "./audio/audioService.js";
 import { registerAudioRoutes } from "./routes/audio.js";
+import { registerCapabilitiesRoute } from "./routes/capabilities.js";
+import { registerNetRoutes } from "./routes/net.js";
+import { registerWorldEventsRoutes } from "./routes/worldEvents.js";
+import { registerNetBridgeRoutes } from "./routes/netBridge.js";
+import { NetService } from "./net/netService.js";
+import { RunnerSync } from "./net/runnerSync.js";
+import { SecSync } from "./net/secSync.js";
 
 /**
  * Собирает Fastify-приложение без побочного listen() — раньше вся сборка
@@ -34,7 +41,7 @@ import { registerAudioRoutes } from "./routes/audio.js";
  * теперь только вызывает buildApp() и слушает; тесты вызывают buildApp()
  * на in-memory БД (см. testDb.ts) и бьют через inject().
  */
-export function buildApp(db: Db, options: { clientDist?: string; logger?: boolean; displays?: DisplayManager; audio?: AudioService } = {}): FastifyInstance {
+export function buildApp(db: Db, options: { clientDist?: string; logger?: boolean; displays?: DisplayManager; audio?: AudioService; net?: NetService } = {}): FastifyInstance {
   // Ключи персонажей — base64 EC SPKI DER (~124 символа) в URL-параметре,
   // после encodeURIComponent ещё длиннее — дефолтный лимит Fastify (100) в это
   // не помещается.
@@ -58,6 +65,16 @@ export function buildApp(db: Db, options: { clientDist?: string; logger?: boolea
   });
 
   registerChangesRoute(app, db);
+  registerCapabilitiesRoute(app);
+  // Мост «Сети» (docs/netrun.md): без BRIDGE_MASTER_KEY клиента нет — экран «Сеть» пишет «Мост не настроен», остальное работает как раньше.
+  const net = options.net ?? new NetService();
+  const secSync = new SecSync(db, net);
+  secSync.start();
+  const runnerSync = new RunnerSync(db, net);
+  runnerSync.start();
+  // Решение мастера о допуске уходит в Мост сразу, а не ждёт таймера; без Моста — догонится при подключении.
+  registerNetRoutes(app, db, () => void runnerSync.sync());
+  registerNetBridgeRoutes(app, db, net, secSync);
   registerPlayersRoutes(app, db);
   registerAuthRoute(app, db);
   registerContainersRoute(app, db);
@@ -83,9 +100,13 @@ export function buildApp(db: Db, options: { clientDist?: string; logger?: boolea
   const audio = options.audio ?? new AudioService(db, displays);
   registerDisplayRoutes(app, db, displays, () => audio.sync());
   registerAudioRoutes(app, db, displays, audio);
+  registerWorldEventsRoutes(app, db, displays, audio);
   app.addHook("onClose", async () => {
     audio.stop();
     displays.stop();
+    secSync.stop();
+    runnerSync.stop();
+    net.stop();
   });
 
   app.get("/api/health", async () => ({ ok: true }));

@@ -191,6 +191,58 @@ CREATE TABLE IF NOT EXISTS display_battery_samples (
   PRIMARY KEY (display_id, at)
 );
 
+-- «Сеть» (docs/netrun-world-records.md): допуск нетраннера. blocked ставит приём NET_FLATLINE или мастер, «пощадить» снимает —
+-- коллектор источник правды, Мост читает флаг (bridge_synced = 0 — ещё не записан в документ runner Моста, lib/netRunners.ts).
+-- runner_key — ключ игрока в base64, как subject_key в changes; в Мосте документ runner — r_<sha256 ключа> (lib/netRunners.ts).
+CREATE TABLE IF NOT EXISTS net_runner_flags (
+  runner_key       TEXT PRIMARY KEY,
+  blocked          INTEGER NOT NULL DEFAULT 0,
+  reason           TEXT,
+  callsign         TEXT,
+  session          TEXT,
+  node             TEXT,
+  terminal         TEXT,
+  detail           TEXT,
+  blocked_at       INTEGER,
+  last_flatline_at INTEGER,
+  spared_at        INTEGER,
+  spared_by        TEXT,
+  bridge_synced    INTEGER NOT NULL DEFAULT 0,
+  updated_at       INTEGER NOT NULL
+);
+
+-- «Может входить в Сеть» — решение мастера по игроку (белый список, docs/netrun.md: в Сеть входят только нетраннеры). Мост проверяет его,
+-- когда включено settings/global.require_allowed; по умолчанию выключено. Нет строки — мастер ещё не решал.
+CREATE TABLE IF NOT EXISTS net_runner_access (
+  runner_key TEXT PRIMARY KEY,
+  allowed    INTEGER NOT NULL,
+  updated_by TEXT,
+  updated_at INTEGER NOT NULL
+);
+
+-- Настройки самого коллектора, которых нет в окружении и которые мастер правит из дашборда (получатель СБ по умолчанию и т. п.).
+CREATE TABLE IF NOT EXISTS collector_settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+-- «Сеть» → площадка (docs/netrun-world-records.md, §3): какая точка стоит у какого узла Сети и/или терминала — по этому коллектор
+-- решает, КОМУ из точек идёт быстрое событие (Мост знает только узел и терминал). Это отдельно от displays.node_id: тот — узел
+-- коллектора (контейнер из «Мастерской»), а node здесь — id узла в документе Моста (node_07).
+CREATE TABLE IF NOT EXISTS net_point_links (
+  display_id TEXT PRIMARY KEY,
+  net_node   TEXT,
+  terminal   TEXT
+);
+-- Что делает событие: проиграть клип громкой связи на подходящих точках. По умолчанию строк нет — события ничего не делают.
+CREATE TABLE IF NOT EXISTS world_event_actions (
+  kind    TEXT PRIMARY KEY,
+  clip_id TEXT,
+  volume  INTEGER,
+  chime   INTEGER NOT NULL DEFAULT 1,
+  enabled INTEGER NOT NULL DEFAULT 1
+);
+
 -- masters/sessions/audit_master — см. lib/auth.ts (ensureAuthSchema),
 -- появились позже основной схемы, вынесены отдельно, чтобы не мешать
 -- auth-логику с моделью данных игры.

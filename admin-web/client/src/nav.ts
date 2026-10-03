@@ -22,6 +22,7 @@ export const NAV: { title: string; items: { path: string; label: string }[] }[] 
     items: [
       { path: "devices", label: "Устройства" },
       { path: "nodes", label: "Узлы" },
+      { path: "net", label: "Сеть" },
       { path: "locations", label: "Локации" },
       { path: "announce", label: "Громкая связь" },
       { path: "channels", label: "Каналы звука" },

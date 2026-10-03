@@ -7,6 +7,7 @@ import { deriveLootKey, encryptLoot } from "../lib/lootCrypto.js";
 import { encodeDaemonLoot, encodeShardLoot } from "../lib/lootCodec.js";
 import { containerQrString } from "../lib/containerQr.js";
 import { encodeRamUpgradeQr, encodeShardQr } from "../lib/mb10QrCodec.js";
+import { DAEMON_EFFECTS, moneyOrNull, SAFE_CODE, SAFE_ID } from "../lib/itemInput.js";
 import { tierLevel } from "../lib/tier.js";
 import { validateContainerSlot } from "../lib/containerSlots.js";
 import type { ContainerSlot } from "../lib/containerSlots.js";
@@ -38,22 +39,6 @@ interface ContainerBody {
   tier?: unknown;
   ownerFaction?: unknown;
   slots?: SlotInput[];
-}
-
-/**
- * id попадает в QR как есть, а формат — ':'-разделённый (а slotRef дальше собирается через '#'):
- * id вроде "nasos:4" или "a#b" даёт QR, который приложение разбирает со сдвигом полей или не разбирает вовсе.
- */
-const SAFE_ID = /^[A-Za-z0-9_.-]{1,64}$/;
-
-const DAEMON_EFFECTS = new Set(["EXTRACT_SHARD", "EXTRACT_DAEMON", "GHOST", "TIMESKEW", "BLACKOUT", "JITTER", "DECRYPT", "MINER"]);
-/** Коды демона склеиваются через ',' внутри LootCodec ("|"-формат) — символы-разделители в коде ломают разбор на телефоне. */
-const SAFE_CODE = /^[A-Za-z0-9]{1,8}$/;
-
-/** Деньги в шарде — неотрицательное целое; дробное/отрицательное приложение молча превращало в 0. */
-function moneyOrNull(v: unknown): number | null {
-  if (v === undefined || v === null) return 0;
-  return Number.isSafeInteger(v) && (v as number) >= 0 ? (v as number) : null;
 }
 
 /**

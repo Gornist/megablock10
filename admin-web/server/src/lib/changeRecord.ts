@@ -11,6 +11,10 @@ const FIELDS = [
   "counters.breach",
   "counters.alert",
   "counters.blocked",
+  // Записи мира («Сеть», docs/netrun-world-records.md): субъект и автор — ключ мира, а не игрок. В свёртку персонажей не входят.
+  "net.run",
+  "net.item",
+  "net.alert",
 ] as const;
 export type Field = (typeof FIELDS)[number];
 
@@ -33,6 +37,11 @@ export const REASONS = [
   "ALERT_SUPPRESSED",
   "MASTER_OVERRIDE",
   "CHARACTER_RESET",
+  "NET_ENTER",
+  "NET_EXIT",
+  "NET_FLATLINE",
+  "NET_ITEM_OWNER",
+  "NET_ALERT",
 ] as const;
 export type Reason = (typeof REASONS)[number];
 
@@ -94,6 +103,19 @@ export function signaturePayload(r: ChangeRecordInput): Buffer {
 
 export function isField(v: string): v is Field {
   return (FIELDS as readonly string[]).includes(v);
+}
+
+/**
+ * Запись мира (Мост «Сети»), а не игрока: поле начинается с «net.». Свёртка персонажей, списки игроков, сводки и проверки
+ * целостности их не видят — иначе ключ мира появился бы среди «игроков» с нулевым балансом.
+ */
+export function isWorldField(field: string): boolean {
+  return field.startsWith("net.");
+}
+
+/** Условие SQL «это запись игрока» — для запросов по changes, которые считают игроков, а не события вообще. alias — псевдоним таблицы. */
+export function notWorldSql(alias?: string): string {
+  return `${alias ? `${alias}.` : ""}field NOT LIKE 'net.%'`;
 }
 
 export function isReason(v: string): v is Reason {

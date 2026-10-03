@@ -227,7 +227,7 @@ export function findFutureClocks(db: Db, since: number, toleranceMs: number): Fu
   const rows = db
     .prepare(
       `SELECT subject_key, MAX(happened_at - received_at) AS ahead, MAX(received_at) AS at FROM changes
-       WHERE received_at > ? AND seq > 0 AND happened_at - received_at > ? GROUP BY subject_key`,
+       WHERE received_at > ? AND seq > 0 AND happened_at - received_at > ? AND field NOT LIKE 'net.%' GROUP BY subject_key`,
     )
     .all(since, toleranceMs) as { subject_key: string; ahead: number; at: number }[];
   return rows.map((r) => ({ subjectKey: r.subject_key, aheadMs: r.ahead, at: r.at }));

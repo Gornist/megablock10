@@ -31,7 +31,7 @@ export interface Overview {
   alerts: { sent: number; suppressed: number };
 }
 
-export type ChangeKind = "money" | "item" | "breach" | "alert" | "master" | "system";
+export type ChangeKind = "money" | "item" | "breach" | "alert" | "master" | "system" | "net";
 
 /** Человекочитаемая часть записи изменения — собирает сервер (lib/humanize.ts); сырые поля остаются рядом для «деталей». */
 export interface HumanChange {
@@ -201,7 +201,7 @@ export type Severity = "crit" | "warn" | "info";
 
 export interface AttentionItem {
   id: string;
-  kind: "negative_balance" | "balance_jump" | "went_silent" | "node_exhausted_hot" | "revoke_repeat" | "override_undelivered" | "override_failed" | "shard_copies" | "transfer_stuck" | "duplicate_receive" | "balance_chain_break" | "balance_unexplained" | "old_version" | "mass_silence" | "reject_spike" | "rate_limited" | "secret_denied" | "server_slow" | "clock_skew" | "transfer_amount_mismatch" | "emission_spike" | "player_outlier" | "provision_conflict" | "sync_stuck" | "display_battery";
+  kind: "negative_balance" | "balance_jump" | "went_silent" | "node_exhausted_hot" | "revoke_repeat" | "override_undelivered" | "override_failed" | "shard_copies" | "transfer_stuck" | "duplicate_receive" | "balance_chain_break" | "balance_unexplained" | "old_version" | "mass_silence" | "reject_spike" | "rate_limited" | "secret_denied" | "server_slow" | "clock_skew" | "transfer_amount_mismatch" | "emission_spike" | "player_outlier" | "provision_conflict" | "sync_stuck" | "display_battery" | "net_flatline" | "net_alert" | "net_master_alert";
   severity: Severity;
   title: string;
   detail: string;
@@ -542,4 +542,153 @@ export interface DisplayPushResult {
 export interface DisplayPushResponse {
   label: string;
   results: DisplayPushResult[];
+}
+
+// ── «Сеть» (docs/netrun.md): допуск нетраннера ──
+
+/** Флаг допуска нетраннера в Сеть: заблокирован после флэтлайна или мастером; «пощадить» снимает (коллектор — источник правды). */
+export interface NetRunnerFlagItem {
+  runnerKey: string;
+  /** Позывной из записи флэтлайна, а если его нет — из истории игрока. */
+  callsign: string;
+  blocked: boolean;
+  reason: string | null;
+  session: string | null;
+  node: string | null;
+  terminal: string | null;
+  /** Подробности флэтлайна (cause, disconnect, left_in_node, alert) — для карточки мастера. */
+  detail: Record<string, unknown> | null;
+  blockedAt: number | null;
+  sparedAt: number | null;
+  sparedBy: string | null;
+  /** false — Мост ещё не знает об этом решении (догонится при следующем подключении). */
+  bridgeSynced: boolean;
+  /** Игрок с таким ключом известен коллектору — карточка игрока доступна. */
+  knownPlayer: boolean;
+  /** Мастер отметил игрока «может входить в Сеть» (белый список). */
+  allowed: boolean;
+}
+
+/** Допуск игрока в Сеть без блокировки: ответ карточки игрока, когда флага блокировки нет. */
+export interface NetRunnerOpen {
+  blocked: false;
+  allowed: boolean;
+}
+
+/** Сводка белого списка: сколько игроков отмечено «нетраннер» — для подтверждения включения проверки в Мосте. */
+export interface NetAccessSummary {
+  allowedCount: number;
+}
+
+// ── «Сеть» → площадка: быстрые события на точки (docs/netrun-world-records.md, §3) ──
+
+export interface WorldEventKindInfo {
+  kind: "run.enter" | "run.exit" | "trace.level" | "ice.hunt" | "flatline" | "lockdown" | "alert.master";
+  label: string;
+  /** Когда возникает. */
+  when: string;
+  /** На какие точки идёт: по терминалу и/или по узлу Сети (alert.master — ни на какие, только панель мастера). */
+  byTerminal: boolean;
+  byNode: boolean;
+}
+
+export interface WorldEventActionItem {
+  kind: WorldEventKindInfo["kind"];
+  clipId: string | null;
+  clipName: string | null;
+  /** null — громкость по умолчанию (80). */
+  volume: number | null;
+  chime: boolean;
+  enabled: boolean;
+}
+
+/** Точка ↔ узел и/или терминал Сети: по этой связи коллектор решает, кому идёт событие. */
+export interface NetPointLinkItem {
+  displayId: string;
+  displayName: string;
+  netNode: string | null;
+  terminal: string | null;
+}
+
+export interface WorldEventsConfig {
+  kinds: WorldEventKindInfo[];
+  actions: WorldEventActionItem[];
+  links: NetPointLinkItem[];
+}
+
+export interface WorldEventsTestResult {
+  accepted: number;
+  /** Точки, на которые ушло объявление; пусто — нет настройки, связи точки или звуковой точки. */
+  playedOn: string[];
+}
+
+// ── «Сеть»: состояние Моста для экрана (docs/netrun-bridge-protocol.md) ──
+
+/** Документ Моста как есть: type+id, версия и данные (схема — по типу, раздел 5 протокола). */
+export interface NetDoc {
+  type: string;
+  id: string;
+  ver: number;
+  created: number;
+  updated: number;
+  data: Record<string, unknown>;
+}
+
+/**
+ * Снимок «Сети» для экрана. docs — по типам (node, node_cfg, session, deck, terminal, alert, master_req, net_query, template,
+ * settings) и только пока Мост на связи: нет связи — docs пуст, экран пишет «Мост недоступен», а не показывает старое как живое.
+ */
+export interface NetState {
+  /** false — BRIDGE_MASTER_KEY не задан, функции Моста выключены. */
+  configured: boolean;
+  bridge: "disabled" | "connecting" | "connected" | "down";
+  /** Почему нет связи (последняя ошибка), если она известна. */
+  error: string | null;
+  info: { version: string; worldPub: string; seq: number } | null;
+  docs: Record<string, NetDoc[]>;
+  /** Часы сервера: сроки (expires_at, lockdown_until) экран считает от них, а не от часов браузера. */
+  serverNow: number;
+}
+
+/** Получатели сигнала СБ: фракция по умолчанию, сколько телефонов получит сигнал по каждой фракции и состояние документа settings/sec в Мосте. */
+export interface NetSecView {
+  defaultFaction: string | null;
+  recipients: { faction: string; count: number }[];
+  sync: {
+    /** Мост на связи; нет — остальное неизвестно, запись ждёт подключения. */
+    connected: boolean;
+    /** Документ в Мосте совпадает с составом фракций коллектора. */
+    inSync: boolean;
+    /** Версия документа в Мосте; null — документа нет (сигнал СБ пока никуда не уходит). */
+    docVer: number | null;
+    lastError: string | null;
+  };
+}
+
+/** Предмет, лежащий в узле Сети (документ item с owner node:<узел>): без payload — тело шарда в списке не нужно. */
+export interface NodeStockItem {
+  id: string;
+  ver: number;
+  kind: string;
+  /** Заголовок шарда или имя демона — как разобрал Мост; пусто, если не разобралось. */
+  title: string;
+  tier: number | null;
+  /** Эффект демона. */
+  effect: string | null;
+  origin: string;
+}
+
+export interface NodeStockView {
+  node: string;
+  /** Запас эдди в узле; null — узла нет в копии Моста. */
+  eddies: number | null;
+  items: NodeStockItem[];
+}
+
+/** Ответ Моста на наполнение/разгрузку узла: какие предметы затронуты, остаток эдди, и был ли это повтор по тому же rid. */
+export interface NetStockResult {
+  node: string;
+  items: string[];
+  eddies: number;
+  replayed?: boolean;
 }

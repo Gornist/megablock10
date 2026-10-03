@@ -7,6 +7,7 @@ import { navigate } from "../router";
 import { CountersPanel } from "./player/CountersPanel";
 import { HistoryPanel } from "./player/HistoryPanel";
 import { ItemsPanels } from "./player/ItemsPanels";
+import { NetAccessPanel } from "./player/NetAccessPanel";
 import { OverridePanel } from "./player/OverridePanel";
 import { PlayerBanners } from "./player/PlayerBanners";
 import { WatchControls } from "./player/WatchControls";
@@ -62,6 +63,7 @@ export function PlayerDetailScreen({ publicKeyB64 }: { publicKeyB64: string }) {
 
       <CountersPanel snapshot={snapshot} />
       <ItemsPanels snapshot={snapshot} />
+      {!asOfMs && <NetAccessPanel publicKeyB64={publicKeyB64} />}
       {!asOfMs && <OverridePanel publicKeyB64={publicKeyB64} onDone={() => setRefreshTick((t) => t + 1)} />}
       <HistoryPanel publicKeyB64={publicKeyB64} refreshTick={refreshTick} />
     </div>
