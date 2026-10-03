@@ -8,7 +8,7 @@ const BG := Color(0.004, 0.008, 0.016)
 
 ## Комната 6×6 м из модулей 2×2 м: пол 3×3, стены по периметру, колонны в углах, вход с юга (z=+3), выход на север (z=-3),
 ## в центре шард, у выхода ICE. Предмет: [путь, позиция, поворот Y (°), тир, масштаб].
-const REFLECT := ["env/wall", "env/wall_b", "env/wall_c", "env/doorway", "env/doorway_b", "env/pillar", "ice/soft_ice", "avatar/runner", "avatar/runner_b", "avatar/runner_c"]
+const REFLECT := ["props/vault_closed", "props/vault_open", "props/portal_open", "props/portal_closed", "env/wall", "env/wall_b", "env/wall_c", "env/doorway", "env/doorway_b", "env/pillar", "ice/soft_ice", "avatar/runner", "avatar/runner_b", "avatar/runner_c"]
 const CEILING_H := 5.0
 const ICE_POS := Vector3(0.75, 0.0, -2.0)
 
@@ -68,9 +68,14 @@ func _shots() -> Array:
 	var room := _room()
 	var stage := [["env/floor", Vector3(0, 0, 0), 0.0, "BASE", 1.0], ["avatar/runner", Vector3(-0.9, 0, 0.0), 180.0, "", 1.0],
 		["avatar/runner_b", Vector3(0.0, 0, -0.4), 180.0, "", 1.0], ["avatar/runner_c", Vector3(0.95, 0, 0.1), 180.0, "", 1.0]]
+	var props := [["env/floor", Vector3(0, 0, 0), 0.0, "BASE", 1.0], ["env/floor_b", Vector3(-2, 0, 0), 90.0, "BASE", 1.0], ["env/floor_c", Vector3(2, 0, 0), 180.0, "BASE", 1.0],
+		["props/vault_closed", Vector3(-1.0, 0, 0.3), 160.0, "BASE", 1.0], ["props/vault_open", Vector3(1.0, 0, 0.3), 200.0, "BASE", 1.0],
+		["props/portal_open", Vector3(-2.2, 0, -2.4), 15.0, "BASE", 1.0], ["props/portal_closed", Vector3(2.4, 0, -2.6), -20.0, "BASE", 1.0]]
 	var solo := [["avatar/runner", Vector3(0, 0, 0), 180.0, "", 1.0]]
 	var scar := [ICE_POS + Vector3(0, 1.0, -0.6), 4.2]
 	return [
+		{"name": "props_stage", "cam": Vector3(0.0, 1.3, 3.6), "look": Vector3(0.0, 1.1, -1.0), "fov": 65.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": props},
+		{"name": "vault_close", "cam": Vector3(-0.2, 1.0, 1.6), "look": Vector3(-0.9, 0.6, 0.3), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": props},
 		{"name": "avatar_stage", "cam": Vector3(0.1, 1.2, 3.0), "look": Vector3(0.0, 0.95, 0.0), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": stage},
 		{"name": "avatar_side", "cam": Vector3(2.0, 1.15, 0.0), "look": Vector3(0.0, 1.0, 0.0), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": solo},
 		{"name": "avatar_close", "cam": Vector3(0.45, 1.25, 1.7), "look": Vector3(0.0, 1.0, 0.0), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": solo},
@@ -185,6 +190,13 @@ func _build(shot: Dictionary, root: Node) -> void:
 		inst.scale = Vector3.ONE * it[4]
 		root.add_child(inst)
 		_setup(inst, it, shot, 1.0)
+		var anc := inst.find_child("Anchor_Shard", true, false)
+		if anc != null:  # якорь хранилища: ставим шард, как это сделает игра
+			var sh: Node3D = (load("res://assets/models/props/shard.glb") as PackedScene).instantiate()
+			root.add_child(sh)
+			sh.global_position = (anc as Node3D).global_position
+			sh.scale = Vector3.ONE * 1.6
+			AM.apply(sh, "")
 		var is_walker := _walk and _walker == null and String(it[0]).begins_with("avatar/")
 		if is_walker:
 			_walker = inst

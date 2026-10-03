@@ -51,6 +51,8 @@ static func apply(root: Node, tier: String = "") -> void:
 				m.set_shader_parameter("tint_amount", 1.0)
 			if entity and (src.resource_name == "streaks" or src.resource_name == "points"):
 				m.set_shader_parameter("lattice", ENTITY_LATTICE)
+			if String(mi.name).ends_with("_mid"):  # штрихи, симметричные вокруг центра (мембрана портала): длина меняется от центра
+				m.set_shader_parameter("anchor", 0.0)
 			if String(mi.name).ends_with("_hang"):  # подвесные штрихи (под полом): длина меняется от верхнего конца
 				m.set_shader_parameter("anchor", 1.0)
 			mi.set_surface_override_material(s, m)

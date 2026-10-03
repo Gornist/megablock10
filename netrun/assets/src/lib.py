@@ -296,6 +296,15 @@ def streak_set(name, streaks, rgb):
     return ob
 
 
+def anchor(name, loc):
+    """Якорь: пустой узел в точке loc (Blender, Z вверх), экспортируется как Node3D с этим именем («Anchor_Shard» и т. п.). Игра ставит
+    в него предметы и эффекты; в проверках размера и атрибутов не участвует."""
+    ob = bpy.data.objects.new(name, None)
+    bpy.context.collection.objects.link(ob)
+    ob.location = Vector(loc)
+    return ob
+
+
 # ---------------------------------------------------------------- экспорт и отчёт
 
 def args():

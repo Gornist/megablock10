@@ -15,11 +15,15 @@
 | `models/env/floor_b.glb` | 60 / 300 | 126 / 170 | 50 / 60 | 0 | 4 | 1.8613 × 0.8693 × 1.9269 | points, solid_dark, streaks | — | surface | ок |
 | `models/env/floor_c.glb` | 60 / 300 | 129 / 170 | 50 / 60 | 0 | 4 | 1.9471 × 0.8773 × 1.8419 | points, solid_dark, streaks | — | surface | ок |
 | `models/env/pillar.glb` | 0 / 300 | 0 / 0 | 11 / 16 | 0 | 2 | 0.1166 × 3 × 0.0709 | streaks | — | floor | ок |
+| `models/props/portal_closed.glb` | 0 / 2000 | 157 / 260 | 27 / 40 | 0 | 2 | 3.0273 × 3.0139 × 0.1508 | points, streaks | — | floor | ок |
+| `models/props/portal_open.glb` | 0 / 2000 | 358 / 400 | 82 / 100 | 0 | 2 | 3.028 × 3.014 × 0.1571 | points, streaks | — | floor | ок |
 | `models/avatar/runner.glb` | 0 / 300 | 140 / 160 | 318 / 360 | 0 | 2 | 0.6575 × 1.4629 × 0.6566 | points, streaks | — | feet | ок |
 | `models/avatar/runner_b.glb` | 0 / 300 | 140 / 160 | 318 / 360 | 0 | 2 | 0.5891 × 1.4687 × 0.6358 | points, streaks | — | feet | ок |
 | `models/avatar/runner_c.glb` | 0 / 300 | 140 / 160 | 318 / 360 | 0 | 2 | 0.6494 × 1.4711 × 0.6036 | points, streaks | — | feet | ок |
 | `models/props/shard.glb` | 60 / 300 | 70 / 120 | 0 / 0 | 3 | 4 | 0.1303 × 0.1496 × 0.123 | points, shell_soft | — | center | ок |
 | `models/ice/soft_ice.glb` | 0 / 300 | 160 / 200 | 179 / 200 | 0 | 3 | 1.2214 × 2.15 × 0.7577 | points, streaks | — | feet | ок |
+| `models/props/vault_closed.glb` | 124 / 2000 | 184 / 260 | 14 / 40 | 0 | 3 | 0.7388 × 0.9704 × 0.712 | points, solid_dark, streaks | — | floor | ок |
+| `models/props/vault_open.glb` | 124 / 2000 | 184 / 260 | 19 / 40 | 0 | 3 | 0.7388 × 1.086 × 0.7487 | points, solid_dark, streaks | — | floor | ок |
 | `models/env/wall.glb` | 0 / 300 | 50 / 80 | 80 / 120 | 0 | 3 | 2.004 × 2.9716 × 0.5351 | points, streaks | — | floor | ок |
 | `models/env/wall_b.glb` | 0 / 300 | 50 / 80 | 85 / 120 | 0 | 3 | 2.004 × 2.9653 × 0.4939 | points, streaks | — | floor | ок |
 | `models/env/wall_c.glb` | 0 / 300 | 50 / 80 | 82 / 120 | 0 | 3 | 2.004 × 2.9582 × 0.5135 | points, streaks | — | floor | ок |
