@@ -192,7 +192,7 @@ def main():
     for name, fn, neon_hex, strength in jobs:
         bc.reset_scene()
         body = bc.body_material("prop_body", body_hex)
-        neon = bc.neon_material("prop_neon_" + name, neon_hex, strength)
+        neon = bc.neon_material("prop_neon_" + name, neon_hex, palette.neon_strength(neon_hex, strength))
         bc.export_glb(os.path.join(MODELS, "props", name + ".glb"), fn([body, neon]))
     # шард: материалы [ядро, поясок]
     for name, core, band in (("shard", ("neon", palette.MONEY), ("body", None)), ("shard_encrypted", ("body", None), ("neon", palette.WARN))):
@@ -200,7 +200,7 @@ def main():
         mats = []
         for kind, hexv in (core, band):
             if kind == "neon":
-                mats.append(bc.neon_material("shard_neon_" + name, hexv, palette.NEON_PROP))
+                mats.append(bc.neon_material("shard_neon_" + name, hexv, palette.neon_strength(hexv, palette.NEON_PROP)))
             else:
                 mats.append(bc.body_material("shard_body", "#1B1D21"))
         bc.export_glb(os.path.join(MODELS, "props", name + ".glb"), shard(mats))

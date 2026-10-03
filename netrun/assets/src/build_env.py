@@ -243,7 +243,8 @@ def main():
             bc.reset_scene()
             body = bc.body_material("env_body_" + tier, spec["body"])
             neon_hex = palette.BAD if name == "lockdown_gate" else spec["neon"]
-            neon = bc.neon_material("env_neon_" + ("BAD" if name == "lockdown_gate" else tier), neon_hex, palette.NEON_ENV)
+            neon = bc.neon_material("env_neon_" + ("BAD" if name == "lockdown_gate" else tier), neon_hex,
+                                    palette.neon_strength(neon_hex, palette.NEON_ENV))
             objs = fn([body, neon])
             path = os.path.join(MODELS, "env", name + spec["suffix"] + ".glb")
             t = bc.export_glb(path, objs)
