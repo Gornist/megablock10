@@ -99,7 +99,11 @@ func _shots() -> Array:
 		["ice/soft_ice", Vector3(-1.8, 0, 0.0), 180.0, "", 1.0], ["ice/black_ice", Vector3(1.5, 0, 0.0), 180.0, "", 1.0], ["avatar/runner", Vector3(0.0, 0, 1.0), 180.0, "", 1.0]]
 	var icestates := [["env/floor_clear", Vector3(0, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(2.4, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(-2.4, 0, 0), 0.0, "BASE", 1.0],
 		["ice/black_ice", Vector3(-2.0, 0, 0.0), 180.0, "", 1.0], ["ice/black_ice_hunt", Vector3(0.0, 0, 0.0), 180.0, "", 1.0], ["ice/black_ice_catch", Vector3(2.0, 0, 0.0), 180.0, "", 1.0]]
+	var nodeprops := [["env/floor_clear", Vector3(0, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(2.4, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(-2.4, 0, 0), 0.0, "BASE", 1.0],
+		["props/seat", Vector3(-1.6, 0, 0.0), 0.0, "BASE", 1.0], ["props/sensor", Vector3(0.0, 0, 0.0), 0.0, "BASE", 1.0], ["props/dead_deck", Vector3(1.2, 0.02, 0.4), 30.0, "BASE", 3.0],
+		["avatar/runner", Vector3(-1.6, 0.14, 0.0), 0.0, "", 1.0]]
 	return [
+		{"name": "node_props", "cam": Vector3(0.0, 1.25, 4.8), "look": Vector3(0.0, 0.8, 0.0), "fov": 60.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": nodeprops},
 		{"name": "ice_states", "cam": Vector3(0.0, 1.3, 6.5), "look": Vector3(0.0, 1.4, 0.0), "fov": 60.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": icestates},
 		{"name": "ice_stage", "cam": Vector3(0.0, 1.25, 6.0), "look": Vector3(0.0, 1.2, 0.0), "fov": 60.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": icestage},
 		{"name": "ice_close", "cam": Vector3(1.2, 1.3, 3.2), "look": Vector3(1.5, 1.4, 0.0), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": icestage},

@@ -12,6 +12,7 @@
 | `models/env/ceiling_b.glb` | 140 / 300 | 34 / 170 | 108 / 160 | 0 | 3 | 1.9397 × 0.6636 × 1.92 | points, solid_dark, streaks | — | ceiling | ок |
 | `models/env/ceiling_c.glb` | 140 / 300 | 41 / 170 | 105 / 160 | 0 | 3 | 1.8616 × 0.7154 × 1.92 | points, solid_dark, streaks | — | ceiling | ок |
 | `models/env/column_field.glb` | 0 / 300 | 0 / 0 | 1345 / 1700 | 0 | 1 | 3.9398 × 2.8539 × 3.9 | streaks | — | floor | ок |
+| `models/props/dead_deck.glb` | 68 / 300 | 9 / 20 | 2 / 4 | 0 | 3 | 0.18 × 0.065 × 0.11 | points, solid_dark, streaks | — | center | ок |
 | `models/env/doorway.glb` | 0 / 300 | 18 / 40 | 46 / 80 | 0 | 3 | 1.9678 × 2.6921 × 0.1873 | points, streaks | — | floor | ок |
 | `models/env/doorway_b.glb` | 0 / 300 | 18 / 40 | 50 / 80 | 0 | 3 | 1.9513 × 2.6668 × 0.2822 | points, streaks | — | floor | ок |
 | `models/env/far_ceiling.glb` | 952 / 1100 | 147 / 700 | 136 / 200 | 0 | 3 | 10.84 × 0.8644 × 10.8 | points, solid_dark, streaks | — | ceiling | ок |
@@ -34,6 +35,8 @@
 | `models/avatar/runner.glb` | 0 / 300 | 140 / 160 | 318 / 360 | 0 | 2 | 0.6575 × 1.4629 × 0.6566 | points, streaks | — | feet | ок |
 | `models/avatar/runner_b.glb` | 0 / 300 | 140 / 160 | 318 / 360 | 0 | 2 | 0.5891 × 1.4687 × 0.6358 | points, streaks | — | feet | ок |
 | `models/avatar/runner_c.glb` | 0 / 300 | 140 / 160 | 318 / 360 | 0 | 2 | 0.6494 × 1.4711 × 0.6036 | points, streaks | — | feet | ок |
+| `models/props/seat.glb` | 252 / 300 | 24 / 40 | 11 / 16 | 0 | 3 | 1.2 × 1.1082 × 1.2 | points, solid_dark, streaks | — | floor | ок |
+| `models/props/sensor.glb` | 88 / 500 | 16 / 40 | 2 / 8 | 3 | 6 | 0.342 × 1.45 × 0.32 | points, shell_soft, solid_dark, streaks | — | floor | ок |
 | `models/props/shard.glb` | 60 / 300 | 70 / 120 | 0 / 0 | 3 | 4 | 0.1303 × 0.1496 × 0.123 | points, shell_soft | — | center | ок |
 | `models/ice/soft_ice.glb` | 0 / 300 | 160 / 200 | 179 / 200 | 0 | 3 | 1.2214 × 2.15 × 0.7577 | points, streaks | — | feet | ок |
 | `models/props/vault_closed.glb` | 0 / 500 | 248 / 420 | 111 / 160 | 0 | 2 | 0.7878 × 0.8098 × 0.76 | points, streaks | — | floor | ок |

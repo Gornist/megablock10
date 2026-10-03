@@ -130,6 +130,38 @@ def merge_bm(*parts):
     return out
 
 
+def lit_part(bm, top_z, thickness=0.012, outer=None):
+    """Чёрная деталь с подсвеченным верхним контуром (как тайлы пола): боковые грани режутся на thickness ниже верха, верхняя грань получает
+    рамку шириной thickness (inset). Возвращает предикат вершины «светится» (внешний контур верхней грани). outer(co) — доп. условие внешней вершины
+    (для цилиндра — радиус); по умолчанию четыре угла верха коробки (габарит bm до inset)."""
+    xs = [v.co.x for v in bm.verts]
+    ys = [v.co.y for v in bm.verts]
+    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+    bmesh.ops.bisect_plane(bm, geom=list(bm.verts) + list(bm.edges) + list(bm.faces), plane_co=(0, 0, top_z - thickness), plane_no=(0, 0, 1))
+    bm.normal_update()
+    top = [f for f in bm.faces if f.normal.z > 0.9 and abs(f.calc_center_median().z - top_z) < 1e-4]
+    bmesh.ops.inset_individual(bm, faces=top, thickness=thickness)
+
+    def glow(co):
+        if abs(co.z - top_z) > 1e-4:
+            return False
+        if outer is not None:
+            return outer(co)
+        return (abs(co.x - x0) < 1e-4 or abs(co.x - x1) < 1e-4) and (abs(co.y - y0) < 1e-4 or abs(co.y - y1) < 1e-4)
+
+    return glow
+
+
+def disc_glow(radius):
+    """Предикат внешнего контура круглой детали (для lit_part(outer=...))."""
+    return lambda co: abs(math.hypot(co.x, co.y) - radius) < 1e-3
+
+
+def combine_rgb(preds, glow, dark):
+    """rgb_fn для obj_from_bm: glow на вершинах, где сработал любой предикат, иначе dark."""
+    return lambda co: glow if any(p(co) for p in preds) else dark
+
+
 def obj_from_bm(name, bm, role, rgb, alpha=1.0, alpha_fn=None, smooth=False, rgb_fn=None):
     """Объект из bmesh: роль материала + цвет вершин (RGB свечения, A плотность). alpha_fn(co) — градиент по вершинам; rgb_fn(co) — цвет по вершинам
     (альфа цвета вершин до Godot у непрозрачных материалов не доходит, поэтому метку света у solid_dark несёт RGB)."""
