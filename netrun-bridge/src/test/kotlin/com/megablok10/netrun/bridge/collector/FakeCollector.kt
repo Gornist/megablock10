@@ -23,7 +23,8 @@ import java.util.concurrent.atomic.AtomicInteger
  * Фейковый коллектор: настоящий HTTP-сервер на 127.0.0.1, который принимает `POST /api/changes` по тем же правилам, что
  * `admin-web/server/src/lib/changeIngest.ts` (закрытые списки полей и причин, автор = субъект, подпись ECDSA по pipe-строке,
  * повтор того же `id` — «принято» без второй записи, другая запись с занятым `id` или `seq` — отказ, `newValue` — JSON-объект
- * ≤ 4096), и открытый `GET /api/capabilities`. Подпись проверяется своим кодом теста, а не кодом Моста: если Мост и коллектор
+ * ≤ 4096), `POST /api/world-events` по правилам `routes/worldEvents.ts` + `lib/worldEvents.ts` (виды из семи, `id`, `ts`, `ttl_ms`, секрет игры,
+ * просроченное и повторное отбрасывается, ответ `{accepted, expired, duplicate, invalid}`) и открытый `GET /api/capabilities`. Подпись проверяется своим кодом теста, а не кодом Моста: если Мост и коллектор
  * разойдутся в байтах, тест красный.
  */
 class FakeCollector : AutoCloseable {
@@ -44,11 +45,36 @@ class FakeCollector : AutoCloseable {
     /** Секрет игры: пусто — не проверяется. */
     @Volatile var requiredSecret: String? = null
 
+    /** Следующие N ответов на `POST /api/world-events` — 503 (событие не принято). */
+    val failEventPosts = AtomicInteger()
+
+    /** Следующий ответ на `POST /api/world-events` событие принимает, но до клиента не доходит. */
+    @Volatile var dropNextEventResponse = false
+
+    /** Следующие N ответов на `POST /api/world-events` не доходят до клиента (обрыв посреди запроса, и на повторе тоже). */
+    val dropEventResponses = AtomicInteger()
+
+    /** Сколько обработчик событий «думает» перед ответом (коллектор завис). */
+    @Volatile var eventDelayMs = 0L
+
+    /** «Сейчас» коллектора для срока жизни событий: тесты с часами стенда (время документов ~1000 мс) ставят свои. */
+    @Volatile var eventClock: () -> Long = System::currentTimeMillis
+
     val changePosts = AtomicInteger()
     val capabilityGets = AtomicInteger()
     val recordIdsSent = CopyOnWriteArrayList<String>()
     val secretsSeen = CopyOnWriteArrayList<String?>()
     val bodies = CopyOnWriteArrayList<JsonObject>()
+
+    /** Быстрые события: запросы, секреты в заголовках, принятые события (по порядку приёма) и все `id` как пришли, с повторами. */
+    val eventPosts = AtomicInteger()
+    val eventSecrets = CopyOnWriteArrayList<String?>()
+    val events = CopyOnWriteArrayList<JsonObject>()
+    val eventIdsSent = CopyOnWriteArrayList<String>()
+    val eventsInvalid = AtomicInteger()
+    val eventsExpired = AtomicInteger()
+    val eventsDuplicate = AtomicInteger()
+    private val seenEventIds = java.util.Collections.synchronizedSet(HashSet<String>())
 
     val url: String get() = "http://127.0.0.1:${server.address.port}"
 
@@ -59,7 +85,62 @@ class FakeCollector : AutoCloseable {
             if (body == null) reply(ex, 404, """{"error":"not found"}""") else reply(ex, 200, body)
         }
         server.createContext("/api/changes") { ex -> handleChanges(ex) }
+        server.createContext("/api/world-events") { ex -> handleEvents(ex) }
+        // Зависший обработчик событий не должен держать остальные запросы (по умолчанию HttpServer обслуживает по одному).
+        server.executor = java.util.concurrent.Executors.newCachedThreadPool { r -> Thread(r, "fake-collector").apply { isDaemon = true } }
         server.start()
+    }
+
+    /** Виды принятых событий по порядку приёма. */
+    fun eventKinds(): List<String> = events.map { it.str("kind")!! }
+
+    private fun handleEvents(ex: HttpExchange) {
+        eventPosts.incrementAndGet()
+        eventSecrets += ex.requestHeaders.getFirst("X-Game-Secret")
+        val raw = String(ex.requestBody.readBytes(), Charsets.UTF_8)
+        if (eventDelayMs > 0) Thread.sleep(eventDelayMs)
+        if (failEventPosts.getAndUpdate { if (it > 0) it - 1 else 0 } > 0) return reply(ex, 503, """{"error":"unavailable"}""")
+        val secret = requiredSecret
+        if (!secret.isNullOrEmpty() && ex.requestHeaders.getFirst("X-Game-Secret") != secret) return reply(ex, 401, """{"error":"invalid or missing X-Game-Secret"}""")
+        val list = (runCatching { Json.parseToJsonElement(raw).jsonObject["events"] }.getOrNull() as? JsonArray) ?: return reply(ex, 400, """{"error":"events must be an array"}""")
+        if (list.size > MAX_EVENTS) return reply(ex, 400, """{"error":"too many events"}""")
+        var accepted = 0
+        var expired = 0
+        var duplicate = 0
+        var invalid = 0
+        for (e in list) {
+            val o = e as? JsonObject
+            o?.str("id")?.let { eventIdsSent += it }
+            when {
+                o == null || !validEvent(o) -> invalid++
+                eventClock() > o.long("ts") + (o["ttl_ms"]?.let { o.long("ttl_ms") } ?: DEFAULT_TTL_MS) -> expired++
+                !seenEventIds.add(o.str("id")!!) -> duplicate++
+                else -> { events += o; accepted++ }
+            }
+        }
+        eventsInvalid.addAndGet(invalid)
+        eventsExpired.addAndGet(expired)
+        eventsDuplicate.addAndGet(duplicate)
+        if (dropNextEventResponse || dropEventResponses.getAndUpdate { if (it > 0) it - 1 else 0 } > 0) {
+            dropNextEventResponse = false
+            ex.close()
+            return
+        }
+        reply(ex, 200, """{"accepted":$accepted,"expired":$expired,"duplicate":$duplicate,"invalid":$invalid}""")
+    }
+
+    /** `parseWorldEvent` коллектора: один из семи видов, `id` ≤ 100, целые `ts` > 0 и `ttl_ms` 0..60000, ссылки — строки ≤ 100 или `null`. */
+    private fun validEvent(o: JsonObject): Boolean {
+        val id = o.str("id")
+        if (id.isNullOrEmpty() || id.length > MAX_REF || o.str("kind") !in EVENT_KINDS) return false
+        val ts = (o["ts"] as? JsonPrimitive)?.takeIf { !it.isString }?.longOrNull
+        if (ts == null || ts <= 0) return false
+        val ttl = o["ttl_ms"]?.let { (it as? JsonPrimitive)?.takeIf { p -> !p.isString }?.longOrNull ?: return false } ?: DEFAULT_TTL_MS
+        if (ttl !in 0..MAX_TTL_MS) return false
+        return listOf("node", "terminal", "session", "level").all { k ->
+            val v = o[k]
+            v == null || v is JsonNull || (v is JsonPrimitive && v.isString && v.content.length <= MAX_REF)
+        }
     }
 
     /** Коллектор потерял всё (восстановлен из пустой копии). */
@@ -147,6 +228,11 @@ class FakeCollector : AutoCloseable {
         private val FIELDS = setOf("balance", "net.run", "net.item", "net.alert")
         private val REASONS = setOf("TRANSFER_IN", "NET_ENTER", "NET_EXIT", "NET_FLATLINE", "NET_ITEM_OWNER", "NET_ALERT")
         private const val MAX_JSON_CHARS = 4096
+        private const val MAX_EVENTS = 50
+        private const val MAX_REF = 100
+        private const val MAX_TTL_MS = 60_000L
+        private const val DEFAULT_TTL_MS = 5_000L
+        private val EVENT_KINDS = setOf("run.enter", "run.exit", "trace.level", "ice.hunt", "flatline", "lockdown", "alert.master")
         private val KEYS = listOf("subjectKeyB64", "seq", "happenedAt", "field", "oldValue", "newValue", "reason", "sourceRef", "actor", "signature")
 
         /** `signaturePayload` коллектора (`lib/changeRecord.ts`): pipe-строка из полей как пришли, null — пустое поле. */
