@@ -11,10 +11,13 @@
   дашборд мастера и «Устройства», прошивка QR-дисплея. CI зелёный.
 - Параллельные потоки (у каждого своя сессия и ветка; в `main` — только по команде владельца):
   - **Cyberspace («Сеть», VR-клиент нетраннера)** — `agent/netrun` и ~45 веток-задач `agent/netrun-*`, каталог `netrun/`,
-    `netrun-bridge/`, `docs/netrun*.md`. План по карточкам: `docs/netrun-tasks.md` (в ветке `agent/netrun`).
+    `netrun-bridge/`, `docs/netrun*.md`. План по карточкам: `docs/netrun-tasks.md`.
     Статус: Мост B0–B4, обмен карточками с телефоном (M2), P5; приложение — M1 (`:rules`), M3 (вход по QR стойки); Godot — серый
-    узел, 10 клиентов, Black ICE на ревью; сквозной e2e `netrun-run` на devbox зелёный. В `main` и на GitHub пока ничего
-    (кроме веток `agent/netrun-m1`, `-g1`).
+    узел, 10 клиентов, Black ICE на ревью; сквозной e2e `netrun-run` на devbox зелёный. Каталог `netrun/` и документы уже в `main`;
+    ветки-задачи `agent/netrun-*` вливаются по команде владельца.
+    Godot-часть ведёт агент `godot-dev` (`.claude/agents/godot-dev.md`): живой редактор Godot с плагином Godot AI (MCP) на devbox,
+    тесты — gdUnit4 (`netrun/tools/gdunit.sh`, 223 теста); подробности — `docs/netrun-devbox.md`, «Godot AI».
+  - **3D-ассеты «Сети»** (Blender → `.glb` → Godot) — ТЗ `docs/netrun-assets-brief.md`, ветка `agent/assets`.
   - **Дашборд мастера** — только `admin-web/`.
   - **UI на новой дизайн-системе** — `agent/ui-kit`.
 - Тяжёлое (Gradle, Paparazzi, e2e, Godot) — на devbox, см. `.claude/skills/devbox/`.

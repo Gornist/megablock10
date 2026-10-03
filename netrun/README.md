@@ -21,6 +21,12 @@
 - `export_presets.cfg` — пресеты: «Client Pico 4 (Android)» (OpenXR, arm64), «Server (dedicated)» (метка `dedicated_server`),
   «Flat debug (Linux)». Ключ подписи Android в репозиторий не кладём (в CI — ключ отладки).
 
+## Тесты
+
+gdUnit4, как в CI (`.github/workflows/netrun.yml`): `netrun/tools/gdunit.sh [res://tests/файл_test.gd]` на devbox (весь набор — 223 теста,
+несколько минут; долгое — через `devjob`). Код выхода: 0 — зелёно, 100 — упавшие, 101 — предупреждения (CI красит и их). Встроенный
+`test_run` плагина Godot AI проект не видит — не использовать. Правки сцен и запуск игры — агент `godot-dev`.
+
 ## Как запускать
 
 Режим: сервер, если `--headless` или метка `dedicated_server`/аргумент `--server`; клиент — на Android или `-- --client`;

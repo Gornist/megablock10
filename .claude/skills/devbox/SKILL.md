@@ -20,14 +20,20 @@ Mac (8 ГБ) — только правка, git и `scripts/check.sh --fast`. Gr
   для пушей Cyberspace). Чужие ветки в `~/megablock10` **не** переключать: `git -C ~/megablock10 worktree add ~/wt-<имя> <ветка>`,
   `cp local.properties`, ссылки на `admin-web/*/node_modules`, в команде `devjob` — `cd ~/wt-<имя> && …`. Для `main` уже есть `~/mb-main`.
 
+- **Godot AI (`~/wt-godot`).** Живой редактор Godot с плагином Godot AI (MCP) и рабочая копия `~/wt-godot` (ветка `agent/godot`) —
+  `bash ~/wt-godot/scripts/devbox-godot-ai.sh setup|start|stop|status` (порты 8000/9500; пока ветка не влита — скрипт из репозитория
+  через `scp`). Работает на дисплее GNOME `:0` (нужен вход nick). Тесты Godot — `netrun/tools/gdunit.sh` (сам подтягивает
+  `~/netrun-env.sh`: неинтерактивный ssh не знает путь к `godot`). Правит и проверяет агент `godot-dev` (`.claude/agents/godot-dev.md`);
+  подробности и ловушки — `docs/netrun-devbox.md`, «Godot AI».
+
 ## Долгие задачи — только отвязанно
 `devjob start <имя> '<команда>'`, затем `devjob status|log|stop <имя>` (логи — `~/jobs/`). Обрыв SSH не убивает задачу;
 результат читать короткими вызовами, не держать живую сессию. Пример: `devjob start paparazzi 'cd ~/mb-main && export JAVA_HOME=/usr/lib/jvm/temurin-21-jdk-amd64 PATH=/usr/lib/jvm/temurin-21-jdk-amd64/bin:$PATH && ./gradlew verifyPaparazziDebug; echo rc=$?'`.
 
 Ловушки `devjob`:
 - команду не заканчивать на `exit $r`: код не запишется, `status` покажет «нет такой задачи»; писать `…; echo rc=$?`;
-- не искать процессы `pgrep -f '<строка>'`/`pkill -f`, если строка есть в самой команде ssh: совпадёт сам с собой (ожидание
-  висит, ssh убивается). Проверять через `devjob status`;
+- не искать процессы `pgrep -f '<строка>'`/`pkill -f`/`ps | grep '<строка>'`, если строка есть в самой команде ssh: совпадёт сам
+  с собой (ожидание висит, ssh убивается). Проверять через `devjob status`, процесс редактора Godot — по pid-файлу скрипта;
 - `./gradlew --stop` из задач не вызывать: демон общий для всех worktree, убьёт чужие прогоны.
 
 ## Правила

@@ -118,6 +118,9 @@ godot -- --flat --host=127.0.0.1 --port=7777 --token=t1
 
 Управление: W/A/S/D движение, мышь поворот, левый клик взятие предметов.
 
+`godot` в неинтерактивном ssh на PATH нет — сначала `. ~/netrun-env.sh`. Аргументы игры при запуске из редактора
+(`editor/run/main_run_args`) пишутся с ведущим `-- `, иначе Godot игре их не передаёт.
+
 ## Godot AI: агент `godot-dev` и тесты Godot-части
 
 Живой редактор Godot с плагином [Godot AI](https://github.com/hi-godot/godot-ai) (MCP, v4.2.3) на devbox, на реальном дисплее (GNOME `:0`,

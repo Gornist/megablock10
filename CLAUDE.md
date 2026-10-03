@@ -21,6 +21,9 @@
   ставит `scripts/cloud-setup.sh` (`claude plugin install`, до старта сессии). LSP-инструмент Claude Code (через него
   KotlinSense даёт диагностику) включается переменной `ENABLE_LSP_TOOL=1` — она в `env` того же `settings.json`.
   Decibel Superpowers публичного git-источника не имеет — включается в аккаунте claude.ai.
+- Godot-часть (`netrun/`) ведёт проектный агент `godot-dev` (`.claude/agents/godot-dev.md`): он работает с живым редактором Godot
+  на devbox через MCP-сервер `godot-ai` из `.mcp.json` (ssh + `uvx godot-ai attach`; при первом запуске Claude Code просит одобрить
+  проектный MCP). Редактор: `scripts/devbox-godot-ai.sh start|stop|status` на devbox, рабочая копия — `~/wt-godot` (`agent/godot`).
 - Облачное окружение настраивает `scripts/cloud-setup.sh` (копия вставлена в Setup script окружения): SDK 36, зеркало Maven
   для Gradle и Robolectric, `LANG=C.UTF-8`, kotlin-language-server (для KotlinSense), PlatformIO с платформой ESP32 и `wokwi-cli`
   (прошивка QR-дисплея, `firmware/display`). Правите скрипт — обновите и его копию в настройках. Для прошивки в Network access
