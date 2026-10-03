@@ -65,8 +65,8 @@ def build_doorway(out):
 
 def build_floor(out, name="floor", seed=2):
     """Плитка пола 2×2 м: ~22% площади занимают чёрные непрозрачные тайлы-блоки (5 из 16 ячеек, расстановка зависит от seed: три
-    варианта floor, floor_b, floor_c, чтобы узор не повторялся). Верх тайла чёрный, рёбра — цепочки частиц; штрихи уходят ВНИЗ из
-    рёбер под тайлы, в пустоту под полом. Остальной пол — редкая решётка точек. Origin на поверхности пола в центре."""
+    варианта floor, floor_b, floor_c, чтобы узор не повторялся). Тайлы на разной высоте, но ВЕРХ НЕ ВЫШЕ ПОВЕРХНОСТИ ПОЛА (0…−0,45 м): никаких выступов, коллизий нет. Верх чёрный,
+    рёбра — цепочки частиц; штрихи висят вниз из рёбер под тайлы, в пустоту под полом (якорь сверху). Остальной пол — редкая решётка точек. Origin на поверхности пола в центре."""
     lib.reset()
     rng = random.Random(seed)
     cy = lib.lin("cyan")
@@ -74,9 +74,9 @@ def build_floor(out, name="floor", seed=2):
     tiles, streaks, edge, covered = [], [], [], []
     for i, j in chosen:
         cx, cyy = -0.75 + i * 0.5, -0.75 + j * 0.5
-        hh = rng.uniform(0.03, 0.12)
+        hh = 0.0 if rng.random() < 0.3 else -rng.uniform(0.05, 0.45)  # верх тайла на разной высоте, но не выше пола (0): без выступов и коллизий
         covered.append((cx, cyy))
-        tiles.append(lib.box_bm((0.42, 0.42, hh), center=(cx, cyy, hh / 2)))
+        tiles.append(lib.box_bm((0.42, 0.42, 0.3), center=(cx, cyy, hh - 0.15)))
         for a, b in (((cx - 0.21, cyy - 0.21, hh), (cx + 0.21, cyy - 0.21, hh)), ((cx - 0.21, cyy - 0.21, hh), (cx - 0.21, cyy + 0.21, hh))):
             edge += lib.sample_line(a, b, 22, spread=0.004, seed=len(edge) + 1)  # две видимые грани тайла — цепочка частиц
         for _ in range(10):  # штрихи уходят вниз из рёбер тайла, под пол
@@ -84,10 +84,10 @@ def build_floor(out, name="floor", seed=2):
                 ex, ey = cx + rng.choice((-0.21, 0.21)), cyy + rng.uniform(-0.21, 0.21)
             else:
                 ex, ey = cx + rng.uniform(-0.21, 0.21), cyy + rng.choice((-0.21, 0.21))
-            ln = rng.uniform(0.25, 0.9)
+            ln = rng.uniform(0.2, 0.45)
             streaks.append((Vector((ex, ey, hh - ln / 2)), rng.uniform(0.006, 0.012), ln / 2, rng.uniform(0.3, 0.85)))
     objs = [lib.obj_from_bm("floor_tiles", lib.merge_bm(*tiles), "solid_dark", lib.lin("void"), alpha=1.0)]  # верх чёрный: кайма не нужна
-    objs.append(lib.streak_set("floor_streaks", streaks, cy))
+    objs.append(lib.streak_set("floor_streaks_hang", streaks, cy))
     objs.append(lib.point_cloud("floor_edges", edge, cy, half_size=0.011, seed=4, a_min=0.5, a_max=1.0))
     dots = [Vector((-0.875 + i * 0.25 + rng.uniform(-0.01, 0.01), -0.875 + j * 0.25 + rng.uniform(-0.01, 0.01), 0.0)) for i in range(8) for j in range(8)]
     dots = [d for d in dots if not any(abs(d.x - cx) < 0.25 and abs(d.y - cyy) < 0.25 for cx, cyy in covered)]  # не под тайлами

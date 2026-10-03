@@ -36,6 +36,8 @@ static func apply(root: Node, tier: String = "") -> void:
 			if tier != "" and TIER_TINT.has(tier):
 				m.set_shader_parameter("tint", TIER_TINT[tier])
 				m.set_shader_parameter("tint_amount", 1.0)
+			if String(mi.name).ends_with("_hang"):  # подвесные штрихи (под полом): длина меняется от верхнего конца
+				m.set_shader_parameter("anchor", 1.0)
 			mi.set_surface_override_material(s, m)
 
 
