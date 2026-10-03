@@ -7,6 +7,7 @@ import { parseWav } from "../audio/wav.js";
 import type { Db } from "../db/index.js";
 import type { DisplayManager } from "../displays/manager.js";
 import { logMasterAction, requireMaster } from "../lib/auth.js";
+import { intIn, strings } from "../lib/validate.js";
 
 /** Клип громкой связи: IMA ADPCM 16 кГц ≈ 8 КБ/с — 2 МБ хватает на 4 минуты, объявление — секунды. */
 export const CLIP_MAX_BYTES = 2 * 1024 * 1024;
@@ -16,14 +17,6 @@ const CLIP_ID = /^[0-9a-f]{64}$/;
 
 type ChannelBody = { name?: unknown; tracks?: unknown; shuffle?: unknown; gapMs?: unknown; volume?: unknown };
 type TargetsBody = { all?: unknown; groupIds?: unknown; displayIds?: unknown };
-
-function intIn(v: unknown, min: number, max: number): v is number {
-  return Number.isInteger(v) && (v as number) >= min && (v as number) <= max;
-}
-
-function strings(v: unknown): string[] | null {
-  return Array.isArray(v) && v.every((x) => typeof x === "string") ? (v as string[]) : null;
-}
 
 function parseChannel(b: ChannelBody, current?: AudioChannel): { ok: true; value: ChannelInput } | { ok: false; error: string } {
   const name = typeof b.name === "string" ? b.name.trim() : current?.name;
@@ -136,8 +129,7 @@ export function registerAudioRoutes(app: FastifyInstance, db: Db, displays: Disp
         logMasterAction(db, master.id, "AUDIO_GROUP", { groupId: g.id, name: g.name, channel: channelId ? repo.channel(channelId)!.name : null, volume });
       })();
       audio.sync();
-      const count = displays.repo.list().filter((r) => r.group_id === g.id).length;
-      return { id: g.id, name: g.name, count, audioChannelId: channelId, audioVolume: volume };
+      return displays.repo.groupItem(g.id)!;
     },
   );
 

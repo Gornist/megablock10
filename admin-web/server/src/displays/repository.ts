@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import type { DisplayGroup } from "../apiTypes.js";
 import type { Db } from "../db/index.js";
 
 /** Строка таблицы displays (db/index.ts) — только здесь в snake_case; наружу уходит DisplayItem (manager.ts), без секрета. */
@@ -79,6 +80,22 @@ export function secretKey(row: Pick<DisplayRow, "secret">): Buffer {
   return Buffer.from(row.secret, "hex");
 }
 
+/** Роли точки из HELLO (displays.roles, JSON); нет — старая прошивка дисплея. */
+export function parseRoles(raw: string | null): string[] {
+  if (!raw) return ["display"];
+  try {
+    const v = JSON.parse(raw) as unknown;
+    return Array.isArray(v) && v.every((x) => typeof x === "string") ? v : ["display"];
+  } catch {
+    return ["display"];
+  }
+}
+
+/** Есть ли у точки роль (displays.roles): «audio» — звуковая точка. */
+export function hasRole(row: Pick<DisplayRow, "roles">, role: string): boolean {
+  return parseRoles(row.roles).includes(role);
+}
+
 export class DisplayRepository {
   constructor(private readonly db: Db) {}
 
@@ -130,6 +147,17 @@ export class DisplayRepository {
     const rows = this.db.prepare(`SELECT * FROM display_groups`).all() as DisplayGroupRow[];
     // По алфавиту с кириллицей (COLLATE NOCASE в SQLite тоже знает только латиницу).
     return rows.sort((a, b) => a.name.localeCompare(b.name, "ru", { sensitivity: "base" }) || a.id.localeCompare(b.id));
+  }
+
+  /** Группы для API (DisplayGroup): с числом точек и фоном. */
+  groupItems(): DisplayGroup[] {
+    const counts = new Map<string, number>();
+    for (const r of this.list()) if (r.group_id) counts.set(r.group_id, (counts.get(r.group_id) ?? 0) + 1);
+    return this.listGroups().map((g) => ({ id: g.id, name: g.name, count: counts.get(g.id) ?? 0, audioChannelId: g.audio_channel_id, audioVolume: g.audio_volume }));
+  }
+
+  groupItem(id: string): DisplayGroup | undefined {
+    return this.groupItems().find((g) => g.id === id);
   }
 
   getGroup(id: string): DisplayGroupRow | undefined {
@@ -238,11 +266,6 @@ export class DisplayRepository {
       mv: number | null;
       pct: number | null;
     }[];
-  }
-
-  /** TCP-соединение открылось (подпись ещё не проверена) — для «последнее соединение». */
-  markConnected(id: string, at: number): void {
-    this.db.prepare(`UPDATE displays SET last_connected_at = ? WHERE id = ?`).run(at, id);
   }
 
   markDisplayed(id: string, version: number, at: number): void {
