@@ -6,28 +6,47 @@ extends Node3D
 const AM := preload("res://assets/asset_materials.gd")
 const BG := Color(0.004, 0.008, 0.016)
 
-## Кадры. Предмет: путь, позиция, поворот Y (°), тир, масштаб. corrupt — [мировая точка, радиус] красного «шрама» на стенах;
-## fade — [начало, конец] затухания по расстоянию. Композиция намеренно не по центру: диагональ и несколько планов глубины.
-const SHOTS := [
-	{"name": "scene_a", "cam": Vector3(1.6, 1.3, 3.4), "look": Vector3(-0.3, 1.0, -3.0), "fade": [10.0, 34.0],
-		"corrupt": [Vector3(1.0, 1.0, -1.7), 4.6],
-		"items": [
-			["ice/soft_ice", Vector3(1.0, 0, -1.7), -28.0, "", 1.0],
-			["env/wall", Vector3(-1.3, 0, -3.2), 14.0, "BASE", 1.0], ["env/wall", Vector3(0.9, 0, -3.8), -8.0, "BASE", 1.0],
-			["env/wall", Vector3(3.0, 0, -1.4), -50.0, "BASE", 1.0],
-			["env/wall", Vector3(-5.5, 0, -9.0), 20.0, "BASE", 3.0], ["env/wall", Vector3(6.0, 0, -14.0), -15.0, "HARD", 4.5],
-			["env/wall", Vector3(-12.0, 0, -22.0), 8.0, "HARD", 7.0],
-			["env/dust", Vector3(0.6, 1.4, -0.2), 0.0, "", 1.0], ["env/dust", Vector3(-1.5, 1.5, -2.0), 40.0, "", 1.6],
-			["env/dust", Vector3(2.0, 2.0, -7.0), 0.0, "", 3.0], ["env/dust", Vector3(-3.0, 2.5, -14.0), 0.0, "", 5.0]]},
-	{"name": "ice_close", "cam": Vector3(2.4, 1.0, 2.6), "look": Vector3(0.0, 1.0, -0.4), "fade": [10.0, 34.0],
-		"corrupt": [Vector3(0.0, 1.0, -0.4), 4.0],
-		"items": [
-			["ice/soft_ice", Vector3(0, 0, 0), -35.0, "", 1.0],
-			["env/wall", Vector3(-1.0, 0, -1.7), 10.0, "BASE", 1.0], ["env/wall", Vector3(1.9, 0, -1.2), -55.0, "BASE", 1.0],
-			["env/dust", Vector3(0.0, 1.4, -0.6), 0.0, "", 1.0]]},
-	{"name": "wall_close", "cam": Vector3(1.6, 1.2, 2.6), "look": Vector3(0.0, 1.0, 0.0), "fade": [10.0, 34.0], "corrupt": [Vector3(0, 0, 0), 0.0],
-		"items": [["env/wall", Vector3(0, 0, 0), 0.0, "BASE", 1.0], ["env/dust", Vector3(0.0, 1.3, 0.8), 0.0, "", 1.0]]},
-]
+## Комната 6×6 м из модулей 2×2 м: пол 3×3, стены по периметру, колонны в углах, вход с юга (z=+3), выход на север (z=-3),
+## в центре шард, у выхода ICE. Предмет: [путь, позиция, поворот Y (°), тир, масштаб].
+const ICE_POS := Vector3(0.75, 0.0, -2.0)
+
+
+func _room() -> Array:
+	var items: Array = []
+	for x in [-2.0, 0.0, 2.0]:
+		for z in [-2.0, 0.0, 2.0]:
+			items.append(["env/floor", Vector3(x, 0, z), 0.0, "BASE", 1.0])
+	for x in [-2.0, 2.0]:
+		items.append(["env/wall", Vector3(x, 0, -3.0), 0.0, "BASE", 1.0])
+		items.append(["env/wall", Vector3(x, 0, 3.0), 0.0, "BASE", 1.0])
+	for z in [-2.0, 0.0, 2.0]:
+		items.append(["env/wall", Vector3(-3.0, 0, z), 90.0, "BASE", 1.0])
+		items.append(["env/wall", Vector3(3.0, 0, z), 90.0, "BASE", 1.0])
+	items.append(["env/doorway", Vector3(0.0, 0, 3.0), 0.0, "BASE", 1.0])   # вход
+	items.append(["env/doorway", Vector3(0.0, 0, -3.0), 0.0, "HARD", 1.0])  # выход
+	for x in [-3.0, 3.0]:
+		for z in [-3.0, 3.0]:
+			items.append(["env/pillar", Vector3(x, 0, z), 0.0, "BASE", 1.0])
+	items.append(["env/pillar", Vector3(0.0, 0, 0.0), 0.0, "BASE", 0.4])  # подставка: колонна ×0.4, высота ≈ 0,9 м
+	items.append(["props/shard", Vector3(0.0, 1.2, 0.0), 0.0, "", 3.5])  # ×3,5: на 6 м шард в 8 см иначе не разглядеть
+	items.append(["ice/soft_ice", ICE_POS, 15.0, "", 1.0])
+	items.append(["env/dust", Vector3(0.0, 1.5, 0.5), 0.0, "", 1.7])
+	items.append(["env/dust", Vector3(0.0, 1.5, 7.0), 0.0, "", 2.2])
+	items.append(["env/dust", Vector3(0.0, 1.6, -8.0), 0.0, "", 2.6])
+	items.append(["env/wall", Vector3(-6.0, 0, -14.0), 0.0, "HARD", 4.0])
+	items.append(["env/wall", Vector3(7.0, 0, -19.0), 0.0, "HARD", 5.0])
+	return items
+
+
+func _shots() -> Array:
+	var room := _room()
+	var scar := [ICE_POS + Vector3(0, 1.0, -0.6), 4.2]
+	return [
+		{"name": "room_entrance", "cam": Vector3(0.0, 1.25, 6.4), "look": Vector3(0.0, 1.0, -2.0), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
+		{"name": "room_overview", "cam": Vector3(8.5, 8.0, 8.5), "look": Vector3(0.0, 0.4, -0.5), "fov": 50.0, "fade": [30.0, 80.0], "corrupt": scar, "items": room},
+		{"name": "room_inside", "cam": Vector3(-2.2, 1.25, 2.3), "look": Vector3(0.3, 0.9, -2.4), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
+	]
+
 
 var out_dir := "/tmp/shots"
 
@@ -47,7 +66,7 @@ func _ready() -> void:
 	var cam := Camera3D.new()
 	cam.fov = 75.0
 	add_child(cam)
-	for shot in SHOTS:
+	for shot in _shots():
 		var root := Node3D.new()
 		add_child(root)
 		for it in shot["items"]:
@@ -59,8 +78,9 @@ func _ready() -> void:
 			root.add_child(inst)
 			AM.apply(inst, it[3])
 			AM.set_distance_fade(inst, shot["fade"][0], shot["fade"][1])
-			if String(it[0]).begins_with("env/wall"):
+			if String(it[0]).begins_with("env/") and it[0] != "env/dust":
 				AM.set_corruption(inst, shot["corrupt"][0], shot["corrupt"][1])
+		cam.fov = shot["fov"]
 		cam.look_at_from_position(shot["cam"], shot["look"])
 		await get_tree().create_timer(0.6).timeout
 		await RenderingServer.frame_post_draw
