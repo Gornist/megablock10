@@ -35,7 +35,7 @@ class WorldSync(
     config: SyncConfig = SyncConfig(),
 ) {
     val queue = WorldRecordQueue(store, clock::nowMs)
-    private val recorder = WorldRecorder(queue, key, log)
+    private val recorder = WorldRecorder(queue, key, store.epoch, log)
     private val engine = SyncEngine(
         queue = queue,
         transport = transport ?: WorldCollectorTransport(clock = clock::nowMs, log = log),

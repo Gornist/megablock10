@@ -14,6 +14,7 @@ import kotlinx.serialization.json.JsonPrimitive
 /**
  * Запись мира до подписи (docs/netrun-world-records.md, раздел 2): [field] и [reason] из C2, [sourceRef] — id документа Моста,
  * из-за которого она пишется, [ver] — его версия после изменения, [happenedAt] — его `updated`, [value] — тело `newValue`.
+ * Эпоха базы (`DocStore.epoch`) в событие не входит: она нужна только для [id].
  */
 internal class WorldEvent(
     val field: String,
@@ -23,8 +24,12 @@ internal class WorldEvent(
     val happenedAt: Long,
     val value: JsonObject,
 ) {
-    /** `id` записи детерминирован: `w:<field>:<sourceRef>:<ver>`, повтор после сбоя Моста не плодит дублей. */
-    val id: String = "w:$field:$sourceRef:$ver"
+    /**
+     * `id` записи: `w:<field>:<эпоха>:<sourceRef>:<ver>`. В пределах одной базы он детерминирован, поэтому повтор после сбоя Моста
+     * не плодит дублей; эпоха базы [epoch] отличает «жизни» базы, чтобы после сброса (тот же ключ мира, `ver` снова с 1) коллектор
+     * не отверг новые записи как «id already used», а kit не удалил их как отвергнутые.
+     */
+    fun id(epoch: String): String = "w:$field:$epoch:$sourceRef:$ver"
 }
 
 /** Названия полей и причин записей мира: ровно те, что принимает коллектор (`lib/changeRecord.ts`). */
