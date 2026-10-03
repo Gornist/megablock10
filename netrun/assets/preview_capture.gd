@@ -10,46 +10,51 @@ const BG := Color(0.004, 0.008, 0.016)
 ## в центре шард, у выхода ICE. Предмет: [путь, позиция, поворот Y (°), тир, масштаб].
 const REFLECT := ["props/vault_closed", "props/vault_open", "props/portal_open", "props/portal_closed", "env/wall", "env/wall_b", "env/wall_c", "env/portal_wall", "env/doorway", "env/doorway_b", "env/pillar", "ice/soft_ice", "avatar/runner", "avatar/runner_b", "avatar/runner_c"]
 const CEILING_H := 5.0
-const ICE_POS := Vector3(0.75, 0.0, -2.0)
+const ICE_POS := Vector3(1.0, 0.0, -2.8)
 
 
 func _room() -> Array:
 	var items: Array = []
+	var g := [-3.0, -1.0, 1.0, 3.0]  # центры модулей 2×2 м: комната 8×8 м = 4×4 модуля
 	var variants := ["env/floor", "env/floor_b", "env/floor_c"]
 	var n := 0
-	for x in [-2.0, 0.0, 2.0]:
-		for z in [-2.0, 0.0, 2.0]:
+	for x in g:
+		for z in g:
 			items.append([variants[n % 3], Vector3(x, 0, z), 90.0 * (n % 4), "BASE", 1.0])  # вариант и поворот по кругу: узор не повторяется
 			n += 1
 	var cv := ["env/ceiling", "env/ceiling_b", "env/ceiling_c"]
 	var m := 0
-	for x in [-2.0, 0.0, 2.0]:
-		for z in [-2.0, 0.0, 2.0]:
+	for x in g:
+		for z in g:
 			items.append([cv[m % 3], Vector3(x, CEILING_H, z), 90.0 * ((m + 1) % 4), "BASE", 1.0])  # потолок: тот же принцип, что у пола, инвертированный
 			m += 1
 	var wv := ["env/wall", "env/wall_b", "env/wall_c"]
 	var k := 0
-	for x in [-2.0, 2.0]:
-		items.append([wv[k % 3], Vector3(x, 0, -3.0), 180.0 * (k % 2), "BASE", 1.0])
+	for x in g:
+		if x != -1.0:  # (−1, 4) — вход
+			items.append([wv[k % 3], Vector3(x, 0, 4.0), 180.0 * (k % 2), "BASE", 1.0])
 		k += 1
-		items.append([wv[k % 3], Vector3(x, 0, 3.0), 180.0 * (k % 2), "BASE", 1.0])
+		if x != 1.0:  # (1, −4) — выход
+			items.append([wv[k % 3], Vector3(x, 0, -4.0), 180.0 * (k % 2), "BASE", 1.0])
 		k += 1
-	items.append(["env/portal_wall", Vector3(-3.0, 0, 0.0), -90.0, "BASE", 1.0])  # западная стена целиком: три модуля с вырезом под портал
-	k += 3
-	for z in [-2.0, 0.0, 2.0]:
-		items.append([wv[k % 3], Vector3(3.0, 0, z), 90.0 + 180.0 * (k % 2), "BASE", 1.0])
+	for z in g:
+		items.append([wv[k % 3], Vector3(4.0, 0, z), 90.0 + 180.0 * (k % 2), "BASE", 1.0])
 		k += 1
-	items.append(["env/doorway", Vector3(0.0, 0, 3.0), 0.0, "BASE", 1.0])     # вход
-	items.append(["env/doorway_b", Vector3(0.0, 0, -3.0), 0.0, "HARD", 1.0])  # выход
-	for x in [-3.0, 3.0]:
-		for z in [-3.0, 3.0]:
+		if absf(z) > 2.0:  # западная стена: по краям обычные модули, посередине portal_wall (4 м) с вырезом под портал
+			items.append([wv[k % 3], Vector3(-4.0, 0, z), 90.0 + 180.0 * (k % 2), "BASE", 1.0])
+		k += 1
+	items.append(["env/portal_wall", Vector3(-4.0, 0, 0.0), -90.0, "BASE", 1.0])
+	items.append(["env/doorway", Vector3(-1.0, 0, 4.0), 0.0, "BASE", 1.0])     # вход
+	items.append(["env/doorway_b", Vector3(1.0, 0, -4.0), 0.0, "HARD", 1.0])   # выход
+	for x in [-4.0, 4.0]:
+		for z in [-4.0, 4.0]:
 			items.append(["env/pillar", Vector3(x, 0, z), 0.0, "BASE", 1.0])
 	items.append(["props/vault_closed", Vector3(0.0, 0, 0.0), 180.0, "BASE", 1.0])  # хранилище в центре лицом ко входу; шард встаёт на якорь внутри
-	items.append(["props/portal_open", Vector3(-3.0, 0, 0.0), -90.0, "BASE", 1.0])  # портал в западной стене, лицом в комнату
+	items.append(["props/portal_open", Vector3(-4.0, 0, 0.0), -90.0, "BASE", 1.0])  # портал в западной стене, лицом в комнату
 	items.append(["ice/soft_ice", ICE_POS, 15.0, "", 1.0])
 	# другие нетраннеры в узле: лицом к Godot −Z при повороте 0°; варианты чередуются
-	items.append(["avatar/runner", Vector3(-1.2, 0, 1.0), 150.0, "", 1.0])
-	items.append(["avatar/runner_b", Vector3(1.5, 0, 0.4), 200.0, "", 1.0])
+	items.append(["avatar/runner", Vector3(-1.6, 0, 1.4), 150.0, "", 1.0])
+	items.append(["avatar/runner_b", Vector3(2.0, 0, 0.6), 200.0, "", 1.0])
 	if _crowd:
 		var rv := ["avatar/runner", "avatar/runner_b", "avatar/runner_c"]
 		for i in 7:
@@ -59,8 +64,8 @@ func _room() -> Array:
 			for fx in [-8.0, -4.0, 0.0, 4.0, 8.0]:
 				items.append(["env/column_field", Vector3(fx, 0, fz), 0.0, "HARD", 1.0])
 	else:
-		items.append(["env/wall", Vector3(-6.0, 0, -14.0), 0.0, "HARD", 4.0])
-		items.append(["env/wall", Vector3(7.0, 0, -19.0), 0.0, "HARD", 5.0])
+		items.append(["env/wall", Vector3(-6.0, 0, -16.0), 0.0, "HARD", 4.0])
+		items.append(["env/wall", Vector3(7.0, 0, -21.0), 0.0, "HARD", 5.0])
 	return items
 
 
@@ -79,13 +84,13 @@ func _shots() -> Array:
 		{"name": "avatar_stage", "cam": Vector3(0.1, 1.2, 3.0), "look": Vector3(0.0, 0.95, 0.0), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": stage},
 		{"name": "avatar_side", "cam": Vector3(2.0, 1.15, 0.0), "look": Vector3(0.0, 1.0, 0.0), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": solo},
 		{"name": "avatar_close", "cam": Vector3(0.45, 1.25, 1.7), "look": Vector3(0.0, 1.0, 0.0), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": solo},
-		{"name": "far_view", "cam": Vector3(0.0, 1.4, -2.6), "look": Vector3(0.0, 2.2, -18.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
-		{"name": "room_entrance", "cam": Vector3(0.0, 1.25, 6.4), "look": Vector3(0.0, 1.0, -2.0), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
-		{"name": "room_overview", "cam": Vector3(8.5, 8.0, 8.5), "look": Vector3(0.0, 0.4, -0.5), "fov": 50.0, "fade": [30.0, 80.0], "corrupt": scar, "items": room},
-		{"name": "portal_view", "cam": Vector3(1.8, 1.4, 0.2), "look": Vector3(-3.0, 1.4, 0.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": room},
-		{"name": "room_wall", "cam": Vector3(2.4, 1.4, 1.2), "look": Vector3(-1.4, 1.0, -3.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
+		{"name": "far_view", "cam": Vector3(0.0, 1.4, -3.4), "look": Vector3(0.0, 2.2, -20.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
+		{"name": "room_entrance", "cam": Vector3(-1.0, 1.25, 8.6), "look": Vector3(0.0, 1.0, -2.5), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
+		{"name": "room_overview", "cam": Vector3(11.0, 10.5, 11.0), "look": Vector3(0.0, 0.4, -0.5), "fov": 50.0, "fade": [30.0, 80.0], "corrupt": scar, "items": room},
+		{"name": "portal_view", "cam": Vector3(2.2, 1.4, 0.2), "look": Vector3(-4.0, 1.4, 0.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": room},
+		{"name": "room_wall", "cam": Vector3(2.4, 1.4, 1.2), "look": Vector3(-1.4, 1.0, -4.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
 		{"name": "room_floor", "cam": Vector3(0.3, 1.6, 1.6), "look": Vector3(0.0, 0.0, -0.4), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
-		{"name": "room_inside", "cam": Vector3(-2.2, 1.25, 2.3), "look": Vector3(0.3, 0.9, -2.4), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
+		{"name": "room_inside", "cam": Vector3(-3.0, 1.25, 3.0), "look": Vector3(0.5, 0.9, -2.8), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
 	]
 
 

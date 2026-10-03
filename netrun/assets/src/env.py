@@ -67,7 +67,7 @@ def build_wall(out, name="wall", seed=21):
 
 
 def build_portal_wall(out, name="portal_wall", seed=33, R=1.5, cz=1.5, gap=0.12):
-    """Стена 6×3 м (три модуля) с круглым вырезом под портал (props/portal_*, диск R=1,5 м, центр z=1,5 м). Штрихи не пересекают круг:
+    """Стена 4×3 м (два модуля) с круглым вырезом под портал (props/portal_*, диск R=1,5 м, центр z=1,5 м). Штрихи не пересекают круг:
     внутри колонки |x|<R+зазор штрих разбит на нижний (от пола, короче зазора с запасом на дыхание ×1,3) и верхний (от дуги вверх, дышит вверх).
     Вокруг выреза зазор gap, чтобы мембрана и обод портала не тонули в стене. Origin на полу в центре. Портал ставится в начало координат этого ассета."""
     lib.reset()
@@ -75,7 +75,7 @@ def build_portal_wall(out, name="portal_wall", seed=33, R=1.5, cz=1.5, gap=0.12)
     cy, ice = lib.lin("cyan"), lib.lin("ice_white")
     Rh = R + gap
     out_st = []
-    for c, w, h, a in curtain(rng, -2.97, 2.97, 300, WALL_H):
+    for c, w, h, a in curtain(rng, -1.97, 1.97, 200, WALL_H):
         top = 2 * h  # полная высота штриха из занавеса
         if abs(c.x) >= Rh:
             out_st.append((c, w, h, a))
@@ -90,15 +90,15 @@ def build_portal_wall(out, name="portal_wall", seed=33, R=1.5, cz=1.5, gap=0.12)
             out_st.append((Vector((c.x, c.y, (hi + top) / 2)), w, (top - hi) / 2, a))
     objs = [lib.streak_set("wall_curtain", out_st, cy)]
     accents = []
-    for x in sorted(rng.uniform(-2.8, 2.8) for _ in range(9)):
+    for x in sorted(rng.uniform(-1.8, 1.8) for _ in range(6)):
         if abs(x) < Rh + 0.2:
             continue
         hh = rng.uniform(1.0, 1.5)
         accents.append((Vector((x, rng.uniform(-0.25, 0.25), hh)), 0.011, hh, 0.95))
     objs.append(lib.streak_set("wall_accents", accents, ice))
-    fill = [p for p in lib.sample_box((0, 0, WALL_H / 2), (6.0, 0.4, WALL_H), 150, seed=5, min_z=0.01) if (p.x ** 2 + (p.z - cz) ** 2) > (Rh + 0.05) ** 2]
+    fill = [p for p in lib.sample_box((0, 0, WALL_H / 2), (4.0, 0.4, WALL_H), 100, seed=5, min_z=0.01) if (p.x ** 2 + (p.z - cz) ** 2) > (Rh + 0.05) ** 2]
     objs.append(lib.point_cloud("wall_pts", fill, cy, half_size=0.007, seed=11, a_min=0.15, a_max=0.5, on_floor=True))
-    return lib.export(name, "env", objs, out, budget_tris=300, budget_points=220, budget_streaks=420, origin="floor",
+    return lib.export(name, "env", objs, out, budget_tris=300, budget_points=150, budget_streaks=300, origin="floor",
                       notes="вырез под портал R=1,5 м, центр z=1,5; портал ставить в начало координат ассета")
 
 
