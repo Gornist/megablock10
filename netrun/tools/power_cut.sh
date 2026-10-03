@@ -193,7 +193,8 @@ for nid, n in a["node"].items():
     m = b["node"].get(nid)
     if m is None: why.append("документ узла %s пропал" % nid); continue
     if m["ver"] < n["ver"]: why.append("версия узла %s откатилась %s→%s" % (nid, n["ver"], m["ver"]))
-    for k in ("tier", "lockdown_until"):
+    # локдаун рабочих узлов легально меняют боты второй волны (выброс ICE); неизменным должен остаться только «холодный» узел
+    for k in ("tier",) + (("lockdown_until",) if nid == "node_cold" else ()):
         if m["data"].get(k) != n["data"].get(k): why.append("узел %s поле %s изменилось" % (nid, k))
 for nid, n in a["node_cfg"].items():
     m = b["node_cfg"].get(nid)
