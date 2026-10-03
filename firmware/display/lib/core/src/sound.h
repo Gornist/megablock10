@@ -20,6 +20,12 @@ constexpr size_t kAudioPayloadMax = 4 + kClipChunkMax;
 constexpr size_t kListReplyMax = 1024;
 // Сигнал перед объявлением — его длительность прибавляется к длительности клипа в ответе ANNOUNCE.
 constexpr uint32_t kChimeMs = 900;
+// Что не задано в AUDIO_STATE / ANNOUNCE (docs/sound-nodes.md): громкость канала, переход между треками, громкость объявления
+// и до скольки процентов приглушается фон на время объявления.
+constexpr uint8_t kDefaultVolume = 60;
+constexpr uint32_t kDefaultFadeMs = 1500;
+constexpr uint8_t kDefaultAnnounceVolume = 80;
+constexpr uint8_t kDefaultDuckPct = 15;
 extern const char* const kAudioFile;
 
 // Карта памяти. Треки — /mb10/tracks (только чтение, заливаются руками), клипы — /mb10/clips/<sha256>.wav, недокачанный —
@@ -98,6 +104,11 @@ class Sound {
   enum class AnnState { None, Playing, Done, Failed, Stopped };
 
   bool parseState(const char* json, size_t len);
+  // audio.bin: прочитать сохранённое состояние (false — нет или битое) / записать новое.
+  bool loadSaved();
+  void save(uint32_t version, const uint8_t* json, size_t len);
+  // Фон — обратно на громкость канала после объявления.
+  void unduck();
   void rebuildOrder(const char* keep);
   void refreshMissing();
   void playNext();
@@ -119,8 +130,8 @@ class Sound {
   uint16_t count_ = 0;
   bool shuffle_ = false;
   uint32_t gapMs_ = 0;
-  uint32_t fadeMs_ = 1500;
-  uint8_t volume_ = 60;
+  uint32_t fadeMs_ = kDefaultFadeMs;
+  uint8_t volume_ = kDefaultVolume;
   bool missing_[kMaxTracks];
 
   uint16_t order_[kMaxTracks];
@@ -134,7 +145,7 @@ class Sound {
 
   AnnState annState_ = AnnState::None;
   uint32_t annId_ = 0;
-  uint8_t duck_ = 15;
+  uint8_t duck_ = kDefaultDuckPct;
 
   bool uploading_ = false;
   char uploadId_[kClipIdLen + 1] = {0};

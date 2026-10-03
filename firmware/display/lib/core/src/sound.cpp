@@ -16,6 +16,12 @@ const char* const kAudioFile = "audio.bin";
 namespace {
 const uint8_t kAudioMagic[4] = {'M', 'B', 'A', 'U'};
 constexpr size_t kAudioHead = 16;  // MBAU, версия, длина JSON, CRC32 JSON
+// Пределы AUDIO_STATE: пауза между треками до 10 мин, переход до 30 с.
+constexpr uint32_t kMaxGapMs = 600000;
+constexpr uint32_t kMaxFadeMs = 30000;
+// Фон на время объявления: приглушить быстро, вернуть плавнее.
+constexpr uint32_t kDuckFadeMs = 300;
+constexpr uint32_t kUnduckFadeMs = 600;
 
 bool isHexId(const char* s) {
   if (std::strlen(s) != kClipIdLen) return false;
@@ -57,7 +63,7 @@ bool Sound::parseState(const char* json, size_t len) {
   uint16_t count = 0;
   size_t used = 0;
   bool shuffle = false;
-  double gap = 0, vol = 60, fade = 1500;
+  double gap = 0, vol = kDefaultVolume, fade = kDefaultFadeMs;
   static char names[kAudioJsonMax];
   static uint16_t offs[kMaxTracks];
   while (c.nextKey(key, sizeof key)) {
@@ -89,8 +95,8 @@ bool Sound::parseState(const char* json, size_t len) {
   std::memcpy(offs_, offs, count * sizeof offs[0]);
   count_ = count;
   shuffle_ = shuffle;
-  gapMs_ = gap < 0 ? 0 : gap > 600000 ? 600000 : uint32_t(gap);
-  fadeMs_ = fade < 0 ? 0 : fade > 30000 ? 30000 : uint32_t(fade);
+  gapMs_ = gap < 0 ? 0 : gap > kMaxGapMs ? kMaxGapMs : uint32_t(gap);
+  fadeMs_ = fade < 0 ? 0 : fade > kMaxFadeMs ? kMaxFadeMs : uint32_t(fade);
   volume_ = clampPct(vol);
   return true;
 }
@@ -159,23 +165,41 @@ void Sound::playNext() {
   current_[0] = '\0';
 }
 
-void Sound::boot() {
-  cardWasPresent_ = card_.present();
+bool Sound::loadSaved() {
   uint8_t head[kAudioHead];
   if (!storage_.read(kAudioFile, 0, head, sizeof head)) {
     logFmt(platform_, "audio boot: no saved state — silence");
-    return;
+    return false;
   }
   uint32_t version = getU32(head + 4), len = getU32(head + 8);
   if (std::memcmp(head, kAudioMagic, 4) != 0 || len > kAudioJsonMax || !storage_.read(kAudioFile, kAudioHead, reinterpret_cast<uint8_t*>(json_), len) ||
       crc32(reinterpret_cast<uint8_t*>(json_), len) != getU32(head + 12) || !parseState(json_, len)) {
     logFmt(platform_, "audio boot: saved state corrupt — ignored");
     json_[0] = '\0';
-    return;
+    return false;
   }
   json_[len] = '\0';
   jsonLen_ = len;
   version_ = version;
+  return true;
+}
+
+void Sound::save(uint32_t version, const uint8_t* json, size_t len) {
+  uint8_t head[kAudioHead];
+  std::memcpy(head, kAudioMagic, 4);
+  putU32(head + 4, version);
+  putU32(head + 8, uint32_t(len));
+  putU32(head + 12, crc32(json, len));
+  if (!storage_.writeAtomic(kAudioFile, head, sizeof head, json, len)) logFmt(platform_, "audio v%u: state not saved (storage)", unsigned(version));
+}
+
+void Sound::unduck() {
+  if (bg_ == Bg::Playing) out_.setTrackVolume(volume_, kUnduckFadeMs);
+}
+
+void Sound::boot() {
+  cardWasPresent_ = card_.present();
+  if (!loadSaved()) return;
   uint8_t seed[4];
   platform_.random(seed, sizeof seed);
   rng_ ^= getU32(seed) | 1;
@@ -206,12 +230,7 @@ Nack Sound::applyState(uint32_t version, const uint8_t* json, size_t len) {
     for (uint16_t i = 0; i < count_ && sameList; i++) sameList = std::strcmp(oldNames + oldOffs[i], track(i)) == 0;
   }
   // Сначала на flash, потом играть: перезагрузка сразу после OK заиграет уже новое.
-  uint8_t head[kAudioHead];
-  std::memcpy(head, kAudioMagic, 4);
-  putU32(head + 4, version);
-  putU32(head + 8, uint32_t(len));
-  putU32(head + 12, crc32(json, len));
-  if (!storage_.writeAtomic(kAudioFile, head, sizeof head, json, len)) logFmt(platform_, "audio v%u: state not saved (storage)", unsigned(version));
+  save(version, json, len);
   std::memcpy(json_, s, len);
   json_[len] = '\0';
   jsonLen_ = len;
@@ -258,7 +277,7 @@ void Sound::tick() {
   if (annState_ == AnnState::Playing && !out_.clipPlaying()) {
     annState_ = AnnState::Done;
     logFmt(platform_, "announce %u done", unsigned(annId_));
-    if (bg_ == Bg::Playing) out_.setTrackVolume(volume_, 600);
+    unduck();
   }
   if (bg_ == Bg::Playing && !out_.trackPlaying()) {
     if (gapMs_ > 0) {
@@ -333,7 +352,7 @@ Nack Sound::announce(uint32_t id, const uint8_t* json, size_t len, uint32_t& dur
   JsonCursor c(reinterpret_cast<const char*>(json), len);
   if (!c.beginObject()) return Nack::BadFormat;
   char key[16], clip[kClipIdLen + 1] = {0};
-  double vol = 80, duck = 15;
+  double vol = kDefaultAnnounceVolume, duck = kDefaultDuckPct;
   bool chime = true;
   while (c.nextKey(key, sizeof key)) {
     bool ok = std::strcmp(key, "clip") == 0     ? c.readString(clip, sizeof clip)
@@ -359,7 +378,7 @@ Nack Sound::announce(uint32_t id, const uint8_t* json, size_t len, uint32_t& dur
     return Nack::DisplayFailed;
   }
   annState_ = AnnState::Playing;
-  if (bg_ == Bg::Playing) out_.setTrackVolume(bgVolume(), 300);
+  if (bg_ == Bg::Playing) out_.setTrackVolume(bgVolume(), kDuckFadeMs);
   durationMs = info.durationMs + (chime ? kChimeMs : 0);
   logFmt(platform_, "announce %u: clip %.12s %u ms, background to %u%%", unsigned(id), clip, unsigned(durationMs), unsigned(duck_));
   return Nack::None;
@@ -369,7 +388,7 @@ void Sound::stopAnnounce() {
   if (annState_ != AnnState::Playing) return;
   out_.stopClip();
   annState_ = AnnState::Stopped;
-  if (bg_ == Bg::Playing) out_.setTrackVolume(volume_, 600);
+  unduck();
   logFmt(platform_, "announce %u stopped", unsigned(annId_));
 }
 
