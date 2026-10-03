@@ -272,7 +272,10 @@ def streak_set(name, streaks, rgb):
     uv0 = bm.loops.layers.uv.new("UV0")
     uv1 = bm.loops.layers.uv.new("UV1")
     cols = []
-    for c, w, h, a in streaks:
+    rgbs = []
+    for st in streaks:
+        c, w, h, a = st[:4]
+        rgbs.append(st[4] if len(st) > 4 else rgb)  # необязательный свой цвет штриха (голова и кисти аватара горячее тела)
         c = Vector(c)
         vs = [bm.verts.new(c + Vector(d)) for d in ((-w, 0, -h), (w, 0, -h), (w, 0, h), (-w, 0, h))]
         f = bm.faces.new(vs)
@@ -288,7 +291,7 @@ def streak_set(name, streaks, rgb):
     me.materials.append(material("streaks"))
     attr = me.color_attributes.new("Color", "FLOAT_COLOR", "POINT")
     for i, v in enumerate(me.vertices):
-        attr.data[i].color = (*rgb, cols[i // 4])
+        attr.data[i].color = (*rgbs[i // 4], cols[i // 4])
     me.color_attributes.active_color = attr
     return ob
 

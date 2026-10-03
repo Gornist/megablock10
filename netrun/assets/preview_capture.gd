@@ -8,7 +8,7 @@ const BG := Color(0.004, 0.008, 0.016)
 
 ## Комната 6×6 м из модулей 2×2 м: пол 3×3, стены по периметру, колонны в углах, вход с юга (z=+3), выход на север (z=-3),
 ## в центре шард, у выхода ICE. Предмет: [путь, позиция, поворот Y (°), тир, масштаб].
-const REFLECT := ["env/wall", "env/wall_b", "env/wall_c", "env/doorway", "env/doorway_b", "env/pillar", "ice/soft_ice"]
+const REFLECT := ["env/wall", "env/wall_b", "env/wall_c", "env/doorway", "env/doorway_b", "env/pillar", "ice/soft_ice", "avatar/runner", "avatar/runner_b", "avatar/runner_c"]
 const CEILING_H := 5.0
 const ICE_POS := Vector3(0.75, 0.0, -2.0)
 
@@ -47,6 +47,13 @@ func _room() -> Array:
 	items.append(["env/pillar", Vector3(0.0, 0, 0.0), 0.0, "BASE", 0.4])  # подставка: колонна ×0.4, высота ≈ 0,9 м
 	items.append(["props/shard", Vector3(0.0, 1.2, 0.0), 0.0, "", 3.5])  # ×3,5: на 6 м шард в 8 см иначе не разглядеть
 	items.append(["ice/soft_ice", ICE_POS, 15.0, "", 1.0])
+	# другие нетраннеры в узле: лицом к Godot −Z при повороте 0°; варианты чередуются
+	items.append(["avatar/runner", Vector3(-1.2, 0, 1.0), 150.0, "", 1.0])
+	items.append(["avatar/runner_b", Vector3(1.5, 0, 0.4), 200.0, "", 1.0])
+	if _crowd:
+		var rv := ["avatar/runner", "avatar/runner_b", "avatar/runner_c"]
+		for i in 7:
+			items.append([rv[i % 3], Vector3(-2.0 + (i % 4) * 1.3, 0, -0.9 + (i / 4) * 1.3), 40.0 * i, "", 1.0])
 	items.append(["env/wall", Vector3(-6.0, 0, -14.0), 0.0, "HARD", 4.0])
 	items.append(["env/wall", Vector3(7.0, 0, -19.0), 0.0, "HARD", 5.0])
 	return items
@@ -54,8 +61,14 @@ func _room() -> Array:
 
 func _shots() -> Array:
 	var room := _room()
+	var stage := [["env/floor", Vector3(0, 0, 0), 0.0, "BASE", 1.0], ["avatar/runner", Vector3(-0.9, 0, 0.0), 180.0, "", 1.0],
+		["avatar/runner_b", Vector3(0.0, 0, -0.4), 180.0, "", 1.0], ["avatar/runner_c", Vector3(0.95, 0, 0.1), 180.0, "", 1.0]]
+	var solo := [["avatar/runner", Vector3(0, 0, 0), 180.0, "", 1.0]]
 	var scar := [ICE_POS + Vector3(0, 1.0, -0.6), 4.2]
 	return [
+		{"name": "avatar_stage", "cam": Vector3(0.1, 1.2, 3.0), "look": Vector3(0.0, 0.95, 0.0), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": stage},
+		{"name": "avatar_side", "cam": Vector3(2.0, 1.15, 0.0), "look": Vector3(0.0, 1.0, 0.0), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": solo},
+		{"name": "avatar_close", "cam": Vector3(0.45, 1.25, 1.7), "look": Vector3(0.0, 1.0, 0.0), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": solo},
 		{"name": "room_entrance", "cam": Vector3(0.0, 1.25, 6.4), "look": Vector3(0.0, 1.0, -2.0), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
 		{"name": "room_overview", "cam": Vector3(8.5, 8.0, 8.5), "look": Vector3(0.0, 0.4, -0.5), "fov": 50.0, "fade": [30.0, 80.0], "corrupt": scar, "items": room},
 		{"name": "room_wall", "cam": Vector3(2.4, 1.4, 1.2), "look": Vector3(-1.4, 1.0, -3.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
@@ -67,6 +80,7 @@ func _shots() -> Array:
 var out_dir := "/tmp/shots"
 
 
+var _crowd := false  # --crowd: в комнате девять аватаров (худший случай по ТЗ), для замера
 var _movie := false
 var _static := false
 var _fps := false
@@ -87,6 +101,8 @@ func _ready() -> void:
 			_movie = true
 		if a.begins_with("--cam="):
 			_static_cam = PackedFloat64Array(Array(a.trim_prefix("--cam=").split(",")).map(func(v): return float(v)))
+		if a == "--crowd":
+			_crowd = true
 		if a == "--fps":  # замер: 6 с без записи видео, печатает средний fps, худшие кадры и число вызовов отрисовки
 			_fps = true
 		if a == "--static":  # камера неподвижна: нужно, чтобы по разнице кадров проверять движение штрихов
@@ -107,7 +123,10 @@ func _ready() -> void:
 	if _movie:
 		# Видео: godot --write-movie <файл.avi> --fixed-fps 24 --quit-after 160 -- --movie. Камера идёт ко входу и в комнату,
 		# на 2,5 с «касание» стены у выхода: прогиб штрихов и красная полоса расходятся (как в референсе «contact»).
-		var shot: Dictionary = _shots()[0]
+		var shot: Dictionary = {}
+		for sh in _shots():  # видео и замер идут по комнате со входа, по имени (порядок кадров может меняться)
+			if sh["name"] == "room_entrance":
+				shot = sh
 		_build(shot, add_child_ret(Node3D.new()))
 		set_process(true)
 		return
@@ -204,6 +223,8 @@ func _process(delta: float) -> void:
 func _setup(inst: Node3D, it: Array, shot: Dictionary, intensity: float) -> void:
 	_insts.append(inst)
 	AM.apply(inst, it[3])
+	if String(it[0]).begins_with("avatar/"):
+		AM.set_param(inst, "breathe", 0.25)  # аватар дышит заметнее стены: штрихи короткие
 	if String(it[0]).begins_with("ice/"):
 		AM.set_param(inst, "breathe", 0.12)  # существа «дышат»: длина штрихов медленно плывёт
 	AM.set_distance_fade(inst, shot["fade"][0], shot["fade"][1])

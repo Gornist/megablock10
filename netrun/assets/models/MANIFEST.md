@@ -14,6 +14,9 @@
 | `models/env/floor_b.glb` | 60 / 300 | 126 / 170 | 50 / 60 | 0 | 4 | 1.8613 × 0.8693 × 1.9269 | points, solid_dark, streaks | — | surface | ок |
 | `models/env/floor_c.glb` | 60 / 300 | 129 / 170 | 50 / 60 | 0 | 4 | 1.9471 × 0.8773 × 1.8419 | points, solid_dark, streaks | — | surface | ок |
 | `models/env/pillar.glb` | 0 / 300 | 0 / 0 | 11 / 16 | 0 | 2 | 0.1166 × 3 × 0.0709 | streaks | — | floor | ок |
+| `models/avatar/runner.glb` | 0 / 300 | 140 / 160 | 318 / 360 | 0 | 2 | 0.6575 × 1.4629 × 0.6566 | points, streaks | — | feet | ок |
+| `models/avatar/runner_b.glb` | 0 / 300 | 140 / 160 | 318 / 360 | 0 | 2 | 0.5891 × 1.4687 × 0.6358 | points, streaks | — | feet | ок |
+| `models/avatar/runner_c.glb` | 0 / 300 | 140 / 160 | 318 / 360 | 0 | 2 | 0.6494 × 1.4711 × 0.6036 | points, streaks | — | feet | ок |
 | `models/props/shard.glb` | 60 / 300 | 70 / 120 | 0 / 0 | 3 | 4 | 0.1303 × 0.1496 × 0.123 | points, shell_soft | — | center | ок |
 | `models/ice/soft_ice.glb` | 0 / 300 | 160 / 200 | 179 / 200 | 0 | 3 | 1.2214 × 2.15 × 0.7577 | points, streaks | — | feet | ок |
 | `models/env/wall.glb` | 0 / 300 | 50 / 80 | 80 / 120 | 0 | 3 | 2.004 × 2.9716 × 0.5351 | points, streaks | — | floor | ок |

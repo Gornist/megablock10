@@ -48,6 +48,8 @@ python3 src/validate.py --root out'
       echo "== камера $cam"
       ssh "$HOST" "$GD_ENV; cd ~/assets-gd && timeout 60 ~/.local/bin/godot --display-driver wayland --path . --resolution 1920x1080 -- --movie --static --fps --cam=$cam 2>&1 | grep -E 'GPU мс|вызовов' || true"
     done
+    echo "== толпа: 9 аватаров в комнате (--crowd)"
+    ssh "$HOST" "$GD_ENV; cd ~/assets-gd && timeout 60 ~/.local/bin/godot --display-driver wayland --path . --resolution 1920x1080 -- --movie --static --fps --crowd --cam=0.0,1.25,6.4,0.0,1.0,-2.0 2>&1 | grep -E 'GPU мс|вызовов' || true"
     echo "ЭТО НЕ Pico 4: настольная видеокарта devbox, окно с вертикальной синхронизацией." ;;
   *) sed -n 2,10p "$0"; exit 2 ;;
 esac
