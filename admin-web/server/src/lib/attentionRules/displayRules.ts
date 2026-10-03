@@ -1,5 +1,6 @@
 import type { AttentionItem } from "../../apiTypes.js";
-import { displayBattery, displayConfigFromEnv } from "../../displays/manager.js";
+import { displayBattery } from "../../displays/battery.js";
+import { displayConfigFromEnv } from "../../displays/config.js";
 import { DisplayRepository } from "../../displays/repository.js";
 import type { AttentionRule } from "./context.js";
 

@@ -5,7 +5,8 @@ import { openDb } from "./db/index.js";
 import { scheduleBackups } from "./lib/backup.js";
 import { schedulePulse } from "./lib/pulse.js";
 import { EXIT_CONFIG, isProduction, productionProblems } from "./lib/productionMode.js";
-import { DisplayManager, displayConfigFromEnv } from "./displays/manager.js";
+import { displayConfigFromEnv } from "./displays/config.js";
+import { DisplayManager } from "./displays/manager.js";
 import { BridgeClient } from "./net/bridgeClient.js";
 import { NetService, bridgeOptionsFromEnv } from "./net/netService.js";
 

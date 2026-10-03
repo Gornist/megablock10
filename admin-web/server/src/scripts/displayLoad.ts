@@ -7,7 +7,8 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { openDb } from "../db/index.js";
 import { FirmwareHostProcess, freePort } from "../displays/firmwareHostProcess.js";
-import { DisplayManager, displayConfigFromEnv, type OpResult } from "../displays/manager.js";
+import { displayConfigFromEnv } from "../displays/config.js";
+import { DisplayManager, type OpResult } from "../displays/manager.js";
 import { MockDisplay } from "../displays/mockDisplay.js";
 
 /**

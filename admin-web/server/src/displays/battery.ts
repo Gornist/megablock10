@@ -1,4 +1,6 @@
 import type { BatteryLevel } from "../apiTypes.js";
+import { batteryThresholds, type DisplayManagerConfig } from "./config.js";
+import type { DisplayRepository, DisplayRow } from "./repository.js";
 
 /**
  * Заряд точки (дисплей, звуковая точка) для коллектора — docs/sound-nodes.md, «Батарея». Точка шлёт в HELLO милливольты и,
@@ -55,6 +57,8 @@ export interface BatteryEstimate {
 }
 
 const HOUR = 3_600_000;
+/** Без топливомера процент — по медиане напряжения за столько последних мс: под нагрузкой (звук) оно прыгает. */
+const VOLTAGE_MEDIAN_MS = 15 * 60_000;
 
 /** Процент точки истории: от топливомера, иначе по напряжению. */
 const pctOf = (s: BatterySample): number | null => s.pct ?? (s.mv !== null ? percentFromMilliVolts(s.mv) : null);
@@ -91,7 +95,7 @@ export function estimateBattery(
   let percent: number | null = current.pct;
   if (percent === null && current.mv !== null) {
     // Без топливомера напряжение под нагрузкой (звук) прыгает — медиана за последние 15 минут.
-    const recent = history.filter((s) => s.mv !== null && s.at >= now - 15 * 60_000).map((s) => s.mv!);
+    const recent = history.filter((s) => s.mv !== null && s.at >= now - VOLTAGE_MEDIAN_MS).map((s) => s.mv!);
     recent.push(current.mv);
     recent.sort((a, b) => a - b);
     percent = percentFromMilliVolts(recent[Math.floor(recent.length / 2)]);
@@ -120,4 +124,16 @@ export function estimateBattery(
     level = "LOW";
   }
   return { percent, hoursLeft: hoursLeft === null ? null : Math.round(hoursLeft * 10) / 10, charging, level, source: gauge ? "gauge" : "voltage" };
+}
+
+/** Заряд точки по её строке и истории — общее для DisplayItem и правила «Требует внимания» (lib/attentionRules). */
+export function displayBattery(repo: DisplayRepository, row: DisplayRow, c: Omit<DisplayManagerConfig, "log">, now: number): BatteryEstimate {
+  if (row.battery_mv === null && row.battery_pct === null) return { percent: null, hoursLeft: null, charging: false, level: null, source: null };
+  const history = repo.batterySamples(row.id, now - Math.max(c.batteryWindowMs, VOLTAGE_MEDIAN_MS));
+  return estimateBattery(
+    { mv: row.battery_mv, pct: row.battery_pct, rate: row.battery_rate, at: row.last_seen_at },
+    history,
+    batteryThresholds(c),
+    now,
+  );
 }
