@@ -1,6 +1,8 @@
 package com.megablok10.netrun.bridge.collector
 
 import com.megablok10.kit.crypto.Ecdsa
+import com.megablok10.kit.log.KitLog
+import com.megablok10.kit.log.NoopLog
 import com.megablok10.kit.log.RecordingLog
 import com.megablok10.kit.sync.ChangeRecord
 import com.megablok10.kit.sync.signaturePayload
@@ -12,6 +14,7 @@ import com.megablok10.netrun.bridge.DocStore
 import com.megablok10.netrun.bridge.Move
 import com.megablok10.netrun.bridge.MoveTo
 import com.megablok10.netrun.bridge.StockItem
+import com.megablok10.netrun.bridge.StoreException
 import com.megablok10.netrun.bridge.VJ
 import com.megablok10.netrun.bridge.ValueFixture
 import com.megablok10.netrun.bridge.phone.WorldJournal
@@ -20,7 +23,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -35,8 +40,8 @@ import org.junit.rules.TemporaryFolder
 class WorldRecordsTest {
     @get:Rule val tmp = TemporaryFolder()
 
-    private class Rig(val f: ValueFixture, val key: WorldKey = WorldKey.generate(), clock: Clock = ManualClock(T0_MS)) {
-        val sync = WorldSync(f.store, key, null, CoroutineScope(Dispatchers.Unconfined), clock = clock)
+    private class Rig(val f: ValueFixture, val key: WorldKey = WorldKey.generate(), clock: Clock = ManualClock(T0_MS), log: KitLog = NoopLog) {
+        val sync = WorldSync(f.store, key, null, CoroutineScope(Dispatchers.Unconfined), clock = clock, log = log)
         fun records(): List<ChangeRecord> = runBlocking { sync.queue.nextBatch(1000) }
         fun reasons(): List<String> = records().map { it.reason }
         fun of(reason: String): List<ChangeRecord> = records().filter { it.reason == reason }
@@ -287,6 +292,65 @@ class WorldRecordsTest {
         assertEquals("auditor_item_owner", VJ.str(v, "kind"))
         assertEquals(listOf("it_weird"), VJ.list(v, "items"))
         assertTrue(VJ.str(v, "msg")!!.contains("it_weird"))
+    }
+
+    @Test fun longAlertItemListIsCutToTwentyAndCallsignToSixtyFour() {
+        val rig = rig()
+        val many = (1..30).map { "it_$it" }
+        rig.f.store.put(
+            "alert", "al_many", 0,
+            JsonObject(mapOf("kind" to JsonPrimitive("auditor_x"), "msg" to JsonPrimitive("m"), "items" to JsonArray(many.map { JsonPrimitive(it) }))),
+        )
+        assertEquals(many.take(20), VJ.list(value(rig.of("NET_ALERT").single()), "items"))
+
+        val plain = rig()
+        assertTrue(plain.f.ops.submitDeck(plain.f.test, "enter:long", plain.f.keyA, "ж".repeat(200), "t03", listOf("it_dA1", "it_dA2"), "it_dA1").ok)
+        assertEquals("ж".repeat(64), VJ.str(value(plain.of("NET_ENTER").single()), "callsign"))
+    }
+
+    @Test fun callsignCutNeverSplitsASurrogatePair() {
+        val rig = rig()
+        val callsign = "я".repeat(63) + "\uD83D\uDE00" + "хвост" // пара символа приходится на границу 64
+        assertTrue(rig.f.ops.submitDeck(rig.f.test, "enter:emoji", rig.f.keyA, callsign, "t03", listOf("it_dA1", "it_dA2"), "it_dA1").ok)
+        val cut = VJ.str(value(rig.of("NET_ENTER").single()), "callsign")!!
+        assertEquals("я".repeat(63), cut) // короче предела на единицу, но без разрезанной пары (иначе подпись и тело разошлись бы в байтах)
+        assertTrue(cut.none { it.isSurrogate() })
+    }
+
+    @Test fun sqlFailureInTheQueueRollsBackDocumentsAndRecordsAndKeepsTheSeq() {
+        val rig = rig()
+        rig.f.store.withConnection { c -> c.createStatement().use { it.execute("DROP TABLE world_records") } }
+        val failed = runCatching { rig.f.ops.submitDeck(rig.f.test, "enter:sql", rig.f.keyA, "Призрак", "t03", listOf("it_dA1", "it_dA2"), "it_dA1") }
+        val e = failed.exceptionOrNull()
+        assertTrue(e.toString(), e is StoreException && e.code == "internal")
+        assertEquals("inbox:${rig.f.keyA}", rig.f.owner("it_dA1")) // в памяти документов нет...
+        assertEquals(emptyList<Any>(), rig.f.store.list("session"))
+        // ...и в самой SQLite тоже: откат, а не коммит (память Мост меняет только после успешного COMMIT, поэтому проверяем базу напрямую)
+        val rows = rig.f.store.withConnection { c ->
+            c.createStatement().use { st -> st.executeQuery("SELECT COUNT(*) FROM docs WHERE type='session'").use { rs -> rs.next(); rs.getInt(1) } }
+        }
+        assertEquals(0, rows)
+        val stored = rig.f.store.withConnection { c ->
+            c.createStatement().use { st -> st.executeQuery("SELECT value FROM meta WHERE key='seq'").use { rs -> rs.next(); rs.getLong(1) } }
+        }
+        assertEquals(rig.f.store.seq, stored)
+        WorldRecordQueue(rig.f.store) // таблицу вернули
+        rig.submit("enter:ok")
+        assertEquals(SEQ0 + 1, rig.records().single().seq) // счётчик не потерял номер
+    }
+
+    @Test fun recordWithTheSameIdAlreadyInTheQueueIsSkippedAndLogged() {
+        val log = RecordingLog()
+        val rig = Rig(ValueFixture(":memory:"), WorldKey.generate(), log = log)
+        val id = "w:net.alert:${rig.f.store.epoch}:${rig.f.store.seq + 1}:al_dup" // id, который получит событие следующей транзакции
+        val planted = ChangeRecord(id, rig.key.publicB64, SEQ0 + 100, 1L, "net.alert", null, "{}", "NET_ALERT", "al_dup", rig.key.publicB64, "sig")
+        runBlocking { rig.sync.queue.insert(planted) }
+        rig.f.store.put("alert", "al_dup", 0, rig.f.obj("kind" to "auditor_x", "msg" to "m"))
+        assertEquals(listOf(planted), rig.records()) // новая запись не легла и старую не затёрла
+        assertTrue(log.all.toString(), log.has("world.record_duplicate"))
+        // пропущенная запись номер не тратит
+        rig.f.store.put("alert", "al_after", 0, rig.f.obj("kind" to "auditor_x", "msg" to "m"))
+        assertEquals(SEQ0 + 1, rig.of("NET_ALERT").single { it.sourceRef == "al_after" }.seq)
     }
 
     @Test fun requestsToTheMasterAndToTheNetAreNotAuditorAlerts() {
