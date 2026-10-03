@@ -1,6 +1,7 @@
 package com.megablok10.netrun.bridge.collector
 
 import com.megablok10.kit.log.KitLog
+import com.megablok10.kit.log.LogFormat
 import com.megablok10.kit.log.NoopLog
 import com.megablok10.kit.sync.ChangeRecord
 import com.megablok10.kit.sync.signaturePayload
@@ -15,8 +16,8 @@ import java.sql.Connection
  * Подписывает события мира ключом мира и кладёт их в [WorldRecordQueue] в транзакции хранилища ([CommitHook]): документы и запись о
  * них фиксируются одним `COMMIT`. Сам по себе ничего не отправляет — отправляет `SyncEngine` ([WorldSync]).
  *
- * Сбой разбора событий (ошибка в [WorldRecords.derive]) игру не останавливает: он пишется в журнал, а транзакция документов идёт
- * дальше, потому что записи о мире — отчёт, а не ценность. Сбой SQLite наоборот откатывает всё: запись и данные не расходятся.
+ * Сбой разбора событий (ошибка в [WorldRecords.derive]) игру не останавливает: он пишется в журнал уровнем ERROR (`world.derive_failed`
+ * с id документов транзакции), а транзакция документов идёт дальше, потому что записи о мире — отчёт, а не ценность. Сбой SQLite наоборот откатывает всё: запись и данные не расходятся.
  */
 internal class WorldRecorder(
     private val queue: WorldRecordQueue,
@@ -32,7 +33,10 @@ internal class WorldRecorder(
         val events = try {
             WorldRecords.derive(changes, previous)
         } catch (e: RuntimeException) {
-            log.warnEvent(TAG, "world.derive_failed", "error" to e.javaClass.simpleName, "msg" to e.message)
+            // Известное ограничение (docs/netrun-world-records.md, раздел 7): игра важнее отчёта, транзакция документов идёт дальше, а записи
+            // мира за неё не появятся и не будут восстановлены сами. Поэтому не предупреждение, а ERROR с id документов для ручной сверки.
+            val docs = changes.take(LOGGED_DOCS).joinToString(",") { "${it.doc.type}/${it.doc.id}" } + if (changes.size > LOGGED_DOCS) ",…" else ""
+            log.e(TAG, LogFormat.event("world.derive_failed", arrayOf("error" to e.javaClass.simpleName, "msg" to e.message, "tx" to changes.firstOrNull()?.seq, "docs" to docs)), e)
             return
         }
         staged = events.mapNotNull { enqueue(conn, it) }
@@ -62,5 +66,6 @@ internal class WorldRecorder(
 
     companion object {
         const val TAG = "WorldRecords"
+        private const val LOGGED_DOCS = 20
     }
 }

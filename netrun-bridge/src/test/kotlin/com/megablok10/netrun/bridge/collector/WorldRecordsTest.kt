@@ -1,6 +1,7 @@
 package com.megablok10.netrun.bridge.collector
 
 import com.megablok10.kit.crypto.Ecdsa
+import com.megablok10.kit.log.RecordingLog
 import com.megablok10.kit.sync.ChangeRecord
 import com.megablok10.kit.sync.signaturePayload
 import com.megablok10.kit.time.Clock
@@ -331,6 +332,25 @@ class WorldRecordsTest {
         rig.f.store.commitHook = inner
         rig.submit("enter:ok")
         assertEquals(SEQ0 + 1, rig.records().single().seq) // откатился и счётчик: номер не потерян
+    }
+
+    @Test fun failedDeriveLogsAnErrorWithDocumentIdsAndDoesNotRollBackDocuments() {
+        // Известное ограничение: записи мира — отчёт, а не ценность. Сбой разбора событий игру не останавливает (документы фиксируются),
+        // но записи за эту транзакцию не появятся, поэтому он виден в журнале как ERROR с id документов, а не как предупреждение.
+        val f = ValueFixture(":memory:")
+        val log = RecordingLog()
+        val recorder = WorldRecorder(WorldRecordQueue(f.store), WorldKey.generate(), f.store.epoch, log)
+        f.store.commitHook = CommitHook { c, changes, _ -> recorder.beforeCommit(c, changes) { error("сбой чтения прежнего документа") } }
+        val session = f.store.put("session", "s_broken", 0, f.obj("state" to "pending", "runner" to f.keyA, "node" to "node_07"))
+        assertEquals(session, f.store.get("session", "s_broken")) // документ зафиксирован
+        val line = log.all.single { it.contains("world.derive_failed") }
+        assertTrue(line, line.startsWith("E/WorldRecords "))
+        assertTrue(line, line.contains("session/s_broken"))
+        assertTrue(line, line.contains("IllegalStateException"))
+        assertEquals(emptyList<ChangeRecord>(), runBlocking { WorldRecordQueue(f.store).nextBatch(10) })
+        // и следующая транзакция проходит как обычно
+        f.store.put("alert", "al_next", 0, f.obj("kind" to "auditor_x", "msg" to "m"))
+        assertTrue(f.store.get("alert", "al_next") != null)
     }
 
     @Test fun everyKindOfRecordIsSignedByTheWorldKey() {
