@@ -31,6 +31,7 @@ import { registerNetRoutes } from "./routes/net.js";
 import { registerWorldEventsRoutes } from "./routes/worldEvents.js";
 import { registerNetBridgeRoutes } from "./routes/netBridge.js";
 import { NetService } from "./net/netService.js";
+import { RunnerSync } from "./net/runnerSync.js";
 import { SecSync } from "./net/secSync.js";
 
 /**
@@ -65,11 +66,14 @@ export function buildApp(db: Db, options: { clientDist?: string; logger?: boolea
 
   registerChangesRoute(app, db);
   registerCapabilitiesRoute(app);
-  registerNetRoutes(app, db);
   // Мост «Сети» (docs/netrun.md): без BRIDGE_MASTER_KEY клиента нет — экран «Сеть» пишет «Мост не настроен», остальное работает как раньше.
   const net = options.net ?? new NetService();
   const secSync = new SecSync(db, net);
   secSync.start();
+  const runnerSync = new RunnerSync(db, net);
+  runnerSync.start();
+  // Решение мастера о допуске уходит в Мост сразу, а не ждёт таймера; без Моста — догонится при подключении.
+  registerNetRoutes(app, db, () => void runnerSync.sync());
   registerNetBridgeRoutes(app, db, net, secSync);
   registerPlayersRoutes(app, db);
   registerAuthRoute(app, db);
@@ -101,6 +105,7 @@ export function buildApp(db: Db, options: { clientDist?: string; logger?: boolea
     audio.stop();
     displays.stop();
     secSync.stop();
+    runnerSync.stop();
     net.stop();
   });
 

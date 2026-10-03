@@ -10,7 +10,7 @@ import { createNetRunners, normalizeRunnerKey, type NetRunnerFlag } from "../lib
  * допуск вручную. Коллектор — источник правды (решение владельца, docs/netrun.md): Мост читает флаг, а не наоборот.
  * Ключ игрока в адресе — base64 (с %-кодированием «+», «/», «=») или base64url, как у Моста; оба вида приводятся к одному.
  */
-export function registerNetRoutes(app: FastifyInstance, db: Db) {
+export function registerNetRoutes(app: FastifyInstance, db: Db, onFlagChanged: () => void = () => undefined) {
   const runners = createNetRunners(db);
   const names = () => makeHumanizeContext(db);
 
@@ -58,6 +58,7 @@ export function registerNetRoutes(app: FastifyInstance, db: Db) {
     if (!runners.spare(key, master.name, Date.now())) return reply.code(404).send({ error: "no flag for this runner" });
     // Повтор по уже снятому флагу — без второй записи в журнал: действие не меняет ничего.
     if (before?.blocked) logMasterAction(db, master.id, "NET_RUNNER_SPARE", { runnerKey: key, note: note || undefined });
+    onFlagChanged();
     return view(runners.get(key)!, names().playerName, knownKeys());
   });
 
@@ -73,6 +74,7 @@ export function registerNetRoutes(app: FastifyInstance, db: Db) {
     if (before?.blocked) return view(before, names().playerName, knownKeys());
     runners.block(key, reason, Date.now());
     logMasterAction(db, master.id, "NET_RUNNER_BLOCK", { runnerKey: key, reason: reason || undefined });
+    onFlagChanged();
     return view(runners.get(key)!, names().playerName, knownKeys());
   });
 }
