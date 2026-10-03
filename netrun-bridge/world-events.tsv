@@ -1,0 +1,8 @@
+kind	source	description
+run.enter	session	Сессия стала active (курок нажат): фон «в Сети» на точке терминала
+run.exit	session	Сессия закрылась с любым исходом: вернуть фон и экран ожидания
+trace.level	session.world.trace_level	Сменился уровень trace (поле level — слово: NORMAL, SUSPICIOUS, TRACE, LOCKDOWN, FLATLINE)
+ice.hunt	session.world.hunt	Началась охота Black ICE на сессию (сервер мира ставит world.hunt = true)
+flatline	session	Сессия закрылась исходом black_ice (идёт перед run.exit)
+lockdown	node.lockdown_until	Узел ушёл в локдаун: срок стал в будущем, а локдауна до этого не было
+alert.master	alert	Новая тревога аудитора (звонок мастеру, не на площадку)
