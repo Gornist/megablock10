@@ -17,7 +17,7 @@
     ветки-задачи `agent/netrun-*` вливаются по команде владельца.
     Godot-часть ведёт агент `godot-dev` (`.claude/agents/godot-dev.md`): живой редактор Godot с плагином Godot AI (MCP) на devbox,
     тесты — gdUnit4 (`netrun/tools/gdunit.sh`, 223 теста); подробности — `docs/netrun-devbox.md`, «Godot AI».
-  - **3D-ассеты «Сети»** (Blender → `.glb` → Godot) — ТЗ `docs/netrun-assets-brief.md`, ветка `agent/assets`.
+  - **3D-ассеты «Сети»** (Blender → `.glb` → Godot) — ТЗ `docs/netrun-assets-brief.md`; моделлер работает в своей ветке (`scripts/agent-worktree.sh new assets`).
   - **Дашборд мастера** — только `admin-web/`.
   - **UI на новой дизайн-системе** — `agent/ui-kit`.
 - Тяжёлое (Gradle, Paparazzi, e2e, Godot) — на devbox, см. `.claude/skills/devbox/`.
