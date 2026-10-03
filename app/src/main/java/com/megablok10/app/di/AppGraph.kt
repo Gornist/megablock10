@@ -199,7 +199,7 @@ class AppGraph(private val app: Application) {
         ),
     )
     val provisioning = ProvisionStore(identity, collectorSettings, changes, wallet, db.consumedTokenDao(), transactor)
-    val sessionReset = SessionReset(db, identity, collectorSettings, changes, announcements, netrun) { session.onSessionReset() }
+    val sessionReset = SessionReset(db, transactor, identity, collectorSettings, changes, announcements, netrun) { session.onSessionReset() }
 
     /**
      * Что работает в фоне — решает только он (B3): сеть на личность, синк на процесс, foreground-сервис с правилами Android 12+.
