@@ -129,10 +129,8 @@ class TransactionStore(
         handover.confirmByReceipt(pendingTxId, receipt.id, receipt.receiverPubKeyB64, receipt.signatureB64)
 
     /** Чек, который получатель [me] показывает в ответ отправителю — доказательство, что деньги (или предмет) реально получены. */
-    override fun buildReceipt(me: Identity, transactionId: String): Mb10Qr.Receipt {
-        val payload = HandoverRules.receiptSignaturePayload(transactionId, me.publicKeyB64)
-        return Mb10Qr.Receipt(id = transactionId, receiverPubKeyB64 = me.publicKeyB64, signatureB64 = identity.sign(payload))
-    }
+    override fun buildReceipt(me: Identity, transactionId: String): Mb10Qr.Receipt =
+        Mb10QrCodec.receipt(transactionId, me.publicKeyB64, identity::sign)
 
     /**
      * Получатель проверяет подпись плательщика тем же публичным ключом, что
