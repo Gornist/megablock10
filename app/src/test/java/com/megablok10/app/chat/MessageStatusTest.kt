@@ -3,9 +3,8 @@ package com.megablok10.app.chat
 import com.megablok10.app.data.MessageStatus
 import com.megablok10.app.testing.RoomTest
 import com.megablok10.app.testing.TestPlayer
+import com.megablok10.app.testing.testPeerDirectory
 import com.megablok10.kit.mesh.OnlinePlayer
-import com.megablok10.kit.mesh.PeerDirectory
-import com.megablok10.kit.mesh.PeerInfo
 import com.megablok10.kit.net.SendOutcome
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -21,9 +20,7 @@ class MessageStatusTest : RoomTest() {
     private val bob = TestPlayer("Bob")
     private var wire = SendOutcome.DELIVERED
     private val online = MutableStateFlow(listOf(bob.peer))
-    private val directory = PeerDirectory(
-        { online.value.map { PeerInfo(it.pubKeyB64, it.callsign, it.faction, "10.0.0.2", 47100) } }, online,
-    ) { _, _, _, _ -> wire }
+    private val directory = testPeerDirectory(online, { wire })
     private lateinit var chat: ChatStore
 
     init {

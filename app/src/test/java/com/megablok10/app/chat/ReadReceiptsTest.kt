@@ -4,8 +4,7 @@ import com.megablok10.app.data.MessageStatus
 import com.megablok10.app.testing.MemoryPrefs
 import com.megablok10.app.testing.RoomTest
 import com.megablok10.app.testing.TestPlayer
-import com.megablok10.kit.mesh.PeerDirectory
-import com.megablok10.kit.mesh.PeerInfo
+import com.megablok10.app.testing.testPeerDirectory
 import com.megablok10.kit.net.SendOutcome
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -24,9 +23,7 @@ class ReadReceiptsTest : RoomTest() {
     private var wire = SendOutcome.DELIVERED
     private val sent = mutableListOf<String>()
     private val online = MutableStateFlow(listOf(bob.peer))
-    private val directory = PeerDirectory(
-        { online.value.map { PeerInfo(it.pubKeyB64, it.callsign, it.faction, "10.0.0.2", 47100) } }, online,
-    ) { _, _, line, _ -> sent += line; wire }
+    private val directory = testPeerDirectory(online, { wire }) { sent += it }
     private val outbox = OutboxStore(db.outboxDao(), directory)
     private val chat = ChatStore(db.chatMessageDao(), outbox, directory)
     private val setting = ReadReceiptSetting(MemoryPrefs())

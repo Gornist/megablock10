@@ -10,10 +10,7 @@ import com.megablok10.app.data.CallOutcome
 import com.megablok10.app.testing.MemoryPrefs
 import com.megablok10.app.testing.RoomTest
 import com.megablok10.app.testing.TestPlayer
-import com.megablok10.kit.mesh.PeerDirectory
-import com.megablok10.kit.mesh.PeerInfo
-import com.megablok10.kit.net.SendOutcome
-import kotlinx.coroutines.flow.MutableStateFlow
+import com.megablok10.app.testing.testPeerDirectory
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -25,10 +22,7 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class ShellBadgesTest : RoomTest() {
     private val bob = TestPlayer("Bob")
-    private val online = MutableStateFlow(listOf(bob.peer))
-    private val directory = PeerDirectory(
-        { online.value.map { PeerInfo(it.pubKeyB64, it.callsign, it.faction, "10.0.0.2", 47100) } }, online
-    ) { _, _, _, _ -> SendOutcome.NOT_REACHED } // сеть здесь не участвует — только запись в базу
+    private val directory = testPeerDirectory(bob.peer) // сеть здесь не участвует — только запись в базу
     private val outbox = OutboxStore(db.outboxDao(), directory)
     private val chat = ChatStore(db.chatMessageDao(), outbox, directory)
     private var testClock = 0L
