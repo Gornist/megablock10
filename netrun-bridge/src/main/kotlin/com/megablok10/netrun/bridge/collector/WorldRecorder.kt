@@ -16,6 +16,10 @@ import java.sql.Connection
  * Подписывает события мира ключом мира и кладёт их в [WorldRecordQueue] в транзакции хранилища ([CommitHook]): документы и запись о
  * них фиксируются одним `COMMIT`. Сам по себе ничего не отправляет — отправляет `SyncEngine` ([WorldSync]).
  *
+ * Заодно выводит быстрые события для точек площадки ([WorldFastEvents], раздел 3 контракта) из тех же изменений документов: они не пишутся
+ * ни в [queue], ни в `SyncEngine`, а после `COMMIT` отдаются [fastSink] (неблокирующее: сеть — не под замком хранилища). Без [fastSink]
+ * (коллектор не задан) события не выводятся вовсе.
+ *
  * Сбой разбора событий (ошибка в [WorldRecords.derive]) игру не останавливает: он пишется в журнал уровнем ERROR (`world.derive_failed`
  * с id документов транзакции), а транзакция документов идёт дальше, потому что записи о мире — отчёт, а не ценность. Сбой SQLite наоборот откатывает всё: запись и данные не расходятся.
  */
@@ -24,12 +28,17 @@ internal class WorldRecorder(
     private val key: WorldKey,
     private val epoch: String,
     private val log: KitLog = NoopLog,
+    private val fastSink: ((List<FastEvent>) -> Unit)? = null,
 ) : CommitHook {
     /** Записи последней транзакции: журнал и пробуждение отправки — только после её `COMMIT` ([committed]), откат их стирает. */
     private var staged: List<ChangeRecord> = emptyList()
 
+    /** Быстрые события последней транзакции: уходят в [fastSink] только после её `COMMIT`, как и [staged]. */
+    private var stagedFast: List<FastEvent> = emptyList()
+
     override fun beforeCommit(conn: Connection, changes: List<Change>, previous: (DocKey) -> Doc?) {
         staged = emptyList()
+        stagedFast = deriveFast(changes, previous)
         val events = try {
             WorldRecords.derive(changes, previous)
         } catch (e: RuntimeException) {
@@ -40,6 +49,17 @@ internal class WorldRecorder(
             return
         }
         staged = events.mapNotNull { enqueue(conn, it) }
+    }
+
+    /** Сбой вывода быстрых событий — предупреждение, не ошибка: событие живёт секунды, а записи мира и транзакция от него не зависят. */
+    private fun deriveFast(changes: List<Change>, previous: (DocKey) -> Doc?): List<FastEvent> {
+        if (fastSink == null) return emptyList()
+        return try {
+            WorldFastEvents.derive(changes, previous, epoch)
+        } catch (e: RuntimeException) {
+            log.warnEvent(TAG, "world.fast_derive_failed", "error" to e.javaClass.simpleName, "tx" to changes.firstOrNull()?.seq)
+            emptyList()
+        }
     }
 
     /** null — запись с таким id уже есть (повтор того же события): `seq` на неё не тратится. */
@@ -62,6 +82,9 @@ internal class WorldRecorder(
         staged = emptyList()
         for (r in done) log.event(TAG, "record.enqueued", "field" to r.field, "reason" to r.reason, "seq" to r.seq, "ref" to r.sourceRef)
         if (done.isNotEmpty()) onQueued()
+        val fast = stagedFast
+        stagedFast = emptyList()
+        if (fast.isNotEmpty()) fastSink?.invoke(fast)
     }
 
     companion object {

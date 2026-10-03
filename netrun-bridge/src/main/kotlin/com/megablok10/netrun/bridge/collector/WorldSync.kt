@@ -15,6 +15,7 @@ import com.megablok10.netrun.bridge.phone.WorldKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import java.net.http.HttpClient
 
 /**
  * Записи мира для коллектора (docs/netrun-world-records.md, M4): запись в очередь и отправка.
@@ -23,6 +24,10 @@ import kotlinx.coroutines.launch
  * в [queue] (SQLite Моста) в той же транзакции, что и документы. Отправляет `SyncEngine` ([start]) — только если задан [collector];
  * очередь дождётся его появления, переживёт рестарт Моста, а `id` записи детерминирован, поэтому повтор отправки не плодит дублей.
  * Создавать до первой записи в [store]: конструктор ставит расширение коммита.
+ *
+ * Быстрые события на точки площадки (раздел 3 контракта, L3) выводятся в той же точке, но идут мимо очереди: [WorldEventSender] шлёт их
+ * `POST /api/world-events` из памяти и ничего не копит. Включаются тем же [collector] (флаг `--collector`, секрет `NETRUN_COLLECTOR_SECRET`);
+ * без коллектора события не выводятся.
  */
 class WorldSync(
     store: DocStore,
@@ -33,9 +38,12 @@ class WorldSync(
     clock: Clock = Clock.System,
     private val log: KitLog = NoopLog,
     config: SyncConfig = SyncConfig(),
+    eventConfig: WorldEventConfig = WorldEventConfig(),
+    eventHttp: HttpClient? = null,
 ) {
     val queue = WorldRecordQueue(store, clock::nowMs)
-    private val recorder = WorldRecorder(queue, key, store.epoch, log)
+    private val events: WorldEventSender? = collector?.let { WorldEventSender(it, clock::nowMs, eventConfig, log, eventHttp) }
+    private val recorder = WorldRecorder(queue, key, store.epoch, log, events?.let { it::offer })
     private val engine = SyncEngine(
         queue = queue,
         transport = transport ?: WorldCollectorTransport(clock = clock::nowMs, log = log),
@@ -58,8 +66,15 @@ class WorldSync(
     /** Итог последней попытки синка одной строкой (для диагностики). */
     val lastSummary: String get() = engine.lastSummary
 
-    /** Запустить отправку; без коллектора ничего не делает (записи копятся в [queue]). */
-    fun start(): Job? = if (collector == null) null else scope.launch { engine.run() }
+    /** Быстрых событий в памяти ждёт отправки (для тестов); без коллектора всегда 0. */
+    val eventsQueued: Int get() = events?.queued ?: 0
+
+    /** Запустить отправку записей и быстрых событий; без коллектора ничего не делает (записи копятся в [queue], события не выводятся). */
+    fun start(): Job? {
+        if (collector == null) return null
+        events?.start(scope)
+        return scope.launch { engine.run() }
+    }
 
     /** Мост не принимает правки мастера: ключ мира не игрок. Случайная правка уходит отказом без повтора и видна мастеру. */
     private object WorldSyncHooks : SyncHooks {

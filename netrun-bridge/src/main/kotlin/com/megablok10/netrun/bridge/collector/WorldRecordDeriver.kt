@@ -60,8 +60,9 @@ private const val ALERT_ITEMS_MAX = 20
 private const val MS_IN_S = 1000L
 
 /** Состояние сессии, значения `owner` предметов и виды тревог — слова протокола Моста (разделы 4 и 5). */
-private object Words {
+internal object Words {
     const val PENDING = "pending"
+    const val ACTIVE = "active"
     const val CLOSED = "closed"
     const val BLACK_ICE = "black_ice"
     const val SOFT_ICE = "soft_ice"
@@ -149,8 +150,7 @@ private class Derivation(changes: List<Change>, private val previous: (DocKey) -
         return value
     }
 
-    /** Узел, где сессия сейчас: `world.node` (пишет сервер мира), иначе узел, куда её приняли. */
-    private fun currentNode(s: Doc): String? = (s.data["world"] as? JsonObject)?.let { VJ.str(it, "node") } ?: VJ.str(s.data, "node")
+    private fun currentNode(s: Doc): String? = sessionNode(s)
 
     /** Длительность забега: от курка (`confirmed_at`, нет — от создания сессии) до закрытия. */
     private fun durationS(s: Doc): Long {
@@ -223,6 +223,9 @@ private class Derivation(changes: List<Change>, private val previous: (DocKey) -
 }
 
 private fun owner(d: Doc?): String? = d?.let { VJ.str(it.data, "owner") }
+
+/** Узел, где сессия сейчас: `world.node` (пишет сервер мира), иначе узел, куда её приняли. Общий для записей и быстрых событий. */
+internal fun sessionNode(s: Doc): String? = (s.data["world"] as? JsonObject)?.let { VJ.str(it, "node") } ?: VJ.str(s.data, "node")
 
 /** Сессия из `deck:<s>` или `burned:<s>`; `burned:master` — убрано мастером, сессии нет. */
 private fun sessionOf(owner: String): String? =
