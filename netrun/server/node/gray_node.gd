@@ -330,6 +330,7 @@ func recover(docs: Array) -> void:
 		_deplete(sid, float(pending[sid]))
 	for s in active:
 		recovered_sessions.append(s)
+		_exiting[s] = true  # аватара не было: avatar_removed не придёт, а в графе забег закрывает только узел с этой меткой
 		net.set_node(s, node_id)
 		net.expect_session(s)
 	# Флэтлайн, начатый прошлым процессом: окна возврата нет, ждём мастера дальше и закрываем забег тем же исходом.
@@ -588,6 +589,7 @@ func join_blocked(session: String) -> bool:
 func _on_joined(session: String, _peer: int, _resumed: bool) -> void:
 	if net.node_of(session) != node_id:
 		return  # игрок в другом узле (граф): это дело того узла
+	_exiting.erase(session)  # игрок вернулся: метка восстановления не нужна (при выходе её поставит _on_avatar_removed)
 	if _sessions.has(session):
 		if bridge != null and synced:
 			_merge_world(session, {"connected": true, "trace": 0, "node": node_id})
