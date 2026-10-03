@@ -8,6 +8,7 @@
 | `models/env/ceiling.glb` | 60 / 300 | 126 / 170 | 50 / 60 | 0 | 4 | 1.865 × 0.8527 × 1.9273 | points, solid_dark, streaks | — | ceiling | ок |
 | `models/env/ceiling_b.glb` | 60 / 300 | 126 / 170 | 50 / 60 | 0 | 4 | 1.9467 × 0.762 × 1.9273 | points, solid_dark, streaks | — | ceiling | ок |
 | `models/env/ceiling_c.glb` | 60 / 300 | 128 / 170 | 50 / 60 | 0 | 4 | 1.8618 × 0.841 × 1.9273 | points, solid_dark, streaks | — | ceiling | ок |
+| `models/env/column_field.glb` | 0 / 300 | 0 / 0 | 1345 / 1700 | 0 | 1 | 3.9398 × 2.8539 × 3.9 | streaks | — | floor | ок |
 | `models/env/doorway.glb` | 0 / 300 | 18 / 40 | 46 / 80 | 0 | 3 | 1.9678 × 2.6921 × 0.1873 | points, streaks | — | floor | ок |
 | `models/env/doorway_b.glb` | 0 / 300 | 18 / 40 | 50 / 80 | 0 | 3 | 1.9513 × 2.6668 × 0.2822 | points, streaks | — | floor | ок |
 | `models/env/floor.glb` | 60 / 300 | 126 / 170 | 50 / 60 | 0 | 4 | 1.9486 × 0.8162 × 1.835 | points, solid_dark, streaks | — | surface | ок |

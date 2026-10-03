@@ -120,6 +120,25 @@ def build_floor(out, name="floor", seed=2, ceiling=False):
                       notes=f"тайлы покрывают {5 * 0.42 * 0.42 / 4.0 * 100:.0f}% плитки 2×2 м")
 
 
+def build_column_field(out, name="column_field", seed=77):
+    """Поле колонн 4×4 м для дальнего плана (эксперимент «объёмный дисплей»): решётка шагом 0,1 м, один штрих на узел, высота по карте
+    крупных «холмов» × шум (как cyan space в референсе), ~15% узлов пропущено. Один примитив, 2 треугольника на колонну. Origin на полу в центре."""
+    lib.reset()
+    rng = random.Random(seed)
+    cy = lib.lin("cyan")
+    pitch, n, st = 0.1, 40, []
+    for i in range(n):
+        for j in range(n):
+            if rng.random() < 0.15:
+                continue
+            x, y = -2.0 + pitch * (i + 0.5), -2.0 + pitch * (j + 0.5)
+            e = 0.5 + 0.5 * math.sin(x * 0.9 + 1.1) * math.sin(y * 1.3 + 0.4)
+            hh = 3.0 * (0.12 + 0.88 * e * e) * rng.uniform(0.55, 1.0)
+            st.append((Vector((x, y, hh / 2)), rng.uniform(0.012, 0.02), hh / 2, 0.15 + 0.85 * e * rng.uniform(0.4, 1.0)))
+    return lib.export(name, "env", [lib.streak_set("columns", st, cy)], out, budget_tris=300, budget_streaks=1700, origin="floor",
+                      notes="эксперимент: поле колонн на решётке 0,1 м для дальнего плана")
+
+
 def build_pillar(out):
     """Колонна на углу: пучок высоких штрихов (два белых) и несколько точек у основания. Высота до 3 м. Origin на полу в центре."""
     lib.reset()
@@ -137,6 +156,7 @@ def build_pillar(out):
 if __name__ == "__main__":
     o = lib.args()
     build_pillar(o)
+    build_column_field(o)
     for name, seed in (("wall", 21), ("wall_b", 34), ("wall_c", 55)):
         build_wall(o, name, seed)
     for name, seed in (("doorway", 8), ("doorway_b", 17)):

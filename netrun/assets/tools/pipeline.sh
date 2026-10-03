@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Конвейер ассетов «Сети»: Mac → devbox (Blender → .glb → Godot) → Mac. Запускать с Mac из любого каталога.
 #   pipeline.sh build            — собрать ВСЕ ассеты из src/*.py на devbox, проверить, забрать .glb и отчёты, пересобрать MANIFEST.md
-#   pipeline.sh shots [каталог]  — снять кадры комнаты из Godot (по умолчанию /tmp/assets-shots)
-#   pipeline.sh movie [файл.mp4] — записать видео комнаты (7 с) и сконвертировать (нужен ffmpeg на Mac)
+#   pipeline.sh shots [каталог] [флаги сцены] — снять кадры комнаты из Godot (по умолчанию /tmp/assets-shots); флаги: --only=a,b --lattice=0.05 --field --crowd
+#   pipeline.sh movie [файл.mp4] [флаги сцены] — записать видео комнаты (7 с) и сконвертировать (нужен ffmpeg на Mac); флаги: --walk --static --cam=…
 #   pipeline.sh fps              — замер времени кадра GPU/CPU и числа вызовов отрисовки на трёх ракурсах
 # Требует: devbox доступен (Tailscale), на нём Blender (~/.local/bin/blender) и Godot (~/.local/bin/godot), графический сеанс nick.
 # Стенд просмотра — минимальный проект Godot ~/assets-gd на devbox (создаётся сам); это не проект netrun/. Тяжёлого параллельно
@@ -34,12 +34,12 @@ python3 src/validate.py --root out'
     rsync -a --delete "$HOST:~/assets-work/out/reports/" reports/
     python3 src/validate.py --manifest | tail -2 ;;
   shots)
-    out=${2:-/tmp/assets-shots}; ensure_project; rm -rf "$out"
-    ssh "$HOST" "$GD_ENV; cd ~/assets-gd && rm -rf shots && timeout 150 ~/.local/bin/godot --display-driver wayland --path . --resolution 1280x720 -- --out=/home/nick/assets-gd/shots 2>&1 | grep -E 'ERROR|SCRIPT|Parse|SHADER' || true"
+    out=${2:-/tmp/assets-shots}; extra=${*:3}; ensure_project; rm -rf "$out"
+    ssh "$HOST" "$GD_ENV; cd ~/assets-gd && rm -rf shots && timeout 150 ~/.local/bin/godot --display-driver wayland --path . --resolution 1280x720 -- --out=/home/nick/assets-gd/shots $extra 2>&1 | grep -E 'ERROR|SCRIPT|Parse|SHADER' || true"
     scp -rq "$HOST:~/assets-gd/shots" "$out"; echo "кадры: $out" ;;
   movie)
-    mp4=${2:-/tmp/assets-room.mp4}; ensure_project
-    ssh "$HOST" "$GD_ENV; cd ~/assets-gd && rm -f room.avi && timeout 240 ~/.local/bin/godot --display-driver wayland --path . --resolution 1280x720 --write-movie /home/nick/assets-gd/room.avi --fixed-fps 24 --quit-after 168 -- --movie 2>&1 | grep -E 'ERROR|SCRIPT|Parse' || true"
+    mp4=${2:-/tmp/assets-room.mp4}; extra=${*:3}; ensure_project
+    ssh "$HOST" "$GD_ENV; cd ~/assets-gd && rm -f room.avi && timeout 240 ~/.local/bin/godot --display-driver wayland --path . --resolution 1280x720 --write-movie /home/nick/assets-gd/room.avi --fixed-fps 24 --quit-after 168 -- --movie $extra 2>&1 | grep -E 'ERROR|SCRIPT|Parse' || true"
     scp -q "$HOST:~/assets-gd/room.avi" /tmp/assets-room.avi
     ffmpeg -v error -y -i /tmp/assets-room.avi -c:v libx264 -pix_fmt yuv420p -crf 20 -an "$mp4"; echo "видео: $mp4" ;;
   fps)

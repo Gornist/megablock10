@@ -8,6 +8,7 @@
 shader_type spatial;
 render_mode blend_add, unshaded, depth_draw_never, cull_disabled, fog_disabled;
 
+uniform float lattice : hint_range(0.0, 0.5) = 0.0;  // шаг мировой решётки, м: центры прищёлкиваются к ней (0 = выкл.), эффект «объёмного дисплея»
 uniform float glow : hint_range(0.0, 6.0) = 1.6;
 uniform float bead_freq : hint_range(0.0, 60.0) = 14.0;   // бусин на метр
 uniform float bead_depth : hint_range(0.0, 1.0) = 0.35;
@@ -80,6 +81,9 @@ void vertex() {
 	h *= 1.0 + breathe * (0.6 * sin(TIME * breathe_speed + v_phase) + 0.4 * sin(TIME * breathe_speed * 2.3 + v_phase * 1.7));
 	vec3 wc = (MODEL_MATRIX * vec4(c, 1.0)).xyz;
 	wc.y += -anchor * (h - h0) * s * sign(MODEL_MATRIX[1].y);  // длина меняется от якоря: основание стены не отрывается от пола
+	if (lattice > 0.0) {  // колонны стоят на узлах мировой решётки по x и z, по высоте непрерывно
+		wc.xz = floor(wc.xz / lattice + 0.5) * lattice;
+	}
 	vec3 to_cam = CAMERA_POSITION_WORLD - wc;
 	to_cam.y = 0.0;
 	vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), to_cam + vec3(0.00001, 0.0, 0.0)));

@@ -6,6 +6,7 @@ shader_type spatial;
 render_mode blend_add, unshaded, depth_draw_never, cull_disabled, fog_disabled;
 
 uniform float glow : hint_range(0.0, 6.0) = 1.4;
+uniform float lattice : hint_range(0.0, 0.5) = 0.0;  // шаг мировой решётки, м: центры прищёлкиваются к ней (0 = выкл.), эффект «объёмного дисплея»
 uniform float twinkle : hint_range(0.0, 0.5) = 0.15;
 uniform float twinkle_speed : hint_range(0.0, 3.0) = 0.6;
 // «Дыхание» поля точек (пол, рёбра тайлов): по полю бежит волна яркости и вместе с ней пульсирует размер точек.
@@ -60,8 +61,11 @@ void vertex() {
 	vec3 c = VERTEX - vec3((UV.x - 0.5) * 2.0 * h, (0.5 - UV.y) * 2.0 * h, 0.0);
 	v_phase = dot(c, vec3(12.9, 78.2, 37.7));
 	v_wp = (MODEL_MATRIX * vec4(c, 1.0)).xyz;
+	if (lattice > 0.0) {
+		v_wp = floor(v_wp / lattice + 0.5) * lattice;
+	}
 	v_wave = 0.5 + 0.5 * sin((v_wp.x + 0.6 * v_wp.z) * wave_scale * 3.14159 - TIME * wave_speed);
-	vec4 mv = MODELVIEW_MATRIX * vec4(c, 1.0);
+	vec4 mv = VIEW_MATRIX * vec4(v_wp, 1.0);
 	v_dist = -mv.z;
 	mv.xy += vec2(UV.x - 0.5, 0.5 - UV.y) * 2.0 * h * (1.0 + size_wave * (v_wave - 0.5) * 2.0);
 	POSITION = PROJECTION_MATRIX * mv;

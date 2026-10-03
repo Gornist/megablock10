@@ -54,8 +54,13 @@ func _room() -> Array:
 		var rv := ["avatar/runner", "avatar/runner_b", "avatar/runner_c"]
 		for i in 7:
 			items.append([rv[i % 3], Vector3(-2.0 + (i % 4) * 1.3, 0, -0.9 + (i / 4) * 1.3), 40.0 * i, "", 1.0])
-	items.append(["env/wall", Vector3(-6.0, 0, -14.0), 0.0, "HARD", 4.0])
-	items.append(["env/wall", Vector3(7.0, 0, -19.0), 0.0, "HARD", 5.0])
+	if _field:  # эксперимент: дальний план — поле колонн на решётке 0,1 м вместо двух увеличенных стен
+		for fz in [-12.0, -16.0]:
+			for fx in [-8.0, -4.0, 0.0, 4.0, 8.0]:
+				items.append(["env/column_field", Vector3(fx, 0, fz), 0.0, "HARD", 1.0])
+	else:
+		items.append(["env/wall", Vector3(-6.0, 0, -14.0), 0.0, "HARD", 4.0])
+		items.append(["env/wall", Vector3(7.0, 0, -19.0), 0.0, "HARD", 5.0])
 	return items
 
 
@@ -69,6 +74,7 @@ func _shots() -> Array:
 		{"name": "avatar_stage", "cam": Vector3(0.1, 1.2, 3.0), "look": Vector3(0.0, 0.95, 0.0), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": stage},
 		{"name": "avatar_side", "cam": Vector3(2.0, 1.15, 0.0), "look": Vector3(0.0, 1.0, 0.0), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": solo},
 		{"name": "avatar_close", "cam": Vector3(0.45, 1.25, 1.7), "look": Vector3(0.0, 1.0, 0.0), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": solo},
+		{"name": "far_view", "cam": Vector3(0.0, 1.4, -2.6), "look": Vector3(0.0, 2.2, -18.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
 		{"name": "room_entrance", "cam": Vector3(0.0, 1.25, 6.4), "look": Vector3(0.0, 1.0, -2.0), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
 		{"name": "room_overview", "cam": Vector3(8.5, 8.0, 8.5), "look": Vector3(0.0, 0.4, -0.5), "fov": 50.0, "fade": [30.0, 80.0], "corrupt": scar, "items": room},
 		{"name": "room_wall", "cam": Vector3(2.4, 1.4, 1.2), "look": Vector3(-1.4, 1.0, -3.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
@@ -80,6 +86,13 @@ func _shots() -> Array:
 var out_dir := "/tmp/shots"
 
 
+var _lattice := 0.0  # --lattice=0.05: шаг мировой решётки (эксперимент), 0 — выкл.
+var _field := false  # --field: вместо дальних стен поле колонн
+var _walk := false  # --walk: один аватар ходит по кругу (видно ли мерцание от прищёлкивания к решётке)
+var _only: Array = []  # --only=a,b: снимать только эти кадры
+var _walker: Node3D
+var _walker_mir: Node3D
+var _walker_base := Vector3.ZERO
 var _crowd := false  # --crowd: в комнате девять аватаров (худший случай по ТЗ), для замера
 var _movie := false
 var _static := false
@@ -101,6 +114,14 @@ func _ready() -> void:
 			_movie = true
 		if a.begins_with("--cam="):
 			_static_cam = PackedFloat64Array(Array(a.trim_prefix("--cam=").split(",")).map(func(v): return float(v)))
+		if a.begins_with("--lattice="):
+			_lattice = float(a.trim_prefix("--lattice="))
+		if a == "--field":
+			_field = true
+		if a == "--walk":
+			_walk = true
+		if a.begins_with("--only="):
+			_only = Array(a.trim_prefix("--only=").split(","))
 		if a == "--crowd":
 			_crowd = true
 		if a == "--fps":  # замер: 6 с без записи видео, печатает средний fps, худшие кадры и число вызовов отрисовки
@@ -132,6 +153,8 @@ func _ready() -> void:
 		return
 	set_process(false)
 	for shot in _shots():
+		if not _only.is_empty() and not (shot["name"] in _only):
+			continue
 		var root := Node3D.new()
 		add_child(root)
 		_build(shot, root)
@@ -162,15 +185,30 @@ func _build(shot: Dictionary, root: Node) -> void:
 		inst.scale = Vector3.ONE * it[4]
 		root.add_child(inst)
 		_setup(inst, it, shot, 1.0)
+		var is_walker := _walk and _walker == null and String(it[0]).begins_with("avatar/")
+		if is_walker:
+			_walker = inst
+			_walker_base = inst.position
 		if String(it[0]) in REFLECT:  # отражение в полу: зеркальная копия, тусклая (в референсе Blackwall пол — мутное зеркало)
 			var mir: Node3D = scene.instantiate()
 			mir.transform = Transform3D(Basis.from_scale(Vector3(1, -1, 1)), Vector3.ZERO) * inst.transform
 			root.add_child(mir)
 			_setup(mir, it, shot, 0.18)
+			if is_walker:
+				_walker_mir = mir
+
+
+func _update_walker() -> void:
+	if _walk and _walker != null:  # аватар идёт по кругу r=1 м со скоростью ≈0,55 м/с (медленный шаг VR); отражение следует за ним
+		var ang := _t * 0.55
+		_walker.position = _walker_base + Vector3(cos(ang), 0, sin(ang)) - Vector3(1, 0, 0)
+		_walker.rotation.y = -ang + PI
+		_walker_mir.transform = Transform3D(Basis.from_scale(Vector3(1, -1, 1)), Vector3.ZERO) * _walker.transform
 
 
 func _process(delta: float) -> void:
 	_t += delta
+	_update_walker()
 	if _fps and _t > 1.0:
 		_ft.append(delta * 1000.0)
 		_gpu.append(RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid()))
@@ -199,6 +237,7 @@ func _process(delta: float) -> void:
 	if _static:
 		_cam.look_at_from_position(Vector3(_static_cam[0], _static_cam[1], _static_cam[2]), Vector3(_static_cam[3], _static_cam[4], _static_cam[5]))
 		return
+	_update_walker()
 	var p: Vector3
 	var look: Vector3
 	if _t < 2.0:
@@ -223,6 +262,8 @@ func _process(delta: float) -> void:
 func _setup(inst: Node3D, it: Array, shot: Dictionary, intensity: float) -> void:
 	_insts.append(inst)
 	AM.apply(inst, it[3])
+	if _lattice > 0.0:
+		AM.set_param(inst, "lattice", _lattice)
 	if String(it[0]).begins_with("avatar/"):
 		AM.set_param(inst, "breathe", 0.25)  # аватар дышит заметнее стены: штрихи короткие
 	if String(it[0]).begins_with("ice/"):
