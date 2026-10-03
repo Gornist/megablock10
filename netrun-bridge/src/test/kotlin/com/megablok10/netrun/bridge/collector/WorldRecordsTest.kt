@@ -261,6 +261,20 @@ class WorldRecordsTest {
         assertTrue(VJ.str(v, "msg")!!.contains("it_weird"))
     }
 
+    @Test fun requestsToTheMasterAndToTheNetAreNotAuditorAlerts() {
+        // «Ждём мастера» и «Запрос к Сети» (MasterOps.raiseAlert) — тоже документы alert, но это не тревога аудитора, а звонок панели
+        // мастера: в записи мира (NET_ALERT, «внимание» мастера на коллекторе) они не попадают, документы остаются.
+        val rig = rig()
+        rig.f.store.put("alert", "al_2_master_request", 0, rig.f.obj("kind" to "master_request", "msg" to "Ждём мастера: флэтлайн"))
+        rig.f.store.put("alert", "al_3_net_query", 0, rig.f.obj("kind" to "net_query", "msg" to "Запрос к Сети от KEY_A: помогите"))
+        assertEquals(emptyList<ChangeRecord>(), rig.records())
+        assertEquals(setOf("al_2_master_request", "al_3_net_query"), rig.f.store.list("alert").map { it.id }.toSet())
+        // тревога аудитора рядом по-прежнему пишется
+        rig.f.item("it_weird", "weird:1", "x")
+        Auditor(rig.f.store).run()
+        assertEquals(listOf("auditor_item_owner"), rig.of("NET_ALERT").map { VJ.str(value(it), "kind") })
+    }
+
     @Test fun alertRaisedAgainAfterTheMasterRemovedItGetsANewRecordId() {
         // Обычный жизненный цикл: аудитор поднял тревогу, мастер её снял (удалил документ), расхождение живо — аудитор поднял снова
         // с тем же id документа и ver = 1. Это второе появление: нужна вторая запись и другой id, иначе коллектор отвергнет «id already used».

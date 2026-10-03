@@ -66,6 +66,9 @@ private object Words {
     const val BLACK_ICE = "black_ice"
     const val SOFT_ICE = "soft_ice"
     const val FLATLINE_KIND = "flatline"
+
+    /** Документы `alert`, которыми MasterOps звонит в панель мастера («ждём мастера», «запрос к Сети»): не тревога аудитора. */
+    val MASTER_CALLS = setOf("master_request", "net_query")
     const val OP_ISSUE = "issue_to_phone"
 }
 
@@ -197,9 +200,13 @@ private class Derivation(changes: List<Change>, private val previous: (DocKey) -
 
     // ---------- тревоги ----------
 
-    /** Новая тревога Моста. Флэтлайн отдельной записью не дублируется: он уже `NET_FLATLINE` с id тревоги. */
+    /**
+     * Новая тревога Моста. Флэтлайн отдельной записью не дублируется: он уже `NET_FLATLINE` с id тревоги. Вызовы мастера
+     * (`master_request`, `net_query`) — тоже документы `alert`, но не тревога аудитора, поэтому `NET_ALERT` (единственная запись мира,
+     * на которую «внимание» мастера реагирует сразу) для них не пишется; документ остаётся для панели мастера.
+     */
     private fun alertEvents(): List<WorldEvent> = docs(ValueOps.ALERT)
-        .filter { before(it) == null && VJ.str(it.data, "kind") != Words.FLATLINE_KIND }
+        .filter { before(it) == null && VJ.str(it.data, "kind").let { kind -> kind != Words.FLATLINE_KIND && kind !in Words.MASTER_CALLS } }
         .map { a ->
             val value = LinkedHashMap<String, JsonElement>()
             value["alert"] = VJ.p(a.id)
