@@ -170,7 +170,7 @@ def _tile_rgb(infos, glow, dark):
     return fn
 
 
-def build_floor(out, name="floor", seed=2, ceiling=False):
+def build_floor(out, name="floor", seed=2, ceiling=False, n_tiles=5):
     """Плитка пола (или потолка при ceiling=True) 2×2 м: ~22% площади занимают чёрные непрозрачные тайлы-блоки (5 из 16 ячеек,
     расстановка зависит от seed: три варианта на пол и три на потолок, чтобы узор не повторялся). Верх тайла чёрный, точек по граням нет (убрано по решению владельца). Пол: верх тайла НЕ ВЫШЕ поверхности пола (0…−0,45 м), штрихи висят вниз из рёбер, точки на полу чуть ниже поверхности.
     Потолок — то же, инвертированное (знак высоты меняется): низ тайла НЕ НИЖЕ плоскости потолка (0…+0,45 м), штрихи растут вверх из
@@ -179,7 +179,7 @@ def build_floor(out, name="floor", seed=2, ceiling=False):
     rng = random.Random(seed)
     cy = lib.lin("cyan")
     sg = -1.0 if ceiling else 1.0  # знак по высоте: пол смотрит вниз от поверхности, потолок вверх
-    chosen = rng.sample([(i, j) for i in range(4) for j in range(4)], 5)
+    chosen = rng.sample([(i, j) for i in range(4) for j in range(4)], n_tiles)  # n_tiles = 0: чистая площадка без тайлов (под хранилище)
     tiles, streaks, covered, infos = [], [], [], []
     for i, j in chosen:
         cx, cyy = -0.75 + i * 0.5, -0.75 + j * 0.5
@@ -201,7 +201,7 @@ def build_floor(out, name="floor", seed=2, ceiling=False):
                 ln = base * (0.55 + 0.45 * (0.5 + 0.5 * math.sin(q * 1.3 + side * 1.9 + ph))) * rng.uniform(0.7, 1.0)
                 ln = min(ln, 0.95 + hh)
                 streaks.append((Vector((ex, ey, sg * (hh - ln / 2))), rng.uniform(0.006, 0.011), ln / 2, rng.uniform(0.12, 0.4)))
-    objs = [lib.obj_from_bm("tiles", lib.merge_bm(*tiles), "solid_dark", cy, rgb_fn=_tile_rgb(infos, cy, lib.lin("void")))]  # чёрный блок, светится только контур верхней грани
+    objs = [lib.obj_from_bm("tiles", lib.merge_bm(*tiles), "solid_dark", cy, rgb_fn=_tile_rgb(infos, cy, lib.lin("void")))] if tiles else []  # чёрный блок, светится только контур верхней грани
     # пол: якорь сверху (имя *_hang); потолок: штрихи растут вверх от рёбер, якорь по умолчанию у основания
     objs.append(lib.streak_set(("ceiling_streaks" if ceiling else "floor_streaks_hang"), streaks, cy))
     # точки: шаг постоянный, ~15% пропущено, высота слегка разная, но не в сторону комнаты
@@ -209,7 +209,7 @@ def build_floor(out, name="floor", seed=2, ceiling=False):
     dots = [d for d in dots if not any(abs(d.x - cx) < 0.25 and abs(d.y - cyy) < 0.25 for cx, cyy in covered)]  # не под тайлами
     objs.append(lib.point_cloud("dots", dots, cy, half_size=0.016, seed=2, a_min=0.4, a_max=0.9))
     return lib.export(name, "env", objs, out, budget_tris=300, budget_points=170, budget_streaks=160, origin=("ceiling" if ceiling else "surface"),
-                      notes=f"тайлы покрывают {5 * 0.42 * 0.42 / 4.0 * 100:.0f}% плитки 2×2 м")
+                      notes=f"тайлы покрывают {n_tiles * 0.42 * 0.42 / 4.0 * 100:.0f}% плитки 2×2 м")
 
 
 def build_far_surface(out, name="far_floor", seed=61, ceiling=False, size=11.0, cover=0.05):
@@ -298,5 +298,6 @@ if __name__ == "__main__":
         build_doorway(o, name, seed)
     for name, seed in (("floor", 2), ("floor_b", 5), ("floor_c", 9)):
         build_floor(o, name, seed)
+    build_floor(o, "floor_clear", 14, n_tiles=0)
     for name, seed in (("ceiling", 3), ("ceiling_b", 6), ("ceiling_c", 11)):
         build_floor(o, name, seed, ceiling=True)

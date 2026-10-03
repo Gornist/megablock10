@@ -21,7 +21,8 @@ func _room() -> Array:
 	var n := 0
 	for x in g:
 		for z in g:
-			items.append([variants[n % 3], Vector3(x, 0, z), 90.0 * (n % 4), "BASE", 1.0])  # вариант и поворот по кругу: узор не повторяется
+			var clear: bool = absf(x) < 1.5 and absf(z) < 1.5  # четыре модуля вокруг хранилища без тайлов: оно не теряется среди плиток
+			items.append(["env/floor_clear" if clear else variants[n % 3], Vector3(x, 0, z), 90.0 * (n % 4), "BASE", 1.0])  # вариант и поворот по кругу: узор не повторяется
 			n += 1
 	var cv := ["env/ceiling", "env/ceiling_b", "env/ceiling_c"]
 	var m := 0
@@ -50,7 +51,7 @@ func _room() -> Array:
 	for x in [-4.0, 4.0]:
 		for z in [-4.0, 4.0]:
 			items.append(["env/pillar", Vector3(x, 0, z), 0.0, "BASE", 1.0])
-	items.append(["props/vault_closed", Vector3(0.0, 0, 0.0), 180.0, "BASE", 1.0])  # хранилище в центре лицом ко входу; шард встаёт на якорь внутри
+	items.append(["props/vault_closed", Vector3(0.0, 0, 0.0), 180.0, "BASE", 1.0])  # яркость ×1,5 задаётся в _setup  # хранилище в центре лицом ко входу; шард встаёт на якорь внутри
 	items.append(["props/portal_open", Vector3(-4.0, 0, 0.0), -90.0, "BASE", 1.0])  # портал в западной стене, лицом в комнату
 	items.append(["ice/soft_ice", ICE_POS, 15.0, "", 1.0])
 	# другие нетраннеры в узле: лицом к Godot −Z при повороте 0°; варианты чередуются
@@ -323,6 +324,8 @@ func _setup(inst: Node3D, it: Array, shot: Dictionary, intensity: float) -> void
 	AM.apply(inst, it[3])
 	if _lattice > 0.0:
 		AM.set_param(inst, "lattice", _lattice)
+	if String(it[0]).begins_with("props/vault"):
+		intensity *= 1.5  # хранилище главный предмет узла: чуть ярче окружения
 	if String(it[0]).begins_with("avatar/"):
 		AM.set_param(inst, "breathe", 0.25)  # аватар дышит заметнее стены: штрихи короткие
 	if String(it[0]).begins_with("ice/"):
