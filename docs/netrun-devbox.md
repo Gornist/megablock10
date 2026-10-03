@@ -129,8 +129,10 @@ GTX 1650). Через него агент `godot-dev` (`.claude/agents/godot-dev
 - **Рабочая копия:** git worktree `~/wt-godot`, ветка `agent/godot` (от `agent/netrun`). Принести на Mac: `git fetch devbox agent/godot`.
 - **Редактор:** `scripts/devbox-godot-ai.sh setup` (один раз: worktree, плагин с проверкой sha256, импорт), затем `start|stop|status`;
   `autostart` — поднимать при входе nick. Плагин в репозиторий не кладём (`netrun/.gitignore`): `start` дописывает в `project.godot`
-  плагин, автозагрузку `_mcp_game_helper` и `run/main_run_args`, `stop` снимает. Редактор сам переписывает `project.godot` — если настройки
-  проекта не меняли, перед коммитом `git checkout netrun/project.godot`.
+  плагин, автозагрузку `_mcp_game_helper` и `run/main_run_args`, `stop` снимает; от забытого `stop` страхует хук `pre-commit`
+  (ставит `setup`, или `scripts/devbox-godot-ai.sh hook`): в коммит уходит `project.godot` без этих строк, рабочий файл он не трогает.
+  Файл в репозитории приведён к формату, который пишет редактор Godot 4.7, поэтому открытие проекта дерево не пачкает; если
+  `git status` показывает `netrun/project.godot` — настройки действительно меняли.
 - **Автозапуск сеанса.** После входа nick в GNOME `~/.config/autostart/devbox-session.desktop` запускает `scripts/devbox-session-start.sh`:
   incy (VPN) → Tailscale → Blender (blender-mcp на 9876); журнал — `~/.local/state/devbox-session.log`. Редактор Godot AI поднимает
   отдельный `godot-ai.desktop` (`scripts/devbox-godot-ai.sh autostart`, через 20 с после входа). Нужны: autoConnect в incy и sudo без пароля

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Редактор Godot с плагином Godot AI (MCP) на devbox — на реальном дисплее GNOME (:0, GTX 1650).
-# Запускать НА devbox: scripts/devbox-godot-ai.sh setup|start|stop|status|autostart
+# Запускать НА devbox: scripts/devbox-godot-ai.sh setup|start|stop|status|autostart|hook
 #
 # Что и где (docs/netrun-devbox.md, «Godot AI»):
 #   * рабочая копия — git worktree ~/wt-godot на ветке agent/godot (от agent/netrun): агент правит сцены прямо в ней,
 #     правки видны в `git diff` и уходят обычным коммитом; свой каталог/ветка — GODOT_AI_WT / GODOT_AI_BRANCH;
 #   * плагин (addons/godot_ai) в репозиторий не кладём (в .gitignore): он правит project.godot и открывает порты.
 #     start дописывает в project.godot три строки (плагин, автозагрузка хелпера, аргументы игры), stop их снимает —
-#     чтобы они не попали в коммит и экспорт APK;
+#     чтобы они не попали в коммит и экспорт APK; от забытого stop страхует хук pre-commit (подкоманда hook, ставит setup);
 #   * клиент (Claude Code на Mac) ходит через `uvx godot-ai attach` по ssh — .mcp.json в корне репозитория, токены не нужны.
 # Ловушки, на которых уже обожглись:
 #   * процесс редактора берём из pid-файла: `pkill -f`/`ps | grep` по «godot --editor» совпадает с самой ssh-командой
@@ -36,9 +36,9 @@ env_load() {
   export PATH="$HOME/.local/bin:$PATH"
 }
 
-# patch_project on|off — три строки плагина в project.godot (идемпотентно).
+# patch_project on|off [файл] — три строки плагина в project.godot (идемпотентно).
 patch_project() {
-  python3 - "$PROJECT/project.godot" "$1" "$RUN_ARGS" <<'PY'
+  python3 - "${2:-$PROJECT/project.godot}" "$1" "$RUN_ARGS" <<'PY'
 import re, sys
 path, mode, run_args = sys.argv[1:4]
 text = open(path, encoding="utf-8").read()
@@ -101,6 +101,7 @@ case "$CMD" in
       unzip -q "$tmp/p.zip" -d "$PROJECT"
     fi
     ( cd "$PROJECT" && godot --headless --path . --import >/dev/null 2>&1 || true )
+    "$0" hook
     echo "готово: $PROJECT (ветка $BRANCH)" ;;
   start)
     editor_alive && { echo "уже запущен, pid $(cat "$PIDFILE")"; exit 0; }
@@ -126,11 +127,22 @@ case "$CMD" in
     fi
     rm -f "$PIDFILE"
     [[ -f "$PROJECT/project.godot" ]] && patch_project off
-    echo "остановлен, строки плагина из project.godot сняты"
-    # Редактор сам переписывает project.godot при открытии (комментарии, значения по умолчанию) — это шум.
-    if [[ -d "$WT" ]] && ! git -C "$WT" diff --quiet -- netrun/project.godot; then
-      echo "ВНИМАНИЕ: netrun/project.godot отличается от HEAD. Правок настроек не делали — откатите: git -C $WT checkout netrun/project.godot" >&2
-    fi ;;
+    echo "остановлен, строки плагина из project.godot сняты" ;;
+  precommit)  # из хука: в индексе project.godot без строк плагина, рабочий файл (его держит редактор) не трогаем
+    git -C "$WT" diff --cached --quiet -- netrun/project.godot && exit 0
+    tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
+    git -C "$WT" show :netrun/project.godot >"$tmp"
+    cp "$tmp" "$tmp.orig"; patch_project off "$tmp"
+    if ! cmp -s "$tmp" "$tmp.orig"; then
+      git -C "$WT" update-index --cacheinfo "100644,$(git -C "$WT" hash-object -w "$tmp"),netrun/project.godot"
+      echo "pre-commit: из netrun/project.godot в индексе убраны строки Godot AI" >&2
+    fi; rm -f "$tmp.orig" ;;
+  hook)  # поставить pre-commit (общий для всех worktree репозитория; без staged project.godot ничего не делает)
+    hook="$(git -C "$WT" rev-parse --git-path hooks/pre-commit)"; [[ "$hook" = /* ]] || hook="$WT/$hook"
+    printf '#!/usr/bin/env bash\nexec "%s/scripts/devbox-godot-ai.sh" precommit\n' "$WT" >"$hook"; chmod +x "$hook"
+    # core.hooksPath=.githooks кладёт файл в дерево — прячем его от git status
+    case "$hook" in "$WT"/*) echo "${hook#"$WT"/}" >>"$(git -C "$WT" rev-parse --git-path info/exclude)" ;; esac
+    echo "хук pre-commit: $hook" ;;
   status)
     if editor_alive; then echo "редактор pid $(cat "$PIDFILE"), проект $PROJECT"; ss -ltn | grep -E ':(8000|9500) ' || true
     else echo "не запущен"; fi ;;
@@ -144,5 +156,5 @@ Exec=bash -c 'sleep 20; $WT/scripts/devbox-godot-ai.sh start'
 X-GNOME-Autostart-enabled=true
 EOF
     echo "автозапуск включён (~/.config/autostart/godot-ai.desktop)" ;;
-  *) echo "использование: $0 setup|start|stop|status|autostart" >&2; exit 2 ;;
+  *) echo "использование: $0 setup|start|stop|status|autostart|hook" >&2; exit 2 ;;
 esac

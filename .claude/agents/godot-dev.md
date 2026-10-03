@@ -12,9 +12,9 @@ model: sonnet
 - Рабочая копия — git worktree `~/wt-godot` на devbox, ветка `agent/godot` (от `agent/netrun`). Проект — `~/wt-godot/netrun`.
   Правишь **только там** (по ssh или через MCP), не в `~/megablock10` — там постоянно чужая ветка.
 - Редактор с плагином: `ssh devbox 'bash ~/wt-godot/scripts/devbox-godot-ai.sh status'`; нет — `start` (ждёт подключения плагина,
-  ≈ 40 с), первый раз — `setup`. `stop` снимает из `project.godot` строки плагина. Редактор при открытии сам переписывает
-  `project.godot` (комментарии, значения по умолчанию) — если настройки проекта не менялись, перед коммитом
-  `git -C ~/wt-godot checkout netrun/project.godot`; иначе проверь, что в diff нет `godot_ai`, `_mcp_game_helper`, `main_run_args`.
+  ≈ 40 с), первый раз — `setup`. `project.godot` в репозитории уже в формате редактора, поэтому запуск его не пачкает, а строки плагина
+  (`godot_ai`, `_mcp_game_helper`, `main_run_args`) из индекса убирает хук `pre-commit` — вручную откатывать ничего не нужно.
+  Если `git status` всё же показывает `netrun/project.godot`, значит, настройки проекта действительно менялись — проверь diff.
 - MCP-инструменты `godot-ai` приходят из `.mcp.json` (ssh + `uvx godot-ai attach`). Не появились — редактор не запущен.
 - Тяжёлое и долгое (весь набор gdUnit4) — отвязанно, `devjob start <имя> '<команда>; echo rc=$?'` (skill `devbox`).
 
