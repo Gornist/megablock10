@@ -3,6 +3,8 @@ package com.megablok10.netrun.bridge.collector
 import com.megablok10.kit.crypto.Ecdsa
 import com.megablok10.kit.sync.ChangeRecord
 import com.megablok10.kit.sync.signaturePayload
+import com.megablok10.kit.time.Clock
+import com.megablok10.kit.time.ManualClock
 import com.megablok10.netrun.bridge.Auditor
 import com.megablok10.netrun.bridge.CommitHook
 import com.megablok10.netrun.bridge.DocStore
@@ -32,8 +34,8 @@ import org.junit.rules.TemporaryFolder
 class WorldRecordsTest {
     @get:Rule val tmp = TemporaryFolder()
 
-    private class Rig(val f: ValueFixture, val key: WorldKey = WorldKey.generate()) {
-        val sync = WorldSync(f.store, key, null, CoroutineScope(Dispatchers.Unconfined))
+    private class Rig(val f: ValueFixture, val key: WorldKey = WorldKey.generate(), clock: Clock = ManualClock(T0_MS)) {
+        val sync = WorldSync(f.store, key, null, CoroutineScope(Dispatchers.Unconfined), clock = clock)
         fun records(): List<ChangeRecord> = runBlocking { sync.queue.nextBatch(1000) }
         fun reasons(): List<String> = records().map { it.reason }
         fun of(reason: String): List<ChangeRecord> = records().filter { it.reason == reason }
@@ -67,7 +69,7 @@ class WorldRecordsTest {
         assertEquals(rig.key.publicB64, r.subjectKeyB64)
         assertEquals(rig.key.publicB64, r.actor)
         assertNull(r.oldValue)
-        assertEquals(1L, r.seq)
+        assertEquals(SEQ0 + 1, r.seq)
         assertTrue(Ecdsa.verify(rig.key.publicB64, r.signaturePayload(), r.signature))
         val v = value(r)
         assertEquals(sid, VJ.str(v, "session"))
@@ -106,7 +108,7 @@ class WorldRecordsTest {
         rig.finish(sid, "clean", false, Move("it_dA2", MoveTo.PHONE), Move("it_sh1", MoveTo.PHONE))
         // эдди и переходы deck → outbox записей предмета не дают; взятие шарда из узла — даёт
         assertEquals(listOf("NET_ENTER", "NET_ITEM_OWNER", "NET_EXIT"), rig.reasons())
-        assertEquals(listOf(1L, 2L, 3L), rig.records().map { it.seq })
+        assertEquals(listOf(SEQ0 + 1, SEQ0 + 2, SEQ0 + 3), rig.records().map { it.seq })
         val exit = rig.of("NET_EXIT").single()
         assertEquals("w:net.run:${rig.f.store.epoch}:${rig.f.store.seq}:$sid", exit.id) // выход — последняя транзакция
         val v = value(exit)
@@ -314,7 +316,7 @@ class WorldRecordsTest {
         assertEquals("inbox:${rig.f.keyA}", rig.f.owner("it_dA1")) // документы откатились вместе с очередью
         rig.f.store.commitHook = inner
         rig.submit("enter:ok")
-        assertEquals(1L, rig.records().single().seq) // откатился и счётчик: номер не потерян
+        assertEquals(SEQ0 + 1, rig.records().single().seq) // откатился и счётчик: номер не потерян
     }
 
     @Test fun everyKindOfRecordIsSignedByTheWorldKey() {
@@ -331,7 +333,7 @@ class WorldRecordsTest {
             assertTrue(r.id, r.id.length <= 100)
             assertTrue(r.newValue!!.length <= WorldRecords.MAX_VALUE_CHARS)
         }
-        assertEquals(all.map { it.seq }, (1..all.size).map { it.toLong() })
+        assertEquals(all.map { it.seq }, (1..all.size).map { SEQ0 + it })
     }
 
     // ---------- эпоха базы: сброс базы Моста не возвращает старые id ----------
@@ -379,6 +381,59 @@ class WorldRecordsTest {
         assertEquals(store.epoch, epochOf(after.last()))
     }
 
+    // ---------- seq: сброс только файла базы при прежнем ключе мира ----------
+
+    private fun seqsOfFreshBase(key: WorldKey, nowMs: Long): List<Long> {
+        val rig = Rig(ValueFixture(":memory:"), key, ManualClock(nowMs))
+        val sid = rig.enterActive()
+        rig.finish(sid, "clean", false, Move("it_dA2", MoveTo.PHONE))
+        rig.f.item("it_weird", "weird:1", "x")
+        Auditor(rig.f.store).run()
+        return rig.records().map { it.seq }.also { rig.f.store.close() }
+    }
+
+    @Test fun freshBaseUnderTheSameKeyStartsAboveEverySeqOfTheEarlierOne() {
+        // Ключ мира лежит в отдельном файле и переживает удаление базы; коллектор не принимает seq, который у этого ключа уже занят.
+        val key = WorldKey.generate()
+        val first = seqsOfFreshBase(key, T0_MS)
+        val second = seqsOfFreshBase(key, T0_MS + HOUR_MS)
+        assertTrue(first.size >= 3)
+        assertEquals(first.size, second.size)
+        assertTrue("$first и $second", second.min() > first.max())
+        assertEquals((second.first()..second.last()).toList(), second) // внутри базы по-прежнему подряд
+    }
+
+    @Test fun restartContinuesTheBaseSeqNotTheClock() {
+        val path = tmp.root.resolve("seq.db").path
+        val key = WorldKey.generate()
+        val first = Rig(ValueFixture(path), key, ManualClock(T0_MS))
+        first.enterActive()
+        val last = first.records().last().seq
+        first.f.store.close()
+
+        val store = DocStore.open(path)
+        val second = WorldSync(store, key, null, CoroutineScope(Dispatchers.Unconfined), clock = ManualClock(T0_MS + HOUR_MS))
+        store.put("alert", "al_next", 0, VJ.obj("kind" to VJ.p("auditor_x"), "msg" to VJ.p("m")))
+        assertEquals(last + 1, runBlocking { second.queue.nextBatch(10) }.last().seq)
+        store.close()
+    }
+
+    @Test fun baseWithRecordsButWithoutTheCounterContinuesFromItsMaxSeq() {
+        val path = tmp.root.resolve("nocounter.db").path
+        val key = WorldKey.generate()
+        val first = Rig(ValueFixture(path), key, ManualClock(T0_MS))
+        first.enterActive()
+        val last = first.records().last().seq
+        first.f.store.close()
+        java.sql.DriverManager.getConnection("jdbc:sqlite:$path").use { c -> c.createStatement().use { it.execute("DELETE FROM meta WHERE key='world_record_seq'") } }
+
+        val store = DocStore.open(path)
+        val second = WorldSync(store, key, null, CoroutineScope(Dispatchers.Unconfined), clock = ManualClock(T0_MS + HOUR_MS))
+        store.put("alert", "al_next", 0, VJ.obj("kind" to VJ.p("auditor_x"), "msg" to VJ.p("m")))
+        assertEquals(last + 1, runBlocking { second.queue.nextBatch(10) }.last().seq)
+        store.close()
+    }
+
     @Test fun queueAndSeqSurviveRestart() {
         val path = tmp.root.resolve("w.db").path
         val key = WorldKey.generate()
@@ -391,7 +446,15 @@ class WorldRecordsTest {
         assertEquals(listOf("NET_ENTER"), runBlocking { second.queue.nextBatch(10) }.map { it.reason })
         // и новая запись продолжает нумерацию
         store.put("alert", "al_next", 0, VJ.obj("kind" to VJ.p("auditor_x"), "msg" to VJ.p("m")))
-        assertEquals(listOf(1L, 2L), runBlocking { second.queue.nextBatch(10) }.map { it.seq })
+        assertEquals(listOf(SEQ0 + 1, SEQ0 + 2), runBlocking { second.queue.nextBatch(10) }.map { it.seq })
         store.close()
+    }
+
+    private companion object {
+        const val T0_MS = 1_790_000_000_000L
+        const val HOUR_MS = 3_600_000L
+
+        /** Свежая база начинает счёт с времени в секундах: первая запись получает `SEQ0 + 1`. */
+        const val SEQ0 = T0_MS / 1000
     }
 }

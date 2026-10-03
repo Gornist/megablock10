@@ -11,6 +11,10 @@ import java.sql.ResultSet
  * `world_record_seq` в `meta`. Это и нужно контракту (C2, 2.1): запись ставится в очередь в транзакции изменения документов
  * ([WorldRecorder]), поэтому «изменение есть, записи нет» и «записи нет, изменения нет» невозможны.
  *
+ * Номера `seq` свежей базы не начинаются с 1: ключ мира лежит в отдельном файле и переживает удаление базы, а коллектор не принимает
+ * `seq`, уже занятый у этого ключа («seq already used by a different record»; kit удаляет такую запись). Поэтому при первой
+ * инициализации пустой базы счётчик встаёт на время в секундах: заведомо выше номеров прежней базы (записей единицы в минуту).
+ *
  * Строка без `accepted_at` ждёт отправки; подтверждённая коллектором остаётся в таблице [retentionMs] (журнал подтверждённых, как
  * `accepted_change_records` на телефоне): если коллектор восстановили из резервной копии, kit вернёт записи сверх его `knownSeq`
  * в очередь ([requeueAcceptedAbove]). Доступ к соединению — под замком [DocStore], общим с транзакциями документов.
@@ -29,6 +33,14 @@ class WorldRecordQueue(
                         "source_ref TEXT, actor TEXT NOT NULL, signature TEXT NOT NULL, accepted_at INTEGER)",
                 )
                 st.execute("CREATE INDEX IF NOT EXISTS world_records_queue ON world_records(accepted_at, seq)")
+            }
+            // Счётчика нет и очередь пуста — свежая база: первый seq будет выше любого, который мог выдать Мост до сброса файла.
+            // База с записями, но без счётчика продолжает с MAX(seq) ([lastSeq]); база со счётчиком его не меняет.
+            c.prepareStatement(
+                "INSERT OR IGNORE INTO meta(key,value) SELECT '$SEQ_KEY', ? WHERE NOT EXISTS (SELECT 1 FROM world_records)",
+            ).use { st ->
+                st.setLong(1, clock() / MS_IN_S)
+                st.executeUpdate()
             }
         }
     }
@@ -169,6 +181,7 @@ class WorldRecordQueue(
 
     companion object {
         private const val SEQ_KEY = "world_record_seq"
+        private const val MS_IN_S = 1000L
         private const val CHUNK = 400
 
         /** Сколько хранить подтверждённые записи: с запасом больше интервала резервных копий коллектора (как на телефоне). */
