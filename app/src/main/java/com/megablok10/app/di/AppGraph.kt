@@ -195,7 +195,7 @@ class AppGraph(private val app: Application) {
             { scope -> secAlerts.start(scope) },
             { scope -> cardResender.start(scope) },
             { _ -> netrun.restorePeer() },
-            { scope -> DeviceDiagnostics.startSnapshots(app, scope, this) },
+            { scope -> DeviceDiagnostics.startSnapshots(app, scope, diagnosticsState) },
         ),
     )
     val provisioning = ProvisionStore(identity, collectorSettings, changes, wallet, db.consumedTokenDao(), transactor)
@@ -227,8 +227,19 @@ class AppGraph(private val app: Application) {
         )
     }
 
+    /** Срез состояния для снимков и device.txt (DeviceDiagnostics); sync читается лениво, как раньше. */
+    private val diagnosticsState = object : DeviceDiagnostics.AppState {
+        override val identity: Identity? get() = this@AppGraph.identity.current
+        override suspend fun outboxPending(): Int = outbox.pending()
+        override val wifiBound: Boolean get() = wifi.boundNetwork != null
+        override val ownIpv4: String? get() = wifi.ownIpv4
+        override val chatPort: Int get() = mesh.listeningPort
+        override fun describePeers(): String = presence.describePeers()
+        override val syncSummary: String get() = collectorSync.lastSummary
+    }
+
     /** Сведения об устройстве и приложении для архива журнала (`device.txt`). */
-    suspend fun deviceReport(): String = DeviceDiagnostics.deviceReport(app, this)
+    suspend fun deviceReport(): String = DeviceDiagnostics.deviceReport(app, diagnosticsState)
 
     /** Сколько записей ждёт подтверждения коллектора (Настройки). */
     fun observePendingChanges(): Flow<Int> = changeQueue.observeCount()

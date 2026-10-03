@@ -10,7 +10,7 @@ import android.os.BatteryManager
 import android.os.Build
 import android.os.PowerManager
 import com.megablok10.app.BuildConfig
-import com.megablok10.app.di.AppGraph
+import com.megablok10.app.identity.Identity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -21,6 +21,17 @@ import kotlinx.coroutines.launch
  * по снимкам видно, что именно менялось между двумя событиями.
  */
 object DeviceDiagnostics {
+    /** Что нужно снимку и отчёту от приложения: узкий срез вместо всего AppGraph. Значения читаются в момент снимка. */
+    interface AppState {
+        val identity: Identity?
+        suspend fun outboxPending(): Int
+        val wifiBound: Boolean
+        val ownIpv4: String?
+        val chatPort: Int
+        fun describePeers(): String
+        val syncSummary: String
+    }
+
     private const val TAG = "Snapshot"
     private const val SNAPSHOT_EVERY_MS = 30_000L
 
@@ -33,40 +44,40 @@ object DeviceDiagnostics {
             "collector=${BuildConfig.DEFAULT_COLLECTOR_URL.ifBlank { "-" }}"
 
     /** Текст device.txt в экспортируемом архиве. */
-    suspend fun deviceReport(context: Context, graph: AppGraph): String {
-        val id = graph.identity.current
+    suspend fun deviceReport(context: Context, state: AppState): String {
+        val id = state.identity
         return buildString {
             appendLine("время экспорта: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss XXX", java.util.Locale.US).format(java.util.Date())}")
             appendLine(header())
             appendLine("игрок: ${id?.callsign ?: "-"} фракция=${id?.faction ?: "-"} ключ=…${Mb10Log.short(id?.publicKeyB64)}")
             appendLine("часовой пояс: ${java.util.TimeZone.getDefault().id}")
             appendLine("экран/производитель: ${Build.BRAND} ${Build.DEVICE} ${Build.HARDWARE}")
-            appendLine("последний снимок: ${snapshotLine(context, graph)}")
+            appendLine("последний снимок: ${snapshotLine(context, state)}")
         }
     }
 
     /** Запускает периодический снимок в переданном скоупе (останавливается вместе с ним). */
-    fun startSnapshots(context: Context, scope: CoroutineScope, graph: AppGraph) {
+    fun startSnapshots(context: Context, scope: CoroutineScope, state: AppState) {
         val app = context.applicationContext
         scope.launch {
             while (true) {
-                runCatching { Mb10Log.i(TAG, snapshotLine(app, graph)) }.onFailure { Mb10Log.w(TAG, "снимок не собрался: ${it.message}") }
+                runCatching { Mb10Log.i(TAG, snapshotLine(app, state)) }.onFailure { Mb10Log.w(TAG, "снимок не собрался: ${it.message}") }
                 delay(SNAPSHOT_EVERY_MS)
             }
         }
     }
 
     /** Одна строка со всем, что нужно, чтобы понять состояние телефона в этот момент. */
-    private suspend fun snapshotLine(context: Context, graph: AppGraph): String {
+    private suspend fun snapshotLine(context: Context, state: AppState): String {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
         val wifi = wifiSignal(cm)
-        val outbox = runCatching { graph.outbox.pending() }.getOrNull()
-        val id = graph.identity.current
+        val outbox = runCatching { state.outboxPending() }.getOrNull()
+        val id = state.identity
         return "snapshot fg=$foreground me=${Mb10Log.short(id?.publicKeyB64)} " +
-            "wifiBound=${graph.wifi.boundNetwork != null} ip=${graph.wifi.ownIpv4 ?: "-"} nets=${networkKinds(cm)} " +
+            "wifiBound=${state.wifiBound} ip=${state.ownIpv4 ?: "-"} nets=${networkKinds(cm)} " +
             "rssi=${wifi.rssi ?: "-"} freqMHz=${wifi.freq ?: "-"} linkMbps=${wifi.linkMbps ?: "-"} " +
-            "chatPort=${graph.mesh.listeningPort} peers=${graph.presence.describePeers()} outbox=${outbox ?: "-"} " +
-            "sync=${graph.collectorSync.lastSummary} ${powerAndMemory(context)}"
+            "chatPort=${state.chatPort} peers=${state.describePeers()} outbox=${outbox ?: "-"} " +
+            "sync=${state.syncSummary} ${powerAndMemory(context)}"
     }
 
     /** Какие сети сейчас есть: `wifi:IV` — Wi-Fi с признаками INTERNET и VALIDATED (у игровой сети без выхода наружу их не будет). */
