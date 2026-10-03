@@ -102,8 +102,19 @@ class ValueOps(
     private fun validDeck(items: List<String>, protectedItem: String): Boolean =
         items.isNotEmpty() && items.toSet().size == items.size && protectedItem in items
 
+    private fun nothingToMove(items: Int, eddies: Long) = items == 0 && eddies == 0L
+
     private fun validIssue(items: List<String>, eddies: Long): Boolean =
         items.toSet().size == items.size && eddies >= 0 && (items.isNotEmpty() || eddies > 0)
+
+    /** Проверки документа `runner`: допуск в Сеть (при `settings/global.require_allowed`), блокировка, пауза после Soft ICE. */
+    private fun checkRunner(tx: DocStore.Tx, rd: Doc?) {
+        // допуск в Сеть: при settings/global.require_allowed вход только у нетраннера с флагом `allowed` (его ставит мастер)
+        val requireAllowed = tx.get(SETTINGS, "global")?.data?.let { VJ.bool(it, "require_allowed") } ?: false
+        if (requireAllowed && (rd == null || !VJ.bool(rd.data, "allowed"))) fail("session_state", "нет допуска в Сеть")
+        if (rd != null && VJ.bool(rd.data, "blocked")) fail("session_state", "нетраннер заблокирован")
+        if (rd != null && VJ.lng(rd.data, "re_entry_after") > clock()) fail("session_state", "пауза повторного входа после Soft ICE")
+    }
 
     /** Все проверки входа, включая выбор узла (учебный или терминала); возвращает узел сессии. Любой отказ ведёт к возврату. */
     private fun checkSubmit(tx: DocStore.Tx, runner: String, terminal: String, docs: List<Doc>): String {
@@ -111,11 +122,7 @@ class ValueOps(
             if (VJ.str(d.data, "owner") != "inbox:$runner") fail("wrong_owner", "${d.id} не в inbox игрока", d)
         }
         val rd = tx.get(RUNNER, runnerDocId(runner))
-        // допуск в Сеть: при settings/global.require_allowed вход только у нетраннера с флагом `allowed` (его ставит мастер)
-        val requireAllowed = tx.get(SETTINGS, "global")?.data?.let { VJ.bool(it, "require_allowed") } ?: false
-        if (requireAllowed && (rd == null || !VJ.bool(rd.data, "allowed"))) fail("session_state", "нет допуска в Сеть")
-        if (rd != null && VJ.bool(rd.data, "blocked")) fail("session_state", "нетраннер заблокирован")
-        if (rd != null && VJ.lng(rd.data, "re_entry_after") > clock()) fail("session_state", "пауза повторного входа после Soft ICE")
+        checkRunner(tx, rd)
         val open = store.list(SESSION).filter { VJ.str(it.data, "state") != "closed" }
         if (open.any { VJ.str(it.data, "runner") == runner }) fail("session_state", "у игрока уже есть открытая сессия")
         val term = tx.get(TERMINAL, terminal) ?: fail("session_state", "терминала нет")
@@ -492,7 +499,7 @@ class ValueOps(
      * плодит копий; `origin` — `master:<client>`, разбор `daemon`/`shard` — как при приёме карточки ([ItemDecode]).
      */
     fun stockNode(caller: Caller, rid: String, node: String, items: List<StockItem>, eddies: Long): OpResult {
-        if (eddies < 0 || (items.isEmpty() && eddies == 0L)) throw StoreException("bad_request", "нужны предметы или эдди > 0")
+        if (eddies < 0 || nothingToMove(items.size, eddies)) throw StoreException("bad_request", "нужны предметы или эдди > 0")
         if (items.any { it.kind !in STOCK_KINDS || it.payload.isEmpty() }) {
             throw StoreException("bad_request", "предмет: kind SHARD или DAEMON и непустой payload")
         }
@@ -527,7 +534,7 @@ class ValueOps(
      * и вычесть [eddies] из запаса. Чужой предмет — `wrong_owner` без изменений; эдди больше запаса — `bad_request`.
      */
     fun unstockNode(caller: Caller, rid: String, node: String, items: List<String>, eddies: Long): OpResult {
-        if (eddies < 0 || items.toSet().size != items.size || (items.isEmpty() && eddies == 0L)) {
+        if (eddies < 0 || items.toSet().size != items.size || nothingToMove(items.size, eddies)) {
             throw StoreException("bad_request", "нужны предметы без повторов или эдди > 0")
         }
         val params = VJ.obj(

@@ -34,15 +34,6 @@ internal class OpRouter(private val ops: ValueOps, private val terminals: Termin
                     (msg["disconnect"] as? JsonPrimitive)?.booleanOrNull ?: false, moves(msg),
                 ),
             )
-            "master.stock_node" -> opReply(
-                ops.stockNode(caller, req(msg, "rid"), req(msg, "node"), stockItems(msg), msg["eddies"].long() ?: 0L),
-            )
-            "master.unstock_node" -> opReply(
-                ops.unstockNode(
-                    caller, req(msg, "rid"), req(msg, "node"), if (msg["items"] == null) emptyList() else strings(msg, "items"),
-                    msg["eddies"].long() ?: 0L,
-                ),
-            )
             "session.abort" -> opReply(ops.abortSession(caller, req(msg, "session"), msg["reason"].string().orEmpty()))
             "terminal.auth" -> {
                 if (role == Role.MASTER) throw StoreException("forbidden", "роли master операция $op не разрешена")
@@ -73,6 +64,15 @@ internal class OpRouter(private val ops: ValueOps, private val terminals: Termin
         )
         "master.template_apply" -> master.applyTemplate(caller, req(msg, "template"), if (msg["nodes"] == null) emptyList() else strings(msg, "nodes"))
         "master.reply" -> master.reply(caller, req(msg, "query"), req(msg, "mid"), req(msg, "text"))
+        "master.stock_node" -> opReply(
+            ops.stockNode(caller, req(msg, "rid"), req(msg, "node"), stockItems(msg), msg["eddies"].long() ?: 0L),
+        )
+        "master.unstock_node" -> opReply(
+            ops.unstockNode(
+                caller, req(msg, "rid"), req(msg, "node"), if (msg["items"] == null) emptyList() else strings(msg, "items"),
+                msg["eddies"].long() ?: 0L,
+            ),
+        )
         "net.query" -> master.ask(caller, msg["query"].string(), req(msg, "runner"), req(msg, "mid"), req(msg, "text"))
         else -> throw StoreException("bad_request", "неизвестный op: $op")
     }
@@ -127,7 +127,7 @@ internal class OpRouter(private val ops: ValueOps, private val terminals: Termin
     private companion object {
         val MASTER_OPS = setOf(
             "master.pause", "master.link", "master.goal", "master.goal_clear", "master.gate", "master.decide",
-            "master.template_apply", "master.reply", "net.query",
+            "master.template_apply", "master.reply", "net.query", "master.stock_node", "master.unstock_node",
         )
     }
 }
