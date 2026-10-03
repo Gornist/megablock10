@@ -89,3 +89,58 @@ func test_bad_token_is_rejected() -> void:
 	await get_tree().create_timer(1.0).timeout
 	assert_bool(_server.has_avatar("nope")).is_false()
 	assert_bool(_client.is_connected_to_world).is_false()
+
+
+func _connected_and_kicked() -> int:
+	## Ждёт связь и обрывает её со стороны сервера (как пропавший Wi-Fi, но сразу); возвращает прежний peer id.
+	assert_bool(await _wait_for(func(): return _server.peer_of("alice") != -1 and _client.is_connected_to_world)).is_true()
+	var first_peer := _server.peer_of("alice")
+	(_server.multiplayer as SceneMultiplayer).disconnect_peer(first_peer)
+	assert_bool(await _wait_for(func(): return not _client.is_connected_to_world)).is_true()
+	return first_peer
+
+
+## V6а, пункт 8: настоящий клиент (ProtoClient) раньше после обрыва только писал net.disconnected и не возвращался;
+## автопереподключение возвращает того же игрока, пока не вышло окно возврата сервера.
+func test_auto_reconnect_returns_to_the_same_avatar() -> void:
+	_client.auto_reconnect_sec = 0.3
+	var seen := {"attempts": []}
+	_client.reconnecting.connect(func(n: int): seen["attempts"].append(n))
+	assert_bool(await _wait_for(func(): return _server.peer_of("alice") != -1 and _client.is_connected_to_world)).is_true()
+	var avatar := _server.get_avatar("alice")
+	var first_peer := await _connected_and_kicked()
+	# клиент «вернулся» раньше, чем сервер дочитал оборвавшийся peer: ждём именно нового peer id, а не любого != -1
+	assert_bool(await _wait_for(func(): return _client.is_connected_to_world and not _server.peer_of("alice") in [-1, first_peer], 5.0)).is_true()
+	assert_object(_server.get_avatar("alice")).is_same(avatar)
+	assert_array(seen["attempts"]).is_equal([1])
+
+
+func test_no_auto_reconnect_by_default() -> void:
+	assert_float(_client.auto_reconnect_sec).is_equal(0.0)
+	await _connected_and_kicked()
+	await get_tree().create_timer(1.0).timeout
+	assert_bool(_client.is_connected_to_world).is_false()
+
+
+func test_stop_reconnect_keeps_client_offline() -> void:
+	_client.auto_reconnect_sec = 0.3
+	var first_peer := await _connected_and_kicked()
+	_client.stop_reconnect()  # забег закончился или игрок вышел сам: сервер всё равно не пустит
+	await get_tree().create_timer(1.2).timeout
+	assert_bool(_client.is_connected_to_world).is_false()
+	assert_bool(_server.peer_of("alice") in [-1, first_peer]).is_true()  # нового соединения нет
+
+
+func test_reconnect_gives_up_after_attempts() -> void:
+	_client.auto_reconnect_sec = 0.2
+	_client.auto_reconnect_attempts = 2
+	var seen := {"gave_up": false, "attempts": []}
+	_client.reconnect_gave_up.connect(func(): seen["gave_up"] = true)
+	_client.reconnecting.connect(func(n: int): seen["attempts"].append(n))
+	assert_bool(await _wait_for(func(): return _client.is_connected_to_world)).is_true()
+	_client.config.token = "nope"  # сервер отвечает отказом: попытки идут быстро
+	await _connected_and_kicked()
+	assert_bool(await _wait_for(func(): return seen["gave_up"], 8.0)).is_true()
+	assert_array(seen["attempts"]).is_equal([1, 2])
+	assert_bool(_client.is_connected_to_world).is_false()
+	assert_bool(_server.has_avatar("nope")).is_false()

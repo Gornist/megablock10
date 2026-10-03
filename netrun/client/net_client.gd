@@ -6,6 +6,9 @@ extends Node
 signal connected
 signal rejected
 signal disconnected
+## Автопереподключение: идёт попытка номер attempt (с 1) / попытки кончились.
+signal reconnecting(attempt: int)
+signal reconnect_gave_up
 ## Сервер подтвердил взятие / отказал. Клиент сам объект не берёт — ждёт этих сигналов.
 signal grab_confirmed(object_id: String)
 signal grab_denied(object_id: String, reason: String)
@@ -39,6 +42,16 @@ var impair_dropped_down := 0
 
 const RETRANSMIT_MS := 200
 
+## Автопереподключение (V6а, пункт 8 чек-листа). Потеряв связь, которая была, клиент сам повторяет подключение с тем же токеном
+## каждые auto_reconnect_sec секунд — сервер держит аватар grace_sec (20 с), вернулся в окно — тот же игрок. Попыток не больше
+## auto_reconnect_attempts (потом reconnect_gave_up). 0 — выключено: так сделано по умолчанию, бот и тесты возвращаются сами.
+## Если связи ещё не было (плохой токен, сервер не запущен), клиент не долбит. stop_reconnect() — забег закончился или игрок вышел.
+var auto_reconnect_sec := 0.0
+var auto_reconnect_attempts := 60
+
+var _retry_left := -1  # сколько попыток осталось; -1 — повтор не идёт
+var _retry_stopped := false
+var _retry_serial := 0
 var _beat_window := BeatStats.new()
 var _beat_last_ms := -1
 var _impair_rng := RandomNumberGenerator.new()
@@ -239,23 +252,57 @@ func _on_auth(peer_id: int, _data: PackedByteArray) -> void:
 const PEER_TIMEOUT_MS := 5000
 
 
+## Прекратить автопереподключение: забег закончился (ended) или игрок вышел сам — сервер всё равно не пустит.
+func stop_reconnect() -> void:
+	_retry_stopped = true
+	_retry_left = -1
+	_retry_serial += 1  # отменяет уже заведённый таймер
+
+
+## lost — связь, которая была, оборвалась (начинает серию попыток заново); иначе — неудача очередной попытки.
+func _retry_later(lost: bool) -> void:
+	if auto_reconnect_sec <= 0.0 or _retry_stopped:
+		return
+	if lost:
+		_retry_left = auto_reconnect_attempts
+	elif _retry_left < 0:
+		return
+	if _retry_left == 0:
+		_retry_left = -1
+		reconnect_gave_up.emit()
+		return
+	var attempt := auto_reconnect_attempts - _retry_left + 1
+	_retry_left -= 1
+	_retry_serial += 1
+	var serial := _retry_serial
+	await get_tree().create_timer(auto_reconnect_sec).timeout
+	if serial != _retry_serial or _retry_stopped or is_connected_to_world:
+		return
+	reconnecting.emit(attempt)
+	reconnect()
+
+
 func _on_connected() -> void:
 	var enet := (multiplayer as SceneMultiplayer).multiplayer_peer as ENetMultiplayerPeer
 	var pp := enet.get_peer(1) if enet != null else null
 	if pp != null:
 		pp.set_timeout(PEER_TIMEOUT_MS, PEER_TIMEOUT_MS, PEER_TIMEOUT_MS)
 	_beat_last_ms = -1  # первое состояние — сразу после подключения
+	_retry_left = -1
 	is_connected_to_world = true
 	connected.emit()
 
 
 func _on_failed() -> void:
 	rejected.emit()
+	_retry_later(false)
 
 
 func _on_server_disconnected() -> void:
 	if is_connected_to_world:
 		is_connected_to_world = false
 		disconnected.emit()
+		_retry_later(true)
 	else:
 		rejected.emit()
+		_retry_later(false)

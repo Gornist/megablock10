@@ -1,7 +1,7 @@
 class_name ProtoClient
 extends Node
 ## Клиент прототипа (V3), общий для Pico 4 и плоской сборки: сцена, XR-риг, сеть, журнал в файл.
-## Журнал (user://logs/netrun-*.log): start, mode, xr, rig.recenter, net.*, grab.*, app.pause/resume, frame.slow.
+## Журнал (user://logs/netrun-*.log): start, mode, xr, rig.recenter, net.* (в том числе net.reconnect), grab.*, app.pause/resume, frame.slow.
 
 const SLOW_LOG_MIN_GAP_MS := 250  # кадры дольше 1/72 с в журнал — не чаще раза в 250 мс (остальные — счётчиком)
 
@@ -11,6 +11,9 @@ var net: NetClient
 var trace_audio: TraceAudio
 
 const POS_PERIOD := 0.05  # 20 раз/с: чужие клиенты видят нас со сглаживанием по буферу
+## Потеряв связь, клиент возвращается сам: попытка раз в 2 с, не дольше ~2 минут (сервер держит аватар 20 с, дальше — новый забег).
+const RECONNECT_SEC := 2.0
+const RECONNECT_ATTEMPTS := 60
 
 var _last_level := -1
 var _pos_acc := 0.0
@@ -45,6 +48,11 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	net.connected.connect(func(): log_file.log("net.connected", {"host": cfg.host, "port": cfg.port}))
 	net.rejected.connect(func(): log_file.log("net.rejected", {"host": cfg.host, "port": cfg.port}))
 	net.disconnected.connect(func(): log_file.log("net.disconnected", {"host": cfg.host, "port": cfg.port}))
+	net.auto_reconnect_sec = RECONNECT_SEC
+	net.auto_reconnect_attempts = RECONNECT_ATTEMPTS
+	net.reconnecting.connect(func(attempt: int): log_file.log("net.reconnect", {"host": cfg.host, "port": cfg.port, "attempt": attempt}))
+	net.reconnect_gave_up.connect(func(): log_file.log("net.gave_up", {"host": cfg.host, "port": cfg.port, "attempts": RECONNECT_ATTEMPTS}))
+	scene.rig.exit_requested.connect(func(_reason: String): net.stop_reconnect())  # вышли сами: сервер закроет забег, возвращаться некуда
 	net.state_received.connect(_on_state)
 	net.avatars_received.connect(func(msg: Dictionary): scene.apply_avatars(msg))
 	net.event_received.connect(_on_event)
@@ -84,6 +92,7 @@ func _on_event(ev: Dictionary) -> void:
 			scene.show_portal_denied(ev)
 			log_file.log("graph.portal_denied", {"to": ev.get("to", ""), "reason": ev.get("reason", "")})
 	if ev.get("kind") == WorldMsg.EV_ENDED:
+		net.stop_reconnect()  # забег закончился: сервер закроет связь, возвращаться некуда
 		scene.show_ended(str(ev.get("reason", "")))
 		if ev.get("reason") == ExitLogic.REASON_FLATLINE:
 			if trace_audio != null:
