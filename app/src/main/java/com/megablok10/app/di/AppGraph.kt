@@ -6,6 +6,7 @@ import com.megablok10.app.BuildConfig
 import com.megablok10.app.Mb10App
 import com.megablok10.app.PlayerNotices
 import com.megablok10.app.announce.AnnouncementStore
+import com.megablok10.app.breach.BreachHintStore
 import com.megablok10.app.breach.CheckBreachAccess
 import com.megablok10.app.breach.ContainerCooldownStore
 import com.megablok10.app.breach.DaemonRewards
@@ -163,6 +164,7 @@ class AppGraph(private val app: Application) {
     // Взлом
     val collectorClient = CollectorClient()
     val cooldowns = ContainerCooldownStore(db.containerBreachDao())
+    val breachHint = BreachHintStore(prefs(BreachHintStore.PREFS))
     val slotClaims = SlotClaimStore(db.slotClaimDao(), identity, collectorSettings, collectorClient, peerDirectory)
     val secAlerts = SecAlertStore(db.pendingAlertDao(), chat, changes, visiblePlayers)
     val rewards = DaemonRewards(wallet, shards, daemons, slotClaims, collectorSettings)

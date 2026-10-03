@@ -1,6 +1,5 @@
 package com.megablok10.app.breach
 
-import android.content.Context
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -8,21 +7,12 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
@@ -36,22 +26,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import com.megablok10.app.log.Mb10Log
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.megablok10.app.DebugConfig
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.qr.Mb10Qr
@@ -61,11 +42,8 @@ import com.megablok10.app.ui.theme.LocalMbColors
 import com.megablok10.app.ui.theme.MbBreadcrumb
 import com.megablok10.app.ui.theme.MbBuffer
 import com.megablok10.app.ui.theme.MbButton
-import com.megablok10.app.ui.theme.MbChamferForm
 import com.megablok10.app.ui.theme.MbColorsBreach
-import com.megablok10.app.ui.theme.MbColorsSuccess
 import com.megablok10.app.ui.theme.MbDimens
-import com.megablok10.app.ui.theme.MbDone
 import com.megablok10.app.ui.theme.MbIconButton
 import com.megablok10.app.ui.theme.MbIcons
 import com.megablok10.app.ui.theme.MbListItem
@@ -73,11 +51,8 @@ import com.megablok10.app.ui.theme.MbLog
 import com.megablok10.app.ui.theme.MbPanel
 import com.megablok10.app.ui.theme.MbProgress
 import com.megablok10.app.ui.theme.MbTag
-import com.megablok10.app.ui.theme.MbTagTone
 import com.megablok10.app.ui.theme.MbTimer
 import com.megablok10.app.ui.theme.MbTypography
-import com.megablok10.app.ui.theme.formatMoney
-import com.megablok10.app.ui.theme.mbFrame
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -100,6 +75,8 @@ internal fun BreachContainerFlow(
     identity: Identity,
     onRescan: () -> Unit,
     onImmersive: (Boolean) -> Unit = {},
+    isHintSeen: () -> Boolean,
+    onHintSeen: () -> Unit,
     /** Итог взлома — награда и прочее (BreachViewModel → сценарий FinishBreach); onDone получает награду для итогового экрана. */
     finish: (result: BreachResult, seed: Long, onDone: (RewardOutcome) -> Unit) -> Unit,
 ) {
@@ -134,6 +111,8 @@ internal fun BreachContainerFlow(
                     bufferSize = identity.ramCapacity,
                     breachParams = params,
                     onRescan = onRescan,
+                    isHintSeen = isHintSeen,
+                    onHintSeen = onHintSeen,
                     rescanLabel = "Новый контейнер",
                     failMessage = "СБ зафиксировала попытку. Контейнер заблокирован до конца этого акта.",
                     rewardOutcome = rewardOutcome,
@@ -202,7 +181,7 @@ private fun secAlertStatusText(container: Container, identity: Identity, outcome
  * Вызывается из CyberdeckScreen поверх ShardDetailDialog.
  */
 @Composable
-internal fun ShardDecryptFlow(shard: Mb10Qr.Shard, onDecrypted: () -> Unit, onCancel: () -> Unit) {
+internal fun ShardDecryptFlow(shard: Mb10Qr.Shard, isHintSeen: () -> Boolean, onHintSeen: () -> Unit, onDecrypted: () -> Unit, onCancel: () -> Unit) {
     val target = remember(shard.id) { shardDecryptTarget(shard) }
     val sessionSeed = remember(shard.id) { System.nanoTime() }
     val params = remember(shard.tier) { BreachTierParams.forTier(Tier.fromLevel(shard.tier)) }
@@ -219,6 +198,8 @@ internal fun ShardDecryptFlow(shard: Mb10Qr.Shard, onDecrypted: () -> Unit, onCa
                 bufferSize = target.sequence.size + 2,
                 breachParams = null,
                 onRescan = onCancel,
+                isHintSeen = isHintSeen,
+                onHintSeen = onHintSeen,
                 rescanLabel = "Отмена",
                 failMessage = "Шифр-замок устоял. Шард остаётся зашифрован — можно попробовать ещё раз.",
                 onResult = { result -> if (result.outcome == BreachOutcome.SUCCESS) onDecrypted() }
@@ -262,15 +243,10 @@ internal fun DaemonPicker(daemons: List<Daemon>, chosen: Set<String>, remainingB
     }
 }
 
-/** Один раз объясняем механику новичку (не диалогом: он заблокировал бы таймер) — строкой над сеткой до первого тапа. */
-private const val UX_PREFS = "ux_prefs"
-private const val BREACH_HINT_SEEN = "breach_hint_seen"
-private fun breachHintSeen(context: Context) = context.getSharedPreferences(UX_PREFS, Context.MODE_PRIVATE).getBoolean(BREACH_HINT_SEEN, false)
-private fun markBreachHintSeen(context: Context) = context.getSharedPreferences(UX_PREFS, Context.MODE_PRIVATE).edit().putBoolean(BREACH_HINT_SEEN, true).apply()
-
 /**
  * Владеет одной попыткой целиком: тикающим таймером и результатом, если он уже наступил. `remember(seed)` — попытка живёт, пока
- * seed (задаётся при каждом старте) не меняется. Всё помещается на один экран без прокрутки: размер ячеек считается из доступной
+ * seed (задаётся при каждом старте) не меняется. Ход попытки — [BreachRun]; здесь только то, что касается экрана: звук, хаптик,
+ * журнал, реплики защиты и автосолвер. Всё помещается на один экран без прокрутки: размер ячеек считается из доступной
  * высоты, а не только ширины. Итог показывается оверлеем поверх экрана (сетка и буфер остаются под ним в финальном виде).
  * breachParams — если не null, задаёт мёртвые клетки/порченые коды (см. generateGrid); у ShardDecryptFlow ловушек нет вовсе.
  */
@@ -285,6 +261,8 @@ private fun BreachSession(
     bufferSize: Int,
     breachParams: BreachParams?,
     onRescan: () -> Unit,
+    isHintSeen: () -> Boolean,
+    onHintSeen: () -> Unit,
     rescanLabel: String = "Новый контейнер",
     failMessage: String = "СБ зафиксировала попытку. Контейнер заблокирован до конца этого акта.",
     rewardOutcome: RewardOutcome? = null,
@@ -296,9 +274,7 @@ private fun BreachSession(
     val grid = remember(seed) { generateGrid(gridSize, daemons, Random(seed), breachParams) }
     val breachId = remember(seed) { "MB10-VENT-" + seed.toString(16).takeLast(4).uppercase() }
 
-    var attempt by remember(seed) { mutableStateOf(BreachAttemptState(grid, daemons, bufferSize)) }
-    var secondsLeft by remember(seed) { mutableIntStateOf(timerSec) }
-    var result by remember(seed) { mutableStateOf<BreachResult?>(null) }
+    var run by remember(seed) { mutableStateOf(BreachRun(BreachAttemptState(grid, daemons, bufferSize), timerSec)) }
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
@@ -307,24 +283,23 @@ private fun BreachSession(
     val shake = remember(seed) { Animatable(0f) }
     // Реплика защиты узла (см. IceLines) — одна строка над сеткой, обновляется по событиям взлома.
     var iceLine by remember(seed) { mutableStateOf<String?>(null) }
-    var hintSeen by remember(seed) { mutableStateOf(DebugConfig.autoSolve || breachHintSeen(context)) }
+    var hintSeen by remember(seed) { mutableStateOf(DebugConfig.autoSolve || isHintSeen()) }
     fun ice(event: IceEvent) { iceLine = IceLines.line(tier, event, Random(seed xor event.ordinal.toLong())) }
 
-    LaunchedEffect(result == null) { onRunningChange(result == null) }
+    LaunchedEffect(run.isFinished) { onRunningChange(!run.isFinished) }
 
     fun resolveOnce() {
-        if (result == null) {
-            val resolved = BreachResult(attempt.daemons, attempt.matchedDaemonIds)
-            result = resolved
-            Mb10Log.event("Breach", "breach.result", "id" to breachId, "title" to title, "tier" to tier.name, "outcome" to resolved.outcome.name, "matched" to attempt.matchedDaemonIds.size, "daemons" to attempt.daemons.size, "secondsLeft" to secondsLeft, "of" to timerSec)
-            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-            BreachSfx.play(context, when (resolved.outcome) {
-                BreachOutcome.SUCCESS -> BreachCue.SUCCESS
-                BreachOutcome.PARTIAL -> BreachCue.PARTIAL
-                BreachOutcome.FAIL -> BreachCue.FAIL
-            })
-            onResult(resolved)
-        }
+        if (run.isFinished) return
+        run = run.resolve()
+        val resolved = checkNotNull(run.result)
+        Mb10Log.event("Breach", "breach.result", "id" to breachId, "title" to title, "tier" to tier.name, "outcome" to resolved.outcome.name, "matched" to run.attempt.matchedDaemonIds.size, "daemons" to run.attempt.daemons.size, "secondsLeft" to run.secondsLeft, "of" to timerSec)
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        BreachSfx.play(context, when (resolved.outcome) {
+            BreachOutcome.SUCCESS -> BreachCue.SUCCESS
+            BreachOutcome.PARTIAL -> BreachCue.PARTIAL
+            BreachOutcome.FAIL -> BreachCue.FAIL
+        })
+        onResult(resolved)
     }
 
     LaunchedEffect(seed) {
@@ -337,41 +312,56 @@ private fun BreachSession(
         }
         if (DebugConfig.autoSolve) {
             val step = DebugConfig.autoSolveStepMs
-            for (cell in BreachAutoSolver.solve(attempt)) {
+            for (cell in BreachAutoSolver.solve(run.attempt)) {
                 if (step > 0) {
                     delay(step)
-                    val next = attempt.select(cell)
-                    val hitTrap = cell in attempt.grid.trapCells
-                    val matched = next.matchedDaemonIds.size > attempt.matchedDaemonIds.size
-                    attempt = next
-                    BreachSfx.play(context, if (hitTrap) BreachCue.TRAP else if (matched) BreachCue.MATCH else BreachCue.TAP)
-                    if (matched) ice(IceEvent.MATCH)
-                } else attempt = attempt.select(cell)
+                    val tap = run.tap(cell)
+                    run = tap.run
+                    BreachSfx.play(context, if (tap.hitTrap) BreachCue.TRAP else if (tap.matched) BreachCue.MATCH else BreachCue.TAP)
+                    if (tap.matched) ice(IceEvent.MATCH)
+                } else run = run.tap(cell).run
             }
-            if (attempt.selected.isNotEmpty()) resolveOnce()
+            if (run.attempt.selected.isNotEmpty()) resolveOnce()
         }
-        while (secondsLeft > 0 && !attempt.isFull && result == null) {
+        while (run.isTicking) {
             delay(1000)
-            secondsLeft -= 1
-            if (secondsLeft in 1..5) BreachSfx.play(context, BreachCue.WARN)
-            if (secondsLeft == timerSec / 2 && timerSec > 20) ice(IceEvent.HALF_TIME)
-            if (secondsLeft == 10 && timerSec > 20) ice(IceEvent.LOW_TIME)
+            run = run.tick()
+            if (run.isWarning) BreachSfx.play(context, BreachCue.WARN)
+            run.timeEvent?.let(::ice)
         }
         resolveOnce()
     }
 
-    val selectable = if (result == null) attempt.selectableCells() else emptySet()
+    fun onCell(at: Pair<Int, Int>) {
+        if (!hintSeen) { hintSeen = true; onHintSeen() }
+        val tap = run.tap(at)
+        run = tap.run
+        when {
+            tap.hitTrap -> {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                BreachSfx.play(context, BreachCue.TRAP)
+                ice(IceEvent.TRAP)
+                scope.launch {
+                    repeat(3) { shake.animateTo(if (it % 2 == 0) 9f else -9f, tween(40)) }
+                    shake.animateTo(0f, tween(40))
+                }
+            }
+            tap.matched -> { haptic.performHapticFeedback(HapticFeedbackType.LongPress); BreachSfx.play(context, BreachCue.MATCH); ice(IceEvent.MATCH) }
+            else -> { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); BreachSfx.play(context, BreachCue.TAP) }
+        }
+        if (run.attempt.isFull) resolveOnce()
+    }
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            val urgent = secondsLeft in 1..10 && result == null && booted
+            val urgent = run.isLowTime && booted
             val blink by rememberInfiniteTransition(label = "timerBlink").animateFloat(
                 initialValue = 0f, targetValue = 1f,
                 animationSpec = infiniteRepeatable(tween(450, easing = LinearEasing), RepeatMode.Reverse), label = "blink"
             )
             val timerColor = if (urgent) lerp(c.acc, c.bad, blink) else c.acc
 
-            MbTimer(label = title, time = if (booted) formatTime(secondsLeft) else "--:--", timeColor = timerColor) {
+            MbTimer(label = title, time = if (booted) formatTime(run.secondsLeft) else "--:--", timeColor = timerColor) {
                 MbIconButton(MbIcons.Close, "Выйти из взлома ($rescanLabel)", onRescan)
             }
 
@@ -382,10 +372,10 @@ private fun BreachSession(
             }
 
             Spacer(Modifier.height(MbDimens.rowGap))
-            MbProgress((secondsLeft.toFloat() / timerSec * 100).roundToInt())
+            MbProgress((run.secondsLeft.toFloat() / timerSec * 100).roundToInt())
 
             // Строка-статус фиксированной высоты (одна строка), чтобы сетка не «прыгала» при смене реплик.
-            val statusText = iceLine ?: if (!hintSeen && attempt.selected.isEmpty()) "Цепочка: строка → столбец → строка… Соберите коды демонов до нуля." else ""
+            val statusText = iceLine ?: if (!hintSeen && run.attempt.selected.isEmpty()) "Цепочка: строка → столбец → строка… Соберите коды демонов до нуля." else ""
             if (statusText.isNotEmpty()) {
                 Text(
                     statusText, color = if (iceLine != null) c.bad else c.ink2, style = MbTypography.meta, minLines = 1, maxLines = 1,
@@ -394,209 +384,28 @@ private fun BreachSession(
             }
 
             Spacer(Modifier.height(MbDimens.blockGap))
-            MbPanel("Буфер", meta = "${attempt.bufferCodes.size} / ${attempt.bufferSize}") {
-                MbBuffer(codes = attempt.bufferCodes, size = attempt.bufferSize)
+            MbPanel("Буфер", meta = "${run.attempt.bufferCodes.size} / ${run.attempt.bufferSize}") {
+                MbBuffer(codes = run.attempt.bufferCodes, size = run.attempt.bufferSize)
             }
 
             Spacer(Modifier.height(MbDimens.blockGap))
-            MbPanel("Матрица кодов", meta = "${attempt.grid.size}×${attempt.grid.size}") {
-                BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    val n = attempt.grid.size
-                    val gap = 4.dp
-                    val cell = ((maxWidth - gap * (n - 1)) / n).coerceIn(28.dp, MbDimens.breachCell)
-                    Column(Modifier.offset { IntOffset(shake.value.roundToInt(), 0) }, verticalArrangement = Arrangement.spacedBy(gap)) {
-                        for (r in 0 until n) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
-                                for (col in 0 until n) {
-                                    val at = r to col
-                                    val order = attempt.selected.indexOf(at)
-                                    HackCell(
-                                        size = cell,
-                                        code = attempt.grid.codeAt(at),
-                                        isSelected = order >= 0,
-                                        orderLabel = if (order >= 0) (order + 1).toString() else null,
-                                        isSelectable = at in selectable,
-                                        onClick = {
-                                            if (!hintSeen) { hintSeen = true; markBreachHintSeen(context) }
-                                            val next = attempt.select(at)
-                                            val hitTrap = at in attempt.grid.trapCells
-                                            val matched = next.matchedDaemonIds.size > attempt.matchedDaemonIds.size
-                                            attempt = next
-                                            when {
-                                                hitTrap -> {
-                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                    BreachSfx.play(context, BreachCue.TRAP)
-                                                    ice(IceEvent.TRAP)
-                                                    scope.launch {
-                                                        repeat(3) { shake.animateTo(if (it % 2 == 0) 9f else -9f, tween(40)) }
-                                                        shake.animateTo(0f, tween(40))
-                                                    }
-                                                }
-                                                matched -> { haptic.performHapticFeedback(HapticFeedbackType.LongPress); BreachSfx.play(context, BreachCue.MATCH); ice(IceEvent.MATCH) }
-                                                else -> { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); BreachSfx.play(context, BreachCue.TAP) }
-                                            }
-                                            if (attempt.isFull) resolveOnce()
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
+            MbPanel("Матрица кодов", meta = "${run.attempt.grid.size}×${run.attempt.grid.size}") {
+                BreachMatrix(run, shake, ::onCell)
             }
 
             Spacer(Modifier.height(MbDimens.blockGap))
-            // Не только коды цели, но и что даст их совпадение — иначе на экране взлома нет ответа на «зачем я выбрал этих демонов».
-            MbPanel("Последовательности", meta = "${attempt.daemons.size}") {
-                attempt.daemons.forEach { daemon ->
-                    val matched = daemon.id in attempt.matchedDaemonIds
-                    MbListItem(
-                        title = daemon.name,
-                        sub = daemon.effect.label(),
-                        subWrap = true,
-                        trail = listOf({
-                            Text(
-                                daemon.sequence.joinToString(" "),
-                                style = MbTypography.demonCode,
-                                color = if (matched) c.acc else c.ink2,
-                                textDecoration = if (matched) TextDecoration.LineThrough else null
-                            )
-                        })
-                    )
-                }
+            MbPanel("Последовательности", meta = "${run.attempt.daemons.size}") {
+                BreachSequences(run.attempt)
             }
 
-            if (result == null) {
+            if (!run.isFinished) {
                 Spacer(Modifier.height(MbDimens.blockGap))
                 // Не "отмена без последствий" — сдаёт текущий буфер на резолв досрочно, так же как истечение таймера.
                 MbButton("Сдать буфер", onClick = { resolveOnce() })
             }
         }
 
-        result?.let { ResultOverlay(it, failMessage, rewardOutcome, secAlertStatus, actionLabel = rescanLabel, onAction = onRescan) }
-    }
-}
-
-/** Ячейка матрицы: квадрат заданного размера. Шрифт растёт вместе с ячейкой, но не мельче 12 sp. */
-@Composable
-internal fun HackCell(size: Dp, code: String, isSelected: Boolean, orderLabel: String?, isSelectable: Boolean, onClick: () -> Unit) {
-    val c = LocalMbColors.current
-    val isDead = code == BreachSymbols.DEAD_MARKER
-    val (bg, border, ink) = when {
-        isDead && !isSelected -> Triple(c.bad.copy(alpha = 0.08f), c.bad, c.bad)
-        isSelected -> Triple(c.bg, c.chromeDim, c.used)
-        isSelectable -> Triple(c.acc.copy(alpha = 0.07f), c.acc, c.acc)
-        else -> Triple(c.plate, c.plateEdge, c.ink)
-    }
-    Box(
-        modifier = Modifier
-            .size(size)
-            .mbFrame(fill = bg, edge = border, form = MbChamferForm.Tab, cut = 4.dp)
-            .clickable(enabled = isSelectable, onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(code, style = MbTypography.breachCell.copy(fontSize = (size.value * 0.32f).coerceIn(12f, 18f).sp), color = ink)
-        if (orderLabel != null) {
-            Text(
-                orderLabel, color = c.acc, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                modifier = Modifier.align(Alignment.TopEnd).padding(horizontal = 3.dp, vertical = 1.dp)
-            )
-        }
-    }
-}
-
-/**
- * Итог взлома поверх экрана, а не под сеткой: сетка и буфер остаются под затемнением в финальном виде; выход — кнопка
- * внутри панели. Помещается без прокрутки (раздел M4.5 плана миграции) — короткий журнал + плашка итога + список
- * демонов, без обёрток вроде ChamferedSurface/DottedDivider. Успех — тема Success поверх Breach (раздел 5 гайдлайна).
- */
-@Composable
-internal fun ResultOverlay(
-    result: BreachResult,
-    failMessage: String,
-    rewardOutcome: RewardOutcome?,
-    secAlertStatus: String?,
-    actionLabel: String,
-    onAction: () -> Unit
-) {
-    val colors = if (result.outcome == BreachOutcome.SUCCESS) MbColorsSuccess else LocalMbColors.current
-    CompositionLocalProvider(LocalMbColors provides colors) {
-        val c = colors
-        Box(
-            Modifier.fillMaxSize().background(c.bg.copy(alpha = 0.92f))
-                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
-            contentAlignment = Alignment.BottomCenter
-        ) {
-            Column(Modifier.fillMaxWidth().padding(MbDimens.screenPadding)) {
-                // Заголовок исхода — тексты, по которым стенд e2e (scripts/e2e/lib.sh, breach()) проверяет результат
-                // взлома, не переименовывать без правки стенда в том же коммите (CLAUDE.md). «Демоны загружены · X из Y» —
-                // формулировка гайдлайна для MbDone (раздел 5) — вторая строка, деталь поверх защищённого заголовка.
-                MbPanel(
-                    title = "Журнал",
-                    meta = "${result.matchedIds.size} из ${result.allDaemons.size}"
-                ) {
-                    MbLog(
-                        listOf("//КОРЕНЬ", "//ЗАПРОС_ДОСТУПА") + when (result.outcome) {
-                            BreachOutcome.SUCCESS -> listOf("//ЗАГРУЗКА_ЗАВЕРШЕНА")
-                            BreachOutcome.PARTIAL -> listOf("//ЗАГРУЗКА_ЧАСТИЧНАЯ")
-                            BreachOutcome.FAIL -> listOf("//ДОСТУП_ОТКЛОНЁН")
-                        }
-                    )
-                    MbDone(
-                        when (result.outcome) {
-                            BreachOutcome.SUCCESS -> "Взлом завершён"
-                            BreachOutcome.PARTIAL -> "Взлом частично успешен"
-                            BreachOutcome.FAIL -> "Взлом провален"
-                        }
-                    )
-                    if (result.outcome == BreachOutcome.SUCCESS) {
-                        Text(
-                            "Демоны загружены · ${result.matchedIds.size} из ${result.allDaemons.size}",
-                            style = MbTypography.meta, color = c.ink2, modifier = Modifier.padding(top = MbDimens.rowGap)
-                        )
-                    }
-                }
-                Spacer(Modifier.height(MbDimens.blockGap))
-                Column(Modifier.fillMaxWidth()) {
-                    result.allDaemons.forEach { daemon ->
-                        val done = daemon.id in result.matchedIds
-                        MbListItem(
-                            title = daemon.name,
-                            lead = { MbTag(if (done) "установлен" else "не вошёл", tone = if (done) MbTagTone.Ok else MbTagTone.Bad) },
-                            plate = true,
-                            end = true
-                        )
-                    }
-                }
-                if (result.outcome == BreachOutcome.FAIL) {
-                    Spacer(Modifier.height(MbDimens.rowGap))
-                    Text(failMessage, style = MbTypography.meta, color = c.ink2)
-                }
-                if (rewardOutcome != null || secAlertStatus != null) {
-                    Spacer(Modifier.height(MbDimens.blockGap))
-                    rewardOutcome?.let { outcome ->
-                        outcome.extractedShardTitles.forEach { t -> RewardRow("Шард извлечён", "«$t»") }
-                        outcome.extractedDaemonNames.forEach { name -> RewardRow("Демон извлечён", "«$name»") }
-                        if (outcome.eddies > 0) RewardRow("Эдди начислены", "+${formatMoney(outcome.eddies)}", valueColor = c.money)
-                        if (outcome.cacheExhausted) RewardRow("Тираж узла", "исчерпан", valueColor = c.bad)
-                    }
-                    secAlertStatus?.let { RewardRow("Сигнал СБ", it, valueColor = c.bad) }
-                }
-                Spacer(Modifier.height(MbDimens.blockGap))
-                MbButton(actionLabel, onClick = onAction, inline = true, modifier = Modifier.align(Alignment.End))
-            }
-        }
-    }
-}
-
-/** Одна строка разбора результата — тип награды/события слева, значение справа. */
-@Composable
-private fun RewardRow(label: String, value: String, valueColor: Color = LocalMbColors.current.acc) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(MbDimens.rowGap)) {
-        Text(label, style = MbTypography.rowSub, color = LocalMbColors.current.ink2)
-        // weight+End, не SpaceBetween: длинное значение (награда, статус сигнала СБ) при крупном шрифте системы
-        // должно переноситься в оставшемся месте, а не наезжать на подпись слева (найдено FontScaleTest, M6 плана миграции).
-        Text(value, style = MbTypography.demonCode, color = valueColor, textAlign = TextAlign.End, modifier = Modifier.weight(1f))
+        run.result?.let { ResultOverlay(it, failMessage, rewardOutcome, secAlertStatus, actionLabel = rescanLabel, onAction = onRescan) }
     }
 }
 

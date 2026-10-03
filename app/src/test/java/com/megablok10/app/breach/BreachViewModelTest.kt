@@ -1,6 +1,7 @@
 package com.megablok10.app.breach
 
 import com.megablok10.app.testing.MainDispatcherRule
+import com.megablok10.app.testing.MemoryPrefs
 import com.megablok10.app.testing.RecordedChanges
 import com.megablok10.app.testing.TestPlayer
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -9,7 +10,9 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -21,12 +24,14 @@ class BreachViewModelTest {
     private val changes = RecordedChanges(me)
     private val node = Container("node-7", "Узел 7", Tier.BASE, ownerFaction = "", loot = emptyList())
     private var cooldownMs = 0L
+    private val prefs = MemoryPrefs()
     private val reward = RewardOutcome(10, emptyList(), emptyList(), cacheExhausted = false, matchedEffects = emptySet())
 
     private fun TestScope.breach() = BreachViewModel(
         identity = MutableStateFlow(me.identity),
         checkAccess = CheckBreachAccess({ true }, { cooldownMs }, { false }, changes.recorder),
         finishBreach = FinishBreach(changes.recorder, { _, _, _, _ -> reward }, {}, { _, _, _, _ -> }),
+        hint = BreachHintStore(prefs),
         work = this,
     )
 
@@ -67,5 +72,16 @@ class BreachViewModelTest {
 
         assertEquals(reward, shown)
         assertEquals("node-7:3", changes.rows.single().sourceRef)
+    }
+
+    @Test fun hintIsShownUntilTheFirstTapAndIsRememberedUnderTheOldPrefsName() = runTest {
+        val vm = breach()
+        assertFalse(vm.isHintSeen())
+
+        vm.markHintSeen()
+
+        assertTrue(vm.isHintSeen())
+        assertEquals(true, prefs.values["breach_hint_seen"])
+        assertTrue("новый экземпляр (после перезапуска) читает то же значение", breach().isHintSeen())
     }
 }

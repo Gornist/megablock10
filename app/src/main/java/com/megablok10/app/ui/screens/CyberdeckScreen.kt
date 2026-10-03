@@ -168,6 +168,7 @@ fun CyberdeckScreen(
     if (decrypting != null) {
         ShardDecryptFlow(
             shard = decrypting,
+            isHintSeen = breach::isHintSeen, onHintSeen = breach::markHintSeen,
             onDecrypted = {
                 deck.markDecrypted(decrypting.id)
                 decryptingShard = null
@@ -207,6 +208,7 @@ fun CyberdeckScreen(
         BreachContainerFlow(
             container = activeContainer, daemons = daemons, identity = identity,
             onRescan = breach::close, onImmersive = { breachRunning = it },
+            isHintSeen = breach::isHintSeen, onHintSeen = breach::markHintSeen,
             finish = { result, seed, onDone -> breach.finish(activeContainer, result, seed, onDone) }
         )
         return

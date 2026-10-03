@@ -22,6 +22,7 @@ class BreachViewModel(
     private val identity: StateFlow<Identity?>,
     private val checkAccess: CheckBreachAccess,
     private val finishBreach: FinishBreach,
+    private val hint: BreachHintStore,
     private val work: CoroutineScope,
 ) : ViewModel() {
     private val _container = MutableStateFlow<Container?>(null)
@@ -43,6 +44,11 @@ class BreachViewModel(
             }
         }
     }
+
+    /** Подсказка про цепочку уже показывалась (хранится между запусками). */
+    fun isHintSeen(): Boolean = hint.isSeen()
+
+    fun markHintSeen() = hint.markSeen()
 
     fun dismissIssue() { _issue.value = null }
 

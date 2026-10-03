@@ -70,7 +70,7 @@ fun AppGraph.cyberdeckViewModel() =
 
 fun AppGraph.netrunViewModel() = NetrunViewModel(identity.state, netrun, processScope)
 
-fun AppGraph.breachViewModel() = BreachViewModel(identity.state, checkBreachAccess, finishBreach, processScope)
+fun AppGraph.breachViewModel() = BreachViewModel(identity.state, checkBreachAccess, finishBreach, breachHint, processScope)
 
 fun AppGraph.settingsViewModel() =
     SettingsViewModel(collectorSettings, observePendingChanges(), visiblePlayers, { collectorSync.wake() }, ::deviceReport, logStore, readReceiptSetting, collectorClient.reachable)
