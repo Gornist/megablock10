@@ -1,6 +1,7 @@
 package com.megablok10.app.screenshots
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -23,7 +24,7 @@ class AnnouncementDialogTest {
     private fun snap(name: String, content: @Composable () -> Unit) {
         paparazzi.snapshot(name) {
             CompositionLocalProvider(LocalMbColors provides MbColorsDefault) {
-                Box(Modifier.background(MbColorsDefault.bg).padding(10.dp)) { content() }
+                Box(Modifier.fillMaxSize().background(MbColorsDefault.bg).padding(10.dp)) { content() }
             }
         }
     }

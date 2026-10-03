@@ -167,6 +167,11 @@ kit — в [kit/README.md](../kit/README.md).
   тестовой задачи, и clean удаляет закоммиченные эталоны, после чего сверка падает на «нет файла». Прогнать тесты заново без
   кэша — `./gradlew verifyPaparazziDebug --rerun-tasks` (или `:app:testDebugUnitTestNoScreenshots --rerun` — без скриншотов); удалённые эталоны — `git restore app/src/test/snapshots`.
 - `DebugQrBus` (только debug) теряет строку, если экран её сейчас не слушает. Стенд e2e это учитывает.
+- Сборка (28.09): Kotlin 2.4, AGP 8.13, Gradle 8.14, compileSdk 36, Compose 1.11 — потолок без AGP 9. Дальше упирается в
+  AGP 9: Compose 1.12 и lifecycle 2.11 требуют compileSdk 37 и AGP 9.2, а AGP 9 поддерживают только альфа-версии Paparazzi
+  (2.0.0-alpha05.1, другая отрисовка — эталоны скриншотов заново) и detekt (2.0.0-alpha; у 1.23 конфигурации закреплён
+  Kotlin 2.0.21, `build.gradle.kts`). Переходить, когда они выйдут стабильными. targetSdk оставлен 34: 35+ включает
+  edge-to-edge и прогнозируемый «назад» — поднимать отдельной правкой с проверкой всех экранов.
 
 ## План дальнейшей работы
 

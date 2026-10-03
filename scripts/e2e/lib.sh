@@ -19,7 +19,7 @@ APK=${APK:-$ROOT/app/build/outputs/apk/debug/app-debug.apk}
 # Node сервера: LTS 22 (зависимости требуют >=22), запасной — 20; NODE_BIN переопределяет. На CI таких путей нет — node берётся из PATH (setup-node).
 for d in "${NODE_BIN:-}" /opt/homebrew/opt/node@22/bin /opt/homebrew/opt/node@20/bin; do [ -n "$d" ] && [ -d "$d" ] && { NODE_BIN=$d; break; }; done
 NODE_BIN=${NODE_BIN:-}
-[ -n "${JAVA_HOME:-}" ] || { [ -d /Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home ] && export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home; }
+[ -n "${JAVA_HOME:-}" ] || { [ -d /Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home ] && export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home; }
 PKG=com.megablok10.app
 AVD_A=${AVD_A:-Medium_Phone_API_35}; AVD_B=${AVD_B:-Second_API_35}   # имена AVD (на CI создаются под теми же именами)
 A=emulator-5554   # Alice / Neon

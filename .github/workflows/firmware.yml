@@ -6,10 +6,10 @@ on:
   push:
     # Ветки агентов — тоже: workflow_dispatch работает только для workflow, который уже есть в main.
     branches: [ main, "claude/**", "agent/**" ]
-    paths: [ "firmware/**", "admin-web/server/src/displays/**", "admin-web/server/src/scripts/display*.ts", ".github/workflows/firmware.yml" ]
+    paths: [ "firmware/**", "admin-web/server/src/displays/**", "admin-web/server/src/audio/**", "admin-web/server/src/routes/audio.ts", "admin-web/server/src/scripts/display*.ts", ".github/workflows/firmware.yml" ]
   pull_request:
     branches: [ main ]
-    paths: [ "firmware/**", "admin-web/server/src/displays/**", "admin-web/server/src/scripts/display*.ts", ".github/workflows/firmware.yml" ]
+    paths: [ "firmware/**", "admin-web/server/src/displays/**", "admin-web/server/src/audio/**", "admin-web/server/src/routes/audio.ts", "admin-web/server/src/scripts/display*.ts", ".github/workflows/firmware.yml" ]
   workflow_dispatch: {}
 
 jobs:
@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
 
@@ -69,7 +69,7 @@ jobs:
           FIRMWARE_HOST_BIN: ${{ github.workspace }}/firmware/display/build/display_host
         run: npm run display-load -- --counts 10,30 --no-hung --netem "delay 200ms 50ms loss 10%" --json load-netem-heavy.json
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: display-load
@@ -86,11 +86,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.platformio
@@ -130,7 +130,7 @@ jobs:
         working-directory: firmware/display
         run: pio run -e crowpanel579 -t size
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: firmware-crowpanel579
           path: |

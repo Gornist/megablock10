@@ -4,6 +4,7 @@ import java.util.concurrent.Callable
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
     id("app.cash.paparazzi")
     id("io.gitlab.arturbosch.detekt")
@@ -35,13 +36,16 @@ detekt {
 
 android {
     namespace = "com.megablok10.app"
-    compileSdk = 34
+    // 36 — потолок AGP 8.13; Compose 1.12 и lifecycle 2.11 уже требуют 37 и AGP 9.2 (зависимости ниже — последние под 36).
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.megablok10.app"
         // minSdk 26 — покрывает подавляющее большинство реальных телефонов игроков,
         // при этом даёт нормальную поддержку EC-криптографии из коробки.
         minSdk = 26
+        // targetSdk 35+ меняет поведение (интерфейс под системными панелями — edge-to-edge, прогнозируемый «назад»): APK ставится
+        // в обход Play, требования магазина к targetSdk его не касаются. Поднимать — отдельной правкой с проверкой всех экранов.
         targetSdk = 34
         versionCode = 1
         versionName = "0.1-mvp"
@@ -56,24 +60,9 @@ android {
         compose = true
         buildConfig = true
     }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.14"
-    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-    }
-    kotlinOptions {
-        jvmTarget = "17"
-        // Отчёты компилятора Compose (какие функции перерисовываются лишний раз): ./gradlew :app:compileDebugKotlin -Pmb10.composeReports=true --rerun-tasks
-        // → app/build/compose_reports/. Подробности в README (раздел про проверки).
-        if (providers.gradleProperty("mb10.composeReports").orNull == "true") {
-            val out = layout.buildDirectory.dir("compose_reports").get().asFile.absolutePath
-            freeCompilerArgs += listOf(
-                "-P", "plugin:androidx.compose.compiler.plugins.kotlin:reportsDestination=$out",
-                "-P", "plugin:androidx.compose.compiler.plugins.kotlin:metricsDestination=$out"
-            )
-        }
     }
     packaging {
         resources.excludes.add("META-INF/*")
@@ -112,7 +101,7 @@ android {
 }
 
 // Java-агент ByteBuddy (им пользуется Paparazzi) — загружается при старте тестовой JVM, а не подключается на лету. Версия — та же,
-// что приходит с Paparazzi 1.3.4; при расхождении не страшно: ByteBuddy ищет загруженный агент по имени класса в системном загрузчике.
+// что приходит с Paparazzi; при расхождении не страшно: ByteBuddy ищет загруженный агент по имени класса в системном загрузчике.
 val byteBuddyAgent: Configuration by configurations.creating { isTransitive = false }
 dependencies { byteBuddyAgent("net.bytebuddy:byte-buddy-agent:1.14.16") }
 
@@ -167,6 +156,19 @@ tasks.withType<Test>().configureEach {
     }))
 }
 
+kotlin {
+    compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
+}
+
+// Отчёты компилятора Compose (какие функции перерисовываются лишний раз): ./gradlew :app:compileDebugKotlin -Pmb10.composeReports=true --rerun-tasks
+// → app/build/compose_reports/. Подробности в README (раздел про проверки).
+if (providers.gradleProperty("mb10.composeReports").orNull == "true") {
+    composeCompiler {
+        reportsDestination.set(layout.buildDirectory.dir("compose_reports"))
+        metricsDestination.set(layout.buildDirectory.dir("compose_reports"))
+    }
+}
+
 ksp {
     // Схемы Room экспортируются в app/schemas и коммитятся: по ним пишутся и проверяются миграции.
     arg("room.schemaLocation", "$projectDir/schemas")
@@ -178,26 +180,26 @@ dependencies {
     // Общие правила игры (тиры, эффекты демонов, кодек предмета, решение о сигнале СБ) — rules/README.md.
     implementation(project(":rules"))
 
-    implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.activity:activity-compose:1.9.0")
-    implementation(platform("androidx.compose:compose-bom:2024.06.00"))
+    implementation("androidx.core:core-ktx:1.17.0")
+    implementation("androidx.activity:activity-compose:1.12.0")
+    implementation(platform("androidx.compose:compose-bom:2026.06.01"))   // Compose 1.11
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui-tooling-preview")
     // Экраны — через ViewModel (переживают поворот и смену вкладки): viewModel() и collectAsStateWithLifecycle в Compose.
-    // 2.6.x — та же линия lifecycle, что уже приходит с activity-compose 1.9 и Compose BOM 2024.06.
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.2")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.2")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.2")
+    // 2.10 — последняя линия под compileSdk 36 (2.11 требует 37 и AGP 9.2).
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.10.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
 
     // QR: генерация своего кода и сканирование чужого
     implementation("com.google.zxing:core:3.5.3")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
 
     // Локальное хранилище: Character/Container/Transaction вместо SharedPreferences
-    implementation("androidx.room:room-runtime:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
-    ksp("androidx.room:room-compiler:2.6.1")
+    // С Room 2.7 room-ktx влит в room-runtime; генерация кода по KSP — Kotlin (было — Java), схема та же.
+    implementation("androidx.room:room-runtime:2.8.5")
+    ksp("androidx.room:room-compiler:2.8.5")
 
     // Голосовые звонки: чистый P2P поверх LAN, без STUN/TURN — ICE соберёт
     // host-кандидаты напрямую. org.webrtc:google-webrtc официально мёртв
@@ -210,9 +212,9 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     // Настоящий SQLite на JVM — чтобы прогонять миграции Room на базе с данными (MigrationDataTest)
     testImplementation("org.xerial:sqlite-jdbc:3.46.1.0")
     // Настоящая Room в памяти на JVM: транзакции, откаты, выдача seq — то, что фейками не проверить (testing/RoomTest.kt)
-    testImplementation("org.robolectric:robolectric:4.13")
+    testImplementation("org.robolectric:robolectric:4.17")
 }

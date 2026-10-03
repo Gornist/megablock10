@@ -4,7 +4,7 @@
 мастера (`admin-web/`), прошивка точек на площадке — QR-дисплей и звук на ESP32 (`firmware/display/`), стенд e2e на двух
 эмуляторах (`scripts/e2e/`). Всё здесь выверено на реальных сбоях — не обходите.
 
-Прочитать перед работой: [docs/android-handoff.md](docs/android-handoff.md) (состояние и план),
+Прочитать перед работой: [docs/progress.md](docs/progress.md) (где мы сейчас, коротко), [docs/android-handoff.md](docs/android-handoff.md) (состояние и план),
 [docs/architecture.md](docs/architecture.md) (слои, правила), [docs/refactor-plan.md](docs/refactor-plan.md) (что в работе),
 [scripts/e2e/README.md](scripts/e2e/README.md) (стенд).
 
@@ -21,7 +21,7 @@
   ставит `scripts/cloud-setup.sh` (`claude plugin install`, до старта сессии). LSP-инструмент Claude Code (через него
   KotlinSense даёт диагностику) включается переменной `ENABLE_LSP_TOOL=1` — она в `env` того же `settings.json`.
   Decibel Superpowers публичного git-источника не имеет — включается в аккаунте claude.ai.
-- Облачное окружение настраивает `scripts/cloud-setup.sh` (копия вставлена в Setup script окружения): SDK 34, зеркало Maven
+- Облачное окружение настраивает `scripts/cloud-setup.sh` (копия вставлена в Setup script окружения): SDK 36, зеркало Maven
   для Gradle и Robolectric, `LANG=C.UTF-8`, kotlin-language-server (для KotlinSense), PlatformIO с платформой ESP32 и `wokwi-cli`
   (прошивка QR-дисплея, `firmware/display`). Правите скрипт — обновите и его копию в настройках. Для прошивки в Network access
   окружения нужны `api.registry.platformio.org`, `dl.registry.platformio.org`, `wokwi.com`; токен Wokwi — переменная окружения
@@ -38,7 +38,7 @@
 | CI | `.github/workflows/main.yml` (push/PR в `main`, вручную) | ≈4 мин |
 | e2e | `scripts/e2e/up.sh && scripts/e2e/run-all.sh`; CI — `e2e.yml` (PR в `main` с правкой `app/`, `kit/`, `scripts/e2e/`; ночью; вручную) | ≈17 мин |
 | Коллектор | `admin-web/server`: `npm test`; `admin-web/client`: `npm test`, `npm run lint`, `npm run build` | в CI — `main.yml`, job admin-web |
-| Прошивка | `cmake -S firmware/display -B firmware/display/build && cmake --build … && ctest --test-dir …`; плата — `pio run -e crowpanel579`; Wokwi — `firmware/display/tools/wokwi_selftest.sh` | CI — `firmware.yml` (правка `firmware/`, `admin-web/server/src/displays/`); ≈5 мин |
+| Прошивка | `cmake -S firmware/display -B firmware/display/build && cmake --build … && ctest --test-dir …`; плата — `pio run -e crowpanel579`; Wokwi — `firmware/display/tools/wokwi_selftest.sh` | CI — `firmware.yml` (правка `firmware/`, `admin-web/server/src/displays/`, звука на сервере — `audio/`, `routes/audio.ts`); ≈5 мин |
 
 - **Облачная сессия без Android SDK** не соберёт `:app` (и даже `:kit` — Gradle конфигурирует весь проект). Проверка —
   только CI: запустить `main.yml`/`e2e.yml` на своей ветке и читать журнал job. Не утверждать «проверено», не дождавшись CI.
@@ -50,47 +50,13 @@
   подтверждено 5 прогонами на Mac (M1), `robolectric.sqliteMode=LEGACY` больше нет. Агент ByteBuddy — через `-javaagent`
   (нужен Paparazzi в любой JVM, не убирать); стережёт `AgentPreloadTest`.
 
-## Как писать проверки e2e (`scripts/e2e/`)
+## Где что запускать
 
-- **Запрещено «действие; `sleep N`; одно чтение».** Результат асинхронный: `eq_wait <с> "описание" ожидаемое <команда>`,
-  `check "…" wait_until <с> …`; значение из logcat — `await <с> <команда>`.
-- «Не изменилось / не появилось» ожиданием не доказать: сначала дождаться свидетельства, что действие отработало (строка
-  `MB10DBG`, число попыток), потом `eq`. Значение, которое по пути проходит через ожидаемое (баланс в серии переводов), — так же.
-- Перед чтением id из logcat — `adb_ $S logcat -c`, иначе `tail -1` вернёт прошлое значение.
-- **Стенд одноразовый**: `zz-provisioning` стирает Alice. Второй `run-all.sh` — только после `./down.sh && ./up.sh`.
-- Стенд опирается на тексты журнала и строки `MB10DBG` (`sync.unreachable`, `chat.recv`, `pay id=`, `привязано к Wi-Fi`…).
-  Переименовали событие или строку — поправьте `scripts/e2e/` в том же коммите (`grep -rn '<старое>' scripts/`). Всё, что стенд
-  ищет в выводе приложения, перечислено в `scripts/e2e/log-contract.tsv` и сверяется с кодом unit-тестом `LogContractTest`;
-  новая проверка по logcat/журналу — сначала строка в контракт.
-- Эмулятор, привязанный к виртуальному Wi-Fi, иногда не достукивается до хоста 10.0.2.2 — это лечит `heal_host_reach`
-  (перед каждым сценарием). Не путать с багом приложения.
-
-## Отладка: сначала журналы, потом гипотезы
-
-- Журнал приложения — события `Mb10Log` (`name key=value`), на устройстве `Android/data/com.megablok10.app/files/logs/`,
-  на стенде `journal_cat <serial>`; красные сценарии кладут его в `$E2E_DIR/journals/`, CI печатает прямо в лог job
-  (шаг «Журналы красных сценариев»). Прежде чем чинить — найти в журнале строку, которая объясняет сбой.
-- Разовый красный — не «флейк»: сравнить с прогоном на `main` (запустить `e2e.yml` на `main`), найти причину.
-- Ключевые события: `chat.send_direct … outcome=`, `send.not_reached`, `sync.ok|sync.unreachable`, `peer.found|peer.static|peer.server_hints`,
-  `chat.start|chat.stop`, `=== ЗАПУСК ПРОЦЕССА ===`, `Snapshot` (раз в 30 с: Wi-Fi, очередь).
-
-## Инварианты приложения (нарушение = потеря денег/данных у игроков)
-
-- Транзакции — только `AppGraph.transactor` (`tx.inTransaction { … }`), запись для мастера (`changes.record`) — внутри той же
-  транзакции. Всё, после чего уходит подтверждение, — синхронно (Room или `commit()`, не `apply()`).
-- Нельзя менять без согласования: имена prefs, схему Room (только миграцией, `docs/db-migrations.md`), форматы сети/QR/записей
-  (меняете — поднимайте версию, `net/WireVersion.kt`), теги и события журнала, строки `MB10DBG`.
-- Сервер строк открывается **до** привязки процесса к Wi-Fi (`MeshSession.start`: `srv.start` → `wifi.start`). Сокет, открытый
-  после `bindProcessToNetwork`, помечен сетью: умирает, когда она пропадает, и не принимает с других интерфейсов (стенд — `emu redir`).
-- Входящая строка: обработчик `ChatServer` возвращается только после сохранения — по его возврату отправителю уходит «доставлено»
-  (`MB10ACK ok`, refactor-plan D2). Звук, уведомления — после, в своём скоупе.
-- Деньги и предметы: `SendOutcome.UNKNOWN` = «могло дойти» — **не повторять** по другому адресу и не откатывать в PENDING.
-- Адрес игрока — не «первый в списке»: у одного ключа бывает несколько записей пиров (NSD, статическая, подсказка сервера),
-  NSD может хранить порт прошлого процесса. Отправлять только через `AppGraph.peerDirectory.send(ключ, строка)`
-  (kit `PeerDirectory`: перебор адресов, порядок — `PeerTable`); экранам — `OnlinePlayer` без адреса.
-- Фоновая работа — только через `session/SessionController` (B3): процесс (`AppGraph.startSession`), личность, экран и сброс сессии
-  сообщают ему события, а сеть, синк и foreground-сервис запускает он (стережёт `SessionGuardTest`). С Android 12
-  `startForegroundService` из фона бросает исключение — `MeshForegroundService.start` ловит и возвращает false, сервис поднимет экран.
-- Личность — в SharedPreferences, игровые данные — в Room: личность появляется раньше коммита данных. Не читать «персонаж
-  есть ⇒ стартовый баланс есть» (refactor-plan, C1).
-- Модель угроз — дружеская игра: подписи QR мастера, реестр ключей, подписи чата не делаем (решение владельца).
+- **Mac (8 ГБ):** правка, git, `scripts/check.sh --fast`. Gradle, Paparazzi, e2e, Godot, Мост — **на devbox** (`ssh devbox`),
+  долгое через `devjob` — skill `devbox`. Параллельных Gradle и стендов e2e нет: одна задача на машину.
+- Цикл задачи: правка → `check.sh --fast` (Mac) → тяжёлая проверка на devbox → коммит → `/clear`. Новое окно начинать с
+  `docs/android-handoff.md`, `git log -10`, `git diff`.
+- e2e: правила написания проверок — `.claude/rules/e2e.md` (подгружаются при правке `scripts/e2e/`).
+- Сбой: сначала журналы — skill `debug-journals`, потом гипотезы.
+- Инварианты приложения (деньги, транзакции, сеть) — `.claude/rules/app-invariants.md`, подгружаются при правке `app/` и `kit/`.
+  Нарушение = потеря денег/данных у игроков; читать **до** правки.

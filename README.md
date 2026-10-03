@@ -79,10 +79,10 @@ TCP на постоянный порт 47100. Каждая строка идёт
 
 ### Сборка
 
-Нужны JDK 17 и Android SDK command-line tools.
+Нужны JDK 21 (байткод — 17; Java 21 требует Paparazzi 2) и Android SDK command-line tools.
 
 ```bash
-sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"   # один раз
+sdkmanager "platform-tools" "platforms;android-36" "build-tools;35.0.0"   # один раз
 ./gradlew assembleDebug                                                    # → app/build/outputs/apk/debug/app-debug.apk
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
@@ -101,7 +101,9 @@ cmake -S firmware/display -B firmware/display/build && cmake --build firmware/di
 ```
 
 CI — `.github/workflows/main.yml` (сборка, статика, тесты приложения и коллектора), `e2e.yml` (стенд на эмуляторах) и
-`firmware.yml` (прошивка: ядро, сервер против прошивки для ПК, нагрузка, сборка для платы, Wokwi). Подробности, грабли и что
+`firmware.yml` (прошивка: ядро, сервер против прошивки для ПК, нагрузка, сборка для платы, Wokwi). Обновления зависимостей
+предлагает Dependabot (`.github/dependabot.yml`): раз в неделю PR по экосистеме — Gradle, сервер и клиент коллектора, раз в
+месяц — действия GitHub. Подробности, грабли и что
 никогда не делать (например, `cleanTest*` стирает эталоны скриншотов) — в [CLAUDE.md](CLAUDE.md).
 
 ### Документы

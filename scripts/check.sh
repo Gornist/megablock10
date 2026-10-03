@@ -8,7 +8,7 @@
 # Что «менялось» считается относительно origin/main (незапушенные коммиты + рабочее дерево).
 cd "$(dirname "$0")/.." || exit 1
 ROOT=$PWD; LOGS=/tmp/mb10-check; mkdir -p $LOGS
-export JAVA_HOME=${JAVA_HOME:-/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home}
+export JAVA_HOME=${JAVA_HOME:-/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home}
 # Кодировка вывода клиента Gradle берётся из локали (stdout.encoding): при пустом LANG (облачная сессия, cron) русский текст — «???».
 [ "$(locale charmap 2>/dev/null)" = UTF-8 ] || export LC_ALL=C.UTF-8
 # Node для сервера/клиента: LTS 22 (зависимости сервера требуют >=22), запасной — 20; NODE_BIN переопределяет. На CI node берётся из setup-node.

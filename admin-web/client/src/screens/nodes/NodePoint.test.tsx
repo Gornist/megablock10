@@ -59,7 +59,7 @@ const free = display({ id: "p-free", name: "Свободная", nodeId: null })
 beforeEach(() => vi.clearAllMocks());
 
 describe("NodePoint", () => {
-  it("точка узла: та же канонiчная карточка, что на «Устройствах»/«Локациях» — полный набор команд, звук, отвязать", async () => {
+  it("точка узла: та же каноничная карточка, что на «Устройствах»/«Локациях» — полный набор команд, звук, отвязать", async () => {
     const calls = mockApi({
       "GET /api/displays": [bound, free],
       "GET /api/display-groups": [{ id: "g-tech", name: "Техэтаж", count: 1, audioChannelId: "ch-neon", audioVolume: null }],

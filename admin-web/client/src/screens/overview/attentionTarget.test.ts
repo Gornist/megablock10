@@ -7,11 +7,11 @@ describe("куда ведёт тревога", () => {
     attentionTarget(i)?.();
     return window.location.hash;
   };
-  it("игрок, узел, точка на узле — карточка узла; точка без узла — «Локации»", () => {
+  it("игрок, узел, точка на узле — карточка узла; точка без узла — её карточка в «Устройствах»", () => {
     expect(go({ subjectKey: "abc" })).toBe("#/players/abc");
     expect(go({ nodeId: "nasos-4" })).toBe("#/nodes/nasos-4");
     expect(go({ nodeId: "nasos-4", displayId: "p-1" })).toBe("#/nodes/nasos-4");
-    expect(go({ displayId: "p-1" })).toBe("#/locations");
+    expect(go({ displayId: "p-1" })).toBe("#/devices/p-1");
     expect(attentionTarget({})).toBeUndefined();
   });
 });
