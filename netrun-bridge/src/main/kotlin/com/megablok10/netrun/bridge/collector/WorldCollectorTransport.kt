@@ -68,12 +68,24 @@ class WorldCollectorTransport(
     }
 
     private fun post(base: String, secret: String?, request: SyncRequest): SyncResponse? {
-        val httpRequest = HttpRequest.newBuilder(URI.create("$base/api/changes"))
-            .timeout(Duration.ofSeconds(REQUEST_TIMEOUT_S))
-            .header("Content-Type", "application/json; charset=utf-8")
-            .apply { if (!secret.isNullOrBlank()) header("X-Game-Secret", secret) }
-            .POST(HttpRequest.BodyPublishers.ofString(encode(request).toString(), Charsets.UTF_8))
-            .build()
+        // Секрет, непригодный для HTTP-заголовка (перевод строки, не-ASCII), JDK принял бы исключением с самим секретом в тексте.
+        // Старт Моста такой секрет отвергает (Main.kt); сюда он доходит только в обход старта, и в журнал не попадает ни значение, ни текст исключения.
+        if (!secret.isNullOrBlank() && !isValidSecret(secret)) {
+            log.warnEvent(TAG, "sync.bad_secret", "url" to base, "records" to request.records.size)
+            return null
+        }
+        val httpRequest = try {
+            HttpRequest.newBuilder(URI.create("$base/api/changes"))
+                .timeout(Duration.ofSeconds(REQUEST_TIMEOUT_S))
+                .header("Content-Type", "application/json; charset=utf-8")
+                .apply { if (!secret.isNullOrBlank()) header("X-Game-Secret", secret) }
+                .POST(HttpRequest.BodyPublishers.ofString(encode(request).toString(), Charsets.UTF_8))
+                .build()
+        } catch (e: IllegalArgumentException) {
+            // Текст исключения построения запроса не пишем: он может повторять заголовки (секрет игры).
+            log.warnEvent(TAG, "sync.bad_request", "url" to base, "error" to e.javaClass.simpleName)
+            return null
+        }
         val response = http.send(httpRequest, HttpResponse.BodyHandlers.ofString(Charsets.UTF_8))
         if (response.statusCode() !in HTTP_OK) {
             log.warnEvent(TAG, "sync.http_error", "url" to base, "code" to response.statusCode(), "records" to request.records.size)
@@ -122,6 +134,9 @@ class WorldCollectorTransport(
         private const val REQUEST_TIMEOUT_S = 10L
         private const val CAPABILITY_TTL_MS = 5 * 60 * 1000L
         private val HTTP_OK = 200..299
+
+        /** Секрет игры годится для заголовка `X-Game-Secret`, если состоит только из печатных ASCII-символов (код 0x20–0x7E). */
+        fun isValidSecret(secret: String): Boolean = secret.all { it in ' '..'~' }
 
         internal fun encode(r: SyncRequest): JsonObject {
             val body = LinkedHashMap<String, JsonElement>()
