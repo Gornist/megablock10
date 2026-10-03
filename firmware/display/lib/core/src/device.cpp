@@ -1,10 +1,10 @@
 #include "device.h"
 
-#include <cstdarg>
 #include <cstdio>
 #include <cstring>
 
 #include "crc32.h"
+#include "util.h"
 
 namespace mb10d {
 
@@ -12,45 +12,34 @@ const char* const kFrameFile = "frame.bin";
 
 namespace {
 const uint8_t kStoredMagic[4] = {'M', 'B', 'F', 'B'};
-// «Прошло ли время t» с учётом переполнения millis() (≈49 суток).
-inline bool reached(uint32_t now, uint32_t t) { return int32_t(now - t) >= 0; }
 }  // namespace
 
 Device::Device(const Config& cfg, Panel& panel, Storage& storage, Backlight& backlight, Platform& platform, uint8_t* frame, uint8_t* incoming)
     : cfg_(cfg), panel_(panel), storage_(storage), backlight_(backlight), platform_(platform), frame_(frame), incoming_(incoming) {}
-
-void Device::logf(const char* fmt, ...) {
-  char line[160];
-  va_list ap;
-  va_start(ap, fmt);
-  std::vsnprintf(line, sizeof line, fmt, ap);
-  va_end(ap);
-  platform_.log(line);
-}
 
 void Device::boot() {
   backlight_.set(0);  // по умолчанию при загрузке подсветка выключена
   uint8_t head[kStoredHeaderSize];
   size_t size = frameSize();
   if (!storage_.read(kFrameFile, 0, head, sizeof head)) {
-    logf("boot: no stored frame, screen stays as is");
+    logFmt(platform_, "boot: no stored frame, screen stays as is");
     return;
   }
   uint32_t version = getU32(head + 4);
   if (std::memcmp(head, kStoredMagic, 4) != 0 || getU16(head + 8) != cfg_.width || getU16(head + 10) != cfg_.height || getU32(head + 12) != size) {
-    logf("boot: stored frame is for another panel or corrupt — ignored");
+    logFmt(platform_, "boot: stored frame is for another panel or corrupt — ignored");
     return;
   }
   if (!storage_.read(kFrameFile, kStoredHeaderSize, frame_, size) || crc32(frame_, size) != getU32(head + 16)) {
-    logf("boot: stored frame %u failed CRC — ignored", unsigned(version));
+    logFmt(platform_, "boot: stored frame %u failed CRC — ignored", unsigned(version));
     return;
   }
   displayed_ = version;
   hasFrame_ = true;
-  logf("boot: restoring frame %u", unsigned(version));
+  logFmt(platform_, "boot: restoring frame %u", unsigned(version));
   platform_.feedWatchdog();
   // e-paper обычно и так держит этот кадр; перерисовка — на случай, если панель сбросилась без питания.
-  if (!panel_.show(frame_, cfg_.width, cfg_.height)) logf("boot: panel update failed");
+  if (!panel_.show(frame_, cfg_.width, cfg_.height)) logFmt(platform_, "boot: panel update failed");
   platform_.feedWatchdog();
 }
 
@@ -66,21 +55,21 @@ bool Device::showImage(uint32_t version, const uint8_t* data) {
   platform_.feedWatchdog();
   // Сначала flash, потом панель: перезагрузка посреди обновления восстановит уже новый кадр, а не старый.
   if (!storage_.writeAtomic(kFrameFile, head, sizeof head, data, size)) {
-    logf("image %u: storage write failed", unsigned(version));
+    logFmt(platform_, "image %u: storage write failed", unsigned(version));
     return false;
   }
   platform_.feedWatchdog();
   bool ok = panel_.show(data, cfg_.width, cfg_.height);
   platform_.feedWatchdog();
   if (!ok) {
-    logf("image %u: panel update failed", unsigned(version));
+    logFmt(platform_, "image %u: panel update failed", unsigned(version));
     return false;
   }
   if (data != frame_) std::memcpy(frame_, data, size);
   displayed_ = version;
   hasFrame_ = true;
   testShown_ = false;
-  logf("image %u displayed", unsigned(version));
+  logFmt(platform_, "image %u displayed", unsigned(version));
   return true;
 }
 
@@ -93,7 +82,7 @@ void Device::showTest(uint16_t seconds) {
   std::snprintf(l5, sizeof l5, "RSSI: %d dBm", platform_.rssi());
   std::snprintf(l6, sizeof l6, "FW: %s  QR v%u", platform_.firmwareVersion(), unsigned(displayed_));
   const char* lines[] = {l1, l2, l3, l4, l5, l6};
-  logf("test screen for %u s", unsigned(seconds));
+  logFmt(platform_, "test screen for %u s", unsigned(seconds));
   platform_.feedWatchdog();
   panel_.showText(lines, 6);
   platform_.feedWatchdog();
@@ -106,7 +95,7 @@ void Device::setBacklight(uint8_t level, uint16_t seconds) {
   backlight_.set(level);
   backlightTimer_ = level > 0 && seconds > 0;
   if (backlightTimer_) backlightOffAt_ = platform_.nowMs() + uint32_t(seconds) * 1000;
-  logf("backlight %u for %u s", unsigned(level), unsigned(seconds));
+  logFmt(platform_, "backlight %u for %u s", unsigned(level), unsigned(seconds));
 }
 
 void Device::tick() {
@@ -116,12 +105,12 @@ void Device::tick() {
     backlightTimer_ = false;
     backlight_level_ = 0;
     backlight_.set(0);
-    logf("backlight off by timer");
+    logFmt(platform_, "backlight off by timer");
   }
   if (testShown_ && reached(now, testUntil_)) {
     testShown_ = false;
     if (hasFrame_) {
-      logf("test screen over — back to frame %u", unsigned(displayed_));
+      logFmt(platform_, "test screen over — back to frame %u", unsigned(displayed_));
       platform_.feedWatchdog();
       panel_.show(frame_, cfg_.width, cfg_.height);
       platform_.feedWatchdog();
@@ -321,8 +310,8 @@ void Session::poll() {
   uint32_t now = device_.platform().nowMs();
   const Config& c = device_.config();
   if (receiver_.partial() || inFrame_) {
-    if (int32_t(now - frameStarted_) >= int32_t(c.payloadTimeoutMs)) close("payload timeout — closing");
-  } else if (int32_t(now - lastActivity_) >= int32_t(c.headerTimeoutMs)) {
+    if (elapsed(now, frameStarted_, c.payloadTimeoutMs)) close("payload timeout — closing");
+  } else if (elapsed(now, lastActivity_, c.headerTimeoutMs)) {
     close("header timeout — closing");
   }
 }
@@ -348,7 +337,7 @@ Connectivity::Action Connectivity::update(bool linkUp, uint32_t now) {
       if (linkUp) {
         state_ = State::Online;
         backoff_.reset();
-      } else if (int32_t(now - since_) >= int32_t(connectTimeoutMs_)) {
+      } else if (elapsed(now, since_, connectTimeoutMs_)) {
         state_ = State::Backoff;
         retryAt_ = now + backoff_.next();
         return Action::Disconnected;

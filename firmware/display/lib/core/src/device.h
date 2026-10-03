@@ -67,7 +67,6 @@ class Device {
   bool rebootRequested() const { return rebootRequested_; }
 
  private:
-  void logf(const char* fmt, ...);
   Config cfg_;
   Panel& panel_;
   Storage& storage_;

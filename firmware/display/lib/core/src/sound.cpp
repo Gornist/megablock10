@@ -1,12 +1,12 @@
 #include "sound.h"
 
-#include <cstdarg>
 #include <cstdio>
 #include <cstring>
 
 #include "crc32.h"
 #include "json.h"
 #include "sha256.h"
+#include "util.h"
 #include "wav.h"
 
 namespace mb10d {
@@ -16,16 +16,6 @@ const char* const kAudioFile = "audio.bin";
 namespace {
 const uint8_t kAudioMagic[4] = {'M', 'B', 'A', 'U'};
 constexpr size_t kAudioHead = 16;  // MBAU, версия, длина JSON, CRC32 JSON
-inline bool reached(uint32_t now, uint32_t t) { return int32_t(now - t) >= 0; }
-
-void toHex(const uint8_t* p, size_t n, char* out) {
-  static const char* d = "0123456789abcdef";
-  for (size_t i = 0; i < n; i++) {
-    out[2 * i] = d[p[i] >> 4];
-    out[2 * i + 1] = d[p[i] & 15];
-  }
-  out[2 * n] = '\0';
-}
 
 bool isHexId(const char* s) {
   if (std::strlen(s) != kClipIdLen) return false;
@@ -48,15 +38,6 @@ uint8_t clampPct(double v) { return v < 0 ? 0 : v > 100 ? 100 : uint8_t(v + 0.5)
 Sound::Sound(SoundCard& card, AudioOut& out, Storage& storage, Platform& platform) : card_(card), out_(out), storage_(storage), platform_(platform) {
   json_[0] = '\0';
   std::memset(missing_, 0, sizeof missing_);
-}
-
-void Sound::logf(const char* fmt, ...) {
-  char line[200];
-  va_list ap;
-  va_start(ap, fmt);
-  std::vsnprintf(line, sizeof line, fmt, ap);
-  va_end(ap);
-  platform_.log(line);
 }
 
 uint32_t Sound::rand32() {
@@ -168,12 +149,12 @@ void Sound::playNext() {
     if (out_.startTrack(track(idx), bgVolume(), fadeMs_)) {
       std::snprintf(current_, sizeof current_, "%s", track(idx));
       bg_ = Bg::Playing;
-      logf("audio: track %s vol=%u", current_, unsigned(bgVolume()));
+      logFmt(platform_, "audio: track %s vol=%u", current_, unsigned(bgVolume()));
       return;
     }
-    logf("audio: track %s failed to start — skipped", track(idx));
+    logFmt(platform_, "audio: track %s failed to start — skipped", track(idx));
   }
-  logf("audio: no playable tracks in channel — silence");
+  logFmt(platform_, "audio: no playable tracks in channel — silence");
   bg_ = Bg::Silent;
   current_[0] = '\0';
 }
@@ -182,13 +163,13 @@ void Sound::boot() {
   cardWasPresent_ = card_.present();
   uint8_t head[kAudioHead];
   if (!storage_.read(kAudioFile, 0, head, sizeof head)) {
-    logf("audio boot: no saved state — silence");
+    logFmt(platform_, "audio boot: no saved state — silence");
     return;
   }
   uint32_t version = getU32(head + 4), len = getU32(head + 8);
   if (std::memcmp(head, kAudioMagic, 4) != 0 || len > kAudioJsonMax || !storage_.read(kAudioFile, kAudioHead, reinterpret_cast<uint8_t*>(json_), len) ||
       crc32(reinterpret_cast<uint8_t*>(json_), len) != getU32(head + 12) || !parseState(json_, len)) {
-    logf("audio boot: saved state corrupt — ignored");
+    logFmt(platform_, "audio boot: saved state corrupt — ignored");
     json_[0] = '\0';
     return;
   }
@@ -200,7 +181,7 @@ void Sound::boot() {
   rng_ ^= getU32(seed) | 1;
   refreshMissing();
   rebuildOrder(nullptr);
-  logf("audio boot: state v%u, %u tracks, card %s", unsigned(version_), unsigned(count_), cardWasPresent_ ? "present" : "missing");
+  logFmt(platform_, "audio boot: state v%u, %u tracks, card %s", unsigned(version_), unsigned(count_), cardWasPresent_ ? "present" : "missing");
   playNext();
 }
 
@@ -217,7 +198,7 @@ Nack Sound::applyState(uint32_t version, const uint8_t* json, size_t len) {
   std::memcpy(oldNames, names_, sizeof names_);
   std::memcpy(oldOffs, offs_, sizeof offs_);
   if (!parseState(s, len)) {
-    logf("audio v%u: bad JSON — rejected", unsigned(version));
+    logFmt(platform_, "audio v%u: bad JSON — rejected", unsigned(version));
     return Nack::BadFormat;
   }
   if (oldCount == count_ && oldShuffle == shuffle_) {
@@ -230,7 +211,7 @@ Nack Sound::applyState(uint32_t version, const uint8_t* json, size_t len) {
   putU32(head + 4, version);
   putU32(head + 8, uint32_t(len));
   putU32(head + 12, crc32(json, len));
-  if (!storage_.writeAtomic(kAudioFile, head, sizeof head, json, len)) logf("audio v%u: state not saved (storage)", unsigned(version));
+  if (!storage_.writeAtomic(kAudioFile, head, sizeof head, json, len)) logFmt(platform_, "audio v%u: state not saved (storage)", unsigned(version));
   std::memcpy(json_, s, len);
   json_[len] = '\0';
   jsonLen_ = len;
@@ -238,7 +219,7 @@ Nack Sound::applyState(uint32_t version, const uint8_t* json, size_t len) {
   refreshMissing();
   if (sameList && bg_ != Bg::Silent) {
     out_.setTrackVolume(bgVolume(), fadeMs_);
-    logf("audio v%u: volume %u", unsigned(version), unsigned(volume_));
+    logFmt(platform_, "audio v%u: volume %u", unsigned(version), unsigned(volume_));
     return Nack::None;
   }
   // Текущий трек остаётся в новом канале — не обрывать его, дальше по новому списку.
@@ -248,7 +229,7 @@ Nack Sound::applyState(uint32_t version, const uint8_t* json, size_t len) {
       if (!missing_[i] && std::strcmp(track(i), current_) == 0) keep = current_;
   }
   rebuildOrder(keep);
-  logf("audio v%u: %u tracks%s, vol=%u", unsigned(version), unsigned(count_), shuffle_ ? " shuffled" : "", unsigned(volume_));
+  logFmt(platform_, "audio v%u: %u tracks%s, vol=%u", unsigned(version), unsigned(count_), shuffle_ ? " shuffled" : "", unsigned(volume_));
   if (keep) {
     out_.setTrackVolume(bgVolume(), fadeMs_);
   } else {
@@ -264,7 +245,7 @@ void Sound::tick() {
   bool present = card_.present();
   if (present != cardWasPresent_) {
     cardWasPresent_ = present;
-    logf("audio: card %s", present ? "inserted" : "removed");
+    logFmt(platform_, "audio: card %s", present ? "inserted" : "removed");
     refreshMissing();
     if (!present) {
       out_.stopTrack(0);
@@ -276,7 +257,7 @@ void Sound::tick() {
   }
   if (annState_ == AnnState::Playing && !out_.clipPlaying()) {
     annState_ = AnnState::Done;
-    logf("announce %u done", unsigned(annId_));
+    logFmt(platform_, "announce %u done", unsigned(annId_));
     if (bg_ == Bg::Playing) out_.setTrackVolume(volume_, 600);
   }
   if (bg_ == Bg::Playing && !out_.trackPlaying()) {
@@ -306,7 +287,7 @@ Nack Sound::clipBegin(const uint8_t* p, uint32_t& have) {
     have = 0;
   }
   uploading_ = true;
-  logf("clip %.12s: %u of %u bytes already here", uploadId_, unsigned(have), unsigned(uploadLen_));
+  logFmt(platform_, "clip %.12s: %u of %u bytes already here", uploadId_, unsigned(have), unsigned(uploadLen_));
   return Nack::None;
 }
 
@@ -340,11 +321,11 @@ Nack Sound::clipCommit() {
   toHex(digest, 32, hex);
   if (std::strcmp(hex, uploadId_) != 0) {
     card_.removePart(uploadId_);
-    logf("clip %.12s: sha256 mismatch — discarded", uploadId_);
+    logFmt(platform_, "clip %.12s: sha256 mismatch — discarded", uploadId_);
     return Nack::BadCrc;
   }
   if (!card_.commitPart(uploadId_)) return Nack::DisplayFailed;
-  logf("clip %.12s: stored, %u bytes", uploadId_, unsigned(uploadLen_));
+  logFmt(platform_, "clip %.12s: stored, %u bytes", uploadId_, unsigned(uploadLen_));
   return Nack::None;
 }
 
@@ -374,13 +355,13 @@ Nack Sound::announce(uint32_t id, const uint8_t* json, size_t len, uint32_t& dur
   duck_ = clampPct(duck);
   if (!out_.startClip(clip, clampPct(vol), chime)) {
     annState_ = AnnState::Failed;
-    logf("announce %u: clip %.12s failed to start", unsigned(id), clip);
+    logFmt(platform_, "announce %u: clip %.12s failed to start", unsigned(id), clip);
     return Nack::DisplayFailed;
   }
   annState_ = AnnState::Playing;
   if (bg_ == Bg::Playing) out_.setTrackVolume(bgVolume(), 300);
   durationMs = info.durationMs + (chime ? kChimeMs : 0);
-  logf("announce %u: clip %.12s %u ms, background to %u%%", unsigned(id), clip, unsigned(durationMs), unsigned(duck_));
+  logFmt(platform_, "announce %u: clip %.12s %u ms, background to %u%%", unsigned(id), clip, unsigned(durationMs), unsigned(duck_));
   return Nack::None;
 }
 
@@ -389,7 +370,7 @@ void Sound::stopAnnounce() {
   out_.stopClip();
   annState_ = AnnState::Stopped;
   if (bg_ == Bg::Playing) out_.setTrackVolume(volume_, 600);
-  logf("announce %u stopped", unsigned(annId_));
+  logFmt(platform_, "announce %u stopped", unsigned(annId_));
 }
 
 size_t Sound::listJson(uint16_t start, char* out, size_t cap) {

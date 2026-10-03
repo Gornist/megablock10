@@ -103,7 +103,6 @@ class Sound {
   void playNext();
   uint8_t bgVolume() const;
   uint32_t rand32();
-  void logf(const char* fmt, ...);
   const char* track(size_t i) const { return names_ + offs_[i]; }
 
   SoundCard& card_;
