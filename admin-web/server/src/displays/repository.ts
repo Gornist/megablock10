@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import type { DisplayGroup } from "../apiTypes.js";
 import type { Db } from "../db/index.js";
 
 /** Строка таблицы displays (db/index.ts) — только здесь в snake_case; наружу уходит DisplayItem (manager.ts), без секрета. */
@@ -146,6 +147,17 @@ export class DisplayRepository {
     const rows = this.db.prepare(`SELECT * FROM display_groups`).all() as DisplayGroupRow[];
     // По алфавиту с кириллицей (COLLATE NOCASE в SQLite тоже знает только латиницу).
     return rows.sort((a, b) => a.name.localeCompare(b.name, "ru", { sensitivity: "base" }) || a.id.localeCompare(b.id));
+  }
+
+  /** Группы для API (DisplayGroup): с числом точек и фоном. */
+  groupItems(): DisplayGroup[] {
+    const counts = new Map<string, number>();
+    for (const r of this.list()) if (r.group_id) counts.set(r.group_id, (counts.get(r.group_id) ?? 0) + 1);
+    return this.listGroups().map((g) => ({ id: g.id, name: g.name, count: counts.get(g.id) ?? 0, audioChannelId: g.audio_channel_id, audioVolume: g.audio_volume }));
+  }
+
+  groupItem(id: string): DisplayGroup | undefined {
+    return this.groupItems().find((g) => g.id === id);
   }
 
   getGroup(id: string): DisplayGroupRow | undefined {

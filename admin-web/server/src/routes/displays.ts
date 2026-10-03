@@ -7,10 +7,10 @@ import { DEFAULT_DISPLAY_PORT } from "../displays/protocol.js";
 import { bitmapToPngDataUrl, renderQrForDisplay } from "../displays/renderer.js";
 import { newDisplaySecret, type DisplayConfigInput } from "../displays/repository.js";
 import { logMasterAction, requireMaster } from "../lib/auth.js";
+import { intIn } from "../lib/validate.js";
 import { containerQrFromDb } from "../lib/containerQr.js";
 
-/** CrowPanel 5.79" в портретной ориентации — панель, под которую делалась первая версия (docs/displays.md). */
-// CrowPanel 5.79″ висит горизонтально: родные 792×272.
+/** CrowPanel 5.79″ — панель, под которую делалась первая версия (docs/displays.md); висит горизонтально: родные 792×272. */
 export const DEFAULT_DISPLAY_WIDTH = 792;
 export const DEFAULT_DISPLAY_HEIGHT = 272;
 
@@ -50,10 +50,6 @@ function resolveSource(db: Db, source: Source | undefined): Resolved {
     return { ok: true, qr: source.qr, label };
   }
   return { ok: false, status: 400, error: "source.type must be container or qr" };
-}
-
-function intIn(v: unknown, min: number, max: number): v is number {
-  return Number.isInteger(v) && (v as number) >= min && (v as number) <= max;
 }
 
 function parseConfig(b: ConfigBody, current?: DisplayConfigInput): { ok: true; value: DisplayConfigInput } | { ok: false; error: string } {
@@ -165,21 +161,13 @@ export function registerDisplayRoutes(app: FastifyInstance, db: Db, displays: Di
 
   // ── Группы (локации) ──
 
-  function groupList(): DisplayGroup[] {
-    const counts = new Map<string, number>();
-    for (const r of repo.list()) if (r.group_id) counts.set(r.group_id, (counts.get(r.group_id) ?? 0) + 1);
-    return repo
-      .listGroups()
-      .map((g) => ({ id: g.id, name: g.name, count: counts.get(g.id) ?? 0, audioChannelId: g.audio_channel_id, audioVolume: g.audio_volume }));
-  }
-
   function groupName(raw: unknown): string | null {
     return typeof raw === "string" && raw.trim() && raw.trim().length <= 64 ? raw.trim() : null;
   }
 
   app.get("/api/display-groups", async (request, reply): Promise<DisplayGroup[] | void> => {
     if (!requireMaster(db, request, reply)) return;
-    return groupList();
+    return repo.groupItems();
   });
 
   app.post<{ Body: { name?: unknown } }>("/api/display-groups", async (request, reply): Promise<DisplayGroup | void> => {
@@ -193,7 +181,7 @@ export function registerDisplayRoutes(app: FastifyInstance, db: Db, displays: Di
       logMasterAction(db, master.id, "DISPLAY_GROUP_CREATE", { groupId: created.id, name });
       return created;
     })();
-    return { id: g.id, name: g.name, count: 0, audioChannelId: null, audioVolume: null };
+    return repo.groupItem(g.id)!;
   });
 
   app.put<{ Params: { id: string }; Body: { name?: unknown } }>("/api/display-groups/:id", async (request, reply): Promise<DisplayGroup | void> => {
@@ -209,7 +197,7 @@ export function registerDisplayRoutes(app: FastifyInstance, db: Db, displays: Di
       repo.renameGroup(g.id, name);
       logMasterAction(db, master.id, "DISPLAY_GROUP_RENAME", { groupId: g.id, from: g.name, name });
     })();
-    return groupList().find((x) => x.id === g.id)!;
+    return repo.groupItem(g.id)!;
   });
 
   app.delete<{ Params: { id: string } }>("/api/display-groups/:id", async (request, reply) => {
