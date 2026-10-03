@@ -16,14 +16,16 @@
 
 **Что сделать:** запустить плоскую сборку на Ubuntu 24.04.
 ```bash
-cd netrun && godot --headless --export-debug "Linux/X11" && ./builds/netrun.x86_64
+# сервер мира в одном окне, плоский клиент в другом (на devbox, дисплей :0):
+cd netrun && godot --headless -- --tokens=t1:alice &
+cd netrun && godot -- --flat --host=127.0.0.1 --port=7777 --token=t1
 ```
 
 **Успех:** приложение запустилось, нет краша.
 
-**Строка журнала:** файл `logs/log_*.log` (путь выведен при старте) содержит:
+**Строка журнала:** файл `~/.local/share/godot/app_userdata/Мегаблок 10- Сеть/logs/netrun-<дата>-<время>.log` (путь выведен в строке `start`, поле `log=`) содержит:
 ```
-"start": {"mode": "flat", "log": "/путь/к/log_*.log"}
+t=<мс> start mode=flat godot="4.7.2-stable (official)" args="…" log=user://logs/netrun-….log
 ```
 
 **Результат:** ✓ / ✗ дата время
@@ -38,7 +40,7 @@ cd netrun && godot --headless --export-debug "Linux/X11" && ./builds/netrun.x86_
 
 **Строка журнала:**
 ```
-"rig.recenter": {"xr": false}
+t=<мс> rig.recenter xr=false
 ```
 
 **Результат:** ✓ / ✗ дата время
@@ -65,8 +67,8 @@ cd netrun && godot --headless --export-debug "Linux/X11" && ./builds/netrun.x86_
 
 **Строка журнала:**
 ```
-"grab.request": {"id": <id>}
-"grab.confirmed": {"id": <id>}
+t=<мс> grab.request id=<id>
+t=<мс> grab.confirmed id=<id>
 ```
 
 **Результат:** ✓ / ✗ дата время
@@ -105,7 +107,7 @@ cd netrun && godot --headless --export-debug "Linux/X11" && ./builds/netrun.x86_
 
 **Строка журнала:**
 ```
-"grab.confirmed": {"id": ...}
+t=<мс> grab.confirmed id=...
 ```
 
 **Результат:** ✓ / ✗ дата время
@@ -120,8 +122,8 @@ cd netrun && godot --headless --export-debug "Linux/X11" && ./builds/netrun.x86_
 
 **Строка журнала:**
 ```
-"net.disconnected": {"host": "...", "port": ...}
-"net.connected": {"host": "...", "port": ...}
+t=<мс> net.disconnected host=... port=...
+t=<мс> net.connected host=... port=...
 ```
 
 **Результат:** ✓ / ✗ дата время
@@ -136,7 +138,7 @@ cd netrun && godot --headless --export-debug "Linux/X11" && ./builds/netrun.x86_
 
 **Строка журнала:**
 ```
-"net.connected": {"host": "<локальный IP>", "port": ...}
+t=<мс> net.connected host=<локальный IP> port=...
 ```
 
 **Результат:** ✓ / ✗ дата время
@@ -175,7 +177,7 @@ pico.sh info                # батарея, Wi-Fi, модель
 
 **Строка журнала:**
 ```
-"xr": {"enabled": true, "reason": "ok", "play_area": "sitting"}
+t=<мс> xr enabled=true reason=ok play_area=sitting
 ```
 
 **Результат:** ✓ / ✗ дата время
@@ -190,7 +192,7 @@ pico.sh info                # батарея, Wi-Fi, модель
 
 **Строка журнала:**
 ```
-"rig.recenter": {"xr": true}
+t=<мс> rig.recenter xr=true
 ```
 
 **Результат:** ✓ / ✗ дата время
@@ -253,8 +255,8 @@ pico.sh info                # батарея, Wi-Fi, модель
 
 **Строка журнала:**
 ```
-"grab.request": {"id": <id>}
-"grab.confirmed": {"id": <id>}
+t=<мс> grab.request id=<id>
+t=<мс> grab.confirmed id=<id>
 ```
 
 **Результат:** ✓ / ✗ дата время
@@ -269,8 +271,8 @@ pico.sh info                # батарея, Wi-Fi, модель
 
 **Строка журнала:**
 ```
-"net.disconnected": {"host": "...", "port": ...}
-"net.connected": {"host": "...", "port": ...}
+t=<мс> net.disconnected host=... port=...
+t=<мс> net.connected host=... port=...
 ```
 
 **Результат:** ✓ / ✗ дата время
@@ -285,7 +287,7 @@ pico.sh info                # батарея, Wi-Fi, модель
 
 **Строка журнала:**
 ```
-"net.connected": {"host": "<локальный IP>", "port": ...}
+t=<мс> net.connected host=<локальный IP> port=...
 ```
 
 **Результат:** ✓ / ✗ дата время
@@ -301,7 +303,7 @@ pico.sh info                # батарея, Wi-Fi, модель
 **Строка журнала:**
 ```
 "app.pause"
-"app.resume": {"slept_sec": <время сна>, "connected": true/false}
+t=<мс> app.resume slept_sec=<время сна> connected=true/false
 ```
 
 **Результат:** ✓ / ✗ дата время
@@ -316,9 +318,9 @@ pico.sh info                # батарея, Wi-Fi, модель
 
 **Строка журнала:**
 ```
-"start": {"mode": "vr", ...}
-"xr": {"enabled": true, ...}
-"net.connected": {...}
+t=<мс> start mode=vr
+t=<мс> xr enabled=true
+t=<мс> net.connected ...
 ```
 
 **Результат:** ✓ / ✗ дата время
@@ -333,7 +335,7 @@ pico.sh info                # батарея, Wi-Fi, модель
 
 **Строка журнала:**
 ```
-"rig.recenter": {"xr": true}
+t=<мс> rig.recenter xr=true
 ```
 
 **Результат:** ✓ контур переустанавливается, контур не требует пересчёта / ✗ нужна доп. калибровка дата время
@@ -348,7 +350,7 @@ pico.sh info                # батарея, Wi-Fi, модель
 
 **Строка журнала:** время кадра < 14 мс на Pico 4 (72 FPS); при скачке выше 30 мс:
 ```
-"frame.slow": {"ms": 30+, "limit_ms": 13.89, "skipped": 1+}
+t=<мс> frame.slow ms=30+ limit_ms=13.89 skipped=1+
 ```
 
 **Результат:** ✓ / ✗ макс время кадра (мс) дата время
