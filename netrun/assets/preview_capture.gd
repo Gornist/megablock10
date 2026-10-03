@@ -54,6 +54,7 @@ var out_dir := "/tmp/shots"
 
 var _movie := false
 var _static := false
+var _static_cam := PackedFloat64Array([0.0, 1.25, 6.4, 0.0, 1.0, -2.0])  # x,y,z камеры и x,y,z точки взгляда; --cam=… переопределяет
 var _t := 0.0
 var _cam: Camera3D
 var _insts: Array = []
@@ -65,6 +66,8 @@ func _ready() -> void:
 			out_dir = a.trim_prefix("--out=")
 		if a == "--movie":
 			_movie = true
+		if a.begins_with("--cam="):
+			_static_cam = PackedFloat64Array(Array(a.trim_prefix("--cam=").split(",")).map(func(v): return float(v)))
 		if a == "--static":  # камера неподвижна: нужно, чтобы по разнице кадров проверять движение штрихов
 			_static = true
 	DirAccess.make_dir_recursive_absolute(out_dir)
@@ -127,7 +130,7 @@ func _build(shot: Dictionary, root: Node) -> void:
 func _process(delta: float) -> void:
 	_t += delta
 	if _static:
-		_cam.look_at_from_position(Vector3(0.0, 1.25, 6.4), Vector3(0.0, 1.0, -2.0))
+		_cam.look_at_from_position(Vector3(_static_cam[0], _static_cam[1], _static_cam[2]), Vector3(_static_cam[3], _static_cam[4], _static_cam[5]))
 		return
 	var p: Vector3
 	var look: Vector3

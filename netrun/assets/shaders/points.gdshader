@@ -8,6 +8,11 @@ render_mode blend_add, unshaded, depth_draw_never, cull_disabled, fog_disabled;
 uniform float glow : hint_range(0.0, 6.0) = 1.4;
 uniform float twinkle : hint_range(0.0, 0.5) = 0.15;
 uniform float twinkle_speed : hint_range(0.0, 3.0) = 0.6;
+// «Дыхание» поля точек (пол, рёбра тайлов): по полю бежит волна яркости и вместе с ней пульсирует размер точек.
+uniform float wave : hint_range(0.0, 1.0) = 0.6;          // глубина волны яркости
+uniform float size_wave : hint_range(0.0, 1.0) = 0.45;    // глубина пульсации размера
+uniform float wave_speed : hint_range(0.0, 3.0) = 0.9;
+uniform float wave_scale : hint_range(0.0, 6.0) = 1.1;    // волн на метр
 uniform vec4 tint : source_color = vec4(1.0);
 uniform float tint_amount : hint_range(0.0, 1.0) = 0.0;
 
@@ -48,15 +53,17 @@ float dist_fade() {
 }
 
 varying float v_phase;
+varying float v_wave;
 
 void vertex() {
 	float h = UV2.x;
 	vec3 c = VERTEX - vec3((UV.x - 0.5) * 2.0 * h, (0.5 - UV.y) * 2.0 * h, 0.0);
 	v_phase = dot(c, vec3(12.9, 78.2, 37.7));
 	v_wp = (MODEL_MATRIX * vec4(c, 1.0)).xyz;
+	v_wave = 0.5 + 0.5 * sin((v_wp.x + 0.6 * v_wp.z) * wave_scale * 3.14159 - TIME * wave_speed);
 	vec4 mv = MODELVIEW_MATRIX * vec4(c, 1.0);
 	v_dist = -mv.z;
-	mv.xy += vec2(UV.x - 0.5, 0.5 - UV.y) * 2.0 * h;
+	mv.xy += vec2(UV.x - 0.5, 0.5 - UV.y) * 2.0 * h * (1.0 + size_wave * (v_wave - 0.5) * 2.0);
 	POSITION = PROJECTION_MATRIX * mv;
 }
 
@@ -66,5 +73,5 @@ void fragment() {
 	float tw = 1.0 - twinkle + twinkle * sin(TIME * twinkle_speed + v_phase + (v_wp.x + v_wp.z) * 1.7); // волны мерцания бегут по полу
 	float k = corrupt_k();
 	ALBEDO = mix(mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount), corrupt_color.rgb, corrupt_mask(k)) * glow;
-	ALPHA = soft * COLOR.a * tw * dist_fade() * intensity;
+	ALPHA = soft * COLOR.a * tw * (1.0 - wave + wave * v_wave) * dist_fade() * intensity;
 }
