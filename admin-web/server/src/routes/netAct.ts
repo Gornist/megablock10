@@ -25,7 +25,7 @@ const HTTP_BY_CODE: Record<string, number> = {
  * ответ Моста с кодом — как есть, с понятным статусом и документом из ответа (его показывает экран при конфликте).
  * Неожиданное пробрасываем дальше — общий обработчик ошибок отдаст 500 без деталей.
  */
-export function bridgeFail(reply: FastifyReply, e: unknown): void {
+function bridgeFail(reply: FastifyReply, e: unknown): void {
   if (e instanceof BridgeUnavailableError) {
     reply.code(503).send({ error: e.message, code: "bridge_unavailable" });
   } else if (e instanceof BridgeError) {
