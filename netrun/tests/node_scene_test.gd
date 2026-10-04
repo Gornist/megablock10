@@ -3,7 +3,7 @@ extends GdUnitTestSuite
 ## и локдауне, ворота выхода при уровне LOCKDOWN, шард и хранилище, ICE и чужие аватары вместо заглушек, бюджет треугольников.
 
 const TIERS := ["BASE", "HARD", "NIGHTMARE"]
-const ENV_MODULES := ["floor", "wall", "corner", "pillar", "platform", "doorway", "tunnel_ring"]
+const ENV_MODULES := ["floor", "wall", "corner", "pillar", "platform", "doorway", "tunnel_ring", "ceiling", "far_field", "far_floor", "far_ceiling"]
 const PORTAL := "res://assets/models/props/portal.glb"
 const PORTAL_LOCKED := "res://assets/models/props/portal_locked.glb"
 const GATE := "res://assets/models/env/lockdown_gate.glb"
@@ -39,12 +39,13 @@ func _state(level: int = 0, hunt: bool = false, ice: Array = []) -> Dictionary:
 	return {"trace": 0.0, "level": level, "ghost": false, "hunt": hunt, "ice": ice, "cd": []}
 
 
-## Цвет неона модели: материал с излучением первого меша (для сверки тира).
-func _neon(mesh: Mesh) -> Color:
+## Цвет тира окружения: параметр tint шейдера первого меша модуля (тир подставляется при сборке комнаты).
+func _tint(root: Node, asset: String) -> Color:
+	var mesh := _mesh_of(root, asset)
 	for i in mesh.get_surface_count():
-		var m := mesh.surface_get_material(i) as BaseMaterial3D
-		if m != null and m.emission_enabled:
-			return m.albedo_color
+		var m := mesh.surface_get_material(i) as ShaderMaterial
+		if m != null and m.get_shader_parameter("tint_amount") != null and float(m.get_shader_parameter("tint_amount")) > 0.5:
+			return m.get_shader_parameter("tint")
 	return Color.BLACK
 
 
@@ -57,45 +58,39 @@ func _mesh_of(root: Node, asset: String) -> Mesh:
 
 # ---------------------------------------------------------------- комната по тиру
 
-func test_asset_paths_follow_tier_suffix() -> void:
-	assert_str(NodeAssets.env_path("floor", "BASE")).is_equal("res://assets/models/env/floor.glb")
-	assert_str(NodeAssets.env_path("floor", "HARD")).is_equal("res://assets/models/env/floor_hard.glb")
-	assert_str(NodeAssets.env_path("wall", "NIGHTMARE")).is_equal("res://assets/models/env/wall_nightmare.glb")
-	assert_str(NodeAssets.env_path("wall", "что-то новое")).is_equal("res://assets/models/env/wall.glb")  # неизвестный тир = BASE
-	assert_str(NodeAssets.env_path("wall", "")).is_equal("res://assets/models/env/wall.glb")  # одиночный узел без тира
+func test_asset_paths_do_not_depend_on_tier() -> void:
+	## тир — материал (assets/ARCHITECTURE.md), а не отдельные файлы: путь модуля один на все тиры
+	for tier in ["BASE", "HARD", "NIGHTMARE", "что-то новое", ""]:
+		assert_str(NodeAssets.env_path("floor", tier)).is_equal("res://assets/models/env/floor.glb")
 
 
-func test_room_modules_follow_node_tier() -> void:
+func test_room_modules_are_in_the_room_for_every_tier() -> void:
 	for tier in TIERS:
 		var scene := _scene()
 		scene.apply_node(_info(tier))
 		var used: Array = scene.view.used_assets()
 		for module in ENV_MODULES:
 			assert_array(used).override_failure_message("%s: нет %s" % [tier, module]).contains([NodeAssets.env_path(module, tier)])
-			for other in TIERS:
-				if other != tier:
-					assert_array(used).override_failure_message("%s: подмешан %s" % [tier, NodeAssets.env_path(module, other)]).not_contains([NodeAssets.env_path(module, other)])
 
 
-func test_tier_changes_the_neon_colour() -> void:
-	var colors: Dictionary = {}
+func test_tier_changes_the_tint_of_the_room() -> void:
+	var tints: Dictionary = {}
 	for tier in TIERS:
 		var scene := _scene()
 		scene.apply_node(_info(tier))
-		colors[tier] = _neon(_mesh_of(scene.view, NodeAssets.env_path("floor", tier)))
-	assert_bool(colors["BASE"].b > colors["BASE"].r).override_failure_message("BASE бирюзовый").is_true()
-	assert_bool(colors["HARD"].r > colors["HARD"].b + 0.3).override_failure_message("HARD оранжевый").is_true()
-	assert_bool(colors["NIGHTMARE"].r > colors["NIGHTMARE"].g + 0.3).override_failure_message("NIGHTMARE красный").is_true()
+		tints[tier] = _tint(scene.view, NodeAssets.env_path("wall", tier))
+	assert_bool(tints["BASE"] != tints["HARD"] and tints["HARD"] != tints["NIGHTMARE"]).override_failure_message("тиры одного цвета: %s" % str(tints)).is_true()
+	for tier in TIERS:
+		assert_bool(tints[tier].b >= tints[tier].r).override_failure_message("%s: красный в окружении" % tier).is_true()
 
 
 func test_next_node_rebuilds_the_room_for_its_tier() -> void:
 	var scene := _scene()
 	scene.apply_node(_info("HARD"))
-	assert_array(scene.view.used_assets()).contains([NodeAssets.env_path("floor", "HARD")])
+	var hard := _tint(scene.view, NodeAssets.env_path("wall", "HARD"))
 	scene.apply_node(_info("NIGHTMARE"))
-	assert_array(scene.view.used_assets()).contains([NodeAssets.env_path("floor", "NIGHTMARE")])
-	assert_array(scene.view.used_assets()).not_contains([NodeAssets.env_path("floor", "HARD")])
 	assert_str(scene.view.tier).is_equal("NIGHTMARE")
+	assert_bool(_tint(scene.view, NodeAssets.env_path("wall", "NIGHTMARE")) != hard).override_failure_message("тир не сменил цвет").is_true()
 
 
 func test_room_is_a_closed_8x8_grid() -> void:
@@ -252,7 +247,8 @@ func test_ice_models_replace_the_capsule_placeholders() -> void:
 	assert_str(black.asset).is_equal("res://assets/models/ice/black_ice.glb")
 	assert_bool(soft.black).is_false()
 	assert_bool(black.black).is_true()
-	assert_bool(soft.find_child("Skeleton3D", true, false) is Skeleton3D).is_true()
+	# у ICE клипы на корневом узле (без скелета): AnimationPlayer с клипами по ТЗ
+	assert_bool(soft.find_child("AnimationPlayer", true, false) is AnimationPlayer).is_true()
 
 
 func test_ice_animation_follows_server_state() -> void:

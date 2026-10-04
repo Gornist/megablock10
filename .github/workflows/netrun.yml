@@ -29,6 +29,9 @@ jobs:
           sudo install -m 755 "Godot_v${GODOT_VERSION}-${GODOT_CHANNEL}_linux.x86_64" /usr/local/bin/godot
           godot --version
 
+      - name: Проверка ассетов (бюджеты, роли, размеры, origin)
+        run: python3 netrun/assets/src/validate.py --root netrun/assets
+
       - name: Импорт проекта
         run: godot --headless --path netrun --import
 

@@ -42,7 +42,7 @@ func _init(is_black: bool = false) -> void:
 	_alert.font_size = 96
 	_alert.pixel_size = 0.006
 	_alert.outline_size = 12
-	var anchor := _model.get_node_or_null("AlertAnchor") as Node3D  # метка модели: над головой
+	var anchor := _model.find_child("AlertAnchor", true, false) as Node3D  # метка модели (внутри корневого узла клипов Rig): над головой
 	_alert.position = anchor.position + Vector3(0, 0.25, 0) if anchor != null else Vector3(0, 2.4, 0)
 	_alert.visible = false
 	add_child(_alert)

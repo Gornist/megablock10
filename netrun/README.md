@@ -50,25 +50,29 @@ devbox — docs/netrun-devbox.md, «Очки Pico 4 по USB».
 
 ## 3D-ассеты
 
-`assets/models/<группа>/*.glb` — модели для Pico 4: окружение (env, три тира), предметы (props), существа (ice: Soft и Black ICE со
-скелетом и клипами), аватар (avatar), дека на запястье и жетоны демонов (deck). Каталог, соглашения (оси, сетка 2x2 м, тиры, палитра,
-метки, скелеты и клипы), числа треугольников и размеры — `assets/models/MANIFEST.md`; исходники — Blender-скрипты в `assets/src/`
-(Blender запускается только на devbox, `assets/src/build_all.sh`); превью для приёмки — `assets/previews/`, собранная сцена со всеми
-ассетами — `assets/preview.tscn` (её собирает `assets/src/make_preview_scene.py`; кадры камер снимает `assets/preview_shot.tscn`
-отдельным процессом Godot на дисплее devbox). Бюджет без Blender: `python3 netrun/assets/src/check_budget.py`; импорт, скелеты, клипы
-и метки проверяет `tests/assets_models_test.gd`. Файлы `.glb.import` лежат в git (стабильные uid); после смены .glb —
-`godot --headless --path netrun --import`, затем `python3 netrun/assets/src/patch_imports.py` (облегчённый импорт и зацикливание
-клипов) и ещё один импорт.
+`assets/models/<группа>/*.glb` — модели для Pico 4 в стиле Blackwall (Cyberpunk 2077): свет в линиях и точках, поверхности чёрные. Окружение (env), предметы (props),
+существа (ice: Soft и Black ICE с клипами), аватар (avatar), дека на запястье и жетоны демонов (deck). **Канон и все правила — `assets/ARCHITECTURE.md`**
+(принципы, координаты, роли материалов, каталог модулей, проверки, бюджеты, решения владельца), стиль — `assets/STYLE.md`, каталог и числа —
+`assets/models/MANIFEST.md`. `.glb` несут только форму и цвета вершин: вид (аддитивность, свечение, дыхание штрихов, тир, шрам ICE, отражение в полу)
+делают шейдеры `assets/shaders/*.gdshader`, которые подставляет `AssetMaterials.apply` (`assets/asset_materials.gd`); `client/node_assets.gd` вызывает его
+при создании каждой модели. Тир узла — параметр материала окружения (путь модуля от тира не зависит).
+
+Исходники — Blender-скрипты `assets/src/*.py` (Blender запускается только на devbox). Сборка, проверка и кадры — `assets/tools/pipeline.sh`
+(`build` собирает все ассеты на devbox и проверяет их `assets/src/validate.py`, `shots`, `demo`, `fps`); кадры настоящей сцены клиента —
+`assets/preview_node.tscn` (отдельным процессом Godot на дисплее devbox, см. комментарий в `preview_node.gd`). `validate.py` — чистый Python по самим
+`.glb` (бюджеты, роли, размеры, origin), CI гоняет его отдельным шагом; импорт, клипы, метки и посадку на сетку проверяет `tests/assets_models_test.gd`.
+Файлы `.glb.import` лежат в git (стабильные uid); после смены `.glb` — `godot --headless --path netrun --import`.
 
 ## Узел в ассетах (A3)
 
 Клиент рисует узел готовыми моделями: `client/node_view.gd` (`NodeView`) собирает комнату и предметы по описанию сервера, `client/node_assets.gd` даёт
-пути (тир узла из graph.json: BASE — `имя.glb`, HARD — `имя_hard.glb`, NIGHTMARE — `имя_nightmare.glb`), `client/ice_view.gd` — ICE, `client/avatar_view.gd` —
+пути и одевает модели шейдерами (тир узла из graph.json — BASE, HARD или NIGHTMARE — красит окружение, файлы одни на все тиры), `client/ice_view.gd` — ICE, `client/avatar_view.gd` —
 чужие нетраннеры; сцена-оркестратор — `client/rig_test_scene.gd`. Сервер без графики и ассетов не читает.
 
-- **Комната.** 8x8 ячеек по 2 м (`NodeLayout.cell_center`): пол, стены по периметру, четыре угла с колонной, колонны-укрытия (`NodeLayout.PILLARS`),
+- **Комната.** 8x8 ячеек по 2 м (`NodeLayout.cell_center`): пол, потолок на 5 м, стены по периметру, четыре угла с колонной, колонны-укрытия (`NodeLayout.PILLARS`),
   площадка выхода из четырёх помостов, за южной стеной две двери выхода (`EXIT_DOORS`) и два кольца цифрового тоннеля. Повторяющиеся модули — один
-  `MultiMesh` на модуль (пол — один вызов отрисовки на поверхность вместо 64 узлов).
+  `MultiMesh` на модуль и вариант (пол, потолок и стены в трёх вариантах: узор не повторяется), у стен, углов, дверей и колонн ещё зеркальный `MultiMesh` — отражение в полу.
+  Вокруг комнаты — дальний план: «пласты данных» (наш и такие же выше и ниже на 7 м) из участков 11 м (`far_field`, `far_floor`, `far_ceiling`).
 - **Предметы.** `vault_open` / `vault_closed` на слоте шарда (шард лежит / слот пуст), над ним вращается и парит `shard` (`shard_encrypted`, если слот
   помечен `enc`); `portal` на слоте портала, `portal_locked` — когда узел назначения в локдауне (`open: false` или отказ `portal_denied` / lockdown) и пока
   за игроком идёт охота Black ICE (поле `hunt` снимка state); `lockdown_gate` вместо дверей при уровне trace LOCKDOWN (сервер выход при этом не закрывает —

@@ -13,7 +13,25 @@ const VAULT_SLOT_Y := 1.0
 const DEAD_DECK_LIFT := 0.035
 const SENSOR_SWEEP_RAD := 0.6
 const SENSOR_SWEEP_HZ := 0.12
-const MODULES := ["floor", "wall", "corner", "pillar", "platform", "doorway", "lockdown_gate", "tunnel_ring"]
+const MODULES := ["floor", "wall", "corner", "pillar", "platform", "doorway", "lockdown_gate", "tunnel_ring", "ceiling", "far_field", "far_floor", "far_ceiling"]
+## Варианты модуля (другой seed, тот же размер): узор не повторяется, девять одинаковых плиток подряд — запрещены (assets/ARCHITECTURE.md, п. 6).
+## Экземпляры модуля делятся по вариантам по кругу; первый вариант всегда в комнате (его путь — NodeAssets.env_path(module)).
+const VARIANTS := {
+	"floor": ["floor", "floor_b", "floor_c"], "wall": ["wall", "wall_b", "wall_c"], "doorway": ["doorway", "doorway_b"],
+	"ceiling": ["ceiling", "ceiling_b", "ceiling_c"],
+	"far_field": ["far_field", "far_field_b", "far_field_c"], "far_floor": ["far_floor", "far_floor_b", "far_floor_c"],
+	"far_ceiling": ["far_ceiling", "far_ceiling_b", "far_ceiling_c"],
+}
+## Модули с отражением в полу (зеркальная копия, тусклая): стены, углы, двери, ворота, колонны, помосты.
+const REFLECTED := ["wall", "corner", "doorway", "lockdown_gate", "pillar", "platform"]
+## Потолок и дальние пласты: комната лежит в «пласте данных», выше и ниже — такие же (assets/ARCHITECTURE.md, п. 12).
+const CEILING_H := 5.0
+const LAYER_PITCH := 7.0
+const FAR_STEP := 11.0
+## Стена и дверь стоят на краю ячейки: модуль окружения центрирован в ячейке, поэтому его сдвигают к наружному краю на столько метров.
+const WALL_EDGE := 0.9
+## Дальний план: уровни пластов и радиус сетки участков 11 м вокруг центра комнаты (в участках); у нашего пласта пустые участки под комнатой.
+const FAR_LAYERS := [{"y": 0.0, "r": 3, "hole": 1}, {"y": LAYER_PITCH, "r": 2, "hole": -1}, {"y": -LAYER_PITCH, "r": 2, "hole": -1}]
 
 ## Тир узла, по которому выбраны файлы окружения (BASE, если сервер тир не назвал).
 var tier := ""
@@ -75,7 +93,7 @@ func set_tier(new_tier: String) -> void:
 	for module in MODULES:
 		var list: Array = xforms[module]
 		_counts[module] = list.size()
-		var made := _add_multi(_room, NodeAssets.env_path(module, tier), module, list)
+		var made := _add_module(_room, module, list)
 		if module == "doorway":
 			_doorways = made
 		elif module == "lockdown_gate":
@@ -112,7 +130,8 @@ func _room_transforms() -> Dictionary:
 	for iz in NodeLayout.GRID:
 		for ix in NodeLayout.GRID:
 			var c := NodeLayout.cell_center(ix, iz)
-			out["floor"].append(Transform3D(Basis.IDENTITY, c))
+			out["floor"].append(Transform3D(Basis(Vector3.UP, PI / 2.0 * ((ix * 3 + iz) % 4)), c))  # поворот по кругу: узор не повторяется
+			out["ceiling"].append(Transform3D(Basis(Vector3.UP, PI / 2.0 * ((ix + iz * 3 + 1) % 4)), c + Vector3(0, CEILING_H, 0)))
 			var north := iz == 0
 			var south := iz == last
 			var west := ix == 0
@@ -125,10 +144,11 @@ func _room_transforms() -> Dictionary:
 					corner_yaw = PI
 				elif south and west:
 					corner_yaw = PI / 2.0
-				out["corner"].append(Transform3D(Basis(Vector3.UP, corner_yaw), c))
+				out["corner"].append(Transform3D(Basis(Vector3.UP, corner_yaw + PI), c))  # модуль corner стоит стенами на юг и восток: +PI = северо-запад
 			elif north or south or west or east:
 				var wall_yaw := 0.0 if north else (PI if south else (PI / 2.0 if west else 3.0 * PI / 2.0))
-				var t := Transform3D(Basis(Vector3.UP, wall_yaw), c)
+				var wb := Basis(Vector3.UP, wall_yaw)
+				var t := Transform3D(wb, c + wb * Vector3(0, 0, -WALL_EDGE))  # на наружный край ячейки
 				if south and _is_exit_door(c):
 					out["doorway"].append(t)
 					out["lockdown_gate"].append(t)
@@ -140,7 +160,25 @@ func _room_transforms() -> Dictionary:
 		out["pillar"].append(Transform3D(Basis.IDENTITY, p))
 	for k in NodeLayout.EXIT_TUNNEL_SEGMENTS:
 		out["tunnel_ring"].append(Transform3D(Basis.IDENTITY, Vector3(NodeLayout.EXIT_POS.x, 0.0, NodeLayout.ROOM_MAX.y + NodeLayout.CELL * (k + 0.5))))
+	_far_transforms(out)
 	return out
+
+
+## Дальний план: участки 11×11 м сеткой вокруг центра комнаты, на трёх пластах (наш, выше, ниже). У участка три вещи: башни света, пол и потолок.
+func _far_transforms(out: Dictionary) -> void:
+	var n := 0
+	for layer in FAR_LAYERS:
+		var r: int = layer["r"]
+		for gx in range(-r, r + 1):
+			for gz in range(-r, r + 1):
+				if int(layer["hole"]) > 0 and absi(gx) <= int(layer["hole"]) and absi(gz) <= int(layer["hole"]):
+					continue  # под комнатой — она сама
+				var p := Vector3(NodeLayout.ROOM_CENTER.x + gx * FAR_STEP, float(layer["y"]), NodeLayout.ROOM_CENTER.z + gz * FAR_STEP)
+				var b := Basis(Vector3.UP, PI / 2.0 * (n % 4))
+				out["far_field"].append(Transform3D(b, p))
+				out["far_floor"].append(Transform3D(b, p))
+				out["far_ceiling"].append(Transform3D(b, p + Vector3(0, CEILING_H, 0)))
+				n += 1
 
 
 func _is_exit_door(cell: Vector3) -> bool:
@@ -150,18 +188,42 @@ func _is_exit_door(cell: Vector3) -> bool:
 	return false
 
 
-## По одному MultiMeshInstance3D на меш модели (у ворот их два: Frame и Bars_Closed).
-func _add_multi(parent: Node3D, path: String, label: String, xforms: Array) -> Array[Node3D]:
+## Модуль целиком: экземпляры делятся по вариантам (если они есть); у стен, дверей и колонн — ещё отражение в полу.
+func _add_module(parent: Node3D, module: String, xforms: Array) -> Array[Node3D]:
+	var made: Array[Node3D] = []
+	var vars: Array = VARIANTS.get(module, [module])
+	var mod_tier := tier
+	if module.begins_with("far_") and tier == "BASE":
+		mod_tier = "HARD"  # дальний план темнее и синее: пласты за стенами не должны спорить с комнатой
+	for v in vars.size():
+		var list: Array = []
+		for i in xforms.size():
+			if i % vars.size() == v:
+				list.append(xforms[i])
+		var path := NodeAssets.env_path(str(vars[v]), mod_tier)
+		made.append_array(_add_multi(parent, path, module, list, mod_tier, false))
+		if REFLECTED.has(module):
+			made.append_array(_add_multi(parent, path, module + "_reflection", list, mod_tier, true))
+	return made
+
+
+## По одному MultiMeshInstance3D на меш модели (у штрихов, точек и тайлов свой материал). mirrored — копия для отражения в полу.
+func _add_multi(parent: Node3D, path: String, label: String, xforms: Array, mod_tier: String, mirrored: bool) -> Array[Node3D]:
 	var made: Array[Node3D] = []
 	if xforms.is_empty():
 		return made
-	for part in NodeAssets.mesh_parts(path):
+	for part in NodeAssets.mesh_parts(path, mod_tier, mirrored):
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.instance_count = xforms.size()
 		mm.mesh = part["mesh"]
+		var box := AABB()
 		for i in xforms.size():
-			mm.set_instance_transform(i, (xforms[i] as Transform3D) * (part["xform"] as Transform3D))
+			var xf: Transform3D = (xforms[i] as Transform3D) * (part["xform"] as Transform3D)
+			mm.set_instance_transform(i, xf)
+			var b: AABB = xf * (part["mesh"] as Mesh).get_aabb()
+			box = b if i == 0 else box.merge(b)
+		mm.custom_aabb = box.grow(2.0)  # запас на дыхание и покачивание штрихов: их считает вершинный шейдер, а не меш
 		var mi := MultiMeshInstance3D.new()
 		mi.name = "%s_%s" % [label, part["name"]]
 		mi.multimesh = mm
