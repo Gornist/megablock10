@@ -99,7 +99,12 @@ class SdCard : public SoundCard {
     scan();
     return ok;
   }
-  size_t trackCount() override { return tracks_.size(); }
+  // Под той же блокировкой, что и остальные обращения к tracks_: poll() (карту вынули) и scan() меняют список из основного цикла,
+  // writeFile — из самопроверки; без неё размер мог прийтись на середину перечитывания.
+  size_t trackCount() override {
+    Guard g(sdLock);
+    return tracks_.size();
+  }
   bool trackName(size_t i, char* out, size_t cap) override {
     Guard g(sdLock);
     if (i >= tracks_.size()) return false;
