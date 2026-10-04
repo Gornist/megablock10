@@ -2,9 +2,10 @@ package com.megablok10.app.breach
 
 /*
  * Чистая логика взлома живёт в общем модуле правил (:rules, пакет com.megablok10.rules) — её же вызывает Мост «Сети».
- * Здесь псевдонимы, чтобы код приложения не менял импорты (как у Daemon, Tier, DaemonEffect). Функции (generateGrid,
+ * Здесь псевдонимы, чтобы код приложения не менял импорты (как у Tier и DaemonEffect — те лежат рядом, в своих файлах). Функции (generateGrid,
  * resolveDaemons, nextLinkDimension, candidatesFor) под псевдоним не подпадают — вызывающие импортируют их из :rules.
  */
+typealias Daemon = com.megablok10.rules.Daemon
 typealias LinkDimension = com.megablok10.rules.LinkDimension
 typealias BreachGrid = com.megablok10.rules.BreachGrid
 typealias BreachSymbols = com.megablok10.rules.BreachSymbols
