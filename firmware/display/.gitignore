@@ -2,3 +2,4 @@ build*/
 .pio/
 wokwi-serial.log
 wokwi-cli.out
+espemu-serial.log

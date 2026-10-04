@@ -24,6 +24,14 @@ Settings settings;  // копия настроек платы: задача жи
 constexpr char kSelftestId[] = "selftest-wokwi";
 // Версия состояния звука в самопроверке: выше нуля свежей платы.
 constexpr uint32_t kAudioVersion = 7;
+// Эмулятор Espressif esp-emulator (crowpanel579-espemu, -DMB10_SELFTEST_ESPEMU) не моделирует программный сброс S3: esp_restart
+// доходит до сброса сторожем RTC (RTCWDT_SYS_RST → ESP_RST_WDT), и после паники сторожа задач — так же. Там ESP_RST_WDT — тоже
+// «наш» сброс: фаза в NVS сменилась прямо перед ним; что сработал именно сторож задач, tools/espemu_selftest.sh сверяет по журналу.
+#ifdef MB10_SELFTEST_ESPEMU
+constexpr bool kEspEmu = true;
+#else
+constexpr bool kEspEmu = false;
+#endif
 constexpr char kSelftestSecret[] = "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a";
 }  // namespace
 
@@ -100,8 +108,12 @@ void selftestTask(void*) {
       runner.reboot();  // дальше — фаза 1 после загрузки
     }
   } else if (phase == 1) {
-    if (reason == ESP_RST_SW) runner.pass("reboot-reason");
-    else runner.fail("reboot-reason", "причина сброса %d, ждали ESP_RST_SW", int(reason));
+    if (reason == ESP_RST_SW || (kEspEmu && reason == ESP_RST_WDT)) {
+      if (reason == ESP_RST_WDT) logLine("SELFTEST info: esp-emu — программный сброс пришёл как RTCWDT_SYS_RST (ESP_RST_WDT)");
+      runner.pass("reboot-reason");
+    } else {
+      runner.fail("reboot-reason", "причина сброса %d, ждали ESP_RST_SW", int(reason));
+    }
     if (runner.expectVersion("reboot-restores-frame", version, 30000) && (!nvs.getBool("audio", false) || runner.expectAudioVersion("reboot-restores-audio", kAudioVersion, 5000)) &&
         runner.failures() == 0) {
       nvs.putUChar("phase", 2);
@@ -112,8 +124,10 @@ void selftestTask(void*) {
     // Сработал сторож задач (в журнале — «task_wdt … Aborting»). После паники IDF взводит TG1WDT на время перезапуска; в Wokwi
     // загрузка образа ≈ 1 МБ (с декодером MP3) дольше его срока — тогда последним записан TG1WDT_SYS_RST → ESP_RST_INT_WDT.
     // Оба — сброс сторожем; иначе (питание, программный) — провал.
-    if (reason == ESP_RST_TASK_WDT || reason == ESP_RST_INT_WDT) {
-      Serial.printf("SELFTEST info: причина сброса %s\n", reason == ESP_RST_TASK_WDT ? "TASK_WDT" : "INT_WDT (TG1 во время перезапуска после паники)");
+    if (reason == ESP_RST_TASK_WDT || reason == ESP_RST_INT_WDT || (kEspEmu && reason == ESP_RST_WDT)) {
+      Serial.printf("SELFTEST info: причина сброса %s\n", reason == ESP_RST_TASK_WDT  ? "TASK_WDT"
+                                                          : reason == ESP_RST_INT_WDT ? "INT_WDT (TG1 во время перезапуска после паники)"
+                                                                                      : "WDT (esp-emu: перезапуск после паники — через RTCWDT)");
       runner.pass("watchdog-reset");
     } else {
       runner.fail("watchdog-reset", "причина сброса %d, ждали ESP_RST_TASK_WDT (%d) или ESP_RST_INT_WDT (%d)", int(reason), int(ESP_RST_TASK_WDT), int(ESP_RST_INT_WDT));
