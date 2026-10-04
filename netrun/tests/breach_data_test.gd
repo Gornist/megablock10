@@ -1,6 +1,6 @@
 extends GdUnitTestSuite
-## Числа и реплики движка взлома: data/rules/breach.json (пока его нет — breach.pending.json). Сами значения сверяет Kotlin-тест :rules
-## (задача К0); здесь — что файл читается, полон и совпадает с числами телефона, списанными в карточке К1.
+## Числа и реплики движка взлома: data/rules/breach.json. Сами значения сверяет с константами Kotlin-тест :rules (задача К0);
+## здесь — что файл читается, полон и содержит числа телефона (опорные значения продублированы, чтобы тихая правка файла краснила и этот тест).
 
 
 func before_test() -> void:
@@ -17,10 +17,8 @@ func test_default_data_loads_without_errors() -> void:
 	assert_str(d.source).is_not_empty()
 
 
-func test_pending_is_used_only_while_final_file_is_absent() -> void:
-	var d := BreachData.shared()
-	var expected := BreachData.PATH if FileAccess.file_exists(BreachData.PATH) else BreachData.PENDING_PATH
-	assert_str(d.source).is_equal(expected)
+func test_data_comes_from_the_final_file() -> void:
+	assert_str(BreachData.shared().source).is_equal(BreachData.PATH)
 
 
 func test_tier_params_match_the_phone() -> void:

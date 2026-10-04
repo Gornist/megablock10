@@ -1,122 +1,57 @@
 extends GdUnitTestSuite
-## Проигрыватель golden-наборов поведения (docs/netrun-deck-design.md, §10.4): Kotlin-тест :rules (задача К0) выгружает
-## tests/fixtures/breach_golden.json, этот тест проигрывает его порту. Файла нет — проверка файла молча пропускается и включится
-## сама, когда он появится; сам проигрыватель всё это время проверяется встроенным мини-набором (_MINI), посчитанным вручную.
+## Проигрыватель golden-набора поведения (docs/netrun-deck-design.md, §10.4): Kotlin-тест :rules (BreachGoldenTest, задача К0) выгружает
+## tests/fixtures/breach_golden.json — правила телефона, а этот тест проигрывает их порту. Разошлись — красный gdUnit; файл меняет
+## только Kotlin (UPDATE_NETRUN_JSON=1), руками не править.
 ##
-## Формат (version 1), все разделы необязательны. Клетка — [строка, столбец], списки клеток сравниваются без учёта порядка:
-##   "link_dimension": [{"selected_count": 1, "dimension": "COLUMN"}, ...]
-##   "candidates":     [{"from": [r, c], "dimension": "ROW", "size": 5, "visited": [[r, c], ...], "candidates": [[r, c], ...]}]
-##   "outcomes":       [{"daemons": 2, "matched": 1, "outcome": "PARTIAL"}]
-##   "timer_events":   [{"timer_sec": 60, "seconds_left": 30, "event": "HALF_TIME" | null, "low_time": false, "warning": false}]
-##   "cases":          [{"name": "...",
-##                       "grid": {"size": 3, "cells": [[...]], "traps": [[r, c]]},
-##                       "daemons": [{"id": "a", "sequence": ["55", "7A"], "name"?, "effect"?, "tier"?}],
-##                       "buffer": 6,
-##                       "steps": [{"cell": [r, c], "selectable_before": [[r, c]...], "accepted": true,
-##                                  "hit_trap": false, "matched": ["a"], "selectable_after"?: [[r, c]...]}],
-##                       "final": {"outcome": "SUCCESS", "matched": ["a"]}}]
-## accepted=false — шаг, который порт обязан отвергнуть (клетка недоступна); тогда hit_trap/matched не проверяются.
+## Формат (format 1), клетка — [строка, столбец]:
+##   link_rule:     [{selected_count, next}]                     — чередование строка/столбец
+##   resolve_cases: [{buffer: [код], daemons: [{id, name, sequence, tier, effect}], matched: [id]}]
+##   timer_cases:   [{timer_sec, events: [{seconds_left, event}]}] — события реплик на каждой секунде таймера (time_event)
+##   attempts:      [{name, mode: breach|decrypt, tier, grid_size, timer_sec, buffer_size, daemons, cells, trap_cells, start_selectable,
+##                    steps: [{cell, selectable_before, hit_trap, matched_new, matched_ids, buffer_codes, is_full, selectable_after}],
+##                    outcome, matched_ids, selectable_after_resolve}]
+## Сетки в golden готовые (генераторы Kotlin и Godot разные): проверяются правила, а не случайные числа.
 
 const GOLDEN_PATH := "res://tests/fixtures/breach_golden.json"
 
-const _MINI := {
-	"version": 1,
-	"link_dimension": [
-		{"selected_count": 1, "dimension": "COLUMN"},
-		{"selected_count": 2, "dimension": "ROW"},
-		{"selected_count": 3, "dimension": "COLUMN"},
-	],
-	"candidates": [
-		{"from": [3, 2], "dimension": "COLUMN", "size": 4, "visited": [[0, 2], [3, 2]], "candidates": [[1, 2], [2, 2]]},
-		{"from": [1, 1], "dimension": "ROW", "size": 3, "visited": [[1, 1]], "candidates": [[1, 0], [1, 2]]},
-	],
-	"outcomes": [
-		{"daemons": 2, "matched": 2, "outcome": "SUCCESS"},
-		{"daemons": 2, "matched": 1, "outcome": "PARTIAL"},
-		{"daemons": 2, "matched": 0, "outcome": "FAIL"},
-		{"daemons": 0, "matched": 0, "outcome": "FAIL"},
-	],
-	"timer_events": [
-		{"timer_sec": 60, "seconds_left": 30, "event": "HALF_TIME", "low_time": false, "warning": false},
-		{"timer_sec": 60, "seconds_left": 10, "event": "LOW_TIME", "low_time": true, "warning": false},
-		{"timer_sec": 60, "seconds_left": 29, "event": null, "low_time": false, "warning": false},
-		{"timer_sec": 60, "seconds_left": 5, "event": null, "low_time": true, "warning": true},
-		{"timer_sec": 60, "seconds_left": 0, "event": null, "low_time": false, "warning": false},
-		{"timer_sec": 20, "seconds_left": 10, "event": null, "low_time": true, "warning": false},
-		{"timer_sec": 21, "seconds_left": 10, "event": "LOW_TIME", "low_time": true, "warning": false},
-	],
-	# Сетка 3x3, ловушка в (2,1):  1C 55 BD / E9 7A FF / 1C 55 BD
-	"cases": [
-		{
-			"name": "мини: два шага собирают демона, третий недоступен",
-			"grid": {"size": 3, "cells": [["1C", "55", "BD"], ["E9", "7A", "FF"], ["1C", "55", "BD"]], "traps": [[2, 1]]},
-			"daemons": [{"id": "a", "sequence": ["55", "7A"]}],
-			"buffer": 6,
-			"steps": [
-				{"cell": [1, 1], "accepted": false, "selectable_before": [[0, 0], [0, 1], [0, 2]]},
-				{"cell": [0, 1], "accepted": true, "selectable_before": [[0, 0], [0, 1], [0, 2]], "hit_trap": false, "matched": [], "selectable_after": [[1, 1], [2, 1]]},
-				{"cell": [1, 1], "accepted": true, "selectable_before": [[1, 1], [2, 1]], "hit_trap": false, "matched": ["a"], "selectable_after": [[1, 0], [1, 2]]},
-				{"cell": [2, 2], "accepted": false, "selectable_before": [[1, 0], [1, 2]]},
-			],
-			"final": {"outcome": "SUCCESS", "matched": ["a"]},
-		},
-		{
-			"name": "мини: ловушка рвёт цепочку, хотя код подходит",
-			"grid": {"size": 3, "cells": [["1C", "55", "BD"], ["E9", "7A", "FF"], ["1C", "55", "BD"]], "traps": [[2, 1]]},
-			"daemons": [{"id": "a", "sequence": ["55", "55"]}],
-			"buffer": 6,
-			"steps": [
-				{"cell": [0, 1], "accepted": true, "matched": []},
-				{"cell": [2, 1], "accepted": true, "hit_trap": true, "matched": [], "selectable_after": [[2, 0], [2, 2]]},
-			],
-			"final": {"outcome": "FAIL", "matched": []},
-		},
-		{
-			"name": "мини: полный буфер, часть демонов",
-			"grid": {"size": 3, "cells": [["1C", "55", "BD"], ["E9", "7A", "FF"], ["1C", "55", "BD"]], "traps": []},
-			"daemons": [{"id": "a", "sequence": ["55", "7A"]}, {"id": "b", "sequence": ["FF", "1C"]}],
-			"buffer": 2,
-			"steps": [
-				{"cell": [0, 1], "accepted": true, "matched": []},
-				{"cell": [1, 1], "accepted": true, "matched": ["a"], "selectable_after": []},
-			],
-			"final": {"outcome": "PARTIAL", "matched": ["a"]},
-		},
-	],
-}
+var _golden: Dictionary
 
 
 func before_test() -> void:
 	BreachData.reset_shared()
+	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(GOLDEN_PATH))
+	_golden = parsed if parsed is Dictionary else {}
 
 
 func after_test() -> void:
 	BreachData.reset_shared()
 
 
-func test_player_runs_the_builtin_mini_golden() -> void:
-	var errors := _play(_MINI)
-	assert_array(errors).is_empty()
+func test_golden_file_is_present_and_parsed() -> void:
+	assert_bool(FileAccess.file_exists(GOLDEN_PATH)).is_true()
+	assert_int(int(_golden.get("format", 0))).is_equal(1)
+	assert_bool((_golden["attempts"] as Array).size() > 0).is_true()
+
+
+func test_port_replays_kotlin_golden() -> void:
+	var errors := _play(_golden)
+	assert_array(errors).override_failure_message("golden разошёлся с портом:\n" + "\n".join(errors)).is_empty()
 
 
 func test_player_catches_a_wrong_expectation() -> void:
 	# Проигрыватель сам должен краснеть на расхождении, иначе golden ничего не охраняет.
-	var broken: Dictionary = _MINI.duplicate(true)
-	broken["cases"][0]["final"]["outcome"] = "FAIL"
-	broken["outcomes"][1]["outcome"] = "SUCCESS"
-	broken["timer_events"][0]["event"] = "LOW_TIME"
-	assert_bool(_play(broken).size() >= 3).is_true()
-
-
-## Настоящий golden от Kotlin (К0). Нет файла — пропуск; появился — включается без правок.
-func test_kotlin_golden_file() -> void:
-	if not FileAccess.file_exists(GOLDEN_PATH):
-		print("[breach_golden] пропуск: нет %s (его выгрузит задача К0)" % GOLDEN_PATH)
-		return
-	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(GOLDEN_PATH))
-	assert_bool(parsed is Dictionary).override_failure_message("golden: не разобрать JSON").is_true()
-	var errors := _play(parsed)
-	assert_array(errors).override_failure_message("golden разошёлся с портом:\n" + "\n".join(errors)).is_empty()
+	for key in ["link_rule", "resolve_cases", "timer_cases", "attempts"]:
+		var broken: Dictionary = _golden.duplicate(true)
+		match key:
+			"link_rule":
+				broken[key][0]["next"] = "ROW"
+			"resolve_cases":
+				broken[key][0]["matched"] = ["нет_такого"]
+			"timer_cases":
+				broken[key][3]["events"][0]["event"] = "TRAP"
+			"attempts":
+				broken[key][0]["outcome"] = "FAIL"
+		assert_bool(_play(broken).size() > 0).override_failure_message("правка раздела %s не замечена" % key).is_true()
 
 
 # --- проигрыватель ---
@@ -125,80 +60,99 @@ func test_kotlin_golden_file() -> void:
 func _play(golden: Dictionary) -> Array[String]:
 	var errors: Array[String] = []
 	var data := BreachData.shared()
-	for row in golden.get("link_dimension", []):
+	for row in golden.get("link_rule", []):
 		var got := BreachRules.next_link_dimension(int(row["selected_count"]))
-		if got != str(row["dimension"]):
-			errors.append("link_dimension(%s): %s, ожидалось %s" % [row["selected_count"], got, row["dimension"]])
-	for row in golden.get("candidates", []):
-		var visited := BreachRules.cell_set(_cells(row["visited"]))
-		var got := BreachRules.candidates_for(_cell(row["from"]), str(row["dimension"]), int(row["size"]), visited)
-		if _key_list(got) != _key_list(_cells(row["candidates"])):
-			errors.append("candidates(from=%s %s): %s, ожидалось %s" % [row["from"], row["dimension"], _key_list(got), _key_list(_cells(row["candidates"]))])
-	for row in golden.get("outcomes", []):
-		var ds: Array = []
-		var ids: Array = []
-		for i in range(int(row["daemons"])):
-			ds.append(BreachDaemon.make("d%d" % i, ["1C"]))
-		for i in range(int(row["matched"])):
-			ids.append("d%d" % i)
-		var got := BreachRules.outcome(ds, ids)
-		if got != str(row["outcome"]):
-			errors.append("outcome(%s из %s): %s, ожидалось %s" % [row["matched"], row["daemons"], got, row["outcome"]])
-	for row in golden.get("timer_events", []):
-		var run := _timer_run(int(row["timer_sec"]), data)
-		run.seconds_left = int(row["seconds_left"])
-		var want_event := "" if row.get("event") == null else str(row["event"])
-		if run.time_event() != want_event:
-			errors.append("timer %s/%s: событие «%s», ожидалось «%s»" % [row["seconds_left"], row["timer_sec"], run.time_event(), want_event])
-		if run.is_low_time() != bool(row["low_time"]) or run.is_warning() != bool(row["warning"]):
-			errors.append("timer %s/%s: low=%s warning=%s, ожидалось %s/%s" % [row["seconds_left"], row["timer_sec"], run.is_low_time(), run.is_warning(), row["low_time"], row["warning"]])
-	for c in golden.get("cases", []):
-		errors.append_array(_play_case(c, data))
+		if got != str(row["next"]):
+			errors.append("link_rule(%s): %s, ожидалось %s" % [row["selected_count"], got, row["next"]])
+	for row in golden.get("resolve_cases", []):
+		var ds := _daemons(row["daemons"])
+		var got := BreachRules.resolve_daemons(_strings(row["buffer"]), ds)
+		got.sort()
+		if got != _sorted(_strings(row["matched"])):
+			errors.append("resolve(%s): %s, ожидалось %s" % [row["buffer"], got, row["matched"]])
+	for row in golden.get("timer_cases", []):
+		errors.append_array(_play_timer(row, data))
+	for a in golden.get("attempts", []):
+		errors.append_array(_play_attempt(a, data))
 	return errors
 
 
-func _timer_run(timer_sec: int, data: BreachData) -> BreachRun:
-	var run := BreachRun.for_storage("BASE", [BreachDaemon.make("t", ["1C", "55"])], 6, 1, data)
-	run.timer_sec = timer_sec
-	run.seconds_left = timer_sec
-	return run
-
-
-func _play_case(c: Dictionary, data: BreachData) -> Array[String]:
+func _play_timer(row: Dictionary, data: BreachData) -> Array[String]:
 	var errors: Array[String] = []
-	var case_name := str(c.get("name", "?"))
-	var grid := BreachGrid.from_dict(c["grid"])
-	var daemons: Array = []
-	for d in c["daemons"]:
-		daemons.append(BreachDaemon.from_dict(d))
-	var attempt := BreachAttempt.make(grid, daemons, int(c["buffer"]), data)
-	var step_no := 0
-	for st in c.get("steps", []):
-		step_no += 1
-		var where := "%s, шаг %d %s" % [case_name, step_no, st["cell"]]
-		if st.has("selectable_before") and _key_list(attempt.selectable_cells()) != _key_list(_cells(st["selectable_before"])):
-			errors.append("%s: доступно %s, ожидалось %s" % [where, _key_list(attempt.selectable_cells()), _key_list(_cells(st["selectable_before"]))])
-		var accepted := attempt.select(_cell(st["cell"]))
-		if accepted != bool(st.get("accepted", true)):
-			errors.append("%s: принят=%s, ожидалось %s" % [where, accepted, st.get("accepted", true)])
-			continue
-		if not accepted:
-			continue
-		if st.has("hit_trap") and grid.is_trap(_cell(st["cell"])) != bool(st["hit_trap"]):
-			errors.append("%s: ловушка=%s, ожидалось %s" % [where, grid.is_trap(_cell(st["cell"])), st["hit_trap"]])
-		if st.has("matched") and _sorted(attempt.matched_daemon_ids()) != _sorted(_strings(st["matched"])):
-			errors.append("%s: совпало %s, ожидалось %s" % [where, attempt.matched_daemon_ids(), st["matched"]])
-		if st.has("selectable_after") and _key_list(attempt.selectable_cells()) != _key_list(_cells(st["selectable_after"])):
-			errors.append("%s: после шага доступно %s, ожидалось %s" % [where, _key_list(attempt.selectable_cells()), _key_list(_cells(st["selectable_after"]))])
-	var fin: Dictionary = c.get("final", {})
-	var matched := attempt.matched_daemon_ids()
-	if fin.has("matched") and _sorted(matched) != _sorted(_strings(fin["matched"])):
-		errors.append("%s: итог — совпало %s, ожидалось %s" % [case_name, matched, fin["matched"]])
-	if fin.has("outcome"):
-		var got := BreachRules.outcome(daemons, matched)
-		if got != str(fin["outcome"]):
-			errors.append("%s: исход %s, ожидалось %s" % [case_name, got, fin["outcome"]])
+	var timer := int(row["timer_sec"])
+	var expected := {}
+	for e in row["events"]:
+		expected[int(e["seconds_left"])] = str(e["event"])
+	var actual := {}
+	var attempt := BreachAttempt.make(BreachGrid.new(), [], 0, data)
+	var run := BreachRun.from_attempt(attempt, timer, "BASE", BreachRun.MODE_STORAGE, 0, data)
+	for left in range(timer, -1, -1):
+		run.seconds_left = left
+		var ev := run.time_event()
+		if ev != "":
+			actual[left] = ev
+	if actual != expected:
+		errors.append("timer %d: события %s, ожидалось %s" % [timer, actual, expected])
 	return errors
+
+
+func _play_attempt(a: Dictionary, data: BreachData) -> Array[String]:
+	var errors: Array[String] = []
+	var name := str(a["name"])
+	var grid := BreachGrid.new()
+	grid.size = int(a["grid_size"])
+	grid.dead_marker = data.dead_marker
+	for row in a["cells"]:
+		grid.cells.append(_strings(row))
+	for c in _cells(a["trap_cells"]):
+		grid.trap_cells[c] = true
+	var ds := _daemons(a["daemons"])
+	var run := BreachRun.from_attempt(BreachAttempt.make(grid, ds, int(a["buffer_size"]), data), int(a["timer_sec"]), str(a["tier"]),
+			BreachRun.MODE_DECRYPT if a["mode"] == "decrypt" else BreachRun.MODE_STORAGE, 0, data)
+	if _keys(run.selectable()) != _keys(_cells(a["start_selectable"])):
+		errors.append("%s: старт — доступно %s, ожидалось %s" % [name, _keys(run.selectable()), _keys(_cells(a["start_selectable"]))])
+	var i := 0
+	for st in a["steps"]:
+		var at := "%s, шаг %d %s" % [name, i, st["cell"]]
+		i += 1
+		if _keys(run.selectable()) != _keys(_cells(st["selectable_before"])):
+			errors.append("%s: до шага доступно %s, ожидалось %s" % [at, _keys(run.selectable()), _keys(_cells(st["selectable_before"]))])
+		var tap := run.tap(_cell(st["cell"]))
+		if not tap["ok"]:
+			errors.append("%s: шаг не принят портом" % at)
+			continue
+		if tap["hit_trap"] != bool(st["hit_trap"]):
+			errors.append("%s: ловушка=%s, ожидалось %s" % [at, tap["hit_trap"], st["hit_trap"]])
+		if tap["matched"] != bool(st["matched_new"]):
+			errors.append("%s: matched_new=%s, ожидалось %s" % [at, tap["matched"], st["matched_new"]])
+		var ids := run.attempt.matched_daemon_ids()
+		ids.sort()
+		if ids != _sorted(_strings(st["matched_ids"])):
+			errors.append("%s: совпало %s, ожидалось %s" % [at, ids, st["matched_ids"]])
+		if run.attempt.buffer_codes() != _strings(st["buffer_codes"]):
+			errors.append("%s: буфер %s, ожидалось %s" % [at, run.attempt.buffer_codes(), st["buffer_codes"]])
+		if run.attempt.is_full() != bool(st["is_full"]):
+			errors.append("%s: is_full=%s, ожидалось %s" % [at, run.attempt.is_full(), st["is_full"]])
+		if _keys(run.selectable()) != _keys(_cells(st["selectable_after"])):
+			errors.append("%s: после шага доступно %s, ожидалось %s" % [at, _keys(run.selectable()), _keys(_cells(st["selectable_after"]))])
+	run.resolve()  # по таймеру или досрочно; если буфер уже полон, итог поставлен самим тапом
+	var info := run.result_info()
+	if str(info["outcome"]) != str(a["outcome"]):
+		errors.append("%s: исход %s, ожидалось %s" % [name, info["outcome"], a["outcome"]])
+	var matched: Array = info["matched"]
+	matched.sort()
+	if matched != _sorted(_strings(a["matched_ids"])):
+		errors.append("%s: итог — совпало %s, ожидалось %s" % [name, matched, a["matched_ids"]])
+	if _keys(run.selectable()) != _keys(_cells(a["selectable_after_resolve"])):
+		errors.append("%s: после итога доступно %s, ожидалось %s" % [name, _keys(run.selectable()), _keys(_cells(a["selectable_after_resolve"]))])
+	return errors
+
+
+static func _daemons(list: Variant) -> Array:
+	var out: Array = []
+	for d in list:
+		out.append(BreachDaemon.from_dict(d))
+	return out
 
 
 static func _cell(a: Variant) -> Vector2i:
@@ -213,16 +167,16 @@ static func _cells(list: Variant) -> Array[Vector2i]:
 
 
 ## Клетки как отсортированные строки «r,c» — для сравнения без учёта порядка.
-static func _key_list(cells: Array) -> Array:
+static func _keys(cells: Array) -> Array:
 	var out: Array = []
 	for c in cells:
-		out.append("%d,%d" % [c.x, c.y])
+		out.append("%03d,%03d" % [c.x, c.y])
 	out.sort()
 	return out
 
 
-static func _strings(list: Variant) -> Array:
-	var out: Array = []
+static func _strings(list: Variant) -> Array[String]:
+	var out: Array[String] = []
 	for x in list:
 		out.append(str(x))
 	return out

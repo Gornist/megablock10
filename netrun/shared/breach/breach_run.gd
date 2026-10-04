@@ -83,14 +83,19 @@ static func _build(mode_: String, tier_: String, daemons: Array, buffer: int, ti
 	var grid := BreachGrid.generate(grid_size, daemons, rng, data, traps)
 	if grid == null:
 		return null
+	return from_attempt(BreachAttempt.make(grid, daemons, buffer, data), timer, tier_, mode_, seed_, data)
+
+
+## Попытка по готовой сетке (проигрыватель golden, тесты, повтор с сервера): без генерации.
+static func from_attempt(attempt_: BreachAttempt, timer: int, tier_: String, mode_: String = MODE_STORAGE, seed_: int = 0, data: BreachData = null) -> BreachRun:
 	var run := BreachRun.new()
 	run.mode = mode_
 	run.tier = tier_
-	run.attempt = BreachAttempt.make(grid, daemons, buffer, data)
+	run.attempt = attempt_
 	run.timer_sec = timer
 	run.seconds_left = timer
 	run.seed_value = seed_
-	run._data = data
+	run._data = data if data != null else BreachData.shared()
 	return run
 
 

@@ -54,8 +54,8 @@ devbox — docs/netrun-devbox.md, «Очки Pico 4 по USB».
 - `shared/` — код, общий для сервера и клиента (в т.ч. `run_mode.gd` — выбор режима).
 - `shared/breach/` — движок взлома деки (порт мини-игры телефона, docs/netrun-deck-design.md §3, §7.4, §10): `BreachRules` (строка/столбец, совпадение, исход),
   `BreachGrid.generate` (решаемая сетка, ловушки вне пути), `BreachAttempt`, `BreachRun` (таймер, события реплик ICE; фабрики `for_storage` / `for_charge` /
-  `for_decrypt`), `BreachAutoSolver` (боты). Числа и реплики — `data/rules/breach.json` (пока его нет — `breach.pending.json`), клетка — `Vector2i(строка, столбец)`.
-  Тесты `tests/breach_*_test.gd`; golden от Kotlin (`tests/fixtures/breach_golden.json`) проигрывает `breach_golden_test.gd`, когда файл появится.
+  `for_decrypt`), `BreachAutoSolver` (боты). Числа и реплики — `data/rules/breach.json` (выгружает Kotlin-тест `:rules`), клетка — `Vector2i(строка, столбец)`.
+  Тесты `tests/breach_*_test.gd`; golden от Kotlin (`tests/fixtures/breach_golden.json`) проигрывает `breach_golden_test.gd`.
 - `server/` — сервер мира. `client/` — клиент Pico 4 и плоская сборка. `tests/` — тесты gdUnit4.
 - `export_presets.cfg` — пресеты: «Client Pico 4 (Android)» (OpenXR, arm64), «Server (dedicated)» (метка `dedicated_server`),
   «Flat debug (Linux)». Ключ подписи Android в репозиторий не кладём (в CI — ключ отладки).

@@ -2,11 +2,10 @@ class_name BreachData
 extends RefCounted
 ## Числа и реплики движка взлома (docs/netrun-deck-design.md, §10.3): параметры тиров, алфавит кодов, маркер мёртвой клетки,
 ## JITTER +15 с, длины шифр-замка, окна таймера, реплики ICE. Источник — data/rules/breach.json (его выгружает Kotlin-тест :rules,
-## задача К0, и сверяет со своими константами); пока его нет, читается временная копия breach.pending.json. Ни одного числа в коде
-## движка нет: всё берётся отсюда. Чистые данные, без сцены и сети.
+## задача К0, и сверяет со своими константами). Ни одного числа правил в коде движка нет: всё берётся отсюда. Чистые данные, без сцены
+## и сети. Маркер ловушки в буфере (TRAP_SENTINEL) — внутреннее соглашение движка, не число правил, в файле его нет.
 
 const PATH := "res://data/rules/breach.json"
-const PENDING_PATH := "res://data/rules/breach.pending.json"
 const TIER_NAMES: Array = ["BASE", "HARD", "NIGHTMARE"]
 ## События реплик ICE (как IceEvent приложения).
 const EVENT_NAMES: Array = ["INTRO", "TRAP", "MATCH", "HALF_TIME", "LOW_TIME"]
@@ -17,7 +16,7 @@ var source := ""
 var load_error := ""
 var alphabet: Array = []                 # коды сетки (строки)
 var dead_marker := ""                    # код мёртвой клетки на сетке
-var trap_sentinel := ""                  # в буфере вместо ловушки: не равен ни одному коду, рвёт любую цепочку
+var trap_sentinel := TRAP_SENTINEL       # в буфере вместо ловушки
 var jitter_bonus_sec := 0
 var cooldown_minutes := 0                # остывание узла; для движка не нужно, лежит в файле как общее число правил
 var decrypt_target_length: Array = []    # длина шифр-замка по тиру шарда, индекс = тир - 1
@@ -28,6 +27,9 @@ var warning_sec := 0                     # последние секунды с�
 var tiers: Dictionary = {}               # имя тира -> {grid_size, timer_sec, dead_cells: Vector2i, corrupted_codes: Vector2i}
 var ice_lines: Dictionary = {}           # имя тира -> событие -> Array[String]
 
+
+## Не равен ни одному коду алфавита и маркеру мёртвой клетки: ловушка в буфере рвёт любую цепочку (BreachSymbols.TRAP_SENTINEL телефона).
+const TRAP_SENTINEL := "  "
 
 ## Общий экземпляр из файла (читается один раз). Тесты сбрасывают его reset_shared().
 static func shared() -> BreachData:
@@ -40,9 +42,8 @@ static func reset_shared() -> void:
 	_shared = null
 
 
-## breach.json, а если его ещё нет — временная копия.
 static func load_default() -> BreachData:
-	return load_file(PATH if FileAccess.file_exists(PATH) else PENDING_PATH)
+	return load_file(PATH)
 
 
 static func load_file(path: String) -> BreachData:
@@ -64,19 +65,17 @@ static func from_dict(d: Dictionary) -> BreachData:
 	var data := BreachData.new()
 	data.alphabet = _strings(d.get("alphabet"))
 	data.dead_marker = str(d.get("dead_marker", ""))
-	data.trap_sentinel = str(d.get("trap_sentinel", ""))
+	data.trap_sentinel = str(d.get("trap_sentinel", TRAP_SENTINEL))
 	data.jitter_bonus_sec = int(d.get("jitter_bonus_sec", 0))
-	data.cooldown_minutes = int(d.get("cooldown_minutes", 0))
+	data.cooldown_minutes = int(d.get("container_cooldown_minutes", 0))
 	var dec: Variant = d.get("decrypt")
 	if dec is Dictionary:
-		for n in (dec as Dictionary).get("target_length_by_tier", []):
+		for n in (dec as Dictionary).get("target_length_by_shard_tier", []):
 			data.decrypt_target_length.append(int(n))
 		data.decrypt_buffer_extra = int((dec as Dictionary).get("buffer_extra", 0))
-	var t: Variant = d.get("time")
-	if t is Dictionary:
-		data.events_min_timer_sec = int((t as Dictionary).get("events_min_timer_sec", 0))
-		data.low_time_sec = int((t as Dictionary).get("low_time_sec", 0))
-		data.warning_sec = int((t as Dictionary).get("warning_sec", 0))
+	data.events_min_timer_sec = int(d.get("time_events_min_timer_sec", 0))
+	data.low_time_sec = int(d.get("low_time_sec", 0))
+	data.warning_sec = int(d.get("warning_sec", 0))
 	var raw_tiers: Variant = d.get("tiers")
 	if raw_tiers is Dictionary:
 		for name in raw_tiers:
@@ -146,9 +145,9 @@ func errors() -> Array[String]:
 	if trap_sentinel in alphabet or trap_sentinel == dead_marker:
 		out.append("trap_sentinel совпадает с кодом алфавита или маркером мёртвой клетки")
 	if decrypt_target_length.size() != TIER_NAMES.size():
-		out.append("decrypt.target_length_by_tier: нужно %d значения" % TIER_NAMES.size())
+		out.append("decrypt.target_length_by_shard_tier: нужно %d значения" % TIER_NAMES.size())
 	if low_time_sec <= 0 or warning_sec <= 0 or events_min_timer_sec <= 0:
-		out.append("time: events_min_timer_sec, low_time_sec, warning_sec должны быть положительны")
+		out.append("time_events_min_timer_sec, low_time_sec, warning_sec должны быть положительны")
 	for name in TIER_NAMES:
 		if not tiers.has(name):
 			out.append("нет тира " + name)
