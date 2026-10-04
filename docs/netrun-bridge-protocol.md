@@ -471,7 +471,9 @@ B0 (хранилище), B1 (WebSocket), B3 (операции с ценност�
   упомянутый в `moves`, — `bad_request`, ничего не сделано.
 - Мост проверяет `moves` по таблице исходов из netrun.md («Забег»): добыча (груз — предмет не из `session.loaded`, раздел 5; исправлено в К4:
   раньше добычей считался только `origin: node:*`, и шард из наполнения мастером, `origin: master:*`, при `soft_ice`/`emergency` уходил на
-  телефон вместо узла; сервер мира `gray_node.gd` делит `moves` по `node:*` и `master:*` — `GrayNode.is_loot_origin`) при `clean` — только `phone`, при
+  телефон вместо узла; сервер мира делит `moves` так же, по `session.loaded` — `GrayNode.finish_moves`/`is_working_item`, для сессии без
+  `loaded` — по `origin == phone:<runner>`; иначе предмет `phone:<чужой>` из мёртвой деки или отдачи ушёл бы как демон и Мост отказал бы
+  `bad_request` без повтора) при `clean` — только `phone`, при
   остальных — только `node`; демоны при `black_ice` — только `node` («мёртвая дека»), при `emergency` — `phone` или `burned`
   (сервер мира знает, была ли охота), при `clean`/`soft_ice` — только `phone`. Нарушение — `bad_request`.
 - `loot_eddies` уходят на телефон только при `clean`, иначе возвращаются в `node.eddies`.
@@ -521,10 +523,11 @@ B0 (хранилище), B1 (WebSocket), B3 (операции с ценност�
    `session.loot_eddies` + (выплата — при `clean`, как сейчас).
 4. **Хранилища** (`SlotClaimStore.pickSlot`): для каждого демона из `matched` с `EXTRACT_SHARD`/`EXTRACT_DAEMON`, в порядке `selected`, —
    первый предмет из `vaults`: `owner = node:<node>`, `kind` SHARD/DAEMON по эффекту, тир (`shard.tier`/`daemon.tier`) ≤ тира демона, не
-   выбран этим же взломом, не в живом `opened` другой сессии. Нашёлся — `session.opened += {item, node, until: now + open_s·1000}`;
+   выбран этим же взломом, не в живом `opened` другой сессии и не в живом `opened` этой же (мастер мог сбросить остывание). Нашёлся — `session.opened += {item, node, until: now + open_s·1000}`;
    нет — `exhausted: true` («КЭШ ОЧИЩЕН»). Предмет из `vaults`, который уже не в узле (взяли за миг до того), пропускается без ошибки.
    Владельца предмета `run.breach` **не меняет**: его берёт рука, `op.take_from_node` (6.2).
-5. **Остывание**: `runner.breach_cooldown[node] = now + breach_cooldown_s` (`settings/global`, по умолчанию 1800 — 30 мин `MockBreach`).
+5. **Остывание**: `runner.breach_cooldown[node] = now + max(breach_cooldown_s, open_s)·1000` (`settings/global`, по умолчанию 1800 — 30 мин `MockBreach`; не короче
+   времени открытия хранилища: пока оно открыто, тот же узел снова не взломать).
 6. **Сигнал СБ** — и при `FAIL`: `SecAlertRules.decide(owner, intruder, tier, outcome, effects, now)`; `owner` — `node.owner_faction`,
    иначе `settings/sec.default_faction`; `intruder` — `runner.faction` (как P3). Не `null` — документ `sec_alert` (раздел 5) с id
    `sa_` + 16 hex от `sha256("<namespace>|<rid>")`; отправка — после коммита, правилом, в `send_at`.
