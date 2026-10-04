@@ -53,6 +53,8 @@ import com.megablok10.app.ui.theme.MbProgress
 import com.megablok10.app.ui.theme.MbTag
 import com.megablok10.app.ui.theme.MbTimer
 import com.megablok10.app.ui.theme.MbTypography
+import com.megablok10.rules.BreachConstants
+import com.megablok10.rules.generateGrid
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -95,7 +97,7 @@ internal fun BreachContainerFlow(
     val overBudget = used > identity.ramCapacity
     val canStart = chosenDaemons.isNotEmpty() && !overBudget
     val params = remember(container.tier) { BreachTierParams.forTier(container.tier) }
-    val timerBonus = if (chosenDaemons.any { it.effect == DaemonEffect.JITTER }) 15 else 0
+    val timerBonus = if (chosenDaemons.any { it.effect == DaemonEffect.JITTER }) BreachConstants.JITTER_BONUS_SEC else 0
 
     CompositionLocalProvider(LocalMbColors provides MbColorsBreach) {
         val seed = sessionSeed
@@ -195,7 +197,7 @@ internal fun ShardDecryptFlow(shard: Mb10Qr.Shard, isHintSeen: () -> Boolean, on
                 seed = sessionSeed,
                 gridSize = params.gridSize,
                 timerSec = params.timerSec,
-                bufferSize = target.sequence.size + 2,
+                bufferSize = target.sequence.size + BreachConstants.DECRYPT_BUFFER_EXTRA,
                 breachParams = null,
                 onRescan = onCancel,
                 isHintSeen = isHintSeen,

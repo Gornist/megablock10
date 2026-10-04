@@ -1,4 +1,4 @@
-package com.megablok10.app.breach
+package com.megablok10.rules
 
 import kotlin.random.Random
 
@@ -33,9 +33,12 @@ object IceLines {
         (Tier.NIGHTMARE to IceEvent.LOW_TIME) to listOf("ICE: отключаю. Навсегда."),
     )
 
+    /** Все реплики пары тир×событие — для выгрузки в JSON (netrun/data/rules/breach.json). */
+    fun linesFor(tier: Tier, event: IceEvent): List<String> = pool.getValue(tier to event)
+
     fun line(tier: Tier, event: IceEvent, random: Random): String =
         pool.getValue(tier to event).let { it[random.nextInt(it.size)] }
 
     /** Для теста полноты: для каждой пары тир×событие есть хотя бы одна фраза. */
-    internal fun isComplete(): Boolean = Tier.values().all { t -> IceEvent.values().all { e -> pool[t to e].orEmpty().isNotEmpty() } }
+    fun isComplete(): Boolean = Tier.values().all { t -> IceEvent.values().all { e -> pool[t to e].orEmpty().isNotEmpty() } }
 }
