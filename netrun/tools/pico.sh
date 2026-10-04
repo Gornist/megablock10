@@ -85,12 +85,17 @@ cmd_launch() {
   serial=$(select_device) || return 1
 
   echo "Запуск $PACKAGE на $serial..."
-  adb -s "$serial" shell am start -n "$PACKAGE/.MainActivity" 2>/dev/null || \
-    adb -s "$serial" shell am start -n "$PACKAGE/com.godotengine.godot.GodotApp" 2>/dev/null || \
-    {
-      echo "Ошибка: не удалось найти точку входа приложения" >&2
-      return 1
-    }
+  # Точка входа шаблона Godot 4.7 — псевдоним com.godot.game.GodotAppLauncher (прежние .MainActivity и
+  # com.godotengine.godot.GodotApp не существуют, а `am start` об ошибке кодом выхода не сообщает).
+  # Аргументы через `--esa command_line_params` сюда не передать: Godot снимает их у экспортированной активности,
+  # адрес и токен — только в export_presets.cfg, command_line/extra_args (netrun/README.md, «Pico 4»).
+  local out
+  out=$(adb -s "$serial" shell am start -S -n "$PACKAGE/com.godot.game.GodotAppLauncher" 2>&1)
+  echo "$out"
+  if grep -qE "Error|Exception|not started" <<<"$out"; then
+    echo "Ошибка: приложение не запущено (не установлено? поверх — диалог системы очков?)" >&2
+    return 1
+  fi
   echo "Приложение запущено."
 }
 
@@ -115,17 +120,15 @@ cmd_log() {
 
   echo "Сбор логов в $logdir..."
 
-  # Журнал приложения: Android/data/<пакет>/files/logs
-  local applog_remote="/sdcard/Android/data/$PACKAGE/files/logs"
-  echo "Забираем журнал приложения из $applog_remote..."
-
-  # Проверяем, есть ли файлы
-  if adb -s "$serial" shell test -d "$applog_remote" 2>/dev/null; then
-    adb -s "$serial" pull "$applog_remote" "$logdir/app-logs/" 2>/dev/null || true
-    echo "Журнал приложения: $logdir/app-logs/"
-  else
-    echo "Директория $applog_remote не найдена или пуста"
-  fi
+  # Журнал приложения: user://logs — на Android это внутренняя память приложения (files/logs), не /sdcard;
+  # читается через run-as (только отладочная сборка — артефакт CI и экспорт --export-debug).
+  echo "Забираем журнал приложения (run-as $PACKAGE, files/logs)..."
+  mkdir -p "$logdir/app-logs"
+  local f n=0
+  for f in $(adb -s "$serial" shell run-as "$PACKAGE" ls files/logs 2>/dev/null | tr -d '\r'); do
+    adb -s "$serial" exec-out run-as "$PACKAGE" cat "files/logs/$f" > "$logdir/app-logs/$f" && n=$((n + 1))
+  done
+  echo "Журнал приложения: $logdir/app-logs/ (файлов: $n)"
 
   # logcat в файл
   echo "Забираем logcat..."

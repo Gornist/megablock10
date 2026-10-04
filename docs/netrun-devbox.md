@@ -121,6 +121,26 @@ godot -- --flat --host=127.0.0.1 --port=7777 --token=t1
 `godot` в неинтерактивном ssh на PATH нет — сначала `. ~/netrun-env.sh`. Аргументы игры при запуске из редактора
 (`editor/run/main_run_args`) пишутся с ведущим `-- `, иначе Godot игре их не передаёт.
 
+### 4. Очки Pico 4 по USB
+
+Очки подключены к devbox кабелем; `adb` — после `. ~/netrun-env.sh`. Подключено ещё что-то (телефон, эмулятор) — `export ANDROID_SERIAL=<serial очков>`
+(иначе `more than one device`). Известные ограничения очков (расширение айтрекинга, граница, режим рук, подпись, адрес и токен) —
+`netrun/README.md`, «Pico 4».
+
+- **Сборка для очков** — в своей копии проекта (не в `~/wt-godot`): `android/build` из `android_source.zip` шаблонов 4.7.2,
+  `godot --headless --path <копия> --export-debug "Client Pico 4 (Android)"` (Gradle запускает сам экспорт, ~1,5 мин).
+  Адрес сервера мира и токен — в `command_line/extra_args` пресета копии: `-- --host=<LAN-адрес devbox> --token=t1`.
+- **Цикл:** `adb uninstall` (если подпись другая), `adb install -r <apk>` — **смотреть вывод**: при отказе на очках остаётся старая сборка;
+  `adb logcat -c`, `tools/pico.sh launch`, `adb logcat -d | grep -E " godot +:|Fatal signal|F DEBUG"`; журнал игры — `tools/pico.sh log`
+  (`user://logs` — внутренняя память приложения, читается через `run-as`).
+- **Без человека:** экран держат `adb shell svc power stayon true` и `adb shell input keyevent KEYCODE_WAKEUP` перед запуском. Но если на
+  очках не задана граница или спят контроллеры при включённом отслеживании рук, система открывает поверх приложения свой экран и ставит его
+  на паузу — XR-проверку (трекинг, связь из VR) тогда делает только человек в очках.
+- **Падение в нативном коде:** кадры `libgodot_android.so` в tombstone без имён (библиотека шаблона уже без символов). Функцию находит
+  дизассемблер по адресу кадра: `$ANDROID_HOME/ndk/<версия>/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-objdump -d --start-address=…`
+  по `<копия>/android/build/build/intermediates/merged_native_libs/…/arm64-v8a/libgodot_android.so` (BuildId в tombstone должен совпасть).
+  Символы Godot публикует только для template_release и редактора.
+
 ## Godot AI: агент `godot-dev` и тесты Godot-части
 
 Живой редактор Godot с плагином [Godot AI](https://github.com/hi-godot/godot-ai) (MCP, v4.2.3) на devbox, на реальном дисплее (GNOME `:0`,

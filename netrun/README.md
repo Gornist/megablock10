@@ -12,6 +12,33 @@
   расширения; требует Gradle-сборку и один вендор на шаблон экспорта. Для MVP на стандартном OpenXR не нужен.
 - Очки — обычная Pico 4 (стандартный OpenXR).
 
+## Pico 4: известные ограничения (проверено на очках 2026-10-04)
+
+Очки: Pico 4, PICO OS 5.13.7, рантайм OpenXR Pico(XRT) 3.0.1. Установка, запуск, журналы — `tools/pico.sh`; стенд с очками на
+devbox — docs/netrun-devbox.md, «Очки Pico 4 по USB».
+
+- **`xr/openxr/foveation_eye_tracked=false`** (project.godot; комментарий в файле не живёт — редактор его переписывает). С этим
+  расширением (Godot 4.7 запрашивает его по умолчанию на Vulkan/Mobile) процесс падает сразу после строки
+  `OpenXR: Running on OpenXR runtime`, до GDScript: SIGSEGV, fault addr 0x4020, поток VkThread, верхние кадры — системный
+  `XRRuntime.apk`, под ними вызов `xrGetSystemProperties` из `OpenXRAPI::get_system_info`. Рантайм объявляет `XR_META_foveation_eye_tracked`,
+  а айтрекера у Pico 4 нет: godotengine/godot#115744, настройка — PR #117868 (Godot 4.7-dev4+). На очках: без настройки — падение,
+  с ней — клиент работает (`start mode=client`, `xr enabled=true`). `foveation_with_subsampled_images` не трогаем: при
+  `foveation_level` 0 (по умолчанию) не действует. Включать расширение снова — только с прошивкой Pico, где это исправлено, и после проверки на очках.
+- **APK очков собирается без `server/` и `tests/`** (exclude_filter пресета). Глобальный `class_name` оттуда в коде клиента экспорт не
+  замечает, а на очках это ошибка разбора: так `main.gd` (ссылки на `WorldServer`, `BotClient`) не грузился. Сервер и бота `main.gd`
+  грузит по пути; сторож — `tests/client_export_test.gd`.
+- **Адрес и токен.** Godot 4.7 снимает `command_line_params` у экспортированной активности (`GodotAppLauncher`), а неэкспортированную
+  `GodotApp` оболочка adb не запускает — `am start … --esa command_line_params …` до игры аргументы не доносит (`args=""`,
+  `net.skip reason=no_token`). Работает `command_line/extra_args` пресета (уходит в `assets/_cl_`), например
+  `-- --host=10.10.0.10 --token=t03:<токен>` — только в локальной копии, токен не коммитить. Как очки получают токен на игре — не решено.
+- **Граница.** Нет границы (`GuardianSystem::Failed to init Boundary` в logcat) — рантайм открывает поверх приложения её настройку
+  (`com.pvr.seethrough.setting`), приложение через ~1 с встаёт на паузу, XR-сессия остаётся IDLE, до связи дело не доходит
+  (`app.pause`). Нужен человек в очках: задать границу (сидячую), потом запуск.
+- **Режим рук.** Контроллеры спят, включено отслеживание рук — система приложение не запускает («vr app is not support hand mode»),
+  показывает диалог: взять контроллер.
+- **Подпись.** APK из CI и локальный экспорт подписаны разными ключами отладки: `adb install -r` поверх отказывает
+  (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`), на очках остаётся старая сборка. Сначала `adb uninstall com.megablok10.netrun`.
+
 ## Структура
 
 - `main.tscn`, `main.gd` — точка входа, выбирает режим.
