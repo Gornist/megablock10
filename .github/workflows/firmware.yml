@@ -85,6 +85,8 @@ jobs:
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # для сравнения с прошлым коммитом: нужна ли самопроверка в Wokwi
 
       - uses: actions/setup-python@v7
         with:
@@ -104,9 +106,28 @@ jobs:
         working-directory: firmware/display
         run: pio run -e crowpanel579 -e crowpanel579-wokwi
 
+      # Минуты Wokwi ограничены месячной квотой: самопроверка — только когда менялось то, что попадает в плату или в её прогон
+      # (код платы и ядра, сборка, схема Wokwi, сам скрипт, этот workflow). Правка сервера или прошивки для ПК её не тратит.
+      # Ручной запуск — всегда.
+      - name: Нужна ли самопроверка в Wokwi
+        id: wokwi_needed
+        env:
+          BEFORE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          board='^(firmware/display/(src/esp32/|lib/|platformio\.ini|wokwi\.toml|diagram\.json|tools/wokwi_selftest\.sh)|\.github/workflows/firmware\.yml)'
+          if [ "${{ github.event_name }}" = workflow_dispatch ] || [ -z "$BEFORE" ] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null \
+             || git diff --name-only "$BEFORE" "$GITHUB_SHA" | grep -qE "$board"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Код платы не менялся — самопроверка в Wokwi пропущена (экономия квоты)"
+          fi
+
       # Самопроверка изнутри платы (lib/selftest): протокол, перезагрузка, сброс сторожем. Токен — секрет WOKWI_CLI_TOKEN;
-      # без него (форк, секрет не заведён) шаг пропускается с пометкой, а не краснеет.
+      # без него (форк, секрет не заведён) шаг пропускается с пометкой, а не краснеет. Кончилась месячная квота Wokwi (код 4) —
+      # предупреждение «не проверено», а не провал: прошивка при этом не запускалась вовсе. Провал самопроверки — красный, как раньше.
       - name: Самопроверка в эмуляторе Wokwi
+        if: steps.wokwi_needed.outputs.run == 'true'
         working-directory: firmware/display
         env:
           WOKWI_CLI_TOKEN: ${{ secrets.WOKWI_CLI_TOKEN }}
@@ -119,7 +140,13 @@ jobs:
           mkdir -p ~/.local/bin
           curl -fsSL "https://github.com/wokwi/wokwi-cli/releases/download/$WOKWI_VERSION/wokwi-cli-linuxstatic-x64" -o ~/.local/bin/wokwi-cli
           chmod +x ~/.local/bin/wokwi-cli
-          PATH=$HOME/.local/bin:$PATH tools/wokwi_selftest.sh --no-build --timeout-ms 180000 --log wokwi-serial.log
+          code=0
+          PATH=$HOME/.local/bin:$PATH tools/wokwi_selftest.sh --no-build --timeout-ms 180000 --log wokwi-serial.log || code=$?
+          if [ "$code" -eq 4 ]; then
+            echo "::warning::Wokwi: исчерпана месячная квота CI-минут — самопроверка платы НЕ прогнана (прошивка не проверена в эмуляторе)"
+            exit 0
+          fi
+          exit "$code"
 
       - name: Журнал Wokwi
         if: always()
