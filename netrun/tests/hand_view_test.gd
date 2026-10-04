@@ -247,9 +247,23 @@ func test_controller_pose_puts_the_palm_on_the_grip_and_follows_it() -> void:
 	var grip := Transform3D(Basis(Vector3.UP, deg_to_rad(30.0)), Vector3(0.25, 0.9, -0.35))
 	var p := v.controller_pose(grip, 0.0, 0.0)
 	assert_int(p.size()).is_equal(COUNT)
-	assert_float(p[HandSkeleton.PALM].distance_to(grip.origin)).is_less(0.0001)
+	var seat := Transform3D(Basis(Vector3(0, 0, -1), deg_to_rad(HandView.HAND_ROLL_DEG)).scaled(Vector3.ONE * HandView.HAND_SCALE), Vector3.ZERO)
+	var palm := grip * Transform3D(Basis.IDENTITY, Vector3(0, 0, HandView.HAND_TOWARD_VIEWER)) * seat
+	assert_float(p[HandSkeleton.PALM].distance_to(palm.origin)).is_less(0.0001)
 	var local := HandSkeleton.pose(HandSkeleton.curls_from_inputs(0.0, 0.0), false)
-	assert_float(p[HandSkeleton.MIDDLE_TIP].distance_to(grip * local[HandSkeleton.MIDDLE_TIP])).is_less(0.0001)
+	assert_float(p[HandSkeleton.MIDDLE_TIP].distance_to(palm * local[HandSkeleton.MIDDLE_TIP])).is_less(0.0001)
+
+
+func test_seat_enlarges_turns_and_brings_the_hand_to_the_viewer() -> void:
+	var v := _view()
+	var p := v.controller_pose(Transform3D.IDENTITY, 0.0, 0.0)
+	var local := HandSkeleton.pose(HandSkeleton.curls_from_inputs(0.0, 0.0), false)
+	var len0: float = (local[HandSkeleton.MIDDLE_TIP] - local[HandSkeleton.PALM]).length()
+	assert_float((p[HandSkeleton.MIDDLE_TIP] - p[HandSkeleton.PALM]).length()).is_equal_approx(len0 * 1.1, 0.0005)
+	assert_float(p[HandSkeleton.PALM].z).is_equal_approx(0.04, 0.0001)  # к зрителю (+Z контроллера)
+	var back0 := HandSkeleton.back_direction(local, false)
+	var back1 := HandSkeleton.back_direction(p, false)
+	assert_float(back0.angle_to(back1)).is_equal_approx(PI / 2.0, 0.05)
 
 
 func test_controller_pose_bends_with_the_trigger() -> void:

@@ -17,6 +17,11 @@ const MIN_VALID_JOINTS := 22
 ## Якорь запястья: подъём над тылом запястья и сдвиг к локтю (м). Дека лежит у запястья, не на пальцах и не на ладони.
 const WRIST_ANCHOR_BACK := 0.045
 const WRIST_ANCHOR_ELBOW := 0.075
+## Посадка руки на контроллере по отзыву с очков: на 10% крупнее, повёрнута на 90° по часовой (вид сзади, вдоль пальцев), на 4 см к зрителю.
+## Поверх калибровки comfort.cfg: она по-прежнему относительна этой посадки.
+const HAND_SCALE := 1.1
+const HAND_ROLL_DEG := 90.0
+const HAND_TOWARD_VIEWER := 0.04
 const SHADER := preload("res://assets/shaders/hand_particles.gdshader")
 const COLOR_HAND := Color(0.18, 0.72, 0.85)  # холодный голубой: свои руки не красные (красные — другие люди и угроза)
 const COLOR_SPARK := Color(0.6, 0.95, 1.0)
@@ -163,7 +168,9 @@ func _tracked_pose() -> PackedVector3Array:
 
 ## Поза от контроллера: система ладони = поза grip с калибровкой, пальцы по курку и хвату.
 func controller_pose(grip: Transform3D, trigger: float, hold: float) -> PackedVector3Array:
-	var palm := grip * Transform3D(Basis(Vector3.RIGHT, deg_to_rad(grip_pitch_deg)), grip_offset)
+	var seat := Transform3D(Basis(Vector3(0, 0, -1), deg_to_rad(HAND_ROLL_DEG)).scaled(Vector3.ONE * HAND_SCALE), Vector3.ZERO)
+	var palm := grip * Transform3D(Basis.IDENTITY, Vector3(0, 0, HAND_TOWARD_VIEWER)) \
+		* Transform3D(Basis(Vector3.RIGHT, deg_to_rad(grip_pitch_deg)), grip_offset) * seat
 	var local := HandSkeleton.pose(HandSkeleton.curls_from_inputs(trigger, hold), left)
 	var out := PackedVector3Array()
 	out.resize(HandSkeleton.COUNT)
