@@ -7,18 +7,16 @@ Android-клиент (инструментация основных игровы
 
 ## Важно про Node
 
-Нужен **Node 22 LTS** (так же, как в CI; `engines` в `server/package.json`).
-`better-sqlite3` — нативный модуль, для самой свежей версии Node (26 на момент
-написания) прекомпилированных бинарей может ещё не быть, а из исходников он
-не собирается. На Mac Node стоит keg-only:
+Нужен **Node ≥ 22** (в CI — 22 LTS; `engines` в `server/package.json`): `better-sqlite3` 13 на Node 20 падает SIGSEGV, vitest 5 на 20
+не стартует. На Mac Node стоит keg-only; 26 в `/opt/homebrew/bin` тоже подходит и для сервера, и для клиента:
 
 ```bash
 brew install node@22
 export PATH="/opt/homebrew/opt/node@22/bin:$PATH"   # или добавить в PATH заранее на ноутбуке мастера
 ```
 
-На выделенной машине (`deploy/mb10-admin.service` запускает `/usr/bin/node`)
-проверьте `node -v` — должно быть v22.x. Локально допустим и запасной Node 20.
+На выделенной машине (`deploy/mb10-admin.service` запускает `/usr/bin/node`) проверьте `node -v` — должно быть v22.x и выше.
+Проверки одной командой и в нужном Node — `admin-web/tools/test.sh all` (см. [docs/agent-pipeline.md](docs/agent-pipeline.md)).
 
 ## Запуск на игре (один процесс, без Docker)
 
