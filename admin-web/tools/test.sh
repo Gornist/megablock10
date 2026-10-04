@@ -15,14 +15,17 @@ run_part() { # имя  каталог  команда...
   echo "$name|$code|$((SECONDS-start))|$log"
 }
 
+sum_field() { grep -E "^(ℹ|#) $1 " "$2" | head -1 | awk '{print $3}'; }
+
 report() { # имя|код|сек|лог
   IFS='|' read -r name code secs log <<<"$1"
   case $name in
     server)
-      local t p f s; t=$(grep -E '^ℹ tests ' "$log" | awk '{print $3}'); p=$(grep -E '^ℹ pass ' "$log" | awk '{print $3}'); f=$(grep -E '^ℹ fail ' "$log" | awk '{print $3}'); s=$(grep -E '^ℹ skipped ' "$log" | awk '{print $3}')
+      # Итоги node --test: «ℹ tests 400» (reporter spec) или «# tests 400» (TAP, его Node 22 печатает в не-TTY). Принимаем оба.
+      local t p f s; t=$(sum_field tests "$log"); p=$(sum_field pass "$log"); f=$(sum_field fail "$log"); s=$(sum_field skipped "$log")
       if [ -z "$t" ]; then echo "server: НЕ ЗАПУСТИЛСЯ ($(dur "$secs")) — хвост лога:"; tail -n 12 "$log"; rc=1; return; fi
       if [ "$code" = 0 ] && [ "${f:-0}" = 0 ]; then echo "server: ок — $p из $t, пропущено ${s:-0}, провалов 0 ($(dur "$secs"))"
-      else echo "server: ПРОВАЛ — $f из $t ($(dur "$secs")); упавшие:"; grep -E '^✖' "$log" | sort -u | head -8 | cut -c1-150; rc=1; fi;;
+      else echo "server: ПРОВАЛ — $f из $t ($(dur "$secs")); упавшие:"; grep -E '^(✖|not ok )' "$log" | sort -u | head -8 | cut -c1-150; rc=1; fi;;
     client)
       local files tests; files=$(grep -E 'Test Files' "$log" | sed 's/^ *//'); tests=$(grep -E '^ *Tests ' "$log" | sed 's/^ *//')
       if [ "$code" = 0 ]; then echo "client: ок — $files; $tests ($(dur "$secs"))"
@@ -32,7 +35,8 @@ report() { # имя|код|сек|лог
   esac
 }
 
-server_cmd=(npm test); [ -n "$grep_pat" ] && server_cmd=(npx tsx --test --test-name-pattern "$grep_pat" 'src/*.test.ts')
+# reporter задан явно: без него формат вывода зависит от версии Node и от TTY (на Node 22 без TTY — TAP).
+server_cmd=(npm test -- --test-reporter=spec); [ -n "$grep_pat" ] && server_cmd=(npx tsx --test --test-reporter=spec --test-name-pattern "$grep_pat" 'src/*.test.ts')
 client_cmd=(npx vitest run); [ -n "$grep_pat" ] && client_cmd=(npx vitest run -t "$grep_pat")
 
 # Части идут по очереди: на Mac 8 ГБ два тяжёлых Node-процесса одновременно — уже много.
