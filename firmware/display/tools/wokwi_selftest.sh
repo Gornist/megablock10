@@ -4,6 +4,7 @@
 # до строки «SELFTEST ALL PASSED» или первого «SELFTEST FAIL».
 #
 #   WOKWI_CLI_TOKEN=… firmware/display/tools/wokwi_selftest.sh [--no-build] [--timeout-ms 180000] [--log файл]
+# Код выхода 4 — у аккаунта Wokwi кончилась месячная квота CI-минут: самопроверка не запускалась (не провал прошивки).
 #
 # Токен — только из окружения (настройки облачного окружения / секрет GitHub Actions), в репозиторий и журнал не попадает.
 set -euo pipefail
@@ -42,6 +43,12 @@ for attempt in 1 2 3; do
   code=${PIPESTATUS[0]}
   set -e
   [ "$code" -eq 0 ] && exit 0
+  # Квота кончилась (октябрь 2026: «You have used up your Free plan monthly CI minute quota») — повторы не помогут, плата не
+  # запускалась. Отдельный код, чтобы CI показал «не проверено», а не «прошивка сломана».
+  if grep -q "minute quota" wokwi-cli.out; then
+    echo "wokwi: исчерпана месячная квота CI-минут — самопроверка НЕ запускалась" >&2
+    exit 4
+  fi
   if [ -s "$LOG" ] || ! grep -q "API Error" wokwi-cli.out; then exit "$code"; fi
   echo "wokwi: обрыв API до запуска платы (попытка $attempt из 3)" >&2
   [ "$attempt" -lt 3 ] && sleep 15
