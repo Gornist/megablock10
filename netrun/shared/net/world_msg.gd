@@ -27,7 +27,7 @@ const AVATARS := "av"
 ## {t: beat, term, bat?, chg?, fps, worst, rtt?}; разбор и пересылка в Мост — NetServer / TerminalBeatRelay.
 const BEAT := "beat"
 ## Виды события: ended (выход: reason), daemon (ok, daemon, error), shard (id взят).
-## Граф узлов (W1): node — вход в узел (title, tier, alert, shards [{id, p, ready, enc?}] (enc — зашифрованный шард, модель shard_encrypted), dead [[x, z]] (мёртвые деки в узле, необязательно),
+## Граф узлов (W1): node — вход в узел (title, tier, alert, shards [{id, p, ready, enc?, kind? (shard | daemon), dead? (демон мёртвой деки)}] (enc — зашифрованный шард, модель shard_encrypted), dead [[x, z]] (мёртвые деки рядом с хранилищем демона погибшего, необязательно),
 ## portals [{to, title, tier, p, open}], r — радиус
 ## портала, arrive [x, z] — куда поставить риг; нет arrive — игрок остаётся где стоит); tunnel — переход начался (to, title, tier,
 ## sec — сколько длится: клиент затемняет экран без движения камеры, затем придёт node); portal_denied — портал не открылся

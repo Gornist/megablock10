@@ -83,7 +83,7 @@ func test_client_gets_the_real_deck_and_loot_from_the_bridge() -> void:
 	assert_array(deck.tab_ids()).contains([DeckPanel.TAB_LOOT])
 	var loot_texts := deck.loot_texts()
 	assert_str(loot_texts[1]).is_equal("Эдди  75")
-	assert_str("\n".join(loot_texts)).contains("ДЕМОН  Дрожь из узла  тир 3  ОТКРЫТ")
+	assert_str("\n".join(loot_texts)).contains("ДЕМОН  Дрожь из узла  тир 3  trace замирает")
 	assert_str("\n".join(loot_texts)).contains("ШАРД  Чертежи склада  тир 2  ЗАШИФРОВАН")
 	assert_str("\n".join(loot_texts)).contains("ШАРД  Накладная  тир 1  ОТКРЫТ")
 	assert_bool(await _wait_for(func(): return "не работает в Сети" in "\n".join(deck.row_texts()))).is_true()

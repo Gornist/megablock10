@@ -142,6 +142,9 @@ func node_event(id: String, arrive: Variant = null, session: String = "") -> Dic
 		"kind": WorldMsg.EV_NODE, "node": id, "title": graph.title_of(id), "tier": graph.tier_of(id),
 		"alert": snappedf(gn.alert, 0.01), "shards": gn.shard_view(session), "portals": portals, "r": float(graph.settings["portal_radius"]),
 	}
+	var dead := gn.dead_decks()
+	if not dead.is_empty():
+		ev["dead"] = dead   # мёртвые деки в узле (К8): рядом с хранилищем лежит демон погибшего нетраннера
 	var signs: Array = graph.nodes[id].get("signs", [])
 	if not signs.is_empty():
 		ev["signs"] = signs  # таблички учебного узла: [{p: [x, z], text}], клиент рисует их в мире

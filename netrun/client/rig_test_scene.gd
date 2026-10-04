@@ -576,6 +576,7 @@ func apply_node(info: Dictionary) -> void:
 ## Слоты шардов узла изменились (вынесли, пополнилось, хранилище открылось/закрылось): лежащий шард виден, вынесенный — нет; вид хранилища — по vault
 ## (закрытое — шард внутри тусклый и не берётся).
 func apply_shards(shards: Array) -> void:
+	_refresh_dead_decks(shards)
 	for sh in shards:
 		var id := str(sh["id"])
 		_vault_info[id] = sh
@@ -591,6 +592,20 @@ func apply_shards(shards: Array) -> void:
 		if m != null:
 			m.visible = ready
 			_set_dim(m, state == NodeView.VAULT_CLOSED)
+
+
+## Мёртвые деки (К8): слот держит демона погибшего нетраннера — рядом с хранилищем лежит мёртвая дека; хранилище опустело — деки нет.
+## Новый сервер шлёт `dead` в каждом слоте; старый поля не знает — тогда деки из `node.dead` остаются как есть.
+func _refresh_dead_decks(shards: Array) -> void:
+	if not shards.any(func(sh: Dictionary) -> bool: return sh.has("dead")):
+		return
+	var spots: Array = []
+	for sh in shards:
+		if bool(sh.get("dead", false)) and sh.has("p") and bool(sh.get("ready", true)):
+			var p: Array = sh["p"]
+			var to_center := Vector2(-float(p[0]), -float(p[2])).normalized() * 0.8
+			spots.append([float(p[0]) + to_center.x, float(p[2]) + to_center.y])
+	view.set_dead_decks(spots)
 
 
 ## Тоннель: затемнение вокруг головы и блок хода (камеру не двигаем); надпись «куда».
@@ -698,12 +713,12 @@ func _ensure_shard_model(sh: Dictionary, reposition: bool) -> Node3D:
 		var p: Array = sh["p"]
 		m.position = Vector3(p[0], p[1], p[2])
 		m.set_meta("y0", float(p[1]))
-	_set_tier_label(m, int(sh.get("tier", 0)))
+	_set_tier_label(m, int(sh.get("tier", 0)), str(sh.get("kind", "shard")) == "daemon")
 	return m
 
 
 ## Подпись тира над шардом («ТИР 2»), смотрит на игрока; тира не знаем (0) — без подписи.
-func _set_tier_label(m: Node3D, tier: int) -> void:
+func _set_tier_label(m: Node3D, tier: int, daemon: bool = false) -> void:
 	var l := m.get_node_or_null("TierLabel") as Label3D
 	if tier <= 0:
 		if l != null:
@@ -718,7 +733,7 @@ func _set_tier_label(m: Node3D, tier: int) -> void:
 		l.modulate = Color(0.5, 0.95, 1.0)
 		l.position = Vector3(0, 0.2, 0)
 		m.add_child(l)
-	l.text = "ТИР %d" % tier
+	l.text = ("ДЕМОН · ТИР %d" if daemon else "ТИР %d") % tier
 
 
 ## Шард в закрытом хранилище: меньше и полупрозрачный (по меткам-мешам модели); открытый и тот, что в руке, — обычные.

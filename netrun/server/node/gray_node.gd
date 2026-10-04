@@ -319,8 +319,9 @@ func apply_snapshot(docs: Array) -> void:
 
 ## Разбор снимка: узел (локдаун), шард, активные сессии этого узла. Публичный — для тестов.
 func recover(docs: Array) -> void:
-	var node_items: Array[String] = []   # свободные шарды узла
-	var held: Array = []                 # [{item, by}] шарды этого узла у игроков
+	var node_items: Array[String] = []   # свободные предметы узла: шарды и демоны (хранилище с демоном — К8)
+	var deck_docs: Array = []            # предметы deck:<сессия> — кто из них добыча, решает session.loaded (после разбора всех сессий)
+	var active_data: Dictionary = {}     # активные сессии этого узла: id -> data документа
 	var active: Array[String] = []
 	var opened: Array = []               # [{session, item, until}] хранилища, открытые взломами активных сессий (session.data.opened, пишет Мост)
 	var flatlined: Dictionary = {}  # сессия -> disconnect: сервер упал, пока ждал мастера (пометка world.finish)
@@ -342,20 +343,22 @@ func recover(docs: Array) -> void:
 						flatlined[str(d["id"])] = bool((w as Dictionary).get("disconnect", false))
 					else:
 						active.append(str(d["id"]))
+						active_data[str(d["id"])] = data
 						for o in data.get("opened", []):
 							if o is Dictionary and str(o.get("node", node_id)) == node_id:
 								opened.append({"session": str(d["id"]), "item": str(o.get("item", "")), "until": int(o.get("until", 0))})
 						if w is Dictionary and (w as Dictionary).get("hunt") == true:
 							_hunt_written[str(d["id"])] = true  # отметка прошлого процесса: его охоты нет, apply_snapshot её снимет
 			BridgeApi.T_ITEM:
-				if data.get("kind") != "SHARD":
+				if data.get("kind") != "SHARD" and data.get("kind") != "DAEMON":
 					continue
 				var owner := str(data.get("owner", ""))
 				if owner == "node:" + node_id:
 					node_items.append(str(d["id"]))
-					_item_meta[str(d["id"])] = shard_meta(data)
-				elif owner.begins_with("deck:") and _origin_is_mine(str(data.get("origin", ""))):
-					held.append({"item": str(d["id"]), "by": owner.trim_prefix("deck:")})
+					_item_meta[str(d["id"])] = vault_meta(data)
+				elif owner.begins_with("deck:"):
+					deck_docs.append(d)
+	var held := held_items(deck_docs, active_data, node_id, node_def.is_empty())   # [{item, by}] добыча, которую игроки несут из этого узла
 	if is_tutorial():
 		node_items.clear()  # шард учебного узла — заглушка: предметов Моста к нему не привязываем
 		held.clear()
@@ -438,11 +441,26 @@ func _session_location(data: Dictionary) -> String:
 	return str(data.get("node", node_id))
 
 
-## Шард «из этого узла»: в графе — точно этот, у одиночного узла — любой с узла (как было).
-func _origin_is_mine(origin: String) -> bool:
-	if node_def.is_empty():
-		return origin.begins_with("node:")
-	return origin == "node:" + node_id
+## Добыча, которую активные сессии этого узла несут в деке: шарды и демоны `deck:<сессия>`, не сданные при входе (`session.loaded`), —
+## по `loaded`, а не по `origin`: шард мастера (`master:*`), демон мёртвой деки (`phone:<погибший>`) и отдача другого нетраннера по
+## происхождению не «узловые», но тоже добыча (протокол, 6.9). [param sessions] — id -> `data` активных сессий здесь; чужие и закрытые
+## пропускаются. В графе предмет с `origin: node:<другой узел>` этому узлу не принадлежит; остальные происхождения (`master:`, `phone:`)
+## отнести к узлу нечем — их берёт тот узел, где сессия сейчас. Результат — [{item, by}] по возрастанию id.
+static func held_items(deck: Array, sessions: Dictionary, node: String, single_node: bool) -> Array:
+	var out: Array = []
+	for d in deck:
+		var data: Dictionary = d.get("data", {})
+		var by := str(data.get("owner", "")).trim_prefix("deck:")
+		if not sessions.has(by) or str(d.get("id", "")) == "":
+			continue
+		if is_working_item(d, sessions[by]):
+			continue
+		var origin := str(data.get("origin", ""))
+		if origin.begins_with("node:") and not single_node and origin != "node:" + node:
+			continue
+		out.append({"item": str(d["id"]), "by": by})
+	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["item"] < b["item"])
+	return out
 
 
 func _on_doc_changed(doc: Dictionary, deleted: bool) -> void:
@@ -555,8 +573,11 @@ static func loot_from_items(items: Array, session: String, session_data: Diction
 		elif kind == "DAEMON" and not is_working_item(d, session_data):
 			var dm: Variant = data.get("daemon")
 			var daemon: Dictionary = dm if dm is Dictionary else {}
+			var cells: Variant = daemon.get("cells")
+			var chain: Array = (cells as Array).map(func(c: Variant) -> String: return str(c)) if cells is Array else []
 			out.append({"id": str(d["id"]), "kind": "daemon", "tier": clampi(int(daemon.get("tier", 1)), 1, 3),
-				"title": str(daemon.get("name", daemon.get("effect", "Демон"))), "enc": false, "give": not bool(data.get("protected", false))})
+				"title": str(daemon.get("name", daemon.get("effect", "Демон"))), "enc": false, "give": not bool(data.get("protected", false)),
+				"effect": str(daemon.get("effect", "")), "cells": chain})
 	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["id"] < b["id"])
 	return out
 
@@ -1412,19 +1433,50 @@ static func shard_meta(item_data: Dictionary) -> Dictionary:
 	return {"tier": clampi(int(shard.get("tier", 1)), 1, 3), "enc": not bool(shard.get("decrypted", false))}
 
 
-## Слоты шардов для клиента: [{id, p, ready, vault, tier?, enc?}] для сессии. ready — шард лежит; vault — empty | closed | open
-## (vault_state); tier и enc — признаки лежащего шарда (из Моста; учебный узел и работа без Моста их не знают).
+## Признаки предмета в хранилище для клиента: {kind: shard | daemon, tier, enc, dead?}. Шард — как [method shard_meta]; демон не шифруется
+## (enc всегда false), а демон мёртвой деки (`origin: phone:*`: дека погибшего нетраннера осталась в узле) помечен dead — клиент ставит
+## рядом модель мёртвой деки (К8).
+static func vault_meta(item_data: Dictionary) -> Dictionary:
+	if item_data.get("kind") == "DAEMON":
+		var dm: Variant = item_data.get("daemon")
+		var daemon: Dictionary = dm if dm is Dictionary else {}
+		var meta := {"kind": "daemon", "tier": clampi(int(daemon.get("tier", 1)), 1, 3), "enc": false}
+		if str(item_data.get("origin", "")).begins_with("phone:"):
+			meta["dead"] = true
+		return meta
+	var out := shard_meta(item_data)
+	out["kind"] = "shard"
+	return out
+
+
+## Мёртвые деки в узле для клиента: [[x, z]] рядом со слотами, где лежит демон мёртвой деки (на 0,8 м к центру комнаты от хранилища).
+func dead_decks() -> Array:
+	var out: Array = []
+	for id in _slot_pos:
+		var meta: Dictionary = _item_meta.get(_shard_items.get(id, ""), {})
+		if bool(meta.get("dead", false)):
+			var p: Vector3 = _slot_pos[id]
+			var to_center := Vector2(-p.x, -p.z).normalized() * 0.8
+			out.append([p.x + to_center.x, p.z + to_center.y])
+	return out
+
+
+## Слоты шардов для клиента: [{id, p, ready, vault, tier?, enc?, kind?, dead?}] для сессии. ready — предмет лежит; vault — empty | closed | open
+## (vault_state); tier, enc и kind — признаки лежащего предмета (из Моста; учебный узел и работа без Моста их не знают).
 func shard_view(session: String = "") -> Array:
 	var out: Array = []
 	for id in _slot_pos:
 		var p: Vector3 = _slot_pos[id]
 		var st := vault_state(id, session)
-		var e := {"id": id, "p": [p.x, p.y, p.z], "ready": st != VAULT_EMPTY, "vault": st}
+		var e := {"id": id, "p": [p.x, p.y, p.z], "ready": st != VAULT_EMPTY, "vault": st, "dead": false}
 		e.merge(vault_access(id, session))
 		var meta: Dictionary = _item_meta.get(_shard_items.get(id, ""), {})
 		if st != VAULT_EMPTY and not meta.is_empty():
 			e["tier"] = meta["tier"]
 			e["enc"] = meta["enc"]
+			e["kind"] = meta.get("kind", "shard")
+			if meta.has("dead"):
+				e["dead"] = true
 		out.append(e)
 	return out
 
@@ -1590,7 +1642,8 @@ func _refill(id: String) -> void:
 	_write_node_state()
 
 
-## Свободный шард узла в Мосте: owner node:<узел>, не привязанный к слоту. "" — нет.
+## Свободный предмет узла в Мосте — шард или демон: owner node:<узел>, не привязанный к слоту. "" — нет. Демоны («мёртвая дека», наполнение
+## мастера) — такие же свободные предметы, их достаёт EXTRACT_DAEMON (протокол, 6.9); порядок общий, по возрастанию id.
 func _free_shard_item() -> String:
 	if not synced or not bridge.is_ready():
 		return ""
@@ -1601,9 +1654,10 @@ func _free_shard_item() -> String:
 	var ids: Array[String] = []
 	for d in r.get("docs", []):
 		var data: Dictionary = d.get("data", {})
-		if data.get("kind") == "SHARD" and data.get("owner") == "node:" + node_id and not (str(d["id"]) in _shard_items.values()):
+		if (data.get("kind") == "SHARD" or data.get("kind") == "DAEMON") and data.get("owner") == "node:" + node_id \
+				and not (str(d["id"]) in _shard_items.values()):
 			ids.append(str(d["id"]))
-			_item_meta[str(d["id"])] = shard_meta(data)
+			_item_meta[str(d["id"])] = vault_meta(data)
 	ids.sort()
 	return ids[0] if not ids.is_empty() else ""
 

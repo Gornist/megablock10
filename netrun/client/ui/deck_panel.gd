@@ -389,17 +389,23 @@ func _loot_row(row: Dictionary) -> MbRow:
 	h.add_child(DeckUi.expand(DeckUi.label(row["title"], DeckTheme.V_NAME)))
 	h.add_child(DeckUi.label("тир %d" % int(row["tier"]), DeckTheme.V_DIM, false))
 	h.add_child(_centered(DeckUi.tag(row["label"], "warn" if row["enc"] else "ok", row["enc"])))
+	var chain := str(row.get("chain", ""))
 	var can_decrypt := bool(row.get("can_decrypt", false))
-	if not bool(row.get("give", false)) and not can_decrypt:
+	var can_give := bool(row.get("give", false))
+	if not can_give and not can_decrypt and chain.is_empty():
 		r.add_child(h)
 		return r
-	# Есть действие: вторая строка с кнопками (в первой название должно читаться целиком).
+	# Вторая строка: у добытого демона — эффект и цепочка кодов (К8), у шарда/отправляемого — кнопки (в первой название должно читаться целиком).
 	var col := DeckUi.vbox(2)
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(h)
 	var low := DeckUi.hbox(8)
 	low.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	low.add_child(DeckUi.expand(Control.new()))
+	if chain.is_empty():
+		low.add_child(DeckUi.expand(Control.new()))
+	else:
+		low.add_child(DeckUi.label(chain, DeckTheme.V_CODE, false))
+		low.add_child(DeckUi.expand(DeckUi.label(str(row.get("effect", "")), DeckTheme.V_DIM)))
 	if can_decrypt:
 		var dec := MbButton.new("РАСШИФРОВАТЬ", "quiet")
 		dec.button_height = DeckTheme.BTN_SMALL_H
@@ -407,7 +413,7 @@ func _loot_row(row: Dictionary) -> MbRow:
 		dec.set_meta("action", "decrypt")
 		dec.pressed.connect(func(): decrypt_requested.emit(str(row["id"])))
 		low.add_child(dec)
-	if bool(row.get("give", false)):
+	if can_give:
 		var send := MbButton.new("ОТПРАВИТЬ", "ghost")
 		send.button_height = DeckTheme.BTN_SMALL_H
 		send.set_meta("item_id", row["id"])

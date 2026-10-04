@@ -197,3 +197,12 @@ func _labels(node: Node) -> Array:
 			out.append(c)
 		out.append_array(_labels(c))
 	return out
+
+
+func test_loot_tab_shows_a_carried_daemon_with_effect_and_chain() -> void:
+	await _setup_panel()
+	_d.set_loot([{"id": "9", "kind": "daemon", "tier": 2, "title": "Жнец", "enc": false, "give": false, "effect": "EXTRACT_SHARD", "cells": ["BD", "E9", "1C"]}], 0)
+	_d.select_tab(DeckPanel.TAB_LOOT)
+	await _settle()
+	assert_str(_d.loot_texts()[2]).is_equal("ДЕМОН  Жнец  тир 2  достать шард")
+	assert_str(_all_texts()).contains("BD E9 1C").contains("В ГРУЗЕ").contains("достать шард")

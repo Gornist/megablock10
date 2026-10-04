@@ -232,7 +232,7 @@ static func deck_rows(deck: Dictionary) -> Array:
 
 
 ## Добыча для вкладки ДОБЫЧА: [{text, kind, kind_name, title, tier, enc, label}] из ev deck.loot ({id, kind: shard | daemon, tier, title, enc}).
-## label — «ОТКРЫТ» / «ЗАШИФРОВАН» (добытый демон не шифруется — у него «ОТКРЫТ»; в этом забеге он всё равно не работает).
+## label у демона с известным эффектом — «В ГРУЗЕ», в text его эффект, в строке chain (К8).
 ## daemons — рабочие демоны деки из того же события ({effect, tier, ...}): по ним решается, есть ли у зашифрованного шарда кнопка «РАСШИФРОВАТЬ» (can_decrypt, К7).
 static func loot_rows(loot: Array, daemons: Array = []) -> Array:
 	var rows := []
@@ -243,8 +243,17 @@ static func loot_rows(loot: Array, daemons: Array = []) -> Array:
 		var tier := int(l.get("tier", 0))
 		var kind_name := "ДЕМОН" if kind == "daemon" else "ШАРД"
 		var label := "ЗАШИФРОВАН" if enc else "ОТКРЫТ"
-		rows.append({"id": str(l.get("id", "")), "text": "%s  %s  тир %d  %s" % [kind_name, title, tier, label], "kind": kind, "kind_name": kind_name, "title": title, "tier": tier, "enc": enc, "label": label,
-			"give": bool(l.get("give", false)), "can_decrypt": kind == "shard" and enc and not DeckDecrypt.best(daemons, tier).is_empty(),
+		var effect := str(l.get("effect", ""))
+		var cells: Variant = l.get("cells")
+		var chain := chain_text(cells) if cells is Array else ""
+		var text := "%s  %s  тир %d  %s" % [kind_name, title, tier, label]
+		if kind == "daemon" and effect != "":
+			# Добытый демон: «ДЕМОН · тир · эффект» и цепочка кодов; в забеге не работает, до выхода лежит в грузе.
+			label = "В ГРУЗЕ"
+			text = "%s  %s  тир %d  %s" % [kind_name, title, tier, EFFECT_TITLES.get(effect, effect)]
+		rows.append({"id": str(l.get("id", "")), "text": text, "kind": kind, "kind_name": kind_name, "title": title, "tier": tier, "enc": enc, "label": label,
+			"give": bool(l.get("give", false)), "effect": EFFECT_TITLES.get(effect, effect), "chain": chain,
+			"can_decrypt": kind == "shard" and enc and not DeckDecrypt.best(daemons, tier).is_empty(),
 			"no_decrypter": kind == "shard" and enc and DeckDecrypt.best(daemons, tier).is_empty()})
 	return rows
 
