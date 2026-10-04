@@ -1,4 +1,4 @@
-package com.megablok10.app.breach
+package com.megablok10.rules
 
 /**
  * Правило чередования строка/столбец из оригинала Cyberpunk 2077: после

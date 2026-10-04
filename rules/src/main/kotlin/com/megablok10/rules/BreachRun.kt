@@ -1,4 +1,4 @@
-package com.megablok10.app.breach
+package com.megablok10.rules
 
 /** Что сделал тап: [hitTrap] — клетка-ловушка, [matched] — после тапа совпало больше демонов, чем до него. */
 data class BreachTap(val run: BreachRun, val hitTrap: Boolean, val matched: Boolean)
@@ -20,16 +20,16 @@ data class BreachRun(
     val isTicking: Boolean get() = secondsLeft > 0 && !attempt.isFull && result == null
 
     /** Последние 10 секунд до итога — шапка таймера мигает. */
-    val isLowTime: Boolean get() = secondsLeft in 1..10 && result == null
+    val isLowTime: Boolean get() = secondsLeft in 1..BreachConstants.LOW_TIME_SEC && result == null
 
     /** Последние 5 секунд — на каждом тике звучит предупреждение. */
-    val isWarning: Boolean get() = secondsLeft in 1..5
+    val isWarning: Boolean get() = secondsLeft in 1..BreachConstants.WARNING_SEC
 
     /** Реплика защиты на текущей секунде. Если половина окна и «10 секунд» совпали, остаётся LOW_TIME — он и был бы показан последним. */
     val timeEvent: IceEvent?
         get() = when {
-            timerSec > 20 && secondsLeft == 10 -> IceEvent.LOW_TIME
-            timerSec > 20 && secondsLeft == timerSec / 2 -> IceEvent.HALF_TIME
+            timerSec > BreachConstants.TIME_EVENTS_MIN_TIMER_SEC && secondsLeft == BreachConstants.LOW_TIME_SEC -> IceEvent.LOW_TIME
+            timerSec > BreachConstants.TIME_EVENTS_MIN_TIMER_SEC && secondsLeft == timerSec / 2 -> IceEvent.HALF_TIME
             else -> null
         }
 

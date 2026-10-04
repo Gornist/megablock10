@@ -1,4 +1,4 @@
-package com.megablok10.app.breach
+package com.megablok10.rules
 
 /**
  * Перебор сетки для debug-автосолвера и тестов: находит цепочку клеток, на которой совпадает

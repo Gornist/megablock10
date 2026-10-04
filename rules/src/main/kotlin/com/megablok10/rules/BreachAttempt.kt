@@ -1,4 +1,4 @@
-package com.megablok10.app.breach
+package com.megablok10.rules
 
 /** Состояние одной попытки взлома: сетка + что игрок уже выбрал. */
 data class BreachAttemptState(
@@ -34,9 +34,6 @@ data class BreachAttemptState(
         return copy(selected = selected + cell)
     }
 }
-
-/** Исход взлома живёт в общем модуле правил (:rules); псевдоним — чтобы код приложения не менял импорты. */
-typealias BreachOutcome = com.megablok10.rules.BreachOutcome
 
 data class BreachResult(val allDaemons: List<Daemon>, val matchedIds: Set<String>) {
     val outcome: BreachOutcome

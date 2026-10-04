@@ -11,10 +11,10 @@ import com.megablok10.app.log.Mb10Log
 import com.megablok10.kit.mesh.OnlinePlayer
 import com.megablok10.kit.sync.ChangeRecorder
 import com.megablok10.rules.AlertPlan
+import com.megablok10.rules.SecAlertAggregator
 import com.megablok10.rules.SecAlertRules
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
-import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
@@ -38,9 +38,8 @@ class SecAlertStore(
     private val changes: ChangeRecorder,
     private val peers: StateFlow<List<OnlinePlayer>>,
 ) {
-    /** containerId → окно агрегации: полное сообщение раз в 15 минут, дальше счётчик повторов. Живёт в памяти на время сессии приложения — не переживает перезапуск, это осознанно (см. ревизию v9 §4). */
-    private val aggregation = ConcurrentHashMap<String, AggState>()
-    private data class AggState(var lastFullSentAt: Long = 0, var suppressed: Int = 0)
+    /** Склейка по контейнеру (раз в 15 минут полное сообщение, дальше счётчик повторов) — в :rules; живёт в памяти на время сессии, не переживает перезапуск (ревизия v9 §4). */
+    private val aggregation = SecAlertAggregator()
 
     /**
      * Сброс очереди — по изменению списка пиров И по таймеру: раньше только по первому, и отложенный
@@ -113,21 +112,12 @@ class SecAlertStore(
     }
 
     /** Полное структурированное сообщение раз в 15 минут на контейнер, иначе однострочный счётчик повторов. */
-    private fun aggregatedBody(pending: PendingAlertEntity): String {
-        val state = aggregation.getOrPut(pending.containerId) { AggState() }
-        val now = System.currentTimeMillis()
-        if (now - state.lastFullSentAt >= DebugConfig.scaledMs(AGG_WINDOW_MS)) {
-            state.lastFullSentAt = now
-            state.suppressed = 0
-            return pending.payload
-        }
-        state.suppressed += 1
-        return "Повторные обращения к узлу «${pending.containerName}» (×${state.suppressed + 1})"
-    }
+    private fun aggregatedBody(pending: PendingAlertEntity): String =
+        aggregation.body(pending.containerId, pending.containerName, pending.payload, System.currentTimeMillis(), DebugConfig.scaledMs(AGG_WINDOW_MS))
 
     companion object {
         private const val FLUSH_TICK_MS = 15_000L
-        private const val AGG_WINDOW_MS = 15 * 60_000L
+        private const val AGG_WINDOW_MS = SecAlertAggregator.WINDOW_MS
         private const val TTL_MS = 30 * 60_000L
         private const val SYSTEM_PUBKEY = "SEC-SYSTEM"
         private const val SYSTEM_CALLSIGN = "SEC//MB10"
