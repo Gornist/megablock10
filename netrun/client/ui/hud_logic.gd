@@ -192,5 +192,5 @@ static func loot_rows(loot: Array) -> Array:
 		var tier := int(l.get("tier", 0))
 		var kind_name := "ДЕМОН" if kind == "daemon" else "ШАРД"
 		var label := "ЗАШИФРОВАН" if enc else "ОТКРЫТ"
-		rows.append({"text": "%s  %s  тир %d  %s" % [kind_name, title, tier, label], "kind": kind, "kind_name": kind_name, "title": title, "tier": tier, "enc": enc, "label": label})
+		rows.append({"id": str(l.get("id", "")), "text": "%s  %s  тир %d  %s" % [kind_name, title, tier, label], "kind": kind, "kind_name": kind_name, "title": title, "tier": tier, "enc": enc, "label": label})
 	return rows

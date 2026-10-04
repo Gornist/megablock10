@@ -129,7 +129,7 @@ func _on_joined(session: String, _peer: int, _resumed: bool) -> void:
 
 
 ## Описание узла для клиента (WorldMsg.EV_NODE): шарды, порталы, тревога. arrive — куда поставить риг после перехода.
-func node_event(id: String, arrive: Variant = null) -> Dictionary:
+func node_event(id: String, arrive: Variant = null, session: String = "") -> Dictionary:
 	var gn: GrayNode = nodes[id]
 	var portals: Array = []
 	for pt in gn.portals():
@@ -137,7 +137,7 @@ func node_event(id: String, arrive: Variant = null) -> Dictionary:
 		portals.append({"to": pt["to"], "title": pt["title"], "tier": pt["tier"], "p": [pos.x, pos.z], "open": not (nodes[pt["to"]] as GrayNode).is_locked_down()})
 	var ev := {
 		"kind": WorldMsg.EV_NODE, "node": id, "title": graph.title_of(id), "tier": graph.tier_of(id),
-		"alert": snappedf(gn.alert, 0.01), "shards": gn.shard_view(), "portals": portals, "r": float(graph.settings["portal_radius"]),
+		"alert": snappedf(gn.alert, 0.01), "shards": gn.shard_view(session), "portals": portals, "r": float(graph.settings["portal_radius"]),
 	}
 	var signs: Array = graph.nodes[id].get("signs", [])
 	if not signs.is_empty():
@@ -148,7 +148,7 @@ func node_event(id: String, arrive: Variant = null) -> Dictionary:
 
 
 func _send_node(session: String, id: String, with_arrive: bool, arrive: Vector3 = NodeLayout.SPAWN) -> void:
-	net.send_to(session, WorldMsg.encode_fields(WorldMsg.EVENT, node_event(id, arrive if with_arrive else null)))
+	net.send_to(session, WorldMsg.encode_fields(WorldMsg.EVENT, node_event(id, arrive if with_arrive else null, session)))
 
 
 # ---------------------------------------------------------------- переходы

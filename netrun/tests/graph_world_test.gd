@@ -345,3 +345,48 @@ func test_recovered_session_without_player_is_closed_after_grace() -> void:
 	_server._deadline_ms[SESSION] = Time.get_ticks_msec() + 1000
 	assert_bool(await _wait_for(func(): return str(_session_data()["state"]) == "closed", 10.0)).is_true()
 	assert_str(str(_session_data()["outcome"])).is_equal("emergency")
+
+
+## К5: описание слотов для клиента — вид хранилища (vault), тир и признак «зашифрован» лежащего шарда из документа Моста.
+func test_shard_view_reports_vault_state_tier_and_encryption() -> void:
+	var gc := _world.node_of("g_c")
+	var pk0 := GrayNode.shard_id("g_c", 0)
+	var pk1 := GrayNode.shard_id("g_c", 1)
+	var now_ms := int(Time.get_unix_time_from_system() * 1000.0)
+	gc.recover([
+		{"type": "node", "id": "g_c", "ver": 1, "data": {"tier": "HARD", "lockdown_until": 0, "world": {"refill": {pk0: now_ms + 600000}}}},
+		{"type": "item", "id": "it_g_c_1", "ver": 1, "data": {"owner": "node:g_c", "kind": "SHARD", "origin": "node:g_c", "shard": {"tier": 3, "decrypted": true}}},
+		{"type": "item", "id": "it_g_c_2", "ver": 1, "data": {"owner": "node:g_c", "kind": "SHARD", "origin": "node:g_c"}},
+	])
+	var view := {}
+	for e in gc.shard_view(SESSION):
+		view[e["id"]] = e
+	assert_str(view[pk0]["vault"]).is_equal("empty")   # слот ждёт пополнения
+	assert_bool(view[pk0]["ready"]).is_false()
+	assert_bool(view[pk0].has("tier")).is_false()
+	assert_str(view[pk1]["vault"]).is_equal("open")    # флаг vault_requires_open выключен: лежащий шард открыт всем
+	assert_bool(view[pk1]["ready"]).is_true()
+	assert_int(view[pk1]["tier"]).is_equal(3)
+	assert_bool(view[pk1]["enc"]).is_false()           # decrypted: true -> открыт
+	# предмет без разобранного shard считается зашифрованным, тир 1
+	assert_dict(GrayNode.shard_meta({})).is_equal({"tier": 1, "enc": true})
+	assert_dict(GrayNode.shard_meta({"shard": {"tier": 9, "decrypted": false}})).is_equal({"tier": 3, "enc": true})
+
+
+## К5: флаг «взятие требует открытия взломом» (К3 его включит): без открытия шард закрыт, открытие действует на одну сессию и гаснет с шардом.
+func test_vault_requires_open_flag_hides_shards_until_opened_for_the_session() -> void:
+	var gc := _world.node_of("g_c")
+	var pk1 := GrayNode.shard_id("g_c", 1)
+	assert_bool(bool(gc.settings.get("vault_requires_open", true))).is_false()   # по умолчанию выключен
+	assert_str(gc.vault_state(pk1, SESSION)).is_equal("open")
+	gc.settings = gc.settings.duplicate()
+	gc.settings["vault_requires_open"] = true
+	assert_str(gc.vault_state(pk1, SESSION)).is_equal("closed")
+	assert_str(gc.vault_state(pk1, "")).is_equal("closed")   # безымянная сессия не открывает чужое
+	gc.open_vault(pk1, SESSION)
+	assert_str(gc.vault_state(pk1, SESSION)).is_equal("open")
+	assert_str(gc.vault_state(pk1, "s_other")).is_equal("closed")
+	gc.close_vault(pk1)
+	assert_str(gc.vault_state(pk1, SESSION)).is_equal("closed")
+	# can_grab учитывает вид хранилища: закрытое не отдаётся, даже если игрок рядом (аватара нет — всё равно false, но по причине замка)
+	assert_bool(gc.can_grab(SESSION, pk1)).is_false()

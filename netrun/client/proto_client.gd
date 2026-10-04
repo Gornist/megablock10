@@ -55,6 +55,7 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	scene.rig.recentered.connect(func(xr: bool): log_file.log("rig.recenter", {"xr": xr}))
 	scene.frame_slow.connect(_on_frame_slow)
 	scene.grab_requested.connect(_on_grab_requested)
+	scene.shard_stowed.connect(func(id: String): log_file.log("shard.stowed", {"id": id}))
 	scene.ice_audio_enabled = true
 	_setup_comfort(args)
 	_setup_phone(args)
