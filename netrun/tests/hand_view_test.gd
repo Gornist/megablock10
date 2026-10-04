@@ -266,6 +266,19 @@ func test_seat_enlarges_turns_and_brings_the_hand_to_the_viewer() -> void:
 	assert_float(back0.angle_to(back1)).is_equal_approx(PI / 2.0, 0.05)
 
 
+func test_left_hand_seat_is_the_mirror_of_the_right() -> void:
+	var r := _view(false).controller_pose(Transform3D.IDENTITY, 0.3, 0.6)
+	var l := _view(true).controller_pose(Transform3D.IDENTITY, 0.3, 0.6)
+	for j in COUNT:
+		assert_float(l[j].distance_to(Vector3(-r[j].x, r[j].y, r[j].z))).is_less(0.0001)
+	var anchor_view := _view(true)
+	l = anchor_view.controller_pose(Transform3D.IDENTITY, 0.0, 0.0)  # открытая кисть: ось «к пальцам» считается по ладони
+	anchor_view._place_wrist_anchor(l)
+	var fingers := (l[HandSkeleton.MIDDLE_TIP] - l[HandSkeleton.WRIST]).normalized()
+	assert_float(anchor_view.wrist_anchor.basis.y.dot(fingers)).is_greater(0.9)  # верх панели к пальцам
+	assert_float(anchor_view.wrist_anchor.basis.z.dot(HandSkeleton.back_direction(l, true))).is_greater(0.99)  # панель — от тыла запястья
+
+
 func test_controller_pose_bends_with_the_trigger() -> void:
 	var v := _view()
 	var open := v.controller_pose(Transform3D.IDENTITY, 0.0, 0.0)
