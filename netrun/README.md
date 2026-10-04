@@ -71,6 +71,12 @@ devbox — docs/netrun-devbox.md, «Очки Pico 4 по USB».
 `.glb` (бюджеты, роли, размеры, origin), CI гоняет его отдельным шагом; импорт, клипы, метки и посадку на сетку проверяет `tests/assets_models_test.gd`.
 Файлы `.glb.import` лежат в git (стабильные uid); после смены `.glb` — `godot --headless --path netrun --import`.
 
+## Руки
+
+`client/hand_view.gd` (`HandView`, по одному на руку, дети `XRRig`) рисует руки игрока облаком светящихся точек: поза от контроллера (курок и хват сгибают пальцы) или от трекинга рук (`XRHandTracker`,
+если он есть). Скелет и кинематика — `shared/hand_skeleton.gd`, шейдер — `assets/shaders/hand_particles.gdshader`, калибровка grip — `comfort.cfg` (`hand_pitch_deg`, `hand_offset_x/y/z`). Подробности и
+что не проверено на очках — `assets/ARCHITECTURE.md`, п. 15. Кадры без очков: `assets/preview_hands.tscn` (на devbox, отдельным процессом Godot на дисплее).
+
 ## Узел в ассетах (A3)
 
 Клиент рисует узел готовыми моделями: `client/node_view.gd` (`NodeView`) собирает комнату и предметы по описанию сервера, `client/node_assets.gd` даёт

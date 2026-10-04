@@ -49,6 +49,9 @@ var xr_active := false
 ## Идёт цифровой тоннель (W1): телепорт запрещён, пока сервер не поставит игрока в новый узел. Поворот головы и поворот стиком — как всегда.
 var movement_locked := false
 var aim_visual: TeleportAim
+## Руки в нашем стиле (облако светящихся точек): по контроллерам, а при трекинге рук — по суставам. Скрыты, пока нет данных позы.
+var left_hand_view: HandView
+var right_hand_view: HandView
 var fx: ComfortFx
 var _snap_armed := true
 var _mouse_yaw := 0.0
@@ -84,6 +87,10 @@ func _ready() -> void:
 	camera.add_child(fx)
 	aim_visual = TeleportAim.new()
 	add_child(aim_visual)
+	left_hand_view = HandView.new(true, left_hand)
+	right_hand_view = HandView.new(false, right_hand)
+	add_child(left_hand_view)
+	add_child(right_hand_view)
 
 
 ## Пытается поднять OpenXR; без очков возвращает false и пишет понятную причину (риг остаётся плоским).

@@ -15,11 +15,15 @@ extends RefCounted
 ## teleport_range = 4.0          ; дальность телепорта, м, 1…6 (предел сервера)
 ## teleport_cooldown = 1.2       ; перезарядка телепорта, с, 0,6…10 (предел сервера)
 ## teleport_blink_s = 0.1        ; затемнение и проявление моргания, каждое, с, 0,03…0,4
+## hand_pitch_deg = 0.0          ; руки (client/hand_view.gd): поворот кисти вокруг оси X контроллера, градусы, -90…90 (вверх +); поза grip на Pico 4 не мерилась
+## hand_offset_x = 0.0           ; смещение кисти относительно позы grip в системе контроллера, м, -0,15…0,15 (у левой руки X зеркальный)
+## hand_offset_y = 0.0
+## hand_offset_z = 0.0
 
 const PATH := "user://comfort.cfg"
 const SECTION := "comfort"
 const KEYS := ["turn_mode", "turn_speed_deg_s", "turn_vignette", "turn_ramp_up_s", "turn_ramp_down_s",
-	"teleport_range", "teleport_cooldown", "teleport_blink_s"]
+	"teleport_range", "teleport_cooldown", "teleport_blink_s", "hand_pitch_deg", "hand_offset_x", "hand_offset_y", "hand_offset_z"]
 ## Числовые поля: [наименьшее, наибольшее]. Нулевые разгон и остановка — это рывок, поэтому снизу не ноль.
 const LIMITS := {
 	"turn_speed_deg_s": [10.0, RigMath.TURN_SPEED_MAX_DEG_S],
@@ -29,6 +33,10 @@ const LIMITS := {
 	"teleport_range": [1.0, RigMath.TELEPORT_RANGE_LIMIT],
 	"teleport_cooldown": [RigMath.TELEPORT_COOLDOWN_LIMIT, 10.0],
 	"teleport_blink_s": [0.03, RigMath.TELEPORT_BLINK_LIMIT],
+	"hand_pitch_deg": [-90.0, 90.0],
+	"hand_offset_x": [-0.15, 0.15],
+	"hand_offset_y": [-0.15, 0.15],
+	"hand_offset_z": [-0.15, 0.15],
 }
 
 var turn_mode := RigMath.TURN_MODE_DEFAULT
@@ -39,6 +47,10 @@ var turn_ramp_down_s := RigMath.TURN_RAMP_DOWN_SEC
 var teleport_range := RigMath.TELEPORT_RANGE
 var teleport_cooldown := RigMath.TELEPORT_COOLDOWN
 var teleport_blink_s := RigMath.TELEPORT_BLINK_SEC
+var hand_pitch_deg := 0.0
+var hand_offset_x := 0.0
+var hand_offset_y := 0.0
+var hand_offset_z := 0.0
 ## Файл был и прочитан.
 var from_file := false
 ## Что в файле не так (по строке на поле) — клиент пишет в журнал `comfort.warn`.
@@ -110,6 +122,7 @@ func log_fields() -> Dictionary:
 		"turn": turn_mode, "speed": _fmt(turn_speed_deg_s), "vignette": _fmt(turn_vignette),
 		"ramp_up": _fmt(turn_ramp_up_s), "ramp_down": _fmt(turn_ramp_down_s),
 		"range": _fmt(teleport_range), "cooldown": _fmt(teleport_cooldown), "blink": _fmt(teleport_blink_s),
+		"hand": "%s,%s,%s,%s" % [_fmt(hand_pitch_deg), _fmt(hand_offset_x), _fmt(hand_offset_y), _fmt(hand_offset_z)],
 		"file": "user" if from_file else "none",
 	}
 
@@ -123,3 +136,6 @@ func apply_to(rig: XRRig) -> void:
 	rig.teleport_range = teleport_range
 	rig.teleport_cooldown = teleport_cooldown
 	rig.teleport_blink_s = teleport_blink_s
+	for hv in [rig.left_hand_view, rig.right_hand_view]:
+		if hv != null:
+			(hv as HandView).calibrate(hand_pitch_deg, Vector3(hand_offset_x, hand_offset_y, hand_offset_z))
