@@ -201,12 +201,14 @@ comfort_read() {
   adb -s "$1" exec-out run-as "$PACKAGE" cat "$COMFORT_FILE" 2>/dev/null | tr -d '\r' || true
 }
 
-# Строки `comfort` и `comfort.warn` из самого свежего журнала приложения на очках.
+# Имя самого свежего журнала приложения на очках (пусто, если журналов нет).
+comfort_newest_log() {
+  adb -s "$1" shell run-as "$PACKAGE" ls -t files/logs 2>/dev/null | tr -d '\r' | head -1 || true
+}
+
+# Строки `comfort` и `comfort.warn` из журнала с этим именем.
 comfort_log_lines() {
-  local serial="$1" newest
-  newest=$(adb -s "$serial" shell run-as "$PACKAGE" ls -t files/logs 2>/dev/null | tr -d '\r' | head -1)
-  [[ -n "$newest" ]] || return 0
-  adb -s "$serial" exec-out run-as "$PACKAGE" cat "files/logs/$newest" 2>/dev/null | tr -d '\r' | grep -a -E ' comfort(\.warn)? ' || true
+  adb -s "$1" exec-out run-as "$PACKAGE" cat "files/logs/$2" 2>/dev/null | tr -d '\r' | grep -a -E ' comfort(\.warn)? ' || true
 }
 
 # tune [--reset | ключ=значение ...]
@@ -223,17 +225,9 @@ cmd_tune() {
     echo "--- (изменить: pico.sh tune ключ=значение ...; ключи: $COMFORT_KEYS)"
     return 0
   else
-    # Текущие значения файла + изменения -> новый файл.
-    declare -A vals
-    local line k v
-    while IFS= read -r line; do
-      line="${line%%;*}"
-      [[ "$line" == *=* ]] || continue
-      k="$(echo "${line%%=*}" | tr -d ' ')"
-      v="$(echo "${line#*=}" | sed 's/^ *//; s/ *$//')"
-      [[ -n "$k" ]] && vals[$k]="$v"
-    done < <(comfort_read "$serial")
-    local arg
+    # Текущие значения файла + изменения -> новый файл (без ассоциативных массивов: bash 3.2 на Mac их не знает).
+    local cur arg k v line content
+    cur="$(comfort_read "$serial" | sed -e 's/;.*$//' -e 's/[[:space:]]*=[[:space:]]*/=/' | grep -E '^[a-z_]+=' || true)"
     for arg in "$@"; do
       if [[ "$arg" != *=* ]]; then
         echo "Ошибка: «$arg» — нужно ключ=значение" >&2
@@ -256,26 +250,35 @@ cmd_tune() {
         echo "Ошибка: $k — число, получено «$v»" >&2
         return 1
       fi
-      vals[$k]="$v"
+      cur="$(printf '%s\n' "$cur" | grep -v "^${k}=" || true)"
+      cur="${cur}"$'\n'"${k}=${v}"
     done
-    local content="[comfort]"$'\n'$'\n'
+    content="[comfort]"$'\n'$'\n'
     for k in $COMFORT_KEYS; do
-      [[ -n "${vals[$k]:-}" ]] && content+="$k=${vals[$k]}"$'\n'
+      line="$(printf '%s\n' "$cur" | grep "^${k}=" | tail -1 || true)"
+      if [[ -n "$line" ]]; then
+        content+="$line"$'\n'
+      fi
     done
     printf '%s' "$content" | adb -s "$serial" shell "run-as $PACKAGE sh -c 'cat > $COMFORT_FILE'"
     echo "--- записано в $COMFORT_FILE ---"
     printf '%s' "$content"
   fi
 
-  # Перезапуск, чтобы клиент перечитал файл; ждём строку comfort в новом журнале (не дольше ~30 с).
+  # Перезапуск, чтобы клиент перечитал файл; ждём строку comfort в НОВОМ журнале (не дольше ~30 с; старый не в счёт).
+  local old_log
+  old_log=$(comfort_newest_log "$serial")
   adb -s "$serial" shell am force-stop "$PACKAGE"
   adb -s "$serial" shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
   cmd_launch || return 1
-  local i lines=""
+  local i lines="" new_log
   for i in $(seq 1 30); do
     sleep 1
-    lines=$(comfort_log_lines "$serial")
-    [[ "$lines" == *" comfort "* ]] && break
+    new_log=$(comfort_newest_log "$serial")
+    if [[ -n "$new_log" && "$new_log" != "$old_log" ]]; then
+      lines=$(comfort_log_lines "$serial" "$new_log")
+      [[ "$lines" == *" comfort "* ]] && break
+    fi
   done
   if [[ -z "$lines" ]]; then
     echo "Строки comfort в журнале нет: приложение не дошло до старта клиента (граница, режим рук, диалог системы?)." >&2
