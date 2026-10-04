@@ -27,6 +27,9 @@ var alert: OffscreenAlert
 ## Вкладки ЧАТ и ЗВОНКИ деки: указатель правого контроллера (мышь в плоской сборке) нажимает деку; отклик — вибрация и звук на сообщения и
 ## звонки; связь с телефоном (пока фиктивная) — null, и тогда вкладок нет, указатель молчит. Положение и масштаб деки на руке — только здесь.
 var pointer: DeckPointer
+## Панель взлома хранилища (К3): стоит в мире, появляется у хранилища; свой указатель (второй DeckPointer) нажимает её тем же лучом и курком.
+var breach_panel: BreachPanel
+var breach_pointer: DeckPointer
 var feedback: DeckFeedback
 var phone: PhoneLink
 var _anchor: Node3D
@@ -53,6 +56,14 @@ func attach(r: XRRig) -> void:
 	add_child(pointer)
 	pointer.setup(rig, deck)
 	pointer.clicked.connect(func(): feedback.pulse("right", 0.25, 0.02))   # лёгкий отклик правой руки на нажатие
+	breach_panel = BreachPanel.new()
+	breach_panel.name = "BreachPanel"
+	add_child(breach_panel)   # в мире, а не на руке: WorldUI сидит в корне сцены и сам не двигается
+	breach_pointer = DeckPointer.new()
+	add_child(breach_pointer)
+	breach_pointer.setup(rig, breach_panel)
+	breach_pointer.clicked.connect(func(): feedback.pulse("right", 0.25, 0.02))
+	breach_panel.trap_felt.connect(func(): feedback.pulse("left", 0.7, 0.15))   # ловушка: импульс левого контроллера
 	_place()
 
 

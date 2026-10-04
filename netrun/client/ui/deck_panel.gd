@@ -483,6 +483,11 @@ func _on_call_changed(state: Dictionary) -> void:
 
 # ---------------------------------------------------------------- указатель
 
+## Размер текстуры панели, px (указатель переводит попадание луча в пиксель этого размера).
+func view_size() -> Vector2i:
+	return VIEW_SIZE
+
+
 ## Глобальная поза поверхности панели (центр, лицом к +Z): по ней указатель считает попадание луча.
 func surface_transform() -> Transform3D:
 	return _surface.global_transform
