@@ -27,10 +27,18 @@ devbox — docs/netrun-devbox.md, «Очки Pico 4 по USB».
 - **APK очков собирается без `server/` и `tests/`** (exclude_filter пресета). Глобальный `class_name` оттуда в коде клиента экспорт не
   замечает, а на очках это ошибка разбора: так `main.gd` (ссылки на `WorldServer`, `BotClient`) не грузился. Сервер и бота `main.gd`
   грузит по пути; сторож — `tests/client_export_test.gd`.
-- **Адрес и токен.** Godot 4.7 снимает `command_line_params` у экспортированной активности (`GodotAppLauncher`), а неэкспортированную
-  `GodotApp` оболочка adb не запускает — `am start … --esa command_line_params …` до игры аргументы не доносит (`args=""`,
-  `net.skip reason=no_token`). Работает `command_line/extra_args` пресета (уходит в `assets/_cl_`), например
-  `-- --host=10.10.0.10 --token=t03:<токен>` — только в локальной копии, токен не коммитить. Как очки получают токен на игре — не решено.
+- **Адрес и токен — файл `netrun.cfg`** (`NetConfig.from_sources`), без пересборки APK: у каждых очков свой токен терминала.
+  Кладётся с devbox/Mac одной командой, пока очки подключены по USB (или по `adb connect`):
+  `PICO_SERIAL=<serial> netrun/tools/pico.sh provision --host=10.10.0.10 --token=t03:<секрет>` (токен можно и переменной `NETRUN_TOKEN`,
+  чтобы он не попал в историю shell). `provision --show` показывает файл (секрет скрыт), `provision --reset` удаляет.
+  Файл — во внешнем каталоге приложения `/sdcard/Android/data/com.megablok10.netrun/files/netrun.cfg`: `adb push` пишет туда в любой
+  сборке, приложение читает без разрешений. Запасной путь — `user://netrun.cfg` (`run-as` в отладочной сборке). **`adb uninstall`
+  стирает файл** (`install -r` — нет): после смены подписи APK `provision` повторить. Клиент читает файл при старте; в журнале
+  строка `net.config file=… host=… terminal=t03 token=set` (сам токен в журнал не пишется, в `args` запуска его тоже скрывает),
+  неверное поле — `net.config.warn`, нет токена — `net.skip reason=no_token looked=<пути>`. Аргументы (`--host=`, `--port=`, `--token=`)
+  перекрывают поля файла; в пресете `command_line/extra_args` адрес и токен больше не нужны (годится для сборки на ПК и отладки).
+  Почему не `am start --esa`: Godot 4.7 снимает `command_line_params` у экспортированной активности (`GodotAppLauncher`), а
+  неэкспортированную `GodotApp` оболочка adb не запускает — аргументы до игры не доходят (`args=""`).
 - **Граница.** Нет границы (`GuardianSystem::Failed to init Boundary` в logcat) — рантайм открывает поверх приложения её настройку
   (`com.pvr.seethrough.setting`), приложение через ~1 с встаёт на паузу, XR-сессия остаётся IDLE, до связи дело не доходит
   (`app.pause`). Нужен человек в очках: задать границу (сидячую), потом запуск.

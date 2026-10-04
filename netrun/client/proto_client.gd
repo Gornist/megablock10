@@ -2,12 +2,15 @@ class_name ProtoClient
 extends Node
 ## Клиент прототипа (V3), общий для Pico 4 и плоской сборки: сцена, XR-риг, сеть, журнал в файл.
 ## Журнал (user://logs/netrun-*.log): start, mode, xr, comfort (+ comfort.warn), rig.recenter, rig.teleport, teleport.denied,
-## net.* (в том числе net.reconnect), grab.*, app.pause/resume, frame.slow.
+## net.* (в том числе net.config, net.reconnect), grab.*, app.pause/resume, frame.slow.
 ## Аргументы разработки: `--walk` (плоская сборка: ходьба WASD), `--turn=snap|smooth` (режим поворота поверх comfort.cfg).
+## Адрес сервера и токен — из netrun.cfg на очках и аргументов (NetConfig.from_sources); сам токен в журнал не попадает.
 
 const SLOW_LOG_MIN_GAP_MS := 250  # кадры дольше 1/72 с в журнал — не чаще раза в 250 мс (остальные — счётчиком)
 
 var log_file := MbLog.new()
+## Где искать netrun.cfg (тесты подставляют свои).
+var config_paths: PackedStringArray = NetConfig.default_paths()
 var scene: Node3D
 var net: NetClient
 var trace_audio: TraceAudio
@@ -28,7 +31,7 @@ var _last_slow_log_ms := -SLOW_LOG_MIN_GAP_MS
 
 func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	log_file.open()
-	log_file.log("start", {"mode": mode, "godot": Engine.get_version_info().string, "args": " ".join(args), "log": log_file.path})
+	log_file.log("start", {"mode": mode, "godot": Engine.get_version_info().string, "args": NetConfig.redact_args(args), "log": log_file.path})
 	scene = preload("res://client/rig_test_scene.gd").new()
 	add_child(scene)
 	scene.rig.xr_failed.connect(func(reason: String): log_file.log("xr", {"enabled": false, "reason": reason}))
@@ -44,9 +47,12 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	else:
 		log_file.log("xr", {"enabled": false, "reason": "flat_build"})
 		scene.rig.recenter()
-	var cfg := NetConfig.from_args(args)
+	var cfg := NetConfig.from_sources(args, config_paths)
+	for w in cfg.warnings:
+		log_file.log("net.config.warn", {"msg": w})
+	log_file.log("net.config", cfg.log_fields())
 	if cfg.token.is_empty():
-		log_file.log("net.skip", {"reason": "no_token"})
+		log_file.log("net.skip", {"reason": "no_token", "looked": " ".join(config_paths)})
 		return
 	net = NetClient.new()
 	net.name = "Net"

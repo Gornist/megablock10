@@ -3,7 +3,7 @@ set -e
 
 # Скрипт управления Pico 4 без интернета: установка APK, запуск, сбор журналов, снимки экрана, информация об устройстве.
 # Использование: pico.sh <команда> [аргумент]
-# Команды: install <apk>, launch, stop, log, shot, info, tune
+# Команды: install <apk>, launch, stop, log, shot, info, tune, provision
 
 # Имя пакета из netrun/export_presets.cfg
 PACKAGE="com.megablok10.netrun"
@@ -48,6 +48,10 @@ show_help() {
   info             Модель, прошивка, заряд, Wi-Fi SSID и IP
   tune [ключ=значение ...]   Настройки комфорта (user://comfort.cfg на очках): показать, изменить, перезапустить приложение,
                    напечатать строку `comfort` из журнала. `tune --reset` — удалить файл (значения по умолчанию)
+  provision --host=<адрес> --token=<терминал:токен> [--port=<порт>]
+                   Положить на очки netrun.cfg: адрес сервера мира и токен терминала без пересборки APK
+                   (токен можно передать и переменной NETRUN_TOKEN, чтобы он не попал в историю shell).
+                   `provision --show` — что лежит на очках (секрет токена скрыт), `provision --reset` — удалить файл
 
 Переменная окружения:
   PICO_SERIAL      Serial устройства (если не задана, используется единственное подключённое)
@@ -60,6 +64,8 @@ show_help() {
   pico.sh info
   pico.sh tune turn_speed_deg_s=45 teleport_range=3.5
   pico.sh tune --reset
+  pico.sh provision --host=10.10.0.10 --token=t03:<секрет>
+  PICO_SERIAL=<serial> pico.sh provision --show
 EOF
 }
 
@@ -287,6 +293,95 @@ cmd_tune() {
   echo "$lines"
 }
 
+# Файл адреса сервера и токена (netrun/shared/net/net_config.gd, NetConfig.from_sources). Лежит во внешнем каталоге приложения:
+# adb push пишет туда в любой сборке (run-as нужен отладочной), клиент читает без разрешений. `adb uninstall` каталог стирает,
+# `install -r` — нет. Клиент читает файл при старте приложения.
+CFG_DIR="/sdcard/Android/data/$PACKAGE/files"
+CFG_FILE="$CFG_DIR/netrun.cfg"
+
+# netrun.cfg с очков, секрет токена скрыт: token = "t03:секрет" -> token = "t03:***".
+cfg_show() {
+  adb -s "$1" shell "cat $CFG_FILE" 2>/dev/null | tr -d '\r' \
+    | sed -E 's/^([[:space:]]*token[[:space:]]*=[[:space:]]*")([^":]*:)?[^"]*"/\1\2***"/'
+}
+
+# provision --host=<адрес> --token=<терминал:токен> [--port=<порт>] | --show | --reset
+cmd_provision() {
+  local host="" port="" token="${NETRUN_TOKEN:-}" mode=write arg
+  for arg in "$@"; do
+    case "$arg" in
+      --host=*) host="${arg#--host=}" ;;
+      --port=*) port="${arg#--port=}" ;;
+      --token=*) token="${arg#--token=}" ;;
+      --show) mode=show ;;
+      --reset) mode=reset ;;
+      *) echo "Ошибка: неизвестный аргумент $arg (provision --host= --token= [--port=] | --show | --reset)" >&2; return 1 ;;
+    esac
+  done
+
+  local serial
+  serial=$(select_device) || return 1
+
+  if [[ "$mode" == "show" ]]; then
+    local shown
+    shown=$(cfg_show "$serial")
+    if [[ -z "$shown" ]]; then
+      echo "На $serial нет $CFG_FILE: без файла (и без --token= в пресете, user://netrun.cfg в отладочной сборке) клиент не подключится к серверу."
+    else
+      echo "--- $CFG_FILE на $serial ---"
+      echo "$shown"
+    fi
+    return 0
+  fi
+  if [[ "$mode" == "reset" ]]; then
+    adb -s "$serial" shell "rm -f $CFG_FILE"
+    echo "$CFG_FILE на $serial удалён."
+    return 0
+  fi
+
+  # Проверка до записи: файл читает клиент, неверная строка превратилась бы в молчаливое «нет связи» на площадке.
+  if [[ -z "$host" || -z "$token" ]]; then
+    echo "Ошибка: нужны --host=<адрес сервера> и --token=<терминал:токен> (или переменная NETRUN_TOKEN)" >&2
+    return 1
+  fi
+  if [[ ! "$host" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    echo "Ошибка: адрес «$host» — ожидается IP или имя (буквы, цифры, точка, дефис)" >&2
+    return 1
+  fi
+  if [[ -n "$port" ]] && { [[ ! "$port" =~ ^[0-9]+$ ]] || (( port < 1 || port > 65535 )); }; then
+    echo "Ошибка: порт «$port» — ожидается число 1…65535" >&2
+    return 1
+  fi
+  local bad_token='^[^"\\[:cntrl:]]+$'
+  if [[ ! "$token" =~ $bad_token ]]; then
+    echo "Ошибка: в токене нельзя кавычки, обратную косую черту и управляющие символы" >&2
+    return 1
+  fi
+  if [[ "$token" != *:* ]]; then
+    echo "Предупреждение: токен без номера терминала (ожидается «t03:секрет»); сервер примет его только по старому пути без привязки к терминалу." >&2
+  fi
+  if ! adb -s "$serial" shell pm path "$PACKAGE" 2>/dev/null | grep -q package; then
+    echo "Предупреждение: $PACKAGE на $serial не установлен. Файл останется после 'install -r', но 'adb uninstall' его стирает." >&2
+  fi
+
+  local tmp
+  tmp=$(mktemp)
+  {
+    echo "[net]"
+    echo
+    echo "host=\"$host\""
+    if [[ -n "$port" ]]; then echo "port=$port"; fi
+    echo "token=\"$token\""
+  } > "$tmp"
+  adb -s "$serial" shell "mkdir -p $CFG_DIR"
+  adb -s "$serial" push "$tmp" "$CFG_FILE" > /dev/null
+  rm -f "$tmp"
+
+  echo "Записано на $serial:"
+  cfg_show "$serial"
+  echo "Приложение читает файл при старте: pico.sh stop && pico.sh launch, затем в журнале (pico.sh log) строка net.config."
+}
+
 # Main
 if [[ $# -eq 0 ]]; then
   show_help
@@ -315,6 +410,10 @@ case "$1" in
   tune)
     shift
     cmd_tune "$@"
+    ;;
+  provision)
+    shift
+    cmd_provision "$@"
     ;;
   *)
     echo "Неизвестная команда: $1" >&2

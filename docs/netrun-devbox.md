@@ -126,12 +126,13 @@ godot -- --flat --host=127.0.0.1 --port=7777 --token=t1
 ### 4. Очки Pico 4 по USB
 
 Очки подключены к devbox кабелем; `adb` — после `. ~/netrun-env.sh`. Подключено ещё что-то (телефон, эмулятор) — `export ANDROID_SERIAL=<serial очков>`
-(иначе `more than one device`). Известные ограничения очков (расширение айтрекинга, граница, режим рук, подпись, адрес и токен) —
+(иначе `more than one device`). Известные ограничения очков (расширение айтрекинга, граница, режим рук, подпись, адрес и токен — файл `netrun.cfg`) —
 `netrun/README.md`, «Pico 4».
 
 - **Сборка для очков** — в своей копии проекта (не в `~/wt-godot`): `android/build` из `android_source.zip` шаблонов 4.7.2,
   `godot --headless --path <копия> --export-debug "Client Pico 4 (Android)"` (Gradle запускает сам экспорт, ~1,5 мин).
-  Адрес сервера мира и токен — в `command_line/extra_args` пресета копии: `-- --host=<LAN-адрес devbox> --token=t1`.
+  Адрес сервера мира и токен — файлом на очках: `netrun/tools/pico.sh provision --host=<LAN-адрес devbox> --token=t1` (после каждого
+  `adb uninstall` заново, `install -r` файл сохраняет); запасной способ для сборки на ПК — `-- --host=… --token=…` в `command_line/extra_args`.
 - **Цикл:** `adb uninstall` (если подпись другая), `adb install -r <apk>` — **смотреть вывод**: при отказе на очках остаётся старая сборка;
   `adb logcat -c`, `tools/pico.sh launch`, `adb logcat -d | grep -E " godot +:|Fatal signal|F DEBUG"`; журнал игры — `tools/pico.sh log`
   (`user://logs` — внутренняя память приложения, читается через `run-as`).
