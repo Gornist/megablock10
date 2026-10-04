@@ -14,11 +14,10 @@ case $cmd in
     [ -n "$name" ] || { echo "укажите имя"; exit 2; }
     git -C "$MAIN" fetch -q origin
     git -C "$MAIN" worktree add -b "agent/$name" "$dir" "${3:-origin/main}"
-    # Неотслеживаемое, но нужное для сборки: путь к Android SDK. node_modules — ссылкой: одинаковый package-lock, ставить заново долго.
+    # Неотслеживаемое, но нужное для сборки: путь к Android SDK. node_modules не ставим и не ссылаемся на основную копию: ссылка давала
+    # чужой package-lock и нативный better-sqlite3 под другую версию Node (пуш падал на 259 тестах сервера, 04.10). Ставит при первой нужде
+    # scripts/check.sh (npm ci) или вручную admin-web/tools/wt-deps.sh.
     [ -f "$MAIN/local.properties" ] && cp "$MAIN/local.properties" "$dir/"
-    for m in server client; do
-      [ -d "$MAIN/admin-web/$m/node_modules" ] && ln -s "$MAIN/admin-web/$m/node_modules" "$dir/admin-web/$m/node_modules"
-    done
     git -C "$dir" config core.hooksPath .githooks
     echo "готово: $dir (ветка agent/$name). Работайте там: cd $dir"
     echo "Стенд e2e общий на машину: если он занят другой копией, up.sh откажет — остановите его (scripts/e2e/down.sh) или подождите.";;

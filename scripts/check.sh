@@ -11,9 +11,22 @@ ROOT=$PWD; LOGS=/tmp/mb10-check; mkdir -p $LOGS
 export JAVA_HOME=${JAVA_HOME:-/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home}
 # Кодировка вывода клиента Gradle берётся из локали (stdout.encoding): при пустом LANG (облачная сессия, cron) русский текст — «???».
 [ "$(locale charmap 2>/dev/null)" = UTF-8 ] || export LC_ALL=C.UTF-8
-# Node для сервера/клиента: LTS 22 (зависимости сервера требуют >=22), запасной — 20; NODE_BIN переопределяет. На CI node берётся из setup-node.
-for d in "${NODE_BIN:-}" /opt/homebrew/opt/node@22/bin /opt/homebrew/opt/node@20/bin; do [ -n "$d" ] && [ -d "$d" ] && { NODE_BIN=$d; break; }; done
-export PATH="${NODE_BIN:+$NODE_BIN:}$PATH"
+# Node для сервера/клиента — не ниже 22: на 20 better-sqlite3 13 падает SIGSEGV, vitest 5 не стартует. Берётся первый подходящий из NODE_BIN,
+# node@22, node@26, /opt/homebrew/bin, PATH. Раньше был тихий откат на node@20 — пуш падал на 259 тестах сервера (04.10); теперь нет подходящего — шаги
+# admin-web падают с понятной причиной.
+NODE_DIR=
+for d in "${NODE_BIN:-}" /opt/homebrew/opt/node@22/bin /opt/homebrew/opt/node@26/bin /opt/homebrew/bin "$(dirname "$(command -v node 2>/dev/null || echo .)")"; do
+  [ -n "$d" ] && [ -x "$d/node" ] && [ "$("$d/node" -p 'process.versions.node.split(".")[0]')" -ge 22 ] 2>/dev/null && { NODE_DIR=$d; break; }
+done
+export PATH="${NODE_DIR:+$NODE_DIR:}$PATH"
+# npm_in server|client 'команда' — в admin-web/<часть> со своими зависимостями. Симлинк на node_modules основной копии (так делали старые worktree)
+# собран под чужой package-lock и чужую версию Node (NODE_MODULE_VERSION) — заменяется настоящей установкой; основной копии это не касается.
+npm_in() {
+  [ -n "$NODE_DIR" ] || { echo "нужен Node >= 22: brew install node@22 или NODE_BIN=<каталог с node>"; return 1; }
+  ( cd "admin-web/$1" || exit 1
+    if [ -L node_modules ] || [ ! -d node_modules ]; then rm -f node_modules; npm ci --silent --no-audit --no-fund || exit 1; fi
+    eval "$2" )
+}
 ALL=0; E2E=0; FAST=0; for a in "$@"; do case $a in --all) ALL=1;; --e2e) E2E=1; ALL=1;; --fast) FAST=1;; esac; done
 changed() { [ $ALL -eq 1 ] || { git diff --name-only origin/main 2>/dev/null; git ls-files --others --exclude-standard; } | grep -q "^$1"; }
 declare -a TIMES; FAIL=0
@@ -37,11 +50,11 @@ if changed app || changed kit || changed rules; then
   if [ $FAST -eq 1 ]; then TIMES+=("app: unit- и скриншот-тесты: не в хуке (CI; вручную — scripts/check.sh --all)")
   else step "app: unit- и скриншот-тесты" ./gradlew -q --console=plain verifyPaparazziDebug; fi
 else skip "app: unit- и скриншот-тесты"; fi
-if changed admin-web/server; then step "server: тесты" bash -c 'cd admin-web/server && npm test --silent'; else skip "server: тесты"; fi
+if changed admin-web/server; then step "server: тесты" npm_in server 'npm test --silent'; else skip "server: тесты"; fi
 if [ $FAST -eq 1 ]; then TIMES+=("admin-web: сборка: не в хуке (CI)")
 elif changed admin-web; then
-  step "server: сборка" bash -c 'cd admin-web/server && npm run build --silent'
-  step "client: тесты, линт и сборка" bash -c 'cd admin-web/client && npm test --silent && npm run lint --silent && npm run build --silent'
+  step "server: сборка" npm_in server 'npm run build --silent'
+  step "client: тесты, линт и сборка" npm_in client 'npm test --silent && npm run lint --silent && npm run build --silent'
 else skip "admin-web: сборка"; fi
 if [ $E2E -eq 1 ] && [ $FAIL -eq 0 ]; then
   step "e2e: сборка APK" ./gradlew -q --console=plain assembleDebug
