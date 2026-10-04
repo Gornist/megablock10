@@ -1,5 +1,6 @@
 package com.megablok10.netrun.bridge
 
+import com.megablok10.rules.RamCapacity
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -76,18 +77,20 @@ class ValueOps(
         terminal: String,
         items: List<String>,
         protectedItem: String,
+        ram: Int? = null,
     ): OpResult {
         if (runner.isEmpty() || !validDeck(items, protectedItem)) {
             throw StoreException("bad_request", "дека пуста, с повторами или защищённого нет в ней")
         }
+        // `ram` входит в параметры `rid` только если передан: повтор запроса v1, сохранённого до обновления, не даёт `rid_mismatch`.
         val params = VJ.obj(
             "op" to VJ.p("submit_deck"), "runner" to VJ.p(runner), "callsign" to VJ.p(callsign),
             "terminal" to VJ.p(terminal), "items" to VJ.arr(items), "protected" to VJ.p(protectedItem),
-        )
+        ).let { base -> if (ram == null) base else VJ.with(base, "ram" to VJ.p(ram.toLong())) }
         return execute(caller, "submit_deck", rid, params) { tx, ctx ->
             val docs = items.map { tx.get(ITEM, it) ?: throw StoreException("not_found", "предмета $it нет") }
             val nodeId = try {
-                checkSubmit(tx, runner, terminal, docs)
+                checkSubmit(tx, runner, terminal, docs, ram)
             } catch (f: Fail) {
                 // Отказ: предметы остаются в inbox, Мост сам выдаёт их обратно в этой же транзакции.
                 val refundRid = "refund:" + rid.removePrefix("enter:")
@@ -98,7 +101,7 @@ class ValueOps(
                 }
                 throw f
             }
-            doSubmit(tx, caller, rid, runner, callsign, terminal, nodeId, docs, protectedItem)
+            doSubmit(tx, caller, rid, runner, callsign, terminal, nodeId, docs, protectedItem, sessionRam(ram, docs))
         }
     }
 
@@ -120,10 +123,11 @@ class ValueOps(
     }
 
     /** Все проверки входа, включая выбор узла (учебный или терминала); возвращает узел сессии. Любой отказ ведёт к возврату. */
-    private fun checkSubmit(tx: DocStore.Tx, runner: String, terminal: String, docs: List<Doc>): String {
+    private fun checkSubmit(tx: DocStore.Tx, runner: String, terminal: String, docs: List<Doc>, ram: Int?): String {
         for (d in docs) {
             if (VJ.str(d.data, "owner") != "inbox:$runner") fail("wrong_owner", "${d.id} не в inbox игрока", d)
         }
+        checkRam(ram, docs)
         val rd = tx.get(RUNNER, runnerDocId(runner))
         checkRunner(tx, rd)
         val open = store.list(SESSION).filter { VJ.str(it.data, "state") != "closed" }
@@ -141,6 +145,25 @@ class ValueOps(
         return tutorial
     }
 
+    /** Сумма длин цепочек всех сданных демонов (с защищённым, как `NetrunEntry.validate`). */
+    private fun chainsOf(docs: List<Doc>): Int = docs.sumOf { ItemFacts.daemon(it)?.sequence?.size ?: 0 }
+
+    /**
+     * RAM деки (протокол, раздел 8). v2 (`ram` из запроса): вне 6..13 или цепочки не помещаются в `ram` — `ram_exceeded`. v1 (`ram` нет):
+     * телефон проверил деку против своей RAM, Мост её не знает, поэтому проверяется только потолок 13.
+     */
+    private fun checkRam(ram: Int?, docs: List<Doc>) {
+        val chains = chainsOf(docs)
+        when {
+            ram != null && !RamCapacity.isValid(ram) -> fail("ram_exceeded", "RAM $ram вне ${RamCapacity.DEFAULT}..${RamCapacity.MAX}")
+            ram != null && chains > ram -> fail("ram_exceeded", "демоны ($chains) не помещаются в RAM $ram")
+            ram == null && chains > RamCapacity.MAX -> fail("ram_exceeded", "демоны ($chains) не помещаются в RAM ${RamCapacity.MAX}")
+        }
+    }
+
+    /** RAM сессии: из запроса v2; для v1 — `max(6, сумма цепочек)`. */
+    private fun sessionRam(ram: Int?, docs: List<Doc>): Int = ram ?: maxOf(RamCapacity.DEFAULT, chainsOf(docs))
+
     @Suppress("LongParameterList")
     private fun doSubmit(
         tx: DocStore.Tx,
@@ -152,19 +175,18 @@ class ValueOps(
         nodeId: String,
         docs: List<Doc>,
         protectedItem: String,
+        ram: Int,
     ): JsonObject {
         val rd = tx.get(RUNNER, runnerDocId(runner))
         val now = clock()
         val sid = "s_" + VJ.sha256Hex("${caller.namespace}|$rid").take(16)
-        // RAM по правилу запроса входа v1 (протокол, раздел 8): телефон проверил деку против своей RAM, Мост её не знает.
-        val chains = docs.sumOf { ItemFacts.daemon(it)?.sequence?.size ?: 0 }
         tx.put(
             SESSION, sid, 0,
             VJ.obj(
                 "state" to VJ.p("pending"), "terminal" to VJ.p(terminal), "node" to VJ.p(nodeId),
                 "runner" to VJ.p(runner), "callsign" to VJ.p(callsign), "enter_rid" to VJ.p(rid.removePrefix("enter:")),
                 "confirmed_at" to VJ.p(0L), "loot_eddies" to VJ.p(0L), "outcome" to JsonNull, "finished_at" to VJ.p(0L),
-                "ram" to VJ.p(maxOf(MIN_RAM, chains).toLong()), "loaded" to VJ.arr(docs.map { it.id }),
+                "ram" to VJ.p(ram.toLong()), "loaded" to VJ.arr(docs.map { it.id }),
                 "breach" to JsonNull, "opened" to JsonArray(emptyList()),
                 "world" to VJ.obj("connected" to VJ.p(false), "trace" to VJ.p(0L)),
             ),
@@ -681,7 +703,6 @@ class ValueOps(
         const val BURNED_BY_MASTER = "burned:master"
         private val STOCK_KINDS = setOf("SHARD", "DAEMON")
         private const val MAX_RID = 128
-        private const val MIN_RAM = 6 // RAM нетраннера по умолчанию (`Identity.RAM_CAPACITY_DEFAULT`), нижняя граница RAM сессии
         private const val MS = 1000L
         private const val DEFAULT_PAUSE_S = 180L // пауза нетраннера после выброса Soft ICE (`soft_ice_reentry_pause_s`)
         private const val DEFAULT_LOCKDOWN_S = 600L // локдаун узла для всех после выброса (`node_lockdown_s`)

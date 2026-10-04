@@ -133,7 +133,7 @@ class PhoneInbox(
         val ids = items.map { it!!.id }
         val protectedId = items[req.transfers.indexOf(req.protectedTransfer)]!!.id
         val result = try {
-            ops.submitDeck(caller, "enter:${req.rid}", req.runner, req.callsign, req.terminal, ids, protectedId)
+            ops.submitDeck(caller, "enter:${req.rid}", req.runner, req.callsign, req.terminal, ids, protectedId, req.ram)
         } catch (e: StoreException) {
             return@synchronized reply(req, fail(e.code, e.message.orEmpty()))
         }

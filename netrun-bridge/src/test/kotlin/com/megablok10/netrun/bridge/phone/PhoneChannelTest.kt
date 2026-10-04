@@ -72,6 +72,40 @@ class PhoneChannelTest {
         assertFalse(VJ.bool(r.itemOf("tr-2").data, "protected"))
     }
 
+    @Test fun enterRequestV2WritesRamIntoSession() {
+        val r = rig()
+        val p = r.phone().track()
+        p.sendCard(p.itemCard("tr-1", "DAEMON", FakePhone.daemonPayload("d1")))
+        p.sendEnter(p.enterRequest("e-1", "t03", listOf("tr-1"), "tr-1", ram = 9))
+        r.await("ответ на вход v2") { p.entered.isNotEmpty() }
+        val reply = p.entered.single()
+        assertTrue(reply.msg, reply.ok)
+        assertEquals(9L, VJ.lng(r.store.get("session", reply.session)!!.data, "ram"))
+    }
+
+    @Test fun enterRequestV1StillAcceptedWithOldRule() {
+        val r = rig()
+        val p = r.phone().track()
+        p.sendCard(p.itemCard("tr-1", "DAEMON", FakePhone.daemonPayload("d1")))
+        p.sendEnter(p.enterRequest("e-1", "t03", listOf("tr-1"), "tr-1"))
+        r.await("ответ на вход v1") { p.entered.isNotEmpty() }
+        assertTrue(p.entered.single().ok)
+        assertEquals(6L, VJ.lng(r.store.get("session", p.entered.single().session)!!.data, "ram"))
+    }
+
+    @Test fun enterRequestV2WithTooLittleRamIsRefusedAndCardsGoBack() {
+        val r = rig()
+        val p = r.phone().track()
+        for (i in 1..4) p.sendCard(p.itemCard("tr-$i", "DAEMON", FakePhone.daemonPayload("d$i"))) // 4 × 2 = 8 клеток
+        p.sendEnter(p.enterRequest("e-1", "t03", listOf("tr-1", "tr-2", "tr-3", "tr-4"), "tr-1", ram = 6))
+        r.await("отказ") { p.entered.isNotEmpty() }
+        assertFalse(p.entered.single().ok)
+        assertEquals("ram_exceeded", p.entered.single().code)
+        r.flush()
+        r.await("все четыре карточки вернулись") { p.itemCards().size == 4 }
+        assertEquals(0, r.store.list("session").size)
+    }
+
     @Test fun repeatedCardMakesNoSecondItemButRepeatsReceipt() {
         val r = rig()
         val p = r.phone().track()
