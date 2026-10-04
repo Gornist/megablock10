@@ -138,8 +138,9 @@ func test_flat_client_scene_follows_server_state() -> void:
 	assert_bool(await _wait_for(func(): return scene.ice_node("ice_1") != null, 10.0)).is_true()
 	assert_int(scene.deck_state.size()).is_equal(2)
 	assert_str(scene.world_ui.deck.row_texts()[1]).contains("Призрак")
-	scene.use_slot(0)  # ghost_1
 	var ds := _node.session_state(SESSION)
+	ds.set_charged("ghost_1")   # защитный демон вне взлома срабатывает только заряженным (К6; заряд сеткой — charge_client_test)
+	scene.use_slot(0)  # ghost_1
 	assert_bool(await _wait_for(func(): return ds.is_ghost(_node.now()), 5.0)).is_true()
 	assert_bool(await _wait_for(func(): return str(scene.world_ui.deck.row_texts()[1]).contains("с"), 5.0)).is_true()
 	await proto.net.drop()

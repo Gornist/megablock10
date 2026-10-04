@@ -118,6 +118,11 @@ func request_breach(vault: String, daemon_ids: Array) -> bool:
 	return _send(WorldMsg.encode_fields(WorldMsg.BK_OPEN, {"vault": vault, "daemons": daemon_ids}))
 
 
+## Заряд защитного демона (К6): начать мини-игру на запястье; клетки и отмена — те же request_breach_tap / request_breach_cancel.
+func request_charge(daemon_id: String) -> bool:
+	return _send(WorldMsg.encode_fields(WorldMsg.CHARGE, {"daemon": daemon_id}))
+
+
 func request_breach_tap(cell: Vector2i) -> bool:
 	return _send(WorldMsg.encode_fields(WorldMsg.BK_TAP, {"cell": [cell.x, cell.y]}))
 

@@ -79,9 +79,9 @@
       "protected": false,
       "origin": "phone:KEY_ALICE",
       "daemon": {
-        "effect": "BLACKOUT",
+        "effect": "MINER",
         "tier": 1,
-        "name": "Затмение",
+        "name": "Майнер",
         "cells": [
           "55",
           "7A"

@@ -60,6 +60,32 @@ func get_def(id: String) -> DaemonDef:
 	return _defs.get(id)
 
 
+## Можно ли зарядить демона сейчас: "" — можно, иначе код отказа (unknown_daemon, not_in_deck, effect_unsupported, not_chargeable, already_charged, cooldown).
+## Заряжать во время перезарядки нельзя: после запуска сначала перезарядка, потом снова заряд.
+func charge_check(session: DaemonSession, daemon_id: String, now: float) -> String:
+	var def: DaemonDef = _defs.get(daemon_id)
+	if def == null:
+		return "unknown_daemon"
+	if not session.deck.has(daemon_id):
+		return "not_in_deck"
+	if def.unsupported_reason != "":
+		return "effect_unsupported"
+	if not DaemonEffects.is_chargeable(def.effect):
+		return "not_chargeable"
+	if session.is_charged(daemon_id):
+		return "already_charged"
+	if session.cooldown_left(daemon_id, now) > 0.0:
+		return "cooldown"
+	return ""
+
+
+## Демон из деки, который заряжается (защитный и поддержанный в Сети).
+func is_chargeable(daemon_id: String) -> bool:
+	var def: DaemonDef = _defs.get(daemon_id)
+	return def != null and def.unsupported_reason == "" and DaemonEffects.is_chargeable(def.effect)
+
+
+## Запустить демона. Защитный (GHOST, JITTER, TIMESKEW, BLACKOUT) — только заряженного: заряд расходуется, начинается перезарядка (not_charged — заряда нет).
 func apply(session: DaemonSession, daemon_id: String, target: Dictionary, now: float) -> Dictionary:
 	var def: DaemonDef = _defs.get(daemon_id)
 	if def == null:
@@ -70,7 +96,12 @@ func apply(session: DaemonSession, daemon_id: String, target: Dictionary, now: f
 		return {"ok": false, "error": "cooldown"}
 	if def.unsupported_reason != "":
 		return {"ok": false, "error": "effect_unsupported", "reason": def.unsupported_reason}
+	var chargeable := DaemonEffects.is_chargeable(def.effect)
+	if chargeable and not session.is_charged(daemon_id):
+		return {"ok": false, "error": "not_charged"}
 	var result := effects.run(def, session, target, now)
 	if result.get("ok", false):
+		if chargeable:
+			session.set_charged(daemon_id, false)
 		session.start_cooldown(daemon_id, now, def.cooldown_sec)
 	return result

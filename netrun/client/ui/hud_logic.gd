@@ -88,12 +88,15 @@ const EFFECT_TITLES := {
 	"TIMESKEW": "сигнал СБ позже", "BLACKOUT": "сигнал СБ не уйдёт", "DECRYPT": "расшифровка", "MINER": "добыча эдди",
 }
 
-## Состояние программы (st из state.cd сервера): готов / перезарядка N / активен N с / не работает в Сети. Без st (старый снимок, только
+## Состояние программы (st из state.cd сервера): готов / перезарядка N / активен N с / не работает в Сети; для защитных демонов, которые вне взлома
+## срабатывают только заряженными (chargeable, К6), «готов» значит «не заряжен», а st = charged — «ГОТОВ К ЗАПУСКУ». Без st (старый снимок, только
 ## перезарядка) — как раньше: «готово» или «N с».
-static func state_text(st: String, cooldown_left: float, active_left: float = 0.0) -> String:
+static func state_text(st: String, cooldown_left: float, active_left: float = 0.0, chargeable: bool = false) -> String:
 	match st:
 		"ready":
-			return "готов"
+			return "не заряжен" if chargeable else "готов"
+		"charged":
+			return "ГОТОВ К ЗАПУСКУ"
 		"cooldown":
 			return "перезарядка " + cooldown_text(cooldown_left)
 		"active":
@@ -103,8 +106,8 @@ static func state_text(st: String, cooldown_left: float, active_left: float = 0.
 	return cooldown_text(cooldown_left)
 
 
-## Тон состояния для цвета строки: ok (готов), warn (перезарядка), acc (активен), dim (не работает).
-static func state_tone(st: String, cooldown_left: float) -> String:
+## Тон состояния для цвета строки: ok (готов, заряжен), warn (перезарядка), acc (активен), dim (не работает, не заряжен).
+static func state_tone(st: String, cooldown_left: float, chargeable: bool = false) -> String:
 	match st:
 		"active":
 			return "acc"
@@ -112,9 +115,51 @@ static func state_tone(st: String, cooldown_left: float) -> String:
 			return "warn"
 		"unsupported":
 			return "dim"
-		"ready":
+		"charged":
 			return "ok"
+		"ready":
+			return "dim" if chargeable else "ok"
 	return "ok" if cooldown_left <= 0.0 else "warn"
+
+
+## Нужно ли показать у программы кнопку «ЗАРЯДИТЬ»: защитный демон, поддержанный в Сети, не заряжен, не на перезарядке и не действует.
+static func can_charge(st: String, chargeable: bool) -> bool:
+	return chargeable and st == "ready"
+
+
+## Подсказка под списком программ, если есть заряженные: чем запускать (VR — левый X; плоская сборка — цифра слота).
+const LAUNCH_HINT := "Левый X — запуск заряженного"
+
+## Текст отказа запуска (`daemon {ok: false, error}`) для строки-уведомления на деке.
+static func launch_error_text(error: String) -> String:
+	match error:
+		"not_charged":
+			return "Не заряжен: нажмите ЗАРЯДИТЬ"
+		"cooldown":
+			return "Перезарядка"
+		"effect_unsupported":
+			return "В Сети не работает"
+		"not_in_deck", "unknown_daemon":
+			return "Нет такой программы"
+	return "Нельзя запустить"
+
+
+## Отказ заряда (`bk_no` с mode = charge) словами для строки-уведомления на деке.
+static func charge_denied_text(reason: String, left: int = 0) -> String:
+	match reason:
+		"active":
+			return "Сейчас идёт другая мини-игра"
+		"charging":
+			return "Идёт заряд"
+		"cooldown":
+			return "Перезарядка: %s" % cooldown_text(float(left))
+		"charged":
+			return "Уже заряжен"
+		"not_chargeable":
+			return "Этот демон не заряжается"
+		"bad_daemon":
+			return "У демона нет цепочки"
+	return "Сейчас нельзя"
 
 
 ## Цепочка кодов демона строкой для моноширинного шрифта: «1C BD E9».
@@ -149,7 +194,7 @@ static func program_entries(cd: Array, info: Array, k: float) -> Array:
 			entry["st"] = st
 			if st == "active":
 				entry["active_left"] = maxf(0.0, float(c.get("until", k)) - k)
-		for key in ["tier", "cells", "effect", "unsupported"]:
+		for key in ["tier", "cells", "effect", "unsupported", "chargeable"]:
 			if meta.has(key):
 				entry[key] = meta[key]
 		out.append(entry)
@@ -164,14 +209,19 @@ static func deck_rows(deck: Dictionary) -> Array:
 	for d in deck.get("daemons", []):
 		var left := float(d.get("cooldown_left", 0.0))
 		var st := str(d.get("st", ""))
-		var state := state_text(st, left, float(d.get("active_left", 0.0)))
+		var chargeable := bool(d.get("chargeable", false))
+		var state := state_text(st, left, float(d.get("active_left", 0.0)), chargeable)
 		var name := str(d.get("name", d.get("id", "?")))
 		var effect := str(d.get("effect", ""))
 		rows.append({
 			"text": "%s  %s" % [name, state],
 			"name": name,
 			"state": state,
-			"tone": state_tone(st, left),
+			"tone": state_tone(st, left, chargeable),
+			"id": str(d.get("id", "")),
+			"chargeable": chargeable,
+			"charged": st == "charged",
+			"can_charge": can_charge(st, chargeable),
 			"selected": str(d.get("id", "")) == selected,
 			"ready": left <= 0.0 and st != "unsupported",
 			"tier": int(d.get("tier", 0)),

@@ -471,3 +471,62 @@ func test_teleport_near_a_vault_lands_on_the_pad_on_the_server_too() -> void:
 	p.net.request_teleport(Vector3(-1.0 + 0.9, 0, -9.0 + 0.5))
 	var pad := NodeLayout.vault_pad(NodeLayout.SHARD_SLOTS[0])
 	assert_bool(await _wait_for(func(): return NodeLayout.flat_distance(_server.get_avatar(S1).position, pad) < 0.05)).is_true()
+
+
+# ---------------------------------------------------------------- заряд и окна эффектов во взломе (К6)
+
+func test_open_windows_of_charged_daemons_go_to_the_bridge_with_the_breach_result() -> void:
+	var p := await _ready_peer("t03", S1)
+	var a: GrayNode = _world.node_of("b_a")
+	var ds := a.session_state(S1)
+	var now := a.now()
+	ds.ghost_until = now + 600.0
+	ds.timeskew_until = now + 600.0
+	ds.blackout_until = now + 600.0
+	var s0 := _slot("b_a", 0)
+	_stand_at(S1, "b_a", 0)
+	assert_bool(await _start(p, s0, [D_EXTRACT])).is_true()
+	await _solve(p)
+	assert_str(p.ends[0]["outcome"]).is_equal("SUCCESS")
+	# Мост получил в active все три окна: совпавшие эффекты ∪ активные (контракт 6.6) лежат в итоге сессии.
+	var effects: Array = _bridge.doc("session", S1)["data"]["breach"]["effects"]
+	assert_array(effects).contains_exactly_in_any_order(["EXTRACT_SHARD", "GHOST", "TIMESKEW", "BLACKOUT"])
+
+
+func test_a_closed_window_is_not_sent_to_the_bridge() -> void:
+	var p := await _ready_peer("t03", S1)
+	var a: GrayNode = _world.node_of("b_a")
+	var ds := a.session_state(S1)
+	ds.blackout_until = a.now() - 1.0   # окно кончилось до конца взлома
+	var s0 := _slot("b_a", 0)
+	_stand_at(S1, "b_a", 0)
+	assert_bool(await _start(p, s0, [D_EXTRACT])).is_true()
+	await _solve(p)
+	assert_array(_bridge.doc("session", S1)["data"]["breach"]["effects"]).is_equal(["EXTRACT_SHARD"])
+
+
+func test_charge_and_vault_breach_exclude_each_other() -> void:
+	var p := await _ready_peer("t03", S1)
+	var s0 := _slot("b_a", 0)
+	_stand_at(S1, "b_a", 0)
+	# идёт заряд -> взлом не начинается
+	p.net.request_charge(D_GHOST)
+	assert_bool(await _wait_for(func(): return p.mirror != null and p.mirror.mode == "charge")).is_true()
+	p.nos.clear()
+	p.net.request_breach(s0, [D_EXTRACT])
+	assert_bool(await _wait_for(func(): return not p.nos.is_empty())).is_true()
+	assert_str(p.nos[0]["reason"]).is_equal("charging")
+	p.net.request_breach_cancel()   # отмена относится к заряду, раз идёт он
+	assert_bool(await _wait_for(func(): return not p.ends.is_empty())).is_true()
+	assert_bool(p.ends[0]["charged"]).is_false()
+	# идёт взлом -> заряд не начинается
+	p.mirror = null
+	p.nos.clear()
+	p.ends.clear()
+	assert_bool(await _start(p, s0, [D_EXTRACT])).is_true()
+	p.nos.clear()
+	p.net.request_charge(D_GHOST)
+	assert_bool(await _wait_for(func(): return not p.nos.is_empty())).is_true()
+	assert_str(p.nos[0]["reason"]).is_equal("active")
+	assert_str(p.nos[0]["mode"]).is_equal("charge")
+	assert_bool(_world.node_of("b_a").charge.has_attempt(S1)).is_false()

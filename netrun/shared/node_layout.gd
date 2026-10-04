@@ -66,6 +66,8 @@ const BREACH_REACH := 3.0
 ## Колода по умолчанию (демоны из data/daemons) и названия для деки.
 const DEFAULT_DECK := ["ghost_1", "jitter_1"]
 const DAEMON_NAMES := {"ghost_1": "Призрак", "jitter_1": "Дрожь", "extract_shard_1": "Извлечение"}
+## Цепочки колоды по умолчанию (без Моста демоны приходят без цепочек): по ним работают заряд и взлом на стенде без Моста. Коды — из алфавита breach.json.
+const DEFAULT_DECK_CELLS := {"ghost_1": ["1C", "BD"], "jitter_1": ["55", "E9"]}
 
 
 static func in_room(p: Vector3) -> bool:
