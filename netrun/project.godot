@@ -25,5 +25,6 @@ textures/vram_compression/import_etc2_astc=true
 
 [xr]
 
+openxr/foveation_eye_tracked=false
 shaders/enabled=true
 openxr/enabled.android=true
