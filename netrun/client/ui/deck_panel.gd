@@ -1,9 +1,11 @@
 class_name DeckPanel
 extends Node3D
 ## Дека на руке: панель в мире; 2D-содержимое рисуется только в SubViewport и показывается на поверхности (Sprite3D).
-## Вкладки ДЕКА | ЧАТ | ЗВОНКИ: ДЕКА — список демонов (данные с сервера: {"daemons": [{id, name, cooldown_left}], "selected": id}), ЧАТ и ЗВОНКИ —
-## мессенджер и звонки из PhoneLink (сейчас фиктивный FakePhoneLink). Без связи с телефоном (set_phone не вызван или --phone=off)
-## вкладки ЧАТ и ЗВОНКИ скрыты, остаётся одна ДЕКА, как раньше.
+## Вкладки ДЕКА | ДОБЫЧА | ЧАТ | ЗВОНКИ: ДЕКА — полоса RAM и ПРОГРАММЫ (рабочие демоны: имя, тир, цепочка, эффект, состояние; данные с сервера:
+## {"daemons": [{id, name, cooldown_left, st?, active_left?, tier?, cells?, effect?, unsupported?}], "selected": id, "ram"?, "used"?, "ram_default"?}),
+## ДОБЫЧА — шарды, добытые демоны и эдди без действий (set_loot; вкладка появляется, когда сервер прислал деку), ЧАТ и ЗВОНКИ — мессенджер и звонки
+## из PhoneLink (сейчас фиктивный FakePhoneLink). Без связи с телефоном (set_phone не вызван или --phone=off) ЧАТ и ЗВОНКИ скрыты; пока
+## сервер не прислал деку (голая панель в тестах) нет и ДОБЫЧИ: остаётся одна ДЕКА, как раньше.
 ## Нажимает указатель правого контроллера (DeckPointer): события мыши идут прямо в SubViewport (push_pointer_event).
 
 ## Размер текстуры панели, px, и физическая ширина панели при масштабе 1, м (высота — по соотношению сторон): единственное место, где их
@@ -16,6 +18,7 @@ const PANEL_HEIGHT_M := PANEL_WIDTH_M * 384.0 / 512.0
 const MAX_FPS := 30.0
 
 const TAB_DECK := "deck"
+const TAB_LOOT := "loot"
 const TAB_CHAT := "chat"
 const TAB_CALLS := "calls"
 
@@ -33,11 +36,17 @@ var _frame: MbFrame
 var _tabs: MbTabs
 var _deck_scroll: ScrollContainer
 var _list: VBoxContainer
+var _loot_scroll: ScrollContainer
+var _loot_list: VBoxContainer
 var _chat: DeckChat
 var _calls: DeckCalls
 var _tab := TAB_DECK
 var _row_texts := PackedStringArray()
 var _shown_rows: Array = []
+var _shown_deck_key: Variant = null
+var _loot_texts := PackedStringArray()
+var _shown_loot: Variant = null
+var _loot_known := false
 var _calls_seen_missed := 0
 var _last_phase := PhoneLink.PHASE_IDLE
 var _dirty := true
@@ -73,6 +82,13 @@ func _ready() -> void:
 	DeckUi.expand(_list)
 	_deck_scroll.add_child(_list)
 	col.add_child(_deck_scroll)
+	_loot_scroll = ScrollContainer.new()
+	_loot_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	DeckUi.expand(_loot_scroll, true)
+	_loot_list = DeckUi.vbox(4)
+	DeckUi.expand(_loot_list)
+	_loot_scroll.add_child(_loot_list)
+	col.add_child(_loot_scroll)
 	_chat = DeckChat.new()
 	DeckUi.expand(_chat, true)
 	_chat.reply_sent.connect(func(tid: String, text: String): reply_sent.emit(tid, text))
@@ -89,6 +105,7 @@ func _ready() -> void:
 	_apply_tabs()
 	_show_tab(TAB_DECK)
 	set_deck({"daemons": [], "selected": ""})
+	_build_loot([], 0)
 
 
 ## Перерисовка по требованию, не чаще MAX_FPS: UPDATE_ALWAYS гнал бы лишний рендер каждого кадра в обоих глазах.
@@ -119,30 +136,136 @@ func _on_node_added(n: Node) -> void:
 
 func set_deck(deck: Dictionary) -> void:
 	var rows := HudLogic.deck_rows(deck)
+	var ram: Variant = HudLogic.ram_view(int(deck.get("ram", 0)), int(deck.get("used", 0)), bool(deck.get("ram_default", false)))
 	# Сервер шлёт состояние чаще, чем меняется текст: то же самое не перестраиваем и не перерисовываем.
-	if rows == _shown_rows and _list.get_child_count() > 0:
+	var key := [rows, ram]
+	if key == _shown_deck_key and _list.get_child_count() > 0:
 		return
+	_shown_deck_key = key
 	_shown_rows = rows
 	_dirty = true
 	DeckUi.clear(_list)
-	_row_texts = PackedStringArray(["ДЕМОНЫ"])
-	_list.add_child(DeckUi.section_title("ДЕМОНЫ", str(rows.size())))
+	_row_texts = PackedStringArray(["ПРОГРАММЫ"])
+	if ram != null:
+		_list.add_child(_ram_block(ram))
+	_list.add_child(DeckUi.section_title("ПРОГРАММЫ", str(rows.size())))
 	for row in rows:
 		var text: String = ("> " if row["selected"] else "  ") + row["text"]
 		_row_texts.append(text)
-		var plate := MbFrame.make(DeckTheme.PLATE, DeckTheme.ACC if row["selected"] else DeckTheme.PLATE_EDGE, MbShape.Form.TAB, DeckTheme.CUT_SMALL, 10, 5)
-		plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var l := DeckUi.label(text, DeckTheme.V_NAME)
-		l.add_theme_color_override("font_color", DeckTheme.OK if row["ready"] else DeckTheme.INK2)
-		plate.add_child(l)
-		_list.add_child(plate)
+		_list.add_child(_program_plate(row))
 	if rows.is_empty():
-		_list.add_child(DeckUi.label("Демонов нет", DeckTheme.V_DIM, false))
+		_list.add_child(DeckUi.label("Программ нет", DeckTheme.V_DIM, false))
+
+
+## Полоса RAM: «RAM  [██░░░░]  4/6» и метка «ПО УМОЛЧАНИЮ», если ёмкость условная (Мост её ещё не передаёт).
+func _ram_block(ram: Dictionary) -> Control:
+	var row := DeckUi.hbox(8)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(DeckUi.label("RAM", DeckTheme.V_NAME, false))
+	row.add_child(DeckUi.meter(float(ram["fraction"]), DeckTheme.BAD if ram["over"] else DeckTheme.ACC, 16))
+	var value := DeckUi.label(str(ram["text"]), DeckTheme.V_NAME, false)
+	row.add_child(value)
+	if ram["default"]:
+		row.add_child(_centered(DeckUi.tag("ПО УМОЛЧАНИЮ", "warn", false)))
+	return row
+
+
+## Плашка программы: имя, тир и состояние; ниже цепочка кодов (моноширинный, V_CODE) и эффект.
+func _program_plate(row: Dictionary) -> Control:
+	var tone: String = row["tone"]
+	var plate := MbFrame.make(DeckTheme.PLATE, DeckTheme.ACC if row["selected"] else DeckTheme.PLATE_EDGE, MbShape.Form.TAB, DeckTheme.CUT_SMALL, 10, 5)
+	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var col := DeckUi.vbox(2)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	plate.add_child(col)
+	var top := DeckUi.hbox(8)
+	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var name_l := DeckUi.label(("> " if row["selected"] else "") + row["name"], DeckTheme.V_NAME)
+	name_l.add_theme_color_override("font_color", DeckTheme.INK_STRONG if row["selected"] else DeckTheme.INK)
+	top.add_child(DeckUi.expand(name_l))
+	if int(row["tier"]) > 0:
+		top.add_child(DeckUi.label("тир %d" % int(row["tier"]), DeckTheme.V_DIM, false))
+	var state_l := DeckUi.label(row["state"], DeckTheme.V_NAME, false)
+	state_l.add_theme_color_override("font_color", DeckTheme.tone_color(tone))
+	top.add_child(state_l)
+	col.add_child(top)
+	if not row["chain"].is_empty() or not row["effect"].is_empty():
+		var low := DeckUi.hbox(10)
+		low.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if not row["chain"].is_empty():
+			low.add_child(DeckUi.label(row["chain"], DeckTheme.V_CODE, false))
+		low.add_child(DeckUi.expand(DeckUi.label(row["effect"], DeckTheme.V_DIM)))
+		col.add_child(low)
+	return plate
 
 
 ## Для проверки: что рисует вкладка ДЕКА (заголовок и строки демонов).
 func row_texts() -> PackedStringArray:
 	return _row_texts
+
+
+# ---------------------------------------------------------------- добыча
+
+## Добыча забега (ev deck: loot [{id, kind, tier, title, enc}], eddies): вкладка ДОБЫЧА, без действий. Первое же обращение показывает вкладку:
+## сервер деку прислал, значит и пустое состояние («Добычи пока нет») честное.
+func set_loot(loot: Array, eddies: int = 0) -> void:
+	var rows := HudLogic.loot_rows(loot)
+	var key := [rows, eddies]
+	var first := not _loot_known
+	_loot_known = true
+	if key == _shown_loot and not first:
+		return
+	_shown_loot = key
+	_build_loot(rows, eddies)
+	if first:
+		_apply_tabs()
+	_dirty = true
+
+
+func _build_loot(rows: Array, eddies: int) -> void:
+	DeckUi.clear(_loot_list)
+	_loot_texts = PackedStringArray(["ДОБЫЧА"])
+	_loot_list.add_child(DeckUi.section_title("ДОБЫЧА", str(rows.size())))
+	var money := DeckUi.hbox(8)
+	money.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	money.add_child(DeckUi.expand(DeckUi.label("Эдди", DeckTheme.V_NAME)))
+	money.add_child(DeckUi.label(str(eddies), DeckTheme.V_CODE, false))
+	_loot_texts.append("Эдди  %d" % eddies)
+	_loot_list.add_child(money)
+	for row in rows:
+		_loot_texts.append(row["text"])
+		_loot_list.add_child(_loot_row(row))
+	if rows.is_empty():
+		_loot_list.add_child(DeckUi.label("Добычи пока нет", DeckTheme.V_DIM, false))
+
+
+## Метка в ряду не растягивается на высоту ряда, а стоит по центру.
+func _centered(c: Control) -> Control:
+	c.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return c
+
+
+## Строка добычи: вид (ШАРД / ДЕМОН), название, тир и значок «открыт / зашифрован» (метка Tag: зашифрованный — заливка, открытый — рамка).
+func _loot_row(row: Dictionary) -> Control:
+	var r := MbRow.new()
+	r.interactive = false
+	var h := DeckUi.hbox(8)
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	h.add_child(_centered(DeckUi.tag(row["kind_name"], "acc", false)))
+	h.add_child(DeckUi.expand(DeckUi.label(row["title"], DeckTheme.V_NAME)))
+	h.add_child(DeckUi.label("тир %d" % int(row["tier"]), DeckTheme.V_DIM, false))
+	h.add_child(_centered(DeckUi.tag(row["label"], "warn" if row["enc"] else "ok", row["enc"])))
+	r.add_child(h)
+	return r
+
+
+## Для проверки: что рисует вкладка ДОБЫЧА (заголовок, эдди, строки добычи).
+func loot_texts() -> PackedStringArray:
+	return _loot_texts
+
+
+func has_loot_tab() -> bool:
+	return _loot_known
 
 
 func has_viewport_surface() -> bool:
@@ -177,9 +300,9 @@ func has_phone() -> bool:
 	return phone != null
 
 
-## Есть ли на деке что нажимать (вкладки ЧАТ и ЗВОНКИ) и видна ли она: без телефона или с невидимой декой указатель не нужен.
+## Есть ли на деке что нажимать (вкладки ДОБЫЧА, ЧАТ и ЗВОНКИ) и видна ли она: без телефона или с невидимой декой указатель не нужен.
 func is_interactive() -> bool:
-	return phone != null and is_visible_in_tree()   # деку на запястье прячут, пока у руки нет позы: по невидимой не целимся
+	return (phone != null or _loot_known) and is_visible_in_tree()   # деку на запястье прячут, пока у руки нет позы: по невидимой не целимся
 
 
 func active_tab() -> String:
@@ -213,11 +336,13 @@ func tabs() -> MbTabs:
 
 
 func _tab_available(id: String) -> bool:
-	return id == TAB_DECK or (phone != null and (id == TAB_CHAT or id == TAB_CALLS))
+	return id == TAB_DECK or (id == TAB_LOOT and _loot_known) or (phone != null and (id == TAB_CHAT or id == TAB_CALLS))
 
 
 func _apply_tabs() -> void:
 	var items := [{"id": TAB_DECK, "text": "ДЕКА", "badge": 0}]
+	if _loot_known:
+		items.append({"id": TAB_LOOT, "text": "ДОБЫЧА", "badge": 0})
 	if phone != null:
 		items.append({"id": TAB_CHAT, "text": "ЧАТ", "badge": 0})
 		items.append({"id": TAB_CALLS, "text": "ЗВОНКИ", "badge": 0})
@@ -229,6 +354,7 @@ func _show_tab(id: String) -> void:
 	_tab = id
 	_tabs.select(id)
 	_deck_scroll.visible = id == TAB_DECK
+	_loot_scroll.visible = id == TAB_LOOT
 	_chat.visible = id == TAB_CHAT
 	_calls.visible = id == TAB_CALLS
 	if id == TAB_CALLS and phone != null:
@@ -308,6 +434,8 @@ func scroll_by(px: float) -> void:
 			_chat.scroll_by(px)
 		TAB_CALLS:
 			_calls.scroll_by(px)
+		TAB_LOOT:
+			_loot_scroll.scroll_vertical += roundi(px)
 		_:
 			_deck_scroll.scroll_vertical += roundi(px)
 	_dirty = true

@@ -201,6 +201,10 @@ func _on_event(ev: Dictionary) -> void:
 			log_file.log("graph.tunnel", {"from": ev.get("from", ""), "to": ev.get("to", ""), "sec": ev.get("sec", 0.0)})
 		WorldMsg.EV_SHARDS:
 			scene.apply_shards(ev.get("shards", []))
+		WorldMsg.EV_DECK:
+			scene.apply_deck(ev)
+			log_file.log("deck.info", {"ram": ev.get("ram", 0), "default": ev.get("ram_default", false), "used": ev.get("used", 0),
+				"programs": (ev.get("daemons", []) as Array).size(), "loot": (ev.get("loot", []) as Array).size(), "eddies": ev.get("eddies", 0)})
 		WorldMsg.EV_PORTAL_DENIED:
 			scene.show_portal_denied(ev)
 			log_file.log("graph.portal_denied", {"to": ev.get("to", ""), "reason": ev.get("reason", "")})
