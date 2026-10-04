@@ -4,9 +4,36 @@
 мастера (`admin-web/`), прошивка точек на площадке — QR-дисплей и звук на ESP32 (`firmware/display/`), стенд e2e на двух
 эмуляторах (`scripts/e2e/`). Всё здесь выверено на реальных сбоях — не обходите.
 
-Прочитать перед работой: [docs/progress.md](docs/progress.md) (где мы сейчас, коротко), [docs/android-handoff.md](docs/android-handoff.md) (состояние и план),
-[docs/architecture.md](docs/architecture.md) (слои, правила), [docs/refactor-plan.md](docs/refactor-plan.md) (что в работе),
-[scripts/e2e/README.md](scripts/e2e/README.md) (стенд).
+Прочитать перед работой — всем: [docs/progress.md](docs/progress.md) (где мы сейчас, коротко), `git log -10`, `git status`. Дальше — только свою
+область и только нужные разделы (`grep -n` по заголовкам, потом Read с `offset/limit`):
+
+| Область | Документы |
+|---|---|
+| Android (`app/`, `kit/`, `rules/`) | [docs/android-handoff.md](docs/android-handoff.md), [docs/architecture.md](docs/architecture.md), [docs/refactor-plan.md](docs/refactor-plan.md) |
+| e2e (`scripts/e2e/`) | [scripts/e2e/README.md](scripts/e2e/README.md), `.claude/rules/e2e.md` |
+| Коллектор (`admin-web/`) | [admin-web/docs/agent-pipeline.md](admin-web/docs/agent-pipeline.md); `admin-web/README.md` (55 КБ) — только по разделам |
+| Сеть (`netrun/`, `netrun-bridge/`) | [docs/netrun.md](docs/netrun.md), [docs/netrun-devbox.md](docs/netrun-devbox.md), skill `netrun-loop`; протокол — [docs/netrun-bridge-protocol.md](docs/netrun-bridge-protocol.md) (58 КБ) по разделам |
+| Прошивка (`firmware/`) | [docs/displays.md](docs/displays.md), [docs/firmware-plan.md](docs/firmware-plan.md), [docs/sound-nodes.md](docs/sound-nodes.md) |
+
+## Работа агента: время и токены
+
+Каждый прочитанный байт и каждая картинка остаются в контексте и оплачиваются на **каждом** следующем ходу — это главная статья расхода
+(замеры трёх сессий 03–04.10: целые документы — 6,9 млн символов, 241 кадр PNG, ≈40 пустых ходов ожидания, 233 правки через python-heredoc).
+
+- **Читать точечно:** `grep -n` → Read с `offset/limit`; файл > 300 строк целиком не читать. Длинный вывод команды — в файл, в контекст — `tail`/grep по итогу.
+- **Править только Edit/Write**, не `python3 - <<EOF`/`sed -i` по многострочному тексту (файл дважды идёт через контекст).
+- **Картинки — последнее средство:** текст страницы — `get_page_text`/`read_page`; кадры — одной сеткой ≤ 1024 px (`netrun/tools/dev.sh shot`, `DEV_CROP`),
+  серия кадров с чек-листом — агент `visual-reviewer`; скриншот браузера — `scale: 0.5`.
+- **Проверять по изменённому:** на шаг — набор по изменённым путям (`scripts/dbx.sh --auto`, `netrun/tools/dev.sh test`, `admin-web/tools/test.sh <часть>`),
+  полный прогон — один раз перед PR и в фоне.
+- **Ждать одним фоновым вызовом с одним итогом** (Bash `run_in_background`: `scripts/ci-wait.sh pr N`, `dbx.sh`, `dev.sh test --all`). Никаких `sleep`,
+  Monitor с выводом на каждую итерацию и опроса CI руками. Любой цикл — с пределом итераций. Пока ждёшь — следующая независимая работа.
+- **Скрипты печатают вердикт** (1–5 строк, код выхода 0/1, путь к полному журналу). Новый инструмент делать так же; длинные цепочки ssh/rsync/adb,
+  повторённые дважды, — в скрипт (`scripts/phone.sh`, `dbx.sh`, `dev.sh`).
+- **Делегировать** — skill `orchestrate`: Haiku — поиск «где X» и механика по точному списку; Sonnet — код по карточке, кадры, разбор падений;
+  Opus — контракты, деньги/записи/auth, ревью рискованного диффа. Меньше трёх вызовов — делать самому. Отчётам агентов не верить на слово:
+  один раз прогнать проверку самому и посмотреть `git diff --stat`.
+- **Не автоматизировать:** push в `main`, rebase/force, `--no-verify`, удаление веток и worktree, автоповтор CI «до зелёного», перезапись эталонов.
 
 ## Git и процесс
 
@@ -40,8 +67,8 @@
 | Статика | `./gradlew :app:detekt :kit:detekt :kit:animalsnifferMain :app:lintDebug` | новые находки ломают CI |
 | CI | `.github/workflows/main.yml` (push/PR в `main`, вручную) | ≈4 мин |
 | e2e | `scripts/e2e/up.sh && scripts/e2e/run-all.sh`; CI — `e2e.yml` (PR в `main` с правкой `app/`, `kit/`, `scripts/e2e/`; ночью; вручную) | ≈17 мин |
-| Коллектор | `admin-web/server`: `npm test`; `admin-web/client`: `npm test`, `npm run lint`, `npm run build` | в CI — `main.yml`, job admin-web |
-| Godot (netrun) | `ssh devbox 'cd ~/wt-godot && netrun/tools/gdunit.sh'`; правки и запуск игры — агент `godot-dev` (живой редактор + MCP, `.claude/agents/godot-dev.md`) | devbox; CI — `netrun.yml` (правка `netrun/`); подробности — `docs/netrun-devbox.md`, «Godot AI» |
+| Коллектор | `admin-web/tools/test.sh server\|client\|lint\|build\|all` (сам берёт Node ≥ 22, вердикт строкой; свежий worktree — сначала `admin-web/tools/wt-deps.sh`) | в CI — `main.yml`, job admin-web |
+| Godot (netrun) | `netrun/tools/dev.sh test` (по изменённым) / `test --all` (в фоне) / `shot` — с Mac из своего worktree, skill `netrun-loop`; правки и запуск игры — агент `godot-dev` (живой редактор + MCP, `.claude/agents/godot-dev.md`) | devbox; CI — `netrun.yml` (правка `netrun/`); подробности — `docs/netrun-devbox.md`, «Godot AI» |
 | Прошивка | `cmake -S firmware/display -B firmware/display/build && cmake --build … && ctest --test-dir …`; плата — `pio run -e crowpanel579`; Wokwi — `firmware/display/tools/wokwi_selftest.sh` (квота CI-минут; в CI — только при правке кода платы); esp-emulator без квоты (без SD/I²S) — `firmware/display/tools/espemu_selftest.sh` | CI — `firmware.yml` (правка `firmware/`, `admin-web/server/src/displays/`, звука на сервере — `audio/`, `routes/audio.ts`); ≈5 мин |
 
 - **Облачная сессия без Android SDK** не соберёт `:app` (и даже `:kit` — Gradle конфигурирует весь проект). Проверка —
@@ -61,7 +88,8 @@
 - **Gradle на devbox — `scripts/dbx.sh --auto|--full`** (очередь, один итог; skill `orchestrate`). Большая задача из 3+ шагов — по skill `orchestrate`
   (разведка одним агентом с досье, исполнители sonnet, ожидание одним фоновым вызовом, `scripts/ci-wait.sh`).
 - Цикл задачи: правка → `check.sh --fast` (Mac) → тяжёлая проверка на devbox → коммит → `/clear`. Новое окно начинать с
-  `docs/android-handoff.md`, `git log -10`, `git diff`.
+  `docs/progress.md`, `git log -10`, `git diff` и документов своей области (таблица вверху).
+- **Своя worktree на сессию** (`scripts/agent-worktree.sh new <имя>`): основной checkout общий для всех сессий — в нём не править и не коммитить.
 - e2e: правила написания проверок — `.claude/rules/e2e.md` (подгружаются при правке `scripts/e2e/`).
 - Сбой: сначала журналы — skill `debug-journals`, потом гипотезы.
 - Инварианты приложения (деньги, транзакции, сеть) — `.claude/rules/app-invariants.md`, подгружаются при правке `app/` и `kit/`.
