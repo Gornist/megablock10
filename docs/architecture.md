@@ -19,6 +19,8 @@ Android 8.0. В приложении то же сторожит Android Lint (`:
 ## Слои внутри приложения
 
 ```
+ Компоненты интерфейса     ui/theme/Mb*, MbAppShell; ui/nav (AppTab, ShellBadges)   дизайн-система: данные приходят параметрами
+      │
  Compose-экраны            ui/screens/*Screen.kt, MainActivity (AppRoot)        рисуют состояние, зовут действия ViewModel
       │ appViewModel { … }
  ViewModel                 ui/SessionViewModel, ui/screens/*ViewModel, breach/BreachViewModel
@@ -31,7 +33,7 @@ Android 8.0. В приложении то же сторожит Android Lint (`:
  kit + Android + Room      ChangeRecorder, SyncEngine, Handover, LineServer, Outbox, PeerTable …
 ```
 
-Зависимости идут только сверху вниз. Экран не знает, из чего собрана его ViewModel. Сценарий не знает про экраны.
+Зависимости идут только сверху вниз (компоненты `ui/theme` экраны используют, а не наоборот). Экран не знает, из чего собрана его ViewModel. Сценарий не знает про экраны.
 Хранилище не ходит в сеть: карточку перевода доставляет сценарий, а не `TransactionStore`.
 
 ### Корень композиции — `di/AppGraph`
@@ -45,6 +47,22 @@ Android 8.0. В приложении то же сторожит Android Lint (`:
   `appViewModel` — в `ui/LocalAppGraph.kt`. Если экземпляров нужно несколько, передаётся ключ, например тред на каждую пару
   ключей: `appViewModel(key = "thread:$me:$peer") { … }`.
 - Компоненты дизайн-системы и всё, что рисуют скриншот-тесты, граф не трогают: данные приходят параметрами.
+
+### Интерфейс: `ui/theme` и `ui/nav`
+
+- `ui/theme` — дизайн-система по [ux/ui-style-guide.md](ux/ui-style-guide.md): компоненты `Mb*` (`MbButton`, `MbField`, `MbBubble`,
+  `MbListItem`, `MbTabs`, `MbDialog`, `MbEmptyState`, `MbTile`, `MbTag` и др.), токены (`MbColors`, `MbDimens`, `MbTypography`,
+  `MbChamfer` — скошенные углы, `MbIcons`, `MbFormat`), оболочка приложения `MbAppShell` (шапка + нижнее меню), компоненты
+  экрана взлома (`MbBreach`) и `AppSnack` (реализация порта `PlayerNotices`). Компонент берёт данные параметрами и граф не
+  трогает — поэтому его снимают скриншот-тесты (`screenshots/KitCatalogTest`); прямоугольные рамки запрещены тестом
+  `NoRectangularBordersTest`.
+- `ui/nav` — `AppTab` (четыре вкладки нижнего меню) и `ShellBadges` (счётчики на иконках: диалоги с новым и пропущенные
+  звонки; локальная отметка «видел», не сетевое «прочитано»).
+
+### Пакеты, которые ведут другие сессии
+
+- `netrun/` — клиентская часть «Сети»: ведёт другая сессия, см. [netrun.md](netrun.md).
+- `collector/` — обмен с мастерским сервером на стороне телефона: ведёт другая сессия, см. [admin-web/README.md](../admin-web/README.md).
 
 ### ViewModel
 
@@ -103,6 +121,16 @@ SharedPreferences (выдача по QR, RAM-апгрейд), доделываю
 Приём чека, пришедшего по сети, сразу подтверждает
 перевод или передачу (`ReceiptConfirmer`), где бы ни был игрок в интерфейсе.
 
+Вокруг сессии, по пакетам:
+
+- `presence/` — Android-обвязка сети. `PresenceService` — вызовы NSD поверх чистой логики без Android: `NsdSlot`
+  (регистрация и поиск по одной операции: желаемое → фактическое, тайм-аут, повтор), `NsdResolveQueue` (разрешение найденных по
+  одному), `NsdRefreshGate` (когда пересоздавать регистрацию по событию Wi-Fi). `WifiBinder` привязывает процесс к Wi-Fi площадки,
+  `MeshLink` отвечает «есть ли Wi-Fi» (гейт взлома), `MeshForegroundService` держит процесс живым.
+- `chat/` — личные сообщения. `MessageStatus` (в `data/ChatMessageEntity.kt`) — статус своего сообщения, только вверх;
+  `ReadReceipts` — отчёты «прочитано» (отдельный протокол); `OutboxPolicy` — что можно ставить в очередь исходящих (деньги и
+  предметы — нет); `OutboxStore`, `CardResender` — доставка «когда появится» и переотправка карточек.
+
 ## Куда класть новое
 
 | Хочу… | Куда |
@@ -111,6 +139,11 @@ SharedPreferences (выдача по QR, RAM-апгрейд), доделываю
 | новые данные на телефоне | Entity + DAO в `data/`, миграция ([db-migrations.md](db-migrations.md)), хранилище `*Store` в пакете фичи |
 | действие из нескольких шагов | сценарий в пакете фичи, зависимости — порты, тест с фейками из `app/src/test/.../testing/Fakes.kt` |
 | новый экран | `XxxScreen` + `XxxViewModel` в `ui/screens/`, фабрика в `di/ViewModels.kt`, данные ниже экрана — параметрами |
+| новый элемент интерфейса, нужный нескольким экранам | компонент `Mb*` в `ui/theme/` на токенах (`MbColors`, `MbDimens`), без графа и ViewModel; сначала в [прототипе](ux/prototype/mb10-ui-kit.html), потом в Compose, снимок — в `KitCatalogTest` |
+| счётчик или вкладка нижнего меню | `ui/nav` (`AppTab`, `ShellBadges`); оболочку рисует `MbAppShell` |
+| что-то, что запускается «пока есть персонаж» (сеть, синк, сервис) | событие в `session/SessionController`, а не вызов из экрана или `Application` (сторожит `SessionGuardTest`) |
+| работа с NSD или Wi-Fi | чистая логика без Android (как `NsdSlot`, `NsdResolveQueue`, `NsdRefreshGate`) и тест; `PresenceService`/`WifiBinder` — только вызовы Android |
+| новое поведение очереди исходящих или статуса сообщения | `chat/OutboxPolicy`, `MessageStatus`, `ReadReceipts`; тест рядом |
 | новый протокол между телефонами | формат и версия в пакете фичи (как `ChatProtocol`, `WireVersion`), маршрут в `ChatServer` (`LineRoute`) |
 | новое поле для мастера | константа в `collector/ChangeFields.kt` (строка общая с сервером), запись через `ChangeRecorder` |
 | что-то, что пригодится другому приложению | в `:kit`, если в этом нет ни Android, ни игры; иначе — в приложение, а в kit — только механику |
@@ -136,7 +169,10 @@ SharedPreferences (выдача по QR, RAM-апгрейд), доделываю
 | ViewModel | `…/ui/*ViewModelTest` | `MainDispatcherRule` (главный поток на тестовом диспетчере), `work` — скоуп теста |
 | база | `data/MigrationDataTest`, `MigrationGuardTest` | миграции на настоящем SQLite |
 | хранилища | наследники `testing/RoomTest` (`ChangeRecordTransactionsTest`, `InterruptedIssueTest` и др.) | настоящая Room в памяти под Robolectric: транзакции, откаты, сбой посреди операции (`failOnSign`), перезапуск (`restart()`) |
-| интерфейс | `screenshots/ScreenshotTest` | Paparazzi |
+| сессия и сеть | `session/SessionControllerTest` (таблица «событие → что запущено»), `SessionGuardTest` (никто, кроме контроллера, не запускает сеть), `presence/NsdSlotTest`, `NsdResolveQueueTest`, `NsdRefreshGateTest` | чистая логика без Android, виртуальное время |
+| чат | `chat/MessageStatusTest`, `ReadReceiptsTest`, `OutboxPolicyTest`, `CardResenderTest` | статусы только вверх, отчёты о прочтении, что идёт в очередь |
+| оболочка | `ui/nav/ShellBadgesTest`, `ui/SessionViewModelTest` | счётчики на иконках, состояние сессии |
+| интерфейс | `screenshots/*` (`KitCatalogTest`, `*ScreenTest`, `FontScaleTest`, `SmallScreenBreachTest`), `ui/NoRectangularBordersTest` | Paparazzi; эталоны — `app/src/test/snapshots` |
 | целиком | `scripts/e2e` | два эмулятора и сервер; `DebugQrReceiver` ходит через те же сценарии, что интерфейс |
 
 JVM-тесты не должны звать реализацию Android API: в CI на их месте заглушки `android.jar`, и они бросают исключение.

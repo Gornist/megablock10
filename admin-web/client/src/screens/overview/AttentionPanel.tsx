@@ -4,6 +4,7 @@ import type { Attention } from "../../api/types";
 import { useApiData } from "../../api/useApiData";
 import { POLL_RELAXED_MS } from "../../api/pollIntervals";
 import { AsyncPanel } from "../../design/AsyncPanel";
+import { AttnRow } from "../../design/AttnRow";
 import { Badge, Panel } from "../../design/components";
 import { formatAgo } from "../../format";
 import { attentionTarget } from "./attentionTarget";
@@ -101,9 +102,7 @@ export function AttentionPanel() {
           d.items.map((i) => {
             const go = attentionTarget(i);
             return (
-              <div key={i.id} className={`attn-item sev-${i.severity} ${go ? "clickable" : ""}`} onClick={go}>
-                <span className="attn-title">{i.title}</span>
-                <span className="attn-detail">{i.detail}</span>
+              <AttnRow key={i.id} severity={i.severity} title={i.title} detail={i.detail} clickable={!!go} onClick={go}>
                 <span className="attn-time mono">{formatAgo(i.at)}</span>
                 <button
                   type="button"
@@ -116,7 +115,7 @@ export function AttentionPanel() {
                 >
                   ⏸ 30 мин
                 </button>
-              </div>
+              </AttnRow>
             );
           })
         }

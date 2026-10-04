@@ -7,7 +7,7 @@ import { parseWav } from "../audio/wav.js";
 import type { Db } from "../db/index.js";
 import type { DisplayManager } from "../displays/manager.js";
 import { logMasterAction, requireMaster } from "../lib/auth.js";
-import { intIn, strings } from "../lib/validate.js";
+import { isIntIn, strings } from "../lib/refs.js";
 
 /** Клип громкой связи: IMA ADPCM 16 кГц ≈ 8 КБ/с — 2 МБ хватает на 4 минуты, объявление — секунды. */
 export const CLIP_MAX_BYTES = 2 * 1024 * 1024;
@@ -27,8 +27,8 @@ function parseChannel(b: ChannelBody, current?: AudioChannel): { ok: true; value
   if (!name || name.length > 64) return { ok: false, error: "name is required (max 64)" };
   if (!tracks || tracks.length > 200 || !tracks.every((t) => TRACK_NAME.test(t))) return { ok: false, error: "tracks: up to 200 file names (no '/')" };
   if (typeof shuffle !== "boolean") return { ok: false, error: "shuffle must be boolean" };
-  if (!intIn(gapMs, 0, 600_000)) return { ok: false, error: "gapMs must be 0..600000" };
-  if (!intIn(volume, 0, 100)) return { ok: false, error: "volume must be 0..100" };
+  if (!isIntIn(gapMs, 0, 600_000)) return { ok: false, error: "gapMs must be 0..600000" };
+  if (!isIntIn(volume, 0, 100)) return { ok: false, error: "volume must be 0..100" };
   return { ok: true, value: { name, tracks, shuffle, gapMs, volume } };
 }
 
@@ -44,7 +44,7 @@ function parseTargets(b: TargetsBody | undefined): AnnounceTargets | null {
 /** Громкость исключения: null — «как у группы/канала». */
 function optVolume(v: unknown): number | null | undefined {
   if (v === null) return null;
-  return intIn(v, 0, 100) ? v : undefined;
+  return isIntIn(v, 0, 100) ? v : undefined;
 }
 
 /**
@@ -235,8 +235,8 @@ export function registerAudioRoutes(app: FastifyInstance, db: Db, displays: Disp
       if (typeof b.clipId !== "string" || !CLIP_ID.test(b.clipId)) return reply.code(400).send({ error: "clipId is required" });
       const targets = parseTargets(b.targets);
       if (!targets) return reply.code(400).send({ error: "targets: all, groupIds or displayIds" });
-      if (b.volume !== undefined && !intIn(b.volume, 0, 100)) return reply.code(400).send({ error: "volume must be 0..100" });
-      if (b.duck !== undefined && !intIn(b.duck, 0, 100)) return reply.code(400).send({ error: "duck must be 0..100" });
+      if (b.volume !== undefined && !isIntIn(b.volume, 0, 100)) return reply.code(400).send({ error: "volume must be 0..100" });
+      if (b.duck !== undefined && !isIntIn(b.duck, 0, 100)) return reply.code(400).send({ error: "duck must be 0..100" });
       if (b.chime !== undefined && typeof b.chime !== "boolean") return reply.code(400).send({ error: "chime must be boolean" });
       const clip = repo.clip(b.clipId);
       const r = audio.announce(b.clipId, targets, {

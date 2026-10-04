@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../../api/client";
 import type { NetDoc, NetState } from "../../api/types";
+import { AttnRow } from "../../design/AttnRow";
 import { AppButton, AppDialog, ErrorNote, Panel } from "../../design/components";
 import { docsOf, obj, text, useNetCall } from "./netUtil";
 
@@ -19,13 +20,19 @@ export function TemplatesPanel({ state, reload }: { state: NetState; reload: () 
     <Panel title={`Заготовки (${templates.length})`}>
       {error && <ErrorNote>{error}</ErrorNote>}
       {templates.map((t) => (
-        <div key={t.id} className="attn-item sev-info">
-          <span className="attn-title">{text(t.data.title) || t.id}</span>
-          <span className="attn-detail hint-text">
-            {t.id}
-            {Object.keys(obj(t.data.settings)).length > 0 ? ` · настройки: ${Object.keys(obj(t.data.settings)).join(", ")}` : ""}
-            {Object.keys(obj(t.data.node_cfg)).length > 0 ? ` · на узлы: ${Object.keys(obj(t.data.node_cfg)).join(", ")}` : ""}
-          </span>
+        <AttnRow
+          key={t.id}
+          severity="info"
+          title={text(t.data.title) || t.id}
+          detailClassName="hint-text"
+          detail={
+            <>
+              {t.id}
+              {Object.keys(obj(t.data.settings)).length > 0 ? ` · настройки: ${Object.keys(obj(t.data.settings)).join(", ")}` : ""}
+              {Object.keys(obj(t.data.node_cfg)).length > 0 ? ` · на узлы: ${Object.keys(obj(t.data.node_cfg)).join(", ")}` : ""}
+            </>
+          }
+        >
           <AppButton
             disabled={busy}
             onClick={() => {
@@ -35,7 +42,7 @@ export function TemplatesPanel({ state, reload }: { state: NetState; reload: () 
           >
             применить…
           </AppButton>
-        </div>
+        </AttnRow>
       ))}
       {target && (
         <AppDialog

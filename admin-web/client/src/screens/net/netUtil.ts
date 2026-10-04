@@ -1,5 +1,5 @@
-import { useCallback, useState } from "react";
-import { ApiError } from "../../api/client";
+import { useCallback } from "react";
+import { useAsyncAction } from "../../api/useAsyncAction";
 import type { NetDoc, NetState } from "../../api/types";
 
 /** Документы Моста одного типа (пусто, пока Моста нет: сервер тогда не отдаёт docs). */
@@ -24,24 +24,17 @@ export const newRef = (prefix: string): string => `${prefix}-${crypto.randomUUID
  * показывается мастеру как есть, а после успеха экран перечитывает снимок.
  */
 export function useNetCall(onDone: () => void) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { busy, error, setError, run } = useAsyncAction({ fallbackError: "не удалось связаться с сервером" });
   const call = useCallback(
     async (fn: () => Promise<unknown>): Promise<boolean> => {
-      setBusy(true);
-      setError(null);
-      try {
+      // onDone внутри run: упавшее перечитывание снимка показывается так же, как отказ самого вызова.
+      const result = await run(async () => {
         await fn();
         onDone();
-        return true;
-      } catch (e) {
-        setError(e instanceof ApiError ? e.message : "не удалось связаться с сервером");
-        return false;
-      } finally {
-        setBusy(false);
-      }
+      });
+      return result.ok;
     },
-    [onDone],
+    [run, onDone],
   );
   return { busy, error, call, clearError: () => setError(null) };
 }

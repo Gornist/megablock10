@@ -49,6 +49,7 @@ import com.megablok10.app.ui.theme.MbSectionTitle
 import com.megablok10.app.ui.theme.MbTag
 import com.megablok10.app.ui.theme.MbTagTone
 import com.megablok10.app.ui.theme.MbTypography
+import com.megablok10.app.ui.theme.shortKey
 import com.megablok10.kit.mesh.OnlinePlayer
 
 @Composable
@@ -70,7 +71,7 @@ fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}, on
             MbCard(lead = { MbPortrait(identity.callsign.take(1), size = MbDimens.portraitProfile) }) {
                 Text(identity.callsign, style = MbTypography.cardTitle, color = LocalMbColors.current.inkStrong)
                 Text(identity.faction, style = MbTypography.rowSub, color = LocalMbColors.current.ink2)
-                Text("КЛЮЧ ${shortKey(identity.publicKeyB64)}", style = MbTypography.demonCode, color = LocalMbColors.current.acc)
+                Text("КЛЮЧ ${shortKey(identity.publicKeyB64, 9)}", style = MbTypography.demonCode, color = LocalMbColors.current.acc)
             }
         }
         item {
@@ -149,6 +150,3 @@ private fun RevealableQr(bitmap: android.graphics.Bitmap, contentDescription: St
         }
     }
 }
-
-/** «7F3A…C21» — первые 4 и последние 3 символа ключа, как в прототипе. */
-private fun shortKey(keyB64: String): String = if (keyB64.length <= 9) keyB64 else "${keyB64.take(4)}…${keyB64.takeLast(3)}"

@@ -1,9 +1,12 @@
 package com.megablok10.kit.net
 
+import com.megablok10.kit.log.KitLog
 import com.megablok10.kit.log.RecordingLog
 import java.net.Socket
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -17,7 +20,7 @@ import org.junit.Test
 /** Сервер строк на настоящих сокетах localhost: маршруты, мусор, молчащие клиенты, сбои обработчиков. */
 class LineServerTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val log = RecordingLog()
+    private val log = WatchedLog()
     private val events = LinkedBlockingQueue<String>()
     private val client = LineSocketClient()
 
@@ -32,11 +35,7 @@ class LineServerTest {
     private fun next(): String? = events.poll(5, TimeUnit.SECONDS)
 
     /** Соединения обрабатываются параллельно: запись в журнал о «соседнем» соединении может прийти чуть позже события. */
-    private fun awaitLog(fragment: String): Boolean {
-        val deadline = System.currentTimeMillis() + 5_000
-        while (!log.has(fragment) && System.currentTimeMillis() < deadline) Thread.sleep(20)
-        return log.has(fragment)
-    }
+    private fun awaitLog(fragment: String): Boolean = log.await(fragment, 5_000)
 
     @After fun tearDown() { scope.cancel() }
 
@@ -126,4 +125,32 @@ class LineServerTest {
         assertNull(events.poll(200, TimeUnit.MILLISECONDS))
         s.stop()
     }
+}
+
+/** [RecordingLog], который будит ждущих при каждой записи: тест ждёт событие, а не опрашивает журнал со сном. */
+private class WatchedLog(private val rec: RecordingLog = RecordingLog()) : KitLog {
+    private val lock = ReentrantLock()
+    private val changed = lock.newCondition()
+
+    val all: List<String> get() = rec.all
+    fun has(fragment: String): Boolean = rec.has(fragment)
+
+    private inline fun record(write: () -> Unit) = lock.withLock { write(); changed.signalAll() }
+
+    /** Ждёт, пока в журнале появится строка с [fragment], не дольше [timeoutMs]. */
+    fun await(fragment: String, timeoutMs: Long): Boolean = lock.withLock {
+        var left = TimeUnit.MILLISECONDS.toNanos(timeoutMs)
+        while (!rec.has(fragment)) {
+            if (left <= 0) return@withLock false
+            left = changed.awaitNanos(left)
+        }
+        true
+    }
+
+    override fun d(tag: String, msg: String, t: Throwable?) = record { rec.d(tag, msg, t) }
+    override fun i(tag: String, msg: String, t: Throwable?) = record { rec.i(tag, msg, t) }
+    override fun w(tag: String, msg: String, t: Throwable?) = record { rec.w(tag, msg, t) }
+    override fun e(tag: String, msg: String, t: Throwable?) = record { rec.e(tag, msg, t) }
+    override fun event(tag: String, name: String, vararg fields: Pair<String, Any?>) = record { rec.event(tag, name, *fields) }
+    override fun warnEvent(tag: String, name: String, vararg fields: Pair<String, Any?>) = record { rec.warnEvent(tag, name, *fields) }
 }

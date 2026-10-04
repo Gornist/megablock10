@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /** Объявление — секунды; минута — с запасом, дальше запись останавливается сама. */
-export const MAX_RECORD_SECONDS = 60;
+const MAX_RECORD_SECONDS = 60;
 
-export type RecorderState = "idle" | "recording";
+type RecorderState = "idle" | "recording";
 
 /**
  * Запись с микрофона ноутбука/телефона мастера (MediaRecorder). Микрофон браузер даёт только в защищённом контексте

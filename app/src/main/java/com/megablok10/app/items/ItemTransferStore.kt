@@ -127,9 +127,9 @@ class ItemTransferStore(
 
     override suspend fun hasIncoming(id: String): Boolean = dao.get(id)?.outgoing == false
 
-    /** Чек получателя [me] по передаче [id] — тот же формат, что у денег (kit HandoverRules.receiptSignaturePayload). */
+    /** Чек получателя [me] по передаче [id] — тот же формат, что у денег (Mb10QrCodec.receipt). */
     override fun buildReceipt(me: Identity, id: String): Mb10Qr.Receipt =
-        Mb10Qr.Receipt(id = id, receiverPubKeyB64 = me.publicKeyB64, signatureB64 = identity.sign(HandoverRules.receiptSignaturePayload(id, me.publicKeyB64)))
+        Mb10QrCodec.receipt(id, me.publicKeyB64, identity::sign)
 
     /** Кладёт предмет из журнала в коллекцию (принятие у получателя или возврат при отмене у отправителя). */
     private suspend fun restore(record: ItemTransferEntity, reason: String): Boolean = when (ItemKind.valueOf(record.kind)) {

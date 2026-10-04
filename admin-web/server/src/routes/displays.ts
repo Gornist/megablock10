@@ -7,8 +7,8 @@ import { DEFAULT_DISPLAY_PORT } from "../displays/protocol.js";
 import { bitmapToPngDataUrl, renderQrForDisplay } from "../displays/renderer.js";
 import { newDisplaySecret, type DisplayConfigInput } from "../displays/repository.js";
 import { logMasterAction, requireMaster } from "../lib/auth.js";
-import { intIn } from "../lib/validate.js";
 import { containerQrFromDb } from "../lib/containerQr.js";
+import { isIntIn } from "../lib/refs.js";
 
 /** CrowPanel 5.79″ — панель, под которую делалась первая версия (docs/displays.md); висит горизонтально: родные 792×272. */
 export const DEFAULT_DISPLAY_WIDTH = 792;
@@ -65,8 +65,8 @@ function parseConfig(b: ConfigBody, current?: DisplayConfigInput): { ok: true; v
   const nodeId = b.nodeId === undefined ? (current?.nodeId ?? null) : b.nodeId;
   if (typeof name !== "string" || !name.trim() || name.length > 64) return { ok: false, error: "name is required (max 64)" };
   if (typeof ip !== "string" || isIP(ip) === 0) return { ok: false, error: "ip must be an IP address (displays have fixed addresses)" };
-  if (!intIn(port, 1, 65535)) return { ok: false, error: "port must be 1..65535" };
-  if (!intIn(width, 8, 4096) || !intIn(height, 8, 4096)) return { ok: false, error: "width/height must be integers 8..4096" };
+  if (!isIntIn(port, 1, 65535)) return { ok: false, error: "port must be 1..65535" };
+  if (!isIntIn(width, 8, 4096) || !isIntIn(height, 8, 4096)) return { ok: false, error: "width/height must be integers 8..4096" };
   if (typeof enabled !== "boolean") return { ok: false, error: "enabled must be boolean" };
   if (groupId !== null && typeof groupId !== "string") return { ok: false, error: "groupId must be a group id or null" };
   if (nodeId !== null && typeof nodeId !== "string") return { ok: false, error: "nodeId must be a node (container) id or null" };
@@ -371,7 +371,7 @@ export function registerDisplayRoutes(app: FastifyInstance, db: Db, displays: Di
   app.post<{ Params: { id: string }; Body: { seconds?: unknown } }>("/api/displays/:id/test", async (request, reply) => {
     const master = requireMaster(db, request, reply);
     if (!master) return;
-    const seconds = intIn(request.body?.seconds, 1, 600) ? request.body!.seconds : 30;
+    const seconds = isIntIn(request.body?.seconds, 1, 600) ? request.body!.seconds : 30;
     const r = await command(master.id, request.params.id, "TEST", { seconds }, () => displays.test(request.params.id, seconds as number));
     return reply.code(r.status).send(r.body);
   });
@@ -381,7 +381,7 @@ export function registerDisplayRoutes(app: FastifyInstance, db: Db, displays: Di
     if (!master) return;
     const levelName = request.body?.level;
     if (typeof levelName !== "string" || !(levelName in BACKLIGHT_LEVELS)) return reply.code(400).send({ error: "level must be OFF, LOW, MEDIUM or HIGH" });
-    const seconds = intIn(request.body?.seconds, 0, 3600) ? (request.body!.seconds as number) : 0;
+    const seconds = isIntIn(request.body?.seconds, 0, 3600) ? (request.body!.seconds as number) : 0;
     const r = await command(master.id, request.params.id, "BACKLIGHT", { level: levelName, seconds }, () =>
       displays.backlight(request.params.id, BACKLIGHT_LEVELS[levelName], seconds),
     );

@@ -91,7 +91,9 @@ kit — в [kit/README.md](../kit/README.md).
 
 ## Проверки
 
-- **Локально без Android SDK** (стенд в облачной сессии): kit — 101 тест, detekt, Animal Sniffer; app — 160 JVM-тестов,
+- **Сейчас (≈ на 03.10):** тестов в коде — app ≈350, kit ≈145, rules ≈4 (`grep -r '@Test' <модуль>/src/test`). Числа ниже в этом
+  разделе — на момент своих коммитов (24–25.09), они устарели.
+- **Локально без Android SDK** (стенд в облачной сессии, 24.09): kit — 101 тест, detekt, Animal Sniffer; app — 160 JVM-тестов,
   detekt по всему коду.
 - **CI (`main.yml`)** зелёный на каждом коммите: detekt, unit-тесты, Paparazzi, сборка APK, admin-web. С `d21e789` к ним
   добавился Android Lint `NewApi`. Что он ловит нужное, проверено пробой: коммит `db1bc01` вернул тот самый вызов, и CI упал с
@@ -167,6 +169,9 @@ kit — в [kit/README.md](../kit/README.md).
   тестовой задачи, и clean удаляет закоммиченные эталоны, после чего сверка падает на «нет файла». Прогнать тесты заново без
   кэша — `./gradlew verifyPaparazziDebug --rerun-tasks` (или `:app:testDebugUnitTestNoScreenshots --rerun` — без скриншотов); удалённые эталоны — `git restore app/src/test/snapshots`.
 - `DebugQrBus` (только debug) теряет строку, если экран её сейчас не слушает. Стенд e2e это учитывает.
+- detekt закреплён на Kotlin 2.0.21 **только в своей конфигурации** (`build.gradle.kts`: `configurations.matching { it.name ==
+  "detekt" }` → `useVersion("2.0.21")`, detekt 1.23 собран с этой версией и сверяет её); сам проект собирается Kotlin 2.4
+  (2.4.20). Не «чините» это поднятием версии detekt-а или Kotlin проекта вниз.
 - Сборка (28.09): Kotlin 2.4, AGP 8.13, Gradle 8.14, compileSdk 36, Compose 1.11 — потолок без AGP 9. Дальше упирается в
   AGP 9: Compose 1.12 и lifecycle 2.11 требуют compileSdk 37 и AGP 9.2, а AGP 9 поддерживают только альфа-версии Paparazzi
   (2.0.0-alpha05.1, другая отрисовка — эталоны скриншотов заново) и detekt (2.0.0-alpha; у 1.23 конфигурации закреплён
@@ -230,26 +235,22 @@ kit — в [kit/README.md](../kit/README.md).
 - Стенд одноразовый: после `zz-provisioning` следующий `run-all.sh` — только после `./down.sh && ./up.sh` (иначе откажется).
 - Локально: `:app:cleanTestDebugUnitTest` стирает эталоны Paparazzi — для прогона без кэша `--rerun-tasks`.
 
-## UI на новой дизайн-системе (26.09, ветка `agent/ui-kit`)
+## UI на новой дизайн-системе (слито в `main`, M1–M6)
 
-Экраны игрока переехали с самодельной дизайн-системы (`MB10Colors`, `AppButton`, `ChamferedSurface`, шрифты Jura/
-JetBrains Mono/IBM Plex Sans) на систему по [docs/ux/ui-style-guide.md](ux/ui-style-guide.md) — прототип
+Экраны игрока переехали с самодельной дизайн-системы на систему по [docs/ux/ui-style-guide.md](ux/ui-style-guide.md) — прототип
 [docs/ux/prototype/mb10-ui-kit.html](ux/prototype/mb10-ui-kit.html), процесс и статус по каждому пункту —
-[docs/ux/ui-migration-plan.md](ux/ui-migration-plan.md) (M0–M5, коммиты f08bc18…M5, все с зелёными `main.yml`+`e2e.yml`).
-Коротко:
+[docs/ux/ui-migration-plan.md](ux/ui-migration-plan.md). Ветка `agent/ui-kit` слита в `main` перемоткой (27.09, владелец
+подтвердил напрямую); миграция M1–M6 закончена, **старая дизайн-система удалена целиком** (M5). Что остаётся на усмотрение
+владельца — яркость на улице и самый маленький из игровых телефонов (M6, см. план миграции).
 
-- Новые компоненты (`Mb*` в `ui/theme/`) на токенах и типографике гайдлайна; шрифты Fira Sans Condensed + IBM Plex
-  Mono, статичные TTF в `res/font` (лицензии — `docs/ux/font-licenses/`).
-- Все 8 экранов игрока (Чат, Звонки, Кибердека, Кошелёк, Профиль/Настройки/Сеть, Взлом, объявление мастера,
-  состояния пусто/нет связи) и стартовый экран выдачи персонажа (`SetupScreen`) — на новых компонентах.
-- M5: старая дизайн-система удалена целиком (`Components.kt`, `DesignSystem.kt`, `Shapes.kt`, `Type.kt`, `Color.kt`
-  (`MB10Colors`/`MB10Spacing`), `Motion.kt`, `ui/nav/TabIcons.kt`, старый `ScreenshotTest.kt`, три старых TTF) —
-  `grep` по старым именам (`AppButton`, `MB10Colors`, `chamferShape`, `ChamferedSurface`, `Jura`, …) в `app/src/main`
-  и `app/src/test` пуст. `ui/nav/AppShell.kt` → `AppTab.kt` (в файле остался только сам enum, оболочку теперь рисует
-  `MbAppShell`).
-- `docs/ux/ux-plan.md` — более ранний, независимый заход на те же проблемы (компактная шапка, взлом без прокрутки)
-  старыми инструментами; помечен закрытым, замещён этой миграцией.
-- M6 (проверка на устройствах, `docs/device-testing.md`) — следующим шагом.
+- Компоненты `Mb*` в `ui/theme/` на токенах и типографике гайдлайна; шрифты Fira Sans Condensed + IBM Plex Mono, статичные TTF
+  в `res/font` (лицензии — `docs/ux/font-licenses/`). Оболочку рисует `MbAppShell`; `ui/nav` — `AppTab` и `ShellBadges`.
+- Все экраны игрока и стартовый экран выдачи персонажа (`SetupScreen`) — на новых компонентах. Скриншот-тесты — `screenshots/*`
+  (каталог компонентов `KitCatalogTest`, автопроверка масштаба шрифта 1,3× `FontScaleTest`, взлом на самом маленьком экране
+  `SmallScreenBreachTest`), тест `NoRectangularBordersTest` не пускает прямоугольные рамки.
+- `grep` по старым именам (`AppButton`, `MB10Colors`, `chamferShape`, `ChamferedSurface`, `Jura`, …) в `app/src/main` и
+  `app/src/test` пуст — возвращать их не нужно.
+- `docs/ux/ux-plan.md` — более ранний заход на те же проблемы старыми инструментами; помечен закрытым.
 
 ## Как проверить у себя
 

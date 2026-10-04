@@ -1,24 +1,14 @@
 package com.megablok10.app.presence
 
+import com.megablok10.app.testing.ManualNsdScheduler
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /** Разрешение сервисов по одному: пачка находок на площадке не должна терять игроков на FAILURE_ALREADY_ACTIVE. */
 class NsdResolveQueueTest {
     private val calls = mutableListOf<String>()
-    private var now = 0L
-    private val timers = mutableListOf<Pair<Long, () -> Unit>>()
-    private val scheduler = NsdScheduler { delay, block ->
-        val timer = (now + delay) to block
-        timers += timer
-        return@NsdScheduler { timers.remove(timer) }
-    }
+    private val scheduler = ManualNsdScheduler()
     private val q = NsdResolveQueue<String>({ it }, { item, token -> calls += "$item#$token" }, scheduler, timeoutMs = 10_000, retryMs = 1_000, maxAttempts = 3)
-
-    private fun advance(ms: Long) {
-        now += ms
-        timers.filter { it.first <= now }.forEach { t -> if (timers.remove(t)) t.second() }
-    }
 
     @Test fun burstIsResolvedOneByOne() {
         q.add("a"); q.add("b"); q.add("c")
@@ -38,10 +28,10 @@ class NsdResolveQueueTest {
         q.add("a"); q.add("b")
         q.onFailed(1, busy = true)
         assertEquals("пауза, и b не лезет вперёд", listOf("a#1"), calls)
-        advance(1_000)
+        scheduler.advance(1_000)
         assertEquals(listOf("a#1", "a#2"), calls)
         q.onFailed(2, busy = true)
-        advance(1_000)
+        scheduler.advance(1_000)
         q.onFailed(3, busy = true) // третья попытка — хватит
         assertEquals(listOf("a#1", "a#2", "a#3", "b#4"), calls)
     }
@@ -54,7 +44,7 @@ class NsdResolveQueueTest {
 
     @Test fun lostAnswerTimesOut() {
         q.add("a"); q.add("b")
-        advance(10_000)
+        scheduler.advance(10_000)
         assertEquals(listOf("a#1", "b#2"), calls)
         q.onResolved(1) // запоздалый — не в счёт
         assertEquals(1, q.pending)

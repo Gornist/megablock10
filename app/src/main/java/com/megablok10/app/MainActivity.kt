@@ -43,12 +43,14 @@ import com.megablok10.app.di.appGraph
 import com.megablok10.app.di.callsViewModel
 import com.megablok10.app.di.sessionViewModel
 import com.megablok10.app.di.settingsViewModel
+import com.megablok10.app.di.shellViewModel
 import com.megablok10.app.qr.ItemKind
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.rememberMb10QrScanner
 import com.megablok10.app.ui.theme.AppSnack
 import com.megablok10.app.ui.LocalAppGraph
 import com.megablok10.app.ui.appViewModel
+import com.megablok10.app.ui.rememberCallPermission
 import com.megablok10.kit.mesh.OnlinePlayer
 import com.megablok10.app.ui.nav.AppTab
 import com.megablok10.app.ui.theme.LocalMbColors
@@ -65,6 +67,7 @@ import com.megablok10.app.ui.screens.CallOverlay
 import com.megablok10.app.ui.screens.CallsScreen
 import com.megablok10.app.ui.screens.ChatScreen
 import com.megablok10.app.ui.screens.CyberdeckScreen
+import com.megablok10.app.ui.screens.CyberdeckViewModel
 import com.megablok10.app.ui.screens.ProfileScreen
 import com.megablok10.app.ui.screens.WalletScreen
 import com.megablok10.app.ui.theme.AppSnackHost
@@ -124,31 +127,7 @@ fun AppRoot() {
         if (identity == null) { tab = AppTab.Chat; showProfile = false }
     }
 
-    // WebRTC не откроет микрофон без RECORD_AUDIO — звонок (свой исходящий
-    // или принятие входящего) — единственное место в приложении, где он
-    // реально нужен, поэтому запрашиваем не заранее, а прямо в момент звонка.
-    // POST_NOTIFICATIONS просим тут же за компанию (нужен для видимой
-    // CallStyle-плашки на Android 13+), но не блокируем на нём звонок —
-    // без неё сервис всё равно поднимется и звонок пройдёт, просто плашки
-    // не будет видно.
-    var pendingMicAction by remember { mutableStateOf<(() -> Unit)?>(null) }
-    val callPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
-        if (results[Manifest.permission.RECORD_AUDIO] == true) pendingMicAction?.invoke()
-        pendingMicAction = null
-    }
-    fun withMicPermission(action: () -> Unit) {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-            action()
-        } else {
-            pendingMicAction = action
-            val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS)
-            } else {
-                arrayOf(Manifest.permission.RECORD_AUDIO)
-            }
-            callPermissionLauncher.launch(permissions)
-        }
-    }
+    val withMicPermission = rememberCallPermission()
 
     // Уведомления о сообщениях и постоянная плашка «на связи» (MeshForegroundService) не должны ждать первого звонка — раньше
     // POST_NOTIFICATIONS просили только там, и до первого звонка игрок не видел вообще никаких уведомлений о чате.
@@ -180,25 +159,19 @@ fun AppRoot() {
             onBack = { showProfile = false }
         )
     } else {
-        val graph = LocalAppGraph.current
+        val shell = appViewModel { shellViewModel() }
         val callState by calls.call.collectAsStateWithLifecycle()
         val callContacts by calls.contacts.collectAsStateWithLifecycle()
-        val balance by graph.wallet.observeBalance().collectAsStateWithLifecycle(0L)
-        val unreadChat by graph.shellBadges.unreadChatThreads(currentIdentity.publicKeyB64).collectAsStateWithLifecycle(0)
-        val missedCalls by graph.shellBadges.missedCalls().collectAsStateWithLifecycle(0)
+        val balance by shell.balance.collectAsStateWithLifecycle()
+        val unreadChat by shell.unreadChat.collectAsStateWithLifecycle()
+        val missedCalls by shell.missedCalls.collectAsStateWithLifecycle()
         // «Нет связи» (M4.8 плана миграции) — только на верхнем уровне вкладок, не поверх вложенных полноэкранных
         // потоков (тред чата, деталь шарда): у них своя immersive-вёрстка, как и у шапки (см. hideHeader ниже).
         val settings = appViewModel { settingsViewModel() }
         val collectorReachable by settings.collectorReachable.collectAsStateWithLifecycle()
         val pendingSync by settings.pendingChanges.collectAsStateWithLifecycle()
         // Таб, на который переключились, сам гасит свой бейдж — отдельного экрана «прочитано» не нужно.
-        LaunchedEffect(tab) {
-            when (tab) {
-                AppTab.Chat -> graph.shellBadges.markChatSeen()
-                AppTab.Calls -> graph.shellBadges.markCallsSeen()
-                else -> {}
-            }
-        }
+        LaunchedEffect(tab) { shell.onTabShown(tab) }
         // Только активный таб решает, вложен ли он сейчас — шапка прячется по его флагу. Нижнее меню — всегда (новая
         // оболочка не даёт спрятать nav, как в прототипе: с вложенного экрана можно сразу уйти на другую вкладку).
         val hideHeader = when (tab) {
@@ -246,7 +219,8 @@ fun AppRoot() {
                                 onQuickTransfer = { key -> walletPreset = key; tab = AppTab.Wallet },
                                 onQuickItem = { kind, peerKey ->
                                     cyberdeckPeerPreset = peerKey
-                                    cyberdeckSegmentPreset = if (kind == ItemKind.DAEMON) 0 else 1
+                                    cyberdeckSegmentPreset =
+                                        if (kind == ItemKind.DAEMON) CyberdeckViewModel.SEGMENT_DAEMONS else CyberdeckViewModel.SEGMENT_SHARDS
                                     tab = AppTab.Hack
                                 },
                                 onCallContact = { peer: OnlinePlayer -> withMicPermission { calls.start(peer) } }

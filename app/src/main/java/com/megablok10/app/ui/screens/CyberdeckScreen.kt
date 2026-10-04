@@ -1,17 +1,6 @@
 package com.megablok10.app.ui.screens
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -19,15 +8,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
-import com.megablok10.app.breach.BreachAccess
-import com.megablok10.app.breach.BreachBlock
 import com.megablok10.app.breach.BreachContainerFlow
-import com.megablok10.app.breach.cellsLabel
 import com.megablok10.app.breach.DecryptRules
-import com.megablok10.app.items.ItemTransferStore
-import com.megablok10.app.items.OutgoingItem
 import com.megablok10.app.breach.Daemon
 import com.megablok10.app.breach.ShardDecryptFlow
 import com.megablok10.app.breach.label
@@ -40,21 +22,6 @@ import com.megablok10.app.di.netrunViewModel
 import com.megablok10.app.netrun.NetrunEntryState
 import com.megablok10.app.ui.appViewModel
 import com.megablok10.app.ui.theme.AppSnack
-import com.megablok10.app.ui.theme.LocalMbColors
-import com.megablok10.app.ui.theme.MbBanner
-import com.megablok10.app.ui.theme.MbBannerTone
-import com.megablok10.app.ui.theme.MbButton
-import com.megablok10.app.ui.theme.MbButtonKind
-import com.megablok10.app.ui.theme.MbDimens
-import com.megablok10.app.ui.theme.MbEmptyState
-import com.megablok10.app.ui.theme.MbIconButton
-import com.megablok10.app.ui.theme.MbIcons
-import com.megablok10.app.ui.theme.MbListItem
-import com.megablok10.app.ui.theme.MbTabItem
-import com.megablok10.app.ui.theme.MbTabs
-import com.megablok10.app.ui.theme.MbTag
-import com.megablok10.app.ui.theme.MbTagTone
-import com.megablok10.app.ui.theme.MbTypography
 
 /**
  * Демоны и Шарды — два составных одной Кибердеки, не отдельные экраны:
@@ -83,7 +50,6 @@ fun CyberdeckScreen(
     val state by deck.state.collectAsStateWithLifecycle()
     val daemons = state.daemons
     val shards = state.shards
-    val contacts = state.contacts.contacts
     // 0 = Демоны, 1 = Шарды; живёт в ViewModel — переживает смену вкладки приложения.
     val segment by deck.segment.collectAsStateWithLifecycle()
     val container by breach.container.collectAsStateWithLifecycle()
@@ -168,6 +134,7 @@ fun CyberdeckScreen(
     if (decrypting != null) {
         ShardDecryptFlow(
             shard = decrypting,
+            isHintSeen = breach::isHintSeen, onHintSeen = breach::markHintSeen,
             onDecrypted = {
                 deck.markDecrypted(decrypting.id)
                 decryptingShard = null
@@ -179,26 +146,20 @@ fun CyberdeckScreen(
     }
 
     fun performTransfer(toKeyB64: String, label: String) {
-        val item = transferShard?.let { OutgoingItem.Shard(it.id) } ?: transferDaemon?.let { OutgoingItem.Daemon(it) }
+        val shard = transferShard
+        val daemon = transferDaemon
         transferShard = null
         transferDaemon = null
         // Карточка ушла — деталь шарда закрываем (его у игрока больше нет); не ушла — Кибердека скажет «Не удалось передать».
-        if (item != null) deck.transfer(item, toKeyB64, label, onSent = { openedShard = null })
+        deck.transferChosen(shard, daemon, toKeyB64, label, onSent = { openedShard = null })
     }
     fun sendTo(contact: Mb10Qr.Contact) = performTransfer(contact.publicKeyB64, contact.callsign)
 
     /** Начать передачу: если пришли из чата с уже известным получателем (см. presetPeerKey), отправляем сразу, без диалога выбора. */
     fun startTransfer(shard: Mb10Qr.Shard?, daemon: Daemon?) {
-        val preset = itemRecipientPreset
-        if (preset != null) {
-            transferShard = shard
-            transferDaemon = daemon
-            val label = contacts.find { it.publicKeyB64 == preset }?.callsign ?: "получателю"
-            performTransfer(preset, label)
-        } else {
-            transferShard = shard
-            transferDaemon = daemon
-        }
+        transferShard = shard
+        transferDaemon = daemon
+        itemRecipientPreset?.let { performTransfer(it, deck.recipientLabel(it)) }
     }
 
     // Выбранный контейнер — взлом на весь экран, без вкладок и кнопки сканирования (отмена и выход — внутри потока).
@@ -207,38 +168,21 @@ fun CyberdeckScreen(
         BreachContainerFlow(
             container = activeContainer, daemons = daemons, identity = identity,
             onRescan = breach::close, onImmersive = { breachRunning = it },
+            isHintSeen = breach::isHintSeen, onHintSeen = breach::markHintSeen,
             finish = { result, seed, onDone -> breach.finish(activeContainer, result, seed, onDone) }
         )
         return
     }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = MbDimens.screenPadding)) {
-        scanIssue?.let { blocked ->
-            val issue = scanIssueOf(blocked)
-            MbBanner(
-                lead = { Icon(painterResource(MbIcons.Alert), contentDescription = null, tint = LocalMbColors.current.bad) },
-                title = issue.title,
-                sub = issue.message,
-                tone = MbBannerTone.Danger,
-                action = { MbIconButton(MbIcons.Close, "Закрыть", breach::dismissIssue) }
-            )
-            Spacer(Modifier.height(MbDimens.blockGap))
-        }
-        MbTabs(
-            items = listOf(MbTabItem(MbIcons.Hack, "Демоны"), MbTabItem(MbIcons.Shard, "Шарды")),
-            selected = segment,
-            onSelect = deck::selectSegment
-        )
-        Box(Modifier.weight(1f)) {
-            if (segment == CyberdeckViewModel.SEGMENT_DAEMONS) {
-                DemonsSegment(daemons = daemons, onTransfer = { startTransfer(shard = null, daemon = it) })
-            } else {
-                ShardsSegment(shards = shards, onOpen = { openedShard = it })
-            }
-        }
-        MbButton("Войти в Сеть", onClick = { wantRack = true; scanObject() }, kind = MbButtonKind.Ghost, keyIcon = MbIcons.Hack, modifier = Modifier.padding(top = MbDimens.blockGap))
-        MbButton("Сканер", onClick = { wantRack = false; scanObject() }, keyIcon = MbIcons.Scan, modifier = Modifier.padding(vertical = MbDimens.blockGap))
-    }
+    CyberdeckMain(
+        scanIssue = scanIssue, onDismissIssue = breach::dismissIssue,
+        segment = segment, onSelectSegment = deck::selectSegment,
+        daemons = daemons, shards = shards,
+        onTransferDaemon = { startTransfer(shard = null, daemon = it) },
+        onOpenShard = { openedShard = it },
+        onEnterNetrun = { wantRack = true; scanObject() },
+        onScan = { wantRack = false; scanObject() }
+    )
 
     val opened = openedShard
     if (opened != null) {
@@ -260,87 +204,3 @@ fun CyberdeckScreen(
         )
     }
 }
-
-@Composable
-private fun DemonsSegment(daemons: List<Daemon>, onTransfer: (Daemon) -> Unit) {
-    if (daemons.isEmpty()) {
-        MbEmptyState(MbIcons.Hack, "Демонов пока нет", "Отсканируйте контейнер кнопкой «Сканер» — так начнётся коллекция.")
-        return
-    }
-    // Раскрыта одна строка за раз: тап — детали и действие «Передать»; в свёрнутом виде строка ≈ 48 dp.
-    var expandedId by remember { mutableStateOf<String?>(null) }
-    LazyColumn(Modifier.fillMaxSize()) {
-        items(daemons, key = { it.id }) { daemon ->
-            DaemonRow(
-                daemon = daemon,
-                expanded = expandedId == daemon.id,
-                onToggle = { expandedId = if (expandedId == daemon.id) null else daemon.id },
-                onTransfer = if (ItemTransferStore.isTransferable(daemon)) { { onTransfer(daemon) } } else null
-            )
-        }
-    }
-}
-
-/** Почему взлом отсканированного контейнера не начался — карточка над списком (запись мастеру делает сценарий CheckBreachAccess). */
-private fun scanIssueOf(blocked: BreachAccess.Blocked): ScanIssue = when (blocked.reason) {
-    BreachBlock.NO_LINK -> ScanIssue("Нет связи", "Дека вне зоны сети Мегаблока. Взлом недоступен без подключения к узлу связи.")
-    BreachBlock.COOLDOWN -> ScanIssue("Узел остывает", "Повторное подключение к этому узлу возможно через ${blocked.cooldownMinutes} мин.")
-    BreachBlock.EXHAUSTED -> ScanIssue("Кэш очищен", "Все слоты узла исчерпаны — здесь больше нечего извлекать.")
-}
-
-/** Строка демона (плашка): имя+тир, коды моношрифтом справа, эффект+цена во второй строке; «Передать» появляется по тапу. */
-@Composable
-private fun DaemonRow(daemon: Daemon, expanded: Boolean, onToggle: () -> Unit, onTransfer: (() -> Unit)?) {
-    Column(Modifier.fillMaxWidth().padding(bottom = MbDimens.rowGap)) {
-        MbListItem(
-            title = "${daemon.name} · ${daemon.tier.label}",
-            sub = "${daemon.effect.label()} · ${cellsLabel(daemon.sequence.size)}",
-            subWrap = true,
-            trail = listOf({ Text(daemon.sequence.joinToString(" "), style = MbTypography.demonCode, color = LocalMbColors.current.acc) }),
-            plate = true,
-            onClick = onTransfer?.let { onToggle }
-        )
-        if (expanded && onTransfer != null) {
-            MbButton("Передать другому игроку", onClick = onTransfer, inline = true, kind = MbButtonKind.Ghost, modifier = Modifier.padding(top = MbDimens.rowGap))
-        }
-    }
-}
-
-@Composable
-private fun ShardsSegment(shards: List<Mb10Qr.Shard>, onOpen: (Mb10Qr.Shard) -> Unit) {
-    if (shards.isEmpty()) {
-        MbEmptyState(MbIcons.Shard, "Шардов пока нет", "Отсканируйте QR-метку контейнера — найденные шарды появятся здесь.")
-        return
-    }
-    val (locked, open) = shards.partition { resolveBadge(it) == ShardBadge.Locked }
-    LazyColumn(Modifier.fillMaxSize()) {
-        if (open.isNotEmpty()) {
-            items(open, key = { it.id }) { shard -> ShardRow(shard, onClick = { onOpen(shard) }) }
-        }
-        if (locked.isNotEmpty()) {
-            items(locked, key = { it.id }) { shard -> ShardRow(shard, onClick = { onOpen(shard) }) }
-        }
-    }
-}
-
-/** Строка шарда: плашка с «язычком», длинное название — до двух строк; тег справа только для не-обычных состояний. */
-@Composable
-private fun ShardRow(shard: Mb10Qr.Shard, onClick: () -> Unit) {
-    val badge = remember(shard) { resolveBadge(shard) }
-    MbListItem(
-        title = shard.title,
-        sub = shard.meta,
-        titleWrap = true,
-        trail = when (badge) {
-            ShardBadge.Locked -> listOf({ MbTag("нужен дешифратор", tone = MbTagTone.Warn) })
-            ShardBadge.Compromised -> listOf({ MbTag(badge.text, tone = MbTagTone.Bad) })
-            ShardBadge.Fragment -> listOf({ MbTag(badge.text) })
-            ShardBadge.Public -> emptyList()
-        },
-        plate = true,
-        mark = true,
-        onClick = onClick
-    )
-}
-
-private data class ScanIssue(val title: String, val message: String)

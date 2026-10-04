@@ -2,6 +2,7 @@ import type { Db } from "../db/index.js";
 import { getSetting, setSetting } from "../lib/collectorSettings.js";
 import { activePlayers, getPlayerBase } from "../lib/playerSummary.js";
 import type { NetService } from "./netService.js";
+import { PeriodicSync } from "./periodicSync.js";
 
 /** Фракция СБ по умолчанию (получатель сигнала, если у узла нет владельца) — настройка мастера. */
 const DEFAULT_FACTION_KEY = "net.sec_default_faction";
@@ -61,29 +62,13 @@ export interface SecSyncStatus {
  * перезапуска Моста) и раз в `intervalMs`. Пишет только когда документ отличается — игроки меняются редко, а Мост не должен
  * получать put впустую. Пока документа нет, Мост сигнал СБ никуда не отправляет — это сознательная безопасная сторона.
  */
-export class SecSync {
-  private timer: NodeJS.Timeout | null = null;
-  private running = false;
-  lastError: string | null = null;
-
+export class SecSync extends PeriodicSync {
   constructor(
     private readonly db: Db,
-    private readonly net: NetService,
-    private readonly intervalMs = Number(process.env.NET_SEC_SYNC_MS ?? 30_000),
-  ) {}
-
-  start(): void {
-    if (!this.net.configured || this.timer) return;
-    this.net.onConnected(() => void this.sync());
-    if (this.intervalMs > 0) {
-      this.timer = setInterval(() => void this.sync(), this.intervalMs);
-      this.timer.unref();
-    }
-  }
-
-  stop(): void {
-    if (this.timer) clearInterval(this.timer);
-    this.timer = null;
+    net: NetService,
+    intervalMs = Number(process.env.NET_SEC_SYNC_MS ?? 30_000),
+  ) {
+    super(net, intervalMs);
   }
 
   status(): SecSyncStatus {
@@ -96,9 +81,7 @@ export class SecSync {
 
   /** Привести документ к нужному виду. true — записали; false — менять нечего или Моста нет (догонится при подключении/по таймеру). */
   async sync(): Promise<boolean> {
-    if (!this.net.connected || this.running) return false;
-    this.running = true;
-    try {
+    return this.exclusive(async () => {
       const want = computeSecDoc(this.db);
       let wrote = false;
       await this.net.putDoc("settings", "sec", (cur) => {
@@ -107,14 +90,7 @@ export class SecSync {
         wrote = true;
         return { ...(cur ?? {}), ...withMeta(want) };
       });
-      this.lastError = null;
       return wrote;
-    } catch (e) {
-      // Мост отказал или пропал посреди записи — не страшно: повтор по таймеру и при следующем подключении.
-      this.lastError = e instanceof Error ? e.message : String(e);
-      return false;
-    } finally {
-      this.running = false;
-    }
+    }, false, (total, next) => total || next);
   }
 }

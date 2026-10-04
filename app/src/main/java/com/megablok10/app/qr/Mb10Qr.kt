@@ -345,4 +345,8 @@ object Mb10QrCodec {
     /** Байты, которые подписывает получатель на чеке — та же id, что и у исходной транзакции, плюс его ключ (kit [HandoverRules]). */
     fun receiptSignaturePayload(id: String, receiverPubKeyB64: String): ByteArray =
         HandoverRules.receiptSignaturePayload(id, receiverPubKeyB64)
+
+    /** Чек получателя [receiverPubKeyB64] по передаче [id], подписанный [sign] — один для денег и предметов. */
+    fun receipt(id: String, receiverPubKeyB64: String, sign: (ByteArray) -> String): Mb10Qr.Receipt =
+        Mb10Qr.Receipt(id = id, receiverPubKeyB64 = receiverPubKeyB64, signatureB64 = sign(receiptSignaturePayload(id, receiverPubKeyB64)))
 }

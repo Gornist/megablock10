@@ -1,51 +1,20 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildApp } from "./app.js";
 import { bridgeRunnerDocId } from "./lib/netRunners.js";
-import { BridgeClient } from "./net/bridgeClient.js";
-import { FakeBridge } from "./net/fakeBridge.js";
-import { NetService } from "./net/netService.js";
+import type { FakeBridgeOptions } from "./net/fakeBridge.js";
 import { seedPlayer } from "./testHelpers.js";
-import { loginAs, testDb, testDevice, testMaster } from "./testUtil.js";
+import { setupNet, waitFor } from "./testNet.js";
+import { testDevice } from "./testUtil.js";
 
 /**
  * Решения мастера о нетраннере доходят до документов runner в Мосте (id r_<sha256 ключа>, ключ в data.key): «пощадить», ручное закрытие,
  * «может входить в Сеть» (allowed), фракция персонажа, догон после обрыва.
  */
 
-async function waitFor(what: string, cond: () => boolean | Promise<boolean>, ms = 4000) {
-  const until = Date.now() + ms;
-  while (!(await cond())) {
-    if (Date.now() > until) assert.fail(`не дождались: ${what}`);
-    await new Promise((r) => setTimeout(r, 10));
-  }
-}
-
-async function setup(docs: ConstructorParameters<typeof FakeBridge>[0] = {}) {
-  const bridge = new FakeBridge(docs);
-  await bridge.start();
-  const net = new NetService(new BridgeClient({ url: bridge.url, key: "master-key", backoffMinMs: 20, backoffMaxMs: 60, requestTimeoutMs: 1500 }));
-  const db = testDb();
-  const app = buildApp(db, { logger: false, net });
-  const master = testMaster(db, "Мастер-1");
-  const headers = { authorization: `Bearer ${await loginAs(app, master.name, master.token)}` };
+async function setup(docs: FakeBridgeOptions = {}) {
+  const { bridge, net, db, app, headers, connect, cleanup } = await setupNet({ bridge: docs, connect: false });
   const flags = () => db.prepare("SELECT runner_key, blocked, bridge_synced FROM net_runner_flags").all() as { runner_key: string; blocked: number; bridge_synced: number }[];
-  return {
-    bridge,
-    net,
-    db,
-    app,
-    headers,
-    flags,
-    connect: async () => {
-      net.start();
-      await waitFor("Мост на связи", () => net.connected);
-    },
-    cleanup: async () => {
-      await app.close();
-      await bridge.stop();
-    },
-  };
+  return { bridge, net, db, app, headers, flags, connect, cleanup };
 }
 
 /** Флэтлайн от мира: запись NET_FLATLINE с ключом нетраннера (обычный base64, как у телефона). */

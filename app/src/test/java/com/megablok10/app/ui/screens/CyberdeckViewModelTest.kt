@@ -124,4 +124,29 @@ class CyberdeckViewModelTest {
         assertTrue("не закрываем карточку, которую не удалось передать", !closed)
         assertEquals(listOf("Не удалось передать"), notices.shown)
     }
+
+    @Test fun transferChosenSendsWhicheverOfShardOrDaemonWasPicked() = runTest {
+        val vm = deck()
+        var sent = 0
+
+        vm.transferChosen(shard = null, daemon = Daemon("daemon-1", "Ghostwalker", listOf("1C")), toPubKeyB64 = bob.key, label = "Bob") { sent++ }
+        runCurrent()
+        assertEquals(1, sent)
+        assertEquals(listOf("Передача отправлена: Bob"), notices.shown)
+
+        // Ничего не выбрано — ничего не уходит и ничего не сообщается.
+        vm.transferChosen(shard = null, daemon = null, toPubKeyB64 = bob.key, label = "Bob") { sent++ }
+        runCurrent()
+        assertEquals(1, sent)
+        assertEquals(1, notices.shown.size)
+    }
+
+    @Test fun recipientLabelIsTheCallsignOfAKnownContactOtherwiseAGenericWord() = runTest {
+        val vm = deck()
+        backgroundScope.launch { vm.state.collect {} }
+        runCurrent()
+
+        assertEquals("Bob", vm.recipientLabel(bob.key))
+        assertEquals("получателю", vm.recipientLabel("неизвестный-ключ"))
+    }
 }

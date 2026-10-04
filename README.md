@@ -79,7 +79,7 @@ TCP на постоянный порт 47100. Каждая строка идёт
 
 ### Сборка
 
-Нужны JDK 21 (байткод — 17; Java 21 требует Paparazzi 2) и Android SDK command-line tools.
+Нужны JDK 21 (его требует Paparazzi 2; байткод проекта — Java 17) и Android SDK command-line tools.
 
 ```bash
 sdkmanager "platform-tools" "platforms;android-36" "build-tools;35.0.0"   # один раз

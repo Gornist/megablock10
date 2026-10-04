@@ -18,6 +18,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -84,5 +86,50 @@ class WalletViewModelTest {
         runCurrent()
 
         assertTrue(ledger.status.isEmpty())
+    }
+
+    private fun vmIn(scope: kotlinx.coroutines.CoroutineScope) =
+        WalletViewModel(MutableStateFlow(alice.identity), ledger, directory, SendPayment(ledger, FakeMessenger(bob.peer)), notices, scope)
+
+    @Test fun amountEqualToTheBalanceIsAllowed() = runTest {
+        assertEquals(AmountCheck.Valid(50), vmIn(this).validate("50", balance = 50))
+    }
+
+    @Test fun amountAboveTheBalanceIsRefusedWithAFundsMessage() = runTest {
+        val check = vmIn(this).validate("51", balance = 50)
+
+        assertEquals(AmountCheck.ExceedsBalance, check)
+        assertEquals("недостаточно средств", check.errorText)
+    }
+
+    @Test fun zeroNegativeAndNonNumericAmountsAskForAPositiveSum() = runTest {
+        val vm = vmIn(this)
+
+        for (text in listOf("0", "-5", "abc", "1.5", " 5", "12 3", "99999999999999999999")) {
+            val check = vm.validate(text, balance = 50)
+            assertEquals(text, AmountCheck.NotPositive, check)
+            assertEquals(text, "введите сумму больше нуля", check.errorText)
+        }
+    }
+
+    @Test fun emptyAmountIsNeitherValidNorAnError() = runTest {
+        val check = vmIn(this).validate("", balance = 50)
+
+        assertEquals(AmountCheck.Empty, check)
+        assertNull(check.errorText)
+    }
+
+    @Test fun anyPositiveAmountIsRefusedWhenTheBalanceIsEmpty() = runTest {
+        assertEquals(AmountCheck.ExceedsBalance, vmIn(this).validate("1", balance = 0))
+    }
+
+    @Test fun validAmountHasNoErrorText() = runTest {
+        assertNull(vmIn(this).validate("20", balance = 50).errorText)
+    }
+
+    @Test fun everyNewPaymentGetsItsOwnId() = runTest {
+        val vm = vmIn(this)
+
+        assertNotEquals(vm.newPaymentId(), vm.newPaymentId())
     }
 }

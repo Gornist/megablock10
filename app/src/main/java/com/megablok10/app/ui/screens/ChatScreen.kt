@@ -46,6 +46,7 @@ import com.megablok10.app.ui.theme.MbBreadcrumb
 import com.megablok10.app.ui.theme.MbButton
 import com.megablok10.app.ui.theme.MbBubble
 import com.megablok10.app.ui.theme.MbComposer
+import com.megablok10.app.ui.theme.MbContactItem
 import com.megablok10.app.ui.theme.MbDaySep
 import com.megablok10.app.ui.theme.MbDimens
 import com.megablok10.app.ui.theme.MbEmptyState
@@ -60,7 +61,9 @@ import com.megablok10.app.ui.theme.MbStatusTone
 import com.megablok10.app.ui.theme.MbTag
 import com.megablok10.app.ui.theme.MbTagTone
 import com.megablok10.app.ui.theme.MbTypography
+import com.megablok10.app.ui.theme.dayLabel
 import com.megablok10.app.ui.theme.formatMoney
+import com.megablok10.app.ui.theme.shortKey
 import com.megablok10.app.di.chatViewModel
 import com.megablok10.app.di.directThreadViewModel
 import com.megablok10.app.identity.ContactsView
@@ -244,7 +247,7 @@ private fun DirectThread(
             MbIconButton(MbIcons.Wallet, "Перевод", { onQuickTransfer(peerPubKeyB64) })
         }
         MbMetaLine(
-            (if (peer != null) "● в сети" else "не в сети") + " · ${contact?.faction ?: "—"} · ключ ${shortKey(peerPubKeyB64)}",
+            (if (peer != null) "● в сети" else "не в сети") + " · ${contact?.faction ?: "—"} · ключ ${shortKey(peerPubKeyB64, 8)}",
             tone = if (peer != null) MbMetaTone.Ok else MbMetaTone.Neutral
         )
         Spacer(Modifier.height(MbDimens.rowGap))
@@ -278,8 +281,6 @@ private fun DirectThread(
     }
 }
 
-private fun shortKey(key: String): String = if (key.length <= 8) key else "${key.take(4)}…${key.takeLast(3)}"
-
 /** Список контактов для старта НОВОГО диалога (кнопка «+» в инбоксе) — не путать с самим инбоксом уже идущих переписок. */
 @Composable
 private fun NewChatPicker(directory: ContactsView, onPick: (String) -> Unit, onBack: () -> Unit) {
@@ -306,12 +307,7 @@ private fun NewChatPicker(directory: ContactsView, onPick: (String) -> Unit, onB
         }
         LazyColumn(Modifier.weight(1f)) {
             items(filtered, key = { it.publicKeyB64 }) { c ->
-                MbListItem(
-                    title = c.callsign,
-                    sub = c.faction,
-                    lead = { Icon(painterResource(MbIcons.User), contentDescription = null) },
-                    onClick = { onPick(c.publicKeyB64) }
-                )
+                MbContactItem(callsign = c.callsign, faction = c.faction, onClick = { onPick(c.publicKeyB64) })
             }
         }
     }
@@ -341,16 +337,6 @@ private fun buildChatEntries(messages: List<ChatMessageEntity>): List<ChatEntry>
         entries += ChatEntry.Msg(msg)
     }
     return entries
-}
-
-private fun dayLabel(day: Calendar, today: Calendar): String {
-    val sameYear = today.get(Calendar.YEAR) == day.get(Calendar.YEAR)
-    val diff = today.get(Calendar.DAY_OF_YEAR) - day.get(Calendar.DAY_OF_YEAR)
-    return when {
-        sameYear && diff == 0 -> "Сегодня"
-        sameYear && diff == 1 -> "Вчера"
-        else -> SimpleDateFormat("d MMMM", Locale("ru")).format(day.time)
-    }
 }
 
 /** Тело перевода/чека в теле сообщения — та же строка, что раньше шла в QR-картинку. В превью инбокса это должен быть человеческий текст, а не сырая строка вида "MB10:TX:v1:...". */

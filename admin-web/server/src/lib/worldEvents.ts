@@ -192,5 +192,3 @@ export function createWorldEvents(db: Db, audio: Pick<AudioService, "announce">)
     },
   };
 }
-
-export type WorldEvents = ReturnType<typeof createWorldEvents>;

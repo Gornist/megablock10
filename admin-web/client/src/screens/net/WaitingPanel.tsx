@@ -1,5 +1,6 @@
 import { api } from "../../api/client";
 import type { NetState } from "../../api/types";
+import { AttnRow } from "../../design/AttnRow";
 import { AppButton, Badge, ErrorNote, Panel } from "../../design/components";
 import { docsOf, remainingLabel, text, numOf, useNetCall } from "./netUtil";
 
@@ -25,13 +26,18 @@ export function WaitingPanel({ state, reload }: { state: NetState; reload: () =>
         const left = remainingLabel(numOf(r.data.expires_at), state.serverNow);
         const def = r.data.default === "deny" ? "deny" : "approve";
         return (
-          <div key={r.id} className="attn-item sev-crit">
-            <span className="attn-title">{KIND_LABEL[kind] ?? kind}</span>
-            <span className="attn-detail">
-              {text(r.data.summary) || r.id}
-              {r.data.node ? ` · узел ${text(r.data.node)}` : ""}
-              <span className="hint-text"> · по сроку — {DECISION_LABEL[def]}</span>
-            </span>
+          <AttnRow
+            key={r.id}
+            severity="crit"
+            title={KIND_LABEL[kind] ?? kind}
+            detail={
+              <>
+                {text(r.data.summary) || r.id}
+                {r.data.node ? ` · узел ${text(r.data.node)}` : ""}
+                <span className="hint-text"> · по сроку — {DECISION_LABEL[def]}</span>
+              </>
+            }
+          >
             {left && <Badge tone="warn">{left}</Badge>}
             <AppButton variant="primary" disabled={busy} onClick={() => void call(() => api.post("/api/net/decide", { req: r.id, decision: "approve" }))}>
               {kind === "flatline" ? "подтвердить флэтлайн" : "подтвердить"}
@@ -39,7 +45,7 @@ export function WaitingPanel({ state, reload }: { state: NetState; reload: () =>
             <AppButton disabled={busy} onClick={() => void call(() => api.post("/api/net/decide", { req: r.id, decision: "deny" }))}>
               отклонить
             </AppButton>
-          </div>
+          </AttnRow>
         );
       })}
     </Panel>

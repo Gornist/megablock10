@@ -1,6 +1,5 @@
 package com.megablok10.app.identity
 
-import androidx.room.withTransaction
 import com.megablok10.app.announce.AnnouncementStore
 import com.megablok10.app.collector.ChangeField
 import com.megablok10.app.collector.ChangeReason
@@ -9,6 +8,7 @@ import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.log.Mb10Log
 import com.megablok10.app.netrun.NetrunEntry
 import com.megablok10.kit.sync.ChangeRecorder
+import com.megablok10.kit.sync.Transactor
 
 /**
  * Сброс сессии персонажа НА УСТРОЙСТВЕ (Настройки → «Опасная зона»): телефон возвращается в состояние «чистая установка», чтобы игрок не нашёл
@@ -24,6 +24,7 @@ import com.megablok10.kit.sync.ChangeRecorder
  */
 class SessionReset(
     private val db: Mb10Database,
+    private val tx: Transactor,
     private val identityStore: IdentityStore,
     private val settings: CollectorSettings,
     private val changes: ChangeRecorder,
@@ -44,7 +45,7 @@ class SessionReset(
             changes.record(ChangeField.FACTION, identity.faction, "", ChangeReason.CHARACTER_RESET)
         }
         stopSession()
-        db.withTransaction {
+        tx.inTransaction {
             val db1 = db.openHelper.writableDatabase
             val tables = db1.query("SELECT name FROM sqlite_master WHERE type = 'table'").use { c -> buildList { while (c.moveToNext()) add(c.getString(0)) } }
             wipeStatements(tables).forEach { db1.execSQL(it) }

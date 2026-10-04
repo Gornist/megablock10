@@ -35,6 +35,7 @@ import com.megablok10.kit.sync.ChangeRecorder
 import com.megablok10.kit.sync.RecordSigner
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import java.security.KeyPair
 
 /** Игрок для тестов: настоящая пара ключей, подписи проверяются теми же функциями, что в приложении. */
@@ -320,3 +321,10 @@ fun testPeerDirectory(vararg online: OnlinePlayer, outcome: SendOutcome = SendOu
         { online.map { PeerInfo(it.pubKeyB64, it.callsign, it.faction, "10.0.0.1", 40_000) } },
         MutableStateFlow(online.toList()),
     ) { _, _, _, _ -> outcome }
+
+/** Справочник пиров на живом списке [online]: исход любой отправки — то, что вернёт [wire] в этот момент; каждая отправленная строка — в [onLine]. */
+fun testPeerDirectory(online: StateFlow<List<OnlinePlayer>>, wire: () -> SendOutcome, onLine: (String) -> Unit = {}) =
+    PeerDirectory(
+        { online.value.map { PeerInfo(it.pubKeyB64, it.callsign, it.faction, "10.0.0.2", 47100) } },
+        online,
+    ) { _, _, line, _ -> onLine(line); wire() }

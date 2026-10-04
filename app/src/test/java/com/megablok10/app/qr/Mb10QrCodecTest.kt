@@ -146,6 +146,15 @@ class Mb10QrCodecTest {
     }
 
     @Test
+    fun `receipt is signed over the receipt payload of its own id and key`() {
+        val signed = mutableListOf<ByteArray>()
+        val receipt = Mb10QrCodec.receipt("tx-1", "recvPub==") { data -> signed += data; "sig" }
+        assertEquals(Mb10Qr.Receipt("tx-1", "recvPub==", "sig"), receipt)
+        assertEquals(1, signed.size)
+        assert(signed[0].contentEquals(Mb10QrCodec.receiptSignaturePayload("tx-1", "recvPub==")))
+    }
+
+    @Test
     fun `unknown magic prefix decodes to null`() {
         assertNull(Mb10QrCodec.decode("NOTMB10:CONTACT:v1:a:b:c"))
     }

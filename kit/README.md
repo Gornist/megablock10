@@ -24,7 +24,7 @@
 
 - **Никакого Android и никакой игры.** Ни `android.*`, ни `androidx.*`, ни классов приложения. Игровые константы (префиксы
   файлов, тексты для игрока, ключи по умолчанию) передаются параметрами.
-- **Только API Android 8.0 (minSdk 26).** Модуль собирается JDK 17+, но код уходит в APK: то, чего нет на Android 8
+- **Только API Android 8.0 (minSdk 26).** Сборка требует JDK 21 (Paparazzi 2), байткод модуля — Java 17, а код уходит в APK: то, чего нет на Android 8
   (`InputStream.readAllBytes`, `List.of`, конструктор `PrintWriter(OutputStream, Boolean, Charset)` и т. п.), компилируется
   молча и падает `NoSuchMethodError` на телефоне игрока. Это проверяет Animal Sniffer по сигнатуре API Android 26
   (`./gradlew :kit:animalsnifferMain`, в CI и `scripts/check.sh`). Стандартная библиотека Kotlin, `java.security`,

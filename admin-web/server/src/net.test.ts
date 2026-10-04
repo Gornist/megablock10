@@ -7,19 +7,12 @@ import { BridgeError } from "./net/bridgeProtocol.js";
 import { FakeBridge } from "./net/fakeBridge.js";
 import { Mirror } from "./net/mirror.js";
 import { NetService, bridgeOptionsFromEnv } from "./net/netService.js";
+import { setupNet, waitFor } from "./testNet.js";
 import { loginAs, testDb, testMaster } from "./testUtil.js";
 
 /** Клиент Моста и инструменты мастера «Сети» против фейкового Моста по протоколу C1 (net/fakeBridge.ts). */
 
 const doc = (type: string, id: string, ver: number, data: Record<string, unknown> = {}) => ({ type, id, ver, created: 1, updated: 1, data });
-
-async function waitFor(what: string, cond: () => boolean | Promise<boolean>, ms = 4000) {
-  const until = Date.now() + ms;
-  while (!(await cond())) {
-    if (Date.now() > until) assert.fail(`не дождались: ${what}`);
-    await new Promise((r) => setTimeout(r, 10));
-  }
-}
 
 const SAMPLE = [
   { type: "settings", id: "global", data: { paused: false, venue_link: true } },
@@ -31,23 +24,12 @@ const SAMPLE = [
   { type: "template", id: "tpl_night", data: { title: "Ночь", settings: { await_flatline: 1 }, node_cfg: { trace_per_s: 3 } } },
 ];
 
-async function setup(opts: { docs?: typeof SAMPLE; withBridge?: boolean } = {}) {
-  const bridge = new FakeBridge({ docs: opts.docs ?? SAMPLE });
-  await bridge.start();
-  const client = new BridgeClient({ url: bridge.url, key: "master-key", backoffMinMs: 20, backoffMaxMs: 80, pingMs: 5000, requestTimeoutMs: 1500 });
-  const net = new NetService(client);
-  const db = testDb();
-  const app = buildApp(db, { logger: false, net });
-  const master = testMaster(db, "Мастер-1");
-  const headers = { authorization: `Bearer ${await loginAs(app, master.name, master.token)}` };
-  net.start();
-  await waitFor("Мост на связи", () => net.connected);
+async function setup(opts: { docs?: typeof SAMPLE } = {}) {
+  const { app, bridge, client, net, db, headers, post, cleanup } = await setupNet({
+    bridge: { docs: opts.docs ?? SAMPLE },
+    client: { backoffMaxMs: 80, pingMs: 5000 },
+  });
   const state = async () => (await app.inject({ method: "GET", url: "/api/net/state", headers })).json() as NetState;
-  const post = (url: string, payload: unknown) => app.inject({ method: "POST", url, headers, payload: payload as object });
-  const cleanup = async () => {
-    await app.close();
-    await bridge.stop();
-  };
   return { bridge, client, net, db, app, headers, state, post, cleanup };
 }
 

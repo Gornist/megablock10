@@ -46,9 +46,7 @@ import com.megablok10.app.ui.theme.MbTypography
 import com.megablok10.app.ui.theme.formatMoney
 import com.megablok10.app.ui.theme.groupThousands
 import java.text.SimpleDateFormat
-import java.util.Calendar
 import java.util.Locale
-import java.util.UUID
 
 /**
  * Хэндшейк перевода идёт сообщениями в личном чате с получателем, а не показыванием QR друг другу: получатель выбирается
@@ -111,47 +109,13 @@ fun WalletScreen(presetContactKey: String? = null, onPresetConsumed: () -> Unit 
             contacts = contacts,
             onlineKeys = onlineKeys,
             transactions = transactions,
-            balance = balance,
+            validate = { amountText -> wallet.validate(amountText, balance) },
+            newPaymentId = wallet::newPaymentId,
             initialContact = contacts.find { it.publicKeyB64 == presetKey },
             onSend = { contact, id, amount, memo -> wallet.send(contact.publicKeyB64, id, amount, memo) },
             onCancel = wallet::cancel,
             onDismiss = { sending = false; presetKey = null }
         )
-    }
-}
-
-/** Сумма входящих минус исходящих за сегодня — null, если сегодня ещё не было ни одной операции. */
-private fun todayInOut(transactions: List<TransactionEntity>): Pair<Long, Long>? {
-    val cal = Calendar.getInstance()
-    val today = Calendar.getInstance()
-    val todayTx = transactions.filter { cal.apply { timeInMillis = it.timestamp }.get(Calendar.DAY_OF_YEAR) == today.get(Calendar.DAY_OF_YEAR) &&
-        cal.get(Calendar.YEAR) == today.get(Calendar.YEAR) }
-    if (todayTx.isEmpty()) return null
-    val incoming = todayTx.filter { it.amount > 0 }.sumOf { it.amount }
-    val outgoing = -todayTx.filter { it.amount < 0 }.sumOf { it.amount }
-    return incoming to outgoing
-}
-
-/** Тот же принцип, что в ленте чата (ChatScreen.buildChatEntries): день сменился — новая группа с заголовком. */
-private fun groupByDay(transactions: List<TransactionEntity>): List<Pair<String, List<TransactionEntity>>> {
-    val cal = Calendar.getInstance()
-    val today = Calendar.getInstance()
-    val groups = LinkedHashMap<String, MutableList<TransactionEntity>>()
-    transactions.forEach { tx ->
-        cal.timeInMillis = tx.timestamp
-        val label = dayLabelFor(cal, today)
-        groups.getOrPut(label) { mutableListOf() } += tx
-    }
-    return groups.map { it.key to it.value }
-}
-
-private fun dayLabelFor(day: Calendar, today: Calendar): String {
-    val sameYear = today.get(Calendar.YEAR) == day.get(Calendar.YEAR)
-    val diff = today.get(Calendar.DAY_OF_YEAR) - day.get(Calendar.DAY_OF_YEAR)
-    return when {
-        sameYear && diff == 0 -> "Сегодня"
-        sameYear && diff == 1 -> "Вчера"
-        else -> SimpleDateFormat("d MMMM", Locale("ru")).format(day.time)
     }
 }
 
@@ -195,7 +159,8 @@ private fun SendTransactionDialog(
     contacts: List<Mb10Qr.Contact>,
     onlineKeys: Set<String>,
     transactions: List<TransactionEntity>,
-    balance: Long,
+    validate: (amountText: String) -> AmountCheck,
+    newPaymentId: () -> String,
     initialContact: Mb10Qr.Contact? = null,
     onSend: (contact: Mb10Qr.Contact, id: String, amount: Long, memo: String) -> Unit,
     onCancel: (id: String) -> Unit,
@@ -234,16 +199,14 @@ private fun SendTransactionDialog(
             }
             contact == null -> listOf(MbDialogAction("Отмена", MbButtonKind.Quiet, onClick = onDismiss))
             else -> {
-                val parsedAmount = amountText.toLongOrNull()
-                val amountValid = parsedAmount != null && parsedAmount > 0 && parsedAmount <= balance
+                val check = validate(amountText)
                 listOf(
                     MbDialogAction("Отмена", MbButtonKind.Quiet, onClick = { selectedContact = null }),
-                    MbDialogAction("Отправить", if (amountValid) MbButtonKind.Success else MbButtonKind.Quiet) {
-                        if (amountValid) {
-                            val id = UUID.randomUUID().toString()
-                            val amount = amountText.toLong()
-                            onSend(contact, id, amount, memoText)
-                            sent = SentPayment(id, contact, amount, memoText)
+                    MbDialogAction("Отправить", if (check is AmountCheck.Valid) MbButtonKind.Success else MbButtonKind.Quiet) {
+                        if (check is AmountCheck.Valid) {
+                            val id = newPaymentId()
+                            onSend(contact, id, check.amount, memoText)
+                            sent = SentPayment(id, contact, check.amount, memoText)
                         }
                     }
                 )
@@ -284,16 +247,12 @@ private fun SendTransactionDialog(
                 }
             }
             else -> {
-                val parsedAmount = amountText.toLongOrNull()
-                val showError = amountText.isNotEmpty() && (parsedAmount == null || parsedAmount <= 0 || parsedAmount > balance)
                 Text(
                     "Сумма списывается с вашего баланса сразу — как передать наличные из рук в руки. Перевод уйдёт получателю сообщением в чат — до его подтверждения платёж ещё можно отменить.",
                     style = MbTypography.meta, color = c.ink2
                 )
                 MbAmountField(value = amountText, onValueChange = { amountText = it })
-                if (showError) {
-                    MbStatusText(if (parsedAmount != null && parsedAmount > balance) "недостаточно средств" else "введите сумму больше нуля", MbStatusTone.Bad)
-                }
+                validate(amountText).errorText?.let { MbStatusText(it, MbStatusTone.Bad) }
                 MbField(value = memoText, onValueChange = { memoText = it }, placeholder = "За что (необязательно)")
             }
         }

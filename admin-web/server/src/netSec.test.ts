@@ -1,48 +1,20 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildApp } from "./app.js";
-import { BridgeClient } from "./net/bridgeClient.js";
-import { FakeBridge } from "./net/fakeBridge.js";
-import { NetService } from "./net/netService.js";
 import { computeSecDoc, SecSync } from "./net/secSync.js";
 import { seedPlayer } from "./testHelpers.js";
+import { setupNet, waitFor } from "./testNet.js";
 import { loginAs, testDb, testMaster } from "./testUtil.js";
 
 /** Получатели сигнала СБ: документ settings/sec в Мосте собирается из фракций игроков (docs/netrun-collector-brief.md, задача 3). */
 
-async function waitFor(what: string, cond: () => boolean | Promise<boolean>, ms = 4000) {
-  const until = Date.now() + ms;
-  while (!(await cond())) {
-    if (Date.now() > until) assert.fail(`не дождались: ${what}`);
-    await new Promise((r) => setTimeout(r, 10));
-  }
-}
-
 async function setup() {
-  const bridge = new FakeBridge({ docs: [{ type: "node", id: "node_07", data: { title: "Склад", eddies: 300 } }] });
-  await bridge.start();
-  const net = new NetService(new BridgeClient({ url: bridge.url, key: "master-key", backoffMinMs: 20, backoffMaxMs: 60, requestTimeoutMs: 1500 }));
-  const db = testDb();
-  const app = buildApp(db, { logger: false, net });
-  const master = testMaster(db, "Мастер-1");
-  const headers = { authorization: `Bearer ${await loginAs(app, master.name, master.token)}` };
+  const { bridge, net, db, app, headers, connect, cleanup } = await setupNet({
+    bridge: { docs: [{ type: "node", id: "node_07", data: { title: "Склад", eddies: 300 } }] },
+    connect: false,
+  });
   const sec = new SecSync(db, net, 0); // таймер выключен — синк вызываем сами
-  return {
-    bridge,
-    net,
-    db,
-    app,
-    headers,
-    sec,
-    connect: async () => {
-      net.start();
-      await waitFor("Мост на связи", () => net.connected);
-    },
-    cleanup: async () => {
-      await app.close();
-      await bridge.stop();
-    },
-  };
+  return { bridge, net, db, app, headers, sec, connect, cleanup };
 }
 
 test("computeSecDoc: ключи телефонов действующих игроков по фракциям; без фракции, заменённые и сбросившие сессию — не получатели", async () => {

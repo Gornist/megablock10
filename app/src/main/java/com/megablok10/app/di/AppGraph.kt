@@ -6,6 +6,7 @@ import com.megablok10.app.BuildConfig
 import com.megablok10.app.Mb10App
 import com.megablok10.app.PlayerNotices
 import com.megablok10.app.announce.AnnouncementStore
+import com.megablok10.app.breach.BreachHintStore
 import com.megablok10.app.breach.CheckBreachAccess
 import com.megablok10.app.breach.ContainerCooldownStore
 import com.megablok10.app.breach.DaemonRewards
@@ -41,7 +42,9 @@ import com.megablok10.app.items.AcceptItem
 import com.megablok10.app.items.ItemTransferStore
 import com.megablok10.app.items.SendItem
 import com.megablok10.app.log.DeviceDiagnostics
+import com.megablok10.app.log.LogStore
 import com.megablok10.app.log.Mb10Log
+import com.megablok10.app.log.Mb10LogStore
 import com.megablok10.app.netrun.NetrunEntry
 import com.megablok10.app.netrun.NetrunStore
 import com.megablok10.app.netrun.WorldAutoAccept
@@ -130,6 +133,7 @@ class AppGraph(private val app: Application) {
     val outbox: OutboxStore = OutboxStore(db.outboxDao(), peerDirectory) { line -> chat.markDelivered(line) }
     val chat: ChatStore = ChatStore(db.chatMessageDao(), outbox, peerDirectory)
     val calls = CallManager(app, peerDirectory, db.callLogDao())
+    val logStore: LogStore = Mb10LogStore(app)
     /** Отчёты о прочтении (D4) и переключатель «как в мессенджерах». */
     val readReceiptSetting = ReadReceiptSetting(prefs(ReadReceiptSetting.PREFS))
     val readReceipts = ReadReceipts(db.chatMessageDao(), peerDirectory, outbox, readReceiptSetting)
@@ -160,6 +164,7 @@ class AppGraph(private val app: Application) {
     // Взлом
     val collectorClient = CollectorClient()
     val cooldowns = ContainerCooldownStore(db.containerBreachDao())
+    val breachHint = BreachHintStore(prefs(BreachHintStore.PREFS))
     val slotClaims = SlotClaimStore(db.slotClaimDao(), identity, collectorSettings, collectorClient, peerDirectory)
     val secAlerts = SecAlertStore(db.pendingAlertDao(), chat, changes, visiblePlayers)
     val rewards = DaemonRewards(wallet, shards, daemons, slotClaims, collectorSettings)
@@ -195,11 +200,11 @@ class AppGraph(private val app: Application) {
             { scope -> secAlerts.start(scope) },
             { scope -> cardResender.start(scope) },
             { _ -> netrun.restorePeer() },
-            { scope -> DeviceDiagnostics.startSnapshots(app, scope, this) },
+            { scope -> DeviceDiagnostics.startSnapshots(app, scope, diagnosticsState) },
         ),
     )
     val provisioning = ProvisionStore(identity, collectorSettings, changes, wallet, db.consumedTokenDao(), transactor)
-    val sessionReset = SessionReset(db, identity, collectorSettings, changes, announcements, netrun) { session.onSessionReset() }
+    val sessionReset = SessionReset(db, transactor, identity, collectorSettings, changes, announcements, netrun) { session.onSessionReset() }
 
     /**
      * Что работает в фоне — решает только он (B3): сеть на личность, синк на процесс, foreground-сервис с правилами Android 12+.
@@ -227,8 +232,19 @@ class AppGraph(private val app: Application) {
         )
     }
 
+    /** Срез состояния для снимков и device.txt (DeviceDiagnostics); sync читается лениво, как раньше. */
+    private val diagnosticsState = object : DeviceDiagnostics.AppState {
+        override val identity: Identity? get() = this@AppGraph.identity.current
+        override suspend fun outboxPending(): Int = outbox.pending()
+        override val wifiBound: Boolean get() = wifi.boundNetwork != null
+        override val ownIpv4: String? get() = wifi.ownIpv4
+        override val chatPort: Int get() = mesh.listeningPort
+        override fun describePeers(): String = presence.describePeers()
+        override val syncSummary: String get() = collectorSync.lastSummary
+    }
+
     /** Сведения об устройстве и приложении для архива журнала (`device.txt`). */
-    suspend fun deviceReport(): String = DeviceDiagnostics.deviceReport(app, this)
+    suspend fun deviceReport(): String = DeviceDiagnostics.deviceReport(app, diagnosticsState)
 
     /** Сколько записей ждёт подтверждения коллектора (Настройки). */
     fun observePendingChanges(): Flow<Int> = changeQueue.observeCount()
