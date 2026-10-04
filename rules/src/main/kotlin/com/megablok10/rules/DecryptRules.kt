@@ -19,12 +19,12 @@ object DecryptRules {
         val random = Random(seed)
         val symbols = "0123456789ABCDEF▓▒░#%&@$"
         val out = StringBuilder()
-        var run = 0
         for (ch in body) {
-            if (ch == '\n') { out.append('\n'); run = 0; continue }
-            if (ch == ' ') { out.append(' '); run = 0; continue }
-            out.append(symbols[random.nextInt(symbols.length)])
-            run += 1
+            // Переводы строк и пробелы остаются как есть (форма текста читается), остальное — случайный символ; random тратится только на них.
+            when (ch) {
+                '\n', ' ' -> out.append(ch)
+                else -> out.append(symbols[random.nextInt(symbols.length)])
+            }
         }
         return out.toString()
     }
