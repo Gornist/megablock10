@@ -50,3 +50,16 @@ func _wait_for_line(proto: ProtoClient, text: String) -> bool:
 		await get_tree().create_timer(0.1).timeout
 		tries += 1
 	return false
+
+
+func test_hand_mode_is_logged_when_it_changes() -> void:
+	var proto := _client()
+	var hv: HandView = proto.scene.rig.right_hand_view
+	hv.pose_source = func(): return HandSkeleton.pose({}, false)
+	hv.update_hand()
+	proto._log_hand_modes()
+	assert_str(_line(proto, "hand.mode hand=right")).contains("mode=pose_source")
+	hv.pose_source = Callable()
+	hv.update_hand()
+	proto._log_hand_modes()
+	assert_str(_line(proto, "hand.mode hand=right mode=none")).is_not_empty()

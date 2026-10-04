@@ -36,6 +36,7 @@ const RECONNECT_ATTEMPTS := 60
 ## Через сколько секунд после сборки узла замерить отрисовку (строка `node.perf`); тесты ставят меньше.
 var perf_sample_delay_s := 2.0
 var _frame_stats := FrameStats.new()
+var _hand_modes := ["", ""]    # чем рисуется каждая рука (HandView.Mode): журнал hand.mode при смене
 var _perf_acc := 0.0
 var _last_level := -1
 var _pos_acc := 0.0
@@ -214,6 +215,7 @@ func _on_event(ev: Dictionary) -> void:
 
 func _process(delta: float) -> void:
 	if scene != null:
+		_log_hand_modes()
 		_frame_stats.add(delta)
 		_perf_acc += delta
 		if _perf_acc >= PERF_PERIOD_S:
@@ -244,6 +246,19 @@ func _on_grab_confirmed(object_id: String) -> void:
 func _on_grab_denied(object_id: String, reason: String) -> void:
 	log_file.log("grab.denied", {"id": object_id, "reason": reason})
 	scene.deny_grab()
+
+
+## Чем рисуется каждая рука: controller (поза grip контроллера), tracked (трекинг кистей), none (нет позы). Строка hand.mode — при смене.
+func _log_hand_modes() -> void:
+	var views := [scene.rig.left_hand_view, scene.rig.right_hand_view]
+	for i in 2:
+		var hv: HandView = views[i]
+		if hv == null:
+			continue
+		var name: String = HandView.Mode.keys()[hv.mode].to_lower()
+		if name != _hand_modes[i]:
+			_hand_modes[i] = name
+			log_file.log("hand.mode", {"hand": "left" if i == 0 else "right", "mode": name})
 
 
 ## Строка `perf`: кадров за окно, среднее и наибольшее время кадра, долгих кадров, вызовов отрисовки/примитивов/объектов в кадре.
