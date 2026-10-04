@@ -371,6 +371,11 @@ func test_shard_view_reports_vault_state_tier_and_encryption() -> void:
 	# предмет без разобранного shard считается зашифрованным, тир 1
 	assert_dict(GrayNode.shard_meta({})).is_equal({"tier": 1, "enc": true})
 	assert_dict(GrayNode.shard_meta({"shard": {"tier": 9, "decrypted": false}})).is_equal({"tier": 3, "enc": true})
+	# Мост пишет encrypted = decryptAction && !decrypted: шард без действия расшифровки открытым не становится, но и «зашифрованным» не показывается
+	assert_dict(GrayNode.shard_meta({"shard": {"tier": 2, "decrypted": false, "encrypted": false}})).is_equal({"tier": 2, "enc": false})
+	assert_dict(GrayNode.shard_meta({"shard": {"tier": 2, "decrypted": false, "encrypted": true}})).is_equal({"tier": 2, "enc": true})
+	var docs := [{"id": "it_x", "data": {"owner": "deck:s1", "kind": "SHARD", "shard": {"tier": 1, "title": "Х", "decrypted": false, "encrypted": false}}}]
+	assert_bool(GrayNode.loot_from_items(docs, "s1")[0]["enc"]).is_false()
 
 
 ## К5: флаг «взятие требует открытия взломом» (К3 его включит): без открытия шард закрыт, открытие действует на одну сессию и гаснет с шардом.

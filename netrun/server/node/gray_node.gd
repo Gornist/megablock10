@@ -568,7 +568,7 @@ static func loot_from_items(items: Array, session: String, session_data: Diction
 			var sh: Variant = data.get("shard")
 			var shard: Dictionary = sh if sh is Dictionary else {}
 			out.append({"id": str(d["id"]), "kind": "shard", "tier": clampi(int(shard.get("tier", 1)), 1, 3),
-				"title": str(shard.get("title", "Шард")), "enc": not bool(shard.get("decrypted", false)),
+				"title": str(shard.get("title", "Шард")), "enc": shard_encrypted(shard),
 				"give": not is_working_item(d, session_data) and not bool(data.get("protected", false))})
 		elif kind == "DAEMON" and not is_working_item(d, session_data):
 			var dm: Variant = data.get("daemon")
@@ -1426,11 +1426,18 @@ func vault_access(slot: String, session: String) -> Dictionary:
 	return {"access": "ok"}
 
 
-## Признаки шарда из документа предмета Моста: тир 1–3 и зашифрован ли (нет `decrypted` — считается зашифрованным, как в деке).
+## Зашифрован ли шард документа: берётся `shard.encrypted` Моста (`decryptAction && !decrypted`); у документа без него — `!decrypted`.
+static func shard_encrypted(shard: Dictionary) -> bool:
+	if shard.has("encrypted"):
+		return bool(shard["encrypted"])
+	return not bool(shard.get("decrypted", false))
+
+
+## Признаки шарда из документа предмета Моста: тир 1–3 и зашифрован ли.
 static func shard_meta(item_data: Dictionary) -> Dictionary:
 	var sh: Variant = item_data.get("shard")
 	var shard: Dictionary = sh if sh is Dictionary else {}
-	return {"tier": clampi(int(shard.get("tier", 1)), 1, 3), "enc": not bool(shard.get("decrypted", false))}
+	return {"tier": clampi(int(shard.get("tier", 1)), 1, 3), "enc": shard_encrypted(shard)}
 
 
 ## Признаки предмета в хранилище для клиента: {kind: shard | daemon, tier, enc, dead?}. Шард — как [method shard_meta]; демон не шифруется
