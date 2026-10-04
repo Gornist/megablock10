@@ -123,6 +123,11 @@ func request_charge(daemon_id: String) -> bool:
 	return _send(WorldMsg.encode_fields(WorldMsg.CHARGE, {"daemon": daemon_id}))
 
 
+## Расшифровка шарда из ГРУЗа (К7): мини-игра на запястье; клетки и отмена — те же request_breach_tap / request_breach_cancel.
+func request_decrypt(item: String) -> bool:
+	return _send(WorldMsg.encode_fields(WorldMsg.DECRYPT, {"item": item}))
+
+
 func request_breach_tap(cell: Vector2i) -> bool:
 	return _send(WorldMsg.encode_fields(WorldMsg.BK_TAP, {"cell": [cell.x, cell.y]}))
 

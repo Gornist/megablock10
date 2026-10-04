@@ -82,7 +82,7 @@ func check_open(session: String, vault: String, ids: Array, recheck: bool = fals
 		return {"reason": "not_ready"}
 	if _by_session.has(session) or (_opening.has(session) and not recheck):
 		return {"reason": "active"}
-	if node.charge.has_attempt(session):
+	if node.charge.has_attempt(session) or node.decrypt.has_attempt(session):
 		return {"reason": "charging"}
 	if not node._slot_pos.has(vault):
 		return {"reason": "not_ready"}

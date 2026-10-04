@@ -59,6 +59,11 @@ static func give_rid(session: String, item: String, ver: int, to: String) -> Str
 	return "give:%s:%s:%d:%s" % [session, item, ver, to.sha256_text().substr(0, 8)]
 
 
+## rid расшифровки (раздел 6.8): `decrypt:<сессия>:<предмет>:<ver>`; версия предмета — чтобы поздний вызов (предмет уже открыт, версия другая) не получил старый ответ.
+static func decrypt_rid(session: String, item: String, ver: int) -> String:
+	return "decrypt:%s:%s:%d" % [session, item, ver]
+
+
 ## Токен, который очки кладут в auth: JSON {"terminal","token"} или «терминал:токен». Возвращает {terminal, token} или {}.
 ## Разбор — в shared (NetConfig): клиент очков собирается без server/.
 static func parse_terminal_token(raw: String) -> Dictionary:
@@ -142,6 +147,12 @@ func op_leave_in_node(_session: String, _node: String, _item: String) -> Diction
 ## Отдать предмет из груза (раздел 6.7): ровно один из to_session (нетраннер в Сети) и to_phone (ключ телефона, base64 SPKI); ver — версия
 ## предмета, которую видел сервер мира. Ответ: {"ok", "item", "to", "transfer"} либо ошибка (wrong_owner, version_conflict, protected_item, loaded_item…).
 func op_give_item(_session: String, _item: String, _ver: int, _to_session: String, _to_phone: String) -> Dictionary:
+	return err("internal", "не реализовано")
+
+
+## Расшифровать шард в деке (раздел 6.8): Мост меняет в payload только флаг «расшифрован». ver — версия предмета, которую видел сервер мира.
+## Ответ: {"ok", "changed", "title", "body", "item"} либо ошибка (wrong_owner, version_conflict, no_decrypter, session_state, bad_request, not_found).
+func op_decrypt_item(_session: String, _item: String, _ver: int) -> Dictionary:
 	return err("internal", "не реализовано")
 
 

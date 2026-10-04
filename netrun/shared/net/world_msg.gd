@@ -87,6 +87,12 @@ const GIVE_ERRORS: PackedStringArray = [GIVE_NOT_LOOT, GIVE_NO_RECIPIENT, GIVE_S
 ## bad_daemon | not_ready, left?}). Заряженный демон в `state.cd` имеет st = "charged"; запуск — прежнее `use` (без заряда: daemon {ok: false, error: not_charged}).
 const CHARGE := "charge"
 const MODE_CHARGE := "charge"
+## Расшифровка шарда на запястье (К7, design §3.1, Мост — 6.8). Клиент -> сервер: decrypt {item: id шарда в ГРУЗе} — начать мини-игру (режим for_decrypt: цепочка
+## шифр-замка по тиру шарда, буфер = цепочка + 2, ловушек нет; нужен рабочий DECRYPT тира не ниже тира шарда); дальше те же bk_tap и bk_cancel. Сервер -> клиент: те же
+## bk / bk_tick / bk_end / bk_no с mode = "decrypt" (bk: item, title; bk_end: {outcome, item, title, decrypted, early?, error?}; bk_no: {reason: not_ready | active |
+## no_bridge | gone | not_shard | open | no_decrypter}). После успеха сервер присылает свежий ev deck: шард в ГРУЗе уже «ОТКРЫТ».
+const DECRYPT := "decrypt"
+const MODE_DECRYPT := "decrypt"
 const EV_ENDED := "ended"
 const EV_DAEMON := "daemon"
 ## Телепорт (VR: движение только им). Клиент -> сервер: {t: tp, p: [x, z]} — цель на полу; решает сервер. Успех ответа не имеет

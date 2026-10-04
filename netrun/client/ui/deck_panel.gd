@@ -33,6 +33,8 @@ signal tab_changed(id: String)
 signal charge_requested(daemon_id: String)
 signal charge_cell_tapped(cell: Vector2i)
 signal charge_cancel_requested
+## Кнопка «РАСШИФРОВАТЬ» у зашифрованного шарда ДОБЫЧИ (К7); сетка и отмена идут теми же сигналами, что у заряда.
+signal decrypt_requested(item_id: String)
 ## Уведомление на деке показывается столько секунд.
 ## Нажата заготовка ответа (диалог, текст) — для журнала клиента.
 signal reply_sent(thread_id: String, text: String)
@@ -272,8 +274,8 @@ func row_texts() -> PackedStringArray:
 ## Добыча забега (ev deck: loot [{id, kind, tier, title, enc}], eddies): вкладка ДОБЫЧА, без действий. Первое же обращение показывает вкладку:
 ## сервер деку прислал, значит и пустое состояние («Добычи пока нет») честное. Первый набор считается старым; всё, что появилось позже
 ## (шард, который игрок положил в деку), мигает в списке BLINK_SEC и, пока ДОБЫЧУ не открыли, держит на вкладке бейдж с числом нового.
-func set_loot(loot: Array, eddies: int = 0) -> void:
-	var rows := HudLogic.loot_rows(loot)
+func set_loot(loot: Array, eddies: int = 0, daemons: Array = []) -> void:
+	var rows := HudLogic.loot_rows(loot, daemons)
 	var first := not _loot_known
 	_loot_known = true
 	var ids := {}
@@ -387,21 +389,30 @@ func _loot_row(row: Dictionary) -> MbRow:
 	h.add_child(DeckUi.expand(DeckUi.label(row["title"], DeckTheme.V_NAME)))
 	h.add_child(DeckUi.label("тир %d" % int(row["tier"]), DeckTheme.V_DIM, false))
 	h.add_child(_centered(DeckUi.tag(row["label"], "warn" if row["enc"] else "ok", row["enc"])))
-	if not bool(row.get("give", false)):
+	var can_decrypt := bool(row.get("can_decrypt", false))
+	if not bool(row.get("give", false)) and not can_decrypt:
 		r.add_child(h)
 		return r
-	# Отправить можно: вторая строка с кнопкой (в первой название должно читаться целиком).
+	# Есть действие: вторая строка с кнопками (в первой название должно читаться целиком).
 	var col := DeckUi.vbox(2)
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(h)
 	var low := DeckUi.hbox(8)
 	low.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	low.add_child(DeckUi.expand(Control.new()))
-	var send := MbButton.new("ОТПРАВИТЬ", "ghost")
-	send.button_height = DeckTheme.BTN_SMALL_H
-	send.set_meta("item_id", row["id"])
-	send.pressed.connect(open_give.bind(str(row["id"])))
-	low.add_child(send)
+	if can_decrypt:
+		var dec := MbButton.new("РАСШИФРОВАТЬ", "quiet")
+		dec.button_height = DeckTheme.BTN_SMALL_H
+		dec.set_meta("item_id", row["id"])
+		dec.set_meta("action", "decrypt")
+		dec.pressed.connect(func(): decrypt_requested.emit(str(row["id"])))
+		low.add_child(dec)
+	if bool(row.get("give", false)):
+		var send := MbButton.new("ОТПРАВИТЬ", "ghost")
+		send.button_height = DeckTheme.BTN_SMALL_H
+		send.set_meta("item_id", row["id"])
+		send.pressed.connect(open_give.bind(str(row["id"])))
+		low.add_child(send)
 	col.add_child(low)
 	r.add_child(col)
 	return r
@@ -612,9 +623,9 @@ func _on_call_changed(state: Dictionary) -> void:
 # ---------------------------------------------------------------- заряд демона (К6)
 
 ## Началась мини-игра заряда (`bk` с mode = charge): сетка заменяет вкладки и список. Увеличение деки до масштаба 1 делает WorldUI по is_charging().
-func begin_charge(m: BreachMirror) -> bool:
-	var name_: String = str(m.targets[0]["name"]) if m != null and not m.targets.is_empty() else ""
-	if not _charge.begin(m, name_):
+func begin_charge(m: BreachMirror, mode: String = WorldMsg.MODE_CHARGE, title: String = "") -> bool:
+	var name_: String = title if title != "" else (str(m.targets[0]["name"]) if m != null and not m.targets.is_empty() else "")
+	if not _charge.begin(m, name_, mode):
 		return false
 	_set_charge_layout(true)
 	return true
@@ -635,6 +646,11 @@ func apply_charge_end(ev: Dictionary) -> void:
 ## Сервер не начал заряд (`bk_no` с mode = charge): причина строкой на деке.
 func show_charge_denied(reason: String, left: int = 0) -> void:
 	show_notice(HudLogic.charge_denied_text(reason, left))
+
+
+## Сервер не начал расшифровку (`bk_no` с mode = decrypt): причина строкой на деке.
+func show_decrypt_denied(reason: String) -> void:
+	show_notice(HudLogic.decrypt_denied_text(reason))
 
 
 ## Уведомление над списком (отказ запуска или заряда); пропадает через NOTICE_SEC.
@@ -670,9 +686,10 @@ func _set_charge_layout(on: bool) -> void:
 
 
 func _end_charge_view() -> void:
+	var back := TAB_LOOT if _charge.mode == WorldMsg.MODE_DECRYPT and _loot_known else TAB_DECK   # после расшифровки — к добыче, где шард теперь открыт
 	_charge.hide_all()
 	_tabs.visible = true
-	_show_tab(TAB_DECK)
+	_show_tab(back)
 	_dirty = true
 
 

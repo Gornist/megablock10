@@ -233,7 +233,8 @@ static func deck_rows(deck: Dictionary) -> Array:
 
 ## Добыча для вкладки ДОБЫЧА: [{text, kind, kind_name, title, tier, enc, label}] из ev deck.loot ({id, kind: shard | daemon, tier, title, enc}).
 ## label — «ОТКРЫТ» / «ЗАШИФРОВАН» (добытый демон не шифруется — у него «ОТКРЫТ»; в этом забеге он всё равно не работает).
-static func loot_rows(loot: Array) -> Array:
+## daemons — рабочие демоны деки из того же события ({effect, tier, ...}): по ним решается, есть ли у зашифрованного шарда кнопка «РАСШИФРОВАТЬ» (can_decrypt, К7).
+static func loot_rows(loot: Array, daemons: Array = []) -> Array:
 	var rows := []
 	for l in loot:
 		var kind := str(l.get("kind", "shard"))
@@ -243,8 +244,55 @@ static func loot_rows(loot: Array) -> Array:
 		var kind_name := "ДЕМОН" if kind == "daemon" else "ШАРД"
 		var label := "ЗАШИФРОВАН" if enc else "ОТКРЫТ"
 		rows.append({"id": str(l.get("id", "")), "text": "%s  %s  тир %d  %s" % [kind_name, title, tier, label], "kind": kind, "kind_name": kind_name, "title": title, "tier": tier, "enc": enc, "label": label,
-			"give": bool(l.get("give", false))})
+			"give": bool(l.get("give", false)), "can_decrypt": kind == "shard" and enc and not DeckDecrypt.best(daemons, tier).is_empty(),
+			"no_decrypter": kind == "shard" and enc and DeckDecrypt.best(daemons, tier).is_empty()})
 	return rows
+
+
+# ---------------------------------------------------------------- расшифровка шарда (К7)
+
+## Отказ расшифровки (`bk_no` с mode = decrypt) словами для строки-уведомления на деке.
+static func decrypt_denied_text(reason: String) -> String:
+	match reason:
+		"active":
+			return "Сейчас идёт другая мини-игра"
+		"no_decrypter":
+			return "Нужен рабочий DECRYPT не ниже тира шарда"
+		"open":
+			return "Шард уже открыт"
+		"not_shard":
+			return "Расшифровать можно только шард"
+		"gone":
+			return "Шарда уже нет в деке"
+		"no_bridge":
+			return "Сеть без Моста: расшифровать нельзя"
+	return "Сейчас нельзя"
+
+
+## Ошибка записи в Мост после выигранной мини-игры (`bk_end` mode = decrypt, error) словами для итога.
+static func decrypt_error_text(error: String) -> String:
+	match error:
+		"unavailable":
+			return "Нет связи с Мостом: повторите"
+		"gone":
+			return "Шарда уже нет в деке"
+		"busy":
+			return "Забег закрывается"
+		"no_decrypter":
+			return "DECRYPT уже не работает"
+	return "Мост отказал"
+
+
+## Подпись под итогом расшифровки: открыт / причина.
+static func decrypt_result_sub(ev: Dictionary) -> String:
+	var title := str(ev.get("title", "")).strip_edges()
+	if bool(ev.get("decrypted", false)):
+		return "%s · теперь ОТКРЫТ" % (title if title != "" else "Шард")
+	if str(ev.get("error", "")) != "":
+		return decrypt_error_text(str(ev["error"]))
+	if str(ev.get("early", "")) != "":
+		return "Прервано"
+	return "Время вышло — можно снова"
 
 
 # ---------------------------------------------------------------- отправка добычи (К5б)

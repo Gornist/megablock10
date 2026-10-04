@@ -86,6 +86,7 @@ var _vault_open_until: Dictionary = {} # id слота -> время узла, �
 ## Взлом хранилищ (К3): сетка, таймер, тапы, итог в Мост.
 var breach: VaultBreach
 var charge: ChargeBreach
+var decrypt: DecryptBreach
 var _takes_inflight: Dictionary = {} # сессия -> число незавершённых op.take_from_node (в графе общий на все узлы)
 var _slot_pos: Dictionary = {}       # id объекта (слот шарда узла) -> позиция
 var _taken_by: Dictionary = {}       # сессия -> [id слотов этого узла, которые она взяла]
@@ -159,6 +160,7 @@ func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 	bridge = bridge_api
 	breach = VaultBreach.new(self)
 	charge = ChargeBreach.new(self)
+	decrypt = DecryptBreach.new(self)
 	daemons.load_dir()
 	_build_slots()
 	if manage_net_hooks:
@@ -173,20 +175,26 @@ func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 	net.leave_requested.connect(_on_leave_requested)
 	net.breach_open_requested.connect(_on_breach_open)
 	net.charge_requested.connect(_on_charge_requested)
+	net.decrypt_requested.connect(_on_decrypt_requested)
 	# Клетки и отмена идут одним сообщением на обе мини-игры; у игрока одновременно одна из них (заряд и взлом друг друга исключают).
 	net.breach_tap_requested.connect(func(session: String, cell: Array) -> void:
 		if charge.has_attempt(session):
 			charge.request_tap(session, cell)
+		elif decrypt.has_attempt(session):
+			decrypt.request_tap(session, cell)
 		else:
 			breach.request_tap(session, cell))
 	net.breach_cancel_requested.connect(func(session: String) -> void:
 		if charge.has_attempt(session):
 			charge.request_cancel(session)
+		elif decrypt.has_attempt(session):
+			decrypt.request_cancel(session)
 		else:
 			breach.request_cancel(session))
 	net.teleported.connect(func(session: String, _from: Vector3, _to: Vector3) -> void:
 		breach.end_early(session, "teleport")
-		charge.end_early(session, "teleport"))
+		charge.end_early(session, "teleport")
+		decrypt.end_early(session, "teleport"))
 	var soft := NodeLayout.ICE.size() if node_def.is_empty() else int(node_def.get("ice", 1))
 	for i in soft:
 		_add_ice(NodeLayout.ICE[i]["id"], NodeLayout.ICE[i]["waypoints"])
@@ -744,6 +752,7 @@ func _step(delta: float) -> void:
 	_update_hunts()
 	breach.tick(delta)
 	charge.tick(delta)
+	decrypt.tick(delta)
 	_expire_vaults()
 	if is_graph_node():
 		_check_portals()
@@ -867,6 +876,7 @@ func _connect_meter(session: String, meter: TraceMeter) -> void:
 func _on_session_lost(session: String) -> void:
 	breach.end_early(session, "session_lost")   # обрыв посреди взлома — досрочный итог по собранному
 	charge.end_early(session, "session_lost")   # заряд просто бросается
+	decrypt.end_early(session, "session_lost")
 	if bridge != null and synced and _sessions.has(session):
 		_merge_world(session, {"connected": false, "trace": 0, "node": node_id})
 
@@ -874,6 +884,7 @@ func _on_session_lost(session: String) -> void:
 func _on_avatar_removed(session: String) -> void:
 	breach.end_early(session, "avatar_removed")   # до того, как сессия забыта: итогу нужна её дека
 	charge.end_early(session, "avatar_removed")
+	decrypt.end_early(session, "avatar_removed")
 	_close_vaults_of(session)
 	_portal_state.erase(session)
 	if not _sessions.has(session):
@@ -950,6 +961,13 @@ func _on_charge_requested(session: String, daemon_id: String) -> void:
 	if not _sessions.has(session) or net.node_of(session) != node_id:
 		return
 	charge.request_start(session, daemon_id)
+
+
+## Просьба расшифровать шард из ГРУЗа (К7): отвечает только узел, где игрок.
+func _on_decrypt_requested(session: String, item: String) -> void:
+	if not _sessions.has(session) or net.node_of(session) != node_id:
+		return
+	decrypt.request_start(session, item)
 
 
 func _on_daemon_requested(session: String, daemon_id: String) -> void:
@@ -1604,6 +1622,7 @@ func release_session(session: String) -> DaemonSession:
 		return null
 	breach.end_early(session, "transit")
 	charge.end_early(session, "transit")
+	decrypt.end_early(session, "transit")
 	_close_vaults_of(session)
 	var cb: Callable = _level_cbs.get(session, Callable())
 	if cb.is_valid() and ds.trace.level_changed.is_connected(cb):

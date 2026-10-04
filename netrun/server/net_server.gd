@@ -16,6 +16,7 @@ signal leave_requested(session: String)
 ## Взлом хранилища (К3): клиент просит начать (vault — id слота, daemons — id выбранных демонов), нажал клетку ([строка, столбец]) или завершил досрочно.
 ## Решает узел (server/node/vault_breach.gd).
 signal charge_requested(session: String, daemon_id: String)
+signal decrypt_requested(session: String, item: String)
 signal breach_open_requested(session: String, vault: String, daemon_ids: Array)
 signal breach_tap_requested(session: String, cell: Array)
 signal breach_cancel_requested(session: String)
@@ -340,6 +341,8 @@ func _on_packet(peer_id: int, data: PackedByteArray) -> void:
 			breach_open_requested.emit(session, str(msg.get("vault", "")), (ids as Array).map(func(i): return str(i)) if ids is Array else [])
 		WorldMsg.CHARGE:
 			charge_requested.emit(session, str(msg.get("daemon", "")))
+		WorldMsg.DECRYPT:
+			decrypt_requested.emit(session, str(msg.get("item", "")))
 		WorldMsg.BK_TAP:
 			var cell: Variant = msg.get("cell")
 			if cell is Array and (cell as Array).size() == 2 and (cell[0] is float or cell[0] is int) and (cell[1] is float or cell[1] is int):

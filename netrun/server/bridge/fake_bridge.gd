@@ -288,6 +288,66 @@ func op_give_item(session: String, item: String, ver: int, to_session: String, t
 	return resp
 
 
+## Как op.decrypt_item Моста (6.8): порядок проверок по таблице отказов, rid с версией; меняется флаг «расшифрован» (поле 9 payload, если это настоящая строка шарда,
+## и shard.decrypted). decrypt_calls — сколько раз операция выполнилась по-настоящему, decrypt_attempts — все вызовы; decrypt_offline — тест: связь «пропала»;
+## decrypt_drop_reply — ответ после успешной записи теряется (обрыв после коммита). Рабочий DECRYPT — демон из session.loaded с эффектом DECRYPT нужного тира.
+var decrypt_calls := 0
+var decrypt_attempts := 0
+var decrypt_offline := false
+var decrypt_drop_reply := false
+
+
+func op_decrypt_item(session: String, item: String, ver: int) -> Dictionary:
+	decrypt_attempts += 1
+	if decrypt_offline:
+		return err("unavailable", "Моста нет (тест)")
+	if ver < 1:
+		return err("bad_request", "нужен ver")
+	var resp := _once(decrypt_rid(session, item, ver), {"op": "decrypt_item", "session": session, "item": item, "ver": ver}, func():
+		var s := doc(T_SESSION, session)
+		var it := doc(T_ITEM, item)
+		if s.is_empty() or it.is_empty():
+			return err("not_found", "нет сессии или предмета")
+		if it["data"].get("kind") != "SHARD":
+			return err("bad_request", "это не шард")
+		if s["data"].get("state") != "active" or not str((s["data"].get("world", {}) as Dictionary).get("finish", "")).is_empty():
+			return err("session_state", "сессия не active или в исходе", s.duplicate(true))
+		if it["data"].get("owner") != "deck:" + session:
+			return err("wrong_owner", "предмет не в деке", it.duplicate(true))
+		if int(it["ver"]) != ver:
+			return err("version_conflict", "версия %d, а не %d" % [int(it["ver"]), ver], it.duplicate(true))
+		var tier := int((it["data"].get("shard", {}) as Dictionary).get("tier", 1))
+		var has := false
+		var loaded: Variant = s["data"].get("loaded")
+		for other in (_docs.get(T_ITEM, {}) as Dictionary).values():
+			var od: Dictionary = other["data"]
+			if od.get("owner") != "deck:" + session or od.get("kind") != "DAEMON":
+				continue
+			var working: bool = (str(other["id"]) in loaded) if loaded is Array else str(od.get("origin", "")) == "phone:" + str(s["data"].get("runner", ""))
+			var dd: Dictionary = od.get("daemon", {})
+			if working and str(dd.get("effect", "")) == "DECRYPT" and int(dd.get("tier", 0)) >= tier:
+				has = true
+		if not has:
+			return err("no_decrypter", "нет рабочего DECRYPT нужного тира", it.duplicate(true))
+		var d: Dictionary = (it["data"] as Dictionary).duplicate(true)
+		var shard: Dictionary = d.get("shard", {})
+		if bool(shard.get("decrypted", false)):
+			return ok({"changed": false, "item": it.duplicate(true)})
+		decrypt_calls += 1
+		shard["decrypted"] = true
+		shard["encrypted"] = false
+		d["shard"] = shard
+		var parts := str(d.get("payload", "")).split("|")
+		if parts.size() >= 10 and parts[0] == "SHARD":
+			parts[9] = "1"
+			d["payload"] = "|".join(parts)
+		return ok({"changed": true, "title": str(shard.get("title", "")), "item": _put(T_ITEM, item, d).duplicate(true)}))
+	if decrypt_drop_reply and resp.get("ok", false) and not resp.get("replayed", false):
+		decrypt_drop_reply = false
+		return err("unavailable", "ответ потерян (тест)")
+	return resp
+
+
 ## Тест: вызывается один раз перед первым run_finish — «дека изменилась между чтением и вызовом» (пришёл предмет по op.give_item).
 var before_finish: Callable = Callable()
 

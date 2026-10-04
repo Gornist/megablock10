@@ -21,6 +21,7 @@ signal breach_cancel_requested
 ## Заряд защитного демона на запястье (К6): «ЗАРЯДИТЬ» у программы / клетка сетки заряда / «ОТМЕНА». Просит сервер ProtoClient; решает сервер.
 signal charge_requested(daemon_id: String)
 signal charge_cell_tapped(cell: Vector2i)
+signal decrypt_requested(item_id: String)
 signal charge_cancel_requested
 
 ## Импульс левого контроллера: демон запущен / запуск отказан / заряд готов.
@@ -137,6 +138,7 @@ func _ready() -> void:
 	world_ui.breach_panel.cancel_requested.connect(func(): breach_cancel_requested.emit())
 	world_ui.deck.charge_requested.connect(func(id: String): charge_requested.emit(id))
 	world_ui.deck.charge_cell_tapped.connect(func(cell: Vector2i): charge_cell_tapped.emit(cell))
+	world_ui.deck.decrypt_requested.connect(func(id: String): decrypt_requested.emit(id))
 	world_ui.deck.charge_cancel_requested.connect(func(): charge_cancel_requested.emit())
 	world_ui.deck.set_deck({"daemons": [], "selected": ""})
 	world_ui.deck.give_list_requested.connect(func(): give_list_requested.emit())
@@ -391,7 +393,7 @@ func apply_daemon_result(ev: Dictionary) -> void:
 func apply_deck(ev: Dictionary) -> void:
 	deck_info = ev
 	_refresh_breach_context()
-	world_ui.deck.set_loot(ev.get("loot", []), int(ev.get("eddies", 0)))
+	world_ui.deck.set_loot(ev.get("loot", []), int(ev.get("eddies", 0)), ev.get("daemons", []))
 	_refresh_deck()
 
 
@@ -852,8 +854,8 @@ func _vault_pos(id: String) -> Vector3:
 
 ## События взлома от сервера (WorldMsg.EV_BK*): сетка, ответ на тап, итог, отказ. Панель в мире уже стоит (idle) или ставится здесь.
 func apply_breach_event(ev: Dictionary) -> void:
-	if str(ev.get("mode", "")) == WorldMsg.MODE_CHARGE:
-		_apply_charge_event(ev)   # заряд демона идёт на деке запястья, а не на панели у хранилища
+	if str(ev.get("mode", "")) == WorldMsg.MODE_CHARGE or str(ev.get("mode", "")) == WorldMsg.MODE_DECRYPT:
+		_apply_charge_event(ev)   # заряд демона и расшифровка шарда идут на деке запястья, а не на панели у хранилища
 		return
 	var bp := world_ui.breach_panel
 	match str(ev.get("kind", "")):
@@ -877,14 +879,19 @@ func apply_breach_event(ev: Dictionary) -> void:
 ## События заряда (mode = charge): сетка на деке, ответ на тап, итог, отказ.
 func _apply_charge_event(ev: Dictionary) -> void:
 	var deck := world_ui.deck
+	var decrypting := str(ev.get("mode", "")) == WorldMsg.MODE_DECRYPT
 	match str(ev.get("kind", "")):
 		WorldMsg.EV_BK:
-			deck.begin_charge(BreachMirror.from_event(ev))
+			deck.begin_charge(BreachMirror.from_event(ev), WorldMsg.MODE_DECRYPT if decrypting else WorldMsg.MODE_CHARGE, str(ev.get("title", "")) if decrypting else "")
 		WorldMsg.EV_BK_TICK:
 			deck.apply_charge_tick(ev)
 		WorldMsg.EV_BK_END:
 			deck.apply_charge_end(ev)
-			world_ui.feedback.pulse("left", CHARGED_PULSE_AMP if bool(ev.get("charged", false)) else DENY_PULSE_AMP, CHARGED_PULSE_S if bool(ev.get("charged", false)) else DENY_PULSE_S)
+			var done := bool(ev.get("decrypted", false)) if decrypting else bool(ev.get("charged", false))
+			world_ui.feedback.pulse("left", CHARGED_PULSE_AMP if done else DENY_PULSE_AMP, CHARGED_PULSE_S if done else DENY_PULSE_S)
 		WorldMsg.EV_BK_NO:
-			deck.show_charge_denied(str(ev.get("reason", "")), int(ev.get("left", 0)))
+			if decrypting:
+				deck.show_decrypt_denied(str(ev.get("reason", "")))
+			else:
+				deck.show_charge_denied(str(ev.get("reason", "")), int(ev.get("left", 0)))
 			world_ui.feedback.pulse("left", DENY_PULSE_AMP, DENY_PULSE_S)

@@ -42,6 +42,12 @@ internal class OpRouter(private val ops: ValueOps, private val terminals: Termin
                     msg["ver"].long() ?: throw StoreException("bad_request", "нужен ver"), giveTarget(msg),
                 ),
             )
+            "op.decrypt_item" -> opReply(
+                ops.decryptItem(
+                    caller, req(msg, "rid"), req(msg, "session"), req(msg, "item"),
+                    msg["ver"].long() ?: throw StoreException("bad_request", "нужен ver"),
+                ),
+            )
             "session.abort" -> opReply(ops.abortSession(caller, req(msg, "session"), msg["reason"].string().orEmpty()))
             else -> throw StoreException("bad_request", "неизвестный op: $op")
         }

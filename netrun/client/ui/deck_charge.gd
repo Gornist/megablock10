@@ -22,6 +22,8 @@ const STALE_SEC := 6.0
 var mirror: BreachMirror
 var daemon_name := ""
 var charged := false
+## Что идёт на запястье: заряд демона (charge) или расшифровка шарда (decrypt, К7) — сетка и ввод те же, отличаются подписи.
+var mode := WorldMsg.MODE_CHARGE
 
 var _cells: Dictionary = {}              # Vector2i -> BreachCell
 var _grid_box: Control
@@ -71,10 +73,11 @@ func is_shown() -> bool:
 
 
 ## Начало попытки (`bk` с mode = charge). false — событие негодное.
-func begin(m: BreachMirror, name_: String) -> bool:
+func begin(m: BreachMirror, name_: String, mode_: String = WorldMsg.MODE_CHARGE) -> bool:
 	if m == null:
 		return false
 	mirror = m
+	mode = mode_
 	daemon_name = name_
 	charged = false
 	_result_shown = false
@@ -107,7 +110,7 @@ func tap_cell(cell: Vector2i) -> bool:
 func apply_end(ev: Dictionary) -> void:
 	if mirror != null:
 		mirror.apply_end(ev)
-	charged = bool(ev.get("charged", false))
+	charged = bool(ev.get("decrypted", false)) if mode == WorldMsg.MODE_DECRYPT else bool(ev.get("charged", false))
 	_build_result(ev)
 	_result_shown = true
 	_result_left = RESULT_SEC
@@ -167,7 +170,7 @@ func _build_run() -> void:
 	_side = DeckUi.vbox(DeckTheme.GAP)
 	DeckUi.expand(_side, true)
 	cols.add_child(_side)
-	_side.add_child(DeckUi.label("ЗАРЯД", DeckTheme.V_HEAD, false))
+	_side.add_child(DeckUi.label("РАСШИФРОВКА" if mode == WorldMsg.MODE_DECRYPT else "ЗАРЯД", DeckTheme.V_HEAD, false))
 	_side.add_child(DeckUi.label(daemon_name, DeckTheme.V_NAME))
 	_timer_label = DeckUi.label("", DeckTheme.V_TIMER, false)
 	_side.add_child(_timer_label)
@@ -240,14 +243,18 @@ func _refresh_run() -> void:
 
 func _build_result(ev: Dictionary) -> void:
 	_clear_all()
-	var title := DeckUi.label("ЗАРЯЖЕН" if charged else "ЗАРЯД НЕ УДАЛСЯ", DeckTheme.V_BIG, false)
+	var decrypting := mode == WorldMsg.MODE_DECRYPT
+	var headline := ("ОТКРЫТ" if charged else "НЕ РАСШИФРОВАН") if decrypting else ("ЗАРЯЖЕН" if charged else "ЗАРЯД НЕ УДАЛСЯ")
+	var title := DeckUi.label(headline, DeckTheme.V_BIG, false)
 	title.add_theme_color_override("font_color", DeckTheme.tone_color("ok" if charged else "bad"))
 	title.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	add_child(title)
 	var sub := ""
-	if charged:
+	if decrypting:
+		sub = HudLogic.decrypt_result_sub(ev)
+	elif charged:
 		sub = "%s · левый X — запуск" % daemon_name
 	elif str(ev.get("early", "")) != "":
 		sub = "Прервано"

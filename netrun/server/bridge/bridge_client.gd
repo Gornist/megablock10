@@ -275,6 +275,10 @@ func op_give_item(session: String, item: String, ver: int, to_session: String, t
 	return await _request("op.give_item", f)
 
 
+func op_decrypt_item(session: String, item: String, ver: int) -> Dictionary:
+	return await _request("op.decrypt_item", {"rid": decrypt_rid(session, item, ver), "session": session, "item": item, "ver": ver})
+
+
 func run_finish(session: String, outcome: String, node: String, disconnect: bool, moves: Array) -> Dictionary:
 	return await _request("run.finish", {
 		"rid": finish_rid(session), "session": session, "outcome": outcome, "node": node, "disconnect": disconnect, "moves": moves,

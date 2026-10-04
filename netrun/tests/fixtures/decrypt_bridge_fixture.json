@@ -1,0 +1,25 @@
+{
+  "settings": {"global": {"confirm_timeout_s": 120, "disconnect_grace_s": 20}},
+  "nodes": {"node_07": {"title": "Склад «Арасаки»", "tier": "STANDARD", "lockdown_until": 0, "eddies": 100}},
+  "terminals": {
+    "t03": {"node": "node_07", "label": "Подвал, стойка 3", "token_sha256": "4ab53a252c0eb82880fa8bda7a765e4e621bb9a8ac438c71c3986a001988868c", "silent": false}
+  },
+  "sessions": {
+    "s_dec000000000001": {
+      "state": "active", "terminal": "t03", "node": "node_07", "runner": "KEY_ALICE", "callsign": "Призрак",
+      "loot_eddies": 0, "outcome": null, "ram": 10, "loaded": ["it_k_dec", "it_k_ghost"]
+    }
+  },
+  "items": {
+    "it_k_dec": {"owner": "deck:s_dec000000000001", "kind": "DAEMON", "payload": "p", "protected": false, "origin": "phone:KEY_ALICE",
+      "daemon": {"effect": "DECRYPT", "tier": 2, "name": "Взломщик шифров", "cells": ["1C", "BD"]}},
+    "it_k_ghost": {"owner": "deck:s_dec000000000001", "kind": "DAEMON", "payload": "p", "protected": true, "origin": "phone:KEY_ALICE",
+      "daemon": {"effect": "GHOST", "tier": 1, "name": "Призрак", "cells": ["1C", "BD"]}},
+    "it_k_s2": {"owner": "deck:s_dec000000000001", "kind": "SHARD", "payload": "SHARD|sh2|1|2|||||0|0", "protected": false, "origin": "node:node_07",
+      "shard": {"tier": 2, "title": "Схемы", "decrypted": false}},
+    "it_k_s3": {"owner": "deck:s_dec000000000001", "kind": "SHARD", "payload": "SHARD|sh3|1|3|||||0|0", "protected": false, "origin": "node:node_07",
+      "shard": {"tier": 3, "title": "Ключи", "decrypted": false}},
+    "it_k_open": {"owner": "deck:s_dec000000000001", "kind": "SHARD", "payload": "SHARD|sh4|1|1|||||0|1", "protected": false, "origin": "node:node_07",
+      "shard": {"tier": 1, "title": "Открытый", "decrypted": true}}
+  }
+}

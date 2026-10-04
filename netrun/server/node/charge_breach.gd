@@ -51,7 +51,7 @@ func check_start(session: String, daemon_id: String) -> Dictionary:
 	var avatar := node.net.get_avatar(session)
 	if ds == null or avatar == null or node.net.node_of(session) != node.node_id or node._finishing.has(session):
 		return {"reason": "not_ready"}
-	if _by_session.has(session) or node.breach.has_attempt(session) or node.breach.is_opening(session):
+	if _by_session.has(session) or node.breach.has_attempt(session) or node.breach.is_opening(session) or node.decrypt.has_attempt(session):
 		return {"reason": "active"}
 	match node.daemons.charge_check(ds, daemon_id, node.now()):
 		"":

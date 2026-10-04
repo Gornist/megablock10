@@ -590,7 +590,7 @@ class ValueOps(
     private fun requireAllowed(caller: Caller, op: String) {
         val ok = when (op) {
             "submit_deck" -> caller.role == Role.TEST || caller.role == Role.BRIDGE
-            "take_from_node", "leave_in_node", "run.finish", "run.breach", "op.give_item" -> caller.role != Role.BRIDGE
+            "take_from_node", "leave_in_node", "run.finish", "run.breach", "op.give_item", "op.decrypt_item" -> caller.role != Role.BRIDGE
             "master.stock_node", "master.unstock_node" -> caller.role == Role.MASTER || caller.role == Role.TEST
             else -> true
         }
