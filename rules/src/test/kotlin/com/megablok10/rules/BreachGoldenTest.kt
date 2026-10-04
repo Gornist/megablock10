@@ -20,7 +20,7 @@ import kotlin.random.Random
  */
 class BreachGoldenTest {
     private data class Spec(val name: String, val tier: Tier, val seed: Long, val daemons: List<Daemon>, val bufferSize: Int, val decrypt: Boolean, val script: Script)
-    private enum class Script { SOLVER, WALK, TRAP_FIRST }
+    private enum class Script { SOLVER, WALK, TRAP_FIRST, FIRST_MATCH_THEN_TIMEOUT, NO_TAPS_TIMEOUT }
 
     private fun d(id: String, vararg codes: String, tier: Tier = Tier.BASE, effect: DaemonEffect = DaemonEffect.EXTRACT_SHARD) =
         Daemon(id, id, codes.toList(), tier, effect)
@@ -35,6 +35,9 @@ class BreachGoldenTest {
         Spec("nightmare_solver", Tier.NIGHTMARE, 7, listOf(d("a", "E9", "7A"), d("b", "FF", "1C", "55")), 8, false, Script.SOLVER),
         Spec("nightmare_walk_corrupted", Tier.NIGHTMARE, 8, listOf(d("a", "7A", "FF", "BD")), 8, false, Script.WALK),
         Spec("nightmare_trap_first", Tier.NIGHTMARE, 9, listOf(d("a", "1C", "55", "BD")), 8, false, Script.TRAP_FIRST),
+        Spec("base_partial_timeout", Tier.BASE, 13, listOf(d("a", "1C", "55"), d("b", "BD", "E9", "7A")), 6, false, Script.FIRST_MATCH_THEN_TIMEOUT),
+        Spec("hard_partial_timeout", Tier.HARD, 14, listOf(d("a", "55", "BD"), d("b", "E9", "7A")), 7, false, Script.FIRST_MATCH_THEN_TIMEOUT),
+        Spec("nightmare_no_taps_timeout", Tier.NIGHTMARE, 15, listOf(d("a", "1C", "55")), 6, false, Script.NO_TAPS_TIMEOUT),
         Spec("decrypt_tier1_solver", Tier.BASE, 10, listOf(decryptTarget(1, 10)), 3 + BreachConstants.DECRYPT_BUFFER_EXTRA, true, Script.SOLVER),
         Spec("decrypt_tier2_solver", Tier.HARD, 11, listOf(decryptTarget(2, 11)), 4 + BreachConstants.DECRYPT_BUFFER_EXTRA, true, Script.SOLVER),
         Spec("decrypt_tier3_walk", Tier.NIGHTMARE, 12, listOf(decryptTarget(3, 12)), 5 + BreachConstants.DECRYPT_BUFFER_EXTRA, true, Script.WALK),
@@ -69,6 +72,8 @@ class BreachGoldenTest {
             Script.SOLVER -> BreachAutoSolver.solve(run.attempt)
             Script.WALK -> randomWalk(run, Random(spec.seed * 31 + 7))
             Script.TRAP_FIRST -> trapFirst(run, Random(spec.seed * 31 + 7))
+            Script.FIRST_MATCH_THEN_TIMEOUT -> untilFirstMatch(run, BreachAutoSolver.solve(run.attempt))
+            Script.NO_TAPS_TIMEOUT -> emptyList()
         }
         val steps = taps.map { tapCell ->
             val before = run.selectable
@@ -87,6 +92,7 @@ class BreachGoldenTest {
         }
         val startSelectable = BreachRun(BreachAttemptState(grid, spec.daemons, spec.bufferSize), timerSec).selectable
         val resolved = run.resolve()
+        val result = resolved.result!!
         return obj(
             "name" to JsonPrimitive(spec.name),
             "mode" to JsonPrimitive(if (spec.decrypt) "decrypt" else "breach"),
@@ -99,8 +105,8 @@ class BreachGoldenTest {
             "trap_cells" to cells(grid.trapCells),
             "start_selectable" to cells(startSelectable),
             "steps" to JsonArray(steps),
-            "outcome" to JsonPrimitive(resolved.result!!.outcome.name),
-            "matched_ids" to strs(resolved.result!!.matchedIds.sorted()),
+            "outcome" to JsonPrimitive(result.outcome.name),
+            "matched_ids" to strs(result.matchedIds.sorted()),
             "selectable_after_resolve" to cells(resolved.selectable),
         )
     }
@@ -114,6 +120,18 @@ class BreachGoldenTest {
             val pick = options[random.nextInt(options.size)]
             taps += pick
             run = run.tap(pick).run
+        }
+        return taps
+    }
+
+    /** Путь автосолвера, оборванный сразу после первого совпавшего демона (остальные не собраны) — исход PARTIAL по таймеру. */
+    private fun untilFirstMatch(start: BreachRun, path: List<Pair<Int, Int>>): List<Pair<Int, Int>> {
+        var run = start
+        val taps = mutableListOf<Pair<Int, Int>>()
+        for (cell in path) {
+            taps += cell
+            run = run.tap(cell).run
+            if (run.attempt.matchedDaemonIds.isNotEmpty()) break
         }
         return taps
     }
@@ -242,8 +260,9 @@ class BreachGoldenTest {
             assertEquals("$at selectable_after", readCells(step.getValue("selectable_after")), sorted(run.selectable))
         }
         val resolved = run.resolve()
-        assertEquals("$name outcome", o.getValue("outcome").jsonPrimitive.content, resolved.result!!.outcome.name)
-        assertEquals("$name matched", readStrs(o.getValue("matched_ids")), resolved.result!!.matchedIds.sorted())
+        val result = resolved.result!!
+        assertEquals("$name outcome", o.getValue("outcome").jsonPrimitive.content, result.outcome.name)
+        assertEquals("$name matched", readStrs(o.getValue("matched_ids")), result.matchedIds.sorted())
         assertEquals("$name after resolve", readCells(o.getValue("selectable_after_resolve")), sorted(resolved.selectable))
     }
 }
