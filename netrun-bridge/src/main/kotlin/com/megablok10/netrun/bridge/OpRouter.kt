@@ -9,8 +9,8 @@ import kotlinx.serialization.json.booleanOrNull
 /** Разбор сообщений `op.*`, `run.finish`, `session.*`, `terminal.*` и ответ по протоколу (разделы 6 и 7); роли — внутри [ValueOps]/[TerminalOps]. */
 internal class OpRouter(private val ops: ValueOps, private val terminals: TerminalOps, private val master: MasterOps) {
     fun handle(caller: Caller, op: String, msg: JsonObject): Map<String, JsonElement> {
-        val role = caller.role
         if (op in MASTER_OPS) return handleMaster(caller, op, msg)
+        if (op in TERMINAL_OPS) return handleTerminal(caller, op, msg)
         return when (op) {
             "op.submit_deck" -> opReply(
                 ops.submitDeck(
@@ -34,20 +34,19 @@ internal class OpRouter(private val ops: ValueOps, private val terminals: Termin
                     (msg["disconnect"] as? JsonPrimitive)?.booleanOrNull ?: false, moves(msg),
                 ),
             )
+            "run.breach" -> opReply(ops.runBreach(caller, req(msg, "rid"), breachRequest(msg)))
             "session.abort" -> opReply(ops.abortSession(caller, req(msg, "session"), msg["reason"].string().orEmpty()))
-            "terminal.auth" -> {
-                if (role == Role.MASTER) throw StoreException("forbidden", "роли master операция $op не разрешена")
-                terminals.auth(req(msg, "terminal"), req(msg, "token"))
-            }
-            "session.confirm" -> {
-                if (role == Role.MASTER) throw StoreException("forbidden", "роли master операция $op не разрешена")
-                terminals.confirm(req(msg, "session"), req(msg, "terminal"))
-            }
-            "terminal.beat" -> {
-                if (role == Role.MASTER) throw StoreException("forbidden", "роли master операция $op не разрешена")
-                terminals.beat(req(msg, "terminal"), msg["battery"].long(), msg["fps"].long(), msg["link"].long())
-            }
             else -> throw StoreException("bad_request", "неизвестный op: $op")
+        }
+    }
+
+    /** Терминал и сессия игрока (протокол, раздел 7): мастеру они запрещены (`forbidden`). */
+    private fun handleTerminal(caller: Caller, op: String, msg: JsonObject): Map<String, JsonElement> {
+        if (caller.role == Role.MASTER) throw StoreException("forbidden", "роли master операция $op не разрешена")
+        return when (op) {
+            "terminal.auth" -> terminals.auth(req(msg, "terminal"), req(msg, "token"))
+            "session.confirm" -> terminals.confirm(req(msg, "session"), req(msg, "terminal"))
+            else -> terminals.beat(req(msg, "terminal"), msg["battery"].long(), msg["fps"].long(), msg["link"].long())
         }
     }
 
@@ -96,6 +95,13 @@ internal class OpRouter(private val ops: ValueOps, private val terminals: Termin
         }
     }
 
+    private fun breachRequest(msg: JsonObject): BreachRequest = BreachRequest(
+        session = req(msg, "session"), node = req(msg, "node"), n = msg["n"].long() ?: throw StoreException("bad_request", "нужен n"),
+        tier = req(msg, "tier"), selected = strings(msg, "selected"), matched = strings(msg, "matched"),
+        active = strings(msg, "active"), vaults = strings(msg, "vaults"),
+        openS = msg["open_s"].long() ?: throw StoreException("bad_request", "нужен open_s"),
+    )
+
     private fun moves(msg: JsonObject): List<Move> {
         val arr = msg["moves"] as? JsonArray ?: throw StoreException("bad_request", "moves — массив")
         return arr.map { e ->
@@ -125,6 +131,7 @@ internal class OpRouter(private val ops: ValueOps, private val terminals: Termin
     )
 
     private companion object {
+        val TERMINAL_OPS = setOf("terminal.auth", "session.confirm", "terminal.beat")
         val MASTER_OPS = setOf(
             "master.pause", "master.link", "master.goal", "master.goal_clear", "master.gate", "master.decide",
             "master.template_apply", "master.reply", "net.query", "master.stock_node", "master.unstock_node",

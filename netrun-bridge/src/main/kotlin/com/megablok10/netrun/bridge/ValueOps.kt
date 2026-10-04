@@ -49,19 +49,22 @@ class OpResult(val ok: Boolean, val body: JsonObject, val replayed: Boolean) {
  */
 @Suppress("TooManyFunctions")
 class ValueOps(
-    private val store: DocStore,
-    private val clock: () -> Long = System::currentTimeMillis,
+    internal val store: DocStore,
+    internal val clock: () -> Long = System::currentTimeMillis,
     private val gateway: HandoverGateway = HandoverGateway { },
 ) {
-    /** Доменная ошибка: бросается до записей (кроме возврата входа), сохраняется как ответ по `rid`. */
-    private class Fail(val code: String, message: String, val doc: Doc? = null) : Exception(message)
+    /** Строка в журнал Моста для разбора (например, `breach.tier_mismatch`); по умолчанию молчит, `Main` подключает журнал. */
+    @Volatile var log: (String) -> Unit = { }
 
-    private class Ctx {
+    /** Доменная ошибка: бросается до записей (кроме возврата входа), сохраняется как ответ по `rid`. */
+    internal class Fail(val code: String, message: String, val doc: Doc? = null) : Exception(message)
+
+    internal class Ctx {
         val issued = ArrayList<IssuedTransfer>()
         var alerts = 0
     }
 
-    private fun fail(code: String, msg: String, doc: Doc? = null): Nothing = throw Fail(code, msg, doc)
+    internal fun fail(code: String, msg: String, doc: Doc? = null): Nothing = throw Fail(code, msg, doc)
 
     // ---------- 6.1 сдать деку ----------
 
@@ -153,12 +156,16 @@ class ValueOps(
         val rd = tx.get(RUNNER, runnerDocId(runner))
         val now = clock()
         val sid = "s_" + VJ.sha256Hex("${caller.namespace}|$rid").take(16)
+        // RAM по правилу запроса входа v1 (протокол, раздел 8): телефон проверил деку против своей RAM, Мост её не знает.
+        val chains = docs.sumOf { ItemFacts.daemon(it)?.sequence?.size ?: 0 }
         tx.put(
             SESSION, sid, 0,
             VJ.obj(
                 "state" to VJ.p("pending"), "terminal" to VJ.p(terminal), "node" to VJ.p(nodeId),
                 "runner" to VJ.p(runner), "callsign" to VJ.p(callsign), "enter_rid" to VJ.p(rid.removePrefix("enter:")),
                 "confirmed_at" to VJ.p(0L), "loot_eddies" to VJ.p(0L), "outcome" to JsonNull, "finished_at" to VJ.p(0L),
+                "ram" to VJ.p(maxOf(MIN_RAM, chains).toLong()), "loaded" to VJ.arr(docs.map { it.id }),
+                "breach" to JsonNull, "opened" to JsonArray(emptyList()),
                 "world" to VJ.obj("connected" to VJ.p(false), "trace" to VJ.p(0L)),
             ),
         )
@@ -199,6 +206,7 @@ class ValueOps(
             } else {
                 val it = tx.get(ITEM, item) ?: throw StoreException("not_found", "предмета нет")
                 if (VJ.str(it.data, "owner") != "node:$node") fail("wrong_owner", "предмет не в узле", it)
+                if (openedByOther(session, item, clock()) != null) fail("claimed", "хранилище открыто взломом другой сессии", it)
                 val deck = loadDeck(tx, session)
                 val moved = tx.put(ITEM, it.id, it.ver, VJ.with(it.data, "owner" to VJ.p("deck:$session")))
                 putDeckItems(tx, deck, (deckItems(deck) + item).distinct())
@@ -369,7 +377,7 @@ class ValueOps(
         val s = activeSession(tx, session, node)
         val nd = tx.get(NODE, node) ?: throw StoreException("not_found", "узла нет")
         val deckDocs = ownedBy(tx, "deck:$session")
-        val plan = planMoves(tx, deckDocs, moves, outcome)
+        val plan = planMoves(tx, s, deckDocs, moves, outcome)
         val runner = VJ.str(s.data, "runner") ?: throw StoreException("internal", "у сессии нет игрока")
         val ns = caller.namespace
         val transfers = ArrayList<Pair<String, String>>()
@@ -421,7 +429,7 @@ class ValueOps(
     }
 
     /** Проверка `moves` по таблице исходов; защищённый демон всегда на телефон (Мост добавляет его сам). */
-    private fun planMoves(tx: DocStore.Tx, deck: List<Doc>, moves: List<Move>, outcome: String): List<Pair<Doc, MoveTo>> {
+    private fun planMoves(tx: DocStore.Tx, session: Doc, deck: List<Doc>, moves: List<Move>, outcome: String): List<Pair<Doc, MoveTo>> {
         val inDeck = deck.associateBy { it.id }
         if (moves.map { it.item }.toSet().size != moves.size) throw StoreException("bad_request", "предмет в moves дважды")
         val target = HashMap<String, MoveTo>()
@@ -438,7 +446,8 @@ class ValueOps(
         for (d in deck) {
             val isProtected = VJ.bool(d.data, "protected")
             val to = target[d.id] ?: if (isProtected) MoveTo.PHONE else throw StoreException("bad_request", "${d.id} не упомянут в moves")
-            val loot = (VJ.str(d.data, "origin") ?: "").startsWith("node:")
+            // Добыча (груз) — всё, что не из сданного при входе: и из узла (`node:*`), и от мастера (`master:*`), протокол, разделы 5 и 6.5.
+            val loot = !ItemFacts.isWorking(session, d)
             if (!isProtected && to !in allowedTargets(outcome, loot)) {
                 throw StoreException("bad_request", "${d.id}: при исходе $outcome нельзя в ${to.name.lowercase()}")
             }
@@ -559,14 +568,14 @@ class ValueOps(
     private fun requireAllowed(caller: Caller, op: String) {
         val ok = when (op) {
             "submit_deck" -> caller.role == Role.TEST || caller.role == Role.BRIDGE
-            "take_from_node", "leave_in_node", "run.finish" -> caller.role != Role.BRIDGE
+            "take_from_node", "leave_in_node", "run.finish", "run.breach" -> caller.role != Role.BRIDGE
             "master.stock_node", "master.unstock_node" -> caller.role == Role.MASTER || caller.role == Role.TEST
             else -> true
         }
         if (!ok) throw StoreException("forbidden", "роль ${caller.role} не может $op")
     }
 
-    private fun execute(caller: Caller, op: String, rid: String, params: JsonObject, body: (DocStore.Tx, Ctx) -> JsonObject): OpResult {
+    internal fun execute(caller: Caller, op: String, rid: String, params: JsonObject, body: (DocStore.Tx, Ctx) -> JsonObject): OpResult {
         requireAllowed(caller, op)
         if (rid.isEmpty() || rid.length > MAX_RID) throw StoreException("bad_request", "rid от 1 до $MAX_RID символов")
         val ctx = Ctx()
@@ -612,7 +621,7 @@ class ValueOps(
 
     // ---------- чтение ----------
 
-    private fun loadSession(tx: DocStore.Tx, id: String): Doc = tx.get(SESSION, id) ?: throw StoreException("not_found", "сессии нет")
+    internal fun loadSession(tx: DocStore.Tx, id: String): Doc = tx.get(SESSION, id) ?: throw StoreException("not_found", "сессии нет")
 
     private fun activeSession(tx: DocStore.Tx, id: String, node: String): Doc {
         val s = loadSession(tx, id)
@@ -622,7 +631,7 @@ class ValueOps(
     }
 
     /** Узел, где сессия сейчас: `world.node` (пишет сервер мира при переходе по графу узлов), иначе узел, куда её приняли. */
-    private fun currentNode(s: Doc): String? = (s.data["world"] as? JsonObject)?.let { VJ.str(it, "node") } ?: VJ.str(s.data, "node")
+    internal fun currentNode(s: Doc): String? = (s.data["world"] as? JsonObject)?.let { VJ.str(it, "node") } ?: VJ.str(s.data, "node")
 
     private fun loadDeck(tx: DocStore.Tx, sid: String): Doc =
         tx.get(DECK, sid) ?: throw StoreException("internal", "у сессии $sid нет деки")
@@ -633,10 +642,25 @@ class ValueOps(
         tx.put(DECK, deck.id, deck.ver, VJ.with(deck.data, "items" to VJ.arr(items)))
     }
 
+    /**
+     * Сессия, чьё живое (`until` > [now]) открытие хранилища содержит [item]; своя сессия [session] и закрытые не в счёт
+     * (протокол, 6.6): чужому взлому предмет «принадлежит», пока открыто окно, и `op.take_from_node` другой сессии отказывает `claimed`.
+     */
+    internal fun openedByOther(session: String, item: String, now: Long): Doc? =
+        store.list(SESSION).firstOrNull { s ->
+            s.id != session && VJ.str(s.data, "state") != "closed" && openedItems(s, now).any { it == item }
+        }
+
+    /** Предметы, открытые взломами сессии [s] и не истёкшие к [now]. */
+    internal fun openedItems(s: Doc, now: Long): List<String> =
+        (s.data["opened"] as? JsonArray).orEmpty().mapNotNull { e ->
+            (e as? JsonObject)?.takeIf { VJ.lng(it, "until") > now }?.let { VJ.str(it, "item") }
+        }
+
     private fun ownedBy(tx: DocStore.Tx, owner: String): List<Doc> =
         store.list(ITEM).mapNotNull { tx.get(ITEM, it.id) }.filter { VJ.str(it.data, "owner") == owner }
 
-    private fun newRunner(key: String, callsign: String): JsonObject = VJ.obj(
+    internal fun newRunner(key: String, callsign: String): JsonObject = VJ.obj(
         "key" to VJ.p(key), "callsign" to VJ.p(callsign), "blocked" to VJ.p(false), "blocked_reason" to JsonNull,
         "runs" to VJ.p(0L), "tutorial_done" to VJ.p(false),
     )
@@ -657,6 +681,7 @@ class ValueOps(
         const val BURNED_BY_MASTER = "burned:master"
         private val STOCK_KINDS = setOf("SHARD", "DAEMON")
         private const val MAX_RID = 128
+        private const val MIN_RAM = 6 // RAM нетраннера по умолчанию (`Identity.RAM_CAPACITY_DEFAULT`), нижняя граница RAM сессии
         private const val MS = 1000L
         private const val DEFAULT_PAUSE_S = 180L // пауза нетраннера после выброса Soft ICE (`soft_ice_reentry_pause_s`)
         private const val DEFAULT_LOCKDOWN_S = 600L // локдаун узла для всех после выброса (`node_lockdown_s`)

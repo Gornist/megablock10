@@ -167,7 +167,7 @@ class BridgeApp(private val options: LaunchOptions, syncConfig: SyncConfig = Syn
         }
         ensureDefaultSettings(store, worldKey.publicB64)
         ItemDecode.backfill(store) // предметы, принятые до M5b, без daemon/shard
-        val ops = ValueOps(store, gateway = delivery)
+        val ops = ValueOps(store, gateway = delivery).also { it.log = { msg -> log.event("Bridge", msg) } }
         inbox = PhoneInbox(store, ops, worldKey, phones, delivery, log = log)
         val master = MasterOps(store)
         server = BridgeServer(store, options.config.copy(worldPub = worldKey.publicB64), ops, master = master)
@@ -175,6 +175,7 @@ class BridgeApp(private val options: LaunchOptions, syncConfig: SyncConfig = Syn
         TerminalSilentRule(rules).register()
         MasterRules(rules, master).register()
         SecAlertRule(rules, store, phones, log = { log.event("Bridge", it) }, dispatch = { job -> scope.launch { job() } }).register()
+        BreachAlertRule(rules, store, phones, log = { log.event("Bridge", it) }, dispatch = { job -> scope.launch { job() } }).register()
         auditor = Auditor(store)
     }
 
