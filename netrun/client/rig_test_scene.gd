@@ -43,6 +43,9 @@ var flatline_shown := false
 
 ## Что показывает дека сейчас (с сервера): [{id, name, left}] и выбранный демон (VR: Y — следующий, X — применить).
 var deck_state: Array = []
+## Последнее событие `ev deck` сервера (RAM, свойства рабочих демонов, груз); пустое, пока оно не пришло.
+var deck_info: Dictionary = {}
+var _state_k := 0.0   # время сервера в последнем снимке: по нему until из state.cd превращается в «осталось N с»
 ## Звук ICE на самих ICE (N5): включает тот, кто собрал клиент (в тестах без звука — выключен).
 var ice_audio_enabled := false
 var selected_daemon := ""
@@ -155,6 +158,7 @@ func apply_state(state: Dictionary) -> void:
 	view.set_hunted(bool(state.get("hunt", false)))
 	view.set_exit_locked(int(state.get("level", 0)) >= HudLogic.LEVEL_LOCKDOWN)
 	deck_state = state.get("cd", [])
+	_state_k = float(state.get("k", 0.0))
 	var ids: Array = deck_state.map(func(d): return d["id"])
 	if not selected_daemon in ids:
 		selected_daemon = ids[0] if not ids.is_empty() else ""
@@ -283,11 +287,23 @@ func select_next() -> void:
 	_refresh_deck()
 
 
+## Событие `ev deck`: RAM, свойства рабочих демонов и груз. Вкладка ДОБЫЧА появляется с первым таким событием.
+func apply_deck(ev: Dictionary) -> void:
+	deck_info = ev
+	world_ui.deck.set_loot(ev.get("loot", []), int(ev.get("eddies", 0)))
+	_refresh_deck()
+
+
 func _refresh_deck() -> void:
-	var rows: Array = []
-	for d in deck_state:
-		rows.append({"id": d["id"], "name": "%d %s" % [rows.size() + 1, d["name"]], "cooldown_left": float(d["left"])})
-	world_ui.deck.set_deck({"daemons": rows, "selected": selected_daemon})
+	var rows := HudLogic.program_entries(deck_state, deck_info.get("daemons", []), _state_k)
+	for i in rows.size():
+		rows[i]["name"] = "%d %s" % [i + 1, rows[i]["name"]]
+	var deck := {"daemons": rows, "selected": selected_daemon}
+	if deck_info.has("ram"):
+		deck["ram"] = int(deck_info["ram"])
+		deck["used"] = int(deck_info.get("used", 0))
+		deck["ram_default"] = bool(deck_info.get("ram_default", false))
+	world_ui.deck.set_deck(deck)
 
 
 func _make_ice(id: String, black: bool) -> IceView:

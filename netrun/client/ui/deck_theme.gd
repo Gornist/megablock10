@@ -44,6 +44,7 @@ const BUBBLE_OWN_TEXT := Color("#EFFFF4")
 const FS_TEXT := 19        ## текст сообщения, обычные подписи
 const FS_NAME := 20        ## названия в списках, кнопки (Fira Medium)
 const FS_SMALL := 16       ## превью, вторичные подписи
+const FS_CODE := 19        ## цепочка кодов демона (моноширинный): коды «1C BD» читаются с вытянутой руки только крупно
 const FS_META := 14        ## время, статус, метки (Plex Mono Medium)
 const FS_TAB := 18
 const FS_BUTTON := 17
@@ -75,6 +76,7 @@ const V_WARN := &"DeckWarn"
 const V_BAD := &"DeckBad"
 const V_BIG := &"DeckBig"         ## позывной звонящего
 const V_TIMER := &"DeckTimer"     ## таймер разговора
+const V_CODE := &"DeckCode"       ## цепочка кодов демона (моноширинный, FS_CODE ≥ 19 px, бирюзовый)
 const V_HEAD := &"DeckHead"       ## заголовок экрана («ДЕМОНЫ», имя собеседника в шапке диалога)
 
 static var _theme: Theme
@@ -127,6 +129,7 @@ static func build() -> Theme:
 	_label_variation(t, V_OK, font_mono(), FS_META, OK)
 	_label_variation(t, V_WARN, font_mono(), FS_META, WARN)
 	_label_variation(t, V_BAD, font_mono(), FS_META, BAD)
+	_label_variation(t, V_CODE, font_mono(), FS_CODE, ACC)
 	_label_variation(t, V_BIG, font_medium(), FS_BIG, INK_STRONG)
 	_label_variation(t, V_TIMER, font_mono(), FS_TIMER, OK)
 	# Полоса прокрутки: тонкая, обвязочного цвета, без стрелок.

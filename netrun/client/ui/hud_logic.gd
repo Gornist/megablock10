@@ -82,15 +82,115 @@ static func edge_direction(cam: Transform3D, point: Vector3) -> Vector2:
 	return d.normalized()
 
 
-## Список демонов деки → строки панели: [{"text", "selected", "ready"}]. Демон: id, name, cooldown_left.
+## Человеческая подпись эффекта демона (одна короткая строка на деке); неизвестный эффект показывается как есть.
+const EFFECT_TITLES := {
+	"GHOST": "невидим для ICE", "JITTER": "trace замирает", "EXTRACT_SHARD": "достать шард", "EXTRACT_DAEMON": "достать демона",
+	"TIMESKEW": "сигнал СБ позже", "BLACKOUT": "сигнал СБ не уйдёт", "DECRYPT": "расшифровка", "MINER": "добыча эдди",
+}
+
+## Состояние программы (st из state.cd сервера): готов / перезарядка N / активен N с / не работает в Сети. Без st (старый снимок, только
+## перезарядка) — как раньше: «готово» или «N с».
+static func state_text(st: String, cooldown_left: float, active_left: float = 0.0) -> String:
+	match st:
+		"ready":
+			return "готов"
+		"cooldown":
+			return "перезарядка " + cooldown_text(cooldown_left)
+		"active":
+			return "активен " + cooldown_text(active_left)
+		"unsupported":
+			return "не работает в Сети"
+	return cooldown_text(cooldown_left)
+
+
+## Тон состояния для цвета строки: ok (готов), warn (перезарядка), acc (активен), dim (не работает).
+static func state_tone(st: String, cooldown_left: float) -> String:
+	match st:
+		"active":
+			return "acc"
+		"cooldown":
+			return "warn"
+		"unsupported":
+			return "dim"
+		"ready":
+			return "ok"
+	return "ok" if cooldown_left <= 0.0 else "warn"
+
+
+## Цепочка кодов демона строкой для моноширинного шрифта: «1C BD E9».
+static func chain_text(cells: Array) -> String:
+	return " ".join(PackedStringArray(cells.map(func(c: Variant) -> String: return str(c))))
+
+
+## Шкала RAM: {text «занято/ёмкость», fraction 0..1, over — занято больше ёмкости, default — ёмкость условная}. ram <= 0 — шкалы нет (null).
+static func ram_view(ram: int, used: int, ram_default: bool = false) -> Variant:
+	if ram <= 0:
+		return null
+	return {"text": "%d/%d" % [used, ram], "fraction": clampf(float(used) / float(ram), 0.0, 1.0), "over": used > ram, "default": ram_default}
+
+
+## Рабочие демоны для деки: строки перезарядок из state.cd ({id, name, left, st?, until?}) плюс свойства из ev deck (info — его daemons:
+## tier, cells, effect, unsupported). Нет свойств у демона или события вовсе — остаются только поля снимка. k — время сервера в снимке:
+## оно нужно, чтобы превратить until в «осталось N с» без общих часов. Добытые демоны (loaded == false) в рабочие не попадают.
+static func program_entries(cd: Array, info: Array, k: float) -> Array:
+	var by_id := {}
+	for d in info:
+		by_id[str(d.get("id", ""))] = d
+	var out := []
+	for c in cd:
+		var id := str(c.get("id", ""))
+		var meta: Dictionary = by_id.get(id, {})
+		if not bool(meta.get("loaded", true)):
+			continue
+		var st := str(c.get("st", ""))
+		var left := float(c.get("left", 0.0))
+		var entry := {"id": id, "name": str(c.get("name", id)), "cooldown_left": left}
+		if st != "":
+			entry["st"] = st
+			if st == "active":
+				entry["active_left"] = maxf(0.0, float(c.get("until", k)) - k)
+		for key in ["tier", "cells", "effect", "unsupported"]:
+			if meta.has(key):
+				entry[key] = meta[key]
+		out.append(entry)
+	return out
+
+
+## Список демонов деки → строки панели: [{"text", "selected", "ready", ...}]. Демон: id, name, cooldown_left; необязательно st, active_left,
+## tier, cells, effect, unsupported. text — «имя  состояние» (то, что видно в первой строке плашки), остальное — для остальных строк.
 static func deck_rows(deck: Dictionary) -> Array:
 	var rows := []
 	var selected := str(deck.get("selected", ""))
 	for d in deck.get("daemons", []):
 		var left := float(d.get("cooldown_left", 0.0))
+		var st := str(d.get("st", ""))
+		var state := state_text(st, left, float(d.get("active_left", 0.0)))
+		var name := str(d.get("name", d.get("id", "?")))
+		var effect := str(d.get("effect", ""))
 		rows.append({
-			"text": "%s  %s" % [str(d.get("name", d.get("id", "?"))), cooldown_text(left)],
+			"text": "%s  %s" % [name, state],
+			"name": name,
+			"state": state,
+			"tone": state_tone(st, left),
 			"selected": str(d.get("id", "")) == selected,
-			"ready": left <= 0.0,
+			"ready": left <= 0.0 and st != "unsupported",
+			"tier": int(d.get("tier", 0)),
+			"chain": chain_text(d.get("cells", [])),
+			"effect": EFFECT_TITLES.get(effect, effect),
 		})
+	return rows
+
+
+## Добыча для вкладки ДОБЫЧА: [{text, kind, kind_name, title, tier, enc, label}] из ev deck.loot ({id, kind: shard | daemon, tier, title, enc}).
+## label — «ОТКРЫТ» / «ЗАШИФРОВАН» (добытый демон не шифруется — у него «ОТКРЫТ»; в этом забеге он всё равно не работает).
+static func loot_rows(loot: Array) -> Array:
+	var rows := []
+	for l in loot:
+		var kind := str(l.get("kind", "shard"))
+		var enc := bool(l.get("enc", false))
+		var title := str(l.get("title", "?"))
+		var tier := int(l.get("tier", 0))
+		var kind_name := "ДЕМОН" if kind == "daemon" else "ШАРД"
+		var label := "ЗАШИФРОВАН" if enc else "ОТКРЫТ"
+		rows.append({"text": "%s  %s  тир %d  %s" % [kind_name, title, tier, label], "kind": kind, "kind_name": kind_name, "title": title, "tier": tier, "enc": enc, "label": label})
 	return rows
