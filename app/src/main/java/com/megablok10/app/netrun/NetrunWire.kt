@@ -7,7 +7,8 @@ import com.megablok10.kit.text.Base64Text.encode as b64
 /**
  * Запрос входа в «Сеть» (docs/netrun-bridge-protocol.md, раздел 8): телефон сдал карточки предметов ([transfers] — id карточек
  * `SendItem`) и просит собрать из них деку на терминале [terminal]. [protectedTransfer] — карточка демона из защищённого слота.
- * Подписан ключом игрока [runner].
+ * Подписан ключом игрока [runner]. [ram] — `Identity.ramCapacity` (v2); `null` — запрос v1, начатый до обновления (в prefs нет `attempt_ram`):
+ * он уходит строкой v1 с прежней подписью.
  */
 data class EnterRequest(
     val rid: String,
@@ -18,6 +19,7 @@ data class EnterRequest(
     val protectedTransfer: String,
     val timestamp: Long,
     val signature: String = "",
+    val ram: Int? = null,
 )
 
 /** Ответ Моста на запрос входа, подписан ключом мира: [ok] с [session] либо отказ с [code] и [msg]. */
@@ -32,25 +34,35 @@ object NetrunWire {
     private const val ENTER_MAGIC = "MB10ENTER"
     private const val ENTERED_MAGIC = "MB10ENTERED"
     private const val ENTER_PARTS = 10
+    private const val ENTER_RAM_PARTS = 11
     private const val ENTERED_PARTS = 8
 
-    fun encodeEnter(r: EnterRequest): String = listOf(
-        ENTER_MAGIC, "v${WireVersion.ENTER}", r.rid, r.terminal, r.runner, b64(r.callsign), r.transfers.joinToString(","),
-        r.protectedTransfer, r.timestamp.toString(), r.signature,
-    ).joinToString(":")
+    /** Запрос с [EnterRequest.ram] — строка v2 (11 частей), без него — v1 (10 частей, прежний формат). */
+    fun encodeEnter(r: EnterRequest): String {
+        val version = if (r.ram == null) WireVersion.ENTER_LEGACY else WireVersion.ENTER
+        val head = listOf(ENTER_MAGIC, "v$version", r.rid, r.terminal, r.runner, b64(r.callsign), r.transfers.joinToString(","), r.protectedTransfer)
+        return (head + listOfNotNull(r.ram?.toString()) + listOf(r.timestamp.toString(), r.signature)).joinToString(":")
+    }
 
-    /** Байты, которые подписывает игрок и проверяет Мост. */
-    fun enterSignedBytes(r: EnterRequest): ByteArray =
-        "ENTER1|${r.rid}|${r.terminal}|${r.runner}|${r.callsign}|${r.transfers.joinToString(",")}|${r.protectedTransfer}|${r.timestamp}"
-            .toByteArray(Charsets.UTF_8)
+    /** Байты, которые подписывает игрок и проверяет Мост: v1 — `ENTER1|…`, v2 — `ENTER2|…|<ram>|…` (подпись v1 за v2 не выдать). */
+    fun enterSignedBytes(r: EnterRequest): ByteArray {
+        val common = "${r.rid}|${r.terminal}|${r.runner}|${r.callsign}|${r.transfers.joinToString(",")}|${r.protectedTransfer}"
+        val text = if (r.ram == null) "ENTER1|$common|${r.timestamp}" else "ENTER2|$common|${r.ram}|${r.timestamp}"
+        return text.toByteArray(Charsets.UTF_8)
+    }
 
+    /** Запрос входа v1 или v2 (другая версия, нехватка частей, не число — null). */
     fun decodeEnter(raw: String): EnterRequest? {
         val p = raw.split(":")
-        if (p.size < ENTER_PARTS || !WireVersion.matches(p, ENTER_MAGIC)) return null
+        if (p.size < 2 || p[0] != ENTER_MAGIC) return null
+        val v2 = p[1] == "v${WireVersion.ENTER}" && p.size >= ENTER_RAM_PARTS
+        if (!v2 && !(p[1] == "v${WireVersion.ENTER_LEGACY}" && p.size >= ENTER_PARTS)) return null
         return try {
+            val ram = if (v2) p[8].toIntOrNull() ?: return null else null
+            val tail = if (v2) 1 else 0
             EnterRequest(
                 p[2], p[3], p[4], unb64(p[5]), p[6].split(",").filter { it.isNotEmpty() }, p[7],
-                p[8].toLongOrNull() ?: return null, p[9],
+                p[8 + tail].toLongOrNull() ?: return null, p[9 + tail], ram,
             )
         } catch (e: IllegalArgumentException) {
             null

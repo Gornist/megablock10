@@ -1,8 +1,10 @@
 package com.megablok10.app.identity
 
+import com.megablok10.rules.RamCapacity
+
 /** Стартовая и максимальная ёмкость буфера взлома (см. ревизию v9 §2 — раньше это была глобальная константа MockBreach.ramCapacity). */
-const val RAM_CAPACITY_DEFAULT = 6
-const val RAM_CAPACITY_MAX = 13
+const val RAM_CAPACITY_DEFAULT = RamCapacity.DEFAULT
+const val RAM_CAPACITY_MAX = RamCapacity.MAX
 
 /**
  * Персонаж на этом устройстве, каким его видят остальные части приложения. publicKeyB64 — первичный идентификатор во всей

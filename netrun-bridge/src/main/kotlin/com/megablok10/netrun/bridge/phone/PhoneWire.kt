@@ -24,7 +24,8 @@ data class ReceiptCard(val id: String, val receiver: String, val signature: Stri
 
 /**
  * Запрос входа в Сеть (протокол Моста, раздел 8): телефон сдал карточки предметов и просит собрать из них деку. Подписан
- * ключом игрока. Строка `MB10ENTER:v1:…` — формат Моста, в `WireVersion` приложения его пока нет (его заведёт M3).
+ * ключом игрока. Строки `MB10ENTER:v1:…` и `MB10ENTER:v2:…` (с RAM) — близнец `NetrunWire` приложения. [ram] — RAM персонажа из v2;
+ * `null` — запрос v1 (телефон проверил деку против своей RAM, Мост её не знает).
  */
 data class EnterRequest(
     val rid: String,
@@ -35,6 +36,7 @@ data class EnterRequest(
     val protectedTransfer: String,
     val timestamp: Long,
     val signature: String,
+    val ram: Int? = null,
 )
 
 /** Ответ Моста на запрос входа, подписан ключом мира: [ok] с [session] либо отказ с [code] и [msg]. */
@@ -47,13 +49,15 @@ object PhoneWire {
     private const val CARD_MAGIC = "MB10"
     const val ENTER_MAGIC = "MB10ENTER"
     const val ENTERED_MAGIC = "MB10ENTERED"
-    const val ENTER_VERSION = 1
+    const val ENTER_VERSION = 1 // запрос входа v1 и ответ `MB10ENTERED` (его версия не менялась)
+    const val ENTER_VERSION_RAM = 2 // запрос входа v2: с RAM
 
     private const val CHAT_PARTS = 9
     private const val ITEM_PARTS = 9
     private const val TX_PARTS = 9
     private const val RCPT_PARTS = 6
     private const val ENTER_PARTS = 10
+    private const val ENTER_RAM_PARTS = 11
     private const val ENTERED_PARTS = 8
 
     /** Строка разобрана на части, частей не меньше [min], а первые две — [first] и [second] (или `v<версия>`). */
@@ -128,22 +132,30 @@ object PhoneWire {
 
     // ---------- вход в Сеть ----------
 
-    fun encodeEnter(r: EnterRequest): String = listOf(
-        ENTER_MAGIC, "v$ENTER_VERSION", r.rid, r.terminal, r.runner, b64(r.callsign), r.transfers.joinToString(","),
-        r.protectedTransfer, r.timestamp.toString(), r.signature,
-    ).joinToString(":")
+    /** Строка запроса: без [EnterRequest.ram] — v1 (10 частей), с ним — v2 (11 частей, `ram` перед `ts`). */
+    fun encodeEnter(r: EnterRequest): String {
+        val head = listOf(ENTER_MAGIC, "v${if (r.ram == null) ENTER_VERSION else ENTER_VERSION_RAM}", r.rid, r.terminal, r.runner, b64(r.callsign), r.transfers.joinToString(","), r.protectedTransfer)
+        return (head + listOfNotNull(r.ram?.toString()) + listOf(r.timestamp.toString(), r.signature)).joinToString(":")
+    }
 
-    fun enterSignedBytes(r: EnterRequest): ByteArray =
-        "ENTER1|${r.rid}|${r.terminal}|${r.runner}|${r.callsign}|${r.transfers.joinToString(",")}|${r.protectedTransfer}|${r.timestamp}"
-            .toByteArray(Charsets.UTF_8)
+    /** Байты подписи: v1 — `ENTER1|…`, v2 — `ENTER2|…|<ram>|…` (подпись v1 нельзя выдать за v2). */
+    fun enterSignedBytes(r: EnterRequest): ByteArray {
+        val common = "${r.rid}|${r.terminal}|${r.runner}|${r.callsign}|${r.transfers.joinToString(",")}|${r.protectedTransfer}"
+        val text = if (r.ram == null) "ENTER1|$common|${r.timestamp}" else "ENTER2|$common|${r.ram}|${r.timestamp}"
+        return text.toByteArray(Charsets.UTF_8)
+    }
 
+    /** Запрос входа v1 или v2; другая версия, нехватка частей, не число в `ram` или `ts` — null. */
     fun decodeEnter(raw: String): EnterRequest? {
         val p = raw.split(":")
-        if (!p.isShape(ENTER_PARTS, ENTER_MAGIC, "v$ENTER_VERSION")) return null
+        val v2 = p.isShape(ENTER_RAM_PARTS, ENTER_MAGIC, "v$ENTER_VERSION_RAM")
+        if (!v2 && !p.isShape(ENTER_PARTS, ENTER_MAGIC, "v$ENTER_VERSION")) return null
         return try {
+            val ram = if (v2) p[8].toIntOrNull() ?: return null else null
+            val tail = if (v2) 1 else 0
             EnterRequest(
                 p[2], p[3], p[4], unb64(p[5]), p[6].split(",").filter { it.isNotEmpty() }, p[7],
-                p[8].toLongOrNull() ?: return null, p[9],
+                p[8 + tail].toLongOrNull() ?: return null, p[9 + tail], ram,
             )
         } catch (e: IllegalArgumentException) {
             null
