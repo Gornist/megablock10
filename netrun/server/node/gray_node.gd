@@ -460,6 +460,12 @@ static func is_loaded_origin(origin: String) -> bool:
 	return origin.begins_with("phone:")
 
 
+## Добыча забега по происхождению (для `moves` в `run.finish`): взятое в узле (`node:*`) и наполненное мастером (`master:*`, `master.stock_node`).
+## Мост делит так же (протокол Моста, 6.5): при чистом выходе добыча на телефон, иначе остаётся в узле.
+static func is_loot_origin(origin: String) -> bool:
+	return origin.begins_with("node:") or origin.begins_with("master:")
+
+
 ## Дека игрока из Моста: **рабочие** демоны предметов deck:<сессия> (origin phone:*) с полем `daemon` ({effect, tier, name, cells},
 ## его пишет Мост при приёме карточки). Возвращает [{id: id предмета, daemon: {...}, protected}]; нет ни одного — вызывающий оставляет
 ## деку по умолчанию.
@@ -1088,7 +1094,7 @@ func _finish_in_bridge(ev: Dictionary) -> void:
 		var data: Dictionary = d.get("data", {})
 		if data.get("owner") != "deck:" + session or data.get("protected", false):
 			continue
-		var is_loot := str(data.get("origin", "")).begins_with("node:")
+		var is_loot := is_loot_origin(str(data.get("origin", "")))
 		moves.append({"item": str(d["id"]), "to": plan["loot"] if is_loot else plan["daemon"]})
 	var r: Dictionary = {}
 	for attempt in FINISH_ATTEMPTS:
