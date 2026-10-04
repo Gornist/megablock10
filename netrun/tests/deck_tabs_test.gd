@@ -386,6 +386,16 @@ func test_real_buttons_are_not_smaller_than_the_minimum_after_layout() -> void:
 
 func test_trace_indicator_clears_the_deck_on_the_wrist_and_in_the_flat_build() -> void:
 	# Дека с вкладками выше прежней: индикатор trace не должен лечь на её край ни на запястье (ниже, к локтю), ни в плоской сборке (выше).
-	var wrist_half := DeckPanel.PANEL_HEIGHT_M * WorldUI.WRIST_DECK_SCALE * 0.5
-	assert_float(-WorldUI.WRIST_TRACE_POS.y).is_greater_equal(wrist_half + 0.03)
+	# На запястье дека повёрнута на 90°: вдоль предплечья идёт её ширина; trace — за дальним (к локтю) краем.
+	var elbow_edge := WorldUI.WRIST_DECK_POS.y - WorldUI.WRIST_DECK_LENGTH_M * 0.5
+	assert_float(WorldUI.WRIST_TRACE_POS.y).is_less_equal(elbow_edge - 0.03)
 	assert_float(WorldUI.FLAT_TRACE_POS.y).is_greater_equal(DeckPanel.PANEL_HEIGHT_M * 0.5 + 0.015)
+
+
+func test_wrist_deck_lies_on_the_forearm_and_does_not_cover_the_hand() -> void:
+	# Повёрнутая дека: ближний к кисти край — на WRIST_DECK_GAP от запястья (запястье — на WRIST_ANCHOR_ELBOW от якоря к пальцам), дальше к локтю.
+	var wrist_y := HandView.WRIST_ANCHOR_ELBOW                      # запястье в системе якоря, вдоль Y к пальцам
+	var near_edge := WorldUI.WRIST_DECK_POS.y + WorldUI.WRIST_DECK_LENGTH_M * 0.5
+	assert_float(wrist_y - near_edge).is_equal_approx(WorldUI.WRIST_DECK_GAP, 0.0001)
+	assert_float(WorldUI.WRIST_DECK_LENGTH_M).is_equal_approx(DeckPanel.PANEL_WIDTH_M * WorldUI.WRIST_DECK_SCALE, 0.0001)
+	assert_float(WorldUI.WRIST_DECK_ROLL_DEG).is_equal(90.0)

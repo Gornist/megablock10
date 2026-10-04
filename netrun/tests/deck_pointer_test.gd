@@ -176,6 +176,8 @@ func test_pointer_clicks_the_deck_worn_on_the_wrist_and_lets_go_when_the_hand_is
 	_rig.left_hand_view.update_hand()
 	_ui._place()
 	assert_float(_ui.deck.scale.x).is_equal_approx(WorldUI.WRIST_DECK_SCALE, 0.0001)
+	assert_float(rad_to_deg(_ui.deck.rotation.z)).is_equal_approx(90.0, 0.001)   # повёрнута на 90° против часовой, глядя на панель
+	assert_vector(_ui.deck.position).is_equal_approx(WorldUI.WRIST_DECK_POS, Vector3.ONE * 0.0001)
 	assert_bool(_ui.deck.is_interactive()).is_true()
 	_ui.deck.select_tab(DeckPanel.TAB_CHAT)
 	_ui.deck.chat().open_thread(FakePhoneLink.ID_SHERSHEN)

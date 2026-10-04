@@ -414,7 +414,8 @@ func test_deck_is_worn_on_the_wrist_in_vr_and_not_on_the_fingers() -> void:
 	rig.left_hand_view.update_hand()
 	ui._place()
 	assert_object(ui.deck.get_parent().get_parent()).is_same(rig.left_hand_view.wrist_anchor)  # HudAnchor внутри якоря запястья
-	assert_float(ui.deck.global_position.distance_to(rig.left_hand_view.wrist_anchor.global_position)).is_less(0.001)
+	# центр деки — в WorldUI.WRIST_DECK_POS от якоря (дека повёрнута на 90° и сдвинута к локтю, чтобы не заходить на кисть)
+	assert_float(ui.deck.global_position.distance_to(rig.left_hand_view.wrist_anchor.to_global(WorldUI.WRIST_DECK_POS))).is_less(0.001)
 	assert_float(ui.deck.scale.x).is_equal_approx(WorldUI.WRIST_DECK_SCALE, 0.0001)
 	# деку не видно у кончиков пальцев: от кисти она дальше, чем лежит ладонь
 	var pose: PackedVector3Array = rig.left_hand_view.last_pose()
