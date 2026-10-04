@@ -36,6 +36,12 @@ const EV_NODE := "node"
 const EV_TUNNEL := "tunnel"
 const EV_PORTAL_DENIED := "portal_denied"
 const EV_SHARDS := "shards"
+## deck — дека для вкладок ДЕКА и ДОБЫЧА (шлётся при входе игрока в узел и при изменении груза): ram (ёмкость в ячейках), ram_default (true — Мост
+## ёмкость не прислал, показано значение по умолчанию), used (занято ячейками рабочих демонов), daemons [{id, name, effect, tier, cells [коды],
+## prot, loaded, unsupported?}] (рабочие — принесённые с телефона; unsupported — причина, почему эффект в Сети не работает),
+## loot [{id, kind: shard | daemon, tier, title, enc}] (enc — зашифрован), eddies (эдди в грузе). Состояние демонов во времени — в `state.cd`:
+## {id, name, left, st: ready | cooldown | active | unsupported, until} (until — время сервера `k`, когда состояние кончится).
+const EV_DECK := "deck"
 const EV_ENDED := "ended"
 const EV_DAEMON := "daemon"
 ## Телепорт (VR: движение только им). Клиент -> сервер: {t: tp, p: [x, z]} — цель на полу; решает сервер. Успех ответа не имеет

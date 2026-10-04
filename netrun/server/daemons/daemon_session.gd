@@ -8,6 +8,14 @@ var trace: TraceMeter
 var ghost_until: float = -INF  # ICE читает is_ghost(now)
 var loot: Array[Dictionary] = []  # добыча забега (события; настоящую выдачу делает Мост)
 var _ready_at: Dictionary = {}  # id демона -> время конца перезарядки
+## Что дека показывает игроку (ev deck): RAM забега (session.data.ram Моста; пока Мост её не пишет — DEFAULT_RAM и ram_default), свойства
+## рабочих демонов {id -> {cells, prot}} и добыча (шарды и добытые демоны) с эдди. Заполняет сервер мира из документов Моста; на игру не влияет.
+const DEFAULT_RAM := 6
+var ram: int = DEFAULT_RAM
+var ram_default := true
+var deck_meta: Dictionary = {}
+var loot_view: Array = []
+var loot_eddies: int = 0
 
 
 func _init(deck_ids: Array = [], meter: TraceMeter = null) -> void:
@@ -27,6 +35,16 @@ func active_effects(now: float) -> Array:
 	if is_ghost(now):
 		out.append("GHOST")
 	return out
+
+
+## Сколько секунд ещё действует эффект демона (0 — не действует): GHOST и JITTER. Остальные эффекты окна не имеют.
+func active_left(effect: String, now: float) -> float:
+	match effect:
+		"GHOST":
+			return maxf(0.0, ghost_until - now)
+		"JITTER":
+			return trace.frozen_left(now)
+	return 0.0
 
 
 func cooldown_left(daemon_id: String, now: float) -> float:
