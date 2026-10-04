@@ -42,9 +42,9 @@ class ValueOpsGiveTest {
 
         fun ver(item: String): Long = f.store.get("item", item)!!.ver
 
-        fun rid(session: String, item: String): String = "give:$session:$item:${ver(item)}"
+        fun rid(session: String, item: String, to: GiveTarget): String = GiveRid.of(session, item, ver(item), to)
 
-        fun give(session: String, item: String, to: GiveTarget, rid: String = rid(session, item), ver: Long = ver(item)): OpResult =
+        fun give(session: String, item: String, to: GiveTarget, rid: String = rid(session, item, to), ver: Long = ver(item)): OpResult =
             f.ops.giveItem(f.world, rid, session, item, ver, to)
 
         fun deck(session: String): List<String> = VJ.list(f.store.get("deck", session)!!.data, "items")
@@ -137,7 +137,7 @@ class ValueOpsGiveTest {
     @Test fun giveToPhoneMakesAnOutboxCardFromTheWorldKey() {
         val s = stand()
         val before = s.f.store.get("item", "it_sh2")!!
-        val rid = s.rid(s.a, "it_sh2")
+        val rid = s.rid(s.a, "it_sh2", GiveTarget.Phone(phoneKey))
         val r = s.give(s.a, "it_sh2", GiveTarget.Phone(phoneKey))
         assertTrue(r.body.toString(), r.ok)
         val item = s.f.store.get("item", "it_sh2")!!
@@ -166,7 +166,7 @@ class ValueOpsGiveTest {
 
     @Test fun replayReturnsTheSavedAnswerAndMakesNoSecondCard() {
         val s = stand()
-        val rid = s.rid(s.a, "it_sh1")
+        val rid = s.rid(s.a, "it_sh1", GiveTarget.Phone(phoneKey))
         val ver = s.ver("it_sh1")
         val first = s.give(s.a, "it_sh1", GiveTarget.Phone(phoneKey), rid, ver)
         s.f.issued.clear()
@@ -180,7 +180,7 @@ class ValueOpsGiveTest {
 
     @Test fun replayToASessionIsAlsoTheSameAnswer() {
         val s = stand()
-        val rid = s.rid(s.a, "it_sh1")
+        val rid = s.rid(s.a, "it_sh1", GiveTarget.Session(s.b))
         val ver = s.ver("it_sh1")
         val first = s.give(s.a, "it_sh1", GiveTarget.Session(s.b), rid, ver)
         val second = s.give(s.a, "it_sh1", GiveTarget.Session(s.b), rid, ver)
@@ -192,7 +192,7 @@ class ValueOpsGiveTest {
 
     @Test fun sameRidWithAnotherRecipientIsMismatchAndChangesNothing() {
         val s = stand()
-        val rid = s.rid(s.a, "it_sh1")
+        val rid = s.rid(s.a, "it_sh1", GiveTarget.Session(s.b))
         val ver = s.ver("it_sh1")
         assertTrue(s.give(s.a, "it_sh1", GiveTarget.Session(s.b), rid, ver).ok)
         assertEquals("rid_mismatch", code { s.give(s.a, "it_sh1", GiveTarget.Phone(phoneKey), rid, ver) })
@@ -204,7 +204,7 @@ class ValueOpsGiveTest {
         val path = ValueFixture.newPath(tmp.root, "give.db")
         val f = ValueFixture(path)
         val s = Stand(f)
-        val rid = s.rid(s.a, "it_sh1")
+        val rid = s.rid(s.a, "it_sh1", GiveTarget.Phone(phoneKey))
         val ver = s.ver("it_sh1")
         val first = s.give(s.a, "it_sh1", GiveTarget.Phone(phoneKey), rid, ver)
         f.store.close()
@@ -279,6 +279,33 @@ class ValueOpsGiveTest {
         assertEquals("session_state", s.give(s.a, "it_sh1", GiveTarget.Session(s.b)).code)
         assertEquals("deck:${s.a}", s.f.owner("it_sh1"))
         s.conserved()
+    }
+
+    @Test fun savedRefusalToOneRecipientDoesNotBlockAnotherOne() {
+        val s = stand()
+        val sb = s.f.store.get("session", s.b)!!
+        s.f.store.put("session", s.b, sb.ver, VJ.with(sb.data, "state" to JsonPrimitive("pending")))
+        val ver = s.ver("it_sh1")
+        // отказ сохранён по rid; в старом виде (без получателя) тот же rid для другого получателя дал бы rid_mismatch навсегда
+        val oldRid = "give:${s.a}:it_sh1:$ver"
+        assertEquals("session_state", s.give(s.a, "it_sh1", GiveTarget.Session(s.b), oldRid, ver).code)
+        assertEquals("rid_mismatch", code { s.give(s.a, "it_sh1", GiveTarget.Phone(phoneKey), oldRid, ver) })
+        // с получателем в rid: отказ B не мешает отдать тот же предмет (та же версия) на телефон
+        assertEquals("session_state", s.give(s.a, "it_sh1", GiveTarget.Session(s.b)).code)
+        val r = s.give(s.a, "it_sh1", GiveTarget.Phone(phoneKey))
+        assertTrue(r.body.toString(), r.ok)
+        assertFalse(r.replayed)
+        assertEquals("outbox:$phoneKey", s.f.owner("it_sh1"))
+        s.conserved()
+    }
+
+    @Test fun giveRidCarriesTheRecipientDigest() {
+        // эталон для сервера мира (netrun/tests/fake_bridge_test.gd проверяет те же значения)
+        assertEquals("give:s_a:it_x:4:1d7ad1cb", GiveRid.of("s_a", "it_x", 4, GiveTarget.Session("s_77ab03c1d2e4f5a6")))
+        assertEquals(
+            "give:s_a:it_x:4:1c166256",
+            GiveRid.of("s_a", "it_x", 4, GiveTarget.Phone("MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAECarol00000000000000000000000000000000000000000000000000000000000000=")),
+        )
     }
 
     @Test fun senderFinishingOrClosedIsSessionState() {
@@ -359,7 +386,7 @@ class ValueOpsGiveTest {
         for (k in 1..n) {
             val s = stand()
             val before = s.f.snapshot()
-            val rid = s.rid(s.a, "it_sh1")
+            val rid = s.rid(s.a, "it_sh1", to(s))
             val ver = s.ver("it_sh1")
             s.f.calls = 0
             s.f.failAt = k
@@ -384,7 +411,7 @@ class ValueOpsGiveTest {
         val f = ValueFixture(":memory:")
         val ops = ValueOps(f.store, f.clock) { error("M2 упал") }
         val s = Stand(f)
-        val r = ops.giveItem(f.world, s.rid(s.a, "it_sh1"), s.a, "it_sh1", s.ver("it_sh1"), GiveTarget.Phone(phoneKey))
+        val r = ops.giveItem(f.world, s.rid(s.a, "it_sh1", GiveTarget.Phone(phoneKey)), s.a, "it_sh1", s.ver("it_sh1"), GiveTarget.Phone(phoneKey))
         assertTrue(r.ok)
         assertEquals("outbox:$phoneKey", f.owner("it_sh1"))
     }

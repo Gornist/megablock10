@@ -267,7 +267,7 @@ func op_leave_in_node(session: String, node: String, item: String) -> Dictionary
 
 
 func op_give_item(session: String, item: String, ver: int, to_session: String, to_phone: String) -> Dictionary:
-	var f := {"rid": give_rid(session, item, ver), "session": session, "item": item, "ver": ver}
+	var f := {"rid": give_rid(session, item, ver, to_session if not to_session.is_empty() else to_phone), "session": session, "item": item, "ver": ver}
 	if not to_session.is_empty():
 		f["to_session"] = to_session
 	if not to_phone.is_empty():

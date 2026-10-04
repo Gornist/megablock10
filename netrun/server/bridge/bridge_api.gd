@@ -52,9 +52,11 @@ static func breach_rid(session: String, n: int) -> String:
 	return "breach:%s:%d" % [session, n]
 
 
-## rid отдачи (раздел 6.7): версия предмета в нём нужна, потому что предмет может вернуться (A -> B -> A) и уйти снова.
-static func give_rid(session: String, item: String, ver: int) -> String:
-	return "give:%s:%s:%d" % [session, item, ver]
+## rid отдачи (раздел 6.7): `give:<сессия>:<предмет>:<ver>:<sha8(получатель)>`. Версия предмета нужна, потому что предмет может вернуться
+## (A -> B -> A) и уйти снова; получатель (to_session либо ключ to_phone) — потому что отказ сохраняется по rid, и без него повтор другому
+## получателю дал бы rid_mismatch. sha8 — первые 8 hex от sha256 строки получателя (эталон — GiveRid.kt Моста).
+static func give_rid(session: String, item: String, ver: int, to: String) -> String:
+	return "give:%s:%s:%d:%s" % [session, item, ver, to.sha256_text().substr(0, 8)]
 
 
 ## Токен, который очки кладут в auth: JSON {"terminal","token"} или «терминал:токен». Возвращает {terminal, token} или {}.

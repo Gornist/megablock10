@@ -6,7 +6,7 @@ extends Node
 ## в Сети и не в исходе, ключ похож на ключ, не свой), а ценность двигает Мост одной операцией `op.give_item`: он же последний судья
 ## (защищённый и рабочие демоны, версия предмета, состояние сессий). Эдди не отдаются.
 ##
-## Повтор безопасен: rid = give:<сессия>:<предмет>:<версия> (BridgeApi.give_rid); после обрыва без ответа предмет перечитывается, и если он уже у
+## Повтор безопасен: rid = give:<сессия>:<предмет>:<версия>:<sha8 получателя> (BridgeApi.give_rid); после обрыва без ответа предмет перечитывается (с паузами: запрос мог закоммититься позже), и если он уже у
 ## получателя, отдача считается состоявшейся. Исход забега отправителя и получателя ждёт отдачу в полёте (GrayNode.begin_inflight, как take).
 
 signal given(session: String, item: String, to: Dictionary)
@@ -15,6 +15,10 @@ signal given(session: String, item: String, to: Dictionary)
 const NET_ATTEMPTS := 5
 const RETRY_SEC := 0.6
 const VERSION_ATTEMPTS := 3
+## Ответа Моста не было: запрос мог закоммититься позже обрыва. Пока исход не определён, отдача остаётся «в полёте» (исход забега ждёт):
+## SETTLE_READS раз выжидаем settle_sec и перечитываем предмет.
+const SETTLE_READS := 3
+const SETTLE_SEC := 2.0
 ## Ключ телефона — обычный base64 SPKI (около 124 символов); границы нужны, чтобы мусор не уходил в Мост.
 const KEY_MIN := 16
 const KEY_MAX := 200
@@ -28,6 +32,8 @@ var all_nodes: Callable
 
 ## Пауза между повторами при обрыве связи с Мостом, с (тест ставит поменьше).
 var retry_sec := RETRY_SEC
+## Пауза перед перечитыванием предмета после обрыва без ответа, с (тест ставит поменьше).
+var settle_sec := SETTLE_SEC
 var _busy_items: Dictionary = {}   # id предмета, который отдаётся прямо сейчас
 
 
@@ -152,7 +158,7 @@ func give(session: String, item: String, to_raw: Dictionary) -> Dictionary:
 	var names := {}
 	if r.get("ok", false):
 		for n in all_nodes.call():
-			(n as GrayNode).note_given(item)
+			(n as GrayNode).note_given(item, recipient)
 		await gn.refresh_deck(session)
 		if rn != null:
 			await rn.refresh_deck(recipient)
@@ -212,13 +218,28 @@ func _ask_bridge(session: String, item: String, recipient: String, phone: String
 		if code == "version_conflict":
 			continue
 		if GrayNode.is_transient(resp):
-			# ответа нет: возможно, запись прошла — перечитаем предмет в следующем круге по owner, а не будем гадать
-			var again := await _read_item(item)
-			if again.get("ok", false) and _already_there(str(((again["doc"] as Dictionary).get("data", {}) as Dictionary).get("owner", "")), recipient, phone):
-				return {"ok": true}
-			return {"ok": false, "error": WorldMsg.GIVE_UNAVAILABLE}
+			# ответа нет: возможно, запись прошла или пройдёт позже — исход определяем по owner предмета, а не гадаем
+			return await _settle(session, item, recipient, phone)
 		return {"ok": false, "error": error_for(code)}
 	return {"ok": false, "error": WorldMsg.GIVE_GONE}
+
+
+## После обрыва без ответа: выжидаем и перечитываем предмет до SETTLE_READS раз. Отдача держит «в полёте» обе сессии, пока мы здесь, так что
+## исход забега не разберёт деку, пока запрос мог ещё лечь в Мост. Предмет у получателя — отдача состоялась; не у отправителя и не у
+## получателя — ушёл (GIVE_GONE); после всех чтений всё ещё в деке отправителя (или Мост не читается) — не отдан (GIVE_UNAVAILABLE).
+func _settle(session: String, item: String, recipient: String, phone: String) -> Dictionary:
+	for i in SETTLE_READS:
+		if is_inside_tree():
+			await get_tree().create_timer(settle_sec).timeout
+		var again := await _read_item(item)
+		if not again.get("ok", false):
+			continue
+		var owner := str(((again["doc"] as Dictionary).get("data", {}) as Dictionary).get("owner", ""))
+		if _already_there(owner, recipient, phone):
+			return {"ok": true}
+		if owner != "deck:" + session:
+			return {"ok": false, "error": WorldMsg.GIVE_GONE}
+	return {"ok": false, "error": WorldMsg.GIVE_UNAVAILABLE}
 
 
 ## Предмет уже у получателя: в деке его сессии либо в outbox/на телефоне контакта.

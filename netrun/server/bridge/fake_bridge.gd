@@ -94,6 +94,9 @@ func _once(rid: String, params: Dictionary, fn: Callable) -> Dictionary:
 		return saved
 	var resp: Dictionary = fn.call()
 	resp["replayed"] = false
+	# Как Мост: bad_request и not_found — ошибка запроса, записи rid нет (протокол 6.5, 6.7); повтор с исправленными параметрами разрешён.
+	if BridgeApi.err_code(resp) in ["bad_request", "not_found"]:
+		return resp
 	_rids[rid] = {"params": key, "resp": resp.duplicate(true)}
 	return resp
 
@@ -218,14 +221,36 @@ var give_offline := false
 var give_drop_reply := false
 
 
+## Тест: первый запрос отдачи «застрял» в Мосте — клиент видит обрыв (unavailable), а запись ложится через это число секунд (задержанный коммит).
+## Пока она не легла, остальные запросы отдачи тоже получают unavailable; ложится при первом обращении к фейку после срока.
+var give_late_commit_sec := 0.0
+var _late_give: Dictionary = {}
+
+
+func _apply_late_give() -> void:
+	if _late_give.is_empty() or Time.get_ticks_msec() < int(_late_give["due"]):
+		return
+	var a: Array = _late_give["args"]
+	_late_give = {}
+	op_give_item(a[0], a[1], a[2], a[3], a[4])
+	give_attempts -= 1
+
+
 func op_give_item(session: String, item: String, ver: int, to_session: String, to_phone: String) -> Dictionary:
+	_apply_late_give()
 	give_attempts += 1
 	if give_offline:
 		return err("unavailable", "Моста нет (тест)")
 	if (to_session.is_empty() == to_phone.is_empty()) or ver < 1 or to_session == session:
 		return err("bad_request", "нужен ровно один получатель, ver и не сам себе")
+	if not _late_give.is_empty():
+		return err("unavailable", "запрос застрял (тест)")
+	if give_late_commit_sec > 0.0:
+		_late_give = {"due": Time.get_ticks_msec() + int(give_late_commit_sec * 1000.0), "args": [session, item, ver, to_session, to_phone]}
+		give_late_commit_sec = 0.0
+		return err("unavailable", "запрос застрял (тест)")
 	var params := {"op": "give_item", "session": session, "item": item, "ver": ver, "to_session": to_session, "to_phone": to_phone}
-	var resp := _once(give_rid(session, item, ver), params, func():
+	var resp := _once(give_rid(session, item, ver, to_session if not to_session.is_empty() else to_phone), params, func():
 		var s := doc(T_SESSION, session)
 		var it := doc(T_ITEM, item)
 		var rs := doc(T_SESSION, to_session) if not to_session.is_empty() else {}
@@ -263,7 +288,15 @@ func op_give_item(session: String, item: String, ver: int, to_session: String, t
 	return resp
 
 
+## Тест: вызывается один раз перед первым run_finish — «дека изменилась между чтением и вызовом» (пришёл предмет по op.give_item).
+var before_finish: Callable = Callable()
+
+
 func run_finish(session: String, outcome: String, node: String, disconnect: bool, moves: Array) -> Dictionary:
+	if before_finish.is_valid():
+		var hook := before_finish
+		before_finish = Callable()
+		hook.call()
 	var params := {"op": "finish", "session": session, "outcome": outcome, "node": node, "disconnect": disconnect, "moves": moves}
 	finish_attempts.append({"session": session, "outcome": outcome})
 	return _once(finish_rid(session), params, func():
@@ -524,6 +557,7 @@ func _put_doc(type: String, id: String, ver: int, data: Dictionary) -> Dictionar
 
 
 func get_doc(type: String, id: String) -> Dictionary:
+	_apply_late_give()
 	var d := doc(type, id)
 	if d.is_empty():
 		return err("not_found", "документа нет")
@@ -531,6 +565,7 @@ func get_doc(type: String, id: String) -> Dictionary:
 
 
 func list_docs(type: String) -> Dictionary:
+	_apply_late_give()
 	var out: Array = []
 	for id in _docs.get(type, {}):
 		out.append(_docs[type][id].duplicate(true))

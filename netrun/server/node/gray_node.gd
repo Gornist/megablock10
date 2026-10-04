@@ -30,6 +30,8 @@ const NODE_ID := "node_07"
 ## Исход забега не теряем, если Мост недоступен: повтор с тем же rid (finish:<сессия>) раз в FINISH_RETRY_SEC.
 const FINISH_ATTEMPTS := 60
 const FINISH_RETRY_SEC := 2.0
+## Дека меняется под ногами (пришёл предмет по op.give_item): moves пересобираются и уходят тем же rid не больше стольких раз.
+const MOVES_ATTEMPTS := 4
 ## Запись охоты в сессию (world.hunt): охота не критична для хода — при недоступном Мосте HUNT_ATTEMPTS попыток с паузой
 ## hunt_retry_sec, потом пропускаем (не копим очередь); следующая смена охоты запишется заново.
 const HUNT_ATTEMPTS := 6
@@ -99,7 +101,7 @@ var _ready_done := false
 var _finishing: Dictionary = {}
 var _hunted: Dictionary = {}         # сессия -> true, пока за ней идёт охота Black ICE
 var hunt_retry_sec := HUNT_RETRY_SEC # пауза между попытками записи охоты (тест ставит поменьше)
-var _given: Dictionary = {}          # id предметов, отданных игроком другому (К5б): слот с таким предметом после выхода не вернуть на постамент
+var _given: Dictionary = {}          # id предмета, отданного игроком другому (К5б) -> сессия, у которой он теперь ("" — ушёл на телефон); слот отданного шарда не вернуть на постамент
 var _hunt_written: Dictionary = {}   # сессия -> bool: что Мост подтвердил в world.hunt (нет записи — не писали, то есть false)
 var _hunt_writing: Dictionary = {}   # сессия -> true, пока идёт запись: она одна на сессию и сама перечитывает нужное значение
 var _flat_disconnect: Dictionary = {} # сессия -> true: Black ICE догнал в окне возврата после обрыва («обрыв до флэтлайна»)
@@ -352,6 +354,7 @@ func recover(docs: Array) -> void:
 		if free_slots.is_empty():
 			break
 		_shard_items[free_slots.pop_front()] = item
+		_given.erase(item)
 	if not free_slots.is_empty() and not is_tutorial():
 		if node_def.is_empty():
 			push_warning("[gray-node] в Мосте нет шарда в узле %s: добыча останется только игровой" % node_id)
@@ -674,9 +677,15 @@ func end_inflight(session: String) -> void:
 	_takes_inflight[session] = maxi(int(_takes_inflight.get(session, 0)) - 1, 0)
 
 
-## Предмет ушёл от игрока насовсем (другой нетраннер или телефон): запомнить, чтобы слот шарда не показал его снова.
-func note_given(item: String) -> void:
-	_given[item] = true
+## Предмет отдан: теперь он у сессии `holder` ("" — на телефоне контакта). Запоминаем, чтобы слот шарда, откуда его взяли, не показал его
+## снова. Вернулся к тому, кто его брал (A -> B -> A), — settle_shards снова видит его у него и слот не пустеет зря.
+func note_given(item: String, holder: String = "") -> void:
+	_given[item] = holder
+
+
+## Предмет отдан кому-то, кроме `session` (у неё его нет): слот, откуда она его взяла, после её выхода не вернуть на постамент.
+func is_given_away(item: String, session: String) -> bool:
+	return _given.has(item) and str(_given[item]) != session
 
 
 ## Перечитать груз и деку игрока из Моста и отправить ему `ev deck`.
@@ -1201,6 +1210,28 @@ func _finish_in_bridge(ev: Dictionary) -> void:
 			ev["reason"] = ExitLogic.REASON_EJECTED  # мастер пощадил до применения: как Soft ICE, без блокировки
 			ev["disconnect"] = false
 	var plan := outcome_plan(ev)
+	# Дека могла измениться между чтением и вызовом (пришёл предмет по op.give_item, протокол 6.5/6.7): Мост отвечает bad_request «не упомянут
+	# в moves» и не записывает rid — перечитываем деку, пересобираем moves и шлём тот же rid. Это не новое намерение.
+	var r: Dictionary = {}
+	for round_no in MOVES_ATTEMPTS:
+		var moves := await _collect_moves(session, plan)
+		for attempt in FINISH_ATTEMPTS:
+			@warning_ignore("redundant_await")
+			r = await bridge.run_finish(session, plan["outcome"], node_id, plan["disconnect"], moves)
+			if not is_transient(r) or not is_inside_tree():
+				break
+			await get_tree().create_timer(FINISH_RETRY_SEC).timeout
+		if not is_moves_stale(r) or not is_inside_tree():
+			break
+	print("[gray-node] run.finish ", session, " ", plan["outcome"], ": ", "ok" if r.get("ok", false) else BridgeApi.err_code(r))
+	if r.get("ok", false):
+		_finishing.erase(session)  # сессия закрыта в Мосте: terminal.auth её уже не отдаст
+	event.emit({"kind": "finished", "session": session, "outcome": plan["outcome"], "ok": r.get("ok", false)})
+
+
+## moves исхода по свежему чтению деки и документа сессии. Деление на рабочих и груз — по `session.loaded` (как у Моста); документ сессии
+## не получен — запасное правило по origin.
+func _collect_moves(session: String, plan: Dictionary) -> Array:
 	var listed: Dictionary = {}
 	for attempt in FINISH_ATTEMPTS:
 		@warning_ignore("redundant_await")
@@ -1208,7 +1239,6 @@ func _finish_in_bridge(ev: Dictionary) -> void:
 		if listed.get("ok", false) or not is_transient(listed) or not is_inside_tree():
 			break
 		await get_tree().create_timer(FINISH_RETRY_SEC).timeout
-	# Деление на рабочих и груз — по `session.loaded` (как у Моста); документ сессии не получен — запасное правило по origin.
 	var sdata: Dictionary = {}
 	for attempt in FINISH_ATTEMPTS:
 		@warning_ignore("redundant_await")
@@ -1219,18 +1249,12 @@ func _finish_in_bridge(ev: Dictionary) -> void:
 		if not is_transient(sr) or not is_inside_tree():
 			break
 		await get_tree().create_timer(FINISH_RETRY_SEC).timeout
-	var moves := finish_moves(listed.get("docs", []), session, sdata, plan)
-	var r: Dictionary = {}
-	for attempt in FINISH_ATTEMPTS:
-		@warning_ignore("redundant_await")
-		r = await bridge.run_finish(session, plan["outcome"], node_id, plan["disconnect"], moves)
-		if not is_transient(r) or not is_inside_tree():
-			break
-		await get_tree().create_timer(FINISH_RETRY_SEC).timeout
-	print("[gray-node] run.finish ", session, " ", plan["outcome"], ": ", "ok" if r.get("ok", false) else BridgeApi.err_code(r))
-	if r.get("ok", false):
-		_finishing.erase(session)  # сессия закрыта в Мосте: terminal.auth её уже не отдаст
-	event.emit({"kind": "finished", "session": session, "outcome": plan["outcome"], "ok": r.get("ok", false)})
+	return finish_moves(listed.get("docs", []), session, sdata, plan)
+
+
+## Ответ Моста «в деке предмет, которого нет в moves» (протокол 6.5): деку надо перечитать и повторить тем же rid.
+static func is_moves_stale(resp: Dictionary) -> bool:
+	return BridgeApi.err_code(resp) == "bad_request" and str((resp.get("err", {}) as Dictionary).get("msg", "")).contains("не упомянут в moves")
 
 
 # ---------------------------------------------------------------- граф узлов (W1)
@@ -1473,7 +1497,7 @@ func settle_shards(session: String, end_node: String, loot: String) -> void:
 		return
 	var delay := float((settings["shard_refill_sec"] as Dictionary).get(tier(), 0.0))
 	for id in ids:
-		if loot == "node" and end_node == node_id and not _given.has(str(_shard_items.get(id, ""))):
+		if loot == "node" and end_node == node_id and not is_given_away(str(_shard_items.get(id, "")), session):
 			continue   # добыча осталась в узле — кроме отданной другому игроку: она в узел не вернётся
 		_deplete(id, delay)
 	_push_shards()
@@ -1512,6 +1536,7 @@ func _refill(id: String) -> void:
 	_refill_at.erase(id)
 	if not item.is_empty():
 		_shard_items[id] = item
+		_given.erase(item)   # шард лежит в узле: прежняя отдача (A -> B -> узел) к нему больше не относится
 	net.unlock_object(id)
 	event.emit({"kind": "shard_refilled", "id": id, "item": item})
 	_push_shards()

@@ -44,6 +44,7 @@ func before_test() -> void:
 	sroot.add_child(_give)
 	_give.start(_server, _bridge, func(s: String) -> GrayNode: return _node if _node.has_session(s) else null, func() -> Array: return [_node])
 	_give.retry_sec = 0.02
+	_give.settle_sec = 0.05
 	_clients.clear()
 
 
@@ -357,3 +358,119 @@ func test_a_given_shard_does_not_come_back_to_its_pedestal_after_a_soft_ice_exit
 	_node._taken_by[BOB] = [sid2]
 	_node.settle_shards(BOB, "node_07", "node")
 	assert_str(str(_node._shard_items[sid2])).is_equal("it_x")
+
+
+func test_a_refusal_for_one_recipient_does_not_block_giving_to_another() -> void:
+	await _both()
+	var alice: Dictionary = _clients[ALICE]
+	var bob_id := await _runner_id(alice)
+	var d: Dictionary = (_bridge.doc("session", BOB)["data"] as Dictionary).duplicate()
+	d["state"] = "pending"   # Мост откажет session_state и запомнит отказ по rid
+	_bridge._put("session", BOB, d)
+	assert_str((await _give_and_wait(alice, SHARD, {"runner": bob_id}))["error"]).is_equal(WorldMsg.GIVE_BUSY)
+	# тот же предмет, та же версия, другой получатель: в rid другой получатель, rid_mismatch нет
+	var res := await _give_and_wait(alice, SHARD, {"phone": PHONE})
+	assert_bool(res["ok"]).is_true()
+	assert_str(_bridge.doc("item", SHARD)["data"]["owner"]).is_equal("outbox:" + PHONE)
+
+
+func test_give_rid_carries_the_recipient_digest() -> void:
+	# эталон — ValueOpsGiveTest.giveRidCarriesTheRecipientDigest (Мост, Kotlin)
+	assert_str(BridgeApi.give_rid("s_a", "it_x", 4, "s_77ab03c1d2e4f5a6")).is_equal("give:s_a:it_x:4:1d7ad1cb")
+	assert_str(BridgeApi.give_rid("s_a", "it_x", 4, PHONE)).is_equal("give:s_a:it_x:4:1c166256")
+	assert_str(BridgeApi.give_rid("s_a", "it_x", 4, "s_b")).is_not_equal(BridgeApi.give_rid("s_a", "it_x", 4, "s_c"))
+
+
+# ---------------------------------------------------------------- задержанный коммит
+
+func test_a_commit_that_lands_after_the_link_dropped_still_counts_and_holds_the_run() -> void:
+	await _both()
+	var alice: Dictionary = _clients[ALICE]
+	var bob_id := await _runner_id(alice)
+	# Мост «завис»: запросы дают обрыв (5 попыток по 0.02 с), а запись ложится через 0.25 с — позже, чем кончились повторы
+	_bridge.give_late_commit_sec = 0.25
+	var before := _count(alice, "give", "out")
+	alice["net"].request_give(SHARD, {"runner": bob_id})
+	assert_bool(await _wait_for(func(): return _node._takes_inflight.get(ALICE, 0) > 0)).is_true()
+	await get_tree().create_timer(0.12).timeout   # повторы кончились, коммита ещё нет — но исход отправителя по-прежнему ждёт
+	assert_str(_bridge.doc("item", SHARD)["data"]["owner"]).is_equal("deck:" + ALICE)
+	assert_int(int(_node._takes_inflight.get(ALICE, 0))).is_equal(1)
+	assert_bool(await _wait_for(func(): return _count(alice, "give", "out") > before)).is_true()
+	assert_bool(_last(alice, "give", "out")["ok"]).is_true()   # перечитывание после паузы увидело предмет у получателя
+	assert_str(_bridge.doc("item", SHARD)["data"]["owner"]).is_equal("deck:" + BOB)
+	assert_int(_bridge.give_calls).is_equal(1)
+	assert_int(int(_node._takes_inflight.get(ALICE, 0))).is_equal(0)
+
+
+func test_a_commit_that_never_lands_is_reported_unavailable_after_the_waits() -> void:
+	await _both()
+	var alice: Dictionary = _clients[ALICE]
+	var bob_id := await _runner_id(alice)
+	_bridge.give_late_commit_sec = 60.0
+	var res := await _give_and_wait(alice, SHARD, {"runner": bob_id})
+	assert_bool(res["ok"]).is_false()
+	assert_str(res["error"]).is_equal(WorldMsg.GIVE_UNAVAILABLE)
+	assert_str(_bridge.doc("item", SHARD)["data"]["owner"]).is_equal("deck:" + ALICE)
+
+
+# ---------------------------------------------------------------- дека изменилась перед исходом
+
+func test_finish_rebuilds_moves_when_an_item_arrives_before_run_finish() -> void:
+	await _both()
+	var new_item := "it_g_late"
+	var late := {"type": "item", "id": new_item, "ver": 1, "data": {"owner": "deck:" + ALICE, "kind": "SHARD", "payload": "shL", "protected": false,
+		"origin": "node:node_07", "shard": {"tier": 1, "title": "Пришёл по отдаче", "decrypted": true}}}
+	# moves уже собраны без нового шарда, и тут Боб отдаёт его Алисе: Мост ответит bad_request «не упомянут в moves»
+	_bridge.before_finish = func(): _bridge._docs["item"][new_item] = late
+	await _node._finish_in_bridge({"session": ALICE, "reason": "clean"})
+	assert_int(_bridge.finish_attempts.size()).is_equal(2)   # тот же rid, пересобранные moves
+	assert_str(_bridge.doc("session", ALICE)["data"]["state"]).is_equal("closed")
+	assert_str(_bridge.doc("item", new_item)["data"]["owner"]).is_not_equal("deck:" + ALICE)
+	assert_array(GrayNode.finish_moves([late], ALICE, {"loaded": []}, {"loot": "phone", "daemon": "phone"})).is_not_empty()
+
+
+func test_stale_moves_answer_is_recognized_only_for_that_bad_request() -> void:
+	assert_bool(GrayNode.is_moves_stale(BridgeApi.err("bad_request", "it_x не упомянут в moves"))).is_true()
+	assert_bool(GrayNode.is_moves_stale(BridgeApi.err("bad_request", "узел не тот"))).is_false()
+	assert_bool(GrayNode.is_moves_stale(BridgeApi.err("unavailable", "не упомянут в moves"))).is_false()
+	assert_bool(GrayNode.is_moves_stale(BridgeApi.ok())).is_false()
+
+
+# ---------------------------------------------------------------- слот шарда: отданный и вернувшийся
+
+func test_a_shard_that_came_back_to_its_taker_leaves_the_pedestal_alone() -> void:
+	await _both()
+	var sid := NetConfig.PICKUP_ID
+	_node._shard_items[sid] = SHARD
+	_node._taken_by[ALICE] = [sid]
+	_node.note_given(SHARD, BOB)     # A -> B
+	_node.note_given(SHARD, ALICE)   # B -> A: шард снова у Алисы
+	_node.settle_shards(ALICE, "node_07", "node")   # выброс: груз вернулся в узел, слот не пустеет
+	assert_bool(_node._refill_at.has(sid)).is_false()
+	assert_str(str(_node._shard_items[sid])).is_equal(SHARD)
+	# отдан дальше (A -> B -> A -> телефон): слот пустеет
+	var sid2 := "node_07_two"
+	_node._shard_items[sid2] = DAEMON
+	_node._taken_by[ALICE] = [sid2]
+	_node.note_given(DAEMON, ALICE)
+	_node.note_given(DAEMON, "")
+	_node.settle_shards(ALICE, "node_07", "node")
+	assert_bool(_node._refill_at.has(sid2)).is_true()
+
+
+func test_a_shard_laid_back_into_a_slot_forgets_the_old_giving() -> void:
+	await _both()
+	var sid := NetConfig.PICKUP_ID
+	_node._shard_items.erase(sid)
+	_node.note_given(SHARD, BOB)   # ушёл к Бобу, тот выбросился: шард снова в узле (Мост) и слот привязывает его заново
+	var d: Dictionary = (_bridge.doc("item", SHARD)["data"] as Dictionary).duplicate()
+	d["owner"] = "node:node_07"
+	_bridge._put("item", SHARD, d)
+	_node._refill_at[sid] = 0.0
+	await _node._refill(sid)
+	assert_str(str(_node._shard_items.get(sid, ""))).is_equal(SHARD)
+	assert_bool(_node.is_given_away(SHARD, ALICE)).is_false()
+	# игрок берёт его и выбрасывается: слот остаётся с шардом, а не пустеет по старой отдаче
+	_node._taken_by[ALICE] = [sid]
+	_node.settle_shards(ALICE, "node_07", "node")
+	assert_bool(_node._refill_at.has(sid)).is_false()
