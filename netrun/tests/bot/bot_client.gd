@@ -75,6 +75,20 @@ var visited: Array[String] = []
 var node_info: Dictionary = {}
 var tunnels_seen := 0
 var denied_reasons: Array[String] = []
+## Взлом хранилища (К3): перед взятием шарда из закрытого хранилища бот взламывает его автосолвером (BreachAutoSolver) по сетке, как её видит клиент.
+var deck_info: Dictionary = {}       # последнее событие `ev deck`: рабочие демоны с цепочками и RAM
+var breach_enabled := true
+var breach_log: Array = []           # события bk_end по порядку
+var breach_tries := 0
+const BREACH_MAX_TRIES := 3
+const BREACH_TAP_PERIOD := 0.12      # с между тапами: быстрый, но человеческий темп
+var _bk: BreachMirror
+var _bk_path: Array[Vector2i] = []
+var _bk_next_tap := 0.0
+var _bk_return := ""                 # шаг, в который вернуться после взлома
+var _bk_vault := ""
+var _bk_no := ""
+var _bk_done: Dictionary = {}        # id хранилищ, открытых нашим взломом
 var _goal := Vector3.ZERO
 var _goal_shard := ""
 var _loiter_angle := 0.0
@@ -154,6 +168,20 @@ func _on_event(ev: Dictionary) -> void:
 			_enter("g_tunnel")
 		WorldMsg.EV_SHARDS:
 			node_info["shards"] = ev.get("shards", [])
+		WorldMsg.EV_DECK:
+			deck_info = ev
+		WorldMsg.EV_BK:
+			_bk = BreachMirror.from_event(ev)
+			_bk_path = []
+		WorldMsg.EV_BK_TICK:
+			if _bk != null:
+				_bk.apply_tick(ev)
+		WorldMsg.EV_BK_END:
+			if _bk != null:
+				_bk.apply_end(ev)
+			breach_log.append(ev)
+		WorldMsg.EV_BK_NO:
+			_bk_no = str(ev.get("reason", ""))
 		WorldMsg.EV_PORTAL_DENIED:
 			denied_reasons.append(str(ev.get("reason", "")))
 
@@ -283,8 +311,12 @@ func _process(delta: float) -> void:
 		"g_shard":
 			if _walk_to(_goal, delta, GRAB_FROM):
 				_enter("g_grab")
+		"breach":
+			_step_breach()
 		"g_grab":
-			if not _asked:
+			if not _asked and _needs_breach(_goal_shard):
+				_start_breach(_goal_shard, "g_grab")
+			elif not _asked:
 				_asked = net.request_grab(_goal_shard)
 			elif shard_taken:
 				_enter("hold" if hold_after_grab > 0.0 else "to_exit")
@@ -294,7 +326,9 @@ func _process(delta: float) -> void:
 			if _walk_to(_plain_shard()["pos"], delta, GRAB_FROM, speed_scale):
 				_enter("to_exit" if no_shard else "grab")
 		"grab":
-			if not _asked:
+			if not _asked and _needs_breach(_plain_shard()["id"]):
+				_start_breach(_plain_shard()["id"], "grab")
+			elif not _asked:
 				_asked = net.request_grab(_plain_shard()["id"])
 			elif shard_taken:
 				_enter("hold" if hold_after_grab > 0.0 else "to_exit")
@@ -311,6 +345,75 @@ func _process(delta: float) -> void:
 		"leave":
 			if not _asked:
 				_asked = net.request_leave()
+
+
+# ---------------------------------------------------------------- взлом хранилища (К3)
+
+## Хранилище закрыто, взлом доступен и мы его ещё не открывали — надо взламывать.
+func _needs_breach(vault: String) -> bool:
+	if not breach_enabled or _bk_done.has(vault):
+		return false
+	for sh in node_info.get("shards", []):
+		if str(sh["id"]) == vault:
+			return str(sh.get("vault", "open")) == "closed" and str(sh.get("access", "ok")) == "ok"
+	return false
+
+
+func _start_breach(vault: String, return_step: String) -> void:
+	_bk_vault = vault
+	_bk_return = return_step
+	_bk = null
+	_bk_no = ""
+	_enter("breach")
+
+
+## Демоны для взлома: сначала EXTRACT_SHARD (открывает хранилище), остальные не берём — короче цепочка, проще сетка. Влезают в RAM.
+func breach_pick() -> Array:
+	var ids: Array = []
+	var used := 0
+	var ram := int(deck_info.get("ram", 6))
+	for d in deck_info.get("daemons", []):
+		var cells: Array = d.get("cells", [])
+		if str(d.get("effect", "")) == "EXTRACT_SHARD" and bool(d.get("loaded", true)) and not cells.is_empty() and used + cells.size() <= ram:
+			ids.append(str(d["id"]))
+			used += cells.size()
+	return ids
+
+
+func _step_breach() -> void:
+	if _bk_no != "":
+		_finish("breach_no:" + _bk_no)
+		return
+	if _bk == null:
+		if not _asked:
+			var ids := breach_pick()
+			if ids.is_empty():
+				_finish("breach_no_daemons")
+				return
+			breach_tries += 1
+			_asked = net.request_breach(_bk_vault, ids)
+			_step_started = _clock
+		return
+	if _bk.finished:
+		var opened: Array = _bk.result.get("opened", [])
+		if opened.has(_bk_vault):
+			_bk_done[_bk_vault] = true
+		elif breach_tries >= BREACH_MAX_TRIES:
+			_finish("breach_failed")
+			return
+		_bk = null
+		_bk_path = []
+		_enter(_bk_return if _bk_done.has(_bk_vault) else "breach")
+		return
+	if _clock < _bk_next_tap or _bk.pending != null:
+		return
+	_bk_next_tap = _clock + BREACH_TAP_PERIOD
+	var have := _bk.selected().size()
+	# Путь строим один раз; тап отклонён (подсветка откатилась) — строим заново от выбранного.
+	if _bk_path.is_empty() or _bk_path.size() < have or _bk_path.slice(0, have) != _bk.selected():
+		_bk_path = BreachAutoSolver.solve(_bk.attempt)
+	if _bk_path.size() > have and _bk.tap(_bk_path[have]):
+		net.request_breach_tap(_bk_path[have])
 
 
 ## Шард для сценариев GHOST/EXPOSED: в узле графа — первый лежащий из события node (id слота), в одиночном — pickup_01.

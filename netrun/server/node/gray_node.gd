@@ -80,6 +80,9 @@ var _sessions: Dictionary = {}       # сессия -> DaemonSession (в нём 
 var _shard_items: Dictionary = {}    # id объекта -> id предмета в Мосте
 var _item_meta: Dictionary = {}      # id предмета узла -> {tier, enc}: что показывать на шарде (из документа Моста)
 var _vault_open: Dictionary = {}     # id слота -> сессия, для которой хранилище открыто взломом (K3); нужно, только если включён vault_requires_open
+var _vault_open_until: Dictionary = {} # id слота -> время узла, когда открытость кончается (нет записи — без срока)
+## Взлом хранилищ (К3): сетка, таймер, тапы, итог в Мост.
+var breach: VaultBreach
 var _takes_inflight: Dictionary = {} # сессия -> число незавершённых op.take_from_node (в графе общий на все узлы)
 var _slot_pos: Dictionary = {}       # id объекта (слот шарда узла) -> позиция
 var _taken_by: Dictionary = {}       # сессия -> [id слотов этого узла, которые она взяла]
@@ -150,10 +153,12 @@ static func shard_id(node: String, k: int) -> String:
 func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 	net = server
 	bridge = bridge_api
+	breach = VaultBreach.new(self)
 	daemons.load_dir()
 	_build_slots()
 	if manage_net_hooks:
 		net.grab_check = can_grab
+		net.teleport_snap = func(_session: String, to: Vector3) -> Dictionary: return snap_teleport(to)
 		net.join_check = func(session: String) -> bool: return not join_blocked(session)
 	net.session_joined.connect(_on_joined)
 	net.avatar_removed.connect(_on_avatar_removed)
@@ -161,6 +166,10 @@ func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 	net.exit_event.connect(_on_exit_event)
 	net.daemon_requested.connect(_on_daemon_requested)
 	net.leave_requested.connect(_on_leave_requested)
+	net.breach_open_requested.connect(_on_breach_open)
+	net.breach_tap_requested.connect(func(session: String, cell: Array) -> void: breach.request_tap(session, cell))
+	net.breach_cancel_requested.connect(func(session: String) -> void: breach.request_cancel(session))
+	net.teleported.connect(func(session: String, _from: Vector3, _to: Vector3) -> void: breach.end_early(session, "teleport"))
 	var soft := NodeLayout.ICE.size() if node_def.is_empty() else int(node_def.get("ice", 1))
 	for i in soft:
 		_add_ice(NodeLayout.ICE[i]["id"], NodeLayout.ICE[i]["waypoints"])
@@ -288,6 +297,7 @@ func recover(docs: Array) -> void:
 	var node_items: Array[String] = []   # свободные шарды узла
 	var held: Array = []                 # [{item, by}] шарды этого узла у игроков
 	var active: Array[String] = []
+	var opened: Array = []               # [{session, item, until}] хранилища, открытые взломами активных сессий (session.data.opened, пишет Мост)
 	var flatlined: Dictionary = {}  # сессия -> disconnect: сервер упал, пока ждал мастера (пометка world.finish)
 	var saved_world: Dictionary = {}     # node.data.world прошлого процесса: тревога и сроки пополнения слотов
 	for d in docs:
@@ -307,6 +317,9 @@ func recover(docs: Array) -> void:
 						flatlined[str(d["id"])] = bool((w as Dictionary).get("disconnect", false))
 					else:
 						active.append(str(d["id"]))
+						for o in data.get("opened", []):
+							if o is Dictionary and str(o.get("node", node_id)) == node_id:
+								opened.append({"session": str(d["id"]), "item": str(o.get("item", "")), "until": int(o.get("until", 0))})
 						if w is Dictionary and (w as Dictionary).get("hunt") == true:
 							_hunt_written[str(d["id"])] = true  # отметка прошлого процесса: его охоты нет, apply_snapshot её снимет
 			BridgeApi.T_ITEM:
@@ -346,6 +359,12 @@ func recover(docs: Array) -> void:
 				_deplete(sid, 0.0)
 	for sid in pending:
 		_deplete(sid, float(pending[sid]))
+	# Хранилища, открытые взломом до рестарта, остаются открытыми взломщику до срока (Мост помнит их в session.opened).
+	var now_ms := Time.get_unix_time_from_system() * 1000.0
+	for o in opened:
+		var slot := slot_of_item(o["item"])
+		if slot != "" and float(o["until"]) > now_ms:
+			open_vault(slot, o["session"], (float(o["until"]) - now_ms) / 1000.0)
 	for s in active:
 		recovered_sessions.append(s)
 		_exiting[s] = true  # аватара не было: avatar_removed не придёт, а в графе забег закрывает только узел с этой меткой
@@ -607,7 +626,28 @@ func _load_deck(session: String) -> void:
 			ds.ram = ram
 			ds.ram_default = false
 		ds.loot_eddies = int(sdata.get("loot_eddies", 0))
-	_push_deck(session)
+		ds.runner_key = str(sdata.get("runner", ""))
+	await _load_cooldown(session, ds)
+	if _sessions.get(session) == ds:
+		_push_deck(session)
+
+
+## Остывание узлов для игрока из документа runner (breach_cooldown: узел -> мс Unix): по ключу игрока из сессии. Нет документа — остывания нет.
+func _load_cooldown(session: String, ds: DaemonSession) -> void:
+	if ds.runner_key.is_empty():
+		return
+	@warning_ignore("redundant_await")
+	var r: Dictionary = await bridge.list_docs(BridgeApi.T_RUNNER)
+	if _sessions.get(session) != ds or not r.get("ok", false):
+		return
+	for d in r.get("docs", []):
+		var data: Dictionary = d.get("data", {})
+		if str(data.get("key", "")) == ds.runner_key and data.get("breach_cooldown") is Dictionary:
+			var cds: Dictionary = {}
+			for k in data["breach_cooldown"]:
+				cds[str(k)] = int(data["breach_cooldown"][k])
+			ds.breach_cooldown = cds
+			_push_shards()   # панель взлома показывает «ОСТЫВАЕТ»
 
 
 func _physics_process(delta: float) -> void:
@@ -639,6 +679,8 @@ func _step(delta: float) -> void:
 		ice.targets = targets
 		ice.meters = meters
 	_update_hunts()
+	breach.tick(delta)
+	_expire_vaults()
 	if is_graph_node():
 		_check_portals()
 		_tick_refill()
@@ -756,11 +798,14 @@ func _connect_meter(session: String, meter: TraceMeter) -> void:
 
 
 func _on_session_lost(session: String) -> void:
+	breach.end_early(session, "session_lost")   # обрыв посреди взлома — досрочный итог по собранному
 	if bridge != null and synced and _sessions.has(session):
 		_merge_world(session, {"connected": false, "trace": 0, "node": node_id})
 
 
 func _on_avatar_removed(session: String) -> void:
+	breach.end_early(session, "avatar_removed")   # до того, как сессия забыта: итогу нужна её дека
+	_close_vaults_of(session)
 	_portal_state.erase(session)
 	if not _sessions.has(session):
 		return
@@ -819,6 +864,18 @@ func _on_leave_requested(session: String) -> void:
 	net.end_session(session, ExitLogic.REASON_CLEAN)
 
 
+## Просьба начать взлом: отвечает только узел, где игрок (в графе обработчик подключён у каждого узла).
+func _on_breach_open(session: String, vault: String, ids: Array) -> void:
+	if not _sessions.has(session) or net.node_of(session) != node_id:
+		return
+	breach.request_open(session, vault, ids)
+
+
+## Привязка телепорта к площадке у хранилища узла (см. NodeLayout.snap_to_vault_pad).
+func snap_teleport(to: Vector3) -> Dictionary:
+	return NodeLayout.snap_to_vault_pad(to, _slot_pos.values())
+
+
 func _on_daemon_requested(session: String, daemon_id: String) -> void:
 	var ds: DaemonSession = _sessions.get(session)
 	if ds == null:
@@ -849,6 +906,7 @@ func _on_object_taken(object_id: String, session: String) -> void:
 		return
 	_taken_by[session] = _taken_by.get(session, []) + [object_id]
 	_vault_open.erase(object_id)   # взят: открытость кончилась вместе с шардом
+	_vault_open_until.erase(object_id)
 	event.emit({"kind": "shard_taken", "session": session, "id": object_id})
 	var item: String = _shard_items.get(object_id, "")
 	if bridge == null or item.is_empty():
@@ -1153,23 +1211,89 @@ func slot_ids() -> Array:
 func vault_state(slot: String, session: String = "") -> String:
 	if net.holder_of(slot) != "":
 		return VAULT_EMPTY
-	if bool(settings.get("vault_requires_open", false)) and not (session != "" and _vault_open.get(slot) == session):
+	if vault_requires_open() and not (session != "" and _vault_open.get(slot) == session):
 		return VAULT_CLOSED
 	return VAULT_OPEN
 
 
-## Хранилище слота открыто для сессии (взлом удался): взять шард может только она. Шлёт обновление слотов всем игрокам узла.
-func open_vault(slot: String, session: String) -> void:
+## Нужно ли открывать хранилище взломом, чтобы взять шард (settings.vault_requires_open). true / false — как задано графом; "auto" (по умолчанию) —
+## включено у узла графа с Мостом (там ценности настоящие); одиночный серый узел, учебный узел и стенды без Моста берут шард, как раньше.
+func vault_requires_open() -> bool:
+	var v: Variant = settings.get("vault_requires_open", false)
+	if v is bool:
+		return v
+	return str(v) == "auto" and bridge != null and is_graph_node() and not is_tutorial()
+
+
+## Тир сетки взлома: тир узла графа; у одиночного узла (тира нет) — BASE.
+func breach_tier() -> String:
+	return tier() if tier() in NodeGraph.TIERS else "BASE"
+
+
+## Хранилище слота открыто для сессии (взлом удался): взять шард может только она. sec > 0 — на столько секунд (vault_open_sec), 0 — без срока.
+## Шлёт обновление слотов всем игрокам узла.
+func open_vault(slot: String, session: String, sec: float = 0.0) -> void:
 	if not _slot_pos.has(slot):
 		return
 	_vault_open[slot] = session
+	if sec > 0.0:
+		_vault_open_until[slot] = _now + sec
+	else:
+		_vault_open_until.erase(slot)
 	_push_shards()
 
 
 ## Хранилище закрылось снова (срок vault_open_sec вышел, шард взят или слот опустел).
 func close_vault(slot: String) -> void:
+	_vault_open_until.erase(slot)
 	if _vault_open.erase(slot):
 		_push_shards()
+
+
+## Закрыть всё, что было открыто для сессии (игрок ушёл из узла или кончил забег).
+func _close_vaults_of(session: String) -> void:
+	for slot in _vault_open.keys():
+		if _vault_open[slot] == session:
+			close_vault(slot)
+
+
+func _expire_vaults() -> void:
+	if _vault_open_until.is_empty():
+		return
+	for slot in _vault_open_until.keys():
+		if _now >= float(_vault_open_until[slot]):
+			close_vault(slot)
+			event.emit({"kind": "vault_closed", "id": slot})
+
+
+## Слот, в котором лежит предмет Моста item ("" — ни в одном).
+func slot_of_item(item: String) -> String:
+	for slot in _shard_items:
+		if _shard_items[slot] == item:
+			return slot
+	return ""
+
+
+## Сколько секунд слоту ждать пополнения (0 — не ждёт).
+func refill_left(slot: String) -> int:
+	return ceili(maxf(float(_refill_at.get(slot, _now)) - _now, 0.0)) if _refill_at.has(slot) else 0
+
+
+## Доступ сессии к хранилищу для панели взлома: access — empty (ждёт пополнения, left — секунд) | open (можно брать) | busy (взламывает другой) |
+## cooldown (узел остывает для неё, left — секунд) | ok (можно начинать).
+func vault_access(slot: String, session: String) -> Dictionary:
+	if net.holder_of(slot) != "":
+		return {"access": "empty", "left": refill_left(slot)}
+	if vault_state(slot, session) == VAULT_OPEN:
+		return {"access": "open"}
+	if breach != null and breach.is_busy(slot, session):
+		return {"access": "busy"}
+	var ds: DaemonSession = _sessions.get(session)
+	if ds != null and not is_tutorial():
+		var left := breach.cooldown_left(ds)
+		if left > 0.0:
+			return {"access": "cooldown", "left": ceili(left)}
+	return {"access": "ok"}
 
 
 ## Признаки шарда из документа предмета Моста: тир 1–3 и зашифрован ли (нет `decrypted` — считается зашифрованным, как в деке).
@@ -1187,6 +1311,7 @@ func shard_view(session: String = "") -> Array:
 		var p: Vector3 = _slot_pos[id]
 		var st := vault_state(id, session)
 		var e := {"id": id, "p": [p.x, p.y, p.z], "ready": st != VAULT_EMPTY, "vault": st}
+		e.merge(vault_access(id, session))
 		var meta: Dictionary = _item_meta.get(_shard_items.get(id, ""), {})
 		if st != VAULT_EMPTY and not meta.is_empty():
 			e["tier"] = meta["tier"]
@@ -1296,6 +1421,7 @@ func _deplete(id: String, delay: float) -> void:
 	net.lock_object(id)
 	_shard_items.erase(id)
 	_vault_open.erase(id)
+	_vault_open_until.erase(id)
 	_refill_at[id] = _now + delay
 	event.emit({"kind": "shard_depleted", "id": id})
 
@@ -1384,6 +1510,8 @@ func release_session(session: String) -> DaemonSession:
 	var ds: DaemonSession = _sessions.get(session)
 	if ds == null:
 		return null
+	breach.end_early(session, "transit")
+	_close_vaults_of(session)
 	var cb: Callable = _level_cbs.get(session, Callable())
 	if cb.is_valid() and ds.trace.level_changed.is_connected(cb):
 		ds.trace.level_changed.disconnect(cb)

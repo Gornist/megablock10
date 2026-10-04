@@ -16,6 +16,10 @@ var ram_default := true
 var deck_meta: Dictionary = {}
 var loot_view: Array = []
 var loot_eddies: int = 0
+## Ключ нетраннера (session.data.runner) и остывание узлов для него (runner.data.breach_cooldown: узел -> мс Unix конца): панель взлома по ним
+## пишет «ОСТЫВАЕТ». Заполняет сервер мира из документов Моста; пока Мост не ответил — пусто, остывания нет.
+var runner_key := ""
+var breach_cooldown: Dictionary = {}
 
 
 func _init(deck_ids: Array = [], meter: TraceMeter = null) -> void:

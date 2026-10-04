@@ -42,6 +42,20 @@ const EV_SHARDS := "shards"
 ## loot [{id, kind: shard | daemon, tier, title, enc}] (enc — зашифрован), eddies (эдди в грузе). Состояние демонов во времени — в `state.cd`:
 ## {id, name, left, st: ready | cooldown | active | unsupported, until} (until — время сервера `k`, когда состояние кончится).
 const EV_DECK := "deck"
+## Взлом хранилища на панели (К3, docs/netrun-deck-design.md §6.1). Клиент -> сервер: bk_open {vault: id слота, daemons: [id рабочих демонов]} — начать,
+## bk_tap {cell: [строка, столбец]} — выбрать клетку, bk_cancel — завершить досрочно (итог по собранному). Сервер -> клиент (события):
+##   bk — попытка началась: {mode, vault, n, tier, grid: {size, cells, traps (только мёртвые — порченые не выдаём), dead_marker}, targets [{id, name, effect, cells}],
+##        buffer, sec, ice (реплика INTRO)};
+##   bk_tick — {cell?: [r, c], ok?, trap?, matched [id], left, ice?} на каждый принятый или отклонённый тап и раз в секунду без cell;
+##   bk_end — {outcome, matched, eddies, opened [слоты], alert (строка), cooldown, early?, error?};
+##   bk_no — {reason (busy | far | empty | cooldown | open | bad_daemons | tutorial | active | not_ready | bridge), left?}: взлом не начат.
+const EV_BK := "bk"
+const EV_BK_TICK := "bk_tick"
+const EV_BK_END := "bk_end"
+const EV_BK_NO := "bk_no"
+const BK_OPEN := "bk_open"
+const BK_TAP := "bk_tap"
+const BK_CANCEL := "bk_cancel"
 const EV_ENDED := "ended"
 const EV_DAEMON := "daemon"
 ## Телепорт (VR: движение только им). Клиент -> сервер: {t: tp, p: [x, z]} — цель на полу; решает сервер. Успех ответа не имеет

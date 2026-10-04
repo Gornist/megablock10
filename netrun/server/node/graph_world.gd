@@ -34,6 +34,9 @@ func start(server: NetServer, bridge_api: BridgeApi, node_graph: NodeGraph) -> v
 	net.remove_object(NetConfig.PICKUP_ID)  # одиночный шард прототипа: в графе шарды у каждого узла свои
 	net.entry_node_for = _entry_node
 	net.grab_check = _can_grab
+	net.teleport_snap = func(session: String, to: Vector3) -> Dictionary:
+		var gn: GrayNode = nodes.get(net.node_of(session))
+		return gn.snap_teleport(to) if gn != null else {"p": to, "look": null}
 	net.join_check = func(session: String) -> bool: return not join_blocked(session)
 	net.session_joined.connect(_on_joined)
 	net.exit_event.connect(_on_exit)
