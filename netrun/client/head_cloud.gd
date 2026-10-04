@@ -1,7 +1,7 @@
 class_name HeadCloud
 extends Node3D
 ## Голова чужого нетраннера: облако из ≈180 светящихся точек той же породы, что и руки (assets/shaders/body_particles.gdshader — решётка, волна, с проверкой глубины).
-## Лица нет: «шлем» из пяти колец вокруг головы, яркая полоса спереди на уровне глаз показывает, куда смотрит игрок, над макушкой — искры. Узел ставится в позу
+## Лица нет: «шлем» из четырёх колец и шести вертикальных дуг, яркая полоса спереди на уровне глаз показывает, куда смотрит игрок, над макушкой — искры. Узел ставится в позу
 ## головы (камера игрока: -Z вперёд, начало между глаз), буфер частиц задаётся один раз при создании — за кадр ничего не пересчитывается.
 
 const STRIDE := HandView.STRIDE
@@ -9,10 +9,12 @@ const SHADER := preload("res://assets/shaders/body_particles.gdshader")
 ## Полуоси черепа вокруг центра головы (м) и сам центр относительно глаз: череп чуть позади и выше точки между глаз.
 const HALF := Vector3(0.085, 0.115, 0.10)
 const CENTER := Vector3(0.0, 0.04, 0.085)
-const RINGS := 5
-const RING_POINTS := 18
+const RINGS := 4
+const RING_POINTS := 16
 const VISOR_POINTS := 24
-const FILL_POINTS := 50
+const MERIDIANS := 6
+const MERIDIAN_POINTS := 9
+const FILL_POINTS := 30
 const NECK_POINTS := 12
 const SPARK_COUNT := 4
 const COLOR_SPARK_MIX := 0.5
@@ -45,6 +47,7 @@ func _init(color: Color = HandView.COLOR_HAND) -> void:
 		_kinds[i] = p[2]
 	_mat = ShaderMaterial.new()
 	_mat.shader = SHADER
+	_mat.set_shader_parameter("min_angle", HandView.REMOTE_MIN_ANGLE)
 	_mm = MultiMesh.new()
 	_mm.transform_format = MultiMesh.TRANSFORM_3D
 	_mm.use_colors = true
@@ -109,6 +112,11 @@ static func template(rng_seed: int = 23) -> Array:
 		var y := 0.12 + rng.randf_range(-0.07, 0.07)
 		var rr := sqrt(1.0 - y * y)
 		out.append([_on_skull(PI / 2.0 + a, y, rr * 1.02), rng.randf_range(0.0030, 0.0042), 0.0, 1.0, 0.55])
+	for m in MERIDIANS:  # вертикальные дуги от шеи до макушки: по ним голова читается объёмной, а не стопкой колец
+		var a := TAU * float(m) / float(MERIDIANS) + 0.26
+		for i in MERIDIAN_POINTS:
+			var y := lerpf(-0.95, 0.95, (float(i) + rng.randf_range(0.0, 0.6)) / float(MERIDIAN_POINTS))
+			out.append([_on_skull(a, y, sqrt(maxf(1.0 - y * y, 0.0))), rng.randf_range(0.0022, 0.0030), 0.0, 0.8, 0.5 + 0.5 * y])
 	for i in FILL_POINTS:  # заполнение внутри: объём
 		var v := Vector3(rng.randf_range(-1, 1), rng.randf_range(-1, 1), rng.randf_range(-1, 1))
 		while v.length() > 1.0:

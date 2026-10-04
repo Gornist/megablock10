@@ -24,6 +24,8 @@ const HAND_ROLL_DEG := 90.0
 const HAND_TOWARD_VIEWER := 0.04
 const SHADER := preload("res://assets/shaders/hand_particles.gdshader")
 const SHADER_OCCLUDED := preload("res://assets/shaders/body_particles.gdshader")  # чужие руки: стены и плитки их закрывают
+## Чужое тело видно издали: точка не мельче этого угла (≈ 2–3 пикселя на Pico 4), иначе на расстоянии нескольких метров она меньше пикселя.
+const REMOTE_MIN_ANGLE := 0.002
 const COLOR_HAND := Color(0.18, 0.72, 0.85)  # холодный голубой: свои руки не красные (красные — другие люди и угроза)
 const COLOR_SPARK := Color(0.6, 0.95, 1.0)
 
@@ -216,6 +218,7 @@ func set_tint(c: Color) -> void:
 ## Чужая рука: рисуется с проверкой глубины (стены её закрывают), а не поверх всего.
 func set_occluded(on: bool) -> void:
 	_mat.shader = SHADER_OCCLUDED if on else SHADER
+	_mat.set_shader_parameter("min_angle", REMOTE_MIN_ANGLE if on else 0.0)
 
 
 ## Обновить положения частиц в буфере экземпляров по позиции суставов (остальные поля заданы один раз при создании).

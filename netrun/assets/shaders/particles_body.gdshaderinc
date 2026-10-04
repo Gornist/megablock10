@@ -9,6 +9,7 @@ uniform float twinkle : hint_range(0.0, 0.5) = 0.2;
 uniform float spark_rise : hint_range(0.0, 0.2) = 0.07;        // на сколько искра поднимается над кончиком за цикл, м
 uniform float spark_half_len : hint_range(0.0, 0.05) = 0.013;  // полудлина искры, м
 uniform float intensity : hint_range(0.0, 4.0) = 1.0;
+uniform float min_angle : hint_range(0.0, 0.01) = 0.0;         // наименьший угловой размер точки, рад: далёкие точки не мельче ~2 пикселей (чужое тело; у своих рук 0)
 
 varying vec3 v_col;
 varying float v_alpha;
@@ -35,10 +36,13 @@ void vertex() {
 	v_col = COLOR.rgb;
 	v_kind = kind;
 	vec4 mv = VIEW_MATRIX * vec4(w, 1.0);
+	float grown = max(size, length(mv.xyz) * min_angle);
+	float spark_scale = grown / max(size, 0.0001);
+	size = grown;
 	vec2 q = vec2(UV.x - 0.5, 0.5 - UV.y) * 2.0;
 	if (kind > 0.5) {
 		vec2 up = (VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xy;  // вертикаль мира в плоскости экрана: штрих всегда стоит вертикально
-		mv.xy += vec2(q.x * size, 0.0) + up * q.y * spark_half_len;
+		mv.xy += vec2(q.x * size, 0.0) + up * q.y * spark_half_len * spark_scale;
 	} else {
 		mv.xy += q * size;
 	}
