@@ -17,6 +17,8 @@ extends XROrigin3D
 signal xr_failed(reason: String)
 ## Экстренное отключение: причина — ExitLogic.REASON_*; подключает к сети тот, кто собрал клиент.
 signal exit_requested(reason: String)
+## События «ушёл из игры» для журнала: kind — begin | end | exit; source — pause | focus | session | presence; sec — сколько уже нет.
+signal away_event(kind: String, source: String, sec: float)
 signal recentered(xr: bool)
 ## Игрок отпустил стик прицела: from/to — точки на полу (риг, где стоял / куда идёт); ok = false — отказ на месте, reason —
 ## WorldMsg.REASON_* (перезарядка, тоннель). При ok = true клиент просит сервер (ProtoClient), риг переедет в тёмной точке моргания.
@@ -68,6 +70,7 @@ var _tp_click := false
 var _blink := RigMath.blink_new()
 var _blink_dest := Vector3.ZERO
 var _queued_dest: Variant = null
+var away := AwayGuard.new()   # окно на «ушёл из игры» (пауза, фокус, датчик на лбу): выход только после AwayGuard.GRACE_SEC
 var _face_deg := 0.0           # куда смотреть после прыжка (RigMath.facing_deg), пока наведён прицел; вправо — плюс
 var _blink_face_deg := 0.0     # то же для идущего моргания: применяется в самой тёмной точке
 
@@ -105,10 +108,15 @@ func start_xr() -> bool:
 	if "play_area_mode" in iface:
 		iface.play_area_mode = XRInterface.XR_PLAY_AREA_SITTING
 	xr_active = true
-	# Снял очки / потерян фокус — тот же запрос, что и удержание (сигналы есть не во всех версиях).
-	for sig in ["session_stopping", "focus_lost"]:
-		if iface.has_signal(sig):
-			iface.connect(sig, _request_exit.bind(ExitLogic.REASON_HEADSET_OFF))
+	# Ушёл из игры (снял очки, системное меню, остановка сессии): выход с причиной headset_off только если не вернулся за
+	# AwayGuard.GRACE_SEC. В Godot 4.7 у OpenXRInterface нет сигнала focus_lost: потеря фокуса — session_visible (видно, но без
+	# фокуса), возвращение — session_focussed; снятие очков — user_presence_changed(false), если рантайм сообщает присутствие.
+	_connect_away(iface, "session_visible", "focus", true)
+	_connect_away(iface, "session_focussed", "focus", false)
+	_connect_away(iface, "session_stopping", "session", true)
+	_connect_away(iface, "session_begun", "session", false)
+	if iface.has_signal("user_presence_changed"):
+		iface.connect("user_presence_changed", func(present: bool): _away_signal("presence", not present))
 	recenter()
 	return true
 
@@ -138,9 +146,50 @@ func _on_right_button(action: String) -> void:
 		_tp_click = true   # нажатие правого стика — отмена прицела
 
 
+func _connect_away(iface: Object, sig: String, source: String, begin: bool) -> void:
+	if iface.has_signal(sig):
+		iface.connect(sig, func(): _away_signal(source, begin))
+
+
+func _away_signal(source: String, begin: bool) -> void:
+	if begin:
+		away_begin(source, Time.get_ticks_msec())
+	else:
+		away_end(source, Time.get_ticks_msec())
+
+
+## Причина «ушёл» началась (время подают тесты; в игре — Time.get_ticks_msec()).
+func away_begin(source: String, now_ms: int) -> void:
+	away.begin(source, now_ms)
+	away_event.emit("begin", source, 0.0)
+
+
+## Причина кончилась; вернулся после окна — запрос выхода headset_off.
+func away_end(source: String, now_ms: int) -> void:
+	var sec := away.away_sec(now_ms)
+	if not away.is_away():
+		return
+	var late := away.end(source, now_ms)
+	away_event.emit("end", source, sec)
+	if late:
+		away_event.emit("exit", source, sec)
+		_request_exit(ExitLogic.REASON_HEADSET_OFF)
+
+
+## Каждый кадр: потеря фокуса без паузы затянулась дольше окна.
+func away_tick(now_ms: int) -> void:
+	if away.is_away():
+		var sec := away.away_sec(now_ms)
+		if away.due(now_ms):
+			away_event.emit("exit", "timeout", sec)
+			_request_exit(ExitLogic.REASON_HEADSET_OFF)
+
+
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_PAUSED:
-		_request_exit(ExitLogic.REASON_HEADSET_OFF)
+		away_begin("pause", Time.get_ticks_msec())
+	elif what == NOTIFICATION_APPLICATION_RESUMED:
+		away_end("pause", Time.get_ticks_msec())
 
 
 func _request_exit(reason: String) -> void:
@@ -180,6 +229,7 @@ func _update_exit_hold(delta: float) -> void:
 
 
 func _process(delta: float) -> void:
+	away_tick(Time.get_ticks_msec())
 	_update_exit_hold(delta)
 	var turn_x := 0.0
 	var tp_stick := Vector2.ZERO

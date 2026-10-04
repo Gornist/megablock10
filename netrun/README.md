@@ -253,10 +253,15 @@ godot --headless --path netrun -s -d res://addons/gdUnit4/bin/GdUnitCmdTool.gd -
 ## Выход (N6)
 
 Удержание 3 с (VR — `menu_button`, настройка `XRRig.exit_button`; плоская сборка — Esc) → клиент шлёт серверу пакет
-`{"t":"exit","reason":"manual_hold"}`; полоса прогресса — предмет мира перед глазами. Снятие очков (`NOTIFICATION_APPLICATION_PAUSED`,
-сигналы OpenXR `session_stopping`/`focus_lost`) — та же отправка с причиной `headset_off`. Сервер (`NetServer.exit_event`) отдаёт
+`{"t":"exit","reason":"manual_hold"}`; полоса прогресса — предмет мира перед глазами. Снятие очков и любой «уход из игры» (пауза приложения
+`NOTIFICATION_APPLICATION_PAUSED`, потеря фокуса — сигнал OpenXR `session_visible`, остановка сессии `session_stopping`, датчик
+на лбу `user_presence_changed`) — не сразу: окно **15 секунд** (`AwayGuard.GRACE_SEC`, решение владельца, 4 октября 2026). Вернулся
+быстрее — игра идёт дальше (сервер держит аватар при обрыве 20 с, клиент переподключается сам). Не вернулся за 15 с (по таймеру
+при потере фокуса или в момент возвращения после паузы) — та же отправка с причиной `headset_off`; если приложение спит дольше
+20 с, сервер сам оформляет обрыв (`connection_lost`). Раньше пауза выбрасывала игрока сразу — под охотой это сжигало деку. В Godot 4.7
+у `OpenXRInterface` нет сигнала `focus_lost`, на который рассчитывал прежний код. Журнал: `away.begin|end|exit source=pause|focus|session|presence sec=…`. Сервер (`NetServer.exit_event`) отдаёт
 `{session, reason, under_hunt, deck_burned}`; флаг охоты ставит снаружи `set_under_hunt(session, bool)`. Обрыв связи выходом не
-считается: по истечении окна возврата — событие `connection_lost`. Логика — `shared/exit_logic.gd`, тесты `exit_logic_test.gd`, `net_exit_test.gd`.
+считается: по истечении окна возврата — событие `connection_lost`. Логика — `shared/exit_logic.gd` и `shared/away_guard.gd`, тесты `exit_logic_test.gd`, `net_exit_test.gd`, `away_guard_test.gd`, `away_exit_test.gd`.
 
 ## Серый узел (N7)
 

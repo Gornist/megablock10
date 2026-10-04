@@ -41,6 +41,7 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	scene = preload("res://client/rig_test_scene.gd").new()
 	add_child(scene)
 	scene.rig.xr_failed.connect(func(reason: String): log_file.log("xr", {"enabled": false, "reason": reason}))
+	scene.rig.away_event.connect(func(kind: String, source: String, sec: float): log_file.log("away." + kind, {"source": source, "sec": snappedf(sec, 0.1)}))
 	scene.rig.recentered.connect(func(xr: bool): log_file.log("rig.recenter", {"xr": xr}))
 	scene.frame_slow.connect(_on_frame_slow)
 	scene.grab_requested.connect(_on_grab_requested)
