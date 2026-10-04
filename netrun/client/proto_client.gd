@@ -6,7 +6,9 @@ extends Node
 ## Аргументы разработки: `--walk` (плоская сборка: ходьба WASD), `--turn=snap|smooth` (режим поворота поверх comfort.cfg).
 ## Адрес сервера и токен — из netrun.cfg на очках и аргументов (NetConfig.from_sources); сам токен в журнал не попадает.
 
-const SLOW_LOG_MIN_GAP_MS := 250  # кадры дольше 1/72 с в журнал — не чаще раза в 250 мс (остальные — счётчиком)
+const SLOW_LOG_MIN_GAP_MS := 250  # долгие кадры (FrameStats.is_slow) в журнал — не чаще раза в 250 мс (остальные — счётчиком)
+## Сводка кадров и отрисовки (строка `perf`) — раз в столько секунд.
+const PERF_PERIOD_S := 10.0
 
 var log_file := MbLog.new()
 ## Где искать netrun.cfg (тесты подставляют свои).
@@ -22,6 +24,10 @@ const POS_PERIOD := 0.05  # 20 раз/с: чужие клиенты видят �
 const RECONNECT_SEC := 2.0
 const RECONNECT_ATTEMPTS := 60
 
+## Через сколько секунд после сборки узла замерить отрисовку (строка `node.perf`); тесты ставят меньше.
+var perf_sample_delay_s := 2.0
+var _frame_stats := FrameStats.new()
+var _perf_acc := 0.0
 var _last_level := -1
 var _pos_acc := 0.0
 var _paused_at_ms := -1
@@ -135,8 +141,11 @@ func _on_event(ev: Dictionary) -> void:
 	log_file.log("node.event", {"kind": ev.get("kind", ""), "reason": ev.get("reason", ""), "daemon": ev.get("daemon", ""), "ok": ev.get("ok", "")})
 	match str(ev.get("kind", "")):
 		WorldMsg.EV_NODE:
+			var built_at := Time.get_ticks_usec()
 			scene.apply_node(ev)
+			var build_ms := snappedf((Time.get_ticks_usec() - built_at) / 1000.0, 0.1)
 			log_file.log("graph.node", {"node": ev.get("node", ""), "tier": ev.get("tier", ""), "arrive": ev.has("arrive")})
+			_log_node_perf(str(ev.get("node", "")), str(ev.get("tier", "")), build_ms, built_at)
 		WorldMsg.EV_TUNNEL:
 			scene.begin_tunnel(str(ev.get("title", "")), float(ev.get("sec", 0.0)))
 			log_file.log("graph.tunnel", {"from": ev.get("from", ""), "to": ev.get("to", ""), "sec": ev.get("sec", 0.0)})
@@ -155,6 +164,12 @@ func _on_event(ev: Dictionary) -> void:
 
 
 func _process(delta: float) -> void:
+	if scene != null:
+		_frame_stats.add(delta)
+		_perf_acc += delta
+		if _perf_acc >= PERF_PERIOD_S:
+			_perf_acc = 0.0
+			_log_perf()
 	if net == null or not net.is_connected_to_world:
 		return
 	_pos_acc += delta
@@ -182,12 +197,46 @@ func _on_grab_denied(object_id: String, reason: String) -> void:
 	scene.deny_grab()
 
 
+## Строка `perf`: кадров за окно, среднее и наибольшее время кадра, долгих кадров, вызовов отрисовки/примитивов/объектов в кадре.
+func _log_perf() -> void:
+	var fields := _frame_stats.take()
+	fields.merge(_render_info())
+	log_file.log("perf", fields)
+
+
+## Счётчики отрисовки прошлого кадра (в безэкранном запуске — нули).
+func _render_info() -> Dictionary:
+	return {
+		"draws": RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
+		"prims": RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME),
+		"objects": RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME),
+	}
+
+
+## Строка `node.perf` после входа в узел: сколько ушло на сборку (build_ms) и на первую отрисовку (first_frame_ms — до конца
+## первого кадра, где первый показ шейдеров может подвиснуть), потом, через perf_sample_delay_s, во что обходится готовый узел.
+func _log_node_perf(node: String, tier: String, build_ms: float, built_at_usec: int) -> void:
+	if DisplayServer.get_name() == "headless":
+		await get_tree().process_frame  # без экрана кадр не рисуется и frame_post_draw не приходит
+	else:
+		await RenderingServer.frame_post_draw
+	if not is_inside_tree():
+		return  # клиент закрыли, не дождавшись кадра
+	var first_ms := snappedf((Time.get_ticks_usec() - built_at_usec) / 1000.0, 0.1)
+	await get_tree().create_timer(perf_sample_delay_s).timeout
+	if not is_inside_tree():
+		return
+	var fields := {"node": node, "tier": tier, "build_ms": build_ms, "first_frame_ms": first_ms}
+	fields.merge(_render_info())
+	log_file.log("node.perf", fields)
+
+
 func _on_frame_slow(ms: float) -> void:
 	var now := Time.get_ticks_msec()
 	if now - _last_slow_log_ms < SLOW_LOG_MIN_GAP_MS:
 		_slow_skipped += 1
 		return
-	log_file.log("frame.slow", {"ms": ms, "limit_ms": 1000.0 / 72.0, "skipped": _slow_skipped})
+	log_file.log("frame.slow", {"ms": ms, "limit_ms": snappedf(FrameStats.SLOW_SEC * 1000.0, 0.01), "skipped": _slow_skipped})
 	_slow_skipped = 0
 	_last_slow_log_ms = now
 

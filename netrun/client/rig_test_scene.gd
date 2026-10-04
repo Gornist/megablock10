@@ -10,7 +10,6 @@ signal frame_slow(ms: float)
 signal daemon_use_requested(daemon_id: String)
 signal leave_requested
 
-const SLOW_FRAME_SEC := 1.0 / 72.0
 const VR_REACH := 0.4
 const FLAT_REACH := 3.0
 const STATS_PERIOD := 0.5
@@ -124,7 +123,7 @@ func _process(delta: float) -> void:
 	_count += 1
 	_acc += delta
 	_max_ms = maxf(_max_ms, delta * 1000.0)
-	if delta > SLOW_FRAME_SEC:
+	if FrameStats.is_slow(delta):
 		slow_frames += 1
 		frame_slow.emit(delta * 1000.0)
 	if _acc >= STATS_PERIOD:
