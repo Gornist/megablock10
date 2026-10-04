@@ -11,6 +11,10 @@ signal daemon_use_requested(daemon_id: String)
 signal leave_requested
 ## Шард ушёл в деку (id слота): для журнала клиента. Серверу сообщать нечего — предмет в деке Моста с момента grab.
 signal shard_stowed(object_id: String)
+## Панель взлома (К3): игрок выбрал демонов и нажал «НАЧАТЬ» / нажал клетку / завершил. Просит сервер ProtoClient; решает сервер.
+signal breach_start_requested(vault: String, daemon_ids: Array)
+signal breach_tap_requested(cell: Vector2i)
+signal breach_cancel_requested
 
 const VR_REACH := 0.4
 const FLAT_REACH := 3.0
@@ -49,6 +53,8 @@ var _held_ids: Dictionary = {}       # id шардов в руке: из узл�
 var _hand_of: Dictionary = {}        # держатель (рука или камера) -> id шарда в нём
 var _stow_flash := 0.0
 var _vault_state: Dictionary = {}    # id слота -> NodeView.VAULT_*: брать можно только из открытого
+var _vault_info: Dictionary = {}     # id слота -> последняя запись от сервера ({id, p, vault, access, left, ...}): панель взлома и привязка телепорта
+var _breach_ctx_key: Variant = null
 var _pending_id := ""
 var _node_props: Array[Node3D] = []  # подписи порталов и таблички узла (модели — в NodeView)
 var slow_frames := 0
@@ -111,6 +117,10 @@ func _ready() -> void:
 	world_ui = WorldUI.new()
 	add_child(world_ui)
 	world_ui.attach(rig)
+	rig.teleport_snap = snap_teleport
+	world_ui.breach_panel.start_requested.connect(func(vault: String, ids: Array): breach_start_requested.emit(vault, ids))
+	world_ui.breach_panel.cell_tapped.connect(func(cell: Vector2i): breach_tap_requested.emit(cell))
+	world_ui.breach_panel.cancel_requested.connect(func(): breach_cancel_requested.emit())
 	world_ui.deck.set_deck({"daemons": [], "selected": ""})
 	world_ui.trace.set_trace(0.0)
 	for hand in [rig.left_hand, rig.right_hand]:
@@ -138,6 +148,7 @@ func _process(delta: float) -> void:
 			(_avatar_nodes[id] as AvatarView).move_to(pose["p"], delta)
 	_animate_shards(delta)
 	_update_stow_target(delta)
+	_update_breach_panel()
 	_count += 1
 	_acc += delta
 	_max_ms = maxf(_max_ms, delta * 1000.0)
@@ -172,6 +183,7 @@ func _unhandled_input(event: InputEvent) -> void:
 ## меняют вид узла (порталы закрываются, двери выхода сменяются воротами).
 func apply_state(state: Dictionary) -> void:
 	world_ui.trace.set_trace(float(state.get("trace", 0.0)))
+	world_ui.breach_panel.set_trace(float(state.get("trace", 0.0)))
 	view.set_hunted(bool(state.get("hunt", false)))
 	view.set_exit_locked(int(state.get("level", 0)) >= HudLogic.LEVEL_LOCKDOWN)
 	deck_state = state.get("cd", [])
@@ -307,6 +319,7 @@ func select_next() -> void:
 ## Событие `ev deck`: RAM, свойства рабочих демонов и груз. Вкладка ДОБЫЧА появляется с первым таким событием.
 func apply_deck(ev: Dictionary) -> void:
 	deck_info = ev
+	_refresh_breach_context()
 	world_ui.deck.set_loot(ev.get("loot", []), int(ev.get("eddies", 0)))
 	_refresh_deck()
 
@@ -465,6 +478,8 @@ func apply_node(info: Dictionary) -> void:
 	current_node = str(info.get("node", ""))
 	view.set_tier(str(info.get("tier", "")))
 	view.set_dead_decks(info.get("dead", []))
+	if world_ui.breach_panel.mode() != BreachPanel.MODE_RUN:
+		world_ui.breach_panel.hide_panel()   # другой узел — другие хранилища
 	_build_node(info.get("shards", []), info.get("portals", []), float(info.get("r", NodeLayout.PORTAL_RADIUS)))
 	_build_signs(info.get("signs", []))
 	var arrive: Variant = info.get("arrive")
@@ -478,6 +493,7 @@ func apply_node(info: Dictionary) -> void:
 func apply_shards(shards: Array) -> void:
 	for sh in shards:
 		var id := str(sh["id"])
+		_vault_info[id] = sh
 		var state := NodeView.vault_state_of(sh)
 		_vault_state[id] = state
 		view.set_vault_state(id, state)
@@ -537,6 +553,9 @@ func _build_node(shards: Array, portals: Array, _portal_radius: float) -> void:
 		n.queue_free()
 	_node_props.clear()
 	var ids: Array = shards.map(func(sh): return str(sh["id"]))
+	_vault_info.clear()
+	for sh in shards:
+		_vault_info[str(sh["id"])] = sh
 	for id in _pickups.keys():
 		var m: Node3D = _pickups[id]
 		if _held_ids.has(id) or id in ids:
@@ -679,3 +698,91 @@ func _add_mesh(mesh: Mesh, pos: Vector3, color: Color) -> MeshInstance3D:
 	m.position = pos
 	add_child(m)
 	return m
+
+
+# ---------------------------------------------------------------- взлом хранилища (К3)
+
+## Привязка точки телепорта к площадке перед хранилищем (XRRig.teleport_snap): те же числа, что у сервера (NodeLayout.snap_to_vault_pad).
+func snap_teleport(to: Vector3) -> Dictionary:
+	return NodeLayout.snap_to_vault_pad(to, _vault_list().map(func(v: Dictionary) -> Vector3: return v["p"]))
+
+
+## Хранилища узла: [{id, p: Vector3}] по последним записям сервера.
+func _vault_list() -> Array:
+	var out: Array = []
+	for id in _vault_info:
+		var sh: Dictionary = _vault_info[id]
+		if sh.has("p"):
+			var p: Array = sh["p"]
+			out.append({"id": id, "p": Vector3(float(p[0]), float(p[1]), float(p[2]))})
+	return out
+
+
+## Демоны, годные для взлома (рабочие, с цепочкой), и RAM — в панель. Не чаще, чем меняются.
+func _refresh_breach_context() -> void:
+	var list: Array = []
+	for d in deck_info.get("daemons", []):
+		if bool(d.get("loaded", true)) and not (d.get("cells", []) as Array).is_empty():
+			list.append({"id": str(d["id"]), "name": str(d.get("name", d["id"])), "effect": str(d.get("effect", "")), "tier": int(d.get("tier", 1)), "cells": d["cells"]})
+	var key := [str(node_info.get("title", "")), str(node_info.get("tier", "")), int(deck_info.get("ram", 6)), list]
+	if key == _breach_ctx_key:
+		return
+	_breach_ctx_key = key
+	world_ui.breach_panel.set_context(key[0], key[1], list, key[2])
+
+
+## Панель до начала взлома: появляется у ближайшего хранилища, где можно что-то сделать (взломать, дождаться, увидеть «ЗАНЯТО»), и гаснет, когда
+## игрок отошёл. Открытое для игрока хранилище панели не требует — шард берут рукой. Поза ставится один раз при появлении: дальше панель стоит в мире.
+func _update_breach_panel() -> void:
+	var bp := world_ui.breach_panel
+	var mode := bp.mode()
+	if mode == BreachPanel.MODE_RUN:
+		return
+	var vaults := _vault_list()
+	if mode == BreachPanel.MODE_RESULT:
+		if not vaults.is_empty() and BreachPanelLayout.target_vault(rig.global_position, vaults, bp.vault_id()) == "":
+			bp.hide_panel()   # игрок ушёл от хранилища — итог можно не закрывать
+		return
+	var target := BreachPanelLayout.target_vault(rig.global_position, vaults, bp.vault_id() if mode == BreachPanel.MODE_IDLE else "")
+	if target.is_empty() or movement_blocked():
+		if mode == BreachPanel.MODE_IDLE:
+			bp.hide_panel()
+		return
+	var info: Dictionary = _vault_info[target]
+	if str(info.get("access", "ok")) == "open" or str(info.get("vault", "")) == "":
+		if mode == BreachPanel.MODE_IDLE:
+			bp.hide_panel()
+		return
+	if mode != BreachPanel.MODE_IDLE or bp.vault_id() != target:
+		bp.place(BreachPanelLayout.pose(rig.camera.global_position, _vault_pos(target)))
+	bp.show_idle(target, info)
+
+
+func movement_blocked() -> bool:
+	return rig.movement_locked
+
+
+func _vault_pos(id: String) -> Vector3:
+	var p: Array = _vault_info[id]["p"]
+	return Vector3(float(p[0]), float(p[1]), float(p[2]))
+
+
+## События взлома от сервера (WorldMsg.EV_BK*): сетка, ответ на тап, итог, отказ. Панель в мире уже стоит (idle) или ставится здесь.
+func apply_breach_event(ev: Dictionary) -> void:
+	var bp := world_ui.breach_panel
+	match str(ev.get("kind", "")):
+		WorldMsg.EV_BK:
+			var m := BreachMirror.from_event(ev)
+			if m == null:
+				return
+			if bp.mode() != BreachPanel.MODE_IDLE or bp.vault_id() != m.vault:
+				if _vault_info.has(m.vault):
+					bp.place(BreachPanelLayout.pose(rig.camera.global_position, _vault_pos(m.vault)))
+			_refresh_breach_context()
+			bp.begin(m)
+		WorldMsg.EV_BK_TICK:
+			bp.apply_tick(ev)
+		WorldMsg.EV_BK_END:
+			bp.apply_end(ev)
+		WorldMsg.EV_BK_NO:
+			bp.show_denied(str(ev.get("reason", "")), int(ev.get("left", 0)))

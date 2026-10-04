@@ -2,7 +2,7 @@ class_name ProtoClient
 extends Node
 ## Клиент прототипа (V3), общий для Pico 4 и плоской сборки: сцена, XR-риг, сеть, журнал в файл.
 ## Журнал (user://logs/netrun-*.log): start, mode, xr, comfort (+ comfort.warn), rig.recenter, rig.teleport, teleport.denied,
-## net.* (в том числе net.config, net.reconnect), grab.*, app.pause/resume, frame.slow.
+## net.* (в том числе net.config, net.reconnect), grab.*, breach.* (взлом хранилища: request, start, tap — только отказ или ловушка, end, no, cancel), app.pause/resume, frame.slow.
 ## Деку на руке дополняют вкладки ЧАТ и ЗВОНКИ (фиктивная связь с телефоном): `phone link=fake|off tabs=N` при старте, `phone.msg thread=…`,
 ## `phone.call phase=…`, `phone.reply thread=… text=…`, `deck.tab id=…`; в строке `perf` — `deck_redraws=N` (сколько раз дека рисовалась в текстуру).
 ## Аргументы разработки: `--walk` (плоская сборка: ходьба WASD), `--turn=none|snap|smooth` (режим поворота поверх comfort.cfg),
@@ -89,6 +89,13 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	net.event_received.connect(_on_event)
 	scene.daemon_use_requested.connect(func(id: String): net.request_use(id))
 	scene.leave_requested.connect(func(): net.request_leave())
+	scene.breach_start_requested.connect(func(vault: String, ids: Array):
+		if net.request_breach(vault, ids):
+			log_file.log("breach.request", {"vault": vault, "daemons": ids.size()}))
+	scene.breach_tap_requested.connect(func(cell: Vector2i): net.request_breach_tap(cell))
+	scene.breach_cancel_requested.connect(func():
+		net.request_breach_cancel()
+		log_file.log("breach.cancel"))
 	net.grab_confirmed.connect(_on_grab_confirmed)
 	net.grab_denied.connect(_on_grab_denied)
 	net.teleport_denied.connect(_on_teleport_denied)
@@ -189,7 +196,8 @@ func _on_state(state: Dictionary) -> void:
 
 
 func _on_event(ev: Dictionary) -> void:
-	log_file.log("node.event", {"kind": ev.get("kind", ""), "reason": ev.get("reason", ""), "daemon": ev.get("daemon", ""), "ok": ev.get("ok", "")})
+	if ev.get("kind") != WorldMsg.EV_BK_TICK:   # bk_tick идёт раз в секунду и на каждый тап: в журнал — только отказы и ловушки (breach.tap)
+		log_file.log("node.event", {"kind": ev.get("kind", ""), "reason": ev.get("reason", ""), "daemon": ev.get("daemon", ""), "ok": ev.get("ok", "")})
 	match str(ev.get("kind", "")):
 		WorldMsg.EV_NODE:
 			var built_at := Time.get_ticks_usec()
@@ -206,6 +214,19 @@ func _on_event(ev: Dictionary) -> void:
 			scene.apply_deck(ev)
 			log_file.log("deck.info", {"ram": ev.get("ram", 0), "default": ev.get("ram_default", false), "used": ev.get("used", 0),
 				"programs": (ev.get("daemons", []) as Array).size(), "loot": (ev.get("loot", []) as Array).size(), "eddies": ev.get("eddies", 0)})
+		WorldMsg.EV_BK:
+			scene.apply_breach_event(ev)
+			log_file.log("breach.start", {"vault": ev.get("vault", ""), "n": ev.get("n", 0), "tier": ev.get("tier", ""), "grid": (ev.get("grid", {}) as Dictionary).get("size", 0), "sec": ev.get("sec", 0)})
+		WorldMsg.EV_BK_TICK:
+			scene.apply_breach_event(ev)
+			if ev.has("cell") and (not bool(ev.get("ok", true)) or bool(ev.get("trap", false))):
+				log_file.log("breach.tap", {"ok": ev.get("ok", false), "trap": ev.get("trap", false), "left": ev.get("left", 0)})
+		WorldMsg.EV_BK_END:
+			scene.apply_breach_event(ev)
+			log_file.log("breach.end", {"outcome": ev.get("outcome", ""), "early": ev.get("early", ""), "eddies": ev.get("eddies", 0), "opened": (ev.get("opened", []) as Array).size(), "error": ev.get("error", "")})
+		WorldMsg.EV_BK_NO:
+			scene.apply_breach_event(ev)
+			log_file.log("breach.no", {"reason": ev.get("reason", "")})
 		WorldMsg.EV_PORTAL_DENIED:
 			scene.show_portal_denied(ev)
 			log_file.log("graph.portal_denied", {"to": ev.get("to", ""), "reason": ev.get("reason", "")})

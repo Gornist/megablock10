@@ -113,6 +113,19 @@ func request_use(daemon_id: String) -> bool:
 	return _send(WorldMsg.encode_fields(WorldMsg.USE, {"id": daemon_id}))
 
 
+## Взлом хранилища (К3): начать выбранными демонами, нажать клетку ([строка, столбец]), завершить досрочно. Решает сервер.
+func request_breach(vault: String, daemon_ids: Array) -> bool:
+	return _send(WorldMsg.encode_fields(WorldMsg.BK_OPEN, {"vault": vault, "daemons": daemon_ids}))
+
+
+func request_breach_tap(cell: Vector2i) -> bool:
+	return _send(WorldMsg.encode_fields(WorldMsg.BK_TAP, {"cell": [cell.x, cell.y]}))
+
+
+func request_breach_cancel() -> bool:
+	return _send(WorldMsg.encode_fields(WorldMsg.BK_CANCEL))
+
+
 ## Просьба выйти чисто (сервер проверяет, что игрок на площадке выхода).
 func request_leave() -> bool:
 	return _send(WorldMsg.encode_fields(WorldMsg.LEAVE))
