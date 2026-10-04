@@ -4,15 +4,21 @@ extends Node3D
 ## В VR крепится к запястью левой руки (якорь HandView.wrist_anchor: на тыле запястья, ближе к локтю, чтобы не закрывать руку), в плоской сборке — к камере
 ## в левом нижнем углу обзора.
 
-## Дека и индикатор trace на запястье: деку уменьшают (на предплечье шириной 6–7 см она иначе свисает), trace — ниже деки, к локтю.
+## Дека и индикатор trace на запястье: деку уменьшают (на предплечье шириной 6–7 см она иначе свисает), trace — ниже деки, к локтю: на 4,5 см ниже
+## её нижнего края (высота деки с вкладками — DeckPanel.PANEL_HEIGHT_M, после уменьшения 18 см).
 const WRIST_DECK_SCALE := 0.75
-const WRIST_TRACE_POS := Vector3(0, -0.1, 0)
+const WRIST_TRACE_POS := Vector3(0, -(DeckPanel.PANEL_HEIGHT_M * WRIST_DECK_SCALE * 0.5 + 0.045), 0)
 const FLAT_TRACE_POS := Vector3(0, 0.14, 0)
 
 var rig: XRRig
 var deck: DeckPanel
 var trace: TraceIndicator
 var alert: OffscreenAlert
+## Вкладки ЧАТ и ЗВОНКИ деки: указатель правого контроллера (мышь в плоской сборке) нажимает деку; отклик — вибрация и звук на сообщения и
+## звонки; связь с телефоном (пока фиктивная) — null, и тогда вкладок нет, указатель молчит. Положение и масштаб деки на руке — только здесь.
+var pointer: DeckPointer
+var feedback: DeckFeedback
+var phone: PhoneLink
 var _anchor: Node3D
 
 
@@ -30,11 +36,27 @@ func attach(r: XRRig) -> void:
 	alert = OffscreenAlert.new()
 	alert.camera = rig.camera
 	rig.camera.add_child(alert)
+	feedback = DeckFeedback.new()
+	feedback.name = "DeckFeedback"
+	_anchor.add_child(feedback)   # звук идёт из места деки
+	pointer = DeckPointer.new()
+	add_child(pointer)
+	pointer.setup(rig, deck)
+	pointer.clicked.connect(func(): feedback.pulse("right", 0.25, 0.02))   # лёгкий отклик правой руки на нажатие
 	_place()
 
 
-func _process(_delta: float) -> void:
+## Подключить связь с телефоном (null — отключить): у деки появляются вкладки ЧАТ и ЗВОНКИ, вибрация и звук следят за событиями.
+func set_phone(link: PhoneLink) -> void:
+	phone = link
+	deck.set_phone(link)
+	feedback.bind(rig, link)
+
+
+func _process(delta: float) -> void:
 	_place()
+	if phone != null:
+		phone.advance(delta)
 
 
 ## В VR — якорь на запястье левой руки (нет руки в рига — левый контроллер, как раньше); плоская сборка — привязка к камере (низ-лево).

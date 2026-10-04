@@ -3,7 +3,10 @@ extends Node
 ## Клиент прототипа (V3), общий для Pico 4 и плоской сборки: сцена, XR-риг, сеть, журнал в файл.
 ## Журнал (user://logs/netrun-*.log): start, mode, xr, comfort (+ comfort.warn), rig.recenter, rig.teleport, teleport.denied,
 ## net.* (в том числе net.config, net.reconnect), grab.*, app.pause/resume, frame.slow.
-## Аргументы разработки: `--walk` (плоская сборка: ходьба WASD), `--turn=none|snap|smooth` (режим поворота поверх comfort.cfg).
+## Деку на руке дополняют вкладки ЧАТ и ЗВОНКИ (фиктивная связь с телефоном): `phone link=fake|off tabs=N` при старте, `phone.msg thread=…`,
+## `phone.call phase=…`, `phone.reply thread=… text=…`, `deck.tab id=…`; в строке `perf` — `deck_redraws=N` (сколько раз дека рисовалась в текстуру).
+## Аргументы разработки: `--walk` (плоская сборка: ходьба WASD), `--turn=none|snap|smooth` (режим поворота поверх comfort.cfg),
+## `--phone=off` (спрятать вкладки ЧАТ и ЗВОНКИ: остаётся одна ДЕКА; по умолчанию вкладки есть, данные для них — фиктивный сценарий).
 ## Адрес сервера и токен — из netrun.cfg на очках и аргументов (NetConfig.from_sources); сам токен в журнал не попадает.
 
 const SLOW_LOG_MIN_GAP_MS := 250  # долгие кадры (FrameStats.is_slow) в журнал — не чаще раза в 250 мс (остальные — счётчиком)
@@ -18,6 +21,12 @@ var net: NetClient
 var trace_audio: TraceAudio
 ## Настройки комфорта (user://comfort.cfg + аргументы), применённые к ригу.
 var comfort: ComfortConfig
+## Связь деки с телефоном (пока фиктивная); null при `--phone=off`.
+var phone: PhoneLink
+
+## Режимы связи с телефоном: `--phone=` (fake — по умолчанию, off — без вкладок ЧАТ и ЗВОНКИ).
+const PHONE_FAKE := "fake"
+const PHONE_OFF := "off"
 
 const POS_PERIOD := 0.05  # 20 раз/с: чужие клиенты видят нас со сглаживанием по буферу
 ## Потеряв связь, клиент возвращается сам: попытка раз в 2 с, не дольше ~2 минут (сервер держит аватар 20 с, дальше — новый забег).
@@ -47,6 +56,7 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	scene.grab_requested.connect(_on_grab_requested)
 	scene.ice_audio_enabled = true
 	_setup_comfort(args)
+	_setup_phone(args)
 	scene.rig.teleport_attempted.connect(_on_teleport_attempted)
 	if want_xr:
 		if scene.rig.start_xr():
@@ -104,6 +114,43 @@ func _setup_comfort(args: PackedStringArray) -> void:
 	var fields := comfort.log_fields()
 	fields["walk"] = walk
 	log_file.log("comfort", fields)
+
+
+## Режим связи с телефоном из аргументов: {mode: PHONE_FAKE | PHONE_OFF, warning: String}. Без аргумента — fake; неизвестное значение —
+## fake с предупреждением (не молчим и не падаем).
+static func phone_mode(args: PackedStringArray) -> Dictionary:
+	var mode := PHONE_FAKE
+	var warning := ""
+	for a in args:
+		if a.begins_with("--phone="):
+			var v := a.trim_prefix("--phone=")
+			if v == PHONE_OFF:
+				mode = PHONE_OFF
+			elif v == PHONE_FAKE:
+				mode = PHONE_FAKE
+			else:
+				mode = PHONE_FAKE
+				warning = "--phone=: допустимо fake или off, получено «%s»" % v
+	return {"mode": mode, "warning": warning}
+
+
+## Вкладки ЧАТ и ЗВОНКИ деки: связь с телефоном (пока фиктивный сценарий) и строки в журнал. `--phone=off` — вкладок нет.
+func _setup_phone(args: PackedStringArray) -> void:
+	var m := phone_mode(args)
+	if not str(m["warning"]).is_empty():
+		log_file.log("phone.warn", {"msg": m["warning"]})
+	var deck: DeckPanel = scene.world_ui.deck
+	if m["mode"] == PHONE_OFF:
+		phone = null
+		scene.world_ui.set_phone(null)
+	else:
+		phone = FakePhoneLink.new(-1.0, true, true)   # сценарий идёт по кругу: очки надевают не сразу после запуска
+		scene.world_ui.set_phone(phone)
+		phone.message_received.connect(func(thread_id: String, _msg: Dictionary): log_file.log("phone.msg", {"thread": thread_id}))
+		phone.call_changed.connect(func(st: Dictionary): log_file.log("phone.call", {"phase": st["phase"], "peer": st["peer"], "muted": st["muted"]}))
+		deck.tab_changed.connect(func(id: String): log_file.log("deck.tab", {"id": id}))
+		deck.reply_sent.connect(func(thread_id: String, text: String): log_file.log("phone.reply", {"thread": thread_id, "text": text}))
+	log_file.log("phone", {"link": m["mode"], "tabs": deck.tab_ids().size()})
 
 
 func _fmt_xz(p: Vector3) -> String:
@@ -203,6 +250,7 @@ func _on_grab_denied(object_id: String, reason: String) -> void:
 func _log_perf() -> void:
 	var fields := _frame_stats.take()
 	fields.merge(_render_info())
+	fields["deck_redraws"] = scene.world_ui.deck.redraw_count
 	log_file.log("perf", fields)
 
 
