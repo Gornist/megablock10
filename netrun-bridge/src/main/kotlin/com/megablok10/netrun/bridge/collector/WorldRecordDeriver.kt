@@ -169,8 +169,10 @@ private class Derivation(changes: List<Change>, private val previous: (DocKey) -
     private fun itemEvents(): List<WorldEvent> = docs(ValueOps.ITEM).mapNotNull { d ->
         val from = owner(before(d)) ?: return@mapNotNull null
         val to = owner(d) ?: return@mapNotNull null
-        if (from != to && (significant(from, to) || (gave && isGiveMove(from, to)))) item(d, from, to) else null
+        if (from != to && isNotable(from, to)) item(d, from, to) else null
     }
+
+    private fun isNotable(from: String, to: String): Boolean = significant(from, to) || (gave && isGiveMove(from, to))
 
     /** Транзакция — `op.give_item`: передача из Сети (C2, 2.5, (д)) значима и как `deck → deck`, и как `deck → outbox`. */
     private val gave: Boolean get() = op?.second == Words.OP_GIVE

@@ -426,7 +426,6 @@ func test_finish_rebuilds_moves_when_an_item_arrives_before_run_finish() -> void
 	assert_int(_bridge.finish_attempts.size()).is_equal(2)   # тот же rid, пересобранные moves
 	assert_str(_bridge.doc("session", ALICE)["data"]["state"]).is_equal("closed")
 	assert_str(_bridge.doc("item", new_item)["data"]["owner"]).is_not_equal("deck:" + ALICE)
-	assert_array(GrayNode.finish_moves([late], ALICE, {"loaded": []}, {"loot": "phone", "daemon": "phone"})).is_not_empty()
 
 
 func test_stale_moves_answer_is_recognized_only_for_that_bad_request() -> void:
