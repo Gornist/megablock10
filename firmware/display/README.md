@@ -129,6 +129,23 @@ WOKWI_CLI_TOKEN=… firmware/display/tools/wokwi_selftest.sh     # сборка,
 Первый же прогон нашёл баг, который на плате не дал бы загрузиться: сервер открывался раньше `WiFi.mode()`, стек lwIP не был
 поднят — `assert … tcpip_send_msg_wait_sem (Invalid mbox)` и цикл перезагрузок.
 
+### Без Wokwi: esp-emulator от Espressif
+
+Та же самопроверка без токена и квоты — в эмуляторе [esp-emulator](https://github.com/espressif/esp-emulator) (`esp-emu`,
+бета, версия закреплена в скрипте; скачивается из релиза в `~/.cache/esp-emu/`, sha256 сверяется). Эмулятор сам поднимает точку
+доступа `Wokwi-GUEST` (открытую) с DHCP; прогон — около минуты.
+
+```bash
+firmware/display/tools/espemu_selftest.sh     # сборка crowpanel579-espemu, склейка образа, esp-emu; журнал — espemu-serial.log
+```
+
+Проверяется: Wi-Fi, весь протокол, звук по протоколу без карты (состояние, отказ старой версии, LIST, MISSING_CLIP, версия в
+HELLO), REBOOT и сброс сторожем задач с восстановлением кадра и звука. **Не проверяется** — microSD и I²S (их в эмуляторе нет):
+запись треков на карту, клип с обрывом и докачкой, объявление, декодирование MP3 — только в Wokwi и на плате. Сборка
+`crowpanel579-espemu` = `crowpanel579-wokwi` + `MB10_SELFTEST_ESPEMU`: программный сброс S3 эмулятор (0.45) доводит до сторожа
+RTC (`RTCWDT_SYS_RST` → `ESP_RST_WDT`), и после паники сторожа задач — так же, поэтому самопроверка там принимает и
+`ESP_RST_WDT`, а скрипт сверяет по журналу, что сработал именно сторож задач (`task_wdt`).
+
 ## CI
 
 `.github/workflows/firmware.yml`: тесты ядра, прошивка для ПК и самопроверка (и под ASan/UBSan), сервер мастера против прошивки
