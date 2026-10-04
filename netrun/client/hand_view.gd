@@ -23,6 +23,7 @@ const HAND_SCALE := 1.1
 const HAND_ROLL_DEG := 90.0
 const HAND_TOWARD_VIEWER := 0.04
 const SHADER := preload("res://assets/shaders/hand_particles.gdshader")
+const SHADER_OCCLUDED := preload("res://assets/shaders/body_particles.gdshader")  # чужие руки: стены и плитки их закрывают
 const COLOR_HAND := Color(0.18, 0.72, 0.85)  # холодный голубой: свои руки не красные (красные — другие люди и угроза)
 const COLOR_SPARK := Color(0.6, 0.95, 1.0)
 
@@ -33,6 +34,13 @@ var controller: XRController3D
 ## Для тестов и просмотра: Callable() -> PackedVector3Array из 26 позиций в системе этого узла; пустой массив — руки нет.
 var pose_source: Callable
 var mode := Mode.NONE
+## Цвет свечения и искр (свои руки голубые, чужие — цвет игрока, см. set_tint).
+var tint := COLOR_HAND
+## Рамка ладони, сгиб и признак «есть» по последнему кадру от контроллера: из них собирается поза для других игроков (AvatarPose).
+var frame_valid := false
+var frame_palm := Transform3D.IDENTITY
+var frame_trigger := 0.0
+var frame_hold := 0.0
 ## Калибровка позы grip: поворот вокруг X (вверх +) и смещение, в системе контроллера.
 var grip_pitch_deg := 0.0
 var grip_offset := Vector3.ZERO
@@ -136,6 +144,7 @@ func calibrate(pitch_deg: float, offset: Vector3) -> void:
 
 ## Позиции 26 суставов в системе этого узла или пустой массив. Выставляет mode.
 func read_pose() -> PackedVector3Array:
+	frame_valid = false
 	if pose_source.is_valid():
 		var p: Variant = pose_source.call()
 		mode = Mode.POSE_SOURCE
@@ -146,6 +155,7 @@ func read_pose() -> PackedVector3Array:
 		return tracked
 	if controller != null and controller.get_has_tracking_data():
 		mode = Mode.CONTROLLER
+		frame_valid = true
 		return controller_pose(controller.transform, controller.get_float("trigger"), controller.get_float("grip"))
 	mode = Mode.NONE
 	return PackedVector3Array()
@@ -166,17 +176,46 @@ func _tracked_pose() -> PackedVector3Array:
 	return out if valid >= MIN_VALID_JOINTS else PackedVector3Array()
 
 
-## Поза от контроллера: система ладони = поза grip с калибровкой, пальцы по курку и хвату.
-func controller_pose(grip: Transform3D, trigger: float, hold: float) -> PackedVector3Array:
-	var seat := Transform3D(Basis(Vector3(0, 0, -1), deg_to_rad(-HAND_ROLL_DEG if left else HAND_ROLL_DEG)).scaled(Vector3.ONE * HAND_SCALE), Vector3.ZERO)
-	var palm := grip * Transform3D(Basis.IDENTITY, Vector3(0, 0, HAND_TOWARD_VIEWER)) \
-		* Transform3D(Basis(Vector3.RIGHT, deg_to_rad(grip_pitch_deg)), grip_offset) * seat
+## Рамка ладони по позе grip: сдвиг к зрителю, калибровка comfort.cfg и поворот посадки (без масштаба — рамка едет по сети как есть, AvatarPose).
+func palm_frame(grip: Transform3D) -> Transform3D:
+	var roll := Basis(Vector3(0, 0, -1), deg_to_rad(-HAND_ROLL_DEG if left else HAND_ROLL_DEG))
+	return grip * Transform3D(Basis.IDENTITY, Vector3(0, 0, HAND_TOWARD_VIEWER)) \
+		* Transform3D(Basis(Vector3.RIGHT, deg_to_rad(grip_pitch_deg)), grip_offset) * Transform3D(roll, Vector3.ZERO)
+
+
+## 26 суставов по рамке ладони и сгибу: пальцы по курку и хвату, размер руки с HAND_SCALE.
+func pose_at(frame: Transform3D, trigger: float, hold: float) -> PackedVector3Array:
 	var local := HandSkeleton.pose(HandSkeleton.curls_from_inputs(trigger, hold), left)
 	var out := PackedVector3Array()
 	out.resize(HandSkeleton.COUNT)
 	for j in HandSkeleton.COUNT:
-		out[j] = palm * local[j]
+		out[j] = frame * (local[j] * HAND_SCALE)
 	return out
+
+
+## Поза от контроллера: система ладони = поза grip с калибровкой, пальцы по курку и хвату.
+func controller_pose(grip: Transform3D, trigger: float, hold: float) -> PackedVector3Array:
+	frame_palm = palm_frame(grip)
+	frame_trigger = trigger
+	frame_hold = hold
+	return pose_at(frame_palm, trigger, hold)
+
+
+## Цвет свечения: точки — c, искры — светлее. Меняет статичные поля буфера; на экран попадает при ближайшем update_hand.
+func set_tint(c: Color) -> void:
+	tint = c
+	var spark := c.lerp(Color.WHITE, 0.5)
+	for i in _template.size():
+		var col := spark if float((_template[i] as Array)[0]) > 0.5 else c
+		var o := i * STRIDE
+		_buf[o + 12] = col.r
+		_buf[o + 13] = col.g
+		_buf[o + 14] = col.b
+
+
+## Чужая рука: рисуется с проверкой глубины (стены её закрывают), а не поверх всего.
+func set_occluded(on: bool) -> void:
+	_mat.shader = SHADER_OCCLUDED if on else SHADER
 
 
 ## Обновить положения частиц в буфере экземпляров по позиции суставов (остальные поля заданы один раз при создании).

@@ -12,6 +12,8 @@ const TINT_AMOUNT := 0.6  # доля оттенка игрока в свечен
 var asset := NodeAssets.RUNNER
 var player_id := 0
 
+var body: AvatarBody
+var _model: Node3D
 var _color := Color.BLACK
 
 
@@ -25,11 +27,15 @@ func setup(id: int) -> void:
 	var model := NodeAssets.instance(asset)
 	model.name = "Model"
 	add_child(model)
+	_model = model
+	body = AvatarBody.new()
+	add_child(body)
 	# Фигура красная (люди, ИИ и угроза — красные по стилю), но девять игроков должны различаться: оттенок игрока подмешан в свечение (60%),
 	# белые акценты и «горячая» голова остаются светлыми. Цвет — параметр шейдера штрихов и точек на всех материалах модели, включая отражение.
 	_color = color_for(id)
 	AssetMaterials.set_param(model, "tint", _color)
 	AssetMaterials.set_param(model, "tint_amount", TINT_AMOUNT)
+	body.set_color(_color)
 
 
 func neon_color() -> Color:
@@ -43,3 +49,19 @@ func move_to(p: Vector3, delta: float) -> void:
 	position = p
 	if d.length() > MOVE_EPS:
 		rotation.y = lerp_angle(rotation.y, atan2(-d.x, -d.z), clampf(delta * TURN_SPEED, 0.0, 1.0))
+
+
+## Поза тела от сервера (положения от точки пола аватара). null — позы нет, вернётся модель runner.glb.
+func apply_pose(pose: AvatarPose) -> void:
+	body.apply_pose(pose)
+	_sync_model()
+
+
+func _process(_delta: float) -> void:
+	body.global_position = global_position
+	_sync_model()
+
+
+func _sync_model() -> void:
+	if _model != null:
+		_model.visible = not body.has_pose()
