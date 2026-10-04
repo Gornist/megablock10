@@ -143,3 +143,17 @@ func test_flat_client_scene_follows_server_state() -> void:
 	assert_bool(await _wait_for(func(): return ds.is_ghost(_node.now()), 5.0)).is_true()
 	assert_bool(await _wait_for(func(): return str(scene.world_ui.deck.row_texts()[1]).contains("с"), 5.0)).is_true()
 	await proto.net.drop()
+
+
+## Бот ходит прыжками по тем же правилам, что игрок: не дальше дальности, с паузой перезарядки, сервер ни одного не отклонил.
+func test_bot_moves_by_teleport_hops_that_follow_the_rules() -> void:
+	_bot.start(_cfg, BotClient.Scenario.GHOST_RUN)
+	assert_bool(await _wait_for(func(): return not _bot.result.is_empty())).is_true()
+	assert_str(_bot.result).is_equal("clean")
+	assert_int(_bot.hops).is_greater(2)
+	assert_array(_bot.tp_denied).is_empty()
+	var prev := -INF
+	for h in _bot.hop_log:   # [время бота, длина прыжка]
+		assert_float(h[1]).is_less_equal(RigMath.TELEPORT_RANGE + 0.001)
+		assert_float(h[0] - prev).is_greater_equal(RigMath.TELEPORT_COOLDOWN)
+		prev = h[0]

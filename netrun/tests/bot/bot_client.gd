@@ -14,7 +14,9 @@ signal finished(result: String)
 ## и выходит чисто там же; `use_ghost` — сначала GHOST. Видит узел так, как его описал сервер (событие node): порталы и шарды.
 enum Scenario { GHOST_RUN, EXPOSED_RUN, LOITER, BLACK_RUN, GRAPH_RUN }
 
-const SPEED := 4.0         # м/с (ходьба игрока в плоской сборке — около 2.5)
+## Бот двигается так же, как игрок в VR: прыжками-телепортами (не дальше RigMath.TELEPORT_RANGE, пауза — перезарядка), не ходьбой.
+const HOP_PAUSE := RigMath.TELEPORT_COOLDOWN + 0.05  # с между прыжками (сервер пускает чаще, но бот ходит по правилам игрока)
+const LOITER_MAX_ARC := 0.8  # рад: дуга за один прыжок по кругу (хорда не длиннее 0,8 радиуса)
 const SEND_PERIOD := 0.05
 const ARRIVE := 1.0
 const BLACK_SPOT := Vector3(0, 0, -9)  # у линии патруля Black ICE (NodeLayout.BLACK_ICE), в его конусе
@@ -30,6 +32,10 @@ var position := NodeLayout.SPAWN
 var result := ""           # "" пока идёт; clean | ejected | flatline | lost | timeout:<шаг>
 var last_state: Dictionary = {}
 var events: Array = []
+## Прыжки бота: сколько, [время бота, длина] каждого (тест проверяет правила), причины отказов сервера.
+var hops := 0
+var hop_log: Array = []
+var tp_denied: Array[String] = []
 var shard_taken := false
 var steps: Array[String] = []
 ## Чужие аватары и ICE так, как их видит клиент (буфер состояний), и сколько пакетов позиций пришло.
@@ -81,6 +87,7 @@ var _clock := 0.0
 var _send_acc := 0.0
 var _asked := false
 var _asked_at := 0.0
+var _next_hop_at := 0.0
 
 
 func start(cfg: NetConfig, scenario_kind: int = Scenario.GHOST_RUN) -> void:
@@ -100,6 +107,11 @@ func start(cfg: NetConfig, scenario_kind: int = Scenario.GHOST_RUN) -> void:
 		if verbose:
 			print("[bot] шард взят"))
 	net.disconnected.connect(_on_disconnected)
+	net.teleport_denied.connect(func(reason: String, server_pos: Vector3, _left: float):
+		tp_denied.append(reason)
+		position = server_pos  # как игрок: сервер отказал — стоим там, где он нас видит
+		if verbose:
+			print("[bot] телепорт отклонён: ", reason))
 	net.start_client(cfg)
 	_enter("connect")
 
@@ -169,12 +181,28 @@ func _resume() -> void:
 	_resume_keep_ghost = false
 
 
-func _walk_to(goal: Vector3, delta: float, stop_at: float) -> bool:
+## Шаг пути к цели прыжками: когда перезарядка прошла — прыжок в сторону цели не дальше дальности (hop_scale < 1 — осторожный путь,
+## короткими прыжками). true — уже на месте (не дальше stop_at от цели). Параметр кадра оставлен для старых вызовов.
+func _walk_to(goal: Vector3, _delta: float, stop_at: float, hop_scale: float = 1.0) -> bool:
 	var d := Vector3(goal.x - position.x, 0.0, goal.z - position.z)
 	if d.length() <= stop_at:
 		return true
-	position += d.normalized() * minf(SPEED * delta, d.length())
+	if _clock >= _next_hop_at:
+		_hop(position + d.normalized() * minf(d.length(), RigMath.TELEPORT_RANGE * hop_scale))
 	return false
+
+
+## Прыжок: просьба серверу, позиция бота меняется сразу (как у риг-а), дальше — перезарядка.
+func _hop(to: Vector3) -> void:
+	hop_log.append([_clock, NodeLayout.flat_distance(position, to)])
+	hops += 1
+	position = Vector3(to.x, 0.0, to.z)
+	_next_hop_at = _clock + HOP_PAUSE
+	net.request_teleport(position)
+
+
+func _loiter_point(angle: float) -> Vector3:
+	return loiter_center + Vector3(loiter_radius * sin(angle), 0, loiter_radius * (1.0 - cos(angle)) - loiter_radius)
 
 
 func _process(delta: float) -> void:
@@ -210,10 +238,10 @@ func _process(delta: float) -> void:
 					_enter("ghost" if scenario == Scenario.GHOST_RUN else "to_shard")
 		"loiter":
 			_step_started = _clock  # без таймаута шага: бот гуляет, пока его не остановят
-			var start := loiter_center + Vector3(loiter_radius * sin(_loiter_angle), 0, loiter_radius * (1.0 - cos(_loiter_angle)) - loiter_radius)
-			if _walk_to(start, delta, 0.05):
-				_loiter_angle += loiter_omega * delta
-				position = loiter_center + Vector3(loiter_radius * sin(_loiter_angle), 0, loiter_radius * (1.0 - cos(_loiter_angle)) - loiter_radius)
+			# Выходим на круг, потом раз в перезарядку прыгаем на следующую точку круга.
+			if _walk_to(_loiter_point(_loiter_angle), delta, 0.05) and _clock >= _next_hop_at:
+				_loiter_angle += minf(loiter_omega * HOP_PAUSE, LOITER_MAX_ARC)
+				_hop(_loiter_point(_loiter_angle))
 		"to_black":
 			if _walk_to(BLACK_SPOT, delta, 0.5):
 				_enter("lurk")
@@ -261,7 +289,7 @@ func _process(delta: float) -> void:
 		"to_shard":
 			# Без GHOST идём осторожно: ICE успевает заметить и догнать раньше шарда.
 			var speed_scale := 1.0 if scenario == Scenario.GHOST_RUN else 0.25
-			if _walk_to(_plain_shard()["pos"], delta * speed_scale, GRAB_FROM):
+			if _walk_to(_plain_shard()["pos"], delta, GRAB_FROM, speed_scale):
 				_enter("to_exit" if no_shard else "grab")
 		"grab":
 			if not _asked:
