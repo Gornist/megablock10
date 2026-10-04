@@ -11,6 +11,9 @@ uniform float spark_half_len : hint_range(0.0, 0.05) = 0.013;  // полудли
 uniform float intensity : hint_range(0.0, 4.0) = 1.0;
 uniform float min_angle : hint_range(0.0, 0.01) = 0.0;         // наименьший угловой размер точки, рад: далёкие точки не мельче ~2 пикселей (чужое тело; у своих рук 0)
 
+uniform float facing_fade : hint_range(0.0, 1.0) = 0.0;       // 1 — гасить точки, обращённые от камеры (голова: лицо спереди не просвечивает затылком); 0 — не гасить (руки)
+uniform vec3 facing_center = vec3(0.0);                          // центр объёма в мировых координатах, от него считается «наружу»; задаёт узел каждый кадр
+
 varying vec3 v_col;
 varying float v_alpha;
 varying float v_kind;
@@ -32,7 +35,13 @@ void vertex() {
 	}
 	float wave = 0.5 + 0.5 * sin(6.28318 * (TIME * wave_speed - phase * 1.4));
 	float tw = 1.0 - twinkle + twinkle * sin(TIME * 2.3 + phase * 40.0 + float(INSTANCE_ID) * 1.7);
-	v_alpha = weight * mix(1.0 - wave_depth, 1.0, wave) * tw * fade * intensity;
+	float facing = 1.0;
+	if (facing_fade > 0.5) {
+		vec3 out_dir = normalize(w - facing_center + vec3(0.0, 0.0, 0.0001));
+		float d = dot(out_dir, normalize(CAMERA_POSITION_WORLD - facing_center));
+		facing = mix(0.12, 1.0, smoothstep(-0.15, 0.4, d));  // с обратной стороны точка остаётся бледной
+	}
+	v_alpha = weight * mix(1.0 - wave_depth, 1.0, wave) * tw * fade * intensity * facing;
 	v_col = COLOR.rgb;
 	v_kind = kind;
 	vec4 mv = VIEW_MATRIX * vec4(w, 1.0);

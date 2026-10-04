@@ -77,21 +77,64 @@ func test_decoded_basis_is_orthonormal() -> void:
 
 func test_head_cloud_count_and_budget() -> void:
 	var h: HeadCloud = auto_free(HeadCloud.new())
-	assert_int(h.particle_count()).is_between(150, 220)
+	assert_int(h.particle_count()).is_between(420, 540)  # сопоставимо с рукой (≈ 480 точек), иначе лицо не читается
 	assert_int(h.multimesh().instance_count).is_equal(h.particle_count())
 	assert_int(h.multimesh().buffer.size()).is_equal(h.particle_count() * HeadCloud.STRIDE)
 
 
-func test_head_particles_sit_around_the_skull_with_the_visor_in_front() -> void:
+func test_head_particles_sit_around_the_skull() -> void:
 	var h: HeadCloud = auto_free(HeadCloud.new())
-	var visor_start := HeadCloud.RINGS * HeadCloud.RING_POINTS
 	for i in h.particle_count():
-		var q := h.particle_position(i)
-		assert_float(q.distance_to(HeadCloud.CENTER)).is_less(0.2)
-	var front := 0.0
-	for i in HeadCloud.VISOR_POINTS:
-		front += h.particle_position(visor_start + i).z
-	assert_float(front / HeadCloud.VISOR_POINTS).is_less(HeadCloud.CENTER.z - 0.05)  # полоса спереди: -Z от центра головы
+		assert_float(h.particle_position(i).distance_to(HeadCloud.CENTER)).is_less(0.2)
+
+
+func test_face_mask_looks_forward_and_is_brighter_than_the_back_of_the_head() -> void:
+	var tpl := HeadCloud.template()
+	var face_z := 0.0
+	var face_w := 0.0
+	for i in HeadCloud.FACE_POINTS:
+		face_z += (tpl[i][0] as Vector3).z
+		face_w += float(tpl[i][3])
+	assert_float(face_z / HeadCloud.FACE_POINTS).is_less(HeadCloud.CENTER.z - 0.05)  # маска спереди: -Z от центра головы
+	var shell_w := 0.0
+	for i in range(HeadCloud.FACE_POINTS, HeadCloud.FACE_POINTS + HeadCloud.SHELL_POINTS):
+		shell_w += float(tpl[i][3])
+	assert_float(face_w / HeadCloud.FACE_POINTS).is_greater(shell_w / HeadCloud.SHELL_POINTS + 0.15)
+
+
+func test_face_is_symmetric_with_two_eyes_at_eye_level() -> void:
+	var tpl := HeadCloud.template()
+	var left := 0
+	var right := 0
+	var eyes := 0
+	var eye_n := 2 * (HeadCloud.EYE_LINE_POINTS + HeadCloud.EYE_PUPIL_POINTS)
+	for i in HeadCloud.OUTLINE_POINTS + eye_n:  # контур и глаза
+		var q: Vector3 = tpl[i][0]
+		if absf(q.x) > 0.005:
+			if q.x > 0.0:
+				right += 1
+			else:
+				left += 1
+	for i in range(HeadCloud.OUTLINE_POINTS, HeadCloud.OUTLINE_POINTS + eye_n):  # глаза: на высоте глаз (начало координат) и по обе стороны носа
+		var q: Vector3 = tpl[i][0]
+		assert_float(absf(q.y)).is_less(0.012)
+		assert_float(absf(q.x)).is_between(0.015, 0.06)
+		eyes += 1
+	assert_int(eyes).is_equal(eye_n)
+	assert_int(absi(left - right)).is_less(4)
+
+
+func test_nose_and_mouth_are_on_the_midline_below_the_eyes() -> void:
+	var tpl := HeadCloud.template()
+	var nose_start := HeadCloud.OUTLINE_POINTS + 2 * (HeadCloud.EYE_LINE_POINTS + HeadCloud.EYE_PUPIL_POINTS) + 2 * HeadCloud.BROW_POINTS
+	var nose_tip: Vector3 = tpl[nose_start + HeadCloud.NOSE_POINTS - 1][0]
+	var nose_bridge: Vector3 = tpl[nose_start][0]
+	assert_float(absf(nose_tip.x)).is_less(0.002)
+	assert_float(nose_tip.y).is_less(nose_bridge.y - 0.03)
+	assert_float(nose_tip.z).is_less(nose_bridge.z)  # кончик носа выступает вперёд
+	var mouth_start := nose_start + HeadCloud.NOSE_POINTS + HeadCloud.NOSTRIL_POINTS
+	for i in HeadCloud.MOUTH_POINTS:
+		assert_float((tpl[mouth_start + i][0] as Vector3).y).is_less(nose_tip.y)  # рот ниже кончика носа
 
 
 func test_head_tint_colours_points_and_lightens_sparks() -> void:

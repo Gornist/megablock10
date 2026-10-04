@@ -52,13 +52,12 @@ func _ready() -> void:
 	cam.current = true
 	add_child(cam)
 	var shots := [
-		["front", Vector3(0.1, 1.5, 3.0), Vector3(0.1, 1.2, -0.4)],
-		["side", Vector3(-3.6, 1.6, 0.4), Vector3(0.1, 1.2, -0.3)],
-		["close", Vector3(-1.0, 1.55, 1.1), Vector3(-1.4, 1.4, 0.0)],
-		["face", Vector3(-1.4, 1.62, 0.9), Vector3(-1.4, 1.5, 0.0)],
+		["face1", Vector3(-1.4, 1.62, -0.8), Vector3(-1.4, 1.62, 0.0)],
+		["face2", Vector3(-1.4, 1.6, -2.0), Vector3(-1.4, 1.55, 0.0)],
+		["face4", Vector3(-1.2, 1.6, -4.0), Vector3(-1.4, 1.5, 0.0)],
+		["three4", Vector3(-1.4, 1.6, -3.0), Vector3(-1.4, 1.5, 0.0)],
 		["mid", Vector3(-0.6, 1.5, 2.0), Vector3(-0.5, 1.3, -0.4)],
-		["high", Vector3(0.2, 2.8, 2.6), Vector3(0.1, 1.2, -0.4)],
-		["far", Vector3(0.1, 1.5, 6.5), Vector3(0.1, 1.2, -0.4)],
+		["side", Vector3(-3.6, 1.6, 0.4), Vector3(0.1, 1.2, -0.3)],
 	]
 	for sh in shots:
 		cam.look_at_from_position(sh[1] + C, sh[2] + C)
