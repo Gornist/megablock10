@@ -447,20 +447,97 @@ func put_field(type: String, id: String, key: String, value: Variant) -> bool:
 	return false
 
 
-## Дека игрока из Моста: демоны предметов deck:<сессия> с полем `daemon` ({effect, tier, name, cells}, его пишет Мост
-## при приёме карточки). Возвращает [{id: id предмета, daemon: {...}}]; нет ни одного — вызывающий оставляет деку по умолчанию.
+## Рабочий ли демон по происхождению: только принесённый с телефона (`phone:*`). Добытый в узле (`node:*`) или выданный мастером
+## (`master:*`) лежит в грузе: он не работает в этом забеге и не занимает RAM (docs/netrun-deck-design.md, 5.1).
+static func is_loaded_origin(origin: String) -> bool:
+	return origin.begins_with("phone:")
+
+
+## Дека игрока из Моста: **рабочие** демоны предметов deck:<сессия> (origin phone:*) с полем `daemon` ({effect, tier, name, cells},
+## его пишет Мост при приёме карточки). Возвращает [{id: id предмета, daemon: {...}, protected}]; нет ни одного — вызывающий оставляет
+## деку по умолчанию.
 static func deck_from_items(items: Array, session: String) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	for d in items:
 		var data: Dictionary = d.get("data", {})
 		if data.get("owner") != "deck:" + session or data.get("kind") != "DAEMON":
 			continue
+		if not is_loaded_origin(str(data.get("origin", ""))):
+			continue
 		var daemon: Variant = data.get("daemon")
 		if daemon is Dictionary and str(d.get("id", "")) != "":
-			out.append({"id": str(d["id"]), "daemon": daemon})
+			out.append({"id": str(d["id"]), "daemon": daemon, "protected": bool(data.get("protected", false))})
 	return out
 
 
+## Груз игрока из Моста: шарды (kind SHARD) и добытые демоны (DAEMON не с телефона) предметов deck:<сессия> →
+## [{id, kind: shard | daemon, tier, title, enc}] по id (список не прыгает). Шард без разобранного поля `shard` или без признака
+## `decrypted` считается зашифрованным: тела мы не знаем, открыть его нельзя.
+static func loot_from_items(items: Array, session: String) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for d in items:
+		var data: Dictionary = d.get("data", {})
+		if data.get("owner") != "deck:" + session or str(d.get("id", "")) == "":
+			continue
+		var kind := str(data.get("kind", ""))
+		if kind == "SHARD":
+			var sh: Variant = data.get("shard")
+			var shard: Dictionary = sh if sh is Dictionary else {}
+			out.append({"id": str(d["id"]), "kind": "shard", "tier": clampi(int(shard.get("tier", 1)), 1, 3),
+				"title": str(shard.get("title", "Шард")), "enc": not bool(shard.get("decrypted", false))})
+		elif kind == "DAEMON" and not is_loaded_origin(str(data.get("origin", ""))):
+			var dm: Variant = data.get("daemon")
+			var daemon: Dictionary = dm if dm is Dictionary else {}
+			out.append({"id": str(d["id"]), "kind": "daemon", "tier": clampi(int(daemon.get("tier", 1)), 1, 3),
+				"title": str(daemon.get("name", daemon.get("effect", "Демон"))), "enc": false})
+	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["id"] < b["id"])
+	return out
+
+
+## Что дека показывает про сессию (событие `ev deck`): RAM и занятое ею, рабочие демоны (имя, эффект, тир, цепочка), груз и эдди.
+func deck_view(ds: DaemonSession) -> Dictionary:
+	var rows: Array = []
+	var used := 0
+	for id in ds.deck:
+		var def := daemons.get_def(id)
+		var meta: Dictionary = ds.deck_meta.get(id, {})
+		var cells: Array = (meta.get("cells", []) as Array).map(func(c: Variant) -> String: return str(c))
+		used += cells.size()
+		var row := {"id": id, "name": daemons.display_name(id, NodeLayout.DAEMON_NAMES.get(id, id)), "effect": def.effect if def != null else "",
+			"tier": def.tier if def != null else 1, "cells": cells, "prot": bool(meta.get("prot", false)), "loaded": true}
+		if def != null and def.unsupported_reason != "":
+			row["unsupported"] = def.unsupported_reason
+		rows.append(row)
+	return {"kind": WorldMsg.EV_DECK, "ram": ds.ram, "ram_default": ds.ram_default, "used": used, "daemons": rows,
+		"loot": ds.loot_view, "eddies": ds.loot_eddies}
+
+
+func _push_deck(session: String) -> void:
+	var ds: DaemonSession = _sessions.get(session)
+	if ds != null:
+		net.send_to(session, WorldMsg.encode_fields(WorldMsg.EVENT, deck_view(ds)))
+
+
+## Строка перезарядок в снимке: к {id, name, left} добавлены st (ready | cooldown | active | unsupported) и until (время сервера, когда
+## состояние кончится; нет у ready и unsupported). active — действует эффект (GHOST, JITTER) и важнее перезарядки, которая идёт параллельно.
+func cd_entry(ds: DaemonSession, id: String, now: float) -> Dictionary:
+	var def := daemons.get_def(id)
+	var left := ds.cooldown_left(id, now)
+	var entry := {"id": id, "name": daemons.display_name(id, NodeLayout.DAEMON_NAMES.get(id, id)), "left": left, "st": "ready"}
+	if def != null and def.unsupported_reason != "":
+		entry["st"] = "unsupported"
+		return entry
+	var act := ds.active_left(def.effect, now) if def != null else 0.0
+	if act > 0.0:
+		entry["st"] = "active"
+		entry["until"] = snappedf(now + act, 0.001)
+	elif left > 0.0:
+		entry["st"] = "cooldown"
+		entry["until"] = snappedf(now + left, 0.001)
+	return entry
+
+
+## Дека и груз из Моста (предметы deck:<сессия>), RAM и эдди из документа сессии; в конце — событие `ev deck` игроку.
 func _load_deck(session: String) -> void:
 	if bridge == null or not bridge.is_ready():
 		return
@@ -469,15 +546,32 @@ func _load_deck(session: String) -> void:
 	var ds: DaemonSession = _sessions.get(session)
 	if ds == null or not r.get("ok", false):
 		return
+	var docs: Array = r.get("docs", [])
 	var ids: Array[String] = []
-	for e in deck_from_items(r.get("docs", []), session):
+	var meta := {}
+	for e in deck_from_items(docs, session):
 		var def := daemons.add_item_daemon(e["id"], e["daemon"])
 		if def != null:
 			ids.append(def.id)
+			meta[def.id] = {"cells": e["daemon"].get("cells", []), "prot": e["protected"]}
 			if def.unsupported_reason != "":
 				print("[gray-node] ", session, ": демон ", def.display_name, " (", def.effect, ") не работает в Сети: ", def.unsupported_reason)
 	if not ids.is_empty():
 		ds.deck = ids
+		ds.deck_meta = meta
+	ds.loot_view = loot_from_items(docs, session)
+	@warning_ignore("redundant_await")
+	var sr: Dictionary = await bridge.get_doc(BridgeApi.T_SESSION, session)
+	if _sessions.get(session) != ds:
+		return   # сессия ушла, пока ждали Мост
+	if sr.get("ok", false):
+		var sdata: Dictionary = (sr["doc"] as Dictionary).get("data", {})
+		var ram := int(sdata.get("ram", 0))
+		if ram > 0:   # Мост пока не пишет RAM (запрос входа v2 — позже): без неё остаётся значение по умолчанию с пометкой
+			ds.ram = ram
+			ds.ram_default = false
+		ds.loot_eddies = int(sdata.get("loot_eddies", 0))
+	_push_deck(session)
 
 
 func _physics_process(delta: float) -> void:
@@ -565,7 +659,7 @@ func _broadcast_state() -> void:
 		var ds: DaemonSession = _sessions[session]
 		var cd: Array = []
 		for id in ds.deck:
-			cd.append({"id": id, "name": daemons.display_name(id, NodeLayout.DAEMON_NAMES.get(id, id)), "left": ds.cooldown_left(id, _now)})
+			cd.append(cd_entry(ds, id, _now))
 		var msg := WorldMsg.encode_fields(WorldMsg.STATE, {
 			"trace": ds.trace.value(),
 			"level": ds.trace.level(),
@@ -605,12 +699,14 @@ func _on_joined(session: String, _peer: int, _resumed: bool) -> void:
 	if _sessions.has(session):
 		if bridge != null and synced:
 			_merge_world(session, {"connected": true, "trace": 0, "node": node_id})
+		_push_deck(session)   # клиент вернулся (обрыв, перезапуск очков): его дека пуста, пока не пришло событие
 		return
 	var meter := TraceMeter.new(trace_settings)
 	meter.reset(_now)
 	_connect_meter(session, meter)
 	_sessions[session] = DaemonSession.new(NodeLayout.DEFAULT_DECK, meter)
 	print("[gray-node] ", session, " вошёл в ", node_id)
+	_push_deck(session)   # сразу то, что известно (дека по умолчанию); настоящую деку и груз подтянет _load_deck
 	if bridge != null:
 		_load_deck(session)
 		_merge_world(session, {"connected": true, "trace": 0, "node": node_id})
@@ -729,6 +825,7 @@ func _on_object_taken(object_id: String, session: String) -> void:
 	_takes_inflight[session] = int(_takes_inflight[session]) - 1
 	if r.get("ok", false):
 		print("[gray-node] take ", item, " ok (", session, ")")
+		_load_deck(session)   # шард теперь в деке игрока: груз изменился
 	else:
 		push_warning("[gray-node] take %s: %s" % [item, BridgeApi.err_code(r)])
 
@@ -1224,6 +1321,7 @@ func adopt_session(session: String, ds: DaemonSession) -> void:
 	_sessions[session] = ds
 	_connect_meter(session, ds.trace)
 	print("[gray-node] ", session, " вошёл в ", node_id, " (переход)")
+	_push_deck(session)
 	if bridge != null and synced:
 		# Мост читает world.node (где игрок сейчас) и trace_level/effects (сигнал СБ): после перехода пишем их для нового узла.
 		_merge_world(session, {"connected": net.peer_of(session) != -1, "trace": int(ds.trace.value()), "node": node_id,
