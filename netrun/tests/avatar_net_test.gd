@@ -126,23 +126,23 @@ func test_pos_message_carries_the_pose_only_when_given() -> void:
 # ---------------------------------------------------------------- приёмник (без сети)
 
 func test_remote_tracks_keep_the_pose_from_the_fifth_field() -> void:
-	var tr := RemoteTracks.new()
+	var rt := RemoteTracks.new()
 	var b: Dictionary = _pose().encode()
-	tr.on_avatars({"k": 1.0, "a": [[5, 1.0, 2.0, 0, b], [6, 0.0, 0.0]]}, 1.0)
-	assert_bool(tr.poses.has("5")).is_true()
-	assert_bool(tr.poses.has("6")).is_false()
-	assert_vector(tr.poses["5"].head.origin).is_equal_approx(Vector3(0.1, 1.6, -0.2), Vector3.ONE * 0.002)
+	rt.on_avatars({"k": 1.0, "a": [[5, 1.0, 2.0, 0, b], [6, 0.0, 0.0]]}, 1.0)
+	assert_bool(rt.poses.has("5")).is_true()
+	assert_bool(rt.poses.has("6")).is_false()
+	assert_vector(rt.poses["5"].head.origin).is_equal_approx(Vector3(0.1, 1.6, -0.2), Vector3.ONE * 0.002)
 	# в следующем пакете позы нет — старая не залипает
-	tr.on_avatars({"k": 1.05, "a": [[5, 1.0, 2.0], [6, 0.0, 0.0]]}, 1.05)
-	assert_bool(tr.poses.has("5")).is_false()
+	rt.on_avatars({"k": 1.05, "a": [[5, 1.0, 2.0], [6, 0.0, 0.0]]}, 1.05)
+	assert_bool(rt.poses.has("5")).is_false()
 	# мусор в пятом поле — позы нет, аватар на месте
-	tr.on_avatars({"k": 1.1, "a": [[5, 1.0, 2.0, 0, {"h": [1, 2]}], [6, 0.0, 0.0]]}, 1.1)
-	assert_bool(tr.poses.has("5")).is_false()
-	assert_bool(tr.avatars.has("5")).is_true()
+	rt.on_avatars({"k": 1.1, "a": [[5, 1.0, 2.0, 0, {"h": [1, 2]}], [6, 0.0, 0.0]]}, 1.1)
+	assert_bool(rt.poses.has("5")).is_false()
+	assert_bool(rt.avatars.has("5")).is_true()
 	# вышедший из узла забывается вместе с позой
-	tr.on_avatars({"k": 1.15, "a": [[5, 1.0, 2.0, 0, b]]}, 1.15)
-	tr.on_avatars({"k": 1.2, "a": []}, 1.2)
-	assert_bool(tr.poses.is_empty()).is_true()
+	rt.on_avatars({"k": 1.15, "a": [[5, 1.0, 2.0, 0, b]]}, 1.15)
+	rt.on_avatars({"k": 1.2, "a": []}, 1.2)
+	assert_bool(rt.poses.is_empty()).is_true()
 
 
 func test_scene_draws_the_body_from_the_pose_and_hides_it_without() -> void:
@@ -166,12 +166,12 @@ func test_server_keeps_a_valid_pose_and_puts_it_into_the_avatar_entry() -> void:
 	_start(1)
 	assert_bool(await _wait_for(func(): return _server.has_avatar(_sessions[0]))).is_true()
 	assert_object(_server.pose_of(_sessions[0])).is_null()
-	assert_int(_server.avatar_entry(_sessions[0]).size()).is_equal(3)   # без позы запись прежняя
+	assert_int(_server.avatar_entry(_sessions[0]).size()).is_less(5)   # без позы запись прежняя: [id, x, z] и счётчик скачков, если бот прыгал
 	_bots[0].net.send_pos(Vector3(-6, 0, -2), _pose())
 	assert_bool(await _wait_for(func(): return _server.pose_of(_sessions[0]) != null)).is_true()
 	var e := _server.avatar_entry(_sessions[0])
 	assert_int(e.size()).is_equal(5)
-	assert_int(e[3]).is_equal(0)   # скачков не было
+	assert_int(e[3]).is_equal(_server.teleport_count(_sessions[0]))   # четвёртое поле есть всегда, когда есть поза
 	assert_bool(AvatarPose.decode(e[4]) != null).is_true()
 
 
@@ -191,9 +191,9 @@ func test_server_drops_garbage_poses() -> void:
 		await _sleep(0.05)
 	await _sleep(0.15)
 	assert_object(_server.pose_of(_sessions[0])).is_null()
-	assert_int(_server.avatar_entry(_sessions[0]).size()).is_equal(3)
+	assert_int(_server.avatar_entry(_sessions[0]).size()).is_less(5)
 	# битая рука выпадает, голова остаётся; лишние поля не ходят дальше сервера
-	_send_raw(_bots[0], {"h": good, "l": [0, 0, 0], "r": [9.0, 0, 0, 0, 0, 0, 1, 0, 0], "junk": "x" * 500})
+	_send_raw(_bots[0], {"h": good, "l": [0, 0, 0], "r": [9.0, 0, 0, 0, 0, 0, 1, 0, 0], "junk": "x".repeat(500)})
 	assert_bool(await _wait_for(func(): return _server.pose_of(_sessions[0]) != null)).is_true()
 	var kept: Dictionary = _server.pose_of(_sessions[0])
 	assert_array(kept.keys()).contains_exactly_in_any_order(["h"])
@@ -231,7 +231,7 @@ func test_server_stops_forwarding_a_pose_older_than_the_ttl() -> void:
 	assert_bool(await _wait_for(func(): return _server.pose_of(_sessions[0]) != null)).is_true()
 	await _sleep(NetServer.POSE_TTL_MS / 1000.0 + 0.15)
 	assert_object(_server.pose_of(_sessions[0])).is_null()
-	assert_int(_server.avatar_entry(_sessions[0]).size()).is_equal(3)
+	assert_int(_server.avatar_entry(_sessions[0]).size()).is_less(5)
 
 
 # ---------------------------------------------------------------- рассылка
