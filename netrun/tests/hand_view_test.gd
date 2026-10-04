@@ -349,6 +349,19 @@ func test_rig_has_a_view_for_each_hand_bound_to_its_controller() -> void:
 	assert_bool(rig.left_hand_view.visible).is_false()
 
 
+func test_default_hand_pitch_matches_the_pico_grip() -> void:
+	# Подобрано на очках (владелец: «руки выглядят отлично»): кисть наклонена вдоль рукояти контроллера, пальцы вниз.
+	var c := ComfortConfig.new()
+	assert_float(c.hand_pitch_deg).is_equal(-40.0)
+	assert_float(ComfortConfig.from_config(ConfigFile.new()).hand_pitch_deg).is_equal(-40.0)  # нет файла или ключа — тот же наклон
+	var rig := auto_free(preload("res://client/xr_rig.tscn").instantiate()) as XRRig
+	add_child(rig)
+	c.apply_to(rig)
+	assert_float(rig.right_hand_view.grip_pitch_deg).is_equal(-40.0)
+	assert_float(rig.left_hand_view.grip_pitch_deg).is_equal(-40.0)  # наклон вокруг X у обеих рук один (зеркало по X его не меняет)
+	assert_str(String(c.log_fields()["hand"])).is_equal("-40,0,0,0")
+
+
 func test_comfort_calibrates_the_hands_with_limits() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("comfort", "hand_pitch_deg", 200.0)

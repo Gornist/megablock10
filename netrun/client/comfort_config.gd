@@ -15,11 +15,13 @@ extends RefCounted
 ## teleport_range = 4.0          ; дальность телепорта, м, 1…6 (предел сервера)
 ## teleport_cooldown = 1.2       ; перезарядка телепорта, с, 0,6…10 (предел сервера)
 ## teleport_blink_s = 0.1        ; затемнение и проявление моргания, каждое, с, 0,03…0,4
-## hand_pitch_deg = 0.0          ; руки (client/hand_view.gd): поворот кисти вокруг оси X контроллера, градусы, -90…90 (вверх +); поза grip на Pico 4 не мерилась
+## hand_pitch_deg = -40.0        ; руки (client/hand_view.gd): поворот кисти вокруг оси X контроллера, градусы, -90…90 (вверх +); -40 подобран на Pico 4 (пальцы вдоль рукояти вниз)
 ## hand_offset_x = 0.0           ; смещение кисти относительно позы grip в системе контроллера, м, -0,15…0,15 (у левой руки X зеркальный)
 ## hand_offset_y = 0.0
 ## hand_offset_z = 0.0
 
+## Наклон кисти по умолчанию, градусы: подобран на очках, владелец подтвердил («руки выглядят отлично»).
+const HAND_PITCH_DEFAULT := -40.0
 const PATH := "user://comfort.cfg"
 const SECTION := "comfort"
 const KEYS := ["turn_mode", "turn_speed_deg_s", "turn_vignette", "turn_ramp_up_s", "turn_ramp_down_s",
@@ -47,7 +49,7 @@ var turn_ramp_down_s := RigMath.TURN_RAMP_DOWN_SEC
 var teleport_range := RigMath.TELEPORT_RANGE
 var teleport_cooldown := RigMath.TELEPORT_COOLDOWN
 var teleport_blink_s := RigMath.TELEPORT_BLINK_SEC
-var hand_pitch_deg := 0.0
+var hand_pitch_deg := HAND_PITCH_DEFAULT
 var hand_offset_x := 0.0
 var hand_offset_y := 0.0
 var hand_offset_z := 0.0
