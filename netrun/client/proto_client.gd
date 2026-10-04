@@ -3,7 +3,7 @@ extends Node
 ## Клиент прототипа (V3), общий для Pico 4 и плоской сборки: сцена, XR-риг, сеть, журнал в файл.
 ## Журнал (user://logs/netrun-*.log): start, mode, xr, comfort (+ comfort.warn), rig.recenter, rig.teleport, teleport.denied,
 ## net.* (в том числе net.config, net.reconnect), grab.*, app.pause/resume, frame.slow.
-## Аргументы разработки: `--walk` (плоская сборка: ходьба WASD), `--turn=snap|smooth` (режим поворота поверх comfort.cfg).
+## Аргументы разработки: `--walk` (плоская сборка: ходьба WASD), `--turn=none|snap|smooth` (режим поворота поверх comfort.cfg).
 ## Адрес сервера и токен — из netrun.cfg на очках и аргументов (NetConfig.from_sources); сам токен в журнал не попадает.
 
 const SLOW_LOG_MIN_GAP_MS := 250  # долгие кадры (FrameStats.is_slow) в журнал — не чаще раза в 250 мс (остальные — счётчиком)
@@ -92,10 +92,10 @@ func _setup_comfort(args: PackedStringArray) -> void:
 			walk = true
 		elif a.begins_with("--turn="):
 			var m := a.trim_prefix("--turn=")
-			if m == RigMath.TURN_MODE_SMOOTH or m == RigMath.TURN_MODE_SNAP:
+			if m == RigMath.TURN_MODE_NONE or m == RigMath.TURN_MODE_SMOOTH or m == RigMath.TURN_MODE_SNAP:
 				comfort.turn_mode = m
 			else:
-				comfort.warnings.append("--turn=: допустимо smooth или snap, получено «%s»" % m)
+				comfort.warnings.append("--turn=: допустимо none, smooth или snap, получено «%s»" % m)
 	comfort.apply_to(scene.rig)
 	scene.rig.walk_enabled = walk
 	for w in comfort.warnings:

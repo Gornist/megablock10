@@ -15,6 +15,13 @@ func _scene() -> Node3D:
 	return scene
 
 
+## Рига для тестов плавного поворота (по умолчанию стик мир не вращает).
+func _smooth_rig() -> XRRig:
+	var rig: XRRig = _scene().rig
+	rig.turn_mode = RigMath.TURN_MODE_SMOOTH
+	return rig
+
+
 func _frames(rig: XRRig, n: int, turn_x: float = 0.0, stick: Vector2 = Vector2.ZERO, clicked: bool = false) -> void:
 	for i in n:
 		rig.drive(turn_x, stick, clicked and i == 0, DT)
@@ -27,9 +34,9 @@ func _teleport_forward(rig: XRRig) -> void:
 	_frames(rig, 12)
 
 
-func test_defaults_are_smooth_turn_and_no_walking() -> void:
+func test_defaults_are_no_stick_turn_and_no_walking() -> void:
 	var rig: XRRig = _scene().rig
-	assert_str(rig.turn_mode).is_equal(RigMath.TURN_MODE_SMOOTH)
+	assert_str(rig.turn_mode).is_equal(RigMath.TURN_MODE_NONE)
 	assert_float(rig.turn_speed_deg_s).is_equal(RigMath.TURN_SPEED_DEG_S)
 	assert_bool(rig.walk_enabled).is_false()
 	assert_float(rig.teleport_range).is_equal(RigMath.TELEPORT_RANGE)
@@ -205,7 +212,7 @@ func _yaw(rig: XRRig) -> float:
 
 
 func test_stick_turns_smoothly_without_a_jump_per_frame() -> void:
-	var rig: XRRig = _scene().rig
+	var rig: XRRig = _smooth_rig()
 	var yaw := _yaw(rig)
 	var worst := 0.0
 	var head := rig.camera.global_position
@@ -220,7 +227,7 @@ func test_stick_turns_smoothly_without_a_jump_per_frame() -> void:
 
 
 func test_turn_right_is_clockwise_and_reaches_full_speed_after_ramp() -> void:
-	var rig: XRRig = _scene().rig
+	var rig: XRRig = _smooth_rig()
 	var yaw0 := _yaw(rig)
 	for i in 72:   # секунда на полном стике: 0,25 с разгона (7,5°) + 0,75 с по 60°/с
 		rig.drive(1.0, Vector2.ZERO, false, DT)
@@ -230,7 +237,7 @@ func test_turn_right_is_clockwise_and_reaches_full_speed_after_ramp() -> void:
 
 
 func test_turn_coasts_to_a_stop_after_release() -> void:
-	var rig: XRRig = _scene().rig
+	var rig: XRRig = _smooth_rig()
 	for i in 72:
 		rig.drive(-1.0, Vector2.ZERO, false, DT)
 	var yaw_release := _yaw(rig)
@@ -244,7 +251,7 @@ func test_turn_coasts_to_a_stop_after_release() -> void:
 
 
 func test_vignette_follows_turn_speed() -> void:
-	var rig: XRRig = _scene().rig
+	var rig: XRRig = _smooth_rig()
 	assert_float(rig.vignette_amount()).is_equal(0.0)
 	for i in 72:
 		rig.drive(1.0, Vector2.ZERO, false, DT)
@@ -255,7 +262,7 @@ func test_vignette_follows_turn_speed() -> void:
 
 
 func test_vignette_respects_the_configured_strength() -> void:
-	var rig: XRRig = _scene().rig
+	var rig: XRRig = _smooth_rig()
 	rig.turn_vignette = 0.2
 	for i in 72:
 		rig.drive(1.0, Vector2.ZERO, false, DT)
@@ -268,6 +275,7 @@ func test_vignette_respects_the_configured_strength() -> void:
 
 func test_turn_keeps_working_in_tunnel() -> void:
 	var scene := _scene()
+	scene.rig.turn_mode = RigMath.TURN_MODE_SMOOTH
 	scene.begin_tunnel("Архив", 2.0)
 	var yaw0 := _yaw(scene.rig)
 	for i in 36:
@@ -287,10 +295,147 @@ func test_snap_mode_turns_by_one_step_per_push() -> void:
 
 
 func test_aim_stays_where_the_player_looks_after_turning() -> void:
-	var rig: XRRig = _scene().rig
+	var rig: XRRig = _smooth_rig()
 	for i in 36:
 		rig.drive(-1.0, Vector2.ZERO, false, DT)   # влево
 	_frames(rig, 20)
 	_frames(rig, 3, 0.0, Vector2(0, 1))
 	var t := rig.aim_target() - rig.global_position
 	assert_float(t.x).is_less(-1.0)   # прицел ушёл влево вместе со взглядом
+
+
+# ---------------------------------------------------------------- поворот при телепорте (turn_mode = none)
+
+## Прицелиться вперёд левым стиком, держа правый в выбранном положении, отпустить левый и дождаться конца моргания.
+func _teleport_facing(rig: XRRig, face: Vector2, release_face_at_fire: bool = false) -> void:
+	for i in 3:
+		rig.drive(0.0, Vector2(0, 1), false, DT, Vector2.ZERO, face)
+	for i in 30:
+		rig.drive(0.0, Vector2.ZERO, false, DT, Vector2.ZERO, Vector2.ZERO if release_face_at_fire else face)
+
+
+func test_right_stick_does_not_rotate_the_world_by_default() -> void:
+	var rig: XRRig = _scene().rig
+	var yaw0 := _yaw(rig)
+	for i in 72:
+		rig.drive(1.0, Vector2.ZERO, false, DT, Vector2.ZERO, Vector2(1, 0))
+	assert_float(_yaw(rig)).is_equal(yaw0)
+	assert_float(rig.vignette_amount()).is_equal(0.0)   # без вращения нет и виньетки
+
+
+func test_facing_right_turns_the_view_90_degrees_clockwise_only_in_the_dark() -> void:
+	var rig: XRRig = _scene().rig
+	var yaw0 := _yaw(rig)
+	var steps := []
+	for i in 3:
+		rig.drive(0.0, Vector2(0, 1), false, DT, Vector2.ZERO, Vector2(1, 0))
+	for i in 30:
+		rig.drive(0.0, Vector2.ZERO, false, DT, Vector2.ZERO, Vector2(1, 0))
+		steps.append({"yaw": _yaw(rig), "alpha": rig.blink_alpha()})
+	assert_float(rad_to_deg(angle_difference(yaw0, _yaw(rig)))).is_equal_approx(-90.0, 0.01)   # вправо — по часовой
+	var changes := 0
+	var prev := yaw0
+	for st in steps:
+		if absf(angle_difference(prev, st["yaw"])) > 0.001:
+			changes += 1
+			assert_float(st["alpha"]).is_greater_equal(0.99)   # поворот — в самой тёмной точке, не плавно
+		prev = st["yaw"]
+	assert_int(changes).is_equal(1)
+
+
+func test_facing_back_turns_the_view_around() -> void:
+	var rig: XRRig = _scene().rig
+	var yaw0 := _yaw(rig)
+	_teleport_facing(rig, Vector2(0, -1))
+	assert_float(absf(rad_to_deg(angle_difference(yaw0, _yaw(rig))))).is_equal_approx(180.0, 0.01)
+
+
+func test_facing_left_turns_counter_clockwise() -> void:
+	var rig: XRRig = _scene().rig
+	var yaw0 := _yaw(rig)
+	_teleport_facing(rig, Vector2(-1, 0))
+	assert_float(rad_to_deg(angle_difference(yaw0, _yaw(rig)))).is_equal_approx(90.0, 0.01)
+
+
+func test_right_stick_up_or_untouched_keeps_the_view() -> void:
+	for face in [Vector2.ZERO, Vector2(0, 1), Vector2(0.2, 0.3)]:
+		var rig: XRRig = _scene().rig
+		var yaw0 := _yaw(rig)
+		_teleport_facing(rig, face)
+		assert_int(_attempts.size()).is_equal(1)
+		assert_float(_yaw(rig)).is_equal_approx(yaw0, 0.0001)
+
+
+func test_facing_is_taken_at_release_so_letting_go_of_the_right_stick_first_means_keep() -> void:
+	var rig: XRRig = _scene().rig
+	var yaw0 := _yaw(rig)
+	for i in 3:
+		rig.drive(0.0, Vector2(0, 1), false, DT, Vector2.ZERO, Vector2(1, 0))
+	rig.drive(0.0, Vector2(0, 1), false, DT, Vector2.ZERO, Vector2.ZERO)   # правый отпущен, левый ещё держит прицел
+	for i in 30:
+		rig.drive(0.0, Vector2.ZERO, false, DT)
+	assert_float(_yaw(rig)).is_equal_approx(yaw0, 0.0001)
+
+
+func test_the_player_lands_on_the_target_and_the_head_stays_put_while_turning() -> void:
+	var plain: XRRig = _scene().rig
+	_teleport_facing(plain, Vector2.ZERO)
+	var turned: XRRig = _scene().rig
+	_teleport_facing(turned, Vector2(1, 0))
+	assert_vector(turned.camera.global_position).is_equal_approx(plain.camera.global_position, Vector3.ONE * 0.001)
+
+
+func test_cancelled_aim_does_not_turn() -> void:
+	var rig: XRRig = _scene().rig
+	var yaw0 := _yaw(rig)
+	var start := rig.global_position
+	for i in 3:
+		rig.drive(0.0, Vector2(0, 1), false, DT, Vector2.ZERO, Vector2(1, 0))
+	for i in 30:
+		rig.drive(0.0, Vector2(0, -1), false, DT, Vector2.ZERO, Vector2(1, 0))   # назад — отмена
+	assert_float(_yaw(rig)).is_equal(yaw0)
+	assert_vector(rig.global_position).is_equal(start)
+
+
+func test_a_refused_teleport_does_not_turn() -> void:
+	var rig: XRRig = _scene().rig
+	_teleport_forward(rig)
+	var yaw1 := _yaw(rig)
+	_frames(rig, 3, 0.0, Vector2(0, 1))   # перезарядка ещё идёт: прыжок отклонён клиентом
+	for i in 12:
+		rig.drive(0.0, Vector2.ZERO, false, DT, Vector2.ZERO, Vector2(1, 0))
+	assert_bool(_attempts.back()["ok"]).is_false()
+	assert_float(_yaw(rig)).is_equal_approx(yaw1, 0.0001)
+
+
+func test_server_denial_before_the_move_drops_the_turn() -> void:
+	var rig: XRRig = _scene().rig
+	var yaw0 := _yaw(rig)
+	var start := rig.global_position
+	for i in 3:
+		rig.drive(0.0, Vector2(0, 1), false, DT, Vector2.ZERO, Vector2(1, 0))
+	for i in 5:   # отпущен, моргание началось, но самой тёмной точки ещё нет
+		rig.drive(0.0, Vector2.ZERO, false, DT, Vector2.ZERO, Vector2(1, 0))
+	rig.apply_teleport_denial(WorldMsg.REASON_RANGE, start, 0.0)
+	for i in 30:
+		rig.drive(0.0, Vector2.ZERO, false, DT)
+	assert_float(_yaw(rig)).is_equal_approx(yaw0, 0.0001)
+
+
+func test_aim_arrow_shows_where_the_player_will_look() -> void:
+	var rig: XRRig = _scene().rig
+	for i in 3:
+		rig.drive(0.0, Vector2(0, 1), false, DT, Vector2.ZERO, Vector2.ZERO)
+	assert_bool(rig.aim_visual.arrow_visible()).is_true()
+	assert_vector(rig.aim_visual.arrow_heading()).is_equal_approx(Vector3(0, 0, -1), Vector3.ONE * 0.01)   # взгляд как сейчас
+	rig.drive(0.0, Vector2(0, 1), false, DT, Vector2.ZERO, Vector2(1, 0))
+	assert_vector(rig.aim_visual.arrow_heading()).is_equal_approx(Vector3(1, 0, 0), Vector3.ONE * 0.01)    # вправо от взгляда
+	rig.drive(0.0, Vector2(0, 1), false, DT, Vector2.ZERO, Vector2(0, -1))
+	assert_vector(rig.aim_visual.arrow_heading()).is_equal_approx(Vector3(0, 0, 1), Vector3.ONE * 0.01)    # развернуться
+
+
+func test_in_smooth_mode_the_right_stick_still_turns_continuously_and_teleport_does_not_add_a_turn() -> void:
+	var rig: XRRig = _smooth_rig()
+	var yaw0 := _yaw(rig)
+	_teleport_facing(rig, Vector2(1, 0))
+	assert_float(_yaw(rig)).is_equal_approx(yaw0, 0.0001)   # поворот при телепорте — только режим none

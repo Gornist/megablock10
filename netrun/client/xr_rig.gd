@@ -63,6 +63,8 @@ var _tp_click := false
 var _blink := RigMath.blink_new()
 var _blink_dest := Vector3.ZERO
 var _queued_dest: Variant = null
+var _face_deg := 0.0           # куда смотреть после прыжка (RigMath.facing_deg), пока наведён прицел; вправо — плюс
+var _blink_face_deg := 0.0     # то же для идущего моргания: применяется в самой тёмной точке
 
 
 func _ready() -> void:
@@ -177,27 +179,32 @@ func _process(delta: float) -> void:
 	_update_exit_hold(delta)
 	var turn_x := 0.0
 	var tp_stick := Vector2.ZERO
+	var face := Vector2.ZERO
 	var walk := Vector2.ZERO
 	if xr_active:
 		tp_stick = left_hand.get_vector2("primary")
-		turn_x = right_hand.get_vector2("primary").x
+		var right_stick := right_hand.get_vector2("primary")
+		turn_x = right_stick.x
+		face = right_stick
 	else:
 		turn_x = _flat_turn()
+		face = Vector2(turn_x, 0.0)   # Q/E при зажатой T: ±90° при телепорте
 		tp_stick = Vector2(0.0, 1.0) if Input.is_physical_key_pressed(KEY_T) else Vector2.ZERO
 		walk = _flat_move()
 	var clicked := _tp_click
 	_tp_click = false
-	drive(turn_x, tp_stick, clicked, delta, walk)
+	drive(turn_x, tp_stick, clicked, delta, walk, face)
 
 
-## Один шаг управления по готовому вводу (так же зовут тесты): turn_x — правый стик по X (или Q/E), tp_stick — левый стик
-## (y вперёд), clicked — нажатие стика, walk — ходьба WASD (только плоская сборка с walk_enabled).
-func drive(turn_x: float, tp_stick: Vector2, clicked: bool, delta: float, walk: Vector2 = Vector2.ZERO) -> void:
+## Один шаг управления по готовому вводу (так же зовут тесты): turn_x — правый стик по X (или Q/E; вращает мир только в режимах
+## smooth и snap), tp_stick — левый стик (y вперёд), clicked — нажатие стика, walk — ходьба WASD (только плоская сборка с
+## walk_enabled), face — правый стик целиком: пока наведён прицел и turn_mode = none, его направление задаёт поворот при телепорте.
+func drive(turn_x: float, tp_stick: Vector2, clicked: bool, delta: float, walk: Vector2 = Vector2.ZERO, face: Vector2 = Vector2.ZERO) -> void:
 	_since_tp += delta
 	_apply_turn(turn_x, delta)
 	if walk_enabled and not xr_active and not movement_locked:
 		global_position += RigMath.move_velocity(walk, camera.global_rotation.y, move_speed) * delta
-	_step_teleport(tp_stick, clicked, delta)
+	_step_teleport(tp_stick, clicked, delta, face)
 	_step_blink(delta)
 
 
@@ -205,7 +212,9 @@ func drive(turn_x: float, tp_stick: Vector2, clicked: bool, delta: float, walk: 
 
 func _apply_turn(stick_x: float, delta: float) -> void:
 	var target_vignette := 0.0
-	if turn_mode == RigMath.TURN_MODE_SNAP:
+	if turn_mode == RigMath.TURN_MODE_NONE:
+		_turn_rate = 0.0   # стик мир не вращает: игрок поворачивается сам, а при телепорте — поворот в моргании
+	elif turn_mode == RigMath.TURN_MODE_SNAP:
 		var r := RigMath.snap_turn(stick_x, _snap_armed, snap_step_deg)
 		_snap_armed = r["armed"]
 		_turn_rate = 0.0
@@ -253,12 +262,18 @@ func teleport_cooldown_left() -> float:
 	return RigMath.cooldown_left(_since_tp, teleport_cooldown)
 
 
-func _step_teleport(stick: Vector2, clicked: bool, delta: float) -> void:
+func _step_teleport(stick: Vector2, clicked: bool, delta: float, face: Vector2 = Vector2.ZERO) -> void:
 	if movement_locked:
 		if _aim["aiming"]:
 			_cancel_aim()
 		return
+	var was_aiming: bool = _aim["aiming"]
 	_aim = RigMath.aim_step(_aim, stick, clicked, delta)
+	# Поворот выбирается правым стиком, пока прицел жив; в момент отпускания (AIM_FIRE) правый стик ещё в том положении, что игрок выбрал.
+	if turn_mode == RigMath.TURN_MODE_NONE and (_aim["aiming"] or was_aiming):
+		_face_deg = RigMath.facing_deg(face)
+	else:
+		_face_deg = 0.0
 	match _aim["event"]:
 		RigMath.AIM_CANCEL:
 			_cancel_aim()
@@ -273,6 +288,7 @@ func _step_teleport(stick: Vector2, clicked: bool, delta: float) -> void:
 func _cancel_aim() -> void:
 	_aim = RigMath.aim_new()
 	_aim_info = {}
+	_face_deg = 0.0
 	aim_visual.hide_aim()
 
 
@@ -294,6 +310,16 @@ func _show_aim() -> void:
 	var ok: bool = info["valid"] and left <= 0.0 and NodeLayout.flat_distance(global_position, info["p"]) >= RigMath.TELEPORT_MIN_DIST
 	var charge := 1.0 if left <= 0.0 else 1.0 - left / maxf(teleport_cooldown, 0.001)
 	aim_visual.show_at(pose["arc_from"], info["p"], ok, charge)
+	aim_visual.set_heading(_heading_after_teleport())
+
+
+## Куда игрок будет смотреть после прыжка: горизонтальный взгляд сейчас, повёрнутый на выбранные градусы вправо.
+func _heading_after_teleport() -> Vector3:
+	var fwd := -camera.global_basis.z
+	fwd.y = 0.0
+	if fwd.length() < 0.001:
+		return Vector3.ZERO
+	return fwd.normalized().rotated(Vector3.UP, -deg_to_rad(_face_deg))
 
 
 func _fire_teleport() -> void:
@@ -309,13 +335,14 @@ func _fire_teleport() -> void:
 		teleport_attempted.emit(from, to, false, reason)
 		return
 	_since_tp = 0.0
-	_start_blink(to)
+	_start_blink(to, _face_deg)
 	teleport_attempted.emit(from, to, true, "")
 
 
-func _start_blink(dest: Vector3) -> void:
+func _start_blink(dest: Vector3, face_deg: float = 0.0) -> void:
 	_blink = RigMath.blink_start()
 	_blink_dest = dest
+	_blink_face_deg = face_deg
 
 
 func _step_blink(delta: float) -> void:
@@ -324,6 +351,9 @@ func _step_blink(delta: float) -> void:
 	_blink = RigMath.blink_step(_blink, delta, teleport_blink_s)
 	if _blink["moved"]:
 		global_position = Vector3(_blink_dest.x, global_position.y, _blink_dest.z)
+		if _blink_face_deg != 0.0:
+			_rotate_around_head(-deg_to_rad(_blink_face_deg))   # вправо — по часовой, yaw уменьшается; экран в этот момент чёрный
+			_blink_face_deg = 0.0
 	fx.set_blink(_blink["alpha"])
 	if _blink["phase"] == 0 and _queued_dest != null:
 		_start_blink(_queued_dest as Vector3)
@@ -339,6 +369,7 @@ func apply_teleport_denial(reason: String, server_pos: Vector3, left: float) -> 
 	match _blink["phase"]:
 		1:
 			_blink_dest = dest
+			_blink_face_deg = 0.0   # сервер вернул на старое место: поворот к нему не относится
 		2:
 			_queued_dest = dest
 		_:

@@ -15,9 +15,16 @@ const MOVE_SPEED := 1.5          ## м/с, ходьба WASD в плоской �
 const MAX_MOVE_SPEED := 3.0      ## жёсткий потолок, настройкой не превысить
 
 # ---------------------------------------------------------------- плавный поворот
+## Режимы поворота. По умолчанию стик мир не вращает вовсе: игрок поворачивается сам (вертящееся кресло), а развернуться сильнее
+## помогает поворот при телепорте (facing_deg). Плавный и рывковый поворот стиком вызывали у владельца тошноту (4 октября 2026,
+## проверено на Pico 4: при повороте самим игроком всё в порядке) — остались настройками для других игроков и разработки.
+const TURN_MODE_NONE := "none"
 const TURN_MODE_SMOOTH := "smooth"
 const TURN_MODE_SNAP := "snap"
-const TURN_MODE_DEFAULT := TURN_MODE_SMOOTH
+const TURN_MODE_DEFAULT := TURN_MODE_NONE
+## Поворот при телепорте: правый стик, пока левым наведён прицел. Слабее FACING_STICK_MIN — «не трогал» (взгляд не меняется).
+const FACING_STICK_MIN := 0.6
+const FACING_STEP_DEG := 45.0
 const TURN_SPEED_DEG_S := 60.0         ## угловая скорость при полном отклонении стика
 const TURN_SPEED_MAX_DEG_S := 120.0    ## потолок, настройкой не превысить
 const TURN_RAMP_UP_SEC := 0.25         ## разгон от нуля до полной скорости
@@ -189,6 +196,19 @@ static func teleport_verdict(from: Vector3, to: Vector3, since_last_sec: float, 
 ## Сколько секунд перезарядки осталось (0 — готов).
 static func cooldown_left(since_last_sec: float, cooldown: float = TELEPORT_COOLDOWN) -> float:
 	return maxf(cooldown - since_last_sec, 0.0) if is_finite(since_last_sec) else 0.0
+
+
+# ---------------------------------------------------------------- телепорт: куда смотреть после прыжка
+
+## Поворот при телепорте, градусы вправо (по часовой): направление правого стика относительно текущего взгляда — вверх: не поворачивать,
+## вправо: 90° вправо, вниз: развернуться на 180°, и так с шагом 45° (между 0° и первым шагом — запас ±22,5°, чтобы случайный
+## наклон не поворачивал). Мир при этом не вращается: поворот применяется в самой тёмной точке моргания (XRRig._step_blink).
+static func facing_deg(stick: Vector2) -> float:
+	if stick.length() < FACING_STICK_MIN:
+		return 0.0
+	var a := rad_to_deg(atan2(stick.x, stick.y))
+	var q := roundf(a / FACING_STEP_DEG) * FACING_STEP_DEG
+	return 180.0 if absf(q) >= 180.0 else q
 
 
 # ---------------------------------------------------------------- телепорт: стик

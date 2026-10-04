@@ -49,8 +49,8 @@ func test_recenter_moves_origin_horizontally_only() -> void:
 
 # ---------------------------------------------------------------- плавный поворот
 
-func test_default_turn_is_smooth_and_moderate() -> void:
-	assert_str(RigMath.TURN_MODE_DEFAULT).is_equal(RigMath.TURN_MODE_SMOOTH)
+func test_default_turn_is_none_the_stick_does_not_rotate_the_world() -> void:
+	assert_str(RigMath.TURN_MODE_DEFAULT).is_equal(RigMath.TURN_MODE_NONE)
 	assert_float(RigMath.TURN_SPEED_DEG_S).is_equal(60.0)
 	assert_float(RigMath.TURN_SPEED_DEG_S).is_less(RigMath.TURN_SPEED_MAX_DEG_S)
 	assert_float(RigMath.TURN_SPEED_MAX_DEG_S).is_equal(120.0)
@@ -343,3 +343,29 @@ func test_blink_survives_a_long_frame() -> void:
 	assert_bool(b["moved"]).is_true()
 	b = RigMath.blink_step(b, 1.0, 0.1)
 	assert_int(b["phase"]).is_equal(0)
+
+
+# ---------------------------------------------------------------- поворот при телепорте
+
+func test_facing_follows_the_stick_direction_in_45_degree_steps() -> void:
+	assert_float(RigMath.facing_deg(Vector2(0, 1))).is_equal(0.0)        # вверх — не поворачивать
+	assert_float(RigMath.facing_deg(Vector2(1, 0))).is_equal(90.0)       # вправо
+	assert_float(RigMath.facing_deg(Vector2(-1, 0))).is_equal(-90.0)     # влево
+	assert_float(RigMath.facing_deg(Vector2(0, -1))).is_equal(180.0)     # вниз — развернуться
+	assert_float(RigMath.facing_deg(Vector2(0.75, 0.75))).is_equal(45.0)
+	assert_float(RigMath.facing_deg(Vector2(-0.75, 0.75))).is_equal(-45.0)
+	assert_float(RigMath.facing_deg(Vector2(0.75, -0.75))).is_equal(135.0)
+	assert_float(RigMath.facing_deg(Vector2(-0.75, -0.75))).is_equal(-135.0)
+
+
+func test_facing_behind_is_always_180_never_minus_180() -> void:
+	assert_float(RigMath.facing_deg(Vector2(0.05, -1))).is_equal(180.0)
+	assert_float(RigMath.facing_deg(Vector2(-0.05, -1))).is_equal(180.0)
+
+
+func test_a_weak_or_slightly_tilted_stick_does_not_turn() -> void:
+	assert_float(RigMath.facing_deg(Vector2.ZERO)).is_equal(0.0)
+	assert_float(RigMath.facing_deg(Vector2(0.5, 0.0))).is_equal(0.0)          # слабее FACING_STICK_MIN
+	assert_float(RigMath.facing_deg(Vector2(0.3, 0.95))).is_equal(0.0)         # ~17° от «вверх»: запас ±22,5°
+	assert_float(RigMath.facing_deg(Vector2(-0.3, 0.95))).is_equal(0.0)
+	assert_float(RigMath.facing_deg(Vector2(0.45, 0.9))).is_equal(45.0)        # ~27°: уже шаг

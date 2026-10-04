@@ -7,7 +7,7 @@ extends RefCounted
 ## проверяет сам и клиенту не доверяет, так что файлом правила не обойти. Адрес сервера и токен через этот файл не передаются.
 ##
 ## [comfort]
-## turn_mode = "smooth"          ; "smooth" (по умолчанию) | "snap" (рывок 30°, для разработки)
+## turn_mode = "none"            ; "none" (по умолчанию: стик мир не вращает, поворот при телепорте) | "smooth" | "snap" (рывок 30°)
 ## turn_speed_deg_s = 60.0       ; угловая скорость при полном стике, 10…120
 ## turn_vignette = 0.45          ; доля поля зрения, закрываемая у краёв при полной скорости, 0…0,8 (0 — без виньетки)
 ## turn_ramp_up_s = 0.25         ; разгон поворота, 0,05…2
@@ -70,10 +70,10 @@ static func from_config(cfg: ConfigFile) -> ComfortConfig:
 			continue
 		var v: Variant = cfg.get_value(SECTION, key)
 		if key == "turn_mode":
-			if v is String and (v == RigMath.TURN_MODE_SMOOTH or v == RigMath.TURN_MODE_SNAP):
+			if v is String and (v == RigMath.TURN_MODE_NONE or v == RigMath.TURN_MODE_SMOOTH or v == RigMath.TURN_MODE_SNAP):
 				c.turn_mode = v
 			else:
-				c.warnings.append("turn_mode: допустимо smooth или snap, получено «%s» — оставлено %s" % [v, c.turn_mode])
+				c.warnings.append("turn_mode: допустимо none, smooth или snap, получено «%s» — оставлено %s" % [v, c.turn_mode])
 			continue
 		var n: Variant = _number(v)
 		if n == null:

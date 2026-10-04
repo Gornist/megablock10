@@ -247,8 +247,8 @@ cmd_tune() {
       fi
       if [[ "$k" == "turn_mode" ]]; then
         v="${v//\"/}"
-        if [[ "$v" != "smooth" && "$v" != "snap" ]]; then
-          echo "Ошибка: turn_mode — smooth или snap" >&2
+        if [[ "$v" != "none" && "$v" != "smooth" && "$v" != "snap" ]]; then
+          echo "Ошибка: turn_mode — none, smooth или snap" >&2
           return 1
         fi
         v="\"$v\""

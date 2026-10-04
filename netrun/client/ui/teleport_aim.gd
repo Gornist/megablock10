@@ -13,7 +13,11 @@ const NO_COLOR := Color(1.0, 0.25, 0.2)
 ## Кольцо чуть выше пола, чтобы не мерцать в одной плоскости с ним.
 const RING_LIFT := 0.02
 
+const ARROW_SIZE := Vector3(0.26, 0.3, 0.012)
+const ARROW_OFFSET := 0.62   ## от центра кольца до центра стрелки вдоль взгляда после прыжка
+
 var _ok := true
+var _arrow: MeshInstance3D
 var _dots: MultiMeshInstance3D
 var _ring: MeshInstance3D
 var _disc: MeshInstance3D
@@ -61,6 +65,16 @@ func _init() -> void:
 	_disc.mesh = cyl
 	_disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_disc)
+	# Стрелка «куда смотреть после прыжка»: плоский треугольник на полу, остриём вдоль взгляда (призма лежит остриём на -Z).
+	var tri := PrismMesh.new()
+	tri.size = ARROW_SIZE
+	tri.material = _mat
+	_arrow = MeshInstance3D.new()
+	_arrow.mesh = tri
+	_arrow.rotation.x = -PI / 2.0
+	_arrow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_arrow.visible = false
+	add_child(_arrow)
 
 
 static func _unshaded(c: Color) -> StandardMaterial3D:
@@ -87,6 +101,26 @@ func show_at(start: Vector3, target: Vector3, ok: bool, charge: float = 1.0) -> 
 	_disc.visible = r < 1.0
 	_disc.scale = Vector3(maxf(r, 0.001), 1.0, maxf(r, 0.001))
 	visible = true
+
+
+## Стрелка у кольца: куда смотреть после прыжка (горизонтальный вектор, нулевой — спрятать). Зовут после show_at.
+func set_heading(dir: Vector3) -> void:
+	var flat := Vector3(dir.x, 0.0, dir.z)
+	_arrow.visible = flat.length() >= 0.001
+	if not _arrow.visible:
+		return
+	flat = flat.normalized()
+	_arrow.position = _ring.position + flat * ARROW_OFFSET + Vector3(0.0, 0.004, 0.0)
+	_arrow.basis = Basis(Vector3.UP, atan2(-flat.x, -flat.z)) * Basis(Vector3.RIGHT, -PI / 2.0)
+
+
+func arrow_visible() -> bool:
+	return _arrow.visible
+
+
+## Куда смотрит остриё стрелки (единичный вектор; остриё призмы — её +Y) — для тестов.
+func arrow_heading() -> Vector3:
+	return _arrow.global_basis * Vector3.UP
 
 
 func hide_aim() -> void:

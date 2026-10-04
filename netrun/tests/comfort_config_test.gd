@@ -18,7 +18,7 @@ func _cfg(values: Dictionary) -> ConfigFile:
 
 func test_defaults_come_from_code() -> void:
 	var c := ComfortConfig.new()
-	assert_str(c.turn_mode).is_equal("smooth")
+	assert_str(c.turn_mode).is_equal("none")
 	assert_float(c.turn_speed_deg_s).is_equal(RigMath.TURN_SPEED_DEG_S)
 	assert_float(c.turn_vignette).is_equal(RigMath.TURN_VIGNETTE_MAX)
 	assert_float(c.turn_ramp_up_s).is_equal(RigMath.TURN_RAMP_UP_SEC)
@@ -32,7 +32,7 @@ func test_missing_file_gives_defaults_without_warnings() -> void:
 	var c := ComfortConfig.load_file("user://no_such_comfort.cfg")
 	assert_bool(c.from_file).is_false()
 	assert_array(c.warnings).is_empty()
-	assert_str(c.turn_mode).is_equal("smooth")
+	assert_str(c.turn_mode).is_equal("none")
 
 
 func test_valid_values_are_applied() -> void:
@@ -61,7 +61,7 @@ func test_integers_and_numeric_strings_are_accepted() -> void:
 func test_bad_values_fall_back_to_defaults_with_a_warning_each() -> void:
 	var c := ComfortConfig.from_config(_cfg({"turn_mode": "wobble", "turn_speed_deg_s": "fast", "teleport_range": [1, 2], "turn_vignette": NAN}))
 	assert_int(c.warnings.size()).is_equal(4)
-	assert_str(c.turn_mode).is_equal("smooth")
+	assert_str(c.turn_mode).is_equal("none")
 	assert_float(c.turn_speed_deg_s).is_equal(RigMath.TURN_SPEED_DEG_S)
 	assert_float(c.teleport_range).is_equal(RigMath.TELEPORT_RANGE)
 	assert_float(c.turn_vignette).is_equal(RigMath.TURN_VIGNETTE_MAX)
@@ -103,13 +103,13 @@ func test_file_round_trip_and_corrupt_file() -> void:
 	f.close()
 	var bad := ComfortConfig.load_file(TMP)
 	assert_int(bad.warnings.size()).is_equal(1)
-	assert_str(bad.turn_mode).is_equal("smooth")
+	assert_str(bad.turn_mode).is_equal("none")
 	assert_float(bad.teleport_range).is_equal(RigMath.TELEPORT_RANGE)
 
 
 func test_log_fields_carry_the_main_values() -> void:
 	var line := MbLog.format("comfort", ComfortConfig.new().log_fields())
-	assert_str(line).contains("turn=smooth")
+	assert_str(line).contains("turn=none")
 	assert_str(line).contains("speed=60")
 	assert_str(line).contains("vignette=0.45")
 	assert_str(line).contains("range=4")

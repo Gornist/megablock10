@@ -63,7 +63,7 @@ func _aim_forward() -> Vector3:
 
 
 func test_client_logs_the_comfort_settings_at_start() -> void:
-	assert_str(_log()).contains("comfort turn=smooth speed=60")
+	assert_str(_log()).contains("comfort turn=none speed=60")
 
 
 func test_teleport_goes_through_the_server_and_is_logged() -> void:
