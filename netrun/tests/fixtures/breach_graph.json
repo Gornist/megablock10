@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "default_entry": "b_a",
+  "entries": {"t03": "b_a", "t04": "b_a", "t05": "b_h"},
+  "settings": {
+    "tunnel_sec": 0.4,
+    "portal_dwell_sec": 0.2,
+    "portal_deny_repeat_sec": 0.5,
+    "shard_refill_sec": {"BASE": 1.0, "HARD": 1.0, "NIGHTMARE": 1.0},
+    "refill_retry_sec": 0.4,
+    "alert_per_trace": 0.3,
+    "alert_per_eject": 0.6,
+    "alert_per_fail": 0.3,
+    "alert_cool_sec": 600.0,
+    "alert_boost": 0.5,
+    "lockdown_sec": 2.0,
+    "vault_open_sec": 5.0
+  },
+  "nodes": {
+    "b_a": {"title": "Фойе", "tier": "BASE", "ice": 0, "shards": 2, "links": ["b_h"]},
+    "b_h": {"title": "Серверная", "tier": "HARD", "ice": 0, "shards": 1, "links": ["b_a"]}
+  }
+}

@@ -26,6 +26,18 @@ var put_offline := false
 var put_log: Array = []
 
 
+## run.breach (раздел 6.6): сколько раз запрос реально выполнился (повтор по rid не считается) и журнал итогов [{session, n, outcome}].
+var breach_calls := 0
+var breach_log: Array = []
+## Числа фейка вместо `ContainerEddies`/`MockBreach` из :rules (случайность там зависит от rid; здесь фиксированная середина диапазона): эдди за взлом
+## по тиру, бонус MINER и остывание узла, с. Настоящие числа считает Мост.
+const FAKE_BREACH_EDDIES := {"BASE": 2, "HARD": 5, "NIGHTMARE": 8}
+const FAKE_MINER_BONUS := {"BASE": 15, "HARD": 30, "NIGHTMARE": 60}
+const FAKE_COOLDOWN_S := 1800
+const BREACH_TIERS: Array = ["BASE", "HARD", "NIGHTMARE"]
+const BREACH_ACTIVE: Array = ["GHOST", "TIMESKEW", "BLACKOUT"]
+
+
 func _init(fixture_path: String = DEFAULT_FIXTURE) -> void:
 	_load_fixture(fixture_path)
 
@@ -49,7 +61,7 @@ func _load_fixture(path: String) -> void:
 		_load_error = "фикстура %s — не JSON-объект" % path
 		push_error("[fake-bridge] " + _load_error)
 		return
-	var sections := {"nodes": T_NODE, "terminals": T_TERMINAL, "sessions": T_SESSION, "items": T_ITEM, "settings": "settings"}
+	var sections := {"nodes": T_NODE, "terminals": T_TERMINAL, "sessions": T_SESSION, "items": T_ITEM, "settings": "settings", "runners": T_RUNNER}
 	for section in sections:
 		var type: String = sections[section]
 		_docs[type] = {}
@@ -158,9 +170,28 @@ func op_take_from_node(session: String, node: String, item: String) -> Dictionar
 			return err("not_found", "предмета нет")
 		if it["data"].get("owner") != "node:" + node:
 			return err("wrong_owner", "предмет не в узле", it.duplicate(true))
+		if _opened_by_other(item, session):
+			return err("claimed", "хранилище открыто взломом другой сессии", it.duplicate(true))
 		var d: Dictionary = (it["data"] as Dictionary).duplicate()
 		d["owner"] = "deck:" + session
 		return ok({"item": _put(T_ITEM, item, d).duplicate(true)}))
+
+
+## Предмет есть в живом `session.opened` другой незакрытой сессии (раздел 6.2: `claimed`).
+func _opened_by_other(item: String, session: String) -> bool:
+	var now_ms := _now_ms()
+	for id in _docs.get(T_SESSION, {}):
+		var s: Dictionary = _docs[T_SESSION][id]
+		if id == session or s["data"].get("state") == "closed":
+			continue
+		for o in s["data"].get("opened", []):
+			if str(o.get("item", "")) == item and int(o.get("until", 0)) > now_ms:
+				return true
+	return false
+
+
+static func _now_ms() -> int:
+	return int(Time.get_unix_time_from_system() * 1000.0)
 
 
 func op_leave_in_node(session: String, node: String, item: String) -> Dictionary:
@@ -213,6 +244,174 @@ func run_finish(session: String, outcome: String, node: String, disconnect: bool
 		sd["outcome"] = outcome
 		sd["disconnect"] = disconnect
 		return ok({"session": _put(T_SESSION, session, sd).duplicate(true), "transfers": transfers, "eddies_transfer": null}))
+
+
+## Итог взлома по контракту 6.6: исход, эдди из запаса узла, открытие хранилищ (`session.opened`), остывание (`runner.breach_cooldown`), `session.breach`.
+## Без правил :rules: эдди — по таблице выше, сигнала СБ нет (alert: null). Отказы и повтор по rid — как у Моста.
+func run_breach(session: String, node: String, req: Dictionary) -> Dictionary:
+	var bad := _breach_request_error(session, node, req)
+	if bad != "":
+		return err("bad_request", bad)
+	var s := doc(T_SESSION, session)
+	if s.is_empty():
+		return err("not_found", "сессии нет")
+	if doc(T_NODE, node).is_empty():
+		return err("not_found", "узла нет")
+	return _once(breach_rid(session, int(req["n"])), {"op": "breach", "session": session, "node": node, "req": req}, func():
+		return _breach_once(session, node, req))
+
+
+## Строка с ошибкой разбора запроса или "" (раздел 6.6, первая строка таблицы отказов); сюда же — «не рабочий демон» и «не влезает в RAM».
+func _breach_request_error(session: String, node: String, req: Dictionary) -> String:
+	if session.is_empty() or node.is_empty() or int(req.get("n", 0)) < 1:
+		return "нет session, node или n >= 1"
+	if not (str(req.get("tier", "")) in BREACH_TIERS):
+		return "неизвестный tier"
+	var sel: Variant = req.get("selected")
+	var mat: Variant = req.get("matched")
+	var act: Variant = req.get("active")
+	var vaults: Variant = req.get("vaults")
+	if not (sel is Array) or (sel as Array).is_empty() or not (mat is Array) or not (act is Array) or not (vaults is Array):
+		return "selected/matched/active/vaults: нужны массивы, selected не пуст"
+	if (sel as Array).size() != _unique(sel).size() or (mat as Array).size() != _unique(mat).size():
+		return "повторы в selected или matched"
+	for m in mat:
+		if not (m in sel):
+			return "matched не подмножество selected"
+	for a in act:
+		if not (a in BREACH_ACTIVE):
+			return "неизвестный эффект в active"
+	var open_s := int(req.get("open_s", 0))
+	if open_s < 1 or open_s > 600:
+		return "open_s вне 1..600"
+	var s := doc(T_SESSION, session)
+	if s.is_empty():
+		return ""   # not_found скажет вызывающий
+	var cells := 0
+	var loaded: Variant = s["data"].get("loaded")
+	for id in sel:
+		var it := doc(T_ITEM, str(id))
+		var d: Dictionary = it.get("data", {})
+		var working: bool = (str(id) in loaded) if loaded is Array else str(d.get("origin", "")).begins_with("phone:")
+		if it.is_empty() or d.get("owner") != "deck:" + session or d.get("kind") != "DAEMON" or not working:
+			return "%s: не рабочий демон этой сессии" % id
+		cells += ((d.get("daemon", {}) as Dictionary).get("cells", []) as Array).size()
+	if cells > int(s["data"].get("ram", 6)):
+		return "цепочки (%d) не влезают в RAM" % cells
+	return ""
+
+
+static func _unique(a: Array) -> Array:
+	var out: Array = []
+	for x in a:
+		if not (x in out):
+			out.append(x)
+	return out
+
+
+func _breach_once(session: String, node: String, req: Dictionary) -> Dictionary:
+	var s := doc(T_SESSION, session)
+	var sd: Dictionary = (s["data"] as Dictionary).duplicate(true)
+	var n := int(req["n"])
+	var world: Dictionary = sd.get("world", {}) if sd.get("world") is Dictionary else {}
+	var prev: Dictionary = sd.get("breach", {}) if sd.get("breach") is Dictionary else {}
+	var nd := doc(T_NODE, node)
+	if sd.get("state") != "active" or world.has("finish") or n <= int(prev.get("n", 0)) or bool(nd["data"].get("tutorial", false)):
+		return err("session_state", "взлом сейчас невозможен", s.duplicate(true))
+	var now_ms := _now_ms()
+	var runner := _runner_doc(str(sd.get("runner", "")))
+	var cooldowns: Dictionary = (runner.get("data", {}) as Dictionary).get("breach_cooldown", {})
+	if int(cooldowns.get(node, 0)) > now_ms:
+		return err("cooldown", "узел остывает", runner.duplicate(true))
+	var tier := str(req["tier"])
+	var matched: Array = req["matched"]
+	var outcome := "FAIL" if matched.is_empty() else ("SUCCESS" if matched.size() == (req["selected"] as Array).size() else "PARTIAL")
+	var effects: Array = []
+	var extract: Array = []   # [{effect, tier}] совпавших EXTRACT_* в порядке selected
+	var miner := false
+	for id in req["selected"]:
+		if not (id in matched):
+			continue
+		var dd: Dictionary = (doc(T_ITEM, str(id))["data"].get("daemon", {}) as Dictionary)
+		var eff := str(dd.get("effect", ""))
+		if eff != "" and not (eff in effects):
+			effects.append(eff)
+		miner = miner or eff == "MINER"
+		if eff == "EXTRACT_SHARD" or eff == "EXTRACT_DAEMON":
+			extract.append({"effect": eff, "tier": int(dd.get("tier", 1))})
+	for a in req["active"]:
+		if not (a in effects):
+			effects.append(a)
+	var eddies := 0
+	var opened: Array = []
+	var exhausted := false
+	var cooldown_until := 0
+	if outcome != "FAIL":
+		var stock := int(nd["data"].get("eddies", 0))
+		eddies = mini(int(FAKE_BREACH_EDDIES[tier]) + (int(FAKE_MINER_BONUS[tier]) if miner else 0), stock)
+		var picked: Array = []
+		for e in extract:
+			var found := ""
+			for v in req["vaults"]:
+				var it := doc(T_ITEM, str(v))
+				if it.is_empty() or str(v) in picked or it["data"].get("owner") != "node:" + node or _opened_by_other(str(v), session):
+					continue
+				var want := "SHARD" if e["effect"] == "EXTRACT_SHARD" else "DAEMON"
+				var info: Dictionary = it["data"].get("shard" if want == "SHARD" else "daemon", {})
+				if it["data"].get("kind") == want and int(info.get("tier", 1)) <= int(e["tier"]):
+					found = str(v)
+					break
+			if found == "":
+				exhausted = true
+			else:
+				picked.append(found)
+				opened.append({"item": found, "node": node, "until": now_ms + int(req["open_s"]) * 1000})
+		if eddies > 0:
+			var ndata: Dictionary = (nd["data"] as Dictionary).duplicate(true)
+			ndata["eddies"] = stock - eddies
+			_put(T_NODE, node, ndata)
+		cooldown_until = now_ms + FAKE_COOLDOWN_S * 1000
+		_set_cooldown(str(sd.get("runner", "")), node, cooldown_until, now_ms)
+	var live: Array = []
+	for o in sd.get("opened", []):
+		if int(o.get("until", 0)) > now_ms:
+			live.append(o)
+	live.append_array(opened)
+	sd["opened"] = live
+	sd["loot_eddies"] = int(sd.get("loot_eddies", 0)) + eddies
+	sd["breach"] = {"n": n, "node": node, "tier": tier, "outcome": outcome, "effects": effects, "eddies": eddies, "opened_n": opened.size(),
+		"exhausted": exhausted, "alert": null, "at": now_ms}
+	_put(T_SESSION, session, sd)
+	breach_calls += 1
+	breach_log.append({"session": session, "n": n, "outcome": outcome})
+	var shown: Array = opened.map(func(o): return {"item": o["item"], "until": o["until"]})
+	return ok({"outcome": outcome, "effects": effects, "eddies": eddies, "loot_eddies": sd["loot_eddies"], "opened": shown, "exhausted": exhausted,
+		"cooldown_until": cooldown_until, "alert": null})
+
+
+## Документ runner по ключу игрока (data.key); пусто, если нет.
+func _runner_doc(key: String) -> Dictionary:
+	for id in _docs.get(T_RUNNER, {}):
+		if _docs[T_RUNNER][id]["data"].get("key") == key:
+			return _docs[T_RUNNER][id]
+	return {}
+
+
+func _set_cooldown(key: String, node: String, until_ms: int, now_ms: int) -> void:
+	var r := _runner_doc(key)
+	var data: Dictionary = (r["data"] as Dictionary).duplicate(true) if not r.is_empty() else {"key": key, "callsign": "", "runs": 0, "tutorial_done": true}
+	var cds: Dictionary = {}
+	for k in data.get("breach_cooldown", {}):
+		if int(data["breach_cooldown"][k]) > now_ms:
+			cds[k] = data["breach_cooldown"][k]
+	cds[node] = until_ms
+	data["breach_cooldown"] = cds
+	var rid := str(r.get("id", "r_" + key.sha256_text().substr(0, 32)))
+	if not _docs.has(T_RUNNER):
+		_docs[T_RUNNER] = {}
+	if r.is_empty():
+		_docs[T_RUNNER][rid] = {"type": T_RUNNER, "id": rid, "ver": 0, "data": {}}
+	_put(T_RUNNER, rid, data)
 
 
 ## Как master.gate Моста, но без таймаутов: await_<kind> в settings/global (1 — ждём), решение — decide_gate().

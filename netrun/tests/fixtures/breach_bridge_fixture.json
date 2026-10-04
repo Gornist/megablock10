@@ -1,0 +1,33 @@
+{
+  "settings": {"global": {"confirm_timeout_s": 120, "disconnect_grace_s": 20}},
+  "nodes": {
+    "b_a": {"title": "Фойе", "tier": "BASE", "lockdown_until": 0, "eddies": 100},
+    "b_h": {"title": "Серверная", "tier": "HARD", "lockdown_until": 0, "eddies": 100}
+  },
+  "terminals": {
+    "t03": {"node": "b_a", "label": "Стойка 3", "token_sha256": "4ab53a252c0eb82880fa8bda7a765e4e621bb9a8ac438c71c3986a001988868c", "silent": false},
+    "t04": {"node": "b_a", "label": "Стойка 4", "token_sha256": "4ab53a252c0eb82880fa8bda7a765e4e621bb9a8ac438c71c3986a001988868c", "silent": false},
+    "t05": {"node": "b_h", "label": "Стойка 5", "token_sha256": "4ab53a252c0eb82880fa8bda7a765e4e621bb9a8ac438c71c3986a001988868c", "silent": false}
+  },
+  "sessions": {
+    "s_fake000000000001": {"state": "active", "terminal": "t03", "node": "b_a", "runner": "KEY_ALICE", "callsign": "Призрак", "loot_eddies": 0, "outcome": null, "ram": 8},
+    "s_fake000000000002": {"state": "active", "terminal": "t04", "node": "b_a", "runner": "KEY_BOB", "callsign": "Лис", "loot_eddies": 0, "outcome": null, "ram": 6},
+    "s_fake000000000003": {"state": "active", "terminal": "t05", "node": "b_h", "runner": "KEY_CAT", "callsign": "Кот", "loot_eddies": 0, "outcome": null, "ram": 8}
+  },
+  "items": {
+    "it_b_d1": {"owner": "deck:s_fake000000000001", "kind": "DAEMON", "payload": "p1", "protected": false, "origin": "phone:KEY_ALICE",
+      "daemon": {"effect": "EXTRACT_SHARD", "tier": 2, "name": "Извлечение", "cells": ["1C", "BD"]}},
+    "it_b_d2": {"owner": "deck:s_fake000000000001", "kind": "DAEMON", "payload": "p2", "protected": false, "origin": "phone:KEY_ALICE",
+      "daemon": {"effect": "GHOST", "tier": 1, "name": "Призрак", "cells": ["55", "7A", "FF"]}},
+    "it_b_d3": {"owner": "deck:s_fake000000000002", "kind": "DAEMON", "payload": "p3", "protected": false, "origin": "phone:KEY_BOB",
+      "daemon": {"effect": "EXTRACT_SHARD", "tier": 1, "name": "Извлечение", "cells": ["E9", "1C"]}},
+    "it_b_d4": {"owner": "deck:s_fake000000000003", "kind": "DAEMON", "payload": "p4", "protected": false, "origin": "phone:KEY_CAT",
+      "daemon": {"effect": "EXTRACT_SHARD", "tier": 2, "name": "Извлечение", "cells": ["1C", "BD", "E9"]}},
+    "it_b_s1": {"owner": "node:b_a", "kind": "SHARD", "payload": "shard-1", "protected": false, "origin": "node:b_a",
+      "shard": {"tier": 1, "title": "Накладная", "decrypted": true}},
+    "it_b_s2": {"owner": "node:b_a", "kind": "SHARD", "payload": "shard-2", "protected": false, "origin": "node:b_a",
+      "shard": {"tier": 2, "title": "Чертежи", "decrypted": false}},
+    "it_b_h1": {"owner": "node:b_h", "kind": "SHARD", "payload": "shard-h1", "protected": false, "origin": "node:b_h",
+      "shard": {"tier": 2, "title": "Реестр", "decrypted": true}}
+  }
+}

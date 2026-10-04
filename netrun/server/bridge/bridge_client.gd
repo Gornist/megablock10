@@ -272,6 +272,14 @@ func run_finish(session: String, outcome: String, node: String, disconnect: bool
 	})
 
 
+func run_breach(session: String, node: String, req: Dictionary) -> Dictionary:
+	var f := req.duplicate(true)
+	f["rid"] = breach_rid(session, int(req.get("n", 0)))
+	f["session"] = session
+	f["node"] = node
+	return await _request("run.breach", f)
+
+
 func master_gate(kind: String, ref: String, node: String, summary: String) -> Dictionary:
 	return await _request("master.gate", {"kind": kind, "ref": ref, "node": node, "summary": summary})
 

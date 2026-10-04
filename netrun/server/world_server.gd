@@ -47,7 +47,7 @@ func start(args: PackedStringArray) -> void:
 	set_process(true)
 
 
-## Граф узлов: по умолчанию data/graph.json, `--graph=<путь>` — другой файл, `--single-node` — без графа. null — одиночный режим
+## Граф узлов: по умолчанию data/graph.json, `--graph=<путь>` — другой файл, `--single-node` — без графа, `--vault-requires-open=` — взлом хранилищ (К3). null — одиночный режим
 ## или граф не прошёл проверку (ошибки в журнал, сервер работает одним серым узлом: лучше один узел, чем ни одного).
 static func load_graph(args: PackedStringArray) -> NodeGraph:
 	var path := NodeGraph.DEFAULT_PATH
@@ -62,6 +62,11 @@ static func load_graph(args: PackedStringArray) -> NodeGraph:
 		for e in errs:
 			push_error("[netrun-server] граф %s: %s" % [path, e])
 		return null
+	# `--vault-requires-open=true|false|auto` переопределяет settings.vault_requires_open графа (стенды без взлома: false).
+	for a in args:
+		if a.begins_with("--vault-requires-open="):
+			var v := a.trim_prefix("--vault-requires-open=")
+			g.settings["vault_requires_open"] = true if v == "true" else (false if v == "false" else "auto")
 	return g
 
 

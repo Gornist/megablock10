@@ -10,6 +10,7 @@ const T_NODE := "node"
 const T_SESSION := "session"
 const T_ITEM := "item"
 const T_TERMINAL := "terminal"
+const T_RUNNER := "runner"
 
 ## Исходы забега для run.finish (раздел 6.5).
 const OUTCOMES: PackedStringArray = ["clean", "emergency", "soft_ice", "black_ice", "aborted"]
@@ -44,6 +45,11 @@ static func leave_rid(session: String, item: String) -> String:
 
 static func finish_rid(session: String) -> String:
 	return "finish:%s" % session
+
+
+## Номер запроса итога взлома: n — номер попытки (session.world.breach_n), он же делает rid уникальным (docs/netrun-bridge-protocol.md, 6.6).
+static func breach_rid(session: String, n: int) -> String:
+	return "breach:%s:%d" % [session, n]
 
 
 ## Токен, который очки кладут в auth: JSON {"terminal","token"} или «терминал:токен». Возвращает {terminal, token} или {}.
@@ -128,6 +134,13 @@ func op_leave_in_node(_session: String, _node: String, _item: String) -> Diction
 
 ## moves: [{"item": id, "to": "phone"|"node"|"burned"}, ...].
 func run_finish(_session: String, _outcome: String, _node: String, _disconnect: bool, _moves: Array) -> Dictionary:
+	return err("internal", "не реализовано")
+
+
+## Итог взлома хранилища (раздел 6.6). req: {n, tier (BASE|HARD|NIGHTMARE), selected [id демонов], matched [id], active [GHOST|TIMESKEW|BLACKOUT],
+## vaults [id предметов в хранилищах узла, хранилище панели первым], open_s}. Ответ: {outcome, effects, eddies, loot_eddies, opened [{item, until}],
+## exhausted, cooldown_until, alert}; отказы — cooldown, session_state, bad_request, not_found.
+func run_breach(_session: String, _node: String, _req: Dictionary) -> Dictionary:
 	return err("internal", "не реализовано")
 
 
