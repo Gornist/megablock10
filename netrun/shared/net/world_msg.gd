@@ -81,6 +81,12 @@ const GIVE_REFUSED := "refused"
 const GIVE_UNAVAILABLE := "unavailable"
 const GIVE_NO_BRIDGE := "no_bridge"
 const GIVE_ERRORS: PackedStringArray = [GIVE_NOT_LOOT, GIVE_NO_RECIPIENT, GIVE_SELF, GIVE_BAD_CONTACT, GIVE_GONE, GIVE_BUSY, GIVE_REFUSED, GIVE_UNAVAILABLE, GIVE_NO_BRIDGE]
+## Заряд защитного демона на запястье (К6, design §3.3). Клиент -> сервер: charge {daemon: id рабочего демона} — начать мини-игру заряда (режим
+## for_charge: цепочка демона, буфер = длина + 2, ловушек нет); дальше те же bk_tap и bk_cancel, что у взлома. Сервер -> клиент: те же события
+## bk / bk_tick / bk_end / bk_no с mode = "charge" (bk_end: {outcome, daemon, charged, early?}; bk_no: {reason: active | cooldown | charged | not_chargeable |
+## bad_daemon | not_ready, left?}). Заряженный демон в `state.cd` имеет st = "charged"; запуск — прежнее `use` (без заряда: daemon {ok: false, error: not_charged}).
+const CHARGE := "charge"
+const MODE_CHARGE := "charge"
 const EV_ENDED := "ended"
 const EV_DAEMON := "daemon"
 ## Телепорт (VR: движение только им). Клиент -> сервер: {t: tp, p: [x, z]} — цель на полу; решает сервер. Успех ответа не имеет

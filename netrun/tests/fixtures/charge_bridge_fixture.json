@@ -40,113 +40,75 @@
       "node": "node_07",
       "runner": "KEY_ALICE",
       "callsign": "Призрак",
-      "loot_eddies": 75,
-      "outcome": null,
-      "ram": 8
-    },
-    "s_fake000000000002": {
-      "state": "pending",
-      "terminal": "t04",
-      "node": "node_07",
-      "runner": "KEY_BOB",
-      "callsign": "Лис",
       "loot_eddies": 0,
-      "outcome": null
+      "outcome": null,
+      "ram": 10
     }
   },
   "items": {
-    "it_fake000000d001": {
+    "it_c_ghost": {
       "owner": "deck:s_fake000000000001",
       "kind": "DAEMON",
-      "payload": "p1",
-      "protected": true,
+      "payload": "p",
+      "protected": false,
       "origin": "phone:KEY_ALICE",
       "daemon": {
         "effect": "GHOST",
-        "tier": 2,
+        "tier": 1,
         "name": "Призрак",
         "cells": [
           "1C",
-          "BD",
-          "E9"
+          "BD"
         ]
       }
     },
-    "it_fake000000d002": {
+    "it_c_skew": {
       "owner": "deck:s_fake000000000001",
       "kind": "DAEMON",
-      "payload": "p2",
+      "payload": "p",
       "protected": false,
       "origin": "phone:KEY_ALICE",
       "daemon": {
-        "effect": "MINER",
-        "tier": 1,
-        "name": "Майнер",
+        "effect": "TIMESKEW",
+        "tier": 2,
+        "name": "Сдвиг",
         "cells": [
           "55",
-          "7A"
+          "7A",
+          "FF"
         ]
       }
     },
-    "it_fake000000d003": {
-      "owner": "deck:s_fake000000000002",
-      "kind": "DAEMON",
-      "payload": "p3",
-      "protected": true,
-      "origin": "phone:KEY_BOB"
-    },
-    "it_fake00000000a001": {
-      "owner": "node:node_07",
-      "kind": "SHARD",
-      "payload": "shard-1",
-      "protected": false,
-      "origin": "node:node_07"
-    },
-    "it_fake00000000a002": {
-      "owner": "node:node_07",
-      "kind": "SHARD",
-      "payload": "shard-2",
-      "protected": false,
-      "origin": "node:node_07"
-    },
-    "it_fake000000d004": {
+    "it_c_black": {
       "owner": "deck:s_fake000000000001",
       "kind": "DAEMON",
-      "payload": "p4",
+      "payload": "p",
       "protected": false,
-      "origin": "node:node_07",
+      "origin": "phone:KEY_ALICE",
       "daemon": {
-        "effect": "JITTER",
+        "effect": "BLACKOUT",
         "tier": 3,
-        "name": "Дрожь из узла",
+        "name": "Затмение",
         "cells": [
-          "AA",
-          "BB"
+          "E9",
+          "1C"
         ]
       }
     },
-    "it_fake000000e001": {
+    "it_c_extract": {
       "owner": "deck:s_fake000000000001",
-      "kind": "SHARD",
-      "payload": "sh1",
+      "kind": "DAEMON",
+      "payload": "p",
       "protected": false,
-      "origin": "node:node_07",
-      "shard": {
-        "tier": 2,
-        "title": "Чертежи склада",
-        "decrypted": false
-      }
-    },
-    "it_fake000000e002": {
-      "owner": "deck:s_fake000000000001",
-      "kind": "SHARD",
-      "payload": "sh2",
-      "protected": false,
-      "origin": "node:node_07",
-      "shard": {
+      "origin": "phone:KEY_ALICE",
+      "daemon": {
+        "effect": "EXTRACT_SHARD",
         "tier": 1,
-        "title": "Накладная",
-        "decrypted": true
+        "name": "Извлечение",
+        "cells": [
+          "7A",
+          "E9"
+        ]
       }
     }
   }

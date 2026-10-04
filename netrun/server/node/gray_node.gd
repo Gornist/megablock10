@@ -85,6 +85,7 @@ var _vault_open: Dictionary = {}     # id слота -> сессия, для к�
 var _vault_open_until: Dictionary = {} # id слота -> время узла, когда открытость кончается (нет записи — без срока)
 ## Взлом хранилищ (К3): сетка, таймер, тапы, итог в Мост.
 var breach: VaultBreach
+var charge: ChargeBreach
 var _takes_inflight: Dictionary = {} # сессия -> число незавершённых op.take_from_node (в графе общий на все узлы)
 var _slot_pos: Dictionary = {}       # id объекта (слот шарда узла) -> позиция
 var _taken_by: Dictionary = {}       # сессия -> [id слотов этого узла, которые она взяла]
@@ -157,6 +158,7 @@ func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 	net = server
 	bridge = bridge_api
 	breach = VaultBreach.new(self)
+	charge = ChargeBreach.new(self)
 	daemons.load_dir()
 	_build_slots()
 	if manage_net_hooks:
@@ -170,9 +172,21 @@ func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 	net.daemon_requested.connect(_on_daemon_requested)
 	net.leave_requested.connect(_on_leave_requested)
 	net.breach_open_requested.connect(_on_breach_open)
-	net.breach_tap_requested.connect(func(session: String, cell: Array) -> void: breach.request_tap(session, cell))
-	net.breach_cancel_requested.connect(func(session: String) -> void: breach.request_cancel(session))
-	net.teleported.connect(func(session: String, _from: Vector3, _to: Vector3) -> void: breach.end_early(session, "teleport"))
+	net.charge_requested.connect(_on_charge_requested)
+	# Клетки и отмена идут одним сообщением на обе мини-игры; у игрока одновременно одна из них (заряд и взлом друг друга исключают).
+	net.breach_tap_requested.connect(func(session: String, cell: Array) -> void:
+		if charge.has_attempt(session):
+			charge.request_tap(session, cell)
+		else:
+			breach.request_tap(session, cell))
+	net.breach_cancel_requested.connect(func(session: String) -> void:
+		if charge.has_attempt(session):
+			charge.request_cancel(session)
+		else:
+			breach.request_cancel(session))
+	net.teleported.connect(func(session: String, _from: Vector3, _to: Vector3) -> void:
+		breach.end_early(session, "teleport")
+		charge.end_early(session, "teleport"))
 	var soft := NodeLayout.ICE.size() if node_def.is_empty() else int(node_def.get("ice", 1))
 	for i in soft:
 		_add_ice(NodeLayout.ICE[i]["id"], NodeLayout.ICE[i]["waypoints"])
@@ -562,7 +576,7 @@ func deck_view(ds: DaemonSession) -> Dictionary:
 		var cells: Array = (meta.get("cells", []) as Array).map(func(c: Variant) -> String: return str(c))
 		used += cells.size()
 		var row := {"id": id, "name": daemons.display_name(id, NodeLayout.DAEMON_NAMES.get(id, id)), "effect": def.effect if def != null else "",
-			"tier": def.tier if def != null else 1, "cells": cells, "prot": bool(meta.get("prot", false)), "loaded": true}
+			"tier": def.tier if def != null else 1, "cells": cells, "prot": bool(meta.get("prot", false)), "loaded": true, "chargeable": daemons.is_chargeable(id)}
 		if def != null and def.unsupported_reason != "":
 			row["unsupported"] = def.unsupported_reason
 		rows.append(row)
@@ -576,7 +590,7 @@ func _push_deck(session: String) -> void:
 		net.send_to(session, WorldMsg.encode_fields(WorldMsg.EVENT, deck_view(ds)))
 
 
-## Строка перезарядок в снимке: к {id, name, left} добавлены st (ready | cooldown | active | unsupported) и until (время сервера, когда
+## Строка перезарядок в снимке: к {id, name, left} добавлены st (ready | charged | cooldown | active | unsupported) и until (время сервера, когда
 ## состояние кончится; нет у ready и unsupported). active — действует эффект (GHOST, JITTER) и важнее перезарядки, которая идёт параллельно.
 func cd_entry(ds: DaemonSession, id: String, now: float) -> Dictionary:
 	var def := daemons.get_def(id)
@@ -592,6 +606,8 @@ func cd_entry(ds: DaemonSession, id: String, now: float) -> Dictionary:
 	elif left > 0.0:
 		entry["st"] = "cooldown"
 		entry["until"] = snappedf(now + left, 0.001)
+	elif ds.is_charged(id):
+		entry["st"] = "charged"
 	return entry
 
 
@@ -727,6 +743,7 @@ func _step(delta: float) -> void:
 		ice.meters = meters
 	_update_hunts()
 	breach.tick(delta)
+	charge.tick(delta)
 	_expire_vaults()
 	if is_graph_node():
 		_check_portals()
@@ -829,7 +846,10 @@ func _on_joined(session: String, _peer: int, _resumed: bool) -> void:
 	var meter := TraceMeter.new(trace_settings)
 	meter.reset(_now)
 	_connect_meter(session, meter)
-	_sessions[session] = DaemonSession.new(NodeLayout.DEFAULT_DECK, meter)
+	var fresh := DaemonSession.new(NodeLayout.DEFAULT_DECK, meter)
+	for id in NodeLayout.DEFAULT_DECK_CELLS:
+		fresh.deck_meta[id] = {"cells": NodeLayout.DEFAULT_DECK_CELLS[id], "prot": false}
+	_sessions[session] = fresh
 	print("[gray-node] ", session, " вошёл в ", node_id)
 	_push_deck(session)   # сразу то, что известно (дека по умолчанию); настоящую деку и груз подтянет _load_deck
 	if bridge != null:
@@ -846,12 +866,14 @@ func _connect_meter(session: String, meter: TraceMeter) -> void:
 
 func _on_session_lost(session: String) -> void:
 	breach.end_early(session, "session_lost")   # обрыв посреди взлома — досрочный итог по собранному
+	charge.end_early(session, "session_lost")   # заряд просто бросается
 	if bridge != null and synced and _sessions.has(session):
 		_merge_world(session, {"connected": false, "trace": 0, "node": node_id})
 
 
 func _on_avatar_removed(session: String) -> void:
 	breach.end_early(session, "avatar_removed")   # до того, как сессия забыта: итогу нужна её дека
+	charge.end_early(session, "avatar_removed")
 	_close_vaults_of(session)
 	_portal_state.erase(session)
 	if not _sessions.has(session):
@@ -921,6 +943,13 @@ func _on_breach_open(session: String, vault: String, ids: Array) -> void:
 ## Привязка телепорта к площадке у хранилища узла (см. NodeLayout.snap_to_vault_pad).
 func snap_teleport(to: Vector3) -> Dictionary:
 	return NodeLayout.snap_to_vault_pad(to, _slot_pos.values())
+
+
+## Просьба зарядить защитного демона: отвечает только узел, где игрок (в графе обработчик подключён у каждого узла).
+func _on_charge_requested(session: String, daemon_id: String) -> void:
+	if not _sessions.has(session) or net.node_of(session) != node_id:
+		return
+	charge.request_start(session, daemon_id)
 
 
 func _on_daemon_requested(session: String, daemon_id: String) -> void:
@@ -1574,6 +1603,7 @@ func release_session(session: String) -> DaemonSession:
 	if ds == null:
 		return null
 	breach.end_early(session, "transit")
+	charge.end_early(session, "transit")
 	_close_vaults_of(session)
 	var cb: Callable = _level_cbs.get(session, Callable())
 	if cb.is_valid() and ds.trace.level_changed.is_connected(cb):

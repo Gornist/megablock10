@@ -21,6 +21,7 @@ const BLINK_SEC := 2.4
 const BLINK_PERIOD_SEC := 0.3
 ## Рамка деки, когда к ней поднесена рука с шардом (приёмник): цвет и толщина вместо обычных.
 const RECEIVE_BORDER := 5.0
+const NOTICE_SEC := 3.0
 
 const TAB_DECK := "deck"
 const TAB_LOOT := "loot"
@@ -28,6 +29,11 @@ const TAB_CHAT := "chat"
 const TAB_CALLS := "calls"
 
 signal tab_changed(id: String)
+## Заряд демона (К6): нажата «ЗАРЯДИТЬ» у программы / клетка сетки заряда на запястье / «ОТМЕНА». Просит сервер ProtoClient; решает сервер.
+signal charge_requested(daemon_id: String)
+signal charge_cell_tapped(cell: Vector2i)
+signal charge_cancel_requested
+## Уведомление на деке показывается столько секунд.
 ## Нажата заготовка ответа (диалог, текст) — для журнала клиента.
 signal reply_sent(thread_id: String, text: String)
 ## Отправка добычи (К5б): открыли выбор получателя — нужен список нетраннеров в Сети; подтвердили отправку (to — как в WorldMsg.GIVE).
@@ -48,6 +54,10 @@ var _loot_scroll: ScrollContainer
 var _loot_list: VBoxContainer
 var _give: DeckGive
 var _chat: DeckChat
+var _charge: DeckCharge
+var _notice: Label
+var _notice_left := 0.0
+var _rows_chargeable := false              # в списке есть кнопка «ЗАРЯДИТЬ»: деку есть чем нажимать
 var _calls: DeckCalls
 var _tab := TAB_DECK
 var _row_texts := PackedStringArray()
@@ -95,6 +105,9 @@ func _ready() -> void:
 	_tabs = MbTabs.new()
 	_tabs.tab_selected.connect(select_tab)
 	col.add_child(_tabs)
+	_notice = DeckUi.label("", DeckTheme.V_WARN, false)
+	_notice.visible = false
+	col.add_child(_notice)
 	_deck_scroll = ScrollContainer.new()
 	_deck_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	DeckUi.expand(_deck_scroll, true)
@@ -121,6 +134,12 @@ func _ready() -> void:
 	_calls = DeckCalls.new()
 	DeckUi.expand(_calls, true)
 	col.add_child(_calls)
+	_charge = DeckCharge.new()
+	DeckUi.expand(_charge, true)
+	_charge.cell_tapped.connect(func(cell: Vector2i): charge_cell_tapped.emit(cell))
+	_charge.cancel_requested.connect(func(): charge_cancel_requested.emit())
+	_charge.finished.connect(_end_charge_view)
+	col.add_child(_charge)
 	_surface = Sprite3D.new()
 	_surface.texture = _viewport.get_texture()
 	_surface.pixel_size = PANEL_WIDTH_M / VIEW_SIZE.x
@@ -140,6 +159,11 @@ func _process(delta: float) -> void:
 	if _blink_left > 0.0:
 		_blink_left = maxf(_blink_left - delta, 0.0)
 		_apply_blink()
+	if _notice_left > 0.0:
+		_notice_left -= delta
+		if _notice_left <= 0.0:
+			_notice.visible = false
+			_dirty = true
 	_since_draw += delta
 	if _dirty and _since_draw >= 1.0 / MAX_FPS:
 		_dirty = false
@@ -171,6 +195,7 @@ func set_deck(deck: Dictionary) -> void:
 		return
 	_shown_deck_key = key
 	_shown_rows = rows
+	_rows_chargeable = rows.any(func(r: Dictionary) -> bool: return bool(r["can_charge"]))
 	_dirty = true
 	DeckUi.clear(_list)
 	_row_texts = PackedStringArray(["ПРОГРАММЫ"])
@@ -183,6 +208,9 @@ func set_deck(deck: Dictionary) -> void:
 		_list.add_child(_program_plate(row))
 	if rows.is_empty():
 		_list.add_child(DeckUi.label("Программ нет", DeckTheme.V_DIM, false))
+	elif rows.any(func(r: Dictionary) -> bool: return bool(r["charged"])):
+		_row_texts.append(HudLogic.LAUNCH_HINT)
+		_list.add_child(DeckUi.label(HudLogic.LAUNCH_HINT, DeckTheme.V_DIM, false))
 
 
 ## Полоса RAM: «RAM  [██░░░░]  4/6» и метка «ПО УМОЛЧАНИЮ», если ёмкость условная (Мост её ещё не передаёт).
@@ -213,9 +241,16 @@ func _program_plate(row: Dictionary) -> Control:
 	top.add_child(DeckUi.expand(name_l))
 	if int(row["tier"]) > 0:
 		top.add_child(DeckUi.label("тир %d" % int(row["tier"]), DeckTheme.V_DIM, false))
-	var state_l := DeckUi.label(row["state"], DeckTheme.V_NAME, false)
-	state_l.add_theme_color_override("font_color", DeckTheme.tone_color(tone))
-	top.add_child(state_l)
+	if bool(row["can_charge"]):
+		# Защитный демон не заряжен: вместо надписи состояния — кнопка (текст «не заряжен» остаётся в row_texts).
+		var charge_btn := MbButton.new("ЗАРЯДИТЬ", "quiet")
+		charge_btn.button_height = DeckTheme.BTN_SMALL_H
+		charge_btn.pressed.connect(func(): charge_requested.emit(str(row["id"])))
+		top.add_child(charge_btn)
+	else:
+		var state_l := DeckUi.label(row["state"], DeckTheme.V_NAME, false)
+		state_l.add_theme_color_override("font_color", DeckTheme.tone_color(tone))
+		top.add_child(state_l)
 	col.add_child(top)
 	if not row["chain"].is_empty() or not row["effect"].is_empty():
 		var low := DeckUi.hbox(10)
@@ -469,7 +504,7 @@ func has_phone() -> bool:
 
 ## Есть ли на деке что нажимать (вкладки ДОБЫЧА, ЧАТ и ЗВОНКИ) и видна ли она: без телефона или с невидимой декой указатель не нужен.
 func is_interactive() -> bool:
-	return (phone != null or _loot_known) and is_visible_in_tree()   # деку на запястье прячут, пока у руки нет позы: по невидимой не целимся
+	return (phone != null or _loot_known or _rows_chargeable or _charge.visible) and is_visible_in_tree()   # деку на запястье прячут, пока у руки нет позы: по невидимой не целимся
 
 
 func active_tab() -> String:
@@ -520,6 +555,8 @@ func _apply_tabs() -> void:
 
 func _show_tab(id: String) -> void:
 	_tab = id
+	if _charge != null and _charge.visible:
+		return   # сетка заряда занимает всю деку; вкладка появится, когда она закроется (_end_charge_view)
 	_tabs.select(id)
 	if _give != null and _give.is_open() and id != TAB_LOOT:
 		_give.close()   # ушли с вкладки — выбор получателя отменён
@@ -570,6 +607,73 @@ func _on_call_changed(state: Dictionary) -> void:
 	if started:
 		_show_tab(TAB_CALLS)   # звонок выводит вкладку на экран сам: входящий — чтобы ответить, исходящий — чтобы видеть вызов
 	_update_badges()
+
+
+# ---------------------------------------------------------------- заряд демона (К6)
+
+## Началась мини-игра заряда (`bk` с mode = charge): сетка заменяет вкладки и список. Увеличение деки до масштаба 1 делает WorldUI по is_charging().
+func begin_charge(m: BreachMirror) -> bool:
+	var name_: String = str(m.targets[0]["name"]) if m != null and not m.targets.is_empty() else ""
+	if not _charge.begin(m, name_):
+		return false
+	_set_charge_layout(true)
+	return true
+
+
+func apply_charge_tick(ev: Dictionary) -> void:
+	_charge.apply_tick(ev)
+	_dirty = true
+
+
+func apply_charge_end(ev: Dictionary) -> void:
+	if not _charge.visible:
+		return   # сетка уже убрана (деку перестроили): итог показывать не на чем
+	_charge.apply_end(ev)
+	_dirty = true
+
+
+## Сервер не начал заряд (`bk_no` с mode = charge): причина строкой на деке.
+func show_charge_denied(reason: String, left: int = 0) -> void:
+	show_notice(HudLogic.charge_denied_text(reason, left))
+
+
+## Уведомление над списком (отказ запуска или заряда); пропадает через NOTICE_SEC.
+func show_notice(text: String) -> void:
+	_notice.text = text
+	_notice.visible = true
+	_notice_left = NOTICE_SEC
+	_dirty = true
+
+
+func notice_text() -> String:
+	return _notice.text if _notice.visible else ""
+
+
+## Идёт заряд (сетка или итог на экране): дека показывает только его.
+func is_charging() -> bool:
+	return _charge.visible
+
+
+func charge_view() -> DeckCharge:
+	return _charge
+
+
+func _set_charge_layout(on: bool) -> void:
+	_tabs.visible = not on
+	_notice.visible = false if on else _notice.visible
+	if on:
+		_deck_scroll.visible = false
+		_loot_scroll.visible = false
+		_chat.visible = false
+		_calls.visible = false
+	_dirty = true
+
+
+func _end_charge_view() -> void:
+	_charge.hide_all()
+	_tabs.visible = true
+	_show_tab(TAB_DECK)
+	_dirty = true
 
 
 # ---------------------------------------------------------------- указатель

@@ -93,6 +93,13 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 		if net.request_breach(vault, ids):
 			log_file.log("breach.request", {"vault": vault, "daemons": ids.size()}))
 	scene.breach_tap_requested.connect(func(cell: Vector2i): net.request_breach_tap(cell))
+	scene.charge_requested.connect(func(id: String):
+		if net.request_charge(id):
+			log_file.log("charge.request", {"daemon": id}))
+	scene.charge_cell_tapped.connect(func(cell: Vector2i): net.request_breach_tap(cell))
+	scene.charge_cancel_requested.connect(func():
+		net.request_breach_cancel()
+		log_file.log("charge.cancel"))
 	scene.breach_cancel_requested.connect(func():
 		net.request_breach_cancel()
 		log_file.log("breach.cancel"))
@@ -216,19 +223,27 @@ func _on_event(ev: Dictionary) -> void:
 			scene.apply_deck(ev)
 			log_file.log("deck.info", {"ram": ev.get("ram", 0), "default": ev.get("ram_default", false), "used": ev.get("used", 0),
 				"programs": (ev.get("daemons", []) as Array).size(), "loot": (ev.get("loot", []) as Array).size(), "eddies": ev.get("eddies", 0)})
+		WorldMsg.EV_DAEMON:
+			scene.apply_daemon_result(ev)
 		WorldMsg.EV_BK:
 			scene.apply_breach_event(ev)
-			log_file.log("breach.start", {"vault": ev.get("vault", ""), "n": ev.get("n", 0), "tier": ev.get("tier", ""), "grid": (ev.get("grid", {}) as Dictionary).get("size", 0), "sec": ev.get("sec", 0)})
+			if ev.get("mode", "") == WorldMsg.MODE_CHARGE:
+				log_file.log("charge.start", {"daemon": ev.get("daemon", ""), "tier": ev.get("tier", ""), "grid": (ev.get("grid", {}) as Dictionary).get("size", 0), "sec": ev.get("sec", 0)})
+			else:
+				log_file.log("breach.start", {"vault": ev.get("vault", ""), "n": ev.get("n", 0), "tier": ev.get("tier", ""), "grid": (ev.get("grid", {}) as Dictionary).get("size", 0), "sec": ev.get("sec", 0)})
 		WorldMsg.EV_BK_TICK:
 			scene.apply_breach_event(ev)
 			if ev.has("cell") and (not bool(ev.get("ok", true)) or bool(ev.get("trap", false))):
-				log_file.log("breach.tap", {"ok": ev.get("ok", false), "trap": ev.get("trap", false), "left": ev.get("left", 0)})
+				log_file.log("charge.tap" if ev.get("mode", "") == WorldMsg.MODE_CHARGE else "breach.tap", {"ok": ev.get("ok", false), "trap": ev.get("trap", false), "left": ev.get("left", 0)})
 		WorldMsg.EV_BK_END:
 			scene.apply_breach_event(ev)
-			log_file.log("breach.end", {"outcome": ev.get("outcome", ""), "early": ev.get("early", ""), "eddies": ev.get("eddies", 0), "opened": (ev.get("opened", []) as Array).size(), "error": ev.get("error", "")})
+			if ev.get("mode", "") == WorldMsg.MODE_CHARGE:
+				log_file.log("charge.end", {"daemon": ev.get("daemon", ""), "outcome": ev.get("outcome", ""), "charged": ev.get("charged", false), "early": ev.get("early", ""), "left": ev.get("left", 0)})
+			else:
+				log_file.log("breach.end", {"outcome": ev.get("outcome", ""), "early": ev.get("early", ""), "eddies": ev.get("eddies", 0), "opened": (ev.get("opened", []) as Array).size(), "error": ev.get("error", "")})
 		WorldMsg.EV_BK_NO:
 			scene.apply_breach_event(ev)
-			log_file.log("breach.no", {"reason": ev.get("reason", "")})
+			log_file.log("charge.no" if ev.get("mode", "") == WorldMsg.MODE_CHARGE else "breach.no", {"reason": ev.get("reason", "")})
 		WorldMsg.EV_GIVE_LIST:
 			scene.apply_give_list(ev)
 			log_file.log("give.list", {"runners": (ev.get("runners", []) as Array).size()})

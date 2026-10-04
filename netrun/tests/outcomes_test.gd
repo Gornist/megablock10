@@ -198,6 +198,7 @@ func test_ghost_breaks_the_hunt_so_emergency_exit_keeps_deck() -> void:
 	await _enter_node()
 	_trace(60.0)
 	assert_bool(await _wait_for(func(): return not _hunt_events(true).is_empty())).is_true()
+	(_node.session_state(SESSION)).set_charged("ghost_1")   # защитный демон вне взлома работает только заряженным (К6)
 	assert_bool(_bot.net.request_use("ghost_1")).is_true()  # охота идёт по позиции, спрятанного GHOST'ом она не видит
 	assert_bool(await _wait_for(func(): return not _hunt_events(false).is_empty())).is_true()
 	assert_bool(_bot.net.request_exit(ExitLogic.REASON_MANUAL_HOLD)).is_true()

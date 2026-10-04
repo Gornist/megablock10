@@ -74,7 +74,7 @@ func test_client_gets_the_real_deck_and_loot_from_the_bridge() -> void:
 	assert_str(info["daemons"][0]["effect"]).is_equal("GHOST")
 	assert_int(int(info["daemons"][0]["tier"])).is_equal(2)
 	assert_array(info["daemons"][0]["cells"]).is_equal(["1C", "BD", "E9"])
-	assert_bool((info["daemons"][1] as Dictionary).has("unsupported")).is_true()   # BLACKOUT в Сети пока не работает
+	assert_bool((info["daemons"][1] as Dictionary).has("unsupported")).is_true()   # MINER в Сети не работает (он только во взломе)
 	# Рабочие демоны в снимке перезарядок — те же, добытого там нет.
 	assert_bool(await _wait_for(func(): return scene.deck_state.size() == 2)).is_true()
 	assert_array(scene.deck_state.map(func(d): return d["id"])).is_equal(["it_fake000000d001", "it_fake000000d002"])
@@ -87,7 +87,7 @@ func test_client_gets_the_real_deck_and_loot_from_the_bridge() -> void:
 	assert_str("\n".join(loot_texts)).contains("ШАРД  Чертежи склада  тир 2  ЗАШИФРОВАН")
 	assert_str("\n".join(loot_texts)).contains("ШАРД  Накладная  тир 1  ОТКРЫТ")
 	assert_bool(await _wait_for(func(): return "не работает в Сети" in "\n".join(deck.row_texts()))).is_true()
-	assert_str(deck.row_texts()[1]).contains("1 Призрак").contains("готов")
+	assert_str(deck.row_texts()[1]).contains("1 Призрак").contains("не заряжен")
 	await proto.net.drop()
 
 
@@ -95,6 +95,8 @@ func test_using_a_program_shows_it_active_then_on_cooldown() -> void:
 	var proto := _client()
 	var scene: Node3D = proto.scene
 	assert_bool(await _wait_for(func(): return scene.deck_state.size() == 2 and not scene.deck_info.is_empty())).is_true()
+	_node.session_state(SESSION).set_charged("it_fake000000d001")   # защитный демон вне взлома срабатывает только заряженным (К6; сам заряд — charge_client_test)
+	assert_bool(await _wait_for(func(): return "ГОТОВ К ЗАПУСКУ" in "\n".join(scene.world_ui.deck.row_texts()))).is_true()
 	scene.use_slot(0)   # GHOST, 30 с действия, 60 с перезарядки (тир 2)
 	var deck: DeckPanel = scene.world_ui.deck
 	assert_bool(await _wait_for(func(): return str(deck.row_texts()[1]).contains("активен"))).is_true()
@@ -107,6 +109,8 @@ func test_cd_entry_follows_ready_active_cooldown_and_unsupported() -> void:
 	node.daemons.load_dir()
 	var ds := DaemonSession.new(["ghost_1", "jitter_1"])
 	assert_str(node.cd_entry(ds, "ghost_1", 10.0)["st"]).is_equal("ready")
+	ds.set_charged("ghost_1")
+	assert_str(node.cd_entry(ds, "ghost_1", 10.0)["st"]).is_equal("charged")   # заряжен, ждёт запуска
 	assert_bool(node.cd_entry(ds, "ghost_1", 10.0).has("until")).is_false()
 	assert_bool(node.daemons.apply(ds, "ghost_1", {}, 10.0)["ok"]).is_true()   # GHOST тира 1: 20 с действия, 60 с перезарядки
 	var act := node.cd_entry(ds, "ghost_1", 12.0)
@@ -116,14 +120,15 @@ func test_cd_entry_follows_ready_active_cooldown_and_unsupported() -> void:
 	assert_str(cd["st"]).is_equal("cooldown")
 	assert_float(cd["until"]).is_equal_approx(70.0, 0.001)
 	assert_float(cd["left"]).is_equal_approx(39.0, 0.001)
-	assert_str(node.cd_entry(ds, "ghost_1", 71.0)["st"]).is_equal("ready")
+	assert_str(node.cd_entry(ds, "ghost_1", 71.0)["st"]).is_equal("ready")   # заряд ушёл с запуском
 	# JITTER: trace заморожен 15 с — это «активен».
+	ds.set_charged("jitter_1")
 	assert_bool(node.daemons.apply(ds, "jitter_1", {}, 100.0)["ok"]).is_true()
 	assert_str(node.cd_entry(ds, "jitter_1", 105.0)["st"]).is_equal("active")
 	assert_float(node.cd_entry(ds, "jitter_1", 105.0)["until"]).is_equal_approx(115.0, 0.001)
 	assert_str(node.cd_entry(ds, "jitter_1", 116.0)["st"]).is_equal("cooldown")
 	# Эффект, которого нет в Сети: виден, но не работает.
-	node.daemons.add_item_daemon("x1", {"effect": "BLACKOUT", "tier": 1, "name": "Затмение"})
+	node.daemons.add_item_daemon("x1", {"effect": "MINER", "tier": 1, "name": "Майнер"})
 	ds.deck.append("x1")
 	assert_str(node.cd_entry(ds, "x1", 0.0)["st"]).is_equal("unsupported")
 

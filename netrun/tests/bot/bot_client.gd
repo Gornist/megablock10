@@ -82,6 +82,12 @@ var breach_log: Array = []           # события bk_end по порядку
 var breach_tries := 0
 const BREACH_MAX_TRIES := 3
 const BREACH_TAP_PERIOD := 0.12      # с между тапами: быстрый, но человеческий темп
+## Заряд демона (К6): GHOST вне взлома срабатывает только заряженным — бот сначала собирает сетку заряда автосолвером, потом запускает.
+var charge_log: Array = []           # события bk_end заряда по порядку
+var _ch: BreachMirror
+var _ch_path: Array[Vector2i] = []
+var _ch_next_tap := 0.0
+var _ch_asked_at := -100.0
 var _bk: BreachMirror
 var _bk_path: Array[Vector2i] = []
 var _bk_next_tap := 0.0
@@ -171,17 +177,30 @@ func _on_event(ev: Dictionary) -> void:
 		WorldMsg.EV_DECK:
 			deck_info = ev
 		WorldMsg.EV_BK:
-			_bk = BreachMirror.from_event(ev)
-			_bk_path = []
+			if ev.get("mode", "") == WorldMsg.MODE_CHARGE:
+				_ch = BreachMirror.from_event(ev)
+				_ch_path = []
+			else:
+				_bk = BreachMirror.from_event(ev)
+				_bk_path = []
 		WorldMsg.EV_BK_TICK:
-			if _bk != null:
+			if ev.get("mode", "") == WorldMsg.MODE_CHARGE:
+				if _ch != null:
+					_ch.apply_tick(ev)
+			elif _bk != null:
 				_bk.apply_tick(ev)
 		WorldMsg.EV_BK_END:
-			if _bk != null:
-				_bk.apply_end(ev)
-			breach_log.append(ev)
+			if ev.get("mode", "") == WorldMsg.MODE_CHARGE:
+				if _ch != null:
+					_ch.apply_end(ev)
+				charge_log.append(ev)
+			else:
+				if _bk != null:
+					_bk.apply_end(ev)
+				breach_log.append(ev)
 		WorldMsg.EV_BK_NO:
-			_bk_no = str(ev.get("reason", ""))
+			if ev.get("mode", "") != WorldMsg.MODE_CHARGE:   # отказ заряда — повторим по таймеру шага «ghost»
+				_bk_no = str(ev.get("reason", ""))
 		WorldMsg.EV_PORTAL_DENIED:
 			denied_reasons.append(str(ev.get("reason", "")))
 
@@ -285,9 +304,12 @@ func _process(delta: float) -> void:
 					_enter("g_wait")
 				else:
 					_enter("to_exit" if shard_taken or no_shard else "to_shard")
-			elif not _asked or _clock - _asked_at >= GHOST_RETRY_SEC:
-				_asked = net.request_use(ghost_daemon)
-				_asked_at = _clock
+			elif _is_charged(ghost_daemon):
+				if not _asked or _clock - _asked_at >= GHOST_RETRY_SEC:
+					_asked = net.request_use(ghost_daemon)
+					_asked_at = _clock
+			else:
+				_step_charge()
 		"tut_signs":
 			# Новичок обходит таблички учебного узла по порядку (подошёл на SIGN_REACH — прочитал), потом GHOST и дальше как GRAPH_RUN.
 			if node_info.is_empty():
@@ -378,6 +400,34 @@ func breach_pick() -> Array:
 			ids.append(str(d["id"]))
 			used += cells.size()
 	return ids
+
+
+## Заряжен ли демон по последнему снимку узла (state.cd: st == "charged").
+func _is_charged(daemon: String) -> bool:
+	for d in last_state.get("cd", []):
+		if str(d.get("id", "")) == daemon:
+			return str(d.get("st", "")) == "charged"
+	return false
+
+
+## Заряд GHOST: просьба (повтор раз в секунду: дека из Моста приходит позже входа), потом тапы автосолвером в человеческом темпе.
+func _step_charge() -> void:
+	if _ch != null and _ch.finished:
+		_ch = null
+		_ch_path = []
+	if _ch == null:
+		if _clock - _ch_asked_at >= GHOST_RETRY_SEC:
+			_ch_asked_at = _clock
+			net.request_charge(ghost_daemon)
+		return
+	if _clock < _ch_next_tap or _ch.pending != null:
+		return
+	_ch_next_tap = _clock + BREACH_TAP_PERIOD
+	var have := _ch.selected().size()
+	if _ch_path.is_empty() or _ch_path.size() < have or _ch_path.slice(0, have) != _ch.selected():
+		_ch_path = BreachAutoSolver.solve(_ch.attempt)
+	if _ch_path.size() > have and _ch.tap(_ch_path[have]):
+		net.request_breach_tap(_ch_path[have])
 
 
 func _step_breach() -> void:

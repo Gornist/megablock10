@@ -141,3 +141,47 @@ func test_loot_rows() -> void:
 	assert_str(rows[1]["text"]).is_equal("ШАРД  Накладная  тир 1  ОТКРЫТ")
 	assert_str(rows[2]["text"]).is_equal("ДЕМОН  Дрожь  тир 3  ОТКРЫТ")
 	assert_array(HudLogic.loot_rows([])).is_empty()
+
+
+# ---------------------------------------------------------------- заряд (К6)
+
+func test_state_text_and_tone_for_chargeable_daemons() -> void:
+	assert_str(HudLogic.state_text("ready", 0.0, 0.0, true)).is_equal("не заряжен")
+	assert_str(HudLogic.state_text("ready", 0.0)).is_equal("готов")   # не защитный (EXTRACT_SHARD): как раньше
+	assert_str(HudLogic.state_text("charged", 0.0)).is_equal("ГОТОВ К ЗАПУСКУ")
+	assert_str(HudLogic.state_text("active", 0.0, 12.0, true)).is_equal("активен 12 с")
+	assert_str(HudLogic.state_text("cooldown", 38.0, 0.0, true)).is_equal("перезарядка 38 с")
+	assert_str(HudLogic.state_tone("charged", 0.0, true)).is_equal("ok")
+	assert_str(HudLogic.state_tone("ready", 0.0, true)).is_equal("dim")
+	assert_str(HudLogic.state_tone("ready", 0.0, false)).is_equal("ok")
+
+
+func test_charge_button_only_for_a_ready_chargeable_program() -> void:
+	assert_bool(HudLogic.can_charge("ready", true)).is_true()
+	for st in ["charged", "cooldown", "active", "unsupported", ""]:
+		assert_bool(HudLogic.can_charge(st, true)).is_false()
+	assert_bool(HudLogic.can_charge("ready", false)).is_false()   # EXTRACT_SHARD заряда не имеет
+	var rows := HudLogic.deck_rows({"daemons": [
+		{"id": "a", "name": "1 Призрак", "cooldown_left": 0.0, "st": "ready", "chargeable": true, "cells": ["1C", "BD"]},
+		{"id": "b", "name": "2 Сдвиг", "cooldown_left": 0.0, "st": "charged", "chargeable": true},
+		{"id": "c", "name": "3 Извлечение", "cooldown_left": 0.0, "st": "ready", "chargeable": false}], "selected": "a"})
+	assert_bool(rows[0]["can_charge"]).is_true()
+	assert_str(rows[0]["text"]).is_equal("1 Призрак  не заряжен")
+	assert_bool(rows[1]["can_charge"]).is_false()
+	assert_bool(rows[1]["charged"]).is_true()
+	assert_str(rows[1]["text"]).is_equal("2 Сдвиг  ГОТОВ К ЗАПУСКУ")
+	assert_bool(rows[2]["can_charge"]).is_false()
+	assert_str(rows[2]["text"]).is_equal("3 Извлечение  готов")
+
+
+func test_program_entries_carry_the_chargeable_flag() -> void:
+	var e := HudLogic.program_entries([{"id": "a", "name": "П", "left": 0.0, "st": "ready"}], [{"id": "a", "chargeable": true, "loaded": true}], 0.0)
+	assert_bool(e[0]["chargeable"]).is_true()
+
+
+func test_launch_and_charge_denial_texts_are_in_words() -> void:
+	assert_str(HudLogic.launch_error_text("not_charged")).contains("ЗАРЯДИТЬ")
+	assert_str(HudLogic.launch_error_text("zzz")).is_equal("Нельзя запустить")
+	assert_str(HudLogic.charge_denied_text("cooldown", 42)).is_equal("Перезарядка: 42 с")
+	assert_str(HudLogic.charge_denied_text("charged")).is_equal("Уже заряжен")
+	assert_str(HudLogic.charge_denied_text("active")).contains("мини-игра")

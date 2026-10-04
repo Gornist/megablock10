@@ -18,7 +18,18 @@ signal shard_stowed(object_id: String)
 signal breach_start_requested(vault: String, daemon_ids: Array)
 signal breach_tap_requested(cell: Vector2i)
 signal breach_cancel_requested
+## Заряд защитного демона на запястье (К6): «ЗАРЯДИТЬ» у программы / клетка сетки заряда / «ОТМЕНА». Просит сервер ProtoClient; решает сервер.
+signal charge_requested(daemon_id: String)
+signal charge_cell_tapped(cell: Vector2i)
+signal charge_cancel_requested
 
+## Импульс левого контроллера: демон запущен / запуск отказан / заряд готов.
+const LAUNCH_PULSE_AMP := 0.8
+const LAUNCH_PULSE_S := 0.25
+const DENY_PULSE_AMP := 0.3
+const DENY_PULSE_S := 0.08
+const CHARGED_PULSE_AMP := 0.55
+const CHARGED_PULSE_S := 0.15
 const VR_REACH := 0.4
 const FLAT_REACH := 3.0
 const STATS_PERIOD := 0.5
@@ -124,6 +135,9 @@ func _ready() -> void:
 	world_ui.breach_panel.start_requested.connect(func(vault: String, ids: Array): breach_start_requested.emit(vault, ids))
 	world_ui.breach_panel.cell_tapped.connect(func(cell: Vector2i): breach_tap_requested.emit(cell))
 	world_ui.breach_panel.cancel_requested.connect(func(): breach_cancel_requested.emit())
+	world_ui.deck.charge_requested.connect(func(id: String): charge_requested.emit(id))
+	world_ui.deck.charge_cell_tapped.connect(func(cell: Vector2i): charge_cell_tapped.emit(cell))
+	world_ui.deck.charge_cancel_requested.connect(func(): charge_cancel_requested.emit())
 	world_ui.deck.set_deck({"daemons": [], "selected": ""})
 	world_ui.deck.give_list_requested.connect(func(): give_list_requested.emit())
 	world_ui.deck.give_requested.connect(func(item_id: String, to: Dictionary): give_requested.emit(item_id, to))
@@ -176,6 +190,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			use_slot(k - KEY_1)
 		elif k == KEY_X:
 			leave_requested.emit()
+		elif k == KEY_C:
+			charge_selected()   # заряд выбранного демона (в VR — кнопка «ЗАРЯДИТЬ» на деке)
 		elif k == KEY_G:
 			stow(rig.camera)   # плоская сборка: шард «из руки» (перед камерой) в деку
 	var key: bool = event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_F
@@ -301,24 +317,74 @@ func ice_node(id: String) -> Node3D:
 	return _ice_nodes.get(id)
 
 
+## Слот деки по номеру (плоская сборка, цифры): выбрать и запустить именно его.
 func use_slot(index: int) -> void:
 	if index >= 0 and index < deck_state.size():
 		selected_daemon = str(deck_state[index]["id"])
 		_refresh_deck()
-		use_selected()
-
-
-func use_selected() -> void:
-	if not selected_daemon.is_empty():
 		daemon_use_requested.emit(selected_daemon)
 
 
+## Заряженные демоны деки в её порядке: те, что можно запустить одним нажатием.
+func charged_ids() -> Array:
+	return deck_state.filter(func(d: Dictionary) -> bool: return str(d.get("st", "")) == "charged").map(func(d: Dictionary) -> String: return str(d["id"]))
+
+
+## Кого запускает левый X: выбранного, если он заряжен, иначе первого заряженного (в погоне нет времени листать). Никто не заряжен — выбранный:
+## сервер ответит not_charged, и дека скажет об этом словами.
+func launch_target() -> String:
+	var charged := charged_ids()
+	if charged.is_empty() or selected_daemon in charged:
+		return selected_daemon
+	return charged[0]
+
+
+func use_selected() -> void:
+	var id := launch_target()
+	if not id.is_empty():
+		daemon_use_requested.emit(id)
+
+
+## Y / следующий: среди заряженных, если они есть (запуск в погоне), иначе по всей деке.
 func select_next() -> void:
-	var ids: Array = deck_state.map(func(d): return d["id"])
+	var ids: Array = charged_ids()
+	if ids.is_empty():
+		ids = deck_state.map(func(d): return d["id"])
 	if ids.is_empty():
 		return
-	selected_daemon = ids[(maxi(ids.find(selected_daemon), 0) + 1) % ids.size()]
+	selected_daemon = ids[(maxi(ids.find(selected_daemon), -1) + 1) % ids.size()]
 	_refresh_deck()
+
+
+## Зарядить выбранного демона (плоская сборка, клавиша C; в VR то же делает кнопка на деке). Выбранный не заряжается — первый, которого можно.
+func charge_selected() -> void:
+	var id := selected_daemon
+	if not _can_charge_id(id):
+		id = ""
+		for d in deck_state:
+			if _can_charge_id(str(d["id"])):
+				id = str(d["id"])
+				break
+	if not id.is_empty():
+		charge_requested.emit(id)
+
+
+func _can_charge_id(id: String) -> bool:
+	for d in deck_state:
+		if str(d["id"]) == id:
+			for info in deck_info.get("daemons", []):
+				if str(info.get("id", "")) == id:
+					return HudLogic.can_charge(str(d.get("st", "")), bool(info.get("chargeable", false)))
+	return false
+
+
+## Ответ сервера на `use`: запуск удался — импульс левой руки (состояние «активен N с» придёт в снимке); отказ — слово на деке.
+func apply_daemon_result(ev: Dictionary) -> void:
+	if bool(ev.get("ok", false)):
+		world_ui.feedback.pulse("left", LAUNCH_PULSE_AMP, LAUNCH_PULSE_S)
+	else:
+		world_ui.deck.show_notice(HudLogic.launch_error_text(str(ev.get("error", ""))))
+		world_ui.feedback.pulse("left", DENY_PULSE_AMP, DENY_PULSE_S)
 
 
 ## Событие `ev deck`: RAM, свойства рабочих демонов и груз. Вкладка ДОБЫЧА появляется с первым таким событием.
@@ -786,6 +852,9 @@ func _vault_pos(id: String) -> Vector3:
 
 ## События взлома от сервера (WorldMsg.EV_BK*): сетка, ответ на тап, итог, отказ. Панель в мире уже стоит (idle) или ставится здесь.
 func apply_breach_event(ev: Dictionary) -> void:
+	if str(ev.get("mode", "")) == WorldMsg.MODE_CHARGE:
+		_apply_charge_event(ev)   # заряд демона идёт на деке запястья, а не на панели у хранилища
+		return
 	var bp := world_ui.breach_panel
 	match str(ev.get("kind", "")):
 		WorldMsg.EV_BK:
@@ -803,3 +872,19 @@ func apply_breach_event(ev: Dictionary) -> void:
 			bp.apply_end(ev)
 		WorldMsg.EV_BK_NO:
 			bp.show_denied(str(ev.get("reason", "")), int(ev.get("left", 0)))
+
+
+## События заряда (mode = charge): сетка на деке, ответ на тап, итог, отказ.
+func _apply_charge_event(ev: Dictionary) -> void:
+	var deck := world_ui.deck
+	match str(ev.get("kind", "")):
+		WorldMsg.EV_BK:
+			deck.begin_charge(BreachMirror.from_event(ev))
+		WorldMsg.EV_BK_TICK:
+			deck.apply_charge_tick(ev)
+		WorldMsg.EV_BK_END:
+			deck.apply_charge_end(ev)
+			world_ui.feedback.pulse("left", CHARGED_PULSE_AMP if bool(ev.get("charged", false)) else DENY_PULSE_AMP, CHARGED_PULSE_S if bool(ev.get("charged", false)) else DENY_PULSE_S)
+		WorldMsg.EV_BK_NO:
+			deck.show_charge_denied(str(ev.get("reason", "")), int(ev.get("left", 0)))
+			world_ui.feedback.pulse("left", DENY_PULSE_AMP, DENY_PULSE_S)
