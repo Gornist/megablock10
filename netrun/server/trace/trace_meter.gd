@@ -70,6 +70,11 @@ func tick(now: float, hidden: bool = true) -> void:
 	_advance(now, hidden)
 
 
+## Сколько секунд trace ещё заморожен (0 — не заморожен).
+func frozen_left(now: float) -> float:
+	return maxf(0.0, _frozen_until - now)
+
+
 ## JITTER: trace замирает (ни роста, ни спада) на duration секунд.
 func freeze(now: float, duration: float) -> void:
 	_advance(now, true)
