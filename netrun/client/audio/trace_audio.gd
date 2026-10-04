@@ -3,6 +3,10 @@ extends Node
 ## Фоновый звук trace: ровный гул, который с уровнем становится громче, выше и пульсирует чаще;
 ## на FLATLINE фон исчезает (сильнейший сигнал — пропажа фона, docs/netrun.md).
 
+## Уровень FLATLINE = TraceMeter.Level.FLATLINE (уровни приходят числом в снимке): server/ в APK очков нет, номер продублирован,
+## совпадение стережёт tests/client_export_test.gd.
+const FLATLINE := 4
+
 var settings: Dictionary
 var level := 0
 

@@ -21,7 +21,22 @@ var grace_sec: float = DEFAULT_GRACE_SEC
 var beat_sec: float = DEFAULT_BEAT_SEC
 ## Номер терминала из токена `терминал:токен` («t03:секрет») или JSON; "" — токен без терминала (старый путь).
 func terminal_id() -> String:
-	return str(BridgeApi.parse_terminal_token(token).get("terminal", ""))
+	return str(parse_terminal_token(token).get("terminal", ""))
+
+
+## Токен, который очки кладут в auth: JSON {"terminal","token"} или «терминал:токен». Возвращает {terminal, token} или {}.
+## Живёт в shared/, а не в server/bridge (BridgeApi зовёт отсюда): server/ в APK очков не входит.
+static func parse_terminal_token(raw: String) -> Dictionary:
+	var t := raw.strip_edges()
+	if t.begins_with("{"):
+		var parsed: Variant = JSON.parse_string(t)
+		if parsed is Dictionary and parsed.has("terminal") and parsed.has("token"):
+			return {"terminal": str(parsed["terminal"]), "token": str(parsed["token"])}
+		return {}
+	var i := t.find(":")
+	if i <= 0 or i == t.length() - 1:
+		return {}
+	return {"terminal": t.substr(0, i), "token": t.substr(i + 1)}
 
 
 ## Заглушка вместо Моста (F1/M5): токен -> сессия.

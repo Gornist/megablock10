@@ -2,6 +2,13 @@ extends Node
 ## Точка входа: по метке сборки и аргументам выбирает сервер, клиент или плоскую сборку.
 ## Аргументы пользователя — после `--`, например: godot --headless --path netrun -- --exit-after=5
 
+## Сервер и бот — по пути, без class_name: в APK очков нет server/ и tests/ (export_presets.cfg, exclude_filter), и ссылка
+## на их глобальные классы (WorldServer, BotClient) ломала разбор main.gd на Pico 4 — клиент не стартовал (2026-10-04).
+## Сторож — tests/client_export_test.gd.
+const SERVER_SCRIPT := "res://server/world_server.gd"
+const BOT_SCRIPT := "res://tests/bot/bot_client.gd"
+
+
 func _ready() -> void:
 	var features := {
 		"dedicated_server": OS.has_feature("dedicated_server"),
@@ -19,10 +26,11 @@ func _ready() -> void:
 		mode = RunMode.Mode.SERVER
 	match mode:
 		RunMode.Mode.SERVER:
-			var s := WorldServer.new()
+			var server_script: GDScript = load(SERVER_SCRIPT)
+			var s: Node = server_script.new()
 			s.name = "WorldServer"
 			add_child(s)
-			s.start(args)
+			s.call("start", args)
 		RunMode.Mode.CLIENT:
 			var c := preload("res://client/client_stub.gd").new()
 			add_child(c)
@@ -36,12 +44,14 @@ func _ready() -> void:
 ## `--bot=ghost_run|exposed_run|black_run|graph_run` (+ `--bot-route=node_02,node_03`, `--bot-ghost`, `--host=`, `--port=`, `--token=`, `--bot-reconnect`, `--bot-hold=<с после шарда>`, `--bot-daemon=<id GHOST-демона>`, `--exit-after=`): бот проходит узел и выходит
 ## из процесса: код 0 — чистый выход, 1 — любой другой итог. Итог печатается строкой `[bot] итог: <result>`.
 func run_bot(args: PackedStringArray, kind: String) -> void:
-	var scenarios := {"ghost_run": BotClient.Scenario.GHOST_RUN, "exposed_run": BotClient.Scenario.EXPOSED_RUN, "black_run": BotClient.Scenario.BLACK_RUN, "graph_run": BotClient.Scenario.GRAPH_RUN}
+	var bot_script: GDScript = load(BOT_SCRIPT)
+	var sc: Dictionary = bot_script.get_script_constant_map()["Scenario"]
+	var scenarios := {"ghost_run": sc["GHOST_RUN"], "exposed_run": sc["EXPOSED_RUN"], "black_run": sc["BLACK_RUN"], "graph_run": sc["GRAPH_RUN"]}
 	if not scenarios.has(kind):
 		push_error("[bot] --bot= принимает ghost_run, exposed_run, black_run или graph_run, получено «%s»" % kind)
 		get_tree().quit(2)
 		return
-	var bot := BotClient.new()
+	var bot = bot_script.new()  # без типа: класс BotClient в APK очков не входит
 	bot.name = "Bot"
 	bot.verbose = true
 	bot.reconnect = "--bot-reconnect" in args

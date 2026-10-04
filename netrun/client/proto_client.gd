@@ -96,7 +96,7 @@ func _on_event(ev: Dictionary) -> void:
 		scene.show_ended(str(ev.get("reason", "")))
 		if ev.get("reason") == ExitLogic.REASON_FLATLINE:
 			if trace_audio != null:
-				trace_audio.set_level(TraceMeter.Level.FLATLINE)  # фон уже пропадает; добавляем падающий тон
+				trace_audio.set_level(TraceAudio.FLATLINE)  # фон уже пропадает; добавляем падающий тон
 			add_child(FlatlineAudio.new())
 
 

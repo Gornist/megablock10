@@ -47,17 +47,9 @@ static func finish_rid(session: String) -> String:
 
 
 ## Токен, который очки кладут в auth: JSON {"terminal","token"} или «терминал:токен». Возвращает {terminal, token} или {}.
+## Разбор — в shared (NetConfig): клиент очков собирается без server/.
 static func parse_terminal_token(raw: String) -> Dictionary:
-	var t := raw.strip_edges()
-	if t.begins_with("{"):
-		var parsed: Variant = JSON.parse_string(t)
-		if parsed is Dictionary and parsed.has("terminal") and parsed.has("token"):
-			return {"terminal": str(parsed["terminal"]), "token": str(parsed["token"])}
-		return {}
-	var i := t.find(":")
-	if i <= 0 or i == t.length() - 1:
-		return {}
-	return {"terminal": t.substr(0, i), "token": t.substr(i + 1)}
+	return NetConfig.parse_terminal_token(raw)
 
 
 ## Запускает соединение (для фейка — ничего не делает).
