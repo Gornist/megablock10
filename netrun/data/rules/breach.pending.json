@@ -1,0 +1,129 @@
+{
+  "_pending": "ВРЕМЕННАЯ КОПИЯ для К1. Итоговый файл — breach.json: его выгружает Kotlin-тест :rules (задача К0). Числа и реплики списаны вручную с app/.../breach/ (Container.kt: BreachTierParams, BreachSymbols в BreachEngine.kt, MockBreach.kt, IceLines.kt, BreachScreen.kt: JITTER +15 с, буфер расшифровки = длина + 2, BreachRun.timeEvent). Когда появится breach.json, этот файл удалить; схема ниже — предложение К1, К0 выгружает ту же (или правится BreachData).",
+  "version": 1,
+  "alphabet": [
+    "1C",
+    "55",
+    "BD",
+    "E9",
+    "7A",
+    "FF"
+  ],
+  "dead_marker": "××",
+  "trap_sentinel": "  ",
+  "jitter_bonus_sec": 15,
+  "cooldown_minutes": 30,
+  "decrypt": {
+    "target_length_by_tier": [
+      3,
+      4,
+      5
+    ],
+    "buffer_extra": 2
+  },
+  "time": {
+    "events_min_timer_sec": 20,
+    "low_time_sec": 10,
+    "warning_sec": 5
+  },
+  "tiers": {
+    "BASE": {
+      "grid_size": 5,
+      "timer_sec": 45,
+      "dead_cells": [
+        0,
+        0
+      ],
+      "corrupted_codes": [
+        0,
+        0
+      ]
+    },
+    "HARD": {
+      "grid_size": 6,
+      "timer_sec": 60,
+      "dead_cells": [
+        2,
+        3
+      ],
+      "corrupted_codes": [
+        0,
+        0
+      ]
+    },
+    "NIGHTMARE": {
+      "grid_size": 7,
+      "timer_sec": 75,
+      "dead_cells": [
+        5,
+        6
+      ],
+      "corrupted_codes": [
+        2,
+        3
+      ]
+    }
+  },
+  "ice_lines": {
+    "BASE": {
+      "INTRO": [
+        "ICE: плановая проверка канала…",
+        "ICE: неавторизованный запрос, уровень допуска не подтверждён."
+      ],
+      "TRAP": [
+        "ICE: блок сектора.",
+        "ICE: ошибка последовательности."
+      ],
+      "MATCH": [
+        "ICE: часть данных принята.",
+        "ICE: доступ к сегменту открыт."
+      ],
+      "HALF_TIME": [
+        "ICE: сессия истекает через половину окна."
+      ],
+      "LOW_TIME": [
+        "ICE: закрытие сессии."
+      ]
+    },
+    "HARD": {
+      "INTRO": [
+        "ICE: контур активен. Идентифицируем источник.",
+        "ICE: фиксирую попытку доступа. Не отключайтесь."
+      ],
+      "TRAP": [
+        "ICE: ловушка сработала. Шум в канале растёт.",
+        "ICE: несанкционированный сектор. Трассировка усилена."
+      ],
+      "MATCH": [
+        "ICE: обход сегмента. Продолжаю следить.",
+        "ICE: брешь в контуре. Латаю."
+      ],
+      "HALF_TIME": [
+        "ICE: половина окна вышла. Замыкаю контур."
+      ],
+      "LOW_TIME": [
+        "ICE: закрываю канал. Последние секунды."
+      ]
+    },
+    "NIGHTMARE": {
+      "INTRO": [
+        "ICE: тебя ждали.",
+        "ICE: контур боевой. Отступи, пока можешь."
+      ],
+      "TRAP": [
+        "ICE: попался. Прожигаю канал.",
+        "ICE: ещё шаг — и я вижу твой адрес."
+      ],
+      "MATCH": [
+        "ICE: ты слишком близко.",
+        "ICE: как ты прошёл этот сектор?.."
+      ],
+      "HALF_TIME": [
+        "ICE: время идёт. Не в твою пользу."
+      ],
+      "LOW_TIME": [
+        "ICE: отключаю. Навсегда."
+      ]
+    }
+  }
+}
