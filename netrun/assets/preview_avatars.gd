@@ -3,6 +3,7 @@ extends Node3D
 ## Запуск на дисплее devbox: godot --path netrun --display-driver wayland --resolution 1280x720 res://assets/preview_avatars.tscn -- --out=/каталог
 
 var _out := "/tmp/avatar_shots"
+var _black := false  # --black: без комнаты, одна голова на тёмном фоне, кадры вблизи (спереди, три четверти, сбоку, сзади)
 const C := Vector3(0, 0, -6)  # центр комнаты (NodeLayout.ROOM_CENTER): все положения ниже — от него
 var _avatars: Array = []  # [AvatarView, AvatarPose]: в игре поза приходит ~20 раз/с, здесь повторяется каждый кадр
 
@@ -25,6 +26,8 @@ func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			_out = a.substr(6)
+		elif a == "--black":
+			_black = true
 	DirAccess.make_dir_recursive_absolute(_out)
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
@@ -32,9 +35,10 @@ func _ready() -> void:
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
-	var view := NodeView.new()
-	add_child(view)
-	view.set_tier("BASE")
+	if not _black:
+		var view := NodeView.new()
+		add_child(view)
+		view.set_tier("BASE")
 	var poses := [
 		[Vector3(-1.4, 0, 0.0), _pose(Vector3(0, 1.62, 0), 0.0, Vector3(-0.28, 1.05, -0.3), Vector3(0.28, 1.05, -0.3), Vector2(0.2, 0.5), Vector2(0.2, 0.5))],
 		[Vector3(-0.4, 0, -0.9), _pose(Vector3(0, 1.58, 0), 0.5, Vector3(-0.3, 1.3, -0.35), Vector3(0.3, 0.95, -0.4), Vector2(0.0, 0.0), Vector2(1.0, 1.0))],
@@ -51,6 +55,12 @@ func _ready() -> void:
 	cam.fov = 70.0
 	cam.current = true
 	add_child(cam)
+	var head_shots := [
+		["h_front", Vector3(-1.4, 1.62, -0.55), Vector3(-1.4, 1.60, 0.0)],
+		["h_34", Vector3(-1.05, 1.64, -0.45), Vector3(-1.4, 1.60, 0.0)],
+		["h_side", Vector3(-0.85, 1.62, 0.0), Vector3(-1.4, 1.60, 0.0)],
+		["h_back", Vector3(-1.4, 1.62, 0.6), Vector3(-1.4, 1.60, 0.0)],
+	]
 	var shots := [
 		["face1", Vector3(-1.4, 1.62, -0.8), Vector3(-1.4, 1.62, 0.0)],
 		["face2", Vector3(-1.4, 1.6, -2.0), Vector3(-1.4, 1.55, 0.0)],
@@ -59,6 +69,8 @@ func _ready() -> void:
 		["mid", Vector3(-0.6, 1.5, 2.0), Vector3(-0.5, 1.3, -0.4)],
 		["side", Vector3(-3.6, 1.6, 0.4), Vector3(0.1, 1.2, -0.3)],
 	]
+	if _black:
+		shots = head_shots
 	for sh in shots:
 		cam.look_at_from_position(sh[1] + C, sh[2] + C)
 		for k in 40:
