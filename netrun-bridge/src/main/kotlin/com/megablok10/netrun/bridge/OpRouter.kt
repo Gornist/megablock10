@@ -16,6 +16,7 @@ internal class OpRouter(private val ops: ValueOps, private val terminals: Termin
                 ops.submitDeck(
                     caller, req(msg, "rid"), req(msg, "runner"), req(msg, "callsign"), req(msg, "terminal"),
                     strings(msg, "items"), req(msg, "protected"),
+                    ram = msg["ram"].long()?.coerceIn(-1L, MAX_WIRE_RAM)?.toInt(), // вне 6..13 отказывает сама операция (`ram_exceeded`)
                 ),
             )
             "op.take_from_node" -> opReply(
@@ -131,6 +132,7 @@ internal class OpRouter(private val ops: ValueOps, private val terminals: Termin
     )
 
     private companion object {
+        const val MAX_WIRE_RAM = 1000L // RAM из запроса сжимается в Int без переполнения; допустимость 6..13 проверяет операция
         val TERMINAL_OPS = setOf("terminal.auth", "session.confirm", "terminal.beat")
         val MASTER_OPS = setOf(
             "master.pause", "master.link", "master.goal", "master.goal_clear", "master.gate", "master.decide",

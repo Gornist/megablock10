@@ -56,6 +56,12 @@ class BreachFixture(path: String = ":memory:") {
         put(id, "inbox:$key", "phone:$key", "DAEMON", payload)
     }
 
+    /** Демон в `inbox` игрока [key] с цепочкой из [cells] кодов (для проверок RAM при входе). */
+    fun inboxDaemon(id: String, key: String, cells: Int) {
+        val d = Daemon(id, id, List(cells) { "1C" }, Tier.BASE, DaemonEffect.EXTRACT_SHARD)
+        put(id, "inbox:$key", "phone:$key", "DAEMON", ItemPayloadCodec.encodeDaemon(d))
+    }
+
     /** Предмет узла (хранилище): шард или демон заданного тира, [origin] — `node:node_07` либо `master:...`. */
     fun vaultItem(id: String, kind: String, tier: Tier, origin: String = "node:node_07", owner: String = "node:node_07") {
         val payload = if (kind == "SHARD") {

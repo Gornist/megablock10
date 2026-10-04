@@ -71,8 +71,9 @@ class FakePhone(private val scope: CoroutineScope, private var worldPub: String,
 
     fun sendCard(card: ItemCard): SendOutcome = sendDm(PhoneWire.encodeItem(card))
 
-    fun enterRequest(rid: String, terminal: String, transfers: List<String>, protectedTransfer: String): EnterRequest {
-        val r = EnterRequest(rid, terminal, key, "Призрак", transfers, protectedTransfer, System.currentTimeMillis(), "")
+    /** Запрос входа: [ram] = null — v1, иначе v2 с RAM персонажа. */
+    fun enterRequest(rid: String, terminal: String, transfers: List<String>, protectedTransfer: String, ram: Int? = null): EnterRequest {
+        val r = EnterRequest(rid, terminal, key, "Призрак", transfers, protectedTransfer, System.currentTimeMillis(), "", ram)
         return r.copy(signature = Ecdsa.sign(pair.private, PhoneWire.enterSignedBytes(r)))
     }
 

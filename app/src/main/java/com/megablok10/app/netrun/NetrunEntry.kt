@@ -116,7 +116,7 @@ class NetrunEntry(
             if (daemon.id == protectedId) protectedTransfer = card.id
         }
 
-        val unsigned = EnterRequest(newRid(), rack.terminal, me.publicKeyB64, me.callsign, transfers, protectedTransfer, now())
+        val unsigned = EnterRequest(newRid(), rack.terminal, me.publicKeyB64, me.callsign, transfers, protectedTransfer, now(), ram = me.ramCapacity)
         val request = unsigned.copy(signature = sign(NetrunWire.enterSignedBytes(unsigned)))
         store.saveAttempt(request, rack)
         _state.value = NetrunEntryState.Waiting(rack)

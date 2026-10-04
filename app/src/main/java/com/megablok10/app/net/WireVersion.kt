@@ -17,8 +17,12 @@ object WireVersion {
     const val CLAIM = 1
     /** Отчёт о прочтении личных сообщений (chat.ReadReceiptProtocol, D4). */
     const val READ = 1
-    /** Вход в «Сеть» (docs/netrun-bridge-protocol.md, раздел 8): запрос телефона Мосту `MB10ENTER` и подписанный ответ Моста `MB10ENTERED`. */
-    const val ENTER = 1
+    /**
+     * Вход в «Сеть» (docs/netrun-bridge-protocol.md, раздел 8): запрос телефона Мосту `MB10ENTER` (v2 — с RAM) и подписанный ответ Моста
+     * `MB10ENTERED` (остаётся v1). Запрос, записанный до обновления, уходит строкой v1 ([ENTER_LEGACY]): Мост принимает обе версии.
+     */
+    const val ENTER = 2
+    const val ENTER_LEGACY = 1
     const val ENTERED = 1
     /** Конверт «кому/от кого» вокруг любой строки и ответ получателя (kit LineEnvelope/LineAck, docs/refactor-plan.md, D2). */
     const val ENVELOPE = LineEnvelope.VERSION

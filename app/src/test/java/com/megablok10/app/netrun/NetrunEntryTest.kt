@@ -76,6 +76,46 @@ class NetrunEntryTest {
         assertNull("запрос закрыт — повторять нечего", r.store.attempt())
     }
 
+    @Test fun `the request carries the character ram as v2 and the attempt keeps it`() = runTest {
+        val r = rig()
+        val strong = me.identity.copy(ramCapacity = 9)
+
+        r.entry.enter(strong, rack, listOf(ghost, miner), protectedId = "d2")
+        testScheduler.runCurrent()
+
+        assertTrue(r.lines.first(), r.lines.first().startsWith("MB10ENTER:v2:"))
+        val request = NetrunWire.decodeEnter(r.lines.first())!!
+        assertEquals(9, request.ram)
+        assertTrue(Ecdsa.verify(me.key, NetrunWire.enterSignedBytes(request), request.signature))
+        assertEquals("ram пережил бы перезапуск процесса", 9, r.store.attempt()!!.request.ram)
+    }
+
+    @Test fun `an attempt saved before the update is resent as v1 with its old signature`() = runTest {
+        val r = rig()
+        val old = EnterRequest("e-old", "t03", me.key, "Призрак", listOf("tr_1"), "tr_1", 5)
+        r.store.saveAttempt(old.copy(signature = me.sign(NetrunWire.enterSignedBytes(old))), rack)
+        assertNull("в prefs нет attempt_ram", r.store.attempt()!!.request.ram)
+
+        r.entry.retry()
+        testScheduler.runCurrent()
+
+        assertTrue(r.lines.first(), r.lines.first().startsWith("MB10ENTER:v1:e-old:"))
+        val sent = NetrunWire.decodeEnter(r.lines.first())!!
+        assertNull(sent.ram)
+        assertTrue(Ecdsa.verify(me.key, NetrunWire.enterSignedBytes(sent), sent.signature))
+    }
+
+    @Test fun `clearing the attempt forgets its ram`() = runTest {
+        val r = rig()
+        r.entry.enter(me.identity.copy(ramCapacity = 8), rack, listOf(ghost), "d1")
+        assertEquals(8, r.store.attempt()!!.request.ram)
+        r.entry.onEntered(reply("e-test", ok = true))
+        assertNull(r.store.attempt())
+        // следующая попытка v1-формата не унаследует чужой ram
+        r.store.saveAttempt(EnterRequest("e-2", "t03", me.key, "Призрак", listOf("t"), "t", 1, "S"), rack)
+        assertNull(r.store.attempt()!!.request.ram)
+    }
+
     @Test fun `unsigned, forged and foreign replies change nothing`() = runTest {
         val r = rig()
         r.entry.enter(me.identity, rack, listOf(ghost), "d1")
