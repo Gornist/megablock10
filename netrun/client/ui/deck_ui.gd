@@ -28,6 +28,34 @@ static func tag(text: String, tone: String = "money", filled: bool = true) -> Mb
 	return f
 
 
+## Шкала (полоса заполнения): рамка-трек и заливка на долю fraction (0..1) её ширины. Заливка — `ColorRect` на якорях трека, поэтому
+## ширина следует за раскладкой.
+static func meter(fraction: float, color: Color, height: int = 14) -> Control:
+	var m := Control.new()
+	m.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	m.custom_minimum_size.y = height
+	m.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	m.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var track := MbFrame.make(Color(DeckTheme.PLATE2, 1.0), DeckTheme.PLATE_EDGE, MbShape.Form.TAB, DeckTheme.CUT_SMALL)
+	track.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	track.set_anchors_preset(Control.PRESET_FULL_RECT)
+	m.add_child(track)
+	var fill := ColorRect.new()
+	fill.color = color
+	fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fill.anchor_left = 0.0
+	fill.anchor_top = 0.0
+	fill.anchor_right = clampf(fraction, 0.0, 1.0)
+	fill.anchor_bottom = 1.0
+	fill.offset_left = 2.0
+	fill.offset_top = 2.0
+	fill.offset_bottom = -2.0
+	fill.offset_right = -2.0 if fraction >= 1.0 else 0.0
+	fill.visible = fraction > 0.0
+	m.add_child(fill)
+	return m
+
+
 static func vbox(separation: int = DeckTheme.GAP) -> VBoxContainer:
 	var b := VBoxContainer.new()
 	b.add_theme_constant_override("separation", separation)
