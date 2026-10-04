@@ -10,6 +10,7 @@ import com.megablok10.rules.Daemon
 import com.megablok10.rules.DaemonEffect
 import com.megablok10.rules.LootSlot
 import com.megablok10.rules.LootType
+import com.megablok10.rules.RamCapacity
 import com.megablok10.rules.SecAlertRules
 import com.megablok10.rules.SlotPicker
 import com.megablok10.rules.Tier
@@ -161,7 +162,7 @@ private class BreachTx(
             }
             daemon
         }
-        val ram = s.data["ram"]?.let { VJ.lng(s.data, "ram") }?.toInt() ?: DEFAULT_RAM
+        val ram = s.data["ram"]?.let { VJ.lng(s.data, "ram") }?.toInt() ?: RamCapacity.DEFAULT
         if (out.sumOf { it.sequence.size } > ram) throw StoreException("bad_request", "цепочки демонов не помещаются в RAM $ram")
         return out
     }
@@ -184,11 +185,15 @@ private class BreachTx(
         return minOf(ContainerEddies.roll(tier, random()) + miner, VJ.lng(nd.data, "eddies")).coerceAtLeast(0L)
     }
 
+    /**
+     * Остывание узла: `settings/global.breach_cooldown_s` (по умолчанию 30 мин), но не меньше `open_s` попытки — иначе игрок успел бы
+     * взломать узел снова, пока открыто прежнее хранилище (протокол, 6.6, п. 5).
+     */
     private fun cooldownMs(): Long {
         val settings = tx.get(ValueOps.SETTINGS, "global")?.data
         val sec = settings?.get("breach_cooldown_s")?.let { VJ.lng(settings, "breach_cooldown_s") }
             ?: (BreachConstants.CONTAINER_COOLDOWN_MINUTES * SEC_PER_MIN)
-        return sec * MS
+        return maxOf(sec, q.openS) * MS
     }
 
     /**
@@ -200,9 +205,12 @@ private class BreachTx(
         if (extractors.isEmpty()) return emptyList<Opened>() to false
         val slots = ArrayList<LootSlot>()
         val claimed = HashMap<String, Int>()
+        // Занято: открыто взломом другой сессии или уже открыто этой же (мастер сбросил остывание, `breach_cooldown_s` < `open_s`):
+        // второй взлом не выбирает хранилище, которое игрок и так может взять, а ищет другое или даёт `exhausted`.
+        val ownOpened = ops.openedItems(s, now).toSet()
         for (id in q.vaults) {
             val slot = vaultSlot(id) ?: continue
-            claimed[slotRef(slots.size)] = if (ops.openedByOther(s.id, id, now) != null) 1 else 0
+            claimed[slotRef(slots.size)] = if (id in ownOpened || ops.openedByOther(s.id, id, now) != null) 1 else 0
             slots += slot
         }
         val container = Container(q.node, VJ.str(nd.data, "title") ?: q.node, tier, "", slots)
@@ -327,7 +335,6 @@ private class BreachTx(
     )
 
     private companion object {
-        const val DEFAULT_RAM = 6
         const val MS = 1000L
         const val SEC_PER_MIN = 60L
         const val SEED_HEX = 16
