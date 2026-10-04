@@ -349,8 +349,8 @@ func test_call_timer_redraws_once_a_second() -> void:
 
 # ---------------------------------------------------------------- размер нажимаемого
 
-## Дека на запястье уменьшена в WorldUI.WRIST_DECK_SCALE (0,75; значение продублировано здесь, пока ветка рук не влита).
-const WRIST_SCALE := 0.75
+## Дека на запястье уменьшена в WorldUI.WRIST_DECK_SCALE (0,75): размеры нажимаемого считаем с этим масштабом.
+const WRIST_SCALE := WorldUI.WRIST_DECK_SCALE
 ## Меньше не нажать уверенно двумя дрожащими руками: ~2 см после уменьшения.
 const MIN_TARGET_CM := 2.0
 
@@ -382,3 +382,10 @@ func test_real_buttons_are_not_smaller_than_the_minimum_after_layout() -> void:
 		if DeckPanel.px_to_cm(h, WRIST_SCALE) < MIN_TARGET_CM:
 			small.append("%s %.0f px" % [(b as MbButton).text, h])
 	assert_array(small).is_empty()
+
+
+func test_trace_indicator_clears_the_deck_on_the_wrist_and_in_the_flat_build() -> void:
+	# Дека с вкладками выше прежней: индикатор trace не должен лечь на её край ни на запястье (ниже, к локтю), ни в плоской сборке (выше).
+	var wrist_half := DeckPanel.PANEL_HEIGHT_M * WorldUI.WRIST_DECK_SCALE * 0.5
+	assert_float(-WorldUI.WRIST_TRACE_POS.y).is_greater_equal(wrist_half + 0.03)
+	assert_float(WorldUI.FLAT_TRACE_POS.y).is_greater_equal(DeckPanel.PANEL_HEIGHT_M * 0.5 + 0.015)

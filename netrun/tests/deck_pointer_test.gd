@@ -161,6 +161,39 @@ func test_pointer_ignores_a_hidden_deck() -> void:
 	assert_bool(_ui.pointer.hovering).is_false()
 
 
+func test_pointer_clicks_the_deck_worn_on_the_wrist_and_lets_go_when_the_hand_is_lost() -> void:
+	# Как в VR с руками: якорь деки — на запястье (HandView.wrist_anchor), дека уменьшена, пока у руки нет позы, она скрыта.
+	_rig = auto_free(preload("res://client/xr_rig.tscn").instantiate())
+	add_child(_rig)
+	_ui = auto_free(WorldUI.new())
+	add_child(_ui)
+	_ui.attach(_rig)
+	_link = FakePhoneLink.new(T0, false)
+	_link.auto_reply = false
+	_ui.set_phone(_link)
+	_rig.xr_active = true
+	_rig.left_hand_view.pose_source = func(): return HandSkeleton.pose({}, true)
+	_rig.left_hand_view.update_hand()
+	_ui._place()
+	assert_float(_ui.deck.scale.x).is_equal_approx(WorldUI.WRIST_DECK_SCALE, 0.0001)
+	assert_bool(_ui.deck.is_interactive()).is_true()
+	_ui.deck.select_tab(DeckPanel.TAB_CHAT)
+	_ui.deck.chat().open_thread(FakePhoneLink.ID_SHERSHEN)
+	for i in 4:
+		await get_tree().process_frame
+	_ui.deck.set_process(false)
+	var chip: MbButton = _ui.deck.chat().chip_buttons()[0]
+	var r := _ray_at(_center(chip))
+	_ui.pointer.update_ray(r["origin"], r["dir"])
+	_ui.pointer.set_trigger(true)
+	_ui.pointer.set_trigger(false)
+	assert_str(_link.messages(FakePhoneLink.ID_SHERSHEN, 1)[0]["text"]).is_equal("ОК")
+	_rig.left_hand_view.pose_source = Callable()
+	_rig.left_hand_view.update_hand()
+	_ui._place()
+	assert_bool(_ui.deck.is_interactive()).is_false()
+
+
 func test_pointer_is_silent_when_the_phone_is_off() -> void:
 	await _setup_ui(false)
 	assert_bool(_ui.deck.is_interactive()).is_false()
