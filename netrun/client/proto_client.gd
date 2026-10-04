@@ -96,6 +96,8 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	scene.breach_cancel_requested.connect(func():
 		net.request_breach_cancel()
 		log_file.log("breach.cancel"))
+	scene.give_list_requested.connect(func(): net.request_give_list())
+	scene.give_requested.connect(_on_give_requested)
 	net.grab_confirmed.connect(_on_grab_confirmed)
 	net.grab_denied.connect(_on_grab_denied)
 	net.teleport_denied.connect(_on_teleport_denied)
@@ -227,6 +229,12 @@ func _on_event(ev: Dictionary) -> void:
 		WorldMsg.EV_BK_NO:
 			scene.apply_breach_event(ev)
 			log_file.log("breach.no", {"reason": ev.get("reason", "")})
+		WorldMsg.EV_GIVE_LIST:
+			scene.apply_give_list(ev)
+			log_file.log("give.list", {"runners": (ev.get("runners", []) as Array).size()})
+		WorldMsg.EV_GIVE:
+			scene.apply_give(ev)
+			log_file.log("give.result", {"dir": ev.get("dir", ""), "ok": ev.get("ok", false), "item": ev.get("item", ""), "via": ev.get("via", ""), "error": ev.get("error", "")})
 		WorldMsg.EV_PORTAL_DENIED:
 			scene.show_portal_denied(ev)
 			log_file.log("graph.portal_denied", {"to": ev.get("to", ""), "reason": ev.get("reason", "")})
@@ -267,6 +275,13 @@ func current_pose(floor_pt: Vector3) -> AvatarPose:
 		if hv != null and hv.frame_valid:
 			hands[side] = {"frame": hv.global_transform * hv.frame_palm, "trigger": hv.frame_trigger, "hold": hv.frame_hold}
 	return AvatarPose.from_world(scene.rig.camera.global_transform, floor_pt, hands)
+
+
+func _on_give_requested(item_id: String, to: Dictionary) -> void:
+	var sent := net != null and net.request_give(item_id, to)
+	log_file.log("give.request", {"item": item_id, "via": WorldMsg.VIA_RUNNER if to.has("runner") else WorldMsg.VIA_PHONE, "sent": sent})
+	if not sent:
+		scene.apply_give({"kind": WorldMsg.EV_GIVE, "dir": WorldMsg.GIVE_OUT, "ok": false, "item": item_id, "error": WorldMsg.GIVE_UNAVAILABLE})
 
 
 func _on_grab_requested(object_id: String) -> void:

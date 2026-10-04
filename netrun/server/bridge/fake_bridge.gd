@@ -208,6 +208,61 @@ func op_leave_in_node(session: String, node: String, item: String) -> Dictionary
 		return ok({"item": _put(T_ITEM, item, d).duplicate(true)}))
 
 
+## Как op.give_item Моста (6.7): проверки в порядке таблицы отказов, rid с версией предмета, повтор — сохранённый ответ. Рабочим считается id из
+## session.loaded (нет поля — предмет с origin phone:<игрок>). Колод в фейке нет: меняется только владелец предмета. give_calls — сколько раз операция
+## выполнялась по-настоящему (повторы по rid не считаются), give_attempts — все вызовы; give_offline — тест: связь «пропала» (unavailable).
+var give_calls := 0
+var give_attempts := 0
+var give_offline := false
+## Тест: после этого числа успешных отдач ответ теряется (unavailable), хотя запись выполнена — обрыв после коммита.
+var give_drop_reply := false
+
+
+func op_give_item(session: String, item: String, ver: int, to_session: String, to_phone: String) -> Dictionary:
+	give_attempts += 1
+	if give_offline:
+		return err("unavailable", "Моста нет (тест)")
+	if (to_session.is_empty() == to_phone.is_empty()) or ver < 1 or to_session == session:
+		return err("bad_request", "нужен ровно один получатель, ver и не сам себе")
+	var params := {"op": "give_item", "session": session, "item": item, "ver": ver, "to_session": to_session, "to_phone": to_phone}
+	var resp := _once(give_rid(session, item, ver), params, func():
+		var s := doc(T_SESSION, session)
+		var it := doc(T_ITEM, item)
+		var rs := doc(T_SESSION, to_session) if not to_session.is_empty() else {}
+		if s.is_empty() or it.is_empty() or (not to_session.is_empty() and rs.is_empty()):
+			return err("not_found", "нет сессии, предмета или получателя")
+		if not to_phone.is_empty() and to_phone == str(s["data"].get("runner", "")):
+			return err("bad_request", "на свой телефон отдавать нельзя")
+		for x in [s, rs]:
+			if not x.is_empty() and (x["data"].get("state") != "active" or not str((x["data"].get("world", {}) as Dictionary).get("finish", "")).is_empty()):
+				return err("session_state", "сессия не active или в исходе", x.duplicate(true))
+		if it["data"].get("owner") != "deck:" + session:
+			return err("wrong_owner", "предмет не в деке", it.duplicate(true))
+		if int(it["ver"]) != ver:
+			return err("version_conflict", "версия %d, а не %d" % [int(it["ver"]), ver], it.duplicate(true))
+		if it["data"].get("protected", false):
+			return err("protected_item", "защищённого демона нельзя отдать", it.duplicate(true))
+		var loaded: Variant = s["data"].get("loaded")
+		var working: bool = (item in loaded) if loaded is Array else str(it["data"].get("origin", "")) == "phone:" + str(s["data"].get("runner", ""))
+		if working:
+			return err("loaded_item", "рабочий демон", it.duplicate(true))
+		give_calls += 1
+		var d: Dictionary = (it["data"] as Dictionary).duplicate()
+		var to := "deck:" + to_session
+		var transfer: Variant = null
+		if not to_phone.is_empty():
+			to = "outbox:" + to_phone
+			transfer = "tr_fake_" + item.right(6)
+			d["handover"] = "PENDING"
+			d["out_transfer"] = transfer
+		d["owner"] = to
+		return ok({"item": _put(T_ITEM, item, d).duplicate(true), "to": to, "transfer": transfer}))
+	if give_drop_reply and resp.get("ok", false) and not resp.get("replayed", false):
+		give_drop_reply = false
+		return err("unavailable", "ответ потерян (тест)")
+	return resp
+
+
 func run_finish(session: String, outcome: String, node: String, disconnect: bool, moves: Array) -> Dictionary:
 	var params := {"op": "finish", "session": session, "outcome": outcome, "node": node, "disconnect": disconnect, "moves": moves}
 	finish_attempts.append({"session": session, "outcome": outcome})

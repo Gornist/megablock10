@@ -99,6 +99,7 @@ var _ready_done := false
 var _finishing: Dictionary = {}
 var _hunted: Dictionary = {}         # сессия -> true, пока за ней идёт охота Black ICE
 var hunt_retry_sec := HUNT_RETRY_SEC # пауза между попытками записи охоты (тест ставит поменьше)
+var _given: Dictionary = {}          # id предметов, отданных игроком другому (К5б): слот с таким предметом после выхода не вернуть на постамент
 var _hunt_written: Dictionary = {}   # сессия -> bool: что Мост подтвердил в world.hunt (нет записи — не писали, то есть false)
 var _hunt_writing: Dictionary = {}   # сессия -> true, пока идёт запись: она одна на сессию и сама перечитывает нужное значение
 var _flat_disconnect: Dictionary = {} # сессия -> true: Black ICE догнал в окне возврата после обрыва («обрыв до флэтлайна»)
@@ -510,7 +511,8 @@ static func deck_from_items(items: Array, session: String, session_data: Diction
 
 
 ## Груз игрока из Моста: шарды (kind SHARD) и демоны не из `session.loaded` предметов deck:<сессия> →
-## [{id, kind: shard | daemon, tier, title, enc}] по id (список не прыгает). Шард без разобранного поля `shard` или без признака
+## [{id, kind: shard | daemon, tier, title, enc, give}] по id (список не прыгает). give — можно ли отдать другому игроку (К5б): нельзя то, что
+## сдано при входе (`session.loaded`, включая шард, принесённый с телефона: Мост отвечает loaded_item) и защищённое. Шард без разобранного поля `shard` или без признака
 ## `decrypted` считается зашифрованным: тела мы не знаем, открыть его нельзя.
 static func loot_from_items(items: Array, session: String, session_data: Dictionary = {}) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
@@ -523,12 +525,13 @@ static func loot_from_items(items: Array, session: String, session_data: Diction
 			var sh: Variant = data.get("shard")
 			var shard: Dictionary = sh if sh is Dictionary else {}
 			out.append({"id": str(d["id"]), "kind": "shard", "tier": clampi(int(shard.get("tier", 1)), 1, 3),
-				"title": str(shard.get("title", "Шард")), "enc": not bool(shard.get("decrypted", false))})
+				"title": str(shard.get("title", "Шард")), "enc": not bool(shard.get("decrypted", false)),
+				"give": not is_working_item(d, session_data) and not bool(data.get("protected", false))})
 		elif kind == "DAEMON" and not is_working_item(d, session_data):
 			var dm: Variant = data.get("daemon")
 			var daemon: Dictionary = dm if dm is Dictionary else {}
 			out.append({"id": str(d["id"]), "kind": "daemon", "tier": clampi(int(daemon.get("tier", 1)), 1, 3),
-				"title": str(daemon.get("name", daemon.get("effect", "Демон"))), "enc": false})
+				"title": str(daemon.get("name", daemon.get("effect", "Демон"))), "enc": false, "give": not bool(data.get("protected", false))})
 	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["id"] < b["id"])
 	return out
 
@@ -648,6 +651,41 @@ func _load_cooldown(session: String, ds: DaemonSession) -> void:
 				cds[str(k)] = int(data["breach_cooldown"][k])
 			ds.breach_cooldown = cds
 			_push_shards()   # панель взлома показывает «ОСТЫВАЕТ»
+
+
+# ---------------------------------------------------------------- отправка добычи (К5б, GiveService)
+
+## Сессия игрока сейчас у этого узла (в графе — в узле, где он стоит или откуда ушёл в тоннель).
+func has_session(session: String) -> bool:
+	return _sessions.has(session)
+
+
+## Можно ли менять груз сессии: она в узле, аватар на месте и забег не закрывается (выход, флэтлайн, охота за исходом).
+func can_exchange(session: String) -> bool:
+	return _sessions.has(session) and net != null and net.has_avatar(session) and not _finishing.has(session) and not _exiting.has(session)
+
+
+## Отдача в Мосте началась/кончилась: исход забега ждёт её, как ждёт take (протокол, 6.7). Начинать до первого await.
+func begin_inflight(session: String) -> void:
+	_takes_inflight[session] = int(_takes_inflight.get(session, 0)) + 1
+
+
+func end_inflight(session: String) -> void:
+	_takes_inflight[session] = maxi(int(_takes_inflight.get(session, 0)) - 1, 0)
+
+
+## Предмет ушёл от игрока насовсем (другой нетраннер или телефон): запомнить, чтобы слот шарда не показал его снова.
+func note_given(item: String) -> void:
+	_given[item] = true
+
+
+## Перечитать груз и деку игрока из Моста и отправить ему `ev deck`.
+func refresh_deck(session: String) -> void:
+	await _load_deck(session)
+
+
+func callsign_of(session: String) -> String:
+	return str(_callsign_of(session))
 
 
 func _physics_process(delta: float) -> void:
@@ -1435,8 +1473,8 @@ func settle_shards(session: String, end_node: String, loot: String) -> void:
 		return
 	var delay := float((settings["shard_refill_sec"] as Dictionary).get(tier(), 0.0))
 	for id in ids:
-		if loot == "node" and end_node == node_id:
-			continue
+		if loot == "node" and end_node == node_id and not _given.has(str(_shard_items.get(id, ""))):
+			continue   # добыча осталась в узле — кроме отданной другому игроку: она в узел не вернётся
 		_deplete(id, delay)
 	_push_shards()
 	_write_node_state()

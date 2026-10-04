@@ -52,6 +52,11 @@ static func breach_rid(session: String, n: int) -> String:
 	return "breach:%s:%d" % [session, n]
 
 
+## rid отдачи (раздел 6.7): версия предмета в нём нужна, потому что предмет может вернуться (A -> B -> A) и уйти снова.
+static func give_rid(session: String, item: String, ver: int) -> String:
+	return "give:%s:%s:%d" % [session, item, ver]
+
+
 ## Токен, который очки кладут в auth: JSON {"terminal","token"} или «терминал:токен». Возвращает {terminal, token} или {}.
 ## Разбор — в shared (NetConfig): клиент очков собирается без server/.
 static func parse_terminal_token(raw: String) -> Dictionary:
@@ -129,6 +134,12 @@ func op_take_from_node(_session: String, _node: String, _item: String) -> Dictio
 
 
 func op_leave_in_node(_session: String, _node: String, _item: String) -> Dictionary:
+	return err("internal", "не реализовано")
+
+
+## Отдать предмет из груза (раздел 6.7): ровно один из to_session (нетраннер в Сети) и to_phone (ключ телефона, base64 SPKI); ver — версия
+## предмета, которую видел сервер мира. Ответ: {"ok", "item", "to", "transfer"} либо ошибка (wrong_owner, version_conflict, protected_item, loaded_item…).
+func op_give_item(_session: String, _item: String, _ver: int, _to_session: String, _to_phone: String) -> Dictionary:
 	return err("internal", "не реализовано")
 
 

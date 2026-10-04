@@ -18,6 +18,9 @@ signal leave_requested(session: String)
 signal breach_open_requested(session: String, vault: String, daemon_ids: Array)
 signal breach_tap_requested(session: String, cell: Array)
 signal breach_cancel_requested(session: String)
+## Игрок просит отдать предмет из ГРУЗа (to — как в WorldMsg.GIVE) и список получателей (К5б); решает GiveService.
+signal give_requested(session: String, item_id: String, to: Dictionary)
+signal give_list_requested(session: String)
 ## Состояние очков (P6) не чаще раза в период на терминал: {terminal, session ("" — очки без игрока), fps, worst, bat?, chg?, rtt?}.
 signal beat_received(beat: Dictionary)
 ## Игрок телепортировался (принято сервером): откуда и куда. Задел под шум/trace от телепорта (RigMath.TELEPORT_TRACE, пока 0).
@@ -256,6 +259,16 @@ func avatar_id(session: String) -> int:
 	return int(_avatar_ids.get(session, 0))
 
 
+## Сессия по короткому id аватара ("" — такого нет); id уходят клиентам в `av` и в списке получателей, настоящую сессию клиент не видит.
+func session_of_avatar(id: int) -> String:
+	if id <= 0:
+		return ""
+	for s in _avatar_ids:
+		if int(_avatar_ids[s]) == id:
+			return str(s)
+	return ""
+
+
 ## Сессии с аватаром (в том числе в окне возврата).
 func sessions() -> Array:
 	var out: Array = []
@@ -330,6 +343,11 @@ func _on_packet(peer_id: int, data: PackedByteArray) -> void:
 				breach_tap_requested.emit(session, [int(cell[0]), int(cell[1])])
 		WorldMsg.BK_CANCEL:
 			breach_cancel_requested.emit(session)
+		WorldMsg.GIVE:
+			var to: Variant = msg.get("to")
+			give_requested.emit(session, str(msg.get("item", "")), to if to is Dictionary else {})
+		WorldMsg.GIVE_LIST:
+			give_list_requested.emit(session)
 		WorldMsg.EXIT:
 			var reason := str(msg.get("reason", ""))
 			if not ExitLogic.is_client_reason(reason):

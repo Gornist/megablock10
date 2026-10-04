@@ -9,6 +9,9 @@ signal frame_slow(ms: float)
 ## Применить демона из деки / выйти чисто на площадке выхода (N7); решает сервер.
 signal daemon_use_requested(daemon_id: String)
 signal leave_requested
+## Отправка добычи (К5б): запрос списка получателей и подтверждённая отправка — их шлёт в сеть тот, кто собрал клиент.
+signal give_list_requested
+signal give_requested(item_id: String, to: Dictionary)
 ## Шард ушёл в деку (id слота): для журнала клиента. Серверу сообщать нечего — предмет в деке Моста с момента grab.
 signal shard_stowed(object_id: String)
 ## Панель взлома (К3): игрок выбрал демонов и нажал «НАЧАТЬ» / нажал клетку / завершил. Просит сервер ProtoClient; решает сервер.
@@ -122,6 +125,8 @@ func _ready() -> void:
 	world_ui.breach_panel.cell_tapped.connect(func(cell: Vector2i): breach_tap_requested.emit(cell))
 	world_ui.breach_panel.cancel_requested.connect(func(): breach_cancel_requested.emit())
 	world_ui.deck.set_deck({"daemons": [], "selected": ""})
+	world_ui.deck.give_list_requested.connect(func(): give_list_requested.emit())
+	world_ui.deck.give_requested.connect(func(item_id: String, to: Dictionary): give_requested.emit(item_id, to))
 	world_ui.trace.set_trace(0.0)
 	for hand in [rig.left_hand, rig.right_hand]:
 		hand.button_pressed.connect(func(action: String):
@@ -322,6 +327,18 @@ func apply_deck(ev: Dictionary) -> void:
 	_refresh_breach_context()
 	world_ui.deck.set_loot(ev.get("loot", []), int(ev.get("eddies", 0)))
 	_refresh_deck()
+
+
+## Событие `give_list`: нетраннеры в Сети, которым можно отправить добычу.
+func apply_give_list(ev: Dictionary) -> void:
+	world_ui.deck.set_give_runners(ev.get("runners", []))
+
+
+## Событие `give`: исход отправки (dir out) или новый предмет в ГРУЗе (dir in — строка мигает сама, когда придёт `ev deck`; здесь тихий сигнал и подпись).
+func apply_give(ev: Dictionary) -> void:
+	world_ui.deck.show_give_result(ev)
+	if str(ev.get("dir", "")) == WorldMsg.GIVE_IN and bool(ev.get("ok", false)):
+		world_ui.feedback.loot_cue()
 
 
 func _refresh_deck() -> void:

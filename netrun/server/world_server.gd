@@ -14,6 +14,8 @@ var bridge: BridgeApi
 var node: GrayNode
 ## Граф узлов (по умолчанию; `--graph=<путь>` — другой файл, `--single-node` — прежний одиночный узел): узлы из data/graph.json с тоннелями.
 var graph_world: GraphWorld
+## Отправка добычи другому игроку (К5б).
+var give: GiveService
 ## Состояние очков -> Мост (P6).
 var beat_relay: TerminalBeatRelay
 
@@ -39,12 +41,24 @@ func start(args: PackedStringArray) -> void:
 		graph_world.name = "GraphWorld"
 		add_child(graph_world)
 		graph_world.start(net, bridge, graph)
+		_start_give(func(s: String) -> GrayNode:
+			var gn: GrayNode = graph_world.node_of(graph_world.where(s))
+			return gn if gn != null and gn.has_session(s) else null,
+			func() -> Array: return graph_world.nodes.values())
 	else:
 		node = GrayNode.new()
 		node.name = "GrayNode"
 		add_child(node)
 		node.start(net, bridge)
+		_start_give(func(s: String) -> GrayNode: return node if node.has_session(s) else null, func() -> Array: return [node])
 	set_process(true)
+
+
+func _start_give(node_lookup: Callable, nodes_lookup: Callable) -> void:
+	give = GiveService.new()
+	give.name = "Give"
+	add_child(give)
+	give.start(net, bridge, node_lookup, nodes_lookup)
 
 
 ## Граф узлов: по умолчанию data/graph.json, `--graph=<путь>` — другой файл, `--single-node` — без графа, `--vault-requires-open=` — взлом хранилищ (К3). null — одиночный режим

@@ -56,6 +56,31 @@ const EV_BK_NO := "bk_no"
 const BK_OPEN := "bk_open"
 const BK_TAP := "bk_tap"
 const BK_CANCEL := "bk_cancel"
+## Отправка добычи другому игроку (К5б). Клиент -> сервер: {t: give, item, to: {runner: id аватара} | {phone: ключ контакта}} — отдать шард или демона
+## из ГРУЗа; {t: give_list} — запросить получателей. Решает сервер (проверки в GiveService, ценности двигает Мост: op.give_item).
+## Сервер -> клиент: give_list {runners: [{id, name, same}]} (нетраннеры в Сети; same — в том же узле) и give {dir: out | in, ok, item, title, via:
+## runner | phone, who?, error?}: out — исход отправителю (ok false — error из GIVE_ERRORS), in — получателю-нетраннеру, что у него в ГРУЗе новый
+## предмет (from — позывной отправителя, tier, kind).
+const GIVE := "give"
+const GIVE_LIST := "give_list"
+const EV_GIVE := "give"
+const EV_GIVE_LIST := "give_list"
+const GIVE_OUT := "out"
+const GIVE_IN := "in"
+const VIA_RUNNER := "runner"
+const VIA_PHONE := "phone"
+## Причины отказа отправки (поле error события give): не груз (защищённый, рабочий, чужой), нет такого получателя, нельзя себе, контакт не разбирается,
+## предмет уже не в деке, идёт исход (свой или получателя), Мост отказал, нет связи с Мостом, Моста нет.
+const GIVE_NOT_LOOT := "not_loot"
+const GIVE_NO_RECIPIENT := "no_recipient"
+const GIVE_SELF := "self"
+const GIVE_BAD_CONTACT := "bad_contact"
+const GIVE_GONE := "gone"
+const GIVE_BUSY := "busy"
+const GIVE_REFUSED := "refused"
+const GIVE_UNAVAILABLE := "unavailable"
+const GIVE_NO_BRIDGE := "no_bridge"
+const GIVE_ERRORS: PackedStringArray = [GIVE_NOT_LOOT, GIVE_NO_RECIPIENT, GIVE_SELF, GIVE_BAD_CONTACT, GIVE_GONE, GIVE_BUSY, GIVE_REFUSED, GIVE_UNAVAILABLE, GIVE_NO_BRIDGE]
 const EV_ENDED := "ended"
 const EV_DAEMON := "daemon"
 ## Телепорт (VR: движение только им). Клиент -> сервер: {t: tp, p: [x, z]} — цель на полу; решает сервер. Успех ответа не имеет

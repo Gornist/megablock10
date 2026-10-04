@@ -30,6 +30,9 @@ const TAB_CALLS := "calls"
 signal tab_changed(id: String)
 ## Нажата заготовка ответа (диалог, текст) — для журнала клиента.
 signal reply_sent(thread_id: String, text: String)
+## Отправка добычи (К5б): открыли выбор получателя — нужен список нетраннеров в Сети; подтвердили отправку (to — как в WorldMsg.GIVE).
+signal give_list_requested
+signal give_requested(item_id: String, to: Dictionary)
 
 ## Сколько раз содержимое деки рисовалось в текстуру (для проверки).
 var redraw_count := 0
@@ -43,6 +46,7 @@ var _deck_scroll: ScrollContainer
 var _list: VBoxContainer
 var _loot_scroll: ScrollContainer
 var _loot_list: VBoxContainer
+var _give: DeckGive
 var _chat: DeckChat
 var _calls: DeckCalls
 var _tab := TAB_DECK
@@ -60,6 +64,9 @@ var _blink_ids: Dictionary = {}            # id строк, что мигают 
 var _blink_left := 0.0
 var _blink_rows: Array[MbRow] = []
 var _receiving := false
+var _give_status := ""                      # строка на ДОБЫЧЕ про последнюю отправку / полученное
+var _give_status_tone := "dim"
+var _give_label := ""                       # как игрок назвал получателя последней отправки (для телефона сервер имени не знает)
 var _calls_seen_missed := 0
 var _last_phase := PhoneLink.PHASE_IDLE
 var _dirty := true
@@ -102,6 +109,11 @@ func _ready() -> void:
 	DeckUi.expand(_loot_list)
 	_loot_scroll.add_child(_loot_list)
 	col.add_child(_loot_scroll)
+	_give = DeckGive.new()
+	DeckUi.expand(_give, true)
+	_give.confirmed.connect(_on_give_confirmed)
+	_give.closed.connect(_on_give_closed)
+	col.add_child(_give)
 	_chat = DeckChat.new()
 	DeckUi.expand(_chat, true)
 	_chat.reply_sent.connect(func(tid: String, text: String): reply_sent.emit(tid, text))
@@ -262,6 +274,13 @@ func _build_loot(rows: Array, eddies: int) -> void:
 	_blink_rows.clear()
 	_loot_texts = PackedStringArray(["ДОБЫЧА"])
 	_loot_list.add_child(DeckUi.section_title("ДОБЫЧА", str(rows.size())))
+	if _give_status != "":
+		_loot_texts.append(_give_status)
+		var st := DeckUi.label(_give_status, &"", false)
+		st.add_theme_color_override("font_color", DeckTheme.tone_color(_give_status_tone))
+		st.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		st.custom_minimum_size.x = 460.0
+		_loot_list.add_child(st)
 	var money := DeckUi.hbox(8)
 	money.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	money.add_child(DeckUi.expand(DeckUi.label("Эдди", DeckTheme.V_NAME)))
@@ -333,13 +352,83 @@ func _loot_row(row: Dictionary) -> MbRow:
 	h.add_child(DeckUi.expand(DeckUi.label(row["title"], DeckTheme.V_NAME)))
 	h.add_child(DeckUi.label("тир %d" % int(row["tier"]), DeckTheme.V_DIM, false))
 	h.add_child(_centered(DeckUi.tag(row["label"], "warn" if row["enc"] else "ok", row["enc"])))
-	r.add_child(h)
+	if not bool(row.get("give", false)):
+		r.add_child(h)
+		return r
+	# Отправить можно: вторая строка с кнопкой (в первой название должно читаться целиком).
+	var col := DeckUi.vbox(2)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(h)
+	var low := DeckUi.hbox(8)
+	low.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	low.add_child(DeckUi.expand(Control.new()))
+	var send := MbButton.new("ОТПРАВИТЬ", "ghost")
+	send.button_height = DeckTheme.BTN_SMALL_H
+	send.set_meta("item_id", row["id"])
+	send.pressed.connect(open_give.bind(str(row["id"])))
+	low.add_child(send)
+	col.add_child(low)
+	r.add_child(col)
 	return r
 
 
 ## Для проверки: что рисует вкладка ДОБЫЧА (заголовок, эдди, строки добычи).
 func loot_texts() -> PackedStringArray:
 	return _loot_texts
+
+
+# ---------------------------------------------------------------- отправка добычи (К5б)
+
+## Открыть выбор получателя для предмета [param item_id] из ГРУЗа (кнопка «ОТПРАВИТЬ» на строке). Просит у сервера список нетраннеров в Сети.
+func open_give(item_id: String) -> void:
+	for row in _loot_rows:
+		if row["id"] == item_id and bool(row.get("give", false)):
+			_give.open(row, phone.contacts() if phone != null else [])
+			_loot_scroll.visible = false
+			_dirty = true
+			give_list_requested.emit()
+			return
+
+
+## Список нетраннеров в Сети ([{id, name, same}], событие give_list) пришёл.
+func set_give_runners(runners: Array) -> void:
+	_give.set_runners(runners)
+	_dirty = true
+
+
+func give_view() -> DeckGive:
+	return _give
+
+
+## Строка про отправку на ДОБЫЧЕ (ответ сервера give, dir out/in).
+func show_give_result(ev: Dictionary) -> void:
+	var incoming := str(ev.get("dir", WorldMsg.GIVE_OUT)) == WorldMsg.GIVE_IN
+	set_give_status(HudLogic.give_result_text(ev, _give_label), "ok" if bool(ev.get("ok", false)) else "bad")
+	if not incoming:
+		_give_label = ""
+
+
+func set_give_status(text: String, tone: String = "dim") -> void:
+	_give_status = text
+	_give_status_tone = tone
+	_build_loot(_loot_rows, _loot_eddies)
+	_dirty = true
+
+
+func give_status() -> String:
+	return _give_status
+
+
+func _on_give_confirmed(item_id: String, target: Dictionary, label: String) -> void:
+	_give_label = label
+	_loot_scroll.visible = _tab == TAB_LOOT
+	set_give_status("Отправляю → %s…" % label, "warn")
+	give_requested.emit(item_id, target)
+
+
+func _on_give_closed() -> void:
+	_loot_scroll.visible = _tab == TAB_LOOT
+	_dirty = true
 
 
 func has_loot_tab() -> bool:
@@ -432,8 +521,10 @@ func _apply_tabs() -> void:
 func _show_tab(id: String) -> void:
 	_tab = id
 	_tabs.select(id)
+	if _give != null and _give.is_open() and id != TAB_LOOT:
+		_give.close()   # ушли с вкладки — выбор получателя отменён
 	_deck_scroll.visible = id == TAB_DECK
-	_loot_scroll.visible = id == TAB_LOOT
+	_loot_scroll.visible = id == TAB_LOOT and not (_give != null and _give.is_open())
 	_chat.visible = id == TAB_CHAT
 	_calls.visible = id == TAB_CALLS
 	if id == TAB_CALLS and phone != null:
@@ -523,7 +614,10 @@ func scroll_by(px: float) -> void:
 		TAB_CALLS:
 			_calls.scroll_by(px)
 		TAB_LOOT:
-			_loot_scroll.scroll_vertical += roundi(px)
+			if _give.is_open():
+				_give.scroll_by(px)
+			else:
+				_loot_scroll.scroll_vertical += roundi(px)
 		_:
 			_deck_scroll.scroll_vertical += roundi(px)
 	_dirty = true

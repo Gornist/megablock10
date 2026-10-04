@@ -126,6 +126,16 @@ func request_breach_cancel() -> bool:
 	return _send(WorldMsg.encode_fields(WorldMsg.BK_CANCEL))
 
 
+## Просьба отдать предмет из ГРУЗа (К5б): to — {runner: id аватара из списка получателей} или {phone: ключ контакта}. Решает сервер, ответ — событие give.
+func request_give(item_id: String, to: Dictionary) -> bool:
+	return _send(WorldMsg.encode_fields(WorldMsg.GIVE, {"item": item_id, "to": to}))
+
+
+## Просьба прислать список получателей-нетраннеров (событие give_list).
+func request_give_list() -> bool:
+	return _send(WorldMsg.encode_fields(WorldMsg.GIVE_LIST))
+
+
 ## Просьба выйти чисто (сервер проверяет, что игрок на площадке выхода).
 func request_leave() -> bool:
 	return _send(WorldMsg.encode_fields(WorldMsg.LEAVE))

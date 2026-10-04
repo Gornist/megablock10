@@ -228,7 +228,7 @@ JITTER, выбранный во взлом хранилища, даёт +15 с �
 
 | Сообщение | Кто | Поля | Новое? |
 |---|---|---|---|
-| `ev deck` | сервер | `ram`, `used`, `daemons [{id, name, effect, tier, cells, prot, loaded, unsupported?}]`, `loot [{id, kind, tier, title, enc}]`, `eddies` | новое; шлётся при входе и при изменении груза |
+| `ev deck` | сервер | `ram`, `used`, `daemons [{id, name, effect, tier, cells, prot, loaded, unsupported?}]`, `loot [{id, kind, tier, title, enc, give}]`, `eddies` | новое; шлётся при входе и при изменении груза |
 | `state.cd` | сервер | к `{id, name, left}` добавить `st` (ready/charged/active/cooldown), `until` | расширение |
 | `shards` / `node.shards` | сервер | к `{id, p, ready, enc?}` добавить `tier`, `kind`, `open` (открыто **для этого игрока**), `left` | расширение |
 | `bk_open` | клиент | `vault`, `daemons [ids]` | новое: начать взлом |
@@ -239,6 +239,9 @@ JITTER, выбранный во взлом хранилища, даёт +15 с �
 | `bk_cancel` | клиент | — | новое: завершить досрочно |
 | `charge` | клиент | `daemon` | новое: начать заряд |
 | `decrypt` | клиент | `item` | новое: начать расшифровку |
+| `give` | клиент | `item`, `to` (`{runner: id аватара}` или `{phone: ключ}`) | новое (К5б): отдать шард или демона из ГРУЗа; решает `GiveService`, ценность двигает Мост (`op.give_item`, C1 6.7) |
+| `give_list` | клиент → сервер | — | новое (К5б): запросить получателей; ответ — `ev give_list` `{runners: [{id, name, same}]}` (нетраннеры в Сети; `same` — в том же узле) |
+| `ev give` | сервер | `dir` (`out` отправителю, `in` получателю-нетраннеру), `ok`, `item`, `title`, `via` (`runner`/`phone`), `who?`, `from?`, `tier?`, `error?` | новое (К5б); `error` — `not_loot`, `no_recipient`, `self`, `bad_contact`, `gone`, `busy`, `refused`, `unavailable`, `no_bridge` (`WorldMsg.GIVE_ERRORS`) |
 | `stow` | — | — | **не нужно**: предмет в деке Моста с момента `grab`; «положить в деку» — только вид клиента |
 
 Реплики ICE клиент выбирает сам из общего JSON (раздел 8) по событию и зерну попытки — как телефон.

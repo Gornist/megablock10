@@ -266,6 +266,15 @@ func op_leave_in_node(session: String, node: String, item: String) -> Dictionary
 	return await _request("op.leave_in_node", {"rid": leave_rid(session, item), "session": session, "node": node, "item": item})
 
 
+func op_give_item(session: String, item: String, ver: int, to_session: String, to_phone: String) -> Dictionary:
+	var f := {"rid": give_rid(session, item, ver), "session": session, "item": item, "ver": ver}
+	if not to_session.is_empty():
+		f["to_session"] = to_session
+	if not to_phone.is_empty():
+		f["to_phone"] = to_phone
+	return await _request("op.give_item", f)
+
+
 func run_finish(session: String, outcome: String, node: String, disconnect: bool, moves: Array) -> Dictionary:
 	return await _request("run.finish", {
 		"rid": finish_rid(session), "session": session, "outcome": outcome, "node": node, "disconnect": disconnect, "moves": moves,

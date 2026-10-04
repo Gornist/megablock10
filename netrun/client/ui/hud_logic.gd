@@ -192,5 +192,70 @@ static func loot_rows(loot: Array) -> Array:
 		var tier := int(l.get("tier", 0))
 		var kind_name := "ДЕМОН" if kind == "daemon" else "ШАРД"
 		var label := "ЗАШИФРОВАН" if enc else "ОТКРЫТ"
-		rows.append({"id": str(l.get("id", "")), "text": "%s  %s  тир %d  %s" % [kind_name, title, tier, label], "kind": kind, "kind_name": kind_name, "title": title, "tier": tier, "enc": enc, "label": label})
+		rows.append({"id": str(l.get("id", "")), "text": "%s  %s  тир %d  %s" % [kind_name, title, tier, label], "kind": kind, "kind_name": kind_name, "title": title, "tier": tier, "enc": enc, "label": label,
+			"give": bool(l.get("give", false))})
 	return rows
+
+
+# ---------------------------------------------------------------- отправка добычи (К5б)
+
+const GIVE_ERROR_TEXTS := {
+	"not_loot": "это нельзя отдать: защищённое или рабочее",
+	"no_recipient": "получателя уже нет в Сети",
+	"self": "на свой телефон отдавать нельзя",
+	"bad_contact": "контакт не принят: проверьте телефон в ЧАТЕ",
+	"gone": "предмета уже нет в деке",
+	"busy": "сейчас нельзя: у кого-то идёт выход",
+	"refused": "Мост отказал",
+	"unavailable": "нет связи с Мостом, попробуйте ещё раз",
+	"no_bridge": "Сеть без Моста: отдавать нечего",
+}
+
+
+## Причина отказа отправки (WorldMsg.GIVE_ERRORS) словами для игрока.
+static func give_error_text(reason: String) -> String:
+	return GIVE_ERROR_TEXTS.get(reason, "не вышло (%s)" % reason)
+
+
+## Получатели одним списком: [{kind: runner | phone, label, section, target, tag}]. Нетраннеры в Сети — первыми (те, кто в том же узле, —
+## впереди остальных), затем контакты телефона по алфавиту. runners — из события give_list [{id, name, same}], contacts — из PhoneLink.contacts()
+## [{key, title}]. target — то, что уйдёт серверу в `to`.
+static func give_targets(runners: Array, contacts: Array) -> Array:
+	var out := []
+	var net_rows := []
+	for r in runners:
+		net_rows.append({"kind": WorldMsg.VIA_RUNNER, "label": str(r.get("name", "?")), "section": "В СЕТИ", "tag": "ЗДЕСЬ" if bool(r.get("same", false)) else "В СЕТИ",
+			"same": bool(r.get("same", false)), "target": {"runner": int(r.get("id", 0))}})
+	net_rows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		if a["same"] != b["same"]:
+			return a["same"]
+		return a["label"] < b["label"])
+	out.append_array(net_rows)
+	var phone_rows := []
+	for c in contacts:
+		var key := str(c.get("key", ""))
+		if key.is_empty():
+			continue
+		phone_rows.append({"kind": WorldMsg.VIA_PHONE, "label": str(c.get("title", "?")), "section": "КОНТАКТЫ ТЕЛЕФОНА", "tag": "ТЕЛЕФОН", "same": false, "target": {"phone": key}})
+	phone_rows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["label"] < b["label"])
+	out.append_array(phone_rows)
+	return out
+
+
+## Что спрашивает подтверждение: строка про предмет и получателя и строка про последствия (для нетраннера и для телефона они разные).
+static func give_confirm_lines(row: Dictionary, target_row: Dictionary) -> Array:
+	var what := "%s  %s  тир %d" % [row.get("kind_name", "ШАРД"), row.get("title", "?"), int(row.get("tier", 0))]
+	if target_row.get("kind", "") == WorldMsg.VIA_PHONE:
+		return [what + "  >  " + str(target_row["label"]), "Уйдёт на его телефон карточкой и покинет забег целиком. Вернуть нельзя."]
+	return [what + "  >  " + str(target_row["label"]), "Сразу окажется в его ГРУЗЕ и выйдет из-под риска вашего забега. Вернуть нельзя."]
+
+
+## Итоговая строка на ДОБЫЧЕ: ev give с dir out/in; to_label — как игрок назвал получателя (для телефона сервер имени не знает).
+static func give_result_text(ev: Dictionary, to_label: String = "") -> String:
+	var title := str(ev.get("title", "")).strip_edges()
+	if str(ev.get("dir", WorldMsg.GIVE_OUT)) == WorldMsg.GIVE_IN:
+		return "ПОЛУЧЕНО от %s: %s" % [ev.get("from", "?"), title if title != "" else "предмет"]
+	if bool(ev.get("ok", false)):
+		var who := str(ev.get("who", "")) if str(ev.get("who", "")) != "" else to_label
+		return "ОТПРАВЛЕНО: %s > %s" % [title if title != "" else "предмет", who if who != "" else "получатель"]
+	return "НЕ ОТПРАВЛЕНО: " + give_error_text(str(ev.get("error", "")))
