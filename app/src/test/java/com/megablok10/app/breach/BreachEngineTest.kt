@@ -1,6 +1,10 @@
 package com.megablok10.app.breach
 
 import com.megablok10.app.identity.RAM_CAPACITY_DEFAULT
+import com.megablok10.rules.candidatesFor
+import com.megablok10.rules.generateGrid
+import com.megablok10.rules.nextLinkDimension
+import com.megablok10.rules.resolveDaemons
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
