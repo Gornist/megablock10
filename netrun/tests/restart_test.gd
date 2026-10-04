@@ -171,12 +171,44 @@ func test_a_daemon_taken_in_a_node_is_not_a_working_program() -> void:
 	assert_str(loot[0]["kind"]).is_equal("daemon")
 
 
-## Добыча для `run.finish` — и из узла, и от мастера (раньше только `node:*`: мастерский шард при выбросе шёл на телефон вместо узла).
-func test_loot_origin_covers_node_and_master_but_not_the_phone() -> void:
-	assert_bool(GrayNode.is_loot_origin("node:node_07")).is_true()
-	assert_bool(GrayNode.is_loot_origin("master:master-anna")).is_true()
-	assert_bool(GrayNode.is_loot_origin("phone:KEY_A")).is_false()
-	assert_bool(GrayNode.is_loot_origin("")).is_false()
+## Рабочий — по `session.loaded` (как у Моста), а не по origin: мёртвая дека чужого (`phone:<чужой>`), отдача другого нетраннера и своя же
+## мёртвая дека из прошлого забега (`phone:<свой>`, но не в `loaded`) — груз.
+func test_working_items_follow_session_loaded_not_origin() -> void:
+	var g := {"effect": "GHOST", "tier": 2, "name": "Призрак", "cells": ["1C"]}
+	var items := [
+		{"id": "it_w", "data": {"owner": "deck:s1", "kind": "DAEMON", "origin": "phone:K", "daemon": g}},
+		{"id": "it_other", "data": {"owner": "deck:s1", "kind": "DAEMON", "origin": "phone:OTHER", "daemon": g}},
+		{"id": "it_old", "data": {"owner": "deck:s1", "kind": "DAEMON", "origin": "phone:K", "daemon": g}},
+		{"id": "it_node", "data": {"owner": "deck:s1", "kind": "DAEMON", "origin": "node:n", "daemon": g}},
+	]
+	var session := {"runner": "K", "loaded": ["it_w"]}
+	assert_array(GrayNode.deck_from_items(items, "s1", session).map(func(e): return e["id"])).is_equal(["it_w"])
+	assert_array(GrayNode.loot_from_items(items, "s1", session).map(func(e): return e["id"])).is_equal(["it_node", "it_old", "it_other"])
+	# Сессия без `loaded` (создана до К2): рабочий — origin == phone:<runner>.
+	var legacy := {"runner": "K"}
+	assert_array(GrayNode.deck_from_items(items, "s1", legacy).map(func(e): return e["id"])).is_equal(["it_w", "it_old"])
+	assert_array(GrayNode.loot_from_items(items, "s1", legacy).map(func(e): return e["id"])).is_equal(["it_node", "it_other"])
+	# Документ сессии не получен: любой phone:* считается рабочим (запасное правило).
+	assert_array(GrayNode.deck_from_items(items, "s1").map(func(e): return e["id"])).is_equal(["it_w", "it_other", "it_old"])
+
+
+## `moves` для `run.finish`: груз (в том числе `phone:<чужой>`) идёт по правилу добычи, рабочие — по правилу демонов, защищённый пропущен.
+func test_finish_moves_split_cargo_and_working_by_session_loaded() -> void:
+	var items := [
+		{"id": "it_prot", "data": {"owner": "deck:s1", "kind": "DAEMON", "origin": "phone:K", "protected": true}},
+		{"id": "it_w", "data": {"owner": "deck:s1", "kind": "DAEMON", "origin": "phone:K"}},
+		{"id": "it_other", "data": {"owner": "deck:s1", "kind": "DAEMON", "origin": "phone:OTHER"}},
+		{"id": "it_shard", "data": {"owner": "deck:s1", "kind": "SHARD", "origin": "master:M"}},
+		{"id": "it_foreign", "data": {"owner": "deck:s2", "kind": "DAEMON", "origin": "phone:K"}},
+	]
+	var plan := {"loot": "node", "daemon": "phone"}
+	var moves := GrayNode.finish_moves(items, "s1", {"runner": "K", "loaded": ["it_prot", "it_w"]}, plan)
+	assert_array(moves).is_equal([
+		{"item": "it_w", "to": "phone"}, {"item": "it_other", "to": "node"}, {"item": "it_shard", "to": "node"}])
+	# Без `loaded`: рабочий — origin == phone:<runner>, чужой phone:OTHER всё равно груз.
+	var legacy := GrayNode.finish_moves(items, "s1", {"runner": "K"}, plan)
+	assert_array(legacy).is_equal([
+		{"item": "it_w", "to": "phone"}, {"item": "it_other", "to": "node"}, {"item": "it_shard", "to": "node"}])
 
 
 func test_loot_from_items_lists_shards_with_tier_title_and_encryption() -> void:

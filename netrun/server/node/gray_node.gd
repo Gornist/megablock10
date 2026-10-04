@@ -454,28 +454,35 @@ func put_field(type: String, id: String, key: String, value: Variant) -> bool:
 	return false
 
 
-## Рабочий ли демон по происхождению: только принесённый с телефона (`phone:*`). Добытый в узле (`node:*`) или выданный мастером
-## (`master:*`) лежит в грузе: он не работает в этом забеге и не занимает RAM (docs/netrun-deck-design.md, 5.1).
+## Рабочий ли демон по происхождению: только принесённый с телефона (`phone:*`). Запасное правило для вызова без документа сессии;
+## настоящее деление — [method is_working_item] (docs/netrun-bridge-protocol.md, раздел 5, «Рабочие и груз»).
 static func is_loaded_origin(origin: String) -> bool:
 	return origin.begins_with("phone:")
 
 
-## Добыча забега по происхождению (для `moves` в `run.finish`): взятое в узле (`node:*`) и наполненное мастером (`master:*`, `master.stock_node`).
-## Мост делит так же (протокол Моста, 6.5): при чистом выходе добыча на телефон, иначе остаётся в узле.
-static func is_loot_origin(origin: String) -> bool:
-	return origin.begins_with("node:") or origin.begins_with("master:")
+## Рабочий ли предмет `deck:<сессия>` (ПРОГРАММЫ деки), как у Моста (`ItemFacts.isWorking`): его id есть в `session.loaded` (сданное при
+## входе). Всё остальное в деке — груз: взятое в узле, наполнение мастера, мёртвая дека или отдача от другого нетраннера (у них у всех
+## разное `origin`, включая `phone:<чужой>`). Сессия без `loaded` (создана до К2): рабочий — `origin == phone:<runner>`; нет и `runner`
+## (документ сессии не получен) — любой `phone:*`. [param doc] — документ предмета {id, data}, [param session_data] — `data` сессии.
+static func is_working_item(doc: Dictionary, session_data: Dictionary) -> bool:
+	var loaded: Variant = session_data.get("loaded")
+	if loaded is Array:
+		return str(doc.get("id", "")) in (loaded as Array)
+	var origin := str((doc.get("data", {}) as Dictionary).get("origin", ""))
+	var runner := str(session_data.get("runner", ""))
+	return is_loaded_origin(origin) if runner == "" else origin == "phone:" + runner
 
 
-## Дека игрока из Моста: **рабочие** демоны предметов deck:<сессия> (origin phone:*) с полем `daemon` ({effect, tier, name, cells},
-## его пишет Мост при приёме карточки). Возвращает [{id: id предмета, daemon: {...}, protected}]; нет ни одного — вызывающий оставляет
-## деку по умолчанию.
-static func deck_from_items(items: Array, session: String) -> Array[Dictionary]:
+## Дека игрока из Моста: **рабочие** демоны предметов deck:<сессия> (по [method is_working_item]) с полем `daemon` ({effect, tier, name,
+## cells}, его пишет Мост при приёме карточки). Возвращает [{id: id предмета, daemon: {...}, protected}]; нет ни одного — вызывающий
+## оставляет деку по умолчанию. [param session_data] — `data` документа сессии (пусто — запасное правило по origin).
+static func deck_from_items(items: Array, session: String, session_data: Dictionary = {}) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	for d in items:
 		var data: Dictionary = d.get("data", {})
 		if data.get("owner") != "deck:" + session or data.get("kind") != "DAEMON":
 			continue
-		if not is_loaded_origin(str(data.get("origin", ""))):
+		if not is_working_item(d, session_data):
 			continue
 		var daemon: Variant = data.get("daemon")
 		if daemon is Dictionary and str(d.get("id", "")) != "":
@@ -483,10 +490,10 @@ static func deck_from_items(items: Array, session: String) -> Array[Dictionary]:
 	return out
 
 
-## Груз игрока из Моста: шарды (kind SHARD) и добытые демоны (DAEMON не с телефона) предметов deck:<сессия> →
+## Груз игрока из Моста: шарды (kind SHARD) и демоны не из `session.loaded` предметов deck:<сессия> →
 ## [{id, kind: shard | daemon, tier, title, enc}] по id (список не прыгает). Шард без разобранного поля `shard` или без признака
 ## `decrypted` считается зашифрованным: тела мы не знаем, открыть его нельзя.
-static func loot_from_items(items: Array, session: String) -> Array[Dictionary]:
+static func loot_from_items(items: Array, session: String, session_data: Dictionary = {}) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	for d in items:
 		var data: Dictionary = d.get("data", {})
@@ -498,13 +505,26 @@ static func loot_from_items(items: Array, session: String) -> Array[Dictionary]:
 			var shard: Dictionary = sh if sh is Dictionary else {}
 			out.append({"id": str(d["id"]), "kind": "shard", "tier": clampi(int(shard.get("tier", 1)), 1, 3),
 				"title": str(shard.get("title", "Шард")), "enc": not bool(shard.get("decrypted", false))})
-		elif kind == "DAEMON" and not is_loaded_origin(str(data.get("origin", ""))):
+		elif kind == "DAEMON" and not is_working_item(d, session_data):
 			var dm: Variant = data.get("daemon")
 			var daemon: Dictionary = dm if dm is Dictionary else {}
 			out.append({"id": str(d["id"]), "kind": "daemon", "tier": clampi(int(daemon.get("tier", 1)), 1, 3),
 				"title": str(daemon.get("name", daemon.get("effect", "Демон"))), "enc": false})
 	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["id"] < b["id"])
 	return out
+
+
+## `moves` для `run.finish`: каждый незащищённый предмет `deck:<сессия>` — груз (не рабочий, [method is_working_item]) идёт туда, куда
+## по исходу идёт добыча (`plan["loot"]`), рабочий демон — как демоны (`plan["daemon"]`). Так же делит Мост (протокол, 6.5): чужой
+## `phone:<…>` в грузе иначе ушёл бы по правилу демонов и Мост отказал бы `bad_request` без повтора.
+static func finish_moves(items: Array, session: String, session_data: Dictionary, plan: Dictionary) -> Array:
+	var moves: Array = []
+	for d in items:
+		var data: Dictionary = d.get("data", {})
+		if data.get("owner") != "deck:" + session or data.get("protected", false):
+			continue
+		moves.append({"item": str(d["id"]), "to": plan["daemon"] if is_working_item(d, session_data) else plan["loot"]})
+	return moves
 
 
 ## Что дека показывает про сессию (событие `ev deck`): RAM и занятое ею, рабочие демоны (имя, эффект, тир, цепочка), груз и эдди.
@@ -560,9 +580,17 @@ func _load_deck(session: String) -> void:
 	if ds == null or not r.get("ok", false):
 		return
 	var docs: Array = r.get("docs", [])
+	# Сессия нужна до деления на рабочих и груз (`loaded`, RAM): документ предметов один без неё не скажет, кто рабочий.
+	@warning_ignore("redundant_await")
+	var sr: Dictionary = await bridge.get_doc(BridgeApi.T_SESSION, session)
+	if _sessions.get(session) != ds:
+		return   # сессия ушла, пока ждали Мост
+	var sdata: Dictionary = {}
+	if sr.get("ok", false):
+		sdata = (sr["doc"] as Dictionary).get("data", {})
 	var ids: Array[String] = []
 	var meta := {}
-	for e in deck_from_items(docs, session):
+	for e in deck_from_items(docs, session, sdata):
 		var def := daemons.add_item_daemon(e["id"], e["daemon"])
 		if def != null:
 			ids.append(def.id)
@@ -572,15 +600,10 @@ func _load_deck(session: String) -> void:
 	if not ids.is_empty():
 		ds.deck = ids
 		ds.deck_meta = meta
-	ds.loot_view = loot_from_items(docs, session)
-	@warning_ignore("redundant_await")
-	var sr: Dictionary = await bridge.get_doc(BridgeApi.T_SESSION, session)
-	if _sessions.get(session) != ds:
-		return   # сессия ушла, пока ждали Мост
-	if sr.get("ok", false):
-		var sdata: Dictionary = (sr["doc"] as Dictionary).get("data", {})
+	ds.loot_view = loot_from_items(docs, session, sdata)
+	if not sdata.is_empty():
 		var ram := int(sdata.get("ram", 0))
-		if ram > 0:   # Мост пока не пишет RAM (запрос входа v2 — позже): без неё остаётся значение по умолчанию с пометкой
+		if ram > 0:   # нет поля (сессия до К2): остаётся значение по умолчанию с пометкой
 			ds.ram = ram
 			ds.ram_default = false
 		ds.loot_eddies = int(sdata.get("loot_eddies", 0))
@@ -1089,13 +1112,18 @@ func _finish_in_bridge(ev: Dictionary) -> void:
 		if listed.get("ok", false) or not is_transient(listed) or not is_inside_tree():
 			break
 		await get_tree().create_timer(FINISH_RETRY_SEC).timeout
-	var moves: Array = []
-	for d in listed.get("docs", []):
-		var data: Dictionary = d.get("data", {})
-		if data.get("owner") != "deck:" + session or data.get("protected", false):
-			continue
-		var is_loot := is_loot_origin(str(data.get("origin", "")))
-		moves.append({"item": str(d["id"]), "to": plan["loot"] if is_loot else plan["daemon"]})
+	# Деление на рабочих и груз — по `session.loaded` (как у Моста); документ сессии не получен — запасное правило по origin.
+	var sdata: Dictionary = {}
+	for attempt in FINISH_ATTEMPTS:
+		@warning_ignore("redundant_await")
+		var sr: Dictionary = await bridge.get_doc(BridgeApi.T_SESSION, session)
+		if sr.get("ok", false):
+			sdata = (sr["doc"] as Dictionary).get("data", {})
+			break
+		if not is_transient(sr) or not is_inside_tree():
+			break
+		await get_tree().create_timer(FINISH_RETRY_SEC).timeout
+	var moves := finish_moves(listed.get("docs", []), session, sdata, plan)
 	var r: Dictionary = {}
 	for attempt in FINISH_ATTEMPTS:
 		@warning_ignore("redundant_await")
