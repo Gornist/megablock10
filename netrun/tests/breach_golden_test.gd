@@ -98,7 +98,7 @@ func _play_timer(row: Dictionary, data: BreachData) -> Array[String]:
 
 func _play_attempt(a: Dictionary, data: BreachData) -> Array[String]:
 	var errors: Array[String] = []
-	var name := str(a["name"])
+	var case_name := str(a["name"])
 	var grid := BreachGrid.new()
 	grid.size = int(a["grid_size"])
 	grid.dead_marker = data.dead_marker
@@ -110,10 +110,10 @@ func _play_attempt(a: Dictionary, data: BreachData) -> Array[String]:
 	var run := BreachRun.from_attempt(BreachAttempt.make(grid, ds, int(a["buffer_size"]), data), int(a["timer_sec"]), str(a["tier"]),
 			BreachRun.MODE_DECRYPT if a["mode"] == "decrypt" else BreachRun.MODE_STORAGE, 0, data)
 	if _keys(run.selectable()) != _keys(_cells(a["start_selectable"])):
-		errors.append("%s: старт — доступно %s, ожидалось %s" % [name, _keys(run.selectable()), _keys(_cells(a["start_selectable"]))])
+		errors.append("%s: старт — доступно %s, ожидалось %s" % [case_name, _keys(run.selectable()), _keys(_cells(a["start_selectable"]))])
 	var i := 0
 	for st in a["steps"]:
-		var at := "%s, шаг %d %s" % [name, i, st["cell"]]
+		var at := "%s, шаг %d %s" % [case_name, i, st["cell"]]
 		i += 1
 		if _keys(run.selectable()) != _keys(_cells(st["selectable_before"])):
 			errors.append("%s: до шага доступно %s, ожидалось %s" % [at, _keys(run.selectable()), _keys(_cells(st["selectable_before"]))])
@@ -138,13 +138,13 @@ func _play_attempt(a: Dictionary, data: BreachData) -> Array[String]:
 	run.resolve()  # по таймеру или досрочно; если буфер уже полон, итог поставлен самим тапом
 	var info := run.result_info()
 	if str(info["outcome"]) != str(a["outcome"]):
-		errors.append("%s: исход %s, ожидалось %s" % [name, info["outcome"], a["outcome"]])
+		errors.append("%s: исход %s, ожидалось %s" % [case_name, info["outcome"], a["outcome"]])
 	var matched: Array = info["matched"]
 	matched.sort()
 	if matched != _sorted(_strings(a["matched_ids"])):
-		errors.append("%s: итог — совпало %s, ожидалось %s" % [name, matched, a["matched_ids"]])
+		errors.append("%s: итог — совпало %s, ожидалось %s" % [case_name, matched, a["matched_ids"]])
 	if _keys(run.selectable()) != _keys(_cells(a["selectable_after_resolve"])):
-		errors.append("%s: после итога доступно %s, ожидалось %s" % [name, _keys(run.selectable()), _keys(_cells(a["selectable_after_resolve"]))])
+		errors.append("%s: после итога доступно %s, ожидалось %s" % [case_name, _keys(run.selectable()), _keys(_cells(a["selectable_after_resolve"]))])
 	return errors
 
 

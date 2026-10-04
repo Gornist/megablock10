@@ -21,10 +21,10 @@ static func make(id_: String, sequence_: Array, effect_: String = "EXTRACT_SHARD
 
 
 ## Из словаря: {id, sequence | cells, effect?, tier?, name?}. Демон в документе item Моста держит цепочку в `cells`.
-## null — нет id или цепочки.
+## null — нет id или цепочки (пустая цепочка допустима: такой демон не совпадает никогда — крайний случай golden).
 static func from_dict(d: Dictionary) -> BreachDaemon:
 	var seq: Variant = d.get("sequence", d.get("cells"))
-	if str(d.get("id", "")) == "" or not (seq is Array) or (seq as Array).is_empty():
+	if str(d.get("id", "")) == "" or not (seq is Array):
 		return null
 	var codes: Array = []
 	for c in seq:
