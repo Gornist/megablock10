@@ -1,15 +1,17 @@
 class_name XRRig
 extends XROrigin3D
-## XR-риг сидя: голова только смотрит, двигаемся телепортом, поворачиваемся плавно (решения владельца, 4 октября 2026, после
-## теста на Pico 4: ходьба стиком и рывок 30° отменены — слишком укачивают).
+## XR-риг сидя: голова только смотрит, двигаемся телепортом, поворачивается сам игрок (решения владельца, 4 октября 2026, после
+## теста на Pico 4: ходьба стиком, рывок 30° и плавный поворот стиком слишком укачивают, поворот самим игроком — нет).
 ##
-## Телепорт. Левый стик вперёд за порог — дуга-прицел от контроллера и кольцо в точке посадки (зелёное — можно, красное — нельзя
-## или перезарядка); отпустил — «моргание»: затемнение, перенос, проявление (~0,2 с, камера не скользит); назад или нажатие стика —
-## отмена. Дальность и перезарядка — RigMath.TELEPORT_*; сервер проверяет сам (NetServer), отказ возвращает риг на место.
-## Поворот. Правый стик по X — плавно вокруг головы (60°/с, с разгоном и затуханием), края поля зрения темнеют пропорционально
-## скорости (ComfortFx). Рывок — turn_mode = snap (разработка). Все числа ощущений настраиваются без пересборки (ComfortConfig).
-## Плоская (разработческая) сборка, тот же риг: T зажата — прицел по взгляду, отпустить — телепорт, C — отмена; Q/E — поворот
-## (по удержанию, тот же плавный); WASD-ходьба — только с флагом --walk; мышь (ПКМ зажата) — осмотр, R — центровка.
+## Телепорт и поворот — один правый стик. Отклонил и держишь (за порог в любую сторону) — дуга-прицел от правого контроллера и кольцо
+## в точке посадки (зелёное — можно, красное — нельзя или перезарядка) со стрелкой «куда смотреть после прыжка»: она плавно
+## разворачивается вслед за положением стика (вверх — как сейчас, вправо/влево — 90°, вниз — 180°). Отпустил стик — «моргание»:
+## затемнение, перенос и поворот в самой тёмной точке, проявление (~0,2 с, камера не скользит, мир на глазах не вращается).
+## Нажатие стика — отмена. Дальность и перезарядка — RigMath.TELEPORT_*; сервер проверяет сам (NetServer), отказ возвращает риг на место.
+## Вращение мира стиком (левый стик по X) — только turn_mode = smooth (плавно, 60°/с, виньетка по краям, ComfortFx) или snap (рывок
+## 30°), настройки для других игроков и разработки. Все числа ощущений настраиваются без пересборки (ComfortConfig).
+## Плоская (разработческая) сборка, тот же риг: T зажата — прицел по взгляду, отпустить — телепорт, C — отмена; при зажатой T Q/E
+## выбирают поворот при телепорте (∓90°); WASD-ходьба — только с флагом --walk; мышь (ПКМ зажата) — осмотр, R — центровка.
 ## Логика — в shared/rig_math.gd. Камера двигается только по воле игрока.
 
 signal xr_failed(reason: String)
@@ -42,7 +44,7 @@ var camera: XRCamera3D
 var left_hand: XRController3D
 var right_hand: XRController3D
 ## Левый контроллер в позе «aim» (направление указки): от неё целимся. Нет данных — берём руку (grip).
-var left_aim: XRController3D
+var right_aim: XRController3D
 var xr_active := false
 ## Идёт цифровой тоннель (W1): телепорт запрещён, пока сервер не поставит игрока в новый узел. Поворот головы и поворот стиком — как всегда.
 var movement_locked := false
@@ -71,9 +73,8 @@ func _ready() -> void:
 	camera = $XRCamera3D
 	left_hand = $LeftHand
 	right_hand = $RightHand
-	left_aim = get_node_or_null("LeftAim") as XRController3D
+	right_aim = get_node_or_null("RightAim") as XRController3D
 	right_hand.button_pressed.connect(_on_right_button)
-	left_hand.button_pressed.connect(_on_left_button)
 	left_hand.button_pressed.connect(_on_exit_button.bind(true))
 	left_hand.button_released.connect(_on_exit_button.bind(false))
 	right_hand.button_pressed.connect(_on_exit_button.bind(true))
@@ -126,12 +127,8 @@ func recenter() -> void:
 func _on_right_button(action: String) -> void:
 	if action == "by_button" or action == "ax_button":
 		recenter()
-
-
-## Нажатие левого стика — отмена прицела.
-func _on_left_button(action: String) -> void:
-	if action == "primary_click":
-		_tp_click = true
+	elif action == "primary_click":
+		_tp_click = true   # нажатие правого стика — отмена прицела
 
 
 func _notification(what: int) -> void:
@@ -179,32 +176,29 @@ func _process(delta: float) -> void:
 	_update_exit_hold(delta)
 	var turn_x := 0.0
 	var tp_stick := Vector2.ZERO
-	var face := Vector2.ZERO
 	var walk := Vector2.ZERO
 	if xr_active:
-		tp_stick = left_hand.get_vector2("primary")
-		var right_stick := right_hand.get_vector2("primary")
-		turn_x = right_stick.x
-		face = right_stick
+		tp_stick = right_hand.get_vector2("primary")    # телепорт: правый стик — отклонил и держишь, отпустил
+		turn_x = left_hand.get_vector2("primary").x     # вращение мира левым стиком — только turn_mode smooth/snap (настройка)
 	else:
 		turn_x = _flat_turn()
-		face = Vector2(turn_x, 0.0)   # Q/E при зажатой T: ±90° при телепорте
-		tp_stick = Vector2(0.0, 1.0) if Input.is_physical_key_pressed(KEY_T) else Vector2.ZERO
+		if Input.is_physical_key_pressed(KEY_T):
+			tp_stick = Vector2(turn_x, 0.0) if turn_x != 0.0 else Vector2(0.0, 1.0)   # T — прицел; T + Q/E — поворот ∓90°
 		walk = _flat_move()
 	var clicked := _tp_click
 	_tp_click = false
-	drive(turn_x, tp_stick, clicked, delta, walk, face)
+	drive(turn_x, tp_stick, clicked, delta, walk)
 
 
-## Один шаг управления по готовому вводу (так же зовут тесты): turn_x — правый стик по X (или Q/E; вращает мир только в режимах
-## smooth и snap), tp_stick — левый стик (y вперёд), clicked — нажатие стика, walk — ходьба WASD (только плоская сборка с
-## walk_enabled), face — правый стик целиком: пока наведён прицел и turn_mode = none, его направление задаёт поворот при телепорте.
-func drive(turn_x: float, tp_stick: Vector2, clicked: bool, delta: float, walk: Vector2 = Vector2.ZERO, face: Vector2 = Vector2.ZERO) -> void:
+## Один шаг управления по готовому вводу (так же зовут тесты): turn_x — вращение мира (левый стик по X или Q/E; только режимы smooth
+## и snap), tp_stick — правый стик телепорта (x вправо, y вперёд: отклонил — прицел, положение стика — поворот при телепорте, вернул
+## к центру — прыжок), clicked — нажатие стика (отмена), walk — ходьба WASD (только плоская сборка с walk_enabled).
+func drive(turn_x: float, tp_stick: Vector2, clicked: bool, delta: float, walk: Vector2 = Vector2.ZERO) -> void:
 	_since_tp += delta
 	_apply_turn(turn_x, delta)
 	if walk_enabled and not xr_active and not movement_locked:
 		global_position += RigMath.move_velocity(walk, camera.global_rotation.y, move_speed) * delta
-	_step_teleport(tp_stick, clicked, delta, face)
+	_step_teleport(tp_stick, clicked, delta)
 	_step_blink(delta)
 
 
@@ -262,17 +256,17 @@ func teleport_cooldown_left() -> float:
 	return RigMath.cooldown_left(_since_tp, teleport_cooldown)
 
 
-func _step_teleport(stick: Vector2, clicked: bool, delta: float, face: Vector2 = Vector2.ZERO) -> void:
+func _step_teleport(stick: Vector2, clicked: bool, delta: float) -> void:
 	if movement_locked:
 		if _aim["aiming"]:
 			_cancel_aim()
 		return
-	var was_aiming: bool = _aim["aiming"]
 	_aim = RigMath.aim_step(_aim, stick, clicked, delta)
-	# Поворот выбирается правым стиком, пока прицел жив; в момент отпускания (AIM_FIRE) правый стик ещё в том положении, что игрок выбрал.
-	if turn_mode == RigMath.TURN_MODE_NONE and (_aim["aiming"] or was_aiming):
-		_face_deg = RigMath.facing_deg(face)
-	else:
+	# Поворот при телепорте — угол того же стика, пока он отклонён: при отпускании стик возвращается к центру, и берётся последнее
+	# значение «держу» (слабее RigMath.FACING_STICK_MIN угол не обновляем).
+	if turn_mode == RigMath.TURN_MODE_NONE and _aim["aiming"] and stick.length() >= RigMath.FACING_STICK_MIN:
+		_face_deg = RigMath.facing_deg(stick)
+	elif not _aim["aiming"] and _aim["event"] != RigMath.AIM_FIRE:
 		_face_deg = 0.0
 	match _aim["event"]:
 		RigMath.AIM_CANCEL:
@@ -295,7 +289,7 @@ func _cancel_aim() -> void:
 ## Откуда и куда смотрит указка: VR — контроллер в позе aim (нет данных — рука), плоская сборка — взгляд.
 func _aim_pose() -> Dictionary:
 	if xr_active:
-		var n: Node3D = left_aim if left_aim != null and left_aim.get_has_tracking_data() else left_hand
+		var n: Node3D = right_aim if right_aim != null and right_aim.get_has_tracking_data() else right_hand
 		return {"origin": n.global_position, "dir": -n.global_basis.z, "arc_from": n.global_position}
 	var c := camera.global_transform
 	var dir := -c.basis.z
@@ -311,6 +305,11 @@ func _show_aim() -> void:
 	var charge := 1.0 if left <= 0.0 else 1.0 - left / maxf(teleport_cooldown, 0.001)
 	aim_visual.show_at(pose["arc_from"], info["p"], ok, charge)
 	aim_visual.set_heading(_heading_after_teleport())
+
+
+## Поворот идущего моргания, градусы вправо (0 — без поворота): для журнала `rig.teleport … face=`.
+func pending_face_deg() -> float:
+	return _blink_face_deg
 
 
 ## Куда игрок будет смотреть после прыжка: горизонтальный взгляд сейчас, повёрнутый на выбранные градусы вправо.

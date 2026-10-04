@@ -253,7 +253,7 @@ func _aim(state: Dictionary, stick: Vector2, dt: float = 0.014, clicked: bool = 
 	return RigMath.aim_step(state, stick, clicked, dt)
 
 
-func test_aim_starts_when_stick_pushed_forward() -> void:
+func test_aim_starts_when_stick_is_pushed_in_any_direction() -> void:
 	var s := _aim(RigMath.aim_new(), Vector2(0, 0.5))
 	assert_bool(s["aiming"]).is_false()
 	s = _aim(s, Vector2(0, 0.9))
@@ -261,51 +261,46 @@ func test_aim_starts_when_stick_pushed_forward() -> void:
 	assert_str(s["event"]).is_equal(RigMath.AIM_START)
 	s = _aim(s, Vector2(0, 0.9))
 	assert_str(s["event"]).is_equal("")      # событие — один раз
+	for dir in [Vector2(-0.9, 0), Vector2(0.9, 0), Vector2(0, -0.9), Vector2(0.65, 0.65), Vector2(-0.5, -0.5)]:
+		assert_bool(_aim(RigMath.aim_new(), dir)["aiming"]).is_true()
 
 
-func test_aim_sideways_or_back_does_not_start() -> void:
-	assert_bool(_aim(RigMath.aim_new(), Vector2(1, 0))["aiming"]).is_false()
-	assert_bool(_aim(RigMath.aim_new(), Vector2(0, -1))["aiming"]).is_false()
+func test_a_weak_push_does_not_start_the_aim() -> void:
+	assert_bool(_aim(RigMath.aim_new(), Vector2(0.6, 0.0))["aiming"]).is_false()
+	assert_bool(_aim(RigMath.aim_new(), Vector2(-0.4, -0.4))["aiming"]).is_false()
 
 
-func test_aim_fires_when_stick_released_for_a_moment() -> void:
-	var s := _aim(RigMath.aim_new(), Vector2(0, 1))
-	s = _aim(s, Vector2(0, 0.1), 0.02)
-	assert_bool(s["aiming"]).is_true()        # ещё не отпущен по-настоящему: пружина стика качнулась
-	s = _aim(s, Vector2(0, 0.0), 0.04)
-	assert_bool(s["aiming"]).is_false()
-	assert_str(s["event"]).is_equal(RigMath.AIM_FIRE)
+func test_aim_fires_when_stick_is_released_for_a_moment() -> void:
+	for dir in [Vector2(0, 1), Vector2(-1, 0), Vector2(0.7, -0.7)]:
+		var s := _aim(RigMath.aim_new(), dir)
+		s = _aim(s, dir * 0.1, 0.02)
+		assert_bool(s["aiming"]).is_true()        # ещё не отпущен по-настоящему: пружина стика качнулась
+		s = _aim(s, Vector2.ZERO, 0.04)
+		assert_bool(s["aiming"]).is_false()
+		assert_str(s["event"]).is_equal(RigMath.AIM_FIRE)
 
 
 func test_aim_stick_dip_that_recovers_does_not_fire() -> void:
 	var s := _aim(RigMath.aim_new(), Vector2(0, 1))
 	s = _aim(s, Vector2(0, 0.1), 0.02)
-	s = _aim(s, Vector2(0, 0.8), 0.02)         # вернул вперёд
+	s = _aim(s, Vector2(0, 0.8), 0.02)         # вернул
 	s = _aim(s, Vector2(0, 0.1), 0.02)
 	assert_bool(s["aiming"]).is_true()
 	assert_str(s["event"]).is_equal("")
 
 
-func test_aim_cancel_by_pulling_back_and_by_click() -> void:
+func test_pulling_the_stick_back_is_a_turn_around_not_a_cancel() -> void:
 	var s := _aim(RigMath.aim_new(), Vector2(0, 1))
 	s = _aim(s, Vector2(0, -1), 0.014)
+	assert_bool(s["aiming"]).is_true()
+	assert_str(s["event"]).is_equal("")
+
+
+func test_aim_is_cancelled_only_by_clicking_the_stick() -> void:
+	var s := _aim(RigMath.aim_new(), Vector2(-1, 0))
+	s = _aim(s, Vector2(-1, 0), 0.014, true)
 	assert_str(s["event"]).is_equal(RigMath.AIM_CANCEL)
 	assert_bool(s["aiming"]).is_false()
-	var s2 := _aim(RigMath.aim_new(), Vector2(0, 1))
-	s2 = _aim(s2, Vector2(0, 1), 0.014, true)  # нажатие стика
-	assert_str(s2["event"]).is_equal(RigMath.AIM_CANCEL)
-
-
-func test_aim_pull_back_through_the_release_zone_cancels_instead_of_firing() -> void:
-	# Быстрое движение назад проходит зону «отпущен» за считанные кадры: до конца задержки отпускания телепорт не срабатывает.
-	var s := _aim(RigMath.aim_new(), Vector2(0, 1))
-	var fired := false
-	for y in [0.4, 0.2, -0.1, -0.7]:
-		s = _aim(s, Vector2(0, y), 0.014)
-		if s["event"] == RigMath.AIM_FIRE:
-			fired = true
-	assert_bool(fired).is_false()
-	assert_str(s["event"]).is_equal(RigMath.AIM_CANCEL)
 
 
 func test_aim_click_without_aiming_does_nothing() -> void:
@@ -347,25 +342,33 @@ func test_blink_survives_a_long_frame() -> void:
 
 # ---------------------------------------------------------------- поворот при телепорте
 
-func test_facing_follows_the_stick_direction_in_45_degree_steps() -> void:
+func test_facing_follows_the_stick_angle() -> void:
 	assert_float(RigMath.facing_deg(Vector2(0, 1))).is_equal(0.0)        # вверх — не поворачивать
-	assert_float(RigMath.facing_deg(Vector2(1, 0))).is_equal(90.0)       # вправо
-	assert_float(RigMath.facing_deg(Vector2(-1, 0))).is_equal(-90.0)     # влево
-	assert_float(RigMath.facing_deg(Vector2(0, -1))).is_equal(180.0)     # вниз — развернуться
-	assert_float(RigMath.facing_deg(Vector2(0.75, 0.75))).is_equal(45.0)
-	assert_float(RigMath.facing_deg(Vector2(-0.75, 0.75))).is_equal(-45.0)
-	assert_float(RigMath.facing_deg(Vector2(0.75, -0.75))).is_equal(135.0)
-	assert_float(RigMath.facing_deg(Vector2(-0.75, -0.75))).is_equal(-135.0)
+	assert_float(RigMath.facing_deg(Vector2(1, 0))).is_equal_approx(90.0, 0.001)     # вправо — ровно 90° вправо
+	assert_float(RigMath.facing_deg(Vector2(-1, 0))).is_equal_approx(-90.0, 0.001)   # влево
+	assert_float(absf(RigMath.facing_deg(Vector2(0, -1)))).is_equal_approx(180.0, 0.001)   # вниз — развернуться
+	assert_float(RigMath.facing_deg(Vector2(0.75, -0.75))).is_equal_approx(135.0, 0.001)
+	assert_float(RigMath.facing_deg(Vector2(-0.75, -0.75))).is_equal_approx(-135.0, 0.001)
 
 
-func test_facing_behind_is_always_180_never_minus_180() -> void:
-	assert_float(RigMath.facing_deg(Vector2(0.05, -1))).is_equal(180.0)
-	assert_float(RigMath.facing_deg(Vector2(-0.05, -1))).is_equal(180.0)
+func test_facing_is_smooth_not_stepped() -> void:
+	var prev := 0.0
+	for deg in range(0, 181):
+		var a := deg_to_rad(float(deg))
+		var f := RigMath.facing_deg(Vector2(sin(a), cos(a)))
+		assert_float(f).is_greater_equal(prev - 0.0001)               # не убывает
+		assert_float(f - prev).is_less_equal(1.2)                      # нет скачков: шаг в 1° стика — не больше ~1,1°
+		prev = f
+	assert_float(prev).is_equal_approx(180.0, 0.001)
+	var distinct := {}
+	for deg in range(10, 90):
+		var a := deg_to_rad(float(deg))
+		distinct[snappedf(RigMath.facing_deg(Vector2(sin(a), cos(a))), 0.01)] = true
+	assert_int(distinct.size()).is_greater(70)                         # на одном угле стика — свой угол поворота, не ступеньки
 
 
-func test_a_weak_or_slightly_tilted_stick_does_not_turn() -> void:
+func test_facing_dead_cone_and_weak_stick_do_not_turn() -> void:
 	assert_float(RigMath.facing_deg(Vector2.ZERO)).is_equal(0.0)
-	assert_float(RigMath.facing_deg(Vector2(0.5, 0.0))).is_equal(0.0)          # слабее FACING_STICK_MIN
-	assert_float(RigMath.facing_deg(Vector2(0.3, 0.95))).is_equal(0.0)         # ~17° от «вверх»: запас ±22,5°
-	assert_float(RigMath.facing_deg(Vector2(-0.3, 0.95))).is_equal(0.0)
-	assert_float(RigMath.facing_deg(Vector2(0.45, 0.9))).is_equal(45.0)        # ~27°: уже шаг
+	assert_float(RigMath.facing_deg(Vector2(0.5, 0.0))).is_equal(0.0)           # слабее FACING_STICK_MIN
+	assert_float(RigMath.facing_deg(Vector2(0.1, 0.99))).is_equal(0.0)          # ~5,8° от «вверх»: в мёртвом секторе
+	assert_float(RigMath.facing_deg(Vector2(-0.1, 0.99))).is_equal(0.0)

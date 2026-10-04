@@ -16,6 +16,6 @@ pose = &"grip"
 tracker = &"right_hand"
 pose = &"grip"
 
-[node name="LeftAim" type="XRController3D" parent="."]
-tracker = &"left_hand"
+[node name="RightAim" type="XRController3D" parent="."]
+tracker = &"right_hand"
 pose = &"aim"

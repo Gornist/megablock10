@@ -22,9 +22,11 @@ const TURN_MODE_NONE := "none"
 const TURN_MODE_SMOOTH := "smooth"
 const TURN_MODE_SNAP := "snap"
 const TURN_MODE_DEFAULT := TURN_MODE_NONE
-## Поворот при телепорте: правый стик, пока левым наведён прицел. Слабее FACING_STICK_MIN — «не трогал» (взгляд не меняется).
+## Поворот при телепорте задаёт тот же правый стик, что и прицел: его положение (угол) относительно текущего взгляда. Слабее
+## FACING_STICK_MIN стик не читаем (при отпускании он возвращается к центру — берётся последнее «держу»). В пределах FACING_DEAD_DEG от
+## «вверх» поворота нет, дальше угол растёт плавно до 180° (facing_deg).
 const FACING_STICK_MIN := 0.6
-const FACING_STEP_DEG := 45.0
+const FACING_DEAD_DEG := 8.0
 const TURN_SPEED_DEG_S := 60.0         ## угловая скорость при полном отклонении стика
 const TURN_SPEED_MAX_DEG_S := 120.0    ## потолок, настройкой не превысить
 const TURN_RAMP_UP_SEC := 0.25         ## разгон от нуля до полной скорости
@@ -48,11 +50,11 @@ const TELEPORT_BLINK_LIMIT := 0.4
 const TELEPORT_MIN_DIST := 0.25        ## ближе — прицел «в себя», телепорт не запрашиваем
 ## Шум/trace от телепорта: задел для настройки, пока не используется (сервер на телепорт trace не добавляет).
 const TELEPORT_TRACE := 0.0
-## Прицел левым стиком: за STICK_AIM_ON — показать дугу; ниже STICK_AIM_RELEASE на AIM_RELEASE_HOLD секунд — отпущен (телепорт);
-## назад за STICK_AIM_BACK — отмена. Задержка отпускания нужна, чтобы быстрый откат стика назад не сработал как «отпустил».
+## Прицел правым стиком в любую сторону: отклонён за STICK_AIM_ON — показать дугу и стрелку; вернулся ниже STICK_AIM_RELEASE на
+## AIM_RELEASE_HOLD секунд — отпущен (телепорт); отмена — нажатие стика. Задержка отпускания нужна, чтобы случайный провал стика
+## на кадр-другой не сработал как «отпустил».
 const STICK_AIM_ON := 0.7
 const STICK_AIM_RELEASE := 0.3
-const STICK_AIM_BACK := -0.6
 const AIM_RELEASE_HOLD := 0.05
 ## Рука должна быть выше пола не меньше чем на это, чтобы считать пересечение луча с полом; иначе — по горизонтали.
 const AIM_MIN_HAND_HEIGHT := 0.2
@@ -200,15 +202,19 @@ static func cooldown_left(since_last_sec: float, cooldown: float = TELEPORT_COOL
 
 # ---------------------------------------------------------------- телепорт: куда смотреть после прыжка
 
-## Поворот при телепорте, градусы вправо (по часовой): направление правого стика относительно текущего взгляда — вверх: не поворачивать,
-## вправо: 90° вправо, вниз: развернуться на 180°, и так с шагом 45° (между 0° и первым шагом — запас ±22,5°, чтобы случайный
-## наклон не поворачивал). Мир при этом не вращается: поворот применяется в самой тёмной точке моргания (XRRig._step_blink).
+## Поворот при телепорте, градусы вправо (по часовой): угол правого стика от «вверх» — вверх: не поворачивать, вправо: ровно 90° вправо,
+## влево: 90° влево, вниз: развернуться на 180°. Плавно, без шагов. В пределах FACING_DEAD_DEG от «вверх» — 0, дальше до 90° угол
+## растёт от нуля (без скачка), от 90° до 180° равен углу стика. Мир при этом не вращается: поворот применяется в самой тёмной
+## точке моргания (XRRig._step_blink).
 static func facing_deg(stick: Vector2) -> float:
 	if stick.length() < FACING_STICK_MIN:
 		return 0.0
 	var a := rad_to_deg(atan2(stick.x, stick.y))
-	var q := roundf(a / FACING_STEP_DEG) * FACING_STEP_DEG
-	return 180.0 if absf(q) >= 180.0 else q
+	var m := absf(a)
+	if m <= FACING_DEAD_DEG:
+		return 0.0
+	var out := (m - FACING_DEAD_DEG) * 90.0 / (90.0 - FACING_DEAD_DEG) if m < 90.0 else m
+	return signf(a) * out
 
 
 # ---------------------------------------------------------------- телепорт: стик
@@ -217,17 +223,19 @@ static func aim_new() -> Dictionary:
 	return {"aiming": false, "low": 0.0, "event": ""}
 
 
-## Шаг прицела по левому стику (y — вперёд) и нажатию стика. Возвращает новое состояние {aiming, low, event}; event — один из
-## AIM_START (прицел показать), AIM_FIRE (стик отпущен — телепорт), AIM_CANCEL (назад или нажатие — отмена) или "".
+## Шаг прицела по правому стику (длина отклонения; направление читает facing_deg) и нажатию стика. Возвращает новое состояние
+## {aiming, low, event}; event — один из AIM_START (прицел показать), AIM_FIRE (стик отпущен — телепорт), AIM_CANCEL (нажатие
+## стика — отмена) или "".
 static func aim_step(state: Dictionary, stick: Vector2, clicked: bool, delta: float) -> Dictionary:
 	var aiming: bool = state.get("aiming", false)
+	var held := stick.length()
 	if not aiming:
-		if stick.y >= STICK_AIM_ON:
+		if held >= STICK_AIM_ON:
 			return {"aiming": true, "low": 0.0, "event": AIM_START}
 		return {"aiming": false, "low": 0.0, "event": ""}
-	if clicked or stick.y <= STICK_AIM_BACK:
+	if clicked:
 		return {"aiming": false, "low": 0.0, "event": AIM_CANCEL}
-	if stick.y < STICK_AIM_RELEASE:
+	if held < STICK_AIM_RELEASE:
 		var low := float(state.get("low", 0.0)) + maxf(delta, 0.0)
 		if low >= AIM_RELEASE_HOLD:
 			return {"aiming": false, "low": 0.0, "event": AIM_FIRE}

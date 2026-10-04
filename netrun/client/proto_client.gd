@@ -111,7 +111,8 @@ func _fmt_xz(p: Vector3) -> String:
 
 ## Игрок отпустил стик прицела. Риг переедет сам (моргание), здесь — просьба серверу и журнал.
 func _on_teleport_attempted(from: Vector3, to: Vector3, ok: bool, reason: String) -> void:
-	log_file.log("rig.teleport", {"from": _fmt_xz(from), "to": _fmt_xz(to), "dist": snappedf(NodeLayout.flat_distance(from, to), 0.1), "ok": ok})
+	log_file.log("rig.teleport", {"from": _fmt_xz(from), "to": _fmt_xz(to), "dist": snappedf(NodeLayout.flat_distance(from, to), 0.1), "ok": ok,
+		"face": snappedf(scene.rig.pending_face_deg() if ok else 0.0, 0.1)})
 	if not ok:
 		log_file.log("teleport.denied", {"reason": reason, "by": "client"})
 	elif net != null and net.is_connected_to_world:
