@@ -97,14 +97,22 @@ jobs:
           path: |
             ~/.platformio
             ~/.cache/pip
-          key: pio-${{ runner.os }}-${{ hashFiles('firmware/display/platformio.ini') }}
+            ~/.cache/esp-emu
+          key: pio-${{ runner.os }}-${{ hashFiles('firmware/display/platformio.ini', 'firmware/display/tools/espemu_selftest.sh') }}
 
       - name: PlatformIO
         run: pip install platformio
 
-      - name: Сборка crowpanel579 и crowpanel579-wokwi
+      - name: Сборка crowpanel579, crowpanel579-wokwi и crowpanel579-espemu
         working-directory: firmware/display
-        run: pio run -e crowpanel579 -e crowpanel579-wokwi
+        run: pio run -e crowpanel579 -e crowpanel579-wokwi -e crowpanel579-espemu
+
+      # Самопроверка изнутри платы в esp-emulator от Espressif (бета, Apache-2.0): без квоты и секретов — на каждом прогоне.
+      # Проверяет Wi-Fi, протокол, звук по протоколу без карты, REBOOT и сброс сторожем; microSD и I²S (клип, объявление, MP3)
+      # эмулятор не умеет — это остаётся за Wokwi и платой (firmware/display/README.md, «esp-emulator»).
+      - name: Самопроверка в esp-emulator
+        working-directory: firmware/display
+        run: tools/espemu_selftest.sh --no-build
 
       # Минуты Wokwi ограничены месячной квотой: самопроверка — только когда менялось то, что попадает в плату или в её прогон
       # (код платы и ядра, сборка, схема Wokwi, сам скрипт, этот workflow). Правка сервера или прошивки для ПК её не тратит.
