@@ -14,6 +14,9 @@ const TRACKER_LEFT := &"/user/hand_tracker/left"
 const TRACKER_RIGHT := &"/user/hand_tracker/right"
 ## Чтобы поза от трекинга считалась годной: не меньше стольких суставов с верной позицией.
 const MIN_VALID_JOINTS := 22
+## Якорь запястья: подъём над тылом запястья и сдвиг к локтю (м). Дека лежит у запястья, не на пальцах и не на ладони.
+const WRIST_ANCHOR_BACK := 0.045
+const WRIST_ANCHOR_ELBOW := 0.075
 const SHADER := preload("res://assets/shaders/hand_particles.gdshader")
 const COLOR_HAND := Color(0.18, 0.72, 0.85)  # холодный голубой: свои руки не красные (красные — другие люди и угроза)
 const COLOR_SPARK := Color(0.6, 0.95, 1.0)
@@ -29,6 +32,8 @@ var mode := Mode.NONE
 var grip_pitch_deg := 0.0
 var grip_offset := Vector3.ZERO
 
+## Якорь на запястье для деки и прочего, что носят на руке: на тыльной стороне запястья, ближе к локтю, панелью (+Z) от тыла руки, верх (+Y) к пальцам.
+var wrist_anchor: Node3D
 var _template: Array
 var _mm: MultiMesh
 var _mmi: MultiMeshInstance3D
@@ -66,6 +71,9 @@ func _init(is_left: bool = false, ctrl: XRController3D = null) -> void:
 	_mmi.multimesh = _mm
 	_mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_mmi)
+	wrist_anchor = Node3D.new()
+	wrist_anchor.name = "WristAnchor"
+	add_child(wrist_anchor)
 	visible = false
 
 
@@ -102,6 +110,17 @@ func update_hand() -> void:
 	visible = true
 	fill_buffer(_pos)
 	_mm.buffer = _buf
+	_place_wrist_anchor(_pos)
+
+
+## Якорь запястья по позе: начало — над тылом запястья у локтя, ось Z — от тыла руки, ось Y — к пальцам (панель читается, когда смотришь на запястье).
+func _place_wrist_anchor(pos: PackedVector3Array) -> void:
+	var pb := HandSkeleton.palm_basis(pos)
+	var back := HandSkeleton.back_direction(pos, left)
+	var fingers := -pb.z
+	var x := fingers.cross(back).normalized()
+	wrist_anchor.transform = Transform3D(Basis(x, fingers, back).orthonormalized(),
+		pos[HandSkeleton.WRIST] + back * WRIST_ANCHOR_BACK + pb.z * WRIST_ANCHOR_ELBOW)
 
 
 ## Калибровка позы grip (ComfortConfig): поворот вокруг X и смещение в системе контроллера; у левой руки смещение по X зеркальное.

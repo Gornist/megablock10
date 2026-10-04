@@ -340,3 +340,72 @@ func test_comfort_calibrates_the_hands_with_limits() -> void:
 	assert_float(rig.left_hand_view.grip_offset.x).is_equal_approx(-0.05, 0.0001)  # у левой руки X зеркальный
 	assert_float(rig.left_hand_view.grip_offset.z).is_equal_approx(-0.15, 0.0001)
 	assert_str(String(c.log_fields()["hand"])).is_equal("90,0.05,0,-0.15")
+
+
+# ---------------------------------------------------------------- якорь запястья и дека
+
+func test_wrist_anchor_sits_on_the_back_of_the_wrist_for_both_hands() -> void:
+	for left in [false, true]:
+		var pose := HandSkeleton.pose({}, left)
+		var v := _view(left, pose)
+		v.update_hand()
+		var a := v.wrist_anchor
+		var back := HandSkeleton.back_direction(pose, left)
+		assert_float(back.y).override_failure_message("тыл руки смотрит вверх (рука ладонью вниз), left=%s" % left).is_greater(0.9)
+		# над тылом запястья и ближе к локтю: ни на пальцах, ни на ладони
+		var pb := HandSkeleton.palm_basis(pose)
+		var want := pose[HandSkeleton.WRIST] + back * HandView.WRIST_ANCHOR_BACK + pb.z * HandView.WRIST_ANCHOR_ELBOW  # вдоль кисти к локтю
+		assert_float(a.position.distance_to(want)).is_less(0.0005)
+		assert_bool(a.position.z > pose[HandSkeleton.WRIST].z).override_failure_message("якорь ближе к локтю, чем запястье").is_true()
+		assert_float(a.basis.z.dot(back)).is_greater(0.99)                     # панель смотрит от тыла руки
+		assert_float(a.basis.y.dot(-pb.z)).is_greater(0.99)                    # верх панели — к пальцам
+		assert_float(a.basis.y.dot(Vector3(0, 0, -1))).is_greater(0.9)         # а пальцы смотрят вперёд
+		assert_float(a.basis.determinant()).is_greater(0.99)                   # без зеркала: текст не вывернут
+
+
+func test_wrist_anchor_follows_the_hand() -> void:
+	var pose := HandSkeleton.pose({})
+	var turn := Transform3D(Basis(Vector3.UP, deg_to_rad(40.0)), Vector3(0.3, 1.0, -0.5))
+	var moved := PackedVector3Array()
+	for p in pose:
+		moved.append(turn * p)
+	var v := _view(false, moved)
+	v.update_hand()
+	var home := _view(false, pose)
+	home.update_hand()
+	assert_float(v.wrist_anchor.position.distance_to(turn * home.wrist_anchor.position)).is_less(0.0005)
+
+
+func test_deck_is_worn_on_the_wrist_in_vr_and_not_on_the_fingers() -> void:
+	var rig := auto_free(preload("res://client/xr_rig.tscn").instantiate()) as XRRig
+	add_child(rig)
+	var ui := auto_free(WorldUI.new()) as WorldUI
+	add_child(ui)
+	ui.attach(rig)
+	rig.xr_active = true
+	rig.left_hand_view.pose_source = func(): return HandSkeleton.pose({}, true)
+	rig.left_hand_view.update_hand()
+	ui._place()
+	assert_object(ui.deck.get_parent().get_parent()).is_same(rig.left_hand_view.wrist_anchor)  # HudAnchor внутри якоря запястья
+	assert_float(ui.deck.global_position.distance_to(rig.left_hand_view.wrist_anchor.global_position)).is_less(0.001)
+	assert_float(ui.deck.scale.x).is_equal_approx(WorldUI.WRIST_DECK_SCALE, 0.0001)
+	# деку не видно у кончиков пальцев: от кисти она дальше, чем лежит ладонь
+	var pose: PackedVector3Array = rig.left_hand_view.last_pose()
+	assert_float(ui.deck.global_position.z).is_greater(pose[HandSkeleton.WRIST].z)
+	assert_float(ui.trace.position.y).is_less(0.0)  # trace ниже деки, к локтю: над кистью его нет
+	# нет позы руки — дека скрыта, а не висит в начале рига
+	rig.left_hand_view.pose_source = Callable()
+	rig.left_hand_view.update_hand()
+	ui._place()
+	assert_bool(ui.deck.is_visible_in_tree()).is_false()
+
+
+func test_flat_build_keeps_the_deck_on_the_camera() -> void:
+	var rig := auto_free(preload("res://client/xr_rig.tscn").instantiate()) as XRRig
+	add_child(rig)
+	var ui := auto_free(WorldUI.new()) as WorldUI
+	add_child(ui)
+	ui.attach(rig)
+	assert_object(ui.deck.get_parent().get_parent()).is_same(rig.camera)
+	assert_float(ui.deck.scale.x).is_equal(1.0)
+	assert_float(ui.trace.position.y).is_equal_approx(0.14, 0.0001)

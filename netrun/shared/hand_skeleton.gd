@@ -149,6 +149,12 @@ static func palm_basis(pos: PackedVector3Array) -> Basis:
 	return Basis(side, nrm, -fwd).orthonormalized()
 
 
+## Куда смотрит тыл руки (единичный вектор): нормаль ладони с учётом руки — у зеркальной левой формула даёт ладонную сторону, её разворачиваем.
+static func back_direction(pos: PackedVector3Array, left: bool) -> Vector3:
+	var y := palm_basis(pos).y
+	return -y if left else y
+
+
 ## Шаблон облака частиц, детерминированный по rng_seed. Каждая частица — строка [kind, a, b, t, u, v, size, weight, phase]:
 ##  kind 0 (точка на кости): a, b — суставы кости; t — вдоль кости 0…1; u — угол вокруг оси; v — доля радиуса;
 ##  kind 0 с a = -1 (ладонь): u, v — координаты на эллипсе ладони (-1…1), t — поверхность (-1 тыльная, 1 ладонная);

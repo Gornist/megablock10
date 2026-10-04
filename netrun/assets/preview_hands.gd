@@ -37,6 +37,10 @@ func _ready() -> void:
 	var left := HandView.new(true)
 	origin.add_child(right)
 	origin.add_child(left)
+	var deck := DeckPanel.new()  # дека на запястье левой руки, как её носит WorldUI в VR
+	deck.scale = Vector3.ONE * WorldUI.WRIST_DECK_SCALE
+	left.wrist_anchor.add_child(deck)
+	deck.set_deck({"daemons": [{"id": "ghost_1", "name": "Призрак", "cooldown_left": 0.0}, {"id": "jitter_1", "name": "Дрожь", "cooldown_left": 30.0}], "selected": "ghost_1"})
 	var cam := Camera3D.new()
 	cam.fov = 75.0
 	cam.current = true
@@ -51,6 +55,7 @@ func _ready() -> void:
 		["point", Vector3(-1, 1.2, -1), Vector3(-1, 1.0, -3), point, hold, 0.0],
 		["close", Vector3(-1, 1.12, -1.15), Vector3(-1, 1.0, -1.5), hold, open, 0.0],
 		["macro", Vector3(-0.9, 1.12, -1.3), Vector3(-0.85, 1.0, -1.45), hold, hold, 0.0],
+		["deck", Vector3(-1.05, 1.5, -1.0), Vector3(-1.15, 0.98, -1.5), open, hold, 0.0],
 		["m_open", Vector3(-0.83, 1.42, -1.0), Vector3(-0.83, 0.98, -1.45), open, open, 0.0],
 		["m_fist", Vector3(-0.83, 1.42, -1.0), Vector3(-0.83, 0.98, -1.45), fist, fist, 0.0],
 		["m_point", Vector3(-0.83, 1.42, -1.0), Vector3(-0.83, 0.98, -1.45), point, hold, 0.0],
