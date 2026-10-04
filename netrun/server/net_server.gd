@@ -15,6 +15,8 @@ signal daemon_requested(session: String, daemon_id: String)
 signal leave_requested(session: String)
 ## Состояние очков (P6) не чаще раза в период на терминал: {terminal, session ("" — очки без игрока), fps, worst, bat?, chg?, rtt?}.
 signal beat_received(beat: Dictionary)
+## Игрок телепортировался (принято сервером): откуда и куда. Задел под шум/trace от телепорта (RigMath.TELEPORT_TRACE, пока 0).
+signal teleported(session: String, from: Vector3, to: Vector3)
 
 ## «Узел» сессии в цифровом тоннеле между узлами (W1): ни в одном узле, снимков и ICE нет, позиции от клиента не принимаются.
 const TUNNEL_NODE := "~tunnel"
@@ -29,6 +31,11 @@ var verifier: TokenVerifier
 const MAX_SPEED := 8.0
 ## ENet при disconnect_peer сбрасывает неотправленную очередь: после последнего сообщения даём ему уйти.
 const DISCONNECT_DELAY_SEC := 0.3
+## Телепорт (VR): сервер не доверяет клиенту. Пределы — RigMath.TELEPORT_RANGE_LIMIT и TELEPORT_COOLDOWN_LIMIT (клиент по умолчанию
+## ходит на 4 м раз в 1,2 с, настройка на очках не пускает за предел). Допуски: поза клиента запаздывает на пакет-другой, поэтому
+## дальность считается с запасом, а перезарядка — с послаблением на дрожь сети.
+const TELEPORT_RANGE_SLACK := 0.5
+const TELEPORT_COOLDOWN_SLACK := 0.2
 
 ## Узел может запретить взятие (далеко и т.п.): func(session, object_id) -> bool. Не задан — берётся откуда угодно.
 var grab_check: Callable
@@ -53,6 +60,8 @@ var _deadline_ms: Dictionary = {}    # сессия -> момент удален
 var _under_hunt: Dictionary = {}     # сессия -> true, пока за ней охотится Black ICE (ставит охота снаружи)
 var _objects: Dictionary = {}        # id объекта -> сессия, которая его держит ("" — лежит)
 var _pos_time_ms: Dictionary = {}    # сессия -> момент последней принятой позиции (мс)
+var _tp_last_ms: Dictionary = {}     # сессия -> момент последнего принятого телепорта игрока (мс); нет записи — не было
+var _tp_count: Dictionary = {}       # сессия -> сколько раз аватар прыгнул (телепорт игрока или перенос сервером); другие по нему видят скачок
 var _session_node: Dictionary = {}   # сессия -> id узла (нет записи — NetConfig.WORLD_NODE); снимки уходят только своему узлу
 var _avatar_ids: Dictionary = {}     # сессия -> короткий числовой id аватара для других игроков (в сообщениях вместо длинной сессии)
 var _next_avatar_id := 1
@@ -162,6 +171,23 @@ func teleport(session: String, pos: Vector3) -> void:
 	if a != null:
 		a.position = NodeLayout.clamp_to_room(Vector3(pos.x, 0.0, pos.z))
 		_pos_time_ms[session] = Time.get_ticks_msec()
+		_tp_count[session] = teleport_count(session) + 1
+
+
+## Сколько раз аватар прыгнул (телепорт игрока или перенос сервером). Растёт только; убранный аватар — 0.
+func teleport_count(session: String) -> int:
+	return int(_tp_count.get(session, 0))
+
+
+## Запись аватара для других игроков (сообщение `av`): [id, x, z] и четвёртым — счётчик скачков, если аватар хоть раз прыгал.
+## По счётчику клиент не плавит позицию между «до» и «после» прыжка (StateBuffer): телепорт не должен «ползти».
+func avatar_entry(session: String) -> Array:
+	var p := get_avatar(session).position
+	var e: Array = [avatar_id(session), snappedf(p.x, 0.01), snappedf(p.z, 0.01)]
+	var n := teleport_count(session)
+	if n > 0:
+		e.append(n)
+	return e
 
 
 ## Объект (шард) уже у игрока по данным Моста. Не трогает объект, который держит кто-то другой.
@@ -262,6 +288,8 @@ func _on_packet(peer_id: int, data: PackedByteArray) -> void:
 			_handle_grab(peer_id, session, str(msg.get("id", "")))
 		WorldMsg.POS:
 			_handle_pos(session, WorldMsg.decode_vec3(msg.get("p")))
+		WorldMsg.TELEPORT:
+			_handle_teleport(session, WorldMsg.decode_xz(msg.get("p")))
 		WorldMsg.USE:
 			daemon_requested.emit(session, str(msg.get("id", "")))
 		WorldMsg.LEAVE:
@@ -307,6 +335,31 @@ func _handle_pos(session: String, p: Variant) -> void:
 	if d.length() > allowed:
 		target = a.position + d.normalized() * allowed
 	a.position = target
+
+
+## Телепорт по просьбе клиента (VR: движение только им). Правила — RigMath.teleport_verdict с пределами сервера и допусками:
+## аватар не в тоннеле, цель в комнате и не дальше предела от текущей позиции аватара, с прошлого телепорта прошла перезарядка.
+## Успех: аватар мгновенно в точке, база для предела скорости потока поз сбрасывается (иначе запоздавшая поза со старого места
+## втянула бы аватар обратно), счётчик скачков растёт — другие игроки не плавят прыжок. Отказ: причина и позиция сервера клиенту.
+func _handle_teleport(session: String, p: Variant) -> void:
+	var a := get_avatar(session)
+	if a == null or p == null:
+		return
+	var now := Time.get_ticks_msec()
+	var since := (now - int(_tp_last_ms[session])) / 1000.0 if _tp_last_ms.has(session) else INF
+	var to := Vector3(p.x, 0.0, p.z)
+	var reason := RigMath.teleport_verdict(a.position, to, since, node_of(session) == TUNNEL_NODE,
+		RigMath.TELEPORT_RANGE_LIMIT + TELEPORT_RANGE_SLACK, RigMath.TELEPORT_COOLDOWN_LIMIT - TELEPORT_COOLDOWN_SLACK)
+	if not reason.is_empty():
+		var left := RigMath.cooldown_left(since, RigMath.TELEPORT_COOLDOWN_LIMIT) if reason == WorldMsg.REASON_COOLDOWN else 0.0
+		print("[netrun-server] teleport denied ", session, " reason=", reason, " from=%.1f,%.1f to=%.1f,%.1f" % [a.position.x, a.position.z, to.x, to.z])
+		send_to(session, WorldMsg.encode_teleport_denied(reason, a.position, left))
+		return
+	var from := a.position
+	teleport(session, to)
+	_tp_last_ms[session] = now
+	print("[netrun-server] teleport ok ", session, " from=%.1f,%.1f to=%.1f,%.1f dist=%.1f" % [from.x, from.z, a.position.x, a.position.z, NodeLayout.flat_distance(from, a.position)])
+	teleported.emit(session, from, a.position)
 
 
 ## Объект берётся, только если лежит (или уже у этого игрока).
@@ -357,6 +410,8 @@ func _remove_avatar(session: String) -> void:
 		if _objects[id] == session:
 			_objects[id] = ""  # аватара нет — объект снова лежит
 	_avatar_ids.erase(session)
+	_tp_count.erase(session)
+	_tp_last_ms.erase(session)
 	var a := get_avatar(session)
 	if a != null:
 		_world.remove_child(a)

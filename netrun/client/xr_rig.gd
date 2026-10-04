@@ -1,17 +1,39 @@
 class_name XRRig
 extends XROrigin3D
-## XR-риг сидя: голова только смотрит, движение — левым стиком, поворот — правым (рывками или плавно).
-## В плоской сборке (нет очков) тот же риг: WASD, Q/E — рывок, мышь (ПКМ зажата) — осмотр, R — центровка.
+## XR-риг сидя: голова только смотрит, двигаемся телепортом, поворачиваемся плавно (решения владельца, 4 октября 2026, после
+## теста на Pico 4: ходьба стиком и рывок 30° отменены — слишком укачивают).
+##
+## Телепорт. Левый стик вперёд за порог — дуга-прицел от контроллера и кольцо в точке посадки (зелёное — можно, красное — нельзя
+## или перезарядка); отпустил — «моргание»: затемнение, перенос, проявление (~0,2 с, камера не скользит); назад или нажатие стика —
+## отмена. Дальность и перезарядка — RigMath.TELEPORT_*; сервер проверяет сам (NetServer), отказ возвращает риг на место.
+## Поворот. Правый стик по X — плавно вокруг головы (60°/с, с разгоном и затуханием), края поля зрения темнеют пропорционально
+## скорости (ComfortFx). Рывок — turn_mode = snap (разработка). Все числа ощущений настраиваются без пересборки (ComfortConfig).
+## Плоская (разработческая) сборка, тот же риг: T зажата — прицел по взгляду, отпустить — телепорт, C — отмена; Q/E — поворот
+## (по удержанию, тот же плавный); WASD-ходьба — только с флагом --walk; мышь (ПКМ зажата) — осмотр, R — центровка.
 ## Логика — в shared/rig_math.gd. Камера двигается только по воле игрока.
 
 signal xr_failed(reason: String)
 ## Экстренное отключение: причина — ExitLogic.REASON_*; подключает к сети тот, кто собрал клиент.
 signal exit_requested(reason: String)
 signal recentered(xr: bool)
+## Игрок отпустил стик прицела: from/to — точки на полу (риг, где стоял / куда идёт); ok = false — отказ на месте, reason —
+## WorldMsg.REASON_* (перезарядка, тоннель). При ok = true клиент просит сервер (ProtoClient), риг переедет в тёмной точке моргания.
+signal teleport_attempted(from: Vector3, to: Vector3, ok: bool, reason: String)
 
-@export var smooth_turn_enabled := false
-@export var move_speed := RigMath.MOVE_SPEED
+@export var turn_mode := RigMath.TURN_MODE_DEFAULT
+@export var turn_speed_deg_s := RigMath.TURN_SPEED_DEG_S
+@export var turn_ramp_up_s := RigMath.TURN_RAMP_UP_SEC
+@export var turn_ramp_down_s := RigMath.TURN_RAMP_DOWN_SEC
+## Насколько закрываются края поля зрения при полной скорости поворота (0 — виньетки нет).
+@export var turn_vignette := RigMath.TURN_VIGNETTE_MAX
 @export var snap_step_deg := RigMath.SNAP_STEP_DEG
+@export var teleport_range := RigMath.TELEPORT_RANGE
+@export var teleport_cooldown := RigMath.TELEPORT_COOLDOWN
+## Затемнение и проявление моргания — каждое по этому времени.
+@export var teleport_blink_s := RigMath.TELEPORT_BLINK_SEC
+## Ходьба WASD в плоской сборке (--walk, для разработки и старых сценариев); в VR ходьбы нет.
+@export var walk_enabled := false
+@export var move_speed := RigMath.MOVE_SPEED
 ## Кнопка удержания в VR (действие XRController3D); настройкой можно заменить, например на "grip_click".
 @export var exit_button := "menu_button"
 @export var exit_hold_sec := ExitLogic.HOLD_SEC
@@ -19,27 +41,46 @@ signal recentered(xr: bool)
 var camera: XRCamera3D
 var left_hand: XRController3D
 var right_hand: XRController3D
+## Левый контроллер в позе «aim» (направление указки): от неё целимся. Нет данных — берём руку (grip).
+var left_aim: XRController3D
 var xr_active := false
-## Идёт цифровой тоннель (W1): ход заблокирован, пока сервер не поставит игрока в новый узел. Поворот головы и рывки — как всегда.
+## Идёт цифровой тоннель (W1): телепорт запрещён, пока сервер не поставит игрока в новый узел. Поворот головы и поворот стиком — как всегда.
 var movement_locked := false
+var aim_visual: TeleportAim
+var fx: ComfortFx
 var _snap_armed := true
 var _mouse_yaw := 0.0
 var _mouse_pitch := 0.0
 var _exit_state := ExitLogic.hold_new()
 var _exit_vr_pressed := false
 var _exit_bar: MeshInstance3D
+var _turn_rate := 0.0          # текущая угловая скорость, °/с (вправо — минус)
+var _vignette := 0.0
+var _aim := RigMath.aim_new()
+var _aim_info: Dictionary = {}
+var _since_tp := INF           # секунд с прошлого телепорта
+var _tp_click := false
+var _blink := RigMath.blink_new()
+var _blink_dest := Vector3.ZERO
+var _queued_dest: Variant = null
 
 
 func _ready() -> void:
 	camera = $XRCamera3D
 	left_hand = $LeftHand
 	right_hand = $RightHand
+	left_aim = get_node_or_null("LeftAim") as XRController3D
 	right_hand.button_pressed.connect(_on_right_button)
+	left_hand.button_pressed.connect(_on_left_button)
 	left_hand.button_pressed.connect(_on_exit_button.bind(true))
 	left_hand.button_released.connect(_on_exit_button.bind(false))
 	right_hand.button_pressed.connect(_on_exit_button.bind(true))
 	right_hand.button_released.connect(_on_exit_button.bind(false))
 	_build_exit_bar()
+	fx = ComfortFx.new()
+	camera.add_child(fx)
+	aim_visual = TeleportAim.new()
+	add_child(aim_visual)
 
 
 ## Пытается поднять OpenXR; без очков возвращает false и пишет понятную причину (риг остаётся плоским).
@@ -85,6 +126,12 @@ func _on_right_button(action: String) -> void:
 		recenter()
 
 
+## Нажатие левого стика — отмена прицела.
+func _on_left_button(action: String) -> void:
+	if action == "primary_click":
+		_tp_click = true
+
+
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_PAUSED:
 		_request_exit(ExitLogic.REASON_HEADSET_OFF)
@@ -128,30 +175,50 @@ func _update_exit_hold(delta: float) -> void:
 
 func _process(delta: float) -> void:
 	_update_exit_hold(delta)
-	var move := Vector2.ZERO
 	var turn_x := 0.0
+	var tp_stick := Vector2.ZERO
+	var walk := Vector2.ZERO
 	if xr_active:
-		move = left_hand.get_vector2("primary")
+		tp_stick = left_hand.get_vector2("primary")
 		turn_x = right_hand.get_vector2("primary").x
 	else:
-		move = _flat_move()
 		turn_x = _flat_turn()
-	_apply_turn(turn_x, delta)
-	var yaw := camera.global_rotation.y
-	if not movement_locked:
-		global_position += RigMath.move_velocity(move, yaw, move_speed) * delta
+		tp_stick = Vector2(0.0, 1.0) if Input.is_physical_key_pressed(KEY_T) else Vector2.ZERO
+		walk = _flat_move()
+	var clicked := _tp_click
+	_tp_click = false
+	drive(turn_x, tp_stick, clicked, delta, walk)
 
+
+## Один шаг управления по готовому вводу (так же зовут тесты): turn_x — правый стик по X (или Q/E), tp_stick — левый стик
+## (y вперёд), clicked — нажатие стика, walk — ходьба WASD (только плоская сборка с walk_enabled).
+func drive(turn_x: float, tp_stick: Vector2, clicked: bool, delta: float, walk: Vector2 = Vector2.ZERO) -> void:
+	_since_tp += delta
+	_apply_turn(turn_x, delta)
+	if walk_enabled and not xr_active and not movement_locked:
+		global_position += RigMath.move_velocity(walk, camera.global_rotation.y, move_speed) * delta
+	_step_teleport(tp_stick, clicked, delta)
+	_step_blink(delta)
+
+
+# ---------------------------------------------------------------- поворот
 
 func _apply_turn(stick_x: float, delta: float) -> void:
-	var deg := 0.0
-	if smooth_turn_enabled:
-		deg = RigMath.smooth_turn(stick_x, delta)
-	else:
+	var target_vignette := 0.0
+	if turn_mode == RigMath.TURN_MODE_SNAP:
 		var r := RigMath.snap_turn(stick_x, _snap_armed, snap_step_deg)
 		_snap_armed = r["armed"]
-		deg = r["delta_deg"]
-	if deg != 0.0:
-		_rotate_around_head(deg_to_rad(deg))
+		_turn_rate = 0.0
+		if r["delta_deg"] != 0.0:
+			_rotate_around_head(deg_to_rad(r["delta_deg"]))
+	else:
+		var speed := clampf(turn_speed_deg_s, 0.0, RigMath.TURN_SPEED_MAX_DEG_S)
+		_turn_rate = RigMath.turn_rate_step(_turn_rate, RigMath.turn_target_rate(stick_x, speed), delta, speed, turn_ramp_up_s, turn_ramp_down_s)
+		if _turn_rate != 0.0:
+			_rotate_around_head(deg_to_rad(_turn_rate * delta))
+		target_vignette = RigMath.vignette_target(_turn_rate, turn_vignette)
+	_vignette = RigMath.vignette_step(_vignette, target_vignette, delta, turn_vignette)
+	fx.set_vignette(_vignette)
 
 
 ## Вращение origin вокруг головы, чтобы взгляд повернулся, а игрок остался на месте.
@@ -161,6 +228,125 @@ func _rotate_around_head(rad: float) -> void:
 	global_position = head + offset.rotated(Vector3.UP, rad)
 	rotate_y(rad)
 
+
+## Затемнение краёв сейчас (0…turn_vignette).
+func vignette_amount() -> float:
+	return _vignette
+
+
+# ---------------------------------------------------------------- телепорт
+
+func is_aiming() -> bool:
+	return _aim["aiming"]
+
+
+## Точка посадки, на которую сейчас наведён прицел (пол); нули, пока не целимся.
+func aim_target() -> Vector3:
+	return _aim_info.get("p", Vector3.ZERO)
+
+
+func blink_alpha() -> float:
+	return _blink["alpha"]
+
+
+func teleport_cooldown_left() -> float:
+	return RigMath.cooldown_left(_since_tp, teleport_cooldown)
+
+
+func _step_teleport(stick: Vector2, clicked: bool, delta: float) -> void:
+	if movement_locked:
+		if _aim["aiming"]:
+			_cancel_aim()
+		return
+	_aim = RigMath.aim_step(_aim, stick, clicked, delta)
+	match _aim["event"]:
+		RigMath.AIM_CANCEL:
+			_cancel_aim()
+		RigMath.AIM_FIRE:
+			aim_visual.hide_aim()
+			_fire_teleport()
+			_aim_info = {}
+	if _aim["aiming"]:
+		_show_aim()
+
+
+func _cancel_aim() -> void:
+	_aim = RigMath.aim_new()
+	_aim_info = {}
+	aim_visual.hide_aim()
+
+
+## Откуда и куда смотрит указка: VR — контроллер в позе aim (нет данных — рука), плоская сборка — взгляд.
+func _aim_pose() -> Dictionary:
+	if xr_active:
+		var n: Node3D = left_aim if left_aim != null and left_aim.get_has_tracking_data() else left_hand
+		return {"origin": n.global_position, "dir": -n.global_basis.z, "arc_from": n.global_position}
+	var c := camera.global_transform
+	var dir := -c.basis.z
+	return {"origin": c.origin, "dir": dir, "arc_from": c.origin + dir * 0.4 + Vector3(0.0, -0.25, 0.0)}
+
+
+func _show_aim() -> void:
+	var pose := _aim_pose()
+	var info := RigMath.teleport_aim(pose["origin"], pose["dir"], global_position, teleport_range, global_position.y)
+	_aim_info = info
+	var left := teleport_cooldown_left()
+	var ok: bool = info["valid"] and left <= 0.0 and NodeLayout.flat_distance(global_position, info["p"]) >= RigMath.TELEPORT_MIN_DIST
+	var charge := 1.0 if left <= 0.0 else 1.0 - left / maxf(teleport_cooldown, 0.001)
+	aim_visual.show_at(pose["arc_from"], info["p"], ok, charge)
+
+
+func _fire_teleport() -> void:
+	if _aim_info.is_empty() or not _aim_info["valid"]:
+		return
+	var from := global_position
+	var to: Vector3 = _aim_info["p"]
+	to.y = from.y
+	if NodeLayout.flat_distance(from, to) < RigMath.TELEPORT_MIN_DIST:
+		return   # прицел «в себя»: двигаться некуда
+	var reason := RigMath.teleport_verdict(from, to, _since_tp, movement_locked, teleport_range + 0.001, teleport_cooldown)
+	if not reason.is_empty():
+		teleport_attempted.emit(from, to, false, reason)
+		return
+	_since_tp = 0.0
+	_start_blink(to)
+	teleport_attempted.emit(from, to, true, "")
+
+
+func _start_blink(dest: Vector3) -> void:
+	_blink = RigMath.blink_start()
+	_blink_dest = dest
+
+
+func _step_blink(delta: float) -> void:
+	if _blink["phase"] == 0:
+		return
+	_blink = RigMath.blink_step(_blink, delta, teleport_blink_s)
+	if _blink["moved"]:
+		global_position = Vector3(_blink_dest.x, global_position.y, _blink_dest.z)
+	fx.set_blink(_blink["alpha"])
+	if _blink["phase"] == 0 and _queued_dest != null:
+		_start_blink(_queued_dest as Vector3)
+		_queued_dest = null
+
+
+## Сервер отказал в телепорте (NetClient.teleport_denied): риг возвращается в позицию аватара на сервере. Если затемнение ещё не
+## дошло до переноса, переноса не будет вовсе — риг остаётся там, где сервер. Перезарядку берём у сервера.
+func apply_teleport_denial(reason: String, server_pos: Vector3, left: float) -> void:
+	if reason == WorldMsg.REASON_COOLDOWN and left > teleport_cooldown_left():
+		_since_tp = teleport_cooldown - left
+	var dest := Vector3(server_pos.x, global_position.y, server_pos.z)
+	match _blink["phase"]:
+		1:
+			_blink_dest = dest
+		2:
+			_queued_dest = dest
+		_:
+			if NodeLayout.flat_distance(global_position, dest) > 0.05:
+				_start_blink(dest)
+
+
+# ---------------------------------------------------------------- плоская сборка
 
 func _key_axis(neg: Key, pos: Key) -> float:
 	return float(Input.is_physical_key_pressed(pos)) - float(Input.is_physical_key_pressed(neg))
@@ -183,3 +369,5 @@ func _unhandled_input(event: InputEvent) -> void:
 		camera.rotation = Vector3(_mouse_pitch, _mouse_yaw, 0.0)
 	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_R:
 		recenter()
+	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_C:
+		_tp_click = true

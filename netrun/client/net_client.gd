@@ -12,6 +12,8 @@ signal reconnect_gave_up
 ## Сервер подтвердил взятие / отказал. Клиент сам объект не берёт — ждёт этих сигналов.
 signal grab_confirmed(object_id: String)
 signal grab_denied(object_id: String, reason: String)
+## Сервер отказал в телепорте: причина (WorldMsg.REASON_*), позиция аватара на сервере (риг возвращается туда), секунд перезарядки осталось.
+signal teleport_denied(reason: String, server_pos: Vector3, left: float)
 
 ## Снимок узла от сервера (WorldMsg.STATE) и событие (WorldMsg.EVENT: ended, daemon).
 signal state_received(state: Dictionary)
@@ -98,6 +100,12 @@ func request_grab(object_id: String) -> bool:
 ## Своя позиция (пол под ногами) — сервер решает, что с ней делать (предел скорости, комната).
 func send_pos(p: Vector3) -> bool:
 	return _send(WorldMsg.encode_pos(p), false)
+
+
+## Просьба телепортироваться в точку на полу (VR: единственный способ двигаться). Риг клиент двигает сам и сразу;
+## сервер может отказать — тогда придёт teleport_denied.
+func request_teleport(p: Vector3) -> bool:
+	return _send(WorldMsg.encode_teleport(p))
 
 
 ## Просьба применить демона из деки.
@@ -207,6 +215,9 @@ func _dispatch(data: PackedByteArray) -> void:
 			grab_confirmed.emit(str(msg.get("id", "")))
 		WorldMsg.GRAB_NO:
 			grab_denied.emit(str(msg.get("id", "")), str(msg.get("reason", "")))
+		WorldMsg.TELEPORT_NO:
+			var pos: Variant = WorldMsg.decode_xz(msg.get("p"))
+			teleport_denied.emit(str(msg.get("reason", "")), pos if pos != null else Vector3.ZERO, float(msg.get("left", 0.0)))
 		WorldMsg.STATE:
 			state_received.emit(msg)
 		WorldMsg.AVATARS:

@@ -1,7 +1,9 @@
 class_name ProtoClient
 extends Node
 ## Клиент прототипа (V3), общий для Pico 4 и плоской сборки: сцена, XR-риг, сеть, журнал в файл.
-## Журнал (user://logs/netrun-*.log): start, mode, xr, rig.recenter, net.* (в том числе net.reconnect), grab.*, app.pause/resume, frame.slow.
+## Журнал (user://logs/netrun-*.log): start, mode, xr, comfort (+ comfort.warn), rig.recenter, rig.teleport, teleport.denied,
+## net.* (в том числе net.reconnect), grab.*, app.pause/resume, frame.slow.
+## Аргументы разработки: `--walk` (плоская сборка: ходьба WASD), `--turn=snap|smooth` (режим поворота поверх comfort.cfg).
 
 const SLOW_LOG_MIN_GAP_MS := 250  # кадры дольше 1/72 с в журнал — не чаще раза в 250 мс (остальные — счётчиком)
 
@@ -9,6 +11,8 @@ var log_file := MbLog.new()
 var scene: Node3D
 var net: NetClient
 var trace_audio: TraceAudio
+## Настройки комфорта (user://comfort.cfg + аргументы), применённые к ригу.
+var comfort: ComfortConfig
 
 const POS_PERIOD := 0.05  # 20 раз/с: чужие клиенты видят нас со сглаживанием по буферу
 ## Потеряв связь, клиент возвращается сам: попытка раз в 2 с, не дольше ~2 минут (сервер держит аватар 20 с, дальше — новый забег).
@@ -32,6 +36,8 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	scene.frame_slow.connect(_on_frame_slow)
 	scene.grab_requested.connect(_on_grab_requested)
 	scene.ice_audio_enabled = true
+	_setup_comfort(args)
+	scene.rig.teleport_attempted.connect(_on_teleport_attempted)
 	if want_xr:
 		if scene.rig.start_xr():
 			log_file.log("xr", {"enabled": true, "reason": "ok", "play_area": "sitting"})
@@ -60,8 +66,50 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	scene.leave_requested.connect(func(): net.request_leave())
 	net.grab_confirmed.connect(_on_grab_confirmed)
 	net.grab_denied.connect(_on_grab_denied)
+	net.teleport_denied.connect(_on_teleport_denied)
 	log_file.log("net.connect", {"host": cfg.host, "port": cfg.port})
 	net.start_client(cfg)
+
+
+## Комфорт: файл user://comfort.cfg (необязателен), поверх него — аргументы разработки. Итог — строка `comfort` в журнале.
+func _setup_comfort(args: PackedStringArray) -> void:
+	comfort = ComfortConfig.load_file()
+	var walk := false
+	for a in args:
+		if a == "--walk":
+			walk = true
+		elif a.begins_with("--turn="):
+			var m := a.trim_prefix("--turn=")
+			if m == RigMath.TURN_MODE_SMOOTH or m == RigMath.TURN_MODE_SNAP:
+				comfort.turn_mode = m
+			else:
+				comfort.warnings.append("--turn=: допустимо smooth или snap, получено «%s»" % m)
+	comfort.apply_to(scene.rig)
+	scene.rig.walk_enabled = walk
+	for w in comfort.warnings:
+		log_file.log("comfort.warn", {"msg": w})
+	var fields := comfort.log_fields()
+	fields["walk"] = walk
+	log_file.log("comfort", fields)
+
+
+func _fmt_xz(p: Vector3) -> String:
+	return "%.1f,%.1f" % [p.x, p.z]
+
+
+## Игрок отпустил стик прицела. Риг переедет сам (моргание), здесь — просьба серверу и журнал.
+func _on_teleport_attempted(from: Vector3, to: Vector3, ok: bool, reason: String) -> void:
+	log_file.log("rig.teleport", {"from": _fmt_xz(from), "to": _fmt_xz(to), "dist": snappedf(NodeLayout.flat_distance(from, to), 0.1), "ok": ok})
+	if not ok:
+		log_file.log("teleport.denied", {"reason": reason, "by": "client"})
+	elif net != null and net.is_connected_to_world:
+		net.request_teleport(to)  # без связи двигаемся только у себя: сервер сверит позу, когда связь вернётся
+
+
+## Сервер отказал: риг возвращается туда, где аватар на сервере.
+func _on_teleport_denied(reason: String, server_pos: Vector3, left: float) -> void:
+	log_file.log("teleport.denied", {"reason": reason, "by": "server", "left": snappedf(left, 0.01), "at": _fmt_xz(server_pos)})
+	scene.rig.apply_teleport_denial(reason, server_pos, left)
 
 
 ## Снимок узла: интерфейс, ICE и звук получают данные с сервера. Свою позицию клиент шлёт сам (20 раз/с).

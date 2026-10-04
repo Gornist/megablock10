@@ -3,7 +3,7 @@ set -e
 
 # Скрипт управления Pico 4 без интернета: установка APK, запуск, сбор журналов, снимки экрана, информация об устройстве.
 # Использование: pico.sh <команда> [аргумент]
-# Команды: install <apk>, launch, stop, log, shot, info
+# Команды: install <apk>, launch, stop, log, shot, info, tune
 
 # Имя пакета из netrun/export_presets.cfg
 PACKAGE="com.megablok10.netrun"
@@ -46,6 +46,8 @@ show_help() {
   log              Забрать журнал приложения и logcat в каталог с датой
   shot             Снимок экрана в файл (дата и время в имени)
   info             Модель, прошивка, заряд, Wi-Fi SSID и IP
+  tune [ключ=значение ...]   Настройки комфорта (user://comfort.cfg на очках): показать, изменить, перезапустить приложение,
+                   напечатать строку `comfort` из журнала. `tune --reset` — удалить файл (значения по умолчанию)
 
 Переменная окружения:
   PICO_SERIAL      Serial устройства (если не задана, используется единственное подключённое)
@@ -56,6 +58,8 @@ show_help() {
   pico.sh log
   pico.sh shot
   pico.sh info
+  pico.sh tune turn_speed_deg_s=45 teleport_range=3.5
+  pico.sh tune --reset
 EOF
 }
 
@@ -187,6 +191,99 @@ cmd_info() {
   echo "==="
 }
 
+# Ключи comfort.cfg (netrun/client/comfort_config.gd); пределы клиент держит сам, здесь — только формат.
+COMFORT_FILE="files/comfort.cfg"
+COMFORT_NUM_KEYS="turn_speed_deg_s turn_vignette turn_ramp_up_s turn_ramp_down_s teleport_range teleport_cooldown teleport_blink_s"
+COMFORT_KEYS="turn_mode $COMFORT_NUM_KEYS"
+
+# Содержимое comfort.cfg на очках (пусто, если файла нет). Отладочная сборка debuggable — читается через run-as.
+comfort_read() {
+  adb -s "$1" exec-out run-as "$PACKAGE" cat "$COMFORT_FILE" 2>/dev/null | tr -d '\r' || true
+}
+
+# Строки `comfort` и `comfort.warn` из самого свежего журнала приложения на очках.
+comfort_log_lines() {
+  local serial="$1" newest
+  newest=$(adb -s "$serial" shell run-as "$PACKAGE" ls -t files/logs 2>/dev/null | tr -d '\r' | head -1)
+  [[ -n "$newest" ]] || return 0
+  adb -s "$serial" exec-out run-as "$PACKAGE" cat "files/logs/$newest" 2>/dev/null | tr -d '\r' | grep -a -E ' comfort(\.warn)? ' || true
+}
+
+# tune [--reset | ключ=значение ...]
+cmd_tune() {
+  local serial
+  serial=$(select_device) || return 1
+
+  if [[ "$1" == "--reset" ]]; then
+    adb -s "$serial" shell "run-as $PACKAGE rm -f $COMFORT_FILE"
+    echo "comfort.cfg удалён: значения по умолчанию из кода."
+  elif [[ $# -eq 0 ]]; then
+    echo "--- $COMFORT_FILE на $serial ---"
+    comfort_read "$serial"
+    echo "--- (изменить: pico.sh tune ключ=значение ...; ключи: $COMFORT_KEYS)"
+    return 0
+  else
+    # Текущие значения файла + изменения -> новый файл.
+    declare -A vals
+    local line k v
+    while IFS= read -r line; do
+      line="${line%%;*}"
+      [[ "$line" == *=* ]] || continue
+      k="$(echo "${line%%=*}" | tr -d ' ')"
+      v="$(echo "${line#*=}" | sed 's/^ *//; s/ *$//')"
+      [[ -n "$k" ]] && vals[$k]="$v"
+    done < <(comfort_read "$serial")
+    local arg
+    for arg in "$@"; do
+      if [[ "$arg" != *=* ]]; then
+        echo "Ошибка: «$arg» — нужно ключ=значение" >&2
+        return 1
+      fi
+      k="${arg%%=*}"
+      v="${arg#*=}"
+      if [[ " $COMFORT_KEYS " != *" $k "* ]]; then
+        echo "Ошибка: неизвестный ключ «$k». Допустимы: $COMFORT_KEYS" >&2
+        return 1
+      fi
+      if [[ "$k" == "turn_mode" ]]; then
+        v="${v//\"/}"
+        if [[ "$v" != "smooth" && "$v" != "snap" ]]; then
+          echo "Ошибка: turn_mode — smooth или snap" >&2
+          return 1
+        fi
+        v="\"$v\""
+      elif ! [[ "$v" =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; then
+        echo "Ошибка: $k — число, получено «$v»" >&2
+        return 1
+      fi
+      vals[$k]="$v"
+    done
+    local content="[comfort]"$'\n'$'\n'
+    for k in $COMFORT_KEYS; do
+      [[ -n "${vals[$k]:-}" ]] && content+="$k=${vals[$k]}"$'\n'
+    done
+    printf '%s' "$content" | adb -s "$serial" shell "run-as $PACKAGE sh -c 'cat > $COMFORT_FILE'"
+    echo "--- записано в $COMFORT_FILE ---"
+    printf '%s' "$content"
+  fi
+
+  # Перезапуск, чтобы клиент перечитал файл; ждём строку comfort в новом журнале (не дольше ~30 с).
+  adb -s "$serial" shell am force-stop "$PACKAGE"
+  adb -s "$serial" shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+  cmd_launch || return 1
+  local i lines=""
+  for i in $(seq 1 30); do
+    sleep 1
+    lines=$(comfort_log_lines "$serial")
+    [[ "$lines" == *" comfort "* ]] && break
+  done
+  if [[ -z "$lines" ]]; then
+    echo "Строки comfort в журнале нет: приложение не дошло до старта клиента (граница, режим рук, диалог системы?)." >&2
+    return 1
+  fi
+  echo "$lines"
+}
+
 # Main
 if [[ $# -eq 0 ]]; then
   show_help
@@ -211,6 +308,10 @@ case "$1" in
     ;;
   info)
     cmd_info
+    ;;
+  tune)
+    shift
+    cmd_tune "$@"
     ;;
   *)
     echo "Неизвестная команда: $1" >&2

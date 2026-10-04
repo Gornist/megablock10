@@ -157,3 +157,55 @@ func test_tracks_ice_from_state_with_facing() -> void:
 	var pose := tr.ice_pose("ice_1", 5.0)
 	assert_vector(pose["p"]).is_equal(Vector3(1.0, 0.0, -6.0))
 	assert_float(pose["yaw"]).is_equal_approx(0.0, 0.0001)
+
+
+# ---------------------------------------------------------------- скачок (телепорт чужого аватара)
+
+func _jump_buf() -> StateBuffer:
+	var b := StateBuffer.new()
+	b.push(1.00, Vector3(0.0, 0, 0), 0.0, 0)
+	b.push(1.05, Vector3(0.1, 0, 0), 0.0, 0)
+	b.push(1.10, Vector3(4.1, 0, 0), 0.0, 1)   # телепорт: счётчик скачков вырос
+	b.push(1.15, Vector3(4.2, 0, 0), 0.0, 1)
+	return b
+
+
+func test_jump_is_not_interpolated_across() -> void:
+	var b := _jump_buf()
+	assert_float(_x(b, 1.02)).is_equal_approx(0.04, 0.0001)    # до скачка — гладко
+	assert_float(_x(b, 1.07)).is_equal_approx(0.1, 0.0001)     # между снимками до/после скачка стоим на старом месте
+	assert_float(_x(b, 1.099)).is_equal_approx(0.1, 0.0001)
+	assert_float(_x(b, 1.10)).is_equal_approx(4.1, 0.0001)     # и прыгаем, когда время дошло
+	assert_float(_x(b, 1.125)).is_equal_approx(4.15, 0.0001)   # после — снова гладко
+
+
+func test_no_extrapolation_from_a_jump() -> void:
+	var b := StateBuffer.new()
+	b.push(1.00, Vector3(0, 0, 0), 0.0, 0)
+	b.push(1.05, Vector3(4, 0, 0), 0.0, 1)
+	assert_float(_x(b, 1.10)).is_equal_approx(4.0, 0.0001)     # скорость 80 м/с из пары до/после скачка не выдумываем
+
+
+func test_jump_survives_lost_packets() -> void:
+	# Пакеты между 1.00 и 1.30 потеряны: счётчик в каждом пакете, поэтому скачок всё равно виден, а не растягивается в «ползущий» путь.
+	var b := StateBuffer.new()
+	b.push(1.00, Vector3(0, 0, 0), 0.0, 3)
+	b.push(1.30, Vector3(4, 0, 0), 0.0, 4)
+	assert_float(_x(b, 1.15)).is_equal_approx(0.0, 0.0001)
+	assert_float(_x(b, 1.30)).is_equal_approx(4.0, 0.0001)
+
+
+func test_default_jump_counter_keeps_old_behaviour() -> void:
+	var b := _buf([[1.0, 0.0], [1.1, 2.0]])
+	assert_float(_x(b, 1.05)).is_equal_approx(1.0, 0.0001)
+
+
+func test_remote_tracks_reads_jump_counter_from_avatar_entries() -> void:
+	var rt := RemoteTracks.new()
+	rt.on_avatars({"k": 1.00, "a": [[5, 0.0, 0.0]]}, 1.00)
+	rt.on_avatars({"k": 1.05, "a": [[5, 0.1, 0.0]]}, 1.05)
+	rt.on_avatars({"k": 1.10, "a": [[5, 4.1, 0.0, 1]]}, 1.10)
+	rt.on_avatars({"k": 1.15, "a": [[5, 4.2, 0.0, 1]]}, 1.15)
+	var b: StateBuffer = rt.avatars["5"]
+	assert_float((b.sample(1.07)["p"] as Vector3).x).is_equal_approx(0.1, 0.0001)
+	assert_float((b.sample(1.125)["p"] as Vector3).x).is_equal_approx(4.15, 0.0001)

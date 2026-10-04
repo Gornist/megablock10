@@ -583,8 +583,7 @@ func _broadcast_avatars() -> void:
 	var live := _live_sessions()
 	var entries := {}
 	for session in live:
-		var p := net.get_avatar(session).position
-		entries[session] = [net.avatar_id(session), snappedf(p.x, 0.01), snappedf(p.z, 0.01)]
+		entries[session] = net.avatar_entry(session)  # [id, x, z] и счётчик скачков после телепорта
 	var k := snappedf(_now, 0.001)
 	for session in live:
 		var others: Array = []

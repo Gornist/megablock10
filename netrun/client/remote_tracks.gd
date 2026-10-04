@@ -33,7 +33,8 @@ func on_avatars(msg: Dictionary, local_now: float) -> Array:
 		seen[id] = true
 		if not avatars.has(id):
 			avatars[id] = StateBuffer.new()
-		(avatars[id] as StateBuffer).push(k, Vector3(float(e[1]), 0.0, float(e[2])))
+		var jump := int(e[3]) if e.size() > 3 else 0  # счётчик скачков (телепортов) аватара
+		(avatars[id] as StateBuffer).push(k, Vector3(float(e[1]), 0.0, float(e[2])), 0.0, jump)
 	var gone: Array = []
 	for id in avatars.keys():
 		if not seen.has(id):
