@@ -7,6 +7,10 @@ extends Node3D
 ## вызовов отрисовки вместо сотни. Предметы (хранилища, порталы, кресло, датчик) — обычные экземпляры: их по десятку, и они переключаются.
 ## Камеру не трогает никогда: двигается только по воле игрока.
 
+## Вид хранилища (как GrayNode.vault_state): открыто для тебя / закрыто (шард внутри) / пусто.
+const VAULT_OPEN := "open"
+const VAULT_CLOSED := "closed"
+const VAULT_EMPTY := "empty"
 ## Метка ShardSlot хранилища (props/vault_*.glb) — центр шарда над основанием.
 const VAULT_SLOT_Y := 1.0
 ## Мёртвая дека лежит на полу: origin приподнят (MANIFEST: +0,035 м).
@@ -257,8 +261,9 @@ func seat_node() -> Node3D:
 	return _seat
 
 
-## Хранилища под слоты шардов узла [{id, p: [x, y, z], ready}]: готовый слот — открытое хранилище, пустой (шард вынесен, ждёт
-## пополнения) — закрытое. Лицом к центру комнаты по сетке; шард лежит в метке ShardSlot на 1 м над основанием.
+## Хранилища под слоты шардов узла [{id, p: [x, y, z], ready, vault?}]: `vault_open` — открыто для тебя (шард парит, можно взять), `vault_closed`
+## с шардом внутри — закрыто (взять нельзя), `vault_closed` без шарда — пусто (вынесен, ждёт пополнения). Нет поля vault (старый сервер,
+## тесты) — по ready: лежит — открыто, нет — пусто. Лицом к центру комнаты по сетке; шард лежит в метке ShardSlot на 1 м над основанием.
 func set_vaults(shards: Array) -> void:
 	for id in _vaults:
 		for n in (_vaults[id] as Dictionary).values():
@@ -271,15 +276,28 @@ func set_vaults(shards: Array) -> void:
 		var open := _place(_props, NodeAssets.prop_path("vault_open"), base, yaw)
 		var closed := _place(_props, NodeAssets.prop_path("vault_closed"), base, yaw)
 		_vaults[str(sh["id"])] = {"open": open, "closed": closed}
-		set_vault_ready(str(sh["id"]), bool(sh.get("ready", true)))
+		set_vault_state(str(sh["id"]), vault_state_of(sh))
 
 
-func set_vault_ready(id: String, has_shard: bool) -> void:
+## Вид хранилища слота по описанию с сервера: vault (empty | closed | open) или, если его нет, по ready.
+static func vault_state_of(sh: Dictionary) -> String:
+	var v := str(sh.get("vault", ""))
+	if v in [VAULT_OPEN, VAULT_CLOSED, VAULT_EMPTY]:
+		return v
+	return VAULT_OPEN if bool(sh.get("ready", true)) else VAULT_EMPTY
+
+
+func set_vault_state(id: String, state: String) -> void:
 	var v: Dictionary = _vaults.get(id, {})
 	if v.is_empty():
 		return
-	(v["open"] as Node3D).visible = has_shard
-	(v["closed"] as Node3D).visible = not has_shard
+	(v["open"] as Node3D).visible = state == VAULT_OPEN
+	(v["closed"] as Node3D).visible = state != VAULT_OPEN
+
+
+## Совместимость: шард лежит — хранилище открыто, нет — пусто.
+func set_vault_ready(id: String, has_shard: bool) -> void:
+	set_vault_state(id, VAULT_OPEN if has_shard else VAULT_EMPTY)
 
 
 func vault_open(id: String) -> bool:

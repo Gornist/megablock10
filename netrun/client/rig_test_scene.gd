@@ -9,11 +9,22 @@ signal frame_slow(ms: float)
 ## Применить демона из деки / выйти чисто на площадке выхода (N7); решает сервер.
 signal daemon_use_requested(daemon_id: String)
 signal leave_requested
+## Шард ушёл в деку (id слота): для журнала клиента. Серверу сообщать нечего — предмет в деке Моста с момента grab.
+signal shard_stowed(object_id: String)
 
 const VR_REACH := 0.4
 const FLAT_REACH := 3.0
 const STATS_PERIOD := 0.5
 const FLATLINE_FADE_SEC := 0.8
+## Шард в правой руке «втягивается» в деку, если рука ближе этого к центру деки на запястье (м); дека на запястье ~24 см длиной.
+const STOW_REACH := 0.2
+## Шард летит в деку и сжимается, сек.
+const STOW_SEC := 0.3
+## Рамка деки светится столько секунд после того, как шард втянулся.
+const STOW_FLASH_SEC := 0.5
+## Шард в закрытом хранилище: меньше и полупрозрачный, не вращается (взять нельзя).
+const SHARD_DIM_SCALE := 0.7
+const SHARD_DIM_ALPHA := 0.55
 ## Шард на хранилище вращается и парит (shard.glb: «вращение и парение — на стороне клиента»).
 const SHARD_SPIN_RAD := 0.9
 const SHARD_BOB_M := 0.03
@@ -35,6 +46,9 @@ var node_info: Dictionary = {}
 var tunnel: TunnelFx
 var _pickups: Dictionary = {}        # id слота шарда -> модель shard.glb (в том числе та, что в руке)
 var _held_ids: Dictionary = {}       # id шардов в руке: из узла в узел они идут с игроком
+var _hand_of: Dictionary = {}        # держатель (рука или камера) -> id шарда в нём
+var _stow_flash := 0.0
+var _vault_state: Dictionary = {}    # id слота -> NodeView.VAULT_*: брать можно только из открытого
 var _pending_id := ""
 var _node_props: Array[Node3D] = []  # подписи порталов и таблички узла (модели — в NodeView)
 var slow_frames := 0
@@ -102,7 +116,7 @@ func _ready() -> void:
 	for hand in [rig.left_hand, rig.right_hand]:
 		hand.button_pressed.connect(func(action: String):
 			if action == "grip_click":
-				try_grab(hand.global_position, VR_REACH, hand))
+				on_grip(hand))
 	rig.left_hand.button_pressed.connect(func(action: String):
 		if action == "ax_button":
 			use_selected()
@@ -123,6 +137,7 @@ func _process(delta: float) -> void:
 		if not pose.is_empty():
 			(_avatar_nodes[id] as AvatarView).move_to(pose["p"], delta)
 	_animate_shards(delta)
+	_update_stow_target(delta)
 	_count += 1
 	_acc += delta
 	_max_ms = maxf(_max_ms, delta * 1000.0)
@@ -145,6 +160,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			use_slot(k - KEY_1)
 		elif k == KEY_X:
 			leave_requested.emit()
+		elif k == KEY_G:
+			stow(rig.camera)   # плоская сборка: шард «из руки» (перед камерой) в деку
 	var key: bool = event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_F
 	var click: bool = event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT
 	if key or click:
@@ -336,15 +353,25 @@ func _someone_within(pos: Vector3, dist: float) -> bool:
 	return false
 
 
-## Просит сервер отдать объект, если он лежит и достаточно близко. Сам объект не двигает.
+## Grip руки: с шардом в руке и дека рядом — положить в деку; пустая рука — взять ближайший открытый шард. Рука с шардом, но вдали от деки,
+## ничего не делает (бросать в MVP нельзя: уронить ценность хуже, чем не уметь её бросить).
+func on_grip(hand: Node3D) -> void:
+	if _hand_of.has(hand):
+		if can_stow_from(hand):
+			stow(hand)
+		return
+	try_grab(hand.global_position, VR_REACH, hand)
+
+
+## Просит сервер отдать объект, если он лежит, его хранилище открыто для нас и он достаточно близко. Сам объект не двигает.
 func try_grab(origin: Vector3, reach: float, holder: Node3D) -> bool:
-	if _pending_holder != null:
+	if _pending_holder != null or _hand_of.has(holder):
 		return false
 	var best := ""
 	var best_d := reach
 	for id in _pickups:
 		var m: Node3D = _pickups[id]
-		if _held_ids.has(id) or not m.visible:
+		if _held_ids.has(id) or not m.visible or _vault_state.get(id, NodeView.VAULT_OPEN) != NodeView.VAULT_OPEN:
 			continue
 		var d := origin.distance_to(m.global_position)
 		if d <= best_d:
@@ -358,22 +385,76 @@ func try_grab(origin: Vector3, reach: float, holder: Node3D) -> bool:
 	return true
 
 
-## Сервер подтвердил: объект переходит в руку (плоская сборка — перед камерой).
+## Сервер подтвердил: объект переходит в руку (плоская сборка — перед камерой). Взятый левой рукой шард сразу уходит в деку: он уже у запястья.
 func confirm_grab() -> void:
 	if _pending_holder == null:
 		return
+	var holder := _pending_holder
 	var m: Node3D = _pickups[_pending_id]
-	m.reparent(_pending_holder, false)
-	m.position = Vector3(0.25, -0.25, -0.7) if _pending_holder is Camera3D else Vector3.ZERO
+	m.reparent(holder, false)
+	m.position = Vector3(0.25, -0.25, -0.7) if holder is Camera3D else Vector3.ZERO
+	_set_dim(m, false)
 	_held_ids[_pending_id] = true
+	_hand_of[holder] = _pending_id
 	held = true
 	_pending_holder = null
 	_pending_id = ""
+	if holder == rig.left_hand:
+		stow(holder)
 
 
 func deny_grab() -> void:
 	_pending_holder = null
 	_pending_id = ""
+
+
+# ---------------------------------------------------------------- шард в деку
+
+## Что держит рука (или камера): id шарда или "".
+func held_in(holder: Node3D) -> String:
+	return str(_hand_of.get(holder, ""))
+
+
+## Рука с шардом у деки: правая рука — ближе STOW_REACH к центру деки; камера (плоская сборка) — всегда.
+func can_stow_from(holder: Node3D) -> bool:
+	if not _hand_of.has(holder):
+		return false
+	return holder is Camera3D or holder.global_position.distance_to(world_ui.deck.global_position) <= STOW_REACH
+
+
+## Шард из держателя «втягивается» в деку: летит к деке, сжимается, пропадает; дека на миг светится рамкой. Серверу не сообщаем.
+func stow(holder: Node3D) -> bool:
+	var id := held_in(holder)
+	if id.is_empty():
+		return false
+	var m: Node3D = _pickups.get(id)
+	_hand_of.erase(holder)
+	_held_ids.erase(id)
+	_pickups.erase(id)
+	held = not _held_ids.is_empty()
+	if m != null:
+		var from := m.global_position
+		m.reparent(self, true)
+		var tw := create_tween().set_parallel(true)
+		tw.tween_method(func(t: float): m.global_position = from.lerp(world_ui.deck.global_position, t), 0.0, 1.0, STOW_SEC)
+		tw.tween_property(m, "scale", Vector3.ONE * 0.1, STOW_SEC)
+		tw.chain().tween_callback(m.queue_free)
+	world_ui.deck.set_receiving(true)
+	_stow_flash = STOW_FLASH_SEC
+	shard_stowed.emit(id)
+	return true
+
+
+## Дека подсвечивает приёмник, пока правая рука с шардом у запястья.
+func _update_stow_target(delta: float) -> void:
+	var want := false
+	for holder in _hand_of:
+		if holder == rig.right_hand and can_stow_from(holder):
+			want = true
+	if _stow_flash > 0.0:
+		_stow_flash -= delta
+		want = true
+	world_ui.deck.set_receiving(want)
 
 
 # ---------------------------------------------------------------- граф узлов (W1)
@@ -392,14 +473,23 @@ func apply_node(info: Dictionary) -> void:
 	end_tunnel()
 
 
-## Слоты шардов узла изменились (вынесли, пополнилось): лежащий шард виден, вынесенный — нет.
+## Слоты шардов узла изменились (вынесли, пополнилось, хранилище открылось/закрылось): лежащий шард виден, вынесенный — нет; вид хранилища — по vault
+## (закрытое — шард внутри тусклый и не берётся).
 func apply_shards(shards: Array) -> void:
 	for sh in shards:
 		var id := str(sh["id"])
+		var state := NodeView.vault_state_of(sh)
+		_vault_state[id] = state
+		view.set_vault_state(id, state)
+		if _held_ids.has(id):
+			continue
+		var ready := bool(sh.get("ready", true))
+		if ready and sh.has("p"):
+			_ensure_shard_model(sh, false)   # слот пополнился: прошлую модель убрали, когда шард ушёл в деку
 		var m: Node3D = _pickups.get(id)
-		if m != null and not _held_ids.has(id):
-			m.visible = bool(sh.get("ready", true))
-		view.set_vault_ready(id, bool(sh.get("ready", true)))
+		if m != null:
+			m.visible = ready
+			_set_dim(m, state == NodeView.VAULT_CLOSED)
 
 
 ## Тоннель: затемнение вокруг головы и блок хода (камеру не двигаем); надпись «куда».
@@ -461,21 +551,11 @@ func _build_node(shards: Array, portals: Array, _portal_radius: float) -> void:
 		var id := str(sh["id"])
 		if _held_ids.has(id):
 			continue
-		var p: Array = sh["p"]
-		var asset := NodeAssets.prop_path("shard_encrypted" if bool(sh.get("enc", false)) else "shard")
-		var m: Node3D = _pickups.get(id)
-		if m != null and str(m.get_meta("asset", "")) != asset:  # шард стал зашифрованным (или наоборот): другая модель
-			m.queue_free()
-			_pickups.erase(id)
-			m = null
-		if m == null:
-			m = NodeAssets.instance(asset)
-			m.name = id
-			add_child(m)
-			_pickups[id] = m
-		m.position = Vector3(p[0], p[1], p[2])
-		m.set_meta("y0", float(p[1]))
+		var state := NodeView.vault_state_of(sh)
+		_vault_state[id] = state
+		var m := _ensure_shard_model(sh, true)
 		m.visible = bool(sh.get("ready", true))
+		_set_dim(m, state == NodeView.VAULT_CLOSED)
 	view.set_portals(portals)
 	for pt in portals:
 		var pos: Array = pt["p"]
@@ -490,12 +570,67 @@ func _build_node(shards: Array, portals: Array, _portal_radius: float) -> void:
 		_node_props.append(l)
 
 
+## Модель шарда слота: создаёт (или меняет на другую, если шард стал зашифрованным / открытым) и подписывает тир. enc в описании нет — модель не
+## меняется. Положение — по p при создании или reposition.
+func _ensure_shard_model(sh: Dictionary, reposition: bool) -> Node3D:
+	var id := str(sh["id"])
+	var m: Node3D = _pickups.get(id)
+	var asset := NodeAssets.prop_path("shard")
+	if sh.has("enc"):
+		asset = NodeAssets.prop_path("shard_encrypted" if bool(sh["enc"]) else "shard")
+	elif m != null:
+		asset = str(m.get_meta("asset", asset))
+	if m != null and str(m.get_meta("asset", "")) != asset:  # шард стал зашифрованным (или наоборот): другая модель
+		m.queue_free()
+		_pickups.erase(id)
+		m = null
+	if m == null:
+		m = NodeAssets.instance(asset)
+		m.name = id
+		add_child(m)
+		_pickups[id] = m
+		reposition = true
+	if reposition and sh.has("p"):
+		var p: Array = sh["p"]
+		m.position = Vector3(p[0], p[1], p[2])
+		m.set_meta("y0", float(p[1]))
+	_set_tier_label(m, int(sh.get("tier", 0)))
+	return m
+
+
+## Подпись тира над шардом («ТИР 2»), смотрит на игрока; тира не знаем (0) — без подписи.
+func _set_tier_label(m: Node3D, tier: int) -> void:
+	var l := m.get_node_or_null("TierLabel") as Label3D
+	if tier <= 0:
+		if l != null:
+			l.queue_free()
+		return
+	if l == null:
+		l = Label3D.new()
+		l.name = "TierLabel"
+		l.font_size = 40
+		l.pixel_size = 0.0015
+		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		l.modulate = Color(0.5, 0.95, 1.0)
+		l.position = Vector3(0, 0.2, 0)
+		m.add_child(l)
+	l.text = "ТИР %d" % tier
+
+
+## Шард в закрытом хранилище: меньше и полупрозрачный (по меткам-мешам модели); открытый и тот, что в руке, — обычные.
+func _set_dim(m: Node3D, dim: bool) -> void:
+	m.scale = Vector3.ONE * (SHARD_DIM_SCALE if dim else 1.0)
+	for n in m.find_children("*", "MeshInstance3D", true, false):
+		(n as GeometryInstance3D).transparency = 1.0 - SHARD_DIM_ALPHA if dim else 0.0
+	m.set_meta("dim", dim)
+
+
 ## Шарды на хранилищах медленно вращаются и парят; шард в руке (и в чужих руках) стоит как стоит.
 func _animate_shards(delta: float) -> void:
 	_spin_t += delta
 	for id in _pickups:
 		var m: Node3D = _pickups[id]
-		if _held_ids.has(id) or not m.visible or not m.has_meta("y0"):
+		if _held_ids.has(id) or not m.visible or not m.has_meta("y0") or bool(m.get_meta("dim", false)):
 			continue
 		m.rotation.y += delta * SHARD_SPIN_RAD
 		m.position.y = float(m.get_meta("y0")) + sin(_spin_t * TAU * SHARD_BOB_HZ) * SHARD_BOB_M

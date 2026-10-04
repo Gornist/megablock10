@@ -16,6 +16,11 @@ const PANEL_WIDTH_M := 0.32
 const PANEL_HEIGHT_M := PANEL_WIDTH_M * 384.0 / 512.0
 ## Не чаще стольких перерисовок деки в секунду: на Pico кадр рендерится дважды, а текст деки меняется раз в секунду.
 const MAX_FPS := 30.0
+## Новая строка в ДОБЫЧЕ мигает столько секунд (период — BLINK_PERIOD_SEC); пока вкладку не открыли, на ней бейдж с числом нового.
+const BLINK_SEC := 2.4
+const BLINK_PERIOD_SEC := 0.3
+## Рамка деки, когда к ней поднесена рука с шардом (приёмник): цвет и толщина вместо обычных.
+const RECEIVE_BORDER := 5.0
 
 const TAB_DECK := "deck"
 const TAB_LOOT := "loot"
@@ -47,6 +52,14 @@ var _shown_deck_key: Variant = null
 var _loot_texts := PackedStringArray()
 var _shown_loot: Variant = null
 var _loot_known := false
+var _loot_rows: Array = []                 # строки ДОБЫЧИ, как показаны сейчас (HudLogic.loot_rows)
+var _loot_eddies := 0
+var _loot_seen: Dictionary = {}            # id добычи, которую уже показывали (первый набор — всё «старое»)
+var _loot_new: Dictionary = {}             # id нового, пока вкладку ДОБЫЧА не открыли
+var _blink_ids: Dictionary = {}            # id строк, что мигают сейчас
+var _blink_left := 0.0
+var _blink_rows: Array[MbRow] = []
+var _receiving := false
 var _calls_seen_missed := 0
 var _last_phase := PhoneLink.PHASE_IDLE
 var _dirty := true
@@ -112,6 +125,9 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if phone != null and _calls.tick(delta):
 		_dirty = true
+	if _blink_left > 0.0:
+		_blink_left = maxf(_blink_left - delta, 0.0)
+		_apply_blink()
 	_since_draw += delta
 	if _dirty and _since_draw >= 1.0 / MAX_FPS:
 		_dirty = false
@@ -207,23 +223,43 @@ func row_texts() -> PackedStringArray:
 # ---------------------------------------------------------------- добыча
 
 ## Добыча забега (ev deck: loot [{id, kind, tier, title, enc}], eddies): вкладка ДОБЫЧА, без действий. Первое же обращение показывает вкладку:
-## сервер деку прислал, значит и пустое состояние («Добычи пока нет») честное.
+## сервер деку прислал, значит и пустое состояние («Добычи пока нет») честное. Первый набор считается старым; всё, что появилось позже
+## (шард, который игрок положил в деку), мигает в списке BLINK_SEC и, пока ДОБЫЧУ не открыли, держит на вкладке бейдж с числом нового.
 func set_loot(loot: Array, eddies: int = 0) -> void:
 	var rows := HudLogic.loot_rows(loot)
-	var key := [rows, eddies]
 	var first := not _loot_known
 	_loot_known = true
-	if key == _shown_loot and not first:
-		return
-	_shown_loot = key
-	_build_loot(rows, eddies)
+	var ids := {}
+	var fresh := false
+	for row in rows:
+		var id: String = row["id"]
+		ids[id] = true
+		if not first and not _loot_seen.has(id) and id != "":
+			fresh = true
+			_blink_ids[id] = true
+			if _tab != TAB_LOOT:
+				_loot_new[id] = true
+	for id in _loot_new.keys():
+		if not ids.has(id):
+			_loot_new.erase(id)
+	_loot_seen = ids
+	if fresh:
+		_blink_left = BLINK_SEC
+	var key := [rows, eddies]
+	if key != _shown_loot or first:
+		_shown_loot = key
+		_loot_rows = rows
+		_loot_eddies = eddies
+		_build_loot(rows, eddies)
+		_dirty = true
 	if first:
 		_apply_tabs()
-	_dirty = true
+	_update_badges()   # то же самое, что показано, не перерисовываем
 
 
 func _build_loot(rows: Array, eddies: int) -> void:
 	DeckUi.clear(_loot_list)
+	_blink_rows.clear()
 	_loot_texts = PackedStringArray(["ДОБЫЧА"])
 	_loot_list.add_child(DeckUi.section_title("ДОБЫЧА", str(rows.size())))
 	var money := DeckUi.hbox(8)
@@ -233,10 +269,52 @@ func _build_loot(rows: Array, eddies: int) -> void:
 	_loot_texts.append("Эдди  %d" % eddies)
 	_loot_list.add_child(money)
 	for row in rows:
-		_loot_texts.append(row["text"])
-		_loot_list.add_child(_loot_row(row))
+		var is_new := _loot_new.has(row["id"])
+		_loot_texts.append(("НОВОЕ  " if is_new else "") + row["text"])
+		var r := _loot_row(row)
+		r.unread = is_new   # жёлтая полоска слева, как у непрочитанного
+		if _blink_ids.has(row["id"]):
+			_blink_rows.append(r)
+		_loot_list.add_child(r)
 	if rows.is_empty():
 		_loot_list.add_child(DeckUi.label("Добычи пока нет", DeckTheme.V_DIM, false))
+	_apply_blink()
+
+
+## Мигание новых строк: яркая — тусклая каждые BLINK_PERIOD_SEC, по концу срока строка остаётся обычной (полоска «новое» держится до просмотра).
+func _apply_blink() -> void:
+	var on := _blink_left <= 0.0 or int(_blink_left / BLINK_PERIOD_SEC) % 2 == 0
+	for r in _blink_rows:
+		if is_instance_valid(r):
+			r.modulate = Color.WHITE if on else Color(1, 1, 1, 0.25)
+	if _blink_left <= 0.0:
+		_blink_ids.clear()
+		_blink_rows.clear()
+	_dirty = true
+
+
+## Новая добыча сейчас мигает (для проверки).
+func is_blinking() -> bool:
+	return _blink_left > 0.0
+
+
+## Сколько единиц добычи новые (на вкладке ДОБЫЧА бейдж) и какие строки.
+func new_loot_ids() -> Array:
+	return _loot_new.keys()
+
+
+## К деке поднесена рука с шардом: рамка ярче — «сюда можно положить». Хватает перехода состояния, не каждого кадра.
+func set_receiving(on: bool) -> void:
+	if on == _receiving:
+		return
+	_receiving = on
+	_frame.edge = DeckTheme.ACC if on else DeckTheme.CHROME
+	_frame.border = RECEIVE_BORDER if on else 2.0
+	_dirty = true
+
+
+func is_receiving() -> bool:
+	return _receiving
 
 
 ## Метка в ряду не растягивается на высоту ряда, а стоит по центру.
@@ -246,7 +324,7 @@ func _centered(c: Control) -> Control:
 
 
 ## Строка добычи: вид (ШАРД / ДЕМОН), название, тир и значок «открыт / зашифрован» (метка Tag: зашифрованный — заливка, открытый — рамка).
-func _loot_row(row: Dictionary) -> Control:
+func _loot_row(row: Dictionary) -> MbRow:
 	var r := MbRow.new()
 	r.interactive = false
 	var h := DeckUi.hbox(8)
@@ -348,6 +426,7 @@ func _apply_tabs() -> void:
 		items.append({"id": TAB_CALLS, "text": "ЗВОНКИ", "badge": 0})
 	_tabs.set_items(items)
 	_tabs.select(_tab)
+	_update_badges()
 
 
 func _show_tab(id: String) -> void:
@@ -362,6 +441,9 @@ func _show_tab(id: String) -> void:
 		_calls.refresh()
 	elif id == TAB_CHAT:
 		_chat.refresh()
+	elif id == TAB_LOOT and not _loot_new.is_empty():
+		_loot_new.clear()   # открыли ДОБЫЧУ — новое увидели; строки мигают дальше до конца срока
+		_build_loot(_loot_rows, _loot_eddies)
 	_update_badges()
 	_dirty = true
 	tab_changed.emit(id)
@@ -369,6 +451,7 @@ func _show_tab(id: String) -> void:
 
 ## Бейджи: ЧАТ — непрочитанные во всех диалогах; ЗВОНКИ — пропущенные, которых ещё не видели (на открытой вкладке их нет).
 func _update_badges() -> void:
+	_tabs.set_badge(TAB_LOOT, _loot_new.size())
 	if phone == null:
 		return
 	_tabs.set_badge(TAB_CHAT, PhoneLogic.unread_total(phone.threads()))
