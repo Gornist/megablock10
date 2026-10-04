@@ -199,7 +199,7 @@ cmd_info() {
 
 # Ключи comfort.cfg (netrun/client/comfort_config.gd); пределы клиент держит сам, здесь — только формат.
 COMFORT_FILE="files/comfort.cfg"
-COMFORT_NUM_KEYS="turn_speed_deg_s turn_vignette turn_ramp_up_s turn_ramp_down_s teleport_range teleport_cooldown teleport_blink_s"
+COMFORT_NUM_KEYS="turn_speed_deg_s turn_vignette turn_ramp_up_s turn_ramp_down_s teleport_range teleport_cooldown teleport_blink_s hand_pitch_deg hand_offset_x hand_offset_y hand_offset_z"
 COMFORT_KEYS="turn_mode $COMFORT_NUM_KEYS"
 
 # Содержимое comfort.cfg на очках (пусто, если файла нет). Отладочная сборка debuggable — читается через run-as.
