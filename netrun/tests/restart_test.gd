@@ -171,6 +171,14 @@ func test_a_daemon_taken_in_a_node_is_not_a_working_program() -> void:
 	assert_str(loot[0]["kind"]).is_equal("daemon")
 
 
+## Добыча для `run.finish` — и из узла, и от мастера (раньше только `node:*`: мастерский шард при выбросе шёл на телефон вместо узла).
+func test_loot_origin_covers_node_and_master_but_not_the_phone() -> void:
+	assert_bool(GrayNode.is_loot_origin("node:node_07")).is_true()
+	assert_bool(GrayNode.is_loot_origin("master:master-anna")).is_true()
+	assert_bool(GrayNode.is_loot_origin("phone:KEY_A")).is_false()
+	assert_bool(GrayNode.is_loot_origin("")).is_false()
+
+
 func test_loot_from_items_lists_shards_with_tier_title_and_encryption() -> void:
 	var items := [
 		{"id": "it_2", "data": {"owner": "deck:s1", "kind": "SHARD", "origin": "node:n", "shard": {"tier": 3, "title": "Секрет", "decrypted": false}}},
