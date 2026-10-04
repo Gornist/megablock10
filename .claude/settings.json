@@ -19,5 +19,43 @@
   "enabledPlugins": {
     "code-review@claude-plugins-official": true,
     "kotlinsense@kotlinsense": true
+  },
+  "permissions": {
+    "allow": [
+      "Bash(scripts/check.sh *)",
+      "Bash(scripts/dbx.sh *)",
+      "Bash(scripts/ci-wait.sh *)",
+      "Bash(scripts/phone.sh devices)",
+      "Bash(scripts/phone.sh shot *)",
+      "Bash(scripts/phone.sh log *)",
+      "Bash(netrun/tools/dev.sh *)",
+      "Bash(admin-web/tools/test.sh *)",
+      "Bash(admin-web/tools/preflight.sh *)",
+      "Bash(admin-web/tools/merge-ready.sh *)",
+      "Bash(admin-web/tools/branch-gone.sh *)",
+      "Bash(admin-web/tools/wt-deps.sh *)",
+      "Bash(gh run list *)",
+      "Bash(gh run view *)",
+      "Bash(gh pr checks *)",
+      "Bash(gh pr view *)",
+      "Bash(git status *)",
+      "Bash(git log *)",
+      "Bash(git diff *)",
+      "Bash(git show *)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard-bash.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
   }
 }

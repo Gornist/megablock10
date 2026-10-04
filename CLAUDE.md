@@ -34,6 +34,9 @@
   Opus — контракты, деньги/записи/auth, ревью рискованного диффа. Меньше трёх вызовов — делать самому. Отчётам агентов не верить на слово:
   один раз прогнать проверку самому и посмотреть `git diff --stat`.
 - **Не автоматизировать:** push в `main`, rebase/force, `--no-verify`, удаление веток и worktree, автоповтор CI «до зелёного», перезапись эталонов.
+  Часть запретов проверяет хук `.claude/hooks/guard-bash.sh` (`git add -A`, push в `main` и `--force`, `--no-verify` вне devbox, `cleanTest*`,
+  правка через python-heredoc, `sleep` > 30 с, rsync `netrun` без `--delete`, gdunit мимо `dev.sh`); скрипты-вердикты разрешены без запроса
+  (`permissions.allow` в `.claude/settings.json`).
 
 ## Git и процесс
 
