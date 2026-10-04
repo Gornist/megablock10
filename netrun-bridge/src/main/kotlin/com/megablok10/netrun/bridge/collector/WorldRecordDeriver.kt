@@ -71,6 +71,7 @@ internal object Words {
     /** Документы `alert`, которыми MasterOps звонит в панель мастера («ждём мастера», «запрос к Сети»): не тревога аудитора. */
     val MASTER_CALLS = setOf("master_request", "net_query")
     const val OP_ISSUE = "issue_to_phone"
+    const val OP_GIVE = "give_item"
 }
 
 /** Один разбор транзакции: что было, что стало, какая операция её породила. */
@@ -168,8 +169,11 @@ private class Derivation(changes: List<Change>, private val previous: (DocKey) -
     private fun itemEvents(): List<WorldEvent> = docs(ValueOps.ITEM).mapNotNull { d ->
         val from = owner(before(d)) ?: return@mapNotNull null
         val to = owner(d) ?: return@mapNotNull null
-        if (from != to && significant(from, to)) item(d, from, to) else null
+        if (from != to && (significant(from, to) || (gave && isGiveMove(from, to)))) item(d, from, to) else null
     }
+
+    /** Транзакция — `op.give_item`: передача из Сети (C2, 2.5, (д)) значима и как `deck → deck`, и как `deck → outbox`. */
+    private val gave: Boolean get() = op?.second == Words.OP_GIVE
 
     private fun item(d: Doc, from: String, to: String): WorldEvent {
         val value = LinkedHashMap<String, JsonElement>()
@@ -184,7 +188,15 @@ private class Derivation(changes: List<Change>, private val previous: (DocKey) -
         val (opName, rid) = itemOp(d, to)
         opName?.let { value["op"] = VJ.p(it) }
         rid?.let { value["rid"] = VJ.p(it) }
+        if (opName == Words.OP_GIVE) giveFields(sid, value)
         return event(WorldRecords.ITEM, WorldRecords.ITEM_OWNER, d, value)
+    }
+
+    /** Передача из Сети: мастеру нужно «кто, кому, что, из какого узла» — узел и позывной отправителя (его сессия в передаче не меняется). */
+    private fun giveFields(sid: String?, value: MutableMap<String, JsonElement>) {
+        val sender = sid?.let { lookup(ValueOps.SESSION, it) } ?: return
+        sessionNode(sender)?.let { value["node"] = VJ.p(it) }
+        VJ.str(sender.data, "callsign")?.let { value["callsign"] = VJ.p(cap(it, CALLSIGN_MAX)) }
     }
 
     /** Операция и `rid`: из `op_rid` этой транзакции; чек телефона (`phone:`) идёт без операции — это `issue_to_phone`, а `rid` — id карточки. */
@@ -245,6 +257,9 @@ private fun significant(from: String, to: String): Boolean = when {
     to.startsWith("phone:") -> true
     else -> false
 }
+
+/** Передача между игроками: из деки в чужую деку или в `outbox:` (на телефон). */
+private fun isGiveMove(from: String, to: String): Boolean = from.startsWith("deck:") && (to.startsWith("deck:") || to.startsWith("outbox:"))
 
 /** `newValue` не длиннее предела коллектора: единственное длинное поле — `msg` тревоги, его и укорачиваем. */
 private fun fitted(value: MutableMap<String, JsonElement>): JsonObject {

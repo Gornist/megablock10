@@ -36,6 +36,12 @@ internal class OpRouter(private val ops: ValueOps, private val terminals: Termin
                 ),
             )
             "run.breach" -> opReply(ops.runBreach(caller, req(msg, "rid"), breachRequest(msg)))
+            "op.give_item" -> opReply(
+                ops.giveItem(
+                    caller, req(msg, "rid"), req(msg, "session"), req(msg, "item"),
+                    msg["ver"].long() ?: throw StoreException("bad_request", "нужен ver"), giveTarget(msg),
+                ),
+            )
             "session.abort" -> opReply(ops.abortSession(caller, req(msg, "session"), msg["reason"].string().orEmpty()))
             else -> throw StoreException("bad_request", "неизвестный op: $op")
         }
@@ -93,6 +99,17 @@ internal class OpRouter(private val ops: ValueOps, private val terminals: Termin
         return arr.map { e ->
             val o = e as? JsonObject ?: throw StoreException("bad_request", "предмет — объект")
             StockItem(req(o, "kind"), req(o, "payload"))
+        }
+    }
+
+    /** Получатель `op.give_item`: ровно одно из `to_session` и `to_phone` (иначе `bad_request`). */
+    private fun giveTarget(msg: JsonObject): GiveTarget {
+        val session = msg["to_session"].string()
+        val phone = msg["to_phone"].string()
+        return when {
+            session != null && phone == null -> GiveTarget.Session(session)
+            phone != null && session == null -> GiveTarget.Phone(phone)
+            else -> throw StoreException("bad_request", "нужен ровно один получатель: to_session или to_phone")
         }
     }
 

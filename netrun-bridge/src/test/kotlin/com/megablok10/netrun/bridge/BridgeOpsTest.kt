@@ -145,6 +145,38 @@ class BridgeOpsTest {
         synchronized(issued) { assertEquals(3, issued.size) } // защищённый + 2 предмета; повтор карточек не добавил
     }
 
+    @Test fun giveItemOverTheWire() {
+        val t = Client("test")
+        val sid = submit(t).str("session")
+        val w = Client("world")
+        assertTrue(w.req("session.confirm", """"session":"$sid","terminal":"t03"""").ok())
+        assertTrue(w.req("op.take_from_node", """"rid":"take:$sid:it_sh","session":"$sid","node":"node_07","item":"it_sh"""").ok())
+        val ver = store.get("item", "it_sh")!!.ver
+        val key = com.megablok10.kit.crypto.Ecdsa.encodeKey(com.megablok10.kit.crypto.Ecdsa.generateKeyPair().public)
+        val head = """"rid":"give:$sid:it_sh:$ver","session":"$sid","item":"it_sh""""
+        // получатель — ровно один, ver обязателен, ключ должен разбираться
+        assertEquals("bad_request", w.req("op.give_item", """$head,"ver":$ver""").code())
+        assertEquals("bad_request", w.req("op.give_item", """$head,"ver":$ver,"to_session":"s_x","to_phone":"$key"""").code())
+        assertEquals("bad_request", w.req("op.give_item", """$head,"to_phone":"$key"""").code())
+        assertEquals("bad_request", w.req("op.give_item", """$head,"ver":$ver,"to_phone":"не-ключ"""").code())
+        assertEquals("deck:$sid", owner("it_sh"))
+        // защищённый демон: отказ с предметом в err.doc
+        val prot = w.req("op.give_item", """"rid":"g-prot","session":"$sid","item":"it_d1","ver":${store.get("item", "it_d1")!!.ver},"to_phone":"$key"""")
+        assertEquals("protected_item", prot.code())
+        assertEquals("it_d1", prot["err"]!!.jsonObject["doc"]!!.jsonObject.str("id"))
+        val ok = w.req("op.give_item", """$head,"ver":$ver,"to_phone":"$key"""")
+        assertTrue(ok.toString(), ok.ok())
+        assertEquals("false", ok.str("replayed"))
+        assertEquals("outbox:$key", ok.str("to"))
+        assertTrue(ok.str("transfer").startsWith("tr_"))
+        assertEquals("outbox:$key", owner("it_sh"))
+        val again = w.req("op.give_item", """$head,"ver":$ver,"to_phone":"$key"""")
+        assertEquals("true", again.str("replayed"))
+        assertEquals(ok.str("transfer"), again.str("transfer"))
+        assertEquals("rid_mismatch", w.req("op.give_item", """$head,"ver":$ver,"to_session":"s_x"""").code())
+        synchronized(issued) { assertEquals(1, issued.count { it.item == "it_sh" }) }
+    }
+
     @Test fun domainErrorCarriesDocAndRoleIsChecked() {
         val w = Client("world")
         assertEquals("forbidden", w.req("op.submit_deck", """"rid":"r","runner":"KA","callsign":"A","terminal":"t03","items":["it_d1"],"protected":"it_d1"""").code())

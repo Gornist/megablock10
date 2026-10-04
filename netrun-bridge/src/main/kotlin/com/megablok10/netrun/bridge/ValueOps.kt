@@ -343,7 +343,7 @@ class ValueOps(
         }
     }
 
-    private fun toOutbox(tx: DocStore.Tx, ctx: Ctx, ns: String, rid: String, runner: String, d: Doc): String {
+    internal fun toOutbox(tx: DocStore.Tx, ctx: Ctx, ns: String, rid: String, runner: String, d: Doc): String {
         val tid = "tr_" + VJ.sha256Hex("$ns|$rid|${d.id}").take(12)
         tx.put(
             ITEM, d.id, d.ver,
@@ -590,7 +590,7 @@ class ValueOps(
     private fun requireAllowed(caller: Caller, op: String) {
         val ok = when (op) {
             "submit_deck" -> caller.role == Role.TEST || caller.role == Role.BRIDGE
-            "take_from_node", "leave_in_node", "run.finish", "run.breach" -> caller.role != Role.BRIDGE
+            "take_from_node", "leave_in_node", "run.finish", "run.breach", "op.give_item" -> caller.role != Role.BRIDGE
             "master.stock_node", "master.unstock_node" -> caller.role == Role.MASTER || caller.role == Role.TEST
             else -> true
         }
@@ -655,12 +655,12 @@ class ValueOps(
     /** Узел, где сессия сейчас: `world.node` (пишет сервер мира при переходе по графу узлов), иначе узел, куда её приняли. */
     internal fun currentNode(s: Doc): String? = (s.data["world"] as? JsonObject)?.let { VJ.str(it, "node") } ?: VJ.str(s.data, "node")
 
-    private fun loadDeck(tx: DocStore.Tx, sid: String): Doc =
+    internal fun loadDeck(tx: DocStore.Tx, sid: String): Doc =
         tx.get(DECK, sid) ?: throw StoreException("internal", "у сессии $sid нет деки")
 
-    private fun deckItems(deck: Doc): List<String> = VJ.list(deck.data, "items")
+    internal fun deckItems(deck: Doc): List<String> = VJ.list(deck.data, "items")
 
-    private fun putDeckItems(tx: DocStore.Tx, deck: Doc, items: List<String>) {
+    internal fun putDeckItems(tx: DocStore.Tx, deck: Doc, items: List<String>) {
         tx.put(DECK, deck.id, deck.ver, VJ.with(deck.data, "items" to VJ.arr(items)))
     }
 
