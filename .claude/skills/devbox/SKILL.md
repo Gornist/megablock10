@@ -27,6 +27,7 @@ Mac (8 ГБ) — только правка, git и `scripts/check.sh --fast`. Gr
   подробности и ловушки — `docs/netrun-devbox.md`, «Godot AI».
 
 ## Долгие задачи — только отвязанно
+**Gradle — через `scripts/dbx.sh --auto|--full`** (git-синхронизация, очередь `flock`, один итог; skill `orchestrate`): им пользуйся вместо ручных `devjob`+rsync. Ниже — общий случай (не Gradle).
 `devjob start <имя> '<команда>'`, затем `devjob status|log|stop <имя>` (логи — `~/jobs/`). Обрыв SSH не убивает задачу;
 результат читать короткими вызовами, не держать живую сессию. Пример: `devjob start paparazzi 'cd ~/mb-main && export JAVA_HOME=/usr/lib/jvm/temurin-21-jdk-amd64 PATH=/usr/lib/jvm/temurin-21-jdk-amd64/bin:$PATH && ./gradlew verifyPaparazziDebug; echo rc=$?'`.
 

@@ -58,6 +58,8 @@
 
 - **Mac (8 ГБ):** правка, git, `scripts/check.sh --fast`. Gradle, Paparazzi, e2e, Godot, Мост — **на devbox** (`ssh devbox`),
   долгое через `devjob` — skill `devbox`. Параллельных Gradle и стендов e2e нет: одна задача на машину.
+- **Gradle на devbox — `scripts/dbx.sh --auto|--full`** (очередь, один итог; skill `orchestrate`). Большая задача из 3+ шагов — по skill `orchestrate`
+  (разведка одним агентом с досье, исполнители sonnet, ожидание одним фоновым вызовом, `scripts/ci-wait.sh`).
 - Цикл задачи: правка → `check.sh --fast` (Mac) → тяжёлая проверка на devbox → коммит → `/clear`. Новое окно начинать с
   `docs/android-handoff.md`, `git log -10`, `git diff`.
 - e2e: правила написания проверок — `.claude/rules/e2e.md` (подгружаются при правке `scripts/e2e/`).
