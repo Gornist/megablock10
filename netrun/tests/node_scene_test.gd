@@ -361,14 +361,18 @@ func test_assembled_node_fits_the_triangle_budget() -> void:
 
 
 func test_repeated_modules_are_instanced_not_duplicated() -> void:
-	# 64 плитки пола и десятки стен — один MultiMesh на модуль, а не по узлу на плитку
+	# 64 плитки пола (в трёх вариантах) и десятки стен — MultiMesh на вариант и поверхность, а не по узлу на плитку
 	var scene := _scene()
 	scene.apply_node(_info("BASE"))
 	var multi: Array = scene.view.find_children("*", "MultiMeshInstance3D", true, false)
-	var floor_mm: MultiMeshInstance3D = null
+	var per_variant: Dictionary = {}  # путь варианта -> число плиток (у каждого меша варианта оно одно)
 	for n in multi:
-		if n.get_meta("asset", "") == NodeAssets.env_path("floor", "BASE"):
-			floor_mm = n
-	assert_object(floor_mm).is_not_null()
-	assert_int(floor_mm.multimesh.instance_count).is_equal(NodeLayout.GRID * NodeLayout.GRID)
+		var path := str(n.get_meta("asset", ""))
+		if path in ["res://assets/models/env/floor.glb", "res://assets/models/env/floor_b.glb", "res://assets/models/env/floor_c.glb"] and not str(n.name).contains("reflection"):
+			per_variant[path] = (n as MultiMeshInstance3D).multimesh.instance_count
+	assert_int(per_variant.size()).is_equal(3)
+	var total := 0
+	for v in per_variant.values():
+		total += int(v)
+	assert_int(total).is_equal(NodeLayout.GRID * NodeLayout.GRID)
 	assert_int(scene.view.find_children("*", "MeshInstance3D", true, false).size()).is_less(60)
