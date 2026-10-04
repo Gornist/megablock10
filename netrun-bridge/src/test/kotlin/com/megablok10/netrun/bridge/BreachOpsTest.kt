@@ -373,6 +373,66 @@ class BreachOpsTest {
         assertTrue(f.breach(a, f.req(a, n = 2, selected = listOf("it_ex"), vaults = listOf("v_sh2"))).ok)
     }
 
+    @Test fun cooldownIsNeverShorterThanOpenWindow() {
+        // breach_cooldown_s меньше open_s: пока хранилище открыто, тот же узел снова взломать нельзя
+        val f = BreachFixture()
+        val g = f.store.get("settings", "global")!!
+        f.store.put("settings", "global", g.ver, VJ.with(g.data, "breach_cooldown_s" to JsonPrimitive(10L)))
+        val a = f.enterA()
+        val r = f.breach(a, f.req(a, selected = listOf("it_ex"), openS = 120))
+        assertTrue(r.body.toString(), r.ok)
+        val span = VJ.lng(r.body, "cooldown_until") - f.nowMs
+        assertTrue("остывание $span мс короче open_s", span in 119_000L..120_100L)
+        // порог настройки выше open_s работает как прежде
+        val b = f.enterB()
+        val g2 = f.store.get("settings", "global")!!
+        f.store.put("settings", "global", g2.ver, VJ.with(g2.data, "breach_cooldown_s" to JsonPrimitive(900L)))
+        val rb = f.breach(b, f.req(b, selected = listOf("it_b1"), openS = 60))
+        assertTrue(VJ.lng(rb.body, "cooldown_until") - f.nowMs in 899_000L..900_100L)
+    }
+
+    @Test fun cooldownOfZeroStillCoversOpenWindow() {
+        val f = BreachFixture()
+        val g = f.store.get("settings", "global")!!
+        f.store.put("settings", "global", g.ver, VJ.with(g.data, "breach_cooldown_s" to JsonPrimitive(0L)))
+        val a = f.enterA()
+        val r = f.breach(a, f.req(a, selected = listOf("it_ex"), openS = 60))
+        assertTrue(VJ.lng(r.body, "cooldown_until") - f.nowMs in 59_000L..60_100L)
+        assertEquals("cooldown", code(f.breach(a, f.req(a, n = 2, selected = listOf("it_ex")))))
+    }
+
+    @Test fun ownLiveOpenedVaultIsNotPickedAgain() {
+        // мастер сбросил остывание: второй взлом не выбирает хранилище, уже открытое этой же сессией
+        val f = BreachFixture()
+        val a = f.enterA()
+        val first = f.breach(a, f.req(a, selected = listOf("it_ex"), vaults = listOf("v_sh1", "v_sh2")))
+        assertEquals("v_sh1", VJ.str((first.body["opened"] as JsonArray).single() as JsonObject, "item"))
+        fun clearCooldown() {
+            val rd = f.store.get("runner", ValueOps.runnerDocId(f.keyA))!!
+            f.store.put("runner", rd.id, rd.ver, VJ.with(rd.data, "breach_cooldown" to JsonObject(emptyMap())))
+        }
+        clearCooldown()
+        val second = f.breach(a, f.req(a, n = 2, selected = listOf("it_ex"), vaults = listOf("v_sh1", "v_sh2")))
+        assertEquals("v_sh2", VJ.str((second.body["opened"] as JsonArray).single() as JsonObject, "item"))
+        assertEquals(setOf("v_sh1", "v_sh2"), opened(f.session(a)).map { VJ.str(it, "item") }.toSet())
+        // обе открыты и ещё не истекли: третий взлом ничего нового не открывает — КЭШ ОЧИЩЕН
+        clearCooldown()
+        val third = f.breach(a, f.req(a, n = 3, selected = listOf("it_ex"), vaults = listOf("v_sh1", "v_sh2")))
+        assertTrue(VJ.bool(third.body, "exhausted"))
+        assertEquals(0, (third.body["opened"] as JsonArray).size)
+    }
+
+    @Test fun ownExpiredOpenedVaultCanBePickedAgain() {
+        val f = BreachFixture()
+        val a = f.enterA()
+        f.breach(a, f.req(a, selected = listOf("it_ex"), vaults = listOf("v_sh1"), openS = 30))
+        f.advance(31_000L)
+        val rd = f.store.get("runner", ValueOps.runnerDocId(f.keyA))!!
+        f.store.put("runner", rd.id, rd.ver, VJ.with(rd.data, "breach_cooldown" to JsonObject(emptyMap())))
+        val again = f.breach(a, f.req(a, n = 2, selected = listOf("it_ex"), vaults = listOf("v_sh1")))
+        assertEquals("v_sh1", VJ.str((again.body["opened"] as JsonArray).single() as JsonObject, "item"))
+    }
+
     // ---------- claimed ----------
 
     @Test fun takeFromOtherSessionsOpenVaultIsClaimed() {
