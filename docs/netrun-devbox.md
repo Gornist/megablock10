@@ -116,7 +116,9 @@ cd ~/megablock10/netrun
 godot -- --flat --host=127.0.0.1 --port=7777 --token=t1
 ```
 
-Управление: W/A/S/D движение, мышь поворот, левый клик взятие предметов.
+Управление: T зажать и смотреть на пол — прицел телепорта, отпустить — переместиться (C — отмена); Q/E — плавный поворот (по удержанию);
+ПКМ + мышь — осмотр, R — центровка, F / левый клик — взять предмет, 1–9 — демон, X — выйти чисто, Esc 3 с — экстренный выход.
+Ходьба WASD выключена, включается флагом `--walk`; рывок вместо плавного поворота — `--turn=snap`.
 
 `godot` в неинтерактивном ssh на PATH нет — сначала `. ~/netrun-env.sh`. Аргументы игры при запуске из редактора
 (`editor/run/main_run_args`) пишутся с ведущим `-- `, иначе Godot игре их не передаёт.
@@ -133,6 +135,12 @@ godot -- --flat --host=127.0.0.1 --port=7777 --token=t1
 - **Цикл:** `adb uninstall` (если подпись другая), `adb install -r <apk>` — **смотреть вывод**: при отказе на очках остаётся старая сборка;
   `adb logcat -c`, `tools/pico.sh launch`, `adb logcat -d | grep -E " godot +:|Fatal signal|F DEBUG"`; журнал игры — `tools/pico.sh log`
   (`user://logs` — внутренняя память приложения, читается через `run-as`).
+- **Настройка комфорта без пересборки:** клиент читает необязательный `user://comfort.cfg` (секция `[comfort]`: `turn_mode`,
+  `turn_speed_deg_s`, `turn_vignette`, `turn_ramp_up_s`, `turn_ramp_down_s`, `teleport_range`, `teleport_cooldown`, `teleport_blink_s`;
+  пределы и значения по умолчанию — `netrun/client/comfort_config.gd`, `shared/rig_math.gd`). `tools/pico.sh tune` без аргументов показывает
+  файл на очках; `tune turn_speed_deg_s=45 teleport_range=3.5` правит его (остальные ключи сохраняются), перезапускает приложение и печатает
+  строку `comfort` из журнала; `tune --reset` удаляет файл. Файл пишется через `run-as` (отладочная сборка). Дальность и перезарядка
+  телепорта ограничены пределами сервера (6 м, 0,6 с). Адрес сервера и токен через этот файл не передаются.
 - **Без человека:** экран держат `adb shell svc power stayon true` и `adb shell input keyevent KEYCODE_WAKEUP` перед запуском. Но если на
   очках не задана граница или спят контроллеры при включённом отслеживании рук, система открывает поверх приложения свой экран и ставит его
   на паузу — XR-проверку (трекинг, связь из VR) тогда делает только человек в очках.
@@ -159,7 +167,7 @@ GTX 1650). Через него агент `godot-dev` (`.claude/agents/godot-dev
   на перезапуск `tailscaled` (`/etc/sudoers.d/devbox-tailscale`).
 - **Клиент (Claude Code на Mac):** `.mcp.json` запускает `ssh devbox … uvx godot-ai attach` (stdio-мост) — туннеля и токенов нет. Телеметрию
   плагина отключает `GODOT_AI_DISABLE_TELEMETRY=1`.
-- **Тесты — gdUnit4, как в CI:** `ssh devbox 'cd ~/wt-godot && netrun/tools/gdunit.sh [res://tests/файл_test.gd]'` (весь набор — 223 теста,
+- **Тесты — gdUnit4, как в CI:** `ssh devbox 'cd ~/wt-godot && netrun/tools/gdunit.sh [res://tests/файл_test.gd]'` (весь набор — 403 теста,
   зелёный при открытом редакторе; долго — через `devjob start`). Встроенный `test_run` плагина не используем: он не знает gdUnit4.
 - **Что не покрыто:** снимки кадра идут из плоской сборки, VR (OpenXR, трекинг, кадр на Pico 4) на devbox не проверить.
 - **Ловушки:** не искать редактор через `pkill -f`/`ps | grep` по строке из самой ssh-команды (убьёте сессию); после остановки ждать
