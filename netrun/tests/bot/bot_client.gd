@@ -61,6 +61,8 @@ var no_shard := false
 ## "emergency" — удержание кнопки (причина manual_hold), "drop_return" — обрыв связи и возврат через 2–8 с,
 ## "drop_gone" — обрыв без возврата (сервер закроет забег по окну возврата). "" — без сбоя.
 var chaos := ""
+## Поза тела, которую бот шлёт вместе с позицией (тесты рассылки позы). null — не шлёт.
+var pose: AvatarPose = null
 var chaos_after := 2.0
 ## Для GRAPH_RUN: куда идти дальше (первый — следующий узел), где бот сейчас, какие узлы прошёл, что видел о узле, сколько туннелей.
 var route: Array[String] = []
@@ -224,7 +226,7 @@ func _process(delta: float) -> void:
 	_send_acc += delta
 	if _send_acc >= SEND_PERIOD and net.is_connected_to_world:
 		_send_acc = 0.0
-		net.send_pos(position)
+		net.send_pos(position, pose)
 	match _step:
 		"connect":
 			if net.is_connected_to_world:

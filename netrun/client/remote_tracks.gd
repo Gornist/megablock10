@@ -10,6 +10,7 @@ const ICE_DELAY := 0.15
 var clock := ServerClock.new()
 var ice: Dictionary = {}      # id ICE -> StateBuffer
 var avatars: Dictionary = {}  # id аватара (строкой) -> StateBuffer
+var poses: Dictionary = {}    # id аватара (строкой) -> AvatarPose из последнего пакета; нет записи — в пакете позы не было (или мусор)
 
 
 ## Снимок узла (WorldMsg.STATE): ICE. Без метки времени `k` (старые тесты) — местное время: смещение будет нулевым.
@@ -35,11 +36,17 @@ func on_avatars(msg: Dictionary, local_now: float) -> Array:
 			avatars[id] = StateBuffer.new()
 		var jump := int(e[3]) if e.size() > 3 else 0  # счётчик скачков (телепортов) аватара
 		(avatars[id] as StateBuffer).push(k, Vector3(float(e[1]), 0.0, float(e[2])), 0.0, jump)
+		var pose := AvatarPose.decode(e[4]) if e.size() > 4 else null
+		if pose != null:
+			poses[id] = pose
+		else:
+			poses.erase(id)
 	var gone: Array = []
 	for id in avatars.keys():
 		if not seen.has(id):
 			gone.append(id)
 			avatars.erase(id)
+			poses.erase(id)
 	return gone
 
 

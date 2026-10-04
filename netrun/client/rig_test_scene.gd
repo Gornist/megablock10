@@ -189,6 +189,8 @@ func apply_avatars(msg: Dictionary) -> void:
 		var id := str(int(e[0]))
 		if not _avatar_nodes.has(id):
 			_avatar_nodes[id] = _make_avatar(int(e[0]), Vector3(float(e[1]), 0.0, float(e[2])))
+		# Поза тела: свежая — рисуем голову и руки вместо runner.glb; в пакете её нет (старая, мусор) — null, тело спрячется само.
+		(_avatar_nodes[id] as AvatarView).apply_pose(remote.poses.get(id))
 
 
 func avatar_node(id: String) -> Node3D:

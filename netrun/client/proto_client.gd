@@ -227,7 +227,20 @@ func _process(delta: float) -> void:
 	if _pos_acc >= POS_PERIOD:
 		_pos_acc = 0.0
 		var p: Vector3 = scene.rig.global_position
-		net.send_pos(Vector3(p.x, 0.0, p.z))
+		var floor_pt := Vector3(p.x, 0.0, p.z)
+		net.send_pos(floor_pt, current_pose(floor_pt))
+
+
+## Поза тела для других игроков: камера и рамки ладоней в осях мира от точки пола (ту же (x, 0, z) сервер знает из `pos`). Рука без позы контроллера
+## (frame_valid ложно: контроллера нет, трекинг кистей в рамку и сгибы пока не превращается) в позу не попадает.
+func current_pose(floor_pt: Vector3) -> AvatarPose:
+	var hands: Array = [null, null]
+	var views := [scene.rig.left_hand_view, scene.rig.right_hand_view]
+	for side in 2:
+		var hv: HandView = views[side]
+		if hv != null and hv.frame_valid:
+			hands[side] = {"frame": hv.global_transform * hv.frame_palm, "trigger": hv.frame_trigger, "hold": hv.frame_hold}
+	return AvatarPose.from_world(scene.rig.camera.global_transform, floor_pt, hands)
 
 
 func _on_grab_requested(object_id: String) -> void:

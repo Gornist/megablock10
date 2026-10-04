@@ -21,6 +21,19 @@ var trigger: Array[float] = [0.0, 0.0]
 var hold: Array[float] = [0.0, 0.0]
 
 
+## Поза из мировых рамок: head_world — камера в осях мира, floor_pt — точка пола аватара (та же (x, 0, z), что клиент шлёт в `pos`),
+## hands — по стороне (LEFT, RIGHT) либо null (контроллера нет — руку не добавляем), либо {frame: Transform3D в осях мира, trigger, hold}.
+static func from_world(head_world: Transform3D, floor_pt: Vector3, hands: Array) -> AvatarPose:
+	var pose := AvatarPose.new()
+	pose.head = Transform3D(head_world.basis.orthonormalized(), head_world.origin - floor_pt)
+	for side in [LEFT, RIGHT]:
+		var h: Variant = hands[side] if side < hands.size() else null
+		if h is Dictionary:
+			var f: Transform3D = h["frame"]
+			pose.set_hand(side, Transform3D(f.basis.orthonormalized(), f.origin - floor_pt), float(h["trigger"]), float(h["hold"]))
+	return pose
+
+
 func set_hand(side: int, frame: Transform3D, trig: float, grip_hold: float) -> void:
 	palm[side] = frame
 	has_hand[side] = true

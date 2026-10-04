@@ -97,9 +97,9 @@ func request_grab(object_id: String) -> bool:
 	return _send(WorldMsg.encode(WorldMsg.GRAB, object_id))
 
 
-## Своя позиция (пол под ногами) — сервер решает, что с ней делать (предел скорости, комната).
-func send_pos(p: Vector3) -> bool:
-	return _send(WorldMsg.encode_pos(p), false)
+## Своя позиция (пол под ногами) — сервер решает, что с ней делать (предел скорости, комната). pose — голова и руки для других игроков (AvatarPose).
+func send_pos(p: Vector3, pose: AvatarPose = null) -> bool:
+	return _send(WorldMsg.encode_pos(p, pose), false)
 
 
 ## Просьба телепортироваться в точку на полу (VR: единственный способ двигаться). Риг клиент двигает сам и сразу;

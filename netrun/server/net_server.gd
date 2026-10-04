@@ -26,6 +26,11 @@ const EMPTY_HOLDER := "#empty"
 ## Тихий обрыв (Wi-Fi пропал) ENet по умолчанию замечает за десятки секунд; ужимаем до ~5 с.
 const PEER_TIMEOUT_MS := 5000
 
+## Поза тела (AvatarPose) приходит в `pos` в поле `b` ~20 раз/с. Чаще этого сервер её не принимает (защита от потока), а старше POSE_TTL_MS
+## не пересылает: клиент замолчал — другим тело должно спрятаться (приёмник прячет его сам через 1,5 с без позы).
+const POSE_MIN_GAP_MS := 30
+const POSE_TTL_MS := 1000
+
 var verifier: TokenVerifier
 ## Предел скорости аватара (м/с): позицию присылает клиент, сервер не даёт телепортироваться.
 const MAX_SPEED := 8.0
@@ -65,6 +70,7 @@ var _tp_count: Dictionary = {}       # сессия -> сколько раз а�
 var _session_node: Dictionary = {}   # сессия -> id узла (нет записи — NetConfig.WORLD_NODE); снимки уходят только своему узлу
 var _avatar_ids: Dictionary = {}     # сессия -> короткий числовой id аватара для других игроков (в сообщениях вместо длинной сессии)
 var _next_avatar_id := 1
+var _poses: Dictionary = {}          # сессия -> {b: проверенная и заново закодированная поза (AvatarPose.encode), ms: когда принята}
 ## Сколько байт полезной нагрузки ушло игроку через send_to (без служебных заголовков ENet): сессия -> байты, и всего.
 var bytes_sent: Dictionary = {}
 var bytes_sent_total := 0
@@ -185,9 +191,20 @@ func avatar_entry(session: String) -> Array:
 	var p := get_avatar(session).position
 	var e: Array = [avatar_id(session), snappedf(p.x, 0.01), snappedf(p.z, 0.01)]
 	var n := teleport_count(session)
-	if n > 0:
+	var b: Variant = pose_of(session)
+	if n > 0 or b != null:
 		e.append(n)
+	if b != null:
+		e.append(b)  # пятым — поза тела (WorldMsg.AVATARS)
 	return e
+
+
+## Свежая поза тела сессии (то, что уйдёт другим игрокам узла: проверенный и заново закодированный AvatarPose.encode) или null.
+func pose_of(session: String) -> Variant:
+	var rec: Variant = _poses.get(session)
+	if rec == null or Time.get_ticks_msec() - int(rec["ms"]) > POSE_TTL_MS:
+		return null
+	return rec["b"]
 
 
 ## Объект (шард) уже у игрока по данным Моста. Не трогает объект, который держит кто-то другой.
@@ -288,6 +305,8 @@ func _on_packet(peer_id: int, data: PackedByteArray) -> void:
 			_handle_grab(peer_id, session, str(msg.get("id", "")))
 		WorldMsg.POS:
 			_handle_pos(session, WorldMsg.decode_vec3(msg.get("p")))
+			if msg.has("b"):
+				_handle_pose(session, msg["b"])
 		WorldMsg.TELEPORT:
 			_handle_teleport(session, WorldMsg.decode_xz(msg.get("p")))
 		WorldMsg.USE:
@@ -335,6 +354,20 @@ func _handle_pos(session: String, p: Variant) -> void:
 	if d.length() > allowed:
 		target = a.position + d.normalized() * allowed
 	a.position = target
+
+
+## Поза тела из `pos`: проверка AvatarPose.decode (мусор, голова дальше 4 м, нулевой кватернион — отбрасывается, прежняя поза доживает до POSE_TTL_MS),
+## не чаще POSE_MIN_GAP_MS. В цифровом тоннеле позы не принимаются. Хранится перекодированной: лишние поля клиента дальше сервера не уходят.
+func _handle_pose(session: String, raw: Variant) -> void:
+	if get_avatar(session) == null or node_of(session) == TUNNEL_NODE:
+		return
+	var now := Time.get_ticks_msec()
+	if _poses.has(session) and now - int(_poses[session]["ms"]) < POSE_MIN_GAP_MS:
+		return
+	var pose := AvatarPose.decode(raw)
+	if pose == null:
+		return
+	_poses[session] = {"b": pose.encode(), "ms": now}
 
 
 ## Телепорт по просьбе клиента (VR: движение только им). Правила — RigMath.teleport_verdict с пределами сервера и допусками:
@@ -410,6 +443,7 @@ func _remove_avatar(session: String) -> void:
 		if _objects[id] == session:
 			_objects[id] = ""  # аватара нет — объект снова лежит
 	_avatar_ids.erase(session)
+	_poses.erase(session)
 	_tp_count.erase(session)
 	_tp_last_ms.erase(session)
 	var a := get_avatar(session)

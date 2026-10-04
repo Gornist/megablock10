@@ -19,7 +19,9 @@ const STATE := "state"
 const EVENT := "ev"
 ## Сервер -> клиент: позиции ДРУГИХ аватаров своего узла (~20 раз/с, без гарантий): {t: av, k: время сервера, a: [[id, x, z, n?], ...]}.
 ## id — короткий числовой id аватара (NetServer.avatar_id); пропавший из списка — вышел из узла. n — счётчик скачков (телепортов)
-## аватара, есть, только если он прыгал: между записями с разным n клиент позицию не плавит (StateBuffer). В `state` время сервера тоже в `k`.
+## аватара, есть, только если он прыгал или есть поза: между записями с разным n клиент позицию не плавит (StateBuffer). В `state` время сервера тоже в `k`.
+## Пятым — поза тела b = AvatarPose.encode() (голова и руки от точки пола (x, 0, z) записи), если свежая поза от клиента есть; нет — записи из трёх-четырёх полей.
+## Клиент присылает позу в `pos` (поле `b`), сервер проверяет (AvatarPose.decode) и пересылает только игрокам того же узла, самому владельцу — нет.
 const AVATARS := "av"
 ## Клиент -> сервер (P6): состояние очков раз в N секунд, от терминала с сессией и без неё (очки ждут игрока).
 ## {t: beat, term, bat?, chg?, fps, worst, rtt?}; разбор и пересылка в Мост — NetServer / TerminalBeatRelay.
@@ -78,8 +80,12 @@ static func encode_fields(type: String, fields: Dictionary = {}) -> PackedByteAr
 	return JSON.stringify(d).to_utf8_buffer()
 
 
-static func encode_pos(p: Vector3) -> PackedByteArray:
-	return encode_fields(POS, {"p": [snappedf(p.x, 0.001), snappedf(p.y, 0.001), snappedf(p.z, 0.001)]})
+## Позиция; с позой тела (AvatarPose, поле `b`) — одним пакетом ~20 раз/с: отдельного сообщения не нужно, голова и руки едут вместе с точкой пола.
+static func encode_pos(p: Vector3, pose: AvatarPose = null) -> PackedByteArray:
+	var f := {"p": [snappedf(p.x, 0.001), snappedf(p.y, 0.001), snappedf(p.z, 0.001)]}
+	if pose != null:
+		f["b"] = pose.encode()
+	return encode_fields(POS, f)
 
 
 ## Просьба телепортироваться: цель на полу [x, z].
