@@ -15,6 +15,7 @@ const FIELDS = [
   "net.run",
   "net.item",
   "net.alert",
+  "net.breach",
 ] as const;
 export type Field = (typeof FIELDS)[number];
 
@@ -42,6 +43,7 @@ export const REASONS = [
   "NET_FLATLINE",
   "NET_ITEM_OWNER",
   "NET_ALERT",
+  "NET_BREACH",
 ] as const;
 export type Reason = (typeof REASONS)[number];
 
