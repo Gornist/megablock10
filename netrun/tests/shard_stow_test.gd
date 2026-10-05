@@ -56,9 +56,37 @@ func test_right_hand_far_from_the_deck_keeps_the_shard() -> void:
 	assert_bool(_grab_with(scene, scene.rig.right_hand, SLOT)).is_true()
 	scene.rig.right_hand.global_position = scene.world_ui.deck.global_position + Vector3(1, 0, 0)
 	assert_bool(scene.can_stow_from(scene.rig.right_hand)).is_false()
+	var misses: Array = []
+	scene.grab_missed.connect(func(info: Dictionary): misses.append(info))
 	scene.on_grip(scene.rig.right_hand)   # вдали от деки grip ничего не делает: бросать нельзя
 	assert_str(scene.held_in(scene.rig.right_hand)).is_equal(SLOT)
 	assert_bool(scene.held).is_true()
+	# но промах уходит в журнал: рука, шард, расстояние до деки (на очках правой рукой шард не уложили ни разу)
+	assert_int(misses.size()).is_equal(1)
+	assert_str(misses[0]["reason"]).is_equal("stow_far")
+	assert_str(misses[0]["hand"]).is_equal("right")
+	assert_float(float(misses[0]["d"])).is_greater(0.9)
+
+
+func test_shard_in_the_right_hand_shows_a_stow_hint_and_the_stow_reach_is_wider() -> void:
+	var scene := _scene()
+	scene.apply_node(_node_info([_shard(SLOT, 0)]))
+	assert_bool(_grab_with(scene, scene.rig.right_hand, SLOT)).is_true()
+	var m: Node3D = scene._pickups[SLOT]
+	assert_bool(m.get_node_or_null("StowHint") != null).override_failure_message("нет подсказки у шарда в правой руке").is_true()
+	# ближе нового STOW_REACH 0,3, но дальше старого 0,2: шард укладывается
+	scene.rig.right_hand.global_position = scene.world_ui.deck.global_position + Vector3(0.25, 0, 0)
+	assert_bool(scene.can_stow_from(scene.rig.right_hand)).is_true()
+	scene.on_grip(scene.rig.right_hand)
+	assert_bool(scene.held).is_false()
+
+
+func test_shard_taken_by_the_left_hand_has_no_stow_hint() -> void:
+	var scene := _scene()
+	scene.apply_node(_node_info([_shard(SLOT, 0)]))
+	var m: Node3D = scene._pickups[SLOT]
+	assert_bool(_grab_with(scene, scene.rig.left_hand, SLOT)).is_true()
+	assert_bool(m.get_node_or_null("StowHint") == null).is_true()  # левой сразу в деку: подсказка не нужна
 
 
 func test_right_hand_near_the_deck_stows_the_shard() -> void:

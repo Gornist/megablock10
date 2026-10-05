@@ -40,8 +40,9 @@ const VR_REACH := 0.5
 const FLAT_REACH := 3.0
 const STATS_PERIOD := 0.5
 const FLATLINE_FADE_SEC := 0.8
-## Шард в правой руке «втягивается» в деку, если рука ближе этого к центру деки на запястье (м); дека на запястье ~24 см длиной.
-const STOW_REACH := 0.2
+## Шард в правой руке «втягивается» в деку, если рука ближе этого к центру деки на запястье (м); дека на запястье ~24 см длиной. Было 0,2: на очках 05.10.2026
+## правой рукой шард так и не уложили (в журнале укладки не было ни разу), запас до 0,3; промахи пишутся в grab.miss reason=stow_far.
+const STOW_REACH := 0.3
 ## Шард летит в деку и сжимается, сек.
 const STOW_SEC := 0.3
 ## Рамка деки светится столько секунд после того, как шард втянулся.
@@ -462,6 +463,10 @@ func on_grip(hand: Node3D) -> void:
 	if _hand_of.has(hand):
 		if can_stow_from(hand):
 			stow(hand)
+		else:  # рука занята шардом, а дека далеко: ничего не происходит — в журнал расстояние до деки (подбор STOW_REACH)
+			grab_missed.emit({"hand": "left" if hand == rig.left_hand else "right", "id": held_in(hand), "reason": "stow_far",
+				"d": snappedf(hand.global_position.distance_to(world_ui.deck.global_position), 0.01),
+				"hand_pos": hand.global_position, "head_y": rig.camera.global_position.y, "target": world_ui.deck.global_position})
 		return
 	if not try_grab(hand.global_position, VR_REACH, hand):
 		_report_miss(hand)
@@ -531,6 +536,8 @@ func confirm_grab() -> void:
 	_held_ids[_pending_id] = true
 	_hand_of[holder] = _pending_id
 	held = true
+	if holder != rig.left_hand and not holder is Camera3D:
+		_add_stow_hint(m)   # правой рукой взяли, а шард ещё не в деке: без подсказки игрок не знает, что рука занята (прогон на очках 05.10.2026)
 	_pending_holder = null
 	_pending_id = ""
 	if holder == rig.left_hand:
@@ -774,6 +781,21 @@ func _set_tier_label(m: Node3D, tier: int, daemon: bool = false) -> void:
 		l.position = Vector3(0, 0.2, 0)
 		m.add_child(l)
 	l.text = ("ДЕМОН · ТИР %d" if daemon else "ТИР %d") % tier
+
+
+## Подсказка над шардом в правой руке: что с ним делать. Исчезает вместе с шардом (stow убирает модель целиком).
+func _add_stow_hint(m: Node3D) -> void:
+	if m.get_node_or_null("StowHint") != null:
+		return
+	var l := Label3D.new()
+	l.name = "StowHint"
+	l.text = "К ДЕКЕ → GRIP"
+	l.font_size = 40
+	l.pixel_size = 0.0012
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	l.modulate = Color(1.0, 0.95, 0.5)
+	l.position = Vector3(0, 0.12, 0)
+	m.add_child(l)
 
 
 ## Шард в закрытом хранилище: меньше и полупрозрачный (по меткам-мешам модели); открытый и тот, что в руке, — обычные.
