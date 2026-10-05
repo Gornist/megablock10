@@ -237,3 +237,10 @@ func test_pause_does_not_touch_the_fake_link() -> void:
 	proto.resume_phone()
 	assert_bool(proto.phone is FakePhoneLink).is_true()
 	assert_bool(_log(proto).contains("phone.pause")).is_false()
+
+
+func test_long_thread_id_is_shortened_for_the_log() -> void:
+	var key := "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAESjebZ4jiWwcsJ0HcajLBlnQlwhDJjDTy3jPh6J0EqJOfDx/7JYLzL/uw8+NA77OS8HFvqMKWh0h3LWhpep+BwA=="
+	assert_str(ProtoClient.short_thread(key)).is_equal("…ep+BwA==")
+	assert_str(ProtoClient.short_thread("dm:ВОБЛА")).is_equal("dm:ВОБЛА")
+	assert_str(ProtoClient.short_thread("faction")).is_equal("faction")

@@ -233,10 +233,10 @@ func _setup_phone(args: PackedStringArray) -> void:
 		if phone == null:
 			phone = FakePhoneLink.new(-1.0, true, true)   # сценарий идёт по кругу: очки надевают не сразу после запуска
 		scene.world_ui.set_phone(phone)
-		phone.message_received.connect(func(thread_id: String, _msg: Dictionary): log_file.log("phone.msg", {"thread": thread_id}))
+		phone.message_received.connect(func(thread_id: String, _msg: Dictionary): log_file.log("phone.msg", {"thread": short_thread(thread_id)}))
 		phone.call_changed.connect(func(st: Dictionary): log_file.log("phone.call", {"phase": st["phase"], "peer": st["peer"], "muted": st["muted"]}))
 		deck.tab_changed.connect(func(id: String): log_file.log("deck.tab", {"id": id}))
-		deck.reply_sent.connect(func(thread_id: String, text: String): log_file.log("phone.reply", {"thread": thread_id, "text": text}))
+		deck.reply_sent.connect(func(thread_id: String, text: String): log_file.log("phone.reply", {"thread": short_thread(thread_id), "text": text}))
 	if mode == PHONE_REMOTE:
 		log_file.log("phone", {"link": mode, "port": m["port"], "token": "set" if not str(m["token"]).is_empty() else "none", "tabs": deck.tab_ids().size()})
 	else:
@@ -250,6 +250,11 @@ func _wire_remote_phone(remote: RemotePhoneLink) -> void:
 	sounds.bind(remote)
 	remote.online_changed.connect(func(online: bool): log_file.log("phone.online", {"online": online, "callsign": remote.phone_callsign}))
 	remote.sound_requested.connect(func(kind: String): log_file.log("phone.sound", {"kind": kind}))
+
+
+## Идентификатор диалога для журнала: настоящий ЛС — публичный ключ в ~120 символов, режем до «…последние 8».
+static func short_thread(thread_id: String) -> String:
+	return thread_id if thread_id.length() <= 24 else "…" + thread_id.right(8)
 
 
 ## Очки сняли (пауза приложения): настоящая связь закрывает порт — телефон видит обрыв и сам играет звонки и сообщения, пока очки сняты.
