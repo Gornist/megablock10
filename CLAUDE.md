@@ -15,6 +15,23 @@
 | Сеть (`netrun/`, `netrun-bridge/`) | [docs/netrun.md](docs/netrun.md), [docs/netrun-devbox.md](docs/netrun-devbox.md), skill `netrun-loop`; протокол — [docs/netrun-bridge-protocol.md](docs/netrun-bridge-protocol.md) (58 КБ) по разделам |
 | Прошивка (`firmware/`) | [docs/displays.md](docs/displays.md), [docs/firmware-plan.md](docs/firmware-plan.md), [docs/sound-nodes.md](docs/sound-nodes.md) |
 
+## Зоны сессий
+
+Параллельно работают несколько сессий, у каждой своя зона записи. Чужую зону **читать можно, править нельзя**: нужна правка у соседа —
+описать её ему (SendMessage: файл, что и почему) или владельцу. Пересечение зон уже ломало CI (`git add -A` унёс чужую незаконченную работу).
+
+| Сессия | Пишет | Не трогает (чьё) |
+|---|---|---|
+| **Android App** | `app/`, `kit/`, `rules/`, `scripts/e2e/`, Android-документы | пакет `collector/` в приложении — только тесты (контракт с Коллектором) |
+| **Коллектор** | `admin-web/` — сервер и дашборд мастера, приём изменений, БД и миграции, auth, связь с Мостом со стороны коллектора | `admin-web/server/src/displays/`, `audio/`, `routes/audio.ts`, `scripts/display*.ts` и их тесты (Физические узлы) |
+| **Физические узлы** | `firmware/` (QR-дисплей, звук), в `admin-web/server/src/`: `displays/`, `audio/`, `routes/audio.ts`, `scripts/display*.ts` и их тесты; `.github/workflows/firmware.yml`; `docs/displays.md`, `firmware-plan.md`, `sound-nodes.md` | остальной `admin-web/` (Коллектор) |
+| **Godot** | `netrun/` — сервер мира, игра, дека, сеть и формат сообщений (`netrun/server/`, `netrun/shared/`), `netrun-bridge/`, `docs/netrun*.md` | ассеты и вид аватара (Blender) |
+| **Blender** | вид Сети: `netrun/assets/` (модели, `src/*.py`, шейдеры, превью, `ARCHITECTURE.md`, `STYLE.md`) и отрисовка тела и рук в `netrun/client/` (`*_view.gd`, `avatar_body.gd`, `head_*.gd`) | формат сообщений и сеть (`netrun/shared/`, `netrun/server/` — Godot): новые поля позы — предложить Godot-сессии |
+| **Pipeline manager** | общие правила и инструменты: `CLAUDE.md`, `.claude/` (хук, настройки, общие skills), общие `scripts/` (`check`, `verify`, `dbx`, `ci-wait`, `agent-worktree`, `session-stats`) | код областей |
+
+Общее для всех: `docs/progress.md` — каждая сессия правит только свой раздел; `.github/workflows/` своей области — можно, `main.yml` — через
+Pipeline manager. Работать в своей worktree (`scripts/agent-worktree.sh new <имя>`), добавлять файлы явными путями, в `main` — только владелец.
+
 ## Работа агента: время и токены
 
 Каждый прочитанный байт и каждая картинка остаются в контексте и оплачиваются на **каждом** следующем ходу — это главная статья расхода
