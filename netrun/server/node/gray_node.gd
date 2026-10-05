@@ -455,9 +455,16 @@ static func held_items(deck: Array, sessions: Dictionary, node: String, single_n
 			continue
 		if is_working_item(d, sessions[by]):
 			continue
+		# taken_at — узел, где предмет взяли (op.take_from_node). origin у оставленного в чужом узле предмета прежний (где создан), и по нему
+		# шард из узла B, взятый игроком, считался бы чужой добычей. Документы без taken_at (до этой правки) — по origin.
+		var taken_at := "" if data.get("taken_at") == null else str(data["taken_at"])  # null после leave_in_node: str(null) — "<null>"
 		var origin := str(data.get("origin", ""))
-		if origin.begins_with("node:") and not single_node and origin != "node:" + node:
-			continue
+		if not single_node:
+			if taken_at != "":
+				if taken_at != node:
+					continue
+			elif origin.begins_with("node:") and origin != "node:" + node:
+				continue
 		out.append({"item": str(d["id"]), "by": by})
 	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["item"] < b["item"])
 	return out

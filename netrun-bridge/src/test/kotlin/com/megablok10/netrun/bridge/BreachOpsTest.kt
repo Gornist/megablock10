@@ -448,6 +448,10 @@ class BreachOpsTest {
         val mine = f.ops.takeFromNode(f.world, "take:$a:v_sh1", a, "node_07", "v_sh1")
         assertTrue(mine.body.toString(), mine.ok)
         assertEquals("deck:$a", f.owner("v_sh1"))
+        // узел взятия пишется: по нему сервер мира после рестарта узнаёт свою добычу (origin у оставленного в чужом узле — прежний)
+        assertEquals("node_07", VJ.str(f.store.get("item", "v_sh1")!!.data, "taken_at"))
+        assertTrue(f.ops.leaveInNode(f.world, "leave:$a:v_sh1", a, "node_07", "v_sh1").ok)
+        assertNull(VJ.str(f.store.get("item", "v_sh1")!!.data, "taken_at"))
         // чужой, не открытый ничьим взломом предмет — берётся, как раньше
         assertTrue(f.ops.takeFromNode(f.world, "take:$b:v_sh3", b, "node_07", "v_sh3").ok)
     }

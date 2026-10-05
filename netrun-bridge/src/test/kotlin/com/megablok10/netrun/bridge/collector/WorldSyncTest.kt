@@ -138,12 +138,15 @@ class WorldSyncTest {
         collector.capabilities = """{"world_records":0}"""
         collector.capabilityGets.set(0)
         await("ещё проверки при world_records=0") { collector.capabilityGets.get() >= 2 }
-        collector.capabilities = """{"world_records":2}""" // формат новее нашего: тоже не шлём
+        collector.capabilities = """{"world_records":1}""" // коллектор до NET_BREACH: новой причины не знает, очередь не шлём
         collector.capabilityGets.set(0)
-        await("ещё проверки при world_records=2") { collector.capabilityGets.get() >= 2 }
+        await("ещё проверки при world_records=1") { collector.capabilityGets.get() >= 2 }
+        collector.capabilities = """{"world_records":3}""" // формат новее нашего: тоже не шлём
+        collector.capabilityGets.set(0)
+        await("ещё проверки при world_records=3") { collector.capabilityGets.get() >= 2 }
         assertEquals(0, collector.changePosts.get())
         assertEquals(expected.size, queued(w)) // записи целы, ничего не потеряно
-        collector.capabilities = """{"world_records":1}"""
+        collector.capabilities = """{"world_records":2}"""
         await("после объявления возможностей") { collector.stored.size == expected.size && queued(w) == 0 }
         assertTrue(log.has("world.capabilities"))
     }

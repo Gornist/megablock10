@@ -185,6 +185,21 @@ func test_held_items_follow_session_loaded_not_origin() -> void:
 	assert_array(GrayNode.held_items(deck, sessions, "node_07", true).map(func(h): return h["item"])).is_equal(["it_dead", "it_here", "it_master", "it_other_node"])
 
 
+func test_held_items_prefer_taken_at_over_origin() -> void:
+	var sessions := {S1: {"loaded": [], "runner": ALICE}}
+	var deck: Array = [
+		# шард создан в g_a, оставлен в g_c и взят там: origin чужой, взяли здесь — это добыча g_c
+		{"type": "item", "id": "it_moved", "data": {"owner": "deck:" + S1, "kind": "SHARD", "origin": "node:g_a", "taken_at": "g_c"}},
+		# создан в g_c, но взят в g_a и принесён сюда: добыча g_a
+		{"type": "item", "id": "it_away", "data": {"owner": "deck:" + S1, "kind": "SHARD", "origin": "node:g_c", "taken_at": "g_a"}},
+		# после leave_in_node поле null (в JSON Моста) — решает origin, как у документов до taken_at
+		{"type": "item", "id": "it_null", "data": {"owner": "deck:" + S1, "kind": "SHARD", "origin": "node:g_c", "taken_at": null}},
+	]
+	assert_array(GrayNode.held_items(deck, sessions, "g_c", false).map(func(h): return h["item"])).is_equal(["it_moved", "it_null"])
+	# одиночный узел без графа: берём всё
+	assert_int(GrayNode.held_items(deck, sessions, "node_07", true).size()).is_equal(3)
+
+
 func test_restart_keeps_the_held_daemon_and_master_shard_with_the_player() -> void:
 	var gc := _world.node_of("g_c")
 	var pk0 := GrayNode.shard_id("g_c", 0)

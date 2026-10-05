@@ -58,6 +58,7 @@ export const REASON_LABEL_RU: Record<string, string> = {
   NET_FLATLINE: "Сеть: флэтлайн",
   NET_ITEM_OWNER: "Сеть: предмет сменил владельца",
   NET_ALERT: "Сеть: тревога аудитора",
+  NET_BREACH: "Сеть: взлом хранилища",
 };
 
 function parse<T>(raw: string | null): T | null {
@@ -224,7 +225,20 @@ const formatNetRun: Formatter = ({ row, done }) => {
 const formatNetItem: Formatter = ({ row, done }) => {
   const p = parse<{ kind?: string; from?: string; to?: string; op?: string }>(row.new_value);
   const what = [NET_ITEM_RU[p?.kind ?? ""] ?? "предмет", row.source_ref].filter(Boolean).join(" ");
-  return done("net", `${what}: ${netOwnerRu(p?.from)} → ${netOwnerRu(p?.to)}`);
+  const give = p?.op === "give_item" ? " (передача из Сети)" : "";
+  return done("net", `${what}: ${netOwnerRu(p?.from)} → ${netOwnerRu(p?.to)}${give}`);
+};
+
+const NET_BREACH_OUTCOME_RU: Record<string, string> = { SUCCESS: "успех", PARTIAL: "частично", FAIL: "провал" };
+const NET_TIER_RU: Record<string, string> = { BASE: "базовый", HARD: "сложный", NIGHTMARE: "кошмар" };
+
+/** Взлом хранилища в Сети (NET_BREACH, docs/netrun-world-records.md §2.7): «позывной, узел, тир, исход, эдди». */
+const formatNetBreach: Formatter = ({ row, done }) => {
+  const p = parse<{ callsign?: string; node?: string; tier?: string; outcome?: string; eddies?: number }>(row.new_value);
+  const outcome = NET_BREACH_OUTCOME_RU[p?.outcome ?? ""] ?? p?.outcome ?? "исход неизвестен";
+  const tier = NET_TIER_RU[p?.tier ?? ""] ?? p?.tier;
+  const parts = [p?.node ? `узел ${p.node}` : null, tier ? `тир: ${tier}` : null, outcome, p?.eddies ? `эдди: ${p.eddies}` : null].filter(Boolean);
+  return done("net", `Взлом хранилища: ${netWho(p)}, ${parts.join(", ")}`);
 };
 
 const formatNetAlert: Formatter = ({ row, done }) => {
@@ -250,6 +264,7 @@ const FORMATTERS: Record<string, Formatter> = {
   "net.run": formatNetRun,
   "net.item": formatNetItem,
   "net.alert": formatNetAlert,
+  "net.breach": formatNetBreach,
 };
 
 export function humanizeChange(row: ChangeRowLike, ctx: HumanizeContext): HumanChange {
