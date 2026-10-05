@@ -6,7 +6,9 @@ extends Node
 ## Деку на руке дополняют вкладки ЧАТ и ЗВОНКИ (фиктивная связь с телефоном): `phone link=fake|off tabs=N` при старте, `phone.msg thread=…`,
 ## `phone.call phase=…`, `phone.reply thread=… text=…`, `deck.tab id=…`; в строке `perf` — `deck_redraws=N` (сколько раз дека рисовалась в текстуру).
 ## Аргументы разработки: `--walk` (плоская сборка: ходьба WASD), `--turn=none|snap|smooth` (режим поворота поверх comfort.cfg),
-## `--phone=off` (спрятать вкладки ЧАТ и ЗВОНКИ: остаётся одна ДЕКА; по умолчанию вкладки есть, данные для них — фиктивный сценарий).
+## `--phone=off` (спрятать вкладки ЧАТ и ЗВОНКИ: остаётся одна ДЕКА; по умолчанию вкладки есть, данные для них — фиктивный сценарий),
+## `--phone=remote [--phone-port=7420] [--phone-token=…]` (настоящий телефон; то же в netrun.cfg, секция [phone]: mode, port, token; аргументы сильнее файла;
+## порт не поднялся — `phone.warn` и фиктивная связь; в журнал: `phone link=remote port=… token=set|none`, `phone.online online=… callsign=…`, `phone.sound kind=…`).
 ## Адрес сервера и токен — из netrun.cfg на очках и аргументов (NetConfig.from_sources); сам токен в журнал не попадает.
 
 const SLOW_LOG_MIN_GAP_MS := 250  # долгие кадры (FrameStats.is_slow) в журнал — не чаще раза в 250 мс (остальные — счётчиком)
@@ -21,12 +23,16 @@ var net: NetClient
 var trace_audio: TraceAudio
 ## Настройки комфорта (user://comfort.cfg + аргументы), применённые к ригу.
 var comfort: ComfortConfig
-## Связь деки с телефоном (пока фиктивная); null при `--phone=off`.
+## Связь деки с телефоном (FakePhoneLink или RemotePhoneLink); null при `--phone=off`.
 var phone: PhoneLink
 
-## Режимы связи с телефоном: `--phone=` (fake — по умолчанию, off — без вкладок ЧАТ и ЗВОНКИ).
+## Режимы связи с телефоном: `--phone=` (fake — по умолчанию, off — без вкладок ЧАТ и ЗВОНКИ, remote — настоящий телефон).
 const PHONE_FAKE := "fake"
 const PHONE_OFF := "off"
+## remote — настоящая связь с телефоном (RemotePhoneLink: очки слушают порт, телефон подключается).
+const PHONE_REMOTE := "remote"
+## Секция файла netrun.cfg с настройками связи: mode, port, token.
+const PHONE_FILE_SECTION := "phone"
 
 const POS_PERIOD := 0.05  # 20 раз/с: чужие клиенты видят нас со сглаживанием по буферу
 ## Потеряв связь, клиент возвращается сам: попытка раз в 2 с, не дольше ~2 минут (сервер держит аватар 20 с, дальше — новый забег).
@@ -47,7 +53,7 @@ var _last_slow_log_ms := -SLOW_LOG_MIN_GAP_MS
 
 func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	log_file.open()
-	log_file.log("start", {"mode": mode, "godot": Engine.get_version_info().string, "args": NetConfig.redact_args(args), "log": log_file.path})
+	log_file.log("start", {"mode": mode, "godot": Engine.get_version_info().string, "args": redact_args(args), "log": log_file.path})
 	scene = preload("res://client/rig_test_scene.gd").new()
 	add_child(scene)
 	scene.rig.xr_failed.connect(func(reason: String): log_file.log("xr", {"enabled": false, "reason": reason}))
@@ -140,41 +146,115 @@ func _setup_comfort(args: PackedStringArray) -> void:
 	log_file.log("comfort", fields)
 
 
-## Режим связи с телефоном из аргументов: {mode: PHONE_FAKE | PHONE_OFF, warning: String}. Без аргумента — fake; неизвестное значение —
-## fake с предупреждением (не молчим и не падаем).
-static func phone_mode(args: PackedStringArray) -> Dictionary:
-	var mode := PHONE_FAKE
-	var warning := ""
+## Режим связи с телефоном: аргументы и секция [phone] файла netrun.cfg (аргументы сильнее файла) -> {mode, port, token, warning}.
+## Без настроек — fake; неизвестный режим — fake с предупреждением (не молчим и не падаем). Токен нужен только remote и может быть пустым.
+## `cfg` — значения секции [phone] ({mode, port, token}, что нашлось): их читает [method phone_file_values].
+static func phone_mode(args: PackedStringArray, cfg: Dictionary = {}) -> Dictionary:
+	var m := {"mode": PHONE_FAKE, "port": RemotePhoneLink.DEFAULT_PORT, "token": "", "warning": ""}
+	if cfg.has("mode"):
+		_phone_apply_mode(m, str(cfg["mode"]), "netrun.cfg [phone] mode")
+	if cfg.has("port"):
+		_phone_apply_port(m, str(cfg["port"]), "netrun.cfg [phone] port")
+	if cfg.has("token"):
+		m["token"] = str(cfg["token"])
 	for a in args:
 		if a.begins_with("--phone="):
-			var v := a.trim_prefix("--phone=")
-			if v == PHONE_OFF:
-				mode = PHONE_OFF
-			elif v == PHONE_FAKE:
-				mode = PHONE_FAKE
-			else:
-				mode = PHONE_FAKE
-				warning = "--phone=: допустимо fake или off, получено «%s»" % v
-	return {"mode": mode, "warning": warning}
+			_phone_apply_mode(m, a.trim_prefix("--phone="), "--phone=")
+		elif a.begins_with("--phone-port="):
+			_phone_apply_port(m, a.trim_prefix("--phone-port="), "--phone-port=")
+		elif a.begins_with("--phone-token="):
+			m["token"] = a.trim_prefix("--phone-token=")
+	return m
 
 
-## Вкладки ЧАТ и ЗВОНКИ деки: связь с телефоном (пока фиктивный сценарий) и строки в журнал. `--phone=off` — вкладок нет.
+static func _phone_apply_mode(m: Dictionary, v: String, source: String) -> void:
+	if v == PHONE_OFF or v == PHONE_FAKE or v == PHONE_REMOTE:
+		m["mode"] = v
+	else:
+		m["mode"] = PHONE_FAKE
+		_phone_warn(m, "%s: допустимо fake, off или remote, получено «%s»" % [source, v])
+
+
+static func _phone_apply_port(m: Dictionary, v: String, source: String) -> void:
+	if v.is_valid_int() and int(v) >= 1 and int(v) <= 65535:
+		m["port"] = int(v)
+	else:
+		_phone_warn(m, "%s: нужен порт 1…65535, получено «%s» — оставлен %d" % [source, v, m["port"]])
+
+
+static func _phone_warn(m: Dictionary, text: String) -> void:
+	m["warning"] = text if str(m["warning"]).is_empty() else "%s; %s" % [m["warning"], text]
+
+
+## Секция [phone] первого читаемого netrun.cfg из paths (как у NetConfig.from_sources): {mode, port, token} — только найденные ключи.
+static func phone_file_values(paths: PackedStringArray) -> Dictionary:
+	for p in paths:
+		if not FileAccess.file_exists(p):
+			continue
+		var cf := ConfigFile.new()
+		if cf.load(p) != OK:
+			continue
+		var out := {}
+		for key in ["mode", "port", "token"]:
+			if cf.has_section_key(PHONE_FILE_SECTION, key):
+				out[key] = cf.get_value(PHONE_FILE_SECTION, key)
+		return out
+	return {}
+
+
+## Аргументы для журнала: NetConfig.redact_args плюс значение `--phone-token=`.
+static func redact_args(args: PackedStringArray) -> String:
+	var out := PackedStringArray()
+	for a in args:
+		out.append("--phone-token=" + NetConfig.REDACTED if a.begins_with("--phone-token=") else a)
+	return NetConfig.redact_args(out)
+
+
+## Вкладки ЧАТ и ЗВОНКИ деки: связь с телефоном (fake — сценарий по таймеру, remote — настоящий телефон) и строки в журнал. `--phone=off` — вкладок нет.
 func _setup_phone(args: PackedStringArray) -> void:
-	var m := phone_mode(args)
+	var m := phone_mode(args, phone_file_values(config_paths))
 	if not str(m["warning"]).is_empty():
 		log_file.log("phone.warn", {"msg": m["warning"]})
 	var deck: DeckPanel = scene.world_ui.deck
-	if m["mode"] == PHONE_OFF:
+	var mode: String = m["mode"]
+	if mode == PHONE_REMOTE:
+		var remote := RemotePhoneLink.new()
+		var err := remote.start(int(m["port"]), str(m["token"]))
+		if err == OK:
+			phone = remote
+			_wire_remote_phone(remote)
+		else:
+			log_file.log("phone.warn", {"msg": "связь с телефоном не поднялась (порт %d: %s), показываю фиктивную" % [m["port"], error_string(err)]})
+			mode = PHONE_FAKE
+	if mode == PHONE_OFF:
 		phone = null
 		scene.world_ui.set_phone(null)
 	else:
-		phone = FakePhoneLink.new(-1.0, true, true)   # сценарий идёт по кругу: очки надевают не сразу после запуска
+		if phone == null:
+			phone = FakePhoneLink.new(-1.0, true, true)   # сценарий идёт по кругу: очки надевают не сразу после запуска
 		scene.world_ui.set_phone(phone)
 		phone.message_received.connect(func(thread_id: String, _msg: Dictionary): log_file.log("phone.msg", {"thread": thread_id}))
 		phone.call_changed.connect(func(st: Dictionary): log_file.log("phone.call", {"phase": st["phase"], "peer": st["peer"], "muted": st["muted"]}))
 		deck.tab_changed.connect(func(id: String): log_file.log("deck.tab", {"id": id}))
 		deck.reply_sent.connect(func(thread_id: String, text: String): log_file.log("phone.reply", {"thread": thread_id, "text": text}))
-	log_file.log("phone", {"link": m["mode"], "tabs": deck.tab_ids().size()})
+	if mode == PHONE_REMOTE:
+		log_file.log("phone", {"link": mode, "port": m["port"], "token": "set" if not str(m["token"]).is_empty() else "none", "tabs": deck.tab_ids().size()})
+	else:
+		log_file.log("phone", {"link": mode, "tabs": deck.tab_ids().size()})
+
+
+## Настоящая связь: звуки телефона (PhoneSounds) и журнал событий связи. Сам токен в журнал не пишем.
+func _wire_remote_phone(remote: RemotePhoneLink) -> void:
+	var sounds := PhoneSounds.new()
+	add_child(sounds)
+	sounds.bind(remote)
+	remote.online_changed.connect(func(online: bool): log_file.log("phone.online", {"online": online, "callsign": remote.phone_callsign}))
+	remote.sound_requested.connect(func(kind: String): log_file.log("phone.sound", {"kind": kind}))
+
+
+func _exit_tree() -> void:
+	if phone is RemotePhoneLink:
+		(phone as RemotePhoneLink).stop()
 
 
 func _fmt_xz(p: Vector3) -> String:
