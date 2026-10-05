@@ -36,9 +36,9 @@
 | `models/env/far_floor.glb` | 684 / 1100 | 129 / 700 | 236 / 260 | 1 | 4 | 10.84 × 2.9774 × 10.8 | points, shell_soft, solid_dark, streaks | — | surface | ок |
 | `models/env/far_floor_b.glb` | 864 / 1100 | 123 / 700 | 232 / 260 | 1 | 4 | 10.84 × 2.9747 × 10.8 | points, shell_soft, solid_dark, streaks | — | surface | ок |
 | `models/env/far_floor_c.glb` | 720 / 1100 | 114 / 700 | 233 / 260 | 1 | 4 | 10.84 × 2.9762 × 10.8 | points, shell_soft, solid_dark, streaks | — | surface | ок |
-| `models/env/floor.glb` | 180 / 300 | 35 / 170 | 143 / 200 | 1 | 4 | 1.782 × 0.95 × 1.75 | points, shell_soft, solid_dark, streaks | — | surface | ок |
-| `models/env/floor_b.glb` | 72 / 300 | 36 / 170 | 91 / 200 | 1 | 4 | 1.782 × 0.95 × 1.75 | points, shell_soft, solid_dark, streaks | — | surface | ок |
-| `models/env/floor_c.glb` | 108 / 300 | 36 / 170 | 117 / 200 | 1 | 4 | 1.782 × 0.9496 × 1.75 | points, shell_soft, solid_dark, streaks | — | surface | ок |
+| `models/env/floor.glb` | 252 / 450 | 26 / 170 | 177 / 200 | 1 | 4 | 1.782 × 0.95 × 1.75 | points, shell_soft, solid_dark, streaks | — | surface | ок |
+| `models/env/floor_b.glb` | 180 / 450 | 27 / 170 | 181 / 200 | 1 | 4 | 1.782 × 0.95 × 1.75 | points, shell_soft, solid_dark, streaks | — | surface | ок |
+| `models/env/floor_c.glb` | 216 / 450 | 26 / 170 | 180 / 200 | 1 | 4 | 1.782 × 0.95 × 1.75 | points, shell_soft, solid_dark, streaks | — | surface | ок |
 | `models/env/floor_clear.glb` | 0 / 300 | 58 / 170 | 0 / 200 | 0 | 1 | 1.782 × 0.1032 × 1.75 | points | — | surface | ок |
 | `models/props/hack_pad.glb` | 36 / 120 | 128 / 160 | 29 / 40 | 1 | 5 | 0.9259 × 0.28 × 0.9 | points, shell_soft, solid_dark, streaks | — | floor | ок |
 | `models/props/hack_panel.glb` | 62 / 300 | 50 / 120 | 11 / 20 | 0 | 5 | 0.5175 × 1.2986 × 0.34 | points, solid_dark, streaks | — | floor | ок |
