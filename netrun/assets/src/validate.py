@@ -61,17 +61,19 @@ def check(rep):
     if rep["origin"] == "center" and any(abs(m) > tol for m in mid):
         bad.append(f"origin не в центре: центр={[round(m, 3) for m in mid]}, допуск {tol:.3f}")
     # «surface» — поверхность пола: геометрия может уходить вниз (штрихи под тайлами), но не глубже 1 м; центр по XZ как у модуля
+    # дальние пласты (far_*) глубже: плиты-«ямы» до −2,6 м и штрихи до −3 м (решение владельца); в комнате глубина по-прежнему 1 м
+    depth = 3.0 if rep["name"].startswith("far_") else 1.0
     if rep["origin"] == "surface":
-        if lo[1] < -1.0 or hi[1] < -0.01:
-            bad.append(f"origin «surface»: min.y={lo[1]:.2f} (глубже 1 м) или всё под полом, max.y={hi[1]:.2f}")
+        if lo[1] < -depth or hi[1] < -0.01:
+            bad.append(f"origin «surface»: min.y={lo[1]:.2f} (глубже {depth:g} м) или всё под полом, max.y={hi[1]:.2f}")
         if hi[1] > 0.04:  # 4 см — размер точки на полу; выше — выступ над поверхностью, это коллизии
             bad.append(f"origin «surface»: геометрия выше поверхности пола, max.y={hi[1]:.3f} (допуск 0.04, только точки)")
         if abs(mid[0]) > 0.05 or abs(mid[2]) > 0.05:
             bad.append(f"origin не в центре плитки: центр xz=({mid[0]:.3f},{mid[2]:.3f})")
     # «ceiling» — потолок, зеркало «surface»: origin на плоскости потолка, геометрия уходит вверх (до 1 м) и не выступает вниз в комнату
     if rep["origin"] == "ceiling":
-        if hi[1] > 1.0 or lo[1] > 0.01:
-            bad.append(f"origin «ceiling»: max.y={hi[1]:.2f} (выше 1 м) или всё над плоскостью, min.y={lo[1]:.3f}")
+        if hi[1] > depth or lo[1] > 0.01:
+            bad.append(f"origin «ceiling»: max.y={hi[1]:.2f} (выше {depth:g} м) или всё над плоскостью, min.y={lo[1]:.3f}")
         if lo[1] < -0.04:  # 4 см — размер точки; ниже — выступ в комнату, это коллизии
             bad.append(f"origin «ceiling»: геометрия ниже плоскости потолка, min.y={lo[1]:.3f} (допуск −0.04, только точки)")
         if abs(mid[0]) > 0.05 or abs(mid[2]) > 0.05:

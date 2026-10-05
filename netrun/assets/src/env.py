@@ -148,11 +148,15 @@ def build_doorway(out, name="doorway", seed=8):
     return lib.export(name, "env", objs, out, budget_tris=300, budget_points=40, budget_streaks=80, origin="floor")
 
 
-def _tile_bm(cx, cyy, hh, sg):
-    """Чёрный тайл 0,42×0,42×0,3 м: поверхность, обращённая в комнату, на высоте sg·hh. У неё сделана рамка шириной 1,4 см (inset), а боковые грани
-    разрезаны на 1,4 см ниже поверхности: так подсвечивается сам верхний край тайла. Метка света — цвет вершины (см. _tile_rgb, шейдер solid_dark)."""
-    bm = lib.box_bm((0.42, 0.42, 0.3), center=(cx, cyy, sg * (hh - 0.15)))
+SLAB_T = 0.03  # толщина плиты, м: равна полной ширине штриха (решение владельца) — тонкий чёрный лист, а не колонна
+
+
+def _slab_bm(cx, cyy, hx, hy, hh, sg):
+    """Тонкая чёрная плита 2hx × 2hy × 0,03 м: верхняя (обращённая в комнату) поверхность на высоте sg·hh. У неё рамка шириной 1,4 см (inset),
+    боковые грани разрезаны на 1,4 см ниже поверхности: подсвечивается только верхний край. Метка света — цвет вершины (см. _slab_rgb, шейдер solid_dark).
+    Свет живёт не в боковых гранях (их почти нет: 3 см), а в штрихах, свисающих от кромок."""
     zf = sg * hh
+    bm = lib.box_bm((2 * hx, 2 * hy, SLAB_T), center=(cx, cyy, zf - sg * SLAB_T / 2))
     bmesh.ops.bisect_plane(bm, geom=list(bm.verts) + list(bm.edges) + list(bm.faces), plane_co=(0, 0, zf - sg * 0.014), plane_no=(0, 0, 1))
     bm.normal_update()
     top = [f for f in bm.faces if f.normal.z * sg > 0.9 and abs(f.calc_center_median().z - zf) < 1e-4]
@@ -160,93 +164,158 @@ def _tile_bm(cx, cyy, hh, sg):
     return bm
 
 
-def _tile_rgb(infos, glow, dark):
-    """Цвет вершины тайла: glow на внешнем контуре поверхности (светится), чёрный везде ниже и внутри рамки. infos — [(cx, cyy, zf)]."""
+def _slab_rgb(infos, glow, dark):
+    """Цвет вершины плиты: glow на внешнем контуре верхней поверхности (светится), чёрный везде ниже и внутри рамки. infos — [(cx, cyy, hx, hy, zf)]."""
     def fn(co):
-        for cx, cyy, zf in infos:
-            if abs(co.z - zf) < 1e-4 and abs(abs(co.x - cx) - 0.21) < 1e-4 and abs(abs(co.y - cyy) - 0.21) < 1e-4:
+        for cx, cyy, hx, hy, zf in infos:
+            if abs(co.z - zf) < 1e-4 and abs(abs(co.x - cx) - hx) < 1e-4 and abs(abs(co.y - cyy) - hy) < 1e-4:
                 return glow
         return dark
     return fn
 
 
-def build_floor(out, name="floor", seed=2, ceiling=False, n_tiles=5):
-    """Плитка пола (или потолка при ceiling=True) 2×2 м: ~22% площади занимают чёрные непрозрачные тайлы-блоки (5 из 16 ячеек,
-    расстановка зависит от seed: три варианта на пол и три на потолок, чтобы узор не повторялся). Верх тайла чёрный, точек по граням нет (убрано по решению владельца). Пол: верх тайла НЕ ВЫШЕ поверхности пола (0…−0,45 м), штрихи висят вниз из рёбер, точки на полу чуть ниже поверхности.
-    Потолок — то же, инвертированное (знак высоты меняется): низ тайла НЕ НИЖЕ плоскости потолка (0…+0,45 м), штрихи растут вверх из
-    рёбер, точки чуть выше плоскости; ничего не выступает в комнату, коллизий нет. Origin на поверхности в центре."""
+def _place_slabs(rng, kinds, area, bound, gap, max_n=60):
+    """Расставить плиты разного размера без пересечений. kinds — [(вес, (wmin, wmax), (dmin, dmax))]; первая плита берётся из двух крупнейших видов
+    (рядом с крупными всегда есть мелкие, как в референсе), дальше по весам, пока суммарная площадь не дойдёт до area. Центры в пределах ±bound
+    с учётом размера, зазор между плитами gap. Возвращает [(cx, cy, hx, hy)]; квадраты и вытянутые, ориентация по x или по y случайна."""
+    rects, got = [], 0.0
+    for attempt in range(900):
+        if got >= area * 0.93 or len(rects) >= max_n:
+            break
+        if not rects:
+            k = rng.choice(kinds[:2])
+        else:
+            k = rng.choices(kinds, weights=[x[0] for x in kinds])[0]
+        w, d = rng.uniform(*k[1]), rng.uniform(*k[2])
+        if rng.random() < 0.5:
+            w, d = d, w
+        if got + w * d > area * 1.12:
+            continue
+        if w / 2 > bound or d / 2 > bound:
+            continue
+        cx, cyy = rng.uniform(-bound + w / 2, bound - w / 2), rng.uniform(-bound + d / 2, bound - d / 2)
+        if any(abs(cx - x) < (w + 2 * hx) / 2 + gap and abs(cyy - y) < (d + 2 * hy) / 2 + gap for x, y, hx, hy in rects):
+            continue
+        rects.append((cx, cyy, w / 2, d / 2))
+        got += w * d
+    return rects
+
+
+def _slab_streaks(rng, cx, cyy, hx, hy, hh, sg, pitch, base, ln_max, wmin, wmax, amin, p_gap=0.1):
+    """Штрихи вдоль всех 4 кромок плиты, свисают вниз от её нижней грани (у потолка вверх). Шаг ≈ pitch, пропуски p_gap, длина плывёт плавной
+    волной вдоль кромки (base·0,4…1,0, ещё ×0,5…1,0 шумом) и шумом, не длиннее ln_max (глубина не больше допустимой для модуля)."""
+    out, ph = [], rng.uniform(0, 6.28)
+    for side in range(4):
+        horiz = side % 2 == 0  # кромки вдоль x: y = cy ± hy; вдоль y: x = cx ± hx
+        length = 2 * hx if horiz else 2 * hy
+        n = max(1, round(length / pitch))
+        for q in range(n):
+            if rng.random() < p_gap:
+                continue
+            t = (q + 0.5 + rng.uniform(-0.3, 0.3)) / n - 0.5
+            if side == 0:
+                ex, ey = cx + t * length, cyy - hy
+            elif side == 1:
+                ex, ey = cx + hx, cyy + t * length
+            elif side == 2:
+                ex, ey = cx + t * length, cyy + hy
+            else:
+                ex, ey = cx - hx, cyy + t * length
+            wave = 0.5 + 0.5 * math.sin(q * 1.3 + side * 1.9 + ph)
+            ln = min(base * (0.4 + 0.6 * wave) * rng.uniform(0.5, 1.0), ln_max)
+            if ln < 0.05:
+                continue
+            out.append((Vector((ex, ey, sg * (hh - SLAB_T - ln / 2))), rng.uniform(wmin, wmax), ln / 2, rng.uniform(amin, 1.0)))
+    return out
+
+
+def _slab_dots(rng, size, step, covered, margin, sg, forced=()):
+    """Точки пола: шаг постоянный, ~15% пропущено, высота слегка разная (не выше поверхности); под плитами (с запасом margin) точек нет."""
+    steps = int(size / step + 1e-9)
+    pts = []
+    for i in range(steps):
+        for j in range(steps):
+            x, y = -size / 2 + step / 2 + i * step, -size / 2 + step / 2 + j * step
+            if (x, y) in forced:
+                pts.append(Vector((x, y, sg * -rng.uniform(0.016, 0.09))))
+                continue
+            if rng.random() < 0.15 or any(abs(x - cx) < hx + margin and abs(y - cyy) < hy + margin for cx, cyy, hx, hy in covered):
+                continue
+            pts.append(Vector((x, y, sg * -rng.uniform(0.016, 0.09))))
+    return pts
+
+
+# Виды плит: (вес, (мин, макс) по одной стороне, (мин, макс) по другой), метры.
+ROOM_KINDS = [(0.14, (1.3, 1.68), (0.3, 0.5)), (0.26, (0.8, 1.2), (0.5, 0.8)), (0.34, (0.4, 0.65), (0.35, 0.6)), (0.26, (0.22, 0.4), (0.22, 0.4))]
+FAR_KINDS = [(0.16, (3.0, 4.6), (2.0, 3.2)), (0.28, (1.6, 3.0), (1.0, 2.0)), (0.3, (0.7, 1.3), (0.5, 1.0)), (0.26, (0.3, 0.6), (0.3, 0.6))]
+
+
+def build_floor(out, name="floor", seed=2, ceiling=False, cover=0.22):
+    """Плитка пола (или потолка при ceiling=True) 2×2 м: ~22% площади занимают тонкие (3 см) чёрные непрозрачные плиты РАЗНОГО размера — от
+    вытянутых 1,6×0,4 м и крупных ~1×0,7 до мелких 0,25–0,4 м (расстановка зависит от seed: три варианта на пол и три на потолок, чтобы узор
+    не повторялся). Боковых стенок нет: свет — штрихи, свисающие от всех четырёх кромок (шаг ≈ 5 см, пропуски 10%, длина до 0,9 м плывёт волной).
+    Верх плиты чёрный, контур верха светится слабее штрихов. Пол: верх плиты НЕ ВЫШЕ поверхности пола (0…−0,45 м), штрихи висят вниз,
+    точки на полу чуть ниже поверхности. Потолок — то же, инвертированное: плита не ниже плоскости потолка (0…+0,45 м), штрихи растут вверх.
+    Ничего не выступает в комнату, коллизий нет. cover = 0: чистая площадка без плит (под хранилище). Origin на поверхности в центре."""
     lib.reset()
     rng = random.Random(seed)
     cy = lib.lin("cyan")
     sg = -1.0 if ceiling else 1.0  # знак по высоте: пол смотрит вниз от поверхности, потолок вверх
-    chosen = rng.sample([(i, j) for i in range(4) for j in range(4)], n_tiles)  # n_tiles = 0: чистая площадка без тайлов (под хранилище)
-    tiles, streaks, covered, infos = [], [], [], []
-    for i, j in chosen:
-        cx, cyy = -0.75 + i * 0.5, -0.75 + j * 0.5
-        hh = 0.0 if rng.random() < 0.3 else -rng.uniform(0.05, 0.45)  # поверхность тайла на разной высоте, но не в сторону комнаты
-        covered.append((cx, cyy))
-        tiles.append(_tile_bm(cx, cyy, hh, sg))
-        infos.append((cx, cyy, sg * hh))
-        # занавес на боковых гранях тайла («дождь» по стенке обрыва, как в референсе): по 10 штрихов на грань вдоль ребра, ~10% пропусков,
-        # длина плывёт плавной волной (до 0,95 м), ширина 2,2–3,4 см, яркость 0,65–1,0 (у стен 0,2–1,0): боковые грани должны светиться сильнее контура верха;
-        # у пола вниз от ребра, у потолка вверх. Дыхание, бусины и мерцание дают те же параметры шейдера, что у стен.
+    rects = _place_slabs(rng, ROOM_KINDS, cover * 4.0, 0.84, 0.12) if cover > 0 else []  # края плит ≤ 0,84: угловые точки (±0,875) вне плит, габарит симметричен
+    tiles, streaks, infos, covered = [], [], [], []
+    perim = sum(4 * (hx + hy) for _, _, hx, hy in rects)
+    pitch = max(0.05, perim * 0.9 / 175)  # бюджет 200 штрихов на модуль: при длинном периметре шаг растёт
+    for cx, cyy, hx, hy in rects:
+        hh = 0.0 if rng.random() < 0.3 else -rng.uniform(0.05, 0.45)  # плита на разной высоте, но не в сторону комнаты
+        tiles.append(_slab_bm(cx, cyy, hx, hy, hh, sg))
+        infos.append((cx, cyy, hx, hy, sg * hh))
+        covered.append((cx, cyy, hx, hy))
         # Вглубь штрих не уходит ниже −0,95 м от плоскости.
-        base = rng.uniform(0.6, 0.95)
-        ph = rng.uniform(0, 6.28)
-        for side in range(4):
-            for q in range(10):
-                if rng.random() < 0.1:
-                    continue
-                t = -0.2 + 0.4 * (q + 0.5) / 10
-                ex, ey = [(cx + t, cyy - 0.21), (cx + 0.21, cyy + t), (cx + t, cyy + 0.21), (cx - 0.21, cyy + t)][side]
-                ln = base * (0.55 + 0.45 * (0.5 + 0.5 * math.sin(q * 1.3 + side * 1.9 + ph))) * rng.uniform(0.7, 1.0)
-                ln = min(ln, 0.95 + hh)
-                streaks.append((Vector((ex, ey, sg * (hh - ln / 2))), rng.uniform(0.011, 0.017), ln / 2, rng.uniform(0.65, 1.0)))
-    objs = [lib.obj_from_bm("tiles", lib.merge_bm(*tiles), "solid_dark", cy, rgb_fn=_tile_rgb(infos, cy, lib.lin("void")))] if tiles else []  # чёрный блок, светится только контур верхней грани
-    # пол: якорь сверху (имя *_hang); потолок: штрихи растут вверх от рёбер, якорь по умолчанию у основания
+        streaks += _slab_streaks(rng, cx, cyy, hx, hy, hh, sg, pitch, rng.uniform(0.6, 0.95), 0.95 + hh - SLAB_T, 0.011, 0.017, 0.65)
+    del streaks[200:]
+    rim = tuple(c * 0.6 for c in cy)  # контур верха слабее штрихов
+    objs = [lib.obj_from_bm("tiles", lib.merge_bm(*tiles), "solid_dark", cy, rgb_fn=_slab_rgb(infos, rim, lib.lin("void")))] if tiles else []
+    # пол: якорь сверху (имя *_hang); потолок: штрихи растут вверх от кромок, якорь по умолчанию у основания
     objs.append(lib.streak_set(("ceiling_streaks" if ceiling else "floor_streaks_hang"), streaks, cy))
-    # точки: шаг постоянный, ~15% пропущено, высота слегка разная, но не в сторону комнаты
-    dots = [Vector((-0.875 + i * 0.25, -0.875 + j * 0.25, sg * -rng.uniform(0.016, 0.09))) for i in range(8) for j in range(8) if rng.random() > 0.15]
-    dots = [d for d in dots if not any(abs(d.x - cx) < 0.25 and abs(d.y - cyy) < 0.25 for cx, cyy in covered)]  # не под тайлами
+    corners = {(sx * 0.875, sy * 0.875) for sx in (-1, 1) for sy in (-1, 1)}
+    dots = _slab_dots(rng, 2.0, 0.25, covered, 0.06, sg, forced=corners)
     objs.append(lib.point_cloud("dots", dots, cy, half_size=0.016, seed=2, a_min=0.4, a_max=0.9))
+    area = sum(4 * hx * hy for _, _, hx, hy in rects)
     return lib.export(name, "env", objs, out, budget_tris=300, budget_points=170, budget_streaks=200, origin=("ceiling" if ceiling else "surface"),
-                      notes=f"тайлы покрывают {n_tiles * 0.42 * 0.42 / 4.0 * 100:.0f}% плитки 2×2 м")
+                      notes=f"{len(rects)} плит толщиной {SLAB_T * 100:.0f} см, покрытие {area / 4.0 * 100:.0f}% плитки 2×2 м")
 
 
-def build_far_surface(out, name="far_floor", seed=61, ceiling=False, size=11.0, cover=0.05):
-    """Пол (или потолок при ceiling=True) дальнего плана: участок 11×11 м того же устройства, что плитка комнаты (build_floor), но разреженный:
-    чёрные тайлы занимают ~5% площади вместо 22% (cover). Тайлы на разной высоте, но не в сторону комнаты; штрихи из рёбер вниз (вверх у потолка);
-    точки на полу реже (шаг 0,75 м, ~15% пропусков). Нужен, чтобы пол и потолок были везде, а не только в комнате; в игре берутся участки сеткой 11 м.
+def build_far_surface(out, name="far_floor", seed=61, ceiling=False, size=11.0, cover=0.20):
+    """Пол (или потолок при ceiling=True) дальнего плана: участок 11×11 м из тех же тонких плит, что в комнате (build_floor), но крупнее и глубже:
+    размеры от 0,3 м до 3–4,6 м, покрытие ~20%. Плиты лежат на разной глубине — от плоскости пола до −2,6 м (потолок: до +2,6 м), как «ямы»;
+    штрихи свисают от кромок вниз длинные (до 3 м, не глубже −3 м: предел validate для far_*). Точки пола реже (шаг 0,75 м, ~15% пропусков),
+    над плитами их нет. Нужен, чтобы пол и потолок были везде, а не только в комнате; в игре берутся участки сеткой 11 м.
     Origin на поверхности (потолок: на плоскости потолка) в центре."""
     lib.reset()
     rng = random.Random(seed)
     cy = lib.lin("cyan")
     sg = -1.0 if ceiling else 1.0
-    half = size / 2 - 0.5
-    n = int(cover * size * size / (0.42 * 0.42))
-    tiles, streaks, covered, infos = [], [], [], []
-    for _ in range(n):
-        cx, cyy = rng.uniform(-half, half), rng.uniform(-half, half)
-        hh = 0.0 if rng.random() < 0.3 else -rng.uniform(0.05, 0.45)
-        covered.append((cx, cyy))
-        tiles.append(_tile_bm(cx, cyy, hh, sg))
-        infos.append((cx, cyy, sg * hh))
-        for _ in range(5):
-            if rng.random() < 0.5:
-                ex, ey = cx + rng.choice((-0.21, 0.21)), cyy + rng.uniform(-0.21, 0.21)
-            else:
-                ex, ey = cx + rng.uniform(-0.21, 0.21), cyy + rng.choice((-0.21, 0.21))
-            ln = min(rng.uniform(0.35, 0.8), 0.95 + hh)  # длиннее и ярче прежних (0,2–0,45 / 0,25–0,7): боковая грань читается светящимся обрывом
-            streaks.append((Vector((ex, ey, sg * (hh - ln / 2))), rng.uniform(0.012, 0.018), ln / 2, rng.uniform(0.65, 1.0)))
-    objs = [lib.obj_from_bm("tiles", lib.merge_bm(*tiles), "solid_dark", cy, rgb_fn=_tile_rgb(infos, cy, lib.lin("void")))]
+    rects = _place_slabs(rng, FAR_KINDS, cover * size * size, size / 2 - 0.3, 0.5, max_n=26)
+    tiles, streaks, infos, covered = [], [], [], []
+    perim = sum(4 * (hx + hy) for _, _, hx, hy in rects)
+    pitch = max(0.2, perim * 0.9 / 235)  # бюджет 260 штрихов на участок
+    for cx, cyy, hx, hy in rects:
+        hh = 0.0 if rng.random() < 0.2 else -rng.uniform(0.1, 2.6)
+        tiles.append(_slab_bm(cx, cyy, hx, hy, hh, sg))
+        infos.append((cx, cyy, hx, hy, sg * hh))
+        covered.append((cx, cyy, hx, hy))
+        ln_max = 2.98 + hh - SLAB_T  # низ штриха не глубже −2,98 м
+        streaks += _slab_streaks(rng, cx, cyy, hx, hy, hh, sg, pitch, ln_max * rng.uniform(0.6, 1.0), ln_max, 0.012, 0.018, 0.65)
+    del streaks[260:]
+    rim = tuple(c * 0.6 for c in cy)
+    objs = [lib.obj_from_bm("tiles", lib.merge_bm(*tiles), "solid_dark", cy, rgb_fn=_slab_rgb(infos, rim, lib.lin("void")))]
     objs.append(lib.streak_set(("far_ceiling_streaks" if ceiling else "far_floor_streaks_hang"), streaks, cy))
-    steps = int(size / 0.75)
-    dots = [Vector((-size / 2 + 0.375 + i * 0.75, -size / 2 + 0.375 + j * 0.75, sg * -rng.uniform(0.016, 0.09))) for i in range(steps) for j in range(steps) if rng.random() > 0.15]
-    dots = [d for d in dots if not any(abs(d.x - cx) < 0.3 and abs(d.y - cyy) < 0.3 for cx, cyy in covered)]
+    dots = _slab_dots(rng, size, 0.75, covered, 0.15, sg)
     dots += [Vector((sx * (size / 2 - 0.1), sy * (size / 2 - 0.1), sg * -0.03)) for sx in (-1, 1) for sy in (-1, 1)]  # угловые точки: габарит симметричен, участки стыкуются
     objs.append(lib.point_cloud("far_surface_pts", dots, cy, half_size=0.02, seed=2, a_min=0.3, a_max=0.8))
-    return lib.export(name, "env", objs, out, budget_tris=1100, budget_points=700, budget_streaks=200, origin=("ceiling" if ceiling else "surface"),
-                      notes=f"тайлы {n * 0.42 * 0.42 / (size * size) * 100:.1f}% площади участка {size:g}×{size:g} м")
+    area = sum(4 * hx * hy for _, _, hx, hy in rects)
+    return lib.export(name, "env", objs, out, budget_tris=1100, budget_points=700, budget_streaks=260, origin=("ceiling" if ceiling else "surface"),
+                      notes=f"{len(rects)} плит, покрытие {area / (size * size) * 100:.1f}% участка {size:g}×{size:g} м, глубина до 2,6 м, штрихи до 3 м")
 
 
 def build_column_field(out, name="column_field", seed=77):
@@ -299,6 +368,6 @@ if __name__ == "__main__":
         build_doorway(o, name, seed)
     for name, seed in (("floor", 2), ("floor_b", 5), ("floor_c", 9)):
         build_floor(o, name, seed)
-    build_floor(o, "floor_clear", 14, n_tiles=0)
+    build_floor(o, "floor_clear", 14, cover=0)
     for name, seed in (("ceiling", 3), ("ceiling_b", 6), ("ceiling_c", 11)):
         build_floor(o, name, seed, ceiling=True)
