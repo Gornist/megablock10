@@ -37,26 +37,27 @@ func _room() -> Array:
 		for z in g:
 			items.append([cv[m % 3], Vector3(x, CEILING_H, z), 90.0 * ((m + 1) % 4), "BASE", 1.0])  # потолок: тот же принцип, что у пола, инвертированный
 			m += 1
-	var wv := ["env/wall", "env/wall_b", "env/wall_c"]
-	var k := 0
-	for x in g:
-		if x != -1.0:  # (−1, 4) — вход
-			items.append([wv[k % 3], Vector3(x, 0, 4.0), 180.0 * (k % 2), "BASE", 1.0])
-		k += 1
-		if x != 1.0:  # (1, −4) — выход
-			items.append([wv[k % 3], Vector3(x, 0, -4.0), 180.0 * (k % 2), "BASE", 1.0])
-		k += 1
-	for z in g:
-		items.append([wv[k % 3], Vector3(4.0, 0, z), 90.0 + 180.0 * (k % 2), "BASE", 1.0])
-		k += 1
-		if absf(z) > 2.0:  # западная стена: по краям обычные модули, посередине portal_wall (4 м) с вырезом под портал
-			items.append([wv[k % 3], Vector3(-4.0, 0, z), 90.0 + 180.0 * (k % 2), "BASE", 1.0])
-		k += 1
-	items.append(["env/portal_wall", Vector3(-4.0, 0, 0.0), -90.0, "BASE", 1.0])
+	if _walls:  # стены-занавесы (wall, wall_b, wall_c, portal_wall) и проёмы (doorway, doorway_b) — временно по флагу --walls, по умолчанию комната открыта к горизонту
+		var wv := ["env/wall", "env/wall_b", "env/wall_c"]
+		var k := 0
+		for x in g:
+			if x != -1.0:  # (−1, 4) — вход
+				items.append([wv[k % 3], Vector3(x, 0, 4.0), 180.0 * (k % 2), "BASE", 1.0])
+			k += 1
+			if x != 1.0:  # (1, −4) — выход
+				items.append([wv[k % 3], Vector3(x, 0, -4.0), 180.0 * (k % 2), "BASE", 1.0])
+			k += 1
+		for z in g:
+			items.append([wv[k % 3], Vector3(4.0, 0, z), 90.0 + 180.0 * (k % 2), "BASE", 1.0])
+			k += 1
+			if absf(z) > 2.0:  # западная стена: по краям обычные модули, посередине portal_wall (4 м) с вырезом под портал
+				items.append([wv[k % 3], Vector3(-4.0, 0, z), 90.0 + 180.0 * (k % 2), "BASE", 1.0])
+			k += 1
+		items.append(["env/portal_wall", Vector3(-4.0, 0, 0.0), -90.0, "BASE", 1.0])
+		items.append(["env/doorway", Vector3(-1.0, 0, 4.0), 0.0, "BASE", 1.0])     # вход
+		items.append(["env/doorway_b", Vector3(1.0, 0, -4.0), 0.0, _tier, 1.0])   # выход
 	if not _nohorizon:
 		items.append(["env/horizon_band", Vector3(0.0, 0.0, 0.0), 0.0, "BASE", 1.0])  # кольцо тумана у горизонта: один раз на центр комнаты
-	items.append(["env/doorway", Vector3(-1.0, 0, 4.0), 0.0, "BASE", 1.0])     # вход
-	items.append(["env/doorway_b", Vector3(1.0, 0, -4.0), 0.0, _tier, 1.0])   # выход
 	for x in [-4.0, 4.0]:
 		for z in [-4.0, 4.0]:
 			items.append(["env/pillar", Vector3(x, 0, z), 0.0, "BASE", 1.0])
@@ -164,6 +165,7 @@ var _walker: Node3D
 var _walker_mir: Node3D
 var _walker_base := Vector3.ZERO
 var _crowd := false  # --crowd: в комнате девять аватаров (худший случай по ТЗ), для замера
+var _walls := false  # --walls: вернуть стены-занавесы и проёмы (по умолчанию убраны: владелец, «эквалайзер явно не то», открытый горизонт)
 var _nohorizon := false  # --nohorizon: без кольца env/horizon_band (сравнение «с туманом / без»)
 var _movie := false
 var _demo := false  # --demo: длинный проход по комнате (вход → хранилище → портал → ICE → вверх), 34 с
@@ -207,6 +209,8 @@ func _ready() -> void:
 			_nohorizon = true
 		if a == "--crowd":
 			_crowd = true
+		if a == "--walls":
+			_walls = true
 		if a == "--fps":  # замер: 6 с без записи видео, печатает средний fps, худшие кадры и число вызовов отрисовки
 			_fps = true
 		if a == "--static":  # камера неподвижна: нужно, чтобы по разнице кадров проверять движение штрихов
