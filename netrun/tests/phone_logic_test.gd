@@ -73,4 +73,7 @@ func test_badge_text_caps_at_nine() -> void:
 
 
 func test_quick_replies_are_the_six_agreed_phrases() -> void:
-	assert_array(PhoneLogic.QUICK_REPLIES).is_equal(["ОК", "Принято", "Жди", "Я в Сети", "Позвони", "Не могу говорить"])
+	assert_array(PhoneLogic.QUICK_REPLIES).is_equal(["Да", "Нет", "Позже", "Перезвоню", "Привет", "Увидимся"])
+	assert_array(PhoneLogic.QUICK_REPLY_IDS).is_equal(["yes", "no", "later", "callback", "hi", "cu"])
+	assert_str(PhoneLogic.quick_reply_id("Позже")).is_equal("later")
+	assert_str(PhoneLogic.quick_reply_id("что-то своё")).is_equal("")

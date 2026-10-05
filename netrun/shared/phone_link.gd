@@ -99,6 +99,11 @@ func call_log() -> Array:
 	return []
 
 
+## Телефон на связи. Фиктивная связь всегда «на связи»; у настоящей (RemotePhoneLink) false, пока телефон не подключился или пропал: дека тогда пишет «ТЕЛЕФОН НЕ НА СВЯЗИ».
+func is_online() -> bool:
+	return true
+
+
 ## Текущее время связи, секунды (по нему дека считает таймер разговора).
 func now() -> float:
 	return Time.get_unix_time_from_system()

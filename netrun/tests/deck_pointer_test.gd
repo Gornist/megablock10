@@ -70,9 +70,9 @@ func test_trigger_on_a_chip_sends_the_quick_reply() -> void:
 	_ui.deck.chat().open_thread(FakePhoneLink.ID_SHERSHEN)
 	for i in 3:
 		await get_tree().process_frame
-	var chip: MbButton = _ui.deck.chat().chip_buttons()[2]   # «Жди»
+	var chip: MbButton = _ui.deck.chat().chip_buttons()[2]   # «Позже»
 	_click_at(_center(chip))
-	assert_str(_link.messages(FakePhoneLink.ID_SHERSHEN, 1)[0]["text"]).is_equal("Жди")
+	assert_str(_link.messages(FakePhoneLink.ID_SHERSHEN, 1)[0]["text"]).is_equal("Позже")
 	assert_int(_ui.pointer.button_events).is_equal(2)
 
 
@@ -101,7 +101,7 @@ func test_pressing_on_one_button_and_releasing_on_another_is_not_a_click() -> vo
 	_aim_at(_center(b))
 	_ui.pointer.set_trigger(false)
 	var last: Dictionary = _link.messages(FakePhoneLink.ID_SHERSHEN, 1)[0]
-	assert_bool(last["mine"] and last["text"] in ["ОК", "Принято"]).is_false()
+	assert_bool(last["mine"] and last["text"] in ["Да", "Нет"]).is_false()
 
 
 func test_tabs_are_clickable_by_the_pointer() -> void:
@@ -130,9 +130,9 @@ func test_pointer_works_on_a_turned_panel() -> void:
 	_ui.deck.chat().open_thread(FakePhoneLink.ID_VOBLA)
 	for i in 3:
 		await get_tree().process_frame
-	var chip: MbButton = _ui.deck.chat().chip_buttons()[5]   # «Не могу говорить»
+	var chip: MbButton = _ui.deck.chat().chip_buttons()[5]   # «Увидимся»
 	_click_at(_center(chip))
-	assert_str(_link.messages(FakePhoneLink.ID_VOBLA, 1)[0]["text"]).is_equal("Не могу говорить")
+	assert_str(_link.messages(FakePhoneLink.ID_VOBLA, 1)[0]["text"]).is_equal("Увидимся")
 
 
 func test_pointer_hits_a_deck_scaled_down_for_the_wrist() -> void:
@@ -144,9 +144,9 @@ func test_pointer_hits_a_deck_scaled_down_for_the_wrist() -> void:
 	for i in 3:
 		await get_tree().process_frame
 	assert_float(_ui.deck.panel_world_size_m().x).is_equal_approx(DeckPanel.PANEL_WIDTH_M * 0.75, 0.0001)
-	var chip: MbButton = _ui.deck.chat().chip_buttons()[4]   # «Позвони»
+	var chip: MbButton = _ui.deck.chat().chip_buttons()[4]   # «Привет»
 	_click_at(_center(chip))
-	assert_str(_link.messages(FakePhoneLink.ID_VOBLA, 1)[0]["text"]).is_equal("Позвони")
+	assert_str(_link.messages(FakePhoneLink.ID_VOBLA, 1)[0]["text"]).is_equal("Привет")
 
 
 func test_pointer_ignores_a_hidden_deck() -> void:
@@ -189,7 +189,7 @@ func test_pointer_clicks_the_deck_worn_on_the_wrist_and_lets_go_when_the_hand_is
 	_ui.pointer.update_ray(r["origin"], r["dir"])
 	_ui.pointer.set_trigger(true)
 	_ui.pointer.set_trigger(false)
-	assert_str(_link.messages(FakePhoneLink.ID_SHERSHEN, 1)[0]["text"]).is_equal("ОК")
+	assert_str(_link.messages(FakePhoneLink.ID_SHERSHEN, 1)[0]["text"]).is_equal("Да")
 	_rig.left_hand_view.pose_source = Callable()
 	_rig.left_hand_view.update_hand()
 	_ui._place()
@@ -211,7 +211,7 @@ func test_mouse_click_on_the_panel_is_taken_by_the_deck_and_not_passed_on() -> v
 	_ui.deck.chat().open_thread(FakePhoneLink.ID_SHERSHEN)
 	for i in 3:
 		await get_tree().process_frame
-	var chip: MbButton = _ui.deck.chat().chip_buttons()[3]   # «Я в Сети»
+	var chip: MbButton = _ui.deck.chat().chip_buttons()[3]   # «Перезвоню»
 	var world := DeckPointerMath.view_to_world(_center(chip), _ui.deck.surface_transform(), _ui.deck.panel_size_m(), Vector2(DeckPanel.VIEW_SIZE))
 	var screen := _rig.camera.unproject_position(world)
 	var down := InputEventMouseButton.new()
@@ -224,7 +224,7 @@ func test_mouse_click_on_the_panel_is_taken_by_the_deck_and_not_passed_on() -> v
 	up.pressed = false
 	up.position = screen
 	_ui.pointer._input(up)
-	assert_str(_link.messages(FakePhoneLink.ID_SHERSHEN, 1)[0]["text"]).is_equal("Я в Сети")
+	assert_str(_link.messages(FakePhoneLink.ID_SHERSHEN, 1)[0]["text"]).is_equal("Перезвоню")
 
 
 func test_mouse_wheel_over_the_panel_scrolls_the_messages() -> void:

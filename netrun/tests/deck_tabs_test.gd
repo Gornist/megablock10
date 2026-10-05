@@ -147,15 +147,15 @@ func test_six_quick_reply_chips_and_pressing_one_sends_it_to_the_open_thread() -
 	assert_array(texts).is_equal(PhoneLogic.QUICK_REPLIES)
 	var sent: Array = []
 	_d.reply_sent.connect(func(tid, text): sent.append([tid, text]))
-	(chips[1] as MbButton).click()   # «Принято»
-	assert_array(sent).is_equal([[FakePhoneLink.ID_SHERSHEN, "Принято"]])
+	(chips[1] as MbButton).click()   # «Нет»
+	assert_array(sent).is_equal([[FakePhoneLink.ID_SHERSHEN, "Нет"]])
 	var last: Dictionary = _link.messages(FakePhoneLink.ID_SHERSHEN, 1)[0]
-	assert_str(last["text"]).is_equal("Принято")
+	assert_str(last["text"]).is_equal("Нет")
 	assert_bool(last["mine"]).is_true()
 	# другой диалог — тот же ряд заготовок, но текст уходит в него
 	_d.chat().open_thread(FakePhoneLink.ID_VOBLA)
-	(chips[4] as MbButton).click()   # «Позвони»
-	assert_str(_link.messages(FakePhoneLink.ID_VOBLA, 1)[0]["text"]).is_equal("Позвони")
+	(chips[4] as MbButton).click()   # «Привет»
+	assert_str(_link.messages(FakePhoneLink.ID_VOBLA, 1)[0]["text"]).is_equal("Привет")
 
 
 func test_message_arriving_in_the_open_visible_thread_is_read_at_once() -> void:
