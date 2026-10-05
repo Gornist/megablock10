@@ -212,34 +212,35 @@ func test_horizon_band_is_streaks_plus_one_haze_ribbon_and_far_gain_is_off_by_de
 
 ## Кромка комнаты (env/room_edge_<N>) вместо стен: цепочка точек, подвесные штрихи (`*_hang`) и низкая дымка (`*_mist`, один слой ≤ 200 треугольников).
 ## room_edge_16 по размеру равен комнате NodeLayout (граница телепорта), room_edge_8 — комнате просмотра.
-func test_room_edge_has_line_hang_streaks_and_low_haze_within_budget() -> void:
+func test_room_edge_has_hang_streaks_and_knee_high_haze_within_budget() -> void:
 	var room := NodeLayout.ROOM_MAX - NodeLayout.ROOM_MIN
 	for spec in [[8, 8.0, 260], [16, room.x, 500]]:
 		var asset := "room_edge_%d" % spec[0]
 		var root := _load("env", asset)
-		var line: MeshInstance3D = null
 		var hang: MeshInstance3D = null
 		var mist: MeshInstance3D = null
+		var others := 0
 		for mi in _meshes(root):
 			if String(mi.name).ends_with("_mist"):
 				mist = mi
 			elif String(mi.name).ends_with("_hang"):
 				hang = mi
 			else:
-				line = mi
-		assert_bool(line != null and hang != null and mist != null).override_failure_message("%s: нужны меши edge_line, *_hang и *_mist" % asset).is_true()
+				others += 1
+		assert_bool(hang != null and mist != null).override_failure_message("%s: нужны меши *_hang и *_mist" % asset).is_true()
+		assert_int(others).override_failure_message("%s: лишние меши (цепочки точек по кромке нет: владелец убрал)" % asset).is_equal(0)
 		var streaks := (hang.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size() / 4
 		assert_int(streaks).override_failure_message("%s: подвесных штрихов %d > %d" % [asset, streaks, spec[2]]).is_less_equal(spec[2])
 		assert_int(streaks).override_failure_message("%s: подвесных штрихов слишком мало (%d)" % [asset, streaks]).is_greater(int(spec[2] * 0.6))
 		var tris := (mist.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3
 		assert_int(tris).override_failure_message("%s: дымка %d треугольников > 200" % [asset, tris]).is_less_equal(200)
-		# квадрат кромки равен стороне комнаты; ни штрихи, ни дымка не выходят за 20 м и не поднимаются выше 0,8 м
-		assert_float(line.mesh.get_aabb().size.x).override_failure_message("%s: кромка не %g м по X" % [asset, spec[1]]).is_between(spec[1] - 0.1, spec[1] + 0.2)
-		assert_float(line.mesh.get_aabb().size.z).is_between(spec[1] - 0.1, spec[1] + 0.2)
-		assert_float(line.mesh.get_aabb().end.y).override_failure_message("%s: точки кромки выше пола" % asset).is_less(0.05)
+		# квадрат кромки (подвесные штрихи) равен стороне комнаты; ни штрихи, ни дымка не выходят за 20 м, дымка не выше колена (0,5 м)
+		assert_float(hang.mesh.get_aabb().size.x).override_failure_message("%s: кромка не %g м по X" % [asset, spec[1]]).is_between(spec[1] - 0.1, spec[1] + 0.4)
+		assert_float(hang.mesh.get_aabb().size.z).is_between(spec[1] - 0.1, spec[1] + 0.4)
+		assert_float(hang.mesh.get_aabb().end.y).override_failure_message("%s: подвесные штрихи выше пола" % asset).is_less(0.05)
 		var box := _aabb(root)
 		assert_float(maxf(box.size.x, box.size.z)).override_failure_message("%s: габарит больше 20 м" % asset).is_less_equal(20.0)
-		assert_float(box.end.y).override_failure_message("%s: что-то выше 0,8 м (дымка должна быть низкой)" % asset).is_less_equal(0.8)
+		assert_float(box.end.y).override_failure_message("%s: что-то выше 0,5 м (дымка до колена)" % asset).is_less_equal(0.5)
 		assert_float(box.position.y).override_failure_message("%s: штрихи глубже 3 м" % asset).is_greater_equal(-3.0)
 		AssetMaterials.apply(root, "BASE")
 		var hm := mist.get_surface_override_material(0) as ShaderMaterial
