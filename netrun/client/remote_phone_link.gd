@@ -11,8 +11,6 @@ extends PhoneLink
 ## Звуки (рингтон, дозвон, сообщение) приложение просит кадром `sound{kind}`; играет их не эта связь, а подписчик на [signal sound_requested] (PhoneSounds).
 ## Сама связь работает от внешнего такта `advance(delta)` (его зовёт WorldUi каждый кадр): опрос сокетов и тайм-ауты.
 
-## Телефон принят (hello проверен) или пропал.
-signal connection_changed(online: bool)
 ## Приложение просит звук: ring | ringback | message | stop.
 signal sound_requested(kind: String)
 
@@ -132,7 +130,7 @@ func _accept_hello(ws: WebSocketPeer, packet: PackedByteArray) -> bool:
 	phone_callsign = str(frame.get("callsign", ""))
 	_send({"t": "hello_ack", "v": PROTOCOL_VERSION})
 	_send({"t": "resync"})
-	connection_changed.emit(true)
+	online_changed.emit(true)
 	return true
 
 
@@ -155,7 +153,7 @@ func _poll_peer() -> void:
 func _drop_peer() -> void:
 	_peer = null
 	sound_requested.emit("stop")
-	connection_changed.emit(false)
+	online_changed.emit(false)
 	call_changed.emit(call_state())
 
 

@@ -25,6 +25,9 @@ signal message_received(thread_id: String, msg: Dictionary)
 ## Изменилась фаза звонка или его состояние (заглушён) или пополнился журнал звонков.
 signal call_changed(state: Dictionary)
 
+## Телефон принят (hello проверен, true) или пропал (false). Шлёт настоящая связь (RemotePhoneLink); фиктивная всегда на связи и сигнала не шлёт.
+signal online_changed(online: bool)
+
 const KIND_DM := "DM"
 const KIND_FACTION := "FACTION"
 

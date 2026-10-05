@@ -167,7 +167,7 @@ func test_garbage_frames_are_ignored() -> void:
 
 func test_phone_with_token_and_hello_goes_online_and_gets_ack_and_resync() -> void:
 	var states: Array = []
-	_link.connection_changed.connect(func(on): states.append(on))
+	_link.online_changed.connect(func(on): states.append(on))
 	var r := await _online_phone()
 	var frames: Array = r[1]
 	assert_array(frames.map(func(f): return f["t"])).is_equal(["hello_ack", "resync"])

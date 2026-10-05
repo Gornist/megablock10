@@ -499,11 +499,13 @@ func set_phone(link: PhoneLink) -> void:
 		phone.threads_changed.disconnect(_on_threads_changed)
 		phone.message_received.disconnect(_on_message_received)
 		phone.call_changed.disconnect(_on_call_changed)
+		phone.online_changed.disconnect(_on_online_changed)
 	phone = link
 	if phone != null:
 		phone.threads_changed.connect(_on_threads_changed)
 		phone.message_received.connect(_on_message_received)
 		phone.call_changed.connect(_on_call_changed)
+		phone.online_changed.connect(_on_online_changed)
 		_calls_seen_missed = PhoneLogic.missed_count(phone.call_log())   # историю звонков до подключения считаем виденной
 		_last_phase = phone.call_state()["phase"]
 	_chat.bind(phone)
@@ -606,6 +608,13 @@ func _update_badges() -> void:
 func _on_threads_changed() -> void:
 	_chat.refresh()
 	_update_badges()
+
+
+## Телефон принят или пропал: на ЧАТ и ЗВОНКИ строка «ТЕЛЕФОН НЕ НА СВЯЗИ» и доступность кнопок.
+func _on_online_changed(_online: bool) -> void:
+	_chat.apply_online()
+	_calls.apply_online()
+	_dirty = true
 
 
 func _on_message_received(thread_id: String, _msg: Dictionary) -> void:
