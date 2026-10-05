@@ -187,20 +187,21 @@ def build_floor(out, name="floor", seed=2, ceiling=False, n_tiles=5):
         covered.append((cx, cyy))
         tiles.append(_tile_bm(cx, cyy, hh, sg))
         infos.append((cx, cyy, sg * hh))
-        # занавес на боковых гранях тайла (те же штрихи, что у стен, но в разы тише): по 7 штрихов на грань вдоль ребра, ~20% пропусков,
-        # длина плывёт плавной волной (до 0,7 м), яркость 0,12–0.4 (у стен 0,2–1,0); у пола вниз от ребра, у потолка вверх. Дыхание, бусины и
-        # мерцание дают те же параметры шейдера, что у стен (без отдельной настройки). Вглубь штрих не уходит ниже −0,95 м от плоскости.
-        base = rng.uniform(0.25, 0.7)
+        # занавес на боковых гранях тайла («дождь» по стенке обрыва, как в референсе): по 9 штрихов на грань вдоль ребра, ~12% пропусков,
+        # длина плывёт плавной волной (до 0,95 м), яркость 0,45–0,9 (у стен 0,2–1,0): боковые грани должны светиться сильнее контура верха;
+        # у пола вниз от ребра, у потолка вверх. Дыхание, бусины и мерцание дают те же параметры шейдера, что у стен.
+        # Вглубь штрих не уходит ниже −0,95 м от плоскости.
+        base = rng.uniform(0.5, 0.95)
         ph = rng.uniform(0, 6.28)
         for side in range(4):
-            for q in range(7):
-                if rng.random() < 0.2:
+            for q in range(9):
+                if rng.random() < 0.12:
                     continue
-                t = -0.2 + 0.4 * (q + 0.5) / 7
+                t = -0.2 + 0.4 * (q + 0.5) / 9
                 ex, ey = [(cx + t, cyy - 0.21), (cx + 0.21, cyy + t), (cx + t, cyy + 0.21), (cx - 0.21, cyy + t)][side]
                 ln = base * (0.55 + 0.45 * (0.5 + 0.5 * math.sin(q * 1.3 + side * 1.9 + ph))) * rng.uniform(0.7, 1.0)
                 ln = min(ln, 0.95 + hh)
-                streaks.append((Vector((ex, ey, sg * (hh - ln / 2))), rng.uniform(0.006, 0.011), ln / 2, rng.uniform(0.12, 0.4)))
+                streaks.append((Vector((ex, ey, sg * (hh - ln / 2))), rng.uniform(0.006, 0.011), ln / 2, rng.uniform(0.45, 0.9)))
     objs = [lib.obj_from_bm("tiles", lib.merge_bm(*tiles), "solid_dark", cy, rgb_fn=_tile_rgb(infos, cy, lib.lin("void")))] if tiles else []  # чёрный блок, светится только контур верхней грани
     # пол: якорь сверху (имя *_hang); потолок: штрихи растут вверх от рёбер, якорь по умолчанию у основания
     objs.append(lib.streak_set(("ceiling_streaks" if ceiling else "floor_streaks_hang"), streaks, cy))
@@ -208,7 +209,7 @@ def build_floor(out, name="floor", seed=2, ceiling=False, n_tiles=5):
     dots = [Vector((-0.875 + i * 0.25, -0.875 + j * 0.25, sg * -rng.uniform(0.016, 0.09))) for i in range(8) for j in range(8) if rng.random() > 0.15]
     dots = [d for d in dots if not any(abs(d.x - cx) < 0.25 and abs(d.y - cyy) < 0.25 for cx, cyy in covered)]  # не под тайлами
     objs.append(lib.point_cloud("dots", dots, cy, half_size=0.016, seed=2, a_min=0.4, a_max=0.9))
-    return lib.export(name, "env", objs, out, budget_tris=300, budget_points=170, budget_streaks=160, origin=("ceiling" if ceiling else "surface"),
+    return lib.export(name, "env", objs, out, budget_tris=300, budget_points=170, budget_streaks=200, origin=("ceiling" if ceiling else "surface"),
                       notes=f"тайлы покрывают {n_tiles * 0.42 * 0.42 / 4.0 * 100:.0f}% плитки 2×2 м")
 
 
@@ -230,13 +231,13 @@ def build_far_surface(out, name="far_floor", seed=61, ceiling=False, size=11.0, 
         covered.append((cx, cyy))
         tiles.append(_tile_bm(cx, cyy, hh, sg))
         infos.append((cx, cyy, sg * hh))
-        for _ in range(4):
+        for _ in range(5):
             if rng.random() < 0.5:
                 ex, ey = cx + rng.choice((-0.21, 0.21)), cyy + rng.uniform(-0.21, 0.21)
             else:
                 ex, ey = cx + rng.uniform(-0.21, 0.21), cyy + rng.choice((-0.21, 0.21))
-            ln = rng.uniform(0.2, 0.45)
-            streaks.append((Vector((ex, ey, sg * (hh - ln / 2))), rng.uniform(0.008, 0.014), ln / 2, rng.uniform(0.25, 0.7)))
+            ln = min(rng.uniform(0.35, 0.8), 0.95 + hh)  # длиннее и ярче прежних (0,2–0,45 / 0,25–0,7): боковая грань читается светящимся обрывом
+            streaks.append((Vector((ex, ey, sg * (hh - ln / 2))), rng.uniform(0.008, 0.014), ln / 2, rng.uniform(0.5, 0.9)))
     objs = [lib.obj_from_bm("tiles", lib.merge_bm(*tiles), "solid_dark", cy, rgb_fn=_tile_rgb(infos, cy, lib.lin("void")))]
     objs.append(lib.streak_set(("far_ceiling_streaks" if ceiling else "far_floor_streaks_hang"), streaks, cy))
     steps = int(size / 0.75)
