@@ -145,6 +145,35 @@ func test_env_streaks_have_a_soft_halo_and_creatures_do_not() -> void:
 			assert_float(h).override_failure_message("%s: ореол у существа" % path).is_equal(0.0)
 
 
+func test_slab_modules_have_a_translucent_additive_skirt() -> void:
+	## «вуаль» на гранях плит: меш `*_skirt` в модулях с плитами; шейдер аддитивный, без освещения и без записи глубины; по одному квадрату на грань
+	var skirts := {"floor": "floor_skirt", "floor_c": "floor_skirt", "ceiling": "ceiling_skirt", "far_floor": "far_floor_skirt", "far_ceiling": "far_ceiling_skirt"}
+	for module in skirts:
+		var parts := NodeAssets.mesh_parts(NodeAssets.env_path(module), "BASE")
+		var found := 0
+		for p in parts:
+			if p["name"] != skirts[module]:
+				continue
+			found += 1
+			var mesh := p["mesh"] as Mesh
+			assert_int(mesh.get_surface_count()).is_equal(1)
+			var m := mesh.surface_get_material(0) as ShaderMaterial
+			assert_bool(m != null and m.shader.resource_path.ends_with("skirt.gdshader")).override_failure_message("%s: у вуали не skirt.gdshader" % module).is_true()
+			var code := m.shader.code
+			for flag in ["blend_add", "unshaded", "depth_draw_never"]:
+				assert_bool(code.contains(flag)).override_failure_message("%s: в шейдере вуали нет %s" % [module, flag]).is_true()
+			assert_bool(code.contains("hint_depth_texture") or code.contains("DEPTH_TEXTURE")).override_failure_message("вуаль читает буфер глубины").is_false()
+			assert_float(float(m.shader.get_shader_uniform_list().filter(func(u): return u["name"] == "veil_alpha").size())).is_equal(1.0)
+			assert_bool(float(m.get_shader_parameter("tint_amount")) == 1.0).is_true()
+			var verts := (mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+			assert_bool(verts > 0 and verts % 4 == 0).override_failure_message("%s: вуаль не из квадратов (%d вершин)" % [module, verts]).is_true()
+			assert_bool(verts <= 4 * 4 * 30).override_failure_message("%s: слишком много граней вуали (%d вершин)" % [module, verts]).is_true()
+		assert_int(found).override_failure_message("%s: нет меша %s" % [module, skirts[module]]).is_equal(1)
+	# чистая площадка без плит вуали не имеет
+	for p in NodeAssets.mesh_parts(NodeAssets.env_path("floor_clear"), "BASE"):
+		assert_bool(str(p["name"]).ends_with("_skirt")).is_false()
+
+
 func test_horizon_band_is_one_streak_mesh_and_far_gain_is_off_by_default() -> void:
 	var band := _load("env", "horizon_band")
 	var meshes := _meshes(band)

@@ -295,6 +295,33 @@ def point_cloud(name, points, rgb, half_size=0.01, seed=1, a_min=0.4, a_max=1.0,
     return ob
 
 
+def skirt_set(name, quads, rgb):
+    """«Вуаль» на боковой грани плиты: вертикальный квад (2 треугольника), яркий у кромки и гаснущий книзу. Роль материала shell_soft
+    (в Godot имя меша `*_skirt` подменяет шейдер на skirt.gdshader: аддитивный, без записи глубины, без освещения). quads —
+    [(верхний левый, верхний правый, вектор вниз, плотность слева, плотность справа)], плотность — альфа вершин вверху, внизу 0.
+    UV: u вдоль кромки 0…1, v вдоль высоты (после экспорта glTF в шейдере UV.y = 0 вверху, 1 внизу)."""
+    bm = bmesh.new()
+    uv = bm.loops.layers.uv.new("UV0")
+    dens = []  # плотность по вершинам: по четыре на квад в порядке создания (to_mesh сохраняет порядок)
+    for a, b, down, da, db in quads:
+        a, b, down = Vector(a), Vector(b), Vector(down)
+        f = bm.faces.new([bm.verts.new(p) for p in (a, b, b + down, a + down)])
+        for loop, t in zip(f.loops, ((0, 1), (1, 1), (1, 0), (0, 0))):
+            loop[uv].uv = t
+        dens += [da, db, 0.0, 0.0]
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    ob = bpy.data.objects.new(name, me)
+    bpy.context.collection.objects.link(ob)
+    me.materials.append(material("shell_soft"))
+    attr = me.color_attributes.new("Color", "FLOAT_COLOR", "POINT")
+    for i, v in enumerate(me.vertices):
+        attr.data[i].color = (*rgb, dens[i])
+    me.color_attributes.active_color = attr
+    return ob
+
+
 def streak_set(name, streaks, rgb):
     """Штрихи — основной примитив (STYLE.md): [(центр Vector, полуширина, полувысота, яркость)]. Один квадрат на штрих, в плоскости XZ.
     Для штриха от пола: центр.z = полувысота. UV0 — углы, UV1 = (w, 1-h): экспортёр glTF переворачивает V у всех развёрток, в файле

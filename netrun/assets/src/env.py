@@ -229,6 +229,22 @@ def _slab_streaks(rng, cx, cyy, hx, hy, hh, sg, pitch, base, ln_max, wmin, wmax,
     return out
 
 
+SKIRT_H_ROOM = 0.7  # высота вуали под кромкой плиты в комнате, м: порядка длины штрихов (0,1…0,9)
+SKIRT_H_FAR = 1.8   # то же в дальних пластах, где штрихи до 3 м
+
+
+def _slab_skirt(rng, cx, cyy, hx, hy, hh, sg, h_max):
+    """Вуаль плиты: по одному вертикальному квадрату на каждую из 4 боковых граней, от нижней кромки плиты вниз (у потолка вверх) на высоту
+    h_max·0,6…1,0 (у каждой грани своя), плотность у кромки 0,7…1,0, внизу 0. Пространство под плитой не заливается: только плоскости по её периметру."""
+    z0 = sg * (hh - SLAB_T)
+    quads = []
+    for (ax, ay, bx, by) in ((cx - hx, cyy - hy, cx + hx, cyy - hy), (cx + hx, cyy - hy, cx + hx, cyy + hy),
+                             (cx + hx, cyy + hy, cx - hx, cyy + hy), (cx - hx, cyy + hy, cx - hx, cyy - hy)):
+        h = h_max * rng.uniform(0.6, 1.0)
+        quads.append((Vector((ax, ay, z0)), Vector((bx, by, z0)), Vector((0, 0, -sg * h)), rng.uniform(0.7, 1.0), rng.uniform(0.7, 1.0)))
+    return quads
+
+
 def _slab_dots(rng, size, step, covered, margin, sg, forced=()):
     """Точки пола: шаг постоянный, ~15% пропущено, высота слегка разная (не выше поверхности); под плитами (с запасом margin) точек нет."""
     steps = int(size / step + 1e-9)
@@ -262,7 +278,8 @@ def build_floor(out, name="floor", seed=2, ceiling=False, cover=0.22):
     cy = lib.lin("cyan")
     sg = -1.0 if ceiling else 1.0  # знак по высоте: пол смотрит вниз от поверхности, потолок вверх
     rects = _place_slabs(rng, ROOM_KINDS, cover * 4.0, 0.84, 0.12) if cover > 0 else []  # края плит ≤ 0,84: угловые точки (±0,875) вне плит, габарит симметричен
-    tiles, streaks, infos, covered = [], [], [], []
+    tiles, streaks, infos, covered, skirts = [], [], [], [], []
+    srng = random.Random(seed * 7 + 3)  # свой генератор: вуаль не сдвигает раскладку штрихов и точек
     perim = sum(4 * (hx + hy) for _, _, hx, hy in rects)
     pitch = max(0.05, perim * 0.9 / 175)  # бюджет 200 штрихов на модуль: при длинном периметре шаг растёт
     for cx, cyy, hx, hy in rects:
@@ -272,11 +289,14 @@ def build_floor(out, name="floor", seed=2, ceiling=False, cover=0.22):
         covered.append((cx, cyy, hx, hy))
         # Вглубь штрих не уходит ниже −0,95 м от плоскости.
         streaks += _slab_streaks(rng, cx, cyy, hx, hy, hh, sg, pitch, rng.uniform(0.6, 0.95), 0.95 + hh - SLAB_T, 0.011, 0.017, 0.65)
+        skirts += _slab_skirt(srng, cx, cyy, hx, hy, hh, sg, min(SKIRT_H_ROOM, 0.95 + hh - SLAB_T))
     del streaks[200:]
     rim = tuple(c * 0.6 for c in cy)  # контур верха слабее штрихов
     objs = [lib.obj_from_bm("tiles", lib.merge_bm(*tiles), "solid_dark", cy, rgb_fn=_slab_rgb(infos, rim, lib.lin("void")))] if tiles else []
     # пол: якорь сверху (имя *_hang); потолок: штрихи растут вверх от кромок, якорь по умолчанию у основания
     objs.append(lib.streak_set(("ceiling_streaks" if ceiling else "floor_streaks_hang"), streaks, cy))
+    if skirts:  # вуаль на гранях плит (имя *_skirt: в Godot шейдер skirt.gdshader); у чистой площадки без плит её нет
+        objs.append(lib.skirt_set("ceiling_skirt" if ceiling else "floor_skirt", skirts, cy))
     corners = {(sx * 0.875, sy * 0.875) for sx in (-1, 1) for sy in (-1, 1)}
     dots = _slab_dots(rng, 2.0, 0.25, covered, 0.06, sg, forced=corners)
     objs.append(lib.point_cloud("dots", dots, cy, half_size=0.016, seed=2, a_min=0.4, a_max=0.9))
@@ -296,7 +316,8 @@ def build_far_surface(out, name="far_floor", seed=61, ceiling=False, size=11.0, 
     cy = lib.lin("cyan")
     sg = -1.0 if ceiling else 1.0
     rects = _place_slabs(rng, FAR_KINDS, cover * size * size, size / 2 - 0.3, 0.5, max_n=26)
-    tiles, streaks, infos, covered = [], [], [], []
+    tiles, streaks, infos, covered, skirts = [], [], [], [], []
+    srng = random.Random(seed * 7 + 3)
     perim = sum(4 * (hx + hy) for _, _, hx, hy in rects)
     pitch = max(0.2, perim * 0.9 / 235)  # бюджет 260 штрихов на участок
     for cx, cyy, hx, hy in rects:
@@ -306,10 +327,12 @@ def build_far_surface(out, name="far_floor", seed=61, ceiling=False, size=11.0, 
         covered.append((cx, cyy, hx, hy))
         ln_max = 2.98 + hh - SLAB_T  # низ штриха не глубже −2,98 м
         streaks += _slab_streaks(rng, cx, cyy, hx, hy, hh, sg, pitch, ln_max * rng.uniform(0.6, 1.0), ln_max, 0.012, 0.018, 0.65)
+        skirts += _slab_skirt(srng, cx, cyy, hx, hy, hh, sg, min(SKIRT_H_FAR, ln_max))
     del streaks[260:]
     rim = tuple(c * 0.6 for c in cy)
     objs = [lib.obj_from_bm("tiles", lib.merge_bm(*tiles), "solid_dark", cy, rgb_fn=_slab_rgb(infos, rim, lib.lin("void")))]
     objs.append(lib.streak_set(("far_ceiling_streaks" if ceiling else "far_floor_streaks_hang"), streaks, cy))
+    objs.append(lib.skirt_set("far_ceiling_skirt" if ceiling else "far_floor_skirt", skirts, cy))
     dots = _slab_dots(rng, size, 0.75, covered, 0.15, sg)
     dots += [Vector((sx * (size / 2 - 0.1), sy * (size / 2 - 0.1), sg * -0.03)) for sx in (-1, 1) for sy in (-1, 1)]  # угловые точки: габарит симметричен, участки стыкуются
     objs.append(lib.point_cloud("far_surface_pts", dots, cy, half_size=0.02, seed=2, a_min=0.3, a_max=0.8))

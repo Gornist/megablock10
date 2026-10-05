@@ -48,6 +48,12 @@ def check(rep):
     if info["moved_nodes"]:
         bad.append(f"узлов с трансформацией: {info['moved_nodes']} (применить трансформации)")
     for p in info["prims"]:
+        # вуаль плит (`*_skirt`): роль shell_soft (шейдер skirt.gdshader подставляет Godot по имени меша), по одному квадрату на грань
+        if str(p["mesh"]).endswith("_skirt"):
+            if p["material"] != "shell_soft":
+                bad.append(f"{p['mesh']}: вуаль должна быть ролью shell_soft, а не {p['material']}")
+            if p["verts"] != p["tris"] * 2:
+                bad.append(f"{p['mesh']}: вуаль — по одному квадрату (2 треугольника, 4 вершины) на грань, а тут {p['tris']} треуг. и {p['verts']} вершин")
         need = {"COLOR_0", "NORMAL"} | ({"TEXCOORD_1"} if p["material"] in ("points", "streaks") else set())
         if not need <= set(p["attrs"]):
             bad.append(f"{p['mesh']}: нет атрибутов {sorted(need - set(p['attrs']))}")
