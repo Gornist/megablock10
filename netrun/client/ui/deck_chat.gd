@@ -23,10 +23,21 @@ var _list_sig := ""
 var _msg_sig := ""
 var _to_bottom := 0
 var _row_ids: Array = []
+var _offline_banner: Control
+
+
+## Строка «ТЕЛЕФОН НЕ НА СВЯЗИ» (общая для вкладок ЧАТ и ЗВОНКИ): яркая метка тона warn, скрыта, пока связь есть.
+static func make_offline_banner() -> Control:
+	var tag := DeckUi.tag(PhoneLogic.OFFLINE_TEXT, "warn", true)
+	tag.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tag.visible = false
+	return tag
 
 
 func _init() -> void:
 	add_theme_constant_override("separation", DeckTheme.GAP)
+	_offline_banner = make_offline_banner()
+	add_child(_offline_banner)
 	_list_scroll = _scroll()
 	_list_box = DeckUi.vbox(0)
 	DeckUi.expand(_list_box)
@@ -74,6 +85,25 @@ func _init() -> void:
 func bind(phone: PhoneLink) -> void:
 	link = phone
 	refresh()
+	apply_online()
+
+
+## Телефон не на связи: сверху строка-предупреждение, заготовки и «ПОЗВОНИТЬ» недоступны (данные остаются последними известными).
+func is_offline() -> bool:
+	return link != null and not link.is_online()
+
+
+## Пересчитать строку и доступность кнопок по link.is_online() (панель зовёт по сигналу online_changed).
+func apply_online() -> void:
+	_offline_banner.visible = is_offline()
+	for b in _chips:
+		(b as MbButton).disabled = is_offline()
+	if link != null and not _open_id.is_empty():
+		_call_btn.disabled = is_offline() or link.call_state()["phase"] != PhoneLink.PHASE_IDLE
+
+
+func offline_banner() -> Control:
+	return _offline_banner
 
 
 func current_thread() -> String:
@@ -230,7 +260,7 @@ func _refresh_thread() -> void:
 	var faction: bool = t["kind"] == PhoneLink.KIND_FACTION
 	_head_title.text = str(t["title"])
 	_call_btn.visible = not faction
-	_call_btn.disabled = link.call_state()["phase"] != PhoneLink.PHASE_IDLE
+	_call_btn.disabled = is_offline() or link.call_state()["phase"] != PhoneLink.PHASE_IDLE
 	var msgs := link.messages(_open_id, PhoneLogic.MESSAGES_SHOWN)
 	var sig := str(msgs.map(func(m): return [m["id"], m["status"]]))
 	if sig == _msg_sig:

@@ -15,6 +15,8 @@ static func quick_reply_id(text: String) -> String:
 	return QUICK_REPLY_IDS[i] if i >= 0 else ""
 ## Сколько последних сообщений диалога показывает дека.
 const MESSAGES_SHOWN := 8
+## Строка на вкладках ЧАТ и ЗВОНКИ, пока телефон не на связи (RemotePhoneLink.is_online() = false).
+const OFFLINE_TEXT := "ТЕЛЕФОН НЕ НА СВЯЗИ"
 
 
 ## Непрочитанные сверху, потом прочитанные; внутри группы — от новых к старым (стиль: «Сообщения»). Исходный массив не меняется.
