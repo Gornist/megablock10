@@ -34,7 +34,7 @@ const FLOOR_V := {
 const EDGE_MIST := {"haze_alpha": 0.6, "glow": 1.6, "shape": 1.0, "noise_amount": 0.35, "stripe_amount": 0.12, "stripe_count": 160.0}
 
 ## Яркость подвесных штрихов кромки комнаты (`edge_streaks_hang`): у штрихов окружения glow 1,6.
-const EDGE_STREAK_GLOW := 2.6
+const EDGE_STREAK_GLOW := 3.4  # было 2,6: в клиентской сцене граница комнаты читалась слабо
 
 ## Цвета тиров окружения (BASE/HARD/NIGHTMARE): голубая гамма, красный в тирах не участвует.
 const TIER_TINT := {
