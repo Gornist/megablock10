@@ -4,9 +4,36 @@ extends RefCounted
 ## проверяется тестом (как HudLogic). Порядок и тексты — по docs/ux/ui-style-guide.md (раздел 6–7).
 
 ## Заготовки ответа: в очках отвечают только ими, без свободного текста и голосовых (docs/netrun.md: свободный текст — с телефона).
-const QUICK_REPLIES: Array[String] = ["ОК", "Принято", "Жди", "Я в Сети", "Позвони", "Не могу говорить"]
+## Шесть фраз владельца (05.10.2026); id идут в кадр send_text настоящей связи (docs/netrun-phone-link.md), текст по id подставляет телефон.
+const QUICK_REPLIES: Array[String] = ["Да", "Нет", "Позже", "Перезвоню", "Привет", "Увидимся"]
+const QUICK_REPLY_IDS: Array[String] = ["yes", "no", "later", "callback", "hi", "cu"]
+
+
+## id заготовки по тексту; пустая строка — такой заготовки нет (свободный текст очки не отправляют).
+static func quick_reply_id(text: String) -> String:
+	var i := QUICK_REPLIES.find(text)
+	return QUICK_REPLY_IDS[i] if i >= 0 else ""
 ## Сколько последних сообщений диалога показывает дека.
 const MESSAGES_SHOWN := 8
+## Глубина истории фракционного чата в страницах по MESSAGES_SHOWN сообщений (решение владельца 05.10.2026: «два экрана скролла»); личные диалоги — одна страница.
+const FACTION_PAGES := 2
+
+
+## Сколько страниц листается при `total` сообщениях: от 1 до FACTION_PAGES.
+static func page_count(total: int) -> int:
+	return clampi(ceili(float(total) / MESSAGES_SHOWN), 1, FACTION_PAGES)
+
+
+## Страница истории: `messages` — старые первыми, страница 0 — последние MESSAGES_SHOWN, страница 1 — восемь перед ними и т. д.
+## Номер за границей прижимается к ближайшей странице; порядок внутри страницы прежний (старые первыми).
+static func page_slice(messages: Array, page: int) -> Array:
+	var p := clampi(page, 0, page_count(messages.size()) - 1)
+	var end := messages.size() - p * MESSAGES_SHOWN
+	return messages.slice(maxi(end - MESSAGES_SHOWN, 0), maxi(end, 0))
+
+
+## Строка на вкладках ЧАТ и ЗВОНКИ, пока телефон не на связи (RemotePhoneLink.is_online() = false).
+const OFFLINE_TEXT := "ТЕЛЕФОН НЕ НА СВЯЗИ"
 
 
 ## Непрочитанные сверху, потом прочитанные; внутри группы — от новых к старым (стиль: «Сообщения»). Исходный массив не меняется.
