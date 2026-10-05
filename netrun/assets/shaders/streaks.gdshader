@@ -15,6 +15,11 @@ uniform float bead_depth : hint_range(0.0, 1.0) = 0.35;
 uniform float bead_speed : hint_range(0.0, 2.0) = 0.12;   // бусины ползут вверх, м/с
 uniform float end_fade : hint_range(0.05, 1.0) = 0.35;
 uniform float edge_sharp : hint_range(1.0, 12.0) = 5.0;   // больше — тоньше ядро
+// Мягкий ореол (люминесценция): 0 — выкл. (существа, аватары, дека), у окружения ставит AssetMaterials.apply. Квад расширяется в halo_width раз,
+// ядро остаётся прежней мировой ширины, вокруг — широкий слабый ореол: соседние штрихи сливаются в светящуюся дымку. Без буфера глубины и без постобработки.
+uniform float halo : hint_range(0.0, 1.0) = 0.0;
+uniform float halo_width : hint_range(1.0, 6.0) = 2.5;
+uniform float halo_sharp : hint_range(0.5, 8.0) = 2.2;   // больше — уже ореол (в долях расширенного квада)
 uniform float pulse : hint_range(0.0, 1.0) = 0.45;        // глубина бегущей волны яркости
 uniform float pulse_speed : hint_range(0.0, 3.0) = 1.0;
 uniform float pulse_scale : hint_range(0.0, 8.0) = 1.6;   // волн на метр вдоль стены
@@ -87,7 +92,8 @@ void vertex() {
 	vec3 to_cam = CAMERA_POSITION_WORLD - wc;
 	to_cam.y = 0.0;
 	vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), to_cam + vec3(0.00001, 0.0, 0.0)));
-	vec3 wp = wc + right * (UV.x - 0.5) * 2.0 * w * s + vec3(0.0, 1.0, 0.0) * (0.5 - UV.y) * 2.0 * h * s;
+	float hw = halo > 0.0 ? halo_width : 1.0;  // квад шире для ореола; ядро во фрагменте считается в прежних метрах
+	vec3 wp = wc + right * (UV.x - 0.5) * 2.0 * w * s * hw + vec3(0.0, 1.0, 0.0) * (0.5 - UV.y) * 2.0 * h * s;
 	if (touch_radius > 0.0) {  // штрихи прогибаются вглубь от касания (в референсе занавес огибает руку)
 		float tk = 1.0 - smoothstep(0.0, touch_radius, distance(wc, touch_pos));
 		wp -= normalize(to_cam + vec3(0.00001, 0.0, 0.0)) * 0.18 * tk * s;
@@ -101,7 +107,12 @@ void vertex() {
 }
 
 void fragment() {
-	float across = exp(-v_q.x * v_q.x * edge_sharp);
+	float hw = halo > 0.0 ? halo_width : 1.0;
+	float core = exp(-v_q.x * v_q.x * hw * hw * edge_sharp);
+	float across = core;
+	if (halo > 0.0) {  // ядро чуть слабее, вокруг широкий мягкий хвост (гаснет к краю квада, чтобы не было обрезки)
+		across = core * 0.8 + halo * exp(-v_q.x * v_q.x * halo_sharp) * smoothstep(1.0, 0.55, abs(v_q.x));
+	}
 	float along = smoothstep(1.0, 1.0 - end_fade, abs(v_q.y));
 	float bead = 1.0 - bead_depth + bead_depth * step(0.5, fract(v_wy * bead_freq - TIME * bead_speed * bead_freq));
 	float shim = 1.0 - shimmer + shimmer * (0.5 + 0.5 * sin(TIME * shimmer_speed + v_phase * 2.1));

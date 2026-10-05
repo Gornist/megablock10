@@ -20,6 +20,11 @@ const TIER_TINT := {
 	"NIGHTMARE": Color("8a5cff"),
 }
 
+## Мягкий ореол штрихов окружения (streaks.gdshader): яркость хвоста, расширение квада и затухание к концам. У ассетов без тира — 0.
+const ENV_HALO := 0.4
+const ENV_HALO_WIDTH := 2.5
+const ENV_END_FADE := 0.6
+
 ## Решётка «объёмного дисплея» (решение владельца по эксперименту): сущности (аватар, ICE) выводятся на мировой решётке 4 см, мир не квантуется,
 ## иначе он теряет вариативность. Шаг 10 см ломает силуэт аватара. Определяется по пути сцены ассета.
 const ENTITY_LATTICE := 0.04
@@ -49,6 +54,10 @@ static func apply(root: Node, tier: String = "") -> void:
 			if tier != "" and TIER_TINT.has(tier):
 				m.set_shader_parameter("tint", TIER_TINT[tier])
 				m.set_shader_parameter("tint_amount", 1.0)
+			if tier != "" and src.resource_name == "streaks":  # окружение: мягкий ореол и длинное затухание к концам; существа и аватары — резкие, без ореола
+				m.set_shader_parameter("halo", ENV_HALO)
+				m.set_shader_parameter("halo_width", ENV_HALO_WIDTH)
+				m.set_shader_parameter("end_fade", ENV_END_FADE)
 			if entity and (src.resource_name == "streaks" or src.resource_name == "points"):
 				m.set_shader_parameter("lattice", ENTITY_LATTICE)
 			if String(mi.name).ends_with("_mid"):  # штрихи, симметричные вокруг центра (мембрана портала): длина меняется от центра

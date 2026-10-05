@@ -109,6 +109,42 @@ func test_tier_is_a_material_tint() -> void:
 		assert_bool(colors[tier].b >= colors[tier].r).override_failure_message("%s: красный в окружении" % tier).is_true()
 
 
+func _halo_of(m: ShaderMaterial) -> float:
+	var v: Variant = m.get_shader_parameter("halo")  # не выставлен явно (существа) — null: действует значение по умолчанию 0
+	return 0.0 if v == null else float(v)
+
+
+func _streak_halos(n: Node) -> Array:
+	var out: Array = []
+	for mi in _meshes(n):
+		for s in mi.mesh.get_surface_count():
+			var m := (mi.get_surface_override_material(s) if mi.get_surface_override_material(s) != null else mi.mesh.surface_get_material(s)) as ShaderMaterial
+			if m != null and m.shader.get_shader_uniform_list().any(func(u): return u["name"] == "halo"):
+				out.append(_halo_of(m))
+	return out
+
+
+func test_env_streaks_have_a_soft_halo_and_creatures_do_not() -> void:
+	## мягкий ореол (люминесценция) — только у окружения (с тиром); у существ, аватаров и деки штрихи резкие
+	var env_parts := NodeAssets.mesh_parts(NodeAssets.env_path("wall", "BASE"), "BASE")
+	var seen := 0
+	for p in env_parts:
+		var mesh := p["mesh"] as Mesh
+		for s in mesh.get_surface_count():
+			var m := mesh.surface_get_material(s) as ShaderMaterial
+			if m != null and m.shader.get_shader_uniform_list().any(func(u): return u["name"] == "halo"):
+				seen += 1
+				assert_float(_halo_of(m)).is_greater(0.0)
+	assert_int(seen).override_failure_message("в стене нет штрихов с ореолом").is_greater(0)
+	for path in ["ice/soft_ice", "avatar/runner"]:
+		var n := NodeAssets.instance(ROOT + path + ".glb")
+		auto_free(n)
+		var halos := _streak_halos(n)
+		assert_int(halos.size()).override_failure_message("%s: нет штрихов" % path).is_greater(0)
+		for h in halos:
+			assert_float(h).override_failure_message("%s: ореол у существа" % path).is_equal(0.0)
+
+
 func test_mesh_parts_are_cached_per_tier_and_mirror() -> void:
 	var a := NodeAssets.mesh_parts(NodeAssets.env_path("wall"), "BASE")
 	assert_bool(NodeAssets.mesh_parts(NodeAssets.env_path("wall"), "BASE") == a).is_true()
