@@ -7,8 +7,8 @@ shader_type spatial;
 render_mode blend_add, unshaded, depth_draw_never, cull_disabled, fog_disabled;
 
 uniform float glow : hint_range(0.0, 4.0) = 1.0;
-uniform float glass_alpha : hint_range(0.0, 0.5) = 0.095;  // непрозрачность у кромки; к центру — glass_alpha·center_k (≈ 0,04…0,10 в итоге)
-uniform float center_k : hint_range(0.0, 1.0) = 0.45;     // яркость центра плиты относительно кромки
+uniform float glass_alpha : hint_range(0.0, 0.5) = 0.17;   // непрозрачность у кромки; к центру — glass_alpha·center_k (≈ 0,11…0,17 в итоге; было 0,095 и 0,45: пол под ногами читался слабо)
+uniform float center_k : hint_range(0.0, 1.0) = 0.65;     // яркость центра плиты относительно кромки
 uniform float edge_len : hint_range(0.2, 6.0) = 1.8;       // длина затухания от кромки к центру, м
 uniform float patch_amount : hint_range(0.0, 1.0) = 0.7;   // пятнистость (0 — ровная плёнка)
 uniform float patch_scale : hint_range(0.1, 4.0) = 0.55;   // пятен на метр
