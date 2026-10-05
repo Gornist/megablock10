@@ -43,11 +43,7 @@ class HeadsetRuntime(
     private val settings: HeadsetSettings,
     private val mirrorFactory: (onReady: (Boolean) -> Unit) -> HeadsetMirror,
 ) : SoundMirror {
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(CONNECT_TIMEOUT_S, TimeUnit.SECONDS)
-        .pingInterval(PING_INTERVAL_S, TimeUnit.SECONDS) // обрыв канала (очки выключили, ушли из Wi-Fi) замечаем сами, не ждём TCP-таймаута
-        .readTimeout(0, TimeUnit.MILLISECONDS)
-        .build()
+    private val client = headsetHttpClient()
 
     @Volatile private var ready = false
     @Volatile private var socket: WebSocket? = null
@@ -160,8 +156,23 @@ class HeadsetRuntime(
 
     private companion object {
         const val TAG = "Headset"
-        const val CONNECT_TIMEOUT_S = 5L
-        const val PING_INTERVAL_S = 15L
         const val STABLE_MS = 10_000L
     }
 }
+
+private const val CONNECT_TIMEOUT_S = 5L
+private const val PING_INTERVAL_S = 15L
+
+/** Сколько ждать ответа на WebSocket-рукопожатие после того, как TCP принят (дальше OkHttp сам снимает таймаут чтения). */
+internal const val HANDSHAKE_TIMEOUT_S = 10L
+
+/**
+ * HTTP-клиент связи с очками. Таймаут чтения ограничивает только рукопожатие: с `readTimeout(0)` очки, принявшие TCP и не ответившие
+ * (игра зависла или засыпает), держали попытку подключения бесконечно — на живой проверке 05.10 повтор после обрыва «висел» 5 минут без записи
+ * в журнале. После апгрейда соединения OkHttp сам отключает таймаут чтения; живость канала держит пинг.
+ */
+internal fun headsetHttpClient(handshakeTimeoutS: Long = HANDSHAKE_TIMEOUT_S): OkHttpClient = OkHttpClient.Builder()
+    .connectTimeout(CONNECT_TIMEOUT_S, TimeUnit.SECONDS)
+    .readTimeout(handshakeTimeoutS, TimeUnit.SECONDS)
+    .pingInterval(PING_INTERVAL_S, TimeUnit.SECONDS) // обрыв канала (очки выключили, ушли из Wi-Fi) замечаем сами, не ждём TCP-таймаута
+    .build()
