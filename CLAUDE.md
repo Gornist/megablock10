@@ -26,11 +26,13 @@
 | **Коллектор** | `admin-web/` — сервер и дашборд мастера, приём изменений, БД и миграции, auth, связь с Мостом со стороны коллектора | `admin-web/server/src/displays/`, `audio/`, `routes/audio.ts`, `scripts/display*.ts` и их тесты (Физические узлы) |
 | **Физические узлы** | `firmware/` (QR-дисплей, звук), в `admin-web/server/src/`: `displays/`, `audio/`, `routes/audio.ts`, `scripts/display*.ts` и их тесты; `.github/workflows/firmware.yml`; `docs/displays.md`, `firmware-plan.md`, `sound-nodes.md` | остальной `admin-web/` (Коллектор) |
 | **Godot** | `netrun/` — сервер мира, игра, дека, сеть и формат сообщений (`netrun/server/`, `netrun/shared/`), `netrun-bridge/`, `docs/netrun*.md` | ассеты и вид аватара (Blender) |
-| **Blender** | вид Сети: `netrun/assets/` (модели, `src/*.py`, шейдеры, превью, `ARCHITECTURE.md`, `STYLE.md`) и отрисовка тела и рук в `netrun/client/` (`*_view.gd`, `avatar_body.gd`, `head_*.gd`) | формат сообщений и сеть (`netrun/shared/`, `netrun/server/` — Godot): новые поля позы — предложить Godot-сессии |
+| **Blender** | вид Сети: `netrun/assets/` (модели, `src/*.py`, шейдеры, превью, `ARCHITECTURE.md`, `STYLE.md`) и отрисовка тела и рук в `netrun/client/` (`*_view.gd`, `avatar_body.gd`, `head_*.gd`), тесты ассетов `netrun/tests/assets_*` | формат сообщений и сеть (`netrun/shared/`, `netrun/server/` — Godot): новые поля позы — предложить Godot-сессии |
 | **Pipeline manager** | общие правила и инструменты: `CLAUDE.md`, `.claude/` (хук, настройки, общие skills), общие `scripts/` (`check`, `verify`, `dbx`, `ci-wait`, `agent-worktree`, `session-stats`) | код областей |
 
 Общее для всех: `docs/progress.md` — каждая сессия правит только свой раздел; `.github/workflows/` своей области — можно, `main.yml` — через
 Pipeline manager. Работать в своей worktree (`scripts/agent-worktree.sh new <имя>`), добавлять файлы явными путями, в `main` — только владелец.
+Перед коммитом и PR — `scripts/zone-check.sh <android|collector|nodes|godot|blender|pipeline>`: печатает файлы вне зоны (таблица продублирована в скрипте —
+правите таблицу, правьте и его).
 
 ## Работа агента: время и токены
 
@@ -60,6 +62,11 @@ Pipeline manager. Работать в своей worktree (`scripts/agent-worktr
 
 - Коммиты, комментарии и документация — на русском. Сообщение коммита: что и **почему** (какой сбой, какой журнал).
 - В `main` — только по явной команде владельца, перемоткой (fast-forward) с зелёными CI и e2e. Историю `main` не переписывать.
+  Влить PR владелец может одной командой (сервер откажет, если это не перемотка):
+  `gh api -X PATCH repos/Gornist/megablock10/git/refs/heads/main -f sha=$(gh pr view N --json headRefOid -q .headRefOid) -F force=false`,
+  затем `git -C ~/Developer/megablock10 pull --ff-only`. Отказал — ветка отстала: агент вливает в неё `origin/main` (merge, не rebase) и ждёт CI.
+- Уборка: `scripts/agent-worktree.sh gone <имя>` — влита ли ветка по содержимому (после cherry-pick хеши другие) и команды уборки;
+  удаляет владелец или сессия по его слову.
 - Одна ветка — один исполнитель. Параллельная работа — `scripts/agent-worktree.sh new <имя>` (своя копия и ветка `agent/<имя>`).
 - Не коммитить незавершённое «на потом»: после каждого шага ветка собирается и тесты зелёные.
 
@@ -106,6 +113,7 @@ Pipeline manager. Работать в своей worktree (`scripts/agent-worktr
 
 - **Mac (8 ГБ):** правка, git, `scripts/check.sh --fast`. Gradle, Paparazzi, e2e, Godot, Мост — **на devbox** (`ssh devbox`),
   долгое через `devjob` — skill `devbox`. Параллельных Gradle и стендов e2e нет: одна задача на машину.
+  На Mac нет `timeout` (GNU), Pillow и ImageMagick, bash — 3.2: сетки кадров, обработку картинок и всё с пределом времени — на devbox.
 - **Gradle на devbox — `scripts/dbx.sh --auto|--full`** (очередь, один итог; skill `orchestrate`). Большая задача из 3+ шагов — по skill `orchestrate`
   (разведка одним агентом с досье, исполнители sonnet, ожидание одним фоновым вызовом, `scripts/ci-wait.sh`).
 - Цикл задачи: правка → `check.sh --fast` (Mac) → тяжёлая проверка на devbox → коммит → `/clear`. Новое окно начинать с

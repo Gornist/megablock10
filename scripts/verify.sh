@@ -22,6 +22,8 @@ if hit '^(app|kit|rules)/|^(build|settings)\.gradle|^gradle\.properties|^gradle/
 fi
 hit '^netrun-bridge/' && add bridge "scripts/dbx.sh -- :netrun-bridge:detekt :netrun-bridge:test"
 if hit '^netrun/'; then [ $FULL = 1 ] && add godot "netrun/tools/dev.sh test --all" || add godot "netrun/tools/dev.sh test"; fi
+# Ассеты без .gd (модели, src/*.py, шейдеры): dev.sh test по ним ничего не находит и молчит — проверяем правила ассетов явно (сессия Blender, 05.10).
+[ $FULL = 0 ] && hit '^netrun/assets/' && add assets "netrun/tools/dev.sh test assets_models_test"
 if hit '^admin-web/'; then
   if [ $FULL = 1 ]; then add collector "admin-web/tools/test.sh all"
   else
