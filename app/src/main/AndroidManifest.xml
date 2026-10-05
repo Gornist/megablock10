@@ -19,6 +19,8 @@
     <!-- requestNetwork/bindProcessToNetwork: привязка трафика приложения к Wi-Fi игровой сети (presence/WifiBinder) -->
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <!-- WifiLock связи с очками (headset.HeadsetRuntime): радио не засыпает, пока включено зеркало на очки. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Требуется на Android 13+ для обнаружения устройств по Wi-Fi (NSD в т.ч.); на более старых версиях игнорируется. -->
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" android:usesPermissionFlags="neverForLocation" tools:targetApi="33" />
 

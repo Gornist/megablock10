@@ -2,6 +2,7 @@ package com.megablok10.app.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -64,7 +65,8 @@ fun NetworkScreen() {
         defaultUrl = settings.defaultUrl,
         onSaveUrl = settings::saveCollectorUrl, onSaveSecret = settings::saveGameSecret,
         onMark = settings::markLog, onClearLog = settings::clearLog,
-        onExportLog = { scope.launch { settings.exportLog()?.let { shareLogArchive(context, it) } } }
+        onExportLog = { scope.launch { settings.exportLog()?.let { shareLogArchive(context, it) } } },
+        extra = { HeadsetSection() }
     )
 }
 
@@ -96,6 +98,8 @@ internal fun NetworkContent(
     onMark: (String) -> Boolean,
     onClearLog: () -> Unit,
     onExportLog: () -> Unit,
+    /** Дополнительные секции в конце экрана (сейчас — «Очки Pico»); у скриншот-тестов пусто, поэтому их эталоны не меняются. */
+    extra: @Composable ColumnScope.() -> Unit = {},
 ) {
     val c = LocalMbColors.current
     var collectorUrl by remember { mutableStateOf(initialUrl) }
@@ -175,6 +179,7 @@ internal fun NetworkContent(
         }
         MbButton("Очистить журнал", kind = MbButtonKind.Ghost, onClick = { confirmingClear = true })
         status?.let { Text(it, style = MbTypography.meta, color = c.acc) }
+        extra()
     }
 
     if (confirmingClear) {

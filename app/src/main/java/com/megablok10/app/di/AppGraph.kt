@@ -32,6 +32,10 @@ import com.megablok10.app.collector.heartbeat
 import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.data.RoomTransactor
 import com.megablok10.app.identity.ContactDirectory
+import com.megablok10.app.headset.ChatStoreHeadsetPort
+import com.megablok10.app.headset.HeadsetMirror
+import com.megablok10.app.headset.HeadsetRuntime
+import com.megablok10.app.headset.HeadsetSettings
 import com.megablok10.app.identity.ContactStore
 import com.megablok10.app.identity.CreateCharacter
 import com.megablok10.app.identity.Identity
@@ -51,6 +55,7 @@ import com.megablok10.app.netrun.WorldAutoAccept
 import com.megablok10.app.presence.MeshForegroundService
 import com.megablok10.app.session.SessionActions
 import com.megablok10.app.session.SessionController
+import com.megablok10.app.sound.SoundPlayer
 import com.megablok10.app.ui.nav.ShellBadges
 import com.megablok10.app.net.WireVersion
 import com.megablok10.app.presence.MeshLink
@@ -188,6 +193,12 @@ class AppGraph(private val app: Application) {
     )
     val worldCards = WorldAutoAccept(netrunStore::worldPub, items, wallet, chat, processScope, onWorldCard = netrun::onWorldCard)
 
+    // Очки Pico как второй экран (docs/netrun-phone-link.md): за переключателем в «Сеть» → «Очки», по умолчанию выключено. Запускается задачей сессии ниже.
+    val headsetSettings = HeadsetSettings(prefs(HeadsetSettings.PREFS))
+    val headset = HeadsetRuntime(app, headsetSettings) { onReady ->
+        HeadsetMirror(ChatStoreHeadsetPort(db.chatMirrorDao(), chat, contacts), { identity.current }, headsetSettings, onReady)
+    }.also { SoundPlayer.mirror = it }
+
     // Сессия и жизненный цикл персонажа
     val mesh: MeshSession = MeshSession(
         app, chat, presence, wifi, calls, slotClaims,
@@ -199,6 +210,7 @@ class AppGraph(private val app: Application) {
         sessionTasks = listOf(
             { scope -> secAlerts.start(scope) },
             { scope -> cardResender.start(scope) },
+            { scope -> headset.start(scope) },
             { _ -> netrun.restorePeer() },
             { scope -> DeviceDiagnostics.startSnapshots(app, scope, diagnosticsState) },
         ),

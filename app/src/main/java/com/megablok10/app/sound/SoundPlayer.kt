@@ -14,6 +14,12 @@ import com.megablok10.app.R
  * укладываются в модель SoundPool с её лимитом на длину сэмпла.
  */
 object SoundPlayer {
+    /**
+     * Куда дублировать звуки приложения — очки (headset.HeadsetRuntime). Пока [SoundMirror.takesOver] истинно, звуки играют в очках, а телефон
+     * молчит (решение владельца 05.10.2026: рингтон, дозвон и звук сообщения — в гарнитуре); оборвалась связь с очками — телефон снова играет сам.
+     */
+    @Volatile var mirror: SoundMirror? = null
+
     private var soundPool: SoundPool? = null
     private var messageSoundId: Int = 0
     private var messageSoundReady = false
@@ -42,27 +48,41 @@ object SoundPlayer {
 
     /** Короткий сигнал полученного сообщения — самообороны от своих же исходящих не требует, вызывающий код сам решает, когда звать. */
     fun playMessageReceived(context: Context) {
+        if (handedToMirror(SoundMirror.MESSAGE)) return
         preload(context)
         val pool = soundPool ?: return
         if (messageSoundReady) pool.play(messageSoundId, 1f, 1f, 1, 0, 1f)
     }
 
     /** Гудок дозвона — крутится, пока исходящий вызов не примут/не сбросят/не отменят. */
-    fun startDialTone(context: Context) = startLoop(context, R.raw.cp77_dial_tone)
+    fun startDialTone(context: Context) = startLoop(context, R.raw.cp77_dial_tone, SoundMirror.RINGBACK)
 
     /** Рингтон входящего звонка — крутится до принятия/отклонения/таймаута. */
-    fun startIncomingRingtone(context: Context) = startLoop(context, R.raw.cyberpunk_ring)
+    fun startIncomingRingtone(context: Context) = startLoop(context, R.raw.cyberpunk_ring, SoundMirror.RING)
 
-    private fun startLoop(context: Context, resId: Int) {
-        stopLoop()
+    /** Очкам — сообщить о звуке; true — они играют его сами, телефону играть не нужно. */
+    private fun handedToMirror(kind: String): Boolean {
+        val m = mirror ?: return false
+        m.onSound(kind)
+        return m.takesOver
+    }
+
+    private fun startLoop(context: Context, resId: Int, kind: String) {
+        stopPlayer()
+        if (handedToMirror(kind)) return
         val player = MediaPlayer.create(context.applicationContext, resId) ?: return
         player.isLooping = true
         player.start()
         loopPlayer = player
     }
 
-    /** Останавливает гудок/рингтон, если сейчас крутится — безопасно звать в любой момент, в т.ч. если ничего не играет. */
+    /** Останавливает гудок/рингтон, если сейчас крутится — безопасно звать в любой момент, в т.ч. если ничего не играет. Очкам — `stop`. */
     fun stopLoop() {
+        mirror?.onSound(SoundMirror.STOP)
+        stopPlayer()
+    }
+
+    private fun stopPlayer() {
         loopPlayer?.let {
             try {
                 if (it.isPlaying) it.stop()
