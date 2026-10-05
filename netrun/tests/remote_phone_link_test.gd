@@ -278,3 +278,32 @@ func test_send_text_without_a_phone_leaves_a_failed_message() -> void:
 	assert_str(m[0]["status"]).is_equal("failed")
 	assert_bool(m[0]["mine"]).is_true()
 	assert_str(m[0]["text"]).is_equal("Да")
+
+
+# ---------------------------------------------------------------- пауза очков (сняли — телефон должен увидеть обрыв)
+
+func test_pause_closes_the_phone_and_the_port_and_resume_opens_it_again() -> void:
+	var ws: WebSocketPeer = (await _online_phone())[0]
+	var sounds: Array = []
+	_link.sound_requested.connect(func(k): sounds.append(k))
+	_link.pause()
+	assert_bool(_link.is_online()).is_false()
+	assert_array(sounds).is_equal(["stop"])   # петля рингтона гаснет вместе со связью
+	# телефон узнаёт о паузе: пришёл кадр закрытия с кодом 1001
+	assert_bool(await _pump(func(): return ws.get_ready_state() == WebSocketPeer.STATE_CLOSED)).is_true()
+	assert_int(ws.get_close_code()).is_equal(RemotePhoneLink.CLOSE_GOING_AWAY)
+	# порт закрыт: новое соединение не открывается
+	var late := _connect()
+	assert_bool(await _pump(func(): return late.get_ready_state() == WebSocketPeer.STATE_CLOSED, 60)).is_true()
+	# очки надели: порт открыт снова с тем же токеном, телефон возвращается
+	assert_int(_link.resume()).is_equal(OK)
+	var back := _connect()
+	assert_bool(await _open(back)).is_true()
+	_say(back, {"t": "hello", "v": 1, "callsign": "Призрак"})
+	assert_bool(await _pump(func(): return _link.is_online())).is_true()
+
+
+func test_pause_without_a_phone_is_harmless() -> void:
+	_link.pause()
+	assert_bool(_link.is_online()).is_false()
+	assert_int(_link.resume()).is_equal(OK)

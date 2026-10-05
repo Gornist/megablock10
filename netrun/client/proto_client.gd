@@ -233,10 +233,10 @@ func _setup_phone(args: PackedStringArray) -> void:
 		if phone == null:
 			phone = FakePhoneLink.new(-1.0, true, true)   # сценарий идёт по кругу: очки надевают не сразу после запуска
 		scene.world_ui.set_phone(phone)
-		phone.message_received.connect(func(thread_id: String, _msg: Dictionary): log_file.log("phone.msg", {"thread": thread_id}))
+		phone.message_received.connect(func(thread_id: String, _msg: Dictionary): log_file.log("phone.msg", {"thread": short_thread(thread_id)}))
 		phone.call_changed.connect(func(st: Dictionary): log_file.log("phone.call", {"phase": st["phase"], "peer": st["peer"], "muted": st["muted"]}))
 		deck.tab_changed.connect(func(id: String): log_file.log("deck.tab", {"id": id}))
-		deck.reply_sent.connect(func(thread_id: String, text: String): log_file.log("phone.reply", {"thread": thread_id, "text": text}))
+		deck.reply_sent.connect(func(thread_id: String, text: String): log_file.log("phone.reply", {"thread": short_thread(thread_id), "text": text}))
 	if mode == PHONE_REMOTE:
 		log_file.log("phone", {"link": mode, "port": m["port"], "token": "set" if not str(m["token"]).is_empty() else "none", "tabs": deck.tab_ids().size()})
 	else:
@@ -250,6 +250,27 @@ func _wire_remote_phone(remote: RemotePhoneLink) -> void:
 	sounds.bind(remote)
 	remote.online_changed.connect(func(online: bool): log_file.log("phone.online", {"online": online, "callsign": remote.phone_callsign}))
 	remote.sound_requested.connect(func(kind: String): log_file.log("phone.sound", {"kind": kind}))
+
+
+## Идентификатор диалога для журнала: настоящий ЛС — публичный ключ в ~120 символов, режем до «…последние 8».
+static func short_thread(thread_id: String) -> String:
+	return thread_id if thread_id.length() <= 24 else "…" + thread_id.right(8)
+
+
+## Очки сняли (пауза приложения): настоящая связь закрывает порт — телефон видит обрыв и сам играет звонки и сообщения, пока очки сняты.
+## Фиктивной связи это не касается.
+func pause_phone() -> void:
+	if phone is RemotePhoneLink:
+		(phone as RemotePhoneLink).pause()
+		log_file.log("phone.pause")
+
+
+## Очки надели снова: порт открывается заново, телефон переподключается сам.
+func resume_phone() -> void:
+	if phone is RemotePhoneLink:
+		var link := phone as RemotePhoneLink
+		var err := link.resume()
+		log_file.log("phone.resume", {"ok": err == OK, "port": link.port})
 
 
 func _exit_tree() -> void:
@@ -474,8 +495,10 @@ func _notification(what: int) -> void:
 		NOTIFICATION_APPLICATION_PAUSED:
 			_paused_at_ms = Time.get_ticks_msec()
 			log_file.log("app.pause")
+			pause_phone()
 		NOTIFICATION_APPLICATION_RESUMED:
 			var slept := (Time.get_ticks_msec() - _paused_at_ms) / 1000.0 if _paused_at_ms >= 0 else 0.0
 			log_file.log("app.resume", {"slept_sec": slept, "connected": net != null and net.is_connected_to_world})
+			resume_phone()
 		NOTIFICATION_WM_CLOSE_REQUEST, NOTIFICATION_PREDELETE:
 			log_file.log("app.stop")

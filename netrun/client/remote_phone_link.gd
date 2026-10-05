@@ -30,6 +30,7 @@ const CLOSE_BAD_TOKEN := 4001
 const CLOSE_BAD_HELLO := 4002
 const CLOSE_REPLACED := 4003
 const CLOSE_TOO_BIG := 1009
+const CLOSE_GOING_AWAY := 1001   # очки на паузе (сняты): телефон переподключится, когда порт откроется снова
 
 var port := DEFAULT_PORT
 var token := ""
@@ -60,13 +61,27 @@ func stop() -> void:
 		(j["ws"] as WebSocketPeer).close()
 	_joining.clear()
 	if _peer != null:
-		_peer.close()
+		_peer.close(CLOSE_GOING_AWAY, "очки на паузе")
+		_peer.poll()   # кадр закрытия уходит сразу: процесс очков может замереть следующим же кадром
 		_drop_peer()
 	_server.stop()
 
 
+## Очки сняли, приложение на паузе и скоро замрёт: порт закрываем, иначе ядро Android принимает TCP за замершее приложение, и телефон
+## считает очки живыми (молчит сам и ждёт рукопожатия) — входящий звонок пропал бы. Закрытый порт и обрыв — телефон берёт звуки на себя.
+func pause() -> void:
+	stop()
+
+
+## Очки надели снова: порт открывается заново с прежними настройками, телефон переподключается сам.
+func resume() -> Error:
+	return start(port, token)
+
+
 ## Порт, на котором реально слушаем (если start просили порт 0 — выбранный системой).
 func listen_port() -> int:
+	if not _server.is_listening():
+		return 0   # не слушаем (пауза или start не звали): 0 без ошибки движка
 	return _server.get_local_port()
 
 

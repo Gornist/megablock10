@@ -212,3 +212,35 @@ func test_remote_mode_comes_from_netrun_cfg() -> void:
 	var text := _log(proto)
 	assert_str(text).contains("phone link=remote port=%d token=set" % port)
 	assert_bool(text.contains(SECRET)).is_false()
+
+
+# ---------------------------------------------------------------- пауза очков: настоящая связь закрывает порт, фиктивной всё равно
+
+func test_pause_and_resume_close_and_reopen_the_real_link() -> void:
+	var port := _free_port()
+	var proto := _client(PackedStringArray(["--phone=remote", "--phone-port=%d" % port, "--phone-token=" + SECRET]))
+	var link: RemotePhoneLink = proto.phone
+	assert_int(link.listen_port()).is_equal(port)
+	proto.pause_phone()
+	assert_int(link.listen_port()).is_equal(0)   # порт закрыт: телефон не принимается ядром за живое приложение
+	proto.resume_phone()
+	assert_int(link.listen_port()).is_equal(port)
+	var text := _log(proto)
+	assert_str(text).contains("phone.pause")
+	assert_str(text).contains("phone.resume ok=true port=%d" % port)
+	assert_bool(text.contains(SECRET)).is_false()
+
+
+func test_pause_does_not_touch_the_fake_link() -> void:
+	var proto := _client(PackedStringArray())
+	proto.pause_phone()
+	proto.resume_phone()
+	assert_bool(proto.phone is FakePhoneLink).is_true()
+	assert_bool(_log(proto).contains("phone.pause")).is_false()
+
+
+func test_long_thread_id_is_shortened_for_the_log() -> void:
+	var key := "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAESjebZ4jiWwcsJ0HcajLBlnQlwhDJjDTy3jPh6J0EqJOfDx/7JYLzL/uw8+NA77OS8HFvqMKWh0h3LWhpep+BwA=="
+	assert_str(ProtoClient.short_thread(key)).is_equal("…ep+BwA==")
+	assert_str(ProtoClient.short_thread("dm:ВОБЛА")).is_equal("dm:ВОБЛА")
+	assert_str(ProtoClient.short_thread("faction")).is_equal("faction")
