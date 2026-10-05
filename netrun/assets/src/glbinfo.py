@@ -45,6 +45,7 @@ def parse(path):
         "bbox_max": hi,
         "size": [round(hi[i] - lo[i], 4) for i in range(3)],
         "moved_nodes": moved,
+        "node_names": [n.get("name") for n in doc.get("nodes", [])],
     }
 
 

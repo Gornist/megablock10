@@ -20,6 +20,13 @@ import glbinfo  # noqa: E402
 ROLES = {"glow_edge", "shell_soft", "points", "streaks", "solid_dark"}
 MAX_LAYERS = 3  # вложенных прозрачных оболочек на один ассет (STYLE.md)
 MAX_DRAWS = 8   # примитивов (≈ вызовов отрисовки) на ассет; предварительно, уточнить замером
+# Узлы-метки предметов узла: контракт с клиентом (ARCHITECTURE.md, «Предметы узла»), без них клиент не сможет включить состояние, тир, экран.
+REQUIRED_NODES = {
+    "vault": ("State_closed", "State_open", "State_empty", "Tier_1", "Tier_2", "Tier_3", "ShardSlot"),
+    "shard": ("Tier_1", "Tier_2", "Tier_3"),
+    "shard_encrypted": ("Tier_1", "Tier_2", "Tier_3"),
+    "hack_panel": ("Screen", "ScreenAnchor"),
+}
 
 
 def check(rep):
@@ -43,8 +50,12 @@ def check(rep):
     if "glow_edge" in mats:
         bad.append("glow_edge: сплошные рейки запрещены (STYLE.md), грань — плотность частиц")
     draws = len(info["prims"])
-    if draws > MAX_DRAWS:
-        bad.append(f"примитивов {draws} > {MAX_DRAWS} (каждый — вызов отрисовки)")
+    max_draws = rep.get("budget_draws") or MAX_DRAWS  # составные предметы (хранилище: три состояния в одном файле) заявляют свой предел
+    if draws > max_draws:
+        bad.append(f"примитивов {draws} > {max_draws} (каждый — вызов отрисовки)")
+    missing = [n for n in REQUIRED_NODES.get(rep["name"], ()) if n not in info.get("node_names", [])]
+    if missing:
+        bad.append(f"нет узлов-меток контракта: {missing}")
     if info["moved_nodes"]:
         bad.append(f"узлов с трансформацией: {info['moved_nodes']} (применить трансформации)")
     for p in info["prims"]:

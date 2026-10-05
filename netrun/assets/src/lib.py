@@ -451,13 +451,21 @@ def add_clips(rig, clips, fps=30):
     rig.location, rig.rotation_euler, rig.scale = (0, 0, 0), (0, 0, 0), (1, 1, 1)
 
 
-def anchor(name, loc):
+def anchor(name, loc, euler=None):
     """Якорь: пустой узел в точке loc (Blender, Z вверх), экспортируется как Node3D с этим именем («Anchor_Shard» и т. п.). Игра ставит
-    в него предметы и эффекты; в проверках размера и атрибутов не участвует."""
+    в него предметы и эффекты; в проверках размера и атрибутов не участвует. euler — поворот узла (радианы, XYZ), если метка несёт направление."""
     ob = bpy.data.objects.new(name, None)
     bpy.context.collection.objects.link(ob)
     ob.location = Vector(loc)
+    if euler is not None:
+        ob.rotation_euler = euler
     return ob
+
+
+def group(name, children):
+    """Узел-группа без трансформации (Node3D с этим именем в .glb): все дочерние меши и метки попадают под него. Так игра включает целый блок
+    через visible (состояния и тиры хранилища, шарда). Возвращает сам узел — его тоже надо передать в export."""
+    return make_rig(name, children)
 
 
 # ---------------------------------------------------------------- экспорт и отчёт
@@ -470,7 +478,7 @@ def args():
     return out
 
 
-def export(name, group, objs, out_root, budget_tris, budget_points=0, origin="floor", animations=False, notes="", budget_streaks=0):
+def export(name, group, objs, out_root, budget_tris, budget_points=0, origin="floor", animations=False, notes="", budget_streaks=0, budget_draws=0):
     """Записать models/<group>/<name>.glb и reports/<name>.json (числа берём из самого .glb)."""
     path = os.path.join(out_root, "models", group, f"{name}.glb")
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -488,7 +496,7 @@ def export(name, group, objs, out_root, budget_tris, budget_points=0, origin="fl
     s = glbinfo.summary(info)
     report = {
         "name": name, "group": group, "file": f"models/{group}/{name}.glb", "origin": origin,
-        "budget_tris": budget_tris, "budget_points": budget_points, "budget_streaks": budget_streaks, **s,
+        "budget_tris": budget_tris, "budget_points": budget_points, "budget_streaks": budget_streaks, "budget_draws": budget_draws, **s,
         "size": info["size"], "bbox_min": info["bbox_min"], "bbox_max": info["bbox_max"],
         "materials": info["materials"], "animations": info["animations"],
         "moved_nodes": info["moved_nodes"], "notes": notes,

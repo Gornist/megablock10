@@ -13,7 +13,9 @@ const ENV_VARIANTS := {
 	"far_field": ["far_field", "far_field_b", "far_field_c"], "far_floor": ["far_floor", "far_floor_b", "far_floor_c"],
 	"far_ceiling": ["far_ceiling", "far_ceiling_b", "far_ceiling_c"],
 }
-const PROPS := ["vault_closed", "vault_open", "shard", "shard_encrypted", "dead_deck", "portal", "portal_locked", "sensor", "seat"]
+const PROPS := ["vault", "vault_closed", "vault_open", "shard", "shard_encrypted", "daemon_token", "hack_panel", "hack_pad", "dead_deck", "portal", "portal_locked", "sensor", "seat"]
+## Бюджеты треугольников предметов узла «волюметрик» (карточка владельца; точки и штрихи считает validate.py по самим .glb)
+const VOLUME_TRIS := {"vault": 900, "shard": 300, "shard_encrypted": 400, "daemon_token": 200, "hack_panel": 300, "hack_pad": 120}
 ## клипы ICE — имена из ТЗ (docs/netrun-assets-brief.md, п. 11-12)
 const ICE := {"soft_ice": ["idle", "patrol"], "black_ice": ["idle", "hunt", "catch"]}
 const DAEMON_EFFECTS := ["EXTRACT_SHARD", "EXTRACT_DAEMON", "GHOST", "TIMESKEW", "BLACKOUT", "JITTER", "DECRYPT", "MINER"]
@@ -358,7 +360,121 @@ func test_avatar_runner() -> void:
 	assert_float(box.position.y).is_greater(-0.05)  # ног нет, но стоит на полу
 
 
-func test_shard_variants_differ_only_in_colour() -> void:
-	var a := _aabb(_load("props", "shard"))
-	var b := _aabb(_load("props", "shard_encrypted"))
-	assert_float(absf(a.size.y - b.size.y)).is_less(0.01)
+func test_shard_variants_have_the_same_height_but_differ_in_form() -> void:
+	var a := _load("props", "shard")
+	var b := _load("props", "shard_encrypted")
+	assert_float(absf(_aabb(a).size.y - _aabb(b).size.y)).is_less(0.02)
+	assert_float(_aabb(a).size.y).is_between(0.12, 0.15)  # 13 см
+	assert_bool(a.find_child("shard_core_shell0", true, false) != null and a.find_child("shard_cage_pts", true, false) == null).override_failure_message("расшифрованный: ядро есть, клетки нет").is_true()
+	assert_bool(b.find_child("shard_core_shell0", true, false) == null and b.find_child("shard_cage_pts", true, false) != null).override_failure_message("зашифрованный: клетка есть, ядро скрыто").is_true()
+	assert_bool(b.find_child("shard_glitch_pts", true, false) != null).override_failure_message("зашифрованный: нет глитч-полос").is_true()
+
+
+# ---------------------------------------------------------------- предметы узла «волюметрик»: контракт узлов (ARCHITECTURE.md, «Предметы узла»)
+
+func _tris(root: Node) -> int:
+	var n := 0
+	for mi in _meshes(root):
+		for i in mi.mesh.get_surface_count():
+			var role := String(mi.mesh.surface_get_material(i).resource_name) if mi.mesh.surface_get_material(i) != null else ""
+			if role == "points" or role == "streaks":
+				continue
+			var arr := mi.mesh.surface_get_arrays(i)
+			n += (arr[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3
+	return n
+
+
+func test_volume_props_are_within_triangle_budgets() -> void:
+	for p in VOLUME_TRIS:
+		var t := _tris(_load("props", p))
+		assert_int(t).override_failure_message("%s: %d треугольников > %d" % [p, t, VOLUME_TRIS[p]]).is_less_equal(VOLUME_TRIS[p])
+
+
+func test_vault_has_three_states_three_tiers_and_a_shard_slot() -> void:
+	var v := _load("props", "vault")
+	for s in ["State_closed", "State_open", "State_empty", "Tier_1", "Tier_2", "Tier_3"]:
+		var n := v.find_child(s, true, false) as Node3D
+		assert_bool(n != null).override_failure_message("vault: нет узла " + s).is_true()
+		assert_bool(n != null and _meshes(n).size() > 0).override_failure_message("vault: в %s нет мешей" % s).is_true()
+	var slot := v.find_child("ShardSlot", true, false) as Node3D
+	assert_bool(slot != null).override_failure_message("vault: нет ShardSlot").is_true()
+	assert_float(slot.position.y).is_equal_approx(1.0, 0.01)  # центр шарда на 1,0 м над полом
+	var box := _aabb(v)
+	assert_float(box.position.y).is_between(-0.01, 0.01)  # origin на полу
+	assert_float(box.size.x).is_between(0.7, 0.9)
+	assert_float(box.size.z).is_between(0.65, 0.85)
+	assert_float(box.size.y).is_between(0.7, 0.95)
+	# состояния различимы силуэтом: закрытое с клеткой высокое, пустое низкое
+	var closed := _aabb(v.find_child("State_closed", true, false))
+	var empty := _aabb(v.find_child("State_empty", true, false))
+	assert_float(closed.end.y - empty.end.y).override_failure_message("closed и empty одной высоты").is_greater(0.3)
+
+
+func test_tiers_are_cumulative_marks_on_vault_and_shards() -> void:
+	for p in ["vault", "shard", "shard_encrypted"]:
+		var n := _load("props", p)
+		for k in [1, 2, 3]:
+			assert_bool(n.find_child("Tier_%d" % k, true, false) != null).override_failure_message("%s: нет Tier_%d" % [p, k]).is_true()
+
+
+func test_daemon_token_is_a_flat_hex_chip() -> void:
+	var box := _aabb(_load("props", "daemon_token"))
+	assert_float(maxf(box.size.x, box.size.y)).is_between(0.10, 0.15)
+	assert_float(box.size.z).override_failure_message("токен плоский, толщина %.3f" % box.size.z).is_less(0.03)
+	assert_float(absf(box.get_center().x) + absf(box.get_center().y) + absf(box.get_center().z)).is_less(0.03)  # origin в центре
+
+
+func test_hack_panel_screen_and_anchor() -> void:
+	var p := _load("props", "hack_panel")
+	var screen := p.find_child("Screen", true, false) as MeshInstance3D
+	var anc := p.find_child("ScreenAnchor", true, false) as Node3D
+	assert_bool(screen != null and anc != null).override_failure_message("hack_panel: нужны Screen и ScreenAnchor").is_true()
+	var sb := screen.mesh.get_aabb()
+	assert_float(sb.get_longest_axis_size()).is_between(0.43, 0.47)  # 0,44 м по ширине (с наклоном чуть короче по высоте)
+	var arr := screen.mesh.surface_get_arrays(0)
+	var uv: PackedVector2Array = arr[Mesh.ARRAY_TEX_UV]
+	var vtx: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var nrm: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
+	var umin := 1e9
+	var umax := -1e9
+	var vmin := 1e9
+	var vmax := -1e9
+	for t in uv:
+		umin = minf(umin, t.x)
+		umax = maxf(umax, t.x)
+		vmin = minf(vmin, t.y)
+		vmax = maxf(vmax, t.y)
+	assert_bool(umin == 0.0 and umax == 1.0 and vmin == 0.0 and vmax == 1.0).override_failure_message("UV экрана не 0..1: %s..%s, %s..%s" % [umin, umax, vmin, vmax]).is_true()
+	# глазами игрока (он на −Z, смотрит на +Z; его право — −X, верх — +Y): u растёт вправо (x убывает), v растёт вниз (y убывает)
+	var i0 := 0
+	var i1 := 0
+	for i in uv.size():
+		if uv[i].x < uv[i0].x:
+			i0 = i
+		if uv[i].x > uv[i1].x:
+			i1 = i
+	assert_bool(vtx[i0].x > vtx[i1].x).override_failure_message("u растёт не вправо с точки зрения игрока").is_true()
+	var j0 := 0
+	var j1 := 0
+	for i in uv.size():
+		if uv[i].y < uv[j0].y:
+			j0 = i
+		if uv[i].y > uv[j1].y:
+			j1 = i
+	assert_bool(vtx[j0].y > vtx[j1].y).override_failure_message("v растёт не вниз").is_true()
+	# метка: +Z узла от экрана к игроку (игрок на −Z), наклон 25° (нормаль смотрит вверх), центр экрана на ~1,1 м
+	var z := anc.transform.basis.z  # метка прямо под корнем (узлы без трансформации)
+	assert_float(z.z).override_failure_message("+Z метки не к игроку: %s" % z).is_less(-0.85)
+	assert_float(z.y).override_failure_message("наклон не 25°: %s" % z).is_between(0.35, 0.5)
+	assert_float(anc.position.y).is_between(1.05, 1.15)
+	for n in nrm:
+		assert_float(n.dot(z)).override_failure_message("нормаль экрана не совпадает с +Z метки").is_greater(0.99)
+
+
+func test_hack_pad_is_a_thin_plate_under_the_feet() -> void:
+	var box := _aabb(_load("props", "hack_pad"))
+	assert_float(box.size.x).is_between(0.85, 1.0)
+	assert_float(box.size.z).is_between(0.85, 1.0)
+	assert_float(box.position.y).is_between(-0.01, 0.01)
+	var plate := _aabb((_load("props", "hack_pad")).find_child("pad_plate", true, false))
+	assert_float(plate.size.y).is_between(0.025, 0.035)  # плита 3 см

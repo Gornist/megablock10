@@ -8,7 +8,7 @@ const BG := Color(0.004, 0.008, 0.016)
 
 ## Комната 6×6 м из модулей 2×2 м: пол 3×3, стены по периметру, колонны в углах, вход с юга (z=+3), выход на север (z=-3),
 ## в центре шард, у выхода ICE. Предмет: [путь, позиция, поворот Y (°), тир, масштаб].
-const REFLECT := ["props/vault_closed", "props/vault_open", "props/portal", "props/portal_locked", "env/wall", "env/wall_b", "env/wall_c", "env/portal_wall", "env/far_field", "env/far_field_b", "env/far_field_c", "env/doorway", "env/doorway_b", "env/pillar", "ice/soft_ice", "avatar/runner", "avatar/runner_b", "avatar/runner_c"]
+const REFLECT := ["props/vault", "props/hack_panel", "props/vault_closed","props/vault_open", "props/portal", "props/portal_locked", "env/wall", "env/wall_b", "env/wall_c", "env/portal_wall", "env/far_field", "env/far_field_b", "env/far_field_c", "env/doorway", "env/doorway_b", "env/pillar", "ice/soft_ice", "avatar/runner", "avatar/runner_b", "avatar/runner_c"]
 const CEILING_H := 5.0
 const LAYER_PITCH := 7.0  # шаг между пластами данных: потолок 5 м + 2 м пустоты
 const ICE_POS := Vector3(1.0, 0.0, -2.8)
@@ -108,6 +108,20 @@ func _shots() -> Array:
 	var props := [["env/floor", Vector3(0, 0, 0), 0.0, "BASE", 1.0], ["env/floor_b", Vector3(-2, 0, 0), 90.0, "BASE", 1.0], ["env/floor_c", Vector3(2, 0, 0), 180.0, "BASE", 1.0],
 		["props/vault_closed", Vector3(-1.0, 0, 0.3), 160.0, "BASE", 1.0], ["props/vault_open", Vector3(1.0, 0, 0.3), 200.0, "BASE", 1.0],
 		["props/portal", Vector3(-2.2, 0, -2.4), 15.0, "BASE", 1.0], ["props/portal_locked", Vector3(2.4, 0, -2.6), -20.0, "BASE", 1.0]]
+	# предметы узла «волюметрик»: хранилище в трёх состояниях (тиры 1–3), шарды обоих видов с тирами, токен, панель взлома на площадке. Лицом к камере (+Z Godot)
+	var volume: Array = [["env/floor_clear", Vector3(-3.6, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(-1.2, 0, 0), 0.0, "BASE", 1.0],
+		["env/floor_clear", Vector3(1.2, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(3.6, 0, 0), 0.0, "BASE", 1.0],
+		["props/vault", Vector3(-1.5, 0, -0.2), 180.0, "BASE", 1.0, {"state": "closed", "tier": 1}],
+		["props/vault", Vector3(0.0, 0, -0.2), 180.0, "BASE", 1.0, {"state": "open", "tier": 2}],
+		["props/vault", Vector3(1.5, 0, -0.2), 180.0, "BASE", 1.0, {"state": "empty", "tier": 3}],
+		["props/shard", Vector3(0.0, 1.0, -0.2), 0.0, "", 1.0, {"tier": 2}],
+		["props/shard", Vector3(-2.7, 1.0, 0.6), 0.0, "", 1.0, {"tier": 3}],
+		["props/shard_encrypted", Vector3(-2.3, 1.0, 0.6), 0.0, "", 1.0, {"tier": 3}],
+		["props/shard", Vector3(-2.7, 1.3, 0.6), 0.0, "", 1.0, {"tier": 0}],
+		["props/shard_encrypted", Vector3(-2.3, 1.3, 0.6), 0.0, "", 1.0, {"tier": 0}],
+		["props/daemon_token", Vector3(-2.5, 1.65, 0.6), 0.0, "", 1.0],
+		["props/hack_pad", Vector3(2.9, 0, 0.7), 180.0, "BASE", 1.0],
+		["props/hack_panel", Vector3(2.9, 0, -0.3), 180.0, "BASE", 1.0]]
 	var solo := [["avatar/runner", Vector3(0, 0, 0), 180.0, "", 1.0]]
 	var scar := [ICE_POS + Vector3(0, 1.0, -0.6), 4.2]
 	var icestage := [["env/floor_clear", Vector3(0, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(2.4, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(-2.4, 0, 0), 0.0, "BASE", 1.0],
@@ -140,6 +154,8 @@ func _shots() -> Array:
 		{"name": "ice_stage", "cam": Vector3(0.0, 1.25, 6.0), "look": Vector3(0.0, 1.2, 0.0), "fov": 60.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": icestage},
 		{"name": "ice_close", "cam": Vector3(1.2, 1.3, 3.2), "look": Vector3(1.5, 1.4, 0.0), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": icestage},
 		{"name": "props_stage", "cam": Vector3(0.0, 1.3, 3.6), "look": Vector3(0.0, 1.1, -1.0), "fov": 65.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": props},
+		{"name": "props_volume", "cam": Vector3(0.0, 1.3, 3.4), "look": Vector3(0.0, 0.8, 0.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": volume},
+		{"name": "shard_close", "cam": Vector3(-2.5, 1.3, 1.5), "look": Vector3(-2.5, 1.3, 0.6), "fov": 30.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": volume},
 		{"name": "vault_close", "cam": Vector3(-0.2, 1.0, 1.6), "look": Vector3(-0.9, 0.6, 0.3), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": props},
 		{"name": "avatar_stage", "cam": Vector3(0.1, 1.2, 3.0), "look": Vector3(0.0, 0.95, 0.0), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": stage},
 		{"name": "avatar_side", "cam": Vector3(2.0, 1.15, 0.0), "look": Vector3(0.0, 1.0, 0.0), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": solo},
@@ -415,12 +431,27 @@ func _demo_camera() -> void:
 	_cam.look_at_from_position((a[1] as Vector3).lerp(b[1], u), (a[2] as Vector3).lerp(b[2], u))
 
 
+## Состояния и тиры составных предметов (props/vault: State_closed|open|empty, Tier_1..3; props/shard*: Tier_1..3). Шестой элемент предмета —
+## {"state": "closed"|"open"|"empty", "tier": 0..3}; тиры кумулятивны (Tier_1..Tier_N видны). Без него: хранилище закрыто, тиров нет.
+static func apply_variant(inst: Node3D, opts: Dictionary) -> void:
+	for st in ["closed", "open", "empty"]:
+		var s := inst.find_child("State_" + st, true, false) as Node3D
+		if s != null:
+			s.visible = String(opts.get("state", "closed")) == st
+	var tier := int(opts.get("tier", 0))
+	for k in [1, 2, 3]:
+		var t := inst.find_child("Tier_%d" % k, true, false) as Node3D
+		if t != null:
+			t.visible = k <= tier
+
+
 func _setup(inst: Node3D, it: Array, shot: Dictionary, intensity: float) -> void:
 	_insts.append(inst)
 	AM.apply(inst, it[3])
+	apply_variant(inst, it[5] if it.size() > 5 else {})
 	if _lattice > 0.0:
 		AM.set_param(inst, "lattice", _lattice)
-	if String(it[0]).begins_with("props/vault"):
+	if String(it[0]).begins_with("props/vault") and String(it[0]) != "props/vault":
 		intensity *= 1.5  # хранилище главный предмет узла: чуть ярче окружения
 	if String(it[0]).begins_with("deck/") or String(it[0]) == "props/dead_deck":  # мелкие предметы: шум контура (пятна 7 см) на них не нужен, контур ровнее и ярче
 		AM.set_param(inst, "edge_uneven", 0.0)
