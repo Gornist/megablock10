@@ -5,6 +5,10 @@ extends Node3D
 ## Взять: VR — grip контроллера рядом с объектом; плоская сборка — F или левая кнопка мыши.
 
 signal grab_requested(object_id: String)
+## Grip пустой руки ничего не взял (info: hand, id ближайшего, reason, d, позиции) — для журнала клиента.
+signal grab_missed(info: Dictionary)
+## Панель взлома появилась у хранилища (vault id, центр экрана в мире): для журнала клиента (breach.panel).
+signal breach_panel_shown(vault: String, pos: Vector3)
 signal frame_slow(ms: float)
 ## Применить демона из деки / выйти чисто на площадке выхода (N7); решает сервер.
 signal daemon_use_requested(daemon_id: String)
@@ -31,7 +35,8 @@ const DENY_PULSE_AMP := 0.3
 const DENY_PULSE_S := 0.08
 const CHARGED_PULSE_AMP := 0.55
 const CHARGED_PULSE_S := 0.15
-const VR_REACH := 0.4
+## Хват рукой: шард над площадкой взлома лежит в 0,85 м от игрока на высоте 1 м — рука дотягивается с трудом (прогон на очках: правой не бралось), запас 0,5 м.
+const VR_REACH := 0.5
 const FLAT_REACH := 3.0
 const STATS_PERIOD := 0.5
 const FLATLINE_FADE_SEC := 0.8
@@ -458,7 +463,38 @@ func on_grip(hand: Node3D) -> void:
 		if can_stow_from(hand):
 			stow(hand)
 		return
-	try_grab(hand.global_position, VR_REACH, hand)
+	if not try_grab(hand.global_position, VR_REACH, hand):
+		_report_miss(hand)
+
+
+## Промах пустой руки: что ближе всего и почему не взято (журнал клиента, grab.miss). Прогон на очках 05.10.2026: правой рукой шард у хранилища не бралось,
+## левой — бралось; по расстоянию и позициям видно, в радиус хвата рука не попадала или шард был закрыт/скрыт.
+func _report_miss(hand: Node3D) -> void:
+	var near := ""
+	var near_d := INF
+	for id in _pickups:
+		var d := hand.global_position.distance_to((_pickups[id] as Node3D).global_position)
+		if d < near_d:
+			near_d = d
+			near = id
+	var reason := "none"
+	if near != "":
+		var m: Node3D = _pickups[near]
+		if _held_ids.has(near):
+			reason = "held"
+		elif not m.visible:
+			reason = "hidden"
+		elif _vault_state.get(near, NodeView.VAULT_OPEN) != NodeView.VAULT_OPEN:
+			reason = "closed"
+		elif _pending_holder != null:
+			reason = "pending"
+		elif near_d > VR_REACH:
+			reason = "far"
+		else:
+			reason = "other"
+	grab_missed.emit({"hand": "left" if hand == rig.left_hand else "right", "id": near, "reason": reason, "d": snappedf(near_d, 0.01) if near != "" else -1.0,
+		"hand_pos": hand.global_position, "head_y": rig.camera.global_position.y,
+		"target": (_pickups[near] as Node3D).global_position if near != "" else Vector3.ZERO})
 
 
 ## Просит сервер отдать объект, если он лежит, его хранилище открыто для нас и он достаточно близко. Сам объект не двигает.
@@ -859,6 +895,7 @@ func _update_breach_panel() -> void:
 		return
 	if mode != BreachPanel.MODE_IDLE or bp.vault_id() != target:
 		bp.place(_panel_pose(target))
+		breach_panel_shown.emit(target, bp.global_position)
 	bp.show_idle(target, info)
 
 
@@ -868,6 +905,7 @@ func movement_blocked() -> bool:
 
 ## Поза панели взлома у хранилища id: на экране корпуса рядом с площадкой (props/hack_panel.glb), нет корпуса — перед игроком, как раньше (BreachPanelLayout.pose).
 func _panel_pose(id: String) -> Transform3D:
+	view.set_panel_screen_height(id, rig.camera.global_position.y - NodeView.PANEL_BELOW_HEAD)  # экран на уровне рук сидящего, а не над головой
 	var docked: Variant = view.panel_pose(id)
 	if docked is Transform3D:
 		return docked

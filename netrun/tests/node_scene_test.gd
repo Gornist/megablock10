@@ -284,6 +284,20 @@ func test_hack_pad_lies_where_the_teleport_snaps_and_the_panel_faces_it() -> voi
 		assert_float(pose.basis.get_scale().x).is_equal_approx(1.0, 0.001)  # поза без масштаба корпуса: указатель его не знает
 
 
+func test_panel_screen_height_follows_the_head_within_limits() -> void:
+	var scene := _scene()
+	scene.apply_node(_info("BASE", _shards(1)))
+	var id := "node_x_pk0"
+	scene.view.set_panel_screen_height(id, 0.9)
+	assert_float((scene.view.panel_pose(id) as Transform3D).origin.y).is_equal_approx(0.9, 0.01)
+	scene.view.set_panel_screen_height(id, 1.0)  # повторный вызов не накапливает сдвиг
+	assert_float((scene.view.panel_pose(id) as Transform3D).origin.y).is_equal_approx(1.0, 0.01)
+	scene.view.set_panel_screen_height(id, -5.0)  # слишком низко: корпус уходит под пол не больше предела
+	assert_float(scene.view._panels[id].position.y).is_equal_approx(-NodeView.PANEL_SINK_MAX, 0.001)
+	scene.view.set_panel_screen_height(id, 9.0)
+	assert_float(scene.view._panels[id].position.y).is_equal_approx(NodeView.PANEL_RAISE_MAX, 0.001)
+
+
 func test_vault_tier_notches_are_cumulative() -> void:
 	var scene := _scene()
 	var shards := _shards(1)

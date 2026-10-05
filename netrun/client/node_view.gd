@@ -19,6 +19,10 @@ const DEAD_DECK_LIFT := 0.065
 ## Корпус панели взлома в осях хранилища (−Z — сторона лица, площадка на z = −0,85; игрок на ней смотрит в +Z, его правая рука — −X): справа и чуть впереди хранилища,
 ## вне его габарита (0,8 м). Стартовые числа: расстояние до экрана ≈ 0,9 м, поворот головы ≈ 55° — подбираются на очках.
 const PANEL_OFFSET := Vector3(-0.7, 0.0, -0.35)
+## Центр экрана — на столько ниже головы (м); у прежней панели перед игроком было 0,14 м при 12°, корпус ставим чуть ниже: рука с указателем не поднимается.
+const PANEL_BELOW_HEAD := 0.25
+const PANEL_SINK_MAX := 0.7
+const PANEL_RAISE_MAX := 0.3
 ## Масштаб корпуса: экран модели 0,44 м, поверхность панели взлома — BreachPanelLayout.WIDTH_M (0,48 м).
 const PANEL_SCALE := BreachPanelLayout.WIDTH_M / 0.44
 const SENSOR_SWEEP_RAD := 0.6
@@ -342,6 +346,18 @@ func _place_panel(vault_pos: Vector3, vault_yaw: float, pad_pos: Vector3) -> Nod
 		if want.length() > 0.001 and Vector2(normal.x, normal.z).length() > 0.001:
 			n.rotation.y = atan2(want.x, want.z) - atan2(normal.x, normal.z)  # поворот вокруг Y: угол азимута цели минус азимут нормали
 	return n
+
+
+## Опустить или поднять корпус панели так, чтобы центр экрана оказался на высоте [param screen_y] (сидящему игроку экран на 1,2 м высоковат: прогон на очках
+## 05.10.2026). Сдвиг ограничен: ниже пола корпус уходит не больше чем на PANEL_SINK_MAX (плита пола его скрывает), выше — не больше PANEL_RAISE_MAX.
+func set_panel_screen_height(id: String, screen_y: float) -> void:
+	var n: Node3D = _panels.get(id)
+	var anchor := n.find_child("ScreenAnchor", true, false) as Node3D if n != null else null
+	if anchor == null:
+		return
+	n.position.y = 0.0
+	var base_y := anchor.global_position.y
+	n.position.y = clampf(screen_y - base_y, -PANEL_SINK_MAX, PANEL_RAISE_MAX)
 
 
 ## Поза панели взлома для хранилища id: центр экрана корпуса, +Z — к игроку на площадке (без масштаба, на 3 мм перед экраном, чтобы не мерцать с его

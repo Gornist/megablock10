@@ -56,6 +56,9 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	scene.frame_slow.connect(_on_frame_slow)
 	scene.grab_requested.connect(_on_grab_requested)
 	scene.shard_stowed.connect(func(id: String): log_file.log("shard.stowed", {"id": id}))
+	scene.grab_missed.connect(func(info: Dictionary): log_file.log("grab.miss", {"hand": info["hand"], "id": info["id"], "reason": info["reason"], "d": info["d"],
+		"hand_pos": _fmt3(info["hand_pos"]), "target": _fmt3(info["target"]), "head_y": snappedf(float(info["head_y"]), 0.01)}))
+	scene.breach_panel_shown.connect(func(vault: String, pos: Vector3): log_file.log("breach.panel", {"vault": vault, "pos": _fmt3(pos)}))
 	scene.ice_audio_enabled = true
 	_setup_comfort(args)
 	_setup_phone(args)
@@ -176,6 +179,10 @@ func _setup_phone(args: PackedStringArray) -> void:
 
 func _fmt_xz(p: Vector3) -> String:
 	return "%.1f,%.1f" % [p.x, p.z]
+
+
+func _fmt3(p: Vector3) -> String:
+	return "%.2f,%.2f,%.2f" % [p.x, p.y, p.z]
 
 
 ## Игрок отпустил стик прицела. Риг переедет сам (моргание), здесь — просьба серверу и журнал.
