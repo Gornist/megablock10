@@ -40,6 +40,8 @@
 | `models/env/floor_b.glb` | 180 / 450 | 27 / 170 | 181 / 200 | 1 | 4 | 1.782 × 0.95 × 1.75 | points, shell_soft, solid_dark, streaks | — | surface | ок |
 | `models/env/floor_c.glb` | 216 / 450 | 26 / 170 | 180 / 200 | 1 | 4 | 1.782 × 0.95 × 1.75 | points, shell_soft, solid_dark, streaks | — | surface | ок |
 | `models/env/floor_clear.glb` | 0 / 300 | 58 / 170 | 0 / 200 | 0 | 1 | 1.782 × 0.1032 × 1.75 | points | — | surface | ок |
+| `models/env/floor_slab_16.glb` | 92 / 400 | 638 / 700 | 226 / 260 | 1 | 4 | 16.0336 × 0.9227 × 16 | points, shell_soft, solid_dark, streaks | — | slab | ок |
+| `models/env/floor_slab_8.glb` | 60 / 200 | 131 / 350 | 112 / 130 | 1 | 4 | 8.0331 × 0.9411 × 8 | points, shell_soft, solid_dark, streaks | — | slab | ок |
 | `models/props/hack_pad.glb` | 36 / 120 | 128 / 160 | 29 / 40 | 1 | 5 | 0.9259 × 0.28 × 0.9 | points, shell_soft, solid_dark, streaks | — | floor | ок |
 | `models/props/hack_panel.glb` | 62 / 300 | 50 / 120 | 11 / 20 | 0 | 5 | 0.5175 × 1.2986 × 0.34 | points, solid_dark, streaks | — | floor | ок |
 | `models/env/horizon_band.glb` | 192 / 1000 | 0 / 0 | 360 / 400 | 1 | 2 | 132.9202 × 12 × 122.7654 | shell_soft, streaks | — | horizon | ок |

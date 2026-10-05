@@ -2,7 +2,7 @@
 # Конвейер ассетов «Сети»: Mac → devbox (Blender → .glb → Godot) → Mac. Запускать с Mac из любого каталога.
 #   pipeline.sh build            — собрать ВСЕ ассеты из src/*.py на devbox (PYTHONHASHSEED=0), проверить, забрать .glb и отчёты, пересобрать MANIFEST.md;
 #       в конце src/head_points.py: без HeadLowPolygon.stl печатает «пропуск» (код 0), HEAD_STL=путь — перегенерирует netrun/client/head_points.gd
-#   pipeline.sh shots [каталог] [флаги сцены] [--grid] — снять кадры комнаты из Godot (по умолчанию /tmp/assets-shots); флаги: --only=a,b --lattice=0.05 --field --crowd --walls (вернуть стены комнаты, по умолчанию их нет) --portal (вернуть портал у западной стены, по умолчанию нет) --noedge (убрать кромку комнаты env/room_edge_8, по умолчанию она есть)
+#   pipeline.sh shots [каталог] [флаги сцены] [--grid] — снять кадры комнаты из Godot (по умолчанию /tmp/assets-shots); флаги: --only=a,b --lattice=0.05 --field --crowd --walls (вернуть стены комнаты, по умолчанию их нет) --portal (вернуть портал у западной стены, по умолчанию нет) --noedge (убрать кромку комнаты env/room_edge_8, по умолчанию она есть) --floor1 (ЭКСПЕРИМЕНТ: пол комнаты одной плитой env/floor_slab_8 вместо 16 модулей)
 #       --grid — самому pipeline.sh (в сцену не уходит): после съёмки склеить кадры на devbox в ОДНУ сетку ≤ 1024 px по ширине с подписями
 #                имён кадров и забрать на Mac один PNG: <каталог>/grid.png (отдельные кадры лежат там же)
 #   pipeline.sh movie [файл.mp4] [флаги сцены] — записать видео комнаты (7 с) и сконвертировать (нужен ffmpeg на Mac); флаги: --walk --static --cam=…

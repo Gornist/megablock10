@@ -250,6 +250,52 @@ func test_room_edge_has_hang_streaks_and_knee_high_haze_within_budget() -> void:
 		assert_float(float(sm.get_shader_parameter("anchor"))).override_failure_message("%s: подвесные штрихи без anchor = 1" % asset).is_equal(1.0)
 
 
+## ЭКСПЕРИМЕНТ «пол одним тайлом» (env/floor_slab_<N>): одна тонкая плита на всю комнату, верх не выше пола, сторона = стороне room_edge_<N>,
+## подвесные штрихи (`*_hang`) и вуаль (`*_skirt`) по периметру, сетка швов из точек. Бюджет 16×16: 400 треуг., 700 точек, 260 штрихов (8×8 — пропорционально).
+func test_floor_slab_is_single_thin_slab_within_budget() -> void:
+	var room := NodeLayout.ROOM_MAX - NodeLayout.ROOM_MIN
+	for spec in [[8, 8.0], [16, room.x]]:
+		var asset := "floor_slab_%d" % spec[0]
+		var k: float = spec[0] / 16.0
+		var root := _load("env", asset)
+		var slab: MeshInstance3D = null
+		var hang: MeshInstance3D = null
+		var skirt: MeshInstance3D = null
+		var seams: MeshInstance3D = null
+		var tris := 0
+		for mi in _meshes(root):  # треугольники — плита и вуаль (штрихи и точки — квады, их считаем штуками)
+			if String(mi.name).ends_with("_hang"):
+				hang = mi
+			elif String(mi.name).ends_with("_skirt"):
+				skirt = mi
+				tris += (mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3
+			elif String(mi.name) == "slab_seams":
+				seams = mi
+			elif String(mi.name) == "slab":
+				slab = mi
+				tris += (mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3
+		assert_bool(slab != null and hang != null and skirt != null and seams != null).override_failure_message("%s: нужны меши slab, *_hang, *_skirt, slab_seams" % asset).is_true()
+		assert_int(tris).override_failure_message("%s: %d треугольников > %d" % [asset, tris, int(400 * k)]).is_less_equal(int(400 * k))
+		var streaks := (hang.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size() / 4
+		assert_int(streaks).override_failure_message("%s: штрихов %d > %d" % [asset, streaks, int(260 * k)]).is_less_equal(int(260 * k))
+		assert_int(streaks).override_failure_message("%s: штрихов слишком мало (%d)" % [asset, streaks]).is_greater(int(260 * k * 0.6))
+		var dots := (seams.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size() / 4
+		assert_int(dots).override_failure_message("%s: точек %d > %d" % [asset, dots, int(700 * k)]).is_less_equal(int(700 * k))
+		assert_int(dots).override_failure_message("%s: сетки швов нет" % asset).is_greater(20)
+		var sb := slab.get_aabb()
+		assert_float(sb.size.x).override_failure_message("%s: плита не %g м по X" % [asset, spec[1]]).is_equal_approx(spec[1], 0.01)
+		assert_float(sb.size.z).is_equal_approx(spec[1], 0.01)
+		assert_float(sb.size.y).override_failure_message("%s: плита не тонкая (3 см)" % asset).is_less_equal(0.031)
+		assert_float(sb.end.y).override_failure_message("%s: верх плиты выше пола" % asset).is_less_equal(0.0)
+		assert_float(_aabb(root).end.y).override_failure_message("%s: что-то выше пола больше 4 см" % asset).is_less_equal(0.04)
+		assert_int(skirt.mesh.get_surface_count()).is_equal(1)
+		AssetMaterials.apply(root, "BASE")
+		var skm := skirt.get_surface_override_material(0) as ShaderMaterial
+		assert_bool(skm != null and skm.shader.resource_path.ends_with("skirt.gdshader")).override_failure_message("%s: у вуали не skirt.gdshader" % asset).is_true()
+		var hm := hang.get_surface_override_material(0) as ShaderMaterial
+		assert_float(float(hm.get_shader_parameter("anchor"))).override_failure_message("%s: подвесные штрихи без anchor = 1" % asset).is_equal(1.0)
+
+
 func test_mesh_parts_are_cached_per_tier_and_mirror() -> void:
 	var a := NodeAssets.mesh_parts(NodeAssets.env_path("wall"), "BASE")
 	assert_bool(NodeAssets.mesh_parts(NodeAssets.env_path("wall"), "BASE") == a).is_true()

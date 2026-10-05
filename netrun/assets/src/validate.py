@@ -77,7 +77,8 @@ def check(rep):
     lo, hi, size = info["bbox_min"], info["bbox_max"], info["size"]
     horizon = rep["origin"] == "horizon"  # кольцо горизонта: габарит ~140 м, это его суть
     edge = rep["origin"] == "edge"  # кромка комнаты (room_edge_<N>): габарит до 20 м (квадрат 16 м + дымка 1,8 м наружу)
-    if not 0.01 <= max(size) <= (150 if horizon else 20.0 if edge else 12):
+    slab = rep["origin"] == "slab"  # пол комнаты одной плитой (env/floor_slab_<N>, эксперимент): габарит до 20 м, сторона плиты = N
+    if not 0.01 <= max(size) <= (150 if horizon else 20.0 if edge or slab else 12):
         bad.append(f"странный размер {size} (1 единица = 1 м)")
     # «edge» — центр квадрата на уровне пола: по высоте от −3 м (подвесные штрихи) до +0,55 м (низкая дымка до колена), по xz симметрично и не шире 10 м от центра
     if edge:
@@ -85,6 +86,12 @@ def check(rep):
             bad.append(f"origin «edge»: по высоте вне −3…+0,55 м: min.y={lo[1]:.2f}, max.y={hi[1]:.2f}")
         if max(abs(lo[0]), abs(lo[2]), abs(hi[0]), abs(hi[2])) > 10.0 or abs(lo[0] + hi[0]) > 0.3 or abs(lo[2] + hi[2]) > 0.3:
             bad.append(f"origin «edge»: габарит шире 10 м от центра или несимметричен: min={[round(v, 2) for v in lo]}, max={[round(v, 2) for v in hi]}")
+    # «slab» — центр плиты на уровне пола: верх плиты и точки швов не выше 4 см над полом (выступов нет), штрихи вниз не глубже 1,2 м, по xz симметрично
+    if slab:
+        if hi[1] > 0.04 or lo[1] < -1.2:
+            bad.append(f"origin «slab»: по высоте вне −1,2…+0,04 м: min.y={lo[1]:.2f}, max.y={hi[1]:.3f}")
+        if max(abs(lo[0]), abs(lo[2]), abs(hi[0]), abs(hi[2])) > 10.0 or abs(lo[0] + hi[0]) > 0.1 or abs(lo[2] + hi[2]) > 0.1:
+            bad.append(f"origin «slab»: габарит шире 10 м от центра или несимметричен: min={[round(v, 2) for v in lo]}, max={[round(v, 2) for v in hi]}")
     # «horizon» — кольцо вокруг центра узла: радиус не ближе 35 м и не дальше 75 м, по высоте −3…+9 м (у размеров штрихов запас на ширину)
     if horizon:
         if max(abs(lo[0]), abs(lo[2]), abs(hi[0]), abs(hi[2])) > 75 or lo[1] < -3.1 or hi[1] > 9.0:
