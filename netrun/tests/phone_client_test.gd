@@ -78,3 +78,137 @@ func test_perf_line_reports_the_deck_redraws() -> void:
 		if l.contains(" perf "):
 			line = l
 	assert_str(line).contains("deck_redraws=")
+
+
+# ---------------------------------------------------------------- настоящая связь: --phone=remote
+
+const SECRET := "sekret-phone-token-42"
+
+
+func _free_port() -> int:
+	var probe := TCPServer.new()
+	probe.listen(0)
+	var p := probe.get_local_port()
+	probe.stop()
+	return p
+
+
+func test_phone_mode_defaults_for_port_and_token() -> void:
+	var m := ProtoClient.phone_mode(PackedStringArray())
+	assert_int(m["port"]).is_equal(RemotePhoneLink.DEFAULT_PORT)
+	assert_str(m["token"]).is_empty()
+	assert_str(m["warning"]).is_empty()
+
+
+func test_phone_mode_remote_from_arguments() -> void:
+	var m := ProtoClient.phone_mode(PackedStringArray(["--phone=remote", "--phone-port=7431", "--phone-token=" + SECRET]))
+	assert_str(m["mode"]).is_equal(ProtoClient.PHONE_REMOTE)
+	assert_int(m["port"]).is_equal(7431)
+	assert_str(m["token"]).is_equal(SECRET)
+	assert_str(m["warning"]).is_empty()
+
+
+func test_phone_mode_remote_without_a_token_is_allowed() -> void:
+	var m := ProtoClient.phone_mode(PackedStringArray(["--phone=remote"]))
+	assert_str(m["mode"]).is_equal(ProtoClient.PHONE_REMOTE)
+	assert_str(m["token"]).is_empty()
+	assert_str(m["warning"]).is_empty()
+
+
+func test_phone_mode_takes_the_file_values_and_arguments_win() -> void:
+	var cfg := {"mode": "remote", "port": 7500, "token": "from-file"}
+	var from_file := ProtoClient.phone_mode(PackedStringArray(), cfg)
+	assert_str(from_file["mode"]).is_equal(ProtoClient.PHONE_REMOTE)
+	assert_int(from_file["port"]).is_equal(7500)
+	assert_str(from_file["token"]).is_equal("from-file")
+	var args := ProtoClient.phone_mode(PackedStringArray(["--phone=off", "--phone-port=7600", "--phone-token=from-args"]), cfg)
+	assert_str(args["mode"]).is_equal(ProtoClient.PHONE_OFF)
+	assert_int(args["port"]).is_equal(7600)
+	assert_str(args["token"]).is_equal("from-args")
+
+
+func test_phone_mode_garbage_gives_fake_and_a_warning() -> void:
+	var m := ProtoClient.phone_mode(PackedStringArray(["--phone=remot", "--phone-port=abc"]))
+	assert_str(m["mode"]).is_equal(ProtoClient.PHONE_FAKE)
+	assert_int(m["port"]).is_equal(RemotePhoneLink.DEFAULT_PORT)
+	assert_str(m["warning"]).contains("remot")
+	assert_str(m["warning"]).contains("abc")
+	var from_file := ProtoClient.phone_mode(PackedStringArray(), {"mode": "xyz", "port": 70000})
+	assert_str(from_file["mode"]).is_equal(ProtoClient.PHONE_FAKE)
+	assert_str(from_file["warning"]).contains("xyz")
+	assert_str(from_file["warning"]).contains("70000")
+
+
+func test_phone_file_values_read_the_phone_section() -> void:
+	var path := "user://phone_client_test.cfg"
+	var cf := ConfigFile.new()
+	cf.set_value("net", "host", "10.10.0.10")
+	cf.set_value("phone", "mode", "remote")
+	cf.set_value("phone", "port", 7433)
+	cf.set_value("phone", "token", "file-token")
+	cf.save(path)
+	var v := ProtoClient.phone_file_values(PackedStringArray(["user://no_such_phone_client_test.cfg", path]))
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	assert_str(v["mode"]).is_equal("remote")
+	assert_int(v["port"]).is_equal(7433)
+	assert_str(v["token"]).is_equal("file-token")
+	assert_dict(ProtoClient.phone_file_values(PackedStringArray(["user://no_such_phone_client_test.cfg"]))).is_empty()
+
+
+func test_remote_client_starts_the_real_link_and_logs_without_the_token() -> void:
+	var port := _free_port()
+	var proto := _client(PackedStringArray(["--phone=remote", "--phone-port=%d" % port, "--phone-token=" + SECRET]))
+	assert_bool(proto.phone is RemotePhoneLink).is_true()
+	assert_int((proto.phone as RemotePhoneLink).listen_port()).is_equal(port)
+	assert_array(proto.scene.world_ui.deck.tab_ids()).is_equal([DeckPanel.TAB_DECK, DeckPanel.TAB_CHAT, DeckPanel.TAB_CALLS])
+	var text := _log(proto)
+	assert_str(text).contains("phone link=remote port=%d token=set" % port)
+	assert_str(text).contains("--phone-token=" + NetConfig.REDACTED)
+	assert_bool(text.contains(SECRET)).is_false()
+
+
+func test_remote_client_logs_online_and_sound_events() -> void:
+	var proto := _client(PackedStringArray(["--phone=remote", "--phone-port=%d" % _free_port()]))
+	var link: RemotePhoneLink = proto.phone
+	link.phone_callsign = "ВОБЛА"
+	link.online_changed.emit(true)
+	link.sound_requested.emit("ring")
+	link.online_changed.emit(false)
+	var text := _log(proto)
+	assert_str(text).contains("phone.online online=true callsign=ВОБЛА")
+	assert_str(text).contains("phone.sound kind=ring")
+	assert_str(text).contains("phone.online online=false")
+	assert_str(text).contains("token=none")
+
+
+func test_remote_client_falls_back_to_fake_when_the_port_is_busy() -> void:
+	var busy := TCPServer.new()
+	busy.listen(0)
+	var port := busy.get_local_port()
+	var proto := _client(PackedStringArray(["--phone=remote", "--phone-port=%d" % port, "--phone-token=" + SECRET]))
+	busy.stop()
+	assert_bool(proto.phone is FakePhoneLink).is_true()
+	var text := _log(proto)
+	assert_str(text).contains("phone.warn")
+	assert_str(text).contains("связь с телефоном не поднялась")
+	assert_str(text).contains("phone link=fake tabs=3")
+	assert_bool(text.contains(SECRET)).is_false()
+
+
+func test_remote_mode_comes_from_netrun_cfg() -> void:
+	var path := "user://phone_client_test_cfg.cfg"
+	var port := _free_port()
+	var cf := ConfigFile.new()
+	cf.set_value("phone", "mode", "remote")
+	cf.set_value("phone", "port", port)
+	cf.set_value("phone", "token", SECRET)
+	cf.save(path)
+	var proto: ProtoClient = auto_free(ProtoClient.new())
+	proto.config_paths = PackedStringArray([path])
+	add_child(proto)
+	proto.start(PackedStringArray(), "flat", false)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	assert_bool(proto.phone is RemotePhoneLink).is_true()
+	var text := _log(proto)
+	assert_str(text).contains("phone link=remote port=%d token=set" % port)
+	assert_bool(text.contains(SECRET)).is_false()
