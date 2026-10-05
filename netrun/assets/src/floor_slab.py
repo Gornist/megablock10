@@ -86,7 +86,7 @@ def build_floor_slab(out, size, seed, translucent=False):
     lib.reset()
     rng = random.Random(seed)
     cy = lib.lin("cyan")
-    rim = tuple(c * 0.6 for c in cy)  # контур верха слабее штрихов
+    rim = cy  # контур верха полной яркости cyan: единственная граница комнаты без стен (кадр клиента 5 окт: при ×0,6 край терялся)
     name = f"floor_glass_{size}" if translucent else f"floor_slab_{size}"
     pre = "floor_glass" if translucent else "floor_slab"
     if translucent:  # цвет верха — тёмно-бирюзовый (не чёрный: в аддитиве чёрный невидим); яркость, градиент и контур задаёт шейдер
