@@ -32,11 +32,21 @@ class Mb10App : Application() {
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             private var started = 0
+            private var backgroundedAt = 0L
             override fun onActivityStarted(activity: Activity) {
-                if (started++ == 0) { DeviceDiagnostics.foreground = true; Mb10Log.event("App", "foreground") }
+                if (started++ == 0) {
+                    DeviceDiagnostics.foreground = true
+                    Mb10Log.event("App", "foreground")
+                    // Возврат на экран после простоя: NSD мог заглохнуть (Xiaomi, выключенный экран) — пересоздаём его сразу.
+                    if (backgroundedAt != 0L) graph.presence.onForeground(System.currentTimeMillis() - backgroundedAt)
+                }
             }
             override fun onActivityStopped(activity: Activity) {
-                if (--started == 0) { DeviceDiagnostics.foreground = false; Mb10Log.event("App", "background") }
+                if (--started == 0) {
+                    DeviceDiagnostics.foreground = false
+                    backgroundedAt = System.currentTimeMillis()
+                    Mb10Log.event("App", "background")
+                }
             }
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
             override fun onActivityResumed(activity: Activity) {}

@@ -3,4 +3,9 @@
 # Robolectric и скриншоты сюда не входят — их гоняет CI (на macOS они давали сбои, из-за которых хук обходили). Полная — --all.
 # Пропустить в крайнем случае: git push --no-verify.
 # Включается один раз на клон: git config core.hooksPath .githooks   (скрипт scripts/setup-hooks.sh делает это же)
+# Удаление ветки на сервере (git push --delete) проверять нечего — пропускаем: 05.10 проверка краснела на состоянии рабочей копии
+# и не давала убрать уже влитую ветку.
+z=0000000000000000000000000000000000000000; only_delete=1
+while read -r _ lsha _ _; do [ "$lsha" = "$z" ] || only_delete=0; done
+[ $only_delete = 1 ] && exit 0
 exec "$(git rev-parse --show-toplevel)/scripts/check.sh" --fast

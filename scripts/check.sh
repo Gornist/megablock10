@@ -8,6 +8,14 @@
 # Что «менялось» считается относительно origin/main (незапушенные коммиты + рабочее дерево).
 cd "$(dirname "$0")/.." || exit 1
 ROOT=$PWD; LOGS=/tmp/mb10-check; mkdir -p $LOGS
+# JDK 21 (toolchain проекта; 17 и 23 не годятся: 17 — не тот toolchain, detekt не понимает 23). Задан JAVA_HOME — берём его; иначе первый найденный:
+# temurin-21, brew openjdk@21 (в системные пути Java brew его не кладёт — пуш с Mac падал «JAVA_HOME is set to an invalid directory», 05.10), java_home -v 21.
+if [ -z "${JAVA_HOME:-}" ]; then
+  for j in /Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home /opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home \
+           /usr/local/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home "$(/usr/libexec/java_home -v 21 2>/dev/null)"; do
+    [ -n "$j" ] && [ -x "$j/bin/java" ] && { JAVA_HOME=$j; break; }
+  done
+fi
 export JAVA_HOME=${JAVA_HOME:-/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home}
 # Кодировка вывода клиента Gradle берётся из локали (stdout.encoding): при пустом LANG (облачная сессия, cron) русский текст — «???».
 [ "$(locale charmap 2>/dev/null)" = UTF-8 ] || export LC_ALL=C.UTF-8
@@ -39,7 +47,12 @@ step() { # step "имя" команда...
 skip() { TIMES+=("$1: пропущено (нет изменений)"); }
 
 # kit/ — часть приложения (подключён к :app), поэтому любая его правка тоже гоняет проверки приложения.
-if changed app || changed kit || changed rules; then
+if { changed app || changed kit || changed rules; } && [ $FAST -eq 1 ] && [ "$(uname)" = Darwin ] && [ -z "${CHECK_LOCAL_GRADLE:-}" ]; then
+  # Mac (8 ГБ): Gradle здесь не гоняем (CLAUDE.md) — пуш с Mac падал без JDK 21, а сессии пушили «через devbox» руками (05.10).
+  # Те же проверки — на devbox через scripts/dbx.sh --auto (очередь, кэш: после verify.sh обычно секунды). devbox недоступен — проверит CI.
+  if ssh -o BatchMode=yes -o ConnectTimeout=5 devbox true 2>/dev/null; then step "app+kit: devbox (dbx.sh --auto)" scripts/dbx.sh --auto
+  else TIMES+=("app+kit: devbox недоступен — Gradle-проверки сделает CI"); fi
+elif changed app || changed kit || changed rules; then
   step "app+kit: detekt" ./gradlew -q --console=plain :app:detekt :kit:detekt :rules:detekt   # статический анализ; старые находки в app/detekt-baseline.xml, новые ломают проверку
   step "kit: API Android 8.0" ./gradlew -q --console=plain :kit:animalsnifferMain :rules:animalsnifferMain   # kit собирается JDK 17+, но работает на Android 26: вызов более нового API ломает проверку
   step "app: Android Lint" ./gradlew -q --console=plain :app:lintDebug   # полный набор (включая NewApi — API новее Android 8.0); baseline app/lint-baseline.xml

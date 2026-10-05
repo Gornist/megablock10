@@ -13,6 +13,16 @@ signal object_taken(object_id: String, session: String)
 ## Клиент просит применить демона / выйти чисто (решает узел: server/node/gray_node.gd).
 signal daemon_requested(session: String, daemon_id: String)
 signal leave_requested(session: String)
+## Взлом хранилища (К3): клиент просит начать (vault — id слота, daemons — id выбранных демонов), нажал клетку ([строка, столбец]) или завершил досрочно.
+## Решает узел (server/node/vault_breach.gd).
+signal charge_requested(session: String, daemon_id: String)
+signal decrypt_requested(session: String, item: String)
+signal breach_open_requested(session: String, vault: String, daemon_ids: Array)
+signal breach_tap_requested(session: String, cell: Array)
+signal breach_cancel_requested(session: String)
+## Игрок просит отдать предмет из ГРУЗа (to — как в WorldMsg.GIVE) и список получателей (К5б); решает GiveService.
+signal give_requested(session: String, item_id: String, to: Dictionary)
+signal give_list_requested(session: String)
 ## Состояние очков (P6) не чаще раза в период на терминал: {terminal, session ("" — очки без игрока), fps, worst, bat?, chg?, rtt?}.
 signal beat_received(beat: Dictionary)
 ## Игрок телепортировался (принято сервером): откуда и куда. Задел под шум/trace от телепорта (RigMath.TELEPORT_TRACE, пока 0).
@@ -46,6 +56,9 @@ const TELEPORT_COOLDOWN_SLACK := 0.2
 var grab_check: Callable
 ## Узел может не пустить сессию: func(session) -> bool (false — отказ в auth: забег уже завершается, исход пишется в Мост).
 var join_check: Callable
+## Привязка телепорта к площадке у хранилища (К3): func(session, to: Vector3) -> Dictionary {p, look} (NodeLayout.snap_to_vault_pad по хранилищам узла игрока).
+## Не задан — цель как пришла. Клиент делает то же сам (XRRig.teleport_snap), сервер повторяет: клиенту верить нельзя.
+var teleport_snap: Callable
 ## Узел входа для нового аватара (W1, граф узлов): func(терминал, сессия) -> id узла ("" — как по умолчанию). Не вызывается для
 ## вернувшегося после обрыва и для сессии, чей узел уже известен (восстановление после рестарта).
 var entry_node_for: Callable
@@ -248,6 +261,16 @@ func avatar_id(session: String) -> int:
 	return int(_avatar_ids.get(session, 0))
 
 
+## Сессия по короткому id аватара ("" — такого нет); id уходят клиентам в `av` и в списке получателей, настоящую сессию клиент не видит.
+func session_of_avatar(id: int) -> String:
+	if id <= 0:
+		return ""
+	for s in _avatar_ids:
+		if int(_avatar_ids[s]) == id:
+			return str(s)
+	return ""
+
+
 ## Сессии с аватаром (в том числе в окне возврата).
 func sessions() -> Array:
 	var out: Array = []
@@ -313,6 +336,24 @@ func _on_packet(peer_id: int, data: PackedByteArray) -> void:
 			daemon_requested.emit(session, str(msg.get("id", "")))
 		WorldMsg.LEAVE:
 			leave_requested.emit(session)
+		WorldMsg.BK_OPEN:
+			var ids: Variant = msg.get("daemons")
+			breach_open_requested.emit(session, str(msg.get("vault", "")), (ids as Array).map(func(i): return str(i)) if ids is Array else [])
+		WorldMsg.CHARGE:
+			charge_requested.emit(session, str(msg.get("daemon", "")))
+		WorldMsg.DECRYPT:
+			decrypt_requested.emit(session, str(msg.get("item", "")))
+		WorldMsg.BK_TAP:
+			var cell: Variant = msg.get("cell")
+			if cell is Array and (cell as Array).size() == 2 and (cell[0] is float or cell[0] is int) and (cell[1] is float or cell[1] is int):
+				breach_tap_requested.emit(session, [int(cell[0]), int(cell[1])])
+		WorldMsg.BK_CANCEL:
+			breach_cancel_requested.emit(session)
+		WorldMsg.GIVE:
+			var to: Variant = msg.get("to")
+			give_requested.emit(session, str(msg.get("item", "")), to if to is Dictionary else {})
+		WorldMsg.GIVE_LIST:
+			give_list_requested.emit(session)
 		WorldMsg.EXIT:
 			var reason := str(msg.get("reason", ""))
 			if not ExitLogic.is_client_reason(reason):
@@ -389,6 +430,8 @@ func _handle_teleport(session: String, p: Variant) -> void:
 		send_to(session, WorldMsg.encode_teleport_denied(reason, a.position, left))
 		return
 	var from := a.position
+	if teleport_snap.is_valid():
+		to = (teleport_snap.call(session, to) as Dictionary)["p"]
 	teleport(session, to)
 	_tp_last_ms[session] = now
 	print("[netrun-server] teleport ok ", session, " from=%.1f,%.1f to=%.1f,%.1f dist=%.1f" % [from.x, from.z, a.position.x, a.position.z, NodeLayout.flat_distance(from, a.position)])

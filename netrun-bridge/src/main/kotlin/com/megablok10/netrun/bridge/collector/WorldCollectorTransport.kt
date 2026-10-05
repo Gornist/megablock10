@@ -128,8 +128,11 @@ class WorldCollectorTransport(
     companion object {
         const val TAG = "WorldSync"
 
-        /** Версия формата записей мира, которую Мост пишет и коллектор объявляет в `capabilities.world_records`. */
-        const val SUPPORTED_WORLD_RECORDS = 1
+        /**
+         * Версия формата записей мира, которую Мост пишет и коллектор объявляет в `capabilities.world_records`: 1 — записи v1,
+         * 2 — плюс `net.breach`/`NET_BREACH`. Коллектор с 1 не знает новой причины и отверг бы её; пока он не объявил 2, очередь стоит целой.
+         */
+        const val SUPPORTED_WORLD_RECORDS = 2
         private const val CONNECT_TIMEOUT_S = 5L
         private const val REQUEST_TIMEOUT_S = 10L
         private const val CAPABILITY_TTL_MS = 5 * 60 * 1000L

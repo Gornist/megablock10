@@ -62,6 +62,7 @@ fun StatusScreen(identity: Identity, onMessageContact: (String) -> Unit = {}, on
     val startScan = rememberMb10QrScanner { qr ->
         when (qr) {
             is Mb10Qr.Contact -> vm.add(qr)
+            is Mb10Qr.Provision -> AppSnack.show("Персонаж уже создан. Новый код — после сброса сессии в Настройках")
             else -> AppSnack.show("Это не QR-код контакта")
         }
     }

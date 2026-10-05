@@ -73,6 +73,10 @@ var _queued_dest: Variant = null
 var away := AwayGuard.new()   # окно на «ушёл из игры» (пауза, фокус, датчик на лбу): выход только после AwayGuard.GRACE_SEC
 var _face_deg := 0.0           # куда смотреть после прыжка (RigMath.facing_deg), пока наведён прицел; вправо — плюс
 var _blink_face_deg := 0.0     # то же для идущего моргания: применяется в самой тёмной точке
+## Привязка точки телепорта к площадке у хранилища (К3): func(Vector3) -> {p: Vector3, look: Vector3 | null}; не задана — цель как есть.
+## look — хранилище, к которому в самой тёмной точке моргания разворачивается взгляд (панель взлома и шард тогда прямо перед игроком).
+var teleport_snap: Callable
+var _blink_look: Variant = null
 
 
 func _ready() -> void:
@@ -390,15 +394,21 @@ func _fire_teleport() -> void:
 	if not reason.is_empty():
 		teleport_attempted.emit(from, to, false, reason)
 		return
+	var look: Variant = null
+	if teleport_snap.is_valid():
+		var snapped_to: Dictionary = teleport_snap.call(to)
+		to = Vector3(snapped_to["p"].x, from.y, snapped_to["p"].z)
+		look = snapped_to.get("look")
 	_since_tp = 0.0
-	_start_blink(to, _face_deg)
+	_start_blink(to, _face_deg, look)
 	teleport_attempted.emit(from, to, true, "")
 
 
-func _start_blink(dest: Vector3, face_deg: float = 0.0) -> void:
+func _start_blink(dest: Vector3, face_deg: float = 0.0, look: Variant = null) -> void:
 	_blink = RigMath.blink_start()
 	_blink_dest = dest
 	_blink_face_deg = face_deg
+	_blink_look = look
 
 
 func _step_blink(delta: float) -> void:
@@ -407,13 +417,28 @@ func _step_blink(delta: float) -> void:
 	_blink = RigMath.blink_step(_blink, delta, teleport_blink_s)
 	if _blink["moved"]:
 		global_position = Vector3(_blink_dest.x, global_position.y, _blink_dest.z)
-		if _blink_face_deg != 0.0:
+		if _blink_look != null:
+			face_toward(_blink_look)   # площадка у хранилища: взгляд на него, выбранный поворот стиком не нужен
+			_blink_look = null
+			_blink_face_deg = 0.0
+		elif _blink_face_deg != 0.0:
 			_rotate_around_head(-deg_to_rad(_blink_face_deg))   # вправо — по часовой, yaw уменьшается; экран в этот момент чёрный
 			_blink_face_deg = 0.0
 	fx.set_blink(_blink["alpha"])
 	if _blink["phase"] == 0 and _queued_dest != null:
 		_start_blink(_queued_dest as Vector3)
 		_queued_dest = null
+
+
+## Развернуть риг вокруг головы так, чтобы горизонтальный взгляд смотрел на точку target.
+func face_toward(target: Vector3) -> void:
+	var fwd := -camera.global_basis.z
+	fwd.y = 0.0
+	var want := target - camera.global_position
+	want.y = 0.0
+	if fwd.length() < 0.001 or want.length() < 0.001:
+		return
+	_rotate_around_head(fwd.signed_angle_to(want, Vector3.UP))
 
 
 ## Сервер отказал в телепорте (NetClient.teleport_denied): риг возвращается в позицию аватара на сервере. Если затемнение ещё не

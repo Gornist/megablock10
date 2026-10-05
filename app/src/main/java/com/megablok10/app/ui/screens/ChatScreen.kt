@@ -424,7 +424,9 @@ internal fun MessageBubble(
             ) {
                 val status = transactions.find { it.id == decoded.id }?.status
                 if (decoded.memo.isNotBlank()) Text(decoded.memo, style = MbTypography.rowSub, color = c.ink2)
-                PaymentOrItemStatus(self, status, onAccept = if (self) null else { { onAcceptTransaction?.invoke(decoded) } })
+                // Входящий перевод, уже записанный у нас (принят), больше не принимается: кнопка заменяется надписью «принято»
+                // (как у передачи предмета ниже). Раньше «Принять» оставалась живой: повторный тап ничего не давал, но сбивал игрока.
+                PaymentOrItemStatus(self, status, onAccept = if (!incomingCardNeedsAccept(self, status)) null else { { onAcceptTransaction?.invoke(decoded) } })
             }
             is Mb10Qr.ItemTransfer -> {
                 val shard = remember(decoded.payload) { if (decoded.kind == ItemKind.SHARD) ItemPayload.decodeShard(decoded.payload) else null }
@@ -452,6 +454,9 @@ internal fun MessageBubble(
         }
     }
 }
+
+/** Нужна ли кнопка «Принять» на карточке: чужая и ещё не записанная у нас ([localStatus] — статус нашей записи о переводе, null — записи нет). */
+internal fun incomingCardNeedsAccept(self: Boolean, localStatus: String?): Boolean = !self && localStatus == null
 
 @Composable
 private fun PaymentOrItemStatus(self: Boolean, status: String?, onAccept: (() -> Unit)?, cancelledWhenNull: Boolean = false) {

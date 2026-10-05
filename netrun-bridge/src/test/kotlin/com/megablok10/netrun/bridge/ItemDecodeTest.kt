@@ -3,6 +3,7 @@ package com.megablok10.netrun.bridge
 import com.megablok10.rules.Daemon
 import com.megablok10.rules.DaemonEffect
 import com.megablok10.rules.ItemPayloadCodec
+import com.megablok10.rules.ShardPayload
 import com.megablok10.rules.Tier
 import kotlinx.serialization.json.JsonObject
 import org.junit.Assert.assertEquals
@@ -22,6 +23,25 @@ class ItemDecodeTest {
         assertEquals("GHOST", VJ.str(d, "effect"))
         assertEquals(3L, VJ.lng(d, "tier"))
         assertEquals("Призрак", VJ.str(d, "name"))
+    }
+
+    private fun shardPayload(decryptAction: Boolean, decrypted: Boolean) =
+        ItemPayloadCodec.encodeShard(ShardPayload("s", decryptAction, 1, "подсказка", "Шард", "мета", "тело", 0, decrypted))
+
+    @Test fun shardEncryptedOnlyWithDecryptActionAndNotDecrypted() {
+        fun enc(a: Boolean, d: Boolean) = VJ.bool(ItemDecode.fields("SHARD", shardPayload(a, d)).getValue("shard"), "encrypted")
+        assertEquals(true, enc(true, false))
+        assertEquals(false, enc(false, false)) // без действия расшифровки «РАСШИФРОВАТЬ» не предлагается
+        assertEquals(false, enc(true, true))
+    }
+
+    @Test fun enrichAddsEncryptedToShardDocumentsThatLackIt() {
+        val old = item("SHARD", shardPayload(false, false)).let {
+            JsonObject(it + ("shard" to VJ.obj("tier" to VJ.p(1L), "title" to VJ.p("Шард"), "decrypted" to VJ.p(false))))
+        }
+        val next = ItemDecode.enrich(old)!!
+        assertEquals(false, VJ.bool(next["shard"] as JsonObject, "encrypted"))
+        assertNull(ItemDecode.enrich(next)) // повтор ничего не меняет
     }
 
     @Test fun garbageAndUnknownKindGiveNothing() {

@@ -10,6 +10,7 @@ const T_NODE := "node"
 const T_SESSION := "session"
 const T_ITEM := "item"
 const T_TERMINAL := "terminal"
+const T_RUNNER := "runner"
 
 ## Исходы забега для run.finish (раздел 6.5).
 const OUTCOMES: PackedStringArray = ["clean", "emergency", "soft_ice", "black_ice", "aborted"]
@@ -44,6 +45,23 @@ static func leave_rid(session: String, item: String) -> String:
 
 static func finish_rid(session: String) -> String:
 	return "finish:%s" % session
+
+
+## Номер запроса итога взлома: n — номер попытки (session.world.breach_n), он же делает rid уникальным (docs/netrun-bridge-protocol.md, 6.6).
+static func breach_rid(session: String, n: int) -> String:
+	return "breach:%s:%d" % [session, n]
+
+
+## rid отдачи (раздел 6.7): `give:<сессия>:<предмет>:<ver>:<sha8(получатель)>`. Версия предмета нужна, потому что предмет может вернуться
+## (A -> B -> A) и уйти снова; получатель (to_session либо ключ to_phone) — потому что отказ сохраняется по rid, и без него повтор другому
+## получателю дал бы rid_mismatch. sha8 — первые 8 hex от sha256 строки получателя (эталон — GiveRid.kt Моста).
+static func give_rid(session: String, item: String, ver: int, to: String) -> String:
+	return "give:%s:%s:%d:%s" % [session, item, ver, to.sha256_text().substr(0, 8)]
+
+
+## rid расшифровки (раздел 6.8): `decrypt:<сессия>:<предмет>:<ver>`; версия предмета — чтобы поздний вызов (предмет уже открыт, версия другая) не получил старый ответ.
+static func decrypt_rid(session: String, item: String, ver: int) -> String:
+	return "decrypt:%s:%s:%d" % [session, item, ver]
 
 
 ## Токен, который очки кладут в auth: JSON {"terminal","token"} или «терминал:токен». Возвращает {terminal, token} или {}.
@@ -126,8 +144,27 @@ func op_leave_in_node(_session: String, _node: String, _item: String) -> Diction
 	return err("internal", "не реализовано")
 
 
+## Отдать предмет из груза (раздел 6.7): ровно один из to_session (нетраннер в Сети) и to_phone (ключ телефона, base64 SPKI); ver — версия
+## предмета, которую видел сервер мира. Ответ: {"ok", "item", "to", "transfer"} либо ошибка (wrong_owner, version_conflict, protected_item, loaded_item…).
+func op_give_item(_session: String, _item: String, _ver: int, _to_session: String, _to_phone: String) -> Dictionary:
+	return err("internal", "не реализовано")
+
+
+## Расшифровать шард в деке (раздел 6.8): Мост меняет в payload только флаг «расшифрован». ver — версия предмета, которую видел сервер мира.
+## Ответ: {"ok", "changed", "title", "body", "item"} либо ошибка (wrong_owner, version_conflict, no_decrypter, session_state, bad_request, not_found).
+func op_decrypt_item(_session: String, _item: String, _ver: int) -> Dictionary:
+	return err("internal", "не реализовано")
+
+
 ## moves: [{"item": id, "to": "phone"|"node"|"burned"}, ...].
 func run_finish(_session: String, _outcome: String, _node: String, _disconnect: bool, _moves: Array) -> Dictionary:
+	return err("internal", "не реализовано")
+
+
+## Итог взлома хранилища (раздел 6.6). req: {n, tier (BASE|HARD|NIGHTMARE), selected [id демонов], matched [id], active [GHOST|TIMESKEW|BLACKOUT],
+## vaults [id предметов в хранилищах узла, хранилище панели первым], open_s}. Ответ: {outcome, effects, eddies, loot_eddies, opened [{item, until}],
+## exhausted, cooldown_until, alert}; отказы — cooldown, session_state, bad_request, not_found.
+func run_breach(_session: String, _node: String, _req: Dictionary) -> Dictionary:
 	return err("internal", "не реализовано")
 
 

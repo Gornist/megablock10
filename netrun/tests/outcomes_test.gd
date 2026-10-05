@@ -198,6 +198,7 @@ func test_ghost_breaks_the_hunt_so_emergency_exit_keeps_deck() -> void:
 	await _enter_node()
 	_trace(60.0)
 	assert_bool(await _wait_for(func(): return not _hunt_events(true).is_empty())).is_true()
+	(_node.session_state(SESSION)).set_charged("ghost_1")   # защитный демон вне взлома работает только заряженным (К6)
 	assert_bool(_bot.net.request_use("ghost_1")).is_true()  # охота идёт по позиции, спрятанного GHOST'ом она не видит
 	assert_bool(await _wait_for(func(): return not _hunt_events(false).is_empty())).is_true()
 	assert_bool(_bot.net.request_exit(ExitLogic.REASON_MANUAL_HOLD)).is_true()
@@ -221,6 +222,23 @@ func test_soft_ice_eject_returns_deck_and_leaves_loot_in_node() -> void:
 	assert_bool(bool(_session_data()["disconnect"])).is_false()
 	_assert_items(IN_NODE, PHONE)
 	assert_bool(_server.has_avatar(SESSION)).is_false()
+
+
+## Мёртвая дека чужого (`phone:<чужой>`) лежит в грузе: при Soft ICE она добыча и остаётся в узле. Раньше сервер делил по origin и слал её
+## на телефон — настоящий Мост отвечал `bad_request` без повтора, сессия зависала (FakeBridge правил исхода не знает: проверяем владельца).
+func test_soft_ice_leaves_foreign_phone_cargo_in_node() -> void:
+	_setup()
+	const CARGO := "it_fake000000d0c1"
+	var cargo := {"owner": "deck:" + SESSION, "kind": "DAEMON", "payload": "pc", "protected": false, "origin": "phone:KEY_BOB"}
+	assert_bool((await _bridge.put_doc(BridgeApi.T_ITEM, CARGO, 0, cargo)).get("ok", false)).is_true()
+	_session_data()["loaded"] = [PROTECTED, DAEMON]   # сданное при входе: чужой демон в `loaded` не входит
+	await _enter_node(true)
+	_trace(100.0)
+	assert_bool(await _wait_for(func(): return not _bot.result.is_empty())).is_true()
+	await _wait_finished()
+	assert_str(str(_session_data()["outcome"])).is_equal("soft_ice")
+	assert_str(_owner(CARGO)).is_equal(IN_NODE)
+	_assert_items(IN_NODE, PHONE)
 
 
 # ---------------------------------------------------------------- Black ICE

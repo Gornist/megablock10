@@ -37,3 +37,13 @@ class NsdRefreshGateTest {
         assertTrue(gate.shouldRefresh(101, "10.0.2.16"))
     }
 }
+
+/** Возврат на экран: NSD пересоздаётся только после заметного простоя. */
+class RefreshOnForegroundTest {
+    @Test fun shortAbsenceDoesNotRestartNsd() = assertFalse(refreshOnForeground(59_999))
+
+    @Test fun longAbsenceRestartsNsd() {
+        assertTrue(refreshOnForeground(60_000))
+        assertTrue(refreshOnForeground(10 * 60_000))
+    }
+}

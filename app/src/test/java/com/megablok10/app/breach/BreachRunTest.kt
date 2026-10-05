@@ -1,5 +1,6 @@
 package com.megablok10.app.breach
 
+import com.megablok10.rules.generateGrid
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull

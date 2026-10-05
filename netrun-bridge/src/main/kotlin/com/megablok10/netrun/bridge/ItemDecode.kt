@@ -27,7 +27,13 @@ object ItemDecode {
                 )
             }
             "SHARD" -> ItemPayloadCodec.decodeShard(payload)?.let { s ->
-                mapOf(SHARD to VJ.obj("tier" to VJ.p(s.tier.toLong()), "title" to VJ.p(s.title), "decrypted" to VJ.p(s.decrypted)))
+                mapOf(
+                    SHARD to VJ.obj(
+                        "tier" to VJ.p(s.tier.toLong()), "title" to VJ.p(s.title), "decrypted" to VJ.p(s.decrypted),
+                        // Ярлык «зашифрован» только у шарда с действием расшифровки: без него «РАСШИФРОВАТЬ» не предлагается.
+                        "encrypted" to VJ.p(s.decryptAction && !s.decrypted),
+                    ),
+                )
             }
             else -> null
         } ?: emptyMap()
@@ -36,9 +42,17 @@ object ItemDecode {
     /** [data] с добавленным `daemon`/`shard`, если поля ещё нет и payload разбирается; иначе null (менять нечего). */
     fun enrich(data: JsonObject): JsonObject? {
         val field = if (VJ.str(data, "kind") == "SHARD") SHARD else DAEMON
+        val old = data[field] as? JsonObject
+        // Шард, принятый до К7, уже имеет `shard`, но без `encrypted` — дописываем флаг.
+        if (old != null) return if (field == SHARD && "encrypted" !in old) shardWithEncrypted(data, old) else null
         if (field in data) return null
         val add = fields(VJ.str(data, "kind"), VJ.str(data, "payload"))
         return if (add.isEmpty()) null else JsonObject(data + add)
+    }
+
+    private fun shardWithEncrypted(data: JsonObject, old: JsonObject): JsonObject? {
+        val s = VJ.str(data, "payload")?.let { ItemPayloadCodec.decodeShard(it) } ?: return null
+        return JsonObject(data + (SHARD to VJ.with(old, "encrypted" to VJ.p(s.decryptAction && !s.decrypted))))
     }
 
     /** Дописывает поле предметам, у которых его нет (документы, принятые до M5b). Возвращает число обновлённых. */

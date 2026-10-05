@@ -65,9 +65,22 @@ func add_action(action: String, now: float, count: float = 1.0) -> void:
 	_set_value(_value + float(weights.get(action, 0.0)) * count)
 
 
+## Рост на amount без именованного действия (ловушка во взломе: число зависит от тира узла и лежит в graph.json). Заморозка JITTER и флэтлайн действуют как всегда.
+func add_amount(amount: float, now: float) -> void:
+	_advance(now, true)
+	if _level == Level.FLATLINE or is_frozen(now):
+		return
+	_set_value(_value + maxf(amount, 0.0))
+
+
 ## Спад за время с прошлого вызова. hidden = false — нетраннера сейчас видят: спада нет.
 func tick(now: float, hidden: bool = true) -> void:
 	_advance(now, hidden)
+
+
+## Сколько секунд trace ещё заморожен (0 — не заморожен).
+func frozen_left(now: float) -> float:
+	return maxf(0.0, _frozen_until - now)
 
 
 ## JITTER: trace замирает (ни роста, ни спада) на duration секунд.

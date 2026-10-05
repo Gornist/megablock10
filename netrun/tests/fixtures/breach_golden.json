@@ -1,0 +1,1470 @@
+{
+  "format": 1,
+  "note": "Сгенерировано тестом BreachGoldenTest (UPDATE_NETRUN_JSON=1) из :rules. Руками не править.",
+  "link_rule": [
+    {
+      "selected_count": 1,
+      "next": "COLUMN"
+    },
+    {
+      "selected_count": 2,
+      "next": "ROW"
+    },
+    {
+      "selected_count": 3,
+      "next": "COLUMN"
+    },
+    {
+      "selected_count": 4,
+      "next": "ROW"
+    },
+    {
+      "selected_count": 5,
+      "next": "COLUMN"
+    },
+    {
+      "selected_count": 6,
+      "next": "ROW"
+    },
+    {
+      "selected_count": 7,
+      "next": "COLUMN"
+    },
+    {
+      "selected_count": 8,
+      "next": "ROW"
+    }
+  ],
+  "resolve_cases": [
+    {
+      "buffer": ["BD", "1C", "55", "E9"],
+      "daemons": [
+        {
+          "id": "a",
+          "name": "a",
+          "sequence": ["1C", "55"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        }
+      ],
+      "matched": ["a"]
+    },
+    {
+      "buffer": ["1C", "E9", "55"],
+      "daemons": [
+        {
+          "id": "a",
+          "name": "a",
+          "sequence": ["1C", "55"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        }
+      ],
+      "matched": []
+    },
+    {
+      "buffer": ["55", "1C"],
+      "daemons": [
+        {
+          "id": "a",
+          "name": "a",
+          "sequence": ["1C", "55"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        }
+      ],
+      "matched": []
+    },
+    {
+      "buffer": ["1C", "55", "BD"],
+      "daemons": [
+        {
+          "id": "a",
+          "name": "a",
+          "sequence": ["1C", "55"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        },
+        {
+          "id": "b",
+          "name": "b",
+          "sequence": ["55", "BD"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        }
+      ],
+      "matched": ["a", "b"]
+    },
+    {
+      "buffer": ["1C", "55"],
+      "daemons": [
+        {
+          "id": "a",
+          "name": "a",
+          "sequence": ["1C", "55"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        },
+        {
+          "id": "b",
+          "name": "b",
+          "sequence": ["55", "BD"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        }
+      ],
+      "matched": ["a"]
+    },
+    {
+      "buffer": ["1C", "××", "55"],
+      "daemons": [
+        {
+          "id": "a",
+          "name": "a",
+          "sequence": ["1C", "55"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        }
+      ],
+      "matched": []
+    },
+    {
+      "buffer": [],
+      "daemons": [
+        {
+          "id": "a",
+          "name": "a",
+          "sequence": ["1C", "55"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        }
+      ],
+      "matched": []
+    },
+    {
+      "buffer": ["1C"],
+      "daemons": [
+        {
+          "id": "empty",
+          "name": "empty",
+          "sequence": [],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        }
+      ],
+      "matched": []
+    }
+  ],
+  "timer_cases": [
+    {
+      "timer_sec": 15,
+      "events": []
+    },
+    {
+      "timer_sec": 20,
+      "events": []
+    },
+    {
+      "timer_sec": 21,
+      "events": [
+        {
+          "seconds_left": 10,
+          "event": "LOW_TIME"
+        }
+      ]
+    },
+    {
+      "timer_sec": 30,
+      "events": [
+        {
+          "seconds_left": 15,
+          "event": "HALF_TIME"
+        },
+        {
+          "seconds_left": 10,
+          "event": "LOW_TIME"
+        }
+      ]
+    },
+    {
+      "timer_sec": 45,
+      "events": [
+        {
+          "seconds_left": 22,
+          "event": "HALF_TIME"
+        },
+        {
+          "seconds_left": 10,
+          "event": "LOW_TIME"
+        }
+      ]
+    },
+    {
+      "timer_sec": 60,
+      "events": [
+        {
+          "seconds_left": 30,
+          "event": "HALF_TIME"
+        },
+        {
+          "seconds_left": 10,
+          "event": "LOW_TIME"
+        }
+      ]
+    },
+    {
+      "timer_sec": 75,
+      "events": [
+        {
+          "seconds_left": 37,
+          "event": "HALF_TIME"
+        },
+        {
+          "seconds_left": 10,
+          "event": "LOW_TIME"
+        }
+      ]
+    },
+    {
+      "timer_sec": 90,
+      "events": [
+        {
+          "seconds_left": 45,
+          "event": "HALF_TIME"
+        },
+        {
+          "seconds_left": 10,
+          "event": "LOW_TIME"
+        }
+      ]
+    }
+  ],
+  "attempts": [
+    {
+      "name": "base_one_daemon_solver",
+      "mode": "breach",
+      "tier": "BASE",
+      "grid_size": 5,
+      "timer_sec": 45,
+      "buffer_size": 6,
+      "daemons": [
+        {
+          "id": "a",
+          "name": "a",
+          "sequence": ["1C", "55"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        }
+      ],
+      "cells": [["1C", "7A", "1C", "E9", "FF"], ["55", "E9", "BD", "E9", "55"], ["55", "1C", "FF", "7A", "E9"], ["55", "7A", "BD", "FF", "FF"], ["FF", "7A", "1C", "55", "55"]],
+      "trap_cells": [],
+      "start_selectable": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4]],
+      "steps": [
+        {
+          "cell": [0, 0],
+          "selectable_before": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["1C"],
+          "is_full": false,
+          "selectable_after": [[1, 0], [2, 0], [3, 0], [4, 0]]
+        },
+        {
+          "cell": [1, 0],
+          "selectable_before": [[1, 0], [2, 0], [3, 0], [4, 0]],
+          "hit_trap": false,
+          "matched_new": true,
+          "matched_ids": ["a"],
+          "buffer_codes": ["1C", "55"],
+          "is_full": false,
+          "selectable_after": [[1, 1], [1, 2], [1, 3], [1, 4]]
+        }
+      ],
+      "outcome": "SUCCESS",
+      "matched_ids": ["a"],
+      "selectable_after_resolve": []
+    },
+    {
+      "name": "base_two_daemons_solver",
+      "mode": "breach",
+      "tier": "BASE",
+      "grid_size": 5,
+      "timer_sec": 45,
+      "buffer_size": 6,
+      "daemons": [
+        {
+          "id": "a",
+          "name": "a",
+          "sequence": ["1C", "55"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        },
+        {
+          "id": "b",
+          "name": "b",
+          "sequence": ["BD", "E9", "7A"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        }
+      ],
+      "cells": [["FF", "E9", "7A", "E9", "1C"], ["FF", "FF", "55", "1C", "BD"], ["E9", "BD", "1C", "BD", "55"], ["FF", "E9", "E9", "55", "E9"], ["1C", "55", "7A", "E9", "7A"]],
+      "trap_cells": [],
+      "start_selectable": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4]],
+      "steps": [
+        {
+          "cell": [0, 4],
+          "selectable_before": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["1C"],
+          "is_full": false,
+          "selectable_after": [[1, 4], [2, 4], [3, 4], [4, 4]]
+        },
+        {
+          "cell": [2, 4],
+          "selectable_before": [[1, 4], [2, 4], [3, 4], [4, 4]],
+          "hit_trap": false,
+          "matched_new": true,
+          "matched_ids": ["a"],
+          "buffer_codes": ["1C", "55"],
+          "is_full": false,
+          "selectable_after": [[2, 0], [2, 1], [2, 2], [2, 3]]
+        },
+        {
+          "cell": [2, 1],
+          "selectable_before": [[2, 0], [2, 1], [2, 2], [2, 3]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": ["a"],
+          "buffer_codes": ["1C", "55", "BD"],
+          "is_full": false,
+          "selectable_after": [[0, 1], [1, 1], [3, 1], [4, 1]]
+        },
+        {
+          "cell": [0, 1],
+          "selectable_before": [[0, 1], [1, 1], [3, 1], [4, 1]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": ["a"],
+          "buffer_codes": ["1C", "55", "BD", "E9"],
+          "is_full": false,
+          "selectable_after": [[0, 0], [0, 2], [0, 3]]
+        },
+        {
+          "cell": [0, 2],
+          "selectable_before": [[0, 0], [0, 2], [0, 3]],
+          "hit_trap": false,
+          "matched_new": true,
+          "matched_ids": ["a", "b"],
+          "buffer_codes": ["1C", "55", "BD", "E9", "7A"],
+          "is_full": false,
+          "selectable_after": [[1, 2], [2, 2], [3, 2], [4, 2]]
+        }
+      ],
+      "outcome": "SUCCESS",
+      "matched_ids": ["a", "b"],
+      "selectable_after_resolve": []
+    },
+    {
+      "name": "base_two_daemons_walk",
+      "mode": "breach",
+      "tier": "BASE",
+      "grid_size": 5,
+      "timer_sec": 45,
+      "buffer_size": 6,
+      "daemons": [
+        {
+          "id": "a",
+          "name": "a",
+          "sequence": ["1C", "55"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        },
+        {
+          "id": "b",
+          "name": "b",
+          "sequence": ["BD", "E9"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        }
+      ],
+      "cells": [["1C", "7A", "55", "55", "E9"], ["FF", "55", "E9", "E9", "FF"], ["55", "E9", "7A", "FF", "BD"], ["55", "FF", "7A", "7A", "BD"], ["1C", "BD", "7A", "E9", "E9"]],
+      "trap_cells": [],
+      "start_selectable": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4]],
+      "steps": [
+        {
+          "cell": [0, 3],
+          "selectable_before": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["55"],
+          "is_full": false,
+          "selectable_after": [[1, 3], [2, 3], [3, 3], [4, 3]]
+        },
+        {
+          "cell": [4, 3],
+          "selectable_before": [[1, 3], [2, 3], [3, 3], [4, 3]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["55", "E9"],
+          "is_full": false,
+          "selectable_after": [[4, 0], [4, 1], [4, 2], [4, 4]]
+        },
+        {
+          "cell": [4, 2],
+          "selectable_before": [[4, 0], [4, 1], [4, 2], [4, 4]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["55", "E9", "7A"],
+          "is_full": false,
+          "selectable_after": [[0, 2], [1, 2], [2, 2], [3, 2]]
+        },
+        {
+          "cell": [0, 2],
+          "selectable_before": [[0, 2], [1, 2], [2, 2], [3, 2]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["55", "E9", "7A", "55"],
+          "is_full": false,
+          "selectable_after": [[0, 0], [0, 1], [0, 4]]
+        },
+        {
+          "cell": [0, 0],
+          "selectable_before": [[0, 0], [0, 1], [0, 4]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["55", "E9", "7A", "55", "1C"],
+          "is_full": false,
+          "selectable_after": [[1, 0], [2, 0], [3, 0], [4, 0]]
+        },
+        {
+          "cell": [4, 0],
+          "selectable_before": [[1, 0], [2, 0], [3, 0], [4, 0]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["55", "E9", "7A", "55", "1C", "1C"],
+          "is_full": true,
+          "selectable_after": []
+        }
+      ],
+      "outcome": "FAIL",
+      "matched_ids": [],
+      "selectable_after_resolve": []
+    },
+    {
+      "name": "hard_two_daemons_solver",
+      "mode": "breach",
+      "tier": "HARD",
+      "grid_size": 6,
+      "timer_sec": 60,
+      "buffer_size": 8,
+      "daemons": [
+        {
+          "id": "a",
+          "name": "a",
+          "sequence": ["55", "BD"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        },
+        {
+          "id": "b",
+          "name": "b",
+          "sequence": ["E9", "7A", "FF"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        }
+      ],
+      "cells": [["55", "1C", "BD", "FF", "BD", "7A"], ["FF", "E9", "7A", "1C", "E9", "E9"], ["××", "1C", "××", "1C", "1C", "55"], ["1C", "55", "1C", "55", "BD", "7A"], ["BD", "1C", "FF", "BD", "55", "E9"], ["55", "55", "55", "E9", "55", "7A"]],
+      "trap_cells": [[2, 0], [2, 2]],
+      "start_selectable": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5]],
+      "steps": [
+        {
+          "cell": [0, 0],
+          "selectable_before": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["55"],
+          "is_full": false,
+          "selectable_after": [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0]]
+        },
+        {
+          "cell": [1, 0],
+          "selectable_before": [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["55", "FF"],
+          "is_full": false,
+          "selectable_after": [[1, 1], [1, 2], [1, 3], [1, 4], [1, 5]]
+        },
+        {
+          "cell": [1, 1],
+          "selectable_before": [[1, 1], [1, 2], [1, 3], [1, 4], [1, 5]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["55", "FF", "E9"],
+          "is_full": false,
+          "selectable_after": [[0, 1], [2, 1], [3, 1], [4, 1], [5, 1]]
+        },
+        {
+          "cell": [3, 1],
+          "selectable_before": [[0, 1], [2, 1], [3, 1], [4, 1], [5, 1]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["55", "FF", "E9", "55"],
+          "is_full": false,
+          "selectable_after": [[3, 0], [3, 2], [3, 3], [3, 4], [3, 5]]
+        },
+        {
+          "cell": [3, 4],
+          "selectable_before": [[3, 0], [3, 2], [3, 3], [3, 4], [3, 5]],
+          "hit_trap": false,
+          "matched_new": true,
+          "matched_ids": ["a"],
+          "buffer_codes": ["55", "FF", "E9", "55", "BD"],
+          "is_full": false,
+          "selectable_after": [[0, 4], [1, 4], [2, 4], [4, 4], [5, 4]]
+        },
+        {
+          "cell": [1, 4],
+          "selectable_before": [[0, 4], [1, 4], [2, 4], [4, 4], [5, 4]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": ["a"],
+          "buffer_codes": ["55", "FF", "E9", "55", "BD", "E9"],
+          "is_full": false,
+          "selectable_after": [[1, 2], [1, 3], [1, 5]]
+        },
+        {
+          "cell": [1, 2],
+          "selectable_before": [[1, 2], [1, 3], [1, 5]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": ["a"],
+          "buffer_codes": ["55", "FF", "E9", "55", "BD", "E9", "7A"],
+          "is_full": false,
+          "selectable_after": [[0, 2], [2, 2], [3, 2], [4, 2], [5, 2]]
+        },
+        {
+          "cell": [4, 2],
+          "selectable_before": [[0, 2], [2, 2], [3, 2], [4, 2], [5, 2]],
+          "hit_trap": false,
+          "matched_new": true,
+          "matched_ids": ["a", "b"],
+          "buffer_codes": ["55", "FF", "E9", "55", "BD", "E9", "7A", "FF"],
+          "is_full": true,
+          "selectable_after": []
+        }
+      ],
+      "outcome": "SUCCESS",
+      "matched_ids": ["a", "b"],
+      "selectable_after_resolve": []
+    },
+    {
+      "name": "hard_walk_with_dead_cells",
+      "mode": "breach",
+      "tier": "HARD",
+      "grid_size": 6,
+      "timer_sec": 60,
+      "buffer_size": 7,
+      "daemons": [
+        {
+          "id": "a",
+          "name": "a",
+          "sequence": ["55", "BD", "1C"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        }
+      ],
+      "cells": [["1C", "1C", "1C", "7A", "7A", "55"], ["FF", "FF", "55", "FF", "FF", "7A"], ["××", "55", "BD", "××", "1C", "BD"], ["1C", "BD", "7A", "7A", "7A", "BD"], ["FF", "FF", "BD", "FF", "FF", "FF"], ["1C", "7A", "BD", "FF", "7A", "55"]],
+      "trap_cells": [[2, 0], [2, 3]],
+      "start_selectable": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5]],
+      "steps": [
+        {
+          "cell": [0, 0],
+          "selectable_before": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["1C"],
+          "is_full": false,
+          "selectable_after": [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0]]
+        },
+        {
+          "cell": [2, 0],
+          "selectable_before": [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0]],
+          "hit_trap": true,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["1C", "××"],
+          "is_full": false,
+          "selectable_after": [[2, 1], [2, 2], [2, 3], [2, 4], [2, 5]]
+        },
+        {
+          "cell": [2, 3],
+          "selectable_before": [[2, 1], [2, 2], [2, 3], [2, 4], [2, 5]],
+          "hit_trap": true,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["1C", "××", "××"],
+          "is_full": false,
+          "selectable_after": [[0, 3], [1, 3], [3, 3], [4, 3], [5, 3]]
+        },
+        {
+          "cell": [1, 3],
+          "selectable_before": [[0, 3], [1, 3], [3, 3], [4, 3], [5, 3]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["1C", "××", "××", "FF"],
+          "is_full": false,
+          "selectable_after": [[1, 0], [1, 1], [1, 2], [1, 4], [1, 5]]
+        },
+        {
+          "cell": [1, 2],
+          "selectable_before": [[1, 0], [1, 1], [1, 2], [1, 4], [1, 5]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["1C", "××", "××", "FF", "55"],
+          "is_full": false,
+          "selectable_after": [[0, 2], [2, 2], [3, 2], [4, 2], [5, 2]]
+        },
+        {
+          "cell": [5, 2],
+          "selectable_before": [[0, 2], [2, 2], [3, 2], [4, 2], [5, 2]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["1C", "××", "××", "FF", "55", "BD"],
+          "is_full": false,
+          "selectable_after": [[5, 0], [5, 1], [5, 3], [5, 4], [5, 5]]
+        },
+        {
+          "cell": [5, 1],
+          "selectable_before": [[5, 0], [5, 1], [5, 3], [5, 4], [5, 5]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["1C", "××", "××", "FF", "55", "BD", "7A"],
+          "is_full": true,
+          "selectable_after": []
+        }
+      ],
+      "outcome": "FAIL",
+      "matched_ids": [],
+      "selectable_after_resolve": []
+    },
+    {
+      "name": "hard_trap_first",
+      "mode": "breach",
+      "tier": "HARD",
+      "grid_size": 6,
+      "timer_sec": 60,
+      "buffer_size": 6,
+      "daemons": [
+        {
+          "id": "a",
+          "name": "a",
+          "sequence": ["1C", "FF"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        }
+      ],
+      "cells": [["7A", "FF", "BD", "1C", "BD", "BD"], ["××", "1C", "55", "1C", "1C", "7A"], ["××", "BD", "55", "E9", "BD", "1C"], ["××", "E9", "E9", "1C", "BD", "1C"], ["1C", "BD", "FF", "FF", "1C", "E9"], ["1C", "FF", "1C", "BD", "FF", "E9"]],
+      "trap_cells": [[1, 0], [2, 0], [3, 0]],
+      "start_selectable": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5]],
+      "steps": [
+        {
+          "cell": [0, 5],
+          "selectable_before": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["BD"],
+          "is_full": false,
+          "selectable_after": [[1, 5], [2, 5], [3, 5], [4, 5], [5, 5]]
+        },
+        {
+          "cell": [4, 5],
+          "selectable_before": [[1, 5], [2, 5], [3, 5], [4, 5], [5, 5]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["BD", "E9"],
+          "is_full": false,
+          "selectable_after": [[4, 0], [4, 1], [4, 2], [4, 3], [4, 4]]
+        },
+        {
+          "cell": [4, 4],
+          "selectable_before": [[4, 0], [4, 1], [4, 2], [4, 3], [4, 4]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["BD", "E9", "1C"],
+          "is_full": false,
+          "selectable_after": [[0, 4], [1, 4], [2, 4], [3, 4], [5, 4]]
+        },
+        {
+          "cell": [2, 4],
+          "selectable_before": [[0, 4], [1, 4], [2, 4], [3, 4], [5, 4]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["BD", "E9", "1C", "BD"],
+          "is_full": false,
+          "selectable_after": [[2, 0], [2, 1], [2, 2], [2, 3], [2, 5]]
+        },
+        {
+          "cell": [2, 0],
+          "selectable_before": [[2, 0], [2, 1], [2, 2], [2, 3], [2, 5]],
+          "hit_trap": true,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["BD", "E9", "1C", "BD", "××"],
+          "is_full": false,
+          "selectable_after": [[0, 0], [1, 0], [3, 0], [4, 0], [5, 0]]
+        },
+        {
+          "cell": [1, 0],
+          "selectable_before": [[0, 0], [1, 0], [3, 0], [4, 0], [5, 0]],
+          "hit_trap": true,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["BD", "E9", "1C", "BD", "××", "××"],
+          "is_full": true,
+          "selectable_after": []
+        }
+      ],
+      "outcome": "FAIL",
+      "matched_ids": [],
+      "selectable_after_resolve": []
+    },
+    {
+      "name": "nightmare_solver",
+      "mode": "breach",
+      "tier": "NIGHTMARE",
+      "grid_size": 7,
+      "timer_sec": 75,
+      "buffer_size": 8,
+      "daemons": [
+        {
+          "id": "a",
+          "name": "a",
+          "sequence": ["E9", "7A"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        },
+        {
+          "id": "b",
+          "name": "b",
+          "sequence": ["FF", "1C", "55"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        }
+      ],
+      "cells": [["7A", "1C", "BD", "7A", "E9", "E9", "55"], ["55", "1C", "1C", "E9", "BD", "E9", "××"], ["BD", "E9", "××", "1C", "1C", "7A", "55"], ["55", "E9", "FF", "7A", "FF", "FF", "55"], ["55", "1C", "55", "1C", "7A", "7A", "1C"], ["FF", "××", "××", "BD", "BD", "FF", "××"], ["FF", "FF", "××", "FF", "1C", "7A", "55"]],
+      "trap_cells": [[1, 0], [1, 6], [2, 2], [5, 0], [5, 1], [5, 2], [5, 5], [5, 6], [6, 2]],
+      "start_selectable": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6]],
+      "steps": [
+        {
+          "cell": [0, 0],
+          "selectable_before": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["7A"],
+          "is_full": false,
+          "selectable_after": [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [6, 0]]
+        },
+        {
+          "cell": [1, 0],
+          "selectable_before": [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [6, 0]],
+          "hit_trap": true,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["7A", "55"],
+          "is_full": false,
+          "selectable_after": [[1, 1], [1, 2], [1, 3], [1, 4], [1, 5], [1, 6]]
+        },
+        {
+          "cell": [1, 3],
+          "selectable_before": [[1, 1], [1, 2], [1, 3], [1, 4], [1, 5], [1, 6]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["7A", "55", "E9"],
+          "is_full": false,
+          "selectable_after": [[0, 3], [2, 3], [3, 3], [4, 3], [5, 3], [6, 3]]
+        },
+        {
+          "cell": [3, 3],
+          "selectable_before": [[0, 3], [2, 3], [3, 3], [4, 3], [5, 3], [6, 3]],
+          "hit_trap": false,
+          "matched_new": true,
+          "matched_ids": ["a"],
+          "buffer_codes": ["7A", "55", "E9", "7A"],
+          "is_full": false,
+          "selectable_after": [[3, 0], [3, 1], [3, 2], [3, 4], [3, 5], [3, 6]]
+        },
+        {
+          "cell": [3, 4],
+          "selectable_before": [[3, 0], [3, 1], [3, 2], [3, 4], [3, 5], [3, 6]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": ["a"],
+          "buffer_codes": ["7A", "55", "E9", "7A", "FF"],
+          "is_full": false,
+          "selectable_after": [[0, 4], [1, 4], [2, 4], [4, 4], [5, 4], [6, 4]]
+        },
+        {
+          "cell": [2, 4],
+          "selectable_before": [[0, 4], [1, 4], [2, 4], [4, 4], [5, 4], [6, 4]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": ["a"],
+          "buffer_codes": ["7A", "55", "E9", "7A", "FF", "1C"],
+          "is_full": false,
+          "selectable_after": [[2, 0], [2, 1], [2, 2], [2, 3], [2, 5], [2, 6]]
+        },
+        {
+          "cell": [2, 6],
+          "selectable_before": [[2, 0], [2, 1], [2, 2], [2, 3], [2, 5], [2, 6]],
+          "hit_trap": false,
+          "matched_new": true,
+          "matched_ids": ["a", "b"],
+          "buffer_codes": ["7A", "55", "E9", "7A", "FF", "1C", "55"],
+          "is_full": false,
+          "selectable_after": [[0, 6], [1, 6], [3, 6], [4, 6], [5, 6], [6, 6]]
+        }
+      ],
+      "outcome": "SUCCESS",
+      "matched_ids": ["a", "b"],
+      "selectable_after_resolve": []
+    },
+    {
+      "name": "nightmare_walk_corrupted",
+      "mode": "breach",
+      "tier": "NIGHTMARE",
+      "grid_size": 7,
+      "timer_sec": 75,
+      "buffer_size": 8,
+      "daemons": [
+        {
+          "id": "a",
+          "name": "a",
+          "sequence": ["7A", "FF", "BD"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        }
+      ],
+      "cells": [["××", "FF", "7A", "FF", "E9", "55", "××"], ["FF", "E9", "BD", "FF", "55", "7A", "7A"], ["7A", "55", "55", "E9", "E9", "BD", "7A"], ["FF", "7A", "FF", "7A", "55", "××", "FF"], ["××", "BD", "FF", "1C", "55", "55", "××"], ["1C", "FF", "55", "1C", "7A", "1C", "7A"], ["××", "E9", "7A", "7A", "E9", "E9", "7A"]],
+      "trap_cells": [[0, 0], [0, 4], [0, 6], [3, 2], [3, 5], [4, 0], [4, 6], [6, 0]],
+      "start_selectable": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6]],
+      "steps": [
+        {
+          "cell": [0, 0],
+          "selectable_before": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6]],
+          "hit_trap": true,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["××"],
+          "is_full": false,
+          "selectable_after": [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [6, 0]]
+        },
+        {
+          "cell": [3, 0],
+          "selectable_before": [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [6, 0]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["××", "FF"],
+          "is_full": false,
+          "selectable_after": [[3, 1], [3, 2], [3, 3], [3, 4], [3, 5], [3, 6]]
+        },
+        {
+          "cell": [3, 4],
+          "selectable_before": [[3, 1], [3, 2], [3, 3], [3, 4], [3, 5], [3, 6]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["××", "FF", "55"],
+          "is_full": false,
+          "selectable_after": [[0, 4], [1, 4], [2, 4], [4, 4], [5, 4], [6, 4]]
+        },
+        {
+          "cell": [5, 4],
+          "selectable_before": [[0, 4], [1, 4], [2, 4], [4, 4], [5, 4], [6, 4]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["××", "FF", "55", "7A"],
+          "is_full": false,
+          "selectable_after": [[5, 0], [5, 1], [5, 2], [5, 3], [5, 5], [5, 6]]
+        },
+        {
+          "cell": [5, 0],
+          "selectable_before": [[5, 0], [5, 1], [5, 2], [5, 3], [5, 5], [5, 6]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["××", "FF", "55", "7A", "1C"],
+          "is_full": false,
+          "selectable_after": [[1, 0], [2, 0], [4, 0], [6, 0]]
+        },
+        {
+          "cell": [6, 0],
+          "selectable_before": [[1, 0], [2, 0], [4, 0], [6, 0]],
+          "hit_trap": true,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["××", "FF", "55", "7A", "1C", "××"],
+          "is_full": false,
+          "selectable_after": [[6, 1], [6, 2], [6, 3], [6, 4], [6, 5], [6, 6]]
+        },
+        {
+          "cell": [6, 3],
+          "selectable_before": [[6, 1], [6, 2], [6, 3], [6, 4], [6, 5], [6, 6]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["××", "FF", "55", "7A", "1C", "××", "7A"],
+          "is_full": false,
+          "selectable_after": [[0, 3], [1, 3], [2, 3], [3, 3], [4, 3], [5, 3]]
+        },
+        {
+          "cell": [3, 3],
+          "selectable_before": [[0, 3], [1, 3], [2, 3], [3, 3], [4, 3], [5, 3]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["××", "FF", "55", "7A", "1C", "××", "7A", "7A"],
+          "is_full": true,
+          "selectable_after": []
+        }
+      ],
+      "outcome": "FAIL",
+      "matched_ids": [],
+      "selectable_after_resolve": []
+    },
+    {
+      "name": "nightmare_trap_first",
+      "mode": "breach",
+      "tier": "NIGHTMARE",
+      "grid_size": 7,
+      "timer_sec": 75,
+      "buffer_size": 8,
+      "daemons": [
+        {
+          "id": "a",
+          "name": "a",
+          "sequence": ["1C", "55", "BD"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        }
+      ],
+      "cells": [["××", "1C", "7A", "55", "FF", "E9", "FF"], ["55", "1C", "FF", "E9", "1C", "FF", "FF"], ["1C", "7A", "E9", "1C", "55", "FF", "BD"], ["7A", "FF", "7A", "7A", "E9", "BD", "FF"], ["BD", "55", "1C", "E9", "7A", "55", "E9"], ["1C", "BD", "FF", "1C", "××", "××", "E9"], ["BD", "55", "7A", "7A", "××", "××", "FF"]],
+      "trap_cells": [[0, 0], [0, 4], [3, 1], [5, 3], [5, 4], [5, 5], [6, 4], [6, 5]],
+      "start_selectable": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6]],
+      "steps": [
+        {
+          "cell": [0, 0],
+          "selectable_before": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6]],
+          "hit_trap": true,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["××"],
+          "is_full": false,
+          "selectable_after": [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [6, 0]]
+        },
+        {
+          "cell": [1, 0],
+          "selectable_before": [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [6, 0]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["××", "55"],
+          "is_full": false,
+          "selectable_after": [[1, 1], [1, 2], [1, 3], [1, 4], [1, 5], [1, 6]]
+        },
+        {
+          "cell": [1, 6],
+          "selectable_before": [[1, 1], [1, 2], [1, 3], [1, 4], [1, 5], [1, 6]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["××", "55", "FF"],
+          "is_full": false,
+          "selectable_after": [[0, 6], [2, 6], [3, 6], [4, 6], [5, 6], [6, 6]]
+        },
+        {
+          "cell": [3, 6],
+          "selectable_before": [[0, 6], [2, 6], [3, 6], [4, 6], [5, 6], [6, 6]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["××", "55", "FF", "FF"],
+          "is_full": false,
+          "selectable_after": [[3, 0], [3, 1], [3, 2], [3, 3], [3, 4], [3, 5]]
+        },
+        {
+          "cell": [3, 1],
+          "selectable_before": [[3, 0], [3, 1], [3, 2], [3, 3], [3, 4], [3, 5]],
+          "hit_trap": true,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["××", "55", "FF", "FF", "FF"],
+          "is_full": false,
+          "selectable_after": [[0, 1], [1, 1], [2, 1], [4, 1], [5, 1], [6, 1]]
+        },
+        {
+          "cell": [0, 1],
+          "selectable_before": [[0, 1], [1, 1], [2, 1], [4, 1], [5, 1], [6, 1]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["××", "55", "FF", "FF", "FF", "1C"],
+          "is_full": false,
+          "selectable_after": [[0, 2], [0, 3], [0, 4], [0, 5], [0, 6]]
+        },
+        {
+          "cell": [0, 4],
+          "selectable_before": [[0, 2], [0, 3], [0, 4], [0, 5], [0, 6]],
+          "hit_trap": true,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["××", "55", "FF", "FF", "FF", "1C", "FF"],
+          "is_full": false,
+          "selectable_after": [[1, 4], [2, 4], [3, 4], [4, 4], [5, 4], [6, 4]]
+        },
+        {
+          "cell": [5, 4],
+          "selectable_before": [[1, 4], [2, 4], [3, 4], [4, 4], [5, 4], [6, 4]],
+          "hit_trap": true,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["××", "55", "FF", "FF", "FF", "1C", "FF", "××"],
+          "is_full": true,
+          "selectable_after": []
+        }
+      ],
+      "outcome": "FAIL",
+      "matched_ids": [],
+      "selectable_after_resolve": []
+    },
+    {
+      "name": "base_partial_timeout",
+      "mode": "breach",
+      "tier": "BASE",
+      "grid_size": 5,
+      "timer_sec": 45,
+      "buffer_size": 6,
+      "daemons": [
+        {
+          "id": "a",
+          "name": "a",
+          "sequence": ["1C", "55"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        },
+        {
+          "id": "b",
+          "name": "b",
+          "sequence": ["BD", "E9", "7A"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        }
+      ],
+      "cells": [["7A", "BD", "BD", "1C", "BD"], ["FF", "1C", "FF", "7A", "E9"], ["55", "E9", "55", "BD", "7A"], ["E9", "BD", "E9", "BD", "55"], ["7A", "BD", "55", "55", "FF"]],
+      "trap_cells": [],
+      "start_selectable": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4]],
+      "steps": [
+        {
+          "cell": [0, 1],
+          "selectable_before": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["BD"],
+          "is_full": false,
+          "selectable_after": [[1, 1], [2, 1], [3, 1], [4, 1]]
+        },
+        {
+          "cell": [2, 1],
+          "selectable_before": [[1, 1], [2, 1], [3, 1], [4, 1]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["BD", "E9"],
+          "is_full": false,
+          "selectable_after": [[2, 0], [2, 2], [2, 3], [2, 4]]
+        },
+        {
+          "cell": [2, 4],
+          "selectable_before": [[2, 0], [2, 2], [2, 3], [2, 4]],
+          "hit_trap": false,
+          "matched_new": true,
+          "matched_ids": ["b"],
+          "buffer_codes": ["BD", "E9", "7A"],
+          "is_full": false,
+          "selectable_after": [[0, 4], [1, 4], [3, 4], [4, 4]]
+        }
+      ],
+      "outcome": "PARTIAL",
+      "matched_ids": ["b"],
+      "selectable_after_resolve": []
+    },
+    {
+      "name": "hard_partial_timeout",
+      "mode": "breach",
+      "tier": "HARD",
+      "grid_size": 6,
+      "timer_sec": 60,
+      "buffer_size": 7,
+      "daemons": [
+        {
+          "id": "a",
+          "name": "a",
+          "sequence": ["55", "BD"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        },
+        {
+          "id": "b",
+          "name": "b",
+          "sequence": ["E9", "7A"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        }
+      ],
+      "cells": [["55", "1C", "7A", "1C", "55", "BD"], ["FF", "55", "FF", "7A", "E9", "1C"], ["55", "E9", "FF", "××", "BD", "××"], ["FF", "7A", "7A", "55", "BD", "BD"], ["55", "1C", "7A", "55", "E9", "E9"], ["FF", "BD", "E9", "7A", "BD", "FF"]],
+      "trap_cells": [[2, 3], [2, 5]],
+      "start_selectable": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5]],
+      "steps": [
+        {
+          "cell": [0, 0],
+          "selectable_before": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["55"],
+          "is_full": false,
+          "selectable_after": [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0]]
+        },
+        {
+          "cell": [1, 0],
+          "selectable_before": [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["55", "FF"],
+          "is_full": false,
+          "selectable_after": [[1, 1], [1, 2], [1, 3], [1, 4], [1, 5]]
+        },
+        {
+          "cell": [1, 1],
+          "selectable_before": [[1, 1], [1, 2], [1, 3], [1, 4], [1, 5]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["55", "FF", "55"],
+          "is_full": false,
+          "selectable_after": [[0, 1], [2, 1], [3, 1], [4, 1], [5, 1]]
+        },
+        {
+          "cell": [5, 1],
+          "selectable_before": [[0, 1], [2, 1], [3, 1], [4, 1], [5, 1]],
+          "hit_trap": false,
+          "matched_new": true,
+          "matched_ids": ["a"],
+          "buffer_codes": ["55", "FF", "55", "BD"],
+          "is_full": false,
+          "selectable_after": [[5, 0], [5, 2], [5, 3], [5, 4], [5, 5]]
+        }
+      ],
+      "outcome": "PARTIAL",
+      "matched_ids": ["a"],
+      "selectable_after_resolve": []
+    },
+    {
+      "name": "nightmare_no_taps_timeout",
+      "mode": "breach",
+      "tier": "NIGHTMARE",
+      "grid_size": 7,
+      "timer_sec": 75,
+      "buffer_size": 6,
+      "daemons": [
+        {
+          "id": "a",
+          "name": "a",
+          "sequence": ["1C", "55"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        }
+      ],
+      "cells": [["1C", "××", "1C", "1C", "BD", "7A", "BD"], ["××", "FF", "7A", "E9", "FF", "E9", "××"], ["BD", "FF", "55", "7A", "7A", "E9", "FF"], ["55", "7A", "7A", "E9", "FF", "FF", "1C"], ["E9", "E9", "1C", "7A", "7A", "BD", "××"], ["7A", "1C", "E9", "FF", "7A", "FF", "BD"], ["1C", "E9", "××", "E9", "7A", "BD", "BD"]],
+      "trap_cells": [[0, 1], [0, 6], [1, 0], [1, 6], [4, 6], [6, 2], [6, 3]],
+      "start_selectable": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6]],
+      "steps": [],
+      "outcome": "FAIL",
+      "matched_ids": [],
+      "selectable_after_resolve": []
+    },
+    {
+      "name": "decrypt_tier1_solver",
+      "mode": "decrypt",
+      "tier": "BASE",
+      "grid_size": 5,
+      "timer_sec": 45,
+      "buffer_size": 5,
+      "daemons": [
+        {
+          "id": "shard-decrypt",
+          "name": "Шифр-замок",
+          "sequence": ["1C", "7A", "1C"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        }
+      ],
+      "cells": [["55", "1C", "BD", "FF", "55"], ["FF", "BD", "FF", "FF", "1C"], ["1C", "7A", "BD", "FF", "E9"], ["FF", "E9", "E9", "55", "BD"], ["7A", "BD", "7A", "1C", "1C"]],
+      "trap_cells": [],
+      "start_selectable": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4]],
+      "steps": [
+        {
+          "cell": [0, 0],
+          "selectable_before": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["55"],
+          "is_full": false,
+          "selectable_after": [[1, 0], [2, 0], [3, 0], [4, 0]]
+        },
+        {
+          "cell": [2, 0],
+          "selectable_before": [[1, 0], [2, 0], [3, 0], [4, 0]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["55", "1C"],
+          "is_full": false,
+          "selectable_after": [[2, 1], [2, 2], [2, 3], [2, 4]]
+        },
+        {
+          "cell": [2, 1],
+          "selectable_before": [[2, 1], [2, 2], [2, 3], [2, 4]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["55", "1C", "7A"],
+          "is_full": false,
+          "selectable_after": [[0, 1], [1, 1], [3, 1], [4, 1]]
+        },
+        {
+          "cell": [0, 1],
+          "selectable_before": [[0, 1], [1, 1], [3, 1], [4, 1]],
+          "hit_trap": false,
+          "matched_new": true,
+          "matched_ids": ["shard-decrypt"],
+          "buffer_codes": ["55", "1C", "7A", "1C"],
+          "is_full": false,
+          "selectable_after": [[0, 2], [0, 3], [0, 4]]
+        }
+      ],
+      "outcome": "SUCCESS",
+      "matched_ids": ["shard-decrypt"],
+      "selectable_after_resolve": []
+    },
+    {
+      "name": "decrypt_tier2_solver",
+      "mode": "decrypt",
+      "tier": "HARD",
+      "grid_size": 6,
+      "timer_sec": 60,
+      "buffer_size": 6,
+      "daemons": [
+        {
+          "id": "shard-decrypt",
+          "name": "Шифр-замок",
+          "sequence": ["FF", "7A", "E9", "BD"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        }
+      ],
+      "cells": [["E9", "E9", "55", "E9", "1C", "FF"], ["FF", "1C", "E9", "1C", "7A", "BD"], ["BD", "E9", "BD", "E9", "FF", "7A"], ["55", "1C", "FF", "BD", "FF", "FF"], ["7A", "7A", "E9", "BD", "1C", "E9"], ["E9", "E9", "55", "1C", "1C", "BD"]],
+      "trap_cells": [],
+      "start_selectable": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5]],
+      "steps": [
+        {
+          "cell": [0, 0],
+          "selectable_before": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["E9"],
+          "is_full": false,
+          "selectable_after": [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0]]
+        },
+        {
+          "cell": [2, 0],
+          "selectable_before": [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["E9", "BD"],
+          "is_full": false,
+          "selectable_after": [[2, 1], [2, 2], [2, 3], [2, 4], [2, 5]]
+        },
+        {
+          "cell": [2, 4],
+          "selectable_before": [[2, 1], [2, 2], [2, 3], [2, 4], [2, 5]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["E9", "BD", "FF"],
+          "is_full": false,
+          "selectable_after": [[0, 4], [1, 4], [3, 4], [4, 4], [5, 4]]
+        },
+        {
+          "cell": [1, 4],
+          "selectable_before": [[0, 4], [1, 4], [3, 4], [4, 4], [5, 4]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["E9", "BD", "FF", "7A"],
+          "is_full": false,
+          "selectable_after": [[1, 0], [1, 1], [1, 2], [1, 3], [1, 5]]
+        },
+        {
+          "cell": [1, 2],
+          "selectable_before": [[1, 0], [1, 1], [1, 2], [1, 3], [1, 5]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["E9", "BD", "FF", "7A", "E9"],
+          "is_full": false,
+          "selectable_after": [[0, 2], [2, 2], [3, 2], [4, 2], [5, 2]]
+        },
+        {
+          "cell": [2, 2],
+          "selectable_before": [[0, 2], [2, 2], [3, 2], [4, 2], [5, 2]],
+          "hit_trap": false,
+          "matched_new": true,
+          "matched_ids": ["shard-decrypt"],
+          "buffer_codes": ["E9", "BD", "FF", "7A", "E9", "BD"],
+          "is_full": true,
+          "selectable_after": []
+        }
+      ],
+      "outcome": "SUCCESS",
+      "matched_ids": ["shard-decrypt"],
+      "selectable_after_resolve": []
+    },
+    {
+      "name": "decrypt_tier3_walk",
+      "mode": "decrypt",
+      "tier": "NIGHTMARE",
+      "grid_size": 7,
+      "timer_sec": 75,
+      "buffer_size": 7,
+      "daemons": [
+        {
+          "id": "shard-decrypt",
+          "name": "Шифр-замок",
+          "sequence": ["55", "E9", "55", "55", "7A"],
+          "tier": 1,
+          "effect": "EXTRACT_SHARD"
+        }
+      ],
+      "cells": [["1C", "7A", "1C", "7A", "55", "55", "FF"], ["1C", "55", "7A", "7A", "7A", "7A", "1C"], ["7A", "1C", "7A", "BD", "BD", "BD", "BD"], ["7A", "7A", "BD", "FF", "1C", "1C", "E9"], ["1C", "55", "E9", "1C", "E9", "E9", "BD"], ["BD", "E9", "E9", "BD", "1C", "1C", "7A"], ["E9", "FF", "7A", "BD", "7A", "55", "BD"]],
+      "trap_cells": [],
+      "start_selectable": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6]],
+      "steps": [
+        {
+          "cell": [0, 0],
+          "selectable_before": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["1C"],
+          "is_full": false,
+          "selectable_after": [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [6, 0]]
+        },
+        {
+          "cell": [4, 0],
+          "selectable_before": [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [6, 0]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["1C", "1C"],
+          "is_full": false,
+          "selectable_after": [[4, 1], [4, 2], [4, 3], [4, 4], [4, 5], [4, 6]]
+        },
+        {
+          "cell": [4, 6],
+          "selectable_before": [[4, 1], [4, 2], [4, 3], [4, 4], [4, 5], [4, 6]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["1C", "1C", "BD"],
+          "is_full": false,
+          "selectable_after": [[0, 6], [1, 6], [2, 6], [3, 6], [5, 6], [6, 6]]
+        },
+        {
+          "cell": [0, 6],
+          "selectable_before": [[0, 6], [1, 6], [2, 6], [3, 6], [5, 6], [6, 6]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["1C", "1C", "BD", "FF"],
+          "is_full": false,
+          "selectable_after": [[0, 1], [0, 2], [0, 3], [0, 4], [0, 5]]
+        },
+        {
+          "cell": [0, 3],
+          "selectable_before": [[0, 1], [0, 2], [0, 3], [0, 4], [0, 5]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["1C", "1C", "BD", "FF", "7A"],
+          "is_full": false,
+          "selectable_after": [[1, 3], [2, 3], [3, 3], [4, 3], [5, 3], [6, 3]]
+        },
+        {
+          "cell": [4, 3],
+          "selectable_before": [[1, 3], [2, 3], [3, 3], [4, 3], [5, 3], [6, 3]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["1C", "1C", "BD", "FF", "7A", "1C"],
+          "is_full": false,
+          "selectable_after": [[4, 1], [4, 2], [4, 4], [4, 5]]
+        },
+        {
+          "cell": [4, 2],
+          "selectable_before": [[4, 1], [4, 2], [4, 4], [4, 5]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["1C", "1C", "BD", "FF", "7A", "1C", "E9"],
+          "is_full": true,
+          "selectable_after": []
+        }
+      ],
+      "outcome": "FAIL",
+      "matched_ids": [],
+      "selectable_after_resolve": []
+    }
+  ]
+}

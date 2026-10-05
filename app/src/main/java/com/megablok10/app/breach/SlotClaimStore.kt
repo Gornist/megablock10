@@ -9,6 +9,7 @@ import com.megablok10.app.identity.IdentityStore
 import com.megablok10.app.log.Mb10Log
 import com.megablok10.kit.crypto.Ecdsa
 import com.megablok10.kit.mesh.PeerDirectory
+import com.megablok10.rules.SlotPicker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -105,25 +106,13 @@ class SlotClaimStore(
     }
 
     companion object {
-        /**
-         * Чистый выбор слота без Context/БД — первый по порядку слот нужного
-         * типа, который extractorTier способен извлечь и который ещё не
-         * исчерпан по тиражу (claimedCount — число уже принятых заявок на него).
-         * excludeIndices — слоты, уже занятые ДРУГИМИ демонами в этой же попытке.
-         */
+        /** Чистый выбор слота без Context/БД — живёт в :rules ([SlotPicker]); здесь тонкая передача для вызовов приложения. */
         suspend fun pickSlot(
             container: Container,
             type: LootType,
             extractorTier: Tier,
             excludeIndices: Set<Int>,
             claimedCount: suspend (slotRef: String) -> Int
-        ): Int? {
-            for ((index, slot) in container.loot.withIndex()) {
-                val fits = index !in excludeIndices && slot.type == type && extractorTier.covers(slot.tier)
-                // Тираж спрашиваем, только если слот вообще подходит и конечен (0 — бесконечный): claimedCount ходит в базу.
-                if (fits && (slot.copies <= 0 || claimedCount(container.slotRef(index)) < slot.copies)) return index
-            }
-            return null
-        }
+        ): Int? = SlotPicker.pickSlot(container, type, extractorTier, excludeIndices, claimedCount)
     }
 }

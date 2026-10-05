@@ -143,16 +143,90 @@ func test_snapshot_gives_lockdown_and_node_state_is_written() -> void:
 func test_deck_from_items_takes_daemon_field() -> void:
 	var g := {"effect": "GHOST", "tier": 2, "name": "Призрак", "cells": ["1C"]}
 	var items := [
-		{"id": "it_a", "data": {"owner": "deck:s1", "kind": "DAEMON", "daemon": g}},
-		{"id": "it_b", "data": {"owner": "deck:s2", "kind": "DAEMON", "daemon": g}},
-		{"id": "it_c", "data": {"owner": "deck:s1", "kind": "SHARD", "shard": {"tier": 1}}},
-		{"id": "it_d", "data": {"owner": "deck:s1", "kind": "DAEMON", "payload": "без поля daemon"}},
+		{"id": "it_a", "data": {"owner": "deck:s1", "kind": "DAEMON", "origin": "phone:K", "daemon": g}},
+		{"id": "it_b", "data": {"owner": "deck:s2", "kind": "DAEMON", "origin": "phone:K", "daemon": g}},
+		{"id": "it_c", "data": {"owner": "deck:s1", "kind": "SHARD", "origin": "phone:K", "shard": {"tier": 1}}},
+		{"id": "it_d", "data": {"owner": "deck:s1", "kind": "DAEMON", "origin": "phone:K", "payload": "без поля daemon"}},
 	]
 	var deck := GrayNode.deck_from_items(items, "s1")
 	assert_int(deck.size()).is_equal(1)
 	assert_str(deck[0]["id"]).is_equal("it_a")
 	assert_str(deck[0]["daemon"]["effect"]).is_equal("GHOST")
 	assert_array(GrayNode.deck_from_items(items, "s9")).is_empty()
+
+
+## Добытый в узле (или выданный мастером) демон лежит в деке игрока, но не рабочий: он груз и не занимает RAM.
+func test_a_daemon_taken_in_a_node_is_not_a_working_program() -> void:
+	var g := {"effect": "GHOST", "tier": 2, "name": "Призрак", "cells": ["1C"]}
+	var items := [
+		{"id": "it_phone", "data": {"owner": "deck:s1", "kind": "DAEMON", "origin": "phone:K", "daemon": g}},
+		{"id": "it_node", "data": {"owner": "deck:s1", "kind": "DAEMON", "origin": "node:node_07", "daemon": g}},
+		{"id": "it_master", "data": {"owner": "deck:s1", "kind": "DAEMON", "origin": "master:M", "daemon": g}},
+		{"id": "it_none", "data": {"owner": "deck:s1", "kind": "DAEMON", "daemon": g}},
+	]
+	var deck := GrayNode.deck_from_items(items, "s1")
+	assert_array(deck.map(func(e): return e["id"])).is_equal(["it_phone"])
+	var loot := GrayNode.loot_from_items(items, "s1")
+	assert_array(loot.map(func(e): return e["id"])).is_equal(["it_master", "it_node", "it_none"])
+	assert_str(loot[0]["kind"]).is_equal("daemon")
+
+
+## Рабочий — по `session.loaded` (как у Моста), а не по origin: мёртвая дека чужого (`phone:<чужой>`), отдача другого нетраннера и своя же
+## мёртвая дека из прошлого забега (`phone:<свой>`, но не в `loaded`) — груз.
+func test_working_items_follow_session_loaded_not_origin() -> void:
+	var g := {"effect": "GHOST", "tier": 2, "name": "Призрак", "cells": ["1C"]}
+	var items := [
+		{"id": "it_w", "data": {"owner": "deck:s1", "kind": "DAEMON", "origin": "phone:K", "daemon": g}},
+		{"id": "it_other", "data": {"owner": "deck:s1", "kind": "DAEMON", "origin": "phone:OTHER", "daemon": g}},
+		{"id": "it_old", "data": {"owner": "deck:s1", "kind": "DAEMON", "origin": "phone:K", "daemon": g}},
+		{"id": "it_node", "data": {"owner": "deck:s1", "kind": "DAEMON", "origin": "node:n", "daemon": g}},
+	]
+	var session := {"runner": "K", "loaded": ["it_w"]}
+	assert_array(GrayNode.deck_from_items(items, "s1", session).map(func(e): return e["id"])).is_equal(["it_w"])
+	assert_array(GrayNode.loot_from_items(items, "s1", session).map(func(e): return e["id"])).is_equal(["it_node", "it_old", "it_other"])
+	# Сессия без `loaded` (создана до К2): рабочий — origin == phone:<runner>.
+	var legacy := {"runner": "K"}
+	assert_array(GrayNode.deck_from_items(items, "s1", legacy).map(func(e): return e["id"])).is_equal(["it_w", "it_old"])
+	assert_array(GrayNode.loot_from_items(items, "s1", legacy).map(func(e): return e["id"])).is_equal(["it_node", "it_other"])
+	# Документ сессии не получен: любой phone:* считается рабочим (запасное правило).
+	assert_array(GrayNode.deck_from_items(items, "s1").map(func(e): return e["id"])).is_equal(["it_w", "it_other", "it_old"])
+
+
+## `moves` для `run.finish`: груз (в том числе `phone:<чужой>`) идёт по правилу добычи, рабочие — по правилу демонов, защищённый пропущен.
+func test_finish_moves_split_cargo_and_working_by_session_loaded() -> void:
+	var items := [
+		{"id": "it_prot", "data": {"owner": "deck:s1", "kind": "DAEMON", "origin": "phone:K", "protected": true}},
+		{"id": "it_w", "data": {"owner": "deck:s1", "kind": "DAEMON", "origin": "phone:K"}},
+		{"id": "it_other", "data": {"owner": "deck:s1", "kind": "DAEMON", "origin": "phone:OTHER"}},
+		{"id": "it_shard", "data": {"owner": "deck:s1", "kind": "SHARD", "origin": "master:M"}},
+		{"id": "it_foreign", "data": {"owner": "deck:s2", "kind": "DAEMON", "origin": "phone:K"}},
+	]
+	var plan := {"loot": "node", "daemon": "phone"}
+	var moves := GrayNode.finish_moves(items, "s1", {"runner": "K", "loaded": ["it_prot", "it_w"]}, plan)
+	assert_array(moves).is_equal([
+		{"item": "it_w", "to": "phone"}, {"item": "it_other", "to": "node"}, {"item": "it_shard", "to": "node"}])
+	# Без `loaded`: рабочий — origin == phone:<runner>, чужой phone:OTHER всё равно груз.
+	var legacy := GrayNode.finish_moves(items, "s1", {"runner": "K"}, plan)
+	assert_array(legacy).is_equal([
+		{"item": "it_w", "to": "phone"}, {"item": "it_other", "to": "node"}, {"item": "it_shard", "to": "node"}])
+
+
+func test_loot_from_items_lists_shards_with_tier_title_and_encryption() -> void:
+	var items := [
+		{"id": "it_2", "data": {"owner": "deck:s1", "kind": "SHARD", "origin": "node:n", "shard": {"tier": 3, "title": "Секрет", "decrypted": false}}},
+		{"id": "it_1", "data": {"owner": "deck:s1", "kind": "SHARD", "origin": "node:n", "shard": {"tier": 1, "title": "Накладная", "decrypted": true}}},
+		{"id": "it_3", "data": {"owner": "deck:s1", "kind": "SHARD", "origin": "node:n"}},
+		{"id": "it_4", "data": {"owner": "node:n", "kind": "SHARD", "origin": "node:n", "shard": {"tier": 1}}},
+		{"id": "it_5", "data": {"owner": "deck:s2", "kind": "SHARD", "origin": "node:n", "shard": {"tier": 1}}},
+	]
+	var loot := GrayNode.loot_from_items(items, "s1")
+	assert_array(loot.map(func(e): return e["id"])).is_equal(["it_1", "it_2", "it_3"])   # по id; чужие и лежащие в узле не в счёт
+	assert_bool(loot[0]["enc"]).is_false()
+	assert_str(loot[1]["title"]).is_equal("Секрет")
+	assert_int(loot[1]["tier"]).is_equal(3)
+	assert_bool(loot[1]["enc"]).is_true()
+	assert_bool(loot[2]["enc"]).is_true()   # поля shard нет: тело не знаем — считаем зашифрованным
+	assert_int(loot[2]["tier"]).is_equal(1)
 
 
 func test_transient_errors_are_retried_final_are_not() -> void:

@@ -14,6 +14,8 @@ import com.megablok10.app.log.Mb10Log
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,6 +24,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.webrtc.IceCandidate
+import org.webrtc.PeerConnection
 
 enum class CallPhase { IDLE, OUTGOING_RINGING, INCOMING_RINGING, IN_CALL }
 
@@ -32,6 +35,8 @@ data class CallUiState(
     val peerCallsign: String = "",
     /** true только когда ICE реально соединился (CONNECTED/COMPLETED) — отдельно от phase.IN_CALL, который значит лишь "обе стороны договорились созвониться". */
     val audioConnected: Boolean = false,
+    /** Хоть раз соединялся: тогда !audioConnected значит «связь потеряна, восстанавливаем», а не «ещё соединяемся». */
+    val everConnected: Boolean = false,
     val isOutgoing: Boolean = false,
     val startedAt: Long = 0L
 )
@@ -43,6 +48,9 @@ data class CallUiState(
  * Room (call_log) — только метаданные, аудио туда не попадает.
  */
 private const val RING_TIMEOUT_MS = 45_000L
+
+/** Как часто опрашивать политику восстановления связи (IceRecoveryPolicy) у идущего звонка. */
+private const val RECOVERY_TICK_MS = 1_000L
 
 private const val TAG = "CallManager"
 
@@ -57,6 +65,10 @@ class CallManager(
 ) : CallControls {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /** Политика восстановления идущего звонка (см. IceRecoveryPolicy) и корутина, раз в секунду её опрашивающая; живут от начала звонка до его конца. */
+    @Volatile private var recovery: IceRecoveryPolicy? = null
+    private var recoveryJob: Job? = null
+
     private val _state = MutableStateFlow(CallUiState())
     override val state: StateFlow<CallUiState> = _state.asStateFlow()
 
@@ -69,12 +81,14 @@ class CallManager(
         Mb10Log.event(TAG, "call.outgoing_start", "call" to callId.take(8), "peer" to Mb10Log.short(peer.pubKeyB64), "addr" to peers.describe(peer.pubKeyB64))
         _state.value = CallUiState(CallPhase.OUTGOING_RINGING, callId, peer.pubKeyB64, peer.callsign, isOutgoing = true, startedAt = System.currentTimeMillis())
         SoundPlayer.startDialTone(app)
+        recovery = IceRecoveryPolicy(isCaller = true)
 
         CallMedia.open(
             app,
             onIceCandidate = { candidate -> sendSignal(identity, peer.pubKeyB64, CallSignalType.ICE_CANDIDATE, callId, ice = candidate) },
-            onConnected = { if (_state.value.callId == callId) _state.value = _state.value.copy(audioConnected = true) },
-            onDisconnected = { if (_state.value.callId == callId) _state.value = _state.value.copy(audioConnected = false) }
+            onConnected = { markConnected(callId, true) },
+            onDisconnected = { markConnected(callId, false) },
+            onIceState = { state -> onIceState(callId, state) }
         )
         CallMedia.addLocalAudioTrack(app)
         scheduleRingTimeout(identity, callId)
@@ -99,34 +113,105 @@ class CallManager(
         Mb10Log.event(TAG, "call.signal_in", "type" to signal.type.name, "call" to signal.callId.take(8), "from" to Mb10Log.short(signal.fromPubKeyB64), "phase" to _state.value.phase.name)
         when (signal.type) {
             CallSignalType.OFFER -> onOffer(identity, signal)
-            CallSignalType.ANSWER -> if (_state.value.callId == signal.callId) onAnswer(signal)
+            CallSignalType.ANSWER -> if (_state.value.callId == signal.callId) onAnswer(identity, signal)
             CallSignalType.ICE_CANDIDATE -> if (_state.value.callId == signal.callId) onRemoteIceCandidate(signal)
             CallSignalType.DECLINE, CallSignalType.END -> if (_state.value.callId == signal.callId) onHangUpByPeer()
         }
     }
 
+    private fun markConnected(callId: String, connected: Boolean) {
+        if (_state.value.callId != callId) return
+        _state.value = _state.value.copy(audioConnected = connected, everConnected = _state.value.everConnected || connected)
+    }
+
+    private fun onIceState(callId: String, state: PeerConnection.IceConnectionState) {
+        if (_state.value.callId != callId) return
+        when (state) {
+            PeerConnection.IceConnectionState.CONNECTED,
+            PeerConnection.IceConnectionState.COMPLETED -> recovery?.onConnected()
+            PeerConnection.IceConnectionState.DISCONNECTED,
+            PeerConnection.IceConnectionState.FAILED -> recovery?.onLost(System.currentTimeMillis())
+            else -> Unit
+        }
+    }
+
+    /**
+     * Раз в секунду, пока звонок идёт: если связь пропала, звонящий перезапускает ICE, а когда вернуть не вышло за отведённое время — звонок
+     * завершается с исходом LOST (раньше он вечно висел «СОЕДИНЕНИЕ» с бегущим таймером: живая проверка 05.10).
+     */
+    private fun startRecoveryWatch(identity: Identity, callId: String) {
+        recoveryJob?.cancel()
+        recoveryJob = scope.launch {
+            while (isActive && _state.value.callId == callId) {
+                delay(RECOVERY_TICK_MS)
+                when (recovery?.tick(System.currentTimeMillis())) {
+                    IceRecoveryPolicy.Action.RESTART -> restartIce(identity, callId)
+                    IceRecoveryPolicy.Action.GIVE_UP -> {
+                        Mb10Log.warnEvent(TAG, "call.lost", "call" to callId.take(8))
+                        sendSignal(identity, _state.value.peerPubKeyB64, CallSignalType.END, callId)
+                        endCallLocal(CallOutcome.LOST)
+                        return@launch
+                    }
+                    else -> Unit
+                }
+            }
+        }
+    }
+
+    private fun restartIce(identity: Identity, callId: String) {
+        val s = _state.value
+        if (s.callId != callId || s.phase != CallPhase.IN_CALL) return
+        Mb10Log.event(TAG, "call.ice_restart", "call" to callId.take(8))
+        CallMedia.createRestartOffer { sdp ->
+            if (_state.value.callId == callId) sendSignal(identity, s.peerPubKeyB64, CallSignalType.OFFER, callId, sdp = sdp)
+        }
+    }
+
+    /** Повторный OFFER того же звонка от того же собеседника — перезапуск ICE после потери связи; отвечаем обычным ANSWER, звонок не трогаем. */
+    private fun onRestartOffer(identity: Identity, signal: CallSignal) {
+        val sdp = signal.sdp ?: return
+        Mb10Log.event(TAG, "call.ice_restart_in", "call" to signal.callId.take(8))
+        CallMedia.setRemoteOffer(sdp) {
+            CallMedia.createAnswer { answer -> sendSignal(identity, signal.fromPubKeyB64, CallSignalType.ANSWER, signal.callId, sdp = answer) }
+        }
+    }
+
     private fun onOffer(identity: Identity, signal: CallSignal) {
+        val current = _state.value
+        if (current.phase == CallPhase.IN_CALL && signal.callId == current.callId && signal.fromPubKeyB64 == current.peerPubKeyB64) {
+            onRestartOffer(identity, signal)
+            return
+        }
         if (_state.value.phase != CallPhase.IDLE) { Mb10Log.warnEvent(TAG, "call.offer_ignored_busy", "call" to signal.callId.take(8)); return } // уже заняты другим звонком — молча игнорируем, без busy-сигнала в MVP
         val sdp = signal.sdp ?: return
         _state.value = CallUiState(CallPhase.INCOMING_RINGING, signal.callId, signal.fromPubKeyB64, signal.fromCallsign, isOutgoing = false, startedAt = System.currentTimeMillis())
         SoundPlayer.startIncomingRingtone(app)
         scheduleRingTimeout(identity, signal.callId)
+        recovery = IceRecoveryPolicy(isCaller = false)
         CallMedia.open(
             app,
             onIceCandidate = { candidate -> sendSignal(identity, signal.fromPubKeyB64, CallSignalType.ICE_CANDIDATE, signal.callId, ice = candidate) },
-            onConnected = { if (_state.value.callId == signal.callId) _state.value = _state.value.copy(audioConnected = true) },
-            onDisconnected = { if (_state.value.callId == signal.callId) _state.value = _state.value.copy(audioConnected = false) }
+            onConnected = { markConnected(signal.callId, true) },
+            onDisconnected = { markConnected(signal.callId, false) },
+            onIceState = { state -> onIceState(signal.callId, state) }
         )
         // Обработать чужой SDP и начать сбор своих ICE-кандидатов можно сразу — микрофон подключаем только по "Принять" (см. accept()).
         CallMedia.setRemoteOffer(sdp)
     }
 
-    private fun onAnswer(signal: CallSignal) {
+    private fun onAnswer(identity: Identity, signal: CallSignal) {
         val sdp = signal.sdp ?: return
+        // Второй и далее ANSWER в уже идущем звонке — ответ на наш перезапуск ICE: только применяем его.
+        if (_state.value.phase == CallPhase.IN_CALL) {
+            CallMedia.setRemoteAnswer(sdp)
+            recovery?.onRestartAnswered()
+            return
+        }
         SoundPlayer.stopLoop()
         _state.value = _state.value.copy(phase = CallPhase.IN_CALL)
         CallMedia.setRemoteAnswer(sdp)
         CallForegroundService.start(app, _state.value.peerCallsign)
+        startRecoveryWatch(identity, signal.callId)
     }
 
     private fun onRemoteIceCandidate(signal: CallSignal) {
@@ -157,6 +242,7 @@ class CallManager(
         CallMedia.addLocalAudioTrack(app)
         CallMedia.createAnswer { sdp -> sendSignal(identity, s.peerPubKeyB64, CallSignalType.ANSWER, s.callId, sdp = sdp) }
         CallForegroundService.start(app, s.peerCallsign)
+        startRecoveryWatch(identity, s.callId)
     }
 
     /** И отклонение входящего, и отмена исходящего, и завершение уже идущего звонка — везде со стороны пира это просто "разговор закончен". */
@@ -228,6 +314,9 @@ class CallManager(
         val s = _state.value
         Mb10Log.event(TAG, "call.ended", "call" to s.callId.take(8), "outcome" to outcome, "phase" to s.phase.name, "durationMs" to (System.currentTimeMillis() - s.startedAt))
         SoundPlayer.stopLoop()
+        recoveryJob?.cancel()
+        recoveryJob = null
+        recovery = null
         CallMedia.close()
         CallForegroundService.stop(app)
         _state.value = CallUiState()

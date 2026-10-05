@@ -94,9 +94,10 @@ internal fun CallLogRow(entry: CallLogEntity, onClick: () -> Unit) {
         CallOutcome.MISSED -> { icon = MbIcons.Miss; tone = c.bad; label = "пропущенный" }
         CallOutcome.DECLINED -> { icon = MbIcons.Miss; tone = c.bad; label = "отклонён" }
         CallOutcome.UNREACHABLE -> { icon = MbIcons.Miss; tone = c.bad; label = "не в сети" }
+        CallOutcome.LOST -> { icon = MbIcons.Miss; tone = c.bad; label = "обрыв связи" }
         else -> { icon = if (outgoing) MbIcons.Out else MbIcons.In; tone = c.ink3; label = "отменён" }
     }
-    val duration = if (entry.outcome == CallOutcome.COMPLETED) formatDuration(entry.endedAt - entry.startedAt) else "—"
+    val duration = if (entry.outcome == CallOutcome.COMPLETED || entry.outcome == CallOutcome.LOST) formatDuration(entry.endedAt - entry.startedAt) else "—"
     MbListItem(
         title = entry.peerCallsign,
         sub = label,

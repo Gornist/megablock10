@@ -139,6 +139,18 @@ class PresenceService(private val app: Context, private val wifi: WifiBinder) {
     }
 
     /**
+     * Приложение вернулось на экран после [backgroundMs] простоя: за это время NSD мог «заглохнуть» (Xiaomi теряет mDNS при выключенном экране),
+     * поэтому после заметной паузы пересоздаём поиск и регистрацию сразу, не ожидая, пока система очнётся сама (см. [refreshOnForeground]).
+     * Известных пиров не сбрасываем: ими занимается дебаунс таблицы, а серверные подсказки и «слышал» держат их видимыми.
+     */
+    fun onForeground(backgroundMs: Long): Unit = synchronized(this) {
+        if (identity == null || !refreshOnForeground(backgroundMs)) return
+        Mb10Log.event(TAG, "nsd.refresh_on_foreground", "backgroundMs" to backgroundMs, "peersBefore" to table.describe())
+        registration.restart()
+        discovery.restart()
+    }
+
+    /**
      * Запасное обнаружение: сервер знает адреса всех, кто недавно слал heartbeat, и отдаёт их в ответе (docs/network-spec.md, §7 —
      * «запасной путь: известный адрес сервера»). Подсказка — ещё один адрес игрока рядом с найденными NSD; пропавшие из списка сервера убираются.
      */
