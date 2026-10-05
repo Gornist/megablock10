@@ -11,10 +11,12 @@ has() { grep -Eq -- "$1" <<<"$cmd"; }
 
 has '(^|[;&|[:space:]])git[[:space:]]+add[[:space:]]+(-A|--all|\.)([[:space:]]|$)' &&
   deny "git add -A/./--all — добавляй файлы явными путями: в рабочих копиях бывает чужая незаконченная работа."
-if has '(^|[;&|[:space:]])git[[:space:]]+push([[:space:]]|$)'; then
-  has '[[:space:]](-f|--force|--force-with-lease)([=[:space:]]|$)' &&
+# Смотрим только на сам вызов git push (до ; & | или конца строки): `gh pr create --base main` в той же команде — не пуш в main.
+push=$(grep -Eo '(^|[;&|[:space:]])git[[:space:]]+push([[:space:]][^;&|]*)?' <<<"$cmd")
+if [ -n "$push" ]; then
+  grep -Eq '[[:space:]](-f|--force|--force-with-lease)([=[:space:]]|$)' <<<"$push" &&
     deny "git push --force — историю не переписываем; force только руками владельца."
-  has '[[:space:]:+](refs/heads/)?main([[:space:]]|$)' &&
+  grep -Eq '[[:space:]:+](refs/heads/)?main([[:space:]]|$)' <<<"$push" &&
     deny "push в main — только по команде владельца и только им самим (перемотка с зелёными CI)."
 fi
 # Исключение — пуш в удалённый devbox (skill devbox): это не публикация, а доставка на машину сборки.
