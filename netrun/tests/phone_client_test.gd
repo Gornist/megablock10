@@ -66,7 +66,7 @@ func test_events_of_the_phone_reach_the_log() -> void:
 	assert_str(text).contains("phone.msg thread=dm:ВОБЛА")
 	assert_str(text).contains("phone.call phase=incoming peer=ВОБЛА")
 	assert_str(text).contains("deck.tab id=calls")
-	assert_str(text).contains("phone.reply thread=dm:ШЕРШЕНЬ text=ОК")
+	assert_str(text).contains("phone.reply thread=dm:ШЕРШЕНЬ text=Да")
 
 
 func test_perf_line_reports_the_deck_redraws() -> void:
