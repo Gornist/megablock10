@@ -858,12 +858,20 @@ func _update_breach_panel() -> void:
 			bp.hide_panel()
 		return
 	if mode != BreachPanel.MODE_IDLE or bp.vault_id() != target:
-		bp.place(BreachPanelLayout.pose(rig.camera.global_position, _vault_pos(target)))
+		bp.place(_panel_pose(target))
 	bp.show_idle(target, info)
 
 
 func movement_blocked() -> bool:
 	return rig.movement_locked
+
+
+## Поза панели взлома у хранилища id: на экране корпуса рядом с площадкой (props/hack_panel.glb), нет корпуса — перед игроком, как раньше (BreachPanelLayout.pose).
+func _panel_pose(id: String) -> Transform3D:
+	var docked: Variant = view.panel_pose(id)
+	if docked is Transform3D:
+		return docked
+	return BreachPanelLayout.pose(rig.camera.global_position, _vault_pos(id))
 
 
 func _vault_pos(id: String) -> Vector3:
@@ -884,7 +892,7 @@ func apply_breach_event(ev: Dictionary) -> void:
 				return
 			if bp.mode() != BreachPanel.MODE_IDLE or bp.vault_id() != m.vault:
 				if _vault_info.has(m.vault):
-					bp.place(BreachPanelLayout.pose(rig.camera.global_position, _vault_pos(m.vault)))
+					bp.place(_panel_pose(m.vault))
 			_refresh_breach_context()
 			bp.begin(m)
 		WorldMsg.EV_BK_TICK:

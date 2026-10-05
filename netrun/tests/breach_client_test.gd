@@ -78,11 +78,12 @@ func test_full_flat_flow_panel_appears_breach_opens_the_vault_and_the_shard_is_t
 	_go_to_pad(proto, 0)
 	assert_bool(await _wait_for(func(): return panel.mode() == BreachPanel.MODE_IDLE)).is_true()
 	assert_str(panel.vault_id()).is_equal(slot)
-	# панель в мире: 65 см от головы в сторону хранилища, лицом к голове
+	# панель в мире — на экране корпуса hack_panel рядом с площадкой: впереди игрока на площадке (в сторону хранилища), в 0,6–1,1 м, экраном к голове
 	var head: Vector3 = scene.rig.camera.global_position
 	var to_panel := panel.global_position - head
-	assert_float(Vector2(to_panel.x, to_panel.z).length()).is_equal_approx(0.65, 0.01)
+	assert_float(Vector2(to_panel.x, to_panel.z).length()).is_between(0.6, 1.1)
 	assert_float(to_panel.z).is_less(0.0)
+	assert_float(panel.global_transform.basis.z.dot(-to_panel.normalized())).is_greater(0.8)
 	var at := panel.global_transform
 	assert_str("\n".join(panel.texts())).contains("Извлечение").contains("Призрак")
 	# отметили только Извлечение (цепочка короче) и начали

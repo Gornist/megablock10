@@ -12,7 +12,9 @@ const GATE := "res://assets/models/env/lockdown_gate.glb"
 ## отражения) осознанно тяжелее: замер 2026-10-04 — 220 тыс. треугольников (считаются все экземпляры, без отсечения) и 204 вызова. Пороги здесь = замер +10%:
 ## тест стережёт от роста, а не от превышения ТЗ. На Pico 4 не мерили (решение владельца), первое, что резать при провале: FAR_LAYERS в node_view.gd.
 const TRIANGLE_BUDGET := 245000
-const DRAW_BUDGET := 225
+## Замер 2026-10-05 после окружения «волюметрик»: 197 тыс. треугольников (пол одним тайлом вместо 64) и 251 вызов (кромка, горизонт, площадки и корпуса панелей
+## у трёх хранилищ — по ~10 вызовов на хранилище). Порог = замер +10%. Резать первым делом: корпуса панелей и площадки у хранилищ, горизонт (HORIZON_ENABLED), FAR_LAYERS.
+const DRAW_BUDGET := 275
 
 
 func _scene() -> Node3D:
@@ -259,6 +261,29 @@ func test_vaults_face_the_room_center() -> void:
 		assert_float(front.dot(to_center.normalized())).override_failure_message("хранилище %s смотрит не в центр комнаты" % vault.global_position).is_greater(0.7)
 
 
+func test_hack_pad_lies_where_the_teleport_snaps_and_the_panel_faces_it() -> void:
+	var scene := _scene()
+	scene.apply_node(_info("BASE", _shards(3)))
+	var used: Array = scene.view.used_assets()
+	assert_array(used).contains([NodeAssets.prop_path("hack_pad"), NodeAssets.prop_path("hack_panel")])
+	for i in 3:
+		var id := "node_x_pk%d" % i
+		var slot: Vector3 = NodeLayout.SHARD_SLOTS[i]
+		var pad: Node3D = scene.view.pad_node(id)
+		assert_bool(pad != null).override_failure_message("нет площадки " + id).is_true()
+		# площадка там, куда телепорт привязывает игрока у хранилища (те же числа, что у сервера)
+		assert_vector(pad.global_position).is_equal_approx(NodeLayout.vault_pad(slot), Vector3.ONE * 0.001)
+		# экран корпуса смотрит на игрока на площадке: +Z позы панели направлен к площадке, а сама панель стоит вне габарита хранилища (0,8 м)
+		var pose := scene.view.panel_pose(id) as Transform3D
+		var to_pad := (pad.global_position - pose.origin) * Vector3(1, 0, 1)
+		var normal_flat := (pose.basis.z * Vector3(1, 0, 1)).normalized()  # нормаль экрана наклонена вверх на 25° — сравниваем её проекцию на пол
+		assert_float(normal_flat.dot(to_pad.normalized())).override_failure_message("%s: экран не к площадке" % id).is_greater(0.99)
+		assert_float(pose.basis.z.y).override_failure_message("%s: экран не наклонён вверх" % id).is_greater(0.2)
+		var vault_xz := Vector3(slot.x, 0, slot.z)
+		assert_float(((pose.origin - vault_xz) * Vector3(1, 0, 1)).length()).is_greater(0.6)
+		assert_float(pose.basis.get_scale().x).is_equal_approx(1.0, 0.001)  # поза без масштаба корпуса: указатель его не знает
+
+
 func test_vault_tier_notches_are_cumulative() -> void:
 	var scene := _scene()
 	var shards := _shards(1)
@@ -477,6 +502,8 @@ func test_repeated_modules_are_instanced_not_duplicated() -> void:
 	for v in per_variant.values():
 		total += int(v)
 	assert_int(total).is_equal(NodeLayout.GRID * NodeLayout.GRID)
+	# обычные экземпляры — только предметы узла (хранилища, площадки, корпуса панелей, порталы, кресло, датчик): их по десятку, а не по узлу на плитку
+	assert_int(scene.view.find_children("*", "MeshInstance3D", true, false).size()).is_less(80)
 
 
 # ---------------------------------------------------------------- горизонт и дальние пласты (окружение «волюметрик»)
@@ -532,4 +559,3 @@ func test_far_layers_fade_late_and_brighten_toward_the_horizon() -> void:
 	assert_float(float(_param(scene.view, field, "far_gain"))).is_equal(1.8)
 	assert_float(float(_param(scene.view, field, "far_start"))).is_equal(20.0)
 	assert_float(float(_param(scene.view, field, "far_end"))).is_equal(60.0)
-	assert_int(scene.view.find_children("*", "MeshInstance3D", true, false).size()).is_less(60)

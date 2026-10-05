@@ -14,7 +14,13 @@ const VAULT_EMPTY := "empty"
 ## Метка ShardSlot хранилища (props/vault_*.glb) — центр шарда над основанием.
 const VAULT_SLOT_Y := 1.0
 ## Мёртвая дека лежит на полу: origin приподнят (MANIFEST: +0,035 м).
-const DEAD_DECK_LIFT := 0.035
+## Мёртвая дека лежит на площадке взлома (плита 3 см): поднята на её толщину.
+const DEAD_DECK_LIFT := 0.065
+## Корпус панели взлома в осях хранилища (−Z — сторона лица, площадка на z = −0,85; игрок на ней смотрит в +Z, его правая рука — −X): справа и чуть впереди хранилища,
+## вне его габарита (0,8 м). Стартовые числа: расстояние до экрана ≈ 0,9 м, поворот головы ≈ 55° — подбираются на очках.
+const PANEL_OFFSET := Vector3(-0.7, 0.0, -0.35)
+## Масштаб корпуса: экран модели 0,44 м, поверхность панели взлома — BreachPanelLayout.WIDTH_M (0,48 м).
+const PANEL_SCALE := BreachPanelLayout.WIDTH_M / 0.44
 const SENSOR_SWEEP_RAD := 0.6
 const SENSOR_SWEEP_HZ := 0.12
 ## Стены-занавесы (wall, corner, doorway) временно убраны: владелец 05.10.2026 — «эквалайзер — не то». Ассеты в models целы; true возвращает стены и двери выхода.
@@ -64,6 +70,8 @@ var _doorways: Array[Node3D] = []
 var _gates: Array[Node3D] = []
 var _vaults: Dictionary = {}     # id слота -> хранилище (props/vault.glb)
 var _vault_tier: Dictionary = {} # id слота -> тир содержимого 1–3 (последний известный)
+var _pads: Dictionary = {}       # id слота -> площадка взлома (props/hack_pad.glb)
+var _panels: Dictionary = {}     # id слота -> корпус панели взлома (props/hack_panel.glb)
 var _portals: Array[Dictionary] = []  # {to, open, ok, locked}
 var _closed_to: Dictionary = {}  # узлы, которые сервер отказался открыть (локдаун): портал в них закрыт, пока не придёт новое событие node
 var _seat: Node3D
@@ -299,14 +307,57 @@ func seat_node() -> Node3D:
 func set_vaults(shards: Array) -> void:
 	for id in _vaults:
 		_discard(_vaults[id])
+	for id in _pads:
+		_discard(_pads[id])
+	for id in _panels:
+		_discard(_panels[id])
 	_vaults.clear()
+	_pads.clear()
+	_panels.clear()
 	_vault_tier.clear()
 	for sh in shards:
+		var id := str(sh["id"])
 		var p: Array = sh["p"]
 		var base := Vector3(float(p[0]), maxf(float(p[1]) - VAULT_SLOT_Y, 0.0), float(p[2]))
 		var yaw := NodeLayout.cardinal_yaw(base) + PI  # лицо vault.glb смотрит в −Z (засечки Tier_* на z = −0,31), а cardinal_yaw считан под +Z старых моделей
-		_vaults[str(sh["id"])] = _place(_props, NodeAssets.prop_path("vault"), base, yaw)  # один ассет: вид — узлы State_* и Tier_*
-		set_vault_state(str(sh["id"]), vault_state_of(sh), int(sh.get("tier", 0)))
+		_vaults[id] = _place(_props, NodeAssets.prop_path("vault"), base, yaw)  # один ассет: вид — узлы State_* и Tier_*
+		# Площадка взлома — на стороне лица хранилища (там же, куда привязывается телепорт, NodeLayout.vault_pad), с тем же yaw: шеврон смотрит на хранилище.
+		var pad_pos := NodeLayout.vault_pad(base)
+		_pads[id] = _place(_props, NodeAssets.prop_path("hack_pad"), pad_pos, yaw)
+		_panels[id] = _place_panel(base, yaw, pad_pos)
+		set_vault_state(id, vault_state_of(sh), int(sh.get("tier", 0)))
+
+
+## Корпус панели взлома рядом с площадкой: справа от игрока, стоящего на ней (в осях хранилища сдвиг PANEL_OFFSET), экран — к игроку на площадке. Какая сторона
+## модели «экранная», берём из самого ассета (ScreenAnchor: его +Z — нормаль экрана), а не из допущения о ±Z. Масштаб PANEL_SCALE даёт экрану ширину поверхности панели
+## взлома (BreachPanelLayout.WIDTH_M): так её Sprite3D ложится на экран корпуса, а указатель (surface_transform, panel_size_m) не знает о корпусе.
+func _place_panel(vault_pos: Vector3, vault_yaw: float, pad_pos: Vector3) -> Node3D:
+	var pos := vault_pos + Basis(Vector3.UP, vault_yaw) * PANEL_OFFSET
+	var n := _place(_props, NodeAssets.prop_path("hack_panel"), pos, 0.0)
+	n.scale = Vector3.ONE * PANEL_SCALE
+	var anchor := n.find_child("ScreenAnchor", true, false) as Node3D
+	if anchor != null:
+		var normal := (n.global_transform.basis * anchor.transform.basis).z   # нормаль экрана при нулевом повороте
+		var want := Vector3(pad_pos.x - pos.x, 0.0, pad_pos.z - pos.z)
+		if want.length() > 0.001 and Vector2(normal.x, normal.z).length() > 0.001:
+			n.rotation.y = atan2(want.x, want.z) - atan2(normal.x, normal.z)  # поворот вокруг Y: угол азимута цели минус азимут нормали
+	return n
+
+
+## Поза панели взлома для хранилища id: центр экрана корпуса, +Z — к игроку на площадке (без масштаба, на 3 мм перед экраном, чтобы не мерцать с его
+## заглушкой). null — корпуса нет (старый сервер, тесты без хранилищ): тогда панель ставится по BreachPanelLayout.pose.
+func panel_pose(id: String) -> Variant:
+	var n: Node3D = _panels.get(id)
+	var anchor := n.find_child("ScreenAnchor", true, false) as Node3D if n != null else null
+	if anchor == null:
+		return null
+	var t := anchor.global_transform
+	var b := t.basis.orthonormalized()
+	return Transform3D(b, t.origin + b.z * 0.003)
+
+
+func pad_node(id: String) -> Node3D:
+	return _pads.get(id)
 
 
 ## Вид хранилища слота по описанию с сервера: vault (empty | closed | open) или, если его нет, по ready.
