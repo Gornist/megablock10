@@ -3,6 +3,7 @@
 #   scripts/agent-worktree.sh new <имя> [база]   — ../megablock10-wt/<имя> на ветке agent/<имя> от origin/main (или от [база])
 #   scripts/agent-worktree.sh finish <имя>       — проверка (check.sh), пуш ветки и Pull Request в main
 #   scripts/agent-worktree.sh rm <имя>           — убрать рабочую копию (ветка остаётся, пока PR не влит)
+#   scripts/agent-worktree.sh gone <имя>         — влита ли ветка в main по содержимому; печатает команды уборки, сам не удаляет
 #   scripts/agent-worktree.sh ls                 — список рабочих копий
 # Общее на всех: стенд e2e (порты эмуляторов и сервера фиксированы) — одновременно им владеет одна копия, см. scripts/e2e/up.sh.
 set -e
@@ -25,12 +26,35 @@ case $cmd in
     [ -d "$dir" ] || { echo "нет рабочей копии $dir"; exit 2; }
     cd "$dir"
     [ -z "$(git status --porcelain)" ] || { echo "есть незакоммиченные правки — сначала коммит"; exit 1; }
-    git fetch -q origin && git rebase origin/main
+    # Слиянием, а не rebase: ветка могла уже быть запушена, а rebase потребовал бы force-push (его блокирует хук).
+    git fetch -q origin && git merge --no-edit origin/main
     scripts/check.sh || { echo "check.sh красный — PR не создан"; exit 1; }
     git push -u origin "agent/$name"
     gh pr create --base main --head "agent/$name" --fill;;
   rm)
-    git -C "$MAIN" worktree remove "$dir" --force && echo "убрано: $dir";;
+    # Без --force: с незакоммиченными правками или новыми файлами git откажет — работа не пропадёт молча.
+    git -C "$MAIN" worktree remove "$dir" && echo "убрано: $dir (ветка agent/$name осталась)";;
+  gone)
+    # Только вердикт, ничего не удаляет: влита ли ветка в main по СОДЕРЖИМОМУ (после cherry-pick хеши другие, git cherry врёт),
+    # и какие команды убрать её. Удаляет владелец или сессия по его слову.
+    b="agent/$name"; git -C "$MAIN" fetch -q origin
+    git -C "$MAIN" rev-parse -q --verify "$b" >/dev/null || git -C "$MAIN" rev-parse -q --verify "origin/$b" >/dev/null || { echo "нет ветки $b"; exit 2; }
+    ref=$(git -C "$MAIN" rev-parse -q --verify "$b" >/dev/null && echo "$b" || echo "origin/$b")
+    # Пробное слияние в памяти: если влитие ветки в main не меняет дерево main — всё её содержимое уже там
+    # (и после cherry-pick, и когда файлы в main потом правили).
+    tree=$(git -C "$MAIN" merge-tree --write-tree origin/main "$ref" 2>/dev/null | head -1) || tree=
+    if [ "$tree" != "$(git -C "$MAIN" rev-parse origin/main^{tree})" ]; then
+      echo "GONE $b: НЕ влита — слияние в main что-то изменило бы (или конфликт):"
+      [ -n "$tree" ] && git -C "$MAIN" diff --stat origin/main "$tree" | tail -n 8; exit 1
+    fi
+    # Worktree ищем по ветке, а не по имени папки (папку могли назвать иначе).
+    wt=$(git -C "$MAIN" worktree list --porcelain | awk -v b="refs/heads/$b" '/^worktree /{w=substr($0,10)} $0=="branch "b{print w}')
+    [ -n "$wt" ] && [ -n "$(git -C "$wt" status --porcelain)" ] && { echo "GONE $b: коммиты в main, но в $wt есть незакоммиченное — сначала разобрать"; exit 1; }
+    echo "GONE $b: влита целиком. Убрать:"
+    [ -n "$wt" ] && echo "  git worktree remove $wt"
+    git -C "$MAIN" rev-parse -q --verify "$b" >/dev/null && echo "  git branch -D $b"
+    git -C "$MAIN" rev-parse -q --verify "origin/$b" >/dev/null && echo "  git push origin --delete $b"
+    exit 0;;
   ls) git -C "$MAIN" worktree list;;
-  *) sed -n 2,9p "$0"; exit 2;;
+  *) sed -n 2,10p "$0"; exit 2;;
 esac

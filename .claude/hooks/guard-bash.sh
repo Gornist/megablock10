@@ -28,7 +28,13 @@ if has 'python3?[[:space:]]+-[[:space:]]*<<'; then
   has "(open\([^)]*,[[:space:]]*(mode=)?['\"][wa]b?\+?['\"]|write_text\(|\.write\()" &&
     deny "правка файлов через python-heredoc — используй Edit/Write (файл не идёт через контекст дважды)."
 fi
-n=$(grep -Eo '(^|[;&|[:space:]])sleep[[:space:]]+[0-9]+' <<<"$cmd" | grep -Eo '[0-9]+$' | sort -n | tail -1)
+# sleep считаем только в самой команде, не в теле here-документа: текст скрипта, который пишут в файл (cat > x.sh <<EOF … sleep 60 …),
+# агента не задерживает — 05.10 это давало ложный отказ сессии Android.
+body_free=$(awk '
+  inh { if ($0 ~ "^[ \t]*" term "[ \t]*$") inh = 0; next }
+  { print; if (match($0, /<<-?[ \t]*["'"'"']?[A-Za-z_][A-Za-z0-9_]*/)) { t = substr($0, RSTART, RLENGTH); gsub(/^<<-?[ \t]*["'"'"']?/, "", t); term = t; inh = 1 } }
+' <<<"$cmd")
+n=$(grep -Eo '(^|[;&|[:space:]])sleep[[:space:]]+[0-9]+' <<<"$body_free" | grep -Eo '[0-9]+$' | sort -n | tail -1)
 [ -n "$n" ] && [ "$n" -gt 30 ] &&
   deny "sleep $n — не ждать вслепую: фоновый вызов с одним итогом (run_in_background: scripts/ci-wait.sh, dbx.sh, dev.sh)."
 if has '(^|[;&|[:space:]])rsync[[:space:]]' && has 'devbox' && has 'netrun' && ! has '[[:space:]]--delete'; then
