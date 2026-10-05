@@ -23,10 +23,25 @@ var _list_sig := ""
 var _msg_sig := ""
 var _to_bottom := 0
 var _row_ids: Array = []
+var _offline_banner: Control
+var _pager: HBoxContainer
+var _older_btn: MbButton
+var _newer_btn: MbButton
+var _page := 0   # страница истории открытого фракционного диалога: 0 — последние сообщения
+
+
+## Строка «ТЕЛЕФОН НЕ НА СВЯЗИ» (общая для вкладок ЧАТ и ЗВОНКИ): яркая метка тона warn, скрыта, пока связь есть.
+static func make_offline_banner() -> Control:
+	var tag := DeckUi.tag(PhoneLogic.OFFLINE_TEXT, "warn", true)
+	tag.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tag.visible = false
+	return tag
 
 
 func _init() -> void:
 	add_theme_constant_override("separation", DeckTheme.GAP)
+	_offline_banner = make_offline_banner()
+	add_child(_offline_banner)
 	_list_scroll = _scroll()
 	_list_box = DeckUi.vbox(0)
 	DeckUi.expand(_list_box)
@@ -55,6 +70,19 @@ func _init() -> void:
 	DeckUi.expand(_msg_box)
 	_msg_scroll.add_child(_msg_box)
 	_thread_view.add_child(_msg_scroll)
+	_pager = DeckUi.hbox(DeckTheme.GAP)
+	_older_btn = MbButton.new("▲ СТАРШЕ", "ghost")
+	_older_btn.button_height = DeckTheme.BTN_SMALL_H
+	DeckUi.expand(_older_btn)
+	_older_btn.pressed.connect(_on_page_step.bind(1))
+	_pager.add_child(_older_btn)
+	_newer_btn = MbButton.new("▼ НОВЕЕ", "ghost")
+	_newer_btn.button_height = DeckTheme.BTN_SMALL_H
+	DeckUi.expand(_newer_btn)
+	_newer_btn.pressed.connect(_on_page_step.bind(-1))
+	_pager.add_child(_newer_btn)
+	_pager.visible = false
+	_thread_view.add_child(_pager)
 	var grid := GridContainer.new()
 	grid.columns = 3
 	grid.add_theme_constant_override("h_separation", DeckTheme.GAP)
@@ -74,6 +102,25 @@ func _init() -> void:
 func bind(phone: PhoneLink) -> void:
 	link = phone
 	refresh()
+	apply_online()
+
+
+## Телефон не на связи: сверху строка-предупреждение, заготовки и «ПОЗВОНИТЬ» недоступны (данные остаются последними известными).
+func is_offline() -> bool:
+	return link != null and not link.is_online()
+
+
+## Пересчитать строку и доступность кнопок по link.is_online() (панель зовёт по сигналу online_changed).
+func apply_online() -> void:
+	_offline_banner.visible = is_offline()
+	for b in _chips:
+		(b as MbButton).disabled = is_offline()
+	if link != null and not _open_id.is_empty():
+		_call_btn.disabled = is_offline() or link.call_state()["phase"] != PhoneLink.PHASE_IDLE
+
+
+func offline_banner() -> Control:
+	return _offline_banner
 
 
 func current_thread() -> String:
@@ -89,6 +136,7 @@ func open_thread(thread_id: String) -> void:
 	if link == null or thread_id.is_empty():
 		return
 	_open_id = thread_id
+	_page = 0
 	_list_scroll.visible = false
 	_thread_view.visible = true
 	_msg_sig = ""
@@ -98,6 +146,7 @@ func open_thread(thread_id: String) -> void:
 
 func close_thread() -> void:
 	_open_id = ""
+	_page = 0
 	_thread_view.visible = false
 	_list_scroll.visible = true
 	_list_sig = ""
@@ -115,9 +164,40 @@ func refresh() -> void:
 
 
 ## Пришло сообщение, пока открыт этот диалог и вкладка на виду, — оно сразу прочитано.
+## Новое входящее в открытый фракционный диалог возвращает на страницу 0 (к свежему).
 func on_message_received(thread_id: String) -> void:
-	if link != null and thread_id == _open_id and is_visible_in_tree():
+	if link == null or thread_id != _open_id:
+		return
+	if _page != 0:
+		_page = 0
+		refresh()
+	if is_visible_in_tree():
 		link.mark_read(thread_id)
+
+
+## Текущая страница истории (0 — последние сообщения); личные диалоги всегда 0.
+func page() -> int:
+	return _page
+
+
+func older_button() -> MbButton:
+	return _older_btn
+
+
+func newer_button() -> MbButton:
+	return _newer_btn
+
+
+## Листание истории фракционного чата: +1 — старше, -1 — новее; за границы не выходит.
+func _on_page_step(step: int) -> void:
+	if link == null or _open_id.is_empty():
+		return
+	var t := _find_thread(_open_id)
+	if t.is_empty() or t["kind"] != PhoneLink.KIND_FACTION:
+		return
+	var total := link.messages(_open_id, PhoneLogic.MESSAGES_SHOWN * PhoneLogic.FACTION_PAGES).size()
+	_page = clampi(_page + step, 0, PhoneLogic.page_count(total) - 1)
+	refresh()
 
 
 ## Двигает видимый список (стик указателя, колесо мыши).
@@ -230,9 +310,21 @@ func _refresh_thread() -> void:
 	var faction: bool = t["kind"] == PhoneLink.KIND_FACTION
 	_head_title.text = str(t["title"])
 	_call_btn.visible = not faction
-	_call_btn.disabled = link.call_state()["phase"] != PhoneLink.PHASE_IDLE
-	var msgs := link.messages(_open_id, PhoneLogic.MESSAGES_SHOWN)
-	var sig := str(msgs.map(func(m): return [m["id"], m["status"]]))
+	_call_btn.disabled = is_offline() or link.call_state()["phase"] != PhoneLink.PHASE_IDLE
+	var msgs: Array
+	if faction:
+		# История во фракционном чате листается кнопками: берём две страницы и показываем выбранную.
+		var all := link.messages(_open_id, PhoneLogic.MESSAGES_SHOWN * PhoneLogic.FACTION_PAGES)
+		_page = clampi(_page, 0, PhoneLogic.page_count(all.size()) - 1)
+		msgs = PhoneLogic.page_slice(all, _page)
+		_pager.visible = true
+		_older_btn.disabled = _page >= PhoneLogic.page_count(all.size()) - 1
+		_newer_btn.disabled = _page <= 0
+	else:
+		_page = 0
+		msgs = link.messages(_open_id, PhoneLogic.MESSAGES_SHOWN)
+		_pager.visible = false
+	var sig := str([_page, msgs.map(func(m): return [m["id"], m["status"]])])
 	if sig == _msg_sig:
 		return
 	var grew := msgs.size() > 0 and _msg_sig != ""
@@ -304,6 +396,7 @@ func _bubble(m: Dictionary, faction: bool) -> Control:
 func _on_chip(phrase: String) -> void:
 	if link == null or _open_id.is_empty():
 		return
+	_page = 0   # свой ответ виден сразу, а не за страницей
 	link.send_text(_open_id, phrase)
 	reply_sent.emit(_open_id, phrase)
 

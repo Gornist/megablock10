@@ -26,10 +26,13 @@ var _log_sig := ""
 var _pulse_step := 0
 var _pulse_t := 0.0
 var _log_buttons: Array = []
+var _offline_banner: Control
 
 
 func _init() -> void:
 	add_theme_constant_override("separation", DeckTheme.GAP)
+	_offline_banner = DeckChat.make_offline_banner()
+	add_child(_offline_banner)
 	_card = MbFrame.make(DeckTheme.DLG_FILL, DeckTheme.OK, MbShape.Form.DLG, 10.0, 12, 8)
 	_card.border = 2.0
 	_card_box = DeckUi.vbox(4)
@@ -53,6 +56,26 @@ func bind(phone: PhoneLink) -> void:
 	_log_sig = ""
 	_phase = ""    # заставляет refresh() собрать карточку заново
 	refresh()
+	apply_online()
+
+
+## Телефон не на связи: сверху строка-предупреждение, кнопки (ПРИНЯТЬ, ЗАВЕРШИТЬ, «ПОЗВОНИТЬ» в журнале…) недоступны, карточка и журнал — последние известные.
+func is_offline() -> bool:
+	return link != null and not link.is_online()
+
+
+## Пересчитать строку и доступность кнопок по link.is_online() (панель зовёт по сигналу online_changed): карточка и журнал собираются заново.
+func apply_online() -> void:
+	_offline_banner.visible = is_offline()
+	if link == null:
+		return
+	_phase = ""
+	_log_sig = ""
+	refresh()
+
+
+func offline_banner() -> Control:
+	return _offline_banner
 
 
 func phase() -> String:
@@ -170,13 +193,14 @@ func _build_card(st: Dictionary) -> void:
 func _btn(text: String, kind: String, action: Callable) -> MbButton:
 	var b := MbButton.new(text, kind)
 	DeckUi.expand(b)
+	b.disabled = is_offline()
 	b.pressed.connect(action)
 	return b
 
 
 func _refresh_log() -> void:
 	var entries := link.call_log()
-	var busy := _phase != PhoneLink.PHASE_IDLE
+	var busy := _phase != PhoneLink.PHASE_IDLE or is_offline()
 	var sig := str([entries.map(func(e): return [e["peer"], e["dir"], e["ts"], e["duration_s"]]), busy])
 	if sig == _log_sig:
 		return

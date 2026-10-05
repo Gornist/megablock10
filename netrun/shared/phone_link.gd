@@ -25,6 +25,9 @@ signal message_received(thread_id: String, msg: Dictionary)
 ## Изменилась фаза звонка или его состояние (заглушён) или пополнился журнал звонков.
 signal call_changed(state: Dictionary)
 
+## Телефон принят (hello проверен, true) или пропал (false). Шлёт настоящая связь (RemotePhoneLink); фиктивная всегда на связи и сигнала не шлёт.
+signal online_changed(online: bool)
+
 const KIND_DM := "DM"
 const KIND_FACTION := "FACTION"
 
@@ -97,6 +100,11 @@ func contacts() -> Array:
 ## Журнал звонков, новые сверху.
 func call_log() -> Array:
 	return []
+
+
+## Телефон на связи. Фиктивная связь всегда «на связи»; у настоящей (RemotePhoneLink) false, пока телефон не подключился или пропал: дека тогда пишет «ТЕЛЕФОН НЕ НА СВЯЗИ».
+func is_online() -> bool:
+	return true
 
 
 ## Текущее время связи, секунды (по нему дека считает таймер разговора).

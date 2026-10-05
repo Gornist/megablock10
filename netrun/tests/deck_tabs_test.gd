@@ -147,15 +147,15 @@ func test_six_quick_reply_chips_and_pressing_one_sends_it_to_the_open_thread() -
 	assert_array(texts).is_equal(PhoneLogic.QUICK_REPLIES)
 	var sent: Array = []
 	_d.reply_sent.connect(func(tid, text): sent.append([tid, text]))
-	(chips[1] as MbButton).click()   # «Принято»
-	assert_array(sent).is_equal([[FakePhoneLink.ID_SHERSHEN, "Принято"]])
+	(chips[1] as MbButton).click()   # «Нет»
+	assert_array(sent).is_equal([[FakePhoneLink.ID_SHERSHEN, "Нет"]])
 	var last: Dictionary = _link.messages(FakePhoneLink.ID_SHERSHEN, 1)[0]
-	assert_str(last["text"]).is_equal("Принято")
+	assert_str(last["text"]).is_equal("Нет")
 	assert_bool(last["mine"]).is_true()
 	# другой диалог — тот же ряд заготовок, но текст уходит в него
 	_d.chat().open_thread(FakePhoneLink.ID_VOBLA)
-	(chips[4] as MbButton).click()   # «Позвони»
-	assert_str(_link.messages(FakePhoneLink.ID_VOBLA, 1)[0]["text"]).is_equal("Позвони")
+	(chips[4] as MbButton).click()   # «Привет»
+	assert_str(_link.messages(FakePhoneLink.ID_VOBLA, 1)[0]["text"]).is_equal("Привет")
 
 
 func test_message_arriving_in_the_open_visible_thread_is_read_at_once() -> void:
@@ -210,6 +210,69 @@ func test_faction_thread_has_no_call_button_and_shows_the_author() -> void:
 	await _settle()
 	assert_bool(_d.chat().call_button().visible).is_false()
 	assert_array(Array(DeckUi.texts(_d.chat()))).contains(["ШЕРШЕНЬ"])
+
+
+## Фракционная история в 20 сообщений «м01».."м20", открытая на вкладке ЧАТ.
+func _open_long_faction() -> void:
+	await _setup_panel()
+	for i in range(1, 21):
+		_link.receive_message(FakePhoneLink.ID_FACTION, "ШЕРШЕНЬ", "м%02d" % i)
+	_d.select_tab(DeckPanel.TAB_CHAT)
+	_d.chat().open_thread(FakePhoneLink.ID_FACTION)
+	await _settle()
+
+
+func _has_text(text: String) -> bool:
+	return Array(DeckUi.texts(_d.chat())).has(text)
+
+
+func test_faction_chat_pages_back_two_screens_and_stops_at_the_edges() -> void:
+	await _open_long_faction()
+	assert_int(_d.chat().page()).is_equal(0)
+	assert_int(_d.chat().bubble_count()).is_equal(PhoneLogic.MESSAGES_SHOWN)
+	assert_bool(_has_text("м20") and _has_text("м13") and not _has_text("м12")).is_true()
+	assert_bool(_d.chat().older_button().disabled).is_false()
+	assert_bool(_d.chat().newer_button().disabled).is_true()   # страница 0 — самая новая
+	_d.chat().older_button().click()
+	await _settle()
+	assert_int(_d.chat().page()).is_equal(1)
+	assert_int(_d.chat().bubble_count()).is_equal(PhoneLogic.MESSAGES_SHOWN)
+	assert_bool(_has_text("м12") and _has_text("м05") and not _has_text("м13") and not _has_text("м04")).is_true()
+	assert_bool(_d.chat().older_button().disabled).is_true()   # глубина — две страницы
+	assert_bool(_d.chat().newer_button().disabled).is_false()
+	_d.chat().newer_button().click()
+	await _settle()
+	assert_int(_d.chat().page()).is_equal(0)
+	assert_bool(_has_text("м20")).is_true()
+
+
+func test_faction_page_resets_on_new_thread_and_on_new_incoming_message() -> void:
+	await _open_long_faction()
+	_d.chat().older_button().click()
+	await _settle()
+	assert_int(_d.chat().page()).is_equal(1)
+	_link.receive_message(FakePhoneLink.ID_FACTION, "ШЕРШЕНЬ", "м21")
+	await _settle()
+	assert_int(_d.chat().page()).is_equal(0)
+	assert_bool(_has_text("м21")).is_true()
+	_d.chat().older_button().click()
+	await _settle()
+	_d.chat().close_thread()
+	_d.chat().open_thread(FakePhoneLink.ID_FACTION)
+	await _settle()
+	assert_int(_d.chat().page()).is_equal(0)
+
+
+func test_dm_thread_has_no_paging_and_shows_the_last_eight() -> void:
+	await _setup_panel()
+	for i in range(1, 21):
+		_link.receive_message(FakePhoneLink.ID_VOBLA, "ВОБЛА", "л%02d" % i)
+	_d.select_tab(DeckPanel.TAB_CHAT)
+	_d.chat().open_thread(FakePhoneLink.ID_VOBLA)
+	await _settle()
+	assert_bool(_d.chat().older_button().is_visible_in_tree()).is_false()
+	assert_int(_d.chat().bubble_count()).is_equal(PhoneLogic.MESSAGES_SHOWN)
+	assert_bool(_has_text("л20") and _has_text("л13") and not _has_text("л12")).is_true()
 
 
 func test_call_button_in_a_dm_thread_starts_a_call() -> void:

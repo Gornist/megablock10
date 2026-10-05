@@ -72,5 +72,39 @@ func test_badge_text_caps_at_nine() -> void:
 	assert_str(PhoneLogic.badge_text(25)).is_equal("9+")
 
 
+func _numbered(n: int) -> Array:
+	var out: Array = []
+	for i in range(1, n + 1):
+		out.append(i)
+	return out
+
+
+func test_page_count_is_one_to_faction_pages() -> void:
+	assert_int(PhoneLogic.FACTION_PAGES).is_equal(2)
+	assert_int(PhoneLogic.page_count(0)).is_equal(1)
+	assert_int(PhoneLogic.page_count(8)).is_equal(1)
+	assert_int(PhoneLogic.page_count(9)).is_equal(2)
+	assert_int(PhoneLogic.page_count(16)).is_equal(2)
+	assert_int(PhoneLogic.page_count(40)).is_equal(2)
+
+
+func test_page_slice_zero_is_the_last_eight_and_one_is_the_eight_before() -> void:
+	var msgs := _numbered(16)
+	assert_array(PhoneLogic.page_slice(msgs, 0)).is_equal([9, 10, 11, 12, 13, 14, 15, 16])
+	assert_array(PhoneLogic.page_slice(msgs, 1)).is_equal([1, 2, 3, 4, 5, 6, 7, 8])
+
+
+func test_page_slice_short_history_and_out_of_range_pages() -> void:
+	assert_array(PhoneLogic.page_slice([], 0)).is_empty()
+	assert_array(PhoneLogic.page_slice(_numbered(3), 0)).is_equal([1, 2, 3])
+	assert_array(PhoneLogic.page_slice(_numbered(3), 5)).is_equal([1, 2, 3])        # страницы нет — ближайшая
+	assert_array(PhoneLogic.page_slice(_numbered(11), 1)).is_equal([1, 2, 3])        # неполная вторая страница
+	assert_array(PhoneLogic.page_slice(_numbered(16), -1)).is_equal([9, 10, 11, 12, 13, 14, 15, 16])
+	assert_array(PhoneLogic.page_slice(_numbered(30), 1)).is_equal([15, 16, 17, 18, 19, 20, 21, 22])   # длиннее глубины: страницы считаются с конца
+
+
 func test_quick_replies_are_the_six_agreed_phrases() -> void:
-	assert_array(PhoneLogic.QUICK_REPLIES).is_equal(["ОК", "Принято", "Жди", "Я в Сети", "Позвони", "Не могу говорить"])
+	assert_array(PhoneLogic.QUICK_REPLIES).is_equal(["Да", "Нет", "Позже", "Перезвоню", "Привет", "Увидимся"])
+	assert_array(PhoneLogic.QUICK_REPLY_IDS).is_equal(["yes", "no", "later", "callback", "hi", "cu"])
+	assert_str(PhoneLogic.quick_reply_id("Позже")).is_equal("later")
+	assert_str(PhoneLogic.quick_reply_id("что-то своё")).is_equal("")
