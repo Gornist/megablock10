@@ -15,6 +15,8 @@ const SHADERS := {
 
 ## Вуаль на гранях плит (меши `*_skirt` в floor, ceiling и far_*): в .glb у неё материал-роль shell_soft, а шейдер по имени меша — этот.
 const SKIRT_SHADER := preload("res://assets/shaders/skirt.gdshader")
+## Сплошная дымка горизонта (меш `horizon_mist` в env/horizon_band): тоже роль shell_soft, шейдер по имени меша.
+const HAZE_SHADER := preload("res://assets/shaders/haze.gdshader")
 
 ## Цвета тиров окружения (BASE/HARD/NIGHTMARE): голубая гамма, красный в тирах не участвует.
 const TIER_TINT := {
@@ -53,7 +55,11 @@ static func apply(root: Node, tier: String = "") -> void:
 			if src == null or not SHADERS.has(src.resource_name):
 				continue
 			var m := ShaderMaterial.new()
-			m.shader = SKIRT_SHADER if String(mi.name).ends_with("_skirt") else SHADERS[src.resource_name]  # вуаль плит: роль shell_soft, но свой шейдер по имени меша
+			m.shader = SHADERS[src.resource_name]
+			if String(mi.name).ends_with("_skirt"):  # вуаль плит и дымка горизонта: роль shell_soft, но свой шейдер по имени меша
+				m.shader = SKIRT_SHADER
+			elif String(mi.name).ends_with("_mist"):
+				m.shader = HAZE_SHADER
 			if tier != "" and TIER_TINT.has(tier):
 				m.set_shader_parameter("tint", TIER_TINT[tier])
 				m.set_shader_parameter("tint_amount", 1.0)

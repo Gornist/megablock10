@@ -54,6 +54,12 @@ def check(rep):
                 bad.append(f"{p['mesh']}: вуаль должна быть ролью shell_soft, а не {p['material']}")
             if p["verts"] != p["tris"] * 2:
                 bad.append(f"{p['mesh']}: вуаль — по одному квадрату (2 треугольника, 4 вершины) на грань, а тут {p['tris']} треуг. и {p['verts']} вершин")
+        # дымка горизонта (`*_mist`): роль shell_soft (шейдер haze.gdshader по имени меша), один слой, не больше 200 треугольников на всю ленту (overdraw на Pico 4 не мерили)
+        if str(p["mesh"]).endswith("_mist"):
+            if p["material"] != "shell_soft":
+                bad.append(f"{p['mesh']}: дымка должна быть ролью shell_soft, а не {p['material']}")
+            if p["tris"] > 200:
+                bad.append(f"{p['mesh']}: дымка {p['tris']} треугольников > 200")
         need = {"COLOR_0", "NORMAL"} | ({"TEXCOORD_1"} if p["material"] in ("points", "streaks") else set())
         if not need <= set(p["attrs"]):
             bad.append(f"{p['mesh']}: нет атрибутов {sorted(need - set(p['attrs']))}")

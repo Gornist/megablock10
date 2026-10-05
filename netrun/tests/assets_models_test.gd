@@ -174,12 +174,32 @@ func test_slab_modules_have_a_translucent_additive_skirt() -> void:
 		assert_bool(str(p["name"]).ends_with("_skirt")).is_false()
 
 
-func test_horizon_band_is_one_streak_mesh_and_far_gain_is_off_by_default() -> void:
+func test_horizon_band_is_streaks_plus_one_haze_ribbon_and_far_gain_is_off_by_default() -> void:
 	var band := _load("env", "horizon_band")
 	var meshes := _meshes(band)
-	assert_int(meshes.size()).override_failure_message("horizon_band: должен быть один меш").is_equal(1)
-	var verts := (meshes[0].mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+	assert_int(meshes.size()).override_failure_message("horizon_band: должно быть два меша (штрихи и дымка)").is_equal(2)
+	var streaks: MeshInstance3D = null
+	var haze: MeshInstance3D = null
+	for mi in meshes:
+		if String(mi.name).ends_with("_mist"):
+			haze = mi
+		else:
+			streaks = mi
+	assert_bool(streaks != null and haze != null).override_failure_message("horizon_band: нет horizon_streaks или horizon_mist").is_true()
+	var verts := (streaks.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
 	assert_int(verts).override_failure_message("horizon_band: больше 400 штрихов (4 вершины на штрих)").is_less_equal(1600)
+	# дымка: один слой, не больше 200 треугольников на всю ленту, шейдер haze аддитивный, без записи и чтения глубины
+	var idx := haze.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array
+	assert_int(haze.mesh.get_surface_count()).is_equal(1)
+	assert_int(idx.size() / 3).override_failure_message("horizon_mist: больше 200 треугольников").is_less_equal(200)
+	AssetMaterials.apply(band, "BASE")
+	var hm := haze.get_surface_override_material(0) as ShaderMaterial
+	assert_bool(hm != null and hm.shader.resource_path.ends_with("haze.gdshader")).override_failure_message("у дымки не haze.gdshader").is_true()
+	for flag in ["blend_add", "unshaded", "depth_draw_never"]:
+		assert_bool(hm.shader.code.contains(flag)).override_failure_message("в шейдере дымки нет " + flag).is_true()
+	assert_bool(hm.shader.code.contains("hint_depth_texture") or hm.shader.code.contains("DEPTH_TEXTURE")).override_failure_message("дымка читает буфер глубины").is_false()
+	var sm := streaks.get_surface_override_material(0) as ShaderMaterial
+	assert_bool(sm != null and sm.shader.resource_path.ends_with("streaks.gdshader")).override_failure_message("у штрихов кольца не streaks.gdshader").is_true()
 	var sh := load("res://assets/shaders/streaks.gdshader") as Shader
 	var names := sh.get_shader_uniform_list().map(func(u): return u["name"])
 	for u in ["halo", "halo_width", "far_gain", "far_start", "far_end"]:
