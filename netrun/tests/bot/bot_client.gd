@@ -88,6 +88,14 @@ var _ch: BreachMirror
 var _ch_path: Array[Vector2i] = []
 var _ch_next_tap := 0.0
 var _ch_asked_at := -100.0
+## Проба отказа (стенд e2e): взлом начинается, даже если сервер показывает «ОСТЫВАЕТ» — бот просит взлом и запоминает причину отказа
+## (breach_denied), после чего идёт к выходу и выходит чисто. Шард в этом забеге не берётся.
+var force_breach := false
+var breach_denied := ""
+## Отправка добычи (К5б, стенд e2e): после взятия шарда бот отдаёт его контакту телефона (ключ) и только потом идёт к выходу.
+## give_log — события give (dir out) по порядку.
+var give_phone := ""
+var give_log: Array = []
 var _bk: BreachMirror
 var _bk_path: Array[Vector2i] = []
 var _bk_next_tap := 0.0
@@ -203,6 +211,11 @@ func _on_event(ev: Dictionary) -> void:
 				_bk_no = str(ev.get("reason", ""))
 		WorldMsg.EV_PORTAL_DENIED:
 			denied_reasons.append(str(ev.get("reason", "")))
+		WorldMsg.EV_GIVE:
+			if ev.get("dir", "") == WorldMsg.GIVE_OUT:
+				give_log.append(ev)
+				if verbose:
+					print("[bot] отправка: ", "ok" if ev.get("ok", false) else "отказ " + str(ev.get("error", "")))
 
 
 func _on_disconnected() -> void:
@@ -341,7 +354,7 @@ func _process(delta: float) -> void:
 			elif not _asked:
 				_asked = net.request_grab(_goal_shard)
 			elif shard_taken:
-				_enter("hold" if hold_after_grab > 0.0 else "to_exit")
+				_enter(_after_grab_step())
 		"to_shard":
 			# Без GHOST идём осторожно: ICE успевает заметить и догнать раньше шарда.
 			var speed_scale := 1.0 if scenario == Scenario.GHOST_RUN else 0.25
@@ -353,7 +366,9 @@ func _process(delta: float) -> void:
 			elif not _asked:
 				_asked = net.request_grab(_plain_shard()["id"])
 			elif shard_taken:
-				_enter("hold" if hold_after_grab > 0.0 else "to_exit")
+				_enter(_after_grab_step())
+		"give":
+			_step_give()
 		"hold":
 			if _clock - _step_started >= hold_after_grab:
 				_enter("to_exit")
@@ -377,8 +392,32 @@ func _needs_breach(vault: String) -> bool:
 		return false
 	for sh in node_info.get("shards", []):
 		if str(sh["id"]) == vault:
-			return str(sh.get("vault", "open")) == "closed" and str(sh.get("access", "ok")) == "ok"
+			return str(sh.get("vault", "open")) == "closed" and (force_breach or str(sh.get("access", "ok")) == "ok")
 	return false
+
+
+## Куда после взятия шарда: отправить контакту (give_phone), постоять (hold) или сразу к выходу.
+func _after_grab_step() -> String:
+	if give_phone != "":
+		return "give"
+	return "hold" if hold_after_grab > 0.0 else "to_exit"
+
+
+## Шаг «give»: строка шарда в ГРУЗе (событие deck) -> просьба отдать контакту -> событие give от сервера. Отказ — итог give_failed:<причина>.
+func _step_give() -> void:
+	if not give_log.is_empty():
+		var ev: Dictionary = give_log[give_log.size() - 1]
+		if bool(ev.get("ok", false)):
+			_enter("to_exit")
+		else:
+			_finish("give_failed:" + str(ev.get("error", "")))
+		return
+	if _asked:
+		return
+	for row in deck_info.get("loot", []):
+		if str(row.get("kind", "")) == "shard" and bool(row.get("give", false)):
+			_asked = net.request_give(str(row["id"]), {"phone": give_phone})
+			return
 
 
 func _start_breach(vault: String, return_step: String) -> void:
@@ -432,6 +471,13 @@ func _step_charge() -> void:
 
 func _step_breach() -> void:
 	if _bk_no != "":
+		if force_breach:   # проба отказа: причина записана, дальше — к выходу без шарда
+			breach_denied = _bk_no
+			if verbose:
+				print("[bot] взлом отклонён: ", breach_denied)
+			_bk_no = ""
+			_enter("to_exit")
+			return
 		_finish("breach_no:" + _bk_no)
 		return
 	if _bk == null:
