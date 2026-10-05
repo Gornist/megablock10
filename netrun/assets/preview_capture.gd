@@ -201,7 +201,7 @@ var _nohorizon := false  # --nohorizon: без кольца env/horizon_band (с
 var _noedge := false  # --noedge: без кромки env/room_edge_8 (сравнение «с кромкой / без»)
 var _floor1glass := false  # --floor1glass: ЭКСПЕРИМЕНТ, то же, но плита стеклянная (полупрозрачная) env/floor_glass_8
 var _floorv := 0  # --floorv=N (1…4): ЭКСПЕРИМЕНТ, пол комнаты одним из четырёх вариантов env/floor_v<N>_8 (src/floor_variants.py); не сочетается с --floor1 / --floor1glass
-var _floor1 := false # --floor1: ЭКСПЕРИМЕНТ, пол комнаты одной плитой env/floor_slab_8 вместо 16 модулей (сравнение кадров «с / без»)
+var _floor1 := true  # РЕШЕНИЕ ВЛАДЕЛЬЦА: пол комнаты — одна чёрная плита env/floor_slab_8 (по умолчанию); --tiles возвращает 16 модулей floor*
 var _movie := false
 var _demo := false  # --demo: длинный проход по комнате (вход → хранилище → портал → ICE → вверх), 34 с
 var _batch_on := true  # --nobatch: не клеить дальние пласты в MultiMesh
@@ -246,6 +246,8 @@ func _ready() -> void:
 			_noedge = true
 		if a == "--floor1":
 			_floor1 = true
+		if a == "--tiles":
+			_floor1 = false
 		if a == "--floor1glass":
 			_floor1glass = true
 		if a.begins_with("--floorv="):
