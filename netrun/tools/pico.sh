@@ -52,6 +52,9 @@ show_help() {
                    Положить на очки netrun.cfg: адрес сервера мира и токен терминала без пересборки APK
                    (токен можно передать и переменной NETRUN_TOKEN, чтобы он не попал в историю shell).
                    `provision --show` — что лежит на очках (секрет токена скрыт), `provision --reset` — удалить файл
+  provision --phone=fake|off|remote [--phone-port=<порт>] [--phone-token=<токен>]
+                   Секция [phone] того же файла: связь деки с телефоном (по умолчанию порт 7420; токен — и переменной NETRUN_PHONE_TOKEN).
+                   Порт или токен без --phone= означают remote. Секции [net] и [phone] пишутся раздельно: что не названо в команде, остаётся как на очках
 
 Переменная окружения:
   PICO_SERIAL      Serial устройства (если не задана, используется единственное подключённое)
@@ -65,6 +68,7 @@ show_help() {
   pico.sh tune turn_speed_deg_s=45 teleport_range=3.5
   pico.sh tune --reset
   pico.sh provision --host=10.10.0.10 --token=t03:<секрет>
+  pico.sh provision --phone=remote --phone-port=7420 --phone-token=<секрет>
   PICO_SERIAL=<serial> pico.sh provision --show
 EOF
 }
@@ -299,23 +303,39 @@ cmd_tune() {
 CFG_DIR="/sdcard/Android/data/$PACKAGE/files"
 CFG_FILE="$CFG_DIR/netrun.cfg"
 
-# netrun.cfg с очков, секрет токена скрыт: token = "t03:секрет" -> token = "t03:***".
+# netrun.cfg с очков, секрет токена скрыт: в [net] token = "t03:секрет" -> token = "t03:***", в [phone] токен скрыт целиком (token="***").
 cfg_show() {
   adb -s "$1" shell "cat $CFG_FILE" 2>/dev/null | tr -d '\r' \
+    | awk '{ line=$0; sub(/^[[:space:]]+/, "", line) }
+           line ~ /^\[/ { sec=line; sub(/[[:space:]]+$/, "", sec) }
+           sec == "[phone]" && line ~ /^token[[:space:]]*=/ { print "token=\"***\""; next }
+           { print }' \
     | sed -E 's/^([[:space:]]*token[[:space:]]*=[[:space:]]*")([^":]*:)?[^"]*"/\1\2***"/'
 }
 
-# provision --host=<адрес> --token=<терминал:токен> [--port=<порт>] | --show | --reset
+# Секция $2 (например net) файла netrun.cfg с очков: с заголовком, как лежит. Нет файла или секции — пусто.
+cfg_section() {
+  { adb -s "$1" shell "cat $CFG_FILE" 2>/dev/null || true; } | tr -d '\r' \
+    | awk -v want="[$2]" '{ line=$0; sub(/^[[:space:]]+/, "", line); sub(/[[:space:]]+$/, "", line) }
+                          line ~ /^\[/ { on = (line == want) }
+                          on { print }'
+}
+
+# provision [--host=<адрес> --token=<терминал:токен> [--port=<порт>]] [--phone=fake|off|remote] [--phone-port=<порт>] [--phone-token=<токен>] | --show | --reset
 cmd_provision() {
-  local host="" port="" token="${NETRUN_TOKEN:-}" mode=write arg
+  local host="" port="" token="${NETRUN_TOKEN:-}" token_set=0 mode=write arg
+  local phone="" phone_port="" phone_token="${NETRUN_PHONE_TOKEN:-}" phone_token_set=0
   for arg in "$@"; do
     case "$arg" in
       --host=*) host="${arg#--host=}" ;;
       --port=*) port="${arg#--port=}" ;;
-      --token=*) token="${arg#--token=}" ;;
+      --token=*) token="${arg#--token=}"; token_set=1 ;;
+      --phone=*) phone="${arg#--phone=}" ;;
+      --phone-port=*) phone_port="${arg#--phone-port=}" ;;
+      --phone-token=*) phone_token="${arg#--phone-token=}"; phone_token_set=1 ;;
       --show) mode=show ;;
       --reset) mode=reset ;;
-      *) echo "Ошибка: неизвестный аргумент $arg (provision --host= --token= [--port=] | --show | --reset)" >&2; return 1 ;;
+      *) echo "Ошибка: неизвестный аргумент $arg (provision --host= --token= [--port=] [--phone= --phone-port= --phone-token=] | --show | --reset)" >&2; return 1 ;;
     esac
   done
 
@@ -339,40 +359,89 @@ cmd_provision() {
     return 0
   fi
 
+  # Секции независимы: --host/--token/--port пишут [net], --phone*/--phone-port/--phone-token — [phone]; другую секцию из файла на очках не трогаем.
+  local net_given=0 phone_given=0
+  if [[ -n "$host" || -n "$port" || "$token_set" == 1 ]]; then net_given=1; fi
+  if [[ -n "$phone" || -n "$phone_port" || "$phone_token_set" == 1 ]]; then phone_given=1; fi
+
   # Проверка до записи: файл читает клиент, неверная строка превратилась бы в молчаливое «нет связи» на площадке.
-  if [[ -z "$host" || -z "$token" ]]; then
-    echo "Ошибка: нужны --host=<адрес сервера> и --token=<терминал:токен> (или переменная NETRUN_TOKEN)" >&2
-    return 1
-  fi
-  if [[ ! "$host" =~ ^[A-Za-z0-9._-]+$ ]]; then
-    echo "Ошибка: адрес «$host» — ожидается IP или имя (буквы, цифры, точка, дефис)" >&2
-    return 1
-  fi
-  if [[ -n "$port" ]] && { [[ ! "$port" =~ ^[0-9]+$ ]] || (( port < 1 || port > 65535 )); }; then
-    echo "Ошибка: порт «$port» — ожидается число 1…65535" >&2
-    return 1
+  if [[ "$net_given" == 0 && "$phone_given" == 0 ]]; then
+    net_given=1   # как раньше: без аргументов требуем адрес и токен сервера (токен — и из NETRUN_TOKEN)
   fi
   local bad_token='^[^"\\[:cntrl:]]+$'
-  if [[ ! "$token" =~ $bad_token ]]; then
-    echo "Ошибка: в токене нельзя кавычки, обратную косую черту и управляющие символы" >&2
-    return 1
+  if [[ "$net_given" == 1 ]]; then
+    if [[ -z "$host" || -z "$token" ]]; then
+      echo "Ошибка: нужны --host=<адрес сервера> и --token=<терминал:токен> (или переменная NETRUN_TOKEN)" >&2
+      return 1
+    fi
+    if [[ ! "$host" =~ ^[A-Za-z0-9._-]+$ ]]; then
+      echo "Ошибка: адрес «$host» — ожидается IP или имя (буквы, цифры, точка, дефис)" >&2
+      return 1
+    fi
+    if [[ -n "$port" ]] && { [[ ! "$port" =~ ^[0-9]+$ ]] || (( port < 1 || port > 65535 )); }; then
+      echo "Ошибка: порт «$port» — ожидается число 1…65535" >&2
+      return 1
+    fi
+    if [[ ! "$token" =~ $bad_token ]]; then
+      echo "Ошибка: в токене нельзя кавычки, обратную косую черту и управляющие символы" >&2
+      return 1
+    fi
+    if [[ "$token" != *:* ]]; then
+      echo "Предупреждение: токен без номера терминала (ожидается «t03:секрет»); сервер примет его только по старому пути без привязки к терминалу." >&2
+    fi
   fi
-  if [[ "$token" != *:* ]]; then
-    echo "Предупреждение: токен без номера терминала (ожидается «t03:секрет»); сервер примет его только по старому пути без привязки к терминалу." >&2
+  if [[ "$phone_given" == 1 ]]; then
+    # Порт или токен связи без --phone= — значит, связь нужна настоящая.
+    if [[ -z "$phone" ]]; then phone=remote; fi
+    if [[ "$phone" != "fake" && "$phone" != "off" && "$phone" != "remote" ]]; then
+      echo "Ошибка: --phone=«$phone» — допустимо fake, off или remote" >&2
+      return 1
+    fi
+    if [[ -n "$phone_port" ]] && { [[ ! "$phone_port" =~ ^[0-9]+$ ]] || (( phone_port < 1 || phone_port > 65535 )); }; then
+      echo "Ошибка: --phone-port=«$phone_port» — ожидается число 1…65535" >&2
+      return 1
+    fi
+    if [[ -n "$phone_token" && ! "$phone_token" =~ $bad_token ]]; then
+      echo "Ошибка: в токене связи с телефоном нельзя кавычки, обратную косую черту и управляющие символы" >&2
+      return 1
+    fi
   fi
   if ! adb -s "$serial" shell pm path "$PACKAGE" 2>/dev/null | grep -q package; then
     echo "Предупреждение: $PACKAGE на $serial не установлен. Файл останется после 'install -r', но 'adb uninstall' его стирает." >&2
   fi
 
-  local tmp
+  local tmp net_block phone_block
   tmp=$(mktemp)
+  if [[ "$net_given" == 1 ]]; then
+    net_block="[net]
+
+host=\"$host\""
+    if [[ -n "$port" ]]; then net_block="$net_block
+port=$port"; fi
+    net_block="$net_block
+token=\"$token\""
+  else
+    net_block=$(cfg_section "$serial" net)
+  fi
+  if [[ "$phone_given" == 1 ]]; then
+    phone_block="[phone]
+
+mode=\"$phone\""
+    if [[ -n "$phone_port" ]]; then phone_block="$phone_block
+port=$phone_port"; fi
+    if [[ -n "$phone_token" ]]; then phone_block="$phone_block
+token=\"$phone_token\""; fi
+  else
+    phone_block=$(cfg_section "$serial" phone)
+  fi
   {
-    echo "[net]"
-    echo
-    echo "host=\"$host\""
-    if [[ -n "$port" ]]; then echo "port=$port"; fi
-    echo "token=\"$token\""
+    if [[ -n "$net_block" ]]; then echo "$net_block"; fi
+    if [[ -n "$net_block" && -n "$phone_block" ]]; then echo; fi
+    if [[ -n "$phone_block" ]]; then echo "$phone_block"; fi
   } > "$tmp"
+  if [[ -z "$net_block" ]]; then
+    echo "Предупреждение: в файле на $serial нет секции [net] — клиент не узнает адрес сервера (--host= --token=)." >&2
+  fi
   adb -s "$serial" shell "mkdir -p $CFG_DIR"
   adb -s "$serial" push "$tmp" "$CFG_FILE" > /dev/null
   rm -f "$tmp"
