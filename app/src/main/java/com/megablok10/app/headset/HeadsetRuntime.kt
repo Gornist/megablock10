@@ -119,6 +119,13 @@ class HeadsetRuntime(
                         ?: Mb10Log.d(TAG, "headset.frame_ignored chars=${text.length}")
                 }
 
+                /** Очки закрыли канал (сняли — close 1001): отвечаем тем же и сразу считаем связь оконченной, иначе `ready` держался бы до отказа пинга. */
+                override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                    Mb10Log.event(TAG, "headset.closing", "code" to code)
+                    webSocket.close(NORMAL_CLOSE, null) // не [code]: 1005/1006 из чужого кадра для close() недопустимы
+                    closed.complete(Unit)
+                }
+
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                     Mb10Log.event(TAG, "headset.closed", "code" to code)
                     closed.complete(Unit)
@@ -157,6 +164,7 @@ class HeadsetRuntime(
     private companion object {
         const val TAG = "Headset"
         const val STABLE_MS = 10_000L
+        const val NORMAL_CLOSE = 1000
     }
 }
 
