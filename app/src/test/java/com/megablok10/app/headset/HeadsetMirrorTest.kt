@@ -32,6 +32,7 @@ class HeadsetMirrorTest {
         val names = mutableMapOf<String, String>()
         val sentDirect = mutableListOf<Pair<String, String>>()
         val sentFaction = mutableListOf<String>()
+        val contactList = MutableStateFlow<List<HeadsetContact>>(emptyList())
         private var nextId = 1L
 
         fun add(from: String, to: String, body: String, ts: Long, type: String = "DM", status: Int = MessageStatus.NONE, callsign: String = "") {
@@ -54,6 +55,7 @@ class HeadsetMirrorTest {
         override suspend fun peerCallsign(pubKey: String) = names[pubKey]
         override suspend fun sendDirect(identity: Identity, peerPubKeyB64: String, text: String): Boolean { sentDirect += peerPubKeyB64 to text; return true }
         override suspend fun sendFaction(identity: Identity, text: String) { sentFaction += text }
+        override fun contacts(): Flow<List<HeadsetContact>> = contactList
     }
 
     private class MemRead : HeadsetReadState {
@@ -234,6 +236,20 @@ class HeadsetMirrorTest {
         assertEquals(20, messages.getValue(bob.key).size)
         assertEquals("д49", messages.getValue(bob.key).last().text)
         assertEquals(40, messages.getValue("faction").size)
+        s.commands.close()
+    }
+
+    @Test fun contactsAreSentAfterAckOnChangeAndOnResync() = runTest {
+        val chat = chatWithHistory()
+        chat.contactList.value = listOf(HeadsetContact(bob.key, "Bob"))
+        val s = start(chat)
+        s.send(HeadsetCommand.HelloAck(1), this)
+        assertEquals(listOf(HeadsetContact(bob.key, "Bob")), s.take().filterIsInstance<HeadsetOut.Contacts>().single().items)
+        chat.contactList.value = listOf(HeadsetContact(bob.key, "Bob"), HeadsetContact(carol.key, "Carol"))
+        runCurrent()
+        assertEquals(2, s.take().filterIsInstance<HeadsetOut.Contacts>().single().items.size)
+        s.send(HeadsetCommand.Resync, this)
+        assertEquals(2, s.take().filterIsInstance<HeadsetOut.Contacts>().single().items.size)
         s.commands.close()
     }
 

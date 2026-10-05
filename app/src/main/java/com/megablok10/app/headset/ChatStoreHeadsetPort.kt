@@ -33,4 +33,6 @@ class ChatStoreHeadsetPort(
         chat.sendDirect(identity, peerPubKeyB64, chat.onlinePeer(peerPubKeyB64), text)
 
     override suspend fun sendFaction(identity: Identity, text: String) = chat.sendFaction(identity, text)
+
+    override fun contacts(): Flow<List<HeadsetContact>> = contacts.observeAll().map { list -> list.map { HeadsetContact(it.publicKeyB64, it.callsign) } }
 }

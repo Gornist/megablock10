@@ -78,6 +78,9 @@ data class HeadsetCallLogItem(val peer: String, val dir: String, val ts: Long, v
     }
 }
 
+/** Контакт, которому можно позвонить из очков (`start_call{peer}`): [key] — публичный ключ, [title] — позывной. */
+data class HeadsetContact(val key: String, val title: String)
+
 /** Что телефон отдаёт очкам. */
 sealed interface HeadsetOut {
     data class Hello(val callsign: String, val v: Int = HEADSET_PROTOCOL_VERSION) : HeadsetOut
@@ -88,6 +91,8 @@ sealed interface HeadsetOut {
     data class Message(val msg: HeadsetMessage) : HeadsetOut
     data class Call(val call: HeadsetCall) : HeadsetOut
     data class CallLog(val items: List<HeadsetCallLogItem>) : HeadsetOut
+    /** Контакты для выбора, кому позвонить (кадр `contacts`: добавлен очками в контрактной фикстуре `netrun/tests/fixtures/phone_frames.json`). */
+    data class Contacts(val items: List<HeadsetContact>) : HeadsetOut
     /** [kind]: ring | ringback | message | stop. */
     data class Sound(val kind: String) : HeadsetOut
 }
@@ -115,6 +120,7 @@ object HeadsetCodec {
         is HeadsetOut.Call -> JSONObject().put("t", "call").put("phase", frame.call.phase).put("peer", frame.call.peer)
             .put("since_ts", frame.call.sinceTs).put("muted", frame.call.muted)
         is HeadsetOut.CallLog -> JSONObject().put("t", "call_log").put("items", JSONArray(frame.items.map(::callLogJson)))
+        is HeadsetOut.Contacts -> JSONObject().put("t", "contacts").put("items", JSONArray(frame.items.map { JSONObject().put("key", it.key).put("title", it.title) }))
         is HeadsetOut.Sound -> JSONObject().put("t", "sound").put("kind", frame.kind)
     }.toString()
 

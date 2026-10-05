@@ -11,6 +11,8 @@ import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -34,6 +36,9 @@ interface HeadsetChatPort {
     suspend fun sendDirect(identity: Identity, peerPubKeyB64: String, text: String): Boolean
 
     suspend fun sendFaction(identity: Identity, text: String)
+
+    /** Контакты игрока (отсканированные QR других игроков) — кому можно позвонить из очков. Первое значение приходит сразу. */
+    fun contacts(): Flow<List<HeadsetContact>>
 }
 
 /** До какого момента диалог прочитан (в очках) — отдельно от общего счётчика вкладки «Чат». Время — миллисекунды сообщения. */
@@ -86,6 +91,7 @@ class HeadsetMirror(
                             onReady(true)
                             observer = launch {
                                 callBridge?.observe(this, send)
+                                launch { chat.contacts().distinctUntilChanged().collect { send(HeadsetOut.Contacts(it)) } }
                                 var first = true
                                 chat.changes(identity).conflate().collect { push(full = first).also { first = false } }
                             }
@@ -116,6 +122,7 @@ class HeadsetMirror(
         when (cmd) {
             is HeadsetCommand.Resync -> {
                 lock.withLock { pushLocked(identity, send, sent, full = true) }
+                send(HeadsetOut.Contacts(chat.contacts().first()))
                 callBridge?.snapshot(send)
             }
             is HeadsetCommand.MarkRead -> {

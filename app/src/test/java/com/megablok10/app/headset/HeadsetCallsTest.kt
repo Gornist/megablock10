@@ -77,6 +77,7 @@ class HeadsetCallsTest {
         override suspend fun peerCallsign(pubKey: String): String? = null
         override suspend fun sendDirect(identity: Identity, peerPubKeyB64: String, text: String) = true
         override suspend fun sendFaction(identity: Identity, text: String) = Unit
+        override fun contacts(): Flow<List<HeadsetContact>> = MutableStateFlow(emptyList())
     }
 
     private class NoRead : HeadsetReadState {
