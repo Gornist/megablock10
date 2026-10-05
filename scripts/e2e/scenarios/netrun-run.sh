@@ -137,7 +137,8 @@ WORLD_PUB=$(node "$ROOT/scripts/e2e/netrun-bridge.mjs" $NR_BRIDGE kt hello | pyt
 [ -n "$WORLD_PUB" ] || { nr_save_logs; die "Мост не отдал ключ мира"; }
 
 # ── 3. Сервер мира на настоящем Мосте ──
-timeout 1200 godot --headless --path "$ROOT/netrun" -- --bridge="ws://127.0.0.1:$NR_BRIDGE" --bridge-key=kw --port=$NR_ENET --grace=20 > "$NR_DIR/world.log" 2>&1 &
+# Сценарий про возврат добычи на телефон, а не про взлом хранилища (К3): бот без EXTRACT_SHARD берёт шард без открытия, поэтому флаг выключен.
+timeout 1200 godot --headless --path "$ROOT/netrun" -- --bridge="ws://127.0.0.1:$NR_BRIDGE" --bridge-key=kw --port=$NR_ENET --grace=20 --vault-requires-open=false > "$NR_DIR/world.log" 2>&1 &
 PIDS+=($!)
 check "сервер мира получил снимок Моста" wait_until 120 grep -q "снимок Моста" "$NR_DIR/world.log"
 
