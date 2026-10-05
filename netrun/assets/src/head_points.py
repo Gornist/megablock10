@@ -11,6 +11,7 @@
 Модель в репозиторий не кладётся (лицензия — на владельце); сгенерированные точки — да. Зерно фиксировано: результат повторяется.
 """
 import math
+import os
 import random
 import struct
 import sys
@@ -63,6 +64,10 @@ def unit(a):
 def main():
     if len(sys.argv) < 2:
         raise SystemExit(__doc__)
+    if not os.path.isfile(sys.argv[1]):
+        # STL в репозитории нет (решение владельца), это не ошибка. Раньше конвейер гнал этот скрипт под Blender, и argv[1] был его флагом «-b»
+        print("head_points: нет HeadLowPolygon.stl — пропуск")
+        return
     verts, tris = read_stl(sys.argv[1])
     rng = random.Random(SEED)
     cx = (min(v[0] for v in verts) + max(v[0] for v in verts)) / 2.0

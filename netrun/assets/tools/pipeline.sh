@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Конвейер ассетов «Сети»: Mac → devbox (Blender → .glb → Godot) → Mac. Запускать с Mac из любого каталога.
-#   pipeline.sh build            — собрать ВСЕ ассеты из src/*.py на devbox (PYTHONHASHSEED=0), проверить, забрать .glb и отчёты, пересобрать MANIFEST.md
+#   pipeline.sh build            — собрать ВСЕ ассеты из src/*.py на devbox (PYTHONHASHSEED=0), проверить, забрать .glb и отчёты, пересобрать MANIFEST.md;
+#       в конце src/head_points.py: без HeadLowPolygon.stl печатает «пропуск» (код 0), HEAD_STL=путь — перегенерирует netrun/client/head_points.gd
 #   pipeline.sh shots [каталог] [флаги сцены] [--grid] — снять кадры комнаты из Godot (по умолчанию /tmp/assets-shots); флаги: --only=a,b --lattice=0.05 --field --crowd --walls (вернуть стены комнаты, по умолчанию их нет) --portal (вернуть портал у западной стены, по умолчанию нет) --noedge (убрать кромку комнаты env/room_edge_8, по умолчанию она есть)
 #       --grid — самому pipeline.sh (в сцену не уходит): после съёмки склеить кадры на devbox в ОДНУ сетку ≤ 1024 px по ширине с подписями
 #                имён кадров и забрать на Mac один PNG: <каталог>/grid.png (отдельные кадры лежат там же)
@@ -98,7 +99,8 @@ case "$cmd" in
   build)
     ssh "$HOST" 'mkdir -p ~/assets-work'
     rsync -a --delete src/ "$HOST:~/assets-work/src/"
-    # head_points.py — не ассет Blender (читает внешний STL и пишет client/head_points.gd), в сборку не входит; см. его докстринг
+    # head_points.py — не ассет Blender (читает внешний STL и пишет client/head_points.gd): из цикла исключён, запускается ниже на Mac.
+    # Раньше его гнали под Blender, и в argv[1] попадал флаг «-b» → «FileNotFoundError: '-b'».
     ssh "$HOST" 'cd ~/assets-work && rm -rf out
 export PYTHONHASHSEED=0
 for s in $(ls src/*.py | grep -vE "lib.py|glbinfo.py|validate.py|_smoke.py|head_points.py"); do
@@ -108,7 +110,9 @@ python3 src/validate.py --root out'
     # *.glb.import делает Godot, на devbox их нет: не удаляем (--exclude защищает и от --delete)
     rsync -a --delete --exclude MANIFEST.md --exclude '*.glb.import' "$HOST:~/assets-work/out/models/" models/
     rsync -a --delete "$HOST:~/assets-work/out/reports/" reports/
-    python3 src/validate.py --manifest | tail -2 ;;
+    python3 src/validate.py --manifest | tail -2
+    # облако точек головы: без STL (его в репозитории нет) — одна строка и код 0; HEAD_STL=путь перегенерирует netrun/client/head_points.gd
+    python3 src/head_points.py "${HEAD_STL:-HeadLowPolygon.stl}" ;;
   shots)
     shift; out=/tmp/assets-shots; extra=""; grid=0; first=1
     for a in "$@"; do

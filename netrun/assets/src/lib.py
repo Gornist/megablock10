@@ -97,6 +97,17 @@ def band_bm(radius, height, segments=12, center=(0, 0, 0)):
     return _scale_move(bm, (1, 1, 1), center)
 
 
+def canon_faces(bm):
+    """Канонический порядок граней: по центру грани. Операции bmesh (bevel, bisect_plane, inset) создают грани в порядке, зависящем от адресов
+    в памяти: геометрия та же, а порядок граней (индексы в .glb) плавал от запуска к запуску. После сортировки пересборка даёт те же байты."""
+    bm.faces.index_update()
+    bm.faces.ensure_lookup_table()
+    order = sorted(range(len(bm.faces)), key=lambda i: tuple(round(c, 5) for c in bm.faces[i].calc_center_median()))
+    rank = {i: r for r, i in enumerate(order)}   # sort() принимает только число
+    bm.faces.sort(key=lambda f: rank[f.index])
+    bm.faces.index_update()
+
+
 def box_bm(size, bevel=0.0, center=(0, 0, 0)):
     """Параллелепипед size=(x,y,z); bevel — фаска (киберпанк: прямых углов нет)."""
     bm = bmesh.new()
@@ -104,6 +115,7 @@ def box_bm(size, bevel=0.0, center=(0, 0, 0)):
     _scale_move(bm, size, center)
     if bevel > 0:
         bmesh.ops.bevel(bm, geom=list(bm.edges), offset=bevel, segments=1, affect="EDGES")
+        canon_faces(bm)
     return bm
 
 
@@ -139,6 +151,7 @@ def lit_part(bm, top_z, thickness=0.012, outer=None):
     rim = {(round(v.co.x, 5), round(v.co.y, 5)) for v in bm.verts if abs(v.co.z - top_z) < 1e-4}
     top = [f for f in bm.faces if f.normal.z > 0.9 and abs(f.calc_center_median().z - top_z) < 1e-4]
     bmesh.ops.inset_individual(bm, faces=top, thickness=thickness)
+    canon_faces(bm)
 
     def glow(co):
         if abs(co.z - top_z) > 1e-4:
