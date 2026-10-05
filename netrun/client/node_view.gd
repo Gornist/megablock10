@@ -17,11 +17,22 @@ const VAULT_SLOT_Y := 1.0
 const DEAD_DECK_LIFT := 0.035
 const SENSOR_SWEEP_RAD := 0.6
 const SENSOR_SWEEP_HZ := 0.12
-const MODULES := ["floor", "wall", "corner", "pillar", "platform", "doorway", "lockdown_gate", "tunnel_ring", "ceiling", "far_field", "far_floor", "far_ceiling"]
+## Стены-занавесы (wall, corner, doorway) временно убраны: владелец 05.10.2026 — «эквалайзер — не то». Ассеты в models целы; true возвращает стены и двери выхода.
+## Ворота lockdown_gate остаются при любом значении: это игровой сигнал LOCKDOWN. Границу комнаты без стен показывает room_edge.
+const WALLS_ENABLED := false
+## Кольцо дымки и штрихов горизонта (env/horizon_band): один экземпляр на комнату. false — отключить, если на Pico не потянет (замера нет).
+const HORIZON_ENABLED := true
+## Дальние пласты (far_*) иначе гаснут на 14…40 м (assets/ARCHITECTURE.md, п. 17): затухание по расстоянию и яркость к горизонту.
+const FAR_FADE := Vector2(40.0, 130.0)
+const FAR_PARAMS := {"far_gain": 1.8, "far_start": 20.0, "far_end": 60.0}
+const HORIZON_FADE := Vector2(150.0, 260.0)
+const HORIZON_PARAMS := {"far_gain": 3.0, "far_start": 30.0, "far_end": 60.0, "bead_depth": 0.0}
+const MODULES := ["floor", "room_edge", "wall", "corner", "pillar", "platform", "doorway", "lockdown_gate", "tunnel_ring", "ceiling", "far_field", "far_floor", "far_ceiling"]
 ## Варианты модуля (другой seed, тот же размер): узор не повторяется, девять одинаковых плиток подряд — запрещены (assets/ARCHITECTURE.md, п. 6).
 ## Экземпляры модуля делятся по вариантам по кругу; первый вариант всегда в комнате (его путь — NodeAssets.env_path(module)).
 const VARIANTS := {
-	"floor": ["floor", "floor_b", "floor_c"], "wall": ["wall", "wall_b", "wall_c"], "doorway": ["doorway", "doorway_b"],
+	# пол — один чёрный тайл на всю комнату (решение владельца 05.10.2026), граница комнаты — кромка; обе в NodeLayout.ROOM_CENTER, один раз
+	"floor": ["floor_slab_16"], "room_edge": ["room_edge_16"], "wall": ["wall", "wall_b", "wall_c"], "doorway": ["doorway", "doorway_b"],
 	"ceiling": ["ceiling", "ceiling_b", "ceiling_c"],
 	"far_field": ["far_field", "far_field_b", "far_field_c"], "far_floor": ["far_floor", "far_floor_b", "far_floor_c"],
 	"far_ceiling": ["far_ceiling", "far_ceiling_b", "far_ceiling_c"],
@@ -102,6 +113,8 @@ func set_tier(new_tier: String) -> void:
 			_doorways = made
 		elif module == "lockdown_gate":
 			_gates = made
+	if HORIZON_ENABLED:
+		_add_horizon(_room)
 	_apply_exit()
 
 
@@ -130,18 +143,22 @@ func _room_transforms() -> Dictionary:
 	var out := {}
 	for module in MODULES:
 		out[module] = []
+	# Пол — один тайл и кромка комнаты: оба по одному разу в центре (origin ассетов — центр плиты), без поворота.
+	out["floor"].append(Transform3D(Basis.IDENTITY, NodeLayout.ROOM_CENTER))
+	out["room_edge"].append(Transform3D(Basis.IDENTITY, NodeLayout.ROOM_CENTER))
 	var last := NodeLayout.GRID - 1
 	for iz in NodeLayout.GRID:
 		for ix in NodeLayout.GRID:
 			var c := NodeLayout.cell_center(ix, iz)
-			out["floor"].append(Transform3D(Basis(Vector3.UP, PI / 2.0 * ((ix * 3 + iz) % 4)), c))  # поворот по кругу: узор не повторяется
 			out["ceiling"].append(Transform3D(Basis(Vector3.UP, PI / 2.0 * ((ix + iz * 3 + 1) % 4)), c + Vector3(0, CEILING_H, 0)))
 			var north := iz == 0
 			var south := iz == last
 			var west := ix == 0
 			var east := ix == last
 			if (north or south) and (west or east):
-				var corner_yaw := 0.0                                # северо-запад: стены -Z и -X
+				if not WALLS_ENABLED:
+					continue
+				var corner_yaw := 0.0                               # северо-запад: стены -Z и -X
 				if north and east:
 					corner_yaw = 3.0 * PI / 2.0
 				elif south and east:
@@ -154,9 +171,10 @@ func _room_transforms() -> Dictionary:
 				var wb := Basis(Vector3.UP, wall_yaw)
 				var t := Transform3D(wb, c + wb * Vector3(0, 0, -WALL_EDGE))  # на наружный край ячейки
 				if south and _is_exit_door(c):
-					out["doorway"].append(t)
+					if WALLS_ENABLED:
+						out["doorway"].append(t)
 					out["lockdown_gate"].append(t)
-				else:
+				elif WALLS_ENABLED:
 					out["wall"].append(t)
 	for c in NodeLayout.exit_platform_cells():
 		out["platform"].append(Transform3D(Basis.IDENTITY, c))
@@ -205,10 +223,24 @@ func _add_module(parent: Node3D, module: String, xforms: Array) -> Array[Node3D]
 			if i % vars.size() == v:
 				list.append(xforms[i])
 		var path := NodeAssets.env_path(str(vars[v]), mod_tier)
+		if module.begins_with("far_") and not list.is_empty():
+			NodeAssets.tune_parts(NodeAssets.mesh_parts(path, mod_tier), FAR_FADE, FAR_PARAMS)  # материалы в кэше общие: настройка идемпотентна
 		made.append_array(_add_multi(parent, path, module, list, mod_tier, false))
 		if REFLECTED.has(module):
 			made.append_array(_add_multi(parent, path, module + "_reflection", list, mod_tier, true))
 	return made
+
+
+## Горизонт: кольцо дымки и 360 штрихов, один экземпляр в центре комнаты на уровне пола. Отдельным узлом, не в MultiMesh: у ассета своё затухание
+## (150…260 м), и склеивать его с чем-либо нельзя. Отражения в полу нет (REFLECT_MARKS его не ловит).
+func _add_horizon(parent: Node3D) -> void:
+	var h := NodeAssets.instance(NodeAssets.env_path("horizon_band"), tier)
+	h.name = "Horizon"
+	h.position = NodeLayout.ROOM_CENTER
+	AssetMaterials.set_distance_fade(h, HORIZON_FADE.x, HORIZON_FADE.y)
+	for k in HORIZON_PARAMS:  # у дымки far_gain и bead_depth нет: set_param такие материалы пропускает
+		AssetMaterials.set_param(h, k, HORIZON_PARAMS[k])
+	parent.add_child(h)
 
 
 ## По одному MultiMeshInstance3D на меш модели (у штрихов, точек и тайлов свой материал). mirrored — копия для отражения в полу.

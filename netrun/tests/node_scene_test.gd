@@ -3,7 +3,8 @@ extends GdUnitTestSuite
 ## и локдауне, ворота выхода при уровне LOCKDOWN, шард и хранилище, ICE и чужие аватары вместо заглушек, бюджет треугольников.
 
 const TIERS := ["BASE", "HARD", "NIGHTMARE"]
-const ENV_MODULES := ["floor", "wall", "corner", "pillar", "platform", "doorway", "tunnel_ring", "ceiling", "far_field", "far_floor", "far_ceiling"]
+## Модули, которые всегда в комнате (стены, углы и двери выхода — под флагом NodeView.WALLS_ENABLED; ворота — только при LOCKDOWN)
+const ENV_MODULES := ["floor", "room_edge", "pillar", "platform", "tunnel_ring", "ceiling", "far_field", "far_floor", "far_ceiling"]
 const PORTAL := "res://assets/models/props/portal.glb"
 const PORTAL_LOCKED := "res://assets/models/props/portal_locked.glb"
 const GATE := "res://assets/models/env/lockdown_gate.glb"
@@ -52,11 +53,21 @@ func _tint(root: Node, asset: String) -> Color:
 	return Color.BLACK
 
 
-func _mesh_of(root: Node, asset: String) -> Mesh:
+## Путь первого варианта модуля клиента (у пола — floor_slab_16, а не floor.glb).
+func _module_path(module: String) -> String:
+	return NodeAssets.env_path(str((NodeView.VARIANTS.get(module, [module]) as Array)[0]))
+
+
+func _multimesh_of(root: Node, asset: String) -> MultiMesh:
 	for n in root.find_children("*", "MultiMeshInstance3D", true, false):
 		if n.get_meta("asset", "") == asset:
-			return (n as MultiMeshInstance3D).multimesh.mesh
+			return (n as MultiMeshInstance3D).multimesh
 	return null
+
+
+func _mesh_of(root: Node, asset: String) -> Mesh:
+	var mm := _multimesh_of(root, asset)
+	return mm.mesh if mm != null else null
 
 
 # ---------------------------------------------------------------- комната по тиру
@@ -73,7 +84,7 @@ func test_room_modules_are_in_the_room_for_every_tier() -> void:
 		scene.apply_node(_info(tier))
 		var used: Array = scene.view.used_assets()
 		for module in ENV_MODULES:
-			assert_array(used).override_failure_message("%s: нет %s" % [tier, module]).contains([NodeAssets.env_path(module, tier)])
+			assert_array(used).override_failure_message("%s: нет %s" % [tier, module]).contains([_module_path(module)])
 
 
 func test_tier_changes_the_tint_of_the_room() -> void:
@@ -81,7 +92,7 @@ func test_tier_changes_the_tint_of_the_room() -> void:
 	for tier in TIERS:
 		var scene := _scene()
 		scene.apply_node(_info(tier))
-		tints[tier] = _tint(scene.view, NodeAssets.env_path("wall", tier))
+		tints[tier] = _tint(scene.view, _module_path("ceiling"))
 	assert_bool(tints["BASE"] != tints["HARD"] and tints["HARD"] != tints["NIGHTMARE"]).override_failure_message("тиры одного цвета: %s" % str(tints)).is_true()
 	for tier in TIERS:
 		assert_bool(tints[tier].b >= tints[tier].r).override_failure_message("%s: красный в окружении" % tier).is_true()
@@ -90,21 +101,37 @@ func test_tier_changes_the_tint_of_the_room() -> void:
 func test_next_node_rebuilds_the_room_for_its_tier() -> void:
 	var scene := _scene()
 	scene.apply_node(_info("HARD"))
-	var hard := _tint(scene.view, NodeAssets.env_path("wall", "HARD"))
+	var hard := _tint(scene.view, _module_path("ceiling"))
 	scene.apply_node(_info("NIGHTMARE"))
 	assert_str(scene.view.tier).is_equal("NIGHTMARE")
-	assert_bool(_tint(scene.view, NodeAssets.env_path("wall", "NIGHTMARE")) != hard).override_failure_message("тир не сменил цвет").is_true()
+	assert_bool(_tint(scene.view, _module_path("ceiling")) != hard).override_failure_message("тир не сменил цвет").is_true()
 
 
-func test_room_is_a_closed_8x8_grid() -> void:
+func test_room_is_one_floor_slab_with_an_edge_and_8x8_ceiling() -> void:
 	var scene := _scene()
 	scene.apply_node(_info("BASE"))
 	var counts: Dictionary = scene.view.module_counts()
-	assert_int(counts["floor"]).is_equal(NodeLayout.GRID * NodeLayout.GRID)
-	assert_int(counts["corner"]).is_equal(4)
-	# периметр: 4 x 6 ячеек между углами; две из них на юге — двери выхода
-	assert_int(counts["wall"] + counts["doorway"]).is_equal(4 * (NodeLayout.GRID - 2))
-	assert_int(counts["doorway"]).is_equal(NodeLayout.EXIT_DOORS.size())
+	# пол — один тайл и одна кромка в центре комнаты; потолок — по ячейке
+	assert_int(counts["floor"]).is_equal(1)
+	assert_int(counts["room_edge"]).is_equal(1)
+	assert_int(counts["ceiling"]).is_equal(NodeLayout.GRID * NodeLayout.GRID)
+	for module in ["floor", "room_edge"]:
+		var mm := _multimesh_of(scene.view, _module_path(module))
+		assert_bool(mm != null).override_failure_message("нет " + module).is_true()
+		# get_instance_transform в headless-рендере (dummy) всегда нули, поэтому положение — по custom_aabb, который считает сам NodeView по преобразованиям
+		var center := mm.custom_aabb.get_center()
+		assert_float(center.x).override_failure_message("%s: центр %s" % [module, center]).is_between(-0.5, 0.5)
+		assert_float(center.z).override_failure_message("%s: центр %s" % [module, center]).is_between(NodeLayout.ROOM_CENTER.z - 0.5, NodeLayout.ROOM_CENTER.z + 0.5)
+	if NodeView.WALLS_ENABLED:
+		assert_int(counts["corner"]).is_equal(4)
+		# периметр: 4 x 6 ячеек между углами; две из них на юге — двери выхода
+		assert_int(counts["wall"] + counts["doorway"]).is_equal(4 * (NodeLayout.GRID - 2))
+		assert_int(counts["doorway"]).is_equal(NodeLayout.EXIT_DOORS.size())
+	else:
+		for module in ["wall", "corner", "doorway"]:
+			assert_int(counts[module]).override_failure_message("%s при WALLS_ENABLED=false" % module).is_equal(0)
+	# ворота выхода стоят в проёмах южной стены при любом флаге (видны только при LOCKDOWN)
+	assert_int(counts["lockdown_gate"]).is_equal(NodeLayout.EXIT_DOORS.size())
 	assert_int(counts["platform"]).is_equal(4)
 	assert_int(counts["pillar"]).is_equal(NodeLayout.PILLARS.size())
 	assert_int(counts["tunnel_ring"]).is_equal(NodeLayout.EXIT_TUNNEL_SEGMENTS)
@@ -162,19 +189,23 @@ func test_portal_faces_the_room_and_labels_remain() -> void:
 
 # ---------------------------------------------------------------- выход
 
-func test_exit_gate_replaces_the_doorway_at_lockdown_trace_level() -> void:
+func test_exit_gate_appears_at_lockdown_trace_level_and_replaces_the_doorway() -> void:
 	var scene := _scene()
 	scene.apply_node(_info("BASE"))
 	var door := NodeAssets.env_path("doorway", "BASE")
 	var gate := NodeAssets.env_path("lockdown_gate", "BASE")
 	scene.apply_state(_state(2))
-	assert_array(scene.view.used_assets()).contains([door]).not_contains([gate])
+	assert_array(scene.view.used_assets()).not_contains([gate])
+	if NodeView.WALLS_ENABLED:  # без стен дверей нет, ворота — единственный знак выхода
+		assert_array(scene.view.used_assets()).contains([door])
 	scene.apply_state(_state(3))  # LOCKDOWN: выходы узла закрыты
 	assert_bool(scene.view.exit_locked).is_true()
 	assert_array(scene.view.used_assets()).contains([gate]).not_contains([door])
 	scene.apply_state(_state(0))
 	assert_bool(scene.view.exit_locked).is_false()
-	assert_array(scene.view.used_assets()).contains([door]).not_contains([gate])
+	assert_array(scene.view.used_assets()).not_contains([gate])
+	if NodeView.WALLS_ENABLED:
+		assert_array(scene.view.used_assets()).contains([door])
 
 
 # ---------------------------------------------------------------- шарды, хранилища, мелочи
@@ -361,18 +392,73 @@ func test_assembled_node_fits_the_triangle_budget() -> void:
 
 
 func test_repeated_modules_are_instanced_not_duplicated() -> void:
-	# 64 плитки пола (в трёх вариантах) и десятки стен — MultiMesh на вариант и поверхность, а не по узлу на плитку
+	# 64 плитки потолка (в трёх вариантах) — MultiMesh на вариант и поверхность, а не по узлу на плитку
 	var scene := _scene()
 	scene.apply_node(_info("BASE"))
 	var multi: Array = scene.view.find_children("*", "MultiMeshInstance3D", true, false)
 	var per_variant: Dictionary = {}  # путь варианта -> число плиток (у каждого меша варианта оно одно)
 	for n in multi:
 		var path := str(n.get_meta("asset", ""))
-		if path in ["res://assets/models/env/floor.glb", "res://assets/models/env/floor_b.glb", "res://assets/models/env/floor_c.glb"] and not str(n.name).contains("reflection"):
+		if path in ["res://assets/models/env/ceiling.glb", "res://assets/models/env/ceiling_b.glb", "res://assets/models/env/ceiling_c.glb"] and not str(n.name).contains("reflection"):
 			per_variant[path] = (n as MultiMeshInstance3D).multimesh.instance_count
 	assert_int(per_variant.size()).is_equal(3)
 	var total := 0
 	for v in per_variant.values():
 		total += int(v)
 	assert_int(total).is_equal(NodeLayout.GRID * NodeLayout.GRID)
+
+
+# ---------------------------------------------------------------- горизонт и дальние пласты (окружение «волюметрик»)
+
+## Параметр шейдера у любого меша модуля (у части материалов, например solid_dark, затухания по расстоянию нет — берём первый, где параметр задан).
+func _param(root: Node, asset: String, name: StringName) -> Variant:
+	for n in root.find_children("*", "MultiMeshInstance3D", true, false):
+		if n.get_meta("asset", "") != asset:
+			continue
+		var mesh := (n as MultiMeshInstance3D).multimesh.mesh
+		for i in mesh.get_surface_count():
+			var m := mesh.surface_get_material(i) as ShaderMaterial
+			if m != null and m.get_shader_parameter(name) != null:
+				return m.get_shader_parameter(name)
+	return null
+
+
+func test_horizon_band_is_one_separate_instance_with_its_own_fade() -> void:
+	if not NodeView.HORIZON_ENABLED:
+		return
+	var scene := _scene()
+	scene.apply_node(_info("BASE"))
+	var h := scene.view.find_child("Horizon", true, false) as Node3D
+	assert_bool(h != null).override_failure_message("нет горизонта").is_true()
+	assert_str(str(h.get_meta("asset"))).is_equal(NodeAssets.env_path("horizon_band"))
+	assert_vector(h.position).is_equal(NodeLayout.ROOM_CENTER)
+	assert_int(scene.view.find_children("Horizon", "Node3D", true, false).size()).is_equal(1)
+	# отдельная группа: ни в одном MultiMesh его пути нет
+	assert_object(_multimesh_of(scene.view, NodeAssets.env_path("horizon_band"))).is_null()
+	var streaks_gain := 0.0
+	for n in h.find_children("*", "MeshInstance3D", true, false):
+		var mesh := (n as MeshInstance3D).mesh
+		for s in mesh.get_surface_count():
+			var m := (n as MeshInstance3D).get_surface_override_material(s) as ShaderMaterial
+			assert_float(float(m.get_shader_parameter("fade_start"))).is_equal(NodeView.HORIZON_FADE.x)
+			assert_float(float(m.get_shader_parameter("fade_end"))).is_equal(NodeView.HORIZON_FADE.y)
+			if m.get_shader_parameter("far_gain") != null:
+				streaks_gain = float(m.get_shader_parameter("far_gain"))
+				assert_float(float(m.get_shader_parameter("bead_depth"))).is_equal(0.0)
+	assert_float(streaks_gain).override_failure_message("у штрихов горизонта нет far_gain").is_equal(3.0)
+
+
+func test_far_layers_fade_late_and_brighten_toward_the_horizon() -> void:
+	var scene := _scene()
+	scene.apply_node(_info("BASE"))
+	for module in ["far_field", "far_floor", "far_ceiling"]:
+		var path := _module_path(module)
+		assert_bool(_multimesh_of(scene.view, path) != null).override_failure_message("нет " + module).is_true()
+		assert_bool(_param(scene.view, path, "fade_start") != null).override_failure_message(module + ": нет fade_start").is_true()
+		assert_float(float(_param(scene.view, path, "fade_start"))).is_equal(NodeView.FAR_FADE.x)
+		assert_float(float(_param(scene.view, path, "fade_end"))).is_equal(NodeView.FAR_FADE.y)
+	var field := _module_path("far_field")
+	assert_float(float(_param(scene.view, field, "far_gain"))).is_equal(1.8)
+	assert_float(float(_param(scene.view, field, "far_start"))).is_equal(20.0)
+	assert_float(float(_param(scene.view, field, "far_end"))).is_equal(60.0)
 	assert_int(scene.view.find_children("*", "MeshInstance3D", true, false).size()).is_less(60)
