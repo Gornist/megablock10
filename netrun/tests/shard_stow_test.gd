@@ -6,10 +6,36 @@ const SLOT := "node_05_pk0"
 const SLOT2 := "node_05_pk1"
 
 
+## Сцена с двухшаговой схемой (правой взял → к деке → grip): так проверяются хват, радиус укладки и подсказка. Схема по умолчанию — _scene_auto().
 func _scene() -> Node3D:
+	var scene: Node3D = auto_free(preload("res://client/rig_test_scene.gd").new())
+	scene.auto_stow_right = false
+	add_child(scene)
+	return scene
+
+
+## Сцена со схемой по умолчанию: шард, взятый любой рукой, сразу уходит в деку.
+func _scene_auto() -> Node3D:
 	var scene: Node3D = auto_free(preload("res://client/rig_test_scene.gd").new())
 	add_child(scene)
 	return scene
+
+
+func test_default_scheme_stows_a_shard_taken_by_the_right_hand_at_once() -> void:
+	var scene := _scene_auto()
+	scene.apply_node(_node_info([_shard(SLOT, 0), _shard(SLOT2, 1)]))
+	var requested: Array[String] = []
+	scene.grab_requested.connect(func(id): requested.append(id))
+	scene.rig.right_hand.global_position = (scene._pickups[SLOT] as Node3D).global_position
+	scene.on_grip(scene.rig.right_hand)
+	scene.confirm_grab()
+	assert_array(requested).is_equal([SLOT])
+	assert_str(scene.held_in(scene.rig.right_hand)).is_empty()  # рука свободна сразу
+	assert_bool(scene.held).is_false()
+	# и следующий шард правая рука берёт без лишнего шага
+	scene.rig.right_hand.global_position = (scene._pickups[SLOT2] as Node3D).global_position
+	scene.on_grip(scene.rig.right_hand)
+	assert_array(requested).is_equal([SLOT, SLOT2])
 
 
 func _shard(id: String, slot: int, extra: Dictionary = {}) -> Dictionary:

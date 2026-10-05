@@ -524,6 +524,11 @@ func try_grab(origin: Vector3, reach: float, holder: Node3D) -> bool:
 	return true
 
 
+## Взятый правой рукой шард сразу уходит в деку, как у левой (решение владельца 05.10.2026 по прогону на очках: схема «взял правой → к левому запястью →
+## grip» была незаметна — шард оставался в руке, рука не брала следующий). false возвращает двухшаговую схему (подсказка «К ДЕКЕ → GRIP», STOW_REACH).
+var auto_stow_right := true
+
+
 ## Сервер подтвердил: объект переходит в руку (плоская сборка — перед камерой). Взятый левой рукой шард сразу уходит в деку: он уже у запястья.
 func confirm_grab() -> void:
 	if _pending_holder == null:
@@ -536,11 +541,12 @@ func confirm_grab() -> void:
 	_held_ids[_pending_id] = true
 	_hand_of[holder] = _pending_id
 	held = true
-	if holder != rig.left_hand and not holder is Camera3D:
-		_add_stow_hint(m)   # правой рукой взяли, а шард ещё не в деке: без подсказки игрок не знает, что рука занята (прогон на очках 05.10.2026)
+	var to_deck := holder == rig.left_hand or (auto_stow_right and not holder is Camera3D)
+	if not to_deck and not holder is Camera3D:
+		_add_stow_hint(m)   # двухшаговая схема: шард в правой руке, а в деке ещё нет — без подсказки игрок не знает, что рука занята (прогон на очках 05.10.2026)
 	_pending_holder = null
 	_pending_id = ""
-	if holder == rig.left_hand:
+	if to_deck:
 		stow(holder)
 
 
