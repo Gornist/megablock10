@@ -73,7 +73,9 @@ object CallMedia {
         context: Context,
         onIceCandidate: (IceCandidate) -> Unit,
         onConnected: () -> Unit,
-        onDisconnected: () -> Unit
+        onDisconnected: () -> Unit,
+        /** Каждое изменение состояния ICE как есть (CallManager решает по нему, перезапускать ли ICE). */
+        onIceState: (PeerConnection.IceConnectionState) -> Unit = {}
     ) {
         close()
         val pcFactory = ensureFactory(context)
@@ -85,6 +87,7 @@ object CallMedia {
             override fun onIceCandidate(candidate: IceCandidate) = onIceCandidate(candidate)
             override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) {
                 Mb10Log.event(TAG, "call.ice_state", "state" to state.name)
+                onIceState(state)
                 when (state) {
                     PeerConnection.IceConnectionState.CONNECTED,
                     PeerConnection.IceConnectionState.COMPLETED -> onConnected()
@@ -130,6 +133,18 @@ object CallMedia {
         }), MediaConstraints())
     }
 
+    /**
+     * Новый offer с перезапуском ICE для уже идущего звонка: кандидаты собираются заново (в том числе на новом адресе после смены точки),
+     * аудио-трек и PeerConnection те же. Собеседник отвечает обычным answer (CallManager.onOffer при том же callId).
+     */
+    fun createRestartOffer(onReady: (String) -> Unit) {
+        val pc = peerConnection ?: return
+        val constraints = MediaConstraints().apply { mandatory.add(MediaConstraints.KeyValuePair("IceRestart", "true")) }
+        pc.createOffer(sdpObserver(onCreate = { sdp ->
+            pc.setLocalDescription(sdpObserver(onSet = { onReady(sdp.description) }), sdp)
+        }), constraints)
+    }
+
     fun createAnswer(onReady: (String) -> Unit) {
         val pc = peerConnection ?: return
         pc.createAnswer(sdpObserver(onCreate = { sdp ->
@@ -137,16 +152,18 @@ object CallMedia {
         }), MediaConstraints())
     }
 
-    fun setRemoteOffer(sdp: String) = setRemoteDescription(SessionDescription(SessionDescription.Type.OFFER, sdp))
+    /** [onSet] — когда WebRTC применил чужое описание (для перезапуска ICE ответ строится только после этого). */
+    fun setRemoteOffer(sdp: String, onSet: () -> Unit = {}) = setRemoteDescription(SessionDescription(SessionDescription.Type.OFFER, sdp), onSet)
 
     fun setRemoteAnswer(sdp: String) = setRemoteDescription(SessionDescription(SessionDescription.Type.ANSWER, sdp))
 
-    private fun setRemoteDescription(description: SessionDescription) {
+    private fun setRemoteDescription(description: SessionDescription, onApplied: () -> Unit = {}) {
         val pc = peerConnection ?: return
         pc.setRemoteDescription(sdpObserver(onSet = {
             remoteDescriptionSet = true
             pendingRemoteCandidates.forEach { pc.addIceCandidate(it) }
             pendingRemoteCandidates.clear()
+            onApplied()
         }), description)
     }
 

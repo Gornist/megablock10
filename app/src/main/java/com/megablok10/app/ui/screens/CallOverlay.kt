@@ -100,8 +100,15 @@ private fun ActiveCallBanner(state: CallUiState, onEnd: () -> Unit) {
         MbBanner(
             lead = { MbPortrait(state.peerCallsign.take(1).uppercase(), size = MbDimens.portraitBanner, ink = LocalMbColors.current.ok) },
             title = state.peerCallsign,
-            sub = "● " + (if (state.audioConnected) "В ЭФИРЕ" else "СОЕДИНЕНИЕ") + " · %d:%02d".format(minutes, seconds),
+            sub = "● " + callStatusLabel(state) + " · %d:%02d".format(minutes, seconds),
             action = { MbButton("Завершить", onClick = onEnd, kind = MbButtonKind.Alert, inline = true) }
         )
     }
+}
+
+/** Подпись состояния идущего звонка: в эфире / связь пропала и восстанавливается / ещё соединяемся. */
+internal fun callStatusLabel(state: CallUiState): String = when {
+    state.audioConnected -> "В ЭФИРЕ"
+    state.everConnected -> "СВЯЗЬ ПОТЕРЯНА · ВОССТАНАВЛИВАЕМ"
+    else -> "СОЕДИНЕНИЕ"
 }

@@ -16,6 +16,8 @@ object CallOutcome {
     const val CANCELLED = "CANCELLED"
     const val MISSED = "MISSED"
     const val UNREACHABLE = "UNREACHABLE"
+    /** Звонок шёл, но связь пропала и не вернулась (IceRecoveryPolicy). Строка исхода — не схема Room, старые записи не затронуты. */
+    const val LOST = "LOST"
 }
 
 /**
