@@ -96,8 +96,15 @@ def check(rep):
     edge = rep["origin"] == "edge"  # кромка комнаты (room_edge_<N>): габарит до 20 м (квадрат 16 м + дымка 1,8 м наружу)
     slab = rep["origin"] == "slab"  # пол комнаты одной плитой (env/floor_slab_<N>, эксперимент): габарит до 20 м, сторона плиты = N
     floorv = rep["origin"] == "floorv"  # варианты пола env/floor_v<N>_<размер>: габарит до 20 м
-    if not 0.01 <= max(size) <= (150 if horizon else 20.0 if edge or slab or floorv else 12):
+    moat = rep["origin"] == "moat"  # ров вокруг плиты-пола (env/room_moat_<N>): плоское кольцо, габарит до 24 м (16 м + щель 0,35 м + полоса 3 м с каждой стороны)
+    if not 0.01 <= max(size) <= (150 if horizon else 24.0 if moat else 20.0 if edge or slab or floorv else 12):
         bad.append(f"странный размер {size} (1 единица = 1 м)")
+    # «moat» — центр квадрата на уровне пола: плоское кольцо чуть ниже пола (−0,03…0), по xz симметрично и не шире 12 м от центра
+    if moat:
+        if lo[1] < -0.03 or hi[1] > 0.0:
+            bad.append(f"origin «moat»: по высоте вне −0,03…0 м: min.y={lo[1]:.3f}, max.y={hi[1]:.3f}")
+        if max(abs(lo[0]), abs(lo[2]), abs(hi[0]), abs(hi[2])) > 12.0 or abs(lo[0] + hi[0]) > 0.05 or abs(lo[2] + hi[2]) > 0.05:
+            bad.append(f"origin «moat»: габарит шире 12 м от центра или несимметричен: min={[round(v, 2) for v in lo]}, max={[round(v, 2) for v in hi]}")
     # «edge» — центр квадрата на уровне пола: по высоте от −3 м (подвесные штрихи) до +0,55 м (низкая дымка до колена), по xz симметрично и не шире 10 м от центра
     if edge:
         if lo[1] < -3.0 or hi[1] > 0.55:

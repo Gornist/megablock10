@@ -64,6 +64,8 @@
 | `models/env/portal_wall.glb` | 0 / 300 | 34 / 150 | 105 / 300 | 0 | 2 | 3.9653 × 2.9735 × 0.5252 | points, streaks | — | floor | ок |
 | `models/env/room_edge_16.glb` | 192 / 200 | 0 / 0 | 452 / 500 | 1 | 2 | 19.6 × 3.0135 × 19.6 | shell_soft, streaks | — | edge | ок |
 | `models/env/room_edge_8.glb` | 192 / 200 | 0 / 0 | 231 / 260 | 1 | 2 | 11.6 × 2.9844 × 11.6 | shell_soft, streaks | — | edge | ок |
+| `models/env/room_moat_16.glb` | 16 / 60 | 0 / 0 | 0 / 0 | 0 | 1 | 22.7 × 0.0 × 22.7 | solid_dark | — | moat | ок |
+| `models/env/room_moat_8.glb` | 16 / 60 | 0 / 0 | 0 / 0 | 0 | 1 | 14.7 × 0.0 × 14.7 | solid_dark | — | moat | ок |
 | `models/avatar/runner.glb` | 0 / 300 | 140 / 160 | 318 / 360 | 0 | 2 | 0.6575 × 1.4629 × 0.6566 | points, streaks | — | feet | ок |
 | `models/avatar/runner_b.glb` | 0 / 300 | 140 / 160 | 318 / 360 | 0 | 2 | 0.5891 × 1.4687 × 0.6358 | points, streaks | — | feet | ок |
 | `models/avatar/runner_c.glb` | 0 / 300 | 140 / 160 | 318 / 360 | 0 | 2 | 0.6494 × 1.4711 × 0.6036 | points, streaks | — | feet | ок |
