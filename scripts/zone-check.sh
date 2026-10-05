@@ -6,9 +6,9 @@
 # Зоны — копия таблицы из CLAUDE.md: правите таблицу — правьте и здесь. Общие для всех: свой раздел docs/progress.md.
 cd "$(dirname "$0")/.." || exit 2
 NODES='^firmware/|^admin-web/server/src/(displays/|audio/|routes/audio\.ts|scripts/display[^/]*\.ts|display[^/]*\.test\.ts|audio\.test\.ts|firmwareHost\.test\.ts)|^\.github/workflows/firmware\.yml|^docs/(displays|firmware-plan|sound-nodes)\.md'
-BLENDER='^netrun/assets/|^netrun/client/([^/]*_view\.gd|avatar_body\.gd|head_[^/]*\.gd)|^netrun/tests/assets_[^/]*'
+BLENDER='^netrun/assets/|^netrun/client/(avatar_view|hand_view|avatar_body|head_[^/]*)\.gd|^netrun/tests/assets_[^/]*'
 case $1 in
-  android)   IN='^(app|kit|rules|scripts/e2e)/|^docs/(android-handoff|architecture|refactor-plan|device-testing|db-migrations)\.md|^docs/ux/'; OUT='';;
+  android)   IN='^(app|kit|rules|scripts/e2e)/|^docs/(android-handoff|architecture|refactor-plan|device-testing|db-migrations)\.md|^docs/ux/|^scripts/phone\.sh$'; OUT='';;
   collector) IN='^admin-web/'; OUT="$NODES";;
   nodes)     IN="$NODES"; OUT='';;
   godot)     IN='^netrun/|^netrun-bridge/|^docs/netrun[^/]*'; OUT="$BLENDER";;

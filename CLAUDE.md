@@ -26,8 +26,8 @@
 | **Коллектор** | `admin-web/` — сервер и дашборд мастера, приём изменений, БД и миграции, auth, связь с Мостом со стороны коллектора | `admin-web/server/src/displays/`, `audio/`, `routes/audio.ts`, `scripts/display*.ts` и их тесты (Физические узлы) |
 | **Физические узлы** | `firmware/` (QR-дисплей, звук), в `admin-web/server/src/`: `displays/`, `audio/`, `routes/audio.ts`, `scripts/display*.ts` и их тесты; `.github/workflows/firmware.yml`; `docs/displays.md`, `firmware-plan.md`, `sound-nodes.md` | остальной `admin-web/` (Коллектор) |
 | **Godot** | `netrun/` — сервер мира, игра, дека, сеть и формат сообщений (`netrun/server/`, `netrun/shared/`), `netrun-bridge/`, `docs/netrun*.md` | ассеты и вид аватара (Blender) |
-| **Blender** | вид Сети: `netrun/assets/` (модели, `src/*.py`, шейдеры, превью, `ARCHITECTURE.md`, `STYLE.md`) и отрисовка тела и рук в `netrun/client/` (`*_view.gd`, `avatar_body.gd`, `head_*.gd`), тесты ассетов `netrun/tests/assets_*` | формат сообщений и сеть (`netrun/shared/`, `netrun/server/` — Godot): новые поля позы — предложить Godot-сессии |
-| **Pipeline manager** | общие правила и инструменты: `CLAUDE.md`, `.claude/` (хук, настройки, общие skills), общие `scripts/` (`check`, `verify`, `dbx`, `ci-wait`, `agent-worktree`, `session-stats`) | код областей |
+| **Blender** | вид Сети: `netrun/assets/` (модели, `src/*.py`, шейдеры, превью, `ARCHITECTURE.md`, `STYLE.md`) и отрисовка тела и рук в `netrun/client/` (`avatar_view.gd`, `hand_view.gd`, `avatar_body.gd`, `head_*.gd`; окружение `node_view.gd`, `ice_view.gd` — Godot), тесты ассетов `netrun/tests/assets_*` | формат сообщений и сеть (`netrun/shared/`, `netrun/server/` — Godot): новые поля позы — предложить Godot-сессии |
+| **Pipeline manager** | общие правила и инструменты: `CLAUDE.md`, `.claude/` (хук, настройки, общие skills), общие `scripts/` (`check`, `verify`, `dbx`, `ci-wait`, `agent-worktree`, `zone-check`, `session-stats`); `scripts/phone.sh` дополняет и Android App | код областей |
 
 Общее для всех: `docs/progress.md` — каждая сессия правит только свой раздел; `.github/workflows/` своей области — можно, `main.yml` — через
 Pipeline manager. Работать в своей worktree (`scripts/agent-worktree.sh new <имя>`), добавлять файлы явными путями, в `main` — только владелец.
@@ -69,6 +69,10 @@ Pipeline manager. Работать в своей worktree (`scripts/agent-worktr
   удаляет владелец или сессия по его слову.
 - Одна ветка — один исполнитель. Параллельная работа — `scripts/agent-worktree.sh new <имя>` (своя копия и ветка `agent/<имя>`).
 - Не коммитить незавершённое «на потом»: после каждого шага ветка собирается и тесты зелёные.
+- **Контракт между зонами** (версии в `/api/capabilities`, формат записей мира, сообщений Моста, QR, приложение↔коллектор) меняется так, чтобы
+  `main` был зелёным после **каждого** слияния: сначала читающая сторона принимает и старую, и новую версию, потом пишущая поднимает версию;
+  парные PR — в одном порядке, сосед предупреждён сообщением. Так было не всегда: 05.10 коллектор объявил `world_records: 2` раньше, чем Мост
+  стал его принимать (Мост ждал ровно 1) — между двумя слияниями e2e на чужом PR краснел не из-за его правок.
 
 ## Окружение агентов
 

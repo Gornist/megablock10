@@ -39,7 +39,12 @@ step() { # step "имя" команда...
 skip() { TIMES+=("$1: пропущено (нет изменений)"); }
 
 # kit/ — часть приложения (подключён к :app), поэтому любая его правка тоже гоняет проверки приложения.
-if changed app || changed kit || changed rules; then
+if { changed app || changed kit || changed rules; } && [ $FAST -eq 1 ] && [ "$(uname)" = Darwin ] && [ -z "${CHECK_LOCAL_GRADLE:-}" ]; then
+  # Mac (8 ГБ): Gradle здесь не гоняем (CLAUDE.md) — пуш с Mac падал без JDK 21, а сессии пушили «через devbox» руками (05.10).
+  # Те же проверки — на devbox через scripts/dbx.sh --auto (очередь, кэш: после verify.sh обычно секунды). devbox недоступен — проверит CI.
+  if ssh -o BatchMode=yes -o ConnectTimeout=5 devbox true 2>/dev/null; then step "app+kit: devbox (dbx.sh --auto)" scripts/dbx.sh --auto
+  else TIMES+=("app+kit: devbox недоступен — Gradle-проверки сделает CI"); fi
+elif changed app || changed kit || changed rules; then
   step "app+kit: detekt" ./gradlew -q --console=plain :app:detekt :kit:detekt :rules:detekt   # статический анализ; старые находки в app/detekt-baseline.xml, новые ломают проверку
   step "kit: API Android 8.0" ./gradlew -q --console=plain :kit:animalsnifferMain :rules:animalsnifferMain   # kit собирается JDK 17+, но работает на Android 26: вызов более нового API ломает проверку
   step "app: Android Lint" ./gradlew -q --console=plain :app:lintDebug   # полный набор (включая NewApi — API новее Android 8.0); baseline app/lint-baseline.xml
