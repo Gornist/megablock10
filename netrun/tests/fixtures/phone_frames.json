@@ -1,0 +1,77 @@
+{
+  "_comment": "Канонические кадры связи очков с телефоном (docs/netrun-phone-link.md, раздел 2). Контракт для обеих сторон: тест очков (fake_phone_test.gd) и инструмент tools/fake_phone.gd читают этот файл; приложению Android (HeadsetMirror) эти же кадры годятся как эталон для его тестов. Ключ ЛС и тексты вымышлены. ts — unix-секунды.",
+  "phone_to_glasses": {
+    "hello": {"t": "hello", "v": 1, "callsign": "Призрак"},
+    "threads": {
+      "t": "threads",
+      "items": [
+        {"id": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEq3fL9xT1kZp0wH7sNnBv2uJcR8dYeA4mXo6GtQ5iPzS1VhW0bKjLrCyUaDfEgN3oMtZlXqIw7BvHnRpYs==", "kind": "DM", "title": "ЛИС", "last_text": "Ты где? Жду у стойки", "last_ts": 1791200100, "unread": 2},
+        {"id": "faction", "kind": "FACTION", "title": "ВОЛЬНЫЕ", "last_text": "Сбор в пять, без опозданий", "last_ts": 1791199800, "unread": 0}
+      ]
+    },
+    "messages_lis": {
+      "t": "messages",
+      "thread": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEq3fL9xT1kZp0wH7sNnBv2uJcR8dYeA4mXo6GtQ5iPzS1VhW0bKjLrCyUaDfEgN3oMtZlXqIw7BvHnRpYs==",
+      "items": [
+        {"id": "m_lis_1", "thread": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEq3fL9xT1kZp0wH7sNnBv2uJcR8dYeA4mXo6GtQ5iPzS1VhW0bKjLrCyUaDfEgN3oMtZlXqIw7BvHnRpYs==", "mine": false, "text": "Привет, Призрак. Есть минута?", "ts": 1791199900, "status": "delivered", "from": "ЛИС"},
+        {"id": "m_lis_2", "thread": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEq3fL9xT1kZp0wH7sNnBv2uJcR8dYeA4mXo6GtQ5iPzS1VhW0bKjLrCyUaDfEgN3oMtZlXqIw7BvHnRpYs==", "mine": true, "text": "Да", "ts": 1791199950, "status": "sent", "from": ""},
+        {"id": "m_lis_3", "thread": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEq3fL9xT1kZp0wH7sNnBv2uJcR8dYeA4mXo6GtQ5iPzS1VhW0bKjLrCyUaDfEgN3oMtZlXqIw7BvHnRpYs==", "mine": false, "text": "Ты где? Жду у стойки", "ts": 1791200100, "status": "delivered", "from": "ЛИС"}
+      ]
+    },
+    "messages_faction": {
+      "t": "messages",
+      "thread": "faction",
+      "items": [
+        {"id": "m_fac_1", "thread": "faction", "mine": false, "text": "Кто на точке у склада?", "ts": 1791199700, "status": "delivered", "from": "ВОБЛА"},
+        {"id": "m_fac_2", "thread": "faction", "mine": false, "text": "Сбор в пять, без опозданий", "ts": 1791199800, "status": "delivered", "from": "ШЕРШЕНЬ"}
+      ]
+    },
+    "message_incoming": {
+      "t": "message",
+      "msg": {"id": "m_lis_4", "thread": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEq3fL9xT1kZp0wH7sNnBv2uJcR8dYeA4mXo6GtQ5iPzS1VhW0bKjLrCyUaDfEgN3oMtZlXqIw7BvHnRpYs==", "mine": false, "text": "Иду к тебе, держись", "ts": 1791200200, "status": "delivered", "from": "ЛИС"}
+    },
+    "message_faction": {
+      "t": "message",
+      "msg": {"id": "m_fac_3", "thread": "faction", "mine": false, "text": "Патруль у третьего входа, обходите", "ts": 1791200300, "status": "delivered", "from": "ВОБЛА"}
+    },
+    "message_status": {
+      "t": "message",
+      "msg": {"id": "m_lis_2", "thread": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEq3fL9xT1kZp0wH7sNnBv2uJcR8dYeA4mXo6GtQ5iPzS1VhW0bKjLrCyUaDfEgN3oMtZlXqIw7BvHnRpYs==", "mine": true, "text": "Да", "ts": 1791199950, "status": "delivered", "from": ""}
+    },
+    "call_idle": {"t": "call", "phase": "idle", "peer": "", "since_ts": 0, "muted": false},
+    "call_outgoing": {"t": "call", "phase": "outgoing", "peer": "ВОБЛА", "since_ts": 1791200400, "muted": false},
+    "call_incoming": {"t": "call", "phase": "incoming", "peer": "ЛИС", "since_ts": 1791200500, "muted": false},
+    "call_in_call": {"t": "call", "phase": "in_call", "peer": "ЛИС", "since_ts": 1791200510, "muted": false},
+    "call_log": {
+      "t": "call_log",
+      "items": [
+        {"peer": "ЛИС", "dir": "missed", "ts": 1791198000, "duration_s": 0},
+        {"peer": "ВОБЛА", "dir": "in", "ts": 1791196000, "duration_s": 74},
+        {"peer": "ШЕРШЕНЬ", "dir": "out", "ts": 1791190000, "duration_s": 31}
+      ]
+    },
+    "contacts": {
+      "t": "contacts",
+      "items": [
+        {"key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEq3fL9xT1kZp0wH7sNnBv2uJcR8dYeA4mXo6GtQ5iPzS1VhW0bKjLrCyUaDfEgN3oMtZlXqIw7BvHnRpYs==", "title": "ЛИС"},
+        {"key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEw8nT2cV6yHq1eLb4uDfK0sRz3JmXaP9oG5tQ7iNhB2vC1lYkWjUxEdSrMpAgF4oZtLnIq6BvHcRyOu==", "title": "ВОБЛА"},
+        {"key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEd1pS7kQ3zXbN8wJcV0yHg5mTeA2uLrFo9iRtYq4nB6sCvKjWxZaUhEfDlMgPo1OtIyN3BqHrVcSyAu==", "title": "ШЕРШЕНЬ"}
+      ]
+    },
+    "sound_ring": {"t": "sound", "kind": "ring"},
+    "sound_ringback": {"t": "sound", "kind": "ringback"},
+    "sound_message": {"t": "sound", "kind": "message"},
+    "sound_stop": {"t": "sound", "kind": "stop"}
+  },
+  "glasses_to_phone": {
+    "hello_ack": {"t": "hello_ack", "v": 1},
+    "send_text": {"t": "send_text", "thread": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEq3fL9xT1kZp0wH7sNnBv2uJcR8dYeA4mXo6GtQ5iPzS1VhW0bKjLrCyUaDfEgN3oMtZlXqIw7BvHnRpYs==", "preset": "callback"},
+    "mark_read": {"t": "mark_read", "thread": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEq3fL9xT1kZp0wH7sNnBv2uJcR8dYeA4mXo6GtQ5iPzS1VhW0bKjLrCyUaDfEgN3oMtZlXqIw7BvHnRpYs=="},
+    "accept": {"t": "accept"},
+    "decline": {"t": "decline"},
+    "hangup": {"t": "hangup"},
+    "mute": {"t": "mute", "on": true},
+    "start_call": {"t": "start_call", "peer": "ВОБЛА"},
+    "resync": {"t": "resync"}
+  }
+}
