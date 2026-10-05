@@ -29,6 +29,7 @@ abstract class Mb10Database : RoomDatabase() {
     abstract fun transactionDao(): TransactionDao
     abstract fun daemonDao(): DaemonDao
     abstract fun chatMessageDao(): ChatMessageDao
+    abstract fun chatMirrorDao(): ChatMirrorDao
     abstract fun callLogDao(): CallLogDao
     abstract fun containerBreachDao(): ContainerBreachDao
     abstract fun slotClaimDao(): SlotClaimDao
