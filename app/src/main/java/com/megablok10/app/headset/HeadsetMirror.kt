@@ -57,6 +57,8 @@ class HeadsetMirror(
     private val me: () -> Identity?,
     private val readState: HeadsetReadState,
     private val onReady: (Boolean) -> Unit = {},
+    /** Звонки (срез 2): без него зеркало показывает только переписку. */
+    private val callBridge: HeadsetCallBridge? = null,
 ) {
     private class Sent {
         var threads: List<HeadsetThread> = emptyList()
@@ -83,6 +85,7 @@ class HeadsetMirror(
                             Mb10Log.event(TAG, "headset.ready", "v" to cmd.v)
                             onReady(true)
                             observer = launch {
+                                callBridge?.observe(this, send)
                                 var first = true
                                 chat.changes(identity).conflate().collect { push(full = first).also { first = false } }
                             }
@@ -111,7 +114,10 @@ class HeadsetMirror(
 
     private suspend fun handle(identity: Identity, cmd: HeadsetCommand, send: (HeadsetOut) -> Boolean, sent: Sent, lock: Mutex) {
         when (cmd) {
-            is HeadsetCommand.Resync -> lock.withLock { pushLocked(identity, send, sent, full = true) }
+            is HeadsetCommand.Resync -> {
+                lock.withLock { pushLocked(identity, send, sent, full = true) }
+                callBridge?.snapshot(send)
+            }
             is HeadsetCommand.MarkRead -> {
                 val latest = loadThread(identity, cmd.thread).lastOrNull()?.timestamp ?: return
                 readState.setLastRead(cmd.thread, latest)
@@ -125,7 +131,7 @@ class HeadsetMirror(
                 }
                 if (cmd.thread == HEADSET_FACTION_THREAD) chat.sendFaction(identity, text) else chat.sendDirect(identity, cmd.thread, text)
             }
-            else -> Unit // звонки — следующий срез; hello_ack обработан выше
+            else -> callBridge?.handle(identity, cmd) // звонки; hello_ack обработан выше
         }
     }
 

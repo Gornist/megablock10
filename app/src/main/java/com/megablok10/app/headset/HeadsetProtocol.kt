@@ -70,7 +70,13 @@ data class HeadsetCall(val phase: String, val peer: String, val sinceTs: Long, v
 }
 
 /** Запись журнала звонков: [dir] — `in` | `out` | `missed`. */
-data class HeadsetCallLogItem(val peer: String, val dir: String, val ts: Long, val durationS: Long)
+data class HeadsetCallLogItem(val peer: String, val dir: String, val ts: Long, val durationS: Long) {
+    companion object {
+        const val IN = "in"
+        const val OUT = "out"
+        const val MISSED = "missed"
+    }
+}
 
 /** Что телефон отдаёт очкам. */
 sealed interface HeadsetOut {

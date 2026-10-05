@@ -114,6 +114,11 @@ object CallMedia {
         peerConnection = pc
     }
 
+    /** Включить или выключить отправку своего звука (заглушить микрофон), не трогая соединение. Нет аудио-трека — ничего не делает. */
+    fun setMicrophoneEnabled(enabled: Boolean) {
+        localAudioTrack?.setEnabled(enabled)
+    }
+
     /** Отдельно от open() — вызывается только в момент, когда игрок реально согласился на звонок (исходящий сразу, входящий — по "Принять"). */
     fun addLocalAudioTrack(context: Context) {
         val pc = peerConnection ?: return

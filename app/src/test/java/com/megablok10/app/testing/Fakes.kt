@@ -309,10 +309,12 @@ class FakeCallControls(initial: CallUiState = CallUiState()) : CallControls {
     val started = mutableListOf<OnlinePlayer>()
     var accepted = 0
     var ended = 0
+    val muteCalls = mutableListOf<Boolean>()
     override fun observeLog(): Flow<List<CallLogEntity>> = log
     override fun startOutgoingCall(identity: Identity, peer: OnlinePlayer) { started += peer }
     override fun accept(identity: Identity) { accepted++ }
     override fun endCall(identity: Identity) { ended++ }
+    override fun setMuted(muted: Boolean) { muteCalls += muted }
 }
 
 /** Справочник пиров без сети: видно никого (или [online]), отправка — [outcome] на любой адрес. */

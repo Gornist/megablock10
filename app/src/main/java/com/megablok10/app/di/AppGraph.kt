@@ -1,7 +1,10 @@
 package com.megablok10.app.di
 
+import android.Manifest
 import android.app.Application
 import android.content.Context
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import com.megablok10.app.BuildConfig
 import com.megablok10.app.Mb10App
 import com.megablok10.app.PlayerNotices
@@ -15,6 +18,7 @@ import com.megablok10.app.breach.FinishBreach
 import com.megablok10.app.breach.SecAlertStore
 import com.megablok10.app.breach.SlotClaimStore
 import com.megablok10.app.call.CallManager
+import com.megablok10.app.call.IncomingCallNotifier
 import com.megablok10.app.chat.CardResender
 import com.megablok10.app.chat.ChatStore
 import com.megablok10.app.chat.MeshSession
@@ -33,6 +37,7 @@ import com.megablok10.app.data.Mb10Database
 import com.megablok10.app.data.RoomTransactor
 import com.megablok10.app.identity.ContactDirectory
 import com.megablok10.app.headset.ChatStoreHeadsetPort
+import com.megablok10.app.headset.HeadsetCallBridge
 import com.megablok10.app.headset.HeadsetMirror
 import com.megablok10.app.headset.HeadsetRuntime
 import com.megablok10.app.headset.HeadsetSettings
@@ -196,7 +201,13 @@ class AppGraph(private val app: Application) {
     // Очки Pico как второй экран (docs/netrun-phone-link.md): за переключателем в «Сеть» → «Очки», по умолчанию выключено. Запускается задачей сессии ниже.
     val headsetSettings = HeadsetSettings(prefs(HeadsetSettings.PREFS))
     val headset = HeadsetRuntime(app, headsetSettings) { onReady ->
-        HeadsetMirror(ChatStoreHeadsetPort(db.chatMirrorDao(), chat, contacts), { identity.current }, headsetSettings, onReady)
+        HeadsetMirror(
+            ChatStoreHeadsetPort(db.chatMirrorDao(), chat, contacts), { identity.current }, headsetSettings, onReady,
+            callBridge = HeadsetCallBridge(
+                calls, { visiblePlayers.value },
+                micGranted = { ContextCompat.checkSelfPermission(app, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED },
+            ),
+        )
     }.also { SoundPlayer.mirror = it }
 
     // Сессия и жизненный цикл персонажа
@@ -211,6 +222,7 @@ class AppGraph(private val app: Application) {
             { scope -> secAlerts.start(scope) },
             { scope -> cardResender.start(scope) },
             { scope -> headset.start(scope) },
+            { scope -> IncomingCallNotifier(app, calls).start(scope) },
             { _ -> netrun.restorePeer() },
             { scope -> DeviceDiagnostics.startSnapshots(app, scope, diagnosticsState) },
         ),

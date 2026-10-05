@@ -17,4 +17,7 @@ interface CallControls {
     fun accept(identity: Identity)
 
     fun endCall(identity: Identity)
+
+    /** Заглушить свой микрофон в идущем звонке или включить обратно (очки). Вне звонка ничего не делает. */
+    fun setMuted(muted: Boolean)
 }

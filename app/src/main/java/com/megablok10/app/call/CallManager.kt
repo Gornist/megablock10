@@ -38,7 +38,11 @@ data class CallUiState(
     /** Хоть раз соединялся: тогда !audioConnected значит «связь потеряна, восстанавливаем», а не «ещё соединяемся». */
     val everConnected: Boolean = false,
     val isOutgoing: Boolean = false,
-    val startedAt: Long = 0L
+    val startedAt: Long = 0L,
+    /** Когда началась текущая фаза: набор/вызов — с [startedAt], «в разговоре» — с момента ответа (для очков: `since_ts`). */
+    val phaseSince: Long = startedAt,
+    /** Свой микрофон выключен (кнопка в очках). Сбрасывается вместе со звонком. */
+    val muted: Boolean = false,
 )
 
 /**
@@ -208,7 +212,7 @@ class CallManager(
             return
         }
         SoundPlayer.stopLoop()
-        _state.value = _state.value.copy(phase = CallPhase.IN_CALL)
+        _state.value = _state.value.copy(phase = CallPhase.IN_CALL, phaseSince = System.currentTimeMillis())
         CallMedia.setRemoteAnswer(sdp)
         CallForegroundService.start(app, _state.value.peerCallsign)
         startRecoveryWatch(identity, signal.callId)
@@ -238,11 +242,23 @@ class CallManager(
         if (s.phase != CallPhase.INCOMING_RINGING) return
         Mb10Log.event(TAG, "call.accept", "call" to s.callId.take(8))
         SoundPlayer.stopLoop()
-        _state.value = s.copy(phase = CallPhase.IN_CALL)
+        _state.value = s.copy(phase = CallPhase.IN_CALL, phaseSince = System.currentTimeMillis())
         CallMedia.addLocalAudioTrack(app)
         CallMedia.createAnswer { sdp -> sendSignal(identity, s.peerPubKeyB64, CallSignalType.ANSWER, s.callId, sdp = sdp) }
         CallForegroundService.start(app, s.peerCallsign)
         startRecoveryWatch(identity, s.callId)
+    }
+
+    /**
+     * Выключить или включить свой микрофон в идущем звонке (кнопка «заглушить» в очках; собеседник слышит тишину, звонок не прерывается).
+     * Только при звонке: до ответа аудио-трека ещё нет. Состояние сбрасывается вместе со звонком.
+     */
+    override fun setMuted(muted: Boolean) {
+        val s = _state.value
+        if (s.phase != CallPhase.IN_CALL || s.muted == muted) return
+        Mb10Log.event(TAG, "call.mute", "call" to s.callId.take(8), "muted" to muted)
+        CallMedia.setMicrophoneEnabled(!muted)
+        _state.value = s.copy(muted = muted)
     }
 
     /** И отклонение входящего, и отмена исходящего, и завершение уже идущего звонка — везде со стороны пира это просто "разговор закончен". */
