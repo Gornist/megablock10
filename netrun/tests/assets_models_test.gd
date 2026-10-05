@@ -145,6 +145,20 @@ func test_env_streaks_have_a_soft_halo_and_creatures_do_not() -> void:
 			assert_float(h).override_failure_message("%s: ореол у существа" % path).is_equal(0.0)
 
 
+func test_horizon_band_is_one_streak_mesh_and_far_gain_is_off_by_default() -> void:
+	var band := _load("env", "horizon_band")
+	var meshes := _meshes(band)
+	assert_int(meshes.size()).override_failure_message("horizon_band: должен быть один меш").is_equal(1)
+	var verts := (meshes[0].mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+	assert_int(verts).override_failure_message("horizon_band: больше 400 штрихов (4 вершины на штрих)").is_less_equal(1600)
+	var sh := load("res://assets/shaders/streaks.gdshader") as Shader
+	var names := sh.get_shader_uniform_list().map(func(u): return u["name"])
+	for u in ["halo", "halo_width", "far_gain", "far_start", "far_end"]:
+		assert_bool(u in names).override_failure_message("в streaks нет uniform " + u).is_true()
+	assert_bool(sh.code.contains("uniform float far_gain : hint_range(1.0, 6.0) = 1.0;")).override_failure_message("far_gain по умолчанию не 1").is_true()
+	assert_bool(sh.code.contains("uniform float halo : hint_range(0.0, 1.0) = 0.0;")).override_failure_message("halo по умолчанию не 0").is_true()
+
+
 func test_mesh_parts_are_cached_per_tier_and_mirror() -> void:
 	var a := NodeAssets.mesh_parts(NodeAssets.env_path("wall"), "BASE")
 	assert_bool(NodeAssets.mesh_parts(NodeAssets.env_path("wall"), "BASE") == a).is_true()
