@@ -46,7 +46,7 @@ const FAR_STEP := 11.0
 ## Стена и дверь стоят на краю ячейки: модуль окружения центрирован в ячейке, поэтому его сдвигают к наружному краю на столько метров.
 const WALL_EDGE := 0.9
 ## Дальний план: уровни пластов и радиус сетки участков 11 м вокруг центра комнаты (в участках); у нашего пласта пустые участки под комнатой.
-const FAR_LAYERS := [{"y": 0.0, "r": 2, "hole": 1}, {"y": LAYER_PITCH, "r": 1, "hole": -1}, {"y": -LAYER_PITCH, "r": 1, "hole": -1}]
+const FAR_LAYERS := [{"y": 0.0, "r": 2, "hole": 1}, {"y": LAYER_PITCH, "r": 1, "hole": -1}, {"y": -LAYER_PITCH, "r": 2, "hole": 1}]
 
 ## Тир узла, по которому выбраны файлы окружения (BASE, если сервер тир не назвал).
 var tier := ""
@@ -215,9 +215,8 @@ func _is_exit_door(cell: Vector3) -> bool:
 func _add_module(parent: Node3D, module: String, xforms: Array) -> Array[Node3D]:
 	var made: Array[Node3D] = []
 	var vars: Array = VARIANTS.get(module, [module])
+	# Дальний план в тоне тира узла (BASE — бирюза, как в референсе). Раньше в BASE он красился в HARD, чтобы не спорить со стенами; стен нет.
 	var mod_tier := tier
-	if module.begins_with("far_") and tier == "BASE":
-		mod_tier = "HARD"  # дальний план темнее и синее: пласты за стенами не должны спорить с комнатой
 	for v in vars.size():
 		var list: Array = []
 		for i in xforms.size():
