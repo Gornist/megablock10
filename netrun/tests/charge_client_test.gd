@@ -154,3 +154,27 @@ func test_cancel_on_the_deck_stops_the_charge() -> void:
 	assert_bool(_node.session_state(SESSION).is_charged(GHOST)).is_false()
 	assert_bool(await _wait_for(func(): return not deck.is_charging(), 6.0)).is_true()
 	await proto.net.drop()
+
+
+## «ОТМЕНА» несколько раз подряд на одном клиенте, в том числе двойной тап: каждый заряд снимается, следующий начинается чисто, заряда нет.
+## Сценарий зависшего 05.10 прогона CI, собранный в цикл: если что-то остаётся висеть (попытка на сервере, «идёт заряд» на деке),
+## падает ожидание со сроком, а не весь прогон.
+func test_repeated_cancel_on_the_deck_leaves_no_charge_behind() -> void:
+	var proto := _client()
+	var scene := await _ready_scene(proto)
+	var deck: DeckPanel = scene.world_ui.deck
+	for round in 3:
+		scene.selected_daemon = GHOST
+		scene.charge_selected()
+		assert_bool(await _wait_for(func(): return deck.is_charging() and deck.charge_view().is_running())).is_true()
+		var cancel: Array = DeckUi.buttons(deck).filter(func(b: MbButton) -> bool: return b.text == "ОТМЕНА")
+		assert_int(cancel.size()).is_equal(1)
+		(cancel[0] as MbButton).click()
+		if round == 1 and is_instance_valid(cancel[0]):
+			(cancel[0] as MbButton).click()   # двойной тап: второй «ОТМЕНА» ничего не ломает
+		assert_bool(await _wait_for(func(): return not _node.charge.has_attempt(SESSION))).is_true()
+		assert_bool(await _wait_for(func(): return not deck.is_charging(), 6.0)).is_true()
+		assert_bool(_node.session_state(SESSION).is_charged(GHOST)).is_false()
+	assert_int(_node.charge.charged_count).is_equal(0)
+	assert_int(_node.charge.finished_count).is_equal(3)
+	await proto.net.drop()
