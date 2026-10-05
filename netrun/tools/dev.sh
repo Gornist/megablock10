@@ -82,7 +82,11 @@ for t in "\$@"; do
   if grep -aq "Debugger Break\|Parser Error" <<<"\$plain"; then
     echo "\$t: ERROR (ошибка разбора скрипта или отладчик) log=\$log"; grep -a -m3 "Parser Error\|Debugger Break" <<<"\$plain" | sed "s/^/    /"; rc_all=1; continue
   fi
-  if [[ -z "\$sumline" ]]; then echo "\$t: НЕТ ИТОГА (rc=\$rc) log=\$log"; tail -3 <<<"\$plain" | sed "s/^/    /"; rc_all=1; continue; fi
+  if [[ -z "\$sumline" ]]; then
+    echo "\$t: НЕТ ИТОГА (rc=\$rc) log=\$log"; tail -3 <<<"\$plain" | sed "s/^/    /"
+    grep -aq "No test cases found" <<<"\$plain" && echo "    набора \$t нет в netrun/tests (имя — без .gd, например daemon_vault_test)"
+    rc_all=1; continue
+  fi
   fails=\$(grep -a " FAILED" <<<"\$plain" | sed -E "s/.*tests\/([a-z_0-9]+)\.gd *> *([A-Za-z_0-9]+).*/\1::\2/" | sort -u)
   if [[ \$rc -eq 0 && -z "\$fails" ]]; then echo "\$t: ok  \$sumline"; else
     echo "\$t: FAIL \$sumline log=\$log"; rc_all=1
@@ -108,6 +112,10 @@ cmd_test() {
     echo "dev.sh: тесты по изменённым файлам: ${names[*]}"
   elif [[ "${names[0]}" == "--all" ]]; then
     names=("__ALL__")
+  else
+    # имя можно дать путём или с суффиксом .gd (daemon_vault_test.gd, netrun/tests/x_test.gd): без этого gdUnit молча находил 0 тестов
+    local i n
+    for i in "${!names[@]}"; do n=${names[$i]}; n=${n##*/}; names[$i]=${n%.gd}; done
   fi
   remote_test_script | ssh "$HOST" bash -s -- "${names[@]}"
 }
