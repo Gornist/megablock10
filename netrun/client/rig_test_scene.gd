@@ -582,7 +582,7 @@ func apply_shards(shards: Array) -> void:
 		_vault_info[id] = sh
 		var state := NodeView.vault_state_of(sh)
 		_vault_state[id] = state
-		view.set_vault_state(id, state)
+		view.set_vault_state(id, state, int(sh.get("tier", 0)))
 		if _held_ids.has(id):
 			continue
 		var ready := bool(sh.get("ready", true))
@@ -695,7 +695,9 @@ func _ensure_shard_model(sh: Dictionary, reposition: bool) -> Node3D:
 	var id := str(sh["id"])
 	var m: Node3D = _pickups.get(id)
 	var asset := NodeAssets.prop_path("shard")
-	if sh.has("enc"):
+	if str(sh.get("kind", "")) == "daemon":  # демон в хранилище (К8): плоский шестигранный токен, а не шард
+		asset = NodeAssets.prop_path("daemon_token")
+	elif sh.has("enc"):
 		asset = NodeAssets.prop_path("shard_encrypted" if bool(sh["enc"]) else "shard")
 	elif m != null:
 		asset = str(m.get_meta("asset", asset))
@@ -713,6 +715,8 @@ func _ensure_shard_model(sh: Dictionary, reposition: bool) -> Node3D:
 		var p: Array = sh["p"]
 		m.position = Vector3(p[0], p[1], p[2])
 		m.set_meta("y0", float(p[1]))
+	if sh.has("tier"):
+		NodeAssets.set_tier_nodes(m, int(sh["tier"]))  # кольца шарда кумулятивно; у токена демона таких узлов нет
 	_set_tier_label(m, int(sh.get("tier", 0)), str(sh.get("kind", "shard")) == "daemon")
 	return m
 

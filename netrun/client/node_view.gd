@@ -62,7 +62,8 @@ var _sensor: Node3D
 var _counts: Dictionary = {}
 var _doorways: Array[Node3D] = []
 var _gates: Array[Node3D] = []
-var _vaults: Dictionary = {}     # id слота -> {open, closed}
+var _vaults: Dictionary = {}     # id слота -> хранилище (props/vault.glb)
+var _vault_tier: Dictionary = {} # id слота -> тир содержимого 1–3 (последний известный)
 var _portals: Array[Dictionary] = []  # {to, open, ok, locked}
 var _closed_to: Dictionary = {}  # узлы, которые сервер отказался открыть (локдаун): портал в них закрыт, пока не придёт новое событие node
 var _seat: Node3D
@@ -293,22 +294,20 @@ func seat_node() -> Node3D:
 	return _seat
 
 
-## Хранилища под слоты шардов узла [{id, p: [x, y, z], ready, vault?}]: `vault_open` — открыто для тебя (шард парит, можно взять), `vault_closed`
-## с шардом внутри — закрыто (взять нельзя), `vault_closed` без шарда — пусто (вынесен, ждёт пополнения). Нет поля vault (старый сервер,
+## Хранилища под слоты шардов узла [{id, p: [x, y, z], ready, vault?, tier?}], props/vault.glb: State_open — открыто для тебя (шард парит, можно взять),
+## State_closed с шардом внутри — закрыто (взять нельзя), State_empty — пусто (вынесен, ждёт пополнения). Нет поля vault (старый сервер,
 ## тесты) — по ready: лежит — открыто, нет — пусто. Лицом к центру комнаты по сетке; шард лежит в метке ShardSlot на 1 м над основанием.
 func set_vaults(shards: Array) -> void:
 	for id in _vaults:
-		for n in (_vaults[id] as Dictionary).values():
-			_discard(n)
+		_discard(_vaults[id])
 	_vaults.clear()
+	_vault_tier.clear()
 	for sh in shards:
 		var p: Array = sh["p"]
 		var base := Vector3(float(p[0]), maxf(float(p[1]) - VAULT_SLOT_Y, 0.0), float(p[2]))
-		var yaw := NodeLayout.cardinal_yaw(base)
-		var open := _place(_props, NodeAssets.prop_path("vault_open"), base, yaw)
-		var closed := _place(_props, NodeAssets.prop_path("vault_closed"), base, yaw)
-		_vaults[str(sh["id"])] = {"open": open, "closed": closed}
-		set_vault_state(str(sh["id"]), vault_state_of(sh))
+		var yaw := NodeLayout.cardinal_yaw(base) + PI  # лицо vault.glb смотрит в −Z (засечки Tier_* на z = −0,31), а cardinal_yaw считан под +Z старых моделей
+		_vaults[str(sh["id"])] = _place(_props, NodeAssets.prop_path("vault"), base, yaw)  # один ассет: вид — узлы State_* и Tier_*
+		set_vault_state(str(sh["id"]), vault_state_of(sh), int(sh.get("tier", 0)))
 
 
 ## Вид хранилища слота по описанию с сервера: vault (empty | closed | open) или, если его нет, по ready.
@@ -319,12 +318,16 @@ static func vault_state_of(sh: Dictionary) -> String:
 	return VAULT_OPEN if bool(sh.get("ready", true)) else VAULT_EMPTY
 
 
-func set_vault_state(id: String, state: String) -> void:
-	var v: Dictionary = _vaults.get(id, {})
-	if v.is_empty():
+## Вид хранилища: ровно одно из State_closed / State_open / State_empty. tier — тир содержимого 1–3 (засечки Tier_k на постаменте); 0 — не менять
+## (у пустого слота тира нет: остаются засечки прежнего содержимого, пока не придёт новое).
+func set_vault_state(id: String, state: String, tier: int = 0) -> void:
+	var v: Node3D = _vaults.get(id)
+	if v == null:
 		return
-	(v["open"] as Node3D).visible = state == VAULT_OPEN
-	(v["closed"] as Node3D).visible = state != VAULT_OPEN
+	NodeAssets.set_state(v, state)
+	if tier > 0:
+		_vault_tier[id] = clampi(tier, 1, 3)
+	NodeAssets.set_tier_nodes(v, int(_vault_tier.get(id, 1)))
 
 
 ## Совместимость: шард лежит — хранилище открыто, нет — пусто.
@@ -333,8 +336,19 @@ func set_vault_ready(id: String, has_shard: bool) -> void:
 
 
 func vault_open(id: String) -> bool:
-	var v: Dictionary = _vaults.get(id, {})
-	return not v.is_empty() and (v["open"] as Node3D).visible
+	return vault_state(id) == VAULT_OPEN
+
+
+## Вид хранилища сейчас (по видимому State_*); пустая строка — такого слота нет.
+func vault_state(id: String) -> String:
+	var v: Node3D = _vaults.get(id)
+	if v == null:
+		return ""
+	for s in [VAULT_OPEN, VAULT_CLOSED, VAULT_EMPTY]:
+		var n := v.find_child("State_" + s, true, false) as Node3D
+		if n != null and n.visible:
+			return s
+	return ""
 
 
 ## Порталы узла [{to, p: [x, z], open}]: площадка и арка лицом к центру комнаты. Закрыты (portal_locked), если узел назначения

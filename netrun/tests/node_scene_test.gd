@@ -214,15 +214,86 @@ func test_ready_slot_is_open_vault_with_shard_empty_slot_is_closed_vault() -> vo
 	var scene := _scene()
 	scene.apply_node(_info("BASE", _shards(2)))
 	var used: Array = scene.used_assets()
-	assert_array(used).contains(["res://assets/models/props/vault_open.glb", "res://assets/models/props/shard.glb"])
-	assert_array(used).not_contains(["res://assets/models/props/vault_closed.glb"])
+	assert_array(used).contains(["res://assets/models/props/vault.glb", "res://assets/models/props/shard.glb"])
+	assert_array(used).not_contains(["res://assets/models/props/vault_open.glb", "res://assets/models/props/vault_closed.glb"])  # старые модели не используются
+	assert_str(scene.view.vault_state("node_x_pk1")).is_equal(NodeView.VAULT_OPEN)
 	scene.apply_shards([{"id": "node_x_pk0", "ready": false}, {"id": "node_x_pk1", "ready": true}])
 	assert_bool(scene.view.vault_open("node_x_pk0")).is_false()
 	assert_bool(scene.view.vault_open("node_x_pk1")).is_true()
-	assert_array(scene.used_assets()).contains(["res://assets/models/props/vault_closed.glb", "res://assets/models/props/vault_open.glb"])
+	assert_str(scene.view.vault_state("node_x_pk0")).is_equal(NodeView.VAULT_EMPTY)
 	# шард лежит в метке ShardSlot хранилища: на 1 м над его основанием
 	var slot: Vector3 = NodeLayout.SHARD_SLOTS[1]
 	assert_vector((scene._pickups["node_x_pk1"] as Node3D).position).is_equal_approx(slot, Vector3(0.001, 0.06, 0.001))
+
+
+## Узлы State_* хранилища, видимые сейчас (у зеркальной копии отражения те же имена — считаем и её).
+func _visible_states(vault: Node) -> Array:
+	var out: Array = []
+	for n in vault.find_children("State_*", "Node3D", true, false):
+		if (n as Node3D).visible:
+			out.append(str(n.name))
+	return out
+
+
+func test_vault_shows_exactly_one_state_for_closed_open_and_empty() -> void:
+	var scene := _scene()
+	scene.apply_node(_info("BASE", _shards(3)))
+	var vault := scene.view.find_children("*", "Node3D", true, false).filter(func(n): return str(n.get_meta("asset", "")) == NodeAssets.prop_path("vault"))[0] as Node3D
+	for state in [NodeView.VAULT_CLOSED, NodeView.VAULT_OPEN, NodeView.VAULT_EMPTY]:
+		scene.view.set_vault_state("node_x_pk0", state)
+		# корпус и зеркало отражения: у каждого видно ровно одно State_*, и это нужное
+		var visible := _visible_states(vault)
+		assert_array(visible).override_failure_message("%s: видны %s" % [state, visible]).contains_exactly(["State_" + state, "State_" + state])
+		assert_str(scene.view.vault_state("node_x_pk0")).is_equal(state)
+
+
+func test_vaults_face_the_room_center() -> void:
+	var scene := _scene()
+	scene.apply_node(_info("BASE", _shards(3)))
+	for n in scene.view.find_children("*", "Node3D", true, false):
+		if str(n.get_meta("asset", "")) != NodeAssets.prop_path("vault"):
+			continue
+		var vault := n as Node3D
+		var front := vault.global_transform.basis * Vector3(0, 0, -1)  # лицо vault.glb — Godot −Z (контракт ассета)
+		var to_center := (NodeLayout.ROOM_CENTER - vault.global_position) * Vector3(1, 0, 1)
+		assert_float(front.dot(to_center.normalized())).override_failure_message("хранилище %s смотрит не в центр комнаты" % vault.global_position).is_greater(0.7)
+
+
+func test_vault_tier_notches_are_cumulative() -> void:
+	var scene := _scene()
+	var shards := _shards(1)
+	shards[0]["tier"] = 2
+	scene.apply_node(_info("BASE", shards))
+	var vault := scene.view.find_children("*", "Node3D", true, false).filter(func(n): return str(n.get_meta("asset", "")) == NodeAssets.prop_path("vault"))[0] as Node3D
+	var want := {"Tier_1": true, "Tier_2": true, "Tier_3": false}
+	for name in want:
+		for n in vault.find_children(name, "Node3D", true, false):
+			assert_bool((n as Node3D).visible).override_failure_message("%s при тире 2" % name).is_equal(want[name])
+	scene.apply_shards([{"id": "node_x_pk0", "ready": false, "vault": "empty"}])  # пустой слот тира не знает: засечки прежние
+	assert_bool((vault.find_child("Tier_2", true, false) as Node3D).visible).is_true()
+	assert_bool((vault.find_child("Tier_3", true, false) as Node3D).visible).is_false()
+
+
+func test_daemon_in_a_vault_is_a_token_not_a_shard() -> void:
+	var scene := _scene()
+	var shards := _shards(2)
+	shards[0]["kind"] = "daemon"
+	shards[0]["tier"] = 2
+	shards[0]["enc"] = false
+	scene.apply_node(_info("BASE", shards))
+	assert_str((scene._pickups["node_x_pk0"] as Node3D).get_meta("asset")).is_equal(NodeAssets.prop_path("daemon_token"))
+	assert_str((scene._pickups["node_x_pk1"] as Node3D).get_meta("asset")).is_equal(NodeAssets.prop_path("shard"))
+
+
+func test_shard_rings_follow_the_tier() -> void:
+	var scene := _scene()
+	var shards := _shards(1)
+	shards[0]["tier"] = 1
+	scene.apply_node(_info("BASE", shards))
+	var shard := scene._pickups["node_x_pk0"] as Node3D
+	assert_bool((shard.find_child("Tier_1", true, false) as Node3D).visible).is_true()
+	assert_bool((shard.find_child("Tier_2", true, false) as Node3D).visible).is_false()
+	assert_bool((shard.find_child("Tier_3", true, false) as Node3D).visible).is_false()
 
 
 func test_shard_asset_and_encrypted_variant() -> void:

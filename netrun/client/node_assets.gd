@@ -100,6 +100,20 @@ static func mesh_parts(path: String, tier: String = "", mirrored: bool = false) 
 	return parts
 
 
+## Контракт предметов узла «волюметрик» (assets/ARCHITECTURE.md): в ассете включается РОВНО ОДНО из State_<имя> (без явного выключения видны все сразу);
+## узлы ищутся по всему дереву, чтобы переключилась и зеркальная копия отражения в полу.
+static func set_state(root: Node, state: String) -> void:
+	for n in root.find_children("State_*", "Node3D", true, false):
+		(n as Node3D).visible = str(n.name) == "State_" + state
+
+
+## Тир предмета T кумулятивно: Tier_k виден при k <= T (кольца шарда, засечки на постаменте хранилища).
+static func set_tier_nodes(root: Node, tier: int) -> void:
+	for k in range(1, 4):
+		for n in root.find_children("Tier_%d" % k, "Node3D", true, false):
+			(n as Node3D).visible = k <= tier
+
+
 ## Затухание по расстоянию и параметры шейдера на материалах частей из mesh_parts (кэш общий для всех экземпляров пути и тира). Параметр, которого у шейдера
 ## материала нет (у дымки нет far_gain), пропускается, как в AssetMaterials.set_param.
 static func tune_parts(parts: Array, fade: Vector2, params: Dictionary) -> void:
