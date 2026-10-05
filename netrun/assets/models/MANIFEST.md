@@ -10,9 +10,9 @@
 | `models/ice/black_ice_hunt.glb` | 0 / 300 | 162 / 600 | 282 / 350 | 0 | 3 | 1.3545 × 3.2935 × 2.1668 | points, streaks | — | feet | ок |
 | `models/env/cable_curve.glb` | 0 / 300 | 354 / 420 | 0 / 0 | 0 | 2 | 1.9817 × 0.2306 × 1.9636 | points | — | floor | ок |
 | `models/env/cable_straight.glb` | 0 / 300 | 354 / 420 | 0 / 0 | 0 | 2 | 1.952 × 0.2306 × 1.9827 | points | — | floor | ок |
-| `models/env/ceiling.glb` | 140 / 300 | 38 / 170 | 164 / 200 | 0 | 3 | 1.8611 × 0.95 × 1.92 | points, solid_dark, streaks | — | ceiling | ок |
-| `models/env/ceiling_b.glb` | 140 / 300 | 38 / 170 | 154 / 200 | 0 | 3 | 1.9413 × 0.95 × 1.92 | points, solid_dark, streaks | — | ceiling | ок |
-| `models/env/ceiling_c.glb` | 140 / 300 | 40 / 170 | 153 / 200 | 0 | 3 | 1.8616 × 0.95 × 1.92 | points, solid_dark, streaks | — | ceiling | ок |
+| `models/env/ceiling.glb` | 140 / 300 | 35 / 170 | 185 / 200 | 0 | 3 | 1.8675 × 0.95 × 1.92 | points, solid_dark, streaks | — | ceiling | ок |
+| `models/env/ceiling_b.glb` | 140 / 300 | 37 / 170 | 181 / 200 | 0 | 3 | 1.953 × 0.95 × 1.92 | points, solid_dark, streaks | — | ceiling | ок |
+| `models/env/ceiling_c.glb` | 140 / 300 | 37 / 170 | 169 / 200 | 0 | 3 | 1.8676 × 0.95 × 1.92 | points, solid_dark, streaks | — | ceiling | ок |
 | `models/env/column_field.glb` | 0 / 300 | 0 / 0 | 1345 / 1700 | 0 | 1 | 3.9398 × 2.8539 × 3.9 | streaks | — | floor | ок |
 | `models/env/corner.glb` | 0 / 300 | 4 / 40 | 167 / 240 | 0 | 3 | 2.0312 × 2.8919 × 1.9991 | points, streaks | — | floor | ок |
 | `models/deck/daemon_BLACKOUT.glb` | 80 / 300 | 72 / 140 | 0 / 8 | 0 | 2 | 0.0579 × 0.036 × 0.0512 | points, solid_dark | — | center | ок |
@@ -35,9 +35,9 @@
 | `models/env/far_floor.glb` | 952 / 1100 | 139 / 700 | 170 / 200 | 0 | 3 | 10.84 × 0.954 × 10.8 | points, solid_dark, streaks | — | surface | ок |
 | `models/env/far_floor_b.glb` | 952 / 1100 | 154 / 700 | 170 / 200 | 0 | 3 | 10.84 × 0.9537 × 10.8 | points, solid_dark, streaks | — | surface | ок |
 | `models/env/far_floor_c.glb` | 952 / 1100 | 160 / 700 | 170 / 200 | 0 | 3 | 10.84 × 0.9532 × 10.8 | points, solid_dark, streaks | — | surface | ок |
-| `models/env/floor.glb` | 140 / 300 | 34 / 170 | 158 / 200 | 0 | 3 | 1.9405 × 0.9396 × 1.835 | points, solid_dark, streaks | — | surface | ок |
-| `models/env/floor_b.glb` | 140 / 300 | 38 / 170 | 156 / 200 | 0 | 3 | 1.8617 × 0.95 × 1.92 | points, solid_dark, streaks | — | surface | ок |
-| `models/env/floor_c.glb` | 140 / 300 | 36 / 170 | 151 / 200 | 0 | 3 | 1.9389 × 0.95 × 1.835 | points, solid_dark, streaks | — | surface | ок |
+| `models/env/floor.glb` | 140 / 300 | 42 / 170 | 184 / 200 | 0 | 3 | 1.9524 × 0.95 × 1.835 | points, solid_dark, streaks | — | surface | ок |
+| `models/env/floor_b.glb` | 140 / 300 | 36 / 170 | 183 / 200 | 0 | 3 | 1.8676 × 0.95 × 1.92 | points, solid_dark, streaks | — | surface | ок |
+| `models/env/floor_c.glb` | 140 / 300 | 38 / 170 | 176 / 200 | 0 | 3 | 1.951 × 0.95 × 1.835 | points, solid_dark, streaks | — | surface | ок |
 | `models/env/floor_clear.glb` | 0 / 300 | 56 / 170 | 0 / 200 | 0 | 1 | 1.782 × 0.1032 × 1.75 | points | — | surface | ок |
 | `models/env/lockdown_gate.glb` | 0 / 300 | 18 / 40 | 79 / 120 | 0 | 4 | 1.98 × 2.7226 × 0.328 | points, streaks | — | floor | ок |
 | `models/env/lockdown_gate_open.glb` | 0 / 300 | 18 / 40 | 48 / 120 | 0 | 4 | 1.98 × 2.7226 × 0.328 | points, streaks | — | floor | ок |
