@@ -24,13 +24,24 @@ import java.net.Socket
  *
  * [onOutcome] узнаёт исход каждой отправки и чей ключ ответил ([answeredBy]) — по нему таблица пиров (mesh.PeerTable.reportSend)
  * ставит рабочий адрес игрока первым, отказавший — в конец, а адрес, где ответил другой игрок, переносит к нему.
+ *
+ * Соединение, которое не прошло по таймауту, повторяется один раз, но только по адресу, куда недавно ([RETRY_WINDOW_MS]) доходило: телефон
+ * с «уснувшим» Wi-Fi отвечает на первый SYN после простоя дольше таймаута (живая проверка 05.10: первое соединение T1→T2 — таймаут 2 с, повтор
+ * через 4 с — 350 мс). Повтор безопасен для денег: до записи строки ничего не ушло (NOT_REACHED), а для давно молчащих адресов он не
+ * удваивает ожидание.
  */
 class LineSocketClient(
     private val log: KitLog = NoopLog,
     private val defaultTimeoutMs: Int = 2000,
     private val ackTimeoutMs: Int = 5000,
+    private val socketFactory: () -> Socket = { Socket() },
+    private val clock: () -> Long = System::currentTimeMillis,
+    // Последним: вызывающие передают его конец-лямбдой.
     private val onOutcome: (host: String, port: Int, outcome: SendOutcome, answeredBy: String?) -> Unit = { _, _, _, _ -> },
 ) {
+    /** Когда по адресу последний раз была доставка (DELIVERED); потоков несколько — отправки идут параллельно. */
+    private val lastDelivered = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
     fun sendLine(host: String, port: Int, line: String, timeoutMs: Int = defaultTimeoutMs): Boolean =
         sendLineOutcome(host, port, line, timeoutMs) == SendOutcome.DELIVERED
 
@@ -40,16 +51,31 @@ class LineSocketClient(
      */
     fun sendLineOutcome(host: String, port: Int, line: String, timeoutMs: Int = defaultTimeoutMs, expectAckFrom: String? = null): SendOutcome {
         var answeredBy: String? = null
-        return connectAndWrite(host, port, line, timeoutMs, expectAckFrom) { answeredBy = it }.also { onOutcome(host, port, it, answeredBy) }
+        val key = "$host:$port"
+        val mayRetryConnect = clock() - (lastDelivered[key] ?: Long.MIN_VALUE / 2) < RETRY_WINDOW_MS
+        return connectAndWrite(host, port, line, timeoutMs, expectAckFrom, mayRetryConnect) { answeredBy = it }.also {
+            if (it == SendOutcome.DELIVERED) lastDelivered[key] = clock()
+            onOutcome(host, port, it, answeredBy)
+        }
     }
 
-    private fun connectAndWrite(host: String, port: Int, line: String, timeoutMs: Int, expectAckFrom: String?, answered: (String) -> Unit): SendOutcome {
-        val socket = Socket()
-        val started = System.currentTimeMillis()
-        fun took() = System.currentTimeMillis() - started
+    private fun connectAndWrite(
+        host: String, port: Int, line: String, timeoutMs: Int, expectAckFrom: String?, mayRetryConnect: Boolean, answered: (String) -> Unit,
+    ): SendOutcome {
+        var socket = socketFactory()
+        val started = clock()
+        fun took() = clock() - started
         return try {
             try {
-                socket.connect(InetSocketAddress(host, port), timeoutMs)
+                try {
+                    socket.connect(InetSocketAddress(host, port), timeoutMs)
+                } catch (e: java.net.SocketTimeoutException) {
+                    if (!mayRetryConnect) throw e
+                    log.warnEvent(TAG, "send.connect_retry", "to" to "$host:$port", "ms" to took())
+                    try { socket.close() } catch (ignored: Exception) { /* после неудачного connect сокет негоден */ }
+                    socket = socketFactory()
+                    socket.connect(InetSocketAddress(host, port), timeoutMs)
+                }
             } catch (e: Exception) {
                 log.warnEvent(TAG, "send.not_reached", "to" to "$host:$port", "error" to e.javaClass.simpleName, "msg" to e.message, "ms" to took(), "chars" to line.length)
                 return SendOutcome.NOT_REACHED
@@ -99,6 +125,8 @@ class LineSocketClient(
     private companion object {
         const val TAG = "Socket"
         const val MAX_ACK_CHARS = 1024
+        /** Повторять соединение по таймауту только по адресу, куда доходило не раньше, чем столько назад. */
+        const val RETRY_WINDOW_MS = 5 * 60_000L
     }
 }
 
