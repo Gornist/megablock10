@@ -42,6 +42,15 @@ mDNS не используем (в Godot нет, на Android капризен).
 `call_log[...]`, `sound{kind}`. Очки → телефон: `hello_ack{v}`, `send_text{thread,preset_id}` (по id заготовки, не по тексту), `mark_read{thread}`, `accept`, `decline`,
 `hangup`, `mute{on}`, `start_call{peer}`, `resync`. Обрыв: очки показывают «ТЕЛЕФОН НЕ НА СВЯЗИ» и последнее известное; пропущенный звонок остаётся на телефоне.
 
+**Конверт кадра (точный формат).** Объект JSON с полем `t` (тип) и плоскими полями; неизвестные поля и типы читающая сторона игнорирует.
+Телефон → очки:
+`{"t":"hello","v":1,"callsign":"…"}` · `{"t":"threads","items":[{id,kind,title,last_text,last_ts,unread}]}` · `{"t":"messages","thread":"<id>","items":[{id,thread,mine,text,ts,status,from}]}` (полная
+замена истории диалога) · `{"t":"message","msg":{id,thread,mine,text,ts,status,from}}` (одно новое или изменившееся) · `{"t":"call","phase":"idle|outgoing|incoming|in_call","peer":"…","since_ts":0,"muted":false}` ·
+`{"t":"call_log","items":[{peer,dir,ts,duration_s}]}` · `{"t":"sound","kind":"ring|ringback|message|stop"}`.
+Очки → телефон: `{"t":"hello_ack","v":1}` · `{"t":"send_text","thread":"<id>","preset":"yes|no|later|callback|hi|cu"}` · `{"t":"mark_read","thread":"<id>"}` · `{"t":"accept"}` · `{"t":"decline"}` · `{"t":"hangup"}` ·
+`{"t":"mute","on":true}` · `{"t":"start_call","peer":"<позывной>"}` · `{"t":"resync"}` (телефон отвечает `threads` и `messages` по каждому диалогу).
+После `hello_ack` очки сами шлют `resync`. Кадр больше 256 КБ — ошибка, соединение закрывается.
+
 **Уточнения формата (согласовано с сессией Android App, 05.10.2026):**
 - **Токен** — в query адреса: `ws://host:7420/?token=<токен>` (латиница, цифры, `-`, `_`); очки проверяют его до `hello` по `get_requested_url()`. Не в заголовке:
   серверный `WebSocketPeer` Godot заголовки рукопожатия не отдаёт (поправка 05.10.2026). Порт по умолчанию 7420.
