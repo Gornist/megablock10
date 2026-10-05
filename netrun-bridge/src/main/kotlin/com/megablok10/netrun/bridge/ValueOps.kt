@@ -230,7 +230,9 @@ class ValueOps(
                 if (VJ.str(it.data, "owner") != "node:$node") fail("wrong_owner", "предмет не в узле", it)
                 if (openedByOther(session, item, clock()) != null) fail("claimed", "хранилище открыто взломом другой сессии", it)
                 val deck = loadDeck(tx, session)
-                val moved = tx.put(ITEM, it.id, it.ver, VJ.with(it.data, "owner" to VJ.p("deck:$session")))
+                // `taken_at` — узел, где взяли: `origin` у предмета, оставленного в чужом узле, остаётся прежним (где создан), а сервер
+                // мира после рестарта по нему решает, чью добычу несёт игрок (протокол, 6.2)
+                val moved = tx.put(ITEM, it.id, it.ver, VJ.with(it.data, "owner" to VJ.p("deck:$session"), "taken_at" to VJ.p(node)))
                 putDeckItems(tx, deck, (deckItems(deck) + item).distinct())
                 VJ.obj("item" to VJ.docJson(moved))
             }
@@ -252,7 +254,7 @@ class ValueOps(
             if (VJ.str(it.data, "owner") != "deck:$session") fail("wrong_owner", "предмет не в деке сессии", it)
             if (VJ.bool(it.data, "protected")) fail("protected_item", "защищённого демона можно только на телефон", it)
             val deck = loadDeck(tx, session)
-            val moved = tx.put(ITEM, it.id, it.ver, VJ.with(it.data, "owner" to VJ.p("node:$node")))
+            val moved = tx.put(ITEM, it.id, it.ver, VJ.with(it.data, "owner" to VJ.p("node:$node"), "taken_at" to JsonNull))
             putDeckItems(tx, deck, deckItems(deck) - item)
             VJ.obj("item" to VJ.docJson(moved))
         }

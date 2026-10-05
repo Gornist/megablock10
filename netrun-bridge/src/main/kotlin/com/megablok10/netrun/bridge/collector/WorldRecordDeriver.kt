@@ -1,5 +1,6 @@
 package com.megablok10.netrun.bridge.collector
 
+import com.megablok10.netrun.bridge.BreachAlertRule
 import com.megablok10.netrun.bridge.Change
 import com.megablok10.netrun.bridge.Doc
 import com.megablok10.netrun.bridge.DocKey
@@ -8,6 +9,7 @@ import com.megablok10.netrun.bridge.ValueOps
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -43,6 +45,8 @@ internal object WorldRecords {
     const val FLATLINE = "NET_FLATLINE"
     const val ITEM_OWNER = "NET_ITEM_OWNER"
     const val ALERT_REASON = "NET_ALERT"
+    const val BREACH = "net.breach"
+    const val BREACH_REASON = "NET_BREACH"
 
     /** Предел `newValue` на стороне коллектора (`MAX_JSON_CHARS`). */
     const val MAX_VALUE_CHARS = 4096
@@ -84,7 +88,7 @@ private class Derivation(changes: List<Change>, private val previous: (DocKey) -
     /** Операция, записавшая `op_rid` в этой транзакции (`rid` и имя операции); null — транзакция не от операции с ценностями. */
     private val op: Pair<String, String?>? by lazy { findOp() }
 
-    fun run(): List<WorldEvent> = sessionEvents() + itemEvents() + alertEvents()
+    fun run(): List<WorldEvent> = sessionEvents() + breachEvents() + itemEvents() + alertEvents()
 
     private fun docs(type: String): List<Doc> = now.values.filter { it.type == type }.sortedBy { it.id }
 
@@ -211,6 +215,32 @@ private class Derivation(changes: List<Change>, private val previous: (DocKey) -
         val name = runCatching { (Json.parseToJsonElement(VJ.str(rec.data, "params").orEmpty()) as? JsonObject)?.let { VJ.str(it, "op") } }.getOrNull()
         VJ.str(rec.data, "rid")?.let { it to name }
     }.firstOrNull { it.second != "refund" }
+
+    // ---------- взломы хранилищ ----------
+
+    /**
+     * Итог `run.breach` (раздел 2.7 C2): в транзакции вырос `session.breach.n`. Отказы (`cooldown`, `session_state`) документов не
+     * меняют, поэтому записи не дают; повтор запроса по тому же `rid` отдаёт сохранённый ответ и тоже ничего не меняет.
+     * Сигнал СБ (`alert`, `alert_at`) берётся из документа `sec_alert`, записанного той же транзакцией; null — сигнала не будет.
+     */
+    private fun breachEvents(): List<WorldEvent> = docs(ValueOps.SESSION).mapNotNull { s ->
+        val breach = s.data["breach"] as? JsonObject ?: return@mapNotNull null
+        val prevN = before(s)?.let { p -> (p.data["breach"] as? JsonObject)?.let { VJ.lng(it, "n") } } ?: 0L
+        if (VJ.lng(breach, "n") <= prevN) return@mapNotNull null
+        val value = runBase(s, VJ.str(breach, "node") ?: sessionNode(s))
+        value["tier"] = VJ.p(VJ.str(breach, "tier").orEmpty())
+        value["n"] = VJ.p(VJ.lng(breach, "n"))
+        value["outcome"] = VJ.p(VJ.str(breach, "outcome").orEmpty())
+        value["effects"] = VJ.p(VJ.list(breach, "effects").joinToString(","))
+        value["eddies"] = VJ.p(VJ.lng(breach, "eddies"))
+        value["opened"] = VJ.p(VJ.lng(breach, "opened_n"))
+        value["exhausted"] = VJ.p(VJ.bool(breach, "exhausted"))
+        val alertId = VJ.str(breach, "alert")
+        val alertDoc = alertId?.let { lookup(BreachAlertRule.TYPE, it) }
+        value["alert"] = VJ.p(alertId)
+        value["alert_at"] = alertDoc?.let { VJ.p(VJ.lng(it.data, "send_at")) } ?: JsonNull
+        event(WorldRecords.BREACH, WorldRecords.BREACH_REASON, s, value)
+    }
 
     // ---------- тревоги ----------
 

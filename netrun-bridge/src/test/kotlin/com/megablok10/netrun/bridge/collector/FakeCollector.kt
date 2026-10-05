@@ -34,7 +34,7 @@ class FakeCollector : AutoCloseable {
     val stored: MutableMap<String, JsonObject> = java.util.Collections.synchronizedMap(LinkedHashMap<String, JsonObject>())
 
     /** Ответ `GET /api/capabilities`: тело JSON или null — 404 (старый коллектор без этой ручки). */
-    @Volatile var capabilities: String? = """{"world_records":1,"world_events":1}"""
+    @Volatile var capabilities: String? = """{"world_records":2,"world_events":1}"""
 
     /** Следующий ответ на `POST /api/changes` запись принимает, но до клиента не доходит (обрыв сети после приёма). */
     @Volatile var dropNextResponse = false
@@ -225,8 +225,8 @@ class FakeCollector : AutoCloseable {
 
     companion object {
         /** Закрытые списки `lib/changeRecord.ts` (только записи мира: остальные поля игроков тестам не нужны). */
-        private val FIELDS = setOf("balance", "net.run", "net.item", "net.alert")
-        private val REASONS = setOf("TRANSFER_IN", "NET_ENTER", "NET_EXIT", "NET_FLATLINE", "NET_ITEM_OWNER", "NET_ALERT")
+        private val FIELDS = setOf("balance", "net.run", "net.item", "net.alert", "net.breach")
+        private val REASONS = setOf("TRANSFER_IN", "NET_ENTER", "NET_EXIT", "NET_FLATLINE", "NET_ITEM_OWNER", "NET_ALERT", "NET_BREACH")
         private const val MAX_JSON_CHARS = 4096
         private const val MAX_EVENTS = 50
         private const val MAX_REF = 100

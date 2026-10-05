@@ -19,6 +19,9 @@
     чек-листы, e2e): итоги — `docs/netrun-tasks.md`, «MVP без очков»; в `main` — по команде владельца. Дальше — очки: V6б, N9, P9.
     Godot-часть ведёт агент `godot-dev` (`.claude/agents/godot-dev.md`): живой редактор Godot с плагином Godot AI (MCP) на devbox,
     тесты — gdUnit4 (`netrun/tools/gdunit.sh`, 223 теста); подробности — `docs/netrun-devbox.md`, «Godot AI».
+    **Дека в очках** влита в `main` 5.10.2026 (`2d747e1`); порядок прогона на Pico — `docs/netrun-deck-results/headset-run.md`. Ветка `agent/deck-k9`:
+    запись `NET_BREACH` в Мосте (шлёт только при `capabilities.world_records = 2`, значит вливать вместе с PR коллектора) и `item.taken_at`
+    (узел взятия: сервер мира после рестарта узнаёт свою добычу в графе). Остаются очки: подбор чисел, читаемость 6×6/7×7, заряд на запястье.
   - **3D-ассеты «Сети»** (Blender → `.glb` → Godot) — ТЗ `docs/netrun-assets-brief.md`; моделлер работает в своей ветке (`scripts/agent-worktree.sh new assets`).
   - **Дашборд мастера** — только `admin-web/`.
   - **UI на новой дизайн-системе** — `agent/ui-kit`.

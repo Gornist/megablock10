@@ -177,6 +177,7 @@ func op_take_from_node(session: String, node: String, item: String) -> Dictionar
 			return err("claimed", "хранилище открыто взломом другой сессии", it.duplicate(true))
 		var d: Dictionary = (it["data"] as Dictionary).duplicate()
 		d["owner"] = "deck:" + session
+		d["taken_at"] = node
 		return ok({"item": _put(T_ITEM, item, d).duplicate(true)}))
 
 
@@ -208,6 +209,7 @@ func op_leave_in_node(session: String, node: String, item: String) -> Dictionary
 			return err("protected_item", "защищённого демона нельзя оставить")
 		var d: Dictionary = (it["data"] as Dictionary).duplicate()
 		d["owner"] = "node:" + node
+		d["taken_at"] = null
 		return ok({"item": _put(T_ITEM, item, d).duplicate(true)}))
 
 
