@@ -56,9 +56,18 @@ const ARRIVE_DIST := 3.0
 ## К какой точке комнаты смотрит «внутрь» вход от портала.
 const ROOM_CENTER := Vector3(0, 0, -6)
 
+## Площадка у хранилища (К3): игрок, телепортировавшийся ближе VAULT_SNAP_RADIUS к хранилищу, встаёт в VAULT_PAD_DIST перед ним (с той стороны,
+## куда смотрит модель) и разворачивается к нему: и панель взлома (0,65 м от глаз), и парящий шард в досягаемости сидя. Одна функция на сервер и клиент.
+const VAULT_PAD_DIST := 0.85
+const VAULT_SNAP_RADIUS := 1.6
+## Дальше этого от хранилища сервер не начинает взлом (м, по плоскости): запас на плоскую сборку и неточность посадки.
+const BREACH_REACH := 3.0
+
 ## Колода по умолчанию (демоны из data/daemons) и названия для деки.
 const DEFAULT_DECK := ["ghost_1", "jitter_1"]
 const DAEMON_NAMES := {"ghost_1": "Призрак", "jitter_1": "Дрожь", "extract_shard_1": "Извлечение"}
+## Цепочки колоды по умолчанию (без Моста демоны приходят без цепочек): по ним работают заряд и взлом на стенде без Моста. Коды — из алфавита breach.json.
+const DEFAULT_DECK_CELLS := {"ghost_1": ["1C", "BD"], "jitter_1": ["55", "E9"]}
 
 
 static func in_room(p: Vector3) -> bool:
@@ -120,6 +129,29 @@ static func cardinal_yaw(p: Vector3) -> float:
 	if absf(dx) > absf(dz):
 		return PI / 2.0 if dx > 0.0 else -PI / 2.0
 	return 0.0 if dz > 0.0 else PI
+
+
+## Площадка перед хранилищем в слоте slot (позиция шарда над ним, y не важен): с той стороны, куда смотрит модель (cardinal_yaw), на пол.
+static func vault_pad(slot: Vector3) -> Vector3:
+	var yaw := cardinal_yaw(Vector3(slot.x, 0.0, slot.z))
+	return clamp_to_room(Vector3(slot.x + sin(yaw) * VAULT_PAD_DIST, 0.0, slot.z + cos(yaw) * VAULT_PAD_DIST))
+
+
+## Точка телепорта p после привязки к площадке: ближайшее хранилище (из slots — позиции шардов) в пределах VAULT_SNAP_RADIUS даёт его площадку.
+## Ответ {p, look}: look — Vector3 хранилища, к которому надо развернуть взгляд, или null, если привязки нет.
+static func snap_to_vault_pad(p: Vector3, slots: Array) -> Dictionary:
+	var best: Variant = null
+	var best_d := VAULT_SNAP_RADIUS
+	for s in slots:
+		var d := flat_distance(p, s)
+		if d <= best_d:
+			best_d = d
+			best = s
+	if best == null:
+		return {"p": p, "look": null}
+	var slot: Vector3 = best
+	var pad := vault_pad(slot)
+	return {"p": Vector3(pad.x, p.y, pad.z), "look": Vector3(slot.x, 0.0, slot.z)}
 
 
 ## Где игрок появляется, пройдя через портал слота: на ARRIVE_DIST от него в сторону центра комнаты (вне радиуса портала —

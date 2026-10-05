@@ -18,6 +18,10 @@ config/features=PackedStringArray("4.7", "Mobile")
 
 enabled=PackedStringArray("res://addons/gdUnit4/plugin.cfg")
 
+[gdunit4]
+
+settings/test/test_timeout_seconds=120
+
 [rendering]
 
 renderer/rendering_method="mobile"

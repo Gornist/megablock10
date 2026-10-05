@@ -74,7 +74,8 @@
  "reason": "NET_ENTER", "sourceRef": "s_9f2c41d07a3e5b60", "actor": "<world_pub>", "signature": "…"}
 ```
 
-`deck` — число сданных предметов. Учебный забег — тот же формат (`node` = учебный узел).
+`deck` — число сданных предметов. Учебный забег — тот же формат (`node` = учебный узел). С К2 — ещё `"ram": 6` (`session.ram`,
+протокол Моста, раздел 8); формат записи прежний, коллектор её уже принимает.
 
 ### 2.3 Выход: `net.run` / `NET_EXIT`
 
@@ -124,8 +125,13 @@
  "reason": "NET_ITEM_OWNER", "sourceRef": "it_4c1a0b2e9d7f6a81", "actor": "<world_pub>", "signature": "…"}
 ```
 
-`from`/`to` — значения `owner` из C1 (раздел 5); `op` — `take_from_node|leave_in_node|run.finish|issue_to_phone`; `rid` — для
+`from`/`to` — значения `owner` из C1 (раздел 5); `op` — `take_from_node|leave_in_node|run.finish|issue_to_phone|give_item`; `rid` — для
 сопоставления с повтором. Эдди **не** пишутся этой записью: у них нет документа предмета, а выплата — Handover.
+
+**Передача из Сети** (`op.give_item`, C1 6.7) — (д): значимы оба её перехода, `deck:<s> → deck:<s2>` и `deck:<s> → outbox:<ключ>`
+(обычный `deck → outbox` без записи — это выход, а передача — нет). В `newValue` добавляются `node` (текущий узел отправителя) и
+`callsign` (позывной отправителя): мастеру нужно «кто, кому, что, из какого узла» ([дизайн деки](netrun-deck-design.md) §9.2). Потом чек телефона даёт ещё одну
+запись `outbox → phone:` с `op = issue_to_phone`, как у любой выдачи. Формат записи прежний: коллектор её уже принимает.
 
 ### 2.6 Тревога аудитора: `net.alert` / `NET_ALERT`
 
@@ -153,6 +159,23 @@
 расхождение, пока документ жив, не создаётся (id документа от `kind|subject`, `Auditor.kt:115`), значит запись одна. Если мастер
 снял тревогу, а расхождение живо, аудитор создаёт документ заново (тот же id, `ver = 1`): это второе появление, у него своя транзакция,
 значит своя запись и свой `id` (`txSeq` другой). Запись пишется только при создании документа; правка существующей тревоги записи не даёт.
+
+### 2.7 Взлом хранилища: `net.breach` / `NET_BREACH`
+
+Когда: `run.breach` (C1 6.6) записал итог — изменилось `session.breach.n`. Отказы (`cooldown`, `session_state`) записи не дают: в
+документах ничего не меняется. Кто читает: журнал мастера (аналог `counters.breach` телефона, который в Сети не пишется — телефон в
+кармане), статистика взломов узлов, сверка эдди.
+
+```json
+{"id": "w:net.breach:k3f9a2xq:5120:s_9f2c41d07a3e5b60", "subjectKeyB64": "<world_pub>", "seq": 433, "happenedAt": 1790000600000,
+ "field": "net.breach", "oldValue": null,
+ "newValue": "{\"session\":\"s_9f2c41d07a3e5b60\",\"runner\":\"MFkwEwYH…\",\"callsign\":\"Призрак\",\"node\":\"node_07\",\"tier\":\"HARD\",\"n\":3,\"outcome\":\"PARTIAL\",\"effects\":\"EXTRACT_SHARD,GHOST\",\"eddies\":5,\"opened\":1,\"exhausted\":false,\"alert\":\"sa_5e0c19ab77d2f310\",\"alert_at\":1790000720000}",
+ "reason": "NET_BREACH", "sourceRef": "s_9f2c41d07a3e5b60", "actor": "<world_pub>", "signature": "…"}
+```
+
+`effects` — строка через запятую (ключи плоские, раздел 2.1); `alert`/`alert_at` — `null`, если сигнала не будет. `sourceRef` — сессия:
+одна транзакция — один взлом, пара (`txSeq`, `sourceRef`) уникальна. **Новые для коллектора** `field` и `reason` — запрос M7, раздел 5,
+п. 7; до него Мост такие записи не шлёт (раздел 7, «capabilities»).
 
 ## 3. Быстрые события на точки площадки
 
@@ -205,6 +228,9 @@
 | `run.finish` clean/emergency/soft_ice/aborted | `NET_EXIT`, `NET_ITEM_OWNER` (по значимым предметам) | `run.exit` (+`lockdown` при soft_ice) |
 | `run.finish` black_ice | `NET_FLATLINE`, `NET_ITEM_OWNER` (мёртвая дека) | `flatline`, `run.exit` |
 | `take_from_node`, `leave_in_node` | `NET_ITEM_OWNER` | — |
+| `op.give_item` | `NET_ITEM_OWNER` (`op: give_item`) | — |
+| `run.breach` (итог записан) | `NET_BREACH` | — |
+| `op.decrypt_item` | — (владелец не меняется; шард придёт на телефон открытым карточкой) | — |
 | тревога аудитора | `NET_ALERT` | `alert.master` |
 | эдди на телефон | — (карточка Handover; запись `TRANSFER_IN` пишет телефон) | — |
 
@@ -232,6 +258,10 @@
    открытый `GET /api/capabilities → {"world_records": 1, "world_events": 1}` или поле в ответе `/api/changes`. Без него Мост
    в M4 слать не должен (иначе записи тихо теряются, раздел 1).
 6. **Вид «Сеть» в дашборде** (на усмотрение сессии коллектора): кто в Сети сейчас, лента `net.*`, тревоги, предметы в узлах.
+7. **Взломы в Сети (дека, К9).** `FIELDS += "net.breach"`, `REASONS += "NET_BREACH"` (раздел 2.7), подписи ленты; свёртка персонажа
+   их пропускает, как остальные `net.*`. После этого `GET /api/capabilities` отвечает `world_records: 2` — значит «понимаю и v1, и
+   NET_BREACH». Мост, выводящий `NET_BREACH`, шлёт очередь только при `world_records ≥ 2`; у коллектора с `1` очередь стоит целой
+   (ничего не теряется: kit удаляет только отвергнутое). Подписи для `NET_ITEM_OWNER` с `op: give_item` («передача из Сети») — по желанию.
 
 ## 6. Что неясно
 
@@ -256,7 +286,8 @@
 |---|---|
 | `NET_ENTER` | создан документ `session` в `pending`; `deck`/`protected` — из документа `deck` этой же транзакции |
 | `NET_EXIT` / `NET_FLATLINE` | `session` стал `closed` (`black_ice` — флэтлайн); `returned/burned/left_in_node` — по предметам, вышедшим из `deck:<s>` в `outbox:`/`burned:`/`node:`; `node` — текущий (`world.node`, иначе узел входа); `duration_s` — от курка (`confirmed_at`, нет — от создания) до `finished_at`; `lockdown_until` — из документа узла (только `soft_ice`); `alert` — тревога `flatline` этой же транзакции |
-| `NET_ITEM_OWNER` | `item.owner` сменился на значимый переход (раздел 2.5); `op`/`rid` — из документа `op_rid` этой транзакции |
+| `NET_ITEM_OWNER` | `item.owner` сменился на значимый переход (раздел 2.5); `op`/`rid` — из документа `op_rid` этой транзакции; для `give_item` значимы и `deck → deck`, `deck → outbox` (К5б) |
+| `NET_BREACH` | у `session` изменилось `data.breach.n` (К4); поля — из `session.breach` (`opened` = `opened_n`), `alert_at` — из `sec_alert` этой транзакции |
 | `NET_ALERT` | создан документ `alert` любого вида, кроме `flatline` (он уже `NET_FLATLINE`), `master_request` и `net_query` (вызовы мастера) |
 
 Решения при чтении C2, которых текст не фиксировал: (1) чек телефона (`outbox → phone:`) идёт без операции — пишется `op = issue_to_phone`,

@@ -11,12 +11,14 @@ import com.megablok10.kit.time.ManualClock
 import com.megablok10.netrun.bridge.Auditor
 import com.megablok10.netrun.bridge.CommitHook
 import com.megablok10.netrun.bridge.DocStore
+import com.megablok10.netrun.bridge.GiveTarget
 import com.megablok10.netrun.bridge.Move
 import com.megablok10.netrun.bridge.MoveTo
 import com.megablok10.netrun.bridge.StockItem
 import com.megablok10.netrun.bridge.StoreException
 import com.megablok10.netrun.bridge.VJ
 import com.megablok10.netrun.bridge.ValueFixture
+import com.megablok10.netrun.bridge.giveItem
 import com.megablok10.netrun.bridge.phone.WorldJournal
 import com.megablok10.netrun.bridge.phone.WorldKey
 import kotlinx.coroutines.CoroutineScope
@@ -246,6 +248,55 @@ class WorldRecordsTest {
         assertEquals("node:node_07", VJ.str(v, "to"))
         assertEquals("leave_in_node", VJ.str(v, "op"))
         assertEquals("leave:$sid:it_dA2", VJ.str(v, "rid"))
+    }
+
+    private fun Rig.gives(): List<JsonObject> = of("NET_ITEM_OWNER").map { value(it) }.filter { VJ.str(it, "op") == "give_item" }
+
+    @Test fun giveToASessionWritesOneItemOwnerWithNodeAndCallsign() {
+        val rig = rig()
+        val a = rig.enterActive()
+        val b = rig.f.enterActive(rig.f.keyB, "t04", "it_dB1", "it_dB2")
+        assertTrue(rig.f.ops.takeFromNode(rig.f.world, "take:$a:it_sh1", a, "node_07", "it_sh1").ok)
+        val ver = rig.f.store.get("item", "it_sh1")!!.ver
+        val rid = "give:$a:it_sh1:$ver"
+        assertTrue(rig.f.ops.giveItem(rig.f.world, rid, a, "it_sh1", ver, GiveTarget.Session(b)).ok)
+        val v = rig.gives().single()
+        assertEquals("deck:$a", VJ.str(v, "from"))
+        assertEquals("deck:$b", VJ.str(v, "to"))
+        assertEquals(rid, VJ.str(v, "rid"))
+        assertEquals(a, VJ.str(v, "session")) // сессия и нетраннер — отправителя
+        assertEquals(rig.f.keyA, VJ.str(v, "runner"))
+        assertEquals("node_07", VJ.str(v, "node"))
+        assertEquals("Призрак", VJ.str(v, "callsign"))
+        assertEquals("SHARD", VJ.str(v, "kind"))
+    }
+
+    @Test fun giveToAPhoneWritesTheGiveAndThenTheReceiptSeparately() {
+        val rig = rig()
+        val a = rig.enterActive()
+        assertTrue(rig.f.ops.takeFromNode(rig.f.world, "take:$a:it_sh1", a, "node_07", "it_sh1").ok)
+        val ver = rig.f.store.get("item", "it_sh1")!!.ver
+        val key = Ecdsa.encodeKey(Ecdsa.generateKeyPair().public)
+        val res = rig.f.ops.giveItem(rig.f.world, "give:$a:it_sh1:$ver", a, "it_sh1", ver, GiveTarget.Phone(key))
+        assertTrue(res.body.toString(), res.ok)
+        val v = rig.gives().single()
+        assertEquals("deck:$a", VJ.str(v, "from"))
+        assertEquals("outbox:$key", VJ.str(v, "to")) // в отличие от выхода (deck → outbox без записи), передача значима
+        assertEquals("node_07", VJ.str(v, "node"))
+        val tid = VJ.str(rig.f.store.get("item", "it_sh1")!!.data, "out_transfer")!!
+        assertEquals(1, runBlocking { WorldJournal(rig.f.store).confirm(tid) })
+        val receipt = rig.of("NET_ITEM_OWNER").map { value(it) }.single { VJ.str(it, "to") == "phone:$key" }
+        assertEquals("issue_to_phone", VJ.str(receipt, "op"))
+    }
+
+    @Test fun refusedGiveWritesNothing() {
+        val rig = rig()
+        val a = rig.enterActive()
+        val b = rig.f.enterActive(rig.f.keyB, "t04", "it_dB1", "it_dB2")
+        val before = rig.records().size
+        val ver = rig.f.store.get("item", "it_dA1")!!.ver // защищённый: отказ
+        assertEquals("protected_item", rig.f.ops.giveItem(rig.f.world, "give:$a:it_dA1:$ver", a, "it_dA1", ver, GiveTarget.Session(b)).code)
+        assertEquals(before, rig.records().size)
     }
 
     @Test fun receiptFromPhoneWritesItemLeftTheNet() {

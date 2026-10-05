@@ -40,4 +40,7 @@ dependencies {
     signature("net.sf.androidscents.signature:android-api-level-26:8.0.0_r2@signature")
 
     testImplementation("junit:junit:4.13.2")
+    // Тесты читают и выгружают JSON для GDScript-порта (netrun/data/rules/breach.json, netrun/tests/fixtures/breach_golden.json).
+    // Только тестам: основной код модуля остаётся без JSON-библиотек (он уходит в APK).
+    testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
 }

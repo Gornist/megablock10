@@ -35,8 +35,11 @@ jobs:
       - name: Импорт проекта
         run: godot --headless --path netrun --import
 
+      # Нормальный прогон — 3–4 мин. Сторож gdunit_ci.sh при «нет вывода 240 с» снимает состояние процесса и перезапускает набор один раз
+      # (05.10 один прогон встал на 50 минут до ручной отмены); timeout-minutes — предел на случай, если не сработал и сторож.
       - name: Тесты gdUnit4 (без экрана)
-        run: godot --headless --path netrun -s -d res://addons/gdUnit4/bin/GdUnitCmdTool.gd --add res://tests --ignoreHeadlessMode
+        timeout-minutes: 25
+        run: netrun/tools/gdunit_ci.sh res://tests
 
       - name: Отчёты gdUnit4
         if: always()

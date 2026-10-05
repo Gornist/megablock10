@@ -4,7 +4,7 @@ import kotlinx.serialization.json.JsonObject
 
 /**
  * Проверки общего `put`/`del` (протокол, разделы 3 и 5): какие типы роли можно писать и что считается ценностью.
- * Ценности (`item`, `deck`, `payout`, `op_rid`, `session` кроме `data.world`, `node.data.eddies`) общий путь не трогает — только операции B3.
+ * Ценности (`item`, `deck`, `payout`, `op_rid`, `session` кроме `data.world`, `node.data.eddies`) и решённые сигналы СБ (`sec_alert`, удалять можно) общий путь не трогает — только операции B3.
  */
 internal object WriteGuard {
     private val worldTypes = setOf("node", "session", "alert")
@@ -20,6 +20,7 @@ internal object WriteGuard {
             in bridgeOnly -> true
             "session" -> cur == null || data == null || withoutWorld(cur.data) != withoutWorld(data)
             "node" -> cur != null && data != null && cur.data["eddies"] != data["eddies"]
+            "sec_alert" -> data != null // пишет только run.breach; мастер может удалить (протокол, раздел 5)
             else -> false
         }
         if (bad) throw StoreException("value_field", "тип $type или его поле — ценность, нужна операция из раздела 6", cur)

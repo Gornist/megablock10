@@ -74,6 +74,20 @@ func threads() -> Array:
 	return _threads.duplicate(true)
 
 
+## Контакты — собеседники личных диалогов; ключи придуманы (base64 от имени), настоящий телефон даст настоящие.
+func contacts() -> Array:
+	var out := []
+	for t in _threads:
+		if t["kind"] == PhoneLink.KIND_DM:
+			out.append({"key": fake_key(str(t["title"])), "title": str(t["title"])})
+	return out
+
+
+## Придуманный ключ контакта: допустимый base64 нужной длины (проверка сервера мира), но не настоящий SPKI — настоящий Мост такой ключ не примет.
+static func fake_key(name: String) -> String:
+	return "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE" + Marshalls.utf8_to_base64("fake-contact:" + name).replace("=", "")
+
+
 func messages(thread_id: String, limit: int = PhoneLogic.MESSAGES_SHOWN) -> Array:
 	var all: Array = _msgs.get(thread_id, [])
 	if limit <= 0 or all.is_empty():

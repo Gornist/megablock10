@@ -19,6 +19,10 @@ const WRIST_DECK_POS := Vector3(0, -(WRIST_DECK_LENGTH_M * 0.5 + WRIST_DECK_GAP 
 ## Trace — за дальним (к локтю) краем деки.
 const WRIST_TRACE_POS := Vector3(0, WRIST_DECK_POS.y - (WRIST_DECK_LENGTH_M * 0.5 + 0.045), 0)
 const FLAT_TRACE_POS := Vector3(0, 0.14, 0)
+## На время сетки заряда (К6) дека на запястье увеличивается до этого масштаба (32 × 24 см): клетка 7×7 не мельче 2,8 см вместо 2,1; растёт за ZOOM_PER_SEC в секунду,
+## чтобы не прыгать перед глазами.
+const CHARGE_DECK_SCALE := 1.0
+const ZOOM_PER_SEC := 3.0
 
 var rig: XRRig
 var deck: DeckPanel
@@ -27,9 +31,13 @@ var alert: OffscreenAlert
 ## Вкладки ЧАТ и ЗВОНКИ деки: указатель правого контроллера (мышь в плоской сборке) нажимает деку; отклик — вибрация и звук на сообщения и
 ## звонки; связь с телефоном (пока фиктивная) — null, и тогда вкладок нет, указатель молчит. Положение и масштаб деки на руке — только здесь.
 var pointer: DeckPointer
+## Панель взлома хранилища (К3): стоит в мире, появляется у хранилища; свой указатель (второй DeckPointer) нажимает её тем же лучом и курком.
+var breach_panel: BreachPanel
+var breach_pointer: DeckPointer
 var feedback: DeckFeedback
 var phone: PhoneLink
 var _anchor: Node3D
+var _deck_zoom := WRIST_DECK_SCALE   # текущий масштаб деки на запястье
 
 
 func attach(r: XRRig) -> void:
@@ -53,6 +61,14 @@ func attach(r: XRRig) -> void:
 	add_child(pointer)
 	pointer.setup(rig, deck)
 	pointer.clicked.connect(func(): feedback.pulse("right", 0.25, 0.02))   # лёгкий отклик правой руки на нажатие
+	breach_panel = BreachPanel.new()
+	breach_panel.name = "BreachPanel"
+	add_child(breach_panel)   # в мире, а не на руке: WorldUI сидит в корне сцены и сам не двигается
+	breach_pointer = DeckPointer.new()
+	add_child(breach_pointer)
+	breach_pointer.setup(rig, breach_panel)
+	breach_pointer.clicked.connect(func(): feedback.pulse("right", 0.25, 0.02))
+	breach_panel.trap_felt.connect(func(): feedback.pulse("left", 0.7, 0.15))   # ловушка: импульс левого контроллера
 	_place()
 
 
@@ -63,8 +79,19 @@ func set_phone(link: PhoneLink) -> void:
 	feedback.bind(rig, link)
 
 
+## Центр деки на запястье при масштабе scale: ближний к кисти край — в WRIST_DECK_GAP от запястья, дека растёт к локтю.
+static func wrist_deck_pos(scale: float) -> Vector3:
+	return Vector3(0, -(DeckPanel.PANEL_WIDTH_M * scale * 0.5 + WRIST_DECK_GAP - HandView.WRIST_ANCHOR_ELBOW), 0)
+
+
+## Trace — за дальним краем деки при масштабе scale.
+static func wrist_trace_pos(scale: float) -> Vector3:
+	return Vector3(0, wrist_deck_pos(scale).y - (DeckPanel.PANEL_WIDTH_M * scale * 0.5 + 0.045), 0)
+
+
 func _process(delta: float) -> void:
 	_place()
+	_update_charge_zoom(delta)
 	if phone != null:
 		phone.advance(delta)
 
@@ -87,6 +114,7 @@ func _place() -> void:
 			deck.rotation = Vector3(0, 0, deg_to_rad(WRIST_DECK_ROLL_DEG))
 			deck.position = WRIST_DECK_POS
 			trace.position = WRIST_TRACE_POS
+			_deck_zoom = WRIST_DECK_SCALE
 		elif rig.xr_active:
 			_anchor.transform = Transform3D(Basis.from_euler(Vector3(-PI / 3, 0, 0)), Vector3(0, 0.05, -0.1))
 			deck.scale = Vector3.ONE
@@ -101,3 +129,17 @@ func _place() -> void:
 			trace.position = FLAT_TRACE_POS
 	# На запястье дека живёт, пока рука видна (есть поза контроллера): без данных якорь стоял бы в начале рига.
 	_anchor.visible = not (rig.xr_active and wrist) or rig.left_hand_view.visible
+
+
+## Заряд демона идёт — дека на запястье плавно растёт до CHARGE_DECK_SCALE и после сетки возвращается. Вне запястья (плоская сборка, контроллер) дека
+## и так в масштабе 1.
+func _update_charge_zoom(delta: float) -> void:
+	if rig == null or not rig.xr_active or rig.left_hand_view == null or rig.left_hand_view.wrist_anchor == null or _anchor.get_parent() != rig.left_hand_view.wrist_anchor:
+		return
+	var want := CHARGE_DECK_SCALE if deck.is_charging() else WRIST_DECK_SCALE
+	if is_equal_approx(_deck_zoom, want):
+		return
+	_deck_zoom = move_toward(_deck_zoom, want, ZOOM_PER_SEC * delta)
+	deck.scale = Vector3.ONE * _deck_zoom
+	deck.position = wrist_deck_pos(_deck_zoom)
+	trace.position = wrist_trace_pos(_deck_zoom)

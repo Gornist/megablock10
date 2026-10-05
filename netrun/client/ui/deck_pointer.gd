@@ -19,7 +19,8 @@ const DOT_PRESSED := Color(1.0, 1.0, 1.0)
 ## Слабый луч к панели, если целишься рядом (в пределах этого расстояния от центра), чтобы её было легче найти.
 const NEAR_MISS_M := 0.4
 
-var panel: DeckPanel
+## Панель-цель: DeckPanel или BreachPanel (общий набор: view_size, surface_transform, panel_size_m, push_pointer_event, is_interactive, scroll_by).
+var panel: Node3D
 var rig: XRRig
 var enabled := true
 ## Результат последнего пересчёта DeckPointerMath.ray_to_view.
@@ -66,9 +67,10 @@ func _init() -> void:
 	add_child(_beam)
 
 
-func setup(r: XRRig, p: DeckPanel) -> void:
+func setup(r: XRRig, p: Node3D) -> void:
 	rig = r
 	panel = p
+	name = "DeckPointer" if p is DeckPanel else "BreachPointer"
 	if rig != null and rig.right_hand != null:
 		_bound_hand = rig.right_hand
 		_bound_hand.button_pressed.connect(_on_hand_button.bind(true))
@@ -135,7 +137,7 @@ func update_ray(origin: Vector3, dir: Vector3) -> void:
 	if dir == Vector3.ZERO:
 		last_hit = {"hit": false, "reason": "noray"}
 	else:
-		last_hit = DeckPointerMath.ray_to_view(origin, dir, panel.surface_transform(), panel.panel_size_m(), Vector2(DeckPanel.VIEW_SIZE))
+		last_hit = DeckPointerMath.ray_to_view(origin, dir, panel.surface_transform(), panel.panel_size_m(), Vector2(panel.view_size()))
 	if last_hit["hit"]:
 		var pos: Vector2 = last_hit["pos"]
 		if not hovering or pos.distance_to(_last_pos) >= 0.5:
@@ -202,7 +204,7 @@ func _input(event: InputEvent) -> void:
 func _hit_for_mouse(mouse: Vector2) -> Dictionary:
 	var cam := rig.camera
 	return DeckPointerMath.ray_to_view(cam.project_ray_origin(mouse), cam.project_ray_normal(mouse), panel.surface_transform(),
-		panel.panel_size_m(), Vector2(DeckPanel.VIEW_SIZE))
+		panel.panel_size_m(), Vector2(panel.view_size()))
 
 
 func _mouse_over_panel(mouse: Vector2) -> bool:
@@ -249,7 +251,8 @@ func _update_visuals(origin: Vector3) -> void:
 	var near: bool = not hit and last_hit.get("reason", "") == DeckPointerMath.MISS_OUTSIDE and (last_hit["local"] as Vector2).length() <= NEAR_MISS_M
 	_dot.visible = hit
 	if hit:
-		var normal := panel.surface_transform().basis * Vector3(0, 0, 1)
+		var surface: Transform3D = panel.surface_transform()
+		var normal: Vector3 = surface.basis * Vector3(0, 0, 1)
 		_dot.global_position = (last_hit["point"] as Vector3) + normal.normalized() * 0.003
 	var show_beam: bool = (hit or near) and rig != null and rig.xr_active
 	_beam.visible = show_beam

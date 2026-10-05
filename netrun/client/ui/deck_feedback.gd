@@ -8,6 +8,10 @@ extends Node3D
 const SAMPLE_RATE := 22050
 ## Сообщение: два коротких тона вверх.
 const MESSAGE_NOTES := [[880.0, 0.07], [1175.0, 0.09]]
+## Новая добыча от другого игрока (К5б): один тихий тон вверх и слабый импульс — внимание на ДОБЫЧУ, без рингтона.
+const LOOT_NOTES := [[988.0, 0.09]]
+const LOOT_PULSE_AMP := 0.2
+const LOOT_DB := -20.0
 const MESSAGE_PULSE_AMP := 0.35
 const MESSAGE_PULSE_S := 0.05
 ## Рингтон: два коротких тона дважды, потом тишина до конца периода; на тот же период — серия импульсов.
@@ -27,6 +31,7 @@ var pulse_sink: Callable = Callable()
 ## Сколько импульсов запрошено и сколько раз играл сигнал (для проверки).
 var pulse_count := 0
 var message_beeps := 0
+var loot_cues := 0
 var ring_starts := 0
 
 var rig: XRRig
@@ -36,11 +41,13 @@ var _ringing := false
 var _ring_clock := 0.0
 var _ring_idx := 0
 var _msg_player: AudioStreamPlayer3D
+var _loot_player: AudioStreamPlayer3D
 var _ring_player: AudioStreamPlayer3D
 
 
 func _ready() -> void:
 	_msg_player = _player(make_tone_stream(MESSAGE_NOTES, 0.02, 0.0, false), MESSAGE_DB)
+	_loot_player = _player(make_tone_stream(LOOT_NOTES, 0.0, 0.0, false), LOOT_DB)
 	_ring_player = _player(make_tone_stream(RING_NOTES, 0.05, RING_PERIOD_S, true), RING_DB)
 	set_process(false)
 
@@ -81,6 +88,13 @@ func pulse(hand: String, amplitude: float, seconds: float) -> void:
 	var h: XRController3D = rig.left_hand if hand == "left" else rig.right_hand
 	if h != null:
 		h.trigger_haptic_pulse("haptic", 0.0, amplitude, seconds, 0.0)
+
+
+## Сигнал о новом предмете в ГРУЗе от другого игрока: тихий тон и короткий импульс левой руки (с декой на запястье).
+func loot_cue() -> void:
+	loot_cues += 1
+	pulse("left", LOOT_PULSE_AMP, MESSAGE_PULSE_S)
+	_play(_loot_player)
 
 
 func _on_message(_thread_id: String, msg: Dictionary) -> void:

@@ -43,6 +43,8 @@ func _ready() -> void:
 
 ## `--bot=ghost_run|exposed_run|black_run|graph_run` (+ `--bot-route=node_02,node_03`, `--bot-ghost`, `--host=`, `--port=`, `--token=`, `--bot-reconnect`, `--bot-hold=<с после шарда>`, `--bot-daemon=<id GHOST-демона>`, `--exit-after=`): бот проходит узел и выходит
 ## из процесса: код 0 — чистый выход, 1 — любой другой итог. Итог печатается строкой `[bot] итог: <result>`.
+## Для стенда e2e со взломом: `--bot-give=<ключ телефона>` — отдать взятый шард контакту телефона; `--bot-force-breach` — проба отказа
+## (просит взлом при «ОСТЫВАЕТ», печатает «[bot] взлом отклонён: <причина>» и выходит без шарда).
 func run_bot(args: PackedStringArray, kind: String) -> void:
 	var bot_script: GDScript = load(BOT_SCRIPT)
 	var sc: Dictionary = bot_script.get_script_constant_map()["Scenario"]
@@ -63,6 +65,10 @@ func run_bot(args: PackedStringArray, kind: String) -> void:
 		elif a.begins_with("--bot-route="):  # graph_run: узлы через запятую, в которые пройти порталами; шард — в последнем
 			for id in a.trim_prefix("--bot-route=").split(",", false):
 				bot.route.append(id)
+		elif a.begins_with("--bot-give="):
+			bot.give_phone = a.trim_prefix("--bot-give=")
+		elif a == "--bot-force-breach":
+			bot.force_breach = true
 		elif a == "--bot-ghost":
 			bot.use_ghost = true
 	add_child(bot)

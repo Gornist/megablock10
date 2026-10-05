@@ -6,6 +6,7 @@
     "t04": "g_b"
   },
   "settings": {
+    "vault_requires_open": false,
     "tunnel_sec": 0.4,
     "portal_dwell_sec": 0.2,
     "portal_deny_repeat_sec": 0.5,

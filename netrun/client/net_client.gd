@@ -113,6 +113,39 @@ func request_use(daemon_id: String) -> bool:
 	return _send(WorldMsg.encode_fields(WorldMsg.USE, {"id": daemon_id}))
 
 
+## Взлом хранилища (К3): начать выбранными демонами, нажать клетку ([строка, столбец]), завершить досрочно. Решает сервер.
+func request_breach(vault: String, daemon_ids: Array) -> bool:
+	return _send(WorldMsg.encode_fields(WorldMsg.BK_OPEN, {"vault": vault, "daemons": daemon_ids}))
+
+
+## Заряд защитного демона (К6): начать мини-игру на запястье; клетки и отмена — те же request_breach_tap / request_breach_cancel.
+func request_charge(daemon_id: String) -> bool:
+	return _send(WorldMsg.encode_fields(WorldMsg.CHARGE, {"daemon": daemon_id}))
+
+
+## Расшифровка шарда из ГРУЗа (К7): мини-игра на запястье; клетки и отмена — те же request_breach_tap / request_breach_cancel.
+func request_decrypt(item: String) -> bool:
+	return _send(WorldMsg.encode_fields(WorldMsg.DECRYPT, {"item": item}))
+
+
+func request_breach_tap(cell: Vector2i) -> bool:
+	return _send(WorldMsg.encode_fields(WorldMsg.BK_TAP, {"cell": [cell.x, cell.y]}))
+
+
+func request_breach_cancel() -> bool:
+	return _send(WorldMsg.encode_fields(WorldMsg.BK_CANCEL))
+
+
+## Просьба отдать предмет из ГРУЗа (К5б): to — {runner: id аватара из списка получателей} или {phone: ключ контакта}. Решает сервер, ответ — событие give.
+func request_give(item_id: String, to: Dictionary) -> bool:
+	return _send(WorldMsg.encode_fields(WorldMsg.GIVE, {"item": item_id, "to": to}))
+
+
+## Просьба прислать список получателей-нетраннеров (событие give_list).
+func request_give_list() -> bool:
+	return _send(WorldMsg.encode_fields(WorldMsg.GIVE_LIST))
+
+
 ## Просьба выйти чисто (сервер проверяет, что игрок на площадке выхода).
 func request_leave() -> bool:
 	return _send(WorldMsg.encode_fields(WorldMsg.LEAVE))

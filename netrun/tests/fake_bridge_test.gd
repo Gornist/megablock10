@@ -95,12 +95,12 @@ func test_finish_moves_deck_and_closes_session() -> void:
 	assert_bool(replay["replayed"]).is_true()
 
 
-func test_finish_with_forgotten_item_is_bad_request_and_rid_mismatch() -> void:
+func test_finish_with_forgotten_item_is_bad_request_without_a_saved_rid() -> void:
 	var r: Dictionary = await _b.run_finish(S1, "clean", "node_07", false, [])
 	assert_str(BridgeApi.err_code(r)).is_equal("bad_request")
-	# Тот же rid с другими параметрами — rid_mismatch (ответ с ошибкой тоже сохраняется).
+	# Как настоящий Мост (протокол 6.5): bad_request — ошибка запроса, записи rid нет; тот же rid с пересобранными moves разрешён.
 	var other: Dictionary = await _b.run_finish(S1, "emergency", "node_07", false, [])
-	assert_str(BridgeApi.err_code(other)).is_equal("rid_mismatch")
+	assert_str(BridgeApi.err_code(other)).is_equal("bad_request")
 
 
 func test_rids_are_deterministic() -> void:
