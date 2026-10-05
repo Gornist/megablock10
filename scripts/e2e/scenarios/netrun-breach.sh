@@ -92,17 +92,20 @@ import sys, json, hashlib, base64
 pk, token, node, term, eddies = sys.argv[1:6]
 sha = lambda x: hashlib.sha256(x.encode()).hexdigest()
 b64 = lambda x: base64.b64encode(x.encode()).decode()
-def item(owner, payload, kind):
+def item(owner, payload, kind, title):
+    # Разобранное поле shard (тир, расшифрован ли) Мост пишет сам при приёме карточки; у сида его нет, а без него Мост не выберет шард в
+    # run.breach (exhausted) — кладём его, как положил бы Мост.
     return {"owner": owner, "kind": kind, "payload": payload, "protected": False, "origin": "node:" + node,
-            "in_transfer": None, "out_transfer": None, "handover": None}
+            "in_transfer": None, "out_transfer": None, "handover": None,
+            "shard": {"tier": 1, "title": title, "decrypted": True, "encrypted": False}}
 def shard(i, title): return "|".join(["SHARD", i, "0", "1", b64("e2e"), b64(title), b64("meta"), b64("тело"), "0", "1"])
 print(json.dumps({
     "settings": {"global": {"auditor_period_s": 3}},
     "node": {node: {"title": "Серый узел", "tier": "STANDARD", "tutorial": False, "lockdown_until": 0, "eddies": int(eddies)}},
     "terminal": {term: {"node": node, "label": "стенд e2e", "token_sha256": sha(token), "silent": False}},
     "runner": {"r_" + sha(pk)[:32]: {"key": pk, "callsign": "Alice", "blocked": False, "runs": 1, "tutorial_done": True}},
-    "item": {"it_nr_shard_1": item("node:" + node, shard("nr-shard-1", "Шард e2e 1"), "SHARD"),
-             "it_nr_shard_2": item("node:" + node, shard("nr-shard-2", "Шард e2e 2"), "SHARD")},
+    "item": {"it_nr_shard_1": item("node:" + node, shard("nr-shard-1", "Шард e2e 1"), "SHARD", "Шард e2e 1"),
+             "it_nr_shard_2": item("node:" + node, shard("nr-shard-2", "Шард e2e 2"), "SHARD", "Шард e2e 2")},
 }, ensure_ascii=False))
 PY
 # Граф как у игры, но пустой слот пополняется через 5 с, а не через 10 мин: второй забег застаёт в хранилище второй шард
