@@ -252,6 +252,22 @@ func _wire_remote_phone(remote: RemotePhoneLink) -> void:
 	remote.sound_requested.connect(func(kind: String): log_file.log("phone.sound", {"kind": kind}))
 
 
+## Очки сняли (пауза приложения): настоящая связь закрывает порт — телефон видит обрыв и сам играет звонки и сообщения, пока очки сняты.
+## Фиктивной связи это не касается.
+func pause_phone() -> void:
+	if phone is RemotePhoneLink:
+		(phone as RemotePhoneLink).pause()
+		log_file.log("phone.pause")
+
+
+## Очки надели снова: порт открывается заново, телефон переподключается сам.
+func resume_phone() -> void:
+	if phone is RemotePhoneLink:
+		var link := phone as RemotePhoneLink
+		var err := link.resume()
+		log_file.log("phone.resume", {"ok": err == OK, "port": link.port})
+
+
 func _exit_tree() -> void:
 	if phone is RemotePhoneLink:
 		(phone as RemotePhoneLink).stop()
@@ -474,8 +490,10 @@ func _notification(what: int) -> void:
 		NOTIFICATION_APPLICATION_PAUSED:
 			_paused_at_ms = Time.get_ticks_msec()
 			log_file.log("app.pause")
+			pause_phone()
 		NOTIFICATION_APPLICATION_RESUMED:
 			var slept := (Time.get_ticks_msec() - _paused_at_ms) / 1000.0 if _paused_at_ms >= 0 else 0.0
 			log_file.log("app.resume", {"slept_sec": slept, "connected": net != null and net.is_connected_to_world})
+			resume_phone()
 		NOTIFICATION_WM_CLOSE_REQUEST, NOTIFICATION_PREDELETE:
 			log_file.log("app.stop")
