@@ -49,7 +49,7 @@ test("capabilities: открытый, без сессии мастера, объ
   const { app } = await setup();
   const res = await app.inject({ method: "GET", url: "/api/capabilities" });
   assert.equal(res.statusCode, 200);
-  assert.equal(res.json().world_records, 1);
+  assert.equal(res.json().world_records, 2);
   assert.equal(res.json().world_events, 1);
 });
 
@@ -131,6 +131,35 @@ test("в ленте событий записи мира — тип «Сеть»
   const meta = (await app.inject({ method: "GET", url: "/api/meta", headers })).json() as { reasons: { code: string }[]; kinds: { code: string }[] };
   assert.ok(meta.reasons.some((r) => r.code === "NET_FLATLINE"));
   assert.ok(meta.kinds.some((k) => k.code === "net"));
+});
+
+test("NET_BREACH (дека, К9) принимается и подписан в ленте; give_item помечен «передача из Сети»; игрок не появляется", async () => {
+  const { app, headers } = await setup();
+  const world = testDevice();
+  const breach = world.change({
+    field: "net.breach",
+    newValue: JSON.stringify({ session: SESSION, runner: RUNNER, callsign: "Призрак", node: "node_07", tier: "HARD", n: 3, outcome: "PARTIAL", effects: "EXTRACT_SHARD,GHOST", eddies: 5, opened: 1, exhausted: false, alert: "sa_5e0c19ab77d2f310", alert_at: 1790000720000 }),
+    reason: "NET_BREACH",
+    sourceRef: SESSION,
+  });
+  const give = world.change({
+    field: "net.item",
+    newValue: JSON.stringify({ item: "it_4c1a0b2e9d7f6a82", kind: "SHARD", from: "node:node_07", to: "outbox:s_9f2c", session: SESSION, runner: RUNNER, op: "give_item" }),
+    reason: "NET_ITEM_OWNER",
+    sourceRef: "it_4c1a0b2e9d7f6a82",
+  });
+  const res = await post(app, [breach, give]);
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.json().rejected, []);
+  assert.equal(res.json().accepted.length, 2);
+
+  const ev = (await app.inject({ method: "GET", url: "/api/events?kind=net", headers })).json() as { records: { reason: string; human: { subject: string; body: string } }[] };
+  const body = (reason: string) => ev.records.find((r) => r.reason === reason)!.human.body;
+  assert.equal(body("NET_BREACH"), "Взлом хранилища: «Призрак», узел node_07, тир: сложный, частично, эдди: 5");
+  assert.match(body("NET_ITEM_OWNER"), /\(передача из Сети\)$/);
+
+  const players = (await app.inject({ method: "GET", url: "/api/players", headers })).json() as unknown[];
+  assert.equal(players.length, 0);
 });
 
 test("записи игроков не затронуты: баланс и позывной считаются как раньше, когда рядом пишет мир", async () => {

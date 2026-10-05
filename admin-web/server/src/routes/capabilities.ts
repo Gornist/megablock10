@@ -7,8 +7,8 @@ import { RateLimiter } from "../lib/rateLimit.js";
  * записи мира не начинает. Версии — целые, растут при несовместимом изменении формата; 0 или отсутствие — «не понимаю».
  */
 export const CAPABILITIES = {
-  /** net.run / net.item / net.alert и причины NET_* принимаются приёмом /api/changes. */
-  world_records: 1,
+  /** net.run / net.item / net.alert и причины NET_* принимаются приёмом /api/changes; 2 — ещё и net.breach / NET_BREACH. */
+  world_records: 2,
   /** POST /api/world-events: быстрые события на точки (routes/worldEvents.ts). */
   world_events: 1,
 } as const;
