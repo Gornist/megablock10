@@ -47,7 +47,7 @@ func _room() -> Array:
 		k += 1
 	items.append(["env/portal_wall", Vector3(-4.0, 0, 0.0), -90.0, "BASE", 1.0])
 	items.append(["env/doorway", Vector3(-1.0, 0, 4.0), 0.0, "BASE", 1.0])     # вход
-	items.append(["env/doorway_b", Vector3(1.0, 0, -4.0), 0.0, "HARD", 1.0])   # выход
+	items.append(["env/doorway_b", Vector3(1.0, 0, -4.0), 0.0, _tier, 1.0])   # выход
 	for x in [-4.0, 4.0]:
 		for z in [-4.0, 4.0]:
 			items.append(["env/pillar", Vector3(x, 0, z), 0.0, "BASE", 1.0])
@@ -66,7 +66,7 @@ func _room() -> Array:
 	if _field:  # эксперимент: дальний план — поле колонн на решётке 0,1 м
 		for fz in [-12.0, -16.0]:
 			for fx in [-8.0, -4.0, 0.0, 4.0, 8.0]:
-				items.append(["env/column_field", Vector3(fx, 0, fz), 0.0, "HARD", 1.0])
+				items.append(["env/column_field", Vector3(fx, 0, fz), 0.0, _tier, 1.0])
 	else:  # дальний план: пласты данных. Наш пласт (y = 0) продолжается за комнатой участками 11 м (сетка 5×5 без центрального), выше и ниже лежат такие же
 		# пласты с шагом LAYER_PITCH (потолок нашего 5 м + 2 м пустоты); в них сетка 3×3. Пол и потолок везде (тайлов ~5%), в каждом пласте башни света.
 		var fv := ["env/far_field", "env/far_field_b", "env/far_field_c"]
@@ -81,9 +81,9 @@ func _room() -> Array:
 						continue
 					var pos := Vector3(gx * 11.0, ly, gz * 11.0)
 					var rot := 90.0 * (fi % 4)
-					items.append([fv[fi % 3], pos, rot, "HARD", 1.0])
-					items.append([ff[fi % 3], pos, rot, "HARD", 1.0])
-					items.append([fc[(fi + 1) % 3], pos + Vector3(0, CEILING_H, 0), rot, "HARD", 1.0])
+					items.append([fv[fi % 3], pos, rot, _tier, 1.0])
+					items.append([ff[fi % 3], pos, rot, _tier, 1.0])
+					items.append([fc[(fi + 1) % 3], pos + Vector3(0, CEILING_H, 0), rot, _tier, 1.0])
 					fi += 1
 	return items
 
@@ -107,7 +107,7 @@ func _shots() -> Array:
 	var envmore := [["env/floor_clear", Vector3(0, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(-2, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(2, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(4, 0, 0), 0.0, "BASE", 1.0],
 		["env/lockdown_gate", Vector3(-3.0, 0, -2.0), 0.0, "", 1.0], ["env/lockdown_gate_open", Vector3(-1.0, 0, -2.0), 0.0, "", 1.0], ["env/corner", Vector3(1.0, 0, -2.0), 0.0, "BASE", 1.0],
 		["env/platform", Vector3(3.0, 0, -2.0), 0.0, "BASE", 1.0], ["env/cable_straight", Vector3(-3.0, 0, 0.0), 0.0, "BASE", 1.0], ["env/cable_curve", Vector3(-1.0, 0, 0.0), 0.0, "BASE", 1.0],
-		["env/tunnel_ring", Vector3(2.0, 0, 0.5), 0.0, "HARD", 1.0]]
+		["env/tunnel_ring", Vector3(2.0, 0, 0.5), 0.0, _tier, 1.0]]
 	var tk := ["EXTRACT_SHARD", "EXTRACT_DAEMON", "GHOST", "TIMESKEW", "BLACKOUT", "JITTER", "DECRYPT", "MINER"]
 	var decks := [["env/floor_clear", Vector3(0, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(-2, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(2, 0, 0), 0.0, "BASE", 1.0],
 		["deck/wrist_deck", Vector3(0.0, 1.1, 0.4), 90.0, "", 6.0]]
@@ -144,6 +144,7 @@ func _shots() -> Array:
 var out_dir := "/tmp/shots"
 
 
+var _tier := "HARD"  # --tier=BASE|HARD|NIGHTMARE: тир окружения в кадрах (по умолчанию HARD, как раньше; BASE — бирюза, как в клиенте)
 var _lattice := 0.0  # --lattice=0.05: шаг мировой решётки (эксперимент), 0 — выкл.
 var _field := false  # --field: вместо дальних стен поле колонн
 var _walk := false  # --walk: один аватар ходит по кругу (видно ли мерцание от прищёлкивания к решётке)
@@ -174,6 +175,8 @@ func _ready() -> void:
 			_movie = true
 		if a.begins_with("--cam="):
 			_static_cam = PackedFloat64Array(Array(a.trim_prefix("--cam=").split(",")).map(func(v): return float(v)))
+		if a.begins_with("--tier="):
+			_tier = a.trim_prefix("--tier=")
 		if a.begins_with("--lattice="):
 			_lattice = float(a.trim_prefix("--lattice="))
 		if a == "--demo":
