@@ -17,6 +17,8 @@ const SHADERS := {
 const SKIRT_SHADER := preload("res://assets/shaders/skirt.gdshader")
 ## Сплошная дымка горизонта (меш `horizon_mist` в env/horizon_band): тоже роль shell_soft, шейдер по имени меша.
 const HAZE_SHADER := preload("res://assets/shaders/haze.gdshader")
+## ЭКСПЕРИМЕНТ: верх стеклянного пола (меш `*_glass` в env/floor_glass_<N>): роль shell_soft, шейдер по имени меша; сторону плиты (plate_size) берём из AABB меша.
+const GLASS_SHADER := preload("res://assets/shaders/glass.gdshader")
 
 ## Параметры haze.gdshader для `edge_mist` (env/room_edge_<N>): низкая дымка вдоль границы комнаты, не туман горизонта.
 const EDGE_MIST := {"haze_alpha": 0.6, "glow": 1.6, "shape": 1.0, "noise_amount": 0.35, "stripe_amount": 0.12, "stripe_count": 160.0}
@@ -64,6 +66,9 @@ static func apply(root: Node, tier: String = "") -> void:
 			m.shader = SHADERS[src.resource_name]
 			if String(mi.name).ends_with("_skirt"):  # вуаль плит и дымка горизонта: роль shell_soft, но свой шейдер по имени меша
 				m.shader = SKIRT_SHADER
+			elif String(mi.name).ends_with("_glass"):
+				m.shader = GLASS_SHADER
+				m.set_shader_parameter("plate_size", mi.mesh.get_aabb().size.x)
 			elif String(mi.name).ends_with("_mist"):
 				m.shader = HAZE_SHADER
 				if root.scene_file_path.contains("/room_edge_"):  # низкая дымка границы комнаты: профиль по высоте круче, штрихи по азимуту реже и слабее

@@ -40,6 +40,8 @@
 | `models/env/floor_b.glb` | 180 / 450 | 27 / 170 | 181 / 200 | 1 | 4 | 1.782 × 0.95 × 1.75 | points, shell_soft, solid_dark, streaks | — | surface | ок |
 | `models/env/floor_c.glb` | 216 / 450 | 26 / 170 | 180 / 200 | 1 | 4 | 1.782 × 0.95 × 1.75 | points, shell_soft, solid_dark, streaks | — | surface | ок |
 | `models/env/floor_clear.glb` | 0 / 300 | 58 / 170 | 0 / 200 | 0 | 1 | 1.782 × 0.1032 × 1.75 | points | — | surface | ок |
+| `models/env/floor_glass_16.glb` | 66 / 400 | 638 / 700 | 226 / 260 | 2 | 4 | 16.0336 × 0.9227 × 16 | points, shell_soft, streaks | — | slab | ок |
+| `models/env/floor_glass_8.glb` | 34 / 200 | 131 / 350 | 112 / 130 | 2 | 4 | 8.0331 × 0.9411 × 8 | points, shell_soft, streaks | — | slab | ок |
 | `models/env/floor_slab_16.glb` | 92 / 400 | 638 / 700 | 226 / 260 | 1 | 4 | 16.0336 × 0.9227 × 16 | points, shell_soft, solid_dark, streaks | — | slab | ок |
 | `models/env/floor_slab_8.glb` | 60 / 200 | 131 / 350 | 112 / 130 | 1 | 4 | 8.0331 × 0.9411 × 8 | points, shell_soft, solid_dark, streaks | — | slab | ок |
 | `models/props/hack_pad.glb` | 36 / 120 | 128 / 160 | 29 / 40 | 1 | 5 | 0.9259 × 0.28 × 0.9 | points, shell_soft, solid_dark, streaks | — | floor | ок |

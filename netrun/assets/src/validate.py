@@ -65,6 +65,14 @@ def check(rep):
                 bad.append(f"{p['mesh']}: вуаль должна быть ролью shell_soft, а не {p['material']}")
             if p["verts"] != p["tris"] * 2:
                 bad.append(f"{p['mesh']}: вуаль — по одному квадрату (2 треугольника, 4 вершины) на грань, а тут {p['tris']} треуг. и {p['verts']} вершин")
+        # верх стеклянного пола (`*_glass`, эксперимент env/floor_glass_<N>): роль shell_soft (шейдер glass.gdshader по имени меша), один квад (2 треугольника), один слой
+        if str(p["mesh"]).endswith("_glass"):
+            if p["material"] != "shell_soft":
+                bad.append(f"{p['mesh']}: верх стеклянного пола должен быть ролью shell_soft, а не {p['material']}")
+            if p["tris"] != 2 or p["verts"] != 4:
+                bad.append(f"{p['mesh']}: верх стеклянного пола — один квад (2 треугольника, 4 вершины), а тут {p['tris']} треуг. и {p['verts']} вершин")
+            if "TEXCOORD_0" not in p["attrs"]:
+                bad.append(f"{p['mesh']}: нет UV (шейдеру нужно расстояние до кромки)")
         # дымка горизонта (`*_mist`): роль shell_soft (шейдер haze.gdshader по имени меша), один слой, не больше 200 треугольников на всю ленту (overdraw на Pico 4 не мерили)
         if str(p["mesh"]).endswith("_mist"):
             if p["material"] != "shell_soft":
