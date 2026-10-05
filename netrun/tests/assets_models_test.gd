@@ -250,6 +250,34 @@ func test_room_edge_has_hang_streaks_and_knee_high_haze_within_budget() -> void:
 		assert_float(float(sm.get_shader_parameter("anchor"))).override_failure_message("%s: подвесные штрихи без anchor = 1" % asset).is_equal(1.0)
 
 
+## Ров вокруг плиты-пола (env/room_moat_<N>): один меш `moat` (solid_dark), плоское кольцо на y = −0,02 м, внутренняя граница на 0,35 м от края плиты (сторона = N),
+## ширина 3 м, не больше 60 треугольников, без точек, штрихов и прозрачности. room_moat_16 по размеру равен комнате NodeLayout.
+func test_room_moat_is_flat_dark_ring_around_slab() -> void:
+	var room := NodeLayout.ROOM_MAX - NodeLayout.ROOM_MIN
+	for spec in [[8, 8.0], [16, room.x]]:
+		var asset := "room_moat_%d" % spec[0]
+		var root := _load("env", asset)
+		var meshes := _meshes(root)
+		assert_int(meshes.size()).override_failure_message("%s: нужен один меш moat, есть %d" % [asset, meshes.size()]).is_equal(1)
+		var mi := meshes[0]
+		assert_str(String(mi.name)).is_equal("moat")
+		var tris := (mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3
+		assert_int(tris).override_failure_message("%s: %d треугольников > 60" % [asset, tris]).is_less_equal(60)
+		var box := _aabb(root)
+		var outer: float = spec[1] + 2.0 * (0.35 + 3.0)
+		assert_float(box.size.x).override_failure_message("%s: габарит не %g м по X" % [asset, outer]).is_equal_approx(outer, 0.01)
+		assert_float(box.size.z).is_equal_approx(outer, 0.01)
+		assert_float(box.position.y).override_failure_message("%s: крышка не на y = −0,02" % asset).is_equal_approx(-0.02, 0.001)
+		assert_float(box.end.y).is_equal_approx(-0.02, 0.001)
+		# внутренняя дыра кольца = плита + щель 0,35 м с каждой стороны: ни одна вершина не ближе к центру
+		var half: float = spec[1] / 2.0 + 0.35
+		for v in mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array:
+			assert_float(maxf(absf(v.x), absf(v.z))).override_failure_message("%s: вершина ближе щели 0,35 м к плите: %s" % [asset, v]).is_greater_equal(half - 0.001)
+		AssetMaterials.apply(root, "BASE")
+		var sm := mi.get_surface_override_material(0) as ShaderMaterial
+		assert_bool(sm != null and sm.shader.resource_path.ends_with("solid_dark.gdshader")).override_failure_message("%s: у рва не solid_dark" % asset).is_true()
+
+
 ## ЭКСПЕРИМЕНТ «пол одним тайлом» (env/floor_slab_<N>): одна тонкая плита на всю комнату, верх не выше пола, сторона = стороне room_edge_<N>,
 ## подвесные штрихи (`*_hang`) и вуаль (`*_skirt`) по периметру, сетка швов из точек. Бюджет 16×16: 400 треуг., 700 точек, 260 штрихов (8×8 — пропорционально).
 func test_floor_slab_is_single_thin_slab_within_budget() -> void:
