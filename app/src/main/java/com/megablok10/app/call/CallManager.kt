@@ -202,7 +202,11 @@ class CallManager(
     private fun onAnswer(identity: Identity, signal: CallSignal) {
         val sdp = signal.sdp ?: return
         // Второй и далее ANSWER в уже идущем звонке — ответ на наш перезапуск ICE: только применяем его.
-        if (_state.value.phase == CallPhase.IN_CALL) { CallMedia.setRemoteAnswer(sdp); return }
+        if (_state.value.phase == CallPhase.IN_CALL) {
+            CallMedia.setRemoteAnswer(sdp)
+            recovery?.onRestartAnswered()
+            return
+        }
         SoundPlayer.stopLoop()
         _state.value = _state.value.copy(phase = CallPhase.IN_CALL)
         CallMedia.setRemoteAnswer(sdp)
