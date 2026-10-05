@@ -53,9 +53,12 @@ open_session() { nrp '{"op":"list","type":"session"}' "next((s['id'] for s in d[
 deck_item() { nrp '{"op":"list","type":"item"}' "next((i['id'] for i in d['docs'] if i['data'].get('owner')=='deck:$1' and (i['data'].get('daemon') or {}).get('effect')=='$2'),'')"; }
 phone_has() { q $A "select count(*) from $1 where id='$2'"; }
 items_total() { nrp '{"op":"list","type":"item"}' 'len(d["docs"])'; }
-entered_started() { journal_cat $A | grep -c 'netrun.enter_start'; }
-world_accepted() { journal_cat $A | grep -c 'netrun.world_item .*accepted=true'; }   # карточки Мосту принятые телефоном без «Принять»
-entered_ok() { journal_cat $A | grep -c 'netrun.entered rid=.* ok=true'; }
+# Журнал телефона копится между сценариями (netrun-breach идёт раньше и уже входил в Сеть): считаем строки сверх тех, что были при старте сценария.
+J0_START=0; J0_OK=0; J0_ACC=0
+entered_started() { echo $(( $(journal_cat $A | grep -c 'netrun.enter_start') - J0_START )); }
+world_accepted() { echo $(( $(journal_cat $A | grep -c 'netrun.world_item .*accepted=true') - J0_ACC )); }   # карточки Мосту принятые телефоном без «Принять»
+entered_ok() { echo $(( $(journal_cat $A | grep -c 'netrun.entered rid=.* ok=true') - J0_OK )); }
+J0_START=$(entered_started); J0_ACC=$(world_accepted); J0_OK=$(entered_ok)
 
 # ── Записи мира у коллектора (M6b): мастерский API коллектора стенда (api GET …) и журнал самого Моста ──
 # col_recs '<python-выражение от recs>' — recs: записи мира, принятые коллектором от ключа этого Моста (GET /api/events?kind=net); в r['nv'] — разобранный newValue

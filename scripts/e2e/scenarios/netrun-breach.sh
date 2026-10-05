@@ -54,9 +54,11 @@ open_session() { nrp '{"op":"list","type":"session"}' "next((s['id'] for s in d[
 # предмет деки сессии $1 с эффектом $2 (id документа item)
 deck_item() { nrp '{"op":"list","type":"item"}' "next((i['id'] for i in d['docs'] if i['data'].get('owner')=='deck:$1' and (i['data'].get('daemon') or {}).get('effect')=='$2'),'')"; }
 phone_has() { q $A "select count(*) from $1 where id='$2'"; }
-entered_started() { journal_cat $A | grep -c 'netrun.enter_start'; }
-entered_ok() { journal_cat $A | grep -c 'netrun.entered rid=.* ok=true'; }
-world_accepted() { journal_cat $A | grep -c 'netrun.world_item .*accepted=true'; }
+# Журнал телефона копится между сценариями (netrun-run идёт позже, но порядок не должен иметь значения): считаем строки сверх тех, что были при старте.
+J0_START=0; J0_OK=0
+entered_started() { echo $(( $(journal_cat $A | grep -c 'netrun.enter_start') - J0_START )); }
+entered_ok() { echo $(( $(journal_cat $A | grep -c 'netrun.entered rid=.* ok=true') - J0_OK )); }
+J0_START=$(entered_started); J0_OK=$(entered_ok)
 bot_said() { grep -q "$1" "$NR_DIR/$2.log"; }   # bot_said '<regexp>' <имя журнала бота>
 
 # ── Записи мира у коллектора: мастерский API коллектора стенда (api GET …) ──
