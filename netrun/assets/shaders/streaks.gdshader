@@ -44,6 +44,11 @@ uniform vec4 corrupt_color : source_color = vec4(1.0, 0.12, 0.24, 1.0);
 uniform float fade_start = 60.0;
 uniform float fade_end = 90.0;
 uniform float intensity = 1.0; // общий множитель яркости (отражение в полу = 0.2)
+// Яркий горизонт (референс: штрихи копятся в бирюзовый туман на уровне глаз): множитель яркости растёт с расстоянием от far_start до far_end
+// до far_gain и применяется до затухания по расстоянию. 1 — выключено (по умолчанию).
+uniform float far_gain : hint_range(1.0, 6.0) = 1.0;
+uniform float far_start = 20.0;
+uniform float far_end = 60.0;
 
 varying vec3 v_wp;
 varying float v_dist;
@@ -126,6 +131,6 @@ void fragment() {
 		col = mix(col, touch_color.rgb, clamp(tk * (0.5 + 0.5 * band), 0.0, 1.0));
 		boost += 2.4 * band * tk;
 	}
-	ALBEDO = col * glow;
+	ALBEDO = col * glow * mix(1.0, far_gain, smoothstep(far_start, far_end, v_dist));
 	ALPHA = COLOR.a * across * along * bead * wave * shim * boost * corrupt_hole(corrupt_mask(k)) * dist_fade() * intensity;
 }

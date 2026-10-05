@@ -12,6 +12,13 @@ const REFLECT := ["props/vault_closed", "props/vault_open", "props/portal", "pro
 const CEILING_H := 5.0
 const LAYER_PITCH := 7.0  # шаг между пластами данных: потолок 5 м + 2 м пустоты
 const ICE_POS := Vector3(1.0, 0.0, -2.8)
+## Яркий горизонт (STYLE.md, ARCHITECTURE.md «Ореол и горизонт»): дальние пласты (env/far_*) и кольцо env/horizon_band не гаснут в чёрный
+## на 14…40 м, а светятся: затухание отодвинуто, яркость растёт с расстоянием (far_gain от far_start до far_end).
+const FAR_FADE := [40.0, 130.0]
+const FAR_GAIN := 1.8
+const FAR_GAIN_RANGE := [20.0, 60.0]
+const HORIZON_FADE := [150.0, 260.0]
+const HORIZON_GAIN := 3.0
 
 
 func _room() -> Array:
@@ -46,6 +53,8 @@ func _room() -> Array:
 			items.append([wv[k % 3], Vector3(-4.0, 0, z), 90.0 + 180.0 * (k % 2), "BASE", 1.0])
 		k += 1
 	items.append(["env/portal_wall", Vector3(-4.0, 0, 0.0), -90.0, "BASE", 1.0])
+	if not _nohorizon:
+		items.append(["env/horizon_band", Vector3(0.0, 0.0, 0.0), 0.0, "BASE", 1.0])  # кольцо тумана у горизонта: один раз на центр комнаты
 	items.append(["env/doorway", Vector3(-1.0, 0, 4.0), 0.0, "BASE", 1.0])     # вход
 	items.append(["env/doorway_b", Vector3(1.0, 0, -4.0), 0.0, _tier, 1.0])   # выход
 	for x in [-4.0, 4.0]:
@@ -137,6 +146,8 @@ func _shots() -> Array:
 		{"name": "portal_view", "cam": Vector3(2.2, 1.4, 0.2), "look": Vector3(-4.0, 1.4, 0.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": room},
 		{"name": "room_wall", "cam": Vector3(2.4, 1.4, 1.2), "look": Vector3(-1.4, 1.0, -4.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
 		{"name": "room_floor", "cam": Vector3(0.3, 1.6, 1.6), "look": Vector3(0.0, 0.0, -0.4), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
+		{"name": "horizon_view", "cam": Vector3(1.0, 1.25, -2.6), "look": Vector3(1.0, 1.6, -40.0), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": room},
+		{"name": "horizon_out", "cam": Vector3(0.0, 1.3, 22.0), "look": Vector3(0.0, 1.8, -30.0), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": room},
 		{"name": "room_inside", "cam": Vector3(-3.0, 1.25, 3.0), "look": Vector3(0.5, 0.9, -2.8), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
 	]
 
@@ -153,6 +164,7 @@ var _walker: Node3D
 var _walker_mir: Node3D
 var _walker_base := Vector3.ZERO
 var _crowd := false  # --crowd: в комнате девять аватаров (худший случай по ТЗ), для замера
+var _nohorizon := false  # --nohorizon: без кольца env/horizon_band (сравнение «с туманом / без»)
 var _movie := false
 var _demo := false  # --demo: длинный проход по комнате (вход → хранилище → портал → ICE → вверх), 34 с
 var _batch_on := true  # --nobatch: не клеить дальние пласты в MultiMesh
@@ -191,6 +203,8 @@ func _ready() -> void:
 			_walk = true
 		if a.begins_with("--only="):
 			_only = Array(a.trim_prefix("--only=").split(","))
+		if a == "--nohorizon":
+			_nohorizon = true
 		if a == "--crowd":
 			_crowd = true
 		if a == "--fps":  # замер: 6 с без записи видео, печатает средний fps, худшие кадры и число вызовов отрисовки
@@ -401,6 +415,17 @@ func _setup(inst: Node3D, it: Array, shot: Dictionary, intensity: float) -> void
 	if String(it[0]).begins_with("ice/"):
 		AM.set_param(inst, "breathe", 0.12)  # существа «дышат»: длина штрихов медленно плывёт
 	AM.set_distance_fade(inst, shot["fade"][0], shot["fade"][1])
+	if String(it[0]).begins_with("env/far_") and shot["fade"][1] < 100.0:  # дальние пласты не гаснут в чёрный (горизонт светится): затухание отодвинуто, яркость растёт с расстоянием
+		AM.set_distance_fade(inst, FAR_FADE[0], FAR_FADE[1])
+		AM.set_param(inst, "far_gain", FAR_GAIN)
+		AM.set_param(inst, "far_start", FAR_GAIN_RANGE[0])
+		AM.set_param(inst, "far_end", FAR_GAIN_RANGE[1])
+	if String(it[0]) == "env/horizon_band":  # кольцо горизонта: на 35–70 м, поэтому затухание ещё дальше, а усиление у самой дали
+		AM.set_distance_fade(inst, HORIZON_FADE[0], HORIZON_FADE[1])
+		AM.set_param(inst, "far_gain", HORIZON_GAIN)
+		AM.set_param(inst, "bead_depth", 0.0)  # у далёких широких штрихов бусины читаются ступеньками: гладкий туман
+		AM.set_param(inst, "far_start", 30.0)
+		AM.set_param(inst, "far_end", 60.0)
 	if String(it[0]).begins_with("env/"):
 		AM.set_corruption(inst, shot["corrupt"][0], shot["corrupt"][1])
 	if intensity != 1.0:

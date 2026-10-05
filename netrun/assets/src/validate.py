@@ -52,8 +52,15 @@ def check(rep):
         if not need <= set(p["attrs"]):
             bad.append(f"{p['mesh']}: нет атрибутов {sorted(need - set(p['attrs']))}")
     lo, hi, size = info["bbox_min"], info["bbox_max"], info["size"]
-    if not 0.01 <= max(size) <= 12:
+    horizon = rep["origin"] == "horizon"  # кольцо горизонта: габарит ~140 м, это его суть
+    if not 0.01 <= max(size) <= (150 if horizon else 12):
         bad.append(f"странный размер {size} (1 единица = 1 м)")
+    # «horizon» — кольцо вокруг центра узла: радиус не ближе 35 м и не дальше 75 м, по высоте −3…+9 м (у размеров штрихов запас на ширину)
+    if horizon:
+        if max(abs(lo[0]), abs(lo[2]), abs(hi[0]), abs(hi[2])) > 75 or lo[1] < -3.1 or hi[1] > 9.0:
+            bad.append(f"origin «horizon»: габарит вне 75 м по xz или −3…+9 м по высоте: min={[round(v, 1) for v in lo]}, max={[round(v, 1) for v in hi]}")
+        if min(hi[0], hi[2], -lo[0], -lo[2]) < 30:
+            bad.append("origin «horizon»: кольцо не охватывает центр (ближе 30 м с одной из сторон)")
     mid = [(lo[i] + hi[i]) / 2 for i in range(3)]
     if rep["origin"] == "floor" and (abs(lo[1]) > 0.01 or abs(mid[0]) > 0.05 or abs(mid[2]) > 0.05):
         bad.append(f"origin не на полу в центре: min.y={lo[1]:.3f}, центр xz=({mid[0]:.3f},{mid[2]:.3f})")

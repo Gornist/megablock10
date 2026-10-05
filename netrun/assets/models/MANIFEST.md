@@ -39,6 +39,7 @@
 | `models/env/floor_b.glb` | 56 / 300 | 36 / 170 | 91 / 200 | 0 | 3 | 1.782 × 0.95 × 1.75 | points, solid_dark, streaks | — | surface | ок |
 | `models/env/floor_c.glb` | 84 / 300 | 36 / 170 | 117 / 200 | 0 | 3 | 1.782 × 0.9496 × 1.75 | points, solid_dark, streaks | — | surface | ок |
 | `models/env/floor_clear.glb` | 0 / 300 | 58 / 170 | 0 / 200 | 0 | 1 | 1.782 × 0.1032 × 1.75 | points | — | surface | ок |
+| `models/env/horizon_band.glb` | 0 / 800 | 0 / 0 | 360 / 400 | 0 | 1 | 132.9202 × 10.369 × 122.7654 | streaks | — | horizon | ок |
 | `models/env/lockdown_gate.glb` | 0 / 300 | 18 / 40 | 79 / 120 | 0 | 4 | 1.98 × 2.7226 × 0.328 | points, streaks | — | floor | ок |
 | `models/env/lockdown_gate_open.glb` | 0 / 300 | 18 / 40 | 48 / 120 | 0 | 4 | 1.98 × 2.7226 × 0.328 | points, streaks | — | floor | ок |
 | `models/env/pillar.glb` | 0 / 300 | 0 / 0 | 11 / 16 | 0 | 2 | 0.1166 × 3 × 0.0709 | streaks | — | floor | ок |
