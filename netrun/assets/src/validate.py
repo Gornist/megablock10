@@ -19,7 +19,9 @@ import glbinfo  # noqa: E402
 
 ROLES = {"glow_edge", "shell_soft", "points", "streaks", "solid_dark"}
 MAX_LAYERS = 3  # вложенных прозрачных оболочек на один ассет (STYLE.md)
-MAX_DRAWS = 8   # примитивов (≈ вызовов отрисовки) на ассет; предварительно, уточнить замером
+# Бюджет вариантов пола env/floor_v<N>_16 (карточка 2026-10-05): v1 «пыль» — до 900 штрихов (повышенный), остальные до 600; слоёв ≤ 3 (MAX_LAYERS). Бюджет узла ≈ 220 тыс. треугольников, на Pico не мерили.
+FLOOR_V_LIMITS = {"tris": 600, "points": 900, "streaks": 600, "streaks_v1": 900}
+MAX_DRAWS = 8  # примитивов (≈ вызовов отрисовки) на ассет; предварительно, уточнить замером
 # Узлы-метки предметов узла: контракт с клиентом (ARCHITECTURE.md, «Предметы узла»), без них клиент не сможет включить состояние, тир, экран.
 REQUIRED_NODES = {
     "vault": ("State_closed", "State_open", "State_empty", "Tier_1", "Tier_2", "Tier_3", "ShardSlot"),
@@ -53,6 +55,13 @@ def check(rep):
     max_draws = rep.get("budget_draws") or MAX_DRAWS  # составные предметы (хранилище: три состояния в одном файле) заявляют свой предел
     if draws > max_draws:
         bad.append(f"примитивов {draws} > {max_draws} (каждый — вызов отрисовки)")
+    # ЭКСПЕРИМЕНТ «варианты пола» (env/floor_v<N>_<размер>): общий бюджет из карточки поверх заявленного в отчёте; для _8 — по площади (×0,25)
+    if rep["name"].startswith("floor_v"):
+        k = (int(rep["name"].rsplit("_", 1)[1]) / 16.0) ** 2
+        lim_s = FLOOR_V_LIMITS["streaks_v1" if rep["name"].startswith("floor_v1_") else "streaks"] * k
+        for what, have, lim in (("треугольников", s["tris"], FLOOR_V_LIMITS["tris"] * k), ("точек", s["points"], FLOOR_V_LIMITS["points"] * k), ("штрихов", s["streaks"], lim_s)):
+            if have > lim:
+                bad.append(f"вариант пола: {what} {have} > {lim:g} (бюджет карточки)")
     missing = [n for n in REQUIRED_NODES.get(rep["name"], ()) if n not in info.get("node_names", [])]
     if missing:
         bad.append(f"нет узлов-меток контракта: {missing}")
@@ -86,7 +95,8 @@ def check(rep):
     horizon = rep["origin"] == "horizon"  # кольцо горизонта: габарит ~140 м, это его суть
     edge = rep["origin"] == "edge"  # кромка комнаты (room_edge_<N>): габарит до 20 м (квадрат 16 м + дымка 1,8 м наружу)
     slab = rep["origin"] == "slab"  # пол комнаты одной плитой (env/floor_slab_<N>, эксперимент): габарит до 20 м, сторона плиты = N
-    if not 0.01 <= max(size) <= (150 if horizon else 20.0 if edge or slab else 12):
+    floorv = rep["origin"] == "floorv"  # варианты пола env/floor_v<N>_<размер>: габарит до 20 м
+    if not 0.01 <= max(size) <= (150 if horizon else 20.0 if edge or slab or floorv else 12):
         bad.append(f"странный размер {size} (1 единица = 1 м)")
     # «edge» — центр квадрата на уровне пола: по высоте от −3 м (подвесные штрихи) до +0,55 м (низкая дымка до колена), по xz симметрично и не шире 10 м от центра
     if edge:
@@ -100,6 +110,14 @@ def check(rep):
             bad.append(f"origin «slab»: по высоте вне −1,2…+0,04 м: min.y={lo[1]:.2f}, max.y={hi[1]:.3f}")
         if max(abs(lo[0]), abs(lo[2]), abs(hi[0]), abs(hi[2])) > 10.0 or abs(lo[0] + hi[0]) > 0.1 or abs(lo[2] + hi[2]) > 0.1:
             bad.append(f"origin «slab»: габарит шире 10 м от центра или несимметричен: min={[round(v, 2) for v in lo]}, max={[round(v, 2) for v in hi]}")
+    # «floorv» — вариант пола (env/floor_v<N>_<размер>): центр квадрата на уровне пола; плиты не выше пола, штрихи «пыли» до 0,35 м над ним (не коллизия), подвесные — не глубже 1,2 м
+    if rep["origin"] == "floorv":
+        if hi[1] > 0.4 or lo[1] < -1.2:
+            bad.append(f"origin «floorv»: по высоте вне −1,2…+0,4 м: min.y={lo[1]:.2f}, max.y={hi[1]:.3f}")
+        if rep["name"].rsplit("_", 1)[0] != "floor_v1" and hi[1] > 0.04:
+            bad.append(f"origin «floorv»: выше пола max.y={hi[1]:.3f} (допуск 0,04; выше — только штрихи «пыли» floor_v1)")
+        if max(abs(lo[0]), abs(lo[2]), abs(hi[0]), abs(hi[2])) > 10.0 or abs(lo[0] + hi[0]) > 0.1 or abs(lo[2] + hi[2]) > 0.1:
+            bad.append(f"origin «floorv»: габарит шире 10 м от центра или несимметричен: min={[round(v, 2) for v in lo]}, max={[round(v, 2) for v in hi]}")
     # «horizon» — кольцо вокруг центра узла: радиус не ближе 35 м и не дальше 75 м, по высоте −3…+9 м (у размеров штрихов запас на ширину)
     if horizon:
         if max(abs(lo[0]), abs(lo[2]), abs(hi[0]), abs(hi[2])) > 75 or lo[1] < -3.1 or hi[1] > 9.0:

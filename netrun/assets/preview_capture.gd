@@ -26,7 +26,13 @@ func _room() -> Array:
 	var g := [-3.0, -1.0, 1.0, 3.0]  # центры модулей 2×2 м: комната 8×8 м = 4×4 модуля
 	var variants := ["env/floor", "env/floor_b", "env/floor_c"]
 	var n := 0
-	if _floor1 or _floor1glass:  # эксперимент --floor1 / --floor1glass: пол комнаты одной плитой 8×8 (чёрной или стеклянной) вместо 16 модулей (хранилище стоит на ней)
+	if _floorv > 0 and (_floor1 or _floor1glass):
+		push_error("--floorv не сочетается с --floor1 / --floor1glass")
+		get_tree().quit(1)
+		return items
+	if _floorv > 0:  # эксперимент --floorv=N (1…4): пол комнаты одним из четырёх вариантов env/floor_v<N>_8 вместо 16 модулей
+		items.append(["env/floor_v%d_8" % _floorv, Vector3.ZERO, 0.0, "BASE", 1.0])
+	elif _floor1 or _floor1glass:  # эксперимент --floor1 / --floor1glass: пол комнаты одной плитой 8×8 (чёрной или стеклянной) вместо 16 модулей (хранилище стоит на ней)
 		items.append(["env/floor_glass_8" if _floor1glass else "env/floor_slab_8", Vector3.ZERO, 0.0, "BASE", 1.0])
 	else:
 		for x in g:
@@ -194,6 +200,7 @@ var _portal := false  # --portal: вернуть портал в западно�
 var _nohorizon := false  # --nohorizon: без кольца env/horizon_band (сравнение «с туманом / без»)
 var _noedge := false  # --noedge: без кромки env/room_edge_8 (сравнение «с кромкой / без»)
 var _floor1glass := false  # --floor1glass: ЭКСПЕРИМЕНТ, то же, но плита стеклянная (полупрозрачная) env/floor_glass_8
+var _floorv := 0  # --floorv=N (1…4): ЭКСПЕРИМЕНТ, пол комнаты одним из четырёх вариантов env/floor_v<N>_8 (src/floor_variants.py); не сочетается с --floor1 / --floor1glass
 var _floor1 := false # --floor1: ЭКСПЕРИМЕНТ, пол комнаты одной плитой env/floor_slab_8 вместо 16 модулей (сравнение кадров «с / без»)
 var _movie := false
 var _demo := false  # --demo: длинный проход по комнате (вход → хранилище → портал → ICE → вверх), 34 с
@@ -241,6 +248,8 @@ func _ready() -> void:
 			_floor1 = true
 		if a == "--floor1glass":
 			_floor1glass = true
+		if a.begins_with("--floorv="):
+			_floorv = int(a.trim_prefix("--floorv="))
 		if a == "--crowd":
 			_crowd = true
 		if a == "--walls":

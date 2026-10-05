@@ -20,6 +20,16 @@ const HAZE_SHADER := preload("res://assets/shaders/haze.gdshader")
 ## ЭКСПЕРИМЕНТ: верх стеклянного пола (меш `*_glass` в env/floor_glass_<N>): роль shell_soft, шейдер по имени меша; сторону плиты (plate_size) берём из AABB меша.
 const GLASS_SHADER := preload("res://assets/shaders/glass.gdshader")
 
+## ЭКСПЕРИМЕНТ «варианты пола» (env/floor_v<N>_<размер>, src/floor_variants.py): параметры шейдеров по номеру варианта и имени меша. Ключ — номер варианта, вложенный ключ — суффикс меша.
+## `_glass` (v1 пыль — слабая дымка; v3 решётка — сетка 0,5 м цепочками точек и подсвеченные клетки), `_skirt` (v2: яркая стенка ступени), `_plates` (контур верха плиты по UV).
+const FLOOR_V := {
+	1: {"_glass": {"glass_alpha": 0.06, "center_k": 1.0, "patch_amount": 0.5, "rim_alpha": 0.25}, "dust_streaks": {"glow": 3.2, "halo": 0.3, "halo_width": 2.0, "breathe": 0.15}},
+	2: {"_skirt": {"veil_alpha": 0.32, "falloff": 0.9}, "_plates": {"uv_rim": 0.03, "edge_glow": 1.6, "edge_uneven": 0.5}},
+	3: {"_glass": {"glass_alpha": 0.12, "center_k": 0.8, "patch_amount": 0.4, "rim_alpha": 0.5, "grid_alpha": 0.85, "grid_step": 0.5, "grid_width": 0.016, "grid_dot": 0.1,
+			"grid_radius": 6.0, "cell_alpha": 0.12, "cell_share": 0.10}},
+	4: {"_plates": {"uv_rim": 0.02, "edge_glow": 1.2, "edge_uneven": 0.7}},
+}
+
 ## Параметры haze.gdshader для `edge_mist` (env/room_edge_<N>): низкая дымка вдоль границы комнаты, не туман горизонта.
 const EDGE_MIST := {"haze_alpha": 0.6, "glow": 1.6, "shape": 1.0, "noise_amount": 0.35, "stripe_amount": 0.12, "stripe_count": 160.0}
 
@@ -52,8 +62,18 @@ static func _is_entity(root: Node) -> bool:
 
 
 ## tier — "BASE"/"HARD"/"NIGHTMARE" для окружения (перекрашивает свечение); пусто — цвета из вершин (ICE, аватар, дека).
+## Номер варианта пола по пути сцены (`.../floor_v3_8.glb` → 3), иначе 0.
+static func _floor_variant(root: Node) -> int:
+	var p := root.scene_file_path
+	var i := p.find("/floor_v")
+	if i < 0:
+		return 0
+	return int(p.substr(i + 8, 1))
+
+
 static func apply(root: Node, tier: String = "") -> void:
 	var entity := _is_entity(root)
+	var fv := _floor_variant(root)
 	for n in root.find_children("*", "MeshInstance3D", true, false):
 		var mi := n as MeshInstance3D
 		if mi.mesh == null:
@@ -89,6 +109,11 @@ static func apply(root: Node, tier: String = "") -> void:
 				m.set_shader_parameter("anchor", 0.0)
 			if String(mi.name).ends_with("_hang"):  # подвесные штрихи (под полом): длина меняется от верхнего конца
 				m.set_shader_parameter("anchor", 1.0)
+			if FLOOR_V.has(fv):  # варианты пола: параметры по суффиксу меша, последними (поверх ореола и якоря)
+				for suffix in FLOOR_V[fv]:
+					if String(mi.name).ends_with(suffix):
+						for k in FLOOR_V[fv][suffix]:
+							m.set_shader_parameter(k, FLOOR_V[fv][suffix][k])
 			mi.set_surface_override_material(s, m)
 
 

@@ -8,6 +8,10 @@ uniform float edge_glow : hint_range(0.0, 4.0) = 0.75;        // общая яр
 uniform float edge_uneven : hint_range(0.0, 1.0) = 0.92;    // неравномерность: 0 — ровная линия, 1 — от почти погасшей до полной яркости
 uniform float edge_noise_scale : hint_range(1.0, 40.0) = 14.0; // пятен света на метр вдоль контура
 uniform float edge_drift : hint_range(0.0, 1.0) = 0.12;      // медленное «плавание» пятен света, 1/с
+// Контур по UV (по умолчанию выключен, включает AssetMaterials для мешей `*_plates`: плиты террас и полос env/floor_v2/v4): у плиты на верхней грани UV0 = локальные метры
+// от центра, UV1 = полуразмеры плиты; светится кайма шириной uv_rim по краю верха. Так плита — один квад (2 треугольника), а не 90 треугольников с вырезанной рамкой.
+// У боковых граней UV1 огромны: каймы нет.
+uniform float uv_rim : hint_range(0.0, 0.2) = 0.0;
 uniform vec4 tint : source_color = vec4(1.0);
 uniform float tint_amount : hint_range(0.0, 1.0) = 0.0;
 
@@ -19,6 +23,8 @@ vec3 recolor(vec3 c) {
 }
 
 varying vec3 v_wp;
+varying vec2 v_uv;
+varying vec2 v_hs;
 
 float hash3(vec3 p) {
 	return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
@@ -35,10 +41,17 @@ float vnoise(vec3 p) {
 
 void vertex() {
 	v_wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	v_uv = UV;
+	v_hs = UV2;
 }
 
 void fragment() {
 	float n = vnoise(v_wp * edge_noise_scale + vec3(TIME * edge_drift, 0.0, TIME * edge_drift * 0.7));
 	float lit = mix(1.0, smoothstep(0.38, 0.62, n), edge_uneven);
-	ALBEDO = base_color.rgb + mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount) * edge_glow * lit;
+	float rim_k = 1.0;
+	if (uv_rim > 0.0) {
+		vec2 q = v_hs - abs(v_uv);
+		rim_k = 1.0 - smoothstep(uv_rim * 0.4, uv_rim, min(q.x, q.y));
+	}
+	ALBEDO = base_color.rgb + mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount) * edge_glow * lit * rim_k;
 }

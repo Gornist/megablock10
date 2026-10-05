@@ -344,6 +344,61 @@ func test_floor_glass_is_translucent_slab_within_budget() -> void:
 		assert_bool(gm.shader.code.contains("hint_depth_texture")).override_failure_message("%s: glass.gdshader читает глубину" % asset).is_false()
 
 
+## ЭКСПЕРИМЕНТ «варианты пола» (env/floor_v<N>_<размер>, src/floor_variants.py): четыре разных механизма (1 пыль, 2 террасы, 3 решётка, 4 полосы). Файлы есть, габарит = комната,
+## бюджет 16×16: 600 треуг., 900 точек, 600 штрихов (v1 — 900), слоёв прозрачности ≤ 3; _8 — ×0,25. Плиты (`*_plates`) не выше пола, красного нет, подмена шейдеров по суффиксу меша.
+func test_floor_variants_are_within_budget_and_below_floor() -> void:
+	var room := NodeLayout.ROOM_MAX - NodeLayout.ROOM_MIN
+	for v in [1, 2, 3, 4]:
+		for spec in [[8, 8.0], [16, room.x]]:
+			var asset := "floor_v%d_%d" % [v, spec[0]]
+			var k2: float = (spec[0] / 16.0) * (spec[0] / 16.0)
+			var root := _load("env", asset)
+			var tris := 0
+			var streaks := 0
+			var layers := 0
+			var plates: MeshInstance3D = null
+			var glass: MeshInstance3D = null
+			for mi in _meshes(root):
+				var n := String(mi.name)
+				var arrays := mi.mesh.surface_get_arrays(0)
+				if n.contains("streaks"):
+					streaks += (arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array).size() / 4
+				else:
+					tris += (arrays[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3
+				if n.ends_with("_glass") or n.ends_with("_skirt"):
+					layers += 1
+				if n.ends_with("_plates"):
+					plates = mi
+				if n.ends_with("_glass"):
+					glass = mi
+				for c in (arrays[Mesh.ARRAY_COLOR] as PackedColorArray):  # красного нет: только cyan и ice_white
+					assert_bool(c.r <= c.g + 0.001).override_failure_message("%s: красноватый цвет вершины %s в %s" % [asset, c, n]).is_true()
+			assert_int(tris).override_failure_message("%s: треугольников %d > %d" % [asset, tris, int(600 * k2)]).is_less_equal(int(600 * k2))
+			var lim_s := int((900 if v == 1 else 600) * k2)
+			assert_int(streaks).override_failure_message("%s: штрихов %d > %d" % [asset, streaks, lim_s]).is_less_equal(lim_s)
+			assert_int(streaks).override_failure_message("%s: штрихов слишком мало (%d)" % [asset, streaks]).is_greater(int(lim_s * 0.3))
+			assert_int(layers).override_failure_message("%s: слоёв прозрачности %d > 3" % [asset, layers]).is_less_equal(3)
+			var ab := _aabb(root)
+			assert_float(ab.size.x).override_failure_message("%s: габарит по X %g не равен комнате %g" % [asset, ab.size.x, spec[1]]).is_equal_approx(spec[1], 0.2)
+			assert_float(ab.size.z).override_failure_message("%s: габарит по Z %g не равен комнате %g" % [asset, ab.size.z, spec[1]]).is_equal_approx(spec[1], 0.2)
+			assert_float(ab.end.y).override_failure_message("%s: выше пола %g м" % [asset, ab.end.y]).is_less_equal(0.4 if v == 1 else 0.04)
+			if v == 2 or v == 4:
+				assert_bool(plates != null).override_failure_message("%s: нужен меш *_plates" % asset).is_true()
+				assert_float(plates.get_aabb().end.y).override_failure_message("%s: верх плит выше пола" % asset).is_less_equal(0.0)
+				assert_float(plates.get_aabb().position.y).override_failure_message("%s: плиты глубже 0,5 м" % asset).is_greater(-0.5)
+			if v == 1 or v == 3:
+				assert_bool(glass != null).override_failure_message("%s: нужен меш *_glass" % asset).is_true()
+			AssetMaterials.apply(root, "BASE")
+			if plates != null:
+				var pm := plates.get_surface_override_material(0) as ShaderMaterial
+				assert_bool(pm != null and pm.shader.resource_path.ends_with("solid_dark.gdshader")).override_failure_message("%s: у плит не solid_dark" % asset).is_true()
+				assert_float(float(pm.get_shader_parameter("uv_rim"))).override_failure_message("%s: у плит не включена кайма uv_rim" % asset).is_greater(0.0)
+			if v == 3:
+				var gm := glass.get_surface_override_material(0) as ShaderMaterial
+				assert_float(float(gm.get_shader_parameter("grid_alpha"))).override_failure_message("%s: сетка не включена" % asset).is_greater(0.0)
+				assert_bool(gm.shader.code.contains("hint_depth_texture")).override_failure_message("%s: glass.gdshader читает глубину" % asset).is_false()
+
+
 func test_mesh_parts_are_cached_per_tier_and_mirror() -> void:
 	var a := NodeAssets.mesh_parts(NodeAssets.env_path("wall"), "BASE")
 	assert_bool(NodeAssets.mesh_parts(NodeAssets.env_path("wall"), "BASE") == a).is_true()
