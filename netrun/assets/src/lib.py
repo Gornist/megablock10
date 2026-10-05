@@ -355,6 +355,38 @@ def haze_band(name, rings, rgb):
     return ob
 
 
+def loop_band(name, rings, rgb):
+    """Замкнутая лента произвольного контура (низкая дымка вдоль границы комнаты): rings — изнутри наружу [[(точка Vector, плотность)] по контуру],
+    в каждом кольце одинаковое число точек, контур замкнут (последняя соединена с первой). Плотность — альфа вершин, между вершинами интерполируется;
+    один слой, 2 треугольника на сегмент на каждый пояс между кольцами. Роль shell_soft (в Godot имя меша `*_mist` подменяет шейдер на haze.gdshader).
+    Как haze_band, но кольцо — не окружность вокруг Origin, а любой замкнутый контур."""
+    n = len(rings[0])
+    bm = bmesh.new()
+    verts, dens = [], []
+    for ring in rings:
+        assert len(ring) == n, "в каждом кольце одинаковое число точек"
+        row = []
+        for p, d in ring:
+            row.append(bm.verts.new(Vector(p)))
+            dens.append(d)
+        verts.append(row)
+    for k in range(len(rings) - 1):
+        for i in range(n):
+            j = (i + 1) % n
+            bm.faces.new([verts[k][i], verts[k][j], verts[k + 1][j], verts[k + 1][i]])
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    ob = bpy.data.objects.new(name, me)
+    bpy.context.collection.objects.link(ob)
+    me.materials.append(material("shell_soft"))
+    attr = me.color_attributes.new("Color", "FLOAT_COLOR", "POINT")
+    for i, v in enumerate(me.vertices):  # to_mesh сохраняет порядок вершин: кольцо за кольцом
+        attr.data[i].color = (*rgb, dens[i])
+    me.color_attributes.active_color = attr
+    return ob
+
+
 def streak_set(name, streaks, rgb):
     """Штрихи — основной примитив (STYLE.md): [(центр Vector, полуширина, полувысота, яркость)]. Один квадрат на штрих, в плоскости XZ.
     Для штриха от пола: центр.z = полувысота. UV0 — углы, UV1 = (w, 1-h): экспортёр glTF переворачивает V у всех развёрток, в файле

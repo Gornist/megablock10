@@ -18,6 +18,11 @@ const SKIRT_SHADER := preload("res://assets/shaders/skirt.gdshader")
 ## Сплошная дымка горизонта (меш `horizon_mist` в env/horizon_band): тоже роль shell_soft, шейдер по имени меша.
 const HAZE_SHADER := preload("res://assets/shaders/haze.gdshader")
 
+## Параметры haze.gdshader для `edge_mist` (env/room_edge_<N>): низкая дымка вдоль границы комнаты, не туман горизонта.
+const EDGE_MIST := {"haze_alpha": 0.6, "glow": 1.6, "shape": 1.0, "noise_amount": 0.35, "stripe_amount": 0.12, "stripe_count": 160.0}
+## Цепочка точек кромки (`edge_line`): ярче точек пола (glow пола 1,4), но не слепит.
+const EDGE_LINE_GLOW := 2.2
+
 ## Цвета тиров окружения (BASE/HARD/NIGHTMARE): голубая гамма, красный в тирах не участвует.
 const TIER_TINT := {
 	"BASE": Color("18e6ff"),
@@ -60,6 +65,11 @@ static func apply(root: Node, tier: String = "") -> void:
 				m.shader = SKIRT_SHADER
 			elif String(mi.name).ends_with("_mist"):
 				m.shader = HAZE_SHADER
+				if root.scene_file_path.contains("/room_edge_"):  # низкая дымка границы комнаты: профиль по высоте круче, штрихи по азимуту реже и слабее
+					for k in EDGE_MIST:
+						m.set_shader_parameter(k, EDGE_MIST[k])
+			if String(mi.name) == "edge_line":
+				m.set_shader_parameter("glow", EDGE_LINE_GLOW)
 			if tier != "" and TIER_TINT.has(tier):
 				m.set_shader_parameter("tint", TIER_TINT[tier])
 				m.set_shader_parameter("tint_amount", 1.0)

@@ -56,6 +56,8 @@ func _room() -> Array:
 		items.append(["env/portal_wall", Vector3(-4.0, 0, 0.0), -90.0, "BASE", 1.0])
 		items.append(["env/doorway", Vector3(-1.0, 0, 4.0), 0.0, "BASE", 1.0])     # вход
 		items.append(["env/doorway_b", Vector3(1.0, 0, -4.0), 0.0, _tier, 1.0])   # выход
+	if not _noedge:
+		items.append(["env/room_edge_8", Vector3(0.0, 0.0, 0.0), 0.0, "BASE", 1.0])  # кромка комнаты вместо стен: квадрат 8×8, края на ±4 (в игре — env/room_edge_16 в центр комнаты)
 	if not _nohorizon:
 		items.append(["env/horizon_band", Vector3(0.0, 0.0, 0.0), 0.0, "BASE", 1.0])  # кольцо тумана у горизонта: один раз на центр комнаты
 	for x in [-4.0, 4.0]:
@@ -151,6 +153,8 @@ func _shots() -> Array:
 		{"name": "horizon_view", "cam": Vector3(1.0, 1.25, -2.6), "look": Vector3(1.0, 1.6, -40.0), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": room},
 		{"name": "horizon_out", "cam": Vector3(0.0, 1.3, 22.0), "look": Vector3(0.0, 1.8, -30.0), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": room},
 		{"name": "room_inside", "cam": Vector3(-3.0, 1.25, 3.0), "look": Vector3(0.5, 0.9, -2.8), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
+		# с края комнаты (юго-западный угол) вдоль южной кромки и наружу, за обрыв
+		{"name": "edge_view", "cam": Vector3(-3.4, 1.4, 3.1), "look": Vector3(3.0, 0.0, 6.0), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": room},
 	]
 
 
@@ -169,6 +173,7 @@ var _crowd := false  # --crowd: в комнате девять аватаров 
 var _walls := false  # --walls: вернуть стены-занавесы и проёмы (по умолчанию убраны: владелец, «эквалайзер явно не то», открытый горизонт)
 var _portal := false  # --portal: вернуть портал в западной стене (по умолчанию убран: яркая бирюзовая панель закрывает кадр изнутри комнаты)
 var _nohorizon := false  # --nohorizon: без кольца env/horizon_band (сравнение «с туманом / без»)
+var _noedge := false  # --noedge: без кромки env/room_edge_8 (сравнение «с кромкой / без»)
 var _movie := false
 var _demo := false  # --demo: длинный проход по комнате (вход → хранилище → портал → ICE → вверх), 34 с
 var _batch_on := true  # --nobatch: не клеить дальние пласты в MultiMesh
@@ -209,6 +214,8 @@ func _ready() -> void:
 			_only = Array(a.trim_prefix("--only=").split(","))
 		if a == "--nohorizon":
 			_nohorizon = true
+		if a == "--noedge":
+			_noedge = true
 		if a == "--crowd":
 			_crowd = true
 		if a == "--walls":
