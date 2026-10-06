@@ -211,3 +211,59 @@ func test_hunt_stops_when_target_is_ghost_or_trace_drops() -> void:
 	_run(b, t, 0.3, func(_t): return {}, {"a": meter})
 	assert_bool(b.is_hunting("a")).is_false()
 	assert_int(b.state()).is_equal(S.PATROL)
+
+
+## Тревога после «!» (карточка 1б, шаг 2): catch_grace_sec секунд поиска ICE стоит и смотрит, не ловит; потом поиск как раньше.
+## Прогон: игрок стоит в 2 м перед ICE (тот смотрит вдоль -Z); возвращает {search_t, eject_t, moved} — время входа в SEARCH, выброса (-1 — нет)
+## и на сколько метров ICE сдвинулся за первую секунду поиска.
+func _alarm_run(settings: Dictionary, leave_at_search: bool = false, limit: float = 30.0) -> Dictionary:
+	var b := _brain(settings)
+	var res := {"search_t": -1.0, "eject_t": -1.0, "moved": -1.0}
+	var t := 0.0
+	var start_pos := Vector3.ZERO
+	var player := Vector3(0, 0, -2)
+	while t < limit and res["eject_t"] < 0.0:
+		t += 0.1
+		var st0 := b.state()
+		b.step(t, {"a": player} if _ejects.is_empty() else {}, {})
+		if st0 != S.SEARCH and b.state() == S.SEARCH:
+			res["search_t"] = t
+			start_pos = b.position
+			if leave_at_search:
+				player = Vector3(0, 0, 5)  # ушёл за спину ICE
+		if res["search_t"] >= 0.0 and absf(t - res["search_t"] - 1.0) < 0.05:
+			res["moved"] = b.position.distance_to(start_pos)
+		if not _ejects.is_empty():
+			res["eject_t"] = t
+	return res
+
+
+func test_grace_is_off_by_default() -> void:
+	var r := _alarm_run({"catch_range": 1.0})
+	assert_float(r["eject_t"] - r["search_t"]).is_less(1.0)  # старое поведение: бежит и хватает сразу (2 м при 2,5 м/с)
+
+
+func test_grace_holds_ice_in_place_and_delays_the_catch() -> void:
+	var r := _alarm_run({"catch_range": 1.0, "catch_grace_sec": 2.0})
+	assert_float(r["search_t"]).is_greater(0.0)
+	assert_float(r["moved"]).is_less(0.01)  # первую секунду тревоги ICE стоит
+	assert_float(r["eject_t"] - r["search_t"]).is_greater_equal(2.0 - 0.001)  # касание не раньше 2 с после «!»
+	assert_array(_ejects).is_equal([["a", "caught"]])
+
+
+func test_player_leaving_the_cone_during_grace_is_not_caught() -> void:
+	var r := _alarm_run({"catch_range": 1.0, "catch_grace_sec": 2.0}, true, 30.0)
+	assert_float(r["search_t"]).is_greater(0.0)
+	assert_array(_ejects).is_empty()
+
+
+func test_flatline_ejects_even_during_grace() -> void:
+	var b := _brain({"catch_grace_sec": 2.0})
+	var meter := TraceMeter.new()
+	meter.tick(0.0)
+	var seen := func(_t: float) -> Dictionary: return {"a": Vector3(0, 0, -3)} if _ejects.is_empty() else {}
+	var t := _run(b, 0.0, 2.3, seen, {"a": meter})
+	assert_int(b.state()).is_equal(S.SEARCH)  # «!» только что: идёт тревога
+	meter.add_action("door_forced", t, 12.0)  # trace 100 посреди тревоги
+	_run(b, t, 0.5, seen, {"a": meter})
+	assert_array(_ejects).is_equal([["a", "flatline"]])

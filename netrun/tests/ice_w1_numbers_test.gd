@@ -87,3 +87,12 @@ func test_black_ice_keeps_the_old_perception_numbers() -> void:
 	assert_float(float(b.get("sight_range", -1.0))).is_equal(IceBrain.DEFAULT_SETTINGS["sight_range"])
 	assert_float(float(b.get("notice_per_sec", -1.0))).is_equal(IceBrain.DEFAULT_SETTINGS["notice_per_sec"])
 	assert_float(float(b.get("chase_speed", -1.0))).is_equal(IceBrain.DEFAULT_SETTINGS["chase_speed"])
+
+
+## Карточка 1б, шаг 2: «!» не ловит сразу — graph.json даёт тревогу 2 с и касание с 1 м; Black ICE ловит как прежде (охота, а не тревога).
+func test_graph_gives_soft_ice_an_alarm_and_black_ice_keeps_old_catch() -> void:
+	var g := NodeGraph.load_file()
+	assert_float(float(g.settings["ice"]["catch_grace_sec"])).is_equal(2.0)
+	assert_float(float(g.settings["ice"]["catch_range"])).is_equal(1.0)
+	assert_float(float(g.settings["black_ice"]["catch_grace_sec"])).is_equal(0.0)
+	assert_float(float(g.settings["black_ice"]["catch_range"])).is_equal(IceBrain.DEFAULT_SETTINGS["catch_range"])

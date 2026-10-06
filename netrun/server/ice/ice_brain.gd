@@ -20,6 +20,7 @@ const DEFAULT_SETTINGS := {
 	"notice_per_sec": 0.5,  # рост осведомлённости на виду (1.0 = поиск)
 	"forget_per_sec": 0.25,  # спад осведомлённости, если цель пропала
 	"catch_range": 1.5,  # м: в поиске ближе этого — выброс
+	"catch_grace_sec": 0.0,  # с «тревоги» после «!»: первые секунды поиска ICE стоит и смотрит, не ловит (0 — как раньше)
 	"search_duration": 8.0,  # с поиска у последней точки, потом возврат на патруль
 	"patrol_speed": 1.0,
 	"chase_speed": 2.5,
@@ -41,6 +42,7 @@ var _awareness := 0.0
 var _target := ""  # сессия, которую подозреваем/ищем
 var _last_seen := Vector3.ZERO
 var _search_until := 0.0
+var _grace_until := -1.0  # до этого времени поиск после «!» — тревога: ICE стоит и смотрит, не ловит
 var _waypoints: Array[Vector3] = []
 var _wp_index := 0
 var _last_time := 0.0
@@ -190,6 +192,7 @@ func _on_seen(session: String, pos: Vector3, now: float, dt: float, meters: Dict
 		_set_state(State.SUSPICIOUS)
 	if _state == State.SUSPICIOUS and _awareness >= 1.0:
 		_search_until = now + float(_s["search_duration"])
+		_grace_until = now + float(_s["catch_grace_sec"])
 		_set_state(State.SEARCH)
 	elif _state == State.SEARCH:
 		_search_until = now + float(_s["search_duration"])
@@ -220,13 +223,18 @@ func _check_eject(_now: float, session: String, meters: Dictionary) -> bool:
 	var meter: TraceMeter = meters.get(session)
 	var flat := meter != null and meter.level() == TraceMeter.Level.FLATLINE
 	var close := position.distance_to(_last_seen) <= float(_s["catch_range"])
-	if _state == State.SEARCH and close:
+	if _state == State.SEARCH and close and not _in_grace():
 		_eject(session, "black_caught" if is_black() else "caught")
 		return true
 	if flat:
 		_eject(session, "flatline")
 		return true
 	return false
+
+
+## Идёт ли тревога после «!»: первые catch_grace_sec секунд поиска (по времени последнего шага).
+func _in_grace() -> bool:
+	return _last_time < _grace_until
 
 
 func _eject(session: String, reason: String) -> void:
@@ -237,6 +245,7 @@ func _eject(session: String, reason: String) -> void:
 func _reset_to_patrol() -> void:
 	_target = ""
 	_awareness = 0.0
+	_grace_until = -1.0
 	_set_state(State.PATROL)
 
 
@@ -264,7 +273,7 @@ func _move(dt: float) -> void:
 				return
 		State.SEARCH:
 			goal = _last_seen
-			speed = _s["chase_speed"]
+			speed = 0.0 if _in_grace() else float(_s["chase_speed"])  # тревога: стоит и смотрит на игрока
 		State.HUNT:
 			goal = _last_seen
 			speed = _s["hunt_speed"]
