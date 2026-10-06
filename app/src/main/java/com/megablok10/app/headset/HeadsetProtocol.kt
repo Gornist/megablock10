@@ -126,7 +126,8 @@ object HeadsetCodec {
         is HeadsetOut.CallLog -> JSONObject().put("t", "call_log").put("items", JSONArray(frame.items.map(::callLogJson)))
         is HeadsetOut.Contacts -> JSONObject().put("t", "contacts").put("items", JSONArray(frame.items.map { JSONObject().put("key", it.key).put("title", it.title) }))
         is HeadsetOut.Sound -> JSONObject().put("t", "sound").put("kind", frame.kind)
-        is HeadsetOut.Voice -> JSONObject().put("t", "voice").put("on", frame.on).put("rate", frame.rate)
+        // Частота — только во включающем кадре (так в фикстуре очков: `voice_off` без `rate`).
+        is HeadsetOut.Voice -> JSONObject().put("t", "voice").put("on", frame.on).also { if (frame.on) it.put("rate", frame.rate) }
     }.toString()
 
     fun decode(text: String): HeadsetCommand? {

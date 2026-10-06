@@ -73,10 +73,29 @@ class HeadsetContractTest {
         for (kind in listOf("ring", "ringback", "message", "stop")) assertSame("sound_$kind", HeadsetOut.Sound(kind))
     }
 
+    @Test fun voiceFramesMatchTheFixture() {
+        assertSame("voice_on", HeadsetOut.Voice(true, phone.getJSONObject("voice_on").getInt("rate")))
+        assertSame("voice_off", HeadsetOut.Voice(false))
+    }
+
+    /** Бинарные кадры голоса: раскладка `[тип][seq LE][int16 LE]` из раздела `binary` фикстуры сверяется в обе стороны. */
+    @Test fun binaryVoiceFramesMatchTheFixture() {
+        val binary = fixture.getJSONObject("binary")
+        val samples = binary.getJSONArray("samples").let { a -> ShortArray(a.length()) { a.getInt(it).toShort() } }
+        val seq = binary.getLong("seq")
+        for ((name, type) in listOf("voice_mic_hex" to HeadsetVoiceCodec.TYPE_MIC, "voice_peer_hex" to HeadsetVoiceCodec.TYPE_PLAYBACK)) {
+            val hex = binary.getString(name)
+            val bytes = ByteArray(hex.length / 2) { hex.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+            assertEquals("$name: разбор", VoiceFrame(type, seq, samples), HeadsetVoiceCodec.decode(bytes))
+            assertEquals("$name: сборка", hex, HeadsetVoiceCodec.encode(type, seq, samples).joinToString("") { "%02x".format(it) })
+        }
+    }
+
     @Test fun everyFixtureFrameOfThePhoneHasATest() {
         val covered = setOf(
             "hello", "threads", "messages_lis", "messages_faction", "message_incoming", "message_faction", "message_status",
             "call_idle", "call_outgoing", "call_incoming", "call_in_call", "call_log", "contacts", "sound_ring", "sound_ringback", "sound_message", "sound_stop",
+            "voice_on", "voice_off",
         )
         val all = phone.keys().asSequence().toSet()
         assertEquals("в фикстуре появились кадры, которых нет в проверке: ${all - covered}", emptySet<String>(), all - covered)
@@ -93,6 +112,8 @@ class HeadsetContractTest {
         assertEquals(HeadsetCommand.Mute(true), HeadsetCodec.decode(glasses.getJSONObject("mute").toString()))
         assertEquals(HeadsetCommand.StartCall(glasses.getJSONObject("start_call").getString("peer")), HeadsetCodec.decode(glasses.getJSONObject("start_call").toString()))
         assertEquals(HeadsetCommand.Resync, HeadsetCodec.decode(glasses.getJSONObject("resync").toString()))
-        assertEquals(9, glasses.length())
+        assertEquals(HeadsetCommand.VoiceReady(true), HeadsetCodec.decode(glasses.getJSONObject("voice_ready_on").toString()))
+        assertEquals(HeadsetCommand.VoiceReady(false), HeadsetCodec.decode(glasses.getJSONObject("voice_ready_off").toString()))
+        assertEquals(11, glasses.length())
     }
 }

@@ -46,7 +46,9 @@ class HeadsetVoiceCodecTest {
         assertEquals("voice", o.getString("t"))
         assertTrue(o.getBoolean("on"))
         assertEquals(44_100, o.getInt("rate"))
-        assertEquals(false, org.json.JSONObject(HeadsetCodec.encode(HeadsetOut.Voice(false))).getBoolean("on"))
+        val off = org.json.JSONObject(HeadsetCodec.encode(HeadsetOut.Voice(false)))
+        assertEquals(false, off.getBoolean("on"))
+        assertTrue("в выключающем кадре частоты нет", !off.has("rate"))
     }
 
     @Test fun voiceReadyIsParsedAndNeedsTheOnField() {
