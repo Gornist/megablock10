@@ -40,5 +40,8 @@ static func make_bk_event(tier: String = "HARD", seed_value: int = 77, ram: int 
 	var targets: Array = []
 	for d in daemons:
 		targets.append({"id": d.id, "name": d.display_name, "effect": d.effect, "cells": d.sequence})
-	return {"kind": WorldMsg.EV_BK, "mode": "storage", "vault": "v1", "n": 1, "tier": tier, "grid": VaultBreach.public_grid(run.attempt.grid),
+	var ev := {"kind": WorldMsg.EV_BK, "mode": "storage", "vault": "v1", "n": 1, "tier": tier, "grid": VaultBreach.public_grid(run.attempt.grid),
 		"targets": targets, "buffer": run.attempt.buffer_size, "sec": run.timer_sec, "ice": "ICE: тест"}
+	if not run.attempt.grid.lock.is_empty():
+		ev["decoys"] = VaultBreach.decoy_cells(run.attempt.grid)   # как у сервера: с замком приманки открыты клиенту
+	return ev

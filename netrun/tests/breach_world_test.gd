@@ -213,11 +213,17 @@ func test_breach_scenario_with_the_auto_solver_opens_the_vault_and_the_shard_is_
 	assert_int(p.mirror.buffer_size).is_equal(1 + (p.mirror.targets[0]["cells"] as Array).size() + 2)
 	assert_int(p.mirror.timer_sec).is_equal(45)
 	assert_str(p.mirror.ice_line).starts_with("ICE:")
+	# Замок BASE (1 код) приходит в сетке сообщения старта; приманок у BASE нет, поэтому и ключа decoys нет.
+	assert_int(p.mirror.lock.size()).is_equal(1)
+	assert_bool(p.mirror.decoys.is_empty()).is_true()
+	assert_bool(p.mirror.lock_opened).is_false()
 	# номер попытки записан в Мост ДО показа сетки
 	var sdoc := _bridge.doc("session", S1)
 	assert_int(int(sdoc["data"]["world"]["breach_n"])).is_equal(1)
 	await _solve(p)
 	assert_bool(p.mirror.finished).is_true()
+	assert_bool(p.ends[0]["lock_opened"]).is_true()           # итог клиенту: замок вскрыт, ничего не «совпало до замка»
+	assert_array(p.ends[0]["matched_before_lock"]).is_empty()
 	assert_str(p.ends[0]["outcome"]).is_equal("SUCCESS")
 	assert_array(p.ends[0]["opened"]).is_equal([s0])
 	assert_int(int(p.ends[0]["eddies"])).is_greater(0)
@@ -226,6 +232,8 @@ func test_breach_scenario_with_the_auto_solver_opens_the_vault_and_the_shard_is_
 	# Мост получил ровно один итог по контракту
 	assert_int(_bridge.breach_calls).is_equal(1)
 	assert_str(_bridge.doc("session", S1)["data"]["breach"]["outcome"]).is_equal("SUCCESS")
+	# lock_opened и «совпал до замка» — только клиенту: в запись Моста они не попадают (контракт run.breach не менялся)
+	assert_bool((_bridge.doc("session", S1)["data"]["breach"] as Dictionary).has("lock_opened")).is_false()
 	# хранилище открыто для этой сессии
 	assert_bool(await _wait_for(func(): return p.vault(s0).get("vault", "") == "open")).is_true()
 	var taken := []

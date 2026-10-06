@@ -159,10 +159,14 @@ func request_open(session: String, vault: String, ids: Array) -> void:
 	var targets: Array = []
 	for d in daemons:
 		targets.append({"id": d.id, "name": d.display_name, "effect": d.effect, "cells": d.sequence.duplicate()})
-	node.net.send_to(session, WorldMsg.encode_fields(WorldMsg.EVENT, {
+	var start := {
 		"kind": WorldMsg.EV_BK, "mode": att.run.mode, "vault": vault, "n": n, "tier": att.tier, "grid": public_grid(att.run.attempt.grid),
 		"targets": targets, "buffer": att.run.attempt.buffer_size, "sec": att.run.timer_sec, "ice": att.run.ice_line(BK_INTRO_EVENT),
-	}))
+	}
+	# С замком игроку открыты и приманки (breach.md 2.4: заметны глазу, зонд подсвечивает сразу); порченые коды без замка по-прежнему скрыты.
+	if not att.run.attempt.grid.lock.is_empty():
+		start["decoys"] = decoy_cells(att.run.attempt.grid)
+	node.net.send_to(session, WorldMsg.encode_fields(WorldMsg.EVENT, start))
 	att.sent_left = att.run.seconds_left
 	node.event.emit({"kind": "breach_start", "session": session, "vault": vault, "n": n, "tier": att.tier})
 	node._push_shards()   # остальным: хранилище занято
@@ -178,7 +182,17 @@ static func public_grid(grid: BreachGrid) -> Dictionary:
 	var rows: Array = []
 	for r in grid.cells:
 		rows.append((r as Array).duplicate())
-	return {"size": grid.size, "cells": rows, "traps": traps, "dead_marker": grid.dead_marker}
+	return {"size": grid.size, "cells": rows, "traps": traps, "dead_marker": grid.dead_marker, "lock": grid.lock.duplicate()}
+
+
+## Приманки сетки с замком — клетки-ловушки с обычным кодом (не мёртвые), [[строка, столбец]] по возрастанию. Только для сообщения старта хранилища.
+static func decoy_cells(grid: BreachGrid) -> Array:
+	var out: Array = []
+	for c in grid.trap_cells:
+		if not grid.is_dead(c):
+			out.append([c.x, c.y])
+	out.sort()
+	return out
 
 
 ## Следующий номер попытки: max(world.breach_n, breach.n) + 1; запись world.breach_n в Мост — до показа сетки. -1 — не вышло (попытку не начинаем).
@@ -227,6 +241,7 @@ func request_tap(session: String, cell: Array) -> void:
 	if r["ok"]:
 		msg["trap"] = bool(r["hit_trap"])
 		msg["matched"] = att.run.attempt.matched_daemon_ids()
+		msg["lock_opened"] = bool(r["lock_opened"])
 		var line := att.run.ice_line(str(r["ice_event"])) if str(r["ice_event"]) != "" else ""
 		if line != "":
 			msg["ice"] = line
@@ -362,7 +377,9 @@ func _apply_result(att: Attempt, outcome: String, matched: Array, resp: Dictiona
 	var session := att.session
 	var ds: DaemonSession = node._sessions.get(session)
 	var opened: Array = []
-	var end := {"kind": WorldMsg.EV_BK_END, "outcome": outcome, "matched": matched, "n": att.n, "vault": att.vault, "eddies": 0, "alert": ""}
+	# lock_opened и «совпал до замка» — только клиенту (экран итога); в Мост (run.breach) уходит один matched, уже по правилу замка.
+	var end := {"kind": WorldMsg.EV_BK_END, "outcome": outcome, "matched": matched, "n": att.n, "vault": att.vault, "eddies": 0, "alert": "",
+		"lock_opened": att.run.attempt.lock_opened(), "matched_before_lock": att.run.attempt.matched_before_lock_ids()}
 	if att.early != "":
 		end["early"] = att.early
 	if resp.get("ok", false):
