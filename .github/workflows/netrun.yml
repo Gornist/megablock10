@@ -69,7 +69,7 @@ jobs:
 
       - name: Шаблоны экспорта (кеш)
         id: templates-cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.local/share/godot/export_templates/${{ env.GODOT_VERSION }}.${{ env.GODOT_CHANNEL }}
           key: godot-templates-${{ env.GODOT_VERSION }}-${{ env.GODOT_CHANNEL }}
