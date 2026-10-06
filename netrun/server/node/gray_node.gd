@@ -20,6 +20,8 @@ signal event(ev: Dictionary)
 
 ## Игрок простоял в радиусе портала достаточно (W1): граф переводит его в узел `to`.
 signal portal_requested(session: String, to: String)
+## Строка журнала ICE (то же печатается в stdout): переход состояния или выброс.
+signal ice_logged(line: String)
 
 const STATE_INTERVAL := 0.1
 ## Позиции других аватаров — вдвое чаще (docs/netrun.md: ~20 раз/с).
@@ -89,6 +91,7 @@ var charge: ChargeBreach
 var decrypt: DecryptBreach
 var _takes_inflight: Dictionary = {} # сессия -> число незавершённых op.take_from_node (в графе общий на все узлы)
 var _slot_pos: Dictionary = {}       # id объекта (слот шарда узла) -> позиция
+var _entered_at: Dictionary = {}     # сессия -> время узла, когда она вошла (журнал ICE: «секунды от входа»)
 var _taken_by: Dictionary = {}       # сессия -> [id слотов этого узла, которые она взяла]
 var _refill_at: Dictionary = {}      # id пустого слота -> когда пробовать пополнить (время узла)
 var _refill_busy: Dictionary = {}    # id слота -> идёт запрос шарда в Мосте
@@ -285,9 +288,35 @@ func _add_ice(id: String, waypoints: Array, black: bool = false) -> void:
 		settings.merge(black_ice_settings, true)
 		settings["black"] = true
 	ice.setup(settings, wps)
+	# Журнал — до _on_ice_ejected: выброс убирает аватар, а строке нужна позиция игрока.
+	ice.brain.state_changed.connect(_log_ice_state.bind(ice))
+	ice.ejected.connect(_log_ice_eject.bind(ice))
 	ice.ejected.connect(_on_ice_ejected)
 	add_child(ice)
 	_ices.append(ice)
+
+
+## Журнал ICE (разбор забегов): строка на переход состояния и на выброс, без строки на кадр.
+func _log_ice_state(old_state: int, new_state: int, ice: IceNode) -> void:
+	var what := "%s→%s" % [IceBrain.state_name(old_state), IceBrain.state_name(new_state)]
+	_log_ice(ice, ice.brain.target(), what, ice.brain.awareness())
+
+
+func _log_ice_eject(session: String, reason: String, ice: IceNode) -> void:
+	_log_ice(ice, session, "ВЫБРОС %s" % reason, -1.0)
+
+
+## «t» — секунды от входа этой сессии в узел (нет сессии или входа — часы узла); awareness < 0 не печатаем.
+func _log_ice(ice: IceNode, session: String, what: String, awareness: float) -> void:
+	var t := _now - float(_entered_at.get(session, 0.0))
+	var d := "—"
+	var p: Variant = ice.targets.get(session)
+	if p is Vector3:
+		d = "%.1f" % ice.brain.position.distance_to(p)
+	var aw := "" if awareness < 0.0 else " aw=%.2f" % awareness
+	var line := "[ice] t=%.1f %s %s%s alert=%.2f d=%s %s" % [t, ice.name, what, aw, alert, d, session]
+	print(line)
+	ice_logged.emit(line)
 
 
 ## Снимок Моста: ждём связи, подписываемся, восстанавливаем (после рестарта сервера мира здесь же приходит прошлый забег).
@@ -887,6 +916,7 @@ func _on_joined(session: String, _peer: int, _resumed: bool) -> void:
 	for id in NodeLayout.DEFAULT_DECK_CELLS:
 		fresh.deck_meta[id] = {"cells": NodeLayout.DEFAULT_DECK_CELLS[id], "prot": false}
 	_sessions[session] = fresh
+	_entered_at[session] = _now
 	print("[gray-node] ", session, " вошёл в ", node_id)
 	_push_deck(session)   # сразу то, что известно (дека по умолчанию); настоящую деку и груз подтянет _load_deck
 	if bridge != null:
@@ -918,6 +948,7 @@ func _on_avatar_removed(session: String) -> void:
 	if not _sessions.has(session):
 		return
 	_sessions.erase(session)
+	_entered_at.erase(session)
 	_exiting[session] = true
 	_level_cbs.erase(session)
 	_hunted.erase(session)
@@ -1697,6 +1728,7 @@ func release_session(session: String) -> DaemonSession:
 		ds.trace.level_changed.disconnect(cb)
 	_level_cbs.erase(session)
 	_sessions.erase(session)
+	_entered_at.erase(session)
 	_hunted.erase(session)
 	_sync_hunt(session)  # сессия уходит в другой узел: охота этого узла за ней кончилась
 	_portal_state.erase(session)
@@ -1711,6 +1743,7 @@ func release_session(session: String) -> DaemonSession:
 ## Принять сессию с её состоянием: trace и дека те же объекты, что были в прошлом узле.
 func adopt_session(session: String, ds: DaemonSession) -> void:
 	_sessions[session] = ds
+	_entered_at[session] = _now
 	_connect_meter(session, ds.trace)
 	print("[gray-node] ", session, " вошёл в ", node_id, " (переход)")
 	_push_deck(session)

@@ -58,6 +58,20 @@ func state() -> int:
 	return _state
 
 
+## Имя состояния для журнала сервера.
+static func state_name(s: int) -> String:
+	match s:
+		State.PATROL:
+			return "PATROL"
+		State.SUSPICIOUS:
+			return "SUSPICIOUS"
+		State.SEARCH:
+			return "SEARCH"
+		State.HUNT:
+			return "HUNT"
+	return "?"
+
+
 func awareness() -> float:
 	return _awareness
 
