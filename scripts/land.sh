@@ -33,3 +33,31 @@ if [ -z "$(git -C "$MAIN" status --porcelain --untracked-files=no)" ] && [ "$(gi
   git -C "$MAIN" pull -q --ff-only && echo "LAND: основная папка обновлена до $(git -C "$MAIN" rev-parse --short HEAD)"
 else echo "LAND: основная папка не обновлена (не на main или есть правки) — git -C $MAIN pull --ff-only вручную"; fi
 echo "LAND: влито$done_n"
+
+# Уборка хвостов (решение владельца 06.10: его команда land.sh — и есть слово на удаление; раньше хвосты собирали руками,
+# после трёх поездов за день набралось 11 веток и 8 worktree). Берём только ветки agent/*, которые были головой ВЛИТОГО PR
+# (или поездом agent/queue-*), без открытого PR, и чья голова уже в main. Свежая worktree без коммитов тоже «в main»,
+# но её сессия только начала — поэтому фильтр по влитым PR. Worktree с незакоммиченным не трогаем, только называем.
+git -C "$MAIN" fetch -q --prune origin
+open=$(gh pr list -R $REPO --state open --json headRefName -q '.[].headRefName' 2>/dev/null) &&
+  merged=$(gh pr list -R $REPO --state merged --limit 200 --json headRefName -q '.[].headRefName' 2>/dev/null) ||
+  { echo "LAND: уборка пропущена (список PR недоступен)"; exit 0; }
+gone=""; kept=""
+for b in $( { git -C "$MAIN" for-each-ref --format='%(refname:short)' 'refs/heads/agent/*'
+              git -C "$MAIN" for-each-ref --format='%(refname:lstrip=3)' 'refs/remotes/origin/agent/*'; } | sort -u); do
+  grep -qx "$b" <<<"$open" && continue
+  [[ "$b" == agent/queue-* ]] || grep -qx "$b" <<<"$merged" || continue
+  tip=$(git -C "$MAIN" rev-parse -q --verify "refs/heads/$b" || git -C "$MAIN" rev-parse -q --verify "refs/remotes/origin/$b")
+  git -C "$MAIN" merge-base --is-ancestor "$tip" origin/main || continue
+  wt=$(git -C "$MAIN" worktree list --porcelain | awk -v r="refs/heads/$b" '/^worktree /{w=substr($0,10)} $0=="branch "r{print w}')
+  if [ -n "$wt" ]; then
+    git -C "$MAIN" worktree remove "$wt" 2>/dev/null || { kept="$kept ${wt##*/}"; continue; }
+  fi
+  git -C "$MAIN" branch -q -D "$b" 2>/dev/null
+  git -C "$MAIN" rev-parse -q --verify "refs/remotes/origin/$b" >/dev/null && git -C "$MAIN" push -q origin --delete "$b" 2>/dev/null
+  gone="$gone ${b#agent/}"
+done
+git -C "$MAIN" worktree prune
+[ -n "$gone" ] && echo "LAND: убрано влитое:$gone"
+[ -n "$kept" ] && echo "LAND: оставлены worktree с незакоммиченным:$kept"
+exit 0
