@@ -59,10 +59,10 @@ func test_а_цель_в_фокусе_два_четыре_шесть_и_захв
 		aws.append(ice.awareness_of("s"))
 		states.append(ice.state())
 		caps.append(_kinds(ev, "capture"))
-	assert_array(aws).is_equal([2, 4, 6, 5])   # на 4-м ICE уже стоит в клетке цели — «своя клетка» не видна, −1
+	assert_array(aws).is_equal([2, 4, 6, 6])   # на 4-м ICE встаёт перед клеткой цели (в неё не входит): сосед в фокусе
 	assert_array(states).is_equal([1, 2, 3, 3])   # Взгляд, Проверка, Поиск
-	assert_array(caps).is_equal([0, 0, 0, 1])   # ICE ещё идёт: 5 клеток; захват — на такте, целиком проведённом в Поиске
-	assert_object(ice.cell()).is_equal(Vector2i(9, 8))
+	assert_array(caps).is_equal([0, 0, 0, 1])   # ICE ещё идёт; захват — на такте, целиком проведённом в Поиске
+	assert_object(ice.cell()).is_equal(Vector2i(8, 8))
 
 
 func test_б_цель_на_периферии_поиск_не_раньше_пятого_такта() -> void:
@@ -263,3 +263,29 @@ func test_маршрут_из_точек_слоя_узла_в_клетки() -> 
 	var r := TickIce.route_from_points([Vector3(0, 0, -4), Vector3(6, 0, -4)])
 	assert_object(r[0]).is_equal(NodeGrid.cell_of(Vector3(0, 0, -4)))
 	assert_object(r[1]).is_equal(Vector2i(14, 10))
+
+
+func test_проверка_и_поиск_встают_перед_нетраннером_а_не_входят_в_его_клетку() -> void:
+	var g := NodeGrid.new()
+	var ice := _still_ice(g, Vector2i(3, 8))
+	var tg := _at(Vector2i(5, 8))
+	for _i in 8:
+		ice.tick(tg)
+		assert_bool(ice.cell() != Vector2i(5, 8)).is_true()
+	assert_object(ice.cell()).is_equal(Vector2i(4, 8))   # Проверка подошла вплотную и встала; в Поиске прочёсывание не заходит в клетку цели
+	assert_int(ice.awareness_of("s")).is_equal(6)   # сосед по стороне — в фокусе, цель не потеряна
+	assert_int(ice.state()).is_equal(3)
+
+
+func test_нетраннер_в_клетке_ice_остаётся_в_фокусе_и_захватывается() -> void:
+	var g := NodeGrid.new()
+	var ice := _still_ice(g, Vector2i(3, 8))
+	var tg := _at(Vector2i(3, 8))   # вошёл в клетку ICE сам
+	var aws: Array = []
+	var caps := 0
+	for _i in 4:
+		caps += _kinds(ice.tick(tg), "capture")
+		aws.append(ice.awareness_of("s"))
+	aws.resize(3)   # на 4-м такте прочёсывание уводит ICE в соседнюю клетку, цель за спиной — счётчик там уже не показатель
+	assert_array(aws).is_equal([2, 4, 6])   # раньше «своя клетка» не видна: счётчик падал, ICE терял цель
+	assert_int(caps).is_equal(1)

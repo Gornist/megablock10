@@ -161,7 +161,10 @@ func _update_awareness(targets: Dictionary, tcell: Dictionary, hidden: Dictionar
 	for s in targets:
 		var v := 0
 		if not hidden.get(s, false):
-			v = TickVision.classify(_grid, _cell, _dir, tcell[s], float(_s["sight_cells"]), float(_s["half_angle_deg"]), float(_s["focus_deg"]))
+			if tcell[s] == _cell:
+				v = TickVision.FOCUS   # нетраннер вошёл в клетку ICE сам: «потерянным» он не становится
+			else:
+				v = TickVision.classify(_grid, _cell, _dir, tcell[s], float(_s["sight_cells"]), float(_s["half_angle_deg"]), float(_s["focus_deg"]))
 		var delta := -1
 		if v == TickVision.FOCUS:
 			delta = 2
@@ -295,7 +298,7 @@ func _phase_tick() -> void:
 				_sweep_i += 1
 				tgt = ring[_sweep_i % ring.size()]
 			var p := _grid.path(_cell, tgt)
-			if not p.is_empty():
+			if not p.is_empty() and not _runner_blocks(p[0]):
 				_move(p[0], true)
 			if _cell == tgt:
 				_sweep_i += 1
@@ -310,8 +313,19 @@ func _walk_to(goal: Vector2i, steps: int) -> bool:
 		var p := _grid.path(_cell, goal)
 		if p.is_empty():
 			return true
+		if _runner_blocks(p[0]):
+			return true   # встал перед нетраннером: цель рядом и в фокусе
 		_move(p[0], true)
 	return _cell == goal
+
+
+## В Проверке и Поиске ICE не заходит в клетку нетраннера (как и в Патруле): шаг в неё не делается, ICE поворачивается к ней лицом.
+func _runner_blocks(nxt: Vector2i) -> bool:
+	for s in _tcells:
+		if _tcells[s] == nxt:
+			_dir = NodeGrid.dir8(_cell, nxt)
+			return true
+	return false
 
 
 func _move(next: Vector2i, off_route: bool) -> void:
