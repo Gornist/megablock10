@@ -121,3 +121,36 @@ func hop_verdict(from: Vector3, to: Vector3) -> String:
 
 static func _dist_m(a: Vector2i, b: Vector2i) -> float:
 	return Vector2(b - a).length() * CELL_M
+
+
+## Прицел на клетку: куда на самом деле ляжет прыжок при прицеле в точку `aim`. Возвращает {cell, p (центр клетки), kind, reason}.
+## kind: "hop" — можно прыгнуть; "wait" — цель в своей клетке (остаться); "denied" — нельзя, reason: "occupied" / "blocked" / "range" / "room".
+## Вне комнаты клетка зажимается в границы ("room" — только если зажатая клетка занята). Слишком далёкая клетка заменяется ближайшей
+## к `aim` из достижимых; занятую или закрытую линией клетку к соседней не притягиваем — игрок должен видеть, что она закрыта.
+func pick(from: Vector3, aim: Vector3) -> Dictionary:
+	var raw := cell_of(aim)
+	var c := Vector2i(clampi(raw.x, 0, cols() - 1), clampi(raw.y, 0, rows() - 1))
+	if c != raw and is_occupied(c):
+		return _pick_result(c, "denied", "room")
+	var start := cell_of(from)
+	if c == start:
+		return _pick_result(c, "wait", "")
+	var verdict := hop_verdict(from, center(c))
+	if verdict.is_empty():
+		return _pick_result(c, "hop", "")
+	if verdict == "range":
+		var best := start
+		var best_d := INF
+		for r: Vector2i in reach_cells(start):
+			var d := Vector2(center(r).x - aim.x, center(r).z - aim.z).length()
+			if d < best_d:
+				best_d = d
+				best = r
+		if best == start:
+			return _pick_result(c, "denied", "range")
+		return _pick_result(best, "hop", "")
+	return _pick_result(c, "denied", verdict)
+
+
+func _pick_result(c: Vector2i, kind: String, reason: String) -> Dictionary:
+	return {"cell": c, "p": center(c), "kind": kind, "reason": reason}

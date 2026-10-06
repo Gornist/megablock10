@@ -14,7 +14,7 @@ signal finished(result: String)
 ## и выходит чисто там же; `use_ghost` — сначала GHOST. Видит узел так, как его описал сервер (событие node): порталы и шарды.
 enum Scenario { GHOST_RUN, EXPOSED_RUN, LOITER, BLACK_RUN, GRAPH_RUN }
 
-## Бот двигается так же, как игрок в VR: прыжками-телепортами (не дальше RigMath.TELEPORT_RANGE, пауза — перезарядка), не ходьбой.
+## Бот двигается так же, как игрок в VR: прыжками-телепортами (не дальше RigMath.TELEPORT_RANGE, пауза — перезарядка, цель — центр клетки), не ходьбой.
 const HOP_PAUSE := RigMath.TELEPORT_COOLDOWN + 0.05  # с между прыжками (сервер пускает чаще, но бот ходит по правилам игрока)
 const LOITER_MAX_ARC := 0.8  # рад: дуга за один прыжок по кругу (хорда не длиннее 0,8 радиуса)
 const SEND_PERIOD := 0.05
@@ -118,6 +118,7 @@ var _send_acc := 0.0
 var _asked := false
 var _asked_at := 0.0
 var _next_hop_at := 0.0
+var _grid := NodeGrid.for_layout()
 
 
 func start(cfg: NetConfig, scenario_kind: int = Scenario.GHOST_RUN) -> void:
@@ -244,21 +245,37 @@ func _resume() -> void:
 
 
 ## Шаг пути к цели прыжками: когда перезарядка прошла — прыжок в сторону цели не дальше дальности (hop_scale < 1 — осторожный путь,
-## короткими прыжками). true — уже на месте (не дальше stop_at от цели). Параметр кадра оставлен для старых вызовов.
+## короткими прыжками). Прыжки — по клеткам 1 м, как у игрока: из достижимых клеток (NodeGrid.reach_cells, не дальше дальности и не
+## сквозь колонны) берётся та, чей центр ближе всего к цели. true — уже на месте: не дальше stop_at от цели или в клетке цели
+## (ближе центром клетки не подойти). Параметр кадра оставлен для старых вызовов.
 func _walk_to(goal: Vector3, _delta: float, stop_at: float, hop_scale: float = 1.0) -> bool:
 	var d := Vector3(goal.x - position.x, 0.0, goal.z - position.z)
-	if d.length() <= stop_at:
+	if d.length() <= stop_at or NodeGrid.cell_of(goal) == NodeGrid.cell_of(position):
 		return true
 	if _clock >= _next_hop_at:
-		_hop(position + d.normalized() * minf(d.length(), RigMath.TELEPORT_RANGE * hop_scale))
+		var best := NodeGrid.cell_of(position)
+		var best_d := d.length()   # прыгаем, только если центр клетки ближе к цели, чем мы сейчас
+		for c in _grid.reach_cells(NodeGrid.cell_of(position)):
+			if NodeLayout.flat_distance(NodeGrid.center(NodeGrid.cell_of(position)), NodeGrid.center(c)) > NodeGrid.REACH_M * hop_scale + 0.001:
+				continue
+			var dc := NodeLayout.flat_distance(NodeGrid.center(c), goal)
+			if dc < best_d:
+				best_d = dc
+				best = c
+		if best != NodeGrid.cell_of(position):
+			_hop(NodeGrid.center(best))
 	return false
 
 
-## Прыжок: просьба серверу, позиция бота меняется сразу (как у риг-а), дальше — перезарядка.
+## Прыжок на центр клетки: просьба серверу, позиция бота меняется сразу (как у риг-а), дальше — перезарядка. Закрытую клетку
+## (занята, за колонной, дальше дальности) бот не просит — игрок её тоже не выберет.
 func _hop(to: Vector3) -> void:
-	hop_log.append([_clock, NodeLayout.flat_distance(position, to)])
+	var target := NodeGrid.center(NodeGrid.cell_of(to))
+	if not _grid.hop_verdict(position, target).is_empty():
+		return
+	hop_log.append([_clock, NodeLayout.flat_distance(position, target)])
 	hops += 1
-	position = Vector3(to.x, 0.0, to.z)
+	position = target
 	_next_hop_at = _clock + HOP_PAUSE
 	net.request_teleport(position)
 

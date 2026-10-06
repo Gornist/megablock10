@@ -102,3 +102,67 @@ func test_причины_отказа_в_прыжке() -> void:
 	# Порядок проверок: занято важнее дальности, дальность — важнее закрытой линии.
 	assert_str(g.hop_verdict(from, NodeGrid.center(Vector2i(8, 3)))).is_equal("occupied")  # колонна (1;−11), и далеко
 	assert_str(g.hop_verdict(NodeGrid.center(Vector2i(7, 9)), NodeGrid.center(Vector2i(13, 9)))).is_equal("range")
+
+
+func test_pick_прыжок_в_свободную_клетку_и_центр() -> void:
+	var g := NodeGrid.for_layout()
+	var from := NodeGrid.center(Vector2i(8, 9))
+	var r := g.pick(from, Vector3(NodeGrid.center(Vector2i(8, 5)).x + 0.3, 0, NodeGrid.center(Vector2i(8, 5)).z - 0.2))
+	assert_str(r["kind"]).is_equal("hop")
+	assert_str(r["reason"]).is_equal("")
+	assert_object(r["cell"]).is_equal(Vector2i(8, 5))
+	assert_vector(r["p"]).is_equal_approx(NodeGrid.center(Vector2i(8, 5)), Vector3.ONE * 0.0001)
+
+
+func test_pick_своя_клетка_это_ожидание() -> void:
+	var g := NodeGrid.for_layout()
+	var from := NodeGrid.center(Vector2i(8, 9))
+	var r := g.pick(from, from + Vector3(0.4, 0, -0.4))
+	assert_str(r["kind"]).is_equal("wait")
+	assert_object(r["cell"]).is_equal(Vector2i(8, 9))
+
+
+func test_pick_занятая_клетка_и_закрытая_линия_не_притягиваются() -> void:
+	var g := NodeGrid.for_layout()
+	var from := NodeGrid.center(Vector2i(8, 9))
+	var occ := g.pick(from, NodeGrid.center(Vector2i(10, 9)))
+	assert_str(occ["kind"]).is_equal("denied")
+	assert_str(occ["reason"]).is_equal("occupied")
+	assert_object(occ["cell"]).is_equal(Vector2i(10, 9))
+	var blk := g.pick(from, NodeGrid.center(Vector2i(12, 9)))
+	assert_str(blk["kind"]).is_equal("denied")
+	assert_str(blk["reason"]).is_equal("blocked")
+	assert_object(blk["cell"]).is_equal(Vector2i(12, 9))
+
+
+func test_pick_далёкая_клетка_заменяется_ближайшей_достижимой() -> void:
+	var g := NodeGrid.for_layout()
+	var from := NodeGrid.center(Vector2i(2, 2))
+	var aim := NodeGrid.center(Vector2i(2, 12))   # далеко по прямой на юг
+	var r := g.pick(from, aim)
+	assert_str(r["kind"]).is_equal("hop")
+	assert_object(r["cell"]).is_equal(Vector2i(2, 6))   # 4 клетки: ближе всего к цели из достижимых
+	assert_str(g.hop_verdict(from, r["p"])).is_equal("")
+
+
+func test_pick_нет_достижимых_клеток_это_range() -> void:
+	var g := NodeGrid.new()   # все соседи заняты, кроме далёких — достижимых нет
+	for dx in range(-5, 6):
+		for dy in range(-5, 6):
+			var c := Vector2i(8 + dx, 8 + dy)
+			if c != Vector2i(8, 8) and c != Vector2i(8, 14):
+				g.occ[c] = true
+	var r := g.pick(NodeGrid.center(Vector2i(8, 8)), NodeGrid.center(Vector2i(8, 14)))
+	assert_str(r["kind"]).is_equal("denied")
+	assert_str(r["reason"]).is_equal("range")
+
+
+func test_pick_вне_комнаты_зажимается_в_границы() -> void:
+	var g := NodeGrid.for_layout()
+	var from := NodeGrid.center(Vector2i(14, 3))
+	var r := g.pick(from, Vector3(20, 0, NodeGrid.center(Vector2i(0, 3)).z))
+	assert_str(r["kind"]).is_equal("hop")   # зажато в крайнюю клетку (15;3), это не своя (14;3)
+	assert_object(r["cell"]).is_equal(Vector2i(15, 3))
+	var walled := _grid_with([Vector2i(15, 3)]).pick(from, Vector3(20, 0, NodeGrid.center(Vector2i(0, 3)).z))
+	assert_str(walled["kind"]).is_equal("denied")
+	assert_str(walled["reason"]).is_equal("room")
