@@ -49,13 +49,11 @@ object BreachAutoSolver {
         val daemons = start.daemons
         if (daemons.isEmpty() || daemons.size > MAX_ORDERED_DAEMONS || daemons.any { it.sequence.isEmpty() }) return null
         val budget = intArrayOf(SPELL_NODE_BUDGET) // общий на все порядки: перебор не должен виснуть на больших сетках
-        for (order in permutations(daemons)) {
-            val target = start.lock + order.flatMap { it.sequence }
-            if (target.size > start.bufferSize) continue
-            spellFrom(start, target, budget)?.let { return it.selected }
-            if (budget[0] <= 0) break
-        }
-        return null
+        return permutations(daemons).asSequence()
+            .takeWhile { budget[0] > 0 }
+            .map { order -> start.lock + order.flatMap { it.sequence } }
+            .filter { target -> target.size <= start.bufferSize }
+            .firstNotNullOfOrNull { target -> spellFrom(start, target, budget)?.selected }
     }
 
     private fun spellFrom(s: BreachAttemptState, target: List<String>, budget: IntArray): BreachAttemptState? {
