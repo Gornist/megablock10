@@ -239,6 +239,101 @@ func test_pause_does_not_touch_the_fake_link() -> void:
 	assert_bool(_log(proto).contains("phone.pause")).is_false()
 
 
+# ---------------------------------------------------------------- голос телефона: узел PhoneVoice и журнал
+
+## Узел голоса с «найденным» микрофоном: на машине без входа (headless) настоящий отвечает отказом.
+class MicVoice extends PhoneVoice:
+	func _input_ready() -> bool:
+		return true
+
+	func _input_close() -> void:
+		pass
+
+	func _pull_input(_max_frames: int) -> PackedVector2Array:
+		return PackedVector2Array()
+
+
+func test_remote_client_has_the_voice_node_and_the_fake_one_does_not() -> void:
+	var remote := _client(PackedStringArray(["--phone=remote", "--phone-port=%d" % _free_port()]))
+	assert_object(remote.phone_voice).is_not_null()
+	assert_bool(remote.phone_voice.get_parent() == remote).is_true()
+	assert_bool(remote.phone_voice.is_active()).is_false()
+	var fake := _client(PackedStringArray())
+	assert_object(fake.phone_voice).is_null()
+	var off := _client(PackedStringArray(["--phone=off"]))
+	assert_object(off.phone_voice).is_null()
+
+
+func test_voice_request_is_logged_with_the_answer_and_without_the_token() -> void:
+	var proto := _client(PackedStringArray(["--phone=remote", "--phone-port=%d" % _free_port(), "--phone-token=" + SECRET]))
+	var link: RemotePhoneLink = proto.phone
+	link.voice_requested.emit(true, 44100)
+	var text := _log(proto)
+	assert_str(text).contains("phone.voice on=true rate=44100 ready=")   # true на устройстве с микрофоном, false без него — оба допустимы
+	assert_str(text).contains("reason=")
+	link.voice_requested.emit(false, 44100)
+	assert_str(_log(proto)).contains("phone.voice on=false rate=44100")
+	assert_bool(_log(proto).contains(SECRET)).is_false()
+
+
+func test_voice_stat_line_appears_only_while_voice_is_active() -> void:
+	var proto := _client(PackedStringArray(["--phone=remote", "--phone-port=%d" % _free_port()]))
+	var link: RemotePhoneLink = proto.phone
+	proto.phone_voice.bind(null)
+	var mic := MicVoice.new()
+	proto.add_child(mic)
+	mic.bind(link)
+	proto.phone_voice = mic
+	proto._log_voice_stat()
+	assert_bool(_log(proto).contains("phone.voice.stat")).is_false()
+	link.voice_requested.emit(true, 44100)
+	assert_bool(mic.is_active()).is_true()
+	proto._log_voice_stat()
+	assert_str(_log(proto)).contains("phone.voice.stat sent=0 recv=0 lost=0 late=0 overflow=0 ducked_ms=0")
+
+
+func test_pause_switches_voice_off_and_logs_it() -> void:
+	var port := _free_port()
+	var proto := _client(PackedStringArray(["--phone=remote", "--phone-port=%d" % port]))
+	var link: RemotePhoneLink = proto.phone
+	proto.phone_voice.bind(null)
+	var mic := MicVoice.new()
+	proto.add_child(mic)
+	mic.bind(link)
+	proto.phone_voice = mic
+	# Настоящее соединение телефона: пауза закрывает связь только при подключённом телефоне.
+	var ws := WebSocketPeer.new()
+	assert_int(ws.connect_to_url("ws://127.0.0.1:%d/" % port)).is_equal(OK)
+	for i in 300:
+		link.advance(0.02)
+		ws.poll()
+		if ws.get_ready_state() == WebSocketPeer.STATE_OPEN:
+			break
+		await get_tree().process_frame
+	ws.send_text(JSON.stringify({"t": "hello", "v": 1, "callsign": "Призрак"}))
+	for i in 300:
+		link.advance(0.02)
+		ws.poll()
+		if link.is_online():
+			break
+		await get_tree().process_frame
+	assert_bool(link.is_online()).is_true()
+	ws.send_text(JSON.stringify({"t": "voice", "on": true, "rate": 44100}))
+	for i in 300:
+		link.advance(0.02)
+		ws.poll()
+		if link.voice_active():
+			break
+		await get_tree().process_frame
+	assert_bool(link.voice_active()).is_true()
+	assert_bool(mic.is_active()).is_true()
+	proto.pause_phone()
+	assert_bool(link.voice_active()).is_false()
+	assert_bool(mic.is_active()).is_false()
+	assert_str(_log(proto)).contains("phone.voice on=false rate=44100")
+	ws.close()
+
+
 func test_long_thread_id_is_shortened_for_the_log() -> void:
 	var key := "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAESjebZ4jiWwcsJ0HcajLBlnQlwhDJjDTy3jPh6J0EqJOfDx/7JYLzL/uw8+NA77OS8HFvqMKWh0h3LWhpep+BwA=="
 	assert_str(ProtoClient.short_thread(key)).is_equal("…ep+BwA==")

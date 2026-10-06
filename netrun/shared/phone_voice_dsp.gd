@@ -46,7 +46,7 @@ static func float_to_pcm16(mono: PackedFloat32Array) -> PackedByteArray:
 
 ## Моно int16 LE → стерео (один отсчёт в оба канала). Нечётный последний байт отбрасывается.
 static func pcm16_to_stereo(pcm: PackedByteArray) -> PackedVector2Array:
-	var n := pcm.size() / 2
+	var n := pcm.size() >> 1
 	var out := PackedVector2Array()
 	out.resize(n)
 	for i in n:
@@ -57,7 +57,7 @@ static func pcm16_to_stereo(pcm: PackedByteArray) -> PackedVector2Array:
 
 ## Среднеквадратичная громкость куска int16 LE: 0 (тишина) … 1 (полная амплитуда). Нечётный последний байт отбрасывается.
 static func rms_pcm16(pcm: PackedByteArray) -> float:
-	var n := pcm.size() / 2
+	var n := pcm.size() >> 1
 	if n == 0:
 		return 0.0
 	var sum := 0.0

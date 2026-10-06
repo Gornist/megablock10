@@ -228,7 +228,7 @@ func advance(delta: float) -> void:
 
 func _collect_input() -> void:
 	var in_rate := _input_rate()
-	var frames := _pull_input(maxi(in_rate, 1) / 2)
+	var frames := _pull_input(maxi(in_rate, 1) >> 1)   # не больше полсекунды за такт
 	if frames.is_empty() or in_rate <= 0:
 		return
 	var mono := PhoneVoiceDsp.resample_linear(PhoneVoiceDsp.stereo_to_mono_float(frames), in_rate, _rate)
