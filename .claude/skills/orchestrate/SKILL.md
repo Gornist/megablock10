@@ -38,6 +38,7 @@ skill `netrun-loop` (Godot). Цифры и грабли — внизу.
 | Gradle на devbox, по изменённым путям | `scripts/dbx.sh --auto` (пропускает, если с последнего зелёного ничего не менялось; `DBX_DRY=1` — показать набор) |
 | Полная проверка | `scripts/dbx.sh --full` (kit-тесты, detekt, Animal Sniffer, lint, Paparazzi) |
 | Своя задача | `scripts/dbx.sh -- :app:testDebugUnitTestNoScreenshots --tests '*XTest*'` |
+| Перегенерация на devbox | `scripts/dbx.sh --env UPDATE_NETRUN_JSON=1 --fetch netrun/data/rules/breach.json -- :rules:test --tests '*Breach*'` (с `--env` — `--rerun-tasks`; `--fetch` забирает файл в рабочую копию) |
 | Godot: тесты, кадры | `netrun/tools/dev.sh test [имена\|--all]`, `dev.sh shot res://сцена` — одна сетка ≤1024 px; skill `netrun-loop` |
 | Коллектор | `admin-web/tools/test.sh server\|client\|lint\|build\|all`; `preflight.sh`, `merge-ready.sh <ветка>`, `branch-gone.sh <ветка>` — только читают |
 | Ждать CI | `scripts/ci-wait.sh pr 9` / `sha <sha>` — запускать Bash с `run_in_background`, придёт одно уведомление (код 0 зелёно, 1 красно) |
