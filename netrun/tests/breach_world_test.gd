@@ -424,6 +424,11 @@ func test_ram_limits_the_selection() -> void:
 	ds.ram = 1
 	assert_bool(await _start(p, _slot("b_a", 0), ["it_b_d3"])).is_true()
 	assert_str(p.nos[-1]["reason"]).is_equal("bad_daemons")   # 2 ячейки не влезают в RAM 1
+	# отказ несёт числа: игрок видит «замок X + цепочки Y > RAM»
+	var no: Dictionary = p.nos[-1]
+	assert_int(int(no["ram"])).is_equal(1)
+	assert_int(int(no["need"]) - int(no["lock"])).is_equal(2)
+	assert_int(int(no["lock"])).is_greater(0)
 
 
 func test_empty_vault_is_reported_with_the_refill_time() -> void:

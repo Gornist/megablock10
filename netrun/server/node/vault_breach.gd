@@ -110,7 +110,8 @@ func check_open(session: String, vault: String, ids: Array, recheck: bool = fals
 	# Дека влезает в RAM вместе с замком хранилища (breach.md 2.3): иначе «НАЧАТЬ» недоступна.
 	var lock_length := int(BreachData.shared().tier_params(node.breach_tier())["lock_length"])
 	if not BreachData.fits_ram(ds.ram, lock_length, total):
-		return {"reason": "bad_daemons"}
+		# Числа — чтобы панель объяснила отказ: замок, сколько нужно RAM (замок + цепочки), сколько есть.
+		return {"reason": "bad_daemons", "lock": lock_length, "need": lock_length + total, "ram": ds.ram}
 	return {}
 
 

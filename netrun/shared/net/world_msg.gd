@@ -48,7 +48,8 @@ const EV_DECK := "deck"
 ##        buffer, sec, ice (реплика INTRO)};
 ##   bk_tick — {cell?: [r, c], ok?, trap?, matched [id], left, ice?} на каждый принятый или отклонённый тап и раз в секунду без cell;
 ##   bk_end — {outcome, matched, eddies, opened [слоты], alert (строка), cooldown, early?, error?};
-##   bk_no — {reason (busy | far | empty | cooldown | open | bad_daemons | tutorial | active | not_ready | bridge), left?}: взлом не начат.
+##   bk_no — {reason (busy | far | empty | cooldown | open | bad_daemons | tutorial | active | not_ready | bridge | charging), left?; при bad_daemons из-за RAM ещё lock — длина замка,
+##        need — замок + сумма цепочек выбранных, ram — RAM деки}: взлом не начат.
 const EV_BK := "bk"
 const EV_BK_TICK := "bk_tick"
 const EV_BK_END := "bk_end"

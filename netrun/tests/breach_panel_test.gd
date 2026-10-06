@@ -114,7 +114,18 @@ func test_denied_reason_is_shown_in_words() -> void:
 	assert_str("\n".join(_panel.texts())).contains("цепочки должны влезать в RAM")
 	assert_str(BreachPanel.denied_text("cooldown", 90)).is_equal("ОСТЫВАЕТ · 2 мин")
 	assert_str(BreachPanel.denied_text("empty", 40)).is_equal("ПУСТО · пополнение через 40 с")
-	assert_str(BreachPanel.denied_text("whatever")).is_equal("Сейчас нельзя")
+	assert_str(BreachPanel.denied_text("whatever")).is_equal("Сейчас нельзя (whatever)")
+	assert_str(BreachPanel.denied_text("")).is_equal("Сейчас нельзя")
+	# остальные причины — словами, не молча
+	for reason in ["busy", "far", "open", "active", "bridge", "charging", "not_ready"]:
+		assert_str(BreachPanel.denied_text(reason)).is_not_equal("Сейчас нельзя (%s)" % reason)
+
+
+func test_denied_bad_daemons_with_numbers_explains_the_ram() -> void:
+	await _setup_ui(12)
+	_panel.show_idle("v1", {"access": "ok"})
+	_panel.show_denied("bad_daemons", 0, {"lock": 3, "need": 15, "ram": 12})
+	assert_str("\n".join(_panel.texts())).contains("НЕ ХВАТАЕТ RAM: замок 3 + цепочки 12 > 12 — снимите демона")
 
 
 func test_idle_redraws_only_on_change() -> void:

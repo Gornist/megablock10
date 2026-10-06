@@ -235,8 +235,8 @@ func show_idle(vault: String, access: Dictionary) -> void:
 
 
 ## Сервер не начал взлом (`bk_no`): причина словами на панели.
-func show_denied(reason: String, left: int = 0) -> void:
-	_notice = denied_text(reason, left)
+func show_denied(reason: String, left: int = 0, info: Dictionary = {}) -> void:
+	_notice = denied_text(reason, left, info)
 	if _mode == MODE_IDLE:
 		_build_idle()
 
@@ -293,7 +293,8 @@ func set_trace(value: float) -> void:
 
 # ---------------------------------------------------------------- тексты (чистые, для тестов)
 
-static func denied_text(reason: String, left: int = 0) -> String:
+## info — числа отказа из `bk_no` (lock, need, ram): при «bad_daemons» из-за RAM объясняют, сколько не хватает.
+static func denied_text(reason: String, left: int = 0, info: Dictionary = {}) -> String:
 	match reason:
 		"busy":
 			return "Хранилище взламывает другой нетраннер"
@@ -306,12 +307,19 @@ static func denied_text(reason: String, left: int = 0) -> String:
 		"open":
 			return "Хранилище уже открыто"
 		"bad_daemons":
+			if info.has("need") and info.has("ram"):
+				var lock := int(info.get("lock", 0))
+				return "НЕ ХВАТАЕТ RAM: замок %d + цепочки %d > %d — снимите демона" % [lock, int(info["need"]) - lock, int(info["ram"])]
 			return "Выберите демонов: цепочки должны влезать в RAM"
 		"active":
 			return "Взлом уже идёт"
 		"bridge":
 			return "Нет связи с Мостом"
-	return "Сейчас нельзя"
+		"charging":
+			return "Идёт заряд или расшифровка — сначала закончите"
+		"not_ready":
+			return "Узел ещё не готов — подождите секунду"
+	return "Сейчас нельзя (%s)" % reason if reason != "" else "Сейчас нельзя"
 
 
 ## «5 мин» для минут и дольше, «40 с» для меньше минуты.
