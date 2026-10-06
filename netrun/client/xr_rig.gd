@@ -65,7 +65,9 @@ var _turn_rate := 0.0          # текущая угловая скорость,
 var _vignette := 0.0
 var _aim := RigMath.aim_new()
 var _aim_info: Dictionary = {}
-var _since_tp := INF           # секунд с прошлого телепорта
+## Клетки комнаты: прицел притягивается к достижимой клетке 1 м (NodeGrid.pick), занятые колоннами показывает серыми.
+var grid: NodeGrid = NodeGrid.for_layout()
+var _since_tp := INF         # секунд с прошлого телепорта
 var _tp_click := false
 var _blink := RigMath.blink_new()
 var _blink_dest := Vector3.ZERO
@@ -360,11 +362,19 @@ func _aim_pose() -> Dictionary:
 func _show_aim() -> void:
 	var pose := _aim_pose()
 	var info := RigMath.teleport_aim(pose["origin"], pose["dir"], global_position, teleport_range, global_position.y)
+	if info["valid"]:
+		# Прицел притягивается к клетке: «p» — центр выбранной клетки (сюда ляжет прыжок), «raw» — куда указывает рука.
+		var pick := grid.pick(global_position, info["p"])
+		info["raw"] = info["p"]
+		info["p"] = Vector3(pick["p"].x, global_position.y, pick["p"].z)
+		info["kind"] = pick["kind"]
+		info["reason"] = pick["reason"]
+		info["cell"] = pick["cell"]
 	_aim_info = info
 	var left := teleport_cooldown_left()
-	var ok: bool = info["valid"] and left <= 0.0 and NodeLayout.flat_distance(global_position, info["p"]) >= RigMath.TELEPORT_MIN_DIST
+	var ok: bool = info["valid"] and left <= 0.0 and info.get("kind", "") == "hop"
 	var charge := 1.0 if left <= 0.0 else 1.0 - left / maxf(teleport_cooldown, 0.001)
-	aim_visual.show_at(pose["arc_from"], info["p"], ok, charge)
+	aim_visual.show_at(pose["arc_from"], info["p"], ok, charge, info.get("kind", ""), info.get("reason", ""))
 	aim_visual.set_heading(_heading_after_teleport())
 
 
@@ -388,9 +398,14 @@ func _fire_teleport() -> void:
 	var from := global_position
 	var to: Vector3 = _aim_info["p"]
 	to.y = from.y
-	if NodeLayout.flat_distance(from, to) < RigMath.TELEPORT_MIN_DIST:
-		return   # прицел «в себя»: двигаться некуда
-	var reason := RigMath.teleport_verdict(from, to, _since_tp, movement_locked, teleport_range + 0.001, teleport_cooldown)
+	var kind: String = _aim_info.get("kind", "")
+	if kind == "wait":
+		return   # прицел в свою клетку: двигаться некуда
+	if kind == "denied":
+		teleport_attempted.emit(from, to, false, str(_aim_info.get("reason", "")))   # клетка закрыта: рамка уже была серой
+		return
+	# Клетка уже проверена по дальности (центр до центра), а сам игрок стоит не в центре своей клетки: запас — одна клетка.
+	var reason := RigMath.teleport_verdict(from, to, _since_tp, movement_locked, teleport_range + NodeGrid.CELL_M, teleport_cooldown)
 	if not reason.is_empty():
 		teleport_attempted.emit(from, to, false, reason)
 		return
