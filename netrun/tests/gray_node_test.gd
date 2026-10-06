@@ -91,6 +91,11 @@ func test_bot_with_ghost_passes_node_cleanly() -> void:
 
 
 func test_bot_without_ghost_is_ejected_and_shard_stays() -> void:
+	# Тест проверяет цепочку «заметили → выброс → исход», а не укрытия: бот идёт по x = -1 и с востока патруля прятался бы за колонной (3; −5).
+	# Колонны закрывают взгляд отдельно (ice_brain_test), здесь ICE смотрят без препятствий.
+	for ice in _node.ices():
+		ice.brain.grid = null
+	_bot.hold_after_grab = 4.0   # бот постоит у шарда на виду: поиск ICE дойдёт до последней замеченной точки (без случайности пути)
 	_bot.start(_cfg, BotClient.Scenario.EXPOSED_RUN)
 	assert_bool(await _wait_for(func(): return not _bot.result.is_empty())).is_true()
 	assert_str(_bot.result).is_equal("ejected")

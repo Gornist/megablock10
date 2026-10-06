@@ -107,6 +107,9 @@ const REASON_RANGE := "range"
 const REASON_COOLDOWN := "cooldown"
 const REASON_TUNNEL := "tunnel"
 const REASON_ROOM := "room"
+## Клетки 1 м (NodeGrid): клетка занята (колонна, стена, другой аватар) и линия до неё закрыта колонной. Дальность клеток — REASON_RANGE.
+const REASON_CELL := "cell"
+const REASON_BLOCKED := "blocked"
 const REASON_HELD := "held"
 const REASON_UNKNOWN := "unknown"
 ## Слот шарда пуст: вынесен, ждёт пополнения (W1).
