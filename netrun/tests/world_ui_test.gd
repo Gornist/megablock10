@@ -63,11 +63,11 @@ func test_flatline_screen_fades_without_moving_camera() -> void:
 	var cam_before: Vector3 = scene.rig.camera.position
 	scene.show_ended("flatline")
 	assert_bool(scene.flatline_shown).is_true()
-	assert_object(scene.rig.camera.get_node_or_null("FlatlineVeil")).is_not_null()
-	assert_str((scene.rig.camera.get_node("FlatlineText") as Label3D).text).is_equal("ФЛЭТЛАЙН")
+	assert_object(scene.rig.camera.get_node_or_null("EndScreen/EndVeil")).is_not_null()
+	assert_str((scene.rig.camera.get_node("EndScreen/EndTitle") as Label3D).text).starts_with("ФЛЭТЛАЙН")
 	assert_vector(scene.rig.camera.position).is_equal(cam_before)  # камеру подача не трогает
-	await get_tree().create_timer(1.0).timeout
-	var mat := ((scene.rig.camera.get_node("FlatlineVeil") as MeshInstance3D).mesh as QuadMesh).material as StandardMaterial3D
+	await get_tree().create_timer(EndScreen.FADE_SEC + 0.3).timeout
+	var mat := ((scene.rig.camera.get_node("EndScreen/EndVeil") as MeshInstance3D).mesh as QuadMesh).material as StandardMaterial3D
 	assert_float(mat.albedo_color.a).is_equal(1.0)
 
 

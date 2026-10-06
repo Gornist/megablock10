@@ -319,7 +319,7 @@ func _on_teleport_attempted(from: Vector3, to: Vector3, ok: bool, reason: String
 		"face": snappedf(scene.rig.pending_face_deg() if ok else 0.0, 0.1)})
 	if not ok:
 		log_file.log("teleport.denied", {"reason": reason, "by": "client"})
-	elif net != null and net.is_connected_to_world:
+	elif net != null and net.is_connected_to_world and not scene.ended:  # после ended запрос не уходит
 		net.request_teleport(to)  # без связи двигаемся только у себя: сервер сверит позу, когда связь вернётся
 
 
@@ -397,7 +397,7 @@ func _on_event(ev: Dictionary) -> void:
 			log_file.log("graph.portal_denied", {"to": ev.get("to", ""), "reason": ev.get("reason", "")})
 	if ev.get("kind") == WorldMsg.EV_ENDED:
 		net.stop_reconnect()  # забег закончился: сервер закроет связь, возвращаться некуда
-		scene.show_ended(str(ev.get("reason", "")))
+		scene.show_ended(str(ev.get("reason", "")), ev)
 		if ev.get("reason") == ExitLogic.REASON_FLATLINE:
 			if trace_audio != null:
 				trace_audio.set_level(TraceAudio.FLATLINE)  # фон уже пропадает; добавляем падающий тон
@@ -412,7 +412,7 @@ func _process(delta: float) -> void:
 		if _perf_acc >= PERF_PERIOD_S:
 			_perf_acc = 0.0
 			_log_perf()
-	if net == null or not net.is_connected_to_world:
+	if net == null or not net.is_connected_to_world or scene.ended:
 		return
 	_pos_acc += delta
 	if _pos_acc >= POS_PERIOD:

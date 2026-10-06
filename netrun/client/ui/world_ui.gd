@@ -38,6 +38,22 @@ var feedback: DeckFeedback
 var phone: PhoneLink
 var _anchor: Node3D
 var _deck_zoom := WRIST_DECK_SCALE   # текущий масштаб деки на запястье
+var _off := false   # забег кончился: дека, trace и панель взлома убраны и не реагируют
+
+
+## Забег кончился (`ended`): всё, что на деке и в мире от интерфейса, гаснет и перестаёт нажиматься. Необратимо: после `ended`
+## сервер закрывает связь, новый забег — новый клиент.
+func shutdown() -> void:
+	_off = true
+	pointer.enabled = false
+	breach_pointer.enabled = false
+	breach_panel.hide_panel()
+	_anchor.visible = false
+	alert.visible = false
+
+
+func is_off() -> bool:
+	return _off
 
 
 func attach(r: XRRig) -> void:
@@ -90,8 +106,9 @@ static func wrist_trace_pos(scale: float) -> Vector3:
 
 
 func _process(delta: float) -> void:
-	_place()
-	_update_charge_zoom(delta)
+	if not _off:
+		_place()
+		_update_charge_zoom(delta)
 	if phone != null:
 		phone.advance(delta)
 
