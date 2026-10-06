@@ -25,7 +25,9 @@ sc_n=$(grep -c '^In .* line [0-9]*:' "$log")
 [ "$sc" -ne 0 ] && [ "$sc_n" -eq 0 ] && sc_n=1
 
 echo "== actionlint" >>"$log"
-al_out=$(actionlint .github/workflows/*.yml 2>&1)
+# Порог shellcheck внутри run: — как у скриптов (warning): иначе info-замечания зависят от версии shellcheck
+# (06.10: на Mac чисто, на ubuntu-latest SC2015:info в firmware.yml ронял job).
+al_out=$(SHELLCHECK_OPTS='-S warning' actionlint .github/workflows/*.yml 2>&1)
 al=$?
 printf '%s\n' "$al_out" >>"$log"
 al_n=0
@@ -45,4 +47,6 @@ if [ "$sc" -eq 0 ] && [ "$al" -eq 0 ] && [ "$hk" -eq 0 ]; then
   exit 0
 fi
 echo "LINT FAIL: shellcheck $sc_n, actionlint $al_n, hook $hk_n (журнал: $log)"
+# В CI журнал — сразу в вывод шага: --log-failed показывает только упавший шаг, отдельный шаг «Журнал» туда не попадает.
+[ -n "${GITHUB_ACTIONS:-}" ] && grep -vE '^(==|$)' "$log" | head -40
 exit 1
