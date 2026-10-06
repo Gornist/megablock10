@@ -52,7 +52,7 @@ class BridgeServer(
                 conn.close(1008, "путь $PATH")
                 return
             }
-            conns[conn] = Conn()
+            conns.computeIfAbsent(conn) { Conn() }
         }
 
         override fun onClose(conn: WebSocket, code: Int, reason: String?, remote: Boolean) {
@@ -60,11 +60,11 @@ class BridgeServer(
         }
 
         override fun onMessage(conn: WebSocket, message: String) {
-            conns[conn]?.let { handleText(conn, it, message) }
+            connOf(conn)?.let { handleText(conn, it, message) }
         }
 
         override fun onMessage(conn: WebSocket, message: ByteBuffer) {
-            conns[conn] ?: return
+            connOf(conn) ?: return
             conn.send(errReply(null, StoreException("bad_request", "бинарные кадры не поддерживаются")).toString())
             conn.close(1003, "binary")
         }
@@ -82,6 +82,15 @@ class BridgeServer(
             started.countDown()
         }
     }
+
+    /**
+     * Состояние соединения. Java-WebSocket отправляет клиенту ответ рукопожатия ДО [WebSocketServer.onOpen]: быстрый клиент (e2e, тест)
+     * шлёт hello сразу, и кадр может прийти раньше, чем onOpen положил запись. Раньше такое сообщение молча отбрасывалось — ответа не
+     * было никогда (6.10 два раза: BridgeOpsTest «нет ответа» на hello и e2e netrun-run «нет ответа за 15 с»). Теперь запись создаётся
+     * по требованию с той же проверкой пути, что в onOpen; чужой путь onOpen всё равно закроет.
+     */
+    private fun connOf(conn: WebSocket): Conn? =
+        conns[conn] ?: if (conn.resourceDescriptor.substringBefore('?') == PATH) conns.computeIfAbsent(conn) { Conn() } else null
 
     /** Порт, на котором слушает сервер (после [start] — настоящий, даже если в конфиге 0). */
     val port: Int get() = ws.port
