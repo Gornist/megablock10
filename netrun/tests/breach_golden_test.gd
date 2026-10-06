@@ -5,11 +5,12 @@ extends GdUnitTestSuite
 ##
 ## Формат (format 1), клетка — [строка, столбец]:
 ##   link_rule:     [{selected_count, next}]                     — чередование строка/столбец
-##   resolve_cases: [{buffer: [код], daemons: [{id, name, sequence, tier, effect}], matched: [id]}]
+##   resolve_cases: [{buffer: [код], daemons: [{id, name, sequence, tier, effect}], matched: [id], lock?: [код]}]
 ##   timer_cases:   [{timer_sec, events: [{seconds_left, event}]}] — события реплик на каждой секунде таймера (time_event)
 ##   attempts:      [{name, mode: breach|decrypt, tier, grid_size, timer_sec, buffer_size, daemons, cells, trap_cells, start_selectable,
-##                    steps: [{cell, selectable_before, hit_trap, matched_new, matched_ids, buffer_codes, is_full, selectable_after}],
-##                    outcome, matched_ids, selectable_after_resolve}]
+##                    steps: [{cell, selectable_before, hit_trap, matched_new, matched_ids, buffer_codes, is_full, selectable_after, lock_opened?}],
+##                    outcome, matched_ids, selectable_after_resolve, lock?: [код], lock_opened?, matched_before_lock?: [id]}]
+## Замок (Взлом 2.0, breach.md 2.2): resolve_cases/attempts без ключа lock — без замка; с ним добыча засчитывается только после вскрытия.
 ## Сетки в golden готовые (генераторы Kotlin и Godot разные): проверяются правила, а не случайные числа.
 
 const GOLDEN_PATH := "res://tests/fixtures/breach_golden.json"
@@ -54,6 +55,23 @@ func test_player_catches_a_wrong_expectation() -> void:
 		assert_bool(_play(broken).size() > 0).override_failure_message("правка раздела %s не замечена" % key).is_true()
 
 
+func test_player_catches_a_wrong_lock() -> void:
+	# Замок в golden охраняется отдельно: чужой lock_opened в итоге и чужой (пустой) замок в resolve_cases.
+	var locked := 0
+	var broken: Dictionary = _golden.duplicate(true)
+	for a in broken["attempts"]:
+		if a.has("lock") and not (a["lock"] as Array).is_empty():
+			a["lock_opened"] = not bool(a["lock_opened"])
+			locked += 1
+	assert_int(locked).is_greater(0)
+	assert_bool(_play(broken).size() >= locked).is_true()
+	broken = _golden.duplicate(true)
+	for r in broken["resolve_cases"]:
+		if r.has("lock"):
+			r["lock"] = []
+	assert_bool(_play(broken).size() > 0).is_true()
+
+
 # --- проигрыватель ---
 
 ## Проигрывает набор, возвращает список расхождений (пусто — совпало).
@@ -66,7 +84,7 @@ func _play(golden: Dictionary) -> Array[String]:
 			errors.append("link_rule(%s): %s, ожидалось %s" % [row["selected_count"], got, row["next"]])
 	for row in golden.get("resolve_cases", []):
 		var ds := _daemons(row["daemons"])
-		var got := BreachRules.resolve_daemons(_strings(row["buffer"]), ds)
+		var got := BreachRules.resolve_daemons(_strings(row["buffer"]), ds, _strings(row.get("lock", [])))
 		got.sort()
 		if got != _sorted(_strings(row["matched"])):
 			errors.append("resolve(%s): %s, ожидалось %s" % [row["buffer"], got, row["matched"]])
@@ -104,6 +122,7 @@ func _play_attempt(a: Dictionary, data: BreachData) -> Array[String]:
 	grid.dead_marker = data.dead_marker
 	for row in a["cells"]:
 		grid.cells.append(_strings(row))
+	grid.lock.assign(_strings(a.get("lock", [])))
 	for c in _cells(a["trap_cells"]):
 		grid.trap_cells[c] = true
 	var ds := _daemons(a["daemons"])
@@ -125,6 +144,8 @@ func _play_attempt(a: Dictionary, data: BreachData) -> Array[String]:
 			errors.append("%s: ловушка=%s, ожидалось %s" % [at, tap["hit_trap"], st["hit_trap"]])
 		if tap["matched"] != bool(st["matched_new"]):
 			errors.append("%s: matched_new=%s, ожидалось %s" % [at, tap["matched"], st["matched_new"]])
+		if st.has("lock_opened") and bool(tap["lock_opened"]) != bool(st["lock_opened"]):
+			errors.append("%s: замок вскрыт=%s, ожидалось %s" % [at, tap["lock_opened"], st["lock_opened"]])
 		var ids := run.attempt.matched_daemon_ids()
 		ids.sort()
 		if ids != _sorted(_strings(st["matched_ids"])):
@@ -143,6 +164,12 @@ func _play_attempt(a: Dictionary, data: BreachData) -> Array[String]:
 	matched.sort()
 	if matched != _sorted(_strings(a["matched_ids"])):
 		errors.append("%s: итог — совпало %s, ожидалось %s" % [case_name, matched, a["matched_ids"]])
+	if a.has("lock_opened") and bool(info["lock_opened"]) != bool(a["lock_opened"]):
+		errors.append("%s: итог — замок вскрыт=%s, ожидалось %s" % [case_name, info["lock_opened"], a["lock_opened"]])
+	var before_lock: Array = (info["matched_before_lock"] as Array).duplicate()
+	before_lock.sort()
+	if before_lock != _sorted(_strings(a.get("matched_before_lock", []))):
+		errors.append("%s: итог — совпало до замка %s, ожидалось %s" % [case_name, before_lock, a.get("matched_before_lock", [])])
 	if _keys(run.selectable()) != _keys(_cells(a["selectable_after_resolve"])):
 		errors.append("%s: после итога доступно %s, ожидалось %s" % [case_name, _keys(run.selectable()), _keys(_cells(a["selectable_after_resolve"]))])
 	return errors
