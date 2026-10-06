@@ -14,7 +14,7 @@ case $1 in
   godot)     IN='^netrun/|^netrun-bridge/|^docs/netrun[^/]*'; OUT="$BLENDER";;
   blender)   IN="$BLENDER"; OUT='';;
   gamedesign) IN='^docs/gamedesign/'; OUT='';;
-  pipeline)  IN='^CLAUDE\.md|^AGENTS\.md|^\.github/dependabot\.yml|^\.claude/|^\.githooks/|^scripts/[^/]*$'; OUT='';;
+  pipeline)  IN='^CLAUDE\.md|^AGENTS\.md|^\.github/(dependabot|labeler)\.yml|^\.github/rulesets/|^\.github/workflows/(main|pipeline|labeler)\.yml|^docs/ci\.md|^\.claude/|^\.githooks/|^scripts/[^/]*$'; OUT='';;
   *) echo "использование: zone-check.sh android|collector|nodes|godot|blender|gamedesign|pipeline"; exit 2;;
 esac
 git fetch -q origin main 2>/dev/null || true

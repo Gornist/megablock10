@@ -28,7 +28,7 @@
 | **Godot** | `netrun/` — сервер мира, игра, дека, сеть и формат сообщений (`netrun/server/`, `netrun/shared/`), `netrun-bridge/`, `docs/netrun*.md` | ассеты и вид аватара (Blender) |
 | **Blender** | вид Сети: `netrun/assets/` (модели, `src/*.py`, шейдеры, превью, `ARCHITECTURE.md`, `STYLE.md`) и отрисовка тела и рук в `netrun/client/` (`avatar_view.gd`, `hand_view.gd`, `avatar_body.gd`, `head_*.gd`; окружение `node_view.gd`, `ice_view.gd` — Godot), тесты ассетов `netrun/tests/assets_*` | формат сообщений и сеть (`netrun/shared/`, `netrun/server/` — Godot): новые поля позы — предложить Godot-сессии |
 | **Геймдизайн** | `docs/gamedesign/` — документы проекта и модель (`docs/gamedesign/model/`) | код всех зон: изменения — карточками сессиям зон, код пишут они (решение владельца 06.10) |
-| **Pipeline manager** | общие правила и инструменты: `CLAUDE.md`, `.claude/` (хук, настройки, общие skills), общие `scripts/` (`check`, `verify`, `dbx`, `ci-wait`, `agent-worktree`, `zone-check`, `train`, `land`, `session-stats`), `.github/dependabot.yml`; `scripts/phone.sh` дополняет и Android App; **очередь слияний в `main` за все сессии** (Git и процесс) | код областей |
+| **Pipeline manager** | общие правила и инструменты: `CLAUDE.md`, `.claude/` (хук, настройки, общие skills), общие `scripts/` (`check`, `verify`, `dbx`, `ci-wait`, `agent-worktree`, `zone-check`, `train`, `land`, `session-stats`, `test-hook`, `lint-pipeline`, `devbox-runner`), `.github/dependabot.yml`, `labeler.yml`, workflows `main`/`pipeline`/`labeler`, `docs/ci.md`; `scripts/phone.sh` дополняет и Android App; **очередь слияний в `main` за все сессии** (Git и процесс) | код областей |
 
 Общее для всех: `docs/progress.md` — каждая сессия правит только свой раздел; `.github/workflows/` своей области — можно, `main.yml` — через
 Pipeline manager. Работать в своей worktree (`scripts/agent-worktree.sh new <имя>`), добавлять файлы явными путями, в `main` — только владелец.
@@ -47,7 +47,7 @@ Pipeline manager. Работать в своей worktree (`scripts/agent-worktr
 - **Проверять по изменённому — `scripts/verify.sh`:** сам выбирает проверки затронутых областей (Android — `dbx.sh --auto`, Godot — `dev.sh test`,
   коллектор — `admin-web/tools/test.sh <часть>`, мост — Gradle на devbox) и печатает одну строку `VERIFY`; `--dry` — показать набор.
   Полный прогон — `scripts/verify.sh --full`, один раз перед PR и в фоне.
-- **Ждать одним фоновым вызовом с одним итогом** (Bash `run_in_background`: `scripts/ci-wait.sh pr N`, `dbx.sh`, `dev.sh test --all`). Никаких `sleep`,
+- **Ждать одним фоновым вызовом с одним итогом** (Bash `run_in_background`: `scripts/ci-wait.sh pr N` — на красном сам кладёт журнал упавших шагов в файл и печатает путь, `dbx.sh`, `dev.sh test --all`). Никаких `sleep`,
   Monitor с выводом на каждую итерацию и опроса CI руками. Любой цикл — с пределом итераций. Пока ждёшь — следующая независимая работа.
 - **Скрипты печатают вердикт** (1–5 строк, код выхода 0/1, путь к полному журналу). Новый инструмент делать так же; длинные цепочки ssh/rsync/adb,
   повторённые дважды, — в скрипт (`scripts/phone.sh`, `dbx.sh`, `dev.sh`).
@@ -112,6 +112,7 @@ Pipeline manager. Работать в своей worktree (`scripts/agent-worktr
 | Коллектор | `admin-web/tools/test.sh server\|client\|lint\|build\|all` (сам берёт Node ≥ 22, вердикт строкой; свежий worktree — сначала `admin-web/tools/wt-deps.sh`) | в CI — `main.yml`, job admin-web |
 | Godot (netrun) | `netrun/tools/dev.sh test` (по изменённым) / `test --all` (в фоне) / `shot` — с Mac из своего worktree, skill `netrun-loop`; правки и запуск игры — агент `godot-dev` (живой редактор + MCP, `.claude/agents/godot-dev.md`) | devbox; CI — `netrun.yml` (правка `netrun/`); подробности — `docs/netrun-devbox.md`, «Godot AI» |
 | Прошивка | `cmake -S firmware/display -B firmware/display/build && cmake --build … && ctest --test-dir …`; плата — `pio run -e crowpanel579`; Wokwi — `firmware/display/tools/wokwi_selftest.sh` (квота CI-минут; в CI — только при правке кода платы); esp-emulator без квоты (без SD/I²S) — `firmware/display/tools/espemu_selftest.sh` | CI — `firmware.yml` (правка `firmware/`, `admin-web/server/src/displays/`, звука на сервере — `audio/`, `routes/audio.ts`); ≈5 мин |
+| Конвейер (скрипты, хук, workflows) | `scripts/lint-pipeline.sh` (shellcheck, actionlint, таблица хука `scripts/test-hook.cases`); правите хук — добавьте случай в таблицу | CI — `pipeline.yml` (правка `scripts/`, `.claude/hooks/`, `.github/workflows/`); ≈1 мин; метки зон на PR — `labeler.yml`; раннер devbox — `docs/ci.md` |
 
 - **Облачная сессия без Android SDK** не соберёт `:app` (и даже `:kit` — Gradle конфигурирует весь проект). Проверка —
   только CI: запустить `main.yml`/`e2e.yml` на своей ветке и читать журнал job. Не утверждать «проверено», не дождавшись CI.

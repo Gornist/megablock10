@@ -43,7 +43,7 @@ case $cmd in
     # Пробное слияние в памяти: если влитие ветки в main не меняет дерево main — всё её содержимое уже там
     # (и после cherry-pick, и когда файлы в main потом правили).
     tree=$(git -C "$MAIN" merge-tree --write-tree origin/main "$ref" 2>/dev/null | head -1) || tree=
-    if [ "$tree" != "$(git -C "$MAIN" rev-parse origin/main^{tree})" ]; then
+    if [ "$tree" != "$(git -C "$MAIN" rev-parse "origin/main^{tree}")" ]; then
       echo "GONE $b: НЕ влита — слияние в main что-то изменило бы (или конфликт):"
       [ -n "$tree" ] && git -C "$MAIN" diff --stat origin/main "$tree" | tail -n 8; exit 1
     fi
