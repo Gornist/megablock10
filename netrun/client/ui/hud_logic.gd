@@ -127,8 +127,16 @@ static func can_charge(st: String, chargeable: bool) -> bool:
 	return chargeable and st == "ready"
 
 
-## Подсказка под списком программ, если есть заряженные: чем запускать (VR — левый X; плоская сборка — цифра слота).
-const LAUNCH_HINT := "Левый X — запуск заряженного"
+## Плашка над списком программ, если есть заряженные: заряд — ещё не эффект, его надо включить (повтор П1: заряженного Призрака приняли за
+## включённого). VR — левый X (rig_test_scene.use_selected: выбранного, если он заряжен, иначе первого заряженного); плоская сборка — цифра слота.
+const LAUNCH_HINT := "ЗАРЯЖЕН · включить: левый X"
+
+
+## Плашка над списком программ, пока действует эффект демона: «ДЕЙСТВУЕТ 12 с · 1 Призрак · невидим для ICE». row — строка deck_rows.
+static func active_banner(row: Dictionary) -> String:
+	var text := "ДЕЙСТВУЕТ %s · %s" % [cooldown_text(float(row.get("active_left", 0.0))), str(row.get("name", ""))]
+	var effect := str(row.get("effect", ""))
+	return text if effect == "" else text + " · " + effect
 
 ## Текст отказа запуска (`daemon {ok: false, error}`) для строки-уведомления на деке.
 static func launch_error_text(error: String) -> String:
@@ -221,6 +229,8 @@ static func deck_rows(deck: Dictionary) -> Array:
 			"id": str(d.get("id", "")),
 			"chargeable": chargeable,
 			"charged": st == "charged",
+			"active": st == "active",
+			"active_left": ceili(float(d.get("active_left", 0.0))),   # целые секунды: ключ перерисовки деки не должен меняться на каждом снимке
 			"can_charge": can_charge(st, chargeable),
 			"selected": str(d.get("id", "")) == selected,
 			"ready": left <= 0.0 and st != "unsupported",
