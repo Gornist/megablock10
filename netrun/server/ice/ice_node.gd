@@ -29,6 +29,8 @@ func setup(settings: Dictionary = {}, waypoints: Array[Vector3] = []) -> void:
 func _physics_process(delta: float) -> void:
 	if brain == null or netrunner_count <= 0:
 		_acc = 0.0
+		if brain != null:
+			brain.rest()   # общие часы идут и без игрока: без этого первый шаг после возврата получает dt = всё время отсутствия
 		return
 	_acc += delta
 	while _acc >= THINK_INTERVAL:

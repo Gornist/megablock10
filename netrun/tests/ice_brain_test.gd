@@ -267,3 +267,25 @@ func test_flatline_ejects_even_during_grace() -> void:
 	meter.add_action("door_forced", t, 12.0)  # trace 100 посреди тревоги
 	_run(b, t, 0.5, seen, {"a": meter})
 	assert_array(_ejects).is_equal([["a", "flatline"]])
+
+
+# ---------------------------------------------------------------- сон ICE: пустой узел не копит время
+
+## Живой прогон П1 06.10: при возврате в узел внимание ICE сразу 1,00 (первый шаг получал dt = всё время отсутствия). После rest() первый шаг dt = 0.
+func test_first_step_after_rest_does_not_count_the_sleep_time() -> void:
+	var b := _brain({"notice_per_sec": 0.15})
+	var t := _run(b, 0.0, 1.0, func(_t): return {})          # один раз «подумал» без игрока
+	b.rest()                                                  # узел опустел
+	t += 200.0                                                # общие часы ушли вперёд
+	b.step(t, {"p": Vector3(0, 0, -5)})                       # игрок вернулся и виден
+	assert_float(b.awareness()).is_less(0.05)                 # раньше: 0,15 × 200 → 1,0 за один шаг
+	assert_int(b.state()).is_not_equal(S.SEARCH)
+
+
+func test_without_rest_the_sleep_time_is_counted() -> void:
+	# Контроль: без rest() старое поведение — это и была ошибка, тест фиксирует, что rest() на что-то влияет.
+	var b := _brain({"notice_per_sec": 0.15})
+	var t := _run(b, 0.0, 1.0, func(_t): return {})
+	t += 200.0
+	b.step(t, {"p": Vector3(0, 0, -5)})
+	assert_float(b.awareness()).is_equal(1.0)

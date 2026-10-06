@@ -114,6 +114,12 @@ static func can_see(from: Vector3, facing_dir: Vector3, point: Vector3, sight_ra
 	return absf(f.angle_to(d)) <= deg_to_rad(half_angle_deg)
 
 
+## Узел опустел и ICE перестал думать: первый шаг после пробуждения не должен засчитать всё время сна одним шагом (иначе внимание
+## взлетает до 1,0, а ICE «перепрыгивает» по патрулю на десятки секунд). Состояние и позиция остаются как были.
+func rest() -> void:
+	_has_time = false
+
+
 ## Один шаг мысли. targets: сессия → позиция (только нетраннеры узла), meters: сессия → TraceMeter (необязательно).
 func step(now: float, targets: Dictionary, meters: Dictionary = {}) -> void:
 	var dt := 0.0
