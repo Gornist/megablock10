@@ -24,7 +24,10 @@ var decrypt_buffer_extra := 0            # буфер заряда и расши
 var events_min_timer_sec := 0            # реплики HALF_TIME/LOW_TIME — только при таймере длиннее этого
 var low_time_sec := 0                    # последние секунды: мигает таймер и реплика LOW_TIME
 var warning_sec := 0                     # последние секунды со звуковым предупреждением
-var tiers: Dictionary = {}               # имя тира -> {grid_size, timer_sec, dead_cells: Vector2i, corrupted_codes: Vector2i}
+## имя тира -> {grid_size, timer_sec (взлом хранилища), cipher_timer_sec (заряд и расшифровка: прежние 45/60/75), dead_cells: Vector2i,
+## corrupted_codes: Vector2i (приманки без замка), lock_traps: Vector2i (приманки при замке), lock_length, buffer_slack,
+## fail_penalty: {lock_step, trap_step, max_steps, minutes}}. Взлом 2.0: docs/gamedesign/breach.md, §2–3.
+var tiers: Dictionary = {}
 var ice_lines: Dictionary = {}           # имя тира -> событие -> Array[String]
 
 
@@ -81,11 +84,25 @@ static func from_dict(d: Dictionary) -> BreachData:
 		for name in raw_tiers:
 			var p: Variant = raw_tiers[name]
 			if p is Dictionary:
+				var corrupted := _range(p.get("corrupted_codes"))
+				var timer := int(p.get("timer_sec", 0))
+				var penalty: Variant = p.get("fail_penalty")
+				var pen: Dictionary = penalty if penalty is Dictionary else {}
 				data.tiers[str(name)] = {
 					"grid_size": int(p.get("grid_size", 0)),
-					"timer_sec": int(p.get("timer_sec", 0)),
+					"timer_sec": timer,
+					"cipher_timer_sec": int(p.get("cipher_timer_sec", timer)),   # нет поля — как раньше: таймер тира
 					"dead_cells": _range(p.get("dead_cells")),
-					"corrupted_codes": _range(p.get("corrupted_codes")),
+					"corrupted_codes": corrupted,
+					"lock_traps": _range(p["lock_traps"]) if p.has("lock_traps") else corrupted,
+					"lock_length": int(p.get("lock_length", 0)),
+					"buffer_slack": int(p.get("buffer_slack", 0)),
+					"fail_penalty": {
+						"lock_step": int(pen.get("lock_step", 0)),
+						"trap_step": int(pen.get("trap_step", 0)),
+						"max_steps": int(pen.get("max_steps", 0)),
+						"minutes": int(pen.get("minutes", 0)),
+					},
 				}
 	var raw_lines: Variant = d.get("ice_lines")
 	if raw_lines is Dictionary:
@@ -110,6 +127,17 @@ func tier_params(tier: String) -> Dictionary:
 	if p == null:
 		p = tiers.get(TIER_NAMES[0], {})
 	return p
+
+
+## Буфер попытки хранилища: наименьшее из RAM и «замок + сумма длин демонов + запас тира» (breach.md 2.3, BreachTierParams.bufferSize).
+## lock_length — длина замка этой попытки (число тира; надбавку настороженности добавляет вызывающий).
+func buffer_size(tier: String, ram: int, lock_length: int, daemons_length: int) -> int:
+	return mini(ram, lock_length + daemons_length + int(tier_params(tier)["buffer_slack"]))
+
+
+## Дека влезает в RAM: «замок + выбранные» не больше RAM, иначе начать взлом нельзя (breach.md 2.3).
+static func fits_ram(ram: int, lock_length: int, daemons_length: int) -> bool:
+	return lock_length + daemons_length <= ram
 
 
 ## Длина цели шифр-замка по тиру шарда 1/2/3; вне таблицы — 3 (как getOrElse в приложении).
@@ -153,9 +181,11 @@ func errors() -> Array[String]:
 			out.append("нет тира " + name)
 			continue
 		var p: Dictionary = tiers[name]
-		if int(p["grid_size"]) < 2 or int(p["timer_sec"]) < 1:
-			out.append("%s: grid_size/timer_sec вне диапазона" % name)
-		for key in ["dead_cells", "corrupted_codes"]:
+		if int(p["grid_size"]) < 2 or int(p["timer_sec"]) < 1 or int(p["cipher_timer_sec"]) < 1:
+			out.append("%s: grid_size/timer_sec/cipher_timer_sec вне диапазона" % name)
+		if int(p["lock_length"]) < 0 or int(p["buffer_slack"]) < 0:
+			out.append("%s: lock_length/buffer_slack отрицательны" % name)
+		for key in ["dead_cells", "corrupted_codes", "lock_traps"]:
 			var r: Vector2i = p[key]
 			if r.x < 0 or r.y < r.x:
 				out.append("%s.%s: диапазон %s" % [name, key, r])

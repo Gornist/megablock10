@@ -41,24 +41,55 @@ static func cell_set(cells: Array) -> Dictionary:
 
 ## Цепочка `needle` встречается в `buffer` подряд и по порядку.
 static func contains_contiguous(buffer: Array, needle: Array) -> bool:
+	return index_of_contiguous(buffer, needle) >= 0
+
+
+## Эффекты добычи: их цепочка засчитывается только после замка хранилища (breach.md 2.2). Остальные — где угодно в буфере.
+const LOOT_EFFECTS: Array = ["EXTRACT_SHARD", "EXTRACT_DAEMON", "MINER"]
+
+
+static func is_loot(effect: String) -> bool:
+	return effect in LOOT_EFFECTS
+
+
+## Индекс первого вхождения `needle` в `buffer` подряд и по порядку, начиная с `from`; -1 — нет (и для пустой цепочки).
+static func index_of_contiguous(buffer: Array, needle: Array, from: int = 0) -> int:
 	if needle.is_empty() or needle.size() > buffer.size():
-		return false
-	for start in range(buffer.size() - needle.size() + 1):
+		return -1
+	for start in range(maxi(from, 0), buffer.size() - needle.size() + 1):
 		var same := true
 		for i in range(needle.size()):
 			if buffer[start + i] != needle[i]:
 				same = false
 				break
 		if same:
-			return true
-	return false
+			return start
+	return -1
+
+
+## Индекс в `buffer`, с которого начинается «после замка»: конец первого полного совпадения замка; 0, если замка нет;
+## -1, если замок не вскрыт. Ловушка в буфере (TRAP_SENTINEL) рвёт и цепочку замка.
+static func lock_opened_at(buffer: Array, lock: Array) -> int:
+	if lock.is_empty():
+		return 0
+	var start := index_of_contiguous(buffer, lock)
+	return -1 if start < 0 else start + lock.size()
 
 
 ## Демоны (BreachDaemon), чья цепочка встретилась в буфере подряд и по порядку; id в порядке списка демонов.
-static func resolve_daemons(buffer: Array, daemons: Array) -> Array[String]:
+## С замком (lock не пуст, breach.md 2.2) добычу (is_loot) засчитывает только цепочка, целиком лежащая после первого полного
+## совпадения замка; остальные демоны (следы, Дрожь, дешифратор) — где угодно. Замок не вскрыт — добыча не засчитана.
+## Без замка (умолчание) — как раньше: любая цепочка, где угодно.
+static func resolve_daemons(buffer: Array, daemons: Array, lock: Array = []) -> Array[String]:
+	var after_lock := lock_opened_at(buffer, lock)
 	var out: Array[String] = []
 	for d in daemons:
-		if contains_contiguous(buffer, d.sequence) and not out.has(d.id):
+		var from := 0
+		if is_loot(d.effect):
+			if after_lock < 0:
+				continue
+			from = after_lock
+		if index_of_contiguous(buffer, d.sequence, from) >= 0 and not out.has(d.id):
 			out.append(d.id)
 	return out
 

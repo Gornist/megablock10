@@ -45,3 +45,48 @@ func test_outcome_success_partial_fail() -> void:
 	assert_str(BreachRules.outcome([a, b], [])).is_equal("FAIL")
 	# Без демонов успеха быть не может.
 	assert_str(BreachRules.outcome([], [])).is_equal("FAIL")
+
+
+# --- замок хранилища (breach.md 2.2) ---
+
+func test_loot_counts_only_after_the_lock_and_traces_count_anywhere() -> void:
+	var loot := BreachDaemon.make("e", ["BD", "E9"], "EXTRACT_SHARD")
+	var ghost := BreachDaemon.make("g", ["BD", "E9"], "GHOST")
+	var lock := ["1C", "55"]
+	# Добыча легла до замка: не засчитана; следы — засчитаны.
+	assert_array(BreachRules.resolve_daemons(["BD", "E9", "1C", "55"], [loot, ghost], lock)).is_equal(["g"])
+	# Замок, потом добыча: засчитано всё.
+	assert_array(BreachRules.resolve_daemons(["1C", "55", "BD", "E9"], [loot, ghost], lock)).is_equal(["e", "g"])
+	# Замок не вскрыт: добыча не засчитана, следы засчитаны.
+	assert_array(BreachRules.resolve_daemons(["BD", "E9"], [loot, ghost], lock)).is_equal(["g"])
+	# Без замка — как раньше.
+	assert_array(BreachRules.resolve_daemons(["BD", "E9"], [loot, ghost])).is_equal(["e", "g"])
+
+
+func test_every_loot_effect_is_gated_by_the_lock_and_others_are_not() -> void:
+	var lock := ["1C"]
+	for effect in ["EXTRACT_SHARD", "EXTRACT_DAEMON", "MINER"]:
+		assert_bool(BreachRules.is_loot(effect)).is_true()
+		var d := BreachDaemon.make("x", ["55", "BD"], effect)
+		assert_array(BreachRules.resolve_daemons(["55", "BD", "1C"], [d], lock)).is_empty()
+		assert_array(BreachRules.resolve_daemons(["1C", "55", "BD"], [d], lock)).is_equal(["x"])
+	for effect in ["GHOST", "TIMESKEW", "BLACKOUT", "JITTER", "DECRYPT"]:
+		assert_bool(BreachRules.is_loot(effect)).is_false()
+		var d := BreachDaemon.make("x", ["55", "BD"], effect)
+		assert_array(BreachRules.resolve_daemons(["55", "BD"], [d], lock)).is_equal(["x"])
+
+
+func test_loot_chain_may_not_overlap_the_lock() -> void:
+	# Цепочка добычи целиком после замка: общий код с хвостом замка не считается.
+	var loot := BreachDaemon.make("e", ["55", "BD"], "EXTRACT_SHARD")
+	assert_array(BreachRules.resolve_daemons(["1C", "55", "BD"], [loot], ["1C", "55"])).is_empty()
+	assert_array(BreachRules.resolve_daemons(["1C", "55", "55", "BD"], [loot], ["1C", "55"])).is_equal(["e"])
+
+
+func test_lock_opened_at_and_a_trap_breaks_the_lock() -> void:
+	var sentinel := BreachData.TRAP_SENTINEL
+	assert_int(BreachRules.lock_opened_at(["BD", "1C", "55"], ["1C", "55"])).is_equal(3)
+	assert_int(BreachRules.lock_opened_at(["1C", "BD", "55"], ["1C", "55"])).is_equal(-1)
+	assert_int(BreachRules.lock_opened_at(["1C", sentinel, "55"], ["1C", "55"])).is_equal(-1)
+	assert_int(BreachRules.lock_opened_at(["BD"], [])).is_equal(0)   # замка нет
+	assert_int(BreachRules.lock_opened_at([], ["1C"])).is_equal(-1)

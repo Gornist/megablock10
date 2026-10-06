@@ -210,7 +210,7 @@ func test_trace_colours_the_frame_and_shows_in_the_column() -> void:
 func test_targets_show_match_and_timer_counts_down_from_server() -> void:
 	await _setup_ui()
 	await _start_run()
-	assert_str("\n".join(_panel.texts())).contains("1:00")
+	assert_str("\n".join(_panel.texts())).contains("1:30")   # таймер HARD в Взломе 2.0: 90 с (был 60)
 	_panel.apply_tick({"left": 9, "matched": ["d1"]})
 	var all := "\n".join(_panel.texts())
 	assert_str(all).contains("0:09").contains("✓")

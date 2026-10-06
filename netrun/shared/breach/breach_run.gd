@@ -2,7 +2,8 @@ class_name BreachRun
 extends RefCounted
 ## Ход одной попытки взлома без сцены и сети (порт BreachRun из app/.../breach/BreachRun.kt): попытка, таймер, итог и события реплик ICE.
 ## Один движок на три режима (docs/netrun-deck-design.md, §3.1) — режим задаёт фабрика, дальше ход одинаков:
-##   for_storage — «взлом хранилища»: сетка и ловушки по тиру узла, цель — цепочки выбранных демонов, буфер = RAM,
+##   for_storage — «взлом хранилища»: сетка, замок и ловушки по тиру узла, цель — цепочки выбранных демонов после замка,
+##                 буфер = min(RAM, замок + цепочки + запас тира),
 ##                 демон JITTER среди выбранных даёт таймеру +jitter_bonus_sec;
 ##   for_charge  — «заряд демона»: сетка и таймер по тиру демона, цель — его цепочка, буфер = длина + buffer_extra, ловушек нет;
 ##   for_decrypt — «расшифровка шарда»: сетка и таймер по тиру шарда, цель — шифр-замок длиной по тиру шарда, буфер = длина + buffer_extra, ловушек нет.
@@ -35,21 +36,24 @@ var _data: BreachData
 var _frac := 0.0
 
 
-## Взлом хранилища. tier — имя тира узла; daemons — выбранные BreachDaemon; ram — буфер игрока.
-## null: демонов нет или их суммарная цепочка не влезает в ram.
+## Взлом хранилища (Взлом 2.0, docs/gamedesign/breach.md). tier — имя тира узла; daemons — выбранные BreachDaemon; ram — RAM игрока.
+## У хранилища есть замок длиной lock_length тира: добыча засчитывается только после него (BreachRules.resolve_daemons). Буфер —
+## наименьшее из ram и «замок + сумма цепочек + запас тира» (BreachData.buffer_size), таймер — timer_sec тира (+ Дрожь).
+## null: демонов нет или «замок + их цепочки» не влезают в ram (breach.md 2.3).
 static func for_storage(tier_: String, daemons: Array, ram: int, seed_: int, data: BreachData = null) -> BreachRun:
 	var d := data if data != null else BreachData.shared()
+	var p := d.tier_params(tier_)
+	var lock_length := int(p["lock_length"])
 	var total := 0
 	var jitter := false
 	for dm in daemons:
 		total += dm.length()
 		jitter = jitter or dm.effect == "JITTER"
-	if daemons.is_empty() or total > ram:
+	if daemons.is_empty() or not BreachData.fits_ram(ram, lock_length, total):
 		return null
-	var p := d.tier_params(tier_)
 	var timer: int = int(p["timer_sec"]) + (d.jitter_bonus_sec if jitter else 0)
-	var traps := {"dead_cells": p["dead_cells"], "corrupted_codes": p["corrupted_codes"]}
-	return _build(MODE_STORAGE, tier_, daemons, ram, timer, int(p["grid_size"]), traps, seed_, d)
+	var traps := {"dead_cells": p["dead_cells"], "corrupted_codes": p["corrupted_codes"], "lock_traps": p["lock_traps"]}
+	return _build(MODE_STORAGE, tier_, daemons, d.buffer_size(tier_, ram, lock_length, total), timer, int(p["grid_size"]), traps, seed_, d, lock_length)
 
 
 ## Заряд демона: цель — его собственная цепочка, тир сетки — тир демона, ловушек нет.
@@ -59,7 +63,7 @@ static func for_charge(daemon: BreachDaemon, seed_: int, data: BreachData = null
 		return null
 	var tier_ := BreachData.tier_name(daemon.tier)
 	var p := d.tier_params(tier_)
-	return _build(MODE_CHARGE, tier_, [daemon], daemon.length() + d.decrypt_buffer_extra, int(p["timer_sec"]), int(p["grid_size"]), {}, seed_, d)
+	return _build(MODE_CHARGE, tier_, [daemon], daemon.length() + d.decrypt_buffer_extra, int(p["cipher_timer_sec"]), int(p["grid_size"]), {}, seed_, d)
 
 
 ## Расшифровка шарда тира shard_tier (1/2/3). target — цепочка шифр-замка; пусто — выводится из зерна попытки (длина по тиру шарда).
@@ -74,13 +78,13 @@ static func for_decrypt(shard_tier: int, seed_: int, target: Array = [], data: B
 		for _i in range(d.decrypt_length(shard_tier)):
 			seq.append(d.alphabet[rng.randi_range(0, d.alphabet.size() - 1)])
 	var lock := BreachDaemon.make("decrypt", seq, "DECRYPT", shard_tier, "Шифр-замок")
-	return _build(MODE_DECRYPT, tier_, [lock], seq.size() + d.decrypt_buffer_extra, int(p["timer_sec"]), int(p["grid_size"]), {}, seed_, d)
+	return _build(MODE_DECRYPT, tier_, [lock], seq.size() + d.decrypt_buffer_extra, int(p["cipher_timer_sec"]), int(p["grid_size"]), {}, seed_, d)
 
 
-static func _build(mode_: String, tier_: String, daemons: Array, buffer: int, timer: int, grid_size: int, traps: Dictionary, seed_: int, data: BreachData) -> BreachRun:
+static func _build(mode_: String, tier_: String, daemons: Array, buffer: int, timer: int, grid_size: int, traps: Dictionary, seed_: int, data: BreachData, lock_length: int = 0) -> BreachRun:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_
-	var grid := BreachGrid.generate(grid_size, daemons, rng, data, traps)
+	var grid := BreachGrid.generate(grid_size, daemons, rng, data, traps, lock_length)
 	if grid == null:
 		return null
 	return from_attempt(BreachAttempt.make(grid, daemons, buffer, data), timer, tier_, mode_, seed_, data)
@@ -140,7 +144,7 @@ func selectable() -> Array[Vector2i]:
 	return attempt.selectable_cells()
 
 
-## Тап по клетке. Возвращает {ok, hit_trap, matched, ice_event, finished}: ok=false — тап не принят (итог уже есть или клетка недоступна),
+## Тап по клетке. Возвращает {ok, hit_trap, matched, ice_event, finished, lock_opened (при ok)}: ok=false — тап не принят (итог уже есть или клетка недоступна),
 ## ничего не изменилось. matched — после тапа совпало больше демонов, чем до него; ice_event — TRAP, MATCH или "" (ловушка важнее).
 ## Полный буфер сам фиксирует итог (finished=true), как экран телефона.
 func tap(cell: Vector2i) -> Dictionary:
@@ -158,6 +162,7 @@ func tap(cell: Vector2i) -> Dictionary:
 		"matched": matched,
 		"ice_event": EVENT_TRAP if hit_trap else (EVENT_MATCH if matched else ""),
 		"finished": result != "",
+		"lock_opened": attempt.lock_opened(),
 	}
 
 
@@ -197,11 +202,15 @@ func resolve() -> bool:
 	return true
 
 
-## Итог для вызывающего: {outcome, matched (id совпавших), total (сколько демонов), seconds_left}. Пусто, пока итога нет.
+## Итог для вызывающего: {outcome, matched (id засчитанных по правилу замка), total (сколько демонов), seconds_left, lock_opened,
+## matched_before_lock (id, совпавших до вскрытия и потому не засчитанных)}. Пусто, пока итога нет.
 func result_info() -> Dictionary:
 	if result == "":
 		return {}
-	return {"outcome": result, "matched": attempt.matched_daemon_ids(), "total": attempt.daemons.size(), "seconds_left": seconds_left}
+	return {
+		"outcome": result, "matched": attempt.matched_daemon_ids(), "total": attempt.daemons.size(), "seconds_left": seconds_left,
+		"lock_opened": attempt.lock_opened(), "matched_before_lock": attempt.matched_before_lock_ids(),
+	}
 
 
 ## Реплика ICE на событие (INTRO, TRAP, MATCH, HALF_TIME, LOW_TIME) для тира сетки.

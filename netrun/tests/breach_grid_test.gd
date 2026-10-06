@@ -157,3 +157,142 @@ func test_to_dict_round_trip_hides_the_solution() -> void:
 	for cell in g.trap_cells:
 		assert_bool(copy.is_trap(cell)).is_true()
 	assert_array(copy.solution_path).is_empty()
+
+
+# --- замок и приманки Взлома 2.0 (breach.md 2.1, 2.4) ---
+
+func _lock_params(tier: String) -> Dictionary:
+	var p := _data.tier_params(tier)
+	return {"dead_cells": p["dead_cells"], "corrupted_codes": p["corrupted_codes"], "lock_traps": p["lock_traps"]}
+
+
+func _lock_grid(tier: String, seed_value: int, daemons: Array = []) -> BreachGrid:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value
+	var p := _data.tier_params(tier)
+	var ds := daemons if not daemons.is_empty() else BreachTestUtil.random_daemons(rng, _data, 8 - int(p["lock_length"]))
+	return BreachGrid.generate(int(p["grid_size"]), ds, rng, _data, _lock_params(tier), int(p["lock_length"]))
+
+
+func test_lock_is_the_first_chain_of_the_solution_path_and_the_path_still_solves() -> void:
+	for tier in TIERS:
+		var lock_length := int(_data.tier_params(tier)["lock_length"])
+		for s in range(SEEDS):
+			var rng := RandomNumberGenerator.new()
+			rng.seed = s * 7919 + 3
+			var ds := BreachTestUtil.random_daemons(rng, _data, 8 - lock_length)
+			var p := _data.tier_params(tier)
+			var g := BreachGrid.generate(int(p["grid_size"]), ds, rng, _data, _lock_params(tier), lock_length)
+			assert_object(g).override_failure_message("%s seed=%d: сетка не построена" % [tier, s]).is_not_null()
+			if g.lock.size() != lock_length:
+				fail("%s seed=%d: замок %d кодов, ожидалось %d" % [tier, s, g.lock.size(), lock_length])
+				return
+			for code in g.lock:
+				if not code in _data.alphabet:
+					fail("%s seed=%d: код замка %s не из алфавита" % [tier, s, code])
+					return
+			var total := lock_length + BreachTestUtil.total_length(ds)
+			var a := BreachAttempt.make(g, ds, total, _data)
+			if g.solution_path.size() != total:
+				fail("%s seed=%d: путь %d клеток, ожидалось %d" % [tier, s, g.solution_path.size(), total])
+				return
+			for cell in g.solution_path:
+				if not a.select(cell):
+					fail("%s seed=%d: клетка пути %s недоступна по правилу строка/столбец" % [tier, s, cell])
+					return
+			if a.buffer_codes().slice(0, lock_length) != g.lock:
+				fail("%s seed=%d: путь начат не с замка" % [tier, s])
+				return
+			if a.matched_daemon_ids().size() != ds.size():
+				fail("%s seed=%d: путь решения с замком не собрал всех демонов" % [tier, s])
+				return
+
+
+func test_with_a_lock_traps_follow_lock_traps_and_stay_off_the_path() -> void:
+	for tier in TIERS:
+		var p := _data.tier_params(tier)
+		var dead_r: Vector2i = p["dead_cells"]
+		var traps_r: Vector2i = p["lock_traps"]
+		for s in range(SEEDS):
+			var g := _lock_grid(tier, s * 31 + 5)
+			var dead := 0
+			var decoys := 0
+			for cell in g.trap_cells:
+				if g.solution_path.has(cell):
+					fail("%s seed=%d: ловушка %s на пути решения" % [tier, s, cell])
+					return
+				if g.is_dead(cell):
+					dead += 1
+				else:
+					decoys += 1
+			if dead < dead_r.x or dead > dead_r.y or decoys < traps_r.x or decoys > traps_r.y:
+				fail("%s seed=%d: мёртвых %d из %s, приманок %d из %s" % [tier, s, dead, dead_r, decoys, traps_r])
+				return
+
+
+func test_decoys_sit_on_goal_codes_while_there_are_enough_of_them() -> void:
+	# breach.md 2.4: приманка ложится на клетку с кодом из целей (замок и цепочки), пока такие свободные клетки есть.
+	for tier in ["HARD", "NIGHTMARE"]:
+		for s in range(300):
+			var g := _lock_grid(tier, s + 900)
+			var goal: Array = g.lock.duplicate()
+			# Цели те же, что у попытки: цепочки демонов берём из самой сетки — по пути решения.
+			for i in range(g.lock.size(), g.solution_path.size()):
+				goal.append(g.code_at(g.solution_path[i]))
+			var spare_goal_cells := 0
+			var decoys_off_goal := 0
+			for r in range(g.size):
+				for c in range(g.size):
+					var cell := Vector2i(r, c)
+					if g.solution_path.has(cell) or g.is_dead(cell):
+						continue
+					var is_goal: bool = goal.has(g.code_at(cell))
+					if g.is_trap(cell):
+						if not is_goal:
+							decoys_off_goal += 1
+					elif is_goal:
+						spare_goal_cells += 1
+			if decoys_off_goal > 0 and spare_goal_cells > 0:
+				fail("%s seed=%d: приманка не на коде цели, хотя свободных клеток с кодом цели ещё %d" % [tier, s, spare_goal_cells])
+				return
+
+
+func test_zero_lock_length_changes_nothing() -> void:
+	# lock_length = 0 — сетка, путь и ловушки те же, что без параметра (заряд, расшифровка, приложение до замка).
+	for tier in TIERS:
+		for s in range(50):
+			var ds := BreachTestUtil.random_daemons(RandomNumberGenerator.new(), _data, 8)
+			var a_rng := RandomNumberGenerator.new()
+			a_rng.seed = s
+			var b_rng := RandomNumberGenerator.new()
+			b_rng.seed = s
+			var p := _data.tier_params(tier)
+			var a := BreachGrid.generate(int(p["grid_size"]), ds, a_rng, _data, _traps_params(tier))
+			var b := BreachGrid.generate(int(p["grid_size"]), ds, b_rng, _data, _traps_params(tier), 0)
+			assert_array(a.cells).is_equal(b.cells)
+			assert_array(a.solution_path).is_equal(b.solution_path)
+			assert_array(a.lock).is_empty()
+			assert_int(a.solution_path.size()).is_equal(BreachTestUtil.total_length(ds))
+			assert_int(a.trap_cells.size()).is_equal(b.trap_cells.size())
+
+
+func test_without_a_lock_decoys_use_corrupted_codes_not_lock_traps() -> void:
+	# Старый диапазон corrupted_codes — без замка (HARD: 0; NIGHTMARE: 2–3), хотя lock_traps у тира больше.
+	for s in range(200):
+		var rng := RandomNumberGenerator.new()
+		rng.seed = s
+		var p := _data.tier_params("NIGHTMARE")
+		var g := BreachGrid.generate(int(p["grid_size"]), [BreachDaemon.make("a", ["1C", "55"])], rng, _data, _lock_params("NIGHTMARE"))
+		var decoys := 0
+		for cell in g.trap_cells:
+			if not g.is_dead(cell):
+				decoys += 1
+		assert_int(decoys).is_between(2, 3)
+
+
+func test_lock_round_trips_through_to_dict() -> void:
+	var g := _lock_grid("NIGHTMARE", 77)
+	assert_int(g.lock.size()).is_equal(3)
+	var copy := BreachGrid.from_dict(JSON.parse_string(JSON.stringify(g.to_dict())))
+	assert_array(copy.lock).is_equal(g.lock)
+	assert_array(BreachGrid.from_dict({"size": 5}).lock).is_empty()

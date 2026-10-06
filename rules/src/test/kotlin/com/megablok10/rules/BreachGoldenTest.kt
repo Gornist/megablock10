@@ -19,7 +19,11 @@ import kotlin.random.Random
  * (ловит смену поведения), а при UPDATE_NETRUN_JSON=1 файл сначала пересоздаётся по [build] (так он и появился).
  */
 class BreachGoldenTest {
-    private data class Spec(val name: String, val tier: Tier, val seed: Long, val daemons: List<Daemon>, val bufferSize: Int, val decrypt: Boolean, val script: Script)
+    /** [lock] — попытка с замком хранилища длиной по тиру (Взлом 2.0): в файле у неё есть поле `lock`, у остальных спецификаций его нет. */
+    private data class Spec(
+        val name: String, val tier: Tier, val seed: Long, val daemons: List<Daemon>, val bufferSize: Int, val decrypt: Boolean,
+        val script: Script, val lock: Boolean = false
+    )
     private enum class Script { SOLVER, WALK, TRAP_FIRST, FIRST_MATCH_THEN_TIMEOUT, NO_TAPS_TIMEOUT }
 
     private fun d(id: String, vararg codes: String, tier: Tier = Tier.BASE, effect: DaemonEffect = DaemonEffect.EXTRACT_SHARD) =
@@ -41,7 +45,28 @@ class BreachGoldenTest {
         Spec("decrypt_tier1_solver", Tier.BASE, 10, listOf(decryptTarget(1, 10)), 3 + BreachConstants.DECRYPT_BUFFER_EXTRA, true, Script.SOLVER),
         Spec("decrypt_tier2_solver", Tier.HARD, 11, listOf(decryptTarget(2, 11)), 4 + BreachConstants.DECRYPT_BUFFER_EXTRA, true, Script.SOLVER),
         Spec("decrypt_tier3_walk", Tier.NIGHTMARE, 12, listOf(decryptTarget(3, 12)), 5 + BreachConstants.DECRYPT_BUFFER_EXTRA, true, Script.WALK),
-    )
+    ) + lockSpecs()
+
+    /** Буфер попытки с замком: наименьшее из RAM и «замок + демоны + запас тира» — то, что считает приложение (BreachTierParams.bufferSize). */
+    private fun lockedBuffer(tier: Tier, ram: Int, daemons: List<Daemon>) =
+        BreachTierParams.bufferSize(ram, BreachTierParams.forTier(tier).lockLength, daemons.sumOf { it.sequence.size }, tier)
+
+    /** Два набора с замком на тир (breach.md 2.1, 2.2): решатель с двумя эффектами и ход, дающий ловушки или обычную ходьбу. */
+    private fun lockSpecs(): List<Spec> {
+        fun spec(name: String, tier: Tier, seed: Long, ram: Int, daemons: List<Daemon>, script: Script) =
+            Spec(name, tier, seed, daemons, lockedBuffer(tier, ram, daemons), false, script, lock = true)
+        return listOf(
+            spec("base_lock_solver", Tier.BASE, 21, 6, listOf(d("a", "1C", "55")), Script.SOLVER),
+            spec("base_lock_walk", Tier.BASE, 22, 6, listOf(d("a", "BD", "E9"), d("g", "7A", "FF", effect = DaemonEffect.GHOST)), Script.WALK),
+            spec(
+                "hard_lock_solver", Tier.HARD, 23, 9,
+                listOf(d("a", "55", "BD", "1C"), d("g", "E9", "7A", effect = DaemonEffect.GHOST)), Script.SOLVER
+            ),
+            spec("hard_lock_trap_first", Tier.HARD, 24, 7, listOf(d("a", "1C", "FF", "55")), Script.TRAP_FIRST),
+            spec("nightmare_lock_solver", Tier.NIGHTMARE, 25, 8, listOf(d("a", "E9", "7A", "FF", "1C")), Script.SOLVER),
+            spec("nightmare_lock_walk", Tier.NIGHTMARE, 26, 8, listOf(d("a", "7A", "FF", "BD")), Script.WALK),
+        )
+    }
 
     /** Цель шифр-замка: те же длины, что у приложения (BreachScreen.shardDecryptTarget); коды из алфавита детерминированно по зерну. */
     private fun decryptTarget(shardTier: Int, seed: Long): Daemon {
@@ -65,8 +90,9 @@ class BreachGoldenTest {
     private fun buildAttempt(spec: Spec): JsonObject {
         val params = BreachTierParams.forTier(spec.tier)
         val random = Random(spec.seed)
-        val grid = generateGrid(params.gridSize, spec.daemons, random, if (spec.decrypt) null else params)
-        val timerSec = params.timerSec
+        val grid = generateGrid(params.gridSize, spec.daemons, random, if (spec.decrypt) null else params, if (spec.lock) params.lockLength else 0)
+        // Шифр-замок шарда держит прежние таймеры 45/60/75 (BreachScreen.ShardDecryptFlow берёт cipherTimerSec).
+        val timerSec = if (spec.decrypt) params.cipherTimerSec else params.timerSec
         var run = BreachRun(BreachAttemptState(grid, spec.daemons, spec.bufferSize), timerSec)
         val taps = when (spec.script) {
             Script.SOLVER -> BreachAutoSolver.solve(run.attempt)
@@ -79,35 +105,45 @@ class BreachGoldenTest {
             val before = run.selectable
             val tap = run.tap(tapCell)
             run = tap.run
-            obj(
-                "cell" to cell(tapCell),
-                "selectable_before" to cells(before),
-                "hit_trap" to JsonPrimitive(tap.hitTrap),
-                "matched_new" to JsonPrimitive(tap.matched),
-                "matched_ids" to strs(run.attempt.matchedDaemonIds.sorted()),
-                "buffer_codes" to strs(run.attempt.bufferCodes),
-                "is_full" to JsonPrimitive(run.attempt.isFull),
-                "selectable_after" to cells(run.selectable),
+            JsonObject(
+                mapOf(
+                    "cell" to cell(tapCell),
+                    "selectable_before" to cells(before),
+                    "hit_trap" to JsonPrimitive(tap.hitTrap),
+                    "matched_new" to JsonPrimitive(tap.matched),
+                    "matched_ids" to strs(run.attempt.matchedDaemonIds.sorted()),
+                    "buffer_codes" to strs(run.attempt.bufferCodes),
+                    "is_full" to JsonPrimitive(run.attempt.isFull),
+                    "selectable_after" to cells(run.selectable),
+                ) + (if (spec.lock) mapOf("lock_opened" to JsonPrimitive(run.attempt.lockOpened)) else emptyMap())
             )
         }
         val startSelectable = BreachRun(BreachAttemptState(grid, spec.daemons, spec.bufferSize), timerSec).selectable
         val resolved = run.resolve()
         val result = resolved.result!!
-        return obj(
-            "name" to JsonPrimitive(spec.name),
-            "mode" to JsonPrimitive(if (spec.decrypt) "decrypt" else "breach"),
-            "tier" to JsonPrimitive(spec.tier.name),
-            "grid_size" to JsonPrimitive(grid.size),
-            "timer_sec" to JsonPrimitive(timerSec),
-            "buffer_size" to JsonPrimitive(spec.bufferSize),
-            "daemons" to JsonArray(spec.daemons.map(::daemonJson)),
-            "cells" to JsonArray(grid.cells.map(::strs)),
-            "trap_cells" to cells(grid.trapCells),
-            "start_selectable" to cells(startSelectable),
-            "steps" to JsonArray(steps),
-            "outcome" to JsonPrimitive(result.outcome.name),
-            "matched_ids" to strs(result.matchedIds.sorted()),
-            "selectable_after_resolve" to cells(resolved.selectable),
+        // Поля замка — только у спецификаций с замком: у старых спецификаций файл не меняется (порт читает их как «без замка»).
+        val lockFields: Map<String, JsonElement> = if (!spec.lock) emptyMap() else mapOf(
+            "lock" to strs(grid.lock),
+            "lock_opened" to JsonPrimitive(result.lockOpened),
+            "matched_before_lock" to strs(result.matchedBeforeLock.sorted()),
+        )
+        return JsonObject(
+            mapOf(
+                "name" to JsonPrimitive(spec.name),
+                "mode" to JsonPrimitive(if (spec.decrypt) "decrypt" else "breach"),
+                "tier" to JsonPrimitive(spec.tier.name),
+                "grid_size" to JsonPrimitive(grid.size),
+                "timer_sec" to JsonPrimitive(timerSec),
+                "buffer_size" to JsonPrimitive(spec.bufferSize),
+                "daemons" to JsonArray(spec.daemons.map(::daemonJson)),
+                "cells" to JsonArray(grid.cells.map(::strs)),
+                "trap_cells" to cells(grid.trapCells),
+                "start_selectable" to cells(startSelectable),
+                "steps" to JsonArray(steps),
+                "outcome" to JsonPrimitive(result.outcome.name),
+                "matched_ids" to strs(result.matchedIds.sorted()),
+                "selectable_after_resolve" to cells(resolved.selectable),
+            ) + lockFields
         )
     }
 
@@ -152,7 +188,8 @@ class BreachGoldenTest {
     private fun buildTimerCases(): JsonArray {
         val grid = generateGrid(5, listOf(d("a", "1C", "55")), Random(1))
         val attempt = BreachAttemptState(grid, listOf(d("a", "1C", "55")), 6)
-        val timers = listOf(15, 20, 21, 30, 45, 60, 75, 90)
+        // 60 и 75 — таймеры шифр-замка шарда (cipherTimerSec), 90 и 150 — HARD и NIGHTMARE во Взломе 2.0.
+        val timers = listOf(15, 20, 21, 30, 45, 60, 75, 90, 150)
         return JsonArray(
             timers.map { timer ->
                 val events = (timer downTo 0).mapNotNull { left ->
@@ -164,9 +201,25 @@ class BreachGoldenTest {
     }
 
     private fun buildResolveCases(): JsonArray {
-        data class Case(val buffer: List<String>, val daemons: List<Daemon>)
+        data class Case(val buffer: List<String>, val daemons: List<Daemon>, val lock: List<String> = emptyList())
         val a = d("a", "1C", "55")
         val b = d("b", "55", "BD")
+        // Случаи с замком (breach.md 2.2): поле `lock` есть только у них, у старых случаев его нет.
+        val lock = listOf("1C", "55")
+        val loot = d("e", "BD", "E9")
+        val ghost = d("g", "BD", "E9", effect = DaemonEffect.GHOST)
+        val miner = d("m", "E9", "7A", effect = DaemonEffect.MINER)
+        val trap = BreachSymbols.TRAP_SENTINEL
+        val lockCases = listOf(
+            Case(listOf("1C", "55", "BD", "E9"), listOf(loot), lock),
+            Case(listOf("BD", "E9", "1C", "55"), listOf(loot), lock),
+            Case(listOf("BD", "E9", "1C", "55"), listOf(ghost), lock),
+            Case(listOf("1C", trap, "55", "BD", "E9"), listOf(loot), lock),
+            Case(listOf("1C", "55", "E9"), listOf(d("o", "55", "E9")), lock),
+            Case(listOf("BD", "E9", "1C", "55", "BD", "E9"), listOf(loot), lock),
+            Case(listOf("BD", "E9"), listOf(loot, ghost.copy(id = "g2")), lock),
+            Case(listOf("BD", "E9", "1C", "55", "E9", "7A"), listOf(loot, miner), lock),
+        )
         val cases = listOf(
             Case(listOf("BD", "1C", "55", "E9"), listOf(a)),
             Case(listOf("1C", "E9", "55"), listOf(a)),
@@ -178,10 +231,13 @@ class BreachGoldenTest {
             Case(listOf("1C"), listOf(d("empty"))),
         )
         return JsonArray(
-            cases.map { c ->
-                obj(
-                    "buffer" to strs(c.buffer), "daemons" to JsonArray(c.daemons.map(::daemonJson)),
-                    "matched" to strs(resolveDaemons(c.buffer, c.daemons).sorted()),
+            (cases + lockCases).map { c ->
+                val lockField: Map<String, JsonElement> = if (c.lock.isEmpty()) emptyMap() else mapOf("lock" to strs(c.lock))
+                JsonObject(
+                    mapOf(
+                        "buffer" to strs(c.buffer), "daemons" to JsonArray(c.daemons.map(::daemonJson)),
+                        "matched" to strs(resolveDaemons(c.buffer, c.daemons, c.lock).sorted()),
+                    ) + lockField
                 )
             }
         )
@@ -224,7 +280,8 @@ class BreachGoldenTest {
         file.getValue("resolve_cases").jsonArray.forEach {
             val o = it.jsonObject
             val daemons = o.getValue("daemons").jsonArray.map(::readDaemon)
-            assertEquals(readStrs(o.getValue("matched")), resolveDaemons(readStrs(o.getValue("buffer")), daemons).sorted())
+            val lock = o["lock"]?.let(::readStrs) ?: emptyList()
+            assertEquals(readStrs(o.getValue("matched")), resolveDaemons(readStrs(o.getValue("buffer")), daemons, lock).sorted())
         }
         file.getValue("timer_cases").jsonArray.forEach {
             val o = it.jsonObject
@@ -242,7 +299,8 @@ class BreachGoldenTest {
         val name = o.getValue("name").jsonPrimitive.content
         val size = o.getValue("grid_size").jsonPrimitive.int
         val cells = o.getValue("cells").jsonArray.map(::readStrs)
-        val grid = BreachGrid(size, cells, readCells(o.getValue("trap_cells")).toSet())
+        val lock = o["lock"]?.let(::readStrs) ?: emptyList()
+        val grid = BreachGrid(size, cells, readCells(o.getValue("trap_cells")).toSet(), lock)
         val daemons = o.getValue("daemons").jsonArray.map(::readDaemon)
         var run = BreachRun(BreachAttemptState(grid, daemons, o.getValue("buffer_size").jsonPrimitive.int), o.getValue("timer_sec").jsonPrimitive.int)
         assertEquals("$name: start", readCells(o.getValue("start_selectable")), sorted(run.selectable))
@@ -258,9 +316,12 @@ class BreachGoldenTest {
             assertEquals("$at buffer_codes", readStrs(step.getValue("buffer_codes")), run.attempt.bufferCodes)
             assertEquals("$at is_full", step.getValue("is_full").jsonPrimitive.content.toBoolean(), run.attempt.isFull)
             assertEquals("$at selectable_after", readCells(step.getValue("selectable_after")), sorted(run.selectable))
+            step["lock_opened"]?.let { assertEquals("$at lock_opened", it.jsonPrimitive.content.toBoolean(), run.attempt.lockOpened) }
         }
         val resolved = run.resolve()
         val result = resolved.result!!
+        o["lock_opened"]?.let { assertEquals("$name lock_opened", it.jsonPrimitive.content.toBoolean(), result.lockOpened) }
+        o["matched_before_lock"]?.let { assertEquals("$name matched_before_lock", readStrs(it), result.matchedBeforeLock.sorted()) }
         assertEquals("$name outcome", o.getValue("outcome").jsonPrimitive.content, result.outcome.name)
         assertEquals("$name matched", readStrs(o.getValue("matched_ids")), result.matchedIds.sorted())
         assertEquals("$name after resolve", readCells(o.getValue("selectable_after_resolve")), sorted(resolved.selectable))
