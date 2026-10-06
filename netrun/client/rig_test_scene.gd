@@ -39,7 +39,6 @@ const CHARGED_PULSE_S := 0.15
 const VR_REACH := 0.5
 const FLAT_REACH := 3.0
 const STATS_PERIOD := 0.5
-const FLATLINE_FADE_SEC := 0.8
 ## Шард в правой руке «втягивается» в деку, если рука ближе этого к центру деки на запястье (м); дека на запястье ~24 см длиной. Было 0,2: на очках 05.10.2026
 ## правой рукой шард так и не уложили (в журнале укладки не было ни разу), запас до 0,3; промахи пишутся в grab.miss reason=stow_far.
 const STOW_REACH := 0.3
@@ -81,6 +80,9 @@ var _node_props: Array[Node3D] = []  # подписи порталов и таб
 var slow_frames := 0
 ## Показан экран флэтлайна (для тестов).
 var flatline_shown := false
+## Забег кончился (`ended`): мир спрятан и заморожен, ввод не исполняется, на лице — EndScreen. Необратимо.
+var ended := false
+var end_screen: EndScreen
 
 ## Что показывает дека сейчас (с сервера): [{id, name, left}] и выбранный демон (VR: Y — следующий, X — применить).
 var deck_state: Array = []
@@ -211,6 +213,8 @@ func _unhandled_input(event: InputEvent) -> void:
 ## Снимок узла с сервера: trace, дека с перезарядками, ICE (модели, клип по состоянию), перезарядки; охота и уровень LOCKDOWN
 ## меняют вид узла (порталы закрываются, двери выхода сменяются воротами).
 func apply_state(state: Dictionary) -> void:
+	if ended:
+		return
 	world_ui.trace.set_trace(float(state.get("trace", 0.0)))
 	world_ui.breach_panel.set_trace(float(state.get("trace", 0.0)))
 	view.set_hunted(bool(state.get("hunt", false)))
@@ -242,6 +246,8 @@ func apply_state(state: Dictionary) -> void:
 
 ## Позиции других нетраннеров узла (WorldMsg.AVATARS): новым — фигура, вышедшим — убрать; двигает их _process по буферу.
 func apply_avatars(msg: Dictionary) -> void:
+	if ended:
+		return
 	for id in remote.on_avatars(msg, Time.get_ticks_msec() / 1000.0):
 		var gone: Node3D = _avatar_nodes.get(id)
 		if gone != null:
@@ -272,53 +278,34 @@ func _make_avatar(id: int, pos: Vector3) -> AvatarView:
 	return n
 
 
-## Сервер закончил забег (выход, выброс, флэтлайн): надпись перед глазами. Связь закроется сама.
-func show_ended(reason: String) -> void:
-	if reason == ExitLogic.REASON_FLATLINE:
-		_show_flatline()
+## Сервер закончил забег (выход, выброс, флэтлайн): мир гаснет, надпись перед глазами. Связь закроется сама; повторный `ended` ничего не меняет.
+## `ev` — само событие: если сервер положит в него паузу (`reentry_sec`), экран скажет «вход снова через M:SS» (сейчас её там нет — «снимите очки»).
+func show_ended(reason: String, ev: Dictionary = {}) -> void:
+	if ended:
 		return
-	var text := {"clean": "ВЫХОД", "ejected": "ICE ВЫБРОСИЛ ВАС", "flatline": "ФЛЭТЛАЙН"}.get(reason, "ВЫХОД: " + reason) as String
-	var l := Label3D.new()
-	l.text = text
-	l.font_size = 64
-	l.pixel_size = 0.0008
-	l.no_depth_test = true
-	l.modulate = Color(1.0, 0.3, 0.3) if reason != "clean" else Color(0.3, 1.0, 0.5)
-	l.position = Vector3(0, 0, -0.9)
-	rig.camera.add_child(l)
+	ended = true
+	flatline_shown = reason == ExitLogic.REASON_FLATLINE
+	_freeze_world()
+	end_screen = EndScreen.new(reason, ev)
+	rig.camera.add_child(end_screen)
+	end_screen.start()
 
 
-## Флэтлайн: экран плавно гаснет (чёрный экран на голове, камера не двигается и не трясётся), поверх — «ФЛЭТЛАЙН».
-## Ничего не мигает и не шатается: в VR резкая подача рядом с головой хуже, чем тишина.
-func _show_flatline() -> void:
-	var veil := MeshInstance3D.new()
-	veil.name = "FlatlineVeil"
-	var quad := QuadMesh.new()
-	quad.size = Vector2(4.0, 4.0)
-	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.albedo_color = Color(0, 0, 0, 0)
-	mat.no_depth_test = true
-	mat.render_priority = 100
-	quad.material = mat
-	veil.mesh = quad
-	veil.position = Vector3(0, 0, -0.25)
-	rig.camera.add_child(veil)
-	var l := Label3D.new()
-	l.name = "FlatlineText"
-	l.text = "ФЛЭТЛАЙН"
-	l.font_size = 64
-	l.pixel_size = 0.0008
-	l.no_depth_test = true
-	l.render_priority = 101
-	l.modulate = Color(1.0, 0.15, 0.2, 0.0)
-	l.position = Vector3(0, 0, -0.9)
-	rig.camera.add_child(l)
-	flatline_shown = true
-	var tw := create_tween().set_parallel(true)
-	tw.tween_property(mat, "albedo_color:a", 1.0, FLATLINE_FADE_SEC)
-	tw.tween_property(l, "modulate:a", 1.0, FLATLINE_FADE_SEC).set_delay(FLATLINE_FADE_SEC * 0.5)
+## Конец забега: мир не живёт — узел, ICE, чужие аватары, шарды и подписи спрятаны и больше не обновляются (apply_* молчат, _process
+## стоит), телепорт и ходьба заперты, дека, панель взлома и указатели выключены. Остаётся завеса на лице.
+func _freeze_world() -> void:
+	rig.movement_locked = true
+	world_ui.shutdown()
+	if tunnel != null and tunnel.is_active():
+		tunnel.finish()
+	for child in get_children():
+		if child is Node3D and child != rig and child != world_ui:
+			(child as Node3D).visible = false
+	# ICE и аватары — дети сцены (спрятаны выше); шарды в руке — дети руки: их тоже убрать.
+	for id in _pickups:
+		(_pickups[id] as Node3D).visible = false
+	set_process(false)
+	set_process_unhandled_input(false)
 
 
 func ice_node(id: String) -> Node3D:
@@ -327,6 +314,8 @@ func ice_node(id: String) -> Node3D:
 
 ## Слот деки по номеру (плоская сборка, цифры): выбрать и запустить именно его.
 func use_slot(index: int) -> void:
+	if ended:
+		return
 	if index >= 0 and index < deck_state.size():
 		selected_daemon = str(deck_state[index]["id"])
 		_refresh_deck()
@@ -348,6 +337,8 @@ func launch_target() -> String:
 
 
 func use_selected() -> void:
+	if ended:
+		return
 	var id := launch_target()
 	if not id.is_empty():
 		daemon_use_requested.emit(id)
@@ -355,6 +346,8 @@ func use_selected() -> void:
 
 ## Y / следующий: среди заряженных, если они есть (запуск в погоне), иначе по всей деке.
 func select_next() -> void:
+	if ended:
+		return
 	var ids: Array = charged_ids()
 	if ids.is_empty():
 		ids = deck_state.map(func(d): return d["id"])
@@ -366,6 +359,8 @@ func select_next() -> void:
 
 ## Зарядить выбранного демона (плоская сборка, клавиша C; в VR то же делает кнопка на деке). Выбранный не заряжается — первый, которого можно.
 func charge_selected() -> void:
+	if ended:
+		return
 	var id := selected_daemon
 	if not _can_charge_id(id):
 		id = ""
@@ -388,6 +383,8 @@ func _can_charge_id(id: String) -> bool:
 
 ## Ответ сервера на `use`: запуск удался — импульс левой руки (состояние «активен N с» придёт в снимке); отказ — слово на деке.
 func apply_daemon_result(ev: Dictionary) -> void:
+	if ended:
+		return
 	if bool(ev.get("ok", false)):
 		world_ui.feedback.pulse("left", LAUNCH_PULSE_AMP, LAUNCH_PULSE_S)
 	else:
@@ -397,6 +394,8 @@ func apply_daemon_result(ev: Dictionary) -> void:
 
 ## Событие `ev deck`: RAM, свойства рабочих демонов и груз. Вкладка ДОБЫЧА появляется с первым таким событием.
 func apply_deck(ev: Dictionary) -> void:
+	if ended:
+		return
 	deck_info = ev
 	_refresh_breach_context()
 	world_ui.deck.set_loot(ev.get("loot", []), int(ev.get("eddies", 0)), ev.get("daemons", []))
@@ -405,11 +404,15 @@ func apply_deck(ev: Dictionary) -> void:
 
 ## Событие `give_list`: нетраннеры в Сети, которым можно отправить добычу.
 func apply_give_list(ev: Dictionary) -> void:
+	if ended:
+		return
 	world_ui.deck.set_give_runners(ev.get("runners", []))
 
 
 ## Событие `give`: исход отправки (dir out) или новый предмет в ГРУЗе (dir in — строка мигает сама, когда придёт `ev deck`; здесь тихий сигнал и подпись).
 func apply_give(ev: Dictionary) -> void:
+	if ended:
+		return
 	world_ui.deck.show_give_result(ev)
 	if str(ev.get("dir", "")) == WorldMsg.GIVE_IN and bool(ev.get("ok", false)):
 		world_ui.feedback.loot_cue()
@@ -460,6 +463,8 @@ func _someone_within(pos: Vector3, dist: float) -> bool:
 ## Grip руки: с шардом в руке и дека рядом — положить в деку; пустая рука — взять ближайший открытый шард. Рука с шардом, но вдали от деки,
 ## ничего не делает (бросать в MVP нельзя: уронить ценность хуже, чем не уметь её бросить).
 func on_grip(hand: Node3D) -> void:
+	if ended:
+		return
 	if _hand_of.has(hand):
 		if can_stow_from(hand):
 			stow(hand)
@@ -504,6 +509,8 @@ func _report_miss(hand: Node3D) -> void:
 
 ## Просит сервер отдать объект, если он лежит, его хранилище открыто для нас и он достаточно близко. Сам объект не двигает.
 func try_grab(origin: Vector3, reach: float, holder: Node3D) -> bool:
+	if ended:
+		return false
 	if _pending_holder != null or _hand_of.has(holder):
 		return false
 	var best := ""
@@ -571,6 +578,8 @@ func can_stow_from(holder: Node3D) -> bool:
 
 ## Шард из держателя «втягивается» в деку: летит к деке, сжимается, пропадает; дека на миг светится рамкой. Серверу не сообщаем.
 func stow(holder: Node3D) -> bool:
+	if ended:
+		return false
 	var id := held_in(holder)
 	if id.is_empty():
 		return false
@@ -608,6 +617,8 @@ func _update_stow_target(delta: float) -> void:
 
 ## Сервер рассказал узел (WorldMsg.EV_NODE): шарды, порталы; после перехода — риг на место входа, тоннель открывается.
 func apply_node(info: Dictionary) -> void:
+	if ended:
+		return
 	node_info = info
 	current_node = str(info.get("node", ""))
 	view.set_tier(str(info.get("tier", "")))
@@ -625,6 +636,8 @@ func apply_node(info: Dictionary) -> void:
 ## Слоты шардов узла изменились (вынесли, пополнилось, хранилище открылось/закрылось): лежащий шард виден, вынесенный — нет; вид хранилища — по vault
 ## (закрытое — шард внутри тусклый и не берётся).
 func apply_shards(shards: Array) -> void:
+	if ended:
+		return
 	_refresh_dead_decks(shards)
 	for sh in shards:
 		var id := str(sh["id"])
@@ -659,12 +672,16 @@ func _refresh_dead_decks(shards: Array) -> void:
 
 ## Тоннель: затемнение вокруг головы и блок хода (камеру не двигаем); надпись «куда».
 func begin_tunnel(title: String, sec: float) -> void:
+	if ended:
+		return
 	rig.movement_locked = true
 	tunnel.begin()
 	show_notice("→ " + title, maxf(sec, 1.5))
 
 
 func end_tunnel() -> void:
+	if ended:
+		return
 	rig.movement_locked = false
 	if tunnel.is_active():
 		tunnel.finish()
@@ -672,6 +689,8 @@ func end_tunnel() -> void:
 
 ## Короткая надпись перед глазами (портал закрыт, куда ведёт тоннель).
 func show_notice(text: String, sec: float = 2.5) -> void:
+	if ended:
+		return
 	var l := Label3D.new()
 	l.text = text
 	l.font_size = 48
@@ -686,6 +705,8 @@ func show_notice(text: String, sec: float = 2.5) -> void:
 
 
 func show_portal_denied(ev: Dictionary) -> void:
+	if ended:
+		return
 	if str(ev.get("reason", "")) == "lockdown":
 		view.close_portal(str(ev.get("to", "")))
 	var text := {
@@ -947,6 +968,8 @@ func _vault_pos(id: String) -> Vector3:
 
 ## События взлома от сервера (WorldMsg.EV_BK*): сетка, ответ на тап, итог, отказ. Панель в мире уже стоит (idle) или ставится здесь.
 func apply_breach_event(ev: Dictionary) -> void:
+	if ended:
+		return
 	if str(ev.get("mode", "")) == WorldMsg.MODE_CHARGE or str(ev.get("mode", "")) == WorldMsg.MODE_DECRYPT:
 		_apply_charge_event(ev)   # заряд демона и расшифровка шарда идут на деке запястья, а не на панели у хранилища
 		return
