@@ -38,7 +38,9 @@ import com.megablok10.app.data.RoomTransactor
 import com.megablok10.app.identity.ContactDirectory
 import com.megablok10.app.headset.ChatStoreHeadsetPort
 import com.megablok10.app.headset.HeadsetCallBridge
+import com.megablok10.app.headset.CallVoiceAudio
 import com.megablok10.app.headset.HeadsetMirror
+import com.megablok10.app.headset.HeadsetVoiceBridge
 import com.megablok10.app.headset.HeadsetRuntime
 import com.megablok10.app.headset.HeadsetSettings
 import com.megablok10.app.identity.ContactStore
@@ -207,6 +209,7 @@ class AppGraph(private val app: Application) {
                 calls, { visiblePlayers.value },
                 micGranted = { ContextCompat.checkSelfPermission(app, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED },
             ),
+            voiceBridge = HeadsetVoiceBridge(calls, CallVoiceAudio(), { headsetSettings.config.value.let { it.enabled && it.voiceEnabled } }),
         )
     }.also { SoundPlayer.mirror = it }
 

@@ -11,9 +11,9 @@ const val HEADSET_DEFAULT_PORT = 7420
 /**
  * Настройка связи с очками. [enabled] по умолчанию выключено: включение по умолчанию — отдельное слияние после живой проверки.
  * [address] — `host` или `host:port` очков, [token] — одноразовый ключ канала (латиница, цифры, `-`, `_`): он попадает в адрес и больше никуда,
- * в журнал приложения не пишется.
+ * в журнал приложения не пишется. [voiceEnabled] — голос звонка в очках (срез 3, прототип): по умолчанию выключено, работает только при [enabled].
  */
-data class HeadsetConfig(val enabled: Boolean = false, val address: String = "", val token: String = "") {
+data class HeadsetConfig(val enabled: Boolean = false, val address: String = "", val token: String = "", val voiceEnabled: Boolean = false) {
     /** `ws://host:port/?token=…` или null, если адрес или токен не годятся. Токен в query: сервер очков (Godot) заголовки рукопожатия не отдаёт. */
     fun url(): String? {
         val m = ADDRESS.matchEntire(address.trim()) ?: return null
@@ -44,12 +44,14 @@ class HeadsetSettings(private val prefs: SharedPreferences) : HeadsetReadState {
         enabled = prefs.getBoolean(KEY_ENABLED, false),
         address = prefs.getString(KEY_ADDRESS, "").orEmpty(),
         token = prefs.getString(KEY_TOKEN, "").orEmpty(),
+        voiceEnabled = prefs.getBoolean(KEY_VOICE, false),
     )
 
     fun update(transform: (HeadsetConfig) -> HeadsetConfig) {
         val next = transform(_config.value)
         // commit(), не apply(): настройка должна пережить убийство процесса сразу после правки.
-        prefs.edit().putBoolean(KEY_ENABLED, next.enabled).putString(KEY_ADDRESS, next.address).putString(KEY_TOKEN, next.token).commit()
+        prefs.edit().putBoolean(KEY_ENABLED, next.enabled).putString(KEY_ADDRESS, next.address).putString(KEY_TOKEN, next.token)
+            .putBoolean(KEY_VOICE, next.voiceEnabled).commit()
         _config.value = next
     }
 
@@ -64,6 +66,7 @@ class HeadsetSettings(private val prefs: SharedPreferences) : HeadsetReadState {
         private const val KEY_ENABLED = "enabled"
         private const val KEY_ADDRESS = "address"
         private const val KEY_TOKEN = "token"
+        private const val KEY_VOICE = "voice"
         private const val READ_PREFIX = "read_"
         private const val NONE = Long.MIN_VALUE
     }

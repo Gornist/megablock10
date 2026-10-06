@@ -35,15 +35,46 @@ object CallMedia {
     private var audioSource: AudioSource? = null
     private var localAudioTrack: AudioTrack? = null
 
+    private var audioModule: JavaAudioDeviceModule? = null
+
     private var remoteDescriptionSet = false
     private val pendingRemoteCandidates = mutableListOf<IceCandidate>()
+
+    /**
+     * Громкость динамика телефона (0..1) без потери звука для [CallAudioHooks.playback]: `setSpeakerMute` обнуляет буфер раньше колбэка, поэтому
+     * громкость ставится на самом AudioTrack библиотеки (приватное поле; версия WebRTC закреплена в build.gradle). false — трек ещё не создан
+     * или поле не нашлось: звук телефона остаётся как был.
+     */
+    fun setSpeakerVolume(volume: Float): Boolean {
+        val module = audioModule ?: return false
+        val track = try {
+            // WebRtcAudioTrack — класс пакета org.webrtc.audio (не public): добираемся только рефлексией.
+            val output = module.javaClass.getField("audioOutput").get(module) ?: return false
+            output.javaClass.getDeclaredField("audioTrack").apply { isAccessible = true }.get(output) as? android.media.AudioTrack
+        } catch (e: ReflectiveOperationException) {
+            Mb10Log.warnEvent(TAG, "call.speaker_volume_unavailable", "error" to e.javaClass.simpleName)
+            null
+        } ?: return false
+        return track.setVolume(volume) == android.media.AudioTrack.SUCCESS
+    }
 
     private fun ensureFactory(context: Context): PeerConnectionFactory {
         factory?.let { return it }
         PeerConnectionFactory.initialize(
             PeerConnectionFactory.InitializationOptions.builder(context.applicationContext).createInitializationOptions()
         )
-        val adm = JavaAudioDeviceModule.builder(context.applicationContext).createAudioDeviceModule()
+        // Подмена звука для очков (срез 3): пока CallAudioHooks пусты, оба колбэка ничего не делают. Буфер микрофона перезаписывается ПОСЛЕ штатного
+        // обнуления при mute и ДО отдачи WebRTC; колбэк воспроизведения получает звук собеседника до записи в AudioTrack.
+        val adm = JavaAudioDeviceModule.builder(context.applicationContext)
+            .setAudioBufferCallback { buffer, _, channels, rate, bytesRead, captureTimeNs ->
+                CallAudioHooks.mic?.fill(buffer, bytesRead, rate, channels)
+                captureTimeNs
+            }
+            .setPlaybackSamplesReadyCallback { samples ->
+                CallAudioHooks.playback?.onSamples(samples.data, samples.sampleRate, samples.channelCount)
+            }
+            .createAudioDeviceModule()
+        audioModule = adm
         // На живой проверке звонки, где звонящий — Xiaomi, не соединялись (ICE уходило в FAILED, тогда как в обратную сторону
         // работало): у ICE-кандидатов на этом телефоне без этой опции есть шанс уйти по мобильной сети или через VPN-интерфейс,
         // недоступный собеседнику на LAN, — тогда как сокеты чата и коллектора уже принудительно идут по Wi-Fi через WifiBinder.

@@ -22,6 +22,7 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import okio.ByteString
 
 /** Пауза перед очередной попыткой подключиться к очкам: растёт, пока не получается, и сбрасывается после удачного соединения. */
 class HeadsetBackoff(private val stepsMs: LongArray = longArrayOf(1_000, 2_000, 5_000, 10_000, 15_000)) {
@@ -60,6 +61,13 @@ class HeadsetRuntime(
         val ws = socket ?: return false
         val text = HeadsetCodec.encode(frame)
         return text.length <= MAX_FRAME_CHARS && ws.send(text)
+    }
+
+    /** Бинарный кадр голоса: если очередь отправки OkHttp забита (сеть тормозит), кадр отбрасывается — звук важнее задержки, чем полнота. */
+    private fun sendBinary(bytes: ByteArray): Boolean {
+        val ws = socket ?: return false
+        if (ws.queueSize() > MAX_VOICE_QUEUE_BYTES) return false
+        return ws.send(ByteString.of(*bytes))
     }
 
     /** Задача сессии: следит за настройкой и держит соединение, пока оно нужно. Возвращается сразу (работает в [scope]). */
@@ -111,8 +119,10 @@ class HeadsetRuntime(
                 override fun onOpen(webSocket: WebSocket, response: Response) {
                     Mb10Log.event(TAG, "headset.open", "to" to hostPort)
                     socket = webSocket
-                    serving = launch { mirror.serve({ frame -> sendFrame(frame) }, commands) }
+                    serving = launch { mirror.serve({ frame -> sendFrame(frame) }, commands) { bytes -> sendBinary(bytes) } }
                 }
+
+                override fun onMessage(webSocket: WebSocket, bytes: ByteString) = mirror.onBinary(bytes.toByteArray())
 
                 override fun onMessage(webSocket: WebSocket, text: String) {
                     HeadsetCodec.decode(text)?.let { commands.trySend(it) }
@@ -165,6 +175,7 @@ class HeadsetRuntime(
         const val TAG = "Headset"
         const val STABLE_MS = 10_000L
         const val NORMAL_CLOSE = 1000
+        const val MAX_VOICE_QUEUE_BYTES = 64 * 1024L // ≈ 0,7 с звука 44,1 кГц: больше копить нельзя, задержка важнее
     }
 }
 

@@ -64,6 +64,8 @@ class HeadsetMirror(
     private val onReady: (Boolean) -> Unit = {},
     /** Звонки (срез 2): без него зеркало показывает только переписку. */
     private val callBridge: HeadsetCallBridge? = null,
+    /** Голос звонка в очках (срез 3): без него звук звонка остаётся на телефоне. */
+    private val voiceBridge: HeadsetVoiceBridge? = null,
 ) {
     private class Sent {
         var threads: List<HeadsetThread> = emptyList()
@@ -72,9 +74,9 @@ class HeadsetMirror(
 
     /**
      * Обслуживает одно соединение, пока оно живо (возвращается, когда [commands] закрыт, и выбрасывает [CancellationException] при отмене).
-     * [send] отдаёт кадр очкам; false — сокет кадр не принял (его закрывает [HeadsetRuntime]).
+     * [send] отдаёт кадр очкам; false — сокет кадр не принял (его закрывает [HeadsetRuntime]). [sendBinary] — то же для бинарных кадров голоса.
      */
-    suspend fun serve(send: (HeadsetOut) -> Boolean, commands: ReceiveChannel<HeadsetCommand>) {
+    suspend fun serve(send: (HeadsetOut) -> Boolean, commands: ReceiveChannel<HeadsetCommand>, sendBinary: (ByteArray) -> Boolean = { false }) {
         val identity = me() ?: return
         coroutineScope {
             val sent = Sent()
@@ -91,6 +93,7 @@ class HeadsetMirror(
                             onReady(true)
                             observer = launch {
                                 callBridge?.observe(this, send)
+                                voiceBridge?.observe(this, send, sendBinary)
                                 launch { chat.contacts().distinctUntilChanged().collect { send(HeadsetOut.Contacts(it)) } }
                                 var first = true
                                 chat.changes(identity).conflate().collect { push(full = first).also { first = false } }
@@ -102,9 +105,15 @@ class HeadsetMirror(
                 }
             } finally {
                 observer?.cancel()
+                voiceBridge?.stop()
                 onReady(false)
             }
         }
+    }
+
+    /** Бинарный кадр от очков (микрофон) — прямо из сетевого потока, без очереди команд: кадров 50 в секунду. */
+    fun onBinary(bytes: ByteArray) {
+        voiceBridge?.onBinary(bytes)
     }
 
     /** Одна команда очков в своей корутине: долгая отправка (сеть) не задерживает остальные. Сбой команды в журнал, соединение не роняет. */
@@ -138,6 +147,7 @@ class HeadsetMirror(
                 }
                 if (cmd.thread == HEADSET_FACTION_THREAD) chat.sendFaction(identity, text) else chat.sendDirect(identity, cmd.thread, text)
             }
+            is HeadsetCommand.VoiceReady -> voiceBridge?.handle(cmd)
             else -> callBridge?.handle(identity, cmd) // звонки; hello_ack обработан выше
         }
     }

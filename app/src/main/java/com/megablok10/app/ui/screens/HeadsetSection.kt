@@ -47,6 +47,14 @@ internal fun HeadsetSectionContent(config: HeadsetConfig, onChange: ((HeadsetCon
             style = MbTypography.meta, color = c.ink2
         )
         MbFormRow("Связь с очками") { MbToggle(config.enabled, { on -> onChange { it.copy(enabled = on) } }) }
+        MbFormRow("Голос звонка в очках (проба)") { MbToggle(config.voiceEnabled, { on -> onChange { it.copy(voiceEnabled = on) } }) }
+        if (config.voiceEnabled) {
+            Text(
+                "Микрофон и динамики очков вместо телефона во время звонка; пропал звук очков — звонок сам возвращается на телефон. " +
+                    "Нужен включённый звонок в очках и микрофон в них.",
+                style = MbTypography.meta, color = c.ink2
+            )
+        }
         MbField(value = address, onValueChange = { address = it }, placeholder = "адрес очков: 192.168.1.50:7420")
         MbField(value = token, onValueChange = { token = it }, placeholder = "токен (латиница, цифры, - и _)")
         MbButton(

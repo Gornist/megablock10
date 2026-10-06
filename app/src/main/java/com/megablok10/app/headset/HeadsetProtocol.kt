@@ -95,6 +95,8 @@ sealed interface HeadsetOut {
     data class Contacts(val items: List<HeadsetContact>) : HeadsetOut
     /** [kind]: ring | ringback | message | stop. */
     data class Sound(val kind: String) : HeadsetOut
+    /** Голос звонка в очках включён ([on]) или выключен; [rate] — частота бинарных кадров звука (срез 3). */
+    data class Voice(val on: Boolean, val rate: Int = HEADSET_VOICE_RATE) : HeadsetOut
 }
 
 /** Что очки просят у телефона. */
@@ -108,6 +110,8 @@ sealed interface HeadsetCommand {
     data class Mute(val on: Boolean) : HeadsetCommand
     data class StartCall(val peer: String) : HeadsetCommand
     data object Resync : HeadsetCommand
+    /** Очки готовы к голосу звонка (микрофон и динамик открыты) или отказались/сняты ([on] = false). */
+    data class VoiceReady(val on: Boolean) : HeadsetCommand
 }
 
 /** Кодек кадров. Разбор терпимый: мусор, неизвестный тип, нехватка обязательных полей — `null`, а не исключение. */
@@ -122,6 +126,7 @@ object HeadsetCodec {
         is HeadsetOut.CallLog -> JSONObject().put("t", "call_log").put("items", JSONArray(frame.items.map(::callLogJson)))
         is HeadsetOut.Contacts -> JSONObject().put("t", "contacts").put("items", JSONArray(frame.items.map { JSONObject().put("key", it.key).put("title", it.title) }))
         is HeadsetOut.Sound -> JSONObject().put("t", "sound").put("kind", frame.kind)
+        is HeadsetOut.Voice -> JSONObject().put("t", "voice").put("on", frame.on).put("rate", frame.rate)
     }.toString()
 
     fun decode(text: String): HeadsetCommand? {
@@ -137,6 +142,7 @@ object HeadsetCodec {
             "mute" -> if (o.has("on")) HeadsetCommand.Mute(o.optBoolean("on")) else null
             "start_call" -> o.optString("peer").takeIf { it.isNotEmpty() }?.let(HeadsetCommand::StartCall)
             "resync" -> HeadsetCommand.Resync
+            "voice_ready" -> if (o.has("on")) HeadsetCommand.VoiceReady(o.optBoolean("on")) else null
             else -> null
         }
     }
