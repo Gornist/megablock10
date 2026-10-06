@@ -1,0 +1,68 @@
+# Таблица для scripts/test-hook.sh: <код 0|2><TAB><команда>. «\n» в команде — перевод строки (heredoc).
+# git add
+2	git add -A
+2	git add --all
+2	git add .
+2	cd x && git add . && git commit -m y
+0	git add app/x.kt
+0	git add app/x.kt kit/y.kt
+0	git add ./app/x.kt
+# git push
+2	git push origin main
+2	git push origin HEAD:main
+2	git push origin +agent/x:refs/heads/main
+2	git push -f origin agent/x
+2	git push --force-with-lease origin agent/x
+0	git push origin agent/x
+0	git push -u origin agent/ci-tools
+0	git push origin agent/main-fix
+0	git push origin agent/x && gh pr create --base main --title x
+0	gh pr create --base main --title x
+0	git commit -m "убрал force из текста"
+# land.sh и перемотка main
+2	scripts/land.sh 47
+2	true; /a/b/scripts/land.sh 9
+2	./scripts/land.sh 40 41
+0	scripts/land.sh --check 40 41
+0	gh pr create --body "владельцу scripts/land.sh 47"
+0	git commit -m "правка scripts/land.sh"
+0	grep -n land scripts/land.sh
+2	gh api -X PATCH repos/o/r/git/refs/heads/main -f sha=1
+0	gh api repos/o/r/pulls/5
+0	gh pr view 5 --json state
+# --no-verify
+0	git push devbox HEAD --no-verify
+0	git push -u devbox HEAD --no-verify
+2	git push origin HEAD --no-verify
+2	git commit -m x --no-verify
+0	git commit -m x
+# cleanTest
+2	./gradlew cleanTestDebugUnitTest
+2	./gradlew :app:cleanTestDebugUnitTest
+0	./gradlew testDebugUnitTestNoScreenshots --rerun-tasks
+# python-heredoc
+2	python3 - <<EOF\nopen("a.txt", "w").write("x")\nEOF
+2	python3 - <<EOF\nfrom pathlib import Path\nPath("a").write_text("x")\nEOF
+0	python3 - <<EOF\nprint(1+1)\nEOF
+0	python3 scripts/session-stats.py
+# sleep
+2	sleep 31
+2	sleep 60 && echo ok
+2	echo a; sleep 120
+0	sleep 30
+0	sleep 5
+0	echo asleep 100
+0	cat > x.sh <<EOF\nsleep 60\nEOF
+2	cat > x.sh <<EOF\nsleep 1\nEOF\nsleep 90
+# rsync netrun на devbox
+2	rsync -a netrun/ devbox:wt
+0	rsync -a --delete netrun/ devbox:wt
+0	rsync -a app/ devbox:wt
+0	rsync -a netrun/ /tmp/copy
+# gdunit
+2	ssh devbox ~/wt/netrun/gdunit.sh run
+0	netrun/tools/dev.sh test
+0	ssh devbox ls
+# безобидное
+0	ls -la
+0	git status

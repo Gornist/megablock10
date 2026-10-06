@@ -7,6 +7,11 @@ on:
     paths: [ "netrun/**", ".github/workflows/netrun.yml" ]
   workflow_dispatch: {}
 
+# Новый пуш в тот же PR отменяет прогон старого коммита (как в e2e.yml и main.yml).
+concurrency:
+  group: netrun-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 env:
   GODOT_VERSION: 4.7.2
   GODOT_CHANNEL: stable
@@ -21,13 +26,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Ставит и кеширует сам; use-dotnet: false — обычная сборка без C# (мы на GDScript).
       - name: Godot (Linux)
-        run: |
-          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-${GODOT_CHANNEL}"
-          curl -fsSL -o godot.zip "$base/Godot_v${GODOT_VERSION}-${GODOT_CHANNEL}_linux.x86_64.zip"
-          unzip -q godot.zip
-          sudo install -m 755 "Godot_v${GODOT_VERSION}-${GODOT_CHANNEL}_linux.x86_64" /usr/local/bin/godot
-          godot --version
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: ${{ env.GODOT_VERSION }}-${{ env.GODOT_CHANNEL }}
+          use-dotnet: false
+
+      - run: godot --version
 
       - name: Проверка ассетов (бюджеты, роли, размеры, origin)
         run: python3 netrun/assets/src/validate.py --root netrun/assets
@@ -60,29 +66,14 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Godot (Linux)
-        run: |
-          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-${GODOT_CHANNEL}"
-          curl -fsSL -o godot.zip "$base/Godot_v${GODOT_VERSION}-${GODOT_CHANNEL}_linux.x86_64.zip"
-          unzip -q godot.zip
-          sudo install -m 755 "Godot_v${GODOT_VERSION}-${GODOT_CHANNEL}_linux.x86_64" /usr/local/bin/godot
-
-      - name: Шаблоны экспорта (кеш)
-        id: templates-cache
-        uses: actions/cache@v6
+      - name: Godot (Linux) и шаблоны экспорта
+        uses: chickensoft-games/setup-godot@v2
         with:
-          path: ~/.local/share/godot/export_templates/${{ env.GODOT_VERSION }}.${{ env.GODOT_CHANNEL }}
-          key: godot-templates-${{ env.GODOT_VERSION }}-${{ env.GODOT_CHANNEL }}
+          version: ${{ env.GODOT_VERSION }}-${{ env.GODOT_CHANNEL }}
+          use-dotnet: false
+          include-templates: true
 
-      - name: Шаблоны экспорта (скачивание)
-        if: steps.templates-cache.outputs.cache-hit != 'true'
-        run: |
-          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-${GODOT_CHANNEL}"
-          curl -fsSL -o templates.tpz "$base/Godot_v${GODOT_VERSION}-${GODOT_CHANNEL}_export_templates.tpz"
-          dest="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_CHANNEL}"
-          mkdir -p "$dest"
-          unzip -q templates.tpz -d templates-tmp
-          mv templates-tmp/templates/* "$dest"/
+      - run: godot --version
 
       - name: Android SDK и NDK
         run: |
@@ -114,7 +105,11 @@ jobs:
           TRES
           # «Install Android Build Template» из редактора: распаковать android_source.zip в netrun/android/build
           mkdir -p netrun/android/build
-          unzip -q "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_CHANNEL}/android_source.zip" -d netrun/android/build
+          # Где лежат шаблоны, решает setup-godot: ищем, а не угадываем путь.
+          src=$(find "$HOME/.local/share/godot/export_templates" -name android_source.zip | head -n 1)
+          test -n "$src"
+          echo "android_source.zip: $src"
+          unzip -q "$src" -d netrun/android/build
           echo -n "${GODOT_VERSION}.${GODOT_CHANNEL}" > netrun/android/.build_version
           touch netrun/android/build/.gdignore
 
