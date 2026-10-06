@@ -313,6 +313,35 @@ func test_twelve_node_graph_builds_by_tier() -> void:
 	srv.stop_net()
 
 
+## W1-Ч1: пустые trace_settings / ice_settings мира берутся из graph.settings["trace"] / ["ice"]; заданные снаружи главнее.
+func test_empty_world_settings_come_from_graph_settings() -> void:
+	var d := {"default_entry": "x_a", "entries": {}, "settings": {
+		"trace": {"weights": {"seen_by_ice": 2.0}, "decay_per_sec": 0.2},
+		"ice": {"sight_range": 7.0},
+		"black_ice": {"sight_range": 12.0}},
+		"nodes": {"x_a": {"title": "A", "tier": "BASE", "ice": 0, "shards": 1, "links": []}}}
+	var srv := NetServer.new()
+	var sroot2 := Node.new()
+	sroot2.name = "S3"
+	_root.add_child(sroot2)
+	get_tree().set_multiplayer(SceneMultiplayer.new(), sroot2.get_path())
+	sroot2.add_child(srv)
+	var cfg := NetConfig.new()
+	cfg.port = _next_port
+	_next_port += 1
+	assert_int(srv.start(cfg, DictTokenVerifier.new({}))).is_equal(OK)
+	var w := GraphWorld.new()
+	sroot2.add_child(w)
+	w.start(srv, null, NodeGraph.from_dict(d))
+	var gn: GrayNode = w.node_of("x_a")
+	var meter := TraceMeter.new(gn.trace_settings)
+	meter.add_action("seen_by_ice", 0.0, 1.0)
+	assert_float(meter.value()).is_equal(2.0)                        # вес из graph.json, не умолчание 8
+	assert_float(float(gn.ice_settings.get("sight_range", -1.0))).is_equal(7.0)
+	assert_float(float(gn.black_ice_settings.get("sight_range", -1.0))).is_equal(12.0)   # Black ICE не смягчается числами узла
+	srv.stop_net()
+
+
 ## L1: тревога и сроки пополнения слотов переживают рестарт сервера мира (их пишет узел в node.data.world, снимок отдаёт обратно).
 func test_alert_and_refill_deadlines_survive_restart() -> void:
 	var gc := _world.node_of("g_c")

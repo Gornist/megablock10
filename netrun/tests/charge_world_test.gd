@@ -171,7 +171,7 @@ func test_charge_with_the_auto_solver_charges_and_one_launch_spends_it() -> void
 	assert_bool(p.daemon_replies[0]["ok"]).is_true()
 	assert_bool(ds.is_charged(GHOST)).is_false()
 	assert_array(ds.active_effects(_node.now())).is_equal(["GHOST"])
-	assert_bool(ds.is_ghost(_node.now() + 19.0)).is_true()
+	assert_bool(ds.is_ghost(_node.now() + 9.0)).is_true()   # тир 1: 10 с (W1-Ч1)
 	assert_bool(await _wait_for(func(): return p.cd(GHOST).get("st", "") == "active")).is_true()
 	assert_float(ds.cooldown_left(GHOST, _node.now())).is_greater(55.0)
 	# Второй запуск тем же зарядом невозможен.
