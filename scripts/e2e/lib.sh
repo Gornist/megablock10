@@ -68,6 +68,36 @@ wait_until() {
   while [ $SECONDS -lt $end ]; do "$@" >/dev/null 2>&1 && return 0; sleep 1; done
   return 1
 }
+# ── Очередь devbox ──
+# Стенд (два эмулятора, порты 5554/5556 и сервер) и Gradle-задачи dbx.sh делят одну машину: job раннера GitHub и живой прогон агента
+# не должны идти одновременно. Тот же замок, что у scripts/dbx.sh (~/.dbx.lock), стенд держит всё время жизни: от up.sh до down.sh.
+# Держатель — отдельный процесс `sleep` под flock (up.sh завершается, а замок должен остаться); его pid в $E2E_DIR/lock.held.
+# TTL (E2E_LOCK_TTL, 90 мин) снимает замок у забытого стенда, чтобы он не заблокировал очередь devbox навсегда.
+# Без flock (Mac) и при E2E_LOCK_HELD=1 (вызывающий уже держит замок: `flock ~/.dbx.lock up.sh`) замок не берётся.
+E2E_LOCK_FILE=${DBX_LOCK:-$HOME/.dbx.lock}
+stand_lock_alive() { [ -s "$E2E_DIR/lock.held" ] && kill -0 "$(cat "$E2E_DIR/lock.held")" 2>/dev/null; }
+stand_lock_mine() { stand_lock_alive && [ "$(cat "$E2E_DIR/lock.owner" 2>/dev/null)" = "$ROOT" ]; }
+stand_lock_acquire() {
+  [ "${E2E_LOCK_HELD:-}" = 1 ] && return 0
+  command -v flock >/dev/null 2>&1 || return 0
+  stand_lock_mine && return 0
+  local wait=${E2E_LOCK_WAIT:-2700} hs="$E2E_DIR/lock.hs.$$" fpid
+  rm -f "$hs"
+  log "очередь devbox ($E2E_LOCK_FILE): жду замок до $wait с…"
+  nohup flock -w "$wait" "$E2E_LOCK_FILE" bash -c 'echo $$ > "$1"; exec sleep "$2"' _ "$hs" "${E2E_LOCK_TTL:-5400}" </dev/null >/dev/null 2>&1 &
+  fpid=$!
+  while [ ! -s "$hs" ]; do
+    kill -0 $fpid 2>/dev/null || die "очередь devbox: замок не взят за $wait с (занят задачей dbx.sh или чужим стендом e2e)"
+    sleep 1
+  done
+  mv "$hs" "$E2E_DIR/lock.held"; echo "$ROOT" > "$E2E_DIR/lock.owner"
+  log "замок devbox взят — снимется в down.sh (или через ${E2E_LOCK_TTL:-5400} с)"
+}
+stand_lock_release() {
+  [ -s "$E2E_DIR/lock.held" ] && kill "$(cat "$E2E_DIR/lock.held")" 2>/dev/null
+  rm -f "$E2E_DIR/lock.held" "$E2E_DIR/lock.owner"
+  return 0
+}
 # ── Журнал приложения (Android/data/<пакет>/files/logs, см. docs/live-test-plan.md) ──
 # Журнал лежит во внешней папке приложения, а если туда писать нельзя (после переустановки на эмуляторе) — во внутренней: читаем оба места.
 journal_cat() {
