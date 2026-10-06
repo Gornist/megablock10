@@ -96,6 +96,7 @@ var _ice_nodes: Dictionary = {}      # id ICE -> IceView
 var _avatar_nodes: Dictionary = {}   # id чужого аватара -> AvatarView
 ## Чужие ICE и аватары показываются из буфера состояний с задержкой (RemoteTracks), а не прыжками по пакетам.
 var remote := RemoteTracks.new()
+var tick_floor: TickFloor   ## свет зрения и стрелки ICE; создаётся с первым снимком тактового узла
 var _pending_holder: Node3D
 var _label: Label3D
 var _acc := 0.0
@@ -226,6 +227,7 @@ func apply_state(state: Dictionary) -> void:
 		selected_daemon = ids[0] if not ids.is_empty() else ""
 	_refresh_deck()
 	remote.on_state(state, Time.get_ticks_msec() / 1000.0)
+	_update_tick_floor()
 	var seen := {}
 	for ice in state.get("ice", []):
 		var id := str(ice["id"])
@@ -236,12 +238,25 @@ func apply_state(state: Dictionary) -> void:
 			_ice_nodes[id] = _make_ice(id, int(ice.get("b", 0)) == 1)
 			_ice_nodes[id].position = pos
 		_show_ice_state(_ice_nodes[id], int(ice["s"]), pos)
+		if ice.has("c"):
+			(_ice_nodes[id] as IceView).set_eye_state(int(ice.get("st", 0)))   # тактовый режим: глаз по состоянию ICE
 	# ICE, которого в снимке больше нет (игрок перешёл в другой узел), убираем: иначе Black ICE прошлого узла стоял бы в новом.
 	for id in _ice_nodes.keys():
 		if not seen.has(id):
 			(_ice_nodes[id] as Node).free()
 			_ice_nodes.erase(id)
 			remote.forget_ice(id)
+
+
+## Свет зрения ICE на полу и стрелки: только когда сервер ведёт такты (в снимке есть tk). В realtime ноды нет.
+func _update_tick_floor() -> void:
+	var tk := remote.tick_info()
+	if tk.is_empty():
+		return
+	if tick_floor == null:
+		tick_floor = TickFloor.new(rig.grid)
+		add_child(tick_floor)
+	tick_floor.apply(remote.intents(), tk, NodeGrid.cell_of(rig.global_position))
 
 
 ## Позиции других нетраннеров узла (WorldMsg.AVATARS): новым — фигура, вышедшим — убрать; двигает их _process по буферу.
