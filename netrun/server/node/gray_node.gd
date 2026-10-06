@@ -72,6 +72,8 @@ var ice_settings: Dictionary = {}
 var trace_settings: Dictionary = {}
 ## Поверх ice_settings — только для Black ICE (hunt_speed, hunt_level, дальность взгляда…).
 var black_ice_settings: Dictionary = {}
+## Клетки 1 м с колоннами: одна на узел, её видят все ICE (колонна закрывает им взгляд).
+var ice_grid: NodeGrid = NodeGrid.for_layout()
 
 var _now := 0.0
 var _state_acc := 0.0
@@ -288,7 +290,7 @@ func _add_ice(id: String, waypoints: Array, black: bool = false) -> void:
 	if black:
 		settings.merge(black_ice_settings, true)
 		settings["black"] = true
-	ice.setup(settings, wps)
+	ice.setup(settings, wps, ice_grid)
 	# Журнал — до _on_ice_ejected: выброс убирает аватар, а строке нужна позиция игрока.
 	ice.brain.state_changed.connect(_log_ice_state.bind(ice))
 	ice.ejected.connect(_log_ice_eject.bind(ice))

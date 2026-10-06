@@ -291,7 +291,7 @@ func test_teleport_in_the_middle_ends_the_breach_early() -> void:
 	var p := await _ready_peer("t03", S1)
 	_stand_at(S1, "b_a", 0)
 	assert_bool(await _start(p, _slot("b_a", 0), [D_EXTRACT])).is_true()
-	p.net.request_teleport(Vector3(2.0, 0, -6.0))
+	p.net.request_teleport(NodeGrid.center(Vector2i(9, 8)))   # клетка (9;8) свободна: (2; −6) попадал в колонну (3;−5)
 	assert_bool(await _wait_for(func(): return not p.ends.is_empty())).is_true()
 	assert_str(p.ends[0]["early"]).is_equal("teleport")
 	assert_str(p.ends[0]["outcome"]).is_equal("FAIL")

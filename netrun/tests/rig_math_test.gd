@@ -146,7 +146,7 @@ const FROM := Vector3(0, 0, -6)   # центр комнаты
 
 
 func test_teleport_constants() -> void:
-	assert_float(RigMath.TELEPORT_RANGE).is_equal(4.0)
+	assert_float(RigMath.TELEPORT_RANGE).is_equal(4.5)
 	assert_float(RigMath.TELEPORT_COOLDOWN).is_equal(1.2)
 	assert_float(RigMath.TELEPORT_BLINK_SEC).is_equal(0.1)
 	assert_float(RigMath.TELEPORT_TRACE).is_equal(0.0)
@@ -171,16 +171,16 @@ func test_aim_follows_yaw_of_the_hand() -> void:
 func test_aim_beyond_range_is_cut_along_the_line() -> void:
 	var a := RigMath.teleport_aim(Vector3(0, 1.0, -6), Vector3(0, -0.1, -1).normalized(), FROM)
 	assert_bool(a["clamped_range"]).is_true()
-	assert_vector(a["p"]).is_equal_approx(Vector3(0, 0, -10), Vector3.ONE * 0.001)   # 4 м вперёд от FROM
+	assert_vector(a["p"]).is_equal_approx(Vector3(0, 0, -10.5), Vector3.ONE * 0.001)   # 4,5 м вперёд от FROM
 	assert_float(NodeLayout.flat_distance(a["p"], FROM)).is_equal_approx(RigMath.TELEPORT_RANGE, 0.001)
 
 
 func test_aim_horizontal_or_up_goes_to_max_range() -> void:
 	var level := RigMath.teleport_aim(Vector3(0, 1.0, -6), Vector3(0, 0, -1), FROM)
-	assert_vector(level["p"]).is_equal_approx(Vector3(0, 0, -10), Vector3.ONE * 0.001)
+	assert_vector(level["p"]).is_equal_approx(Vector3(0, 0, -10.5), Vector3.ONE * 0.001)
 	var up := RigMath.teleport_aim(Vector3(0, 1.0, -6), Vector3(1, 0.5, 0).normalized(), FROM)
 	assert_bool(up["valid"]).is_true()
-	assert_vector(up["p"]).is_equal_approx(Vector3(4, 0, -6), Vector3.ONE * 0.001)
+	assert_vector(up["p"]).is_equal_approx(Vector3(4.5, 0, -6), Vector3.ONE * 0.001)
 
 
 func test_aim_straight_up_is_invalid() -> void:
@@ -191,7 +191,7 @@ func test_aim_with_hand_near_floor_does_not_divide_by_nothing() -> void:
 	# Рука ниже порога над полом (например, пол в очках на уровне головы): луч в пол не считаем, идём по горизонтали.
 	var a := RigMath.teleport_aim(Vector3(0, 0.05, -6), Vector3(0, -1, -1).normalized(), FROM)
 	assert_bool(a["valid"]).is_true()
-	assert_vector(a["p"]).is_equal_approx(Vector3(0, 0, -10), Vector3.ONE * 0.001)
+	assert_vector(a["p"]).is_equal_approx(Vector3(0, 0, -10.5), Vector3.ONE * 0.001)
 
 
 func test_aim_is_cut_to_the_room() -> void:
