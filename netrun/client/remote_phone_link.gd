@@ -9,10 +9,17 @@ extends PhoneLink
 ## гасятся (`sound_requested("stop")`); пропущенный звонок остаётся на телефоне.
 ##
 ## Звуки (рингтон, дозвон, сообщение) приложение просит кадром `sound{kind}`; играет их не эта связь, а подписчик на [signal sound_requested] (PhoneSounds).
+## Голос (срез 3): `voice{on,rate}` от телефона включает голос ([voice_requested], [voice_active]); PCM идёт бинарными кадрами того же сокета
+## (shared/phone_voice_codec.gd): звук собеседника — сигнал [voice_frame_received], микрофон очков — [send_voice_chunk]. Узел с микрофоном и динамиком — подписчик, не эта связь.
 ## Сама связь работает от внешнего такта `advance(delta)` (его зовёт WorldUi каждый кадр): опрос сокетов и тайм-ауты.
 
 ## Приложение просит звук: ring | ringback | message | stop.
 signal sound_requested(kind: String)
+## Голос в очках: телефон включает/выключает (`voice{on,rate}`), либо связь оборвалась/встала на паузу при включённом голосе (on=false, rate прежний) —
+## узел голоса открывает или гасит микрофон и динамик. Повторное `voice` с тем же состоянием и частотой сигнал не повторяет.
+signal voice_requested(on: bool, rate: int)
+## Годный бинарный кадр звука собеседника (TYPE_PEER) при включённом голосе: seq — номер кадра, pcm — int16 LE моно на частоте [voice_rate].
+signal voice_frame_received(seq: int, pcm: PackedByteArray)
 
 const PROTOCOL_VERSION := 1
 const DEFAULT_PORT := 7420
@@ -22,6 +29,9 @@ const HELLO_TIMEOUT_SEC := 5.0
 ## Лимиты хранимого: диалогов и сообщений на диалог (приложение шлёт ЛС 20, фракция 40).
 const MAX_THREADS := 200
 const MAX_MESSAGES := 100
+const VOICE_DEFAULT_RATE := 44100
+const VOICE_MIN_RATE := 8000
+const VOICE_MAX_RATE := 48000
 const SOUND_KINDS: Array[String] = ["ring", "ringback", "message", "stop"]
 const STATUSES: Array[String] = [PhoneLink.STATUS_SENT, PhoneLink.STATUS_DELIVERED, PhoneLink.STATUS_FAILED]
 const PHASES: Array[String] = [PhoneLink.PHASE_IDLE, PhoneLink.PHASE_OUTGOING, PhoneLink.PHASE_INCOMING, PhoneLink.PHASE_IN_CALL]
@@ -36,6 +46,8 @@ var port := DEFAULT_PORT
 var token := ""
 ## Позывной владельца телефона из последнего hello (для журнала).
 var phone_callsign := ""
+## Сколько бинарных кадров отброшено (голос выключен, не тот тип, битый кадр) — для журнала и тестов.
+var voice_dropped := 0
 
 var _server := TCPServer.new()
 var _peer: WebSocketPeer = null
@@ -47,6 +59,9 @@ var _call: Dictionary = PhoneLink.idle_call()
 var _call_log: Array = []
 var _contacts: Array = []
 var _local_seq := 0
+var _voice_on := false
+var _voice_rate := VOICE_DEFAULT_RATE
+var _voice_seq := 0                    # номер следующего кадра микрофона; с 0 при каждом voice{on:true}
 
 
 ## Начать слушать. Токен пустой — принимаем любого (стенд без токена). Ошибка Godot (например порт занят) — как есть.
@@ -123,7 +138,11 @@ func _poll_joining(delta: float) -> void:
 					continue
 				j["token_ok"] = true
 			if ws.get_available_packet_count() > 0:
-				if _accept_hello(ws, ws.get_packet()):
+				var first := ws.get_packet()
+				if not ws.was_string_packet():
+					ws.close(CLOSE_BAD_HELLO, "binary before hello")
+					continue
+				if _accept_hello(ws, first):
 					continue   # принят: из очереди рукопожатия ушёл, теперь это _peer
 				ws.close(CLOSE_BAD_HELLO, "hello")
 				continue
@@ -160,13 +179,26 @@ func _poll_peer() -> void:
 			if packet.size() > MAX_FRAME_BYTES:
 				_peer.close(CLOSE_TOO_BIG, "too big")
 				break
-			on_frame(_parse(packet))
+			if _peer.was_string_packet():
+				on_frame(_parse(packet))
+			else:
+				_on_binary(packet)
 	elif state == WebSocketPeer.STATE_CLOSED:
 		_drop_peer()
 
 
+## Бинарный кадр от телефона: годен только звук собеседника при включённом голосе, остальное молча отбрасываем и считаем.
+func _on_binary(packet: PackedByteArray) -> void:
+	var d := PhoneVoiceCodec.decode(packet)
+	if not bool(d["ok"]) or int(d["type"]) != PhoneVoiceCodec.TYPE_PEER or not _voice_on:
+		voice_dropped += 1
+		return
+	voice_frame_received.emit(int(d["seq"]), d["pcm"] as PackedByteArray)
+
+
 func _drop_peer() -> void:
 	_peer = null
+	_reset_voice()
 	sound_requested.emit("stop")
 	online_changed.emit(false)
 	call_changed.emit(call_state())
@@ -248,6 +280,36 @@ func on_frame(frame: Dictionary) -> void:
 			var kind := str(frame.get("kind", ""))
 			if SOUND_KINDS.has(kind):
 				sound_requested.emit(kind)
+		"voice":
+			_on_voice_frame(frame)
+
+
+func _on_voice_frame(frame: Dictionary) -> void:
+	var on := bool(frame.get("on", false))
+	if not on:
+		_reset_voice()
+		return
+	var raw: Variant = frame.get("rate", VOICE_DEFAULT_RATE)
+	if not (raw is int or raw is float):
+		return
+	var rate := int(raw)
+	if rate < VOICE_MIN_RATE or rate > VOICE_MAX_RATE:
+		return
+	_voice_seq = 0
+	if _voice_on and rate == _voice_rate:
+		return
+	_voice_on = true
+	_voice_rate = rate
+	voice_requested.emit(true, rate)
+
+
+## Голос выключен (телефон, обрыв, пауза): если был включён — гасим и сообщаем узлу голоса, частота остаётся прежней.
+func _reset_voice() -> void:
+	_voice_seq = 0
+	if not _voice_on:
+		return
+	_voice_on = false
+	voice_requested.emit(false, _voice_rate)
 
 
 static func _items(frame: Dictionary) -> Array:
@@ -352,6 +414,30 @@ func hangup() -> void:
 
 func set_muted(muted: bool) -> void:
 	_send({"t": "mute", "on": muted})
+
+
+func voice_active() -> bool:
+	return _voice_on
+
+
+func voice_rate() -> int:
+	return _voice_rate
+
+
+## Очки открыли (или закрыли) микрофон и динамик — ответ на `voice{on}`; только после `voice_ready{on:true}` телефон переключает маршрут звука.
+func send_voice_ready(on: bool) -> void:
+	_send({"t": "voice_ready", "on": on})
+
+
+## Кусок микрофона (int16 LE моно, чётная длина ≤ PhoneVoiceCodec.MAX_PAYLOAD) телефону бинарным кадром. false — телефона нет или кадр не годится.
+func send_voice_chunk(pcm: PackedByteArray) -> bool:
+	if _peer == null or _peer.get_ready_state() != WebSocketPeer.STATE_OPEN:
+		return false
+	var bytes := PhoneVoiceCodec.encode(PhoneVoiceCodec.TYPE_MIC, _voice_seq, pcm)
+	if bytes.is_empty():
+		return false
+	_voice_seq += 1
+	return _peer.send(bytes, WebSocketPeer.WRITE_MODE_BINARY) == OK
 
 
 func start_call(peer_id: String) -> void:
