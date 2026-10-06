@@ -1,0 +1,4 @@
+# Свой раннер на devbox (scripts/devbox-runner.sh): метка devbox иначе «unknown» для actionlint (scripts/lint-pipeline.sh, job lint).
+self-hosted-runner:
+  labels:
+    - devbox
