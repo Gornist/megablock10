@@ -28,7 +28,7 @@
 | **Godot** | `netrun/` — сервер мира, игра, дека, сеть и формат сообщений (`netrun/server/`, `netrun/shared/`), `netrun-bridge/`, `docs/netrun*.md` | ассеты и вид аватара (Blender) |
 | **Blender** | вид Сети: `netrun/assets/` (модели, `src/*.py`, шейдеры, превью, `ARCHITECTURE.md`, `STYLE.md`) и отрисовка тела и рук в `netrun/client/` (`avatar_view.gd`, `hand_view.gd`, `avatar_body.gd`, `head_*.gd`; окружение `node_view.gd`, `ice_view.gd` — Godot), тесты ассетов `netrun/tests/assets_*` | формат сообщений и сеть (`netrun/shared/`, `netrun/server/` — Godot): новые поля позы — предложить Godot-сессии |
 | **Геймдизайн** | `docs/gamedesign/` — документы проекта и модель (`docs/gamedesign/model/`) | код всех зон: изменения — карточками сессиям зон, код пишут они (решение владельца 06.10) |
-| **Pipeline manager** | общие правила и инструменты: `CLAUDE.md`, `.claude/` (хук, настройки, общие skills), общие `scripts/` (`check`, `verify`, `dbx`, `ci-wait`, `agent-worktree`, `zone-check`, `session-stats`); `scripts/phone.sh` дополняет и Android App | код областей |
+| **Pipeline manager** | общие правила и инструменты: `CLAUDE.md`, `.claude/` (хук, настройки, общие skills), общие `scripts/` (`check`, `verify`, `dbx`, `ci-wait`, `agent-worktree`, `zone-check`, `land`, `session-stats`), `.github/dependabot.yml`; `scripts/phone.sh` дополняет и Android App; **очередь слияний в `main` за все сессии** (Git и процесс) | код областей |
 
 Общее для всех: `docs/progress.md` — каждая сессия правит только свой раздел; `.github/workflows/` своей области — можно, `main.yml` — через
 Pipeline manager. Работать в своей worktree (`scripts/agent-worktree.sh new <имя>`), добавлять файлы явными путями, в `main` — только владелец.
@@ -63,11 +63,16 @@ Pipeline manager. Работать в своей worktree (`scripts/agent-worktr
 
 - Коммиты, комментарии и документация — на русском. Сообщение коммита: что и **почему** (какой сбой, какой журнал).
 - В `main` — только по явной команде владельца, перемоткой (fast-forward) с зелёными CI и e2e. Историю `main` не переписывать.
-  Влить PR владелец может одной командой (сервер откажет, если это не перемотка):
-  `gh api -X PATCH repos/Gornist/megablock10/git/refs/heads/main -f sha=$(gh pr view N --json headRefOid -q .headRefOid) -F force=false`,
-  затем `git -C ~/Developer/megablock10 pull --ff-only`. Отказал — ветка отстала: агент вливает в неё `origin/main` (merge, не rebase) и ждёт CI.
+- **Слияния ведёт Pipeline manager** (решение владельца 06.10: он не должен ходить по сессиям и собирать, что готово):
+  1. Сессия доводит ветку: `verify.sh --full`, `zone-check.sh`, пуш, PR, зелёный CI (`scripts/ci-wait.sh pr N` в фоне).
+  2. Пишет Pipeline manager (SendMessage, не владельцу): «готово к слиянию: PR N — что внутри; порядок/пара с PR M; ждёт ли решения владельца».
+  3. Pipeline manager держит очередь: порядок и пары (контракт между зонами), отставшую ветку догоняет вливанием `origin/main`
+     (merge, не rebase) и ждёт CI, проверяет `scripts/land.sh --check N…` и приносит владельцу одну команду на всю очередь.
+  4. Владелец запускает `scripts/land.sh N [M…]` — перемотка `main` по очереди и `pull --ff-only` основной папки. Агентам перемотка
+     `main` (`land.sh` без `--check`, `gh api … refs/heads/main`, `git push … main`) запрещена хуком.
+  Чужую ветку Pipeline manager меняет только вливанием `origin/main` и предупреждает её сессию (той — `git pull --ff-only` перед новой работой).
 - Уборка: `scripts/agent-worktree.sh gone <имя>` — влита ли ветка по содержимому (после cherry-pick хеши другие) и команды уборки;
-  удаляет владелец или сессия по его слову.
+  список на уборку собирает Pipeline manager, удаляет владелец или сессия по его слову.
 - Одна ветка — один исполнитель. Параллельная работа — `scripts/agent-worktree.sh new <имя>` (своя копия и ветка `agent/<имя>`).
 - Не коммитить незавершённое «на потом»: после каждого шага ветка собирается и тесты зелёные.
 - **Контракт между зонами** (версии в `/api/capabilities`, формат записей мира, сообщений Моста, QR, приложение↔коллектор) меняется так, чтобы

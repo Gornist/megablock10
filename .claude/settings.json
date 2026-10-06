@@ -26,6 +26,7 @@
       "Bash(scripts/verify.sh)",
       "Bash(scripts/verify.sh *)",
       "Bash(scripts/zone-check.sh *)",
+      "Bash(scripts/land.sh --check *)",
       "Bash(scripts/agent-worktree.sh gone *)",
       "Bash(scripts/session-stats.py *)",
       "Bash(scripts/dbx.sh *)",
