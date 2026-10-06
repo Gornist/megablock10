@@ -27,6 +27,11 @@ const _GUARD := 64
 var _grid: NodeGrid
 var _s: Dictionary = {}
 var _route: Array[Vector2i] = []
+## Ожидание на точках маршрута (тактов; параллельно _route) и взгляд на время ожидания (dir8; ZERO — не менять направление).
+var _waits: Array[int] = []
+var _looks: Array[Vector2i] = []
+## Сколько тактов ещё стоять на точке маршрута, куда только что пришёл.
+var _wait_left := 0
 ## Клетки маршрута (цепочки между точками, по кругу) → индекс точки, к которой по ним идут. Для возврата на маршрут.
 var _route_set: Dictionary = {}
 
@@ -57,14 +62,27 @@ var _vis: Dictionary = {}
 var _dry := false
 
 
-func _init(settings: Dictionary, route: Array[Vector2i], grid: NodeGrid) -> void:
+## route — точки маршрута: Vector2i или {cell: Vector2i, wait: int (тактов стоять на точке, по умолчанию 0), look: взгляд на время ожидания
+## (Vector2i dir8 или имя "N"/"NE"/…/"NW"; по умолчанию не менять)}. Старый вызов с одними клетками работает как раньше.
+func _init(settings: Dictionary, route: Array, grid: NodeGrid) -> void:
 	_grid = grid
 	_s = DEFAULTS.duplicate()
 	for k in settings:
 		_s[k] = settings[k]
-	_route.assign(route)
+	for p: Variant in route:
+		if p is Dictionary:
+			var pd: Dictionary = p
+			_route.append(pd["cell"])
+			_waits.append(maxi(int(pd.get("wait", 0)), 0))
+			_looks.append(look_dir(pd.get("look", Vector2i.ZERO)))
+		else:
+			_route.append(p)
+			_waits.append(0)
+			_looks.append(Vector2i.ZERO)
 	if _route.is_empty():
 		_route.append(Vector2i.ZERO)
+		_waits.append(0)
+		_looks.append(Vector2i.ZERO)
 	_cell = _route[0]
 	if _route.size() > 1:
 		_wp = 1
@@ -73,11 +91,40 @@ func _init(settings: Dictionary, route: Array[Vector2i], grid: NodeGrid) -> void
 
 
 ## Точки маршрута (Vector3, вершины клеток, как в NodeLayout.ICE) → клетки: юго-восточная от точки, как у игрока.
-static func route_from_points(points: Array) -> Array[Vector2i]:
-	var out: Array[Vector2i] = []
-	for p: Vector3 in points:
-		out.append(NodeGrid.cell_of(p))
+## Точка может быть и словарём {point: Vector3, wait, look} — тогда в маршруте будет {cell, wait, look} (формат конструктора).
+static func route_from_points(points: Array) -> Array:
+	var out: Array = []
+	for p: Variant in points:
+		if p is Dictionary:
+			var pd: Dictionary = p.duplicate()
+			var pt: Vector3 = pd["point"]
+			pd.erase("point")
+			pd["cell"] = NodeGrid.cell_of(pt)
+			out.append(pd)
+		else:
+			out.append(NodeGrid.cell_of(p as Vector3))
 	return out
+
+
+## Направление взгляда: Vector2i (dir8) как есть; строка "N"/"NE"/"E"/"SE"/"S"/"SW"/"W"/"NW" (север — к −Z, как у карты); массив — по первому
+## элементу; всё прочее (нет значения, неизвестное имя) — ZERO, «направление не менять».
+static func look_dir(v: Variant) -> Vector2i:
+	if v is Vector2i:
+		return v
+	if v is Array:
+		var a: Array = v
+		return look_dir(a[0]) if not a.is_empty() else Vector2i.ZERO
+	if v is String:
+		match String(v).to_upper():
+			"N": return Vector2i(0, -1)
+			"NE": return Vector2i(1, -1)
+			"E": return Vector2i(1, 0)
+			"SE": return Vector2i(1, 1)
+			"S": return Vector2i(0, 1)
+			"SW": return Vector2i(-1, 1)
+			"W": return Vector2i(-1, 0)
+			"NW": return Vector2i(-1, -1)
+	return Vector2i.ZERO
 
 
 func cell() -> Vector2i:
@@ -255,6 +302,9 @@ func _step_patrol() -> void:
 	_phase = Phase.NONE
 	_phase_left = 0
 	_has_seen = false
+	if _wait_left > 0:
+		_wait_left -= 1   # стоит на точке маршрута, глядя в look
+		return
 	_patrol_walk(int(_s["patrol_cells"]))
 
 
@@ -349,6 +399,7 @@ func _move(next: Vector2i, off_route: bool) -> void:
 	_cell = next
 	if off_route:
 		_off_route = true
+		_wait_left = 0   # ушёл за целью: недосиженное ожидание на точке не догоняет
 
 
 ## Патруль по маршруту: по прямой между точками, остаток шагов на углах переносится; сошёл с маршрута — сначала возврат.
@@ -372,7 +423,8 @@ func _patrol_walk(steps: int) -> void:
 				left -= 1
 				continue
 		if _cell == _route[_wp]:
-			_wp = (_wp + 1) % _route.size()
+			if _arrive():
+				return   # остаток шагов через ожидание не переносится
 			continue
 		var step := _greedy_step(_cell, _route[_wp])
 		if step == Vector2i.ZERO:
@@ -383,7 +435,20 @@ func _patrol_walk(steps: int) -> void:
 		_move(nxt, false)
 		left -= 1
 	if not _off_route and _cell == _route[_wp]:
-		_wp = (_wp + 1) % _route.size()
+		_arrive()
+
+
+## Пришёл на точку маршрута: следующей целью становится следующая точка; если на этой точке надо ждать — встать, развернуться в look.
+## true — ждать (шаги этого такта кончились).
+func _arrive() -> bool:
+	var i := _wp
+	_wp = (_wp + 1) % _route.size()
+	if _waits[i] <= 0:
+		return false
+	_wait_left = _waits[i]
+	if _looks[i] != Vector2i.ZERO:
+		_dir = _looks[i]
+	return true
 
 
 ## Шаг патруля привёл бы в клетку нетраннера: ICE останавливается, счётчик этого нетраннера сразу максимум.
@@ -465,7 +530,7 @@ func _snapshot() -> Dictionary:
 	return {
 		"cell": _cell, "dir": _dir, "wp": _wp, "mode": _mode, "aw": _aw.duplicate(), "last_seen": _last_seen, "has_seen": _has_seen,
 		"seen_now": _seen_now, "arrived": _arrived, "phase": _phase, "phase_left": _phase_left, "sweep_i": _sweep_i,
-		"off_route": _off_route, "search_armed": _search_armed,
+		"off_route": _off_route, "search_armed": _search_armed, "wait_left": _wait_left,
 	}
 
 
@@ -484,3 +549,4 @@ func _restore(snap: Dictionary) -> void:
 	_sweep_i = snap["sweep_i"]
 	_off_route = snap["off_route"]
 	_search_armed = snap["search_armed"]
+	_wait_left = snap["wait_left"]

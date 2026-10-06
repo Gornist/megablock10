@@ -289,3 +289,94 @@ func test_нетраннер_в_клетке_ice_остаётся_в_фокус�
 	aws.resize(3)   # на 4-м такте прочёсывание уводит ICE в соседнюю клетку, цель за спиной — счётчик там уже не показатель
 	assert_array(aws).is_equal([2, 4, 6])   # раньше «своя клетка» не видна: счётчик падал, ICE терял цель
 	assert_int(caps).is_equal(1)
+
+
+# --- Ожидание и поворот на точках маршрута (wait / look) ---
+
+func _wait_route() -> Array:
+	return [
+		Vector2i(2, 4),
+		{"cell": Vector2i(6, 4), "wait": 2, "look": "S"},
+		{"cell": Vector2i(6, 8), "wait": 1, "look": [Vector2i(0, -1)]},
+	]
+
+
+func test_патруль_стоит_wait_тактов_глядя_в_look_и_не_переносит_остаток_шагов() -> void:
+	var ice := TickIce.new({}, _wait_route(), NodeGrid.new())
+	var seen: Array = []
+	for _i in 8:
+		ice.tick({})
+		seen.append([ice.cell(), ice.dir()])
+	assert_array(seen).is_equal([
+		[Vector2i(4, 4), EAST],
+		[Vector2i(6, 4), Vector2i(0, 1)],   # пришёл и сразу повернулся на юг
+		[Vector2i(6, 4), Vector2i(0, 1)],   # ждёт 2 такта
+		[Vector2i(6, 4), Vector2i(0, 1)],
+		[Vector2i(6, 6), Vector2i(0, 1)],
+		[Vector2i(6, 8), Vector2i(0, -1)],   # пришёл, смотрит на север
+		[Vector2i(6, 8), Vector2i(0, -1)],   # ждёт 1 такт
+		[Vector2i(4, 6), Vector2i(-1, -1)],   # к первой точке (2;4) — по диагонали, 2 клетки за такт
+	])
+
+
+func test_точка_без_wait_и_старый_вызов_ведут_себя_как_раньше() -> void:
+	var g := NodeGrid.new()
+	var plain := TickIce.new({}, [Vector2i(2, 4), Vector2i(5, 4), Vector2i(5, 8)], g)
+	var with_zero := TickIce.new({}, [Vector2i(2, 4), {"cell": Vector2i(5, 4), "wait": 0, "look": "N"}, Vector2i(5, 8)], g)
+	for _i in 6:
+		plain.tick({})
+		with_zero.tick({})
+		assert_object(with_zero.cell()).is_equal(plain.cell())
+		assert_object(with_zero.dir()).is_equal(plain.dir())
+
+
+func test_ожидание_без_look_не_меняет_направление() -> void:
+	var ice := TickIce.new({}, [Vector2i(2, 4), {"cell": Vector2i(6, 4), "wait": 1}], NodeGrid.new())
+	ice.tick({})
+	ice.tick({})   # пришёл на (6;4)
+	assert_object(ice.cell()).is_equal(Vector2i(6, 4))
+	assert_object(ice.dir()).is_equal(EAST)
+	ice.tick({})   # стоит
+	assert_object(ice.cell()).is_equal(Vector2i(6, 4))
+
+
+func test_намерение_на_ожидании_не_двигает_ice_и_видит_стоянку() -> void:
+	var ice := TickIce.new({}, _wait_route(), NodeGrid.new())
+	ice.tick({})
+	ice.tick({})   # пришёл на (6;4), впереди 2 такта ожидания
+	var it := ice.intent()
+	assert_object(it["next_cell"]).is_equal(Vector2i(6, 4))
+	assert_object(it["next_dir"]).is_equal(Vector2i(0, 1))
+	assert_object(ice.cell()).is_equal(Vector2i(6, 4))   # intent() состояние не меняет
+	ice.tick({})
+	ice.tick({})
+	assert_object(ice.intent()["next_cell"]).is_equal(Vector2i(6, 6))   # ожидание кончилось — следующий шаг уже ход
+
+
+func test_маршрут_из_точек_слоя_с_wait_и_look_и_имена_направлений() -> void:
+	var r := TickIce.route_from_points([Vector3(0, 0, -4), {"point": Vector3(6, 0, -4), "wait": 2, "look": "S"}])
+	assert_object(r[0]).is_equal(NodeGrid.cell_of(Vector3(0, 0, -4)))
+	assert_object(r[1]["cell"]).is_equal(Vector2i(14, 10))
+	assert_int(r[1]["wait"]).is_equal(2)
+	assert_object(TickIce.look_dir("N")).is_equal(Vector2i(0, -1))
+	assert_object(TickIce.look_dir(["w"])).is_equal(Vector2i(-1, 0))
+	assert_object(TickIce.look_dir("SE")).is_equal(Vector2i(1, 1))
+	assert_object(TickIce.look_dir("?")).is_equal(Vector2i.ZERO)
+	assert_object(TickIce.look_dir(null)).is_equal(Vector2i.ZERO)
+
+
+func test_после_погони_во_время_ожидания_патруль_возвращается_на_маршрут() -> void:
+	var g := NodeGrid.new()
+	var ice := TickIce.new({}, [Vector2i(2, 8), {"cell": Vector2i(6, 8), "wait": 5, "look": "S"}], g)
+	ice.tick({})
+	ice.tick({})   # на точке (6;8): впереди 5 тактов ожидания
+	assert_object(ice.cell()).is_equal(Vector2i(6, 8))
+	# цель в фокусе на юге — ICE идёт к ней (Проверка), потом цель пропадает; оставшееся ожидание не «доигрывается» на месте
+	var tg := _at(Vector2i(6, 12))
+	for _i in 4:
+		ice.tick(tg)
+	assert_bool(ice.cell() != Vector2i(6, 8)).is_true()
+	for _i in 30:
+		ice.tick({})
+	assert_int(ice.state()).is_equal(0)
+	assert_int(ice.cell().y).is_equal(8)   # вернулся на строку маршрута и снова идёт по нему (на точке (6;8) заново отстоял своё)
