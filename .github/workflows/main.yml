@@ -12,6 +12,12 @@ on:
         type: boolean
         default: false
 
+# Новый пуш в тот же PR отменяет недоигранный прогон старого коммита (06.10: ci-wait ждал прогоны, которые никто не читал).
+# Push в main и ручные запуски — группа по run_id, не отменяются.
+concurrency:
+  group: main-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest

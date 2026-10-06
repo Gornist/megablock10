@@ -1,0 +1,21 @@
+name: Метки зон
+
+# Ставит на PR метки зон по .github/labeler.yml — Pipeline manager собирает поезд, не открывая дифф каждого PR.
+# pull_request_target: метки нужны и на PR dependabot (у pull_request там токен только на чтение). Код PR не выполняется —
+# labeler читает лишь список файлов, checkout не делаем.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/labeler@v7
+        with:
+          sync-labels: true
