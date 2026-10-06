@@ -312,3 +312,24 @@ func test_trap_tap_reports_ice_event_trap_before_match() -> void:
 				assert_str(res["ice_event"]).is_equal("TRAP")
 				return
 	fail("за 200 сеток ни разу не попалась ловушка в верхней строке")
+
+
+# --- замок: итог и признак lock_opened (breach.md 2.6) ---
+
+func test_result_info_reports_lock_and_loot_before_it() -> void:
+	var loot := BreachDaemon.make("a", ["1C", "E9"], "EXTRACT_SHARD")
+	var g := BreachGrid.new()
+	g.size = 3
+	g.cells = [["1C", "55", "BD"], ["E9", "7A", "FF"], ["1C", "55", "BD"]]
+	g.lock = ["7A", "55"]
+	var run := BreachRun.from_attempt(BreachAttempt.make(g, [loot], 4, _data), 45, "BASE", BreachRun.MODE_STORAGE, 0, _data)
+	var last := {}
+	for c in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 1), Vector2i(2, 1)]:
+		last = run.tap(c)
+	assert_bool(last["finished"]).is_true()
+	assert_bool(last["lock_opened"]).is_true()
+	var info := run.result_info()
+	assert_str(info["outcome"]).is_equal("FAIL")   # добыча легла до замка — не засчитана
+	assert_bool(info["lock_opened"]).is_true()
+	assert_array(info["matched"]).is_empty()
+	assert_array(info["matched_before_lock"]).is_equal(["a"])

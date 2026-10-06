@@ -140,7 +140,7 @@ func selectable() -> Array[Vector2i]:
 	return attempt.selectable_cells()
 
 
-## Тап по клетке. Возвращает {ok, hit_trap, matched, ice_event, finished}: ok=false — тап не принят (итог уже есть или клетка недоступна),
+## Тап по клетке. Возвращает {ok, hit_trap, matched, ice_event, finished, lock_opened (при ok)}: ok=false — тап не принят (итог уже есть или клетка недоступна),
 ## ничего не изменилось. matched — после тапа совпало больше демонов, чем до него; ice_event — TRAP, MATCH или "" (ловушка важнее).
 ## Полный буфер сам фиксирует итог (finished=true), как экран телефона.
 func tap(cell: Vector2i) -> Dictionary:
@@ -158,6 +158,7 @@ func tap(cell: Vector2i) -> Dictionary:
 		"matched": matched,
 		"ice_event": EVENT_TRAP if hit_trap else (EVENT_MATCH if matched else ""),
 		"finished": result != "",
+		"lock_opened": attempt.lock_opened(),
 	}
 
 
@@ -197,11 +198,15 @@ func resolve() -> bool:
 	return true
 
 
-## Итог для вызывающего: {outcome, matched (id совпавших), total (сколько демонов), seconds_left}. Пусто, пока итога нет.
+## Итог для вызывающего: {outcome, matched (id засчитанных по правилу замка), total (сколько демонов), seconds_left, lock_opened,
+## matched_before_lock (id, совпавших до вскрытия и потому не засчитанных)}. Пусто, пока итога нет.
 func result_info() -> Dictionary:
 	if result == "":
 		return {}
-	return {"outcome": result, "matched": attempt.matched_daemon_ids(), "total": attempt.daemons.size(), "seconds_left": seconds_left}
+	return {
+		"outcome": result, "matched": attempt.matched_daemon_ids(), "total": attempt.daemons.size(), "seconds_left": seconds_left,
+		"lock_opened": attempt.lock_opened(), "matched_before_lock": attempt.matched_before_lock_ids(),
+	}
 
 
 ## Реплика ICE на событие (INTRO, TRAP, MATCH, HALF_TIME, LOW_TIME) для тира сетки.

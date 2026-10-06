@@ -55,8 +55,31 @@ func match_codes() -> Array[String]:
 	return out
 
 
+## Замок хранилища этой попытки (пусто — без замка, правила как раньше): он живёт в сетке, чтобы его нельзя было забыть передать попытке.
+func lock() -> Array:
+	return grid.lock
+
+
+## Замок вскрыт: его цепочка целиком совпала в буфере (ловушка рвёт её, как любую). Без замка — всегда false.
+func lock_opened() -> bool:
+	return not grid.lock.is_empty() and BreachRules.lock_opened_at(match_codes(), grid.lock) >= 0
+
+
+## Засчитанные демоны с правилом замка (breach.md 2.2): добыча только после вскрытия, остальные где угодно.
 func matched_daemon_ids() -> Array[String]:
-	return BreachRules.resolve_daemons(match_codes(), daemons)
+	return BreachRules.resolve_daemons(match_codes(), daemons, grid.lock)
+
+
+## Совпали бы без замка, но добыча легла до вскрытия (или замок так и не вскрыт) — не засчитаны. Без замка — пусто.
+func matched_before_lock_ids() -> Array[String]:
+	var out: Array[String] = []
+	if grid.lock.is_empty():
+		return out
+	var counted := matched_daemon_ids()
+	for id in BreachRules.resolve_daemons(match_codes(), daemons):
+		if not counted.has(id):
+			out.append(id)
+	return out
 
 
 ## Клетки, доступные для СЛЕДУЮЩЕГО тапа, по тому же правилу, что у генератора. Буфер полон — пусто.
