@@ -81,6 +81,7 @@ var _step_us_total := 0
 var _step_us_max := 0
 var _ices: Array[IceNode] = []
 var _sessions: Dictionary = {}       # сессия -> DaemonSession (в нём trace)
+var _effect_logged: Dictionary = {}  # сессия -> {id демона: true}: эффект, начало которого записано в журнал (конец — когда st перестал быть active)
 var _shard_items: Dictionary = {}    # id объекта -> id предмета в Мосте
 var _item_meta: Dictionary = {}      # id предмета узла -> {tier, enc}: что показывать на шарде (из документа Моста)
 var _vault_open: Dictionary = {}     # id слота -> сессия, для которой хранилище открыто взломом (K3); нужно, только если включён vault_requires_open
@@ -868,6 +869,7 @@ func _broadcast_state() -> void:
 		var cd: Array = []
 		for id in ds.deck:
 			cd.append(cd_entry(ds, id, _now))
+		_log_effect_ends(session, cd)
 		var msg := WorldMsg.encode_fields(WorldMsg.STATE, {
 			"trace": ds.trace.value(),
 			"level": ds.trace.level(),
@@ -948,6 +950,7 @@ func _on_avatar_removed(session: String) -> void:
 	if not _sessions.has(session):
 		return
 	_sessions.erase(session)
+	_effect_logged.erase(session)
 	_entered_at.erase(session)
 	_exiting[session] = true
 	_level_cbs.erase(session)
@@ -1033,14 +1036,46 @@ func _on_daemon_requested(session: String, daemon_id: String) -> void:
 	var ds: DaemonSession = _sessions.get(session)
 	if ds == null:
 		return
+	var before: Dictionary = cd_entry(ds, daemon_id, _now)
+	log_line("daemon.use", {"phase": "request", "session": session, "daemon": daemon_id, "st": before["st"]})
 	var res := daemons.apply(ds, daemon_id, {}, _now)
 	var reply := {"kind": WorldMsg.EV_DAEMON, "daemon": daemon_id, "ok": bool(res.get("ok", false))}
 	if not reply["ok"]:
 		reply["error"] = str(res.get("error", ""))
 		if res.has("reason"):
 			reply["reason"] = str(res["reason"])
+		log_line("daemon.use", {"phase": "denied", "session": session, "daemon": daemon_id, "error": reply["error"], "reason": reply.get("reason", "")})
+	else:
+		var def := daemons.get_def(daemon_id)
+		var left := ds.active_left(def.effect, _now) if def != null else 0.0
+		if left > 0.0:
+			log_line("daemon.use", {"phase": "start", "session": session, "daemon": daemon_id, "effect": def.effect, "left": snappedf(left, 0.1)})
+			if not _effect_logged.has(session):
+				_effect_logged[session] = {}
+			_effect_logged[session][daemon_id] = true
+		else:
+			log_line("daemon.use", {"phase": "ok", "session": session, "daemon": daemon_id, "effect": def.effect if def != null else ""})
 	net.send_to(session, WorldMsg.encode_fields(WorldMsg.EVENT, reply))
 	event.emit({"kind": "daemon", "session": session, "daemon": daemon_id, "ok": reply["ok"]})
+
+
+## Строка журнала сервера узла: `событие ключ=значение` (формат MbLog, как у клиента); токенов в полях нет — только сессия, демон, числа.
+static func log_line(event_name: String, fields: Dictionary) -> void:
+	print("[gray-node] ", MbLog.format(event_name, fields))
+
+
+## Конец действия эффекта в журнал: раньше записанный start, а демон в снимке уже не active. Вызывает _broadcast_state на каждом снимке.
+func _log_effect_ends(session: String, cd: Array) -> void:
+	var logged: Dictionary = _effect_logged.get(session, {})
+	if logged.is_empty():
+		return
+	for e in cd:
+		var id := str(e["id"])
+		if logged.has(id) and str(e.get("st", "")) != "active":
+			logged.erase(id)
+			log_line("daemon.use", {"phase": "end", "session": session, "daemon": id})
+	if logged.is_empty():
+		_effect_logged.erase(session)
 
 
 ## Может ли игрок взять объект: он в этом узле, объект — слот этого узла и достаточно близко.
@@ -1728,6 +1763,7 @@ func release_session(session: String) -> DaemonSession:
 		ds.trace.level_changed.disconnect(cb)
 	_level_cbs.erase(session)
 	_sessions.erase(session)
+	_effect_logged.erase(session)
 	_entered_at.erase(session)
 	_hunted.erase(session)
 	_sync_hunt(session)  # сессия уходит в другой узел: охота этого узла за ней кончилась

@@ -138,6 +138,45 @@ static func active_banner(row: Dictionary) -> String:
 	var effect := str(row.get("effect", ""))
 	return text if effect == "" else text + " · " + effect
 
+
+## Поля строки журнала `breach.request` (одна строка): хранилище, демоны (число и id), сумма кодов их цепочек, RAM деки и длина замка тира —
+## по ним видно, почему сервер ответил bad_daemons («замок + коды > RAM»). daemons — рабочие демоны деки (ev deck: id, cells).
+static func breach_request_fields(vault: String, ids: Array, daemons: Array, ram: int, lock: int) -> Dictionary:
+	var codes := 0
+	for d in daemons:
+		if ids.has(str(d.get("id", ""))):
+			codes += (d.get("cells", []) as Array).size()
+	return {"vault": vault, "daemons": ids.size(), "ids": ",".join(PackedStringArray(ids.map(func(i): return str(i)))), "codes": codes, "ram": ram, "lock": lock}
+
+
+## Поля строки `daemon.use` по ответу сервера (`daemon {daemon, ok, error?, reason?}`): phase = ok или denied с причиной.
+static func daemon_result_fields(ev: Dictionary) -> Dictionary:
+	if bool(ev.get("ok", false)):
+		return {"phase": "ok", "daemon": str(ev.get("daemon", ""))}
+	var out := {"phase": "denied", "daemon": str(ev.get("daemon", "")), "error": str(ev.get("error", ""))}
+	if ev.has("reason"):
+		out["reason"] = str(ev["reason"])
+	return out
+
+
+## Начало и конец действия эффектов по снимкам (`state.cd`, k — время сервера): prev — id, что были active в прошлом снимке.
+## Возвращает {active: новый набор, started: [{id, left}], ended: [id]}.
+static func effect_edges(prev: Dictionary, cd: Array, k: float) -> Dictionary:
+	var active := {}
+	var started: Array = []
+	for c in cd:
+		var id := str(c.get("id", ""))
+		if str(c.get("st", "")) == "active":
+			active[id] = true
+			if not prev.has(id):
+				started.append({"id": id, "left": snappedf(maxf(float(c.get("until", k)) - k, 0.0), 0.1)})
+	var ended: Array = []
+	for id in prev:
+		if not active.has(id):
+			ended.append(id)
+	return {"active": active, "started": started, "ended": ended}
+
+
 ## Текст отказа запуска (`daemon {ok: false, error}`) для строки-уведомления на деке.
 static func launch_error_text(error: String) -> String:
 	match error:

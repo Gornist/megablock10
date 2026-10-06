@@ -429,6 +429,12 @@ func test_ram_limits_the_selection() -> void:
 	assert_int(int(no["ram"])).is_equal(1)
 	assert_int(int(no["need"]) - int(no["lock"])).is_equal(2)
 	assert_int(int(no["lock"])).is_greater(0)
+	# журнал сервера: запрос с кодами/RAM/замком и отказ с причиной и числами — по одной строке
+	var gn := _world.node_of("b_a") as GrayNode
+	var req := MbLog.format("breach.request", gn.breach.request_fields(S2, _slot("b_a", 0), ["it_b_d3"]))
+	assert_str(req).contains("breach.request session=%s" % S2).contains("daemons=it_b_d3").contains("codes=2").contains("ram=1").contains("lock=%d" % int(no["lock"]))
+	assert_str(MbLog.format("breach.no", VaultBreach.no_fields(S2, no))).contains("reason=bad_daemons").contains("need=%d" % int(no["need"])).contains("ram=1")
+	assert_str(req).not_contains("\n")
 
 
 func test_empty_vault_is_reported_with_the_refill_time() -> void:
