@@ -50,6 +50,10 @@ case $cmd in
     # Worktree ищем по ветке, а не по имени папки (папку могли назвать иначе).
     wt=$(git -C "$MAIN" worktree list --porcelain | awk -v b="refs/heads/$b" '/^worktree /{w=substr($0,10)} $0=="branch "b{print w}')
     [ -n "$wt" ] && [ -n "$(git -C "$wt" status --porcelain)" ] && { echo "GONE $b: коммиты в main, но в $wt есть незакоммиченное — сначала разобрать"; exit 1; }
+    # worktree remove стирает и игнорируемые файлы (07.10 — карточки .cards/ Геймдизайна); кэши сборки не в счёт.
+    ign=$([ -n "$wt" ] && git -C "$wt" status --porcelain --ignored=matching | sed -n 's/^!! //p' |
+      grep -Ev '(^|/)(build|node_modules|dist|\.gradle|\.kotlin|\.godot|\.pio|\.cxx)/$|(^|/)(\.DS_Store|local\.properties)$' | head -3)
+    [ -n "$ign" ] && { echo "GONE $b: коммиты в main, но в $wt есть игнорируемые файлы ($(echo $ign)) — remove их сотрёт, сначала перенести"; exit 1; }
     echo "GONE $b: влита целиком. Убрать:"
     [ -n "$wt" ] && echo "  git worktree remove $wt"
     git -C "$MAIN" rev-parse -q --verify "$b" >/dev/null && echo "  git branch -D $b"

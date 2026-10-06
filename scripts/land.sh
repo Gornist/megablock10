@@ -51,6 +51,11 @@ for b in $( { git -C "$MAIN" for-each-ref --format='%(refname:short)' 'refs/head
   git -C "$MAIN" merge-base --is-ancestor "$tip" origin/main || continue
   wt=$(git -C "$MAIN" worktree list --porcelain | awk -v r="refs/heads/$b" '/^worktree /{w=substr($0,10)} $0=="branch "r{print w}')
   if [ -n "$wt" ]; then
+    # git worktree remove без --force стирает и ИГНОРИРУЕМЫЕ файлы: 07.10 так пропали рабочие карточки Геймдизайна
+    # (.cards/ в .git/info/exclude). Оставляем worktree, если в ней есть игнорируемое кроме пересобираемых кэшей.
+    keep=$(git -C "$wt" status --porcelain --ignored=matching 2>/dev/null | sed -n 's/^!! //p' |
+      grep -Ev '(^|/)(build|node_modules|dist|\.gradle|\.kotlin|\.godot|\.pio|\.cxx)/$|(^|/)(\.DS_Store|local\.properties)$' | head -3)
+    [ -n "$keep" ] && { kept="$kept ${wt##*/}($(echo $keep))"; continue; }
     git -C "$MAIN" worktree remove "$wt" 2>/dev/null || { kept="$kept ${wt##*/}"; continue; }
   fi
   git -C "$MAIN" branch -q -D "$b" 2>/dev/null
@@ -59,5 +64,5 @@ for b in $( { git -C "$MAIN" for-each-ref --format='%(refname:short)' 'refs/head
 done
 git -C "$MAIN" worktree prune
 [ -n "$gone" ] && echo "LAND: убрано влитое:$gone"
-[ -n "$kept" ] && echo "LAND: оставлены worktree с незакоммиченным:$kept"
+[ -n "$kept" ] && echo "LAND: оставлены worktree (незакоммиченное или игнорируемые файлы — разобрать, потом agent-worktree.sh gone):$kept"
 exit 0
