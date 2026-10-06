@@ -237,7 +237,8 @@ func test_charge_buffer_is_chain_plus_two_and_has_no_traps() -> void:
 		assert_str(r.tier).is_equal(expected_tier)
 		assert_int(r.attempt.buffer_size).is_equal(4 + 2)
 		assert_int(r.attempt.grid.size).is_equal(int(p["grid_size"]))
-		assert_int(r.timer_sec).is_equal(int(p["timer_sec"]))
+		assert_int(r.timer_sec).is_equal(int(p["cipher_timer_sec"]))   # прежние 45/60/75, не timer_sec хранилища
+		assert_int(r.timer_sec).is_equal([45, 60, 75][level - 1])
 		assert_int(r.attempt.grid.trap_cells.size()).is_equal(0)
 
 
@@ -264,7 +265,8 @@ func test_decrypt_length_and_grid_follow_the_shard_tier() -> void:
 		assert_int(lock.length()).is_equal(2 + level)
 		assert_int(r.attempt.buffer_size).is_equal(2 + level + 2)
 		assert_int(r.attempt.grid.size).is_equal(int(p["grid_size"]))
-		assert_int(r.timer_sec).is_equal(int(p["timer_sec"]))
+		assert_int(r.timer_sec).is_equal(int(p["cipher_timer_sec"]))
+		assert_int(r.timer_sec).is_equal([45, 60, 75][level - 1])
 		assert_int(r.attempt.grid.trap_cells.size()).is_equal(0)
 
 

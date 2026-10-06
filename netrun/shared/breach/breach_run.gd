@@ -59,7 +59,7 @@ static func for_charge(daemon: BreachDaemon, seed_: int, data: BreachData = null
 		return null
 	var tier_ := BreachData.tier_name(daemon.tier)
 	var p := d.tier_params(tier_)
-	return _build(MODE_CHARGE, tier_, [daemon], daemon.length() + d.decrypt_buffer_extra, int(p["timer_sec"]), int(p["grid_size"]), {}, seed_, d)
+	return _build(MODE_CHARGE, tier_, [daemon], daemon.length() + d.decrypt_buffer_extra, int(p["cipher_timer_sec"]), int(p["grid_size"]), {}, seed_, d)
 
 
 ## Расшифровка шарда тира shard_tier (1/2/3). target — цепочка шифр-замка; пусто — выводится из зерна попытки (длина по тиру шарда).
@@ -74,7 +74,7 @@ static func for_decrypt(shard_tier: int, seed_: int, target: Array = [], data: B
 		for _i in range(d.decrypt_length(shard_tier)):
 			seq.append(d.alphabet[rng.randi_range(0, d.alphabet.size() - 1)])
 	var lock := BreachDaemon.make("decrypt", seq, "DECRYPT", shard_tier, "Шифр-замок")
-	return _build(MODE_DECRYPT, tier_, [lock], seq.size() + d.decrypt_buffer_extra, int(p["timer_sec"]), int(p["grid_size"]), {}, seed_, d)
+	return _build(MODE_DECRYPT, tier_, [lock], seq.size() + d.decrypt_buffer_extra, int(p["cipher_timer_sec"]), int(p["grid_size"]), {}, seed_, d)
 
 
 static func _build(mode_: String, tier_: String, daemons: Array, buffer: int, timer: int, grid_size: int, traps: Dictionary, seed_: int, data: BreachData) -> BreachRun:
