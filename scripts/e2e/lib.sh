@@ -76,21 +76,27 @@ wait_until() {
 # Без flock (Mac) и при E2E_LOCK_HELD=1 (вызывающий уже держит замок: `flock ~/.dbx.lock up.sh`) замок не берётся.
 E2E_LOCK_FILE=${DBX_LOCK:-$HOME/.dbx.lock}
 stand_lock_alive() { [ -s "$E2E_DIR/lock.held" ] && kill -0 "$(cat "$E2E_DIR/lock.held")" 2>/dev/null; }
-stand_lock_mine() { stand_lock_alive && [ "$(cat "$E2E_DIR/lock.owner" 2>/dev/null)" = "$ROOT" ]; }
+# lock.owner: строка 1 — рабочая копия владельца, строка 2 — когда взят (epoch); по ним ждущий видит, кто и с какого времени держит стенд.
+stand_lock_mine() { stand_lock_alive && [ "$(head -1 "$E2E_DIR/lock.owner" 2>/dev/null)" = "$ROOT" ]; }
+stand_lock_holder_info() {
+  stand_lock_alive || { echo "не стенд e2e (задача dbx.sh или другой flock на $E2E_LOCK_FILE)"; return; }
+  local since; since=$(sed -n 2p "$E2E_DIR/lock.owner" 2>/dev/null)
+  echo "стенд e2e из $(head -1 "$E2E_DIR/lock.owner" 2>/dev/null), с $(date -d "@${since:-0}" '+%H:%M:%S' 2>/dev/null || echo '?') ($(( ($(date +%s) - ${since:-0}) / 60 )) мин назад)"
+}
 stand_lock_acquire() {
   [ "${E2E_LOCK_HELD:-}" = 1 ] && return 0
   command -v flock >/dev/null 2>&1 || return 0
   stand_lock_mine && return 0
   local wait=${E2E_LOCK_WAIT:-2700} hs="$E2E_DIR/lock.hs.$$" fpid
   rm -f "$hs"
-  log "очередь devbox ($E2E_LOCK_FILE): жду замок до $wait с…"
+  log "очередь devbox ($E2E_LOCK_FILE): жду замок до $wait с; держит: $(stand_lock_holder_info)"
   nohup flock -w "$wait" "$E2E_LOCK_FILE" bash -c 'echo $$ > "$1"; exec sleep "$2"' _ "$hs" "${E2E_LOCK_TTL:-5400}" </dev/null >/dev/null 2>&1 &
   fpid=$!
   while [ ! -s "$hs" ]; do
-    kill -0 $fpid 2>/dev/null || die "очередь devbox: замок не взят за $wait с (занят задачей dbx.sh или чужим стендом e2e)"
+    kill -0 $fpid 2>/dev/null || die "очередь devbox: замок не взят за $wait с; держит: $(stand_lock_holder_info)"
     sleep 1
   done
-  mv "$hs" "$E2E_DIR/lock.held"; echo "$ROOT" > "$E2E_DIR/lock.owner"
+  mv "$hs" "$E2E_DIR/lock.held"; printf '%s\n%s\n' "$ROOT" "$(date +%s)" > "$E2E_DIR/lock.owner"
   log "замок devbox взят — снимется в down.sh (или через ${E2E_LOCK_TTL:-5400} с)"
 }
 stand_lock_release() {
