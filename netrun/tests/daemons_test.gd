@@ -109,14 +109,14 @@ func test_item_daemon_params_come_from_effect_and_tier() -> void:
 	var d1 := _svc.add_item_daemon("it_1", {"effect": "GHOST", "tier": 1, "name": "Призрак"})
 	var d3 := _svc.add_item_daemon("it_3", {"effect": "GHOST", "tier": 3, "name": "Призрак+"})
 	assert_str(d1.unsupported_reason).is_empty()
-	assert_float(d1.params["duration_sec"]).is_equal(20.0)
-	assert_float(d3.params["duration_sec"]).is_equal(45.0)
-	assert_float(d3.cooldown_sec).is_equal(50.0)
+	assert_float(d1.params["duration_sec"]).is_equal(10.0)   # W1-Ч1: Призрак 10 / 15 / 20 с, перезарядка 60 с
+	assert_float(d3.params["duration_sec"]).is_equal(20.0)
+	assert_float(d3.cooldown_sec).is_equal(60.0)
 	assert_str(_svc.display_name("it_3")).is_equal("Призрак+")
 	var s := _charged(["it_3"])
 	assert_bool(_svc.apply(s, "it_3", {}, 10.0)["ok"]).is_true()
-	assert_bool(s.is_ghost(54.9)).is_true()
-	assert_bool(s.is_ghost(55.0)).is_false()
+	assert_bool(s.is_ghost(29.9)).is_true()
+	assert_bool(s.is_ghost(30.0)).is_false()
 
 
 func test_item_daemon_without_effect_in_net_is_visible_but_refused() -> void:

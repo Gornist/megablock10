@@ -1,4 +1,4 @@
 {"effect": "GHOST", "tiers": {
-  "1": {"cooldown_sec": 60.0, "params": {"duration_sec": 20.0}},
-  "2": {"cooldown_sec": 60.0, "params": {"duration_sec": 30.0}},
-  "3": {"cooldown_sec": 50.0, "params": {"duration_sec": 45.0}}}}
+  "1": {"cooldown_sec": 60.0, "params": {"duration_sec": 10.0}},
+  "2": {"cooldown_sec": 60.0, "params": {"duration_sec": 15.0}},
+  "3": {"cooldown_sec": 60.0, "params": {"duration_sec": 20.0}}}}
