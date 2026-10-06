@@ -24,6 +24,8 @@ signal threads_changed
 signal message_received(thread_id: String, msg: Dictionary)
 ## Изменилась фаза звонка или его состояние (заглушён) или пополнился журнал звонков.
 signal call_changed(state: Dictionary)
+## Список контактов телефона пришёл или обновился (кадр contacts); фиктивная связь отдаёт готовый список и сигнала не шлёт.
+signal contacts_changed
 
 ## Телефон принят (hello проверен, true) или пропал (false). Шлёт настоящая связь (RemotePhoneLink); фиктивная всегда на связи и сигнала не шлёт.
 signal online_changed(online: bool)

@@ -152,6 +152,16 @@ func test_call_log_contacts_and_sounds() -> void:
 	assert_array(sounds).is_equal(["ring", "ringback", "message", "stop"])   # неизвестный звук не играем
 
 
+func test_contacts_frame_from_fixture_fills_contacts_and_signals_once() -> void:
+	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/phone_frames.json"))
+	var frame: Dictionary = parsed["phone_to_glasses"]["contacts"]
+	var got: Array = []
+	_link.contacts_changed.connect(func(): got.append(true))
+	_link.on_frame(frame)
+	assert_array(_link.contacts().map(func(c): return c["title"])).is_equal(["ЛИС", "ВОБЛА", "ШЕРШЕНЬ"])
+	assert_int(got.size()).is_equal(1)
+
+
 func test_garbage_frames_are_ignored() -> void:
 	_link.on_frame({})
 	_link.on_frame({"t": "что-то новое", "x": 1})

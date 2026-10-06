@@ -276,6 +276,7 @@ func on_frame(frame: Dictionary) -> void:
 			for raw in _items(frame):
 				if raw is Dictionary and not str(raw.get("key", "")).is_empty():
 					_contacts.append({"key": str(raw["key"]), "title": str(raw.get("title", ""))})
+			contacts_changed.emit()
 		"sound":
 			var kind := str(frame.get("kind", ""))
 			if SOUND_KINDS.has(kind):
