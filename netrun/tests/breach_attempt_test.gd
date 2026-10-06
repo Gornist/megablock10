@@ -95,3 +95,56 @@ func test_duplicate_is_independent() -> void:
 	b.select(Vector2i(1, 1))
 	assert_int(a.selected.size()).is_equal(1)
 	assert_int(b.selected.size()).is_equal(2)
+
+
+# --- замок хранилища: lock_opened, matched_daemon_ids и matched_before_lock_ids по правилу breach.md 2.2 ---
+
+func _locked(lock: Array, daemons: Array, buffer: int = 6) -> BreachAttempt:
+	var a := _attempt(daemons, buffer, [])
+	a.grid.lock = lock
+	return a
+
+
+func _pick(a: BreachAttempt, cells: Array) -> void:
+	for c in cells:
+		assert_bool(a.select(c)).is_true()
+
+
+func test_loot_after_the_lock_counts_and_the_lock_is_opened() -> void:
+	var a := _locked(["55", "7A"], [BreachDaemon.make("a", ["FF", "BD"])])
+	_pick(a, [Vector2i(0, 1), Vector2i(1, 1), Vector2i(1, 2), Vector2i(2, 2)])
+	assert_bool(a.lock_opened()).is_true()
+	assert_array(a.matched_daemon_ids()).is_equal(["a"])
+	assert_array(a.matched_before_lock_ids()).is_empty()
+
+
+func test_loot_before_the_lock_is_not_counted_and_is_reported() -> void:
+	var loot := BreachDaemon.make("a", ["1C", "E9"], "EXTRACT_SHARD")
+	var ghost := BreachDaemon.make("g", ["1C", "E9"], "GHOST")
+	var a := _locked(["7A", "55"], [loot, ghost])
+	_pick(a, [Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 1), Vector2i(2, 1)])   # 1C E9 7A 55: добыча раньше замка
+	assert_bool(a.lock_opened()).is_true()
+	assert_array(a.matched_daemon_ids()).is_equal(["g"])
+	assert_array(a.matched_before_lock_ids()).is_equal(["a"])
+
+
+func test_unopened_lock_counts_no_loot_and_no_lock_means_no_flag() -> void:
+	var loot := BreachDaemon.make("a", ["1C", "E9"])
+	var a := _locked(["7A", "FF"], [loot])
+	_pick(a, [Vector2i(0, 0), Vector2i(1, 0)])
+	assert_bool(a.lock_opened()).is_false()
+	assert_array(a.matched_daemon_ids()).is_empty()
+	assert_array(a.matched_before_lock_ids()).is_equal(["a"])
+	var plain := _locked([], [loot])
+	_pick(plain, [Vector2i(0, 0), Vector2i(1, 0)])
+	assert_bool(plain.lock_opened()).is_false()   # без замка признак всегда false
+	assert_array(plain.matched_daemon_ids()).is_equal(["a"])
+	assert_array(plain.matched_before_lock_ids()).is_empty()
+
+
+func test_a_trap_inside_the_lock_keeps_it_closed() -> void:
+	var a := _attempt([BreachDaemon.make("a", ["FF", "BD"])], 6, [Vector2i(1, 1)])
+	a.grid.lock = ["55", "7A"]
+	_pick(a, [Vector2i(0, 1), Vector2i(1, 1), Vector2i(1, 2), Vector2i(2, 2)])   # (1,1) — ловушка вместо 7A
+	assert_bool(a.lock_opened()).is_false()
+	assert_array(a.matched_daemon_ids()).is_empty()

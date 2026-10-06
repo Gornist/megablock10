@@ -41,6 +41,32 @@ func test_solver_passes_every_generated_grid_of_every_tier_without_traps() -> vo
 			assert_int(a.selected.size()).is_equal(0)  # исходная попытка не тронута
 
 
+func test_solver_opens_the_lock_first_and_avoids_decoys_in_every_tier() -> void:
+	# Взлом 2.0: замок — первая цепочка пути, добыча считается только после него; приманки (lock_traps) решатель обходит, пока есть путь без них.
+	for tier in TIERS:
+		var p := _data.tier_params(tier)
+		var lock_len := int(p["lock_length"])
+		var traps := {"dead_cells": p["dead_cells"], "corrupted_codes": p["corrupted_codes"], "lock_traps": p["lock_traps"]}
+		for s in range(300):
+			var rng := RandomNumberGenerator.new()
+			rng.seed = s * 7919 + 5
+			var ds := BreachTestUtil.random_daemons(rng, _data, 4)
+			var buffer := _data.buffer_size(tier, 99, lock_len, BreachTestUtil.total_length(ds))
+			var g := BreachGrid.generate(int(p["grid_size"]), ds, rng, _data, traps, lock_len)
+			var play := BreachAttempt.make(g, ds, buffer, _data)
+			var path := BreachAutoSolver.solve(BreachAttempt.make(g, ds, buffer, _data))
+			for cell in path:
+				if not play.select(cell):
+					fail("%s seed=%d: решатель вернул недопустимую клетку %s" % [tier, s, cell])
+					return
+			var at := "%s seed=%d" % [tier, s]
+			assert_bool(play.lock_opened()).override_failure_message(at + ": замок не вскрыт").is_true()
+			assert_int(play.matched_daemon_ids().size()).override_failure_message(at + ": засчитано %d из %d" % [play.matched_daemon_ids().size(), ds.size()]).is_equal(ds.size())
+			assert_array(play.matched_before_lock_ids()).override_failure_message(at + ": добыча легла до замка").is_empty()
+			for cell in path:
+				assert_bool(g.is_trap(cell)).override_failure_message(at + ": наступил на ловушку %s" % [cell]).is_false()
+
+
 func test_solver_uses_the_whole_ram_of_thirteen_cells() -> void:
 	var ds: Array = [
 		BreachDaemon.make("a", ["1C", "55", "BD", "E9", "7A"]),

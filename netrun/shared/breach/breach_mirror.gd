@@ -21,6 +21,15 @@ var matched: Array = []
 var trap_hits: Dictionary = {}
 ## Тап, отправленный и ещё не подтверждённый (Vector2i), или null.
 var pending: Variant = null
+## Коды замка хранилища (Взлом 2.0): первая цепочка пути, добыча засчитывается только после неё. Пусто — без замка.
+var lock: Array[String] = []
+## Замок вскрыт по последнему ответу сервера (без замка всегда false).
+var lock_opened := false
+## Клетки-приманки (код из целей, но ловушка), которые сервер открыл клиенту вместе с замком: для мерцания на панели и подсветки зондом.
+## Это лишь подсказка показа — ввод по ним сервер проверяет сам, а сетка зеркала их по-прежнему считает обычными.
+var decoys: Array[Vector2i] = []
+## id демонов, совпавших до вскрытия замка и потому не засчитанных (из итога `bk_end`).
+var matched_before_lock: Array = []
 var ice_line := ""
 var finished := false
 var result: Dictionary = {}
@@ -41,6 +50,10 @@ static func from_event(ev: Dictionary) -> BreachMirror:
 	m.left = m.timer_sec
 	m.ice_line = str(ev.get("ice", ""))
 	m.grid = BreachGrid.from_dict(g_raw)
+	m.lock.assign(m.grid.lock)
+	for c in ev.get("decoys", []):
+		if c is Array and (c as Array).size() == 2:
+			m.decoys.append(Vector2i(int(c[0]), int(c[1])))
 	var daemons: Array = []
 	for t in ev.get("targets", []):
 		var d := BreachDaemon.from_dict({"id": t.get("id", ""), "cells": t.get("cells", []), "effect": t.get("effect", ""), "name": t.get("name", "")})
@@ -91,6 +104,8 @@ func apply_tick(ev: Dictionary) -> void:
 		matched.clear()
 		for id in ev["matched"]:
 			matched.append(str(id))
+	if ev.has("lock_opened"):
+		lock_opened = bool(ev["lock_opened"])
 	if str(ev.get("ice", "")) != "":
 		ice_line = str(ev["ice"])
 	var c: Variant = ev.get("cell")
@@ -113,6 +128,11 @@ func apply_end(ev: Dictionary) -> void:
 		matched.clear()
 		for id in ev["matched"]:
 			matched.append(str(id))
+	if ev.has("lock_opened"):
+		lock_opened = bool(ev["lock_opened"])
+	matched_before_lock.clear()
+	for id in ev.get("matched_before_lock", []):
+		matched_before_lock.append(str(id))
 
 
 func is_matched(id: String) -> bool:

@@ -11,9 +11,21 @@ data class BreachAttemptState(
     val isFull: Boolean get() = selected.size >= bufferSize
 
     /** То же, что bufferCodes, но клетки-ловушки (grid.trapCells) заменены на TRAP_SENTINEL — не могут войти ни в один матч демона. */
-    private val matchCodes: List<String>
+    val matchCodes: List<String>
         get() = selected.map { cell -> if (cell in grid.trapCells) BreachSymbols.TRAP_SENTINEL else grid.codeAt(cell) }
-    val matchedDaemonIds: Set<String> get() = resolveDaemons(matchCodes, daemons)
+
+    /** Замок хранилища этой попытки (пуст — без замка, правила как раньше). */
+    val lock: List<String> get() = grid.lock
+
+    /** Замок вскрыт: его цепочка целиком совпала в буфере (ловушка рвёт её, как любую). Без замка — всегда `false`. */
+    val lockOpened: Boolean get() = lock.isNotEmpty() && lockOpenedAt(matchCodes, lock) != null
+
+    /** Засчитанные демоны — с правилом замка (breach.md 2.2): добыча только после вскрытия, остальные где угодно. */
+    val matchedDaemonIds: Set<String> get() = resolveDaemons(matchCodes, daemons, lock)
+
+    /** Совпали бы без замка, но добыча легла до вскрытия (или замок так и не вскрыт) — не засчитаны. Без замка — пусто. */
+    val matchedBeforeLockIds: Set<String>
+        get() = if (lock.isEmpty()) emptySet() else resolveDaemons(matchCodes, daemons) - matchedDaemonIds
 
     /**
      * Клетки, доступные для СЛЕДУЮЩЕГО тапа — используют то же самое правило
@@ -35,7 +47,18 @@ data class BreachAttemptState(
     }
 }
 
-data class BreachResult(val allDaemons: List<Daemon>, val matchedIds: Set<String>) {
+/**
+ * Итог попытки (breach.md 2.6): SUCCESS — засчитаны все выбранные демоны (замок — не демон и в счёт не идёт), PARTIAL — хотя бы
+ * один, FAIL — ни одного. [matchedIds] — уже засчитанные по правилу замка. [lockOpened] и [matchedBeforeLock] — для строк итога
+ * «ЗАМОК: вскрыт / не вскрыт» и «совпал до вскрытия — не засчитан»; без замка — `false` и пусто. Оба — с умолчаниями, так что
+ * конструктор из двух аргументов (Мост считает `BreachResult(...).outcome`) остался прежним.
+ */
+data class BreachResult(
+    val allDaemons: List<Daemon>,
+    val matchedIds: Set<String>,
+    val lockOpened: Boolean = false,
+    val matchedBeforeLock: Set<String> = emptySet()
+) {
     val outcome: BreachOutcome
         get() = when {
             allDaemons.isNotEmpty() && matchedIds.size == allDaemons.size -> BreachOutcome.SUCCESS

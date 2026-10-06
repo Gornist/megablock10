@@ -7,7 +7,7 @@ func test_mirror_builds_from_event_and_highlights_the_first_row() -> void:
 	assert_object(m).is_not_null()
 	assert_int(m.grid.size).is_equal(6)
 	assert_int(m.buffer_size).is_equal(6)
-	assert_int(m.left).is_equal(60)
+	assert_int(m.left).is_equal(90)                              # таймер HARD в Взломе 2.0: 90 с (был 60)
 	assert_str(m.ice_line).is_equal("ICE: тест")
 	assert_int(m.targets.size()).is_equal(2)
 	var avail := m.selectable()
@@ -63,6 +63,50 @@ func test_trap_reply_is_remembered_and_matched_follow_the_server() -> void:
 	assert_bool(m.is_matched("d2")).is_true()
 	assert_bool(m.is_matched("d1")).is_false()
 	assert_str(m.ice_line).is_equal("ICE: ловушка")
+
+
+func test_lock_decoys_and_lock_opened_come_from_the_server() -> void:
+	# Взлом 2.0: сообщение старта несёт замок (внутри сетки) и приманки, ответ на тап и итог — lock_opened и «совпал до замка».
+	for tier in ["BASE", "HARD", "NIGHTMARE"]:
+		var ev := BreachTestUtil.make_bk_event(tier, 5)
+		var m := BreachMirror.from_event(ev)
+		var need := int(BreachData.shared().tier_params(tier)["lock_length"])
+		assert_int(m.lock.size()).is_equal(need)
+		assert_array(m.lock).is_equal(m.grid.lock)
+		assert_array(m.attempt.lock()).is_equal(m.lock)            # зеркало считает правило замка так же, как сервер
+		assert_bool(m.lock_opened).is_false()
+		var traps: Vector2i = BreachData.shared().tier_params(tier)["lock_traps"]
+		assert_int(m.decoys.size()).is_greater_equal(traps.x)
+		assert_int(m.decoys.size()).is_less_equal(traps.y)
+		for c in m.decoys:                                           # приманка — не мёртвая клетка, код обычный
+			assert_bool(m.grid.is_dead(c)).is_false()
+	var m2 := BreachMirror.from_event(BreachTestUtil.make_bk_event("HARD", 5))
+	m2.tap(Vector2i(0, 0))
+	m2.apply_tick({"cell": [0, 0], "ok": true, "trap": false, "left": 80, "matched": [], "lock_opened": true})
+	assert_bool(m2.lock_opened).is_true()
+	m2.apply_end({"outcome": "FAIL", "matched": [], "lock_opened": true, "matched_before_lock": ["d1"]})
+	assert_array(m2.matched_before_lock).is_equal(["d1"])
+	assert_bool(m2.lock_opened).is_true()
+
+
+func test_mirror_and_server_have_the_same_selectable_after_every_step_of_a_lock_walk() -> void:
+	# Зеркало на очках и попытка сервера идут одной дорогой (путь автосолвера через замок): доступные клетки совпадают после каждого шага.
+	for tier in ["BASE", "HARD", "NIGHTMARE"]:
+		for seed_value in range(15):
+			var daemons := [BreachDaemon.make("d1", ["1C", "BD"], "EXTRACT_SHARD", 2, "Извлечение"), BreachDaemon.make("d2", ["55", "7A"], "GHOST", 1, "Призрак")]
+			var need := int(BreachData.shared().tier_params(tier)["lock_length"]) + 4
+			var run := BreachRun.for_storage(tier, daemons, maxi(6, need), seed_value)
+			var m := BreachMirror.from_event(BreachTestUtil.make_bk_event(tier, seed_value))
+			var path := BreachAutoSolver.solve(run.attempt)
+			var at := "%s seed %d" % [tier, seed_value]
+			assert_bool(path.size() > m.lock.size()).override_failure_message(at + ": путь короче замка").is_true()
+			for c in path:
+				assert_array(m.selectable()).override_failure_message(at + ": доступные до " + str(c)).is_equal(run.selectable())
+				var r := run.tap(c)
+				assert_bool(m.tap(c)).is_true()
+				m.apply_tick({"cell": [c.x, c.y], "ok": r["ok"], "trap": r["hit_trap"], "left": run.seconds_left, "matched": run.attempt.matched_daemon_ids(), "lock_opened": r["lock_opened"]})
+			assert_bool(run.attempt.lock_opened()).override_failure_message(at + ": замок не вскрыт").is_true()
+			assert_bool(m.lock_opened).is_true()
 
 
 func test_end_blocks_further_taps() -> void:

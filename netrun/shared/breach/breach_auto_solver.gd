@@ -67,7 +67,7 @@ static func _exact_chain(start: BreachAttempt) -> Array[Vector2i]:
 		# Короче — раньше: при равном числе совпадений лучше меньший путь.
 		var lengths: Dictionary = {}
 		for o in orders:
-			var total := 0
+			var total := start.grid.lock.size()   # замок хранилища идёт первой цепочкой пути (breach.md 2.1); без замка 0
 			for i in o:
 				total += start.daemons[i].length()
 			lengths[o] = total
@@ -76,6 +76,7 @@ static func _exact_chain(start: BreachAttempt) -> Array[Vector2i]:
 			if lengths[o] > start.buffer_size:
 				continue
 			var req: Array[String] = []
+			req.append_array(start.grid.lock)
 			for i in o:
 				req.append_array(start.daemons[i].sequence)
 			var path: Array[Vector2i] = []
