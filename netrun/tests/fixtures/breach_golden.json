@@ -622,7 +622,7 @@
         }
       ],
       "cells": [["55", "1C", "BD", "FF", "BD", "7A"], ["FF", "E9", "7A", "1C", "E9", "E9"], ["××", "1C", "××", "1C", "1C", "55"], ["1C", "55", "1C", "55", "BD", "7A"], ["BD", "1C", "FF", "BD", "55", "E9"], ["55", "55", "55", "E9", "55", "7A"]],
-      "trap_cells": [[1, 5], [2, 0], [2, 2]],
+      "trap_cells": [[2, 0], [2, 2]],
       "start_selectable": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5]],
       "steps": [
         {
@@ -727,7 +727,7 @@
         }
       ],
       "cells": [["1C", "1C", "1C", "7A", "7A", "55"], ["FF", "FF", "55", "FF", "FF", "7A"], ["××", "55", "BD", "××", "1C", "BD"], ["1C", "BD", "7A", "7A", "7A", "BD"], ["FF", "FF", "BD", "FF", "FF", "FF"], ["1C", "7A", "BD", "FF", "7A", "55"]],
-      "trap_cells": [[1, 0], [2, 0], [2, 3], [5, 2]],
+      "trap_cells": [[2, 0], [2, 3]],
       "start_selectable": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5]],
       "steps": [
         {
@@ -783,7 +783,7 @@
         {
           "cell": [5, 2],
           "selectable_before": [[0, 2], [2, 2], [3, 2], [4, 2], [5, 2]],
-          "hit_trap": true,
+          "hit_trap": false,
           "matched_new": false,
           "matched_ids": [],
           "buffer_codes": ["1C", "××", "××", "FF", "55", "BD"],
@@ -822,13 +822,13 @@
         }
       ],
       "cells": [["7A", "FF", "BD", "1C", "BD", "BD"], ["××", "1C", "55", "1C", "1C", "7A"], ["××", "BD", "55", "E9", "BD", "1C"], ["××", "E9", "E9", "1C", "BD", "1C"], ["1C", "BD", "FF", "FF", "1C", "E9"], ["1C", "FF", "1C", "BD", "FF", "E9"]],
-      "trap_cells": [[0, 5], [1, 0], [2, 0], [3, 0]],
+      "trap_cells": [[1, 0], [2, 0], [3, 0]],
       "start_selectable": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5]],
       "steps": [
         {
           "cell": [0, 5],
           "selectable_before": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5]],
-          "hit_trap": true,
+          "hit_trap": false,
           "matched_new": false,
           "matched_ids": [],
           "buffer_codes": ["BD"],
@@ -836,22 +836,42 @@
           "selectable_after": [[1, 5], [2, 5], [3, 5], [4, 5], [5, 5]]
         },
         {
-          "cell": [2, 5],
+          "cell": [4, 5],
           "selectable_before": [[1, 5], [2, 5], [3, 5], [4, 5], [5, 5]],
           "hit_trap": false,
           "matched_new": false,
           "matched_ids": [],
-          "buffer_codes": ["BD", "1C"],
+          "buffer_codes": ["BD", "E9"],
           "is_full": false,
-          "selectable_after": [[2, 0], [2, 1], [2, 2], [2, 3], [2, 4]]
+          "selectable_after": [[4, 0], [4, 1], [4, 2], [4, 3], [4, 4]]
+        },
+        {
+          "cell": [4, 4],
+          "selectable_before": [[4, 0], [4, 1], [4, 2], [4, 3], [4, 4]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["BD", "E9", "1C"],
+          "is_full": false,
+          "selectable_after": [[0, 4], [1, 4], [2, 4], [3, 4], [5, 4]]
+        },
+        {
+          "cell": [2, 4],
+          "selectable_before": [[0, 4], [1, 4], [2, 4], [3, 4], [5, 4]],
+          "hit_trap": false,
+          "matched_new": false,
+          "matched_ids": [],
+          "buffer_codes": ["BD", "E9", "1C", "BD"],
+          "is_full": false,
+          "selectable_after": [[2, 0], [2, 1], [2, 2], [2, 3], [2, 5]]
         },
         {
           "cell": [2, 0],
-          "selectable_before": [[2, 0], [2, 1], [2, 2], [2, 3], [2, 4]],
+          "selectable_before": [[2, 0], [2, 1], [2, 2], [2, 3], [2, 5]],
           "hit_trap": true,
           "matched_new": false,
           "matched_ids": [],
-          "buffer_codes": ["BD", "1C", "××"],
+          "buffer_codes": ["BD", "E9", "1C", "BD", "××"],
           "is_full": false,
           "selectable_after": [[0, 0], [1, 0], [3, 0], [4, 0], [5, 0]]
         },
@@ -861,33 +881,13 @@
           "hit_trap": true,
           "matched_new": false,
           "matched_ids": [],
-          "buffer_codes": ["BD", "1C", "××", "××"],
-          "is_full": false,
-          "selectable_after": [[1, 1], [1, 2], [1, 3], [1, 4], [1, 5]]
-        },
-        {
-          "cell": [1, 4],
-          "selectable_before": [[1, 1], [1, 2], [1, 3], [1, 4], [1, 5]],
-          "hit_trap": false,
-          "matched_new": false,
-          "matched_ids": [],
-          "buffer_codes": ["BD", "1C", "××", "××", "1C"],
-          "is_full": false,
-          "selectable_after": [[0, 4], [2, 4], [3, 4], [4, 4], [5, 4]]
-        },
-        {
-          "cell": [5, 4],
-          "selectable_before": [[0, 4], [2, 4], [3, 4], [4, 4], [5, 4]],
-          "hit_trap": false,
-          "matched_new": true,
-          "matched_ids": ["a"],
-          "buffer_codes": ["BD", "1C", "××", "××", "1C", "FF"],
+          "buffer_codes": ["BD", "E9", "1C", "BD", "××", "××"],
           "is_full": true,
           "selectable_after": []
         }
       ],
-      "outcome": "SUCCESS",
-      "matched_ids": ["a"],
+      "outcome": "FAIL",
+      "matched_ids": [],
       "selectable_after_resolve": []
     },
     {
@@ -914,7 +914,7 @@
         }
       ],
       "cells": [["7A", "1C", "BD", "7A", "E9", "E9", "55"], ["55", "1C", "1C", "E9", "BD", "E9", "××"], ["BD", "E9", "××", "1C", "1C", "7A", "55"], ["55", "E9", "FF", "7A", "FF", "FF", "55"], ["55", "1C", "55", "1C", "7A", "7A", "1C"], ["FF", "××", "××", "BD", "BD", "FF", "××"], ["FF", "FF", "××", "FF", "1C", "7A", "55"]],
-      "trap_cells": [[0, 1], [1, 0], [1, 6], [2, 2], [5, 0], [5, 1], [5, 2], [5, 5], [5, 6], [6, 2]],
+      "trap_cells": [[1, 0], [1, 6], [2, 2], [5, 0], [5, 1], [5, 2], [5, 5], [5, 6], [6, 2]],
       "start_selectable": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6]],
       "steps": [
         {
@@ -1009,7 +1009,7 @@
         }
       ],
       "cells": [["××", "FF", "7A", "FF", "E9", "55", "××"], ["FF", "E9", "BD", "FF", "55", "7A", "7A"], ["7A", "55", "55", "E9", "E9", "BD", "7A"], ["FF", "7A", "FF", "7A", "55", "××", "FF"], ["××", "BD", "FF", "1C", "55", "55", "××"], ["1C", "FF", "55", "1C", "7A", "1C", "7A"], ["××", "E9", "7A", "7A", "E9", "E9", "7A"]],
-      "trap_cells": [[0, 0], [0, 4], [0, 6], [2, 3], [3, 2], [3, 5], [4, 0], [4, 6], [6, 0]],
+      "trap_cells": [[0, 0], [0, 4], [0, 6], [3, 2], [3, 5], [4, 0], [4, 6], [6, 0]],
       "start_selectable": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6]],
       "steps": [
         {
@@ -1114,7 +1114,7 @@
         }
       ],
       "cells": [["××", "1C", "7A", "55", "FF", "E9", "FF"], ["55", "1C", "FF", "E9", "1C", "FF", "FF"], ["1C", "7A", "E9", "1C", "55", "FF", "BD"], ["7A", "FF", "7A", "7A", "E9", "BD", "FF"], ["BD", "55", "1C", "E9", "7A", "55", "E9"], ["1C", "BD", "FF", "1C", "××", "××", "E9"], ["BD", "55", "7A", "7A", "××", "××", "FF"]],
-      "trap_cells": [[0, 0], [0, 4], [3, 1], [5, 3], [5, 4], [5, 5], [6, 3], [6, 4], [6, 5]],
+      "trap_cells": [[0, 0], [0, 4], [3, 1], [5, 3], [5, 4], [5, 5], [6, 4], [6, 5]],
       "start_selectable": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6]],
       "steps": [
         {
@@ -1288,7 +1288,7 @@
         }
       ],
       "cells": [["55", "1C", "7A", "1C", "55", "BD"], ["FF", "55", "FF", "7A", "E9", "1C"], ["55", "E9", "FF", "××", "BD", "××"], ["FF", "7A", "7A", "55", "BD", "BD"], ["55", "1C", "7A", "55", "E9", "E9"], ["FF", "BD", "E9", "7A", "BD", "FF"]],
-      "trap_cells": [[1, 0], [2, 2], [2, 3], [2, 5]],
+      "trap_cells": [[2, 3], [2, 5]],
       "start_selectable": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5]],
       "steps": [
         {
@@ -1304,7 +1304,7 @@
         {
           "cell": [1, 0],
           "selectable_before": [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0]],
-          "hit_trap": true,
+          "hit_trap": false,
           "matched_new": false,
           "matched_ids": [],
           "buffer_codes": ["55", "FF"],
@@ -1353,7 +1353,7 @@
         }
       ],
       "cells": [["1C", "××", "1C", "1C", "BD", "7A", "BD"], ["××", "FF", "7A", "E9", "FF", "E9", "××"], ["BD", "FF", "55", "7A", "7A", "E9", "FF"], ["55", "7A", "7A", "E9", "FF", "FF", "1C"], ["E9", "E9", "1C", "7A", "7A", "BD", "××"], ["7A", "1C", "E9", "FF", "7A", "FF", "BD"], ["1C", "E9", "××", "E9", "7A", "BD", "BD"]],
-      "trap_cells": [[0, 1], [0, 6], [1, 0], [1, 6], [4, 6], [5, 2], [6, 2], [6, 3]],
+      "trap_cells": [[0, 1], [0, 6], [1, 0], [1, 6], [4, 6], [6, 2], [6, 3]],
       "start_selectable": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6]],
       "steps": [],
       "outcome": "FAIL",
