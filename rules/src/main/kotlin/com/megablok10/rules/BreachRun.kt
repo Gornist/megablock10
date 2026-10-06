@@ -46,5 +46,7 @@ data class BreachRun(
     fun tick(): BreachRun = copy(secondsLeft = secondsLeft - 1)
 
     fun resolve(): BreachRun =
-        if (result != null) this else copy(result = BreachResult(attempt.daemons, attempt.matchedDaemonIds))
+        if (result != null) this else copy(
+            result = BreachResult(attempt.daemons, attempt.matchedDaemonIds, attempt.lockOpened, attempt.matchedBeforeLockIds)
+        )
 }

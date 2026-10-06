@@ -11,8 +11,15 @@ class BreachLockGridTest {
         Daemon("d$i", "d$i", List(len) { BreachSymbols.ALPHABET.random(random) })
     }
 
-    /** Колоды эталонных демонов тира: Извлечение с цепочкой 2/3/4 (breach.md 6.1). */
-    private fun decks(tier: Tier): List<IntArray> = listOf(intArrayOf(1 + tier.level))
+    /** Колоды тира: один демон с цепочкой 2/3/4 (breach.md 6.1) и пара демонов 2+3 / 3+3 / 3+4 — как при большой RAM. */
+    private fun decks(tier: Tier): List<IntArray> = listOf(
+        intArrayOf(1 + tier.level),
+        when (tier) {
+            Tier.BASE -> intArrayOf(2, 3)
+            Tier.HARD -> intArrayOf(3, 3)
+            Tier.NIGHTMARE -> intArrayOf(3, 4)
+        },
+    )
 
     @Test
     fun `lock is solvable by construction on 1000 seeds per tier`() {
