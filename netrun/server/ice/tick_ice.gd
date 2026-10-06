@@ -52,6 +52,8 @@ var _off_route := false
 var _search_armed := true
 ## Нескрытые нетраннеры прошлого такта (сессия → клетка): по ним patrol «наталкивается», и по ним же строит намерение intent().
 var _tcells: Dictionary = {}
+## Как ICE видел нетраннеров в конце последнего такта: сессия → TickVision.NONE/PERIPHERY/FOCUS.
+var _vis: Dictionary = {}
 var _dry := false
 
 
@@ -95,10 +97,21 @@ func awareness_of(session: Variant) -> int:
 	return int(_aw.get(session, 0))
 
 
+## Был ли нетраннер виден ICE в конце последнего такта (фокус или периферия; скрытый — нет). Для trace «на виду».
+func sees(session: Variant) -> bool:
+	return int(_vis.get(session, TickVision.NONE)) != TickVision.NONE
+
+
+## Наибольший счётчик осведомлённости 0..awareness_max.
+func max_awareness() -> int:
+	return _max_aw()
+
+
 ## Нетраннер ушёл из узла: счётчик и память о нём не нужны.
 func forget(session: Variant) -> void:
 	_aw.erase(session)
 	_tcells.erase(session)
+	_vis.erase(session)
 
 
 ## Один такт. targets: сессия → позиция (Vector3); hidden: сессия → true для невидимых (Призрак, вход в узел).
@@ -158,6 +171,7 @@ func _update_awareness(targets: Dictionary, tcell: Dictionary, hidden: Dictionar
 	var amax := int(_s["awareness_max"])
 	var best := -1
 	var best_cell := Vector2i.ZERO
+	_vis.clear()
 	for s in targets:
 		var v := 0
 		if not hidden.get(s, false):
@@ -165,6 +179,7 @@ func _update_awareness(targets: Dictionary, tcell: Dictionary, hidden: Dictionar
 				v = TickVision.FOCUS   # нетраннер вошёл в клетку ICE сам: «потерянным» он не становится
 			else:
 				v = TickVision.classify(_grid, _cell, _dir, tcell[s], float(_s["sight_cells"]), float(_s["half_angle_deg"]), float(_s["focus_deg"]))
+		_vis[s] = v
 		var delta := -1
 		if v == TickVision.FOCUS:
 			delta = 2

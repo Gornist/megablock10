@@ -105,6 +105,8 @@ const REASON_FAR := "far"
 ## Причины отказа телепорта (RigMath.teleport_verdict): дальше предела, не прошла перезарядка, идёт цифровой тоннель, цель вне комнаты.
 const REASON_RANGE := "range"
 const REASON_COOLDOWN := "cooldown"
+## Тактовый режим: нетраннер уже сходил в этом такте (один ход за такт).
+const REASON_MOVED := "moved"
 const REASON_TUNNEL := "tunnel"
 const REASON_ROOM := "room"
 ## Клетки 1 м (NodeGrid): клетка занята (колонна, стена, другой аватар) и линия до неё закрыта колонной. Дальность клеток — REASON_RANGE.
