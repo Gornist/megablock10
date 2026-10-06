@@ -70,6 +70,9 @@ class BridgeOpsTest {
         },
     )
 
+    /** Сколько ждём соединение и ответ Моста. 5 с не хватило на нагруженном раннере CI (06.10: «нет ответа» на первом hello в giveItemOverTheWire, правка не по теме). */
+    private val waitSec = 20L
+
     private inner class Client(role: String) {
         private val inbox = LinkedBlockingQueue<JsonObject>()
         private var n = 0
@@ -84,7 +87,7 @@ class BridgeOpsTest {
                     return null
                 }
             },
-        ).get(5, TimeUnit.SECONDS)
+        ).get(waitSec, TimeUnit.SECONDS)
 
         init {
             clients.add(this)
@@ -93,8 +96,8 @@ class BridgeOpsTest {
 
         fun req(op: String, body: String = ""): JsonObject {
             val cid = "c${++n}"
-            ws.sendText("""{"v":1,"cid":"$cid","op":"$op"${if (body.isEmpty()) "" else ",$body"}}""", true).get(5, TimeUnit.SECONDS)
-            val r = inbox.poll(5, TimeUnit.SECONDS) ?: error("нет ответа")
+            ws.sendText("""{"v":1,"cid":"$cid","op":"$op"${if (body.isEmpty()) "" else ",$body"}}""", true).get(waitSec, TimeUnit.SECONDS)
+            val r = inbox.poll(waitSec, TimeUnit.SECONDS) ?: error("нет ответа на $op за $waitSec с")
             assertEquals(cid, r["re"]!!.jsonPrimitive.content)
             return r
         }
