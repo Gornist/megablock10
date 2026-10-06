@@ -317,12 +317,13 @@ func _fmt3(p: Vector3) -> String:
 
 ## Игрок отпустил стик прицела. Риг переедет сам (моргание), здесь — просьба серверу и журнал.
 func _on_teleport_attempted(from: Vector3, to: Vector3, ok: bool, reason: String) -> void:
+	var cell := NodeGrid.cell_of(scene.rig.last_pick() if ok else to)   # выбранная клетка (до площадки у хранилища)
 	log_file.log("rig.teleport", {"from": _fmt_xz(from), "to": _fmt_xz(to), "dist": snappedf(NodeLayout.flat_distance(from, to), 0.1), "ok": ok,
-		"face": snappedf(scene.rig.pending_face_deg() if ok else 0.0, 0.1)})
+		"face": snappedf(scene.rig.pending_face_deg() if ok else 0.0, 0.1), "cell": "%d,%d" % [cell.x, cell.y]})
 	if not ok:
 		log_file.log("teleport.denied", {"reason": reason, "by": "client"})
 	elif net != null and net.is_connected_to_world and not scene.ended:  # после ended запрос не уходит
-		net.request_teleport(to)  # без связи двигаемся только у себя: сервер сверит позу, когда связь вернётся
+		net.request_teleport(scene.rig.last_pick())  # центр выбранной клетки; без связи двигаемся только у себя: сервер сверит позу, когда связь вернётся
 
 
 ## Игрок просит включить демона (левый X / слот): в журнал — запрос с состоянием демона в деке (st), чтобы по журналу было видно, был ли он заряжен.

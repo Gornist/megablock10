@@ -67,7 +67,8 @@ var _aim := RigMath.aim_new()
 var _aim_info: Dictionary = {}
 ## Клетки комнаты: прицел притягивается к достижимой клетке 1 м (NodeGrid.pick), занятые колоннами показывает серыми.
 var grid: NodeGrid = NodeGrid.for_layout()
-var _since_tp := INF         # секунд с прошлого телепорта
+var _last_pick := Vector3.ZERO
+var _since_tp := INF       # секунд с прошлого телепорта
 var _tp_click := false
 var _blink := RigMath.blink_new()
 var _blink_dest := Vector3.ZERO
@@ -306,6 +307,11 @@ func is_aiming() -> bool:
 	return _aim["aiming"]
 
 
+## Центр клетки, выбранной последним принятым телепортом (до привязки к площадке у хранилища): его клиент просит у сервера.
+func last_pick() -> Vector3:
+	return _last_pick
+
+
 ## Точка посадки, на которую сейчас наведён прицел (пол); нули, пока не целимся.
 func aim_target() -> Vector3:
 	return _aim_info.get("p", Vector3.ZERO)
@@ -410,6 +416,7 @@ func _fire_teleport() -> void:
 		teleport_attempted.emit(from, to, false, reason)
 		return
 	var look: Variant = null
+	_last_pick = to   # серверу уходит выбранная клетка (до площадки): он проверяет её и сам привязывает к площадке теми же правилами
 	if teleport_snap.is_valid():
 		var snapped_to: Dictionary = teleport_snap.call(to)
 		to = Vector3(snapped_to["p"].x, from.y, snapped_to["p"].z)

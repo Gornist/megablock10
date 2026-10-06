@@ -75,6 +75,7 @@ func test_teleport_goes_through_the_server_and_is_logged() -> void:
 	var text := _log()
 	assert_str(text).contains("rig.teleport")
 	assert_str(text).contains("ok=true")
+	assert_str(text).contains("cell=%d,%d" % [NodeGrid.cell_of(target).x, NodeGrid.cell_of(target).y])
 	assert_str(text).not_contains("teleport.denied")
 
 
@@ -87,3 +88,16 @@ func test_server_denial_puts_the_rig_back_and_is_logged() -> void:
 	assert_str(_log()).contains("reason=tunnel")
 	assert_bool(await _wait_for(func(): return rig.blink_alpha() == 0.0 and NodeLayout.flat_distance(rig.global_position, home) < 0.05)).is_true()
 	assert_bool(NodeLayout.flat_distance(_server.get_avatar(SESSION).position, NodeLayout.SPAWN) < 0.05).is_true()
+
+
+func test_server_cell_denial_is_logged_and_puts_the_rig_back() -> void:
+	# Клиент и сервер разошлись по клетке (у клиента свободна, у сервера занята): новая причина `cell` не роняет клиент, риг возвращается.
+	var rig: XRRig = _proto.scene.rig
+	var home := rig.global_position
+	var picked := NodeGrid.cell_of(_aim_forward())
+	_server.grid.occ[picked] = true
+	assert_bool(await _wait_for(func(): return _log().contains("teleport.denied"))).is_true()
+	assert_str(_log()).contains("reason=cell")
+	assert_str(_log()).contains("cell=%d,%d" % [picked.x, picked.y])
+	assert_bool(await _wait_for(func(): return rig.blink_alpha() == 0.0 and NodeLayout.flat_distance(rig.global_position, home) < 0.05)).is_true()
+	assert_int(_server.teleport_count(SESSION)).is_equal(0)
