@@ -173,6 +173,22 @@ func test_сцена_в_тактовом_режиме_создаёт_пол_и_�
 	assert_float(ice.eye_color().g).is_equal_approx(IceView.EYE_COLOR[1].g, 0.01)
 
 
+func test_демо_кадр_колонны_свет_красная_стрелка_и_жёлтая_рамка() -> void:
+	var scene := _scene()
+	scene.show_tick_demo()
+	var f: TickFloor = scene.tick_floor
+	assert_object(f).is_not_null()
+	assert_int(f.arrow_count()).is_equal(2)
+	var red := 0
+	for i in f.arrow_count():
+		if f.arrow_spec(i)["precapture"]:
+			red += 1
+	assert_int(red).is_equal(1)   # Поиск рядом с игроком: красная стрелка
+	assert_int(f.cell_count()).is_greater(30)
+	assert_object(scene.rig.aim_visual.frame_color()).is_equal(TeleportAim.WARN_COLOR)
+	assert_bool(scene.rig.grid.is_occupied(Vector2i(4, 8))).is_true()   # колонна узла на месте: проход между двумя колоннами
+
+
 func test_сцена_в_realtime_без_пола_и_глаза() -> void:
 	var scene := _scene()
 	scene.apply_state(_ice_msg(0, 0, false))

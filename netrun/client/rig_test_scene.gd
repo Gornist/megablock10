@@ -294,6 +294,27 @@ func _make_avatar(id: int, pos: Vector3) -> AvatarView:
 	return n
 
 
+## Кадр для проверки глазами (netrun/tests/tick_demo_preview.gd): игрок в кресле (клетка 7; 13), две колонны узла стоят по бокам прохода; ICE 1 в Проверке
+## смотрит на север вдоль прохода между колоннами и шагнёт на клетку вперёд; ICE 2 в Поиске идёт к игроку (его следующий шаг в 2 м: красная
+## стрелка в клетку игрока); рамка прицела — на соседней клетке, цвет — по тому же прогнозу, что в игре.
+func show_tick_demo() -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	var ice1 := NodeGrid.center(Vector2i(7, 11))
+	var ice2 := NodeGrid.center(Vector2i(11, 13))
+	apply_state({"k": now, "trace": 0.0, "level": 0, "cd": [], "ice": [
+		{"id": "demo_check", "p": [ice1.x, 0.0, ice1.z], "f": [0.0, -1.0], "s": 1, "b": 0, "c": [7, 11], "d": [0, -1], "st": 2, "nc": [7, 10], "nd": [0, -1], "aw": 3, "sc": 6},
+		{"id": "demo_search", "p": [ice2.x, 0.0, ice2.z], "f": [-1.0, 0.0], "s": 2, "b": 0, "c": [11, 13], "d": [-1, 0], "st": 3, "nc": [9, 13], "nd": [-1, 0], "aw": 6, "sc": 6},
+	], "tk": {"n": 4, "at": now - 1.0, "win": 5.0, "inh": 0, "mv": 0}})
+	var cell := Vector2i(7, 12)   # сосед игрока впереди: на периферии будущего зрения ICE 2 (26°, дальше 2 м от его шага)
+	var target := NodeGrid.center(cell)
+	aim_visual_demo(rig.global_position + Vector3(0.35, 0.8, -0.25), target, TickForecast.threat(rig.grid, remote.intents(), cell))
+
+
+## Рамка прицела демо-кадра: жёлтая/красная/зелёная по прогнозу, дуга от груди игрока.
+func aim_visual_demo(from: Vector3, target: Vector3, threat: int) -> void:
+	rig.aim_visual.show_at(from, target, true, 1.0, "hop", "", threat)
+
+
 ## Сервер закончил забег (выход, выброс, флэтлайн): мир гаснет, надпись перед глазами. Связь закроется сама; повторный `ended` ничего не меняет.
 ## `ev` — само событие: если сервер положит в него паузу (`reentry_sec`), экран скажет «вход снова через M:SS» (сейчас её там нет — «снимите очки»).
 func show_ended(reason: String, ev: Dictionary = {}) -> void:
