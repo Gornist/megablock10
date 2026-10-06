@@ -125,6 +125,38 @@ class HeadsetCallsTest {
         s.commands.close()
     }
 
+    @Test fun glassesConnectedMidCallGetTheCurrentRingSound() = runTest {
+        for ((phase, kind) in listOf(CallPhase.INCOMING_RINGING to "ring", CallPhase.OUTGOING_RINGING to "ringback")) {
+            val s = start(FakeCallControls(state(phase)))
+            s.take()
+            s.cmd(HeadsetCommand.HelloAck(1), this)
+            val frames = s.take()
+            val call = frames.indexOfFirst { it is HeadsetOut.Call }
+            assertEquals(HeadsetOut.Sound(kind), frames.single { it is HeadsetOut.Sound })
+            assertTrue("звук идёт после кадра call", frames.indexOfFirst { it is HeadsetOut.Sound } > call)
+            s.commands.close()
+        }
+    }
+
+    @Test fun noSoundWhenConnectedOutsideARingingCallOrAfterTheFirstFrame() = runTest {
+        val calls = FakeCallControls(state(CallPhase.IN_CALL))
+        val s = start(calls)
+        s.take()
+        s.cmd(HeadsetCommand.HelloAck(1), this)
+        assertTrue(s.take().none { it is HeadsetOut.Sound })
+        calls.state.value = state(CallPhase.INCOMING_RINGING)
+        runCurrent()
+        assertTrue("дальше звуки шлёт SoundPlayer, не мост", s.take().none { it is HeadsetOut.Sound })
+        s.commands.close()
+    }
+
+    @Test fun reconnectPauseGrowsToThreeSecondsAndStaysThere() {
+        val b = HeadsetBackoff()
+        assertEquals(listOf(1_000L, 2_000L, 3_000L, 3_000L, 3_000L), List(5) { b.next() })
+        b.reset()
+        assertEquals(1_000L, b.next())
+    }
+
     @Test fun resyncSendsCallAndLogAgain() = runTest {
         val calls = FakeCallControls(state(CallPhase.IN_CALL))
         val s = start(calls)
