@@ -989,7 +989,7 @@ func apply_breach_event(ev: Dictionary) -> void:
 		WorldMsg.EV_BK_END:
 			bp.apply_end(ev)
 		WorldMsg.EV_BK_NO:
-			bp.show_denied(str(ev.get("reason", "")), int(ev.get("left", 0)))
+			bp.show_denied(str(ev.get("reason", "")), int(ev.get("left", 0)), ev)
 
 
 ## События заряда (mode = charge): сетка на деке, ответ на тап, итог, отказ.

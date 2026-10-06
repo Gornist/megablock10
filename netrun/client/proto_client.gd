@@ -50,6 +50,7 @@ var _frame_stats := FrameStats.new()
 var _hand_modes := ["", ""]    # чем рисуется каждая рука (HandView.Mode): журнал hand.mode при смене
 var _perf_acc := 0.0
 var _last_level := -1
+var _active_effects: Dictionary = {}   # id демона -> true, пока снимок показывает его active: по смене пишем daemon.use start / end
 var _pos_acc := 0.0
 var _paused_at_ms := -1
 var _slow_skipped := 0
@@ -101,11 +102,12 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	net.state_received.connect(_on_state)
 	net.avatars_received.connect(func(msg: Dictionary): scene.apply_avatars(msg))
 	net.event_received.connect(_on_event)
-	scene.daemon_use_requested.connect(func(id: String): net.request_use(id))
+	scene.daemon_use_requested.connect(_on_daemon_use_requested)
 	scene.leave_requested.connect(func(): net.request_leave())
 	scene.breach_start_requested.connect(func(vault: String, ids: Array):
 		if net.request_breach(vault, ids):
-			log_file.log("breach.request", {"vault": vault, "daemons": ids.size()}))
+			log_file.log("breach.request", HudLogic.breach_request_fields(vault, ids, scene.deck_info.get("daemons", []), int(scene.deck_info.get("ram", 0)),
+				scene.world_ui.breach_panel.lock_length())))
 	scene.breach_tap_requested.connect(func(cell: Vector2i): net.request_breach_tap(cell))
 	scene.charge_requested.connect(func(id: String):
 		if net.request_charge(id):
@@ -323,6 +325,16 @@ func _on_teleport_attempted(from: Vector3, to: Vector3, ok: bool, reason: String
 		net.request_teleport(to)  # без связи двигаемся только у себя: сервер сверит позу, когда связь вернётся
 
 
+## Игрок просит включить демона (левый X / слот): в журнал — запрос с состоянием демона в деке (st), чтобы по журналу было видно, был ли он заряжен.
+func _on_daemon_use_requested(id: String) -> void:
+	var st := ""
+	for d in scene.deck_state:
+		if str(d.get("id", "")) == id:
+			st = str(d.get("st", ""))
+	var sent := net.request_use(id)
+	log_file.log("daemon.use", {"phase": "request", "daemon": id, "st": st, "sent": sent})
+
+
 ## Сервер отказал: риг возвращается туда, где аватар на сервере.
 func _on_teleport_denied(reason: String, server_pos: Vector3, left: float) -> void:
 	log_file.log("teleport.denied", {"reason": reason, "by": "server", "left": snappedf(left, 0.01), "at": _fmt_xz(server_pos)})
@@ -332,6 +344,12 @@ func _on_teleport_denied(reason: String, server_pos: Vector3, left: float) -> vo
 ## Снимок узла: интерфейс, ICE и звук получают данные с сервера. Свою позицию клиент шлёт сам (20 раз/с).
 func _on_state(state: Dictionary) -> void:
 	scene.apply_state(state)
+	var edges := HudLogic.effect_edges(_active_effects, state.get("cd", []), float(state.get("k", 0.0)))
+	_active_effects = edges["active"]
+	for s in edges["started"]:
+		log_file.log("daemon.use", {"phase": "start", "daemon": s["id"], "left": s["left"]})
+	for id in edges["ended"]:
+		log_file.log("daemon.use", {"phase": "end", "daemon": id})
 	var level := int(state.get("level", 0))
 	if level != _last_level:
 		log_file.log("trace.level", {"level": level, "value": snappedf(float(state.get("trace", 0.0)), 0.1)})
@@ -363,6 +381,7 @@ func _on_event(ev: Dictionary) -> void:
 				"programs": (ev.get("daemons", []) as Array).size(), "loot": (ev.get("loot", []) as Array).size(), "eddies": ev.get("eddies", 0)})
 		WorldMsg.EV_DAEMON:
 			scene.apply_daemon_result(ev)
+			log_file.log("daemon.use", HudLogic.daemon_result_fields(ev))
 		WorldMsg.EV_BK:
 			scene.apply_breach_event(ev)
 			if ev.get("mode", "") == WorldMsg.MODE_DECRYPT:

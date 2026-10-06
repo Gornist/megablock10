@@ -58,16 +58,54 @@ func test_panel_is_hidden_until_shown_and_not_interactive() -> void:
 
 
 func test_idle_lists_daemons_with_all_picked_that_fit_the_ram() -> void:
-	await _setup_ui(6)
+	await _setup_ui(7)
 	_panel.show_idle("v1", {"access": "ok"})
 	await get_tree().process_frame
 	var all := "\n".join(_panel.texts())
 	assert_str(all).contains("ВЗЛОМ · Серверная").contains("тир HARD").contains("Извлечение").contains("Призрак")
 	assert_str(all).contains("1C BD").contains("55 7A FF")
-	# 2 + 3 = 5 ячеек помещаются в RAM 6: отмечены оба
+	# замок HARD 2 + 2 + 3 = 7 ячеек помещаются в RAM 7: отмечены оба
 	assert_array(_panel.picked_ids()).is_equal(["d1", "d2"])
 	assert_int(_panel.picked_cells()).is_equal(5)
-	assert_str(all).contains("5/6")
+	assert_str(all).contains("замок 2 + 5 / RAM 7")
+
+
+func test_default_pick_counts_the_lock_and_shows_overflow_in_red() -> void:
+	await _setup_ui(6)   # замок 2 + 2 + 3 = 7 > 6: по умолчанию влезает только Извлечение
+	_panel.show_idle("v1", {"access": "ok"})
+	await get_tree().process_frame
+	assert_array(_panel.picked_ids()).is_equal(["d1"])
+	assert_str("\n".join(_panel.texts())).contains("замок 2 + 2 / RAM 6")
+	assert_bool(_panel.fits_ram()).is_true()
+	_panel.toggle_daemon("d2")   # игрок добавил лишнего: счётчик краснеет, «НАЧАТЬ» недоступна
+	await get_tree().process_frame
+	assert_bool(_panel.fits_ram()).is_false()
+	assert_str("\n".join(_panel.texts())).contains("замок 2 + 5 / RAM 6").contains("НЕ ХВАТАЕТ RAM")
+	assert_bool(_panel.request_start()).is_false()
+	var bad := _panel._frame.find_children("*", "Label", true, false).filter(func(l: Label): return l.text.begins_with("замок"))
+	assert_int(bad.size()).is_equal(1)
+	assert_str(str((bad[0] as Label).theme_type_variation)).is_equal(str(DeckTheme.V_BAD))
+
+
+func test_default_picks_prefers_vault_tier_extraction_then_rest() -> void:
+	var ds := [
+		{"id": "g", "effect": "GHOST", "tier": 1, "cells": ["55", "7A"]},
+		{"id": "e1", "effect": "EXTRACT_SHARD", "tier": 1, "cells": ["1C", "BD"]},
+		{"id": "e3", "effect": "EXTRACT_SHARD", "tier": 3, "cells": ["1C", "BD", "E9"]},
+		{"id": "e2", "effect": "EXTRACT_DAEMON", "tier": 2, "cells": ["1C", "BD", "FF"]},
+		{"id": "j", "effect": "JITTER", "tier": 1, "cells": ["7A", "FF"]},
+	]
+	# NIGHTMARE (уровень 3, замок 3), RAM 12: сначала Извлечение тира 3, потом 2, потом 1 (3+3+3+2=11), защитные — по месту: Призрак (2) не влезает
+	var p := BreachPanel.default_picks(ds, 3, 3, 12)
+	assert_array(p.keys()).contains_exactly_in_any_order(["e3", "e2", "e1"])
+	# RAM 14: влезает и Призрак, и Дрожь (11 + 2 = 13, ещё 2 — нет)
+	p = BreachPanel.default_picks(ds, 3, 3, 14)
+	assert_array(p.keys()).contains_exactly_in_any_order(["e3", "e2", "e1", "g"])
+	# HARD (уровень 2): Извлечение тира 3 выше тира хранилища — берётся после тира 2 и 1
+	p = BreachPanel.default_picks(ds, 2, 2, 8)
+	assert_array(p.keys()).contains_exactly_in_any_order(["e2", "e1"])   # 2 + 3 + 2 = 7; тир 3 (3 яч.) не влезает
+	# ничего не влезает — пусто, а не нарушение RAM
+	assert_dict(BreachPanel.default_picks(ds, 3, 3, 4)).is_empty()
 
 
 func test_default_pick_drops_what_does_not_fit_the_ram() -> void:
@@ -80,7 +118,7 @@ func test_default_pick_drops_what_does_not_fit_the_ram() -> void:
 
 
 func test_start_button_sends_the_picked_daemons() -> void:
-	await _setup_ui(6)
+	await _setup_ui(7)
 	var got := []
 	_panel.start_requested.connect(func(v: String, ids: Array): got.append([v, ids]))
 	_panel.show_idle("v1", {"access": "ok"})
@@ -114,7 +152,18 @@ func test_denied_reason_is_shown_in_words() -> void:
 	assert_str("\n".join(_panel.texts())).contains("цепочки должны влезать в RAM")
 	assert_str(BreachPanel.denied_text("cooldown", 90)).is_equal("ОСТЫВАЕТ · 2 мин")
 	assert_str(BreachPanel.denied_text("empty", 40)).is_equal("ПУСТО · пополнение через 40 с")
-	assert_str(BreachPanel.denied_text("whatever")).is_equal("Сейчас нельзя")
+	assert_str(BreachPanel.denied_text("whatever")).is_equal("Сейчас нельзя (whatever)")
+	assert_str(BreachPanel.denied_text("")).is_equal("Сейчас нельзя")
+	# остальные причины — словами, не молча
+	for reason in ["busy", "far", "open", "active", "bridge", "charging", "not_ready"]:
+		assert_str(BreachPanel.denied_text(reason)).is_not_equal("Сейчас нельзя (%s)" % reason)
+
+
+func test_denied_bad_daemons_with_numbers_explains_the_ram() -> void:
+	await _setup_ui(12)
+	_panel.show_idle("v1", {"access": "ok"})
+	_panel.show_denied("bad_daemons", 0, {"lock": 3, "need": 15, "ram": 12})
+	assert_str("\n".join(_panel.texts())).contains("НЕ ХВАТАЕТ RAM: замок 3 + цепочки 12 > 12 — снимите демона")
 
 
 func test_idle_redraws_only_on_change() -> void:

@@ -202,6 +202,24 @@ func test_hunt_is_slower_than_walking_player() -> void:
 	assert_bool(b.is_hunting("a")).is_true()
 
 
+## Призрак (волна 1в): сервер узла не кладёт скрытого GHOST'ом игрока в targets — ICE смотрит сквозь него: ни «?», ни подозрения, ни trace.
+## Тот же игрок в 2 м перед ICE без Призрака подозрение вызывает сразу.
+func test_ghost_player_in_front_of_ice_raises_no_suspicion_and_no_trace() -> void:
+	var visible_ice := _brain()
+	var meter_seen := _meter_at(0.0)
+	_run(visible_ice, 0.0, 0.5, func(_t): return {"a": Vector3(0, 0, -2)}, {"a": meter_seen})
+	assert_int(visible_ice.state()).is_not_equal(S.PATROL)   # контроль: без Призрака ICE замечает
+
+	var b := _brain()
+	var meter := _meter_at(0.0)
+	var before := meter.value()
+	_run(b, 0.0, 20.0, func(_t): return {}, {"a": meter})   # GHOST: игрок стоит перед ICE, но цели нет
+	assert_int(b.state()).is_equal(S.PATROL)
+	assert_float(b.awareness()).is_equal(0.0)
+	assert_str(b.target()).is_equal("")
+	assert_float(meter.value()).is_less_equal(before)
+
+
 func test_hunt_stops_when_target_is_ghost_or_trace_drops() -> void:
 	var b := _brain({"black": true})
 	var meter := _meter_at(55.0)
