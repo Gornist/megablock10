@@ -39,6 +39,25 @@ var black: Dictionary = {}
 var signs: Array = []
 ## Дальность зрения Стражей этой раскладки, клеток (meta.sight_cells; по умолчанию как TickIce.DEFAULTS).
 var sight_cells := DEFAULT_SIGHT_CELLS
+## Дальность зрения задана в файле (meta.sight_cells); иначе сервер берёт её по тиру узла.
+var has_sight := false
+
+const LEGACY := "legacy"
+## Раскладки по имени: файл читается один раз на процесс (в том числе неудачная загрузка — с error). Только для чтения: grid() отдаёт копию.
+static var _cache: Dictionary = {}
+
+
+## Раскладка по имени из кэша; пустое имя — legacy.
+static func cached(layout_name: String) -> LayoutData:
+	var key := LEGACY if layout_name.is_empty() else layout_name
+	if not _cache.has(key):
+		_cache[key] = load_named(key)
+	return _cache[key]
+
+
+## Прежняя комната (константы NodeLayout) — не Фойе: у неё площадка у хранилища считается прежней функцией, а не клеткой pad.
+func is_legacy() -> bool:
+	return name == LEGACY
 
 
 static func load_named(layout_name: String) -> LayoutData:
@@ -152,6 +171,7 @@ func _fill(d: Dictionary) -> String:
 		return err
 	var meta: Variant = d.get("meta", {})
 	if meta is Dictionary:
+		has_sight = (meta as Dictionary).has("sight_cells")
 		sight_cells = float((meta as Dictionary).get("sight_cells", DEFAULT_SIGHT_CELLS))
 	return ""
 

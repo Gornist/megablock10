@@ -149,3 +149,18 @@ func test_битые_данные_дают_error_и_не_падают() -> void:
 	var bad_cells := base.duplicate(true)
 	bad_cells["cells"] = "не массив"
 	assert_bool(LayoutData.parse(bad_cells).error != "").is_true()
+
+
+func test_cached_одна_загрузка_на_имя_пусто_значит_legacy() -> void:
+	var a := LayoutData.cached("foyer")
+	assert_bool(a == LayoutData.cached("foyer")).is_true()
+	assert_str(a.name).is_equal("foyer")
+	assert_bool(LayoutData.cached("").is_legacy()).is_true()
+	assert_bool(a.is_legacy()).is_false()
+	assert_bool(LayoutData.cached("нет_такой").error != "").is_true()
+
+
+func test_дальность_зрения_задана_только_если_есть_в_файле() -> void:
+	assert_bool(LayoutData.cached("foyer").has_sight).is_true()
+	assert_float(LayoutData.cached("foyer").sight_cells).is_equal(6.0)
+	assert_bool(LayoutData.cached("legacy").has_sight).is_false()

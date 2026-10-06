@@ -74,6 +74,9 @@ var trace_settings: Dictionary = {}
 var black_ice_settings: Dictionary = {}
 ## Клетки 1 м с колоннами: одна на узел, её видят все ICE (колонна закрывает им взгляд).
 var ice_grid: NodeGrid = NodeGrid.for_layout()
+## Раскладка узла (data/layouts): сетка, хранилища, порталы, вход, выход, маршруты Стражей. Узел без поля layout и одиночный узел — legacy
+## (те же значения, что константы NodeLayout). Задаётся в apply_def до start().
+var layout: LayoutData = LayoutData.cached(LayoutData.LEGACY)
 
 var _now := 0.0
 var _state_acc := 0.0
@@ -144,10 +147,24 @@ func apply_def(id: String, def: Dictionary, graph_settings: Dictionary, graph: N
 	node_id = id
 	node_def = def
 	settings = graph_settings
+	layout = _load_layout(str(def.get("layout", "")))
+	ice_grid = layout.grid()
 	_portals.clear()
 	for i in (def.get("links", []) as Array).size():
 		var to := str(def["links"][i])
-		_portals.append({"to": to, "slot": i, "pos": NodeLayout.PORTAL_SLOTS[i], "title": graph.title_of(to), "tier": graph.tier_of(to)})
+		if i >= layout.portals.size() or layout.portals[i] == Vector3.INF:
+			push_warning("[node] %s: у раскладки «%s» нет портала %d — связь с %s без портала" % [node_id, layout.name, i + 1, to])
+			continue
+		_portals.append({"to": to, "slot": i, "pos": layout.portals[i], "title": graph.title_of(to), "tier": graph.tier_of(to)})
+
+
+## Раскладка узла по имени; нет файла или ошибка разбора — строка в журнал и legacy (узел остаётся играбельным).
+func _load_layout(layout_name: String) -> LayoutData:
+	var ld := LayoutData.cached(layout_name)
+	if ld.error != "":
+		push_warning("[node] %s: раскладка «%s» не загрузилась (%s), берём legacy" % [node_id, layout_name, ld.error])
+		return LayoutData.cached(LayoutData.LEGACY)
+	return ld
 
 
 func is_graph_node() -> bool:

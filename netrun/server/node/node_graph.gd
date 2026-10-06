@@ -67,6 +67,7 @@ static func from_dict(d: Dictionary) -> NodeGraph:
 				"shards": int(n.get("shards", 1)),
 				"links": links,
 				"tutorial": bool(n.get("tutorial", false)),
+				"layout": str(n.get("layout", "")),   # имя раскладки (data/layouts); пусто — legacy
 				"ice_settings": n["ice_settings"] if n.get("ice_settings") is Dictionary else {},
 				"signs": n["signs"] if n.get("signs") is Array else [],
 			}
@@ -105,11 +106,24 @@ func errors() -> Array[String]:
 			out.append("%s: неизвестный тир «%s»" % [id, n["tier"]])
 		if int(n["ice"]) < 0 or int(n["ice"]) > NodeLayout.ICE.size():
 			out.append("%s: ICE %d, допустимо 0…%d" % [id, n["ice"], NodeLayout.ICE.size()])
-		if int(n["shards"]) < 1 or int(n["shards"]) > NodeLayout.SHARD_SLOTS.size():
-			out.append("%s: шардов %d, допустимо 1…%d" % [id, n["shards"], NodeLayout.SHARD_SLOTS.size()])
+		var max_shards := NodeLayout.SHARD_SLOTS.size()
+		var max_links := NodeLayout.PORTAL_SLOTS.size()
 		var links: Array = n["links"]
-		if links.size() > NodeLayout.PORTAL_SLOTS.size():
-			out.append("%s: связей %d, слотов порталов %d" % [id, links.size(), NodeLayout.PORTAL_SLOTS.size()])
+		var lname := str(n.get("layout", ""))
+		if not lname.is_empty() and lname != LayoutData.LEGACY:
+			var ld := LayoutData.cached(lname)
+			if ld.error != "":
+				out.append("%s: раскладка «%s»: %s" % [id, lname, ld.error])
+			else:
+				max_shards = ld.vaults.size()
+				max_links = ld.portals.size()
+				for i in mini(links.size(), ld.portals.size()):
+					if ld.portals[i] == Vector3.INF:
+						out.append("%s: связь %d ведёт в портал %d, которого нет на карте «%s»" % [id, i, i + 1, lname])
+		if int(n["shards"]) < 1 or int(n["shards"]) > max_shards:
+			out.append("%s: шардов %d, допустимо 1…%d" % [id, n["shards"], max_shards])
+		if links.size() > max_links:
+			out.append("%s: связей %d, слотов порталов %d" % [id, links.size(), max_links])
 		if links.is_empty() and not bool(n.get("tutorial", false)):
 			out.append("%s: нет связей" % id)
 		if bool(n.get("tutorial", false)):
