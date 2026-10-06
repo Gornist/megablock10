@@ -100,7 +100,7 @@ func test_offline_disables_call_log_buttons_and_incoming_card_buttons() -> void:
 	var link := _switch_link(false)
 	await _setup(link)
 	assert_int(_d.calls().log_row_count()).is_greater(0)
-	assert_bool(_d.calls().find_button("ПОЗВОНИТЬ").disabled).is_true()
+	assert_bool((_d.calls().log_call_buttons()[0] as MbButton).disabled).is_true()
 	link.incoming_call("ВОБЛА")
 	await _settle()
 	assert_bool(_d.calls().find_button("ПРИНЯТЬ").disabled).is_true()

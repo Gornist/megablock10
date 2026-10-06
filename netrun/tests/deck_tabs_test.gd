@@ -330,12 +330,12 @@ func test_calls_log_lists_entries_and_calling_from_it_starts_a_call() -> void:
 	_d.select_tab(DeckPanel.TAB_CALLS)
 	await _settle()
 	assert_int(_d.calls().log_row_count()).is_equal(4)
-	var first: MbButton = _d.calls().find_button("ПОЗВОНИТЬ")
+	var first: MbButton = _d.calls().log_call_buttons()[0]   # find_button отдал бы кнопку из блока КОНТАКТЫ, он выше журнала
 	first.click()
 	assert_str(_link.call_state()["phase"]).is_equal(PhoneLink.PHASE_OUTGOING)
 	assert_str(_link.call_state()["peer"]).is_equal("ШЕРШЕНЬ")   # первая строка журнала — самый свежий звонок
 	await _settle()
-	assert_bool(_d.calls().find_button("ПОЗВОНИТЬ").disabled).is_true()   # линия занята
+	assert_bool((_d.calls().log_call_buttons()[0] as MbButton).disabled).is_true()   # линия занята
 
 
 func test_call_timer_changes_once_a_second() -> void:
