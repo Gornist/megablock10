@@ -61,7 +61,9 @@
     "sound_ring": {"t": "sound", "kind": "ring"},
     "sound_ringback": {"t": "sound", "kind": "ringback"},
     "sound_message": {"t": "sound", "kind": "message"},
-    "sound_stop": {"t": "sound", "kind": "stop"}
+    "sound_stop": {"t": "sound", "kind": "stop"},
+    "voice_on": {"t": "voice", "on": true, "rate": 44100},
+    "voice_off": {"t": "voice", "on": false}
   },
   "glasses_to_phone": {
     "hello_ack": {"t": "hello_ack", "v": 1},
@@ -72,6 +74,15 @@
     "hangup": {"t": "hangup"},
     "mute": {"t": "mute", "on": true},
     "start_call": {"t": "start_call", "peer": "ВОБЛА"},
-    "resync": {"t": "resync"}
+    "resync": {"t": "resync"},
+    "voice_ready_on": {"t": "voice_ready", "on": true},
+    "voice_ready_off": {"t": "voice_ready", "on": false}
+  },
+  "binary": {
+    "_comment": "Бинарные кадры голоса (docs/netrun-phone-link.md, «Голос»): [1 байт тип][4 байта seq uint32 LE][PCM int16 LE моно]. Тип 1 — микрофон очков → телефон, тип 2 — звук собеседника телефон → очки. Образец: 4 отсчёта 0, 1000, -1000, 32767.",
+    "voice_mic_hex": "01070000000000e80318fcff7f",
+    "voice_peer_hex": "02070000000000e80318fcff7f",
+    "samples": [0, 1000, -1000, 32767],
+    "seq": 7
   }
 }
