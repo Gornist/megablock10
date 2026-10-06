@@ -54,6 +54,11 @@ func _init(settings: Dictionary = {}, start: Vector3 = Vector3.ZERO, waypoints: 
 	_s.merge(settings, true)
 	position = start
 	_waypoints = waypoints
+	if waypoints.size() > 1:
+		# Старт — первая точка маршрута: ICE смотрит на вторую (раньше -Z, пока не сделает первый шаг).
+		var d := Vector3(waypoints[1].x - waypoints[0].x, 0.0, waypoints[1].z - waypoints[0].z)
+		if d.length() > 0.0001:
+			facing = d.normalized()
 
 
 func state() -> int:

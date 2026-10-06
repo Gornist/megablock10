@@ -19,7 +19,7 @@ const HOP_PAUSE := RigMath.TELEPORT_COOLDOWN + 0.05  # с между прыжк�
 const LOITER_MAX_ARC := 0.8  # рад: дуга за один прыжок по кругу (хорда не длиннее 0,8 радиуса)
 const SEND_PERIOD := 0.05
 const ARRIVE := 1.0
-const BLACK_SPOT := Vector3(0, 0, -9)  # у линии патруля Black ICE (NodeLayout.BLACK_ICE), в его конусе
+const BLACK_SPOT := Vector3(0, 0, -9)  # в 3,6 м от линии патруля Black ICE (NodeLayout.BLACK_ICE, z = -6): в зоне его зрения (12 м), патруль заходит в его конус
 const SIGN_REACH := 2.0    # на таком расстоянии от таблички она прочитана
 const GRAB_FROM := 1.5     # на таком расстоянии от шарда просим взять
 const STEP_TIMEOUT := 25.0 # с на один шаг сценария — иначе result = "timeout:<шаг>"

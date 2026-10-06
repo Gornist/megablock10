@@ -41,6 +41,7 @@ func after_test() -> void:
 ## Игрок стоит в 3 м перед ICE (тот смотрит вдоль -Z): шагаем мозг до выброса или limit секунд.
 func _watch_until_eject(limit: float) -> float:
 	var ice: IceNode = _node.ices()[0]
+	ice.brain.facing = Vector3.FORWARD  # маршрут идёт вдоль X; игрок стоит строго по взгляду
 	ice.targets = {SESSION: ice.brain.position + Vector3(0, 0, -3)}
 	var t := 0.0
 	while t < limit and not _lines.any(func(l: String) -> bool: return "ВЫБРОС" in l):

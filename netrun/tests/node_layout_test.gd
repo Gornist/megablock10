@@ -97,3 +97,73 @@ func test_cardinal_yaw_snaps_to_the_nearest_wall_direction() -> void:
 	assert_float(NodeLayout.cardinal_yaw(Vector3(-7, 0, -5))).is_equal_approx(PI / 2.0, 0.001)
 	assert_float(absf(NodeLayout.cardinal_yaw(Vector3(5, 0, 1)))).is_equal_approx(PI, 0.001)
 	assert_float(NodeLayout.cardinal_yaw(Vector3(7, 0, -5))).is_equal_approx(-PI / 2.0, 0.001)
+
+
+## Маршруты ICE (карточка 1б, шаг 3). Расстояние от точки до ближайшей точки маршрута (ломаная, по кругу: последняя точка → первая), плоскость XZ.
+func _route_distance(p: Vector3, waypoints: Array) -> float:
+	var best := INF
+	for i in waypoints.size():
+		var a: Vector3 = waypoints[i]
+		var b: Vector3 = waypoints[(i + 1) % waypoints.size()]
+		var ab := Vector2(b.x - a.x, b.z - a.z)
+		var t := 0.0
+		if ab.length_squared() > 0.0:
+			t = clampf(Vector2(p.x - a.x, p.z - a.z).dot(ab) / ab.length_squared(), 0.0, 1.0)
+		var q := Vector2(a.x, a.z) + ab * t
+		best = minf(best, Vector2(p.x, p.z).distance_to(q))
+	return best
+
+
+func _all_routes() -> Array:
+	var out: Array = []
+	for d in NodeLayout.ICE:
+		out.append(d)
+	for d in NodeLayout.BLACK_ICE:
+		out.append(d)
+	return out
+
+
+func test_ice_routes_stay_on_even_coordinates_inside_the_room() -> void:
+	for d in _all_routes():
+		for w in d["waypoints"]:
+			assert_bool(NodeLayout.in_room(w)).override_failure_message("%s: точка маршрута вне комнаты: %s" % [d["id"], w]).is_true()
+			assert_bool(is_equal_approx(fposmod(w.x, 2.0), 0.0) and is_equal_approx(fposmod(w.z, 2.0), 0.0)).override_failure_message("%s: точка не на ребре ячеек: %s" % [d["id"], w]).is_true()
+
+
+## Стоя у хранилища, игрок не на маршруте Стража: слот шарда — не ближе MIN_VAULT_TO_ROUTE к любой точке маршрута любого ICE.
+func test_every_vault_slot_is_far_from_every_ice_route() -> void:
+	var rows: Array[String] = []
+	for slot in NodeLayout.SHARD_SLOTS:
+		var nearest := INF
+		for d in _all_routes():
+			nearest = minf(nearest, _route_distance(slot, d["waypoints"]))
+		rows.append("(%d;%d): %.1f м" % [slot.x, slot.z, nearest])
+		assert_float(nearest).override_failure_message("слот %s ближе %.1f м к маршруту ICE: %.2f" % [slot, NodeLayout.MIN_VAULT_TO_ROUTE, nearest]).is_greater_equal(NodeLayout.MIN_VAULT_TO_ROUTE)
+	print("[w1b-раскладка] слот → мин. расстояние до маршрута ICE: ", "; ".join(rows))
+
+
+## Спавн и порталы — вне конуса ICE на первой точке патруля (ICE смотрит на вторую) с запасом по зрению узла: каждый узел графа со своими числами
+## (sight_range узла × тревога, Black ICE — settings.black_ice). И маршрут не заходит ближе 3 м к спавну и порталам.
+func test_spawn_and_portals_are_outside_the_ice_cone_at_patrol_start_in_every_graph_node() -> void:
+	var g := NodeGraph.load_file()
+	var boost := 1.0 + float(g.settings["alert_boost"])
+	var half := float(IceBrain.DEFAULT_SETTINGS["sight_half_angle_deg"])
+	for id in g.nodes:
+		var def: Dictionary = g.nodes[id]
+		var sight := float(def.get("ice_settings", {}).get("sight_range", IceBrain.DEFAULT_SETTINGS["sight_range"])) * boost
+		var checks: Array = []
+		for i in int(def["ice"]):
+			checks.append([NodeLayout.ICE[i], sight])
+		if def["tier"] == NodeGraph.TIER_BLACK:
+			checks.append([NodeLayout.BLACK_ICE[0], float(g.settings["black_ice"]["sight_range"]) * boost])
+		var watched: Array = [NodeLayout.SPAWN]
+		for i in (def["links"] as Array).size():
+			watched.append(NodeLayout.PORTAL_SLOTS[i])
+		for c in checks:
+			var wps: Array[Vector3] = []
+			for w in c[0]["waypoints"]:
+				wps.append(w)
+			var brain := IceBrain.new({}, wps[0], wps)
+			for p in watched:
+				assert_bool(IceBrain.can_see(wps[0], brain.facing, p, c[1], half)).override_failure_message("%s: %s на старте видит %s (зрение %.1f м)" % [id, c[0]["id"], p, c[1]]).is_false()
+				assert_float(_route_distance(p, wps)).override_failure_message("%s: маршрут %s ближе 3 м к %s" % [c[0]["id"], id, p]).is_greater_equal(3.0)
