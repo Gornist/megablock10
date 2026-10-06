@@ -57,3 +57,10 @@ e2e:
 ### Откат
 
 В `e2e.yml` вернуть `runs-on: ubuntu-latest` и шаги установки SDK/AVD; `scripts/devbox-runner.sh remove` снимает раннер.
+
+## Защита `main` (ruleset 24602926, с 06.10)
+
+Серверная страховка к хуку `guard-bash.sh` (хук видит только команды агентов): `main` нельзя удалить и перезаписать force-push,
+обновление — только с зелёными `build` и `admin-web` (main.yml) и веткой, свежей относительно `main`. Исключение — роль admin
+(владелец): `scripts/land.sh` работает как раньше. `e2e` и `netrun` не обязательные — запускаются не на каждый PR.
+Смотреть: `gh api repos/Gornist/megablock10/rulesets/24602926`; выключить — Settings → Rules → Rulesets.
