@@ -1,0 +1,28 @@
+# Хук .claude/hooks/guard-bash.sh и скрипты конвейера ловили баги только в живой работе (4 ложных отказа хука 05–06.10).
+# Здесь их проверяют статически: shellcheck, actionlint и таблица случаев хука (scripts/test-hook.cases).
+name: Конвейер (скрипты и workflows)
+
+on:
+  pull_request:
+    paths: [ "scripts/**", ".claude/hooks/**", ".github/workflows/**" ]
+  push:
+    branches: [ main ]
+    paths: [ "scripts/**", ".claude/hooks/**", ".github/workflows/**" ]
+
+concurrency:
+  group: pipeline-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Установить actionlint (shellcheck и jq уже есть на ubuntu-latest)
+        run: bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) && echo "$PWD" >> "$GITHUB_PATH"
+      - name: Проверить скрипты, workflows и хук
+        run: scripts/lint-pipeline.sh
+      - name: Журнал проверки
+        if: failure()
+        run: cat "${TMPDIR:-/tmp}/lint-pipeline.log"

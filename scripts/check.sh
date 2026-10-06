@@ -7,6 +7,7 @@
 #   scripts/check.sh --e2e      — плюс поднять стенд (up.sh --no-build) и прогнать все сценарии
 # Что «менялось» считается относительно origin/main (незапушенные коммиты + рабочее дерево).
 cd "$(dirname "$0")/.." || exit 1
+# shellcheck disable=SC2034  # ROOT не используется в этом файле; убирать — только с проверкой подоболочек
 ROOT=$PWD; LOGS=/tmp/mb10-check; mkdir -p $LOGS
 # JDK 21 (toolchain проекта; 17 и 23 не годятся: 17 — не тот toolchain, detekt не понимает 23). Задан JAVA_HOME — берём его; иначе первый найденный:
 # temurin-21, brew openjdk@21 (в системные пути Java brew его не кладёт — пуш с Mac падал «JAVA_HOME is set to an invalid directory», 05.10), java_home -v 21.
@@ -39,7 +40,9 @@ ALL=0; E2E=0; FAST=0; for a in "$@"; do case $a in --all) ALL=1;; --e2e) E2E=1; 
 changed() { [ $ALL -eq 1 ] || { git diff --name-only origin/main 2>/dev/null; git ls-files --others --exclude-standard; } | grep -q "^$1"; }
 declare -a TIMES; FAIL=0
 step() { # step "имя" команда...
-  local name=$1; shift; local t0=$(date +%s) log="$LOGS/${name// /_}.log"
+  local name=$1; shift
+  # shellcheck disable=SC2155  # код возврата date не важен
+  local t0=$(date +%s) log="$LOGS/${name// /_}.log"
   if "$@" > "$log" 2>&1; then r="ок"
   else r="ПРОВАЛ (см. $log)"; FAIL=1; fi
   TIMES+=("$name: $r, $(( $(date +%s) - t0 )) с")

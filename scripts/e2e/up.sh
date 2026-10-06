@@ -10,6 +10,8 @@ while [ $# -gt 0 ]; do case $1 in
   --clock) CLOCK=$2; shift;; --timer) TIMER=$2; shift;;
   *) die "неизвестный аргумент $1";; esac; shift; done
 
+# Замок общей очереди devbox (lib.sh): до остановки старого стенда — чужой стенд или Gradle-задача dbx.sh не должны мешать друг другу.
+stand_lock_acquire
 "$(dirname "$0")/down.sh" --keep-emulators >/dev/null 2>&1
 
 # 0. Один стенд на машину: порты эмуляторов (5554/5556) и сервера фиксированы, два одновременных up.sh (например, у двух агентов в разных
