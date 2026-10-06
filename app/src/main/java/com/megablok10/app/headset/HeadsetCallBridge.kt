@@ -4,6 +4,7 @@ import com.megablok10.app.call.CallControls
 import com.megablok10.app.call.CallPhase
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.log.Mb10Log
+import com.megablok10.app.sound.SoundMirror
 import com.megablok10.kit.mesh.OnlinePlayer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -24,10 +25,26 @@ class HeadsetCallBridge(
     private val onlinePlayers: () -> List<OnlinePlayer>,
     private val micGranted: () -> Boolean = { true },
 ) {
-    /** Следит за звонком и журналом и шлёт кадры при каждом изменении (первое значение — сразу), пока жива [scope]. */
+    /**
+     * Следит за звонком и журналом и шлёт кадры при каждом изменении (первое значение — сразу), пока жива [scope]. Очки, подключившиеся
+     * посреди звонка, к первому кадру `call` получают и текущий звук (`ring` у входящего, `ringback` у исходящего): иначе звонок без рингтона.
+     */
     fun observe(scope: CoroutineScope, send: (HeadsetOut) -> Boolean) {
-        scope.launch { calls.state.map(::callFrame).distinctUntilChanged().collect { send(HeadsetOut.Call(it)) } }
+        scope.launch {
+            var first = true
+            calls.state.map(::callFrame).distinctUntilChanged().collect { frame ->
+                send(HeadsetOut.Call(frame))
+                if (first) currentSound(frame)?.let { send(HeadsetOut.Sound(it)) }
+                first = false
+            }
+        }
         scope.launch { calls.observeLog().map(::callLogItems).distinctUntilChanged().collect { send(HeadsetOut.CallLog(it)) } }
+    }
+
+    private fun currentSound(frame: HeadsetCall): String? = when (frame.phase) {
+        HeadsetCall.INCOMING -> SoundMirror.RING
+        HeadsetCall.OUTGOING -> SoundMirror.RINGBACK
+        else -> null
     }
 
     /** Полное состояние по `resync`: текущий звонок и журнал. */

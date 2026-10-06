@@ -24,8 +24,12 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString
 
-/** Пауза перед очередной попыткой подключиться к очкам: растёт, пока не получается, и сбрасывается после удачного соединения. */
-class HeadsetBackoff(private val stepsMs: LongArray = longArrayOf(1_000, 2_000, 5_000, 10_000, 15_000)) {
+/**
+ * Пауза перед очередной попыткой подключиться к очкам: растёт, пока не получается, и сбрасывается после удачного соединения. Потолок 3 с:
+ * канал по локальному Wi-Fi, отказ в соединении стоит копейки, а очки, надетые после паузы, должны появиться почти сразу (на живой
+ * проверке 05.10 при потолке 15 с телефон нашёл надетые очки лишь через 11 с, и звонок прошёл мимо них).
+ */
+class HeadsetBackoff(private val stepsMs: LongArray = longArrayOf(1_000, 2_000, 3_000)) {
     private var attempt = 0
     fun next(): Long = stepsMs[minOf(attempt++, stepsMs.lastIndex)]
     fun reset() { attempt = 0 }
