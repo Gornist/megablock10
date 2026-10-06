@@ -259,8 +259,9 @@ func test_з_state_в_тактовом_режиме_несёт_tk_и_намер�
 	assert_int(int(tk["mv"])).is_equal(0)
 	assert_bool(tk.has("at") and tk.has("inh")).is_true()
 	var ice: Dictionary = st["ice"][0]
-	for key in ["id", "p", "f", "s", "b", "c", "d", "st", "nc", "nd", "aw"]:
+	for key in ["id", "p", "f", "s", "b", "c", "d", "st", "nc", "nd", "aw", "sc"]:
 		assert_bool(ice.has(key)).is_true()
+	assert_float(float(ice["sc"])).is_greater(0.0)   # дальность зрения в клетках
 	assert_int(int(ice["c"][0])).is_equal(10)   # после первого такта клетка (10; 10)
 	assert_int(int(ice["c"][1])).is_equal(10)
 	assert_int(int(ice["nc"][0])).is_equal(12)   # намерение: куда пойдёт на следующем такте
@@ -275,7 +276,7 @@ func test_з_state_в_реальном_времени_без_тактовых_п
 	assert_bool(await _wait_for(func(): return _states.has(a))).is_true()
 	var st: Dictionary = _states[a]
 	assert_bool(st.has("tk")).is_false()
-	for key in ["c", "d", "st", "nc", "nd", "aw"]:
+	for key in ["c", "d", "st", "nc", "nd", "aw", "sc"]:
 		assert_bool((st["ice"][0] as Dictionary).has(key)).is_false()
 
 

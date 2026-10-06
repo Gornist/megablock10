@@ -1093,7 +1093,14 @@ func _add_tick_fields(entry: Dictionary, ice: IceNode) -> void:
 		entry["nc"] = [(it["next_cell"] as Vector2i).x, (it["next_cell"] as Vector2i).y]
 		entry["nd"] = [(it["next_dir"] as Vector2i).x, (it["next_dir"] as Vector2i).y]
 		entry["aw"] = int(it["aware"])
+		var soft := ice_settings.duplicate(true)
+		soft.merge(node_def.get("ice_settings", {}), true)
+		entry["sc"] = float(_tick_ice_settings(soft)["sight_cells"])   # дальность зрения в клетках: по ней клиент рисует свет на полу и красит рамку прицела
 		return
+	var dark := ice_settings.duplicate(true)
+	dark.merge(node_def.get("ice_settings", {}), true)
+	dark.merge(black_ice_settings, true)
+	entry["sc"] = roundi(float(dark.get("sight_range", 12.0)) / NodeGrid.CELL_M)   # Black ICE: дальность из метров в клетки
 	var cell := NodeGrid.cell_of(ice.position)
 	var dir := NodeGrid.dir8(Vector2i.ZERO, Vector2i(roundi(ice.brain.facing.x * 100.0), roundi(ice.brain.facing.z * 100.0)))
 	entry["c"] = [cell.x, cell.y]
