@@ -166,3 +166,94 @@ func test_pick_вне_комнаты_зажимается_в_границы() ->
 	var walled := _grid_with([Vector2i(15, 3)]).pick(from, Vector3(20, 0, NodeGrid.center(Vector2i(0, 3)).z))
 	assert_str(walled["kind"]).is_equal("denied")
 	assert_str(walled["reason"]).is_equal("room")
+
+
+# --- Ш2-А: направления, шаги и путь по клеткам (тактовый ICE) ---
+
+
+func test_dir8_ближайшее_из_восьми() -> void:
+	var o := Vector2i(4, 4)
+	assert_object(NodeGrid.dir8(o, o)).is_equal(Vector2i.ZERO)
+	assert_object(NodeGrid.dir8(o, Vector2i(9, 4))).is_equal(Vector2i(1, 0))
+	assert_object(NodeGrid.dir8(o, Vector2i(9, 9))).is_equal(Vector2i(1, 1))
+	assert_object(NodeGrid.dir8(o, Vector2i(4, 1))).is_equal(Vector2i(0, -1))
+	assert_object(NodeGrid.dir8(o, Vector2i(0, 4))).is_equal(Vector2i(-1, 0))
+	assert_object(NodeGrid.dir8(o, Vector2i(9, 6))).is_equal(Vector2i(1, 0))   # 21,8° — ближе к востоку
+	assert_object(NodeGrid.dir8(o, Vector2i(9, 7))).is_equal(Vector2i(1, 1))   # 31° — ближе к юго-востоку
+	assert_object(NodeGrid.dir8(o, Vector2i(2, 1))).is_equal(Vector2i(-1, -1))
+
+
+func test_angle_deg_между_направлением_и_вектором() -> void:
+	var e := Vector2i(1, 0)
+	assert_float(NodeGrid.angle_deg(e, Vector2i(0, 0), Vector2i(3, 0))).is_equal_approx(0.0, 0.001)
+	assert_float(NodeGrid.angle_deg(e, Vector2i(0, 0), Vector2i(1, 1))).is_equal_approx(45.0, 0.001)
+	assert_float(NodeGrid.angle_deg(e, Vector2i(0, 0), Vector2i(1, -1))).is_equal_approx(45.0, 0.001)
+	assert_float(NodeGrid.angle_deg(e, Vector2i(0, 0), Vector2i(-2, 0))).is_equal_approx(180.0, 0.001)
+	assert_float(NodeGrid.angle_deg(Vector2i(1, 1), Vector2i(2, 2), Vector2i(5, 5))).is_equal_approx(0.0, 0.001)
+	assert_float(NodeGrid.angle_deg(e, Vector2i(2, 2), Vector2i(2, 2))).is_equal(0.0)   # вырожденный вектор
+
+
+func test_can_step_диагональ_не_режет_угол() -> void:
+	var g := _grid_with([Vector2i(1, 0)])
+	var o := Vector2i(0, 0)
+	assert_bool(g.can_step(o, Vector2i(0, 1))).is_true()
+	assert_bool(g.can_step(o, Vector2i(1, 0))).is_false()    # сама клетка занята
+	assert_bool(g.can_step(o, Vector2i(1, 1))).is_false()    # боковая (1;0) занята — угол не режем
+	assert_bool(g.can_step(Vector2i(5, 5), Vector2i(1, 1))).is_true()
+	assert_bool(g.can_step(Vector2i(0, 5), Vector2i(-1, 0))).is_false()   # вне комнаты
+	assert_bool(g.can_step(o, Vector2i.ZERO)).is_false()
+
+
+func test_path_прямой_и_диагональный() -> void:
+	var g := NodeGrid.new()
+	assert_array(g.path(Vector2i(2, 2), Vector2i(2, 2))).is_empty()
+	assert_array(g.path(Vector2i(0, 0), Vector2i(3, 0))).is_equal([Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0)])
+	var d := g.path(Vector2i(0, 0), Vector2i(2, 2))
+	assert_array(d).is_equal([Vector2i(1, 1), Vector2i(2, 2)])
+	# Равные по длине пути: идёт прямее (не уходит в сторону и обратно).
+	var s := g.path(Vector2i(3, 8), Vector2i(9, 8))
+	assert_int(s.size()).is_equal(6)
+	for c: Vector2i in s:
+		assert_int(c.y).is_equal(8)
+
+
+func test_path_не_режет_угол_колонны() -> void:
+	var g := _grid_with([Vector2i(1, 0)])
+	var p := g.path(Vector2i(0, 0), Vector2i(1, 1))
+	assert_array(p).is_equal([Vector2i(0, 1), Vector2i(1, 1)])
+
+
+func test_path_огибает_стену() -> void:
+	var wall: Array = []
+	for y in range(0, 5):
+		wall.append(Vector2i(2, y))   # стена x = 2, y 0–4
+	var g := _grid_with(wall)
+	var p := g.path(Vector2i(0, 2), Vector2i(4, 2))
+	assert_bool(p.is_empty()).is_false()
+	assert_object(p[p.size() - 1]).is_equal(Vector2i(4, 2))
+	assert_int(p.size()).is_greater(5)   # напрямую 4 шага, в обход стены — больше
+	var prev := Vector2i(0, 2)
+	for c: Vector2i in p:
+		assert_bool(g.can_step(prev, c - prev)).is_true()
+		prev = c
+
+
+func test_path_нет_пути_пусто() -> void:
+	var ring: Array = []
+	for dx in range(-1, 2):
+		for dy in range(-1, 2):
+			if dx != 0 or dy != 0:
+				ring.append(Vector2i(8 + dx, 8 + dy))
+	var g := _grid_with(ring)
+	assert_array(g.path(Vector2i(2, 2), Vector2i(8, 8))).is_empty()   # цель окружена
+
+
+func test_path_к_занятой_клетке_идёт_к_соседней() -> void:
+	var g := _grid_with([Vector2i(5, 5)])
+	var p := g.path(Vector2i(0, 0), Vector2i(5, 5))
+	assert_bool(p.is_empty()).is_false()
+	var last: Vector2i = p[p.size() - 1]
+	assert_object(last).is_equal(Vector2i(4, 4))   # ближайшая свободная соседняя
+	assert_int(p.size()).is_equal(4)
+	# Уже рядом с занятой клеткой — идти некуда.
+	assert_array(g.path(Vector2i(4, 5), Vector2i(5, 5))).is_empty()

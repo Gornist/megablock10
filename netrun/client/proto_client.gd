@@ -1,7 +1,8 @@
 class_name ProtoClient
 extends Node
 ## Клиент прототипа (V3), общий для Pico 4 и плоской сборки: сцена, XR-риг, сеть, журнал в файл.
-## Журнал (user://logs/netrun-*.log): start, mode, xr, comfort (+ comfort.warn), rig.recenter, rig.teleport, teleport.denied,
+## Журнал (user://logs/netrun-*.log): start, mode, xr, comfort (+ comfort.warn), rig.recenter, rig.teleport (в тактовом режиме + threat=0|1|2, wait=true), teleport.denied,
+## tick (тактовый режим: одна строка на такт — n, inh, mv),
 ## net.* (в том числе net.config, net.reconnect), grab.*, breach.* (взлом хранилища: request, start, tap — только отказ или ловушка, end, no, cancel), app.pause/resume, frame.slow.
 ## Деку на руке дополняют вкладки ЧАТ и ЗВОНКИ (фиктивная связь с телефоном): `phone link=fake|off tabs=N` при старте, `phone.msg thread=…`,
 ## `phone.call phase=…`, `phone.reply thread=… text=…`, `deck.tab id=…`; в строке `perf` — `deck_redraws=N` (сколько раз дека рисовалась в текстуру).
@@ -50,6 +51,7 @@ var _frame_stats := FrameStats.new()
 var _hand_modes := ["", ""]    # чем рисуется каждая рука (HandView.Mode): журнал hand.mode при смене
 var _perf_acc := 0.0
 var _last_level := -1
+var _last_tick_n := -1   # номер такта узла в последнем снимке: журнал `tick` — по одной строке на такт
 var _active_effects: Dictionary = {}   # id демона -> true, пока снимок показывает его active: по смене пишем daemon.use start / end
 var _pos_acc := 0.0
 var _paused_at_ms := -1
@@ -318,8 +320,13 @@ func _fmt3(p: Vector3) -> String:
 ## Игрок отпустил стик прицела. Риг переедет сам (моргание), здесь — просьба серверу и журнал.
 func _on_teleport_attempted(from: Vector3, to: Vector3, ok: bool, reason: String) -> void:
 	var cell := NodeGrid.cell_of(scene.rig.last_pick() if ok else to)   # выбранная клетка (до площадки у хранилища)
-	log_file.log("rig.teleport", {"from": _fmt_xz(from), "to": _fmt_xz(to), "dist": snappedf(NodeLayout.flat_distance(from, to), 0.1), "ok": ok,
-		"face": snappedf(scene.rig.pending_face_deg() if ok else 0.0, 0.1), "cell": "%d,%d" % [cell.x, cell.y]})
+	var fields := {"from": _fmt_xz(from), "to": _fmt_xz(to), "dist": snappedf(NodeLayout.flat_distance(from, to), 0.1), "ok": ok,
+		"face": snappedf(scene.rig.pending_face_deg() if ok and reason != "wait" else 0.0, 0.1), "cell": "%d,%d" % [cell.x, cell.y]}
+	if reason == "wait":
+		fields["wait"] = true   # тактовый режим: курок на своей клетке — ход «ждать» (риг не двигается)
+	if scene.rig.last_threat() >= 0:
+		fields["threat"] = scene.rig.last_threat()   # прогноз на следующий такт для выбранной клетки: 0 зелёный, 1 жёлтый, 2 красный
+	log_file.log("rig.teleport", fields)
 	if not ok:
 		log_file.log("teleport.denied", {"reason": reason, "by": "client"})
 	elif net != null and net.is_connected_to_world and not scene.ended:  # после ended запрос не уходит
@@ -345,6 +352,10 @@ func _on_teleport_denied(reason: String, server_pos: Vector3, left: float) -> vo
 ## Снимок узла: интерфейс, ICE и звук получают данные с сервера. Свою позицию клиент шлёт сам (20 раз/с).
 func _on_state(state: Dictionary) -> void:
 	scene.apply_state(state)
+	var tk: Variant = state.get("tk")
+	if tk is Dictionary and int((tk as Dictionary).get("n", -1)) != _last_tick_n:
+		_last_tick_n = int((tk as Dictionary).get("n", -1))
+		log_file.log("tick", {"n": _last_tick_n, "inh": int((tk as Dictionary).get("inh", 0)), "mv": int((tk as Dictionary).get("mv", 0))})
 	var edges := HudLogic.effect_edges(_active_effects, state.get("cd", []), float(state.get("k", 0.0)))
 	_active_effects = edges["active"]
 	for s in edges["started"]:
