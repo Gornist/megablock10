@@ -317,7 +317,8 @@ func test_twelve_node_graph_builds_by_tier() -> void:
 func test_empty_world_settings_come_from_graph_settings() -> void:
 	var d := {"default_entry": "x_a", "entries": {}, "settings": {
 		"trace": {"weights": {"seen_by_ice": 2.0}, "decay_per_sec": 0.2},
-		"ice": {"sight_range": 7.0}},
+		"ice": {"sight_range": 7.0},
+		"black_ice": {"sight_range": 12.0}},
 		"nodes": {"x_a": {"title": "A", "tier": "BASE", "ice": 0, "shards": 1, "links": []}}}
 	var srv := NetServer.new()
 	var sroot2 := Node.new()
@@ -337,6 +338,7 @@ func test_empty_world_settings_come_from_graph_settings() -> void:
 	meter.add_action("seen_by_ice", 0.0, 1.0)
 	assert_float(meter.value()).is_equal(2.0)                        # вес из graph.json, не умолчание 8
 	assert_float(float(gn.ice_settings.get("sight_range", -1.0))).is_equal(7.0)
+	assert_float(float(gn.black_ice_settings.get("sight_range", -1.0))).is_equal(12.0)   # Black ICE не смягчается числами узла
 	srv.stop_net()
 
 

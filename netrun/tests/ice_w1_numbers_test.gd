@@ -78,3 +78,12 @@ func test_player_leaving_the_cone_after_five_seconds_is_not_caught() -> void:
 	assert_int(b.state()).is_equal(IceBrain.State.PATROL)
 	assert_float(trace_seen).is_less(25.0)  # 5 с на виду < «подозрительно» (25): вес seen_by_ice 2
 	print("[w1-замер] 5 с на виду на 5 м: осведомлённость %.2f, trace %.1f; ушёл из конуса — не поймали, ICE снова на патруле" % [aware, trace_seen])
+
+
+## Black ICE видит теми же числами, что и обычный ICE узла, поэтому смягчение NIGHTMARE-узлов его бы ослабило: graph.json фиксирует его зрение и скорость прежними (умолчания ICE).
+func test_black_ice_keeps_the_old_perception_numbers() -> void:
+	var g := NodeGraph.load_file()
+	var b: Dictionary = g.settings.get("black_ice", {})
+	assert_float(float(b.get("sight_range", -1.0))).is_equal(IceBrain.DEFAULT_SETTINGS["sight_range"])
+	assert_float(float(b.get("notice_per_sec", -1.0))).is_equal(IceBrain.DEFAULT_SETTINGS["notice_per_sec"])
+	assert_float(float(b.get("chase_speed", -1.0))).is_equal(IceBrain.DEFAULT_SETTINGS["chase_speed"])
