@@ -7,12 +7,12 @@ object BreachTierParams {
             lockLength = 1, bufferSlack = 2, cipherTimerSec = 45,
         )
         Tier.HARD -> BreachParams(
-            gridSize = 6, timerSec = 90, deadCellsRange = 2..3, corruptedCodesRange = 1..2,
+            gridSize = 6, timerSec = 90, deadCellsRange = 2..3, corruptedCodesRange = 0..0, lockTrapsRange = 1..2,
             lockLength = 2, bufferSlack = 1, cipherTimerSec = 60,
             failPenaltyLockStep = 1, failPenaltyTrapStep = 1, failPenaltyMaxSteps = 2, failPenaltyMinutes = 10,
         )
         Tier.NIGHTMARE -> BreachParams(
-            gridSize = 7, timerSec = 150, deadCellsRange = 5..6, corruptedCodesRange = 3..4,
+            gridSize = 7, timerSec = 150, deadCellsRange = 5..6, corruptedCodesRange = 2..3, lockTrapsRange = 3..4,
             lockLength = 3, bufferSlack = 0, cipherTimerSec = 75,
             failPenaltyLockStep = 1, failPenaltyTrapStep = 1, failPenaltyMaxSteps = 2, failPenaltyMinutes = 10,
         )
@@ -40,6 +40,8 @@ object BreachTierParams {
  * - [lockLength] — длина замка хранилища по тиру. Само по себе число ничего не меняет: замок в попытку вводит вызывающий
  *   (параметр `lock` у [generateGrid]), иначе экран получил бы замок без строки «ЗАМОК».
  * - [bufferSlack] — запас клеток буфера сверх «замок + демоны» (см. [BreachTierParams.bufferSize]).
+ * - [lockTrapsRange] — приманки попытки с замком (HARD 1–2, NIGHTMARE 3–4, breach.md 2.4); без замка действует [corruptedCodesRange] — прежний, так что
+ *   приложение до экрана В3 приманок не получает больше, чем раньше. По умолчанию равен [corruptedCodesRange].
  * - [cipherTimerSec] — таймер мини-взлома «шифр-замок шарда»: он остался прежним (45/60/75), хотя таймер взлома контейнера вырос.
  * - failPenalty* — цена провала (breach.md 2.7): шаг замка и приманок за один FAIL, потолок шагов, срок настороженности в минутах;
  *   [failPenaltyMinutes] = 0 — цены нет (BASE). Здесь только числа, хранит состояние вызывающий.
@@ -49,6 +51,7 @@ data class BreachParams(
     val timerSec: Int,
     val deadCellsRange: IntRange,
     val corruptedCodesRange: IntRange,
+    val lockTrapsRange: IntRange = corruptedCodesRange,
     val lockLength: Int = 0,
     val bufferSlack: Int = 0,
     val cipherTimerSec: Int = timerSec,

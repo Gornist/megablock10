@@ -55,6 +55,24 @@ class BreachLockGridTest {
         }
     }
 
+    /** Охраняет «приложение до В3 не меняется»: без замка сетка не зависит от lockTrapsRange, а на HARD нет ничего, кроме мёртвых клеток. */
+    @Test
+    fun `without a lock the new trap range is ignored and HARD gets no decoys`() {
+        for (tier in Tier.entries) {
+            val params = BreachTierParams.forTier(tier)
+            val bumped = params.copy(lockTrapsRange = 6..6)
+            for (seed in 1L..50L) {
+                val daemons = deck(Random(seed), 3)
+                val a = generateGrid(params.gridSize, daemons, Random(seed + 2000), params)
+                val b = generateGrid(params.gridSize, daemons, Random(seed + 2000), bumped)
+                assertEquals("$tier seed $seed", a, b)
+                if (tier == Tier.HARD) {
+                    assertTrue("HARD без замка: только мёртвые клетки", a.trapCells.all { a.codeAt(it) == BreachSymbols.DEAD_MARKER })
+                }
+            }
+        }
+    }
+
     @Test
     fun `lock codes come from the alphabet and differ between seeds`() {
         val params = BreachTierParams.forTier(Tier.NIGHTMARE)
@@ -77,7 +95,7 @@ class BreachLockGridTest {
                 val grid = generateGrid(params.gridSize, daemons, random, params, params.lockLength)
                 val dead = grid.trapCells.filter { grid.codeAt(it) == BreachSymbols.DEAD_MARKER }
                 val decoys = grid.trapCells - dead.toSet()
-                assertTrue("$tier seed $seed: приманок ${decoys.size}", decoys.size in params.corruptedCodesRange)
+                assertTrue("$tier seed $seed: приманок ${decoys.size}", decoys.size in params.lockTrapsRange)
                 assertTrue("$tier seed $seed: мёртвых ${dead.size}", dead.size in params.deadCellsRange)
                 val goals = (grid.lock + daemons.flatMap { it.sequence }).toSet()
                 val pathLen = grid.lock.size + len

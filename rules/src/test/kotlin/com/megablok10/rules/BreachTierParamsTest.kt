@@ -14,7 +14,8 @@ class BreachTierParamsTest {
         assertEquals(listOf(45, 90, 150), Tier.entries.map { p(it).timerSec })
         assertEquals(listOf(1, 2, 3), Tier.entries.map { p(it).lockLength })
         assertEquals(listOf(2, 1, 0), Tier.entries.map { p(it).bufferSlack })
-        assertEquals(listOf(0..0, 1..2, 3..4), Tier.entries.map { p(it).corruptedCodesRange })
+        assertEquals("без замка приманки прежние: приложение до В3 не меняется", listOf(0..0, 0..0, 2..3), Tier.entries.map { p(it).corruptedCodesRange })
+        assertEquals("приманки попытки с замком (breach.md 2.4)", listOf(0..0, 1..2, 3..4), Tier.entries.map { p(it).lockTrapsRange })
         assertEquals(listOf(0..0, 2..3, 5..6), Tier.entries.map { p(it).deadCellsRange })
     }
 

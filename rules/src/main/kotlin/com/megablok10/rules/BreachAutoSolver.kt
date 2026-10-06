@@ -12,6 +12,7 @@ package com.megablok10.rules
  */
 object BreachAutoSolver {
     private const val NODE_BUDGET = 200_000
+    private const val SPELL_NODE_BUDGET = 200_000
     private const val MATCHED_WEIGHT = 1000
     private const val LOCK_WEIGHT = 500
     private const val MAX_ORDERED_DAEMONS = 5
@@ -47,20 +48,23 @@ object BreachAutoSolver {
     private fun spellPath(start: BreachAttemptState): List<Pair<Int, Int>>? {
         val daemons = start.daemons
         if (daemons.isEmpty() || daemons.size > MAX_ORDERED_DAEMONS || daemons.any { it.sequence.isEmpty() }) return null
+        val budget = intArrayOf(SPELL_NODE_BUDGET) // общий на все порядки: перебор не должен виснуть на больших сетках
         for (order in permutations(daemons)) {
             val target = start.lock + order.flatMap { it.sequence }
             if (target.size > start.bufferSize) continue
-            spellFrom(start, target)?.let { return it.selected }
+            spellFrom(start, target, budget)?.let { return it.selected }
+            if (budget[0] <= 0) break
         }
         return null
     }
 
-    private fun spellFrom(s: BreachAttemptState, target: List<String>): BreachAttemptState? {
+    private fun spellFrom(s: BreachAttemptState, target: List<String>, budget: IntArray): BreachAttemptState? {
         if (s.selected.size == target.size) return s.takeIf { it.matchedDaemonIds.size == it.daemons.size }
+        if (--budget[0] <= 0) return null
         val want = target[s.selected.size]
         for (cell in s.selectableCells()) {
             if (cell in s.grid.trapCells || s.grid.codeAt(cell) != want) continue
-            spellFrom(s.select(cell), target)?.let { return it }
+            spellFrom(s.select(cell), target, budget)?.let { return it }
         }
         return null
     }
