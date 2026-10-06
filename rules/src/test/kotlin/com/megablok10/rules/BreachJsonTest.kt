@@ -27,6 +27,15 @@ class BreachJsonTest {
                 "timer_sec" to num(p.timerSec),
                 "dead_cells" to range(p.deadCellsRange),
                 "corrupted_codes" to range(p.corruptedCodesRange),
+                "lock_length" to num(p.lockLength),
+                "buffer_slack" to num(p.bufferSlack),
+                "cipher_timer_sec" to num(p.cipherTimerSec),
+                "fail_penalty" to obj(
+                    "lock_step" to num(p.failPenaltyLockStep),
+                    "trap_step" to num(p.failPenaltyTrapStep),
+                    "max_steps" to num(p.failPenaltyMaxSteps),
+                    "minutes" to num(p.failPenaltyMinutes),
+                ),
                 "eddies" to range(ContainerEddies.rollRange(tier)),
                 "miner_bonus" to num(ContainerEddies.minerBonus(tier)),
             )

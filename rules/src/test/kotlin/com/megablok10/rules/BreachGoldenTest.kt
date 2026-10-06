@@ -66,7 +66,8 @@ class BreachGoldenTest {
         val params = BreachTierParams.forTier(spec.tier)
         val random = Random(spec.seed)
         val grid = generateGrid(params.gridSize, spec.daemons, random, if (spec.decrypt) null else params)
-        val timerSec = params.timerSec
+        // Шифр-замок шарда держит прежние таймеры 45/60/75 (BreachScreen.ShardDecryptFlow берёт cipherTimerSec).
+        val timerSec = if (spec.decrypt) params.cipherTimerSec else params.timerSec
         var run = BreachRun(BreachAttemptState(grid, spec.daemons, spec.bufferSize), timerSec)
         val taps = when (spec.script) {
             Script.SOLVER -> BreachAutoSolver.solve(run.attempt)

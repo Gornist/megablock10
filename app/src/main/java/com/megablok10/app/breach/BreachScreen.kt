@@ -196,7 +196,7 @@ internal fun ShardDecryptFlow(shard: Mb10Qr.Shard, isHintSeen: () -> Boolean, on
                 daemons = listOf(target),
                 seed = sessionSeed,
                 gridSize = params.gridSize,
-                timerSec = params.timerSec,
+                timerSec = params.cipherTimerSec,
                 bufferSize = target.sequence.size + BreachConstants.DECRYPT_BUFFER_EXTRA,
                 breachParams = null,
                 onRescan = onCancel,
