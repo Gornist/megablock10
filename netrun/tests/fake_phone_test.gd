@@ -3,8 +3,8 @@ extends GdUnitTestSuite
 ## RemotePhoneLink.on_frame с ожидаемым эффектом, все кадры очков — валидный JSON известного типа. Тот же файл питает инструмент tools/fake_phone.gd.
 
 const FRAMES_PATH := "res://tests/fixtures/phone_frames.json"
-const PHONE_TYPES: Array[String] = ["hello", "threads", "messages", "message", "call", "call_log", "contacts", "sound"]
-const GLASSES_TYPES: Array[String] = ["hello_ack", "send_text", "mark_read", "accept", "decline", "hangup", "mute", "start_call", "resync"]
+const PHONE_TYPES: Array[String] = ["hello", "threads", "messages", "message", "call", "call_log", "contacts", "sound", "voice"]
+const GLASSES_TYPES: Array[String] = ["hello_ack", "send_text", "mark_read", "accept", "decline", "hangup", "mute", "start_call", "resync", "voice_ready"]
 
 var _link: RemotePhoneLink
 
@@ -318,3 +318,36 @@ func test_normalize_writes_whole_numbers_as_integers() -> void:
 	# сообщение, собранное телефоном в ответ на send_text, — с целым ts
 	var r := FakePhone.reply_to(_glasses()["send_text"], _phone())
 	assert_bool(JSON.stringify(FakePhone.normalize(r[0]["frame"])).contains(".0,")).is_false()
+
+
+# ---------------------------------------------------------------- голос: бинарные кадры (раздел «Голос» документа)
+
+func _decode_voice(hex: String) -> Dictionary:
+	var bytes := hex.hex_decode()
+	var samples: Array = []
+	for i in range(5, bytes.size() - 1, 2):
+		samples.append(bytes.decode_s16(i))
+	return {"type": bytes[0], "seq": bytes.decode_u32(1), "samples": samples, "size": bytes.size()}
+
+
+func test_voice_binary_samples_match_the_documented_layout() -> void:
+	var b: Dictionary = _all()["binary"]
+	var mic := _decode_voice(str(b["voice_mic_hex"]))
+	var peer := _decode_voice(str(b["voice_peer_hex"]))
+	assert_int(mic["type"]).is_equal(1)    # микрофон очков → телефон
+	assert_int(peer["type"]).is_equal(2)   # звук собеседника телефон → очки
+	assert_int(mic["seq"]).is_equal(int(b["seq"]))
+	assert_int(peer["seq"]).is_equal(int(b["seq"]))
+	var want: Array = (b["samples"] as Array).map(func(v): return int(v))   # JSON отдаёт числа как float
+	assert_array(mic["samples"]).is_equal(want)
+	assert_array(peer["samples"]).is_equal(want)
+	assert_int(mic["size"]).is_equal(5 + 2 * (b["samples"] as Array).size())
+
+
+func test_voice_json_frames_are_ignored_by_the_link_until_voice_is_implemented() -> void:
+	# до среза 3 очки не должны падать на кадре voice и не должны менять состояние звонка
+	_link.on_frame(_phone()["voice_on"])
+	_link.on_frame(_phone()["voice_off"])
+	assert_str(_link.call_state()["phase"]).is_equal("idle")
+	assert_bool(_glasses()["voice_ready_on"]["on"]).is_true()
+	assert_bool(_glasses()["voice_ready_off"]["on"]).is_false()

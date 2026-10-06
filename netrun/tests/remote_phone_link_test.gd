@@ -307,3 +307,167 @@ func test_pause_without_a_phone_is_harmless() -> void:
 	_link.pause()
 	assert_bool(_link.is_online()).is_false()
 	assert_int(_link.resume()).is_equal(OK)
+
+
+# ---------------------------------------------------------------- голос (docs/netrun-phone-link.md, «Голос»)
+
+func _pcm(samples: Array) -> PackedByteArray:
+	var b := PackedByteArray()
+	b.resize(samples.size() * 2)
+	for i in samples.size():
+		b.encode_s16(i * 2, int(samples[i]))
+	return b
+
+
+func _say_binary(ws: WebSocketPeer, bytes: PackedByteArray) -> void:
+	ws.send(bytes, WebSocketPeer.WRITE_MODE_BINARY)
+
+
+## Телефон шлёт voice{on:true,rate} и ждёт, пока очки его примут.
+func _voice_on(ws: WebSocketPeer, rate: int = 44100) -> void:
+	_say(ws, {"t": "voice", "on": true, "rate": rate})
+	assert_bool(await _pump(func(): return _link.voice_active())).is_true()
+
+
+func test_voice_frame_turns_voice_on_and_off_and_signals_once() -> void:
+	var ws: WebSocketPeer = (await _online_phone())[0]
+	var got: Array = []
+	_link.voice_requested.connect(func(on, rate): got.append([on, rate]))
+	assert_bool(_link.voice_active()).is_false()
+	assert_int(_link.voice_rate()).is_equal(44100)
+	_say(ws, {"t": "voice", "on": true, "rate": 16000})
+	assert_bool(await _pump(func(): return _link.voice_active())).is_true()
+	assert_int(_link.voice_rate()).is_equal(16000)
+	_say(ws, {"t": "voice", "on": true, "rate": 16000})   # то же состояние — без повторного сигнала
+	_say(ws, {"t": "voice", "on": true, "rate": 48000})   # другая частота — новый сигнал
+	assert_bool(await _pump(func(): return got.size() == 2)).is_true()
+	_say(ws, {"t": "voice", "on": false})
+	assert_bool(await _pump(func(): return not _link.voice_active())).is_true()
+	_say(ws, {"t": "voice", "on": false})
+	await _pump(func(): return false, 10)
+	assert_array(got).is_equal([[true, 16000], [true, 48000], [false, 48000]])
+
+
+func test_voice_default_rate_and_bad_rate_is_ignored() -> void:
+	var got: Array = []
+	_link.voice_requested.connect(func(on, rate): got.append([on, rate]))
+	for bad in [{"t": "voice", "on": true, "rate": 100}, {"t": "voice", "on": true, "rate": 96000}, {"t": "voice", "on": true, "rate": "много"}]:
+		_link.on_frame(bad)
+	assert_bool(_link.voice_active()).is_false()
+	assert_array(got).is_empty()
+	_link.on_frame({"t": "voice", "on": true})
+	assert_bool(_link.voice_active()).is_true()
+	assert_int(_link.voice_rate()).is_equal(RemotePhoneLink.VOICE_DEFAULT_RATE)
+	_link.on_frame({"t": "voice", "on": true, "rate": 8000})   # границы допустимого
+	_link.on_frame({"t": "voice", "on": true, "rate": 48000})
+	assert_array(got).is_equal([[true, 44100], [true, 8000], [true, 48000]])
+
+
+func test_peer_audio_frame_reaches_the_signal_but_mic_type_and_garbage_do_not() -> void:
+	var ws: WebSocketPeer = (await _online_phone())[0]
+	await _voice_on(ws)
+	var got: Array = []
+	_link.voice_frame_received.connect(func(seq, pcm): got.append([seq, pcm]))
+	var pcm := _pcm([0, 1000, -1000, 32767])
+	_say_binary(ws, PhoneVoiceCodec.encode(PhoneVoiceCodec.TYPE_MIC, 1, pcm))   # чужой тип
+	_say_binary(ws, PackedByteArray([2, 0, 0, 0]))                              # короче заголовка
+	_say_binary(ws, PackedByteArray([2, 0, 0, 0, 0, 1, 2, 3]))                  # нечётная полезная часть
+	_say_binary(ws, PackedByteArray([9, 0, 0, 0, 0, 1, 2]))                     # неизвестный тип
+	_say_binary(ws, PhoneVoiceCodec.encode(PhoneVoiceCodec.TYPE_PEER, 5, pcm))
+	assert_bool(await _pump(func(): return got.size() == 1)).is_true()
+	assert_int(got[0][0]).is_equal(5)
+	assert_array(got[0][1]).is_equal(pcm)
+	assert_int(_link.voice_dropped).is_equal(4)
+
+
+func test_peer_audio_is_dropped_while_voice_is_off() -> void:
+	var ws: WebSocketPeer = (await _online_phone())[0]
+	var got: Array = []
+	_link.voice_frame_received.connect(func(seq, pcm): got.append(seq))
+	_say_binary(ws, PhoneVoiceCodec.encode(PhoneVoiceCodec.TYPE_PEER, 1, _pcm([1, 2])))
+	assert_bool(await _pump(func(): return _link.voice_dropped == 1)).is_true()
+	assert_array(got).is_empty()
+
+
+func test_mic_chunks_go_to_the_phone_as_binary_type_1_with_rising_seq_reset_by_voice_on() -> void:
+	var ws: WebSocketPeer = (await _online_phone())[0]
+	await _voice_on(ws)
+	var pcm := _pcm([7, -7, 300])
+	assert_bool(_link.send_voice_chunk(pcm)).is_true()
+	assert_bool(_link.send_voice_chunk(pcm)).is_true()
+	assert_bool(await _pump(func(): return ws.get_available_packet_count() >= 2)).is_true()
+	var first := ws.get_packet()
+	assert_bool(ws.was_string_packet()).is_false()
+	var d1 := PhoneVoiceCodec.decode(first)
+	var d2 := PhoneVoiceCodec.decode(ws.get_packet())
+	assert_int(d1["type"]).is_equal(PhoneVoiceCodec.TYPE_MIC)
+	assert_int(d1["seq"]).is_equal(0)
+	assert_int(d2["seq"]).is_equal(1)
+	assert_array(d1["pcm"]).is_equal(pcm)
+	# новое voice{on:true} начинает счёт заново
+	_say(ws, {"t": "voice", "on": true, "rate": 44100})
+	await _pump(func(): return false, 10)
+	assert_bool(_link.send_voice_chunk(pcm)).is_true()
+	assert_bool(await _pump(func(): return ws.get_available_packet_count() >= 1)).is_true()
+	assert_int(PhoneVoiceCodec.decode(ws.get_packet())["seq"]).is_equal(0)
+
+
+func test_voice_chunk_fails_without_a_phone_or_with_a_bad_chunk() -> void:
+	assert_bool(_link.send_voice_chunk(_pcm([1, 2]))).is_false()   # телефона нет
+	var ws: WebSocketPeer = (await _online_phone())[0]
+	assert_bool(_link.send_voice_chunk(PackedByteArray())).is_false()
+	assert_bool(_link.send_voice_chunk(PackedByteArray([1, 2, 3]))).is_false()
+	var big := PackedByteArray()
+	big.resize(PhoneVoiceCodec.MAX_PAYLOAD + 2)
+	assert_bool(_link.send_voice_chunk(big)).is_false()
+	await _pump(func(): return false, 10)
+	assert_int(ws.get_available_packet_count()).is_equal(0)
+
+
+func test_voice_ready_goes_out_as_json() -> void:
+	var ws: WebSocketPeer = (await _online_phone())[0]
+	_link.send_voice_ready(true)
+	_link.send_voice_ready(false)
+	assert_bool(await _pump(func(): return ws.get_available_packet_count() >= 2)).is_true()
+	assert_array(_frames(ws)).is_equal([{"t": "voice_ready", "on": true}, {"t": "voice_ready", "on": false}])
+
+
+func test_disconnect_while_voice_is_on_switches_voice_off() -> void:
+	var ws: WebSocketPeer = (await _online_phone())[0]
+	await _voice_on(ws, 16000)
+	var got: Array = []
+	_link.voice_requested.connect(func(on, rate): got.append([on, rate]))
+	ws.close()
+	assert_bool(await _pump(func(): return not _link.is_online())).is_true()
+	assert_bool(_link.voice_active()).is_false()
+	assert_array(got).is_equal([[false, 16000]])
+
+
+func test_pause_while_voice_is_on_switches_voice_off() -> void:
+	var ws: WebSocketPeer = (await _online_phone())[0]
+	await _voice_on(ws)
+	var got: Array = []
+	_link.voice_requested.connect(func(on, rate): got.append([on, rate]))
+	_link.pause()
+	assert_bool(_link.voice_active()).is_false()
+	assert_array(got).is_equal([[false, 44100]])
+
+
+func test_binary_frame_before_hello_is_closed() -> void:
+	var ws := _connect()
+	assert_bool(await _open(ws)).is_true()
+	_say_binary(ws, PhoneVoiceCodec.encode(PhoneVoiceCodec.TYPE_PEER, 1, _pcm([1, 2])))
+	assert_bool(await _pump(func(): return ws.get_ready_state() == WebSocketPeer.STATE_CLOSED)).is_true()
+	assert_int(ws.get_close_code()).is_equal(RemotePhoneLink.CLOSE_BAD_HELLO)
+	assert_bool(_link.is_online()).is_false()
+
+
+func test_oversized_binary_frame_closes_the_connection() -> void:
+	var ws: WebSocketPeer = (await _online_phone())[0]
+	ws.outbound_buffer_size = RemotePhoneLink.MAX_FRAME_BYTES * 2
+	var big := PackedByteArray()
+	big.resize(RemotePhoneLink.MAX_FRAME_BYTES + 16)
+	big[0] = PhoneVoiceCodec.TYPE_PEER
+	_say_binary(ws, big)
+	assert_bool(await _pump(func(): return ws.get_ready_state() == WebSocketPeer.STATE_CLOSED)).is_true()
+	assert_int(ws.get_close_code()).is_equal(RemotePhoneLink.CLOSE_TOO_BIG)

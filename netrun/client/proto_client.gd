@@ -8,7 +8,8 @@ extends Node
 ## Аргументы разработки: `--walk` (плоская сборка: ходьба WASD), `--turn=none|snap|smooth` (режим поворота поверх comfort.cfg),
 ## `--phone=off` (спрятать вкладки ЧАТ и ЗВОНКИ: остаётся одна ДЕКА; по умолчанию вкладки есть, данные для них — фиктивный сценарий),
 ## `--phone=remote [--phone-port=7420] [--phone-token=…]` (настоящий телефон; то же в netrun.cfg, секция [phone]: mode, port, token; аргументы сильнее файла;
-## порт не поднялся — `phone.warn` и фиктивная связь; в журнал: `phone link=remote port=… token=set|none`, `phone.online online=… callsign=…`, `phone.sound kind=…`).
+## порт не поднялся — `phone.warn` и фиктивная связь; в журнал: `phone link=remote port=… token=set|none`, `phone.online online=… callsign=…`, `phone.sound kind=…`,
+## `phone.voice on=… rate=… ready=… reason=…`, пока голос включён — `phone.voice.stat …` раз в 5 с).
 ## Адрес сервера и токен — из netrun.cfg на очках и аргументов (NetConfig.from_sources); сам токен в журнал не попадает.
 
 const SLOW_LOG_MIN_GAP_MS := 250  # долгие кадры (FrameStats.is_slow) в журнал — не чаще раза в 250 мс (остальные — счётчиком)
@@ -25,6 +26,10 @@ var trace_audio: TraceAudio
 var comfort: ComfortConfig
 ## Связь деки с телефоном (FakePhoneLink или RemotePhoneLink); null при `--phone=off`.
 var phone: PhoneLink
+## Узел голоса телефона (микрофон и динамик очков); есть только при настоящей связи (`--phone=remote`).
+var phone_voice: PhoneVoice
+## Раз в столько секунд, пока голос включён, в журнал уходит `phone.voice.stat`.
+const VOICE_STAT_PERIOD_S := 5.0
 
 ## Режимы связи с телефоном: `--phone=` (fake — по умолчанию, off — без вкладок ЧАТ и ЗВОНКИ, remote — настоящий телефон).
 const PHONE_FAKE := "fake"
@@ -250,6 +255,28 @@ func _wire_remote_phone(remote: RemotePhoneLink) -> void:
 	sounds.bind(remote)
 	remote.online_changed.connect(func(online: bool): log_file.log("phone.online", {"online": online, "callsign": remote.phone_callsign}))
 	remote.sound_requested.connect(func(kind: String): log_file.log("phone.sound", {"kind": kind}))
+	phone_voice = PhoneVoice.new()
+	add_child(phone_voice)
+	phone_voice.bind(remote)   # подписан раньше журнала: к моменту строки узел уже ответил телефону
+	remote.voice_requested.connect(func(on: bool, rate: int):
+		if not on:
+			log_file.log("phone.voice", {"on": false, "rate": rate}))
+	phone_voice.ready_sent.connect(func(ready: bool, reason: String):   # ответ бывает только на запрос on=true
+		log_file.log("phone.voice", {"on": true, "rate": remote.voice_rate(), "ready": ready, "reason": reason}))
+	var stat_timer := Timer.new()
+	stat_timer.wait_time = VOICE_STAT_PERIOD_S
+	stat_timer.timeout.connect(_log_voice_stat)
+	add_child(stat_timer)
+	stat_timer.start()
+
+
+## Строка `phone.voice.stat` — пока голос включён, раз в VOICE_STAT_PERIOD_S: счётчики кадров и приглушения для разбора эха и потерь.
+func _log_voice_stat() -> void:
+	if phone_voice == null or not phone_voice.is_active():
+		return
+	var s := phone_voice.stats()
+	log_file.log("phone.voice.stat", {"sent": s["sent"], "recv": s["received"], "lost": s["lost"], "late": s["late"],
+		"overflow": s["overflow"], "ducked_ms": s["ducked_ms"]})
 
 
 ## Идентификатор диалога для журнала: настоящий ЛС — публичный ключ в ~120 символов, режем до «…последние 8».

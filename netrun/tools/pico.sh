@@ -90,6 +90,10 @@ cmd_install() {
 
   echo "Установка $apk на $serial..."
   adb -s "$serial" install -r "$apk"
+  # Разрешение микрофона выдаём сразу: диалог внутри VR не показать. Сбой выдачи установку не проваливает.
+  if ! adb -s "$serial" shell pm grant "$PACKAGE" android.permission.RECORD_AUDIO; then
+    echo "Предупреждение: не удалось выдать RECORD_AUDIO для $PACKAGE на $serial (голос в звонке не заработает)." >&2
+  fi
   echo "Готово."
 }
 
