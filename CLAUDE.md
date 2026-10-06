@@ -28,7 +28,7 @@
 | **Godot** | `netrun/` — сервер мира, игра, дека, сеть и формат сообщений (`netrun/server/`, `netrun/shared/`), `netrun-bridge/`, `docs/netrun*.md` | ассеты и вид аватара (Blender) |
 | **Blender** | вид Сети: `netrun/assets/` (модели, `src/*.py`, шейдеры, превью, `ARCHITECTURE.md`, `STYLE.md`) и отрисовка тела и рук в `netrun/client/` (`avatar_view.gd`, `hand_view.gd`, `avatar_body.gd`, `head_*.gd`; окружение `node_view.gd`, `ice_view.gd` — Godot), тесты ассетов `netrun/tests/assets_*` | формат сообщений и сеть (`netrun/shared/`, `netrun/server/` — Godot): новые поля позы — предложить Godot-сессии |
 | **Геймдизайн** | `docs/gamedesign/` — документы проекта и модель (`docs/gamedesign/model/`) | код всех зон: изменения — карточками сессиям зон, код пишут они (решение владельца 06.10) |
-| **Pipeline manager** | общие правила и инструменты: `CLAUDE.md`, `.claude/` (хук, настройки, общие skills), общие `scripts/` (`check`, `verify`, `dbx`, `ci-wait`, `agent-worktree`, `zone-check`, `land`, `session-stats`), `.github/dependabot.yml`; `scripts/phone.sh` дополняет и Android App; **очередь слияний в `main` за все сессии** (Git и процесс) | код областей |
+| **Pipeline manager** | общие правила и инструменты: `CLAUDE.md`, `.claude/` (хук, настройки, общие skills), общие `scripts/` (`check`, `verify`, `dbx`, `ci-wait`, `agent-worktree`, `zone-check`, `train`, `land`, `session-stats`), `.github/dependabot.yml`; `scripts/phone.sh` дополняет и Android App; **очередь слияний в `main` за все сессии** (Git и процесс) | код областей |
 
 Общее для всех: `docs/progress.md` — каждая сессия правит только свой раздел; `.github/workflows/` своей области — можно, `main.yml` — через
 Pipeline manager. Работать в своей worktree (`scripts/agent-worktree.sh new <имя>`), добавлять файлы явными путями, в `main` — только владелец.
@@ -66,8 +66,12 @@ Pipeline manager. Работать в своей worktree (`scripts/agent-worktr
 - **Слияния ведёт Pipeline manager** (решение владельца 06.10: он не должен ходить по сессиям и собирать, что готово):
   1. Сессия доводит ветку: `verify.sh --full`, `zone-check.sh`, пуш, PR, зелёный CI (`scripts/ci-wait.sh pr N` в фоне).
   2. Пишет Pipeline manager (SendMessage, не владельцу): «готово к слиянию: PR N — что внутри; порядок/пара с PR M; ждёт ли решения владельца».
-  3. Pipeline manager держит очередь: порядок и пары (контракт между зонами), отставшую ветку догоняет вливанием `origin/main`
-     (merge, не rebase) и ждёт CI, проверяет `scripts/land.sh --check N…` и приносит владельцу одну команду на всю очередь.
+  3. Pipeline manager держит очередь: порядок и пары (контракт между зонами). Перемотка влить можно только прямое продолжение `main`,
+     поэтому после каждого слияния остальные PR отстают. Два и больше готовых PR (или один отставший) — **поезд**: `scripts/train.sh N M…`
+     собирает их на свежем `main` в ветку `agent/queue-*` и открывает PR «Поезд слияний»; конфликтный PR выпадает, пара (красный PR,
+     голова которого входит в другой PR поезда) едет вместе. Один CI поезда (`scripts/ci-wait.sh pr <поезд>` в фоне) вместо круга
+     «влить → догнать → ждать CI» на каждый PR; GitHub сам отмечает PR поезда влитыми. Самые дорогие по CI пары — первыми.
+     Проверка — `scripts/land.sh --check <поезд>`; владельцу — одна команда.
   4. Владелец запускает `scripts/land.sh N [M…]` — перемотка `main` по очереди и `pull --ff-only` основной папки. Агентам перемотка
      `main` (`land.sh` без `--check`, `gh api … refs/heads/main`, `git push … main`) запрещена хуком.
   Чужую ветку Pipeline manager меняет только вливанием `origin/main` и предупреждает её сессию (той — `git pull --ff-only` перед новой работой).
