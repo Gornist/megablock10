@@ -107,7 +107,9 @@ func check_open(session: String, vault: String, ids: Array, recheck: bool = fals
 		if not ds.deck.has(id) or node.daemons.get_def(id) == null or cells.is_empty():
 			return {"reason": "bad_daemons"}
 		total += cells.size()
-	if total > ds.ram:
+	# Дека влезает в RAM вместе с замком хранилища (breach.md 2.3): иначе «НАЧАТЬ» недоступна.
+	var lock_length := int(BreachData.shared().tier_params(node.breach_tier())["lock_length"])
+	if not BreachData.fits_ram(ds.ram, lock_length, total):
 		return {"reason": "bad_daemons"}
 	return {}
 
@@ -159,7 +161,7 @@ func request_open(session: String, vault: String, ids: Array) -> void:
 		targets.append({"id": d.id, "name": d.display_name, "effect": d.effect, "cells": d.sequence.duplicate()})
 	node.net.send_to(session, WorldMsg.encode_fields(WorldMsg.EVENT, {
 		"kind": WorldMsg.EV_BK, "mode": att.run.mode, "vault": vault, "n": n, "tier": att.tier, "grid": public_grid(att.run.attempt.grid),
-		"targets": targets, "buffer": ds.ram, "sec": att.run.timer_sec, "ice": att.run.ice_line(BK_INTRO_EVENT),
+		"targets": targets, "buffer": att.run.attempt.buffer_size, "sec": att.run.timer_sec, "ice": att.run.ice_line(BK_INTRO_EVENT),
 	}))
 	att.sent_left = att.run.seconds_left
 	node.event.emit({"kind": "breach_start", "session": session, "vault": vault, "n": n, "tier": att.tier})

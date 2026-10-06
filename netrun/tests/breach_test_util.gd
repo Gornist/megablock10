@@ -34,9 +34,11 @@ static func total_length(daemons: Array) -> int:
 ## Событие `bk` в том виде, в каком его шлёт VaultBreach: публичная сетка без порченых кодов и без пути решения.
 static func make_bk_event(tier: String = "HARD", seed_value: int = 77, ram: int = 6) -> Dictionary:
 	var daemons := [BreachDaemon.make("d1", ["1C", "BD"], "EXTRACT_SHARD", 2, "Извлечение"), BreachDaemon.make("d2", ["55", "7A"], "GHOST", 1, "Призрак")]
-	var run := BreachRun.for_storage(tier, daemons, ram, seed_value)
+	# Хранилище с замком требует RAM под «замок + цепочки» (breach.md 2.3): тесту, которому хватало 6, на NIGHTMARE (замок 3) добавляем.
+	var need: int = int(BreachData.shared().tier_params(tier)["lock_length"]) + 4
+	var run := BreachRun.for_storage(tier, daemons, maxi(ram, need), seed_value)
 	var targets: Array = []
 	for d in daemons:
 		targets.append({"id": d.id, "name": d.display_name, "effect": d.effect, "cells": d.sequence})
 	return {"kind": WorldMsg.EV_BK, "mode": "storage", "vault": "v1", "n": 1, "tier": tier, "grid": VaultBreach.public_grid(run.attempt.grid),
-		"targets": targets, "buffer": ram, "sec": run.timer_sec, "ice": "ICE: тест"}
+		"targets": targets, "buffer": run.attempt.buffer_size, "sec": run.timer_sec, "ice": "ICE: тест"}

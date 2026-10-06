@@ -209,7 +209,8 @@ func test_breach_scenario_with_the_auto_solver_opens_the_vault_and_the_shard_is_
 	assert_int(p.mirror.n).is_equal(1)
 	assert_str(p.mirror.tier).is_equal("BASE")
 	assert_int(p.mirror.grid.size).is_equal(5)
-	assert_int(p.mirror.buffer_size).is_equal(8)           # RAM сессии
+	# Буфер Взлома 2.0: min(RAM 8, замок BASE 1 + цепочка + запас 2), а не вся RAM.
+	assert_int(p.mirror.buffer_size).is_equal(1 + (p.mirror.targets[0]["cells"] as Array).size() + 2)
 	assert_int(p.mirror.timer_sec).is_equal(45)
 	assert_str(p.mirror.ice_line).starts_with("ICE:")
 	# номер попытки записан в Мост ДО показа сетки

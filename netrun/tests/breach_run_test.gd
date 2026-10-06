@@ -25,6 +25,16 @@ func _storage(timer_override: int = -1, ram: int = 6, seed_value: int = 1, tier:
 	return r
 
 
+## Попытка без замка с буфером ровно `buffer`: механика хода (буфер, итог, досрочный итог) не зависит от замка, а хранилище с замком и RAM 2
+## не начать. Замок и буфер хранилища — в тестах for_storage ниже и в breach_attempt_test.
+func _plain(buffer: int, seed_value: int = 1) -> BreachRun:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value
+	var ds: Array = [_daemon()]
+	var grid := BreachGrid.generate(5, ds, rng, _data)
+	return BreachRun.from_attempt(BreachAttempt.make(grid, ds, buffer, _data), 45, "BASE", BreachRun.MODE_STORAGE, seed_value, _data)
+
+
 func _solve(r: BreachRun) -> void:
 	for cell in BreachAutoSolver.solve(r.attempt):
 		r.tap(cell)
@@ -64,7 +74,7 @@ func test_tap_reports_trap_and_match() -> void:
 
 
 func test_solved_run_matches_every_daemon_and_full_buffer_resolves_it() -> void:
-	var r := _storage(-1, 2)
+	var r := _plain(2)
 	var path := BreachAutoSolver.solve(r.attempt)
 	var last := {}
 	for cell in path:
@@ -77,7 +87,7 @@ func test_solved_run_matches_every_daemon_and_full_buffer_resolves_it() -> void:
 
 
 func test_full_buffer_stops_the_timer_and_leaves_nothing_to_tap() -> void:
-	var r := _storage(-1, 2)
+	var r := _plain(2)
 	for _i in range(2):
 		r.tap(r.attempt.selectable_cells()[0])
 	assert_bool(r.attempt.is_full()).is_true()
@@ -108,11 +118,11 @@ func test_empty_attempt_resolves_to_fail() -> void:
 
 
 func test_early_resolve_counts_what_was_collected() -> void:
-	var r := _storage(-1, 6)
+	var r := _plain(6)
 	var path := BreachAutoSolver.solve(r.attempt)
 	r.tap(path[0])
 	assert_str(_resolved(r)).is_equal("FAIL")  # одна клетка цепочки из двух — ещё не совпадение
-	var r2 := _storage(-1, 6)
+	var r2 := _plain(6)
 	for cell in path:
 		r2.tap(cell)
 	r2.resolve()
@@ -200,30 +210,47 @@ func test_storage_takes_grid_timer_and_traps_from_the_tier() -> void:
 	var hard := BreachRun.for_storage("HARD", [_daemon()], 6, 3, _data)
 	assert_str(hard.mode).is_equal("storage")
 	assert_int(hard.attempt.grid.size).is_equal(6)
-	assert_int(hard.timer_sec).is_equal(60)
-	assert_int(hard.attempt.buffer_size).is_equal(6)
-	assert_int(hard.attempt.grid.trap_cells.size()).is_between(2, 3)
+	assert_int(hard.timer_sec).is_equal(90)
+	assert_int(hard.attempt.grid.lock.size()).is_equal(2)
+	assert_int(hard.attempt.buffer_size).is_equal(5)   # min(RAM 6, замок 2 + демон 2 + запас 1)
+	assert_int(hard.attempt.grid.trap_cells.size()).is_between(3, 5)   # мёртвые 2–3 + приманки при замке 1–2
 	var nm := BreachRun.for_storage("NIGHTMARE", [_daemon()], 6, 3, _data)
 	assert_int(nm.attempt.grid.size).is_equal(7)
-	assert_int(nm.timer_sec).is_equal(75)
-	assert_int(nm.attempt.grid.trap_cells.size()).is_between(7, 9)
+	assert_int(nm.timer_sec).is_equal(150)
+	assert_int(nm.attempt.grid.lock.size()).is_equal(3)
+	assert_int(nm.attempt.buffer_size).is_equal(5)     # замок 3 + демон 2 + запас 0
+	assert_int(nm.attempt.grid.trap_cells.size()).is_between(8, 10)   # мёртвые 5–6 + приманки при замке 3–4
 	var base := BreachRun.for_storage("BASE", [_daemon()], 6, 3, _data)
+	assert_int(base.timer_sec).is_equal(45)
+	assert_int(base.attempt.grid.lock.size()).is_equal(1)
+	assert_int(base.attempt.buffer_size).is_equal(5)   # замок 1 + демон 2 + запас 2
 	assert_int(base.attempt.grid.trap_cells.size()).is_equal(0)
+
+
+func test_storage_buffer_is_capped_by_ram() -> void:
+	# NIGHTMARE: замок 3 + демон 3 = 6 = RAM; запас тира 0, так что буфер ровно RAM. BASE с большой RAM — «замок + демон + 2», не вся RAM.
+	var d3 := BreachDaemon.make("a", ["1C", "55", "BD"])
+	assert_int(BreachRun.for_storage("NIGHTMARE", [d3], 6, 1, _data).attempt.buffer_size).is_equal(6)
+	assert_int(BreachRun.for_storage("BASE", [d3], 13, 1, _data).attempt.buffer_size).is_equal(1 + 3 + 2)
 
 
 func test_storage_jitter_adds_fifteen_seconds_only_when_chosen() -> void:
 	var plain := BreachRun.for_storage("HARD", [_daemon()], 6, 1, _data)
-	var jittery := BreachRun.for_storage("HARD", [_daemon(), BreachDaemon.make("j", ["BD", "E9"], "JITTER")], 6, 1, _data)
-	assert_int(plain.timer_sec).is_equal(60)
-	assert_int(jittery.timer_sec).is_equal(75)
-	assert_int(jittery.seconds_left).is_equal(75)
+	var jittery := BreachRun.for_storage("HARD", [_daemon(), BreachDaemon.make("j", ["BD", "E9"], "JITTER")], 8, 1, _data)
+	assert_int(plain.timer_sec).is_equal(90)
+	assert_int(jittery.timer_sec).is_equal(105)
+	assert_int(jittery.seconds_left).is_equal(105)
 
 
-func test_storage_rejects_daemons_that_do_not_fit_the_ram() -> void:
+func test_storage_rejects_daemons_that_do_not_fit_the_ram_together_with_the_lock() -> void:
 	var a := BreachDaemon.make("a", ["1C", "55", "BD"])
 	var b := BreachDaemon.make("b", ["E9", "7A", "FF"])
-	assert_object(BreachRun.for_storage("BASE", [a, b], 5, 1, _data)).is_null()
-	assert_object(BreachRun.for_storage("BASE", [a, b], 6, 1, _data)).is_not_null()
+	# BASE: замок 1 + 6 кодов = 7.
+	assert_object(BreachRun.for_storage("BASE", [a, b], 6, 1, _data)).is_null()
+	assert_object(BreachRun.for_storage("BASE", [a, b], 7, 1, _data)).is_not_null()
+	assert_object(BreachRun.for_storage("HARD", [a, b], 7, 1, _data)).is_null()      # замок 2 + 6 = 8
+	assert_object(BreachRun.for_storage("NIGHTMARE", [a, b], 8, 1, _data)).is_null()  # замок 3 + 6 = 9
+	assert_object(BreachRun.for_storage("NIGHTMARE", [a, b], 9, 1, _data)).is_not_null()
 	assert_object(BreachRun.for_storage("BASE", [], 6, 1, _data)).is_null()
 
 
