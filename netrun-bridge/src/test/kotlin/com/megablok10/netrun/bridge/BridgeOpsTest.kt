@@ -148,6 +148,11 @@ class BridgeOpsTest {
         synchronized(issued) { assertEquals(3, issued.size) } // защищённый + 2 предмета; повтор карточек не добавил
     }
 
+    /** hello уходит сразу после рукопожатия: сервер отвечал на него не всегда (кадр приходил раньше onOpen и отбрасывался). 6.10 дважды «нет ответа». */
+    @Test fun helloOnFreshConnectionIsNeverDropped() {
+        repeat(200) { Client("test") }   // Client.init шлёт hello и требует ok
+    }
+
     @Test fun giveItemOverTheWire() {
         val t = Client("test")
         val sid = submit(t).str("session")

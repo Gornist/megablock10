@@ -42,6 +42,7 @@ skill `netrun-loop` (Godot). Цифры и грабли — внизу.
 | Godot: тесты, кадры | `netrun/tools/dev.sh test [имена\|--all]`, `dev.sh shot res://сцена` — одна сетка ≤1024 px; skill `netrun-loop` |
 | Коллектор | `admin-web/tools/test.sh server\|client\|lint\|build\|all`; `preflight.sh`, `merge-ready.sh <ветка>`, `branch-gone.sh <ветка>` — только читают |
 | Ждать CI | `scripts/ci-wait.sh pr 9` / `sha <sha>` — запускать Bash с `run_in_background`, придёт одно уведомление (код 0 зелёно, 1 красно) |
+| Слияние (Pipeline manager) | готовые PR → `scripts/train.sh N M…` (поезд на свежем main, один CI) → `scripts/land.sh --check <поезд>` → владельцу `scripts/land.sh <поезд>`; порядок — CLAUDE.md, «Git и процесс» |
 | Телефон на devbox | `scripts/phone.sh devices\|install\|prov\|qr\|shot\|tap\|log` |
 
 `dbx.sh` сам: коммитит дерево во временном индексе (рабочая копия не меняется), пушит в `refs/dbx/<имя>`, на devbox ставит в очередь `flock` (блокировку держит отвязанный

@@ -103,7 +103,7 @@ android {
 // Java-агент ByteBuddy (им пользуется Paparazzi) — загружается при старте тестовой JVM, а не подключается на лету. Версия — та же,
 // что приходит с Paparazzi; при расхождении не страшно: ByteBuddy ищет загруженный агент по имени класса в системном загрузчике.
 val byteBuddyAgent: Configuration by configurations.creating { isTransitive = false }
-dependencies { byteBuddyAgent("net.bytebuddy:byte-buddy-agent:1.14.16") }
+dependencies { byteBuddyAgent("net.bytebuddy:byte-buddy-agent:1.18.14") }
 
 // Скриншот-тесты (Paparazzi: layoutlib со своей Skia) и остальные unit-тесты (Robolectric: android-all, нативный SQLite) — в разных
 // JVM. В одной JVM нативные библиотеки конфликтовали: на macOS скриншоты после Robolectric падали SIGSEGV в layoutlib (25.09).
@@ -193,7 +193,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
 
     // QR: генерация своего кода и сканирование чужого
-    implementation("com.google.zxing:core:3.5.3")
+    implementation("com.google.zxing:core:3.5.4")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
 
     // Локальное хранилище: Character/Container/Transaction вместо SharedPreferences
@@ -214,7 +214,7 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     // Настоящий SQLite на JVM — чтобы прогонять миграции Room на базе с данными (MigrationDataTest)
-    testImplementation("org.xerial:sqlite-jdbc:3.46.1.0")
+    testImplementation("org.xerial:sqlite-jdbc:3.53.4.0")
     // Настоящая Room в памяти на JVM: транзакции, откаты, выдача seq — то, что фейками не проверить (testing/RoomTest.kt)
     testImplementation("org.robolectric:robolectric:4.17")
 }
