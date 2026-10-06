@@ -31,6 +31,11 @@ func start(server: NetServer, bridge_api: BridgeApi, node_graph: NodeGraph) -> v
 	net = server
 	bridge = bridge_api
 	graph = node_graph
+	# Числа ICE и trace по умолчанию — из graph.json (settings.ice / settings.trace); заданные снаружи (тесты) главнее.
+	if ice_settings.is_empty() and graph.settings.get("ice") is Dictionary:
+		ice_settings = (graph.settings["ice"] as Dictionary).duplicate(true)
+	if trace_settings.is_empty() and graph.settings.get("trace") is Dictionary:
+		trace_settings = (graph.settings["trace"] as Dictionary).duplicate(true)
 	net.remove_object(NetConfig.PICKUP_ID)  # одиночный шард прототипа: в графе шарды у каждого узла свои
 	net.entry_node_for = _entry_node
 	net.grab_check = _can_grab
