@@ -221,6 +221,7 @@
 ```bash
 netrun/assets/tools/pipeline.sh build            # все src/*.py на devbox → .glb, проверка, забрать модели/отчёты, MANIFEST.md
 netrun/assets/tools/pipeline.sh shots [каталог] [--grid]  # кадры комнаты из Godot; --grid — ещё и один grid.png ≤ 1024 px с подписями кадров
+netrun/assets/tools/pipeline.sh stats <кадры|каталог> [--ref ref.png]  # числовые метрики кадров (tools/framestats.py на devbox): яркость, доли чёрного/бирюзы/синего/красного, горизонт; сравнение с референсом цифрами
 netrun/assets/tools/pipeline.sh movie [mp4]      # видео комнаты 7 с
 netrun/assets/tools/pipeline.sh demo [mp4]       # демо: проход по комнате 34 с (вход → хранилище → портал → ICE → вверх), 1920×1080, ≈90 с на devbox
 netrun/assets/tools/pipeline.sh fps              # время кадра GPU/CPU и вызовы отрисовки (НЕ Pico 4)
