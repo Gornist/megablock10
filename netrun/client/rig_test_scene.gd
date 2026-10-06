@@ -142,6 +142,7 @@ func _ready() -> void:
 	add_child(world_ui)
 	world_ui.attach(rig)
 	rig.teleport_snap = snap_teleport
+	rig.tick_source = remote   # такты узла: цвет рамки прицела по прогнозу, «ход принят», «ждать»
 	world_ui.breach_panel.start_requested.connect(func(vault: String, ids: Array): breach_start_requested.emit(vault, ids))
 	world_ui.breach_panel.cell_tapped.connect(func(cell: Vector2i): breach_tap_requested.emit(cell))
 	world_ui.breach_panel.cancel_requested.connect(func(): breach_cancel_requested.emit())
