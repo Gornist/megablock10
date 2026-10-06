@@ -15,12 +15,18 @@ updates:
     open-pull-requests-limit: 5
     groups:
       server-minor: { update-types: [minor, patch] }
+    # Мажор @types/node — вместе с Node в CI (main.yml, engines): типы новее рантайма разрешают API, которого нет, а CI этого
+    # не ловит (Коллектор, 06.10, PR #28/#30 — @types/node 26 при Node 22).
+    ignore:
+      - { dependency-name: "@types/node", update-types: ["version-update:semver-major"] }
   - package-ecosystem: npm             # клиент коллектора
     directory: "/admin-web/client"
     schedule: { interval: weekly, day: monday }
     open-pull-requests-limit: 5
     groups:
       client-minor: { update-types: [minor, patch] }
+    ignore:
+      - { dependency-name: "@types/node", update-types: ["version-update:semver-major"] }
   - package-ecosystem: github-actions  # .github/workflows
     directory: "/"
     schedule: { interval: monthly }
