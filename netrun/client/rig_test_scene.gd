@@ -241,7 +241,7 @@ func apply_state(state: Dictionary) -> void:
 		if not seen.has(id):
 			(_ice_nodes[id] as Node).free()
 			_ice_nodes.erase(id)
-			remote.ice.erase(id)
+			remote.forget_ice(id)
 
 
 ## Позиции других нетраннеров узла (WorldMsg.AVATARS): новым — фигура, вышедшим — убрать; двигает их _process по буферу.
