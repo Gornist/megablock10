@@ -1,7 +1,8 @@
 class_name DeckCalls
 extends VBoxContainer
 ## Вкладка ЗВОНКИ: карточка текущего звонка сверху (входящий — пульсирующая рамка, ПРИНЯТЬ / ОТКЛОНИТЬ; в разговоре — таймер, ЗАГЛУШИТЬ,
-## ЗАВЕРШИТЬ; исходящий — «вызываем…», ОТМЕНА) и журнал звонков ниже: из строки журнала можно позвонить. Фазы и порядок кнопок — как в
+## ЗАВЕРШИТЬ; исходящий — «вызываем…», ОТМЕНА), ниже блок КОНТАКТЫ телефона (из него можно позвонить, даже если журнал пуст) и журнал
+## звонков: из строки журнала тоже можно позвонить. Фазы и порядок кнопок — как в
 ## CallManager / CallOverlay приложения (отменяющая слева, подтверждающая справа). Голос звонка здесь не идёт: это интерфейс, голос —
 ## следующий этап (микрофон и динамики очков).
 
@@ -10,10 +11,13 @@ signal log_call_requested(peer: String)
 ## Ступеней у пульсирующей рамки входящего: рисуем не чаще, чем меняется ступень (дёшево для редких перерисовок деки).
 const PULSE_STEPS := 6
 const PULSE_PERIOD_S := 1.2
+## Сколько контактов показываем (остальные скрыты: деке на запястье длинный список не нужен).
+const MAX_CONTACTS := 8
 
 var link: PhoneLink
 var _card: MbFrame
 var _card_box: VBoxContainer
+var _contacts_box: VBoxContainer
 var _log_title_holder: VBoxContainer
 var _scroll: ScrollContainer
 var _log_box: VBoxContainer
@@ -23,9 +27,11 @@ var _muted := false
 var _timer_label: Label
 var _timer_shown := ""
 var _log_sig := ""
+var _contacts_sig := ""
 var _pulse_step := 0
 var _pulse_t := 0.0
 var _log_buttons: Array = []
+var _contact_buttons: Array = []
 var _offline_banner: Control
 
 
@@ -39,21 +45,32 @@ func _init() -> void:
 	_card.add_child(_card_box)
 	_card.visible = false
 	add_child(_card)
-	_log_title_holder = DeckUi.vbox(0)
-	add_child(_log_title_holder)
 	_scroll = ScrollContainer.new()
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	DeckUi.expand(_scroll, true)
 	_scroll.mouse_filter = Control.MOUSE_FILTER_PASS
+	# контакты и журнал — в одной прокрутке: восемь контактов не должны вытеснять журнал с маленькой деки
+	var content := DeckUi.vbox(DeckTheme.GAP)
+	DeckUi.expand(content)
+	_contacts_box = DeckUi.vbox(0)
+	content.add_child(_contacts_box)
+	_log_title_holder = DeckUi.vbox(0)
+	content.add_child(_log_title_holder)
 	_log_box = DeckUi.vbox(0)
 	DeckUi.expand(_log_box)
-	_scroll.add_child(_log_box)
+	content.add_child(_log_box)
+	_scroll.add_child(content)
 	add_child(_scroll)
 
 
 func bind(phone: PhoneLink) -> void:
+	if link != null and link.contacts_changed.is_connected(_on_contacts_changed):
+		link.contacts_changed.disconnect(_on_contacts_changed)
 	link = phone
+	if link != null:
+		link.contacts_changed.connect(_on_contacts_changed)
 	_log_sig = ""
+	_contacts_sig = ""
 	_phase = ""    # заставляет refresh() собрать карточку заново
 	refresh()
 	apply_online()
@@ -71,6 +88,7 @@ func apply_online() -> void:
 		return
 	_phase = ""
 	_log_sig = ""
+	_contacts_sig = ""
 	refresh()
 
 
@@ -92,6 +110,20 @@ func timer_text() -> String:
 
 func log_row_count() -> int:
 	return _log_buttons.size()
+
+
+## Сколько контактов показано (не больше MAX_CONTACTS).
+func contact_row_count() -> int:
+	return _contact_buttons.size()
+
+
+## Кнопки «ПОЗВОНИТЬ» в строках журнала / в строках контактов — для проверок (find_button отдаёт первую по подписи, то есть контактную).
+func log_call_buttons() -> Array:
+	return _log_buttons
+
+
+func contact_call_buttons() -> Array:
+	return _contact_buttons
 
 
 ## Кнопка по подписи (в карточке звонка и в журнале) — для проверок.
@@ -126,7 +158,12 @@ func refresh() -> void:
 		_peer = peer
 		_muted = muted
 		_build_card(st)
+	_refresh_contacts()
 	_refresh_log()
+
+
+func _on_contacts_changed() -> void:
+	refresh()
 
 
 ## Часы: таймер разговора (раз в секунду) и пульс рамки входящего. Возвращает true, если что-то поменялось на экране.
@@ -198,6 +235,52 @@ func _btn(text: String, kind: String, action: Callable) -> MbButton:
 	return b
 
 
+## Блок КОНТАКТЫ над журналом: имя и «ПОЗВОНИТЬ»; без контактов блока нет. Кнопки заняты, пока идёт звонок или телефон не на связи.
+func _refresh_contacts() -> void:
+	var all := link.contacts()
+	var shown := all.slice(0, MAX_CONTACTS)
+	var busy := _phase != PhoneLink.PHASE_IDLE or is_offline()
+	var sig := str([shown.map(func(c): return [c["key"], c["title"]]), busy])
+	if sig == _contacts_sig:
+		return
+	_contacts_sig = sig
+	DeckUi.clear(_contacts_box)
+	_contact_buttons.clear()
+	if shown.is_empty():
+		return
+	_contacts_box.add_child(DeckUi.section_title("КОНТАКТЫ", str(shown.size())))
+	for c in shown:
+		_contacts_box.add_child(_contact_row(str(c["title"]), busy))
+
+
+func _contact_row(title: String, busy: bool) -> MbRow:
+	var row := MbRow.new()
+	row.interactive = false
+	var h := DeckUi.hbox(8)
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var name_l := DeckUi.label(title, DeckTheme.V_NAME)
+	name_l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	DeckUi.expand(name_l)
+	h.add_child(name_l)
+	var call := _call_button(title, busy)
+	h.add_child(call)
+	_contact_buttons.append(call)
+	row.add_child(h)
+	return row
+
+
+## «ПОЗВОНИТЬ» в строке: звонит собеседнику по позывному (его ждёт start_call приложения) и сообщает деке сигналом.
+func _call_button(peer: String, busy: bool) -> MbButton:
+	var call := MbButton.new("ПОЗВОНИТЬ", "ghost")
+	call.button_height = DeckTheme.BTN_SMALL_H
+	call.disabled = busy
+	call.pressed.connect(func():
+		link.start_call(peer)
+		log_call_requested.emit(peer))
+	call.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return call
+
+
 func _refresh_log() -> void:
 	var entries := link.call_log()
 	var busy := _phase != PhoneLink.PHASE_IDLE or is_offline()
@@ -240,14 +323,7 @@ func _log_row(e: Dictionary, busy: bool) -> MbRow:
 		sub += " · " + PhoneLogic.duration_text(float(e["duration_s"]))
 	mid.add_child(DeckUi.label(sub, DeckTheme.tone_variation("bad" if dir == PhoneLink.DIR_MISSED else "dim"), true))
 	h.add_child(mid)
-	var call := MbButton.new("ПОЗВОНИТЬ", "ghost")
-	call.button_height = DeckTheme.BTN_SMALL_H
-	call.disabled = busy
-	var peer := str(e["peer"])
-	call.pressed.connect(func():
-		link.start_call(peer)
-		log_call_requested.emit(peer))
-	call.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var call := _call_button(str(e["peer"]), busy)
 	h.add_child(call)
 	_log_buttons.append(call)
 	row.add_child(h)
