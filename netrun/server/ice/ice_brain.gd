@@ -33,6 +33,8 @@ const DEFAULT_SETTINGS := {
 
 ## Тревога узла (W1): множитель дальности зрения и скорости внимания, ≥ 1. Ставит узел, 1 — без тревоги.
 var alert_scale := 1.0
+## Сетка узла: занятые клетки (колонны) закрывают взгляд. null — взгляд без препятствий, как раньше.
+var grid: NodeGrid = null
 var position := Vector3.ZERO
 var facing := Vector3.FORWARD  ## единичный, в плоскости XZ
 
@@ -162,6 +164,8 @@ func _closest_visible(targets: Dictionary) -> String:
 		var p: Vector3 = targets[session]
 		if not can_see(position, facing, p, float(_s["sight_range"]) * alert_scale, _s["sight_half_angle_deg"]):
 			continue
+		if grid != null and not grid.can_see(position, p):
+			continue   # колонна между ICE и целью
 		var d := position.distance_to(p)
 		if d < best_d:
 			best_d = d

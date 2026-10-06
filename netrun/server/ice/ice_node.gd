@@ -21,8 +21,9 @@ var _acc := 0.0
 var _clock := 0.0
 
 
-func setup(settings: Dictionary = {}, waypoints: Array[Vector3] = []) -> void:
+func setup(settings: Dictionary = {}, waypoints: Array[Vector3] = [], grid: NodeGrid = null) -> void:
 	brain = IceBrain.new(settings, position, waypoints)
+	brain.grid = grid
 	brain.ejected.connect(func(s: String, r: String) -> void: ejected.emit(s, r))
 
 

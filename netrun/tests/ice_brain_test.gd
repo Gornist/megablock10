@@ -307,3 +307,43 @@ func test_without_rest_the_sleep_time_is_counted() -> void:
 	t += 200.0
 	b.step(t, {"p": Vector3(0, 0, -5)})
 	assert_float(b.awareness()).is_equal(1.0)
+
+
+## ICE у колонны (3;−5) смотрит на +Z; сетку (с колоннами) передаёт узел.
+func _brain_at(pos: Vector3, grid: NodeGrid) -> IceBrain:
+	var b := _brain()
+	b.position = pos
+	b.facing = Vector3.BACK
+	b.grid = grid
+	return b
+
+
+func test_pillar_blocks_sight_with_grid() -> void:
+	var target := func(_t): return {"a": Vector3(3, 0, -2)}  # колонна (3;−5) между ICE и целью, 6 м — в пределах взгляда
+	var open := _brain_at(Vector3(3, 0, -8), null)
+	_run(open, 0.0, 1.0, target)
+	assert_float(open.awareness()).is_greater(0.0)  # без сетки — видит сквозь колонну, как раньше
+	var blocked := _brain_at(Vector3(3, 0, -8), NodeGrid.for_layout())
+	_run(blocked, 0.0, 1.0, target)
+	assert_float(blocked.awareness()).is_equal(0.0)
+	assert_int(blocked.state()).is_equal(S.PATROL)
+
+
+func test_target_beside_pillar_is_seen_with_grid() -> void:
+	# Та же дистанция, 6 м, но линия идёт мимо колонны.
+	var b := _brain_at(Vector3(7, 0, -8), NodeGrid.for_layout())
+	_run(b, 0.0, 0.5, func(_t): return {"a": Vector3(7, 0, -2)})
+	assert_float(b.awareness()).is_greater(0.0)
+	assert_int(b.state()).is_equal(S.SUSPICIOUS)
+
+
+func test_awareness_falls_after_target_hides_behind_pillar() -> void:
+	var b := _brain_at(Vector3(3, 0, -8), NodeGrid.for_layout())
+	var t := _run(b, 0.0, 0.5, func(_t): return {"a": Vector3(6, 0, -4)})  # сбоку от колонны — виден
+	assert_float(b.awareness()).is_greater(0.0)
+	var seen_level := b.awareness()
+	t = _run(b, t, 0.5, func(_t): return {"a": Vector3(3, 0, -2)})  # ушёл за колонну — из виду
+	assert_float(b.awareness()).is_less(seen_level)
+	_run(b, t, 3.0, func(_t): return {"a": Vector3(3, 0, -2)})
+	assert_float(b.awareness()).is_equal(0.0)
+	assert_int(b.state()).is_equal(S.PATROL)
