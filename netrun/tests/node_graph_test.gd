@@ -16,6 +16,21 @@ func test_real_graph_is_valid() -> void:
 	assert_str(g.tier_of(g.default_entry)).is_not_equal("NIGHTMARE")
 
 
+## W1-Ч1: ICE графа не срабатывает «мгновенно» — зрение по тиру, внимание и бег помедленнее, trace за «на виду» — 2, не 8.
+func test_real_graph_ice_and_trace_numbers() -> void:
+	var g := NodeGraph.load_file()
+	assert_float(float(g.settings["trace"]["weights"]["seen_by_ice"])).is_equal(2.0)
+	assert_float(float(g.settings["trace"]["decay_per_sec"])).is_equal(0.2)
+	for id in g.nodes:
+		if id == "node_00":
+			continue  # учебный узел со своими числами
+		var s: Dictionary = g.nodes[id]["ice_settings"]
+		var sight := 6.0 if g.tier_of(id) == "BASE" else 8.0
+		assert_float(float(s["sight_range"])).is_equal(sight)
+		assert_float(float(s["notice_per_sec"])).is_equal(0.15)
+		assert_float(float(s["chase_speed"])).is_equal(1.5)
+
+
 func test_entry_depends_on_terminal() -> void:
 	var g := NodeGraph.load_file()
 	assert_str(g.entry_for("t01")).is_equal("node_01")
