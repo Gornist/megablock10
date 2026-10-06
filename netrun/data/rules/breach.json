@@ -10,24 +10,51 @@
       "timer_sec": 45,
       "dead_cells": [0, 0],
       "corrupted_codes": [0, 0],
+      "lock_length": 1,
+      "buffer_slack": 2,
+      "cipher_timer_sec": 45,
+      "fail_penalty": {
+        "lock_step": 0,
+        "trap_step": 0,
+        "max_steps": 0,
+        "minutes": 0
+      },
       "eddies": [1, 3],
       "miner_bonus": 15
     },
     "HARD": {
       "level": 2,
       "grid_size": 6,
-      "timer_sec": 60,
+      "timer_sec": 90,
       "dead_cells": [2, 3],
-      "corrupted_codes": [0, 0],
+      "corrupted_codes": [1, 2],
+      "lock_length": 2,
+      "buffer_slack": 1,
+      "cipher_timer_sec": 60,
+      "fail_penalty": {
+        "lock_step": 1,
+        "trap_step": 1,
+        "max_steps": 2,
+        "minutes": 10
+      },
       "eddies": [4, 6],
       "miner_bonus": 30
     },
     "NIGHTMARE": {
       "level": 3,
       "grid_size": 7,
-      "timer_sec": 75,
+      "timer_sec": 150,
       "dead_cells": [5, 6],
-      "corrupted_codes": [2, 3],
+      "corrupted_codes": [3, 4],
+      "lock_length": 3,
+      "buffer_slack": 0,
+      "cipher_timer_sec": 75,
+      "fail_penalty": {
+        "lock_step": 1,
+        "trap_step": 1,
+        "max_steps": 2,
+        "minutes": 10
+      },
       "eddies": [7, 10],
       "miner_bonus": 60
     }
