@@ -422,6 +422,18 @@ COVER_CELL = 1.0   # клетка хода, м (NodeGrid.CELL_M)
 COVER_BODY = 0.9   # корпус по центру клетки, щель 5 см до границы
 
 
+# Профиль яркости кромки по расстоянию d (м) от ребра внутрь грани: (d, k). На самой границе силуэта 30 %, пик 1,5 см внутри, к 3 см гаснет: ступенька
+# бинарной границы пикселя на тёмном фоне низкоконтрастная (дорогая лесенка «пилой» в очках), форма кромки та же. Линейно между точками (интерполяция по вершинам).
+EDGE_PROFILE = ((0.0, 0.08), (0.008, 0.4), (0.018, 1.0), (0.03, 0.0))
+
+
+def _edge_k(d):
+    for (d0, k0), (d1, k1) in zip(EDGE_PROFILE, EDGE_PROFILE[1:]):
+        if d <= d1 + 1e-6:
+            return k0 + (k1 - k0) * max(0.0, min(1.0, (d - d0) / (d1 - d0)))
+    return 0.0
+
+
 def _cover_parts(centers):
     """Столбы-укрытия на клетках с центрами `centers` (x, y): корпус 0,9×0,9×2,2 м и плоская рамка по границе клетки 1×1 на полу. Корпус нарезан
     плоскостями у рёбер (3 см), у верха и на 0,3 м от пола: свет вершин остаётся только у вертикальных рёбер, верхнего контура и в основании.
@@ -431,9 +443,11 @@ def _cover_parts(centers):
     bodies, frames = [], []
     for cx, cy_ in centers:
         bm = lib.box_bm((COVER_BODY, COVER_BODY, COVER_H), center=(cx, cy_, COVER_H / 2))
-        for co, no in (((cx - half + band, 0, 0), (1, 0, 0)), ((cx + half - band, 0, 0), (1, 0, 0)),
-                       ((0, cy_ - half + band, 0), (0, 1, 0)), ((0, cy_ + half - band, 0), (0, 1, 0)),
-                       ((0, 0, rise), (0, 0, 1)), ((0, 0, COVER_H - band), (0, 0, 1))):
+        planes = [((0, 0, rise), (0, 0, 1))]
+        for t, _ in EDGE_PROFILE[1:]:  # плоскости на каждом изломе профиля кромки от каждого ребра: вершины несут разные яркости (мягкий край)
+            planes += [((cx - half + t, 0, 0), (1, 0, 0)), ((cx + half - t, 0, 0), (1, 0, 0)), ((0, cy_ - half + t, 0), (0, 1, 0)),
+                       ((0, cy_ + half - t, 0), (0, 1, 0)), ((0, 0, COVER_H - t), (0, 0, 1))]
+        for co, no in planes:
             bmesh.ops.bisect_plane(bm, geom=list(bm.verts) + list(bm.edges) + list(bm.faces), plane_co=co, plane_no=no)
         bodies.append(bm)
         fb = bmesh.new()  # рамка шириной 3 см, внешний край — граница клетки; на 3 мм выше пола, чтобы не мерцать с плитой
@@ -452,15 +466,12 @@ def _cover_parts(centers):
         # расстояние до центра ближайшего столба по каждой оси
         lx, ly = min(((abs(co.x - cx), abs(co.y - cy_)) for cx, cy_ in centers), key=max)
         ring_ = max(lx, ly) > half - 1e-3
-        if lx > half - 1e-3 and ly > half - 1e-3:
-            k = 1.0                                   # вертикальное ребро
-        elif ring_ and co.z > COVER_H - 1e-3:
-            k = 1.0                                   # контур верха
-        elif ring_ and co.z < rise:
-            k = 0.6 * (1.0 - co.z / rise)             # мягкая подсветка основания
-        else:
-            k = 0.0
-        return tuple(d + (g - d) * k for g, d in zip(cy, void))
+        dx, dy, dz = half - lx, half - ly, COVER_H - co.z
+        d = min(max(dx, dy), max(dz, min(dx, dy)))   # расстояние до ближайшего ребра: вертикального или верхнего контура
+        k = _edge_k(d)
+        if ring_ and co.z < rise:
+            k = max(k, 0.6 * (1.0 - co.z / rise))     # мягкая подсветка основания
+        return tuple(dk + (g - dk) * k for g, dk in zip(cy, void))
 
     return body, frame, lit
 
@@ -478,13 +489,13 @@ def build_cover(out):
     """Укрытие на одной клетке хода 1×1 м (Godot ставит по одному на занятую клетку): непрозрачный корпус 0,9×0,9×2,2 м по центру клетки, светятся
     вертикальные рёбра, контур верха и основание, плюс ровная рамка по границе клетки (тот же шаг, что швы пола): соседние укрытия складываются в стену,
     но клетки читаются. Origin на полу в центре клетки."""
-    return _cover_asset(out, "cover", [(0.0, 0.0)], 140,
+    return _cover_asset(out, "cover", [(0.0, 0.0)], 500,
                         f"одна клетка {COVER_CELL:g} м, корпус {COVER_BODY:g}, высота {COVER_H:g} м, рамка по границе клетки")
 
 
 def build_pillar(out):
     """Колонна модуля 2×2 м (блок «#» раскладки) = четыре укрытия по клетке (как `cover`). Прежний контракт (имя, путь, origin в центре модуля) сохранён."""
-    return _cover_asset(out, "pillar", [(sx * 0.5, sy * 0.5) for sx in (-1, 1) for sy in (-1, 1)], 560,
+    return _cover_asset(out, "pillar", [(sx * 0.5, sy * 0.5) for sx in (-1, 1) for sy in (-1, 1)], 2000,
                         f"модуль 2×2 м = 4 укрытия по клетке {COVER_CELL:g} м, высота {COVER_H:g} м")
 
 
