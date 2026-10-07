@@ -67,19 +67,12 @@ Pipeline manager. Работать в своей worktree (`scripts/agent-worktr
 - **Слияния ведёт Pipeline manager** (решение владельца 06.10: он не должен ходить по сессиям и собирать, что готово):
   1. Сессия доводит ветку: `verify.sh --full`, `zone-check.sh`, пуш, PR, зелёный CI (`scripts/ci-wait.sh pr N` в фоне).
   2. Пишет Pipeline manager (SendMessage, не владельцу): «готово к слиянию: PR N — что внутри; порядок/пара с PR M; ждёт ли решения владельца».
-  3. Pipeline manager держит очередь: порядок и пары (контракт между зонами). Перемотка влить можно только прямое продолжение `main`,
-     поэтому после каждого слияния остальные PR отстают. Два и больше готовых PR (или один отставший) — **поезд**: `scripts/train.sh N M…`
-     собирает их на свежем `main` в ветку `agent/queue-*` и открывает PR «Поезд слияний»; конфликтный PR выпадает, пара (красный PR,
-     голова которого входит в другой PR поезда) едет вместе. Один CI поезда (`scripts/ci-wait.sh pr <поезд>` в фоне) вместо круга
-     «влить → догнать → ждать CI» на каждый PR; GitHub сам отмечает PR поезда влитыми. Самые дорогие по CI пары — первыми.
-     Проверка — `scripts/land.sh --check <поезд>`; владельцу — одна команда.
-  4. Владелец запускает `scripts/land.sh N [M…]` — перемотка `main` по очереди и `pull --ff-only` основной папки. Агентам перемотка
-     `main` (`land.sh` без `--check`, `gh api … refs/heads/main`, `git push … main`) запрещена хуком.
-  Чужую ветку Pipeline manager меняет только вливанием `origin/main` и предупреждает её сессию (той — `git pull --ff-only` перед новой работой).
-- Уборка: `land.sh` после перемотки сам убирает ветки `agent/*` влитых PR и поездов (локально и на origin) и их worktree — без
-  незакоммиченного; грязные только называет. GitHub тоже удаляет ветку PR после слияния (настройка репо). Поэтому **после «влит»
-  сессия начинает новую задачу в новой worktree** (`agent-worktree.sh new`), в старой не работает — её уже нет. Остальное (ветки без PR,
-  невлитые, cherry-pick) — `scripts/agent-worktree.sh gone <имя>` (вердикт по содержимому и команды); удаляет владелец или сессия по его слову.
+  3. Pipeline manager собирает готовые PR поездом (`scripts/train.sh`, один CI на свежем `main`), владелец вливает одной командой
+     `scripts/land.sh N`. Агентам перемотка `main` запрещена хуком. Механика очереди, поездов, пар и уборки — `docs/ci.md`.
+  4. Чужую ветку Pipeline manager меняет только вливанием `origin/main` и предупреждает её сессию.
+- **После «влит» — новая задача в новой worktree** (`agent-worktree.sh new`): `land.sh` сам убирает ветки `agent/*` влитых PR и их
+  чистые worktree (с незакоммиченным или игнорируемыми файлами — оставляет и называет), GitHub удаляет ветку PR. Своё нужное
+  вне git (карточки, журналы) держать вне worktree. Ветки без PR и невлитые — `agent-worktree.sh gone <имя>`, удаляет владелец.
 - Одна ветка — один исполнитель. Параллельная работа — `scripts/agent-worktree.sh new <имя>` (своя копия и ветка `agent/<имя>`).
 - Не коммитить незавершённое «на потом»: после каждого шага ветка собирается и тесты зелёные.
 - **Контракт между зонами** (версии в `/api/capabilities`, формат записей мира, сообщений Моста, QR, приложение↔коллектор) меняется так, чтобы
@@ -89,43 +82,26 @@ Pipeline manager. Работать в своей worktree (`scripts/agent-worktr
 
 ## Окружение агентов
 
-- Плагины Claude Code для проекта — `.claude/settings.json` (code-review, KotlinSense). Облачная сессия по нему их не ставит —
-  ставит `scripts/cloud-setup.sh` (`claude plugin install`, до старта сессии). LSP-инструмент Claude Code (через него
-  KotlinSense даёт диагностику) включается переменной `ENABLE_LSP_TOOL=1` — она в `env` того же `settings.json`.
-  Decibel Superpowers публичного git-источника не имеет — включается в аккаунте claude.ai.
-- Godot-часть (`netrun/`) ведёт проектный агент `godot-dev` (`.claude/agents/godot-dev.md`): он работает с живым редактором Godot
-  на devbox через MCP-сервер `godot-ai` из `.mcp.json` (ssh + `uvx godot-ai attach`; при первом запуске Claude Code просит одобрить
-  проектный MCP). Редактор: `scripts/devbox-godot-ai.sh start|stop|status` на devbox, рабочая копия — `~/wt-godot` (`agent/godot`).
-- Облачное окружение настраивает `scripts/cloud-setup.sh` (копия вставлена в Setup script окружения): SDK 36, зеркало Maven
-  для Gradle и Robolectric, `LANG=C.UTF-8`, kotlin-language-server (для KotlinSense), PlatformIO с платформой ESP32 и `wokwi-cli`
-  (прошивка QR-дисплея, `firmware/display`). Правите скрипт — обновите и его копию в настройках. Для прошивки в Network access
-  окружения нужны `api.registry.platformio.org`, `dl.registry.platformio.org`, `wokwi.com`; токен Wokwi — переменная окружения
-  `WOKWI_CLI_TOKEN` в настройках окружения и секрет с тем же именем в GitHub Actions, не в репозитории и не в чате.
+- Правила области подгружаются сами при работе с её файлами (`.claude/rules/*.md`, поле `paths`): Android и Gradle — `android-checks.md`,
+  инварианты денег и транзакций — `app-invariants.md`, e2e — `e2e.md`, Godot — `netrun-godot.md`, прошивка и Wokwi — `firmware.md`.
+  Здесь — только общее для всех.
+- Облачное окружение настраивает `scripts/cloud-setup.sh` (копия вставлена в Setup script окружения; правите скрипт — обновите копию):
+  SDK, зеркало Maven, плагины Claude Code (code-review, KotlinSense), PlatformIO. Decibel Superpowers включается в аккаунте claude.ai.
 
 ## Проверки
 
 | Что | Команда | Где |
 |---|---|---|
-| Всё локально | `scripts/check.sh --all` | pre-push хук (`scripts/setup-hooks.sh`) — `check.sh --fast` (≤ 1 мин): detekt, lint, kit, сервер; без Robolectric/Paparazzi |
-| Тесты приложения + скриншоты | `./gradlew verifyPaparazziDebug` (сам гоняет **все** unit-тесты app: скриншоты и остальное — в разных JVM) | без скриншотов — `testDebugUnitTestNoScreenshots`; один тест — `--tests` у неё |
-| kit | `./gradlew :kit:test` | чистый JVM |
-| Статика | `./gradlew :app:detekt :kit:detekt :kit:animalsnifferMain :app:lintDebug` | новые находки ломают CI |
+| Всё локально | `scripts/check.sh --all`; по изменённому — `scripts/verify.sh` | pre-push хук (`scripts/setup-hooks.sh`) — `check.sh --fast` (≤ 1 мин): detekt, lint, kit, сервер; без Robolectric/Paparazzi |
+| Android, kit, Мост (Gradle) | `scripts/dbx.sh --auto\|--full` на devbox; команды Gradle и грабли Paparazzi — `.claude/rules/android-checks.md` | никогда `cleanTest*` (стирает эталоны) |
 | CI | `.github/workflows/main.yml` (push/PR в `main`, вручную) | ≈4 мин |
 | e2e | `scripts/e2e/up.sh && scripts/e2e/run-all.sh`; CI — `e2e.yml` (PR в `main` с правкой `app/`, `kit/`, `scripts/e2e/`; ночью; вручную) | ≈17 мин |
 | Коллектор | `admin-web/tools/test.sh server\|client\|lint\|build\|all` (сам берёт Node ≥ 22, вердикт строкой; свежий worktree — сначала `admin-web/tools/wt-deps.sh`) | в CI — `main.yml`, job admin-web |
-| Godot (netrun) | `netrun/tools/dev.sh test` (по изменённым) / `test --all` (в фоне) / `shot` — с Mac из своего worktree, skill `netrun-loop`; правки и запуск игры — агент `godot-dev` (живой редактор + MCP, `.claude/agents/godot-dev.md`) | devbox; CI — `netrun.yml` (правка `netrun/`); подробности — `docs/netrun-devbox.md`, «Godot AI» |
-| Прошивка | `cmake -S firmware/display -B firmware/display/build && cmake --build … && ctest --test-dir …`; плата — `pio run -e crowpanel579`; Wokwi — `firmware/display/tools/wokwi_selftest.sh` (квота CI-минут; в CI — только при правке кода платы); esp-emulator без квоты (без SD/I²S) — `firmware/display/tools/espemu_selftest.sh` | CI — `firmware.yml` (правка `firmware/`, `admin-web/server/src/displays/`, звука на сервере — `audio/`, `routes/audio.ts`); ≈5 мин |
+| Godot (netrun) | `netrun/tools/dev.sh test` / `test --all` (в фоне) / `shot`, агент `godot-dev` — `.claude/rules/netrun-godot.md` | devbox; CI — `netrun.yml` |
+| Прошивка | cmake/ctest, `pio`, Wokwi (квота!) — `.claude/rules/firmware.md` | CI — `firmware.yml`; ≈5 мин |
 | Конвейер (скрипты, хук, workflows) | `scripts/lint-pipeline.sh` (shellcheck, actionlint, таблица хука `scripts/test-hook.cases`); правите хук — добавьте случай в таблицу | CI — `pipeline.yml` (правка `scripts/`, `.claude/hooks/`, `.github/workflows/`); ≈1 мин; метки зон на PR — `labeler.yml`; раннер devbox — `docs/ci.md` |
 
-- **Облачная сессия без Android SDK** не соберёт `:app` (и даже `:kit` — Gradle конфигурирует весь проект). Проверка —
-  только CI: запустить `main.yml`/`e2e.yml` на своей ветке и читать журнал job. Не утверждать «проверено», не дождавшись CI.
-- **Никогда `./gradlew cleanTest*` / `:app:cleanTestDebugUnitTest`**: Paparazzi считает `app/src/test/snapshots/` выходом
-  тестовой задачи, clean **удаляет закоммиченные эталоны**. Заново без кэша — `--rerun-tasks`. Стёрлись — `git restore app/src/test/snapshots`.
-- Намеренно поменяли интерфейс — `./gradlew recordPaparazziDebug` и коммит новых PNG вместе с правкой.
-- Скриншот-тесты (Paparazzi) и остальные unit-тесты (Robolectric) — в разных JVM (`app/build.gradle.kts`, refactor-plan A1):
-  раньше нативный SQLite Robolectric в общей JVM ломал layoutlib Paparazzi на macOS (SIGSEGV), разделение это сняло —
-  подтверждено 5 прогонами на Mac (M1), `robolectric.sqliteMode=LEGACY` больше нет. Агент ByteBuddy — через `-javaagent`
-  (нужен Paparazzi в любой JVM, не убирать); стережёт `AgentPreloadTest`.
+- Не утверждать «проверено», не дождавшись проверки (облачная сессия без SDK проверяет только через CI).
 
 ## Где что запускать
 
@@ -135,9 +111,9 @@ Pipeline manager. Работать в своей worktree (`scripts/agent-worktr
 - **Gradle на devbox — `scripts/dbx.sh --auto|--full`** (очередь, один итог; skill `orchestrate`). Большая задача из 3+ шагов — по skill `orchestrate`
   (разведка одним агентом с досье, исполнители sonnet, ожидание одним фоновым вызовом, `scripts/ci-wait.sh`).
 - Цикл задачи: правка → `check.sh --fast` (Mac) → тяжёлая проверка на devbox → коммит → `/clear`. Новое окно начинать с
-  `docs/progress.md`, `git log -10`, `git diff` и документов своей области (таблица вверху).
+  `docs/progress.md` и документов своей области (таблица вверху); состояние git и PR — в сводке хука на старте.
+- Середина длинной задачи, контекст тяжёлый — не `/clear`, а `/compact` с подсказкой (набирает владелец): «оставь карточку,
+  решения, что сделано и не проверено, следующий шаг». Перед этим сессия сама кратко пишет эти пункты — сжатие опирается на них.
 - **Своя worktree на сессию** (`scripts/agent-worktree.sh new <имя>`): основной checkout общий для всех сессий — в нём не править и не коммитить.
-- e2e: правила написания проверок — `.claude/rules/e2e.md` (подгружаются при правке `scripts/e2e/`).
 - Сбой: сначала журналы — skill `debug-journals`, потом гипотезы.
-- Инварианты приложения (деньги, транзакции, сеть) — `.claude/rules/app-invariants.md`, подгружаются при правке `app/` и `kit/`.
-  Нарушение = потеря денег/данных у игроков; читать **до** правки.
+- Инварианты приложения (деньги, транзакции, сеть) — `.claude/rules/app-invariants.md`: нарушение = потеря денег/данных у игроков, читать **до** правки `app/`, `kit/`.
