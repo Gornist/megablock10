@@ -24,8 +24,8 @@ TOP = -0.01          # верх плиты, м: на уровне пола, ни
 STREAK_PITCH = 0.25  # шаг подвесных штрихов, м: 16×16 → ≤ 260, 8×8 → ≤ 130
 STREAK_GAP = 0.12    # доля пропусков
 HANG_MAX = 0.9       # длина подвесных штрихов, м (с «горением» до ×1,3 → не глубже ≈ 1,2 м)
-SEAM_STEP = 2.0      # шаг швов, м
-SEAM_DOT_STEP = 0.32  # шаг точек вдоль шва, м
+SEAM_STEP = 1.0      # шаг швов, м: границы клеток хода (NodeGrid.CELL_M = 1); плита стоит на целых метрах, поэтому швы совпадают с клетками
+SEAM_DOT_STEP = 0.5  # шаг точек вдоль шва, м: точки в углах клеток и на серединах границ
 GLASS_DIM = 0.55     # яркость цвета верха стеклянной плиты (тёмно-бирюзовый): итог в шейдере = цвет × альфа 0,05…0,12
 SKIRT_SEG = 2.0     # длина отрезка вуали вдоль кромки, м
 
@@ -58,8 +58,8 @@ def _seam_dots(rng, half):
     lines = [k * SEAM_STEP for k in range(-int(half / SEAM_STEP) + 1, int(half / SEAM_STEP))]
     n = int(2 * half / SEAM_DOT_STEP)
     for c in lines:
-        for i in range(n):
-            s = -half + SEAM_DOT_STEP * (i + 0.5)
+        for i in range(1, n):  # без концов: на кромке плиты своя граница
+            s = -half + SEAM_DOT_STEP * i
             for p in ((c, s), (s, c)):
                 key = (round(p[0], 2), round(p[1], 2))
                 if key in seen or rng.random() < 0.10:
@@ -99,7 +99,7 @@ def build_floor_slab(out, size, seed, translucent=False):
         top,
         lib.streak_set(f"{pre}_streaks_hang", streaks, cy),
         lib.skirt_set(f"{pre}_skirt", _skirts(rng, half), cy),
-        lib.point_cloud("slab_seams", _seam_dots(rng, half), cy, half_size=0.02, seed=seed, a_min=0.4, a_max=0.8),
+        lib.point_cloud("slab_seams", _seam_dots(rng, half), cy, half_size=0.03, seed=seed, a_min=0.6, a_max=1.0),
     ]
     k = size / 16.0  # бюджет карточки для 16×16, для 8×8 пропорционально по периметру/площади
     kind = "стеклянный (полупрозрачный аддитивный верх)" if translucent else "одной чёрной плитой (3 см)"

@@ -99,7 +99,7 @@ static func apply(root: Node, tier: String = "") -> void:
 						m.set_shader_parameter(k, EDGE_MIST[k])
 			if String(mi.name) == "edge_streaks_hang":  # подвесные штрихи кромки комнаты (точек по периметру нет): ярче штрихов плит, иначе край не читается
 				m.set_shader_parameter("glow", EDGE_STREAK_GLOW)
-			if String(mi.name) == "pillar_block":  # укрытие: рёбра ровные и яркие, иначе в очках не видно, где оно (у тайлов пола свет рваный намеренно)
+			if String(mi.name) == "pillar_block" or String(mi.name) == "pillar_base":  # укрытие (корпус и рамка по границе клетки): рёбра ровные и яркие, иначе в очках не видно, где оно (у тайлов пола свет рваный намеренно)
 				for k in PILLAR_EDGE:
 					m.set_shader_parameter(k, PILLAR_EDGE[k])
 			if tier != "" and TIER_TINT.has(tier):

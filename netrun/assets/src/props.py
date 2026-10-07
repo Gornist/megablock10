@@ -133,7 +133,7 @@ def build_vault_volume(out, name="vault", seed=12):
     lib.reset()
     rng = random.Random(seed)
     cy, ice, void = lib.lin("cyan"), lib.lin("ice_white"), lib.lin("void")
-    HX, HY, ZB, ZT = 0.39, 0.37, 0.30, 0.33
+    HX, HY, ZB, ZT = 0.45, 0.45, 0.30, 0.33  # лоток 0,9×0,9 м по центру клетки хода 1×1 м, щель 5 см (как у укрытий); лицо — +Y по оси клетки
     base = lib.box_bm((0.60, 0.60, ZB), bevel=0.012, center=(0, 0, ZB / 2))
     g_base = lib.lit_part(base, ZB, 0.012)
     tray = lib.box_bm((2 * HX, 2 * HY, 0.03), center=(0, 0, ZT - 0.015))
