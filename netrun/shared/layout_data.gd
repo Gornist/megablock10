@@ -29,7 +29,9 @@ var exit_cells: Array[Vector3] = []
 var exit_pos := Vector3.ZERO
 ## Порталы по номеру связи: portals[0] — «1», portals[1] — «2», portals[2] — «3»; массив до наибольшего номера на карте, пропуск — Vector3.INF.
 var portals: Array[Vector3] = []
-## Хранилища: {cell: Vector2i (клетка карты), slot: Vector3 (центр блока, y = 1,0), pad_cell: Vector2i (клетка карты площадки), pad: Vector3, ring: String}.
+## Хранилища: {cell: Vector2i (клетка карты), cell1: Vector2i (клетка 1 м хранилища), slot: Vector3 (центр клетки cell1, y = 1,0), pad_cell: Vector2i (клетка карты
+## площадки), pad1: Vector2i (клетка 1 м площадки: свободная клетка блока pad_cell, ближайшая к хранилищу), pad: Vector3 (центр клетки pad1), ring: String}.
+## Хранилище и площадка стоят ровно по сетке 1 м, а не на углу блока 2×2. В legacy — как раньше (центры блоков, pad = центр блока pad).
 var vaults: Array = []
 ## Стражи: {id: String, route: Array of {cell: Vector2i (клетка 1 м), wait: int, look: Vector2i (dir8, ZERO — не задан)}} — формат маршрута TickIce.
 var sentries: Array = []
@@ -101,6 +103,11 @@ static func block_center_cell(b: Vector2i) -> Vector2i:
 func grid() -> NodeGrid:
 	var g := NodeGrid.new()
 	g.occ = occupied.duplicate()
+	if not is_legacy():
+		# Прыжок на любую клетку блока хранилища (он занят) ставит на площадку перед ним.
+		for v: Dictionary in vaults:
+			for c in block_cells(v["cell"]):
+				g.landing[c] = v["pad1"]
 	return g
 
 
@@ -189,13 +196,49 @@ func _fill_vaults(src: Variant) -> String:
 			return "vaults: cell и pad — клетки карты [x, z] в пределах 0..%d" % (SIZE - 1)
 		var cc: Vector2i = cell
 		var pc: Vector2i = pad
+		var pair := _vault_pair(cc, pc)
+		var cell1 := pair[0]
+		var pad1 := pair[1]
 		var slot := NodeLayout.cell_center(cc.x, cc.y)
+		var pad_pos := NodeLayout.cell_center(pc.x, pc.y)
+		if not is_legacy():
+			slot = NodeGrid.center(cell1)
+			pad_pos = NodeGrid.center(pad1)
 		slot.y = 1.0
 		vaults.append({
-			"cell": cc, "slot": slot, "pad_cell": pc,
-			"pad": NodeLayout.cell_center(pc.x, pc.y), "ring": str(vd.get("ring", "outer")),
+			"cell": cc, "cell1": cell1, "slot": slot, "pad_cell": pc, "pad1": pad1,
+			"pad": pad_pos, "ring": str(vd.get("ring", "outer")),
 		})
 	return ""
+
+
+## Пара клеток 1 м [клетка хранилища, клетка площадки]: ближайшие друг к другу клетка блока хранилища и свободная клетка блока площадки.
+## При равенстве — юго-восточная клетка блока хранилища (block_center_cell: так стоят игрок и Страж «в центре блока»), потом порядок block_cells.
+## Хранилище — клетка своего блока, а не всегда юго-восточная: площадка с западной стороны иначе оказалась бы в двух клетках от него.
+## Свободных клеток у площадки нет (раскладка испорчена) — берётся ближайшая любая: LayoutCheck.check_vault_grid назовёт ошибку.
+func _vault_pair(vault_block: Vector2i, pad_block: Vector2i) -> Array[Vector2i]:
+	var se := block_center_cell(vault_block)
+	var vault_cells: Array[Vector2i] = [se, se + Vector2i(-1, 0), se + Vector2i(0, -1), se + Vector2i(-1, -1)]
+	var best: Array[Vector2i] = [se, se]
+	var best_d := INF
+	for only_free in [true, false]:
+		for vc in vault_cells:
+			for pc in block_cells(pad_block):
+				if only_free and _cell_is_occupied(pc):
+					continue
+				var d := Vector2(pc - vc).length()
+				if d < best_d - 0.0001:
+					best_d = d
+					best = [vc, pc]
+		if best_d < INF:
+			break
+	return best
+
+
+## Клетка 1 м занята по карте (колонна, хранилище, Маяк, барьер, логово): символ её блока в OCCUPIED_SYMBOLS.
+func _cell_is_occupied(c: Vector2i) -> bool:
+	var b := block_of(c)
+	return OCCUPIED_SYMBOLS.contains(blocks[b.y][b.x])
 
 
 func _fill_ice(src: Variant) -> String:

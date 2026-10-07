@@ -31,6 +31,7 @@ static func run_all(layout: LayoutData) -> Dictionary:
 		"windows": check_windows(layout),
 		"cover": check_cover(layout),
 		"dead_ends": check_dead_ends(layout),
+		"vault_grid": check_vault_grid(layout),
 	}
 
 
@@ -268,6 +269,46 @@ static func check_dead_ends(layout: LayoutData) -> Dictionary:
 	if bad.is_empty():
 		return _res(true, "тупиков длиннее %d нет (самый длинный — %d)" % [MAX_DEAD_END, worst])
 	return _res(false, "тупик длиннее %d блоков: %s" % [MAX_DEAD_END, ", ".join(bad)])
+
+
+## (ж) Хранилище по сетке: slot — центр клетки 1 м (не угол блока), эта клетка не колонна; pad — центр свободной клетки 1 м, соседней с клеткой хранилища
+## (по восьми направлениям), в блоке pad_cell. Legacy (константы NodeLayout, предметы на углах модулей) не проверяется.
+static func check_vault_grid(layout: LayoutData) -> Dictionary:
+	if layout.is_legacy():
+		return _res(true, "legacy: хранилища на прежних слотах, не проверяется")
+	var grid := layout.grid()
+	var bad: Array[String] = []
+	for v: Dictionary in layout.vaults:
+		var label := "хранилище %s" % str(v["cell"])
+		var slot: Vector3 = v["slot"]
+		var pad: Vector3 = v["pad"]
+		if not _on_cell_center(slot):
+			bad.append("%s: slot %s не в центре клетки 1 м" % [label, str(slot)])
+			continue
+		var vc := NodeGrid.cell_of(slot)
+		var vb := LayoutData.block_of(vc)
+		if layout.blocks[vb.y][vb.x] == "#":
+			bad.append("%s: клетка %s — колонна" % [label, str(vc)])
+		if not _on_cell_center(pad):
+			bad.append("%s: pad %s не в центре клетки 1 м" % [label, str(pad)])
+			continue
+		var pc := NodeGrid.cell_of(pad)
+		if LayoutData.block_of(pc) != v["pad_cell"]:
+			bad.append("%s: площадка %s вне блока %s" % [label, str(pc), str(v["pad_cell"])])
+		if grid.is_occupied(pc):
+			bad.append("%s: площадка %s занята" % [label, str(pc)])
+		if maxi(absi(pc.x - vc.x), absi(pc.y - vc.y)) != 1:
+			bad.append("%s: площадка %s не соседняя с клеткой %s" % [label, str(pc), str(vc)])
+	if bad.is_empty():
+		return _res(true, "хранилища и площадки по клеткам 1 м (%d)" % layout.vaults.size())
+	return _res(false, "; ".join(bad))
+
+
+## Центр клетки 1 м: обе координаты на полклетки от целой границы.
+static func _on_cell_center(p: Vector3) -> bool:
+	var fx := fposmod(p.x - NodeLayout.ROOM_MIN.x, NodeGrid.CELL_M)
+	var fz := fposmod(p.z - NodeLayout.ROOM_MIN.y, NodeGrid.CELL_M)
+	return absf(fx - NodeGrid.CELL_M * 0.5) < 0.0001 and absf(fz - NodeGrid.CELL_M * 0.5) < 0.0001
 
 
 static func _block_free(layout: LayoutData, b: Vector2i) -> bool:

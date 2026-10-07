@@ -116,3 +116,36 @@ func test_длинный_тупик_не_проходит_а_короткий_п
 	var short_dead := {"name": "t", "vaults": [], "ice": [], "cells": ["........", "........", ".......#", "......#.", "......#.", "........", "...S.EE.", ".....EE."]}
 	assert_bool(LayoutCheck.check_dead_ends(_parse(short_dead))["ok"]).is_true()
 	assert_bool(LayoutCheck.check_dead_ends(LayoutData.load_named("foyer"))["ok"]).is_true()
+
+
+func test_хранилища_фойе_и_учебного_узла_по_сетке() -> void:
+	for n in ["foyer", "foyer_tutorial", "legacy"]:
+		var r := LayoutCheck.check_vault_grid(LayoutData.load_named(n))
+		assert_bool(r["ok"]).override_failure_message("%s: %s" % [n, r["detail"]]).is_true()
+	assert_bool(LayoutCheck.run_all(LayoutData.load_named("foyer")).has("vault_grid")).is_true()
+
+
+func test_хранилище_на_углу_блока_не_проходит_проверку_сетки() -> void:
+	var ld := _parse(_foyer_dict())
+	var v: Dictionary = ld.vaults[0]
+	v["slot"] = NodeLayout.cell_center(0, 0) + Vector3(0, 1.0, 0)   # угол четырёх клеток, как было до W3
+	var r := LayoutCheck.check_vault_grid(ld)
+	assert_bool(r["ok"]).is_false()
+	assert_str(r["detail"]).contains("не в центре клетки")
+
+
+func test_площадка_на_колонне_не_проходит_проверку_сетки() -> void:
+	var d := _foyer_dict()
+	d["cells"] = _cells_with({1: "#.#..#.."})   # блок [0, 1] — площадка хранилища [0, 0] — стал колонной
+	var r := LayoutCheck.check_vault_grid(_parse(d))
+	assert_bool(r["ok"]).is_false()
+	assert_str(r["detail"]).contains("занята")
+
+
+func test_площадка_не_рядом_с_хранилищем_не_проходит_проверку_сетки() -> void:
+	var ld := _parse(_foyer_dict())
+	var v: Dictionary = ld.vaults[1]
+	v["pad"] = NodeGrid.center(Vector2i(14, 3))   # из блока [7, 1], но в двух клетках от хранилища (15; 1)
+	var r := LayoutCheck.check_vault_grid(ld)
+	assert_bool(r["ok"]).is_false()
+	assert_str(r["detail"]).contains("не соседняя")

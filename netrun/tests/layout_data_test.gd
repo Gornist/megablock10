@@ -37,9 +37,13 @@ func test_фойе_вход_выход_порталы_и_хранилища() ->
 	assert_array(ld.exit_cells).contains_exactly(NodeLayout.exit_platform_cells())
 	assert_array(ld.portals).is_equal([Vector3(-7, 0, -3), Vector3(7, 0, -3), Vector3(-1, 0, -13)])
 	assert_int(ld.vaults.size()).is_equal(2)
-	assert_object(ld.vaults[0]["slot"]).is_equal(Vector3(-7, 1.0, -13))
-	assert_object(ld.vaults[1]["slot"]).is_equal(Vector3(7, 1.0, -13))
-	assert_object(ld.vaults[0]["pad"]).is_equal(Vector3(-7, 0, -11))
+	# хранилище и площадка — центры клеток 1 м (юго-восточная клетка блока хранилища и клетка площадки под ней), не углы блоков
+	assert_object(ld.vaults[0]["slot"]).is_equal(Vector3(-6.5, 1.0, -12.5))
+	assert_object(ld.vaults[1]["slot"]).is_equal(Vector3(7.5, 1.0, -12.5))
+	assert_object(ld.vaults[0]["pad"]).is_equal(Vector3(-6.5, 0, -11.5))
+	assert_object(ld.vaults[1]["pad"]).is_equal(Vector3(7.5, 0, -11.5))
+	assert_object(ld.vaults[0]["cell1"]).is_equal(Vector2i(1, 1))
+	assert_object(ld.vaults[0]["pad1"]).is_equal(Vector2i(1, 2))
 	assert_object(ld.vaults[0]["pad_cell"]).is_equal(Vector2i(0, 1))
 	assert_str(ld.vaults[0]["ring"]).is_equal("outer")
 	assert_float(ld.sight_cells).is_equal(6.0)
@@ -165,3 +169,25 @@ func test_дальность_зрения_задана_только_если_е�
 	assert_bool(LayoutData.cached("foyer").has_sight).is_true()
 	assert_float(LayoutData.cached("foyer").sight_cells).is_equal(6.0)
 	assert_bool(LayoutData.cached("legacy").has_sight).is_false()
+
+
+func test_клетки_хранилища_ведут_на_площадку_а_в_legacy_нет() -> void:
+	var ld := _foyer()
+	var g := ld.grid()
+	# хранилище [0, 0] — блок клеток (0..1; 0..1), площадка — клетка (1; 2): прыжок на любую клетку блока приземляется на неё
+	for c in LayoutData.block_cells(Vector2i(0, 0)):
+		assert_object(g.landing_of(c)).is_equal(Vector2i(1, 2))
+		assert_bool(g.is_occupied(c)).is_true()   # сами клетки по-прежнему заняты
+	assert_object(g.landing_of(Vector2i(8, 8))).is_equal(Vector2i(8, 8))   # прочие клетки — как есть
+	assert_bool(LayoutData.load_named("legacy").grid().landing.is_empty()).is_true()
+
+
+func test_площадка_с_западной_стороны_хранилища_рядом_с_ним() -> void:
+	# хранилище [7, 3] у восточного края, площадка [6, 3] левее: хранилище — клетка западной половины его блока, не угол в двух клетках от площадки
+	var d := {"name": "x", "cells": ["........", "........", "........", ".......V", "........", "........", "S.......", "......EE"],
+		"vaults": [{"cell": [7, 3], "pad": [6, 3]}], "ice": []}
+	var ld := LayoutData.parse(d)
+	assert_str(ld.error).is_empty()
+	var v: Dictionary = ld.vaults[0]
+	assert_int(maxi(absi(v["cell1"].x - v["pad1"].x), absi(v["cell1"].y - v["pad1"].y))).is_equal(1)
+	assert_bool(LayoutCheck.check_vault_grid(ld)["ok"]).is_true()
