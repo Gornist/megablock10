@@ -525,6 +525,6 @@ internal fun statusMark(status: Int): Pair<String, Boolean>? = when (status) {
     MessageStatus.PENDING -> "…" to false
     MessageStatus.SENT -> "✓" to false
     MessageStatus.DELIVERED -> "✓✓" to false
-    MessageStatus.READ -> "✓✓" to true
+    MessageStatus.READ, MessageStatus.LISTENED -> "✓✓" to true
     else -> null
 }

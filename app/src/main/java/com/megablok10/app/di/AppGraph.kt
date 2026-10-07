@@ -37,7 +37,6 @@ import com.megablok10.app.collector.RoomChangeQueue
 import com.megablok10.app.collector.SYNC_LOG_TAG
 import com.megablok10.app.collector.heartbeat
 import com.megablok10.app.data.Mb10Database
-import com.megablok10.app.data.MessageStatus
 import com.megablok10.app.data.RoomTransactor
 import com.megablok10.app.identity.ContactDirectory
 import com.megablok10.app.headset.ChatStoreHeadsetPort
@@ -78,6 +77,7 @@ import com.megablok10.app.ui.theme.AppSnack
 import com.megablok10.app.voice.AndroidClipPlayer
 import com.megablok10.app.voice.VoiceAutoplaySetting
 import com.megablok10.app.voice.VoiceMessenger
+import com.megablok10.app.voice.VoiceReceipts
 import com.megablok10.app.voice.VoicePlayer
 import com.megablok10.app.voice.VoiceStore
 import com.megablok10.app.voice.voiceTrack
@@ -159,19 +159,21 @@ class AppGraph(private val app: Application) {
     val voice = VoiceMessenger(db.chatMessageDao(), outbox, peerDirectory, voiceStore)
     val calls = CallManager(app, peerDirectory, db.callLogDao())
     val voiceAutoplay = VoiceAutoplaySetting(prefs(VoiceAutoplaySetting.PREFS))
+    val logStore: LogStore = Mb10LogStore(app)
+    /** Отчёты о прочтении (D4) и переключатель «как в мессенджерах». */
+    val readReceiptSetting = ReadReceiptSetting(prefs(ReadReceiptSetting.PREFS))
+    val readReceipts = ReadReceipts(db.chatMessageDao(), peerDirectory, outbox, readReceiptSetting)
+    /** Синие ✓✓ у голосовых: «прослушал» автору (тот же переключатель, что отчёты о прочтении). */
+    val voiceReceipts = VoiceReceipts(db.chatMessageDao(), peerDirectory, outbox, readReceiptSetting) { identity.current?.publicKeyB64 }
     /** Проигрыватель голосовых: один на приложение, на главном потоке (MediaPlayer), выход из треда его не обрывает; звонок останавливает ([sessionTasks]). */
     val voicePlayer = VoicePlayer(
         engine = AndroidClipPlayer(app),
         store = voiceStore,
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
-        markListened = { db.chatMessageDao().raiseStatus(it, MessageStatus.LISTENED) },
+        markListened = voiceReceipts::onPlayed,
         nextUnlistened = { peer, after -> identity.current?.let { me -> db.chatMessageDao().nextUnlistenedVoice(me.publicKeyB64, peer, after)?.voiceTrack(me.publicKeyB64) } },
         autoplay = { voiceAutoplay.enabled.value },
     )
-    val logStore: LogStore = Mb10LogStore(app)
-    /** Отчёты о прочтении (D4) и переключатель «как в мессенджерах». */
-    val readReceiptSetting = ReadReceiptSetting(prefs(ReadReceiptSetting.PREFS))
-    val readReceipts = ReadReceipts(db.chatMessageDao(), peerDirectory, outbox, readReceiptSetting)
     /** Игроки в сети для экранов и рассылок: без Моста «Сети» (он в PeerDirectory ради отправки, но не игрок). */
     val visiblePlayers: StateFlow<List<OnlinePlayer>> = peerDirectory.online
         .map { list -> list.filter { it.pubKeyB64 != netrunStore.worldPub() } }
@@ -242,6 +244,7 @@ class AppGraph(private val app: Application) {
         receipts = receipts,
         readReceipts = readReceipts,
         voice = voice,
+        voiceReceipts = voiceReceipts,
         netrun = netrun,
         worldCards = worldCards,
         onIncompatible = IncompatibleVersionReporter(WireVersion.protocols, WireVersion.INCOMPATIBLE_MESSAGE) { notices.show(it) }::report,
