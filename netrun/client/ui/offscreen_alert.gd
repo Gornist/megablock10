@@ -23,7 +23,7 @@ func _ready() -> void:
 	_marker.text = "!"
 	_marker.font_size = 72
 	_marker.pixel_size = 0.0008
-	_marker.modulate = Color(1.0, 0.2, 0.2)
+	_marker.modulate = AssetMaterials.layer("hud_bad")
 	_marker.no_depth_test = true
 	_marker.visible = false
 	Label3DSharp.apply(_marker)

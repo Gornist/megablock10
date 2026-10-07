@@ -36,6 +36,12 @@ func test_texts_for_every_reason() -> void:
 	assert_str(EndScreen.title_text("weird")).is_equal("ВЫХОД: weird")
 
 
+func test_title_colors_come_from_palette_layers() -> void:
+	assert_object(EndScreen.title_color(ExitLogic.REASON_CLEAN)).is_equal(AssetMaterials.layer("end_win"))
+	assert_object(EndScreen.title_color(ExitLogic.REASON_FLATLINE)).is_equal(AssetMaterials.layer("end_lose"))
+	assert_object(EndScreen.title_color(ExitLogic.REASON_EJECTED)).is_equal(AssetMaterials.layer("end_lose"))
+
+
 func test_hint_is_take_off_the_headset_without_a_pause_in_the_event() -> void:
 	assert_str(EndScreen.hint_text({"kind": "ended", "reason": "ejected"})).is_equal("снимите очки")
 	assert_str(EndScreen.hint_text({"reentry_sec": 0})).is_equal("снимите очки")

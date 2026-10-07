@@ -11,13 +11,8 @@ const LEVEL_FLATLINE := 4
 
 const DEFAULT_THRESHOLDS := {"suspicious_at": 25.0, "trace_at": 50.0, "lockdown_at": 75.0, "max": 100.0}
 
-const LEVEL_COLORS := [
-	Color(0.2, 0.9, 0.5),
-	Color(1.0, 0.85, 0.2),
-	Color(1.0, 0.5, 0.15),
-	Color(1.0, 0.15, 0.2),
-	Color(0.6, 0.6, 0.65),
-]
+## Слои палитры клиента (AssetMaterials.LAYERS) по уровням trace: цвет задаёт Blender, здесь только соответствие.
+const LEVEL_LAYERS := ["hud_ok", "hud_notice", "hud_warn", "hud_bad", "hud_off"]
 const LEVEL_NAMES := ["спокойно", "подозрение", "трассировка", "блокировка", "обрыв"]
 
 
@@ -34,7 +29,7 @@ static func level_from_value(value: float, thresholds: Dictionary = DEFAULT_THRE
 
 
 static func level_color(level: int) -> Color:
-	return LEVEL_COLORS[clampi(level, 0, LEVEL_COLORS.size() - 1)]
+	return AssetMaterials.layer(LEVEL_LAYERS[clampi(level, 0, LEVEL_LAYERS.size() - 1)])
 
 
 static func level_name(level: int) -> String:
