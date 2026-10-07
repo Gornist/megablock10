@@ -19,6 +19,15 @@ func test_у_каждого_пресета_pos_look_fov() -> void:
 		assert_bool((p["pos"] as Vector3).is_equal_approx(p["look"])).is_false()   # взгляд не в саму камеру
 
 
+func test_кадр_на_глаз_как_у_pico_4() -> void:
+	assert_int(EyePresets.EYE_VIEWPORT.x).is_equal(2160)
+	assert_int(EyePresets.EYE_VIEWPORT.y).is_equal(2160)
+	assert_float(EyePresets.FOV_DEG).is_equal(100.0)
+	for n: String in EyePresets.names():
+		var p := EyePresets.get_preset(n)
+		assert_float(p["fov"]).is_equal(EyePresets.FOV_DEG if p["eye"] else EyePresets.TOP_FOV_DEG)
+
+
 func test_неизвестный_пресет_пустой() -> void:
 	assert_dict(EyePresets.get_preset("нет_такого")).is_empty()
 

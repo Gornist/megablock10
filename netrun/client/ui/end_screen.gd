@@ -79,6 +79,7 @@ func _make_label(label_name: String, text: String, size: int, pos: Vector3) -> L
 	l.no_depth_test = true
 	l.render_priority = 101
 	l.position = pos
+	Label3DSharp.apply(l)
 	add_child(l)
 	return l
 

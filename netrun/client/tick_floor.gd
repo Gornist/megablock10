@@ -227,6 +227,7 @@ func _sync_markers() -> void:
 		l.outline_size = 8
 		l.rotation_degrees = Vector3(-90.0, 0.0, 0.0)   # лежит на полу, читается сверху
 		l.shaded = false
+		Label3DSharp.apply(l)
 		add_child(l)
 		_markers.append(l)
 	for i in _markers.size():

@@ -59,6 +59,7 @@ func _init(is_black: bool = false) -> void:
 	var anchor := _model.find_child("AlertAnchor", true, false) as Node3D  # метка модели (внутри корневого узла клипов Rig): над головой
 	_alert.position = anchor.position + Vector3(0, 0.25, 0) if anchor != null else Vector3(0, 2.4, 0)
 	_alert.visible = false
+	Label3DSharp.apply(_alert)
 	add_child(_alert)
 	_choose(false)
 
@@ -110,6 +111,7 @@ func set_lost(on: bool) -> void:
 		_lost_mark.outline_size = 12
 		_lost_mark.modulate = LOST_COLOR
 		_lost_mark.position = _alert.position
+		Label3DSharp.apply(_lost_mark)
 		add_child(_lost_mark)
 	_lost_mark.visible = on
 

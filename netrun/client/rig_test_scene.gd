@@ -132,6 +132,7 @@ func _ready() -> void:
 	_label.pixel_size = 0.004
 	_label.font_size = 48
 	_label.text = "кадр …"
+	Label3DSharp.apply(_label)
 	add_child(_label)
 	rig = preload("res://client/xr_rig.tscn").instantiate()
 	rig.position = NodeLayout.SPAWN  # в кресле узла (props/seat.glb)
@@ -769,6 +770,7 @@ func show_notice(text: String, sec: float = 2.5) -> void:
 	l.render_priority = 120
 	l.modulate = Color(0.5, 0.95, 1.0)
 	l.position = Vector3(0, -0.12, -0.9)
+	Label3DSharp.apply(l)
 	rig.camera.add_child(l)
 	if is_inside_tree():
 		get_tree().create_timer(sec).timeout.connect(l.queue_free)
@@ -825,6 +827,7 @@ func _build_node(shards: Array, portals: Array, _portal_radius: float) -> void:
 		l.pixel_size = 0.004
 		l.position = Vector3(pos[0], 3.4, pos[1])
 		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		Label3DSharp.apply(l)
 		add_child(l)
 		_node_props.append(l)
 
@@ -876,6 +879,7 @@ func _set_tier_label(m: Node3D, tier: int, daemon: bool = false) -> void:
 		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		l.modulate = Color(0.5, 0.95, 1.0)
 		l.position = Vector3(0, 0.2, 0)
+		Label3DSharp.apply(l)
 		m.add_child(l)
 	l.text = ("ДЕМОН · ТИР %d" if daemon else "ТИР %d") % tier
 
@@ -892,6 +896,7 @@ func _add_stow_hint(m: Node3D) -> void:
 	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	l.modulate = Color(1.0, 0.95, 0.5)
 	l.position = Vector3(0, 0.12, 0)
+	Label3DSharp.apply(l)
 	m.add_child(l)
 
 
@@ -925,6 +930,7 @@ func _build_signs(signs: Array) -> void:
 		l.modulate = Color(0.6, 1.0, 0.8)
 		l.position = Vector3(p[0], 1.6, p[1])
 		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		Label3DSharp.apply(l)
 		add_child(l)
 		_node_props.append(l)
 
