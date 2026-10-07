@@ -35,6 +35,75 @@ const FLOOR_V := {
 	4: {"_plates": {"uv_rim": 0.02, "edge_glow": 1.2, "edge_uneven": 0.7}},
 }
 
+## ПАЛИТРА КЛИЕНТСКИХ СЛОЁВ (маркеры пола, прицел, след ICE, стрелки, кольцо такта, метки, HUD, экран конца). Цвет и материал задаёт Blender, логику — Godot:
+## клиент берёт цвета ТОЛЬКО отсюда (`AssetMaterials.layer("aim_ok")`) и не задаёт свои. База — HEX из lib.py / STYLE.md: голубой мир, ледяной белый, красный только у угрозы
+## (ICE и его взгляд), янтарь — только экран деки. ЗАПРЕЩЕНЫ коричневый, жёлтый, оранжевый и ядовито-зелёный (в кадре клиента 07.10 они были: «две разные игры»).
+## Стадии ICE (спокойно → подозрение → тревога → охота) идут внутри красной семьи от белого к красному; безопасное — голубое.
+const PAL_CYAN := Color("18e6ff")        # BASE, окружение, «можно»
+const PAL_ICE := Color("d9f8ff")         # ледяной белый: самые яркие рёбра, текст, нейтрально
+const PAL_THREAT := Color("ff1f3d")      # только угроза: ICE, его взгляд, отказ
+const PAL_THREAT_HOT := Color("ff7a6b")  # светлый красный: предупреждение, шаг ICE
+const PAL_DIM := Color("2d6b78")         # погасший голубой: недоступно, фон шкал
+const PAL_VOID := Color("02050a")        # чёрная завеса (экран конца), не чистый чёрный
+const PAL_AMBER := Color("ff7a1a")       # янтарь: ТОЛЬКО экран деки (STYLE.md), слои deck_*
+const LAYERS := {
+	# Клетки пола
+	"cell_occupied_fill": Color(PAL_CYAN, 0.14),   # занятая клетка (укрытие, хранилище): слабая голубая заливка
+	"cell_occupied_edge": Color(PAL_CYAN, 0.55),   # и контур клетки
+	# Клетка в зрении ICE (TickFloor): тёмно-красная заливка на тёмном фоне читается КОРИЧНЕВОЙ, поэтому заливка почти прозрачна, а читается контур клетки
+	"cell_vision_fill": Color(PAL_THREAT_HOT, 0.10),
+	"cell_vision_edge": Color(PAL_THREAT_HOT, 0.85),
+	"cell_future": Color(PAL_CYAN, 0.30),          # клетка будущего положения (FUTURE_TINT)
+	# Прицел прыжка
+	"aim_ok": PAL_CYAN,                            # безопасно
+	"aim_warn": PAL_THREAT_HOT,                    # периферия зрения ICE
+	"aim_no": PAL_THREAT,                          # в фокусе ICE / отказ
+	"aim_wait": PAL_ICE,                           # ждём ответа сервера
+	"aim_denied": PAL_DIM,                         # недоступно
+	# ICE: стадии по порядку 0..3 (глаз, значки тревоги, цвет клеток зрения)
+	"ice_calm": PAL_ICE,
+	"ice_suspect": Color("ff9d8c"),
+	"ice_alert": PAL_THREAT_HOT,
+	"ice_hunt": PAL_THREAT,
+	"ice_lost": Color("a9c9d6"),                   # потерял игрока
+	"ice_precapture": PAL_THREAT,                  # мигание перед захватом
+	# Следы и стрелки
+	"trail_step": PAL_THREAT_HOT,                  # шаг ICE
+	"trail_dim": Color(PAL_THREAT, 0.35),          # прежние шаги, тусклые
+	"arrow": PAL_ICE,                              # стрелки направления
+	# Кольцо такта
+	"tick_track": Color("0b3a46", 0.55),
+	"tick_fill": Color(PAL_CYAN, 0.95),
+	"tick_warn": Color(PAL_THREAT_HOT, 0.95),      # такт на исходе
+	# Надписи и HUD
+	"label": PAL_ICE,
+	"label_dim": Color(PAL_CYAN, 0.60),
+	"hud_ok": PAL_CYAN,
+	"hud_notice": PAL_ICE,
+	"hud_warn": PAL_THREAT_HOT,
+	"hud_bad": PAL_THREAT,
+	"hud_off": PAL_DIM,
+	"end_win": PAL_CYAN,
+	"end_lose": PAL_THREAT,
+	"end_veil": PAL_VOID,                          # завеса экрана конца (фейд в тёмное)
+	# Указка деки (луч из руки к панелям)
+	"pointer_dot": PAL_ICE,                        # точка на панели
+	"pointer_press": PAL_CYAN,                     # нажатие
+	"pointer_beam": Color(PAL_CYAN, 0.50),         # луч
+	# Экран деки: янтарь разрешён только здесь (STYLE.md), 2D-интерфейс деки (DeckTheme/mb_*) остаётся своей системой в этой гамме
+	"deck_screen": PAL_AMBER,
+}
+
+
+## Цвет слоя клиента по имени из LAYERS (с альфой, если она задана в палитре); alpha ≥ 0 переопределяет альфу. Неизвестное имя — предупреждение и ледяной белый.
+static func layer(name: String, alpha := -1.0) -> Color:
+	if not LAYERS.has(name):
+		push_warning("AssetMaterials.layer: нет цвета '%s' (есть: %s)" % [name, ", ".join(LAYERS.keys())])
+		return PAL_ICE
+	var c: Color = LAYERS[name]
+	return Color(c, alpha) if alpha >= 0.0 else c
+
+
 ## Параметры solid_dark.gdshader для `pillar_block`/`pillar_base` (env/pillar, env/cover) и `exit_bar_*` (env/exit_frame): ровный яркий свет рёбер без «рваности».
 const PILLAR_EDGE := {"edge_glow": 2.2, "edge_uneven": 0.0}
 
