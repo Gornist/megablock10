@@ -48,7 +48,17 @@
       "Bash(git status *)",
       "Bash(git log *)",
       "Bash(git diff *)",
-      "Bash(git show *)"
+      "Bash(git show *)",
+      "Bash(git fetch)",
+      "Bash(git fetch *)",
+      "Bash(adb devices)",
+      "Bash(adb devices *)",
+      "Bash(scripts/lint-pipeline.sh)",
+      "Bash(scripts/test-hook.sh)",
+      "Bash(scripts/agent-worktree.sh ls)",
+      "Bash(shellcheck *)",
+      "Bash(actionlint)",
+      "Bash(actionlint *)"
     ]
   },
   "hooks": {
