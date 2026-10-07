@@ -3,7 +3,8 @@
 shader_type spatial;
 render_mode unshaded, cull_back, fog_disabled;
 
-uniform vec4 base_color : source_color = vec4(0.008, 0.016, 0.03, 1.0);
+// Не чистый чёрный, а тёмная бирюза темнее фона-пустоты (AssetMaterials.VOID_BG): у референса CDPR чистого чёрного ≈ 0 %, плиты читаются силуэтом на фоне.
+uniform vec4 base_color : source_color = vec4(0.0, 0.07, 0.09, 1.0);
 uniform float edge_glow : hint_range(0.0, 4.0) = 0.75;        // общая яркость контура (почти прозрачный: тусклый, фон просвечивает сквозь свет)
 uniform float edge_uneven : hint_range(0.0, 1.0) = 0.92;    // неравномерность: 0 — ровная линия, 1 — от почти погасшей до полной яркости
 uniform float edge_noise_scale : hint_range(1.0, 40.0) = 14.0; // пятен света на метр вдоль контура
