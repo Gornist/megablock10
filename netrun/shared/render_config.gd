@@ -113,6 +113,30 @@ static func msaa_mode(n: int) -> Viewport.MSAA:
 	return Viewport.MSAA_DISABLED
 
 
+## 3D-сглаживание окна/вьюпорта (плоский клиент и XR: у XR оно задаётся на том же корневом Viewport).
+func apply_msaa(vp: Viewport) -> void:
+	vp.msaa_3d = msaa_mode(msaa)
+
+
+## Масштаб и фовеация интерфейса OpenXR. Свойства проверяются через `in`: у других XRInterface (и у разных версий Godot) их может не быть.
+## Возвращает имена свойств, которых у интерфейса нет (в журнал).
+func apply_xr(iface: Object) -> PackedStringArray:
+	var missing := PackedStringArray()
+	if "render_target_size_multiplier" in iface:
+		iface.set("render_target_size_multiplier", scale)
+	else:
+		missing.append("render_target_size_multiplier")
+	if "foveation_level" in iface:
+		iface.set("foveation_level", foveation)
+	else:
+		missing.append("foveation_level")
+	if "foveation_dynamic" in iface:
+		iface.set("foveation_dynamic", foveation_dynamic)
+	else:
+		missing.append("foveation_dynamic")
+	return missing
+
+
 ## Поля строки журнала `render …` (MbLog).
 func log_fields() -> Dictionary:
 	return {"msaa": msaa, "scale": scale, "foveation": foveation, "dynamic": foveation_dynamic,

@@ -138,3 +138,33 @@ func test_поля_журнала() -> void:
 	var f := RenderConfig.new().log_fields()
 	assert_int(f["msaa"]).is_equal(4)
 	assert_str(f["file"]).is_equal("none")
+
+
+## Заглушка интерфейса OpenXR: те же свойства, что у OpenXRInterface.
+class FakeXr extends RefCounted:
+	var render_target_size_multiplier: float = 1.0
+	var foveation_level: int = 0
+	var foveation_dynamic: bool = false
+
+
+func test_apply_xr_ставит_масштаб_и_фовеацию() -> void:
+	var c := RenderConfig.from_config(_cfg({"scale": 1.3, "foveation": 3, "foveation_dynamic": true}))
+	var x := FakeXr.new()
+	var missing := c.apply_xr(x)
+	assert_array(missing).is_empty()
+	assert_float(x.render_target_size_multiplier).is_equal_approx(1.3, 0.0001)
+	assert_int(x.foveation_level).is_equal(3)
+	assert_bool(x.foveation_dynamic).is_true()
+
+
+func test_apply_xr_без_свойств_возвращает_их_имена_и_не_падает() -> void:
+	var missing := RenderConfig.new().apply_xr(RefCounted.new())
+	assert_int(missing.size()).is_equal(3)
+
+
+func test_apply_msaa_ставит_режим_вьюпорта() -> void:
+	var vp: SubViewport = auto_free(SubViewport.new())
+	RenderConfig.from_config(_cfg({"msaa": 2})).apply_msaa(vp)
+	assert_int(vp.msaa_3d).is_equal(Viewport.MSAA_2X)
+	RenderConfig.new().apply_msaa(vp)
+	assert_int(vp.msaa_3d).is_equal(Viewport.MSAA_4X)

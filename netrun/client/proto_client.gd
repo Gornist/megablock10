@@ -1,7 +1,7 @@
 class_name ProtoClient
 extends Node
 ## Клиент прототипа (V3), общий для Pico 4 и плоской сборки: сцена, XR-риг, сеть, журнал в файл.
-## Журнал (user://logs/netrun-*.log): start, mode, xr, comfort (+ comfort.warn), rig.recenter, rig.teleport (в тактовом режиме + threat=0|1|2, wait=true), teleport.denied,
+## Журнал (user://logs/netrun-*.log): start, mode, xr, render (+ render.warn), comfort (+ comfort.warn), rig.recenter, rig.teleport (в тактовом режиме + threat=0|1|2, wait=true), teleport.denied,
 ## tick (тактовый режим: одна строка на такт — n, inh, mv),
 ## net.* (в том числе net.config, net.reconnect), grab.*, breach.* (взлом хранилища: request, start, tap — только отказ или ловушка, end, no, cancel), app.pause/resume, frame.slow.
 ## Деку на руке дополняют вкладки ЧАТ и ЗВОНКИ (фиктивная связь с телефоном): `phone link=fake|off tabs=N` при старте, `phone.msg thread=…`,
@@ -81,12 +81,15 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	_setup_phone(args)
 	scene.rig.teleport_attempted.connect(_on_teleport_attempted)
 	_tick_sound = want_xr
+	scene.rig.render = RenderConfig.load_file(config_paths)
 	if want_xr:
 		if scene.rig.start_xr():
 			log_file.log("xr", {"enabled": true, "reason": "ok", "play_area": "sitting"})
 	else:
 		log_file.log("xr", {"enabled": false, "reason": "flat_build"})
+		scene.rig.render.apply_msaa(get_viewport())   # плоский клиент: только 3D-сглаживание
 		scene.rig.recenter()
+	_log_render(scene.rig.render, scene.rig.xr_active, scene.rig.xr_render_missing)
 	var cfg := NetConfig.from_sources(args, config_paths)
 	for w in cfg.warnings:
 		log_file.log("net.config.warn", {"msg": w})
@@ -135,6 +138,17 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	net.teleport_denied.connect(_on_teleport_denied)
 	log_file.log("net.connect", {"host": cfg.host, "port": cfg.port})
 	net.start_client(cfg)
+
+
+## Что применено к рендеру: `render msaa=… scale=… foveation=… dynamic=…` (масштаб и фовеация — только в XR), предупреждения файла — `render.warn`.
+func _log_render(r: RenderConfig, xr: bool, missing: PackedStringArray) -> void:
+	for w in r.warnings:
+		log_file.log("render.warn", {"msg": w})
+	var fields := r.log_fields()
+	fields["xr"] = xr
+	if not missing.is_empty():
+		fields["missing"] = ",".join(missing)
+	log_file.log("render", fields)
 
 
 ## Комфорт: файл user://comfort.cfg (необязателен), поверх него — аргументы разработки. Итог — строка `comfort` в журнале.
