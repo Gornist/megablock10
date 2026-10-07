@@ -601,8 +601,10 @@ func test_vault_has_three_states_three_tiers_and_a_shard_slot() -> void:
 	assert_float(slot.position.y).is_equal_approx(1.0, 0.01)  # центр шарда на 1,0 м над полом
 	var box := _aabb(v)
 	assert_float(box.position.y).is_between(-0.01, 0.01)  # origin на полу
-	assert_float(box.size.x).is_between(0.7, 0.9)
-	assert_float(box.size.z).is_between(0.65, 0.85)
+	assert_float(box.size.x).is_between(0.85, 1.0)  # основание по клетке хода 1×1 м: лоток 0,9 м + щель 5 см, весь вид внутри клетки
+	assert_float(box.size.z).is_between(0.85, 1.0)
+	assert_float(box.position.x + box.size.x / 2.0).is_equal_approx(0.0, 0.03)  # origin — центр клетки
+	assert_float(box.position.z + box.size.z / 2.0).is_equal_approx(0.0, 0.03)
 	assert_float(box.size.y).is_between(0.7, 0.95)
 	# состояния различимы силуэтом: закрытое с клеткой высокое, пустое низкое
 	var closed := _aabb(v.find_child("State_closed", true, false))
