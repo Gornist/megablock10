@@ -209,3 +209,22 @@ func test_сообщение_о_входе_в_узел_несёт_имя_рас�
 	_build()
 	assert_str(str(_world.node_event("x_alt")["layout"])).is_equal(ALT)
 	assert_str(str(_world.node_event("x_leg")["layout"])).is_equal("legacy")
+
+
+# ---------------------------------------------------------------- стенд: стартовые клетки ботов
+
+func test_боты_стенда_берут_разные_свободные_клетки_у_входа() -> void:
+	var alt: LayoutData = LayoutData.cached(ALT)
+	var cells := {}
+	for slot in 6:
+		var bot := BotClient.new()
+		bot._grid = alt.grid()
+		bot.position = alt.spawn
+		bot.start_slot = slot
+		var c := NodeGrid.cell_of(bot._start_cell_center())
+		assert_bool(bot._grid.is_occupied(c)).is_false()
+		assert_str(bot._grid.hop_verdict(alt.spawn, NodeGrid.center(c))).is_empty()
+		assert_bool(c != NodeGrid.cell_of(alt.spawn)).is_true()
+		cells[c] = true
+		bot.free()
+	assert_int(cells.size()).is_equal(6)   # шесть ботов — шесть разных клеток
