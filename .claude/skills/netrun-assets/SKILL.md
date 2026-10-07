@@ -21,6 +21,10 @@ description: Работа над видом Сети (netrun/assets — моде
 4. Кадры: `pipeline.sh shots <каталог> --tier=BASE [--only=a,b] [--grid]` → смотреть ОДИН кадр (`sips -Z 1000 in.png --out out.png` на Mac) или `--grid`; серия по чек-листу — агент `visual-reviewer` (sonnet).
    Правка только шейдера (`*.gdshader`) пересборки не требует — сразу `shots`.
 5. Числа вместо глаз: `pipeline.sh stats <кадры|каталог> --ref <референс.png>` (см. ниже).
+   **`shots` — изолированная проверка, не приёмка** (07.10: по кадрам превью «приняли» сетку `floor_v3`, которого клиент не рисует).
+   Приёмка вида — кадр клиента `netrun/tools/dev.sh shot res://tests/foyer_preview.tscn` по пресетам `netrun/shared/eye_presets.gd`,
+   окончательно — кадр с очков (`netrun/tools/pico.sh`, по слову владельца). Какой файл рисует клиент — смотреть в `node_view.gd`.
+   Парный PR ассет + интеграция Godot принимается кадром после слияния обоих. Подробно — §18 `netrun/assets/ARCHITECTURE.md`.
 6. Перед PR: `scripts/verify.sh --full`, `scripts/zone-check.sh blender`; ждать CI — `scripts/ci-wait.sh pr N` в фоне.
 
 ## Грабли (все были на деле)

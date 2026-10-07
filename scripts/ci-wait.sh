@@ -11,7 +11,11 @@ for _ in $(seq 1 240); do
   else OUT=$(gh run list --commit "$ARG" --json workflowName,status,conclusion --jq '.[] | "\(.workflowName)\t\(if .status=="completed" then .conclusion else "pending" end)"' 2>&1); RC=$?; fi
   if [ $RC -ne 0 ] && ! echo "$OUT" | grep -qE 'pending|pass|fail'; then ERR=$((ERR+1)); [ $ERR -ge 8 ] && { echo "CI: API недоступен ($OUT)"; exit 2; }; sleep 30; continue; fi
   ERR=0
+  # Итог принимаем, только если через 30 с он тот же: сразу после `gh run rerun` перезапущенной проверки какое-то время
+  # нет в списке, и скрипт печатал «всё зелёное» без неё (07.10, PR #87: e2e ещё шёл).
   if [ -n "$OUT" ] && ! echo "$OUT" | grep -qiE 'pending|queued|in_progress'; then
+    DONE=$(echo "$OUT" | awk -F'\t' '{print $1, $2}' | sort)
+    if [ "${PREV:-}" != "$DONE" ]; then PREV=$DONE; sleep 30; continue; fi
     echo "CI: $(echo "$OUT" | awk -F'\t' '{printf "%s %s; ", $1, $2}')"
     echo "$OUT" | grep -qiE 'fail|cancel|error|timed_out|startup_failure' || exit 0
     # Красное: журнал упавших шагов — сразу в файл, чтобы следующий ход не искал run id и не тянул весь лог в контекст.

@@ -18,6 +18,8 @@ for n in "$@"; do
   [[ "$n" =~ ^[0-9]+$ ]] || { echo "LAND: «$n» — не номер PR"; exit 2; }
   j=$(gh pr view "$n" -R $REPO --json state,baseRefName,headRefOid,headRefName,title 2>/dev/null) || { echo "LAND #$n: PR не найден"; exit 1; }
   st=$(jq -r .state <<<"$j"); br=$(jq -r .baseRefName <<<"$j"); sha=$(jq -r .headRefOid <<<"$j"); hd=$(jq -r .headRefName <<<"$j"); tt=$(jq -r .title <<<"$j" | cut -c1-70)
+  # Уже влитый — не ошибка: повтор после обрыва сети (07.10, #92) должен доделать обновление папки и уборку.
+  [ "$st" = MERGED ] && [ "$br" = main ] && { echo "LAND #$n: уже влит — доделываю обновление и уборку"; continue; }
   [ "$st" = OPEN ] && [ "$br" = main ] || { echo "LAND #$n: не открыт или база не main ($st, $br)"; exit 1; }
   bad=$(gh pr checks "$n" -R $REPO --json name,bucket --jq '.[] | select(.bucket != "pass" and .bucket != "skipping") | "\(.name):\(.bucket)"' 2>/dev/null)
   [ -z "$(gh pr checks "$n" -R $REPO --json name --jq '.[].name' 2>/dev/null)" ] && bad="проверок нет"
