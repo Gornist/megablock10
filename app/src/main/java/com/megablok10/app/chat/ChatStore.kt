@@ -5,6 +5,7 @@ import com.megablok10.app.data.ChatMessageEntity
 import com.megablok10.app.data.MessageStatus
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.log.Mb10Log
+import com.megablok10.app.voice.VoiceProtocol
 import com.megablok10.kit.mesh.OnlinePlayer
 import com.megablok10.kit.mesh.PeerDirectory
 import com.megablok10.kit.net.SendOutcome
@@ -79,6 +80,11 @@ class ChatStore(
 
     /** Строка чата ушла из очереди или при переотправке и адресат подтвердил её (D2) — «доставлено» у своей копии. */
     suspend fun markDelivered(line: String) {
+        // Голосовое в очереди — строка-ссылка (звук берётся из файла при отправке): маркер в треде восстанавливается из неё.
+        VoiceProtocol.decodeRef(line)?.let {
+            dao.raiseStatusOf(it.fromPubKeyB64, it.timestamp, ChatMessageType.DM.name, it.marker(), MessageStatus.DELIVERED)
+            return
+        }
         val wire = ChatProtocol.decode(line) ?: return
         dao.raiseStatusOf(wire.fromPubKeyB64, wire.timestamp, wire.type.name, wire.body, MessageStatus.DELIVERED)
     }

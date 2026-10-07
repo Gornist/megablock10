@@ -17,6 +17,8 @@ object WireVersion {
     const val CLAIM = 1
     /** Отчёт о прочтении личных сообщений (chat.ReadReceiptProtocol, D4). */
     const val READ = 1
+    /** Голосовое сообщение личного чата (voice.VoiceProtocol, app/docs/voice-messages.md). Дашборду не сообщается: чат до коллектора не доходит. */
+    const val VOICE = 1
     /**
      * Вход в «Сеть» (docs/netrun-bridge-protocol.md, раздел 8): запрос телефона Мосту `MB10ENTER` (v2 — с RAM) и подписанный ответ Моста
      * `MB10ENTERED` (остаётся v1). Запрос, записанный до обновления, уходит строкой v1 ([ENTER_LEGACY]): Мост принимает обе версии.
@@ -31,7 +33,7 @@ object WireVersion {
     val REPORTED: Map<String, Int> = linkedMapOf("chat" to CHAT, "call" to CALL, "claim" to CLAIM, "read" to READ, "to" to ENVELOPE)
 
     /** Магия протокола → версия, которую понимает это приложение. */
-    val SUPPORTED: Map<String, Int> = mapOf("MB10CHAT" to CHAT, "MB10CALL" to CALL, "MB10CLAIM" to CLAIM, "MB10READ" to READ, "MB10ENTER" to ENTER, "MB10ENTERED" to ENTERED, LineEnvelope.MAGIC to ENVELOPE)
+    val SUPPORTED: Map<String, Int> = mapOf("MB10CHAT" to CHAT, "MB10CALL" to CALL, "MB10CLAIM" to CLAIM, "MB10READ" to READ, "MB10VOICE" to VOICE, "MB10ENTER" to ENTER, "MB10ENTERED" to ENTERED, LineEnvelope.MAGIC to ENVELOPE)
 
     val protocols = WireProtocols(SUPPORTED)
 

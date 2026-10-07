@@ -13,6 +13,7 @@ import com.megablok10.app.presence.WifiBinder
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
 import com.megablok10.app.sound.SoundPlayer
+import com.megablok10.app.voice.VoiceMessenger
 import com.megablok10.app.wallet.PaymentLedger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,6 +45,7 @@ class MeshSession(
     private val slotClaims: SlotClaimStore,
     private val receipts: ReceiptConfirmer,
     private val readReceipts: ReadReceipts,
+    private val voice: VoiceMessenger,
     /** Вход в «Сеть»: ответ Моста по сети (M3). */
     private val netrun: NetrunEntry,
     /** Добыча и эдди от Моста принимаются без «Принять» (M3). */
@@ -84,6 +86,13 @@ class MeshSession(
                 onCallSignal = { signal -> calls.onSignalReceived(identity, signal) },
                 onSlotClaim = { claim -> slotClaims.receive(claim) },
                 onReadReceipt = { r -> readReceipts.onReceived(identity.publicKeyB64, r) },
+                // Файл и строка в Room — до возврата (D2); звук и уведомление — после, и только для нового (не повтор из очереди).
+                onVoice = { v ->
+                    if (voice.receive(v)) {
+                        SoundPlayer.playMessageReceived(app)
+                        ChatNotifier.show(app, ChatWireMessage(ChatMessageType.DM, v.fromPubKeyB64, v.fromCallsign, v.fromFaction, v.toPubKeyB64, v.timestamp, v.marker()))
+                    }
+                },
                 onEntered = { reply -> netrun.onEntered(reply) },
                 onIncompatible = onIncompatible,
                 myKey = { identity.publicKeyB64 },
