@@ -26,6 +26,7 @@ func _ready() -> void:
 	_marker.modulate = Color(1.0, 0.2, 0.2)
 	_marker.no_depth_test = true
 	_marker.visible = false
+	Label3DSharp.apply(_marker)
 	add_child(_marker)
 	var gen := AudioStreamGenerator.new()
 	gen.mix_rate = 22050.0
