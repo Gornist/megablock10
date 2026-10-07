@@ -15,6 +15,13 @@ uniform float edge_drift : hint_range(0.0, 1.0) = 0.12;      // медленно
 uniform float uv_rim : hint_range(0.0, 0.2) = 0.0;
 uniform vec4 tint : source_color = vec4(1.0);
 uniform float tint_amount : hint_range(0.0, 1.0) = 0.0;
+// Сетка клеток хода ТЕКСТУРОЙ на верхних гранях (пол): линии клетки 1 м запечены в grid_tex (AssetMaterials._grid_texture, мипмапы), выборка по МИРОВЫМ x,z
+// с анизотропной фильтрацией: издали и под скользящим углом линия плавно тускнеет по мипам, а не мерцает и не «лесенкой» (в отличие от точек и шейдерных линий на границе пикселя).
+// grid_alpha = 0 — выключено (по умолчанию). grid_origin — мировые xz угла клетки, если плита стоит не на целых метрах. Анизотропия берётся из настроек проекта
+// (rendering/textures/default_filters/anisotropic_filtering_level).
+uniform sampler2D grid_tex : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform float grid_alpha : hint_range(0.0, 2.0) = 0.0;
+uniform vec2 grid_origin = vec2(0.0);
 
 // Перекраска тиром сохраняет чёрное и белое: у чёрных вершин (тайлы пола) кайма остаётся нулевой.
 vec3 recolor(vec3 c) {
@@ -26,6 +33,7 @@ vec3 recolor(vec3 c) {
 varying vec3 v_wp;
 varying vec2 v_uv;
 varying vec2 v_hs;
+varying float v_top;
 
 float hash3(vec3 p) {
 	return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
@@ -44,6 +52,7 @@ void vertex() {
 	v_wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	v_uv = UV;
 	v_hs = UV2;
+	v_top = NORMAL.y;  // нормаль в пространстве модели: верх плиты смотрит в +Y (нужна только для сетки)
 }
 
 void fragment() {
@@ -54,5 +63,11 @@ void fragment() {
 		vec2 q = v_hs - abs(v_uv);
 		rim_k = 1.0 - smoothstep(uv_rim * 0.4, uv_rim, min(q.x, q.y));
 	}
-	ALBEDO = base_color.rgb + mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount) * edge_glow * lit * rim_k;
+	vec3 col = base_color.rgb + mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount) * edge_glow * lit * rim_k;
+	if (grid_alpha > 0.0 && v_top > 0.9) {
+		float g = texture(grid_tex, v_wp.xz - grid_origin).r;
+		vec3 gc = tint_amount > 0.0 ? tint.rgb : vec3(0.094, 0.9, 1.0);
+		col += gc * g * grid_alpha;
+	}
+	ALBEDO = col;
 }

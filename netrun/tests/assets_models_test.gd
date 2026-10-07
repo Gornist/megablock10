@@ -772,3 +772,20 @@ func test_asset_materials_knob_min_px_reaches_streaks() -> void:
 	var post := _mat_of(exit_frame, "exit_post_l")
 	assert_float(float(post.get_shader_parameter("min_px"))).is_equal_approx(3.0, 0.001)
 	AssetMaterials.reset_tuning()
+
+
+func test_asset_materials_knob_floor_grid_texture_replaces_seam_dots() -> void:
+	AssetMaterials.reset_tuning()
+	var off := _load("env", "floor_slab_8")
+	AssetMaterials.apply(off, "BASE")
+	assert_bool(_mat_of(off, "slab").get_shader_parameter("grid_alpha") == null).override_failure_message("по умолчанию сетки-текстуры нет (параметр не задан)").is_true()
+	assert_bool(off.find_child("slab_seams", true, false).visible).override_failure_message("по умолчанию точки швов видны").is_true()
+	AssetMaterials.tune({"floor_grid": 0.4})
+	var on := _load("env", "floor_slab_8")
+	AssetMaterials.apply(on, "BASE")
+	var m := _mat_of(on, "slab")
+	assert_float(float(m.get_shader_parameter("grid_alpha"))).is_equal_approx(0.4, 0.001)
+	var tex := m.get_shader_parameter("grid_tex") as Texture2D
+	assert_bool(tex != null and tex.get_width() == AssetMaterials.GRID_TEX_PX).override_failure_message("текстура клетки не задана").is_true()
+	assert_bool(on.find_child("slab_seams", true, false).visible).override_failure_message("floor_grid: точки швов скрыты").is_false()
+	AssetMaterials.reset_tuning()

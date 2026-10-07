@@ -257,6 +257,8 @@ func _ready() -> void:
 			_batch_on = false
 		if a == "--nofringe":  # без мягкой обводки силуэтов (для сравнения кадров и замера перерисовки)
 			AM.fringe_on = false
+		if a.begins_with("--floorgrid="):  # сетка клеток 1 м текстурой на плите пола (ручка floor_grid, ориентир 0.5)
+			AM.tune({"floor_grid": float(a.trim_prefix("--floorgrid="))})
 		if a.begins_with("--overdraw="):
 			_od = a.trim_prefix("--overdraw=").split(",")
 		if a == "--field":
