@@ -17,8 +17,8 @@ wait_until 60 bash -c "source '$(dirname "$0")/lib.sh'; [ -n \"\$(port_of $A)\" 
 PA=$(port_of $A); PB=$(port_of $B)
 [ -n "$PA" ] && [ -n "$PB" ] || die "не нашёл порты приложений (приложения запущены?)"
 PKA=$(cat "$E2E_DIR/pk_$A.txt"); PKB=$(cat "$E2E_DIR/pk_$B.txt")
-adb_ $A emu redir del tcp:21277 >/dev/null 2>&1; adb_ $B emu redir del tcp:24817 >/dev/null 2>&1
-adb_ $A emu redir add tcp:21277:$PA >/dev/null; adb_ $B emu redir add tcp:24817:$PB >/dev/null
-dbg $B DEBUG_PEER --es pk "$PKA" --es cs Alice --es fac Neon --es host 10.0.2.2 --ei port 21277
-dbg $A DEBUG_PEER --es pk "$PKB" --es cs Bob   --es fac Rats --es host 10.0.2.2 --ei port 24817
+adb_ $A emu redir del tcp:$E2E_REDIR_A >/dev/null 2>&1; adb_ $B emu redir del tcp:$E2E_REDIR_B >/dev/null 2>&1
+adb_ $A emu redir add tcp:$E2E_REDIR_A:$PA >/dev/null; adb_ $B emu redir add tcp:$E2E_REDIR_B:$PB >/dev/null
+dbg $B DEBUG_PEER --es pk "$PKA" --es cs Alice --es fac Neon --es host 10.0.2.2 --ei port "$E2E_REDIR_A"
+dbg $A DEBUG_PEER --es pk "$PKB" --es cs Bob   --es fac Rats --es host 10.0.2.2 --ei port "$E2E_REDIR_B"
 log "пиры связаны (A:$PA ↔ B:$PB)"

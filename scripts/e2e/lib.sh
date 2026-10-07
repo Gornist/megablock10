@@ -258,6 +258,39 @@ heal_host_reach() {
   # Повтор синка после сбоя — с паузой до минуты (SyncEngine.backoffMs), поэтому ждём с запасом.
   wait_until 90 bash -c "source '$ROOT/scripts/e2e/lib.sh'; host_reach_ok $want" || { log "ВНИМАНИЕ: связи с сервером нет ($(players_total) игроков на дашборде, синк: $(last_sync $A) / $(last_sync $B))"; return 1; }
 }
+# Порты на хосте, через которые эмуляторы достают друг друга (link.sh: `emu redir add tcp:ПОРТ:порт-приложения`): A стучится к B на 10.0.2.2:E2E_REDIR_B, B к A — на E2E_REDIR_A.
+E2E_REDIR_A=${E2E_REDIR_A:-21277}
+E2E_REDIR_B=${E2E_REDIR_B:-24817}
+# peer_probe <порт хоста> — отвечает ли приложение за этим redir. Шлёт в конверте строку «не для вас» (кому: e2e-probe, от кого: пусто — приложение
+# не запомнит «услышанного» пира и ничего не сохранит): живой сервер отвечает MB10ACK wrong/reject. Молчание или обрыв — redir принимает соединение
+# на хосте, а до приложения не доходит (в run 37579342774 и 37595907671: send.no_ack на 10.0.2.2:24817, у получателя ни одного server.recv).
+peer_probe() {
+  local reply
+  reply=$(
+    exec 2>/dev/null
+    exec 7<>"/dev/tcp/127.0.0.1/$1" || exit 1
+    printf 'MB10TO:v1:e2e-probe::0:x\n' >&7
+    read -r -t 4 line <&7 && printf '%s' "$line"
+  ) 2>/dev/null
+  case $reply in MB10ACK:v1:wrong:* | MB10ACK:v1:reject:*) return 0 ;; esac
+  return 1
+}
+peer_link_ok() { peer_probe "$E2E_REDIR_A" && peer_probe "$E2E_REDIR_B"; }
+# heal_peer_link — связь эмуляторов друг с другом (статические пиры) жива: оба redir отвечают. Нет — заново link.sh (redir del/add + DEBUG_PEER), до двух раз.
+# Это не повтор сценария: проверяется стенд ДО него, чтобы шум канала не краснил сценарии приложения «сам». Не вышло — ВНИМАНИЕ в журнал, сценарий пойдёт как есть.
+heal_peer_link() {
+  [ "${E2E_STATIC_PEERS:-1}" = 0 ] && return 0
+  local try
+  for try in 1 2; do
+    peer_link_ok && return 0
+    log "связь A↔B не отвечает (к A: $(peer_probe "$E2E_REDIR_A" && echo ок || echo нет), к B: $(peer_probe "$E2E_REDIR_B" && echo ок || echo нет)) — link.sh, попытка $try"
+    "$ROOT/scripts/e2e/link.sh" >/dev/null 2>&1 || log "link.sh не удался"
+    sleep 2
+  done
+  peer_link_ok && return 0
+  log "ВНИМАНИЕ: связь A↔B не восстановилась (redir $E2E_REDIR_A/$E2E_REDIR_B): сообщения между эмуляторами в этом сценарии могут не доходить"
+  return 1
+}
 # preflight — проверка обоих эмуляторов перед сценарием: устройство на связи, система загружена, экран отвечает (иначе чинит).
 preflight() {
   local s bad=0
