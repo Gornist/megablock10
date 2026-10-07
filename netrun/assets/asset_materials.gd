@@ -119,7 +119,8 @@ static func apply(root: Node, tier: String = "") -> void:
 				m.set_shader_parameter("tint", TIER_TINT[tier])
 				m.set_shader_parameter("tint_amount", 1.0)
 			if tier != "" and src.resource_name == "streaks":  # окружение: мягкий ореол и длинное затухание к концам; существа и аватары — резкие, без ореола
-				m.set_shader_parameter("halo", ENV_HALO)
+				var far := root.scene_file_path.contains("/far_")  # дальние пласты (8+ м): ореол вдвое-втрое расширяет квады, а видны они как дымка и без него
+				m.set_shader_parameter("halo", 0.0 if far else ENV_HALO)
 				m.set_shader_parameter("halo_width", ENV_HALO_WIDTH)
 				m.set_shader_parameter("end_fade", ENV_END_FADE)
 			if String(mi.name) == "beacon_halo":  # маяк предмета: капля свечения — свой шейдер; луч — streaks с ореолом (клиент выключает узел Beacon в руке)
