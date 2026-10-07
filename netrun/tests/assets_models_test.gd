@@ -776,10 +776,15 @@ func test_asset_materials_knob_min_px_reaches_streaks() -> void:
 
 func test_asset_materials_knob_floor_grid_texture_replaces_seam_dots() -> void:
 	AssetMaterials.reset_tuning()
+	var dflt := _load("env", "floor_slab_8")
+	AssetMaterials.apply(dflt, "BASE")
+	assert_float(float(_mat_of(dflt, "slab").get_shader_parameter("grid_alpha"))).override_failure_message("по умолчанию сетка-текстура включена").is_equal_approx(0.35, 0.001)
+	assert_bool(dflt.find_child("slab_seams", true, false).visible).override_failure_message("по умолчанию точки швов скрыты").is_false()
+	AssetMaterials.tune({"floor_grid": 0.0})
 	var off := _load("env", "floor_slab_8")
 	AssetMaterials.apply(off, "BASE")
-	assert_bool(_mat_of(off, "slab").get_shader_parameter("grid_alpha") == null).override_failure_message("по умолчанию сетки-текстуры нет (параметр не задан)").is_true()
-	assert_bool(off.find_child("slab_seams", true, false).visible).override_failure_message("по умолчанию точки швов видны").is_true()
+	assert_bool(_mat_of(off, "slab").get_shader_parameter("grid_alpha") == null).override_failure_message("floor_grid=0: сетки-текстуры нет (параметр не задан)").is_true()
+	assert_bool(off.find_child("slab_seams", true, false).visible).override_failure_message("floor_grid=0: точки швов видны").is_true()
 	AssetMaterials.tune({"floor_grid": 0.4})
 	var on := _load("env", "floor_slab_8")
 	AssetMaterials.apply(on, "BASE")
