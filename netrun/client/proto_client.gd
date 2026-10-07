@@ -1,7 +1,7 @@
 class_name ProtoClient
 extends Node
 ## Клиент прототипа (V3), общий для Pico 4 и плоской сборки: сцена, XR-риг, сеть, журнал в файл.
-## Журнал (user://logs/netrun-*.log): start, mode, xr, comfort (+ comfort.warn), rig.recenter, rig.teleport (в тактовом режиме + threat=0|1|2, wait=true), teleport.denied,
+## Журнал (user://logs/netrun-*.log): start, mode, xr, render (+ render.warn), comfort (+ comfort.warn), rig.recenter, rig.teleport (в тактовом режиме + threat=0|1|2, wait=true), teleport.denied,
 ## tick (тактовый режим: одна строка на такт — n, inh, mv),
 ## net.* (в том числе net.config, net.reconnect), grab.*, breach.* (взлом хранилища: request, start, tap — только отказ или ловушка, end, no, cancel), app.pause/resume, frame.slow.
 ## Деку на руке дополняют вкладки ЧАТ и ЗВОНКИ (фиктивная связь с телефоном): `phone link=fake|off tabs=N` при старте, `phone.msg thread=…`,
@@ -65,6 +65,9 @@ var _last_slow_log_ms := -SLOW_LOG_MIN_GAP_MS
 func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	log_file.open()
 	log_file.log("start", {"mode": mode, "godot": Engine.get_version_info().string, "args": redact_args(args), "log": log_file.path})
+	# Настройки рендера читаются до построения сцены: обводка силуэтов (fringe) ставится в материалы при построении узлов.
+	var render_cfg := RenderConfig.load_file(config_paths)
+	render_cfg.apply_fringe(config_paths)
 	scene = preload("res://client/rig_test_scene.gd").new()
 	add_child(scene)
 	scene.rig.xr_failed.connect(func(reason: String): log_file.log("xr", {"enabled": false, "reason": reason}))
@@ -81,12 +84,15 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	_setup_phone(args)
 	scene.rig.teleport_attempted.connect(_on_teleport_attempted)
 	_tick_sound = want_xr
+	scene.rig.render = render_cfg
 	if want_xr:
 		if scene.rig.start_xr():
 			log_file.log("xr", {"enabled": true, "reason": "ok", "play_area": "sitting"})
 	else:
 		log_file.log("xr", {"enabled": false, "reason": "flat_build"})
+		scene.rig.render.apply_msaa(get_viewport())   # плоский клиент: только 3D-сглаживание
 		scene.rig.recenter()
+	_log_render(scene.rig.render, scene.rig.xr_active, scene.rig.xr_render_missing)
 	var cfg := NetConfig.from_sources(args, config_paths)
 	for w in cfg.warnings:
 		log_file.log("net.config.warn", {"msg": w})
@@ -135,6 +141,17 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	net.teleport_denied.connect(_on_teleport_denied)
 	log_file.log("net.connect", {"host": cfg.host, "port": cfg.port})
 	net.start_client(cfg)
+
+
+## Что применено к рендеру: `render msaa=… aa=… fringe=… scale=… foveation=… dynamic=…` (масштаб и фовеация — только в XR), предупреждения файла — `render.warn`.
+func _log_render(r: RenderConfig, xr: bool, missing: PackedStringArray) -> void:
+	for w in r.warnings:
+		log_file.log("render.warn", {"msg": w})
+	var fields := r.log_fields()
+	fields["xr"] = xr
+	if not missing.is_empty():
+		fields["missing"] = ",".join(missing)
+	log_file.log("render", fields)
 
 
 ## Комфорт: файл user://comfort.cfg (необязателен), поверх него — аргументы разработки. Итог — строка `comfort` в журнале.

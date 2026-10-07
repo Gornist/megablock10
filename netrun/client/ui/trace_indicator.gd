@@ -30,6 +30,7 @@ func _ready() -> void:
 	_label.font_size = 36
 	_label.position = Vector3(0, 0.025, 0.002)
 	_label.no_depth_test = true
+	Label3DSharp.apply(_label)
 	add_child(_label)
 	set_trace(0.0)
 

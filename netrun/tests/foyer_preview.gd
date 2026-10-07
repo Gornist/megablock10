@@ -2,6 +2,7 @@ extends Node3D
 ## Кадры Фойе (раскладка data/layouts/foyer.json) глазами клиента: колонны, хранилища с площадками, порталы, вход S, выход E,
 ## Страж со светом зрения (фокус/периферия) и стрелкой, рамка прицела по прогнозу.
 ## Запуск: netrun/tools/dev.sh shot res://tests/foyer_preview.tscn  (кадры — по пресетам EyePresets: entry, north, south, vault_w глазами игрока; top, top_north, top_south сверху)
+## Кадры глазами — 2160×2160 (на глаз Pico 4), msaa как в клиенте; A/B: `dev.sh shot res://tests/foyer_preview.tscn --msaa=0|2|4`
 
 var _out := "/tmp/foyer_shots"
 
@@ -25,6 +26,23 @@ func _ready() -> void:
 	var target := Vector2i(7, 11)   # впереди-слева от Стража: периферия его зрения
 	scene.aim_visual_demo(scene.rig.global_position + Vector3(0.35, 0.8, -0.25), NodeGrid.center(target), TickForecast.threat(scene.rig.grid, scene.remote.intents(), target))
 	# Кадры — по общим пресетам камеры (shared/eye_presets.gd): теми же принимается окружение (assets/ARCHITECTURE.md, п. 18).
+	# Кадры «глазами» — Viewport размером на один глаз Pico 4 и с тем же msaa_3d, что в клиенте (RenderConfig по умолчанию; --msaa=0|2|4 для A/B);
+	# кадры сверху — окном, как раньше. Общий мир: SubViewport берёт World3D родителя.
+	var render := RenderConfig.new()
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--msaa="):
+			var m := a.substr(7)
+			if m in ["0", "2", "4"]:
+				render.msaa = int(m)
+			else:
+				push_warning("--msaa=: допустимо 0, 2 или 4, получено «%s»" % m)
+	var eye_vp := SubViewport.new()
+	eye_vp.size = EyePresets.EYE_VIEWPORT
+	eye_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	render.apply_msaa(eye_vp)
+	add_child(eye_vp)
+	var eye_cam := Camera3D.new()
+	eye_vp.add_child(eye_cam)
 	var cam := Camera3D.new()
 	add_child(cam)
 	var hidden := false
@@ -33,9 +51,10 @@ func _ready() -> void:
 		if not p["eye"] and not hidden:
 			_hide_ceilings(scene)   # сверху потолок и дальние пласты закрывают пол; «вверх» кадра — север (−Z)
 			hidden = true
-		cam.fov = p["fov"]
-		cam.look_at_from_position(p["pos"], p["look"], p["up"])
-		await _shot(cam, n)
+		var c := eye_cam if p["eye"] else cam
+		c.fov = p["fov"]
+		c.look_at_from_position(p["pos"], p["look"], p["up"])
+		await _shot(c, n, eye_vp if p["eye"] else get_viewport())
 	get_tree().quit()
 
 
@@ -60,9 +79,9 @@ func _hide_ceilings(scene: Node3D) -> void:
 			(c as Node3D).visible = false
 
 
-func _shot(cam: Camera3D, name_: String) -> void:
+func _shot(cam: Camera3D, name_: String, vp: Viewport) -> void:
 	cam.current = true
 	for i in 8:
 		await get_tree().process_frame
 	await RenderingServer.frame_post_draw
-	get_viewport().get_texture().get_image().save_png("%s/%s.png" % [_out, name_])
+	vp.get_texture().get_image().save_png("%s/%s.png" % [_out, name_])

@@ -97,6 +97,7 @@ func _init() -> void:
 	_label.outline_size = 12
 	_label.modulate = Color(0.85, 0.85, 0.88)
 	_label.visible = false
+	Label3DSharp.apply(_label)
 	add_child(_label)
 	# Стрелка «куда смотреть после прыжка»: плоский треугольник на полу, остриём вдоль взгляда (призма лежит остриём на -Z).
 	var tri := PrismMesh.new()
