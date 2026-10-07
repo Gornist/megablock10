@@ -15,6 +15,12 @@ import kotlinx.coroutines.withContext
 
 private const val TAG = "VoiceMessenger"
 
+/** Голосовое из строки ленты; null — это не голосовое. [me] — мой ключ: чужое входящее, своё исходящее. */
+fun ChatMessageEntity.voiceTrack(me: String): VoiceTrack? = VoiceMarker.parse(body)?.let {
+    val incoming = fromPubKeyB64 != me
+    VoiceTrack(id, it.id, it.durationMs, peerKey = if (incoming) fromPubKeyB64 else toPubKeyB64, incoming = incoming, timestamp = timestamp)
+}
+
 /**
  * Голосовые сообщения личного чата (app/docs/voice-messages.md): отправка тем же путём, что текст, — прямо адресату, не ушло — в очередь исходящих.
  * Отличия от текста: звук хранится файлом ([VoiceStore]), в Room лежит маркер ([VoiceMarker]); в очередь кладётся строка-ссылка без звука

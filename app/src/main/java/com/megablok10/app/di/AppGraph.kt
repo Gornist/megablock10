@@ -18,6 +18,7 @@ import com.megablok10.app.breach.FinishBreach
 import com.megablok10.app.breach.SecAlertStore
 import com.megablok10.app.breach.SlotClaimStore
 import com.megablok10.app.call.CallManager
+import com.megablok10.app.call.CallPhase
 import com.megablok10.app.call.IncomingCallNotifier
 import com.megablok10.app.chat.CardResender
 import com.megablok10.app.chat.ChatStore
@@ -34,6 +35,7 @@ import com.megablok10.app.collector.RoomChangeQueue
 import com.megablok10.app.collector.SYNC_LOG_TAG
 import com.megablok10.app.collector.heartbeat
 import com.megablok10.app.data.Mb10Database
+import com.megablok10.app.data.MessageStatus
 import com.megablok10.app.data.RoomTransactor
 import com.megablok10.app.identity.ContactDirectory
 import com.megablok10.app.headset.ChatStoreHeadsetPort
@@ -71,8 +73,12 @@ import com.megablok10.app.presence.WifiBinder
 import com.megablok10.app.qr.ProvisionStore
 import com.megablok10.app.shards.ShardStore
 import com.megablok10.app.ui.theme.AppSnack
+import com.megablok10.app.voice.AndroidClipPlayer
+import com.megablok10.app.voice.VoiceAutoplaySetting
 import com.megablok10.app.voice.VoiceMessenger
+import com.megablok10.app.voice.VoicePlayer
 import com.megablok10.app.voice.VoiceStore
+import com.megablok10.app.voice.voiceTrack
 import com.megablok10.app.wallet.AcceptPayment
 import com.megablok10.app.wallet.SendPayment
 import com.megablok10.app.wallet.TransactionStore
@@ -150,6 +156,16 @@ class AppGraph(private val app: Application) {
     val chat: ChatStore = ChatStore(db.chatMessageDao(), outbox, peerDirectory)
     val voice = VoiceMessenger(db.chatMessageDao(), outbox, peerDirectory, voiceStore)
     val calls = CallManager(app, peerDirectory, db.callLogDao())
+    val voiceAutoplay = VoiceAutoplaySetting(prefs(VoiceAutoplaySetting.PREFS))
+    /** Проигрыватель голосовых: один на приложение, на главном потоке (MediaPlayer), выход из треда его не обрывает; звонок останавливает ([sessionTasks]). */
+    val voicePlayer = VoicePlayer(
+        engine = AndroidClipPlayer(app),
+        store = voiceStore,
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+        markListened = { db.chatMessageDao().raiseStatus(it, MessageStatus.LISTENED) },
+        nextUnlistened = { peer, after -> identity.current?.let { me -> db.chatMessageDao().nextUnlistenedVoice(me.publicKeyB64, peer, after)?.voiceTrack(me.publicKeyB64) } },
+        autoplay = { voiceAutoplay.enabled.value },
+    )
     val logStore: LogStore = Mb10LogStore(app)
     /** Отчёты о прочтении (D4) и переключатель «как в мессенджерах». */
     val readReceiptSetting = ReadReceiptSetting(prefs(ReadReceiptSetting.PREFS))
@@ -232,12 +248,13 @@ class AppGraph(private val app: Application) {
             { scope -> cardResender.start(scope) },
             { scope -> headset.start(scope) },
             { scope -> IncomingCallNotifier(app, calls).start(scope) },
+            { _ -> voicePlayer.stopDuring(calls.state.map { it.phase != CallPhase.IDLE }) },
             { _ -> netrun.restorePeer() },
             { scope -> DeviceDiagnostics.startSnapshots(app, scope, diagnosticsState) },
         ),
     )
     val provisioning = ProvisionStore(identity, collectorSettings, changes, wallet, db.consumedTokenDao(), transactor)
-    val sessionReset = SessionReset(db, transactor, identity, collectorSettings, changes, announcements, netrun, voiceStore) { session.onSessionReset() }
+    val sessionReset = SessionReset(db, transactor, identity, collectorSettings, changes, announcements, netrun, voiceStore) { voicePlayer.requestStop(); session.onSessionReset() }
 
     /**
      * Что работает в фоне — решает только он (B3): сеть на личность, синк на процесс, foreground-сервис с правилами Android 12+.

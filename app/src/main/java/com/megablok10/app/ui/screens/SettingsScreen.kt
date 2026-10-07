@@ -50,6 +50,7 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
     val settings = appViewModel { settingsViewModel() }
     // Как в мессенджерах: выключил — свои отчёты не уходят и чужое «прочитано» не видно (docs/refactor-plan.md, D4).
     val readReceipts by settings.readReceiptsEnabled.collectAsStateWithLifecycle()
+    val voiceAutoplay by settings.voiceAutoplayEnabled.collectAsStateWithLifecycle()
     var breachSfx by remember { mutableStateOf(BreachSfx.isEnabled(context)) }
     val announcements by appViewModel { announcementsViewModel() }.items.collectAsStateWithLifecycle()
 
@@ -61,6 +62,7 @@ fun SettingsScreen(onResetIdentity: () -> Unit) {
         MbFormRow("Push-уведомления") { MbToggle(pushEnabled, { pushEnabled = it }) }
         MbFormRow("Звук при новом сообщении") { MbToggle(soundEnabled, { soundEnabled = it }) }
         MbFormRow("Отчёты о прочтении") { MbToggle(readReceipts, { settings.setReadReceipts(it) }) }
+        MbFormRow("Автопроигрывание голосовых") { MbToggle(voiceAutoplay, { settings.setVoiceAutoplay(it) }) }
         MbFormRow("Звуки взлома") { MbToggle(breachSfx, { breachSfx = it; BreachSfx.setEnabled(context, it) }) }
 
         if (announcements.isNotEmpty()) {

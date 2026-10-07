@@ -6,6 +6,7 @@ import com.megablok10.app.chat.ReadReceiptSetting
 import com.megablok10.app.collector.CollectorSettings
 import com.megablok10.app.log.LogStore
 import com.megablok10.app.log.Mb10Log
+import com.megablok10.app.voice.VoiceAutoplaySetting
 import com.megablok10.kit.mesh.OnlinePlayer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -32,7 +33,13 @@ class SettingsViewModel(
     private val readReceipts: ReadReceiptSetting? = null,
     /** Итог последней попытки коллектора (CollectorClient.reachable) — для плашки «Нет связи», M4.8 плана миграции. */
     val collectorReachable: StateFlow<Boolean> = MutableStateFlow(true),
+    private val voiceAutoplay: VoiceAutoplaySetting? = null,
 ) : ViewModel() {
+    /** «Автопроигрывание голосовых»: после прослушанного идёт следующее непрослушанное от того же собеседника. */
+    val voiceAutoplayEnabled: StateFlow<Boolean> = voiceAutoplay?.enabled ?: MutableStateFlow(true)
+
+    fun setVoiceAutoplay(on: Boolean) { voiceAutoplay?.set(on) }
+
     /** «Отчёты о прочтении» (D4): выключен — свои не уходят, чужие не видны. */
     val readReceiptsEnabled: StateFlow<Boolean> = readReceipts?.enabled ?: MutableStateFlow(true)
 
