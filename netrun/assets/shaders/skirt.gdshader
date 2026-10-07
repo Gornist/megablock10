@@ -13,6 +13,9 @@ uniform float patch_scale : hint_range(0.5, 20.0) = 5.0;  // пятен на м�
 uniform float patch_drift : hint_range(0.0, 1.0) = 0.12;  // медленное плавание пятен, 1/с (комфорт в VR)
 uniform vec4 tint : source_color = vec4(1.0);
 uniform float tint_amount : hint_range(0.0, 1.0) = 0.0;
+// Верх вуали плотнее всего и лежит на нижнем краю плиты, на 3 см ниже светящейся кромки: издали две яркие линии рядом сливаются в пиксель и мерцают.
+// top_fade — доля высоты вуали сверху, на которой плотность нарастает с нуля: вуаль «отрывается» от кромки плиты. 0 — как раньше.
+uniform float top_fade : hint_range(0.0, 0.5) = 0.0;
 // Затухание по расстоянию до камеры (замена depth-fade) и яркость растёт к горизонту, как у штрихов (far_gain). 1 — выключено.
 uniform float fade_start = 60.0;
 uniform float fade_end = 90.0;
@@ -41,6 +44,9 @@ void fragment() {
 	float n = 0.5 + 0.25 * sin(ph) + 0.25 * sin(ph * 2.3 + v_wp.z * patch_scale * 0.6 - TIME * patch_drift * 0.7);
 	float patch_k = mix(1.0, n, patch_amount);
 	float dens = pow(COLOR.a, falloff) * patch_k;
+	if (top_fade > 0.0) {
+		dens *= smoothstep(0.0, top_fade, UV.y);  // UV.y: 0 вверху вуали, 1 внизу
+	}
 	float fade = 1.0 - smoothstep(fade_start, fade_end, v_dist);
 	vec3 col = mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount);
 	ALBEDO = col * glow * mix(1.0, far_gain, smoothstep(far_start, far_end, v_dist));
