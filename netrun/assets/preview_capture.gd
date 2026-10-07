@@ -257,6 +257,13 @@ func _ready() -> void:
 			_batch_on = false
 		if a == "--nofringe":  # без мягкой обводки силуэтов (для сравнения кадров и замера перерисовки)
 			AM.fringe_on = false
+		if a.begins_with("--tune="):  # ручки AssetMaterials (как [assets] в netrun.cfg): --tune=rim_top_only=true,rim_far_min=0.3,skirt_top_fade=0.12
+			var d := {}
+			for kv in a.trim_prefix("--tune=").split(","):
+				var p := kv.split("=")
+				if p.size() == 2:
+					d[p[0]] = p[1]
+			AM.tune(d)
 		if a.begins_with("--overdraw="):
 			_od = a.trim_prefix("--overdraw=").split(",")
 		if a == "--field":
