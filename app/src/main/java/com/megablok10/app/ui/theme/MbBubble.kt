@@ -26,7 +26,11 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -77,7 +81,7 @@ private fun bubbleBackground(fromMe: Boolean, fill: Color, edge: Color): Modifie
 
 /** Входящее — слева, тёмное с бирюзовой рамкой; своё — справа, зелёное. Ширина по тексту — до 82% отдаёт вызывающий экран. */
 @Composable
-fun MbBubble(fromMe: Boolean, text: String, meta: String, modifier: Modifier = Modifier) {
+fun MbBubble(fromMe: Boolean, text: String, meta: String, modifier: Modifier = Modifier, mark: Pair<String, Boolean>? = null) {
     val c = LocalMbColors.current
     val fill = if (fromMe) c.bubbleOwnFill else c.bubbleInFill
     val edge = if (fromMe) c.bubbleOwnEdge else c.bubbleInEdge
@@ -90,7 +94,22 @@ fun MbBubble(fromMe: Boolean, text: String, meta: String, modifier: Modifier = M
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
         Text(text, style = MbTypography.messageText, color = ink)
-        Text(meta, style = MbTypography.meta.copy(letterSpacing = 0.04f.em), color = metaColor, modifier = Modifier.align(Alignment.End))
+        Text(bubbleMeta(meta, mark, metaColor), style = MbTypography.meta.copy(letterSpacing = 0.04f.em), color = metaColor, modifier = Modifier.align(Alignment.End))
+    }
+}
+
+/** Цвет «прочитано»/«прослушано» (синие ✓✓): светло-голубой читается на зелёном пузыре своего сообщения. */
+val MbReadBlue = Color(0xFF6FC8FF)
+
+/**
+ * «12:34 ✓✓»: время и отметка статуса одной строкой. [mark] — пара из `statusMark` (текст отметки, «синяя» ли она): синяя рисуется [MbReadBlue], остальные — [base]
+ * (раньше флаг «синяя» нигде не использовался, и «доставлено» с «прочитано» выглядели одинаково). Без отметки — просто [time].
+ */
+fun bubbleMeta(time: String, mark: Pair<String, Boolean>?, base: Color): AnnotatedString = buildAnnotatedString {
+    append(time)
+    if (mark != null) {
+        append(" ")
+        withStyle(SpanStyle(color = if (mark.second) MbReadBlue else base)) { append(mark.first) }
     }
 }
 
