@@ -25,6 +25,10 @@ interface ChatMessageDao {
     @Query("UPDATE chat_messages SET status = :status WHERE fromPubKeyB64 = :from AND timestamp = :timestamp AND type = :type AND body = :body AND status < :status")
     suspend fun raiseStatusOf(from: String, timestamp: Long, type: String, body: String, status: Int)
 
+    /** Следующее непрослушанное голосовое (маркер `MB10VM:`) от [peer] мне после [after] — для автопроигрывания. */
+    @Query("SELECT * FROM chat_messages WHERE type = 'DM' AND fromPubKeyB64 = :peer AND toPubKeyB64 = :me AND body LIKE 'MB10VM:%' AND status < 5 AND timestamp > :after ORDER BY timestamp ASC LIMIT 1")
+    suspend fun nextUnlistenedVoice(me: String, peer: String, after: Long): ChatMessageEntity?
+
     /** Отчёт о прочтении (D4): все мои личные сообщения [reader], отправленные не позже [upTo], — прочитаны. */
     @Query("UPDATE chat_messages SET status = 4 WHERE type = 'DM' AND fromPubKeyB64 = :me AND toPubKeyB64 = :reader AND timestamp <= :upTo AND status < 4")
     suspend fun markReadUpTo(me: String, reader: String, upTo: Long): Int

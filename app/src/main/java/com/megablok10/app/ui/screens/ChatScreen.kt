@@ -241,7 +241,9 @@ private fun DirectThread(
     var draft by remember { mutableStateOf("") }
     var attachMenuOpen by remember { mutableStateOf(false) }
     val micAllowed by thread.micAllowed.collectAsStateWithLifecycle()
-    val voice = rememberVoiceRecordUi(micAllowed, onClip = thread::sendVoice)
+    val voice = rememberVoiceRecordUi(micAllowed, onClip = thread::sendVoice, onRecordingStart = thread::stopVoice)
+    val playerState by thread.playerState.collectAsStateWithLifecycle()
+    val voiceControls = VoiceBubbleControls(playerState, identity.publicKeyB64, thread::toggleVoice, thread::seekVoice, thread::cycleVoiceSpeed)
 
     Column(Modifier.fillMaxSize().padding(horizontal = MbDimens.screenPadding)) {
         MbBreadcrumb(parts = listOf("Сообщения", contact?.callsign ?: "Неизвестный контакт"), icon = MbIcons.Mail) {
@@ -262,7 +264,8 @@ private fun DirectThread(
             transactions = state.feed.transactions,
             itemTransfers = state.feed.itemTransfers,
             onAcceptItem = thread::accept,
-            onAcceptTransaction = thread::accept
+            onAcceptTransaction = thread::accept,
+            voice = voiceControls
         )
         Row(Modifier.fillMaxWidth().padding(vertical = MbDimens.blockGap), horizontalArrangement = Arrangement.spacedBy(MbDimens.rowGap), verticalAlignment = Alignment.CenterVertically) {
             Box {
@@ -367,7 +370,8 @@ private fun ColumnScope.MessageList(
     transactions: List<TransactionEntity> = emptyList(),
     itemTransfers: List<ItemTransferEntity> = emptyList(),
     onAcceptItem: ((Mb10Qr.ItemTransfer) -> Unit)? = null,
-    onAcceptTransaction: ((Mb10Qr.Transaction) -> Unit)? = null
+    onAcceptTransaction: ((Mb10Qr.Transaction) -> Unit)? = null,
+    voice: VoiceBubbleControls? = null
 ) {
     if (messages.isEmpty()) {
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -400,7 +404,8 @@ private fun ColumnScope.MessageList(
                     transactions = transactions,
                     itemTransfers = itemTransfers,
                     onAcceptItem = onAcceptItem,
-                    onAcceptTransaction = onAcceptTransaction
+                    onAcceptTransaction = onAcceptTransaction,
+                    voice = voice
                 )
             }
         }
@@ -420,7 +425,8 @@ internal fun MessageBubble(
     transactions: List<TransactionEntity> = emptyList(),
     itemTransfers: List<ItemTransferEntity> = emptyList(),
     onAcceptItem: ((Mb10Qr.ItemTransfer) -> Unit)? = null,
-    onAcceptTransaction: ((Mb10Qr.Transaction) -> Unit)? = null
+    onAcceptTransaction: ((Mb10Qr.Transaction) -> Unit)? = null,
+    voice: VoiceBubbleControls? = null
 ) {
     val decoded = remember(msg.body) { Mb10QrCodec.decode(msg.body) }
     val c = LocalMbColors.current
@@ -460,7 +466,7 @@ internal fun MessageBubble(
             }
             is Mb10Qr.Receipt -> MbTag("получение подтверждено", tone = MbTagTone.Ok)
             is Mb10Qr.SecurityAlert -> SecurityAlertTag(decoded)
-            else -> if (VoiceMarker.isVoice(msg.body)) VoiceBubble(msg, self) else PlainMessageBubble(msg, self, showSender)
+            else -> if (VoiceMarker.isVoice(msg.body)) VoiceBubble(msg, self, voice) else PlainMessageBubble(msg, self, showSender)
         }
     }
 }
