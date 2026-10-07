@@ -5,6 +5,28 @@
 cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null || exit 0
 MAIN=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null); MAIN=${MAIN%/.git}
 echo "Сводка на старт (хук session-brief):"
+# Кто я: после /clear сессия не знает своего имени, а память общая на все сессии — 07.10 «Godot» по чужим записям
+# памяти сочла себя Android App. Имя берём из записи сессии десктоп-приложения (по CLAUDE_CODE_HOST_SESSION_ID).
+title=""; sid=${CLAUDE_CODE_HOST_SESSION_ID:-}
+rec="$HOME/Library/Application Support/Claude/claude-code-sessions/${CLAUDE_CODE_ACCOUNT_UUID:-}/${CLAUDE_CODE_ORGANIZATION_UUID:-}/$sid.json"
+[ -n "$sid" ] && [ -f "$rec" ] && title=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("title",""))' "$rec" 2>/dev/null)
+# Таблица имя → зона дублирует «Зоны сессий» в CLAUDE.md и аргументы scripts/zone-check.sh: правите там — правьте и здесь.
+case $(printf '%s' "$title" | tr '[:upper:]' '[:lower:]') in
+  *android*) zone="Android App"; zc=android ;;
+  *collector*|*коллектор*) zone="Коллектор"; zc=collector ;;
+  *узл*|*node*|*firmware*|*прошив*) zone="Физические узлы"; zc=nodes ;;
+  *godot*) zone="Godot"; zc=godot ;;
+  *blender*) zone="Blender"; zc=blender ;;
+  *game*|*геймдиз*) zone="Геймдизайн"; zc=gamedesign ;;
+  *pipeline*) zone="Pipeline manager"; zc=pipeline ;;
+  *) zone="" ;;
+esac
+if [ -n "$zone" ]; then
+  echo "- эта сессия: «$title» → зона $zone (таблица «Зоны сессий» в CLAUDE.md; перед коммитом zone-check.sh $zc)."
+  echo "  Память общая на все сессии: записи с пометкой другой зоны — не про тебя."
+else
+  echo "- эта сессия: ${title:+«$title» — }зона не определена: спросить владельца, прежде чем что-то править."
+fi
 echo "- main: $(git -C "$MAIN" log -1 --format='%h %s' main 2>/dev/null | cut -c1-90)"
 br=$(git branch --show-current 2>/dev/null)
 echo "- эта копия: ${PWD/#$HOME/~} на ${br:-detached}$([ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ] && echo ', есть незакоммиченное')"

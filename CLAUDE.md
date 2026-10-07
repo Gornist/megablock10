@@ -86,7 +86,7 @@ Pipeline manager. Работать в своей worktree (`scripts/agent-worktr
   инварианты денег и транзакций — `app-invariants.md`, e2e — `e2e.md`, Godot — `netrun-godot.md`, прошивка и Wokwi — `firmware.md`.
   Здесь — только общее для всех.
 - Облачное окружение настраивает `scripts/cloud-setup.sh` (копия вставлена в Setup script окружения; правите скрипт — обновите копию):
-  SDK, зеркало Maven, плагины Claude Code (code-review, KotlinSense), PlatformIO. Decibel Superpowers включается в аккаунте claude.ai.
+  SDK, зеркало Maven, плагины Claude Code (code-review, KotlinSense), PlatformIO.
 
 ## Проверки
 
