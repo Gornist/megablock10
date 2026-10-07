@@ -172,12 +172,10 @@ func pillar_positions() -> Array[Vector3]:
 ## остальные три клетки не должны выглядеть пустыми. Прежняя комната (layout == null) и legacy-раскладка укрытий не имеют.
 func cover_positions() -> Array[Vector3]:
 	var out: Array[Vector3] = []
-	if layout == null or layout.is_legacy():
+	if layout == null:
 		return out
-	for v: Dictionary in layout.vaults:
-		for c in LayoutData.block_cells(v["cell"]):
-			if c != v["cell1"]:
-				out.append(NodeGrid.center(c))
+	for c in layout.cover_cells():
+		out.append(NodeGrid.center(c))
 	return out
 
 
