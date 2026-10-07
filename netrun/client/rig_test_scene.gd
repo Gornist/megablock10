@@ -97,6 +97,7 @@ var _avatar_nodes: Dictionary = {}   # id чужого аватара -> AvatarV
 ## Чужие ICE и аватары показываются из буфера состояний с задержкой (RemoteTracks), а не прыжками по пакетам.
 var remote := RemoteTracks.new()
 var tick_floor: TickFloor   ## свет зрения и стрелки ICE; создаётся с первым снимком тактового узла
+var occupied_floor: OccupiedFloor   ## подсветка занятых клеток (укрытия видны); создаётся вместе с tick_floor
 var _pending_holder: Node3D
 var _label: Label3D
 var _acc := 0.0
@@ -257,6 +258,8 @@ func _update_tick_floor() -> void:
 	if tick_floor == null:
 		tick_floor = TickFloor.new(rig.grid)
 		add_child(tick_floor)
+		occupied_floor = OccupiedFloor.new(rig.grid)
+		add_child(occupied_floor)
 	tick_floor.apply(remote.intents(), tk, NodeGrid.cell_of(rig.global_position))
 
 
@@ -693,6 +696,8 @@ func apply_layout(ld: LayoutData, tier: String) -> void:
 	rig.grid = g
 	if tick_floor != null:
 		tick_floor.set_grid(g)
+	if occupied_floor != null:
+		occupied_floor.set_grid(g)
 
 
 ## Слоты шардов узла изменились (вынесли, пополнилось, хранилище открылось/закрылось): лежащий шард виден, вынесенный — нет; вид хранилища — по vault

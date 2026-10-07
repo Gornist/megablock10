@@ -21,6 +21,8 @@ const DEFAULTS := {
 	"capture_m": 2.0,
 	"awareness_max": 6,
 }
+## Потолок осведомлённости у неуязвимого (грейс прибытия): «?» (Взгляд, 1–2) — ICE может повернуться к нему, но не Проверка и не Поиск.
+const AWARENESS_IMMUNE_MAX := 2
 const _EPS := 0.0001
 const _GUARD := 64
 
@@ -57,6 +59,10 @@ var _off_route := false
 var _search_armed := true
 ## Нескрытые нетраннеры прошлого такта (сессия → клетка): по ним patrol «наталкивается», и по ним же строит намерение intent().
 var _tcells: Dictionary = {}
+## Неуязвимые нетраннеры этого такта (грейс прибытия, сессия → клетка; скрытые тоже): ICE не заходит в их клетку, не берёт их, счётчик ≤ AWARENESS_IMMUNE_MAX.
+var _icells: Dictionary = {}
+## То же на следующий такт (сессия → клетка): по нему строится intent(), чтобы стрелка и шаг следующего такта не расходились.
+var _icells_next: Dictionary = {}
 ## Как ICE видел нетраннеров в конце последнего такта: сессия → TickVision.NONE/PERIPHERY/FOCUS.
 var _vis: Dictionary = {}
 var _dry := false
@@ -146,17 +152,22 @@ func forget(session: Variant) -> void:
 	_vis.erase(session)
 
 
-## Один такт. targets: сессия → позиция (Vector3); hidden: сессия → true для невидимых (Призрак, вход в узел).
+## Один такт. targets: сессия → позиция (Vector3); hidden: сессия → true для невидимых (Призрак, вход в узел);
+## immune: сессия → true для неуязвимых (грейс прибытия): ICE не заходит в клетку такого нетраннера («наткнулся» не бывает), не берёт его,
+## а осведомлённость о нём не выше AWARENESS_IMMUNE_MAX.
 ## Возвращает события: {kind:"state", state, from}, {kind:"search_started", cell}, {kind:"capture", session, reason:"caught"}.
-func tick(targets: Dictionary, hidden: Dictionary = {}) -> Array:
+func tick(targets: Dictionary, hidden: Dictionary = {}, immune: Dictionary = {}) -> Array:
 	var events: Array = []
 	var tcell: Dictionary = {}
 	_tcells.clear()
+	_icells.clear()
 	for s in targets:
 		var c := NodeGrid.cell_of(targets[s])
 		tcell[s] = c
 		if not hidden.get(s, false):
 			_tcells[s] = c
+		if immune.get(s, false):
+			_icells[s] = c
 	var prev_mode := _mode
 	_program_step()
 	_update_awareness(targets, tcell, hidden)
@@ -173,18 +184,30 @@ func tick(targets: Dictionary, hidden: Dictionary = {}) -> Array:
 	if prev_mode == Mode.SEARCH and m == Mode.SEARCH:
 		var here := NodeGrid.center(_cell)
 		for s in _tcells:
+			if _icells.has(s):
+				continue   # грейс прибытия: не берём
 			if _flat_dist(NodeGrid.center(_tcells[s]), here) <= float(_s["capture_m"]) + _EPS:
 				events.append({"kind": "capture", "session": s, "reason": "caught"})
 	return events
+
+
+## Кто будет неуязвим в следующем такте (сессия → позиция Vector3, где он стоит сейчас): по ним intent() считает шаг с обходом клетки.
+func expect_immune(positions: Dictionary) -> void:
+	_icells_next.clear()
+	for s in positions:
+		_icells_next[s] = NodeGrid.cell_of(positions[s])
 
 
 ## Чистая функция состояния: где ICE стоит и куда пойдёт следующим шагом программы при текущих счётчиках (без случайности).
 ## {cell, dir, state, next_cell, next_dir, aware}; state 0–3 — Патруль, Взгляд, Проверка, Поиск.
 func intent() -> Dictionary:
 	var snap := _snapshot()
+	var icells_now := _icells
+	_icells = _icells_next
 	_dry = true
 	_program_step()
 	_dry = false
+	_icells = icells_now
 	var res := {
 		"cell": snap["cell"],
 		"dir": snap["dir"],
@@ -218,6 +241,8 @@ func _update_awareness(targets: Dictionary, tcell: Dictionary, hidden: Dictionar
 		elif v == TickVision.PERIPHERY:
 			delta = 1
 		var a := clampi(int(_aw.get(s, 0)) + delta, 0, amax)
+		if _icells.has(s):
+			a = mini(a, AWARENESS_IMMUNE_MAX)   # грейс прибытия: самое большее «?»
 		_aw[s] = a
 		if v != TickVision.NONE and a > best:
 			best = a
@@ -371,6 +396,10 @@ func _walk_to(goal: Vector2i, steps: int) -> bool:
 
 ## В Проверке и Поиске ICE не заходит в клетку нетраннера (как и в Патруле): шаг в неё не делается, ICE поворачивается к ней лицом.
 func _runner_blocks(nxt: Vector2i) -> bool:
+	for s in _icells:
+		if _icells[s] == nxt:
+			_dir = NodeGrid.dir8(_cell, nxt)
+			return true
 	for s in _tcells:
 		if _tcells[s] == nxt:
 			_dir = NodeGrid.dir8(_cell, nxt)
@@ -438,6 +467,9 @@ func _arrive() -> bool:
 
 ## Шаг патруля привёл бы в клетку нетраннера: ICE останавливается, счётчик этого нетраннера сразу максимум.
 func _bump(nxt: Vector2i) -> bool:
+	for s in _icells:
+		if _icells[s] == nxt:
+			return true   # грейс прибытия: ICE просто не заходит в клетку, счётчик не взлетает
 	for s in _tcells:
 		if _tcells[s] == nxt:
 			if not _dry:

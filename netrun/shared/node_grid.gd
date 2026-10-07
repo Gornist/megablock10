@@ -14,6 +14,9 @@ const PILLAR_HALF_M := 1.0
 
 ## Занятые клетки: Vector2i → true.
 var occ: Dictionary = {}
+## Куда ставит прыжок на занятую клетку: Vector2i → Vector2i. Так клетки хранилища (блок 2×2, занят) отправляют игрока на площадку перед ним;
+## и клиентский прицел (pick), и сервер (NetServer) подставляют клетку одинаково. Пусто — прыжок на занятую клетку отказ.
+var landing: Dictionary = {}
 
 
 static func cols() -> int:
@@ -49,6 +52,11 @@ static func for_layout() -> NodeGrid:
 			for iz in range(z0, z1 + 1):
 				g.occ[Vector2i(ix, iz)] = true
 	return g
+
+
+## Клетка, куда на самом деле ляжет прыжок на `c`: площадка перед хранилищем, если `c` — клетка хранилища; иначе сама `c`.
+func landing_of(c: Vector2i) -> Vector2i:
+	return landing.get(c, c)
 
 
 ## Вне комнаты — занято: за стену не прыгнуть и не заглянуть.
@@ -227,6 +235,7 @@ func pick(from: Vector3, aim: Vector3) -> Dictionary:
 	var c := Vector2i(clampi(raw.x, 0, cols() - 1), clampi(raw.y, 0, rows() - 1))
 	if c != raw and is_occupied(c):
 		return _pick_result(c, "denied", "room")
+	c = landing_of(c)   # клетка хранилища → площадка перед ним (дальше — обычный прыжок на неё)
 	var start := cell_of(from)
 	if c == start:
 		return _pick_result(c, "wait", "")

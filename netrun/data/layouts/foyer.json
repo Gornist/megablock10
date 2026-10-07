@@ -16,10 +16,10 @@
   ],
   "ice": [
     {"id": "g1", "kind": "sentry", "route": [
-      {"cell": [1, 2], "wait": 1, "look": ["S"]},
-      {"cell": [6, 2], "wait": 1, "look": ["S"]},
-      {"cell": [6, 4], "wait": 1, "look": ["N"]},
-      {"cell": [1, 4], "wait": 1, "look": ["N"]}
+      {"cell": [0, 2], "wait": 1, "look": ["S"]},
+      {"cell": [7, 2], "wait": 1, "look": ["S"]},
+      {"cell": [7, 5], "wait": 1, "look": ["N"]},
+      {"cell": [0, 5], "wait": 1, "look": ["N"]}
     ]}
   ],
   "black": null,

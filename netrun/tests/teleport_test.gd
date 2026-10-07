@@ -97,6 +97,18 @@ func test_cell_of_a_pillar_is_denied_as_cell() -> void:
 	assert_bool(_at(from)).is_true()
 
 
+func test_jump_onto_a_vault_cell_lands_on_its_pad() -> void:
+	# Клетка хранилища занята, но у неё есть площадка (NodeGrid.landing): сервер ставит игрока на клетку площадки, отказа нет.
+	_server.grid.landing[Vector2i(10, 9)] = Vector2i(10, 10)
+	var from := _c(10, 13)
+	assert_bool(_client.request_teleport(from)).is_true()
+	assert_bool(await _wait_for(func(): return _at(from))).is_true()
+	await _sleep(RigMath.TELEPORT_COOLDOWN_LIMIT + 0.05)
+	assert_bool(_client.request_teleport(_c(10, 9))).is_true()
+	assert_bool(await _wait_for(func(): return _at(_c(10, 10)))).is_true()
+	assert_array(_denied).is_empty()
+
+
 func test_jump_through_a_pillar_is_denied_as_blocked() -> void:
 	var from := _c(10, 12)
 	assert_bool(_client.request_teleport(from)).is_true()

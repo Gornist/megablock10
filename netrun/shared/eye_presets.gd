@@ -55,8 +55,11 @@ static func _build() -> Dictionary:
 	var north_look := NodeLayout.cell_center(3, 0) + Vector3(0.0, LOOK_Y, 0.0)
 	var south_eye := NodeLayout.cell_center(3, 2)
 	var south_look := (NodeLayout.SPAWN + NodeLayout.EXIT_POS) * 0.5 + Vector3(0.0, 0.5, 0.0)   # между входом и площадкой выхода
-	var vault := NodeLayout.cell_center(0, 0) + Vector3(0.0, LOOK_Y, 0.0)
-	var vault_pad := NodeLayout.cell_center(0, 1)
+	# Западное хранилище и его площадка — по раскладке (центры клеток 1 м), а не по центрам блоков 2×2.
+	var west: Dictionary = LayoutData.cached("foyer").vaults[0]
+	var west_slot: Vector3 = west["slot"]
+	var vault := Vector3(west_slot.x, LOOK_Y, west_slot.z)
+	var vault_pad: Vector3 = west["pad"]
 	var center := Vector3(NodeLayout.ROOM_CENTER.x, 0.0, NodeLayout.ROOM_CENTER.z)
 	var north_c := Vector3(center.x, 0.0, NodeLayout.ROOM_MIN.y + TOP_HALF_OFFSET)
 	var south_c := Vector3(center.x, 0.0, NodeLayout.ROOM_MAX.y - TOP_HALF_OFFSET)
