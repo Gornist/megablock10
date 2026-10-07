@@ -19,6 +19,9 @@ const WRIST_DECK_POS := Vector3(0, -(WRIST_DECK_LENGTH_M * 0.5 + WRIST_DECK_GAP 
 ## Trace — за дальним (к локтю) краем деки.
 const WRIST_TRACE_POS := Vector3(0, WRIST_DECK_POS.y - (WRIST_DECK_LENGTH_M * 0.5 + 0.045), 0)
 const FLAT_TRACE_POS := Vector3(0, 0.14, 0)
+## Кольцо-таймер такта — ребёнок индикатора trace: в плоской сборке и на контроллере справа от полосы, на запястье — за ней, к локтю.
+const RING_POS_FLAT := Vector3(0.14, 0.0, 0.0)
+const RING_POS_WRIST := Vector3(0.0, -0.05, 0.0)
 ## На время сетки заряда (К6) дека на запястье увеличивается до этого масштаба (32 × 24 см): клетка 7×7 не мельче 2,8 см вместо 2,1; растёт за ZOOM_PER_SEC в секунду,
 ## чтобы не прыгать перед глазами.
 const CHARGE_DECK_SCALE := 1.0
@@ -27,6 +30,7 @@ const ZOOM_PER_SEC := 3.0
 var rig: XRRig
 var deck: DeckPanel
 var trace: TraceIndicator
+var tick_ring: TickRing
 var alert: OffscreenAlert
 ## Вкладки ЧАТ и ЗВОНКИ деки: указатель правого контроллера (мышь в плоской сборке) нажимает деку; отклик — вибрация и звук на сообщения и
 ## звонки; связь с телефоном (пока фиктивная) — null, и тогда вкладок нет, указатель молчит. Положение и масштаб деки на руке — только здесь.
@@ -67,6 +71,10 @@ func attach(r: XRRig) -> void:
 	trace = TraceIndicator.new()
 	trace.position = FLAT_TRACE_POS
 	_anchor.add_child(trace)
+	tick_ring = TickRing.new()
+	tick_ring.name = "TickRing"
+	tick_ring.position = RING_POS_FLAT
+	trace.add_child(tick_ring)
 	alert = OffscreenAlert.new()
 	alert.camera = rig.camera
 	rig.camera.add_child(alert)
@@ -131,6 +139,7 @@ func _place() -> void:
 			deck.rotation = Vector3(0, 0, deg_to_rad(WRIST_DECK_ROLL_DEG))
 			deck.position = WRIST_DECK_POS
 			trace.position = WRIST_TRACE_POS
+			tick_ring.position = RING_POS_WRIST
 			_deck_zoom = WRIST_DECK_SCALE
 		elif rig.xr_active:
 			_anchor.transform = Transform3D(Basis.from_euler(Vector3(-PI / 3, 0, 0)), Vector3(0, 0.05, -0.1))
@@ -138,12 +147,14 @@ func _place() -> void:
 			deck.rotation = Vector3.ZERO
 			deck.position = Vector3.ZERO
 			trace.position = FLAT_TRACE_POS
+			tick_ring.position = RING_POS_FLAT
 		else:
 			_anchor.transform = Transform3D(Basis.from_euler(Vector3(0, deg_to_rad(15), 0)), Vector3(-0.3, -0.2, -0.65))
 			deck.scale = Vector3.ONE
 			deck.rotation = Vector3.ZERO
 			deck.position = Vector3.ZERO
 			trace.position = FLAT_TRACE_POS
+			tick_ring.position = RING_POS_FLAT
 	# На запястье дека живёт, пока рука видна (есть поза контроллера): без данных якорь стоял бы в начале рига.
 	_anchor.visible = not (rig.xr_active and wrist) or rig.left_hand_view.visible
 

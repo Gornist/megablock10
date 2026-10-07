@@ -23,6 +23,9 @@ var config_paths: PackedStringArray = NetConfig.default_paths()
 var scene: Node3D
 var net: NetClient
 var trace_audio: TraceAudio
+## Звук такта (пульс, тиканье перед шагом ICE): только в VR-сборке и только в тактовом узле; в плоской сборке и в тестах — null.
+var tick_audio: TickAudio
+var _tick_sound := false
 ## Настройки комфорта (user://comfort.cfg + аргументы), применённые к ригу.
 var comfort: ComfortConfig
 ## Связь деки с телефоном (FakePhoneLink или RemotePhoneLink); null при `--phone=off`.
@@ -77,6 +80,7 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	_setup_comfort(args)
 	_setup_phone(args)
 	scene.rig.teleport_attempted.connect(_on_teleport_attempted)
+	_tick_sound = want_xr
 	if want_xr:
 		if scene.rig.start_xr():
 			log_file.log("xr", {"enabled": true, "reason": "ok", "play_area": "sitting"})
@@ -370,6 +374,10 @@ func _on_state(state: Dictionary) -> void:
 		trace_audio = TraceAudio.new()
 		add_child(trace_audio)
 	trace_audio.set_level(level)
+	if _tick_sound and tick_audio == null and tk is Dictionary:
+		tick_audio = TickAudio.new()
+		tick_audio.bind(scene.remote, scene.rig)
+		add_child(tick_audio)
 
 
 func _on_event(ev: Dictionary) -> void:

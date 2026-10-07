@@ -155,6 +155,7 @@ func _ready() -> void:
 	world_ui.deck.give_list_requested.connect(func(): give_list_requested.emit())
 	world_ui.deck.give_requested.connect(func(item_id: String, to: Dictionary): give_requested.emit(item_id, to))
 	world_ui.trace.set_trace(0.0)
+	world_ui.tick_ring.bind(remote)   # кольцо окна такта: доля окна и вспышка по tk
 	for hand in [rig.left_hand, rig.right_hand]:
 		hand.button_pressed.connect(func(action: String):
 			if action == "grip_click":
