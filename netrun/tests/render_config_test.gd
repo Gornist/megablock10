@@ -17,7 +17,8 @@ func _cfg(values: Dictionary) -> ConfigFile:
 
 func test_значения_по_умолчанию() -> void:
 	var c := RenderConfig.new()
-	assert_int(c.msaa).is_equal(4)
+	assert_int(c.msaa).is_equal(0)
+	assert_str(c.aa).is_equal("none")
 	assert_float(c.scale).is_equal(1.0)
 	assert_int(c.foveation).is_equal(2)
 	assert_bool(c.foveation_dynamic).is_false()
@@ -28,7 +29,7 @@ func test_нет_секции_значения_по_умолчанию_без_п
 	var cf := ConfigFile.new()
 	cf.set_value("net", "host", "10.10.0.10")
 	var c := RenderConfig.from_config(cf)
-	assert_int(c.msaa).is_equal(4)
+	assert_int(c.msaa).is_equal(0)
 	assert_array(c.warnings).is_empty()
 
 
@@ -105,7 +106,7 @@ func test_маппинг_msaa_в_режим_viewport() -> void:
 
 func test_load_file_нет_файла_по_умолчанию() -> void:
 	var c := RenderConfig.load_file(PackedStringArray(["user://нет_такого_render.cfg"]))
-	assert_int(c.msaa).is_equal(4)
+	assert_int(c.msaa).is_equal(0)
 	assert_str(c.file_path).is_empty()
 	assert_array(c.warnings).is_empty()
 
@@ -125,7 +126,7 @@ func test_load_file_битый_файл_по_умолчанию_с_предуп�
 	f.store_string("[render\nmsaa = ")
 	f.close()
 	var c := RenderConfig.load_file(PackedStringArray([TMP]))
-	assert_int(c.msaa).is_equal(4)
+	assert_int(c.msaa).is_equal(0)
 	assert_int(c.warnings.size()).is_equal(1)
 
 
@@ -136,7 +137,8 @@ func test_путь_по_умолчанию_тот_же_что_у_netconfig() -> 
 
 func test_поля_журнала() -> void:
 	var f := RenderConfig.new().log_fields()
-	assert_int(f["msaa"]).is_equal(4)
+	assert_int(f["msaa"]).is_equal(0)
+	assert_str(f["aa"]).is_equal("none")
 	assert_str(f["file"]).is_equal("none")
 
 
@@ -166,5 +168,35 @@ func test_apply_msaa_ставит_режим_вьюпорта() -> void:
 	var vp: SubViewport = auto_free(SubViewport.new())
 	RenderConfig.from_config(_cfg({"msaa": 2})).apply_msaa(vp)
 	assert_int(vp.msaa_3d).is_equal(Viewport.MSAA_2X)
+	assert_int(vp.screen_space_aa).is_equal(Viewport.SCREEN_SPACE_AA_DISABLED)
 	RenderConfig.new().apply_msaa(vp)
-	assert_int(vp.msaa_3d).is_equal(Viewport.MSAA_4X)
+	assert_int(vp.msaa_3d).is_equal(Viewport.MSAA_DISABLED)
+	assert_int(vp.screen_space_aa).is_equal(Viewport.SCREEN_SPACE_AA_DISABLED)
+
+
+func test_apply_msaa_включает_fxaa() -> void:
+	var vp: SubViewport = auto_free(SubViewport.new())
+	RenderConfig.from_config(_cfg({"aa": "fxaa"})).apply_msaa(vp)
+	assert_int(vp.screen_space_aa).is_equal(Viewport.SCREEN_SPACE_AA_FXAA)
+	RenderConfig.new().apply_msaa(vp)
+	assert_int(vp.screen_space_aa).is_equal(Viewport.SCREEN_SPACE_AA_DISABLED)
+
+
+func test_aa_парсинг_и_маппинг() -> void:
+	assert_str(RenderConfig.from_config(_cfg({"aa": "fxaa"})).aa).is_equal("fxaa")
+	assert_str(RenderConfig.from_config(_cfg({"aa": "FXAA"})).aa).is_equal("fxaa")
+	assert_str(RenderConfig.from_config(_cfg({"aa": "none"})).aa).is_equal("none")
+	assert_int(RenderConfig.aa_mode("fxaa")).is_equal(Viewport.SCREEN_SPACE_AA_FXAA)
+	assert_int(RenderConfig.aa_mode("none")).is_equal(Viewport.SCREEN_SPACE_AA_DISABLED)
+	assert_int(RenderConfig.aa_mode("что-то")).is_equal(Viewport.SCREEN_SPACE_AA_DISABLED)
+
+
+func test_aa_неверное_по_умолчанию_с_предупреждением() -> void:
+	for bad: Variant in ["smaa", "", 1, true]:
+		var c := RenderConfig.from_config(_cfg({"aa": bad}))
+		assert_str(c.aa).is_equal(RenderConfig.AA_DEFAULT)
+		assert_int(c.warnings.size()).is_equal(1)
+
+
+func test_msaa_четыре_читается_из_файла() -> void:
+	assert_int(RenderConfig.from_config(_cfg({"msaa": 4})).msaa).is_equal(4)

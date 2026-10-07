@@ -6,14 +6,19 @@ extends RefCounted
 ## (клиент пишет в журнал `render.warn`), клиент не падает.
 ##
 ## [render]
-## msaa = 4                  ; 3D-сглаживание: 0 (выкл.), 2 или 4 (по умолчанию 4)
+## msaa = 0                  ; 3D-сглаживание: 0 (выкл., по умолчанию), 2 или 4
+##                           ; (замеры на Pico 4: 4× даёт вспышки, 2× — мерцание граней)
+## aa = "none"              ; экранное сглаживание: "none" (по умолчанию) или "fxaa" (Viewport.screen_space_aa)
 ## scale = 1.0               ; множитель разрешения рендера (OpenXR render_target_size_multiplier), 0,5…2,0
-## foveation = 2             ; фовеация (OpenXR): 0 выкл., 1 низкая, 2 средняя, 3 высокая
+##                           ; (1,25 роняет частоту до 60 Гц)
+## foveation = 2             ; фовеация (OpenXR): 0 выкл., 1 низкая, 2 средняя (по умолчанию, бесплатна), 3 высокая
 ## foveation_dynamic = false ; динамическая фовеация (уровень подбирается по нагрузке)
 
 const SECTION := "render"
-const KEYS := ["msaa", "scale", "foveation", "foveation_dynamic"]
-const MSAA_DEFAULT := 4
+const KEYS := ["msaa", "aa", "scale", "foveation", "foveation_dynamic"]
+const AA_VALUES := ["none", "fxaa"]
+const AA_DEFAULT := "none"
+const MSAA_DEFAULT := 0
 const SCALE_DEFAULT := 1.0
 const SCALE_MIN := 0.5
 const SCALE_MAX := 2.0
@@ -21,6 +26,7 @@ const FOVEATION_DEFAULT := 2
 const FOVEATION_MAX := 3
 
 var msaa: int = MSAA_DEFAULT
+var aa: String = AA_DEFAULT
 var scale: float = SCALE_DEFAULT
 var foveation: int = FOVEATION_DEFAULT
 var foveation_dynamic: bool = false
@@ -60,6 +66,11 @@ static func from_config(cfg: ConfigFile) -> RenderConfig:
 					c.msaa = n
 				else:
 					c.warnings.append("msaa: допустимо 0, 2 или 4, получено «%s» — оставлено %d" % [v, c.msaa])
+			"aa":
+				if v is String and (v as String).to_lower() in AA_VALUES:
+					c.aa = (v as String).to_lower()
+				else:
+					c.warnings.append("aa: допустимо «none» или «fxaa», получено «%s» — оставлено «%s»" % [v, c.aa])
 			"scale":
 				var n: Variant = _number(v)
 				if n != null and n >= SCALE_MIN and n <= SCALE_MAX:
@@ -113,9 +124,17 @@ static func msaa_mode(n: int) -> Viewport.MSAA:
 	return Viewport.MSAA_DISABLED
 
 
-## 3D-сглаживание окна/вьюпорта (плоский клиент и XR: у XR оно задаётся на том же корневом Viewport).
+## Режим Viewport.screen_space_aa по строке из конфига (чистый маппинг, без сцены): "fxaa" — FXAA, иначе выключено.
+static func aa_mode(s: String) -> Viewport.ScreenSpaceAA:
+	if s == "fxaa":
+		return Viewport.SCREEN_SPACE_AA_FXAA
+	return Viewport.SCREEN_SPACE_AA_DISABLED
+
+
+## 3D-сглаживание окна/вьюпорта (плоский клиент и XR: у XR оно задаётся на том же корневом Viewport): MSAA и FXAA.
 func apply_msaa(vp: Viewport) -> void:
 	vp.msaa_3d = msaa_mode(msaa)
+	vp.screen_space_aa = aa_mode(aa)
 
 
 ## Масштаб и фовеация интерфейса OpenXR. Свойства проверяются через `in`: у других XRInterface (и у разных версий Godot) их может не быть.
@@ -139,5 +158,5 @@ func apply_xr(iface: Object) -> PackedStringArray:
 
 ## Поля строки журнала `render …` (MbLog).
 func log_fields() -> Dictionary:
-	return {"msaa": msaa, "scale": scale, "foveation": foveation, "dynamic": foveation_dynamic,
+	return {"msaa": msaa, "aa": aa, "scale": scale, "foveation": foveation, "dynamic": foveation_dynamic,
 		"file": file_path if not file_path.is_empty() else "none"}

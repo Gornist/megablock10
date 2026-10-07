@@ -48,7 +48,7 @@ var right_hand: XRController3D
 ## Левый контроллер в позе «aim» (направление указки): от неё целимся. Нет данных — берём руку (grip).
 var right_aim: XRController3D
 var xr_active := false
-## Настройки рендера (netrun.cfg [render]); клиент подставляет прочитанные до start_xr, по умолчанию — msaa 4×, масштаб 1, фовеация 2.
+## Настройки рендера (netrun.cfg [render]); клиент подставляет прочитанные до start_xr, по умолчанию — msaa выкл., aa none, масштаб 1, фовеация 2.
 var render := RenderConfig.new()
 ## Свойства OpenXR-интерфейса, которых нет в этой версии Godot (RenderConfig.apply_xr); клиент пишет их в журнал.
 var xr_render_missing := PackedStringArray()

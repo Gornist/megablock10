@@ -140,7 +140,7 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	net.start_client(cfg)
 
 
-## Что применено к рендеру: `render msaa=… scale=… foveation=… dynamic=…` (масштаб и фовеация — только в XR), предупреждения файла — `render.warn`.
+## Что применено к рендеру: `render msaa=… aa=… scale=… foveation=… dynamic=…` (масштаб и фовеация — только в XR), предупреждения файла — `render.warn`.
 func _log_render(r: RenderConfig, xr: bool, missing: PackedStringArray) -> void:
 	for w in r.warnings:
 		log_file.log("render.warn", {"msg": w})
