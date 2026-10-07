@@ -65,6 +65,9 @@ var join_check: Callable
 ## Привязка телепорта к площадке у хранилища (К3): func(session, to: Vector3) -> Dictionary {p, look} (NodeLayout.snap_to_vault_pad по хранилищам узла игрока).
 ## Не задан — цель как пришла. Клиент делает то же сам (XRRig.teleport_snap), сервер повторяет: клиенту верить нельзя.
 var teleport_snap: Callable
+## Тактовый режим (docs/gamedesign/time-and-movement.md, Т4): func(session) -> bool — нетраннер уже сходил в этом такте. Задан — вместо
+## перезарядки телепорта один ход за такт: второй отказывается с WorldMsg.REASON_MOVED. Не задан — прежняя перезарядка.
+var move_check: Callable
 ## Узел входа для нового аватара (W1, граф узлов): func(терминал, сессия) -> id узла ("" — как по умолчанию). Не вызывается для
 ## вернувшегося после обрыва и для сессии, чей узел уже известен (восстановление после рестарта).
 var entry_node_for: Callable
@@ -429,8 +432,12 @@ func _handle_teleport(session: String, p: Variant) -> void:
 	var now := Time.get_ticks_msec()
 	var since := (now - int(_tp_last_ms[session])) / 1000.0 if _tp_last_ms.has(session) else INF
 	var to := Vector3(p.x, 0.0, p.z)
+	var tick_rule := move_check.is_valid()
+	var cooldown := 0.0 if tick_rule else RigMath.TELEPORT_COOLDOWN_LIMIT - TELEPORT_COOLDOWN_SLACK   # такты: перезарядки нет, ход один за такт
 	var reason := RigMath.teleport_verdict(a.position, to, since, node_of(session) == TUNNEL_NODE,
-		RigMath.TELEPORT_RANGE_LIMIT + TELEPORT_RANGE_SLACK, RigMath.TELEPORT_COOLDOWN_LIMIT - TELEPORT_COOLDOWN_SLACK)
+		RigMath.TELEPORT_RANGE_LIMIT + TELEPORT_RANGE_SLACK, cooldown)
+	if reason.is_empty() and tick_rule and bool(move_check.call(session)):
+		reason = WorldMsg.REASON_MOVED
 	if reason.is_empty():
 		to = NodeGrid.center(NodeGrid.cell_of(to))   # прыжок — на центр клетки; площадка у хранилища переставит точку ниже
 		reason = _cell_verdict(session, a.position, to)

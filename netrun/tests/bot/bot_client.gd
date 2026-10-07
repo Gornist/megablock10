@@ -118,6 +118,7 @@ var _send_acc := 0.0
 var _asked := false
 var _asked_at := 0.0
 var _next_hop_at := 0.0
+var _hop_tick_n := -2   # номер такта, в котором бот сходил в последний раз (тактовый режим)
 var _grid := NodeGrid.for_layout()
 
 
@@ -252,7 +253,7 @@ func _walk_to(goal: Vector3, _delta: float, stop_at: float, hop_scale: float = 1
 	var d := Vector3(goal.x - position.x, 0.0, goal.z - position.z)
 	if d.length() <= stop_at or NodeGrid.cell_of(goal) == NodeGrid.cell_of(position):
 		return true
-	if _clock >= _next_hop_at:
+	if _can_hop():
 		var best := NodeGrid.cell_of(position)
 		var best_d := d.length()   # прыгаем, только если центр клетки ближе к цели, чем мы сейчас
 		for c in _grid.reach_cells(NodeGrid.cell_of(position)):
@@ -277,6 +278,32 @@ func _hop(to: Vector3) -> void:
 	hops += 1
 	position = target
 	_next_hop_at = _clock + HOP_PAUSE
+	_hop_tick_n = _tick_n()
+	net.request_teleport(position)
+
+
+## Номер такта из последнего state (тактовый режим), -1 — сервер в реальном времени (поля tk нет).
+func _tick_n() -> int:
+	var tk: Variant = last_state.get("tk")
+	return int((tk as Dictionary).get("n", -1)) if tk is Dictionary else -1
+
+
+## Можно ли ходить: прошла перезарядка бота (реальное время) или, в тактовом режиме, с прошлого хода наступил новый такт и ход ещё не принят.
+func _can_hop() -> bool:
+	if _clock < _next_hop_at:
+		return false
+	var tk: Variant = last_state.get("tk")
+	if tk is Dictionary:
+		return int(tk.get("n", -1)) != _hop_tick_n and int(tk.get("mv", 0)) == 0
+	return true
+
+
+## «Ждать» — ход на свою клетку (тактовый режим): такт наступает по ходам, а не по окну. Не в реальном времени и не в панели.
+func _wait_move() -> void:
+	if _tick_n() < 0 or not _can_hop():
+		return
+	_next_hop_at = _clock + HOP_PAUSE
+	_hop_tick_n = _tick_n()
 	net.request_teleport(position)
 
 
@@ -318,14 +345,14 @@ func _process(delta: float) -> void:
 		"loiter":
 			_step_started = _clock  # без таймаута шага: бот гуляет, пока его не остановят
 			# Выходим на круг, потом раз в перезарядку прыгаем на следующую точку круга.
-			if _walk_to(_loiter_point(_loiter_angle), delta, 0.05) and _clock >= _next_hop_at:
+			if _walk_to(_loiter_point(_loiter_angle), delta, 0.05) and _can_hop():
 				_loiter_angle += minf(loiter_omega * HOP_PAUSE, LOITER_MAX_ARC)
 				_hop(_loiter_point(_loiter_angle))
 		"to_black":
 			if _walk_to(BLACK_SPOT, delta, 0.5):
 				_enter("lurk")
 		"lurk":
-			pass  # стоим на виду у Black ICE; шаг кончается событием «ended» или таймаутом шага
+			_wait_move()  # стоим на виду у Black ICE (в тактовом режиме — «ждём»: такты идут по ходам); шаг кончается событием «ended» или таймаутом шага
 		"ghost":
 			# Дека из Моста приходит серверу мира асинхронно (список предметов): первый запрос может прийти раньше деки
 			# (not_in_deck) — повторяем раз в секунду, пока ghost не включился.

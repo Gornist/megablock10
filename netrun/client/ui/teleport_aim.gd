@@ -15,6 +15,8 @@ const FRAME_H := 0.012
 const DISC_RADIUS := 0.27
 const OK_COLOR := Color(0.25, 1.0, 0.45)
 const NO_COLOR := Color(1.0, 0.25, 0.2)
+## Жёлтая рамка тактового режима: окажешься на краю зрения ICE (TickForecast.YELLOW).
+const WARN_COLOR := Color(1.0, 0.85, 0.2)
 const WAIT_COLOR := Color(0.75, 0.9, 1.0)
 const DENIED_COLOR := Color(0.5, 0.5, 0.52)
 ## Рамка чуть выше пола, чтобы не мерцать в одной плоскости с ним.
@@ -118,12 +120,16 @@ static func _unshaded(c: Color) -> StandardMaterial3D:
 ## Показать прицел: дуга от start к центру клетки target; ok — можно ли прыгнуть сейчас (hop и перезарядка прошла); charge — доля
 ## готовности перезарядки 0…1 (меньше 1 — на рамке растёт диск); kind — "hop" / "wait" / "denied" (NodeGrid.pick), reason — причина
 ## отказа для серой рамки. Без kind (старые вызовы) вид клетки берётся по ok.
-func show_at(start: Vector3, target: Vector3, ok: bool, charge: float = 1.0, kind: String = "", reason: String = "") -> void:
+## Тактовый режим (docs/gamedesign/time-and-movement.md 2.2): threat — TickForecast.GREEN / YELLOW / RED прыжка на эту клетку (−1 — не тактовый режим,
+## цвет по ok); note — подпись на рамке («ХОД ПРИНЯТ», «ЖДАТЬ · ОКНО ЧЕРЕЗ N»); с подписью hop и wait рисуются нейтральной рамкой.
+func show_at(start: Vector3, target: Vector3, ok: bool, charge: float = 1.0, kind: String = "", reason: String = "", threat: int = -1, note: String = "") -> void:
 	_ok = ok
 	_kind = kind if not kind.is_empty() else "hop"
 	_reason = reason
 	var c := OK_COLOR if ok else NO_COLOR
-	if _kind == "wait":
+	if _kind == "hop" and threat >= 0:
+		c = [OK_COLOR, WARN_COLOR, NO_COLOR][clampi(threat, 0, 2)]
+	if _kind == "wait" or (not note.is_empty() and _kind != "denied"):
 		c = WAIT_COLOR
 	elif _kind == "denied":
 		c = DENIED_COLOR
@@ -139,8 +145,8 @@ func show_at(start: Vector3, target: Vector3, ok: bool, charge: float = 1.0, kin
 	var r := clampf(charge, 0.0, 1.0)
 	_disc.visible = _kind == "hop" and r < 1.0
 	_disc.scale = Vector3(maxf(r, 0.001), 1.0, maxf(r, 0.001))
-	_label.visible = _kind == "denied"
-	_label.text = REASON_TEXT.get(reason, "НЕЛЬЗЯ")
+	_label.visible = _kind == "denied" or not note.is_empty()
+	_label.text = note if not note.is_empty() and _kind != "denied" else REASON_TEXT.get(reason, "НЕЛЬЗЯ")
 	_label.position = target + Vector3(0.0, LABEL_LIFT, 0.0)
 	visible = true
 

@@ -123,6 +123,101 @@ static func _dist_m(a: Vector2i, b: Vector2i) -> float:
 	return Vector2(b - a).length() * CELL_M
 
 
+## 8 направлений по кругу, по часовой стрелке на карте сверху (Z растёт «на юг»): восток, юго-восток, юг, … северо-восток.
+const DIRS8: Array = [
+	Vector2i(1, 0), Vector2i(1, 1), Vector2i(0, 1), Vector2i(-1, 1),
+	Vector2i(-1, 0), Vector2i(-1, -1), Vector2i(0, -1), Vector2i(1, -1),
+]
+## Порядок перебора соседей в path(): сначала прямые, потом диагонали (определяет, какой из равных путей выбран).
+const _NEIGHBORS: Array = [
+	Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(0, -1),
+	Vector2i(1, 1), Vector2i(-1, 1), Vector2i(-1, -1), Vector2i(1, -1),
+]
+
+
+## Ближайшее из 8 направлений от клетки a к клетке b (шаг 45°); a == b — Vector2i.ZERO.
+static func dir8(a: Vector2i, b: Vector2i) -> Vector2i:
+	var d := b - a
+	if d == Vector2i.ZERO:
+		return Vector2i.ZERO
+	var idx := posmod(roundi(atan2(float(d.y), float(d.x)) / (PI / 4.0)), 8)
+	return DIRS8[idx]
+
+
+## Угол в градусах (0–180) между направлением `dir` и вектором от клетки `from` к клетке `to`. Если вектор или направление нулевые — 0.
+static func angle_deg(dir: Vector2i, from: Vector2i, to: Vector2i) -> float:
+	var v := Vector2(to - from)
+	if v == Vector2.ZERO or dir == Vector2i.ZERO:
+		return 0.0
+	return absf(rad_to_deg(Vector2(dir).angle_to(v)))
+
+
+## Можно ли шагнуть из клетки `a` на соседнюю по направлению `d` (компоненты −1/0/1): цель свободна, а диагональ не режет угол —
+## обе боковые клетки должны быть свободны (в отличие от line_clear, где достаточно одной).
+func can_step(a: Vector2i, d: Vector2i) -> bool:
+	if d == Vector2i.ZERO or absi(d.x) > 1 or absi(d.y) > 1:
+		return false
+	if is_occupied(a + d):
+		return false
+	if d.x != 0 and d.y != 0:
+		if is_occupied(Vector2i(a.x + d.x, a.y)) or is_occupied(Vector2i(a.x, a.y + d.y)):
+			return false
+	return true
+
+
+## Кратчайший путь по свободным клеткам (8 соседей, без среза угла) от `from` к `to`, без стартовой клетки. Нет пути или from == to —
+## пустой массив. Если `to` занята — путь к ближайшей достижимой свободной соседней с ней клетке (из них равные по длине — те,
+## что ближе к `to`). Из равных по длине путей идёт «прямее»: на каждом шаге — сосед, ближайший к `to` по прямой (без случайности).
+func path(from: Vector2i, to: Vector2i) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	if from == to:
+		return out
+	var goals: Array[Vector2i] = []
+	if not is_occupied(to):
+		goals.append(to)
+	else:
+		for d: Vector2i in _NEIGHBORS:
+			if not is_occupied(to + d):
+				goals.append(to + d)
+	if goals.is_empty() or goals.has(from):
+		return out
+	# Поиск вширь от целей (шаг симметричен), пока не дойдём до `from`: тогда все клетки короче него уже размечены.
+	var dist: Dictionary = {}
+	var queue: Array[Vector2i] = []
+	for g in goals:
+		dist[g] = 0
+		queue.append(g)
+	var head := 0
+	while head < queue.size() and not dist.has(from):
+		var c := queue[head]
+		head += 1
+		for d: Vector2i in _NEIGHBORS:
+			var n := c + d
+			if dist.has(n) or (is_occupied(n) and n != from):
+				continue
+			if not can_step(n, -d):
+				continue
+			dist[n] = int(dist[c]) + 1
+			queue.append(n)
+	if not dist.has(from):
+		return out
+	var cur := from
+	while int(dist[cur]) > 0:
+		var best := cur
+		var best_d := INF
+		for d: Vector2i in _NEIGHBORS:
+			var n := cur + d
+			if int(dist.get(n, -1)) != int(dist[cur]) - 1 or not can_step(cur, d):
+				continue
+			var e := Vector2(n - to).length()
+			if e < best_d - _EPS:
+				best_d = e
+				best = n
+		out.append(best)
+		cur = best
+	return out
+
+
 ## Прицел на клетку: куда на самом деле ляжет прыжок при прицеле в точку `aim`. Возвращает {cell, p (центр клетки), kind, reason}.
 ## kind: "hop" — можно прыгнуть; "wait" — цель в своей клетке (остаться); "denied" — нельзя, reason: "occupied" / "blocked" / "range" / "room".
 ## Вне комнаты клетка зажимается в границы ("room" — только если зажатая клетка занята). Слишком далёкая клетка заменяется ближайшей

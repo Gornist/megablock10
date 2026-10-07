@@ -26,6 +26,14 @@ const DEFAULT_SETTINGS := {
 	"trap_trace": {"BASE": 5.0, "HARD": 8.0, "NIGHTMARE": 12.0},  # сколько trace даёт ловушка во взломе (мёртвая клетка или порченый код), по тиру узла
 	"alert_per_fail": 0.3,           # тревога узла растёт, когда взлом закончился провалом (FAIL)
 	"lockdown_sec": 600.0,           # локдаун узла после выброса; без Моста держит сам сервер мира, с Мостом — lockdown_until узла
+	"time_mode": "realtime",         # время узла: "tick" — такты (ходы игроков и окно, docs/gamedesign/time-and-movement.md), "realtime" — прежнее непрерывное (graph.json ставит tick)
+	"tick_window_sec": 5.0,          # такт наступает не позже, чем через столько секунд после прошлого
+	"tick_min_interval_sec": 0.6,    # и не чаще
+	"tick_inhale_sec": 0.5,          # «вдох» перед тактом по окну (для клиента)
+	"black_tick_sec": 1.0,           # на сколько секунд виртуального времени Black ICE «думает» за такт (10 подшагов по 0,1 с)
+	"entry_hidden_ticks": 2,         # сколько тактов после входа в узел нетраннер невидим для ICE
+	"ice_sight_cells": {"BASE": 6, "HARD": 8, "NIGHTMARE": 10},  # дальность зрения Soft ICE в тактовом режиме (клеток), по тиру узла
+	"alert_per_search": 0.1,         # тревога узла, когда ICE перешёл в Поиск (тактовый режим)
 }
 
 var nodes: Dictionary = {}          # id -> {title, tier, ice, shards, links: Array[String]}
