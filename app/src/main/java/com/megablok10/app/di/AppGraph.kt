@@ -17,7 +17,9 @@ import com.megablok10.app.breach.DaemonStore
 import com.megablok10.app.breach.FinishBreach
 import com.megablok10.app.breach.SecAlertStore
 import com.megablok10.app.breach.SlotClaimStore
+import com.megablok10.app.call.AndroidProximityScreenLock
 import com.megablok10.app.call.CallManager
+import com.megablok10.app.call.CallProximityGuard
 import com.megablok10.app.call.IncomingCallNotifier
 import com.megablok10.app.chat.CardResender
 import com.megablok10.app.chat.ChatStore
@@ -226,6 +228,7 @@ class AppGraph(private val app: Application) {
             { scope -> cardResender.start(scope) },
             { scope -> headset.start(scope) },
             { scope -> IncomingCallNotifier(app, calls).start(scope) },
+            { scope -> CallProximityGuard(calls, AndroidProximityScreenLock(app)).start(scope) },
             { _ -> netrun.restorePeer() },
             { scope -> DeviceDiagnostics.startSnapshots(app, scope, diagnosticsState) },
         ),

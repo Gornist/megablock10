@@ -13,12 +13,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.megablok10.app.call.CallPhase
 import com.megablok10.app.call.CallUiState
+import com.megablok10.app.call.EndCallConfirmation
 import com.megablok10.app.ui.theme.LocalMbColors
 import com.megablok10.app.ui.theme.MbButton
 import com.megablok10.app.ui.theme.MbButtonKind
@@ -96,12 +98,30 @@ private fun ActiveCallBanner(state: CallUiState, onEnd: () -> Unit) {
     }
     val minutes = elapsedSeconds / 60
     val seconds = elapsedSeconds % 60
+    // Страховка от ложного касания (щекой у уха): первое нажатие «заряжает» кнопку на 3 с, звонок кончается вторым.
+    val confirmation = remember(state.callId) { EndCallConfirmation() }
+    var armed by remember(state.callId) { mutableStateOf(false) }
+    LaunchedEffect(armed) {
+        if (armed) {
+            delay(EndCallConfirmation.DEFAULT_WINDOW_MS)
+            armed = false
+        }
+    }
     Box(Modifier.fillMaxWidth().padding(horizontal = MbDimens.screenPadding, vertical = MbDimens.rowGap)) {
         MbBanner(
             lead = { MbPortrait(state.peerCallsign.take(1).uppercase(), size = MbDimens.portraitBanner, ink = LocalMbColors.current.ok) },
             title = state.peerCallsign,
             sub = "● " + callStatusLabel(state) + " · %d:%02d".format(minutes, seconds),
-            action = { MbButton("Завершить", onClick = onEnd, kind = MbButtonKind.Alert, inline = true) }
+            action = {
+                MbButton(
+                    if (armed) "Точно?" else "Завершить",
+                    onClick = {
+                        if (confirmation.onTap(System.currentTimeMillis())) onEnd() else armed = true
+                    },
+                    kind = MbButtonKind.Alert,
+                    inline = true
+                )
+            }
         )
     }
 }
