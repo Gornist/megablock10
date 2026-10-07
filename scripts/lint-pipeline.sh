@@ -15,7 +15,7 @@ files=""
 for f in check verify dbx ci-wait agent-worktree zone-check train land test-hook lint-pipeline; do
   files="$files scripts/$f.sh"
 done
-files="$files .claude/hooks/guard-bash.sh"
+files="$files .claude/hooks/guard-bash.sh .claude/hooks/session-brief.sh"
 
 { echo "== shellcheck -S warning"; } >>"$log"
 # shellcheck disable=SC2086  # список файлов без пробелов в именах — разбиение по словам намеренное

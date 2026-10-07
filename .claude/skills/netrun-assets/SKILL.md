@@ -5,7 +5,7 @@ description: Работа над видом Сети (netrun/assets — моде
 
 # netrun-assets — вид Сети без потерь времени
 
-Черновик skill лежит в `netrun/assets/skill/netrun-assets/` (зона Blender); в `.claude/skills/` его переносит Pipeline manager.
+Содержание — от Blender-сессии: правки по сути шлите ей (SendMessage), файл в `.claude/` правит Pipeline manager.
 Стиль и контракт — в `netrun/assets/STYLE.md` (правила, решения владельца) и `ARCHITECTURE.md` (конвейер, контракт узлов); здесь только цикл и грабли.
 
 ## Зона и порядок
