@@ -136,3 +136,19 @@ func test_разбор_rt_след_маршрута_необязателен() -
 	assert_bool(without[0].has("rt")).is_false()   # старый сервер: ключа нет, клиент работает как раньше
 	var black := TickForecast.parse_intents([{"c": [1, 1], "d": [1, 0], "st": 0, "b": 1, "rt": [[2, 1]]}])
 	assert_bool(black[0].has("rt")).is_false()
+
+
+func test_разбор_fp_и_lost_необязательны() -> void:
+	var base := {"c": [1, 1], "d": [1, 0], "st": 1, "nc": [1, 1], "nd": [1, 0]}
+	var plain := TickForecast.parse_intents([base])
+	assert_bool(plain[0].has("fp")).is_false()
+	assert_bool(plain[0].has("lost")).is_false()
+	var full := base.duplicate()
+	full["fp"] = [5, 3]
+	full["lost"] = 1
+	var its := TickForecast.parse_intents([full])
+	assert_that(its[0]["fp"]).is_equal(Vector2i(5, 3))
+	assert_bool(its[0]["lost"]).is_true()
+	var zero := base.duplicate()
+	zero["lost"] = 0
+	assert_bool(TickForecast.parse_intents([zero])[0].has("lost")).is_false()

@@ -23,6 +23,13 @@ const STATE_COLORS := [Color(1.0, 1.0, 1.0), Color(1.0, 0.86, 0.25), Color(1.0, 
 ## Отпечатки шагов (2-й и 3-й шаг ICE по state.rt): прозрачность по номеру шага, высота — между светом «после шага» и стрелкой.
 const FOOT_ALPHAS := [0.30, 0.16]
 const FOOT_LIFT := 0.012
+## Отпечаток ICE (state.fp): яркая клетка и «?» на ней, лежащий на полу; цвет — по состоянию ICE.
+const MARK_ALPHA_SCALE := 1.6
+const MARK_LIFT := 0.02
+const MARK_TEXT := "?"
+const MARK_FONT_SIZE := 96
+const MARK_PIXEL_SIZE := 0.006
+const MARK_LABEL_LIFT := 0.035
 const PRECAPTURE_COLOR := Color(1.0, 0.1, 0.1)
 const PULSE_SEC := 0.5
 const PULSE_GAIN := 1.6
@@ -40,6 +47,8 @@ var _mat: StandardMaterial3D
 var _arrows: Array[MeshInstance3D] = []
 var _arrow_specs: Array = []
 var _foot_specs: Array = []
+var _marker_specs: Array = []
+var _markers: Array[Label3D] = []
 var _key := 0
 var _count := 0
 ## То же, что записано в MultiMesh (положение и цвет квадратов): под headless-рендером MultiMesh ничего не хранит, а тестам нужно проверить.
@@ -143,6 +152,7 @@ func _rebuild(intents: Array, player_cell: Vector2i) -> void:
 	var n := 0
 	_arrow_specs.clear()
 	_foot_specs.clear()
+	_marker_specs.clear()
 	_cell_pos.clear()
 	_cell_col.clear()
 	for it: Dictionary in intents:
@@ -164,9 +174,14 @@ func _rebuild(intents: Array, player_cell: Vector2i) -> void:
 			_arrow_specs.append(spec)
 		if not TickForecast.is_precapture(it, player_cell):   # красная стрелка предзахвата приоритетнее следа
 			n = _put_footprints(it, c, base, n)
+		if it.has("fp") and _marker_specs.size() < MAX_ARROWS:   # отпечаток: клетка, где ICE заметил нетраннера (Взгляд / Проверка идёт к ней)
+			var fp: Vector2i = it["fp"]
+			_marker_specs.append({"cell": fp, "color": base})
+			n = _put({fp: TickVision.FOCUS}, base, MARK_ALPHA_SCALE, MARK_LIFT, n)
 	_count = n
 	_mm.multimesh.visible_instance_count = n
 	_sync_arrows()
+	_sync_markers()
 
 
 ## «Отпечатки шагов»: клетки 2-го и 3-го шага из rt (1-й — стрелка), тусклее и бледнее с каждым шагом, цвет — по состоянию ICE. Стоянка (клетка повторяется
@@ -191,6 +206,36 @@ func _put_footprints(it: Dictionary, c: Vector2i, base: Color, n: int) -> int:
 		_foot_specs.append({"cell": cell, "step": i + 1, "alpha": a})
 		n += 1
 	return n
+
+
+func marker_count() -> int:
+	return _marker_specs.size()
+
+
+## Маркер отпечатка i: {cell, color}.
+func marker_spec(i: int) -> Dictionary:
+	return _marker_specs[i]
+
+
+func _sync_markers() -> void:
+	while _markers.size() < _marker_specs.size():
+		var l := Label3D.new()
+		l.name = "Mark%d" % _markers.size()
+		l.text = MARK_TEXT
+		l.font_size = MARK_FONT_SIZE
+		l.pixel_size = MARK_PIXEL_SIZE
+		l.outline_size = 8
+		l.rotation_degrees = Vector3(-90.0, 0.0, 0.0)   # лежит на полу, читается сверху
+		l.shaded = false
+		add_child(l)
+		_markers.append(l)
+	for i in _markers.size():
+		var l := _markers[i]
+		l.visible = i < _marker_specs.size()
+		if l.visible:
+			var p := NodeGrid.center(_marker_specs[i]["cell"])
+			l.position = Vector3(p.x, MARK_LABEL_LIFT, p.z)
+			l.modulate = _marker_specs[i]["color"]
 
 
 func footprint_count() -> int:

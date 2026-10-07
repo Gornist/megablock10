@@ -63,7 +63,7 @@ static func is_precapture(it: Dictionary, cell: Vector2i) -> bool:
 	return (NodeGrid.center(nc) - NodeGrid.center(cell)).length() <= PRECAPTURE_M + 0.001
 
 
-## Намерения из поля `ice` сообщения state: {c, d, st, nc, nd, sc, black, rt?} (клетки Vector2i; rt — клетки следующих шагов, если сервер прислал). Записи без `c` (realtime) пропускаются;
+## Намерения из поля `ice` сообщения state: {c, d, st, nc, nd, sc, black, rt?, fp?, lost?} (клетки Vector2i; rt — клетки следующих шагов, fp — отпечаток, lost — потерял нетраннера: ключи есть, только если сервер прислал). Записи без `c` (realtime) пропускаются;
 ## Black ICE (`b` = 1) — по c / d, без намерения (nc = c).
 static func parse_intents(ice_list: Array) -> Array:
 	var out: Array = []
@@ -89,6 +89,11 @@ static func parse_intents(ice_list: Array) -> Array:
 			for p in rt:
 				cells.append(_cell(p))
 			it["rt"] = cells   # след маршрута на 3 шага (первая клетка = nc); старый сервер его не шлёт — тогда ключа нет
+		var fp: Variant = d.get("fp")
+		if not black and fp is Array and (fp as Array).size() >= 2:
+			it["fp"] = _cell(fp)   # отпечаток: клетка, где ICE заметил нетраннера (Взгляд / Проверка)
+		if not black and int(d.get("lost", 0)) == 1:
+			it["lost"] = true   # потерял нетраннера: «…» над ICE на этот такт
 		out.append(it)
 	return out
 

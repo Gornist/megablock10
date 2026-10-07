@@ -243,6 +243,7 @@ func apply_state(state: Dictionary) -> void:
 		_show_ice_state(_ice_nodes[id], int(ice["s"]), pos)
 		if ice.has("c"):
 			(_ice_nodes[id] as IceView).set_eye_state(int(ice.get("st", 0)))   # тактовый режим: глаз по состоянию ICE
+			(_ice_nodes[id] as IceView).set_lost(int(ice.get("lost", 0)) == 1)   # потерял нетраннера: «…» на один такт
 	# ICE, которого в снимке больше нет (игрок перешёл в другой узел), убираем: иначе Black ICE прошлого узла стоял бы в новом.
 	for id in _ice_nodes.keys():
 		if not seen.has(id):

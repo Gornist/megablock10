@@ -68,6 +68,10 @@ var _icells_next: Dictionary = {}
 ## Как ICE видел нетраннеров в конце последнего такта: сессия → TickVision.NONE/PERIPHERY/FOCUS.
 var _vis: Dictionary = {}
 var _dry := false
+## Отпечаток: клетка, где ICE заметил нетраннера (Проверка идёт к ней); lost — потерял его в этом такте (один такт).
+var _fp := Vector2i.ZERO
+var _fp_valid := false
+var _lost := false
 ## «Наткнулся» этого такта (шаг патруля упёрся в клетку нетраннера): события {kind:"bump", session, cell}; tick() отдаёт их вызывающему.
 var _bumped: Array = []
 
@@ -173,11 +177,13 @@ func tick(targets: Dictionary, hidden: Dictionary = {}, immune: Dictionary = {})
 		if immune.get(s, false):
 			_icells[s] = c
 	var prev_mode := _mode
+	_lost = false
 	_bumped.clear()
 	_program_step()
 	events.append_array(_bumped)
 	_update_awareness(targets, tcell, hidden)
 	var m := _level(_max_aw())
+	_notice(prev_mode, m)
 	if m == Mode.PATROL:
 		_search_armed = true
 	if m != _mode:
@@ -197,6 +203,41 @@ func tick(targets: Dictionary, hidden: Dictionary = {}, immune: Dictionary = {})
 	return events
 
 
+## «?» с последствием (PR B3): что ICE делает с замеченным нетраннером в конце такта. prev — состояние до такта, m — после.
+## (1) Заметил впервые (отпечатка нет): запоминает клетку, где увидел, — Проверка идёт к ней, а не к текущей клетке нетраннера.
+## (2) Осведомлённость поднялась до Взгляда / Проверки из-за клетки нетраннера: взгляд в тот же такт поворачивается на неё (8 направлений).
+## (3) В Поиске отпечаток — последняя клетка цели (Поиск за ней и ходит; когда спадёт до Проверки, идти надо туда, где её видели последний раз).
+## (4) Осведомлённость спала до нуля, отпечаток отыгран — «потерял»: один такт стоит флаг lost, дальше обычный возврат на маршрут.
+func _notice(prev: int, m: int) -> void:
+	if m == Mode.PATROL:
+		if prev != Mode.PATROL and _fp_valid:
+			_lost = true
+		_fp_valid = false
+		return
+	if _seen_now and not _fp_valid:
+		_fp = _last_seen
+		_fp_valid = true
+	if _seen_now and m > prev and (m == Mode.GAZE or m == Mode.CHECK) and _last_seen != _cell:
+		_dir = NodeGrid.dir8(_cell, _last_seen)
+	if m == Mode.SEARCH and _fp_valid and _fp != _last_seen:
+		_fp = _last_seen
+		_arrived = false   # шёл к старому отпечатку, а не к последней клетке цели: осмотр там не засчитывается
+		_phase = Phase.NONE
+		_phase_left = 0
+
+
+## Отпечаток (клетка, где ICE заметил нетраннера), пока он нужен Взгляду или Проверке; иначе null.
+func footprint() -> Variant:
+	if _fp_valid and (_mode == Mode.GAZE or _mode == Mode.CHECK):
+		return _fp
+	return null
+
+
+## ICE только что потерял нетраннера (спал до нуля после замечания): истинно один такт.
+func lost() -> bool:
+	return _lost
+
+
 ## Кто будет неуязвим в следующем такте (сессия → позиция Vector3, где он стоит сейчас): по ним intent() считает шаг с обходом клетки.
 func expect_immune(positions: Dictionary) -> void:
 	_icells_next.clear()
@@ -205,7 +246,7 @@ func expect_immune(positions: Dictionary) -> void:
 
 
 ## Чистая функция состояния: где ICE стоит и куда пойдёт следующим шагом программы при текущих счётчиках (без случайности).
-## {cell, dir, state, next_cell, next_dir, aware}; state 0–3 — Патруль, Взгляд, Проверка, Поиск.
+## {cell, dir, state, next_cell, next_dir, aware, ahead, fp, lost}; fp — отпечаток (Vector2i) или null, lost — потерял в этом такте; state 0–3 — Патруль, Взгляд, Проверка, Поиск.
 func intent() -> Dictionary:
 	var snap := _snapshot()
 	var icells_now := _icells
@@ -219,6 +260,8 @@ func intent() -> Dictionary:
 		"next_cell": _cell,
 		"next_dir": _dir,
 		"aware": _max_aw(),
+		"fp": footprint(),
+		"lost": _lost,
 	}
 	# След маршрута: те же шаги программы ещё раз и ещё (счётчики не меняются: состояние то же, что на первом шаге); клетка повторяется, пока ICE стоит.
 	var ahead: Array[Vector2i] = [_cell]
@@ -342,7 +385,8 @@ func _step_check() -> void:
 	if not _has_seen:
 		return
 	if not _arrived:
-		if _walk_to(_last_seen, int(_s["check_cells"])):
+		var goal := _fp if _fp_valid else _last_seen   # Проверка идёт к отпечатку, а не за нетраннером
+		if _walk_to(goal, int(_s["check_cells"])):
 			_arrived = true
 			_start_phase(Phase.LOOK)   # осмотр — со следующего такта
 		return

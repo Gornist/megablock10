@@ -258,3 +258,54 @@ func test_след_без_rt_как_раньше_и_красная_стрелк�
 	f.apply([it], {}, player)
 	assert_bool(f.arrow_spec(0)["precapture"]).is_true()
 	assert_int(f.footprint_count()).is_equal(0)
+
+
+# --- «?» с последствием (PR B3): отпечаток на полу и «…» над ICE ---
+
+func test_отпечаток_fp_маркер_на_клетке_и_яркая_клетка() -> void:
+	var g := NodeGrid.new()
+	var f := _floor(g)
+	var it := _it(ICE, EAST, 1)   # Взгляд: жёлтый
+	f.apply([it], {}, Vector2i(0, 0))
+	var plain := f.cell_count()
+	assert_int(f.marker_count()).is_equal(0)
+	it["fp"] = Vector2i(8, 8)
+	f.apply([it], {}, Vector2i(0, 1))   # другой снимок игрока — пересборка
+	assert_int(f.marker_count()).is_equal(1)
+	assert_object(f.marker_spec(0)["cell"]).is_equal(Vector2i(8, 8))
+	assert_float(f.marker_spec(0)["color"].g).is_equal_approx(TickFloor.STATE_COLORS[1].g, 0.01)
+	assert_int(f.cell_count()).is_equal(plain + 1)   # ещё одна яркая клетка — отпечаток
+	var last := f.cell_count() - 1
+	assert_object(NodeGrid.cell_of(f.cell_position(last))).is_equal(Vector2i(8, 8))
+	assert_float(f.cell_color(last).a).is_greater(TickFloor.FOCUS_ALPHA)   # ярче света зрения
+	var label := f.get_node("Mark0") as Label3D
+	assert_bool(label.visible).is_true()
+	assert_str(label.text).is_equal("?")
+	# Отпечаток спал — маркер скрыт.
+	it.erase("fp")
+	f.apply([it], {}, Vector2i(0, 2))
+	assert_int(f.marker_count()).is_equal(0)
+	assert_bool((f.get_node("Mark0") as Label3D).visible).is_false()
+
+
+func test_значок_потерял_виден_только_на_такте_lost() -> void:
+	var scene := _scene()
+	var msg := _ice_msg(0)
+	scene.apply_state(msg)
+	var ice: IceView = scene.ice_node("ice_1")
+	assert_bool(ice.lost_visible()).is_false()
+	(msg["ice"][0] as Dictionary)["lost"] = 1
+	scene.apply_state(msg)
+	assert_bool(ice.lost_visible()).is_true()
+	assert_str((ice.get_node("LostMark") as Label3D).text).is_equal("…")
+	(msg["ice"][0] as Dictionary).erase("lost")   # следующий такт: возврат на маршрут
+	scene.apply_state(msg)
+	assert_bool(ice.lost_visible()).is_false()
+
+
+func test_сцена_передаёт_fp_полу() -> void:
+	var scene := _scene()
+	var msg := _ice_msg(1)
+	(msg["ice"][0] as Dictionary)["fp"] = [8, 8]
+	scene.apply_state(msg)
+	assert_int(scene.tick_floor.marker_count()).is_equal(1)
