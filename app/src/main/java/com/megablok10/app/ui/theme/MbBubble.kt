@@ -137,7 +137,9 @@ fun MbComposer(
     onValueChange: (String) -> Unit,
     onSend: () -> Unit,
     modifier: Modifier = Modifier,
-    placeholder: String = "Сообщение"
+    placeholder: String = "Сообщение",
+    /** Что показать справа вместо кнопки отправки, пока поле пустое (микрофон голосового, как в Telegram); null — кнопка отправки всегда. */
+    trailingWhenEmpty: (@Composable () -> Unit)? = null
 ) {
     val c = LocalMbColors.current
     Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -161,14 +163,18 @@ fun MbComposer(
                 modifier = Modifier.fillMaxWidth().semantics { contentDescription = placeholder }
             )
         }
-        Box(
-            Modifier
-                .size(MbDimens.rowHeight)
-                .mbFrame(fill = c.acc, edge = c.acc, form = MbChamferForm.Std, cut = 8.dp)
-                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onSend),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(painterResource(MbIcons.Send), contentDescription = "Отправить", tint = c.accInk, modifier = Modifier.size(18.dp))
+        if (value.isEmpty() && trailingWhenEmpty != null) {
+            trailingWhenEmpty()
+        } else {
+            Box(
+                Modifier
+                    .size(MbDimens.rowHeight)
+                    .mbFrame(fill = c.acc, edge = c.acc, form = MbChamferForm.Std, cut = 8.dp)
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onSend),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(painterResource(MbIcons.Send), contentDescription = "Отправить", tint = c.accInk, modifier = Modifier.size(18.dp))
+            }
         }
     }
 }

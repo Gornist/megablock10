@@ -1,6 +1,7 @@
 package com.megablok10.app.di
 
 import com.megablok10.app.breach.BreachViewModel
+import com.megablok10.app.call.CallPhase
 import com.megablok10.app.ui.SessionViewModel
 import com.megablok10.app.ui.ShellViewModel
 import com.megablok10.app.ui.screens.AnnouncementsViewModel
@@ -13,7 +14,10 @@ import com.megablok10.app.ui.screens.DirectThreadViewModel
 import com.megablok10.app.ui.screens.SettingsViewModel
 import com.megablok10.app.ui.screens.ThreadFeed
 import com.megablok10.app.ui.screens.WalletViewModel
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 
 /*
  * Сборка ViewModel экранов из графа — здесь, а не в экранах: экран просит `appViewModel { walletViewModel() }` и не знает, из чего
@@ -63,6 +67,13 @@ fun AppGraph.directThreadViewModel(myKey: String, peerKey: String) = DirectThrea
     work = processScope,
     markRead = { me, peer, messages -> readReceipts.onThreadShown(me, peer, messages) },
     showRead = readReceiptSetting.enabled,
+    voiceSender = { me, peer, online, clip ->
+        // Файл рекордера → хранилище и строка в Room → отправка; промежуточный файл рекордера после этого не нужен.
+        val bytes = clip.file.readBytes()
+        voice.send(me, peer, online, clip.id, clip.durationMs, clip.waveform, bytes)
+        clip.file.delete()
+    },
+    micAllowed = calls.state.map { it.phase == CallPhase.IDLE }.stateIn(processScope, SharingStarted.Eagerly, true),
 )
 
 fun AppGraph.cyberdeckViewModel() =
