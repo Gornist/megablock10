@@ -414,23 +414,81 @@ def build_column_field(out, name="column_field", seed=77):
                       notes="эксперимент: поле колонн на решётке 0,1 м для дальнего плана")
 
 
-def build_pillar(out):
-    """Колонна на углу: пучок высоких штрихов (два белых) и несколько точек у основания. Высота до 3 м. Origin на полу в центре."""
+COVER_H = 2.2      # высота укрытия, м: выше головы стоящего игрока; одна на все (полуукрытий нет, решение Game: занятая клетка закрывает взгляд целиком)
+COVER_CELL = 1.0   # клетка хода, м (NodeGrid.CELL_M)
+COVER_BODY = 0.9   # корпус по центру клетки, щель 5 см до границы
+
+
+def _cover_parts(centers):
+    """Столбы-укрытия на клетках с центрами `centers` (x, y): корпус 0,9×0,9×2,2 м и плоская рамка по границе клетки 1×1 на полу. Корпус нарезан
+    плоскостями у рёбер (3 см), у верха и на 0,3 м от пола: свет вершин остаётся только у вертикальных рёбер, верхнего контура и в основании.
+    Возвращает (корпус bmesh, рамки bmesh, rgb_fn корпуса)."""
+    cy, void = lib.lin("cyan"), lib.lin("void")
+    half, band, rise = COVER_BODY / 2, 0.03, 0.3
+    bodies, frames = [], []
+    for cx, cy_ in centers:
+        bm = lib.box_bm((COVER_BODY, COVER_BODY, COVER_H), center=(cx, cy_, COVER_H / 2))
+        for co, no in (((cx - half + band, 0, 0), (1, 0, 0)), ((cx + half - band, 0, 0), (1, 0, 0)),
+                       ((0, cy_ - half + band, 0), (0, 1, 0)), ((0, cy_ + half - band, 0), (0, 1, 0)),
+                       ((0, 0, rise), (0, 0, 1)), ((0, 0, COVER_H - band), (0, 0, 1))):
+            bmesh.ops.bisect_plane(bm, geom=list(bm.verts) + list(bm.edges) + list(bm.faces), plane_co=co, plane_no=no)
+        bodies.append(bm)
+        fb = bmesh.new()  # рамка шириной 3 см, внешний край — граница клетки; на 3 мм выше пола, чтобы не мерцать с плитой
+        o, i = COVER_CELL / 2, COVER_CELL / 2 - 0.03
+        ring = [[fb.verts.new(Vector((cx + sx * r, cy_ + sy * r, 0.003))) for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1))] for r in (o, i)]
+        for k in range(4):
+            fb.faces.new([ring[0][k], ring[0][(k + 1) % 4], ring[1][(k + 1) % 4], ring[1][k]])
+        bmesh.ops.recalc_face_normals(fb, faces=list(fb.faces))
+        frames.append(fb)
+    body = lib.merge_bm(*bodies)
+    lib.canon_faces(body)
+    frame = lib.merge_bm(*frames)
+    lib.canon_faces(frame)
+
+    def lit(co):
+        # расстояние до центра ближайшего столба по каждой оси
+        lx, ly = min(((abs(co.x - cx), abs(co.y - cy_)) for cx, cy_ in centers), key=max)
+        ring_ = max(lx, ly) > half - 1e-3
+        if lx > half - 1e-3 and ly > half - 1e-3:
+            k = 1.0                                   # вертикальное ребро
+        elif ring_ and co.z > COVER_H - 1e-3:
+            k = 1.0                                   # контур верха
+        elif ring_ and co.z < rise:
+            k = 0.6 * (1.0 - co.z / rise)             # мягкая подсветка основания
+        else:
+            k = 0.0
+        return tuple(d + (g - d) * k for g, d in zip(cy, void))
+
+    return body, frame, lit
+
+
+def _cover_asset(out, name, centers, tris, notes):
     lib.reset()
-    rng = random.Random(6)
-    cy, ice = lib.lin("cyan"), lib.lin("ice_white")
-    st = []
-    for _ in range(9):
-        hh = rng.uniform(1.0, 1.5)
-        st.append((Vector((rng.uniform(-0.07, 0.07), rng.uniform(-0.07, 0.07), hh)), rng.uniform(0.01, 0.018), hh, rng.uniform(0.4, 0.9)))
-    objs = [lib.streak_set("pillar_streaks", st, cy)]
-    objs.append(lib.streak_set("pillar_core", [(Vector((0, 0, 1.5)), 0.012, 1.5, 1.0), (Vector((0.03, 0.02, 1.2)), 0.01, 1.2, 0.9)], ice))
-    return lib.export("pillar", "env", objs, out, budget_tris=300, budget_streaks=16, origin="floor")
+    cy = lib.lin("cyan")
+    body, frame, lit = _cover_parts(centers)
+    objs = [lib.obj_from_bm("pillar_block", body, "solid_dark", cy, rgb_fn=lit),
+            lib.obj_from_bm("pillar_base", frame, "solid_dark", cy)]
+    return lib.export(name, "env", objs, out, budget_tris=tris, origin="floor", notes=notes)
+
+
+def build_cover(out):
+    """Укрытие на одной клетке хода 1×1 м (Godot ставит по одному на занятую клетку): непрозрачный корпус 0,9×0,9×2,2 м по центру клетки, светятся
+    вертикальные рёбра, контур верха и основание, плюс ровная рамка по границе клетки (тот же шаг, что швы пола): соседние укрытия складываются в стену,
+    но клетки читаются. Origin на полу в центре клетки."""
+    return _cover_asset(out, "cover", [(0.0, 0.0)], 140,
+                        f"одна клетка {COVER_CELL:g} м, корпус {COVER_BODY:g}, высота {COVER_H:g} м, рамка по границе клетки")
+
+
+def build_pillar(out):
+    """Колонна модуля 2×2 м (блок «#» раскладки) = четыре укрытия по клетке (как `cover`). Прежний контракт (имя, путь, origin в центре модуля) сохранён."""
+    return _cover_asset(out, "pillar", [(sx * 0.5, sy * 0.5) for sx in (-1, 1) for sy in (-1, 1)], 560,
+                        f"модуль 2×2 м = 4 укрытия по клетке {COVER_CELL:g} м, высота {COVER_H:g} м")
 
 
 if __name__ == "__main__":
     o = lib.args()
     build_pillar(o)
+    build_cover(o)
     build_column_field(o)
     for name, seed in (("wall", 21), ("wall_b", 34), ("wall_c", 55)):
         build_wall(o, name, seed)
