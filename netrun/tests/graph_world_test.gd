@@ -309,7 +309,10 @@ func test_twelve_node_graph_builds_by_tier() -> void:
 		for i in gn.ices():
 			if not i.brain.is_black():
 				soft += 1
-		assert_int(soft).is_equal(int(g.nodes[id]["ice"]))
+		var expected := int(g.nodes[id]["ice"])
+		if not str(g.nodes[id]["layout"]).is_empty():   # такты: Стражей узла с раскладкой — не больше, чем в её файле
+			expected = mini(expected, LayoutData.cached(str(g.nodes[id]["layout"])).sentries.size())
+		assert_int(soft).is_equal(expected)
 	srv.stop_net()
 
 

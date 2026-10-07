@@ -26,6 +26,14 @@ const DEFAULT_SETTINGS := {
 	"trap_trace": {"BASE": 5.0, "HARD": 8.0, "NIGHTMARE": 12.0},  # сколько trace даёт ловушка во взломе (мёртвая клетка или порченый код), по тиру узла
 	"alert_per_fail": 0.3,           # тревога узла растёт, когда взлом закончился провалом (FAIL)
 	"lockdown_sec": 600.0,           # локдаун узла после выброса; без Моста держит сам сервер мира, с Мостом — lockdown_until узла
+	"time_mode": "realtime",         # время узла: "tick" — такты (ходы игроков и окно, docs/gamedesign/time-and-movement.md), "realtime" — прежнее непрерывное (graph.json ставит tick)
+	"tick_window_sec": 5.0,          # такт наступает не позже, чем через столько секунд после прошлого
+	"tick_min_interval_sec": 0.6,    # и не чаще
+	"tick_inhale_sec": 0.5,          # «вдох» перед тактом по окну (для клиента)
+	"black_tick_sec": 1.0,           # на сколько секунд виртуального времени Black ICE «думает» за такт (10 подшагов по 0,1 с)
+	"entry_hidden_ticks": 2,         # сколько тактов после входа в узел нетраннер невидим для ICE
+	"ice_sight_cells": {"BASE": 6, "HARD": 8, "NIGHTMARE": 10},  # дальность зрения Soft ICE в тактовом режиме (клеток), по тиру узла
+	"alert_per_search": 0.1,         # тревога узла, когда ICE перешёл в Поиск (тактовый режим)
 }
 
 var nodes: Dictionary = {}          # id -> {title, tier, ice, shards, links: Array[String]}
@@ -59,6 +67,7 @@ static func from_dict(d: Dictionary) -> NodeGraph:
 				"shards": int(n.get("shards", 1)),
 				"links": links,
 				"tutorial": bool(n.get("tutorial", false)),
+				"layout": str(n.get("layout", "")),   # имя раскладки (data/layouts); пусто — legacy
 				"ice_settings": n["ice_settings"] if n.get("ice_settings") is Dictionary else {},
 				"signs": n["signs"] if n.get("signs") is Array else [],
 			}
@@ -97,11 +106,24 @@ func errors() -> Array[String]:
 			out.append("%s: неизвестный тир «%s»" % [id, n["tier"]])
 		if int(n["ice"]) < 0 or int(n["ice"]) > NodeLayout.ICE.size():
 			out.append("%s: ICE %d, допустимо 0…%d" % [id, n["ice"], NodeLayout.ICE.size()])
-		if int(n["shards"]) < 1 or int(n["shards"]) > NodeLayout.SHARD_SLOTS.size():
-			out.append("%s: шардов %d, допустимо 1…%d" % [id, n["shards"], NodeLayout.SHARD_SLOTS.size()])
+		var max_shards := NodeLayout.SHARD_SLOTS.size()
+		var max_links := NodeLayout.PORTAL_SLOTS.size()
 		var links: Array = n["links"]
-		if links.size() > NodeLayout.PORTAL_SLOTS.size():
-			out.append("%s: связей %d, слотов порталов %d" % [id, links.size(), NodeLayout.PORTAL_SLOTS.size()])
+		var lname := str(n.get("layout", ""))
+		if not lname.is_empty() and lname != LayoutData.LEGACY:
+			var ld := LayoutData.cached(lname)
+			if ld.error != "":
+				out.append("%s: раскладка «%s»: %s" % [id, lname, ld.error])
+			else:
+				max_shards = ld.vaults.size()
+				max_links = ld.portals.size()
+				for i in mini(links.size(), ld.portals.size()):
+					if ld.portals[i] == Vector3.INF:
+						out.append("%s: связь %d ведёт в портал %d, которого нет на карте «%s»" % [id, i, i + 1, lname])
+		if int(n["shards"]) < 1 or int(n["shards"]) > max_shards:
+			out.append("%s: шардов %d, допустимо 1…%d" % [id, n["shards"], max_shards])
+		if links.size() > max_links:
+			out.append("%s: связей %d, слотов порталов %d" % [id, links.size(), max_links])
 		if links.is_empty() and not bool(n.get("tutorial", false)):
 			out.append("%s: нет связей" % id)
 		if bool(n.get("tutorial", false)):

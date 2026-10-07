@@ -291,7 +291,7 @@ func test_teleport_in_the_middle_ends_the_breach_early() -> void:
 	var p := await _ready_peer("t03", S1)
 	_stand_at(S1, "b_a", 0)
 	assert_bool(await _start(p, _slot("b_a", 0), [D_EXTRACT])).is_true()
-	p.net.request_teleport(Vector3(2.0, 0, -6.0))
+	p.net.request_teleport(NodeGrid.center(Vector2i(9, 8)))   # клетка (9;8) свободна: (2; −6) попадал в колонну (3;−5)
 	assert_bool(await _wait_for(func(): return not p.ends.is_empty())).is_true()
 	assert_str(p.ends[0]["early"]).is_equal("teleport")
 	assert_str(p.ends[0]["outcome"]).is_equal("FAIL")
@@ -424,6 +424,17 @@ func test_ram_limits_the_selection() -> void:
 	ds.ram = 1
 	assert_bool(await _start(p, _slot("b_a", 0), ["it_b_d3"])).is_true()
 	assert_str(p.nos[-1]["reason"]).is_equal("bad_daemons")   # 2 ячейки не влезают в RAM 1
+	# отказ несёт числа: игрок видит «замок X + цепочки Y > RAM»
+	var no: Dictionary = p.nos[-1]
+	assert_int(int(no["ram"])).is_equal(1)
+	assert_int(int(no["need"]) - int(no["lock"])).is_equal(2)
+	assert_int(int(no["lock"])).is_greater(0)
+	# журнал сервера: запрос с кодами/RAM/замком и отказ с причиной и числами — по одной строке
+	var gn := _world.node_of("b_a") as GrayNode
+	var req := MbLog.format("breach.request", gn.breach.request_fields(S2, _slot("b_a", 0), ["it_b_d3"]))
+	assert_str(req).contains("breach.request session=%s" % S2).contains("daemons=it_b_d3").contains("codes=2").contains("ram=1").contains("lock=%d" % int(no["lock"]))
+	assert_str(MbLog.format("breach.no", VaultBreach.no_fields(S2, no))).contains("reason=bad_daemons").contains("need=%d" % int(no["need"])).contains("ram=1")
+	assert_str(req).not_contains("\n")
 
 
 func test_empty_vault_is_reported_with_the_refill_time() -> void:

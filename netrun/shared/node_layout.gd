@@ -167,3 +167,46 @@ static func arrival_for_slot(slot: int) -> Vector3:
 	var p: Vector3 = PORTAL_SLOTS[slot]
 	var d := Vector3(ROOM_CENTER.x - p.x, 0.0, ROOM_CENTER.z - p.z).normalized()
 	return clamp_to_room(p + d * ARRIVE_DIST)
+
+
+# ---------------------------------------------------------------- по раскладке узла (LayoutData)
+# Те же правила, что выше, но вход, выход, порталы и площадки хранилищ — из раскладки узла. Для legacy значения совпадают с константами.
+
+## Стоит ли точка на площадке выхода раскладки (центр exit_pos, радиус EXIT_RADIUS).
+static func on_exit_pad_in(layout: LayoutData, p: Vector3) -> bool:
+	return flat_distance(p, layout.exit_pos) <= EXIT_RADIUS
+
+
+## Где игрок появляется, пройдя через портал номер slot (с нуля) раскладки: на ARRIVE_DIST от него в сторону центра комнаты;
+## нет такого портала — вход раскладки.
+static func arrival_in(layout: LayoutData, slot: int) -> Vector3:
+	if slot < 0 or slot >= layout.portals.size() or layout.portals[slot] == Vector3.INF:
+		return layout.spawn
+	var p: Vector3 = layout.portals[slot]
+	var d := Vector3(ROOM_CENTER.x - p.x, 0.0, ROOM_CENTER.z - p.z).normalized()
+	return clamp_to_room(p + d * ARRIVE_DIST)
+
+
+## Площадка у хранилища раскладки с центром слота slot (y не важен); null — такого хранилища в раскладке нет.
+static func vault_pad_in(layout: LayoutData, slot: Vector3) -> Variant:
+	for v: Dictionary in layout.vaults:
+		if flat_distance(v["slot"], slot) < 0.001:
+			return v["pad"]
+	return null
+
+
+## snap_to_vault_pad для раскладки: ближайшее из хранилищ slots в пределах VAULT_SNAP_RADIUS даёт площадку pad из раскладки;
+## хранилища, которого нет в раскладке, привязки не дают. Ответ {p, look} как у snap_to_vault_pad.
+static func snap_to_vault_pad_in(layout: LayoutData, p: Vector3, slots: Array) -> Dictionary:
+	var best: Variant = null
+	var best_d := VAULT_SNAP_RADIUS
+	for s: Vector3 in slots:
+		var d := flat_distance(p, s)
+		if d <= best_d and vault_pad_in(layout, s) != null:
+			best_d = d
+			best = s
+	if best == null:
+		return {"p": p, "look": null}
+	var slot: Vector3 = best
+	var pad: Vector3 = vault_pad_in(layout, slot)
+	return {"p": Vector3(pad.x, p.y, pad.z), "look": Vector3(slot.x, 0.0, slot.z)}

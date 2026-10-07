@@ -201,6 +201,15 @@ func set_deck(deck: Dictionary) -> void:
 	_dirty = true
 	DeckUi.clear(_list)
 	_row_texts = PackedStringArray(["ПРОГРАММЫ"])
+	# Плашки состояния — над списком, чтобы их было видно без прокрутки: действует эффект (с отсчётом) и «заряжен — включи» (текст — в конец row_texts).
+	var banners: Array[String] = []
+	for row in rows:
+		if bool(row["active"]):
+			banners.append(HudLogic.active_banner(row))
+			_list.add_child(_banner(banners[-1], "acc"))
+	if rows.any(func(r: Dictionary) -> bool: return bool(r["charged"])):
+		banners.append(HudLogic.LAUNCH_HINT)
+		_list.add_child(_banner(HudLogic.LAUNCH_HINT, "ok"))
 	if ram != null:
 		_list.add_child(_ram_block(ram))
 	_list.add_child(DeckUi.section_title("ПРОГРАММЫ", str(rows.size())))
@@ -210,9 +219,18 @@ func set_deck(deck: Dictionary) -> void:
 		_list.add_child(_program_plate(row))
 	if rows.is_empty():
 		_list.add_child(DeckUi.label("Программ нет", DeckTheme.V_DIM, false))
-	elif rows.any(func(r: Dictionary) -> bool: return bool(r["charged"])):
-		_row_texts.append(HudLogic.LAUNCH_HINT)
-		_list.add_child(DeckUi.label(HudLogic.LAUNCH_HINT, DeckTheme.V_DIM, false))
+	_row_texts.append_array(PackedStringArray(banners))
+
+
+## Заметная плашка на всю ширину (заливка тоном, крупный шрифт названий): «заряжен — включи» и «эффект действует N с».
+func _banner(text: String, tone: String) -> Control:
+	var c := DeckTheme.tone_color(tone)
+	var f := MbFrame.make(c, c, MbShape.Form.TAB, DeckTheme.CUT_SMALL, 10, 4)
+	f.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var l := DeckUi.label(text, DeckTheme.V_NAME)
+	l.add_theme_color_override("font_color", DeckTheme.ACC_INK)
+	f.add_child(l)
+	return f
 
 
 ## Полоса RAM: «RAM  [██░░░░]  4/6» и метка «ПО УМОЛЧАНИЮ», если ёмкость условная (Мост её ещё не передаёт).

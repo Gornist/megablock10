@@ -63,7 +63,7 @@ jobs:
       # Версия и способ установки — как в netrun.yml; бинарник кешируется, чтобы не качать ≈60 МБ при каждом прогоне.
       - name: Godot (кеш)
         id: godot-cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/godot-bin
           key: godot-bin-${{ env.GODOT_VERSION }}-${{ env.GODOT_CHANNEL }}

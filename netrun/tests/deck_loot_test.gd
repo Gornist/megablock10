@@ -154,6 +154,10 @@ func test_program_states_active_and_cooldown_are_visible() -> void:
 	await _settle()
 	assert_str(_d.row_texts()[1]).is_equal("> 1 Призрак  активен 12 с")
 	assert_str(_d.row_texts()[2]).is_equal("  2 Дрожь  перезарядка 41 с")
+	# действующий эффект — плашка над списком с отсчётом и словами, что он делает (первый ребёнок списка, виден без прокрутки)
+	assert_str(_all_texts()).contains("ДЕЙСТВУЕТ 12 с · 1 Призрак · невидим для ICE")
+	assert_str("\n".join(_d.row_texts())).contains("ДЕЙСТВУЕТ 12 с")
+	assert_str("\n".join(DeckUi.texts(_d._list.get_child(0)))).contains("ДЕЙСТВУЕТ 12 с")
 
 
 func test_empty_deck_says_so() -> void:

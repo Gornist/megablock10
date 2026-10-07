@@ -81,10 +81,11 @@ RUNNER
 [ -n "$ENVS" ] && ARGS="$ARGS --rerun-tasks"
 echo "$ARGS" | $SSH "cat > ~/jobs/$JOB.args"
 [ -n "$ENVS" ] && printf '%s' "$ENVS" | $SSH "cat > ~/jobs/$JOB.env"
+# shellcheck disable=SC2088  # тильду раскрывает удалённая оболочка devbox, так и задумано
 $SSH "~/.local/bin/devjob start $JOB 'dbx-run $NAME $C $JOB'" >/dev/null 2>&1 || { echo "не запустил задачу на devbox"; exit 2; }
 
 START=$(date +%s); RC=""; TAIL=""
-for i in $(seq 1 360); do
+for _ in $(seq 1 360); do
   sleep 15
   TAIL=$($SSH "grep -E '^\[dbx\]' ~/jobs/$JOB.log 2>/dev/null; ~/.local/bin/devjob status $JOB" 2>/dev/null) || continue
   RC=$(echo "$TAIL" | sed -n 's/^\[dbx\] rc=\([0-9]*\).*/\1/p' | tail -1)

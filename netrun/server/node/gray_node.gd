@@ -72,6 +72,11 @@ var ice_settings: Dictionary = {}
 var trace_settings: Dictionary = {}
 ## Поверх ice_settings — только для Black ICE (hunt_speed, hunt_level, дальность взгляда…).
 var black_ice_settings: Dictionary = {}
+## Клетки 1 м с колоннами: одна на узел, её видят все ICE (колонна закрывает им взгляд).
+var ice_grid: NodeGrid = NodeGrid.for_layout()
+## Раскладка узла (data/layouts): сетка, хранилища, порталы, вход, выход, маршруты Стражей. Узел без поля layout и одиночный узел — legacy
+## (те же значения, что константы NodeLayout). Задаётся в apply_def до start().
+var layout: LayoutData = LayoutData.cached(LayoutData.LEGACY)
 
 var _now := 0.0
 var _state_acc := 0.0
@@ -81,6 +86,7 @@ var _step_us_total := 0
 var _step_us_max := 0
 var _ices: Array[IceNode] = []
 var _sessions: Dictionary = {}       # сессия -> DaemonSession (в нём trace)
+var _effect_logged: Dictionary = {}  # сессия -> {id демона: true}: эффект, начало которого записано в журнал (конец — когда st перестал быть active)
 var _shard_items: Dictionary = {}    # id объекта -> id предмета в Мосте
 var _item_meta: Dictionary = {}      # id предмета узла -> {tier, enc}: что показывать на шарде (из документа Моста)
 var _vault_open: Dictionary = {}     # id слота -> сессия, для которой хранилище открыто взломом (K3); нужно, только если включён vault_requires_open
@@ -124,16 +130,41 @@ var _node_write_again := false
 ## Тревога узла 0…1 (граф): растёт от trace игроков и выбросов, остывает; усиливает зрение ICE.
 var alert := 0.0
 
+## Тактовое время узла (settings.time_mode == "tick"): часы тактов, мозги Soft ICE на клетках, виртуальные часы Black ICE.
+var tick_clock: TickClock
+var _tick_mode := false
+var _tick_ices: Dictionary = {}      # IceNode -> TickIce (только Soft ICE тактового режима)
+var _intents: Dictionary = {}        # IceNode -> TickIce.intent() после последнего такта (рассылается 10 раз/с без пересчёта)
+var _entered_tick: Dictionary = {}   # сессия -> номер такта узла, когда она вошла (скрыта первые entry_hidden_ticks тактов)
+var _black_vt := 0.0                 # виртуальное время Black ICE: за такт оно идёт на black_tick_sec
+
+## Тактовый режим: строка о такте в журнал сервера (то же печатается в stdout), как ice_logged.
+signal tick_logged(line: String)
+
 
 ## Узел графа (W1): id, тир, число Soft ICE, шарды, порталы. Вызывается до start(); Black ICE ставится по тиру NIGHTMARE.
 func apply_def(id: String, def: Dictionary, graph_settings: Dictionary, graph: NodeGraph) -> void:
 	node_id = id
 	node_def = def
 	settings = graph_settings
+	layout = _load_layout(str(def.get("layout", "")))
+	ice_grid = layout.grid()
 	_portals.clear()
 	for i in (def.get("links", []) as Array).size():
 		var to := str(def["links"][i])
-		_portals.append({"to": to, "slot": i, "pos": NodeLayout.PORTAL_SLOTS[i], "title": graph.title_of(to), "tier": graph.tier_of(to)})
+		if i >= layout.portals.size() or layout.portals[i] == Vector3.INF:
+			push_warning("[node] %s: у раскладки «%s» нет портала %d — связь с %s без портала" % [node_id, layout.name, i + 1, to])
+			continue
+		_portals.append({"to": to, "slot": i, "pos": layout.portals[i], "title": graph.title_of(to), "tier": graph.tier_of(to)})
+
+
+## Раскладка узла по имени; нет файла или ошибка разбора — строка в журнал и legacy (узел остаётся играбельным).
+func _load_layout(layout_name: String) -> LayoutData:
+	var ld := LayoutData.cached(layout_name)
+	if ld.error != "":
+		push_warning("[node] %s: раскладка «%s» не загрузилась (%s), берём legacy" % [node_id, layout_name, ld.error])
+		return LayoutData.cached(LayoutData.LEGACY)
+	return ld
 
 
 func is_graph_node() -> bool:
@@ -165,10 +196,17 @@ func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 	charge = ChargeBreach.new(self)
 	decrypt = DecryptBreach.new(self)
 	daemons.load_dir()
+	_tick_mode = str(settings.get("time_mode", "realtime")) == "tick"
+	if _tick_mode:
+		tick_clock = TickClock.new(float(settings["tick_window_sec"]), float(settings["tick_min_interval_sec"]))
 	_build_slots()
 	if manage_net_hooks:
+		if _tick_mode:
+			net.move_check = move_made
 		net.grab_check = can_grab
 		net.teleport_snap = func(_session: String, to: Vector3) -> Dictionary: return snap_teleport(to)
+		net.spawn_of = func(_session: String) -> Vector3: return layout.spawn
+		net.grid_of = func(_session: String) -> NodeGrid: return ice_grid
 		net.join_check = func(session: String) -> bool: return not join_blocked(session)
 	net.session_joined.connect(_on_joined)
 	net.avatar_removed.connect(_on_avatar_removed)
@@ -195,12 +233,18 @@ func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 		else:
 			breach.request_cancel(session))
 	net.teleported.connect(func(session: String, _from: Vector3, _to: Vector3) -> void:
+		register_move(session)
 		breach.end_early(session, "teleport")
 		charge.end_early(session, "teleport")
 		decrypt.end_early(session, "teleport"))
 	var soft := NodeLayout.ICE.size() if node_def.is_empty() else int(node_def.get("ice", 1))
-	for i in soft:
-		_add_ice(NodeLayout.ICE[i]["id"], NodeLayout.ICE[i]["waypoints"])
+	if _tick_mode and not layout.is_legacy():
+		# Такты: Стражи — по раскладке (маршрут в клетках с ожиданием и поворотом); столько, сколько просит узел, но не больше, чем в файле.
+		for i in mini(soft, layout.sentries.size()):
+			_add_layout_sentry(layout.sentries[i])
+	else:
+		for i in soft:
+			_add_ice(NodeLayout.ICE[i]["id"], NodeLayout.ICE[i]["waypoints"])
 	if tier() == NodeGraph.TIER_BLACK:
 		enable_black_ice()
 	net.session_lost.connect(_on_session_lost)
@@ -218,10 +262,14 @@ func _build_slots() -> void:
 		_slot_pos[NetConfig.PICKUP_ID] = NodeLayout.SHARD_POS
 		net.place_object(NetConfig.PICKUP_ID, NodeLayout.SHARD_POS)
 		return
-	for k in int(node_def.get("shards", 1)):
+	var wanted := int(node_def.get("shards", 1))
+	if wanted > layout.vaults.size():
+		push_warning("[node] %s: шардов %d, а хранилищ в раскладке «%s» %d — лишние не создаём" % [node_id, wanted, layout.name, layout.vaults.size()])
+	for k in mini(wanted, layout.vaults.size()):   # первые хранилища раскладки; остальные пустые (слотов нет)
 		var id := shard_id(node_id, k)
-		_slot_pos[id] = NodeLayout.SHARD_SLOTS[k]
-		net.add_object(id, NodeLayout.SHARD_SLOTS[k])
+		var pos: Vector3 = layout.vaults[k]["slot"]
+		_slot_pos[id] = pos
+		net.add_object(id, pos)
 
 
 func now() -> float:
@@ -274,7 +322,16 @@ func queue_free_black_for_test() -> void:
 			ice.queue_free()
 
 
-func _add_ice(id: String, waypoints: Array, black: bool = false) -> void:
+## Страж раскладки (тактовый режим): sentry = {id, route: [{cell, wait, look}]} — маршрут как есть, без пересчёта точек в клетки.
+func _add_layout_sentry(sentry: Dictionary) -> void:
+	var route: Array = sentry["route"]
+	var wps: Array = []
+	for pt: Dictionary in route:
+		wps.append(NodeGrid.center(pt["cell"]))
+	_add_ice(str(sentry["id"]), wps, false, route)
+
+
+func _add_ice(id: String, waypoints: Array, black: bool = false, route: Array = []) -> void:
 	var wps: Array[Vector3] = []
 	for w in waypoints:
 		wps.append(w)
@@ -287,7 +344,13 @@ func _add_ice(id: String, waypoints: Array, black: bool = false) -> void:
 	if black:
 		settings.merge(black_ice_settings, true)
 		settings["black"] = true
-	ice.setup(settings, wps)
+	ice.setup(settings, wps, ice_grid)
+	if _tick_mode and not black:
+		var ti := TickIce.new(_tick_ice_settings(settings), route if not route.is_empty() else TickIce.route_from_points(wps), ice_grid)
+		_tick_ices[ice] = ti
+		ice.position = NodeGrid.center(ti.cell())
+		ice.brain.position = ice.position
+		_sync_brain_view(ice, ti)
 	# Журнал — до _on_ice_ejected: выброс убирает аватар, а строке нужна позиция игрока.
 	ice.brain.state_changed.connect(_log_ice_state.bind(ice))
 	ice.ejected.connect(_log_ice_eject.bind(ice))
@@ -314,7 +377,8 @@ func _log_ice(ice: IceNode, session: String, what: String, awareness: float) -> 
 	if p is Vector3:
 		d = "%.1f" % ice.brain.position.distance_to(p)
 	var aw := "" if awareness < 0.0 else " aw=%.2f" % awareness
-	var line := "[ice] t=%.1f %s %s%s alert=%.2f d=%s %s" % [t, ice.name, what, aw, alert, d, session]
+	var tk := " tick=%d" % tick_clock.tick_no if _tick_mode else ""
+	var line := "[ice] t=%.1f %s %s%s alert=%.2f d=%s %s%s" % [t, ice.name, what, aw, alert, d, session, tk]
 	print(line)
 	ice_logged.emit(line)
 
@@ -803,9 +867,12 @@ func _step(delta: float) -> void:
 		if not ds.is_ghost(_now):
 			targets[session] = avatar.position
 	for ice in _ices:
-		ice.netrunner_count = meters.size()
+		# В тактовом режиме IceNode не думает сам (netrunner_count = 0 — только rest()): ICE шагает по такту, см. _tick_step.
+		ice.netrunner_count = 0 if _tick_mode else meters.size()
 		ice.targets = targets
 		ice.meters = meters
+	if _tick_mode:
+		_tick_step(meters)
 	_update_hunts()
 	breach.tick(delta)
 	charge.tick(delta)
@@ -824,6 +891,167 @@ func _step(delta: float) -> void:
 	if _avatar_acc >= AVATAR_INTERVAL - TICK_EPS:
 		_avatar_acc = maxf(_avatar_acc - AVATAR_INTERVAL, 0.0)
 		_broadcast_avatars()
+
+
+# --- тактовое время (docs/gamedesign/time-and-movement.md, 3)
+
+## Тактовый режим включён (settings.time_mode == "tick").
+func is_tick_mode() -> bool:
+	return _tick_mode
+
+
+## Запомнить ход нетраннера этого узла (телепорт, «ждать», взять, демон, начало панели, портал): до такта второй ход ему закрыт.
+func register_move(session: String) -> void:
+	if _tick_mode and net.node_of(session) == node_id:
+		tick_clock.register_move(session)
+
+
+## Вход в узел: первые entry_hidden_ticks тактов нетраннер невидим для ICE (отсчёт — от номера такта узла в момент входа).
+func _mark_entered_tick(session: String) -> void:
+	if _tick_mode:
+		_entered_tick[session] = tick_clock.tick_no
+
+
+## Хук NetServer.move_check: нетраннер уже сходил в этом такте (Т4).
+func move_made(session: String) -> bool:
+	return _tick_mode and tick_clock.moved(session)
+
+
+## Настройки TickIce из настроек ICE узла: известные ему ключи как есть, дальность зрения — по тиру (settings.ice_sight_cells);
+## в учебном узле — его sight_range (смягчение), конус — из sight_half_angle_deg.
+func _tick_ice_settings(ice_cfg: Dictionary) -> Dictionary:
+	var out: Dictionary = {}
+	for k: String in TickIce.DEFAULTS:
+		if ice_cfg.has(k):
+			out[k] = ice_cfg[k]
+	if not out.has("sight_cells"):
+		if layout.has_sight and not layout.is_legacy():
+			out["sight_cells"] = layout.sight_cells   # раскладка знает свою дальность (карта и Стражи подобраны вместе)
+		elif is_tutorial() and ice_cfg.has("sight_range"):
+			out["sight_cells"] = float(ice_cfg["sight_range"])
+		else:
+			var table: Variant = settings.get("ice_sight_cells", {})
+			var t := tier() if not tier().is_empty() else "BASE"
+			out["sight_cells"] = float((table as Dictionary).get(t, 6)) if table is Dictionary else 6.0
+	if not out.has("half_angle_deg") and ice_cfg.has("sight_half_angle_deg"):
+		out["half_angle_deg"] = float(ice_cfg["sight_half_angle_deg"])
+	return out
+
+
+## IceBrain тактового ICE не думает, но журнал, trace и тесты читают его position/facing: держим их по клетке TickIce.
+func _sync_brain_view(ice: IceNode, ti: TickIce) -> void:
+	ice.brain.position = NodeGrid.center(ti.cell())
+	var d := ti.dir()
+	ice.brain.facing = Vector3(d.x, 0.0, d.y).normalized() if d != Vector2i.ZERO else ice.brain.facing
+
+
+## Состояние TickIce (0 Патруль, 1 Взгляд, 2 Проверка, 3 Поиск) в код IceBrain.State для старого клиента: Взгляд и Проверка — «подозрение».
+static func tick_state_to_legacy(st: int) -> int:
+	match st:
+		TickIce.Mode.PATROL:
+			return IceBrain.State.PATROL
+		TickIce.Mode.GAZE, TickIce.Mode.CHECK:
+			return IceBrain.State.SUSPICIOUS
+	return IceBrain.State.SEARCH
+
+
+static func tick_state_name(st: int) -> String:
+	return ["PATROL", "GAZE", "CHECK", "SEARCH"][clampi(st, 0, 3)]
+
+
+## Часы тактов: кто в узле, кто свободен (Т3), и на такте — шаг каждого ICE.
+func _tick_step(meters: Dictionary) -> void:
+	var live := _live_sessions()
+	tick_clock.set_present(not live.is_empty(), _now)
+	var free: Array = []
+	for session in live:
+		# Не свободен: оборвана связь (аватар ждёт возврата) или идёт панель взлома / заряда / расшифровки. В тоннеле сессия не «live».
+		if net.peer_of(session) != -1 and not breach.has_attempt(session) and not charge.has_attempt(session) and not decrypt.has_attempt(session):
+			free.append(session)
+	tick_clock.set_free(free)
+	var prev := tick_clock.last_tick_at
+	if tick_clock.poll(_now):
+		_run_tick(live, meters, _now - prev)
+
+
+## Один такт узла: ходы уже применены; ICE делают шаг, считаются видимость, trace, события; Black ICE «думает» black_tick_sec.
+func _run_tick(live: Array, meters: Dictionary, dt_sec: float) -> void:
+	var n := tick_clock.tick_no
+	var line := "[tick] n=%d moves=%d by=%s" % [n, tick_clock.last_moves, tick_clock.last_by]
+	print(line)
+	tick_logged.emit(line)
+	var pos := {}
+	var hidden := {}
+	var seen_pos := {}   # те, кого видно ICE (не скрыты): для Black ICE
+	var hide_ticks := int(settings.get("entry_hidden_ticks", 2))
+	for session in live:
+		var avatar := net.get_avatar(session)
+		if avatar == null:
+			continue
+		var ds: DaemonSession = _sessions[session]
+		var h := ds.is_ghost(_now) or n - int(_entered_tick.get(session, -1000000)) <= hide_ticks
+		pos[session] = avatar.position
+		hidden[session] = h
+		if not h:
+			seen_pos[session] = avatar.position
+	var secs := minf(dt_sec, float(settings.get("tick_window_sec", 5.0)))
+	var captured := {}   # сессия -> ICE, который её взял
+	for ice: IceNode in _tick_ices:
+		var ti: TickIce = _tick_ices[ice]
+		var evs := ti.tick(pos, hidden)
+		ice.position = NodeGrid.center(ti.cell())
+		_sync_brain_view(ice, ti)
+		for ev: Dictionary in evs:
+			match ev["kind"]:
+				"state":
+					_log_ice(ice, _tick_target(ti, pos), "%s→%s" % [tick_state_name(int(ev["from"])), tick_state_name(int(ev["state"]))], float(ti.max_awareness()))
+				"search_started":
+					_log_ice(ice, _tick_target(ti, pos), "SEARCH_STARTED", float(ti.max_awareness()))
+					raise_alert(float(settings.get("alert_per_search", 0.1)))
+				"capture":
+					if not captured.has(ev["session"]):
+						captured[ev["session"]] = ice
+		for session in pos:
+			if ti.sees(session) and meters.has(session):
+				(meters[session] as TraceMeter).add_action("seen_by_ice", _now, secs)
+	for session in captured:
+		if net.has_avatar(session):
+			(captured[session] as IceNode).ejected.emit(session, "caught")
+	_step_black(seen_pos, meters)
+	for ice: IceNode in _tick_ices:
+		_intents[ice] = (_tick_ices[ice] as TickIce).intent()
+
+
+## Black ICE в тактовом режиме — прежний IceBrain: за такт он «думает» black_tick_sec виртуального времени (по 0,1 с, как в реальном времени).
+func _step_black(seen_pos: Dictionary, meters: Dictionary) -> void:
+	var sub := 0.1
+	var steps := maxi(roundi(float(settings.get("black_tick_sec", 1.0)) / sub), 1)
+	for ice in _ices:
+		if _tick_ices.has(ice) or ice.brain == null or not ice.brain.is_black():
+			continue
+		var targets := seen_pos.duplicate()
+		ice.targets = targets
+		ice.brain.rest()   # первый подшаг dt = 0: за такт ровно steps подшагов по sub
+		for i in steps + 1:
+			if i > 0:
+				_black_vt += sub
+			ice.brain.step(_black_vt, targets, meters)
+			for s in targets.keys():
+				if not net.has_avatar(s):
+					targets.erase(s)
+		ice.position = ice.brain.position
+
+
+## Сессия с наибольшим счётчиком у этого ICE (для журнала); пусто — никого.
+func _tick_target(ti: TickIce, pos: Dictionary) -> String:
+	var best := ""
+	var best_aw := -1
+	for session in pos:
+		var a := ti.awareness_of(session)
+		if a > best_aw:
+			best_aw = a
+			best = session
+	return best
 
 
 ## Охота Black ICE → флаг «под охотой» у NetServer (аварийный выход сожжёт деку). Каждый тик: выход не ждёт 0,1 с.
@@ -849,6 +1077,8 @@ func _tick_traces() -> void:
 		for ice in _ices:
 			if ice.brain != null and ice.brain.target() == session:
 				watched = true
+			elif _tick_ices.has(ice) and (_tick_ices[ice] as TickIce).awareness_of(session) > 0:
+				watched = true
 		(_sessions[session] as DaemonSession).trace.tick(_now, not watched)
 
 
@@ -856,19 +1086,23 @@ func _broadcast_state() -> void:
 	var ice_list: Array = []
 	for ice in _ices:
 		var b := ice.brain
-		ice_list.append({
+		var entry := {
 			"id": str(ice.name),
 			"p": [ice.position.x, ice.position.y, ice.position.z],
 			"f": [b.facing.x, b.facing.z],
 			"s": b.state(),
 			"b": 1 if b.is_black() else 0,
-		})
+		}
+		if _tick_mode:
+			_add_tick_fields(entry, ice)
+		ice_list.append(entry)
 	for session in _live_sessions():
 		var ds: DaemonSession = _sessions[session]
 		var cd: Array = []
 		for id in ds.deck:
 			cd.append(cd_entry(ds, id, _now))
-		var msg := WorldMsg.encode_fields(WorldMsg.STATE, {
+		_log_effect_ends(session, cd)
+		var fields := {
 			"trace": ds.trace.value(),
 			"level": ds.trace.level(),
 			"ghost": ds.is_ghost(_now),
@@ -876,8 +1110,56 @@ func _broadcast_state() -> void:
 			"k": snappedf(_now, 0.001),
 			"ice": ice_list,
 			"cd": cd,
-		})
-		net.send_to(session, msg, false)
+		}
+		if _tick_mode:
+			fields["tk"] = _tick_field(session)
+		net.send_to(session, WorldMsg.encode_fields(WorldMsg.STATE, fields), false)
+
+
+## Тактовые поля ICE в state (старые id, p, f, s, b остаются): c — клетка [x, z], d — направление, st — состояние TickIce 0..3, nc / nd — клетка и
+## направление после следующего шага (намерение), aw — наибольший счётчик 0..6. Soft ICE — из TickIce; Black ICE (IceBrain) — по его позиции, без намерения.
+func _add_tick_fields(entry: Dictionary, ice: IceNode) -> void:
+	var ti: TickIce = _tick_ices.get(ice)
+	if ti != null:
+		var it: Dictionary = _intents.get(ice, {})
+		if it.is_empty():
+			it = ti.intent()
+			_intents[ice] = it
+		entry["s"] = tick_state_to_legacy(int(it["state"]))
+		entry["c"] = [(it["cell"] as Vector2i).x, (it["cell"] as Vector2i).y]
+		entry["d"] = [(it["dir"] as Vector2i).x, (it["dir"] as Vector2i).y]
+		entry["st"] = int(it["state"])
+		entry["nc"] = [(it["next_cell"] as Vector2i).x, (it["next_cell"] as Vector2i).y]
+		entry["nd"] = [(it["next_dir"] as Vector2i).x, (it["next_dir"] as Vector2i).y]
+		entry["aw"] = int(it["aware"])
+		var soft := ice_settings.duplicate(true)
+		soft.merge(node_def.get("ice_settings", {}), true)
+		entry["sc"] = float(_tick_ice_settings(soft)["sight_cells"])   # дальность зрения в клетках: по ней клиент рисует свет на полу и красит рамку прицела
+		return
+	var dark := ice_settings.duplicate(true)
+	dark.merge(node_def.get("ice_settings", {}), true)
+	dark.merge(black_ice_settings, true)
+	entry["sc"] = roundi(float(dark.get("sight_range", 12.0)) / NodeGrid.CELL_M)   # Black ICE: дальность из метров в клетки
+	var cell := NodeGrid.cell_of(ice.position)
+	var dir := NodeGrid.dir8(Vector2i.ZERO, Vector2i(roundi(ice.brain.facing.x * 100.0), roundi(ice.brain.facing.z * 100.0)))
+	entry["c"] = [cell.x, cell.y]
+	entry["d"] = [dir.x, dir.y]
+	entry["st"] = ice.brain.state()
+	entry["nc"] = [cell.x, cell.y]
+	entry["nd"] = [dir.x, dir.y]
+	entry["aw"] = clampi(roundi(ice.brain.awareness() * 6.0), 0, 6)
+
+
+## Поле `tk` сообщения state: n — номер такта узла, at — когда был последний (время узла, как «k»), win — окно, inh — «вдох» перед тактом по окну,
+## mv — «твой ход принят» (для каждого игрока своё).
+func _tick_field(session: String) -> Dictionary:
+	return {
+		"n": tick_clock.tick_no,
+		"at": snappedf(tick_clock.last_tick_at, 0.001),
+		"win": tick_clock.window_sec,
+		"inh": 1 if tick_clock.inhale(_now, float(settings.get("tick_inhale_sec", 0.5))) else 0,
+		"mv": 1 if tick_clock.moved(session) else 0,
+	}
 
 
 ## Позиции аватаров узла: каждому игроку — все остальные в его узле (себя клиент знает сам).
@@ -917,6 +1199,7 @@ func _on_joined(session: String, _peer: int, _resumed: bool) -> void:
 		fresh.deck_meta[id] = {"cells": NodeLayout.DEFAULT_DECK_CELLS[id], "prot": false}
 	_sessions[session] = fresh
 	_entered_at[session] = _now
+	_mark_entered_tick(session)
 	print("[gray-node] ", session, " вошёл в ", node_id)
 	_push_deck(session)   # сразу то, что известно (дека по умолчанию); настоящую деку и груз подтянет _load_deck
 	if bridge != null:
@@ -948,15 +1231,24 @@ func _on_avatar_removed(session: String) -> void:
 	if not _sessions.has(session):
 		return
 	_sessions.erase(session)
+	_effect_logged.erase(session)
 	_entered_at.erase(session)
 	_exiting[session] = true
 	_level_cbs.erase(session)
 	_hunted.erase(session)
 	_sync_hunt(session)  # игрок ушёл: охоты за сессией больше нет (Мосту сказать «false»)
 	_write_node_state()
+	_forget_in_ices(session)
+
+
+## ICE забывает нетраннера (вышел, выброшен, ушёл в другой узел): осведомлённость и память Soft ICE на клетках, цель IceBrain.
+func _forget_in_ices(session: String) -> void:
+	_entered_tick.erase(session)
 	for ice in _ices:
 		if ice.brain != null:
 			ice.brain.forget(session)
+	for ice: IceNode in _tick_ices:
+		(_tick_ices[ice] as TickIce).forget(session)
 
 
 func _on_level_changed(old_level: int, new_level: int, value: float, session: String) -> void:
@@ -998,7 +1290,7 @@ func _on_leave_requested(session: String) -> void:
 	if not _sessions.has(session):
 		return
 	var avatar := net.get_avatar(session)
-	if avatar == null or not NodeLayout.on_exit_pad(avatar.position):
+	if avatar == null or not NodeLayout.on_exit_pad_in(layout, avatar.position):
 		return
 	net.end_session(session, ExitLogic.REASON_CLEAN)
 
@@ -1008,11 +1300,15 @@ func _on_breach_open(session: String, vault: String, ids: Array) -> void:
 	if not _sessions.has(session) or net.node_of(session) != node_id:
 		return
 	breach.request_open(session, vault, ids)
+	if breach.has_attempt(session):
+		register_move(session)   # начало взлома — ход
 
 
-## Привязка телепорта к площадке у хранилища узла (см. NodeLayout.snap_to_vault_pad).
+## Привязка телепорта к площадке у хранилища узла: legacy — прежнее правило (NodeLayout.snap_to_vault_pad), иначе клетка pad раскладки.
 func snap_teleport(to: Vector3) -> Dictionary:
-	return NodeLayout.snap_to_vault_pad(to, _slot_pos.values())
+	if layout.is_legacy():
+		return NodeLayout.snap_to_vault_pad(to, _slot_pos.values())
+	return NodeLayout.snap_to_vault_pad_in(layout, to, _slot_pos.values())
 
 
 ## Просьба зарядить защитного демона: отвечает только узел, где игрок (в графе обработчик подключён у каждого узла).
@@ -1020,6 +1316,8 @@ func _on_charge_requested(session: String, daemon_id: String) -> void:
 	if not _sessions.has(session) or net.node_of(session) != node_id:
 		return
 	charge.request_start(session, daemon_id)
+	if charge.has_attempt(session):
+		register_move(session)   # начало заряда — ход
 
 
 ## Просьба расшифровать шард из ГРУЗа (К7): отвечает только узел, где игрок.
@@ -1027,20 +1325,56 @@ func _on_decrypt_requested(session: String, item: String) -> void:
 	if not _sessions.has(session) or net.node_of(session) != node_id:
 		return
 	decrypt.request_start(session, item)
+	if decrypt.has_attempt(session):
+		register_move(session)   # начало расшифровки — ход
 
 
 func _on_daemon_requested(session: String, daemon_id: String) -> void:
 	var ds: DaemonSession = _sessions.get(session)
 	if ds == null:
 		return
+	var before: Dictionary = cd_entry(ds, daemon_id, _now)
+	log_line("daemon.use", {"phase": "request", "session": session, "daemon": daemon_id, "st": before["st"]})
 	var res := daemons.apply(ds, daemon_id, {}, _now)
 	var reply := {"kind": WorldMsg.EV_DAEMON, "daemon": daemon_id, "ok": bool(res.get("ok", false))}
 	if not reply["ok"]:
 		reply["error"] = str(res.get("error", ""))
 		if res.has("reason"):
 			reply["reason"] = str(res["reason"])
+		log_line("daemon.use", {"phase": "denied", "session": session, "daemon": daemon_id, "error": reply["error"], "reason": reply.get("reason", "")})
+	else:
+		var def := daemons.get_def(daemon_id)
+		var left := ds.active_left(def.effect, _now) if def != null else 0.0
+		if left > 0.0:
+			log_line("daemon.use", {"phase": "start", "session": session, "daemon": daemon_id, "effect": def.effect, "left": snappedf(left, 0.1)})
+			if not _effect_logged.has(session):
+				_effect_logged[session] = {}
+			_effect_logged[session][daemon_id] = true
+		else:
+			log_line("daemon.use", {"phase": "ok", "session": session, "daemon": daemon_id, "effect": def.effect if def != null else ""})
+	if reply["ok"]:
+		register_move(session)   # удачный запуск демона — ход
 	net.send_to(session, WorldMsg.encode_fields(WorldMsg.EVENT, reply))
 	event.emit({"kind": "daemon", "session": session, "daemon": daemon_id, "ok": reply["ok"]})
+
+
+## Строка журнала сервера узла: `событие ключ=значение` (формат MbLog, как у клиента); токенов в полях нет — только сессия, демон, числа.
+static func log_line(event_name: String, fields: Dictionary) -> void:
+	print("[gray-node] ", MbLog.format(event_name, fields))
+
+
+## Конец действия эффекта в журнал: раньше записанный start, а демон в снимке уже не active. Вызывает _broadcast_state на каждом снимке.
+func _log_effect_ends(session: String, cd: Array) -> void:
+	var logged: Dictionary = _effect_logged.get(session, {})
+	if logged.is_empty():
+		return
+	for e in cd:
+		var id := str(e["id"])
+		if logged.has(id) and str(e.get("st", "")) != "active":
+			logged.erase(id)
+			log_line("daemon.use", {"phase": "end", "session": session, "daemon": id})
+	if logged.is_empty():
+		_effect_logged.erase(session)
 
 
 ## Может ли игрок взять объект: он в этом узле, объект — слот этого узла и достаточно близко.
@@ -1057,6 +1391,7 @@ func can_grab(session: String, object_id: String) -> bool:
 func _on_object_taken(object_id: String, session: String) -> void:
 	if not _slot_pos.has(object_id):
 		return
+	register_move(session)   # взять шард — ход
 	_taken_by[session] = _taken_by.get(session, []) + [object_id]
 	_vault_open.erase(object_id)   # взят: открытость кончилась вместе с шардом
 	_vault_open_until.erase(object_id)
@@ -1373,6 +1708,18 @@ func slot_ids() -> Array:
 	return _slot_pos.keys()
 
 
+## Таблички узла для события node: [{p: [x, z], text}]. Узел с раскладкой (не legacy) — из её signs (клетка карты → место в мире),
+## без раскладки — signs из graph.json (`graph_signs`, координаты прежней комнаты).
+func event_signs(graph_signs: Array) -> Array:
+	if layout.is_legacy():
+		return graph_signs
+	var out: Array = []
+	for s: Dictionary in layout.signs:
+		var pos: Vector3 = s["pos"]
+		out.append({"p": [pos.x, pos.z], "text": s["text"]})
+	return out
+
+
 ## Вид хранилища слота для сессии: empty — шарда нет (вынесен, ждёт пополнения); closed — шард внутри, взять нельзя;
 ## open — можно взять. Пока флаг `vault_requires_open` выключен (по умолчанию), лежащий шард открыт всем; К3 включает флаг, и
 ## хранилище открывается только взломом (open_vault) и только для сессии, которая его взломала.
@@ -1570,6 +1917,7 @@ func _check_portals() -> void:
 			st = {"to": near, "since": _now, "fired": -INF}
 		if _now - float(st["since"]) >= dwell and _now - float(st["fired"]) >= repeat:
 			st["fired"] = _now
+			register_move(session)   # вход в портал — ход
 			portal_requested.emit(session, near)
 		_portal_state[session] = st
 
@@ -1728,14 +2076,13 @@ func release_session(session: String) -> DaemonSession:
 		ds.trace.level_changed.disconnect(cb)
 	_level_cbs.erase(session)
 	_sessions.erase(session)
+	_effect_logged.erase(session)
 	_entered_at.erase(session)
 	_hunted.erase(session)
 	_sync_hunt(session)  # сессия уходит в другой узел: охота этого узла за ней кончилась
 	_portal_state.erase(session)
 	net.set_under_hunt(session, false)
-	for ice in _ices:
-		if ice.brain != null:
-			ice.brain.forget(session)
+	_forget_in_ices(session)
 	_write_node_state()
 	return ds
 
@@ -1744,6 +2091,7 @@ func release_session(session: String) -> DaemonSession:
 func adopt_session(session: String, ds: DaemonSession) -> void:
 	_sessions[session] = ds
 	_entered_at[session] = _now
+	_mark_entered_tick(session)
 	_connect_meter(session, ds.trace)
 	print("[gray-node] ", session, " вошёл в ", node_id, " (переход)")
 	_push_deck(session)

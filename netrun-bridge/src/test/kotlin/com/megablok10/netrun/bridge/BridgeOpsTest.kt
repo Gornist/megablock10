@@ -102,6 +102,9 @@ class BridgeOpsTest {
             return r
         }
 
+        /** Следующий кадр от сервера без отправки запроса (push); null — не пришёл за [sec] с. */
+        fun nextFrame(sec: Long): JsonObject? = inbox.poll(sec, TimeUnit.SECONDS)
+
         fun close() { runCatching { ws.abort() } }
     }
 
@@ -146,6 +149,27 @@ class BridgeOpsTest {
         val repeat = w.req("run.finish", fin)
         assertEquals("true", repeat.str("replayed"))
         synchronized(issued) { assertEquals(3, issued.size) } // защищённый + 2 предмета; повтор карточек не добавил
+    }
+
+    /** hello уходит сразу после рукопожатия: сервер отвечал на него не всегда (кадр приходил раньше onOpen и отбрасывался). 6.10 дважды «нет ответа». */
+    @Test fun helloOnFreshConnectionIsNeverDropped() {
+        repeat(200) { Client("test") }   // Client.init шлёт hello и требует ok
+    }
+
+    /**
+     * Java-WebSocket 1.5.7: после записи `doWrite` ставит ключу interestOps = OP_READ, а `onWriteDemand` другого потока (send) мог
+     * выставить OP_WRITE между записью и этим сбросом — тогда кадр лежит в outQueue, пока не придёт чужое событие. Под нагрузкой
+     * раннера так терялся ответ на hello (6.10, ещё раз после #58). Здесь потеря задаётся вручную тем же сбросом ключа.
+     */
+    @Test fun frameStrandedInOutQueueStillArrives() {
+        val c = Client("test")
+        val srv = BridgeServer::class.java.getDeclaredField("ws").apply { isAccessible = true }.get(server) as org.java_websocket.server.WebSocketServer
+        val conn = srv.connections.single() as org.java_websocket.WebSocketImpl
+        val payload = """{"v":1,"re":"stuck","ok":true}""".toByteArray()
+        // Состояние после потери: ключ слушает только чтение, а в очереди записи лежит готовый текстовый кадр (FIN+text, без маски).
+        conn.selectionKey.interestOps(java.nio.channels.SelectionKey.OP_READ)
+        conn.outQueue.add(java.nio.ByteBuffer.wrap(byteArrayOf(0x81.toByte(), payload.size.toByte()) + payload))
+        assertNotNull("кадр застрял в outQueue", c.nextFrame(5))
     }
 
     @Test fun giveItemOverTheWire() {

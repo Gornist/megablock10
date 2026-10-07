@@ -65,7 +65,16 @@ var _turn_rate := 0.0          # текущая угловая скорость,
 var _vignette := 0.0
 var _aim := RigMath.aim_new()
 var _aim_info: Dictionary = {}
-var _since_tp := INF           # секунд с прошлого телепорта
+## Клетки комнаты: прицел притягивается к достижимой клетке 1 м (NodeGrid.pick), занятые колоннами показывает серыми.
+var grid: NodeGrid = NodeGrid.for_layout()
+var _last_pick := Vector3.ZERO
+## Такты узла (RemoteTracks сцены): намерения ICE, tk и секунды до такта. Не задан или без tk в снимках — прежний режим (перезарядка, зелёная рамка).
+var tick_source: RemoteTracks
+var _hold_cell := Vector2i(-9999, -9999)   # клетка, на которой стоит рамка прицела, и сколько секунд (залипание красной, stealth.md С9)
+var _hold_t := 0.0
+var _last_threat := -1                     # прогноз TickForecast для клетки под последним показанным прицелом (−1 — не тактовый / не hop)
+var _moved_n := -1                         # номер такта, на котором сервер отказал «moved»: до следующего такта показываем «ход принят»
+var _since_tp := INF       # секунд с прошлого телепорта
 var _tp_click := false
 var _blink := RigMath.blink_new()
 var _blink_dest := Vector3.ZERO
@@ -304,6 +313,11 @@ func is_aiming() -> bool:
 	return _aim["aiming"]
 
 
+## Центр клетки, выбранной последним принятым телепортом (до привязки к площадке у хранилища): его клиент просит у сервера.
+func last_pick() -> Vector3:
+	return _last_pick
+
+
 ## Точка посадки, на которую сейчас наведён прицел (пол); нули, пока не целимся.
 func aim_target() -> Vector3:
 	return _aim_info.get("p", Vector3.ZERO)
@@ -336,13 +350,20 @@ func _step_teleport(stick: Vector2, clicked: bool, delta: float) -> void:
 			aim_visual.hide_aim()
 			_fire_teleport()
 			_aim_info = {}
+			_reset_hold()
 	if _aim["aiming"]:
-		_show_aim()
+		_show_aim(delta)
+
+
+func _reset_hold() -> void:
+	_hold_cell = Vector2i(-9999, -9999)
+	_hold_t = 0.0
 
 
 func _cancel_aim() -> void:
 	_aim = RigMath.aim_new()
 	_aim_info = {}
+	_reset_hold()
 	_face_deg = 0.0
 	aim_visual.hide_aim()
 
@@ -357,14 +378,65 @@ func _aim_pose() -> Dictionary:
 	return {"origin": c.origin, "dir": dir, "arc_from": c.origin + dir * 0.4 + Vector3(0.0, -0.25, 0.0)}
 
 
-func _show_aim() -> void:
+## Поле tk последнего снимка (пусто — не тактовый режим).
+func _tick_info() -> Dictionary:
+	return tick_source.tick_info() if tick_source != null else {}
+
+
+## Ход в этом такте уже принят: сервер сообщил tk.mv или отказал «moved» на этом такте.
+func _tick_moved(tick: Dictionary) -> bool:
+	return int(tick.get("mv", 0)) == 1 or _moved_n == int(tick.get("n", -2))
+
+
+## Прогноз TickForecast для клетки под последним показанным прицелом (0 / 1 / 2); −1 — не тактовый режим или не прыжок.
+func last_threat() -> int:
+	return _last_threat
+
+
+## Сколько секунд рамка прицела стоит на текущей клетке.
+func aim_hold_sec() -> float:
+	return _hold_t
+
+
+func _show_aim(delta: float = 0.0) -> void:
 	var pose := _aim_pose()
 	var info := RigMath.teleport_aim(pose["origin"], pose["dir"], global_position, teleport_range, global_position.y)
+	if info["valid"]:
+		# Прицел притягивается к клетке: «p» — центр выбранной клетки (сюда ляжет прыжок), «raw» — куда указывает рука.
+		var pick := grid.pick(global_position, info["p"])
+		info["raw"] = info["p"]
+		info["p"] = Vector3(pick["p"].x, global_position.y, pick["p"].z)
+		info["kind"] = pick["kind"]
+		info["reason"] = pick["reason"]
+		info["cell"] = pick["cell"]
 	_aim_info = info
 	var left := teleport_cooldown_left()
-	var ok: bool = info["valid"] and left <= 0.0 and NodeLayout.flat_distance(global_position, info["p"]) >= RigMath.TELEPORT_MIN_DIST
+	var ok: bool = info["valid"] and left <= 0.0 and info.get("kind", "") == "hop"
 	var charge := 1.0 if left <= 0.0 else 1.0 - left / maxf(teleport_cooldown, 0.001)
-	aim_visual.show_at(pose["arc_from"], info["p"], ok, charge)
+	var cell: Vector2i = info.get("cell", Vector2i(-9999, -9999))
+	if cell == _hold_cell:
+		_hold_t += delta
+	else:
+		_hold_cell = cell
+		_hold_t = 0.0
+	var kind: String = info.get("kind", "")
+	var threat := -1
+	var note := ""
+	var tick := _tick_info()
+	_last_threat = -1
+	if not tick.is_empty():
+		# Тактовый режим: перезарядки на клиенте нет (сервер: «ход один за такт»), рамка красится прогнозом, подписи — «ход принят» / «ждать».
+		var moved := _tick_moved(tick)
+		ok = info["valid"] and kind == "hop" and not moved
+		charge = 1.0
+		if kind == "hop" and info["valid"]:
+			threat = TickForecast.threat(grid, tick_source.intents(), cell)
+			_last_threat = threat
+		if moved and kind != "denied":
+			note = "ХОД ПРИНЯТ"
+		elif kind == "wait":
+			note = "ЖДАТЬ · ОКНО ЧЕРЕЗ %d" % tick_source.window_left(Time.get_ticks_msec() / 1000.0)
+	aim_visual.show_at(pose["arc_from"], info["p"], ok, charge, kind, info.get("reason", ""), threat, note)
 	aim_visual.set_heading(_heading_after_teleport())
 
 
@@ -388,13 +460,33 @@ func _fire_teleport() -> void:
 	var from := global_position
 	var to: Vector3 = _aim_info["p"]
 	to.y = from.y
-	if NodeLayout.flat_distance(from, to) < RigMath.TELEPORT_MIN_DIST:
-		return   # прицел «в себя»: двигаться некуда
-	var reason := RigMath.teleport_verdict(from, to, _since_tp, movement_locked, teleport_range + 0.001, teleport_cooldown)
+	var kind: String = _aim_info.get("kind", "")
+	var tick := _tick_info()
+	var in_ticks := not tick.is_empty()
+	if kind == "denied":
+		teleport_attempted.emit(from, to, false, str(_aim_info.get("reason", "")))   # клетка закрыта: рамка уже была серой
+		return
+	if in_ticks and _tick_moved(tick):
+		teleport_attempted.emit(from, to, false, WorldMsg.REASON_MOVED)   # ход в этом такте уже сделан: запрос не уходит до следующего такта
+		return
+	if kind == "wait":
+		if in_ticks:
+			# «Ждать» — ход: серверу уходит центр своей клетки (сервер считает это ходом «ждать»); риг остаётся на месте.
+			_last_pick = Vector3(to.x, from.y, to.z)
+			teleport_attempted.emit(from, _last_pick, true, "wait")
+		return   # без тактов: прицел в свою клетку, двигаться некуда
+	if in_ticks and _last_threat == TickForecast.RED and not TickForecast.red_hold_ok(_hold_t):
+		teleport_attempted.emit(from, to, false, "hold")   # залипание красной: рамка не простояла на клетке 0,4 с — отмена без запроса
+		return
+	# Клетка уже проверена по дальности (центр до центра), а сам игрок стоит не в центре своей клетки: запас — одна клетка.
+	# В тактовом режиме перезарядки на клиенте нет: ход один за такт считает сервер.
+	var cooldown := 0.0 if in_ticks else teleport_cooldown
+	var reason := RigMath.teleport_verdict(from, to, _since_tp, movement_locked, teleport_range + NodeGrid.CELL_M, cooldown)
 	if not reason.is_empty():
 		teleport_attempted.emit(from, to, false, reason)
 		return
 	var look: Variant = null
+	_last_pick = to   # серверу уходит выбранная клетка (до площадки): он проверяет её и сам привязывает к площадке теми же правилами
 	if teleport_snap.is_valid():
 		var snapped_to: Dictionary = teleport_snap.call(to)
 		to = Vector3(snapped_to["p"].x, from.y, snapped_to["p"].z)
@@ -444,6 +536,8 @@ func face_toward(target: Vector3) -> void:
 ## Сервер отказал в телепорте (NetClient.teleport_denied): риг возвращается в позицию аватара на сервере. Если затемнение ещё не
 ## дошло до переноса, переноса не будет вовсе — риг остаётся там, где сервер. Перезарядку берём у сервера.
 func apply_teleport_denial(reason: String, server_pos: Vector3, left: float) -> void:
+	if reason == WorldMsg.REASON_MOVED and tick_source != null:
+		_moved_n = int(tick_source.tick_info().get("n", -1))   # ход уже сделан: до следующего такта прицел пишет «ХОД ПРИНЯТ»
 	if reason == WorldMsg.REASON_COOLDOWN and left > teleport_cooldown_left():
 		_since_tp = teleport_cooldown - left
 	var dest := Vector3(server_pos.x, global_position.y, server_pos.z)

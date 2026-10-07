@@ -28,7 +28,7 @@ const AVATARS := "av"
 const BEAT := "beat"
 ## Виды события: ended (выход: reason), daemon (ok, daemon, error), shard (id взят).
 ## Граф узлов (W1): node — вход в узел (title, tier, alert, shards [{id, p, ready, enc?, kind? (shard | daemon), dead? (демон мёртвой деки)}] (enc — зашифрованный шард, модель shard_encrypted), dead [[x, z]] (мёртвые деки рядом с хранилищем демона погибшего, необязательно),
-## portals [{to, title, tier, p, open}], r — радиус
+## portals [{to, title, tier, p, open}], layout — имя раскладки узла (data/layouts, «legacy» — прежняя комната; поле необязательно для старого сервера), r — радиус
 ## портала, arrive [x, z] — куда поставить риг; нет arrive — игрок остаётся где стоит); tunnel — переход начался (to, title, tier,
 ## sec — сколько длится: клиент затемняет экран без движения камеры, затем придёт node); portal_denied — портал не открылся
 ## (to, reason: lockdown | hunt | busy | not_linked, left — секунд до конца локдауна); shards — слоты шардов узла изменились.
@@ -48,7 +48,8 @@ const EV_DECK := "deck"
 ##        buffer, sec, ice (реплика INTRO)};
 ##   bk_tick — {cell?: [r, c], ok?, trap?, matched [id], left, ice?} на каждый принятый или отклонённый тап и раз в секунду без cell;
 ##   bk_end — {outcome, matched, eddies, opened [слоты], alert (строка), cooldown, early?, error?};
-##   bk_no — {reason (busy | far | empty | cooldown | open | bad_daemons | tutorial | active | not_ready | bridge), left?}: взлом не начат.
+##   bk_no — {reason (busy | far | empty | cooldown | open | bad_daemons | tutorial | active | not_ready | bridge | charging), left?; при bad_daemons из-за RAM ещё lock — длина замка,
+##        need — замок + сумма цепочек выбранных, ram — RAM деки}: взлом не начат.
 const EV_BK := "bk"
 const EV_BK_TICK := "bk_tick"
 const EV_BK_END := "bk_end"
@@ -104,8 +105,13 @@ const REASON_FAR := "far"
 ## Причины отказа телепорта (RigMath.teleport_verdict): дальше предела, не прошла перезарядка, идёт цифровой тоннель, цель вне комнаты.
 const REASON_RANGE := "range"
 const REASON_COOLDOWN := "cooldown"
+## Тактовый режим: нетраннер уже сходил в этом такте (один ход за такт).
+const REASON_MOVED := "moved"
 const REASON_TUNNEL := "tunnel"
 const REASON_ROOM := "room"
+## Клетки 1 м (NodeGrid): клетка занята (колонна, стена, другой аватар) и линия до неё закрыта колонной. Дальность клеток — REASON_RANGE.
+const REASON_CELL := "cell"
+const REASON_BLOCKED := "blocked"
 const REASON_HELD := "held"
 const REASON_UNKNOWN := "unknown"
 ## Слот шарда пуст: вынесен, ждёт пополнения (W1).

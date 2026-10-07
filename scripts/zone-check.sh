@@ -8,13 +8,13 @@ cd "$(dirname "$0")/.." || exit 2
 NODES='^firmware/|^admin-web/server/src/(displays/|audio/|routes/audio\.ts|scripts/display[^/]*\.ts|display[^/]*\.test\.ts|audio\.test\.ts|firmwareHost\.test\.ts)|^\.github/workflows/firmware\.yml|^docs/(displays|firmware-plan|sound-nodes)\.md'
 BLENDER='^netrun/assets/|^netrun/client/(avatar_view|hand_view|avatar_body|head_[^/]*)\.gd|^netrun/tests/assets_[^/]*'
 case $1 in
-  android)   IN='^(app|kit|rules|scripts/e2e)/|^docs/(android-handoff|architecture|refactor-plan|device-testing|db-migrations)\.md|^docs/ux/|^scripts/phone\.sh$'; OUT='';;
+  android)   IN='^(app|kit|rules|scripts/e2e)/|^docs/(android-handoff|architecture|refactor-plan|device-testing|db-migrations)\.md|^docs/ux/|^scripts/phone\.sh$|^\.github/workflows/(e2e|apk)\.yml'; OUT='';;
   collector) IN='^admin-web/'; OUT="$NODES";;
   nodes)     IN="$NODES"; OUT='';;
-  godot)     IN='^netrun/|^netrun-bridge/|^docs/netrun[^/]*'; OUT="$BLENDER";;
+  godot)     IN='^netrun/|^netrun-bridge/|^docs/netrun[^/]*|^\.github/workflows/netrun\.yml'; OUT="$BLENDER";;
   blender)   IN="$BLENDER"; OUT='';;
   gamedesign) IN='^docs/gamedesign/'; OUT='';;
-  pipeline)  IN='^CLAUDE\.md|^AGENTS\.md|^\.github/dependabot\.yml|^\.claude/|^\.githooks/|^scripts/[^/]*$'; OUT='';;
+  pipeline)  IN='^CLAUDE\.md|^AGENTS\.md|^\.github/(dependabot|labeler)\.yml|^\.github/rulesets/|^\.github/workflows/(main|pipeline|labeler)\.yml|^docs/ci\.md|^\.claude/|^\.githooks/|^scripts/[^/]*$'; OUT='';;
   *) echo "использование: zone-check.sh android|collector|nodes|godot|blender|gamedesign|pipeline"; exit 2;;
 esac
 git fetch -q origin main 2>/dev/null || true

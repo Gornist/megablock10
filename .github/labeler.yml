@@ -1,0 +1,47 @@
+# Метки зон на PR (actions/labeler, workflow labeler.yml): очередь слияний видит, чьи зоны задеты, не открывая дифф.
+# Таблица — копия CLAUDE.md «Зоны сессий» и scripts/zone-check.sh: правите зоны — правьте все три.
+"зона: android":
+  - changed-files:
+      - any-glob-to-any-file: ["app/**", "kit/**", "rules/**", "scripts/e2e/**", ".github/workflows/e2e.yml"]
+"зона: коллектор":
+  - changed-files:
+      - all-globs-to-any-file:
+          - "admin-web/**"
+          - "!admin-web/server/src/displays/**"
+          - "!admin-web/server/src/audio/**"
+          - "!admin-web/server/src/routes/audio.ts"
+          - "!admin-web/server/src/scripts/display*"
+"зона: физические узлы":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "firmware/**"
+          - "admin-web/server/src/displays/**"
+          - "admin-web/server/src/audio/**"
+          - "admin-web/server/src/routes/audio.ts"
+          - "admin-web/server/src/scripts/display*"
+          - ".github/workflows/firmware.yml"
+"зона: godot":
+  - changed-files:
+      - all-globs-to-any-file:
+          - "{netrun,netrun-bridge}/**"
+          - "!netrun/assets/**"
+          - "!netrun/client/{avatar_view,hand_view,avatar_body,head_*}.gd"
+          - "!netrun/tests/assets_*"
+"зона: blender":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "netrun/assets/**"
+          - "netrun/client/{avatar_view,hand_view,avatar_body,head_*}.gd"
+          - "netrun/tests/assets_*"
+"зона: геймдизайн":
+  - changed-files:
+      - any-glob-to-any-file: ["docs/gamedesign/**"]
+"зона: конвейер":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "CLAUDE.md"
+          - ".claude/**"
+          - ".github/dependabot.yml"
+          - ".github/labeler.yml"
+          - ".github/workflows/{main,pipeline,labeler}.yml"
+          - "scripts/{check,verify,dbx,ci-wait,agent-worktree,zone-check,train,land,session-stats,test-hook,lint-pipeline}.*"

@@ -40,7 +40,7 @@ const TURN_VIGNETTE_IN_SEC := 0.15
 const TURN_VIGNETTE_OUT_SEC := 0.2
 
 # ---------------------------------------------------------------- телепорт
-const TELEPORT_RANGE := 4.0            ## м по полу: дальность по умолчанию
+const TELEPORT_RANGE := 4.5            ## м по полу: дальность по умолчанию (= досягаемость клеток NodeGrid.REACH_M)
 const TELEPORT_COOLDOWN := 1.2         ## с: перезарядка по умолчанию
 ## Предел, выше которого сервер не пускает, и потолок настройки на очках: сервер не доверяет клиенту (см. NetServer.TELEPORT_*_SLACK).
 const TELEPORT_RANGE_LIMIT := 6.0

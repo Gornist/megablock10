@@ -27,6 +27,7 @@
       "Bash(scripts/verify.sh *)",
       "Bash(scripts/zone-check.sh *)",
       "Bash(scripts/land.sh --check *)",
+      "Bash(scripts/train.sh *)",
       "Bash(scripts/agent-worktree.sh gone *)",
       "Bash(scripts/session-stats.py *)",
       "Bash(scripts/dbx.sh *)",
@@ -47,10 +48,32 @@
       "Bash(git status *)",
       "Bash(git log *)",
       "Bash(git diff *)",
-      "Bash(git show *)"
+      "Bash(git show *)",
+      "Bash(git fetch)",
+      "Bash(git fetch *)",
+      "Bash(adb devices)",
+      "Bash(adb devices *)",
+      "Bash(scripts/lint-pipeline.sh)",
+      "Bash(scripts/test-hook.sh)",
+      "Bash(scripts/agent-worktree.sh ls)",
+      "Bash(shellcheck *)",
+      "Bash(actionlint)",
+      "Bash(actionlint *)"
     ]
   },
   "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-brief.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash",

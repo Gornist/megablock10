@@ -53,6 +53,7 @@ var _daemons: Array = []                 # подходящие для взло�
 var _ram := 6
 var _picked: Dictionary = {}             # id -> bool
 var _known_ids: Dictionary = {}
+var _pick_sig: Variant = null            # [ids, ram, тир], для которых посчитаны отметки по умолчанию
 var _ctx_key: Variant = null
 # виджеты состояния «run»
 var _cells: Dictionary = {}              # Vector2i -> BreachCell
@@ -208,13 +209,14 @@ func set_context(node_title: String, tier: String, daemons: Array, ram: int) -> 
 		if d is Dictionary and not (d.get("cells", []) as Array).is_empty():
 			_daemons.append(d)
 			fresh[str(d["id"])] = true
-			if not _known_ids.has(str(d["id"])):
-				_picked[str(d["id"])] = true
 	_known_ids = fresh
-	for id in _picked.keys():
-		if not fresh.has(id):
-			_picked.erase(id)
-	_trim_picks()
+	# Отметки по умолчанию — только то, что влезает; пересчитываем, когда сменился набор демонов, RAM или тир (выбор игрока в остальном не трогаем).
+	var ids := fresh.keys()
+	ids.sort()
+	var sig := [ids, _ram, _node_tier]
+	if sig != _pick_sig:
+		_pick_sig = sig
+		_picked = default_picks(_daemons, tier_level(_node_tier), lock_length(), _ram)
 	if _mode == MODE_IDLE:
 		_build_idle()
 
@@ -235,8 +237,8 @@ func show_idle(vault: String, access: Dictionary) -> void:
 
 
 ## Сервер не начал взлом (`bk_no`): причина словами на панели.
-func show_denied(reason: String, left: int = 0) -> void:
-	_notice = denied_text(reason, left)
+func show_denied(reason: String, left: int = 0, info: Dictionary = {}) -> void:
+	_notice = denied_text(reason, left, info)
 	if _mode == MODE_IDLE:
 		_build_idle()
 
@@ -293,7 +295,8 @@ func set_trace(value: float) -> void:
 
 # ---------------------------------------------------------------- тексты (чистые, для тестов)
 
-static func denied_text(reason: String, left: int = 0) -> String:
+## info — числа отказа из `bk_no` (lock, need, ram): при «bad_daemons» из-за RAM объясняют, сколько не хватает.
+static func denied_text(reason: String, left: int = 0, info: Dictionary = {}) -> String:
 	match reason:
 		"busy":
 			return "Хранилище взламывает другой нетраннер"
@@ -306,12 +309,24 @@ static func denied_text(reason: String, left: int = 0) -> String:
 		"open":
 			return "Хранилище уже открыто"
 		"bad_daemons":
+			if info.has("need") and info.has("ram"):
+				var lock := int(info.get("lock", 0))
+				return "НЕ ХВАТАЕТ RAM: замок %d + цепочки %d > %d — снимите демона" % [lock, int(info["need"]) - lock, int(info["ram"])]
 			return "Выберите демонов: цепочки должны влезать в RAM"
 		"active":
 			return "Взлом уже идёт"
 		"bridge":
 			return "Нет связи с Мостом"
-	return "Сейчас нельзя"
+		"charging":
+			return "Идёт заряд или расшифровка — сначала закончите"
+		"not_ready":
+			return "Узел ещё не готов — подождите секунду"
+	return "Сейчас нельзя (%s)" % reason if reason != "" else "Сейчас нельзя"
+
+
+## «замок 3 + 9 / RAM 12» — счётчик выбора перед стартом.
+static func ram_counter_text(lock: int, chains: int, ram: int) -> String:
+	return "замок %d + %d / RAM %d" % [lock, chains, ram]
 
 
 ## «5 мин» для минут и дольше, «40 с» для меньше минуты.
@@ -364,18 +379,57 @@ func picked_cells() -> int:
 	return n
 
 
-## Если выбрано больше RAM, лишние (с конца) снимаются: по умолчанию отмечено всё, что помещается.
-func _trim_picks() -> void:
-	var total := 0
-	for d in _daemons:
-		var id := str(d["id"])
-		if not _picked.get(id, false):
-			continue
-		var n := (d["cells"] as Array).size()
-		if total + n > _ram:
-			_picked[id] = false
+## Длина замка хранилища этого тира (как у сервера: неизвестный тир — параметры BASE).
+func lock_length() -> int:
+	return int(BreachData.shared().tier_params(_node_tier)["lock_length"])
+
+
+## Сколько RAM занимает выбор: замок + цепочки отмеченных.
+func ram_needed() -> int:
+	return lock_length() + picked_cells()
+
+
+func fits_ram() -> bool:
+	return BreachData.fits_ram(_ram, lock_length(), picked_cells())
+
+
+## Уровень тира 1/2/3 по имени (неизвестное — 1, как BASE).
+static func tier_level(tier: String) -> int:
+	return maxi(BreachData.TIER_NAMES.find(tier), 0) + 1
+
+
+## Отметки по умолчанию, id -> true: только то, что влезает («замок + Σ ≤ RAM»). Порядок: Извлечение тира хранилища или ближайшего ниже,
+## остальные Извлечения (ниже тира — по убыванию, выше — по возрастанию), затем прочие (защитные) в порядке списка; каждое — если ещё влезает.
+static func default_picks(daemons: Array, vault_level: int, lock: int, ram: int) -> Dictionary:
+	var extracts: Array = []
+	var rest: Array = []
+	for d in daemons:
+		if str(d.get("effect", "")).begins_with("EXTRACT_"):
+			extracts.append(d)
 		else:
+			rest.append(d)
+	# sort_custom нестабилен: порядок списка держим индексом.
+	var idx := {}
+	for i in daemons.size():
+		idx[str(daemons[i]["id"])] = i
+	extracts.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var ta := int(a.get("tier", 1))
+		var tb := int(b.get("tier", 1))
+		var a_low := ta <= vault_level
+		var b_low := tb <= vault_level
+		if a_low != b_low:
+			return a_low
+		if ta != tb:
+			return ta > tb if a_low else ta < tb
+		return idx[str(a["id"])] < idx[str(b["id"])])
+	var picked := {}
+	var total := lock
+	for d in extracts + rest:
+		var n := (d["cells"] as Array).size()
+		if total + n <= ram:
+			picked[str(d["id"])] = true
 			total += n
+	return picked
 
 
 func toggle_daemon(id: String) -> void:
@@ -389,7 +443,7 @@ func request_start() -> bool:
 	if _mode != MODE_IDLE or str(_access.get("access", "")) != "ok":
 		return false
 	var ids := picked_ids()
-	if ids.is_empty() or picked_cells() > _ram:
+	if ids.is_empty() or not fits_ram():
 		return false
 	start_requested.emit(_vault, ids)
 	return true
@@ -437,14 +491,16 @@ func _build_idle() -> void:
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_right.add_child(spacer)
 	var used := picked_cells()
+	var over := not fits_ram()
 	var row := DeckUi.hbox(8)
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(DeckUi.label("RAM", DeckTheme.V_NAME, false))
-	row.add_child(DeckUi.meter(float(used) / maxf(float(_ram), 1.0), DeckTheme.BAD if used > _ram else DeckTheme.ACC, 16))
-	row.add_child(DeckUi.label("%d/%d" % [used, _ram], DeckTheme.V_NAME, false))
+	if over:
+		_right.add_child(DeckUi.label("НЕ ХВАТАЕТ RAM — снимите демона", DeckTheme.V_BAD, false))
+	row.add_child(DeckUi.meter(float(ram_needed()) / maxf(float(_ram), 1.0), DeckTheme.BAD if over else DeckTheme.ACC, 16))
+	row.add_child(DeckUi.label(ram_counter_text(lock_length(), used, _ram), DeckTheme.V_BAD if over else DeckTheme.V_NAME, false))
 	_right.add_child(row)
 	var start := MbButton.new("НАЧАТЬ ВЗЛОМ", "primary")
-	start.disabled = not (access == "ok" and not picked_ids().is_empty() and used <= _ram)
+	start.disabled = not (access == "ok" and not picked_ids().is_empty() and not over)
 	start.pressed.connect(request_start)
 	_right.add_child(start)
 

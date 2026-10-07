@@ -202,6 +202,24 @@ func test_hunt_is_slower_than_walking_player() -> void:
 	assert_bool(b.is_hunting("a")).is_true()
 
 
+## Призрак (волна 1в): сервер узла не кладёт скрытого GHOST'ом игрока в targets — ICE смотрит сквозь него: ни «?», ни подозрения, ни trace.
+## Тот же игрок в 2 м перед ICE без Призрака подозрение вызывает сразу.
+func test_ghost_player_in_front_of_ice_raises_no_suspicion_and_no_trace() -> void:
+	var visible_ice := _brain()
+	var meter_seen := _meter_at(0.0)
+	_run(visible_ice, 0.0, 0.5, func(_t): return {"a": Vector3(0, 0, -2)}, {"a": meter_seen})
+	assert_int(visible_ice.state()).is_not_equal(S.PATROL)   # контроль: без Призрака ICE замечает
+
+	var b := _brain()
+	var meter := _meter_at(0.0)
+	var before := meter.value()
+	_run(b, 0.0, 20.0, func(_t): return {}, {"a": meter})   # GHOST: игрок стоит перед ICE, но цели нет
+	assert_int(b.state()).is_equal(S.PATROL)
+	assert_float(b.awareness()).is_equal(0.0)
+	assert_str(b.target()).is_equal("")
+	assert_float(meter.value()).is_less_equal(before)
+
+
 func test_hunt_stops_when_target_is_ghost_or_trace_drops() -> void:
 	var b := _brain({"black": true})
 	var meter := _meter_at(55.0)
@@ -267,3 +285,65 @@ func test_flatline_ejects_even_during_grace() -> void:
 	meter.add_action("door_forced", t, 12.0)  # trace 100 посреди тревоги
 	_run(b, t, 0.5, seen, {"a": meter})
 	assert_array(_ejects).is_equal([["a", "flatline"]])
+
+
+# ---------------------------------------------------------------- сон ICE: пустой узел не копит время
+
+## Живой прогон П1 06.10: при возврате в узел внимание ICE сразу 1,00 (первый шаг получал dt = всё время отсутствия). После rest() первый шаг dt = 0.
+func test_first_step_after_rest_does_not_count_the_sleep_time() -> void:
+	var b := _brain({"notice_per_sec": 0.15})
+	var t := _run(b, 0.0, 1.0, func(_t): return {})          # один раз «подумал» без игрока
+	b.rest()                                                  # узел опустел
+	t += 200.0                                                # общие часы ушли вперёд
+	b.step(t, {"p": Vector3(0, 0, -5)})                       # игрок вернулся и виден
+	assert_float(b.awareness()).is_less(0.05)                 # раньше: 0,15 × 200 → 1,0 за один шаг
+	assert_int(b.state()).is_not_equal(S.SEARCH)
+
+
+func test_without_rest_the_sleep_time_is_counted() -> void:
+	# Контроль: без rest() старое поведение — это и была ошибка, тест фиксирует, что rest() на что-то влияет.
+	var b := _brain({"notice_per_sec": 0.15})
+	var t := _run(b, 0.0, 1.0, func(_t): return {})
+	t += 200.0
+	b.step(t, {"p": Vector3(0, 0, -5)})
+	assert_float(b.awareness()).is_equal(1.0)
+
+
+## ICE у колонны (3;−5) смотрит на +Z; сетку (с колоннами) передаёт узел.
+func _brain_at(pos: Vector3, grid: NodeGrid) -> IceBrain:
+	var b := _brain()
+	b.position = pos
+	b.facing = Vector3.BACK
+	b.grid = grid
+	return b
+
+
+func test_pillar_blocks_sight_with_grid() -> void:
+	var target := func(_t): return {"a": Vector3(3, 0, -2)}  # колонна (3;−5) между ICE и целью, 6 м — в пределах взгляда
+	var open := _brain_at(Vector3(3, 0, -8), null)
+	_run(open, 0.0, 1.0, target)
+	assert_float(open.awareness()).is_greater(0.0)  # без сетки — видит сквозь колонну, как раньше
+	var blocked := _brain_at(Vector3(3, 0, -8), NodeGrid.for_layout())
+	_run(blocked, 0.0, 1.0, target)
+	assert_float(blocked.awareness()).is_equal(0.0)
+	assert_int(blocked.state()).is_equal(S.PATROL)
+
+
+func test_target_beside_pillar_is_seen_with_grid() -> void:
+	# Та же дистанция, 6 м, но линия идёт мимо колонны.
+	var b := _brain_at(Vector3(7, 0, -8), NodeGrid.for_layout())
+	_run(b, 0.0, 0.5, func(_t): return {"a": Vector3(7, 0, -2)})
+	assert_float(b.awareness()).is_greater(0.0)
+	assert_int(b.state()).is_equal(S.SUSPICIOUS)
+
+
+func test_awareness_falls_after_target_hides_behind_pillar() -> void:
+	var b := _brain_at(Vector3(3, 0, -8), NodeGrid.for_layout())
+	var t := _run(b, 0.0, 0.5, func(_t): return {"a": Vector3(6, 0, -4)})  # сбоку от колонны — виден
+	assert_float(b.awareness()).is_greater(0.0)
+	var seen_level := b.awareness()
+	t = _run(b, t, 0.5, func(_t): return {"a": Vector3(3, 0, -2)})  # ушёл за колонну — из виду
+	assert_float(b.awareness()).is_less(seen_level)
+	_run(b, t, 3.0, func(_t): return {"a": Vector3(3, 0, -2)})
+	assert_float(b.awareness()).is_equal(0.0)
+	assert_int(b.state()).is_equal(S.PATROL)

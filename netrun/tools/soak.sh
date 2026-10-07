@@ -101,23 +101,42 @@ tmo 900 ./gradlew -q :netrun-bridge:installDist >"$WORK/gradle.log" 2>&1 || { ta
 # Пауза после выброса ICE (локдаун узла) сжата с 10 минут до 2 с: иначе после первого выброса весь узел закрыт для входа.
 # --- Данные: узел, шард, по терминалу и игроку на бота, запас предметов в inbox каждого игрока (забег сдаёт 2) ---
 python3 - "$WORK/seed.json" "$BOTS" "$POOL" <<'PY'
-import hashlib, json, sys
+import base64, hashlib, json, sys
 out, bots, pool = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
 sha = lambda s: hashlib.sha256(s.encode()).hexdigest()
-d = {"settings": {"global": {"auditor_period_s": 5, "soft_ice_reentry_pause_s": 2}},
-     "node": {"node_07": {"title": "Серый узел", "tier": "STANDARD", "tutorial": False, "lockdown_until": 0, "eddies": 0}},
-     "terminal": {}, "runner": {}, "session": {}, "deck": {}, "item": {}}
-d["item"]["it_soak_shard00000"] = {"owner": "node:node_07", "kind": "SHARD", "payload": "shard-soak", "protected": False,
-    "origin": "node:node_07", "in_transfer": None, "out_transfer": None, "handover": None}
+# node_lockdown_s = 2: после выброса ICE узел закрыт для входа не 10 минут, а 2 с (иначе первый выброс запирает узел — и забеги отказывают).
+# Узлы стенда — те, куда сервер мира ведёт терминалы по graph.json (entries / default_entry): терминал бота и узел сессии в Мосте совпадают.
+g = json.load(open("netrun/data/graph.json"))
+node_of = lambda t: g["entries"].get(t, g["default_entry"])
+d = {"settings": {"global": {"auditor_period_s": 5, "soft_ice_reentry_pause_s": 2, "node_lockdown_s": 2}},
+     "node": {}, "terminal": {}, "runner": {}, "session": {}, "deck": {}, "item": {}}
+for b in range(1, bots + 1):
+    nid = node_of("t%02d" % b)
+    if nid not in d["node"]:
+        d["node"][nid] = {"title": g["nodes"][nid]["title"], "tier": "STANDARD", "tutorial": False, "lockdown_until": 0, "eddies": 0}
+        for s in range(2):   # шарды узла: слот опустеет после выноса и пополнится из них
+            d["item"]["it_soak_shard_%s_%d" % (nid, s)] = {"owner": "node:" + nid, "kind": "SHARD", "payload": "shard-soak", "protected": False,
+                "origin": "node:" + nid, "in_transfer": None, "out_transfer": None, "handover": None,
+                # shard.tier нужен Мосту, чтобы run.breach выбрал это хранилище (без него хранилище «не лежит в узле» и взлом ничего не открывает)
+                "shard": {"tier": 1, "title": "Шард стенда", "decrypted": True, "encrypted": False}}
 for b in range(1, bots + 1):
     key = "KEY_SOAK_B%d" % b
     t = "t%02d" % b
-    d["terminal"][t] = {"node": "node_07", "label": "soak %d" % b, "token_sha256": sha("soak-token-%d" % b), "silent": False}
+    d["terminal"][t] = {"node": node_of(t), "label": "soak %d" % b, "token_sha256": sha("soak-token-%d" % b), "silent": False}
     d["runner"]["r_" + sha(key)[:32]] = {"key": key, "callsign": "Soak%d" % b, "blocked": False, "runs": 1, "tutorial_done": True}
     for k in range(1, pool + 1):
         for j in "ab":
-            d["item"]["it_soak_b%d_%d%s" % (b, k, j)] = {"owner": "inbox:" + key, "kind": "DAEMON", "payload": "daemon:ghost_1",
+            item = {"owner": "inbox:" + key, "kind": "DAEMON", "payload": "daemon:ghost_1",
                 "protected": j == "a", "origin": "phone:" + key, "in_transfer": None, "out_transfer": None, "handover": None}
+            if b == 1:
+                # Бот-вор: Призрак (защищённый, id предмета — ghost-демон бота) и Извлечение — открывает хранилище взломом (vault_requires_open).
+                # Payload — настоящая карточка демона (ItemPayloadCodec: DAEMON|id|имя base64|цепочка|уровень|эффект): по ней Мост проверяет run.breach
+                # (с payload «daemon:ghost_1» он отвечает bad_request). Разобранное поле daemon, которое сервер мира читает для деки, в seed
+                # Мост сам не дописывает (только при приёме настоящей карточки) — пишем то же самое сами.
+                name, cells, effect = ("Призрак", "1C,BD", "GHOST") if j == "a" else ("Извлечение", "E9,1C", "EXTRACT_SHARD")
+                item["payload"] = "DAEMON|it_soak_b1_%d%s|%s|%s|1|%s" % (k, j, base64.b64encode(name.encode()).decode(), cells, effect)
+                item["daemon"] = {"effect": effect, "tier": 1, "name": name, "cells": cells.split(",")}
+            d["item"]["it_soak_b%d_%d%s" % (b, k, j)] = item
 json.dump(d, open(out, "w"), ensure_ascii=False)
 print(len(d["item"]))
 PY
@@ -177,7 +196,8 @@ bot_loop() { # $1 — номер бота; бот 1 единственный б�
     k=$((k + 1))
     [ "$k" -gt "$POOL" ] && { echo "[soak-loop] bot=$b запас предметов кончился" >>"$WORK/bot_$b.log"; break; }
     pick=$(pick_run); scen=${pick%%|*}; chaos=${pick##*|}
-    flags="$(netem_flags "$b")"; [ "$b" -ne 1 ] && flags="$flags --no-shard"; [ -n "$chaos" ] && flags="$flags --chaos=$chaos --chaos-after=0.$((3 + RANDOM % 6))"
+    # --start-slot: боты одного узла встают на разные клетки у входа (а не все в одну); у вора (бот 1) Призрак — предмет колоды, не ghost_1.
+    flags="$(netem_flags "$b") --start-slot=$b"; [ "$b" -ne 1 ] && flags="$flags --no-shard"; [ "$b" -eq 1 ] && flags="$flags --ghost-daemon=it_soak_b1_${k}a"; [ -n "$chaos" ] && flags="$flags --chaos=$chaos --chaos-after=0.$((3 + RANDOM % 6))"
     # shellcheck disable=SC2086
     tmo 200 "$GODOT" --headless --path netrun -s res://tools/soak_run.gd -- --bridge="ws://127.0.0.1:$BRIDGE_PORT/netrun/v1" --key=kt \
       --runner="KEY_SOAK_B$b" --terminal="$(printf 't%02d' "$b")" --token="soak-token-$b" --items="it_soak_b${b}_${k}a,it_soak_b${b}_${k}b" \

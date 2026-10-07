@@ -47,10 +47,18 @@ const MAX_SPEED := 8.0
 ## ENet при disconnect_peer сбрасывает неотправленную очередь: после последнего сообщения даём ему уйти.
 const DISCONNECT_DELAY_SEC := 0.3
 ## Телепорт (VR): сервер не доверяет клиенту. Пределы — RigMath.TELEPORT_RANGE_LIMIT и TELEPORT_COOLDOWN_LIMIT (клиент по умолчанию
-## ходит на 4 м раз в 1,2 с, настройка на очках не пускает за предел). Допуски: поза клиента запаздывает на пакет-другой, поэтому
+## ходит на 4,5 м раз в 1,2 с, настройка на очках не пускает за предел). Допуски: поза клиента запаздывает на пакет-другой, поэтому
 ## дальность считается с запасом, а перезарядка — с послаблением на дрожь сети.
 const TELEPORT_RANGE_SLACK := 0.5
 const TELEPORT_COOLDOWN_SLACK := 0.2
+## Клетки 1 м: дальность прыжка считается от центра клетки аватара до центра цели (NodeGrid.REACH_M); запас на то, что аватар после
+## площадки у хранилища и при запаздывании позы стоит не в центре клетки.
+const TELEPORT_CELL_SLACK := 0.5
+
+## Сетка клеток комнаты: цель телепорта привязывается к центру клетки и проверяется по занятости (колонны) и линии (NodeGrid).
+var grid: NodeGrid = NodeGrid.for_layout()
+## Сетка узла сессии (раскладка узла): func(session) -> NodeGrid. Не задан — общая `grid` (колонны legacy). Узлы графа ставят её каждый свою.
+var grid_of: Callable
 
 ## Узел может запретить взятие (далеко и т.п.): func(session, object_id) -> bool. Не задан — берётся откуда угодно.
 var grab_check: Callable
@@ -59,6 +67,11 @@ var join_check: Callable
 ## Привязка телепорта к площадке у хранилища (К3): func(session, to: Vector3) -> Dictionary {p, look} (NodeLayout.snap_to_vault_pad по хранилищам узла игрока).
 ## Не задан — цель как пришла. Клиент делает то же сам (XRRig.teleport_snap), сервер повторяет: клиенту верить нельзя.
 var teleport_snap: Callable
+## Тактовый режим (docs/gamedesign/time-and-movement.md, Т4): func(session) -> bool — нетраннер уже сходил в этом такте. Задан — вместо
+## перезарядки телепорта один ход за такт: второй отказывается с WorldMsg.REASON_MOVED. Не задан — прежняя перезарядка.
+var move_check: Callable
+## Точка входа нового аватара по раскладке узла его сессии: func(session) -> Vector3. Не задан — NodeLayout.SPAWN.
+var spawn_of: Callable
 ## Узел входа для нового аватара (W1, граф узлов): func(терминал, сессия) -> id узла ("" — как по умолчанию). Не вызывается для
 ## вернувшегося после обрыва и для сессии, чей узел уже известен (восстановление после рестарта).
 var entry_node_for: Callable
@@ -412,7 +425,8 @@ func _handle_pose(session: String, raw: Variant) -> void:
 
 
 ## Телепорт по просьбе клиента (VR: движение только им). Правила — RigMath.teleport_verdict с пределами сервера и допусками:
-## аватар не в тоннеле, цель в комнате и не дальше предела от текущей позиции аватара, с прошлого телепорта прошла перезарядка.
+## аватар не в тоннеле, цель в комнате и не дальше предела от текущей позиции аватара, с прошлого телепорта прошла перезарядка;
+## затем цель привязывается к центру своей клетки 1 м и проверяется по клетке (_cell_verdict: занята / дальше 4,5 м / за колонной).
 ## Успех: аватар мгновенно в точке, база для предела скорости потока поз сбрасывается (иначе запоздавшая поза со старого места
 ## втянула бы аватар обратно), счётчик скачков растёт — другие игроки не плавят прыжок. Отказ: причина и позиция сервера клиенту.
 func _handle_teleport(session: String, p: Variant) -> void:
@@ -422,11 +436,19 @@ func _handle_teleport(session: String, p: Variant) -> void:
 	var now := Time.get_ticks_msec()
 	var since := (now - int(_tp_last_ms[session])) / 1000.0 if _tp_last_ms.has(session) else INF
 	var to := Vector3(p.x, 0.0, p.z)
+	var tick_rule := move_check.is_valid()
+	var cooldown := 0.0 if tick_rule else RigMath.TELEPORT_COOLDOWN_LIMIT - TELEPORT_COOLDOWN_SLACK   # такты: перезарядки нет, ход один за такт
 	var reason := RigMath.teleport_verdict(a.position, to, since, node_of(session) == TUNNEL_NODE,
-		RigMath.TELEPORT_RANGE_LIMIT + TELEPORT_RANGE_SLACK, RigMath.TELEPORT_COOLDOWN_LIMIT - TELEPORT_COOLDOWN_SLACK)
+		RigMath.TELEPORT_RANGE_LIMIT + TELEPORT_RANGE_SLACK, cooldown)
+	if reason.is_empty() and tick_rule and bool(move_check.call(session)):
+		reason = WorldMsg.REASON_MOVED
+	if reason.is_empty():
+		to = NodeGrid.center(NodeGrid.cell_of(to))   # прыжок — на центр клетки; площадка у хранилища переставит точку ниже
+		reason = _cell_verdict(session, a.position, to)
+	var cell := NodeGrid.cell_of(to)
 	if not reason.is_empty():
 		var left := RigMath.cooldown_left(since, RigMath.TELEPORT_COOLDOWN_LIMIT) if reason == WorldMsg.REASON_COOLDOWN else 0.0
-		print("[netrun-server] teleport denied ", session, " reason=", reason, " from=%.1f,%.1f to=%.1f,%.1f" % [a.position.x, a.position.z, to.x, to.z])
+		print("[netrun-server] teleport denied ", session, " reason=", reason, " from=%.1f,%.1f to=%.1f,%.1f cell=%d,%d" % [a.position.x, a.position.z, to.x, to.z, cell.x, cell.y])
 		send_to(session, WorldMsg.encode_teleport_denied(reason, a.position, left))
 		return
 	var from := a.position
@@ -434,8 +456,36 @@ func _handle_teleport(session: String, p: Variant) -> void:
 		to = (teleport_snap.call(session, to) as Dictionary)["p"]
 	teleport(session, to)
 	_tp_last_ms[session] = now
-	print("[netrun-server] teleport ok ", session, " from=%.1f,%.1f to=%.1f,%.1f dist=%.1f" % [from.x, from.z, a.position.x, a.position.z, NodeLayout.flat_distance(from, a.position)])
+	print("[netrun-server] teleport ok ", session, " from=%.1f,%.1f to=%.1f,%.1f dist=%.1f cell=%d,%d" % [from.x, from.z, a.position.x, a.position.z, NodeLayout.flat_distance(from, a.position), cell.x, cell.y])
 	teleported.emit(session, from, a.position)
+
+
+## Сетка узла сессии: хук grid_of, иначе общая grid.
+func grid_for(session: String) -> NodeGrid:
+	if grid_of.is_valid():
+		var g: Variant = grid_of.call(session)
+		if g is NodeGrid:
+			return g
+	return grid
+
+
+## Проверка клетки цели (to — уже центр клетки): "" — можно; REASON_CELL — занята колонной, вне комнаты или в ней стоит другой аватар
+## этого узла; REASON_RANGE — дальше NodeGrid.REACH_M (+ TELEPORT_CELL_SLACK) от центра клетки аватара; REASON_BLOCKED — линия закрыта.
+func _cell_verdict(session: String, from: Vector3, to: Vector3) -> String:
+	var g := grid_for(session)
+	var b := NodeGrid.cell_of(to)
+	if g.is_occupied(b):
+		return WorldMsg.REASON_CELL
+	var a := NodeGrid.cell_of(from)
+	if Vector2(b - a).length() * NodeGrid.CELL_M > NodeGrid.REACH_M + TELEPORT_CELL_SLACK:
+		return WorldMsg.REASON_RANGE
+	if not g.line_clear(a, b):
+		return WorldMsg.REASON_BLOCKED
+	for other: String in sessions_in(node_of(session)):
+		var av := get_avatar(other)
+		if other != session and av != null and NodeGrid.cell_of(av.position) == b:
+			return WorldMsg.REASON_CELL
+	return ""
 
 
 ## Объект берётся, только если лежит (или уже у этого игрока).
@@ -554,7 +604,7 @@ func _on_peer_connected(peer_id: int) -> void:
 	if not resumed:
 		var a := Node3D.new()
 		a.name = avatar_name(session)
-		a.position = NodeLayout.SPAWN  # клиент ставит риг в ту же точку; иначе первые позиции упрутся в предел скорости
+		a.position = spawn_of.call(session) if spawn_of.is_valid() else NodeLayout.SPAWN  # клиент ставит риг в ту же точку; иначе первые позиции упрутся в предел скорости
 		_world.add_child(a)
 		_avatar_ids[session] = _next_avatar_id
 		_next_avatar_id += 1

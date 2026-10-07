@@ -1,0 +1,27 @@
+{
+  "name": "foyer",
+  "cells": [
+    "V..3...V",
+    "..#..#..",
+    "........",
+    "..#..#..",
+    "........",
+    "1......2",
+    "...S.EE.",
+    ".....EE."
+  ],
+  "vaults": [
+    {"cell": [0, 0], "pad": [0, 1], "ring": "outer"},
+    {"cell": [7, 0], "pad": [7, 1], "ring": "outer"}
+  ],
+  "ice": [
+    {"id": "g1", "kind": "sentry", "route": [
+      {"cell": [1, 2], "wait": 1, "look": ["S"]},
+      {"cell": [6, 2], "wait": 1, "look": ["S"]},
+      {"cell": [6, 4], "wait": 1, "look": ["N"]},
+      {"cell": [1, 4], "wait": 1, "look": ["N"]}
+    ]}
+  ],
+  "black": null,
+  "meta": {"sight_cells": 6}
+}

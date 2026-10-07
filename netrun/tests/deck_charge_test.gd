@@ -49,6 +49,11 @@ func test_a_charged_program_shows_ready_to_launch_and_the_hint_instead_of_the_bu
 	assert_array(_buttons_texts()).not_contains(["ЗАРЯДИТЬ"])
 	assert_str("\n".join(_d.row_texts())).contains("1 Призрак  ГОТОВ К ЗАПУСКУ")
 	assert_str("\n".join(_d.row_texts())).contains(HudLogic.LAUNCH_HINT)
+	# плашка «ЗАРЯЖЕН · включить: левый X» — первой в списке, видна без прокрутки; не заряженному её нет
+	assert_str("\n".join(DeckUi.texts(_d._list.get_child(0)))).contains("ЗАРЯЖЕН · включить: левый X")
+	_d.set_deck(_deck("ready"))
+	await get_tree().process_frame
+	assert_str("\n".join(DeckUi.texts(_d))).not_contains("включить: левый X")
 
 
 func test_cooldown_and_active_programs_have_no_charge_button() -> void:

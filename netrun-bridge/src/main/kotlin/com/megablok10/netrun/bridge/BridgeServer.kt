@@ -52,7 +52,7 @@ class BridgeServer(
                 conn.close(1008, "путь $PATH")
                 return
             }
-            conns[conn] = Conn()
+            conns.computeIfAbsent(conn) { Conn() }
         }
 
         override fun onClose(conn: WebSocket, code: Int, reason: String?, remote: Boolean) {
@@ -60,11 +60,11 @@ class BridgeServer(
         }
 
         override fun onMessage(conn: WebSocket, message: String) {
-            conns[conn]?.let { handleText(conn, it, message) }
+            connOf(conn)?.let { handleText(conn, it, message) }
         }
 
         override fun onMessage(conn: WebSocket, message: ByteBuffer) {
-            conns[conn] ?: return
+            connOf(conn) ?: return
             conn.send(errReply(null, StoreException("bad_request", "бинарные кадры не поддерживаются")).toString())
             conn.close(1003, "binary")
         }
@@ -83,6 +83,15 @@ class BridgeServer(
         }
     }
 
+    /**
+     * Состояние соединения. Java-WebSocket отправляет клиенту ответ рукопожатия ДО [WebSocketServer.onOpen]: быстрый клиент (e2e, тест)
+     * шлёт hello сразу, и кадр может прийти раньше, чем onOpen положил запись. Раньше такое сообщение молча отбрасывалось — ответа не
+     * было никогда (6.10 два раза: BridgeOpsTest «нет ответа» на hello и e2e netrun-run «нет ответа за 15 с»). Теперь запись создаётся
+     * по требованию с той же проверкой пути, что в onOpen; чужой путь onOpen всё равно закроет.
+     */
+    private fun connOf(conn: WebSocket): Conn? =
+        conns[conn] ?: if (conn.resourceDescriptor.substringBefore('?') == PATH) conns.computeIfAbsent(conn) { Conn() } else null
+
     /** Порт, на котором слушает сервер (после [start] — настоящий, даже если в конфиге 0). */
     val port: Int get() = ws.port
 
@@ -96,11 +105,32 @@ class BridgeServer(
         startError?.let { throw it }
         val period = (config.idleTimeoutMs / 4).coerceIn(50, 5_000)
         watchdog.scheduleWithFixedDelay(::closeIdle, period, period, TimeUnit.MILLISECONDS)
+        watchdog.scheduleWithFixedDelay(::nudgeWrites, NUDGE_MS, NUDGE_MS, TimeUnit.MILLISECONDS)
     }
 
     fun stop() {
         watchdog.shutdownNow()
-        ws.stop(1000)
+        try {
+            ws.stop(1000)
+        } catch (_: java.nio.channels.ClosedSelectorException) {
+            // Клиенты закрылись сами, пока stop обходил соединения: библиотека закрыла селектор раньше, чем дошла до последнего. Сервер уже стоит.
+        }
+    }
+
+    /**
+     * Java-WebSocket 1.5.7: `doWrite` после записи ставит ключу interestOps = OP_READ, а `onWriteDemand` другого потока (наш send)
+     * мог выставить OP_WRITE между записью и этим сбросом. Тогда кадр лежит в outQueue, пока на соединении не случится чужое событие, —
+     * так под нагрузкой пропадал ответ на hello (6.10, после #58 ещё раз на раннере CI) и мог бы пропасть push подписчику.
+     * Раз в [NUDGE_MS] повторяем запрос записи там, где в очереди что-то осталось: потерянный кадр задерживается на доли секунды, а не навсегда.
+     */
+    private fun nudgeWrites() {
+        for (c in conns.keys) {
+            try {
+                if (c.hasBufferedData()) ws.onWriteDemand(c)
+            } catch (_: RuntimeException) {
+                // соединение закрывается (ключ отменён, селектор закрыт) — ему запрос записи не нужен
+            }
+        }
     }
 
     private fun closeIdle() {
@@ -266,6 +296,7 @@ class BridgeServer(
     companion object {
         const val PATH = "/netrun/v1"
         private const val MAX_CID = 64
+        private const val NUDGE_MS = 100L
         private val ROLES = setOf("world", "master", "test")
     }
 }

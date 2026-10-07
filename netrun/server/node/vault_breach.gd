@@ -110,7 +110,8 @@ func check_open(session: String, vault: String, ids: Array, recheck: bool = fals
 	# Дека влезает в RAM вместе с замком хранилища (breach.md 2.3): иначе «НАЧАТЬ» недоступна.
 	var lock_length := int(BreachData.shared().tier_params(node.breach_tier())["lock_length"])
 	if not BreachData.fits_ram(ds.ram, lock_length, total):
-		return {"reason": "bad_daemons"}
+		# Числа — чтобы панель объяснила отказ: замок, сколько нужно RAM (замок + цепочки), сколько есть.
+		return {"reason": "bad_daemons", "lock": lock_length, "need": lock_length + total, "ram": ds.ram}
 	return {}
 
 
@@ -120,9 +121,22 @@ func cooldown_left(ds: DaemonSession) -> float:
 	return maxf((until - Time.get_unix_time_from_system() * 1000.0) / 1000.0, 0.0)
 
 
+## Поля строки журнала `breach.request`: кто, где, какие демоны, сколько кодов в цепочках, RAM деки и длина замка тира (чтобы по журналу было видно,
+## почему отказ bad_daemons: «замок + коды > RAM»).
+func request_fields(session: String, vault: String, ids: Array) -> Dictionary:
+	var ds: DaemonSession = node._sessions.get(session)
+	var codes := 0
+	if ds != null:
+		for id in ids:
+			codes += (ds.deck_meta.get(id, {}).get("cells", []) as Array).size()
+	return {"session": session, "vault": vault, "daemons": ",".join(PackedStringArray(ids.map(func(i): return str(i)))), "codes": codes,
+		"ram": ds.ram if ds != null else 0, "lock": int(BreachData.shared().tier_params(node.breach_tier())["lock_length"])}
+
+
 ## Клиент просит начать взлом хранилища vault выбранными демонами ids.
 func request_open(session: String, vault: String, ids: Array) -> void:
 	var deny := check_open(session, vault, ids)
+	GrayNode.log_line("breach.request", request_fields(session, vault, ids))
 	if not deny.is_empty():
 		_send_no(session, deny)
 		return
@@ -436,7 +450,17 @@ static func _unique(a: Array) -> Array:
 	return out
 
 
+## Поля строки журнала `breach.no`: причина и числа отказа (lock, need, ram, left), если они есть.
+static func no_fields(session: String, deny: Dictionary) -> Dictionary:
+	var out := {"session": session, "reason": str(deny.get("reason", ""))}
+	for k in ["lock", "need", "ram", "left"]:
+		if deny.has(k):
+			out[k] = deny[k]
+	return out
+
+
 func _send_no(session: String, deny: Dictionary) -> void:
+	GrayNode.log_line("breach.no", no_fields(session, deny))
 	var msg := {"kind": WorldMsg.EV_BK_NO}
 	msg.merge(deny)
 	node.net.send_to(session, WorldMsg.encode_fields(WorldMsg.EVENT, msg))

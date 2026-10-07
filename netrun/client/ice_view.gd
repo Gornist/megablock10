@@ -17,6 +17,13 @@ const CATCH_NEAR := 2.0
 const SEARCH_SPEED := 1.6
 const ALERT_TEXT := ["", "?", "!", "!!"]
 const ALERT_COLOR := [Color.WHITE, Color(1.0, 0.62, 0.26), Color(1.0, 0.35, 0.31), Color(1.0, 0.35, 0.31)]
+## Глаз тактового режима (time-and-movement.md 3.4): светящаяся точка спереди у головы; цвет — по состоянию TickIce (Патруль, Взгляд, Проверка, Поиск):
+## белый, жёлтый, оранжевый, красный — те же цвета, что у света зрения на полу.
+const EYE_COLOR := [Color(1.0, 1.0, 1.0), Color(1.0, 0.86, 0.25), Color(1.0, 0.55, 0.15), Color(1.0, 0.2, 0.18)]
+const EYE_RADIUS := 0.09
+## Положение глаза: спереди (−Z — куда смотрит ICE) на высоте головы; у Black ICE выше и дальше (модель ×2).
+const EYE_POS_SOFT := Vector3(0.0, 1.7, -0.45)
+const EYE_POS_BLACK := Vector3(0.0, 2.3, -0.6)
 
 var black := false
 var asset := ""
@@ -27,6 +34,9 @@ var _model: Node3D
 var _player: AnimationPlayer
 var _alert: Label3D
 var _clip := ""
+var _eye: MeshInstance3D
+var _eye_mat: StandardMaterial3D
+var _eye_state := -1
 
 
 func _init(is_black: bool = false) -> void:
@@ -58,6 +68,37 @@ func apply_state(new_state: int, near: bool = false) -> void:
 	state = new_state
 	near_target = near
 	_choose(true)
+
+
+## Глаз по состоянию TickIce (0..3, поле st снимка): создаётся при первом вызове, дальше только красит. Зовёт сцена только в тактовом режиме.
+func set_eye_state(st: int) -> void:
+	var s := clampi(st, 0, EYE_COLOR.size() - 1)
+	if _eye == null:
+		var mesh := SphereMesh.new()
+		mesh.radius = EYE_RADIUS
+		mesh.height = EYE_RADIUS * 2.0
+		mesh.radial_segments = 12
+		mesh.rings = 6
+		_eye_mat = StandardMaterial3D.new()
+		_eye_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mesh.material = _eye_mat
+		_eye = MeshInstance3D.new()
+		_eye.name = "Eye"
+		_eye.mesh = mesh
+		_eye.position = EYE_POS_BLACK if black else EYE_POS_SOFT
+		_eye.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(_eye)
+	_eye_state = s
+	_eye_mat.albedo_color = EYE_COLOR[s]
+
+
+## Состояние глаза (-1 — не создан, realtime) и его цвет — для тестов.
+func eye_state() -> int:
+	return _eye_state
+
+
+func eye_color() -> Color:
+	return _eye_mat.albedo_color if _eye_mat != null else Color(0, 0, 0, 0)
 
 
 ## Клип, который сейчас выбран (играет, когда ICE в дереве).

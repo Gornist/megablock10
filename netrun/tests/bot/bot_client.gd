@@ -14,7 +14,7 @@ signal finished(result: String)
 ## и выходит чисто там же; `use_ghost` — сначала GHOST. Видит узел так, как его описал сервер (событие node): порталы и шарды.
 enum Scenario { GHOST_RUN, EXPOSED_RUN, LOITER, BLACK_RUN, GRAPH_RUN }
 
-## Бот двигается так же, как игрок в VR: прыжками-телепортами (не дальше RigMath.TELEPORT_RANGE, пауза — перезарядка), не ходьбой.
+## Бот двигается так же, как игрок в VR: прыжками-телепортами (не дальше RigMath.TELEPORT_RANGE, пауза — перезарядка, цель — центр клетки), не ходьбой.
 const HOP_PAUSE := RigMath.TELEPORT_COOLDOWN + 0.05  # с между прыжками (сервер пускает чаще, но бот ходит по правилам игрока)
 const LOITER_MAX_ARC := 0.8  # рад: дуга за один прыжок по кругу (хорда не длиннее 0,8 радиуса)
 const SEND_PERIOD := 0.05
@@ -22,7 +22,12 @@ const ARRIVE := 1.0
 const BLACK_SPOT := Vector3(0, 0, -9)  # в 3,6 м от линии патруля Black ICE (NodeLayout.BLACK_ICE, z = -6): в зоне его зрения (12 м), патруль заходит в его конус
 const SIGN_REACH := 2.0    # на таком расстоянии от таблички она прочитана
 const GRAB_FROM := 1.5     # на таком расстоянии от шарда просим взять
+const GRAB_FROM_VAULT_CELLS := 2.1  # то же у раскладки, где хранилище занимает клетки (ближайший центр свободной клетки — 1,58 м от слота)
 const STEP_TIMEOUT := 25.0 # с на один шаг сценария — иначе result = "timeout:<шаг>"
+const PROBE_SHARD_WAIT := 10.0  # с: проба отказа (force_breach) ждёт пополнения слота узла и только потом выходит без пробы
+## В тактовом режиме один ход за такт, а такт без хода одного из игроков узла ждёт окно (до 5 с): осторожный путь к шарду короткими
+## прыжками (hop_scale 0,25 — 1,1 м за такт) занимает минуты, а не секунды — шаг получает больше времени.
+const STEP_TIMEOUT_TICK := 90.0
 const RECONNECT_SEC := 1.0 # пауза между попытками подключения после обрыва
 const GHOST_RETRY_SEC := 1.0 # повтор запроса GHOST, пока он не включился
 
@@ -118,6 +123,16 @@ var _send_acc := 0.0
 var _asked := false
 var _asked_at := 0.0
 var _next_hop_at := 0.0
+var _hop_tick_n := -2   # номер такта, в котором бот сходил в последний раз (тактовый режим)
+## Сетка узла: по умолчанию legacy; событие node с именем раскладки (`layout`) подменяет её сеткой этой раскладки.
+var _grid := NodeGrid.for_layout()
+## Стенд (soak): первым ходом встать на свободную клетку возле входа узла, номер клетки — start_slot (−1 — не вставать: сразу сценарий).
+var start_slot := -1
+const START_RADIUS := 3          # клеток от входа (по Чебышёву), из которых выбирается стартовая
+const START_WAIT := 3.0          # с ждать событие node (сетку узла); одиночный узел его не шлёт — тогда сетка legacy
+var _start_goal := Vector3.ZERO
+## На каком расстоянии от шарда просим взять: у раскладки хранилище занимает клетки, ближайшая свободная — в 1,6 м от слота.
+var _grab_from := GRAB_FROM
 
 
 func start(cfg: NetConfig, scenario_kind: int = Scenario.GHOST_RUN) -> void:
@@ -170,6 +185,10 @@ func _on_event(ev: Dictionary) -> void:
 		WorldMsg.EV_NODE:
 			node_info = ev
 			current_node = str(ev.get("node", ""))
+			var ld := LayoutData.cached(str(ev.get("layout", "")))
+			if ld.error == "":
+				_grid = ld.grid()
+				_grab_from = GRAB_FROM if ld.is_legacy() else GRAB_FROM_VAULT_CELLS
 			visited.append(current_node)
 			var a: Variant = ev.get("arrive")
 			if a is Array and (a as Array).size() == 2:
@@ -243,23 +262,96 @@ func _resume() -> void:
 	_resume_keep_ghost = false
 
 
+## Первый шаг сценария после подключения (и после стартовой клетки стенда).
+func _enter_scenario() -> void:
+	if scenario == Scenario.LOITER:
+		_enter("loiter")
+	elif scenario == Scenario.BLACK_RUN:
+		_enter("to_black")
+	elif scenario == Scenario.GRAPH_RUN:
+		_enter("tut_signs" if read_signs else ("ghost" if use_ghost else "g_wait"))
+	else:
+		_enter("ghost" if scenario == Scenario.GHOST_RUN else "to_shard")
+
+
+## Центр стартовой клетки бота номер start_slot: свободные клетки не дальше START_RADIUS от клетки входа, до которых можно прыгнуть
+## (по сетке узла), по возрастанию расстояния; номер берётся по кругу. Нет ни одной — стоим на входе.
+func _start_cell_center() -> Vector3:
+	var origin := NodeGrid.cell_of(position)
+	var cands: Array[Vector2i] = []
+	for dx in range(-START_RADIUS, START_RADIUS + 1):
+		for dz in range(-START_RADIUS, START_RADIUS + 1):
+			var c := Vector2i(origin.x + dx, origin.y + dz)
+			if c != origin and _grid.hop_verdict(position, NodeGrid.center(c)).is_empty():
+				cands.append(c)
+	if cands.is_empty():
+		return position
+	cands.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		var da := (a - origin).length_squared()
+		var db := (b - origin).length_squared()
+		return da < db or (da == db and (a.x < b.x or (a.x == b.x and a.y < b.y))))
+	return NodeGrid.center(cands[start_slot % cands.size()])
+
+
 ## Шаг пути к цели прыжками: когда перезарядка прошла — прыжок в сторону цели не дальше дальности (hop_scale < 1 — осторожный путь,
-## короткими прыжками). true — уже на месте (не дальше stop_at от цели). Параметр кадра оставлен для старых вызовов.
+## короткими прыжками). Прыжки — по клеткам 1 м, как у игрока: из достижимых клеток (NodeGrid.reach_cells, не дальше дальности и не
+## сквозь колонны) берётся та, чей центр ближе всего к цели. true — уже на месте: не дальше stop_at от цели или в клетке цели
+## (ближе центром клетки не подойти). Параметр кадра оставлен для старых вызовов.
 func _walk_to(goal: Vector3, _delta: float, stop_at: float, hop_scale: float = 1.0) -> bool:
 	var d := Vector3(goal.x - position.x, 0.0, goal.z - position.z)
-	if d.length() <= stop_at:
+	if d.length() <= stop_at or NodeGrid.cell_of(goal) == NodeGrid.cell_of(position):
 		return true
-	if _clock >= _next_hop_at:
-		_hop(position + d.normalized() * minf(d.length(), RigMath.TELEPORT_RANGE * hop_scale))
+	if _can_hop():
+		var best := NodeGrid.cell_of(position)
+		var best_d := d.length()   # прыгаем, только если центр клетки ближе к цели, чем мы сейчас
+		for c in _grid.reach_cells(NodeGrid.cell_of(position)):
+			if NodeLayout.flat_distance(NodeGrid.center(NodeGrid.cell_of(position)), NodeGrid.center(c)) > NodeGrid.REACH_M * hop_scale + 0.001:
+				continue
+			var dc := NodeLayout.flat_distance(NodeGrid.center(c), goal)
+			if dc < best_d:
+				best_d = dc
+				best = c
+		if best != NodeGrid.cell_of(position):
+			_hop(NodeGrid.center(best))
 	return false
 
 
-## Прыжок: просьба серверу, позиция бота меняется сразу (как у риг-а), дальше — перезарядка.
+## Прыжок на центр клетки: просьба серверу, позиция бота меняется сразу (как у риг-а), дальше — перезарядка. Закрытую клетку
+## (занята, за колонной, дальше дальности) бот не просит — игрок её тоже не выберет.
 func _hop(to: Vector3) -> void:
-	hop_log.append([_clock, NodeLayout.flat_distance(position, to)])
+	var target := NodeGrid.center(NodeGrid.cell_of(to))
+	if not _grid.hop_verdict(position, target).is_empty():
+		return
+	hop_log.append([_clock, NodeLayout.flat_distance(position, target)])
 	hops += 1
-	position = Vector3(to.x, 0.0, to.z)
+	position = target
 	_next_hop_at = _clock + HOP_PAUSE
+	_hop_tick_n = _tick_n()
+	net.request_teleport(position)
+
+
+## Номер такта из последнего state (тактовый режим), -1 — сервер в реальном времени (поля tk нет).
+func _tick_n() -> int:
+	var tk: Variant = last_state.get("tk")
+	return int((tk as Dictionary).get("n", -1)) if tk is Dictionary else -1
+
+
+## Можно ли ходить: прошла перезарядка бота (реальное время) или, в тактовом режиме, с прошлого хода наступил новый такт и ход ещё не принят.
+func _can_hop() -> bool:
+	if _clock < _next_hop_at:
+		return false
+	var tk: Variant = last_state.get("tk")
+	if tk is Dictionary:
+		return int(tk.get("n", -1)) != _hop_tick_n and int(tk.get("mv", 0)) == 0
+	return true
+
+
+## «Ждать» — ход на свою клетку (тактовый режим): такт наступает по ходам, а не по окну. Не в реальном времени и не в панели.
+func _wait_move() -> void:
+	if _tick_n() < 0 or not _can_hop():
+		return
+	_next_hop_at = _clock + HOP_PAUSE
+	_hop_tick_n = _tick_n()
 	net.request_teleport(position)
 
 
@@ -280,7 +372,7 @@ func _process(delta: float) -> void:
 			net.reconnect()
 			_reconnect_at = _clock + RECONNECT_SEC * 3.0
 		return
-	if _clock - _step_started > STEP_TIMEOUT:
+	if _clock - _step_started > (STEP_TIMEOUT_TICK if _tick_n() >= 0 else STEP_TIMEOUT):
 		_finish("timeout:" + _step)
 		return
 	_send_acc += delta
@@ -290,25 +382,29 @@ func _process(delta: float) -> void:
 	match _step:
 		"connect":
 			if net.is_connected_to_world:
-				if scenario == Scenario.LOITER:
-					_enter("loiter")
-				elif scenario == Scenario.BLACK_RUN:
-					_enter("to_black")
-				elif scenario == Scenario.GRAPH_RUN:
-					_enter("tut_signs" if read_signs else ("ghost" if use_ghost else "g_wait"))
+				if start_slot >= 0 and (scenario == Scenario.GHOST_RUN or scenario == Scenario.EXPOSED_RUN):
+					_enter("to_start")
 				else:
-					_enter("ghost" if scenario == Scenario.GHOST_RUN else "to_shard")
+					_enter_scenario()
+		"to_start":
+			# Стенд: боты одного узла не стартуют все из одной клетки входа. Сетку узла сообщит событие node (ждём его недолго).
+			if node_info.is_empty() and _clock - _step_started < START_WAIT:
+				return
+			if _start_goal == Vector3.ZERO:
+				_start_goal = _start_cell_center()
+			if _walk_to(_start_goal, delta, 0.1):
+				_enter_scenario()
 		"loiter":
 			_step_started = _clock  # без таймаута шага: бот гуляет, пока его не остановят
 			# Выходим на круг, потом раз в перезарядку прыгаем на следующую точку круга.
-			if _walk_to(_loiter_point(_loiter_angle), delta, 0.05) and _clock >= _next_hop_at:
+			if _walk_to(_loiter_point(_loiter_angle), delta, 0.05) and _can_hop():
 				_loiter_angle += minf(loiter_omega * HOP_PAUSE, LOITER_MAX_ARC)
 				_hop(_loiter_point(_loiter_angle))
 		"to_black":
 			if _walk_to(BLACK_SPOT, delta, 0.5):
 				_enter("lurk")
 		"lurk":
-			pass  # стоим на виду у Black ICE; шаг кончается событием «ended» или таймаутом шага
+			_wait_move()  # стоим на виду у Black ICE (в тактовом режиме — «ждём»: такты идут по ходам); шаг кончается событием «ended» или таймаутом шага
 		"ghost":
 			# Дека из Моста приходит серверу мира асинхронно (список предметов): первый запрос может прийти раньше деки
 			# (not_in_deck) — повторяем раз в секунду, пока ghost не включился.
@@ -344,7 +440,7 @@ func _process(delta: float) -> void:
 		"g_tunnel":
 			_step_started = _clock  # тоннель идёт, ход заблокирован; таймаут шага не идёт
 		"g_shard":
-			if _walk_to(_goal, delta, GRAB_FROM):
+			if _walk_to(_goal, delta, _grab_from):
 				_enter("g_grab")
 		"breach":
 			_step_breach()
@@ -358,7 +454,14 @@ func _process(delta: float) -> void:
 		"to_shard":
 			# Без GHOST идём осторожно: ICE успевает заметить и догнать раньше шарда.
 			var speed_scale := 1.0 if scenario == Scenario.GHOST_RUN else 0.25
-			if _walk_to(_plain_shard()["pos"], delta, GRAB_FROM, speed_scale):
+			if not node_info.is_empty() and not _has_ready_shard():
+				if force_breach:   # пробе нужен шард: слот пополняется через Мост, список шардов приходит событием — ждём, а не выходим молча
+					if _clock - _step_started < PROBE_SHARD_WAIT:
+						return
+					print("[bot] проба без взлома: нет шарда")
+				_enter("to_exit")   # в узле графа шарда нет (вынесен, слот ждёт пополнения): без добычи к выходу, а не к несуществующему pickup_01
+				return
+			if _walk_to(_plain_shard()["pos"], delta, _grab_from, speed_scale):
 				_enter("to_exit" if no_shard else "grab")
 		"grab":
 			if not _asked and _needs_breach(_plain_shard()["id"]):
@@ -510,6 +613,13 @@ func _step_breach() -> void:
 		_bk_path = BreachAutoSolver.solve(_bk.attempt)
 	if _bk_path.size() > have and _bk.tap(_bk_path[have]):
 		net.request_breach_tap(_bk_path[have])
+
+
+func _has_ready_shard() -> bool:
+	for sh in node_info.get("shards", []):
+		if sh.get("ready", false):
+			return true
+	return false
 
 
 ## Шард для сценариев GHOST/EXPOSED: в узле графа — первый лежащий из события node (id слота), в одиночном — pickup_01.

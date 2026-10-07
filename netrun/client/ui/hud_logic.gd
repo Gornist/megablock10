@@ -127,8 +127,55 @@ static func can_charge(st: String, chargeable: bool) -> bool:
 	return chargeable and st == "ready"
 
 
-## Подсказка под списком программ, если есть заряженные: чем запускать (VR — левый X; плоская сборка — цифра слота).
-const LAUNCH_HINT := "Левый X — запуск заряженного"
+## Плашка над списком программ, если есть заряженные: заряд — ещё не эффект, его надо включить (повтор П1: заряженного Призрака приняли за
+## включённого). VR — левый X (rig_test_scene.use_selected: выбранного, если он заряжен, иначе первого заряженного); плоская сборка — цифра слота.
+const LAUNCH_HINT := "ЗАРЯЖЕН · включить: левый X"
+
+
+## Плашка над списком программ, пока действует эффект демона: «ДЕЙСТВУЕТ 12 с · 1 Призрак · невидим для ICE». row — строка deck_rows.
+static func active_banner(row: Dictionary) -> String:
+	var text := "ДЕЙСТВУЕТ %s · %s" % [cooldown_text(float(row.get("active_left", 0.0))), str(row.get("name", ""))]
+	var effect := str(row.get("effect", ""))
+	return text if effect == "" else text + " · " + effect
+
+
+## Поля строки журнала `breach.request` (одна строка): хранилище, демоны (число и id), сумма кодов их цепочек, RAM деки и длина замка тира —
+## по ним видно, почему сервер ответил bad_daemons («замок + коды > RAM»). daemons — рабочие демоны деки (ev deck: id, cells).
+static func breach_request_fields(vault: String, ids: Array, daemons: Array, ram: int, lock: int) -> Dictionary:
+	var codes := 0
+	for d in daemons:
+		if ids.has(str(d.get("id", ""))):
+			codes += (d.get("cells", []) as Array).size()
+	return {"vault": vault, "daemons": ids.size(), "ids": ",".join(PackedStringArray(ids.map(func(i): return str(i)))), "codes": codes, "ram": ram, "lock": lock}
+
+
+## Поля строки `daemon.use` по ответу сервера (`daemon {daemon, ok, error?, reason?}`): phase = ok или denied с причиной.
+static func daemon_result_fields(ev: Dictionary) -> Dictionary:
+	if bool(ev.get("ok", false)):
+		return {"phase": "ok", "daemon": str(ev.get("daemon", ""))}
+	var out := {"phase": "denied", "daemon": str(ev.get("daemon", "")), "error": str(ev.get("error", ""))}
+	if ev.has("reason"):
+		out["reason"] = str(ev["reason"])
+	return out
+
+
+## Начало и конец действия эффектов по снимкам (`state.cd`, k — время сервера): prev — id, что были active в прошлом снимке.
+## Возвращает {active: новый набор, started: [{id, left}], ended: [id]}.
+static func effect_edges(prev: Dictionary, cd: Array, k: float) -> Dictionary:
+	var active := {}
+	var started: Array = []
+	for c in cd:
+		var id := str(c.get("id", ""))
+		if str(c.get("st", "")) == "active":
+			active[id] = true
+			if not prev.has(id):
+				started.append({"id": id, "left": snappedf(maxf(float(c.get("until", k)) - k, 0.0), 0.1)})
+	var ended: Array = []
+	for id in prev:
+		if not active.has(id):
+			ended.append(id)
+	return {"active": active, "started": started, "ended": ended}
+
 
 ## Текст отказа запуска (`daemon {ok: false, error}`) для строки-уведомления на деке.
 static func launch_error_text(error: String) -> String:
@@ -221,6 +268,8 @@ static func deck_rows(deck: Dictionary) -> Array:
 			"id": str(d.get("id", "")),
 			"chargeable": chargeable,
 			"charged": st == "charged",
+			"active": st == "active",
+			"active_left": ceili(float(d.get("active_left", 0.0))),   # целые секунды: ключ перерисовки деки не должен меняться на каждом снимке
 			"can_charge": can_charge(st, chargeable),
 			"selected": str(d.get("id", "")) == selected,
 			"ready": left <= 0.0 and st != "unsupported",

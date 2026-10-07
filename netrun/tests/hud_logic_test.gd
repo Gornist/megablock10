@@ -174,6 +174,38 @@ func test_charge_button_only_for_a_ready_chargeable_program() -> void:
 	assert_str(rows[2]["text"]).is_equal("3 Извлечение  готов")
 
 
+func test_journal_lines_for_daemon_use_and_breach_request_are_single_and_short() -> void:
+	var daemons := [{"id": "d1", "cells": ["1C", "BD", "E9"]}, {"id": "d2", "cells": ["55", "7A"]}, {"id": "d3", "cells": ["FF"]}]
+	var req := MbLog.format("breach.request", HudLogic.breach_request_fields("v1", ["d1", "d2"], daemons, 12, 3))
+	assert_str(req).is_equal("breach.request vault=v1 daemons=2 ids=d1,d2 codes=5 ram=12 lock=3")
+	assert_str(MbLog.format("daemon.use", HudLogic.daemon_result_fields({"daemon": "g", "ok": true}))).is_equal("daemon.use phase=ok daemon=g")
+	assert_str(MbLog.format("daemon.use", HudLogic.daemon_result_fields({"daemon": "g", "ok": false, "error": "not_charged"}))).is_equal("daemon.use phase=denied daemon=g error=not_charged")
+	assert_str(MbLog.format("daemon.use", HudLogic.daemon_result_fields({"daemon": "g", "ok": false, "error": "effect_unsupported", "reason": "x"}))).contains("reason=x")
+	# начало и конец эффекта — по смене st в снимках
+	var e1 := HudLogic.effect_edges({}, [{"id": "g", "st": "charged"}], 100.0)
+	assert_array(e1["started"]).is_empty()
+	var e2 := HudLogic.effect_edges(e1["active"], [{"id": "g", "st": "active", "until": 120.0}], 100.04)
+	assert_float(e2["started"][0]["left"]).is_equal_approx(20.0, 0.001)
+	assert_str(e2["started"][0]["id"]).is_equal("g")
+	var e3 := HudLogic.effect_edges(e2["active"], [{"id": "g", "st": "active", "until": 120.0}], 105.0)
+	assert_array(e3["started"]).is_empty()   # уже шёл: второго start нет
+	assert_array(e3["ended"]).is_empty()
+	var e4 := HudLogic.effect_edges(e3["active"], [{"id": "g", "st": "cooldown", "until": 160.0}], 120.1)
+	assert_array(e4["ended"]).is_equal(["g"])
+	assert_dict(e4["active"]).is_empty()
+
+
+func test_charged_hint_and_active_banner_tell_how_to_launch_and_how_long_it_lasts() -> void:
+	assert_str(HudLogic.LAUNCH_HINT).is_equal("ЗАРЯЖЕН · включить: левый X")
+	var rows := HudLogic.deck_rows({"daemons": [
+		{"id": "g", "name": "1 Призрак", "cooldown_left": 30.0, "st": "active", "active_left": 11.2, "effect": "GHOST", "chargeable": true},
+		{"id": "j", "name": "2 Дрожь", "cooldown_left": 0.0, "st": "charged", "chargeable": true}], "selected": "g"})
+	assert_bool(rows[0]["active"]).is_true()
+	assert_int(rows[0]["active_left"]).is_equal(12)   # целые секунды, вверх: ключ перерисовки не дёргается на каждом снимке
+	assert_str(HudLogic.active_banner(rows[0])).is_equal("ДЕЙСТВУЕТ 12 с · 1 Призрак · невидим для ICE")
+	assert_bool(rows[1]["active"]).is_false()
+
+
 func test_program_entries_carry_the_chargeable_flag() -> void:
 	var e := HudLogic.program_entries([{"id": "a", "name": "П", "left": 0.0, "st": "ready"}], [{"id": "a", "chargeable": true, "loaded": true}], 0.0)
 	assert_bool(e[0]["chargeable"]).is_true()
