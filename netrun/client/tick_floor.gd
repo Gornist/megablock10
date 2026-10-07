@@ -45,6 +45,12 @@ var _inhale := false
 var _pulse_left := 0.0
 
 
+## Сетка другого узла (переход между узлами с разной раскладкой): свет зрения считается по ней. Сброс кэша — следующий apply перерисует всё.
+func set_grid(grid: NodeGrid) -> void:
+	_grid = grid if grid != null else NodeGrid.for_layout()
+	_key = 0
+
+
 func _init(grid: NodeGrid = null) -> void:
 	name = "TickFloor"
 	_grid = grid if grid != null else NodeGrid.for_layout()

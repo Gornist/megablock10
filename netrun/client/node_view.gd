@@ -60,6 +60,9 @@ const FAR_LAYERS := [{"y": 0.0, "r": 2, "hole": 1}, {"y": LAYER_PITCH, "r": 1, "
 
 ## Тир узла, по которому выбраны файлы окружения (BASE, если сервер тир не назвал).
 var tier := ""
+## Раскладка узла (Фойе): колонны, площадка и тоннель выхода, кресло и площадки хранилищ — по ней. null — прежняя комната (константы NodeLayout);
+## legacy-раскладка хранится как null: вид прежней комнаты остаётся ровно тем же.
+var layout: LayoutData = null
 ## Выходы закрыты (уровень trace LOCKDOWN): вместо дверей — lockdown_gate. Сервер сам выход не закрывает: это сигнал среды.
 var exit_locked := false
 ## За игроком идёт охота Black ICE: порталы закрыты.
@@ -98,7 +101,7 @@ func _init() -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
-	if _sensor != null:
+	if _sensor != null and _sensor.visible:
 		_sensor.rotation.y = NodeLayout.cardinal_yaw(NodeLayout.SENSOR_POS) + sin(_t * TAU * SENSOR_SWEEP_HZ) * SENSOR_SWEEP_RAD
 
 
@@ -106,10 +109,24 @@ func _process(delta: float) -> void:
 
 ## Комната под тир узла. Тот же тир — ничего не пересобираем.
 func set_tier(new_tier: String) -> void:
+	set_look(new_tier, layout)
+
+
+## Раскладка узла (null или legacy — прежняя комната). Та же раскладка — ничего не пересобираем; другая — комната и кресло пересобираются
+## (переход между узлами). Хранилища и порталы приходят отдельно (set_vaults, set_portals) — звать после этого вызова.
+func set_layout(new_layout: LayoutData) -> void:
+	set_look(tier, new_layout)
+
+
+## Тир и раскладка разом — одна пересборка комнаты на вход в узел.
+func set_look(new_tier: String, new_layout: LayoutData) -> void:
 	var t := NodeAssets.normalize_tier(new_tier)
-	if t == tier and _room != null:
+	var l: LayoutData = null if new_layout == null or new_layout.is_legacy() or not new_layout.error.is_empty() else new_layout
+	if t == tier and _room != null and l == layout:
 		return
 	tier = t
+	layout = l
+	_apply_furniture()
 	_discard(_room)
 	_room = Node3D.new()
 	_room.name = "Room"
@@ -129,6 +146,35 @@ func set_tier(new_tier: String) -> void:
 	if HORIZON_ENABLED:
 		_add_horizon(_room)
 	_apply_exit()
+
+
+## Кресло — там, где игрок появляется (вход раскладки); датчик — только в прежней комнате: в раскладке Стражи — на карте, датчика нет.
+func _apply_furniture() -> void:
+	_seat.position = NodeLayout.SPAWN if layout == null else layout.spawn
+	_sensor.visible = layout == null
+
+
+## Колонны комнаты: центры модулей. По раскладке — блоки карты «#» (хранилища «V» рисует set_vaults).
+func pillar_positions() -> Array[Vector3]:
+	var out: Array[Vector3] = []
+	if layout == null:
+		for p: Vector3 in NodeLayout.PILLARS:
+			out.append(p)
+		return out
+	for sz in LayoutData.SIZE:
+		for sx in LayoutData.SIZE:
+			if layout.blocks[sz][sx] == "#":
+				out.append(NodeLayout.cell_center(sx, sz))
+	return out
+
+
+## Центр площадки выхода (по нему тоннель за южной стеной) и центры помостов под ней.
+func exit_pos() -> Vector3:
+	return NodeLayout.EXIT_POS if layout == null else layout.exit_pos
+
+
+func exit_cells() -> Array[Vector3]:
+	return NodeLayout.exit_platform_cells() if layout == null else layout.exit_cells
 
 
 ## Сколько экземпляров каждого модуля в комнате (для проверки сетки).
@@ -189,12 +235,12 @@ func _room_transforms() -> Dictionary:
 					out["lockdown_gate"].append(t)
 				elif WALLS_ENABLED:
 					out["wall"].append(t)
-	for c in NodeLayout.exit_platform_cells():
+	for c in exit_cells():
 		out["platform"].append(Transform3D(Basis.IDENTITY, c))
-	for p in NodeLayout.PILLARS:
+	for p in pillar_positions():
 		out["pillar"].append(Transform3D(Basis.IDENTITY, p))
 	for k in NodeLayout.EXIT_TUNNEL_SEGMENTS:
-		out["tunnel_ring"].append(Transform3D(Basis.IDENTITY, Vector3(NodeLayout.EXIT_POS.x, 0.0, NodeLayout.ROOM_MAX.y + NodeLayout.CELL * (k + 0.5))))
+		out["tunnel_ring"].append(Transform3D(Basis.IDENTITY, Vector3(exit_pos().x, 0.0, NodeLayout.ROOM_MAX.y + NodeLayout.CELL * (k + 0.5))))
 	_far_transforms(out)
 	return out
 
@@ -216,8 +262,10 @@ func _far_transforms(out: Dictionary) -> void:
 				n += 1
 
 
+## Дверь выхода — ячейка южной стены по сторонам от оси площадки (для прежней комнаты это NodeLayout.EXIT_DOORS).
 func _is_exit_door(cell: Vector3) -> bool:
-	for d in NodeLayout.EXIT_DOORS:
+	var doors: Array = NodeLayout.EXIT_DOORS if layout == null else [exit_pos() + Vector3(-1, 0, 1), exit_pos() + Vector3(1, 0, 1)]
+	for d: Vector3 in doors:
 		if NodeLayout.flat_distance(cell, d) < 0.01:
 			return true
 	return false
@@ -324,12 +372,28 @@ func set_vaults(shards: Array) -> void:
 		var p: Array = sh["p"]
 		var base := Vector3(float(p[0]), maxf(float(p[1]) - VAULT_SLOT_Y, 0.0), float(p[2]))
 		var yaw := NodeLayout.cardinal_yaw(base) + PI  # лицо vault.glb смотрит в −Z (засечки Tier_* на z = −0,31), а cardinal_yaw считан под +Z старых моделей
-		_vaults[id] = _place(_props, NodeAssets.prop_path("vault"), base, yaw)  # один ассет: вид — узлы State_* и Tier_*
 		# Площадка взлома — на стороне лица хранилища (там же, куда привязывается телепорт, NodeLayout.vault_pad), с тем же yaw: шеврон смотрит на хранилище.
+		# По раскладке площадка — клетка pad карты (NodeLayout.vault_pad_in, как у сервера), а лицо хранилища смотрит на неё.
 		var pad_pos := NodeLayout.vault_pad(base)
+		var pad_pos_layout: Variant = NodeLayout.vault_pad_in(layout, base) if layout != null else null
+		if pad_pos_layout != null:
+			pad_pos = pad_pos_layout
+			yaw = vault_yaw_to(base, pad_pos, yaw)
+		_vaults[id] = _place(_props, NodeAssets.prop_path("vault"), base, yaw)  # один ассет: вид — узлы State_* и Tier_*
 		_pads[id] = _place(_props, NodeAssets.prop_path("hack_pad"), pad_pos, yaw)
 		_panels[id] = _place_panel(base, yaw, pad_pos)
 		set_vault_state(id, vault_state_of(sh), int(sh.get("tier", 0)))
+
+
+## Поворот хранилища лицом (−Z модели) к площадке pad, по ближайшей стороне сетки; площадка в той же клетке (legacy) или на диагонали — fallback.
+static func vault_yaw_to(base: Vector3, pad: Vector3, fallback: float) -> float:
+	var dx := pad.x - base.x
+	var dz := pad.z - base.z
+	if absf(dx) < 0.001 and absf(dz) < 0.001:
+		return fallback
+	if absf(dx) > absf(dz):
+		return -PI / 2.0 if dx > 0.0 else PI / 2.0
+	return PI if dz > 0.0 else 0.0
 
 
 ## Корпус панели взлома рядом с площадкой: справа от игрока, стоящего на ней (в осях хранилища сдвиг PANEL_OFFSET), экран — к игроку на площадке. Какая сторона

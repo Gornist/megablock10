@@ -658,7 +658,7 @@ func apply_node(info: Dictionary) -> void:
 		return
 	node_info = info
 	current_node = str(info.get("node", ""))
-	view.set_tier(str(info.get("tier", "")))
+	apply_layout(LayoutData.cached(str(info.get("layout", ""))), str(info.get("tier", "")))
 	view.set_dead_decks(info.get("dead", []))
 	if world_ui.breach_panel.mode() != BreachPanel.MODE_RUN:
 		world_ui.breach_panel.hide_panel()   # другой узел — другие хранилища
@@ -667,7 +667,32 @@ func apply_node(info: Dictionary) -> void:
 	var arrive: Variant = info.get("arrive")
 	if arrive is Array and (arrive as Array).size() == 2:
 		rig.global_position = Vector3(float(arrive[0]), rig.global_position.y, float(arrive[1]))
+	elif not _entered and not _layout.is_legacy():
+		var at := entry_point(_layout)   # первый узел сессии: риг — на вход раскладки (там же сервер ставит аватар, NetServer.spawn_of)
+		rig.global_position = Vector3(at.x, rig.global_position.y, at.z)
+	_entered = true
 	end_tunnel()
+
+
+## Раскладка показанного узла (legacy — прежняя комната, константы NodeLayout) и был ли уже узел: вход ставит риг только в первый раз.
+var _layout: LayoutData = LayoutData.cached(LayoutData.LEGACY)
+var _entered := false
+
+
+## Где риг при входе в узел раскладки: её вход S; нет раскладки или она битая — NodeLayout.SPAWN.
+static func entry_point(ld: LayoutData) -> Vector3:
+	return ld.spawn if ld != null and ld.error.is_empty() else NodeLayout.SPAWN
+
+
+## Узел по раскладке: комната и мебель (NodeView), сетка прицела и света зрения (rig.grid, TickFloor), привязка к площадке хранилища.
+## Раскладки нет или она не загрузилась — прежняя комната.
+func apply_layout(ld: LayoutData, tier: String) -> void:
+	_layout = ld if ld != null and ld.error.is_empty() else LayoutData.cached(LayoutData.LEGACY)
+	view.set_look(tier, _layout)
+	var g := NodeGrid.for_layout() if _layout.is_legacy() else _layout.grid()
+	rig.grid = g
+	if tick_floor != null:
+		tick_floor.set_grid(g)
 
 
 ## Слоты шардов узла изменились (вынесли, пополнилось, хранилище открылось/закрылось): лежащий шард виден, вынесенный — нет; вид хранилища — по vault
@@ -930,7 +955,10 @@ func _add_mesh(mesh: Mesh, pos: Vector3, color: Color) -> MeshInstance3D:
 
 ## Привязка точки телепорта к площадке перед хранилищем (XRRig.teleport_snap): те же числа, что у сервера (NodeLayout.snap_to_vault_pad).
 func snap_teleport(to: Vector3) -> Dictionary:
-	return NodeLayout.snap_to_vault_pad(to, _vault_list().map(func(v: Dictionary) -> Vector3: return v["p"]))
+	var slots := _vault_list().map(func(v: Dictionary) -> Vector3: return v["p"])
+	if _layout.is_legacy():
+		return NodeLayout.snap_to_vault_pad(to, slots)
+	return NodeLayout.snap_to_vault_pad_in(_layout, to, slots)
 
 
 ## Хранилища узла: [{id, p: Vector3}] по последним записям сервера.
