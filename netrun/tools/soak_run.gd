@@ -5,7 +5,8 @@ extends SceneTree
 ## `godot --headless --path netrun -s res://tools/soak_run.gd -- --bridge=ws://127.0.0.1:7410/netrun/v1 --key=<ключ test>
 ##   --runner=<ключ игрока> --terminal=t01 --token=<токен> --items=<предмет1>,<предмет2> --host=127.0.0.1 --port=7777
 ##   --scenario=ghost_run|exposed_run [--chaos=emergency|drop_return|drop_gone] [--chaos-after=2] [--no-shard]
-##   [--net-loss=0.05] [--net-delay-ms=60] [--net-jitter-ms=30] [--tag=bN-rK] [--grace=20] [--wait-closed=60]`
+##   [--net-loss=0.05] [--net-delay-ms=60] [--net-jitter-ms=30] [--tag=bN-rK] [--grace=20] [--wait-closed=60]
+##   [--start-slot=N] (первый ход — на свободную клетку возле входа узла, своя у каждого N) [--ghost-daemon=<id предмета>] (чем бот включает Призрака)`
 ## Код выхода: 0 — забег прошёл и сессия закрыта; 3 — Мост отказал в деке; 4 — Мост/сервер мира недоступны; 5 — сессия не закрылась вовремя;
 ## 6 — бот завис (timeout:*). Итоговая строка: `[soak-run] tag=… scenario=… chaos=… result=… outcome=… dur=…s reconnects=… net=…`.
 
@@ -67,8 +68,9 @@ func _run() -> void:
 		await create_timer(1.0).timeout
 	# Узел в локдауне (после выброса ICE): вход откажет, а отказ возвращает деку на телефон — запас предметов тратится зря.
 	var lock_until := Time.get_ticks_msec() + 60000
+	var entry_node := NodeGraph.load_file().entry_for(terminal)   # узел, куда сервер мира ведёт этот терминал (graph.json)
 	while Time.get_ticks_msec() < lock_until:
-		var nd: Dictionary = await _bridge.get_doc("node", "node_07")
+		var nd: Dictionary = await _bridge.get_doc("node", entry_node)
 		var locked_ms := int(nd.get("doc", {}).get("data", {}).get("lockdown_until", 0)) - int(Time.get_unix_time_from_system() * 1000.0)
 		if locked_ms <= 0:
 			break
@@ -121,6 +123,9 @@ func _start_bot() -> void:
 	_bot.no_shard = "no-shard" in _args
 	_bot.chaos = str(_args.get("chaos", ""))
 	_bot.chaos_after = float(_args.get("chaos-after", "2"))
+	_bot.start_slot = int(_args.get("start-slot", "-1"))
+	if _args.has("ghost-daemon"):
+		_bot.ghost_daemon = str(_args["ghost-daemon"])
 	root.add_child(_bot)
 	var cfg := NetConfig.new()
 	cfg.host = str(_args.get("host", "127.0.0.1"))

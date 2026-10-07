@@ -98,3 +98,47 @@ func test_server_loads_graph_by_default_and_single_node_flag_disables_it() -> vo
 	assert_object(WorldServer.load_graph(PackedStringArray())).is_not_null()
 	assert_object(WorldServer.load_graph(PackedStringArray(["--exit-after=5"]))).is_not_null()
 	assert_object(WorldServer.load_graph(PackedStringArray(["--single-node"]))).is_null()
+
+
+func test_узел_читает_имя_раскладки_пусто_значит_legacy() -> void:
+	var g := NodeGraph.from_dict({"nodes": {"a": {"layout": "foyer", "links": []}, "b": {"links": []}}})
+	assert_str(g.nodes["a"]["layout"]).is_equal("foyer")
+	assert_str(g.nodes["b"]["layout"]).is_empty()
+
+
+## Узлы реального графа с раскладкой: связей не больше порталов раскладки, шардов не больше её хранилищ.
+func test_раскладки_реального_графа_вмещают_связи_и_шарды() -> void:
+	var g := NodeGraph.load_file()
+	var with_layout := 0   # (в шаге с graph.json — не меньше 1)
+	for id in g.nodes:
+		var name := str(g.nodes[id]["layout"])
+		if name.is_empty():
+			continue
+		with_layout += 1
+		var ld := LayoutData.cached(name)
+		assert_str(ld.error).is_empty()
+		assert_int((g.nodes[id]["links"] as Array).size()).is_less_equal(ld.portals.size())
+		assert_int(int(g.nodes[id]["shards"])).is_less_equal(ld.vaults.size())
+		for i in (g.nodes[id]["links"] as Array).size():
+			assert_bool(ld.portals[i] != Vector3.INF).is_true()
+	assert_int(with_layout).is_equal(4)   # node_00 (учебная) и node_01, node_02, node_07 (Фойе)
+	assert_str(g.nodes["node_00"]["layout"]).is_equal("foyer_tutorial")
+	for id: String in ["node_01", "node_02", "node_07"]:
+		assert_str(g.nodes[id]["layout"]).is_equal("foyer")
+		assert_int((g.nodes[id]["links"] as Array).size()).is_less_equal(3)
+	assert_array(g.errors()).is_empty()
+
+
+func test_граф_сообщает_о_раскладке_не_вмещающей_узел() -> void:
+	var bad := NodeGraph.from_dict({
+		"default_entry": "a",
+		"nodes": {
+			"a": {"layout": "foyer", "shards": 3, "links": ["b", "c", "d", "e"]},
+			"b": {"links": ["a"]}, "c": {"links": ["a"]}, "d": {"links": ["a"]}, "e": {"links": ["a"]},
+			"z": {"layout": "нет_такой", "links": []},
+		},
+	})
+	var joined := "\n".join(bad.errors())
+	assert_str(joined).contains("a: шардов 3, допустимо 1…2")
+	assert_str(joined).contains("a: связей 4, слотов порталов 3")
+	assert_str(joined).contains("нет_такой")

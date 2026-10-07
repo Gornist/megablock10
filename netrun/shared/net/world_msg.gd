@@ -28,7 +28,7 @@ const AVATARS := "av"
 const BEAT := "beat"
 ## Виды события: ended (выход: reason), daemon (ok, daemon, error), shard (id взят).
 ## Граф узлов (W1): node — вход в узел (title, tier, alert, shards [{id, p, ready, enc?, kind? (shard | daemon), dead? (демон мёртвой деки)}] (enc — зашифрованный шард, модель shard_encrypted), dead [[x, z]] (мёртвые деки рядом с хранилищем демона погибшего, необязательно),
-## portals [{to, title, tier, p, open}], r — радиус
+## portals [{to, title, tier, p, open}], layout — имя раскладки узла (data/layouts, «legacy» — прежняя комната; поле необязательно для старого сервера), r — радиус
 ## портала, arrive [x, z] — куда поставить риг; нет arrive — игрок остаётся где стоит); tunnel — переход начался (to, title, tier,
 ## sec — сколько длится: клиент затемняет экран без движения камеры, затем придёт node); portal_denied — портал не открылся
 ## (to, reason: lockdown | hunt | busy | not_linked, left — секунд до конца локдауна); shards — слоты шардов узла изменились.

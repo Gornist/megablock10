@@ -57,6 +57,8 @@ const TELEPORT_CELL_SLACK := 0.5
 
 ## Сетка клеток комнаты: цель телепорта привязывается к центру клетки и проверяется по занятости (колонны) и линии (NodeGrid).
 var grid: NodeGrid = NodeGrid.for_layout()
+## Сетка узла сессии (раскладка узла): func(session) -> NodeGrid. Не задан — общая `grid` (колонны legacy). Узлы графа ставят её каждый свою.
+var grid_of: Callable
 
 ## Узел может запретить взятие (далеко и т.п.): func(session, object_id) -> bool. Не задан — берётся откуда угодно.
 var grab_check: Callable
@@ -68,6 +70,8 @@ var teleport_snap: Callable
 ## Тактовый режим (docs/gamedesign/time-and-movement.md, Т4): func(session) -> bool — нетраннер уже сходил в этом такте. Задан — вместо
 ## перезарядки телепорта один ход за такт: второй отказывается с WorldMsg.REASON_MOVED. Не задан — прежняя перезарядка.
 var move_check: Callable
+## Точка входа нового аватара по раскладке узла его сессии: func(session) -> Vector3. Не задан — NodeLayout.SPAWN.
+var spawn_of: Callable
 ## Узел входа для нового аватара (W1, граф узлов): func(терминал, сессия) -> id узла ("" — как по умолчанию). Не вызывается для
 ## вернувшегося после обрыва и для сессии, чей узел уже известен (восстановление после рестарта).
 var entry_node_for: Callable
@@ -456,16 +460,26 @@ func _handle_teleport(session: String, p: Variant) -> void:
 	teleported.emit(session, from, a.position)
 
 
+## Сетка узла сессии: хук grid_of, иначе общая grid.
+func grid_for(session: String) -> NodeGrid:
+	if grid_of.is_valid():
+		var g: Variant = grid_of.call(session)
+		if g is NodeGrid:
+			return g
+	return grid
+
+
 ## Проверка клетки цели (to — уже центр клетки): "" — можно; REASON_CELL — занята колонной, вне комнаты или в ней стоит другой аватар
 ## этого узла; REASON_RANGE — дальше NodeGrid.REACH_M (+ TELEPORT_CELL_SLACK) от центра клетки аватара; REASON_BLOCKED — линия закрыта.
 func _cell_verdict(session: String, from: Vector3, to: Vector3) -> String:
+	var g := grid_for(session)
 	var b := NodeGrid.cell_of(to)
-	if grid.is_occupied(b):
+	if g.is_occupied(b):
 		return WorldMsg.REASON_CELL
 	var a := NodeGrid.cell_of(from)
 	if Vector2(b - a).length() * NodeGrid.CELL_M > NodeGrid.REACH_M + TELEPORT_CELL_SLACK:
 		return WorldMsg.REASON_RANGE
-	if not grid.line_clear(a, b):
+	if not g.line_clear(a, b):
 		return WorldMsg.REASON_BLOCKED
 	for other: String in sessions_in(node_of(session)):
 		var av := get_avatar(other)
@@ -590,7 +604,7 @@ func _on_peer_connected(peer_id: int) -> void:
 	if not resumed:
 		var a := Node3D.new()
 		a.name = avatar_name(session)
-		a.position = NodeLayout.SPAWN  # клиент ставит риг в ту же точку; иначе первые позиции упрутся в предел скорости
+		a.position = spawn_of.call(session) if spawn_of.is_valid() else NodeLayout.SPAWN  # клиент ставит риг в ту же точку; иначе первые позиции упрутся в предел скорости
 		_world.add_child(a)
 		_avatar_ids[session] = _next_avatar_id
 		_next_avatar_id += 1

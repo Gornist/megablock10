@@ -22,7 +22,11 @@ const ARRIVE := 1.0
 const BLACK_SPOT := Vector3(0, 0, -9)  # в 3,6 м от линии патруля Black ICE (NodeLayout.BLACK_ICE, z = -6): в зоне его зрения (12 м), патруль заходит в его конус
 const SIGN_REACH := 2.0    # на таком расстоянии от таблички она прочитана
 const GRAB_FROM := 1.5     # на таком расстоянии от шарда просим взять
+const GRAB_FROM_VAULT_CELLS := 2.1  # то же у раскладки, где хранилище занимает клетки (ближайший центр свободной клетки — 1,58 м от слота)
 const STEP_TIMEOUT := 25.0 # с на один шаг сценария — иначе result = "timeout:<шаг>"
+## В тактовом режиме один ход за такт, а такт без хода одного из игроков узла ждёт окно (до 5 с): осторожный путь к шарду короткими
+## прыжками (hop_scale 0,25 — 1,1 м за такт) занимает минуты, а не секунды — шаг получает больше времени.
+const STEP_TIMEOUT_TICK := 90.0
 const RECONNECT_SEC := 1.0 # пауза между попытками подключения после обрыва
 const GHOST_RETRY_SEC := 1.0 # повтор запроса GHOST, пока он не включился
 
@@ -119,7 +123,15 @@ var _asked := false
 var _asked_at := 0.0
 var _next_hop_at := 0.0
 var _hop_tick_n := -2   # номер такта, в котором бот сходил в последний раз (тактовый режим)
+## Сетка узла: по умолчанию legacy; событие node с именем раскладки (`layout`) подменяет её сеткой этой раскладки.
 var _grid := NodeGrid.for_layout()
+## Стенд (soak): первым ходом встать на свободную клетку возле входа узла, номер клетки — start_slot (−1 — не вставать: сразу сценарий).
+var start_slot := -1
+const START_RADIUS := 3          # клеток от входа (по Чебышёву), из которых выбирается стартовая
+const START_WAIT := 3.0          # с ждать событие node (сетку узла); одиночный узел его не шлёт — тогда сетка legacy
+var _start_goal := Vector3.ZERO
+## На каком расстоянии от шарда просим взять: у раскладки хранилище занимает клетки, ближайшая свободная — в 1,6 м от слота.
+var _grab_from := GRAB_FROM
 
 
 func start(cfg: NetConfig, scenario_kind: int = Scenario.GHOST_RUN) -> void:
@@ -172,6 +184,10 @@ func _on_event(ev: Dictionary) -> void:
 		WorldMsg.EV_NODE:
 			node_info = ev
 			current_node = str(ev.get("node", ""))
+			var ld := LayoutData.cached(str(ev.get("layout", "")))
+			if ld.error == "":
+				_grid = ld.grid()
+				_grab_from = GRAB_FROM if ld.is_legacy() else GRAB_FROM_VAULT_CELLS
 			visited.append(current_node)
 			var a: Variant = ev.get("arrive")
 			if a is Array and (a as Array).size() == 2:
@@ -243,6 +259,37 @@ func _resume() -> void:
 	else:
 		_enter("to_exit" if shard_taken or (no_shard and _resume_keep_ghost) else "to_shard")
 	_resume_keep_ghost = false
+
+
+## Первый шаг сценария после подключения (и после стартовой клетки стенда).
+func _enter_scenario() -> void:
+	if scenario == Scenario.LOITER:
+		_enter("loiter")
+	elif scenario == Scenario.BLACK_RUN:
+		_enter("to_black")
+	elif scenario == Scenario.GRAPH_RUN:
+		_enter("tut_signs" if read_signs else ("ghost" if use_ghost else "g_wait"))
+	else:
+		_enter("ghost" if scenario == Scenario.GHOST_RUN else "to_shard")
+
+
+## Центр стартовой клетки бота номер start_slot: свободные клетки не дальше START_RADIUS от клетки входа, до которых можно прыгнуть
+## (по сетке узла), по возрастанию расстояния; номер берётся по кругу. Нет ни одной — стоим на входе.
+func _start_cell_center() -> Vector3:
+	var origin := NodeGrid.cell_of(position)
+	var cands: Array[Vector2i] = []
+	for dx in range(-START_RADIUS, START_RADIUS + 1):
+		for dz in range(-START_RADIUS, START_RADIUS + 1):
+			var c := Vector2i(origin.x + dx, origin.y + dz)
+			if c != origin and _grid.hop_verdict(position, NodeGrid.center(c)).is_empty():
+				cands.append(c)
+	if cands.is_empty():
+		return position
+	cands.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		var da := (a - origin).length_squared()
+		var db := (b - origin).length_squared()
+		return da < db or (da == db and (a.x < b.x or (a.x == b.x and a.y < b.y))))
+	return NodeGrid.center(cands[start_slot % cands.size()])
 
 
 ## Шаг пути к цели прыжками: когда перезарядка прошла — прыжок в сторону цели не дальше дальности (hop_scale < 1 — осторожный путь,
@@ -324,7 +371,7 @@ func _process(delta: float) -> void:
 			net.reconnect()
 			_reconnect_at = _clock + RECONNECT_SEC * 3.0
 		return
-	if _clock - _step_started > STEP_TIMEOUT:
+	if _clock - _step_started > (STEP_TIMEOUT_TICK if _tick_n() >= 0 else STEP_TIMEOUT):
 		_finish("timeout:" + _step)
 		return
 	_send_acc += delta
@@ -334,14 +381,18 @@ func _process(delta: float) -> void:
 	match _step:
 		"connect":
 			if net.is_connected_to_world:
-				if scenario == Scenario.LOITER:
-					_enter("loiter")
-				elif scenario == Scenario.BLACK_RUN:
-					_enter("to_black")
-				elif scenario == Scenario.GRAPH_RUN:
-					_enter("tut_signs" if read_signs else ("ghost" if use_ghost else "g_wait"))
+				if start_slot >= 0 and (scenario == Scenario.GHOST_RUN or scenario == Scenario.EXPOSED_RUN):
+					_enter("to_start")
 				else:
-					_enter("ghost" if scenario == Scenario.GHOST_RUN else "to_shard")
+					_enter_scenario()
+		"to_start":
+			# Стенд: боты одного узла не стартуют все из одной клетки входа. Сетку узла сообщит событие node (ждём его недолго).
+			if node_info.is_empty() and _clock - _step_started < START_WAIT:
+				return
+			if _start_goal == Vector3.ZERO:
+				_start_goal = _start_cell_center()
+			if _walk_to(_start_goal, delta, 0.1):
+				_enter_scenario()
 		"loiter":
 			_step_started = _clock  # без таймаута шага: бот гуляет, пока его не остановят
 			# Выходим на круг, потом раз в перезарядку прыгаем на следующую точку круга.
@@ -388,7 +439,7 @@ func _process(delta: float) -> void:
 		"g_tunnel":
 			_step_started = _clock  # тоннель идёт, ход заблокирован; таймаут шага не идёт
 		"g_shard":
-			if _walk_to(_goal, delta, GRAB_FROM):
+			if _walk_to(_goal, delta, _grab_from):
 				_enter("g_grab")
 		"breach":
 			_step_breach()
@@ -402,7 +453,10 @@ func _process(delta: float) -> void:
 		"to_shard":
 			# Без GHOST идём осторожно: ICE успевает заметить и догнать раньше шарда.
 			var speed_scale := 1.0 if scenario == Scenario.GHOST_RUN else 0.25
-			if _walk_to(_plain_shard()["pos"], delta, GRAB_FROM, speed_scale):
+			if not node_info.is_empty() and not _has_ready_shard():
+				_enter("to_exit")   # в узле графа шарда нет (вынесен, слот ждёт пополнения): без добычи к выходу, а не к несуществующему pickup_01
+				return
+			if _walk_to(_plain_shard()["pos"], delta, _grab_from, speed_scale):
 				_enter("to_exit" if no_shard else "grab")
 		"grab":
 			if not _asked and _needs_breach(_plain_shard()["id"]):
@@ -554,6 +608,13 @@ func _step_breach() -> void:
 		_bk_path = BreachAutoSolver.solve(_bk.attempt)
 	if _bk_path.size() > have and _bk.tap(_bk_path[have]):
 		net.request_breach_tap(_bk_path[have])
+
+
+func _has_ready_shard() -> bool:
+	for sh in node_info.get("shards", []):
+		if sh.get("ready", false):
+			return true
+	return false
 
 
 ## Шард для сценариев GHOST/EXPOSED: в узле графа — первый лежащий из события node (id слота), в одиночном — pickup_01.

@@ -1,0 +1,28 @@
+{
+  "name": "legacy",
+  "note": "Нынешние константы NodeLayout (PILLARS, SPAWN, EXIT_POS, PORTAL_SLOTS, SHARD_SLOTS, ICE, BLACK_ICE) как раскладка. Хранилища не помечены V: в legacy они не занимают клетки сетки (NodeGrid.for_layout() — только колонны). Маршруты — по клеткам сетки 1 м (cell1): точки старых маршрутов лежат на вершинах модулей.",
+  "cells": [
+    "........",
+    "..#.#...",
+    ".2...3..",
+    "........",
+    "..#..#..",
+    "........",
+    ".1.S.EE.",
+    ".....EE."
+  ],
+  "vaults": [
+    {"cell": [3, 2], "pad": [3, 2], "ring": "outer"},
+    {"cell": [1, 0], "pad": [1, 0], "ring": "outer"},
+    {"cell": [6, 0], "pad": [6, 0], "ring": "outer"}
+  ],
+  "ice": [
+    {"id": "ice_1", "kind": "sentry", "route": [
+      {"cell1": [8, 10]}, {"cell1": [14, 10]}, {"cell1": [4, 10]}
+    ]},
+    {"id": "ice_2", "kind": "sentry", "route": [
+      {"cell1": [14, 8]}, {"cell1": [14, 10]}, {"cell1": [14, 6]}
+    ]}
+  ],
+  "black": {"id": "black_1", "route": [{"cell1": [10, 8]}, {"cell1": [14, 8]}]}
+}
