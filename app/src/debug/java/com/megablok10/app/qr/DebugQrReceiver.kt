@@ -8,6 +8,9 @@ import com.megablok10.app.DebugConfig
 import com.megablok10.app.breach.DaemonEffect
 import com.megablok10.app.breach.LootCodec
 import com.megablok10.app.breach.Tier
+import com.megablok10.app.call.CallDenoise
+import com.megablok10.app.call.CallMedia
+import com.megablok10.app.call.RnNoiseNative
 import com.megablok10.app.chat.ChatMessageType
 import com.megablok10.app.chat.ChatProtocol
 import com.megablok10.app.chat.ChatWireMessage
@@ -29,6 +32,8 @@ import kotlinx.coroutines.launch
  *  - DEBUG_CONFIG --es clock <N> --es timer <N> --es autosolve true|false / port ? (напечатать порт приложения: "port=N")   см. DebugConfig
  *  - DEBUG_SET    --es netrun "QR стойки|id демона,id демона|id защищённого" | "dismiss" (закрыть итог входа) — вход в «Сеть» (e2e netrun-run): скан стойки и сдача выбранных демонов Мосту, как из экрана выбора деки
  *  - DEBUG_SET    --es sayvoice "получатель|секунды[|offline]" — голосовое сообщение из случайных байт (≈2,5 КБ/с, не речь) личным сообщением: проверка доставки, очереди и файла у получателя (voice.VoiceMessenger)
+ *  - DEBUG_SET    --es callaudio "rnnoise=0|1" — нейросетевой шумодав микрофона звонка (по умолчанию вкл) выключить/включить на лету, чтобы сравнить на слух
+ *  - DEBUG_SET    --es rnnoisetest 1 — самопроверка шумодава без микрофона; итог в MB10DBG: "rnnoise selftest -> <дБ ослабления стационарного шума|UNAVAILABLE>"
  *  - DEBUG_SET    … / readreceipts on|off / readthread <pubKeyB64> (как открыть тред: отчёт о прочтении)
  *  - DEBUG_SET    --es create "Позывной:Фракция" / collector <url> / cs / fac / ram / balance / daemon "имя:1C,55:тир:ЭФФЕКТ" / pay "получатель:сумма:online|offline" [--ei burst N — N одновременных переводов] / contact "pk:позывной:фракция" / say "получатель|текст" / sayas "получатель|pk|позывной|фракция|текст" / give "daemon|shard:id:получатель[:offline]" / cancelitem <id> / cancel <txId> / cooldowns reset
  * Итог DEBUG_CONFIG / DEBUG_SET пишется в logcat с тегом MB10DBG (строки разбирает scripts/e2e/lib.sh — формат не менять).
@@ -65,6 +70,14 @@ class DebugQrReceiver : BroadcastReceiver() {
     private suspend fun applySet(graph: AppGraph, intent: Intent) {
         fun peerOf(key: String) = graph.chat.onlinePeer(key)
         intent.getStringExtra("collector")?.let { graph.collectorSettings.setBaseUrl(it) }
+        intent.getStringExtra("callaudio")?.let { spec ->
+            CallDenoise.apply(spec)
+            CallMedia.applyDenoiseSetting()
+            Log.i(TAG, "callaudio rnnoise=${CallDenoise.enabled}")
+        }
+        if (intent.getStringExtra("rnnoisetest") != null) {
+            Log.i(TAG, "rnnoise selftest -> ${if (RnNoiseNative.available) "%.1f".format(RnNoiseNative.selfTestDb()) else "UNAVAILABLE"}")
+        }
         // Сброс сессии тем же путём, что кнопка в Настройках («Опасная зона», identity/SessionReset). Корень приложения видит сброс
         // сразу (личность реактивна), но стенд после сброса всё равно перезапускает приложение (restart_app).
         if (intent.getStringExtra("sessionreset") == "1") {

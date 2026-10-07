@@ -5,6 +5,7 @@ import com.megablok10.app.log.Mb10Log
 import org.webrtc.AudioSource
 import org.webrtc.AudioTrack
 import org.webrtc.DataChannel
+import org.webrtc.ExternalAudioProcessingFactory
 import org.webrtc.IceCandidate
 import org.webrtc.MediaConstraints
 import org.webrtc.MediaStream
@@ -36,6 +37,7 @@ object CallMedia {
     private var localAudioTrack: AudioTrack? = null
 
     private var audioModule: JavaAudioDeviceModule? = null
+    private var externalAudio: ExternalAudioProcessingFactory? = null
 
     private var remoteDescriptionSet = false
     private val pendingRemoteCandidates = mutableListOf<IceCandidate>()
@@ -84,14 +86,29 @@ object CallMedia {
                 PeerConnectionFactory.Options.ADAPTER_TYPE_VPN or
                 PeerConnectionFactory.Options.ADAPTER_TYPE_LOOPBACK
         }
-        val created = PeerConnectionFactory.builder()
+        // Нейросетевой шумодав микрофона (RNNoise) поверх штатного NS: внешняя обработка звука WebRTC, хук после штатной цепочки. Библиотека не загрузилась — всё как раньше (штатный NS).
+        val external = if (RnNoiseNative.available) ExternalAudioProcessingFactory() else null
+        val builder = PeerConnectionFactory.builder()
             .setOptions(options)
             .setAudioDeviceModule(adm)
             .setVideoEncoderFactory(SoftwareVideoEncoderFactory())
             .setVideoDecoderFactory(SoftwareVideoDecoderFactory())
-            .createPeerConnectionFactory()
+        if (external != null) builder.setAudioProcessingFactory(external)
+        val created = builder.createPeerConnectionFactory()
+        if (external != null) {
+            external.setCapturePostProcessing(RnNoiseProcessor())
+            external.setBypassFlagForCapturePost(!CallDenoise.enabled)
+        }
+        externalAudio = external
+        Mb10Log.event(TAG, "call.audio_denoise", "rnnoiseLib" to RnNoiseNative.available, "enabled" to (external != null && CallDenoise.enabled))
         factory = created
         return created
+    }
+
+    /** После смены [CallDenoise.enabled] (отладочная команда): включить или выключить шумодав на лету, без пересоздания фабрики и звонка. */
+    fun applyDenoiseSetting() {
+        externalAudio?.setBypassFlagForCapturePost(!CallDenoise.enabled)
+        Mb10Log.event(TAG, "call.audio_denoise", "rnnoiseLib" to RnNoiseNative.available, "enabled" to (externalAudio != null && CallDenoise.enabled))
     }
 
     /**
