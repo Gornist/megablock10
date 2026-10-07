@@ -121,6 +121,12 @@ func test_раскладки_реального_графа_вмещают_свя
 		assert_int(int(g.nodes[id]["shards"])).is_less_equal(ld.vaults.size())
 		for i in (g.nodes[id]["links"] as Array).size():
 			assert_bool(ld.portals[i] != Vector3.INF).is_true()
+	assert_int(with_layout).is_equal(4)   # node_00 (учебная) и node_01, node_02, node_07 (Фойе)
+	assert_str(g.nodes["node_00"]["layout"]).is_equal("foyer_tutorial")
+	for id: String in ["node_01", "node_02", "node_07"]:
+		assert_str(g.nodes[id]["layout"]).is_equal("foyer")
+		assert_int((g.nodes[id]["links"] as Array).size()).is_less_equal(3)
+	assert_array(g.errors()).is_empty()
 
 
 func test_граф_сообщает_о_раскладке_не_вмещающей_узел() -> void:
