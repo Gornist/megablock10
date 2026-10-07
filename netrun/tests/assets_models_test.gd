@@ -730,3 +730,45 @@ func test_exit_frame_is_a_free_standing_frame_with_an_empty_opening() -> void:
 		assert_bool(on_floor or above or beside).override_failure_message("%s: перекрывает проём" % mi.name).is_true()
 	var sill := _aabb(ef.find_child("exit_sill", true, false))
 	assert_float(sill.size.y).override_failure_message("порог — тонкая плита 3 см").is_between(0.025, 0.04)
+
+
+# ---------------------------------------------------------------- «ручки для очков» (AssetMaterials.tune / netrun.cfg [assets])
+
+func _mat_of(root: Node, mesh_name: String) -> ShaderMaterial:
+	for mi in _meshes(root):
+		if String(mi.name) == mesh_name:
+			return mi.get_surface_override_material(0) as ShaderMaterial
+	return null
+
+
+func test_asset_materials_knobs_change_materials_and_reset() -> void:
+	AssetMaterials.reset_tuning()
+	var base := _load("env", "cover")
+	AssetMaterials.apply(base, "BASE")
+	assert_bool(_mat_of(base, "pillar_block").next_pass != null).override_failure_message("по умолчанию обводка есть").is_true()
+	assert_float(float(_mat_of(base, "pillar_block").get_shader_parameter("edge_glow"))).is_equal_approx(2.2, 0.001)
+	var cfg := ConfigFile.new()
+	cfg.set_value("assets", "fringe_on", false)
+	cfg.set_value("assets", "edge_glow", 3.5)
+	cfg.set_value("assets", "solid_base", "#102030")
+	AssetMaterials.tune_from_config(cfg)
+	var tuned := _load("env", "cover")
+	AssetMaterials.apply(tuned, "BASE")
+	var m := _mat_of(tuned, "pillar_block")
+	assert_bool(m.next_pass == null).override_failure_message("fringe_on=false: обводки нет").is_true()
+	assert_float(float(m.get_shader_parameter("edge_glow"))).is_equal_approx(3.5, 0.001)
+	assert_bool((m.get_shader_parameter("base_color") as Color).is_equal_approx(Color("#102030"))).is_true()
+	AssetMaterials.reset_tuning()
+	var back := _load("env", "cover")
+	AssetMaterials.apply(back, "BASE")
+	assert_bool(_mat_of(back, "pillar_block").next_pass != null).override_failure_message("reset_tuning возвращает обводку").is_true()
+
+
+func test_asset_materials_knob_min_px_reaches_streaks() -> void:
+	AssetMaterials.reset_tuning()
+	AssetMaterials.tune({"min_px_streaks": 3.0, "halo_far": true})
+	var exit_frame := _load("env", "exit_frame")
+	AssetMaterials.apply(exit_frame, "BASE")
+	var post := _mat_of(exit_frame, "exit_post_l")
+	assert_float(float(post.get_shader_parameter("min_px"))).is_equal_approx(3.0, 0.001)
+	AssetMaterials.reset_tuning()
