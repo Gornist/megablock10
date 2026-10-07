@@ -64,7 +64,10 @@ func _room() -> Array:
 			k += 1
 		items.append(["env/portal_wall", Vector3(-4.0, 0, 0.0), -90.0, "BASE", 1.0])
 		items.append(["env/doorway", Vector3(-1.0, 0, 4.0), 0.0, "BASE", 1.0])     # вход
-		items.append(["env/doorway_b", Vector3(1.0, 0, -4.0), 0.0, _tier, 1.0])   # выход
+		if _noexit:
+			items.append(["env/doorway_b", Vector3(1.0, 0, -4.0), 0.0, _tier, 1.0])   # выход (со стенами; без --noexit его заменяет exit_frame)
+	if not _noexit:  # выход без стен: свободная рамка (столбы-занавесы, перемычка, порог), проём пустой; в игре на её месте при LOCKDOWN встают env/lockdown_gate
+		items.append(["env/exit_frame", Vector3(1.0, 0, -4.0), 0.0, "BASE", 1.0])
 	if not _noedge:
 		items.append(["env/room_edge_8", Vector3(0.0, 0.0, 0.0), 0.0, "BASE", 1.0])  # кромка комнаты вместо стен: квадрат 8×8, края на ±4 (в игре — env/room_edge_16 в центр комнаты)
 	if not _nomoat:
@@ -182,6 +185,8 @@ func _shots() -> Array:
 		{"name": "room_inside", "cam": Vector3(-3.0, 1.25, 3.0), "look": Vector3(0.5, 0.9, -2.8), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
 		# с края комнаты (юго-западный угол) вдоль южной кромки и наружу, за обрыв
 		{"name": "edge_view", "cam": Vector3(-3.4, 1.4, 3.1), "look": Vector3(3.0, 0.0, 6.0), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": room},
+		# выход без стен: взгляд из центра комнаты на свободную рамку env/exit_frame в точке выхода (1, 0, −4)
+		{"name": "exit_view", "cam": Vector3(-1.8, 1.3, -0.4), "look": Vector3(1.0, 1.1, -4.0), "fov": 60.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": room},
 	]
 
 

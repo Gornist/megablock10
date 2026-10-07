@@ -9,7 +9,7 @@ const ROOT := "res://assets/models/"
 const ENV_VARIANTS := {
 	"floor": ["floor", "floor_b", "floor_c"], "wall": ["wall", "wall_b", "wall_c"], "doorway": ["doorway", "doorway_b"],
 	"ceiling": ["ceiling", "ceiling_b", "ceiling_c"], "corner": ["corner"], "pillar": ["pillar"], "platform": ["platform"],
-	"lockdown_gate": ["lockdown_gate"], "tunnel_ring": ["tunnel_ring"],
+	"lockdown_gate": ["lockdown_gate"], "tunnel_ring": ["tunnel_ring"], "exit_frame": ["exit_frame"],
 	"far_field": ["far_field", "far_field_b", "far_field_c"], "far_floor": ["far_floor", "far_floor_b", "far_floor_c"],
 	"far_ceiling": ["far_ceiling", "far_ceiling_b", "far_ceiling_c"],
 }
@@ -439,7 +439,7 @@ func test_mesh_parts_are_cached_per_tier_and_mirror() -> void:
 # ---------------------------------------------------------------- сетка
 
 func test_grid_modules_fit_the_cell() -> void:
-	for module in ["floor", "floor_b", "floor_c", "ceiling", "wall", "wall_b", "wall_c", "doorway", "doorway_b", "corner", "pillar", "platform", "lockdown_gate"]:
+	for module in ["floor", "floor_b", "floor_c", "ceiling", "wall", "wall_b", "wall_c", "doorway", "doorway_b", "corner", "pillar", "platform", "lockdown_gate", "exit_frame"]:
 		var box := _aabb(_load("env", module))
 		assert_float(box.size.x).override_failure_message("%s: шире ячейки (%.2f)" % [module, box.size.x]).is_less(CELL_FIT)
 		assert_float(box.size.z).override_failure_message("%s: глубже ячейки (%.2f)" % [module, box.size.z]).is_less(CELL_FIT)
@@ -656,3 +656,24 @@ func test_hack_pad_is_a_thin_plate_under_the_feet() -> void:
 	assert_float(box.position.y).is_between(-0.01, 0.01)
 	var plate := _aabb((_load("props", "hack_pad")).find_child("pad_plate", true, false))
 	assert_float(plate.size.y).is_between(0.025, 0.035)  # плита 3 см
+
+
+# ---------------------------------------------------------------- маяк предметов (Beacon) и выход без стен (exit_frame)
+
+
+
+func test_exit_frame_is_a_free_standing_frame_with_an_empty_opening() -> void:
+	var ef := _load("env", "exit_frame")
+	var gate := _aabb(_load("env", "lockdown_gate"))
+	var box := _aabb(ef)
+	assert_float(absf(box.size.x - gate.size.x)).override_failure_message("ширина %.2f против ворот %.2f" % [box.size.x, gate.size.x]).is_less(0.3)  # тот же проём, что у ворот
+	assert_float(box.size.y).override_failure_message("высота столбов %.2f" % box.size.y).is_between(2.2, 2.9)
+	assert_float(box.size.z).override_failure_message("рамка не стена: глубина %.2f" % box.size.z).is_less(0.6)
+	for mi in _meshes(ef):
+		var b: AABB = mi.transform * mi.get_aabb()
+		var on_floor := b.end.y < 0.1  # порог: плита 3 см и точки
+		var above := b.position.y > 1.9  # перемычка
+		var beside := b.position.x >= 0.5 or b.end.x <= -0.5  # столбы-занавесы по бокам
+		assert_bool(on_floor or above or beside).override_failure_message("%s: перекрывает проём" % mi.name).is_true()
+	var sill := _aabb(ef.find_child("exit_sill", true, false))
+	assert_float(sill.size.y).override_failure_message("порог — тонкая плита 3 см").is_between(0.025, 0.04)

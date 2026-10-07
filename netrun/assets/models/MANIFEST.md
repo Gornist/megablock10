@@ -27,6 +27,7 @@
 | `models/props/dead_deck.glb` | 68 / 300 | 9 / 20 | 2 / 4 | 0 | 3 | 0.18 × 0.065 × 0.11 | points, solid_dark, streaks | — | center | ок |
 | `models/env/doorway.glb` | 0 / 300 | 18 / 40 | 46 / 80 | 0 | 3 | 1.9678 × 2.6921 × 0.1873 | points, streaks | — | floor | ок |
 | `models/env/doorway_b.glb` | 0 / 300 | 18 / 40 | 50 / 80 | 0 | 3 | 1.9513 × 2.6668 × 0.2822 | points, streaks | — | floor | ок |
+| `models/env/exit_frame.glb` | 28 / 120 | 48 / 150 | 35 / 140 | 0 | 5 | 1.9627 × 2.2792 × 0.1789 | points, solid_dark, streaks | — | floor | ок |
 | `models/env/far_ceiling.glb` | 936 / 1100 | 117 / 700 | 247 / 260 | 1 | 4 | 10.84 × 2.9737 × 10.8 | points, shell_soft, solid_dark, streaks | — | ceiling | ок |
 | `models/env/far_ceiling_b.glb` | 648 / 1100 | 123 / 700 | 229 / 260 | 1 | 4 | 10.84 × 2.9605 × 10.8 | points, shell_soft, solid_dark, streaks | — | ceiling | ок |
 | `models/env/far_ceiling_c.glb` | 468 / 1100 | 118 / 700 | 234 / 260 | 1 | 4 | 10.84 × 2.9751 × 10.8 | points, shell_soft, solid_dark, streaks | — | ceiling | ок |
