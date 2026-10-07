@@ -109,22 +109,7 @@ static func route_from_points(points: Array) -> Array:
 ## Направление взгляда: Vector2i (dir8) как есть; строка "N"/"NE"/"E"/"SE"/"S"/"SW"/"W"/"NW" (север — к −Z, как у карты); массив — по первому
 ## элементу; всё прочее (нет значения, неизвестное имя) — ZERO, «направление не менять».
 static func look_dir(v: Variant) -> Vector2i:
-	if v is Vector2i:
-		return v
-	if v is Array:
-		var a: Array = v
-		return look_dir(a[0]) if not a.is_empty() else Vector2i.ZERO
-	if v is String:
-		match String(v).to_upper():
-			"N": return Vector2i(0, -1)
-			"NE": return Vector2i(1, -1)
-			"E": return Vector2i(1, 0)
-			"SE": return Vector2i(1, 1)
-			"S": return Vector2i(0, 1)
-			"SW": return Vector2i(-1, 1)
-			"W": return Vector2i(-1, 0)
-			"NW": return Vector2i(-1, -1)
-	return Vector2i.ZERO
+	return NodeGrid.look_dir(v)
 
 
 func cell() -> Vector2i:

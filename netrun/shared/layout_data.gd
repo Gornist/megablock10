@@ -240,7 +240,7 @@ func _route(src: Variant) -> Dictionary:
 		var c: Variant = _point_cell(pd)
 		if c == null:
 			return {"error": "route: точка без клетки в пределах карты"}
-		out.append({"cell": c, "wait": maxi(int(pd.get("wait", 0)), 0), "look": TickIce.look_dir(pd.get("look"))})
+		out.append({"cell": c, "wait": maxi(int(pd.get("wait", 0)), 0), "look": NodeGrid.look_dir(pd.get("look"))})
 	return {"route": out}
 
 
