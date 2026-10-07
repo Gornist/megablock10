@@ -124,6 +124,8 @@ func start_xr() -> bool:
 	# Сглаживание, масштаб и фовеация из netrun.cfg [render] — один раз при старте (RenderConfig).
 	render.apply_msaa(get_viewport())
 	xr_render_missing = render.apply_xr(iface)
+	# Панели слоями композитора: хосты (XrLayerHost) решают по этому флагу в первом кадре, когда XR уже поднят.
+	XrLayerHost.layers_requested = RenderConfig.layers_enabled(render.layers)
 	# Сидя: опорная точка — голова, а не пол.
 	if "play_area_mode" in iface:
 		iface.play_area_mode = XRInterface.XR_PLAY_AREA_SITTING
