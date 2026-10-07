@@ -44,11 +44,15 @@ const PAL_ICE := Color("d9f8ff")         # ледяной белый: самые
 const PAL_THREAT := Color("ff1f3d")      # только угроза: ICE, его взгляд, отказ
 const PAL_THREAT_HOT := Color("ff7a6b")  # светлый красный: предупреждение, шаг ICE
 const PAL_DIM := Color("2d6b78")         # погасший голубой: недоступно, фон шкал
+const PAL_VOID := Color("02050a")        # чёрная завеса (экран конца), не чистый чёрный
+const PAL_AMBER := Color("ff7a1a")       # янтарь: ТОЛЬКО экран деки (STYLE.md), слои deck_*
 const LAYERS := {
 	# Клетки пола
 	"cell_occupied_fill": Color(PAL_CYAN, 0.14),   # занятая клетка (укрытие, хранилище): слабая голубая заливка
 	"cell_occupied_edge": Color(PAL_CYAN, 0.55),   # и контур клетки
-	"cell_vision": Color(PAL_THREAT_HOT, 0.20),    # клетка в зрении ICE (TickFloor)
+	# Клетка в зрении ICE (TickFloor): тёмно-красная заливка на тёмном фоне читается КОРИЧНЕВОЙ, поэтому заливка почти прозрачна, а читается контур клетки
+	"cell_vision_fill": Color(PAL_THREAT_HOT, 0.10),
+	"cell_vision_edge": Color(PAL_THREAT_HOT, 0.85),
 	"cell_future": Color(PAL_CYAN, 0.30),          # клетка будущего положения (FUTURE_TINT)
 	# Прицел прыжка
 	"aim_ok": PAL_CYAN,                            # безопасно
@@ -81,6 +85,13 @@ const LAYERS := {
 	"hud_off": PAL_DIM,
 	"end_win": PAL_CYAN,
 	"end_lose": PAL_THREAT,
+	"end_veil": PAL_VOID,                          # завеса экрана конца (фейд в тёмное)
+	# Указка деки (луч из руки к панелям)
+	"pointer_dot": PAL_ICE,                        # точка на панели
+	"pointer_press": PAL_CYAN,                     # нажатие
+	"pointer_beam": Color(PAL_CYAN, 0.50),         # луч
+	# Экран деки: янтарь разрешён только здесь (STYLE.md), 2D-интерфейс деки (DeckTheme/mb_*) остаётся своей системой в этой гамме
+	"deck_screen": PAL_AMBER,
 }
 
 
@@ -117,6 +128,13 @@ const KNOBS := {
 	"halo_far": false,       # ореол у дальних пластов /far_* (по умолчанию выключен: вдвое-втрое больше перерисовки)
 	"solid_base": "",        # цвет плит solid_dark «#rrggbb»; пусто — по умолчанию из шейдера
 	"edge_glow": 2.2,        # яркость рёбер укрытий и брусьев выхода (PILLAR_EDGE.edge_glow)
+	# Мерцание кромок плит пола/потолка/дальних пластов (две линии на расстоянии 3 см сходятся в пиксель). Меры независимы, комбинируются:
+	"rim_top_only": false,   # светится только лицевая грань плиты, боковая полоска кромки погашена (одна линия вместо двух)
+	"plate_flat": false,     # боковые грани плит отбрасываются: плита без толщины
+	"rim_far_min": 1.0,      # яркость кромки плит на дистанции ≥ rim_far_end (1 — не гасить; 0 — гасить полностью)
+	"rim_far_start": 8.0,    # с какой дистанции, м, кромка плит начинает гаснуть
+	"rim_far_end": 20.0,     # на какой дистанции, м, она достигает rim_far_min
+	"skirt_top_fade": 0.0,   # доля высоты вуали сверху, где плотность растёт с нуля (0 — выкл.; 0,12 — ориентир): вуаль отрывается от кромки плиты
 }
 static var _tuned := {}
 
@@ -154,6 +172,12 @@ static func tune_from_config(cfg: ConfigFile, section := "assets") -> void:
 static func reset_tuning() -> void:
 	_tuned = {}
 	fringe_on = true
+
+
+## Меш — плита пола/потолка/дальнего пласта (а не объём вроде укрытия, у которого боковые рёбра должны светиться): `slab`, `tiles`, `*_plates`.
+static func _is_plate(mi: MeshInstance3D, _root: Node) -> bool:
+	var n := String(mi.name)
+	return n == "slab" or n == "tiles" or n.ends_with("_plates")
 
 
 static func _k(name: String) -> Variant:
@@ -240,6 +264,14 @@ static func apply(root: Node, tier: String = "") -> void:
 			if fringe_on and (String(mi.name) == "pillar_block" or String(mi.name).begins_with("exit_bar") or String(mi.name) == "vault_body"):
 				var lit := String(mi.name) != "vault_body"
 				m.next_pass = _fringe_chain(0, _k("edge_glow") if lit else FRINGE_GLOW_DEFAULT)
+			if src.resource_name == "solid_dark" and _is_plate(mi, root):  # ручки мерцания кромок плит (шейдер solid_dark)
+				m.set_shader_parameter("rim_top_only", 1.0 if bool(_k("rim_top_only")) else 0.0)
+				m.set_shader_parameter("plate_flat", 1.0 if bool(_k("plate_flat")) else 0.0)
+				m.set_shader_parameter("rim_far_min", float(_k("rim_far_min")))
+				m.set_shader_parameter("rim_far_start", float(_k("rim_far_start")))
+				m.set_shader_parameter("rim_far_end", float(_k("rim_far_end")))
+			if String(mi.name).ends_with("_skirt") and float(_k("skirt_top_fade")) > 0.0:  # ручка: вуаль отрывается от кромки плиты
+				m.set_shader_parameter("top_fade", float(_k("skirt_top_fade")))
 			if src.resource_name == "solid_dark" and String(_k("solid_base")) != "":  # ручка: цвет плит
 				m.set_shader_parameter("base_color", Color(String(_k("solid_base"))))
 			if src.resource_name == "streaks":  # ручка: минимальная ширина штриха в пикселях (антиалиасинг)
