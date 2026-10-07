@@ -16,10 +16,11 @@ uniform float patch_drift : hint_range(0.0, 0.2) = 0.02;   // медленное
 uniform float rim_width : hint_range(0.005, 0.2) = 0.03;   // ширина контура верха, м
 uniform float rim_alpha : hint_range(0.0, 1.0) = 0.5;      // яркость контура верха
 uniform float plate_size = 8.0;                            // сторона плиты, м (AssetMaterials берёт из AABB меша)
-// Сетка-разметка (по умолчанию выключена, включает AssetMaterials для env/floor_v3_<N>): тонкие линии шагом grid_step по локальным координатам плиты, цепочками
+// Сетка-разметка (по умолчанию выключена, включает AssetMaterials для env/floor_v3_<N>): тонкие линии шагом grid_step по мировым координатам (см. grid_origin), цепочками
 // точек (grid_dot — период точек, 0 — сплошные), яркость убывает от центра плиты (grid_radius), часть клеток (cell_share) подсвечена мягким пятном. Без геометрии, антиалиас по fwidth.
 uniform float grid_alpha : hint_range(0.0, 1.0) = 0.0;
 uniform float grid_step : hint_range(0.1, 4.0) = 0.5;
+uniform vec2 grid_origin = vec2(0.0); // мировые xz угла клетки, если плита стоит не на целых метрах (Godot задаёт из раскладки узла)
 uniform float grid_width : hint_range(0.002, 0.1) = 0.012;
 uniform float grid_dot : hint_range(0.0, 1.0) = 0.1;
 uniform float grid_radius : hint_range(0.5, 40.0) = 6.0;
@@ -51,6 +52,8 @@ float vnoise2(vec2 p) {
 	return mix(mix(hash2(i), hash2(i + vec2(1.0, 0.0)), u.x), mix(hash2(i + vec2(0.0, 1.0)), hash2(i + vec2(1.0, 1.0)), u.x), u.y);
 }
 
+// p — мировые метры xz минус grid_origin: линии лежат на целых кратных grid_step мира (граница клетки хода при grid_step = 1), а не на координатах плиты.
+// r — расстояние от центра плиты, по нему гаснет яркость.
 float grid_k(vec2 p, float r) {
 	vec2 g = p / grid_step;
 	vec2 f = fract(g);
@@ -83,8 +86,8 @@ void fragment() {
 	float rim = (1.0 - smoothstep(0.0, rim_width, d)) * rim_alpha;
 	float extra = 0.0;
 	if (grid_alpha > 0.0 || cell_alpha > 0.0) {
-		vec2 p = (UV - vec2(0.5)) * plate_size;
-		float r = length(p);
+		float r = length((UV - vec2(0.5)) * plate_size);
+		vec2 p = v_wp.xz - grid_origin;
 		extra += grid_alpha * grid_k(p, r);
 		if (cell_alpha > 0.0) {
 			vec2 id = floor(p / grid_step);
