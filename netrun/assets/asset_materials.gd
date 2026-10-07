@@ -26,14 +26,17 @@ const BEACON_BEAM := {"halo": 0.5, "halo_width": 2.2, "end_fade": 0.6, "breathe"
 const GLASS_SHADER := preload("res://assets/shaders/glass.gdshader")
 
 ## ЭКСПЕРИМЕНТ «варианты пола» (env/floor_v<N>_<размер>, src/floor_variants.py): параметры шейдеров по номеру варианта и имени меша. Ключ — номер варианта, вложенный ключ — суффикс меша.
-## `_glass` (v1 пыль — слабая дымка; v3 решётка — сетка 0,5 м цепочками точек и подсвеченные клетки), `_skirt` (v2: яркая стенка ступени), `_plates` (контур верха плиты по UV).
+## `_glass` (v1 пыль — слабая дымка; v3 решётка — сплошные линии по границам клеток хода 1 м в мировых координатах, без случайных подсвеченных клеток: их принимали за занятые), `_skirt` (v2: яркая стенка ступени), `_plates` (контур верха плиты по UV).
 const FLOOR_V := {
 	1: {"_glass": {"glass_alpha": 0.06, "center_k": 1.0, "patch_amount": 0.5, "rim_alpha": 0.25}, "dust_streaks": {"glow": 3.2, "halo": 0.3, "halo_width": 2.0, "breathe": 0.15}},
 	2: {"_skirt": {"veil_alpha": 0.32, "falloff": 0.9}, "_plates": {"uv_rim": 0.03, "edge_glow": 1.6, "edge_uneven": 0.5}},
-	3: {"_glass": {"glass_alpha": 0.12, "center_k": 0.8, "patch_amount": 0.4, "rim_alpha": 0.5, "grid_alpha": 0.85, "grid_step": 0.5, "grid_width": 0.016, "grid_dot": 0.1,
-			"grid_radius": 6.0, "cell_alpha": 0.12, "cell_share": 0.10}},
+	3: {"_glass": {"glass_alpha": 0.12, "center_k": 0.8, "patch_amount": 0.4, "rim_alpha": 0.5, "grid_alpha": 0.85, "grid_step": 1.0, "grid_width": 0.02, "grid_dot": 0.0,
+			"grid_radius": 9.0, "cell_alpha": 0.0, "cell_share": 0.10}},
 	4: {"_plates": {"uv_rim": 0.02, "edge_glow": 1.2, "edge_uneven": 0.7}},
 }
+
+## Параметры solid_dark.gdshader для `pillar_block` (env/pillar): ровный свет рёбер без «рваности».
+const PILLAR_EDGE := {"edge_glow": 2.2, "edge_uneven": 0.0}
 
 ## Параметры haze.gdshader для `edge_mist` (env/room_edge_<N>): низкая дымка вдоль границы комнаты, не туман горизонта.
 const EDGE_MIST := {"haze_alpha": 0.6, "glow": 1.6, "shape": 1.0, "noise_amount": 0.35, "stripe_amount": 0.12, "stripe_count": 160.0}
@@ -109,6 +112,9 @@ static func apply(root: Node, tier: String = "") -> void:
 						m.set_shader_parameter(k, EDGE_MIST[k])
 			if String(mi.name) == "edge_streaks_hang":  # подвесные штрихи кромки комнаты (точек по периметру нет): ярче штрихов плит, иначе край не читается
 				m.set_shader_parameter("glow", EDGE_STREAK_GLOW)
+			if String(mi.name) == "pillar_block" or String(mi.name) == "pillar_base":  # укрытие (корпус и рамка по границе клетки): рёбра ровные и яркие, иначе в очках не видно, где оно (у тайлов пола свет рваный намеренно)
+				for k in PILLAR_EDGE:
+					m.set_shader_parameter(k, PILLAR_EDGE[k])
 			if tier != "" and TIER_TINT.has(tier):
 				m.set_shader_parameter("tint", TIER_TINT[tier])
 				m.set_shader_parameter("tint_amount", 1.0)

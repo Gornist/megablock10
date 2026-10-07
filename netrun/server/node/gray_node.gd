@@ -136,6 +136,7 @@ var _tick_mode := false
 var _tick_ices: Dictionary = {}      # IceNode -> TickIce (только Soft ICE тактового режима)
 var _intents: Dictionary = {}        # IceNode -> TickIce.intent() после последнего такта (рассылается 10 раз/с без пересчёта)
 var _entered_tick: Dictionary = {}   # сессия -> номер такта узла, когда она вошла (скрыта первые entry_hidden_ticks тактов)
+var _grace_spent: Dictionary = {}    # сессия -> true: ходила после входа, грейс прибытия (arrival_grace_ticks) кончился досрочно
 var _black_vt := 0.0                 # виртуальное время Black ICE: за такт оно идёт на black_tick_sec
 
 ## Тактовый режим: строка о такте в журнал сервера (то же печатается в stdout), как ice_logged.
@@ -910,6 +911,18 @@ func register_move(session: String) -> void:
 func _mark_entered_tick(session: String) -> void:
 	if _tick_mode:
 		_entered_tick[session] = tick_clock.tick_no
+		_grace_spent.erase(session)
+
+
+## Грейс прибытия (W3, правило «безопасный выход портала»): нетраннер, вошедший в узел и ещё не ходивший, неуязвим для ICE в тактах n после
+## скрытых entry_hidden_ticks: n − вход ≤ entry_hidden_ticks + arrival_grace_ticks. ICE не заходит в его клетку и не берёт его, счётчик ≤ «?».
+## Кончается досрочно, как только нетраннер сходил (его ход в окне перед тактом n снимает грейс со следующего такта): стоять вечно нельзя.
+func _arrival_immune(session: String, n: int) -> bool:
+	if _grace_spent.has(session):
+		return false
+	var since := n - int(_entered_tick.get(session, -1000000))
+	var hidden := int(settings.get("entry_hidden_ticks", 2))
+	return since >= 1 and since <= hidden + int(settings.get("arrival_grace_ticks", 2))
 
 
 ## Хук NetServer.move_check: нетраннер уже сходил в этом такте (Т4).
@@ -982,6 +995,7 @@ func _run_tick(live: Array, meters: Dictionary, dt_sec: float) -> void:
 	tick_logged.emit(line)
 	var pos := {}
 	var hidden := {}
+	var immune := {}     # неуязвимые: грейс прибытия (скрытые тоже — сразу после скрытых тактов он продолжается)
 	var seen_pos := {}   # те, кого видно ICE (не скрыты): для Black ICE
 	var hide_ticks := int(settings.get("entry_hidden_ticks", 2))
 	for session in live:
@@ -992,13 +1006,14 @@ func _run_tick(live: Array, meters: Dictionary, dt_sec: float) -> void:
 		var h := ds.is_ghost(_now) or n - int(_entered_tick.get(session, -1000000)) <= hide_ticks
 		pos[session] = avatar.position
 		hidden[session] = h
+		immune[session] = _arrival_immune(session, n)
 		if not h:
 			seen_pos[session] = avatar.position
 	var secs := minf(dt_sec, float(settings.get("tick_window_sec", 5.0)))
 	var captured := {}   # сессия -> ICE, который её взял
 	for ice: IceNode in _tick_ices:
 		var ti: TickIce = _tick_ices[ice]
-		var evs := ti.tick(pos, hidden)
+		var evs := ti.tick(pos, hidden, immune)
 		ice.position = NodeGrid.center(ti.cell())
 		_sync_brain_view(ice, ti)
 		for ev: Dictionary in evs:
@@ -1018,7 +1033,15 @@ func _run_tick(live: Array, meters: Dictionary, dt_sec: float) -> void:
 		if net.has_avatar(session):
 			(captured[session] as IceNode).ejected.emit(session, "caught")
 	_step_black(seen_pos, meters)
+	for s: Variant in tick_clock.last_moved:
+		_grace_spent[s] = true   # ходила: грейс кончится со следующего такта (в этом ICE уже отходил по правилу)
+	# Следующий такт: кто будет неуязвим (по позиции сейчас) — по ним intent() строит шаг с обходом, стрелка не врёт.
+	var next_immune := {}
+	for session in pos:
+		if _arrival_immune(session, n + 1):
+			next_immune[session] = pos[session]
 	for ice: IceNode in _tick_ices:
+		(_tick_ices[ice] as TickIce).expect_immune(next_immune)
 		_intents[ice] = (_tick_ices[ice] as TickIce).intent()
 
 
@@ -1117,7 +1140,9 @@ func _broadcast_state() -> void:
 
 
 ## Тактовые поля ICE в state (старые id, p, f, s, b остаются): c — клетка [x, z], d — направление, st — состояние TickIce 0..3, nc / nd — клетка и
-## направление после следующего шага (намерение), aw — наибольший счётчик 0..6. Soft ICE — из TickIce; Black ICE (IceBrain) — по его позиции, без намерения.
+## направление после следующего шага (намерение), aw — наибольший счётчик 0..6, rt (необязательное) — клетки следующих 3 шагов [[x, z], …] (первая = nc,
+## клетка повторяется, пока ICE стоит; нет, если все три — его клетка), fp (необязательное) — [x, z] отпечатка, где ICE заметил нетраннера (Взгляд / Проверка; Проверка идёт к нему),
+## lost (необязательное) — 1 в тот такт, когда ICE потерял нетраннера (спал до нуля после замечания). Soft ICE — из TickIce; Black ICE (IceBrain) — по его позиции, без намерения.
 func _add_tick_fields(entry: Dictionary, ice: IceNode) -> void:
 	var ti: TickIce = _tick_ices.get(ice)
 	if ti != null:
@@ -1132,6 +1157,17 @@ func _add_tick_fields(entry: Dictionary, ice: IceNode) -> void:
 		entry["nc"] = [(it["next_cell"] as Vector2i).x, (it["next_cell"] as Vector2i).y]
 		entry["nd"] = [(it["next_dir"] as Vector2i).x, (it["next_dir"] as Vector2i).y]
 		entry["aw"] = int(it["aware"])
+		var ahead: Array = it.get("ahead", [])
+		var moves_ahead := false
+		for a: Vector2i in ahead:
+			if a != (it["cell"] as Vector2i):
+				moves_ahead = true
+		if moves_ahead:   # стоит все 3 шага — следа нет, поле не шлём
+			entry["rt"] = ahead.map(func(a: Vector2i) -> Array: return [a.x, a.y])
+		if it.get("fp") is Vector2i:   # Взгляд / Проверка: клетка, где ICE заметил нетраннера
+			entry["fp"] = [(it["fp"] as Vector2i).x, (it["fp"] as Vector2i).y]
+		if bool(it.get("lost", false)):   # потерял нетраннера (один такт): над ICE «…»
+			entry["lost"] = 1
 		var soft := ice_settings.duplicate(true)
 		soft.merge(node_def.get("ice_settings", {}), true)
 		entry["sc"] = float(_tick_ice_settings(soft)["sight_cells"])   # дальность зрения в клетках: по ней клиент рисует свет на полу и красит рамку прицела
@@ -1244,6 +1280,7 @@ func _on_avatar_removed(session: String) -> void:
 ## ICE забывает нетраннера (вышел, выброшен, ушёл в другой узел): осведомлённость и память Soft ICE на клетках, цель IceBrain.
 func _forget_in_ices(session: String) -> void:
 	_entered_tick.erase(session)
+	_grace_spent.erase(session)
 	for ice in _ices:
 		if ice.brain != null:
 			ice.brain.forget(session)

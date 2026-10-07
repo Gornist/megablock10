@@ -142,3 +142,17 @@ func test_граф_сообщает_о_раскладке_не_вмещающе�
 	assert_str(joined).contains("a: шардов 3, допустимо 1…2")
 	assert_str(joined).contains("a: связей 4, слотов порталов 3")
 	assert_str(joined).contains("нет_такой")
+
+
+## Фойе и учебный узел — для новичков (П3): тир BASE (в игре он же «лёгкий»; понятия NORMAL нет), замок хранилища не длиннее 1 и ловушек в замке нет.
+func test_узлы_с_раскладкой_фойе_имеют_тир_BASE_и_замок_не_длиннее_одного() -> void:
+	var g := NodeGraph.load_file("res://data/graph.json")
+	var foyers := 0
+	for id: String in g.nodes:
+		if str(g.nodes[id].get("layout", "")) in ["foyer", "foyer_tutorial"]:
+			foyers += 1
+			assert_str(g.nodes[id]["tier"]).is_equal("BASE")
+			var p: Dictionary = BreachData.shared().tier_params(g.nodes[id]["tier"])
+			assert_int(int(p["lock_length"])).is_less_equal(1)
+			assert_int((p["lock_traps"] as Vector2i).y).is_equal(0)
+	assert_int(foyers).is_equal(4)

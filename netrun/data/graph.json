@@ -27,6 +27,7 @@
     "tick_inhale_sec": 0.5,
     "black_tick_sec": 1.0,
     "entry_hidden_ticks": 2,
+    "arrival_grace_ticks": 2,
     "trace": {"weights": {"seen_by_ice": 2.0}, "decay_per_sec": 0.2},
     "ice": {"catch_grace_sec": 2.0, "catch_range": 1.0},
     "black_ice": {"sight_range": 12.0, "notice_per_sec": 0.5, "chase_speed": 2.5, "catch_range": 1.5, "catch_grace_sec": 0.0}

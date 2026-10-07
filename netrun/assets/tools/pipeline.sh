@@ -128,7 +128,8 @@ python3 src/validate.py --root out'
     ssh "$HOST" "$GD_ENV; cd ~/assets-gd && rm -rf shots && timeout 150 $DISPLAY_LOCK ~/.local/bin/godot --display-driver wayland --path . --resolution 1280x720 -- --out=/home/nick/assets-gd/shots $extra 2>&1 | grep -E 'ERROR|SCRIPT|Parse|SHADER' || true"
     if [ $grid -eq 1 ]; then make_grid /home/nick/assets-gd/shots; fi
     scp -rq "$HOST:~/assets-gd/shots" "$out"
-    if [ $grid -eq 1 ]; then echo "сетка: $out/grid.png (отдельные кадры — рядом)"; else echo "кадры: $out"; fi ;;
+    if [ $grid -eq 1 ]; then echo "сетка: $out/grid.png (отдельные кадры — рядом)"; else echo "кадры: $out"; fi
+    echo "ИЗОЛИРОВАНО, НЕ ПРИЁМКА: своя сцена и камеры. Приёмка вида — netrun/tools/dev.sh shot res://tests/foyer_preview.tscn (клиентский NodeView), окончательно — кадр с очков (docs: ARCHITECTURE.md §18)." ;;
   movie)
     mp4=${2:-/tmp/assets-room.mp4}; extra=${*:3}; ensure_project
     ssh "$HOST" "$GD_ENV; cd ~/assets-gd && rm -f room.avi && timeout 240 $DISPLAY_LOCK ~/.local/bin/godot --display-driver wayland --path . --resolution 1280x720 --write-movie /home/nick/assets-gd/room.avi --fixed-fps 24 --quit-after 168 -- --movie $extra 2>&1 | grep -E 'ERROR|SCRIPT|Parse' || true"

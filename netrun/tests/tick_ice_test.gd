@@ -380,3 +380,221 @@ func test_после_погони_во_время_ожидания_патрул�
 		ice.tick({})
 	assert_int(ice.state()).is_equal(0)
 	assert_int(ice.cell().y).is_equal(8)   # вернулся на строку маршрута и снова идёт по нему (на точке (6;8) заново отстоял своё)
+
+
+# --- Грейс прибытия (W3): неуязвимый не берётся и в его клетку не заходят ---
+
+func test_грейс_патруль_не_заходит_в_клетку_неуязвимого_и_счётчик_не_взлетает() -> void:
+	var g := NodeGrid.new()
+	var ice := TickIce.new({}, _route([Vector2i(2, 8), Vector2i(14, 8)]), g)
+	var tg := _at(Vector2i(4, 8))
+	var ev := ice.tick(tg, {}, {"s": true})
+	assert_object(ice.cell()).is_equal(Vector2i(3, 8))   # встал перед ним, как при «наткнулся»
+	assert_int(ice.awareness_of("s")).is_less_equal(TickIce.AWARENESS_IMMUNE_MAX)   # самое большее «?»
+	assert_int(ice.state()).is_less_equal(TickIce.Mode.GAZE)
+	assert_int(_kinds(ev, "search_started")).is_equal(0)
+	for _i in 4:
+		ev = ice.tick(tg, {}, {"s": true})
+		assert_int(_kinds(ev, "capture")).is_equal(0)   # захвата нет, сколько бы ни стоял на виду
+		assert_object(ice.cell()).is_not_equal(Vector2i(4, 8))
+	assert_int(ice.awareness_of("s")).is_less_equal(TickIce.AWARENESS_IMMUNE_MAX)
+
+
+func test_грейс_скрытый_неуязвимый_тоже_обходится() -> void:
+	# Скрытый в клетке на пути патруля раньше пропускался насквозь (ICE вставал на него): неуязвимого ICE обходит и скрытого.
+	var g := NodeGrid.new()
+	var ice := TickIce.new({}, _route([Vector2i(2, 8), Vector2i(14, 8)]), g)
+	ice.tick(_at(Vector2i(4, 8)), {"s": true}, {"s": true})
+	assert_object(ice.cell()).is_equal(Vector2i(3, 8))
+	assert_int(ice.awareness_of("s")).is_equal(0)
+
+
+func test_после_грейса_прежнее_поведение_наткнулся_и_захват() -> void:
+	var g := NodeGrid.new()
+	var ice := TickIce.new({}, _route([Vector2i(2, 8), Vector2i(14, 8)]), g)
+	var tg := _at(Vector2i(4, 8))
+	ice.tick(tg, {}, {"s": true})   # грейс: обошёл
+	assert_int(ice.awareness_of("s")).is_less_equal(2)
+	var caps := 0
+	for _i in 4:
+		caps += _kinds(ice.tick(tg), "capture")   # грейса нет — как обычно
+	assert_int(ice.state()).is_equal(TickIce.Mode.SEARCH)
+	assert_int(caps).is_greater(0)
+
+
+func test_грейс_намерение_строится_с_обходом_клетки() -> void:
+	var g := NodeGrid.new()
+	var ice := TickIce.new({}, _route([Vector2i(2, 8), Vector2i(14, 8)]), g)
+	ice.expect_immune({"s": NodeGrid.center(Vector2i(4, 8))})
+	var it := ice.intent()
+	assert_object(it["next_cell"]).is_equal(Vector2i(3, 8))   # встанет перед ним
+	assert_int(it["state"]).is_equal(TickIce.Mode.PATROL)
+	ice.expect_immune({})
+	assert_object(ice.intent()["next_cell"]).is_equal(Vector2i(4, 8))   # без грейса шагнул бы в его клетку
+
+
+# --- След маршрута на 3 шага (state.rt, PR B2) ---
+
+func test_след_маршрута_три_клетки_первая_равна_следующему_шагу() -> void:
+	var ice := _east_ice(NodeGrid.new())
+	var it := ice.intent()
+	var ahead: Array = it["ahead"]
+	assert_int(ahead.size()).is_equal(TickIce.AHEAD_STEPS)
+	assert_object(ahead[0]).is_equal(it["next_cell"])
+	assert_array(ahead).is_equal([Vector2i(3, 8), Vector2i(5, 8), Vector2i(7, 8)])   # патруль идёт по 2 клетки
+	assert_object(ice.cell()).is_equal(Vector2i(1, 8))   # intent() ICE не двигает
+
+
+func test_след_маршрута_с_ожиданием_повторяет_клетку_пока_ICE_стоит() -> void:
+	var ice := TickIce.new({}, _wait_route(), NodeGrid.new())
+	ice.tick({})
+	ice.tick({})   # пришёл на (6;4), впереди 2 такта ожидания
+	assert_array(ice.intent()["ahead"]).is_equal([Vector2i(6, 4), Vector2i(6, 4), Vector2i(6, 6)])
+	ice.tick({})
+	assert_array(ice.intent()["ahead"]).is_equal([Vector2i(6, 4), Vector2i(6, 6), Vector2i(6, 8)])
+
+
+func test_след_маршрута_совпадает_с_тем_что_ICE_делает_на_самом_деле() -> void:
+	var g := NodeGrid.new()
+	for route: Array in [[Vector2i(1, 8), Vector2i(14, 8)], _wait_route()]:
+		var ice := TickIce.new({}, route, g)
+		for _t in 14:
+			var ahead: Array = ice.intent()["ahead"]
+			assert_array(ahead).is_equal(_clone_run(route, g, _t, TickIce.AHEAD_STEPS))
+			ice.tick({})
+
+
+## Свежий ICE по тому же маршруту: `skip` тактов вхолостую, затем клетки следующих `n` тактов.
+func _clone_run(route: Array, g: NodeGrid, skip: int, n: int) -> Array:
+	var ice := TickIce.new({}, route, g)
+	for _i in skip:
+		ice.tick({})
+	var out: Array = []
+	for _i in n:
+		ice.tick({})
+		out.append(ice.cell())
+	return out
+
+
+# --- «?» с последствием (PR B3): взгляд на клетку, отпечаток, «потерял» ---
+
+func test_заметил_взгляд_поворачивается_на_клетку_в_тот_же_такт() -> void:
+	var g := NodeGrid.new()
+	var ice := _still_ice(g, Vector2i(4, 8))   # смотрит на восток
+	var seen := Vector2i(7, 6)   # на периферии конуса: 34° от оси
+	assert_int(TickVision.classify(g, ice.cell(), ice.dir(), seen, 6.0, 50.0, 25.0)).is_equal(TickVision.PERIPHERY)
+	assert_object(ice.dir()).is_equal(EAST)
+	ice.tick(_at(seen))
+	assert_int(ice.state()).is_equal(TickIce.Mode.GAZE)
+	assert_object(ice.dir()).is_equal(NodeGrid.dir8(ice.cell(), seen))   # повернулся на клетку, где заметил
+	assert_object(ice.dir()).is_not_equal(EAST)
+	assert_object(ice.intent()["next_dir"]).is_equal(ice.dir())   # и стрелка / свет на следующий такт это знают
+
+
+func test_проверка_идёт_к_отпечатку_а_не_к_клетке_куда_цель_перешла() -> void:
+	var g := NodeGrid.new()
+	var ice := _still_ice(g, Vector2i(4, 8))
+	var a := Vector2i(9, 8)
+	var b := Vector2i(9, 10)
+	ice.tick(_at(a))   # такт 1: заметил на A (фокус, счётчик 2)
+	assert_object(ice.footprint()).is_equal(a)
+	ice.tick(_at(b))   # такт 2: цель на B, счётчик 4 — Проверка; отпечаток остался A
+	assert_int(ice.state()).is_equal(TickIce.Mode.CHECK)
+	assert_object(ice.footprint()).is_equal(a)
+	assert_object(ice.intent()["fp"]).is_equal(a)
+	ice.tick(_at(b))   # такт 3: шаг Проверки — по прямой к A (ряд 8), а не к B (ряд 10)
+	assert_int(ice.cell().y).is_equal(8)
+	assert_int(ice.cell().x).is_greater(4)
+
+
+func test_не_нашёл_потерял_один_такт_и_возврат_на_маршрут() -> void:
+	var g := NodeGrid.new()
+	var ice := _east_ice(g)   # патруль (1;8) → (14;8), 2 клетки за такт
+	var tg := _at(Vector2i(5, 8))
+	var lost: Array[bool] = []
+	var cells: Array[Vector2i] = []
+	ice.tick(tg)   # такт 1: шаг до (3;8), цель в двух клетках, фокус: счётчик 2 — Взгляд
+	lost.append(ice.lost())
+	cells.append(ice.cell())
+	assert_int(ice.state()).is_equal(TickIce.Mode.GAZE)
+	assert_object(ice.footprint()).is_equal(Vector2i(5, 8))
+	for _i in 3:   # цель ушла из виду (скрыта): счётчик 2 → 1 → 0 → 0
+		ice.tick(tg, {"s": true})
+		lost.append(ice.lost())
+		cells.append(ice.cell())
+	assert_array(lost).is_equal([false, false, true, false])   # «потерял» ровно на такте, когда счётчик дошёл до нуля
+	assert_int(ice.state()).is_equal(TickIce.Mode.PATROL)
+	assert_object(ice.footprint()).is_null()
+	assert_object(cells[2]).is_equal(Vector2i(3, 8))   # на потерянном такте ещё стоит
+	assert_object(cells[3]).is_equal(Vector2i(5, 8))   # дальше идёт по маршруту
+	ice.tick(tg, {"s": true})
+	assert_bool(ice.lost()).is_false()
+
+
+func test_намерение_несёт_отпечаток_и_потерял() -> void:
+	var g := NodeGrid.new()
+	var ice := _still_ice(g, Vector2i(4, 8))
+	assert_object(ice.intent()["fp"]).is_null()
+	assert_bool(ice.intent()["lost"]).is_false()
+	ice.tick(_at(Vector2i(8, 8)))
+	assert_object(ice.intent()["fp"]).is_equal(Vector2i(8, 8))
+	for _i in 2:
+		ice.tick(_at(Vector2i(8, 8)), {"s": true})
+	assert_bool(ice.intent()["lost"]).is_true()
+	assert_object(ice.intent()["fp"]).is_null()
+
+
+func test_поиск_берёт_отпечатком_последнюю_клетку_цели_и_осмотр_у_старого_не_засчитывается() -> void:
+	var g := NodeGrid.new()
+	var ice := _still_ice(g, Vector2i(4, 8))
+	var a := Vector2i(9, 8)
+	var b := Vector2i(9, 10)
+	ice.tick(_at(a))
+	ice.tick(_at(a))   # Проверка, ICE ещё стоит
+	ice.tick(_at(a))   # дошёл до A? нет — идёт; цель держим на виду
+	for _i in 4:
+		ice.tick(_at(b))   # цель перешла на B и остаётся на виду — счётчик растёт до Поиска
+	assert_int(ice.state()).is_equal(TickIce.Mode.SEARCH)
+	for _i in 3:
+		ice.tick(_at(b))
+	assert_int(Vector2(ice.cell() - b).length() as int).is_less_equal(3)   # Поиск идёт за B, а не прочёсывает вокруг старого отпечатка
+
+
+# --- Без «наткнулся» (B5): ICE не входит в клетку игрока, упёрся → Поиск + красная стрелка, захват на следующем такте ---
+
+func test_упёрся_встаёт_перед_игроком_лицом_к_нему_и_красная_стрелка_уже_есть() -> void:
+	var g := NodeGrid.new()
+	var ice := TickIce.new({}, _route([Vector2i(2, 8), Vector2i(14, 8)]), g)
+	var player := Vector2i(4, 8)   # на пути патруля, в двух клетках перед ICE: шаг за 2 клетки упёрся бы в клетку игрока
+	var tg := _at(player)
+	var ev := ice.tick(tg)
+	assert_int(_kinds(ev, "capture")).is_equal(0)   # захвата в тот же такт нет
+	assert_object(ice.cell()).is_not_equal(player)
+	assert_int(ice.state()).is_equal(TickIce.Mode.SEARCH)
+	assert_int(_kinds(ev, "search_started")).is_equal(1)   # SEARCH_STARTED как обычно
+	var it := ice.intent()
+	var fc := {"c": it["cell"], "st": it["state"], "nc": it["next_cell"], "black": false}
+	assert_bool(TickForecast.is_precapture(fc, player)).is_true()   # на клетке игрока красная стрелка
+	assert_int(TickForecast.threat(g, [fc], player)).is_equal(TickForecast.RED)
+	assert_int(_kinds(ice.tick(tg), "capture")).is_equal(1)   # захват — на следующем такте
+
+
+func test_упёрся_а_игрок_ушёл_захвата_нет() -> void:
+	var g := NodeGrid.new()
+	var ice := TickIce.new({}, _route([Vector2i(2, 8), Vector2i(14, 8)]), g)
+	ice.tick(_at(Vector2i(4, 8)))
+	assert_object(ice.cell()).is_equal(Vector2i(3, 8))
+	var ev := ice.tick(_at(Vector2i(4, 14)))   # ушёл за пределы досягаемости
+	assert_int(_kinds(ev, "capture")).is_equal(0)
+
+
+func test_возврат_на_маршрут_не_входит_в_клетку_игрока() -> void:
+	var g := NodeGrid.new()
+	var ice := TickIce.new({}, _route([Vector2i(2, 8), Vector2i(14, 8)]), g)
+	ice._cell = Vector2i(4, 6)   # сошёл с маршрута
+	ice._off_route = true
+	var player := Vector2i(4, 7)   # первый шаг пути к маршруту — в клетку игрока
+	var ev := ice.tick(_at(player))
+	assert_object(ice.cell()).is_not_equal(player)
+	assert_int(_kinds(ev, "bump")).is_equal(1)
+	assert_int(ice.state()).is_equal(TickIce.Mode.SEARCH)

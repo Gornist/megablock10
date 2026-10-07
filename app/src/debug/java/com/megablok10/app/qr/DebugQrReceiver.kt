@@ -28,6 +28,7 @@ import kotlinx.coroutines.launch
  *  - DEBUG_PEER   --es pk --es cs --es fac --es host --ei port   добавить пира без NSD
  *  - DEBUG_CONFIG --es clock <N> --es timer <N> --es autosolve true|false / port ? (напечатать порт приложения: "port=N")   см. DebugConfig
  *  - DEBUG_SET    --es netrun "QR стойки|id демона,id демона|id защищённого" | "dismiss" (закрыть итог входа) — вход в «Сеть» (e2e netrun-run): скан стойки и сдача выбранных демонов Мосту, как из экрана выбора деки
+ *  - DEBUG_SET    --es sayvoice "получатель|секунды[|offline]" — голосовое сообщение из случайных байт (≈2,5 КБ/с, не речь) личным сообщением: проверка доставки, очереди и файла у получателя (voice.VoiceMessenger)
  *  - DEBUG_SET    … / readreceipts on|off / readthread <pubKeyB64> (как открыть тред: отчёт о прочтении)
  *  - DEBUG_SET    --es create "Позывной:Фракция" / collector <url> / cs / fac / ram / balance / daemon "имя:1C,55:тир:ЭФФЕКТ" / pay "получатель:сумма:online|offline" [--ei burst N — N одновременных переводов] / contact "pk:позывной:фракция" / say "получатель|текст" / sayas "получатель|pk|позывной|фракция|текст" / give "daemon|shard:id:получатель[:offline]" / cancelitem <id> / cancel <txId> / cooldowns reset
  * Итог DEBUG_CONFIG / DEBUG_SET пишется в logcat с тегом MB10DBG (строки разбирает scripts/e2e/lib.sh — формат не менять).
@@ -129,6 +130,18 @@ class DebugQrReceiver : BroadcastReceiver() {
             val (to, text) = spec.split("|", limit = 2).let { it[0] to it.getOrElse(1) { "" } }
             if (to == "faction") graph.chat.sendFaction(me, text)
             else graph.chat.sendDirect(me, to, peerOf(to), text)
+        }
+        intent.getStringExtra("sayvoice")?.let { spec ->
+            val me = graph.identity.current ?: return@let
+            val parts = spec.split("|")
+            val to = parts[0]
+            val seconds = parts.getOrNull(1)?.toIntOrNull()?.coerceIn(1, 60) ?: 5
+            val offline = parts.getOrNull(2) == "offline"
+            val audio = ByteArray(seconds * 2_500).also { java.util.Random().nextBytes(it) }
+            val waveform = ByteArray(com.megablok10.app.voice.VoiceLimits.WAVEFORM_BARS) { (it * 4).toByte() }
+            val id = java.util.UUID.randomUUID().toString().replace("-", "")
+            val outcome = graph.voice.send(me, to, if (offline) null else peerOf(to), id, seconds * 1_000L, waveform, audio)
+            Log.i(TAG, "sayvoice id=$id bytes=${audio.size} -> $outcome")
         }
         // Добавить контакт как после скана QR: "pubKeyB64:позывной:фракция" (ключ base64 без ':').
         intent.getStringExtra("contact")?.let { spec ->

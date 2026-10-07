@@ -257,3 +257,18 @@ func test_path_к_занятой_клетке_идёт_к_соседней() -> 
 	assert_int(p.size()).is_equal(4)
 	# Уже рядом с занятой клеткой — идти некуда.
 	assert_array(g.path(Vector2i(4, 5), Vector2i(5, 5))).is_empty()
+
+
+func test_pick_клетка_хранилища_приземляет_на_площадку() -> void:
+	var g := _grid_with([Vector2i(2, 2), Vector2i(3, 2), Vector2i(2, 3), Vector2i(3, 3)])   # хранилище 2×2
+	for c: Vector2i in [Vector2i(2, 2), Vector2i(3, 3)]:
+		g.landing[c] = Vector2i(3, 4)   # площадка под ним
+	var from := NodeGrid.center(Vector2i(6, 4))
+	var r := g.pick(from, NodeGrid.center(Vector2i(3, 3)))
+	assert_str(r["kind"]).is_equal("hop")
+	assert_object(r["cell"]).is_equal(Vector2i(3, 4))
+	assert_object(r["p"]).is_equal(NodeGrid.center(Vector2i(3, 4)))
+	# клетка без записи landing, но занятая — по-прежнему отказ
+	assert_str(g.pick(from, NodeGrid.center(Vector2i(3, 2)))["reason"]).is_equal("occupied")
+	# стоишь уже на площадке — «ждать»
+	assert_str(g.pick(NodeGrid.center(Vector2i(3, 4)), NodeGrid.center(Vector2i(2, 2)))["kind"]).is_equal("wait")
