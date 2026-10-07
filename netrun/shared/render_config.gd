@@ -10,8 +10,9 @@ extends RefCounted
 ##                           ; (замеры на Pico 4: 4× даёт вспышки, 2× — мерцание граней)
 ## aa = "none"              ; экранное сглаживание: "none" (по умолчанию) или "fxaa" (Viewport.screen_space_aa)
 ## fringe = "on"            ; мягкая обводка силуэтов (AssetMaterials.fringe_on): "on" (по умолчанию) или "off"
-## layers = "off"           ; панели (дека, взлом, итог) слоями композитора OpenXR: "off" (по умолчанию) или "on"
-##                           ; (чёткий текст и линии; включать после проверки на очках, нужна поддержка слоёв рантаймом)
+## layers = "off"           ; панели (дека, взлом, итог) слоями композитора OpenXR: "off" (по умолчанию), "on" или "behind"
+##                           ; (чёткий текст и линии; нужна поддержка слоёв рантаймом). "on" — слой поверх сцены (руки и луч
+##                           ; пропадают за панелью); "behind" — слой позади сцены с вырезом в альфе, руки и луч рисуются над панелью
 ## scale = 1.0               ; множитель разрешения рендера (OpenXR render_target_size_multiplier), 0,5…2,0
 ##                           ; (1,25 роняет частоту до 60 Гц)
 ## foveation = 2             ; фовеация (OpenXR): 0 выкл., 1 низкая, 2 средняя (по умолчанию, бесплатна), 3 высокая
@@ -23,7 +24,7 @@ const AA_VALUES := ["none", "fxaa"]
 const AA_DEFAULT := "none"
 const FRINGE_VALUES := ["on", "off"]
 const FRINGE_DEFAULT := "on"
-const LAYERS_VALUES := ["on", "off"]
+const LAYERS_VALUES := ["on", "off", "behind"]
 const LAYERS_DEFAULT := "off"
 const MSAA_DEFAULT := 0
 const SCALE_DEFAULT := 1.0
@@ -94,7 +95,7 @@ static func from_config(cfg: ConfigFile) -> RenderConfig:
 				if v is String and (v as String).to_lower() in LAYERS_VALUES:
 					c.layers = (v as String).to_lower()
 				else:
-					c.warnings.append("layers: допустимо «on» или «off», получено «%s» — оставлено «%s»" % [v, c.layers])
+					c.warnings.append("layers: допустимо «on», «off» или «behind», получено «%s» — оставлено «%s»" % [v, c.layers])
 			"scale":
 				var n: Variant = _number(v)
 				if n != null and n >= SCALE_MIN and n <= SCALE_MAX:
@@ -162,7 +163,12 @@ static func fringe_enabled(s: String) -> bool:
 
 ## Панели слоями композитора включены в конфиге? (чистый маппинг, без сцены)
 static func layers_enabled(s: String) -> bool:
-	return s == "on"
+	return s == "on" or s == "behind"
+
+
+## Слои позади сцены (руки и луч поверх панели)?
+static func layers_behind(s: String) -> bool:
+	return s == "behind"
 
 
 ## Настройки материалов ассетов; звать ДО построения узлов (материалы ставятся при построении).
