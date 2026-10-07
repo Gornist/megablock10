@@ -1,7 +1,7 @@
 extends Node3D
 ## Кадры Фойе (раскладка data/layouts/foyer.json) глазами клиента: колонны, хранилища с площадками, порталы, вход S, выход E,
 ## Страж со светом зрения (фокус/периферия) и стрелкой, рамка прицела по прогнозу.
-## Запуск: netrun/tools/dev.sh shot res://tests/foyer_preview.tscn  (кадры: eye — глазами игрока на входе, top — сверху на всю комнату)
+## Запуск: netrun/tools/dev.sh shot res://tests/foyer_preview.tscn  (кадры — по пресетам EyePresets: entry, north, south, vault_w глазами игрока; top, top_north, top_south сверху)
 
 var _out := "/tmp/foyer_shots"
 
@@ -24,22 +24,18 @@ func _ready() -> void:
 	], "tk": {"n": 4, "at": now - 1.0, "win": 5.0, "inh": 0, "mv": 0}})
 	var target := Vector2i(7, 11)   # впереди-слева от Стража: периферия его зрения
 	scene.aim_visual_demo(scene.rig.global_position + Vector3(0.35, 0.8, -0.25), NodeGrid.center(target), TickForecast.threat(scene.rig.grid, scene.remote.intents(), target))
+	# Кадры — по общим пресетам камеры (shared/eye_presets.gd): теми же принимается окружение (assets/ARCHITECTURE.md, п. 18).
 	var cam := Camera3D.new()
-	cam.fov = 50.0
 	add_child(cam)
-	scene.rig.camera.current = true
-	scene.rig.camera.rotation = Vector3(deg_to_rad(-12.0), 0.0, 0.0)
-	await _shot(null, "eye", Vector3.ZERO, Vector3.ZERO)
-	_hide_ceilings(scene)
-	# Сверху: потолок и дальние пласты прячем, иначе закрывают пол; «вверх» кадра — север (−Z).
-	cam.look_at_from_position(Vector3(0.0, 21.0, -5.5), Vector3(0.0, 0.0, -5.5), Vector3(0.0, 0.0, -1.0))
-	cam.current = true
-	await _shot(cam, "top", Vector3.ZERO, Vector3.ZERO)
-	# Крупнее: северная половина (хранилища, порталы, колонны) и южная (вход, выход, Страж).
-	cam.look_at_from_position(Vector3(0.0, 11.0, -9.5), Vector3(0.0, 0.0, -9.5), Vector3(0.0, 0.0, -1.0))
-	await _shot(cam, "north", Vector3.ZERO, Vector3.ZERO)
-	cam.look_at_from_position(Vector3(0.0, 11.0, -2.5), Vector3(0.0, 0.0, -2.5), Vector3(0.0, 0.0, -1.0))
-	await _shot(cam, "south", Vector3.ZERO, Vector3.ZERO)
+	var hidden := false
+	for n: String in EyePresets.names():
+		var p := EyePresets.get_preset(n)
+		if not p["eye"] and not hidden:
+			_hide_ceilings(scene)   # сверху потолок и дальние пласты закрывают пол; «вверх» кадра — север (−Z)
+			hidden = true
+		cam.fov = p["fov"]
+		cam.look_at_from_position(p["pos"], p["look"], p["up"])
+		await _shot(cam, n)
 	get_tree().quit()
 
 
@@ -64,9 +60,8 @@ func _hide_ceilings(scene: Node3D) -> void:
 			(c as Node3D).visible = false
 
 
-func _shot(cam: Camera3D, name_: String, _pos: Vector3, _look: Vector3) -> void:
-	if cam != null:
-		cam.current = true
+func _shot(cam: Camera3D, name_: String) -> void:
+	cam.current = true
 	for i in 8:
 		await get_tree().process_frame
 	await RenderingServer.frame_post_draw
