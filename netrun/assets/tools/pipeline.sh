@@ -10,6 +10,8 @@
 #   pipeline.sh fps              — замер времени кадра GPU/CPU и числа вызовов отрисовки на трёх ракурсах
 #   pipeline.sh stats <кадр|каталог> ... [--ref <референс.png>] — числовые метрики кадров (яркость, доли чёрного/бирюзы/синего/красного, горизонт, потолок/пол)
 #       таблицей на devbox (tools/framestats.py): сравнение с референсом цифрами, без картинок в контексте
+#   pipeline.sh overdraw         — перерисовка (слоёв прозрачности на пиксель) по слоям: all/streaks/points/glass/skirt/haze/shell_soft/beacon_halo на кадрах
+#       room_entrance, room_inside, room_overview (ODFRAMES=a,b меняет кадры, ODCATS="all streaks" — слои; слой бывает `слой@ассет`, например ODCATS="all@floor_slab skirt@far_floor" ODEXTRA=--nobatch); preview_capture.gd --overdraw=<слой>, счёт tools/overdraw.py
 # Требует: devbox доступен (Tailscale), на нём Blender (~/.local/bin/blender) и Godot (~/.local/bin/godot), графический сеанс nick.
 # Стенд просмотра — минимальный проект Godot ~/assets-gd на devbox (создаётся сам); это не проект netrun/.
 # Блокировки на devbox. build/shots/movie/demo/fps берут /tmp/assets-pipeline.lock на ВСЁ время команды (две параллельные сборки ломали
@@ -19,6 +21,7 @@
 # build НЕ трогает отслеживаемые файлы вне пересобранных ассетов: *.glb.import (их делает Godot, на devbox их нет) rsync не удаляет;
 # Python запускается с PYTHONHASHSEED=0, поэтому повторная сборка даёт те же .glb побайтно. Тяжёлого параллельно не запускать (skill devbox).
 set -euo pipefail
+SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"   # абсолютный путь: после cd относительный $0 не найти (overdraw вызывает себя же)
 cd "$(dirname "$0")/.."   # netrun/assets
 HOST=${DEVBOX:-nick@100.80.115.46}   # имя devbox с Mac резолвится неверно — только IP
 GD_ENV='U=$(id -u); export XDG_RUNTIME_DIR=/run/user/$U WAYLAND_DISPLAY=wayland-0'
@@ -162,5 +165,15 @@ python3 src/validate.py --root out'
       esac
     done
     ssh "$HOST" "python3 $tmp/framestats.py $refargs $tmp/in; rm -rf $tmp" ;;
+  overdraw)  # кадры по слоям (каждый запуск shots берёт блокировку сам), счёт — на devbox
+    frames=${ODFRAMES:-room_entrance,room_inside,room_overview}
+    cats=${ODCATS:-all streaks points glass skirt haze shell_soft beacon_halo}
+    loc=$(mktemp -d); tmp=/tmp/assets-od-$$; ssh "$HOST" "rm -rf $tmp; mkdir -p $tmp"
+    for c in $cats; do
+      "$SELF" shots "$loc/$c" --tier=BASE --only=$frames --overdraw=$c ${ODEXTRA:-} >/dev/null 2>&1 || true
+      scp -rq "$loc/$c" "$HOST:$tmp/$c"
+    done
+    scp -q tools/overdraw.py "$HOST:$tmp/overdraw.py"
+    ssh "$HOST" "python3 $tmp/overdraw.py $tmp; rm -rf $tmp"; rm -rf "$loc" ;;
   *) sed -n 2,8p "$0"; exit 2 ;;
 esac
