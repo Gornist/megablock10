@@ -1,8 +1,8 @@
 class_name TeleportAim
 extends Node3D
 ## Прицел телепорта: дуга точек от руки (в плоской сборке — от взгляда) до рамки клетки 1×1 м на полу в точке посадки.
-## Три вида клетки (NodeGrid.pick): "hop" — зелёная рамка (можно; красная, пока идёт перезарядка — на ней растёт диск, сколько
-## перезарядки прошло), "wait" — нейтральная рамка своей клетки (остаться на месте), "denied" — серая рамка и над ней короткая
+## Три вида клетки (NodeGrid.pick): "hop" — голубая рамка (можно; красная, пока идёт перезарядка — на ней растёт диск, сколько
+## перезарядки прошло), "wait" — ледяная рамка своей клетки (остаться на месте), "denied" — погасшая рамка и над ней короткая
 ## причина («ЗАНЯТО», «ЗА УКРЫТИЕМ», «ДАЛЬНО»). Всё в мировых координатах (top_level), дёшево для Mobile: MultiMesh из 14 кубиков,
 ## четыре узкие полосы рамки и тонкий диск без теней.
 
@@ -13,12 +13,10 @@ const FRAME_INSET := 0.02
 const FRAME_W := 0.04
 const FRAME_H := 0.012
 const DISC_RADIUS := 0.27
-const OK_COLOR := Color(0.25, 1.0, 0.45)
-const NO_COLOR := Color(1.0, 0.25, 0.2)
-## Жёлтая рамка тактового режима: окажешься на краю зрения ICE (TickForecast.YELLOW).
-const WARN_COLOR := Color(1.0, 0.85, 0.2)
-const WAIT_COLOR := Color(0.75, 0.9, 1.0)
-const DENIED_COLOR := Color(0.5, 0.5, 0.52)
+## Цвета рамки и дуги — только из палитры клиентских слоёв (AssetMaterials.layer): aim_ok (можно), aim_no (нельзя / в фокусе ICE), aim_warn
+## (тактовый режим: окажешься на краю зрения ICE, TickForecast.YELLOW), aim_wait (своя клетка / ждём), aim_denied (недоступно); подпись причины — label.
+## Диск перезарядки — aim_no с прозрачностью DISC_ALPHA.
+const DISC_ALPHA := 0.45
 ## Рамка чуть выше пола, чтобы не мерцать в одной плоскости с ним.
 const RING_LIFT := 0.02
 const LABEL_LIFT := 0.45   ## метка причины над полом, м
@@ -45,10 +43,9 @@ func _init() -> void:
 	name = "TeleportAim"
 	top_level = true
 	visible = false
-	_mat = _unshaded(OK_COLOR)
-	_disc_mat = _unshaded(NO_COLOR)
+	_mat = _unshaded(AssetMaterials.layer("aim_ok"))
+	_disc_mat = _unshaded(AssetMaterials.layer("aim_no", DISC_ALPHA))
 	_disc_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_disc_mat.albedo_color.a = 0.45
 	var dot := BoxMesh.new()
 	dot.size = Vector3.ONE * DOT_SIZE
 	dot.material = _mat
@@ -95,7 +92,7 @@ func _init() -> void:
 	_label.pixel_size = 0.004
 	_label.font_size = 56
 	_label.outline_size = 12
-	_label.modulate = Color(0.85, 0.85, 0.88)
+	_label.modulate = AssetMaterials.layer("label")
 	_label.visible = false
 	Label3DSharp.apply(_label)
 	add_child(_label)
@@ -127,15 +124,15 @@ func show_at(start: Vector3, target: Vector3, ok: bool, charge: float = 1.0, kin
 	_ok = ok
 	_kind = kind if not kind.is_empty() else "hop"
 	_reason = reason
-	var c := OK_COLOR if ok else NO_COLOR
+	var layer := "aim_ok" if ok else "aim_no"
 	if _kind == "hop" and threat >= 0:
-		c = [OK_COLOR, WARN_COLOR, NO_COLOR][clampi(threat, 0, 2)]
+		layer = ["aim_ok", "aim_warn", "aim_no"][clampi(threat, 0, 2)]
 	if _kind == "wait" or (not note.is_empty() and _kind != "denied"):
-		c = WAIT_COLOR
+		layer = "aim_wait"
 	elif _kind == "denied":
-		c = DENIED_COLOR
-	_mat.albedo_color = c
-	_disc_mat.albedo_color = Color(NO_COLOR.r, NO_COLOR.g, NO_COLOR.b, 0.45)
+		layer = "aim_denied"
+	_mat.albedo_color = AssetMaterials.layer(layer)
+	_disc_mat.albedo_color = AssetMaterials.layer("aim_no", DISC_ALPHA)
 	var pts := RigMath.arc_points(start, target + Vector3(0.0, RING_LIFT, 0.0), DOTS)
 	var mm := _dots.multimesh
 	for i in DOTS:

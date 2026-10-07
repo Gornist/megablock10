@@ -16,13 +16,12 @@ const STATE_HUNT := 3
 const CATCH_NEAR := 2.0
 const SEARCH_SPEED := 1.6
 const ALERT_TEXT := ["", "?", "!", "!!"]
-const ALERT_COLOR := [Color.WHITE, Color(1.0, 0.62, 0.26), Color(1.0, 0.35, 0.31), Color(1.0, 0.35, 0.31)]
-## Глаз тактового режима (time-and-movement.md 3.4): светящаяся точка спереди у головы; цвет — по состоянию TickIce (Патруль, Взгляд, Проверка, Поиск):
-## белый, жёлтый, оранжевый, красный — те же цвета, что у света зрения на полу.
-const EYE_COLOR := [Color(1.0, 1.0, 1.0), Color(1.0, 0.86, 0.25), Color(1.0, 0.55, 0.15), Color(1.0, 0.2, 0.18)]
-## «…» потерял нетраннера (тактовый режим, state.lost): серый знак над головой на один такт.
+## Цвета стадий — только из палитры клиентских слоёв Blender (AssetMaterials.LAYERS): от ледяного белого к красному, без жёлтого/оранжевого.
+## Глаз тактового режима (time-and-movement.md 3.4): светящаяся точка спереди у головы; цвет — по состоянию TickIce (Патруль, Взгляд, Проверка, Поиск),
+## тот же, что у света зрения на полу и у знака над головой.
+const STAGE_LAYERS := ["ice_calm", "ice_suspect", "ice_alert", "ice_hunt"]
+## «…» потерял нетраннера (тактовый режим, state.lost): приглушённый знак над головой на один такт (слой ice_lost).
 const LOST_TEXT := "…"
-const LOST_COLOR := Color(0.75, 0.82, 0.9)
 const EYE_RADIUS := 0.09
 ## Положение глаза: спереди (−Z — куда смотрит ICE) на высоте головы; у Black ICE выше и дальше (модель ×2).
 const EYE_POS_SOFT := Vector3(0.0, 1.7, -0.45)
@@ -77,7 +76,7 @@ func apply_state(new_state: int, near: bool = false) -> void:
 
 ## Глаз по состоянию TickIce (0..3, поле st снимка): создаётся при первом вызове, дальше только красит. Зовёт сцена только в тактовом режиме.
 func set_eye_state(st: int) -> void:
-	var s := clampi(st, 0, EYE_COLOR.size() - 1)
+	var s := clampi(st, 0, STAGE_LAYERS.size() - 1)
 	if _eye == null:
 		var mesh := SphereMesh.new()
 		mesh.radius = EYE_RADIUS
@@ -94,7 +93,7 @@ func set_eye_state(st: int) -> void:
 		_eye.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(_eye)
 	_eye_state = s
-	_eye_mat.albedo_color = EYE_COLOR[s]
+	_eye_mat.albedo_color = stage_color(s)
 
 
 ## «…» над ICE на один такт: он только что потерял нетраннера (state.lost) и сейчас вернётся на маршрут. Знак создаётся при первом показе.
@@ -109,7 +108,7 @@ func set_lost(on: bool) -> void:
 		_lost_mark.font_size = 96
 		_lost_mark.pixel_size = 0.006
 		_lost_mark.outline_size = 12
-		_lost_mark.modulate = LOST_COLOR
+		_lost_mark.modulate = AssetMaterials.layer("ice_lost")
 		_lost_mark.position = _alert.position
 		Label3DSharp.apply(_lost_mark)
 		add_child(_lost_mark)
@@ -143,7 +142,7 @@ func _choose(play: bool) -> void:
 	var s := clampi(state, 0, ALERT_TEXT.size() - 1)
 	_alert.visible = s >= STATE_SUSPICIOUS
 	_alert.text = ALERT_TEXT[s]
-	_alert.modulate = ALERT_COLOR[s]
+	_alert.modulate = stage_color(s)
 	if _player != null:
 		_player.speed_scale = speed_for(black, state)
 	if clip != _clip:
@@ -155,6 +154,11 @@ func _choose(play: bool) -> void:
 func _start_clip() -> void:
 	if _player != null and is_inside_tree() and _player.has_animation(_clip) and _player.current_animation != _clip:
 		_player.play(_clip, 0.2)
+
+
+## Цвет стадии 0..3 (патруль, взгляд, проверка, поиск/охота) из палитры: глаз, знак над головой и свет зрения на полу (TickFloor) красят одним.
+static func stage_color(st: int) -> Color:
+	return AssetMaterials.layer(STAGE_LAYERS[clampi(st, 0, STAGE_LAYERS.size() - 1)])
 
 
 static func clip_for(is_black: bool, ice_state: int, near: bool) -> String:

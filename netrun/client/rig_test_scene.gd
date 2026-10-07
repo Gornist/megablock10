@@ -768,7 +768,7 @@ func show_notice(text: String, sec: float = 2.5) -> void:
 	l.pixel_size = 0.0008
 	l.no_depth_test = true
 	l.render_priority = 120
-	l.modulate = Color(0.5, 0.95, 1.0)
+	l.modulate = AssetMaterials.layer("label")
 	l.position = Vector3(0, -0.12, -0.9)
 	Label3DSharp.apply(l)
 	rig.camera.add_child(l)
@@ -877,7 +877,7 @@ func _set_tier_label(m: Node3D, tier: int, daemon: bool = false) -> void:
 		l.font_size = 40
 		l.pixel_size = 0.0015
 		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		l.modulate = Color(0.5, 0.95, 1.0)
+		l.modulate = AssetMaterials.layer("label")
 		l.position = Vector3(0, 0.2, 0)
 		Label3DSharp.apply(l)
 		m.add_child(l)
@@ -894,7 +894,7 @@ func _add_stow_hint(m: Node3D) -> void:
 	l.font_size = 40
 	l.pixel_size = 0.0012
 	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	l.modulate = Color(1.0, 0.95, 0.5)
+	l.modulate = AssetMaterials.layer("label")
 	l.position = Vector3(0, 0.12, 0)
 	Label3DSharp.apply(l)
 	m.add_child(l)
@@ -927,7 +927,7 @@ func _build_signs(signs: Array) -> void:
 		l.text = str(sg.get("text", ""))
 		l.font_size = 36
 		l.pixel_size = 0.004
-		l.modulate = Color(0.6, 1.0, 0.8)
+		l.modulate = AssetMaterials.layer("label")
 		l.position = Vector3(p[0], 1.6, p[1])
 		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		Label3DSharp.apply(l)
