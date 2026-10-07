@@ -124,6 +124,39 @@ def _rect_pts(hx, hy, z, per_m, rng):
     return lib.sample_lines(segs, per_m, spread=0.002, seed=rng.randint(0, 9999))
 
 
+BEACON_H = 0.45      # высота луча маяка над предметом, м
+BEACON_R = 0.25      # радиус ореола-капли (диаметр 0,5 м)
+
+
+def _beacon(z_top, rgb):
+    """Маяк предмета (шард, токен): узел `Beacon` с двумя мешами — тонкий мягкий луч вверх `beacon_beam` (3 штриха ice_white, самый высокий 0,45 м, полуширина
+    5–8 мм; шейдер streaks с ореолом подставляет AssetMaterials по имени меша) и низкая круглая «капля свечения» `beacon_halo` вокруг предмета (один квад
+    0,5×0,5 м в плоскости XZ с центром в origin предмета, бирюзовый, роль shell_soft; шейдер beacon_halo.gdshader — биллборд по Y, радиальный мягкий, аддитивный, один слой).
+    Предмет не меняется: предмет в руке — клиент выключает узел (visible = false); габарит предмета считают без мешей `beacon_*` (glbinfo). z_top — верх предмета."""
+    beam = [(Vector((0.0, 0.0, z_top + BEACON_H / 2)), 0.0065, BEACON_H / 2, 0.9),
+            (Vector((-0.011, 0.004, z_top + 0.17)), 0.005, 0.17, 0.6),
+            (Vector((0.011, -0.004, z_top + 0.13)), 0.005, 0.13, 0.5)]
+    beam_ob = lib.streak_set("beacon_beam", beam, rgb)
+    halo_rgb = lib.lin("cyan")  # ореол бирюзовый (светлый «грязнит» в серое), луч ice_white
+    bm = bmesh.new()
+    uv0, uv1 = bm.loops.layers.uv.new("UV0"), bm.loops.layers.uv.new("UV1")
+    f = bm.faces.new([bm.verts.new(Vector(d)) for d in ((-BEACON_R, 0, -BEACON_R), (BEACON_R, 0, -BEACON_R), (BEACON_R, 0, BEACON_R), (-BEACON_R, 0, BEACON_R))])
+    for loop, uv in zip(f.loops, ((0, 0), (1, 0), (1, 1), (0, 1))):
+        loop[uv0].uv = uv
+        loop[uv1].uv = (BEACON_R, 1.0 - BEACON_R)  # как у штриха: в шейдере UV2 = (полуширина, полувысота); по ним шейдер находит центр квада
+    me = lib.bpy.data.meshes.new("beacon_halo")
+    bm.to_mesh(me)
+    bm.free()
+    halo_ob = lib.bpy.data.objects.new("beacon_halo", me)
+    lib.bpy.context.collection.objects.link(halo_ob)
+    me.materials.append(lib.material("shell_soft"))
+    attr = me.color_attributes.new("Color", "FLOAT_COLOR", "POINT")
+    for v in me.vertices:
+        attr.data[v.index].color = (*halo_rgb, 0.6)
+    me.color_attributes.active_color = attr
+    return lib.group("Beacon", [beam_ob, halo_ob]), [beam_ob, halo_ob]
+
+
 def build_vault_volume(out, name="vault", seed=12):
     """Хранилище узла «волюметрик»: ОДИН файл на три состояния. Общий корпус (чёрный постамент 0,6×0,6×0,3 м и широкий тонкий лоток 0,78×0,74×0,03 м с яркой
     кромкой ice_white, цепочка точек по кромке, вуаль `vault_skirt` и свисающие штрихи `vault_streaks_hang` вокруг лотка) + узлы-группы
@@ -249,10 +282,11 @@ def build_shard(out, name="shard", encrypted=False):
     for k, z in enumerate((0.0, 0.04, -0.04)):  # кумулятивно: Tier_1 центральное кольцо, Tier_2 добавляет верхнее, Tier_3 нижнее
         ring_pts = _ring_pts(0.068, z, 18, rng)
         tiers.append(lib.group(f"Tier_{k + 1}", [lib.point_cloud(f"shard_tier_{k + 1}", ring_pts, ice, half_size=0.003, seed=20 + k, a_min=0.8, a_max=1.0)]))
-    all_objs = objs + [t for g in tiers for t in [g] + list(g.children)]
+    beacon, beacon_parts = _beacon(hz + 0.005, ice)  # маяк для чтения с 3 м: габарит кристалла не меняется (в руке клиент выключает Beacon)
+    all_objs = objs + [t for g in tiers for t in [g] + list(g.children)] + [beacon] + beacon_parts
     return lib.export(name, "props", all_objs, out, budget_tris=(400 if encrypted else 300), budget_points=(220 if encrypted else 160),
-                      budget_streaks=(8 if encrypted else 0), origin="center",
-                      notes=("зашифрованный: клетка и глитч-полосы, ядро скрыто" if encrypted else "расшифрованный: гранёный кристалл с ядром") + "; Tier_1..3 — кумулятивные кольца")
+                      budget_streaks=(7 if encrypted else 3), budget_draws=10, budget_layers=(2 if encrypted else 4), origin="center",
+                      notes=("зашифрованный: клетка и глитч-полосы, ядро скрыто" if encrypted else "расшифрованный: гранёный кристалл с ядром") + "; Tier_1..3 — кумулятивные кольца; Beacon — луч и ореол для дальнего чтения")
 
 
 def build_daemon_token(out, name="daemon_token", seed=31):
@@ -285,8 +319,9 @@ def build_daemon_token(out, name="daemon_token", seed=31):
     objs.append(lib.point_cloud("token_inner", hex_edge(0.040), cy, half_size=0.0035, seed=seed + 1, a_min=0.35, a_max=0.6))
     core = lambda: lib.ico_bm(0.5, subdiv=1, scale=(0.04, 0.012, 0.04))
     objs += lib.shell_stack(core, "token_core", ice, layers=2, grow=0.5, a_inner=0.95, a_outer=0.4)
-    return lib.export(name, "props", objs, out, budget_tris=200, budget_points=80, origin="center",
-                      notes="плоскость XZ (лицо к ±Y Blender), кольцо с разрывом, светится с обеих сторон")
+    beacon, beacon_parts = _beacon(0.065, ice)  # маяк для чтения с 3 м: габарит токена не меняется (в руке клиент выключает Beacon)
+    return lib.export(name, "props", objs + [beacon] + beacon_parts, out, budget_tris=200, budget_points=80, budget_streaks=3, origin="center",
+                      notes="плоскость XZ (лицо к ±Y Blender), кольцо с разрывом, светится с обеих сторон; Beacon — луч и ореол для дальнего чтения")
 
 
 def build_hack_panel(out, name="hack_panel"):

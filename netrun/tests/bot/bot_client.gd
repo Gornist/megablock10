@@ -24,6 +24,7 @@ const SIGN_REACH := 2.0    # на таком расстоянии от табл�
 const GRAB_FROM := 1.5     # на таком расстоянии от шарда просим взять
 const GRAB_FROM_VAULT_CELLS := 2.1  # то же у раскладки, где хранилище занимает клетки (ближайший центр свободной клетки — 1,58 м от слота)
 const STEP_TIMEOUT := 25.0 # с на один шаг сценария — иначе result = "timeout:<шаг>"
+const PROBE_SHARD_WAIT := 10.0  # с: проба отказа (force_breach) ждёт пополнения слота узла и только потом выходит без пробы
 ## В тактовом режиме один ход за такт, а такт без хода одного из игроков узла ждёт окно (до 5 с): осторожный путь к шарду короткими
 ## прыжками (hop_scale 0,25 — 1,1 м за такт) занимает минуты, а не секунды — шаг получает больше времени.
 const STEP_TIMEOUT_TICK := 90.0
@@ -454,6 +455,10 @@ func _process(delta: float) -> void:
 			# Без GHOST идём осторожно: ICE успевает заметить и догнать раньше шарда.
 			var speed_scale := 1.0 if scenario == Scenario.GHOST_RUN else 0.25
 			if not node_info.is_empty() and not _has_ready_shard():
+				if force_breach:   # пробе нужен шард: слот пополняется через Мост, список шардов приходит событием — ждём, а не выходим молча
+					if _clock - _step_started < PROBE_SHARD_WAIT:
+						return
+					print("[bot] проба без взлома: нет шарда")
 				_enter("to_exit")   # в узле графа шарда нет (вынесен, слот ждёт пополнения): без добычи к выходу, а не к несуществующему pickup_01
 				return
 			if _walk_to(_plain_shard()["pos"], delta, _grab_from, speed_scale):
