@@ -222,6 +222,9 @@ var _ft: Array = []  # времена кадров, мс (после прогр�
 var _gpu: Array = []  # время кадра на видеокарте, мс
 var _cpu: Array = []  # время подготовки кадра на процессоре, мс
 var _static_cam := PackedFloat64Array([0.0, 1.25, 6.4, 0.0, 1.0, -2.0])  # x,y,z камеры и x,y,z точки взгляда; --cam=… переопределяет
+var _od := PackedStringArray()  # --overdraw=streaks,points,…|all: карта перерисовки — каждый фрагмент выбранных прозрачных шейдеров даёт одинаковый вклад OD_STEP на чёрном фоне; непрозрачное чёрное
+const OD_STEP := 1.0 / 32.0
+var _od_shaders := {}  # кэш подменённых шейдеров: «исходный шейдер|вкл» → Shader
 var _t := 0.0
 var _cam: Camera3D
 var _insts: Array = []
@@ -252,6 +255,10 @@ func _ready() -> void:
 			_walk = true
 		if a == "--nobatch":
 			_batch_on = false
+		if a == "--nofringe":  # без мягкой обводки силуэтов (для сравнения кадров и замера перерисовки)
+			AM.fringe_on = false
+		if a.begins_with("--overdraw="):
+			_od = a.trim_prefix("--overdraw=").split(",")
 		if a == "--field":
 			_field = true
 		if a == "--walk":
@@ -287,7 +294,7 @@ func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = _bg
+	env.background_color = Color.BLACK if _od.size() > 0 else _bg
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_DISABLED
 	var we := WorldEnvironment.new()
 	we.environment = env
@@ -381,6 +388,58 @@ func _build(shot: Dictionary, root: Node) -> void:
 			if is_walker:
 				_walker_mir = mir
 	batch.flush(root)
+	if _od.size() > 0:
+		_od_pass(root)
+
+
+## Карта перерисовки (--overdraw): шейдер материала копируется с тем же vertex() (биллборды, ореол, расширение квадов), а конец fragment() заменяется на
+## ALBEDO = OD_STEP, ALPHA = 1 (нужный слой) или 0 (прочие прозрачные); непрозрачный solid_dark — чёрный и пишет глубину как обычно.
+## Яркость пикселя после аддитивного смешивания = число слоёв × OD_STEP (в линейном пространстве); счёт — tools/overdraw.py. Все шейдеры «Сети» кончаются fragment().
+## Слой задаётся именем шейдера (streaks, points, glass, skirt, haze, shell_soft, beacon_halo), `all` или `слой@ассет` (например `all@floor_slab`, `skirt@far_floor`:
+## ассет — по началу имени сцены; нужен --nobatch, иначе окружение склеено в MultiMesh без имён).
+func _od_mat(m: ShaderMaterial, asset: String) -> ShaderMaterial:
+	var name := m.shader.resource_path.get_file().get_basename()
+	var opaque := name == "solid_dark"
+	var on := _od.has("all") or _od.has(name)
+	for e in _od:
+		if "@" in e:
+			var p := e.split("@")
+			on = on or ((p[0] == "all" or p[0] == name) and asset.begins_with(p[1]))
+	var key := "%s|%s" % [name, on]
+	if not _od_shaders.has(key):
+		var code := m.shader.code.replace("blend_mix", "blend_add")  # обводка fringe рисуется blend_mix, а считаем слои аддитивно
+		# у непрозрачного solid_dark ALPHA не пишем: иначе Godot сделает материал прозрачным, он перестанет писать глубину и закрывать слои за собой (завысит перерисовку)
+		var inj := "ALBEDO = vec3(0.0);" if opaque else "ALBEDO = vec3(%f); ALPHA = %s;" % [OD_STEP, "1.0" if on else "0.0"]
+		var sh := Shader.new()
+		sh.code = code.insert(code.rfind("}"), "\t" + inj + "\n")
+		_od_shaders[key] = sh
+	var nm := ShaderMaterial.new()
+	nm.shader = _od_shaders[key]
+	for u in m.shader.get_shader_uniform_list():
+		nm.set_shader_parameter(u["name"], m.get_shader_parameter(u["name"]))
+	nm.render_priority = m.render_priority
+	if m.next_pass is ShaderMaterial and (m.next_pass as ShaderMaterial).shader != null:  # слои обводки (next_pass) считаем тоже
+		nm.next_pass = _od_mat(m.next_pass as ShaderMaterial, asset)
+	return nm
+
+
+func _od_pass(n: Node, asset := "") -> void:
+	if n.scene_file_path != "":
+		asset = n.scene_file_path.get_file().get_basename()
+	if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
+		var mi := n as MeshInstance3D
+		for s in mi.mesh.get_surface_count():
+			var m := mi.get_surface_override_material(s) as ShaderMaterial
+			if m != null and m.shader != null:
+				mi.set_surface_override_material(s, _od_mat(m, asset))
+	elif n is MultiMeshInstance3D and (n as MultiMeshInstance3D).multimesh != null and (n as MultiMeshInstance3D).multimesh.mesh != null:
+		var mesh := (n as MultiMeshInstance3D).multimesh.mesh
+		for s in mesh.get_surface_count():
+			var m := mesh.surface_get_material(s) as ShaderMaterial
+			if m != null and m.shader != null:
+				mesh.surface_set_material(s, _od_mat(m, asset))
+	for c in n.get_children():
+		_od_pass(c, asset)
 
 
 func _update_walker() -> void:

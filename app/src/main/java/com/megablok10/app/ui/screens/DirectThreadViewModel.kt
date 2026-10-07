@@ -14,7 +14,10 @@ import com.megablok10.app.identity.Identity
 import com.megablok10.app.items.AcceptItem
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
+import com.megablok10.app.voice.PlayerState
 import com.megablok10.app.voice.RecordedClip
+import com.megablok10.app.voice.VoicePlayer
+import com.megablok10.app.voice.VoiceTrack
 import com.megablok10.kit.mesh.OnlinePlayer
 import com.megablok10.app.wallet.AcceptPayment
 import kotlinx.coroutines.CoroutineScope
@@ -60,12 +63,29 @@ class DirectThreadViewModel(
     private val voiceSender: suspend (me: Identity, peerKey: String, peer: OnlinePlayer?, clip: RecordedClip) -> Unit = { _, _, _, _ -> },
     /** Микрофон свободен для записи: пока идёт звонок, он занят (запись голосового выключена). */
     val micAllowed: StateFlow<Boolean> = MutableStateFlow(true),
+    /** Общий проигрыватель голосовых (живёт в AppGraph, не в треде: выход из треда его не обрывает); null — без воспроизведения (тесты). */
+    private val voicePlayer: VoicePlayer? = null,
 ) : ViewModel() {
     private var receiptsChecked = 0
 
+    val playerState: StateFlow<PlayerState> = voicePlayer?.state ?: MutableStateFlow(PlayerState())
+
+    fun toggleVoice(track: VoiceTrack) { voicePlayer?.toggle(track) }
+    fun seekVoice(track: VoiceTrack, fraction: Float) { voicePlayer?.seek(track, fraction) }
+    fun cycleVoiceSpeed() { voicePlayer?.cycleSpeed() }
+    /** Начало записи заглушает проигрыватель: микрофон слышал бы динамик, и голоса наложились бы. */
+    fun stopVoice() { voicePlayer?.stop() }
+
     private val shown: Flow<ThreadFeed> = combine(feed.onEach { confirmNewReceipts(it.messages); sendReadReceipt(it.messages) }, showRead) { f, read ->
-        if (read) f else f.copy(messages = f.messages.map { if (it.status == MessageStatus.READ) it.copy(status = MessageStatus.DELIVERED) else it })
+        if (read) f else f.copy(messages = f.messages.map { if (hidesRead(it)) it.copy(status = MessageStatus.DELIVERED) else it })
     }
+
+    /**
+     * Отчёты выключены: у своих сообщений «прочитано» и «прослушано» показываются как «доставлено». Чужие строки со статусом LISTENED не трогаем — это локальная
+     * пометка «я прослушал», иначе точка «не прослушано» вернулась бы.
+     */
+    private fun hidesRead(m: ChatMessageEntity): Boolean =
+        m.status == MessageStatus.READ || (m.status == MessageStatus.LISTENED && m.fromPubKeyB64 == identity.value?.publicKeyB64)
 
     val state: StateFlow<DirectThreadState> = combine(shown, directory.view, ::DirectThreadState)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_MS), DirectThreadState())

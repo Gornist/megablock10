@@ -19,6 +19,7 @@ import com.megablok10.app.breach.SecAlertStore
 import com.megablok10.app.breach.SlotClaimStore
 import com.megablok10.app.call.AndroidProximityScreenLock
 import com.megablok10.app.call.CallManager
+import com.megablok10.app.call.CallPhase
 import com.megablok10.app.call.CallProximityGuard
 import com.megablok10.app.call.IncomingCallNotifier
 import com.megablok10.app.chat.CardResender
@@ -73,8 +74,13 @@ import com.megablok10.app.presence.WifiBinder
 import com.megablok10.app.qr.ProvisionStore
 import com.megablok10.app.shards.ShardStore
 import com.megablok10.app.ui.theme.AppSnack
+import com.megablok10.app.voice.AndroidClipPlayer
+import com.megablok10.app.voice.VoiceAutoplaySetting
 import com.megablok10.app.voice.VoiceMessenger
+import com.megablok10.app.voice.VoiceReceipts
+import com.megablok10.app.voice.VoicePlayer
 import com.megablok10.app.voice.VoiceStore
+import com.megablok10.app.voice.voiceTrack
 import com.megablok10.app.wallet.AcceptPayment
 import com.megablok10.app.wallet.SendPayment
 import com.megablok10.app.wallet.TransactionStore
@@ -152,10 +158,22 @@ class AppGraph(private val app: Application) {
     val chat: ChatStore = ChatStore(db.chatMessageDao(), outbox, peerDirectory)
     val voice = VoiceMessenger(db.chatMessageDao(), outbox, peerDirectory, voiceStore)
     val calls = CallManager(app, peerDirectory, db.callLogDao())
+    val voiceAutoplay = VoiceAutoplaySetting(prefs(VoiceAutoplaySetting.PREFS))
     val logStore: LogStore = Mb10LogStore(app)
     /** Отчёты о прочтении (D4) и переключатель «как в мессенджерах». */
     val readReceiptSetting = ReadReceiptSetting(prefs(ReadReceiptSetting.PREFS))
     val readReceipts = ReadReceipts(db.chatMessageDao(), peerDirectory, outbox, readReceiptSetting)
+    /** Синие ✓✓ у голосовых: «прослушал» автору (тот же переключатель, что отчёты о прочтении). */
+    val voiceReceipts = VoiceReceipts(db.chatMessageDao(), peerDirectory, outbox, readReceiptSetting) { identity.current?.publicKeyB64 }
+    /** Проигрыватель голосовых: один на приложение, на главном потоке (MediaPlayer), выход из треда его не обрывает; звонок останавливает ([sessionTasks]). */
+    val voicePlayer = VoicePlayer(
+        engine = AndroidClipPlayer(app),
+        store = voiceStore,
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+        markListened = voiceReceipts::onPlayed,
+        nextUnlistened = { peer, after -> identity.current?.let { me -> db.chatMessageDao().nextUnlistenedVoice(me.publicKeyB64, peer, after)?.voiceTrack(me.publicKeyB64) } },
+        autoplay = { voiceAutoplay.enabled.value },
+    )
     /** Игроки в сети для экранов и рассылок: без Моста «Сети» (он в PeerDirectory ради отправки, но не игрок). */
     val visiblePlayers: StateFlow<List<OnlinePlayer>> = peerDirectory.online
         .map { list -> list.filter { it.pubKeyB64 != netrunStore.worldPub() } }
@@ -226,6 +244,7 @@ class AppGraph(private val app: Application) {
         receipts = receipts,
         readReceipts = readReceipts,
         voice = voice,
+        voiceReceipts = voiceReceipts,
         netrun = netrun,
         worldCards = worldCards,
         onIncompatible = IncompatibleVersionReporter(WireVersion.protocols, WireVersion.INCOMPATIBLE_MESSAGE) { notices.show(it) }::report,
@@ -234,13 +253,14 @@ class AppGraph(private val app: Application) {
             { scope -> cardResender.start(scope) },
             { scope -> headset.start(scope) },
             { scope -> IncomingCallNotifier(app, calls).start(scope) },
+            { _ -> voicePlayer.stopDuring(calls.state.map { it.phase != CallPhase.IDLE }) },
             { scope -> CallProximityGuard(calls, AndroidProximityScreenLock(app)).start(scope) },
             { _ -> netrun.restorePeer() },
             { scope -> DeviceDiagnostics.startSnapshots(app, scope, diagnosticsState) },
         ),
     )
     val provisioning = ProvisionStore(identity, collectorSettings, changes, wallet, db.consumedTokenDao(), transactor)
-    val sessionReset = SessionReset(db, transactor, identity, collectorSettings, changes, announcements, netrun, voiceStore) { session.onSessionReset() }
+    val sessionReset = SessionReset(db, transactor, identity, collectorSettings, changes, announcements, netrun, voiceStore) { voicePlayer.requestStop(); session.onSessionReset() }
 
     /**
      * Что работает в фоне — решает только он (B3): сеть на личность, синк на процесс, foreground-сервис с правилами Android 12+.

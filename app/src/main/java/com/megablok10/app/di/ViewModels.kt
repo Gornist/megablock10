@@ -74,6 +74,7 @@ fun AppGraph.directThreadViewModel(myKey: String, peerKey: String) = DirectThrea
         clip.file.delete()
     },
     micAllowed = calls.state.map { it.phase == CallPhase.IDLE }.stateIn(processScope, SharingStarted.Eagerly, true),
+    voicePlayer = voicePlayer,
 )
 
 fun AppGraph.cyberdeckViewModel() =
@@ -84,4 +85,4 @@ fun AppGraph.netrunViewModel() = NetrunViewModel(identity.state, netrun, process
 fun AppGraph.breachViewModel() = BreachViewModel(identity.state, checkBreachAccess, finishBreach, breachHint, processScope)
 
 fun AppGraph.settingsViewModel() =
-    SettingsViewModel(collectorSettings, observePendingChanges(), visiblePlayers, { collectorSync.wake() }, ::deviceReport, logStore, readReceiptSetting, collectorClient.reachable)
+    SettingsViewModel(collectorSettings, observePendingChanges(), visiblePlayers, { collectorSync.wake() }, ::deviceReport, logStore, readReceiptSetting, collectorClient.reachable, voiceAutoplay)

@@ -44,7 +44,14 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.input.pointer.positionChanged
 import com.megablok10.app.data.ChatMessageEntity
+import com.megablok10.app.data.MessageStatus
+import com.megablok10.app.voice.PlayerState
+import com.megablok10.app.voice.VoicePlayer
+import com.megablok10.app.voice.VoiceTrack
+import com.megablok10.app.voice.voiceTrack
 import com.megablok10.app.ui.theme.LocalMbColors
 import com.megablok10.app.ui.theme.MbButton
 import com.megablok10.app.ui.theme.MbButtonKind
@@ -91,12 +98,27 @@ internal fun VoiceWaveformView(bars: List<Float>, modifier: Modifier = Modifier,
 
 internal fun barsOf(waveform: ByteArray): List<Float> = waveform.map { VoiceWaveform.height(it) }
 
+/** Управление проигрывателем из пузыря ленты: состояние и действия ([VoiceBubble] рисует, [DirectThreadViewModel] исполняет). [me] — мой ключ (свое/чужое). */
+internal class VoiceBubbleControls(
+    val state: PlayerState,
+    val me: String,
+    val onToggle: (VoiceTrack) -> Unit,
+    val onSeek: (VoiceTrack, Float) -> Unit,
+    val onSpeed: () -> Unit,
+)
+
+/** Сколько показывать справа в пузыре: у играющего — сколько осталось, иначе — вся длительность. */
+internal fun voiceTimeLabel(durationMs: Long, positionMs: Long, playing: Boolean): String =
+    formatVoiceDuration(if (playing) (durationMs - positionMs).coerceAtLeast(0) else durationMs)
+
 /**
- * Голосовое сообщение в ленте. В этом PR — вид без воспроизведения (проигрыватель — следующий PR): значок микрофона, волна, длительность, время и отметка статуса.
+ * Голосовое сообщение в ленте по образцу Telegram: кнопка ▶/❚❚, волна (нажатие и перетаскивание — перемотка), оставшееся время, у играющего — скорость 1×/1,5×/2×,
+ * у чужого непрослушанного — точка, пока его не запустили. Без [controls] (предпросмотр, тесты) — только вид.
  */
 @Composable
-internal fun VoiceBubble(msg: ChatMessageEntity, self: Boolean) {
+internal fun VoiceBubble(msg: ChatMessageEntity, self: Boolean, controls: VoiceBubbleControls? = null) {
     val voice = remember(msg.body) { VoiceMarker.parse(msg.body) } ?: return
+    val track = remember(msg.id, msg.body, controls?.me) { controls?.let { msg.voiceTrack(it.me) } }
     val c = LocalMbColors.current
     val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
     val mark = if (self) statusMark(msg.status) else null
@@ -104,18 +126,60 @@ internal fun VoiceBubble(msg: ChatMessageEntity, self: Boolean) {
     val ink = if (self) c.bubbleOwnText else c.bubbleInText
     val edge = if (self) c.bubbleOwnEdge else c.bubbleInEdge
     val fill = if (self) c.bubbleOwnFill else c.bubbleInFill
-    Column(Modifier.widthIn(max = 280.dp), horizontalAlignment = if (self) Alignment.End else Alignment.Start) {
+    val live = controls?.takeIf { it.state.track?.rowId == msg.id } // управление, если играет именно это сообщение
+    val active = live != null
+    val playing = live?.state?.playing == true
+    val position = live?.state?.positionMs ?: 0
+    val unlistened = !self && msg.status < MessageStatus.LISTENED
+    Column(Modifier.widthIn(max = 300.dp), horizontalAlignment = if (self) Alignment.End else Alignment.Start) {
         Row(
             Modifier
                 .mbFrame(fill = fill, edge = edge, form = MbChamferForm.Tab, cut = 8.dp)
-                .padding(horizontal = 10.dp, vertical = 8.dp)
-                .semantics { contentDescription = "Голосовое сообщение, ${formatVoiceDuration(voice.durationMs)}" },
+                .padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Icon(painterResource(MbIcons.Mic), contentDescription = null, tint = ink, modifier = Modifier.size(20.dp))
-            VoiceWaveformView(barsOf(voice.waveform), Modifier.width(120.dp), color = ink)
-            Text(formatVoiceDuration(voice.durationMs), style = MbTypography.meta, color = ink)
+            Box(
+                Modifier
+                    .size(32.dp)
+                    .mbFrame(fill = c.acc, edge = c.acc, form = MbChamferForm.Std, cut = 6.dp)
+                    .clickable(enabled = track != null) { track?.let { controls?.onToggle?.invoke(it) } }
+                    .semantics { contentDescription = if (playing) "Пауза" else "Воспроизвести голосовое сообщение, ${formatVoiceDuration(voice.durationMs)}" },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(painterResource(if (playing) MbIcons.Pause else MbIcons.Play), contentDescription = null, tint = c.accInk, modifier = Modifier.size(16.dp))
+            }
+            VoiceWaveformView(
+                barsOf(voice.waveform),
+                Modifier
+                    .width(110.dp)
+                    .pointerInput(track) {
+                        if (track == null) return@pointerInput
+                        awaitEachGesture {
+                            val down = awaitFirstDown()
+                            controls?.onSeek?.invoke(track, down.position.x / size.width)
+                            do {
+                                val change = awaitPointerEvent().changes.first()
+                                if (change.pressed && change.positionChanged()) controls?.onSeek?.invoke(track, change.position.x / size.width)
+                            } while (change.pressed)
+                        }
+                    },
+                color = ink,
+                progress = if (active && voice.durationMs > 0) position.toFloat() / voice.durationMs else 0f
+            )
+            Text(voiceTimeLabel(voice.durationMs, position, playing), style = MbTypography.meta, color = ink)
+            if (live != null) {
+                Text(
+                    VoicePlayer.speedLabel(live.state.speed),
+                    style = MbTypography.meta,
+                    color = c.accInk,
+                    modifier = Modifier
+                        .mbFrame(fill = c.acc, edge = c.acc, form = MbChamferForm.Std, cut = 4.dp)
+                        .clickable { live.onSpeed() }
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
+            if (unlistened) Box(Modifier.size(8.dp).mbFrame(fill = c.ok, edge = c.ok, form = MbChamferForm.Std, cut = 2.dp).semantics { contentDescription = "Не прослушано" })
         }
         Text(meta, style = MbTypography.meta, color = if (self) Color(0xFFA9E8C3) else c.ink2, modifier = Modifier.padding(top = 2.dp))
     }
@@ -128,7 +192,7 @@ internal fun VoiceBubble(msg: ChatMessageEntity, self: Boolean) {
 internal class VoiceRecordUi(val recording: Boolean, val state: RecordingState, val micButton: @Composable () -> Unit, val send: () -> Unit, val cancel: () -> Unit)
 
 @Composable
-internal fun rememberVoiceRecordUi(micAllowed: Boolean, onClip: (RecordedClip) -> Unit): VoiceRecordUi {
+internal fun rememberVoiceRecordUi(micAllowed: Boolean, onClip: (RecordedClip) -> Unit, onRecordingStart: () -> Unit = {}): VoiceRecordUi {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val session = remember {
@@ -179,6 +243,7 @@ internal fun rememberVoiceRecordUi(micAllowed: Boolean, onClip: (RecordedClip) -
                             permission.launch(Manifest.permission.RECORD_AUDIO)
                             return@awaitEachGesture
                         }
+                        onRecordingStart()
                         if (!session.start()) { toast("Не удалось начать запись"); return@awaitEachGesture }
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         recording = true
