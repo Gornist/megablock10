@@ -29,6 +29,11 @@ const REMOTE_MIN_ANGLE := 0.002
 const COLOR_HAND := Color(0.18, 0.72, 0.85)  # холодный голубой: свои руки не красные (красные — другие люди и угроза)
 const COLOR_SPARK := Color(0.6, 0.95, 1.0)
 
+## Проба 07.10 (по ролику владельца «частица, из которой собирается волюметрик»): точки рук рисуются анимированным глитч-блоком (GlitchSprite) вместо круглых.
+## false — прежние круглые точки; решать по кадру с очков. Читается при создании руки.
+static var glitch_sprite := true
+static var glitch_scale := 1.0
+
 enum Mode { NONE, POSE_SOURCE, TRACKED, CONTROLLER }
 
 var left := false
@@ -71,6 +76,10 @@ func _init(is_left: bool = false, ctrl: XRController3D = null) -> void:
 		_bone_of[i] = _bone_index(int(tp[1]), int(tp[2])) if float(tp[0]) < 0.5 and int(tp[1]) >= 0 else -1
 	_mat = ShaderMaterial.new()
 	_mat.shader = SHADER
+	if glitch_sprite:
+		_mat.set_shader_parameter("glitch_tex", GlitchSprite.texture())
+		_mat.set_shader_parameter("glitch_mix", 1.0)
+		_mat.set_shader_parameter("glitch_scale", glitch_scale)
 	_mm = MultiMesh.new()
 	_mm.transform_format = MultiMesh.TRANSFORM_3D
 	_mm.use_colors = true
