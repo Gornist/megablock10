@@ -20,6 +20,8 @@ var _moved: Dictionary = {}
 ## Сколько ходов было в последнем такте и чем он вызван: "moves" | "window" (для журнала).
 var last_moves := 0
 var last_by := ""
+## Кто из нетраннеров сходил в окне перед последним тактом (сессии): по ним узел снимает грейс прибытия.
+var last_moved: Array = []
 
 
 func _init(window: float = 5.0, min_interval: float = 0.6) -> void:
@@ -66,6 +68,7 @@ func poll(now: float) -> bool:
 	last_tick_at = now
 	last_by = by
 	last_moves = _moved.size()
+	last_moved = _moved.keys()
 	_moved.clear()
 	return true
 

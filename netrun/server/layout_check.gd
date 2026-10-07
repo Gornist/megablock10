@@ -7,6 +7,8 @@ extends RefCounted
 
 ## Первые такты в узле, когда нетраннера не видно (time-and-movement.md, 3.7).
 const ENTRY_HIDDEN_TICKS := 2
+## Сколько тактов после прибытия зона прибытия не должна быть видна Стражам (грейс прибытия: settings.arrival_grace_ticks, по умолчанию 2).
+const ARRIVAL_SAFE_TICKS := 2
 ## Окно площадки внешнего хранилища: наибольшая серия подряд тактов цикла вне зрения; BASE ≥ 12 (HARD ≥ 8), любая площадка — не меньше 3.
 const OUTER_WINDOW_MIN := 12
 const ANY_WINDOW_MIN := 3
@@ -32,6 +34,7 @@ static func run_all(layout: LayoutData) -> Dictionary:
 		"cover": check_cover(layout),
 		"dead_ends": check_dead_ends(layout),
 		"vault_grid": check_vault_grid(layout),
+		"arrival_safe": check_arrival_safe(layout),
 	}
 
 
@@ -302,6 +305,63 @@ static func check_vault_grid(layout: LayoutData) -> Dictionary:
 	if bad.is_empty():
 		return _res(true, "хранилища и площадки по клеткам 1 м (%d)" % layout.vaults.size())
 	return _res(false, "; ".join(bad))
+
+
+## Клетки прибытия: вход раскладки и точки появления после каждого портала (NodeLayout.arrival_in): {label, cell}.
+static func arrival_cells(layout: LayoutData) -> Array:
+	var out: Array = [{"label": "вход", "cell": NodeGrid.cell_of(layout.spawn)}]
+	for i in layout.portals.size():
+		var p: Vector3 = layout.portals[i]
+		if p.is_finite():
+			out.append({"label": "выход портала %d" % (i + 1), "cell": NodeGrid.cell_of(NodeLayout.arrival_in(layout, i))})
+	return out
+
+
+## (з) Безопасное прибытие (W3, правило «безопасный выход портала»): клетка прибытия и её 8 соседей (свободные) не лежат на маршруте Стража
+## (так «поймали на выходе из портала» в П3: патруль шагнул на клетку игрока). С `strict_vision` — ещё и вне зрения любого Стража в ближайшие `ticks`
+## тактов после прибытия на любой фазе цикла (то есть никогда). Для Фойе строгое зрение недостижимо без смены патруля (комната 16×16 м, дальность 6):
+## на сервере прибытие закрывает грейс (скрытые такты и settings.arrival_grace_ticks), поэтому в run_all зрение — только справка в detail.
+static func check_arrival_safe(layout: LayoutData, ticks: int = ARRIVAL_SAFE_TICKS, strict_vision: bool = false) -> Dictionary:
+	var cycle := cycle_ticks(layout)
+	if cycle <= 0:
+		return _res(false, "цикл патруля не найден за %d тактов" % MAX_CYCLE)
+	var grid := layout.grid()
+	var route := _route_cells(layout, cycle)
+	var states := simulate(layout, cycle + ticks)   # такты t0+1 … t0+ticks для всех фаз t0 цикла
+	var bad: Array[String] = []
+	var spots := arrival_cells(layout)
+	var exposed := 0
+	for a: Dictionary in spots:
+		var zone: Array[Vector2i] = []
+		var c: Vector2i = a["cell"]
+		for dx in range(-1, 2):
+			for dy in range(-1, 2):
+				var z := c + Vector2i(dx, dy)
+				if NodeGrid.in_bounds(z) and not grid.is_occupied(z):
+					zone.append(z)
+		var problem := ""
+		for z in zone:
+			if route.has(z):
+				problem = "клетка %s на маршруте Стража" % str(z)
+				break
+		var seen_at := ""
+		for t0 in cycle:
+			for k in range(1, ticks + 1):
+				if _seen_by_any(layout, grid, states[t0 + k], zone):
+					seen_at = "видна Стражу через %d такта после фазы %d цикла" % [k, t0]
+					break
+			if not seen_at.is_empty():
+				break
+		if not seen_at.is_empty():
+			exposed += 1
+			if strict_vision and problem.is_empty():
+				problem = seen_at
+		if not problem.is_empty():
+			bad.append("%s %s: %s" % [str(a["label"]), str(c), problem])
+	if not bad.is_empty():
+		return _res(false, "; ".join(bad))
+	var note := "" if strict_vision else " (в зрение Стража попадают %d из %d зон — их прикрывает грейс прибытия)" % [exposed, spots.size()]
+	return _res(true, "прибытие (вход и порталы) и соседние клетки вне маршрута Стража" + note)
 
 
 ## Центр клетки 1 м: обе координаты на полклетки от целой границы.

@@ -39,9 +39,9 @@ func test_учебный_узел_проходит_все_проверки() -> 
 	assert_str(_fail_text(ld)).is_empty()
 
 
-func test_цикл_патруля_фойе_восемнадцать_тактов_учебного_двадцать_два() -> void:
-	assert_int(LayoutCheck.cycle_ticks(LayoutData.load_named("foyer"))).is_equal(18)
-	assert_int(LayoutCheck.cycle_ticks(LayoutData.load_named("foyer_tutorial"))).is_equal(22)
+func test_цикл_патруля_фойе_двадцать_четыре_такта_учебного_двадцать_восемь() -> void:
+	assert_int(LayoutCheck.cycle_ticks(LayoutData.load_named("foyer"))).is_equal(24)
+	assert_int(LayoutCheck.cycle_ticks(LayoutData.load_named("foyer_tutorial"))).is_equal(28)
 
 
 func test_окна_фойе_внешние_хранилища_не_меньше_двенадцати_тактов() -> void:
@@ -149,3 +149,45 @@ func test_площадка_не_рядом_с_хранилищем_не_прох
 	var r := LayoutCheck.check_vault_grid(ld)
 	assert_bool(r["ok"]).is_false()
 	assert_str(r["detail"]).contains("не соседняя")
+
+
+func test_прибытие_фойе_и_учебного_узла_безопасно() -> void:
+	for n in ["foyer", "foyer_tutorial"]:
+		var r := LayoutCheck.check_arrival_safe(LayoutData.load_named(n))
+		assert_bool(r["ok"]).override_failure_message("%s: %s" % [n, r["detail"]]).is_true()
+	assert_bool(LayoutCheck.run_all(LayoutData.load_named("foyer")).has("arrival_safe")).is_true()
+
+
+func test_клетки_прибытия_вход_и_каждый_портал() -> void:
+	var cells := LayoutCheck.arrival_cells(LayoutData.load_named("foyer"))
+	assert_int(cells.size()).is_equal(4)   # вход и три портала
+	assert_object(cells[0]["cell"]).is_equal(NodeGrid.cell_of(LayoutData.load_named("foyer").spawn))
+
+
+func test_маршрут_через_вход_не_проходит_проверку_прибытия() -> void:
+	var d := _foyer_dict()
+	d["ice"] = [{"id": "g1", "kind": "sentry", "route": [{"cell": [3, 6]}, {"cell": [3, 4]}]}]   # Страж ходит по клетке входа
+	var r := LayoutCheck.check_arrival_safe(_parse(d))
+	assert_bool(r["ok"]).is_false()
+	assert_str(r["detail"]).contains("вход")
+	assert_str(r["detail"]).contains("на маршруте")
+
+
+func test_строгая_проверка_зрения_ловит_стража_напротив_выхода_портала() -> void:
+	var d := _foyer_dict()
+	var ld0 := _parse(d)
+	var arrive: Vector2i = LayoutCheck.arrival_cells(ld0)[1]["cell"]
+	var guard := Vector2i(arrive.x + 3, arrive.y)
+	# Страж стоит напротив выхода портала 1 и смотрит на него: на маршруте клеток прибытия нет, но они видны
+	d["ice"] = [{"id": "g1", "kind": "sentry", "route": [{"cell1": [guard.x, guard.y], "wait": 1, "look": ["W"]}, {"cell1": [guard.x, guard.y + 1], "wait": 1, "look": ["W"]}]}]
+	var ld := _parse(d)
+	assert_bool(LayoutCheck.check_arrival_safe(ld)["ok"]).is_true()   # по маршруту чисто; зрение — справка (прикрывает грейс на сервере)
+	var strict := LayoutCheck.check_arrival_safe(ld, 2, true)
+	assert_bool(strict["ok"]).is_false()
+	assert_str(strict["detail"]).contains("видна")
+
+
+func test_без_стражей_прибытие_безопасно_и_строго() -> void:
+	var d := _foyer_dict()
+	d["ice"] = []
+	assert_bool(LayoutCheck.check_arrival_safe(_parse(d), 2, true)["ok"]).is_true()

@@ -62,12 +62,12 @@ func test_фойе_страж_маршрут_в_клетках_ожидание_
 		cells.append(p["cell"])
 		waits.append(p["wait"])
 		looks.append(p["look"])
-	assert_array(cells).is_equal([Vector2i(3, 5), Vector2i(13, 5), Vector2i(13, 9), Vector2i(3, 9)])   # юго-восточная клетка центра блока
+	assert_array(cells).is_equal([Vector2i(1, 5), Vector2i(15, 5), Vector2i(15, 11), Vector2i(1, 11)])   # юго-восточная клетка центра блока: W3 — маршрут у стен, вдали от точек прибытия
 	assert_array(waits).is_equal([1, 1, 1, 1])
 	assert_array(looks).is_equal([Vector2i(0, 1), Vector2i(0, 1), Vector2i(0, -1), Vector2i(0, -1)])
 	# Формат маршрута — тот, что принимает TickIce.
 	var ice := TickIce.new({}, route, ld.grid())
-	assert_object(ice.cell()).is_equal(Vector2i(3, 5))
+	assert_object(ice.cell()).is_equal(Vector2i(1, 5))
 
 
 func test_учебный_узел_та_же_карта_медленный_страж_и_подсказки() -> void:
