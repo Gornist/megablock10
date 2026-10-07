@@ -155,6 +155,7 @@ func _ready() -> void:
 	world_ui.deck.give_list_requested.connect(func(): give_list_requested.emit())
 	world_ui.deck.give_requested.connect(func(item_id: String, to: Dictionary): give_requested.emit(item_id, to))
 	world_ui.trace.set_trace(0.0)
+	world_ui.tick_ring.bind(remote)   # кольцо окна такта: доля окна и вспышка по tk
 	for hand in [rig.left_hand, rig.right_hand]:
 		hand.button_pressed.connect(func(action: String):
 			if action == "grip_click":
@@ -242,6 +243,7 @@ func apply_state(state: Dictionary) -> void:
 		_show_ice_state(_ice_nodes[id], int(ice["s"]), pos)
 		if ice.has("c"):
 			(_ice_nodes[id] as IceView).set_eye_state(int(ice.get("st", 0)))   # тактовый режим: глаз по состоянию ICE
+			(_ice_nodes[id] as IceView).set_lost(int(ice.get("lost", 0)) == 1)   # потерял нетраннера: «…» на один такт
 	# ICE, которого в снимке больше нет (игрок перешёл в другой узел), убираем: иначе Black ICE прошлого узла стоял бы в новом.
 	for id in _ice_nodes.keys():
 		if not seen.has(id):
@@ -663,6 +665,7 @@ func apply_node(info: Dictionary) -> void:
 	current_node = str(info.get("node", ""))
 	apply_layout(LayoutData.cached(str(info.get("layout", ""))), str(info.get("tier", "")))
 	view.set_dead_decks(info.get("dead", []))
+	_refresh_breach_context()   # тир нового узла — в панель сразу: длина замка (и `breach.request lock=`) не должна ждать события деки
 	if world_ui.breach_panel.mode() != BreachPanel.MODE_RUN:
 		world_ui.breach_panel.hide_panel()   # другой узел — другие хранилища
 	_build_node(info.get("shards", []), info.get("portals", []), float(info.get("r", NodeLayout.PORTAL_RADIUS)))

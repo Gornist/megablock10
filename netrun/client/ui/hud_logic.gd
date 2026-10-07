@@ -139,6 +139,15 @@ static func active_banner(row: Dictionary) -> String:
 	return text if effect == "" else text + " · " + effect
 
 
+## Поля строки журнала `breach.end` (взлом хранилища): итог, досрочность, эдди, сколько хранилищ открыто, ошибка Моста и — для разбора замка — `lock_opened`
+## (1 — замок вскрыт, 0 — нет) и `matched_before_lock` (id через запятую: совпали до вскрытия, не засчитаны). Сервер без этих полей (старый) — 0 и пусто.
+static func breach_end_fields(ev: Dictionary) -> Dictionary:
+	var before: Array = ev.get("matched_before_lock", [])
+	return {"outcome": ev.get("outcome", ""), "early": ev.get("early", ""), "eddies": ev.get("eddies", 0), "opened": (ev.get("opened", []) as Array).size(),
+		"error": ev.get("error", ""), "lock_opened": 1 if bool(ev.get("lock_opened", false)) else 0,
+		"matched_before_lock": ",".join(PackedStringArray(before.map(func(i): return str(i))))}
+
+
 ## Поля строки журнала `breach.request` (одна строка): хранилище, демоны (число и id), сумма кодов их цепочек, RAM деки и длина замка тира —
 ## по ним видно, почему сервер ответил bad_daemons («замок + коды > RAM»). daemons — рабочие демоны деки (ev deck: id, cells).
 static func breach_request_fields(vault: String, ids: Array, daemons: Array, ram: int, lock: int) -> Dictionary:

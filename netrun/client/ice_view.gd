@@ -20,6 +20,9 @@ const ALERT_COLOR := [Color.WHITE, Color(1.0, 0.62, 0.26), Color(1.0, 0.35, 0.31
 ## Глаз тактового режима (time-and-movement.md 3.4): светящаяся точка спереди у головы; цвет — по состоянию TickIce (Патруль, Взгляд, Проверка, Поиск):
 ## белый, жёлтый, оранжевый, красный — те же цвета, что у света зрения на полу.
 const EYE_COLOR := [Color(1.0, 1.0, 1.0), Color(1.0, 0.86, 0.25), Color(1.0, 0.55, 0.15), Color(1.0, 0.2, 0.18)]
+## «…» потерял нетраннера (тактовый режим, state.lost): серый знак над головой на один такт.
+const LOST_TEXT := "…"
+const LOST_COLOR := Color(0.75, 0.82, 0.9)
 const EYE_RADIUS := 0.09
 ## Положение глаза: спереди (−Z — куда смотрит ICE) на высоте головы; у Black ICE выше и дальше (модель ×2).
 const EYE_POS_SOFT := Vector3(0.0, 1.7, -0.45)
@@ -37,6 +40,7 @@ var _clip := ""
 var _eye: MeshInstance3D
 var _eye_mat: StandardMaterial3D
 var _eye_state := -1
+var _lost_mark: Label3D
 
 
 func _init(is_black: bool = false) -> void:
@@ -90,6 +94,28 @@ func set_eye_state(st: int) -> void:
 		add_child(_eye)
 	_eye_state = s
 	_eye_mat.albedo_color = EYE_COLOR[s]
+
+
+## «…» над ICE на один такт: он только что потерял нетраннера (state.lost) и сейчас вернётся на маршрут. Знак создаётся при первом показе.
+func set_lost(on: bool) -> void:
+	if _lost_mark == null:
+		if not on:
+			return
+		_lost_mark = Label3D.new()
+		_lost_mark.name = "LostMark"
+		_lost_mark.text = LOST_TEXT
+		_lost_mark.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		_lost_mark.font_size = 96
+		_lost_mark.pixel_size = 0.006
+		_lost_mark.outline_size = 12
+		_lost_mark.modulate = LOST_COLOR
+		_lost_mark.position = _alert.position
+		add_child(_lost_mark)
+	_lost_mark.visible = on
+
+
+func lost_visible() -> bool:
+	return _lost_mark != null and _lost_mark.visible
 
 
 ## Состояние глаза (-1 — не создан, realtime) и его цвет — для тестов.

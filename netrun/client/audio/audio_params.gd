@@ -44,3 +44,16 @@ static func flatline_params(t: float, settings: Dictionary = AudioSettings.DEFAU
 		"hz": lerpf(float(f["start_hz"]), float(f["end_hz"]), k),
 		"volume_db": float(f["volume_db"]) - 40.0 * k * k,
 	}
+
+
+## Звук такта через age секунд после начала → {active, hz, volume_db, gain}. kind: "pulse" (тихий пульс на каждом такте) или "click" (щелчок тиканья
+## перед шагом ICE): тон и громкость из settings["tick"], огибающая убывает до нуля за pulse_sec / click_sec. Неизвестный kind — тишина.
+static func tick_params(kind: String, age: float, settings: Dictionary = AudioSettings.DEFAULTS) -> Dictionary:
+	var t: Dictionary = settings["tick"]
+	if kind != "pulse" and kind != "click":
+		return {"active": false, "hz": 0.0, "volume_db": -80.0, "gain": 0.0}
+	var dur := float(t[kind + "_sec"])
+	if age < 0.0 or age >= dur:
+		return {"active": false, "hz": float(t[kind + "_hz"]), "volume_db": -80.0, "gain": 0.0}
+	var left := 1.0 - age / dur
+	return {"active": true, "hz": float(t[kind + "_hz"]), "volume_db": float(t[kind + "_db"]), "gain": left * left}
