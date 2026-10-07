@@ -4,11 +4,11 @@ extends Node3D
 ## Вид проверяем только здесь: вьюпорт Blender аддитивные материалы не показывает. Частота кадров на Pico 4 не проверяется.
 
 const AM := preload("res://assets/asset_materials.gd")
-const BG := Color(0.004, 0.008, 0.016)
+const OLD_BG := Color(0.004, 0.008, 0.016)  # прежний почти чёрный фон (до решения «пустота — тёмная бирюзовая дымка»); --bg=0.004,0.008,0.016 возвращает его
 
 ## Комната 6×6 м из модулей 2×2 м: пол 3×3, стены по периметру, колонны в углах, вход с юга (z=+3), выход на север (z=-3),
 ## в центре шард, у выхода ICE. Предмет: [путь, позиция, поворот Y (°), тир, масштаб].
-const REFLECT := ["props/vault", "props/hack_panel", "props/vault_closed","props/vault_open", "props/portal", "props/portal_locked", "env/wall", "env/wall_b", "env/wall_c", "env/portal_wall", "env/far_field", "env/far_field_b", "env/far_field_c", "env/doorway", "env/doorway_b", "env/pillar", "ice/soft_ice", "avatar/runner", "avatar/runner_b", "avatar/runner_c"]
+const REFLECT := ["props/vault", "props/hack_panel", "props/vault_closed","props/vault_open", "props/portal", "props/portal_locked", "env/wall", "env/wall_b", "env/wall_c", "env/portal_wall", "env/far_field", "env/far_field_b", "env/far_field_c", "env/doorway", "env/doorway_b", "env/exit_frame", "env/pillar", "ice/soft_ice", "avatar/runner", "avatar/runner_b", "avatar/runner_c"]
 const CEILING_H := 5.0
 const LAYER_PITCH := 7.0  # шаг между пластами данных: потолок 5 м + 2 м пустоты
 const ICE_POS := Vector3(1.0, 0.0, -2.8)
@@ -64,7 +64,10 @@ func _room() -> Array:
 			k += 1
 		items.append(["env/portal_wall", Vector3(-4.0, 0, 0.0), -90.0, "BASE", 1.0])
 		items.append(["env/doorway", Vector3(-1.0, 0, 4.0), 0.0, "BASE", 1.0])     # вход
-		items.append(["env/doorway_b", Vector3(1.0, 0, -4.0), 0.0, _tier, 1.0])   # выход
+		if _noexit:
+			items.append(["env/doorway_b", Vector3(1.0, 0, -4.0), 0.0, _tier, 1.0])   # выход (со стенами; без --noexit его заменяет exit_frame)
+	if not _noexit:  # выход без стен: свободная рамка (столбы-занавесы, перемычка, порог), проём пустой; в игре на её месте при LOCKDOWN встают env/lockdown_gate
+		items.append(["env/exit_frame", Vector3(1.0, 0, -4.0), 0.0, "BASE", 1.0])
 	if not _noedge:
 		items.append(["env/room_edge_8", Vector3(0.0, 0.0, 0.0), 0.0, "BASE", 1.0])  # кромка комнаты вместо стен: квадрат 8×8, края на ±4 (в игре — env/room_edge_16 в центр комнаты)
 	if not _nomoat:
@@ -126,11 +129,11 @@ func _shots() -> Array:
 		["props/vault", Vector3(0.0, 0, -0.2), 180.0, "BASE", 1.0, {"state": "open", "tier": 2}],
 		["props/vault", Vector3(1.5, 0, -0.2), 180.0, "BASE", 1.0, {"state": "empty", "tier": 3}],
 		["props/shard", Vector3(0.0, 1.0, -0.2), 0.0, "", 1.0, {"tier": 2}],
-		["props/shard", Vector3(-2.7, 1.0, 0.6), 0.0, "", 1.0, {"tier": 3}],
-		["props/shard_encrypted", Vector3(-2.3, 1.0, 0.6), 0.0, "", 1.0, {"tier": 3}],
-		["props/shard", Vector3(-2.7, 1.3, 0.6), 0.0, "", 1.0, {"tier": 0}],
-		["props/shard_encrypted", Vector3(-2.3, 1.3, 0.6), 0.0, "", 1.0, {"tier": 0}],
-		["props/daemon_token", Vector3(-2.5, 1.65, 0.6), 0.0, "", 1.0],
+		["props/shard", Vector3(-3.0, 0.9, 0.6), 0.0, "", 1.0, {"tier": 3}],  # нижний ряд: маяк (луч 0,45 м) поднимается до 1,4 м; верхний ряд выше луча
+		["props/shard_encrypted", Vector3(-2.6, 0.9, 0.6), 0.0, "", 1.0, {"tier": 3}],
+		["props/daemon_token", Vector3(-2.2, 0.9, 0.6), 0.0, "", 1.0],
+		["props/shard", Vector3(-3.0, 1.6, 0.6), 0.0, "", 1.0, {"tier": 0}],
+		["props/shard_encrypted", Vector3(-2.6, 1.6, 0.6), 0.0, "", 1.0, {"tier": 0}],
 		["props/hack_pad", Vector3(2.9, 0, 0.7), 180.0, "BASE", 1.0],
 		["props/hack_panel", Vector3(2.9, 0, -0.3), 180.0, "BASE", 1.0]]
 	var solo := [["avatar/runner", Vector3(0, 0, 0), 180.0, "", 1.0]]
@@ -166,7 +169,7 @@ func _shots() -> Array:
 		{"name": "ice_close", "cam": Vector3(1.2, 1.3, 3.2), "look": Vector3(1.5, 1.4, 0.0), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": icestage},
 		{"name": "props_stage", "cam": Vector3(0.0, 1.3, 3.6), "look": Vector3(0.0, 1.1, -1.0), "fov": 65.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": props},
 		{"name": "props_volume", "cam": Vector3(0.0, 1.3, 3.4), "look": Vector3(0.0, 0.8, 0.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": volume},
-		{"name": "shard_close", "cam": Vector3(-2.5, 1.3, 1.5), "look": Vector3(-2.5, 1.3, 0.6), "fov": 30.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": volume},
+		{"name": "shard_close", "cam": Vector3(-2.6, 1.1, 2.0), "look": Vector3(-2.6, 1.0, 0.6), "fov": 35.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": volume},
 		{"name": "vault_close", "cam": Vector3(-0.2, 1.0, 1.6), "look": Vector3(-0.9, 0.6, 0.3), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": props},
 		{"name": "avatar_stage", "cam": Vector3(0.1, 1.2, 3.0), "look": Vector3(0.0, 0.95, 0.0), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": stage},
 		{"name": "avatar_side", "cam": Vector3(2.0, 1.15, 0.0), "look": Vector3(0.0, 1.0, 0.0), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": solo},
@@ -182,12 +185,17 @@ func _shots() -> Array:
 		{"name": "room_inside", "cam": Vector3(-3.0, 1.25, 3.0), "look": Vector3(0.5, 0.9, -2.8), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
 		# с края комнаты (юго-западный угол) вдоль южной кромки и наружу, за обрыв
 		{"name": "edge_view", "cam": Vector3(-3.4, 1.4, 3.1), "look": Vector3(3.0, 0.0, 6.0), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": room},
+		# выход без стен: взгляд из центра комнаты на свободную рамку env/exit_frame в точке выхода (1, 0, −4)
+		{"name": "exit_view", "cam": Vector3(-1.8, 1.3, -0.4), "look": Vector3(1.0, 1.1, -4.0), "fov": 60.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": room},
 	]
 
 
 var out_dir := "/tmp/shots"
 
 
+var _bg: Color = AM.VOID_BG  # --bg=r,g,b: цвет фона (пустота между плитами); по умолчанию AssetMaterials.VOID_BG
+var _nobeacon := false  # --nobeacon: выключить узел Beacon у шардов и токена (как в руке игрока; сравнение «с маяком / без»)
+var _noexit := false  # --noexit: без свободной рамки выхода env/exit_frame в точке выхода комнаты
 var _tier := "HARD"  # --tier=BASE|HARD|NIGHTMARE: тир окружения в кадрах (по умолчанию HARD, как раньше; BASE — бирюза, как в клиенте)
 var _lattice := 0.0  # --lattice=0.05: шаг мировой решётки (эксперимент), 0 — выкл.
 var _field := false  # --field: вместо дальних стен поле колонн
@@ -225,6 +233,13 @@ func _ready() -> void:
 			out_dir = a.trim_prefix("--out=")
 		if a == "--movie":
 			_movie = true
+		if a.begins_with("--bg="):
+			var bgv := a.trim_prefix("--bg=").split(",")
+			_bg = Color(float(bgv[0]), float(bgv[1]), float(bgv[2]))
+		if a == "--noexit":
+			_noexit = true
+		if a == "--nobeacon":
+			_nobeacon = true
 		if a.begins_with("--cam="):
 			_static_cam = PackedFloat64Array(Array(a.trim_prefix("--cam=").split(",")).map(func(v): return float(v)))
 		if a.begins_with("--tier="):
@@ -272,7 +287,7 @@ func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = BG
+	env.background_color = _bg
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_DISABLED
 	var we := WorldEnvironment.new()
 	we.environment = env
@@ -476,6 +491,9 @@ func _setup(inst: Node3D, it: Array, shot: Dictionary, intensity: float) -> void
 	_insts.append(inst)
 	AM.apply(inst, it[3])
 	apply_variant(inst, it[5] if it.size() > 5 else {})
+	var beacon := inst.find_child("Beacon", true, false) as Node3D
+	if beacon != null:
+		beacon.visible = not _nobeacon  # у предмета в руке клиент выключает Beacon
 	if _lattice > 0.0:
 		AM.set_param(inst, "lattice", _lattice)
 	if String(it[0]).begins_with("props/vault") and String(it[0]) != "props/vault":

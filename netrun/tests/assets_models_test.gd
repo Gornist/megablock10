@@ -9,7 +9,7 @@ const ROOT := "res://assets/models/"
 const ENV_VARIANTS := {
 	"floor": ["floor", "floor_b", "floor_c"], "wall": ["wall", "wall_b", "wall_c"], "doorway": ["doorway", "doorway_b"],
 	"ceiling": ["ceiling", "ceiling_b", "ceiling_c"], "corner": ["corner"], "pillar": ["pillar"], "platform": ["platform"],
-	"lockdown_gate": ["lockdown_gate"], "tunnel_ring": ["tunnel_ring"],
+	"lockdown_gate": ["lockdown_gate"], "tunnel_ring": ["tunnel_ring"], "exit_frame": ["exit_frame"],
 	"far_field": ["far_field", "far_field_b", "far_field_c"], "far_floor": ["far_floor", "far_floor_b", "far_floor_c"],
 	"far_ceiling": ["far_ceiling", "far_ceiling_b", "far_ceiling_c"],
 }
@@ -42,6 +42,28 @@ func _aabb(root: Node) -> AABB:
 	var box := AABB()
 	var first := true
 	for mi in _meshes(root):
+		var b: AABB = mi.transform * mi.get_aabb()
+		box = b if first else box.merge(b)
+		first = false
+	return box
+
+
+## Меши предмета БЕЗ маяка: узел `Beacon` (меши beacon_beam, beacon_halo) в габарит предмета не входит (ARCHITECTURE.md, «Предметы узла «волюметрик»»).
+func _item_meshes(n: Node) -> Array[MeshInstance3D]:
+	var out: Array[MeshInstance3D] = []
+	if n.name == &"Beacon":
+		return out
+	if n is MeshInstance3D:
+		out.append(n)
+	for c in n.get_children():
+		out.append_array(_item_meshes(c))
+	return out
+
+
+func _item_aabb(root: Node) -> AABB:
+	var box := AABB()
+	var first := true
+	for mi in _item_meshes(root):
 		var b: AABB = mi.transform * mi.get_aabb()
 		box = b if first else box.merge(b)
 		first = false
@@ -439,7 +461,7 @@ func test_mesh_parts_are_cached_per_tier_and_mirror() -> void:
 # ---------------------------------------------------------------- сетка
 
 func test_grid_modules_fit_the_cell() -> void:
-	for module in ["floor", "floor_b", "floor_c", "ceiling", "wall", "wall_b", "wall_c", "doorway", "doorway_b", "corner", "pillar", "platform", "lockdown_gate"]:
+	for module in ["floor", "floor_b", "floor_c", "ceiling", "wall", "wall_b", "wall_c", "doorway", "doorway_b", "corner", "pillar", "platform", "lockdown_gate", "exit_frame"]:
 		var box := _aabb(_load("env", module))
 		assert_float(box.size.x).override_failure_message("%s: шире ячейки (%.2f)" % [module, box.size.x]).is_less(CELL_FIT)
 		assert_float(box.size.z).override_failure_message("%s: глубже ячейки (%.2f)" % [module, box.size.z]).is_less(CELL_FIT)
@@ -541,8 +563,8 @@ func test_avatar_runner() -> void:
 func test_shard_variants_have_the_same_height_but_differ_in_form() -> void:
 	var a := _load("props", "shard")
 	var b := _load("props", "shard_encrypted")
-	assert_float(absf(_aabb(a).size.y - _aabb(b).size.y)).is_less(0.02)
-	assert_float(_aabb(a).size.y).is_between(0.12, 0.15)  # 13 см
+	assert_float(absf(_item_aabb(a).size.y - _item_aabb(b).size.y)).is_less(0.02)
+	assert_float(_item_aabb(a).size.y).is_between(0.12, 0.15)  # 13 см (маяк Beacon не в счёт)
 	assert_bool(a.find_child("shard_core_shell0", true, false) != null and a.find_child("shard_cage_pts", true, false) == null).override_failure_message("расшифрованный: ядро есть, клетки нет").is_true()
 	assert_bool(b.find_child("shard_core_shell0", true, false) == null and b.find_child("shard_cage_pts", true, false) != null).override_failure_message("зашифрованный: клетка есть, ядро скрыто").is_true()
 	assert_bool(b.find_child("shard_glitch_pts", true, false) != null).override_failure_message("зашифрованный: нет глитч-полос").is_true()
@@ -598,7 +620,7 @@ func test_tiers_are_cumulative_marks_on_vault_and_shards() -> void:
 
 
 func test_daemon_token_is_a_flat_hex_chip() -> void:
-	var box := _aabb(_load("props", "daemon_token"))
+	var box := _item_aabb(_load("props", "daemon_token"))  # без маяка Beacon
 	assert_float(maxf(box.size.x, box.size.y)).is_between(0.10, 0.15)
 	assert_float(box.size.z).override_failure_message("токен плоский, толщина %.3f" % box.size.z).is_less(0.03)
 	assert_float(absf(box.get_center().x) + absf(box.get_center().y) + absf(box.get_center().z)).is_less(0.03)  # origin в центре
@@ -658,3 +680,53 @@ func test_hack_pad_is_a_thin_plate_under_the_feet() -> void:
 	assert_float(box.position.y).is_between(-0.01, 0.01)
 	var plate := _aabb((_load("props", "hack_pad")).find_child("pad_plate", true, false))
 	assert_float(plate.size.y).is_between(0.025, 0.035)  # плита 3 см
+
+
+# ---------------------------------------------------------------- маяк предметов (Beacon) и выход без стен (exit_frame)
+
+func test_shards_and_token_have_a_visible_beacon_and_keep_their_size() -> void:
+	for p in ["shard", "shard_encrypted", "daemon_token"]:
+		var n := _load("props", p)
+		var beacon := n.find_child("Beacon", true, false) as Node3D
+		assert_bool(beacon != null).override_failure_message("%s: нет узла Beacon" % p).is_true()
+		if beacon == null:
+			continue
+		assert_bool(beacon.visible).override_failure_message("%s: Beacon по умолчанию виден" % p).is_true()
+		for part in ["beacon_beam", "beacon_halo"]:
+			assert_bool(beacon.find_child(part, true, false) != null).override_failure_message("%s: в Beacon нет %s" % [p, part]).is_true()
+		var item := _item_aabb(n)
+		assert_float(_aabb(n).size.y).override_failure_message("%s: маяк виден в общем габарите" % p).is_greater(item.size.y + 0.3)  # луч 0,45 м вверх
+		assert_float(item.size.y).override_failure_message("%s: габарит предмета (без Beacon) вырос: %.3f" % [p, item.size.y]).is_less(0.15)
+		var halo := _aabb(beacon.find_child("beacon_halo", true, false))
+		assert_float(halo.size.x).override_failure_message("%s: ореол ≈ 0,5 м, а не %.2f" % [p, halo.size.x]).is_between(0.45, 0.55)
+		assert_float(_aabb(beacon.find_child("beacon_beam", true, false)).size.y).override_failure_message("%s: луч 0,45 м" % p).is_between(0.4, 0.5)
+
+
+func test_beacon_halo_and_beam_get_their_own_shaders() -> void:
+	var n := NodeAssets.instance(ROOT + "props/shard.glb")
+	auto_free(n)
+	var halo := n.find_child("beacon_halo", true, false) as MeshInstance3D
+	var beam := n.find_child("beacon_beam", true, false) as MeshInstance3D
+	assert_bool(halo != null and beam != null).is_true()
+	var hm := halo.get_surface_override_material(0) as ShaderMaterial
+	assert_bool(hm != null and hm.shader == AssetMaterials.BEACON_HALO_SHADER).override_failure_message("ореол маяка без своего шейдера").is_true()
+	var bm := beam.get_surface_override_material(0) as ShaderMaterial
+	assert_bool(bm != null).is_true()
+	assert_float(float(bm.get_shader_parameter("halo"))).override_failure_message("у луча маяка нет ореола").is_greater(0.0)
+
+
+func test_exit_frame_is_a_free_standing_frame_with_an_empty_opening() -> void:
+	var ef := _load("env", "exit_frame")
+	var gate := _aabb(_load("env", "lockdown_gate"))
+	var box := _aabb(ef)
+	assert_float(absf(box.size.x - gate.size.x)).override_failure_message("ширина %.2f против ворот %.2f" % [box.size.x, gate.size.x]).is_less(0.3)  # тот же проём, что у ворот
+	assert_float(box.size.y).override_failure_message("высота столбов %.2f" % box.size.y).is_between(2.2, 2.9)
+	assert_float(box.size.z).override_failure_message("рамка не стена: глубина %.2f" % box.size.z).is_less(0.6)
+	for mi in _meshes(ef):
+		var b: AABB = mi.transform * mi.get_aabb()
+		var on_floor := b.end.y < 0.1  # порог: плита 3 см и точки
+		var above := b.position.y > 1.9  # перемычка
+		var beside := b.position.x >= 0.5 or b.end.x <= -0.5  # столбы-занавесы по бокам
+		assert_bool(on_floor or above or beside).override_failure_message("%s: перекрывает проём" % mi.name).is_true()
+	var sill := _aabb(ef.find_child("exit_sill", true, false))
+	assert_float(sill.size.y).override_failure_message("порог — тонкая плита 3 см").is_between(0.025, 0.04)

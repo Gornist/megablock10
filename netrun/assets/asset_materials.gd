@@ -17,6 +17,11 @@ const SHADERS := {
 const SKIRT_SHADER := preload("res://assets/shaders/skirt.gdshader")
 ## Сплошная дымка горизонта (меш `horizon_mist` в env/horizon_band): тоже роль shell_soft, шейдер по имени меша.
 const HAZE_SHADER := preload("res://assets/shaders/haze.gdshader")
+## Ореол-«капля» маяка предмета (меш `beacon_halo` в узле Beacon у шарда и токена): роль shell_soft, шейдер по имени меша.
+const BEACON_HALO_SHADER := preload("res://assets/shaders/beacon_halo.gdshader")
+## Луч маяка (меш `beacon_beam`): штрихи (streaks) с ореолом, но спокойнее обычных — почти без дыхания и качания, гладкий (без бусин), ярче, чтобы читаться с 3 м.
+const BEACON_BEAM := {"halo": 0.5, "halo_width": 2.2, "end_fade": 0.6, "breathe": 0.08, "sway": 0.003, "bead_depth": 0.0, "glow": 2.2}
+
 ## ЭКСПЕРИМЕНТ: верх стеклянного пола (меш `*_glass` в env/floor_glass_<N>): роль shell_soft, шейдер по имени меша; сторону плиты (plate_size) берём из AABB меша.
 const GLASS_SHADER := preload("res://assets/shaders/glass.gdshader")
 
@@ -45,6 +50,14 @@ const TIER_TINT := {
 	"HARD": Color("2a7bff"),
 	"NIGHTMARE": Color("8a5cff"),
 }
+
+## Фон «пустоты» между плитами: слабая тёмная бирюзовая дымка вместо чистого чёрного (решение владельца 07.10). Замер референсов CDPR
+## (`pipeline.sh stats`, 06.10): dark ≈ 0 %, lum 19–25, hor 1,4–1,9; у наших кадров на старом фоне Color(0.004, 0.008, 0.016) dark 11–36 %.
+## Цель по stats на кадрах окружения BASE: dark ≤ 5 %, lum ≤ ~28, cyan ≥ 85 %, blue < 5 %, hor ≥ 1,3. Это цвет очистки (Environment.background_color):
+## бесплатно по перекрытию слоёв на Pico, в отличие от нового аддитивного купола. Клиент ставит `Environment.background_color = AssetMaterials.VOID_BG`.
+## Чёрные плиты `solid_dark` остаются чёрными и читаются силуэтом на бирюзовом фоне. Подбор по кадрам room_inside / room_overview / edge_view (BASE): старый фон → этот
+## даёт dark 38→31, 16→13, 28→21 %, lum 21→23, 26→27, 26→28, cyan и hor не хуже; остаток dark — чёрные плиты (пол комнаты — одна плита solid_dark, потолок), не фон.
+const VOID_BG := Color(0.0, 0.10, 0.13)
 
 ## Мягкий ореол штрихов окружения (streaks.gdshader): яркость хвоста, расширение квада и затухание к концам. У ассетов без тира — 0.
 const ENV_HALO := 0.4
@@ -109,6 +122,11 @@ static func apply(root: Node, tier: String = "") -> void:
 				m.set_shader_parameter("halo", ENV_HALO)
 				m.set_shader_parameter("halo_width", ENV_HALO_WIDTH)
 				m.set_shader_parameter("end_fade", ENV_END_FADE)
+			if String(mi.name) == "beacon_halo":  # маяк предмета: капля свечения — свой шейдер; луч — streaks с ореолом (клиент выключает узел Beacon в руке)
+				m.shader = BEACON_HALO_SHADER
+			elif String(mi.name) == "beacon_beam":
+				for k in BEACON_BEAM:
+					m.set_shader_parameter(k, BEACON_BEAM[k])
 			if entity and (src.resource_name == "streaks" or src.resource_name == "points"):
 				m.set_shader_parameter("lattice", ENTITY_LATTICE)
 			if String(mi.name).ends_with("_mid"):  # штрихи, симметричные вокруг центра (мембрана портала): длина меняется от центра

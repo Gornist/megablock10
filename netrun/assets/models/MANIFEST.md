@@ -24,10 +24,11 @@
 | `models/deck/daemon_JITTER.glb` | 0 / 300 | 54 / 140 | 0 / 8 | 0 | 2 | 0.0436 × 0.0235 × 0.006 | points | — | center | ок |
 | `models/deck/daemon_MINER.glb` | 48 / 300 | 14 / 140 | 0 / 8 | 0 | 2 | 0.034 × 0.0391 × 0.034 | points, solid_dark | — | center | ок |
 | `models/deck/daemon_TIMESKEW.glb` | 176 / 300 | 14 / 140 | 0 / 8 | 2 | 3 | 0.0358 × 0.0448 × 0.0358 | points, shell_soft | — | center | ок |
-| `models/props/daemon_token.glb` | 84 / 200 | 66 / 80 | 0 / 0 | 2 | 5 | 0.138 × 0.1209 × 0.0153 | points, shell_soft, solid_dark | — | center | ок |
+| `models/props/daemon_token.glb` | 86 / 200 | 66 / 80 | 3 / 3 | 3 | 7 | 0.138 × 0.1209 × 0.0153 | points, shell_soft, solid_dark, streaks | — | center | ок |
 | `models/props/dead_deck.glb` | 68 / 300 | 9 / 20 | 2 / 4 | 0 | 3 | 0.18 × 0.065 × 0.11 | points, solid_dark, streaks | — | center | ок |
 | `models/env/doorway.glb` | 0 / 300 | 18 / 40 | 46 / 80 | 0 | 3 | 1.9678 × 2.6921 × 0.1873 | points, streaks | — | floor | ок |
 | `models/env/doorway_b.glb` | 0 / 300 | 18 / 40 | 50 / 80 | 0 | 3 | 1.9513 × 2.6668 × 0.2822 | points, streaks | — | floor | ок |
+| `models/env/exit_frame.glb` | 28 / 120 | 48 / 150 | 35 / 140 | 0 | 5 | 1.9627 × 2.2792 × 0.1789 | points, solid_dark, streaks | — | floor | ок |
 | `models/env/far_ceiling.glb` | 936 / 1100 | 117 / 700 | 247 / 260 | 1 | 4 | 10.84 × 2.9737 × 10.8 | points, shell_soft, solid_dark, streaks | — | ceiling | ок |
 | `models/env/far_ceiling_b.glb` | 648 / 1100 | 123 / 700 | 229 / 260 | 1 | 4 | 10.84 × 2.9605 × 10.8 | points, shell_soft, solid_dark, streaks | — | ceiling | ок |
 | `models/env/far_ceiling_c.glb` | 468 / 1100 | 118 / 700 | 234 / 260 | 1 | 4 | 10.84 × 2.9751 × 10.8 | points, shell_soft, solid_dark, streaks | — | ceiling | ок |
@@ -72,8 +73,8 @@
 | `models/avatar/runner_c.glb` | 0 / 300 | 140 / 160 | 318 / 360 | 0 | 2 | 0.6494 × 1.4711 × 0.6036 | points, streaks | — | feet | ок |
 | `models/props/seat.glb` | 252 / 300 | 24 / 40 | 11 / 16 | 0 | 3 | 1.2 × 1.1082 × 1.2 | points, solid_dark, streaks | — | floor | ок |
 | `models/props/sensor.glb` | 88 / 500 | 16 / 40 | 2 / 8 | 3 | 6 | 0.342 × 1.45 × 0.32 | points, shell_soft, solid_dark, streaks | — | floor | ок |
-| `models/props/shard.glb` | 52 / 300 | 126 / 160 | 0 / 0 | 3 | 7 | 0.1399 × 0.13 × 0.136 | points, shell_soft | — | center | ок |
-| `models/props/shard_encrypted.glb` | 12 / 400 | 151 / 220 | 4 / 8 | 1 | 7 | 0.197 × 0.1431 × 0.136 | points, shell_soft, streaks | — | center | ок |
+| `models/props/shard.glb` | 54 / 300 | 126 / 160 | 3 / 3 | 4 | 9 | 0.1399 × 0.13 × 0.136 | points, shell_soft, streaks | — | center | ок |
+| `models/props/shard_encrypted.glb` | 14 / 400 | 151 / 220 | 7 / 7 | 2 | 9 | 0.197 × 0.1431 × 0.136 | points, shell_soft, streaks | — | center | ок |
 | `models/ice/soft_ice.glb` | 0 / 300 | 160 / 200 | 179 / 200 | 0 | 3 | 1.2214 × 2.15 × 0.7577 | points, streaks | idle, patrol | feet | ок |
 | `models/env/tunnel_ring.glb` | 0 / 300 | 188 / 320 | 78 / 120 | 0 | 2 | 3.026 × 3.016 × 1.96 | points, streaks | — | floor | ок |
 | `models/props/vault.glb` | 208 / 900 | 314 / 500 | 107 / 220 | 2 | 17 | 0.9277 × 0.807 × 0.9085 | points, shell_soft, solid_dark, streaks | — | floor | ок |
