@@ -20,6 +20,9 @@ const FUTURE_TINT := Color(0.45, 0.8, 1.0)
 const FUTURE_TINT_MIX := 0.55
 ## Цвет по состоянию TickIce (Патруль, Взгляд, Проверка, Поиск); совпадает с глазом ICE (IceView.EYE_COLOR).
 const STATE_COLORS := [Color(1.0, 1.0, 1.0), Color(1.0, 0.86, 0.25), Color(1.0, 0.55, 0.15), Color(1.0, 0.2, 0.18)]
+## Отпечатки шагов (2-й и 3-й шаг ICE по state.rt): прозрачность по номеру шага, высота — между светом «после шага» и стрелкой.
+const FOOT_ALPHAS := [0.30, 0.16]
+const FOOT_LIFT := 0.012
 const PRECAPTURE_COLOR := Color(1.0, 0.1, 0.1)
 const PULSE_SEC := 0.5
 const PULSE_GAIN := 1.6
@@ -36,6 +39,7 @@ var _mm: MultiMeshInstance3D
 var _mat: StandardMaterial3D
 var _arrows: Array[MeshInstance3D] = []
 var _arrow_specs: Array = []
+var _foot_specs: Array = []
 var _key := 0
 var _count := 0
 ## То же, что записано в MultiMesh (положение и цвет квадратов): под headless-рендером MultiMesh ничего не хранит, а тестам нужно проверить.
@@ -138,6 +142,7 @@ func cell_position(i: int) -> Vector3:
 func _rebuild(intents: Array, player_cell: Vector2i) -> void:
 	var n := 0
 	_arrow_specs.clear()
+	_foot_specs.clear()
 	_cell_pos.clear()
 	_cell_col.clear()
 	for it: Dictionary in intents:
@@ -157,9 +162,44 @@ func _rebuild(intents: Array, player_cell: Vector2i) -> void:
 		var spec := _arrow_for(it, c, d, nc, nd, base, player_cell)
 		if not spec.is_empty() and _arrow_specs.size() < MAX_ARROWS:
 			_arrow_specs.append(spec)
+		if not TickForecast.is_precapture(it, player_cell):   # красная стрелка предзахвата приоритетнее следа
+			n = _put_footprints(it, c, base, n)
 	_count = n
 	_mm.multimesh.visible_instance_count = n
 	_sync_arrows()
+
+
+## «Отпечатки шагов»: клетки 2-го и 3-го шага из rt (1-й — стрелка), тусклее и бледнее с каждым шагом, цвет — по состоянию ICE. Стоянка (клетка повторяется
+## или это снова клетка ICE) отпечатка не даёт. Без rt (старый сервер) — ничего.
+func _put_footprints(it: Dictionary, c: Vector2i, base: Color, n: int) -> int:
+	var rt: Variant = it.get("rt")
+	if not (rt is Array):
+		return n
+	var cells: Array = rt
+	for i in range(1, mini(cells.size(), FOOT_ALPHAS.size() + 1)):
+		var cell: Vector2i = cells[i]
+		if cell == cells[i - 1] or cell == c or n >= CAPACITY:
+			continue
+		var a: float = FOOT_ALPHAS[i - 1]
+		var p := NodeGrid.center(cell)
+		var pos := Vector3(p.x, FOOT_LIFT, p.z)
+		var col := Color(base.r, base.g, base.b, a)
+		_mm.multimesh.set_instance_transform(n, Transform3D(Basis(), pos))
+		_mm.multimesh.set_instance_color(n, col)
+		_cell_pos.append(pos)
+		_cell_col.append(col)
+		_foot_specs.append({"cell": cell, "step": i + 1, "alpha": a})
+		n += 1
+	return n
+
+
+func footprint_count() -> int:
+	return _foot_specs.size()
+
+
+## Отпечаток i: {cell, step (2 или 3), alpha}.
+func footprint_spec(i: int) -> Dictionary:
+	return _foot_specs[i]
 
 
 func _put(cells: Dictionary, color: Color, alpha_scale: float, lift: float, n: int) -> int:

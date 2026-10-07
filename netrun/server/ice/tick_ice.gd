@@ -23,6 +23,8 @@ const DEFAULTS := {
 }
 ## Потолок осведомлённости у неуязвимого (грейс прибытия): «?» (Взгляд, 1–2) — ICE может повернуться к нему, но не Проверка и не Поиск.
 const AWARENESS_IMMUNE_MAX := 2
+## Сколько шагов вперёд показывает след маршрута (intent()["ahead"], state.rt): ближайший — стрелка, остальные — «отпечатки».
+const AHEAD_STEPS := 3
 const _EPS := 0.0001
 const _GUARD := 64
 
@@ -66,6 +68,8 @@ var _icells_next: Dictionary = {}
 ## Как ICE видел нетраннеров в конце последнего такта: сессия → TickVision.NONE/PERIPHERY/FOCUS.
 var _vis: Dictionary = {}
 var _dry := false
+## «Наткнулся» этого такта (шаг патруля упёрся в клетку нетраннера): события {kind:"bump", session, cell}; tick() отдаёт их вызывающему.
+var _bumped: Array = []
 
 
 ## route — точки маршрута: Vector2i или {cell: Vector2i, wait: int (тактов стоять на точке, по умолчанию 0), look: взгляд на время ожидания
@@ -155,7 +159,7 @@ func forget(session: Variant) -> void:
 ## Один такт. targets: сессия → позиция (Vector3); hidden: сессия → true для невидимых (Призрак, вход в узел);
 ## immune: сессия → true для неуязвимых (грейс прибытия): ICE не заходит в клетку такого нетраннера («наткнулся» не бывает), не берёт его,
 ## а осведомлённость о нём не выше AWARENESS_IMMUNE_MAX.
-## Возвращает события: {kind:"state", state, from}, {kind:"search_started", cell}, {kind:"capture", session, reason:"caught"}.
+## Возвращает события: {kind:"state", state, from}, {kind:"search_started", cell}, {kind:"capture", session, reason:"caught"}, {kind:"bump", session, cell}.
 func tick(targets: Dictionary, hidden: Dictionary = {}, immune: Dictionary = {}) -> Array:
 	var events: Array = []
 	var tcell: Dictionary = {}
@@ -169,7 +173,9 @@ func tick(targets: Dictionary, hidden: Dictionary = {}, immune: Dictionary = {})
 		if immune.get(s, false):
 			_icells[s] = c
 	var prev_mode := _mode
+	_bumped.clear()
 	_program_step()
+	events.append_array(_bumped)
 	_update_awareness(targets, tcell, hidden)
 	var m := _level(_max_aw())
 	if m == Mode.PATROL:
@@ -206,8 +212,6 @@ func intent() -> Dictionary:
 	_icells = _icells_next
 	_dry = true
 	_program_step()
-	_dry = false
-	_icells = icells_now
 	var res := {
 		"cell": snap["cell"],
 		"dir": snap["dir"],
@@ -216,6 +220,14 @@ func intent() -> Dictionary:
 		"next_dir": _dir,
 		"aware": _max_aw(),
 	}
+	# След маршрута: те же шаги программы ещё раз и ещё (счётчики не меняются: состояние то же, что на первом шаге); клетка повторяется, пока ICE стоит.
+	var ahead: Array[Vector2i] = [_cell]
+	for _i in AHEAD_STEPS - 1:
+		_program_step()
+		ahead.append(_cell)
+	res["ahead"] = ahead
+	_dry = false
+	_icells = icells_now
 	_restore(snap)
 	return res
 
@@ -476,6 +488,7 @@ func _bump(nxt: Vector2i) -> bool:
 				_aw[s] = int(_s["awareness_max"])
 				_has_seen = true
 				_note_seen(nxt)
+				_bumped.append({"kind": "bump", "session": s, "cell": nxt})
 			return true
 	return false
 

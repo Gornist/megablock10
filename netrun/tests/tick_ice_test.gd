@@ -431,3 +431,46 @@ func test_грейс_намерение_строится_с_обходом_кл�
 	assert_int(it["state"]).is_equal(TickIce.Mode.PATROL)
 	ice.expect_immune({})
 	assert_object(ice.intent()["next_cell"]).is_equal(Vector2i(4, 8))   # без грейса шагнул бы в его клетку
+
+
+# --- След маршрута на 3 шага (state.rt, PR B2) ---
+
+func test_след_маршрута_три_клетки_первая_равна_следующему_шагу() -> void:
+	var ice := _east_ice(NodeGrid.new())
+	var it := ice.intent()
+	var ahead: Array = it["ahead"]
+	assert_int(ahead.size()).is_equal(TickIce.AHEAD_STEPS)
+	assert_object(ahead[0]).is_equal(it["next_cell"])
+	assert_array(ahead).is_equal([Vector2i(3, 8), Vector2i(5, 8), Vector2i(7, 8)])   # патруль идёт по 2 клетки
+	assert_object(ice.cell()).is_equal(Vector2i(1, 8))   # intent() ICE не двигает
+
+
+func test_след_маршрута_с_ожиданием_повторяет_клетку_пока_ICE_стоит() -> void:
+	var ice := TickIce.new({}, _wait_route(), NodeGrid.new())
+	ice.tick({})
+	ice.tick({})   # пришёл на (6;4), впереди 2 такта ожидания
+	assert_array(ice.intent()["ahead"]).is_equal([Vector2i(6, 4), Vector2i(6, 4), Vector2i(6, 6)])
+	ice.tick({})
+	assert_array(ice.intent()["ahead"]).is_equal([Vector2i(6, 4), Vector2i(6, 6), Vector2i(6, 8)])
+
+
+func test_след_маршрута_совпадает_с_тем_что_ICE_делает_на_самом_деле() -> void:
+	var g := NodeGrid.new()
+	for route: Array in [[Vector2i(1, 8), Vector2i(14, 8)], _wait_route()]:
+		var ice := TickIce.new({}, route, g)
+		for _t in 14:
+			var ahead: Array = ice.intent()["ahead"]
+			assert_array(ahead).is_equal(_clone_run(route, g, _t, TickIce.AHEAD_STEPS))
+			ice.tick({})
+
+
+## Свежий ICE по тому же маршруту: `skip` тактов вхолостую, затем клетки следующих `n` тактов.
+func _clone_run(route: Array, g: NodeGrid, skip: int, n: int) -> Array:
+	var ice := TickIce.new({}, route, g)
+	for _i in skip:
+		ice.tick({})
+	var out: Array = []
+	for _i in n:
+		ice.tick({})
+		out.append(ice.cell())
+	return out

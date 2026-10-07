@@ -1140,7 +1140,8 @@ func _broadcast_state() -> void:
 
 
 ## Тактовые поля ICE в state (старые id, p, f, s, b остаются): c — клетка [x, z], d — направление, st — состояние TickIce 0..3, nc / nd — клетка и
-## направление после следующего шага (намерение), aw — наибольший счётчик 0..6. Soft ICE — из TickIce; Black ICE (IceBrain) — по его позиции, без намерения.
+## направление после следующего шага (намерение), aw — наибольший счётчик 0..6, rt (необязательное) — клетки следующих 3 шагов [[x, z], …] (первая = nc,
+## клетка повторяется, пока ICE стоит; нет, если все три — его клетка). Soft ICE — из TickIce; Black ICE (IceBrain) — по его позиции, без намерения.
 func _add_tick_fields(entry: Dictionary, ice: IceNode) -> void:
 	var ti: TickIce = _tick_ices.get(ice)
 	if ti != null:
@@ -1155,6 +1156,13 @@ func _add_tick_fields(entry: Dictionary, ice: IceNode) -> void:
 		entry["nc"] = [(it["next_cell"] as Vector2i).x, (it["next_cell"] as Vector2i).y]
 		entry["nd"] = [(it["next_dir"] as Vector2i).x, (it["next_dir"] as Vector2i).y]
 		entry["aw"] = int(it["aware"])
+		var ahead: Array = it.get("ahead", [])
+		var moves_ahead := false
+		for a: Vector2i in ahead:
+			if a != (it["cell"] as Vector2i):
+				moves_ahead = true
+		if moves_ahead:   # стоит все 3 шага — следа нет, поле не шлём
+			entry["rt"] = ahead.map(func(a: Vector2i) -> Array: return [a.x, a.y])
 		var soft := ice_settings.duplicate(true)
 		soft.merge(node_def.get("ice_settings", {}), true)
 		entry["sc"] = float(_tick_ice_settings(soft)["sight_cells"])   # дальность зрения в клетках: по ней клиент рисует свет на полу и красит рамку прицела

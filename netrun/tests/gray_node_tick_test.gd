@@ -268,6 +268,14 @@ func test_з_state_в_тактовом_режиме_несёт_tk_и_намер�
 	assert_int(int(ice["nc"][1])).is_equal(10)
 	assert_int(int(ice["st"])).is_equal(0)
 	assert_int(int(ice["aw"])).is_equal(0)
+	# След маршрута на 3 шага: первая клетка = nc, каждая — [x, z].
+	assert_bool(ice.has("rt")).is_true()
+	var rt: Array = ice["rt"]
+	assert_int(rt.size()).is_equal(TickIce.AHEAD_STEPS)
+	assert_array(rt[0]).is_equal(ice["nc"])
+	for cell: Array in rt:
+		assert_int(cell.size()).is_equal(2)
+	assert_array(rt[1]).is_not_equal(rt[0])   # пояс идёт, а не стоит
 
 
 func test_з_state_в_реальном_времени_без_тактовых_полей() -> void:
@@ -276,7 +284,7 @@ func test_з_state_в_реальном_времени_без_тактовых_п
 	assert_bool(await _wait_for(func(): return _states.has(a))).is_true()
 	var st: Dictionary = _states[a]
 	assert_bool(st.has("tk")).is_false()
-	for key in ["c", "d", "st", "nc", "nd", "aw", "sc"]:
+	for key in ["c", "d", "st", "nc", "nd", "aw", "sc", "rt"]:
 		assert_bool((st["ice"][0] as Dictionary).has(key)).is_false()
 
 

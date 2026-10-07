@@ -127,3 +127,12 @@ func test_залипание_красной_ровно_с_0_4_секунды() -
 	assert_bool(TickForecast.red_hold_ok(0.39)).is_false()
 	assert_bool(TickForecast.red_hold_ok(0.4)).is_true()
 	assert_bool(TickForecast.red_hold_ok(2.0)).is_true()
+
+
+func test_разбор_rt_след_маршрута_необязателен() -> void:
+	var with_rt := TickForecast.parse_intents([{"c": [1, 1], "d": [1, 0], "st": 0, "nc": [3, 1], "nd": [1, 0], "rt": [[3, 1], [5, 1], [7, 1]]}])
+	assert_array(with_rt[0]["rt"]).is_equal([Vector2i(3, 1), Vector2i(5, 1), Vector2i(7, 1)])
+	var without := TickForecast.parse_intents([{"c": [1, 1], "d": [1, 0], "st": 0, "nc": [3, 1], "nd": [1, 0]}])
+	assert_bool(without[0].has("rt")).is_false()   # старый сервер: ключа нет, клиент работает как раньше
+	var black := TickForecast.parse_intents([{"c": [1, 1], "d": [1, 0], "st": 0, "b": 1, "rt": [[2, 1]]}])
+	assert_bool(black[0].has("rt")).is_false()
