@@ -217,3 +217,16 @@ func test_launch_and_charge_denial_texts_are_in_words() -> void:
 	assert_str(HudLogic.charge_denied_text("cooldown", 42)).is_equal("Перезарядка: 42 с")
 	assert_str(HudLogic.charge_denied_text("charged")).is_equal("Уже заряжен")
 	assert_str(HudLogic.charge_denied_text("active")).contains("мини-игра")
+
+
+func test_breach_end_fields_несёт_lock_opened_и_matched_before_lock() -> void:
+	var f := HudLogic.breach_end_fields({"outcome": "FAIL", "early": "", "eddies": 0, "opened": [], "error": "", "lock_opened": false, "matched_before_lock": ["d1", "d2"]})
+	assert_int(f["lock_opened"]).is_equal(0)
+	assert_str(f["matched_before_lock"]).is_equal("d1,d2")
+	assert_str(MbLog.format("breach.end", f)).contains("lock_opened=0").contains("matched_before_lock=").contains("outcome=FAIL")
+	var ok := HudLogic.breach_end_fields({"outcome": "SUCCESS", "opened": ["v1"], "lock_opened": true})
+	assert_int(ok["lock_opened"]).is_equal(1)
+	assert_int(ok["opened"]).is_equal(1)
+	assert_str(ok["matched_before_lock"]).is_empty()
+	var old := HudLogic.breach_end_fields({"outcome": "FAIL"})   # сервер без полей: 0 и пусто
+	assert_int(old["lock_opened"]).is_equal(0)

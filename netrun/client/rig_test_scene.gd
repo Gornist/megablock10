@@ -665,6 +665,7 @@ func apply_node(info: Dictionary) -> void:
 	current_node = str(info.get("node", ""))
 	apply_layout(LayoutData.cached(str(info.get("layout", ""))), str(info.get("tier", "")))
 	view.set_dead_decks(info.get("dead", []))
+	_refresh_breach_context()   # тир нового узла — в панель сразу: длина замка (и `breach.request lock=`) не должна ждать события деки
 	if world_ui.breach_panel.mode() != BreachPanel.MODE_RUN:
 		world_ui.breach_panel.hide_panel()   # другой узел — другие хранилища
 	_build_node(info.get("shards", []), info.get("portals", []), float(info.get("r", NodeLayout.PORTAL_RADIUS)))

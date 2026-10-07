@@ -421,7 +421,7 @@ func _on_event(ev: Dictionary) -> void:
 			elif ev.get("mode", "") == WorldMsg.MODE_CHARGE:
 				log_file.log("charge.end", {"daemon": ev.get("daemon", ""), "outcome": ev.get("outcome", ""), "charged": ev.get("charged", false), "early": ev.get("early", ""), "left": ev.get("left", 0)})
 			else:
-				log_file.log("breach.end", {"outcome": ev.get("outcome", ""), "early": ev.get("early", ""), "eddies": ev.get("eddies", 0), "opened": (ev.get("opened", []) as Array).size(), "error": ev.get("error", "")})
+				log_file.log("breach.end", HudLogic.breach_end_fields(ev))
 		WorldMsg.EV_BK_NO:
 			scene.apply_breach_event(ev)
 			log_file.log("decrypt.no" if ev.get("mode", "") == WorldMsg.MODE_DECRYPT else ("charge.no" if ev.get("mode", "") == WorldMsg.MODE_CHARGE else "breach.no"), {"reason": ev.get("reason", "")})

@@ -34,7 +34,9 @@
 
 ## Журналы
 - Сервер: `[tick] n=… moves=… by=window|moves` на каждый такт; строки `[ice] …` несут `tick=N`; `teleport ok/denied … cell=ix,iz`.
-- Клиент: `tick n=… inh=… mv=…` на смену такта; `rig.teleport … cell=ix,iz threat=0|1|2`.
+- Клиент: `tick n=… inh=… mv=…` на смену такта; `rig.teleport … cell=ix,iz threat=0|1|2`; `breach.end … lock_opened=0|1 matched_before_lock=id,id` (причина провала взлома; те же данные несёт `bk_end`).
+- Панель итога взлома (`BreachReason`, `shared/breach/breach_reason.gd`): первая строка крупно — «ЗАМОК: 2 ловушки из 2 — провал» / «ЗАМОК НЕ ВСКРЫТ» / «ЗАМОК ВСКРЫТ, цепочек демонов не собрано», затем «совпал до вскрытия — не засчитан»; число ловушек — по ответам `bk_tick` (`BreachMirror.trap_hits`), новых полей сервера нет. Длина замка в `breach.request lock=` берётся по тиру текущего узла сразу после события узла (раньше панель узнавала тир только с событием деки или взлома и могла показывать замок прошлого узла).
+- Сложность Фойе: узлы с раскладками `foyer` / `foyer_tutorial` — тир `BASE` (замок 1, ловушек в замке нет; понятия «NORMAL» в игре нет, лёгкий тир — BASE); стережёт `node_graph_test`.
 
 ## Проверка
 `netrun/tools/dev.sh test tick_clock_test tick_ice_test tick_vision_test node_grid_test gray_node_tick_test tick_forecast_test tick_floor_test tick_aim_test`; кадр — `dev.sh shot res://tests/tick_demo_preview.tscn`.
