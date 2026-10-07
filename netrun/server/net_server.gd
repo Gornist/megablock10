@@ -47,10 +47,16 @@ const MAX_SPEED := 8.0
 ## ENet при disconnect_peer сбрасывает неотправленную очередь: после последнего сообщения даём ему уйти.
 const DISCONNECT_DELAY_SEC := 0.3
 ## Телепорт (VR): сервер не доверяет клиенту. Пределы — RigMath.TELEPORT_RANGE_LIMIT и TELEPORT_COOLDOWN_LIMIT (клиент по умолчанию
-## ходит на 4 м раз в 1,2 с, настройка на очках не пускает за предел). Допуски: поза клиента запаздывает на пакет-другой, поэтому
+## ходит на 4,5 м раз в 1,2 с, настройка на очках не пускает за предел). Допуски: поза клиента запаздывает на пакет-другой, поэтому
 ## дальность считается с запасом, а перезарядка — с послаблением на дрожь сети.
 const TELEPORT_RANGE_SLACK := 0.5
 const TELEPORT_COOLDOWN_SLACK := 0.2
+## Клетки 1 м: дальность прыжка считается от центра клетки аватара до центра цели (NodeGrid.REACH_M); запас на то, что аватар после
+## площадки у хранилища и при запаздывании позы стоит не в центре клетки.
+const TELEPORT_CELL_SLACK := 0.5
+
+## Сетка клеток комнаты: цель телепорта привязывается к центру клетки и проверяется по занятости (колонны) и линии (NodeGrid).
+var grid: NodeGrid = NodeGrid.for_layout()
 
 ## Узел может запретить взятие (далеко и т.п.): func(session, object_id) -> bool. Не задан — берётся откуда угодно.
 var grab_check: Callable
@@ -412,7 +418,8 @@ func _handle_pose(session: String, raw: Variant) -> void:
 
 
 ## Телепорт по просьбе клиента (VR: движение только им). Правила — RigMath.teleport_verdict с пределами сервера и допусками:
-## аватар не в тоннеле, цель в комнате и не дальше предела от текущей позиции аватара, с прошлого телепорта прошла перезарядка.
+## аватар не в тоннеле, цель в комнате и не дальше предела от текущей позиции аватара, с прошлого телепорта прошла перезарядка;
+## затем цель привязывается к центру своей клетки 1 м и проверяется по клетке (_cell_verdict: занята / дальше 4,5 м / за колонной).
 ## Успех: аватар мгновенно в точке, база для предела скорости потока поз сбрасывается (иначе запоздавшая поза со старого места
 ## втянула бы аватар обратно), счётчик скачков растёт — другие игроки не плавят прыжок. Отказ: причина и позиция сервера клиенту.
 func _handle_teleport(session: String, p: Variant) -> void:
@@ -424,9 +431,13 @@ func _handle_teleport(session: String, p: Variant) -> void:
 	var to := Vector3(p.x, 0.0, p.z)
 	var reason := RigMath.teleport_verdict(a.position, to, since, node_of(session) == TUNNEL_NODE,
 		RigMath.TELEPORT_RANGE_LIMIT + TELEPORT_RANGE_SLACK, RigMath.TELEPORT_COOLDOWN_LIMIT - TELEPORT_COOLDOWN_SLACK)
+	if reason.is_empty():
+		to = NodeGrid.center(NodeGrid.cell_of(to))   # прыжок — на центр клетки; площадка у хранилища переставит точку ниже
+		reason = _cell_verdict(session, a.position, to)
+	var cell := NodeGrid.cell_of(to)
 	if not reason.is_empty():
 		var left := RigMath.cooldown_left(since, RigMath.TELEPORT_COOLDOWN_LIMIT) if reason == WorldMsg.REASON_COOLDOWN else 0.0
-		print("[netrun-server] teleport denied ", session, " reason=", reason, " from=%.1f,%.1f to=%.1f,%.1f" % [a.position.x, a.position.z, to.x, to.z])
+		print("[netrun-server] teleport denied ", session, " reason=", reason, " from=%.1f,%.1f to=%.1f,%.1f cell=%d,%d" % [a.position.x, a.position.z, to.x, to.z, cell.x, cell.y])
 		send_to(session, WorldMsg.encode_teleport_denied(reason, a.position, left))
 		return
 	var from := a.position
@@ -434,8 +445,26 @@ func _handle_teleport(session: String, p: Variant) -> void:
 		to = (teleport_snap.call(session, to) as Dictionary)["p"]
 	teleport(session, to)
 	_tp_last_ms[session] = now
-	print("[netrun-server] teleport ok ", session, " from=%.1f,%.1f to=%.1f,%.1f dist=%.1f" % [from.x, from.z, a.position.x, a.position.z, NodeLayout.flat_distance(from, a.position)])
+	print("[netrun-server] teleport ok ", session, " from=%.1f,%.1f to=%.1f,%.1f dist=%.1f cell=%d,%d" % [from.x, from.z, a.position.x, a.position.z, NodeLayout.flat_distance(from, a.position), cell.x, cell.y])
 	teleported.emit(session, from, a.position)
+
+
+## Проверка клетки цели (to — уже центр клетки): "" — можно; REASON_CELL — занята колонной, вне комнаты или в ней стоит другой аватар
+## этого узла; REASON_RANGE — дальше NodeGrid.REACH_M (+ TELEPORT_CELL_SLACK) от центра клетки аватара; REASON_BLOCKED — линия закрыта.
+func _cell_verdict(session: String, from: Vector3, to: Vector3) -> String:
+	var b := NodeGrid.cell_of(to)
+	if grid.is_occupied(b):
+		return WorldMsg.REASON_CELL
+	var a := NodeGrid.cell_of(from)
+	if Vector2(b - a).length() * NodeGrid.CELL_M > NodeGrid.REACH_M + TELEPORT_CELL_SLACK:
+		return WorldMsg.REASON_RANGE
+	if not grid.line_clear(a, b):
+		return WorldMsg.REASON_BLOCKED
+	for other: String in sessions_in(node_of(session)):
+		var av := get_avatar(other)
+		if other != session and av != null and NodeGrid.cell_of(av.position) == b:
+			return WorldMsg.REASON_CELL
+	return ""
 
 
 ## Объект берётся, только если лежит (или уже у этого игрока).

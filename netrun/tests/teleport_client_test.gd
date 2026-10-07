@@ -48,7 +48,13 @@ func test_stick_forward_shows_aim_without_moving() -> void:
 	var start := rig.global_position
 	_frames(rig, 3, 0.0, Vector2(0, 1))
 	assert_bool(rig.is_aiming()).is_true()
-	assert_vector(rig.aim_target()).is_equal_approx(start + Vector3(0, 0, -RigMath.TELEPORT_RANGE), Vector3.ONE * 0.01)
+	# Прицел притянут к клетке: цель — центр клетки, не дальше клетки от точки, куда указывает рука (4,5 м вперёд).
+	var t := rig.aim_target()
+	assert_vector(t).is_equal_approx(NodeGrid.center(NodeGrid.cell_of(t)), Vector3.ONE * 0.0001)
+	assert_float(NodeLayout.flat_distance(t, start + Vector3(0, 0, -RigMath.TELEPORT_RANGE))).is_less(1.2)
+	assert_str(rig.aim_visual.kind()).is_equal("hop")
+	assert_bool(rig.aim_visual.frame_visible()).is_true()
+	assert_vector(rig.aim_visual.frame_center()).is_equal_approx(t + Vector3(0.0, TeleportAim.RING_LIFT, 0.0), Vector3.ONE * 0.0001)
 	assert_bool(rig.aim_visual.visible).is_true()
 	assert_bool(rig.aim_visual.is_ok()).is_true()        # зелёное
 	assert_vector(rig.global_position).is_equal(start)   # камера не двигалась
@@ -60,7 +66,8 @@ func test_aim_follows_where_the_view_points() -> void:
 	var start := rig.global_position
 	_frames(rig, 3, 0.0, Vector2(0, 1))
 	var reach := rig.camera.global_position.y / tan(deg_to_rad(40.0))
-	assert_vector(rig.aim_target()).is_equal_approx(start + Vector3(0, 0, -reach), Vector3.ONE * 0.02)
+	# Прицел — центр клетки, в которую упёрся взгляд: не дальше полудиагонали клетки от точки на полу.
+	assert_float(NodeLayout.flat_distance(rig.aim_target(), start + Vector3(0, 0, -reach))).is_less_equal(0.75)
 
 
 func test_release_teleports_once_after_the_blink_without_sliding() -> void:
@@ -468,3 +475,75 @@ func test_the_chosen_turn_is_available_when_the_teleport_is_reported() -> void:
 	rig.teleport_attempted.connect(func(_f: Vector3, _t: Vector3, _ok: bool, _r: String): faces.append(rig.pending_face_deg()))
 	_teleport_with(rig, Vector2(-1, 0))
 	assert_array(faces).is_equal([-90.0])
+
+
+# ---------------------------------------------------------------- прицел на клетку 1 м
+
+func test_aim_at_a_pillar_cell_shows_a_gray_frame_with_the_reason_and_does_not_move() -> void:
+	var rig: XRRig = _scene().rig
+	rig.global_position = NodeGrid.center(Vector2i(10, 12))   # колонна (3;−5) — клетки x 10–11, z 8–9 — прямо по курсу
+	var start := rig.global_position
+	_frames(rig, 3, 0.0, Vector2(0, 1))
+	assert_str(rig.aim_visual.kind()).is_equal("denied")
+	assert_str(rig.aim_visual.reason()).is_equal("occupied")
+	assert_bool(rig.aim_visual.is_ok()).is_false()
+	assert_bool(rig.aim_visual.frame_visible()).is_true()
+	assert_object(rig.aim_visual.frame_color()).is_equal(TeleportAim.DENIED_COLOR)
+	assert_bool(rig.aim_visual.label_visible()).is_true()
+	assert_str(rig.aim_visual.label_text()).is_equal("ЗАНЯТО")
+	_frames(rig, 40)   # отпущен
+	assert_int(_attempts.size()).is_equal(1)
+	assert_bool(_attempts[0]["ok"]).is_false()
+	assert_str(_attempts[0]["reason"]).is_equal("occupied")
+	assert_vector(rig.global_position).is_equal(start)
+	assert_bool(rig.aim_visual.frame_visible()).is_false()   # отпустил — рамки нет
+
+
+func test_aim_behind_a_pillar_is_denied_as_blocked() -> void:
+	var rig: XRRig = _scene().rig
+	rig.global_position = NodeGrid.center(Vector2i(10, 11))   # цель — клетка (10;7) за колонной, в 4 м
+	_frames(rig, 3, 0.0, Vector2(0, 1))
+	assert_str(rig.aim_visual.kind()).is_equal("denied")
+	assert_str(rig.aim_visual.reason()).is_equal("blocked")
+	assert_str(rig.aim_visual.label_text()).is_equal("ЗА УКРЫТИЕМ")
+
+
+func test_free_cell_frame_is_green_and_the_jump_lands_on_its_center() -> void:
+	var rig: XRRig = _scene().rig
+	rig.global_position = NodeGrid.center(Vector2i(2, 12))   # прямо по курсу свободно
+	_frames(rig, 3, 0.0, Vector2(0, 1))
+	assert_str(rig.aim_visual.kind()).is_equal("hop")
+	assert_bool(rig.aim_visual.is_ok()).is_true()
+	assert_bool(rig.aim_visual.label_visible()).is_false()
+	assert_object(rig.aim_visual.frame_color()).is_equal(TeleportAim.OK_COLOR)
+	var target := rig.aim_target()
+	_frames(rig, 40)
+	assert_int(_attempts.size()).is_equal(1)
+	assert_bool(_attempts[0]["ok"]).is_true()
+	assert_vector(_attempts[0]["to"]).is_equal_approx(NodeGrid.center(NodeGrid.cell_of(target)), Vector3.ONE * 0.0001)
+	assert_vector(rig.global_position).is_equal_approx(target, Vector3.ONE * 0.0001)
+
+
+func test_wait_frame_is_neutral_and_the_side_follows_the_cell_size() -> void:
+	var aim := TeleportAim.new()
+	auto_free(aim)
+	add_child(aim)
+	aim.show_at(Vector3(0, 1, 0), NodeGrid.center(Vector2i(4, 4)), false, 1.0, "wait", "")
+	assert_str(aim.kind()).is_equal("wait")
+	assert_bool(aim.frame_visible()).is_true()
+	assert_object(aim.frame_color()).is_equal(TeleportAim.WAIT_COLOR)
+	assert_bool(aim.label_visible()).is_false()
+	assert_float(TeleportAim.frame_side()).is_equal_approx(NodeGrid.CELL_M, TeleportAim.FRAME_INSET * 2.0 + 0.0001)
+	aim.hide_aim()
+	assert_bool(aim.frame_visible()).is_false()
+
+
+func test_release_aimed_at_the_own_cell_requests_nothing() -> void:
+	var rig: XRRig = _scene().rig
+	rig.global_position = NodeGrid.center(Vector2i(2, 12))
+	rig.teleport_range = 0.2   # прицел в двух десятках сантиметров — клетка игрока
+	_frames(rig, 3, 0.0, Vector2(0, 1))
+	assert_str(rig.aim_visual.kind()).is_equal("wait")
+	assert_object(rig.aim_visual.frame_color()).is_equal(TeleportAim.WAIT_COLOR)
+	_frames(rig, 40)
+	assert_array(_attempts).is_empty()
