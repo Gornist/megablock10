@@ -30,6 +30,7 @@ settings/test/test_timeout_seconds=120
 
 renderer/rendering_method="mobile"
 textures/vram_compression/import_etc2_astc=true
+textures/default_filters/anisotropic_filtering_level=4
 
 [xr]
 
