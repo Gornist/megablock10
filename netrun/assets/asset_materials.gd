@@ -45,6 +45,62 @@ const FRINGE_LAYERS := [[0.5, 0.5], [1.0, 0.35], [1.6, 0.2]]
 const FRINGE_GLOW_DEFAULT := 0.75  # edge_glow solid_dark по умолчанию (хранилище); у PILLAR_EDGE-мешей — PILLAR_EDGE.edge_glow
 static var fringe_on := true  # выключатель для сравнения кадров (preview_capture.gd --nofringe) и замера перерисовки
 
+## «Ручки для очков» (ARCHITECTURE §21): настройки, которые крутят на устройстве без пересборки ассетов — A/B за счёт смены netrun.cfg, блок [assets].
+## Ручки читаются в момент `apply()` (создание материалов): вызывать `tune()` / `tune_from_config()` ДО построения окружения, один раз при старте.
+## Имя → умолчание (то, что стоит в коде без ручек).
+const KNOBS := {
+	"min_px_streaks": 1.5,   # минимальная полная ширина штриха, px экрана (streaks.gdshader min_px)
+	"min_px_points": 2.0,    # минимальный диаметр точки, px (points.gdshader min_px)
+	"fringe_on": true,       # мягкая обводка силуэтов укрытий/хранилища/выхода
+	"fringe_alpha": 1.0,     # множитель яркости обводки (на FRINGE_LAYERS[i].alpha)
+	"fringe_px": 1.0,        # множитель сдвига слоёв обводки (на FRINGE_LAYERS[i].px)
+	"halo": 0.4,             # ореол штрихов окружения (ENV_HALO)
+	"halo_width": 2.5,       # расширение квада под ореол (ENV_HALO_WIDTH)
+	"halo_far": false,       # ореол у дальних пластов /far_* (по умолчанию выключен: вдвое-втрое больше перерисовки)
+	"solid_base": "",        # цвет плит solid_dark «#rrggbb»; пусто — по умолчанию из шейдера
+	"edge_glow": 2.2,        # яркость рёбер укрытий и брусьев выхода (PILLAR_EDGE.edge_glow)
+}
+static var _tuned := {}
+
+
+## Задать ручки (словарь «имя → значение»). Неизвестные имена игнорируются с предупреждением. Значения: числа, bool, цвет строкой.
+static func tune(d: Dictionary) -> void:
+	for k in d:
+		if not KNOBS.has(k):
+			push_warning("AssetMaterials.tune: неизвестная ручка '%s' (есть: %s)" % [k, ", ".join(KNOBS.keys())])
+			continue
+		var v: Variant = d[k]
+		var def: Variant = KNOBS[k]
+		if def is bool:
+			v = (str(v).to_lower() == "true") if v is String else bool(v)
+		elif def is float:
+			v = float(v)
+		else:
+			v = str(v)
+		_tuned[k] = v
+	if _tuned.has("fringe_on"):
+		fringe_on = _tuned["fringe_on"]
+
+
+## Прочитать блок cfg (по умолчанию [assets]) и применить как tune(). Вызывать сразу после cfg.load(), до построения сцены.
+static func tune_from_config(cfg: ConfigFile, section := "assets") -> void:
+	if cfg == null or not cfg.has_section(section):
+		return
+	var d := {}
+	for k in cfg.get_section_keys(section):
+		d[k] = cfg.get_value(section, k)
+	tune(d)
+
+
+## Сбросить ручки к умолчаниям.
+static func reset_tuning() -> void:
+	_tuned = {}
+	fringe_on = true
+
+
+static func _k(name: String) -> Variant:
+	return _tuned.get(name, KNOBS[name])
+
 ## Параметры haze.gdshader для `edge_mist` (env/room_edge_<N>): низкая дымка вдоль границы комнаты, не туман горизонта.
 const EDGE_MIST := {"haze_alpha": 0.6, "glow": 1.6, "shape": 1.0, "noise_amount": 0.35, "stripe_amount": 0.12, "stripe_count": 160.0}
 
@@ -122,9 +178,16 @@ static func apply(root: Node, tier: String = "") -> void:
 			if String(mi.name) == "pillar_block" or String(mi.name) == "pillar_base" or String(mi.name).begins_with("exit_bar"):  # укрытие (корпус и рамка по границе клетки) и брусья рамки выхода: рёбра ровные и яркие, иначе в очках не видно, где оно (у тайлов пола свет рваный намеренно)
 				for k in PILLAR_EDGE:
 					m.set_shader_parameter(k, PILLAR_EDGE[k])
+				m.set_shader_parameter("edge_glow", _k("edge_glow"))  # ручка: яркость рёбер
 			if fringe_on and (String(mi.name) == "pillar_block" or String(mi.name).begins_with("exit_bar") or String(mi.name) == "vault_body"):
 				var lit := String(mi.name) != "vault_body"
-				m.next_pass = _fringe_chain(0, PILLAR_EDGE["edge_glow"] if lit else FRINGE_GLOW_DEFAULT)
+				m.next_pass = _fringe_chain(0, _k("edge_glow") if lit else FRINGE_GLOW_DEFAULT)
+			if src.resource_name == "solid_dark" and String(_k("solid_base")) != "":  # ручка: цвет плит
+				m.set_shader_parameter("base_color", Color(String(_k("solid_base"))))
+			if src.resource_name == "streaks":  # ручка: минимальная ширина штриха в пикселях (антиалиасинг)
+				m.set_shader_parameter("min_px", _k("min_px_streaks"))
+			elif src.resource_name == "points":
+				m.set_shader_parameter("min_px", _k("min_px_points"))
 			if tier != "" and TIER_TINT.has(tier):
 				m.set_shader_parameter("tint", TIER_TINT[tier])
 				m.set_shader_parameter("tint_amount", 1.0)
@@ -135,8 +198,8 @@ static func apply(root: Node, tier: String = "") -> void:
 					fr = fr.next_pass as ShaderMaterial
 			if tier != "" and src.resource_name == "streaks":  # окружение: мягкий ореол и длинное затухание к концам; существа и аватары — резкие, без ореола
 				var far := root.scene_file_path.contains("/far_")  # дальние пласты (8+ м): ореол вдвое-втрое расширяет квады, а видны они как дымка и без него
-				m.set_shader_parameter("halo", 0.0 if far else ENV_HALO)
-				m.set_shader_parameter("halo_width", ENV_HALO_WIDTH)
+				m.set_shader_parameter("halo", 0.0 if (far and not bool(_k("halo_far"))) else float(_k("halo")))
+				m.set_shader_parameter("halo_width", float(_k("halo_width")))
 				m.set_shader_parameter("end_fade", ENV_END_FADE)
 			if String(mi.name) == "beacon_halo":  # маяк предмета: капля свечения — свой шейдер; луч — streaks с ореолом (клиент выключает узел Beacon в руке)
 				m.shader = BEACON_HALO_SHADER
@@ -161,8 +224,8 @@ static func apply(root: Node, tier: String = "") -> void:
 static func _fringe_chain(i: int, glow: float) -> ShaderMaterial:
 	var f := ShaderMaterial.new()
 	f.shader = FRINGE_SHADER
-	f.set_shader_parameter("px", FRINGE_LAYERS[i][0])
-	f.set_shader_parameter("fringe_alpha", FRINGE_LAYERS[i][1])
+	f.set_shader_parameter("px", float(FRINGE_LAYERS[i][0]) * float(_k("fringe_px")))
+	f.set_shader_parameter("fringe_alpha", float(FRINGE_LAYERS[i][1]) * float(_k("fringe_alpha")))
 	f.set_shader_parameter("edge_glow", glow)
 	if i + 1 < FRINGE_LAYERS.size():
 		f.next_pass = _fringe_chain(i + 1, glow)
