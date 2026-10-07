@@ -7,6 +7,8 @@ import com.megablok10.app.data.SlotClaimEntity
 import com.megablok10.app.log.Mb10Log
 import com.megablok10.app.netrun.EnterReply
 import com.megablok10.app.netrun.NetrunWire
+import com.megablok10.app.voice.VoiceListenProtocol
+import com.megablok10.app.voice.VoiceListened
 import com.megablok10.app.voice.VoiceProtocol
 import com.megablok10.app.voice.VoiceWireMessage
 import com.megablok10.kit.net.LineRoute
@@ -39,6 +41,8 @@ class ChatServer(
     onReadReceipt: suspend (ReadReceipt) -> Unit = {},
     /** Голосовое сообщение (файл сохраняется до возврата — ответ «доставлено» уходит только после него). */
     onVoice: suspend (VoiceWireMessage) -> Unit = {},
+    /** Отчёт «прослушал голосовое». */
+    onVoiceListened: suspend (VoiceListened) -> Unit = {},
     /** Ответ Моста «Сети» на вход (`MB10ENTERED`): подпись проверяет NetrunEntry. */
     onEntered: suspend (EnterReply) -> Unit = {},
     /** Строка известного протокола, но другой версии (телефон со старым/новым приложением): сообщается игроку, см. WireVersion. */
@@ -53,6 +57,7 @@ class ChatServer(
             LineRoute("claim", ClaimProtocol::decode, onSlotClaim),
             LineRoute("read", ReadReceiptProtocol::decode, onReadReceipt),
             LineRoute("voice", VoiceProtocol::decode, onVoice),
+            LineRoute("voice_listened", VoiceListenProtocol::decode, onVoiceListened),
             LineRoute("entered", NetrunWire::decodeEntered, onEntered),
         ),
         onUnrecognized = onIncompatible,
