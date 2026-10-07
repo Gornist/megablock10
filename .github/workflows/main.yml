@@ -50,6 +50,9 @@ jobs:
             netrun-bridge/build/reports/detekt
           if-no-files-found: ignore
 
+      - name: Нативный денойзер RNNoise без Android (хост-проверка, ≈2 с)
+        run: app/src/main/cpp/check/check.sh
+
       # Все тесты приложения, кроме скриншотов (у тех своя JVM и свой шаг ниже). Раньше здесь был testDebugUnitTest, и шаг скриншотов
       # (verifyPaparazziDebug) гонял те же тесты второй раз; задача без скриншотов во втором вызове up-to-date (app/build.gradle.kts).
       - name: Run unit tests
