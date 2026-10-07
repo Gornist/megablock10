@@ -26,9 +26,12 @@ uniform vec4 corrupt_color : source_color = vec4(1.0, 0.12, 0.24, 1.0);
 uniform float fade_start = 60.0;
 uniform float fade_end = 90.0;
 uniform float intensity = 1.0; // общий множитель яркости (отражение в полу = 0.2)
+// Минимальный диаметр точки в пикселях экрана (точка меньше пикселя мерцает): дальше квад растёт до min_px, яркость падает по площади. 0 — выключено.
+uniform float min_px : hint_range(0.0, 6.0) = 2.0;
 
 varying vec3 v_wp;
 varying float v_dist;
+varying float v_comp;  // 1 / (во сколько раз квад увеличен до min_px)²
 
 float corrupt_k() {
 	return corrupt_radius > 0.0 ? 1.0 - smoothstep(corrupt_radius * 0.12, corrupt_radius, distance(v_wp, corrupt_pos)) : 0.0;
@@ -67,7 +70,14 @@ void vertex() {
 	v_wave = 0.5 + 0.5 * sin((v_wp.x + 0.6 * v_wp.z) * wave_scale * 3.14159 - TIME * wave_speed);
 	vec4 mv = VIEW_MATRIX * vec4(v_wp, 1.0);
 	v_dist = -mv.z;
-	mv.xy += vec2(UV.x - 0.5, 0.5 - UV.y) * 2.0 * h * (1.0 + size_wave * (v_wave - 0.5) * 2.0);
+	float hs = h * (1.0 + size_wave * (v_wave - 0.5) * 2.0);
+	float sk = 1.0;
+	if (min_px > 0.0) {  // мировой размер пикселя на дистанции точки: 2·d / (P[1][1] · высота вьюпорта); полуразмер точки ≥ min_px / 2
+		float px = 2.0 * max(v_dist, 0.1) / (PROJECTION_MATRIX[1][1] * VIEWPORT_SIZE.y);
+		sk = max(1.0, 0.5 * min_px * px / max(hs, 0.0001));
+	}
+	v_comp = 1.0 / (sk * sk);
+	mv.xy += vec2(UV.x - 0.5, 0.5 - UV.y) * 2.0 * hs * sk;
 	POSITION = PROJECTION_MATRIX * mv;
 }
 
@@ -77,5 +87,5 @@ void fragment() {
 	float tw = 1.0 - twinkle + twinkle * sin(TIME * twinkle_speed + v_phase + (v_wp.x + v_wp.z) * 1.7); // волны мерцания бегут по полу
 	float k = corrupt_k();
 	ALBEDO = mix(mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount), corrupt_color.rgb, corrupt_mask(k)) * glow;
-	ALPHA = soft * COLOR.a * tw * (1.0 - wave + wave * v_wave) * dist_fade() * intensity;
+	ALPHA = soft * COLOR.a * tw * (1.0 - wave + wave * v_wave) * dist_fade() * intensity * v_comp;
 }

@@ -49,6 +49,9 @@ uniform float intensity = 1.0; // общий множитель яркости (
 uniform float far_gain : hint_range(1.0, 6.0) = 1.0;
 uniform float far_start = 20.0;
 uniform float far_end = 60.0;
+// Минимальная полная ширина штриха в пикселях экрана (антиалиасинг без MSAA/TAA): штрих тоньше пикселя на дистанции мерцает и «ползёт лесенкой».
+// Дальше квад расширяется до min_px, яркость падает во столько же раз (свет по площади тот же). 0 — выключено.
+uniform float min_px : hint_range(0.0, 4.0) = 1.5;
 
 varying vec3 v_wp;
 varying float v_dist;
@@ -80,6 +83,7 @@ float dist_fade() {
 varying float v_wy;
 varying vec2 v_q;
 varying float v_phase;
+varying float v_comp;  // 1 / во сколько раз квад расширен до min_px
 
 void vertex() {
 	float w = UV2.x;
@@ -98,7 +102,14 @@ void vertex() {
 	to_cam.y = 0.0;
 	vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), to_cam + vec3(0.00001, 0.0, 0.0)));
 	float hw = halo > 0.0 ? halo_width : 1.0;  // квад шире для ореола; ядро во фрагменте считается в прежних метрах
-	vec3 wp = wc + right * (UV.x - 0.5) * 2.0 * w * s * hw + vec3(0.0, 1.0, 0.0) * (0.5 - UV.y) * 2.0 * h * s;
+	float wk = 1.0;
+	if (min_px > 0.0) {  // мировой размер пикселя на дистанции штриха: 2·d / (P[1][1] · высота вьюпорта); полуширина ядра должна быть ≥ min_px / 2
+		float d0 = max(-(VIEW_MATRIX * vec4(wc, 1.0)).z, 0.1);
+		float px = 2.0 * d0 / (PROJECTION_MATRIX[1][1] * VIEWPORT_SIZE.y);
+		wk = max(1.0, 0.5 * min_px * px / max(w * s, 0.0001));
+	}
+	v_comp = 1.0 / wk;
+	vec3 wp = wc + right * (UV.x - 0.5) * 2.0 * w * s * hw * wk + vec3(0.0, 1.0, 0.0) * (0.5 - UV.y) * 2.0 * h * s;
 	if (touch_radius > 0.0) {  // штрихи прогибаются вглубь от касания (в референсе занавес огибает руку)
 		float tk = 1.0 - smoothstep(0.0, touch_radius, distance(wc, touch_pos));
 		wp -= normalize(to_cam + vec3(0.00001, 0.0, 0.0)) * 0.18 * tk * s;
@@ -119,7 +130,12 @@ void fragment() {
 		across = core * 0.8 + halo * exp(-v_q.x * v_q.x * halo_sharp) * smoothstep(1.0, 0.55, abs(v_q.x));
 	}
 	float along = smoothstep(1.0, 1.0 - end_fade, abs(v_q.y));
-	float bead = 1.0 - bead_depth + bead_depth * step(0.5, fract(v_wy * bead_freq - TIME * bead_speed * bead_freq));
+	// «Бусины»: гладкая прямоугольная волна (жёсткий step давал ступеньки по длине штриха); мягкость — не меньше пикселя (fwidth) и не меньше 8% периода
+	float bph = v_wy * bead_freq - TIME * bead_speed * bead_freq;
+	float bf = fract(bph);
+	float bw = clamp(fwidth(bph) * 1.5, 0.08, 0.5);
+	float bsq = smoothstep(0.5 - bw, 0.5 + bw, bf) * (1.0 - smoothstep(1.0 - 2.0 * bw, 1.0, bf));
+	float bead = 1.0 - bead_depth + bead_depth * bsq;
 	float shim = 1.0 - shimmer + shimmer * (0.5 + 0.5 * sin(TIME * shimmer_speed + v_phase * 2.1));
 	float wave = 1.0 - pulse + pulse * (0.5 + 0.5 * sin((v_wp.x + 0.6 * v_wp.z) * pulse_scale * 3.14159 - TIME * pulse_speed));
 	float k = corrupt_k();
@@ -132,5 +148,5 @@ void fragment() {
 		boost += 2.4 * band * tk;
 	}
 	ALBEDO = col * glow * mix(1.0, far_gain, smoothstep(far_start, far_end, v_dist));
-	ALPHA = COLOR.a * across * along * bead * wave * shim * boost * corrupt_hole(corrupt_mask(k)) * dist_fade() * intensity;
+	ALPHA = COLOR.a * across * along * bead * wave * shim * boost * corrupt_hole(corrupt_mask(k)) * dist_fade() * intensity * v_comp;
 }
