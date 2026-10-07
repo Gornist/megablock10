@@ -37,7 +37,7 @@ const FAR_FADE := Vector2(40.0, 130.0)
 const FAR_PARAMS := {"far_gain": 1.8, "far_start": 20.0, "far_end": 60.0}
 const HORIZON_FADE := Vector2(150.0, 260.0)
 const HORIZON_PARAMS := {"far_gain": 3.0, "far_start": 30.0, "far_end": 60.0, "bead_depth": 0.0}
-const MODULES := ["floor", "room_edge", "wall", "corner", "pillar", "platform", "doorway", "lockdown_gate", "tunnel_ring", "ceiling", "far_field", "far_floor", "far_ceiling"]
+const MODULES := ["floor", "room_edge", "wall", "corner", "pillar", "cover", "platform", "doorway", "lockdown_gate", "tunnel_ring", "ceiling", "far_field", "far_floor", "far_ceiling"]
 ## Варианты модуля (другой seed, тот же размер): узор не повторяется, девять одинаковых плиток подряд — запрещены (assets/ARCHITECTURE.md, п. 6).
 ## Экземпляры модуля делятся по вариантам по кругу; первый вариант всегда в комнате (его путь — NodeAssets.env_path(module)).
 const VARIANTS := {
@@ -47,8 +47,8 @@ const VARIANTS := {
 	"far_field": ["far_field", "far_field_b", "far_field_c"], "far_floor": ["far_floor", "far_floor_b", "far_floor_c"],
 	"far_ceiling": ["far_ceiling", "far_ceiling_b", "far_ceiling_c"],
 }
-## Модули с отражением в полу (зеркальная копия, тусклая): стены, углы, двери, ворота, колонны, помосты.
-const REFLECTED := ["wall", "corner", "doorway", "lockdown_gate", "pillar", "platform"]
+## Модули с отражением в полу (зеркальная копия, тусклая): стены, углы, двери, ворота, колонны, укрытия блока хранилища, помосты.
+const REFLECTED := ["wall", "corner", "doorway", "lockdown_gate", "pillar", "cover", "platform"]
 ## Потолок и дальние пласты: комната лежит в «пласте данных», выше и ниже — такие же (assets/ARCHITECTURE.md, п. 12).
 const CEILING_H := 5.0
 const LAYER_PITCH := 7.0
@@ -168,6 +168,19 @@ func pillar_positions() -> Array[Vector3]:
 	return out
 
 
+## Укрытия блока хранилища (env/cover, одна клетка 1×1 м): блок 2×2 занят целиком, хранилище стоит на одной его клетке (cell1),
+## остальные три клетки не должны выглядеть пустыми. Прежняя комната (layout == null) и legacy-раскладка укрытий не имеют.
+func cover_positions() -> Array[Vector3]:
+	var out: Array[Vector3] = []
+	if layout == null or layout.is_legacy():
+		return out
+	for v: Dictionary in layout.vaults:
+		for c in LayoutData.block_cells(v["cell"]):
+			if c != v["cell1"]:
+				out.append(NodeGrid.center(c))
+	return out
+
+
 ## Центр площадки выхода (по нему тоннель за южной стеной) и центры помостов под ней.
 func exit_pos() -> Vector3:
 	return NodeLayout.EXIT_POS if layout == null else layout.exit_pos
@@ -239,6 +252,8 @@ func _room_transforms() -> Dictionary:
 		out["platform"].append(Transform3D(Basis.IDENTITY, c))
 	for p in pillar_positions():
 		out["pillar"].append(Transform3D(Basis.IDENTITY, p))
+	for p in cover_positions():
+		out["cover"].append(Transform3D(Basis.IDENTITY, p))
 	for k in NodeLayout.EXIT_TUNNEL_SEGMENTS:
 		out["tunnel_ring"].append(Transform3D(Basis.IDENTITY, Vector3(exit_pos().x, 0.0, NodeLayout.ROOM_MAX.y + NodeLayout.CELL * (k + 0.5))))
 	_far_transforms(out)

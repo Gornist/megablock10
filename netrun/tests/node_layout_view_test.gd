@@ -72,6 +72,32 @@ func test_фойе_четыре_колонны_по_карте_и_четыре_�
 	assert_int(int(scene.view.module_counts()["tunnel_ring"])).is_equal(NodeLayout.EXIT_TUNNEL_SEGMENTS)
 
 
+func test_укрытия_блока_хранилища_три_клетки_на_каждое_хранилище_фойе() -> void:
+	var scene := _scene()
+	var foyer := LayoutData.cached("foyer")
+	scene.apply_node(_info("foyer", foyer))
+	var got: Array[Vector3] = scene.view.cover_positions()
+	assert_int(got.size()).is_equal(3 * foyer.vaults.size())
+	assert_int(int(scene.view.module_counts()["cover"])).is_equal(3 * foyer.vaults.size())
+	for v: Dictionary in foyer.vaults:
+		var vault_cell: Vector2i = v["cell1"]
+		var in_block := 0
+		for p in got:
+			var c := NodeGrid.cell_of(p)
+			assert_vector(p).is_equal_approx(NodeGrid.center(c), Vector3.ONE * 0.001)  # центр клетки, y = 0
+			assert_that(c).is_not_equal(vault_cell)                                    # не на клетке самого хранилища
+			if LayoutData.block_of(c) == v["cell"]:
+				in_block += 1
+		assert_int(in_block).is_equal(3)
+
+
+func test_укрытий_нет_без_раскладки_и_в_legacy() -> void:
+	var scene := _scene()
+	scene.apply_node(_info("", _alt))
+	assert_int(scene.view.cover_positions().size()).is_equal(0)
+	assert_int(int(scene.view.module_counts()["cover"])).is_equal(0)
+
+
 func test_выход_и_кресло_по_раскладке_датчика_нет() -> void:
 	var scene := _scene()
 	scene.apply_node(_info(ALT, _alt))
