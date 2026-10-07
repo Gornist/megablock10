@@ -128,6 +128,7 @@ const KNOBS := {
 	"halo_far": false,       # ореол у дальних пластов /far_* (по умолчанию выключен: вдвое-втрое больше перерисовки)
 	"solid_base": "",        # цвет плит solid_dark «#rrggbb»; пусто — по умолчанию из шейдера
 	"edge_glow": 2.2,        # яркость рёбер укрытий и брусьев выхода (PILLAR_EDGE.edge_glow)
+	"floor_grid": 0.35,      # сетка клеток 1 м ТЕКСТУРОЙ с мипмапами и анизотропией на плите пола (0 — выкл., вернуть точки slab_seams; 0,3–0,5); по умолчанию ВКЛ.: так выглядит кадр Blender, иначе клиент — «другая игра»
 	# Мерцание кромок плит пола/потолка/дальних пластов (две линии на расстоянии 3 см сходятся в пиксель). Меры независимы, комбинируются:
 	"rim_top_only": false,   # светится только лицевая грань плиты, боковая полоска кромки погашена (одна линия вместо двух)
 	"plate_flat": false,     # боковые грани плит отбрасываются: плита без толщины
@@ -137,6 +138,26 @@ const KNOBS := {
 	"skirt_top_fade": 0.0,   # доля высоты вуали сверху, где плотность растёт с нуля (0 — выкл.; 0,12 — ориентир): вуаль отрывается от кромки плиты
 }
 static var _tuned := {}
+static var _grid_tex: ImageTexture
+
+const GRID_TEX_PX := 128      # пикселей текстуры на метр (клетка 1 м)
+const GRID_LINE_SIGMA := 1.8  # σ гауссова профиля линии, px (полная ширина по уровню ½ ≈ 3,3 см)
+
+
+## Текстура клетки 1×1 м: линия по границе (гауссов профиль, не жёсткий порог), с мипмапами — издали линия тускнеет плавно. Рисуется один раз.
+static func _grid_texture() -> ImageTexture:
+	if _grid_tex == null:
+		var n := GRID_TEX_PX
+		var img := Image.create(n, n, false, Image.FORMAT_L8)
+		for y in n:
+			for x in n:
+				var dx := minf(x + 0.5, n - (x + 0.5)) / GRID_LINE_SIGMA
+				var dy := minf(y + 0.5, n - (y + 0.5)) / GRID_LINE_SIGMA
+				var v := maxf(exp(-0.5 * dx * dx), exp(-0.5 * dy * dy))
+				img.set_pixel(x, y, Color(v, v, v))
+		img.generate_mipmaps()
+		_grid_tex = ImageTexture.create_from_image(img)
+	return _grid_tex
 
 
 ## Задать ручки (словарь «имя → значение»). Неизвестные имена игнорируются с предупреждением. Значения: числа, bool, цвет строкой.
@@ -239,6 +260,8 @@ static func apply(root: Node, tier: String = "") -> void:
 		var mi := n as MeshInstance3D
 		if mi.mesh == null:
 			continue
+		if String(mi.name) == "slab_seams" and float(_k("floor_grid")) > 0.0:  # сетка текстурой заменяет облако точек швов (AssetBatch пропускает невидимые меши; материал всё равно ставим ниже)
+			mi.visible = false
 		for s in mi.mesh.get_surface_count():
 			var src := mi.mesh.surface_get_material(s)
 			if src == null or not SHADERS.has(src.resource_name):
@@ -264,6 +287,9 @@ static func apply(root: Node, tier: String = "") -> void:
 			if fringe_on and (String(mi.name) == "pillar_block" or String(mi.name).begins_with("exit_bar") or String(mi.name) == "vault_body"):
 				var lit := String(mi.name) != "vault_body"
 				m.next_pass = _fringe_chain(0, _k("edge_glow") if lit else FRINGE_GLOW_DEFAULT)
+			if src.resource_name == "solid_dark" and String(mi.name) == "slab" and float(_k("floor_grid")) > 0.0:  # ручка: сетка клеток текстурой (верх плиты пола)
+				m.set_shader_parameter("grid_tex", _grid_texture())
+				m.set_shader_parameter("grid_alpha", float(_k("floor_grid")))
 			if src.resource_name == "solid_dark" and _is_plate(mi, root):  # ручки мерцания кромок плит (шейдер solid_dark)
 				m.set_shader_parameter("rim_top_only", 1.0 if bool(_k("rim_top_only")) else 0.0)
 				m.set_shader_parameter("plate_flat", 1.0 if bool(_k("plate_flat")) else 0.0)

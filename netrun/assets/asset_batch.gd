@@ -43,7 +43,7 @@ func flush(parent: Node) -> int:
 			continue
 		for n in proto.find_children("*", "MeshInstance3D", true, false):
 			var mi := n as MeshInstance3D
-			if mi.mesh == null:
+			if mi.mesh == null or not mi.visible:  # скрытые меши (например slab_seams при floor_grid) в батч не идут
 				continue
 			var mesh: Mesh = mi.mesh.duplicate()  # материалы-переопределения копируем в сам меш: у MultiMeshInstance3D своих по поверхностям нет
 			for s in mesh.get_surface_count():

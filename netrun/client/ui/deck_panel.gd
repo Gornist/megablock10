@@ -48,6 +48,8 @@ var phone: PhoneLink
 
 var _viewport: SubViewport
 var _surface: Sprite3D
+## Слой композитора OpenXR вместо квада (если включён в конфиге и поддержан); иначе остаётся Sprite3D.
+var _layer: XrLayerHost
 var _frame: MbFrame
 var _tabs: MbTabs
 var _deck_scroll: ScrollContainer
@@ -148,6 +150,9 @@ func _ready() -> void:
 	_surface.shaded = false
 	_surface.double_sided = false
 	add_child(_surface)
+	_layer = XrLayerHost.new()
+	add_child(_layer)
+	_layer.setup(_viewport, panel_size_m(), _surface, self)
 	_apply_tabs()
 	_show_tab(TAB_DECK)
 	set_deck({"daemons": [], "selected": ""})
@@ -166,6 +171,10 @@ func _process(delta: float) -> void:
 		if _notice_left <= 0.0:
 			_notice.visible = false
 			_dirty = true
+	if _layer.is_active():
+		# Слой композитора берёт кадры из цепочки буферов: «обновить один раз» оставило бы устаревшие буферы, поэтому пока деку видно — рисуем каждый кадр.
+		_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS if is_visible_in_tree() else SubViewport.UPDATE_DISABLED
+		return
 	_since_draw += delta
 	if _dirty and _since_draw >= 1.0 / MAX_FPS:
 		_dirty = false

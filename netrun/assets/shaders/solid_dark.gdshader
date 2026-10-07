@@ -15,6 +15,13 @@ uniform float edge_drift : hint_range(0.0, 1.0) = 0.12;      // медленно
 uniform float uv_rim : hint_range(0.0, 0.2) = 0.0;
 uniform vec4 tint : source_color = vec4(1.0);
 uniform float tint_amount : hint_range(0.0, 1.0) = 0.0;
+// Сетка клеток хода ТЕКСТУРОЙ на верхних гранях (пол): линии клетки 1 м запечены в grid_tex (AssetMaterials._grid_texture, мипмапы), выборка по МИРОВЫМ x,z
+// с анизотропной фильтрацией: издали и под скользящим углом линия плавно тускнеет по мипам, а не мерцает и не «лесенкой» (в отличие от точек и шейдерных линий на границе пикселя).
+// grid_alpha = 0 — выключено (по умолчанию). grid_origin — мировые xz угла клетки, если плита стоит не на целых метрах. Анизотропия берётся из настроек проекта
+// (rendering/textures/default_filters/anisotropic_filtering_level).
+uniform sampler2D grid_tex : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform float grid_alpha : hint_range(0.0, 2.0) = 0.0;
+uniform vec2 grid_origin = vec2(0.0);
 // Борьба с мерцанием кромок плит (пол, потолок, дальние пласты; включает AssetMaterials для мешей плит, ручки [assets] plate_*): у плиты толщиной 3 см светятся и боковая полоска кромки,
 // и контур верха, а ниже — край вуали и начала штрихов: на 6–10 м они сходятся в один пиксель и дают муар. Три независимых меры:
 uniform float rim_top_only = 0.0;   // 1 — светится только лицевая грань (нормаль вверх/вниз), боковая полоска кромки не светится: одна линия вместо двух
@@ -33,6 +40,7 @@ vec3 recolor(vec3 c) {
 varying vec3 v_wp;
 varying vec2 v_uv;
 varying vec2 v_hs;
+varying float v_top;   // нормаль.y в пространстве модели: верх плиты смотрит в +Y (нужна сетке)
 varying float v_face;  // |нормаль.y| в пространстве модели: 1 — лицевая грань плиты (верх или низ), 0 — боковая
 varying float v_dist;
 
@@ -53,6 +61,7 @@ void vertex() {
 	v_wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	v_uv = UV;
 	v_hs = UV2;
+	v_top = NORMAL.y;
 	v_face = abs(NORMAL.y);
 	v_dist = -(MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).z;
 }
@@ -73,5 +82,11 @@ void fragment() {
 		rim_gain = 0.0;
 	}
 	rim_gain *= mix(1.0, rim_far_min, smoothstep(rim_far_start, rim_far_end, v_dist));
-	ALBEDO = base_color.rgb + mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount) * edge_glow * lit * rim_k * rim_gain;
+	vec3 col = base_color.rgb + mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount) * edge_glow * lit * rim_k * rim_gain;
+	if (grid_alpha > 0.0 && v_top > 0.9) {
+		float g = texture(grid_tex, v_wp.xz - grid_origin).r;
+		vec3 gc = tint_amount > 0.0 ? tint.rgb : vec3(0.094, 0.9, 1.0);
+		col += gc * g * grid_alpha;
+	}
+	ALBEDO = col;
 }

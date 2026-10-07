@@ -140,6 +140,24 @@ func test_поля_журнала() -> void:
 	assert_int(f["msaa"]).is_equal(0)
 	assert_str(f["aa"]).is_equal("none")
 	assert_str(f["file"]).is_equal("none")
+	assert_str(f["layers"]).is_equal("off")
+
+
+func test_layers_парсинг_и_маппинг() -> void:
+	assert_str(RenderConfig.new().layers).is_equal("off")
+	assert_str(RenderConfig.from_config(_cfg({"layers": "on"})).layers).is_equal("on")
+	assert_str(RenderConfig.from_config(_cfg({"layers": "ON"})).layers).is_equal("on")
+	assert_str(RenderConfig.from_config(_cfg({"layers": "Off"})).layers).is_equal("off")
+	assert_bool(RenderConfig.layers_enabled("on")).is_true()
+	assert_bool(RenderConfig.layers_enabled("off")).is_false()
+	assert_bool(RenderConfig.layers_enabled(RenderConfig.LAYERS_DEFAULT)).is_false()
+
+
+func test_layers_неверное_по_умолчанию_с_предупреждением() -> void:
+	for bad: Variant in ["вкл", "", 1, true]:
+		var c := RenderConfig.from_config(_cfg({"layers": bad}))
+		assert_str(c.layers).is_equal(RenderConfig.LAYERS_DEFAULT)
+		assert_int(c.warnings.size()).is_equal(1)
 
 
 ## Заглушка интерфейса OpenXR: те же свойства, что у OpenXRInterface.
