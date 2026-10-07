@@ -146,8 +146,16 @@ class VoicePlayer(
         ticker?.cancel()
         engine.release()
         _state.value = PlayerState(speed = _state.value.speed)
-        if (finished == null || !finished.incoming || !autoplay()) return
-        nextUnlistened(finished.peerKey, finished.timestamp)?.let { start(it, 0) }
+        // Журнал: что было дальше с автопроигрыванием — по нему на живом телефоне видно, почему следующее не пошло (нет следующего, выключено, своё сообщение).
+        if (finished == null) return
+        val reason = when {
+            !finished.incoming -> "own"
+            !autoplay() -> "off"
+            else -> null
+        }
+        val next = if (reason == null) nextUnlistened(finished.peerKey, finished.timestamp) else null
+        Mb10Log.event(TAG, "voice.finished", "clip" to finished.clipId.take(8), "autoplay" to (reason ?: "on"), "next" to (next?.clipId?.take(8) ?: "none"))
+        next?.let { start(it, 0) }
     }
 
     companion object {

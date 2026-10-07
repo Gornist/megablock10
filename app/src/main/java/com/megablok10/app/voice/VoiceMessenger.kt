@@ -15,6 +15,9 @@ import kotlinx.coroutines.withContext
 
 private const val TAG = "VoiceMessenger"
 
+/** Следующее непрослушанное входящее голосовое от [peer] после [after] — для автопроигрывания (то, что получает [VoicePlayer.nextUnlistened]). */
+suspend fun ChatMessageDao.nextUnlistenedTrack(me: String, peer: String, after: Long): VoiceTrack? = nextUnlistenedVoice(me, peer, after)?.voiceTrack(me)
+
 /** Голосовое из строки ленты; null — это не голосовое. [me] — мой ключ: чужое входящее, своё исходящее. */
 fun ChatMessageEntity.voiceTrack(me: String): VoiceTrack? = VoiceMarker.parse(body)?.let {
     val incoming = fromPubKeyB64 != me

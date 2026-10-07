@@ -54,6 +54,21 @@ android {
         // Ручное создание персонажа на первом запуске. Выключено везде, включая debug-APK из CI, который и раздаётся игрокам: персонажа выдаёт мастер QR-кодом.
         // Разработчику без мастера: mb10.allowManualSetup=true в local.properties (стенд e2e создаёт персонажей отладочными командами и этого не требует).
         buildConfigField("boolean", "ALLOW_MANUAL_SETUP", allowManualSetup.toBoolean().toString())
+        // Нативная библиотека шумоподавления микрофона звонка (RNNoise, src/main/cpp); ABI — те же, что у WebRTC (устройства + эмуляторы e2e: x86_64).
+        externalNativeBuild {
+            cmake {
+                abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+            }
+        }
+    }
+
+    // CMake 3.22.1 и NDK из SDK (devbox: ~/android-sdk; CI: Gradle докачивает недостающее, лицензии принимаются в workflow).
+    ndkVersion = "28.1.13356709"
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 
     buildFeatures {

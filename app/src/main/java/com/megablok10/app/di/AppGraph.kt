@@ -80,7 +80,7 @@ import com.megablok10.app.voice.VoiceMessenger
 import com.megablok10.app.voice.VoiceReceipts
 import com.megablok10.app.voice.VoicePlayer
 import com.megablok10.app.voice.VoiceStore
-import com.megablok10.app.voice.voiceTrack
+import com.megablok10.app.voice.nextUnlistenedTrack
 import com.megablok10.app.wallet.AcceptPayment
 import com.megablok10.app.wallet.SendPayment
 import com.megablok10.app.wallet.TransactionStore
@@ -171,7 +171,7 @@ class AppGraph(private val app: Application) {
         store = voiceStore,
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
         markListened = voiceReceipts::onPlayed,
-        nextUnlistened = { peer, after -> identity.current?.let { me -> db.chatMessageDao().nextUnlistenedVoice(me.publicKeyB64, peer, after)?.voiceTrack(me.publicKeyB64) } },
+        nextUnlistened = { peer, after -> identity.current?.let { me -> db.chatMessageDao().nextUnlistenedTrack(me.publicKeyB64, peer, after) } },
         autoplay = { voiceAutoplay.enabled.value },
     )
     /** Игроки в сети для экранов и рассылок: без Моста «Сети» (он в PeerDirectory ради отправки, но не игрок). */

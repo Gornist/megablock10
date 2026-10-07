@@ -277,16 +277,19 @@ def _slab_streaks(rng, cx, cyy, hx, hy, hh, sg, pitch, base, ln_max, wmin, wmax,
 
 
 SKIRT_H_ROOM = 0.7  # высота вуали под кромкой плиты в комнате, м: порядка длины штрихов (0,1…0,9)
-SKIRT_H_FAR = 1.8   # то же в дальних пластах, где штрихи до 3 м
+SKIRT_H_FAR = 1.2   # то же в дальних пластах, где штрихи до 3 м (было 1,8: вуаль дальних пластов давала 1,4 из 2,3 слоёв перерисовки, замер 07.10)
+SKIRT_FAR_SIDES = 2  # граней плиты с вуалью в дальних пластах (из 4; было 4): наполовину меньше площади при почти том же виде издали
 
 
-def _slab_skirt(rng, cx, cyy, hx, hy, hh, sg, h_max):
+def _slab_skirt(rng, cx, cyy, hx, hy, hh, sg, h_max, sides=4):
     """Вуаль плиты: по одному вертикальному квадрату на каждую из 4 боковых граней, от нижней кромки плиты вниз (у потолка вверх) на высоту
     h_max·0,6…1,0 (у каждой грани своя), плотность у кромки 0,7…1,0, внизу 0. Пространство под плитой не заливается: только плоскости по её периметру."""
     z0 = sg * (hh - SLAB_T)
     quads = []
-    for (ax, ay, bx, by) in ((cx - hx, cyy - hy, cx + hx, cyy - hy), (cx + hx, cyy - hy, cx + hx, cyy + hy),
-                             (cx + hx, cyy + hy, cx - hx, cyy + hy), (cx - hx, cyy + hy, cx - hx, cyy - hy)):
+    faces = ((cx - hx, cyy - hy, cx + hx, cyy - hy), (cx + hx, cyy - hy, cx + hx, cyy + hy),
+             (cx + hx, cyy + hy, cx - hx, cyy + hy), (cx - hx, cyy + hy, cx - hx, cyy - hy))
+    keep = sorted(rng.sample(range(4), sides)) if sides < 4 else range(4)  # какие грани получают вуаль (случайно, но детерминированно по seed)
+    for (ax, ay, bx, by) in (faces[i] for i in keep):
         h = h_max * rng.uniform(0.6, 1.0)
         quads.append((Vector((ax, ay, z0)), Vector((bx, by, z0)), Vector((0, 0, -sg * h)), rng.uniform(0.7, 1.0), rng.uniform(0.7, 1.0)))
     return quads
@@ -381,7 +384,7 @@ def build_far_surface(out, name="far_floor", seed=61, ceiling=False, size=11.0, 
         covered.append((cx, cyy, hx, hy))
         ln_max = 2.98 + hh - SLAB_T  # низ штриха не глубже −2,98 м
         streaks += _slab_streaks(rng, cx, cyy, hx, hy, hh, sg, pitch, ln_max * rng.uniform(0.6, 1.0), ln_max, 0.012, 0.018, 0.65)
-        skirts += _slab_skirt(srng, cx, cyy, hx, hy, hh, sg, min(SKIRT_H_FAR, ln_max))
+        skirts += _slab_skirt(srng, cx, cyy, hx, hy, hh, sg, min(SKIRT_H_FAR, ln_max), SKIRT_FAR_SIDES)
     del streaks[260:]
     rim = tuple(c * 0.6 for c in cy)
     objs = [lib.obj_from_bm("tiles", lib.merge_bm(*tiles), "solid_dark", cy, rgb_fn=_slab_rgb(infos, rim, lib.lin("void")))]
