@@ -414,18 +414,45 @@ def build_column_field(out, name="column_field", seed=77):
                       notes="эксперимент: поле колонн на решётке 0,1 м для дальнего плана")
 
 
+PILLAR_H = 2.4     # высота укрытия, м: выше головы стоящего игрока (решение Game по итогам П3 на очках)
+PILLAR_CELL = 1.0  # клетка хода, м; модуль 2×2 м = четыре столба по клетке (NodeGrid занимает все четыре)
+
+
 def build_pillar(out):
-    """Колонна на углу: пучок высоких штрихов (два белых) и несколько точек у основания. Высота до 3 м. Origin на полу в центре."""
+    """Колонна-укрытие модуля 2×2 м: четыре чёрных столба 0,96×0,96×2,4 м — по одному на клетку хода 1 м, зазор 4 см между ними. Столб непрозрачный
+    (закрывает то, что за ним, как и укрытие в игре), светятся только вертикальные рёбра, контур верха (3 см) и низ: яркая кромка основания
+    гаснет за 0,3 м вверх. Так в очках видно, где клетка занята, и где столбов нет — пустота. Origin на полу в центре модуля."""
     lib.reset()
-    rng = random.Random(6)
-    cy, ice = lib.lin("cyan"), lib.lin("ice_white")
-    st = []
-    for _ in range(9):
-        hh = rng.uniform(1.0, 1.5)
-        st.append((Vector((rng.uniform(-0.07, 0.07), rng.uniform(-0.07, 0.07), hh)), rng.uniform(0.01, 0.018), hh, rng.uniform(0.4, 0.9)))
-    objs = [lib.streak_set("pillar_streaks", st, cy)]
-    objs.append(lib.streak_set("pillar_core", [(Vector((0, 0, 1.5)), 0.012, 1.5, 1.0), (Vector((0.03, 0.02, 1.2)), 0.01, 1.2, 0.9)], ice))
-    return lib.export("pillar", "env", objs, out, budget_tris=300, budget_streaks=16, origin="floor")
+    cy, void = lib.lin("cyan"), lib.lin("void")
+    half, band, rise = PILLAR_CELL * 0.48, 0.03, 0.3
+    parts = []
+    for cx in (-0.5, 0.5):
+        for cy_ in (-0.5, 0.5):
+            bm = lib.box_bm((half * 2, half * 2, PILLAR_H), center=(cx, cy_, PILLAR_H / 2))
+            for co, no in (((cx - half + band, 0, 0), (1, 0, 0)), ((cx + half - band, 0, 0), (1, 0, 0)),
+                           ((0, cy_ - half + band, 0), (0, 1, 0)), ((0, cy_ + half - band, 0), (0, 1, 0)),
+                           ((0, 0, rise), (0, 0, 1)), ((0, 0, PILLAR_H - band), (0, 0, 1))):
+                bmesh.ops.bisect_plane(bm, geom=list(bm.verts) + list(bm.edges) + list(bm.faces), plane_co=co, plane_no=no)
+            parts.append(bm)
+    blk = lib.merge_bm(*parts)
+    lib.canon_faces(blk)
+
+    def lit(co):
+        lx, ly = abs(co.x) - 0.5, abs(co.y) - 0.5   # от центра своего столба
+        ring = max(abs(lx), abs(ly)) > half - 1e-3
+        if abs(lx) > half - 1e-3 and abs(ly) > half - 1e-3:
+            k = 1.0                                   # вертикальное ребро
+        elif ring and co.z > PILLAR_H - 1e-3:
+            k = 1.0                                   # контур верха
+        elif ring and co.z < rise:
+            k = 0.7 * (1.0 - co.z / rise)             # мягкая подсветка основания
+        else:
+            k = 0.0
+        return tuple(d + (g - d) * k for g, d in zip(cy, void))
+
+    objs = [lib.obj_from_bm("pillar_block", blk, "solid_dark", cy, rgb_fn=lit)]
+    return lib.export("pillar", "env", objs, out, budget_tris=500, origin="floor",
+                      notes=f"4 столба по клетке {PILLAR_CELL:g} м, высота {PILLAR_H:g} м (выше головы), модуль 2×2 м")
 
 
 if __name__ == "__main__":

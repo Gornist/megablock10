@@ -57,7 +57,7 @@
 | `models/env/horizon_band.glb` | 192 / 1000 | 0 / 0 | 360 / 400 | 1 | 2 | 132.9202 × 12 × 122.7654 | shell_soft, streaks | — | horizon | ок |
 | `models/env/lockdown_gate.glb` | 0 / 300 | 18 / 40 | 79 / 120 | 0 | 4 | 1.98 × 2.7226 × 0.328 | points, streaks | — | floor | ок |
 | `models/env/lockdown_gate_open.glb` | 0 / 300 | 18 / 40 | 48 / 120 | 0 | 4 | 1.98 × 2.7226 × 0.328 | points, streaks | — | floor | ок |
-| `models/env/pillar.glb` | 0 / 300 | 0 / 0 | 11 / 16 | 0 | 2 | 0.1166 × 3 × 0.0709 | streaks | — | floor | ок |
+| `models/env/pillar.glb` | 432 / 500 | 0 / 0 | 0 / 0 | 0 | 1 | 1.96 × 2.4 × 1.96 | solid_dark | — | floor | ок |
 | `models/env/platform.glb` | 28 / 300 | 25 / 40 | 39 / 60 | 0 | 3 | 1.9203 × 0.322 × 1.9 | points, solid_dark, streaks | — | floor | ок |
 | `models/props/portal.glb` | 0 / 2000 | 358 / 400 | 82 / 100 | 0 | 2 | 3.028 × 3.014 × 0.1571 | points, streaks | — | floor | ок |
 | `models/props/portal_locked.glb` | 0 / 2000 | 157 / 260 | 27 / 40 | 0 | 2 | 3.0273 × 3.0139 × 0.1508 | points, streaks | — | floor | ок |
