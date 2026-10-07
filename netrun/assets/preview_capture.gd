@@ -4,11 +4,11 @@ extends Node3D
 ## Вид проверяем только здесь: вьюпорт Blender аддитивные материалы не показывает. Частота кадров на Pico 4 не проверяется.
 
 const AM := preload("res://assets/asset_materials.gd")
-const BG := Color(0.004, 0.008, 0.016)
+const OLD_BG := Color(0.004, 0.008, 0.016)  # прежний почти чёрный фон (до решения «пустота — тёмная бирюзовая дымка»); --bg=0.004,0.008,0.016 возвращает его
 
 ## Комната 6×6 м из модулей 2×2 м: пол 3×3, стены по периметру, колонны в углах, вход с юга (z=+3), выход на север (z=-3),
 ## в центре шард, у выхода ICE. Предмет: [путь, позиция, поворот Y (°), тир, масштаб].
-const REFLECT := ["props/vault", "props/hack_panel", "props/vault_closed","props/vault_open", "props/portal", "props/portal_locked", "env/wall", "env/wall_b", "env/wall_c", "env/portal_wall", "env/far_field", "env/far_field_b", "env/far_field_c", "env/doorway", "env/doorway_b", "env/pillar", "ice/soft_ice", "avatar/runner", "avatar/runner_b", "avatar/runner_c"]
+const REFLECT := ["props/vault", "props/hack_panel", "props/vault_closed","props/vault_open", "props/portal", "props/portal_locked", "env/wall", "env/wall_b", "env/wall_c", "env/portal_wall", "env/far_field", "env/far_field_b", "env/far_field_c", "env/doorway", "env/doorway_b", "env/exit_frame", "env/pillar", "ice/soft_ice", "avatar/runner", "avatar/runner_b", "avatar/runner_c"]
 const CEILING_H := 5.0
 const LAYER_PITCH := 7.0  # шаг между пластами данных: потолок 5 м + 2 м пустоты
 const ICE_POS := Vector3(1.0, 0.0, -2.8)
@@ -188,6 +188,9 @@ func _shots() -> Array:
 var out_dir := "/tmp/shots"
 
 
+var _bg: Color = AM.VOID_BG  # --bg=r,g,b: цвет фона (пустота между плитами); по умолчанию AssetMaterials.VOID_BG
+var _nobeacon := false  # --nobeacon: выключить узел Beacon у шардов и токена (как в руке игрока; сравнение «с маяком / без»)
+var _noexit := false  # --noexit: без свободной рамки выхода env/exit_frame в точке выхода комнаты
 var _tier := "HARD"  # --tier=BASE|HARD|NIGHTMARE: тир окружения в кадрах (по умолчанию HARD, как раньше; BASE — бирюза, как в клиенте)
 var _lattice := 0.0  # --lattice=0.05: шаг мировой решётки (эксперимент), 0 — выкл.
 var _field := false  # --field: вместо дальних стен поле колонн
@@ -225,6 +228,13 @@ func _ready() -> void:
 			out_dir = a.trim_prefix("--out=")
 		if a == "--movie":
 			_movie = true
+		if a.begins_with("--bg="):
+			var bgv := a.trim_prefix("--bg=").split(",")
+			_bg = Color(float(bgv[0]), float(bgv[1]), float(bgv[2]))
+		if a == "--noexit":
+			_noexit = true
+		if a == "--nobeacon":
+			_nobeacon = true
 		if a.begins_with("--cam="):
 			_static_cam = PackedFloat64Array(Array(a.trim_prefix("--cam=").split(",")).map(func(v): return float(v)))
 		if a.begins_with("--tier="):
@@ -272,7 +282,7 @@ func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = BG
+	env.background_color = _bg
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_DISABLED
 	var we := WorldEnvironment.new()
 	we.environment = env
