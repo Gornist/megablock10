@@ -1708,6 +1708,18 @@ func slot_ids() -> Array:
 	return _slot_pos.keys()
 
 
+## Таблички узла для события node: [{p: [x, z], text}]. Узел с раскладкой (не legacy) — из её signs (клетка карты → место в мире),
+## без раскладки — signs из graph.json (`graph_signs`, координаты прежней комнаты).
+func event_signs(graph_signs: Array) -> Array:
+	if layout.is_legacy():
+		return graph_signs
+	var out: Array = []
+	for s: Dictionary in layout.signs:
+		var pos: Vector3 = s["pos"]
+		out.append({"p": [pos.x, pos.z], "text": s["text"]})
+	return out
+
+
 ## Вид хранилища слота для сессии: empty — шарда нет (вынесен, ждёт пополнения); closed — шард внутри, взять нельзя;
 ## open — можно взять. Пока флаг `vault_requires_open` выключен (по умолчанию), лежащий шард открыт всем; К3 включает флаг, и
 ## хранилище открывается только взломом (open_vault) и только для сессии, которая его взломала.

@@ -35,7 +35,7 @@ var vaults: Array = []
 var sentries: Array = []
 ## Black ICE (`black` в файле): {id, route} или пусто.
 var black: Dictionary = {}
-## Подсказки: {cell: Vector2i (клетка 1 м), text: String}.
+## Подсказки: {cell: Vector2i (клетка 1 м), text: String, pos: Vector3 (место в мире, y = 0)}.
 var signs: Array = []
 ## Дальность зрения Стражей этой раскладки, клеток (meta.sight_cells; по умолчанию как TickIce.DEFAULTS).
 var sight_cells := DEFAULT_SIGHT_CELLS
@@ -224,7 +224,13 @@ func _fill_signs(src: Variant) -> String:
 		var c: Variant = _point_cell(sd)
 		if c == null:
 			return "signs: нужна клетка cell [x, z] или cell1"
-		signs.append({"cell": c, "text": str(sd.get("text", ""))})
+		var cc: Vector2i = c
+		# pos — где подпись стоит в мире: cell — центр модуля блока карты, cell1 — центр клетки 1 м.
+		var pos := NodeGrid.center(cc)
+		if not sd.has("cell1"):
+			var b := block_of(cc)
+			pos = NodeLayout.cell_center(b.x, b.y)
+		signs.append({"cell": cc, "text": str(sd.get("text", "")), "pos": pos})
 	return ""
 
 

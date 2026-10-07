@@ -33,6 +33,7 @@ func before_test() -> void:
 				{"cell": [6, 4], "wait": 1, "look": ["N"]},
 			]},
 		],
+		"signs": [{"cell": [3, 5], "text": "ВЫХОД СПРАВА"}],
 		"meta": {"sight_cells": 4},
 	})
 	assert_str((LayoutData._cache[ALT] as LayoutData).error).is_empty()
@@ -50,8 +51,8 @@ func after_test() -> void:
 ## Мир из двух узлов: x_alt (раскладка test_alt, шардов и Стражей по параметрам) и x_leg (без layout — legacy). Тактовый режим — по умолчанию.
 func _build(alt_shards: int = 1, time_mode: String = "tick") -> void:
 	var d := {"default_entry": "x_alt", "entries": {}, "settings": {"time_mode": time_mode, "vault_requires_open": false}, "nodes": {
-		"x_alt": {"title": "Альт", "tier": "BASE", "ice": 1, "shards": alt_shards, "layout": ALT, "links": ["x_leg"]},
-		"x_leg": {"title": "Старый", "tier": "BASE", "ice": 2, "shards": 3, "links": ["x_alt"]},
+		"x_alt": {"title": "Альт", "tier": "BASE", "ice": 1, "shards": alt_shards, "layout": ALT, "links": ["x_leg"], "signs": [{"p": [9.0, 9.0], "text": "НЕ ТА КОМНАТА"}]},
+		"x_leg": {"title": "Старый", "tier": "BASE", "ice": 2, "shards": 3, "links": ["x_alt"], "signs": [{"p": [1.0, 2.0], "text": "СТАРАЯ"}]},
 	}}
 	var sroot := Node.new()
 	sroot.name = "S"
@@ -209,6 +210,19 @@ func test_сообщение_о_входе_в_узел_несёт_имя_рас�
 	_build()
 	assert_str(str(_world.node_event("x_alt")["layout"])).is_equal(ALT)
 	assert_str(str(_world.node_event("x_leg")["layout"])).is_equal("legacy")
+
+
+func test_таблички_узла_с_раскладкой_берутся_из_неё_а_не_из_graph_json() -> void:
+	_build()
+	var signs: Array = _world.node_event("x_alt")["signs"]
+	assert_int(signs.size()).is_equal(1)   # graph.json-таблички x_alt (координаты старой комнаты) не попадают в событие
+	var c := NodeLayout.cell_center(3, 5)
+	assert_array(signs[0]["p"]).is_equal([c.x, c.z])
+	assert_str(signs[0]["text"]).is_equal("ВЫХОД СПРАВА")
+	# узел без раскладки — таблички из graph.json как были
+	var legacy_signs: Array = _world.node_event("x_leg")["signs"]
+	assert_int(legacy_signs.size()).is_equal(1)
+	assert_str(legacy_signs[0]["text"]).is_equal("СТАРАЯ")
 
 
 # ---------------------------------------------------------------- стенд: стартовые клетки ботов

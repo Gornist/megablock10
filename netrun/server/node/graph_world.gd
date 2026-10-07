@@ -165,7 +165,7 @@ func node_event(id: String, arrive: Variant = null, session: String = "") -> Dic
 	var dead := gn.dead_decks()
 	if not dead.is_empty():
 		ev["dead"] = dead   # мёртвые деки в узле (К8): рядом с хранилищем лежит демон погибшего нетраннера
-	var signs: Array = graph.nodes[id].get("signs", [])
+	var signs: Array = gn.event_signs(graph.nodes[id].get("signs", []))
 	if not signs.is_empty():
 		ev["signs"] = signs  # таблички учебного узла: [{p: [x, z], text}], клиент рисует их в мире
 	if arrive is Vector3:

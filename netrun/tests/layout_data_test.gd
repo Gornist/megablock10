@@ -78,6 +78,7 @@ func test_учебный_узел_та_же_карта_медленный_стр
 		assert_bool(not t.occupied.has(s["cell"])).is_true()   # подсказка лежит на свободной клетке
 		assert_bool(not str(s["text"]).is_empty()).is_true()
 	assert_str(t.signs[0]["text"]).is_equal("ЖДИ, ПОКА СТРАЖ ОТВЕРНЁТСЯ")
+	assert_object(t.signs[0]["pos"]).is_equal(NodeLayout.cell_center(3, 5))   # cell [3, 5] — центр модуля
 
 
 func test_legacy_даёт_те_же_занятые_клетки_и_позиции_что_константы_node_layout() -> void:
