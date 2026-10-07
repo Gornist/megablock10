@@ -35,6 +35,7 @@ static func run_all(layout: LayoutData) -> Dictionary:
 		"dead_ends": check_dead_ends(layout),
 		"vault_grid": check_vault_grid(layout),
 		"arrival_safe": check_arrival_safe(layout),
+		"occupied_visible": check_occupied_visible(layout),
 	}
 
 
@@ -305,6 +306,30 @@ static func check_vault_grid(layout: LayoutData) -> Dictionary:
 	if bad.is_empty():
 		return _res(true, "хранилища и площадки по клеткам 1 м (%d)" % layout.vaults.size())
 	return _res(false, "; ".join(bad))
+
+
+## (з) Занятая клетка всегда видна: каждая клетка из layout.occupied покрыта моделью клиента (client/node_view.gd): колонна «#» — pillar
+## на весь блок; блок «V» — хранилище на клетке cell1 и cover на трёх остальных (LayoutData.cover_cells). Символы O, B, L (занятые, но без модели
+## в клиенте) и «V» без записи в vaults оставляют клетки без модели — это ошибка раскладки. Legacy (занятые клетки — только колонны «#», хранилища не помечены V) проходит.
+static func check_occupied_visible(layout: LayoutData) -> Dictionary:
+	if layout.occupied.is_empty():
+		return _res(true, "занятых клеток по раскладке нет")
+	var covered := {}
+	for c in layout.cover_cells():
+		covered[c] = true
+	for v: Dictionary in layout.vaults:
+		covered[v["cell1"]] = true
+	var bad := {}   # блок карты → символ
+	for c: Vector2i in layout.occupied:
+		var b := LayoutData.block_of(c)
+		if layout.blocks[b.y][b.x] != "#" and not covered.has(c):
+			bad[b] = layout.blocks[b.y][b.x]
+	if bad.is_empty():
+		return _res(true, "занятых клеток %d, у каждой есть модель" % layout.occupied.size())
+	var parts: Array[String] = []
+	for b: Vector2i in bad:
+		parts.append("блок %s «%s»" % [str(b), bad[b]])
+	return _res(false, "занятая клетка без модели в клиенте: " + ", ".join(parts))
 
 
 ## Клетки прибытия: вход раскладки и точки появления после каждого портала (NodeLayout.arrival_in): {label, cell}.

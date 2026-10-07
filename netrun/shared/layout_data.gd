@@ -100,6 +100,19 @@ static func block_center_cell(b: Vector2i) -> Vector2i:
 	return Vector2i(2 * b.x + 1, 2 * b.y + 1)
 
 
+## Клетки 1 м блока хранилища, занятые укрытием env/cover: три клетки блока, кроме клетки самого хранилища (cell1). Одно правило
+## для клиента (что рисовать) и LayoutCheck.check_occupied_visible (что покрыто моделью). У legacy укрытий нет.
+func cover_cells() -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	if is_legacy():
+		return out
+	for v: Dictionary in vaults:
+		for c in block_cells(v["cell"]):
+			if c != v["cell1"]:
+				out.append(c)
+	return out
+
+
 func grid() -> NodeGrid:
 	var g := NodeGrid.new()
 	g.occ = occupied.duplicate()
