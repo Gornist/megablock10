@@ -52,7 +52,7 @@ func _init(reason: String = "", ev: Dictionary = {}) -> void:
 	_mat = StandardMaterial3D.new()
 	_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_mat.albedo_color = Color(0, 0, 0, 0)
+	_mat.albedo_color = AssetMaterials.layer("end_veil", 0.0)   # цвет завесы — слой палитры, фейд идёт по альфе
 	_mat.no_depth_test = true
 	_mat.render_priority = 100
 	quad.material = _mat

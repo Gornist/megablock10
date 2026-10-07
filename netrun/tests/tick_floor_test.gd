@@ -42,6 +42,14 @@ func test_идущий_ICE_рисует_ещё_и_свет_после_шага_�
 	assert_bool(a["precapture"]).is_false()
 
 
+func test_свет_рисуется_контуром_четыре_полосы_на_клетку() -> void:
+	var f := _floor()
+	assert_int(f.edge_count()).is_equal(0)
+	f.apply([_it(ICE, EAST, 3)], {}, Vector2i(0, 0))
+	assert_int(f.cell_count()).is_greater(0)
+	assert_int(f.edge_count()).is_equal(f.cell_count() * 4)
+
+
 func test_фокус_ярче_периферии_и_цвет_по_состоянию() -> void:
 	var g := NodeGrid.new()
 	var f := _floor(g)

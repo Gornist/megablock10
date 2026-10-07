@@ -36,6 +36,17 @@ func test_texts_for_every_reason() -> void:
 	assert_str(EndScreen.title_text("weird")).is_equal("ВЫХОД: weird")
 
 
+func test_veil_color_comes_from_palette_layer_and_fades_by_alpha() -> void:
+	var s := EndScreen.new(ExitLogic.REASON_EJECTED, {})
+	auto_free(s)
+	add_child(s)
+	var want := AssetMaterials.layer("end_veil")
+	var got: Color = (s.veil.mesh.material as StandardMaterial3D).albedo_color
+	assert_float(got.r).is_equal_approx(want.r, 0.001)
+	assert_float(got.b).is_equal_approx(want.b, 0.001)
+	assert_float(s.veil_alpha()).is_equal(0.0)
+
+
 func test_title_colors_come_from_palette_layers() -> void:
 	assert_object(EndScreen.title_color(ExitLogic.REASON_CLEAN)).is_equal(AssetMaterials.layer("end_win"))
 	assert_object(EndScreen.title_color(ExitLogic.REASON_FLATLINE)).is_equal(AssetMaterials.layer("end_lose"))

@@ -14,8 +14,8 @@ const TRIGGER := "trigger_click"
 ## Ход списка колесом мыши на одно деление, px.
 const WHEEL_PX := 64.0
 const SCROLL_PX_S := 520.0
-const DOT_COLOR := Color(0.37, 0.96, 1.0)
-const DOT_PRESSED := Color(1.0, 1.0, 1.0)
+## Цвета — слои палитры клиента (AssetMaterials.layer): pointer_dot (точка), pointer_press (нажатие), pointer_beam (луч; мимо панели — слабее, BEAM_MISS_SCALE).
+const BEAM_MISS_SCALE := 0.35
 ## Слабый луч к панели, если целишься рядом (в пределах этого расстояния от центра), чтобы её было легче найти.
 const NEAR_MISS_M := 0.4
 
@@ -44,7 +44,7 @@ var _bound_hand: XRController3D
 func _init() -> void:
 	name = "DeckPointer"
 	top_level = true   # всё считаем в мировых координатах
-	_dot_mat = _unshaded(DOT_COLOR)
+	_dot_mat = _unshaded(AssetMaterials.layer("pointer_dot"))
 	var sphere := SphereMesh.new()
 	sphere.radius = 0.005
 	sphere.height = 0.01
@@ -56,7 +56,8 @@ func _init() -> void:
 	_dot.visible = false
 	_dot.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_dot)
-	_beam_mat = _unshaded(DOT_COLOR)
+	_beam_mat = _unshaded(AssetMaterials.layer("pointer_beam"))
+	_beam_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	var box := BoxMesh.new()
 	box.size = Vector3(0.002, 0.002, 1.0)
 	box.material = _beam_mat
@@ -162,13 +163,13 @@ func set_trigger(pressed: bool) -> void:
 		_press_pos = _last_pos
 		_send(_button(_last_pos, true))
 		button_events += 1
-		_dot_mat.albedo_color = DOT_PRESSED
+		_dot_mat.albedo_color = AssetMaterials.layer("pointer_press")
 		clicked.emit()
 	elif _pressed:
 		_pressed = false
 		_send(_button(_last_pos if hovering else _press_pos, false))
 		button_events += 1
-		_dot_mat.albedo_color = DOT_COLOR
+		_dot_mat.albedo_color = AssetMaterials.layer("pointer_dot")
 
 
 func is_pressed() -> bool:
@@ -263,8 +264,17 @@ func _update_visuals(origin: Vector3) -> void:
 			_beam.global_position = origin.lerp(to, 0.5)
 			_beam.look_at(to, Vector3.UP if absf((to - origin).normalized().y) < 0.99 else Vector3.RIGHT)
 			_beam.scale = Vector3(1, 1, span)
-		_beam_mat.albedo_color = DOT_COLOR if hit else Color(DOT_COLOR, 0.35)
-		_beam_mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED if hit else BaseMaterial3D.TRANSPARENCY_ALPHA
+		var beam := AssetMaterials.layer("pointer_beam")
+		_beam_mat.albedo_color = beam if hit else Color(beam, beam.a * BEAM_MISS_SCALE)
+
+
+## Цвет точки и луча сейчас (для тестов: слои pointer_dot / pointer_press / pointer_beam).
+func dot_color() -> Color:
+	return _dot_mat.albedo_color
+
+
+func beam_color() -> Color:
+	return _beam_mat.albedo_color
 
 
 func _unshaded(c: Color) -> StandardMaterial3D:
