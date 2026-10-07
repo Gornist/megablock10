@@ -14,6 +14,8 @@ import com.megablok10.app.identity.Identity
 import com.megablok10.app.items.AcceptItem
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
+import com.megablok10.app.voice.RecordedClip
+import com.megablok10.kit.mesh.OnlinePlayer
 import com.megablok10.app.wallet.AcceptPayment
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -54,6 +56,10 @@ class DirectThreadViewModel(
     private val work: CoroutineScope,
     private val markRead: suspend (me: String, peerKey: String, messages: List<ChatMessageEntity>) -> Unit = { _, _, _ -> },
     private val showRead: StateFlow<Boolean> = MutableStateFlow(true),
+    /** Отправка записанного голосового ([com.megablok10.app.voice.VoiceMessenger.send]); адрес получателя — живой, если он сейчас виден. */
+    private val voiceSender: suspend (me: Identity, peerKey: String, peer: OnlinePlayer?, clip: RecordedClip) -> Unit = { _, _, _, _ -> },
+    /** Микрофон свободен для записи: пока идёт звонок, он занят (запись голосового выключена). */
+    val micAllowed: StateFlow<Boolean> = MutableStateFlow(true),
 ) : ViewModel() {
     private var receiptsChecked = 0
 
@@ -73,6 +79,12 @@ class DirectThreadViewModel(
     fun send(body: String) {
         val me = identity.value ?: return
         work.launch { messenger.sendDirect(me, peerKey, messenger.onlinePeer(peerKey), body) }
+    }
+
+    /** В скоупе процесса: экран могут закрыть сразу после отпускания кнопки записи — отправка (и постановка в очередь) должна довершиться. */
+    fun sendVoice(clip: RecordedClip) {
+        val me = identity.value ?: return
+        work.launch { voiceSender(me, peerKey, messenger.onlinePeer(peerKey), clip) }
     }
 
     fun accept(tx: Mb10Qr.Transaction) {

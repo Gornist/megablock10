@@ -31,6 +31,7 @@ object MbIcons {
     @DrawableRes val Upload = R.drawable.ic_mb_upload
     @DrawableRes val Reset = R.drawable.ic_mb_reset
     @DrawableRes val Send = R.drawable.ic_mb_send
+    @DrawableRes val Mic = R.drawable.ic_mb_mic
     @DrawableRes val Target = R.drawable.ic_mb_target
     @DrawableRes val Alert = R.drawable.ic_mb_alert
     @DrawableRes val Clock = R.drawable.ic_mb_clock
