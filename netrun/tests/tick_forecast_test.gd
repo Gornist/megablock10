@@ -127,3 +127,36 @@ func test_залипание_красной_ровно_с_0_4_секунды() -
 	assert_bool(TickForecast.red_hold_ok(0.39)).is_false()
 	assert_bool(TickForecast.red_hold_ok(0.4)).is_true()
 	assert_bool(TickForecast.red_hold_ok(2.0)).is_true()
+
+
+func test_разбор_rt_след_маршрута_необязателен() -> void:
+	var with_rt := TickForecast.parse_intents([{"c": [1, 1], "d": [1, 0], "st": 0, "nc": [3, 1], "nd": [1, 0], "rt": [[3, 1], [5, 1], [7, 1]]}])
+	assert_array(with_rt[0]["rt"]).is_equal([Vector2i(3, 1), Vector2i(5, 1), Vector2i(7, 1)])
+	var without := TickForecast.parse_intents([{"c": [1, 1], "d": [1, 0], "st": 0, "nc": [3, 1], "nd": [1, 0]}])
+	assert_bool(without[0].has("rt")).is_false()   # старый сервер: ключа нет, клиент работает как раньше
+	var black := TickForecast.parse_intents([{"c": [1, 1], "d": [1, 0], "st": 0, "b": 1, "rt": [[2, 1]]}])
+	assert_bool(black[0].has("rt")).is_false()
+
+
+func test_разбор_fp_и_lost_необязательны() -> void:
+	var base := {"c": [1, 1], "d": [1, 0], "st": 1, "nc": [1, 1], "nd": [1, 0]}
+	var plain := TickForecast.parse_intents([base])
+	assert_bool(plain[0].has("fp")).is_false()
+	assert_bool(plain[0].has("lost")).is_false()
+	var full := base.duplicate()
+	full["fp"] = [5, 3]
+	full["lost"] = 1
+	var its := TickForecast.parse_intents([full])
+	assert_that(its[0]["fp"]).is_equal(Vector2i(5, 3))
+	assert_bool(its[0]["lost"]).is_true()
+	var zero := base.duplicate()
+	zero["lost"] = 0
+	assert_bool(TickForecast.parse_intents([zero])[0].has("lost")).is_false()
+
+
+func test_клетка_куда_ICE_шагнёт_красная_и_залипание_действует() -> void:
+	var g := NodeGrid.new()
+	var it := _it(ICE, EAST, 0, ICE + Vector2i(2, 0))
+	assert_int(TickForecast.threat(g, [it], ICE + Vector2i(2, 0))).is_equal(TickForecast.RED)
+	assert_bool(TickForecast.red_hold_ok(0.2)).is_false()   # залипание: красную рамку сразу в прыжок не отпускают
+	assert_bool(TickForecast.red_hold_ok(TickForecast.RED_HOLD_SEC)).is_true()

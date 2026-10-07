@@ -268,6 +268,14 @@ func test_з_state_в_тактовом_режиме_несёт_tk_и_намер�
 	assert_int(int(ice["nc"][1])).is_equal(10)
 	assert_int(int(ice["st"])).is_equal(0)
 	assert_int(int(ice["aw"])).is_equal(0)
+	# След маршрута на 3 шага: первая клетка = nc, каждая — [x, z].
+	assert_bool(ice.has("rt")).is_true()
+	var rt: Array = ice["rt"]
+	assert_int(rt.size()).is_equal(TickIce.AHEAD_STEPS)
+	assert_array(rt[0]).is_equal(ice["nc"])
+	for cell: Array in rt:
+		assert_int(cell.size()).is_equal(2)
+	assert_array(rt[1]).is_not_equal(rt[0])   # пояс идёт, а не стоит
 
 
 func test_з_state_в_реальном_времени_без_тактовых_полей() -> void:
@@ -276,7 +284,7 @@ func test_з_state_в_реальном_времени_без_тактовых_п
 	assert_bool(await _wait_for(func(): return _states.has(a))).is_true()
 	var st: Dictionary = _states[a]
 	assert_bool(st.has("tk")).is_false()
-	for key in ["c", "d", "st", "nc", "nd", "aw", "sc"]:
+	for key in ["c", "d", "st", "nc", "nd", "aw", "sc", "rt"]:
 		assert_bool((st["ice"][0] as Dictionary).has(key)).is_false()
 
 
@@ -362,3 +370,22 @@ func test_грейс_прибытия_ноль_отключает_неуязви
 	await _advance(0.1)
 	assert_bool(_node._arrival_immune(a, 2)).is_true()    # скрытые такты (entry_hidden_ticks) остаются неуязвимыми
 	assert_bool(_node._arrival_immune(a, 3)).is_false()
+
+
+func test_state_fp_и_lost_необязательные_поля_ice() -> void:
+	_boot(true)
+	var ice: IceNode = _node.ices()[0]
+	var ti: TickIce = _node._tick_ices[ice]
+	var plain := {}
+	_node._intents.erase(ice)
+	_node._add_tick_fields(plain, ice)
+	assert_bool(plain.has("fp")).is_false()   # без замеченного нетраннера полей нет
+	assert_bool(plain.has("lost")).is_false()
+	var it := ti.intent()
+	it["fp"] = Vector2i(7, 3)
+	it["lost"] = true
+	_node._intents[ice] = it
+	var entry := {}
+	_node._add_tick_fields(entry, ice)
+	assert_array(entry["fp"]).is_equal([7, 3])
+	assert_int(int(entry["lost"])).is_equal(1)

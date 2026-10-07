@@ -71,3 +71,17 @@ func test_shards_event_hides_taken_slot() -> void:
 	# пустой слот не берётся
 	var near: Vector3 = (scene._pickups["node_05_pk0"] as Node3D).global_position
 	assert_bool(scene.try_grab(near, 0.4, scene.rig.camera)).is_false()
+
+
+## Длина замка в панели берётся по тиру ТЕКУЩЕГО узла сразу после его описания, а не по тиру, который панель получила в прошлый раз (до деки / взлома):
+## иначе `breach.request lock=` расходился с сервером (он считает по тиру узла).
+func test_длина_замка_панели_по_тиру_узла_сразу_после_описания_узла() -> void:
+	var scene := _scene()
+	var panel: BreachPanel = scene.world_ui.breach_panel
+	scene.apply_node(_node_info("node_05", ["node_05_pk0"]))   # тир HARD, колоды ещё нет
+	assert_int(panel.lock_length()).is_equal(int(BreachData.shared().tier_params("HARD")["lock_length"]))
+	var info := _node_info("node_01", ["node_01_pk0"])
+	info["tier"] = "BASE"
+	scene.apply_node(info)   # другой узел — другой замок
+	assert_int(panel.lock_length()).is_equal(int(BreachData.shared().tier_params("BASE")["lock_length"]))
+	assert_int(panel.lock_length()).is_less(int(BreachData.shared().tier_params("HARD")["lock_length"]))

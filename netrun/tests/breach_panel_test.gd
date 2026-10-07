@@ -321,3 +321,16 @@ func test_deck_pointer_and_breach_pointer_do_not_fight() -> void:
 	assert_bool(_ui.breach_pointer.hovering).is_true()
 	_ui.pointer.update_ray(r["origin"], r["dir"])
 	assert_bool(_ui.pointer.hovering).is_false()
+
+
+func test_итог_называет_причину_провала_замок_и_совпал_до_вскрытия() -> void:
+	await _setup_ui()
+	var m := await _start_run()   # HARD: у хранилища есть замок
+	assert_int(m.lock.size()).is_greater(0)
+	m.trap_hits[Vector2i(0, 0)] = true
+	m.trap_hits[Vector2i(0, 1)] = true
+	_panel.apply_end({"outcome": "FAIL", "matched": [], "opened": [], "lock_opened": false, "matched_before_lock": ["d1"]})
+	var all := "\n".join(_panel.texts())
+	assert_str(all).contains("ЗАМОК: 2 ловушки из 2 нажатий — провал").contains("совпал до вскрытия — не засчитан")
+	assert_array(BreachPanel.reason_lines({"outcome": "SUCCESS"}, m)).is_empty()
+	assert_array(BreachPanel.reason_lines({"outcome": "FAIL"}, null)).is_empty()   # без копии попытки о замке сказать нечего

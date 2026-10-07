@@ -349,6 +349,16 @@ static func outcome_title(outcome: String) -> String:
 	return "ВЗЛОМ ПРОВАЛЕН"
 
 
+## Причина провала или частичного итога (BreachReason) по итогу `bk_end` и клиентской копии попытки: число ловушек — по ответам сервера `bk_tick`
+## (mirror.trap_hits), нажатий — по выбранным клеткам. Нет копии (итог пришёл без неё) — без чисел о ловушках.
+static func reason_lines(ev: Dictionary, m: BreachMirror) -> Array[String]:
+	var lock_len := m.lock.size() if m != null else 0
+	var traps := m.trap_hits.size() if m != null else 0
+	var taps := m.attempt.selected.size() if m != null and m.attempt != null else 0
+	var before: Array = ev.get("matched_before_lock", [])
+	return BreachReason.lines(str(ev.get("outcome", BreachRules.FAIL)), lock_len, bool(ev.get("lock_opened", false)), traps, taps, before)
+
+
 static func early_text(reason: String) -> String:
 	match reason:
 		"cancel":
@@ -680,6 +690,12 @@ func _build_result(ev: Dictionary) -> void:
 	var title := DeckUi.label(outcome_title(outcome), DeckTheme.V_BIG, false)
 	title.add_theme_color_override("font_color", DeckTheme.tone_color(tone))
 	_left.add_child(title)
+	var reason := reason_lines(ev, mirror)
+	for i in reason.size():   # причина провала / частичного итога: первая строка крупно
+		var line := DeckUi.label(reason[i], DeckTheme.V_BIG if i == 0 else DeckTheme.V_WARN, false)
+		if i == 0:
+			line.add_theme_color_override("font_color", DeckTheme.tone_color(tone))
+		_left.add_child(line)
 	var early := early_text(str(ev.get("early", "")))
 	if early != "":
 		_left.add_child(DeckUi.label(early, DeckTheme.V_WARN, false))
