@@ -173,7 +173,7 @@ def build_vault_volume(out, name="vault", seed=12):
     g_tray = lib.lit_part(tray, ZT, 0.014)
     body = lib.merge_bm(base, tray)
     rim_c, rim_i = _scaled(cy, 0.6), _scaled(ice, 0.85)
-    objs = [lib.obj_from_bm("vault_body", body, "solid_dark", cy, rgb_fn=lambda co: rim_i if g_tray(co) else (rim_c if g_base(co) else void))]
+    objs = [lib.obj_from_bm("vault_body", body, "solid_dark", cy, rgb_fn=lambda co: rim_i if g_tray(co) else (rim_c if g_base(co) else void), smooth=True)]  # smooth: нормали для обводки силуэта (fringe.gdshader)
     sk = [(Vector((ax, ay, ZB)), Vector((bx, by, ZB)), Vector((0, 0, -0.28)), 0.95, 0.95)
           for ax, ay, bx, by in ((-HX, -HY, HX, -HY), (HX, -HY, HX, HY), (HX, HY, -HX, HY), (-HX, HY, -HX, -HY))]
     objs.append(lib.skirt_set("vault_skirt", sk, cy))

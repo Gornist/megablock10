@@ -38,6 +38,13 @@ const FLOOR_V := {
 ## Параметры solid_dark.gdshader для `pillar_block`/`pillar_base` (env/pillar, env/cover) и `exit_bar_*` (env/exit_frame): ровный яркий свет рёбер без «рваности».
 const PILLAR_EDGE := {"edge_glow": 2.2, "edge_uneven": 0.0}
 
+## Мягкая светящаяся обводка силуэта (fringe.gdshader, слои через next_pass) у непрозрачных объёмов: укрытия/колонны (`pillar_block`), брусья выхода (`exit_bar_*`),
+## хранилище (`vault_body`). Нужны сглаженные нормали меша (Blender: smooth=True). Параметры слоёв: [px, alpha] — узкий и широкий (слабее).
+const FRINGE_SHADER := preload("res://assets/shaders/fringe.gdshader")
+const FRINGE_LAYERS := [[0.5, 0.5], [1.0, 0.35], [1.6, 0.2]]
+const FRINGE_GLOW_DEFAULT := 0.75  # edge_glow solid_dark по умолчанию (хранилище); у PILLAR_EDGE-мешей — PILLAR_EDGE.edge_glow
+static var fringe_on := true  # выключатель для сравнения кадров (preview_capture.gd --nofringe) и замера перерисовки
+
 ## Параметры haze.gdshader для `edge_mist` (env/room_edge_<N>): низкая дымка вдоль границы комнаты, не туман горизонта.
 const EDGE_MIST := {"haze_alpha": 0.6, "glow": 1.6, "shape": 1.0, "noise_amount": 0.35, "stripe_amount": 0.12, "stripe_count": 160.0}
 
@@ -115,9 +122,17 @@ static func apply(root: Node, tier: String = "") -> void:
 			if String(mi.name) == "pillar_block" or String(mi.name) == "pillar_base" or String(mi.name).begins_with("exit_bar"):  # укрытие (корпус и рамка по границе клетки) и брусья рамки выхода: рёбра ровные и яркие, иначе в очках не видно, где оно (у тайлов пола свет рваный намеренно)
 				for k in PILLAR_EDGE:
 					m.set_shader_parameter(k, PILLAR_EDGE[k])
+			if fringe_on and (String(mi.name) == "pillar_block" or String(mi.name).begins_with("exit_bar") or String(mi.name) == "vault_body"):
+				var lit := String(mi.name) != "vault_body"
+				m.next_pass = _fringe_chain(0, PILLAR_EDGE["edge_glow"] if lit else FRINGE_GLOW_DEFAULT)
 			if tier != "" and TIER_TINT.has(tier):
 				m.set_shader_parameter("tint", TIER_TINT[tier])
 				m.set_shader_parameter("tint_amount", 1.0)
+				var fr := m.next_pass as ShaderMaterial
+				while fr != null:  # обводка красится тиром так же, как кромка
+					fr.set_shader_parameter("tint", TIER_TINT[tier])
+					fr.set_shader_parameter("tint_amount", 1.0)
+					fr = fr.next_pass as ShaderMaterial
 			if tier != "" and src.resource_name == "streaks":  # окружение: мягкий ореол и длинное затухание к концам; существа и аватары — резкие, без ореола
 				var far := root.scene_file_path.contains("/far_")  # дальние пласты (8+ м): ореол вдвое-втрое расширяет квады, а видны они как дымка и без него
 				m.set_shader_parameter("halo", 0.0 if far else ENV_HALO)
@@ -140,6 +155,18 @@ static func apply(root: Node, tier: String = "") -> void:
 						for k in FLOOR_V[fv][suffix]:
 							m.set_shader_parameter(k, FLOOR_V[fv][suffix][k])
 			mi.set_surface_override_material(s, m)
+
+
+## Цепочка слоёв обводки (next_pass): слой i рисуется после слоя i−1, дальше — следующий.
+static func _fringe_chain(i: int, glow: float) -> ShaderMaterial:
+	var f := ShaderMaterial.new()
+	f.shader = FRINGE_SHADER
+	f.set_shader_parameter("px", FRINGE_LAYERS[i][0])
+	f.set_shader_parameter("fringe_alpha", FRINGE_LAYERS[i][1])
+	f.set_shader_parameter("edge_glow", glow)
+	if i + 1 < FRINGE_LAYERS.size():
+		f.next_pass = _fringe_chain(i + 1, glow)
+	return f
 
 
 ## Красный «шрам»: в радиусе вокруг точки (мировые координаты) свечение уходит в красный, часть клеток пропадает.

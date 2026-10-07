@@ -255,6 +255,8 @@ func _ready() -> void:
 			_walk = true
 		if a == "--nobatch":
 			_batch_on = false
+		if a == "--nofringe":  # без мягкой обводки силуэтов (для сравнения кадров и замера перерисовки)
+			AM.fringe_on = false
 		if a.begins_with("--overdraw="):
 			_od = a.trim_prefix("--overdraw=").split(",")
 		if a == "--field":
@@ -405,8 +407,9 @@ func _od_mat(m: ShaderMaterial, asset: String) -> ShaderMaterial:
 			on = on or ((p[0] == "all" or p[0] == name) and asset.begins_with(p[1]))
 	var key := "%s|%s" % [name, on]
 	if not _od_shaders.has(key):
-		var code := m.shader.code
-		var inj := "ALBEDO = vec3(0.0); ALPHA = 1.0;" if opaque else "ALBEDO = vec3(%f); ALPHA = %s;" % [OD_STEP, "1.0" if on else "0.0"]
+		var code := m.shader.code.replace("blend_mix", "blend_add")  # обводка fringe рисуется blend_mix, а считаем слои аддитивно
+		# у непрозрачного solid_dark ALPHA не пишем: иначе Godot сделает материал прозрачным, он перестанет писать глубину и закрывать слои за собой (завысит перерисовку)
+		var inj := "ALBEDO = vec3(0.0);" if opaque else "ALBEDO = vec3(%f); ALPHA = %s;" % [OD_STEP, "1.0" if on else "0.0"]
 		var sh := Shader.new()
 		sh.code = code.insert(code.rfind("}"), "\t" + inj + "\n")
 		_od_shaders[key] = sh
@@ -414,6 +417,9 @@ func _od_mat(m: ShaderMaterial, asset: String) -> ShaderMaterial:
 	nm.shader = _od_shaders[key]
 	for u in m.shader.get_shader_uniform_list():
 		nm.set_shader_parameter(u["name"], m.get_shader_parameter(u["name"]))
+	nm.render_priority = m.render_priority
+	if m.next_pass is ShaderMaterial and (m.next_pass as ShaderMaterial).shader != null:  # слои обводки (next_pass) считаем тоже
+		nm.next_pass = _od_mat(m.next_pass as ShaderMaterial, asset)
 	return nm
 
 
