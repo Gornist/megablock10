@@ -25,8 +25,9 @@ MAX_DRAWS = 8  # примитивов (≈ вызовов отрисовки) н
 # Узлы-метки предметов узла: контракт с клиентом (ARCHITECTURE.md, «Предметы узла»), без них клиент не сможет включить состояние, тир, экран.
 REQUIRED_NODES = {
     "vault": ("State_closed", "State_open", "State_empty", "Tier_1", "Tier_2", "Tier_3", "ShardSlot"),
-    "shard": ("Tier_1", "Tier_2", "Tier_3"),
-    "shard_encrypted": ("Tier_1", "Tier_2", "Tier_3"),
+    "shard": ("Tier_1", "Tier_2", "Tier_3", "Beacon"),
+    "shard_encrypted": ("Tier_1", "Tier_2", "Tier_3", "Beacon"),
+    "daemon_token": ("Beacon",),
     "hack_panel": ("Screen", "ScreenAnchor"),
 }
 
@@ -44,8 +45,9 @@ def check(rep):
         bad.append(f"точек {s['points']} > {rep.get('budget_points', 0)}")
     if s["streaks"] > rep.get("budget_streaks", 0):
         bad.append(f"штрихов {s['streaks']} > {rep.get('budget_streaks', 0)}")
-    if s["layers"] > MAX_LAYERS:
-        bad.append(f"слоёв прозрачности {s['layers']} > {MAX_LAYERS}")
+    max_layers = rep.get("budget_layers") or MAX_LAYERS  # шард с маяком Beacon: гранёная оболочка + две оболочки ядра + ореол = 4; предел заявляет сборка
+    if s["layers"] > max_layers:
+        bad.append(f"слоёв прозрачности {s['layers']} > {max_layers}")
     mats = set(info["materials"])
     if not mats <= ROLES:
         bad.append(f"неизвестные материалы {sorted(mats - ROLES)}")

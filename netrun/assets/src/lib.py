@@ -491,7 +491,7 @@ def args():
     return out
 
 
-def export(name, group, objs, out_root, budget_tris, budget_points=0, origin="floor", animations=False, notes="", budget_streaks=0, budget_draws=0):
+def export(name, group, objs, out_root, budget_tris, budget_points=0, origin="floor", animations=False, notes="", budget_streaks=0, budget_draws=0, budget_layers=0):
     """Записать models/<group>/<name>.glb и reports/<name>.json (числа берём из самого .glb)."""
     path = os.path.join(out_root, "models", group, f"{name}.glb")
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -509,7 +509,7 @@ def export(name, group, objs, out_root, budget_tris, budget_points=0, origin="fl
     s = glbinfo.summary(info)
     report = {
         "name": name, "group": group, "file": f"models/{group}/{name}.glb", "origin": origin,
-        "budget_tris": budget_tris, "budget_points": budget_points, "budget_streaks": budget_streaks, "budget_draws": budget_draws, **s,
+        "budget_tris": budget_tris, "budget_points": budget_points, "budget_streaks": budget_streaks, "budget_draws": budget_draws, "budget_layers": budget_layers, **s,
         "size": info["size"], "bbox_min": info["bbox_min"], "bbox_max": info["bbox_max"],
         "materials": info["materials"], "animations": info["animations"],
         "moved_nodes": info["moved_nodes"], "notes": notes,

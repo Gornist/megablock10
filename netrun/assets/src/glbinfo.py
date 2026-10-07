@@ -35,8 +35,10 @@ def parse(path):
         1 for n in doc.get("nodes", [])
         if any(k in n for k in ("translation", "rotation", "scale", "matrix")) and "skin" not in n and "mesh" in n
     )
-    lo = [min(p["min"][i] for p in prims) for i in range(3)] if prims else [0, 0, 0]
-    hi = [max(p["max"][i] for p in prims) for i in range(3)] if prims else [0, 0, 0]
+    # габарит предмета считается БЕЗ маяка (меши `beacon_*` под узлом Beacon: луч и ореол для дальнего чтения, клиент выключает их в руке)
+    body = [p for p in prims if not str(p["mesh"]).startswith("beacon_")]
+    lo = [min(p["min"][i] for p in body) for i in range(3)] if body else [0, 0, 0]
+    hi = [max(p["max"][i] for p in body) for i in range(3)] if body else [0, 0, 0]
     return {
         "prims": prims,
         "materials": [m["name"] for m in mats],
