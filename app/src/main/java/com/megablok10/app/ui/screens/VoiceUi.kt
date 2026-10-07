@@ -59,6 +59,7 @@ import com.megablok10.app.ui.theme.MbChamferForm
 import com.megablok10.app.ui.theme.MbDimens
 import com.megablok10.app.ui.theme.MbIcons
 import com.megablok10.app.ui.theme.MbTypography
+import com.megablok10.app.ui.theme.bubbleMeta
 import com.megablok10.app.ui.theme.mbFrame
 import com.megablok10.app.voice.AndroidClipRecorder
 import com.megablok10.app.voice.RecordedClip
@@ -122,7 +123,8 @@ internal fun VoiceBubble(msg: ChatMessageEntity, self: Boolean, controls: VoiceB
     val c = LocalMbColors.current
     val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
     val mark = if (self) statusMark(msg.status) else null
-    val meta = timeFormat.format(msg.timestamp) + (mark?.let { " ${it.first}" } ?: "")
+    val metaColor = if (self) Color(0xFFA9E8C3) else c.ink2
+    val meta = bubbleMeta(timeFormat.format(msg.timestamp), mark, metaColor)
     val ink = if (self) c.bubbleOwnText else c.bubbleInText
     val edge = if (self) c.bubbleOwnEdge else c.bubbleInEdge
     val fill = if (self) c.bubbleOwnFill else c.bubbleInFill
@@ -181,7 +183,7 @@ internal fun VoiceBubble(msg: ChatMessageEntity, self: Boolean, controls: VoiceB
             }
             if (unlistened) Box(Modifier.size(8.dp).mbFrame(fill = c.ok, edge = c.ok, form = MbChamferForm.Std, cut = 2.dp).semantics { contentDescription = "Не прослушано" })
         }
-        Text(meta, style = MbTypography.meta, color = if (self) Color(0xFFA9E8C3) else c.ink2, modifier = Modifier.padding(top = 2.dp))
+        Text(meta, style = MbTypography.meta, color = metaColor, modifier = Modifier.padding(top = 2.dp))
     }
 }
 

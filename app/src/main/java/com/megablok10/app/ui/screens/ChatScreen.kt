@@ -507,13 +507,12 @@ private fun SecurityAlertTag(alert: Mb10Qr.SecurityAlert) {
 private fun PlainMessageBubble(msg: ChatMessageEntity, self: Boolean, showSender: Boolean) {
     val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
     val mark = if (self) statusMark(msg.status) else null
-    val meta = timeFormat.format(msg.timestamp) + (mark?.let { " ${it.first}" } ?: "")
     Column(Modifier.widthIn(max = 280.dp), horizontalAlignment = if (self) Alignment.End else Alignment.Start) {
         if (showSender && !self) {
             Text(msg.fromCallsign, style = MbTypography.meta, color = LocalMbColors.current.ink2)
             Spacer(Modifier.height(2.dp))
         }
-        MbBubble(fromMe = self, text = msg.body, meta = meta)
+        MbBubble(fromMe = self, text = msg.body, meta = timeFormat.format(msg.timestamp), mark = mark)
     }
 }
 
