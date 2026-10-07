@@ -230,7 +230,7 @@ func _build_exit_bar() -> void:
 	b.size = Vector3(0.3, 0.01, 0.002)
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.albedo_color = Color(1.0, 0.25, 0.2)
+	mat.albedo_color = AssetMaterials.layer("hud_bad")   # полоса удержания выхода: слой угрозы
 	mat.no_depth_test = true
 	b.material = mat
 	_exit_bar.mesh = b

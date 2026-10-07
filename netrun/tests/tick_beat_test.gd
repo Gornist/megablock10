@@ -167,4 +167,4 @@ func test_кольцо_заполняется_и_вспыхивает_на_та�
 	ring.apply(0.5, TickRing.FLASH_SEC)
 	assert_float(ring.brightness()).is_equal(1.0)
 	ring.apply(0.9, 0.0)
-	assert_object(ring.fill_color()).is_equal(TickRing.COLOR_WARN)   # последняя треть — жёлтое
+	assert_object(ring.fill_color()).is_equal(AssetMaterials.layer("tick_warn"))   # последняя треть — слой tick_warn

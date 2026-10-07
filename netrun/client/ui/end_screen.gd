@@ -39,10 +39,8 @@ static func hint_text(ev: Dictionary) -> String:
 
 static func title_color(reason: String) -> Color:
 	if reason == ExitLogic.REASON_CLEAN:
-		return Color(0.3, 1.0, 0.5)
-	if reason == ExitLogic.REASON_FLATLINE:
-		return Color(1.0, 0.15, 0.2)
-	return Color(1.0, 0.3, 0.3)
+		return AssetMaterials.layer("end_win")
+	return AssetMaterials.layer("end_lose")   # обрыв и все остальные причины — один цвет проигрыша
 
 
 func _init(reason: String = "", ev: Dictionary = {}) -> void:
@@ -54,7 +52,7 @@ func _init(reason: String = "", ev: Dictionary = {}) -> void:
 	_mat = StandardMaterial3D.new()
 	_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_mat.albedo_color = Color(0, 0, 0, 0)
+	_mat.albedo_color = AssetMaterials.layer("end_veil", 0.0)   # цвет завесы — слой палитры, фейд идёт по альфе
 	_mat.no_depth_test = true
 	_mat.render_priority = 100
 	quad.material = _mat
@@ -67,7 +65,7 @@ func _init(reason: String = "", ev: Dictionary = {}) -> void:
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	title.width = TITLE_WIDTH_PX
 	hint = _make_label("EndHint", hint_text(ev), 44, Vector3(0, -0.2, TEXT_Z))
-	hint.modulate = Color(0.75, 0.8, 0.85, 0.0)
+	hint.modulate = AssetMaterials.layer("label_dim", 0.0)
 
 
 func _make_label(label_name: String, text: String, size: int, pos: Vector3) -> Label3D:

@@ -35,6 +35,75 @@ const FLOOR_V := {
 	4: {"_plates": {"uv_rim": 0.02, "edge_glow": 1.2, "edge_uneven": 0.7}},
 }
 
+## ПАЛИТРА КЛИЕНТСКИХ СЛОЁВ (маркеры пола, прицел, след ICE, стрелки, кольцо такта, метки, HUD, экран конца). Цвет и материал задаёт Blender, логику — Godot:
+## клиент берёт цвета ТОЛЬКО отсюда (`AssetMaterials.layer("aim_ok")`) и не задаёт свои. База — HEX из lib.py / STYLE.md: голубой мир, ледяной белый, красный только у угрозы
+## (ICE и его взгляд), янтарь — только экран деки. ЗАПРЕЩЕНЫ коричневый, жёлтый, оранжевый и ядовито-зелёный (в кадре клиента 07.10 они были: «две разные игры»).
+## Стадии ICE (спокойно → подозрение → тревога → охота) идут внутри красной семьи от белого к красному; безопасное — голубое.
+const PAL_CYAN := Color("18e6ff")        # BASE, окружение, «можно»
+const PAL_ICE := Color("d9f8ff")         # ледяной белый: самые яркие рёбра, текст, нейтрально
+const PAL_THREAT := Color("ff1f3d")      # только угроза: ICE, его взгляд, отказ
+const PAL_THREAT_HOT := Color("ff7a6b")  # светлый красный: предупреждение, шаг ICE
+const PAL_DIM := Color("2d6b78")         # погасший голубой: недоступно, фон шкал
+const PAL_VOID := Color("02050a")        # чёрная завеса (экран конца), не чистый чёрный
+const PAL_AMBER := Color("ff7a1a")       # янтарь: ТОЛЬКО экран деки (STYLE.md), слои deck_*
+const LAYERS := {
+	# Клетки пола
+	"cell_occupied_fill": Color(PAL_CYAN, 0.14),   # занятая клетка (укрытие, хранилище): слабая голубая заливка
+	"cell_occupied_edge": Color(PAL_CYAN, 0.55),   # и контур клетки
+	# Клетка в зрении ICE (TickFloor): тёмно-красная заливка на тёмном фоне читается КОРИЧНЕВОЙ, поэтому заливка почти прозрачна, а читается контур клетки
+	"cell_vision_fill": Color(PAL_THREAT_HOT, 0.10),
+	"cell_vision_edge": Color(PAL_THREAT_HOT, 0.85),
+	"cell_future": Color(PAL_CYAN, 0.30),          # клетка будущего положения (FUTURE_TINT)
+	# Прицел прыжка
+	"aim_ok": PAL_CYAN,                            # безопасно
+	"aim_warn": PAL_THREAT_HOT,                    # периферия зрения ICE
+	"aim_no": PAL_THREAT,                          # в фокусе ICE / отказ
+	"aim_wait": PAL_ICE,                           # ждём ответа сервера
+	"aim_denied": PAL_DIM,                         # недоступно
+	# ICE: стадии по порядку 0..3 (глаз, значки тревоги, цвет клеток зрения)
+	"ice_calm": PAL_ICE,
+	"ice_suspect": Color("ff9d8c"),
+	"ice_alert": PAL_THREAT_HOT,
+	"ice_hunt": PAL_THREAT,
+	"ice_lost": Color("a9c9d6"),                   # потерял игрока
+	"ice_precapture": PAL_THREAT,                  # мигание перед захватом
+	# Следы и стрелки
+	"trail_step": PAL_THREAT_HOT,                  # шаг ICE
+	"trail_dim": Color(PAL_THREAT, 0.35),          # прежние шаги, тусклые
+	"arrow": PAL_ICE,                              # стрелки направления
+	# Кольцо такта
+	"tick_track": Color("0b3a46", 0.55),
+	"tick_fill": Color(PAL_CYAN, 0.95),
+	"tick_warn": Color(PAL_THREAT_HOT, 0.95),      # такт на исходе
+	# Надписи и HUD
+	"label": PAL_ICE,
+	"label_dim": Color(PAL_CYAN, 0.60),
+	"hud_ok": PAL_CYAN,
+	"hud_notice": PAL_ICE,
+	"hud_warn": PAL_THREAT_HOT,
+	"hud_bad": PAL_THREAT,
+	"hud_off": PAL_DIM,
+	"end_win": PAL_CYAN,
+	"end_lose": PAL_THREAT,
+	"end_veil": PAL_VOID,                          # завеса экрана конца (фейд в тёмное)
+	# Указка деки (луч из руки к панелям)
+	"pointer_dot": PAL_ICE,                        # точка на панели
+	"pointer_press": PAL_CYAN,                     # нажатие
+	"pointer_beam": Color(PAL_CYAN, 0.50),         # луч
+	# Экран деки: янтарь разрешён только здесь (STYLE.md), 2D-интерфейс деки (DeckTheme/mb_*) остаётся своей системой в этой гамме
+	"deck_screen": PAL_AMBER,
+}
+
+
+## Цвет слоя клиента по имени из LAYERS (с альфой, если она задана в палитре); alpha ≥ 0 переопределяет альфу. Неизвестное имя — предупреждение и ледяной белый.
+static func layer(name: String, alpha := -1.0) -> Color:
+	if not LAYERS.has(name):
+		push_warning("AssetMaterials.layer: нет цвета '%s' (есть: %s)" % [name, ", ".join(LAYERS.keys())])
+		return PAL_ICE
+	var c: Color = LAYERS[name]
+	return Color(c, alpha) if alpha >= 0.0 else c
+
+
 ## Параметры solid_dark.gdshader для `pillar_block`/`pillar_base` (env/pillar, env/cover) и `exit_bar_*` (env/exit_frame): ровный яркий свет рёбер без «рваности».
 const PILLAR_EDGE := {"edge_glow": 2.2, "edge_uneven": 0.0}
 
@@ -59,6 +128,7 @@ const KNOBS := {
 	"halo_far": false,       # ореол у дальних пластов /far_* (по умолчанию выключен: вдвое-втрое больше перерисовки)
 	"solid_base": "",        # цвет плит solid_dark «#rrggbb»; пусто — по умолчанию из шейдера
 	"edge_glow": 2.2,        # яркость рёбер укрытий и брусьев выхода (PILLAR_EDGE.edge_glow)
+	"floor_grid": 0.35,      # сетка клеток 1 м ТЕКСТУРОЙ с мипмапами и анизотропией на плите пола (0 — выкл., вернуть точки slab_seams; 0,3–0,5); по умолчанию ВКЛ.: так выглядит кадр Blender, иначе клиент — «другая игра»
 	# Мерцание кромок плит пола/потолка/дальних пластов (две линии на расстоянии 3 см сходятся в пиксель). Меры независимы, комбинируются:
 	"rim_top_only": false,   # светится только лицевая грань плиты, боковая полоска кромки погашена (одна линия вместо двух)
 	"plate_flat": false,     # боковые грани плит отбрасываются: плита без толщины
@@ -68,6 +138,26 @@ const KNOBS := {
 	"skirt_top_fade": 0.0,   # доля высоты вуали сверху, где плотность растёт с нуля (0 — выкл.; 0,12 — ориентир): вуаль отрывается от кромки плиты
 }
 static var _tuned := {}
+static var _grid_tex: ImageTexture
+
+const GRID_TEX_PX := 128      # пикселей текстуры на метр (клетка 1 м)
+const GRID_LINE_SIGMA := 1.8  # σ гауссова профиля линии, px (полная ширина по уровню ½ ≈ 3,3 см)
+
+
+## Текстура клетки 1×1 м: линия по границе (гауссов профиль, не жёсткий порог), с мипмапами — издали линия тускнеет плавно. Рисуется один раз.
+static func _grid_texture() -> ImageTexture:
+	if _grid_tex == null:
+		var n := GRID_TEX_PX
+		var img := Image.create(n, n, false, Image.FORMAT_L8)
+		for y in n:
+			for x in n:
+				var dx := minf(x + 0.5, n - (x + 0.5)) / GRID_LINE_SIGMA
+				var dy := minf(y + 0.5, n - (y + 0.5)) / GRID_LINE_SIGMA
+				var v := maxf(exp(-0.5 * dx * dx), exp(-0.5 * dy * dy))
+				img.set_pixel(x, y, Color(v, v, v))
+		img.generate_mipmaps()
+		_grid_tex = ImageTexture.create_from_image(img)
+	return _grid_tex
 
 
 ## Задать ручки (словарь «имя → значение»). Неизвестные имена игнорируются с предупреждением. Значения: числа, bool, цвет строкой.
@@ -170,6 +260,8 @@ static func apply(root: Node, tier: String = "") -> void:
 		var mi := n as MeshInstance3D
 		if mi.mesh == null:
 			continue
+		if String(mi.name) == "slab_seams" and float(_k("floor_grid")) > 0.0:  # сетка текстурой заменяет облако точек швов (AssetBatch пропускает невидимые меши; материал всё равно ставим ниже)
+			mi.visible = false
 		for s in mi.mesh.get_surface_count():
 			var src := mi.mesh.surface_get_material(s)
 			if src == null or not SHADERS.has(src.resource_name):
@@ -195,6 +287,9 @@ static func apply(root: Node, tier: String = "") -> void:
 			if fringe_on and (String(mi.name) == "pillar_block" or String(mi.name).begins_with("exit_bar") or String(mi.name) == "vault_body"):
 				var lit := String(mi.name) != "vault_body"
 				m.next_pass = _fringe_chain(0, _k("edge_glow") if lit else FRINGE_GLOW_DEFAULT)
+			if src.resource_name == "solid_dark" and String(mi.name) == "slab" and float(_k("floor_grid")) > 0.0:  # ручка: сетка клеток текстурой (верх плиты пола)
+				m.set_shader_parameter("grid_tex", _grid_texture())
+				m.set_shader_parameter("grid_alpha", float(_k("floor_grid")))
 			if src.resource_name == "solid_dark" and _is_plate(mi, root):  # ручки мерцания кромок плит (шейдер solid_dark)
 				m.set_shader_parameter("rim_top_only", 1.0 if bool(_k("rim_top_only")) else 0.0)
 				m.set_shader_parameter("plate_flat", 1.0 if bool(_k("plate_flat")) else 0.0)

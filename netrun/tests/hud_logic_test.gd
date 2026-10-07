@@ -11,6 +11,11 @@ func test_level_from_value() -> void:
 
 func test_colors_differ_and_text() -> void:
 	assert_bool(HudLogic.level_color(0) != HudLogic.level_color(3)).is_true()
+	assert_object(HudLogic.level_color(HudLogic.LEVEL_NORMAL)).is_equal(AssetMaterials.layer("hud_ok"))
+	assert_object(HudLogic.level_color(HudLogic.LEVEL_SUSPICIOUS)).is_equal(AssetMaterials.layer("hud_notice"))
+	assert_object(HudLogic.level_color(HudLogic.LEVEL_TRACE)).is_equal(AssetMaterials.layer("hud_warn"))
+	assert_object(HudLogic.level_color(HudLogic.LEVEL_LOCKDOWN)).is_equal(AssetMaterials.layer("hud_bad"))
+	assert_object(HudLogic.level_color(HudLogic.LEVEL_FLATLINE)).is_equal(AssetMaterials.layer("hud_off"))
 	assert_str(HudLogic.trace_text(42.4, HudLogic.LEVEL_SUSPICIOUS)).is_equal("подозрение 42")
 	assert_float(HudLogic.trace_fraction(150.0)).is_equal(1.0)
 	assert_float(HudLogic.trace_fraction(25.0)).is_equal(0.25)

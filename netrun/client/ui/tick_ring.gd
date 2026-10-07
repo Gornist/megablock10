@@ -9,11 +9,8 @@ const R_IN := 0.015
 ## Вспышка на такте: столько секунд гаснет, и во сколько раз кольцо ярче в её начале.
 const FLASH_SEC := 0.25
 const FLASH_GAIN := 2.0
-const COLOR_TRACK := Color(0.12, 0.2, 0.28, 0.55)
-const COLOR_FILL := Color(0.3, 0.85, 1.0, 0.95)
-## Последняя треть окна — предупреждающий жёлтый (сейчас ICE сходит).
+## Цвета — слои палитры клиента (AssetMaterials.layer): tick_track (фон), tick_fill (заполнено), tick_warn (последняя треть окна — сейчас ICE сходит).
 const WARN_FROM := 0.7
-const COLOR_WARN := Color(1.0, 0.8, 0.2, 0.95)
 
 var fraction := 0.0
 var flash_left := 0.0
@@ -82,7 +79,7 @@ func filled_segments() -> int:
 
 
 func fill_color() -> Color:
-	return COLOR_WARN if fraction >= WARN_FROM else COLOR_FILL
+	return AssetMaterials.layer("tick_warn" if fraction >= WARN_FROM else "tick_fill")
 
 
 func _redraw() -> void:
@@ -96,8 +93,9 @@ func _redraw() -> void:
 	var gain := brightness()
 	var fill := fill_color()
 	fill = Color(minf(fill.r * gain, 1.0), minf(fill.g * gain, 1.0), minf(fill.b * gain, 1.0), fill.a)
+	var track := AssetMaterials.layer("tick_track")
 	for i in SEGMENTS:
-		var col := fill if i < filled else COLOR_TRACK
+		var col := fill if i < filled else track
 		var a0 := TAU * float(i) / SEGMENTS
 		var a1 := TAU * float(i + 1) / SEGMENTS
 		# Отсчёт от верха по часовой стрелке (глядя на кольцо).

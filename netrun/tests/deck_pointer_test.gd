@@ -64,6 +64,21 @@ func test_aiming_at_a_chip_highlights_it_and_leaving_clears_it() -> void:
 	assert_bool(chip.is_hovered_now()).is_false()
 
 
+func test_pointer_colors_come_from_palette_layers() -> void:
+	await _setup_ui()
+	var dot_expected := AssetMaterials.layer("pointer_dot")
+	assert_object(_ui.pointer.dot_color()).is_equal(dot_expected)
+	_ui.deck.select_tab(DeckPanel.TAB_CHAT)
+	_ui.deck.chat().open_thread(FakePhoneLink.ID_SHERSHEN)
+	for i in 3:
+		await get_tree().process_frame
+	_aim_at(_center(_ui.deck.chat().chip_buttons()[2]))
+	_ui.pointer.set_trigger(true)
+	assert_object(_ui.pointer.dot_color()).is_equal(AssetMaterials.layer("pointer_press"))
+	_ui.pointer.set_trigger(false)
+	assert_object(_ui.pointer.dot_color()).is_equal(dot_expected)
+
+
 func test_trigger_on_a_chip_sends_the_quick_reply() -> void:
 	await _setup_ui()
 	_ui.deck.select_tab(DeckPanel.TAB_CHAT)

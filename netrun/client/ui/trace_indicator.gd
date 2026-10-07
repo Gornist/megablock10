@@ -14,7 +14,7 @@ func _ready() -> void:
 	var back := MeshInstance3D.new()
 	var bm := BoxMesh.new()
 	bm.size = Vector3(BAR_W, BAR_H, 0.002)
-	bm.material = _unshaded(Color(0.05, 0.07, 0.1))
+	bm.material = _unshaded(AssetMaterials.layer("tick_track", 1.0))   # фон шкалы
 	back.mesh = bm
 	add_child(back)
 	_fill = MeshInstance3D.new()
