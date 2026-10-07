@@ -259,6 +259,13 @@ func _ready() -> void:
 			AM.fringe_on = false
 		if a.begins_with("--floorgrid="):  # сетка клеток 1 м текстурой на плите пола (ручка floor_grid, ориентир 0.5)
 			AM.tune({"floor_grid": float(a.trim_prefix("--floorgrid="))})
+		if a.begins_with("--tune="):  # ручки AssetMaterials (как [assets] в netrun.cfg): --tune=rim_top_only=true,rim_far_min=0.3,skirt_top_fade=0.12
+			var d := {}
+			for kv in a.trim_prefix("--tune=").split(","):
+				var p := kv.split("=")
+				if p.size() == 2:
+					d[p[0]] = p[1]
+			AM.tune(d)
 		if a.begins_with("--overdraw="):
 			_od = a.trim_prefix("--overdraw=").split(",")
 		if a == "--field":

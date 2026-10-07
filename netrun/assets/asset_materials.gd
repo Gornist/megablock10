@@ -60,6 +60,13 @@ const KNOBS := {
 	"solid_base": "",        # цвет плит solid_dark «#rrggbb»; пусто — по умолчанию из шейдера
 	"edge_glow": 2.2,        # яркость рёбер укрытий и брусьев выхода (PILLAR_EDGE.edge_glow)
 	"floor_grid": 0.35,      # сетка клеток 1 м ТЕКСТУРОЙ с мипмапами и анизотропией на плите пола (0 — выкл., вернуть точки slab_seams; 0,3–0,5); по умолчанию ВКЛ.: так выглядит кадр Blender, иначе клиент — «другая игра»
+	# Мерцание кромок плит пола/потолка/дальних пластов (две линии на расстоянии 3 см сходятся в пиксель). Меры независимы, комбинируются:
+	"rim_top_only": false,   # светится только лицевая грань плиты, боковая полоска кромки погашена (одна линия вместо двух)
+	"plate_flat": false,     # боковые грани плит отбрасываются: плита без толщины
+	"rim_far_min": 1.0,      # яркость кромки плит на дистанции ≥ rim_far_end (1 — не гасить; 0 — гасить полностью)
+	"rim_far_start": 8.0,    # с какой дистанции, м, кромка плит начинает гаснуть
+	"rim_far_end": 20.0,     # на какой дистанции, м, она достигает rim_far_min
+	"skirt_top_fade": 0.0,   # доля высоты вуали сверху, где плотность растёт с нуля (0 — выкл.; 0,12 — ориентир): вуаль отрывается от кромки плиты
 }
 static var _tuned := {}
 static var _grid_tex: ImageTexture
@@ -117,6 +124,12 @@ static func tune_from_config(cfg: ConfigFile, section := "assets") -> void:
 static func reset_tuning() -> void:
 	_tuned = {}
 	fringe_on = true
+
+
+## Меш — плита пола/потолка/дальнего пласта (а не объём вроде укрытия, у которого боковые рёбра должны светиться): `slab`, `tiles`, `*_plates`.
+static func _is_plate(mi: MeshInstance3D, _root: Node) -> bool:
+	var n := String(mi.name)
+	return n == "slab" or n == "tiles" or n.ends_with("_plates")
 
 
 static func _k(name: String) -> Variant:
@@ -208,6 +221,14 @@ static func apply(root: Node, tier: String = "") -> void:
 			if src.resource_name == "solid_dark" and String(mi.name) == "slab" and float(_k("floor_grid")) > 0.0:  # ручка: сетка клеток текстурой (верх плиты пола)
 				m.set_shader_parameter("grid_tex", _grid_texture())
 				m.set_shader_parameter("grid_alpha", float(_k("floor_grid")))
+			if src.resource_name == "solid_dark" and _is_plate(mi, root):  # ручки мерцания кромок плит (шейдер solid_dark)
+				m.set_shader_parameter("rim_top_only", 1.0 if bool(_k("rim_top_only")) else 0.0)
+				m.set_shader_parameter("plate_flat", 1.0 if bool(_k("plate_flat")) else 0.0)
+				m.set_shader_parameter("rim_far_min", float(_k("rim_far_min")))
+				m.set_shader_parameter("rim_far_start", float(_k("rim_far_start")))
+				m.set_shader_parameter("rim_far_end", float(_k("rim_far_end")))
+			if String(mi.name).ends_with("_skirt") and float(_k("skirt_top_fade")) > 0.0:  # ручка: вуаль отрывается от кромки плиты
+				m.set_shader_parameter("top_fade", float(_k("skirt_top_fade")))
 			if src.resource_name == "solid_dark" and String(_k("solid_base")) != "":  # ручка: цвет плит
 				m.set_shader_parameter("base_color", Color(String(_k("solid_base"))))
 			if src.resource_name == "streaks":  # ручка: минимальная ширина штриха в пикселях (антиалиасинг)
