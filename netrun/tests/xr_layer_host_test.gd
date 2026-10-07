@@ -51,3 +51,20 @@ func test_конфиг_выкл_слой_не_создаётся() -> void:
 func test_по_умолчанию_слои_не_запрошены() -> void:
 	assert_bool(XrLayerHost.layers_requested).is_false()
 	assert_bool(RenderConfig.layers_enabled(RenderConfig.new().layers)).is_false()
+
+
+func test_дека_и_взлом_без_xr_остаются_квадами() -> void:
+	XrLayerHost.layers_requested = true
+	var deck: DeckPanel = auto_free(DeckPanel.new())
+	var breach: BreachPanel = auto_free(BreachPanel.new())
+	add_child(deck)
+	add_child(breach)
+	for p: Node3D in [deck, breach]:
+		var hosts := p.get_children().filter(func(n: Node) -> bool: return n is XrLayerHost)
+		assert_int(hosts.size()).is_equal(1)
+		(hosts[0] as XrLayerHost)._process(0.0)
+		assert_bool((hosts[0] as XrLayerHost).is_active()).is_false()
+		var sprites := p.get_children().filter(func(n: Node) -> bool: return n is Sprite3D)
+		assert_bool((sprites[0] as Sprite3D).visible).is_true()
+	# Поза поверхности для указателя не зависит от слоя.
+	assert_vector(deck.panel_size_m()).is_equal(Vector2(DeckPanel.PANEL_WIDTH_M, DeckPanel.PANEL_WIDTH_M * 384.0 / 512.0))
