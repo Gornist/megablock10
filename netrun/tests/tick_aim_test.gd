@@ -1,5 +1,5 @@
 extends GdUnitTestSuite
-## Прицел телепорта в тактовом режиме: цвет рамки по прогнозу (зелёный / жёлтый / красный), «ХОД ПРИНЯТ», «ЖДАТЬ · ОКНО ЧЕРЕЗ N»,
+## Прицел телепорта в тактовом режиме: цвет рамки по прогнозу (слои палитры aim_ok / aim_warn / aim_no), «ХОД ПРИНЯТ», «ЖДАТЬ · ОКНО ЧЕРЕЗ N»,
 ## залипание красной (0,4 с), отказ сервера «moved», прыжок без клиентской перезарядки. Без tk (realtime) — всё как раньше.
 ## Ввод подаётся прямо в XRRig.drive; кадр — 1/72 с.
 
@@ -71,7 +71,7 @@ func test_рамка_зелёная_когда_ICE_далеко() -> void:
 	_frames(rig, 2, Vector2(0, 1))
 	assert_str(rig.aim_visual.kind()).is_equal("hop")
 	assert_int(rig.last_threat()).is_equal(TickForecast.GREEN)
-	assert_object(rig.aim_visual.frame_color()).is_equal(TeleportAim.OK_COLOR)
+	assert_object(rig.aim_visual.frame_color()).is_equal(AssetMaterials.layer("aim_ok"))
 	assert_bool(target == Vector2i(0, 0)).is_false()
 
 
@@ -82,7 +82,7 @@ func test_рамка_красная_в_фокусе_ICE() -> void:
 	_feed(scene, [_red_intent(target)])
 	_frames(rig, 2, Vector2(0, 1))
 	assert_int(rig.last_threat()).is_equal(TickForecast.RED)
-	assert_object(rig.aim_visual.frame_color()).is_equal(TeleportAim.NO_COLOR)
+	assert_object(rig.aim_visual.frame_color()).is_equal(AssetMaterials.layer("aim_no"))
 
 
 func test_рамка_жёлтая_на_периферии() -> void:
@@ -94,7 +94,7 @@ func test_рамка_жёлтая_на_периферии() -> void:
 	_feed(scene, [it])
 	_frames(rig, 2, Vector2(0, 1))
 	assert_int(rig.last_threat()).is_equal(TickForecast.YELLOW)
-	assert_object(rig.aim_visual.frame_color()).is_equal(TeleportAim.WARN_COLOR)
+	assert_object(rig.aim_visual.frame_color()).is_equal(AssetMaterials.layer("aim_warn"))
 	assert_bool(rig.aim_visual.label_visible()).is_false()
 
 
@@ -104,7 +104,7 @@ func test_ход_принят_нейтральная_рамка_метка_и_о
 	_aim_cell(rig)
 	_feed(scene, [], 3, 1)   # mv = 1
 	_frames(rig, 2, Vector2(0, 1))
-	assert_object(rig.aim_visual.frame_color()).is_equal(TeleportAim.WAIT_COLOR)
+	assert_object(rig.aim_visual.frame_color()).is_equal(AssetMaterials.layer("aim_wait"))
 	assert_bool(rig.aim_visual.label_visible()).is_true()
 	assert_str(rig.aim_visual.label_text()).is_equal("ХОД ПРИНЯТ")
 	assert_bool(rig.aim_visual.is_ok()).is_false()
@@ -124,7 +124,7 @@ func test_ждать_на_своей_клетке_метка_с_секундам
 	_frames(rig, 3, Vector2(0, 1))
 	assert_str(rig.aim_visual.kind()).is_equal("wait")
 	assert_str(rig.aim_visual.label_text()).is_equal("ЖДАТЬ · ОКНО ЧЕРЕЗ 4")
-	assert_object(rig.aim_visual.frame_color()).is_equal(TeleportAim.WAIT_COLOR)
+	assert_object(rig.aim_visual.frame_color()).is_equal(AssetMaterials.layer("aim_wait"))
 	_frames(rig, 40)
 	assert_int(_attempts.size()).is_equal(1)
 	assert_bool(_attempts[0]["ok"]).is_true()
@@ -179,7 +179,7 @@ func test_отказ_сервера_moved_рисует_ход_принят_до_
 	_feed(scene, [], 8, 0)   # такт прошёл
 	_frames(rig, 2, Vector2(0, 1))
 	assert_bool(rig.aim_visual.label_visible()).is_false()
-	assert_object(rig.aim_visual.frame_color()).is_equal(TeleportAim.OK_COLOR)
+	assert_object(rig.aim_visual.frame_color()).is_equal(AssetMaterials.layer("aim_ok"))
 
 
 func test_без_перезарядки_на_клиенте_в_тактовом_режиме() -> void:
@@ -202,7 +202,7 @@ func test_realtime_без_tk_прежний_вид() -> void:
 	_aim_cell(rig)
 	_frames(rig, 2, Vector2(0, 1))
 	assert_int(rig.last_threat()).is_equal(-1)
-	assert_object(rig.aim_visual.frame_color()).is_equal(TeleportAim.OK_COLOR)
+	assert_object(rig.aim_visual.frame_color()).is_equal(AssetMaterials.layer("aim_ok"))
 	assert_bool(rig.aim_visual.label_visible()).is_false()
 
 
@@ -212,14 +212,14 @@ func test_show_at_цвета_по_прогнозу_и_подпись() -> void:
 	add_child(aim)
 	var t := NodeGrid.center(Vector2i(4, 4))
 	aim.show_at(Vector3(0, 1, 0), t, true, 1.0, "hop", "", 0)
-	assert_object(aim.frame_color()).is_equal(TeleportAim.OK_COLOR)
+	assert_object(aim.frame_color()).is_equal(AssetMaterials.layer("aim_ok"))
 	aim.show_at(Vector3(0, 1, 0), t, true, 1.0, "hop", "", 1)
-	assert_object(aim.frame_color()).is_equal(TeleportAim.WARN_COLOR)
+	assert_object(aim.frame_color()).is_equal(AssetMaterials.layer("aim_warn"))
 	aim.show_at(Vector3(0, 1, 0), t, true, 1.0, "hop", "", 2)
-	assert_object(aim.frame_color()).is_equal(TeleportAim.NO_COLOR)
+	assert_object(aim.frame_color()).is_equal(AssetMaterials.layer("aim_no"))
 	aim.show_at(Vector3(0, 1, 0), t, false, 1.0, "hop", "", 0, "ХОД ПРИНЯТ")
-	assert_object(aim.frame_color()).is_equal(TeleportAim.WAIT_COLOR)
+	assert_object(aim.frame_color()).is_equal(AssetMaterials.layer("aim_wait"))
 	assert_str(aim.label_text()).is_equal("ХОД ПРИНЯТ")
 	aim.show_at(Vector3(0, 1, 0), t, false, 1.0, "denied", "occupied", -1, "ХОД ПРИНЯТ")
-	assert_object(aim.frame_color()).is_equal(TeleportAim.DENIED_COLOR)
+	assert_object(aim.frame_color()).is_equal(AssetMaterials.layer("aim_denied"))
 	assert_str(aim.label_text()).is_equal("ЗАНЯТО")

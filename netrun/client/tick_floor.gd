@@ -1,7 +1,7 @@
 class_name TickFloor
 extends Node3D
 ## Телеграф такта на полу узла (time-and-movement.md 3.4, 3.1 Т6): зрение каждого Soft ICE светом на клетках (фокус ярче, периферия тусклее; цвет — по состоянию
-## ICE: белый / жёлтый / оранжевый / красный), тусклое «зрение после шага» другого оттенка, стрелка к следующей клетке ICE (при предзахвате — красная,
+## ICE: стадии палитры от ледяного белого к красному), тусклое «зрение после шага» другого оттенка, стрелка к следующей клетке ICE (при предзахвате — красная,
 ## в клетку игрока) и «вдох»: когда сервер сообщил tk.inh, свет один раз пульсирует (яркость ×1,6 и обратно за 0,5 с).
 ## Клетки — один MultiMesh из плоских квадратов (не узел на клетку). Только в тактовом режиме: в realtime сцена эту ноду не создаёт.
 ## Black ICE света не даёт: его зрение не клеточное (нет намерения), он виден пингом.
@@ -14,12 +14,11 @@ const FUTURE_LIFT := 0.008
 const ARROW_LIFT := 0.03
 const FOCUS_ALPHA := 0.35
 const PERIPHERY_ALPHA := 0.15
-## Зрение после шага: прозрачность относительно текущего и подмешанный оттенок.
+## Зрение после шага: прозрачность относительно текущего и подмешанный оттенок (слой cell_future палитры Blender, берётся без его альфы).
+## Цвета света — только из палитры клиентских слоёв (AssetMaterials.layer): по состоянию TickIce (Патруль, Взгляд, Проверка, Поиск) — стадии ICE
+## (IceView.stage_color, как глаз ICE), стрелки — слой arrow, предзахват — ice_precapture, отпечатки шагов — trail_step / trail_dim.
 const FUTURE_ALPHA := 0.5
-const FUTURE_TINT := Color(0.45, 0.8, 1.0)
 const FUTURE_TINT_MIX := 0.55
-## Цвет по состоянию TickIce (Патруль, Взгляд, Проверка, Поиск); совпадает с глазом ICE (IceView.EYE_COLOR).
-const STATE_COLORS := [Color(1.0, 1.0, 1.0), Color(1.0, 0.86, 0.25), Color(1.0, 0.55, 0.15), Color(1.0, 0.2, 0.18)]
 ## Отпечатки шагов (2-й и 3-й шаг ICE по state.rt): прозрачность по номеру шага, высота — между светом «после шага» и стрелкой.
 const FOOT_ALPHAS := [0.30, 0.16]
 const FOOT_LIFT := 0.012
@@ -30,7 +29,6 @@ const MARK_TEXT := "?"
 const MARK_FONT_SIZE := 96
 const MARK_PIXEL_SIZE := 0.006
 const MARK_LABEL_LIFT := 0.035
-const PRECAPTURE_COLOR := Color(1.0, 0.1, 0.1)
 const PULSE_SEC := 0.5
 const PULSE_GAIN := 1.6
 ## Квадрат клетки чуть меньше клетки: соседние не слипаются.
@@ -158,7 +156,7 @@ func _rebuild(intents: Array, player_cell: Vector2i) -> void:
 	for it: Dictionary in intents:
 		if bool(it.get("black", false)):
 			continue
-		var base: Color = STATE_COLORS[clampi(int(it.get("st", 0)), 0, STATE_COLORS.size() - 1)]
+		var base := IceView.stage_color(int(it.get("st", 0)))
 		var c: Vector2i = it["c"]
 		var d: Vector2i = it.get("d", Vector2i.ZERO)
 		var nc: Vector2i = it.get("nc", c)
@@ -167,13 +165,13 @@ func _rebuild(intents: Array, player_cell: Vector2i) -> void:
 		n = _put(TickVision.visible_cells(_grid, c, d, sc, TickForecast.HALF_DEG, TickForecast.FOCUS_DEG), base, 1.0, LIFT, n)
 		var moves := nc != c or nd != d
 		if moves:
-			var tint := base.lerp(FUTURE_TINT, FUTURE_TINT_MIX)
+			var tint := base.lerp(AssetMaterials.layer("cell_future", 1.0), FUTURE_TINT_MIX)
 			n = _put(TickVision.visible_cells(_grid, nc, nd, sc, TickForecast.HALF_DEG, TickForecast.FOCUS_DEG), tint, FUTURE_ALPHA, FUTURE_LIFT, n)
-		var spec := _arrow_for(it, c, d, nc, nd, base, player_cell)
+		var spec := _arrow_for(it, c, d, nc, nd, player_cell)
 		if not spec.is_empty() and _arrow_specs.size() < MAX_ARROWS:
 			_arrow_specs.append(spec)
 		if not TickForecast.is_precapture(it, player_cell):   # красная стрелка предзахвата приоритетнее следа
-			n = _put_footprints(it, c, base, n)
+			n = _put_footprints(it, c, n)
 		if it.has("fp") and _marker_specs.size() < MAX_ARROWS:   # отпечаток: клетка, где ICE заметил нетраннера (Взгляд / Проверка идёт к ней)
 			var fp: Vector2i = it["fp"]
 			_marker_specs.append({"cell": fp, "color": base})
@@ -184,9 +182,9 @@ func _rebuild(intents: Array, player_cell: Vector2i) -> void:
 	_sync_markers()
 
 
-## «Отпечатки шагов»: клетки 2-го и 3-го шага из rt (1-й — стрелка), тусклее и бледнее с каждым шагом, цвет — по состоянию ICE. Стоянка (клетка повторяется
-## или это снова клетка ICE) отпечатка не даёт. Без rt (старый сервер) — ничего.
-func _put_footprints(it: Dictionary, c: Vector2i, base: Color, n: int) -> int:
+## «Отпечатки шагов»: клетки 2-го и 3-го шага из rt (1-й — стрелка), тусклее и бледнее с каждым шагом, цвет — слои следа (trail_step, затем trail_dim).
+## Стоянка (клетка повторяется или это снова клетка ICE) отпечатка не даёт. Без rt (старый сервер) — ничего.
+func _put_footprints(it: Dictionary, c: Vector2i, n: int) -> int:
 	var rt: Variant = it.get("rt")
 	if not (rt is Array):
 		return n
@@ -198,7 +196,7 @@ func _put_footprints(it: Dictionary, c: Vector2i, base: Color, n: int) -> int:
 		var a: float = FOOT_ALPHAS[i - 1]
 		var p := NodeGrid.center(cell)
 		var pos := Vector3(p.x, FOOT_LIFT, p.z)
-		var col := Color(base.r, base.g, base.b, a)
+		var col := AssetMaterials.layer("trail_step" if i == 1 else "trail_dim", a)
 		_mm.multimesh.set_instance_transform(n, Transform3D(Basis(), pos))
 		_mm.multimesh.set_instance_color(n, col)
 		_cell_pos.append(pos)
@@ -266,14 +264,14 @@ func _put(cells: Dictionary, color: Color, alpha_scale: float, lift: float, n: i
 
 
 ## Стрелка ICE: предзахват — красная в клетку игрока; шаг — к следующей клетке; поворот на месте — короткая в новую сторону; стоит — нет.
-func _arrow_for(it: Dictionary, c: Vector2i, _d: Vector2i, nc: Vector2i, nd: Vector2i, base: Color, player_cell: Vector2i) -> Dictionary:
+func _arrow_for(it: Dictionary, c: Vector2i, _d: Vector2i, nc: Vector2i, nd: Vector2i, player_cell: Vector2i) -> Dictionary:
 	if TickForecast.is_precapture(it, player_cell):
-		return {"from": NodeGrid.center(nc), "to": NodeGrid.center(player_cell), "color": PRECAPTURE_COLOR, "precapture": true}
+		return {"from": NodeGrid.center(nc), "to": NodeGrid.center(player_cell), "color": AssetMaterials.layer("ice_precapture"), "precapture": true}
 	if nc != c:
-		return {"from": NodeGrid.center(c), "to": NodeGrid.center(nc), "color": base, "precapture": false}
+		return {"from": NodeGrid.center(c), "to": NodeGrid.center(nc), "color": AssetMaterials.layer("arrow"), "precapture": false}
 	if nd != it.get("d", Vector2i.ZERO) and nd != Vector2i.ZERO:
 		var from := NodeGrid.center(c)
-		return {"from": from, "to": from + Vector3(nd.x, 0.0, nd.y).normalized() * TURN_ARROW_LEN, "color": base, "precapture": false}
+		return {"from": from, "to": from + Vector3(nd.x, 0.0, nd.y).normalized() * TURN_ARROW_LEN, "color": AssetMaterials.layer("arrow"), "precapture": false}
 	return {}
 
 

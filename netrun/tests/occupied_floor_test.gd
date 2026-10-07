@@ -58,3 +58,11 @@ func test_пустая_сетка_без_отметок_а_смена_сетки
 	assert_int(f.cell_count()).is_equal(24)
 	f.set_grid(NodeGrid.new())
 	assert_int(f.cell_count()).is_equal(0)
+
+
+func test_цвета_заливки_и_контура_из_слоёв_палитры() -> void:
+	var f: OccupiedFloor = auto_free(OccupiedFloor.new(LayoutData.load_named("foyer").grid()))
+	add_child(f)
+	assert_object(f.fill_color()).is_equal(AssetMaterials.layer("cell_occupied_fill"))
+	assert_object(f.edge_color()).is_equal(AssetMaterials.layer("cell_occupied_edge"))
+	assert_int(f.edge_count()).is_equal(f.cell_count() * 4)   # контур — четыре полосы на клетку

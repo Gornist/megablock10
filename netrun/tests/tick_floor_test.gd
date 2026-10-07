@@ -50,8 +50,8 @@ func test_фокус_ярче_периферии_и_цвет_по_состоян
 	var periph_a := -1.0
 	for i in f.cell_count():
 		var col := f.cell_color(i)
-		assert_float(col.r).is_equal_approx(TickFloor.STATE_COLORS[3].r, 0.01)
-		assert_float(col.g).is_equal_approx(TickFloor.STATE_COLORS[3].g, 0.01)
+		assert_float(col.r).is_equal_approx(AssetMaterials.layer("ice_hunt").r, 0.01)
+		assert_float(col.g).is_equal_approx(AssetMaterials.layer("ice_hunt").g, 0.01)
 		var cell := NodeGrid.cell_of(f.cell_position(i))
 		if int(_cells(g, ICE, EAST)[cell]) == TickVision.FOCUS:
 			focus_a = col.a
@@ -101,9 +101,7 @@ func test_предзахват_стрелка_красная_и_в_клетку_
 	assert_bool(a["precapture"]).is_true()
 	assert_vector(a["to"]).is_equal(NodeGrid.center(player))
 	assert_vector(a["from"]).is_equal(NodeGrid.center(Vector2i(6, 8)))
-	var col: Color = a["color"]
-	assert_float(col.r).is_greater(0.9)
-	assert_float(col.g).is_less(0.3)
+	assert_object(a["color"]).is_equal(AssetMaterials.layer("ice_precapture"))
 	# Игрок далеко (не ближе 2 м от следующего шага) — обычная стрелка шага, не красная.
 	f.apply([_it(ICE, EAST, TickForecast.ST_SEARCH, Vector2i(6, 8))], {}, Vector2i(14, 8))
 	assert_bool(f.arrow_spec(0)["precapture"]).is_false()
@@ -166,11 +164,11 @@ func test_сцена_в_тактовом_режиме_создаёт_пол_и_�
 	assert_int(scene.tick_floor.cell_count()).is_greater(0)
 	var ice: IceView = scene.ice_node("ice_1")
 	assert_int(ice.eye_state()).is_equal(3)
-	assert_float(ice.eye_color().r).is_equal_approx(IceView.EYE_COLOR[3].r, 0.01)
-	assert_float(ice.eye_color().g).is_equal_approx(IceView.EYE_COLOR[3].g, 0.01)
+	assert_float(ice.eye_color().r).is_equal_approx(AssetMaterials.layer("ice_hunt").r, 0.01)
+	assert_float(ice.eye_color().g).is_equal_approx(AssetMaterials.layer("ice_hunt").g, 0.01)
 	scene.apply_state(_ice_msg(1))
 	assert_int(ice.eye_state()).is_equal(1)
-	assert_float(ice.eye_color().g).is_equal_approx(IceView.EYE_COLOR[1].g, 0.01)
+	assert_float(ice.eye_color().g).is_equal_approx(AssetMaterials.layer("ice_suspect").g, 0.01)
 
 
 func test_демо_кадр_колонны_свет_красная_стрелка_и_жёлтая_рамка() -> void:
@@ -185,7 +183,7 @@ func test_демо_кадр_колонны_свет_красная_стрелк�
 			red += 1
 	assert_int(red).is_equal(1)   # Поиск рядом с игроком: красная стрелка
 	assert_int(f.cell_count()).is_greater(30)
-	assert_object(scene.rig.aim_visual.frame_color()).is_equal(TeleportAim.WARN_COLOR)
+	assert_object(scene.rig.aim_visual.frame_color()).is_equal(AssetMaterials.layer("aim_warn"))
 	assert_bool(scene.rig.grid.is_occupied(Vector2i(4, 8))).is_true()   # колонна узла на месте: проход между двумя колоннами
 
 
@@ -221,20 +219,23 @@ func test_след_маршрута_два_тусклых_отпечатка_п�
 	assert_object(a3["cell"]).is_equal(Vector2i(10, 8))
 	assert_float(a2["alpha"]).is_greater(a3["alpha"])   # затухают
 	assert_float(a3["alpha"]).is_less(TickFloor.FUTURE_ALPHA * TickFloor.FOCUS_ALPHA)
-	# Отпечатки лежат в тех же квадратах пола: последние две отметки, цвет — по состоянию ICE (Патруль: белый).
+	# Отпечатки лежат в тех же квадратах пола: последние две отметки, цвет — слои следа палитры (2-й шаг trail_step, 3-й trail_dim).
 	var total := f.cell_count()
 	assert_object(NodeGrid.cell_of(f.cell_position(total - 2))).is_equal(Vector2i(8, 8))
 	assert_float(f.cell_color(total - 1).a).is_equal_approx(a3["alpha"], 0.0001)
-	assert_float(f.cell_color(total - 1).r).is_equal_approx(TickFloor.STATE_COLORS[0].r, 0.01)
+	assert_float(f.cell_color(total - 1).r).is_equal_approx(AssetMaterials.layer("trail_dim").r, 0.01)
+	assert_float(f.cell_color(total - 1).b).is_equal_approx(AssetMaterials.layer("trail_dim").b, 0.01)
+	assert_float(f.cell_color(total - 2).b).is_equal_approx(AssetMaterials.layer("trail_step").b, 0.01)
 
 
-func test_след_цвет_отпечатков_по_состоянию_ICE() -> void:
+func test_след_цвет_отпечатков_из_слоёв_палитры_а_не_по_состоянию_ICE() -> void:
 	var f := _floor()
-	var it := _it(ICE, EAST, 2, Vector2i(6, 8))   # Проверка: оранжевый
+	var it := _it(ICE, EAST, 2, Vector2i(6, 8))   # Проверка: свет зрения цвета стадии, след — слои trail_*
 	it["rt"] = _rt([Vector2i(6, 8), Vector2i(8, 8), Vector2i(10, 8)])
 	f.apply([it], {}, Vector2i(0, 0))
 	var col := f.cell_color(f.cell_count() - 1)
-	assert_float(col.g).is_equal_approx(TickFloor.STATE_COLORS[2].g, 0.01)
+	assert_float(col.g).is_equal_approx(AssetMaterials.layer("trail_dim").g, 0.01)
+	assert_float(col.b).is_equal_approx(AssetMaterials.layer("trail_dim").b, 0.01)
 
 
 func test_след_стоянка_отпечатка_не_даёт() -> void:
@@ -273,7 +274,7 @@ func test_отпечаток_fp_маркер_на_клетке_и_яркая_к�
 	f.apply([it], {}, Vector2i(0, 1))   # другой снимок игрока — пересборка
 	assert_int(f.marker_count()).is_equal(1)
 	assert_object(f.marker_spec(0)["cell"]).is_equal(Vector2i(8, 8))
-	assert_float(f.marker_spec(0)["color"].g).is_equal_approx(TickFloor.STATE_COLORS[1].g, 0.01)
+	assert_float(f.marker_spec(0)["color"].g).is_equal_approx(AssetMaterials.layer("ice_suspect").g, 0.01)
 	assert_int(f.cell_count()).is_equal(plain + 1)   # ещё одна яркая клетка — отпечаток
 	var last := f.cell_count() - 1
 	assert_object(NodeGrid.cell_of(f.cell_position(last))).is_equal(Vector2i(8, 8))
