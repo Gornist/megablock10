@@ -17,6 +17,11 @@ const SHADERS := {
 const SKIRT_SHADER := preload("res://assets/shaders/skirt.gdshader")
 ## Сплошная дымка горизонта (меш `horizon_mist` в env/horizon_band): тоже роль shell_soft, шейдер по имени меша.
 const HAZE_SHADER := preload("res://assets/shaders/haze.gdshader")
+## Ореол-«капля» маяка предмета (меш `beacon_halo` в узле Beacon у шарда и токена): роль shell_soft, шейдер по имени меша.
+const BEACON_HALO_SHADER := preload("res://assets/shaders/beacon_halo.gdshader")
+## Луч маяка (меш `beacon_beam`): штрихи (streaks) с ореолом, но спокойнее обычных — почти без дыхания и качания, гладкий (без бусин), ярче, чтобы читаться с 3 м.
+const BEACON_BEAM := {"halo": 0.5, "halo_width": 2.2, "end_fade": 0.6, "breathe": 0.08, "sway": 0.003, "bead_depth": 0.0, "glow": 2.2}
+
 ## ЭКСПЕРИМЕНТ: верх стеклянного пола (меш `*_glass` в env/floor_glass_<N>): роль shell_soft, шейдер по имени меша; сторону плиты (plate_size) берём из AABB меша.
 const GLASS_SHADER := preload("res://assets/shaders/glass.gdshader")
 
@@ -111,6 +116,11 @@ static func apply(root: Node, tier: String = "") -> void:
 				m.set_shader_parameter("halo", ENV_HALO)
 				m.set_shader_parameter("halo_width", ENV_HALO_WIDTH)
 				m.set_shader_parameter("end_fade", ENV_END_FADE)
+			if String(mi.name) == "beacon_halo":  # маяк предмета: капля свечения — свой шейдер; луч — streaks с ореолом (клиент выключает узел Beacon в руке)
+				m.shader = BEACON_HALO_SHADER
+			elif String(mi.name) == "beacon_beam":
+				for k in BEACON_BEAM:
+					m.set_shader_parameter(k, BEACON_BEAM[k])
 			if entity and (src.resource_name == "streaks" or src.resource_name == "points"):
 				m.set_shader_parameter("lattice", ENTITY_LATTICE)
 			if String(mi.name).ends_with("_mid"):  # штрихи, симметричные вокруг центра (мембрана портала): длина меняется от центра

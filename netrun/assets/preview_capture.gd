@@ -129,11 +129,11 @@ func _shots() -> Array:
 		["props/vault", Vector3(0.0, 0, -0.2), 180.0, "BASE", 1.0, {"state": "open", "tier": 2}],
 		["props/vault", Vector3(1.5, 0, -0.2), 180.0, "BASE", 1.0, {"state": "empty", "tier": 3}],
 		["props/shard", Vector3(0.0, 1.0, -0.2), 0.0, "", 1.0, {"tier": 2}],
-		["props/shard", Vector3(-2.7, 1.0, 0.6), 0.0, "", 1.0, {"tier": 3}],
-		["props/shard_encrypted", Vector3(-2.3, 1.0, 0.6), 0.0, "", 1.0, {"tier": 3}],
-		["props/shard", Vector3(-2.7, 1.3, 0.6), 0.0, "", 1.0, {"tier": 0}],
-		["props/shard_encrypted", Vector3(-2.3, 1.3, 0.6), 0.0, "", 1.0, {"tier": 0}],
-		["props/daemon_token", Vector3(-2.5, 1.65, 0.6), 0.0, "", 1.0],
+		["props/shard", Vector3(-3.0, 0.9, 0.6), 0.0, "", 1.0, {"tier": 3}],  # нижний ряд: маяк (луч 0,45 м) поднимается до 1,4 м; верхний ряд выше луча
+		["props/shard_encrypted", Vector3(-2.6, 0.9, 0.6), 0.0, "", 1.0, {"tier": 3}],
+		["props/daemon_token", Vector3(-2.2, 0.9, 0.6), 0.0, "", 1.0],
+		["props/shard", Vector3(-3.0, 1.6, 0.6), 0.0, "", 1.0, {"tier": 0}],
+		["props/shard_encrypted", Vector3(-2.6, 1.6, 0.6), 0.0, "", 1.0, {"tier": 0}],
 		["props/hack_pad", Vector3(2.9, 0, 0.7), 180.0, "BASE", 1.0],
 		["props/hack_panel", Vector3(2.9, 0, -0.3), 180.0, "BASE", 1.0]]
 	var solo := [["avatar/runner", Vector3(0, 0, 0), 180.0, "", 1.0]]
@@ -169,7 +169,7 @@ func _shots() -> Array:
 		{"name": "ice_close", "cam": Vector3(1.2, 1.3, 3.2), "look": Vector3(1.5, 1.4, 0.0), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": icestage},
 		{"name": "props_stage", "cam": Vector3(0.0, 1.3, 3.6), "look": Vector3(0.0, 1.1, -1.0), "fov": 65.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": props},
 		{"name": "props_volume", "cam": Vector3(0.0, 1.3, 3.4), "look": Vector3(0.0, 0.8, 0.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": volume},
-		{"name": "shard_close", "cam": Vector3(-2.5, 1.3, 1.5), "look": Vector3(-2.5, 1.3, 0.6), "fov": 30.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": volume},
+		{"name": "shard_close", "cam": Vector3(-2.6, 1.1, 2.0), "look": Vector3(-2.6, 1.0, 0.6), "fov": 35.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": volume},
 		{"name": "vault_close", "cam": Vector3(-0.2, 1.0, 1.6), "look": Vector3(-0.9, 0.6, 0.3), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": props},
 		{"name": "avatar_stage", "cam": Vector3(0.1, 1.2, 3.0), "look": Vector3(0.0, 0.95, 0.0), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": stage},
 		{"name": "avatar_side", "cam": Vector3(2.0, 1.15, 0.0), "look": Vector3(0.0, 1.0, 0.0), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": solo},
@@ -491,6 +491,9 @@ func _setup(inst: Node3D, it: Array, shot: Dictionary, intensity: float) -> void
 	_insts.append(inst)
 	AM.apply(inst, it[3])
 	apply_variant(inst, it[5] if it.size() > 5 else {})
+	var beacon := inst.find_child("Beacon", true, false) as Node3D
+	if beacon != null:
+		beacon.visible = not _nobeacon  # у предмета в руке клиент выключает Beacon
 	if _lattice > 0.0:
 		AM.set_param(inst, "lattice", _lattice)
 	if String(it[0]).begins_with("props/vault") and String(it[0]) != "props/vault":
