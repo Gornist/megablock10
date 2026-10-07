@@ -9,15 +9,18 @@ extends RefCounted
 ## msaa = 0                  ; 3D-сглаживание: 0 (выкл., по умолчанию), 2 или 4
 ##                           ; (замеры на Pico 4: 4× даёт вспышки, 2× — мерцание граней)
 ## aa = "none"              ; экранное сглаживание: "none" (по умолчанию) или "fxaa" (Viewport.screen_space_aa)
+## fringe = "on"            ; мягкая обводка силуэтов (AssetMaterials.fringe_on): "on" (по умолчанию) или "off"
 ## scale = 1.0               ; множитель разрешения рендера (OpenXR render_target_size_multiplier), 0,5…2,0
 ##                           ; (1,25 роняет частоту до 60 Гц)
 ## foveation = 2             ; фовеация (OpenXR): 0 выкл., 1 низкая, 2 средняя (по умолчанию, бесплатна), 3 высокая
 ## foveation_dynamic = false ; динамическая фовеация (уровень подбирается по нагрузке)
 
 const SECTION := "render"
-const KEYS := ["msaa", "aa", "scale", "foveation", "foveation_dynamic"]
+const KEYS := ["msaa", "aa", "fringe", "scale", "foveation", "foveation_dynamic"]
 const AA_VALUES := ["none", "fxaa"]
 const AA_DEFAULT := "none"
+const FRINGE_VALUES := ["on", "off"]
+const FRINGE_DEFAULT := "on"
 const MSAA_DEFAULT := 0
 const SCALE_DEFAULT := 1.0
 const SCALE_MIN := 0.5
@@ -27,6 +30,10 @@ const FOVEATION_MAX := 3
 
 var msaa: int = MSAA_DEFAULT
 var aa: String = AA_DEFAULT
+## Обводка силуэтов: "on" | "off".
+var fringe: String = FRINGE_DEFAULT
+## fringe явно задан в файле (иначе остаётся то, что выставил блок [assets]).
+var fringe_set := false
 var scale: float = SCALE_DEFAULT
 var foveation: int = FOVEATION_DEFAULT
 var foveation_dynamic: bool = false
@@ -71,6 +78,12 @@ static func from_config(cfg: ConfigFile) -> RenderConfig:
 					c.aa = (v as String).to_lower()
 				else:
 					c.warnings.append("aa: допустимо «none» или «fxaa», получено «%s» — оставлено «%s»" % [v, c.aa])
+			"fringe":
+				if v is String and (v as String).to_lower() in FRINGE_VALUES:
+					c.fringe = (v as String).to_lower()
+					c.fringe_set = true
+				else:
+					c.warnings.append("fringe: допустимо «on» или «off», получено «%s» — оставлено «%s»" % [v, c.fringe])
 			"scale":
 				var n: Variant = _number(v)
 				if n != null and n >= SCALE_MIN and n <= SCALE_MAX:
@@ -131,6 +144,28 @@ static func aa_mode(s: String) -> Viewport.ScreenSpaceAA:
 	return Viewport.SCREEN_SPACE_AA_DISABLED
 
 
+## Обводка силуэтов включена? (чистый маппинг, без сцены)
+static func fringe_enabled(s: String) -> bool:
+	return s != "off"
+
+
+## Настройки материалов ассетов; звать ДО построения узлов (материалы ставятся при построении).
+## Сначала блок [assets] того же файла (AssetMaterials.tune_from_config, если он уже есть), затем fringe из [render] — он перекрывает,
+## но только если задан в файле.
+func apply_fringe(paths: PackedStringArray = NetConfig.default_paths()) -> void:
+	var script: GDScript = AssetMaterials   # ссылка на скрипт: у статического имени класса has_method недоступен
+	if script.has_method("tune_from_config"):
+		for p in paths:
+			if not FileAccess.file_exists(p):
+				continue
+			var cf := ConfigFile.new()
+			if cf.load(p) == OK:
+				script.call("tune_from_config", cf)
+			break
+	if fringe_set:
+		AssetMaterials.fringe_on = fringe_enabled(fringe)
+
+
 ## 3D-сглаживание окна/вьюпорта (плоский клиент и XR: у XR оно задаётся на том же корневом Viewport): MSAA и FXAA.
 func apply_msaa(vp: Viewport) -> void:
 	vp.msaa_3d = msaa_mode(msaa)
@@ -158,5 +193,5 @@ func apply_xr(iface: Object) -> PackedStringArray:
 
 ## Поля строки журнала `render …` (MbLog).
 func log_fields() -> Dictionary:
-	return {"msaa": msaa, "aa": aa, "scale": scale, "foveation": foveation, "dynamic": foveation_dynamic,
+	return {"msaa": msaa, "aa": aa, "fringe": fringe, "scale": scale, "foveation": foveation, "dynamic": foveation_dynamic,
 		"file": file_path if not file_path.is_empty() else "none"}

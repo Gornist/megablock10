@@ -65,6 +65,9 @@ var _last_slow_log_ms := -SLOW_LOG_MIN_GAP_MS
 func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	log_file.open()
 	log_file.log("start", {"mode": mode, "godot": Engine.get_version_info().string, "args": redact_args(args), "log": log_file.path})
+	# Настройки рендера читаются до построения сцены: обводка силуэтов (fringe) ставится в материалы при построении узлов.
+	var render_cfg := RenderConfig.load_file(config_paths)
+	render_cfg.apply_fringe(config_paths)
 	scene = preload("res://client/rig_test_scene.gd").new()
 	add_child(scene)
 	scene.rig.xr_failed.connect(func(reason: String): log_file.log("xr", {"enabled": false, "reason": reason}))
@@ -81,7 +84,7 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	_setup_phone(args)
 	scene.rig.teleport_attempted.connect(_on_teleport_attempted)
 	_tick_sound = want_xr
-	scene.rig.render = RenderConfig.load_file(config_paths)
+	scene.rig.render = render_cfg
 	if want_xr:
 		if scene.rig.start_xr():
 			log_file.log("xr", {"enabled": true, "reason": "ok", "play_area": "sitting"})
@@ -140,7 +143,7 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	net.start_client(cfg)
 
 
-## Что применено к рендеру: `render msaa=… aa=… scale=… foveation=… dynamic=…` (масштаб и фовеация — только в XR), предупреждения файла — `render.warn`.
+## Что применено к рендеру: `render msaa=… aa=… fringe=… scale=… foveation=… dynamic=…` (масштаб и фовеация — только в XR), предупреждения файла — `render.warn`.
 func _log_render(r: RenderConfig, xr: bool, missing: PackedStringArray) -> void:
 	for w in r.warnings:
 		log_file.log("render.warn", {"msg": w})

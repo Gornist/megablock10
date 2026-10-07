@@ -198,5 +198,34 @@ func test_aa_неверное_по_умолчанию_с_предупрежде�
 		assert_int(c.warnings.size()).is_equal(1)
 
 
+func test_fringe_парсинг_и_маппинг() -> void:
+	assert_str(RenderConfig.new().fringe).is_equal("on")
+	assert_str(RenderConfig.from_config(_cfg({"fringe": "off"})).fringe).is_equal("off")
+	assert_str(RenderConfig.from_config(_cfg({"fringe": "OFF"})).fringe).is_equal("off")
+	assert_str(RenderConfig.from_config(_cfg({"fringe": "On"})).fringe).is_equal("on")
+	assert_bool(RenderConfig.fringe_enabled("on")).is_true()
+	assert_bool(RenderConfig.fringe_enabled("off")).is_false()
+
+
+func test_fringe_неверное_по_умолчанию_с_предупреждением() -> void:
+	for bad: Variant in ["выкл", "", 0, false]:
+		var c := RenderConfig.from_config(_cfg({"fringe": bad}))
+		assert_str(c.fringe).is_equal(RenderConfig.FRINGE_DEFAULT)
+		assert_int(c.warnings.size()).is_equal(1)
+
+
+func test_apply_fringe_ставит_статическую_переменную_материалов() -> void:
+	var was := AssetMaterials.fringe_on
+	RenderConfig.from_config(_cfg({"fringe": "off"})).apply_fringe()
+	assert_bool(AssetMaterials.fringe_on).is_false()
+	RenderConfig.from_config(_cfg({"fringe": "on"})).apply_fringe(PackedStringArray())
+	assert_bool(AssetMaterials.fringe_on).is_true()
+	# не задан в файле — значение материалов (в т.ч. из [assets]) не трогается
+	AssetMaterials.fringe_on = false
+	RenderConfig.new().apply_fringe(PackedStringArray())
+	assert_bool(AssetMaterials.fringe_on).is_false()
+	AssetMaterials.fringe_on = was
+
+
 func test_msaa_четыре_читается_из_файла() -> void:
 	assert_int(RenderConfig.from_config(_cfg({"msaa": 4})).msaa).is_equal(4)
