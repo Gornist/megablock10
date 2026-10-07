@@ -380,3 +380,54 @@ func test_после_погони_во_время_ожидания_патрул�
 		ice.tick({})
 	assert_int(ice.state()).is_equal(0)
 	assert_int(ice.cell().y).is_equal(8)   # вернулся на строку маршрута и снова идёт по нему (на точке (6;8) заново отстоял своё)
+
+
+# --- Грейс прибытия (W3): неуязвимый не берётся и в его клетку не заходят ---
+
+func test_грейс_патруль_не_заходит_в_клетку_неуязвимого_и_счётчик_не_взлетает() -> void:
+	var g := NodeGrid.new()
+	var ice := TickIce.new({}, _route([Vector2i(2, 8), Vector2i(14, 8)]), g)
+	var tg := _at(Vector2i(4, 8))
+	var ev := ice.tick(tg, {}, {"s": true})
+	assert_object(ice.cell()).is_equal(Vector2i(3, 8))   # встал перед ним, как при «наткнулся»
+	assert_int(ice.awareness_of("s")).is_less_equal(TickIce.AWARENESS_IMMUNE_MAX)   # самое большее «?»
+	assert_int(ice.state()).is_less_equal(TickIce.Mode.GAZE)
+	assert_int(_kinds(ev, "search_started")).is_equal(0)
+	for _i in 4:
+		ev = ice.tick(tg, {}, {"s": true})
+		assert_int(_kinds(ev, "capture")).is_equal(0)   # захвата нет, сколько бы ни стоял на виду
+		assert_object(ice.cell()).is_not_equal(Vector2i(4, 8))
+	assert_int(ice.awareness_of("s")).is_less_equal(TickIce.AWARENESS_IMMUNE_MAX)
+
+
+func test_грейс_скрытый_неуязвимый_тоже_обходится() -> void:
+	# Скрытый в клетке на пути патруля раньше пропускался насквозь (ICE вставал на него): неуязвимого ICE обходит и скрытого.
+	var g := NodeGrid.new()
+	var ice := TickIce.new({}, _route([Vector2i(2, 8), Vector2i(14, 8)]), g)
+	ice.tick(_at(Vector2i(4, 8)), {"s": true}, {"s": true})
+	assert_object(ice.cell()).is_equal(Vector2i(3, 8))
+	assert_int(ice.awareness_of("s")).is_equal(0)
+
+
+func test_после_грейса_прежнее_поведение_наткнулся_и_захват() -> void:
+	var g := NodeGrid.new()
+	var ice := TickIce.new({}, _route([Vector2i(2, 8), Vector2i(14, 8)]), g)
+	var tg := _at(Vector2i(4, 8))
+	ice.tick(tg, {}, {"s": true})   # грейс: обошёл
+	assert_int(ice.awareness_of("s")).is_less_equal(2)
+	var caps := 0
+	for _i in 4:
+		caps += _kinds(ice.tick(tg), "capture")   # грейса нет — как обычно
+	assert_int(ice.state()).is_equal(TickIce.Mode.SEARCH)
+	assert_int(caps).is_greater(0)
+
+
+func test_грейс_намерение_строится_с_обходом_клетки() -> void:
+	var g := NodeGrid.new()
+	var ice := TickIce.new({}, _route([Vector2i(2, 8), Vector2i(14, 8)]), g)
+	ice.expect_immune({"s": NodeGrid.center(Vector2i(4, 8))})
+	var it := ice.intent()
+	assert_object(it["next_cell"]).is_equal(Vector2i(3, 8))   # встанет перед ним
+	assert_int(it["state"]).is_equal(TickIce.Mode.PATROL)
+	ice.expect_immune({})
+	assert_object(ice.intent()["next_cell"]).is_equal(Vector2i(4, 8))   # без грейса шагнул бы в его клетку

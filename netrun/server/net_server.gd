@@ -443,7 +443,8 @@ func _handle_teleport(session: String, p: Variant) -> void:
 	if reason.is_empty() and tick_rule and bool(move_check.call(session)):
 		reason = WorldMsg.REASON_MOVED
 	if reason.is_empty():
-		to = NodeGrid.center(NodeGrid.cell_of(to))   # прыжок — на центр клетки; площадка у хранилища переставит точку ниже
+		# прыжок — на центр клетки; клетка хранилища — это его площадка (landing), остальное переставит teleport_snap ниже
+		to = NodeGrid.center(grid_for(session).landing_of(NodeGrid.cell_of(to)))
 		reason = _cell_verdict(session, a.position, to)
 	var cell := NodeGrid.cell_of(to)
 	if not reason.is_empty():

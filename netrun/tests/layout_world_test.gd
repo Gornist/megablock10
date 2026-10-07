@@ -81,8 +81,8 @@ func test_слоты_шардов_стоят_в_первых_хранилища�
 	_build(2)
 	var ids := _alt().slot_ids()
 	assert_int(ids.size()).is_equal(2)
-	assert_object(_server.object_position(ids[0])).is_equal(Vector3(7, 1.0, -7))
-	assert_object(_server.object_position(ids[1])).is_equal(Vector3(-7, 1.0, -13))
+	assert_object(_server.object_position(ids[0])).is_equal(Vector3(6.5, 1.0, -6.5))   # клетка (14; 7) — центр клетки 1 м
+	assert_object(_server.object_position(ids[1])).is_equal(Vector3(-6.5, 1.0, -12.5))
 	# legacy-узел — прежние SHARD_SLOTS
 	var leg_ids := _leg().slot_ids()
 	for k in 3:
@@ -113,9 +113,10 @@ func test_вход_игрока_по_раскладке_узла_сессии() 
 
 func test_площадка_хранилища_раскладки_это_клетка_pad_лицом_к_хранилищу() -> void:
 	_build()
-	var snap := _alt().snap_teleport(Vector3(6.5, 0, -6.5))   # у хранилища (7; -7): ближе 1,6 м
-	assert_object(snap["p"]).is_equal(Vector3(5, 0, -7))      # pad [6, 3]
-	assert_object(snap["look"]).is_equal(Vector3(7, 0, -7))
+	# хранилище [7, 3] — клетка (14; 7) его блока, ближайшая к площадке [6, 3]: центр (6,5; -6,5); площадка — клетка (13; 7)
+	var snap := _alt().snap_teleport(Vector3(6.5, 0, -5.5))   # у хранилища: ближе 1,6 м
+	assert_object(snap["p"]).is_equal(Vector3(5.5, 0, -6.5))
+	assert_object(snap["look"]).is_equal(Vector3(6.5, 0, -6.5))
 	assert_object(_alt().snap_teleport(Vector3(0, 0, -3))["look"]).is_null()   # далеко от хранилищ — без привязки
 	# legacy: прежнее правило (cardinal_yaw), не клетка pad
 	var slot: Vector3 = NodeLayout.SHARD_SLOTS[0]

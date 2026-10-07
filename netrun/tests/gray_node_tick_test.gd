@@ -174,7 +174,7 @@ func test_в_такт_по_окну_через_пять_секунд_без_хо
 
 
 func test_г_взгляд_проверка_поиск_и_выброс_на_четвёртом_такте() -> void:
-	_boot(true, {"entry_hidden_ticks": 0})
+	_boot(true, {"entry_hidden_ticks": 0, "arrival_grace_ticks": 0})
 	var a := await _join("tok_a")
 	# Нетраннер стоит на пути Стража (ряд z = -4): сервер ставит его в клетку без хода.
 	_server.teleport(a, NodeGrid.center(Vector2i(12, 10)))
@@ -319,3 +319,46 @@ func test_black_ice_за_такт_идёт_black_tick_sec_виртуальног
 	assert_float(p0.distance_to(black.position)).is_equal_approx(1.0, 0.15)   # patrol_speed 1 м/с × black_tick_sec 1 с
 	await _advance(0.3)   # без нового такта Black ICE стоит
 	assert_float(p0.distance_to(black.position)).is_equal_approx(1.0, 0.15)
+
+
+# --- Грейс прибытия (W3): безопасный выход из портала ---
+
+func test_грейс_прибытия_ice_не_наступает_и_не_берёт_пока_игрок_стоит() -> void:
+	_boot(true)   # entry_hidden_ticks 2 + arrival_grace_ticks 2 (по умолчанию)
+	var a := await _join("tok_a")
+	_server.teleport(a, NodeGrid.center(Vector2i(12, 10)))   # на пути Стража (он дойдёт до неё на втором такте), без хода
+	await _advance(0.1)
+	var here := Vector2i(12, 10)
+	var states: Array = []
+	for n in range(1, 5):
+		await _advance(5.0)
+		assert_bool(_node._arrival_immune(a, n)).override_failure_message("такт %d: грейса нет" % n).is_true()
+		assert_object(_ice_cell()).override_failure_message("такт %d: Страж наступил на клетку игрока" % n).is_not_equal(here)
+		states.append((_node._tick_ices[_node.ices()[0]] as TickIce).state())
+	assert_bool(_events.any(func(e): return e["kind"] == "ice_eject")).is_false()
+	assert_int(states[2]).is_less_equal(TickIce.Mode.GAZE)   # на виду с третьего такта, но самое большее «?»
+	assert_int(states[3]).is_less_equal(TickIce.Mode.GAZE)
+	assert_bool(_node._arrival_immune(a, 5)).is_false()
+	# после грейса прежнее поведение: стоящий на виду доходит до Поиска и захвата
+	for _i in 6:
+		await _advance(5.0)
+	assert_bool(_events.any(func(e): return e["kind"] == "ice_eject")).is_true()
+
+
+func test_ход_игрока_снимает_грейс_прибытия() -> void:
+	_boot(true)
+	var a := await _join("tok_a")
+	await _advance(0.1)
+	assert_bool(_node._arrival_immune(a, 1)).is_true()
+	await _hop(a, _neighbor(_cell_of(a)))
+	await _advance(0.7)   # такт по ходу: первый такт после входа
+	assert_int(_tick_no()).is_equal(1)
+	assert_bool(_node._arrival_immune(a, 2)).override_failure_message("сходил, а грейс остался").is_false()
+
+
+func test_грейс_прибытия_ноль_отключает_неуязвимость() -> void:
+	_boot(true, {"arrival_grace_ticks": 0})
+	var a := await _join("tok_a")
+	await _advance(0.1)
+	assert_bool(_node._arrival_immune(a, 2)).is_true()    # скрытые такты (entry_hidden_ticks) остаются неуязвимыми
+	assert_bool(_node._arrival_immune(a, 3)).is_false()

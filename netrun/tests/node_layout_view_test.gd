@@ -106,8 +106,9 @@ func test_переход_между_узлами_пересобирает_ком
 func test_площадка_взлома_по_клетке_pad_раскладки() -> void:
 	var scene := _scene()
 	scene.apply_node(_info(ALT, _alt))
-	assert_vector(scene.view.pad_node("x_pk0").position).is_equal_approx(NodeLayout.cell_center(6, 3), Vector3.ONE * 0.001)
-	assert_vector(scene.view.pad_node("x_pk1").position).is_equal_approx(NodeLayout.cell_center(0, 1), Vector3.ONE * 0.001)
+	# площадка — центр клетки 1 м блока pad (не угол блока): [6, 3] → клетка (13; 7), [0, 1] → клетка (1; 2)
+	assert_vector(scene.view.pad_node("x_pk0").position).is_equal_approx(Vector3(5.5, 0, -6.5), Vector3.ONE * 0.001)
+	assert_vector(scene.view.pad_node("x_pk1").position).is_equal_approx(Vector3(-6.5, 0, -11.5), Vector3.ONE * 0.001)
 
 
 func test_площадка_без_раскладки_по_прежнему_правилу() -> void:
@@ -158,7 +159,7 @@ func test_привязка_телепорта_к_площадке_расклад
 	var slot: Vector3 = _alt.vaults[0]["slot"]
 	var near := Vector3(slot.x - 1.0, 0.0, slot.z)
 	var snapped: Dictionary = scene.snap_teleport(near)
-	var pad := NodeLayout.cell_center(6, 3)
+	var pad := Vector3(5.5, 0, -6.5)   # клетка (13; 7)
 	assert_float((snapped["p"] as Vector3).x).is_equal_approx(pad.x, 0.001)
 	assert_float((snapped["p"] as Vector3).z).is_equal_approx(pad.z, 0.001)
 	assert_object(snapped["look"]).is_not_null()
