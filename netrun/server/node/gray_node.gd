@@ -205,6 +205,8 @@ func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 			net.move_check = move_made
 		net.grab_check = can_grab
 		net.teleport_snap = func(_session: String, to: Vector3) -> Dictionary: return snap_teleport(to)
+		net.spawn_of = func(_session: String) -> Vector3: return layout.spawn
+		net.grid_of = func(_session: String) -> NodeGrid: return ice_grid
 		net.join_check = func(session: String) -> bool: return not join_blocked(session)
 	net.session_joined.connect(_on_joined)
 	net.avatar_removed.connect(_on_avatar_removed)
@@ -236,8 +238,13 @@ func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 		charge.end_early(session, "teleport")
 		decrypt.end_early(session, "teleport"))
 	var soft := NodeLayout.ICE.size() if node_def.is_empty() else int(node_def.get("ice", 1))
-	for i in soft:
-		_add_ice(NodeLayout.ICE[i]["id"], NodeLayout.ICE[i]["waypoints"])
+	if _tick_mode and not layout.is_legacy():
+		# Такты: Стражи — по раскладке (маршрут в клетках с ожиданием и поворотом); столько, сколько просит узел, но не больше, чем в файле.
+		for i in mini(soft, layout.sentries.size()):
+			_add_layout_sentry(layout.sentries[i])
+	else:
+		for i in soft:
+			_add_ice(NodeLayout.ICE[i]["id"], NodeLayout.ICE[i]["waypoints"])
 	if tier() == NodeGraph.TIER_BLACK:
 		enable_black_ice()
 	net.session_lost.connect(_on_session_lost)
@@ -255,10 +262,14 @@ func _build_slots() -> void:
 		_slot_pos[NetConfig.PICKUP_ID] = NodeLayout.SHARD_POS
 		net.place_object(NetConfig.PICKUP_ID, NodeLayout.SHARD_POS)
 		return
-	for k in int(node_def.get("shards", 1)):
+	var wanted := int(node_def.get("shards", 1))
+	if wanted > layout.vaults.size():
+		push_warning("[node] %s: шардов %d, а хранилищ в раскладке «%s» %d — лишние не создаём" % [node_id, wanted, layout.name, layout.vaults.size()])
+	for k in mini(wanted, layout.vaults.size()):   # первые хранилища раскладки; остальные пустые (слотов нет)
 		var id := shard_id(node_id, k)
-		_slot_pos[id] = NodeLayout.SHARD_SLOTS[k]
-		net.add_object(id, NodeLayout.SHARD_SLOTS[k])
+		var pos: Vector3 = layout.vaults[k]["slot"]
+		_slot_pos[id] = pos
+		net.add_object(id, pos)
 
 
 func now() -> float:
@@ -311,7 +322,16 @@ func queue_free_black_for_test() -> void:
 			ice.queue_free()
 
 
-func _add_ice(id: String, waypoints: Array, black: bool = false) -> void:
+## Страж раскладки (тактовый режим): sentry = {id, route: [{cell, wait, look}]} — маршрут как есть, без пересчёта точек в клетки.
+func _add_layout_sentry(sentry: Dictionary) -> void:
+	var route: Array = sentry["route"]
+	var wps: Array = []
+	for pt: Dictionary in route:
+		wps.append(NodeGrid.center(pt["cell"]))
+	_add_ice(str(sentry["id"]), wps, false, route)
+
+
+func _add_ice(id: String, waypoints: Array, black: bool = false, route: Array = []) -> void:
 	var wps: Array[Vector3] = []
 	for w in waypoints:
 		wps.append(w)
@@ -326,7 +346,7 @@ func _add_ice(id: String, waypoints: Array, black: bool = false) -> void:
 		settings["black"] = true
 	ice.setup(settings, wps, ice_grid)
 	if _tick_mode and not black:
-		var ti := TickIce.new(_tick_ice_settings(settings), TickIce.route_from_points(wps), ice_grid)
+		var ti := TickIce.new(_tick_ice_settings(settings), route if not route.is_empty() else TickIce.route_from_points(wps), ice_grid)
 		_tick_ices[ice] = ti
 		ice.position = NodeGrid.center(ti.cell())
 		ice.brain.position = ice.position
@@ -905,7 +925,9 @@ func _tick_ice_settings(ice_cfg: Dictionary) -> Dictionary:
 		if ice_cfg.has(k):
 			out[k] = ice_cfg[k]
 	if not out.has("sight_cells"):
-		if is_tutorial() and ice_cfg.has("sight_range"):
+		if layout.has_sight and not layout.is_legacy():
+			out["sight_cells"] = layout.sight_cells   # раскладка знает свою дальность (карта и Стражи подобраны вместе)
+		elif is_tutorial() and ice_cfg.has("sight_range"):
 			out["sight_cells"] = float(ice_cfg["sight_range"])
 		else:
 			var table: Variant = settings.get("ice_sight_cells", {})
@@ -1268,7 +1290,7 @@ func _on_leave_requested(session: String) -> void:
 	if not _sessions.has(session):
 		return
 	var avatar := net.get_avatar(session)
-	if avatar == null or not NodeLayout.on_exit_pad(avatar.position):
+	if avatar == null or not NodeLayout.on_exit_pad_in(layout, avatar.position):
 		return
 	net.end_session(session, ExitLogic.REASON_CLEAN)
 
@@ -1282,9 +1304,11 @@ func _on_breach_open(session: String, vault: String, ids: Array) -> void:
 		register_move(session)   # начало взлома — ход
 
 
-## Привязка телепорта к площадке у хранилища узла (см. NodeLayout.snap_to_vault_pad).
+## Привязка телепорта к площадке у хранилища узла: legacy — прежнее правило (NodeLayout.snap_to_vault_pad), иначе клетка pad раскладки.
 func snap_teleport(to: Vector3) -> Dictionary:
-	return NodeLayout.snap_to_vault_pad(to, _slot_pos.values())
+	if layout.is_legacy():
+		return NodeLayout.snap_to_vault_pad(to, _slot_pos.values())
+	return NodeLayout.snap_to_vault_pad_in(layout, to, _slot_pos.values())
 
 
 ## Просьба зарядить защитного демона: отвечает только узел, где игрок (в графе обработчик подключён у каждого узла).

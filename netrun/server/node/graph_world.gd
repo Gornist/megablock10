@@ -45,6 +45,12 @@ func start(server: NetServer, bridge_api: BridgeApi, node_graph: NodeGraph) -> v
 	net.teleport_snap = func(session: String, to: Vector3) -> Dictionary:
 		var gn: GrayNode = nodes.get(net.node_of(session))
 		return gn.snap_teleport(to) if gn != null else {"p": to, "look": null}
+	net.spawn_of = func(session: String) -> Vector3:
+		var gn: GrayNode = nodes.get(net.node_of(session))
+		return gn.layout.spawn if gn != null else NodeLayout.SPAWN
+	net.grid_of = func(session: String) -> NodeGrid:
+		var gn: GrayNode = nodes.get(net.node_of(session))
+		return gn.ice_grid if gn != null else net.grid
 	net.join_check = func(session: String) -> bool: return not join_blocked(session)
 	if str(graph.settings.get("time_mode", "realtime")) == "tick":
 		# Такты: один ход за такт у того узла, где нетраннер (вместо перезарядки телепорта).
@@ -154,6 +160,7 @@ func node_event(id: String, arrive: Variant = null, session: String = "") -> Dic
 	var ev := {
 		"kind": WorldMsg.EV_NODE, "node": id, "title": graph.title_of(id), "tier": graph.tier_of(id),
 		"alert": snappedf(gn.alert, 0.01), "shards": gn.shard_view(session), "portals": portals, "r": float(graph.settings["portal_radius"]),
+		"layout": gn.layout.name,   # имя раскладки (data/layouts): клиент строит по ней комнату; старый клиент поле игнорирует
 	}
 	var dead := gn.dead_decks()
 	if not dead.is_empty():
@@ -230,7 +237,7 @@ func _complete_transit(session: String) -> void:
 	var ds := (nodes[from] as GrayNode).release_session(session)
 	if ds == null:
 		return
-	var arrive := NodeLayout.SPAWN if back else NodeLayout.arrival_for_slot(graph.slot_to(to, from))
+	var arrive := (nodes[dest] as GrayNode).layout.spawn if back else NodeLayout.arrival_in((nodes[to] as GrayNode).layout, graph.slot_to(to, from))
 	net.teleport(session, arrive)
 	net.set_node(session, dest)
 	_where[session] = dest
