@@ -11,7 +11,8 @@ if ! stand_lock_alive && [ "${E2E_LOCK_HELD:-}" != 1 ]; then stand_lock_acquire;
 # Время каждого сценария печатается в конце — так видно, на что уходят минуты прогона.
 declare -a TIMES
 for f in scenarios/*.sh; do
-  ( source ./lib.sh; reset_ui; heal_host_reach 2 >/dev/null || true )   # чистый экран и связь с сервером перед сценарием
+  # чистый экран, связь с сервером и связь эмуляторов друг с другом (redir статических пиров) перед сценарием
+  ( source ./lib.sh; reset_ui; heal_host_reach 2 >/dev/null || true; heal_peer_link || true )
   t0=$(date +%s); "./$f" || RC=1; TIMES+=("$(basename "$f" .sh): $(( $(date +%s) - t0 )) с")
 done
 echo "── время сценариев:"; printf '  %s\n' "${TIMES[@]}"
