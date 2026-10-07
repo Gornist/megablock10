@@ -487,7 +487,7 @@ func _patrol_walk(steps: int) -> void:
 			else:
 				var tgt := _nearest_route_cell()
 				var p := _grid.path(_cell, tgt)
-				if p.is_empty():
+				if p.is_empty() or _bump(p[0]):   # возврат на маршрут тоже не входит в клетку нетраннера
 					return
 				_move(p[0], false)
 				left -= 1
@@ -528,6 +528,7 @@ func _bump(nxt: Vector2i) -> bool:
 			return true   # грейс прибытия: ICE просто не заходит в клетку, счётчик не взлетает
 	for s in _tcells:
 		if _tcells[s] == nxt:
+			_dir = NodeGrid.dir8(_cell, nxt)   # встаёт перед нетраннером лицом к нему: он в фокусе, рамка прицела на его клетке красная
 			if not _dry:
 				_aw[s] = int(_s["awareness_max"])
 				_has_seen = true

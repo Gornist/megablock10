@@ -558,3 +558,43 @@ func test_поиск_берёт_отпечатком_последнюю_клет
 	for _i in 3:
 		ice.tick(_at(b))
 	assert_int(Vector2(ice.cell() - b).length() as int).is_less_equal(3)   # Поиск идёт за B, а не прочёсывает вокруг старого отпечатка
+
+
+# --- Без «наткнулся» (B5): ICE не входит в клетку игрока, упёрся → Поиск + красная стрелка, захват на следующем такте ---
+
+func test_упёрся_встаёт_перед_игроком_лицом_к_нему_и_красная_стрелка_уже_есть() -> void:
+	var g := NodeGrid.new()
+	var ice := TickIce.new({}, _route([Vector2i(2, 8), Vector2i(14, 8)]), g)
+	var player := Vector2i(4, 8)   # на пути патруля, в двух клетках перед ICE: шаг за 2 клетки упёрся бы в клетку игрока
+	var tg := _at(player)
+	var ev := ice.tick(tg)
+	assert_int(_kinds(ev, "capture")).is_equal(0)   # захвата в тот же такт нет
+	assert_object(ice.cell()).is_not_equal(player)
+	assert_int(ice.state()).is_equal(TickIce.Mode.SEARCH)
+	assert_int(_kinds(ev, "search_started")).is_equal(1)   # SEARCH_STARTED как обычно
+	var it := ice.intent()
+	var fc := {"c": it["cell"], "st": it["state"], "nc": it["next_cell"], "black": false}
+	assert_bool(TickForecast.is_precapture(fc, player)).is_true()   # на клетке игрока красная стрелка
+	assert_int(TickForecast.threat(g, [fc], player)).is_equal(TickForecast.RED)
+	assert_int(_kinds(ice.tick(tg), "capture")).is_equal(1)   # захват — на следующем такте
+
+
+func test_упёрся_а_игрок_ушёл_захвата_нет() -> void:
+	var g := NodeGrid.new()
+	var ice := TickIce.new({}, _route([Vector2i(2, 8), Vector2i(14, 8)]), g)
+	ice.tick(_at(Vector2i(4, 8)))
+	assert_object(ice.cell()).is_equal(Vector2i(3, 8))
+	var ev := ice.tick(_at(Vector2i(4, 14)))   # ушёл за пределы досягаемости
+	assert_int(_kinds(ev, "capture")).is_equal(0)
+
+
+func test_возврат_на_маршрут_не_входит_в_клетку_игрока() -> void:
+	var g := NodeGrid.new()
+	var ice := TickIce.new({}, _route([Vector2i(2, 8), Vector2i(14, 8)]), g)
+	ice._cell = Vector2i(4, 6)   # сошёл с маршрута
+	ice._off_route = true
+	var player := Vector2i(4, 7)   # первый шаг пути к маршруту — в клетку игрока
+	var ev := ice.tick(_at(player))
+	assert_object(ice.cell()).is_not_equal(player)
+	assert_int(_kinds(ev, "bump")).is_equal(1)
+	assert_int(ice.state()).is_equal(TickIce.Mode.SEARCH)

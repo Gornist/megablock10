@@ -152,3 +152,11 @@ func test_разбор_fp_и_lost_необязательны() -> void:
 	var zero := base.duplicate()
 	zero["lost"] = 0
 	assert_bool(TickForecast.parse_intents([zero])[0].has("lost")).is_false()
+
+
+func test_клетка_куда_ICE_шагнёт_красная_и_залипание_действует() -> void:
+	var g := NodeGrid.new()
+	var it := _it(ICE, EAST, 0, ICE + Vector2i(2, 0))
+	assert_int(TickForecast.threat(g, [it], ICE + Vector2i(2, 0))).is_equal(TickForecast.RED)
+	assert_bool(TickForecast.red_hold_ok(0.2)).is_false()   # залипание: красную рамку сразу в прыжок не отпускают
+	assert_bool(TickForecast.red_hold_ok(TickForecast.RED_HOLD_SEC)).is_true()

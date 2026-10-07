@@ -11,7 +11,7 @@ func test_успех_без_причины() -> void:
 
 
 func test_замок_не_вскрыт_две_ловушки_из_двух_провал() -> void:
-	assert_array(BreachReason.lines(FAIL, 2, false, 2, 2, [])).is_equal(["ЗАМОК: 2 ловушки из 2 — провал"])
+	assert_array(BreachReason.lines(FAIL, 2, false, 2, 2, [])).is_equal(["ЗАМОК: 2 ловушки из 2 нажатий — провал"])
 
 
 func test_замок_не_вскрыт_без_ловушек() -> void:
@@ -19,7 +19,7 @@ func test_замок_не_вскрыт_без_ловушек() -> void:
 
 
 func test_ловушки_при_частичном_итоге_говорят_частично() -> void:
-	assert_array(BreachReason.lines(PARTIAL, 2, false, 1, 4, [])).is_equal(["ЗАМОК: 1 ловушка из 4 — частично"])
+	assert_array(BreachReason.lines(PARTIAL, 2, false, 1, 4, [])).is_equal(["ЗАМОК: 1 ловушка из 4 нажатий — частично"])
 
 
 func test_совпал_до_вскрытия_не_засчитан() -> void:
@@ -50,4 +50,6 @@ func test_склонение_ловушек() -> void:
 
 
 func test_из_всех_нажатий_не_меньше_ловушек() -> void:
-	assert_str(BreachReason.traps_text(3, 1)).is_equal("3 ловушки из 3")   # нажатий меньше ловушек (откат) — не врём «3 из 1»
+	assert_str(BreachReason.traps_text(3, 1)).is_equal("3 ловушки из 3 нажатий")   # нажатий меньше ловушек (откат) — не врём «3 из 1»
+	assert_str(BreachReason.traps_text(1, 1)).is_equal("1 ловушка из 1 нажатия")
+	assert_str(BreachReason.traps_text(2, 21)).is_equal("2 ловушки из 21 нажатия")

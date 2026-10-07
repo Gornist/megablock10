@@ -1,11 +1,10 @@
 extends GdUnitTestSuite
-## Правило честности такта (PR B2): игрока берут или «упираются» в него, только если красная стрелка предзахвата была на его клетке в предыдущем состоянии.
-## Property-тест на раскладке «foyer»: каждый Страж на фазах цикла патруля, игрок неподвижно стоит на каждой свободной клетке и виден;
-## на каждом такте до него сравниваем намерение (intent → TickForecast.is_precapture) с тем, что случилось на такте (события capture / bump).
+## Правило честности такта: игрока берут (захват) только если красная стрелка предзахвата была на его клетке в состоянии до такта; ICE никогда не входит
+## в клетку игрока — если следующий шаг был бы на неё, он встаёт перед игроком и сразу переходит в Поиск (красная стрелка появляется), захват — на следующем такте.
+## Property-тест на раскладках «foyer» и «foyer_tutorial»: каждый Страж на каждой фазе цикла патруля, игрок неподвижно стоит на каждой свободной клетке и виден;
+## на каждом такте до него сравниваем намерение (intent → TickForecast.is_precapture) с тем, что случилось на такте. Без исключений: любое нарушение — красный тест.
 
 const TICKS := 8
-## Фазы цикла берём с этим шагом (цикл «foyer» — 24 такта): иначе 24 фазы × 200+ клеток × 2 Стража — долго.
-const PHASE_STEP := 3
 
 
 func _free_cells(grid: NodeGrid) -> Array[Vector2i]:
@@ -18,46 +17,64 @@ func _free_cells(grid: NodeGrid) -> Array[Vector2i]:
 	return out
 
 
-## Случаи, когда событие `kind` случилось без красной стрелки на клетке игрока в состоянии до такта: {sentry, phase, cell, tick}.
-func _violations(layout: LayoutData, kind: String) -> Array[Dictionary]:
+func _forecast(it: Dictionary) -> Dictionary:
+	return {"c": it["cell"], "st": it["state"], "nc": it["next_cell"], "black": false}
+
+
+## Прогон всех фаз × клеток. Возвращает нарушения трёх правил и число «упёрся» (чтобы тест не прошёл вхолостую): {capture, enter, bump_chain, bumps}.
+## capture — захват без красной стрелки на клетке игрока до такта; enter — ICE оказался в клетке игрока; bump_chain — после «упёрся» нет Поиска,
+## нет красной стрелки в состоянии после такта, захват в тот же такт или нет захвата на следующем (игрок стоит). Каждое нарушение: {sentry, phase, cell, tick}.
+func _scan(layout: LayoutData) -> Dictionary:
 	var grid := layout.grid()
 	var cycle := LayoutCheck.cycle_ticks(layout)
-	var bad: Array[Dictionary] = []
+	var res := {"capture": [], "enter": [], "bump_chain": [], "bumps": 0}
 	var cells := _free_cells(grid)
 	for si in layout.sentries.size():
 		var route: Array = layout.sentries[si]["route"]
-		for phase in range(0, cycle, PHASE_STEP):
+		for phase in cycle:
 			for p in cells:
 				var ice := TickIce.new({"sight_cells": layout.sight_cells}, route, grid)
 				for _i in phase:
 					ice.tick({})
 				if ice.cell() == p:
-					continue   # вход в клетку самого ICE — отдельная история (нетраннер там всегда в фокусе)
+					continue   # игрок не встаёт в клетку Стража (там он всегда в фокусе, отдельная история)
 				var target := {"s": NodeGrid.center(p)}
+				var bump_tick := -1
 				for t in TICKS:
-					var it := ice.intent()
-					var fc := {"c": it["cell"], "st": it["state"], "nc": it["next_cell"], "black": false}
-					var pre := TickForecast.is_precapture(fc, p)
+					var pre := TickForecast.is_precapture(_forecast(ice.intent()), p)
+					var captured := false
+					var bumped := false
 					for ev: Dictionary in ice.tick(target):
-						if ev["kind"] == kind and not pre:
-							bad.append({"sentry": si, "phase": phase, "cell": p, "tick": t + 1})
-	return bad
+						if ev["kind"] == "capture":
+							captured = true
+						elif ev["kind"] == "bump":
+							bumped = true
+					var v := {"sentry": si, "phase": phase, "cell": p, "tick": t + 1}
+					if captured and not pre:
+						(res["capture"] as Array).append(v)
+					if ice.cell() == p:
+						(res["enter"] as Array).append(v)
+					if bump_tick >= 0 and t == bump_tick + 1 and not captured:
+						(res["bump_chain"] as Array).append(v)   # игрок стоял, а захвата на следующем такте нет
+					if bumped:
+						res["bumps"] = int(res["bumps"]) + 1
+						bump_tick = t
+						if captured or ice.state() != TickIce.Mode.SEARCH or not TickForecast.is_precapture(_forecast(ice.intent()), p):
+							(res["bump_chain"] as Array).append(v)
+	return res
 
 
-func test_захват_foyer_только_после_красной_стрелки_предзахвата() -> void:
-	var bad := _violations(LayoutData.load_named("foyer"), "capture")
-	assert_array(bad).is_empty()
+func _check(layout_name: String) -> void:
+	var r := _scan(LayoutData.load_named(layout_name))
+	assert_array(r["capture"]).is_empty()      # захват без красной стрелки на клетке в предыдущем такте
+	assert_array(r["enter"]).is_empty()        # ICE не входит в клетку игрока
+	assert_array(r["bump_chain"]).is_empty()   # упёрся → сразу Поиск + красная стрелка, захват не раньше следующего такта и на нём
+	assert_int(r["bumps"]).is_greater(0)       # сценарий действительно встречается (тест не пустой)
 
 
-## ИЗВЕСТНЫЙ ПРОБЕЛ (вход для следующей карточки, не чинится здесь): «наткнулся» без красной стрелки на «foyer» бывает, но только на первом же такте контакта —
-## нетраннер возник на пути патруля в 1–2 клетках перед Стражем, который его ещё не видел (патрульный шаг упирается в него, Страж встаёт рядом, счётчик 6).
-## Красная стрелка в этом состоянии невозможна: предзахват — это Поиск, а Страж ещё в Патруле. Дальше честность держится: захват (тест выше) всегда после стрелки.
-## Тест стережёт границу: пробел только на 1-м такте контакта; если «наткнулся» без стрелки появится на 2-м такте и позже (игрока видели, а стрелки нет) — красный.
-func test_наткнулся_без_красной_стрелки_только_на_первом_такте_контакта() -> void:
-	var bad := _violations(LayoutData.load_named("foyer"), "bump")
-	for v: Dictionary in bad:
-		assert_int(v["tick"]).is_equal(1)
+func test_foyer_захват_только_после_красной_стрелки_и_упор_без_входа() -> void:
+	_check("foyer")
 
 
-func test_захват_foyer_tutorial_только_после_красной_стрелки_предзахвата() -> void:
-	assert_array(_violations(LayoutData.load_named("foyer_tutorial"), "capture")).is_empty()
+func test_foyer_tutorial_захват_только_после_красной_стрелки_и_упор_без_входа() -> void:
+	_check("foyer_tutorial")

@@ -331,6 +331,6 @@ func test_итог_называет_причину_провала_замок_и_
 	m.trap_hits[Vector2i(0, 1)] = true
 	_panel.apply_end({"outcome": "FAIL", "matched": [], "opened": [], "lock_opened": false, "matched_before_lock": ["d1"]})
 	var all := "\n".join(_panel.texts())
-	assert_str(all).contains("ЗАМОК: 2 ловушки из 2 — провал").contains("совпал до вскрытия — не засчитан")
+	assert_str(all).contains("ЗАМОК: 2 ловушки из 2 нажатий — провал").contains("совпал до вскрытия — не засчитан")
 	assert_array(BreachPanel.reason_lines({"outcome": "SUCCESS"}, m)).is_empty()
 	assert_array(BreachPanel.reason_lines({"outcome": "FAIL"}, null)).is_empty()   # без копии попытки о замке сказать нечего
