@@ -34,6 +34,8 @@ var mirror: BreachMirror
 
 var _viewport: SubViewport
 var _surface: Sprite3D
+## Слой композитора OpenXR вместо квада (если включён в конфиге и поддержан); иначе остаётся Sprite3D.
+var _layer: XrLayerHost
 var _frame: MbFrame
 var _left: VBoxContainer
 var _right: VBoxContainer
@@ -94,10 +96,16 @@ func _ready() -> void:
 	_surface.shaded = false
 	_surface.double_sided = false
 	add_child(_surface)
+	_layer = XrLayerHost.new()
+	add_child(_layer)
+	_layer.setup(_viewport, panel_size_m(), _surface, self)
 	visible = false
 
 
 func _process(delta: float) -> void:
+	if _layer.is_active():
+		# Слою композитора нужны свежие буферы каждый кадр (см. DeckPanel._process); скрытую панель не рисуем.
+		_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS if is_visible_in_tree() and _mode != MODE_HIDDEN else SubViewport.UPDATE_DISABLED
 	if _mode == MODE_HIDDEN:
 		return
 	if _flash > 0.0:
@@ -108,7 +116,7 @@ func _process(delta: float) -> void:
 		if _result_left <= 0.0:
 			hide_panel()
 	_since_draw += delta
-	if _dirty and _since_draw >= 1.0 / MAX_FPS:
+	if not _layer.is_active() and _dirty and _since_draw >= 1.0 / MAX_FPS:
 		_dirty = false
 		_since_draw = 0.0
 		redraw_count += 1
