@@ -466,7 +466,7 @@ def _cover_asset(out, name, centers, tris, notes):
     lib.reset()
     cy = lib.lin("cyan")
     body, frame, lit = _cover_parts(centers)
-    objs = [lib.obj_from_bm("pillar_block", body, "solid_dark", cy, rgb_fn=lit),
+    objs = [lib.obj_from_bm("pillar_block", body, "solid_dark", cy, rgb_fn=lit, smooth=True),  # smooth: нормали для обводки силуэта (fringe.gdshader)
             lib.obj_from_bm("pillar_base", frame, "solid_dark", cy)]
     return lib.export(name, "env", objs, out, budget_tris=tris, origin="floor", notes=notes)
 

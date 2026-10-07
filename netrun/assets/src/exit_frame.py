@@ -50,9 +50,9 @@ def build_exit_frame(out, name="exit_frame", seed=14):
         sx = -1 if side == "l" else 1
         objs.append(lib.streak_set("exit_post_" + side, post, cy))
         bar, rgb = _lit_bar((sx * (OPEN_X + BAR / 2), 0.0, (OPEN_H + BAR) / 2), (BAR, BAR, OPEN_H + BAR), ice, void)  # косяк: брус от пола до верха перемычки
-        objs.append(lib.obj_from_bm("exit_bar_" + side, bar, "solid_dark", ice, rgb_fn=rgb))
+        objs.append(lib.obj_from_bm("exit_bar_" + side, bar, "solid_dark", ice, rgb_fn=rgb, smooth=True))  # smooth: нормали для обводки силуэта (fringe.gdshader)
     top, rgb = _lit_bar((0.0, 0.0, OPEN_H + BAR / 2), (2 * OPEN_X + 2 * BAR, BAR, BAR), ice, void)  # перемычка поверх проёма (выше 2,0 м)
-    objs.append(lib.obj_from_bm("exit_bar_top", top, "solid_dark", ice, rgb_fn=rgb))
+    objs.append(lib.obj_from_bm("exit_bar_top", top, "solid_dark", ice, rgb_fn=rgb, smooth=True))
     T = 0.03
     plate = lib.box_bm((1.24, 0.15, T), center=(0, 0, T / 2))
     g = lib.lit_part(plate, T, 0.014)
