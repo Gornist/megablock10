@@ -786,6 +786,7 @@ func test_client_layer_palette_has_only_style_colors() -> void:
 	assert_bool(AssetMaterials.layer("aim_ok").is_equal_approx(AssetMaterials.PAL_CYAN)).is_true()
 	assert_float(AssetMaterials.layer("cell_occupied_fill", 0.5).a).is_equal_approx(0.5, 0.001)
 
+
 func test_asset_materials_knob_floor_grid_texture_replaces_seam_dots() -> void:
 	AssetMaterials.reset_tuning()
 	var dflt := _load("env", "floor_slab_8")
