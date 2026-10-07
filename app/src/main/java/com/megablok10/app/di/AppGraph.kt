@@ -71,6 +71,8 @@ import com.megablok10.app.presence.WifiBinder
 import com.megablok10.app.qr.ProvisionStore
 import com.megablok10.app.shards.ShardStore
 import com.megablok10.app.ui.theme.AppSnack
+import com.megablok10.app.voice.VoiceMessenger
+import com.megablok10.app.voice.VoiceStore
 import com.megablok10.app.wallet.AcceptPayment
 import com.megablok10.app.wallet.SendPayment
 import com.megablok10.app.wallet.TransactionStore
@@ -142,8 +144,11 @@ class AppGraph(private val app: Application) {
         online = presence.players,
         me = { identity.current?.let { it.publicKeyB64 to mesh.listeningPort } },
     ) { host, port, line, expect -> lines.sendLineOutcome(host, port, line, expectAckFrom = expect) }
-    val outbox: OutboxStore = OutboxStore(db.outboxDao(), peerDirectory) { line -> chat.markDelivered(line) }
+    /** Файлы голосовых сообщений (voice.VoiceStore): стираются сбросом персонажа. */
+    val voiceStore = VoiceStore(java.io.File(app.filesDir, "voice"))
+    val outbox: OutboxStore = OutboxStore(db.outboxDao(), peerDirectory, expand = { VoiceMessenger.expand(it, voiceStore) }) { line -> chat.markDelivered(line) }
     val chat: ChatStore = ChatStore(db.chatMessageDao(), outbox, peerDirectory)
+    val voice = VoiceMessenger(db.chatMessageDao(), outbox, peerDirectory, voiceStore)
     val calls = CallManager(app, peerDirectory, db.callLogDao())
     val logStore: LogStore = Mb10LogStore(app)
     /** Отчёты о прочтении (D4) и переключатель «как в мессенджерах». */
@@ -218,6 +223,7 @@ class AppGraph(private val app: Application) {
         app, chat, presence, wifi, calls, slotClaims,
         receipts = receipts,
         readReceipts = readReceipts,
+        voice = voice,
         netrun = netrun,
         worldCards = worldCards,
         onIncompatible = IncompatibleVersionReporter(WireVersion.protocols, WireVersion.INCOMPATIBLE_MESSAGE) { notices.show(it) }::report,
@@ -231,7 +237,7 @@ class AppGraph(private val app: Application) {
         ),
     )
     val provisioning = ProvisionStore(identity, collectorSettings, changes, wallet, db.consumedTokenDao(), transactor)
-    val sessionReset = SessionReset(db, transactor, identity, collectorSettings, changes, announcements, netrun) { session.onSessionReset() }
+    val sessionReset = SessionReset(db, transactor, identity, collectorSettings, changes, announcements, netrun, voiceStore) { session.onSessionReset() }
 
     /**
      * Что работает в фоне — решает только он (B3): сеть на личность, синк на процесс, foreground-сервис с правилами Android 12+.

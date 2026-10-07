@@ -23,14 +23,22 @@ private const val TAG = "OutboxStore"
 class OutboxStore(
     dao: OutboxDao,
     private val peers: PeerDirectory,
+    /** Строка очереди → строка для провода (голосовое: ссылка дополняется звуком из файла); null — слать нечего, запись снимается без «доставлено». */
+    private val expand: (line: String) -> String? = { it },
     /** Строка ушла и адресат её подтвердил — «доставлено» у своей копии в треде (ChatStore.markDelivered). */
     private val onDelivered: suspend (line: String) -> Unit = {},
 ) {
     // Адрес выбирает PeerDirectory — все адреса адресата по очереди: одна запись может хранить порт его прошлого процесса.
     private val outbox = Outbox(queue = RoomOutboxQueue(dao), log = Mb10Log, tag = TAG) { to, line ->
-        val delivered = withContext(Dispatchers.IO) { peers.send(to, line) } == SendOutcome.DELIVERED
-        if (delivered) onDelivered(line)
-        delivered
+        val wire = withContext(Dispatchers.IO) { expand(line) }
+        if (wire == null) {
+            Mb10Log.warnEvent(TAG, "outbox.line_dropped", "to" to shortKey(to), "type" to line.substringBefore(':'))
+            true
+        } else {
+            val delivered = withContext(Dispatchers.IO) { peers.send(to, wire) } == SendOutcome.DELIVERED
+            if (delivered) onDelivered(line)
+            delivered
+        }
     }
 
     suspend fun enqueue(toPubKeyB64: String, wire: ChatWireMessage) {
