@@ -125,6 +125,32 @@ func test_хранилища_фойе_и_учебного_узла_по_сетк
 	assert_bool(LayoutCheck.run_all(LayoutData.load_named("foyer")).has("vault_grid")).is_true()
 
 
+func test_занятые_клетки_фойе_учебного_узла_и_legacy_видны() -> void:
+	for n in ["foyer", "foyer_tutorial", "legacy"]:
+		var r := LayoutCheck.check_occupied_visible(LayoutData.load_named(n))
+		assert_bool(r["ok"]).override_failure_message("%s: %s" % [n, r["detail"]]).is_true()
+	assert_bool(LayoutCheck.run_all(LayoutData.load_named("foyer")).has("occupied_visible")).is_true()
+	assert_int(LayoutData.load_named("legacy").cover_cells().size()).is_equal(0)   # у legacy хранилища не занимают клетки, укрытий нет
+
+
+func test_занятый_символ_без_модели_не_проходит_проверку_видимости() -> void:
+	for sym in ["O", "B", "L"]:
+		var d := _foyer_dict()
+		d["cells"] = _cells_with({2: "...%s...." % sym})
+		var r := LayoutCheck.check_occupied_visible(_parse(d))
+		assert_bool(r["ok"]).override_failure_message("символ %s прошёл" % sym).is_false()
+		assert_str(r["detail"]).contains("без модели")
+		assert_str(r["detail"]).contains(sym)
+
+
+func test_блок_хранилища_без_записи_vaults_не_проходит_проверку_видимости() -> void:
+	var d := _foyer_dict()
+	(d["vaults"] as Array).pop_back()   # блок «V» [7, 0] остался занятым, а хранилища и укрытий в нём нет
+	var r := LayoutCheck.check_occupied_visible(_parse(d))
+	assert_bool(r["ok"]).is_false()
+	assert_str(r["detail"]).contains("«V»")
+
+
 func test_хранилище_на_углу_блока_не_проходит_проверку_сетки() -> void:
 	var ld := _parse(_foyer_dict())
 	var v: Dictionary = ld.vaults[0]

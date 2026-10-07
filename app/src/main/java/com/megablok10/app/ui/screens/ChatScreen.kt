@@ -41,6 +41,7 @@ import com.megablok10.app.breach.label
 import com.megablok10.app.qr.ItemKind
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
+import com.megablok10.app.voice.VoiceMarker
 import com.megablok10.app.ui.theme.LocalMbColors
 import com.megablok10.app.ui.theme.MbBreadcrumb
 import com.megablok10.app.ui.theme.MbButton
@@ -239,6 +240,8 @@ private fun DirectThread(
     val peer = state.contacts.peer(peerPubKeyB64)
     var draft by remember { mutableStateOf("") }
     var attachMenuOpen by remember { mutableStateOf(false) }
+    val micAllowed by thread.micAllowed.collectAsStateWithLifecycle()
+    val voice = rememberVoiceRecordUi(micAllowed, onClip = thread::sendVoice)
 
     Column(Modifier.fillMaxSize().padding(horizontal = MbDimens.screenPadding)) {
         MbBreadcrumb(parts = listOf("Сообщения", contact?.callsign ?: "Неизвестный контакт"), icon = MbIcons.Mail) {
@@ -270,13 +273,20 @@ private fun DirectThread(
                 }
             }
             Box(Modifier.weight(1f)) {
-                MbComposer(
-                    value = draft,
-                    onValueChange = { draft = it },
-                    onSend = { if (draft.isNotBlank()) { thread.send(draft); draft = "" } },
-                    placeholder = if (peer != null) "Личное сообщение" else "Личное сообщение (получатель не в сети)"
-                )
+                if (voice.recording) {
+                    RecordingBar(voice.state, onSend = voice.send, onCancel = voice.cancel)
+                } else {
+                    MbComposer(
+                        value = draft,
+                        onValueChange = { draft = it },
+                        onSend = { if (draft.isNotBlank()) { thread.send(draft); draft = "" } },
+                        placeholder = if (peer != null) "Личное сообщение" else "Личное сообщение (получатель не в сети)",
+                        trailingWhenEmpty = {} // пустое поле — вместо «Отправить» справа микрофон (он ниже, вне поля: жест записи не должен терять кнопку, когда поле заменяется полосой записи)
+                    )
+                }
             }
+            // Микрофон остаётся на месте, пока идёт запись: жест удержания живёт в этой кнопке.
+            if (draft.isEmpty() || voice.recording) voice.micButton()
         }
     }
 }
@@ -345,7 +355,7 @@ private fun previewBody(body: String): String = when (val decoded = Mb10QrCodec.
     is Mb10Qr.ItemTransfer -> "Передача: «" + (ItemPayload.decodeShard(decoded.payload)?.title ?: ItemPayload.decodeDaemon(decoded.payload)?.name ?: "предмет") + "»"
     is Mb10Qr.Receipt -> "Платёж подтверждён"
     is Mb10Qr.SecurityAlert -> "Тревога! · «${decoded.containerName}»"
-    else -> body
+    else -> VoiceMarker.parse(body)?.let { "Голосовое сообщение · ${formatVoiceDuration(it.durationMs)}" } ?: body
 }
 
 @Composable
@@ -450,7 +460,7 @@ internal fun MessageBubble(
             }
             is Mb10Qr.Receipt -> MbTag("получение подтверждено", tone = MbTagTone.Ok)
             is Mb10Qr.SecurityAlert -> SecurityAlertTag(decoded)
-            else -> PlainMessageBubble(msg, self, showSender)
+            else -> if (VoiceMarker.isVoice(msg.body)) VoiceBubble(msg, self) else PlainMessageBubble(msg, self, showSender)
         }
     }
 }

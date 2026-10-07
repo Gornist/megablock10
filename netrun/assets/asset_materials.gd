@@ -35,7 +35,7 @@ const FLOOR_V := {
 	4: {"_plates": {"uv_rim": 0.02, "edge_glow": 1.2, "edge_uneven": 0.7}},
 }
 
-## Параметры solid_dark.gdshader для `pillar_block` (env/pillar): ровный свет рёбер без «рваности».
+## Параметры solid_dark.gdshader для `pillar_block`/`pillar_base` (env/pillar, env/cover) и `exit_bar_*` (env/exit_frame): ровный яркий свет рёбер без «рваности».
 const PILLAR_EDGE := {"edge_glow": 2.2, "edge_uneven": 0.0}
 
 ## Параметры haze.gdshader для `edge_mist` (env/room_edge_<N>): низкая дымка вдоль границы комнаты, не туман горизонта.
@@ -112,7 +112,7 @@ static func apply(root: Node, tier: String = "") -> void:
 						m.set_shader_parameter(k, EDGE_MIST[k])
 			if String(mi.name) == "edge_streaks_hang":  # подвесные штрихи кромки комнаты (точек по периметру нет): ярче штрихов плит, иначе край не читается
 				m.set_shader_parameter("glow", EDGE_STREAK_GLOW)
-			if String(mi.name) == "pillar_block" or String(mi.name) == "pillar_base":  # укрытие (корпус и рамка по границе клетки): рёбра ровные и яркие, иначе в очках не видно, где оно (у тайлов пола свет рваный намеренно)
+			if String(mi.name) == "pillar_block" or String(mi.name) == "pillar_base" or String(mi.name).begins_with("exit_bar"):  # укрытие (корпус и рамка по границе клетки) и брусья рамки выхода: рёбра ровные и яркие, иначе в очках не видно, где оно (у тайлов пола свет рваный намеренно)
 				for k in PILLAR_EDGE:
 					m.set_shader_parameter(k, PILLAR_EDGE[k])
 			if tier != "" and TIER_TINT.has(tier):
