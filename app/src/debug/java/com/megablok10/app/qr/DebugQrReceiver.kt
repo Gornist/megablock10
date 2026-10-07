@@ -34,6 +34,7 @@ import kotlinx.coroutines.launch
  *  - DEBUG_SET    --es sayvoice "получатель|секунды[|offline]" — голосовое сообщение из случайных байт (≈2,5 КБ/с, не речь) личным сообщением: проверка доставки, очереди и файла у получателя (voice.VoiceMessenger)
  *  - DEBUG_SET    --es callaudio "rnnoise=0|1" — нейросетевой шумодав микрофона звонка (по умолчанию вкл) выключить/включить на лету, чтобы сравнить на слух
  *  - DEBUG_SET    --es rnnoisetest 1 — самопроверка шумодава без микрофона; итог в MB10DBG: "rnnoise selftest -> <дБ ослабления стационарного шума|UNAVAILABLE>"
+ *  - DEBUG_SET    --es listenvoice <pubKeyB64 автора> — как запустить самое раннее непрослушанное голосовое от него: «прослушано» у себя и отчёт автору; итог — "listenvoice -> <id строки|NONE>"
  *  - DEBUG_SET    … / readreceipts on|off / readthread <pubKeyB64> (как открыть тред: отчёт о прочтении)
  *  - DEBUG_SET    --es create "Позывной:Фракция" / collector <url> / cs / fac / ram / balance / daemon "имя:1C,55:тир:ЭФФЕКТ" / pay "получатель:сумма:online|offline" [--ei burst N — N одновременных переводов] / contact "pk:позывной:фракция" / say "получатель|текст" / sayas "получатель|pk|позывной|фракция|текст" / give "daemon|shard:id:получатель[:offline]" / cancelitem <id> / cancel <txId> / cooldowns reset
  * Итог DEBUG_CONFIG / DEBUG_SET пишется в logcat с тегом MB10DBG (строки разбирает scripts/e2e/lib.sh — формат не менять).
@@ -204,6 +205,12 @@ class DebugQrReceiver : BroadcastReceiver() {
         if (intent.getStringExtra("cooldowns") == "reset") graph.cooldowns.resetAll()
         // «Отчёты о прочтении» on|off — переключатель из Настроек (D4).
         intent.getStringExtra("readreceipts")?.let { graph.readReceiptSetting.set(it == "on") }
+        intent.getStringExtra("listenvoice")?.let { author ->
+            val me = graph.identity.current ?: return@let
+            val row = graph.db.chatMessageDao().nextUnlistenedVoice(me.publicKeyB64, author, 0)
+            if (row != null) graph.voiceReceipts.onPlayed(row.id)
+            Log.i(TAG, "listenvoice -> ${row?.id ?: "NONE"}")
+        }
         // Игрок открыл тред с «pubKeyB64» — то же, что DirectThreadViewModel: отчёт о прочтении. Пишет «readthread -> SENT|QUEUED|OFF|NOTHING_NEW».
         intent.getStringExtra("readthread")?.let { peer ->
             val me = graph.identity.current ?: return@let
