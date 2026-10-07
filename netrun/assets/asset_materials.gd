@@ -44,11 +44,15 @@ const PAL_ICE := Color("d9f8ff")         # ледяной белый: самые
 const PAL_THREAT := Color("ff1f3d")      # только угроза: ICE, его взгляд, отказ
 const PAL_THREAT_HOT := Color("ff7a6b")  # светлый красный: предупреждение, шаг ICE
 const PAL_DIM := Color("2d6b78")         # погасший голубой: недоступно, фон шкал
+const PAL_VOID := Color("02050a")        # чёрная завеса (экран конца), не чистый чёрный
+const PAL_AMBER := Color("ff7a1a")       # янтарь: ТОЛЬКО экран деки (STYLE.md), слои deck_*
 const LAYERS := {
 	# Клетки пола
 	"cell_occupied_fill": Color(PAL_CYAN, 0.14),   # занятая клетка (укрытие, хранилище): слабая голубая заливка
 	"cell_occupied_edge": Color(PAL_CYAN, 0.55),   # и контур клетки
-	"cell_vision": Color(PAL_THREAT_HOT, 0.20),    # клетка в зрении ICE (TickFloor)
+	# Клетка в зрении ICE (TickFloor): тёмно-красная заливка на тёмном фоне читается КОРИЧНЕВОЙ, поэтому заливка почти прозрачна, а читается контур клетки
+	"cell_vision_fill": Color(PAL_THREAT_HOT, 0.10),
+	"cell_vision_edge": Color(PAL_THREAT_HOT, 0.85),
 	"cell_future": Color(PAL_CYAN, 0.30),          # клетка будущего положения (FUTURE_TINT)
 	# Прицел прыжка
 	"aim_ok": PAL_CYAN,                            # безопасно
@@ -81,6 +85,13 @@ const LAYERS := {
 	"hud_off": PAL_DIM,
 	"end_win": PAL_CYAN,
 	"end_lose": PAL_THREAT,
+	"end_veil": PAL_VOID,                          # завеса экрана конца (фейд в тёмное)
+	# Указка деки (луч из руки к панелям)
+	"pointer_dot": PAL_ICE,                        # точка на панели
+	"pointer_press": PAL_CYAN,                     # нажатие
+	"pointer_beam": Color(PAL_CYAN, 0.50),         # луч
+	# Экран деки: янтарь разрешён только здесь (STYLE.md), 2D-интерфейс деки (DeckTheme/mb_*) остаётся своей системой в этой гамме
+	"deck_screen": PAL_AMBER,
 }
 
 

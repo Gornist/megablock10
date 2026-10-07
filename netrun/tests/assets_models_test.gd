@@ -781,7 +781,7 @@ func test_client_layer_palette_has_only_style_colors() -> void:
 	for name in AssetMaterials.LAYERS:
 		var c: Color = AssetMaterials.LAYERS[name]
 		var h := c.h * 360.0
-		var ok := c.s < 0.30 or (h >= 165.0 and h <= 295.0) or h >= 345.0 or h <= 20.0
+		var ok := c.s < 0.30 or (h >= 165.0 and h <= 295.0) or h >= 345.0 or h <= 20.0 or String(name).begins_with("deck_")  # янтарь — только экран деки
 		assert_bool(ok).override_failure_message("слой '%s': цвет %s (оттенок %.0f°, насыщенность %.2f) вне палитры STYLE.md" % [name, c.to_html(false), h, c.s]).is_true()
 	assert_bool(AssetMaterials.layer("aim_ok").is_equal_approx(AssetMaterials.PAL_CYAN)).is_true()
 	assert_float(AssetMaterials.layer("cell_occupied_fill", 0.5).a).is_equal_approx(0.5, 0.001)
