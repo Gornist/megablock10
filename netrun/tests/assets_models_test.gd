@@ -881,3 +881,22 @@ func test_asset_materials_streak_knobs_reach_env_streaks_only() -> void:
 	for m in _streak_mats(creature):
 		assert_bool(m.get_shader_parameter("keep_frac") == null).override_failure_message("ручки штрихов окружения попали на существо").is_true()
 	AssetMaterials.reset_tuning()
+
+
+func test_asset_materials_knob_dust_reaches_solids_with_the_sprite_atlas() -> void:
+	AssetMaterials.reset_tuning()
+	var dflt := _load("env", "cover")
+	AssetMaterials.apply(dflt, "BASE")
+	assert_bool(_mat_of(dflt, "pillar_block").get_shader_parameter("dust") == null).override_failure_message("по умолчанию пыль выключена (параметр не задан, в шейдере 0)").is_true()
+	AssetMaterials.tune({"dust": 1.0, "dust_cell": 0.06, "dust_density": 0.4})
+	var cover := _load("env", "cover")
+	AssetMaterials.apply(cover, "BASE")
+	var pb := _mat_of(cover, "pillar_block")
+	assert_float(float(pb.get_shader_parameter("dust"))).is_equal_approx(1.0, 0.001)
+	assert_float(float(pb.get_shader_parameter("dust_cell"))).is_equal_approx(0.06, 0.001)
+	assert_float(float(pb.get_shader_parameter("dust_density"))).is_equal_approx(0.4, 0.001)
+	assert_object(pb.get_shader_parameter("glitch_tex")).is_same(GlitchSprite.texture())
+	var slab := _load("env", "floor_slab_8")  # плиты пола — тоже solid_dark
+	AssetMaterials.apply(slab, "BASE")
+	assert_float(float(_mat_of(slab, "slab").get_shader_parameter("dust"))).is_equal_approx(1.0, 0.001)
+	AssetMaterials.reset_tuning()
