@@ -18,9 +18,11 @@ extends RefCounted
 ## foveation = 2             ; фовеация (OpenXR): 0 выкл., 1 низкая, 2 средняя (по умолчанию, бесплатна), 3 высокая
 ## foveation_dynamic = false ; динамическая фовеация (уровень подбирается по нагрузке)
 ## perf = "off"             ; счётчик кадра: "on" — раз в 5 с строка `[perf]` (FPS, среднее / максимум времени кадра, GPU-время) в журнал клиента и logcat
+## volumetric = "off"       ; объекты Сети облаком частиц (VolumeRegistry): "off" (по умолчанию), "all" или модули через запятую ("ice,vault"); нужен файл `.points` у модели
 
 const SECTION := "render"
-const KEYS := ["msaa", "aa", "fringe", "layers", "scale", "foveation", "foveation_dynamic", "perf"]
+const KEYS := ["msaa", "aa", "fringe", "layers", "scale", "foveation", "foveation_dynamic", "perf", "volumetric"]
+const VOLUMETRIC_DEFAULT := "off"
 const PERF_VALUES := ["on", "off"]
 const PERF_DEFAULT := "off"
 const AA_VALUES := ["none", "fxaa"]
@@ -46,6 +48,8 @@ var fringe_set := false
 var layers: String = LAYERS_DEFAULT
 ## Счётчик кадра (FramePerf): "on" | "off".
 var perf: String = PERF_DEFAULT
+## Объёмные модули (VolumeRegistry): "off" | "all" | список через запятую.
+var volumetric: String = VOLUMETRIC_DEFAULT
 var scale: float = SCALE_DEFAULT
 var foveation: int = FOVEATION_DEFAULT
 var foveation_dynamic: bool = false
@@ -106,6 +110,11 @@ static func from_config(cfg: ConfigFile) -> RenderConfig:
 					c.perf = (v as String).to_lower()
 				else:
 					c.warnings.append("perf: допустимо «on» или «off», получено «%s» — оставлено «%s»" % [v, c.perf])
+			"volumetric":
+				if v is String:
+					c.volumetric = (v as String).strip_edges().to_lower()
+				else:
+					c.warnings.append("volumetric: нужна строка («off», «all» или модули через запятую), получено «%s» — оставлено «%s»" % [v, c.volumetric])
 			"scale":
 				var n: Variant = _number(v)
 				if n != null and n >= SCALE_MIN and n <= SCALE_MAX:
@@ -230,5 +239,5 @@ func apply_xr(iface: Object) -> PackedStringArray:
 
 ## Поля строки журнала `render …` (MbLog).
 func log_fields() -> Dictionary:
-	return {"msaa": msaa, "aa": aa, "fringe": fringe, "layers": layers, "perf": perf, "scale": scale, "foveation": foveation, "dynamic": foveation_dynamic,
+	return {"msaa": msaa, "aa": aa, "fringe": fringe, "layers": layers, "perf": perf, "volumetric": volumetric, "scale": scale, "foveation": foveation, "dynamic": foveation_dynamic,
 		"file": file_path if not file_path.is_empty() else "none"}
