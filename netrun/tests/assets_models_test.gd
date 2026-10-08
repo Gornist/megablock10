@@ -824,3 +824,60 @@ func test_asset_materials_plate_rim_knobs_reach_plates_and_skirts() -> void:
 	AssetMaterials.apply(cover, "BASE")
 	assert_bool(_mat_of(cover, "pillar_block").get_shader_parameter("rim_top_only") == null).override_failure_message("ручки плит не должны попадать на укрытие").is_true()
 	AssetMaterials.reset_tuning()
+
+
+func test_asset_materials_knob_edge_soft_reaches_solids_and_fringe() -> void:
+	AssetMaterials.reset_tuning()
+	var dflt := _load("env", "cover")
+	AssetMaterials.apply(dflt, "BASE")
+	assert_bool(_mat_of(dflt, "pillar_block").get_shader_parameter("edge_soft") == null).override_failure_message("по умолчанию «кромка внутрь» выключена (параметр не задан)").is_true()
+	AssetMaterials.tune({"edge_soft": 0.6})
+	var cover := _load("env", "cover")
+	AssetMaterials.apply(cover, "BASE")
+	var pb := _mat_of(cover, "pillar_block")
+	assert_float(float(pb.get_shader_parameter("edge_soft"))).is_equal_approx(0.6, 0.001)
+	var fr := pb.next_pass as ShaderMaterial
+	var layers := 0
+	while fr != null:  # обводка гаснет вместе с кромкой
+		assert_float(float(fr.get_shader_parameter("edge_soft"))).is_equal_approx(0.6, 0.001)
+		layers += 1
+		fr = fr.next_pass as ShaderMaterial
+	assert_int(layers).is_equal(AssetMaterials.FRINGE_LAYERS.size())
+	var slab := _load("env", "floor_slab_8")  # плиты пола и потолка — тоже solid_dark
+	AssetMaterials.apply(slab, "BASE")
+	assert_float(float(_mat_of(slab, "slab").get_shader_parameter("edge_soft"))).is_equal_approx(0.6, 0.001)
+	AssetMaterials.reset_tuning()
+
+
+func _streak_mats(root: Node) -> Array:
+	var out: Array = []
+	for mi in _meshes(root):
+		for s in mi.mesh.get_surface_count():
+			var m := mi.get_surface_override_material(s) as ShaderMaterial
+			if m != null and m.shader.get_shader_uniform_list().any(func(u): return u["name"] == "keep_frac"):
+				out.append(m)
+	return out
+
+
+func test_asset_materials_streak_knobs_reach_env_streaks_only() -> void:
+	AssetMaterials.reset_tuning()
+	var dflt := _load("env", "wall")
+	AssetMaterials.apply(dflt, "BASE")
+	var base := _streak_mats(dflt)
+	assert_int(base.size()).override_failure_message("в стене нет штрихов").is_greater(0)
+	for m in base:
+		assert_bool(m.get_shader_parameter("keep_frac") == null and m.get_shader_parameter("far_dim_min") == null and m.get_shader_parameter("px_fade") == null).override_failure_message("по умолчанию ручки штрихов не заданы").is_true()
+	AssetMaterials.tune({"streak_far_min": 0.3, "streak_far_start": 6.0, "streak_far_end": 20.0, "streak_keep": 0.6, "streak_len": 0.7, "streak_px_fade": 1.0})
+	var tuned := _load("env", "wall")
+	AssetMaterials.apply(tuned, "BASE")
+	for m in _streak_mats(tuned):
+		assert_float(float(m.get_shader_parameter("far_dim_min"))).is_equal_approx(0.3, 0.001)
+		assert_float(float(m.get_shader_parameter("far_dim_end"))).is_equal_approx(20.0, 0.001)
+		assert_float(float(m.get_shader_parameter("keep_frac"))).is_equal_approx(0.6, 0.001)
+		assert_float(float(m.get_shader_parameter("len_scale"))).is_equal_approx(0.7, 0.001)
+		assert_float(float(m.get_shader_parameter("px_fade"))).is_equal_approx(1.0, 0.001)
+	var creature := _load("ice", "soft_ice")  # существа без тира: ручки окружения их не трогают
+	AssetMaterials.apply(creature)
+	for m in _streak_mats(creature):
+		assert_bool(m.get_shader_parameter("keep_frac") == null).override_failure_message("ручки штрихов окружения попали на существо").is_true()
+	AssetMaterials.reset_tuning()
