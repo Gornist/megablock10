@@ -2,6 +2,7 @@ class_name LoadProbe
 extends Node3D
 ## Синтетическая нагрузка для замеров на очках (`[render] probe = "quads=N,px=P,mode=blend|a2c|opaque|point"`, шаг П2 плана «волюметрик»):
 ## N одинаковых квадов (или точек) по P пикселей в поперечнике, приклеенных к голове, — кривая «мс кадра от (N, P)» без зависимости от позы и контента.
+## `probe = "sweep"` — серия вариантов SWEEP одним запуском (ProbeSweep, без перезапусков игры между вариантами).
 ## Замер — как обычно: `bench` на ту же позу, один прогон с probe, один без; разница медиан = цена N квадов.
 ## Режимы: blend — альфа-смешение (как cloud на blend_add), a2c — alpha_to_coverage_and_one (как cloud_dark), opaque — без альфы (цена одной
 ## вершинной+растровой работы), point — PRIMITIVE_POINTS с point_size = P (цена без квадов).
@@ -12,6 +13,14 @@ const DEFAULT_QUADS := 1000
 const DEFAULT_PX := 16.0
 const MAX_QUADS := 200000
 const MAX_PX := 512.0
+## Серия для `probe = "sweep"`: первой идёт база без нагрузки (ProbeSweep), дальше по порядку.
+const SWEEP := [
+	"quads=2000,px=8,mode=blend", "quads=8000,px=8,mode=blend", "quads=32000,px=8,mode=blend",
+	"quads=2000,px=16,mode=blend", "quads=8000,px=16,mode=blend", "quads=2000,px=32,mode=blend",
+	"quads=2000,px=8,mode=a2c", "quads=8000,px=8,mode=a2c", "quads=32000,px=8,mode=a2c",
+	"quads=2000,px=16,mode=a2c", "quads=8000,px=16,mode=a2c", "quads=2000,px=32,mode=a2c",
+	"quads=8000,px=8,mode=opaque", "quads=8000,px=4,mode=point",
+]
 ## Расстояние от головы, на котором расставлены кванты, м.
 const DISTANCE := 2.5
 ## Угловой размер пикселя Pico 4 (≈100° на 1504 px), рад.
@@ -28,11 +37,14 @@ var _mm: MultiMeshInstance3D
 
 ## Разбор строки «quads=N,px=P,mode=M» (любой порядок, пропуски — по умолчанию). Неверное поле — в warnings, пустая строка — выкл. (spec["on"] = false).
 static func parse(spec: String) -> Dictionary:
-	var out := {"on": false, "quads": DEFAULT_QUADS, "px": DEFAULT_PX, "mode": "blend", "warnings": PackedStringArray()}
+	var out := {"on": false, "sweep": false, "quads": DEFAULT_QUADS, "px": DEFAULT_PX, "mode": "blend", "warnings": PackedStringArray()}
 	var s := spec.strip_edges().to_lower()
 	if s == "" or s == "off":
 		return out
 	out["on"] = true
+	if s == "sweep":   # серия вариантов за один запуск (ProbeSweep)
+		out["sweep"] = true
+		return out
 	for part in s.split(","):
 		var kv := part.strip_edges().split("=")
 		if kv.size() != 2:

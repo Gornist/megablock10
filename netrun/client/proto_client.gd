@@ -85,7 +85,12 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 		bench.setup(scene.rig, render_cfg.bench)
 		bench.finished.connect(func(r: Dictionary): log_file.log("bench", r))
 	var probe_spec := LoadProbe.parse(render_cfg.probe)   # синтетическая нагрузка: [render] probe = "quads=N,px=P,mode=…"
-	if probe_spec["on"]:
+	if probe_spec["sweep"]:   # probe = "sweep": серия вариантов за один запуск, итог `[probe] ИТОГ`
+		var sweep := ProbeSweep.new()
+		sweep.setup(scene.rig.camera)
+		add_child(sweep)
+		sweep.finished.connect(func(r: Array): log_file.log("probe.sweep", {"variants": r.size()}))
+	elif probe_spec["on"]:
 		var probe := LoadProbe.new()
 		probe.setup(probe_spec)
 		scene.rig.camera.add_child(probe)

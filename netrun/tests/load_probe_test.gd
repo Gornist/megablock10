@@ -66,3 +66,40 @@ func test_узел_строит_мультимеш_нужного_числа() -
 	add_child(p)
 	var mmi: MultiMeshInstance3D = p.get_child(0)
 	assert_int(mmi.multimesh.instance_count).is_equal(50)
+
+
+func test_sweep_строка_включает_серию() -> void:
+	var s := LoadProbe.parse("sweep")
+	assert_bool(s["on"]).is_true()
+	assert_bool(s["sweep"]).is_true()
+	assert_bool(LoadProbe.parse("quads=10")["sweep"]).is_false()
+	var cf := ConfigFile.new()
+	cf.set_value("render", "probe", "sweep")
+	assert_str(RenderConfig.from_config(cf).probe).is_equal("sweep")
+
+
+func test_все_варианты_серии_разбираются_без_предупреждений() -> void:
+	for spec: String in LoadProbe.SWEEP:
+		var s := LoadProbe.parse(spec)
+		assert_bool(s["on"]).is_true()
+		assert_int(s["warnings"].size()).is_equal(0)
+
+
+func test_серия_идёт_база_потом_варианты_и_итог() -> void:
+	var sw: ProbeSweep = auto_free(ProbeSweep.new())
+	sw.setup(null)
+	var got: Array = []
+	sw.finished.connect(func(r: Array): got.append(r))
+	sw._next_variant()   # то, что в игре делает _ready
+	var seconds := (ProbeSweep.SETTLE_SEC + ProbeSweep.WINDOW_SEC) * (LoadProbe.SWEEP.size() + 1)
+	for _i in int(seconds) + 2:
+		sw.step(1.0, 10.0)
+	assert_bool(sw.is_done()).is_true()
+	assert_int(got[0].size()).is_equal(LoadProbe.SWEEP.size() + 1)
+	assert_str(got[0][0]["spec"]).is_equal("base")
+	assert_str(ProbeSweep.format_summary(got[0])).contains("quads=2000,px=8,mode=blend")
+
+
+func test_сводка_показывает_разность_к_базе() -> void:
+	var res := [{"spec": "base", "gpu_avg_ms": 10.0, "fps": 90.0}, {"spec": "quads=1", "gpu_avg_ms": 11.5, "fps": 80.0}]
+	assert_str(ProbeSweep.format_summary(res)).contains("(+1.50)")

@@ -22,7 +22,7 @@ extends RefCounted
 ## volumetric = "off"       ; объекты Сети облаком частиц (VolumeRegistry): "off" (по умолчанию), "all" или модули через запятую ("ice,vault"); нужен файл `.points` у модели
 ## bench = ""               ; воспроизводимый замер (BenchRun): имя пресета EyePresets (entry, north, south, vault_w, …) — через 5 с риг встаёт в его позу, 3 окна по 10 с,
 ##                           ; строка `[bench] ИТОГ` с медианой и min/max окон по fps / времени кадра / GPU; голову во время замера не вертеть; пусто — выкл.
-## probe = ""               ; синтетическая нагрузка (LoadProbe): "quads=N,px=P,mode=blend|a2c|opaque|point" — N квадов по P пикселей, приклеенных к голове; пусто — выкл.
+## probe = ""               ; синтетическая нагрузка (LoadProbe): "quads=N,px=P,mode=blend|a2c|opaque|point" — N квадов по P пикселей, приклеенных к голове; "sweep" — серия вариантов за один запуск (ProbeSweep); пусто — выкл.
 
 const SECTION := "render"
 const KEYS := ["msaa", "aa", "fringe", "layers", "scale", "foveation", "foveation_dynamic", "perf", "volumetric", "bench", "probe"]
