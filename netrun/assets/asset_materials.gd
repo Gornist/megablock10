@@ -152,7 +152,10 @@ const KNOBS := {
 	"point_keep": 1.0,       # доля точек ОКРУЖЕНИЯ (tier ≠ ""): 0 — убрать все (очки П5: вдали точки сильно мерцают); существа и аватары не трогаем
 	# «Лава-лампа» на горизонте и краях комнаты (очки П5, вариант 4'): дымка `*_mist` и вуаль `*_skirt` плывут пятнами; раньше их закрывали штрихи. Ручки независимы:
 	"mist_alpha": 1.0,       # множитель альфы дымки горизонта и края комнаты (`*_mist`); 0 — меши скрываются совсем
-	"veil_scale": 1.0,       # множитель альфы вуали плит (`*_skirt`); 0 — меши скрываются совсем
+	"veil_scale": 1.0,       # множитель альфы вуали плит (`*_skirt`); 0 — меши скрываются совсем; > 1 — усилить (до 4): очки П5 одобрили вуаль у плит потолка
+	# Завеса ВВЕРХ от верхней кромки плит пола и дальнего пола (вместо штрихов; квады в том же меше `*_skirt`, env._slab_rise). Выключена по умолчанию:
+	"tile_glow": 0.0,        # множитель альфы завесы вверх относительно вуали (0 — выкл.; 1 — как вуаль потолка; 2–4 — заметнее); вуаль вниз не затрагивает
+	"tile_glow_h": 1.0,      # высота завесы вверх относительно модельной (0,45 м в комнате, 1 м в дальнем полу): 0,5 — ниже, 2 — выше
 	"drift_static": false,   # true — остановить дрейф пятен дымки, вуали и стекла: статичная картинка вместо «лавы»
 }
 static var _tuned := {}
@@ -304,9 +307,15 @@ static func apply(root: Node, tier: String = "") -> void:
 				if bool(_k("drift_static")):
 					m.set_shader_parameter("anim", 0.0)
 			elif String(mi.name).ends_with("_skirt"):
-				if float(_k("veil_scale")) <= 0.0:
+				# меш с завесой вверх (у пола: второй UV-слой с высотой, env._slab_rise) прячем целиком только если выключены обе вуали; иначе гасим квады в шейдере
+				var am := mi.mesh as ArrayMesh
+				var has_rise: bool = am != null and (am.surface_get_format(s) & Mesh.ARRAY_FORMAT_TEX_UV2) != 0
+				if has_rise:
+					m.set_shader_parameter("rise_gain", float(_k("tile_glow")))
+					m.set_shader_parameter("rise_scale", float(_k("tile_glow_h")))
+				if float(_k("veil_scale")) <= 0.0 and not (has_rise and float(_k("tile_glow")) > 0.0):
 					mi.visible = false
-				elif float(_k("veil_scale")) < 1.0:
+				elif float(_k("veil_scale")) != 1.0:
 					m.set_shader_parameter("veil_scale", float(_k("veil_scale")))
 				if bool(_k("drift_static")):
 					m.set_shader_parameter("patch_drift", 0.0)

@@ -960,3 +960,57 @@ func test_asset_materials_knob_dust_reaches_solids_with_the_sprite_atlas() -> vo
 	AssetMaterials.apply(slab, "BASE")
 	assert_float(float(_mat_of(slab, "slab").get_shader_parameter("dust"))).is_equal_approx(1.0, 0.001)
 	AssetMaterials.reset_tuning()
+
+
+func _skirt_mesh(root: Node, mesh_name: String) -> MeshInstance3D:
+	for mi in _meshes(root):
+		if String(mi.name) == mesh_name:
+			return mi
+	return null
+
+
+func _max_y(mi: MeshInstance3D) -> float:
+	return mi.mesh.get_aabb().end.y
+
+
+func _has_uv2(mi: MeshInstance3D) -> bool:
+	return ((mi.mesh as ArrayMesh).surface_get_format(0) & Mesh.ARRAY_FORMAT_TEX_UV2) != 0
+
+
+func test_floor_skirt_mesh_carries_the_upward_curtain_and_the_ceiling_does_not() -> void:
+	# завеса вверх от верхней кромки плит пола — квады в том же меше *_skirt (второй слой прозрачности был бы четвёртым, предел 3), высота в UV2.x
+	for pair in [["floor", "floor_skirt", 0.5], ["far_floor", "far_floor_skirt", 1.05]]:
+		var root := _load("env", pair[0])
+		var sk := _skirt_mesh(root, pair[1])
+		assert_bool(sk != null).override_failure_message("нет меша %s у %s" % [pair[1], pair[0]]).is_true()
+		assert_bool(_has_uv2(sk)).override_failure_message("%s: нет высоты завесы в UV2" % pair[1]).is_true()
+		var top := _max_y(sk)
+		assert_bool(top > 0.1 and top <= float(pair[2])).override_failure_message("%s: верх завесы %.2f м вне 0,1…%.2f" % [pair[1], top, float(pair[2])]).is_true()
+	var ceiling := _load("env", "ceiling")
+	var csk := _skirt_mesh(ceiling, "ceiling_skirt")
+	assert_bool(csk != null and not _has_uv2(csk)).override_failure_message("у потолка вуаль прежняя, без завесы вверх").is_true()
+
+
+func test_tile_glow_knobs_drive_only_the_curtain_quads() -> void:
+	AssetMaterials.reset_tuning()
+	var dflt := _load("env", "far_floor")
+	AssetMaterials.apply(dflt, "BASE")
+	var sk := _skirt_mesh(dflt, "far_floor_skirt")
+	var m := sk.get_surface_override_material(0) as ShaderMaterial
+	assert_float(float(m.get_shader_parameter("rise_gain"))).override_failure_message("по умолчанию завеса выключена (rise_gain 0)").is_equal(0.0)
+	assert_float(float(m.get_shader_parameter("rise_scale"))).is_equal_approx(1.0, 0.001)
+	AssetMaterials.tune({"tile_glow": 2.5, "tile_glow_h": 1.5, "veil_scale": 2.0})
+	var tuned := _load("env", "far_floor")
+	AssetMaterials.apply(tuned, "BASE")
+	var tm := _skirt_mesh(tuned, "far_floor_skirt").get_surface_override_material(0) as ShaderMaterial
+	assert_float(float(tm.get_shader_parameter("rise_gain"))).is_equal_approx(2.5, 0.001)
+	assert_float(float(tm.get_shader_parameter("rise_scale"))).is_equal_approx(1.5, 0.001)
+	assert_float(float(tm.get_shader_parameter("veil_scale"))).override_failure_message("veil_scale > 1 усиливает вуаль (потолок одобрен очками)").is_equal_approx(2.0, 0.001)
+	AssetMaterials.tune({"veil_scale": 0.0})  # вуаль выключена, завеса вверх включена: меш пола остаётся, потолок скрывается целиком
+	var floor_root := _load("env", "far_floor")
+	AssetMaterials.apply(floor_root, "BASE")
+	assert_bool(_skirt_mesh(floor_root, "far_floor_skirt").visible).override_failure_message("в меше пола есть завеса вверх: скрывать его нельзя").is_true()
+	var ceiling := _load("env", "far_ceiling")
+	AssetMaterials.apply(ceiling, "BASE")
+	assert_bool(_skirt_mesh(ceiling, "far_ceiling_skirt").visible).override_failure_message("veil_scale=0: вуаль потолка скрыта").is_false()
+	AssetMaterials.reset_tuning()

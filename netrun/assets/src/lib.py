@@ -312,15 +312,23 @@ def skirt_set(name, quads, rgb):
     """«Вуаль» на боковой грани плиты: вертикальный квад (2 треугольника), яркий у кромки и гаснущий книзу. Роль материала shell_soft
     (в Godot имя меша `*_skirt` подменяет шейдер на skirt.gdshader: аддитивный, без записи глубины, без освещения). quads —
     [(верхний левый, верхний правый, вектор вниз, плотность слева, плотность справа)], плотность — альфа вершин вверху, внизу 0.
-    UV: u вдоль кромки 0…1, v вдоль высоты (после экспорта glTF в шейдере UV.y = 0 вверху, 1 внизу)."""
+    UV: u вдоль кромки 0…1, v вдоль высоты (после экспорта glTF в шейдере UV.y = 0 вверху, 1 внизу).
+    Необязательное шестое поле квада — высота завесы ВВЕРХ от верхней кромки плиты (env._slab_rise, вектор «вниз» тут направлен вверх), м: она пишется
+    в UV1.x всех четырёх вершин (в шейдере UV2.x > 0 — признак «завеса вверх»; skirt.gdshader: ручки tile_glow и tile_glow_h). Второй UV-слой создаётся
+    только если такие квады есть: остальные вуали остаются побайтно прежними."""
     bm = bmesh.new()
     uv = bm.loops.layers.uv.new("UV0")
+    uv1 = bm.loops.layers.uv.new("UV1") if any(len(q) > 5 for q in quads) else None
     dens = []  # плотность по вершинам: по четыре на квад в порядке создания (to_mesh сохраняет порядок)
-    for a, b, down, da, db in quads:
+    for q in quads:
+        a, b, down, da, db = q[:5]
+        rise_h = q[5] if len(q) > 5 else 0.0
         a, b, down = Vector(a), Vector(b), Vector(down)
         f = bm.faces.new([bm.verts.new(p) for p in (a, b, b + down, a + down)])
         for loop, t in zip(f.loops, ((0, 1), (1, 1), (1, 0), (0, 0))):
             loop[uv].uv = t
+            if uv1 is not None:
+                loop[uv1].uv = (rise_h, 0.0)
         dens += [da, db, 0.0, 0.0]
     me = bpy.data.meshes.new(name)
     bm.to_mesh(me)

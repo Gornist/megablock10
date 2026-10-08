@@ -35,12 +35,12 @@
 | `models/env/far_field.glb` | 0 / 100 | 114 / 140 | 91 / 320 | 0 | 2 | 10.76 × 3.5104 × 10.7 | points, streaks | — | floor | ок |
 | `models/env/far_field_b.glb` | 0 / 100 | 114 / 140 | 67 / 320 | 0 | 2 | 10.76 × 3.4001 × 10.7 | points, streaks | — | floor | ок |
 | `models/env/far_field_c.glb` | 0 / 100 | 114 / 140 | 63 / 320 | 0 | 2 | 10.76 × 3.4686 × 10.7 | points, streaks | — | floor | ок |
-| `models/env/far_floor.glb` | 608 / 1100 | 129 / 700 | 236 / 260 | 1 | 4 | 10.84 × 2.9529 × 10.8 | points, shell_soft, solid_dark, streaks | — | surface | ок |
-| `models/env/far_floor_b.glb` | 768 / 1100 | 123 / 700 | 232 / 260 | 1 | 4 | 10.84 × 2.9643 × 10.8 | points, shell_soft, solid_dark, streaks | — | surface | ок |
-| `models/env/far_floor_c.glb` | 640 / 1100 | 114 / 700 | 233 / 260 | 1 | 4 | 10.84 × 2.981 × 10.8 | points, shell_soft, solid_dark, streaks | — | surface | ок |
-| `models/env/floor.glb` | 252 / 450 | 26 / 170 | 177 / 200 | 1 | 4 | 1.782 × 0.95 × 1.75 | points, shell_soft, solid_dark, streaks | — | surface | ок |
-| `models/env/floor_b.glb` | 180 / 450 | 27 / 170 | 181 / 200 | 1 | 4 | 1.782 × 0.95 × 1.75 | points, shell_soft, solid_dark, streaks | — | surface | ок |
-| `models/env/floor_c.glb` | 216 / 450 | 26 / 170 | 180 / 200 | 1 | 4 | 1.782 × 0.95 × 1.75 | points, shell_soft, solid_dark, streaks | — | surface | ок |
+| `models/env/far_floor.glb` | 684 / 1100 | 129 / 700 | 236 / 260 | 1 | 4 | 10.84 × 3.9349 × 10.8 | points, shell_soft, solid_dark, streaks | — | surface | ок |
+| `models/env/far_floor_b.glb` | 864 / 1100 | 123 / 700 | 232 / 260 | 1 | 4 | 10.84 × 3.9238 × 10.8 | points, shell_soft, solid_dark, streaks | — | surface | ок |
+| `models/env/far_floor_c.glb` | 720 / 1100 | 114 / 700 | 233 / 260 | 1 | 4 | 10.84 × 3.944 × 10.8 | points, shell_soft, solid_dark, streaks | — | surface | ок |
+| `models/env/floor.glb` | 308 / 450 | 26 / 170 | 177 / 200 | 1 | 4 | 1.782 × 1.3943 × 1.75 | points, shell_soft, solid_dark, streaks | — | surface | ок |
+| `models/env/floor_b.glb` | 220 / 450 | 27 / 170 | 181 / 200 | 1 | 4 | 1.782 × 1.3489 × 1.75 | points, shell_soft, solid_dark, streaks | — | surface | ок |
+| `models/env/floor_c.glb` | 264 / 450 | 26 / 170 | 180 / 200 | 1 | 4 | 1.782 × 1.3928 × 1.75 | points, shell_soft, solid_dark, streaks | — | surface | ок |
 | `models/env/floor_clear.glb` | 0 / 300 | 58 / 170 | 0 / 200 | 0 | 1 | 1.782 × 0.1032 × 1.75 | points | — | surface | ок |
 | `models/env/floor_glass_16.glb` | 66 / 400 | 665 / 700 | 226 / 260 | 2 | 4 | 16.0336 × 0.9327 × 16 | points, shell_soft, streaks | — | slab | ок |
 | `models/env/floor_glass_8.glb` | 34 / 200 | 145 / 350 | 112 / 130 | 2 | 4 | 8.0331 × 0.9511 × 8 | points, shell_soft, streaks | — | slab | ок |

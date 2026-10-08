@@ -7,7 +7,10 @@ render_mode blend_add, unshaded, depth_draw_never, cull_disabled, fog_disabled;
 
 uniform float glow : hint_range(0.0, 4.0) = 1.0;
 uniform float veil_alpha : hint_range(0.0, 0.5) = 0.065;   // итоговая непрозрачность у кромки: «очень прозрачная»
-uniform float veil_scale : hint_range(0.0, 1.0) = 1.0;    // множитель итоговой альфы вуали (ручка veil_scale; 0 — меш скрывается совсем)
+uniform float veil_scale : hint_range(0.0, 4.0) = 1.0;    // множитель итоговой альфы вуали (ручка veil_scale; 0 — меш скрывается совсем; > 1 — усилить: очки П5 одобрили вуаль потолка)
+// Завеса ВВЕРХ от верхней кромки плит пола (квады с высотой в UV2.x, env._slab_rise): отдельные ручки, чтобы не трогать вуаль вниз.
+uniform float rise_gain : hint_range(0.0, 8.0) = 1.0;     // множитель альфы завесы вверх (ручка tile_glow); 0 — квады схлопываются, заливку не тратят
+uniform float rise_scale : hint_range(0.1, 3.0) = 1.0;    // высота завесы вверх относительно модельной (ручка tile_glow_h)
 uniform float falloff : hint_range(0.5, 4.0) = 2.4;      // крутизна затухания книзу: больше — вуаль плотнее прижата к кромке
 uniform float patch_amount : hint_range(0.0, 1.0) = 0.5;  // пятнистость вдоль грани (0 — ровная завеса)
 uniform float patch_scale : hint_range(0.5, 20.0) = 5.0;  // пятен на метр
@@ -27,6 +30,7 @@ uniform float far_end = 60.0;
 
 varying vec3 v_wp;
 varying float v_dist;
+varying float v_rise;   // 1 — квад завесы вверх (UV2.x > 0), 0 — обычная вуаль
 
 vec3 recolor(vec3 c) {
 	float mx = max(c.r, max(c.g, c.b));
@@ -35,8 +39,17 @@ vec3 recolor(vec3 c) {
 }
 
 void vertex() {
+	v_rise = UV2.x > 0.0 ? 1.0 : 0.0;
+	if (v_rise > 0.5 && UV.y > 0.5) {  // дальний край квада: высота = модельная (UV2.x, м) × rise_scale; основание у кромки плиты не двигается
+		VERTEX.y += (rise_scale - 1.0) * UV2.x;
+	}
 	v_wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	v_dist = -(MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).z;
+	if (v_rise > 0.5 && rise_gain <= 0.0) {
+		POSITION = vec4(2.0, 2.0, 2.0, 1.0);  // завеса выключена: квад вне экрана
+	} else {
+		POSITION = PROJECTION_MATRIX * MODELVIEW_MATRIX * vec4(VERTEX, 1.0);
+	}
 }
 
 void fragment() {
@@ -51,5 +64,5 @@ void fragment() {
 	float fade = 1.0 - smoothstep(fade_start, fade_end, v_dist);
 	vec3 col = mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount);
 	ALBEDO = col * glow * mix(1.0, far_gain, smoothstep(far_start, far_end, v_dist));
-	ALPHA = dens * veil_alpha * fade * intensity * veil_scale;
+	ALPHA = dens * veil_alpha * fade * intensity * mix(veil_scale, rise_gain, v_rise);
 }

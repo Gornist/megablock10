@@ -145,8 +145,15 @@ def check(rep):
     if rep["origin"] == "surface":
         if lo[1] < -depth or hi[1] < -0.01:
             bad.append(f"origin «surface»: min.y={lo[1]:.2f} (глубже {depth:g} м) или всё под полом, max.y={hi[1]:.2f}")
-        if hi[1] > 0.04:  # 4 см — размер точки на полу; выше — выступ над поверхностью, это коллизии
-            bad.append(f"origin «surface»: геометрия выше поверхности пола, max.y={hi[1]:.3f} (допуск 0.04, только точки)")
+        # завеса вверх от плит пола (`*_skirt` с TEXCOORD_1 — высотой в UV1.x, env._slab_rise): прозрачная, без коллизий, поднимается в комнату — её высота проверяется отдельно
+        rise_prims = [p for p in info["prims"] if str(p["mesh"]).endswith("_skirt") and "TEXCOORD_1" in p["attrs"]]
+        hi_solid = max([p["max"][1] for p in info["prims"] if p not in rise_prims and not str(p["mesh"]).startswith("beacon_")] or [hi[1]])
+        if hi_solid > 0.04:  # 4 см — размер точки на полу; выше — выступ над поверхностью, это коллизии
+            bad.append(f"origin «surface»: геометрия выше поверхности пола, max.y={hi_solid:.3f} (допуск 0.04, только точки)")
+        rise_lim = 1.05 if rep["name"].startswith("far_") else 0.5
+        for p in rise_prims:
+            if p["max"][1] > rise_lim:
+                bad.append(f"{p['mesh']}: завеса вверх {p['max'][1]:.2f} м > {rise_lim:g} м над поверхностью пола")
         if abs(mid[0]) > 0.05 or abs(mid[2]) > 0.05:
             bad.append(f"origin не в центре плитки: центр xz=({mid[0]:.3f},{mid[2]:.3f})")
     # «ceiling» — потолок, зеркало «surface»: origin на плоскости потолка, геометрия уходит вверх (до 1 м) и не выступает вниз в комнату
