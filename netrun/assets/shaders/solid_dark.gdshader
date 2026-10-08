@@ -40,6 +40,9 @@ vec3 recolor(vec3 c) {
 	return mix(tint.rgb * mx, c, mn / max(mx, 0.0001));
 }
 
+#include "volume_dust.gdshaderinc"
+
+varying vec3 v_nw;     // мировая нормаль (нужна пыли)
 varying vec3 v_wp;
 varying vec2 v_uv;
 varying vec2 v_hs;
@@ -62,6 +65,7 @@ float vnoise(vec3 p) {
 
 void vertex() {
 	v_wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	v_nw = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 	v_uv = UV;
 	v_hs = UV2;
 	v_top = NORMAL.y;
@@ -93,6 +97,9 @@ void fragment() {
 		float g = texture(grid_tex, v_wp.xz - grid_origin).r;
 		vec3 gc = tint_amount > 0.0 ? tint.rgb : vec3(0.094, 0.9, 1.0);
 		col += gc * g * grid_alpha;
+	}
+	if (dust > 0.0) {  // «волюметрик из частиц»: пыль глитч-блоков по мировым координатам (volume_dust.gdshaderinc)
+		col += volume_dust_color(v_wp, normalize(v_nw), normalize(CAMERA_POSITION_WORLD - v_wp), v_dist, PROJECTION_MATRIX[1][1] * VIEWPORT_SIZE.y);
 	}
 	ALBEDO = col;
 }
