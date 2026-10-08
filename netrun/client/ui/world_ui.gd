@@ -19,9 +19,11 @@ const WRIST_DECK_POS := Vector3(0, -(WRIST_DECK_LENGTH_M * 0.5 + WRIST_DECK_GAP 
 ## Trace — за дальним (к локтю) краем деки.
 const WRIST_TRACE_POS := Vector3(0, WRIST_DECK_POS.y - (WRIST_DECK_LENGTH_M * 0.5 + 0.045), 0)
 const FLAT_TRACE_POS := Vector3(0, 0.14, 0)
-## Кольцо-таймер такта — ребёнок индикатора trace: в плоской сборке и на контроллере справа от полосы, на запястье — за ней, к локтю.
+## Кольцо-таймер такта — ребёнок индикатора trace: в плоской сборке и на контроллере справа от полосы, на запястье — над декой (за её верхним краем в осях
+## самой деки, между ней и индикатором его не видно) на RING_ABOVE_GAP, чуть выше плоскости деки на RING_LIFT: взгляд на деку захватывает и кольцо.
 const RING_POS_FLAT := Vector3(0.14, 0.0, 0.0)
-const RING_POS_WRIST := Vector3(0.0, -0.05, 0.0)
+const RING_ABOVE_GAP := 0.025
+const RING_LIFT := 0.004
 ## На время сетки заряда (К6) дека на запястье увеличивается до этого масштаба (32 × 24 см): клетка 7×7 не мельче 2,8 см вместо 2,1; растёт за ZOOM_PER_SEC в секунду,
 ## чтобы не прыгать перед глазами.
 const CHARGE_DECK_SCALE := 1.0
@@ -108,6 +110,12 @@ static func wrist_deck_pos(scale: float) -> Vector3:
 	return Vector3(0, -(DeckPanel.PANEL_WIDTH_M * scale * 0.5 + WRIST_DECK_GAP - HandView.WRIST_ANCHOR_ELBOW), 0)
 
 
+## Кольцо такта на запястье при масштабе деки scale — в осях индикатора trace: над верхним краем деки (её «верх» с учётом поворота WRIST_DECK_ROLL_DEG).
+static func wrist_ring_pos(scale: float) -> Vector3:
+	var up := Basis(Vector3.BACK, deg_to_rad(WRIST_DECK_ROLL_DEG)) * Vector3(0.0, DeckPanel.PANEL_HEIGHT_M * scale * 0.5 + RING_ABOVE_GAP, RING_LIFT)
+	return wrist_deck_pos(scale) - wrist_trace_pos(scale) + up
+
+
 ## Trace — за дальним краем деки при масштабе scale.
 static func wrist_trace_pos(scale: float) -> Vector3:
 	return Vector3(0, wrist_deck_pos(scale).y - (DeckPanel.PANEL_WIDTH_M * scale * 0.5 + 0.045), 0)
@@ -139,7 +147,7 @@ func _place() -> void:
 			deck.rotation = Vector3(0, 0, deg_to_rad(WRIST_DECK_ROLL_DEG))
 			deck.position = WRIST_DECK_POS
 			trace.position = WRIST_TRACE_POS
-			tick_ring.position = RING_POS_WRIST
+			tick_ring.position = wrist_ring_pos(WRIST_DECK_SCALE)
 			_deck_zoom = WRIST_DECK_SCALE
 		elif rig.xr_active:
 			_anchor.transform = Transform3D(Basis.from_euler(Vector3(-PI / 3, 0, 0)), Vector3(0, 0.05, -0.1))
@@ -171,3 +179,4 @@ func _update_charge_zoom(delta: float) -> void:
 	deck.scale = Vector3.ONE * _deck_zoom
 	deck.position = wrist_deck_pos(_deck_zoom)
 	trace.position = wrist_trace_pos(_deck_zoom)
+	tick_ring.position = wrist_ring_pos(_deck_zoom)

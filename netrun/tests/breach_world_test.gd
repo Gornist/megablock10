@@ -488,8 +488,9 @@ func test_teleport_near_a_vault_lands_on_the_pad_on_the_server_too() -> void:
 	_server.teleport(S1, Vector3(-1.0, 0, -5.0))
 	await get_tree().create_timer(0.1).timeout
 	# клиент просит точку в 0,9 м от хранилища сбоку — сервер ставит на площадку
-	p.net.request_teleport(Vector3(-1.0 + 0.9, 0, -9.0 + 0.5))
-	var pad := NodeLayout.vault_pad(NodeLayout.SHARD_SLOTS[0])
+	var slot: Vector3 = NodeLayout.SHARD_SLOTS[0]
+	p.net.request_teleport(Vector3(slot.x + 0.9, 0, slot.z + 0.5))
+	var pad := NodeLayout.vault_pad(slot)
 	assert_bool(await _wait_for(func(): return NodeLayout.flat_distance(_server.get_avatar(S1).position, pad) < 0.05)).is_true()
 
 
