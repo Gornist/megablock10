@@ -79,3 +79,49 @@ vec3 volume_dust_color(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px) {
 	vec3 avg = dust_color.rgb * dust_mean * dens * 2.0;
 	return (particle * sharp + avg * (1.0 - sharp)) * dust * far_k;
 }
+
+// «Облако без основы» (cloud_dark.gdshader): те же ячейки и атлас, но результат — ЦВЕТ и ПОКРЫТИЕ (a). Пиксель, где частицы нет, не рисуется (alpha_to_coverage при MSAA: дыры мягкие, глубина пишется,
+// сортировки и аддитивной перерисовки нет — за дырами видны фон и дальние объекты, как у облака точек на референсах). edge 0…1 (запечённый вес ребра или линии сетки) поднимает плотность до сплошного скопления.
+// Ячейки мельче ~1,5 px дают дробное покрытие dust_cover_avg·плотность (MSAA сам превращает его в долю сэмплов): без мерцания.
+uniform float dust_cover_avg : hint_range(0.0, 1.0) = 0.3;      // средняя доля покрытия кадра спрайта (по атласу ≈ 0,2–0,35)
+uniform float dust_edge_gain : hint_range(0.0, 4.0) = 1.4;      // насколько вес ребра поднимает плотность (ребро = скопление частиц)
+
+vec4 volume_cloud(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px, float edge) {
+	vec3 an = abs(nw);
+	vec2 plane;
+	float axis;
+	if (an.y >= an.x && an.y >= an.z) {
+		plane = vec2(wp.x, wp.z * 0.5);
+		axis = 0.0;
+	} else if (an.x >= an.z) {
+		plane = vec2(wp.z, wp.y * 0.5);
+		axis = 1.0;
+	} else {
+		plane = vec2(wp.x, wp.y * 0.5);
+		axis = 2.0;
+	}
+	vec2 coord = plane / dust_cell;
+	vec2 id = floor(coord);
+	vec2 f = fract(coord);
+	float h = dust_hash(vec3(id, axis));
+	float h2 = dust_hash(vec3(id.yx + 17.0, axis));
+	float up = clamp(nw.y * 0.5 + 0.5, 0.0, 1.0);
+	float graze = pow(1.0 - clamp(abs(dot(nw, vdir)), 0.0, 1.0), 2.0);
+	float far_k = 1.0 - smoothstep(dust_far_start, dust_far_end, dist);
+	float patch_k = mix(1.0, smoothstep(0.25, 0.75, dust_noise(wp * dust_patch_scale + vec3(0.0, axis * 7.0, 0.0))), dust_patch);
+	float dens = clamp(dust_density * patch_k * (0.55 + 0.45 * up) * (1.0 + 0.7 * graze) + edge * dust_edge_gain, 0.0, 1.0);
+	float px_world = 2.0 * max(dist, 0.1) / max(abs(proj_px), 1.0);
+	float sharp = smoothstep(0.7, 2.0, dust_cell / px_world);
+	if (sharp < 0.02) {  // ячейка мельче ~0,7 px: только средняя засветка — без выборки текстуры (дальние плиты и потолок: основная масса фрагментов)
+		return vec4(mix(dust_color.rgb, dust_hot.rgb, edge * 0.5) * dust, clamp(dens * dust_cover_avg * far_k, 0.0, 1.0));
+	}
+	float n = glitch_cells.x * glitch_cells.y;
+	float frame = floor(mod(TIME * dust_fps + h * n, n));
+	vec2 cellxy = vec2(mod(frame, glitch_cells.x), floor(frame / glitch_cells.x));
+	vec2 uv = (cellxy + f) / glitch_cells;
+	float s = textureGrad(glitch_tex, uv, dFdx(coord) / glitch_cells, dFdy(coord) / glitch_cells).r;
+	float present = step(h2, dens);
+	float a = mix(dens * dust_cover_avg, s * present, sharp);
+	vec3 base = mix(dust_color.rgb, dust_hot.rgb, smoothstep(0.55, 1.0, s) * step(0.82, h) + edge * 0.5);
+	return vec4(base * dust, clamp(a * far_k, 0.0, 1.0));
+}
