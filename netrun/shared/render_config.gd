@@ -20,11 +20,12 @@ extends RefCounted
 ## perf = "off"             ; счётчик кадра: "on" — раз в 5 с строка `[perf]` (FPS, среднее / максимум времени кадра, GPU-время) в журнал клиента и logcat;
 ##                           ; "diag" — то же плюс XrDiag: через 8 с строка `[xr-diag]` (фовеация, VRS, MSAA, размеры цели на уровне OpenXR) и PNG кадра вида в user://
 ## volumetric = "off"       ; объекты Сети облаком частиц (VolumeRegistry): "off" (по умолчанию), "all" или модули через запятую ("ice,vault"); нужен файл `.points` у модели
-## bench = ""               ; воспроизводимый замер (BenchRun): имя пресета EyePresets (entry, north, south, vault_w, …) — через 15 с риг встаёт в его позу, 3 прогона по 60 с,
-##                           ; строка `[bench] ИТОГ` с медианой fps / времени кадра / GPU; голову во время замера не вертеть; пусто — выкл.
+## bench = ""               ; воспроизводимый замер (BenchRun): имя пресета EyePresets (entry, north, south, vault_w, …) — через 5 с риг встаёт в его позу, 3 окна по 10 с,
+##                           ; строка `[bench] ИТОГ` с медианой и min/max окон по fps / времени кадра / GPU; голову во время замера не вертеть; пусто — выкл.
+## probe = ""               ; синтетическая нагрузка (LoadProbe): "quads=N,px=P,mode=blend|a2c|opaque|point" — N квадов по P пикселей, приклеенных к голове; "sweep" — серия вариантов за один запуск (ProbeSweep); пусто — выкл.
 
 const SECTION := "render"
-const KEYS := ["msaa", "aa", "fringe", "layers", "scale", "foveation", "foveation_dynamic", "perf", "volumetric", "bench"]
+const KEYS := ["msaa", "aa", "fringe", "layers", "scale", "foveation", "foveation_dynamic", "perf", "volumetric", "bench", "probe"]
 const VOLUMETRIC_DEFAULT := "off"
 const PERF_VALUES := ["on", "off", "diag"]
 const PERF_DEFAULT := "off"
@@ -55,6 +56,8 @@ var perf: String = PERF_DEFAULT
 var volumetric: String = VOLUMETRIC_DEFAULT
 ## Пресет воспроизводимого замера (BenchRun) или "" — выкл.
 var bench: String = ""
+## Спецификация синтетической нагрузки (LoadProbe) или "" — выкл.
+var probe: String = ""
 var scale: float = SCALE_DEFAULT
 var foveation: int = FOVEATION_DEFAULT
 var foveation_dynamic: bool = false
@@ -121,6 +124,11 @@ static func from_config(cfg: ConfigFile) -> RenderConfig:
 					c.bench = b
 				else:
 					c.warnings.append("bench: нет пресета «%s» (есть: %s) — замер выключен" % [b, ", ".join(EyePresets.names())])
+			"probe":
+				var spec := LoadProbe.parse(str(v))
+				c.probe = str(v).strip_edges().to_lower() if spec["on"] else ""
+				for w in spec["warnings"]:
+					c.warnings.append(w)
 			"volumetric":
 				if v is String:
 					c.volumetric = (v as String).strip_edges().to_lower()
@@ -255,5 +263,5 @@ func apply_xr(iface: Object) -> PackedStringArray:
 
 ## Поля строки журнала `render …` (MbLog).
 func log_fields() -> Dictionary:
-	return {"msaa": msaa, "aa": aa, "fringe": fringe, "layers": layers, "perf": perf, "volumetric": volumetric, "bench": bench if bench != "" else "off", "scale": scale, "foveation": foveation, "dynamic": foveation_dynamic,
+	return {"msaa": msaa, "aa": aa, "fringe": fringe, "layers": layers, "perf": perf, "volumetric": volumetric, "bench": bench if bench != "" else "off", "probe": probe if probe != "" else "off", "scale": scale, "foveation": foveation, "dynamic": foveation_dynamic,
 		"file": file_path if not file_path.is_empty() else "none"}

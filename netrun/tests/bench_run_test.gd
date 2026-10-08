@@ -50,3 +50,16 @@ func test_конфиг_bench_пресет_пусто_и_неизвестный()
 	var c := RenderConfig.from_config(cfg)
 	assert_str(c.bench).is_equal("")
 	assert_int(c.warnings.size()).is_equal(1)
+
+
+func test_итог_содержит_разброс_окон() -> void:
+	var runs := [
+		{"fps": 90.0, "avg_ms": 11.0, "max_ms": 15.0, "gpu_avg_ms": 8.0},
+		{"fps": 90.0, "avg_ms": 11.5, "max_ms": 16.0, "gpu_avg_ms": 9.0},
+		{"fps": 80.0, "avg_ms": 12.5, "max_ms": 20.0, "gpu_avg_ms": 11.0}]
+	var m := BenchRun.median_result(runs)
+	assert_float(m["gpu_avg_ms_min"]).is_equal(8.0)
+	assert_float(m["gpu_avg_ms_max"]).is_equal(11.0)
+	assert_float(m["avg_ms_min"]).is_equal(11.0)
+	assert_float(m["avg_ms_max"]).is_equal(12.5)
+	assert_str(BenchRun.format_result(m)).contains("gpu_min=8.0 gpu_max=11.0")
