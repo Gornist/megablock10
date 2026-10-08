@@ -70,6 +70,10 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	render_cfg.apply_fringe(config_paths)
 	scene = preload("res://client/rig_test_scene.gd").new()
 	add_child(scene)
+	if RenderConfig.perf_enabled(render_cfg.perf):   # счётчик кадра для стенда: [render] perf = "on"
+		var perf := FramePerf.new()
+		add_child(perf)
+		perf.reported.connect(func(s: Dictionary): log_file.log("perf", s))
 	scene.rig.xr_failed.connect(func(reason: String): log_file.log("xr", {"enabled": false, "reason": reason}))
 	scene.rig.away_event.connect(func(kind: String, source: String, sec: float): log_file.log("away." + kind, {"source": source, "sec": snappedf(sec, 0.1)}))
 	scene.rig.recentered.connect(func(xr: bool): log_file.log("rig.recenter", {"xr": xr}))

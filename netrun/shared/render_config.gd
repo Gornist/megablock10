@@ -17,9 +17,12 @@ extends RefCounted
 ##                           ; (1,25 роняет частоту до 60 Гц)
 ## foveation = 2             ; фовеация (OpenXR): 0 выкл., 1 низкая, 2 средняя (по умолчанию, бесплатна), 3 высокая
 ## foveation_dynamic = false ; динамическая фовеация (уровень подбирается по нагрузке)
+## perf = "off"             ; счётчик кадра: "on" — раз в 5 с строка `[perf]` (FPS, среднее / максимум времени кадра, GPU-время) в журнал клиента и logcat
 
 const SECTION := "render"
-const KEYS := ["msaa", "aa", "fringe", "layers", "scale", "foveation", "foveation_dynamic"]
+const KEYS := ["msaa", "aa", "fringe", "layers", "scale", "foveation", "foveation_dynamic", "perf"]
+const PERF_VALUES := ["on", "off"]
+const PERF_DEFAULT := "off"
 const AA_VALUES := ["none", "fxaa"]
 const AA_DEFAULT := "none"
 const FRINGE_VALUES := ["on", "off"]
@@ -41,6 +44,8 @@ var fringe: String = FRINGE_DEFAULT
 var fringe_set := false
 ## Панели слоями композитора OpenXR: "on" | "off" (по умолчанию выкл.).
 var layers: String = LAYERS_DEFAULT
+## Счётчик кадра (FramePerf): "on" | "off".
+var perf: String = PERF_DEFAULT
 var scale: float = SCALE_DEFAULT
 var foveation: int = FOVEATION_DEFAULT
 var foveation_dynamic: bool = false
@@ -96,6 +101,11 @@ static func from_config(cfg: ConfigFile) -> RenderConfig:
 					c.layers = (v as String).to_lower()
 				else:
 					c.warnings.append("layers: допустимо «on», «off» или «behind», получено «%s» — оставлено «%s»" % [v, c.layers])
+			"perf":
+				if v is String and (v as String).to_lower() in PERF_VALUES:
+					c.perf = (v as String).to_lower()
+				else:
+					c.warnings.append("perf: допустимо «on» или «off», получено «%s» — оставлено «%s»" % [v, c.perf])
 			"scale":
 				var n: Variant = _number(v)
 				if n != null and n >= SCALE_MIN and n <= SCALE_MAX:
@@ -166,6 +176,11 @@ static func layers_enabled(s: String) -> bool:
 	return s == "on" or s == "behind"
 
 
+## Счётчик кадра включён в конфиге?
+static func perf_enabled(s: String) -> bool:
+	return s == "on"
+
+
 ## Слои позади сцены (руки и луч поверх панели)?
 static func layers_behind(s: String) -> bool:
 	return s == "behind"
@@ -215,5 +230,5 @@ func apply_xr(iface: Object) -> PackedStringArray:
 
 ## Поля строки журнала `render …` (MbLog).
 func log_fields() -> Dictionary:
-	return {"msaa": msaa, "aa": aa, "fringe": fringe, "layers": layers, "scale": scale, "foveation": foveation, "dynamic": foveation_dynamic,
+	return {"msaa": msaa, "aa": aa, "fringe": fringe, "layers": layers, "perf": perf, "scale": scale, "foveation": foveation, "dynamic": foveation_dynamic,
 		"file": file_path if not file_path.is_empty() else "none"}
