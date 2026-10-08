@@ -471,7 +471,18 @@ func test_grid_modules_fit_the_cell() -> void:
 
 func test_floor_never_rises_above_the_floor_and_ceiling_never_drops_below_the_ceiling() -> void:
 	for f in ["floor", "floor_b", "floor_c"]:
-		assert_float(_aabb(_load("env", f)).end.y).override_failure_message(f).is_less(0.05)
+		# твёрдая часть и штрихи — не выше пола; прозрачная завеса вверх от плит (меш *_skirt с UV2, env._slab_rise) в этот габарит не входит, её высота — ниже
+		var root := _load("env", f)
+		var solid := AABB()
+		var first := true
+		for mi in _meshes(root):
+			if String(mi.name).ends_with("_skirt") and ((mi.mesh as ArrayMesh).surface_get_format(0) & Mesh.ARRAY_FORMAT_TEX_UV2) != 0:
+				assert_float((mi.transform * mi.get_aabb()).end.y).override_failure_message("%s: завеса вверх выше 0,5 м" % f).is_less(0.5)
+				continue
+			var b: AABB = mi.transform * mi.get_aabb()
+			solid = b if first else solid.merge(b)
+			first = false
+		assert_float(solid.end.y).override_failure_message(f).is_less(0.05)
 	for c in ["ceiling", "ceiling_b", "ceiling_c"]:
 		assert_float(_aabb(_load("env", c)).position.y).override_failure_message(c).is_greater(-0.05)
 
