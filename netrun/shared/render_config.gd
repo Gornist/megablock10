@@ -17,11 +17,12 @@ extends RefCounted
 ##                           ; (1,25 роняет частоту до 60 Гц)
 ## foveation = 2             ; фовеация (OpenXR): 0 выкл., 1 низкая, 2 средняя (по умолчанию, бесплатна), 3 высокая
 ## foveation_dynamic = false ; динамическая фовеация (уровень подбирается по нагрузке)
-## perf = "off"             ; счётчик кадра: "on" — раз в 5 с строка `[perf]` (FPS, среднее / максимум времени кадра, GPU-время) в журнал клиента и logcat
+## perf = "off"             ; счётчик кадра: "on" — раз в 5 с строка `[perf]` (FPS, среднее / максимум времени кадра, GPU-время) в журнал клиента и logcat;
+##                           ; "diag" — то же плюс XrDiag: через 8 с строка `[xr-diag]` (фовеация, VRS, MSAA, размеры цели на уровне OpenXR) и PNG кадра вида в user://
 
 const SECTION := "render"
 const KEYS := ["msaa", "aa", "fringe", "layers", "scale", "foveation", "foveation_dynamic", "perf"]
-const PERF_VALUES := ["on", "off"]
+const PERF_VALUES := ["on", "off", "diag"]
 const PERF_DEFAULT := "off"
 const AA_VALUES := ["none", "fxaa"]
 const AA_DEFAULT := "none"
@@ -105,7 +106,7 @@ static func from_config(cfg: ConfigFile) -> RenderConfig:
 				if v is String and (v as String).to_lower() in PERF_VALUES:
 					c.perf = (v as String).to_lower()
 				else:
-					c.warnings.append("perf: допустимо «on» или «off», получено «%s» — оставлено «%s»" % [v, c.perf])
+					c.warnings.append("perf: допустимо «on», «off» или «diag», получено «%s» — оставлено «%s»" % [v, c.perf])
 			"scale":
 				var n: Variant = _number(v)
 				if n != null and n >= SCALE_MIN and n <= SCALE_MAX:
@@ -178,7 +179,12 @@ static func layers_enabled(s: String) -> bool:
 
 ## Счётчик кадра включён в конфиге?
 static func perf_enabled(s: String) -> bool:
-	return s == "on"
+	return s == "on" or s == "diag"
+
+
+## Диагностика XR (XrDiag: состояние OpenXR/VRS/MSAA и PNG кадра вида) включена?
+static func perf_diag(s: String) -> bool:
+	return s == "diag"
 
 
 ## Слои позади сцены (руки и луч поверх панели)?
