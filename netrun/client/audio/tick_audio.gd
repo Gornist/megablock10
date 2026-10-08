@@ -11,7 +11,12 @@ var kind := ""
 var age := 0.0
 var pulses := 0   ## сколько пульсов было (для тестов и журнала)
 var clicks_made := 0
+## Стингеры состояний Стража («?» / «!» / «…», IceStingers): сколько раз играл каждый вид; alarm — тревожный слой на пульсе (какой-то ICE в Поиске).
+var stingers := IceStingers.new()
+var stings := {}
+var alarm := false
 
+var _last_n := -1
 var _remote: RemoteTracks
 var _rig: Node3D
 var _player: AudioStreamPlayer
@@ -47,6 +52,12 @@ func pulse() -> void:
 	_start("pulse")
 
 
+## Стингер состояния Стража (IceStingers.KIND_*) вместо пульса этого такта: тот же голос, звук и значок над ICE приходят в один кадр.
+func sting(sting_kind: String) -> void:
+	stings[sting_kind] = int(stings.get(sting_kind, 0)) + 1
+	_start(sting_kind)
+
+
 func click() -> void:
 	clicks_made += 1
 	_start("click")
@@ -69,9 +80,21 @@ func poll(delta: float, local_now: float) -> void:
 	var tk := _remote.tick_info()
 	if tk.is_empty():
 		beat.reset()
+		stingers.reset()
+		_last_n = -1
+		alarm = false
 		return
+	var s := ""
+	var n := int(tk.get("n", -1))
+	if n != _last_n:   # новый такт: переходы стадий ICE с прошлого (первый снимок — без звука, только запомнить)
+		_last_n = n
+		s = stingers.observe(_remote.intents(), n)
+		alarm = IceStingers.any_search(_remote.intents())
 	if beat.observe(tk):
-		pulse()
+		if s != "":
+			sting(s)
+		else:
+			pulse()
 	var cell := NodeGrid.cell_of(_rig.global_position)
 	var frac := TickBeat.window_fraction(tk, _remote.clock.server_time(local_now))
 	var soon := TickBeat.ice_steps_soon(_remote.intents(), cell)
@@ -89,7 +112,7 @@ func _voice(delta: float) -> void:
 		_synth.fill(_playback)
 		return
 	age += delta
-	var p := AudioParams.tick_params(kind, age, settings)
+	var p := AudioParams.tick_params(kind, age, settings, alarm)
 	if not p["active"]:
 		kind = ""
 		_synth.gain = 0.0

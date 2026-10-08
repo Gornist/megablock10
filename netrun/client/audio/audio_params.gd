@@ -48,12 +48,50 @@ static func flatline_params(t: float, settings: Dictionary = AudioSettings.DEFAU
 
 ## Звук такта через age секунд после начала → {active, hz, volume_db, gain}. kind: "pulse" (тихий пульс на каждом такте) или "click" (щелчок тиканья
 ## перед шагом ICE): тон и громкость из settings["tick"], огибающая убывает до нуля за pulse_sec / click_sec. Неизвестный kind — тишина.
-static func tick_params(kind: String, age: float, settings: Dictionary = AudioSettings.DEFAULTS) -> Dictionary:
+## Стингеры состояний ICE — kind "q" («?»), "alert" («!»), "lost" («…»); alarm — тревожный слой на пульсе (пока ICE в Поиске).
+static func tick_params(kind: String, age: float, settings: Dictionary = AudioSettings.DEFAULTS, alarm := false) -> Dictionary:
 	var t: Dictionary = settings["tick"]
+	if kind == "q" or kind == "alert" or kind == "lost":
+		return _sting_params(kind, age, t)
 	if kind != "pulse" and kind != "click":
 		return {"active": false, "hz": 0.0, "volume_db": -80.0, "gain": 0.0}
+	if alarm and kind == "pulse":
+		var p := tick_params(kind, age, settings)
+		p["hz"] = float(p["hz"]) * float(t["alarm_hz_mult"])
+		if p["active"]:
+			p["volume_db"] = float(p["volume_db"]) + float(t["alarm_db"])
+		return p
 	var dur := float(t[kind + "_sec"])
 	if age < 0.0 or age >= dur:
 		return {"active": false, "hz": float(t[kind + "_hz"]), "volume_db": -80.0, "gain": 0.0}
 	var left := 1.0 - age / dur
 	return {"active": true, "hz": float(t[kind + "_hz"]), "volume_db": float(t[kind + "_db"]), "gain": left * left}
+
+
+## Стингер: громкость = pulse_db + смещение вида; огибающая — квадрат остатка. «?» — две ноты (q_hz, затем q_hz2), «!» — короткий резкий тон alert_hz
+## и низкий удар alert_low_hz → alert_low_end_hz до конца alert_sec, «…» — тон скользит вниз lost_hz → lost_end_hz.
+static func _sting_params(kind: String, age: float, t: Dictionary) -> Dictionary:
+	var dur := float(t[kind + "_sec"])
+	var db := float(t["pulse_db"]) + float(t[kind + "_db"])
+	if age < 0.0 or age >= dur:
+		return {"active": false, "hz": 0.0, "volume_db": -80.0, "gain": 0.0}
+	var hz := 0.0
+	var left := 1.0 - age / dur
+	var gain := left * left
+	match kind:
+		"q":
+			var half := dur * 0.5
+			var second := age >= half
+			hz = float(t["q_hz2"]) if second else float(t["q_hz"])
+			var local := (age - half) / half if second else age / half
+			gain = (1.0 - local) * (1.0 - local)   # каждая нота гаснет сама
+		"alert":
+			var hit := float(t["alert_hit_sec"])
+			if age < hit:
+				hz = float(t["alert_hz"])
+				gain = 1.0 - age / hit * 0.4
+			else:
+				hz = lerpf(float(t["alert_low_hz"]), float(t["alert_low_end_hz"]), (age - hit) / maxf(dur - hit, 0.001))
+		"lost":
+			hz = lerpf(float(t["lost_hz"]), float(t["lost_end_hz"]), age / dur)
+	return {"active": true, "hz": hz, "volume_db": db, "gain": gain}
