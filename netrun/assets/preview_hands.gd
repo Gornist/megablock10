@@ -21,6 +21,8 @@ func _ready() -> void:
 			HandView.glitch_sprite = false
 		elif a.begins_with("--glitch-scale="):
 			HandView.glitch_scale = float(a.substr(15))
+		elif a.begins_with("--glitch-gain="):
+			HandView.glitch_gain = float(a.substr(14))
 		elif a.begins_with("--only="):
 			_only = a.substr(7).split(",")
 	DirAccess.make_dir_recursive_absolute(_out)

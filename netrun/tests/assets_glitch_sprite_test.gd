@@ -78,6 +78,9 @@ func test_hands_use_the_glitch_sprite_by_default_and_can_switch_it_off() -> void
 	var m := v.material()
 	assert_float(float(m.get_shader_parameter("glitch_mix"))).is_equal(1.0)
 	assert_object(m.get_shader_parameter("glitch_tex")).is_same(GlitchSprite.texture())
+	# размер по очкам П5: вполовину от исходного (1,0), яркость компенсирует меньшую площадь
+	assert_float(float(m.get_shader_parameter("glitch_scale"))).is_equal_approx(0.5, 0.001)
+	assert_float(float(m.get_shader_parameter("intensity"))).is_equal_approx(1.8, 0.001)
 	HandView.glitch_sprite = false
 	var off := HandView.new(false)
 	auto_free(off)
