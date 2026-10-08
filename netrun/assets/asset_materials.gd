@@ -15,6 +15,7 @@ const SHADERS := {
 
 ## Вуаль на гранях плит (меши `*_skirt` в floor, ceiling и far_*): в .glb у неё материал-роль shell_soft, а шейдер по имени меша — этот.
 const SKIRT_SHADER := preload("res://assets/shaders/skirt.gdshader")
+const CLOUD_SHADER := preload("res://assets/shaders/cloud_dark.gdshader")  # «облако без основы» (прототип, ручка cloud)
 ## Сплошная дымка горизонта (меш `horizon_mist` в env/horizon_band): тоже роль shell_soft, шейдер по имени меша.
 const HAZE_SHADER := preload("res://assets/shaders/haze.gdshader")
 ## Ореол-«капля» маяка предмета (меш `beacon_halo` в узле Beacon у шарда и токена): роль shell_soft, шейдер по имени меша.
@@ -143,6 +144,8 @@ const KNOBS := {
 	"dust": 0.0,             # яркость пыли (0 — выкл.; 1 — ориентир). Рёбра света остаются: гасить их — edge_glow и fringe_on
 	"dust_cell": 0.025,      # ширина ячейки, м (высота вдвое больше); на глаз Pico 4 на 3 м ≈ 9 px
 	"dust_density": 0.8,     # доля ячеек с частицей на ровной грани вблизи (с пятнами dust_patch: проплешины и сгущения)
+	"cloud": 0.0,            # ПРОТОТИП «облако без основы» (владелец 08.10): 0 — выкл.; 1 — грани solid_dark становятся частицами с дырами (alpha_to_coverage, нужен MSAA; яркость как dust); см. cloud_dark.gdshader
+	"cloud_edge_mix": 0.35,  # доля цвета неона у частиц рёбер/линий сетки (владелец: неона меньше)
 	# Рябь «эквалайзеров» (штрихи окружения, только при tier != ""; существа и аватары не трогаем). Меры независимы:
 	"streak_far_min": 1.0,   # яркость штрихов на дистанции ≥ streak_far_end (1 — не гасить; 0,3 — ориентир), как кромка плит
 	"streak_far_start": 8.0,
@@ -428,6 +431,17 @@ static func apply(root: Node, tier: String = "") -> void:
 					if String(mi.name).ends_with(suffix):
 						for k in FLOOR_V[fv][suffix]:
 							m.set_shader_parameter(k, FLOOR_V[fv][suffix][k])
+			if src.resource_name == "solid_dark" and float(_k("cloud")) > 0.0 and String(mi.name) != "slab_seams":  # прототип «облако без основы»: частицы с дырами вместо тёмной грани (нужен MSAA)
+				m.shader = CLOUD_SHADER
+				m.next_pass = null
+				m.set_shader_parameter("glitch_tex", GlitchSprite.texture())
+				m.set_shader_parameter("dust", float(_k("cloud")))
+				m.set_shader_parameter("dust_cell", float(_k("dust_cell")))
+				m.set_shader_parameter("dust_density", float(_k("dust_density")))
+				m.set_shader_parameter("edge_mix", float(_k("cloud_edge_mix")))
+				if String(mi.name) == "slab" and float(_k("floor_grid")) > 0.0:
+					m.set_shader_parameter("grid_tex", _grid_texture())
+					m.set_shader_parameter("grid_alpha", float(_k("floor_grid")))
 			mi.set_surface_override_material(s, m)
 
 
