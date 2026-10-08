@@ -1025,3 +1025,25 @@ func test_tile_glow_knobs_drive_only_the_curtain_quads() -> void:
 	AssetMaterials.apply(ceiling, "BASE")
 	assert_bool(_skirt_mesh(ceiling, "far_ceiling_skirt").visible).override_failure_message("veil_scale=0: вуаль потолка скрыта").is_false()
 	AssetMaterials.reset_tuning()
+
+
+func test_drift_static_and_flat_light_calm_plate_rims_haze_and_veil() -> void:
+	AssetMaterials.reset_tuning()
+	var dflt := _load("env", "horizon_band")
+	AssetMaterials.apply(dflt, "BASE")
+	var dm := _mat_of(dflt, "horizon_mist")
+	assert_bool(dm.get_shader_parameter("noise_amount") == null and dm.get_shader_parameter("anim") == null).override_failure_message("по умолчанию дымка живая").is_true()
+	AssetMaterials.tune({"drift_static": true, "flat_light": true})
+	var band := _load("env", "horizon_band")
+	AssetMaterials.apply(band, "BASE")
+	var mist := _mat_of(band, "horizon_mist")
+	assert_float(float(mist.get_shader_parameter("anim"))).is_equal(0.0)
+	assert_float(float(mist.get_shader_parameter("noise_amount"))).is_equal(0.0)
+	assert_float(float(mist.get_shader_parameter("stripe_amount"))).is_equal(0.0)
+	var slab := _load("env", "ceiling")  # плитчатый потолок: рёбра плит (solid_dark `tiles`) и вуаль
+	AssetMaterials.apply(slab, "BASE")
+	var tiles := _mat_of(slab, "tiles")
+	assert_float(float(tiles.get_shader_parameter("edge_drift"))).override_failure_message("рёбра плит не должны плыть по времени").is_equal(0.0)
+	assert_float(float(tiles.get_shader_parameter("edge_uneven"))).override_failure_message("рёбра плит должны быть ровными").is_equal(0.0)
+	assert_float(float(_mat_of(slab, "ceiling_skirt").get_shader_parameter("patch_amount"))).is_equal(0.0)
+	AssetMaterials.reset_tuning()

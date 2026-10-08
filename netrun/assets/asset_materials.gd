@@ -156,7 +156,8 @@ const KNOBS := {
 	# Завеса ВВЕРХ от верхней кромки плит пола и дальнего пола (вместо штрихов; квады в том же меше `*_skirt`, env._slab_rise). Выключена по умолчанию:
 	"tile_glow": 0.0,        # множитель альфы завесы вверх относительно вуали (0 — выкл.; 1 — как вуаль потолка; 2–4 — заметнее); вуаль вниз не затрагивает
 	"tile_glow_h": 1.0,      # высота завесы вверх относительно модельной (0,45 м в комнате, 1 м в дальнем полу): 0,5 — ниже, 2 — выше
-	"drift_static": false,   # true — остановить дрейф пятен дымки, вуали и стекла: статичная картинка вместо «лавы»
+	"drift_static": false,   # true — остановить дрейф пятен дымки, вуали и стекла, а также «плавание» света вдоль рёбер плит (solid_dark edge_drift): статичная картинка вместо «лавы»
+	"flat_light": false,     # true — убрать неравномерность света совсем (не только остановить): дымка и вуаль ровные (без пятен и штрихов по азимуту), рёбра плит ровные (edge_uneven 0)
 }
 static var _tuned := {}
 static var _grid_tex: ImageTexture
@@ -306,6 +307,9 @@ static func apply(root: Node, tier: String = "") -> void:
 					m.set_shader_parameter("mist_scale", float(_k("mist_alpha")))
 				if bool(_k("drift_static")):
 					m.set_shader_parameter("anim", 0.0)
+				if bool(_k("flat_light")):
+					m.set_shader_parameter("noise_amount", 0.0)
+					m.set_shader_parameter("stripe_amount", 0.0)
 			elif String(mi.name).ends_with("_skirt"):
 				# меш с завесой вверх (у пола: второй UV-слой с высотой, env._slab_rise) прячем целиком только если выключены обе вуали; иначе гасим квады в шейдере
 				var am := mi.mesh as ArrayMesh
@@ -319,8 +323,18 @@ static func apply(root: Node, tier: String = "") -> void:
 					m.set_shader_parameter("veil_scale", float(_k("veil_scale")))
 				if bool(_k("drift_static")):
 					m.set_shader_parameter("patch_drift", 0.0)
-			elif String(mi.name).ends_with("_glass") and bool(_k("drift_static")):
-				m.set_shader_parameter("patch_drift", 0.0)
+				if bool(_k("flat_light")):
+					m.set_shader_parameter("patch_amount", 0.0)
+			elif String(mi.name).ends_with("_glass"):
+				if bool(_k("drift_static")):
+					m.set_shader_parameter("patch_drift", 0.0)
+				if bool(_k("flat_light")):
+					m.set_shader_parameter("patch_amount", 0.0)
+			if src.resource_name == "solid_dark":  # рёбра плит: свет вдоль них «плавает» по шуму от времени и неравномерен — на горизонте и краях читается как лава-лампа
+				if bool(_k("drift_static")):
+					m.set_shader_parameter("edge_drift", 0.0)
+				if bool(_k("flat_light")):
+					m.set_shader_parameter("edge_uneven", 0.0)
 			if String(mi.name) == "edge_streaks_hang":  # подвесные штрихи кромки комнаты (точек по периметру нет): ярче штрихов плит, иначе край не читается
 				m.set_shader_parameter("glow", EDGE_STREAK_GLOW)
 			if String(mi.name) == "pillar_block" or String(mi.name) == "pillar_base" or String(mi.name).begins_with("exit_bar"):  # укрытие (корпус и рамка по границе клетки) и брусья рамки выхода: рёбра ровные и яркие, иначе в очках не видно, где оно (у тайлов пола свет рваный намеренно)
