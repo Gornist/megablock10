@@ -13,8 +13,9 @@ uniform float edge_glow : hint_range(0.0, 4.0) = 2.2;        // как у solid_
 uniform vec4 tint : source_color = vec4(1.0);
 uniform float tint_amount : hint_range(0.0, 1.0) = 0.0;
 uniform float edge_soft : hint_range(0.0, 1.0) = 0.0;       // как у solid_dark: свет у самого силуэта гасится, обводка гаснет вместе с ним (edge_soft.gdshaderinc)
+uniform float albedo_clip : hint_range(0.0, 1.0) = 0.0;     // как у solid_dark: мягкий клип пересвета с сохранением оттенка
 #include "edge_soft.gdshaderinc"
-uniform float fade_start = 40.0;                              // дальше объём субпиксельный, обводка не нужна
+uniform float fade_start = 40.0;                             // дальше объём субпиксельный, обводка не нужна
 uniform float fade_end = 60.0;
 
 varying float v_fade;
@@ -37,6 +38,6 @@ void vertex() {
 }
 
 void fragment() {
-	ALBEDO = mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount) * edge_glow * edge_soft_gain(max(COLOR.r, max(COLOR.g, COLOR.b)), edge_soft);
+	ALBEDO = soft_clip(mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount) * edge_glow * edge_soft_gain(max(COLOR.r, max(COLOR.g, COLOR.b)), edge_soft), albedo_clip);
 	ALPHA = fringe_alpha * v_fade;
 }

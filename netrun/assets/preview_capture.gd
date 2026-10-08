@@ -185,6 +185,8 @@ func _shots() -> Array:
 		{"name": "room_inside", "cam": Vector3(-3.0, 1.25, 3.0), "look": Vector3(0.5, 0.9, -2.8), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
 		# с края комнаты (юго-западный угол) вдоль южной кромки и наружу, за обрыв
 		{"name": "edge_view", "cam": Vector3(-3.4, 1.4, 3.1), "look": Vector3(3.0, 0.0, 6.0), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": room},
+		# колонна вплотную снизу-сбоку: ребро-стык двух граней (белая мерцающая полоска внутри голубой полосы при MSAA на очках); флаг --msaa=4
+		{"name": "pillar_close", "cam": Vector3(2.6, 0.8, 2.7), "look": Vector3(3.6, 1.6, 3.6), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": room},
 		# с южной границы комнаты на плиты дальнего пола вокруг (завеса вверх от их верхних кромок, ручки tile_glow / tile_glow_h)
 		{"name": "tile_rise", "cam": Vector3(0.0, 1.2, 3.2), "look": Vector3(0.5, 0.2, 11.0), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": room},
 		# выход без стен: взгляд из центра комнаты на свободную рамку env/exit_frame в точке выхода (1, 0, −4)
@@ -238,6 +240,8 @@ func _ready() -> void:
 			out_dir = a.trim_prefix("--out=")
 		if a == "--movie":
 			_movie = true
+		if a.begins_with("--msaa="):  # MSAA окна превью (0|2|4): как у клиента на Pico; по умолчанию без
+			get_viewport().msaa_3d = {"0": Viewport.MSAA_DISABLED, "2": Viewport.MSAA_2X, "4": Viewport.MSAA_4X}.get(a.trim_prefix("--msaa="), Viewport.MSAA_DISABLED)
 		if a.begins_with("--bg="):
 			var bgv := a.trim_prefix("--bg=").split(",")
 			_bg = Color(float(bgv[0]), float(bgv[1]), float(bgv[2]))

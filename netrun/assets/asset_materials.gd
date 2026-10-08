@@ -157,6 +157,12 @@ const KNOBS := {
 	"tile_glow": 0.0,        # множитель альфы завесы вверх относительно вуали (0 — выкл.; 1 — как вуаль потолка; 2–4 — заметнее); вуаль вниз не затрагивает
 	"tile_glow_h": 1.0,      # высота завесы вверх относительно модельной (0,45 м в комнате, 1 м в дальнем полу): 0,5 — ниже, 2 — выше
 	"drift_static": false,   # true — остановить дрейф пятен дымки, вуали и стекла, а также «плавание» света вдоль рёбер плит (solid_dark edge_drift): статичная картинка вместо «лавы»
+	# Белые мерцающие полоски внутри голубых граней при MSAA (очки, замеры 3–5): прямые ручки света граней solid_dark, по умолчанию «как задано моделью»:
+	"edge_uneven": -1.0,     # неравномерность света вдоль рёбер плит 0…1 (0 — ровно); −1 — как у модели (тайлы пола 0,5–0,92, колонны и брусья 0)
+	"edge_drift": -1.0,      # скорость «плавания» шума света вдоль рёбер, 1/с (0 — стоит); −1 — как в шейдере (0,12)
+	"edge_round": 0.0,       # 0…1: скруглить профиль света рёбер (smoothstep по яркости вершин): убирает излом на пике градиента — светлую «линию Маха» по середине голубой полосы; 1 — полностью
+	"vertex_clip": 0.0,      # 0…1: срезать перелёт цвета вершины выше пика (при MSAA без centroid интерполяция у стыка граней даёт цвет ярче вершин → светлая линия по ребру, мигает); 1 — полностью
+	"albedo_clip": 0.0,      # 0…1: мягкий клип пересвета с сохранением оттенка (edge_glow 2,2 × циан даёт каналы > 1 → тонмаппинг и MSAA тянут к белому); solid_dark и обводка fringe
 	"flat_light": false,     # true — убрать неравномерность света совсем (не только остановить): дымка и вуаль ровные (без пятен и штрихов по азимуту), рёбра плит ровные (edge_uneven 0)
 }
 static var _tuned := {}
@@ -341,6 +347,17 @@ static func apply(root: Node, tier: String = "") -> void:
 				for k in PILLAR_EDGE:
 					m.set_shader_parameter(k, PILLAR_EDGE[k])
 				m.set_shader_parameter("edge_glow", _k("edge_glow"))  # ручка: яркость рёбер
+			if src.resource_name == "solid_dark":  # прямые числовые ручки поверх всего выше (в том числе поверх PILLAR_EDGE): −1 — как задано моделью/тиром
+				if float(_k("edge_uneven")) >= 0.0:
+					m.set_shader_parameter("edge_uneven", float(_k("edge_uneven")))
+				if float(_k("edge_drift")) >= 0.0:
+					m.set_shader_parameter("edge_drift", float(_k("edge_drift")))
+				if float(_k("albedo_clip")) > 0.0:
+					m.set_shader_parameter("albedo_clip", float(_k("albedo_clip")))
+				if float(_k("vertex_clip")) > 0.0:
+					m.set_shader_parameter("vertex_clip", float(_k("vertex_clip")))
+				if float(_k("edge_round")) > 0.0:
+					m.set_shader_parameter("edge_round", float(_k("edge_round")))
 			if fringe_on and (String(mi.name) == "pillar_block" or String(mi.name).begins_with("exit_bar") or String(mi.name) == "vault_body"):
 				var lit := String(mi.name) != "vault_body"
 				m.next_pass = _fringe_chain(0, _k("edge_glow") if lit else FRINGE_GLOW_DEFAULT)
@@ -420,6 +437,7 @@ static func _fringe_chain(i: int, glow: float) -> ShaderMaterial:
 	f.set_shader_parameter("fringe_alpha", float(FRINGE_LAYERS[i][1]) * float(_k("fringe_alpha")))
 	f.set_shader_parameter("edge_glow", glow)
 	f.set_shader_parameter("edge_soft", float(_k("edge_soft")))
+	f.set_shader_parameter("albedo_clip", float(_k("albedo_clip")))
 	if i + 1 < FRINGE_LAYERS.size():
 		f.next_pass = _fringe_chain(i + 1, glow)
 	return f

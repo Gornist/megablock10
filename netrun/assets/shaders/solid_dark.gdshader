@@ -31,6 +31,9 @@ uniform float rim_far_start = 8.0;
 uniform float rim_far_end = 20.0;
 // «Кромка внутрь» (лесенка силуэта без MSAA): пик света сдвинут с геометрического края на 1–1,5 см внутрь, у самого силуэта свет гаснет до (1 − edge_soft). Подробности — edge_soft.gdshaderinc.
 uniform float edge_soft : hint_range(0.0, 1.0) = 0.0;
+uniform float edge_round : hint_range(0.0, 1.0) = 0.0;    // 1 — скруглить профиль света рёбер (smoothstep по яркости вершинного цвета): без излома на пике; 0 — как раньше
+uniform float vertex_clip : hint_range(0.0, 1.0) = 0.0;  // 1 — срезать перелёт цвета вершины выше пика (экстраполяция при MSAA): светлая линия по стыку граней; 0 — как раньше
+uniform float albedo_clip : hint_range(0.0, 1.0) = 0.0;  // 1 — мягкий клип пересвета с сохранением оттенка (soft_clip в edge_soft.gdshaderinc); 0 — как раньше
 #include "edge_soft.gdshaderinc"
 
 // Перекраска тиром сохраняет чёрное и белое: у чёрных вершин (тайлы пола) кайма остаётся нулевой.
@@ -91,8 +94,19 @@ void fragment() {
 		rim_gain = 0.0;
 	}
 	rim_gain *= mix(1.0, rim_far_min, smoothstep(rim_far_start, rim_far_end, v_dist));
-	float soft_k = edge_soft_gain(max(COLOR.r, max(COLOR.g, COLOR.b)), edge_soft);
-	vec3 col = base_color.rgb + mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount) * edge_glow * lit * rim_k * rim_gain * soft_k;
+	// Цвет вершины без экстраполяции за пик: при MSAA (в Godot нет centroid) пиксельный сэмпл у стыка граней лежит вне тонкого треугольника, и интерполяция даёт цвет ВЫШЕ яркости вершины
+	// (пик градиента ребра — циан с наибольшим каналом 1,0) → тонкая более светлая линия по самому стыку, мигающая при движении головы. vertex_clip срезает наибольший канал до 1,0 (оттенок сохраняется).
+	vec3 vc = COLOR.rgb;
+	if (vertex_clip > 0.0) {
+		float vm = max(vc.r, max(vc.g, vc.b));
+		vc *= mix(1.0, 1.0 / max(vm, 1.0), vertex_clip);
+	}
+	if (edge_round > 0.0) {  // сглаженный профиль ребра: градиент вершин — линейная «палатка» (пик на стыке граней, 3 см вниз по обе стороны) с изломом на пике; глаз видит излом как светлую линию (полосы Маха),
+		float rk = max(vc.r, max(vc.g, vc.b));   // а субпиксельный пик мигает при движении. smoothstep по яркости обнуляет наклон на пике и у подножия: тот же размах, но без излома
+		vc *= mix(1.0, smoothstep(0.0, 1.0, rk) / max(rk, 0.0001), edge_round);
+	}
+	float soft_k = edge_soft_gain(max(vc.r, max(vc.g, vc.b)), edge_soft);
+	vec3 col = base_color.rgb + mix(vc, recolor(vc), tint_amount) * edge_glow * lit * rim_k * rim_gain * soft_k;
 	if (grid_alpha > 0.0 && v_top > 0.9) {
 		float g = texture(grid_tex, v_wp.xz - grid_origin).r;
 		vec3 gc = tint_amount > 0.0 ? tint.rgb : vec3(0.094, 0.9, 1.0);
@@ -101,5 +115,5 @@ void fragment() {
 	if (dust > 0.0) {  // «волюметрик из частиц»: пыль глитч-блоков по мировым координатам (volume_dust.gdshaderinc)
 		col += volume_dust_color(v_wp, normalize(v_nw), normalize(CAMERA_POSITION_WORLD - v_wp), v_dist, PROJECTION_MATRIX[1][1] * VIEWPORT_SIZE.y);
 	}
-	ALBEDO = col;
+	ALBEDO = soft_clip(col, albedo_clip);
 }

@@ -1047,3 +1047,40 @@ func test_drift_static_and_flat_light_calm_plate_rims_haze_and_veil() -> void:
 	assert_float(float(tiles.get_shader_parameter("edge_uneven"))).override_failure_message("рёбра плит должны быть ровными").is_equal(0.0)
 	assert_float(float(_mat_of(slab, "ceiling_skirt").get_shader_parameter("patch_amount"))).is_equal(0.0)
 	AssetMaterials.reset_tuning()
+
+
+func test_edge_light_knobs_override_pillar_and_plate_edges_and_clip_overbright() -> void:
+	AssetMaterials.reset_tuning()
+	var dflt := _load("env", "cover")
+	AssetMaterials.apply(dflt, "BASE")
+	var pb0 := _mat_of(dflt, "pillar_block")
+	assert_bool(pb0.get_shader_parameter("edge_drift") == null and pb0.get_shader_parameter("albedo_clip") == null).override_failure_message("по умолчанию ручки света граней не заданы").is_true()
+	assert_float(float(pb0.get_shader_parameter("edge_uneven"))).override_failure_message("колонны: рёбра ровные из PILLAR_EDGE").is_equal(0.0)
+	AssetMaterials.tune({"edge_uneven": 0.3, "edge_drift": 0.0, "albedo_clip": 1.0})
+	var cover := _load("env", "cover")
+	AssetMaterials.apply(cover, "BASE")
+	var pb := _mat_of(cover, "pillar_block")
+	assert_float(float(pb.get_shader_parameter("edge_uneven"))).override_failure_message("ручка перекрывает PILLAR_EDGE").is_equal_approx(0.3, 0.001)
+	assert_float(float(pb.get_shader_parameter("edge_drift"))).is_equal(0.0)
+	assert_float(float(pb.get_shader_parameter("albedo_clip"))).is_equal(1.0)
+	var fr := pb.next_pass as ShaderMaterial
+	assert_bool(fr != null and float(fr.get_shader_parameter("albedo_clip")) == 1.0).override_failure_message("клип доходит и до обводки").is_true()
+	var tiles := _load("env", "ceiling")
+	AssetMaterials.apply(tiles, "BASE")
+	assert_float(float(_mat_of(tiles, "tiles").get_shader_parameter("edge_uneven"))).is_equal_approx(0.3, 0.001)
+	AssetMaterials.reset_tuning()
+
+
+func test_edge_profile_knobs_reach_solid_dark_only_when_set() -> void:
+	AssetMaterials.reset_tuning()
+	var dflt := _load("env", "cover")
+	AssetMaterials.apply(dflt, "BASE")
+	var p0 := _mat_of(dflt, "pillar_block")
+	assert_bool(p0.get_shader_parameter("edge_round") == null and p0.get_shader_parameter("vertex_clip") == null).override_failure_message("по умолчанию профиль ребра как задан моделью").is_true()
+	AssetMaterials.tune({"edge_round": 1.0, "vertex_clip": 1.0})
+	var cover := _load("env", "cover")
+	AssetMaterials.apply(cover, "BASE")
+	var p := _mat_of(cover, "pillar_block")
+	assert_float(float(p.get_shader_parameter("edge_round"))).is_equal(1.0)
+	assert_float(float(p.get_shader_parameter("vertex_clip"))).is_equal(1.0)
+	AssetMaterials.reset_tuning()
