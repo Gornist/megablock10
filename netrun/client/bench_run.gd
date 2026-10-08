@@ -7,9 +7,9 @@ extends Node
 
 signal finished(result: Dictionary)
 
-const SETTLE_SEC := 15.0
+const SETTLE_SEC := 5.0
 const RUNS := 3
-const RUN_SEC := 60.0
+const RUN_SEC := 10.0
 
 var preset := ""
 var result: Dictionary = {}
@@ -134,6 +134,9 @@ static func median_result(runs: Array) -> Dictionary:
 		for r: Dictionary in runs:
 			vals.append(float(r[k]))
 		out[k] = snappedf(median(vals), 0.01)
+		if k == "gpu_avg_ms" or k == "avg_ms":   # разброс окон: шум короткого замера виден в итоге
+			out[k + "_min"] = snappedf(vals.min(), 0.01)
+			out[k + "_max"] = snappedf(vals.max(), 0.01)
 	return out
 
 
@@ -142,4 +145,5 @@ static func format_run(i: int, r: Dictionary) -> String:
 
 
 static func format_result(r: Dictionary) -> String:
-	return "[bench] ИТОГ preset=%s runs=%s median_fps=%s median_avg_ms=%s median_gpu_ms=%s" % [r.get("preset", ""), r["runs"], r["fps"], r["avg_ms"], r["gpu_avg_ms"]]
+	return "[bench] ИТОГ preset=%s runs=%s median_fps=%s median_avg_ms=%s median_gpu_ms=%s gpu_min=%s gpu_max=%s avg_min=%s avg_max=%s" % [r.get("preset", ""), r["runs"], r["fps"], r["avg_ms"], r["gpu_avg_ms"],
+		r.get("gpu_avg_ms_min", r["gpu_avg_ms"]), r.get("gpu_avg_ms_max", r["gpu_avg_ms"]), r.get("avg_ms_min", r["avg_ms"]), r.get("avg_ms_max", r["avg_ms"])]
