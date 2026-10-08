@@ -18,8 +18,19 @@ uniform float dust_far_end = 40.0;
 uniform vec4 dust_color : source_color = vec4(0.176, 0.463, 0.553, 1.0);  // стальная бирюза референса (45,118,141): PAL_DIM светлее, неон — только акцент
 uniform vec4 dust_hot : source_color = vec4(0.62, 0.92, 1.0, 1.0);        // редкие яркие блоки (рывок): белёсый акцент
 
+uniform float dust_patch : hint_range(0.0, 1.0) = 0.65;               // насколько плотность пятнами: 0 — ровно, 1 — большие тёмные проплешины и сгущения (как в референсе: свет лежит пятнами)
+uniform float dust_patch_scale : hint_range(0.05, 3.0) = 0.35;         // пятен на метр
+
 float dust_hash(vec3 p) {
 	return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
+}
+float dust_noise(vec3 p) {
+	vec3 i = floor(p);
+	vec3 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	float a = mix(mix(dust_hash(i), dust_hash(i + vec3(1, 0, 0)), f.x), mix(dust_hash(i + vec3(0, 1, 0)), dust_hash(i + vec3(1, 1, 0)), f.x), f.y);
+	float b = mix(mix(dust_hash(i + vec3(0, 0, 1)), dust_hash(i + vec3(1, 0, 1)), f.x), mix(dust_hash(i + vec3(0, 1, 1)), dust_hash(i + vec3(1, 1, 1)), f.x), f.y);
+	return mix(a, b, f.z);
 }
 
 // Вклад пыли в цвет пикселя. wp, nw — мировая позиция и нормаль поверхности, vdir — единичный вектор от точки к камере, dist — дистанция, м,
@@ -50,7 +61,8 @@ vec3 volume_dust_color(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px) {
 	float up = clamp(nw.y * 0.5 + 0.5, 0.0, 1.0);
 	float graze = pow(1.0 - clamp(abs(dot(nw, vdir)), 0.0, 1.0), 2.0);
 	float far_k = 1.0 - smoothstep(dust_far_start, dust_far_end, dist);
-	float dens = clamp(dust_density * (0.55 + 0.45 * up) * (1.0 + 0.7 * graze), 0.0, 1.0);
+	float patch_k = mix(1.0, smoothstep(0.25, 0.75, dust_noise(wp * dust_patch_scale + vec3(0.0, axis * 7.0, 0.0))), dust_patch);
+	float dens = clamp(dust_density * patch_k * (0.55 + 0.45 * up) * (1.0 + 0.7 * graze), 0.0, 1.0);
 	// размер ячейки на экране, px: мировой размер пикселя на дистанции 2·d / (P[1][1]·высота вьюпорта); в фрагментном шейдере P[1][1] отрицателен (отражение по Y) — берём модуль
 	float px_world = 2.0 * max(dist, 0.1) / max(abs(proj_px), 1.0);
 	float cell_px = dust_cell / px_world;
