@@ -32,7 +32,10 @@ const COLOR_SPARK := Color(0.6, 0.95, 1.0)
 ## Проба 07.10 (по ролику владельца «частица, из которой собирается волюметрик»): точки рук рисуются анимированным глитч-блоком (GlitchSprite) вместо круглых.
 ## false — прежние круглые точки; решать по кадру с очков. Читается при создании руки.
 static var glitch_sprite := true
-static var glitch_scale := 1.0
+## Масштаб спрайта относительно полуразмера точки. Очки П5 (08.10): «читаются, но примерно в 4 раза меньше» — было 1,0; 0,25 и 0,3 владелец счёл чересчур мелкими — «вполовину меньше»: 0,5 с яркостью ×1,8.
+static var glitch_scale := 0.5
+## Множитель яркости при спрайте (шейдер: intensity): площадь блока пропорциональна квадрату масштаба, без компенсации мелкий спрайт гаснет.
+static var glitch_gain := 1.8
 
 enum Mode { NONE, POSE_SOURCE, TRACKED, CONTROLLER }
 
@@ -80,6 +83,7 @@ func _init(is_left: bool = false, ctrl: XRController3D = null) -> void:
 		_mat.set_shader_parameter("glitch_tex", GlitchSprite.texture())
 		_mat.set_shader_parameter("glitch_mix", 1.0)
 		_mat.set_shader_parameter("glitch_scale", glitch_scale)
+		_mat.set_shader_parameter("intensity", glitch_gain)
 	_mm = MultiMesh.new()
 	_mm.transform_format = MultiMesh.TRANSFORM_3D
 	_mm.use_colors = true
