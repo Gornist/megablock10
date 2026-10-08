@@ -287,6 +287,12 @@ func test_отпечаток_fp_маркер_на_клетке_и_яркая_к�
 	var last := f.cell_count() - 1
 	assert_object(NodeGrid.cell_of(f.cell_position(last))).is_equal(Vector2i(8, 8))
 	assert_float(f.cell_color(last).a).is_greater(TickFloor.FOCUS_ALPHA)   # ярче света зрения
+	# но заливка не выше слоя палитры (иначе бурая клетка), а контур отпечатка не слабее обычного
+	var la := TickFloor.layer_alphas(f.cell_color(last).a)
+	assert_float(la.x).is_equal_approx(AssetMaterials.layer("cell_vision_fill").a, 0.0001)
+	assert_float(la.y).is_greater_equal(AssetMaterials.layer("cell_vision_edge").a - 0.0001)
+	var periph := TickFloor.layer_alphas(TickFloor.PERIPHERY_ALPHA)   # периферия слабее фокуса
+	assert_float(periph.x).is_less(la.x)
 	var label := f.get_node("Mark0") as Label3D
 	assert_bool(label.visible).is_true()
 	assert_str(label.text).is_equal("?")

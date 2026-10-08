@@ -108,12 +108,19 @@ func _multimesh(node_name: String, mesh: Mesh, capacity: int) -> MultiMeshInstan
 	return inst
 
 
+## Прозрачность слоёв клетки по её «силе» (альфа логического цвета): x — заливка, y — контур. Заливка выше слоя палитры не поднимается:
+## отпечаток ICE (сила ×1,6) с вдохом (×1,6 на материале) давал на кадре Blender 0,25 вместо 0,10 и бурую клетку; яркость отпечатка несёт контур.
+static func layer_alphas(strength_alpha: float) -> Vector2:
+	var k := strength_alpha / FOCUS_ALPHA
+	return Vector2(AssetMaterials.layer("cell_vision_fill").a * minf(k, 1.0), minf(AssetMaterials.layer("cell_vision_edge").a * k, 1.0))
+
+
 ## Записать клетку n: заливка и контур одного цвета; col — логический цвет (альфа = прежняя «сила» света: фокус FOCUS_ALPHA, периферия слабее),
 ## на экран идут слои палитры cell_vision_fill / cell_vision_edge, умноженные на силу относительно фокуса.
 func _write_cell(n: int, pos: Vector3, col: Color) -> void:
-	var k := col.a / FOCUS_ALPHA
-	var fill := Color(col, minf(AssetMaterials.layer("cell_vision_fill").a * k, 1.0))
-	var edge := Color(col, minf(AssetMaterials.layer("cell_vision_edge").a * k, 1.0))
+	var fa := layer_alphas(col.a)
+	var fill := Color(col, fa.x)
+	var edge := Color(col, fa.y)
 	var mm := _mm.multimesh
 	mm.set_instance_transform(n, Transform3D(Basis(), pos))
 	mm.set_instance_color(n, fill)
