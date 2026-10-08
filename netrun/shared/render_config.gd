@@ -18,9 +18,11 @@ extends RefCounted
 ## foveation = 2             ; фовеация (OpenXR): 0 выкл., 1 низкая, 2 средняя (по умолчанию, бесплатна), 3 высокая
 ## foveation_dynamic = false ; динамическая фовеация (уровень подбирается по нагрузке)
 ## perf = "off"             ; счётчик кадра: "on" — раз в 5 с строка `[perf]` (FPS, среднее / максимум времени кадра, GPU-время) в журнал клиента и logcat
+## bench = ""               ; воспроизводимый замер (BenchRun): имя пресета EyePresets (entry, north, south, vault_w, …) — через 15 с риг встаёт в его позу, 3 прогона по 60 с,
+##                           ; строка `[bench] ИТОГ` с медианой fps / времени кадра / GPU; голову во время замера не вертеть; пусто — выкл.
 
 const SECTION := "render"
-const KEYS := ["msaa", "aa", "fringe", "layers", "scale", "foveation", "foveation_dynamic", "perf"]
+const KEYS := ["msaa", "aa", "fringe", "layers", "scale", "foveation", "foveation_dynamic", "perf", "bench"]
 const PERF_VALUES := ["on", "off"]
 const PERF_DEFAULT := "off"
 const AA_VALUES := ["none", "fxaa"]
@@ -46,6 +48,8 @@ var fringe_set := false
 var layers: String = LAYERS_DEFAULT
 ## Счётчик кадра (FramePerf): "on" | "off".
 var perf: String = PERF_DEFAULT
+## Пресет воспроизводимого замера (BenchRun) или "" — выкл.
+var bench: String = ""
 var scale: float = SCALE_DEFAULT
 var foveation: int = FOVEATION_DEFAULT
 var foveation_dynamic: bool = false
@@ -106,6 +110,12 @@ static func from_config(cfg: ConfigFile) -> RenderConfig:
 					c.perf = (v as String).to_lower()
 				else:
 					c.warnings.append("perf: допустимо «on» или «off», получено «%s» — оставлено «%s»" % [v, c.perf])
+			"bench":
+				var b := str(v).strip_edges().to_lower()
+				if b == "" or EyePresets.names().has(b):
+					c.bench = b
+				else:
+					c.warnings.append("bench: нет пресета «%s» (есть: %s) — замер выключен" % [b, ", ".join(EyePresets.names())])
 			"scale":
 				var n: Variant = _number(v)
 				if n != null and n >= SCALE_MIN and n <= SCALE_MAX:
@@ -230,5 +240,5 @@ func apply_xr(iface: Object) -> PackedStringArray:
 
 ## Поля строки журнала `render …` (MbLog).
 func log_fields() -> Dictionary:
-	return {"msaa": msaa, "aa": aa, "fringe": fringe, "layers": layers, "perf": perf, "scale": scale, "foveation": foveation, "dynamic": foveation_dynamic,
+	return {"msaa": msaa, "aa": aa, "fringe": fringe, "layers": layers, "perf": perf, "bench": bench if bench != "" else "off", "scale": scale, "foveation": foveation, "dynamic": foveation_dynamic,
 		"file": file_path if not file_path.is_empty() else "none"}
