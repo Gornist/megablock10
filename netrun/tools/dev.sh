@@ -129,8 +129,9 @@ export XDG_RUNTIME_DIR=/run/user/\$(id -u) WAYLAND_DISPLAY=wayland-0
 rm -rf $SHOT_DIR && mkdir -p $SHOT_DIR
 # rsync --delete стирает *.import, которых нет в git (у новых .glb их не бывает до первого открытия редактора), и без импорта сцена не находит модели:
 # «No loader found for resource» и пустой кадр. Импорт — как в gdunit.sh; кэш .godot жив, поэтому повторный проход короткий.
-timeout 300 ~/.local/bin/godot --headless --path netrun --import > /dev/null 2>&1 || true
-timeout 180 flock /tmp/display.lock ~/.local/bin/godot --display-driver wayland --path netrun --resolution 1280x720 $scene -- --out=$SHOT_DIR $* > $SHOT_DIR/run.log 2>&1
+# Скрипт приходит на stdin (`ssh bash -s`): godot читает stdin и съедает остаток скрипта (после него молча нет сетки) — гасим его </dev/null.
+timeout 300 ~/.local/bin/godot --headless --path netrun --import > /dev/null 2>&1 </dev/null || true
+timeout 180 flock /tmp/display.lock ~/.local/bin/godot --display-driver wayland --path netrun --resolution 1280x720 $scene -- --out=$SHOT_DIR $* > $SHOT_DIR/run.log 2>&1 </dev/null
 grep -aE "ERROR|SCRIPT|Parse" $SHOT_DIR/run.log | head -5
 python3 - <<'PY'
 import glob, os
