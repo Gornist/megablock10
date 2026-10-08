@@ -1,11 +1,12 @@
 extends GdUnitTestSuite
 ## Где стоит панель взлома в мире и как телепорт привязывается к площадке у хранилища (К3, docs/netrun-deck-design.md §7.1).
 
-const VAULT := Vector3(-1, 1.0, -9)   # NodeLayout.SHARD_SLOTS[0]
+const VAULT := Vector3(-1.5, 1.0, -9.5)   # NodeLayout.SHARD_SLOTS[0]
+const HEAD := Vector3(-1.5, 1.2, -8.5)    # стоя на площадке (1 м к центру комнаты от хранилища)
 
 
 func test_pose_is_65_cm_from_the_head_12_degrees_below_and_faces_the_head() -> void:
-	var head := Vector3(-1, 1.2, -8.15)
+	var head := HEAD
 	var t := BreachPanelLayout.pose(head, VAULT)
 	var to_panel := t.origin - head
 	assert_float(to_panel.length()).is_equal_approx(BreachPanelLayout.DIST_M / cos(deg_to_rad(BreachPanelLayout.DROP_DEG)), 0.001)
@@ -21,9 +22,9 @@ func test_pose_is_65_cm_from_the_head_12_degrees_below_and_faces_the_head() -> v
 
 
 func test_pose_is_fixed_in_the_world_it_does_not_follow_the_head() -> void:
-	var t := BreachPanelLayout.pose(Vector3(-1, 1.2, -8.15), VAULT)
+	var t := BreachPanelLayout.pose(HEAD, VAULT)
 	# поза — значение: считается один раз при появлении; другая голова даёт другую позу, но сама панель за головой не ходит (проверка в breach_panel_test)
-	var t2 := BreachPanelLayout.pose(Vector3(-1.3, 1.2, -8.15), VAULT)
+	var t2 := BreachPanelLayout.pose(HEAD + Vector3(-0.3, 0.0, 0.0), VAULT)
 	assert_bool(t.origin.is_equal_approx(t2.origin)).is_false()
 
 

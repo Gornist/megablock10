@@ -204,10 +204,10 @@ func test_teleport_outside_the_room_is_denied() -> void:
 func test_vault_pad_still_snaps_after_the_cell_is_checked() -> void:
 	# Площадка у хранилища: клетка проверяется как обычно (центр клетки), затем точка переставляется на площадку.
 	_server.teleport_snap = func(_s: String, to: Vector3) -> Dictionary: return NodeLayout.snap_to_vault_pad(to, [NodeLayout.SHARD_POS])
-	assert_bool(_client.request_teleport(_c(7, 9))).is_true()   # далеко от хранилища (−1; −9): без привязки
+	assert_bool(_client.request_teleport(_c(7, 9))).is_true()   # далеко от хранилища (−1,5; −9,5): без привязки
 	assert_bool(await _wait_for(func(): return _at(_c(7, 9)))).is_true()
 	await _sleep(RigMath.TELEPORT_COOLDOWN_LIMIT + 0.05)
-	assert_bool(_client.request_teleport(_c(7, 6))).is_true()   # 1,6 м от хранилища — в радиусе привязки
+	assert_bool(_client.request_teleport(_c(7, 5))).is_true()   # 1,4 м от хранилища по диагонали — в радиусе привязки (1,6 м)
 	var pad := NodeLayout.vault_pad(NodeLayout.SHARD_POS)
 	assert_bool(await _wait_for(func(): return _at(pad))).is_true()
 	assert_array(_denied).is_empty()
