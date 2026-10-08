@@ -4,6 +4,13 @@ extends GdUnitTestSuite
 
 func after_test() -> void:
 	XrLayerHost.layers_requested = false
+	XrLayerHost.layers_behind = false
+
+
+func test_порядок_слоя_позади_или_поверх() -> void:
+	assert_int(XrLayerHost.sort_order_for(true)).is_less(0)      # позади основного вида (вырез в альфе, руки и луч над панелью)
+	assert_int(XrLayerHost.sort_order_for(false)).is_greater(0)  # поверх сцены
+	assert_bool(XrLayerHost.layers_behind).is_false()            # по умолчанию — «поверх»
 
 
 func test_выбор_слоя_только_при_всех_условиях() -> void:

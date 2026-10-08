@@ -151,6 +151,12 @@ func test_layers_парсинг_и_маппинг() -> void:
 	assert_bool(RenderConfig.layers_enabled("on")).is_true()
 	assert_bool(RenderConfig.layers_enabled("off")).is_false()
 	assert_bool(RenderConfig.layers_enabled(RenderConfig.LAYERS_DEFAULT)).is_false()
+	# «behind»: слои включены, но позади сцены (руки и луч поверх панели)
+	assert_str(RenderConfig.from_config(_cfg({"layers": "Behind"})).layers).is_equal("behind")
+	assert_bool(RenderConfig.layers_enabled("behind")).is_true()
+	assert_bool(RenderConfig.layers_behind("behind")).is_true()
+	assert_bool(RenderConfig.layers_behind("on")).is_false()
+	assert_bool(RenderConfig.layers_behind("off")).is_false()
 
 
 func test_layers_неверное_по_умолчанию_с_предупреждением() -> void:
