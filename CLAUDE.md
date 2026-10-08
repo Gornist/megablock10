@@ -33,11 +33,12 @@
 приёмка по своему стенду): вид принимают только по кадру клиента (`netrun/tools/dev.sh shot res://tests/foyer_preview.tscn`, пресеты
 `EyePresets`) и кадру с очков; стенд Blender — для замеров. Новый видимый элемент клиента: Godot — логика и геометрия, Blender — цвет и материал.
 | **Геймдизайн** | `docs/gamedesign/` — документы проекта и модель (`docs/gamedesign/model/`) | код всех зон: изменения — карточками сессиям зон, код пишут они (решение владельца 06.10) |
+| **LARP** | `docs/story/` — сюжет и мир ларпа: библия мира, фракции, вводные, линии «сюжет × приложение» | код всех зон: изменения — карточками сессиям зон; связь с Сетью — через Геймдизайн (решение владельца 08.10) |
 | **Pipeline manager** | общие правила и инструменты: `CLAUDE.md`, `.claude/` (хук, настройки, общие skills), общие `scripts/` (`check`, `verify`, `dbx`, `ci-wait`, `agent-worktree`, `zone-check`, `train`, `land`, `session-stats`, `test-hook`, `lint-pipeline`, `devbox-runner`), `.github/dependabot.yml`, `labeler.yml`, workflows `main`/`pipeline`/`labeler`, `docs/ci.md`; `scripts/phone.sh` дополняет и Android App; **очередь слияний в `main` за все сессии** (Git и процесс) | код областей |
 
 Общее для всех: `docs/progress.md` — каждая сессия правит только свой раздел; `.github/workflows/` своей области — можно, `main.yml` — через
 Pipeline manager. Работать в своей worktree (`scripts/agent-worktree.sh new <имя>`), добавлять файлы явными путями, в `main` — только владелец.
-Перед коммитом и PR — `scripts/zone-check.sh <android|collector|nodes|godot|blender|gamedesign|pipeline>`: печатает файлы вне зоны (таблица продублирована в скрипте —
+Перед коммитом и PR — `scripts/zone-check.sh <android|collector|nodes|godot|blender|gamedesign|story|pipeline>`: печатает файлы вне зоны (таблица продублирована в скрипте —
 правите таблицу, правьте и его).
 
 ## Работа агента: время и токены
