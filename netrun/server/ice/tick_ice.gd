@@ -63,6 +63,9 @@ var _search_armed := true
 var _tcells: Dictionary = {}
 ## Неуязвимые нетраннеры этого такта (грейс прибытия, сессия → клетка; скрытые тоже): ICE не заходит в их клетку, не берёт их, счётчик ≤ AWARENESS_IMMUNE_MAX.
 var _icells: Dictionary = {}
+## Скрытые нетраннеры этого такта (Призрак, вход в узел; сессия → клетка), не неуязвимые: скрыты от взгляда, но не от касания — ICE не заходит в их клетку,
+## упёршись, «?» и Проверка этой клетки (захвата нет); а вот прыжок самого нетраннера на клетку ICE берёт его всегда.
+var _hcells: Dictionary = {}
 ## То же на следующий такт (сессия → клетка): по нему строится intent(), чтобы стрелка и шаг следующего такта не расходились.
 var _icells_next: Dictionary = {}
 ## Как ICE видел нетраннеров в конце последнего такта: сессия → TickVision.NONE/PERIPHERY/FOCUS.
@@ -169,18 +172,30 @@ func tick(targets: Dictionary, hidden: Dictionary = {}, immune: Dictionary = {})
 	var tcell: Dictionary = {}
 	_tcells.clear()
 	_icells.clear()
+	_hcells.clear()
 	for s in targets:
 		var c := NodeGrid.cell_of(targets[s])
 		tcell[s] = c
 		if not hidden.get(s, false):
 			_tcells[s] = c
+		elif not immune.get(s, false):
+			_hcells[s] = c
 		if immune.get(s, false):
 			_icells[s] = c
 	var prev_mode := _mode
 	_lost = false
 	_bumped.clear()
+	var start_cell := _cell
 	_program_step()
 	events.append_array(_bumped)
+	# Нетраннер сам прыгнул / встал в клетку ICE (П5; клетка ICE в начале такта — ICE за такт мог уйти — или в конце) — мгновенный выброс, всегда: и под
+	# Призраком, и в грейсе (прыжок — ход игрока, грейс защищает только от ходов ICE). Без осведомлённости и красной стрелки: прикосновение, а не «ICE подошёл».
+	# ICE сам в клетку нетраннера не заходит (видимого — bump: Поиск + красная стрелка + захват тактом позже; скрытого и в грейсе — см. _bump).
+	var caught := {}
+	for s in tcell:
+		if not caught.has(s) and (tcell[s] == _cell or tcell[s] == start_cell):
+			caught[s] = true
+			events.append({"kind": "capture", "session": s, "reason": "caught"})
 	_update_awareness(targets, tcell, hidden)
 	var m := _level(_max_aw())
 	_notice(prev_mode, m)
@@ -196,8 +211,8 @@ func tick(targets: Dictionary, hidden: Dictionary = {}, immune: Dictionary = {})
 	if prev_mode == Mode.SEARCH and m == Mode.SEARCH:
 		var here := NodeGrid.center(_cell)
 		for s in _tcells:
-			if _icells.has(s):
-				continue   # грейс прибытия: не берём
+			if _icells.has(s) or caught.has(s):
+				continue   # грейс прибытия: не берём; уже взят прикосновением
 			if _flat_dist(NodeGrid.center(_tcells[s]), here) <= float(_s["capture_m"]) + _EPS:
 				events.append({"kind": "capture", "session": s, "reason": "caught"})
 	return events
@@ -460,6 +475,10 @@ func _runner_blocks(nxt: Vector2i) -> bool:
 		if _tcells[s] == nxt:
 			_dir = NodeGrid.dir8(_cell, nxt)
 			return true
+	for s in _hcells:
+		if _hcells[s] == nxt:
+			_dir = NodeGrid.dir8(_cell, nxt)
+			return true
 	return false
 
 
@@ -534,6 +553,15 @@ func _bump(nxt: Vector2i) -> bool:
 				_has_seen = true
 				_note_seen(nxt)
 				_bumped.append({"kind": "bump", "session": s, "cell": nxt})
+			return true
+	for s in _hcells:
+		if _hcells[s] == nxt:
+			# Скрытый (Призрак, вход в узел): взгляд его не видит, но коснуться ICE может — в клетку не заходит, «?» и Проверка этой клетки, захвата нет.
+			# Счётчик 4 до убывания в _update_awareness (скрытый v = 0, −1) даёт 3 — Проверка; Призрак с игрока не снимается.
+			_dir = NodeGrid.dir8(_cell, nxt)
+			if not _dry:
+				_aw[s] = maxi(int(_aw.get(s, 0)), 4)
+				_note_seen(nxt)
 			return true
 	return false
 

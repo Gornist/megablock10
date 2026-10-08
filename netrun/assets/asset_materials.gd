@@ -51,7 +51,7 @@ const LAYERS := {
 	"cell_occupied_fill": Color(PAL_CYAN, 0.14),   # занятая клетка (укрытие, хранилище): слабая голубая заливка
 	"cell_occupied_edge": Color(PAL_CYAN, 0.55),   # и контур клетки
 	# Клетка в зрении ICE (TickFloor): тёмно-красная заливка на тёмном фоне читается КОРИЧНЕВОЙ, поэтому заливка почти прозрачна, а читается контур клетки
-	"cell_vision_fill": Color(PAL_THREAT_HOT, 0.10),
+	"cell_vision_fill": Color(PAL_THREAT_HOT, 0.03),   # замер foyer_preview 08.10: смешивание линейное, α 0,04 в красном после sRGB — бурые (58,44,44); 0,03 с пульсом ≤ 0,05 ≈ (40,30,30)
 	"cell_vision_edge": Color(PAL_THREAT_HOT, 0.85),
 	"cell_future": Color(PAL_CYAN, 0.30),          # клетка будущего положения (FUTURE_TINT)
 	# Прицел прыжка
@@ -138,6 +138,10 @@ const KNOBS := {
 	"skirt_top_fade": 0.0,   # доля высоты вуали сверху, где плотность растёт с нуля (0 — выкл.; 0,12 — ориентир): вуаль отрывается от кромки плиты
 	# Лесенка силуэта без MSAA/FXAA (Pico): «кромка внутрь» — яркий контур сдвинут на 1–1,5 см вглубь грани, у самого силуэта свет гаснет, лесенка становится «тёмное по тёмному».
 	"edge_soft": 0.0,        # 0 — выкл.; 0,5 — мягко; 0,8 — сильно. Действует на все solid_dark (колонны, брусья, плиты, тайлы) и на обводку fringe
+	# «Волюметрик из частиц» (референсы CDPR 08.10: простая геометрия через один шейдер): поверхности solid_dark замощены глитч-блоками (GlitchSprite) по мировым координатам, без геометрии и перерисовки.
+	"dust": 0.0,             # яркость пыли (0 — выкл.; 1 — ориентир). Рёбра света остаются: гасить их — edge_glow и fringe_on
+	"dust_cell": 0.025,      # ширина ячейки, м (высота вдвое больше); на глаз Pico 4 на 3 м ≈ 9 px
+	"dust_density": 0.8,     # доля ячеек с частицей на ровной грани вблизи (с пятнами dust_patch: проплешины и сгущения)
 	# Рябь «эквалайзеров» (штрихи окружения, только при tier != ""; существа и аватары не трогаем). Меры независимы:
 	"streak_far_min": 1.0,   # яркость штрихов на дистанции ≥ streak_far_end (1 — не гасить; 0,3 — ориентир), как кромка плит
 	"streak_far_start": 8.0,
@@ -328,6 +332,11 @@ static func apply(root: Node, tier: String = "") -> void:
 				m.set_shader_parameter("rim_far_end", float(_k("rim_far_end")))
 			if String(mi.name).ends_with("_skirt") and float(_k("skirt_top_fade")) > 0.0:  # ручка: вуаль отрывается от кромки плиты
 				m.set_shader_parameter("top_fade", float(_k("skirt_top_fade")))
+			if src.resource_name == "solid_dark" and float(_k("dust")) > 0.0:  # ручки: пыль глитч-блоков на поверхностях
+				m.set_shader_parameter("glitch_tex", GlitchSprite.texture())
+				m.set_shader_parameter("dust", float(_k("dust")))
+				m.set_shader_parameter("dust_cell", float(_k("dust_cell")))
+				m.set_shader_parameter("dust_density", float(_k("dust_density")))
 			if src.resource_name == "solid_dark" and float(_k("edge_soft")) > 0.0:  # ручка: кромка внутрь (лесенка силуэта)
 				m.set_shader_parameter("edge_soft", float(_k("edge_soft")))
 			if src.resource_name == "solid_dark" and String(_k("solid_base")) != "":  # ручка: цвет плит

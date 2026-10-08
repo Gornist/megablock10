@@ -485,11 +485,11 @@ func test_open_vault_survives_a_world_server_restart_from_session_opened() -> vo
 
 func test_teleport_near_a_vault_lands_on_the_pad_on_the_server_too() -> void:
 	var p := await _ready_peer("t03", S1)
-	_server.teleport(S1, Vector3(-1.0, 0, -5.0))
+	_server.teleport(S1, Vector3(-1.5, 0, -6.5))
 	await get_tree().create_timer(0.1).timeout
-	# клиент просит точку в 0,9 м от хранилища сбоку — сервер ставит на площадку
+	# клиент просит точку в клетке хранилища (0,36 м от центра, радиус привязки 0,75 м) — сервер ставит на площадку
 	var slot: Vector3 = NodeLayout.SHARD_SLOTS[0]
-	p.net.request_teleport(Vector3(slot.x + 0.9, 0, slot.z + 0.5))
+	p.net.request_teleport(Vector3(slot.x + 0.3, 0, slot.z + 0.2))
 	var pad := NodeLayout.vault_pad(slot)
 	assert_bool(await _wait_for(func(): return NodeLayout.flat_distance(_server.get_avatar(S1).position, pad) < 0.05)).is_true()
 

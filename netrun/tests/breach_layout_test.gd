@@ -52,12 +52,13 @@ func test_vault_pad_is_in_front_of_the_vault_and_inside_the_room() -> void:
 
 
 func test_snap_puts_the_player_on_the_pad_and_looks_at_the_vault() -> void:
-	var near := VAULT + Vector3(0.9, 0, 1.2)
+	var near := VAULT + Vector3(0.3, 0, 0.4)   # в клетке хранилища (радиус привязки 0,75 м, П5)
 	var s := NodeLayout.snap_to_vault_pad(near, NodeLayout.SHARD_SLOTS)
 	assert_float(NodeLayout.flat_distance(s["p"], NodeLayout.vault_pad(VAULT))).is_less(0.001)
 	assert_float((s["look"] as Vector3).x).is_equal(VAULT.x)
 	assert_float((s["look"] as Vector3).y).is_equal(0.0)
-	# идемпотентно: площадка — внутри радиуса привязки
+	# идемпотентно: площадка вне радиуса привязки (соседняя клетка), повторная привязка точку не двигает
+	assert_object(NodeLayout.snap_to_vault_pad(near + Vector3(1.0, 0, 0), NodeLayout.SHARD_SLOTS)["look"]).is_null()   # соседняя клетка не привязывается
 	var again := NodeLayout.snap_to_vault_pad(s["p"], NodeLayout.SHARD_SLOTS)
 	assert_float(NodeLayout.flat_distance(again["p"], s["p"])).is_less(0.001)
 
@@ -70,5 +71,5 @@ func test_snap_leaves_far_targets_alone() -> void:
 
 
 func test_snap_takes_the_nearest_of_several_vaults() -> void:
-	var s := NodeLayout.snap_to_vault_pad(Vector3(-4.5, 0, -12.6), NodeLayout.SHARD_SLOTS)   # у (-5, -13)
+	var s := NodeLayout.snap_to_vault_pad(Vector3(-5.2, 0, -12.6), NodeLayout.SHARD_SLOTS)   # в клетке хранилища (-5,5; -12,5)
 	assert_float(NodeLayout.flat_distance(s["p"], NodeLayout.vault_pad(NodeLayout.SHARD_SLOTS[1]))).is_less(0.001)

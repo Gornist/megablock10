@@ -143,12 +143,13 @@ func test_занятый_символ_без_модели_не_проходит_
 		assert_str(r["detail"]).contains(sym)
 
 
-func test_блок_хранилища_без_записи_vaults_не_проходит_проверку_видимости() -> void:
+func test_блок_хранилища_без_записи_vaults_не_занимает_клеток() -> void:
 	var d := _foyer_dict()
-	(d["vaults"] as Array).pop_back()   # блок «V» [7, 0] остался занятым, а хранилища и укрытий в нём нет
-	var r := LayoutCheck.check_occupied_visible(_parse(d))
-	assert_bool(r["ok"]).is_false()
-	assert_str(r["detail"]).contains("«V»")
+	(d["vaults"] as Array).pop_back()   # блок «V» [7, 0] без записи в vaults: с П5 занятость даёт только запись (клетка хранилища), поэтому клеток нет
+	var ld := _parse(d)
+	for c in LayoutData.block_cells(Vector2i(7, 0)):
+		assert_bool(ld.occupied.has(c)).is_false()
+	assert_bool(LayoutCheck.check_occupied_visible(ld)["ok"]).is_true()
 
 
 func test_хранилище_на_углу_блока_не_проходит_проверку_сетки() -> void:

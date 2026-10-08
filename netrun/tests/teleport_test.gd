@@ -207,7 +207,10 @@ func test_vault_pad_still_snaps_after_the_cell_is_checked() -> void:
 	assert_bool(_client.request_teleport(_c(7, 9))).is_true()   # далеко от хранилища (−1,5; −9,5): без привязки
 	assert_bool(await _wait_for(func(): return _at(_c(7, 9)))).is_true()
 	await _sleep(RigMath.TELEPORT_COOLDOWN_LIMIT + 0.05)
-	assert_bool(_client.request_teleport(_c(7, 5))).is_true()   # 1,4 м от хранилища по диагонали — в радиусе привязки (1,6 м)
+	assert_bool(_client.request_teleport(_c(7, 6))).is_true()   # в 2,2 м от хранилища — соседние клетки не привязываются (П5)
+	assert_bool(await _wait_for(func(): return _at(_c(7, 6)))).is_true()
+	await _sleep(RigMath.TELEPORT_COOLDOWN_LIMIT + 0.05)
+	assert_bool(_client.request_teleport(_c(6, 4))).is_true()   # клетка самого хранилища (−1,5; −9,5) — в радиусе привязки (0,75 м); соседние клетки не привязываются
 	var pad := NodeLayout.vault_pad(NodeLayout.SHARD_POS)
 	assert_bool(await _wait_for(func(): return _at(pad))).is_true()
 	assert_array(_denied).is_empty()
