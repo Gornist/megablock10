@@ -52,7 +52,15 @@ uniform float far_end = 60.0;
 // Минимальная полная ширина штриха в пикселях экрана (антиалиасинг без MSAA/TAA): штрих тоньше пикселя на дистанции мерцает и «ползёт лесенкой».
 // Дальше квад расширяется до min_px, яркость падает во столько же раз (свет по площади тот же). 0 — выключено.
 uniform float min_px : hint_range(0.0, 4.0) = 1.5;
+// Ручки против ряби «эквалайзеров» (вертикальные штрихи у плит; ставит AssetMaterials.apply для штрихов окружения, ручки [assets] streak_*). Все выключены по умолчанию.
+uniform float far_dim_min : hint_range(0.0, 1.0) = 1.0;     // яркость штриха на дистанции ≥ far_dim_end (1 — не гасить): как кромка плит, гаснут раньше, чем сливаются в пиксель
+uniform float far_dim_start = 8.0;
+uniform float far_dim_end = 25.0;
+uniform float keep_frac : hint_range(0.0, 1.0) = 1.0;       // доля штрихов, что остаются (по хешу штриха, стабильно от кадра к кадру); остальные схлопываются в вершинном шейдере, заливку не тратят
+uniform float len_scale : hint_range(0.1, 2.0) = 1.0;       // длина штриха от основания/якоря
+uniform float px_fade : hint_range(0.0, 1.0) = 0.0;         // 1 — штрих уже ~0,4 px по номиналу гаснет совсем, к 2 px — полная яркость: тонкие штрихи не «ползут лесенкой», а тускнеют (min_px сохраняет яркость, это — нет)
 
+varying float v_pxk;
 varying vec3 v_wp;
 varying float v_dist;
 
@@ -91,8 +99,10 @@ void vertex() {
 	float s = length(MODEL_MATRIX[0].xyz);
 	vec3 c = VERTEX - vec3((UV.x - 0.5) * 2.0 * w, (0.5 - UV.y) * 2.0 * h, 0.0);
 	v_phase = dot(c, vec3(12.9, 3.1, 7.7));
+	bool dropped = keep_frac < 1.0 && fract(sin(v_phase * 3.7 + 1.3) * 43758.5453) > keep_frac;  // выпавший штрих: в конце квад уводится за пределы экрана
 	float h0 = h;
 	h *= 1.0 + breathe * (0.6 * sin(TIME * breathe_speed + v_phase) + 0.4 * sin(TIME * breathe_speed * 2.3 + v_phase * 1.7));
+	h *= len_scale;
 	vec3 wc = (MODEL_MATRIX * vec4(c, 1.0)).xyz;
 	wc.y += -anchor * (h - h0) * s * sign(MODEL_MATRIX[1].y);  // длина меняется от якоря: основание стены не отрывается от пола
 	if (lattice > 0.0) {  // колонны стоят на узлах мировой решётки по x и z, по высоте непрерывно
@@ -103,10 +113,15 @@ void vertex() {
 	vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), to_cam + vec3(0.00001, 0.0, 0.0)));
 	float hw = halo > 0.0 ? halo_width : 1.0;  // квад шире для ореола; ядро во фрагменте считается в прежних метрах
 	float wk = 1.0;
-	if (min_px > 0.0) {  // мировой размер пикселя на дистанции штриха: 2·d / (P[1][1] · высота вьюпорта); полуширина ядра должна быть ≥ min_px / 2
+	v_pxk = 1.0;
+	if (min_px > 0.0 || px_fade > 0.0) {  // мировой размер пикселя на дистанции штриха: 2·d / (P[1][1] · высота вьюпорта); полуширина ядра должна быть ≥ min_px / 2
 		float d0 = max(-(VIEW_MATRIX * vec4(wc, 1.0)).z, 0.1);
 		float px = 2.0 * d0 / (PROJECTION_MATRIX[1][1] * VIEWPORT_SIZE.y);
-		wk = max(1.0, 0.5 * min_px * px / max(w * s, 0.0001));
+		if (min_px > 0.0) {
+			wk = max(1.0, 0.5 * min_px * px / max(w * s, 0.0001));
+		}
+		float nominal_px = 2.0 * w * s / px;  // ширина штриха до расширения, px
+		v_pxk = mix(1.0, smoothstep(0.4, 2.0, nominal_px), px_fade);
 	}
 	v_comp = 1.0 / wk;
 	vec3 wp = wc + right * (UV.x - 0.5) * 2.0 * w * s * hw * wk + vec3(0.0, 1.0, 0.0) * (0.5 - UV.y) * 2.0 * h * s;
@@ -119,7 +134,7 @@ void vertex() {
 	v_wy = wp.y;
 	v_dist = -(VIEW_MATRIX * vec4(wp, 1.0)).z;
 	v_q = vec2((UV.x - 0.5) * 2.0, (0.5 - UV.y) * 2.0);
-	POSITION = PROJECTION_MATRIX * VIEW_MATRIX * vec4(wp, 1.0);
+	POSITION = dropped ? vec4(2.0, 2.0, 2.0, 1.0) : PROJECTION_MATRIX * VIEW_MATRIX * vec4(wp, 1.0);
 }
 
 void fragment() {
@@ -148,5 +163,5 @@ void fragment() {
 		boost += 2.4 * band * tk;
 	}
 	ALBEDO = col * glow * mix(1.0, far_gain, smoothstep(far_start, far_end, v_dist));
-	ALPHA = COLOR.a * across * along * bead * wave * shim * boost * corrupt_hole(corrupt_mask(k)) * dist_fade() * intensity * v_comp;
+	ALPHA = COLOR.a * across * along * bead * wave * shim * boost * corrupt_hole(corrupt_mask(k)) * dist_fade() * intensity * v_comp * v_pxk * mix(1.0, far_dim_min, smoothstep(far_dim_start, far_dim_end, v_dist));
 }

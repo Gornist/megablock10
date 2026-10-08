@@ -12,7 +12,9 @@ uniform float fringe_alpha : hint_range(0.0, 1.0) = 0.5;     // яркость �
 uniform float edge_glow : hint_range(0.0, 4.0) = 2.2;        // как у solid_dark (AssetMaterials.PILLAR_EDGE)
 uniform vec4 tint : source_color = vec4(1.0);
 uniform float tint_amount : hint_range(0.0, 1.0) = 0.0;
-uniform float fade_start = 40.0;                               // дальше объём субпиксельный, обводка не нужна
+uniform float edge_soft : hint_range(0.0, 1.0) = 0.0;       // как у solid_dark: свет у самого силуэта гасится, обводка гаснет вместе с ним (edge_soft.gdshaderinc)
+#include "edge_soft.gdshaderinc"
+uniform float fade_start = 40.0;                              // дальше объём субпиксельный, обводка не нужна
 uniform float fade_end = 60.0;
 
 varying float v_fade;
@@ -35,6 +37,6 @@ void vertex() {
 }
 
 void fragment() {
-	ALBEDO = mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount) * edge_glow;
+	ALBEDO = mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount) * edge_glow * edge_soft_gain(max(COLOR.r, max(COLOR.g, COLOR.b)), edge_soft);
 	ALPHA = fringe_alpha * v_fade;
 }
