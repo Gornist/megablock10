@@ -86,6 +86,20 @@ vec3 volume_dust_color(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px) {
 uniform float dust_cover_avg : hint_range(0.0, 1.0) = 0.3;      // средняя доля покрытия кадра спрайта (по атласу ≈ 0,2–0,35)
 uniform float dust_edge_gain : hint_range(0.0, 4.0) = 1.4;      // насколько вес ребра поднимает плотность (ребро = скопление частиц)
 
+uniform float lite : hint_range(0.0, 1.0) = 0.0;                // C3 (ручка cloud_lite): дешёвый фрагмент — хэш без sin (кратно дешевле на мобильном GPU), пятна 2D-шумом по плоскости грани (4 хэша вместо 8)
+
+float cloud_hash(vec2 p) {  // хэш без sin: три fract/умножения
+	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	return fract((p3.x + p3.y) * p3.z);
+}
+float cloud_noise2(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(cloud_hash(i), cloud_hash(i + vec2(1.0, 0.0)), f.x), mix(cloud_hash(i + vec2(0.0, 1.0)), cloud_hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+
 vec4 volume_cloud(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px, float edge) {
 	vec3 an = abs(nw);
 	vec2 plane;
@@ -103,12 +117,23 @@ vec4 volume_cloud(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px, float 
 	vec2 coord = plane / dust_cell;
 	vec2 id = floor(coord);
 	vec2 f = fract(coord);
-	float h = dust_hash(vec3(id, axis));
-	float h2 = dust_hash(vec3(id.yx + 17.0, axis));
+	float h;
+	float h2;
+	float patch_n;
+	if (lite > 0.5) {
+		h = cloud_hash(id + axis * 31.0);
+		h2 = cloud_hash(id.yx + 17.0 + axis * 31.0);
+		patch_n = cloud_noise2(vec2(plane.x, plane.y * 2.0) * dust_patch_scale + vec2(axis * 7.0, 3.0));  // plane.y в 2 раза сжата (ячейка 1:2) — возвращаем метры
+	} else {
+		h = dust_hash(vec3(id, axis));
+		h2 = dust_hash(vec3(id.yx + 17.0, axis));
+		patch_n = dust_noise(wp * dust_patch_scale + vec3(0.0, axis * 7.0, 0.0));
+	}
 	float up = clamp(nw.y * 0.5 + 0.5, 0.0, 1.0);
-	float graze = pow(1.0 - clamp(abs(dot(nw, vdir)), 0.0, 1.0), 2.0);
+	float ndv = 1.0 - clamp(abs(dot(nw, vdir)), 0.0, 1.0);
+	float graze = ndv * ndv;
 	float far_k = 1.0 - smoothstep(dust_far_start, dust_far_end, dist);
-	float patch_k = mix(1.0, smoothstep(0.25, 0.75, dust_noise(wp * dust_patch_scale + vec3(0.0, axis * 7.0, 0.0))), dust_patch);
+	float patch_k = mix(1.0, smoothstep(0.25, 0.75, patch_n), dust_patch);
 	float dens = clamp(dust_density * patch_k * (0.55 + 0.45 * up) * (1.0 + 0.7 * graze) + edge * dust_edge_gain, 0.0, 1.0);
 	float px_world = 2.0 * max(dist, 0.1) / max(abs(proj_px), 1.0);
 	float sharp = smoothstep(0.7, 2.0, dust_cell / px_world);

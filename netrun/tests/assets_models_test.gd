@@ -989,6 +989,48 @@ func test_asset_materials_knob_cloud_swaps_solid_dark_for_cloud_shader() -> void
 	AssetMaterials.reset_tuning()
 
 
+func _cloud_meshes(root: Node) -> int:
+	var n := 0
+	for mi in _meshes(root):
+		var sm := mi.get_surface_override_material(0) as ShaderMaterial
+		if sm != null and sm.shader != null and sm.shader.resource_path.contains("cloud_dark"):
+			n += 1
+	return n
+
+
+func test_asset_materials_knob_cloud_far_and_lite() -> void:
+	AssetMaterials.reset_tuning()
+	AssetMaterials.tune({"cloud": 1.0})
+	var far_on := _load("env", "far_floor")
+	AssetMaterials.apply(far_on, "BASE")
+	assert_int(_cloud_meshes(far_on)).override_failure_message("cloud_far по умолчанию 1: дальние пласты тоже облако").is_greater(0)
+	AssetMaterials.tune({"cloud": 1.0, "cloud_far": 0.0})
+	var far_off := _load("env", "far_floor")
+	AssetMaterials.apply(far_off, "BASE")
+	assert_int(_cloud_meshes(far_off)).override_failure_message("cloud_far=0: дальние пласты остаются solid_dark").is_equal(0)
+	var room := _load("env", "cover")
+	AssetMaterials.apply(room, "BASE")
+	assert_int(_cloud_meshes(room)).override_failure_message("cloud_far=0 не трогает комнату").is_greater(0)
+	assert_float(float(_mat_of(room, "pillar_block").get_shader_parameter("lite"))).is_equal_approx(0.0, 0.001)
+	AssetMaterials.tune({"cloud": 1.0, "cloud_floor": 0.0, "cloud_ceiling": 0.0})
+	var no_floor := _load("env", "floor_slab_8")
+	AssetMaterials.apply(no_floor, "BASE")
+	assert_int(_cloud_meshes(no_floor)).override_failure_message("cloud_floor=0: пол остаётся solid_dark").is_equal(0)
+	var no_ceil := _load("env", "ceiling")
+	AssetMaterials.apply(no_ceil, "BASE")
+	assert_int(_cloud_meshes(no_ceil)).override_failure_message("cloud_ceiling=0: потолок остаётся solid_dark").is_equal(0)
+	AssetMaterials.reset_tuning()
+	AssetMaterials.tune({"cloud": 1.0})
+	var with_floor := _load("env", "floor_slab_8")
+	AssetMaterials.apply(with_floor, "BASE")
+	assert_int(_cloud_meshes(with_floor)).override_failure_message("по умолчанию пол — облако").is_greater(0)
+	AssetMaterials.tune({"cloud": 1.0, "cloud_lite": 1.0})
+	var lite := _load("env", "cover")
+	AssetMaterials.apply(lite, "BASE")
+	assert_float(float(_mat_of(lite, "pillar_block").get_shader_parameter("lite"))).is_equal_approx(1.0, 0.001)
+	AssetMaterials.reset_tuning()
+
+
 func _skirt_mesh(root: Node, mesh_name: String) -> MeshInstance3D:
 	for mi in _meshes(root):
 		if String(mi.name) == mesh_name:

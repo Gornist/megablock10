@@ -146,6 +146,10 @@ const KNOBS := {
 	"dust_density": 0.8,     # доля ячеек с частицей на ровной грани вблизи (с пятнами dust_patch: проплешины и сгущения)
 	"cloud": 0.0,            # ПРОТОТИП «облако без основы» (владелец 08.10): 0 — выкл.; 1 — грани solid_dark становятся частицами с дырами (alpha_to_coverage, нужен MSAA; яркость как dust); см. cloud_dark.gdshader
 	"cloud_edge_mix": 0.35,  # доля цвета неона у частиц рёбер/линий сетки (владелец: неона меньше)
+	"cloud_lite": 0.0,       # C3 (замер Pico: cloud=1 +3,4 мс при любой плотности): 1 — дешёвый фрагмент (хэш без sin, пятна 2D вместо 3D-шума); вид тот же по характеру, узор другой
+	"cloud_far": 1.0,        # C3 (замер Pico: цена a2c — в ПЛОЩАДИ материала, не в числе частиц): 0 — дальние пласты far_* остаются сплошной тёмной гранью (solid_dark, opaque, LRZ), облако только в комнате
+	"cloud_floor": 1.0,      # C3: 0 — пол комнаты (floor*) остаётся solid_dark (чаще всего самая большая площадь на экране)
+	"cloud_ceiling": 1.0,    # C3: 0 — потолок (ceiling*) остаётся solid_dark
 	# Рябь «эквалайзеров» (штрихи окружения, только при tier != ""; существа и аватары не трогаем). Меры независимы:
 	"streak_far_min": 1.0,   # яркость штрихов на дистанции ≥ streak_far_end (1 — не гасить; 0,3 — ориентир), как кромка плит
 	"streak_far_start": 8.0,
@@ -235,6 +239,18 @@ static func _is_plate(mi: MeshInstance3D, _root: Node) -> bool:
 
 static func _k(name: String) -> Variant:
 	return _tuned.get(name, KNOBS[name])
+
+
+## C3: охват облака (ручка cloud) по группам моделей по имени файла сцены: far_* / floor* / ceiling*; всё остальное (колонны, укрытия, хранилище, портал…) — всегда.
+static func _cloud_scope_ok(root: Node) -> bool:
+	var base := root.scene_file_path.get_file()
+	if base.begins_with("far_"):
+		return float(_k("cloud_far")) > 0.5
+	if base.begins_with("floor"):
+		return float(_k("cloud_floor")) > 0.5
+	if base.begins_with("ceiling"):
+		return float(_k("cloud_ceiling")) > 0.5
+	return true
 
 ## Параметры haze.gdshader для `edge_mist` (env/room_edge_<N>): низкая дымка вдоль границы комнаты, не туман горизонта.
 const EDGE_MIST := {"haze_alpha": 0.6, "glow": 1.6, "shape": 1.0, "noise_amount": 0.35, "stripe_amount": 0.12, "stripe_count": 160.0}
@@ -431,9 +447,10 @@ static func apply(root: Node, tier: String = "") -> void:
 					if String(mi.name).ends_with(suffix):
 						for k in FLOOR_V[fv][suffix]:
 							m.set_shader_parameter(k, FLOOR_V[fv][suffix][k])
-			if src.resource_name == "solid_dark" and float(_k("cloud")) > 0.0 and String(mi.name) != "slab_seams":  # прототип «облако без основы»: частицы с дырами вместо тёмной грани (нужен MSAA)
+			if src.resource_name == "solid_dark" and float(_k("cloud")) > 0.0 and String(mi.name) != "slab_seams" and _cloud_scope_ok(root):  # прототип «облако без основы»: частицы с дырами вместо тёмной грани (нужен MSAA)
 				m.shader = CLOUD_SHADER
 				m.next_pass = null
+				m.set_shader_parameter("lite", float(_k("cloud_lite")))
 				m.set_shader_parameter("glitch_tex", GlitchSprite.texture())
 				m.set_shader_parameter("dust", float(_k("cloud")))
 				m.set_shader_parameter("dust_cell", float(_k("dust_cell")))
