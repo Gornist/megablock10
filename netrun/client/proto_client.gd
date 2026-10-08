@@ -74,6 +74,10 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 		var perf := FramePerf.new()
 		add_child(perf)
 		perf.reported.connect(func(s: Dictionary): log_file.log("perf", s))
+		if RenderConfig.perf_diag(render_cfg.perf):   # perf = "diag": состояние OpenXR/VRS/MSAA и PNG кадра вида через 8 с
+			var diag := XrDiag.new()
+			add_child(diag)
+			diag.reported.connect(func(d: Dictionary): log_file.log("xr.diag", d))
 	scene.rig.xr_failed.connect(func(reason: String): log_file.log("xr", {"enabled": false, "reason": reason}))
 	scene.rig.away_event.connect(func(kind: String, source: String, sec: float): log_file.log("away." + kind, {"source": source, "sec": snappedf(sec, 0.1)}))
 	scene.rig.recentered.connect(func(xr: bool): log_file.log("rig.recenter", {"xr": xr}))
