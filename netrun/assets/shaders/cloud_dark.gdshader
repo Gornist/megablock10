@@ -3,7 +3,8 @@
 // Непрозрачные частицы с дырами: alpha_to_coverage (нужен MSAA, у клиента 4×), глубина пишется, аддитивной перерисовки и сортировки нет. Вес ребра берём из цвета вершины (1 на стыке → 0 на 3 см),
 // линии клеток пола — из той же текстуры grid_tex, что у solid_dark: там плотность поднимается до скопления (линия остаётся читаемой, но из частиц).
 shader_type spatial;
-render_mode unshaded, cull_back, alpha_to_coverage, fog_disabled;
+// _and_one: ALPHA задаёт только покрытие сэмплов, в буфер пишется альфа 1 — при layers=behind (прозрачный фон глаза) дробная альфа дыр иначе просветила бы панель/слой позади (замечание Godot, Pico).
+render_mode unshaded, cull_back, alpha_to_coverage_and_one, fog_disabled;
 
 #include "volume_dust.gdshaderinc"
 
