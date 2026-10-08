@@ -68,12 +68,22 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	# Настройки рендера читаются до построения сцены: обводка силуэтов (fringe) ставится в материалы при построении узлов.
 	var render_cfg := RenderConfig.load_file(config_paths)
 	render_cfg.apply_fringe(config_paths)
+	VolumeRegistry.configure(render_cfg.volumetric)   # какие модули рисуются облаком частиц (по умолчанию ни один)
 	scene = preload("res://client/rig_test_scene.gd").new()
 	add_child(scene)
 	if RenderConfig.perf_enabled(render_cfg.perf):   # счётчик кадра для стенда: [render] perf = "on"
 		var perf := FramePerf.new()
 		add_child(perf)
 		perf.reported.connect(func(s: Dictionary): log_file.log("perf", s))
+		if RenderConfig.perf_diag(render_cfg.perf):   # perf = "diag": состояние OpenXR/VRS/MSAA и PNG кадра вида через 8 с
+			var diag := XrDiag.new()
+			add_child(diag)
+			diag.reported.connect(func(d: Dictionary): log_file.log("xr.diag", d))
+	if render_cfg.bench != "":   # воспроизводимый замер: [render] bench = "<пресет>" (поза, 3 прогона по 60 с, медиана)
+		var bench := BenchRun.new()
+		add_child(bench)
+		bench.setup(scene.rig, render_cfg.bench)
+		bench.finished.connect(func(r: Dictionary): log_file.log("bench", r))
 	scene.rig.xr_failed.connect(func(reason: String): log_file.log("xr", {"enabled": false, "reason": reason}))
 	scene.rig.away_event.connect(func(kind: String, source: String, sec: float): log_file.log("away." + kind, {"source": source, "sec": snappedf(sec, 0.1)}))
 	scene.rig.recentered.connect(func(xr: bool): log_file.log("rig.recenter", {"xr": xr}))
