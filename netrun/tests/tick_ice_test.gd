@@ -133,11 +133,51 @@ func test_д_наткнулся_цель_на_пути_патруля() -> void:
 	assert_str(ev[ev.size() - 1]["reason"]).is_equal("caught")
 
 
-func test_д_скрытая_цель_не_препятствие_патрулю() -> void:
+func test_д_прыжок_на_клетку_ice_мгновенный_выброс_всегда() -> void:
+	# П5 (карточка Game): «можно стоять на клетке ICE, и он не замечает» — прыжок / шаг игрока в клетку ICE берёт в том же такте, без красной стрелки и Поиска;
+	# и под Призраком (hidden), и в грейсе прибытия (immune): прыжок — ход игрока, грейс защищает только от ходов ICE
+	var g := NodeGrid.new()
+	var start := Vector2i(2, 8)
+	for mode in ["видим", "призрак", "грейс"]:
+		var ice := TickIce.new({}, _route([start, Vector2i(14, 8)]), g)
+		var hidden := {"s": true} if mode == "призрак" else {}
+		var immune := {"s": true} if mode == "грейс" else {}
+		var ev := ice.tick(_at(ice.cell()), hidden, immune)
+		assert_int(_kinds(ev, "capture")).override_failure_message("%s: прыжок на клетку ICE не взят" % mode).is_equal(1)
+	# далеко от ICE — ничего
+	var far := TickIce.new({}, _route([start, Vector2i(14, 8)]), g)
+	assert_int(_kinds(far.tick(_at(Vector2i(10, 8))), "capture")).is_equal(0)
+
+
+func test_д_прыжок_на_клетку_куда_ice_только_что_ушёл_берёт_тоже() -> void:
+	# ICE за такт сошёл с клетки, а игрок прыгнул в неё же (позиции игроков применяются до тика): касание было, выброс тот же
 	var g := NodeGrid.new()
 	var ice := TickIce.new({}, _route([Vector2i(2, 8), Vector2i(14, 8)]), g)
-	ice.tick(_at(Vector2i(4, 8)), {"s": true})
-	assert_object(ice.cell()).is_equal(Vector2i(4, 8))
+	var start := ice.cell()
+	assert_int(_kinds(ice.tick(_at(start)), "capture")).is_equal(1)
+	assert_bool(ice.cell() != start).is_true()   # ICE ушёл с клетки: проверка шла по клетке в начале такта
+
+
+func test_д_скрытая_цель_ice_упирается_и_проверяет_клетку_без_захвата() -> void:
+	# Карточка Game, п. 3: Призрак скрывает от взгляда, но не от касания — ICE в клетку скрытого не заходит, «?» и Проверка этой клетки, захвата нет
+	var g := NodeGrid.new()
+	var ice := TickIce.new({}, _route([Vector2i(2, 8), Vector2i(14, 8)]), g)
+	var hidden := {"s": true}
+	var caps := 0
+	caps += _kinds(ice.tick(_at(Vector2i(4, 8)), hidden), "capture")
+	assert_object(ice.cell()).is_equal(Vector2i(3, 8))   # упёрся перед клеткой скрытого, не вошёл
+	assert_int(ice.state()).is_equal(TickIce.Mode.CHECK)   # «?» и Проверка этой клетки (Поиска нет: видимого нетраннера нет)
+	for _i in 3:
+		caps += _kinds(ice.tick(_at(Vector2i(4, 8)), hidden), "capture")
+		assert_bool(ice.cell() != Vector2i(4, 8)).is_true()   # в клетку скрытого не заходит ни в какой стадии
+	assert_int(caps).is_equal(0)
+
+
+func test_д_скрытая_далеко_не_препятствие_патрулю() -> void:
+	var g := NodeGrid.new()
+	var ice := TickIce.new({}, _route([Vector2i(2, 8), Vector2i(14, 8)]), g)
+	ice.tick(_at(Vector2i(10, 8)), {"s": true})
+	assert_object(ice.cell()).is_equal(Vector2i(4, 8))   # маршрут не тронут
 	assert_int(ice.awareness_of("s")).is_equal(0)
 
 
@@ -229,7 +269,7 @@ func test_и_скрытая_цель_не_набирает_счётчик() -> v
 	var g := NodeGrid.new()
 	var ice := _east_ice(g)
 	for _i in 5:
-		ice.tick(_at(Vector2i(9, 8)), {"s": true})
+		ice.tick(_at(Vector2i(9, 10)), {"s": true})   # в стороне от маршрута (y = 8): взгляд скрытого не видит; на маршруте ICE упёрся бы — см. тест про упор
 		assert_int(ice.awareness_of("s")).is_equal(0)
 		assert_int(ice.state()).is_equal(0)
 
@@ -282,13 +322,15 @@ func test_нетраннер_в_клетке_ice_остаётся_в_фокус�
 	var ice := _still_ice(g, Vector2i(3, 8))
 	var tg := _at(Vector2i(3, 8))   # вошёл в клетку ICE сам
 	var aws: Array = []
-	var caps := 0
-	for _i in 4:
-		caps += _kinds(ice.tick(tg), "capture")
+	var first_caps := 0
+	for i in 4:
+		var c := _kinds(ice.tick(tg), "capture")
+		if i == 0:
+			first_caps = c
 		aws.append(ice.awareness_of("s"))
 	aws.resize(3)   # на 4-м такте прочёсывание уводит ICE в соседнюю клетку, цель за спиной — счётчик там уже не показатель
 	assert_array(aws).is_equal([2, 4, 6])   # раньше «своя клетка» не видна: счётчик падал, ICE терял цель
-	assert_int(caps).is_equal(1)
+	assert_int(first_caps).is_equal(1)   # П5: вошёл в клетку ICE сам — выброс сразу, на том же такте (раньше — тактом позже по Поиску)
 
 
 # --- Ожидание и поворот на точках маршрута (wait / look) ---
@@ -518,8 +560,9 @@ func test_не_нашёл_потерял_один_такт_и_возврат_н�
 	cells.append(ice.cell())
 	assert_int(ice.state()).is_equal(TickIce.Mode.GAZE)
 	assert_object(ice.footprint()).is_equal(Vector2i(5, 8))
-	for _i in 3:   # цель ушла из виду (скрыта): счётчик 2 → 1 → 0 → 0
-		ice.tick(tg, {"s": true})
+	var gone := _at(Vector2i(5, 12))   # цель ушла из виду (скрыта) и сошла с маршрута: на маршруте ICE упёрся бы в скрытого (П5, см. тест про упор)
+	for _i in 3:   # счётчик 2 → 1 → 0 → 0
+		ice.tick(gone, {"s": true})
 		lost.append(ice.lost())
 		cells.append(ice.cell())
 	assert_array(lost).is_equal([false, false, true, false])   # «потерял» ровно на такте, когда счётчик дошёл до нуля
@@ -527,7 +570,7 @@ func test_не_нашёл_потерял_один_такт_и_возврат_н�
 	assert_object(ice.footprint()).is_null()
 	assert_object(cells[2]).is_equal(Vector2i(3, 8))   # на потерянном такте ещё стоит
 	assert_object(cells[3]).is_equal(Vector2i(5, 8))   # дальше идёт по маршруту
-	ice.tick(tg, {"s": true})
+	ice.tick(gone, {"s": true})
 	assert_bool(ice.lost()).is_false()
 
 
