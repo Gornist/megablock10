@@ -11,6 +11,13 @@ func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			_out = a.substr(6)
+		elif a.begins_with("--tune="):  # ручки AssetMaterials до построения окружения (как [assets] в netrun.cfg): --tune=edge_soft=0.8,fringe_on=false
+			var d := {}
+			for kv in a.trim_prefix("--tune=").split(","):
+				var p := kv.split("=")
+				if p.size() == 2:
+					d[p[0]] = p[1]
+			AssetMaterials.tune(d)
 	DirAccess.make_dir_recursive_absolute(_out)
 	var scene: Node3D = preload("res://client/rig_test_scene.gd").new()
 	add_child(scene)
