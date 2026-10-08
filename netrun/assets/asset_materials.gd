@@ -51,7 +51,7 @@ const LAYERS := {
 	"cell_occupied_fill": Color(PAL_CYAN, 0.14),   # занятая клетка (укрытие, хранилище): слабая голубая заливка
 	"cell_occupied_edge": Color(PAL_CYAN, 0.55),   # и контур клетки
 	# Клетка в зрении ICE (TickFloor): тёмно-красная заливка на тёмном фоне читается КОРИЧНЕВОЙ, поэтому заливка почти прозрачна, а читается контур клетки
-	"cell_vision_fill": Color(PAL_THREAT_HOT, 0.10),
+	"cell_vision_fill": Color(PAL_THREAT_HOT, 0.03),   # замер foyer_preview 08.10: смешивание линейное, α 0,04 в красном после sRGB — бурые (58,44,44); 0,03 с пульсом ≤ 0,05 ≈ (40,30,30)
 	"cell_vision_edge": Color(PAL_THREAT_HOT, 0.85),
 	"cell_future": Color(PAL_CYAN, 0.30),          # клетка будущего положения (FUTURE_TINT)
 	# Прицел прыжка
