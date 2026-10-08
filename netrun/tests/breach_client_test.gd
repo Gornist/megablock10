@@ -133,7 +133,7 @@ func test_teleport_snap_in_the_rig_matches_the_server_and_turns_the_view_to_the_
 	var proto := _client()
 	var scene: Node3D = proto.scene
 	assert_bool(await _wait_for(func(): return scene.node_info.has("shards"))).is_true()
-	var near := NodeLayout.SHARD_SLOTS[0] + Vector3(0.9, 0, 1.0)
+	var near := NodeLayout.SHARD_SLOTS[0] + Vector3(0.3, 0, 0.4)   # в клетке хранилища (радиус привязки 0,75 м, П5)
 	var s: Dictionary = scene.snap_teleport(near)
 	var pad := NodeLayout.vault_pad(NodeLayout.SHARD_SLOTS[0])
 	assert_float(NodeLayout.flat_distance(s["p"], pad)).is_less(0.001)

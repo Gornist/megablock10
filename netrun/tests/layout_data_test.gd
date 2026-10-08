@@ -19,11 +19,14 @@ func _same_keys(a: Dictionary, b: Dictionary) -> bool:
 
 func test_фойе_занятые_клетки_колонны_и_хранилища() -> void:
 	var ld := _foyer()
-	assert_int(ld.occupied.size()).is_equal(24)   # 4 колонны × 4 клетки + 2 хранилища × 4 клетки
-	for c: Vector2i in [Vector2i(4, 2), Vector2i(5, 3), Vector2i(10, 2), Vector2i(11, 7), Vector2i(4, 6), Vector2i(0, 0), Vector2i(1, 1), Vector2i(15, 0), Vector2i(14, 1)]:
+	assert_int(ld.occupied.size()).is_equal(18)   # 4 колонны × 4 клетки + 2 клетки хранилищ (П5: остальные 3 клетки блока свободны)
+	for c: Vector2i in [Vector2i(4, 2), Vector2i(5, 3), Vector2i(10, 2), Vector2i(11, 7), Vector2i(4, 6), ld.vaults[0]["cell1"], ld.vaults[1]["cell1"]]:
 		assert_bool(ld.occupied.has(c)).is_true()
 	for c: Vector2i in [Vector2i(0, 2), Vector2i(7, 13), Vector2i(3, 5), Vector2i(13, 9), Vector2i(2, 0)]:
 		assert_bool(ld.occupied.has(c)).is_false()
+	for v: Dictionary in ld.vaults:   # остальные клетки блока хранилища свободны
+		for c in LayoutData.block_cells(v["cell"]):
+			assert_bool(ld.occupied.has(c)).is_equal(c == v["cell1"])
 	var g := ld.grid()
 	assert_bool(g.is_occupied(Vector2i(4, 2))).is_true()
 	assert_bool(g.is_occupied(Vector2i(7, 13))).is_false()
@@ -174,10 +177,16 @@ func test_дальность_зрения_задана_только_если_е�
 func test_клетки_хранилища_ведут_на_площадку_а_в_legacy_нет() -> void:
 	var ld := _foyer()
 	var g := ld.grid()
-	# хранилище [0, 0] — блок клеток (0..1; 0..1), площадка — клетка (1; 2): прыжок на любую клетку блока приземляется на неё
+	# хранилище [0, 0] — блок клеток (0..1; 0..1), площадка — клетка (1; 2): прыжок на клетку самого хранилища приземляется на площадку,
+	# остальные три клетки блока свободны и остаются как есть (П5: занята ровно клетка хранилища)
+	var vault_cell: Vector2i = ld.vaults[0]["cell1"]
 	for c in LayoutData.block_cells(Vector2i(0, 0)):
-		assert_object(g.landing_of(c)).is_equal(Vector2i(1, 2))
-		assert_bool(g.is_occupied(c)).is_true()   # сами клетки по-прежнему заняты
+		if c == vault_cell:
+			assert_object(g.landing_of(c)).is_equal(Vector2i(1, 2))
+			assert_bool(g.is_occupied(c)).is_true()
+		else:
+			assert_object(g.landing_of(c)).is_equal(c)
+			assert_bool(g.is_occupied(c)).is_false()
 	assert_object(g.landing_of(Vector2i(8, 8))).is_equal(Vector2i(8, 8))   # прочие клетки — как есть
 	assert_bool(LayoutData.load_named("legacy").grid().landing.is_empty()).is_true()
 

@@ -72,23 +72,17 @@ func test_фойе_четыре_колонны_по_карте_и_четыре_�
 	assert_int(int(scene.view.module_counts()["tunnel_ring"])).is_equal(NodeLayout.EXIT_TUNNEL_SEGMENTS)
 
 
-func test_укрытия_блока_хранилища_три_клетки_на_каждое_хранилище_фойе() -> void:
+func test_укрытий_у_хранилища_нет_остальные_клетки_блока_свободны() -> void:
+	# П5: занята только клетка самого хранилища; три остальные клетки блока свободны для шага и не нарисованы укрытиями
 	var scene := _scene()
 	var foyer := LayoutData.cached("foyer")
 	scene.apply_node(_info("foyer", foyer))
-	var got: Array[Vector3] = scene.view.cover_positions()
-	assert_int(got.size()).is_equal(3 * foyer.vaults.size())
-	assert_int(int(scene.view.module_counts()["cover"])).is_equal(3 * foyer.vaults.size())
+	assert_int(scene.view.cover_positions().size()).is_equal(0)
+	assert_int(int(scene.view.module_counts()["cover"])).is_equal(0)
+	var g := foyer.grid()
 	for v: Dictionary in foyer.vaults:
-		var vault_cell: Vector2i = v["cell1"]
-		var in_block := 0
-		for p in got:
-			var c := NodeGrid.cell_of(p)
-			assert_vector(p).is_equal_approx(NodeGrid.center(c), Vector3.ONE * 0.001)  # центр клетки, y = 0
-			assert_that(c).is_not_equal(vault_cell)                                    # не на клетке самого хранилища
-			if LayoutData.block_of(c) == v["cell"]:
-				in_block += 1
-		assert_int(in_block).is_equal(3)
+		for c in LayoutData.block_cells(v["cell"]):
+			assert_bool(g.is_occupied(c)).is_equal(c == v["cell1"])
 
 
 func test_укрытий_нет_без_раскладки_и_в_legacy() -> void:
@@ -183,8 +177,11 @@ func test_привязка_телепорта_к_площадке_расклад
 	var scene := _scene()
 	scene.apply_node(_info(ALT, _alt))
 	var slot: Vector3 = _alt.vaults[0]["slot"]
-	var near := Vector3(slot.x - 1.0, 0.0, slot.z)
+	var near := Vector3(slot.x - 0.3, 0.0, slot.z)   # в клетке самого хранилища; соседняя клетка (−1 м) уже не привязывается (П5)
 	var snapped: Dictionary = scene.snap_teleport(near)
+	var neighbour: Dictionary = scene.snap_teleport(Vector3(slot.x - 1.0, 0.0, slot.z))
+	assert_object(neighbour["look"]).is_null()
+	assert_float((neighbour["p"] as Vector3).x).is_equal_approx(slot.x - 1.0, 0.001)
 	var pad := Vector3(5.5, 0, -6.5)   # клетка (13; 7)
 	assert_float((snapped["p"] as Vector3).x).is_equal_approx(pad.x, 0.001)
 	assert_float((snapped["p"] as Vector3).z).is_equal_approx(pad.z, 0.001)

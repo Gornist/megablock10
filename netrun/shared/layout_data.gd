@@ -100,27 +100,20 @@ static func block_center_cell(b: Vector2i) -> Vector2i:
 	return Vector2i(2 * b.x + 1, 2 * b.y + 1)
 
 
-## Клетки 1 м блока хранилища, занятые укрытием env/cover: три клетки блока, кроме клетки самого хранилища (cell1). Одно правило
-## для клиента (что рисовать) и LayoutCheck.check_occupied_visible (что покрыто моделью). У legacy укрытий нет.
+## Клетки 1 м блока хранилища, занятые укрытием env/cover. После П5 их нет: хранилище занимает одну клетку (cell1), остальные три клетки блока свободны
+## для шага (владелец на очках: «занятыми должны быть ровно 2 видимые клетки», хранилище и площадка). Функция осталась для клиента (что рисовать)
+## и LayoutCheck.check_occupied_visible — оба получают пустой список.
 func cover_cells() -> Array[Vector2i]:
-	var out: Array[Vector2i] = []
-	if is_legacy():
-		return out
-	for v: Dictionary in vaults:
-		for c in block_cells(v["cell"]):
-			if c != v["cell1"]:
-				out.append(c)
-	return out
+	return []
 
 
 func grid() -> NodeGrid:
 	var g := NodeGrid.new()
 	g.occ = occupied.duplicate()
 	if not is_legacy():
-		# Прыжок на любую клетку блока хранилища (он занят) ставит на площадку перед ним.
+		# Прыжок на клетку самого хранилища (она занята) ставит на площадку перед ним; соседние клетки блока свободны и остаются как есть.
 		for v: Dictionary in vaults:
-			for c in block_cells(v["cell"]):
-				g.landing[c] = v["pad1"]
+			g.landing[v["cell1"]] = v["pad1"]
 	return g
 
 
@@ -141,8 +134,11 @@ func _fill(d: Dictionary) -> String:
 			var ch := line[sx]
 			var b := Vector2i(sx, sz)
 			if OCCUPIED_SYMBOLS.contains(ch):
-				for c in block_cells(b):
-					occupied[c] = true
+				if ch == "V":
+					pass   # хранилище занимает одну клетку 1 м (её отмечает _fill_vaults), остальные три клетки блока свободны для шага (П5)
+				else:
+					for c in block_cells(b):
+						occupied[c] = true
 			elif not FREE_SYMBOLS.contains(ch):
 				return "cells[%d][%d]: неизвестный символ '%s'" % [sz, sx, ch]
 			if ch == "S":
@@ -226,6 +222,8 @@ func _fill_vaults(src: Variant) -> String:
 				cell1 = NodeGrid.cell_of(slot)
 			pad_pos = NodeLayout.vault_pad(slot)
 		slot.y = 1.0
+		if not is_legacy():
+			occupied[cell1] = true   # занята ровно клетка хранилища; площадка — соседняя клетка другого блока, на ней стоят
 		vaults.append({
 			"cell": cc, "cell1": cell1, "slot": slot, "pad_cell": pc, "pad1": pad1,
 			"pad": pad_pos, "ring": str(vd.get("ring", "outer")),

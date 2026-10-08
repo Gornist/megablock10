@@ -31,7 +31,7 @@ func test_подсвечено_столько_клеток_сколько_зан
 	var f: OccupiedFloor = auto_free(OccupiedFloor.new(ld.grid()))
 	add_child(f)
 	assert_int(f.cell_count()).is_equal(ld.occupied.size())
-	assert_int(f.cell_count()).is_equal(4 * 4 + 2 * 4)   # четыре колонны и два хранилища, по блоку 2×2 клетки
+	assert_int(f.cell_count()).is_equal(4 * 4 + 2)   # четыре колонны по блоку 2×2 клетки и две клетки хранилищ (П5: остальные клетки блока свободны)
 
 
 func test_отметки_лежат_в_центрах_занятых_клеток() -> void:
@@ -55,7 +55,7 @@ func test_пустая_сетка_без_отметок_а_смена_сетки
 	add_child(f)
 	assert_int(f.cell_count()).is_equal(0)
 	f.set_grid(LayoutData.load_named("foyer").grid())
-	assert_int(f.cell_count()).is_equal(24)
+	assert_int(f.cell_count()).is_equal(18)   # колонны 16 + клетки двух хранилищ
 	f.set_grid(NodeGrid.new())
 	assert_int(f.cell_count()).is_equal(0)
 

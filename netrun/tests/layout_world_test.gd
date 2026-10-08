@@ -114,9 +114,10 @@ func test_вход_игрока_по_раскладке_узла_сессии() 
 func test_площадка_хранилища_раскладки_это_клетка_pad_лицом_к_хранилищу() -> void:
 	_build()
 	# хранилище [7, 3] — клетка (14; 7) его блока, ближайшая к площадке [6, 3]: центр (6,5; -6,5); площадка — клетка (13; 7)
-	var snap := _alt().snap_teleport(Vector3(6.5, 0, -5.5))   # у хранилища: ближе 1,6 м
+	var snap := _alt().snap_teleport(Vector3(6.5, 0, -6.2))   # в клетке хранилища: ближе 0,75 м (П5)
 	assert_object(snap["p"]).is_equal(Vector3(5.5, 0, -6.5))
 	assert_object(snap["look"]).is_equal(Vector3(6.5, 0, -6.5))
+	assert_object(_alt().snap_teleport(Vector3(6.5, 0, -5.5))["look"]).is_null()   # соседняя клетка (1 м) не привязывается
 	assert_object(_alt().snap_teleport(Vector3(0, 0, -3))["look"]).is_null()   # далеко от хранилищ — без привязки
 	# legacy: прежнее правило (cardinal_yaw), не клетка pad
 	var slot: Vector3 = NodeLayout.SHARD_SLOTS[0]
