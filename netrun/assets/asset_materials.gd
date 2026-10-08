@@ -145,6 +145,7 @@ const KNOBS := {
 	"streak_keep": 1.0,      # доля штрихов, что остаются (0,6 — реже на 40%, выпавшие не тратят заливку)
 	"streak_len": 1.0,       # длина штрихов окружения (0,6 — короче)
 	"streak_px_fade": 0.0,   # 0…1: штрих уже ~2 px на экране тускнеет, а не «ползёт лесенкой» (1 — полная мера)
+	"streak_scatter": 0.0,   # м: случайный сдвиг штрихов окружения по x, z (0,03–0,08): ломает ровные параллельные ряды (муар); у ICE форма неровная, и рябь на ней слабее (очки, вариант 2)
 }
 static var _tuned := {}
 static var _grid_tex: ImageTexture
@@ -338,6 +339,8 @@ static func apply(root: Node, tier: String = "") -> void:
 					m.set_shader_parameter("len_scale", float(_k("streak_len")))
 				if float(_k("streak_px_fade")) > 0.0:
 					m.set_shader_parameter("px_fade", float(_k("streak_px_fade")))
+				if float(_k("streak_scatter")) > 0.0:
+					m.set_shader_parameter("scatter", float(_k("streak_scatter")))
 			if String(mi.name) == "beacon_halo":  # маяк предмета: капля свечения — свой шейдер; луч — streaks с ореолом (клиент выключает узел Beacon в руке)
 				m.shader = BEACON_HALO_SHADER
 			elif String(mi.name) == "beacon_beam":

@@ -866,8 +866,8 @@ func test_asset_materials_streak_knobs_reach_env_streaks_only() -> void:
 	var base := _streak_mats(dflt)
 	assert_int(base.size()).override_failure_message("в стене нет штрихов").is_greater(0)
 	for m in base:
-		assert_bool(m.get_shader_parameter("keep_frac") == null and m.get_shader_parameter("far_dim_min") == null and m.get_shader_parameter("px_fade") == null).override_failure_message("по умолчанию ручки штрихов не заданы").is_true()
-	AssetMaterials.tune({"streak_far_min": 0.3, "streak_far_start": 6.0, "streak_far_end": 20.0, "streak_keep": 0.6, "streak_len": 0.7, "streak_px_fade": 1.0})
+		assert_bool(m.get_shader_parameter("keep_frac") == null and m.get_shader_parameter("far_dim_min") == null and m.get_shader_parameter("px_fade") == null and m.get_shader_parameter("scatter") == null).override_failure_message("по умолчанию ручки штрихов не заданы").is_true()
+	AssetMaterials.tune({"streak_far_min": 0.3, "streak_far_start": 6.0, "streak_far_end": 20.0, "streak_keep": 0.6, "streak_len": 0.7, "streak_px_fade": 1.0, "streak_scatter": 0.05})
 	var tuned := _load("env", "wall")
 	AssetMaterials.apply(tuned, "BASE")
 	for m in _streak_mats(tuned):
@@ -876,6 +876,7 @@ func test_asset_materials_streak_knobs_reach_env_streaks_only() -> void:
 		assert_float(float(m.get_shader_parameter("keep_frac"))).is_equal_approx(0.6, 0.001)
 		assert_float(float(m.get_shader_parameter("len_scale"))).is_equal_approx(0.7, 0.001)
 		assert_float(float(m.get_shader_parameter("px_fade"))).is_equal_approx(1.0, 0.001)
+		assert_float(float(m.get_shader_parameter("scatter"))).is_equal_approx(0.05, 0.001)
 	var creature := _load("ice", "soft_ice")  # существа без тира: ручки окружения их не трогают
 	AssetMaterials.apply(creature)
 	for m in _streak_mats(creature):
