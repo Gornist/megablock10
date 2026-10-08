@@ -854,9 +854,39 @@ func _streak_mats(root: Node) -> Array:
 	for mi in _meshes(root):
 		for s in mi.mesh.get_surface_count():
 			var m := mi.get_surface_override_material(s) as ShaderMaterial
-			if m != null and m.shader.get_shader_uniform_list().any(func(u): return u["name"] == "keep_frac"):
+			if m != null and m.shader.get_shader_uniform_list().any(func(u): return u["name"] == "len_scale"):  # только штрихи: keep_frac есть и у точек
 				out.append(m)
 	return out
+
+
+func _point_mats(root: Node) -> Array:
+	var out: Array = []
+	for mi in _meshes(root):
+		for s in mi.mesh.get_surface_count():
+			var m := mi.get_surface_override_material(s) as ShaderMaterial
+			if m != null and m.shader.get_shader_uniform_list().any(func(u): return u["name"] == "keep_frac") and not m.shader.get_shader_uniform_list().any(func(u): return u["name"] == "len_scale"):
+				out.append(m)
+	return out
+
+
+func test_asset_materials_knob_point_keep_reaches_env_points_only() -> void:
+	AssetMaterials.reset_tuning()
+	var dflt := _load("env", "wall")
+	AssetMaterials.apply(dflt, "BASE")
+	var base := _point_mats(dflt)
+	assert_int(base.size()).override_failure_message("в стене нет точек").is_greater(0)
+	for m in base:
+		assert_bool(m.get_shader_parameter("keep_frac") == null).override_failure_message("по умолчанию доля точек не задана").is_true()
+	AssetMaterials.tune({"point_keep": 0.0})
+	var tuned := _load("env", "wall")
+	AssetMaterials.apply(tuned, "BASE")
+	for m in _point_mats(tuned):
+		assert_float(float(m.get_shader_parameter("keep_frac"))).is_equal(0.0)
+	var creature := _load("ice", "soft_ice")  # существа без тира: ручка окружения их не трогает
+	AssetMaterials.apply(creature)
+	for m in _point_mats(creature):
+		assert_bool(m.get_shader_parameter("keep_frac") == null).override_failure_message("ручка точек окружения попала на существо").is_true()
+	AssetMaterials.reset_tuning()
 
 
 func test_asset_materials_streak_knobs_reach_env_streaks_only() -> void:

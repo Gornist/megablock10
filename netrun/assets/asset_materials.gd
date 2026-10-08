@@ -145,6 +145,7 @@ const KNOBS := {
 	"streak_keep": 1.0,      # доля штрихов, что остаются (0,6 — реже на 40%, выпавшие не тратят заливку)
 	"streak_len": 1.0,       # длина штрихов окружения (0,6 — короче)
 	"streak_px_fade": 0.0,   # 0…1: штрих уже ~2 px на экране тускнеет, а не «ползёт лесенкой» (1 — полная мера)
+	"point_keep": 1.0,       # доля точек ОКРУЖЕНИЯ (tier ≠ ""): 0 — убрать все (очки П5: вдали точки сильно мерцают); существа и аватары не трогаем
 }
 static var _tuned := {}
 static var _grid_tex: ImageTexture
@@ -315,6 +316,8 @@ static func apply(root: Node, tier: String = "") -> void:
 				m.set_shader_parameter("min_px", _k("min_px_streaks"))
 			elif src.resource_name == "points":
 				m.set_shader_parameter("min_px", _k("min_px_points"))
+				if tier != "" and float(_k("point_keep")) < 1.0:  # ручка: доля точек окружения
+					m.set_shader_parameter("keep_frac", float(_k("point_keep")))
 			if tier != "" and TIER_TINT.has(tier):
 				m.set_shader_parameter("tint", TIER_TINT[tier])
 				m.set_shader_parameter("tint_amount", 1.0)

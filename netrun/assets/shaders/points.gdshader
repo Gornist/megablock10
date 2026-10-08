@@ -28,6 +28,8 @@ uniform float fade_end = 90.0;
 uniform float intensity = 1.0; // общий множитель яркости (отражение в полу = 0.2)
 // Минимальный диаметр точки в пикселях экрана (точка меньше пикселя мерцает): дальше квад растёт до min_px, яркость падает по площади. 0 — выключено.
 uniform float min_px : hint_range(0.0, 6.0) = 2.0;
+// Доля точек, что остаются (ручка AssetMaterials `point_keep`, только точки окружения; очки П5: вдали точки сильно мерцают): выпавшие схлопываются в вершинном шейдере, заливку не тратят. 0 — все убраны.
+uniform float keep_frac : hint_range(0.0, 1.0) = 1.0;
 
 varying vec3 v_wp;
 varying float v_dist;
@@ -78,7 +80,8 @@ void vertex() {
 	}
 	v_comp = 1.0 / (sk * sk);
 	mv.xy += vec2(UV.x - 0.5, 0.5 - UV.y) * 2.0 * hs * sk;
-	POSITION = PROJECTION_MATRIX * mv;
+	bool dropped = keep_frac < 1.0 && fract(sin(v_phase * 3.7 + 1.3) * 43758.5453) >= keep_frac;  // keep_frac = 0 — выпадают все
+	POSITION = dropped ? vec4(2.0, 2.0, 2.0, 1.0) : PROJECTION_MATRIX * mv;
 }
 
 void fragment() {
