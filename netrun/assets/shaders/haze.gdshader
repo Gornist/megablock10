@@ -19,6 +19,8 @@ uniform float tint_amount : hint_range(0.0, 1.0) = 0.0;
 uniform float fade_start = 150.0;
 uniform float fade_end = 260.0;
 uniform float intensity = 1.0; // общий множитель яркости
+uniform float mist_scale : hint_range(0.0, 1.0) = 1.0;   // множитель итоговой альфы дымки (ручка mist_alpha; 0 — меш скрывается совсем)
+uniform float anim : hint_range(0.0, 1.0) = 1.0;  // 0 — дымка статична (дрейф неровности и штрихов остановлен): очки П5, «лава-лампа» на горизонте и краях комнаты (ручка drift_static)
 
 varying vec3 v_rel;
 varying float v_dist;
@@ -50,13 +52,13 @@ void fragment() {
 	float az = atan(v_rel.z, v_rel.x); // −π…π
 	float u = az / 6.2831853 + 0.5;    // 0…1 по кругу
 	float prof = pow(smoothstep(0.0, 1.0, clamp(COLOR.a, 0.0, 1.0)), shape);
-	float drift = TIME * noise_speed;
+	float drift = TIME * anim * noise_speed;
 	float n = 0.5 + 0.28 * sin(az * 3.0 + drift * 6.0) + 0.22 * sin(az * 7.0 - drift * 9.0 + 1.3);
 	float k_noise = mix(1.0, n * 1.6, noise_amount);
-	float st = vnoise(u * stripe_count + TIME * 0.05, stripe_count);
+	float st = vnoise(u * stripe_count + TIME * anim * 0.05, stripe_count);
 	float k_stripe = mix(1.0, st * 1.5, stripe_amount);
 	float fade = 1.0 - smoothstep(fade_start, fade_end, v_dist);
 	vec3 col = mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount);
 	ALBEDO = col * glow;
-	ALPHA = clamp(prof * k_noise * k_stripe * haze_alpha * fade * intensity, 0.0, 1.0);
+	ALPHA = clamp(prof * k_noise * k_stripe * haze_alpha * fade * intensity * mist_scale, 0.0, 1.0);
 }

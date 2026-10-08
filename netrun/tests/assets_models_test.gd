@@ -911,3 +911,33 @@ func test_asset_materials_streak_knobs_reach_env_streaks_only() -> void:
 	for m in _streak_mats(creature):
 		assert_bool(m.get_shader_parameter("keep_frac") == null).override_failure_message("ручки штрихов окружения попали на существо").is_true()
 	AssetMaterials.reset_tuning()
+
+
+func test_asset_materials_mist_and_veil_knobs_scale_hide_and_freeze() -> void:
+	AssetMaterials.reset_tuning()
+	var dflt := _load("env", "horizon_band")
+	AssetMaterials.apply(dflt, "BASE")
+	var mist := _mat_of(dflt, "horizon_mist")
+	assert_bool(mist.get_shader_parameter("mist_scale") == null and mist.get_shader_parameter("anim") == null).override_failure_message("по умолчанию ручки дымки не заданы").is_true()
+	AssetMaterials.tune({"mist_alpha": 0.4, "veil_scale": 0.5, "drift_static": true})
+	var band := _load("env", "horizon_band")
+	AssetMaterials.apply(band, "BASE")
+	assert_float(float(_mat_of(band, "horizon_mist").get_shader_parameter("mist_scale"))).is_equal_approx(0.4, 0.001)
+	assert_float(float(_mat_of(band, "horizon_mist").get_shader_parameter("anim"))).is_equal(0.0)
+	var slab := _load("env", "floor_slab_8")
+	AssetMaterials.apply(slab, "BASE")
+	var skirt := _mat_of(slab, "floor_slab_skirt")
+	assert_float(float(skirt.get_shader_parameter("veil_scale"))).is_equal_approx(0.5, 0.001)
+	assert_float(float(skirt.get_shader_parameter("patch_drift"))).is_equal(0.0)
+	AssetMaterials.tune({"mist_alpha": 0.0, "veil_scale": 0.0})
+	var gone := _load("env", "floor_slab_8")
+	AssetMaterials.apply(gone, "BASE")
+	for mi in _meshes(gone):
+		if String(mi.name).ends_with("_skirt"):
+			assert_bool(mi.visible).override_failure_message("veil_scale=0: вуаль должна быть скрыта").is_false()
+	var gone_band := _load("env", "horizon_band")
+	AssetMaterials.apply(gone_band, "BASE")
+	for mi in _meshes(gone_band):
+		if String(mi.name).ends_with("_mist"):
+			assert_bool(mi.visible).override_failure_message("mist_alpha=0: дымка должна быть скрыта").is_false()
+	AssetMaterials.reset_tuning()

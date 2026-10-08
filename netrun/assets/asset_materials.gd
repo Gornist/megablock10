@@ -146,6 +146,10 @@ const KNOBS := {
 	"streak_len": 1.0,       # длина штрихов окружения (0,6 — короче)
 	"streak_px_fade": 0.0,   # 0…1: штрих уже ~2 px на экране тускнеет, а не «ползёт лесенкой» (1 — полная мера)
 	"point_keep": 1.0,       # доля точек ОКРУЖЕНИЯ (tier ≠ ""): 0 — убрать все (очки П5: вдали точки сильно мерцают); существа и аватары не трогаем
+	# «Лава-лампа» на горизонте и краях комнаты (очки П5, вариант 4'): дымка `*_mist` и вуаль `*_skirt` плывут пятнами; раньше их закрывали штрихи. Ручки независимы:
+	"mist_alpha": 1.0,       # множитель альфы дымки горизонта и края комнаты (`*_mist`); 0 — меши скрываются совсем
+	"veil_scale": 1.0,       # множитель альфы вуали плит (`*_skirt`); 0 — меши скрываются совсем
+	"drift_static": false,   # true — остановить дрейф пятен дымки, вуали и стекла: статичная картинка вместо «лавы»
 }
 static var _tuned := {}
 static var _grid_tex: ImageTexture
@@ -288,6 +292,22 @@ static func apply(root: Node, tier: String = "") -> void:
 				if root.scene_file_path.contains("/room_edge_"):  # низкая дымка границы комнаты: профиль по высоте круче, штрихи по азимуту реже и слабее
 					for k in EDGE_MIST:
 						m.set_shader_parameter(k, EDGE_MIST[k])
+			if String(mi.name).ends_with("_mist"):  # ручки очков П5 («лава-лампа» на горизонте и краях): множитель дымки, скрыть совсем, остановить дрейф
+				if float(_k("mist_alpha")) <= 0.0:
+					mi.visible = false
+				elif float(_k("mist_alpha")) < 1.0:
+					m.set_shader_parameter("mist_scale", float(_k("mist_alpha")))
+				if bool(_k("drift_static")):
+					m.set_shader_parameter("anim", 0.0)
+			elif String(mi.name).ends_with("_skirt"):
+				if float(_k("veil_scale")) <= 0.0:
+					mi.visible = false
+				elif float(_k("veil_scale")) < 1.0:
+					m.set_shader_parameter("veil_scale", float(_k("veil_scale")))
+				if bool(_k("drift_static")):
+					m.set_shader_parameter("patch_drift", 0.0)
+			elif String(mi.name).ends_with("_glass") and bool(_k("drift_static")):
+				m.set_shader_parameter("patch_drift", 0.0)
 			if String(mi.name) == "edge_streaks_hang":  # подвесные штрихи кромки комнаты (точек по периметру нет): ярче штрихов плит, иначе край не читается
 				m.set_shader_parameter("glow", EDGE_STREAK_GLOW)
 			if String(mi.name) == "pillar_block" or String(mi.name) == "pillar_base" or String(mi.name).begins_with("exit_bar"):  # укрытие (корпус и рамка по границе клетки) и брусья рамки выхода: рёбра ровные и яркие, иначе в очках не видно, где оно (у тайлов пола свет рваный намеренно)

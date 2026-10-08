@@ -7,7 +7,8 @@ render_mode blend_add, unshaded, depth_draw_never, cull_disabled, fog_disabled;
 
 uniform float glow : hint_range(0.0, 4.0) = 1.0;
 uniform float veil_alpha : hint_range(0.0, 0.5) = 0.065;   // итоговая непрозрачность у кромки: «очень прозрачная»
-uniform float falloff : hint_range(0.5, 4.0) = 2.4;       // крутизна затухания книзу: больше — вуаль плотнее прижата к кромке
+uniform float veil_scale : hint_range(0.0, 1.0) = 1.0;    // множитель итоговой альфы вуали (ручка veil_scale; 0 — меш скрывается совсем)
+uniform float falloff : hint_range(0.5, 4.0) = 2.4;      // крутизна затухания книзу: больше — вуаль плотнее прижата к кромке
 uniform float patch_amount : hint_range(0.0, 1.0) = 0.5;  // пятнистость вдоль грани (0 — ровная завеса)
 uniform float patch_scale : hint_range(0.5, 20.0) = 5.0;  // пятен на метр
 uniform float patch_drift : hint_range(0.0, 1.0) = 0.12;  // медленное плавание пятен, 1/с (комфорт в VR)
@@ -50,5 +51,5 @@ void fragment() {
 	float fade = 1.0 - smoothstep(fade_start, fade_end, v_dist);
 	vec3 col = mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount);
 	ALBEDO = col * glow * mix(1.0, far_gain, smoothstep(far_start, far_end, v_dist));
-	ALPHA = dens * veil_alpha * fade * intensity;
+	ALPHA = dens * veil_alpha * fade * intensity * veil_scale;
 }
