@@ -29,6 +29,9 @@ uniform float plate_flat = 0.0;     // 1 — боковые грани плит�
 uniform float rim_far_min = 1.0;    // яркость кромки на дистанции ≥ rim_far_end (1 — не гасить): кромка гаснет раньше, чем линии сливаются в пиксель
 uniform float rim_far_start = 8.0;
 uniform float rim_far_end = 20.0;
+// «Кромка внутрь» (лесенка силуэта без MSAA): пик света сдвинут с геометрического края на 1–1,5 см внутрь, у самого силуэта свет гаснет до (1 − edge_soft). Подробности — edge_soft.gdshaderinc.
+uniform float edge_soft : hint_range(0.0, 1.0) = 0.0;
+#include "edge_soft.gdshaderinc"
 
 // Перекраска тиром сохраняет чёрное и белое: у чёрных вершин (тайлы пола) кайма остаётся нулевой.
 vec3 recolor(vec3 c) {
@@ -72,7 +75,9 @@ void fragment() {
 	float rim_k = 1.0;
 	if (uv_rim > 0.0) {
 		vec2 q = v_hs - abs(v_uv);
-		rim_k = 1.0 - smoothstep(uv_rim * 0.4, uv_rim, min(q.x, q.y));
+		float m = min(q.x, q.y);
+		rim_k = 1.0 - smoothstep(uv_rim * 0.4, uv_rim, m);
+		rim_k *= mix(1.0, smoothstep(0.0, uv_rim * 0.35, m), edge_soft);  // у самого края плиты свет гаснет: силуэт тёмный, линия чуть внутри
 	}
 	if (plate_flat > 0.5 && v_face < 0.5) {
 		discard;
@@ -82,7 +87,8 @@ void fragment() {
 		rim_gain = 0.0;
 	}
 	rim_gain *= mix(1.0, rim_far_min, smoothstep(rim_far_start, rim_far_end, v_dist));
-	vec3 col = base_color.rgb + mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount) * edge_glow * lit * rim_k * rim_gain;
+	float soft_k = edge_soft_gain(max(COLOR.r, max(COLOR.g, COLOR.b)), edge_soft);
+	vec3 col = base_color.rgb + mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount) * edge_glow * lit * rim_k * rim_gain * soft_k;
 	if (grid_alpha > 0.0 && v_top > 0.9) {
 		float g = texture(grid_tex, v_wp.xz - grid_origin).r;
 		vec3 gc = tint_amount > 0.0 ? tint.rgb : vec3(0.094, 0.9, 1.0);

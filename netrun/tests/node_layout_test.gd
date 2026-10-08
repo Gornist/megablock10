@@ -1,12 +1,12 @@
 extends GdUnitTestSuite
 ## Геометрия узла на сетке модулей окружения (assets/models/MANIFEST.md): комната 16x16 м — 8x8 ячеек 2x2 м, центры ячеек в нечётных
-## координатах. Спавн, хранилища шардов и порталы стоят в центрах ячеек, не ближе 1 м к стене (площадка портала r=1,5 м целиком в комнате),
-## площадка выхода — на вершине между четырьмя ячейками (четыре помоста 2x2 вписывают круг r=2). Сервер читает те же константы.
+## координатах. Спавн и порталы стоят в центрах ячеек 2×2, не ближе 1 м к стене (площадка портала r=1,5 м целиком в комнате),
+## площадка выхода — на вершине между четырьмя ячейками (четыре помоста 2x2 вписывают круг r=2). Хранилища шардов — в центре клетки 1 м
+## (П4: не на вершине блока), см. test_хранилища_и_их_площадки_в_центрах_клеток. Сервер читает те же константы.
 
 
 func _all_slots() -> Array:
 	var out: Array = [NodeLayout.SPAWN]
-	out.append_array(NodeLayout.SHARD_SLOTS)
 	out.append_array(NodeLayout.PORTAL_SLOTS)
 	return out
 
@@ -60,6 +60,16 @@ func test_spawn_is_outside_every_portal_and_the_exit() -> void:
 
 func test_shard_pos_is_the_first_slot() -> void:
 	assert_vector(NodeLayout.SHARD_POS).is_equal(NodeLayout.SHARD_SLOTS[0])
+
+
+func test_хранилища_и_их_площадки_в_центрах_клеток_а_не_на_вершинах() -> void:
+	# владелец на очках (П4): хранилище стояло на пересечении 4 клеток; теперь слот и площадка — центр клетки 1 м (допуск 5 см)
+	for p: Vector3 in NodeLayout.SHARD_SLOTS:
+		for q: Vector3 in [Vector3(p.x, 0.0, p.z), NodeLayout.vault_pad(p)]:
+			var c := NodeGrid.center(NodeGrid.cell_of(q))
+			assert_float(Vector2(q.x - c.x, q.z - c.z).length()).override_failure_message("не центр клетки 1 м: %s" % [q]).is_less(0.05)
+		assert_bool(NodeLayout.in_room(p)).is_true()
+		assert_float(NodeLayout.wall_gap(p)).is_greater_equal(1.0)
 
 
 func test_props_do_not_overlap() -> void:

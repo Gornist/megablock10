@@ -11,6 +11,13 @@ uniform float spark_half_len : hint_range(0.0, 0.05) = 0.013;  // полудли
 uniform float intensity : hint_range(0.0, 4.0) = 1.0;
 uniform float min_angle : hint_range(0.0, 0.01) = 0.0;         // наименьший угловой размер точки, рад: далёкие точки не мельче ~2 пикселей (чужое тело; у своих рук 0)
 
+// Глитч-спрайт (GlitchSprite): вместо круглой точки — анимированное блочное пятно, у каждой частицы своя фаза. glitch_mix = 0 — прежние круглые точки.
+uniform sampler2D glitch_tex : filter_linear_mipmap, repeat_disable;
+uniform float glitch_mix : hint_range(0.0, 1.0) = 0.0;          // 0 — выкл., 1 — все точки (не искры) рисуются спрайтом
+uniform float glitch_fps : hint_range(1.0, 30.0) = 12.0;
+uniform float glitch_scale : hint_range(0.2, 4.0) = 1.0;        // полуширина квада в полуразмерах точки; высота вдвое больше (ячейка 1:2)
+uniform vec2 glitch_cells = vec2(8.0, 4.0);                     // столбцов и строк атласа
+
 uniform float facing_fade : hint_range(0.0, 1.0) = 0.0;       // 1 — гасить точки, обращённые от камеры (голова: лицо спереди не просвечивает затылком); 0 — не гасить (руки)
 uniform vec3 facing_center = vec3(0.0);                          // центр объёма в мировых координатах, от него считается «наружу»; задаёт узел каждый кадр
 
@@ -18,6 +25,7 @@ varying vec3 v_col;
 varying float v_alpha;
 varying float v_kind;
 varying float v_fade;
+varying flat float v_frame;
 
 void vertex() {
 	float size = INSTANCE_CUSTOM.x;
@@ -52,6 +60,16 @@ void vertex() {
 	if (kind > 0.5) {
 		vec2 up = (VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xy;  // вертикаль мира в плоскости экрана: штрих всегда стоит вертикально
 		mv.xy += vec2(q.x * size, 0.0) + up * q.y * spark_half_len * spark_scale;
+	} else if (glitch_mix > 0.5) {
+		// глитч-блок: квад 1:2, стоит вертикально в мире; кадр — по времени и случайной фазе частицы, чтобы рука не мигала в такт
+		vec2 up = (VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xy;
+		float ul = length(up);
+		up = ul > 0.05 ? up / ul : vec2(0.0, 1.0);
+		float k = size * glitch_scale;
+		mv.xy += vec2(q.x * k, 0.0) + up * q.y * k * 2.0;
+		float n = glitch_cells.x * glitch_cells.y;
+		float rnd = fract(sin(float(INSTANCE_ID) * 12.9898 + phase * 78.233) * 43758.5453);
+		v_frame = floor(mod(TIME * glitch_fps + rnd * n, n));
 	} else {
 		mv.xy += q * size;
 	}
@@ -63,6 +81,9 @@ void fragment() {
 	float soft;
 	if (v_kind > 0.5) {
 		soft = smoothstep(1.0, 0.0, abs(q.x)) * (1.0 - q.y * q.y);
+	} else if (glitch_mix > 0.5) {
+		vec2 cell = vec2(mod(v_frame, glitch_cells.x), floor(v_frame / glitch_cells.x));
+		soft = texture(glitch_tex, (cell + UV) / glitch_cells).r;
 	} else {
 		soft = smoothstep(1.0, 0.25, length(q));
 	}

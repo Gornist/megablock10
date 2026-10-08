@@ -4,8 +4,8 @@ extends Node3D
 ## опустошается. Данные берёт у RemoteTracks сам; доля окна и смена такта — TickBeat. В realtime (нет tk) кольцо скрыто.
 
 const SEGMENTS := 40
-const R_OUT := 0.022
-const R_IN := 0.015
+const R_OUT := 0.014   # было 0,022: владелец (П4) — кольцо меньше и над декой
+const R_IN := 0.0095
 ## Вспышка на такте: столько секунд гаснет, и во сколько раз кольцо ярче в её начале.
 const FLASH_SEC := 0.25
 const FLASH_GAIN := 2.0

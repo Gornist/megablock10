@@ -217,6 +217,14 @@ func _fill_vaults(src: Variant) -> String:
 		if not is_legacy():
 			slot = NodeGrid.center(cell1)
 			pad_pos = NodeGrid.center(pad1)
+		else:
+			# legacy: хранилище в клетке 1 м своего блока (те же SHARD_SLOTS, что у сервера и клиента), а не на вершине блока 2×2;
+			# площадка — прежней формулой на VAULT_PAD_DIST к центру комнаты. Порядок vaults в legacy.json = порядок SHARD_SLOTS.
+			var k := vaults.size()
+			if k < NodeLayout.SHARD_SLOTS.size():
+				slot = NodeLayout.SHARD_SLOTS[k]
+				cell1 = NodeGrid.cell_of(slot)
+			pad_pos = NodeLayout.vault_pad(slot)
 		slot.y = 1.0
 		vaults.append({
 			"cell": cc, "cell1": cell1, "slot": slot, "pad_cell": pc, "pad1": pad1,

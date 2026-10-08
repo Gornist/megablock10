@@ -136,6 +136,15 @@ const KNOBS := {
 	"rim_far_start": 8.0,    # с какой дистанции, м, кромка плит начинает гаснуть
 	"rim_far_end": 20.0,     # на какой дистанции, м, она достигает rim_far_min
 	"skirt_top_fade": 0.0,   # доля высоты вуали сверху, где плотность растёт с нуля (0 — выкл.; 0,12 — ориентир): вуаль отрывается от кромки плиты
+	# Лесенка силуэта без MSAA/FXAA (Pico): «кромка внутрь» — яркий контур сдвинут на 1–1,5 см вглубь грани, у самого силуэта свет гаснет, лесенка становится «тёмное по тёмному».
+	"edge_soft": 0.0,        # 0 — выкл.; 0,5 — мягко; 0,8 — сильно. Действует на все solid_dark (колонны, брусья, плиты, тайлы) и на обводку fringe
+	# Рябь «эквалайзеров» (штрихи окружения, только при tier != ""; существа и аватары не трогаем). Меры независимы:
+	"streak_far_min": 1.0,   # яркость штрихов на дистанции ≥ streak_far_end (1 — не гасить; 0,3 — ориентир), как кромка плит
+	"streak_far_start": 8.0,
+	"streak_far_end": 25.0,
+	"streak_keep": 1.0,      # доля штрихов, что остаются (0,6 — реже на 40%, выпавшие не тратят заливку)
+	"streak_len": 1.0,       # длина штрихов окружения (0,6 — короче)
+	"streak_px_fade": 0.0,   # 0…1: штрих уже ~2 px на экране тускнеет, а не «ползёт лесенкой» (1 — полная мера)
 }
 static var _tuned := {}
 static var _grid_tex: ImageTexture
@@ -298,6 +307,8 @@ static func apply(root: Node, tier: String = "") -> void:
 				m.set_shader_parameter("rim_far_end", float(_k("rim_far_end")))
 			if String(mi.name).ends_with("_skirt") and float(_k("skirt_top_fade")) > 0.0:  # ручка: вуаль отрывается от кромки плиты
 				m.set_shader_parameter("top_fade", float(_k("skirt_top_fade")))
+			if src.resource_name == "solid_dark" and float(_k("edge_soft")) > 0.0:  # ручка: кромка внутрь (лесенка силуэта)
+				m.set_shader_parameter("edge_soft", float(_k("edge_soft")))
 			if src.resource_name == "solid_dark" and String(_k("solid_base")) != "":  # ручка: цвет плит
 				m.set_shader_parameter("base_color", Color(String(_k("solid_base"))))
 			if src.resource_name == "streaks":  # ручка: минимальная ширина штриха в пикселях (антиалиасинг)
@@ -317,6 +328,16 @@ static func apply(root: Node, tier: String = "") -> void:
 				m.set_shader_parameter("halo", 0.0 if (far and not bool(_k("halo_far"))) else float(_k("halo")))
 				m.set_shader_parameter("halo_width", float(_k("halo_width")))
 				m.set_shader_parameter("end_fade", ENV_END_FADE)
+				if float(_k("streak_far_min")) < 1.0:  # ручки ряби «эквалайзеров»: параметры не задаём, пока ручка не тронута (в шейдере они выключены)
+					m.set_shader_parameter("far_dim_min", float(_k("streak_far_min")))
+					m.set_shader_parameter("far_dim_start", float(_k("streak_far_start")))
+					m.set_shader_parameter("far_dim_end", float(_k("streak_far_end")))
+				if float(_k("streak_keep")) < 1.0:
+					m.set_shader_parameter("keep_frac", float(_k("streak_keep")))
+				if float(_k("streak_len")) != 1.0:
+					m.set_shader_parameter("len_scale", float(_k("streak_len")))
+				if float(_k("streak_px_fade")) > 0.0:
+					m.set_shader_parameter("px_fade", float(_k("streak_px_fade")))
 			if String(mi.name) == "beacon_halo":  # маяк предмета: капля свечения — свой шейдер; луч — streaks с ореолом (клиент выключает узел Beacon в руке)
 				m.shader = BEACON_HALO_SHADER
 			elif String(mi.name) == "beacon_beam":
@@ -343,6 +364,7 @@ static func _fringe_chain(i: int, glow: float) -> ShaderMaterial:
 	f.set_shader_parameter("px", float(FRINGE_LAYERS[i][0]) * float(_k("fringe_px")))
 	f.set_shader_parameter("fringe_alpha", float(FRINGE_LAYERS[i][1]) * float(_k("fringe_alpha")))
 	f.set_shader_parameter("edge_glow", glow)
+	f.set_shader_parameter("edge_soft", float(_k("edge_soft")))
 	if i + 1 < FRINGE_LAYERS.size():
 		f.next_pass = _fringe_chain(i + 1, glow)
 	return f

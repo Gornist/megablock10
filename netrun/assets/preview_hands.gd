@@ -17,6 +17,10 @@ func _ready() -> void:
 			_out = a.substr(6)
 		elif a == "--black":
 			_black = true
+		elif a == "--noglitch":  # прежние круглые точки для сравнения
+			HandView.glitch_sprite = false
+		elif a.begins_with("--glitch-scale="):
+			HandView.glitch_scale = float(a.substr(15))
 		elif a.begins_with("--only="):
 			_only = a.substr(7).split(",")
 	DirAccess.make_dir_recursive_absolute(_out)

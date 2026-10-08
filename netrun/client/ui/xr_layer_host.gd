@@ -14,6 +14,12 @@ const LAYER_CLASS := "OpenXRCompositionLayerQuad"
 
 ## Просили ли слои в конфиге (XrRig.start_xr выставляет из RenderConfig.layers; по умолчанию выкл.).
 static var layers_requested := false
+## Слой позади сцены (`layers = "behind"`): sort_order −1 и вырез в альфе сцены на месте панели, поэтому руки и луч (3D) рисуются поверх панели,
+## а предметы сцены перед панелью её закрывают. Нужен прозрачный фон вьюпорта (transparent_bg) — ставится при активации слоя.
+static var layers_behind := false
+## Порядок слоя относительно основного вида: «поверх» (по умолчанию у слоя) и «позади».
+const SORT_FRONT := 1
+const SORT_BEHIND := -1
 
 var _viewport: SubViewport
 var _size_m := Vector2.ONE
@@ -26,6 +32,11 @@ var _decided := false
 ## Чистый выбор: слой — только при поднятом XR, включённом конфиге и поддержке рантаймом.
 static func should_use_layer(xr: bool, cfg_on: bool, supported: bool) -> bool:
 	return xr and cfg_on and supported
+
+
+## Порядок слоя: позади сцены (с вырезом) или поверх неё.
+static func sort_order_for(behind: bool) -> int:
+	return SORT_BEHIND if behind else SORT_FRONT
 
 
 ## OpenXR поднят (интерфейс найден и инициализирован).
@@ -74,6 +85,10 @@ func _try_activate() -> void:
 	layer.set("layer_viewport", _viewport)
 	layer.set("alpha_blend", true)
 	layer.set("quad_size", _size_m)
+	layer.set("sort_order", sort_order_for(layers_behind))
+	if layers_behind:
+		layer.set("enable_hole_punch", true)
+		get_viewport().transparent_bg = true
 	_layer = layer
 	add_child(_layer)
 	_sync_layer()
