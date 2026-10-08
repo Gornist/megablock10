@@ -126,6 +126,7 @@ func start_xr() -> bool:
 	xr_render_missing = render.apply_xr(iface)
 	# Панели слоями композитора: хосты (XrLayerHost) решают по этому флагу в первом кадре, когда XR уже поднят.
 	XrLayerHost.layers_requested = RenderConfig.layers_enabled(render.layers)
+	XrLayerHost.layers_behind = RenderConfig.layers_behind(render.layers)
 	# Сидя: опорная точка — голова, а не пол.
 	if "play_area_mode" in iface:
 		iface.play_area_mode = XRInterface.XR_PLAY_AREA_SITTING
