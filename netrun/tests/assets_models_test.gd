@@ -973,6 +973,22 @@ func test_asset_materials_knob_dust_reaches_solids_with_the_sprite_atlas() -> vo
 	AssetMaterials.reset_tuning()
 
 
+func test_asset_materials_knob_cloud_swaps_solid_dark_for_cloud_shader() -> void:
+	AssetMaterials.reset_tuning()
+	var dflt := _load("env", "cover")
+	AssetMaterials.apply(dflt, "BASE")
+	assert_str(_mat_of(dflt, "pillar_block").shader.resource_path).override_failure_message("по умолчанию cloud выключен: грань остаётся solid_dark").contains("solid_dark")
+	AssetMaterials.tune({"cloud": 1.0, "cloud_edge_mix": 0.2})
+	var cover := _load("env", "cover")
+	AssetMaterials.apply(cover, "BASE")
+	var pb := _mat_of(cover, "pillar_block")
+	assert_str(pb.shader.resource_path).contains("cloud_dark")
+	assert_float(float(pb.get_shader_parameter("dust"))).is_equal_approx(1.0, 0.001)
+	assert_float(float(pb.get_shader_parameter("edge_mix"))).is_equal_approx(0.2, 0.001)
+	assert_object(pb.get_shader_parameter("glitch_tex")).is_same(GlitchSprite.texture())
+	AssetMaterials.reset_tuning()
+
+
 func _skirt_mesh(root: Node, mesh_name: String) -> MeshInstance3D:
 	for mi in _meshes(root):
 		if String(mi.name) == mesh_name:
