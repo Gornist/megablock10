@@ -36,6 +36,9 @@
 "зона: геймдизайн":
   - changed-files:
       - any-glob-to-any-file: ["docs/gamedesign/**"]
+"зона: сюжет":
+  - changed-files:
+      - any-glob-to-any-file: ["docs/story/**"]
 "зона: конвейер":
   - changed-files:
       - any-glob-to-any-file:
