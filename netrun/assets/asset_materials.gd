@@ -15,6 +15,7 @@ const SHADERS := {
 
 ## Вуаль на гранях плит (меши `*_skirt` в floor, ceiling и far_*): в .glb у неё материал-роль shell_soft, а шейдер по имени меша — этот.
 const SKIRT_SHADER := preload("res://assets/shaders/skirt.gdshader")
+const CLOUD_SHADER_2S := preload("res://assets/shaders/cloud_dark_2s.gdshader")  # то же, cull_disabled (ручка cloud_two_sided)
 const CLOUD_SHADER := preload("res://assets/shaders/cloud_dark.gdshader")  # «облако без основы» (прототип, ручка cloud)
 ## Сплошная дымка горизонта (меш `horizon_mist` в env/horizon_band): тоже роль shell_soft, шейдер по имени меша.
 const HAZE_SHADER := preload("res://assets/shaders/haze.gdshader")
@@ -150,6 +151,7 @@ const KNOBS := {
 	"cloud_far": 1.0,        # C3 (замер Pico: цена a2c — в ПЛОЩАДИ материала, не в числе частиц): 0 — дальние пласты far_* остаются сплошной тёмной гранью (solid_dark, opaque, LRZ), облако только в комнате
 	"cloud_floor": 1.0,      # C3: 0 — пол комнаты (floor*) остаётся solid_dark (чаще всего самая большая площадь на экране)
 	"cloud_ceiling": 1.0,    # C3: 0 — потолок (ceiling*) остаётся solid_dark
+	"cloud_two_sided": 0.0,  # C3: 1 — cull_disabled (cloud_dark_2s): сквозь дыры передней грани видны задние грани объёма (владелец на очках: «рендерятся не все грани»); цена ≈ ×2 a2c-фрагментов реквизита
 	# Рябь «эквалайзеров» (штрихи окружения, только при tier != ""; существа и аватары не трогаем). Меры независимы:
 	"streak_far_min": 1.0,   # яркость штрихов на дистанции ≥ streak_far_end (1 — не гасить; 0,3 — ориентир), как кромка плит
 	"streak_far_start": 8.0,
@@ -448,7 +450,7 @@ static func apply(root: Node, tier: String = "") -> void:
 						for k in FLOOR_V[fv][suffix]:
 							m.set_shader_parameter(k, FLOOR_V[fv][suffix][k])
 			if src.resource_name == "solid_dark" and float(_k("cloud")) > 0.0 and String(mi.name) != "slab_seams" and _cloud_scope_ok(root):  # прототип «облако без основы»: частицы с дырами вместо тёмной грани (нужен MSAA)
-				m.shader = CLOUD_SHADER
+				m.shader = CLOUD_SHADER_2S if float(_k("cloud_two_sided")) > 0.5 else CLOUD_SHADER
 				m.next_pass = null
 				m.set_shader_parameter("lite", float(_k("cloud_lite")))
 				m.set_shader_parameter("glitch_tex", GlitchSprite.texture())
