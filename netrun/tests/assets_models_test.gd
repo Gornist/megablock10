@@ -1084,3 +1084,18 @@ func test_edge_profile_knobs_reach_solid_dark_only_when_set() -> void:
 	assert_float(float(p.get_shader_parameter("edge_round"))).is_equal(1.0)
 	assert_float(float(p.get_shader_parameter("vertex_clip"))).is_equal(1.0)
 	AssetMaterials.reset_tuning()
+
+
+func test_rim_min_px_knob_reaches_plates_only() -> void:
+	AssetMaterials.reset_tuning()
+	var dflt := _load("env", "far_ceiling")
+	AssetMaterials.apply(dflt, "BASE")
+	assert_float(float(_mat_of(dflt, "tiles").get_shader_parameter("rim_min_px"))).override_failure_message("по умолчанию гашение по ширине выключено").is_equal(0.0)
+	AssetMaterials.tune({"rim_min_px": 3.0})
+	var tuned := _load("env", "far_ceiling")
+	AssetMaterials.apply(tuned, "BASE")
+	assert_float(float(_mat_of(tuned, "tiles").get_shader_parameter("rim_min_px"))).is_equal_approx(3.0, 0.001)
+	var cover := _load("env", "cover")  # колонны: ручки плит их не трогают
+	AssetMaterials.apply(cover, "BASE")
+	assert_bool(_mat_of(cover, "pillar_block").get_shader_parameter("rim_min_px") == null).override_failure_message("rim_min_px попал на колонну").is_true()
+	AssetMaterials.reset_tuning()

@@ -135,6 +135,7 @@ const KNOBS := {
 	"rim_far_min": 1.0,      # яркость кромки плит на дистанции ≥ rim_far_end (1 — не гасить; 0 — гасить полностью)
 	"rim_far_start": 8.0,    # с какой дистанции, м, кромка плит начинает гаснуть
 	"rim_far_end": 20.0,     # на какой дистанции, м, она достигает rim_far_min
+	"rim_min_px": 0.0,       # гашение кромки плит по её ширине на экране, px (0 — выкл.; 2–3 — ориентир): кромка уже ~0,35·N px гаснет совсем, от N px — полная; адаптируется к глазу Pico, в отличие от дистанции
 	"skirt_top_fade": 0.0,   # доля высоты вуали сверху, где плотность растёт с нуля (0 — выкл.; 0,12 — ориентир): вуаль отрывается от кромки плиты
 	# Лесенка силуэта без MSAA/FXAA (Pico): «кромка внутрь» — яркий контур сдвинут на 1–1,5 см вглубь грани, у самого силуэта свет гаснет, лесенка становится «тёмное по тёмному».
 	"edge_soft": 0.0,        # 0 — выкл.; 0,5 — мягко; 0,8 — сильно. Действует на все solid_dark (колонны, брусья, плиты, тайлы) и на обводку fringe
@@ -370,6 +371,7 @@ static func apply(root: Node, tier: String = "") -> void:
 				m.set_shader_parameter("rim_far_min", float(_k("rim_far_min")))
 				m.set_shader_parameter("rim_far_start", float(_k("rim_far_start")))
 				m.set_shader_parameter("rim_far_end", float(_k("rim_far_end")))
+				m.set_shader_parameter("rim_min_px", float(_k("rim_min_px")))
 			if String(mi.name).ends_with("_skirt") and float(_k("skirt_top_fade")) > 0.0:  # ручка: вуаль отрывается от кромки плиты
 				m.set_shader_parameter("top_fade", float(_k("skirt_top_fade")))
 			if src.resource_name == "solid_dark" and float(_k("dust")) > 0.0:  # ручки: пыль глитч-блоков на поверхностях
