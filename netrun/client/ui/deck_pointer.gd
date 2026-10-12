@@ -280,5 +280,7 @@ func beam_color() -> Color:
 func _unshaded(c: Color) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.no_depth_test = true   # точка и луч — поверх всего: объекты Сети их не закрывают (решение владельца 12.10: «руки и нить наводки поверх всего», как у рук)
+	m.render_priority = 10
 	m.albedo_color = c
 	return m

@@ -17,6 +17,10 @@ const EYE_VIEWPORT := Vector2i(2160, 2160)
 const TOP_FOV_DEG := 50.0
 ## Наклон взгляда у входа: так смотрела плоская камера прежнего кадра eye.
 const ENTRY_PITCH_DEG := -12.0
+## Поза «клина» (кадр с очков v10.jpeg, 12.10): от входа, взгляд на 35° вправо (на восток) и на 30° вверх — у пола справа за последним рядом клеток видна
+## яркая плоскость, уходящая клином в нижний угол. Приближение по кадру: точную позу уточняют в сеансе очков.
+const WEDGE_YAW_DEG := 35.0
+const WEDGE_PITCH_DEG := 30.0
 ## Высота точки, на которую смотрят «глаза» при взгляде на предметы (метка шарда у хранилища, props/vault_*.glb).
 const LOOK_Y := 1.0
 ## Высота камеры обзора на всю комнату и на половину (северную, южную).
@@ -59,6 +63,9 @@ static func _build() -> Dictionary:
 	var south_eye := NodeLayout.cell_center(3, 2)
 	var south_look := (NodeLayout.SPAWN + NodeLayout.EXIT_POS) * 0.5 + Vector3(0.0, 0.5, 0.0)   # между входом и площадкой выхода
 	# Западное хранилище и его площадка — по раскладке (центры клеток 1 м), а не по центрам блоков 2×2.
+	var wy := deg_to_rad(WEDGE_YAW_DEG)
+	var wp := deg_to_rad(WEDGE_PITCH_DEG)
+	var wedge_look := spawn + Vector3(0.0, EYE_HEIGHT, 0.0) + Vector3(sin(wy) * cos(wp), sin(wp), -cos(wy) * cos(wp)) * 10.0
 	var west: Dictionary = LayoutData.cached("foyer").vaults[0]
 	var west_slot: Vector3 = west["slot"]
 	var vault := Vector3(west_slot.x, LOOK_Y, west_slot.z)
@@ -71,6 +78,7 @@ static func _build() -> Dictionary:
 		"north": _eye(north_eye, north_look),
 		"south": _eye(south_eye, south_look),
 		"vault_w": _eye(vault_pad, vault),
+		"wedge": _eye(spawn, wedge_look),
 		"top": _top(center, TOP_HEIGHT),
 		"top_north": _top(north_c, TOP_HALF_HEIGHT),
 		"top_south": _top(south_c, TOP_HALF_HEIGHT),
