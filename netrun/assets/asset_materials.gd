@@ -31,10 +31,10 @@ const GLASS_SHADER := preload("res://assets/shaders/glass.gdshader")
 ## `_glass` (v1 пыль — слабая дымка; v3 решётка — сплошные линии по границам клеток хода 1 м в мировых координатах, без случайных подсвеченных клеток: их принимали за занятые), `_skirt` (v2: яркая стенка ступени), `_plates` (контур верха плиты по UV).
 const FLOOR_V := {
 	1: {"_glass": {"glass_alpha": 0.06, "center_k": 1.0, "patch_amount": 0.5, "rim_alpha": 0.25}, "dust_streaks": {"glow": 3.2, "halo": 0.3, "halo_width": 2.0, "breathe": 0.15}},
-	2: {"_skirt": {"veil_alpha": 0.32, "falloff": 0.9}, "_plates": {"uv_rim": 0.03, "edge_glow": 1.6, "edge_uneven": 0.5}},
+	2: {"_skirt": {"veil_alpha": 0.32, "falloff": 0.9}, "_plates": {"edge_glow": 1.6}},
 	3: {"_glass": {"glass_alpha": 0.12, "center_k": 0.8, "patch_amount": 0.4, "rim_alpha": 0.5, "grid_alpha": 0.85, "grid_step": 1.0, "grid_width": 0.02, "grid_dot": 0.0,
 			"grid_radius": 9.0, "cell_alpha": 0.0, "cell_share": 0.10}},
-	4: {"_plates": {"uv_rim": 0.02, "edge_glow": 1.2, "edge_uneven": 0.7}},
+	4: {"_plates": {"edge_glow": 1.2}},
 }
 
 ## ПАЛИТРА КЛИЕНТСКИХ СЛОЁВ (маркеры пола, прицел, след ICE, стрелки, кольцо такта, метки, HUD, экран конца). Цвет и материал задаёт Blender, логику — Godot:
@@ -106,15 +106,9 @@ static func layer(name: String, alpha := -1.0) -> Color:
 	return Color(c, alpha) if alpha >= 0.0 else c
 
 
-## Параметры solid_dark.gdshader для `pillar_block`/`pillar_base` (env/pillar, env/cover) и `exit_bar_*` (env/exit_frame): ровный яркий свет рёбер без «рваности».
-const PILLAR_EDGE := {"edge_glow": 2.2, "edge_uneven": 0.0}
-
-## Мягкая светящаяся обводка силуэта (fringe.gdshader, слои через next_pass) у непрозрачных объёмов: укрытия/колонны (`pillar_block`), брусья выхода (`exit_bar_*`),
-## хранилище (`vault_body`). Нужны сглаженные нормали меша (Blender: smooth=True). Параметры слоёв: [px, alpha] — узкий и широкий (слабее).
-const FRINGE_SHADER := preload("res://assets/shaders/fringe.gdshader")
-const FRINGE_LAYERS := [[0.5, 0.5], [1.0, 0.35], [1.6, 0.2]]
-const FRINGE_GLOW_DEFAULT := 0.75  # edge_glow solid_dark по умолчанию (хранилище); у PILLAR_EDGE-мешей — PILLAR_EDGE.edge_glow
-static var fringe_on := true  # выключатель для сравнения кадров (preview_capture.gd --nofringe) и замера перерисовки
+## Параметры solid_dark.gdshader для `pillar_block`/`pillar_base` (env/pillar, env/cover) и `exit_bar_*` (env/exit_frame): свет рёбер. 1,0 — принятый на очках V10
+## (прежние 2,2 пересвечивали ребро при MSAA в «белую жилу»); рёбра ровные — неравномерность и дрейф света убраны из шейдера целиком (рефактор B1).
+const PILLAR_EDGE := {"edge_glow": 1.0}
 
 ## «Ручки для очков» (ARCHITECTURE §21): настройки, которые крутят на устройстве без пересборки ассетов — A/B за счёт смены netrun.cfg, блок [assets].
 ## Ручки читаются в момент `apply()` (создание материалов): вызывать `tune()` / `tune_from_config()` ДО построения окружения, один раз при старте.
@@ -122,58 +116,39 @@ static var fringe_on := true  # выключатель для сравнения
 const KNOBS := {
 	"min_px_streaks": 1.5,   # минимальная полная ширина штриха, px экрана (streaks.gdshader min_px)
 	"min_px_points": 2.0,    # минимальный диаметр точки, px (points.gdshader min_px)
-	"fringe_on": true,       # мягкая обводка силуэтов укрытий/хранилища/выхода
-	"fringe_alpha": 1.0,     # множитель яркости обводки (на FRINGE_LAYERS[i].alpha)
-	"fringe_px": 1.0,        # множитель сдвига слоёв обводки (на FRINGE_LAYERS[i].px)
-	"halo": 0.4,             # ореол штрихов окружения (ENV_HALO)
-	"halo_width": 2.5,       # расширение квада под ореол (ENV_HALO_WIDTH)
-	"halo_far": false,       # ореол у дальних пластов /far_* (по умолчанию выключен: вдвое-втрое больше перерисовки)
 	"solid_base": "",        # цвет плит solid_dark «#rrggbb»; пусто — по умолчанию из шейдера
-	"edge_glow": 2.2,        # яркость рёбер укрытий и брусьев выхода (PILLAR_EDGE.edge_glow)
 	"floor_grid": 0.35,      # сетка клеток 1 м ТЕКСТУРОЙ с мипмапами и анизотропией на плите пола (0 — выкл., вернуть точки slab_seams; 0,3–0,5); по умолчанию ВКЛ.: так выглядит кадр Blender, иначе клиент — «другая игра»
 	# Мерцание кромок плит пола/потолка/дальних пластов (две линии на расстоянии 3 см сходятся в пиксель). Меры независимы, комбинируются:
-	"rim_top_only": false,   # светится только лицевая грань плиты, боковая полоска кромки погашена (одна линия вместо двух)
-	"plate_flat": false,     # боковые грани плит отбрасываются: плита без толщины
-	"rim_far_min": 1.0,      # яркость кромки плит на дистанции ≥ rim_far_end (1 — не гасить; 0 — гасить полностью)
-	"rim_far_start": 8.0,    # с какой дистанции, м, кромка плит начинает гаснуть
-	"rim_far_end": 20.0,     # на какой дистанции, м, она достигает rim_far_min
-	"rim_min_px": 0.0,       # гашение кромки плит по её ширине на экране, px (0 — выкл.; 2–3 — ориентир): кромка уже ~0,35·N px гаснет совсем, от N px — полная; адаптируется к глазу Pico, в отличие от дистанции
-	"skirt_top_fade": 0.0,   # доля высоты вуали сверху, где плотность растёт с нуля (0 — выкл.; 0,12 — ориентир): вуаль отрывается от кромки плиты
-	# Лесенка силуэта без MSAA/FXAA (Pico): «кромка внутрь» — яркий контур сдвинут на 1–1,5 см вглубь грани, у самого силуэта свет гаснет, лесенка становится «тёмное по тёмному».
-	"edge_soft": 0.0,        # 0 — выкл.; 0,5 — мягко; 0,8 — сильно. Действует на все solid_dark (колонны, брусья, плиты, тайлы) и на обводку fringe
-	# «Волюметрик из частиц» (референсы CDPR 08.10: простая геометрия через один шейдер): поверхности solid_dark замощены глитч-блоками (GlitchSprite) по мировым координатам, без геометрии и перерисовки.
-	"dust": 0.0,             # яркость пыли (0 — выкл.; 1 — ориентир). Рёбра света остаются: гасить их — edge_glow и fringe_on
-	"dust_cell": 0.025,      # ширина ячейки, м (высота вдвое больше); на глаз Pico 4 на 3 м ≈ 9 px
-	"dust_density": 0.8,     # доля ячеек с частицей на ровной грани вблизи (с пятнами dust_patch: проплешины и сгущения)
-	"cloud": 0.0,            # ПРОТОТИП «облако без основы» (владелец 08.10): 0 — выкл.; 1 — грани solid_dark становятся частицами с дырами (alpha_to_coverage, нужен MSAA; яркость как dust); см. cloud_dark.gdshader
+	"rim_top_only": true,    # светится только лицевая грань плиты, боковая полоска кромки погашена (одна линия вместо двух)
+	"rim_far_min": 0.0,      # яркость кромки плит на дистанции ≥ rim_far_end (1 — не гасить; 0 — гасить полностью)
+	"rim_far_start": 6.0,    # с какой дистанции, м, кромка плит начинает гаснуть
+	"rim_far_end": 10.0,     # на какой дистанции, м, она достигает rim_far_min
+	"rim_min_px": 4.0,       # гашение кромки плит по её ширине на экране, px (0 — выкл.): кромка уже ~0,35·N px гаснет совсем, от N px — полная; адаптируется к глазу Pico, в отличие от дистанции
+	# «Облако без основы» (владелец 08.10; принят вид C3a: облако на колоннах и реквизите, пол/потолок/дальние пласты — сплошной solid_dark). Выключено до B3 (замер на очках: C3a +0,26 мс на MSAA 2×).
+	"cloud": 0.0,            # 0 — выкл.; 1 — грани solid_dark становятся частицами с дырами (alpha_to_coverage, нужен MSAA; яркость пыли = значение); см. cloud_dark.gdshader
 	"cloud_edge_mix": 0.35,  # доля цвета неона у частиц рёбер/линий сетки (владелец: неона меньше)
-	"cloud_lite": 0.0,       # C3 (замер Pico: cloud=1 +3,4 мс при любой плотности): 1 — дешёвый фрагмент (хэш без sin, пятна 2D вместо 3D-шума); вид тот же по характеру, узор другой
-	"cloud_far": 1.0,        # C3 (замер Pico: цена a2c — в ПЛОЩАДИ материала, не в числе частиц): 0 — дальние пласты far_* остаются сплошной тёмной гранью (solid_dark, opaque, LRZ), облако только в комнате
-	"cloud_floor": 1.0,      # C3: 0 — пол комнаты (floor*) остаётся solid_dark (чаще всего самая большая площадь на экране)
-	"cloud_ceiling": 1.0,    # C3: 0 — потолок (ceiling*) остаётся solid_dark
+	"cloud_lite": 1.0,       # 1 — дешёвый фрагмент (хэш без sin, пятна 2D вместо 3D-шума); принятый вариант, 0 — прежний (3D-шум), для сравнения
+	"dust_cell": 0.018,      # ширина ячейки облака, м (высота вдвое больше); владелец: частицы мельче и реже (C2: 0,35 читалось лучше)
+	"dust_density": 0.35,    # доля ячеек с частицей на ровной грани вблизи (с пятнами dust_patch: проплешины и сгущения)
+	"cloud_far": 0.0,        # цена a2c — в ПЛОЩАДИ материала, не в числе частиц (замер Pico): 1 — и дальние пласты far_* облаком (+3,4 мс), 0 — остаются сплошной тёмной гранью
+	"cloud_floor": 0.0,      # 1 — и пол комнаты (floor*) облаком; 0 — остаётся solid_dark (чаще всего самая большая площадь на экране)
+	"cloud_ceiling": 0.0,    # 1 — и потолок облаком; 0 — остаётся solid_dark
 	"cloud_two_sided": 0.0,  # C3: 1 — cull_disabled (cloud_dark_2s): сквозь дыры передней грани видны задние грани объёма (владелец на очках: «рендерятся не все грани»); цена ≈ ×2 a2c-фрагментов реквизита
 	# Рябь «эквалайзеров» (штрихи окружения, только при tier != ""; существа и аватары не трогаем). Меры независимы:
 	"streak_far_min": 1.0,   # яркость штрихов на дистанции ≥ streak_far_end (1 — не гасить; 0,3 — ориентир), как кромка плит
 	"streak_far_start": 8.0,
 	"streak_far_end": 25.0,
-	"streak_keep": 1.0,      # доля штрихов, что остаются (0,6 — реже на 40%, выпавшие не тратят заливку)
+	"streak_keep": 0.0,      # доля штрихов окружения, что остаются: 0 — не рисуются (решение владельца на очках; объекты уйдут из моделей в B2), 1 — все
 	"streak_len": 1.0,       # длина штрихов окружения (0,6 — короче)
 	"streak_px_fade": 0.0,   # 0…1: штрих уже ~2 px на экране тускнеет, а не «ползёт лесенкой» (1 — полная мера)
-	"point_keep": 1.0,       # доля точек ОКРУЖЕНИЯ (tier ≠ ""): 0 — убрать все (очки П5: вдали точки сильно мерцают); существа и аватары не трогаем
-	# «Лава-лампа» на горизонте и краях комнаты (очки П5, вариант 4'): дымка `*_mist` и вуаль `*_skirt` плывут пятнами; раньше их закрывали штрихи. Ручки независимы:
-	"mist_alpha": 1.0,       # множитель альфы дымки горизонта и края комнаты (`*_mist`); 0 — меши скрываются совсем
+	"point_keep": 0.0,       # доля точек ОКРУЖЕНИЯ (tier ≠ ""): 0 — убрать все (решение владельца: вдали точки сильно мерцают); существа и аватары не трогаем
+	# Дымка горизонта и края комнаты: скрыта (на очках приняли без неё, «лава-лампа» неуместна); меши уйдут из моделей в B2.
+	"mist_alpha": 0.0,       # множитель альфы дымки горизонта и края комнаты (`*_mist`); 0 — меши скрываются совсем
 	"veil_scale": 1.0,       # множитель альфы вуали плит (`*_skirt`); 0 — меши скрываются совсем; > 1 — усилить (до 4): очки П5 одобрили вуаль у плит потолка
-	# Завеса ВВЕРХ от верхней кромки плит пола и дальнего пола (вместо штрихов; квады в том же меше `*_skirt`, env._slab_rise). Выключена по умолчанию:
-	"tile_glow": 0.0,        # множитель альфы завесы вверх относительно вуали (0 — выкл.; 1 — как вуаль потолка; 2–4 — заметнее); вуаль вниз не затрагивает
+	# Завеса ВВЕРХ от верхней кромки плит пола и дальнего пола (квады в том же меше `*_skirt`, env._slab_rise). Включена по умолчанию (V10); клин у края комнаты — отдельная задача:
+	"tile_glow": 3.0,        # множитель альфы завесы вверх относительно вуали (0 — выкл.; 1 — как вуаль потолка; 2–4 — заметнее); вуаль вниз не затрагивает
 	"tile_glow_h": 1.0,      # высота завесы вверх относительно модельной (0,45 м в комнате, 1 м в дальнем полу): 0,5 — ниже, 2 — выше
-	"drift_static": false,   # true — остановить дрейф пятен дымки, вуали и стекла, а также «плавание» света вдоль рёбер плит (solid_dark edge_drift): статичная картинка вместо «лавы»
-	# Белые мерцающие полоски внутри голубых граней при MSAA (очки, замеры 3–5): прямые ручки света граней solid_dark, по умолчанию «как задано моделью»:
-	"edge_uneven": -1.0,     # неравномерность света вдоль рёбер плит 0…1 (0 — ровно); −1 — как у модели (тайлы пола 0,5–0,92, колонны и брусья 0)
-	"edge_drift": -1.0,      # скорость «плавания» шума света вдоль рёбер, 1/с (0 — стоит); −1 — как в шейдере (0,12)
-	"edge_round": 0.0,       # 0…1: скруглить профиль света рёбер (smoothstep по яркости вершин): убирает излом на пике градиента — светлую «линию Маха» по середине голубой полосы; 1 — полностью
-	"vertex_clip": 0.0,      # 0…1: срезать перелёт цвета вершины выше пика (при MSAA без centroid интерполяция у стыка граней даёт цвет ярче вершин → светлая линия по ребру, мигает); 1 — полностью
-	"albedo_clip": 0.0,      # 0…1: мягкий клип пересвета с сохранением оттенка (edge_glow 2,2 × циан даёт каналы > 1 → тонмаппинг и MSAA тянут к белому); solid_dark и обводка fringe
-	"flat_light": false,     # true — убрать неравномерность света совсем (не только остановить): дымка и вуаль ровные (без пятен и штрихов по азимуту), рёбра плит ровные (edge_uneven 0)
+	"edge_round": 1.0,       # 0…1: скруглить профиль света рёбер (smoothstep по яркости вершин): убирает излом на пике градиента — светлую «линию Маха» по середине голубой полосы; 1 — полностью (принято, замер 6 на очках)
 }
 static var _tuned := {}
 static var _grid_tex: ImageTexture
@@ -213,8 +188,6 @@ static func tune(d: Dictionary) -> void:
 		else:
 			v = str(v)
 		_tuned[k] = v
-	if _tuned.has("fringe_on"):
-		fringe_on = _tuned["fringe_on"]
 
 
 ## Прочитать блок cfg (по умолчанию [assets]) и применить как tune(). Вызывать сразу после cfg.load(), до построения сцены.
@@ -230,7 +203,6 @@ static func tune_from_config(cfg: ConfigFile, section := "assets") -> void:
 ## Сбросить ручки к умолчаниям.
 static func reset_tuning() -> void:
 	_tuned = {}
-	fringe_on = true
 
 
 ## Меш — плита пола/потолка/дальнего пласта (а не объём вроде укрытия, у которого боковые рёбра должны светиться): `slab`, `tiles`, `*_plates`.
@@ -275,9 +247,7 @@ const TIER_TINT := {
 ## даёт dark 38→31, 16→13, 28→21 %, lum 21→23, 26→27, 26→28, cyan и hor не хуже; остаток dark — чёрные плиты (пол комнаты — одна плита solid_dark, потолок), не фон.
 const VOID_BG := Color(0.0, 0.10, 0.13)
 
-## Мягкий ореол штрихов окружения (streaks.gdshader): яркость хвоста, расширение квада и затухание к концам. У ассетов без тира — 0.
-const ENV_HALO := 0.4
-const ENV_HALO_WIDTH := 2.5
+## Затухание штрихов окружения к концам (streaks.gdshader). Ореол штрихов убран (B1): в окружении штрихи не рисуются (streak_keep=0), у существ и аватаров его не было.
 const ENV_END_FADE := 0.6
 
 ## Решётка «объёмного дисплея» (решение владельца по эксперименту): сущности (аватар, ICE) выводятся на мировой решётке 4 см, мир не квантуется,
@@ -328,16 +298,14 @@ static func apply(root: Node, tier: String = "") -> void:
 				if root.scene_file_path.contains("/room_edge_"):  # низкая дымка границы комнаты: профиль по высоте круче, штрихи по азимуту реже и слабее
 					for k in EDGE_MIST:
 						m.set_shader_parameter(k, EDGE_MIST[k])
-			if String(mi.name).ends_with("_mist"):  # ручки очков П5 («лава-лампа» на горизонте и краях): множитель дымки, скрыть совсем, остановить дрейф
+			if String(mi.name).ends_with("_mist"):  # дымка горизонта и края комнаты: множитель, скрыть совсем (0 по умолчанию); если показана — ровная и статичная (принято на очках)
 				if float(_k("mist_alpha")) <= 0.0:
 					mi.visible = false
 				elif float(_k("mist_alpha")) < 1.0:
 					m.set_shader_parameter("mist_scale", float(_k("mist_alpha")))
-				if bool(_k("drift_static")):
-					m.set_shader_parameter("anim", 0.0)
-				if bool(_k("flat_light")):
-					m.set_shader_parameter("noise_amount", 0.0)
-					m.set_shader_parameter("stripe_amount", 0.0)
+				m.set_shader_parameter("anim", 0.0)
+				m.set_shader_parameter("noise_amount", 0.0)
+				m.set_shader_parameter("stripe_amount", 0.0)
 			elif String(mi.name).ends_with("_skirt"):
 				# меш с завесой вверх (у пола: второй UV-слой с высотой, env._slab_rise) прячем целиком только если выключены обе вуали; иначе гасим квады в шейдере
 				var am := mi.mesh as ArrayMesh
@@ -349,59 +317,25 @@ static func apply(root: Node, tier: String = "") -> void:
 					mi.visible = false
 				elif float(_k("veil_scale")) != 1.0:
 					m.set_shader_parameter("veil_scale", float(_k("veil_scale")))
-				if bool(_k("drift_static")):
-					m.set_shader_parameter("patch_drift", 0.0)
-				if bool(_k("flat_light")):
-					m.set_shader_parameter("patch_amount", 0.0)
-			elif String(mi.name).ends_with("_glass"):
-				if bool(_k("drift_static")):
-					m.set_shader_parameter("patch_drift", 0.0)
-				if bool(_k("flat_light")):
-					m.set_shader_parameter("patch_amount", 0.0)
-			if src.resource_name == "solid_dark":  # рёбра плит: свет вдоль них «плавает» по шуму от времени и неравномерен — на горизонте и краях читается как лава-лампа
-				if bool(_k("drift_static")):
-					m.set_shader_parameter("edge_drift", 0.0)
-				if bool(_k("flat_light")):
-					m.set_shader_parameter("edge_uneven", 0.0)
+			elif String(mi.name).ends_with("_glass"):  # эксперимент «варианты пола» (в клиенте не грузится): пятна стекла ровные и статичные, как у вуали
+				m.set_shader_parameter("patch_drift", 0.0)
+				m.set_shader_parameter("patch_amount", 0.0)
 			if String(mi.name) == "edge_streaks_hang":  # подвесные штрихи кромки комнаты (точек по периметру нет): ярче штрихов плит, иначе край не читается
 				m.set_shader_parameter("glow", EDGE_STREAK_GLOW)
 			if String(mi.name) == "pillar_block" or String(mi.name) == "pillar_base" or String(mi.name).begins_with("exit_bar"):  # укрытие (корпус и рамка по границе клетки) и брусья рамки выхода: рёбра ровные и яркие, иначе в очках не видно, где оно (у тайлов пола свет рваный намеренно)
 				for k in PILLAR_EDGE:
 					m.set_shader_parameter(k, PILLAR_EDGE[k])
-				m.set_shader_parameter("edge_glow", _k("edge_glow"))  # ручка: яркость рёбер
-			if src.resource_name == "solid_dark":  # прямые числовые ручки поверх всего выше (в том числе поверх PILLAR_EDGE): −1 — как задано моделью/тиром
-				if float(_k("edge_uneven")) >= 0.0:
-					m.set_shader_parameter("edge_uneven", float(_k("edge_uneven")))
-				if float(_k("edge_drift")) >= 0.0:
-					m.set_shader_parameter("edge_drift", float(_k("edge_drift")))
-				if float(_k("albedo_clip")) > 0.0:
-					m.set_shader_parameter("albedo_clip", float(_k("albedo_clip")))
-				if float(_k("vertex_clip")) > 0.0:
-					m.set_shader_parameter("vertex_clip", float(_k("vertex_clip")))
-				if float(_k("edge_round")) > 0.0:
-					m.set_shader_parameter("edge_round", float(_k("edge_round")))
-			if fringe_on and (String(mi.name) == "pillar_block" or String(mi.name).begins_with("exit_bar") or String(mi.name) == "vault_body"):
-				var lit := String(mi.name) != "vault_body"
-				m.next_pass = _fringe_chain(0, _k("edge_glow") if lit else FRINGE_GLOW_DEFAULT)
+			if src.resource_name == "solid_dark":  # профиль света ребра: сглаженный (принято на очках; 0 — прежняя «палатка» с изломом на пике)
+				m.set_shader_parameter("edge_round", float(_k("edge_round")))
 			if src.resource_name == "solid_dark" and String(mi.name) == "slab" and float(_k("floor_grid")) > 0.0:  # ручка: сетка клеток текстурой (верх плиты пола)
 				m.set_shader_parameter("grid_tex", _grid_texture())
 				m.set_shader_parameter("grid_alpha", float(_k("floor_grid")))
 			if src.resource_name == "solid_dark" and _is_plate(mi, root):  # ручки мерцания кромок плит (шейдер solid_dark)
 				m.set_shader_parameter("rim_top_only", 1.0 if bool(_k("rim_top_only")) else 0.0)
-				m.set_shader_parameter("plate_flat", 1.0 if bool(_k("plate_flat")) else 0.0)
 				m.set_shader_parameter("rim_far_min", float(_k("rim_far_min")))
 				m.set_shader_parameter("rim_far_start", float(_k("rim_far_start")))
 				m.set_shader_parameter("rim_far_end", float(_k("rim_far_end")))
 				m.set_shader_parameter("rim_min_px", float(_k("rim_min_px")))
-			if String(mi.name).ends_with("_skirt") and float(_k("skirt_top_fade")) > 0.0:  # ручка: вуаль отрывается от кромки плиты
-				m.set_shader_parameter("top_fade", float(_k("skirt_top_fade")))
-			if src.resource_name == "solid_dark" and float(_k("dust")) > 0.0:  # ручки: пыль глитч-блоков на поверхностях
-				m.set_shader_parameter("glitch_tex", GlitchSprite.texture())
-				m.set_shader_parameter("dust", float(_k("dust")))
-				m.set_shader_parameter("dust_cell", float(_k("dust_cell")))
-				m.set_shader_parameter("dust_density", float(_k("dust_density")))
-			if src.resource_name == "solid_dark" and float(_k("edge_soft")) > 0.0:  # ручка: кромка внутрь (лесенка силуэта)
-				m.set_shader_parameter("edge_soft", float(_k("edge_soft")))
 			if src.resource_name == "solid_dark" and String(_k("solid_base")) != "":  # ручка: цвет плит
 				m.set_shader_parameter("base_color", Color(String(_k("solid_base"))))
 			if src.resource_name == "streaks":  # ручка: минимальная ширина штриха в пикселях (антиалиасинг)
@@ -413,15 +347,7 @@ static func apply(root: Node, tier: String = "") -> void:
 			if tier != "" and TIER_TINT.has(tier):
 				m.set_shader_parameter("tint", TIER_TINT[tier])
 				m.set_shader_parameter("tint_amount", 1.0)
-				var fr := m.next_pass as ShaderMaterial
-				while fr != null:  # обводка красится тиром так же, как кромка
-					fr.set_shader_parameter("tint", TIER_TINT[tier])
-					fr.set_shader_parameter("tint_amount", 1.0)
-					fr = fr.next_pass as ShaderMaterial
-			if tier != "" and src.resource_name == "streaks":  # окружение: мягкий ореол и длинное затухание к концам; существа и аватары — резкие, без ореола
-				var far := root.scene_file_path.contains("/far_")  # дальние пласты (8+ м): ореол вдвое-втрое расширяет квады, а видны они как дымка и без него
-				m.set_shader_parameter("halo", 0.0 if (far and not bool(_k("halo_far"))) else float(_k("halo")))
-				m.set_shader_parameter("halo_width", float(_k("halo_width")))
+			if tier != "" and src.resource_name == "streaks":  # окружение: длинное затухание к концам; существа и аватары — резкие
 				m.set_shader_parameter("end_fade", ENV_END_FADE)
 				if float(_k("streak_far_min")) < 1.0:  # ручки ряби «эквалайзеров»: параметры не задаём, пока ручка не тронута (в шейдере они выключены)
 					m.set_shader_parameter("far_dim_min", float(_k("streak_far_min")))
@@ -451,7 +377,6 @@ static func apply(root: Node, tier: String = "") -> void:
 							m.set_shader_parameter(k, FLOOR_V[fv][suffix][k])
 			if src.resource_name == "solid_dark" and float(_k("cloud")) > 0.0 and String(mi.name) != "slab_seams" and _cloud_scope_ok(root):  # прототип «облако без основы»: частицы с дырами вместо тёмной грани (нужен MSAA)
 				m.shader = CLOUD_SHADER_2S if float(_k("cloud_two_sided")) > 0.5 else CLOUD_SHADER
-				m.next_pass = null
 				m.set_shader_parameter("lite", float(_k("cloud_lite")))
 				m.set_shader_parameter("glitch_tex", GlitchSprite.texture())
 				m.set_shader_parameter("dust", float(_k("cloud")))
@@ -462,20 +387,6 @@ static func apply(root: Node, tier: String = "") -> void:
 					m.set_shader_parameter("grid_tex", _grid_texture())
 					m.set_shader_parameter("grid_alpha", float(_k("floor_grid")))
 			mi.set_surface_override_material(s, m)
-
-
-## Цепочка слоёв обводки (next_pass): слой i рисуется после слоя i−1, дальше — следующий.
-static func _fringe_chain(i: int, glow: float) -> ShaderMaterial:
-	var f := ShaderMaterial.new()
-	f.shader = FRINGE_SHADER
-	f.set_shader_parameter("px", float(FRINGE_LAYERS[i][0]) * float(_k("fringe_px")))
-	f.set_shader_parameter("fringe_alpha", float(FRINGE_LAYERS[i][1]) * float(_k("fringe_alpha")))
-	f.set_shader_parameter("edge_glow", glow)
-	f.set_shader_parameter("edge_soft", float(_k("edge_soft")))
-	f.set_shader_parameter("albedo_clip", float(_k("albedo_clip")))
-	if i + 1 < FRINGE_LAYERS.size():
-		f.next_pass = _fringe_chain(i + 1, glow)
-	return f
 
 
 ## Красный «шрам»: в радиусе вокруг точки (мировые координаты) свечение уходит в красный, часть клеток пропадает.

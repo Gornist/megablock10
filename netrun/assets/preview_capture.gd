@@ -235,13 +235,14 @@ var _insts: Array = []
 
 
 func _ready() -> void:
+	get_viewport().msaa_3d = Viewport.MSAA_2X  # база клиента на Pico: MSAA 2× и 90 Гц (решение владельца 08.10); вид принимается только на нём, --msaa=0|4 — для сравнения
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			out_dir = a.trim_prefix("--out=")
 		if a == "--movie":
 			_movie = true
-		if a.begins_with("--msaa="):  # MSAA окна превью (0|2|4): как у клиента на Pico; по умолчанию без
-			get_viewport().msaa_3d = {"0": Viewport.MSAA_DISABLED, "2": Viewport.MSAA_2X, "4": Viewport.MSAA_4X}.get(a.trim_prefix("--msaa="), Viewport.MSAA_DISABLED)
+		if a.begins_with("--msaa="):  # MSAA окна превью (0|2|4)
+			get_viewport().msaa_3d = {"0": Viewport.MSAA_DISABLED, "2": Viewport.MSAA_2X, "4": Viewport.MSAA_4X}.get(a.trim_prefix("--msaa="), Viewport.MSAA_2X)
 		if a.begins_with("--bg="):
 			var bgv := a.trim_prefix("--bg=").split(",")
 			_bg = Color(float(bgv[0]), float(bgv[1]), float(bgv[2]))
@@ -261,11 +262,9 @@ func _ready() -> void:
 			_walk = true
 		if a == "--nobatch":
 			_batch_on = false
-		if a == "--nofringe":  # без мягкой обводки силуэтов (для сравнения кадров и замера перерисовки)
-			AM.fringe_on = false
 		if a.begins_with("--floorgrid="):  # сетка клеток 1 м текстурой на плите пола (ручка floor_grid, ориентир 0.5)
 			AM.tune({"floor_grid": float(a.trim_prefix("--floorgrid="))})
-		if a.begins_with("--tune="):  # ручки AssetMaterials (как [assets] в netrun.cfg): --tune=rim_top_only=true,rim_far_min=0.3,skirt_top_fade=0.12
+		if a.begins_with("--tune="):  # ручки AssetMaterials (как [assets] в netrun.cfg): --tune=rim_far_min=0.3,rim_min_px=3,cloud=1
 			var d := {}
 			for kv in a.trim_prefix("--tune=").split(","):
 				var p := kv.split("=")
@@ -422,7 +421,7 @@ func _od_mat(m: ShaderMaterial, asset: String) -> ShaderMaterial:
 			on = on or ((p[0] == "all" or p[0] == name) and asset.begins_with(p[1]))
 	var key := "%s|%s" % [name, on]
 	if not _od_shaders.has(key):
-		var code := m.shader.code.replace("blend_mix", "blend_add")  # обводка fringe рисуется blend_mix, а считаем слои аддитивно
+		var code := m.shader.code.replace("blend_mix", "blend_add")  # слои с blend_mix считаем аддитивно
 		# у непрозрачного solid_dark ALPHA не пишем: иначе Godot сделает материал прозрачным, он перестанет писать глубину и закрывать слои за собой (завысит перерисовку)
 		var inj := "ALBEDO = vec3(0.0);" if opaque else "ALBEDO = vec3(%f); ALPHA = %s;" % [OD_STEP, "1.0" if on else "0.0"]
 		var sh := Shader.new()
@@ -572,8 +571,7 @@ func _setup(inst: Node3D, it: Array, shot: Dictionary, intensity: float) -> void
 		AM.set_param(inst, "lattice", _lattice)
 	if String(it[0]).begins_with("props/vault") and String(it[0]) != "props/vault":
 		intensity *= 1.5  # хранилище главный предмет узла: чуть ярче окружения
-	if String(it[0]).begins_with("deck/") or String(it[0]) == "props/dead_deck":  # мелкие предметы: шум контура (пятна 7 см) на них не нужен, контур ровнее и ярче
-		AM.set_param(inst, "edge_uneven", 0.0)
+	if String(it[0]).begins_with("deck/") or String(it[0]) == "props/dead_deck":  # мелкие предметы: контур ярче
 		AM.set_param(inst, "edge_glow", 2.0)
 	if String(it[0]).begins_with("avatar/"):
 		AM.set_param(inst, "breathe", 0.25)  # аватар дышит заметнее стены: штрихи короткие
