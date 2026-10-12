@@ -53,14 +53,24 @@ else
   log "ОШИБКА: sudo без пароля на tailscaled не настроен — Tailscale не перезапущен"
 fi
 
-# 3. Blender
+# 3. Blender. Аддон blender-mcp сам сервер не поднимает (автостарт у него — свойство сцены, в новой сцене выключено):
+# 12.10 после перезагрузки Blender висел без 9876, сессии Blender были без редактора. Поэтому сервер включаем
+# оператором через таймер — он срабатывает, когда интерфейс и аддоны уже загружены.
+START_MCP='import bpy
+def _start_mcp():
+    try:
+        bpy.ops.blendermcp.start_server()
+    except Exception as e:
+        print("blender-mcp: сервер не запущен:", e)
+    return None
+bpy.app.timers.register(_start_mcp, first_interval=3.0)'
 if pgrep -x blender >/dev/null; then
   log "Blender уже запущен"
 else
   log "запускаю Blender"
-  setsid nohup "$BLENDER" >/dev/null 2>&1 &
+  setsid nohup "$BLENDER" --python-expr "$START_MCP" >/dev/null 2>&1 &
 fi
 wait_for "blender-mcp на 127.0.0.1:9876" "$BLENDER_TIMEOUT" mcp_up \
-  || log "порт 9876 не слушает: включён ли аддон blender-mcp?"
+  || log "порт 9876 не слушает: включён ли аддон blender-mcp? Blender, запущенный до этого скрипта, сервер сам не поднимет — перезапустите его"
 
 log "=== готово ==="
