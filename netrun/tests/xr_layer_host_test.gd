@@ -55,9 +55,11 @@ func test_конфиг_выкл_слой_не_создаётся() -> void:
 	assert_bool((made[1] as Sprite3D).visible).is_true()
 
 
-func test_по_умолчанию_слои_не_запрошены() -> void:
-	assert_bool(XrLayerHost.layers_requested).is_false()
-	assert_bool(RenderConfig.layers_enabled(RenderConfig.new().layers)).is_false()
+func test_по_умолчанию_статика_слоёв_выкл_а_конфиг_просит_behind() -> void:
+	assert_bool(XrLayerHost.layers_requested).is_false()   # ставит XrRig из конфига при старте
+	# принятый вид (владелец 12.10): панели слоями позади сцены — руки и луч поверх
+	assert_bool(RenderConfig.layers_enabled(RenderConfig.new().layers)).is_true()
+	assert_bool(RenderConfig.layers_behind(RenderConfig.new().layers)).is_true()
 
 
 func test_дека_и_взлом_без_xr_остаются_квадами() -> void:
