@@ -20,9 +20,10 @@
 ### 1.1 Принято → становится умолчанием в коде (раздел 2)
 
 `[render]`: msaa 2, foveation 0, fringe off, aa none, scale 1,0.
-`[assets]` (набор V10, подтверждён владельцем на очках): `rim_top_only=true`, `rim_far_min=0`, `rim_far_start=6` (замерялось в V10 именно 6,0; Blender в сообщении назвал 8 — сверить), `rim_far_end=10`,
+`[assets]` (набор V10, подтверждён владельцем на очках): `rim_top_only=true`, `rim_far_min=0`, `rim_far_start=6` (подтверждено Blender: 8 — умолчание шейдера, не замеренного V10), `rim_far_end=10`,
 `rim_min_px=4`, `skirt_top_fade=0.12`, `edge_round=1`, `edge_glow=1.0`, `flat_light=true`, `drift_static=true`, `mist_alpha=0`,
 `point_keep=0`, `streak_keep=0`, `tile_glow=3`, `tile_glow_h=1`, `floor_grid=0.35` (уже умолчание).
+Вшить константами (не живые ручки): `skirt_top_fade=0.12`, `edge_glow=1.0` (не прежние 2,2 — рёбра темнее, так принят и мерился V10). `tile_glow=3.0` и `tile_glow_h=1.0` — **живые ручки** с этими умолчаниями до решения владельца про клин (в V11 отличается только `tile_glow=0`).
 
 ### 1.2 Тупик → удалить
 
@@ -102,7 +103,7 @@
 | # | PR | Зона | Приёмка |
 |---|---|---|---|
 | R0 | этот документ | Godot | утверждение владельца |
-| G1 | `RenderConfig`: msaa 2, foveation 0, защита msaa+foveation, удаление `scale/aa/foveation_dynamic/fringe`, `apply_fringe` → `apply_assets()` | Godot | `dev.sh test --all`; на очках **без cfg** bench ≈ 90 fps / GPU ≈ 9,7 мс; превью/`dev.sh shot` выставляют msaa 2 явно |
+| G1 | `RenderConfig`: msaa 2, foveation 0, защита msaa+foveation, удаление `scale/aa/foveation_dynamic/fringe`, `apply_fringe` → `apply_assets()` | Godot | `dev.sh test --all`; на очках **без cfg** bench ≈ 90 fps / GPU ≈ 9,7 мс; `tests/foyer_preview.tscn` и `dev.sh shot` выставляют msaa 2 явно (моя зона; `preview_capture.gd` — Blender в B1) |
 | B1 | ручки + шейдеры без пересборки моделей: умолчания V10 в `KNOBS`, удаление fringe/halo/edge_soft/clip/noise/plate_flat/dust/uv_rim, solid_dark ≈50 строк | Blender | `assets_*` зелёные; `foyer_preview` до/после — тот же кадр (`visual-reviewer`); **очки: bench msaa 2 ≤ 9,72 мс** |
 | B2 | удаление объектов окружения (штрихи, точки, `*_mist`) и 15 экспериментальных .glb, пересборка на devbox (бинарные .glb конфликтны — в поезд одним) | Blender | тесты; кадр; bench до/после (число draw calls); размер APK ↓ |
 | G2 | `netrun/tools/pico_stand.sh` + `docs/netrun-devbox.md`, удаление старых вариантов | Godot | прогон пресета `bench` на очках |
@@ -110,7 +111,7 @@
 | B4 | документы: `ARCHITECTURE.md` §20, §12 → «Антипаттерны», §21 → «Вид Сети v1», бюджеты §9; `STYLE.md` п.7–8 | Blender | ревью |
 | G3 | П4 VolumeCloud для хранилища/выхода/портала/шарда, `volume_budget_ms` — **только если владелец одобрит вид (Б)**; тогда Blender пишет `src/points.py` | Godot (+Blender) | тесты; кадр; очки: bench + probe |
 
-Порядок: G1 ∥ B1 (разные файлы; B1 не требует пересборки моделей, но APK пересобирается — ручки вшиты) → B2 → G2 → B3 (после
+Порядок: **G1 первым** (читающая сторона перестаёт ссылаться на `AssetMaterials.fringe_on`/`apply_fringe`), затем B1 (удаляет `static var fringe_on` и путь `apply_fringe`) — либо один поезд из двух PR, чтобы main не краснел между слияниями; B1 не требует пересборки моделей, но APK пересобирается (ручки вшиты) → B2 → G2 → B3 (после
 решения по облаку, может идти параллельно B2) → B4; G3 — после B3 и только по решению. Каждый PR — один слой; G1 и B1 сливаются
 подряд, сосед предупреждается сообщением (контракт `apply_assets` ↔ `tune_from_config`, «читающая сторона первой»).
 
