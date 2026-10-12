@@ -84,6 +84,17 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 		add_child(bench)
 		bench.setup(scene.rig, render_cfg.bench)
 		bench.finished.connect(func(r: Dictionary): log_file.log("bench", r))
+	var probe_spec := LoadProbe.parse(render_cfg.probe)   # синтетическая нагрузка: [render] probe = "quads=N,px=P,mode=…"
+	if probe_spec["sweep"]:   # probe = "sweep": серия вариантов за один запуск, итог `[probe] ИТОГ`
+		var sweep := ProbeSweep.new()
+		sweep.setup(scene.rig.camera)
+		add_child(sweep)
+		sweep.finished.connect(func(r: Array): log_file.log("probe.sweep", {"variants": r.size()}))
+	elif probe_spec["on"]:
+		var probe := LoadProbe.new()
+		probe.setup(probe_spec)
+		scene.rig.camera.add_child(probe)
+		log_file.log("probe", {"quads": probe_spec["quads"], "px": probe_spec["px"], "mode": probe_spec["mode"]})
 	scene.rig.xr_failed.connect(func(reason: String): log_file.log("xr", {"enabled": false, "reason": reason}))
 	scene.rig.away_event.connect(func(kind: String, source: String, sec: float): log_file.log("away." + kind, {"source": source, "sec": snappedf(sec, 0.1)}))
 	scene.rig.recentered.connect(func(xr: bool): log_file.log("rig.recenter", {"xr": xr}))
