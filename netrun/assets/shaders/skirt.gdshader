@@ -12,14 +12,12 @@ uniform float veil_scale : hint_range(0.0, 4.0) = 1.0;    // множитель 
 uniform float rise_gain : hint_range(0.0, 8.0) = 1.0;     // множитель альфы завесы вверх (ручка tile_glow); 0 — квады схлопываются, заливку не тратят
 uniform float rise_scale : hint_range(0.1, 3.0) = 1.0;    // высота завесы вверх относительно модельной (ручка tile_glow_h)
 uniform float falloff : hint_range(0.5, 4.0) = 2.4;      // крутизна затухания книзу: больше — вуаль плотнее прижата к кромке
-uniform float patch_amount : hint_range(0.0, 1.0) = 0.5;  // пятнистость вдоль грани (0 — ровная завеса)
-uniform float patch_scale : hint_range(0.5, 20.0) = 5.0;  // пятен на метр
-uniform float patch_drift : hint_range(0.0, 1.0) = 0.12;  // медленное плавание пятен, 1/с (комфорт в VR)
 uniform vec4 tint : source_color = vec4(1.0);
 uniform float tint_amount : hint_range(0.0, 1.0) = 0.0;
 // Верх вуали плотнее всего и лежит на нижнем краю плиты, на 3 см ниже светящейся кромки: издали две яркие линии рядом сливаются в пиксель и мерцают.
-// top_fade — доля высоты вуали сверху, на которой плотность нарастает с нуля: вуаль «отрывается» от кромки плиты. 0 — как раньше.
-uniform float top_fade : hint_range(0.0, 0.5) = 0.0;
+// top_fade — доля высоты вуали сверху, на которой плотность нарастает с нуля: вуаль «отрывается» от кромки плиты (0,12 принято на очках; 0 — как раньше).
+// Пятнистость и дрейф пятен вдоль грани убраны (принято: ровная и статичная вуаль — без «лава-лампы»).
+uniform float top_fade : hint_range(0.0, 0.5) = 0.12;
 // Затухание по расстоянию до камеры (замена depth-fade) и яркость растёт к горизонту, как у штрихов (far_gain). 1 — выключено.
 uniform float fade_start = 60.0;
 uniform float fade_end = 90.0;
@@ -28,7 +26,6 @@ uniform float far_gain : hint_range(1.0, 6.0) = 1.0;
 uniform float far_start = 20.0;
 uniform float far_end = 60.0;
 
-varying vec3 v_wp;
 varying float v_dist;
 varying float v_rise;   // 1 — квад завесы вверх (UV2.x > 0), 0 — обычная вуаль
 
@@ -43,7 +40,6 @@ void vertex() {
 	if (v_rise > 0.5 && UV.y > 0.5) {  // дальний край квада: высота = модельная (UV2.x, м) × rise_scale; основание у кромки плиты не двигается
 		VERTEX.y += (rise_scale - 1.0) * UV2.x;
 	}
-	v_wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	v_dist = -(MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).z;
 	if (v_rise > 0.5 && rise_gain <= 0.0) {
 		POSITION = vec4(2.0, 2.0, 2.0, 1.0);  // завеса выключена: квад вне экрана
@@ -53,11 +49,7 @@ void vertex() {
 }
 
 void fragment() {
-	// пятна света вдоль грани: суммарная фаза по горизонтали (вертикаль не участвует — пятна не «текут» вниз), две медленные волны
-	float ph = (v_wp.x + v_wp.z * 0.7) * patch_scale + TIME * patch_drift;
-	float n = 0.5 + 0.25 * sin(ph) + 0.25 * sin(ph * 2.3 + v_wp.z * patch_scale * 0.6 - TIME * patch_drift * 0.7);
-	float patch_k = mix(1.0, n, patch_amount);
-	float dens = pow(COLOR.a, falloff) * patch_k;
+	float dens = pow(COLOR.a, falloff);
 	if (top_fade > 0.0) {
 		dens *= smoothstep(0.0, top_fade, UV.y);  // UV.y: 0 вверху вуали, 1 внизу
 	}

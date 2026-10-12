@@ -67,7 +67,7 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	log_file.log("start", {"mode": mode, "godot": Engine.get_version_info().string, "args": redact_args(args), "log": log_file.path})
 	# Настройки рендера читаются до построения сцены: обводка силуэтов (fringe) ставится в материалы при построении узлов.
 	var render_cfg := RenderConfig.load_file(config_paths)
-	render_cfg.apply_fringe(config_paths)
+	render_cfg.apply_assets(config_paths)
 	VolumeRegistry.configure(render_cfg.volumetric)   # какие модули рисуются облаком частиц (по умолчанию ни один)
 	scene = preload("res://client/rig_test_scene.gd").new()
 	add_child(scene)

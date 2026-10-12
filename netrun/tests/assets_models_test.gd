@@ -148,8 +148,8 @@ func _streak_halos(n: Node) -> Array:
 	return out
 
 
-func test_env_streaks_have_a_soft_halo_and_creatures_do_not() -> void:
-	## мягкий ореол (люминесценция) — только у окружения (с тиром); у существ, аватаров и деки штрихи резкие
+func test_env_streaks_and_creatures_have_no_halo() -> void:
+	## ореол штрихов окружения убран в B1 (в окружении штрихи не рисуются, streak_keep=0); у существ, аватаров и деки штрихи резкие
 	var env_parts := NodeAssets.mesh_parts(NodeAssets.env_path("wall", "BASE"), "BASE")
 	var seen := 0
 	for p in env_parts:
@@ -158,8 +158,8 @@ func test_env_streaks_have_a_soft_halo_and_creatures_do_not() -> void:
 			var m := mesh.surface_get_material(s) as ShaderMaterial
 			if m != null and m.shader.get_shader_uniform_list().any(func(u): return u["name"] == "halo"):
 				seen += 1
-				assert_float(_halo_of(m)).is_greater(0.0)
-	assert_int(seen).override_failure_message("в стене нет штрихов с ореолом").is_greater(0)
+				assert_float(_halo_of(m)).is_equal(0.0)
+	assert_int(seen).override_failure_message("в стене нет штрихов (шейдер с halo)").is_greater(0)
 	for path in ["ice/soft_ice", "avatar/runner"]:
 		var n := NodeAssets.instance(ROOT + path + ".glb")
 		auto_free(n)
@@ -442,7 +442,6 @@ func test_floor_variants_are_within_budget_and_below_floor() -> void:
 			if plates != null:
 				var pm := plates.get_surface_override_material(0) as ShaderMaterial
 				assert_bool(pm != null and pm.shader.resource_path.ends_with("solid_dark.gdshader")).override_failure_message("%s: у плит не solid_dark" % asset).is_true()
-				assert_float(float(pm.get_shader_parameter("uv_rim"))).override_failure_message("%s: у плит не включена кайма uv_rim" % asset).is_greater(0.0)
 			if v == 3:
 				var gm := glass.get_surface_override_material(0) as ShaderMaterial
 				assert_float(float(gm.get_shader_parameter("grid_alpha"))).override_failure_message("%s: сетка не включена" % asset).is_greater(0.0)
@@ -756,28 +755,25 @@ func test_asset_materials_knobs_change_materials_and_reset() -> void:
 	AssetMaterials.reset_tuning()
 	var base := _load("env", "cover")
 	AssetMaterials.apply(base, "BASE")
-	assert_bool(_mat_of(base, "pillar_block").next_pass != null).override_failure_message("по умолчанию обводка есть").is_true()
-	assert_float(float(_mat_of(base, "pillar_block").get_shader_parameter("edge_glow"))).is_equal_approx(2.2, 0.001)
+	assert_bool(_mat_of(base, "pillar_block").next_pass == null).override_failure_message("обводки (fringe) больше нет: материал без next_pass").is_true()
+	assert_float(float(_mat_of(base, "pillar_block").get_shader_parameter("edge_glow"))).override_failure_message("рёбра колонн: edge_glow 1,0 (принято на очках) вшит константой").is_equal_approx(1.0, 0.001)
 	var cfg := ConfigFile.new()
-	cfg.set_value("assets", "fringe_on", false)
+	cfg.set_value("assets", "fringe_on", false)  # удалённая ручка из старого cfg на очках: не ошибка, только предупреждение
 	cfg.set_value("assets", "edge_glow", 3.5)
 	cfg.set_value("assets", "solid_base", "#102030")
 	AssetMaterials.tune_from_config(cfg)
 	var tuned := _load("env", "cover")
 	AssetMaterials.apply(tuned, "BASE")
 	var m := _mat_of(tuned, "pillar_block")
-	assert_bool(m.next_pass == null).override_failure_message("fringe_on=false: обводки нет").is_true()
-	assert_float(float(m.get_shader_parameter("edge_glow"))).is_equal_approx(3.5, 0.001)
+	assert_float(float(m.get_shader_parameter("edge_glow"))).override_failure_message("edge_glow — константа: ключ старого cfg игнорируется").is_equal_approx(1.0, 0.001)
 	assert_bool((m.get_shader_parameter("base_color") as Color).is_equal_approx(Color("#102030"))).is_true()
 	AssetMaterials.reset_tuning()
-	var back := _load("env", "cover")
-	AssetMaterials.apply(back, "BASE")
-	assert_bool(_mat_of(back, "pillar_block").next_pass != null).override_failure_message("reset_tuning возвращает обводку").is_true()
+	assert_bool(AssetMaterials.KNOBS.has("fringe_on") or AssetMaterials.KNOBS.has("edge_glow")).override_failure_message("удалённые ручки не возвращаются в KNOBS").is_false()
 
 
 func test_asset_materials_knob_min_px_reaches_streaks() -> void:
 	AssetMaterials.reset_tuning()
-	AssetMaterials.tune({"min_px_streaks": 3.0, "halo_far": true})
+	AssetMaterials.tune({"min_px_streaks": 3.0})
 	var exit_frame := _load("env", "exit_frame")
 	AssetMaterials.apply(exit_frame, "BASE")
 	var post := _mat_of(exit_frame, "exit_post_l")
@@ -822,42 +818,38 @@ func test_asset_materials_knob_floor_grid_texture_replaces_seam_dots() -> void:
 
 func test_asset_materials_plate_rim_knobs_reach_plates_and_skirts() -> void:
 	AssetMaterials.reset_tuning()
-	AssetMaterials.tune({"rim_top_only": true, "plate_flat": true, "rim_far_min": 0.3, "rim_far_start": 6.0, "rim_far_end": 15.0, "skirt_top_fade": 0.12})
+	var dflt := _load("env", "floor_slab_8")  # умолчания = V10, принятый на очках
+	AssetMaterials.apply(dflt, "BASE")
+	var d := _mat_of(dflt, "slab")
+	assert_float(float(d.get_shader_parameter("rim_top_only"))).is_equal(1.0)
+	assert_float(float(d.get_shader_parameter("rim_far_min"))).is_equal_approx(0.0, 0.001)
+	assert_float(float(d.get_shader_parameter("rim_far_start"))).is_equal_approx(6.0, 0.001)
+	assert_float(float(d.get_shader_parameter("rim_far_end"))).is_equal_approx(10.0, 0.001)
+	assert_float(float(d.get_shader_parameter("rim_min_px"))).is_equal_approx(4.0, 0.001)
+	assert_float(float(d.get_shader_parameter("edge_round"))).override_failure_message("профиль ребра сглажен по умолчанию").is_equal_approx(1.0, 0.001)
+	AssetMaterials.tune({"rim_top_only": false, "rim_far_min": 0.3, "rim_far_start": 6.0, "rim_far_end": 15.0})
 	var root := _load("env", "floor_slab_8")
 	AssetMaterials.apply(root, "BASE")
 	var slab := _mat_of(root, "slab")
-	assert_float(float(slab.get_shader_parameter("rim_top_only"))).is_equal(1.0)
-	assert_float(float(slab.get_shader_parameter("plate_flat"))).is_equal(1.0)
+	assert_float(float(slab.get_shader_parameter("rim_top_only"))).is_equal(0.0)
 	assert_float(float(slab.get_shader_parameter("rim_far_min"))).is_equal_approx(0.3, 0.001)
 	assert_float(float(slab.get_shader_parameter("rim_far_end"))).is_equal_approx(15.0, 0.001)
-	assert_float(float(_mat_of(root, "floor_slab_skirt").get_shader_parameter("top_fade"))).is_equal_approx(0.12, 0.001)
 	var cover := _load("env", "cover")  # объём: боковые рёбра должны светиться — ручки плит его не трогают
 	AssetMaterials.apply(cover, "BASE")
 	assert_bool(_mat_of(cover, "pillar_block").get_shader_parameter("rim_top_only") == null).override_failure_message("ручки плит не должны попадать на укрытие").is_true()
 	AssetMaterials.reset_tuning()
 
 
-func test_asset_materials_knob_edge_soft_reaches_solids_and_fringe() -> void:
-	AssetMaterials.reset_tuning()
-	var dflt := _load("env", "cover")
-	AssetMaterials.apply(dflt, "BASE")
-	assert_bool(_mat_of(dflt, "pillar_block").get_shader_parameter("edge_soft") == null).override_failure_message("по умолчанию «кромка внутрь» выключена (параметр не задан)").is_true()
-	AssetMaterials.tune({"edge_soft": 0.6})
-	var cover := _load("env", "cover")
-	AssetMaterials.apply(cover, "BASE")
-	var pb := _mat_of(cover, "pillar_block")
-	assert_float(float(pb.get_shader_parameter("edge_soft"))).is_equal_approx(0.6, 0.001)
-	var fr := pb.next_pass as ShaderMaterial
-	var layers := 0
-	while fr != null:  # обводка гаснет вместе с кромкой
-		assert_float(float(fr.get_shader_parameter("edge_soft"))).is_equal_approx(0.6, 0.001)
-		layers += 1
-		fr = fr.next_pass as ShaderMaterial
-	assert_int(layers).is_equal(AssetMaterials.FRINGE_LAYERS.size())
-	var slab := _load("env", "floor_slab_8")  # плиты пола и потолка — тоже solid_dark
-	AssetMaterials.apply(slab, "BASE")
-	assert_float(float(_mat_of(slab, "slab").get_shader_parameter("edge_soft"))).is_equal_approx(0.6, 0.001)
-	AssetMaterials.reset_tuning()
+func test_removed_knobs_are_not_knobs_and_shaders_have_no_noise_branches() -> void:
+	for k in ["fringe_on", "fringe_alpha", "fringe_px", "halo", "halo_width", "halo_far", "edge_glow", "skirt_top_fade", "plate_flat", "edge_soft", "dust", "edge_uneven", "edge_drift", "flat_light", "drift_static", "vertex_clip", "albedo_clip"]:
+		assert_bool(AssetMaterials.KNOBS.has(k)).override_failure_message("ручка «%s» удалена в B1 (docs/netrun-refactor-plan.md): значение вшито или объект ушёл" % k).is_false()
+	var uniforms: Array = []
+	for u in (AssetMaterials.SHADERS["solid_dark"] as Shader).get_shader_uniform_list():
+		uniforms.append(u["name"])
+	for k in ["edge_uneven", "edge_drift", "edge_noise_scale", "edge_soft", "vertex_clip", "albedo_clip", "plate_flat", "uv_rim", "dust"]:
+		assert_bool(k in uniforms).override_failure_message("solid_dark: uniform «%s» должен быть удалён" % k).is_false()
+	assert_bool(not (AssetMaterials.SHADERS["solid_dark"] as Shader).code.contains("TIME")).override_failure_message("solid_dark не зависит от времени (рёбра статичны)").is_true()
+	assert_bool(ResourceLoader.exists("res://assets/shaders/fringe.gdshader")).override_failure_message("fringe.gdshader удалён").is_false()
 
 
 func _streak_mats(root: Node) -> Array:
@@ -887,12 +879,12 @@ func test_asset_materials_knob_point_keep_reaches_env_points_only() -> void:
 	var base := _point_mats(dflt)
 	assert_int(base.size()).override_failure_message("в стене нет точек").is_greater(0)
 	for m in base:
-		assert_bool(m.get_shader_parameter("keep_frac") == null).override_failure_message("по умолчанию доля точек не задана").is_true()
-	AssetMaterials.tune({"point_keep": 0.0})
+		assert_float(float(m.get_shader_parameter("keep_frac"))).override_failure_message("по умолчанию точки окружения убраны (point_keep=0, решение владельца)").is_equal(0.0)
+	AssetMaterials.tune({"point_keep": 0.5})
 	var tuned := _load("env", "wall")
 	AssetMaterials.apply(tuned, "BASE")
 	for m in _point_mats(tuned):
-		assert_float(float(m.get_shader_parameter("keep_frac"))).is_equal(0.0)
+		assert_float(float(m.get_shader_parameter("keep_frac"))).is_equal_approx(0.5, 0.001)
 	var creature := _load("ice", "soft_ice")  # существа без тира: ручка окружения их не трогает
 	AssetMaterials.apply(creature)
 	for m in _point_mats(creature):
@@ -907,7 +899,8 @@ func test_asset_materials_streak_knobs_reach_env_streaks_only() -> void:
 	var base := _streak_mats(dflt)
 	assert_int(base.size()).override_failure_message("в стене нет штрихов").is_greater(0)
 	for m in base:
-		assert_bool(m.get_shader_parameter("keep_frac") == null and m.get_shader_parameter("far_dim_min") == null and m.get_shader_parameter("px_fade") == null).override_failure_message("по умолчанию ручки штрихов не заданы").is_true()
+		assert_float(float(m.get_shader_parameter("keep_frac"))).override_failure_message("по умолчанию штрихи окружения не рисуются (streak_keep=0, решение владельца)").is_equal(0.0)
+		assert_bool(m.get_shader_parameter("far_dim_min") == null and m.get_shader_parameter("px_fade") == null).override_failure_message("остальные ручки штрихов не заданы").is_true()
 	AssetMaterials.tune({"streak_far_min": 0.3, "streak_far_start": 6.0, "streak_far_end": 20.0, "streak_keep": 0.6, "streak_len": 0.7, "streak_px_fade": 1.0})
 	var tuned := _load("env", "wall")
 	AssetMaterials.apply(tuned, "BASE")
@@ -928,18 +921,19 @@ func test_asset_materials_mist_and_veil_knobs_scale_hide_and_freeze() -> void:
 	AssetMaterials.reset_tuning()
 	var dflt := _load("env", "horizon_band")
 	AssetMaterials.apply(dflt, "BASE")
-	var mist := _mat_of(dflt, "horizon_mist")
-	assert_bool(mist.get_shader_parameter("mist_scale") == null and mist.get_shader_parameter("anim") == null).override_failure_message("по умолчанию ручки дымки не заданы").is_true()
-	AssetMaterials.tune({"mist_alpha": 0.4, "veil_scale": 0.5, "drift_static": true})
+	for mi in _meshes(dflt):
+		if String(mi.name).ends_with("_mist"):
+			assert_bool(mi.visible).override_failure_message("по умолчанию дымка горизонта скрыта (mist_alpha=0, принято на очках)").is_false()
+	AssetMaterials.tune({"mist_alpha": 0.4, "veil_scale": 0.5})
 	var band := _load("env", "horizon_band")
 	AssetMaterials.apply(band, "BASE")
 	assert_float(float(_mat_of(band, "horizon_mist").get_shader_parameter("mist_scale"))).is_equal_approx(0.4, 0.001)
-	assert_float(float(_mat_of(band, "horizon_mist").get_shader_parameter("anim"))).is_equal(0.0)
+	assert_float(float(_mat_of(band, "horizon_mist").get_shader_parameter("anim"))).override_failure_message("показанная дымка статична").is_equal(0.0)
+	assert_float(float(_mat_of(band, "horizon_mist").get_shader_parameter("noise_amount"))).is_equal(0.0)
 	var slab := _load("env", "floor_slab_8")
 	AssetMaterials.apply(slab, "BASE")
 	var skirt := _mat_of(slab, "floor_slab_skirt")
 	assert_float(float(skirt.get_shader_parameter("veil_scale"))).is_equal_approx(0.5, 0.001)
-	assert_float(float(skirt.get_shader_parameter("patch_drift"))).is_equal(0.0)
 	AssetMaterials.tune({"mist_alpha": 0.0, "veil_scale": 0.0})
 	var gone := _load("env", "floor_slab_8")
 	AssetMaterials.apply(gone, "BASE")
@@ -951,25 +945,6 @@ func test_asset_materials_mist_and_veil_knobs_scale_hide_and_freeze() -> void:
 	for mi in _meshes(gone_band):
 		if String(mi.name).ends_with("_mist"):
 			assert_bool(mi.visible).override_failure_message("mist_alpha=0: дымка должна быть скрыта").is_false()
-	AssetMaterials.reset_tuning()
-
-
-func test_asset_materials_knob_dust_reaches_solids_with_the_sprite_atlas() -> void:
-	AssetMaterials.reset_tuning()
-	var dflt := _load("env", "cover")
-	AssetMaterials.apply(dflt, "BASE")
-	assert_bool(_mat_of(dflt, "pillar_block").get_shader_parameter("dust") == null).override_failure_message("по умолчанию пыль выключена (параметр не задан, в шейдере 0)").is_true()
-	AssetMaterials.tune({"dust": 1.0, "dust_cell": 0.06, "dust_density": 0.4})
-	var cover := _load("env", "cover")
-	AssetMaterials.apply(cover, "BASE")
-	var pb := _mat_of(cover, "pillar_block")
-	assert_float(float(pb.get_shader_parameter("dust"))).is_equal_approx(1.0, 0.001)
-	assert_float(float(pb.get_shader_parameter("dust_cell"))).is_equal_approx(0.06, 0.001)
-	assert_float(float(pb.get_shader_parameter("dust_density"))).is_equal_approx(0.4, 0.001)
-	assert_object(pb.get_shader_parameter("glitch_tex")).is_same(GlitchSprite.texture())
-	var slab := _load("env", "floor_slab_8")  # плиты пола — тоже solid_dark
-	AssetMaterials.apply(slab, "BASE")
-	assert_float(float(_mat_of(slab, "slab").get_shader_parameter("dust"))).is_equal_approx(1.0, 0.001)
 	AssetMaterials.reset_tuning()
 
 
@@ -1000,30 +975,28 @@ func _cloud_meshes(root: Node) -> int:
 
 func test_asset_materials_knob_cloud_far_and_lite() -> void:
 	AssetMaterials.reset_tuning()
-	AssetMaterials.tune({"cloud": 1.0})
-	var far_on := _load("env", "far_floor")
-	AssetMaterials.apply(far_on, "BASE")
-	assert_int(_cloud_meshes(far_on)).override_failure_message("cloud_far по умолчанию 1: дальние пласты тоже облако").is_greater(0)
-	AssetMaterials.tune({"cloud": 1.0, "cloud_far": 0.0})
+	AssetMaterials.tune({"cloud": 1.0})  # умолчания охвата = принятый C3a: облако на реквизите, пол/потолок/дальние пласты остаются solid_dark
 	var far_off := _load("env", "far_floor")
 	AssetMaterials.apply(far_off, "BASE")
-	assert_int(_cloud_meshes(far_off)).override_failure_message("cloud_far=0: дальние пласты остаются solid_dark").is_equal(0)
+	assert_int(_cloud_meshes(far_off)).override_failure_message("cloud_far=0 по умолчанию: дальние пласты остаются solid_dark").is_equal(0)
 	var room := _load("env", "cover")
 	AssetMaterials.apply(room, "BASE")
-	assert_int(_cloud_meshes(room)).override_failure_message("cloud_far=0 не трогает комнату").is_greater(0)
-	assert_float(float(_mat_of(room, "pillar_block").get_shader_parameter("lite"))).is_equal_approx(0.0, 0.001)
-	AssetMaterials.tune({"cloud": 1.0, "cloud_floor": 0.0, "cloud_ceiling": 0.0})
+	assert_int(_cloud_meshes(room)).override_failure_message("реквизит — облако").is_greater(0)
+	assert_float(float(_mat_of(room, "pillar_block").get_shader_parameter("lite"))).override_failure_message("cloud_lite=1 по умолчанию").is_equal_approx(1.0, 0.001)
 	var no_floor := _load("env", "floor_slab_8")
 	AssetMaterials.apply(no_floor, "BASE")
-	assert_int(_cloud_meshes(no_floor)).override_failure_message("cloud_floor=0: пол остаётся solid_dark").is_equal(0)
+	assert_int(_cloud_meshes(no_floor)).override_failure_message("cloud_floor=0 по умолчанию: пол остаётся solid_dark").is_equal(0)
 	var no_ceil := _load("env", "ceiling")
 	AssetMaterials.apply(no_ceil, "BASE")
-	assert_int(_cloud_meshes(no_ceil)).override_failure_message("cloud_ceiling=0: потолок остаётся solid_dark").is_equal(0)
+	assert_int(_cloud_meshes(no_ceil)).override_failure_message("cloud_ceiling=0 по умолчанию: потолок остаётся solid_dark").is_equal(0)
 	AssetMaterials.reset_tuning()
-	AssetMaterials.tune({"cloud": 1.0})
+	AssetMaterials.tune({"cloud": 1.0, "cloud_far": 1.0, "cloud_floor": 1.0, "cloud_ceiling": 1.0})
+	var far_on := _load("env", "far_floor")
+	AssetMaterials.apply(far_on, "BASE")
+	assert_int(_cloud_meshes(far_on)).override_failure_message("cloud_far=1: дальние пласты тоже облако").is_greater(0)
 	var with_floor := _load("env", "floor_slab_8")
 	AssetMaterials.apply(with_floor, "BASE")
-	assert_int(_cloud_meshes(with_floor)).override_failure_message("по умолчанию пол — облако").is_greater(0)
+	assert_int(_cloud_meshes(with_floor)).override_failure_message("cloud_floor=1: пол — облако").is_greater(0)
 	AssetMaterials.reset_tuning()
 	AssetMaterials.tune({"cloud": 1.0})
 	var one_side := _load("env", "cover")
@@ -1033,10 +1006,10 @@ func test_asset_materials_knob_cloud_far_and_lite() -> void:
 	var two_side := _load("env", "cover")
 	AssetMaterials.apply(two_side, "BASE")
 	assert_str(_mat_of(two_side, "pillar_block").shader.resource_path).override_failure_message("cloud_two_sided=1: cull_disabled").ends_with("cloud_dark_2s.gdshader")
-	AssetMaterials.tune({"cloud": 1.0, "cloud_lite": 1.0})
-	var lite := _load("env", "cover")
-	AssetMaterials.apply(lite, "BASE")
-	assert_float(float(_mat_of(lite, "pillar_block").get_shader_parameter("lite"))).is_equal_approx(1.0, 0.001)
+	AssetMaterials.tune({"cloud": 1.0, "cloud_lite": 0.0})
+	var heavy := _load("env", "cover")
+	AssetMaterials.apply(heavy, "BASE")
+	assert_float(float(_mat_of(heavy, "pillar_block").get_shader_parameter("lite"))).override_failure_message("cloud_lite=0 — прежний путь с 3D-шумом, для сравнения").is_equal_approx(0.0, 0.001)
 	AssetMaterials.reset_tuning()
 
 
@@ -1075,7 +1048,7 @@ func test_tile_glow_knobs_drive_only_the_curtain_quads() -> void:
 	AssetMaterials.apply(dflt, "BASE")
 	var sk := _skirt_mesh(dflt, "far_floor_skirt")
 	var m := sk.get_surface_override_material(0) as ShaderMaterial
-	assert_float(float(m.get_shader_parameter("rise_gain"))).override_failure_message("по умолчанию завеса выключена (rise_gain 0)").is_equal(0.0)
+	assert_float(float(m.get_shader_parameter("rise_gain"))).override_failure_message("по умолчанию завеса вверх включена (tile_glow=3, V10)").is_equal_approx(3.0, 0.001)
 	assert_float(float(m.get_shader_parameter("rise_scale"))).is_equal_approx(1.0, 0.001)
 	AssetMaterials.tune({"tile_glow": 2.5, "tile_glow_h": 1.5, "veil_scale": 2.0})
 	var tuned := _load("env", "far_floor")
@@ -1094,62 +1067,26 @@ func test_tile_glow_knobs_drive_only_the_curtain_quads() -> void:
 	AssetMaterials.reset_tuning()
 
 
-func test_drift_static_and_flat_light_calm_plate_rims_haze_and_veil() -> void:
-	AssetMaterials.reset_tuning()
-	var dflt := _load("env", "horizon_band")
-	AssetMaterials.apply(dflt, "BASE")
-	var dm := _mat_of(dflt, "horizon_mist")
-	assert_bool(dm.get_shader_parameter("noise_amount") == null and dm.get_shader_parameter("anim") == null).override_failure_message("по умолчанию дымка живая").is_true()
-	AssetMaterials.tune({"drift_static": true, "flat_light": true})
-	var band := _load("env", "horizon_band")
-	AssetMaterials.apply(band, "BASE")
-	var mist := _mat_of(band, "horizon_mist")
-	assert_float(float(mist.get_shader_parameter("anim"))).is_equal(0.0)
-	assert_float(float(mist.get_shader_parameter("noise_amount"))).is_equal(0.0)
-	assert_float(float(mist.get_shader_parameter("stripe_amount"))).is_equal(0.0)
-	var slab := _load("env", "ceiling")  # плитчатый потолок: рёбра плит (solid_dark `tiles`) и вуаль
-	AssetMaterials.apply(slab, "BASE")
-	var tiles := _mat_of(slab, "tiles")
-	assert_float(float(tiles.get_shader_parameter("edge_drift"))).override_failure_message("рёбра плит не должны плыть по времени").is_equal(0.0)
-	assert_float(float(tiles.get_shader_parameter("edge_uneven"))).override_failure_message("рёбра плит должны быть ровными").is_equal(0.0)
-	assert_float(float(_mat_of(slab, "ceiling_skirt").get_shader_parameter("patch_amount"))).is_equal(0.0)
-	AssetMaterials.reset_tuning()
+func test_veil_is_flat_and_static_without_noise_uniforms() -> void:
+	var uniforms: Array = []
+	for u in (ResourceLoader.load("res://assets/shaders/skirt.gdshader") as Shader).get_shader_uniform_list():
+		uniforms.append(u["name"])
+	for k in ["patch_amount", "patch_scale", "patch_drift"]:
+		assert_bool(k in uniforms).override_failure_message("skirt: «%s» убран, вуаль ровная и статичная (принято на очках)" % k).is_false()
+	var sh := ResourceLoader.load("res://assets/shaders/skirt.gdshader") as Shader
+	assert_bool(sh.code.contains("top_fade : hint_range(0.0, 0.5) = 0.12")).override_failure_message("top_fade 0,12 — умолчание шейдера (принято на очках), в материал не пишется").is_true()
+	assert_bool(not sh.code.contains("TIME")).override_failure_message("вуаль не зависит от времени").is_true()
 
 
-func test_edge_light_knobs_override_pillar_and_plate_edges_and_clip_overbright() -> void:
+func test_edge_round_knob_reaches_solid_dark_smooth_by_default() -> void:
 	AssetMaterials.reset_tuning()
 	var dflt := _load("env", "cover")
 	AssetMaterials.apply(dflt, "BASE")
-	var pb0 := _mat_of(dflt, "pillar_block")
-	assert_bool(pb0.get_shader_parameter("edge_drift") == null and pb0.get_shader_parameter("albedo_clip") == null).override_failure_message("по умолчанию ручки света граней не заданы").is_true()
-	assert_float(float(pb0.get_shader_parameter("edge_uneven"))).override_failure_message("колонны: рёбра ровные из PILLAR_EDGE").is_equal(0.0)
-	AssetMaterials.tune({"edge_uneven": 0.3, "edge_drift": 0.0, "albedo_clip": 1.0})
+	assert_float(float(_mat_of(dflt, "pillar_block").get_shader_parameter("edge_round"))).override_failure_message("по умолчанию профиль ребра сглажен (замер 6 на очках)").is_equal(1.0)
+	AssetMaterials.tune({"edge_round": 0.0})
 	var cover := _load("env", "cover")
 	AssetMaterials.apply(cover, "BASE")
-	var pb := _mat_of(cover, "pillar_block")
-	assert_float(float(pb.get_shader_parameter("edge_uneven"))).override_failure_message("ручка перекрывает PILLAR_EDGE").is_equal_approx(0.3, 0.001)
-	assert_float(float(pb.get_shader_parameter("edge_drift"))).is_equal(0.0)
-	assert_float(float(pb.get_shader_parameter("albedo_clip"))).is_equal(1.0)
-	var fr := pb.next_pass as ShaderMaterial
-	assert_bool(fr != null and float(fr.get_shader_parameter("albedo_clip")) == 1.0).override_failure_message("клип доходит и до обводки").is_true()
-	var tiles := _load("env", "ceiling")
-	AssetMaterials.apply(tiles, "BASE")
-	assert_float(float(_mat_of(tiles, "tiles").get_shader_parameter("edge_uneven"))).is_equal_approx(0.3, 0.001)
-	AssetMaterials.reset_tuning()
-
-
-func test_edge_profile_knobs_reach_solid_dark_only_when_set() -> void:
-	AssetMaterials.reset_tuning()
-	var dflt := _load("env", "cover")
-	AssetMaterials.apply(dflt, "BASE")
-	var p0 := _mat_of(dflt, "pillar_block")
-	assert_bool(p0.get_shader_parameter("edge_round") == null and p0.get_shader_parameter("vertex_clip") == null).override_failure_message("по умолчанию профиль ребра как задан моделью").is_true()
-	AssetMaterials.tune({"edge_round": 1.0, "vertex_clip": 1.0})
-	var cover := _load("env", "cover")
-	AssetMaterials.apply(cover, "BASE")
-	var p := _mat_of(cover, "pillar_block")
-	assert_float(float(p.get_shader_parameter("edge_round"))).is_equal(1.0)
-	assert_float(float(p.get_shader_parameter("vertex_clip"))).is_equal(1.0)
+	assert_float(float(_mat_of(cover, "pillar_block").get_shader_parameter("edge_round"))).is_equal(0.0)
 	AssetMaterials.reset_tuning()
 
 
@@ -1157,7 +1094,7 @@ func test_rim_min_px_knob_reaches_plates_only() -> void:
 	AssetMaterials.reset_tuning()
 	var dflt := _load("env", "far_ceiling")
 	AssetMaterials.apply(dflt, "BASE")
-	assert_float(float(_mat_of(dflt, "tiles").get_shader_parameter("rim_min_px"))).override_failure_message("по умолчанию гашение по ширине выключено").is_equal(0.0)
+	assert_float(float(_mat_of(dflt, "tiles").get_shader_parameter("rim_min_px"))).override_failure_message("по умолчанию гашение по ширине кромки 4 px (V10)").is_equal(4.0)
 	AssetMaterials.tune({"rim_min_px": 3.0})
 	var tuned := _load("env", "far_ceiling")
 	AssetMaterials.apply(tuned, "BASE")
