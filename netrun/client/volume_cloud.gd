@@ -107,6 +107,13 @@ func setup(points: PackedFloat32Array, color: Color, bounds: AABB) -> void:
 	_mmi.multimesh = _mm
 	_mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_mmi)
+	add_to_group("volume_clouds")   # регулятор плотности (VolumeBudget) находит облака по группе
+	_apply()
+
+
+## Плотность облака (множитель к ЛОД; регулятор VolumeBudget зовёт через группу `volume_clouds`).
+func set_density(value: float) -> void:
+	density = clampf(value, 0.0, 1.0)
 	_apply()
 
 
