@@ -19,6 +19,7 @@ case $(printf '%s' "$title" | tr '[:upper:]' '[:lower:]') in
   *blender*) zone="Blender"; zc=blender ;;
   *game*|*геймдиз*) zone="Геймдизайн"; zc=gamedesign ;;
   *larp*|*сюжет*) zone="LARP"; zc=story ;;
+  *devbox*|*девбокс*) zone="Devbox"; zc=devbox ;;
   *pipeline*) zone="Pipeline manager"; zc=pipeline ;;
   *) zone="" ;;
 esac

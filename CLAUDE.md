@@ -34,11 +34,12 @@
 `EyePresets`) и кадру с очков; стенд Blender — для замеров. Новый видимый элемент клиента: Godot — логика и геометрия, Blender — цвет и материал.
 | **Геймдизайн** | `docs/gamedesign/` — документы проекта и модель (`docs/gamedesign/model/`) | код всех зон: изменения — карточками сессиям зон, код пишут они (решение владельца 06.10) |
 | **LARP** | `docs/story/` — сюжет и мир ларпа: библия мира, фракции, вводные, линии «сюжет × приложение» | код всех зон: изменения — карточками сессиям зон; связь с Сетью — через Геймдизайн (решение владельца 08.10) |
-| **Pipeline manager** | общие правила и инструменты: `CLAUDE.md`, `.claude/` (хук, настройки, общие skills), общие `scripts/` (`check`, `verify`, `dbx`, `ci-wait`, `agent-worktree`, `zone-check`, `train`, `land`, `session-stats`, `test-hook`, `lint-pipeline`, `devbox-runner`), `.github/dependabot.yml`, `labeler.yml`, workflows `main`/`pipeline`/`labeler`, `docs/ci.md`; `scripts/phone.sh` дополняет и Android App; **очередь слияний в `main` за все сессии** (Git и процесс) | код областей |
+| **Devbox** (Sonnet) | машина devbox: [docs/devbox.md](docs/devbox.md) (ТЗ), `scripts/box*`, `scripts/devbox-*`, `scripts/dbx.sh`; на devbox — сервисы, очереди, брони устройств и портов, экземпляры программ на сессию (решение владельца 13.10) | код проектов; чужие процессы, устройства и каталоги — по списку «Нельзя» в ТЗ |
+| **Pipeline manager** | общие правила и инструменты: `CLAUDE.md`, `.claude/` (хук, настройки, общие skills), общие `scripts/` (`check`, `verify`, `ci-wait`, `agent-worktree`, `zone-check`, `train`, `land`, `session-stats`, `test-hook`, `lint-pipeline`), `.github/dependabot.yml`, `labeler.yml`, workflows `main`/`pipeline`/`labeler`, `docs/ci.md`; `scripts/phone.sh` дополняет и Android App; **очередь слияний в `main` за все сессии** (Git и процесс) | код областей |
 
 Общее для всех: `docs/progress.md` и [GLOSSARY.md](GLOSSARY.md) (словарь проекта: одно слово — одно значение) — каждая сессия правит только свой раздел; `.github/workflows/` своей области — можно, `main.yml` — через
 Pipeline manager. Работать в своей worktree (`scripts/agent-worktree.sh new <имя>`), добавлять файлы явными путями, в `main` — только владелец.
-Перед коммитом и PR — `scripts/zone-check.sh <android|collector|nodes|godot|blender|gamedesign|story|pipeline>`: печатает файлы вне зоны (таблица продублирована в скрипте —
+Перед коммитом и PR — `scripts/zone-check.sh <android|collector|nodes|godot|blender|gamedesign|story|devbox|pipeline>`: печатает файлы вне зоны (таблица продублирована в скрипте —
 правите таблицу, правьте и его).
 
 ## Работа агента: время и токены
