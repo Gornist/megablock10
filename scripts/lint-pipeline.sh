@@ -16,6 +16,10 @@ for f in check verify dbx ci-wait agent-worktree zone-check train land test-hook
   files="$files scripts/$f.sh"
 done
 files="$files .claude/hooks/guard-bash.sh .claude/hooks/session-brief.sh"
+# Скрипты зоны Devbox (13.10): проверяем, если они уже в ветке — box.sh и box/probe.sh приходят вместе с D1.
+for f in scripts/box.sh scripts/box/probe.sh scripts/devbox-session-start.sh scripts/devbox-godot-ai.sh; do
+  [ -f "$f" ] && files="$files $f"
+done
 
 { echo "== shellcheck -S warning"; } >>"$log"
 # shellcheck disable=SC2086  # список файлов без пробелов в именах — разбиение по словам намеренное

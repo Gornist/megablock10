@@ -10,6 +10,8 @@ Mac (8 ГБ) — только правка, git и `scripts/check.sh --fast`. Gr
 
 ## Доступ
 - `ssh devbox` (Tailscale SSH, 100.80.115.46, пользователь `nick`; имя хоста с Mac резолвится неверно — только IP).
+- Состояние машины и устройств — `scripts/box.sh status` (одна строка); adb — user-служба `box-adb`, `adb kill-server` не нужен.
+  Машиной управляет сессия **Devbox** (ТЗ — `docs/devbox.md`): очередь, брони устройств и портов — через неё.
 - Репозиторий `~/megablock10`; на Mac git-remote `devbox`. Пуш ветки: `git push devbox <ветка> --no-verify`
   (локальный pre-push хук запускает Gradle на Mac — на devbox он не нужен).
 - Окружение: `~/netrun-env.sh` (Android SDK в `~/android-sdk`, Godot в `~/.local/bin`). **Ловушка JDK:** `devjob` сам делает
