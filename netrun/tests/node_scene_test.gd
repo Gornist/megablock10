@@ -4,8 +4,8 @@ extends GdUnitTestSuite
 
 const TIERS := ["BASE", "HARD", "NIGHTMARE"]
 ## Модули, которые всегда в комнате (ворота lockdown_gate — только при LOCKDOWN). Стен, углов, дверей, тоннеля, far_field и горизонта нет (рефактор Сети).
-const ENV_MODULES := ["floor", "room_edge", "pillar", "platform", "ceiling", "far_floor", "far_ceiling"]
-const REMOVED_MODULES := ["wall", "corner", "doorway", "tunnel_ring", "far_field"]
+const ENV_MODULES := ["floor", "pillar", "platform", "ceiling", "far_floor", "far_ceiling"]
+const REMOVED_MODULES := ["wall", "corner", "doorway", "tunnel_ring", "far_field", "room_edge"]
 const PORTAL := "res://assets/models/props/portal.glb"
 const PORTAL_LOCKED := "res://assets/models/props/portal_locked.glb"
 const GATE := "res://assets/models/env/lockdown_gate.glb"
@@ -114,11 +114,10 @@ func test_room_is_one_floor_slab_with_an_edge_and_8x8_ceiling() -> void:
 	var scene := _scene()
 	scene.apply_node(_info("BASE"))
 	var counts: Dictionary = scene.view.module_counts()
-	# пол — один тайл и одна кромка в центре комнаты; потолок — по ячейке
+	# пол — один тайл в центре комнаты (кромка room_edge убрана); потолок — по ячейке
 	assert_int(counts["floor"]).is_equal(1)
-	assert_int(counts["room_edge"]).is_equal(1)
 	assert_int(counts["ceiling"]).is_equal(NodeLayout.GRID * NodeLayout.GRID)
-	for module in ["floor", "room_edge"]:
+	for module in ["floor"]:
 		var mm := _multimesh_of(scene.view, _module_path(module))
 		assert_bool(mm != null).override_failure_message("нет " + module).is_true()
 		# get_instance_transform в headless-рендере (dummy) всегда нули, поэтому положение — по custom_aabb, который считает сам NodeView по преобразованиям
