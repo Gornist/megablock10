@@ -58,7 +58,9 @@ static func spawn(module: String, model_path: String, color: Color, bounds: AABB
 		return null
 	var pts := VolumeCloud.load_file(points_path(model_path))
 	var box := bounds
+	var source := "file"
 	if pts.is_empty():
+		source = "sampled"
 		var key := "%s|%s" % [module, model_path]
 		if not _sampled.has(key):
 			_sampled[key] = VolumeSampler.sample_parts(NodeAssets.mesh_parts(model_path), int(SAMPLE_COUNTS.get(module, SAMPLE_DEFAULT)), SAMPLE_SEED)
@@ -70,4 +72,6 @@ static func spawn(module: String, model_path: String, color: Color, bounds: AABB
 	var c := VolumeCloud.new()
 	c.name = "Cloud_" + module
 	c.setup(pts, color, box)
+	# В logcat видно, дошёл ли файл `.points` до игры (в APK попадает по include_filter) или сработал сэмплер.
+	print("[volume] spawn module=%s source=%s points=%d" % [module, source, VolumeCloud.points_in(pts)])
 	return c
