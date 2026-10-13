@@ -2,7 +2,7 @@
 // Вес ребра берём из цвета вершины (1 на стыке → 0 на 3 см), линии клеток пола — из той же текстуры grid_tex, что у solid_dark: там плотность поднимается до скопления (линия остаётся читаемой, но из частиц).
 // Нормаль и позиция идут varying'ами от вершины (не NORMAL фрагмента), поэтому у задних граней при cull_disabled узор тот же, что у передних: на мировой решётке видна «внутренность» объёма.
 
-#include "volume_dust.gdshaderinc"
+#include "volume_cloud.gdshaderinc"
 
 uniform sampler2D grid_tex : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float grid_alpha : hint_range(0.0, 2.0) = 0.0;

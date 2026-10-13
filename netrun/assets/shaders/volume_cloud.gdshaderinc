@@ -5,7 +5,9 @@
 // скользящего взгляда (Fresnel), падает с расстоянием. Результат — ЦВЕТ и ПОКРЫТИЕ (a): пиксель, где частицы нет, не рисуется (alpha_to_coverage при MSAA: дыры мягкие, глубина
 // пишется, сортировки и аддитивной перерисовки нет — за дырами видны фон и дальние объекты, как у облака точек на референсах). edge 0…1 (запечённый вес ребра или линии сетки)
 // поднимает плотность до сплошного скопления. Антиалиасинг: ячейки мельче ~0,7 px дают дробное покрытие dust_cover_avg·плотность (MSAA сам превращает его в долю сэмплов): без мерцания;
-// текстура читается с градиентами непрерывных координат — на границах ячеек нет швов выбора мипа. (Пыль на solid_dark — прежняя цель этого файла — удалена в рефакторе B1.)
+// текстура читается с градиентами непрерывных координат — на границах ячеек нет швов выбора мипа.
+// B3 (13.10.2026): единственный путь — «лёгкий» (хэш без sin, пятна 2D-шумом по плоскости грани: 4 хэша на фрагмент вместо 8); прежний 3D-шум и ручка cloud_lite удалены.
+// Файл раньше назывался volume_dust.gdshaderinc (пыль на solid_dark удалена в B1).
 
 uniform sampler2D glitch_tex : filter_linear_mipmap, repeat_disable;
 uniform vec2 glitch_cells = vec2(8.0, 4.0);                         // столбцов и строк атласа
@@ -22,19 +24,7 @@ uniform float dust_patch : hint_range(0.0, 1.0) = 0.65;               // нас�
 uniform float dust_patch_scale : hint_range(0.05, 3.0) = 0.35;         // пятен на метр
 uniform float dust_cover_avg : hint_range(0.0, 1.0) = 0.3;      // средняя доля покрытия кадра спрайта (по атласу ≈ 0,2–0,35)
 uniform float dust_edge_gain : hint_range(0.0, 4.0) = 1.4;      // насколько вес ребра поднимает плотность (ребро = скопление частиц)
-uniform float lite : hint_range(0.0, 1.0) = 1.0;                // дешёвый фрагмент (ручка cloud_lite, принят): хэш без sin, пятна 2D-шумом по плоскости грани (4 хэша вместо 8); 0 — прежний путь с 3D-шумом
 
-float dust_hash(vec3 p) {
-	return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
-}
-float dust_noise(vec3 p) {
-	vec3 i = floor(p);
-	vec3 f = fract(p);
-	f = f * f * (3.0 - 2.0 * f);
-	float a = mix(mix(dust_hash(i), dust_hash(i + vec3(1, 0, 0)), f.x), mix(dust_hash(i + vec3(0, 1, 0)), dust_hash(i + vec3(1, 1, 0)), f.x), f.y);
-	float b = mix(mix(dust_hash(i + vec3(0, 0, 1)), dust_hash(i + vec3(1, 0, 1)), f.x), mix(dust_hash(i + vec3(0, 1, 1)), dust_hash(i + vec3(1, 1, 1)), f.x), f.y);
-	return mix(a, b, f.z);
-}
 float cloud_hash(vec2 p) {  // хэш без sin: три fract/умножения
 	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
 	p3 += dot(p3, p3.yzx + 33.33);
@@ -66,18 +56,9 @@ vec4 volume_cloud(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px, float 
 	vec2 coord = plane / dust_cell;
 	vec2 id = floor(coord);
 	vec2 f = fract(coord);
-	float h;
-	float h2;
-	float patch_n;
-	if (lite > 0.5) {
-		h = cloud_hash(id + axis * 31.0);
-		h2 = cloud_hash(id.yx + 17.0 + axis * 31.0);
-		patch_n = cloud_noise2(vec2(plane.x, plane.y * 2.0) * dust_patch_scale + vec2(axis * 7.0, 3.0));  // plane.y в 2 раза сжата (ячейка 1:2) — возвращаем метры
-	} else {
-		h = dust_hash(vec3(id, axis));
-		h2 = dust_hash(vec3(id.yx + 17.0, axis));
-		patch_n = dust_noise(wp * dust_patch_scale + vec3(0.0, axis * 7.0, 0.0));
-	}
+	float h = cloud_hash(id + axis * 31.0);
+	float h2 = cloud_hash(id.yx + 17.0 + axis * 31.0);
+	float patch_n = cloud_noise2(vec2(plane.x, plane.y * 2.0) * dust_patch_scale + vec2(axis * 7.0, 3.0));  // plane.y в 2 раза сжата (ячейка 1:2) — возвращаем метры
 	float up = clamp(nw.y * 0.5 + 0.5, 0.0, 1.0);
 	float ndv = 1.0 - clamp(abs(dot(nw, vdir)), 0.0, 1.0);
 	float graze = ndv * ndv;
