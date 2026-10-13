@@ -306,9 +306,9 @@ PICO_BAD_PKGS="com.pvr.seethrough.setting com.picovr.systemext com.picovr.settin
 # Допустимое на переднем плане: наша игра и лаунчер (ПО ПУСТОМУ списку не угадать — расширяется файлом $BOX/pico-ok-pkgs
 # по строке или PICO_OK_PKGS; неизвестный пакет = НЕ ГОТОВО с названием в вердикте, а не молчаливое «можно»).
 PICO_OK_PKGS="${PICO_OK_PKGS:-com.megablok10.netrun com.pvr.home com.picovrtob.vrlauncher com.pvr.vrshell} $(cat "$BOX/pico-ok-pkgs" 2>/dev/null | tr '\n' ' ')"
-# граница готова (sys.pxr.boundary.ready=1) — требование Pipeline; в здоровом состоянии значение пока НЕ наблюдалось
-# (очки были в «Слишком темно»), поэтому ручка: PICO_REQUIRE_BOUNDARY=0 выключает; значения пишутся в журнал (pico-state).
-PICO_REQUIRE_BOUNDARY=${PICO_REQUIRE_BOUNDARY:-1}
+# sys.pxr.boundary.ready=1 как условие «готово» ОТМЕНЕНО: замер 13.10 21:03–21:05 (3 прогона, игра resumed на дисплее 0, трекинг 1/1)
+# — значение остаётся 0, пока карточка границы не подтверждена человеком, а игре оно не мешает. Включить: PICO_REQUIRE_BOUNDARY=1.
+PICO_REQUIRE_BOUNDARY=${PICO_REQUIRE_BOUNDARY:-0}
 PICO_LEASE_NOTE="бронь оставлена"  # внутри pico run меняется на «бронь снимет run»
 DIAG_WHY="" DIAG_KIND=""
 pico_diagnose() { # 0 — состояние здоровое; иначе DIAG_WHY (причина текстом) и DIAG_KIND: physical | window | unknown | state
@@ -574,6 +574,9 @@ pico_run() {
   PICO_SERIAL=$PICO PICO_RUN_DIR=$dir BOX_OWNER=$own BOX_CTL=$(readlink -f "$0") timeout "$tmo" "$@"; rc=$?
   shot=$(pico_shot "$dir/screen-after.png")
   timeout 30 "$ADB" -s "$PICO" logcat -d -v time </dev/null 2>/dev/null | tail -n 20000 >"$dir/logcat.txt"
+  # после команды игра обычно остановлена (трап хозяина: force-stop) — система сразу возвращает карточку границы: это штатно,
+  # не «вылезло окно». Остальные системные окна («Требуется контроллер» и т. п.) по-прежнему считаются.
+  PICO_CARD_OK=1
   pico_diagnose >/dev/null
   jlog pico-run-done owner "$own" rc "$rc" sec "$(( $(date +%s) - t0 ))" res "${P_RES:-}" light "${P_LIGHT:-}" dir "$dir"
   if [ "$rc" -eq 124 ]; then
