@@ -402,7 +402,10 @@ pico_ready() { # pico_ready <владелец>: бронь → разбудит�
       pico_wait Awake 8 || { echo "pico ready: очки не проснулись за 8 с ($(pico_state)); ${PICO_LEASE_NOTE}"; pico_attention "$own" "очки не проснулись по POWER ($(pico_state))" "" wake; return 1; };;
     *) echo "pico ready: очки не отвечают ($st); ${PICO_LEASE_NOTE}"; pico_attention "$own" "очки не отвечают на adb ($st)" "" wake; return 1;;
   esac
-  for _ in 1 2 3 4; do
+  # Один цикл вместо двух (прогон Godot 20:00: conf=1 появился ПОСЛЕ 4 проходов × 2 с, а итоговая проверка уже не нажимала —
+  # «НЕ ГОТОВО: window seethrough.setting» при живом трекинге). До PICO_READY_PASSES проходов по ~2 с (по умолчанию 12 ≈ 25–30 с):
+  # трекинг оседает ~6 с после пробуждения, плюс POWER и загрузка окон. Выход — как только состояние здоровое.
+  for _ in $(seq 1 "${PICO_READY_PASSES:-12}"); do
     sleep 2  # интерфейс после пробуждения/нажатия оседает не мгновенно
     pico_props
     # окно границы (пакет seethrough.setting, Unity, без нод) — по координатам, но ТОЛЬКО когда трекинг работает: в том же
@@ -416,7 +419,10 @@ pico_ready() { # pico_ready <владелец>: бронь → разбудит�
     esac
     v=$(pico_uidump | python3 "$PICO_UI_PY" 2>/dev/null)
     kind=${v%%$'\t'*}
-    if [ "$kind" != KNOWN ]; then break; fi
+    if [ "$kind" != KNOWN ]; then
+      pico_diagnose && break  # здорово — выходим сразу
+      continue                # не здорово (трекинг/окно ещё оседают) — ждём следующий проход
+    fi
     IFS=$'\t' read -r _ rid xy btn title <<<"$v"
     if [ ! -f "$BOX/pico-ready.taps" ]; then
       why="известное окно «${title:-$rid}», кнопка «$btn» — нажатия выключены (pico taps on — решение владельца)"
@@ -428,11 +434,18 @@ pico_ready() { # pico_ready <владелец>: бронь → разбудит�
     timeout 10 "$ADB" -s "$PICO" shell input tap $xy </dev/null >/dev/null 2>&1
     jlog pico-ready-tap owner "$own" window "$rid" title "$title" button "$btn" at "$xy"
   done
-  # итоговое состояние: свойства (трекинг и свет оседают секунды после снятия окна) — до 5 проверок через 2 с
-  for i in 1 2 3 4 5; do
-    pico_diagnose && break
-    [ "$i" -lt 5 ] && sleep 2
-  done
+  # итог: один свежий диагноз (цикл выше уже ждал оседания); окно границы при работающем трекинге — последняя попытка нажать
+  pico_diagnose
+  if [ -n "$DIAG_WHY" ] && [ "$DIAG_KIND" = window ]; then
+    case ${P_RES:-?} in
+      "$PICO_BOUNDARY_PKG"/*)
+        if pico_track_ok; then
+          pico_boundary_tap "$own" || return 1
+          n_tap=$((n_tap + 1))
+          sleep 2; pico_diagnose
+        fi;;
+    esac
+  fi
   if [ -n "$DIAG_WHY" ]; then
     jlog pico-ready-diag owner "$own" kind "$DIAG_KIND" res "${P_RES:-}" light "${P_LIGHT:-}" boundary "${P_BOUND:-}" alg "${P_ALG:-}" conf "${P_CONF:-}"
     pico_fail "$own" "${P_RES:-?}" "$DIAG_WHY" "$DIAG_KIND"; return 1
