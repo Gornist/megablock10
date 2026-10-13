@@ -12,8 +12,8 @@
 # а не молчал и не тянул за собой остальное. Чужое не убиваем: Blender без 9876 не перезапускаем (там может быть работа).
 set -u
 
-BOX=$HOME/box
-LOG="$HOME/.local/state/devbox-session.log"
+BOX=${BOX:-$HOME/box}
+LOG=${LOG:-$HOME/.local/state/devbox-session.log}
 mkdir -p "$BOX" "$(dirname "$LOG")"
 exec >>"$LOG" 2>&1
 exec 9>"$BOX/boot.lock"
@@ -27,7 +27,9 @@ BLENDER_TIMEOUT=${BLENDER_TIMEOUT:-60}
 BLENDER_TRIES=${BLENDER_TRIES:-3}
 GODOT_TIMEOUT=${GODOT_TIMEOUT:-90}
 INCY=/opt/incy/bin/incy
-BLENDER="$HOME/.local/bin/blender"
+BLENDER=${BLENDER:-$HOME/.local/bin/blender}
+BLENDER_COMM=${BLENDER_COMM:-blender}
+MCP_PORT=${MCP_PORT:-9876}
 ADB="$HOME/android-sdk/platform-tools/adb"
 
 # Окружение графического сеанса: из автозапуска оно есть, из ssh (ручной прогон) — нет.
@@ -52,9 +54,11 @@ vpn_up() { ip -4 -br addr show tun_incy 2>/dev/null | grep -q '198\.18\.' && pgr
 ts_state() { tailscale status --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("BackendState","?"))' 2>/dev/null; }
 ts_running() { [ "$(ts_state)" = "Running" ]; }
 gfx_up() { [ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ] && pgrep -x gnome-shell >/dev/null && timeout 8 nvidia-smi -L >/dev/null 2>&1; }
-mcp_up() { ss -H -ltn 'sport = :9876' 2>/dev/null | grep -q .; }
+mcp_up() { ss -H -ltn "sport = :$MCP_PORT" 2>/dev/null | grep -q .; }
 godot_up() { ss -H -ltn 'sport = :8000' 2>/dev/null | grep -q .; }
 adb_up() { ss -H -ltn 'sport = :5037' 2>/dev/null | grep -q .; }
+# GUI-Blender: процессы `blender -b` (сборка ассетов, кадры) — не он, их сервер blender-mcp не нужен
+blender_gui() { pgrep -a -x "$BLENDER_COMM" 2>/dev/null | grep -v -E ' (-b|--background)( |$)' | grep -q .; }
 
 log "=== старт сеанса (скрипты: $(git -C "$HERE/.." rev-parse --short HEAD 2>/dev/null || echo 'не из git')) ==="
 
@@ -108,7 +112,7 @@ def _start_mcp():
 bpy.app.timers.register(_start_mcp, first_interval=3.0)'
 if mcp_up; then
   log "ok: blender-mcp уже на 9876"
-elif pgrep -x blender >/dev/null; then
+elif blender_gui; then
   bad "Blender запущен без blender-mcp (9876): сервер снаружи не включить — перезапуск Blender за его сессией; не убиваю"
 else
   wait_for "графический сеанс (wayland + gnome-shell + GPU)" "$GFX_TIMEOUT" gfx_up || log "графика не подтвердилась — пробую Blender всё равно"
@@ -119,13 +123,14 @@ else
     [ "$try" -eq "$BLENDER_TRIES" ] && [ "$try" -gt 1 ] && env_extra=(LIBDECOR_PLUGIN_DIR=/nonexistent)
     log "запускаю Blender (попытка $try из $BLENDER_TRIES${env_extra[*]:+, ${env_extra[*]}})"
     env "${env_extra[@]}" setsid nohup "$BLENDER" --python-expr "$START_MCP" >>"$BOX/blender-boot.log" 2>&1 9>&- &
+    sleep 3  # цепочка env → setsid → nohup → blender ещё не стала процессом `blender`: без паузы цикл принял бы её за падение
     for ((i = 0; i < BLENDER_TIMEOUT; i++)); do
       mcp_up && break
-      pgrep -x blender >/dev/null || break
+      blender_gui || break
       sleep 1
     done
-    if mcp_up; then log "ok: blender-mcp на 9876 (попытка $try)"; break; fi
-    if pgrep -x blender >/dev/null; then
+    if mcp_up; then log "ok: blender-mcp на $MCP_PORT (попытка $try)"; break; fi
+    if blender_gui; then
       bad "Blender жив, но 9876 не слушает за ${BLENDER_TIMEOUT} с (аддон blender-mcp включён?)"; break
     fi
     crash="$BOX/blender-crash-$(date +%m%d-%H%M%S).txt"

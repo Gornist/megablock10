@@ -7,9 +7,9 @@
 ## Машина
 
 `nick-arasaka-micro`: Ubuntu, GTX 1650 4 ГБ (драйвер 595.99), 8 ядер; ssh `devbox` = Tailscale 100.80.115.46 (LAN 192.168.1.141 ключ не
-пускает), пользователь `nick`. GNOME/Wayland: автозапуск `~/.config/autostart/devbox-session.desktop` → `~/devbox-session-start.sh`
-(**копия** `scripts/devbox-session-start.sh`: incy VPN → Tailscale → Blender c blender-mcp на 9876). Подробности сборок — skill `devbox`,
-Godot на devbox — `docs/netrun-devbox.md`.
+пускает), пользователь `nick`. GNOME/Wayland, автовход nick: автозапуск `~/.config/autostart/devbox-session.desktop` → `~/box/repo/scripts/devbox-session-start.sh`
+(клон репозитория, `scripts/box.sh sync`; с 13.10 — не ручная копия): incy VPN → Tailscale → adb → Blender c blender-mcp на 9876 →
+редактор Godot → самопроверка. adb — user-служба `box-adb`. Подробности сборок — skill `devbox`, Godot на devbox — `docs/netrun-devbox.md`.
 
 ## Кто что держит (13.10)
 
@@ -34,6 +34,9 @@ Godot на devbox — `docs/netrun-devbox.md`.
   затирают друг друга), `/tmp/display.lock` и одна видеокарта, один стенд e2e, один демон Gradle.
 - 12.10 ~15:40 devbox 5 мин не отвечал во время Cycles-рендера (Nomad Surf) — тяжёлое на GPU шло параллельно.
 - Автозапуск — ручная копия скрипта, правка в репозитории (#184) до devbox не дошла.
+- Причина падения Blender 13.10 (крэш-отчёт `~/box/blender-crash-1013-083827.txt`): `libdecor-gtk.so` в `wl_display_dispatch` при создании
+  окна на Wayland — гонка со стартом графического сеанса, не сам Blender. Лечение в автозапуске: ждать графику, повторять (до 3 раз),
+  последняя попытка без плагина рамок (`LIBDECOR_PLUGIN_DIR=/nonexistent`).
 
 ## Обязанности
 
@@ -63,12 +66,32 @@ Godot на devbox — `docs/netrun-devbox.md`.
   `~/blender-5.2.2`, `surf-decals`/8765 (Nomad Surf); база и секреты `~/live-collector`; вкладки Chrome на телефонах; чистить чужие `~/wt-*`.
 - Код проектов, `main`, CI — не его (как у всех: PR и поезд Pipeline).
 
+## Что уже работает (D1, 13.10)
+
+`scripts/box.sh` (Mac, bash 3.2) — единственная точка входа; код выхода 0/1, вердикт первой строкой.
+
+| Команда | Что делает |
+|---|---|
+| `box.sh status [--brief]` | проба `scripts/box/probe.sh` идёт по ssh со stdin (копии на машине нет): up/load/GPU/диск, Tailscale/VPN/LAN, adb (чей сервер), устройства (модель, Wi-Fi, время, VPN, что на переднем плане, battery, forward/reverse), порты, чем занята машина, итог загрузочной проверки, версия скриптов. `!` — замечание. При недоступности — ping Tailscale и LAN отдельно, с подсказкой владельцу |
+| `box.sh sync [ветка]` | клон `~/box/repo` (sparse, только `scripts/`) → ревизия; ставит юнит `box-adb`, пишет `Exec` автозапуска из клона; прежний `.desktop` — в `.orig` |
+| `box.sh adb [status\|adopt [--force]]` | чей adb-сервер; `adopt` переводит чужой сервер под службу, отказывая, пока есть forward/reverse, клиенты adb, Gradle, эмуляторы |
+| `box.sh boot-check` | прогнать проверку после загрузки вручную — идемпотентно, ничего не убивает; итог `~/box/boot.report` |
+| `box.sh journal [N]` | `~/box/journal.jsonl`: загрузочные проверки, sync, adopt |
+
+Загрузочная проверка (`devbox-session-start.sh`): Tailscale перезапускается **только** если не Running (раньше — всегда, роняя ssh);
+adb — проверка службы; Blender — ждёт графику, повторяет, сохраняет крэш-отчёт; редактор Godot — только ждёт и сообщает; в конце та же
+проба. Итог — `~/box/boot.report` (его показывает `status`); сообщением сессиям с бронями и Pipeline итог станет в D2, когда появятся брони.
+
+**Не сделано и почему:** watchdog Tailscale (причину потери ssh 12–13.10 по журналам не восстановить — на обеих загрузках автозапуск
+довёл Tailscale до Running; при ближайшем сбое смотреть `journalctl -u tailscaled` и `~/.local/state/devbox-session.log`); перезагрузочный
+путь проверен только прогоном `boot-check` и подложным Blender с двумя падениями — полная загрузка требует владельца.
+
 ## Шаги
 
 | Шаг | Что | Кто |
 |---|---|---|
 | D0 | это ТЗ, зона в `CLAUDE.md`/`zone-check`, хук узнаёт «Devbox» | Pipeline |
-| D1 | `box status`, adb-сервис, проверка после загрузки, автозапуск из репозитория | Devbox |
+| D1 | `box status`, adb-сервис, проверка после загрузки, автозапуск из репозитория — **сделано в PR agent/devbox-d1** | Devbox |
 | D2 | очередь и брони, Cycles Nomad Surf в общей очереди | Devbox |
 | D3 | экземпляры по портам: стенд Godot, коллектор, статика Дронкарты | Devbox + хозяева |
 | D4 | `dev.sh`, `dbx.sh`, `phone.sh` берут бронь и встают в очередь | сессии в своих зонах |
