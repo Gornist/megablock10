@@ -17,7 +17,7 @@ const SHADERS := {
 const SKIRT_SHADER := preload("res://assets/shaders/skirt.gdshader")
 const CLOUD_SHADER_2S := preload("res://assets/shaders/cloud_dark_2s.gdshader")  # то же, cull_disabled (ручка cloud_two_sided)
 const CLOUD_SHADER := preload("res://assets/shaders/cloud_dark.gdshader")  # «облако без основы» (прототип, ручка cloud)
-## Сплошная дымка горизонта (меш `horizon_mist` в env/horizon_band): тоже роль shell_soft, шейдер по имени меша.
+## Дымка кромки комнаты (меш `edge_mist` в env/room_edge_16; кольцо горизонта horizon_band удалено в B2c): тоже роль shell_soft, шейдер по имени меша.
 const HAZE_SHADER := preload("res://assets/shaders/haze.gdshader")
 ## Ореол-«капля» маяка предмета (меш `beacon_halo` в узле Beacon у шарда и токена): роль shell_soft, шейдер по имени меша.
 const BEACON_HALO_SHADER := preload("res://assets/shaders/beacon_halo.gdshader")

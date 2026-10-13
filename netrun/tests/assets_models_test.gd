@@ -7,10 +7,8 @@ extends GdUnitTestSuite
 const ROOT := "res://assets/models/"
 ## модули окружения клиента (NodeView.MODULES) и их варианты
 const ENV_VARIANTS := {
-	"floor": ["floor", "floor_b", "floor_c"], "wall": ["wall", "wall_b", "wall_c"], "doorway": ["doorway", "doorway_b"],
-	"ceiling": ["ceiling", "ceiling_b", "ceiling_c"], "corner": ["corner"], "pillar": ["pillar"], "platform": ["platform"],
-	"lockdown_gate": ["lockdown_gate"], "tunnel_ring": ["tunnel_ring"], "exit_frame": ["exit_frame"],
-	"far_field": ["far_field", "far_field_b", "far_field_c"], "far_floor": ["far_floor", "far_floor_b", "far_floor_c"],
+	"floor": ["floor", "floor_b", "floor_c"], "ceiling": ["ceiling", "ceiling_b", "ceiling_c"], "pillar": ["pillar"], "platform": ["platform"],
+	"lockdown_gate": ["lockdown_gate"], "exit_frame": ["exit_frame"], "far_floor": ["far_floor", "far_floor_b", "far_floor_c"],
 	"far_ceiling": ["far_ceiling", "far_ceiling_b", "far_ceiling_c"],
 }
 const PROPS := ["vault", "vault_closed", "vault_open", "shard", "shard_encrypted", "daemon_token", "hack_panel", "hack_pad", "dead_deck", "portal", "portal_locked", "sensor", "seat"]
@@ -101,7 +99,7 @@ func test_props_ice_avatar_deck_import() -> void:
 
 func test_every_model_is_dressed_in_our_shaders() -> void:
 	## .glb приходят с материалами-ролями (streaks, points, solid_dark, shell_soft); NodeAssets.instance подменяет их на шейдеры.
-	for path in ["env/floor", "env/wall", "props/vault_open", "props/portal", "ice/soft_ice", "avatar/runner"]:
+	for path in ["env/floor", "env/platform", "props/vault_open", "props/portal", "ice/soft_ice", "avatar/runner"]:
 		var n := NodeAssets.instance(ROOT + path + ".glb")
 		auto_free(n)
 		assert_int(_shader_materials(n).size()).override_failure_message("%s: нет шейдеров" % path).is_greater(0)
@@ -113,7 +111,7 @@ func test_every_model_is_dressed_in_our_shaders() -> void:
 func test_env_path_does_not_depend_on_tier() -> void:
 	assert_str(NodeAssets.env_path("floor", "BASE")).is_equal("res://assets/models/env/floor.glb")
 	assert_str(NodeAssets.env_path("floor", "HARD")).is_equal("res://assets/models/env/floor.glb")
-	assert_str(NodeAssets.env_path("wall", "что-то новое")).is_equal("res://assets/models/env/wall.glb")
+	assert_str(NodeAssets.env_path("platform", "что-то новое")).is_equal("res://assets/models/env/platform.glb")
 	assert_str(NodeAssets.normalize_tier("что-то новое")).is_equal("BASE")
 	assert_str(NodeAssets.normalize_tier("")).is_equal("BASE")
 
@@ -121,7 +119,7 @@ func test_env_path_does_not_depend_on_tier() -> void:
 func test_tier_is_a_material_tint() -> void:
 	var colors := {}
 	for tier in ["BASE", "HARD", "NIGHTMARE"]:
-		var parts := NodeAssets.mesh_parts(NodeAssets.env_path("wall", tier), tier)
+		var parts := NodeAssets.mesh_parts(NodeAssets.env_path("platform", tier), tier)
 		assert_bool(parts.size() > 0).is_true()
 		var mat := ((parts[0]["mesh"] as Mesh).surface_get_material(0)) as ShaderMaterial
 		assert_bool(mat != null).override_failure_message("%s: на меше нет шейдера" % tier).is_true()
@@ -150,7 +148,7 @@ func _streak_halos(n: Node) -> Array:
 
 func test_env_streaks_and_creatures_have_no_halo() -> void:
 	## ореол штрихов окружения убран в B1 (в окружении штрихи не рисуются, streak_keep=0); у существ, аватаров и деки штрихи резкие
-	var env_parts := NodeAssets.mesh_parts(NodeAssets.env_path("wall", "BASE"), "BASE")
+	var env_parts := NodeAssets.mesh_parts(NodeAssets.env_path("platform", "BASE"), "BASE")
 	var seen := 0
 	for p in env_parts:
 		var mesh := p["mesh"] as Mesh
@@ -159,7 +157,7 @@ func test_env_streaks_and_creatures_have_no_halo() -> void:
 			if m != null and m.shader.get_shader_uniform_list().any(func(u): return u["name"] == "halo"):
 				seen += 1
 				assert_float(_halo_of(m)).is_equal(0.0)
-	assert_int(seen).override_failure_message("в стене нет штрихов (шейдер с halo)").is_greater(0)
+	assert_int(seen).override_failure_message("в платформе нет штрихов (шейдер с halo)").is_greater(0)
 	for path in ["ice/soft_ice", "avatar/runner"]:
 		var n := NodeAssets.instance(ROOT + path + ".glb")
 		auto_free(n)
@@ -195,32 +193,8 @@ func test_slab_modules_have_a_translucent_additive_skirt() -> void:
 		assert_int(found).override_failure_message("%s: нет меша %s" % [module, skirts[module]]).is_equal(1)
 
 
-func test_horizon_band_is_streaks_plus_one_haze_ribbon_and_far_gain_is_off_by_default() -> void:
-	var band := _load("env", "horizon_band")
-	var meshes := _meshes(band)
-	assert_int(meshes.size()).override_failure_message("horizon_band: должно быть два меша (штрихи и дымка)").is_equal(2)
-	var streaks: MeshInstance3D = null
-	var haze: MeshInstance3D = null
-	for mi in meshes:
-		if String(mi.name).ends_with("_mist"):
-			haze = mi
-		else:
-			streaks = mi
-	assert_bool(streaks != null and haze != null).override_failure_message("horizon_band: нет horizon_streaks или horizon_mist").is_true()
-	var verts := (streaks.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
-	assert_int(verts).override_failure_message("horizon_band: больше 400 штрихов (4 вершины на штрих)").is_less_equal(1600)
-	# дымка: один слой, не больше 200 треугольников на всю ленту, шейдер haze аддитивный, без записи и чтения глубины
-	var idx := haze.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array
-	assert_int(haze.mesh.get_surface_count()).is_equal(1)
-	assert_int(idx.size() / 3).override_failure_message("horizon_mist: больше 200 треугольников").is_less_equal(200)
-	AssetMaterials.apply(band, "BASE")
-	var hm := haze.get_surface_override_material(0) as ShaderMaterial
-	assert_bool(hm != null and hm.shader.resource_path.ends_with("haze.gdshader")).override_failure_message("у дымки не haze.gdshader").is_true()
-	for flag in ["blend_add", "unshaded", "depth_draw_never"]:
-		assert_bool(hm.shader.code.contains(flag)).override_failure_message("в шейдере дымки нет " + flag).is_true()
-	assert_bool(hm.shader.code.contains("hint_depth_texture") or hm.shader.code.contains("DEPTH_TEXTURE")).override_failure_message("дымка читает буфер глубины").is_false()
-	var sm := streaks.get_surface_override_material(0) as ShaderMaterial
-	assert_bool(sm != null and sm.shader.resource_path.ends_with("streaks.gdshader")).override_failure_message("у штрихов кольца не streaks.gdshader").is_true()
+## Шейдер штрихов: ореол и «яркость к горизонту» выключены по умолчанию (включает AssetMaterials только у окружения; в B2c модуль horizon_band удалён вместе с кольцом горизонта).
+func test_streaks_shader_far_gain_and_halo_are_off_by_default() -> void:
 	var sh := load("res://assets/shaders/streaks.gdshader") as Shader
 	var names := sh.get_shader_uniform_list().map(func(u): return u["name"])
 	for u in ["halo", "halo_width", "far_gain", "far_start", "far_end"]:
@@ -310,10 +284,10 @@ func test_experimental_floor_models_are_gone() -> void:
 
 
 func test_mesh_parts_are_cached_per_tier_and_mirror() -> void:
-	var a := NodeAssets.mesh_parts(NodeAssets.env_path("wall"), "BASE")
-	assert_bool(NodeAssets.mesh_parts(NodeAssets.env_path("wall"), "BASE") == a).is_true()
-	assert_bool(NodeAssets.mesh_parts(NodeAssets.env_path("wall"), "HARD") != a).is_true()
-	var mirror := NodeAssets.mesh_parts(NodeAssets.env_path("wall"), "BASE", true)
+	var a := NodeAssets.mesh_parts(NodeAssets.env_path("platform"), "BASE")
+	assert_bool(NodeAssets.mesh_parts(NodeAssets.env_path("platform"), "BASE") == a).is_true()
+	assert_bool(NodeAssets.mesh_parts(NodeAssets.env_path("platform"), "HARD") != a).is_true()
+	var mirror := NodeAssets.mesh_parts(NodeAssets.env_path("platform"), "BASE", true)
 	assert_bool(mirror != a).is_true()
 	assert_float((mirror[0]["xform"] as Transform3D).basis.y.y).is_equal(-1.0)  # зеркало: ось Y перевёрнута
 
@@ -321,7 +295,7 @@ func test_mesh_parts_are_cached_per_tier_and_mirror() -> void:
 # ---------------------------------------------------------------- сетка
 
 func test_grid_modules_fit_the_cell() -> void:
-	for module in ["floor", "floor_b", "floor_c", "ceiling", "wall", "wall_b", "wall_c", "doorway", "doorway_b", "corner", "pillar", "platform", "lockdown_gate", "exit_frame"]:
+	for module in ["floor", "floor_b", "floor_c", "ceiling", "pillar", "platform", "lockdown_gate", "exit_frame"]:
 		var box := _aabb(_load("env", module))
 		assert_float(box.size.x).override_failure_message("%s: шире ячейки (%.2f)" % [module, box.size.x]).is_less(CELL_FIT)
 		assert_float(box.size.z).override_failure_message("%s: глубже ячейки (%.2f)" % [module, box.size.z]).is_less(CELL_FIT)
@@ -734,14 +708,14 @@ func _point_mats(root: Node) -> Array:
 
 func test_asset_materials_knob_point_keep_reaches_env_points_only() -> void:
 	AssetMaterials.reset_tuning()
-	var dflt := _load("env", "wall")
+	var dflt := _load("env", "platform")
 	AssetMaterials.apply(dflt, "BASE")
 	var base := _point_mats(dflt)
 	assert_int(base.size()).override_failure_message("в стене нет точек").is_greater(0)
 	for m in base:
 		assert_float(float(m.get_shader_parameter("keep_frac"))).override_failure_message("по умолчанию точки окружения убраны (point_keep=0, решение владельца)").is_equal(0.0)
 	AssetMaterials.tune({"point_keep": 0.5})
-	var tuned := _load("env", "wall")
+	var tuned := _load("env", "platform")
 	AssetMaterials.apply(tuned, "BASE")
 	for m in _point_mats(tuned):
 		assert_float(float(m.get_shader_parameter("keep_frac"))).is_equal_approx(0.5, 0.001)
@@ -754,7 +728,7 @@ func test_asset_materials_knob_point_keep_reaches_env_points_only() -> void:
 
 func test_asset_materials_streak_knobs_reach_env_streaks_only() -> void:
 	AssetMaterials.reset_tuning()
-	var dflt := _load("env", "wall")
+	var dflt := _load("env", "platform")
 	AssetMaterials.apply(dflt, "BASE")
 	var base := _streak_mats(dflt)
 	assert_int(base.size()).override_failure_message("в стене нет штрихов").is_greater(0)
@@ -762,7 +736,7 @@ func test_asset_materials_streak_knobs_reach_env_streaks_only() -> void:
 		assert_float(float(m.get_shader_parameter("keep_frac"))).override_failure_message("по умолчанию штрихи окружения не рисуются (streak_keep=0, решение владельца)").is_equal(0.0)
 		assert_bool(m.get_shader_parameter("far_dim_min") == null and m.get_shader_parameter("px_fade") == null).override_failure_message("остальные ручки штрихов не заданы").is_true()
 	AssetMaterials.tune({"streak_far_min": 0.3, "streak_far_start": 6.0, "streak_far_end": 20.0, "streak_keep": 0.6, "streak_len": 0.7, "streak_px_fade": 1.0})
-	var tuned := _load("env", "wall")
+	var tuned := _load("env", "platform")
 	AssetMaterials.apply(tuned, "BASE")
 	for m in _streak_mats(tuned):
 		assert_float(float(m.get_shader_parameter("far_dim_min"))).is_equal_approx(0.3, 0.001)
@@ -779,17 +753,17 @@ func test_asset_materials_streak_knobs_reach_env_streaks_only() -> void:
 
 func test_asset_materials_mist_and_veil_knobs_scale_hide_and_freeze() -> void:
 	AssetMaterials.reset_tuning()
-	var dflt := _load("env", "horizon_band")
+	var dflt := _load("env", "room_edge_16")
 	AssetMaterials.apply(dflt, "BASE")
 	for mi in _meshes(dflt):
 		if String(mi.name).ends_with("_mist"):
-			assert_bool(mi.visible).override_failure_message("по умолчанию дымка горизонта скрыта (mist_alpha=0, принято на очках)").is_false()
+			assert_bool(mi.visible).override_failure_message("по умолчанию дымка кромки скрыта (mist_alpha=0, принято на очках)").is_false()
 	AssetMaterials.tune({"mist_alpha": 0.4, "veil_scale": 0.5})
-	var band := _load("env", "horizon_band")
+	var band := _load("env", "room_edge_16")
 	AssetMaterials.apply(band, "BASE")
-	assert_float(float(_mat_of(band, "horizon_mist").get_shader_parameter("mist_scale"))).is_equal_approx(0.4, 0.001)
-	assert_float(float(_mat_of(band, "horizon_mist").get_shader_parameter("anim"))).override_failure_message("показанная дымка статична").is_equal(0.0)
-	assert_float(float(_mat_of(band, "horizon_mist").get_shader_parameter("noise_amount"))).is_equal(0.0)
+	assert_float(float(_mat_of(band, "edge_mist").get_shader_parameter("mist_scale"))).is_equal_approx(0.4, 0.001)
+	assert_float(float(_mat_of(band, "edge_mist").get_shader_parameter("anim"))).override_failure_message("показанная дымка статична").is_equal(0.0)
+	assert_float(float(_mat_of(band, "edge_mist").get_shader_parameter("noise_amount"))).is_equal(0.0)
 	var slab := _load("env", "floor_slab_16")
 	AssetMaterials.apply(slab, "BASE")
 	var skirt := _mat_of(slab, "floor_slab_skirt")
@@ -800,7 +774,7 @@ func test_asset_materials_mist_and_veil_knobs_scale_hide_and_freeze() -> void:
 	for mi in _meshes(gone):
 		if String(mi.name).ends_with("_skirt"):
 			assert_bool(mi.visible).override_failure_message("veil_scale=0: вуаль должна быть скрыта").is_false()
-	var gone_band := _load("env", "horizon_band")
+	var gone_band := _load("env", "room_edge_16")
 	AssetMaterials.apply(gone_band, "BASE")
 	for mi in _meshes(gone_band):
 		if String(mi.name).ends_with("_mist"):
