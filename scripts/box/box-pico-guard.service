@@ -1,0 +1,12 @@
+# Страж очков Pico: раз в минуту (box-pico-guard.timer) гасит очки, которые Awake без брони дольше 3 минут.
+# Датчик приближения заклеен (решение владельца 13.10), сами очки не гаснут — выгорание матриц. Что делает:
+# `ctl.sh pico guard` читает состояние и нажимает KEYCODE_POWER только на Awake без брони `pico`; на спящих — ничего.
+# Включает и выключает отдельная команда `scripts/box.sh guard on|off` (sync его НЕ ставит: он действует на очки без человека).
+[Unit]
+Description=страж очков Pico: гасить Awake без брони
+ConditionPathExists=%h/box/repo/scripts/box/ctl.sh
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash %h/box/repo/scripts/box/ctl.sh pico guard
+LimitCORE=0
