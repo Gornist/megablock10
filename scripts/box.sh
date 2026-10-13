@@ -12,6 +12,8 @@
 #   scripts/box.sh queue [класс]      — кто держит и кто ждёт (в т. ч. замки dbx.sh, gdUnit, display); подробности — scripts/box/ctl.sh
 #   scripts/box.sh pico status | wake <владелец> <мин> [заметка] | sleep <владелец> [--force]  — очки Pico: будить только под бронь
 #                                       `pico`, гасить сразу после (датчик заклеен). guard on|off|status — таймер-страж: гасит Awake без брони > 3 мин
+#   scripts/box.sh pico ready <владелец> | fg | start <владелец> <пакет/активити> | run <владелец> <мин> [--timeout сек] [--port N] -- команда…
+#                                       — очки без человека (docs/devbox.md, «Д5»): готовность по состоянию системы, прогон под trap
 #   scripts/box.sh up <служба> <сессия> [--port N] [--ttl мин] -- команда…  — свой экземпляр службы: порт из пула, каталог
 #                                       ~/box/inst/<служба>-<сессия> ({PORT}/{DIR} в аргументах); down <служба> <сессия> [--purge]; inst — список
 #   scripts/box.sh boot-check         — прогнать проверку после загрузки вручную (идемпотентно: ничего не убивает и не перезапускает,
@@ -217,7 +219,7 @@ REMOTE
     "${SSH[@]}" "tail -n $n \"\$HOME/box/journal.jsonl\" 2>&1" ;;
 
   *)
-    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
     [ -z "$cmd" ] && exit 2
     exit 2 ;;
 esac
