@@ -7,7 +7,10 @@
 #
 # Окружение: PICO_SERIAL (устройство), OUT (каталог результатов, по умолчанию ~/pico-series/<время>), WAIT_SEC (ожидание итога на вариант, 150),
 # PICO_SERVER_CMD (команда сервера мира для стенда; запускается один раз на серию и останавливается по её концу), PICO_READY_CMD (команда подготовки
-# очков перед каждым вариантом: `pico_ready.sh` снимает известные системные окна кнопками, не меняющими настройки; код ≠ 0 — серия останавливается).
+# очков перед каждым вариантом: код ≠ 0 — серия останавливается). На devbox по умолчанию штатный `ctl.sh pico ready Godot` (D4): нужна бронь
+# `box.sh pico wake Godot <мин> серия`, он будит очки, снимает известные окна Pico белым списком владельца и печатает вердикт + PNG; запасной —
+# `pico_ready.sh` (PICO_READY_CMD=…/pico_ready.sh), пустое значение — не готовить очки. Перед стартом — `check pico` и (при сервере) `check port:7777`:
+# чужая бронь — отказ «кто и до конца», PICO_SLEEP_AFTER=0 — не гасить очки по концу серии (по умолчанию на devbox гасит: датчик заклеен, экраны выгорают).
 # Условия: очки на столе остаются бодрыми только пока их не гасит датчик — иначе игра стартует «на паузе» (итога не будет); если поверх всего
 # висит системный диалог Pico (например «Слишком темно» — камеры не видят комнату), `am start` отвечает «kept for the user»:
 # серия прерывается с сообщением, диалог закрывает человек. Этикет очков (CLAUDE.md, память pico-headset-testing-etiquette): серию запускать
@@ -17,6 +20,7 @@ set -u
 PACKAGE="com.megablok10.netrun"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 [ -f "$HOME/netrun-env.sh" ] && . "$HOME/netrun-env.sh"
+. "$HERE/box_guard.sh"
 WAIT_SEC="${WAIT_SEC:-150}"
 OUT="${OUT:-$HOME/pico-series/$(date +%m%d-%H%M)}"
 mkdir -p "$OUT"
@@ -28,7 +32,14 @@ if [ -z "$serial" ]; then
 fi
 export PICO_SERIAL="$serial"
 
-[ "$#" -gt 0 ] || { sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+[ "$#" -gt 0 ] || { sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+
+# Брони devbox (D4): чужая бронь очков или порта стенда — отказ до любых действий.
+box_check pico || exit 1
+[ -z "${PICO_SERVER_CMD:-}" ] || box_check "port:${PICO_PORT:-7777}" || exit 1
+if box_has; then
+  PICO_READY_CMD="${PICO_READY_CMD-bash $BOX_CTL pico ready $BOX_OWNER}"
+fi
 
 server_pid=""
 if [ -n "${PICO_SERVER_CMD:-}" ]; then
@@ -76,5 +87,9 @@ done
 
 adb -s "$serial" shell am force-stop "$PACKAGE" </dev/null
 [ -n "$server_pid" ] && kill "$server_pid" 2>/dev/null
+# Очки гасим сразу (датчик заклеен: сами не гаснут); `pico sleep` снимает и нашу бронь. Чужую бронь без --force не гасит.
+if box_has && [ "${PICO_SLEEP_AFTER:-1}" = 1 ]; then
+  box_ctl pico sleep 2>&1 | sed 's/^/   /'
+fi
 echo "pico_series: готово, результаты — $OUT (код $fail)"
 exit "$fail"

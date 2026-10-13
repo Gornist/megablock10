@@ -24,6 +24,7 @@ CFG_PATH="/sdcard/Android/data/$PACKAGE/files/netrun.cfg"
 RENDER_KEYS=" msaa layers foveation perf volumetric bench probe "
 
 [ -f "$HOME/netrun-env.sh" ] && . "$HOME/netrun-env.sh"
+. "$(cd "$(dirname "$0")" && pwd)/box_guard.sh"
 
 serial="${PICO_SERIAL:-}"
 if [ -z "$serial" ]; then
@@ -42,6 +43,9 @@ case "${1:-}" in
   --show) cat "$tmp"; exit 0 ;;
   "")     sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac
+
+# Запись конфига — действие над очками: чужая бронь pico (devbox) — отказ «кто и до когда», чужой прогон не трогаем.
+box_check pico || exit 1
 
 # Без секций [render] и [assets]; остальное (адрес, токен, [net]) остаётся как было.
 awk '/^\[render\]/{skip=1;next} /^\[assets\]/{skip=1;next} /^\[/{skip=0} !skip' "$tmp" > "$tmp.new"

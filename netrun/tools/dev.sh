@@ -132,7 +132,12 @@ rm -rf $SHOT_DIR && mkdir -p $SHOT_DIR
 # «No loader found for resource» и пустой кадр. Импорт — как в gdunit.sh; кэш .godot жив, поэтому повторный проход короткий.
 # Скрипт приходит на stdin (`ssh bash -s`): godot читает stdin и съедает остаток скрипта (после него молча нет сетки) — гасим его </dev/null.
 timeout 300 ~/.local/bin/godot --headless --path netrun --import > /dev/null 2>&1 </dev/null || true
-timeout 180 flock /tmp/display.lock ~/.local/bin/godot --display-driver wayland --path netrun --resolution 1280x720 $scene -- --out=$SHOT_DIR $* > $SHOT_DIR/run.log 2>&1 </dev/null
+# Кадр — GPU: встаём в общую очередь devbox (класс gpu: экспорт Godot, Cycles, эмуляторы — по одному, видеокарта 4 ГБ; docs/devbox.md, D4).
+# Свой flock на дисплей остаётся внутри (класс gpu — отдельный замок, самоблокировки нет). Нет ctl.sh (не devbox) — запускаем напрямую.
+CTL=\$HOME/box/repo/scripts/box/ctl.sh
+gpu() { if [ -f "\$CTL" ]; then bash "\$CTL" run gpu "\${BOX_OWNER:-Godot}" --name shot --wait "\${SHOT_QUEUE_WAIT:-900}" -- "\$@"; else "\$@"; fi; }
+gpu bash -c 'timeout 180 flock /tmp/display.lock ~/.local/bin/godot --display-driver wayland --path netrun --resolution 1280x720 "\$@" > $SHOT_DIR/run.log 2>&1 </dev/null' _ $scene -- --out=$SHOT_DIR $*
+[ \$? = 3 ] && echo "dev.sh shot: очередь gpu не дала запуститься за \${SHOT_QUEUE_WAIT:-900} с — scripts/box.sh queue gpu"
 grep -aE "ERROR|SCRIPT|Parse" $SHOT_DIR/run.log | head -5
 python3 - <<'PY'
 import glob, os

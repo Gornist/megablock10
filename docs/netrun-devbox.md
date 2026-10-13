@@ -154,6 +154,13 @@ godot -- --flat --host=127.0.0.1 --port=7777 --token=t1
   Грабли без человека: очки на столе засыпают по датчику (`dumpsys power` → `Asleep`; `svc power stayon true` не всегда хватает; на Pico помогли
   `setprop pvr.factorytest.never.sleep 1` и `persist.pvr.sleep_by_static 0` — вернуть после серии); камеры в тёмной комнате дают системный диалог
   «Слишком темно» — `am start` отвечает «kept for the user», игра не стартует, серия честно прерывается; закрыть диалог должен человек.
+- **Брони и очередь devbox (D4, `docs/devbox.md`):** скрипты Сети кооперативно соблюдают их через `netrun/tools/box_guard.sh` (на машине без
+  `~/box/repo` — ничего не проверяют). `pico_stand.sh` перед записью конфига и `pico_series.sh` перед стартом зовут `check pico` (и `check
+  port:7777`, если задан `PICO_SERVER_CMD`): чужая бронь — отказ «кто и до когда». Порядок серии: `scripts/box.sh pico wake Godot <мин> серия` →
+  `pico_series.sh …` (сам зовёт `ctl.sh pico ready Godot`: будит, снимает окна Pico белым списком владельца, на «НЕ ГОТОВО» останавливается,
+  PNG — в `~/box/shots`) → по концу `pico sleep Godot` (датчик заклеен; `PICO_SLEEP_AFTER=0` — не гасить). `pico_ready.sh` — запасной путь
+  через `PICO_READY_CMD`. `dev.sh shot` ставит запуск Godot в очередь `gpu` (`ctl.sh run gpu Godot --name shot`, ожидание `SHOT_QUEUE_WAIT`, 900 с),
+  свой `flock /tmp/display.lock` остаётся внутри. Сервер стенда на свободном порту из пула 7800–7899: `scripts/box.sh up stand Godot -- <srv_p2.sh> {PORT}`.
 - **Падение в нативном коде:** кадры `libgodot_android.so` в tombstone без имён (библиотека шаблона уже без символов). Функцию находит
   дизассемблер по адресу кадра: `$ANDROID_HOME/ndk/<версия>/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-objdump -d --start-address=…`
   по `<копия>/android/build/build/intermediates/merged_native_libs/…/arm64-v8a/libgodot_android.so` (BuildId в tombstone должен совпасть).
