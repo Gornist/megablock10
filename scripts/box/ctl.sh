@@ -272,8 +272,38 @@ pico_shot() { # pico_shot → путь к PNG (screencap) или пусто
   timeout 20 "$ADB" -s "$PICO" exec-out screencap -p </dev/null >"$f" 2>/dev/null
   if [ -s "$f" ]; then ls -1t "$BOX"/shots/pico-*.png 2>/dev/null | tail -n +21 | xargs -r rm -f; echo "$f"; else rm -f "$f"; fi
 }
+PICO_BOUNDARY_PKG=${PICO_BOUNDARY_PKG:-com.pvr.seethrough.setting}  # окно границы — Unity, в дампе uiautomator нод нет
+PICO_BOUNDARY_XY=${PICO_BOUNDARY_XY:-1117 1300}                      # «Войти в VR (текущая граница)»; координаты нашёл Godot
+PICO_BOUNDARY_SIZE=${PICO_BOUNDARY_SIZE:-4320x2160}                  # экран, для которого координаты верны
+pico_fail() { # pico_fail <владелец> <окно> <причина> — PNG, очки гасим, бронь оставляем, вердикт строкой; код 1
+  local shot
+  shot=$(pico_shot); pico_sleep_now >/dev/null 2>&1
+  jlog pico-ready-fail owner "$1" window "$2" reason "$3"
+  echo "pico ready: НЕ ГОТОВО — $3; PNG: ${shot:-нет}; очки погашены, бронь оставлена"
+  return 1
+}
+pico_boundary_tap() { # окно границы по пакету: тап по координатам и проверка, что окно ушло. Решение владельца 13.10:
+  # «1 по коордам жми» (риск принят: координаты привязаны к экрану 4320×2160, поэтому размер сверяем перед нажатием).
+  local own=$1 size fg i
+  if [ ! -f "$BOX/pico-ready.taps" ]; then
+    pico_fail "$own" boundary "окно границы ($PICO_BOUNDARY_PKG), «Войти в VR» — нажатия выключены (pico taps on — решение владельца)"; return 1
+  fi
+  size=$(timeout 10 "$ADB" -s "$PICO" shell wm size </dev/null 2>/dev/null | tr -d '\r' | grep -o '[0-9]\{3,5\}x[0-9]\{3,5\}' | tail -1)
+  if [ "$size" != "$PICO_BOUNDARY_SIZE" ]; then
+    pico_fail "$own" boundary "экран ${size:-неизвестен}, координаты окна границы заданы для $PICO_BOUNDARY_SIZE — по координатам не жму"; return 1
+  fi
+  # shellcheck disable=SC2086  # PICO_BOUNDARY_XY = «x y», разбиение намеренное
+  timeout 10 "$ADB" -s "$PICO" shell input tap $PICO_BOUNDARY_XY </dev/null >/dev/null 2>&1
+  jlog pico-ready-tap owner "$own" window boundary-coords button "Войти в VR (текущая граница)" at "$PICO_BOUNDARY_XY" pkg "$PICO_BOUNDARY_PKG"
+  for i in 1 2 3 4 5 6; do
+    sleep 1
+    fg=$(pico_fg)
+    case ${fg:-?} in "$PICO_BOUNDARY_PKG"/*) ;; *) return 0;; esac
+  done
+  pico_fail "$own" boundary "окно границы ($PICO_BOUNDARY_PKG) не ушло после нажатия по координатам"
+}
 pico_ready() { # pico_ready <владелец>: бронь → разбудить → снять известные безопасные окна → проверить, что системных окон нет
-  local own=$1 lo st v kind rid xy btn title fg shot texts n_tap=0 why
+  local own=$1 lo st v kind rid xy btn title fg fgnow shot texts n_tap=0 why
   lo=$(pico_lease_owner)
   if [ "$lo" != "$own" ]; then
     echo "pico ready: нет брони pico у $own (сейчас: ${lo:-никого}) — сначала pico wake $own <мин>"; return 1
@@ -288,6 +318,13 @@ pico_ready() { # pico_ready <владелец>: бронь → разбудит�
   esac
   for _ in 1 2 3 4; do
     sleep 2  # интерфейс после пробуждения/нажатия оседает не мгновенно
+    fgnow=$(pico_fg)
+    case ${fgnow:-?} in
+      "$PICO_BOUNDARY_PKG"/*)
+        pico_boundary_tap "$own" || return 1
+        n_tap=$((n_tap + 1)); texts="(после нажатия окна границы по координатам)"
+        continue;;
+    esac
     v=$(pico_uidump | python3 "$PICO_UI_PY" 2>/dev/null)
     kind=${v%%$'\t'*}
     if [ "$kind" != KNOWN ]; then texts=${v#*$'\t'}; break; fi
