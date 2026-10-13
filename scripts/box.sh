@@ -12,6 +12,8 @@
 #   scripts/box.sh queue [класс]      — кто держит и кто ждёт (в т. ч. замки dbx.sh, gdUnit, display); подробности — scripts/box/ctl.sh
 #   scripts/box.sh pico status | wake <владелец> <мин> [заметка] | sleep <владелец> [--force]  — очки Pico: будить только под бронь
 #                                       `pico`, гасить сразу после (датчик заклеен). guard on|off|status — таймер-страж: гасит Awake без брони > 3 мин
+#   scripts/box.sh up <служба> <сессия> [--port N] [--ttl мин] -- команда…  — свой экземпляр службы: порт из пула, каталог
+#                                       ~/box/inst/<служба>-<сессия> ({PORT}/{DIR} в аргументах); down <служба> <сессия> [--purge]; inst — список
 #   scripts/box.sh boot-check         — прогнать проверку после загрузки вручную (идемпотентно: ничего не убивает и не перезапускает,
 #                                       что уже работает); итог — ~/box/boot.report и строка в статусе
 #   scripts/box.sh journal [N]        — последние N (20) строк журнала действий ~/box/journal.jsonl
@@ -171,7 +173,7 @@ REMOTE
     [ "$rc" -eq 255 ] && { unreachable; exit 1; }
     exit "$rc" ;;
 
-  lease|release|leases|check|run|queue|pico)
+  lease|release|leases|check|run|queue|pico|up|down|inst)
     # Логика — scripts/box/ctl.sh из клона ~/box/repo: одна версия на всех, а не та, что у вызвавшего в worktree.
     args=$cmd
     for a in "$@"; do args="$args $(printf '%q' "$a")"; done
@@ -215,7 +217,7 @@ REMOTE
     "${SSH[@]}" "tail -n $n \"\$HOME/box/journal.jsonl\" 2>&1" ;;
 
   *)
-    sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
     [ -z "$cmd" ] && exit 2
     exit 2 ;;
 esac

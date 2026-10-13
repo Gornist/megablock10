@@ -8,6 +8,7 @@
 #   ctl.sh queue [класс]                                 — кто держит и кто ждёт по классам; чужие замки (dbx.sh, gdUnit, display) тоже
 #   ctl.sh pico status|wake <владелец> <мин> [заметка]|sleep <владелец> [--force]|guard — очки Pico: будить только под бронь `pico`,
 #                                                        гасить сразу после (датчик заклеен — сами не гаснут); guard — для таймера
+#   ctl.sh up <служба> <сессия> [--port N] [--ttl мин] -- команда… | down <служба> <сессия> [--purge] | inst — экземпляры служб на сессию
 # Классы: gradle — замок ~/.dbx.lock (тот же, что у dbx.sh, стенда e2e и раннера CI: совместимо, переучивать их не нужно);
 #         gpu — ~/box/locks/gpu.lock: сборка/экспорт Godot, кадры, Cycles (в т. ч. Nomad Surf), эмуляторы — по одному, GPU 4 ГБ;
 #         light — без замка, только видно в очереди.
@@ -391,9 +392,133 @@ cmd_pico() {
   esac
 }
 
+# --- экземпляры служб на сессию (D3) -----------------------------------------------------------------------------------------
+# `up <служба> <сессия> -- команда…`: свой каталог ~/box/inst/<служба>-<сессия>, порт из пула (бронь port:N), отвязанный процесс, лог.
+# Нужно, чтобы сессии не делили 7777/2517/4174 и не затирали друг другу каталоги. Команда сама решает, что запускать
+# (сервер стенда Godot, копия коллектора со своей БД, статика): в аргументах подставляются {PORT} и {DIR}, в окружении —
+# BOX_PORT и BOX_DIR. Чужое не трогаем: down убивает только процесс, записанный в этом экземпляре, и только если время его
+# старта совпало (после перезагрузки pid мог достаться другому).
+INST=$BOX/inst
+POOL_LO=${BOX_POOL_LO:-7800}
+POOL_HI=${BOX_POOL_HI:-7899}
+port_in_use() { ss -H -ltn "sport = :$1" 2>/dev/null | grep -q . || ss -H -lun "sport = :$1" 2>/dev/null | grep -q .; }
+port_leased_by_other() { # port_leased_by_other <порт> <сессия> → 0, если на port:<порт> действующая бронь не этой сессии
+  local f=$BOX/leases/port:$1.lease cur until
+  [ -f "$f" ] || return 1
+  cur=$(get "$f" owner); until=$(get "$f" until)
+  [ "${until:-0}" -gt "$NOW" ] && [ "$cur" != "$2" ]
+}
+inst_alive() { # inst_alive <каталог> → 0, если записанный процесс жив и это тот же процесс (время старта совпало)
+  local d=$1 pid st
+  pid=$(get "$d/inst" pid); st=$(get "$d/inst" lstart)
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && [ "$(ps -o lstart= -p "$pid" 2>/dev/null | sed 's/  */ /g')" = "$st" ]
+}
+valid_name() { # имя сессии бывает кириллицей (Дронкарта): запрещаем только то, что ломает путь, кавычки и разбор
+  case $1 in ''|-*|.*|*/*|*..*|*[[:space:]]*|*[[:cntrl:]]*|*[\"\'\\\$\`\;\&\|\<\>\*\?\(\)\{\}]*) return 1;; esac
+  return 0
+}
+
+cmd_up() {
+  [ $# -ge 3 ] || { err "использование: up <служба> <сессия> [--port N] [--ttl мин] -- команда… ({PORT}, {DIR} подставляются)"; return 2; }
+  local svc=$1 ses=$2 port="" ttl=480 d i a
+  shift 2
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --port) port=${2:-}; shift 2;;
+      --ttl) ttl=${2:-480}; shift 2;;
+      --) shift; break;;
+      *) err "ожидался -- перед командой (получено '$1')"; return 2;;
+    esac
+  done
+  [ $# -gt 0 ] || { err "нет команды после --"; return 2; }
+  valid_name "$svc" && valid_name "$ses" || { err "имена службы и сессии: без пробелов, /, кавычек и спецсимволов оболочки"; return 2; }
+  d=$INST/$svc-$ses
+  if [ -f "$d/inst" ] && inst_alive "$d"; then
+    echo "up: $svc/$ses уже запущен — pid $(get "$d/inst" pid), порт $(get "$d/inst" port), каталог $d"; return 0
+  fi
+  (
+    flock 7  # выбор порта и бронь — под одним замком, иначе две сессии возьмут один порт
+    if [ -n "$port" ]; then
+      case $port in ''|*[!0-9]*) err "порт — число"; exit 2;; esac
+      if port_in_use "$port" || port_leased_by_other "$port" "$ses"; then err "порт $port занят (процесс или бронь) — box.sh queue / leases"; exit 1; fi
+    else
+      for ((i = POOL_LO; i <= POOL_HI; i++)); do
+        port_in_use "$i" && continue
+        port_leased_by_other "$i" "$ses" && continue
+        port=$i; break
+      done
+      [ -n "$port" ] || { err "в пуле $POOL_LO–$POOL_HI нет свободного порта"; exit 1; }
+    fi
+    cmd_lease "port:$port" "$ses" "$ttl" "экземпляр $svc" >/dev/null || exit 1
+    echo "$port" >"$BOX/locks/.last-port"
+  ) 7>"$BOX/locks/inst.lock" || return $?
+  port=$(cat "$BOX/locks/.last-port")
+  mkdir -p "$d"
+  local args=()
+  for a in "$@"; do a=${a//\{PORT\}/$port}; a=${a//\{DIR\}/$d}; args+=("$a"); done
+  (
+    cd "$d" || exit 1
+    export BOX_PORT=$port BOX_DIR=$d
+    setsid nohup "${args[@]}" >"$d/log" 2>&1 </dev/null 7>&- 9>&- &
+    echo $! >"$d/.pid"
+  )
+  local pid
+  pid=$(cat "$d/.pid"); rm -f "$d/.pid"
+  sleep 2
+  if ! kill -0 "$pid" 2>/dev/null; then
+    cmd_release "port:$port" "$ses" >/dev/null
+    err "up: $svc/$ses не запустился (процесс завершился за 2 с) — журнал: $d/log"; tail -n 5 "$d/log" >&2
+    jlog inst-fail svc "$svc" ses "$ses" port "$port"; return 1
+  fi
+  {
+    echo "service=$svc"; echo "session=$ses"; echo "pid=$pid"; echo "port=$port"; echo "since=$NOW"
+    echo "lstart=$(ps -o lstart= -p "$pid" 2>/dev/null | sed 's/  */ /g')"; echo "cmd=$(clean "${args[*]}")"
+  } >"$d/inst"
+  jlog inst-up svc "$svc" ses "$ses" port "$port" pid "$pid"
+  echo "up: $svc/$ses — pid $pid, порт $port, каталог $d, журнал $d/log"
+}
+
+cmd_down() {
+  [ $# -ge 2 ] || { err "использование: down <служба> <сессия> [--purge]"; return 2; }
+  local svc=$1 ses=$2 d pid port i
+  d=$INST/$svc-$ses
+  [ -f "$d/inst" ] || { echo "down: экземпляра $svc/$ses нет"; return 0; }
+  pid=$(get "$d/inst" pid); port=$(get "$d/inst" port)
+  if inst_alive "$d"; then
+    kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null
+    for ((i = 0; i < 8; i++)); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+    if kill -0 "$pid" 2>/dev/null; then kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null; fi
+    echo "down: $svc/$ses остановлен (pid $pid)"
+  else
+    echo "down: процесс $svc/$ses уже не идёт"
+  fi
+  rm -f "$d/inst"
+  cmd_release "port:$port" "$ses" >/dev/null 2>&1
+  jlog inst-down svc "$svc" ses "$ses" port "$port"
+  [ "${3:-}" = "--purge" ] && rm -rf "$d"
+  return 0
+}
+
+cmd_inst_ls() {
+  local d any=0 svc ses
+  for d in "$INST"/*/; do
+    [ -f "$d/inst" ] || continue
+    svc=$(get "$d/inst" service); ses=$(get "$d/inst" session); any=1
+    if inst_alive "$d"; then
+      echo "$svc/$ses: идёт, pid $(get "$d/inst" pid), порт $(get "$d/inst" port), с $(hm "$(get "$d/inst" since)"), каталог ${d%/}"
+    else
+      echo "$svc/$ses: НЕ ИДЁТ (процесс пропал), порт $(get "$d/inst" port), журнал ${d%/}/log — down, затем up"
+    fi
+  done
+  [ "$any" -eq 1 ] || echo "экземпляров нет"
+}
+
 sub=${1:-}
 [ $# -gt 0 ] && shift
 case $sub in
+  up) cmd_up "$@";;
+  down) cmd_down "$@";;
+  inst) cmd_inst_ls;;
   pico) cmd_pico "$@";;
   lease) cmd_lease "$@";;
   release) cmd_release "$@";;
@@ -401,5 +526,5 @@ case $sub in
   check) cmd_check "$@";;
   run) cmd_run "$@";;
   queue) cmd_queue "$@";;
-  *) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 2;;
+  *) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 2;;
 esac
