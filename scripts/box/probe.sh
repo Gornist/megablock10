@@ -199,6 +199,15 @@ if [ -f "$CTL" ]; then
   fi
   LLINES=$(bash "$CTL" leases 2>/dev/null | sed 's/^/  /')
   [ -n "$LLINES" ] && info "брони:"$'\n'"$LLINES"
+  # Очки Pico: датчик приближения заклеен, сами не гаснут — Awake без брони = замечание (риск выгорания матриц).
+  PICO_ST=$(bash "$CTL" pico status 2>&1); PICO_RC=$?
+  if [ "$PICO_RC" -ne 0 ] && grep -q 'БЕЗ БРОНИ' <<<"$PICO_ST"; then
+    problem "$PICO_ST"
+  elif [ "$PICO_RC" -ne 0 ]; then
+    info "$PICO_ST"
+  else
+    info "$PICO_ST"
+  fi
 fi
 
 # --- после загрузки и скрипты -----------------------------------------------------------------------------------------

@@ -10,6 +10,8 @@
 #                                     — брони устройств/портов/стенда (1–480 мин, истекают сами; серийник = rcpad|xcover7|pico)
 #   scripts/box.sh run <gradle|gpu|light> <владелец> [--wait сек] [--name имя] -- команда…  — выполнить НА devbox в очереди класса
 #   scripts/box.sh queue [класс]      — кто держит и кто ждёт (в т. ч. замки dbx.sh, gdUnit, display); подробности — scripts/box/ctl.sh
+#   scripts/box.sh pico status | wake <владелец> <мин> [заметка] | sleep <владелец> [--force]  — очки Pico: будить только под бронь
+#                                       `pico`, гасить сразу после (датчик заклеен). guard on|off|status — таймер-страж: гасит Awake без брони > 3 мин
 #   scripts/box.sh boot-check         — прогнать проверку после загрузки вручную (идемпотентно: ничего не убивает и не перезапускает,
 #                                       что уже работает); итог — ~/box/boot.report и строка в статусе
 #   scripts/box.sh journal [N]        — последние N (20) строк журнала действий ~/box/journal.jsonl
@@ -169,11 +171,37 @@ REMOTE
     [ "$rc" -eq 255 ] && { unreachable; exit 1; }
     exit "$rc" ;;
 
-  lease|release|leases|check|run|queue)
+  lease|release|leases|check|run|queue|pico)
     # Логика — scripts/box/ctl.sh из клона ~/box/repo: одна версия на всех, а не та, что у вызвавшего в worktree.
     args=$cmd
     for a in "$@"; do args="$args $(printf '%q' "$a")"; done
     "${SSH[@]}" "[ -f \"\$HOME/box/repo/scripts/box/ctl.sh\" ] || { echo 'нет клона ~/box/repo: scripts/box.sh sync' >&2; exit 4; }; bash \"\$HOME/box/repo/scripts/box/ctl.sh\" $args"
+    rc=$?
+    [ "$rc" -eq 255 ] && { unreachable; exit 1; }
+    exit "$rc" ;;
+
+  guard)
+    # Страж очков (раз в минуту гасит Awake без брони дольше 3 мин): ставится и снимается только этой командой.
+    sub=${1:-status}
+    case $sub in on|off|status) ;; *) echo "использование: box.sh guard on|off|status"; exit 2;; esac
+    "${SSH[@]}" bash -s -- "$sub" <<'REMOTE'
+set -u
+SUB=$1
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+export DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}
+R=$HOME/box/repo/scripts/box; U=$HOME/.config/systemd/user
+case $SUB in
+  on)
+    [ -f "$R/box-pico-guard.timer" ] || { echo "guard: нет юнитов в ~/box/repo (scripts/box.sh sync <ветка с юнитами>)"; exit 1; }
+    cp -f "$R/box-pico-guard.service" "$R/box-pico-guard.timer" "$U/"
+    systemctl --user daemon-reload && systemctl --user enable --now box-pico-guard.timer >/dev/null 2>&1
+    printf '{"t":"%s","event":"pico-guard-on"}\n' "$(date -Is)" >>"$HOME/box/journal.jsonl" ;;
+  off)
+    systemctl --user disable --now box-pico-guard.timer >/dev/null 2>&1
+    printf '{"t":"%s","event":"pico-guard-off"}\n' "$(date -Is)" >>"$HOME/box/journal.jsonl" ;;
+esac
+echo "guard: таймер $(systemctl --user is-enabled box-pico-guard.timer 2>/dev/null || echo не-установлен) / $(systemctl --user is-active box-pico-guard.timer 2>/dev/null || echo неактивен)"
+REMOTE
     rc=$?
     [ "$rc" -eq 255 ] && { unreachable; exit 1; }
     exit "$rc" ;;
@@ -184,7 +212,7 @@ REMOTE
     "${SSH[@]}" "tail -n $n \"\$HOME/box/journal.jsonl\" 2>&1" ;;
 
   *)
-    sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
     [ -z "$cmd" ] && exit 2
     exit 2 ;;
 esac

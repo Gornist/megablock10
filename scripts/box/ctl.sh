@@ -6,6 +6,8 @@
 #   ctl.sh check <ресурс> <владелец>                     — 0: свободно или бронь своя; 1: чужая (для скриптов сессий)
 #   ctl.sh run <класс> <владелец> [--wait сек] [--name имя] -- команда…  — выполнить в очереди класса; код выхода — команды, 3 — таймаут
 #   ctl.sh queue [класс]                                 — кто держит и кто ждёт по классам; чужие замки (dbx.sh, gdUnit, display) тоже
+#   ctl.sh pico status|wake <владелец> <мин> [заметка]|sleep <владелец> [--force]|guard — очки Pico: будить только под бронь `pico`,
+#                                                        гасить сразу после (датчик заклеен — сами не гаснут); guard — для таймера
 # Классы: gradle — замок ~/.dbx.lock (тот же, что у dbx.sh, стенда e2e и раннера CI: совместимо, переучивать их не нужно);
 #         gpu — ~/box/locks/gpu.lock: сборка/экспорт Godot, кадры, Cycles (в т. ч. Nomad Surf), эмуляторы — по одному, GPU 4 ГБ;
 #         light — без замка, только видно в очереди.
@@ -205,14 +207,128 @@ cmd_run() {
   return "$rc"
 }
 
+# --- очки Pico: сон и пробуждение -------------------------------------------------------------------------------------------
+# Датчик приближения заклеен (решение владельца 13.10, через Pipeline): сами очки не гаснут, а матрицы выгорают. Поэтому будим
+# только под бронь `pico` и гасим сразу после. KEYCODE_SLEEP на Pico не работает, работает KEYCODE_POWER — но это ПЕРЕКЛЮЧАТЕЛЬ:
+# на спящих очках он будит. Поэтому состояние читаем всегда перед нажатием и проверяем после; повтор — один раз и только
+# после нового чтения состояния.
+PICO=PA8110MGH4261073G
+ADB=${ADB:-$HOME/android-sdk/platform-tools/adb}
+PICO_GRACE=${PICO_GRACE:-180}  # секунд без брони, после которых guard гасит очки
+pico_state() { # Awake | Asleep | Dozing | ? ; второй токен — Display Power: ON|OFF|?
+  local raw w d
+  raw=$(timeout 10 "$ADB" -s "$PICO" shell 'dumpsys power | grep -E "mWakefulness=|Display Power: state"' 2>/dev/null | tr -d '\r')
+  w=$(sed -n 's/.*mWakefulness=\([A-Za-z]*\).*/\1/p' <<<"$raw" | head -1)
+  d=$(sed -n 's/.*Display Power: state=\([A-Z]*\).*/\1/p' <<<"$raw" | head -1)
+  echo "${w:-?} ${d:-?}"
+}
+pico_power() { timeout 10 "$ADB" -s "$PICO" shell input keyevent KEYCODE_POWER >/dev/null 2>&1; }
+pico_wait() { # pico_wait <Awake|Asleep> <секунд> → 0, если очки пришли в состояние
+  local want=$1 i st
+  for ((i = 0; i < $2; i++)); do
+    st=$(pico_state)
+    case $want in
+      Awake) [ "${st%% *}" = Awake ] && return 0;;
+      Asleep) [ "${st%% *}" = Asleep ] && [ "${st##* }" = OFF ] && return 0;;
+    esac
+    sleep 1
+  done
+  return 1
+}
+pico_lease_owner() { # владелец действующей брони pico или пусто
+  local f=$BOX/leases/pico.lease until
+  [ -f "$f" ] || return 0
+  until=$(get "$f" until)
+  [ "${until:-0}" -gt "$NOW" ] && get "$f" owner
+}
+pico_sleep_now() { # → 0 очки Asleep/OFF (нажимаем POWER только если они Awake)
+  local st
+  st=$(pico_state)
+  case ${st%% *} in
+    Asleep) return 0;;
+    Awake|Dozing) ;;
+    *) err "очки: состояние неизвестно ($st) — не нажимаю POWER вслепую"; return 1;;
+  esac
+  pico_power
+  pico_wait Asleep 8 && return 0
+  st=$(pico_state)  # повтор один раз и только по свежему чтению: POWER на спящих очках будит
+  if [ "${st%% *}" = Awake ] || [ "${st%% *}" = Dozing ]; then pico_power; pico_wait Asleep 8 && return 0; fi
+  return 1
+}
+
+cmd_pico() {
+  local act=${1:-status} own st lo min note
+  [ $# -gt 0 ] && shift
+  case $act in
+    status)
+      st=$(pico_state); lo=$(pico_lease_owner)
+      if [ "${st%% *}" = "?" ]; then echo "очки: не отвечают на adb (отключены? $PICO)"; return 1; fi
+      if [ "${st%% *}" = Asleep ] && [ "${st##* }" = OFF ]; then
+        echo "очки: Asleep, экран OFF${lo:+; бронь: $lo}"
+      elif [ -n "$lo" ]; then
+        echo "очки: ${st%% *} (экран ${st##* }); бронь: $lo до $(hm "$(get "$BOX/leases/pico.lease" until)")"
+      else
+        local since
+        since=$(cat "$BOX/pico.awake-since" 2>/dev/null || echo "$NOW")
+        echo "очки: ${st%% *} (экран ${st##* }) БЕЗ БРОНИ уже $(( (NOW - since) / 60 )) мин — риск выгорания матриц: pico sleep <владелец> или pico wake <владелец> <мин>"
+        return 1
+      fi ;;
+    wake)
+      [ $# -ge 2 ] || { err "использование: pico wake <владелец> <минут> [заметка…]"; return 2; }
+      own=$1; min=$2; shift 2; note="$*"
+      # продление без заметки не затирает прежнюю
+      [ -n "$note" ] || note=$(get "$BOX/leases/pico.lease" note)
+      cmd_lease pico "$own" "$min" "${note:-очки разбужены}" || return 1
+      st=$(pico_state)
+      case ${st%% *} in
+        Awake) echo "очки: уже Awake (экран ${st##* }) — не нажимаю POWER";;
+        Asleep|Dozing)
+          pico_power
+          if pico_wait Awake 8; then echo "очки: Awake"; else err "очки не проснулись за 8 с (состояние: $(pico_state))"; return 1; fi
+          jlog pico-wake owner "$own" minutes "$min" note "$note";;
+        *) err "очки: состояние неизвестно ($st) — бронь взята, POWER не нажимал"; return 1;;
+      esac ;;
+    sleep)
+      [ $# -ge 1 ] || { err "использование: pico sleep <владелец> [--force]"; return 2; }
+      own=$1; lo=$(pico_lease_owner)
+      if [ -n "$lo" ] && [ "$lo" != "$own" ] && [ "${2:-}" != "--force" ]; then
+        echo "бронь pico у $lo — гасить может хозяин (--force: только по договорённости с ним)"; return 1
+      fi
+      if pico_sleep_now; then
+        [ "$lo" = "$own" ] && cmd_release pico "$own" >/dev/null
+        rm -f "$BOX/pico.awake-since"
+        jlog pico-sleep owner "$own"
+        echo "очки: Asleep, экран OFF${lo:+; бронь $lo снята}"
+      else
+        err "очки не погасли ($(pico_state)) — посмотреть вручную, не повторять POWER вслепую"; return 1
+      fi ;;
+    guard)
+      # Для таймера раз в минуту (pico guard-install ставит юнит): Awake без брони дольше $PICO_GRACE секунд — гасим.
+      st=$(pico_state); lo=$(pico_lease_owner)
+      if [ "${st%% *}" != Awake ] || [ -n "$lo" ]; then rm -f "$BOX/pico.awake-since"; return 0; fi
+      [ -f "$BOX/pico.awake-since" ] || { echo "$NOW" >"$BOX/pico.awake-since"; return 0; }
+      since=$(cat "$BOX/pico.awake-since")
+      if [ $((NOW - since)) -ge "$PICO_GRACE" ]; then
+        if pico_sleep_now; then
+          rm -f "$BOX/pico.awake-since"; jlog pico-guard-sleep idle_sec "$((NOW - since))"
+          echo "guard: очки без брони $(( (NOW - since) / 60 )) мин — погашены"
+        else
+          jlog pico-guard-fail state "$(pico_state)"; echo "guard: очки не погасли" >&2; return 1
+        fi
+      fi ;;
+    *) err "pico status | wake <владелец> <мин> [заметка] | sleep <владелец> [--force] | guard"; return 2;;
+  esac
+}
+
 sub=${1:-}
 [ $# -gt 0 ] && shift
 case $sub in
+  pico) cmd_pico "$@";;
   lease) cmd_lease "$@";;
   release) cmd_release "$@";;
   leases) cmd_leases;;
   check) cmd_check "$@";;
   run) cmd_run "$@";;
   queue) cmd_queue "$@";;
-  *) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 2;;
+  *) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 2;;
 esac
