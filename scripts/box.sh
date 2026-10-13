@@ -200,7 +200,10 @@ case $SUB in
     systemctl --user disable --now box-pico-guard.timer >/dev/null 2>&1
     printf '{"t":"%s","event":"pico-guard-off"}\n' "$(date -Is)" >>"$HOME/box/journal.jsonl" ;;
 esac
-echo "guard: таймер $(systemctl --user is-enabled box-pico-guard.timer 2>/dev/null || echo не-установлен) / $(systemctl --user is-active box-pico-guard.timer 2>/dev/null || echo неактивен)"
+EN=$(systemctl --user is-enabled box-pico-guard.timer 2>/dev/null); AC=$(systemctl --user is-active box-pico-guard.timer 2>/dev/null)
+case ${EN:-?} in enabled) EN=включён;; not-found|'?') EN=не-установлен;; esac
+case ${AC:-?} in active) AC=идёт;; *) AC=не-идёт;; esac
+echo "guard: страж очков — $EN, $AC"
 REMOTE
     rc=$?
     [ "$rc" -eq 255 ] && { unreachable; exit 1; }
