@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# Стенд очков: пресет рендера в netrun.cfg на устройстве без переустановки APK (секции [render] и [assets]; остальные секции файла не трогаются).
+# Умолчания приняты и живут в коде (RenderConfig, AssetMaterials.KNOBS): пресет «base» — чистый вид без единой строки, остальное — различия от него.
+#
+#   pico_stand.sh <пресет> [ключ=значение ...]    записать пресет; ключи после него перекрывают
+#   pico_stand.sh --show                          показать netrun.cfg с очков
+#   pico_stand.sh --reset                         убрать [render] и [assets] (чистые умолчания)
+#
+# Пресеты (замеры bench — в docs/netrun-bench.md, итоги 08–12.10 — в docs/netrun-refactor-plan.md):
+#   base            чистые умолчания: msaa 2, foveation 0, layers behind, вид V10 (ничего не пишется)
+#   bench           perf=on, bench=entry: 5 с прогрева + 3 окна по 10 с, строка `[bench] ИТОГ`
+#   cloud-props     bench + cloud=1: облако на колоннах/хранилище/выходе (C3a; пол, потолок и дальние остаются solid_dark)
+#   cloud-props-2s  cloud-props + cloud_two_sided=1: задние грани объёма видны сквозь дыры (cull_disabled)
+#   probe-sweep     perf=on, probe=sweep: серия синтетической нагрузки (база + 14 вариантов, ≈3,5 мин) → таблица `[probe] ИТОГ`
+#
+# Ключи: имена из RenderConfig.KEYS (msaa layers foveation perf volumetric bench probe) пишутся в [render], остальные — в [assets]
+# (AssetMaterials.KNOBS; неизвестная ручка игра пропускает с предупреждением). Пример:
+#   pico_stand.sh cloud-props msaa=4 dust_density=0.55 perf=diag bench=wedge
+# Читается при СТАРТЕ игры: после смены — перезапуск (pico_series.sh делает это сам). Устройство — PICO_SERIAL или единственное подключённое.
+set -e
+
+PACKAGE="com.megablok10.netrun"
+CFG_PATH="/sdcard/Android/data/$PACKAGE/files/netrun.cfg"
+RENDER_KEYS=" msaa layers foveation perf volumetric bench probe "
+
+[ -f "$HOME/netrun-env.sh" ] && . "$HOME/netrun-env.sh"
+
+serial="${PICO_SERIAL:-}"
+if [ -z "$serial" ]; then
+  serial=$(adb devices | awk '$2=="device"{print $1}')
+  if [ "$(echo "$serial" | grep -c .)" != 1 ]; then
+    echo "pico_stand: нужно ровно одно устройство или PICO_SERIAL (сейчас: $(echo "$serial" | tr '\n' ' '))" >&2
+    exit 1
+  fi
+fi
+
+tmp=$(mktemp)
+trap 'rm -f "$tmp" "$tmp.new"' EXIT
+adb -s "$serial" pull "$CFG_PATH" "$tmp" >/dev/null 2>&1 </dev/null || : > "$tmp"
+
+case "${1:-}" in
+  --show) cat "$tmp"; exit 0 ;;
+  "")     sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac
+
+# Без секций [render] и [assets]; остальное (адрес, токен, [net]) остаётся как было.
+awk '/^\[render\]/{skip=1;next} /^\[assets\]/{skip=1;next} /^\[/{skip=0} !skip' "$tmp" > "$tmp.new"
+
+if [ "$1" != "--reset" ]; then
+  preset="$1"; shift
+  case "$preset" in
+    base)           set -- "$@" ;;
+    bench)          set -- perf=on bench=entry "$@" ;;
+    cloud-props)    set -- perf=on bench=entry cloud=1 "$@" ;;
+    cloud-props-2s) set -- perf=on bench=entry cloud=1 cloud_two_sided=1 "$@" ;;
+    probe-sweep)    set -- perf=on probe=sweep "$@" ;;
+    *) echo "pico_stand: неизвестный пресет «$preset» (есть: base bench cloud-props cloud-props-2s probe-sweep)" >&2; exit 2 ;;
+  esac
+  # Последнее значение ключа выигрывает: пресет, затем ключи с командной строки.
+  render=""; assets=""
+  for kv in "$@"; do
+    k="${kv%%=*}"; v="${kv#*=}"
+    case "$kv" in *=*) ;; *) echo "pico_stand: «$kv» — нужен вид ключ=значение" >&2; exit 2 ;; esac
+    case "$RENDER_KEYS" in
+      *" $k "*) render=$(printf '%s\n' "$render" | grep -v "^$k = " || true); render="$render"$'\n'"$k = \"$v\"" ;;
+      *)        assets=$(printf '%s\n' "$assets" | grep -v "^$k = " || true); assets="$assets"$'\n'"$k = $v" ;;
+    esac
+  done
+  # Числа в [render] пишем без кавычек (msaa, foveation), строки — в кавычках.
+  render=$(printf '%s\n' "$render" | sed -E 's/^(msaa|foveation) = "([0-9]+)"$/\1 = \2/' | grep . || true)
+  assets=$(printf '%s\n' "$assets" | grep . || true)
+  [ -n "$render" ] && printf '\n[render]\n%s\n' "$render" >> "$tmp.new"
+  [ -n "$assets" ] && printf '\n[assets]\n%s\n' "$assets" >> "$tmp.new"
+  echo "pico_stand: пресет $preset → [render]: $(printf '%s' "$render" | tr '\n' ';') [assets]: $(printf '%s' "$assets" | tr '\n' ';')"
+else
+  echo "pico_stand: [render] и [assets] убраны — чистые умолчания"
+fi
+
+adb -s "$serial" push "$tmp.new" "$CFG_PATH" >/dev/null </dev/null
+echo "pico_stand: netrun.cfg записан на $serial (читается при старте игры)"

@@ -145,6 +145,15 @@ godot -- --flat --host=127.0.0.1 --port=7777 --token=t1
 - **Без человека:** экран держат `adb shell svc power stayon true` и `adb shell input keyevent KEYCODE_WAKEUP` перед запуском. Но если на
   очках не задана граница или спят контроллеры при включённом отслеживании рук, система открывает поверх приложения свой экран и ставит его
   на паузу — XR-проверку (трекинг, связь из VR) тогда делает только человек в очках.
+- **Пресеты рендера и серии замеров** (рефактор Сети, G2): умолчания приняты и живут в коде (`RenderConfig`: msaa 2, foveation 0, layers behind;
+  `AssetMaterials.KNOBS`: вид V10), поэтому `netrun.cfg` теперь нужен только для сравнений. `netrun/tools/pico_stand.sh <пресет> [ключ=значение ...]`
+  пишет секции `[render]` и `[assets]` на очки (остальной файл не трогает; `--show`, `--reset`); пресеты: `base` (чистые умолчания), `bench`
+  (`perf=on`, `bench=entry`), `cloud-props` (+ `cloud=1`), `cloud-props-2s` (+ `cloud_two_sided=1`), `probe-sweep`. Ключи `RenderConfig.KEYS` идут
+  в `[render]`, остальные — в `[assets]`. `netrun/tools/pico_series.sh "имя=пресет ключ=значение" ...` прогоняет варианты подряд (конфиг →
+  перезапуск → итог `[bench]`/`[probe]` → PNG кадра при `perf=diag`) в `~/pico-series/<время>`; `PICO_SERVER_CMD` — команда сервера мира.
+  Грабли без человека: очки на столе засыпают по датчику (`dumpsys power` → `Asleep`; `svc power stayon true` не всегда хватает; на Pico помогли
+  `setprop pvr.factorytest.never.sleep 1` и `persist.pvr.sleep_by_static 0` — вернуть после серии); камеры в тёмной комнате дают системный диалог
+  «Слишком темно» — `am start` отвечает «kept for the user», игра не стартует, серия честно прерывается; закрыть диалог должен человек.
 - **Падение в нативном коде:** кадры `libgodot_android.so` в tombstone без имён (библиотека шаблона уже без символов). Функцию находит
   дизассемблер по адресу кадра: `$ANDROID_HOME/ndk/<версия>/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-objdump -d --start-address=…`
   по `<копия>/android/build/build/intermediates/merged_native_libs/…/arm64-v8a/libgodot_android.so` (BuildId в tombstone должен совпасть).
