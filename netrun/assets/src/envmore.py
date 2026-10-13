@@ -5,6 +5,7 @@ import os
 import random
 import sys
 
+import bmesh
 from mathutils import Vector
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -18,33 +19,45 @@ def _corner_dots(size=2.0, z=0.006):
     return [Vector((sx * h, sy * h, z)) for sx in (-1, 1) for sy in (-1, 1)]
 
 
+GATE_X = (-0.40, -0.20, 0.0, 0.20, 0.40)  # прутья решётки по ширине проёма 1,04 м (как у exit_frame: косяки на ±0,52 м)
+GATE_BAR = 0.09    # сечение прута, м: 9 см — читается с 6–8 м (штрих 1 см был бы меньше пикселя)
+GATE_EDGE = 0.025  # светящаяся кромка по вертикальным рёбрам прута
+GATE_H = 2.0       # высота закрытой решётки: как проём exit_frame
+GATE_H_OPEN = 0.12  # втянутая решётка: пеньки у порога
+
+
 def build_lockdown_gate(out, name="lockdown_gate", opened=False, seed=51):
-    """Ворота блокировки (LOCKDOWN) в проёме 2×2 м: те же косяки и боковые занавесы, что у doorway, поперёк прохода (1,1 м) — силовая «дверь».
-    Закрытые: частая решётка красных штрихов (шаг 3 см, высота 2 м), по порогу ряд красных точек, пара белых горячих прожилок. Открытые: решётка
-    втянута — у порога коротких красных штрихов не выше 0,15 м, проход свободен, пороговые точки тусклые. Красный здесь — предупреждение, по ТЗ можно.
-    Origin на полу в центре. Проход вдоль оси Z Godot."""
+    """Ворота блокировки (LOCKDOWN), ставятся на место проёма exit_frame (косяки и перемычку даёт он): пять непрозрачных прутьев 9 см (solid_dark) с яркой
+    кромкой по вертикальным рёбрам — видимое тело вместо прежних красных штрихов, которые на очках не рисуются (streak_keep=0). Закрытые: высота 2 м,
+    красная кромка (угроза: LOCKDOWN — единственное место, где красное в окружении разрешено). Открытые: те же прутья втянуты в пеньки 12 см,
+    кромка бирюзовая, проход свободен. Origin на полу в центре, проход вдоль оси Z Godot. seed не используется (оставлен ради прежней сигнатуры)."""
     lib.reset()
-    rng = random.Random(seed)
-    cy, ice, red, hot = lib.lin("cyan"), lib.lin("ice_white"), lib.lin("threat"), lib.lin("threat_hot")
-    side = curtain(rng, -0.98, -0.66, 18, WALL_H, depth=0.22, p_gap=0.07) + curtain(rng, 0.66, 0.98, 18, WALL_H, depth=0.22, p_gap=0.07)
-    objs = [lib.streak_set("gate_curtain", side, cy)]
-    jambs = [(Vector((sx * d, 0, 1.0)), 0.016, 1.0, 1.0) for sx in (-1, 1) for d in (0.52, 0.57, 0.62)]
-    objs.append(lib.streak_set("gate_jambs", jambs, ice))
-    if not opened:
-        bars = []
-        for i in range(36):
-            x = -0.52 + 1.04 * (i + 0.5) / 36
-            bars.append((Vector((x, rng.uniform(-0.02, 0.02), 1.0)), rng.uniform(0.007, 0.011), 1.0 * rng.uniform(0.92, 1.0), rng.uniform(0.55, 1.0)))
-        for _ in range(3):
-            bars.append((Vector((rng.uniform(-0.45, 0.45), 0.0, 1.0)), 0.006, 1.0, 1.0, hot))
-        objs.append(lib.streak_set("gate_bars", bars, red))
-    else:
-        bars = [(Vector((rng.choice((-1, 1)) * rng.uniform(0.38, 0.52), rng.uniform(-0.03, 0.03), hh / 2)), 0.008, hh / 2, rng.uniform(0.2, 0.5)) for hh in (rng.uniform(0.04, 0.15) for _ in range(8))]
-        objs.append(lib.streak_set("gate_bars", bars, red))
-    th = [Vector((x, y, 0.0)) for x in [-0.5 + i * 0.125 for i in range(9)] for y in (-0.06, 0.06)]
-    objs.append(lib.point_cloud("gate_threshold", th, (red if not opened else cy), half_size=0.018, seed=seed, a_min=(0.8 if not opened else 0.25), a_max=(1.0 if not opened else 0.5), on_floor=True))
-    return lib.export(name, "env", objs, out, budget_tris=300, budget_points=40, budget_streaks=120, origin="floor",
-                      notes=("закрыт: красная решётка" if not opened else "открыт: решётка втянута"))
+    glow = lib.lin("cyan") if opened else lib.lin("threat")
+    void = lib.lin("void")
+    h = GATE_H_OPEN if opened else GATE_H
+    half = GATE_BAR / 2
+    bms = []
+    for x in GATE_X:
+        bm = lib.box_bm((GATE_BAR, GATE_BAR, h), center=(x, 0.0, h / 2))
+        for ax in (0, 1):  # плоскости у вертикальных рёбер: полоска кромки GATE_EDGE по каждой из четырёх боковых граней
+            for sgn in (-1, 1):
+                co = [0.0, 0.0, 0.0]
+                co[ax] = (x if ax == 0 else 0.0) + sgn * (half - GATE_EDGE)
+                no = [0.0, 0.0, 0.0]
+                no[ax] = 1.0
+                bmesh.ops.bisect_plane(bm, geom=list(bm.verts) + list(bm.edges) + list(bm.faces), plane_co=co, plane_no=no)
+        lib.canon_faces(bm)
+        bms.append(bm)
+
+    def rgb(co):
+        for x in GATE_X:
+            if abs(co[0] - x) <= half + 1e-4:
+                return glow if (abs(co[0] - x) > half - 1e-3 and abs(co[1]) > half - 1e-3) else void  # вертикальное ребро прута
+        return void
+
+    objs = [lib.obj_from_bm("gate_bars", lib.merge_bm(*bms), "solid_dark", glow, rgb_fn=rgb)]
+    return lib.export(name, "env", objs, out, budget_tris=320, budget_points=0, budget_streaks=0, origin="floor",
+                      notes=("закрыт: красные прутья 2 м" if not opened else "открыт: пеньки 12 см, бирюзовая кромка"))
 
 
 def build_tunnel_ring(out, name="tunnel_ring", seed=61):
