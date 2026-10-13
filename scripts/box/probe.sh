@@ -198,10 +198,13 @@ if [ -d "$BOX/repo/.git" ]; then
   if [ "$DESK" != "$BOX/repo/scripts/devbox-session-start.sh" ]; then
     problem "автозапуск идёт не из репозитория: Exec=${DESK:-?} (scripts/box.sh sync)"
   fi
-  if [ -n "$TIP" ] && [ "$TIP" != "$HERE" ]; then
-    info "скрипты: клон ~/box/repo на $HERE, origin/main $TIP — отстают (scripts/box.sh sync)"
+  REF=$(cat "$BOX/repo.ref" 2>/dev/null || echo "?")
+  if [ -n "$TIP" ] && [ "$TIP" = "$HERE" ]; then
+    info "скрипты: клон ~/box/repo на $HERE = origin/main"
+  elif [ "$REF" = "main" ] && [ -n "$TIP" ]; then
+    info "скрипты: клон ~/box/repo на $HERE, origin/main уже $TIP — отстают (scripts/box.sh sync)"
   else
-    info "скрипты: клон ~/box/repo на $HERE${TIP:+ = origin/main}"
+    info "скрипты: клон ~/box/repo на $HERE (${REF}), origin/main${TIP:+ $TIP}"
   fi
 else
   problem "нет клона ~/box/repo: скрипты devbox — ручная копия (scripts/box.sh sync)"

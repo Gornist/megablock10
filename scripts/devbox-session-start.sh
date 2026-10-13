@@ -141,19 +141,30 @@ wait_for "редактор Godot AI на 8000" "$GODOT_TIMEOUT" godot_up \
   || bad "редактор Godot не слушает 8000 (godot-ai.desktop: scripts/devbox-godot-ai.sh start в ~/wt-godot)"
 
 # 6. Самопроверка тем же скриптом, что и `box.sh status`, и отчёт: вердикт читает status, строка — в журнал действий.
-PROBE="$HERE/box/probe.sh"
-if [ -f "$PROBE" ]; then
-  while IFS= read -r l; do log "probe: $l"; done < <(bash "$PROBE" --brief 2>&1)
-fi
+#    Сначала отчёт по этапам (проба читает его же), потом проба: то, что она видит сверх этапов (adb не под службой, пропавший
+#    порт), тоже делает вердикт «problems» — этапы могли отработать «ок» там, где итоговое состояние плохое.
+write_report() { # write_report <verdict> <проблемы через «;»>
+  {
+    echo "time=$(date +%s)"
+    echo "boot=$(awk '/^btime/{print $2}' /proc/stat)"
+    echo "verdict=$1"
+    echo "problems=$2"
+    echo "devices=${DEVICES:-}"
+  } >"$BOX/boot.report.tmp" && mv "$BOX/boot.report.tmp" "$BOX/boot.report"
+}
 VERDICT=ok; [ "${#PROBLEMS[@]}" -gt 0 ] && VERDICT=problems
 PROB_TXT=$(IFS=';'; echo "${PROBLEMS[*]:-}")
-{
-  echo "time=$(date +%s)"
-  echo "boot=$(awk '/^btime/{print $2}' /proc/stat)"
-  echo "verdict=$VERDICT"
-  echo "problems=${PROB_TXT:-}"
-  echo "devices=${DEVICES:-}"
-} >"$BOX/boot.report.tmp" && mv "$BOX/boot.report.tmp" "$BOX/boot.report"
+write_report "$VERDICT" "$PROB_TXT"
+PROBE="$HERE/box/probe.sh"
+if [ -f "$PROBE" ]; then
+  PROBE_OUT=$(bash "$PROBE" --brief 2>&1)
+  while IFS= read -r l; do log "probe: $l"; done <<<"$PROBE_OUT"
+  PROBE_BAD=$(grep '^  ! ' <<<"$PROBE_OUT" | sed 's/^  ! //' | grep -v '^нет ~/box/boot.report' | paste -sd';' -)
+  if [ -n "$PROBE_BAD" ] && [ "$VERDICT" = ok ]; then
+    VERDICT=problems; PROB_TXT=$PROBE_BAD
+  fi
+fi
+write_report "$VERDICT" "${PROB_TXT:-}"
 j=${PROB_TXT//\\/\/}; j=${j//\"/\'}
 printf '{"t":"%s","event":"boot-check","verdict":"%s","problems":"%s","devices":"%s"}\n' \
   "$(date -Is)" "$VERDICT" "$j" "${DEVICES:-}" >>"$BOX/journal.jsonl"

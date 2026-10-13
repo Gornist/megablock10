@@ -55,12 +55,15 @@ fi
 git -C "$REPO" fetch -q --depth 1 origin "$REF" || { echo "sync: на origin нет '$REF' (ветку запушили?)"; exit 1; }
 git -C "$REPO" checkout -q --detach FETCH_HEAD || exit 1
 SHA=$(git -C "$REPO" log -1 --format='%h %s' | cut -c1-90)
+echo "$REF" >"$BOX/repo.ref"
 # user-служба adb: копия юнита (не ссылка — юнит не должен меняться под ногами при смене ревизии клона)
 UNIT=$HOME/.config/systemd/user/box-adb.service
 cp -f "$REPO/scripts/box/box-adb.service" "$UNIT"
 systemctl --user daemon-reload
 systemctl --user enable box-adb >/dev/null 2>&1
-if ss -H -ltn 'sport = :5037' | grep -q .; then
+if systemctl --user is-active --quiet box-adb; then
+  ADB="служба box-adb: active (юнит обновлён, сервер не перезапускался)"
+elif ss -H -ltn 'sport = :5037' | grep -q .; then
   ADB="сервер на 5037 уже есть — под службу: scripts/box.sh adb adopt"
 else
   systemctl --user start box-adb; sleep 2; ADB="служба box-adb: $(systemctl --user is-active box-adb)"
@@ -94,7 +97,7 @@ REMOTE
       status|adopt) ;;
       *) echo "использование: box.sh adb status | adopt [--force]"; exit 2;;
     esac
-    "${SSH[@]}" bash -s -- "$sub" "${1:-}" <<'REMOTE'
+    "${SSH[@]}" bash -s -- "$sub" "${1:-_}" <<'REMOTE'
 set -u
 SUB=$1; FORCE=$2
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
