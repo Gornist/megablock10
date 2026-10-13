@@ -1,6 +1,7 @@
 extends Node3D
 ## Кадры Фойе (раскладка data/layouts/foyer.json) глазами клиента: колонны, хранилища с площадками, порталы, вход S, выход E,
 ## Страж со светом зрения (фокус/периферия) и стрелкой, рамка прицела по прогнозу.
+## Облако частиц у хранилищ и порталов: `--volumetric=vault,portal` (VolumeRegistry; точки сэмплируются по модели, если нет .points).
 ## Запуск: netrun/tools/dev.sh shot res://tests/foyer_preview.tscn  (кадры — по пресетам EyePresets: entry, north, south, vault_w глазами игрока; top, top_north, top_south сверху)
 ## Кадры глазами — 2160×2160 (на глаз Pico 4), msaa как в клиенте; A/B: `dev.sh shot res://tests/foyer_preview.tscn --msaa=0|2|4`
 
@@ -11,6 +12,8 @@ func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			_out = a.substr(6)
+		elif a.begins_with("--volumetric="):   # объёмные модули до построения узла (как [render] volumetric): --volumetric=vault,portal | all
+			VolumeRegistry.configure(a.substr(13))
 		elif a.begins_with("--tune="):  # ручки AssetMaterials до построения окружения (как [assets] в netrun.cfg): --tune=edge_soft=0.8,fringe_on=false
 			var d := {}
 			for kv in a.trim_prefix("--tune=").split(","):

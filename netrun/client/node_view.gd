@@ -304,6 +304,14 @@ func _place(parent: Node3D, path: String, pos: Vector3, yaw: float) -> Node3D:
 	return n
 
 
+## Объём частицами поверх модели (VolumeRegistry): только когда модуль включён в `[render] volumetric`; облако — потомок предмета, поэтому
+## видимость (открыт/закрыт) и поворот у него общие. Цвет — слой палитры hud_ok (материал облака задаёт Blender).
+func _attach_cloud(module: String, host: Node3D, model_path: String) -> void:
+	var c := VolumeRegistry.spawn(module, model_path, AssetMaterials.layer("hud_ok"), AABB())
+	if c != null:
+		host.add_child(c)
+
+
 ## Убрать узел из дерева и освободить сразу (queue_free оставил бы его в сцене до конца кадра). Звать только вне обхода этих узлов.
 func _discard(n: Node) -> void:
 	if n == null:
@@ -344,6 +352,7 @@ func set_vaults(shards: Array) -> void:
 			pad_pos = pad_pos_layout
 			yaw = vault_yaw_to(base, pad_pos, yaw)
 		_vaults[id] = _place(_props, NodeAssets.prop_path("vault"), base, yaw)  # один ассет: вид — узлы State_* и Tier_*
+		_attach_cloud("vault", _vaults[id], NodeAssets.prop_path("vault"))
 		_pads[id] = _place(_props, NodeAssets.prop_path("hack_pad"), pad_pos, yaw)
 		_panels[id] = _place_panel(base, yaw, pad_pos)
 		set_vault_state(id, vault_state_of(sh), int(sh.get("tier", 0)))
@@ -457,9 +466,11 @@ func set_portals(portals: Array) -> void:
 		var p: Array = pt["p"]
 		var pos := Vector3(float(p[0]), 0.0, float(p[1]))
 		var yaw := NodeLayout.yaw_facing(pos, NodeLayout.ROOM_CENTER)
+		var portal_ok := _place(_props, NodeAssets.prop_path("portal"), pos, yaw)
+		_attach_cloud("portal", portal_ok, NodeAssets.prop_path("portal"))
 		_portals.append({
 			"to": str(pt["to"]), "open": bool(pt.get("open", true)),
-			"ok": _place(_props, NodeAssets.prop_path("portal"), pos, yaw),
+			"ok": portal_ok,
 			"locked": _place(_props, NodeAssets.prop_path("portal_locked"), pos, yaw),
 		})
 	_apply_portals()
