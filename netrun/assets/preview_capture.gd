@@ -41,8 +41,6 @@ func _room() -> Array:
 			m += 1
 	if not _noexit:  # выход без стен: свободная рамка (столбы-занавесы, перемычка, порог), проём пустой; в игре на её месте при LOCKDOWN встают env/lockdown_gate
 		items.append(["env/exit_frame", Vector3(1.0, 0, -4.0), 0.0, "BASE", 1.0])
-	if not _noedge:
-		items.append(["env/room_edge_16", Vector3(0.0, 0.0, 0.0), 0.0, "BASE", 1.0])  # кромка комнаты вместо стен: квадрат 16×16, края на ±8, как в клиенте (в игре — в ROOM_CENTER)
 	for x in [-4.0, 4.0]:
 		for z in [-4.0, 4.0]:
 			items.append(["env/pillar", Vector3(x, 0, z), 0.0, "BASE", 1.0])
@@ -167,7 +165,6 @@ var _walker_mir: Node3D
 var _walker_base := Vector3.ZERO
 var _crowd := false  # --crowd: в комнате девять аватаров (худший случай по ТЗ), для замера
 var _portal := false  # --portal: вернуть портал в западной стене (по умолчанию убран: яркая бирюзовая панель закрывает кадр изнутри комнаты)
-var _noedge := false  # --noedge: без кромки env/room_edge_16 (сравнение «с кромкой / без»)
 var _floor1 := true  # РЕШЕНИЕ ВЛАДЕЛЬЦА: пол комнаты — одна чёрная плита env/floor_slab_16 (по умолчанию); --tiles возвращает 12 модулей floor* (старый пол)
 var _movie := false
 var _demo := false  # --demo: длинный проход по комнате (вход → хранилище → портал → ICE → вверх), 34 с
@@ -229,8 +226,6 @@ func _ready() -> void:
 			_walk = true
 		if a.begins_with("--only="):
 			_only = Array(a.trim_prefix("--only=").split(","))
-		if a == "--noedge":
-			_noedge = true
 		if a == "--floor1":
 			_floor1 = true
 		if a == "--tiles":

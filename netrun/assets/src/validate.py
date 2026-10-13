@@ -67,26 +67,13 @@ def check(rep):
                 bad.append(f"{p['mesh']}: вуаль должна быть ролью shell_soft, а не {p['material']}")
             if p["verts"] != p["tris"] * 2:
                 bad.append(f"{p['mesh']}: вуаль — по одному квадрату (2 треугольника, 4 вершины) на грань, а тут {p['tris']} треуг. и {p['verts']} вершин")
-        # дымка горизонта (`*_mist`): роль shell_soft (шейдер haze.gdshader по имени меша), один слой, не больше 200 треугольников на всю ленту (overdraw на Pico 4 не мерили)
-        if str(p["mesh"]).endswith("_mist"):
-            if p["material"] != "shell_soft":
-                bad.append(f"{p['mesh']}: дымка должна быть ролью shell_soft, а не {p['material']}")
-            if p["tris"] > 200:
-                bad.append(f"{p['mesh']}: дымка {p['tris']} треугольников > 200")
         need = {"COLOR_0", "NORMAL"} | ({"TEXCOORD_1"} if p["material"] in ("points", "streaks") else set())
         if not need <= set(p["attrs"]):
             bad.append(f"{p['mesh']}: нет атрибутов {sorted(need - set(p['attrs']))}")
     lo, hi, size = info["bbox_min"], info["bbox_max"], info["size"]
-    edge = rep["origin"] == "edge"  # кромка комнаты (room_edge_<N>): габарит до 20 м (квадрат 16 м + дымка 1,8 м наружу)
     slab = rep["origin"] == "slab"  # пол комнаты одной плитой (env/floor_slab_16): габарит до 20 м
-    if not 0.01 <= max(size) <= (20.0 if edge or slab else 12):
+    if not 0.01 <= max(size) <= (20.0 if slab else 12):
         bad.append(f"странный размер {size} (1 единица = 1 м)")
-    # «edge» — центр квадрата на уровне пола: по высоте от −3 м (подвесные штрихи) до +0,55 м (низкая дымка до колена), по xz симметрично и не шире 10 м от центра
-    if edge:
-        if lo[1] < -3.0 or hi[1] > 0.55:
-            bad.append(f"origin «edge»: по высоте вне −3…+0,55 м: min.y={lo[1]:.2f}, max.y={hi[1]:.2f}")
-        if max(abs(lo[0]), abs(lo[2]), abs(hi[0]), abs(hi[2])) > 10.0 or abs(lo[0] + hi[0]) > 0.3 or abs(lo[2] + hi[2]) > 0.3:
-            bad.append(f"origin «edge»: габарит шире 10 м от центра или несимметричен: min={[round(v, 2) for v in lo]}, max={[round(v, 2) for v in hi]}")
     # «slab» — центр плиты на уровне пола: верх плиты и точки швов не выше 4 см над полом (выступов нет), штрихи вниз не глубже 1,2 м, по xz симметрично
     if slab:
         if hi[1] > 0.04 or lo[1] < -1.2:

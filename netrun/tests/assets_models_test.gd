@@ -203,46 +203,6 @@ func test_streaks_shader_far_gain_and_halo_are_off_by_default() -> void:
 	assert_bool(sh.code.contains("uniform float halo : hint_range(0.0, 1.0) = 0.0;")).override_failure_message("halo по умолчанию не 0").is_true()
 
 
-## Кромка комнаты (env/room_edge_<N>) вместо стен: цепочка точек, подвесные штрихи (`*_hang`) и низкая дымка (`*_mist`, один слой ≤ 200 треугольников).
-## room_edge_16 по размеру равен комнате NodeLayout (граница телепорта); размер 8 (комната просмотра) убран в B2.
-func test_room_edge_has_hang_streaks_and_knee_high_haze_within_budget() -> void:
-	var room := NodeLayout.ROOM_MAX - NodeLayout.ROOM_MIN
-	for spec in [[16, room.x, 500]]:
-		var asset := "room_edge_%d" % spec[0]
-		var root := _load("env", asset)
-		var hang: MeshInstance3D = null
-		var mist: MeshInstance3D = null
-		var others := 0
-		for mi in _meshes(root):
-			if String(mi.name).ends_with("_mist"):
-				mist = mi
-			elif String(mi.name).ends_with("_hang"):
-				hang = mi
-			else:
-				others += 1
-		assert_bool(hang != null and mist != null).override_failure_message("%s: нужны меши *_hang и *_mist" % asset).is_true()
-		assert_int(others).override_failure_message("%s: лишние меши (цепочки точек по кромке нет: владелец убрал)" % asset).is_equal(0)
-		var streaks := (hang.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size() / 4
-		assert_int(streaks).override_failure_message("%s: подвесных штрихов %d > %d" % [asset, streaks, spec[2]]).is_less_equal(spec[2])
-		assert_int(streaks).override_failure_message("%s: подвесных штрихов слишком мало (%d)" % [asset, streaks]).is_greater(int(spec[2] * 0.6))
-		var tris := (mist.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3
-		assert_int(tris).override_failure_message("%s: дымка %d треугольников > 200" % [asset, tris]).is_less_equal(200)
-		# квадрат кромки (подвесные штрихи) равен стороне комнаты; ни штрихи, ни дымка не выходят за 20 м, дымка не выше колена (0,5 м)
-		assert_float(hang.mesh.get_aabb().size.x).override_failure_message("%s: кромка не %g м по X" % [asset, spec[1]]).is_between(spec[1] - 0.1, spec[1] + 0.4)
-		assert_float(hang.mesh.get_aabb().size.z).is_between(spec[1] - 0.1, spec[1] + 0.4)
-		assert_float(hang.mesh.get_aabb().end.y).override_failure_message("%s: подвесные штрихи выше пола" % asset).is_less(0.05)
-		var box := _aabb(root)
-		assert_float(maxf(box.size.x, box.size.z)).override_failure_message("%s: габарит больше 20 м" % asset).is_less_equal(20.0)
-		assert_float(box.end.y).override_failure_message("%s: что-то выше 0,5 м (дымка до колена)" % asset).is_less_equal(0.5)
-		assert_float(box.position.y).override_failure_message("%s: штрихи глубже 3 м" % asset).is_greater_equal(-3.0)
-		AssetMaterials.apply(root, "BASE")
-		var hm := mist.get_surface_override_material(0) as ShaderMaterial
-		assert_bool(hm != null and hm.shader.resource_path.ends_with("haze.gdshader")).override_failure_message("%s: у дымки не haze.gdshader" % asset).is_true()
-		assert_float(float(hm.get_shader_parameter("haze_alpha"))).override_failure_message("%s: на дымку кромки не применены AssetMaterials.EDGE_MIST" % asset).is_equal(float(AssetMaterials.EDGE_MIST["haze_alpha"]))
-		var sm := hang.get_surface_override_material(0) as ShaderMaterial
-		assert_float(float(sm.get_shader_parameter("anchor"))).override_failure_message("%s: подвесные штрихи без anchor = 1" % asset).is_equal(1.0)
-
-
 ## Пол комнаты одним тайлом (env/floor_slab_16): одна тонкая плита на всю комнату, верх не выше пола, сторона = стороне room_edge_16, вуаль (`*_skirt`) по периметру.
 ## Подвесные штрихи и точки швов убраны в B2 (в окружении они не рисуются: streak_keep=0, point_keep=0; сетка клеток — текстурой в шейдере solid_dark).
 func test_floor_slab_is_single_thin_slab_with_veil_only() -> void:
@@ -281,6 +241,9 @@ func test_experimental_floor_models_are_gone() -> void:
 			"floor_clear", "floor_slab_8", "room_edge_8", "room_moat_8", "room_moat_16"]:
 		assert_bool(ResourceLoader.exists(ROOT + "env/%s.glb" % name)).override_failure_message("env/%s.glb должен быть удалён (B2)" % name).is_false()
 	assert_bool(ResourceLoader.exists("res://assets/shaders/glass.gdshader")).is_false()
+	for name in ["wall", "wall_b", "wall_c", "corner", "doorway", "doorway_b", "tunnel_ring", "far_field", "far_field_b", "far_field_c", "horizon_band", "portal_wall", "cable_straight", "cable_curve", "column_field", "room_edge_16"]:
+		assert_bool(ResourceLoader.exists(ROOT + "env/%s.glb" % name)).override_failure_message("env/%s.glb должен быть удалён (B2c/B2d)" % name).is_false()
+	assert_bool(ResourceLoader.exists("res://assets/shaders/haze.gdshader")).override_failure_message("haze.gdshader удалён вместе с дымкой (B2d)").is_false()
 
 
 func test_mesh_parts_are_cached_per_tier_and_mirror() -> void:
@@ -675,7 +638,7 @@ func test_asset_materials_plate_rim_knobs_reach_plates_and_skirts() -> void:
 
 
 func test_removed_knobs_are_not_knobs_and_shaders_have_no_noise_branches() -> void:
-	for k in ["fringe_on", "fringe_alpha", "fringe_px", "halo", "halo_width", "halo_far", "edge_glow", "skirt_top_fade", "plate_flat", "edge_soft", "dust", "edge_uneven", "edge_drift", "flat_light", "drift_static", "vertex_clip", "albedo_clip"]:
+	for k in ["fringe_on", "fringe_alpha", "fringe_px", "halo", "halo_width", "halo_far", "edge_glow", "skirt_top_fade", "plate_flat", "edge_soft", "dust", "edge_uneven", "edge_drift", "flat_light", "drift_static", "vertex_clip", "albedo_clip", "mist_alpha"]:
 		assert_bool(AssetMaterials.KNOBS.has(k)).override_failure_message("ручка «%s» удалена в B1 (docs/netrun-refactor-plan.md): значение вшито или объект ушёл" % k).is_false()
 	var uniforms: Array = []
 	for u in (AssetMaterials.SHADERS["solid_dark"] as Shader).get_shader_uniform_list():
@@ -751,34 +714,19 @@ func test_asset_materials_streak_knobs_reach_env_streaks_only() -> void:
 	AssetMaterials.reset_tuning()
 
 
-func test_asset_materials_mist_and_veil_knobs_scale_hide_and_freeze() -> void:
+func test_asset_materials_veil_knob_scales_and_hides_the_veil() -> void:
 	AssetMaterials.reset_tuning()
-	var dflt := _load("env", "room_edge_16")
-	AssetMaterials.apply(dflt, "BASE")
-	for mi in _meshes(dflt):
-		if String(mi.name).ends_with("_mist"):
-			assert_bool(mi.visible).override_failure_message("по умолчанию дымка кромки скрыта (mist_alpha=0, принято на очках)").is_false()
-	AssetMaterials.tune({"mist_alpha": 0.4, "veil_scale": 0.5})
-	var band := _load("env", "room_edge_16")
-	AssetMaterials.apply(band, "BASE")
-	assert_float(float(_mat_of(band, "edge_mist").get_shader_parameter("mist_scale"))).is_equal_approx(0.4, 0.001)
-	assert_float(float(_mat_of(band, "edge_mist").get_shader_parameter("anim"))).override_failure_message("показанная дымка статична").is_equal(0.0)
-	assert_float(float(_mat_of(band, "edge_mist").get_shader_parameter("noise_amount"))).is_equal(0.0)
+	AssetMaterials.tune({"veil_scale": 0.5})
 	var slab := _load("env", "floor_slab_16")
 	AssetMaterials.apply(slab, "BASE")
 	var skirt := _mat_of(slab, "floor_slab_skirt")
 	assert_float(float(skirt.get_shader_parameter("veil_scale"))).is_equal_approx(0.5, 0.001)
-	AssetMaterials.tune({"mist_alpha": 0.0, "veil_scale": 0.0})
+	AssetMaterials.tune({"veil_scale": 0.0})
 	var gone := _load("env", "floor_slab_16")
 	AssetMaterials.apply(gone, "BASE")
 	for mi in _meshes(gone):
 		if String(mi.name).ends_with("_skirt"):
 			assert_bool(mi.visible).override_failure_message("veil_scale=0: вуаль должна быть скрыта").is_false()
-	var gone_band := _load("env", "room_edge_16")
-	AssetMaterials.apply(gone_band, "BASE")
-	for mi in _meshes(gone_band):
-		if String(mi.name).ends_with("_mist"):
-			assert_bool(mi.visible).override_failure_message("mist_alpha=0: дымка должна быть скрыта").is_false()
 	AssetMaterials.reset_tuning()
 
 

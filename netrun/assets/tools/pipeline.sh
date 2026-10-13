@@ -2,7 +2,7 @@
 # Конвейер ассетов «Сети»: Mac → devbox (Blender → .glb → Godot) → Mac. Запускать с Mac из любого каталога.
 #   pipeline.sh build            — собрать ВСЕ ассеты из src/*.py на devbox (PYTHONHASHSEED=0), проверить, забрать .glb и отчёты, пересобрать MANIFEST.md;
 #       в конце src/head_points.py: без HeadLowPolygon.stl печатает «пропуск» (код 0), HEAD_STL=путь — перегенерирует netrun/client/head_points.gd
-#   pipeline.sh shots [каталог] [флаги сцены] [--grid] — снять кадры комнаты из Godot (по умолчанию /tmp/assets-shots); флаги: --only=a,b --lattice=0.05 --crowd --portal (вернуть портал у западной стены, по умолчанию нет) --noedge (убрать кромку комнаты env/room_edge_16, по умолчанию она есть) --tiles (вернуть пол из модулей floor*, по умолчанию одна плита env/floor_slab_16) --bg=r,g,b (цвет фона-пустоты, по умолчанию AssetMaterials.VOID_BG; старый чёрный — --bg=0.004,0.008,0.016) --noexit (убрать свободную рамку выхода env/exit_frame в точке выхода; по умолчанию она есть) --nobeacon (выключить узел Beacon у шардов и токена, как в руке)
+#   pipeline.sh shots [каталог] [флаги сцены] [--grid] — снять кадры комнаты из Godot (по умолчанию /tmp/assets-shots); флаги: --only=a,b --lattice=0.05 --crowd --portal (вернуть портал у западной стены, по умолчанию нет) --tiles (вернуть пол из модулей floor*, по умолчанию одна плита env/floor_slab_16) --bg=r,g,b (цвет фона-пустоты, по умолчанию AssetMaterials.VOID_BG; старый чёрный — --bg=0.004,0.008,0.016) --noexit (убрать свободную рамку выхода env/exit_frame в точке выхода; по умолчанию она есть) --nobeacon (выключить узел Beacon у шардов и токена, как в руке)
 #       --grid — самому pipeline.sh (в сцену не уходит): после съёмки склеить кадры на devbox в ОДНУ сетку ≤ 1024 px по ширине с подписями
 #                имён кадров и забрать на Mac один PNG: <каталог>/grid.png (отдельные кадры лежат там же)
 #   pipeline.sh movie [файл.mp4] [флаги сцены] — записать видео комнаты (7 с) и сконвертировать (нужен ffmpeg на Mac); флаги: --walk --static --cam=…
@@ -167,7 +167,7 @@ python3 src/validate.py --root out'
     ssh "$HOST" "python3 $tmp/framestats.py $refargs $tmp/in; rm -rf $tmp" ;;
   overdraw)  # кадры по слоям (каждый запуск shots берёт блокировку сам), счёт — на devbox
     frames=${ODFRAMES:-room_entrance,room_inside,room_overview}
-    cats=${ODCATS:-all streaks points glass skirt haze shell_soft beacon_halo}
+    cats=${ODCATS:-all streaks points skirt shell_soft beacon_halo}
     loc=$(mktemp -d); tmp=/tmp/assets-od-$$; ssh "$HOST" "rm -rf $tmp; mkdir -p $tmp"
     for c in $cats; do
       "$SELF" shots "$loc/$c" --tier=BASE --only=$frames --overdraw=$c ${ODEXTRA:-} >/dev/null 2>&1 || true
