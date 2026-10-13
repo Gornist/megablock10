@@ -213,8 +213,14 @@ cmd_run() {
 # только под бронь `pico` и гасим сразу после. KEYCODE_SLEEP на Pico не работает, работает KEYCODE_POWER — но это ПЕРЕКЛЮЧАТЕЛЬ:
 # на спящих очках он будит. Поэтому состояние читаем всегда перед нажатием и проверяем после; повтор — один раз и только
 # после нового чтения состояния.
-PICO=PA8110MGH4261073G
+PICO=${PICO:-PA8110MGH4261073G}
 ADB=${ADB:-$HOME/android-sdk/platform-tools/adb}
+# Защита от тестов, трогающих живые очки (13.10 ~17:27 тест «отказ по чужой брони» запустил серию на реальных очках):
+# тест ставит BOX_TEST=1 — тогда рабочий ~/box (брони, журнал) и настоящий adb запрещены, нужны подложные BOX и ADB.
+if [ "${BOX_TEST:-}" = 1 ]; then
+  case ${BOX%/} in "$HOME/box") err "BOX_TEST=1: BOX — рабочий ~/box; тест не должен писать в живые брони и журнал (задайте BOX=/tmp/…)"; exit 3;; esac
+  case $ADB in "$HOME/android-sdk/platform-tools/adb"|adb) err "BOX_TEST=1: ADB — настоящий; подложите свой (ADB=/tmp/…/adb)"; exit 3;; esac
+fi
 PICO_GRACE=${PICO_GRACE:-180}  # секунд без брони, после которых guard гасит очки
 pico_state() { # Awake | Asleep | Dozing | ? ; второй токен — Display Power: ON|OFF|?
   local raw w d
