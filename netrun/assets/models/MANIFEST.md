@@ -41,7 +41,6 @@
 | `models/env/platform.glb` | 28 / 300 | 25 / 40 | 39 / 60 | 0 | 3 | 1.9203 × 0.322 × 1.9 | points, solid_dark, streaks | — | floor | ок |
 | `models/props/portal.glb` | 0 / 2000 | 358 / 400 | 82 / 100 | 0 | 2 | 3.028 × 3.014 × 0.1571 | points, streaks | — | floor | ок |
 | `models/props/portal_locked.glb` | 0 / 2000 | 157 / 260 | 27 / 40 | 0 | 2 | 3.0273 × 3.0139 × 0.1508 | points, streaks | — | floor | ок |
-| `models/env/room_edge_16.glb` | 192 / 200 | 0 / 0 | 452 / 500 | 1 | 2 | 19.6 × 3.0135 × 19.6 | shell_soft, streaks | — | edge | ок |
 | `models/avatar/runner.glb` | 0 / 300 | 140 / 160 | 318 / 360 | 0 | 2 | 0.6575 × 1.4629 × 0.6566 | points, streaks | — | feet | ок |
 | `models/avatar/runner_b.glb` | 0 / 300 | 140 / 160 | 318 / 360 | 0 | 2 | 0.5891 × 1.4687 × 0.6358 | points, streaks | — | feet | ок |
 | `models/avatar/runner_c.glb` | 0 / 300 | 140 / 160 | 318 / 360 | 0 | 2 | 0.6494 × 1.4711 × 0.6036 | points, streaks | — | feet | ок |

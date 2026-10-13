@@ -17,8 +17,6 @@ const SHADERS := {
 const SKIRT_SHADER := preload("res://assets/shaders/skirt.gdshader")
 const CLOUD_SHADER_2S := preload("res://assets/shaders/cloud_dark_2s.gdshader")  # то же, cull_disabled (ручка cloud_two_sided)
 const CLOUD_SHADER := preload("res://assets/shaders/cloud_dark.gdshader")  # «облако без основы» (прототип, ручка cloud)
-## Дымка кромки комнаты (меш `edge_mist` в env/room_edge_16; кольцо горизонта horizon_band удалено в B2c): тоже роль shell_soft, шейдер по имени меша.
-const HAZE_SHADER := preload("res://assets/shaders/haze.gdshader")
 ## Ореол-«капля» маяка предмета (меш `beacon_halo` в узле Beacon у шарда и токена): роль shell_soft, шейдер по имени меша.
 const BEACON_HALO_SHADER := preload("res://assets/shaders/beacon_halo.gdshader")
 ## Луч маяка (меш `beacon_beam`): штрихи (streaks) с ореолом, но спокойнее обычных — почти без дыхания и качания, гладкий (без бусин), ярче, чтобы читаться с 3 м.
@@ -129,8 +127,6 @@ const KNOBS := {
 	"streak_len": 1.0,       # длина штрихов окружения (0,6 — короче)
 	"streak_px_fade": 0.0,   # 0…1: штрих уже ~2 px на экране тускнеет, а не «ползёт лесенкой» (1 — полная мера)
 	"point_keep": 0.0,       # доля точек ОКРУЖЕНИЯ (tier ≠ ""): 0 — убрать все (решение владельца: вдали точки сильно мерцают); существа и аватары не трогаем
-	# Дымка горизонта и края комнаты: скрыта (на очках приняли без неё, «лава-лампа» неуместна); меши уйдут из моделей в B2.
-	"mist_alpha": 0.0,       # множитель альфы дымки горизонта и края комнаты (`*_mist`); 0 — меши скрываются совсем
 	"veil_scale": 1.0,       # множитель альфы вуали плит (`*_skirt`); 0 — меши скрываются совсем; > 1 — усилить (до 4): очки П5 одобрили вуаль у плит потолка
 	# Завеса ВВЕРХ от верхней кромки плит пола и дальнего пола (квады в том же меше `*_skirt`, env._slab_rise). Включена по умолчанию (V10); клин у края комнаты — отдельная задача:
 	"tile_glow": 3.0,        # множитель альфы завесы вверх относительно вуали (0 — выкл.; 1 — как вуаль потолка; 2–4 — заметнее); вуаль вниз не затрагивает
@@ -213,12 +209,6 @@ static func _cloud_scope_ok(root: Node) -> bool:
 		return float(_k("cloud_ceiling")) > 0.5
 	return true
 
-## Параметры haze.gdshader для `edge_mist` (env/room_edge_<N>): низкая дымка вдоль границы комнаты, не туман горизонта.
-const EDGE_MIST := {"haze_alpha": 0.6, "glow": 1.6, "shape": 1.0, "noise_amount": 0.35, "stripe_amount": 0.12, "stripe_count": 160.0}
-
-## Яркость подвесных штрихов кромки комнаты (`edge_streaks_hang`): у штрихов окружения glow 1,6.
-const EDGE_STREAK_GLOW := 3.4  # было 2,6: в клиентской сцене граница комнаты читалась слабо
-
 ## Цвета тиров окружения (BASE/HARD/NIGHTMARE): голубая гамма, красный в тирах не участвует.
 const TIER_TINT := {
 	"BASE": Color("18e6ff"),
@@ -263,22 +253,8 @@ static func apply(root: Node, tier: String = "") -> void:
 				continue
 			var m := ShaderMaterial.new()
 			m.shader = SHADERS[src.resource_name]
-			if String(mi.name).ends_with("_skirt"):  # вуаль плит и дымка горизонта: роль shell_soft, но свой шейдер по имени меша
+			if String(mi.name).ends_with("_skirt"):  # вуаль плит: роль shell_soft, но свой шейдер по имени меша
 				m.shader = SKIRT_SHADER
-			elif String(mi.name).ends_with("_mist"):
-				m.shader = HAZE_SHADER
-				if root.scene_file_path.contains("/room_edge_"):  # низкая дымка границы комнаты: профиль по высоте круче, штрихи по азимуту реже и слабее
-					for k in EDGE_MIST:
-						m.set_shader_parameter(k, EDGE_MIST[k])
-			if String(mi.name).ends_with("_mist"):  # дымка горизонта и края комнаты: множитель, скрыть совсем (0 по умолчанию); если показана — ровная и статичная (принято на очках)
-				if float(_k("mist_alpha")) <= 0.0:
-					mi.visible = false
-				elif float(_k("mist_alpha")) < 1.0:
-					m.set_shader_parameter("mist_scale", float(_k("mist_alpha")))
-				m.set_shader_parameter("anim", 0.0)
-				m.set_shader_parameter("noise_amount", 0.0)
-				m.set_shader_parameter("stripe_amount", 0.0)
-			elif String(mi.name).ends_with("_skirt"):
 				# меш с завесой вверх (у пола: второй UV-слой с высотой, env._slab_rise) прячем целиком только если выключены обе вуали; иначе гасим квады в шейдере
 				var am := mi.mesh as ArrayMesh
 				var has_rise: bool = am != null and (am.surface_get_format(s) & Mesh.ARRAY_FORMAT_TEX_UV2) != 0
@@ -289,8 +265,6 @@ static func apply(root: Node, tier: String = "") -> void:
 					mi.visible = false
 				elif float(_k("veil_scale")) != 1.0:
 					m.set_shader_parameter("veil_scale", float(_k("veil_scale")))
-			if String(mi.name) == "edge_streaks_hang":  # подвесные штрихи кромки комнаты (точек по периметру нет): ярче штрихов плит, иначе край не читается
-				m.set_shader_parameter("glow", EDGE_STREAK_GLOW)
 			if String(mi.name) == "pillar_block" or String(mi.name) == "pillar_base" or String(mi.name).begins_with("exit_bar"):  # укрытие (корпус и рамка по границе клетки) и брусья рамки выхода: рёбра ровные и яркие, иначе в очках не видно, где оно (у тайлов пола свет рваный намеренно)
 				for k in PILLAR_EDGE:
 					m.set_shader_parameter(k, PILLAR_EDGE[k])
