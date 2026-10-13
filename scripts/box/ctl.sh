@@ -256,6 +256,65 @@ pico_sleep_now() { # → 0 очки Asleep/OFF (нажимаем POWER толь�
   return 1
 }
 
+PICO_UI_PY=$(dirname "$(readlink -f "$0")")/pico_ui.py
+pico_fg() { # pico_fg → «пакет/активити» окна в фокусе или в фокусе приложения (на системных диалогах mCurrentFocus=null)
+  timeout 10 "$ADB" -s "$PICO" shell 'dumpsys window | grep -E "mCurrentFocus|mFocusedApp"' </dev/null 2>/dev/null | tr -d '\r' \
+    | grep -o -E '[a-z][A-Za-z0-9_.]*/[A-Za-z0-9_.$]+' | head -1
+}
+pico_uidump() { # XML экрана на stdout; пусто — uiautomator экран не отдал (оверлеи он не видит)
+  timeout 20 "$ADB" -s "$PICO" shell uiautomator dump /sdcard/box-ui.xml </dev/null >/dev/null 2>&1
+  timeout 15 "$ADB" -s "$PICO" exec-out cat /sdcard/box-ui.xml </dev/null 2>/dev/null
+}
+pico_shot() { # pico_shot → путь к PNG (screencap) или пусто
+  local f
+  mkdir -p "$BOX/shots"; f=$BOX/shots/pico-$(date +%m%d-%H%M%S).png
+  timeout 20 "$ADB" -s "$PICO" exec-out screencap -p </dev/null >"$f" 2>/dev/null
+  if [ -s "$f" ]; then ls -1t "$BOX"/shots/pico-*.png 2>/dev/null | tail -n +21 | xargs -r rm -f; echo "$f"; else rm -f "$f"; fi
+}
+pico_ready() { # pico_ready <владелец>: бронь → разбудить → снять известные безопасные окна → проверить, что системных окон нет
+  local own=$1 lo st v kind rid xy btn title fg shot texts n_tap=0 why
+  lo=$(pico_lease_owner)
+  if [ "$lo" != "$own" ]; then
+    echo "pico ready: нет брони pico у $own (сейчас: ${lo:-никого}) — сначала pico wake $own <мин>"; return 1
+  fi
+  st=$(pico_state)
+  case ${st%% *} in
+    Awake) ;;
+    Asleep|Dozing)
+      pico_power
+      pico_wait Awake 8 || { echo "pico ready: очки не проснулись за 8 с ($(pico_state)); бронь оставлена"; return 1; };;
+    *) echo "pico ready: очки не отвечают ($st); бронь оставлена"; return 1;;
+  esac
+  for _ in 1 2 3 4; do
+    sleep 2  # интерфейс после пробуждения/нажатия оседает не мгновенно
+    v=$(pico_uidump | python3 "$PICO_UI_PY" 2>/dev/null)
+    kind=${v%%$'\t'*}
+    if [ "$kind" != KNOWN ]; then texts=${v#*$'\t'}; break; fi
+    IFS=$'\t' read -r _ rid xy btn title <<<"$v"
+    if [ ! -f "$BOX/pico-ready.taps" ]; then
+      why="известное окно «${title:-$rid}», кнопка «$btn» — нажатия выключены (pico taps on — решение владельца)"
+      jlog pico-ready-blocked owner "$own" window "$rid" button "$btn"
+      shot=$(pico_shot); pico_sleep_now >/dev/null 2>&1
+      echo "pico ready: НЕ ГОТОВО — $why; PNG: ${shot:-нет}; очки погашены, бронь оставлена"; return 1
+    fi
+    n_tap=$((n_tap + 1))
+    # shellcheck disable=SC2086  # xy = «x y» из дампа, разбиение намеренное
+    timeout 10 "$ADB" -s "$PICO" shell input tap $xy </dev/null >/dev/null 2>&1
+    jlog pico-ready-tap owner "$own" window "$rid" title "$title" button "$btn" at "$xy"
+    texts="(после нажатия «$btn»)"
+  done
+  fg=$(pico_fg)
+  case ${fg:-?} in
+    com.picovr.systemext/*|*Dialog*|*Alert*|'?')
+      shot=$(pico_shot); pico_sleep_now >/dev/null 2>&1
+      jlog pico-ready-fail owner "$own" fg "${fg:-?}" texts "$texts"
+      echo "pico ready: НЕ ГОТОВО — на переднем плане системное окно ${fg:-неизвестно}; тексты: ${texts:-—}; PNG: ${shot:-нет}; очки погашены, бронь оставлена"
+      return 1;;
+  esac
+  jlog pico-ready-ok owner "$own" fg "$fg" taps "$n_tap"
+  echo "pico ready: ГОТОВО — на переднем плане $fg${n_tap:+, нажатий белого списка: $n_tap}"
+}
+
 cmd_pico() {
   local act=${1:-status} own st lo min note
   [ $# -gt 0 ] && shift
@@ -316,7 +375,19 @@ cmd_pico() {
           jlog pico-guard-fail state "$(pico_state)"; echo "guard: очки не погасли" >&2; return 1
         fi
       fi ;;
-    *) err "pico status | wake <владелец> <мин> [заметка] | sleep <владелец> [--force] | guard"; return 2;;
+    taps)
+      # Выключатель нажатий `pico ready`: по умолчанию выключено — нажимать кнопки в системных окнах очков владельца
+      # может только он сам (ТЗ, «Нельзя»); включает/выключает его слово через `box.sh pico taps on|off`.
+      case ${1:-status} in
+        on) : >"$BOX/pico-ready.taps"; jlog pico-taps on 1; echo "pico ready: нажатия белого списка ВКЛЮЧЕНЫ";;
+        off) rm -f "$BOX/pico-ready.taps"; jlog pico-taps off 1; echo "pico ready: нажатия выключены (только чтение и вердикт)";;
+        status) [ -f "$BOX/pico-ready.taps" ] && echo "pico ready: нажатия включены" || echo "pico ready: нажатия выключены";;
+        *) err "pico taps on|off|status"; return 2;;
+      esac ;;
+    ready)
+      [ $# -ge 1 ] || { err "использование: pico ready <владелец брони>"; return 2; }
+      own=$1; pico_ready "$own"; return $? ;;
+    *) err "pico status | wake <владелец> <мин> [заметка] | sleep <владелец> [--force] | guard | ready <владелец> | taps on|off|status"; return 2;;
   esac
 }
 
