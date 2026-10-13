@@ -84,6 +84,11 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 		add_child(bench)
 		bench.setup(scene.rig, render_cfg.bench)
 		bench.finished.connect(func(r: Dictionary): log_file.log("bench", r))
+	if render_cfg.volume_budget_ms > 0.0:   # регулятор плотности облаков по GPU-времени кадра: [render] volume_budget_ms
+		var vb := VolumeBudget.new()
+		vb.limit_ms = render_cfg.volume_budget_ms
+		add_child(vb)
+		vb.changed.connect(func(d: float): log_file.log("volume.budget", {"density": snappedf(d, 0.01), "limit_ms": vb.limit_ms}))
 	var probe_spec := LoadProbe.parse(render_cfg.probe)   # синтетическая нагрузка: [render] probe = "quads=N,px=P,mode=…"
 	if probe_spec["sweep"]:   # probe = "sweep": серия вариантов за один запуск, итог `[probe] ИТОГ`
 		var sweep := ProbeSweep.new()
