@@ -22,6 +22,7 @@
 | Пол комнаты одной плитой, рамка выхода | `src/floor_slab.py` (`floor_slab_16`), `src/exit_frame.py` |
 | Ворота LOCKDOWN, платформа | `src/envmore.py` (`lockdown_gate*`, `platform`) |
 | Предметы узла (хранилище, шард, портал, панель, площадка) | `src/props.py`, `src/nodeprops.py` (кресло, датчик, мёртвая дека) |
+| Облако частиц (Б): `.points` рядом с моделями | `src/points.py` (чистый Python, после сборки `.glb`; рецепты `RECIPES`, проверка встроена в `validate.py`) |
 | Существа, аватар, дека | `src/ice.py`, `src/avatar.py`, `src/deck.py` |
 | Шейдеры Godot | `shaders/{solid_dark,skirt,cloud_dark,cloud_dark_2s,streaks,points,shell_soft,beacon_halo}.gdshader` + `cloud_dark.gdshaderinc`, `volume_cloud.gdshaderinc`; руки/тело — `hand_particles`, `body_particles`, `particles_body.gdshaderinc`; `glow_edge.gdshader` устарел (валидатор не пропускает) |
 | Подмена материалов, ручки `[assets]`, палитра | `asset_materials.gd` (`AssetMaterials`) |
@@ -384,10 +385,13 @@ GPU 2,5–2,9 мс, 113–160 вызовов отрисовки, 50–89 тыс.
 ## 13. Не сделано, не проверено, открытое
 
 **Вид (13.10.2026):**
-- **Облако (Б) для портала, шарда, хранилища, выхода** (объёмные предметы): клиент уже умеет (`VolumeCloud`, `VolumeRegistry`, регулятор `volume_budget_ms`, G3/G7), но файлов `.points`
-  в `models/` нет, пока не выбран способ (docs/netrun-refactor-plan.md §4.1: 0 грани-облако, 1 общий кусок + `MultiMesh`, 2 LOD, 3 импостор). Генератор `src/points.py` (формат —
-  float32 LE, 7 чисел на точку `[x, y, z, полуразмер, фаза, вид, вес]`, перемешано, LOD = префикс, размер кратен 28, путь рядом с моделью `.glb` → `.points`) пишет Blender после
-  решения по замеру Godot. Бюджет частиц: хранилище ≈ 1,5k, выход ≈ 1k, портал ≈ 0,8k, шард ≈ 0,3k.
+- **Облако (Б): файлы `.points` есть** (13.10, генератор `src/points.py`; серия 2 на очках: vol-entry 8,96 / vol-wedge 9,56 мс, +0,44 к base-wedge, регулятор `volume_budget_ms=10.5` не
+  понадобился). Формат — float32 LE, 7 чисел на точку `[x, y, z, полуразмер, фаза, вид, вес]`, перемешано (LOD = префикс), размер кратен 28, путь рядом с моделью (`.glb` → `.points`).
+  Модули и бюджеты: `props/vault` 1500, `props/portal` 800, `props/shard` и `props/shard_encrypted` 300 (`RECIPES` в `points.py`); выход — нет: клиент `exit_frame` не ставит (выход — `platform`
+  + `lockdown_gate`), рецепт добавляется строкой, когда Godot назовёт модель. Правило по мешам: штрих → точки вдоль отрезка, точка → одна частица, поверхность → площадь с весом из цвета
+  вершин, `dust` → бокс (клетка хранилища); `beacon_*` и `*_skirt` не берутся (ореол 0,5 м и вуаль не объём; запасной `VolumeSampler` клиента сэмплирует их по площади). Конвейер: `points.py`
+  идёт в `pipeline.sh build` после сборки `.glb`, `validate.py` проверяет размер, бюджет, NaN, габарит, поля; строка в `MANIFEST.md`.
+  **Не в APK:** `export_presets.cfg` (зона Godot) включает только `data/*`; чтобы `.points` попали в пакет, нужен `include_filter` с `assets/models/*/*.points`.
 - **`cloud_two_sided`** (задние грани сквозь дыры передней, `cloud_dark_2s.gdshader`): ручка есть, умолчание 0; решение — по замеру на очках (оценка +≈0,5 мс на MSAA 2×).
 - **Bench MSAA 2× с `cloud=1` по умолчанию** на очках (≤ 9,72 мс + добавка C3a 0,26 мс) — серия Godot; пока не снят, вид B3 принят по замеру C3a.
 - **Ворота `lockdown_gate`** и дека `deck/` не облако: красная кромка — сигнал LOCKDOWN, у деки своя палитра; замера облака на них не было.
@@ -430,8 +434,8 @@ GPU 2,5–2,9 мс, 113–160 вызовов отрисовки, 50–89 тыс.
   `tint_amount` шейдера. Решение «чем отличать девять нетраннеров» остаётся открытым (стиль требует красного для людей).
 - **Отражение.** Зеркальная копия (`scale.y = −1`, яркость 0,18) — у ICE, аватаров, хранилищ, порталов, датчика и кресла (лежит внутри `Rig`, если он есть), у ворот, колонн, укрытий и
   платформ — зеркальный `MultiMesh` (`REFLECTED`). У шарда отражения нет: он парит над полом.
-- **Облако (Б).** `NodeView._attach_cloud` вешает `VolumeCloud` на хранилище и портал (`VolumeRegistry.spawn`), если рядом с `.glb` лежит `.points`; сейчас таких файлов нет — путь
-  простаивает (§13). Бюджет частиц регулирует `[render] volume_budget_ms` (G7).
+- **Облако (Б).** `NodeView._attach_cloud` вешает `VolumeCloud` на хранилище и портал (`VolumeRegistry.spawn`) по `[render] volumetric`; точки — из `.points` рядом с `.glb` (§13), нет файла —
+  запасной `VolumeSampler` по площади всех мешей. Бюджет частиц регулирует `[render] volume_budget_ms` (G7).
 - **Не используется в клиенте:** `env/exit_frame`, `deck/wrist_deck`, `deck/daemon_*` (дека на руке — `Sprite3D` с `SubViewport`), `ice/black_ice_hunt`, `ice/black_ice_catch`,
   `props/vault_open`, `props/vault_closed` (совместимость), `env/lockdown_gate_open` (ворота показываются только при LOCKDOWN: `set_exit_locked` → `visible`).
 - **Проверки:** `netrun/tests/assets_models_test.gd` и `node_scene_test.gd` (gdUnit4), `assets/src/validate.py` (шаг CI). Замер на Pico 4 — серия Godot (§9).

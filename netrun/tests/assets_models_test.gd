@@ -876,3 +876,50 @@ func test_rim_min_px_knob_reaches_plates_only() -> void:
 	AssetMaterials.apply(cover, "BASE")
 	assert_bool(_mat_of(cover, "pillar_block").get_shader_parameter("rim_min_px") == null).override_failure_message("rim_min_px попал на колонну").is_true()
 	AssetMaterials.reset_tuning()
+
+
+# ---------------------------------------------------------------- облако частиц (Б): файлы `.points` (src/points.py)
+
+## Бюджет частиц по модулям (план рефактора §4.1) и полуразмер, м. Совпадает с RECIPES в src/points.py: правите там — правьте здесь.
+const POINTS_BUDGET := {"vault": [1500, 0.012], "portal": [800, 0.016], "shard": [300, 0.004], "shard_encrypted": [300, 0.004]}
+
+
+func test_points_files_load_with_cloud_parser_and_fit_their_models() -> void:
+	for m in POINTS_BUDGET:
+		var path: String = ROOT + "props/" + m + ".points"
+		assert_bool(FileAccess.file_exists(path)).override_failure_message("нет " + path + " (src/points.py, pipeline.sh build)").is_true()
+		var bytes := FileAccess.get_file_as_bytes(path)
+		assert_int(bytes.size() % VolumeCloud.POINT_BYTES).override_failure_message("%s: размер %d не кратен %d" % [m, bytes.size(), VolumeCloud.POINT_BYTES]).is_equal(0)
+		var pts := VolumeCloud.load_file(path)
+		var n := VolumeCloud.points_in(pts)
+		assert_int(n).override_failure_message("%s: пусто" % m).is_greater(0)
+		assert_int(n).override_failure_message("%s: %d точек > бюджета %d" % [m, n, POINTS_BUDGET[m][0]]).is_less_equal(POINTS_BUDGET[m][0])
+		var model := _load("props", m)
+		var box := _aabb(model).grow(float(POINTS_BUDGET[m][1]) + 0.05)
+		var out_of_box := 0
+		for i in n:
+			var o := i * VolumeCloud.POINT_FLOATS
+			var p := Vector3(pts[o], pts[o + 1], pts[o + 2])
+			if not box.has_point(p) or not is_finite(p.x + p.y + p.z):
+				out_of_box += 1
+			var half := pts[o + 3]
+			assert_bool(half > 0.0 and half <= 0.05 and pts[o + 4] >= 0.0 and pts[o + 4] <= 1.0 and (pts[o + 5] == 0.0 or pts[o + 5] == 1.0) and pts[o + 6] >= 0.0 and pts[o + 6] <= 1.0) \
+				.override_failure_message("%s: точка %d: поля вне диапазона" % [m, i]).is_true()
+		assert_int(out_of_box).override_failure_message("%s: %d точек вне габарита модели" % [m, out_of_box]).is_equal(0)
+
+
+func test_points_lod_prefix_is_a_uniform_sample() -> void:
+	# ЛОД = префикс массива (VolumeCloud.LOD_STEPS): середина высоты первой восьмой части не должна уходить от всей выборки
+	for m in POINTS_BUDGET:
+		var pts := VolumeCloud.load_file(ROOT + "props/" + m + ".points")
+		var n := VolumeCloud.points_in(pts)
+		var k := maxi(n / 8, 1)
+		var all_y := 0.0
+		var pre_y := 0.0
+		for i in n:
+			var y := pts[i * VolumeCloud.POINT_FLOATS + 1]
+			all_y += y
+			if i < k:
+				pre_y += y
+		var height := _aabb(_load("props", m)).size.y
+		assert_float(absf(pre_y / k - all_y / n)).override_failure_message("%s: префикс 1/8 сдвинут по высоте (%.3f против %.3f)" % [m, pre_y / k, all_y / n]).is_less(0.15 * height)
