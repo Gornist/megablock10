@@ -10,7 +10,12 @@ Description=adb-сервер devbox (общий для всех сессий)
 Type=simple
 ExecStart=%h/android-sdk/platform-tools/adb -L tcp:localhost:5037 server nodaemon
 Restart=always
-RestartSec=3
+# Сервер убивают снаружи (`adb kill-server` из чужих скриптов; 13.10 — каждый `godot --headless --import`): вернуться надо быстрее,
+# чем чей-то `adb` автозапустит свой сервер в ssh-сеансе и займёт 5037. Пока порт занят чужим, служба падает и пробует снова —
+# без лимита попыток и без дампов ядра (13.10 за 10 минут набежало 104 перезапуска с core dump).
+RestartSec=2
+StartLimitIntervalSec=0
+LimitCORE=0
 
 [Install]
 WantedBy=default.target

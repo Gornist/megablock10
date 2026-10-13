@@ -6,6 +6,10 @@
 #                                       main); user-служба box-adb и автозапуск сеанса берутся оттуда. Ветка должна быть на origin.
 #   scripts/box.sh adb [status|adopt [--force]] — adb-сервер: чей он; adopt переводит чужой сервер под службу box-adb (рвёт
 #                                       reverse/forward — поэтому проверяет, что их нет и что нет идущих команд adb, Gradle, эмуляторов)
+#   scripts/box.sh lease <ресурс> <владелец> <мин> [заметка] | release <ресурс> <владелец> [--force] | leases | check <ресурс> <владелец>
+#                                     — брони устройств/портов/стенда (1–480 мин, истекают сами; серийник = rcpad|xcover7|pico)
+#   scripts/box.sh run <gradle|gpu|light> <владелец> [--wait сек] [--name имя] -- команда…  — выполнить НА devbox в очереди класса
+#   scripts/box.sh queue [класс]      — кто держит и кто ждёт (в т. ч. замки dbx.sh, gdUnit, display); подробности — scripts/box/ctl.sh
 #   scripts/box.sh boot-check         — прогнать проверку после загрузки вручную (идемпотентно: ничего не убивает и не перезапускает,
 #                                       что уже работает); итог — ~/box/boot.report и строка в статусе
 #   scripts/box.sh journal [N]        — последние N (20) строк журнала действий ~/box/journal.jsonl
@@ -15,7 +19,14 @@ HOST=devbox
 TS_IP=100.80.115.46
 LAN_IP=192.168.1.141
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-SSH=(ssh -o ConnectTimeout=8 -o BatchMode=yes "$HOST")
+if [ "$(hostname -s 2>/dev/null)" = "$HOST" ]; then
+  # Запущен на самом devbox (из клона ~/box/repo, из ssh-сеанса сессии): ходить по ssh к себе незачем, да и не выйдет —
+  # нет known_hosts («Host key verification failed», 13.10). Те же команды, локально; stdin сохраняется.
+  onbox() { bash -c "$*"; }
+  SSH=(onbox)
+else
+  SSH=(ssh -o ConnectTimeout=8 -o BatchMode=yes "$HOST")
+fi
 
 unreachable() { # ssh не прошёл: отличить «Tailscale лежит» от «машина выключена»
   local ts=нет lan=нет
@@ -40,6 +51,9 @@ case $cmd in
 
   sync)
     REF=${1:-main}
+    if [ "${SSH[0]}" = onbox ] && [ "$ROOT" = "$HOME/box/repo" ]; then
+      echo "sync: из самого клона нельзя — он переписал бы скрипт на ходу; с Mac: scripts/box.sh sync [ветка]"; exit 1
+    fi
     URL=$(git -C "$ROOT" remote get-url origin 2>/dev/null) || { echo "sync: у этой копии нет origin"; exit 1; }
     "${SSH[@]}" bash -s -- "$URL" "$REF" <<'REMOTE'
 set -u
@@ -155,13 +169,22 @@ REMOTE
     [ "$rc" -eq 255 ] && { unreachable; exit 1; }
     exit "$rc" ;;
 
+  lease|release|leases|check|run|queue)
+    # Логика — scripts/box/ctl.sh из клона ~/box/repo: одна версия на всех, а не та, что у вызвавшего в worktree.
+    args=$cmd
+    for a in "$@"; do args="$args $(printf '%q' "$a")"; done
+    "${SSH[@]}" "[ -f \"\$HOME/box/repo/scripts/box/ctl.sh\" ] || { echo 'нет клона ~/box/repo: scripts/box.sh sync' >&2; exit 4; }; bash \"\$HOME/box/repo/scripts/box/ctl.sh\" $args"
+    rc=$?
+    [ "$rc" -eq 255 ] && { unreachable; exit 1; }
+    exit "$rc" ;;
+
   journal)
     n=${1:-20}
     case $n in ''|*[!0-9]*) echo "использование: box.sh journal [N]"; exit 2;; esac
     "${SSH[@]}" "tail -n $n \"\$HOME/box/journal.jsonl\" 2>&1" ;;
 
   *)
-    sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
     [ -z "$cmd" ] && exit 2
     exit 2 ;;
 esac
