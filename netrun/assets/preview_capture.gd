@@ -8,17 +8,15 @@ const OLD_BG := Color(0.004, 0.008, 0.016)  # прежний почти чёрн
 
 ## Комната 6×6 м из модулей 2×2 м: пол 3×3, стены по периметру, колонны в углах, вход с юга (z=+3), выход на север (z=-3),
 ## в центре шард, у выхода ICE. Предмет: [путь, позиция, поворот Y (°), тир, масштаб].
-const REFLECT := ["props/vault", "props/hack_panel", "props/vault_closed","props/vault_open", "props/portal", "props/portal_locked", "env/wall", "env/wall_b", "env/wall_c", "env/portal_wall", "env/far_field", "env/far_field_b", "env/far_field_c", "env/doorway", "env/doorway_b", "env/exit_frame", "env/pillar", "ice/soft_ice", "avatar/runner", "avatar/runner_b", "avatar/runner_c"]
+const REFLECT := ["props/vault", "props/hack_panel", "props/vault_closed","props/vault_open", "props/portal", "props/portal_locked", "env/exit_frame", "env/pillar", "ice/soft_ice", "avatar/runner", "avatar/runner_b", "avatar/runner_c"]
 const CEILING_H := 5.0
 const LAYER_PITCH := 7.0  # шаг между пластами данных: потолок 5 м + 2 м пустоты
 const ICE_POS := Vector3(1.0, 0.0, -2.8)
-## Яркий горизонт (STYLE.md, ARCHITECTURE.md «Ореол и горизонт»): дальние пласты (env/far_*) и кольцо env/horizon_band не гаснут в чёрный
+## Яркий горизонт (STYLE.md, ARCHITECTURE.md «Ореол и горизонт»): дальние пласты (env/far_*) не гаснут в чёрный
 ## на 14…40 м, а светятся: затухание отодвинуто, яркость растёт с расстоянием (far_gain от far_start до far_end).
 const FAR_FADE := [40.0, 130.0]
 const FAR_GAIN := 1.8
 const FAR_GAIN_RANGE := [20.0, 60.0]
-const HORIZON_FADE := [150.0, 260.0]
-const HORIZON_GAIN := 3.0
 
 
 func _room() -> Array:
@@ -41,32 +39,10 @@ func _room() -> Array:
 		for z in g:
 			items.append([cv[m % 3], Vector3(x, CEILING_H, z), 90.0 * ((m + 1) % 4), "BASE", 1.0])  # потолок: тот же принцип, что у пола, инвертированный
 			m += 1
-	if _walls:  # стены-занавесы (wall, wall_b, wall_c, portal_wall) и проёмы (doorway, doorway_b) — временно по флагу --walls, по умолчанию комната открыта к горизонту
-		var wv := ["env/wall", "env/wall_b", "env/wall_c"]
-		var k := 0
-		for x in g:
-			if x != -1.0:  # (−1, 4) — вход
-				items.append([wv[k % 3], Vector3(x, 0, 4.0), 180.0 * (k % 2), "BASE", 1.0])
-			k += 1
-			if x != 1.0:  # (1, −4) — выход
-				items.append([wv[k % 3], Vector3(x, 0, -4.0), 180.0 * (k % 2), "BASE", 1.0])
-			k += 1
-		for z in g:
-			items.append([wv[k % 3], Vector3(4.0, 0, z), 90.0 + 180.0 * (k % 2), "BASE", 1.0])
-			k += 1
-			if absf(z) > 2.0:  # западная стена: по краям обычные модули, посередине portal_wall (4 м) с вырезом под портал
-				items.append([wv[k % 3], Vector3(-4.0, 0, z), 90.0 + 180.0 * (k % 2), "BASE", 1.0])
-			k += 1
-		items.append(["env/portal_wall", Vector3(-4.0, 0, 0.0), -90.0, "BASE", 1.0])
-		items.append(["env/doorway", Vector3(-1.0, 0, 4.0), 0.0, "BASE", 1.0])     # вход
-		if _noexit:
-			items.append(["env/doorway_b", Vector3(1.0, 0, -4.0), 0.0, _tier, 1.0])   # выход (со стенами; без --noexit его заменяет exit_frame)
 	if not _noexit:  # выход без стен: свободная рамка (столбы-занавесы, перемычка, порог), проём пустой; в игре на её месте при LOCKDOWN встают env/lockdown_gate
 		items.append(["env/exit_frame", Vector3(1.0, 0, -4.0), 0.0, "BASE", 1.0])
 	if not _noedge:
 		items.append(["env/room_edge_16", Vector3(0.0, 0.0, 0.0), 0.0, "BASE", 1.0])  # кромка комнаты вместо стен: квадрат 16×16, края на ±8, как в клиенте (в игре — в ROOM_CENTER)
-	if not _nohorizon:
-		items.append(["env/horizon_band", Vector3(0.0, 0.0, 0.0), 0.0, "BASE", 1.0])  # кольцо тумана у горизонта: один раз на центр комнаты
 	for x in [-4.0, 4.0]:
 		for z in [-4.0, 4.0]:
 			items.append(["env/pillar", Vector3(x, 0, z), 0.0, "BASE", 1.0])
@@ -83,28 +59,22 @@ func _room() -> Array:
 		var rv := ["avatar/runner", "avatar/runner_b", "avatar/runner_c"]
 		for i in 7:
 			items.append([rv[i % 3], Vector3(-2.0 + (i % 4) * 1.3, 0, -0.9 + (i / 4) * 1.3), 40.0 * i, "", 1.0])
-	if _field:  # эксперимент: дальний план — поле колонн на решётке 0,1 м
-		for fz in [-12.0, -16.0]:
-			for fx in [-8.0, -4.0, 0.0, 4.0, 8.0]:
-				items.append(["env/column_field", Vector3(fx, 0, fz), 0.0, _tier, 1.0])
-	else:  # дальний план: пласты данных. Наш пласт (y = 0) продолжается за комнатой участками 11 м (сетка 5×5 без центрального), выше и ниже лежат такие же
-		# пласты с шагом LAYER_PITCH (потолок нашего 5 м + 2 м пустоты); в них сетка 3×3. Пол и потолок везде (тайлов ~5%), в каждом пласте башни света.
-		var fv := ["env/far_field", "env/far_field_b", "env/far_field_c"]
-		var ff := ["env/far_floor", "env/far_floor_b", "env/far_floor_c"]
-		var fc := ["env/far_ceiling", "env/far_ceiling_b", "env/far_ceiling_c"]
-		var fi := 0
-		for ly in [0.0, LAYER_PITCH, -LAYER_PITCH]:
-			var r := 2 if ly == 0.0 else 1
-			for gx in range(-r, r + 1):
-				for gz in range(-r, r + 1):
-					if ly == 0.0 and gx == 0 and gz == 0:
-						continue
-					var pos := Vector3(gx * 11.0, ly, gz * 11.0)
-					var rot := 90.0 * (fi % 4)
-					items.append([fv[fi % 3], pos, rot, _tier, 1.0])
-					items.append([ff[fi % 3], pos, rot, _tier, 1.0])
-					items.append([fc[(fi + 1) % 3], pos + Vector3(0, CEILING_H, 0), rot, _tier, 1.0])
-					fi += 1
+	# дальний план: пласты данных. Наш пласт (y = 0) продолжается за комнатой участками 11 м (сетка 5×5 без центрального), выше и ниже лежат такие же
+	# пласты с шагом LAYER_PITCH (потолок нашего 5 м + 2 м пустоты); в них сетка 3×3. Пол и потолок везде (тайлов ~5%), в каждом пласте башни света.
+	var ff := ["env/far_floor", "env/far_floor_b", "env/far_floor_c"]
+	var fc := ["env/far_ceiling", "env/far_ceiling_b", "env/far_ceiling_c"]
+	var fi := 0
+	for ly in [0.0, LAYER_PITCH, -LAYER_PITCH]:
+		var r := 2 if ly == 0.0 else 1
+		for gx in range(-r, r + 1):
+			for gz in range(-r, r + 1):
+				if ly == 0.0 and gx == 0 and gz == 0:
+					continue
+				var pos := Vector3(gx * 11.0, ly, gz * 11.0)
+				var rot := 90.0 * (fi % 4)
+				items.append([ff[fi % 3], pos, rot, _tier, 1.0])
+				items.append([fc[(fi + 1) % 3], pos + Vector3(0, CEILING_H, 0), rot, _tier, 1.0])
+				fi += 1
 	return items
 
 
@@ -138,9 +108,8 @@ func _shots() -> Array:
 		["props/seat", Vector3(-1.6, 0, 0.0), 0.0, "BASE", 1.0], ["props/sensor", Vector3(0.0, 0, 0.0), 0.0, "BASE", 1.0], ["props/dead_deck", Vector3(1.2, 0.02, 0.4), 30.0, "BASE", 3.0],
 		["avatar/runner", Vector3(-1.6, 0.14, 0.0), 0.0, "", 1.0]]
 	var envmore := [["env/floor_slab_16", Vector3.ZERO, 0.0, "BASE", 1.0],
-		["env/lockdown_gate", Vector3(-3.0, 0, -2.0), 0.0, "", 1.0], ["env/lockdown_gate_open", Vector3(-1.0, 0, -2.0), 0.0, "", 1.0], ["env/corner", Vector3(1.0, 0, -2.0), 0.0, "BASE", 1.0],
-		["env/platform", Vector3(3.0, 0, -2.0), 0.0, "BASE", 1.0], ["env/cable_straight", Vector3(-3.0, 0, 0.0), 0.0, "BASE", 1.0], ["env/cable_curve", Vector3(-1.0, 0, 0.0), 0.0, "BASE", 1.0],
-		["env/tunnel_ring", Vector3(2.0, 0, 0.5), 0.0, _tier, 1.0]]
+		["env/lockdown_gate", Vector3(-3.0, 0, -2.0), 0.0, "", 1.0], ["env/lockdown_gate_open", Vector3(-1.0, 0, -2.0), 0.0, "", 1.0],
+		["env/platform", Vector3(3.0, 0, -2.0), 0.0, "BASE", 1.0]]
 	var tk := ["EXTRACT_SHARD", "EXTRACT_DAEMON", "GHOST", "TIMESKEW", "BLACKOUT", "JITTER", "DECRYPT", "MINER"]
 	var decks := [["env/floor_slab_16", Vector3.ZERO, 0.0, "BASE", 1.0],
 		["deck/wrist_deck", Vector3(0.0, 1.1, 0.4), 90.0, "", 6.0]]
@@ -170,10 +139,7 @@ func _shots() -> Array:
 		{"name": "room_entrance", "cam": Vector3(-1.0, 1.25, 8.6), "look": Vector3(0.0, 1.0, -2.5), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
 		{"name": "room_overview", "cam": Vector3(11.0, 10.5, 11.0), "look": Vector3(0.0, 0.4, -0.5), "fov": 50.0, "fade": [30.0, 80.0], "corrupt": scar, "items": room},
 		{"name": "portal_view", "cam": Vector3(2.2, 1.4, 0.2), "look": Vector3(-4.0, 1.4, 0.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": room},
-		{"name": "room_wall", "cam": Vector3(2.4, 1.4, 1.2), "look": Vector3(-1.4, 1.0, -4.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
 		{"name": "room_floor", "cam": Vector3(0.3, 1.6, 1.6), "look": Vector3(0.0, 0.0, -0.4), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
-		{"name": "horizon_view", "cam": Vector3(1.0, 1.25, -2.6), "look": Vector3(1.0, 1.6, -40.0), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": room},
-		{"name": "horizon_out", "cam": Vector3(0.0, 1.3, 22.0), "look": Vector3(0.0, 1.8, -30.0), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": room},
 		{"name": "room_inside", "cam": Vector3(-3.0, 1.25, 3.0), "look": Vector3(0.5, 0.9, -2.8), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
 		# с края комнаты (юго-западный угол) вдоль южной кромки и наружу, за обрыв
 		{"name": "edge_view", "cam": Vector3(-3.4, 1.4, 3.1), "look": Vector3(3.0, 0.0, 6.0), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": room},
@@ -194,16 +160,13 @@ var _nobeacon := false  # --nobeacon: выключить узел Beacon у ша
 var _noexit := false  # --noexit: без свободной рамки выхода env/exit_frame в точке выхода комнаты
 var _tier := "HARD"  # --tier=BASE|HARD|NIGHTMARE: тир окружения в кадрах (по умолчанию HARD, как раньше; BASE — бирюза, как в клиенте)
 var _lattice := 0.0  # --lattice=0.05: шаг мировой решётки (эксперимент), 0 — выкл.
-var _field := false  # --field: вместо дальних стен поле колонн
 var _walk := false  # --walk: один аватар ходит по кругу (видно ли мерцание от прищёлкивания к решётке)
 var _only: Array = []  # --only=a,b: снимать только эти кадры
 var _walker: Node3D
 var _walker_mir: Node3D
 var _walker_base := Vector3.ZERO
 var _crowd := false  # --crowd: в комнате девять аватаров (худший случай по ТЗ), для замера
-var _walls := false  # --walls: вернуть стены-занавесы и проёмы (по умолчанию убраны: владелец, «эквалайзер явно не то», открытый горизонт)
 var _portal := false  # --portal: вернуть портал в западной стене (по умолчанию убран: яркая бирюзовая панель закрывает кадр изнутри комнаты)
-var _nohorizon := false  # --nohorizon: без кольца env/horizon_band (сравнение «с туманом / без»)
 var _noedge := false  # --noedge: без кромки env/room_edge_16 (сравнение «с кромкой / без»)
 var _floor1 := true  # РЕШЕНИЕ ВЛАДЕЛЬЦА: пол комнаты — одна чёрная плита env/floor_slab_16 (по умолчанию); --tiles возвращает 12 модулей floor* (старый пол)
 var _movie := false
@@ -262,14 +225,10 @@ func _ready() -> void:
 			AM.tune(d)
 		if a.begins_with("--overdraw="):
 			_od = a.trim_prefix("--overdraw=").split(",")
-		if a == "--field":
-			_field = true
 		if a == "--walk":
 			_walk = true
 		if a.begins_with("--only="):
 			_only = Array(a.trim_prefix("--only=").split(","))
-		if a == "--nohorizon":
-			_nohorizon = true
 		if a == "--noedge":
 			_noedge = true
 		if a == "--floor1":
@@ -278,8 +237,6 @@ func _ready() -> void:
 			_floor1 = false
 		if a == "--crowd":
 			_crowd = true
-		if a == "--walls":
-			_walls = true
 		if a == "--portal":
 			_portal = true
 		if a == "--fps":  # замер: 6 с без записи видео, печатает средний fps, худшие кадры и число вызовов отрисовки
@@ -564,12 +521,6 @@ func _setup(inst: Node3D, it: Array, shot: Dictionary, intensity: float) -> void
 		AM.set_param(inst, "far_gain", FAR_GAIN)
 		AM.set_param(inst, "far_start", FAR_GAIN_RANGE[0])
 		AM.set_param(inst, "far_end", FAR_GAIN_RANGE[1])
-	if String(it[0]) == "env/horizon_band":  # кольцо горизонта: на 35–70 м, поэтому затухание ещё дальше, а усиление у самой дали
-		AM.set_distance_fade(inst, HORIZON_FADE[0], HORIZON_FADE[1])
-		AM.set_param(inst, "far_gain", HORIZON_GAIN)
-		AM.set_param(inst, "bead_depth", 0.0)  # у далёких широких штрихов бусины читаются ступеньками: гладкий туман
-		AM.set_param(inst, "far_start", 30.0)
-		AM.set_param(inst, "far_end", 60.0)
 	if String(it[0]).begins_with("env/"):
 		AM.set_corruption(inst, shot["corrupt"][0], shot["corrupt"][1])
 	if intensity != 1.0:
