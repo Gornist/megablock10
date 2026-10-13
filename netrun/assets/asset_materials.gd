@@ -24,19 +24,6 @@ const BEACON_HALO_SHADER := preload("res://assets/shaders/beacon_halo.gdshader")
 ## Луч маяка (меш `beacon_beam`): штрихи (streaks) с ореолом, но спокойнее обычных — почти без дыхания и качания, гладкий (без бусин), ярче, чтобы читаться с 3 м.
 const BEACON_BEAM := {"halo": 0.5, "halo_width": 2.2, "end_fade": 0.6, "breathe": 0.08, "sway": 0.003, "bead_depth": 0.0, "glow": 2.2}
 
-## ЭКСПЕРИМЕНТ: верх стеклянного пола (меш `*_glass` в env/floor_glass_<N>): роль shell_soft, шейдер по имени меша; сторону плиты (plate_size) берём из AABB меша.
-const GLASS_SHADER := preload("res://assets/shaders/glass.gdshader")
-
-## ЭКСПЕРИМЕНТ «варианты пола» (env/floor_v<N>_<размер>, src/floor_variants.py): параметры шейдеров по номеру варианта и имени меша. Ключ — номер варианта, вложенный ключ — суффикс меша.
-## `_glass` (v1 пыль — слабая дымка; v3 решётка — сплошные линии по границам клеток хода 1 м в мировых координатах, без случайных подсвеченных клеток: их принимали за занятые), `_skirt` (v2: яркая стенка ступени), `_plates` (контур верха плиты по UV).
-const FLOOR_V := {
-	1: {"_glass": {"glass_alpha": 0.06, "center_k": 1.0, "patch_amount": 0.5, "rim_alpha": 0.25}, "dust_streaks": {"glow": 3.2, "halo": 0.3, "halo_width": 2.0, "breathe": 0.15}},
-	2: {"_skirt": {"veil_alpha": 0.32, "falloff": 0.9}, "_plates": {"edge_glow": 1.6}},
-	3: {"_glass": {"glass_alpha": 0.12, "center_k": 0.8, "patch_amount": 0.4, "rim_alpha": 0.5, "grid_alpha": 0.85, "grid_step": 1.0, "grid_width": 0.02, "grid_dot": 0.0,
-			"grid_radius": 9.0, "cell_alpha": 0.0, "cell_share": 0.10}},
-	4: {"_plates": {"edge_glow": 1.2}},
-}
-
 ## ПАЛИТРА КЛИЕНТСКИХ СЛОЁВ (маркеры пола, прицел, след ICE, стрелки, кольцо такта, метки, HUD, экран конца). Цвет и материал задаёт Blender, логику — Godot:
 ## клиент берёт цвета ТОЛЬКО отсюда (`AssetMaterials.layer("aim_ok")`) и не задаёт свои. База — HEX из lib.py / STYLE.md: голубой мир, ледяной белый, красный только у угрозы
 ## (ICE и его взгляд), янтарь — только экран деки. ЗАПРЕЩЕНЫ коричневый, жёлтый, оранжевый и ядовито-зелёный (в кадре клиента 07.10 они были: «две разные игры»).
@@ -117,7 +104,7 @@ const KNOBS := {
 	"min_px_streaks": 1.5,   # минимальная полная ширина штриха, px экрана (streaks.gdshader min_px)
 	"min_px_points": 2.0,    # минимальный диаметр точки, px (points.gdshader min_px)
 	"solid_base": "",        # цвет плит solid_dark «#rrggbb»; пусто — по умолчанию из шейдера
-	"floor_grid": 0.35,      # сетка клеток 1 м ТЕКСТУРОЙ с мипмапами и анизотропией на плите пола (0 — выкл., вернуть точки slab_seams; 0,3–0,5); по умолчанию ВКЛ.: так выглядит кадр Blender, иначе клиент — «другая игра»
+	"floor_grid": 0.35,      # сетка клеток 1 м ТЕКСТУРОЙ с мипмапами и анизотропией на плите пола (0 — выкл.; 0,3–0,5; точки швов slab_seams убраны в B2); по умолчанию ВКЛ.: так выглядит кадр Blender, иначе клиент — «другая игра»
 	# Мерцание кромок плит пола/потолка/дальних пластов (две линии на расстоянии 3 см сходятся в пиксель). Меры независимы, комбинируются:
 	"rim_top_only": true,    # светится только лицевая грань плиты, боковая полоска кромки погашена (одна линия вместо двух)
 	"rim_far_min": 0.0,      # яркость кромки плит на дистанции ≥ rim_far_end (1 — не гасить; 0 — гасить полностью)
@@ -264,24 +251,12 @@ static func _is_entity(root: Node) -> bool:
 
 
 ## tier — "BASE"/"HARD"/"NIGHTMARE" для окружения (перекрашивает свечение); пусто — цвета из вершин (ICE, аватар, дека).
-## Номер варианта пола по пути сцены (`.../floor_v3_8.glb` → 3), иначе 0.
-static func _floor_variant(root: Node) -> int:
-	var p := root.scene_file_path
-	var i := p.find("/floor_v")
-	if i < 0:
-		return 0
-	return int(p.substr(i + 8, 1))
-
-
 static func apply(root: Node, tier: String = "") -> void:
 	var entity := _is_entity(root)
-	var fv := _floor_variant(root)
 	for n in root.find_children("*", "MeshInstance3D", true, false):
 		var mi := n as MeshInstance3D
 		if mi.mesh == null:
 			continue
-		if String(mi.name) == "slab_seams" and float(_k("floor_grid")) > 0.0:  # сетка текстурой заменяет облако точек швов (AssetBatch пропускает невидимые меши; материал всё равно ставим ниже)
-			mi.visible = false
 		for s in mi.mesh.get_surface_count():
 			var src := mi.mesh.surface_get_material(s)
 			if src == null or not SHADERS.has(src.resource_name):
@@ -290,9 +265,6 @@ static func apply(root: Node, tier: String = "") -> void:
 			m.shader = SHADERS[src.resource_name]
 			if String(mi.name).ends_with("_skirt"):  # вуаль плит и дымка горизонта: роль shell_soft, но свой шейдер по имени меша
 				m.shader = SKIRT_SHADER
-			elif String(mi.name).ends_with("_glass"):
-				m.shader = GLASS_SHADER
-				m.set_shader_parameter("plate_size", mi.mesh.get_aabb().size.x)
 			elif String(mi.name).ends_with("_mist"):
 				m.shader = HAZE_SHADER
 				if root.scene_file_path.contains("/room_edge_"):  # низкая дымка границы комнаты: профиль по высоте круче, штрихи по азимуту реже и слабее
@@ -317,9 +289,6 @@ static func apply(root: Node, tier: String = "") -> void:
 					mi.visible = false
 				elif float(_k("veil_scale")) != 1.0:
 					m.set_shader_parameter("veil_scale", float(_k("veil_scale")))
-			elif String(mi.name).ends_with("_glass"):  # эксперимент «варианты пола» (в клиенте не грузится): пятна стекла ровные и статичные, как у вуали
-				m.set_shader_parameter("patch_drift", 0.0)
-				m.set_shader_parameter("patch_amount", 0.0)
 			if String(mi.name) == "edge_streaks_hang":  # подвесные штрихи кромки комнаты (точек по периметру нет): ярче штрихов плит, иначе край не читается
 				m.set_shader_parameter("glow", EDGE_STREAK_GLOW)
 			if String(mi.name) == "pillar_block" or String(mi.name) == "pillar_base" or String(mi.name).begins_with("exit_bar"):  # укрытие (корпус и рамка по границе клетки) и брусья рамки выхода: рёбра ровные и яркие, иначе в очках не видно, где оно (у тайлов пола свет рваный намеренно)
@@ -370,12 +339,7 @@ static func apply(root: Node, tier: String = "") -> void:
 				m.set_shader_parameter("anchor", 0.0)
 			if String(mi.name).ends_with("_hang"):  # подвесные штрихи (под полом): длина меняется от верхнего конца
 				m.set_shader_parameter("anchor", 1.0)
-			if FLOOR_V.has(fv):  # варианты пола: параметры по суффиксу меша, последними (поверх ореола и якоря)
-				for suffix in FLOOR_V[fv]:
-					if String(mi.name).ends_with(suffix):
-						for k in FLOOR_V[fv][suffix]:
-							m.set_shader_parameter(k, FLOOR_V[fv][suffix][k])
-			if src.resource_name == "solid_dark" and float(_k("cloud")) > 0.0 and String(mi.name) != "slab_seams" and _cloud_scope_ok(root):  # прототип «облако без основы»: частицы с дырами вместо тёмной грани (нужен MSAA)
+			if src.resource_name == "solid_dark" and float(_k("cloud")) > 0.0 and _cloud_scope_ok(root):  # прототип «облако без основы»: частицы с дырами вместо тёмной грани (нужен MSAA)
 				m.shader = CLOUD_SHADER_2S if float(_k("cloud_two_sided")) > 0.5 else CLOUD_SHADER
 				m.set_shader_parameter("lite", float(_k("cloud_lite")))
 				m.set_shader_parameter("glitch_tex", GlitchSprite.texture())
