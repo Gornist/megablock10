@@ -171,10 +171,13 @@ GTX 1650). Через него агент `godot-dev` (`.claude/agents/godot-dev
   (ставит `setup`, или `scripts/devbox-godot-ai.sh hook`): в коммит уходит `project.godot` без этих строк, рабочий файл он не трогает.
   Файл в репозитории приведён к формату, который пишет редактор Godot 4.7, поэтому открытие проекта дерево не пачкает; если
   `git status` показывает `netrun/project.godot` — настройки действительно меняли.
-- **Автозапуск сеанса.** После входа nick в GNOME `~/.config/autostart/devbox-session.desktop` запускает `scripts/devbox-session-start.sh`:
-  incy (VPN) → Tailscale → Blender (blender-mcp на 9876); журнал — `~/.local/state/devbox-session.log`. Редактор Godot AI поднимает
-  отдельный `godot-ai.desktop` (`scripts/devbox-godot-ai.sh autostart`, через 20 с после входа). Нужны: autoConnect в incy и sudo без пароля
-  на перезапуск `tailscaled` (`/etc/sudoers.d/devbox-tailscale`).
+- **Автозапуск сеанса.** После входа nick в GNOME `~/.config/autostart/devbox-session.desktop` запускает
+  `/home/nick/box/repo/scripts/devbox-session-start.sh` — скрипт из клона репозитория, а не ручную копию (клон обновляет `scripts/box.sh sync`;
+  расхождение видно в `scripts/box.sh status`). Порядок этапов: incy (VPN) → Tailscale (перезапуск только если не Running) → adb (user-служба
+  `box-adb`) → Blender (blender-mcp на 9876, до 3 попыток) → ожидание редактора Godot на порту 8000 → самопроверка. Итог — `~/box/boot.report`,
+  подробный журнал — `~/.local/state/devbox-session.log`. Редактор Godot AI поднимает отдельный `godot-ai.desktop`
+  (`scripts/devbox-godot-ai.sh autostart`, через 20 с после входа); автозапуск сеанса лишь ждёт порт 8000 до 90 с и пишет проблему в отчёт,
+  если редактор не поднялся. Нужны: autoConnect в incy и sudo без пароля на перезапуск `tailscaled` (`/etc/sudoers.d/devbox-tailscale`).
 - **Godot не должен убивать общий adb.** При выходе Godot (в том числе `--headless --import` из `gdunit.sh`, `dev.sh`, `live_run.sh`…) вызывает `adb kill-server`
   (настройка редактора `export/android/shutdown_adb_on_exit`, по умолчанию true) — 13.10 это пять раз оборвало Pico и телефоны всем сессиям. Защита двойная:
   скрипты `netrun/tools/*.sh` и `~/pico-cfg/build.sh` экспортируют `ANDROID_ADB_SERVER_PORT=5099` (Godot убивает пустой порт, а не общий сервер), а в

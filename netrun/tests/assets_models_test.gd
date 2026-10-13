@@ -590,7 +590,8 @@ func test_exit_frame_is_a_free_standing_frame_with_an_empty_opening() -> void:
 	var ef := _load("env", "exit_frame")
 	var gate := _aabb(_load("env", "lockdown_gate"))
 	var box := _aabb(ef)
-	assert_float(absf(box.size.x - gate.size.x)).override_failure_message("ширина %.2f против ворот %.2f" % [box.size.x, gate.size.x]).is_less(0.3)  # тот же проём, что у ворот
+	assert_float(gate.size.x).override_failure_message("ворота %.2f м шире проёма рамки 1,04 м (косяки на ±0,52)" % gate.size.x).is_between(0.8, 1.04)  # ворота стоят в проёме рамки выхода, косяки и перемычку даёт она
+	assert_float(gate.size.y).override_failure_message("высота ворот %.2f: решётка должна закрывать проём 2 м" % gate.size.y).is_between(1.9, 2.1)
 	assert_float(box.size.y).override_failure_message("высота столбов %.2f" % box.size.y).is_between(2.2, 2.9)
 	assert_float(box.size.z).override_failure_message("рамка не стена: глубина %.2f" % box.size.z).is_less(0.6)
 	for mi in _meshes(ef):

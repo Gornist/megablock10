@@ -45,8 +45,8 @@
 | `models/props/hack_pad.glb` | 36 / 120 | 128 / 160 | 29 / 40 | 1 | 5 | 0.9259 × 0.28 × 0.9 | points, shell_soft, solid_dark, streaks | — | floor | ок |
 | `models/props/hack_panel.glb` | 62 / 300 | 50 / 120 | 11 / 20 | 0 | 5 | 0.5175 × 1.2986 × 0.34 | points, solid_dark, streaks | — | floor | ок |
 | `models/env/horizon_band.glb` | 192 / 1000 | 0 / 0 | 360 / 400 | 1 | 2 | 132.9202 × 12 × 122.7654 | shell_soft, streaks | — | horizon | ок |
-| `models/env/lockdown_gate.glb` | 0 / 300 | 18 / 40 | 79 / 120 | 0 | 4 | 1.98 × 2.7226 × 0.328 | points, streaks | — | floor | ок |
-| `models/env/lockdown_gate_open.glb` | 0 / 300 | 18 / 40 | 48 / 120 | 0 | 4 | 1.98 × 2.7226 × 0.328 | points, streaks | — | floor | ок |
+| `models/env/lockdown_gate.glb` | 300 / 320 | 0 / 0 | 0 / 0 | 0 | 1 | 0.89 × 2 × 0.09 | solid_dark | — | floor | ок |
+| `models/env/lockdown_gate_open.glb` | 300 / 320 | 0 / 0 | 0 / 0 | 0 | 1 | 0.89 × 0.12 × 0.09 | solid_dark | — | floor | ок |
 | `models/env/pillar.glb` | 464 / 560 | 0 / 0 | 0 / 0 | 0 | 2 | 2 × 2.2 × 2 | solid_dark | — | floor | ок |
 | `models/env/platform.glb` | 28 / 300 | 25 / 40 | 39 / 60 | 0 | 3 | 1.9203 × 0.322 × 1.9 | points, solid_dark, streaks | — | floor | ок |
 | `models/props/portal.glb` | 0 / 2000 | 358 / 400 | 82 / 100 | 0 | 2 | 3.028 × 3.014 × 0.1571 | points, streaks | — | floor | ок |
