@@ -6,7 +6,8 @@
 #   пример: pico_series.sh "w1=bench veil_scale=0 bench=wedge" "w2=bench tile_glow=0 bench=wedge" "ctrl=bench bench=wedge"
 #
 # Окружение: PICO_SERIAL (устройство), OUT (каталог результатов, по умолчанию ~/pico-series/<время>), WAIT_SEC (ожидание итога на вариант, 150),
-# PICO_SERVER_CMD (команда сервера мира для стенда; запускается один раз на серию и останавливается по её концу).
+# PICO_SERVER_CMD (команда сервера мира для стенда; запускается один раз на серию и останавливается по её концу), PICO_READY_CMD (команда подготовки
+# очков перед каждым вариантом: `pico_ready.sh` снимает известные системные окна кнопками, не меняющими настройки; код ≠ 0 — серия останавливается).
 # Условия: очки на столе остаются бодрыми только пока их не гасит датчик — иначе игра стартует «на паузе» (итога не будет); если поверх всего
 # висит системный диалог Pico (например «Слишком темно» — камеры не видят комнату), `am start` отвечает «kept for the user»:
 # серия прерывается с сообщением, диалог закрывает человек. Этикет очков (CLAUDE.md, память pico-headset-testing-etiquette): серию запускать
@@ -47,7 +48,14 @@ for spec in "$@"; do
   sleep 1
   adb -s "$serial" logcat -c </dev/null
   adb -s "$serial" shell input keyevent KEYCODE_WAKEUP </dev/null
+  if [ -n "${PICO_READY_CMD:-}" ]; then   # снять известные системные окна безопасными кнопками (pico_ready.sh); незнакомое — стоп
+    ready=$($PICO_READY_CMD 2>&1) || { echo "   СТОП: $ready"; fail=2; break; }
+  fi
   started=$(adb -s "$serial" shell am start -n "$PACKAGE/com.godot.game.GodotAppLauncher" </dev/null 2>&1)
+  if [ -n "${PICO_READY_CMD:-}" ] && echo "$started" | grep -q "kept for the user"; then   # окно появилось при запуске: снять и стартовать ещё раз
+    ready=$($PICO_READY_CMD 2>&1) || { echo "   СТОП: $ready"; fail=2; break; }
+    started=$(adb -s "$serial" shell am start -n "$PACKAGE/com.godot.game.GodotAppLauncher" </dev/null 2>&1)
+  fi
   if echo "$started" | grep -q "kept for the user"; then
     echo "   СТОП: игра не стартует — поверх висит системный диалог Pico («Слишком темно» и т. п.); закройте его на очках и повторите"
     adb -s "$serial" exec-out screencap -p </dev/null > "$OUT/$name-blocked.png" 2>/dev/null || true
