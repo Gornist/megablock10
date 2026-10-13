@@ -53,3 +53,14 @@
 | `models/props/vault_closed.glb` | 0 / 500 | 248 / 420 | 111 / 160 | 0 | 2 | 0.7878 × 0.8098 × 0.76 | points, streaks | — | floor | ок |
 | `models/props/vault_open.glb` | 0 / 500 | 248 / 420 | 105 / 160 | 0 | 2 | 0.7878 × 0.9982 × 0.76 | points, streaks | — | floor | ок |
 | `models/deck/wrist_deck.glb` | 80 / 2000 | 184 / 200 | 2 / 8 | 0 | 7 | 0.1085 × 0.0919 × 0.06 | points, solid_dark, streaks | — | center | ок |
+
+## Облако частиц (Б): `.points` рядом с моделью
+
+Формат — 7 float32 на точку (28 байт), порядок перемешан (ЛОД = префикс); генератор `src/points.py`.
+
+| Файл | Точек / бюджет | Байт | Статус |
+|---|---|---|---|
+| `models/props/vault.points` | 1500 / 1500 | 42000 | ок |
+| `models/props/portal.points` | 800 / 800 | 22400 | ок |
+| `models/props/shard.points` | 300 / 300 | 8400 | ок |
+| `models/props/shard_encrypted.points` | 300 / 300 | 8400 | ок |

@@ -16,6 +16,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 import glbinfo  # noqa: E402
+import points as cloud_points  # noqa: E402  (облако частиц (Б): файлы .points рядом с моделями)
 
 ROLES = {"glow_edge", "shell_soft", "points", "streaks", "solid_dark"}
 MAX_LAYERS = 3  # вложенных прозрачных оболочек на один ассет (STYLE.md)
@@ -135,6 +136,18 @@ def main():
         rows.append((rep, m, bad))
         print(("FAIL " if bad else "ok   ") + rep["name"] + (" — " + "; ".join(bad) if bad else ""))
     print(f"\nассетов: {len(rows)}, с ошибками: {fails}. Частота кадров на Pico 4 не проверялась.")
+    # облако частиц (Б): у каждого модуля из RECIPES, чья модель есть, обязан быть валидный `.points` (src/points.py)
+    cloud_rows = []
+    for module, recipe in cloud_points.RECIPES.items():
+        glb = os.path.join(ROOT, "models", module + ".glb")
+        pts = os.path.join(ROOT, "models", module + ".points")
+        if not os.path.isfile(glb):
+            continue
+        bad = ["нет файла .points (src/points.py)"] if not os.path.isfile(pts) else cloud_points.check(glb, pts, recipe)
+        fails += bool(bad)
+        n = os.path.getsize(pts) // cloud_points.POINT_BYTES if os.path.isfile(pts) else 0
+        cloud_rows.append((module, n, recipe["count"], bad))
+        print(("FAIL " if bad else "ok   ") + module + ".points" + (" — " + "; ".join(bad) if bad else ""))
     if "--manifest" in sys.argv:
         lines = [
             "# Манифест ассетов «Сети»", "",
@@ -151,6 +164,14 @@ def main():
                 f"{m['layers']} | {m['draws']} | {' × '.join(str(x) for x in m['size'])} | {', '.join(m['materials'])} | "
                 f"{', '.join(m['animations']) or '—'} | {rep['origin']} | {'ошибки: ' + '; '.join(bad) if bad else 'ок'} |"
             )
+        if cloud_rows:
+            lines += [
+                "", "## Облако частиц (Б): `.points` рядом с моделью", "",
+                "Формат — 7 float32 на точку (28 байт), порядок перемешан (ЛОД = префикс); генератор `src/points.py`.", "",
+                "| Файл | Точек / бюджет | Байт | Статус |", "|---|---|---|---|",
+            ]
+            for module, n, budget, bad in cloud_rows:
+                lines.append(f"| `models/{module}.points` | {n} / {budget} | {n * cloud_points.POINT_BYTES} | {'ошибки: ' + '; '.join(bad) if bad else 'ок'} |")
         out = os.path.join(ROOT, "models", "MANIFEST.md")
         os.makedirs(os.path.dirname(out), exist_ok=True)
         open(out, "w").write("\n".join(lines) + "\n")

@@ -106,11 +106,13 @@ case "$cmd" in
     rsync -a --delete src/ "$HOST:~/assets-work/src/"
     # head_points.py — не ассет Blender (читает внешний STL и пишет client/head_points.gd): из цикла исключён, запускается ниже на Mac.
     # Раньше его гнали под Blender, и в argv[1] попадал флаг «-b» → «FileNotFoundError: '-b'».
+    # points.py — тоже не под Blender: чистый Python читает готовые .glb и пишет .points рядом (облако частиц (Б)); идёт после сборки моделей и до validate.
     ssh "$HOST" 'cd ~/assets-work && rm -rf out
 export PYTHONHASHSEED=0
-for s in $(ls src/*.py | grep -vE "lib.py|glbinfo.py|validate.py|_smoke.py|head_points.py"); do
+for s in $(ls src/*.py | grep -vE "lib.py|glbinfo.py|validate.py|_smoke.py|points.py"); do
   ~/.local/bin/blender -b --factory-startup -noaudio --python "$s" -- --out ~/assets-work/out 2>&1 | grep -E "EXPORT|Error|Traceback|File \"" || true
 done
+python3 src/points.py --root out
 python3 src/validate.py --root out'
     # *.glb.import делает Godot, на devbox их нет: не удаляем (--exclude защищает и от --delete)
     rsync -a --delete --exclude MANIFEST.md --exclude '*.glb.import' "$HOST:~/assets-work/out/models/" models/
