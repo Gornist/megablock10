@@ -50,6 +50,7 @@ export PICO_SERIAL="$serial"
 pico_ready() {
   if box_has; then
     bash "$BOX_CTL" pico ready "$BOX_OWNER" </dev/null 2>&1
+    return $?
   elif [ -n "${PICO_READY_CMD:-}" ]; then
     $PICO_READY_CMD 2>&1
     return $?

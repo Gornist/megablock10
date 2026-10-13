@@ -9,7 +9,8 @@
 # Пресеты (замеры bench — в docs/netrun-bench.md, итоги 08–12.10 — в docs/netrun-refactor-plan.md):
 #   base            чистые умолчания: msaa 2, foveation 0, layers behind, вид V10 (ничего не пишется)
 #   bench           perf=on, bench=entry: 5 с прогрева + 3 окна по 10 с, строка `[bench] ИТОГ`
-#   cloud-props     bench + cloud=1: облако на колоннах/хранилище/выходе (C3a; пол, потолок и дальние остаются solid_dark)
+#   cloud-props     bench + cloud=1: облако на колоннах/хранилище/выходе (C3a; пол, потолок и дальние остаются solid_dark).
+#                   После B3 `cloud=1` — умолчание AssetMaterials, так что пресет ≡ bench (оставлен алиасом для старых команд)
 #   cloud-props-2s  cloud-props + cloud_two_sided=1: задние грани объёма видны сквозь дыры (cull_disabled)
 #   probe-sweep     perf=on, probe=sweep: серия синтетической нагрузки (база + 14 вариантов, ≈3,5 мин) → таблица `[probe] ИТОГ`
 #
