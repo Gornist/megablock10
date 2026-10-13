@@ -12,6 +12,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 GODOT="${GODOT:-godot}"
+export ANDROID_ADB_SERVER_PORT=5099   # Godot на выходе зовёт `adb kill-server` (editor setting shutdown_adb_on_exit): на чужом порту он убивает пустоту, а не общий adb с очками и телефонами
 TARGET="${1:-res://tests}"
 STALL_SEC="${GDUNIT_STALL_SEC:-240}"
 TOTAL_SEC="${GDUNIT_TOTAL_SEC:-1500}"
