@@ -161,6 +161,10 @@ godot -- --flat --host=127.0.0.1 --port=7777 --token=t1
   PNG — в `~/box/shots`) → по концу `pico sleep Godot` (датчик заклеен; `PICO_SLEEP_AFTER=0` — не гасить). `pico_ready.sh` — запасной путь
   через `PICO_READY_CMD`. `dev.sh shot` ставит запуск Godot в очередь `gpu` (`ctl.sh run gpu Godot --name shot`, ожидание `SHOT_QUEUE_WAIT`, 900 с),
   свой `flock /tmp/display.lock` остаётся внутри. Сервер стенда на свободном порту из пула 7800–7899: `scripts/box.sh up stand Godot -- <srv_p2.sh> {PORT}`.
+  Грабли: `pico ready` не видит оверлейное окно «Слишком темно» (нет нод uiautomator) и отвечает «ГОТОВО» — серию тогда останавливает `am start`
+  («kept for the user»), кадр — `<OUT>/<вариант>-blocked.png`; нужен свет в комнате или «Перезапустить отслеживание».
+  Самотест защиты — `netrun/tools/box_guard_selftest.sh` (подложные ctl.sh и adb, `PICO_SERIAL=NOSUCH`, `BOX_TEST=1`; очков и `~/box` не касается):
+  проверки броней гонять только им, а не рабочими скриптами по ssh — 13.10 17:27 так разбудили очки.
 - **Падение в нативном коде:** кадры `libgodot_android.so` в tombstone без имён (библиотека шаблона уже без символов). Функцию находит
   дизассемблер по адресу кадра: `$ANDROID_HOME/ndk/<версия>/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-objdump -d --start-address=…`
   по `<копия>/android/build/build/intermediates/merged_native_libs/…/arm64-v8a/libgodot_android.so` (BuildId в tombstone должен совпасть).
