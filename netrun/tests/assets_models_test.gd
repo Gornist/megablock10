@@ -638,7 +638,7 @@ func test_asset_materials_plate_rim_knobs_reach_plates_and_skirts() -> void:
 
 
 func test_removed_knobs_are_not_knobs_and_shaders_have_no_noise_branches() -> void:
-	for k in ["fringe_on", "fringe_alpha", "fringe_px", "halo", "halo_width", "halo_far", "edge_glow", "skirt_top_fade", "plate_flat", "edge_soft", "dust", "edge_uneven", "edge_drift", "flat_light", "drift_static", "vertex_clip", "albedo_clip", "mist_alpha"]:
+	for k in ["fringe_on", "fringe_alpha", "fringe_px", "halo", "halo_width", "halo_far", "edge_glow", "skirt_top_fade", "plate_flat", "edge_soft", "dust", "edge_uneven", "edge_drift", "flat_light", "drift_static", "vertex_clip", "albedo_clip", "mist_alpha", "cloud_lite"]:
 		assert_bool(AssetMaterials.KNOBS.has(k)).override_failure_message("ручка «%s» удалена в B1 (docs/netrun-refactor-plan.md): значение вшито или объект ушёл" % k).is_false()
 	var uniforms: Array = []
 	for u in (AssetMaterials.SHADERS["solid_dark"] as Shader).get_shader_uniform_list():
@@ -734,15 +734,19 @@ func test_asset_materials_knob_cloud_swaps_solid_dark_for_cloud_shader() -> void
 	AssetMaterials.reset_tuning()
 	var dflt := _load("env", "cover")
 	AssetMaterials.apply(dflt, "BASE")
-	assert_str(_mat_of(dflt, "pillar_block").shader.resource_path).override_failure_message("по умолчанию cloud выключен: грань остаётся solid_dark").contains("solid_dark")
-	AssetMaterials.tune({"cloud": 1.0, "cloud_edge_mix": 0.2})
-	var cover := _load("env", "cover")
-	AssetMaterials.apply(cover, "BASE")
-	var pb := _mat_of(cover, "pillar_block")
-	assert_str(pb.shader.resource_path).contains("cloud_dark")
-	assert_float(float(pb.get_shader_parameter("dust"))).is_equal_approx(1.0, 0.001)
-	assert_float(float(pb.get_shader_parameter("edge_mix"))).is_equal_approx(0.2, 0.001)
-	assert_object(pb.get_shader_parameter("glitch_tex")).is_same(GlitchSprite.texture())
+	var pd := _mat_of(dflt, "pillar_block")
+	assert_str(pd.shader.resource_path).override_failure_message("по умолчанию реквизит — облако (принятый вид C3a)").contains("cloud_dark")
+	assert_float(float(pd.get_shader_parameter("dust"))).is_equal_approx(1.0, 0.001)
+	assert_object(pd.get_shader_parameter("glitch_tex")).is_same(GlitchSprite.texture())
+	AssetMaterials.tune({"cloud": 0.0})
+	var off := _load("env", "cover")
+	AssetMaterials.apply(off, "BASE")
+	assert_str(_mat_of(off, "pillar_block").shader.resource_path).override_failure_message("cloud=0: грань остаётся solid_dark").contains("solid_dark")
+	AssetMaterials.reset_tuning()
+	AssetMaterials.tune({"cloud_edge_mix": 0.2})
+	var mixed := _load("env", "cover")
+	AssetMaterials.apply(mixed, "BASE")
+	assert_float(float(_mat_of(mixed, "pillar_block").get_shader_parameter("edge_mix"))).is_equal_approx(0.2, 0.001)
 	AssetMaterials.reset_tuning()
 
 
@@ -755,44 +759,31 @@ func _cloud_meshes(root: Node) -> int:
 	return n
 
 
-func test_asset_materials_knob_cloud_far_and_lite() -> void:
+func test_asset_materials_cloud_scope_props_yes_slabs_gate_and_deck_no() -> void:
+	AssetMaterials.reset_tuning()  # умолчания охвата = принятый C3a: облако на реквизите, пол/потолок/дальние пласты остаются solid_dark
+	assert_int(_cloud_meshes(_apply_new("env", "cover"))).override_failure_message("укрытие — облако").is_greater(0)
+	assert_int(_cloud_meshes(_apply_new("env", "exit_frame"))).override_failure_message("рамка выхода — облако").is_greater(0)
+	assert_int(_cloud_meshes(_apply_new("env", "far_floor"))).override_failure_message("cloud_far=0: дальние пласты остаются solid_dark").is_equal(0)
+	assert_int(_cloud_meshes(_apply_new("env", "floor_slab_16"))).override_failure_message("cloud_floor=0: пол остаётся solid_dark").is_equal(0)
+	assert_int(_cloud_meshes(_apply_new("env", "ceiling"))).override_failure_message("cloud_ceiling=0: потолок остаётся solid_dark").is_equal(0)
+	assert_int(_cloud_meshes(_apply_new("env", "lockdown_gate"))).override_failure_message("ворота LOCKDOWN всегда сплошные: красная кромка — сигнал").is_equal(0)
+	assert_int(_cloud_meshes(_apply_new("deck", "wrist_deck"))).override_failure_message("дека всегда сплошная (своя палитра, замера облака не было)").is_equal(0)
+	AssetMaterials.tune({"cloud_far": 1.0, "cloud_floor": 1.0, "cloud_ceiling": 1.0})
+	assert_int(_cloud_meshes(_apply_new("env", "far_floor"))).override_failure_message("cloud_far=1: дальние пласты тоже облако").is_greater(0)
+	assert_int(_cloud_meshes(_apply_new("env", "floor_slab_16"))).override_failure_message("cloud_floor=1: пол — облако").is_greater(0)
 	AssetMaterials.reset_tuning()
-	AssetMaterials.tune({"cloud": 1.0})  # умолчания охвата = принятый C3a: облако на реквизите, пол/потолок/дальние пласты остаются solid_dark
-	var far_off := _load("env", "far_floor")
-	AssetMaterials.apply(far_off, "BASE")
-	assert_int(_cloud_meshes(far_off)).override_failure_message("cloud_far=0 по умолчанию: дальние пласты остаются solid_dark").is_equal(0)
-	var room := _load("env", "cover")
-	AssetMaterials.apply(room, "BASE")
-	assert_int(_cloud_meshes(room)).override_failure_message("реквизит — облако").is_greater(0)
-	assert_float(float(_mat_of(room, "pillar_block").get_shader_parameter("lite"))).override_failure_message("cloud_lite=1 по умолчанию").is_equal_approx(1.0, 0.001)
-	var no_floor := _load("env", "floor_slab_16")
-	AssetMaterials.apply(no_floor, "BASE")
-	assert_int(_cloud_meshes(no_floor)).override_failure_message("cloud_floor=0 по умолчанию: пол остаётся solid_dark").is_equal(0)
-	var no_ceil := _load("env", "ceiling")
-	AssetMaterials.apply(no_ceil, "BASE")
-	assert_int(_cloud_meshes(no_ceil)).override_failure_message("cloud_ceiling=0 по умолчанию: потолок остаётся solid_dark").is_equal(0)
-	AssetMaterials.reset_tuning()
-	AssetMaterials.tune({"cloud": 1.0, "cloud_far": 1.0, "cloud_floor": 1.0, "cloud_ceiling": 1.0})
-	var far_on := _load("env", "far_floor")
-	AssetMaterials.apply(far_on, "BASE")
-	assert_int(_cloud_meshes(far_on)).override_failure_message("cloud_far=1: дальние пласты тоже облако").is_greater(0)
-	var with_floor := _load("env", "floor_slab_16")
-	AssetMaterials.apply(with_floor, "BASE")
-	assert_int(_cloud_meshes(with_floor)).override_failure_message("cloud_floor=1: пол — облако").is_greater(0)
-	AssetMaterials.reset_tuning()
-	AssetMaterials.tune({"cloud": 1.0})
-	var one_side := _load("env", "cover")
-	AssetMaterials.apply(one_side, "BASE")
+	var one_side := _apply_new("env", "cover")
 	assert_str(_mat_of(one_side, "pillar_block").shader.resource_path).override_failure_message("по умолчанию одна сторона").ends_with("cloud_dark.gdshader")
-	AssetMaterials.tune({"cloud": 1.0, "cloud_two_sided": 1.0})
-	var two_side := _load("env", "cover")
-	AssetMaterials.apply(two_side, "BASE")
+	AssetMaterials.tune({"cloud_two_sided": 1.0})
+	var two_side := _apply_new("env", "cover")
 	assert_str(_mat_of(two_side, "pillar_block").shader.resource_path).override_failure_message("cloud_two_sided=1: cull_disabled").ends_with("cloud_dark_2s.gdshader")
-	AssetMaterials.tune({"cloud": 1.0, "cloud_lite": 0.0})
-	var heavy := _load("env", "cover")
-	AssetMaterials.apply(heavy, "BASE")
-	assert_float(float(_mat_of(heavy, "pillar_block").get_shader_parameter("lite"))).override_failure_message("cloud_lite=0 — прежний путь с 3D-шумом, для сравнения").is_equal_approx(0.0, 0.001)
 	AssetMaterials.reset_tuning()
+
+
+func _apply_new(group: String, asset: String) -> Node3D:
+	var root := _load(group, asset)
+	AssetMaterials.apply(root, "BASE")
+	return root
 
 
 func _skirt_mesh(root: Node, mesh_name: String) -> MeshInstance3D:

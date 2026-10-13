@@ -109,10 +109,9 @@ const KNOBS := {
 	"rim_far_start": 6.0,    # с какой дистанции, м, кромка плит начинает гаснуть
 	"rim_far_end": 10.0,     # на какой дистанции, м, она достигает rim_far_min
 	"rim_min_px": 4.0,       # гашение кромки плит по её ширине на экране, px (0 — выкл.): кромка уже ~0,35·N px гаснет совсем, от N px — полная; адаптируется к глазу Pico, в отличие от дистанции
-	# «Облако без основы» (владелец 08.10; принят вид C3a: облако на колоннах и реквизите, пол/потолок/дальние пласты — сплошной solid_dark). Выключено до B3 (замер на очках: C3a +0,26 мс на MSAA 2×).
-	"cloud": 0.0,            # 0 — выкл.; 1 — грани solid_dark становятся частицами с дырами (alpha_to_coverage, нужен MSAA; яркость пыли = значение); см. cloud_dark.gdshader
+	# «Облако без основы» (владелец 08.10, принято 12.10: вид C3a — облако на колоннах и реквизите, пол/потолок/дальние пласты — сплошной solid_dark; замер на очках: +0,26 мс на MSAA 2×).
+	"cloud": 1.0,            # 0 — выкл. (сплошные грани solid_dark); 1 — грани реквизита становятся частицами с дырами (alpha_to_coverage, нужен MSAA 2×+; яркость = значение); см. cloud_dark.gdshader
 	"cloud_edge_mix": 0.35,  # доля цвета неона у частиц рёбер/линий сетки (владелец: неона меньше)
-	"cloud_lite": 1.0,       # 1 — дешёвый фрагмент (хэш без sin, пятна 2D вместо 3D-шума); принятый вариант, 0 — прежний (3D-шум), для сравнения
 	"dust_cell": 0.018,      # ширина ячейки облака, м (высота вдвое больше); владелец: частицы мельче и реже (C2: 0,35 читалось лучше)
 	"dust_density": 0.35,    # доля ячеек с частицей на ровной грани вблизи (с пятнами dust_patch: проплешины и сгущения)
 	"cloud_far": 0.0,        # цена a2c — в ПЛОЩАДИ материала, не в числе частиц (замер Pico): 1 — и дальние пласты far_* облаком (+3,4 мс), 0 — остаются сплошной тёмной гранью
@@ -198,9 +197,14 @@ static func _k(name: String) -> Variant:
 	return _tuned.get(name, KNOBS[name])
 
 
-## C3: охват облака (ручка cloud) по группам моделей по имени файла сцены: far_* / floor* / ceiling*; всё остальное (колонны, укрытия, хранилище, портал…) — всегда.
+## Охват облака (ручка cloud) по группам моделей по пути сцены: far_* / floor* / ceiling* — по своим ручкам (по умолчанию сплошные); ворота lockdown_gate* и вся дека (deck/)
+## всегда сплошные: у ворот красная кромка — сигнал LOCKDOWN, облако перекрасило бы её в бирюзу, у деки на руке своя палитра и замера облака не было; остальное (колонны,
+## укрытия, хранилище, рамка выхода, платформа…) — облако.
 static func _cloud_scope_ok(root: Node) -> bool:
-	var base := root.scene_file_path.get_file()
+	var path := root.scene_file_path
+	var base := path.get_file()
+	if base.begins_with("lockdown_gate") or path.contains("/deck/"):
+		return false
 	if base.begins_with("far_"):
 		return float(_k("cloud_far")) > 0.5
 	if base.begins_with("floor"):
@@ -315,7 +319,6 @@ static func apply(root: Node, tier: String = "") -> void:
 				m.set_shader_parameter("anchor", 1.0)
 			if src.resource_name == "solid_dark" and float(_k("cloud")) > 0.0 and _cloud_scope_ok(root):  # прототип «облако без основы»: частицы с дырами вместо тёмной грани (нужен MSAA)
 				m.shader = CLOUD_SHADER_2S if float(_k("cloud_two_sided")) > 0.5 else CLOUD_SHADER
-				m.set_shader_parameter("lite", float(_k("cloud_lite")))
 				m.set_shader_parameter("glitch_tex", GlitchSprite.texture())
 				m.set_shader_parameter("dust", float(_k("cloud")))
 				m.set_shader_parameter("dust_cell", float(_k("dust_cell")))
