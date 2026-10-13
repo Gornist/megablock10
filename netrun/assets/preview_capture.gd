@@ -26,19 +26,14 @@ func _room() -> Array:
 	var g := [-3.0, -1.0, 1.0, 3.0]  # центры модулей 2×2 м: комната 8×8 м = 4×4 модуля
 	var variants := ["env/floor", "env/floor_b", "env/floor_c"]
 	var n := 0
-	if _floorv > 0 and (_floor1 or _floor1glass):
-		push_error("--floorv не сочетается с --floor1 / --floor1glass")
-		get_tree().quit(1)
-		return items
-	if _floorv > 0:  # эксперимент --floorv=N (1…4): пол комнаты одним из четырёх вариантов env/floor_v<N>_8 вместо 16 модулей
-		items.append(["env/floor_v%d_8" % _floorv, Vector3.ZERO, 0.0, "BASE", 1.0])
-	elif _floor1 or _floor1glass:  # эксперимент --floor1 / --floor1glass: пол комнаты одной плитой 8×8 (чёрной или стеклянной) вместо 16 модулей (хранилище стоит на ней)
-		items.append(["env/floor_glass_8" if _floor1glass else "env/floor_slab_8", Vector3.ZERO, 0.0, "BASE", 1.0])
-	else:
+	if _floor1:  # пол комнаты одной плитой (как в клиенте: env/floor_slab_16, край на ±8; хранилище стоит на ней)
+		items.append(["env/floor_slab_16", Vector3.ZERO, 0.0, "BASE", 1.0])
+	else:  # --tiles: 16 модулей floor* (старый пол); четыре модуля вокруг хранилища без плиток — пол там не нужен
 		for x in g:
 			for z in g:
-				var clear: bool = absf(x) < 1.5 and absf(z) < 1.5  # четыре модуля вокруг хранилища без тайлов: оно не теряется среди плиток
-				items.append(["env/floor_clear" if clear else variants[n % 3], Vector3(x, 0, z), 90.0 * (n % 4), "BASE", 1.0])  # вариант и поворот по кругу: узор не повторяется
+				var clear: bool = absf(x) < 1.5 and absf(z) < 1.5
+				if not clear:
+					items.append([variants[n % 3], Vector3(x, 0, z), 90.0 * (n % 4), "BASE", 1.0])  # вариант и поворот по кругу: узор не повторяется
 				n += 1
 	var cv := ["env/ceiling", "env/ceiling_b", "env/ceiling_c"]
 	var m := 0
@@ -69,9 +64,7 @@ func _room() -> Array:
 	if not _noexit:  # выход без стен: свободная рамка (столбы-занавесы, перемычка, порог), проём пустой; в игре на её месте при LOCKDOWN встают env/lockdown_gate
 		items.append(["env/exit_frame", Vector3(1.0, 0, -4.0), 0.0, "BASE", 1.0])
 	if not _noedge:
-		items.append(["env/room_edge_8", Vector3(0.0, 0.0, 0.0), 0.0, "BASE", 1.0])  # кромка комнаты вместо стен: квадрат 8×8, края на ±4 (в игре — env/room_edge_16 в центр комнаты)
-	if not _nomoat:
-		items.append(["env/room_moat_8", Vector3(0.0, 0.0, 0.0), 0.0, "BASE", 1.0])  # ров вокруг плиты-пола: чёрное кольцо 3 м на y=−0,02 перекрывает дальние пласты за краем (в игре — room_moat_16 в центр комнаты)
+		items.append(["env/room_edge_16", Vector3(0.0, 0.0, 0.0), 0.0, "BASE", 1.0])  # кромка комнаты вместо стен: квадрат 16×16, края на ±8, как в клиенте (в игре — в ROOM_CENTER)
 	if not _nohorizon:
 		items.append(["env/horizon_band", Vector3(0.0, 0.0, 0.0), 0.0, "BASE", 1.0])  # кольцо тумана у горизонта: один раз на центр комнаты
 	for x in [-4.0, 4.0]:
@@ -123,8 +116,7 @@ func _shots() -> Array:
 		["props/vault_closed", Vector3(-1.0, 0, 0.3), 160.0, "BASE", 1.0], ["props/vault_open", Vector3(1.0, 0, 0.3), 200.0, "BASE", 1.0],
 		["props/portal", Vector3(-2.2, 0, -2.4), 15.0, "BASE", 1.0], ["props/portal_locked", Vector3(2.4, 0, -2.6), -20.0, "BASE", 1.0]]
 	# предметы узла «волюметрик»: хранилище в трёх состояниях (тиры 1–3), шарды обоих видов с тирами, токен, панель взлома на площадке. Лицом к камере (+Z Godot)
-	var volume: Array = [["env/floor_clear", Vector3(-3.6, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(-1.2, 0, 0), 0.0, "BASE", 1.0],
-		["env/floor_clear", Vector3(1.2, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(3.6, 0, 0), 0.0, "BASE", 1.0],
+	var volume: Array = [["env/floor_slab_16", Vector3.ZERO, 0.0, "BASE", 1.0],
 		["props/vault", Vector3(-1.5, 0, -0.2), 180.0, "BASE", 1.0, {"state": "closed", "tier": 1}],
 		["props/vault", Vector3(0.0, 0, -0.2), 180.0, "BASE", 1.0, {"state": "open", "tier": 2}],
 		["props/vault", Vector3(1.5, 0, -0.2), 180.0, "BASE", 1.0, {"state": "empty", "tier": 3}],
@@ -138,19 +130,19 @@ func _shots() -> Array:
 		["props/hack_panel", Vector3(2.9, 0, -0.3), 180.0, "BASE", 1.0]]
 	var solo := [["avatar/runner", Vector3(0, 0, 0), 180.0, "", 1.0]]
 	var scar := [ICE_POS + Vector3(0, 1.0, -0.6), 4.2]
-	var icestage := [["env/floor_clear", Vector3(0, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(2.4, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(-2.4, 0, 0), 0.0, "BASE", 1.0],
+	var icestage := [["env/floor_slab_16", Vector3.ZERO, 0.0, "BASE", 1.0],
 		["ice/soft_ice", Vector3(-1.8, 0, 0.0), 180.0, "", 1.0], ["ice/black_ice", Vector3(1.5, 0, 0.0), 180.0, "", 1.0], ["avatar/runner", Vector3(0.0, 0, 1.0), 180.0, "", 1.0]]
-	var icestates := [["env/floor_clear", Vector3(0, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(2.4, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(-2.4, 0, 0), 0.0, "BASE", 1.0],
+	var icestates := [["env/floor_slab_16", Vector3.ZERO, 0.0, "BASE", 1.0],
 		["ice/black_ice", Vector3(-2.0, 0, 0.0), 180.0, "", 1.0], ["ice/black_ice_hunt", Vector3(0.0, 0, 0.0), 180.0, "", 1.0], ["ice/black_ice_catch", Vector3(2.0, 0, 0.0), 180.0, "", 1.0]]
-	var nodeprops := [["env/floor_clear", Vector3(0, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(2.4, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(-2.4, 0, 0), 0.0, "BASE", 1.0],
+	var nodeprops := [["env/floor_slab_16", Vector3.ZERO, 0.0, "BASE", 1.0],
 		["props/seat", Vector3(-1.6, 0, 0.0), 0.0, "BASE", 1.0], ["props/sensor", Vector3(0.0, 0, 0.0), 0.0, "BASE", 1.0], ["props/dead_deck", Vector3(1.2, 0.02, 0.4), 30.0, "BASE", 3.0],
 		["avatar/runner", Vector3(-1.6, 0.14, 0.0), 0.0, "", 1.0]]
-	var envmore := [["env/floor_clear", Vector3(0, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(-2, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(2, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(4, 0, 0), 0.0, "BASE", 1.0],
+	var envmore := [["env/floor_slab_16", Vector3.ZERO, 0.0, "BASE", 1.0],
 		["env/lockdown_gate", Vector3(-3.0, 0, -2.0), 0.0, "", 1.0], ["env/lockdown_gate_open", Vector3(-1.0, 0, -2.0), 0.0, "", 1.0], ["env/corner", Vector3(1.0, 0, -2.0), 0.0, "BASE", 1.0],
 		["env/platform", Vector3(3.0, 0, -2.0), 0.0, "BASE", 1.0], ["env/cable_straight", Vector3(-3.0, 0, 0.0), 0.0, "BASE", 1.0], ["env/cable_curve", Vector3(-1.0, 0, 0.0), 0.0, "BASE", 1.0],
 		["env/tunnel_ring", Vector3(2.0, 0, 0.5), 0.0, _tier, 1.0]]
 	var tk := ["EXTRACT_SHARD", "EXTRACT_DAEMON", "GHOST", "TIMESKEW", "BLACKOUT", "JITTER", "DECRYPT", "MINER"]
-	var decks := [["env/floor_clear", Vector3(0, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(-2, 0, 0), 0.0, "BASE", 1.0], ["env/floor_clear", Vector3(2, 0, 0), 0.0, "BASE", 1.0],
+	var decks := [["env/floor_slab_16", Vector3.ZERO, 0.0, "BASE", 1.0],
 		["deck/wrist_deck", Vector3(0.0, 1.1, 0.4), 90.0, "", 6.0]]
 	for i in tk.size():
 		decks.append(["deck/daemon_" + tk[i], Vector3(-1.75 + 0.5 * i, 0.55, 0.0), 0.0, "", 8.0])
@@ -212,11 +204,8 @@ var _crowd := false  # --crowd: в комнате девять аватаров 
 var _walls := false  # --walls: вернуть стены-занавесы и проёмы (по умолчанию убраны: владелец, «эквалайзер явно не то», открытый горизонт)
 var _portal := false  # --portal: вернуть портал в западной стене (по умолчанию убран: яркая бирюзовая панель закрывает кадр изнутри комнаты)
 var _nohorizon := false  # --nohorizon: без кольца env/horizon_band (сравнение «с туманом / без»)
-var _noedge := false  # --noedge: без кромки env/room_edge_8 (сравнение «с кромкой / без»)
-var _nomoat := true  # РЕШЕНИЕ ВЛАДЕЛЬЦА 5 окт: «без рва лучше» — по умолчанию рва нет; --moat включает env/room_moat_8 (ассеты оставлены)
-var _floor1glass := false  # --floor1glass: ЭКСПЕРИМЕНТ, то же, но плита стеклянная (полупрозрачная) env/floor_glass_8
-var _floorv := 0  # --floorv=N (1…4): ЭКСПЕРИМЕНТ, пол комнаты одним из четырёх вариантов env/floor_v<N>_8 (src/floor_variants.py); не сочетается с --floor1 / --floor1glass
-var _floor1 := true  # РЕШЕНИЕ ВЛАДЕЛЬЦА: пол комнаты — одна чёрная плита env/floor_slab_8 (по умолчанию); --tiles возвращает 16 модулей floor*
+var _noedge := false  # --noedge: без кромки env/room_edge_16 (сравнение «с кромкой / без»)
+var _floor1 := true  # РЕШЕНИЕ ВЛАДЕЛЬЦА: пол комнаты — одна чёрная плита env/floor_slab_16 (по умолчанию); --tiles возвращает 12 модулей floor* (старый пол)
 var _movie := false
 var _demo := false  # --demo: длинный проход по комнате (вход → хранилище → портал → ICE → вверх), 34 с
 var _batch_on := true  # --nobatch: не клеить дальние пласты в MultiMesh
@@ -283,18 +272,10 @@ func _ready() -> void:
 			_nohorizon = true
 		if a == "--noedge":
 			_noedge = true
-		if a == "--nomoat":
-			_nomoat = true
-		if a == "--moat":
-			_nomoat = false
 		if a == "--floor1":
 			_floor1 = true
 		if a == "--tiles":
 			_floor1 = false
-		if a == "--floor1glass":
-			_floor1glass = true
-		if a.begins_with("--floorv="):
-			_floorv = int(a.trim_prefix("--floorv="))
 		if a == "--crowd":
 			_crowd = true
 		if a == "--walls":

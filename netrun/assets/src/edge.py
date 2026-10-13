@@ -118,5 +118,4 @@ def build_room_edge(out, size, seed):
 
 if __name__ == "__main__":
     o = lib.args()
-    build_room_edge(o, 8, seed=101)
-    build_room_edge(o, 16, seed=102)
+    build_room_edge(o, 16, seed=102)  # размер 8 (комната просмотра) убран в B2: клиент грузит только 16

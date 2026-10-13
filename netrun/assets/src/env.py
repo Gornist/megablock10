@@ -313,22 +313,6 @@ def _slab_rise(rng, cx, cyy, hx, hy, hh, hmax, sides=4):
     return quads
 
 
-def _slab_dots(rng, size, step, covered, margin, sg, forced=()):
-    """Точки пола: шаг постоянный, ~15% пропущено, высота слегка разная (не выше поверхности); под плитами (с запасом margin) точек нет."""
-    steps = int(size / step + 1e-9)
-    pts = []
-    for i in range(steps):
-        for j in range(steps):
-            x, y = -size / 2 + step / 2 + i * step, -size / 2 + step / 2 + j * step
-            if (x, y) in forced:
-                pts.append(Vector((x, y, sg * -rng.uniform(0.016, 0.09))))
-                continue
-            if rng.random() < 0.15 or any(abs(x - cx) < hx + margin and abs(y - cyy) < hy + margin for cx, cyy, hx, hy in covered):
-                continue
-            pts.append(Vector((x, y, sg * -rng.uniform(0.016, 0.09))))
-    return pts
-
-
 # Виды плит: (вес, (мин, макс) по одной стороне, (мин, макс) по другой), метры.
 ROOM_KINDS = [(0.14, (1.3, 1.68), (0.3, 0.5)), (0.26, (0.8, 1.2), (0.5, 0.8)), (0.34, (0.4, 0.65), (0.35, 0.6)), (0.26, (0.22, 0.4), (0.22, 0.4))]
 FAR_KINDS = [(0.16, (3.0, 4.6), (2.0, 3.2)), (0.28, (1.6, 3.0), (1.0, 2.0)), (0.3, (0.7, 1.3), (0.5, 1.0)), (0.26, (0.3, 0.6), (0.3, 0.6))]
@@ -368,18 +352,14 @@ def build_floor(out, name="floor", seed=2, ceiling=False, cover=0.22, dense=Fals
         skirts += _slab_skirt(srng, cx, cyy, hx, hy, hh, sg, min(SKIRT_H_ROOM, 0.95 + hh - SLAB_T))
         if not ceiling:  # пол: завеса вверх от верхней кромки (в тот же меш *_skirt: отдельный меш дал бы четвёртый слой прозрачности, предел 3)
             skirts += _slab_rise(rrng, cx, cyy, hx, hy, hh, RISE_H_ROOM)
-    del streaks[200:]
+    # B2 (12.10.2026): штрихи и точки окружения не рисуются (streak_keep=0 и point_keep=0 приняты на очках) и из модели убраны. Цикл выше всё равно считает штрихи:
+    # они потребляют датчик rng, от которого зависит раскладка плит, — раскладка (то, что видели на очках) остаётся прежней.
     rim = tuple(c * 0.6 for c in cy)  # контур верха слабее штрихов
     objs = [lib.obj_from_bm("tiles", lib.merge_bm(*tiles), "solid_dark", cy, rgb_fn=_slab_rgb(infos, rim, lib.lin("void")))] if tiles else []
-    # пол: якорь сверху (имя *_hang); потолок: штрихи растут вверх от кромок, якорь по умолчанию у основания
-    objs.append(lib.streak_set(("ceiling_streaks" if ceiling else "floor_streaks_hang"), streaks, cy))
     if skirts:  # вуаль на гранях плит (имя *_skirt: в Godot шейдер skirt.gdshader); у чистой площадки без плит её нет
         objs.append(lib.skirt_set("ceiling_skirt" if ceiling else "floor_skirt", skirts, cy))
-    corners = {(sx * 0.875, sy * 0.875) for sx in (-1, 1) for sy in (-1, 1)}
-    dots = _slab_dots(rng, 2.0, 0.25, covered, 0.06, sg, forced=corners)
-    objs.append(lib.point_cloud("dots", dots, cy, half_size=0.016, seed=2, a_min=0.4, a_max=0.9))
     area = sum(4 * hx * hy for _, _, hx, hy in rects)
-    return lib.export(name, "env", objs, out, budget_tris=(450 if dense else 300), budget_points=170, budget_streaks=200, origin=("ceiling" if ceiling else "surface"),
+    return lib.export(name, "env", objs, out, budget_tris=(450 if dense else 300), budget_points=0, budget_streaks=0, origin=("ceiling" if ceiling else "surface"),
                       notes=f"{len(rects)} плит толщиной {SLAB_T * 100:.0f} см, покрытие {area / 4.0 * 100:.0f}% плитки 2×2 м")
 
 
@@ -409,17 +389,13 @@ def build_far_surface(out, name="far_floor", seed=61, ceiling=False, size=11.0, 
         skirts += _slab_skirt(srng, cx, cyy, hx, hy, hh, sg, min(SKIRT_H_FAR, ln_max), SKIRT_FAR_SIDES)
         if not ceiling:  # дальний пол: завеса вверх от верхней кромки (две грани из четырёх)
             skirts += _slab_rise(rrng, cx, cyy, hx, hy, hh, RISE_H_FAR, RISE_FAR_SIDES)
-    del streaks[260:]
+    # B2 (12.10.2026): штрихи и точки окружения убраны (не рисуются, см. build_floor); цикл выше считает штрихи ради датчика rng — раскладка плит прежняя.
     rim = tuple(c * 0.6 for c in cy)
     objs = [lib.obj_from_bm("tiles", lib.merge_bm(*tiles), "solid_dark", cy, rgb_fn=_slab_rgb(infos, rim, lib.lin("void")))]
-    objs.append(lib.streak_set(("far_ceiling_streaks" if ceiling else "far_floor_streaks_hang"), streaks, cy))
     objs.append(lib.skirt_set("far_ceiling_skirt" if ceiling else "far_floor_skirt", skirts, cy))
-    dots = _slab_dots(rng, size, 0.75, covered, 0.15, sg)
-    dots += [Vector((sx * (size / 2 - 0.1), sy * (size / 2 - 0.1), sg * -0.03)) for sx in (-1, 1) for sy in (-1, 1)]  # угловые точки: габарит симметричен, участки стыкуются
-    objs.append(lib.point_cloud("far_surface_pts", dots, cy, half_size=0.02, seed=2, a_min=0.3, a_max=0.8))
     area = sum(4 * hx * hy for _, _, hx, hy in rects)
-    return lib.export(name, "env", objs, out, budget_tris=1100, budget_points=700, budget_streaks=260, origin=("ceiling" if ceiling else "surface"),
-                      notes=f"{len(rects)} плит, покрытие {area / (size * size) * 100:.1f}% участка {size:g}×{size:g} м, глубина до 2,6 м, штрихи до 3 м")
+    return lib.export(name, "env", objs, out, budget_tris=1100, budget_points=0, budget_streaks=0, origin=("ceiling" if ceiling else "surface"),
+                      notes=f"{len(rects)} плит, покрытие {area / (size * size) * 100:.1f}% участка {size:g}×{size:g} м, глубина до 2,6 м")
 
 
 def build_column_field(out, name="column_field", seed=77):
@@ -530,6 +506,5 @@ if __name__ == "__main__":
         build_doorway(o, name, seed)
     for name, seed in (("floor", 2), ("floor_b", 5), ("floor_c", 9)):
         build_floor(o, name, seed, cover=0.425, dense=True)
-    build_floor(o, "floor_clear", 14, cover=0)
     for name, seed in (("ceiling", 3), ("ceiling_b", 6), ("ceiling_c", 11)):
         build_floor(o, name, seed, ceiling=True)
