@@ -300,8 +300,12 @@ pico_shot() { # pico_shot [файл] → путь к PNG (screencap) или пу
   else rm -f "$f"; fi
 }
 PICO_BOUNDARY_PKG=${PICO_BOUNDARY_PKG:-com.pvr.seethrough.setting}  # окно границы И «Слишком темно» — Unity в одном пакете, нод в дампе нет
-PICO_BOUNDARY_XY=${PICO_BOUNDARY_XY:-1117 1300}                      # «Войти в VR (текущая граница)»; координаты нашёл Godot
-PICO_BOUNDARY_SIZE=${PICO_BOUNDARY_SIZE:-4320x2160}                  # экран, для которого координаты верны
+# Кнопку «Войти в VR (текущая граница)» ищем ПО ЦВЕТУ на screencap (pico_blue.py): раскладка карточки зависит от состояния границы
+# (прогон 13.10 20:26: кнопка на (1145,1523), а прежний фиксированный тап (1117,1300) попал в текст карточки выше). Слепого
+# запасного тапа по координатам НЕТ: в другой раскладке там может оказаться «Сбросить границу» — вне белого списка.
+PICO_BLUE_PY=$(dirname "$(readlink -f "$0")")/pico_blue.py
+PICO_PY=${PICO_PY:-$([ -x "$BOX/venv/bin/python" ] && echo "$BOX/venv/bin/python" || echo python3)}  # нужен Pillow (~/box/venv)
+PICO_BOUNDARY_SIZE=${PICO_BOUNDARY_SIZE:-4320x2160}                  # экран, для которого рассчитан поиск
 # Системные пакеты на переднем плане, с которыми запускать нельзя; свои — в $BOX/pico-bad-pkgs (по строке).
 PICO_BAD_PKGS="com.pvr.seethrough.setting com.picovr.systemext com.picovr.settings com.pvr.appmanager $(cat "$BOX/pico-bad-pkgs" 2>/dev/null | tr '\n' ' ')"
 # Допустимое на переднем плане: наша игра и лаунчер (ПО ПУСТОМУ списку не угадать — расширяется файлом $BOX/pico-ok-pkgs
@@ -342,6 +346,7 @@ pico_todo() { # что сделать человеку — по виду при�
     window) echo "Открыть PNG: системное окно Pico на экране. Снять его вручную в очках; если окно новое — сказать Devbox (добавлю в белый список)";;
     unknown) echo "Открыть PNG: что за окно или пакет. Закрыть вручную; если это нормальный экран — добавить пакет в ~/box/pico-ok-pkgs";;
     taps) echo "Разрешить нажатия белого списка (pico taps on) либо снять окно вручную в очках";;
+    boundary) echo "Надеть очки и один раз нажать «Войти в VR (текущая граница)» — карточка границы не закрывается через adb; затем перезапустить прогон";;
     state) echo "Надеть очки и пройти настройку границы/трекинга вручную, затем перезапустить прогон";;
     wake) echo "Очки не просыпаются: проверить питание очков, кабель USB и adb (box.sh status)";;
     asleep) echo "ПОГАСИТЬ ОЧКИ ВРУЧНУЮ (кнопка питания): риск выгорания матриц";;
@@ -366,7 +371,7 @@ pico_fail() { # pico_fail <владелец> <окно> <причина> [вид
   echo "pico ready: НЕ ГОТОВО — $3; PNG: ${shot:-нет}; очки погашены, ${PICO_LEASE_NOTE}"
   return 1
 }
-pico_boundary_tap() { # окно границы: тап по координатам и проверка, что окно ушло. Решение владельца 13.10: «1 по коордам жми».
+pico_boundary_tap() { # окно границы: тап по найденной по цвету кнопке и проверка, что окно ушло. Решение владельца 13.10: «1 по коордам жми» (то же действие, точнее место).
   # Пакет у окна границы и «Слишком темно» ОДИН — поэтому звать только при light_warning_state != 1 (проверяет pico_ready) и при
   # совпавшем размере экрана (координаты привязаны к 4320×2160).
   local own=$1 size i
@@ -377,16 +382,27 @@ pico_boundary_tap() { # окно границы: тап по координат�
   if [ "$size" != "$PICO_BOUNDARY_SIZE" ]; then
     pico_fail "$own" boundary "экран ${size:-неизвестен}, координаты окна границы заданы для $PICO_BOUNDARY_SIZE — по координатам не жму" state; return 1
   fi
-  # shellcheck disable=SC2086  # PICO_BOUNDARY_XY = «x y», разбиение намеренное
-  timeout 10 "$ADB" -s "$PICO" shell input tap $PICO_BOUNDARY_XY </dev/null >/dev/null 2>&1
-  jlog pico-ready-tap owner "$own" window boundary-coords button "Войти в VR (текущая граница)" at "$PICO_BOUNDARY_XY" pkg "$PICO_BOUNDARY_PKG"
+  local png res cx cy bw bh
+  mkdir -p "$BOX/tmp"; png=$BOX/tmp/boundary-$$.png
+  pico_shot "$png" >/dev/null
+  res=$("$PICO_PY" "$PICO_BLUE_PY" "$png" 2>/dev/null); rm -f "$png"
+  case ${res:-NONE} in
+    NONE*|'')
+      pico_fail "$own" boundary "окно границы: синей кнопки «Войти в VR» на кадре не нашёл (${res:-поиск не отработал}) — не жму; PNG в ~/box/shots" window; return 1;;
+  esac
+  read -r cx cy bw bh <<<"$res"
+  timeout 10 "$ADB" -s "$PICO" shell input tap "$cx" "$cy" </dev/null >/dev/null 2>&1
+  jlog pico-ready-tap owner "$own" window boundary-blue button "Войти в VR (текущая граница)" at "$cx $cy" block "${bw}x${bh}" pkg "$PICO_BOUNDARY_PKG"
   for i in 1 2 3 4 5 6; do
     sleep 1
     pico_props
     pico_track_ok || return 0  # трекинг пропал — окно, скорее всего, уже «Слишком темно»; дальше решит диагностика
     case ${P_RES:-?} in "$PICO_BOUNDARY_PKG"/*) ;; *) return 0;; esac
   done
-  pico_fail "$own" boundary "окно границы ($PICO_BOUNDARY_PKG) не ушло после нажатия по координатам" window
+  # Замер 13.10 20:30 на живых очках: кнопка найдена (≈1149,1544), но НИ ОДИН способ ввода Android (input tap после ожидания,
+  # swipe 200 мс, touchscreen tap, mouse tap, двойной тап) карточку не закрыл; am start игры — «current activity is being kept for
+  # the user». Unity-карточка принимает только VR-указатель (контроллер/рука/взгляд) — значит, нужен человек в очках.
+  pico_fail "$own" boundary "карточка границы ($PICO_BOUNDARY_PKG): кнопка «Войти в VR» найдена, нажатие input её не закрывает (Unity принимает только VR-указатель), игра не стартует («kept for the user») — нужен человек в очках" boundary
 }
 pico_ready() { # pico_ready <владелец>: бронь → разбудить → снять известные безопасные окна → проверить СОСТОЯНИЕ очков
   local own=$1 lo st v kind rid xy btn title shot why n_tap=0 i state
