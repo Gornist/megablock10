@@ -29,16 +29,16 @@ const SENSOR_SWEEP_RAD := 0.6
 const SENSOR_SWEEP_HZ := 0.12
 ## Стен, углов, дверей, кольца тоннеля, башен света (far_field) и кольца горизонта в комнате нет: на принятом виде (V10: штрихи и точки окружения выключены,
 ## дымка погашена) они невидимы и стоили только вызовов отрисовки (docs/netrun-refactor-plan.md). Ворота lockdown_gate остаются: это игровой сигнал LOCKDOWN.
-## Границу комнаты показывает room_edge и кромка плит пола.
+## Границу комнаты показывает только кромка плит пола: room_edge (подвесные штрихи и дымка кромки) на принятом виде невидим, убран по решению владельца 13.10.
 ## Дальние пласты (far_*) иначе гаснут на 14…40 м (assets/ARCHITECTURE.md, п. 17): затухание по расстоянию и яркость к горизонту.
 const FAR_FADE := Vector2(40.0, 130.0)
 const FAR_PARAMS := {"far_gain": 1.8, "far_start": 20.0, "far_end": 60.0}
-const MODULES := ["floor", "room_edge", "pillar", "cover", "platform", "lockdown_gate", "ceiling", "far_floor", "far_ceiling"]
+const MODULES := ["floor", "pillar", "cover", "platform", "lockdown_gate", "ceiling", "far_floor", "far_ceiling"]
 ## Варианты модуля (другой seed, тот же размер): узор не повторяется, девять одинаковых плиток подряд — запрещены (assets/ARCHITECTURE.md, п. 6).
 ## Экземпляры модуля делятся по вариантам по кругу; первый вариант всегда в комнате (его путь — NodeAssets.env_path(module)).
 const VARIANTS := {
 	# пол — один чёрный тайл на всю комнату (решение владельца 05.10.2026), граница комнаты — кромка; обе в NodeLayout.ROOM_CENTER, один раз
-	"floor": ["floor_slab_16"], "room_edge": ["room_edge_16"],
+	"floor": ["floor_slab_16"],
 	"ceiling": ["ceiling", "ceiling_b", "ceiling_c"],
 	"far_floor": ["far_floor", "far_floor_b", "far_floor_c"],
 	"far_ceiling": ["far_ceiling", "far_ceiling_b", "far_ceiling_c"],
@@ -201,9 +201,8 @@ func _room_transforms() -> Dictionary:
 	var out := {}
 	for module in MODULES:
 		out[module] = []
-	# Пол — один тайл и кромка комнаты: оба по одному разу в центре (origin ассетов — центр плиты), без поворота.
+	# Пол — один тайл: по одному разу в центре (origin ассетов — центр плиты), без поворота.
 	out["floor"].append(Transform3D(Basis.IDENTITY, NodeLayout.ROOM_CENTER))
-	out["room_edge"].append(Transform3D(Basis.IDENTITY, NodeLayout.ROOM_CENTER))
 	var last := NodeLayout.GRID - 1
 	for iz in NodeLayout.GRID:
 		for ix in NodeLayout.GRID:
