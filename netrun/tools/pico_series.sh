@@ -123,6 +123,9 @@ for spec in "$@"; do
   adb -s "$serial" exec-out run-as "$PACKAGE" cat files/xr_diag_view.png </dev/null > "$OUT/$name.png" 2>/dev/null || true
   [ -s "$OUT/$name.png" ] && head -c 4 "$OUT/$name.png" | grep -q PNG || adb -s "$serial" pull "/sdcard/Android/data/$PACKAGE/files/xr_diag_view.png" "$OUT/$name.png" >/dev/null 2>&1 </dev/null || true
   [ -s "$OUT/$name.png" ] && echo "   кадр: $OUT/$name.png" || { rm -f "$OUT/$name.png"; echo "   кадра нет (perf=diag не задан или PNG ещё не сохранён)"; }
+  # Кадр вида от XrDiag на устройстве бывает чёрным (shot_mean=0.0): штатный снимок экрана очков — что реально видно (стерео, оба глаза)
+  adb -s "$serial" exec-out screencap -p </dev/null > "$OUT/$name-screen.png" 2>/dev/null || true
+  if [ -s "$OUT/$name-screen.png" ] && head -c 4 "$OUT/$name-screen.png" | grep -q PNG; then echo "   экран: $OUT/$name-screen.png"; else rm -f "$OUT/$name-screen.png"; echo "   снимка экрана нет"; fi
 done
 
 echo "pico_series: готово, результаты — $OUT (код $fail)"
