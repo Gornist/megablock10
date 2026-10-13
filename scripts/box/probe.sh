@@ -98,6 +98,18 @@ else
   done < <(timeout 8 "$ADB" devices -l 2>/dev/null | sed '1d')
 fi
 info "$ADB_NOTE · устройств: ${#SERIALS[@]}"
+# Кто убивает общий сервер: adb сам пишет в журнал службы цепочку процессов kill-server. Свежее убийство (30 мин) — замечание:
+# каждое рвёт устройства и reverse/forward у всех сессий.
+KILLS=$(journalctl --user -u box-adb --since '24 hours ago' --no-pager -o short-iso 2>/dev/null | grep -c 'killed by remote request')
+if [ "${KILLS:-0}" -gt 0 ]; then
+  LASTK=$(journalctl --user -u box-adb --since '24 hours ago' --no-pager -o short-iso 2>/dev/null | grep 'killed by remote request' | tail -1 | cut -c1-16 | tr 'T' ' ')
+  WHO=$(journalctl --user -u box-adb --since '24 hours ago' --no-pager 2>/dev/null | grep -A2 'adb kill-server' | grep 'cmdline:' | grep -v 'adb kill-server' \
+    | sed -E 's/.*cmdline://' | cut -c1-60 | sort | uniq -c | sort -rn | head -2 | sed -E 's/^ *([0-9]+) /\1× /' | paste -sd';' -)
+  info "adb: kill-server за сутки $KILLS (последний $LASTK; кто: ${WHO:-?})"
+  if [ "$(date -d "$LASTK" +%s 2>/dev/null || echo 0)" -gt $((NOW - 1800)) ]; then
+    problem "adb-сервер убивали за последние 30 мин ($KILLS за сутки; кто: ${WHO:-?}) — рвёт устройства и forward/reverse у всех"
+  fi
+fi
 
 DEVSCRIPT='
 echo "model=$(getprop ro.product.model)"
