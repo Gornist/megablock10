@@ -86,9 +86,21 @@ func test_габарит_охватывает_точки_с_запасом() -> 
 	assert_vector(VolumeSampler.bounds_of(PackedFloat32Array()).size).is_equal(Vector3.ZERO)
 
 
+## Модель, у которой рядом нет `.points` (генератор Blender пишет файлы только для vault/portal/shard…): на ней проверяется запасной путь
+## «сэмплировать поверхность на лету». Появится файл у обеих — тест скажет прямо, а не упадёт на чужом условии.
+func _model_without_points() -> String:
+	for name in ["sensor", "portal_locked"]:
+		var path := "res://assets/models/props/%s.glb" % name
+		if not FileAccess.file_exists(VolumeRegistry.points_path(path)):
+			return path
+	return ""
+
+
 func test_spawn_без_файла_сэмплирует_модель_и_число_по_модулю() -> void:
-	var model := "res://assets/models/props/portal.glb"   # рядом нет portal.points
-	assert_bool(FileAccess.file_exists(VolumeRegistry.points_path(model))).is_false()
+	var model := _model_without_points()
+	assert_str(model).override_failure_message("нет модели без .points среди sensor/portal_locked — запасной путь не на чем проверить").is_not_empty()
+	if model == "":
+		return
 	VolumeRegistry.configure("portal")
 	var c := VolumeRegistry.spawn("portal", model, Color.WHITE, AABB())
 	assert_object(c).is_not_null()
