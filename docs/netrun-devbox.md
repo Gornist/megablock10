@@ -178,6 +178,11 @@ GTX 1650). Через него агент `godot-dev` (`.claude/agents/godot-dev
   подробный журнал — `~/.local/state/devbox-session.log`. Редактор Godot AI поднимает отдельный `godot-ai.desktop`
   (`scripts/devbox-godot-ai.sh autostart`, через 20 с после входа); автозапуск сеанса лишь ждёт порт 8000 до 90 с и пишет проблему в отчёт,
   если редактор не поднялся. Нужны: autoConnect в incy и sudo без пароля на перезапуск `tailscaled` (`/etc/sudoers.d/devbox-tailscale`).
+- **Godot не должен убивать общий adb.** При выходе Godot (в том числе `--headless --import` из `gdunit.sh`, `dev.sh`, `live_run.sh`…) вызывает `adb kill-server`
+  (настройка редактора `export/android/shutdown_adb_on_exit`, по умолчанию true) — 13.10 это пять раз оборвало Pico и телефоны всем сессиям. Защита двойная:
+  скрипты `netrun/tools/*.sh` и `~/pico-cfg/build.sh` экспортируют `ANDROID_ADB_SERVER_PORT=5099` (Godot убивает пустой порт, а не общий сервер), а в
+  `~/.config/godot/editor_settings-4.7.tres` стоит `export/android/shutdown_adb_on_exit = false` (поставила сессия Devbox; при смене версии Godot файл
+  называется иначе — строку добавить снова). Счётчик убийств — в `scripts/box.sh status`.
 - **Клиент (Claude Code на Mac):** `.mcp.json` запускает `ssh devbox … uvx godot-ai attach` (stdio-мост) — туннеля и токенов нет. Телеметрию
   плагина отключает `GODOT_AI_DISABLE_TELEMETRY=1`.
 - **Тесты — gdUnit4, как в CI:** `ssh devbox 'cd ~/wt-godot && netrun/tools/gdunit.sh [res://tests/файл_test.gd]'` (весь набор — 403 теста,

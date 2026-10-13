@@ -8,6 +8,7 @@
 set -u
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GODOT="${GODOT:-godot}"
+export ANDROID_ADB_SERVER_PORT=5099   # Godot на выходе зовёт `adb kill-server` (editor setting shutdown_adb_on_exit): на чужом порту он убивает пустоту, а не общий adb с очками и телефонами
 BRIDGE_PORT="${BRIDGE_PORT:-7410}"
 LINE_PORT="${LINE_PORT:-7411}"
 ENET_PORT="${ENET_PORT:-7777}"
