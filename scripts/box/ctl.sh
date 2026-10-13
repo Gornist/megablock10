@@ -217,12 +217,12 @@ ADB=${ADB:-$HOME/android-sdk/platform-tools/adb}
 PICO_GRACE=${PICO_GRACE:-180}  # секунд без брони, после которых guard гасит очки
 pico_state() { # Awake | Asleep | Dozing | ? ; второй токен — Display Power: ON|OFF|?
   local raw w d
-  raw=$(timeout 10 "$ADB" -s "$PICO" shell 'dumpsys power | grep -E "mWakefulness=|Display Power: state"' 2>/dev/null | tr -d '\r')
+  raw=$(timeout 10 "$ADB" -s "$PICO" shell 'dumpsys power | grep -E "mWakefulness=|Display Power: state"' </dev/null 2>/dev/null | tr -d '\r')
   w=$(sed -n 's/.*mWakefulness=\([A-Za-z]*\).*/\1/p' <<<"$raw" | head -1)
   d=$(sed -n 's/.*Display Power: state=\([A-Z]*\).*/\1/p' <<<"$raw" | head -1)
   echo "${w:-?} ${d:-?}"
 }
-pico_power() { timeout 10 "$ADB" -s "$PICO" shell input keyevent KEYCODE_POWER >/dev/null 2>&1; }
+pico_power() { timeout 10 "$ADB" -s "$PICO" shell input keyevent KEYCODE_POWER </dev/null >/dev/null 2>&1; }
 pico_wait() { # pico_wait <Awake|Asleep> <секунд> → 0, если очки пришли в состояние
   local want=$1 i st
   for ((i = 0; i < $2; i++)); do

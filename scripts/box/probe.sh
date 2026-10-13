@@ -191,16 +191,16 @@ info "занято: ${BUSY[*]:-ничем из известного}"
 # --- очереди и брони (scripts/box/ctl.sh из клона; нет клона — пропускаем) -------------------------------------------------
 CTL=$BOX/repo/scripts/box/ctl.sh
 if [ -f "$CTL" ]; then
-  QRAW=$(bash "$CTL" queue 2>/dev/null)
+  QRAW=$(bash "$CTL" queue </dev/null 2>/dev/null)
   if grep -q -E 'занято|ждут|^ +[0-9]+\.' <<<"$QRAW"; then
     info "очередь:"$'\n'"$(sed 's/^/  /' <<<"$QRAW")"
   else
     info "очередь: gradle и gpu свободны, замки gdUnit/display не заняты"
   fi
-  LLINES=$(bash "$CTL" leases 2>/dev/null | sed 's/^/  /')
+  LLINES=$(bash "$CTL" leases </dev/null 2>/dev/null | sed 's/^/  /')
   [ -n "$LLINES" ] && info "брони:"$'\n'"$LLINES"
   # Очки Pico: датчик приближения заклеен, сами не гаснут — Awake без брони = замечание (риск выгорания матриц).
-  PICO_ST=$(bash "$CTL" pico status 2>&1); PICO_RC=$?
+  PICO_ST=$(bash "$CTL" pico status </dev/null 2>&1); PICO_RC=$?
   if [ "$PICO_RC" -ne 0 ] && grep -q 'БЕЗ БРОНИ' <<<"$PICO_ST"; then
     problem "$PICO_ST"
   elif [ "$PICO_RC" -ne 0 ]; then
