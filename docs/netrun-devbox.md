@@ -154,17 +154,21 @@ godot -- --flat --host=127.0.0.1 --port=7777 --token=t1
   Грабли без человека: очки на столе засыпают по датчику (`dumpsys power` → `Asleep`; `svc power stayon true` не всегда хватает; на Pico помогли
   `setprop pvr.factorytest.never.sleep 1` и `persist.pvr.sleep_by_static 0` — вернуть после серии); камеры в тёмной комнате дают системный диалог
   «Слишком темно» — `am start` отвечает «kept for the user», игра не стартует, серия честно прерывается; закрыть диалог должен человек.
-- **Брони и очередь devbox (D4, `docs/devbox.md`):** скрипты Сети кооперативно соблюдают их через `netrun/tools/box_guard.sh` (на машине без
-  `~/box/repo` — ничего не проверяют). `pico_stand.sh` перед записью конфига и `pico_series.sh` перед стартом зовут `check pico` (и `check
-  port:7777`, если задан `PICO_SERVER_CMD`): чужая бронь — отказ «кто и до когда». Порядок серии: `scripts/box.sh pico wake Godot <мин> серия` →
-  `pico_series.sh …` (сам зовёт `ctl.sh pico ready Godot`: будит, снимает окна Pico белым списком владельца, на «НЕ ГОТОВО» останавливается,
-  PNG — в `~/box/shots`) → по концу `pico sleep Godot` (датчик заклеен; `PICO_SLEEP_AFTER=0` — не гасить). `pico_ready.sh` — запасной путь
-  через `PICO_READY_CMD`. `dev.sh shot` ставит запуск Godot в очередь `gpu` (`ctl.sh run gpu Godot --name shot`, ожидание `SHOT_QUEUE_WAIT`, 900 с),
-  свой `flock /tmp/display.lock` остаётся внутри. Сервер стенда на свободном порту из пула 7800–7899: `scripts/box.sh up stand Godot -- <srv_p2.sh> {PORT}`.
-  Грабли: `pico ready` не видит оверлейное окно «Слишком темно» (нет нод uiautomator) и отвечает «ГОТОВО» — серию тогда останавливает `am start`
-  («kept for the user»), кадр — `<OUT>/<вариант>-blocked.png`; нужен свет в комнате или «Перезапустить отслеживание».
-  Самотест защиты — `netrun/tools/box_guard_selftest.sh` (подложные ctl.sh и adb, `PICO_SERIAL=NOSUCH`, `BOX_TEST=1`; очков и `~/box` не касается):
-  проверки броней гонять только им, а не рабочими скриптами по ssh — 13.10 17:27 так разбудили очки.
+- **Один путь к очкам (Д5, `docs/devbox.md` «Д5»; решение владельца 13.10 после 17:27):** серия, запись конфига и перезапуск игры идут только через
+  `box.sh pico run|ready|start|fg` — в скриптах Сети нет своих wake/sleep/stayon/KEYCODE и нажатий в системных окнах. Запуск серии одной командой
+  на devbox: `netrun/tools/pico_series.sh "имя=пресет ключ=значение" …` — сам зовёт `ctl.sh pico run Godot ${PICO_RUN_MIN:-20} [--port 7777]
+  [--timeout $PICO_RUN_TIMEOUT] -- …`: бронь → разбудить → ready по ТРЕКИНГУ (свет, граница, контроллеры) → снимки и logcat прогона в
+  `PICO_RUN_DIR` (туда же результаты серии) → погасить → снять бронь, вердикт последней строкой `pico run: …`. Коды run: команда rc | 20 не
+  готово/вылезло окно («нужен человек» — строка в `~/box/attention.log`, дальше Pipeline) | 21 бронь чужая | 124 таймаут | 2 аргументы. Внутри
+  серии между вариантами: идемпотентный `pico ready Godot` → `pico start Godot <пакет/активити>` («kept for the user» = НЕ ГОТОВО, строка
+  `pico fg` в выводе) → итог `[bench]`; исходный `netrun.cfg` сохраняется на входе и возвращается в trap, игра останавливается. Без ~/box/repo
+  (не devbox) — серия напрямую через `am start`, `PICO_READY_CMD` по желанию. Темно/нет трекинга = «physical»: ждёт света, повторять не нужно.
+  `pico_stand.sh` перед записью конфига зовёт `check pico` (чужая бронь — отказ «кто и до когда»); `dev.sh shot` ставит запуск Godot в очередь
+  `gpu` (`ctl.sh run gpu Godot --name shot`, ожидание `SHOT_QUEUE_WAIT`, 900 с), свой `flock /tmp/display.lock` остаётся внутри. Сервер стенда на
+  свободном порту из пула 7800–7899: `scripts/box.sh up stand Godot -- <srv_p2.sh> {PORT}`. Подготовка очков на `pico.sh tune` — под бронью:
+  `box.sh pico run Godot 5 -- netrun/tools/pico.sh tune …`. Пресет `cloud-props` после B3 ≡ `bench` (`cloud=1` — умолчание `AssetMaterials`), оставлен алиасом.
+  Самотест — `netrun/tools/box_guard_selftest.sh` (подложные ctl.sh и adb, `PICO_SERIAL=NOSUCH`, `BOX_TEST=1`; очков и `~/box` не касается; 21 проверка):
+  проверки броней и серии гонять только им, а не рабочими скриптами по ssh — 13.10 17:27 так разбудили очки.
 - **Падение в нативном коде:** кадры `libgodot_android.so` в tombstone без имён (библиотека шаблона уже без символов). Функцию находит
   дизассемблер по адресу кадра: `$ANDROID_HOME/ndk/<версия>/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-objdump -d --start-address=…`
   по `<копия>/android/build/build/intermediates/merged_native_libs/…/arm64-v8a/libgodot_android.so` (BuildId в tombstone должен совпасть).
