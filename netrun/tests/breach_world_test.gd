@@ -10,6 +10,9 @@ const S2 := "s_fake000000000002"
 const S3 := "s_fake000000000003"
 const D_EXTRACT := "it_b_d1"
 const D_GHOST := "it_b_d2"
+## Зерно сетки вскрытия в тесте ловушки и число детерминированных попыток найти сетку с доступной мёртвой клеткой.
+const TRAP_SEED := 7000
+const TRAP_ATTEMPTS := 12
 
 var _root: Node
 var _sroot: Node
@@ -310,18 +313,22 @@ func test_dropping_the_connection_mid_breach_still_reports_the_attempt() -> void
 func test_a_trap_raises_trace_by_the_tier_number() -> void:
 	var p := await _ready_peer("t05", S3)   # узел b_h, тир HARD: 2–3 мёртвые клетки
 	_stand_at(S3, "b_h", 0)
+	(_world.node_of("b_h") as GrayNode).breach.seed_rng(TRAP_SEED)
 	assert_bool(await _start(p, _slot("b_h", 0), ["it_b_d4"])).is_true()
 	assert_str(p.mirror.tier).is_equal("HARD")
 	assert_int(p.mirror.grid.size).is_equal(6)
-	var ds := (_world.node_of("b_h") as GrayNode).session_state(S3)
-	var before := ds.trace.value()
-	# верхняя строка: найдём мёртвую клетку в любом месте — но тапнуть можно только доступную; перебираем попытки с новыми сетками
+	var ds :=(_world.node_of("b_h") as GrayNode).session_state(S3)
+	# Сетка вскрытия зависит от ГСЧ сервера: без фиксированного зерна «мёртвая клетка в верхней строке» выпадала не всегда, и тест уходил
+	# в редкие ветки с лишними отменами (CI 12.10: след 16 вместо 8). Зерно ставим перед каждой попыткой — перебор детерминирован.
 	var hit := false
-	for attempt in 6:
+	var before := 0.0
+	for attempt in TRAP_ATTEMPTS:
 		if attempt > 0:
 			p.net.request_breach_cancel()
 			assert_bool(await _wait_for(func(): return p.mirror.finished)).is_true()
+			(_world.node_of("b_h") as GrayNode).breach.seed_rng(TRAP_SEED + attempt)
 			assert_bool(await _start(p, _slot("b_h", 0), ["it_b_d4"])).is_true()
+		before = ds.trace.value()   # след считаем от текущей попытки: прежние отмены в расчёт не входят
 		for c in p.mirror.selectable():
 			if p.mirror.grid.is_dead(c):
 				assert_bool(p.mirror.tap(c)).is_true()
@@ -330,27 +337,12 @@ func test_a_trap_raises_trace_by_the_tier_number() -> void:
 				break
 		if hit:
 			break
-	if not hit:
-		# в верхней строке мёртвых не нашли ни разу — дойдём вторым ходом до столбца с мёртвой клеткой
-		var c0 := p.mirror.selectable()[0]
-		p.mirror.tap(c0)
-		p.net.request_breach_tap(c0)
-		assert_bool(await _wait_for(func(): return p.mirror.pending == null)).is_true()
-		for c in p.mirror.selectable():
-			if p.mirror.grid.is_dead(c):
-				p.mirror.tap(c)
-				p.net.request_breach_tap(c)
-				hit = true
-				break
-	if hit:
-		assert_bool(await _wait_for(func(): return p.mirror.pending == null)).is_true()
-		var trap_tick: Dictionary = p.evs.filter(func(e): return e.get("kind") == WorldMsg.EV_BK_TICK and e.get("trap", false))[0]
-		assert_bool(trap_tick["ok"]).is_true()
-		assert_float(ds.trace.value() - before).is_equal_approx(float(_world.graph.settings["trap_trace"]["HARD"]), 0.001)
-		assert_str(trap_tick.get("ice", "")).starts_with("ICE:")
-	else:
-		# сетка без доступной мёртвой клетки на двух ходах: проверяем само число
-		assert_float(float(_world.graph.settings["trap_trace"]["HARD"])).is_equal(8.0)
+	assert_bool(hit).is_true()   # среди TRAP_ATTEMPTS детерминированных сеток есть с доступной мёртвой клеткой
+	assert_bool(await _wait_for(func(): return p.mirror.pending == null)).is_true()
+	var trap_tick: Dictionary = p.evs.filter(func(e): return e.get("kind") == WorldMsg.EV_BK_TICK and e.get("trap", false))[0]
+	assert_bool(trap_tick["ok"]).is_true()
+	assert_float(ds.trace.value() - before).is_equal_approx(float(_world.graph.settings["trap_trace"]["HARD"]), 0.001)
+	assert_str(trap_tick.get("ice", "")).starts_with("ICE:")
 
 
 func test_a_rejected_tap_changes_nothing_on_the_server() -> void:
