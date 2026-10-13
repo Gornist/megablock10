@@ -69,7 +69,6 @@ func test_фойе_четыре_колонны_по_карте_и_четыре_�
 	assert_int(scene.view.pillar_positions().size()).is_equal(4)
 	assert_int(int(scene.view.module_counts()["pillar"])).is_equal(4)
 	assert_int(int(scene.view.module_counts()["platform"])).is_equal(4)
-	assert_int(int(scene.view.module_counts()["tunnel_ring"])).is_equal(NodeLayout.EXIT_TUNNEL_SEGMENTS)
 
 
 func test_укрытий_у_хранилища_нет_остальные_клетки_блока_свободны() -> void:

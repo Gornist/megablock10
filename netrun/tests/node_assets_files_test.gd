@@ -4,8 +4,8 @@ extends GdUnitTestSuite
 ## не трогает: всё идёт через AssetMaterials (assets/ARCHITECTURE.md, п. 18).
 
 const NODE_VIEW := "res://client/node_view.gd"
-## Горизонт клиент берёт отдельно от MODULES (NodeView._horizon).
-const EXTRA := ["horizon_band"]
+## Дополнительных ассетов, кроме MODULES и VARIANTS, клиент не просит (горизонт убран).
+const EXTRA: Array[String] = []
 
 
 ## Имена файлов окружения, которые клиент реально просит: варианты модуля или сам модуль, если вариантов нет.

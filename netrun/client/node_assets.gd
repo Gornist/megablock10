@@ -134,6 +134,10 @@ static func tune_parts(parts: Array, fade: Vector2, params: Dictionary) -> void:
 
 static func _collect(n: Node, xf: Transform3D, out: Array) -> void:
 	for c in n.get_children():
+		# Скрытое (AssetMaterials прячет меши при mist_alpha=0, veil_scale=0 и т. д.; неактивные State_/Tier_) в MultiMesh не попадает: раньше `visible` игнорировался
+		# и погашенная дымка кромки (edge_mist) рисовалась — «клин» у края комнаты (замер Blender 13.10).
+		if c is Node3D and not (c as Node3D).visible:
+			continue
 		var t := xf * (c as Node3D).transform if c is Node3D else xf
 		if c is MeshInstance3D and (c as MeshInstance3D).mesh != null:
 			var mi := c as MeshInstance3D
