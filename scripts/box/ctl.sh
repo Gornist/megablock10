@@ -316,35 +316,53 @@ pico_diagnose() { # 0 — состояние здоровое; иначе DIAG_W
   local pkg
   pico_props
   DIAG_WHY=""; DIAG_KIND=""
-  if [ "$P_LIGHT" = 1 ]; then
-    DIAG_WHY="слишком темно: light_warning_state=1, на экране ${P_RES:-окно Pico} (нужен свет в комнате или человек)"; DIAG_KIND=physical; return 1
-  fi
+  # light_warning_state — ЛИПКИЙ флаг: замер Pipeline 18:48 (лампа на очки) — при свете он остаётся 1, поэтому признаком «темно»
+  # не служит (только справочно в `pico fg`). Живой признак — трекинг: тёмная комната algstate=2/conf=-1 или 1/0; со светом через ~6 с
+  # после пробуждения algstate=1, alg_confidence=1 (в первые ~3 с: algstate=0, conf=-1 — трекинг ещё стартует).
   if [ -z "$P_RES" ]; then DIAG_WHY="не удалось прочитать верхнее окно очков (mResumedActivity пуст)"; DIAG_KIND=state; return 1; fi
   pkg=${P_RES%%/*}
+  if ! pico_track_ok; then
+    DIAG_WHY="трекинг не работает: alg_confidence=${P_CONF:-?}, algstate=${P_ALG:-?} — темно (нужен свет у очков) или мало текстур; на экране $P_RES"
+    DIAG_KIND=physical; return 1
+  fi
   case " $PICO_BAD_PKGS " in *" $pkg "*) DIAG_WHY="системное окно на переднем плане: $P_RES"; DIAG_KIND=window; return 1;; esac
   case " $PICO_OK_PKGS " in *" $pkg "*) ;; *) DIAG_WHY="неизвестное окно на переднем плане: $P_RES (не игра и не лаунчер; известные: ${PICO_OK_PKGS})"; DIAG_KIND=unknown; return 1;; esac
   if [ "$PICO_REQUIRE_BOUNDARY" = 1 ] && [ "$P_BOUND" != 1 ]; then
     DIAG_WHY="граница не готова: sys.pxr.boundary.ready=${P_BOUND:-пусто} (окно $P_RES)"; DIAG_KIND=state; return 1
   fi
-  case ${P_CONF:-} in
-    ''|*[!0-9-]*) ;;  # нет значения — не судим
-    *) if [ "$P_CONF" -le 0 ]; then DIAG_WHY="трекинг не уверен: alg_confidence=$P_CONF, algstate=${P_ALG:-?} (темно, мало текстур или не стартовал)"; DIAG_KIND=physical; return 1; fi;;
-  esac
   return 0
 }
-pico_attention() { # pico_attention <владелец> <причина> <png> — строка в ~/box/attention.log (читает обход Pipeline и пишет владельцу)
-  local line last
-  line="$(date '+%F %T') | $1 | $2 | ${3:-нет PNG}"
-  last=$(tail -n 1 "$BOX/attention.log" 2>/dev/null)
-  # та же причина подряд (серия дёргает ready десятки раз) — не плодим: сверяем без времени
-  [ "${last#* | }" = "${line#* | }" ] && return 0
-  printf '%s\n' "$line" >>"$BOX/attention.log"
+pico_track_ok() { # 0 — трекинг работает (alg_confidence >= 1); нет числа — считаем неработающим: «не знаем» ≠ «можно»
+  case ${P_CONF:-} in ''|*[!0-9-]*) return 1;; esac
+  [ "$P_CONF" -ge 1 ]
 }
-pico_fail() { # pico_fail <владелец> <окно> <причина> — PNG, attention, очки гасим, бронь оставляем, вердикт строкой; код 1
+pico_todo() { # что сделать человеку — по виду причины (текст уходит владельцу пушем, поэтому коротко и по делу)
+  case $1 in
+    physical) echo "Включить свет у очков (лампа) — трекинг не работает; затем перезапустить прогон";;
+    window) echo "Открыть PNG: системное окно Pico на экране. Снять его вручную в очках; если окно новое — сказать Devbox (добавлю в белый список)";;
+    unknown) echo "Открыть PNG: что за окно или пакет. Закрыть вручную; если это нормальный экран — добавить пакет в ~/box/pico-ok-pkgs";;
+    taps) echo "Разрешить нажатия белого списка (pico taps on) либо снять окно вручную в очках";;
+    state) echo "Надеть очки и пройти настройку границы/трекинга вручную, затем перезапустить прогон";;
+    wake) echo "Очки не просыпаются: проверить питание очков, кабель USB и adb (box.sh status)";;
+    asleep) echo "ПОГАСИТЬ ОЧКИ ВРУЧНУЮ (кнопка питания): риск выгорания матриц";;
+    timeout) echo "Прогон не уложился во время: посмотреть журнал прогона, очки погашены, перезапустить";;
+    *) echo "Посмотреть PNG и журнал ~/box/journal.jsonl";;
+  esac
+}
+pico_attention() { # pico_attention <владелец> <причина> <png> [вид] — JSON-строка в ~/box/attention.log (читает Pipeline, шлёт владельцу пушем)
+  # Одна причина — одна строка: повтор той же причины не пишется, пока не было успешного ready (его сбрасывает pico_ready).
+  local own=$1 why=$2 png=${3:-} kind=${4:-other} last
+  last=$(cat "$BOX/attention.last" 2>/dev/null)
+  [ "$last" = "$kind|$why" ] && return 0
+  printf '%s' "$kind|$why" >"$BOX/attention.last"
+  printf '{"t":"%s","owner":"%s","kind":"%s","reason":"%s","todo":"%s","png":"%s"}\n' \
+    "$(date -Is)" "$(clean "$own")" "$kind" "$(clean "$why")" "$(clean "$(pico_todo "$kind")")" "$(clean "$png")" >>"$BOX/attention.log"
+}
+pico_fail() { # pico_fail <владелец> <окно> <причина> [вид] — PNG, attention, очки гасим, бронь оставляем, вердикт строкой; код 1
   local shot
   shot=$(pico_shot); pico_sleep_now >/dev/null 2>&1
   jlog pico-ready-fail owner "$1" window "$2" reason "$3" png "${shot:-}"
-  pico_attention "$1" "$3" "$shot"
+  pico_attention "$1" "$3" "$shot" "${4:-other}"
   echo "pico ready: НЕ ГОТОВО — $3; PNG: ${shot:-нет}; очки погашены, ${PICO_LEASE_NOTE}"
   return 1
 }
@@ -353,11 +371,11 @@ pico_boundary_tap() { # окно границы: тап по координат�
   # совпавшем размере экрана (координаты привязаны к 4320×2160).
   local own=$1 size i
   if [ ! -f "$BOX/pico-ready.taps" ]; then
-    pico_fail "$own" boundary "окно границы ($PICO_BOUNDARY_PKG), «Войти в VR» — нажатия выключены (pico taps on — решение владельца)"; return 1
+    pico_fail "$own" boundary "окно границы ($PICO_BOUNDARY_PKG), «Войти в VR» — нажатия выключены (pico taps on — решение владельца)" taps; return 1
   fi
   size=$(timeout 10 "$ADB" -s "$PICO" shell wm size </dev/null 2>/dev/null | tr -d '\r' | grep -o '[0-9]\{3,5\}x[0-9]\{3,5\}' | tail -1)
   if [ "$size" != "$PICO_BOUNDARY_SIZE" ]; then
-    pico_fail "$own" boundary "экран ${size:-неизвестен}, координаты окна границы заданы для $PICO_BOUNDARY_SIZE — по координатам не жму"; return 1
+    pico_fail "$own" boundary "экран ${size:-неизвестен}, координаты окна границы заданы для $PICO_BOUNDARY_SIZE — по координатам не жму" state; return 1
   fi
   # shellcheck disable=SC2086  # PICO_BOUNDARY_XY = «x y», разбиение намеренное
   timeout 10 "$ADB" -s "$PICO" shell input tap $PICO_BOUNDARY_XY </dev/null >/dev/null 2>&1
@@ -365,10 +383,10 @@ pico_boundary_tap() { # окно границы: тап по координат�
   for i in 1 2 3 4 5 6; do
     sleep 1
     pico_props
-    if [ "$P_LIGHT" = 1 ]; then return 0; fi  # окно сменилось на «Слишком темно» — это уже не граница, дальше решит диагностика
+    pico_track_ok || return 0  # трекинг пропал — окно, скорее всего, уже «Слишком темно»; дальше решит диагностика
     case ${P_RES:-?} in "$PICO_BOUNDARY_PKG"/*) ;; *) return 0;; esac
   done
-  pico_fail "$own" boundary "окно границы ($PICO_BOUNDARY_PKG) не ушло после нажатия по координатам"
+  pico_fail "$own" boundary "окно границы ($PICO_BOUNDARY_PKG) не ушло после нажатия по координатам" window
 }
 pico_ready() { # pico_ready <владелец>: бронь → разбудить → снять известные безопасные окна → проверить СОСТОЯНИЕ очков
   local own=$1 lo st v kind rid xy btn title shot why n_tap=0 i state
@@ -381,21 +399,21 @@ pico_ready() { # pico_ready <владелец>: бронь → разбудит�
     Awake) ;;
     Asleep|Dozing)
       pico_power
-      pico_wait Awake 8 || { echo "pico ready: очки не проснулись за 8 с ($(pico_state)); ${PICO_LEASE_NOTE}"; pico_attention "$own" "очки не проснулись по POWER ($(pico_state))" ""; return 1; };;
-    *) echo "pico ready: очки не отвечают ($st); ${PICO_LEASE_NOTE}"; pico_attention "$own" "очки не отвечают на adb ($st)" ""; return 1;;
+      pico_wait Awake 8 || { echo "pico ready: очки не проснулись за 8 с ($(pico_state)); ${PICO_LEASE_NOTE}"; pico_attention "$own" "очки не проснулись по POWER ($(pico_state))" "" wake; return 1; };;
+    *) echo "pico ready: очки не отвечают ($st); ${PICO_LEASE_NOTE}"; pico_attention "$own" "очки не отвечают на adb ($st)" "" wake; return 1;;
   esac
   for _ in 1 2 3 4; do
     sleep 2  # интерфейс после пробуждения/нажатия оседает не мгновенно
     pico_props
-    # окно границы (пакет seethrough.setting, Unity, без нод) — по координатам, но НЕ когда горит light_warning:
-    # «Слишком темно» живёт в том же пакете, и тап по координатам границы по нему — вслепую
-    if [ "$P_LIGHT" != 1 ]; then
-      case ${P_RES:-?} in
-        "$PICO_BOUNDARY_PKG"/*)
-          pico_boundary_tap "$own" || return 1
-          n_tap=$((n_tap + 1)); continue;;
-      esac
-    fi
+    # окно границы (пакет seethrough.setting, Unity, без нод) — по координатам, но ТОЛЬКО когда трекинг работает: в том же
+    # пакете живёт «Слишком темно», а light_warning_state липкий (при свете остаётся 1) и по нему не отличить. Трекинг стартует
+    # через ~6 с после пробуждения: пока conf<1 — ждём следующий проход, не нажимаем.
+    case ${P_RES:-?} in
+      "$PICO_BOUNDARY_PKG"/*)
+        pico_track_ok || continue
+        pico_boundary_tap "$own" || return 1
+        n_tap=$((n_tap + 1)); continue;;
+    esac
     v=$(pico_uidump | python3 "$PICO_UI_PY" 2>/dev/null)
     kind=${v%%$'\t'*}
     if [ "$kind" != KNOWN ]; then break; fi
@@ -403,7 +421,7 @@ pico_ready() { # pico_ready <владелец>: бронь → разбудит�
     if [ ! -f "$BOX/pico-ready.taps" ]; then
       why="известное окно «${title:-$rid}», кнопка «$btn» — нажатия выключены (pico taps on — решение владельца)"
       jlog pico-ready-blocked owner "$own" window "$rid" button "$btn"
-      pico_fail "$own" "$rid" "$why"; return 1
+      pico_fail "$own" "$rid" "$why" taps; return 1
     fi
     n_tap=$((n_tap + 1))
     # shellcheck disable=SC2086  # xy = «x y» из дампа, разбиение намеренное
@@ -417,10 +435,11 @@ pico_ready() { # pico_ready <владелец>: бронь → разбудит�
   done
   if [ -n "$DIAG_WHY" ]; then
     jlog pico-ready-diag owner "$own" kind "$DIAG_KIND" res "${P_RES:-}" light "${P_LIGHT:-}" boundary "${P_BOUND:-}" alg "${P_ALG:-}" conf "${P_CONF:-}"
-    pico_fail "$own" "${P_RES:-?}" "$DIAG_WHY"; return 1
+    pico_fail "$own" "${P_RES:-?}" "$DIAG_WHY" "$DIAG_KIND"; return 1
   fi
   state="окно $P_RES, граница=${P_BOUND:-?}, трекинг algstate=${P_ALG:-?}/conf=${P_CONF:-?}"
   jlog pico-state owner "$own" res "$P_RES" light "${P_LIGHT:-}" boundary "${P_BOUND:-}" alg "${P_ALG:-}" conf "${P_CONF:-}" taps "$n_tap"
+  rm -f "$BOX/attention.last"  # успех: следующая такая же причина снова станет строкой в attention.log
   echo "pico ready: ГОТОВО — $state${n_tap:+, нажатий белого списка: $n_tap}"
 }
 pico_start() { # pico_start <владелец> <пакет/активити>: am start и проверка, что игра НА ПЕРЕДНЕМ плане (не «kept for the user»)
@@ -429,14 +448,14 @@ pico_start() { # pico_start <владелец> <пакет/активити>: am
   out=$(timeout 30 "$ADB" -s "$PICO" shell am start -n "$comp" </dev/null 2>&1 | tr -d '\r')
   case $(tr 'A-Z' 'a-z' <<<"$out") in
     *"kept for the user"*|*"not started"*|*"error"*|*"does not exist"*|*"exception"*)
-      pico_fail "$own" start "am start $comp: «$(head -c 160 <<<"$out" | tr '\n' ' ')» — игра не вышла на передний план"; return 1;;
+      pico_fail "$own" start "am start $comp: «$(head -c 160 <<<"$out" | tr '\n' ' ')» — игра не вышла на передний план" window; return 1;;
   esac
   for i in 1 2 3 4 5 6; do
     sleep 2
     pico_props
     case ${P_RES:-?} in "$pkg"/*) echo "pico start: $comp на переднем плане"; return 0;; esac
   done
-  pico_fail "$own" start "после am start $comp на переднем плане ${P_RES:-?}, а не игра"
+  pico_fail "$own" start "после am start $comp на переднем плане ${P_RES:-?}, а не игра" window
 }
 RUN_OWN="" RUN_CREATED=0 RUN_DONE=0 RUN_PORT="" RUN_PORT_CREATED=0
 pico_run_cleanup() { # при ЛЮБОМ выходе: очки гаснут, брони, созданные run, снимаются; повторный вызов безвреден
@@ -444,11 +463,20 @@ pico_run_cleanup() { # при ЛЮБОМ выходе: очки гаснут, б
   RUN_DONE=1
   trap - EXIT INT TERM HUP
   if ! pico_sleep_now >/dev/null 2>&1; then
-    pico_attention "$RUN_OWN" "очки НЕ погасли после прогона ($(pico_state)) — выгорание матриц, нужен человек" ""
+    pico_attention "$RUN_OWN" "очки НЕ погасли после прогона ($(pico_state)) — выгорание матриц, нужен человек" "" asleep
   fi
   [ "$RUN_PORT_CREATED" = 1 ] && cmd_release "port:$RUN_PORT" "$RUN_OWN" >/dev/null 2>&1
   [ "$RUN_CREATED" = 1 ] && cmd_release pico "$RUN_OWN" >/dev/null 2>&1
+  pico_light off
   jlog pico-run-end owner "$RUN_OWN" released "$RUN_CREATED"
+}
+# Свет у очков (решение владельца 13.10: против темноты — лампа у места, где лежат очки). Как её включать — выбирает тот, кто её
+# подключил: исполняемые файлы ~/box/pico-light-on и ~/box/pico-light-off (умная розетка, uhubctl, реле). Нет файла — run ничего
+# не делает со светом. Ошибка команды света не роняет прогон, но пишется в журнал.
+pico_light() { # pico_light on|off
+  local f=$BOX/pico-light-$1
+  [ -x "$f" ] || return 0
+  timeout 30 "$f" </dev/null >/dev/null 2>&1; jlog pico-light state "$1" rc "$?"
 }
 # pico run <владелец> <минут> [--timeout сек] [--port N] [--dir каталог] -- команда…
 #   бронь pico (и port:N) → разбудить → ready (по СОСТОЯНИЮ системы, не только по дампу) → logcat -c, снимок «до» → команда →
@@ -492,6 +520,7 @@ pico_run() {
   fi
   jlog pico-run-start owner "$own" minutes "$min" dir "$dir" cmd "$*"
   t0=$(date +%s)
+  pico_light on
   v=$(pico_ready "$own"); rc=$?
   if [ "$rc" -ne 0 ]; then
     echo "$v"
@@ -506,11 +535,11 @@ pico_run() {
   pico_diagnose >/dev/null
   jlog pico-run-done owner "$own" rc "$rc" sec "$(( $(date +%s) - t0 ))" res "${P_RES:-}" light "${P_LIGHT:-}" dir "$dir"
   if [ "$rc" -eq 124 ]; then
-    pico_attention "$own" "прогон не уложился в ${tmo} с (timeout)" "$shot"
+    pico_attention "$own" "прогон не уложился в ${tmo} с (timeout)" "$shot" timeout
     echo "pico run: ТАЙМАУТ ${tmo} с — команда прервана; каталог: $dir"; return 124
   fi
   if [ -n "$DIAG_WHY" ] && [ "$DIAG_KIND" != state ]; then  # во время прогона вылезло окно/стало темно
-    pico_attention "$own" "после прогона: $DIAG_WHY" "$shot"
+    pico_attention "$own" "после прогона: $DIAG_WHY" "$shot" "$DIAG_KIND"
     echo "pico run: команда rc=$rc, НО после неё на очках: $DIAG_WHY; каталог: $dir"
     [ "$rc" -eq 0 ] && return 20
     return "$rc"
