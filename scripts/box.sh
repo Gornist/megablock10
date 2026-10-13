@@ -19,7 +19,14 @@ HOST=devbox
 TS_IP=100.80.115.46
 LAN_IP=192.168.1.141
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-SSH=(ssh -o ConnectTimeout=8 -o BatchMode=yes "$HOST")
+if [ "$(hostname -s 2>/dev/null)" = "$HOST" ]; then
+  # Запущен на самом devbox (из клона ~/box/repo, из ssh-сеанса сессии): ходить по ssh к себе незачем, да и не выйдет —
+  # нет known_hosts («Host key verification failed», 13.10). Те же команды, локально; stdin сохраняется.
+  onbox() { bash -c "$*"; }
+  SSH=(onbox)
+else
+  SSH=(ssh -o ConnectTimeout=8 -o BatchMode=yes "$HOST")
+fi
 
 unreachable() { # ssh не прошёл: отличить «Tailscale лежит» от «машина выключена»
   local ts=нет lan=нет
@@ -44,6 +51,9 @@ case $cmd in
 
   sync)
     REF=${1:-main}
+    if [ "${SSH[0]}" = onbox ] && [ "$ROOT" = "$HOME/box/repo" ]; then
+      echo "sync: из самого клона нельзя — он переписал бы скрипт на ходу; с Mac: scripts/box.sh sync [ветка]"; exit 1
+    fi
     URL=$(git -C "$ROOT" remote get-url origin 2>/dev/null) || { echo "sync: у этой копии нет origin"; exit 1; }
     "${SSH[@]}" bash -s -- "$URL" "$REF" <<'REMOTE'
 set -u
