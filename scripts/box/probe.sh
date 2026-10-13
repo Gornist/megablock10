@@ -176,6 +176,19 @@ while read -r _ rss args; do
 done < <(ps -eo pid=,rss=,args= 2>/dev/null | grep -E 'Gradle|godot|qemu-system|emulator|blender' | grep -v -E 'grep|ps -eo|probe\.sh')
 info "занято: ${BUSY[*]:-ничем из известного}"
 
+# --- очереди и брони (scripts/box/ctl.sh из клона; нет клона — пропускаем) -------------------------------------------------
+CTL=$BOX/repo/scripts/box/ctl.sh
+if [ -f "$CTL" ]; then
+  QRAW=$(bash "$CTL" queue 2>/dev/null)
+  if grep -q -E 'занято|ждут|^ +[0-9]+\.' <<<"$QRAW"; then
+    info "очередь:"$'\n'"$(sed 's/^/  /' <<<"$QRAW")"
+  else
+    info "очередь: gradle и gpu свободны, замки gdUnit/display не заняты"
+  fi
+  LLINES=$(bash "$CTL" leases 2>/dev/null | sed 's/^/  /')
+  [ -n "$LLINES" ] && info "брони:"$'\n'"$LLINES"
+fi
+
 # --- после загрузки и скрипты -----------------------------------------------------------------------------------------
 BTIME=$(awk '/^btime/{print $2}' /proc/stat)
 REPORT=$BOX/boot.report
