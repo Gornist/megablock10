@@ -250,6 +250,7 @@ pico_lease_owner() { # владелец действующей брони pico �
 }
 pico_sleep_now() { # → 0 очки Asleep/OFF (нажимаем POWER только если они Awake)
   local st
+  pico_unpark_card  # карточка границы (если её парковали под игру) — обратно на дисплей 0, пока очки не погасли
   st=$(pico_state)
   case ${st%% *} in
     Asleep) return 0;;
@@ -300,16 +301,14 @@ pico_shot() { # pico_shot [файл] → путь к PNG (screencap) или пу
   else rm -f "$f"; fi
 }
 PICO_BOUNDARY_PKG=${PICO_BOUNDARY_PKG:-com.pvr.seethrough.setting}  # окно границы И «Слишком темно» — Unity в одном пакете, нод в дампе нет
-PICO_BOUNDARY_XY=${PICO_BOUNDARY_XY:-1117 1300}                      # «Войти в VR (текущая граница)»; координаты нашёл Godot
-PICO_BOUNDARY_SIZE=${PICO_BOUNDARY_SIZE:-4320x2160}                  # экран, для которого координаты верны
 # Системные пакеты на переднем плане, с которыми запускать нельзя; свои — в $BOX/pico-bad-pkgs (по строке).
 PICO_BAD_PKGS="com.pvr.seethrough.setting com.picovr.systemext com.picovr.settings com.pvr.appmanager $(cat "$BOX/pico-bad-pkgs" 2>/dev/null | tr '\n' ' ')"
 # Допустимое на переднем плане: наша игра и лаунчер (ПО ПУСТОМУ списку не угадать — расширяется файлом $BOX/pico-ok-pkgs
 # по строке или PICO_OK_PKGS; неизвестный пакет = НЕ ГОТОВО с названием в вердикте, а не молчаливое «можно»).
 PICO_OK_PKGS="${PICO_OK_PKGS:-com.megablok10.netrun com.pvr.home com.picovrtob.vrlauncher com.pvr.vrshell} $(cat "$BOX/pico-ok-pkgs" 2>/dev/null | tr '\n' ' ')"
-# граница готова (sys.pxr.boundary.ready=1) — требование Pipeline; в здоровом состоянии значение пока НЕ наблюдалось
-# (очки были в «Слишком темно»), поэтому ручка: PICO_REQUIRE_BOUNDARY=0 выключает; значения пишутся в журнал (pico-state).
-PICO_REQUIRE_BOUNDARY=${PICO_REQUIRE_BOUNDARY:-1}
+# sys.pxr.boundary.ready=1 как условие «готово» ОТМЕНЕНО: замер 13.10 21:03–21:05 (3 прогона, игра resumed на дисплее 0, трекинг 1/1)
+# — значение остаётся 0, пока карточка границы не подтверждена человеком, а игре оно не мешает. Включить: PICO_REQUIRE_BOUNDARY=1.
+PICO_REQUIRE_BOUNDARY=${PICO_REQUIRE_BOUNDARY:-0}
 PICO_LEASE_NOTE="бронь оставлена"  # внутри pico run меняется на «бронь снимет run»
 DIAG_WHY="" DIAG_KIND=""
 pico_diagnose() { # 0 — состояние здоровое; иначе DIAG_WHY (причина текстом) и DIAG_KIND: physical | window | unknown | state
@@ -325,6 +324,8 @@ pico_diagnose() { # 0 — состояние здоровое; иначе DIAG_W
     DIAG_WHY="трекинг не работает: alg_confidence=${P_CONF:-?}, algstate=${P_ALG:-?} — темно (нужен свет у очков) или мало текстур; на экране $P_RES"
     DIAG_KIND=physical; return 1
   fi
+  # карточка границы допустима, пока `pico start` не снял её парковкой (pico_ready выставляет PICO_CARD_OK; трекинг проверен выше)
+  if [ "$PICO_CARD_OK" = 1 ] && [ "$pkg" = "$PICO_BOUNDARY_PKG" ]; then return 0; fi
   case " $PICO_BAD_PKGS " in *" $pkg "*) DIAG_WHY="системное окно на переднем плане: $P_RES"; DIAG_KIND=window; return 1;; esac
   case " $PICO_OK_PKGS " in *" $pkg "*) ;; *) DIAG_WHY="неизвестное окно на переднем плане: $P_RES (не игра и не лаунчер; известные: ${PICO_OK_PKGS})"; DIAG_KIND=unknown; return 1;; esac
   if [ "$PICO_REQUIRE_BOUNDARY" = 1 ] && [ "$P_BOUND" != 1 ]; then
@@ -342,6 +343,7 @@ pico_todo() { # что сделать человеку — по виду при�
     window) echo "Открыть PNG: системное окно Pico на экране. Снять его вручную в очках; если окно новое — сказать Devbox (добавлю в белый список)";;
     unknown) echo "Открыть PNG: что за окно или пакет. Закрыть вручную; если это нормальный экран — добавить пакет в ~/box/pico-ok-pkgs";;
     taps) echo "Разрешить нажатия белого списка (pico taps on) либо снять окно вручную в очках";;
+    boundary) echo "Надеть очки и один раз нажать «Войти в VR (текущая граница)» — карточка границы не закрывается через adb; затем перезапустить прогон";;
     state) echo "Надеть очки и пройти настройку границы/трекинга вручную, затем перезапустить прогон";;
     wake) echo "Очки не просыпаются: проверить питание очков, кабель USB и adb (box.sh status)";;
     asleep) echo "ПОГАСИТЬ ОЧКИ ВРУЧНУЮ (кнопка питания): риск выгорания матриц";;
@@ -366,30 +368,50 @@ pico_fail() { # pico_fail <владелец> <окно> <причина> [вид
   echo "pico ready: НЕ ГОТОВО — $3; PNG: ${shot:-нет}; очки погашены, ${PICO_LEASE_NOTE}"
   return 1
 }
-pico_boundary_tap() { # окно границы: тап по координатам и проверка, что окно ушло. Решение владельца 13.10: «1 по коордам жми».
-  # Пакет у окна границы и «Слишком темно» ОДИН — поэтому звать только при light_warning_state != 1 (проверяет pico_ready) и при
-  # совпавшем размере экрана (координаты привязаны к 4320×2160).
-  local own=$1 size i
-  if [ ! -f "$BOX/pico-ready.taps" ]; then
-    pico_fail "$own" boundary "окно границы ($PICO_BOUNDARY_PKG), «Войти в VR» — нажатия выключены (pico taps on — решение владельца)" taps; return 1
+# Карточка границы (com.pvr.seethrough.setting, Unity): ввод Android её не закрывает (опыт 13.10 20:30), HOME и force-stop — тоже
+# (система сразу возвращает свой компонент). Работает ПАРКОВКА: перенос стека карточки на другой дисплей (`am display move-stack`,
+# разрешено владельцем напрямую в чате сессии Devbox 13.10 для тестовых очков) — игра выходит на передний план дисплея 0
+# (resumed, 15+ с). Карточку возвращаем на дисплей 0 при гашении очков (pico_unpark_card) — защитное окно на своём месте.
+# Рамка/дисплеи (замер): карточка — Display 0, [0,0][4320,2160]; виртуальный дисплей 2 — 4320x4320, 560dpi.
+PICO_PARK_DISPLAY=${PICO_PARK_DISPLAY:-}  # номер дисплея для парковки; пусто — найти по размеру 4320x4320
+PICO_CARD_OK=0                             # 1 — карточка на экране допустима (pico_ready: её снимет `pico start`)
+pico_stack_of() { # pico_stack_of <пакет> → id стека, где задача пакета
+  timeout 15 "$ADB" -s "$PICO" shell am stack list </dev/null 2>/dev/null | tr -d '\r' \
+    | awk -v p="$1" '/^Stack id=/{split($2,a,"="); sid=a[2]} index($0,p){print sid; exit}'
+}
+pico_park_display() { # id виртуального дисплея 4320x4320 (не 0) или $PICO_PARK_DISPLAY
+  [ -n "$PICO_PARK_DISPLAY" ] && { echo "$PICO_PARK_DISPLAY"; return; }
+  timeout 15 "$ADB" -s "$PICO" shell dumpsys window displays </dev/null 2>/dev/null | tr -d '\r' \
+    | awk '/Display: mDisplayId=/{split($2,a,"="); id=a[2]} /init=4320x4320/{if (id != 0) {print id; exit}}'
+}
+pico_park_card() { # pico_park_card <владелец>: карточка → на виртуальный дисплей; 0 — карточка с переднего плана ушла
+  local own=$1 sid disp i
+  sid=$(pico_stack_of "$PICO_BOUNDARY_PKG"); disp=$(pico_park_display)
+  if [ -z "$sid" ] || [ -z "$disp" ]; then
+    DIAG_WHY="карточка границы: не нашёл стек (${sid:-?}) или дисплей для парковки (${disp:-?})"; DIAG_KIND=boundary; return 1
   fi
-  size=$(timeout 10 "$ADB" -s "$PICO" shell wm size </dev/null 2>/dev/null | tr -d '\r' | grep -o '[0-9]\{3,5\}x[0-9]\{3,5\}' | tail -1)
-  if [ "$size" != "$PICO_BOUNDARY_SIZE" ]; then
-    pico_fail "$own" boundary "экран ${size:-неизвестен}, координаты окна границы заданы для $PICO_BOUNDARY_SIZE — по координатам не жму" state; return 1
-  fi
-  # shellcheck disable=SC2086  # PICO_BOUNDARY_XY = «x y», разбиение намеренное
-  timeout 10 "$ADB" -s "$PICO" shell input tap $PICO_BOUNDARY_XY </dev/null >/dev/null 2>&1
-  jlog pico-ready-tap owner "$own" window boundary-coords button "Войти в VR (текущая граница)" at "$PICO_BOUNDARY_XY" pkg "$PICO_BOUNDARY_PKG"
+  jlog pico-park-card owner "$own" stack "$sid" display "$disp"
+  timeout 15 "$ADB" -s "$PICO" shell am display move-stack "$sid" "$disp" </dev/null >/dev/null 2>&1
+  printf '%s' "$sid" >"$BOX/pico-parked.stack"
   for i in 1 2 3 4 5 6; do
     sleep 1
     pico_props
-    pico_track_ok || return 0  # трекинг пропал — окно, скорее всего, уже «Слишком темно»; дальше решит диагностика
     case ${P_RES:-?} in "$PICO_BOUNDARY_PKG"/*) ;; *) return 0;; esac
   done
-  pico_fail "$own" boundary "окно границы ($PICO_BOUNDARY_PKG) не ушло после нажатия по координатам" window
+  DIAG_WHY="карточка границы осталась на переднем плане после переноса стека $sid на дисплей $disp"; DIAG_KIND=boundary
+  return 1
+}
+pico_unpark_card() { # вернуть карточку на дисплей 0 (если её парковали); безвредно без парковки
+  local sid
+  sid=$(cat "$BOX/pico-parked.stack" 2>/dev/null)
+  [ -n "$sid" ] || return 0
+  rm -f "$BOX/pico-parked.stack"
+  timeout 15 "$ADB" -s "$PICO" shell am display move-stack "$sid" 0 </dev/null >/dev/null 2>&1
+  jlog pico-unpark-card stack "$sid"
 }
 pico_ready() { # pico_ready <владелец>: бронь → разбудить → снять известные безопасные окна → проверить СОСТОЯНИЕ очков
   local own=$1 lo st v kind rid xy btn title shot why n_tap=0 i state
+  PICO_CARD_OK=0
   lo=$(pico_lease_owner)
   if [ "$lo" != "$own" ]; then
     echo "pico ready: нет брони pico у $own (сейчас: ${lo:-никого}) — сначала pico wake $own <мин>"; return 1
@@ -408,14 +430,14 @@ pico_ready() { # pico_ready <владелец>: бронь → разбудит�
   for _ in $(seq 1 "${PICO_READY_PASSES:-12}"); do
     sleep 2  # интерфейс после пробуждения/нажатия оседает не мгновенно
     pico_props
-    # окно границы (пакет seethrough.setting, Unity, без нод) — по координатам, но ТОЛЬКО когда трекинг работает: в том же
-    # пакете живёт «Слишком темно», а light_warning_state липкий (при свете остаётся 1) и по нему не отличить. Трекинг стартует
-    # через ~6 с после пробуждения: пока conf<1 — ждём следующий проход, не нажимаем.
+    # карточка границы (пакет seethrough.setting, Unity, без нод): ввод её не закрывает — это НЕ «не готово», а штатный экран
+    # при пробуждении; её снимает `pico start` парковкой стека на другой дисплей. В том же пакете живёт «Слишком темно»
+    # (light_warning_state липкий, по нему не отличить): карточка допустима, только когда трекинг работает
+    # (alg_confidence >= 1; стартует ~6 с после пробуждения — до тех пор ждём следующий проход).
     case ${P_RES:-?} in
       "$PICO_BOUNDARY_PKG"/*)
         pico_track_ok || continue
-        pico_boundary_tap "$own" || return 1
-        n_tap=$((n_tap + 1)); continue;;
+        PICO_CARD_OK=1; break;;
     esac
     v=$(pico_uidump | python3 "$PICO_UI_PY" 2>/dev/null)
     kind=${v%%$'\t'*}
@@ -434,18 +456,8 @@ pico_ready() { # pico_ready <владелец>: бронь → разбудит�
     timeout 10 "$ADB" -s "$PICO" shell input tap $xy </dev/null >/dev/null 2>&1
     jlog pico-ready-tap owner "$own" window "$rid" title "$title" button "$btn" at "$xy"
   done
-  # итог: один свежий диагноз (цикл выше уже ждал оседания); окно границы при работающем трекинге — последняя попытка нажать
+  # итог: один свежий диагноз (цикл выше уже ждал оседания); карточка границы при работающем трекинге допустима
   pico_diagnose
-  if [ -n "$DIAG_WHY" ] && [ "$DIAG_KIND" = window ]; then
-    case ${P_RES:-?} in
-      "$PICO_BOUNDARY_PKG"/*)
-        if pico_track_ok; then
-          pico_boundary_tap "$own" || return 1
-          n_tap=$((n_tap + 1))
-          sleep 2; pico_diagnose
-        fi;;
-    esac
-  fi
   if [ -n "$DIAG_WHY" ]; then
     jlog pico-ready-diag owner "$own" kind "$DIAG_KIND" res "${P_RES:-}" light "${P_LIGHT:-}" boundary "${P_BOUND:-}" alg "${P_ALG:-}" conf "${P_CONF:-}"
     pico_fail "$own" "${P_RES:-?}" "$DIAG_WHY" "$DIAG_KIND"; return 1
@@ -453,20 +465,37 @@ pico_ready() { # pico_ready <владелец>: бронь → разбудит�
   state="окно $P_RES, граница=${P_BOUND:-?}, трекинг algstate=${P_ALG:-?}/conf=${P_CONF:-?}"
   jlog pico-state owner "$own" res "$P_RES" light "${P_LIGHT:-}" boundary "${P_BOUND:-}" alg "${P_ALG:-}" conf "${P_CONF:-}" taps "$n_tap"
   rm -f "$BOX/attention.last"  # успех: следующая такая же причина снова станет строкой в attention.log
+  [ "$PICO_CARD_OK" = 1 ] && state="карточка границы на экране (снимется при pico start), $state"
   echo "pico ready: ГОТОВО — $state${n_tap:+, нажатий белого списка: $n_tap}"
 }
-pico_start() { # pico_start <владелец> <пакет/активити>: am start и проверка, что игра НА ПЕРЕДНЕМ плане (не «kept for the user»)
-  local own=$1 comp=$2 out pkg i
+pico_start() { # pico_start <владелец> <пакет/активити>: am start, карточку границы (если есть) — парковкой; игра ДОЛЖНА быть resumed
+  # Порядок (опыты 13.10): am start → если система держит окно («kept for the user») — HOME и один повтор (разрешено владельцем);
+  # игра стартует, но остаётся paused ЗА карточкой (seethrough.setting) — тогда стек карточки на другой дисплей.
+  local own=$1 comp=$2 out pkg i parked=0 low
   pkg=${comp%%/*}
   out=$(timeout 30 "$ADB" -s "$PICO" shell am start -n "$comp" </dev/null 2>&1 | tr -d '\r')
-  case $(tr 'A-Z' 'a-z' <<<"$out") in
-    *"kept for the user"*|*"not started"*|*"error"*|*"does not exist"*|*"exception"*)
+  low=$(tr 'A-Z' 'a-z' <<<"$out")
+  case $low in
+    *"kept for the user"*)
+      jlog pico-start-home owner "$own" note "am start: kept for the user — KEYCODE_HOME и повтор"
+      timeout 10 "$ADB" -s "$PICO" shell input keyevent KEYCODE_HOME </dev/null >/dev/null 2>&1; sleep 2
+      out=$(timeout 30 "$ADB" -s "$PICO" shell am start -n "$comp" </dev/null 2>&1 | tr -d '\r'); low=$(tr 'A-Z' 'a-z' <<<"$out");;
+  esac
+  case $low in
+    *"kept for the user"*|*"error"*|*"does not exist"*|*"exception"*)
       pico_fail "$own" start "am start $comp: «$(head -c 160 <<<"$out" | tr '\n' ' ')» — игра не вышла на передний план" window; return 1;;
   esac
-  for i in 1 2 3 4 5 6; do
+  for i in 1 2 3 4 5 6 7 8; do
     sleep 2
     pico_props
-    case ${P_RES:-?} in "$pkg"/*) echo "pico start: $comp на переднем плане"; return 0;; esac
+    case ${P_RES:-?} in
+      "$pkg"/*) echo "pico start: $comp на переднем плане${parked:+ (карточка границы убрана на другой дисплей)}"; return 0;;
+      "$PICO_BOUNDARY_PKG"/*)
+        if [ "$parked" = 0 ] && pico_track_ok; then
+          pico_park_card "$own" || { pico_fail "$own" start "$DIAG_WHY" boundary; return 1; }
+          parked=1
+        fi;;
+    esac
   done
   pico_fail "$own" start "после am start $comp на переднем плане ${P_RES:-?}, а не игра" window
 }
@@ -545,6 +574,9 @@ pico_run() {
   PICO_SERIAL=$PICO PICO_RUN_DIR=$dir BOX_OWNER=$own BOX_CTL=$(readlink -f "$0") timeout "$tmo" "$@"; rc=$?
   shot=$(pico_shot "$dir/screen-after.png")
   timeout 30 "$ADB" -s "$PICO" logcat -d -v time </dev/null 2>/dev/null | tail -n 20000 >"$dir/logcat.txt"
+  # после команды игра обычно остановлена (трап хозяина: force-stop) — система сразу возвращает карточку границы: это штатно,
+  # не «вылезло окно». Остальные системные окна («Требуется контроллер» и т. п.) по-прежнему считаются.
+  PICO_CARD_OK=1
   pico_diagnose >/dev/null
   jlog pico-run-done owner "$own" rc "$rc" sec "$(( $(date +%s) - t0 ))" res "${P_RES:-}" light "${P_LIGHT:-}" dir "$dir"
   if [ "$rc" -eq 124 ]; then
