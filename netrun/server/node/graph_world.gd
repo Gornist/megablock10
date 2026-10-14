@@ -159,7 +159,8 @@ func node_event(id: String, arrive: Variant = null, session: String = "") -> Dic
 		portals.append({"to": pt["to"], "title": pt["title"], "tier": pt["tier"], "p": [pos.x, pos.z], "open": not (nodes[pt["to"]] as GrayNode).is_locked_down()})
 	var ev := {
 		"kind": WorldMsg.EV_NODE, "node": id, "title": graph.title_of(id), "tier": graph.tier_of(id),
-		"alert": snappedf(gn.alert, 0.01), "shards": gn.shard_view(session), "portals": portals, "r": float(graph.settings["portal_radius"]),
+		"alert": snappedf(gn.alert, 0.01), "alarm": snappedf(gn.alarm, 1.0), "alert_level": gn.alarm_level,   # alert 0…1 прежний; alarm 0–100 и уровень 0–4 — Т3b
+		"shards": gn.shard_view(session), "portals": portals, "r": float(graph.settings["portal_radius"]),
 		"layout": gn.layout.name,   # имя раскладки (data/layouts): клиент строит по ней комнату; старый клиент поле игнорирует
 	}
 	var dead := gn.dead_decks()

@@ -443,6 +443,9 @@ func _on_event(ev: Dictionary) -> void:
 			log_file.log("graph.tunnel", {"from": ev.get("from", ""), "to": ev.get("to", ""), "sec": ev.get("sec", 0.0)})
 		WorldMsg.EV_SHARDS:
 			scene.apply_shards(ev.get("shards", []))
+		WorldMsg.EV_ALARM:   # уровень тревоги узла сменился (Т3b)
+			scene.apply_alarm(ev)
+			log_file.log("alarm.level", {"node": ev.get("node", ""), "level": ev.get("level", 0), "alarm": ev.get("alarm", 0)})
 		WorldMsg.EV_DECK:
 			scene.apply_deck(ev)
 			log_file.log("deck.info", {"ram": ev.get("ram", 0), "default": ev.get("ram_default", false), "used": ev.get("used", 0),

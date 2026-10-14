@@ -428,7 +428,8 @@ func _apply_result(att: Attempt, outcome: String, matched: Array, resp: Dictiona
 			node.open_vault(slot, session, float(node.settings.get("vault_open_sec", 60.0)))
 	end["opened"] = opened
 	if outcome == BreachRules.FAIL and node.is_graph_node():
-		node.raise_alert(float(node.settings.get("alert_per_fail", 0.0)))
+		node.alarm_event("fail")                    # тревога узла +10 (alert_events)
+		node.add_trace_event(session, "fail")       # и trace игрока +5 (trace_events)
 	node.net.send_to(session, WorldMsg.encode_fields(WorldMsg.EVENT, end))
 	node.event.emit({"kind": "breach_end", "session": session, "vault": att.vault, "n": att.n, "outcome": outcome, "early": att.early,
 		"opened": opened, "ok": resp.get("ok", false), "error": end.get("error", "")})

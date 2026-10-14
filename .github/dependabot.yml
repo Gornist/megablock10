@@ -9,6 +9,12 @@ updates:
     open-pull-requests-limit: 5
     groups:
       gradle-minor: { update-types: [minor, patch] }
+    # До перехода на AGP 9 (бэклог Android): core-ktx 1.19+ и Compose BOM 2026.09+ требуют AGP 9.1 и compileSdk 37,
+    # Paparazzi alpha05.1 собран под AGP 9 (NoSuchMethodError в mergeDebugResources). 14.10, PR #258/#259 — красные.
+    ignore:
+      - { dependency-name: "androidx.core:core-ktx" }
+      - { dependency-name: "androidx.compose:compose-bom" }
+      - { dependency-name: "app.cash.paparazzi" }
   - package-ecosystem: npm             # сервер коллектора
     directory: "/admin-web/server"
     schedule: { interval: weekly, day: monday }

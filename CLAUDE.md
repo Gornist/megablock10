@@ -23,7 +23,7 @@
 
 | Сессия | Пишет | Не трогает (чьё) |
 |---|---|---|
-| **Android App** | `app/`, `kit/`, `rules/`, `scripts/e2e/`, Android-документы | пакет `collector/` в приложении — только тесты (контракт с Коллектором) |
+| **Android App** | `app/`, `kit/`, `rules/`, `scripts/e2e/`, корневая сборка Gradle (`build.gradle.kts`, `settings.gradle.kts`, `gradle/`, `gradlew*`), Android-документы | пакет `collector/` в приложении — только тесты (контракт с Коллектором) |
 | **Коллектор** | `admin-web/` — сервер и дашборд мастера, приём изменений, БД и миграции, auth, связь с Мостом со стороны коллектора | `admin-web/server/src/displays/`, `audio/`, `routes/audio.ts`, `scripts/display*.ts` и их тесты (Физические узлы) |
 | **Физические узлы** | `firmware/` (QR-дисплей, звук), в `admin-web/server/src/`: `displays/`, `audio/`, `routes/audio.ts`, `scripts/display*.ts` и их тесты; `.github/workflows/firmware.yml`; `docs/displays.md`, `firmware-plan.md`, `sound-nodes.md` | остальной `admin-web/` (Коллектор) |
 | **Godot** | `netrun/` — сервер мира, игра, дека, сеть и формат сообщений (`netrun/server/`, `netrun/shared/`), `netrun-bridge/`, `docs/netrun*.md` | ассеты и вид аватара (Blender); цвета и материалы своих видимых элементов (маркеры пола, прицел, след ICE, HUD, метки) не задаёт — берёт константы `AssetMaterials` |

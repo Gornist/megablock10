@@ -24,6 +24,9 @@ signal portal_requested(session: String, to: String)
 signal ice_logged(line: String)
 
 const STATE_INTERVAL := 0.1
+## Шкала тревоги узла (ice.md §4) и пороги уровней 1…4.
+const ALARM_MAX := 100.0
+const ALARM_LEVEL_AT := [25.0, 50.0, 75.0, 100.0]
 ## Позиции других аватаров — вдвое чаще (docs/netrun.md: ~20 раз/с).
 const AVATAR_INTERVAL := 0.05
 ## Допуск на дробное число физических тиков в интервале (60 Гц: 0.1 с — 6 тиков с погрешностью).
@@ -127,8 +130,20 @@ var lockdown_until := 0
 var node_writes := 0
 var _node_write_busy := false
 var _node_write_again := false
-## Тревога узла 0…1 (граф): растёт от trace игроков и выбросов, остывает; усиливает зрение ICE.
-var alert := 0.0
+## Тревога узла 0…100 (ice.md §4; граф): растёт от присутствия нетраннера (за такт) и событий, остывает только в пустом узле.
+var alarm := 0.0
+## Тревога 0…1 = alarm / 100 — прежнее поле для событий, Моста и клиента (контракт не менялся; новое поле — Т3b).
+var alert: float:
+	get:
+		return alarm / ALARM_MAX
+	set(v):
+		alarm = clampf(v, 0.0, 1.0) * ALARM_MAX
+## Уровень тревоги 0…4 (alarm_level_for) и эффекты: 1 — «спящие» датчики включены (флаг), 2 — зрение тактовых ICE +1 клетка,
+## 3 — в NIGHTMARE просыпается Black ICE, 4 — через alert_lockdown_ticks тактов порталы закрыты на lockdown_sec.
+var alarm_level := 0
+var sensors_armed := false
+var _lockdown_ticks_left := -1       # тактов до закрытия порталов (уровень 4); −1 — отсчёт не идёт
+var _lockdown_sec_left := -1.0       # то же для непошаговых узлов, секунды
 
 ## Тактовое время узла (settings.time_mode == "tick"): часы тактов, мозги Soft ICE на клетках, виртуальные часы Black ICE.
 var tick_clock: TickClock
@@ -509,7 +524,8 @@ func _restore_alert(saved_world: Dictionary) -> void:
 	if a <= 0.0 or not saved_world.has("alert_at"):
 		return
 	var elapsed := maxf(Time.get_unix_time_from_system() - float(saved_world["alert_at"]) / 1000.0, 0.0)
-	alert = clampf(a - elapsed / maxf(float(settings["alert_cool_sec"]), 0.001), 0.0, 1.0)
+	# сервера мира не было — в узле никого не было: остывание по alert_cool_sec_per_point секунд за пункт шкалы 0…100
+	alarm = clampf(a * ALARM_MAX - elapsed / maxf(float(settings["alert_cool_sec_per_point"]), 0.001), 0.0, ALARM_MAX)
 	_apply_alert()
 
 
@@ -582,7 +598,9 @@ func _write_node_state() -> void:
 		_node_write_again = false
 		var world := {"up": true, "players": _live_sessions().size()}
 		if is_graph_node():
-			world["alert"] = snappedf(alert, 0.01)
+			world["alert"] = snappedf(alert, 0.01)           # прежняя шкала 0…1 (читатели прошлой версии)
+			world["alarm"] = snappedf(alarm, 1.0)            # Т3b: шкала 0–100 и уровень 0–4 рядом со старым полем
+			world["alert_level"] = alarm_level
 			world["slots_empty"] = _refill_at.size()
 			world["alert_at"] = int(Time.get_unix_time_from_system() * 1000.0)
 			var refill: Dictionary = {}
@@ -993,6 +1011,7 @@ func _run_tick(live: Array, meters: Dictionary, dt_sec: float) -> void:
 	var line := "[tick] n=%d moves=%d by=%s" % [n, tick_clock.last_moves, tick_clock.last_by]
 	print(line)
 	tick_logged.emit(line)
+	_alarm_on_tick()   # тревога +alert_per_tick за такт, пока в узле нетраннер; отсчёт до закрытия порталов (уровень 4)
 	var pos := {}
 	var hidden := {}
 	var immune := {}     # неуязвимые: грейс прибытия (скрытые тоже — сразу после скрытых тактов он продолжается)
@@ -1009,7 +1028,6 @@ func _run_tick(live: Array, meters: Dictionary, dt_sec: float) -> void:
 		immune[session] = _arrival_immune(session, n)
 		if not h:
 			seen_pos[session] = avatar.position
-	var secs := minf(dt_sec, float(settings.get("tick_window_sec", 5.0)))
 	var captured := {}   # сессия -> ICE, который её взял
 	for ice: IceNode in _tick_ices:
 		var ti: TickIce = _tick_ices[ice]
@@ -1022,13 +1040,14 @@ func _run_tick(live: Array, meters: Dictionary, dt_sec: float) -> void:
 					_log_ice(ice, _tick_target(ti, pos), "%s→%s" % [tick_state_name(int(ev["from"])), tick_state_name(int(ev["state"]))], float(ti.max_awareness()))
 				"search_started":
 					_log_ice(ice, _tick_target(ti, pos), "SEARCH_STARTED", float(ti.max_awareness()))
-					raise_alert(float(settings.get("alert_per_search", 0.1)))
+					# Поиск (ice.md §3–4): trace цели +10 один раз за Поиск и тревога узла +10 — вместо прежних +8/с «на виду»
+					var searched := _tick_target(ti, pos)
+					if searched != "":
+						add_trace_event(searched, "search")
+					alarm_event("search")
 				"capture":
 					if not captured.has(ev["session"]):
 						captured[ev["session"]] = ice
-		for session in pos:
-			if ti.sees(session) and meters.has(session):
-				(meters[session] as TraceMeter).add_action("seen_by_ice", _now, secs)
 	for session in captured:
 		if net.has_avatar(session):
 			(captured[session] as IceNode).ejected.emit(session, "caught")
@@ -1091,8 +1110,10 @@ func _update_hunts() -> void:
 			_sync_hunt(session)
 
 
-## Спад trace, пока никто из ICE не следит за игроком.
+## Trace во времени (ice.md §3): прежний спад decay_per_sec (по умолчанию 0 — пассивного спада нет) и дрейф узла графа — +1 за
+## trace_drift_sec[тир] секунд, в хабе −1 за hub_trace_decay_sec (дрейфа нет). JITTER замораживает оба (TraceMeter).
 func _tick_traces() -> void:
+	var rate := trace_drift_rate()
 	for session in _sessions.keys():
 		if net.node_of(session) != node_id:
 			continue  # в тоннеле между узлами trace стоит
@@ -1102,7 +1123,32 @@ func _tick_traces() -> void:
 				watched = true
 			elif _tick_ices.has(ice) and (_tick_ices[ice] as TickIce).awareness_of(session) > 0:
 				watched = true
-		(_sessions[session] as DaemonSession).trace.tick(_now, not watched)
+		(_sessions[session] as DaemonSession).trace.tick(_now, not watched, rate)
+
+
+## Хаб графа (тихий узел: node_def.hub).
+func is_hub() -> bool:
+	return bool(node_def.get("hub", false))
+
+
+## Скорость дрейфа trace игрока в этом узле, 1/с: хаб — отрицательная, узел графа — по тиру, прочее (одиночный узел) — 0.
+func trace_drift_rate() -> float:
+	if not is_graph_node():
+		return 0.0
+	if is_hub():
+		return -1.0 / maxf(float(settings["hub_trace_decay_sec"]), 0.001)
+	var table: Variant = settings.get("trace_drift_sec", {})
+	var sec := float((table as Dictionary).get(tier(), 0.0)) if table is Dictionary else 0.0
+	return 1.0 / sec if sec > 0.0 else 0.0
+
+
+## Trace игрока за событие из trace_events (поиск, датчик, барьер, FAIL, Трассировщик). Заморозка JITTER — в TraceMeter.
+func add_trace_event(session: String, event_name: String) -> void:
+	if not _sessions.has(session):
+		return
+	var amount := float((settings.get("trace_events", {}) as Dictionary).get(event_name, 0.0))
+	if amount > 0.0:
+		(_sessions[session] as DaemonSession).trace.add_amount(amount, _now)
 
 
 func _broadcast_state() -> void:
@@ -1293,8 +1339,6 @@ func _on_level_changed(old_level: int, new_level: int, value: float, session: St
 	# Мост (правило сигнала СБ, P3) читает session.world.trace_level: с уровня TRACE шлёт сигнал с номером терминала.
 	if bridge != null and synced:
 		_mark_trace_level(session, new_level, value, _sessions[session].active_effects(_now) if _sessions.has(session) else [])
-	if is_graph_node() and old_level < TraceMeter.Level.TRACE and new_level >= TraceMeter.Level.TRACE:
-		raise_alert(float(settings["alert_per_trace"]))
 	# trace 100: ICE хватает. С Black ICE в узле это делает охота (она идёт с уровня TRACE); без него Soft ICE выбрасывает.
 	if new_level == TraceMeter.Level.FLATLINE and not has_black_ice():
 		_end(session, ExitLogic.REASON_EJECTED, "ice_eject")
@@ -1316,7 +1360,7 @@ func _end(session: String, exit_reason: String, kind: String) -> void:
 	if not net.has_avatar(session):
 		return
 	if is_graph_node():
-		raise_alert(float(settings["alert_per_eject"]))
+		alarm_event("eject")
 		if kind == "ice_eject" and bridge == null and not is_tutorial():
 			lock_for(float(settings["lockdown_sec"]))  # с Мостом локдаун выставляет он (run.finish soft_ice)
 	event.emit({"kind": kind, "session": session})
@@ -1961,29 +2005,115 @@ func _check_portals() -> void:
 
 # --- тревога и локдаун узла
 
-## Тревога узла растёт (0…1) и усиливает ICE: зрение и внимание выше на alert_boost при полной.
+## Уровень тревоги 0…4 по значению шкалы 0…100 (ice.md §4: 25 / 50 / 75 / 100).
+static func alarm_level_for(value: float) -> int:
+	return AlarmLevels.level_for(value)   # пороги общие с клиентом (shared/alarm_levels.gd)
+
+
+## Тревога узла растёт на amount шкалы 0…1 (прежний вызов: тесты, Мост) — это amount × 100 пунктов.
 func raise_alert(amount: float) -> void:
-	alert = minf(alert + amount, 1.0)
+	raise_alarm(amount * ALARM_MAX)
+
+
+## Тревога растёт на points пунктов шкалы 0…100; событие и запись узла — когда целое значение или уровень изменились.
+func raise_alarm(points: float) -> void:
+	if points <= 0.0:
+		return
+	_change_alarm(minf(alarm + points, ALARM_MAX))
+
+
+## Событие из alert_events (поиск, выброс, FAIL, датчик, барьер, Трассировщик); только в узле графа.
+func alarm_event(event_name: String) -> void:
+	raise_alarm(float((settings.get("alert_events", {}) as Dictionary).get(event_name, 0.0)))
+
+
+func _change_alarm(new_value: float) -> void:
+	var before := alarm
+	alarm = clampf(new_value, 0.0, ALARM_MAX)
+	if alarm == before:
+		return
+	var level_before := alarm_level
 	_apply_alert()
-	event.emit({"kind": "alert", "node": node_id, "value": alert})
-	_write_node_state()  # тревога переживает рестарт сервера мира (node.data.world.alert + alert_at)
+	if snappedf(alarm, 1.0) != snappedf(before, 1.0) or alarm_level != level_before:
+		event.emit({"kind": "alert", "node": node_id, "value": alert})
+		_write_node_state()  # тревога переживает рестарт сервера мира (node.data.world.alert + alert_at)
 
 
+## Уровни тревоги и их эффекты (ice.md §4), прежний множитель внимания непошаговых ICE по alert.
 func _apply_alert() -> void:
 	var k := 1.0 + alert * float(settings["alert_boost"])
+	var level := alarm_level_for(alarm)
+	var changed := level != alarm_level
+	alarm_level = level
+	sensors_armed = level >= 1   # «спящие» датчики раскладки включены (самих датчиков пока нет — только флаг)
 	for ice in _ices:
 		if ice.brain != null:
 			ice.brain.alert_scale = k
+			if ice.brain.is_black():
+				ice.brain.alarm_awake = level >= 3 and tier() == NodeGraph.TIER_BLACK   # охота Black ICE со 3-го уровня (NIGHTMARE)
+		if _tick_ices.has(ice):
+			(_tick_ices[ice] as TickIce).set_sight_bonus(1.0 if level >= 2 else 0.0)   # уровень 2: зрение всех ICE +1 клетка
+	if not changed:
+		return
+	event.emit({"kind": "alarm_level", "node": node_id, "level": level})
+	_send_alarm(level)
+	if level >= 4:
+		if _lockdown_ticks_left == -1:
+			_lockdown_ticks_left = int(settings.get("alert_lockdown_ticks", 10))
+			_lockdown_sec_left = float(_lockdown_ticks_left) * float(settings.get("tick_window_sec", 5.0))
+	else:
+		_lockdown_ticks_left = -1   # тревога упала ниже 100 до закрытия (или после него): отсчёт сброшен, закрытие не повторяется
+		_lockdown_sec_left = -1.0
 
 
-## Остывание: за alert_cool_sec от полной до нуля, по общим часам.
+## Уровень тревоги сменился — сказать нетраннерам узла (клиент: вид тревоги, аккорд уровня, строка деки). Т3b.
+func _send_alarm(level: int) -> void:
+	var fields := {"kind": WorldMsg.EV_ALARM, "node": node_id, "level": level, "alarm": snappedf(alarm, 1.0)}
+	for session in _live_sessions():
+		net.send_to(session, WorldMsg.encode_fields(WorldMsg.EVENT, fields))
+
+
+## Есть ли в узле нетраннер (сессия узла с аватаром; в тоннеле между узлами — нет).
+func _node_occupied() -> bool:
+	for s in _sessions.keys():
+		if net.node_of(s) == node_id and net.has_avatar(s):
+			return true
+	return false
+
+
+## Такт сервера: тревога растёт от присутствия нетраннера и ведёт отсчёт до закрытия порталов (тактовый узел).
+func _alarm_on_tick() -> void:
+	if not is_graph_node():
+		return
+	if _node_occupied():
+		raise_alarm(float(settings["alert_per_tick"]))
+	if _lockdown_ticks_left > 0:
+		_lockdown_ticks_left -= 1
+		if _lockdown_ticks_left == 0:
+			lock_for(float(settings["lockdown_sec"]))
+			_lockdown_ticks_left = -2   # закрытие уже сработало: до падения ниже уровня 4 не повторять
+
+
+## По общим часам: у непошаговых узлов рост за секунды присутствия и отсчёт закрытия; остывание — только в пустом узле, −1 за
+## alert_cool_sec_per_point секунд.
 func _tick_alert() -> void:
 	var dt := _now - _alert_t
 	_alert_t = _now
-	if alert <= 0.0 or dt <= 0.0:
+	if dt <= 0.0 or not is_graph_node():
 		return
-	alert = maxf(alert - dt / maxf(float(settings["alert_cool_sec"]), 0.001), 0.0)
-	_apply_alert()
+	if _node_occupied():
+		if not _tick_mode:
+			var per_sec := float(settings["alert_per_tick"]) / maxf(float(settings.get("tick_window_sec", 5.0)), 0.001)
+			if alarm < ALARM_MAX:
+				_change_alarm(alarm + per_sec * dt)
+			if _lockdown_sec_left > 0.0:
+				_lockdown_sec_left -= dt
+				if _lockdown_sec_left <= 0.0:
+					lock_for(float(settings["lockdown_sec"]))
+					_lockdown_sec_left = -1.0
+					_lockdown_ticks_left = -2
+	elif alarm > 0.0:
+		_change_alarm(alarm - dt / maxf(float(settings["alert_cool_sec_per_point"]), 0.001))
 
 
 ## Закрыть узел сервером мира на sec секунд (когда Моста нет; с Мостом локдаун — lockdown_until узла).

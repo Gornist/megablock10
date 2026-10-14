@@ -195,6 +195,8 @@ dependencies {
     // Общие правила игры (тиры, эффекты демонов, кодек предмета, решение о сигнале СБ) — rules/README.md.
     implementation(project(":rules"))
 
+    // core-ktx 1.19 и Compose BOM 2026.09 (Compose 1.12) требуют compileSdk 37 и AGP 9.1+ (checkDebugAarMetadata, dependabot #258, 14.10);
+    // у нас AGP 8.13.2 (build.gradle.kts: AGP 9 ждёт стабильных Paparazzi и detekt). Поднимать вместе с AGP 9.
     implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.activity:activity-compose:1.12.0")
     implementation(platform("androidx.compose:compose-bom:2026.06.01"))   // Compose 1.11

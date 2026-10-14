@@ -7,12 +7,11 @@
 
 Формат строки: `- [ ] [зона] что сделать — зачем / откуда` (зона — как в `scripts/zone-check.sh`).
 
-- [ ] [android] Обновления зависимостей от dependabot: #258 (Gradle, 6 штук), #259 (Paparazzi) — прогнать `dbx.sh --full`, эталоны Paparazzi сверить, «готово» Pipeline
-- [ ] [collector] Обновления зависимостей от dependabot: #256 (@fastify/static), #257 (клиент, 5 штук) — `admin-web/tools/test.sh all`, «готово» Pipeline
+- [ ] [android] Переход на AGP 9.1 и compileSdk 37 — тогда поднять core-ktx 1.19+, Compose BOM 2026.09+, Paparazzi alpha05.1 (эталоны a11y/scroll/Dialogs перезаписать с проверкой) и убрать их ignore из `.github/dependabot.yml` — из #258/#259, 14.10
 - [ ] [godot] Витрина объектов `tests/showcase_preview.tscn` (ветка agent/gd-showcase) — PR, чтобы снимать все модели одной командой
-- [ ] [story] Библия мира в ветке agent/story-bible (30 коммитов, PR нет) — довести и сдать PR либо сказать, чего не хватает
 - [ ] [blender] Black ICE: 5 видов + логово (ice.md §6, levels.md §9) — волна 4, Ядро: один рецепт с seed и окраской/деталями, `.points` строкой в `RECIPES`; ждёт: список 5 видов и признаков у Game
 - [ ] [blender] Барьер (3 состояния `State_*`) и Трассировщик (ищейка с хвостом клеток) — ice.md §5; Серверной v1 не нужны (Game 14.10), нужны Ядру и тревоге 3, после Black ICE
 - [ ] [blender] Вид тревоги узла 0–4 и LOCKDOWN: `AssetMaterials.set_alarm(root, level)` + слои `alarm_0…4`, будка запасного Стража (на базе `cover`) — ждёт: имя поля уровня тревоги у Godot (Т3)
 - [ ] [blender] Убрать мёртвую роль `glow_edge`: `AssetMaterials.SHADERS`, `lib.ROLES`, `validate.ROLES`, `shaders/glow_edge.gdshader`, упоминания в STYLE/ARCHITECTURE — валидатор её уже не пропускает
 - [ ] [blender] Штрихи и точки в моделях окружения (`platform`, `exit_frame`, `hack_pad`, `seat`, `sensor`) не рисуются при `streak_keep=0`/`point_keep=0`, но лежат в `.glb`: убрать из рисуемого набора, оставив источник для `src/points.py` — ждёт: решения, нужен ли отдельный источник (`.points` без модели)
+- [ ] [godot] Soak 30 мин для Т3a/Т3b: `soak.sh` собирает Мост из корня репозитория (`./gradlew`), а `dev.sh` кладёт на devbox только `netrun/` — запускать из полного дерева через очередь gradle — из #282, 14.10

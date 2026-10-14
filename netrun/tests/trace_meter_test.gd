@@ -5,8 +5,11 @@ const L := TraceMeter.Level
 var _events: Array = []
 
 
+## Прежний спад −1/с включён явно: по умолчанию пассивного спада нет (Т3a), эти тесты проверяют именно механику спада и заморозки.
 func _meter(settings: Dictionary = {}) -> TraceMeter:
-	var m := TraceMeter.new(settings)
+	var s := {"decay_per_sec": 1.0}
+	s.merge(settings, true)
+	var m := TraceMeter.new(s)
 	m.level_changed.connect(func(o: int, n: int, _v: float) -> void: _events.append([o, n]))
 	m.tick(0.0)
 	return m
@@ -60,7 +63,7 @@ func test_value_clamped_to_max() -> void:
 
 
 func test_decay_over_time_and_event_downwards() -> void:
-	var m := _meter()
+	var m := _meter({"decay_per_sec": 1.0})   # прежний спад — только по явной настройке: по умолчанию пассивного спада нет (Т3a)
 	m.add_action("seen_by_ice", 0.0, 4.0)  # 32, SUSPICIOUS
 	_events.clear()
 	m.tick(7.0)  # -7 -> 25
@@ -70,14 +73,14 @@ func test_decay_over_time_and_event_downwards() -> void:
 
 
 func test_decay_not_below_zero() -> void:
-	var m := _meter()
+	var m := _meter({"decay_per_sec": 1.0})
 	m.add_action("noise", 0.0)
 	m.tick(1000.0)
 	assert_float(m.value()).is_equal(0.0)
 
 
 func test_no_decay_while_seen() -> void:
-	var m := _meter()
+	var m := _meter({"decay_per_sec": 1.0})   # прежний спад — по явной настройке (Т3a: по умолчанию пассивного спада нет)
 	m.add_action("seen_by_ice", 0.0, 2.0)  # 16
 	m.tick(10.0, false)
 	assert_float(m.value()).is_equal(16.0)
@@ -99,7 +102,7 @@ func test_settings_override_thresholds_and_weights() -> void:
 
 
 func test_freeze_stops_growth_and_decay() -> void:
-	var m := _meter()
+	var m := _meter({"decay_per_sec": 1.0})   # прежний спад — по явной настройке (Т3a)
 	m.add_action("seen_by_ice", 0.0, 2.0)  # 16
 	m.freeze(0.0, 15.0)
 	m.add_action("seen_by_ice", 5.0)
