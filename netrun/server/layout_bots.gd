@@ -802,7 +802,8 @@ static func check_safe_steps(l: LayoutData, tier_name: String = "BASE") -> Dicti
 	return {"ok": false, "detail": "; ".join(bad) + " (" + detail + ")"}
 
 
-## Проверка п. 7: уход от каждой площадки — 2–4 прыжка и небезопасная клетка на кратчайшем пути.
+## Проверка п. 7: уход от каждой площадки — 2–4 прыжка и небезопасная клетка на кратчайшем пути. Правило действует для HARD и NIGHTMARE; в BASE
+## (Фойе — учебный узел, решение Game по П4) нарушение — предупреждение: ok остаётся true, warning true, detail начинается с «ПРЕДУПРЕЖДЕНИЕ».
 static func check_escape(l: LayoutData, tier_name: String = "BASE") -> Dictionary:
 	if l.is_legacy():
 		return {"ok": true, "detail": "legacy — не проверяется"}
@@ -821,8 +822,10 @@ static func check_escape(l: LayoutData, tier_name: String = "BASE") -> Dictionar
 			bad.append("хранилище %s: на кратчайшем пути ухода нет клетки под зрением" % str(v["cell"]))
 	var detail := "; ".join(parts)
 	if bad.is_empty():
-		return {"ok": true, "detail": detail}
-	return {"ok": false, "detail": "; ".join(bad) + " (" + detail + ")"}
+		return {"ok": true, "warning": false, "detail": detail}
+	if tier_name == "BASE":
+		return {"ok": true, "warning": true, "detail": "ПРЕДУПРЕЖДЕНИЕ (BASE): " + "; ".join(bad) + " (" + detail + ")"}
+	return {"ok": false, "warning": false, "detail": "; ".join(bad) + " (" + detail + ")"}
 
 
 static func _idx_static(c: Vector2i) -> int:
