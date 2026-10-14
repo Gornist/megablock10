@@ -35,6 +35,7 @@
 | `models/env/floor_slab_16.glb` | 92 / 400 | 0 / 0 | 0 / 0 | 1 | 2 | 16 × 0.7787 × 16 | shell_soft, solid_dark | — | slab | ок |
 | `models/props/hack_pad.glb` | 36 / 120 | 128 / 160 | 29 / 40 | 1 | 5 | 0.9259 × 0.28 × 0.9 | points, shell_soft, solid_dark, streaks | — | floor | ок |
 | `models/props/hack_panel.glb` | 62 / 300 | 50 / 120 | 11 / 20 | 0 | 5 | 0.5175 × 1.2986 × 0.34 | points, solid_dark, streaks | — | floor | ок |
+| `models/ice/lighthouse_ice.glb` | 274 / 300 | 0 / 0 | 0 / 0 | 3 | 6 | 0.6 × 0.84 × 0.6 | shell_soft, solid_dark | — | floor | ок |
 | `models/env/lockdown_gate.glb` | 300 / 320 | 0 / 0 | 0 / 0 | 0 | 1 | 0.89 × 2 × 0.09 | solid_dark | — | floor | ок |
 | `models/env/lockdown_gate_open.glb` | 300 / 320 | 0 / 0 | 0 / 0 | 0 | 1 | 0.89 × 0.12 × 0.09 | solid_dark | — | floor | ок |
 | `models/env/pillar.glb` | 464 / 560 | 0 / 0 | 0 / 0 | 0 | 2 | 2 × 2.2 × 2 | solid_dark | — | floor | ок |
@@ -46,6 +47,7 @@
 | `models/avatar/runner_c.glb` | 0 / 300 | 140 / 160 | 318 / 360 | 0 | 2 | 0.6494 × 1.4711 × 0.6036 | points, streaks | — | feet | ок |
 | `models/props/seat.glb` | 252 / 300 | 24 / 40 | 11 / 16 | 0 | 3 | 1.2 × 1.1082 × 1.2 | points, solid_dark, streaks | — | floor | ок |
 | `models/props/sensor.glb` | 88 / 500 | 16 / 40 | 2 / 8 | 3 | 6 | 0.342 × 1.45 × 0.32 | points, shell_soft, solid_dark, streaks | — | floor | ок |
+| `models/ice/sensor_ice.glb` | 114 / 200 | 0 / 0 | 0 / 0 | 3 | 4 | 0.12 × 0.42 × 0.1698 | shell_soft, solid_dark | — | floor | ок |
 | `models/props/shard.glb` | 54 / 300 | 126 / 160 | 3 / 3 | 4 | 9 | 0.1399 × 0.13 × 0.136 | points, shell_soft, streaks | — | center | ок |
 | `models/props/shard_encrypted.glb` | 14 / 400 | 151 / 220 | 7 / 7 | 2 | 9 | 0.197 × 0.1431 × 0.136 | points, shell_soft, streaks | — | center | ок |
 | `models/ice/soft_ice.glb` | 0 / 300 | 160 / 200 | 179 / 200 | 0 | 3 | 1.2214 × 2.15 × 0.7577 | points, streaks | idle, patrol | feet | ок |
