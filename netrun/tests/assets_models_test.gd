@@ -773,11 +773,9 @@ func test_asset_materials_cloud_scope_props_yes_slabs_gate_and_deck_no() -> void
 	assert_int(_cloud_meshes(_apply_new("env", "floor_slab_16"))).override_failure_message("cloud_floor=1: пол — облако").is_greater(0)
 	AssetMaterials.reset_tuning()
 	var one_side := _apply_new("env", "cover")
-	assert_str(_mat_of(one_side, "pillar_block").shader.resource_path).override_failure_message("по умолчанию одна сторона").ends_with("cloud_dark.gdshader")
-	AssetMaterials.tune({"cloud_two_sided": 1.0})
-	var two_side := _apply_new("env", "cover")
-	assert_str(_mat_of(two_side, "pillar_block").shader.resource_path).override_failure_message("cloud_two_sided=1: cull_disabled").ends_with("cloud_dark_2s.gdshader")
-	AssetMaterials.reset_tuning()
+	assert_str(_mat_of(one_side, "pillar_block").shader.resource_path).override_failure_message("укрытие — облако, одна сторона (cull_back)").ends_with("cloud_dark.gdshader")
+	assert_bool(AssetMaterials.KNOBS.has("cloud_two_sided")).override_failure_message("cloud_two_sided снята 14.10 (+5,5 мс на очках), ручки быть не должно").is_false()
+	assert_bool(FileAccess.file_exists("res://assets/shaders/cloud_dark_2s.gdshader")).override_failure_message("cloud_dark_2s.gdshader удалён").is_false()
 
 
 func _apply_new(group: String, asset: String) -> Node3D:
