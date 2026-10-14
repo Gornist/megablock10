@@ -195,9 +195,9 @@ dependencies {
     // Общие правила игры (тиры, эффекты демонов, кодек предмета, решение о сигнале СБ) — rules/README.md.
     implementation(project(":rules"))
 
-    implementation("androidx.core:core-ktx:1.17.0")
+    implementation("androidx.core:core-ktx:1.19.1")
     implementation("androidx.activity:activity-compose:1.12.0")
-    implementation(platform("androidx.compose:compose-bom:2026.06.01"))   // Compose 1.11
+    implementation(platform("androidx.compose:compose-bom:2026.09.00"))   // Compose 1.11
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui-tooling-preview")
