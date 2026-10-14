@@ -18,7 +18,7 @@ sys.path.insert(0, HERE)
 import glbinfo  # noqa: E402
 import points as cloud_points  # noqa: E402  (облако частиц (Б): файлы .points рядом с моделями)
 
-ROLES = {"glow_edge", "shell_soft", "points", "streaks", "solid_dark"}
+ROLES = {"shell_soft", "points", "streaks", "solid_dark"}   # glow_edge (сплошные рейки) снята 15.10: неизвестный материал ловится проверкой ниже
 MAX_LAYERS = 3  # вложенных прозрачных оболочек на один ассет (STYLE.md)
 MAX_DRAWS = 8  # примитивов (≈ вызовов отрисовки) на ассет; предварительно, уточнить замером
 # Узлы-метки предметов узла: контракт с клиентом (ARCHITECTURE.md, «Предметы узла»), без них клиент не сможет включить состояние, тир, экран.
@@ -50,8 +50,6 @@ def check(rep):
     mats = set(info["materials"])
     if not mats <= ROLES:
         bad.append(f"неизвестные материалы {sorted(mats - ROLES)}")
-    if "glow_edge" in mats:
-        bad.append("glow_edge: сплошные рейки запрещены (STYLE.md), грань — плотность частиц")
     draws = len(info["prims"])
     max_draws = rep.get("budget_draws") or MAX_DRAWS  # составные предметы (хранилище: три состояния в одном файле) заявляют свой предел
     if draws > max_draws:

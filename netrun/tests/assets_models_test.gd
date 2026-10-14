@@ -148,7 +148,7 @@ func _streak_halos(n: Node) -> Array:
 
 func test_env_streaks_and_creatures_have_no_halo() -> void:
 	## ореол штрихов окружения убран в B1 (в окружении штрихи не рисуются, streak_keep=0); у существ, аватаров и деки штрихи резкие
-	var env_parts := NodeAssets.mesh_parts(NodeAssets.env_path("platform", "BASE"), "BASE")
+	var env_parts := NodeAssets.mesh_parts(NodeAssets.env_path("exit_frame", "BASE"), "BASE")   # у platform штрихов больше нет (15.10)
 	var seen := 0
 	for p in env_parts:
 		var mesh := p["mesh"] as Mesh
@@ -157,7 +157,7 @@ func test_env_streaks_and_creatures_have_no_halo() -> void:
 			if m != null and m.shader.get_shader_uniform_list().any(func(u): return u["name"] == "halo"):
 				seen += 1
 				assert_float(_halo_of(m)).is_equal(0.0)
-	assert_int(seen).override_failure_message("в платформе нет штрихов (шейдер с halo)").is_greater(0)
+	assert_int(seen).override_failure_message("в рамке выхода нет штрихов (шейдер с halo)").is_greater(0)
 	for path in ["ice/soft_ice", "avatar/runner"]:
 		var n := NodeAssets.instance(ROOT + path + ".glb")
 		auto_free(n)
@@ -671,14 +671,14 @@ func _point_mats(root: Node) -> Array:
 
 func test_asset_materials_knob_point_keep_reaches_env_points_only() -> void:
 	AssetMaterials.reset_tuning()
-	var dflt := _load("env", "platform")
+	var dflt := _load("env", "exit_frame")  # образец окружения со штрихами и точками (у platform они убраны 15.10)
 	AssetMaterials.apply(dflt, "BASE")
 	var base := _point_mats(dflt)
 	assert_int(base.size()).override_failure_message("в стене нет точек").is_greater(0)
 	for m in base:
 		assert_float(float(m.get_shader_parameter("keep_frac"))).override_failure_message("по умолчанию точки окружения убраны (point_keep=0, решение владельца)").is_equal(0.0)
 	AssetMaterials.tune({"point_keep": 0.5})
-	var tuned := _load("env", "platform")
+	var tuned := _load("env", "exit_frame")  # образец окружения со штрихами и точками (у platform они убраны 15.10)
 	AssetMaterials.apply(tuned, "BASE")
 	for m in _point_mats(tuned):
 		assert_float(float(m.get_shader_parameter("keep_frac"))).is_equal_approx(0.5, 0.001)
@@ -691,7 +691,7 @@ func test_asset_materials_knob_point_keep_reaches_env_points_only() -> void:
 
 func test_asset_materials_streak_knobs_reach_env_streaks_only() -> void:
 	AssetMaterials.reset_tuning()
-	var dflt := _load("env", "platform")
+	var dflt := _load("env", "exit_frame")  # образец окружения со штрихами и точками (у platform они убраны 15.10)
 	AssetMaterials.apply(dflt, "BASE")
 	var base := _streak_mats(dflt)
 	assert_int(base.size()).override_failure_message("в стене нет штрихов").is_greater(0)
@@ -699,7 +699,7 @@ func test_asset_materials_streak_knobs_reach_env_streaks_only() -> void:
 		assert_float(float(m.get_shader_parameter("keep_frac"))).override_failure_message("по умолчанию штрихи окружения не рисуются (streak_keep=0, решение владельца)").is_equal(0.0)
 		assert_bool(m.get_shader_parameter("far_dim_min") == null and m.get_shader_parameter("px_fade") == null).override_failure_message("остальные ручки штрихов не заданы").is_true()
 	AssetMaterials.tune({"streak_far_min": 0.3, "streak_far_start": 6.0, "streak_far_end": 20.0, "streak_keep": 0.6, "streak_len": 0.7, "streak_px_fade": 1.0})
-	var tuned := _load("env", "platform")
+	var tuned := _load("env", "exit_frame")  # образец окружения со штрихами и точками (у platform они убраны 15.10)
 	AssetMaterials.apply(tuned, "BASE")
 	for m in _streak_mats(tuned):
 		assert_float(float(m.get_shader_parameter("far_dim_min"))).is_equal_approx(0.3, 0.001)

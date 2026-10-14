@@ -2,20 +2,12 @@
 Запуск: blender -b --python envmore.py -- --out <корень netrun/assets>
 B2c (13.10.2026): кольцо тоннеля, кабели и угол убраны вместе с модулями из одних штрихов и точек (клиент их не грузит, на очках они невидимы)."""
 import os
-import random
 import sys
 
 import bmesh
-from mathutils import Vector
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import lib  # noqa: E402
-
-
-def _corner_dots(size=2.0, z=0.006):
-    """Четыре едва заметные точки по углам модуля: габарит симметричен, модули стыкуются по центру (origin «пол»)."""
-    h = size / 2 - 0.03
-    return [Vector((sx * h, sy * h, z)) for sx in (-1, 1) for sy in (-1, 1)]
 
 
 GATE_X = (-0.40, -0.20, 0.0, 0.20, 0.40)  # прутья решётки по ширине проёма 1,04 м (как у exit_frame: косяки на ±0,52 м)
@@ -60,30 +52,17 @@ def build_lockdown_gate(out, name="lockdown_gate", opened=False, seed=51):
 
 
 def build_platform(out, name="platform", seed=91):
-    """Платформа 2×2 м высотой 0,3 м (возвышение в комнате, например под кресло или хранилище): чёрный блок 1,9×1,9 с подсвеченным верхним контуром,
-    на верхней грани редкая сетка точек (шаг 0,4 м, ~20% пропусков), по бокам тихий занавес из 12 коротких штрихов на сторону, уходящих вниз к полу.
-    Origin на полу в центре. В отличие от тайлов пола, платформа выступает в комнату намеренно (0,3 м)."""
+    """Платформа 2×2 м высотой 0,3 м (возвышение в комнате, например под кресло или хранилище): чёрный блок 1,9×1,9 с подсвеченным верхним контуром.
+    Origin на полу в центре. В отличие от тайлов пола, платформа выступает в комнату намеренно (0,3 м).
+    Чистка (15.10.2026): сетка точек на верхней грани и занавес штрихов по бокам убраны — у окружения с тиром штрихи и точки не рисуются
+    (`streak_keep=0`, `point_keep=0`, решение владельца на очках П5), но спрятанные меши оставались в файле и в списке отрисовки; облако реквизита — на гранях блока (А)."""
     lib.reset()
-    rng = random.Random(seed)
     cy, void = lib.lin("cyan"), lib.lin("void")
     blk = lib.box_bm((1.9, 1.9, 0.3), center=(0, 0, 0.15))
     glow = lib.lit_part(blk, 0.3, 0.014)
     objs = [lib.obj_from_bm("platform_block", blk, "solid_dark", cy, rgb_fn=lib.combine_rgb([glow], cy, void))]
-    dots = [Vector((-0.8 + 0.4 * i, -0.8 + 0.4 * j, 0.306)) for i in range(5) for j in range(5) if rng.random() > 0.2]
-    dots += _corner_dots(1.9, 0.017)
-    objs.append(lib.point_cloud("platform_pts", dots, cy, half_size=0.016, seed=seed, a_min=0.4, a_max=0.9))
-    st = []
-    for side in range(4):
-        for q in range(12):
-            if rng.random() < 0.2:
-                continue
-            t = -0.9 + 1.8 * (q + 0.5) / 12
-            x, y = [(t, -0.95), (0.95, t), (t, 0.95), (-0.95, t)][side]
-            hh = rng.uniform(0.08, 0.26)
-            st.append((Vector((x, y, 0.3 - hh / 2)), rng.uniform(0.006, 0.011), hh / 2, rng.uniform(0.12, 0.4)))
-    objs.append(lib.streak_set("platform_streaks_hang", st, cy))
-    return lib.export(name, "env", objs, out, budget_tris=300, budget_points=40, budget_streaks=60, origin="floor",
-                      notes="высота 0,3 м, выступает в комнату намеренно")
+    return lib.export(name, "env", objs, out, budget_tris=300, budget_points=0, budget_streaks=0, origin="floor",
+                      notes="высота 0,3 м, выступает в комнату намеренно; без штрихов и точек (чистка 15.10)")
 
 
 if __name__ == "__main__":
