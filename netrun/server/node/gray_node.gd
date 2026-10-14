@@ -27,6 +27,8 @@ const STATE_INTERVAL := 0.1
 ## Шкала тревоги узла (ice.md §4) и пороги уровней 1…4.
 const ALARM_MAX := 100.0
 const ALARM_LEVEL_AT := [25.0, 50.0, 75.0, 100.0]
+## Прибавка к зрению ICE на тревоге 2+: «+1 клетка» ice.md §4 — клетка карты 2 м (Страж 3 клетки = 6 м), а дальности в коде — в клетках 1 м.
+const ALARM_SIGHT_BONUS := 2.0
 ## Позиции других аватаров — вдвое чаще (docs/netrun.md: ~20 раз/с).
 const AVATAR_INTERVAL := 0.05
 ## Допуск на дробное число физических тиков в интервале (60 Гц: 0.1 с — 6 тиков с погрешностью).
@@ -2089,9 +2091,9 @@ func _apply_alert() -> void:
 			if ice.brain.is_black():
 				ice.brain.alarm_awake = level >= 3 and tier() == NodeGraph.TIER_BLACK   # охота Black ICE со 3-го уровня (NIGHTMARE)
 		if _tick_ices.has(ice):
-			(_tick_ices[ice] as TickIce).set_sight_bonus(1.0 if level >= 2 else 0.0)   # уровень 2: зрение всех ICE +1 клетка
+			(_tick_ices[ice] as TickIce).set_sight_bonus(ALARM_SIGHT_BONUS if level >= 2 else 0.0)   # уровень 2: зрение всех ICE +1 клетка карты
 	for tb: TickBeacon in _beacons:
-		tb.set_sight_bonus(1.0 if level >= 2 else 0.0)   # и Маяков: 5 клеток, на тревоге 2+ — 6
+		tb.set_sight_bonus(ALARM_SIGHT_BONUS if level >= 2 else 0.0)   # и Маяков: 5 клеток карты (10 м), на тревоге 2+ — 6 (12 м)
 	if not changed:
 		return
 	event.emit({"kind": "alarm_level", "node": node_id, "level": level})

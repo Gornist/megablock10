@@ -1,5 +1,5 @@
 extends GdUnitTestSuite
-## Маяк (server/ice/tick_beacon.gd, ice.md §5): поворот на такт, зрение только фокусом на 5 клеток, укрытия закрывают, счётчик как у Стража,
+## Маяк (server/ice/tick_beacon.gd, ice.md §5): поворот на такт, зрение только фокусом на 5 клеток карты (10 м), укрытия закрывают, счётчик как у Стража,
 ## «Поиск» один раз, +1 на SUSPICIOUS, дальность +1 на тревоге 2+, качание в секторе; разбор `kind: beacon` в раскладке.
 
 const N := Vector2i(0, -1)
@@ -13,6 +13,11 @@ func _grid() -> NodeGrid:
 
 func _beacon(start: Vector2i = N, settings: Dictionary = {}) -> TickBeacon:
 	return TickBeacon.new(Vector2i(8, 8), start, _grid(), settings)
+
+
+## Маяк в клетке, стартовое направление NW (после первого такта смотрит на север).
+func _beacon_at(cell: Vector2i) -> TickBeacon:
+	return TickBeacon.new(cell, Vector2i(-1, -1), _grid())
 
 
 func _at(c: Vector2i) -> Dictionary:
@@ -37,15 +42,15 @@ func test_намерение_показывает_следующий_угол() 
 
 
 func test_видит_только_фокус_и_дальше_5_клеток_нет() -> void:
-	# старт NW: после такта маяк смотрит на север
-	var b := _beacon(Vector2i(-1, -1))
-	b.tick(_at(Vector2i(8, 4)))   # прямо на север на 4 клетки — виден
+	# маяк у южного края (8; 14), старт NW: после такта смотрит на север; дальность — 5 клеток карты = 10 м
+	var b := _beacon_at(Vector2i(8, 14))
+	b.tick(_at(Vector2i(8, 6)))   # прямо на север на 8 м — виден
 	assert_bool(b.sees("s1")).is_true()
-	b = _beacon(Vector2i(-1, -1))
-	b.tick(_at(Vector2i(12, 8)))   # сбоку (восток) — вне фокуса
+	b = _beacon_at(Vector2i(8, 14))
+	b.tick(_at(Vector2i(12, 14)))   # сбоку (восток) — вне фокуса
 	assert_bool(b.sees("s1")).is_false()
-	b = _beacon(Vector2i(-1, -1))
-	b.tick(_at(Vector2i(8, 1)))   # на 7 клеток — дальше 5
+	b = _beacon_at(Vector2i(8, 14))
+	b.tick(_at(Vector2i(8, 3)))   # на 11 м — дальше 10
 	assert_bool(b.sees("s1")).is_false()
 
 
@@ -67,11 +72,11 @@ func test_подозрительный_trace_даёт_плюс_один() -> voi
 
 
 func test_дальность_плюс_клетка_на_тревоге() -> void:
-	var b := _beacon(Vector2i(-1, -1))
-	assert_float(b.sight_cells()).is_equal(5.0)
-	b.set_sight_bonus(1.0)
-	assert_float(b.sight_cells()).is_equal(6.0)
-	b.tick(_at(Vector2i(8, 2)))   # 6 клеток на север — теперь видна
+	var b := _beacon_at(Vector2i(8, 14))
+	assert_float(b.sight_cells()).is_equal(10.0)
+	b.set_sight_bonus(2.0)   # +1 клетка карты = 2 м
+	assert_float(b.sight_cells()).is_equal(12.0)
+	b.tick(_at(Vector2i(8, 3)))   # 11 м на север — без прибавки не виден, с ней виден
 	assert_bool(b.sees("s1")).is_true()
 
 
