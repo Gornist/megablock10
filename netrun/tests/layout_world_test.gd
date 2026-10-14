@@ -49,9 +49,9 @@ func after_test() -> void:
 
 
 ## Мир из двух узлов: x_alt (раскладка test_alt, шардов и Стражей по параметрам) и x_leg (без layout — legacy). Тактовый режим — по умолчанию.
-func _build(alt_shards: int = 1, time_mode: String = "tick") -> void:
+func _build(alt_shards: int = 1, time_mode: String = "tick", layout_name: String = ALT) -> void:
 	var d := {"default_entry": "x_alt", "entries": {}, "settings": {"time_mode": time_mode, "vault_requires_open": false}, "nodes": {
-		"x_alt": {"title": "Альт", "tier": "BASE", "ice": 1, "shards": alt_shards, "layout": ALT, "links": ["x_leg"], "signs": [{"p": [9.0, 9.0], "text": "НЕ ТА КОМНАТА"}]},
+		"x_alt": {"title": "Альт", "tier": "BASE", "ice": 1, "shards": alt_shards, "layout": layout_name, "links": ["x_leg"], "signs": [{"p": [9.0, 9.0], "text": "НЕ ТА КОМНАТА"}]},
 		"x_leg": {"title": "Старый", "tier": "BASE", "ice": 2, "shards": 3, "links": ["x_alt"], "signs": [{"p": [1.0, 2.0], "text": "СТАРАЯ"}]},
 	}}
 	var sroot := Node.new()
@@ -244,3 +244,56 @@ func test_боты_стенда_берут_разные_свободные_кл�
 		cells[c] = true
 		bot.free()
 	assert_int(cells.size()).is_equal(6)   # шесть ботов — шесть разных клеток
+
+
+func test_маяк_раскладки_стоит_на_узле_вращается_и_виден_в_state() -> void:
+	const BEACON := "test_beacon"
+	LayoutData._cache[BEACON] = LayoutData.parse({
+		"name": BEACON,
+		"cells": ["V.......", ".2......", "........", "........", "........", ".....1..", "S.......", "......EE"],
+		"vaults": [{"cell": [0, 0], "pad": [0, 1], "ring": "outer"}],
+		"ice": [{"id": "o1", "kind": "beacon", "cell": [4, 4], "start": "N"}],
+	})
+	assert_str((LayoutData._cache[BEACON] as LayoutData).error).is_empty()
+	_build(1, "tick", BEACON)
+	var beacons := _alt().beacons()
+	assert_int(beacons.size()).is_equal(1)
+	assert_int(_alt().ices().size()).is_equal(0)   # Стражей у раскладки нет, а Маяк — не IceNode
+	assert_object(beacons[0].cell()).is_equal(LayoutData.block_center_cell(Vector2i(4, 4)))
+	var view := _alt().beacon_view()
+	assert_str(str(view[0]["id"])).is_equal("o1")
+	assert_array(view[0]["d"]).is_equal([0, -1])    # смотрит на север
+	assert_array(view[0]["nd"]).is_equal([1, -1])   # следующим тактом — на северо-восток
+	assert_float(float(view[0]["r"])).is_equal(10.0)   # 5 клеток карты по 2 м
+	LayoutData._cache.erase(BEACON)
+
+
+func test_датчик_раскладки_стоит_на_узле_и_сработав_будит_стража_и_тревогу() -> void:
+	const SENSOR := "test_sensor"
+	LayoutData._cache[SENSOR] = LayoutData.parse({
+		"name": SENSOR,
+		"cells": ["V.......", ".2......", "........", "........", "........", ".....1..", "S.......", "......EE"],
+		"vaults": [{"cell": [0, 0], "pad": [0, 1], "ring": "outer"}],
+		"ice": [
+			{"id": "g1", "kind": "sentry", "route": [{"cell": [1, 4], "wait": 2, "look": ["E"]}, {"cell": [6, 4], "wait": 1, "look": ["N"]}]},
+			{"id": "d1", "kind": "sensor", "cell": [4, 2], "dir": "E", "len": 3},
+		],
+	})
+	assert_str((LayoutData._cache[SENSOR] as LayoutData).error).is_empty()
+	_build(1, "tick", SENSOR)
+	var sensors := _alt().sensors()
+	assert_int(sensors.size()).is_equal(1)
+	assert_object(sensors[0].program()).is_equal(TickSensor.program_of("BASE"))   # узел BASE: 3/3
+	var view := _alt().sensor_view()
+	assert_str(str(view[0]["id"])).is_equal("d1")
+	assert_int((view[0]["c"] as Array).size()).is_equal(3)
+	assert_int(int(view[0]["on"])).is_equal(1)
+	# Срабатывание: тревога узла +5 и ближайший Страж — в Проверку к клетке луча (сессии в узле нет — trace не считаем).
+	var cell: Vector2i = sensors[0].cells()[1]
+	var before := _alt().alarm
+	_alt()._sensor_fire(sensors[0], "s1", cell)
+	assert_float(_alt().alarm - before).is_equal_approx(5.0, 0.001)
+	assert_int(_tick_of(_alt()).awareness_of("s1")).is_equal(TickIce.CHECK_CEILING)
+	_alt()._sensor_fire(sensors[0], "s1", cell)   # второй раз за то же включение — молчит
+	assert_float(_alt().alarm - before).is_equal_approx(5.0, 0.001)
+	LayoutData._cache.erase(SENSOR)
