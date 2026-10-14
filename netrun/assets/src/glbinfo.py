@@ -8,6 +8,12 @@ import struct
 import sys
 
 
+def is_overlay(mesh_name):
+    """Меши подсветки, не входящие в габарит: маяк предмета (`beacon_*`) и лучи Soft ICE (`*_fan`, `*_beam*`)."""
+    n = str(mesh_name)
+    return n.startswith("beacon_") or n.endswith("_fan") or "_beam" in n
+
+
 def parse(path):
     data = open(path, "rb").read()
     magic, _version, _length = struct.unpack("<4sII", data[:12])
@@ -36,7 +42,8 @@ def parse(path):
         if any(k in n for k in ("translation", "rotation", "scale", "matrix")) and "skin" not in n and "mesh" in n
     )
     # габарит предмета считается БЕЗ маяка (меши `beacon_*` под узлом Beacon: луч и ореол для дальнего чтения, клиент выключает их в руке)
-    body = [p for p in prims if not str(p["mesh"]).startswith("beacon_")]
+    # и БЕЗ лучей Soft ICE (меши `*_fan` и `*_beam*`: единичная длина 1 м, длину и состояние задаёт игра масштабом узла Beam, icegear.py)
+    body = [p for p in prims if not is_overlay(p["mesh"])]
     lo = [min(p["min"][i] for p in body) for i in range(3)] if body else [0, 0, 0]
     hi = [max(p["max"][i] for p in body) for i in range(3)] if body else [0, 0, 0]
     return {

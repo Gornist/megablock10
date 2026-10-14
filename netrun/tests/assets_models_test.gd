@@ -936,3 +936,78 @@ func test_cloud_layers_for_ice_and_exit_come_from_the_palette() -> void:
 	# облако ICE красное (красное только у угрозы, STYLE.md п.4), рамка выхода — ледяной белый; клиент берёт цвет только отсюда
 	assert_bool(AssetMaterials.layer("volume_ice").is_equal_approx(AssetMaterials.PAL_THREAT)).is_true()
 	assert_bool(AssetMaterials.layer("volume_exit").is_equal_approx(AssetMaterials.PAL_ICE)).is_true()
+
+
+# ---------------------------------------------------------------- Soft ICE: Маяк и Датчик (src/icegear.py, ice.md §5)
+
+func _body_aabb(root: Node) -> AABB:
+	# габарит без лучей (`*_fan`, `*_beam*`): длину луча задаёт игра
+	var box := AABB()
+	var first := true
+	for mi in _meshes(root):
+		var n := String(mi.name)
+		if n.ends_with("_fan") or n.contains("_beam"):
+			continue
+		var b: AABB = mi.transform * mi.get_aabb()
+		box = b if first else box.merge(b)
+		first = false
+	return box
+
+
+func test_ice_lighthouse_has_head_and_beam_nodes_and_fits_one_cell() -> void:
+	var m := _load("ice", "lighthouse_ice")
+	for n in ["Head", "Beam"]:
+		assert_bool(m.find_child(n, true, false) != null).override_failure_message("lighthouse_ice: нет узла " + n).is_true()
+	var head := m.find_child("Head", true, false)
+	assert_bool(head.find_child("Beam", true, false) != null).override_failure_message("Beam должен быть под Head: веер поворачивается вместе с головой").is_true()
+	assert_bool(head.find_child("lighthouse_head", true, false) != null).is_true()
+	var box := _body_aabb(m)
+	assert_float(box.position.y).is_between(-0.01, 0.01)   # на полу
+	assert_float(maxf(box.size.x, box.size.z)).override_failure_message("Маяк шире клетки хода 1 м").is_less(0.9)
+	assert_float(box.size.y).is_between(0.7, 1.1)           # ниже головы стоящего
+	var fan := _meshes(m).filter(func(mi): return String(mi.name) == "lighthouse_fan")
+	assert_int(fan.size()).is_equal(1)
+	var fb: AABB = fan[0].get_aabb()
+	assert_float(fb.size.z).override_failure_message("веер единичного радиуса вдоль +Y Blender (−Z Godot): длина 1 м").is_equal_approx(1.0, 0.01)
+	assert_float(fb.size.x).override_failure_message("±25°: ширина на радиусе 1 м ≈ 2·sin25° = 0,85").is_equal_approx(2.0 * sin(deg_to_rad(25.0)), 0.02)
+
+
+func test_ice_sensor_emitter_has_beam_node_below_knee() -> void:
+	var m := _load("ice", "sensor_ice")
+	var beam := m.find_child("Beam", true, false) as Node3D
+	assert_bool(beam != null).override_failure_message("sensor_ice: нет узла Beam").is_true()
+	var parts := _meshes(beam)
+	assert_int(parts.size()).override_failure_message("в Beam один меш (один прозрачный слой): три плоскости — горизонтальная, вертикальная, на полу").is_equal(1)
+	for mi in parts:
+		var b: AABB = mi.get_aabb()
+		assert_float(b.size.z).override_failure_message("%s: длина луча 1 м вдоль −Z Godot" % mi.name).is_equal_approx(1.0, 0.01)
+		assert_float(b.position.z).override_failure_message("%s: луч уходит от излучателя вперёд (−Z)" % mi.name).is_equal_approx(-1.0, 0.01)
+	var box := _body_aabb(m)
+	assert_float(box.size.y).override_failure_message("излучатель ниже колена + линза: ≤ 0,5 м").is_less(0.5)
+	assert_float(maxf(box.size.x, box.size.z)).is_less(0.3)
+
+
+func test_ice_beams_get_beam_shader_palette_colors_and_state_helper() -> void:
+	AssetMaterials.reset_tuning()
+	for asset in ["lighthouse_ice", "sensor_ice"]:
+		var m := _load("ice", asset)
+		AssetMaterials.apply(m, "")
+		var beams := _meshes(m).filter(func(mi): return String(mi.name).ends_with("_fan") or String(mi.name).contains("_beam"))
+		assert_int(beams.size()).override_failure_message(asset + ": нет мешей луча").is_greater(0)
+		for mi in beams:
+			var mat := mi.get_surface_override_material(0) as ShaderMaterial
+			assert_str(mat.shader.resource_path).override_failure_message("%s: луч должен быть в beam.gdshader" % mi.name).ends_with("beam.gdshader")
+			assert_bool((mat.get_shader_parameter("on_color") as Color).is_equal_approx(AssetMaterials.layer("beam_on"))).is_true()
+			assert_float(float(mat.get_shader_parameter("fan"))).is_equal(1.0 if String(mi.name).ends_with("_fan") else 0.0)
+		AssetMaterials.set_beam(m, AssetMaterials.BEAM_BLINK, 0.5)
+		for mi in beams:
+			var mat := mi.get_surface_override_material(0) as ShaderMaterial
+			assert_float(float(mat.get_shader_parameter("state"))).is_equal(2.0)
+			assert_float(float(mat.get_shader_parameter("flash"))).is_equal(0.5)
+		# корпус луча не трогает: состояние луча — только у мешей луча
+		var solid := _meshes(m).filter(func(mi): return not (String(mi.name).ends_with("_fan") or String(mi.name).contains("_beam")))
+		assert_int(solid.size()).is_greater(0)
+	# красный у угрозы (ICE), погашенный — тусклый голубой, вспышка — ледяной белый (STYLE.md п.4)
+	assert_bool(AssetMaterials.layer("beam_on").is_equal_approx(AssetMaterials.PAL_THREAT_HOT)).is_true()
+	assert_bool(AssetMaterials.layer("beam_off").is_equal_approx(AssetMaterials.PAL_DIM)).is_true()
+	assert_bool(AssetMaterials.layer("beam_flash").is_equal_approx(AssetMaterials.PAL_ICE)).is_true()

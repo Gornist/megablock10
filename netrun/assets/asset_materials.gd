@@ -16,6 +16,12 @@ const SHADERS := {
 ## Вуаль на гранях плит (меши `*_skirt` в floor, ceiling и far_*): в .glb у неё материал-роль shell_soft, а шейдер по имени меша — этот.
 const SKIRT_SHADER := preload("res://assets/shaders/skirt.gdshader")
 const CLOUD_SHADER := preload("res://assets/shaders/cloud_dark.gdshader")  # «облако без основы»: вид реквизита (ручка cloud, умолчание 1; принято 12.10, облако (Б) на объектах — 14.10)
+## Луч Soft ICE (меши `*_beam*` у датчика и `*_fan` у маяка, ice/sensor_ice и ice/lighthouse_ice): роль shell_soft, шейдер по имени меша; состояния — set_beam(root, state, flash).
+const BEAM_SHADER := preload("res://assets/shaders/beam.gdshader")
+## Состояния луча датчика (параметр `state` шейдера beam.gdshader).
+const BEAM_OFF := 0
+const BEAM_ON := 1
+const BEAM_BLINK := 2
 ## Ореол-«капля» маяка предмета (меш `beacon_halo` в узле Beacon у шарда и токена): роль shell_soft, шейдер по имени меша.
 const BEACON_HALO_SHADER := preload("res://assets/shaders/beacon_halo.gdshader")
 ## Луч маяка (меш `beacon_beam`): штрихи (streaks) с ореолом, но спокойнее обычных — почти без дыхания и качания, гладкий (без бусин), ярче, чтобы читаться с 3 м.
@@ -53,6 +59,10 @@ const LAYERS := {
 	"ice_hunt": PAL_THREAT,
 	"ice_lost": Color("a9c9d6"),                   # потерял игрока
 	"ice_precapture": PAL_THREAT,                  # мигание перед захватом
+	# Луч Soft ICE (датчик, маяк): горит / погашен / вспышка срабатывания; мигание — состояние BEAM_BLINK тем же цветом beam_on
+	"beam_on": PAL_THREAT_HOT,                     # луч включён (угроза: ICE видит)
+	"beam_off": PAL_DIM,                           # погашен: путь виден, пройти можно
+	"beam_flash": PAL_ICE,                         # вспышка срабатывания (одиночный импульс)
 	# Облако частиц (Б), VolumeCloud: цвет облака объекта (файлы `.points`, ARCHITECTURE.md §13)
 	"volume_ice": PAL_THREAT,                      # облако ICE (Soft и Black): красное, красное только у угрозы; у Black ICE ложится на синюю оболочку модели («красное внутри»)
 	"volume_exit": PAL_ICE,                        # рамка выхода: брусья с кромкой ice_white
@@ -200,11 +210,12 @@ static func _k(name: String) -> Variant:
 
 ## Охват облака (ручка cloud) по группам моделей по пути сцены: far_* / floor* / ceiling* — по своим ручкам (по умолчанию сплошные); ворота lockdown_gate* и вся дека (deck/)
 ## всегда сплошные: у ворот красная кромка — сигнал LOCKDOWN, облако перекрасило бы её в бирюзу, у деки на руке своя палитра и замера облака не было; остальное (колонны,
-## укрытия, хранилище, рамка выхода, платформа…) — облако.
+## укрытия, хранилище, рамка выхода, платформа…) — облако. Корпуса ICE (`/ice/`: маяк, излучатель датчика — мелкие, 0,12–0,6 м) тоже сплошные: облако на них читается рваным
+## пятном, а ICE — игровой сигнал, он должен читаться с 5 клеток.
 static func _cloud_scope_ok(root: Node) -> bool:
 	var path := root.scene_file_path
 	var base := path.get_file()
-	if base.begins_with("lockdown_gate") or path.contains("/deck/"):
+	if base.begins_with("lockdown_gate") or path.contains("/deck/") or path.contains("/ice/"):
 		return false
 	if base.begins_with("far_"):
 		return float(_k("cloud_far")) > 0.5
@@ -307,6 +318,12 @@ static func apply(root: Node, tier: String = "") -> void:
 					m.set_shader_parameter("len_scale", float(_k("streak_len")))
 				if float(_k("streak_px_fade")) > 0.0:
 					m.set_shader_parameter("px_fade", float(_k("streak_px_fade")))
+			if String(mi.name).ends_with("_fan") or String(mi.name).contains("_beam"):  # луч Soft ICE (датчик, маяк): свой шейдер, цвета — слои beam_*; состояния — set_beam
+				m.shader = BEAM_SHADER
+				m.set_shader_parameter("on_color", layer("beam_on"))
+				m.set_shader_parameter("off_color", layer("beam_off"))
+				m.set_shader_parameter("flash_color", layer("beam_flash"))
+				m.set_shader_parameter("fan", 1.0 if String(mi.name).ends_with("_fan") else 0.0)
 			if String(mi.name) == "beacon_halo":  # маяк предмета: капля свечения — свой шейдер; луч — streaks с ореолом (клиент выключает узел Beacon в руке)
 				m.shader = BEACON_HALO_SHADER
 			elif String(mi.name) == "beacon_beam":
@@ -368,6 +385,20 @@ static func set_intensity(root: Node, value: float) -> void:
 			var m := mi.get_surface_override_material(s) as ShaderMaterial
 			if m != null:
 				m.set_shader_parameter("intensity", value)
+
+
+## Состояние луча Soft ICE (датчик, маяк): state — BEAM_OFF / BEAM_ON / BEAM_BLINK, flash 0…1 — вспышка срабатывания (одиночный импульс, длину задаёт игра).
+## Действует на меши `*_beam*` и `*_fan` ассета; остальные материалы не трогает.
+static func set_beam(root: Node, state: int, flash: float = 0.0) -> void:
+	for n in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		for s in mi.mesh.get_surface_count():
+			var m := mi.get_surface_override_material(s) as ShaderMaterial
+			if m != null and m.shader == BEAM_SHADER:
+				m.set_shader_parameter("state", float(state))
+				m.set_shader_parameter("flash", clampf(flash, 0.0, 1.0))
 
 
 ## Параметр шейдера на всех материалах ассета (анимация и настройка из кода: touch_pos, touch_radius, breathe, pulse…).
