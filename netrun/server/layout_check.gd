@@ -3,7 +3,7 @@ extends RefCounted
 ## Автоматическая проверка правил раскладки (docs/gamedesign/levels.md, 2) по данным LayoutData и тактовому мозгу TickIce.
 ## Каждая проверка возвращает {ok: bool, detail: String}; detail — одна строка: что не так (или числа, если всё в порядке).
 ## Маршруты Стражей прогоняются самим TickIce (ожидание, взгляд, шаги по 2 клетки): проверка видит то же, что игрок.
-## Не проверяется здесь: ≥ 2 пути к хранилищу, уход (правило 7), периоды Стражей, Маяк и датчики — следующие карточки.
+## Периоды и ≥ 2 пути — LayoutBots.check_periods/check_paths (в run_all); вор и бегун — LayoutBots.check_bots (отдельно, дольше). Не проверяется: уход (правило 7) по числу прыжков, ступеньки укрытий (С7).
 
 ## Первые такты в узле, когда нетраннера не видно (time-and-movement.md, 3.7).
 const ENTRY_HIDDEN_TICKS := 2
@@ -44,7 +44,14 @@ static func run_all(layout: LayoutData, tier: String = "BASE") -> Dictionary:
 		"arrival_safe": check_arrival_safe(layout),
 		"occupied_visible": check_occupied_visible(layout),
 		"ice_gear": check_ice_gear(layout),
+		"periods": LayoutBots.check_periods(layout),
+		"paths": LayoutBots.check_paths(layout),
 	}
+
+
+## Проверки с прогоном ботов (вор, бегун; дольше остальных — секунды): отдельно от run_all.
+static func bots(layout: LayoutData, tier: String = "BASE") -> Dictionary:
+	return LayoutBots.check_bots(layout, tier)
 
 
 ## Имена проверок, которые не прошли (пустой массив — раскладка проходит всё).
