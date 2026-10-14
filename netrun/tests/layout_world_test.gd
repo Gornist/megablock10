@@ -266,3 +266,34 @@ func test_маяк_раскладки_стоит_на_узле_вращаетс�
 	assert_array(view[0]["nd"]).is_equal([1, -1])   # следующим тактом — на северо-восток
 	assert_float(float(view[0]["r"])).is_equal(10.0)   # 5 клеток карты по 2 м
 	LayoutData._cache.erase(BEACON)
+
+
+func test_датчик_раскладки_стоит_на_узле_и_сработав_будит_стража_и_тревогу() -> void:
+	const SENSOR := "test_sensor"
+	LayoutData._cache[SENSOR] = LayoutData.parse({
+		"name": SENSOR,
+		"cells": ["V.......", ".2......", "........", "........", "........", ".....1..", "S.......", "......EE"],
+		"vaults": [{"cell": [0, 0], "pad": [0, 1], "ring": "outer"}],
+		"ice": [
+			{"id": "g1", "kind": "sentry", "route": [{"cell": [1, 4], "wait": 2, "look": ["E"]}, {"cell": [6, 4], "wait": 1, "look": ["N"]}]},
+			{"id": "d1", "kind": "sensor", "cell": [4, 2], "dir": "E", "len": 3},
+		],
+	})
+	assert_str((LayoutData._cache[SENSOR] as LayoutData).error).is_empty()
+	_build(1, "tick", SENSOR)
+	var sensors := _alt().sensors()
+	assert_int(sensors.size()).is_equal(1)
+	assert_object(sensors[0].program()).is_equal(TickSensor.program_of("BASE"))   # узел BASE: 3/3
+	var view := _alt().sensor_view()
+	assert_str(str(view[0]["id"])).is_equal("d1")
+	assert_int((view[0]["c"] as Array).size()).is_equal(3)
+	assert_int(int(view[0]["on"])).is_equal(1)
+	# Срабатывание: тревога узла +5 и ближайший Страж — в Проверку к клетке луча (сессии в узле нет — trace не считаем).
+	var cell: Vector2i = sensors[0].cells()[1]
+	var before := _alt().alarm
+	_alt()._sensor_fire(sensors[0], "s1", cell)
+	assert_float(_alt().alarm - before).is_equal_approx(5.0, 0.001)
+	assert_int(_tick_of(_alt()).awareness_of("s1")).is_equal(TickIce.CHECK_CEILING)
+	_alt()._sensor_fire(sensors[0], "s1", cell)   # второй раз за то же включение — молчит
+	assert_float(_alt().alarm - before).is_equal_approx(5.0, 0.001)
+	LayoutData._cache.erase(SENSOR)

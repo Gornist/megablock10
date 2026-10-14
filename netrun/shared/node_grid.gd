@@ -279,3 +279,19 @@ static func look_dir(v: Variant) -> Vector2i:
 			"W": return Vector2i(-1, 0)
 			"NW": return Vector2i(-1, -1)
 	return Vector2i.ZERO
+
+
+## Длина луча Датчика, клеток 1 м: ice.md §5 — 2–6 клеток карты по 2 м, то есть 2–12 клеток 1 м (ряд карты «Потоки» — 6 клеток).
+const BEAM_MIN_LEN := 2
+const BEAM_MAX_LEN := 12
+
+
+## Клетки луча Датчика: от start на length клеток по направлению dir (одна из четырёх сторон света); пустой массив, если dir не по ряду или
+## столбцу либо длина вне 2–12. Общий код: раскладку читают и сервер (TickSensor), и клиент.
+static func beam_cells(start: Vector2i, dir: Vector2i, length: int) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	if length < BEAM_MIN_LEN or length > BEAM_MAX_LEN or absi(dir.x) + absi(dir.y) != 1:
+		return out
+	for i in length:
+		out.append(start + dir * i)
+	return out

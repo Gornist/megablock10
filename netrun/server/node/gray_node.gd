@@ -153,6 +153,9 @@ var _tick_mode := false
 var _tick_ices: Dictionary = {}      # IceNode -> TickIce (только Soft ICE тактового режима)
 var _beacons: Array[TickBeacon] = []   # Маяки раскладки (тактовый режим; ice.md §5): вращаются каждый такт, без IceNode
 var _beacon_ids: Dictionary = {}     # TickBeacon -> id маяка из раскладки (журнал, state)
+var _sensors: Array[TickSensor] = []   # Датчики раскладки (тактовый режим; ice.md §5): луч, вкл/выкл по тиру
+var _sensor_ids: Dictionary = {}     # TickSensor -> id датчика из раскладки
+var _sensor_hit: Dictionary = {}     # TickSensor -> {сессия: true}: уже сработал на неё в этом включении (повторно — после выключения)
 var _intents: Dictionary = {}        # IceNode -> TickIce.intent() после последнего такта (рассылается 10 раз/с без пересчёта)
 var _entered_tick: Dictionary = {}   # сессия -> номер такта узла, когда она вошла (скрыта первые entry_hidden_ticks тактов)
 var _grace_spent: Dictionary = {}    # сессия -> true: ходила после входа, грейс прибытия (arrival_grace_ticks) кончился досрочно
@@ -252,8 +255,9 @@ func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 			decrypt.request_cancel(session)
 		else:
 			breach.request_cancel(session))
-	net.teleported.connect(func(session: String, _from: Vector3, _to: Vector3) -> void:
+	net.teleported.connect(func(session: String, from: Vector3, to: Vector3) -> void:
 		register_move(session)
+		_sensors_hop(session, from, to)
 		breach.end_early(session, "teleport")
 		charge.end_early(session, "teleport")
 		decrypt.end_early(session, "teleport"))
@@ -266,6 +270,12 @@ func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 			var tb := TickBeacon.new(bd["cell"], bd["start"], ice_grid, {"step_deg": bd["step_deg"], "sweep_steps": bd["sweep_steps"]})
 			_beacons.append(tb)
 			_beacon_ids[tb] = str(bd["id"])
+		var program := TickSensor.program_of(tier())   # вкл/выкл по тиру узла; раскладка может задать свои числа
+		for sd: Dictionary in layout.sensors:
+			var ts := TickSensor.new(sd["cells"], int(sd["on"]) if int(sd["on"]) > 0 else program.x,
+				int(sd["off"]) if int(sd["off"]) > 0 else program.y, int(sd["phase"]))
+			_sensors.append(ts)
+			_sensor_ids[ts] = str(sd["id"])
 	else:
 		for i in soft:
 			_add_ice(NodeLayout.ICE[i]["id"], NodeLayout.ICE[i]["waypoints"])
@@ -1068,6 +1078,7 @@ func _run_tick(live: Array, meters: Dictionary, dt_sec: float) -> void:
 				if seen_by != "":
 					add_trace_event(seen_by, "search")
 				alarm_event("search")
+	_sensors_tick(pos, hidden, immune)
 	for session in captured:
 		if net.has_avatar(session):
 			(captured[session] as IceNode).ejected.emit(session, "caught")
@@ -1204,7 +1215,78 @@ func _broadcast_state() -> void:
 			fields["tk"] = _tick_field(session)
 			if not _beacons.is_empty():
 				fields["bk"] = beacon_view()
+			if not _sensors.is_empty():
+				fields["sn"] = sensor_view()
 		net.send_to(session, WorldMsg.encode_fields(WorldMsg.STATE, fields), false)
+
+
+## Датчики на такте: цикл вперёд, затем те, кто стоит под включённым лучом (скрытые и неуязвимые — нет: Призрак обходит датчик).
+func _sensors_tick(pos: Dictionary, hidden: Dictionary, immune: Dictionary) -> void:
+	for ts: TickSensor in _sensors:
+		ts.tick()
+		if not ts.is_on():
+			_sensor_hit.erase(ts)
+			continue
+		var standing := {}
+		for s in pos:
+			if not hidden.get(s, false) and not immune.get(s, false):
+				standing[s] = pos[s]
+		var hits := ts.hit_by(standing)
+		for s in hits:
+			_sensor_fire(ts, str(s), hits[s])
+
+
+## Прыжок игрока: отрезок пересекает включённый луч — «луч видит перенос». Скрытый (Призрак, вход) и неуязвимый невидимы датчику.
+func _sensors_hop(session: String, from: Vector3, to: Vector3) -> void:
+	if _sensors.is_empty() or not _sessions.has(session):
+		return
+	var n := tick_clock.tick_no
+	var ds: DaemonSession = _sessions[session]
+	if ds.is_ghost(_now) or n - int(_entered_tick.get(session, -1000000)) <= int(settings.get("entry_hidden_ticks", 2)) or _arrival_immune(session, n):
+		return
+	for ts: TickSensor in _sensors:
+		var c := ts.crossed_by(from, to)
+		if c != Vector2i.MAX:
+			_sensor_fire(ts, session, c)
+
+
+## Сработал датчик: trace +5, тревога узла +5, ближайший Страж — в Проверку к клетке (раз за включение на сессию).
+func _sensor_fire(ts: TickSensor, session: String, cell: Vector2i) -> void:
+	var fired: Dictionary = _sensor_hit.get(ts, {})
+	if fired.has(session):
+		return
+	fired[session] = true
+	_sensor_hit[ts] = fired
+	print("[sensor] %s TRIGGERED %s cell=%d,%d" % [_sensor_ids.get(ts, "?"), session, cell.x, cell.y])
+	add_trace_event(session, "sensor")
+	alarm_event("sensor")
+	var nearest: TickIce = null
+	var best := INF
+	var at := NodeGrid.center(cell)
+	for ice: IceNode in _tick_ices:
+		var d := Vector2(ice.position.x - at.x, ice.position.z - at.z).length()
+		if d < best:
+			best = d
+			nearest = _tick_ices[ice]
+	if nearest != null:
+		nearest.investigate(session, cell)
+
+
+## Датчики узла для state (поле `sn`): [{id, c: [[x, z], …] клетки луча, on 0/1, bl 1 — мигает перед включением, l — тактов до смены}].
+func sensor_view() -> Array:
+	var out: Array = []
+	for ts: TickSensor in _sensors:
+		var it := ts.intent()
+		var cells: Array = []
+		for c: Vector2i in it["cells"]:
+			cells.append([c.x, c.y])
+		out.append({"id": str(_sensor_ids.get(ts, "")), "c": cells, "on": 1 if it["on"] else 0, "bl": 1 if it["blink"] else 0, "l": int(it["left"])})
+	return out
+
+
+## Для тестов и сценариев: датчики узла.
+func sensors() -> Array[TickSensor]:
+	return _sensors
 
 
 ## Маяки узла для state (поле `bk`): [{id, c: [x, z], d: [dx, dz] — угол сейчас, nd — после следующего такта, aw 0..6, r — дальность, клеток}].
