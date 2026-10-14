@@ -17,14 +17,19 @@ const DEFAULT_SETTINGS := {
 	"portal_deny_repeat_sec": 3.0,   # как часто повторять отказ у закрытого портала (иначе — шквал сообщений)
 	"shard_refill_sec": {"BASE": 600.0, "HARD": 900.0, "NIGHTMARE": 1200.0},  # через сколько после выноса шард узла появляется снова
 	"refill_retry_sec": 30.0,        # если в Мосте для слота нет свободного шарда — повторить через
-	"alert_per_trace": 0.3,          # тревога узла растёт, когда trace игрока достиг уровня TRACE
-	"alert_per_eject": 0.6,          # ... и когда ICE выбросил или поймал игрока
-	"alert_cool_sec": 300.0,         # за сколько тревога остывает от 1 до 0
-	"alert_boost": 0.5,              # при полной тревоге зрение ICE и скорость его внимания выше на эту долю
+	# Trace нетраннера (ice.md §3, §9): дрейф по тиру, события, спад только в хабе (узел с `hub: true`).
+	"trace_drift_sec": {"BASE": 60.0, "HARD": 30.0, "NIGHTMARE": 15.0},  # +1 trace за столько секунд в узле (в тоннеле 0)
+	"hub_trace_decay_sec": 10.0,     # в хабе trace спадает −1 за столько секунд (дрейфа нет)
+	"trace_events": {"search": 10.0, "sensor": 5.0, "barrier": 10.0, "fail": 5.0, "tracer": 15.0},  # trace за событие (ловушка — trap_trace)
+	# Тревога узла 0–100 (ice.md §4): внутри сервера; наружу пока прежнее alert 0…1 = тревога / 100.
+	"alert_per_tick": 0.25,          # за такт, пока в узле есть нетраннер (непошаговый узел — то же за tick_window_sec секунд)
+	"alert_events": {"search": 10.0, "eject": 20.0, "fail": 10.0, "sensor": 5.0, "barrier": 10.0, "tracer": 10.0},
+	"alert_cool_sec_per_point": 6.0, # остывание −1 за столько секунд, только когда в узле никого
+	"alert_lockdown_ticks": 10,      # уровень 4 (тревога 100): через столько тактов порталы закрываются на lockdown_sec
+	"alert_boost": 0.5,              # при полной тревоге зрение и внимание непошаговых ICE выше на эту долю (тактовые ICE — по уровню 2: +1 клетка)
 	"vault_requires_open": "auto",   # взять шард можно, только открыв хранилище взломом: true / false, "auto" — включено, когда у узла графа есть Мост (GrayNode.vault_requires_open)
 	"vault_open_sec": 60.0,          # на сколько секунд взлом открывает хранилище (run.breach: open_s, 1..600)
 	"trap_trace": {"BASE": 5.0, "HARD": 8.0, "NIGHTMARE": 12.0},  # сколько trace даёт ловушка во взломе (мёртвая клетка или порченый код), по тиру узла
-	"alert_per_fail": 0.3,           # тревога узла растёт, когда взлом закончился провалом (FAIL)
 	"lockdown_sec": 600.0,           # локдаун узла после выброса; без Моста держит сам сервер мира, с Мостом — lockdown_until узла
 	"time_mode": "realtime",         # время узла: "tick" — такты (ходы игроков и окно, docs/gamedesign/time-and-movement.md), "realtime" — прежнее непрерывное (graph.json ставит tick)
 	"tick_window_sec": 5.0,          # такт наступает не позже, чем через столько секунд после прошлого
@@ -34,7 +39,6 @@ const DEFAULT_SETTINGS := {
 	"entry_hidden_ticks": 2,         # сколько тактов после входа в узел нетраннер невидим для ICE
 	"arrival_grace_ticks": 2,        # и ещё столько тактов после них он неуязвим: ICE не захватывает и не наступает на его клетку (кончается, как только он сходил)
 	"ice_sight_cells": {"BASE": 6, "HARD": 8, "NIGHTMARE": 10},  # дальность зрения Soft ICE в тактовом режиме (клеток), по тиру узла
-	"alert_per_search": 0.1,         # тревога узла, когда ICE перешёл в Поиск (тактовый режим)
 }
 
 var nodes: Dictionary = {}          # id -> {title, tier, ice, shards, links: Array[String]}
@@ -68,6 +72,7 @@ static func from_dict(d: Dictionary) -> NodeGraph:
 				"shards": int(n.get("shards", 1)),
 				"links": links,
 				"tutorial": bool(n.get("tutorial", false)),
+				"hub": bool(n.get("hub", false)),     # хаб (тихий узел): здесь trace спадает, дрейфа по времени нет
 				"layout": str(n.get("layout", "")),   # имя раскладки (data/layouts); пусто — legacy
 				"ice_settings": n["ice_settings"] if n.get("ice_settings") is Dictionary else {},
 				"signs": n["signs"] if n.get("signs") is Array else [],
