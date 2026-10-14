@@ -53,7 +53,7 @@ func _meter(v: float) -> TraceMeter:
 
 func _tick(node: GrayNode, cell: Vector2i, trace: float, hidden: bool = false) -> void:
 	var pos := {"s1": NodeGrid.center(cell)}
-	node._step_tick_black(pos, {"s1": hidden}, {"s1": _meter(trace)})
+	node._step_tick_black(pos, {"s1": hidden}, {}, {"s1": _meter(trace)})
 
 
 func test_логово_разобрано_и_black_ice_спит_в_нём() -> void:
@@ -105,3 +105,22 @@ func test_бегун_black_ice_далеко_уходит_а_стоявший_у_
 	var r := LayoutBots.check_black_runner(ld, "NIGHTMARE")
 	print("[black-runner] ", r)
 	assert_bool(r.has("ok")).is_true()
+
+
+func test_журнал_записан_до_выброса_флэтлайна() -> void:
+	# Цепочка выброса синхронно доходит до run.finish и читает _black_log: на момент ejected журнал уже есть.
+	var node := _world.node_of("x_core")
+	var seen: Array = []
+	for ice in node.ices():
+		ice.ejected.connect(func(s: String, _r: String): seen.append(node._black_log.has(s)))
+	for i in 7:
+		_tick(node, Vector2i(1, 8), 60.0)
+	var tb := node.black_ice()
+	for i in 40:
+		_tick(node, Vector2i(tb.cell().x + 1, tb.cell().y), 60.0)
+		if not seen.is_empty():
+			break
+	assert_array(seen).is_equal([true])
+	var log: Array = node._black_log["s1"]
+	assert_str(str(log[0]["ev"])).is_equal("wake")
+	assert_str(str(log[-1]["ev"])).is_equal("flatline")

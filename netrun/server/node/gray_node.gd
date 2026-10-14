@@ -1101,7 +1101,7 @@ func _run_tick(live: Array, meters: Dictionary, dt_sec: float) -> void:
 	for session in captured:
 		if net.has_avatar(session):
 			(captured[session] as IceNode).ejected.emit(session, "caught")
-	_step_tick_black(pos, hidden, meters)
+	_step_tick_black(pos, hidden, immune, meters)
 	_step_black(seen_pos, meters)
 	for s: Variant in tick_clock.last_moved:
 		_grace_spent[s] = true   # ходила: грейс кончится со следующего такта (в этом ICE уже отходил по правилу)
@@ -1137,7 +1137,7 @@ func _step_black(seen_pos: Dictionary, meters: Dictionary) -> void:
 
 ## Black ICE логова: один такт TickBlack. Скрытые (Призрак, входные такты) — пинг мимо; пробуждение, пинги, захваты — в журнал узла;
 ## флэтлайн откладывает журнал (_black_log) для session.data.world.black_log.
-func _step_tick_black(pos: Dictionary, hidden: Dictionary, meters: Dictionary) -> void:
+func _step_tick_black(pos: Dictionary, hidden: Dictionary, immune: Dictionary, meters: Dictionary) -> void:
 	if _black_brain == null:
 		return
 	var targets := {}
@@ -1146,15 +1146,21 @@ func _step_tick_black(pos: Dictionary, hidden: Dictionary, meters: Dictionary) -
 		targets[s] = NodeGrid.cell_of(pos[s])
 		if meters.has(s):
 			traces[s] = (meters[s] as TraceMeter).value()
-	for ev: Dictionary in _black_brain.tick_step({"targets": targets, "hidden": hidden, "traces": traces, "alarm_level": alarm_level}):
+	var flat := ""
+	var ctx := {"targets": targets, "hidden": hidden, "immune": immune, "traces": traces, "alarm_level": alarm_level}
+	for ev: Dictionary in _black_brain.tick_step(ctx):
 		var kind := str(ev["kind"])
 		print("[black] %s %s" % [kind, str(ev)])
 		if kind == "flatline":
 			_black_log[str(ev["session"])] = ev["journal"]
-		elif kind in ["wake", "hunt", "lost", "capture"]:
+			flat = str(ev["session"])
+		elif kind in ["wake", "hunt", "lost", "capture", "feel"]:
 			var e := ev.duplicate()
 			e["kind"] = "black_" + kind
 			event.emit(e)
+	if flat != "":
+		# Выброс — после записи журнала: цепочка ejected → _end → _finish_in_bridge синхронна и сразу читает _black_log.
+		_black_brain.ejected.emit(flat, "black_caught")
 
 
 ## Мастер будит Black ICE узла (ice.md §6.1: «мастер» — одна из причин пробуждения).

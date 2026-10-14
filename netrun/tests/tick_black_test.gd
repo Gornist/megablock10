@@ -11,8 +11,8 @@ func _black(burns: Dictionary = {}, settings: Dictionary = {}) -> TickBlack:
 	return TickBlack.new(LAIR, HOME, NodeGrid.new(), settings, burns)
 
 
-func _ctx(targets: Dictionary, traces: Dictionary = {}, hidden: Dictionary = {}, alarm: int = 0) -> Dictionary:
-	return {"targets": targets, "traces": traces, "hidden": hidden, "alarm_level": alarm}
+func _ctx(targets: Dictionary, traces: Dictionary = {}, hidden: Dictionary = {}, alarm: int = 0, immune: Dictionary = {}) -> Dictionary:
+	return {"targets": targets, "traces": traces, "hidden": hidden, "alarm_level": alarm, "immune": immune}
 
 
 ## Разбудить трассой и дойти до первого такта охоты; возвращает чёрный ICE в охоте.
@@ -126,7 +126,7 @@ func test_ожоги_копятся_за_забег_между_узлами() ->
 	assert_int(int(burns["s1"])).is_equal(3)
 
 
-func test_разрыв_прыжком_дальше_двух_клеток_и_ICE_стоит_такт() -> void:
+func test_разрыв_прыжком_дальше_двух_клеток_и_ice_стоит_такт() -> void:
 	var burns := {}
 	var b := _hunting(burns, Vector2i(10, 7))
 	assert_int(int(burns.get("s1", 0))).is_greater_equal(1)
@@ -149,17 +149,91 @@ func test_два_пинга_мимо_возврат_в_логово_и_чутк�
 	assert_int(b.phase).is_equal(TickBlack.Phase.HUNT)
 	var lost := false
 	for i in 12:
-		for e in b.tick(_ctx(tg, tr, {"s1": true})):   # Призрак: пинги мимо
+		for e in b.tick(_ctx({"s1": Vector2i(13, 14)}, tr, {"s1": true})):   # Призрак: пинги мимо
 			lost = lost or e["kind"] == "lost"
+		if lost:
+			break   # дальше — возврат, а не новая охота при том же trace
 	assert_bool(lost).is_true()
 	for i in 20:
-		b.tick(_ctx(tg, {"s1": 60.0}))
+		b.tick(_ctx(tg, {"s1": 30.0}))   # trace упал; на возврате в логово наибольший в узле — 30
 		if b.phase == TickBlack.Phase.SLEEP:
 			break
 	assert_int(b.phase).is_equal(TickBlack.Phase.SLEEP)
-	# чуткий сон: 60 → будит на 70 и просыпается за 3 такта
-	b.tick(_ctx(tg, {"s1": 69.0}))
+	# чуткий сон: порог min(50, 30 + 10) = 40, пробуждение за 3 такта
+	b.tick(_ctx(tg, {"s1": 39.0}))
 	assert_int(b.phase).is_equal(TickBlack.Phase.SLEEP)
-	b.tick(_ctx(tg, {"s1": 70.0}))
+	b.tick(_ctx(tg, {"s1": 40.0}))
 	assert_int(b.phase).is_equal(TickBlack.Phase.WAKING)
 	assert_int(b.wake_left()).is_equal(3)
+
+
+func test_чуткий_сон_не_выше_50() -> void:
+	var b := _black()
+	for i in 7:
+		b.tick(_ctx({"s1": FAR}, {"s1": 85.0}))
+	for i in 12:
+		b.tick(_ctx({"s1": Vector2i(13, 14)}, {"s1": 85.0}, {"s1": true}))   # Призрак далеко: пинги мимо, потеря следа
+		if b.phase == TickBlack.Phase.RETURNING:
+			break
+	for i in 20:
+		b.tick(_ctx({"s1": FAR}, {"s1": 85.0}))
+		if b.phase == TickBlack.Phase.SLEEP:
+			break
+	# возврат при trace 85: порог min(50, 95) = 50 — второй нетраннер с trace 60 его бы разбудил
+	b.tick(_ctx({"s1": FAR, "s2": FAR}, {"s1": 40.0, "s2": 60.0}))
+	assert_int(b.phase).is_equal(TickBlack.Phase.WAKING)
+
+
+func test_пустой_узел_глубокий_сон_порог_50_и_6_тактов() -> void:
+	var b := _hunting()
+	b.tick(_ctx({}))   # нетраннеров нет
+	assert_int(b.phase).is_equal(TickBlack.Phase.SLEEP)
+	assert_object(b.cell()).is_equal(HOME)
+	b.tick(_ctx({"s1": FAR}, {"s1": 49.0}))
+	assert_int(b.phase).is_equal(TickBlack.Phase.SLEEP)   # не 10: порог снова 50
+	b.tick(_ctx({"s1": FAR}, {"s1": 50.0}))
+	assert_int(b.wake_left()).is_equal(6)                  # и пробуждение 6 тактов, а не 3
+
+
+func test_призрак_рядом_не_жжётся_ice_нащупывает_клетку() -> void:
+	var burns := {}
+	var b := _hunting(burns)
+	var ghost := Vector2i(b.cell().x + 1, b.cell().y)
+	b.tick(_ctx({"s1": ghost}, {"s1": 60.0}, {"s1": true}))
+	b.tick(_ctx({"s1": ghost}, {"s1": 60.0}, {"s1": true}))
+	assert_int(int(burns.get("s1", 0))).is_equal(0)
+	assert_object(b.known_cell()).is_equal(ghost)   # засечка: «нащупал»
+	assert_object(b.cell()).is_not_equal(ghost)      # в клетку игрока не входит
+
+
+func test_грейс_прибытия_не_жжётся() -> void:
+	var burns := {}
+	var b := _hunting(burns)
+	var p := Vector2i(b.cell().x + 1, b.cell().y)
+	for i in 3:
+		b.tick(_ctx({"s1": p}, {"s1": 60.0}, {}, 0, {"s1": true}))
+	assert_int(int(burns.get("s1", 0))).is_equal(0)
+
+
+func test_прыжок_к_ice_жжёт_даже_скрытого_и_в_грейсе() -> void:
+	var burns := {}
+	var b := _hunting(burns)
+	var p := Vector2i(b.cell().x + 1, b.cell().y)
+	b.on_hop("s1", p)   # свой ход рядом с ICE в охоте (С18)
+	b.tick(_ctx({"s1": p}, {"s1": 60.0}, {"s1": true}, 0, {"s1": true}))
+	assert_int(int(burns.get("s1", 0))).is_equal(1)
+
+
+func test_журнал_начинается_с_пробуждения_и_без_ходов_во_сне() -> void:
+	var b := _black()
+	b.on_hop("s2", Vector2i(1, 1))   # спящему ICE ход не пишем
+	assert_int(b.journal().size()).is_equal(0)
+	b.tick(_ctx({"s1": FAR}, {"s1": 60.0}))
+	assert_str(str(b.journal()[0]["ev"])).is_equal("wake")
+	# второй цикл: журнал заново, прошлая охота в карточку не попадает
+	for i in 7:
+		b.tick(_ctx({"s1": FAR}, {"s1": 60.0}))
+	b.tick(_ctx({}))   # узел опустел
+	b.tick(_ctx({"s2": FAR}, {"s2": 60.0}))
+	assert_str(str(b.journal()[0]["ev"])).is_equal("wake")
+	assert_array(b.journal().filter(func(e): return e["ev"] == "hop")).is_empty()

@@ -43,6 +43,7 @@ var _has_known := false
 var _target := ""
 var _stun := 0
 var _captured: Dictionary = {}   # сессия → true: взята на прошлом такте (разрыв прыжком снимает)
+var _forced: Dictionary = {}     # сессия → true: прыгнула на ICE в охоте — ожог на этом такте, даже скрытой и в грейсе
 var _near: Dictionary = {}       # сессия → тактов подряд рядом с логовом
 var _master := false
 var _journal: Array = []
@@ -118,12 +119,19 @@ func _log(ev: String, extra: Dictionary = {}) -> void:
 
 
 ## Ход игрока (между тактами, сразу после телепорта): разрыв захвата прыжком дальше break_cells.
+## Прыжок на клетку ICE или в соседнюю в охоте — свой ход (С18): ожог в том же такте, Призрак и грейс не спасают.
 func on_hop(session: String, to: Vector2i) -> void:
+	if phase == Phase.SLEEP or phase == Phase.RETURNING:
+		return   # журнал карточки — про пробуждение и охоту; ходы спящему ICE не нужны
 	_log("hop", {"s": session, "c": [to.x, to.y]})
-	if phase == Phase.HUNT and _captured.has(session) and _cheb(to, _cell) > int(_s["break_cells"]):
+	if phase != Phase.HUNT:
+		return
+	if _captured.has(session) and _cheb(to, _cell) > int(_s["break_cells"]):
 		_captured.erase(session)
 		_stun = 1
 		_log("break", {"s": session})
+	elif _cheb(to, _cell) <= int(_s["capture_cells"]):
+		_forced[session] = true
 
 
 static func _cheb(a: Vector2i, b: Vector2i) -> int:
@@ -154,9 +162,15 @@ func tick(ctx: Dictionary) -> Array:
 	var hidden: Dictionary = ctx.get("hidden", {})
 	var traces: Dictionary = ctx.get("traces", {})
 	var alarm := int(ctx.get("alarm_level", 0))
+	var immune: Dictionary = ctx.get("immune", {})
 	for s in _near.keys():
 		if not targets.has(s):
 			_near.erase(s)
+	if targets.is_empty():
+		# Узел опустел: сразу глубокий сон (порог 50, пробуждение 6 тактов), чтобы следующий забег не будил его на trace 10 (решение Game).
+		if phase != Phase.SLEEP or _light:
+			_deep_reset(events)
+		return events
 	match phase:
 		Phase.SLEEP:
 			_tick_sleep(targets, traces, alarm, events)
@@ -171,9 +185,9 @@ func tick(ctx: Dictionary) -> Array:
 				_misses = 0
 				_log("hunt")
 				events.append({"kind": "hunt"})
-				_tick_hunt(targets, hidden, traces, events)
+				_tick_hunt(targets, hidden, immune, traces, events)
 		Phase.HUNT:
-			_tick_hunt(targets, hidden, traces, events)
+			_tick_hunt(targets, hidden, immune, traces, events)
 		Phase.RETURNING:
 			_step_toward(_home)
 			if _cell == _home:
@@ -201,7 +215,7 @@ func _tick_sleep(targets: Dictionary, traces: Dictionary, alarm: int, events: Ar
 	else:
 		var threshold := float(_s["wake_trace"])
 		if _light:
-			threshold = _ref_trace + float(_s["wake_light_trace_step"])
+			threshold = minf(threshold, _ref_trace + float(_s["wake_light_trace_step"]))   # чуткий сон: +10 к уровню возврата, но не выше 50
 		if _max_trace(traces) >= threshold:
 			reason = "trace"
 	if reason == "":
@@ -216,6 +230,7 @@ func _tick_sleep(targets: Dictionary, traces: Dictionary, alarm: int, events: Ar
 		return
 	_master = false
 	_near.clear()
+	_journal.clear()   # журнал начинается с пробуждения: карточка флэтлайна показывает эту охоту, а не прошлую или чужую
 	phase = Phase.WAKING
 	_wake_left = int(_s["wake_light_ticks"]) if _light else int(_s["wake_ticks"])
 	_last_wake_reason = reason
@@ -223,10 +238,7 @@ func _tick_sleep(targets: Dictionary, traces: Dictionary, alarm: int, events: Ar
 	events.append({"kind": "wake", "why": reason, "ticks": _wake_left})
 
 
-func _tick_hunt(targets: Dictionary, hidden: Dictionary, traces: Dictionary, events: Array) -> void:
-	if targets.is_empty():
-		_to_return(events, "empty")
-		return
+func _tick_hunt(targets: Dictionary, hidden: Dictionary, immune: Dictionary, traces: Dictionary, events: Array) -> void:
 	if _stun > 0:
 		_stun -= 1
 		return
@@ -255,11 +267,23 @@ func _tick_hunt(targets: Dictionary, hidden: Dictionary, traces: Dictionary, eve
 			_has_known = true
 			_log("ping", {"s": best, "hit": true, "c": [_known.x, _known.y]})
 			events.append({"kind": "ping", "session": best, "hit": true, "cell": _known})
+	# Скрытый (Призрак, скрытые такты входа) и в грейсе прибытия: ICE в его клетку не входит и не жжёт, а касание даёт засечку (С17, С18).
+	var guarded := {}
+	for s in targets:
+		if hidden.get(s, false) or immune.get(s, false):
+			guarded[targets[s]] = true
 	if _has_known:
-		_step_toward(_known)
+		_step_toward(_known, guarded)
 	for s in targets:
 		var c: Vector2i = targets[s]
 		if _cheb(c, _cell) <= int(_s["capture_cells"]):
+			if (hidden.get(s, false) or immune.get(s, false)) and not _forced.has(s):
+				_known = c
+				_has_known = true
+				_misses = 0
+				_log("feel", {"s": s, "c": [c.x, c.y]})
+				events.append({"kind": "feel", "session": s, "cell": c})
+				continue
 			burns[s] = int(burns.get(s, 0)) + 1
 			_captured[s] = true
 			_log("capture", {"s": s, "burns": burns[s]})
@@ -270,6 +294,7 @@ func _tick_hunt(targets: Dictionary, hidden: Dictionary, traces: Dictionary, eve
 				return
 		else:
 			_captured.erase(s)
+	_forced.clear()
 
 
 func _to_return(events: Array, why: String) -> void:
@@ -281,8 +306,31 @@ func _to_return(events: Array, why: String) -> void:
 	events.append({"kind": "lost", "why": why})
 
 
-func _step_toward(goal: Vector2i) -> void:
+## Шаг по пути к goal не больше step_cells; клетки из blocked (скрытые и в грейсе) ICE не занимает — встаёт перед ними.
+func _step_toward(goal: Vector2i, blocked: Dictionary = {}) -> void:
 	var path := _grid.path(_cell, goal)
 	var n := mini(int(_s["step_cells"]), path.size())
+	for i in n:
+		if blocked.has(path[i]):
+			n = i
+			break
 	if n > 0:
 		_cell = path[n - 1]
+
+
+## Узел опустел: Black ICE сразу в логове, глубокий сон; ожоги остаются (они за забег).
+func _deep_reset(events: Array) -> void:
+	phase = Phase.SLEEP
+	_light = false
+	_cell = _home
+	_has_known = false
+	_target = ""
+	_captured.clear()
+	_forced.clear()
+	_near.clear()
+	_misses = 0
+	_stun = 0
+	_wake_left = 0
+	_master = false
+	_log("sleep", {"light": false, "why": "empty"})
+	events.append({"kind": "sleep"})

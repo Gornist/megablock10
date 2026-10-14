@@ -36,7 +36,8 @@ func last_seen() -> Vector3:
 	return NodeGrid.center(k) if k != null else position
 
 
-## Один такт: ctx как у TickBlack.tick; события — как есть, флэтлайн дополнительно выбрасывает сессию причиной black_caught.
+## Один такт: ctx как у TickBlack.tick; события — как есть. Выброс по флэтлайну (ejected, black_caught) здесь НЕ шлётся: цепочка выброса синхронно доходит до
+## run.finish, а журнал (_black_log) должен быть записан раньше — выбрасывает узел, получив события (GrayNode._step_tick_black).
 func tick_step(ctx: Dictionary) -> Array:
 	var events := black.tick(ctx)
 	position = NodeGrid.center(black.cell())
@@ -47,10 +48,6 @@ func tick_step(ctx: Dictionary) -> Array:
 		TickBlack.Phase.HUNT:
 			st = State.HUNT
 	_set_state(st)
-	for ev: Dictionary in events:
-		if str(ev["kind"]) == "flatline":
-			ejected.emit(str(ev["session"]), "black_caught")
-			break
 	return events
 
 
