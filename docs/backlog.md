@@ -11,3 +11,8 @@
 - [ ] [collector] Обновления зависимостей от dependabot: #256 (@fastify/static), #257 (клиент, 5 штук) — `admin-web/tools/test.sh all`, «готово» Pipeline
 - [ ] [godot] Витрина объектов `tests/showcase_preview.tscn` (ветка agent/gd-showcase) — PR, чтобы снимать все модели одной командой
 - [ ] [story] Библия мира в ветке agent/story-bible (30 коммитов, PR нет) — довести и сдать PR либо сказать, чего не хватает
+- [ ] [blender] Black ICE: 5 видов + логово (ice.md §6, levels.md §9) — волна 4, Ядро: один рецепт с seed и окраской/деталями, `.points` строкой в `RECIPES`; ждёт: список 5 видов и признаков у Game
+- [ ] [blender] Барьер (3 состояния `State_*`) и Трассировщик (ищейка с хвостом клеток) — ice.md §5; Серверной v1 не нужны (Game 14.10), нужны Ядру и тревоге 3, после Black ICE
+- [ ] [blender] Вид тревоги узла 0–4 и LOCKDOWN: `AssetMaterials.set_alarm(root, level)` + слои `alarm_0…4`, будка запасного Стража (на базе `cover`) — ждёт: имя поля уровня тревоги у Godot (Т3)
+- [ ] [blender] Убрать мёртвую роль `glow_edge`: `AssetMaterials.SHADERS`, `lib.ROLES`, `validate.ROLES`, `shaders/glow_edge.gdshader`, упоминания в STYLE/ARCHITECTURE — валидатор её уже не пропускает
+- [ ] [blender] Штрихи и точки в моделях окружения (`platform`, `exit_frame`, `hack_pad`, `seat`, `sensor`) не рисуются при `streak_keep=0`/`point_keep=0`, но лежат в `.glb`: убрать из рисуемого набора, оставив источник для `src/points.py` — ждёт: решения, нужен ли отдельный источник (`.points` без модели)
