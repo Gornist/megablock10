@@ -67,8 +67,9 @@ for b in $( { git -C "$MAIN" for-each-ref --format='%(refname:short)' 'refs/head
   if [ -n "$wt" ]; then
     # git worktree remove без --force стирает и ИГНОРИРУЕМЫЕ файлы: 07.10 так пропали рабочие карточки Геймдизайна
     # (.cards/ в .git/info/exclude). Оставляем worktree, если в ней есть игнорируемое кроме пересобираемых кэшей.
+    # netrun/assets/reports/ пересоздаёт pipeline.sh build — из-за него 13–14.10 четыре worktree Blender оставались вручную.
     keep=$(git -C "$wt" status --porcelain --ignored=matching 2>/dev/null | sed -n 's/^!! //p' |
-      grep -Ev '(^|/)(build|node_modules|dist|\.gradle|\.kotlin|\.godot|\.pio|\.cxx)/$|(^|/)(\.DS_Store|local\.properties)$' | head -3)
+      grep -Ev '(^|/)(build|node_modules|dist|\.gradle|\.kotlin|\.godot|\.pio|\.cxx)/$|(^|/)(\.DS_Store|local\.properties)$|^netrun/assets/reports/$' | head -3)
     [ -n "$keep" ] && { kept="$kept ${wt##*/}($(echo $keep))"; continue; }
     git -C "$MAIN" worktree remove "$wt" 2>/dev/null || { kept="$kept ${wt##*/}"; continue; }
   fi

@@ -17,7 +17,7 @@ BOX='$HOME/box/repo/scripts/box.sh'   # раскрывается на devbox, н
 once() {
   local found="" s n f last key why
   # Очки и devbox — одним ssh: статус очков, новые строки attention.log, замечания статуса.
-  s=$(ssh -o ConnectTimeout=10 devbox "echo P:\$($BOX pico status 2>&1 | head -1); echo N:\$(wc -l < ~/box/attention.log 2>/dev/null); $BOX status 2>&1 | grep -iE 'лишн|паркован|замечани' | sed 's/^/W:/'" 2>/dev/null) ||
+  s=$(ssh -o ConnectTimeout=10 devbox "echo P:\$($BOX pico status 2>&1 | head -1); echo N:\$(wc -l < ~/box/attention.log 2>/dev/null); $BOX status 2>&1 | grep -E '^[[:space:]]+! ' | sed 's/^[[:space:]]*! /W:/'" 2>/dev/null) ||
     { echo "SWEEP: devbox недоступен"; return 1; }
   local pico; pico=$(sed -n 's/^P://p' <<<"$s")
   if grep -q 'Awake' <<<"$pico" && ! grep -q 'бронь' <<<"$pico"; then
