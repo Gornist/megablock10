@@ -1046,3 +1046,44 @@ func test_ice_beams_get_beam_shader_palette_colors_and_state_helper() -> void:
 	assert_bool(AssetMaterials.layer("beam_on").is_equal_approx(AssetMaterials.PAL_THREAT_HOT)).is_true()
 	assert_bool(AssetMaterials.layer("beam_off").is_equal_approx(AssetMaterials.PAL_DIM)).is_true()
 	assert_bool(AssetMaterials.layer("beam_flash").is_equal_approx(AssetMaterials.PAL_ICE)).is_true()
+
+
+# ---------------------------------------------------------------- Soft ICE: Барьер и Трассировщик (src/icegear.py, ice.md §5)
+
+func test_ice_barrier_has_three_states_and_five_code_marks() -> void:
+	var m := _load("ice", "barrier_ice")
+	for s in ["State_closed", "State_opening", "State_open"]:
+		var n := m.find_child(s, true, false) as Node3D
+		assert_bool(n != null).override_failure_message("barrier_ice: нет узла " + s).is_true()
+		assert_bool(n != null and _meshes(n).size() > 0).override_failure_message("barrier_ice: в %s нет мешей" % s).is_true()
+	for k in range(1, 6):
+		var c := m.find_child("Code_%d" % k, true, false) as Node3D
+		assert_bool(c != null and _meshes(c).size() > 0).override_failure_message("barrier_ice: нет отметки Code_%d" % k).is_true()
+	var box := _aabb(m)
+	assert_float(box.position.y).is_between(-0.01, 0.01)   # на полу
+	assert_float(box.size.x).override_failure_message("барьер шире клетки хода 1 м + стойки").is_between(0.85, 1.1)
+	assert_float(box.size.y).override_failure_message("панель кода выше колена, не выше головы").is_between(1.2, 1.8)
+	assert_float(box.size.z).override_failure_message("панель тонкая: толщина ≤ 0,2 м").is_less(0.2)
+	# состояния различимы силуэтом: у открытого нет панели выше порога, у закрытого она сплошная
+	var closed_h := _aabb(m.find_child("State_closed", true, false)).size.y
+	var open_h := _aabb(m.find_child("State_open", true, false)).size.y
+	assert_float(open_h).override_failure_message("State_open: проход свободен (только порог)").is_less(0.1)
+	assert_float(closed_h).is_greater(1.2)
+
+
+func test_ice_tracer_has_tail_cells_and_alert_anchor() -> void:
+	var m := _load("ice", "tracer_ice")
+	assert_bool(m.find_child("AlertAnchor", true, false) != null).override_failure_message("tracer_ice: нет AlertAnchor").is_true()
+	var tail := m.find_child("Tail", true, false) as Node3D
+	assert_bool(tail != null).override_failure_message("tracer_ice: нет узла Tail").is_true()
+	var prev_z := 0.0
+	for k in range(1, 5):
+		var t := m.find_child("Tail_%d" % k, true, false) as Node3D
+		assert_bool(t != null and _meshes(t).size() > 0).override_failure_message("tracer_ice: нет Tail_%d" % k).is_true()
+		if t != null:
+			var c := _aabb(t).get_center().z
+			assert_float(c).override_failure_message("Tail_%d: клетка позади, дальше предыдущей (+Z Godot — назад)" % k).is_greater(prev_z)
+			prev_z = c
+	# тело низкое («ищейка»), без хвоста
+	var body := _aabb(m.find_child("tracer_ice_body", true, false))
+	assert_float(body.size.y).override_failure_message("Трассировщик — низкая ищейка").is_less(0.5)

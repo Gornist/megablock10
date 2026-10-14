@@ -93,6 +93,13 @@ RECIPES = {
         ],
     },
 }
+RECIPES["ice/tracer_ice"] = {   # Трассировщик Soft ICE: низкое тело и гребень (хвост-плитки — Tail_1..4, не облако)
+    "count": 500, "half": 0.014, "spark": 0.10,
+    "parts": [
+        ("tracer_ice_body", "surface", 0.60),   # корпус вместе с мордой
+        ("tracer_ice_spine", "line", 0.40),
+    ],
+}
 RECIPES["ice/black_lair"] = {   # логово Black ICE (2×2 клетки): плита, знаки, шипы, холм сна
     "count": 800, "half": 0.016, "spark": 0.08,
     "parts": [

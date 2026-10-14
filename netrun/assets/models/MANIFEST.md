@@ -5,6 +5,7 @@
 
 | Файл | Треуг. / бюджет | Точек / бюджет | Штрихов / бюджет | Слоёв | Вызовов | Размер, м (x, y, z) | Материалы | Анимации | Origin | Статус |
 |---|---|---|---|---|---|---|---|---|---|---|
+| `models/ice/barrier_ice.glb` | 408 / 700 | 0 / 0 | 78 / 80 | 0 | 13 | 1.04 × 1.6 × 0.1 | solid_dark, streaks | — | floor | ок |
 | `models/ice/black_ice.glb` | 0 / 300 | 157 / 600 | 256 / 350 | 0 | 3 | 1.4096 × 3.3711 × 1.68 | points, streaks | idle, hunt, catch | feet | ок |
 | `models/ice/black_ice_catch.glb` | 0 / 300 | 156 / 600 | 331 / 350 | 0 | 3 | 2.3818 × 3.3707 × 2.7782 | points, streaks | — | feet | ок |
 | `models/ice/black_ice_hound.glb` | 0 / 300 | 181 / 600 | 282 / 350 | 0 | 3 | 1.4096 × 3.3711 × 2.1809 | points, streaks | idle, hunt, catch | feet | ок |
@@ -57,6 +58,7 @@
 | `models/props/shard.glb` | 54 / 300 | 126 / 160 | 3 / 3 | 4 | 9 | 0.1399 × 0.13 × 0.136 | points, shell_soft, streaks | — | center | ок |
 | `models/props/shard_encrypted.glb` | 14 / 400 | 151 / 220 | 7 / 7 | 2 | 9 | 0.197 × 0.1431 × 0.136 | points, shell_soft, streaks | — | center | ок |
 | `models/ice/soft_ice.glb` | 0 / 300 | 160 / 200 | 179 / 200 | 0 | 3 | 1.2214 × 2.15 × 0.7577 | points, streaks | idle, patrol | feet | ок |
+| `models/ice/tracer_ice.glb` | 240 / 700 | 0 / 0 | 20 / 40 | 2 | 8 | 0.78 × 0.6803 × 5.11 | shell_soft, solid_dark, streaks | — | feet | ок |
 | `models/props/vault.glb` | 208 / 900 | 314 / 500 | 107 / 220 | 2 | 17 | 0.9277 × 0.807 × 0.9085 | points, shell_soft, solid_dark, streaks | — | floor | ок |
 | `models/props/vault_closed.glb` | 0 / 500 | 248 / 420 | 111 / 160 | 0 | 2 | 0.7878 × 0.8098 × 0.76 | points, streaks | — | floor | ок |
 | `models/props/vault_open.glb` | 0 / 500 | 248 / 420 | 105 / 160 | 0 | 2 | 0.7878 × 0.9982 × 0.76 | points, streaks | — | floor | ок |
@@ -74,6 +76,7 @@
 | `models/props/shard_encrypted.points` | 300 / 300 | 8400 | ок |
 | `models/env/exit_frame.points` | 1000 / 1000 | 28000 | ок |
 | `models/ice/soft_ice.points` | 700 / 700 | 19600 | ок |
+| `models/ice/tracer_ice.points` | 500 / 500 | 14000 | ок |
 | `models/ice/black_lair.points` | 800 / 800 | 22400 | ок |
 | `models/ice/black_ice.points` | 900 / 900 | 25200 | ок |
 | `models/ice/black_ice_hunt.points` | 900 / 900 | 25200 | ок |

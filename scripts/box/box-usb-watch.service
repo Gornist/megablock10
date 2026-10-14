@@ -1,0 +1,10 @@
+# Страж USB devbox: раз в минуту (box-usb-watch.timer). На очки не нажимает: уснувший RCPad будит,
+# перезагрузку RCPad (с причиной) и пропажу очков из adb пишет в ~/box/journal.jsonl — чтобы причина была видна, а не гадалась.
+[Unit]
+Description=страж USB devbox: RCPad и очки Pico (будит RCPad, пишет события, чинит хаб очков)
+ConditionPathExists=%h/box/repo/scripts/box/ctl.sh
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash %h/box/repo/scripts/box/ctl.sh usb-watch
+LimitCORE=0
