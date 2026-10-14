@@ -44,11 +44,28 @@ func _ready() -> void:
 		AssetMaterials.set_beam(a, states[i][0], states[i][1])
 		add_child(a)
 		add_child(b)
+	# барьеры в трёх состояниях (закрыт, вскрывается, открыт) и Трассировщик с хвостом из 3 клеток — ряд позади (z = −6)
+	for i in 3:
+		var bar := NodeAssets.instance("res://assets/models/ice/barrier_ice.glb")
+		bar.position = Vector3(-4.5 + 3.0 * i, 0, -6.0)
+		for s in ["State_closed", "State_opening", "State_open"]:
+			(bar.find_child(s, true, false) as Node3D).visible = (s == ["State_closed", "State_opening", "State_open"][i])
+		for k in range(1, 6):
+			(bar.find_child("Code_%d" % k, true, false) as Node3D).visible = k <= 5 - i * 2   # осталось вскрыть 5 / 3 / 1 кодов
+		add_child(bar)
+	var tr := NodeAssets.instance("res://assets/models/ice/tracer_ice.glb")
+	tr.position = Vector3(4.5, 0, -6.0)
+	for k in range(1, 5):
+		(tr.find_child("Tail_%d" % k, true, false) as Node3D).visible = k <= 3
+	add_child(tr)
 	var cam := Camera3D.new()
 	cam.fov = 70.0
 	cam.current = true
 	add_child(cam)
 	var shots := [
+		["barriers", Vector3(-3.0, 1.4, -2.5), Vector3(-3.0, 0.8, -6.0)],        # со спины (+Z Godot)
+		["barriers_front", Vector3(-3.0, 1.4, -9.5), Vector3(-3.0, 0.8, -6.0)],  # с лица (−Z Godot): код читается с обеих сторон
+		["tracer", Vector3(7.0, 1.2, -3.5), Vector3(4.5, 0.3, -6.5)],
 		["overview", Vector3(0.0, 4.2, 5.0), Vector3(0.0, 0.0, -1.0)],
 		["lighthouses", Vector3(0.0, 2.2, 1.0), Vector3(0.0, 0.2, -2.5)],
 		["sensors_close", Vector3(-1.0, 1.0, 2.6), Vector3(-3.0, 0.2, -0.5)],
