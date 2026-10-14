@@ -598,3 +598,232 @@ static func check_bots(l: LayoutData, tier_name: String = "BASE", phase_count: i
 	if bad.is_empty():
 		return {"ok": true, "detail": "вор чист на всех фазах, бегун уходит; цикл %d" % b.cycle}
 	return {"ok": false, "detail": "; ".join(bad)}
+
+
+# --- безопасные клетки, ступеньки и уход (stealth.md С7 «Формально», levels.md §2 п. 7, п. 11) ---
+
+const WINDOW_MAX_K := 3          # промежуточных небезопасных клеток в переходе по окну
+const ESCAPE_MIN_HOPS := 2
+const ESCAPE_MAX_HOPS := 4
+const _DFS_BUDGET := 400000
+
+var _cell_time := {}             # idx → PackedByteArray [s] 1 — видна в такт s установившегося цикла
+var _safe := {}                  # idx → true: безопасные клетки (+ вход и площадки)
+var _window_cache := {}          # idx → Array[int]: безопасные клетки, достижимые переходом по окну
+
+
+## Видна ли клетка i в такт s установившегося цикла (s — любое целое, по кольцу).
+func _seen_at(i: int, s: int) -> bool:
+	if not _cell_time.has(i):
+		var arr := PackedByteArray()
+		arr.resize(cycle)
+		for k in cycle:
+			arr[k] = 1 if exposed(_skip + k + 1, i) else 0
+		_cell_time[i] = arr
+	return (_cell_time[i] as PackedByteArray)[posmod(s, cycle)] == 1
+
+
+## Безопасные клетки: свободные, не видимые ни в один такт цикла; плюс вход и площадки хранилищ (их опасность меряют окна).
+func safe_cells() -> Dictionary:
+	if not _safe.is_empty():
+		return _safe
+	for y in NodeGrid.rows():
+		for x in _cols:
+			var c := Vector2i(x, y)
+			if grid.is_occupied(c):
+				continue
+			var i := _idx(c)
+			var always := true
+			for s in cycle:
+				if _seen_at(i, s):
+					always = false
+					break
+			if always:
+				_safe[i] = true
+	_safe[_idx(NodeGrid.cell_of(layout.spawn))] = true
+	for v: Dictionary in layout.vaults:
+		_safe[_idx(v["pad1"])] = true
+	return _safe
+
+
+## Прыжок a → b через включённый в состоянии такта s луч Датчика.
+func _beam_hit(a: int, b: int, s: int) -> bool:
+	for k: int in _crossed(a, b):
+		if (_sensor_on[k] as PackedByteArray)[_skip + posmod(s, cycle)] == 1:
+			return true
+	return false
+
+
+## Безопасные клетки, куда ведёт переход по окну из безопасной a: через k ≤ 3 небезопасных клеток, если есть такт t, при котором ни одна из них не
+## видна в момент прихода (x_i в t + i), а прыжки не пересекают включённый луч. k = 0 — прямой прыжок через луч в его «выключенный» такт.
+func _window_targets(a: int) -> Array:
+	if _window_cache.has(a):
+		return _window_cache[a]
+	var safe := safe_cells()
+	var out := {}
+	var budget := [_DFS_BUDGET]
+	var alive := PackedByteArray()
+	alive.resize(cycle)
+	alive.fill(1)
+	_win_dfs(a, 0, alive, safe, out, budget)
+	var res: Array = out.keys()
+	_window_cache[a] = res
+	return res
+
+
+func _win_dfs(cur: int, k: int, alive: PackedByteArray, safe: Dictionary, out: Dictionary, budget: Array) -> void:
+	for j: int in _reach_of(cur):
+		budget[0] -= 1
+		if budget[0] < 0:
+			return
+		var crossing: Array = _crossed(cur, j)
+		# прыжок cur → j выполняется в состоянии t + k
+		var a2 := PackedByteArray()
+		a2.resize(cycle)
+		var any := false
+		for t in cycle:
+			if alive[t] == 0:
+				continue
+			if not crossing.is_empty() and _beam_hit(cur, j, t + k):
+				continue
+			if not safe.has(j) and _seen_at(j, t + k + 1):
+				continue
+			a2[t] = 1
+			any = true
+		if not any:
+			continue
+		if safe.has(j):
+			if k > 0 or not crossing.is_empty():
+				out[j] = true   # k = 0 без луча — обычная ступенька, не окно
+		elif k < WINDOW_MAX_K:
+			_win_dfs(j, k + 1, a2, safe, out, budget)
+
+
+## Ступеньки: безопасные клетки, между которыми прыжок свободен (не сквозь занятые, без луча).
+func _stairs_of(a: int) -> Array:
+	var out: Array = []
+	var safe := safe_cells()
+	for j: int in _reach_of(a):
+		if safe.has(j) and _crossed(a, j).is_empty():
+			out.append(j)
+	return out
+
+
+## Путь «вход → площадка» из ступенек и не более одного перехода по окну. {ok, windows, steps} или {ok: false}.
+func stairs_path(pad: int) -> Dictionary:
+	var start := _idx(NodeGrid.cell_of(layout.spawn))
+	safe_cells()
+	var best := {start * 2: 0}   # состояние = cell * 2 + использовано окно (0/1) → число прыжков
+	var queue: Array = [start * 2]
+	var head := 0
+	while head < queue.size():
+		var st: int = queue[head]
+		head += 1
+		var i := st / 2
+		var w := st % 2
+		if i == pad:
+			return {"ok": true, "windows": w, "steps": int(best[st])}
+		var d: int = best[st]
+		for j: int in _stairs_of(i):
+			if not best.has(j * 2 + w):
+				best[j * 2 + w] = d + 1
+				queue.append(j * 2 + w)
+		if w == 0:
+			for j: int in _window_targets(i):
+				if not best.has(j * 2 + 1):
+					best[j * 2 + 1] = d + 1
+					queue.append(j * 2 + 1)
+	return {"ok": false}
+
+
+## Уход: прыжков по кратчайшему пути от площадки до ближайшей клетки выхода или портала и есть ли на таком пути небезопасная клетка.
+func escape_of(pad: int) -> Dictionary:
+	var targets := _exit_targets()
+	var safe := safe_cells()
+	var d1 := {pad: 0}
+	var q: Array = [pad]
+	var h := 0
+	while h < q.size():
+		var i: int = q[h]
+		h += 1
+		for j: int in _reach_of(i):
+			if not d1.has(j):
+				d1[j] = int(d1[i]) + 1
+				q.append(j)
+	var best := -1
+	for t: int in targets:
+		if d1.has(t) and (best < 0 or int(d1[t]) < best):
+			best = int(d1[t])
+	if best < 0:
+		return {"hops": -1, "unsafe": false}
+	# обратный поиск от целей, лежащих на расстоянии best
+	var d2 := {}
+	var q2: Array = []
+	for t: int in targets:
+		if d1.has(t) and int(d1[t]) == best:
+			d2[t] = 0
+			q2.append(t)
+	h = 0
+	while h < q2.size():
+		var i: int = q2[h]
+		h += 1
+		for j: int in _reach_of(i):   # досягаемость симметрична
+			if not d2.has(j):
+				d2[j] = int(d2[i]) + 1
+				q2.append(j)
+	var unsafe := false
+	for c: int in d1:
+		if c != pad and d2.has(c) and int(d1[c]) + int(d2[c]) == best and not safe.has(c):
+			unsafe = true
+			break
+	return {"hops": best, "unsafe": unsafe}
+
+
+## Проверка С7: к каждому внешнему хранилищу есть путь из ступенек не более чем с одним переходом по окну.
+static func check_safe_steps(l: LayoutData, tier_name: String = "BASE") -> Dictionary:
+	if l.is_legacy():
+		return {"ok": true, "detail": "legacy — не проверяется"}
+	var b := LayoutBots.new(l, tier_name)
+	if b.error != "":
+		return {"ok": false, "detail": b.error}
+	var bad: Array[String] = []
+	var parts: Array[String] = []
+	for v: Dictionary in l.vaults:
+		if str(v["ring"]) != "outer":
+			continue
+		var r := b.stairs_path(_idx_static(v["pad1"]))
+		if bool(r.get("ok", false)):
+			parts.append("хр%s: %d звеньев пути, окон %d" % [str(v["cell1"]), r["steps"], r["windows"]])
+		else:
+			bad.append("к хранилищу %s нет пути из ступенек с одним окном" % str(v["cell"]))
+	var detail := "безопасных клеток %d; %s" % [b.safe_cells().size(), "; ".join(parts)]
+	if bad.is_empty():
+		return {"ok": true, "detail": detail}
+	return {"ok": false, "detail": "; ".join(bad) + " (" + detail + ")"}
+
+
+## Проверка п. 7: уход от каждой площадки — 2–4 прыжка и небезопасная клетка на кратчайшем пути.
+static func check_escape(l: LayoutData, tier_name: String = "BASE") -> Dictionary:
+	if l.is_legacy():
+		return {"ok": true, "detail": "legacy — не проверяется"}
+	var b := LayoutBots.new(l, tier_name)
+	if b.error != "":
+		return {"ok": false, "detail": b.error}
+	var bad: Array[String] = []
+	var parts: Array[String] = []
+	for v: Dictionary in l.vaults:
+		var e := b.escape_of(_idx_static(v["pad1"]))
+		var hops := int(e["hops"])
+		parts.append("хр%s: %d прыжков, небезопасная на пути %s" % [str(v["cell1"]), hops, "да" if e["unsafe"] else "нет"])
+		if hops < ESCAPE_MIN_HOPS or hops > ESCAPE_MAX_HOPS:
+			bad.append("хранилище %s: уход %d прыжков (нужно %d–%d)" % [str(v["cell"]), hops, ESCAPE_MIN_HOPS, ESCAPE_MAX_HOPS])
+		elif not bool(e["unsafe"]):
+			bad.append("хранилище %s: на кратчайшем пути ухода нет клетки под зрением" % str(v["cell"]))
+	var detail := "; ".join(parts)
+	if bad.is_empty():
+		return {"ok": true, "detail": detail}
+	return {"ok": false, "detail": "; ".join(bad) + " (" + detail + ")"}
+
+
+static func _idx_static(c: Vector2i) -> int:
+	return c.y * NodeGrid.cols() + c.x

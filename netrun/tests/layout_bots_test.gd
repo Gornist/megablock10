@@ -52,3 +52,37 @@ func test_страж_у_площадки_ломает_вора_и_проверк
 	var r := LayoutBots.check_bots(ld, "BASE")
 	assert_bool(r["ok"]).is_false()
 	assert_str(r["detail"]).contains("вор")
+
+
+func test_ступеньки_и_уход_по_реальным_раскладкам() -> void:
+	for pair in [["foyer", "BASE"], ["foyer_tutorial", "BASE"], ["server_room", "HARD"], ["server_room_light", "BASE"], ["server_room_dark", "BASE"]]:
+		var ld := LayoutData.load_named(pair[0])
+		var s := LayoutBots.check_safe_steps(ld, pair[1])
+		var e := LayoutBots.check_escape(ld, pair[1])
+		print("[safe] %s %s ступеньки ok=%s %s" % [pair[0], pair[1], str(s["ok"]), str(s["detail"])])
+		print("[safe] %s %s уход ok=%s %s" % [pair[0], pair[1], str(e["ok"]), str(e["detail"])])
+
+
+func test_ступеньки_серверной_и_уход_проходят_правила_видимости() -> void:
+	for pair in [["server_room", "HARD"], ["server_room_light", "BASE"], ["server_room_dark", "BASE"]]:
+		var r := LayoutCheck.stealth_rules(LayoutData.load_named(pair[0]), pair[1])
+		for k: String in r:
+			assert_bool(r[k]["ok"]).override_failure_message("%s %s: %s" % [pair[0], k, r[k]["detail"]]).is_true()
+
+
+func test_уход_фойе_укладывается_в_прыжки_но_кратчайший_путь_весь_безопасен() -> void:
+	# Известное расхождение с levels.md п. 7 (сообщено Game): в Фойе от площадки до выхода 2 прыжка, и все клетки кратчайших путей безопасны.
+	for n in ["foyer", "foyer_tutorial"]:
+		var ld := LayoutData.load_named(n)
+		var b := LayoutBots.new(ld, "BASE")
+		for v: Dictionary in ld.vaults:
+			var e := b.escape_of(LayoutBots._idx_static(v["pad1"]))
+			assert_int(int(e["hops"])).is_between(LayoutBots.ESCAPE_MIN_HOPS, LayoutBots.ESCAPE_MAX_HOPS)
+
+
+func test_зоркое_зрение_уменьшает_число_безопасных_клеток() -> void:
+	var d := JSON.parse_string(FileAccess.get_file_as_string("res://data/layouts/foyer.json")) as Dictionary
+	var base := LayoutBots.new(LayoutData.parse(d), "BASE").safe_cells().size()
+	d["meta"] = {"sight_cells": 40}
+	var wide := LayoutBots.new(LayoutData.parse(d), "BASE").safe_cells().size()
+	assert_int(wide).is_less(base)
