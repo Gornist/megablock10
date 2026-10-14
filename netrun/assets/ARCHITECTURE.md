@@ -387,8 +387,10 @@ GPU 2,5–2,9 мс, 113–160 вызовов отрисовки, 50–89 тыс.
 **Вид (13.10.2026):**
 - **Облако (Б): файлы `.points` есть** (13.10, генератор `src/points.py`; серия 2 на очках: vol-entry 8,96 / vol-wedge 9,56 мс, +0,44 к base-wedge, регулятор `volume_budget_ms=10.5` не
   понадобился). Формат — float32 LE, 7 чисел на точку `[x, y, z, полуразмер, фаза, вид, вес]`, перемешано (LOD = префикс), размер кратен 28, путь рядом с моделью (`.glb` → `.points`).
-  Модули и бюджеты: `props/vault` 1500, `props/portal` 800, `props/shard` и `props/shard_encrypted` 300 (`RECIPES` в `points.py`); выход — нет: клиент `exit_frame` не ставит (выход — `platform`
-  + `lockdown_gate`), рецепт добавляется строкой, когда Godot назовёт модель. Правило по мешам: штрих → точки вдоль отрезка, точка → одна частица, поверхность → площадь с весом из цвета
+  Модули и бюджеты (`RECIPES` в `points.py`): `props/vault` 1500, `props/portal` 800, `props/shard` и `props/shard_encrypted` 300, `env/exit_frame` 1000 (клиент `exit_frame` пока
+  не ставит: выход — `platform` + `lockdown_gate`), ICE: `ice/soft_ice` 700, `ice/black_ice`, `black_ice_hunt`, `black_ice_catch` по 900. **ICE движется:** точки в локальных координатах модели
+  (ноги в (0,0), как в `.glb`), облако должно быть потомком того же узла, что и модель (у Black ICE — внутри `Rig`, иначе оно останется на месте при анимации). Цвет облака — из
+  `AssetMaterials.layer("volume_ice")` (красный, `PAL_THREAT`; у Black ICE красное ложится на синюю оболочку модели) и `layer("volume_exit")` (ice_white). Правило по мешам: штрих → точки вдоль отрезка, точка → одна частица, поверхность → площадь с весом из цвета
   вершин, `dust` → бокс (клетка хранилища); `beacon_*` и `*_skirt` не берутся (ореол 0,5 м и вуаль не объём; запасной `VolumeSampler` клиента сэмплирует их по площади). Конвейер: `points.py`
   идёт в `pipeline.sh build` после сборки `.glb`, `validate.py` проверяет размер, бюджет, NaN, габарит, поля; строка в `MANIFEST.md`.
   **Не в APK:** `export_presets.cfg` (зона Godot) включает только `data/*`; чтобы `.points` попали в пакет, нужен `include_filter` с `assets/models/*/*.points`.

@@ -881,12 +881,21 @@ func test_rim_min_px_knob_reaches_plates_only() -> void:
 # ---------------------------------------------------------------- облако частиц (Б): файлы `.points` (src/points.py)
 
 ## Бюджет частиц по модулям (план рефактора §4.1) и полуразмер, м. Совпадает с RECIPES в src/points.py: правите там — правьте здесь.
-const POINTS_BUDGET := {"vault": [1500, 0.012], "portal": [800, 0.016], "shard": [300, 0.004], "shard_encrypted": [300, 0.004]}
+const POINTS_BUDGET := {
+	"props/vault": [1500, 0.012], "props/portal": [800, 0.016], "props/shard": [300, 0.004], "props/shard_encrypted": [300, 0.004],
+	"env/exit_frame": [1000, 0.014],
+	"ice/soft_ice": [700, 0.018], "ice/black_ice": [900, 0.02], "ice/black_ice_hunt": [900, 0.02], "ice/black_ice_catch": [900, 0.02],
+}
+
+
+func _points_model(key: String) -> Node3D:
+	var parts := key.split("/")
+	return _load(parts[0], parts[1])
 
 
 func test_points_files_load_with_cloud_parser_and_fit_their_models() -> void:
 	for m in POINTS_BUDGET:
-		var path: String = ROOT + "props/" + m + ".points"
+		var path: String = ROOT + m + ".points"
 		assert_bool(FileAccess.file_exists(path)).override_failure_message("нет " + path + " (src/points.py, pipeline.sh build)").is_true()
 		var bytes := FileAccess.get_file_as_bytes(path)
 		assert_int(bytes.size() % VolumeCloud.POINT_BYTES).override_failure_message("%s: размер %d не кратен %d" % [m, bytes.size(), VolumeCloud.POINT_BYTES]).is_equal(0)
@@ -894,7 +903,7 @@ func test_points_files_load_with_cloud_parser_and_fit_their_models() -> void:
 		var n := VolumeCloud.points_in(pts)
 		assert_int(n).override_failure_message("%s: пусто" % m).is_greater(0)
 		assert_int(n).override_failure_message("%s: %d точек > бюджета %d" % [m, n, POINTS_BUDGET[m][0]]).is_less_equal(POINTS_BUDGET[m][0])
-		var model := _load("props", m)
+		var model := _points_model(m)
 		var box := _aabb(model).grow(float(POINTS_BUDGET[m][1]) + 0.05)
 		var out_of_box := 0
 		for i in n:
@@ -911,7 +920,7 @@ func test_points_files_load_with_cloud_parser_and_fit_their_models() -> void:
 func test_points_lod_prefix_is_a_uniform_sample() -> void:
 	# ЛОД = префикс массива (VolumeCloud.LOD_STEPS): середина высоты первой восьмой части не должна уходить от всей выборки
 	for m in POINTS_BUDGET:
-		var pts := VolumeCloud.load_file(ROOT + "props/" + m + ".points")
+		var pts := VolumeCloud.load_file(ROOT + m + ".points")
 		var n := VolumeCloud.points_in(pts)
 		var k := maxi(n / 8, 1)
 		var all_y := 0.0
@@ -921,5 +930,11 @@ func test_points_lod_prefix_is_a_uniform_sample() -> void:
 			all_y += y
 			if i < k:
 				pre_y += y
-		var height := _aabb(_load("props", m)).size.y
+		var height := _aabb(_points_model(m)).size.y
 		assert_float(absf(pre_y / k - all_y / n)).override_failure_message("%s: префикс 1/8 сдвинут по высоте (%.3f против %.3f)" % [m, pre_y / k, all_y / n]).is_less(0.15 * height)
+
+
+func test_cloud_layers_for_ice_and_exit_come_from_the_palette() -> void:
+	# облако ICE красное (красное только у угрозы, STYLE.md п.4), рамка выхода — ледяной белый; клиент берёт цвет только отсюда
+	assert_bool(AssetMaterials.layer("volume_ice").is_equal_approx(AssetMaterials.PAL_THREAT)).is_true()
+	assert_bool(AssetMaterials.layer("volume_exit").is_equal_approx(AssetMaterials.PAL_ICE)).is_true()

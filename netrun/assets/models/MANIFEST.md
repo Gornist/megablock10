@@ -64,3 +64,8 @@
 | `models/props/portal.points` | 800 / 800 | 22400 | ок |
 | `models/props/shard.points` | 300 / 300 | 8400 | ок |
 | `models/props/shard_encrypted.points` | 300 / 300 | 8400 | ок |
+| `models/env/exit_frame.points` | 1000 / 1000 | 28000 | ок |
+| `models/ice/soft_ice.points` | 700 / 700 | 19600 | ок |
+| `models/ice/black_ice.points` | 900 / 900 | 25200 | ок |
+| `models/ice/black_ice_hunt.points` | 900 / 900 | 25200 | ок |
+| `models/ice/black_ice_catch.points` | 900 / 900 | 25200 | ок |

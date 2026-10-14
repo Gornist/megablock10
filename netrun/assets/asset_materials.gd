@@ -54,6 +54,9 @@ const LAYERS := {
 	"ice_hunt": PAL_THREAT,
 	"ice_lost": Color("a9c9d6"),                   # потерял игрока
 	"ice_precapture": PAL_THREAT,                  # мигание перед захватом
+	# Облако частиц (Б), VolumeCloud: цвет облака объекта (файлы `.points`, ARCHITECTURE.md §13)
+	"volume_ice": PAL_THREAT,                      # облако ICE (Soft и Black): красное, красное только у угрозы; у Black ICE ложится на синюю оболочку модели («красное внутри»)
+	"volume_exit": PAL_ICE,                        # рамка выхода: брусья с кромкой ice_white
 	# Следы и стрелки
 	"trail_step": PAL_THREAT_HOT,                  # шаг ICE
 	"trail_dim": Color(PAL_THREAT, 0.35),          # прежние шаги, тусклые
