@@ -86,3 +86,15 @@ func test_зоркое_зрение_уменьшает_число_безопас
 	d["meta"] = {"sight_cells": 40}
 	var wide := LayoutBots.new(LayoutData.parse(d), "BASE").safe_cells().size()
 	assert_int(wide).is_less(base)
+
+
+func test_уход_в_base_предупреждение_а_в_hard_ошибка() -> void:
+	# Фойе: уход 2 прыжка, все клетки кратчайших путей безопасны (п. 7 не выполнен). BASE — предупреждение (решение Game, Фойе — учебный), HARD — ошибка.
+	var ld := LayoutData.load_named("foyer")
+	var base := LayoutBots.check_escape(ld, "BASE")
+	assert_bool(base["ok"]).is_true()
+	assert_bool(base["warning"]).is_true()
+	assert_str(base["detail"]).starts_with("ПРЕДУПРЕЖДЕНИЕ")
+	var hard := LayoutBots.check_escape(ld, "HARD")
+	assert_bool(hard["ok"]).is_false()
+	assert_bool(LayoutBots.check_escape(LayoutData.load_named("server_room"), "HARD")["warning"]).is_false()
