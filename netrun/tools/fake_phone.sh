@@ -29,7 +29,6 @@ godot_cmd() {
 command -v godot >/dev/null 2>&1 || [[ ! -f "\$HOME/netrun-env.sh" ]] || . "\$HOME/netrun-env.sh"
 cd "\$1/netrun" || exit 3
 export LC_ALL=C.UTF-8 LANG=C.UTF-8
-export ANDROID_ADB_SERVER_PORT=5099
 timeout $LIMIT godot --headless --path . -s res://tools/fake_phone.gd -- --url='$URL' --scenario=$SCENARIO --callsign='$CALLSIGN' --hold=$HOLD
 CMD_EOF
 }
