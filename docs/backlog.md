@@ -9,4 +9,3 @@
 
 - [ ] [android] Переход на AGP 9.1 и compileSdk 37 — тогда поднять core-ktx 1.19+, Compose BOM 2026.09+, Paparazzi alpha05.1 (эталоны a11y/scroll/Dialogs перезаписать с проверкой) и убрать их ignore из `.github/dependabot.yml` — из #258/#259, 14.10
 - [ ] [godot] Витрина объектов `tests/showcase_preview.tscn` (ветка agent/gd-showcase) — PR, чтобы снимать все модели одной командой
-- [ ] [story] Библия мира в ветке agent/story-bible (30 коммитов, PR нет) — довести и сдать PR либо сказать, чего не хватает
