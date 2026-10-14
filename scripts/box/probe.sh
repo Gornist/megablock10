@@ -200,6 +200,10 @@ if [ -f "$CTL" ]; then
   LLINES=$(bash "$CTL" leases </dev/null 2>/dev/null | sed 's/^/  /')
   [ -n "$LLINES" ] && info "брони:"$'\n'"$LLINES"
   # Очки Pico: датчик приближения заклеен, сами не гаснут — Awake без брони = замечание (риск выгорания матриц).
+  # Запаркованная карточка границы вне прогона — замечание: в очках человека будет пусто (инцидент 14.10 ~10:00): `box.sh pico unpark`.
+  if [ -n "$(find "$BOX/pico-parked.stack" -mmin +20 2>/dev/null)" ]; then
+    problem "карточка границы запаркована на другой дисплей (стек/boot: $(cat "$BOX/pico-parked.stack")) — человек в очках не увидит игру: scripts/box.sh pico unpark"
+  fi
   PICO_ST=$(bash "$CTL" pico status </dev/null 2>&1); PICO_RC=$?
   if [ "$PICO_RC" -ne 0 ] && grep -q 'БЕЗ БРОНИ' <<<"$PICO_ST"; then
     problem "$PICO_ST"
