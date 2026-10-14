@@ -883,7 +883,42 @@ const POINTS_BUDGET := {
 	"props/vault": [1500, 0.012], "props/portal": [800, 0.016], "props/shard": [300, 0.004], "props/shard_encrypted": [300, 0.004],
 	"env/exit_frame": [1000, 0.014],
 	"ice/soft_ice": [700, 0.018], "ice/black_ice": [900, 0.02], "ice/black_ice_hunt": [900, 0.02], "ice/black_ice_catch": [900, 0.02],
+	"ice/black_ice_hound": [900, 0.02], "ice/black_ice_kraken": [900, 0.02], "ice/black_ice_raven": [900, 0.02], "ice/black_ice_scorpion": [900, 0.02],
+	"ice/black_ice_lich": [900, 0.02], "ice/black_lair": [800, 0.016],
 }
+
+## Виды Black ICE (ice.md §6.2): тот же силуэт и те же клипы, что у базового, плюс отличительная деталь.
+const BLACK_KINDS := ["hound", "kraken", "raven", "scorpion", "lich"]
+
+
+func test_black_ice_kinds_keep_clips_and_differ_from_base() -> void:
+	var base_box := _aabb(_load("ice", "black_ice"))
+	var sizes := {}
+	for kd in BLACK_KINDS:
+		var m := _load("ice", "black_ice_" + kd)
+		var player := m.find_child("AnimationPlayer", true, false) as AnimationPlayer
+		assert_bool(player != null).override_failure_message("black_ice_%s: нет AnimationPlayer (клипы как у базового)" % kd).is_true()
+		if player != null:
+			for clip in ["idle", "hunt", "catch"]:
+				assert_bool(player.has_animation(clip)).override_failure_message("black_ice_%s: нет клипа %s" % [kd, clip]).is_true()
+		assert_bool(m.find_child("AlertAnchor", true, false) != null).override_failure_message("black_ice_%s: нет AlertAnchor" % kd).is_true()
+		assert_bool(m.find_child("black_ice_%s_inner" % kd, true, false) != null).is_true()
+		var box := _aabb(m)
+		assert_float(box.size.y).override_failure_message("black_ice_%s: рост ≈ как у базового (иглы до 3,4 м)" % kd).is_between(base_box.size.y - 0.05, base_box.size.y + 0.4)
+		sizes[kd] = "%.2f,%.2f,%.2f" % [box.size.x, box.size.y, box.size.z]
+	var distinct := {}
+	for kd in sizes:
+		distinct[sizes[kd]] = true
+	assert_int(distinct.size()).override_failure_message("виды различимы силуэтом: габариты %s" % str(sizes)).is_greater_equal(4)
+
+
+func test_black_lair_is_a_two_by_two_cell_slab_with_a_sleeper_anchor() -> void:
+	var m := _load("ice", "black_lair")
+	var box := _aabb(m)
+	assert_float(box.size.x).is_equal_approx(2.0, 0.05)
+	assert_float(box.size.z).is_equal_approx(2.0, 0.05)
+	assert_float(box.position.y).is_between(-0.01, 0.01)   # на полу
+	assert_bool(m.find_child("Anchor_Sleeper", true, false) != null).override_failure_message("black_lair: нет якоря Anchor_Sleeper").is_true()
 
 
 func _points_model(key: String) -> Node3D:
