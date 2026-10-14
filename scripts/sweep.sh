@@ -30,9 +30,16 @@ once() {
     found="$found\n$(ssh devbox "tail -n $((n - seen)) ~/box/attention.log" 2>/dev/null | jq -r '"нужен человек: \(.reason) — \(.todo // "")"' 2>/dev/null | cut -c1-200)"
   fi
   echo "$n" >"$ST/attention"
-  local warn; warn=$(sed -n 's/^W://p' <<<"$s" | head -2)
-  if [ -n "$warn" ] && [ "$warn" != "$(cat "$ST/warn" 2>/dev/null)" ]; then found="$found\ndevbox: $warn"; fi
-  printf '%s' "$warn" >"$ST/warn"
+  # Замечание сообщаем один раз за сутки по его виду (текст до скобки): числа и порядок строк в статусе меняются от прохода
+  # к проходу, и сравнение целиком будило Pipeline повторно на уже разобранное (14.10).
+  local w k
+  while IFS= read -r w; do
+    [ -n "$w" ] || continue
+    k=$(sed 's/ *(.*//; s/^после загрузки: //' <<<"$w" | cut -c1-60)
+    find "$ST" -name warn-seen -mmin +1440 -delete 2>/dev/null
+    grep -qxF "$k" "$ST/warn-seen" 2>/dev/null && continue
+    echo "$k" >>"$ST/warn-seen"; found="$found\ndevbox: $w"
+  done < <(sed -n 's/^W://p' <<<"$s")
   # Сессии: последний ход в журнале — ошибка API или отказ классификатора. Только журналы, менявшиеся за 3 ч.
   while IFS= read -r f; do
     last=$(grep -E '"type":"(assistant|user)"' -- "$f" | tail -1)
