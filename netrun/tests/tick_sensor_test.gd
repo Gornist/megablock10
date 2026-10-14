@@ -1,5 +1,5 @@
 extends GdUnitTestSuite
-## Датчик (server/ice/tick_sensor.gd, ice.md §5): луч 2–6 клеток, цикл вкл/выкл по тиру, мигание за такт до включения, срабатывание на клетке луча
+## Датчик (server/ice/tick_sensor.gd, ice.md §5): луч 2–12 клеток 1 м (1–6 клеток карты), цикл вкл/выкл по тиру, мигание за такт до включения, срабатывание на клетке луча
 ## и на прыжке, отрезок которого пересекает луч; разбор `kind: sensor` в раскладке; Проверка Стража по внешнему сигналу (TickIce.investigate).
 
 const E := Vector2i(1, 0)
@@ -20,7 +20,7 @@ func test_клетки_луча_только_по_ряду_или_столбцу
 	assert_int(TickSensor.beam_cells(Vector2i(0, 0), E, 4).size()).is_equal(4)
 	assert_int(TickSensor.beam_cells(Vector2i(0, 0), Vector2i(0, 1), 2).size()).is_equal(2)
 	assert_bool(TickSensor.beam_cells(Vector2i(0, 0), E, 1).is_empty()).is_true()
-	assert_bool(TickSensor.beam_cells(Vector2i(0, 0), E, 7).is_empty()).is_true()
+	assert_bool(TickSensor.beam_cells(Vector2i(0, 0), E, 13).is_empty()).is_true()
 	assert_bool(TickSensor.beam_cells(Vector2i(0, 0), Vector2i(1, 1), 3).is_empty()).is_true()   # диагональ — нет
 
 

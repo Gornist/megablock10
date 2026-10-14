@@ -264,7 +264,7 @@ func test_маяк_раскладки_стоит_на_узле_вращаетс�
 	assert_str(str(view[0]["id"])).is_equal("o1")
 	assert_array(view[0]["d"]).is_equal([0, -1])    # смотрит на север
 	assert_array(view[0]["nd"]).is_equal([1, -1])   # следующим тактом — на северо-восток
-	assert_float(float(view[0]["r"])).is_equal(5.0)
+	assert_float(float(view[0]["r"])).is_equal(10.0)   # 5 клеток карты по 2 м
 	LayoutData._cache.erase(BEACON)
 
 

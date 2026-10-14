@@ -37,7 +37,7 @@ var vaults: Array = []
 var sentries: Array = []
 ## Маяки (`kind: beacon`): {id, cell: Vector2i (клетка 1 м; клетка-тумба «O»), start: Vector2i (dir8), step_deg: float, sweep_steps: int}.
 var beacons: Array = []
-## Датчики (`kind: sensor`): {id, cells: Array[Vector2i] (луч, 2–6 клеток), on: int, off: int (0 — по тиру узла), phase: int (сдвиг цикла, тактов)}.
+## Датчики (`kind: sensor`): {id, cells: Array[Vector2i] (луч, 2–12 клеток 1 м), on: int, off: int (0 — по тиру узла), phase: int (сдвиг цикла, тактов)}.
 var sensors: Array = []
 ## Black ICE (`black` в файле): {id, route} или пусто.
 var black: Dictionary = {}
@@ -287,7 +287,7 @@ func _fill_ice(src: Variant) -> String:
 				return "ice %s: датчик без клетки в пределах карты" % str(ed.get("id", "?"))
 			var cells := NodeGrid.beam_cells(sc, NodeGrid.look_dir(ed.get("dir", "")), int(ed.get("len", 0)))
 			if cells.is_empty():
-				return "ice %s: датчику нужны dir по ряду или столбцу (N, E, S, W) и len 2–6" % str(ed.get("id", "?"))
+				return "ice %s: датчику нужны dir по ряду или столбцу (N, E, S, W) и len 2–12" % str(ed.get("id", "?"))
 			for bc2 in cells:
 				if not NodeGrid.in_bounds(bc2):
 					return "ice %s: луч датчика выходит за карту" % str(ed.get("id", "?"))
