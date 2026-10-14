@@ -36,6 +36,9 @@ const EV_NODE := "node"
 const EV_TUNNEL := "tunnel"
 const EV_PORTAL_DENIED := "portal_denied"
 const EV_SHARDS := "shards"
+## alarm — уровень тревоги узла сменился (Т3b, ice.md §4): node, level 0–4, alarm 0–100 (пункты шкалы). Шлётся нетраннерам узла; то же в
+## событии node: alarm и alert_level (старое alert 0…1 = alarm / 100 остаётся). Старый клиент неизвестное событие/поля игнорирует.
+const EV_ALARM := "alarm"
 ## deck — дека для вкладок ДЕКА и ДОБЫЧА (шлётся при входе игрока в узел и при изменении груза): ram (ёмкость в ячейках), ram_default (true — Мост
 ## ёмкость не прислал, показано значение по умолчанию), used (занято ячейками рабочих демонов), daemons [{id, name, effect, tier, cells [коды],
 ## prot, loaded, unsupported?}] (рабочие — принесённые с телефона; unsupported — причина, почему эффект в Сети не работает),
