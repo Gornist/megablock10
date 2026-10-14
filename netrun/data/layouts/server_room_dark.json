@@ -1,0 +1,26 @@
+{
+  "name": "server_room_dark",
+  "cells": [
+    "V......V",
+    ".##.#.#.",
+    "........",
+    ".##..##.",
+    "........",
+    ".##.###.",
+    "1..S.EE2",
+    "b....EE3"
+  ],
+  "vaults": [
+    {"cell": [0, 0], "pad": [0, 1], "ring": "outer"},
+    {"cell": [7, 0], "pad": [7, 1], "ring": "outer"}
+  ],
+  "ice": [
+    {"id": "g1", "kind": "sentry", "route": [
+      {"cell": [0, 2], "wait": 2, "look": ["N"]},
+      {"cell": [7, 2], "wait": 2, "look": ["N"]}
+    ]},
+    {"id": "d1", "kind": "sensor", "cell1": [8, 6], "dir": "E", "len": 2}
+  ],
+  "black": null,
+  "meta": {"sight_cells": 4}
+}

@@ -138,7 +138,7 @@ func _fill(d: Dictionary) -> String:
 			var ch := line[sx]
 			var b := Vector2i(sx, sz)
 			if OCCUPIED_SYMBOLS.contains(ch):
-				if ch == "V":
+				if ch == "V" or ch == "O":   # «O» — Маяк: тумбу (одну клетку) отмечает _fill_ice по записи kind: beacon
 					pass   # хранилище занимает одну клетку 1 м (её отмечает _fill_vaults), остальные три клетки блока свободны для шага (П5)
 				else:
 					for c in block_cells(b):
@@ -261,7 +261,10 @@ func _vault_pair(vault_block: Vector2i, pad_block: Vector2i) -> Array[Vector2i]:
 ## Клетка 1 м занята по карте (колонна, хранилище, Маяк, барьер, логово): символ её блока в OCCUPIED_SYMBOLS.
 func _cell_is_occupied(c: Vector2i) -> bool:
 	var b := block_of(c)
-	return OCCUPIED_SYMBOLS.contains(blocks[b.y][b.x])
+	var ch := blocks[b.y][b.x]
+	if ch == "O":
+		return occupied.has(c)   # Маяк занимает одну клетку блока (тумба), остальные свободны
+	return OCCUPIED_SYMBOLS.contains(ch)
 
 
 func _fill_ice(src: Variant) -> String:
@@ -278,6 +281,7 @@ func _fill_ice(src: Variant) -> String:
 			var start := NodeGrid.look_dir(ed.get("start", "N"))
 			if start == Vector2i.ZERO:
 				return "ice %s: маяку нужно направление start (N, NE, E…)" % str(ed.get("id", "?"))
+			occupied[bc] = true   # тумба занимает свою клетку 1 м
 			beacons.append({"id": str(ed.get("id", "o%d" % (beacons.size() + 1))), "cell": bc, "start": start,
 				"step_deg": clampf(float(ed.get("step_deg", 45.0)), 45.0, 180.0), "sweep_steps": maxi(int(ed.get("sweep_steps", 0)), 0)})
 			continue

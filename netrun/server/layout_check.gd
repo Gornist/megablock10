@@ -11,12 +11,14 @@ const ENTRY_HIDDEN_TICKS := 2
 const ARRIVAL_SAFE_TICKS := 2
 ## Окно площадки внешнего хранилища: наибольшая серия подряд тактов цикла вне зрения; BASE ≥ 12 (HARD ≥ 8), любая площадка — не меньше 3.
 const OUTER_WINDOW_MIN := 12
+const OUTER_WINDOW_MIN_HARD := 8
 const ANY_WINDOW_MIN := 3
 ## Площадка «видит» ближайший маршрут и дальше зрения Стража: укрытие ищем среди клеток маршрута не дальше sight_cells + этого запаса.
 const COVER_RANGE_EXTRA := 2.0
 ## Тупик — цепочка блоков карты с единственным выходом; длиннее — ошибка (в блоках карты, как «клетки» документа).
 const MAX_DEAD_END := 2
-const MAX_CYCLE := 120
+## Общий цикл двух Стражей с некратными периодами 18 и 16 (Серверная) — 144 такта; запас до 240.
+const MAX_CYCLE := 240
 const _SIM_TICKS := MAX_CYCLE * 4
 
 
@@ -24,25 +26,31 @@ static func _res(ok: bool, detail: String) -> Dictionary:
 	return {"ok": ok, "detail": detail}
 
 
-## Все проверки: имя → {ok, detail}.
-static func run_all(layout: LayoutData) -> Dictionary:
+## Окно площадки внешнего хранилища по тиру узла (levels.md §2: BASE ≥ 12, HARD ≥ 8 тактов подряд вне зрения); NIGHTMARE — как HARD.
+static func outer_window_min(tier: String) -> int:
+	return OUTER_WINDOW_MIN if tier == "BASE" else OUTER_WINDOW_MIN_HARD
+
+
+## Все проверки: имя → {ok, detail}. tier — тир узла, к которому привязана раскладка (по нему порог окна площадки); по умолчанию BASE.
+static func run_all(layout: LayoutData, tier: String = "BASE") -> Dictionary:
 	return {
 		"reachable": check_reachable(layout),
 		"vault_distance": check_vault_distance(layout),
 		"entry_hidden": check_entry_hidden(layout),
-		"windows": check_windows(layout),
+		"windows": check_windows(layout, outer_window_min(tier)),
 		"cover": check_cover(layout),
 		"dead_ends": check_dead_ends(layout),
 		"vault_grid": check_vault_grid(layout),
 		"arrival_safe": check_arrival_safe(layout),
 		"occupied_visible": check_occupied_visible(layout),
+		"ice_gear": check_ice_gear(layout),
 	}
 
 
 ## Имена проверок, которые не прошли (пустой массив — раскладка проходит всё).
-static func failures(layout: LayoutData) -> Array[String]:
+static func failures(layout: LayoutData, tier: String = "BASE") -> Array[String]:
 	var out: Array[String] = []
-	var all := run_all(layout)
+	var all := run_all(layout, tier)
 	for k: String in all:
 		if not bool(all[k]["ok"]):
 			out.append("%s: %s" % [k, all[k]["detail"]])
@@ -319,6 +327,8 @@ static func check_occupied_visible(layout: LayoutData) -> Dictionary:
 		covered[c] = true
 	for v: Dictionary in layout.vaults:
 		covered[v["cell1"]] = true
+	for bd: Dictionary in layout.beacons:
+		covered[bd["cell"]] = true   # тумба Маяка: BeaconView (ice/lighthouse_ice) на этой клетке
 	var bad := {}   # блок карты → символ
 	for c: Vector2i in layout.occupied:
 		var b := LayoutData.block_of(c)
@@ -330,6 +340,43 @@ static func check_occupied_visible(layout: LayoutData) -> Dictionary:
 	for b: Vector2i in bad:
 		parts.append("блок %s «%s»" % [str(b), bad[b]])
 	return _res(false, "занятая клетка без модели в клиенте: " + ", ".join(parts))
+
+
+## (и) Маяк и Датчик: тумба Маяка стоит в блоке «O», а блок «O» без Маяка — ошибка (занятая клетка без модели); ни тумба, ни клетки луча не лежат
+## на клетках прибытия, площадках хранилищ и выхода (туда нетраннер встаёт сам и стоит несколько тактов) и луч не проходит по занятым клеткам.
+static func check_ice_gear(layout: LayoutData) -> Dictionary:
+	var bad: Array[String] = []
+	var keep := {}   # клетка → подпись: сюда нетраннер встаёт и стоит
+	for a: Dictionary in arrival_cells(layout):
+		keep[a["cell"]] = "прибытия (%s)" % a["label"]
+	for v: Dictionary in layout.vaults:
+		keep[v["pad1"]] = "площадки хранилища"
+	for ec: Vector3 in layout.exit_cells:
+		for c in LayoutData.block_cells(LayoutData.block_of(NodeGrid.cell_of(ec))):
+			keep[c] = "площадки выхода"
+	var beacon_blocks := {}
+	for bd: Dictionary in layout.beacons:
+		var bc: Vector2i = bd["cell"]
+		beacon_blocks[LayoutData.block_of(bc)] = true
+		if layout.blocks[LayoutData.block_of(bc).y][LayoutData.block_of(bc).x] != "O":
+			bad.append("Маяк %s стоит не в блоке «O»" % str(bd["id"]))
+		if keep.has(bc):
+			bad.append("Маяк %s на клетке %s" % [str(bd["id"]), keep[bc]])
+	for sz in LayoutData.SIZE:
+		for sx in LayoutData.SIZE:
+			if layout.blocks[sz][sx] == "O" and not beacon_blocks.has(Vector2i(sx, sz)):
+				bad.append("блок (%d,%d) «O» без записи kind: beacon" % [sx, sz])
+	for sd: Dictionary in layout.sensors:
+		for c: Vector2i in sd["cells"]:
+			if keep.has(c):
+				bad.append("луч %s на клетке %s" % [str(sd["id"]), keep[c]])
+				break
+			if layout.occupied.has(c):
+				bad.append("луч %s проходит по занятой клетке %s" % [str(sd["id"]), str(c)])
+				break
+	if not bad.is_empty():
+		return _res(false, "; ".join(bad))
+	return _res(true, "Маяков %d, датчиков %d: вне клеток прибытия, площадок и занятых" % [layout.beacons.size(), layout.sensors.size()])
 
 
 ## Клетки прибытия: вход раскладки и точки появления после каждого портала (NodeLayout.arrival_in): {label, cell}.
