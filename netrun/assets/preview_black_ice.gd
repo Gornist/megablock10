@@ -29,7 +29,9 @@ func _ready() -> void:
 		if cloud != null:
 			(m.find_child("Rig", true, false) as Node3D).add_child(cloud)
 	var lair := NodeAssets.instance("res://assets/models/ice/black_lair.glb")
-	lair.position = Vector3(0, 0, -5.0)
+	lair.position = Vector3(0, 0, -6.0)
+	for s in ["State_sleep", "State_waking", "State_empty"]:
+		(lair.find_child(s, true, false) as Node3D).visible = s == "State_sleep"   # ровно одно состояние (как у клиента)
 	add_child(lair)
 	var cam := Camera3D.new()
 	cam.fov = 60.0
