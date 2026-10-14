@@ -923,9 +923,46 @@ cmd_adb_rescue() { # adb-rescue [--dry]: остановить лишние се�
   "$ADB" devices -l 2>&1 | sed -n '1,6p'
 }
 
+cmd_usb_watch() { # usb-watch: раз в минуту (box-usb-watch.timer). Будит RCPad, пишет его перезагрузки и пропажу очков, чинит хаб очков
+  local rc=${RCPAD:-3063604} st=$BOX/usb-watch.state now up cur prev m miss last rec
+  now=$(date +%s)
+  if timeout 10 "$ADB" devices </dev/null 2>/dev/null | grep -q "^${PICO}[[:space:]]*device"; then
+    [ -f "$st" ] && jlog pico-usb-back pico "$PICO" missing_sec "$((now - $(get "$st" miss)))"
+    rm -f "$st"
+  else
+    miss=$(get "$st" miss); last=$(get "$st" last)
+    [ -n "$miss" ] || { miss=$now; jlog pico-usb-missing pico "$PICO" usb "$(lsusb 2>/dev/null | grep -c -i -E '2d40|pico|pvr')"; }
+    # пропали ≥ 3 мин и не чаще раза в 15 мин — переподключить хаб (root-скрипт ставит владелец: install-usb-recover.sh);
+    # хаб рвёт только очки на нём, RCPad сидит на корневом порту
+    if [ $((now - miss)) -ge 180 ] && [ $((now - ${last:-0})) -ge 900 ]; then
+      if sudo -n /usr/local/sbin/box-usb-recover >/dev/null 2>&1; then rec="хаб переподключён"
+      else rec="нет root-скрипта: sudo bash ~/box/repo/scripts/box/install-usb-recover.sh"; fi
+      jlog usb-recover pico "$PICO" missing_sec "$((now - miss))" result "$rec"
+      last=$now
+    fi
+    printf 'miss=%s\nlast=%s\n' "$miss" "${last:-0}" >"$st"
+  fi
+  timeout 10 "$ADB" devices </dev/null 2>/dev/null | grep -q "^${rc}[[:space:]]*device" || return 0
+  m=$(timeout 10 "$ADB" -s "$rc" shell 'dumpsys power | grep -m1 mWakefulness=' </dev/null 2>/dev/null | tr -d '\r')
+  case $m in *Awake*|'') :;; *)
+    timeout 10 "$ADB" -s "$rc" shell input keyevent KEYCODE_WAKEUP </dev/null >/dev/null 2>&1
+    jlog rcpad-wake state "$m";;
+  esac
+  up=$(timeout 10 "$ADB" -s "$rc" shell cat /proc/uptime </dev/null 2>/dev/null | tr -d '\r' | cut -d. -f1)
+  case $up in ''|*[!0-9]*) return 0;; esac
+  cur=$((now - up)); prev=$(cat "$BOX/rcpad.boot" 2>/dev/null)
+  case $prev in *[!0-9]*) prev=;; esac
+  if [ -n "$prev" ] && [ $((cur - prev)) -gt 60 ]; then
+    jlog rcpad-reboot reason "$(timeout 10 "$ADB" -s "$rc" shell getprop persist.sys.boot.reason.history </dev/null 2>/dev/null | head -3 | tr -d '\r' | tr '\n' ';')" \
+      prev_boot "$(date -d "@$prev" -Is)" boot "$(date -d "@$cur" -Is)"
+  fi
+  echo "$cur" >"$BOX/rcpad.boot"
+}
+
 sub=${1:-}
 [ $# -gt 0 ] && shift
 case $sub in
+  usb-watch) cmd_usb_watch;;
   up) cmd_up "$@";;
   down) cmd_down "$@";;
   inst) cmd_inst_ls;;
