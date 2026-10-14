@@ -33,6 +33,8 @@ const DEFAULT_SETTINGS := {
 
 ## Тревога узла (W1): множитель дальности зрения и скорости внимания, ≥ 1. Ставит узел, 1 — без тревоги.
 var alert_scale := 1.0
+## Тревога узла 3-го уровня в NIGHTMARE (ice.md §4): Black ICE охотится на любого видимого, а не только на дошедшего до уровня trace. Ставит узел.
+var alarm_awake := false
 ## Сетка узла: занятые клетки (колонны) закрывают взгляд. null — взгляд без препятствий, как раньше.
 var grid: NodeGrid = null
 var position := Vector3.ZERO
@@ -179,8 +181,8 @@ func _hunted_session(targets: Dictionary, meters: Dictionary) -> String:
 	var best_d := INF
 	for session in targets:
 		var meter: TraceMeter = meters.get(session)
-		if meter == null or meter.level() < int(_s["hunt_level"]):
-			continue
+		if not alarm_awake and (meter == null or meter.level() < int(_s["hunt_level"])):
+			continue   # охота — с уровня trace; alarm_awake (тревога узла 3, NIGHTMARE) будит Black ICE на любого видимого
 		var d := position.distance_to(targets[session])
 		if d < best_d:
 			best_d = d

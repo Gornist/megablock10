@@ -109,7 +109,8 @@ func test_full_run_through_three_nodes_returns_loot() -> void:
 	assert_int(seen["after"].size()).is_equal(2)
 	for ds in seen["after"]:
 		assert_object(ds).is_same(seen["before"])
-	assert_float((seen["before"] as DaemonSession).trace.value()).is_equal(15.0)
+	# 15 от событий; сверх этого — дрейф по времени в узлах графа (Т3a: +1 за 60/30/15 с по тиру), за забег его доли пункта
+	assert_float((seen["before"] as DaemonSession).trace.value()).is_equal_approx(15.0, 1.0)
 	assert_array((seen["before"] as DaemonSession).deck).is_equal(NodeLayout.DEFAULT_DECK)
 
 
@@ -278,9 +279,9 @@ func test_trace_in_new_node_raises_that_nodes_alert() -> void:
 	_bot.start(_cfg, BotClient.Scenario.GRAPH_RUN)
 	assert_bool(await _wait_for(func(): return seen["ds"] != null)).is_true()
 	var ds: DaemonSession = seen["ds"]
-	# trace после перехода слушает НОВЫЙ узел: g_b поднимает тревогу, g_a — нет
-	ds.trace.add_action("noise", _world.clock.now, 20.0)  # 60: уровень TRACE
-	assert_float(_world.node_of("g_b").alert).is_greater(0.2)
+	# Т3a: тревога растёт от присутствия нетраннера в узле (за такт / секунду), а не от уровня trace: g_b — да, g_a (он ушёл) — нет
+	assert_bool(ds != null).is_true()
+	assert_bool(await _wait_for(func(): return _world.node_of("g_b").alarm > 0.0, 5.0)).is_true()
 	assert_float(_world.node_of("g_a").alert).is_equal(0.0)
 
 

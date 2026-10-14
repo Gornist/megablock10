@@ -16,9 +16,7 @@
       "NIGHTMARE": 1.0
     },
     "refill_retry_sec": 0.4,
-    "alert_per_trace": 0.3,
-    "alert_per_eject": 0.6,
-    "alert_cool_sec": 2.0,
+    "alert_cool_sec_per_point": 0.02,
     "alert_boost": 0.5,
     "lockdown_sec": 2.0
   },
