@@ -5,8 +5,6 @@ extends RefCounted
 ## луч («луч видит перенос»). Чистая логика без сцены и сети: такт — `tick()`, проверки — `hit_by` (кто стоит на луче) и `crossed_by` (прыжок).
 ## Последствия (trace +5, тревога +5, ближайший Страж в Проверку к клетке) накладывает узел: у датчика только факт и клетка срабатывания.
 
-const MIN_LEN := 2
-const MAX_LEN := 6
 ## Программа по тиру: x — тактов включён, y — тактов выключен (ice.md §5: BASE 3/3, HARD 2/2, NIGHTMARE 2/1).
 const PROGRAMS := {"BASE": Vector2i(3, 3), "HARD": Vector2i(2, 2), "NIGHTMARE": Vector2i(2, 1)}
 ## Шаг дискретизации отрезка прыжка, клетки: меньше клетки, чтобы не проскочить угол.
@@ -24,15 +22,9 @@ static func program_of(tier: String) -> Vector2i:
 	return PROGRAMS.get(tier, PROGRAMS["BASE"])
 
 
-## Клетки луча: от start на len клеток по направлению dir (одно из четырёх сторон света); пустой массив, если dir не по ряду/столбцу
-## или длина вне 2–6.
+## Клетки луча (общий код NodeGrid: раскладку разбирает и клиент, которому каталога server/ не видно).
 static func beam_cells(start: Vector2i, dir: Vector2i, length: int) -> Array[Vector2i]:
-	var out: Array[Vector2i] = []
-	if length < MIN_LEN or length > MAX_LEN or absi(dir.x) + absi(dir.y) != 1:
-		return out
-	for i in length:
-		out.append(start + dir * i)
-	return out
+	return NodeGrid.beam_cells(start, dir, length)
 
 
 ## phase — сколько тактов цикла уже прошло в начале (разводит парные датчики по фазе); on и off не меньше 1.

@@ -285,7 +285,7 @@ func _fill_ice(src: Variant) -> String:
 			var sc: Variant = _point_cell(ed)
 			if sc == null:
 				return "ice %s: датчик без клетки в пределах карты" % str(ed.get("id", "?"))
-			var cells := TickSensor.beam_cells(sc, NodeGrid.look_dir(ed.get("dir", "")), int(ed.get("len", 0)))
+			var cells := NodeGrid.beam_cells(sc, NodeGrid.look_dir(ed.get("dir", "")), int(ed.get("len", 0)))
 			if cells.is_empty():
 				return "ice %s: датчику нужны dir по ряду или столбцу (N, E, S, W) и len 2–6" % str(ed.get("id", "?"))
 			for bc2 in cells:
