@@ -20,7 +20,10 @@ func test_real_graph_is_valid() -> void:
 func test_real_graph_ice_and_trace_numbers() -> void:
 	var g := NodeGraph.load_file()
 	assert_float(float(g.settings["trace"]["weights"]["seen_by_ice"])).is_equal(2.0)
-	assert_float(float(g.settings["trace"]["decay_per_sec"])).is_equal(0.2)
+	assert_bool((g.settings["trace"] as Dictionary).has("decay_per_sec")).is_false()   # Т3a: пассивного спада нет (спад только в хабе)
+	assert_float(float((g.settings["trace_drift_sec"] as Dictionary)["HARD"])).is_equal(30.0)
+	assert_float(float(g.settings["hub_trace_decay_sec"])).is_equal(10.0)
+	assert_bool(g.nodes["node_07"]["hub"]).is_true()
 	for id in g.nodes:
 		if id == "node_00":
 			continue  # учебный узел со своими числами
