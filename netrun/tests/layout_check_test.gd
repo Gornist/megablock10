@@ -134,13 +134,32 @@ func test_занятые_клетки_фойе_учебного_узла_и_lega
 
 
 func test_занятый_символ_без_модели_не_проходит_проверку_видимости() -> void:
-	for sym in ["O", "B", "L"]:
+	for sym in ["B", "L"]:
 		var d := _foyer_dict()
 		d["cells"] = _cells_with({2: "...%s...." % sym})
 		var r := LayoutCheck.check_occupied_visible(_parse(d))
 		assert_bool(r["ok"]).override_failure_message("символ %s прошёл" % sym).is_false()
 		assert_str(r["detail"]).contains("без модели")
 		assert_str(r["detail"]).contains(sym)
+
+
+func test_блок_o_без_записи_маяка_не_проходит_проверку_ice_gear() -> void:
+	var d := _foyer_dict()
+	d["cells"] = _cells_with({2: "...O...."})
+	var ld := _parse(d)
+	assert_bool(ld.occupied.has(LayoutData.block_center_cell(Vector2i(3, 2)))).is_false()   # без записи kind: beacon тумбы нет
+	var r := LayoutCheck.check_ice_gear(ld)
+	assert_bool(r["ok"]).is_false()
+	assert_str(r["detail"]).contains("без записи kind: beacon")
+
+
+func test_луч_датчика_на_площадке_хранилища_не_проходит_проверку_ice_gear() -> void:
+	var d := _foyer_dict()
+	var pad: Vector2i = _parse(d).vaults[0]["pad1"]
+	d["ice"] = (d["ice"] as Array) + [{"id": "d1", "kind": "sensor", "cell1": [pad.x, pad.y], "dir": "E", "len": 2}]
+	var r := LayoutCheck.check_ice_gear(_parse(d))
+	assert_bool(r["ok"]).is_false()
+	assert_str(r["detail"]).contains("площадки хранилища")
 
 
 func test_блок_хранилища_без_записи_vaults_не_занимает_клеток() -> void:
@@ -218,3 +237,49 @@ func test_без_стражей_прибытие_безопасно_и_стро�
 	var d := _foyer_dict()
 	d["ice"] = []
 	assert_bool(LayoutCheck.check_arrival_safe(_parse(d), 2, true)["ok"]).is_true()
+
+
+func test_серверная_разбирается_и_несёт_маяк_датчик_и_двух_стражей() -> void:
+	var ld := LayoutData.load_named("server_room")
+	assert_str(ld.error).is_empty()
+	assert_int(ld.sentries.size()).is_equal(2)
+	assert_int(ld.beacons.size()).is_equal(1)
+	assert_int(ld.sensors.size()).is_equal(1)
+	assert_int(ld.vaults.size()).is_equal(2)
+	assert_int(ld.portals.size()).is_equal(3)
+	assert_float(ld.sight_cells).is_equal(8.0)   # HARD: 4 клетки карты = 8 м
+	assert_bool(ld.occupied.has(LayoutData.block_center_cell(Vector2i(3, 3)))).is_true()   # тумба Маяка — одна клетка
+	assert_bool(ld.occupied.has(Vector2i(6, 6))).is_false()   # остальные три клетки блока свободны
+
+
+func test_серверная_проходит_все_проверки() -> void:
+	var ld := LayoutData.load_named("server_room")
+	assert_str(ld.error).is_empty()
+	var all := LayoutCheck.run_all(ld, "HARD")   # node_05 — HARD: окно площадки ≥ 8 тактов (BASE ≥ 12)
+	for k: String in all:
+		print("[layout_check] server_room %s ok=%s %s" % [k, str(all[k]["ok"]), str(all[k]["detail"])])
+	assert_str("; ".join(LayoutCheck.failures(ld, "HARD"))).is_empty()
+	assert_int(LayoutCheck.outer_window_min("BASE")).is_equal(12)
+	assert_int(LayoutCheck.outer_window_min("NIGHTMARE")).is_equal(8)
+
+
+func test_лёгкие_варианты_серверной_проходят_проверки_base_один_страж_без_маяка() -> void:
+	for n in ["server_room_light", "server_room_dark"]:
+		var ld := LayoutData.load_named(n)
+		assert_str(ld.error).is_empty()
+		assert_int(ld.sentries.size()).is_equal(1)
+		assert_int(ld.beacons.size()).is_equal(0)
+		assert_str("; ".join(LayoutCheck.failures(ld, "BASE"))).override_failure_message("%s: %s" % [n, "; ".join(LayoutCheck.failures(ld, "BASE"))]).is_empty()
+	# «Тёмный» Подвал: зрение всех ICE на клетку карты (2 м) короче лёгкого
+	assert_float(LayoutData.load_named("server_room_light").sight_cells - LayoutData.load_named("server_room_dark").sight_cells).is_equal(2.0)
+
+
+func test_узлы_графа_с_серверной_привязаны_и_проходят_проверки_своего_тира() -> void:
+	var g := NodeGraph.load_file("res://data/graph.json")
+	for id in ["node_03", "node_05", "node_10"]:
+		var name := str(g.nodes[id]["layout"])
+		assert_str(name).override_failure_message("%s без layout" % id).is_not_empty()
+		var ld := LayoutData.load_named(name)
+		assert_str(ld.error).is_empty()
+		var fails := LayoutCheck.failures(ld, g.tier_of(id))
+		assert_array(fails).override_failure_message("%s (%s): %s" % [id, name, "; ".join(fails)]).is_empty()

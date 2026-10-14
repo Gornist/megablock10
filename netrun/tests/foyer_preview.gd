@@ -6,12 +6,15 @@ extends Node3D
 ## Кадры глазами — 2160×2160 (на глаз Pico 4), msaa как в клиенте; A/B: `dev.sh shot res://tests/foyer_preview.tscn --msaa=0|2|4`
 
 var _out := "/tmp/foyer_shots"
+var _layout_name := "foyer"
 
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			_out = a.substr(6)
+		elif a.begins_with("--layout="):   # другая раскладка тем же набором кадров: --layout=server_room (Маяк и Датчик берутся из раскладки)
+			_layout_name = a.substr(9)
 		elif a.begins_with("--volumetric="):   # объёмные модули до построения узла (как [render] volumetric): --volumetric=vault,portal | all
 			VolumeRegistry.configure(a.substr(13))
 		elif a.begins_with("--tune="):  # ручки AssetMaterials до построения окружения (как [assets] в netrun.cfg): --tune=edge_soft=0.8,fringe_on=false
@@ -25,14 +28,14 @@ func _ready() -> void:
 	var scene: Node3D = preload("res://client/rig_test_scene.gd").new()
 	add_child(scene)
 	await get_tree().process_frame
-	var foyer := LayoutData.cached("foyer")
+	var foyer := LayoutData.cached(_layout_name)
 	scene.apply_node(_foyer_info(foyer))
 	var guard_cell := Vector2i(9, 9)   # блок (4; 4), лицом на юг, к входу: свет зрения накрывает площадку у входа и колонну
 	var g := NodeGrid.center(guard_cell)
 	var now := Time.get_ticks_msec() / 1000.0
 	scene.apply_state({"k": now, "trace": 0.0, "level": 0, "cd": [], "ice": [
 		{"id": "g1", "p": [g.x, 0.0, g.z], "f": [0.0, 1.0], "s": 1, "b": 0, "c": [guard_cell.x, guard_cell.y], "d": [0, 1], "st": 2, "nc": [11, 9], "nd": [1, 0], "aw": 3, "sc": 6},
-	], "tk": {"n": 4, "at": now - 1.0, "win": 5.0, "inh": 0, "mv": 0}})
+	], "bk": _beacons_state(foyer), "sn": _sensors_state(foyer), "tk": {"n": 4, "at": now - 1.0, "win": 5.0, "inh": 0, "mv": 0}})
 	var target := Vector2i(7, 11)   # впереди-слева от Стража: периферия его зрения
 	scene.aim_visual_demo(scene.rig.global_position + Vector3(0.35, 0.8, -0.25), NodeGrid.center(target), TickForecast.threat(scene.rig.grid, scene.remote.intents(), target))
 	# Кадры — по общим пресетам камеры (shared/eye_presets.gd): теми же принимается окружение (assets/ARCHITECTURE.md, п. 18).
@@ -80,6 +83,29 @@ func _foyer_info(ld: LayoutData) -> Dictionary:
 		portals.append({"to": "n%d" % k, "title": "Узел %d" % (k + 1), "tier": "BASE", "p": [q.x, q.z], "open": true})
 	return {"kind": "node", "node": "foyer", "title": "Фойе", "tier": "BASE", "r": NodeLayout.PORTAL_RADIUS,
 		"shards": shards, "portals": portals, "layout": ld.name}
+
+
+## Поле bk state: Маяки раскладки в стартовом угле (как шлёт GrayNode.beacon_view).
+func _beacons_state(ld: LayoutData) -> Array:
+	var out: Array = []
+	for bd: Dictionary in ld.beacons:
+		var c: Vector2i = bd["cell"]
+		var d: Vector2i = bd["start"]
+		var i := TickBeacon.DIRS.find(d)
+		var nd: Vector2i = TickBeacon.DIRS[posmod(i + 1, TickBeacon.DIRS.size())]
+		out.append({"id": bd["id"], "c": [c.x, c.y], "d": [d.x, d.y], "nd": [nd.x, nd.y], "aw": 0, "r": float(TickBeacon.DEFAULTS["sight_cells"])})
+	return out
+
+
+## Поле sn state: Датчики раскладки включёнными.
+func _sensors_state(ld: LayoutData) -> Array:
+	var out: Array = []
+	for sd: Dictionary in ld.sensors:
+		var cells: Array = []
+		for c: Vector2i in sd["cells"]:
+			cells.append([c.x, c.y])
+		out.append({"id": sd["id"], "c": cells, "on": 1, "bl": 0, "l": 2})
+	return out
 
 
 func _hide_ceilings(scene: Node3D) -> void:
