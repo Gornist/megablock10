@@ -126,7 +126,6 @@ remote_shot_script() {
 set -u
 cd ~/$REMOTE || exit 3
 export XDG_RUNTIME_DIR=/run/user/\$(id -u) WAYLAND_DISPLAY=wayland-0
-export ANDROID_ADB_SERVER_PORT=5099   # Godot на выходе зовёт adb kill-server: не трогаем общий adb (очки, телефоны)
 rm -rf $SHOT_DIR && mkdir -p $SHOT_DIR
 # rsync --delete стирает *.import, которых нет в git (у новых .glb их не бывает до первого открытия редактора), и без импорта сцена не находит модели:
 # «No loader found for resource» и пустой кадр. Импорт — как в gdunit.sh; кэш .godot жив, поэтому повторный проход короткий.
