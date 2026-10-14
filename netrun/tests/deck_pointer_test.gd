@@ -279,3 +279,10 @@ func test_hover_on_a_button_marks_the_deck_for_redraw() -> void:
 	await get_tree().process_frame   # подсветка кнопки запросила перерисовку
 	_ui.deck._process(1.0)
 	assert_int(_ui.deck.redraw_count).is_equal(before + 1)
+
+
+func test_точка_и_луч_рисуются_поверх_объектов() -> void:
+	# Решение владельца 12.10: «руки и нить наводки поверх всего» — как руки (hand_particles: depth_test_disabled), объекты Сети луч не закрывают.
+	var p: DeckPointer = auto_free(DeckPointer.new())
+	assert_bool(p._dot_mat.no_depth_test).is_true()
+	assert_bool(p._beam_mat.no_depth_test).is_true()

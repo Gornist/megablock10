@@ -312,15 +312,23 @@ def skirt_set(name, quads, rgb):
     """«Вуаль» на боковой грани плиты: вертикальный квад (2 треугольника), яркий у кромки и гаснущий книзу. Роль материала shell_soft
     (в Godot имя меша `*_skirt` подменяет шейдер на skirt.gdshader: аддитивный, без записи глубины, без освещения). quads —
     [(верхний левый, верхний правый, вектор вниз, плотность слева, плотность справа)], плотность — альфа вершин вверху, внизу 0.
-    UV: u вдоль кромки 0…1, v вдоль высоты (после экспорта glTF в шейдере UV.y = 0 вверху, 1 внизу)."""
+    UV: u вдоль кромки 0…1, v вдоль высоты (после экспорта glTF в шейдере UV.y = 0 вверху, 1 внизу).
+    Необязательное шестое поле квада — высота завесы ВВЕРХ от верхней кромки плиты (env._slab_rise, вектор «вниз» тут направлен вверх), м: она пишется
+    в UV1.x всех четырёх вершин (в шейдере UV2.x > 0 — признак «завеса вверх»; skirt.gdshader: ручки tile_glow и tile_glow_h). Второй UV-слой создаётся
+    только если такие квады есть: остальные вуали остаются побайтно прежними."""
     bm = bmesh.new()
     uv = bm.loops.layers.uv.new("UV0")
+    uv1 = bm.loops.layers.uv.new("UV1") if any(len(q) > 5 for q in quads) else None
     dens = []  # плотность по вершинам: по четыре на квад в порядке создания (to_mesh сохраняет порядок)
-    for a, b, down, da, db in quads:
+    for q in quads:
+        a, b, down, da, db = q[:5]
+        rise_h = q[5] if len(q) > 5 else 0.0
         a, b, down = Vector(a), Vector(b), Vector(down)
         f = bm.faces.new([bm.verts.new(p) for p in (a, b, b + down, a + down)])
         for loop, t in zip(f.loops, ((0, 1), (1, 1), (1, 0), (0, 0))):
             loop[uv].uv = t
+            if uv1 is not None:
+                loop[uv1].uv = (rise_h, 0.0)
         dens += [da, db, 0.0, 0.0]
     me = bpy.data.meshes.new(name)
     bm.to_mesh(me)
@@ -330,71 +338,6 @@ def skirt_set(name, quads, rgb):
     me.materials.append(material("shell_soft"))
     attr = me.color_attributes.new("Color", "FLOAT_COLOR", "POINT")
     for i, v in enumerate(me.vertices):
-        attr.data[i].color = (*rgb, dens[i])
-    me.color_attributes.active_color = attr
-    return ob
-
-
-def haze_band(name, rings, rgb):
-    """Сплошная «дымка» у горизонта: замкнутая цилиндрическая лента вокруг начала координат (Origin) в один слой. rings — снизу вверх
-    [(высота, [(радиус, плотность) на каждый из N сегментов по кругу])]; плотность — альфа вершин (вертикальный профиль задаёт набор колец),
-    между вершинами интерполируется. Вершины общие, шов замкнут, 2 треугольника на сегмент на каждый пояс между кольцами.
-    Роль shell_soft (в Godot имя меша `*_mist` подменяет шейдер на haze.gdshader: аддитивный, без записи глубины, без освещения, глубину не читает)."""
-    n = len(rings[0][1])
-    bm = bmesh.new()
-    verts, dens = [], []
-    for y, ring in rings:
-        assert len(ring) == n, "в каждом кольце одинаковое число сегментов"
-        row = []
-        for i, (r, d) in enumerate(ring):
-            ang = 2 * math.pi * i / n
-            row.append(bm.verts.new((r * math.cos(ang), r * math.sin(ang), y)))
-            dens.append(d)
-        verts.append(row)
-    for k in range(len(rings) - 1):
-        for i in range(n):
-            j = (i + 1) % n
-            bm.faces.new([verts[k][i], verts[k][j], verts[k + 1][j], verts[k + 1][i]])
-    me = bpy.data.meshes.new(name)
-    bm.to_mesh(me)
-    bm.free()
-    ob = bpy.data.objects.new(name, me)
-    bpy.context.collection.objects.link(ob)
-    me.materials.append(material("shell_soft"))
-    attr = me.color_attributes.new("Color", "FLOAT_COLOR", "POINT")
-    for i, v in enumerate(me.vertices):  # to_mesh сохраняет порядок вершин: кольцо за кольцом
-        attr.data[i].color = (*rgb, dens[i])
-    me.color_attributes.active_color = attr
-    return ob
-
-
-def loop_band(name, rings, rgb):
-    """Замкнутая лента произвольного контура (низкая дымка вдоль границы комнаты): rings — изнутри наружу [[(точка Vector, плотность)] по контуру],
-    в каждом кольце одинаковое число точек, контур замкнут (последняя соединена с первой). Плотность — альфа вершин, между вершинами интерполируется;
-    один слой, 2 треугольника на сегмент на каждый пояс между кольцами. Роль shell_soft (в Godot имя меша `*_mist` подменяет шейдер на haze.gdshader).
-    Как haze_band, но кольцо — не окружность вокруг Origin, а любой замкнутый контур."""
-    n = len(rings[0])
-    bm = bmesh.new()
-    verts, dens = [], []
-    for ring in rings:
-        assert len(ring) == n, "в каждом кольце одинаковое число точек"
-        row = []
-        for p, d in ring:
-            row.append(bm.verts.new(Vector(p)))
-            dens.append(d)
-        verts.append(row)
-    for k in range(len(rings) - 1):
-        for i in range(n):
-            j = (i + 1) % n
-            bm.faces.new([verts[k][i], verts[k][j], verts[k + 1][j], verts[k + 1][i]])
-    me = bpy.data.meshes.new(name)
-    bm.to_mesh(me)
-    bm.free()
-    ob = bpy.data.objects.new(name, me)
-    bpy.context.collection.objects.link(ob)
-    me.materials.append(material("shell_soft"))
-    attr = me.color_attributes.new("Color", "FLOAT_COLOR", "POINT")
-    for i, v in enumerate(me.vertices):  # to_mesh сохраняет порядок вершин: кольцо за кольцом
         attr.data[i].color = (*rgb, dens[i])
     me.color_attributes.active_color = attr
     return ob

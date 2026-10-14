@@ -3,8 +3,9 @@ extends GdUnitTestSuite
 ## и локдауне, ворота выхода при уровне LOCKDOWN, шард и хранилище, ICE и чужие аватары вместо заглушек, бюджет треугольников.
 
 const TIERS := ["BASE", "HARD", "NIGHTMARE"]
-## Модули, которые всегда в комнате (стены, углы и двери выхода — под флагом NodeView.WALLS_ENABLED; ворота — только при LOCKDOWN)
-const ENV_MODULES := ["floor", "room_edge", "pillar", "platform", "tunnel_ring", "ceiling", "far_field", "far_floor", "far_ceiling"]
+## Модули, которые всегда в комнате (ворота lockdown_gate — только при LOCKDOWN). Стен, углов, дверей, тоннеля, far_field и горизонта нет (рефактор Сети).
+const ENV_MODULES := ["floor", "pillar", "platform", "ceiling", "far_floor", "far_ceiling"]
+const REMOVED_MODULES := ["wall", "corner", "doorway", "tunnel_ring", "far_field", "room_edge"]
 const PORTAL := "res://assets/models/props/portal.glb"
 const PORTAL_LOCKED := "res://assets/models/props/portal_locked.glb"
 const GATE := "res://assets/models/env/lockdown_gate.glb"
@@ -113,30 +114,22 @@ func test_room_is_one_floor_slab_with_an_edge_and_8x8_ceiling() -> void:
 	var scene := _scene()
 	scene.apply_node(_info("BASE"))
 	var counts: Dictionary = scene.view.module_counts()
-	# пол — один тайл и одна кромка в центре комнаты; потолок — по ячейке
+	# пол — один тайл в центре комнаты (кромка room_edge убрана); потолок — по ячейке
 	assert_int(counts["floor"]).is_equal(1)
-	assert_int(counts["room_edge"]).is_equal(1)
 	assert_int(counts["ceiling"]).is_equal(NodeLayout.GRID * NodeLayout.GRID)
-	for module in ["floor", "room_edge"]:
+	for module in ["floor"]:
 		var mm := _multimesh_of(scene.view, _module_path(module))
 		assert_bool(mm != null).override_failure_message("нет " + module).is_true()
 		# get_instance_transform в headless-рендере (dummy) всегда нули, поэтому положение — по custom_aabb, который считает сам NodeView по преобразованиям
 		var center := mm.custom_aabb.get_center()
 		assert_float(center.x).override_failure_message("%s: центр %s" % [module, center]).is_between(-0.5, 0.5)
 		assert_float(center.z).override_failure_message("%s: центр %s" % [module, center]).is_between(NodeLayout.ROOM_CENTER.z - 0.5, NodeLayout.ROOM_CENTER.z + 0.5)
-	if NodeView.WALLS_ENABLED:
-		assert_int(counts["corner"]).is_equal(4)
-		# периметр: 4 x 6 ячеек между углами; две из них на юге — двери выхода
-		assert_int(counts["wall"] + counts["doorway"]).is_equal(4 * (NodeLayout.GRID - 2))
-		assert_int(counts["doorway"]).is_equal(NodeLayout.EXIT_DOORS.size())
-	else:
-		for module in ["wall", "corner", "doorway"]:
-			assert_int(counts[module]).override_failure_message("%s при WALLS_ENABLED=false" % module).is_equal(0)
-	# ворота выхода стоят в проёмах южной стены при любом флаге (видны только при LOCKDOWN)
+	for module in REMOVED_MODULES:
+		assert_bool(counts.has(module)).override_failure_message("модуль %s убран из комнаты" % module).is_false()
+	# ворота выхода стоят в проёмах южной стены (видны только при LOCKDOWN)
 	assert_int(counts["lockdown_gate"]).is_equal(NodeLayout.EXIT_DOORS.size())
 	assert_int(counts["platform"]).is_equal(4)
 	assert_int(counts["pillar"]).is_equal(NodeLayout.PILLARS.size())
-	assert_int(counts["tunnel_ring"]).is_equal(NodeLayout.EXIT_TUNNEL_SEGMENTS)
 
 
 # ---------------------------------------------------------------- порталы
@@ -191,23 +184,18 @@ func test_portal_faces_the_room_and_labels_remain() -> void:
 
 # ---------------------------------------------------------------- выход
 
-func test_exit_gate_appears_at_lockdown_trace_level_and_replaces_the_doorway() -> void:
+func test_exit_gate_appears_at_lockdown_trace_level() -> void:
 	var scene := _scene()
 	scene.apply_node(_info("BASE"))
-	var door := NodeAssets.env_path("doorway", "BASE")
 	var gate := NodeAssets.env_path("lockdown_gate", "BASE")
 	scene.apply_state(_state(2))
 	assert_array(scene.view.used_assets()).not_contains([gate])
-	if NodeView.WALLS_ENABLED:  # без стен дверей нет, ворота — единственный знак выхода
-		assert_array(scene.view.used_assets()).contains([door])
 	scene.apply_state(_state(3))  # LOCKDOWN: выходы узла закрыты
 	assert_bool(scene.view.exit_locked).is_true()
-	assert_array(scene.view.used_assets()).contains([gate]).not_contains([door])
+	assert_array(scene.view.used_assets()).contains([gate])
 	scene.apply_state(_state(0))
 	assert_bool(scene.view.exit_locked).is_false()
 	assert_array(scene.view.used_assets()).not_contains([gate])
-	if NodeView.WALLS_ENABLED:
-		assert_array(scene.view.used_assets()).contains([door])
 
 
 # ---------------------------------------------------------------- шарды, хранилища, мелочи
@@ -535,41 +523,24 @@ func _param(root: Node, asset: String, name: StringName) -> Variant:
 	return null
 
 
-func test_horizon_band_is_one_separate_instance_with_its_own_fade() -> void:
-	if not NodeView.HORIZON_ENABLED:
-		return
+func test_horizon_band_is_not_built() -> void:
+	# кольцо горизонта (дымка и штрихи) убрано: на принятом виде невидимо, а стоило вызова отрисовки
 	var scene := _scene()
 	scene.apply_node(_info("BASE"))
-	var h := scene.view.find_child("Horizon", true, false) as Node3D
-	assert_bool(h != null).override_failure_message("нет горизонта").is_true()
-	assert_str(str(h.get_meta("asset"))).is_equal(NodeAssets.env_path("horizon_band"))
-	assert_vector(h.position).is_equal(NodeLayout.ROOM_CENTER)
-	assert_int(scene.view.find_children("Horizon", "Node3D", true, false).size()).is_equal(1)
-	# отдельная группа: ни в одном MultiMesh его пути нет
+	assert_bool(scene.view.find_child("Horizon", true, false) == null).is_true()
 	assert_object(_multimesh_of(scene.view, NodeAssets.env_path("horizon_band"))).is_null()
-	var streaks_gain := 0.0
-	for n in h.find_children("*", "MeshInstance3D", true, false):
-		var mesh := (n as MeshInstance3D).mesh
-		for s in mesh.get_surface_count():
-			var m := (n as MeshInstance3D).get_surface_override_material(s) as ShaderMaterial
-			assert_float(float(m.get_shader_parameter("fade_start"))).is_equal(NodeView.HORIZON_FADE.x)
-			assert_float(float(m.get_shader_parameter("fade_end"))).is_equal(NodeView.HORIZON_FADE.y)
-			if m.get_shader_parameter("far_gain") != null:
-				streaks_gain = float(m.get_shader_parameter("far_gain"))
-				assert_float(float(m.get_shader_parameter("bead_depth"))).is_equal(0.0)
-	assert_float(streaks_gain).override_failure_message("у штрихов горизонта нет far_gain").is_equal(3.0)
 
 
 func test_far_layers_fade_late_and_brighten_toward_the_horizon() -> void:
 	var scene := _scene()
 	scene.apply_node(_info("BASE"))
-	for module in ["far_field", "far_floor", "far_ceiling"]:
+	for module in ["far_floor", "far_ceiling"]:
 		var path := _module_path(module)
 		assert_bool(_multimesh_of(scene.view, path) != null).override_failure_message("нет " + module).is_true()
 		assert_bool(_param(scene.view, path, "fade_start") != null).override_failure_message(module + ": нет fade_start").is_true()
 		assert_float(float(_param(scene.view, path, "fade_start"))).is_equal(NodeView.FAR_FADE.x)
 		assert_float(float(_param(scene.view, path, "fade_end"))).is_equal(NodeView.FAR_FADE.y)
-	var field := _module_path("far_field")
-	assert_float(float(_param(scene.view, field, "far_gain"))).is_equal(1.8)
-	assert_float(float(_param(scene.view, field, "far_start"))).is_equal(20.0)
-	assert_float(float(_param(scene.view, field, "far_end"))).is_equal(60.0)
+	var floor_path := _module_path("far_floor")
+	assert_float(float(_param(scene.view, floor_path, "far_gain"))).is_equal(1.8)
+	assert_float(float(_param(scene.view, floor_path, "far_start"))).is_equal(20.0)
+	assert_float(float(_param(scene.view, floor_path, "far_end"))).is_equal(60.0)

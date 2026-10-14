@@ -145,6 +145,30 @@ godot -- --flat --host=127.0.0.1 --port=7777 --token=t1
 - **Без человека:** экран держат `adb shell svc power stayon true` и `adb shell input keyevent KEYCODE_WAKEUP` перед запуском. Но если на
   очках не задана граница или спят контроллеры при включённом отслеживании рук, система открывает поверх приложения свой экран и ставит его
   на паузу — XR-проверку (трекинг, связь из VR) тогда делает только человек в очках.
+- **Пресеты рендера и серии замеров** (рефактор Сети, G2): умолчания приняты и живут в коде (`RenderConfig`: msaa 2, foveation 0, layers behind;
+  `AssetMaterials.KNOBS`: вид V10), поэтому `netrun.cfg` теперь нужен только для сравнений. `netrun/tools/pico_stand.sh <пресет> [ключ=значение ...]`
+  пишет секции `[render]` и `[assets]` на очки (остальной файл не трогает; `--show`, `--reset`); пресеты: `base` (чистые умолчания), `bench`
+  (`perf=on`, `bench=entry`), `cloud-props` (+ `cloud=1`), `cloud-vol`/`cloud-vol-budget`/`cloud-all`/`cloud-all-imp` (облако (Б), регулятор, импостор), `probe-sweep` (`cloud-props-2s` и ручка `cloud_two_sided` удалены 14.10: +5,5 мс, 66 fps). Ключи `RenderConfig.KEYS` идут
+  в `[render]`, остальные — в `[assets]`. `netrun/tools/pico_series.sh "имя=пресет ключ=значение" ...` прогоняет варианты подряд (конфиг →
+  перезапуск → итог `[bench]`/`[probe]` → PNG кадра при `perf=diag`) в `~/pico-series/<время>`; `PICO_SERVER_CMD` — команда сервера мира.
+  Грабли без человека: очки на столе засыпают по датчику (`dumpsys power` → `Asleep`; `svc power stayon true` не всегда хватает; на Pico помогли
+  `setprop pvr.factorytest.never.sleep 1` и `persist.pvr.sleep_by_static 0` — вернуть после серии); камеры в тёмной комнате дают системный диалог
+  «Слишком темно» — `am start` отвечает «kept for the user», игра не стартует, серия честно прерывается; закрыть диалог должен человек.
+- **Один путь к очкам (Д5, `docs/devbox.md` «Д5»; решение владельца 13.10 после 17:27):** серия, запись конфига и перезапуск игры идут только через
+  `box.sh pico run|ready|start|fg` — в скриптах Сети нет своих wake/sleep/stayon/KEYCODE и нажатий в системных окнах. Запуск серии одной командой
+  на devbox: `netrun/tools/pico_series.sh "имя=пресет ключ=значение" …` — сам зовёт `ctl.sh pico run Godot ${PICO_RUN_MIN:-20} [--port 7777]
+  [--timeout $PICO_RUN_TIMEOUT] -- …`: бронь → разбудить → ready по ТРЕКИНГУ (свет, граница, контроллеры) → снимки и logcat прогона в
+  `PICO_RUN_DIR` (туда же результаты серии) → погасить → снять бронь, вердикт последней строкой `pico run: …`. Коды run: команда rc | 20 не
+  готово/вылезло окно («нужен человек» — строка в `~/box/attention.log`, дальше Pipeline) | 21 бронь чужая | 124 таймаут | 2 аргументы. Внутри
+  серии между вариантами: идемпотентный `pico ready Godot` → `pico start Godot <пакет/активити>` («kept for the user» = НЕ ГОТОВО, строка
+  `pico fg` в выводе) → итог `[bench]`; исходный `netrun.cfg` сохраняется на входе и возвращается в trap, игра останавливается. Без ~/box/repo
+  (не devbox) — серия напрямую через `am start`, `PICO_READY_CMD` по желанию. Темно/нет трекинга = «physical»: ждёт света, повторять не нужно.
+  `pico_stand.sh` перед записью конфига зовёт `check pico` (чужая бронь — отказ «кто и до когда»); `dev.sh shot` ставит запуск Godot в очередь
+  `gpu` (`ctl.sh run gpu Godot --name shot`, ожидание `SHOT_QUEUE_WAIT`, 900 с), свой `flock /tmp/display.lock` остаётся внутри. Сервер стенда на
+  свободном порту из пула 7800–7899: `scripts/box.sh up stand Godot -- <srv_p2.sh> {PORT}`. Подготовка очков на `pico.sh tune` — под бронью:
+  `box.sh pico run Godot 5 -- netrun/tools/pico.sh tune …`. Пресет `cloud-props` после B3 ≡ `bench` (`cloud=1` — умолчание `AssetMaterials`), оставлен алиасом.
+  Самотест — `netrun/tools/box_guard_selftest.sh` (подложные ctl.sh и adb, `PICO_SERIAL=NOSUCH`, `BOX_TEST=1`; очков и `~/box` не касается; 21 проверка):
+  проверки броней и серии гонять только им, а не рабочими скриптами по ssh — 13.10 17:27 так разбудили очки.
 - **Падение в нативном коде:** кадры `libgodot_android.so` в tombstone без имён (библиотека шаблона уже без символов). Функцию находит
   дизассемблер по адресу кадра: `$ANDROID_HOME/ndk/<версия>/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-objdump -d --start-address=…`
   по `<копия>/android/build/build/intermediates/merged_native_libs/…/arm64-v8a/libgodot_android.so` (BuildId в tombstone должен совпасть).
@@ -162,10 +186,20 @@ GTX 1650). Через него агент `godot-dev` (`.claude/agents/godot-dev
   (ставит `setup`, или `scripts/devbox-godot-ai.sh hook`): в коммит уходит `project.godot` без этих строк, рабочий файл он не трогает.
   Файл в репозитории приведён к формату, который пишет редактор Godot 4.7, поэтому открытие проекта дерево не пачкает; если
   `git status` показывает `netrun/project.godot` — настройки действительно меняли.
-- **Автозапуск сеанса.** После входа nick в GNOME `~/.config/autostart/devbox-session.desktop` запускает `scripts/devbox-session-start.sh`:
-  incy (VPN) → Tailscale → Blender (blender-mcp на 9876); журнал — `~/.local/state/devbox-session.log`. Редактор Godot AI поднимает
-  отдельный `godot-ai.desktop` (`scripts/devbox-godot-ai.sh autostart`, через 20 с после входа). Нужны: autoConnect в incy и sudo без пароля
-  на перезапуск `tailscaled` (`/etc/sudoers.d/devbox-tailscale`).
+- **Автозапуск сеанса.** После входа nick в GNOME `~/.config/autostart/devbox-session.desktop` запускает
+  `/home/nick/box/repo/scripts/devbox-session-start.sh` — скрипт из клона репозитория, а не ручную копию (клон обновляет `scripts/box.sh sync`;
+  расхождение видно в `scripts/box.sh status`). Порядок этапов: incy (VPN) → Tailscale (перезапуск только если не Running) → adb (user-служба
+  `box-adb`) → Blender (blender-mcp на 9876, до 3 попыток) → ожидание редактора Godot на порту 8000 → самопроверка. Итог — `~/box/boot.report`,
+  подробный журнал — `~/.local/state/devbox-session.log`. Редактор Godot AI поднимает отдельный `godot-ai.desktop`
+  (`scripts/devbox-godot-ai.sh autostart`, через 20 с после входа); автозапуск сеанса лишь ждёт порт 8000 до 90 с и пишет проблему в отчёт,
+  если редактор не поднялся. Нужны: autoConnect в incy и sudo без пароля на перезапуск `tailscaled` (`/etc/sudoers.d/devbox-tailscale`).
+- **Godot не должен убивать общий adb.** При выходе Godot (в том числе `--headless --import` из `gdunit.sh`, `dev.sh`, `live_run.sh`…) вызывает `adb kill-server`
+  (настройка редактора `export/android/shutdown_adb_on_exit`, по умолчанию true) — 13.10 это пять раз оборвало Pico и телефоны всем сессиям. Защита двойная:
+  защита одна: в `~/.config/godot/editor_settings-4.7.tres` стоит `export/android/shutdown_adb_on_exit = false` (поставила сессия Devbox; при смене версии
+  Godot файл называется иначе — строку добавить снова). Счётчик убийств — в `scripts/box.sh status`. **Переменную `ANDROID_ADB_SERVER_PORT=5099` в скриптах
+  не ставить** (было в `netrun/tools/*.sh` до 14.10): редактор сам зовёт `adb` (список устройств для запуска), с этой переменной это поднимает второй
+  adb-сервер на 5099, он забирает USB очков, и основной на 5037 их не видит (Devbox, 14.10: очки пропали из adb после перезагрузки). Проверка:
+  `ps -eo cmd | grep "adb.*server"` показывает только `:5037 server nodaemon`. Исключение — `gdunit_ci.sh` (раннер CI без устройств).
 - **Клиент (Claude Code на Mac):** `.mcp.json` запускает `ssh devbox … uvx godot-ai attach` (stdio-мост) — туннеля и токенов нет. Телеметрию
   плагина отключает `GODOT_AI_DISABLE_TELEMETRY=1`.
 - **Тесты — gdUnit4, как в CI:** `ssh devbox 'cd ~/wt-godot && netrun/tools/gdunit.sh [res://tests/файл_test.gd]'` (весь набор — 403 теста,

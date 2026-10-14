@@ -6,6 +6,11 @@ name: E2E на эмуляторах
 on:
   pull_request:
     branches: [ main ]
+    # Порядок важен: сначала что запускает прогон, потом «!» — что стенд заведомо не использует (позже стоящий шаблон отменяет
+    # ранний). Стенд собирает APK (assembleDebug: main и debug app/kit/rules), Мост (installDist: netrun-bridge/main) и поднимает
+    # Godot без экрана: main.gd → server/ shared/ client/ (preload — компилируется целиком) data/ assets/*.gd и shaders/
+    # (preload) + tests/bot/ и tests/fixtures/. Проверено разбором res://-ссылок от main.gd (13.10). Не исключать: netrun/client/**
+    # (main.gd прелоадит client_stub и flat_stub — ошибка разбора в клиенте ломает компиляцию стенда), netrun/data/**, addons/.
     paths:
       - "app/**"
       - "kit/**"
@@ -14,6 +19,22 @@ on:
       - "netrun-bridge/**"
       - "scripts/e2e/**"
       - ".github/workflows/e2e.yml"
+      # Документы: стенд их не читает (в скриптах стенда только ссылки в комментариях).
+      - "!**/*.md"
+      # Инструменты разработчика Godot (dev.sh, съёмка кадров) и Blender-сторона ассетов: ни main.gd, ни стенд их не зовут.
+      - "!netrun/tools/**"
+      - "!netrun/assets/src/**"
+      - "!netrun/assets/models/**"   # .glb грузит только отрисовка клиента (load в рантайме) — на сервере и у ботов не вызывается
+      - "!netrun/assets/preview_*"
+      # Тесты Godot (gdUnit4) гоняет netrun.yml; стенду из netrun/tests нужны только бот и фикстура Моста.
+      - "!netrun/tests/**"
+      - "netrun/tests/bot/**"
+      - "netrun/tests/fixtures/**"
+      # Модульные тесты Gradle: assembleDebug и installDist их не собирают (скриншоты Paparazzi, app/src/test/snapshots, — тоже).
+      - "!app/src/test/**"
+      - "!kit/src/test/**"
+      - "!rules/src/test/**"
+      - "!netrun-bridge/src/test/**"
   schedule:
     - cron: "0 1 * * *"
   workflow_dispatch:

@@ -27,28 +27,24 @@ const PANEL_RAISE_MAX := 0.3
 const PANEL_SCALE := BreachPanelLayout.WIDTH_M / 0.44
 const SENSOR_SWEEP_RAD := 0.6
 const SENSOR_SWEEP_HZ := 0.12
-## Стены-занавесы (wall, corner, doorway) временно убраны: владелец 05.10.2026 — «эквалайзер — не то». Ассеты в models целы; true возвращает стены и двери выхода.
-## Ворота lockdown_gate остаются при любом значении: это игровой сигнал LOCKDOWN. Границу комнаты без стен показывает room_edge.
-const WALLS_ENABLED := false
-## Кольцо дымки и штрихов горизонта (env/horizon_band): один экземпляр на комнату. false — отключить, если на Pico не потянет (замера нет).
-const HORIZON_ENABLED := true
+## Стен, углов, дверей, кольца тоннеля, башен света (far_field) и кольца горизонта в комнате нет: на принятом виде (V10: штрихи и точки окружения выключены,
+## дымка погашена) они невидимы и стоили только вызовов отрисовки (docs/netrun-refactor-plan.md). Ворота lockdown_gate остаются: это игровой сигнал LOCKDOWN.
+## Границу комнаты показывает только кромка плит пола: room_edge (подвесные штрихи и дымка кромки) на принятом виде невидим, убран по решению владельца 13.10.
 ## Дальние пласты (far_*) иначе гаснут на 14…40 м (assets/ARCHITECTURE.md, п. 17): затухание по расстоянию и яркость к горизонту.
 const FAR_FADE := Vector2(40.0, 130.0)
 const FAR_PARAMS := {"far_gain": 1.8, "far_start": 20.0, "far_end": 60.0}
-const HORIZON_FADE := Vector2(150.0, 260.0)
-const HORIZON_PARAMS := {"far_gain": 3.0, "far_start": 30.0, "far_end": 60.0, "bead_depth": 0.0}
-const MODULES := ["floor", "room_edge", "wall", "corner", "pillar", "cover", "platform", "doorway", "lockdown_gate", "tunnel_ring", "ceiling", "far_field", "far_floor", "far_ceiling"]
+const MODULES := ["floor", "pillar", "cover", "platform", "lockdown_gate", "ceiling", "far_floor", "far_ceiling"]
 ## Варианты модуля (другой seed, тот же размер): узор не повторяется, девять одинаковых плиток подряд — запрещены (assets/ARCHITECTURE.md, п. 6).
 ## Экземпляры модуля делятся по вариантам по кругу; первый вариант всегда в комнате (его путь — NodeAssets.env_path(module)).
 const VARIANTS := {
 	# пол — один чёрный тайл на всю комнату (решение владельца 05.10.2026), граница комнаты — кромка; обе в NodeLayout.ROOM_CENTER, один раз
-	"floor": ["floor_slab_16"], "room_edge": ["room_edge_16"], "wall": ["wall", "wall_b", "wall_c"], "doorway": ["doorway", "doorway_b"],
+	"floor": ["floor_slab_16"],
 	"ceiling": ["ceiling", "ceiling_b", "ceiling_c"],
-	"far_field": ["far_field", "far_field_b", "far_field_c"], "far_floor": ["far_floor", "far_floor_b", "far_floor_c"],
+	"far_floor": ["far_floor", "far_floor_b", "far_floor_c"],
 	"far_ceiling": ["far_ceiling", "far_ceiling_b", "far_ceiling_c"],
 }
 ## Модули с отражением в полу (зеркальная копия, тусклая): стены, углы, двери, ворота, колонны, укрытия блока хранилища, помосты.
-const REFLECTED := ["wall", "corner", "doorway", "lockdown_gate", "pillar", "cover", "platform"]
+const REFLECTED := ["lockdown_gate", "pillar", "cover", "platform"]
 ## Потолок и дальние пласты: комната лежит в «пласте данных», выше и ниже — такие же (assets/ARCHITECTURE.md, п. 12).
 const CEILING_H := 5.0
 const LAYER_PITCH := 7.0
@@ -73,7 +69,6 @@ var _props: Node3D
 var _furniture: Node3D
 var _sensor: Node3D
 var _counts: Dictionary = {}
-var _doorways: Array[Node3D] = []
 var _gates: Array[Node3D] = []
 var _vaults: Dictionary = {}     # id слота -> хранилище (props/vault.glb)
 var _vault_tier: Dictionary = {} # id слота -> тир содержимого 1–3 (последний известный)
@@ -131,7 +126,6 @@ func set_look(new_tier: String, new_layout: LayoutData) -> void:
 	_room = Node3D.new()
 	_room.name = "Room"
 	add_child(_room)
-	_doorways.clear()
 	_gates.clear()
 	_counts.clear()
 	var xforms := _room_transforms()
@@ -139,13 +133,10 @@ func set_look(new_tier: String, new_layout: LayoutData) -> void:
 		var list: Array = xforms[module]
 		_counts[module] = list.size()
 		var made := _add_module(_room, module, list)
-		if module == "doorway":
-			_doorways = made
-		elif module == "lockdown_gate":
+		if module == "lockdown_gate":
 			_gates = made
-	if HORIZON_ENABLED:
-		_add_horizon(_room)
 	_apply_exit()
+	_attach_exit_cloud()
 
 
 ## Кресло — там, где игрок появляется (вход раскладки); датчик — только в прежней комнате: в раскладке Стражи — на карте, датчика нет.
@@ -200,8 +191,6 @@ func set_exit_locked(locked: bool) -> void:
 
 
 func _apply_exit() -> void:
-	for n in _doorways:
-		n.visible = not exit_locked
 	for n in _gates:
 		n.visible = exit_locked
 
@@ -213,52 +202,28 @@ func _room_transforms() -> Dictionary:
 	var out := {}
 	for module in MODULES:
 		out[module] = []
-	# Пол — один тайл и кромка комнаты: оба по одному разу в центре (origin ассетов — центр плиты), без поворота.
+	# Пол — один тайл: по одному разу в центре (origin ассетов — центр плиты), без поворота.
 	out["floor"].append(Transform3D(Basis.IDENTITY, NodeLayout.ROOM_CENTER))
-	out["room_edge"].append(Transform3D(Basis.IDENTITY, NodeLayout.ROOM_CENTER))
 	var last := NodeLayout.GRID - 1
 	for iz in NodeLayout.GRID:
 		for ix in NodeLayout.GRID:
 			var c := NodeLayout.cell_center(ix, iz)
 			out["ceiling"].append(Transform3D(Basis(Vector3.UP, PI / 2.0 * ((ix + iz * 3 + 1) % 4)), c + Vector3(0, CEILING_H, 0)))
-			var north := iz == 0
-			var south := iz == last
-			var west := ix == 0
-			var east := ix == last
-			if (north or south) and (west or east):
-				if not WALLS_ENABLED:
-					continue
-				var corner_yaw := 0.0                               # северо-запад: стены -Z и -X
-				if north and east:
-					corner_yaw = 3.0 * PI / 2.0
-				elif south and east:
-					corner_yaw = PI
-				elif south and west:
-					corner_yaw = PI / 2.0
-				out["corner"].append(Transform3D(Basis(Vector3.UP, corner_yaw + PI), c))  # модуль corner стоит стенами на юг и восток: +PI = северо-запад
-			elif north or south or west or east:
-				var wall_yaw := 0.0 if north else (PI if south else (PI / 2.0 if west else 3.0 * PI / 2.0))
-				var wb := Basis(Vector3.UP, wall_yaw)
-				var t := Transform3D(wb, c + wb * Vector3(0, 0, -WALL_EDGE))  # на наружный край ячейки
-				if south and _is_exit_door(c):
-					if WALLS_ENABLED:
-						out["doorway"].append(t)
-					out["lockdown_gate"].append(t)
-				elif WALLS_ENABLED:
-					out["wall"].append(t)
+			# Ворота LOCKDOWN — в южной стене на месте дверей выхода (угловые ячейки не в счёт: двери выхода сбоку от оси площадки).
+			if iz == last and ix > 0 and ix < last and _is_exit_door(c):
+				var wb := Basis(Vector3.UP, PI)
+				out["lockdown_gate"].append(Transform3D(wb, c + wb * Vector3(0, 0, -WALL_EDGE)))  # на наружный край ячейки
 	for c in exit_cells():
 		out["platform"].append(Transform3D(Basis.IDENTITY, c))
 	for p in pillar_positions():
 		out["pillar"].append(Transform3D(Basis.IDENTITY, p))
 	for p in cover_positions():
 		out["cover"].append(Transform3D(Basis.IDENTITY, p))
-	for k in NodeLayout.EXIT_TUNNEL_SEGMENTS:
-		out["tunnel_ring"].append(Transform3D(Basis.IDENTITY, Vector3(exit_pos().x, 0.0, NodeLayout.ROOM_MAX.y + NodeLayout.CELL * (k + 0.5))))
 	_far_transforms(out)
 	return out
 
 
-## Дальний план: участки 11×11 м сеткой вокруг центра комнаты, на трёх пластах (наш, выше, ниже). У участка три вещи: башни света, пол и потолок.
+## Дальний план: участки 11×11 м сеткой вокруг центра комнаты, на трёх пластах (наш, выше, ниже). У участка две вещи: пол и потолок.
 func _far_transforms(out: Dictionary) -> void:
 	var n := 0
 	for layer in FAR_LAYERS:
@@ -269,7 +234,6 @@ func _far_transforms(out: Dictionary) -> void:
 					continue  # под комнатой — она сама
 				var p := Vector3(NodeLayout.ROOM_CENTER.x + gx * FAR_STEP, float(layer["y"]), NodeLayout.ROOM_CENTER.z + gz * FAR_STEP)
 				var b := Basis(Vector3.UP, PI / 2.0 * (n % 4))
-				out["far_field"].append(Transform3D(b, p))
 				out["far_floor"].append(Transform3D(b, p))
 				out["far_ceiling"].append(Transform3D(b, p + Vector3(0, CEILING_H, 0)))
 				n += 1
@@ -302,18 +266,6 @@ func _add_module(parent: Node3D, module: String, xforms: Array) -> Array[Node3D]
 		if REFLECTED.has(module):
 			made.append_array(_add_multi(parent, path, module + "_reflection", list, mod_tier, true))
 	return made
-
-
-## Горизонт: кольцо дымки и 360 штрихов, один экземпляр в центре комнаты на уровне пола. Отдельным узлом, не в MultiMesh: у ассета своё затухание
-## (150…260 м), и склеивать его с чем-либо нельзя. Отражения в полу нет (REFLECT_MARKS его не ловит).
-func _add_horizon(parent: Node3D) -> void:
-	var h := NodeAssets.instance(NodeAssets.env_path("horizon_band"), tier)
-	h.name = "Horizon"
-	h.position = NodeLayout.ROOM_CENTER
-	AssetMaterials.set_distance_fade(h, HORIZON_FADE.x, HORIZON_FADE.y)
-	for k in HORIZON_PARAMS:  # у дымки far_gain и bead_depth нет: set_param такие материалы пропускает
-		AssetMaterials.set_param(h, k, HORIZON_PARAMS[k])
-	parent.add_child(h)
 
 
 ## По одному MultiMeshInstance3D на меш модели (у штрихов, точек и тайлов свой материал). mirrored — копия для отражения в полу.
@@ -351,6 +303,27 @@ func _place(parent: Node3D, path: String, pos: Vector3, yaw: float) -> Node3D:
 	n.rotation.y = yaw
 	parent.add_child(n)
 	return n
+
+
+## Объём частицами поверх модели (VolumeRegistry): только когда модуль включён в `[render] volumetric`; облако — потомок предмета, поэтому
+## видимость (открыт/закрыт) и поворот у него общие. Цвет — слой палитры hud_ok (материал облака задаёт Blender).
+func _attach_cloud(module: String, host: Node3D, model_path: String) -> void:
+	var c := VolumeRegistry.spawn(module, model_path, VolumeRegistry.color_of(module), AABB())
+	if c != null:
+		host.add_child(c)
+
+
+## Рамка выхода облаком (только при `volumetric` с «exit»/«all»): сплошной модели exit_frame клиент не ставит, поэтому облако без неё —
+## голограмма на площадке выхода, лицом к центру комнаты. Дочерний узел комнаты: исчезает вместе с ней при смене узла/раскладки.
+func _attach_exit_cloud() -> void:
+	if _room == null or not VolumeRegistry.is_enabled("exit"):
+		return
+	var host := Node3D.new()
+	host.name = "ExitFrame"
+	host.position = exit_pos()
+	host.rotation.y = NodeLayout.yaw_facing(exit_pos(), NodeLayout.ROOM_CENTER)
+	_room.add_child(host)
+	_attach_cloud("exit", host, NodeAssets.env_path("exit_frame"))
 
 
 ## Убрать узел из дерева и освободить сразу (queue_free оставил бы его в сцене до конца кадра). Звать только вне обхода этих узлов.
@@ -393,6 +366,7 @@ func set_vaults(shards: Array) -> void:
 			pad_pos = pad_pos_layout
 			yaw = vault_yaw_to(base, pad_pos, yaw)
 		_vaults[id] = _place(_props, NodeAssets.prop_path("vault"), base, yaw)  # один ассет: вид — узлы State_* и Tier_*
+		_attach_cloud("vault", _vaults[id], NodeAssets.prop_path("vault"))
 		_pads[id] = _place(_props, NodeAssets.prop_path("hack_pad"), pad_pos, yaw)
 		_panels[id] = _place_panel(base, yaw, pad_pos)
 		set_vault_state(id, vault_state_of(sh), int(sh.get("tier", 0)))
@@ -506,9 +480,11 @@ func set_portals(portals: Array) -> void:
 		var p: Array = pt["p"]
 		var pos := Vector3(float(p[0]), 0.0, float(p[1]))
 		var yaw := NodeLayout.yaw_facing(pos, NodeLayout.ROOM_CENTER)
+		var portal_ok := _place(_props, NodeAssets.prop_path("portal"), pos, yaw)
+		_attach_cloud("portal", portal_ok, NodeAssets.prop_path("portal"))
 		_portals.append({
 			"to": str(pt["to"]), "open": bool(pt.get("open", true)),
-			"ok": _place(_props, NodeAssets.prop_path("portal"), pos, yaw),
+			"ok": portal_ok,
 			"locked": _place(_props, NodeAssets.prop_path("portal_locked"), pos, yaw),
 		})
 	_apply_portals()

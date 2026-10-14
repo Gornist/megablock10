@@ -39,6 +39,9 @@
 "зона: сюжет":
   - changed-files:
       - any-glob-to-any-file: ["docs/story/**"]
+"зона: devbox":
+  - changed-files:
+      - any-glob-to-any-file: ["scripts/devbox-*", "scripts/dbx.sh", "scripts/box*", "scripts/box/**", "docs/devbox.md"]
 "зона: конвейер":
   - changed-files:
       - any-glob-to-any-file:

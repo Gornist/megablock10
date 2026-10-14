@@ -45,6 +45,11 @@ func _init(owner_node: GrayNode) -> void:
 	_rng.randomize()
 
 
+## Зерно ГСЧ сеток вскрытия (для тестов: сетка следующей попытки детерминирована; в игре зерно случайное, берётся в `_init`).
+func seed_rng(s: int) -> void:
+	_rng.seed = s
+
+
 func has_attempt(session: String) -> bool:
 	return _by_session.has(session)
 

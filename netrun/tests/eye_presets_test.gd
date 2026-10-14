@@ -1,7 +1,7 @@
 extends GdUnitTestSuite
 ## Пресеты камеры (shared/eye_presets.gd): полные данные, высота глаз как у риг-а клиента, точки внутри комнаты.
 
-const NAMES := ["entry", "north", "south", "vault_w", "top", "top_north", "top_south"]
+const NAMES := ["entry", "north", "south", "vault_w", "wedge", "top", "top_north", "top_south"]
 
 
 func test_все_кадры_приёмки_есть_по_порядку() -> void:
@@ -69,3 +69,13 @@ func test_vault_w_лицом_к_западному_хранилищу_с_пло�
 	var p := EyePresets.get_preset("vault_w")
 	assert_float(NodeLayout.flat_distance(p["pos"], west["pad"])).is_less(0.001)
 	assert_float(NodeLayout.flat_distance(p["look"], west["slot"])).is_less(0.001)
+
+
+func test_клин_смотрит_вправо_и_вверх_от_входа() -> void:
+	var p := EyePresets.get_preset("wedge")
+	var entry := EyePresets.get_preset("entry")
+	assert_vector(p["pos"]).is_equal(entry["pos"])   # поза глаз та же — от входа
+	var dir: Vector3 = (p["look"] - p["pos"]).normalized()
+	assert_float(dir.x).is_greater(0.3)    # вправо (на восток)
+	assert_float(dir.y).is_greater(0.3)    # вверх
+	assert_float(dir.z).is_less(0.0)       # и всё ещё на север

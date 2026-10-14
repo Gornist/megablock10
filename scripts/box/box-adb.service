@@ -1,0 +1,21 @@
+# adb-сервер devbox как постоянная user-служба (scripts/box.sh sync ставит в ~/.config/systemd/user/).
+# Зачем: сервер, поднятый первой же adb-командой из чьего-то ssh-сеанса, умирает вместе с сеансом (Tailscale SSH убивает процессы
+# сеанса) — падают команды всех сессий и пропадают adb reverse/forward. Здесь он живёт в user@1000.service, вне сеансов, и
+# поднимается при входе nick раньше любых ssh-команд; сам перезапускается при падении.
+# Ничего не убивать: `adb kill-server` и `systemctl --user stop box-adb` рвут чужие reverse/forward, перед ними — scripts/box.sh adb.
+[Unit]
+Description=adb-сервер devbox (общий для всех сессий)
+
+[Service]
+Type=simple
+ExecStart=%h/android-sdk/platform-tools/adb -L tcp:localhost:5037 server nodaemon
+Restart=always
+# Сервер убивают снаружи (`adb kill-server` из чужих скриптов; 13.10 — каждый `godot --headless --import`): вернуться надо быстрее,
+# чем чей-то `adb` автозапустит свой сервер в ssh-сеансе и займёт 5037. Пока порт занят чужим, служба падает и пробует снова —
+# без лимита попыток и без дампов ядра (13.10 за 10 минут набежало 104 перезапуска с core dump).
+RestartSec=2
+StartLimitIntervalSec=0
+LimitCORE=0
+
+[Install]
+WantedBy=default.target

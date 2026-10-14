@@ -19,6 +19,7 @@ case $(printf '%s' "$title" | tr '[:upper:]' '[:lower:]') in
   *blender*) zone="Blender"; zc=blender ;;
   *game*|*геймдиз*) zone="Геймдизайн"; zc=gamedesign ;;
   *larp*|*сюжет*) zone="LARP"; zc=story ;;
+  *devbox*|*девбокс*) zone="Devbox"; zc=devbox ;;
   *pipeline*) zone="Pipeline manager"; zc=pipeline ;;
   *) zone="" ;;
 esac
@@ -40,5 +41,10 @@ tmp=$(mktemp); ( gh pr list --state open --json number,title,labels \
   for _ in 1 2 3 4 5 6 7 8; do kill -0 $p 2>/dev/null || break; sleep 0.5; done; kill $p 2>/dev/null ) 2>/dev/null
 if [ -s "$tmp" ]; then echo "- открытые PR:"; head -8 "$tmp"; else echo "- открытых PR нет (или GitHub недоступен)"; fi
 rm -f "$tmp"
+# Бэклог (решение владельца 14.10): свободная сессия берёт верхнюю задачу своей зоны сама, не ждёт, пока её позовут.
+if [ -n "$zone" ] && [ -f "$MAIN/docs/backlog.md" ]; then
+  bl=$(grep -E "^- \[ \] \[$zc\]" "$MAIN/docs/backlog.md" | head -3)
+  [ -n "$bl" ] && { echo "- бэклог зоны (docs/backlog.md, сверху — важнее; нет текущей задачи — бери верхнюю):"; sed 's/^/  /' <<<"$bl"; }
+fi
 echo "Готово к слиянию → SendMessage Pipeline: «готово к слиянию: PR N — что, пара/порядок»."
 exit 0

@@ -110,7 +110,7 @@ cmd_launch() {
   local out
   out=$(adb -s "$serial" shell am start -S -n "$PACKAGE/com.godot.game.GodotAppLauncher" 2>&1)
   echo "$out"
-  if grep -qE "Error|Exception|not started" <<<"$out"; then
+  if grep -qE "Error|Exception|not started|kept for the user" <<<"$out"; then
     echo "Ошибка: приложение не запущено (не установлено? поверх — диалог системы очков?)" >&2
     return 1
   fi
@@ -283,7 +283,8 @@ cmd_tune() {
   local old_log
   old_log=$(comfort_newest_log "$serial")
   adb -s "$serial" shell am force-stop "$PACKAGE"
-  adb -s "$serial" shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+  # Будить очки отсюда нельзя (один путь к очкам — `box.sh pico run`/`wake`, решение владельца 13.10): tune идёт на бодрых очках под бронью,
+  # например `box.sh pico run Godot 5 -- netrun/tools/pico.sh tune …`; спящие — cmd_launch ответит «kept for the user» и tune остановится.
   cmd_launch || return 1
   local i lines="" new_log
   for i in $(seq 1 30); do
