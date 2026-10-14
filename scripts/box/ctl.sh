@@ -346,6 +346,7 @@ pico_todo() { # что сделать человеку — по виду при�
     boundary) echo "Надеть очки и один раз нажать «Войти в VR (текущая граница)» — карточка границы не закрывается через adb; затем перезапустить прогон";;
     state) echo "Надеть очки и пройти настройку границы/трекинга вручную, затем перезапустить прогон";;
     wake) echo "Очки не просыпаются: проверить питание очков, кабель USB и adb (box.sh status)";;
+    adb) echo "Лишний adb-сервер прячет очки от основного: scripts/box.sh adb-rescue (Devbox/Pipeline); если у сервера есть клиенты — договориться с хозяином";;
     asleep) echo "ПОГАСИТЬ ОЧКИ ВРУЧНУЮ (кнопка питания): риск выгорания матриц";;
     timeout) echo "Прогон не уложился во время: посмотреть журнал прогона, очки погашены, перезапустить";;
     *) echo "Посмотреть PNG и журнал ~/box/journal.jsonl";;
@@ -360,12 +361,28 @@ pico_attention() { # pico_attention <владелец> <причина> <png> [�
   printf '{"t":"%s","owner":"%s","kind":"%s","reason":"%s","todo":"%s","png":"%s"}\n' \
     "$(date -Is)" "$(clean "$own")" "$kind" "$(clean "$why")" "$(clean "$(pico_todo "$kind")")" "$(clean "$png")" >>"$BOX/attention.log"
 }
-pico_fail() { # pico_fail <владелец> <окно> <причина> [вид] — PNG, attention, очки гасим, бронь оставляем, вердикт строкой; код 1
-  local shot
-  shot=$(pico_shot); pico_sleep_now >/dev/null 2>&1
+pico_is_human() { # владелец брони — человек (очки могут быть на нём): автоматике НЕЛЬЗЯ ни парковать карточку, ни гасить очки
+  # (инцидент 14.10 ~10:00: при брони «Владелец» сработала парковка — в очках пусто, adb пропал). Свои имена — ~/box/pico-human-owners.
+  # Сравнение без зависимости от локали: в неинтерактивном ssh локаль C и ${x,,} кириллицу не понижает (тест 14.10 поймал).
+  local o=${1:-} h
+  [ -n "$o" ] || return 1
+  for h in Владелец владелец ВЛАДЕЛЕЦ Owner owner OWNER $(cat "$BOX/pico-human-owners" 2>/dev/null); do
+    [ "$o" = "$h" ] && return 0
+  done
+  return 1
+}
+pico_fail() { # pico_fail <владелец> <окно> <причина> [вид] — PNG, attention, очки гасим (если не человек), бронь оставляем; код 1
+  local shot sleepnote="очки погашены"
+  shot=$(pico_shot)
+  if pico_is_human "$1" || pico_is_human "$(pico_lease_owner)"; then
+    # человек может быть в очках: POWER не жмём (выключили бы на нём); карточку, если парковали, возвращаем
+    pico_unpark_card; sleepnote="очки НЕ гашу (бронь человека)"
+  else
+    pico_sleep_now >/dev/null 2>&1
+  fi
   jlog pico-ready-fail owner "$1" window "$2" reason "$3" png "${shot:-}"
   pico_attention "$1" "$3" "$shot" "${4:-other}"
-  echo "pico ready: НЕ ГОТОВО — $3; PNG: ${shot:-нет}; очки погашены, ${PICO_LEASE_NOTE}"
+  echo "pico ready: НЕ ГОТОВО — $3; PNG: ${shot:-нет}; ${sleepnote}, ${PICO_LEASE_NOTE}"
   return 1
 }
 # Карточка границы (com.pvr.seethrough.setting, Unity): ввод Android её не закрывает (опыт 13.10 20:30), HOME и force-stop — тоже
@@ -384,15 +401,22 @@ pico_park_display() { # id виртуального дисплея 4320x4320 (н
   timeout 15 "$ADB" -s "$PICO" shell dumpsys window displays </dev/null 2>/dev/null | tr -d '\r' \
     | awk '/Display: mDisplayId=/{split($2,a,"="); id=a[2]} /init=4320x4320/{if (id != 0) {print id; exit}}'
 }
+pico_boot_id() { timeout 10 "$ADB" -s "$PICO" shell cat /proc/sys/kernel/random/boot_id </dev/null 2>/dev/null | tr -d '\r\n '; }
 pico_park_card() { # pico_park_card <владелец>: карточка → на виртуальный дисплей; 0 — карточка с переднего плана ушла
-  local own=$1 sid disp i
-  sid=$(pico_stack_of "$PICO_BOUNDARY_PKG"); disp=$(pico_park_display)
+  # ТОЛЬКО автопрогон (pico run выставляет PICO_PARK_OK=1 команде) и НИКОГДА при брони человека: инцидент 14.10 ~10:00 — при
+  # показе владельцу в очках парковка оставила в них пустоту (игра без подтверждённого «Войти в VR», окон нет), затем пропал adb.
+  local own=$1 sid disp i boot
+  if [ "${PICO_PARK_OK:-0}" != 1 ] || pico_is_human "$own" || pico_is_human "$(pico_lease_owner)"; then
+    DIAG_WHY="карточка границы на экране, а парковка разрешена только автопрогону (pico run) и не при брони человека («$own»): подтвердите «Войти в VR» в очках"
+    DIAG_KIND=boundary; return 1
+  fi
+  sid=$(pico_stack_of "$PICO_BOUNDARY_PKG"); disp=$(pico_park_display); boot=$(pico_boot_id)
   if [ -z "$sid" ] || [ -z "$disp" ]; then
     DIAG_WHY="карточка границы: не нашёл стек (${sid:-?}) или дисплей для парковки (${disp:-?})"; DIAG_KIND=boundary; return 1
   fi
   jlog pico-park-card owner "$own" stack "$sid" display "$disp"
+  printf '%s %s' "$sid" "${boot:-?}" >"$BOX/pico-parked.stack"  # сначала запись (чтобы любой выход вернул), потом перенос
   timeout 15 "$ADB" -s "$PICO" shell am display move-stack "$sid" "$disp" </dev/null >/dev/null 2>&1
-  printf '%s' "$sid" >"$BOX/pico-parked.stack"
   for i in 1 2 3 4 5 6; do
     sleep 1
     pico_props
@@ -402,10 +426,17 @@ pico_park_card() { # pico_park_card <владелец>: карточка → н�
   return 1
 }
 pico_unpark_card() { # вернуть карточку на дисплей 0 (если её парковали); безвредно без парковки
-  local sid
-  sid=$(cat "$BOX/pico-parked.stack" 2>/dev/null)
-  [ -n "$sid" ] || return 0
-  rm -f "$BOX/pico-parked.stack"
+  # Файл хранит «стек boot_id»: после перезагрузки очков номера стеков другие — переносить «по номеру» чужой стек нельзя.
+  local f=$BOX/pico-parked.stack sid boot now
+  [ -f "$f" ] || return 0
+  read -r sid boot <"$f"
+  [ -n "$sid" ] || { rm -f "$f"; return 0; }
+  now=$(pico_boot_id)
+  if [ -z "$now" ]; then return 0; fi  # очки сейчас недоступны по adb — файл оставляем, вернём при следующем гашении/пробуждении
+  if [ "$now" != "$boot" ] || [ "$(pico_stack_of "$PICO_BOUNDARY_PKG")" != "$sid" ]; then
+    rm -f "$f"; jlog pico-unpark-skip stack "$sid" note "очки перезагружались или стек не карточка — не трогаю"; return 0
+  fi
+  rm -f "$f"
   timeout 15 "$ADB" -s "$PICO" shell am display move-stack "$sid" 0 </dev/null >/dev/null 2>&1
   jlog pico-unpark-card stack "$sid"
 }
@@ -422,7 +453,13 @@ pico_ready() { # pico_ready <владелец>: бронь → разбудит�
     Asleep|Dozing)
       pico_power
       pico_wait Awake 8 || { echo "pico ready: очки не проснулись за 8 с ($(pico_state)); ${PICO_LEASE_NOTE}"; pico_attention "$own" "очки не проснулись по POWER ($(pico_state))" "" wake; return 1; };;
-    *) echo "pico ready: очки не отвечают ($st); ${PICO_LEASE_NOTE}"; pico_attention "$own" "очки не отвечают на adb ($st)" "" wake; return 1;;
+    *) stray=$(adb_stray_text)
+       if [ -n "$stray" ]; then
+         # очки есть в USB, но основной adb их не видит: их держит лишний adb-сервер (инцидент 14.10) — это не «очки не отвечают»
+         why="очки не видны основному adb: ${stray}держит USB-устройства. Вернуть: scripts/box.sh adb-rescue (не трогает серверы с клиентами; рвёт forward/reverse на секунды и возвращает)"
+         echo "pico ready: НЕ ГОТОВО — $why; ${PICO_LEASE_NOTE}"; pico_attention "$own" "$why" "" adb; return 1
+       fi
+       echo "pico ready: очки не отвечают ($st); ${PICO_LEASE_NOTE}"; pico_attention "$own" "очки не отвечают на adb ($st)" "" wake; return 1;;
   esac
   # Один цикл вместо двух (прогон Godot 20:00: conf=1 появился ПОСЛЕ 4 проходов × 2 с, а итоговая проверка уже не нажимала —
   # «НЕ ГОТОВО: window seethrough.setting» при живом трекинге). До PICO_READY_PASSES проходов по ~2 с (по умолчанию 12 ≈ 25–30 с):
@@ -471,8 +508,15 @@ pico_ready() { # pico_ready <владелец>: бронь → разбудит�
 pico_start() { # pico_start <владелец> <пакет/активити>: am start, карточку границы (если есть) — парковкой; игра ДОЛЖНА быть resumed
   # Порядок (опыты 13.10): am start → если система держит окно («kept for the user») — HOME и один повтор (разрешено владельцем);
   # игра стартует, но остаётся paused ЗА карточкой (seethrough.setting) — тогда стек карточки на другой дисплей.
-  local own=$1 comp=$2 out pkg i parked=0 low
+  local own=$1 comp=$2 out pkg i parked=0 low stray
   pkg=${comp%%/*}
+  if ! "$ADB" devices 2>/dev/null | grep -q "^${PICO}[[:space:]]*device"; then
+    stray=$(adb_stray_text)
+    if [ -n "$stray" ]; then
+      DIAG_WHY="очки не видны основному adb: ${stray}держит USB-устройства — scripts/box.sh adb-rescue"
+      pico_attention "$own" "$DIAG_WHY" "" adb; echo "pico start: НЕ ГОТОВО — $DIAG_WHY"; return 1
+    fi
+  fi
   out=$(timeout 30 "$ADB" -s "$PICO" shell am start -n "$comp" </dev/null 2>&1 | tr -d '\r')
   low=$(tr 'A-Z' 'a-z' <<<"$out")
   case $low in
@@ -504,7 +548,9 @@ pico_run_cleanup() { # при ЛЮБОМ выходе: очки гаснут, б
   [ "$RUN_DONE" = 1 ] && return 0
   RUN_DONE=1
   trap - EXIT INT TERM HUP
-  if ! pico_sleep_now >/dev/null 2>&1; then
+  if pico_is_human "$RUN_OWN"; then
+    pico_unpark_card  # бронь человека: POWER не жмём (очки могут быть на нём), карточку — на место
+  elif ! pico_sleep_now >/dev/null 2>&1; then
     pico_attention "$RUN_OWN" "очки НЕ погасли после прогона ($(pico_state)) — выгорание матриц, нужен человек" "" asleep
   fi
   [ "$RUN_PORT_CREATED" = 1 ] && cmd_release "port:$RUN_PORT" "$RUN_OWN" >/dev/null 2>&1
@@ -571,7 +617,9 @@ pico_run() {
   echo "$v"
   pico_shot "$dir/screen-before.png" >/dev/null
   timeout 15 "$ADB" -s "$PICO" logcat -c </dev/null >/dev/null 2>&1
-  PICO_SERIAL=$PICO PICO_RUN_DIR=$dir BOX_OWNER=$own BOX_CTL=$(readlink -f "$0") timeout "$tmo" "$@"; rc=$?
+  # парковка карточки границы — только автопрогону и не человеку (PICO_PARK_OK видит pico start внутри команды)
+  local park=1; pico_is_human "$own" && park=0
+  PICO_PARK_OK=$park PICO_SERIAL=$PICO PICO_RUN_DIR=$dir BOX_OWNER=$own BOX_CTL=$(readlink -f "$0") timeout "$tmo" "$@"; rc=$?
   shot=$(pico_shot "$dir/screen-after.png")
   timeout 30 "$ADB" -s "$PICO" logcat -d -v time </dev/null 2>/dev/null | tail -n 20000 >"$dir/logcat.txt"
   # после команды игра обычно остановлена (трап хозяина: force-stop) — система сразу возвращает карточку границы: это штатно,
@@ -613,6 +661,7 @@ cmd_pico() {
     wake)
       [ $# -ge 2 ] || { err "использование: pico wake <владелец> <минут> [заметка…]"; return 2; }
       own=$1; min=$2; shift 2; note="$*"
+      pico_unpark_card  # остаток парковки прошлого прогона не должен достаться этому владельцу
       # продление без заметки не затирает прежнюю
       [ -n "$note" ] || note=$(get "$BOX/leases/pico.lease" note)
       cmd_lease pico "$own" "$min" "${note:-очки разбужены}" || return 1
@@ -670,6 +719,11 @@ cmd_pico() {
       [ $# -ge 2 ] || { err "использование: pico start <владелец брони> <пакет/активити>"; return 2; }
       [ "$(pico_lease_owner)" = "$1" ] || { echo "pico start: нет брони pico у $1"; return 1; }
       pico_start "$1" "$2"; return $? ;;
+    unpark)
+      # вернуть карточку границы на дисплей 0 (если её парковали); безвредно без парковки
+      pico_unpark_card
+      [ -f "$BOX/pico-parked.stack" ] && { echo "карточка всё ещё запаркована (очки недоступны по adb?): $(cat "$BOX/pico-parked.stack")"; return 1; }
+      echo "карточка границы на месте (не запаркована)";;
     fg)
       # что на переднем плане и в каком состоянии очки: «окно=… light=… граница=… трекинг=… вердикт=ok|причина»; код 0 — здоровое
       st=$(pico_state)
@@ -680,7 +734,7 @@ cmd_pico() {
         echo "окно=${P_RES:-?} light=${P_LIGHT:-?} граница=${P_BOUND:-?} трекинг=${P_ALG:-?}/${P_CONF:-?} вердикт=$DIAG_KIND: $DIAG_WHY"; return 1
       fi ;;
     run) pico_run "$@"; return $? ;;
-    *) err "pico status | wake <владелец> <мин> [заметка] | sleep <владелец> [--force] | guard | ready <владелец> | start <владелец> <пакет/активити> | fg | run <владелец> <мин> [--timeout сек] [--port N] [--dir каталог] -- команда… | taps on|off|status"; return 2;;
+    *) err "pico status | wake <владелец> <мин> [заметка] | sleep <владелец> [--force] | guard | ready <владелец> | start <владелец> <пакет/активити> | unpark | fg | run <владелец> <мин> [--timeout сек] [--port N] [--dir каталог] -- команда… | taps on|off|status"; return 2;;
   esac
 }
 
@@ -805,6 +859,70 @@ cmd_inst_ls() {
   [ "$any" -eq 1 ] || echo "экземпляров нет"
 }
 
+# --- лишние adb-серверы и возврат устройств (инцидент 14.10) -------------------------------------------------------------------
+# Второй adb-сервер (не 5037) забирает USB-устройства себе, основной их не видит (ни device, ни unauthorized). Так очки пропали
+# после перезагрузки: `adb -L tcp:5099` поднимала переменная ANDROID_ADB_SERVER_PORT=5099 у Godot (любая adb-команда сама стартует сервер).
+adb_servers() { # строки «порт pid клиентов» для adb-серверов НЕ на 5037 (клиенты — установленные соединения на порт сервера)
+  local pid port cl
+  # процесс — сервер adb, если в args есть «fork-server» или «server nodaemon»; порт — из «-L tcp:[localhost:]N» (так их стартует
+  # ANDROID_ADB_SERVER_PORT) или «-P N»; `timeout …`-обёртки и сам awk пропускаем (там adb не первый аргумент команды).
+  ps -eo pid=,args= 2>/dev/null | awk '$2 ~ /(^|\/)adb$/ && /(fork-server|server nodaemon)/ {
+      if (match($0, /-L tcp:(localhost:)?[0-9]+/)) { s = substr($0, RSTART, RLENGTH); sub(/.*:/, "", s) }
+      else if (match($0, /-P [0-9]+/)) { s = substr($0, RSTART + 3, RLENGTH - 3) }
+      else next
+      if (s != "5037") print $1, s }' |
+  while read -r pid port; do
+    cl=$(ss -Htn state established "( sport = :$port )" 2>/dev/null | wc -l | tr -d ' ')
+    echo "$port $pid $cl"
+  done
+}
+adb_stray_text() { # одной строкой для вердикта; пусто — лишних нет
+  adb_servers | awk '{printf "adb-сервер на порту %s (pid %s, клиентов %s); ", $1, $2, $3}'
+}
+cmd_adb_rescue() { # adb-rescue [--dry]: остановить лишние серверы без клиентов, вернуть устройства основному, восстановить forward/reverse
+  local dry=0 s port pid cl serial fw rv killed=0 dev l r
+  [ "${1:-}" = "--dry" ] && dry=1
+  s=$(adb_servers)
+  if [ -z "$s" ]; then echo "adb rescue: лишних adb-серверов нет"; return 0; fi
+  while read -r port pid cl; do
+    [ -n "$port" ] || continue
+    if [ "$cl" -gt 0 ]; then
+      echo "adb rescue: порт $port (pid $pid): есть клиенты ($cl) — НЕ трогаю, договоритесь с хозяином"; continue
+    fi
+    echo "adb rescue: порт $port (pid $pid) без клиентов — $([ "$dry" = 1 ] && echo "остановил бы" || echo "останавливаю")"
+    if [ "$dry" = 0 ]; then
+      ANDROID_ADB_SERVER_PORT=$port "$ADB" kill-server </dev/null >/dev/null 2>&1
+      jlog adb-stray-killed port "$port" pid "$pid"
+      killed=$((killed + 1))
+    fi
+  done <<<"$s"
+  [ "$dry" = 1 ] && return 0
+  [ "$killed" -gt 0 ] || return 1
+  sleep 4
+  # основной сервер опрашивает USB только при старте: если устройство Pico есть в USB, а в adb нет — один перезапуск службы,
+  # перед ним записываем forward/reverse всех устройств и возвращаем точно такими же (порядок reverse: «удалённый локальный»).
+  if lsusb 2>/dev/null | grep -q '2d40:' && ! "$ADB" devices 2>/dev/null | grep -q "^${PICO}[[:space:]]"; then
+    fw=$("$ADB" forward --list 2>/dev/null | awk 'NF>=3{print $1, $2, $3}')
+    rv=""
+    for dev in $("$ADB" devices 2>/dev/null | awk 'NR>1 && $2=="device"{print $1}'); do
+      l=$(timeout 8 "$ADB" -s "$dev" reverse --list </dev/null 2>/dev/null | awk -v d="$dev" 'NF>=3{print d, $2, $3}')
+      [ -n "$l" ] && rv="$rv$l"$'\n'
+    done
+    export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+    export DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}
+    systemctl --user restart box-adb
+    for r in 1 2 3 4 5 6 7 8 9 10 11 12; do sleep 1; "$ADB" devices 2>/dev/null | grep -q "^${PICO}[[:space:]]" && break; done
+    while read -r serial l r; do
+      [ -n "$serial" ] && "$ADB" -s "$serial" forward "$l" "$r" </dev/null >/dev/null 2>&1
+    done <<<"$fw"
+    while read -r serial r l; do
+      [ -n "$serial" ] && "$ADB" -s "$serial" reverse "$r" "$l" </dev/null >/dev/null 2>&1
+    done <<<"$rv"
+    jlog adb-restart-claim note "box-adb перезапущен после остановки лишнего сервера; forward/reverse восстановлены" fw "$(wc -l <<<"$fw" | tr -d ' ')" rv "$(printf '%s' "$rv" | grep -c .)"
+  fi
+  "$ADB" devices -l 2>&1 | sed -n '1,6p'
+}
+
 sub=${1:-}
 [ $# -gt 0 ] && shift
 case $sub in
@@ -812,6 +930,8 @@ case $sub in
   down) cmd_down "$@";;
   inst) cmd_inst_ls;;
   pico) cmd_pico "$@";;
+  adb-rescue) cmd_adb_rescue "$@";;
+  adb-stray) adb_stray_text;;
   lease) cmd_lease "$@";;
   release) cmd_release "$@";;
   leases) cmd_leases;;

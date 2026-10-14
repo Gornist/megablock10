@@ -98,6 +98,11 @@ else
   done < <(timeout 8 "$ADB" devices -l 2>/dev/null | sed '1d')
 fi
 info "$ADB_NOTE · устройств: ${#SERIALS[@]}"
+# ЛИШНИЙ adb-сервер (не 5037) держит USB-устройства и прячет их от основного: 14.10 очки пропали из adb после перезагрузки —
+# `adb -L tcp:5099` (поднят переменной ANDROID_ADB_SERVER_PORT=5099 у Godot) держал интерфейс Pico. Любой такой сервер — замечание.
+STRAY=""
+[ -f "$BOX/repo/scripts/box/ctl.sh" ] && STRAY=$(bash "$BOX/repo/scripts/box/ctl.sh" adb-stray </dev/null 2>/dev/null)
+[ -n "$STRAY" ] && problem "лишний adb-сервер вне 5037 держит USB-устройства и прячет их от основного: ${STRAY}— scripts/box.sh adb-rescue (серверы с клиентами не трогает)"
 # Кто убивает общий сервер: adb сам пишет в журнал службы цепочку процессов kill-server. Свежее убийство (30 мин) — замечание:
 # каждое рвёт устройства и reverse/forward у всех сессий.
 KILLS=$(journalctl --user -u box-adb --since '24 hours ago' --no-pager -o short-iso 2>/dev/null | grep -c 'killed by remote request')
@@ -200,6 +205,10 @@ if [ -f "$CTL" ]; then
   LLINES=$(bash "$CTL" leases </dev/null 2>/dev/null | sed 's/^/  /')
   [ -n "$LLINES" ] && info "брони:"$'\n'"$LLINES"
   # Очки Pico: датчик приближения заклеен, сами не гаснут — Awake без брони = замечание (риск выгорания матриц).
+  # Запаркованная карточка границы вне прогона — замечание: в очках человека будет пусто (инцидент 14.10 ~10:00): `box.sh pico unpark`.
+  if [ -n "$(find "$BOX/pico-parked.stack" -mmin +20 2>/dev/null)" ]; then
+    problem "карточка границы запаркована на другой дисплей (стек/boot: $(cat "$BOX/pico-parked.stack")) — человек в очках не увидит игру: scripts/box.sh pico unpark"
+  fi
   PICO_ST=$(bash "$CTL" pico status </dev/null 2>&1); PICO_RC=$?
   if [ "$PICO_RC" -ne 0 ] && grep -q 'БЕЗ БРОНИ' <<<"$PICO_ST"; then
     problem "$PICO_ST"
