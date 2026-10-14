@@ -98,6 +98,7 @@ var _state_k := 0.0   # время сервера в последнем сним
 var ice_audio_enabled := false
 var selected_daemon := ""
 var _ice_nodes: Dictionary = {}      # id ICE -> IceView
+var _beacon_nodes: Dictionary = {}   # id Маяка -> BeaconView (поле bk state, только тактовый режим)
 var _avatar_nodes: Dictionary = {}   # id чужого аватара -> AvatarView
 ## Чужие ICE и аватары показываются из буфера состояний с задержкой (RemoteTracks), а не прыжками по пакетам.
 var remote := RemoteTracks.new()
@@ -256,6 +257,30 @@ func apply_state(state: Dictionary) -> void:
 			(_ice_nodes[id] as Node).free()
 			_ice_nodes.erase(id)
 			remote.forget_ice(id)
+	_apply_beacons(state.get("bk", []))
+
+
+## Маяки узла: появились — создаём, угол и дальность — из снимка; пропали (другой узел, нет тактов) — убираем.
+func _apply_beacons(list: Array) -> void:
+	var seen := {}
+	for v: Dictionary in list:
+		var id := str(v["id"])
+		seen[id] = true
+		if not _beacon_nodes.has(id):
+			var b := BeaconView.new()
+			b.name = "Beacon_" + id
+			add_child(b)
+			_beacon_nodes[id] = b
+		(_beacon_nodes[id] as BeaconView).apply_view(v)
+	for id in _beacon_nodes.keys():
+		if not seen.has(id):
+			(_beacon_nodes[id] as Node).free()
+			_beacon_nodes.erase(id)
+
+
+## Маяк по id (тесты, превью).
+func beacon_view_of(id: String) -> BeaconView:
+	return _beacon_nodes.get(id)
 
 
 ## Свет зрения ICE на полу и стрелки: только когда сервер ведёт такты (в снимке есть tk). В realtime ноды нет.
