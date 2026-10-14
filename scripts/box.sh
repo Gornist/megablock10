@@ -90,6 +90,10 @@ elif ss -H -ltn 'sport = :5037' | grep -q .; then
 else
   systemctl --user start box-adb; sleep 2; ADB="служба box-adb: $(systemctl --user is-active box-adb)"
 fi
+# страж USB (только наблюдение и пробуждение RCPad, не нажимает на очки — поэтому ставится всегда, в отличие от guard)
+for U in box-usb-watch.service box-usb-watch.timer; do cp -f "$REPO/scripts/box/$U" "$HOME/.config/systemd/user/$U"; done
+systemctl --user daemon-reload
+systemctl --user enable --now box-usb-watch.timer >/dev/null 2>&1
 # автозапуск сеанса: Exec из клона (прежний файл — один раз в .orig)
 D=$HOME/.config/autostart/devbox-session.desktop
 [ -f "$D" ] && [ ! -f "$D.orig" ] && cp "$D" "$D.orig"
