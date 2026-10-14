@@ -9,7 +9,7 @@ NODES='^firmware/|^admin-web/server/src/(displays/|audio/|routes/audio\.ts|scrip
 DEVBOX='^scripts/(devbox-[^/]*|dbx\.sh|box[^/]*)$|^scripts/box/|^docs/devbox\.md'
 BLENDER='^netrun/assets/|^netrun/client/(avatar_view|hand_view|avatar_body|head_[^/]*)\.gd|^netrun/tests/assets_[^/]*'
 case $1 in
-  android)   IN='^(app|kit|rules|scripts/e2e)/|^docs/(android-handoff|architecture|refactor-plan|device-testing|db-migrations)\.md|^docs/ux/|^scripts/phone\.sh$|^\.github/workflows/(e2e|apk)\.yml'; OUT='';;
+  android)   IN='^(build\.gradle\.kts|settings\.gradle\.kts|gradle\.properties|gradlew(\.bat)?)$|^gradle/|^(app|kit|rules|scripts/e2e)/|^docs/(android-handoff|architecture|refactor-plan|device-testing|db-migrations)\.md|^docs/ux/|^scripts/phone\.sh$|^\.github/workflows/(e2e|apk)\.yml'; OUT='';;
   collector) IN='^admin-web/'; OUT="$NODES";;
   nodes)     IN="$NODES"; OUT='';;
   godot)     IN='^netrun/|^netrun-bridge/|^docs/netrun[^/]*|^\.github/workflows/netrun\.yml'; OUT="$BLENDER";;

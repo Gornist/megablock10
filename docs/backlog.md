@@ -7,7 +7,6 @@
 
 Формат строки: `- [ ] [зона] что сделать — зачем / откуда` (зона — как в `scripts/zone-check.sh`).
 
-- [ ] [android] Обновления зависимостей от dependabot: #258 (Gradle, 6 штук), #259 (Paparazzi) — прогнать `dbx.sh --full`, эталоны Paparazzi сверить, «готово» Pipeline
-- [ ] [collector] Обновления зависимостей от dependabot: #256 (@fastify/static), #257 (клиент, 5 штук) — `admin-web/tools/test.sh all`, «готово» Pipeline
+- [ ] [android] Переход на AGP 9.1 и compileSdk 37 — тогда поднять core-ktx 1.19+, Compose BOM 2026.09+, Paparazzi alpha05.1 (эталоны a11y/scroll/Dialogs перезаписать с проверкой) и убрать их ignore из `.github/dependabot.yml` — из #258/#259, 14.10
 - [ ] [godot] Витрина объектов `tests/showcase_preview.tscn` (ветка agent/gd-showcase) — PR, чтобы снимать все модели одной командой
 - [ ] [story] Библия мира в ветке agent/story-bible (30 коммитов, PR нет) — довести и сдать PR либо сказать, чего не хватает
