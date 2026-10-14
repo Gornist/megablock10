@@ -6,7 +6,7 @@
 оболочки (объём), облако точек, экспорт `.glb`, отчёт для `validate.py`.
 
 Контракт с Godot (шейдеры в `netrun/assets/shaders/`, подмена по имени материала):
-  * материал каждого меша называется ролью: `glow_edge` (светящиеся рёбра), `shell_soft` (мягкая оболочка),
+  * материал каждого меша называется ролью: `shell_soft` (мягкая оболочка), `streaks` (штрихи),
     `points` (облако точек), `solid_dark` (тёмная основа);
   * цвет вершин COLOR_0 = RGB цвет свечения, A = плотность/яркость;
   * `points`: каждая точка — квадрат в плоскости XZ Blender (в Godot — XY) с центром c и полуразмером h. UV0 углов
@@ -42,7 +42,7 @@ HEX = {
     "amber": "#ff7a1a",       # экран деки
 }
 TIERS = {"BASE": "cyan", "HARD": "blue", "NIGHTMARE": "violet"}
-ROLES = ("glow_edge", "shell_soft", "points", "streaks", "solid_dark")
+ROLES = ("shell_soft", "points", "streaks", "solid_dark")
 
 
 def lin(name):
