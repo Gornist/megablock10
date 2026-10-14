@@ -144,6 +144,11 @@ func _max_aw() -> int:
 	return m
 
 
+## Видна ли клетка маяку при его текущем угле (без счётчика и целей: для ботов раскладки, LayoutBots).
+func covers_cell(c: Vector2i) -> bool:
+	return TickVision.classify(_grid, _cell, DIRS[_idx], c, sight_cells(), float(_s["focus_deg"]), float(_s["focus_deg"])) != TickVision.NONE
+
+
 ## Видит ли маяк нетраннера в конце последнего такта.
 func sees(session: Variant) -> bool:
 	return int(_vis.get(session, TickVision.NONE)) != TickVision.NONE
