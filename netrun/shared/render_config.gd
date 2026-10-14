@@ -24,9 +24,12 @@ extends RefCounted
 ## volume_budget_ms = 0       ; регулятор плотности облаков (VolumeBudget): потолок GPU-времени кадра, мс (4…20; при 90 Гц ≈ 10,5); выше — облака редеют, ниже — густеют; 0 — выкл.
 
 const SECTION := "render"
-const KEYS := ["msaa", "layers", "foveation", "perf", "volumetric", "bench", "probe", "volume_budget_ms"]
+const KEYS := ["msaa", "layers", "foveation", "perf", "volumetric", "bench", "probe", "volume_budget_ms", "volume_impostor_m"]
 const VOLUME_BUDGET_MIN := 4.0
 const VOLUME_BUDGET_MAX := 20.0
+## Импостор дальних облаков (VolumeCloud): расстояние до камеры, мс м — дальше него облако заменяется билбордом; 0 — выкл. (по умолчанию).
+const VOLUME_IMPOSTOR_MIN := 4.0
+const VOLUME_IMPOSTOR_MAX := 40.0
 ## Ключи, удалённые рефактором (docs/netrun-refactor-plan.md): в старых netrun.cfg на очках встречаются, значения не читаем.
 const LEGACY_KEYS := ["aa", "fringe", "scale", "foveation_dynamic"]
 const VOLUMETRIC_DEFAULT := "off"
@@ -51,6 +54,8 @@ var bench: String = ""
 var probe: String = ""
 ## Потолок GPU-времени кадра для регулятора облаков (VolumeBudget), мс; 0 — выкл.
 var volume_budget_ms: float = 0.0
+## Порог импостора дальних облаков, м (VolumeCloud); 0 — выкл.
+var volume_impostor_m: float = 0.0
 var foveation: int = FOVEATION_DEFAULT
 ## Откуда прочитан файл ("" — файла или секции не было).
 var file_path: String = ""
@@ -110,6 +115,12 @@ static func from_config(cfg: ConfigFile) -> RenderConfig:
 					c.volume_budget_ms = float(n)
 				else:
 					c.warnings.append("volume_budget_ms: нужно 0 или число %s…%s, получено «%s» — регулятор выключен" % [VOLUME_BUDGET_MIN, VOLUME_BUDGET_MAX, v])
+			"volume_impostor_m":
+				var d: Variant = _number(v)
+				if d != null and (float(d) == 0.0 or (float(d) >= VOLUME_IMPOSTOR_MIN and float(d) <= VOLUME_IMPOSTOR_MAX)):
+					c.volume_impostor_m = float(d)
+				else:
+					c.warnings.append("volume_impostor_m: нужно 0 или число %s…%s, получено «%s» — импостор выключен" % [VOLUME_IMPOSTOR_MIN, VOLUME_IMPOSTOR_MAX, v])
 			"probe":
 				var spec := LoadProbe.parse(str(v))
 				c.probe = str(v).strip_edges().to_lower() if spec["on"] else ""
@@ -220,5 +231,5 @@ func apply_xr(iface: Object) -> PackedStringArray:
 
 ## Поля строки журнала `render …` (MbLog).
 func log_fields() -> Dictionary:
-	return {"msaa": msaa, "layers": layers, "perf": perf, "volumetric": volumetric, "bench": bench if bench != "" else "off", "probe": probe if probe != "" else "off", "volume_budget_ms": volume_budget_ms, "foveation": foveation,
+	return {"msaa": msaa, "layers": layers, "perf": perf, "volumetric": volumetric, "bench": bench if bench != "" else "off", "probe": probe if probe != "" else "off", "volume_budget_ms": volume_budget_ms, "volume_impostor_m": volume_impostor_m, "foveation": foveation,
 		"file": file_path if not file_path.is_empty() else "none"}

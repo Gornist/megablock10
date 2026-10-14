@@ -14,6 +14,8 @@
 #   cloud-props-2s  cloud-props + cloud_two_sided=1: задние грани объёма видны сквозь дыры (cull_disabled)
 #   cloud-vol       bench + volumetric=vault,portal: хранилище и порталы облаком частиц (VolumeRegistry, точки с поверхности модели)
 #   cloud-vol-budget cloud-vol + volume_budget_ms=10.5: регулятор плотности облаков по GPU-времени кадра (VolumeBudget)
+#   cloud-all       bench + volumetric=vault,portal,shard,exit,ice: все объёмные модули (рамка выхода, голограмма ICE, шарды)
+#   cloud-all-imp   cloud-all + volume_impostor_m=8: дальше 8 м облака — запечённые билборды (VolumeImpostor)
 #   probe-sweep     perf=on, probe=sweep: серия синтетической нагрузки (база + 14 вариантов, ≈3,5 мин) → таблица `[probe] ИТОГ`
 #
 # Ключи: имена из RenderConfig.KEYS (msaa layers foveation perf volumetric bench probe volume_budget_ms) пишутся в [render], остальные — в [assets]
@@ -24,7 +26,7 @@ set -e
 
 PACKAGE="com.megablok10.netrun"
 CFG_PATH="/sdcard/Android/data/$PACKAGE/files/netrun.cfg"
-RENDER_KEYS=" msaa layers foveation perf volumetric bench probe volume_budget_ms "
+RENDER_KEYS=" msaa layers foveation perf volumetric bench probe volume_budget_ms volume_impostor_m "
 
 [ -f "$HOME/netrun-env.sh" ] && . "$HOME/netrun-env.sh"
 . "$(cd "$(dirname "$0")" && pwd)/box_guard.sh"
@@ -62,6 +64,8 @@ if [ "$1" != "--reset" ]; then
     cloud-props-2s) set -- perf=on bench=entry cloud=1 cloud_two_sided=1 "$@" ;;
     cloud-vol)      set -- perf=on bench=entry volumetric=vault,portal "$@" ;;
     cloud-vol-budget) set -- perf=on bench=entry volumetric=vault,portal volume_budget_ms=10.5 "$@" ;;
+    cloud-all)      set -- perf=on bench=entry volumetric=vault,portal,shard,exit,ice "$@" ;;
+    cloud-all-imp)  set -- perf=on bench=entry volumetric=vault,portal,shard,exit,ice volume_impostor_m=8 "$@" ;;
     probe-sweep)    set -- perf=on probe=sweep "$@" ;;
     *) echo "pico_stand: неизвестный пресет «$preset» (есть: base bench cloud-props cloud-props-2s cloud-vol cloud-vol-budget probe-sweep)" >&2; exit 2 ;;
   esac
