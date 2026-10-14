@@ -3,12 +3,19 @@
 # владелец запускает: раньше он сам ходил по сессиям и вливал каждый PR отдельной командой.
 #   scripts/land.sh --check N [N…]   — только вердикт по каждому PR (агентам можно; ничего не меняет)
 #   scripts/land.sh N [N…]           — влить по порядку перемоткой (только владелец; агентам запрещено хуком guard-bash)
+#   scripts/land.sh --safe N [N…]    — то же, но только если каждый файл PR в безопасной области (SAFE ниже); так вливает
+#                                      Pipeline manager без владельца (решение владельца 14.10: «Pipeline вливает безопасные сам»)
 # Для каждого PR: открыт, база main, все проверки зелёные на текущем коммите, ветка — прямое продолжение main (перемотка).
 # Первый же PR, который не годится, останавливает очередь: остальное не трогается. После слияний — pull --ff-only основной папки.
-# Код 0 — всё влито (или --check: всё готово), 1 — очередь остановлена, 2 — ошибка вызова.
+# Код 0 — всё влито (или --check: всё готово), 1 — очередь остановлена, 2 — ошибка вызова, 3 — --safe: есть файлы вне SAFE.
 set -u
-CHECK=0; [ "${1:-}" = --check ] && { CHECK=1; shift; }
-[ $# -gt 0 ] || { sed -n 2,7p "$0"; exit 2; }
+CHECK=0; SAFE_ONLY=0
+case "${1:-}" in --check) CHECK=1; shift;; --safe) SAFE_ONLY=1; shift;; esac
+[ $# -gt 0 ] || { sed -n 2,9p "$0"; exit 2; }
+# Безопасно: документы, инструменты и тесты Сети, ассеты, скрипты devbox — не код игры, приложения, сервера, контрактов и CI.
+# Владельцу остаются app/ kit/ rules/ admin-web/ firmware/, код и протокол Сети, CI и правила агентов (.claude/, CLAUDE.md).
+SAFE='(\.md$|^docs/|^netrun/(tools|tests|assets)/|^scripts/box[^/]*$|^scripts/box/|^scripts/devbox-)'
+UNSAFE='^(CLAUDE\.md$|\.claude/|\.github/)'
 REPO=Gornist/megablock10
 MAIN=$(git -C "$(dirname "$0")" rev-parse --path-format=absolute --git-common-dir 2>/dev/null); MAIN=${MAIN%/.git}
 git -C "$MAIN" fetch -q origin main || { echo "LAND: не достучался до origin"; exit 1; }
@@ -26,6 +33,11 @@ for n in "$@"; do
   [ -z "$bad" ] || { echo "LAND #$n ($hd): CI не зелёный — $(echo $bad)"; exit 1; }
   git -C "$MAIN" fetch -q origin "$hd" 2>/dev/null
   git -C "$MAIN" merge-base --is-ancestor "$base" "$sha" 2>/dev/null || { echo "LAND #$n ($hd): отстал от main — Pipeline manager вливает main в ветку и ждёт CI"; exit 1; }
+  if [ $SAFE_ONLY = 1 ]; then
+    files=$(gh pr diff "$n" -R $REPO --name-only 2>/dev/null) || { echo "LAND #$n: список файлов недоступен"; exit 1; }
+    out=$(grep -Ev "$SAFE" <<<"$files"; grep -E "$UNSAFE" <<<"$files")
+    [ -z "$out" ] || { echo "LAND #$n: вне безопасной области — вливает владелец: $(echo $out | cut -c1-200)"; exit 3; }
+  fi
   if [ $CHECK = 1 ]; then echo "LAND #$n готов: $tt"; base=$sha; continue; fi
   gh api -X PATCH "repos/$REPO/git/refs/heads/main" -f sha="$sha" -F force=false >/dev/null || { echo "LAND #$n: сервер отказал в перемотке"; exit 1; }
   echo "LAND #$n влит: ${sha:0:7} $tt"; base=$sha; done_n="$done_n #$n"

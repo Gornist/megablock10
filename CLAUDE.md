@@ -37,7 +37,8 @@
 | **Devbox** (Sonnet) | машина devbox: [docs/devbox.md](docs/devbox.md) (ТЗ), `scripts/box*`, `scripts/devbox-*`, `scripts/dbx.sh`; на devbox — сервисы, очереди, брони устройств и портов, экземпляры программ на сессию (решение владельца 13.10) | код проектов; чужие процессы, устройства и каталоги — по списку «Нельзя» в ТЗ |
 | **Pipeline manager** | общие правила и инструменты: `CLAUDE.md`, `.claude/` (хук, настройки, общие skills), общие `scripts/` (`check`, `verify`, `ci-wait`, `agent-worktree`, `zone-check`, `train`, `land`, `session-stats`, `test-hook`, `lint-pipeline`), `.github/dependabot.yml`, `labeler.yml`, workflows `main`/`pipeline`/`labeler`, `docs/ci.md`; `scripts/phone.sh` дополняет и Android App; **очередь слияний в `main` за все сессии** (Git и процесс) | код областей |
 
-Общее для всех: `docs/progress.md` и [GLOSSARY.md](GLOSSARY.md) (словарь проекта: одно слово — одно значение) — каждая сессия правит только свой раздел; `.github/workflows/` своей области — можно, `main.yml` — через
+Общее для всех: `docs/progress.md` и [GLOSSARY.md](GLOSSARY.md) (словарь проекта: одно слово — одно значение) — каждая сессия правит только свой раздел;
+[docs/backlog.md](docs/backlog.md) — очередь задач по зонам: **нет текущей задачи — бери верхнюю своей зоны сама**, не жди, пока позовут (хук на старте показывает три верхние); `.github/workflows/` своей области — можно, `main.yml` — через
 Pipeline manager. Работать в своей worktree (`scripts/agent-worktree.sh new <имя>`), добавлять файлы явными путями, в `main` — только владелец.
 Перед коммитом и PR — `scripts/zone-check.sh <android|collector|nodes|godot|blender|gamedesign|story|devbox|pipeline>`: печатает файлы вне зоны (таблица продублирована в скрипте —
 правите таблицу, правьте и его).
@@ -71,12 +72,14 @@ Pipeline manager. Работать в своей worktree (`scripts/agent-worktr
 ## Git и процесс
 
 - Коммиты, комментарии и документация — на русском. Сообщение коммита: что и **почему** (какой сбой, какой журнал).
-- В `main` — только по явной команде владельца, перемоткой (fast-forward) с зелёными CI и e2e. Историю `main` не переписывать.
+- В `main` — только перемоткой (fast-forward) с зелёными CI и e2e: по команде владельца или безопасным поездом Pipeline manager (п. 3). Историю `main` не переписывать.
 - **Слияния ведёт Pipeline manager** (решение владельца 06.10: он не должен ходить по сессиям и собирать, что готово):
   1. Сессия доводит ветку: `verify.sh --full`, `zone-check.sh`, пуш, PR (описание — skill `pr`), зелёный CI (`scripts/ci-wait.sh pr N` в фоне).
   2. Пишет Pipeline manager (SendMessage, не владельцу): «готово к слиянию: PR N — что внутри; дверь/радиус; порядок/пара с PR M; ждёт ли решения владельца».
-  3. Pipeline manager собирает готовые PR поездом (`scripts/train.sh`, один CI на свежем `main`), владелец вливает одной командой
-     `scripts/land.sh N`. Агентам перемотка `main` запрещена хуком. Механика очереди, поездов, пар и уборки — `docs/ci.md`.
+  3. Pipeline manager собирает готовые PR поездом (`scripts/train.sh`, один CI на свежем `main`). Поезд только из безопасной области
+     (документы, `netrun/tools|tests|assets`, скрипты devbox — список `SAFE` в `land.sh`) он вливает сам `scripts/land.sh --safe N`
+     (решение владельца 14.10: владелец был ожиданием на каждом цикле); остальное — владелец одной командой `scripts/land.sh N`.
+     Прочая перемотка `main` агентам запрещена хуком. Механика очереди, поездов, пар и уборки — `docs/ci.md`.
   4. Чужую ветку Pipeline manager меняет только вливанием `origin/main` и предупреждает её сессию.
 - **После «влит» — новая задача в новой worktree** (`agent-worktree.sh new`): `land.sh` сам убирает ветки `agent/*` влитых PR и их
   чистые worktree (с незакоммиченным или игнорируемыми файлами — оставляет и называет), GitHub удаляет ветку PR. Своё нужное

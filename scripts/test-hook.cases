@@ -24,6 +24,8 @@
 2	true; /a/b/scripts/land.sh 9
 2	./scripts/land.sh 40 41
 0	scripts/land.sh --check 40 41
+0	scripts/land.sh --safe 40
+2	scripts/land.sh 40 --safe
 0	gh pr create --body "владельцу scripts/land.sh 47"
 0	git commit -m "правка scripts/land.sh"
 0	grep -n land scripts/land.sh

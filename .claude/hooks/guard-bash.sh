@@ -23,8 +23,9 @@ fi
 has 'refs/heads/main' && has '(^|[;&|[:space:]])gh[[:space:]]+api' &&
   deny "перемотка main — только владелец (scripts/land.sh N…); очередь и вердикт — scripts/land.sh --check N…"
 # land.sh — только как команда (начало строки или после ; & |), а не упоминание в тексте коммита или PR (ложный отказ 06.10).
-has '(^|[;&|])[[:space:]]*([^[:space:];&|]*/)?land\.sh([[:space:]]|$)' && ! has 'land\.sh[[:space:]]+--check' &&
-  deny "scripts/land.sh вливает в main — запускает только владелец; агенту — scripts/land.sh --check N…"
+# --safe вливает только PR из безопасной области (решение владельца 14.10: Pipeline вливает безопасные поезда сам).
+has '(^|[;&|])[[:space:]]*([^[:space:];&|]*/)?land\.sh([[:space:]]|$)' && ! has 'land\.sh[[:space:]]+--(check|safe)' &&
+  deny "scripts/land.sh вливает в main — запускает только владелец; агенту — scripts/land.sh --check N… или --safe N…"
 # Исключение — пуш в удалённый devbox (skill devbox): это не публикация, а доставка на машину сборки.
 has '(^|[;&|[:space:]])git[[:space:]]+(push|commit)([[:space:]].*)?[[:space:]]--no-verify' && ! has 'git[[:space:]]+push[[:space:]]+(-[^[:space:]]+[[:space:]]+)*devbox[[:space:]]' &&
   deny "--no-verify — хук не обходим, красный хук чинить (пуш в devbox — можно)."
