@@ -20,6 +20,8 @@ var daemons := DaemonService.new()
 var ice_settings: Dictionary = {}
 var trace_settings: Dictionary = {}
 var black_ice_settings: Dictionary = {}
+## Ожоги Black ICE за забег (сессия → число): общий для всех узлов мира, чтобы ожог не сбрасывался переходом (ice.md §6.1).
+var black_burns: Dictionary = {}
 
 var _takes: Dictionary = {}                # сессия -> число незавершённых take (общий для узлов)
 var _where: Dictionary = {}                # сессия -> узел, где игрок был, когда закончится выход
@@ -69,6 +71,7 @@ func start(server: NetServer, bridge_api: BridgeApi, node_graph: NodeGraph) -> v
 		gn.ice_settings = ice_settings
 		gn.trace_settings = trace_settings
 		gn.black_ice_settings = black_ice_settings
+		gn.black_burns = black_burns
 		gn.share_takes_inflight(_takes)
 		gn.apply_def(id, graph.nodes[id], graph.settings, graph)
 		add_child(gn)

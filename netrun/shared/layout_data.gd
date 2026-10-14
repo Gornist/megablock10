@@ -41,6 +41,9 @@ var beacons: Array = []
 var sensors: Array = []
 ## Black ICE (`black` в файле): {id, route} или пусто.
 var black: Dictionary = {}
+## Логово Black ICE (`black: {id, kind, cell: [bx, bz]}` — левый верхний блок 2×2 блоков карты «L»): {id, kind: String (вид, "" — базовый),
+## cells: Array[Vector2i] (16 клеток 1 м), home: Vector2i (клетка, где спит ICE)} или пусто. Без лога — Black ICE бродит по black.route (legacy).
+var lair: Dictionary = {}
 ## Подсказки: {cell: Vector2i (клетка 1 м), text: String, pos: Vector3 (место в мире, y = 0)}.
 var signs: Array = []
 ## Дальность зрения Стражей этой раскладки, клеток (meta.sight_cells; по умолчанию как TickIce.DEFAULTS).
@@ -180,10 +183,15 @@ func _fill(d: Dictionary) -> String:
 	var bk: Variant = d.get("black")
 	if bk is Dictionary:
 		var bd: Dictionary = bk
-		var broute := _route(bd.get("route", []))
-		if broute.has("error"):
-			return "black: " + str(broute["error"])
-		black = {"id": str(bd.get("id", "black_1")), "route": broute["route"]}
+		if bd.has("cell"):
+			var lerr := _fill_lair(bd)
+			if lerr != "":
+				return lerr
+		else:
+			var broute := _route(bd.get("route", []))
+			if broute.has("error"):
+				return "black: " + str(broute["error"])
+			black = {"id": str(bd.get("id", "black_1")), "route": broute["route"]}
 	elif bk != null:
 		return "black: нужен объект или null"
 	err = _fill_signs(d.get("signs", []))
@@ -304,6 +312,24 @@ func _fill_ice(src: Variant) -> String:
 		if r.has("error"):
 			return "ice %s: %s" % [str(ed.get("id", "?")), str(r["error"])]
 		sentries.append({"id": str(ed.get("id", "g%d" % (sentries.size() + 1))), "route": r["route"]})
+	return ""
+
+
+## Логово: `cell` — левый верхний из четырёх блоков карты, все четыре — «L» (4×4 м, 2×2 клетки карты по 2 м).
+func _fill_lair(bd: Dictionary) -> String:
+	var b: Variant = _map_cell(bd.get("cell"))
+	if b == null:
+		return "black: cell [bx, bz] вне карты"
+	var tl: Vector2i = b
+	var cells: Array[Vector2i] = []
+	for dx in 2:
+		for dy in 2:
+			var bb := Vector2i(tl.x + dx, tl.y + dy)
+			if bb.x >= SIZE or bb.y >= SIZE or blocks[bb.y][bb.x] != "L":
+				return "black: логову нужны четыре блока «L» (2×2) от блока %s" % str(tl)
+			cells.append_array(block_cells(bb))
+	lair = {"id": str(bd.get("id", "black_1")), "kind": str(bd.get("kind", "")), "cells": cells,
+		"home": Vector2i(2 * tl.x + 2, 2 * tl.y + 2)}
 	return ""
 
 

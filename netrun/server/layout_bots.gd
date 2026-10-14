@@ -827,3 +827,67 @@ static func check_escape(l: LayoutData, tier_name: String = "BASE") -> Dictionar
 
 static func _idx_static(c: Vector2i) -> int:
 	return c.y * NodeGrid.cols() + c.x
+
+
+# --- бегун Black ICE (ice.md §6.3) ---
+
+## Один забег: ICE просыпается по решению мастера в такт 0, нетраннер начинает бежать кратчайшим путём к выходу/порталу через `delay` тактов.
+## {ok: дошёл без захвата, ticks, captured_at (такт или −1)}. Без логова в раскладке — {ok: true, ticks: 0}.
+func black_runner_run(start: Vector2i, delay: int = 0, trace: float = 60.0) -> Dictionary:
+	if layout.lair.is_empty() or error != "":
+		return {"ok": true, "ticks": 0, "captured_at": -1}
+	var targets := _exit_targets()
+	var path := _shortest(_idx(start), targets)
+	if path.is_empty():
+		return {"ok": false, "ticks": 0, "captured_at": -1}
+	var lair_cells: Array[Vector2i] = []
+	for c: Vector2i in layout.lair["cells"]:
+		lair_cells.append(c)
+	var tb := TickBlack.new(lair_cells, layout.lair["home"], grid, {}, {})
+	tb.wake_by_master()
+	var step := 0
+	for k in path.size() + delay + 24:
+		if k >= delay and step + 1 < path.size():
+			step += 1
+			tb.on_hop("bot", _cell(path[step]))
+		var at: Vector2i = _cell(path[step])
+		for ev: Dictionary in tb.tick({"targets": {"bot": at}, "traces": {"bot": trace}, "hidden": {}, "alarm_level": 0}):
+			if str(ev["kind"]) == "capture":
+				return {"ok": false, "ticks": k + 1, "captured_at": k + 1}
+		if targets.has(path[step]):
+			return {"ok": true, "ticks": k + 1, "captured_at": -1}
+	return {"ok": false, "ticks": path.size() + delay + 24, "captured_at": -1}
+
+
+## Бегун из каждой `stride`-й свободной клетки при начале бега в тактах 0…2 пробуждения: {starts, failed: Array[Vector2i], first_fail}.
+func black_runner_report(stride: int = 2) -> Dictionary:
+	var failed: Array[Vector2i] = []
+	var starts := 0
+	var lair := {}
+	for c: Vector2i in layout.lair.get("cells", []):
+		lair[c] = true
+	for y in range(0, NodeGrid.rows(), stride):
+		for x in range(0, _cols, stride):
+			var c := Vector2i(x, y)
+			if grid.is_occupied(c) or lair.has(c):
+				continue
+			starts += 1
+			for delay in [0, 1, 2]:
+				if not bool(black_runner_run(c, delay)["ok"]):
+					failed.append(c)
+					break
+	return {"starts": starts, "failed": failed}
+
+
+## Проверка ice.md §6.3: из любой клетки при пробуждении бегун доходит до выхода без захвата, если побежал в первые 2 такта.
+static func check_black_runner(l: LayoutData, tier_name: String = "NIGHTMARE", stride: int = 2) -> Dictionary:
+	if l.lair.is_empty():
+		return {"ok": true, "detail": "логова нет — Black ICE не спит в раскладке"}
+	var b := LayoutBots.new(l, tier_name)
+	if b.error != "":
+		return {"ok": false, "detail": b.error}
+	var r := b.black_runner_report(stride)
+	var failed: Array = r["failed"]
+	if failed.is_empty():
+		return {"ok": true, "detail": "бегун уходит с %d стартовых клеток" % r["starts"]}
+	return {"ok": false, "detail": "захват при побеге с %d из %d клеток, например %s" % [failed.size(), r["starts"], str(failed[0])]}

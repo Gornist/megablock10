@@ -77,6 +77,9 @@ var ice_settings: Dictionary = {}
 var trace_settings: Dictionary = {}
 ## Поверх ice_settings — только для Black ICE (hunt_speed, hunt_level, дальность взгляда…).
 var black_ice_settings: Dictionary = {}
+## Ожоги Black ICE за забег: сессия → число. Один словарь на весь мир (GraphWorld выдаёт его всем узлам): ожог не лечится и не сбрасывается
+## переходом в другой узел (ice.md §6.1). Отдельный узел без мира — свой словарь.
+var black_burns: Dictionary = {}
 ## Клетки 1 м с колоннами: одна на узел, её видят все ICE (колонна закрывает им взгляд).
 var ice_grid: NodeGrid = NodeGrid.for_layout()
 ## Раскладка узла (data/layouts): сетка, хранилища, порталы, вход, выход, маршруты Стражей. Узел без поля layout и одиночный узел — legacy
@@ -153,6 +156,8 @@ var _tick_mode := false
 var _tick_ices: Dictionary = {}      # IceNode -> TickIce (только Soft ICE тактового режима)
 var _beacons: Array[TickBeacon] = []   # Маяки раскладки (тактовый режим; ice.md §5): вращаются каждый такт, без IceNode
 var _beacon_ids: Dictionary = {}     # TickBeacon -> id маяка из раскладки (журнал, state)
+var _black_brain: TickBlackBrain     # Black ICE по тактам (раскладка с логовом, тактовый режим); null — прежний IceBrain
+var _black_log: Dictionary = {}      # сессия → журнал Black ICE на момент флэтлайна (уйдёт в session.data.world.black_log)
 var _sensors: Array[TickSensor] = []   # Датчики раскладки (тактовый режим; ice.md §5): луч, вкл/выкл по тиру
 var _sensor_ids: Dictionary = {}     # TickSensor -> id датчика из раскладки
 var _sensor_hit: Dictionary = {}     # TickSensor -> {сессия: true}: уже сработал на неё в этом включении (повторно — после выключения)
@@ -258,6 +263,8 @@ func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 	net.teleported.connect(func(session: String, from: Vector3, to: Vector3) -> void:
 		register_move(session)
 		_sensors_hop(session, from, to)
+		if _black_brain != null:
+			_black_brain.black.on_hop(session, NodeGrid.cell_of(to))
 		breach.end_early(session, "teleport")
 		charge.end_early(session, "teleport")
 		decrypt.end_early(session, "teleport"))
@@ -344,6 +351,10 @@ func has_black_ice() -> bool:
 func enable_black_ice() -> void:
 	if has_black_ice():
 		return
+	if _tick_mode and not layout.lair.is_empty():
+		# Логово раскладки: Black ICE спит в нём и живёт по тактам (TickBlack), а не бродит по маршруту.
+		_add_ice(str(layout.lair["id"]), [NodeGrid.center(layout.lair["home"])], true, [], true)
+		return
 	for d in NodeLayout.BLACK_ICE:
 		_add_ice(d["id"], d["waypoints"], true)
 
@@ -365,7 +376,7 @@ func _add_layout_sentry(sentry: Dictionary) -> void:
 	_add_ice(str(sentry["id"]), wps, false, route)
 
 
-func _add_ice(id: String, waypoints: Array, black: bool = false, route: Array = []) -> void:
+func _add_ice(id: String, waypoints: Array, black: bool = false, route: Array = [], in_lair: bool = false) -> void:
 	var wps: Array[Vector3] = []
 	for w in waypoints:
 		wps.append(w)
@@ -379,6 +390,14 @@ func _add_ice(id: String, waypoints: Array, black: bool = false, route: Array = 
 		settings.merge(black_ice_settings, true)
 		settings["black"] = true
 	ice.setup(settings, wps, ice_grid)
+	if in_lair:
+		var lair_cells: Array[Vector2i] = []
+		for c: Vector2i in layout.lair["cells"]:
+			lair_cells.append(c)
+		var tb := TickBlack.new(lair_cells, layout.lair["home"], ice_grid, black_ice_settings.get("tick", {}), black_burns)
+		_black_brain = TickBlackBrain.new(tb, settings)
+		_black_brain.ejected.connect(func(s: String, r: String) -> void: ice.ejected.emit(s, r))
+		ice.brain = _black_brain
 	if _tick_mode and not black:
 		var ti := TickIce.new(_tick_ice_settings(settings), route if not route.is_empty() else TickIce.route_from_points(wps), ice_grid)
 		_tick_ices[ice] = ti
@@ -1082,6 +1101,7 @@ func _run_tick(live: Array, meters: Dictionary, dt_sec: float) -> void:
 	for session in captured:
 		if net.has_avatar(session):
 			(captured[session] as IceNode).ejected.emit(session, "caught")
+	_step_tick_black(pos, hidden, meters)
 	_step_black(seen_pos, meters)
 	for s: Variant in tick_clock.last_moved:
 		_grace_spent[s] = true   # ходила: грейс кончится со следующего такта (в этом ICE уже отходил по правилу)
@@ -1113,6 +1133,39 @@ func _step_black(seen_pos: Dictionary, meters: Dictionary) -> void:
 				if not net.has_avatar(s):
 					targets.erase(s)
 		ice.position = ice.brain.position
+
+
+## Black ICE логова: один такт TickBlack. Скрытые (Призрак, входные такты) — пинг мимо; пробуждение, пинги, захваты — в журнал узла;
+## флэтлайн откладывает журнал (_black_log) для session.data.world.black_log.
+func _step_tick_black(pos: Dictionary, hidden: Dictionary, meters: Dictionary) -> void:
+	if _black_brain == null:
+		return
+	var targets := {}
+	var traces := {}
+	for s in pos:
+		targets[s] = NodeGrid.cell_of(pos[s])
+		if meters.has(s):
+			traces[s] = (meters[s] as TraceMeter).value()
+	for ev: Dictionary in _black_brain.tick_step({"targets": targets, "hidden": hidden, "traces": traces, "alarm_level": alarm_level}):
+		var kind := str(ev["kind"])
+		print("[black] %s %s" % [kind, str(ev)])
+		if kind == "flatline":
+			_black_log[str(ev["session"])] = ev["journal"]
+		elif kind in ["wake", "hunt", "lost", "capture"]:
+			var e := ev.duplicate()
+			e["kind"] = "black_" + kind
+			event.emit(e)
+
+
+## Мастер будит Black ICE узла (ice.md §6.1: «мастер» — одна из причин пробуждения).
+func wake_black_ice() -> void:
+	if _black_brain != null:
+		_black_brain.black.wake_by_master()
+
+
+## Black ICE логова по тактам (для тестов, сценариев и панели мастера); null — узел без логова.
+func black_ice() -> TickBlack:
+	return _black_brain.black if _black_brain != null else null
 
 
 ## Сессия с наибольшим счётчиком у этого ICE (для журнала); пусто — никого.
@@ -1195,6 +1248,14 @@ func _broadcast_state() -> void:
 		}
 		if _tick_mode:
 			_add_tick_fields(entry, ice)
+		if b is TickBlackBrain:
+			# Фаза: 0 сон, 1 пробуждение, 2 охота, 3 возврат; bw — тактов до конца пробуждения (на деке «ЧЁРНЫЙ ЛЁД 6…»); pg — до пинга; bc — клетка.
+			var bb: TickBlack = (b as TickBlackBrain).black
+			var bc := bb.cell()
+			entry["bp"] = bb.phase
+			entry["bw"] = bb.wake_left()
+			entry["pg"] = bb.ping_in()
+			entry["c"] = [bc.x, bc.y]
 		ice_list.append(entry)
 	for session in _live_sessions():
 		var ds: DaemonSession = _sessions[session]
@@ -1217,6 +1278,8 @@ func _broadcast_state() -> void:
 				fields["bk"] = beacon_view()
 			if not _sensors.is_empty():
 				fields["sn"] = sensor_view()
+		if _black_brain != null:
+			fields["burn"] = int(black_burns.get(session, 0))   # ожоги за забег, на деке «ОЖОГ 1/3»
 		net.send_to(session, WorldMsg.encode_fields(WorldMsg.STATE, fields), false)
 
 
@@ -1453,6 +1516,8 @@ func _forget_in_ices(session: String) -> void:
 			ice.brain.forget(session)
 	for ice: IceNode in _tick_ices:
 		(_tick_ices[ice] as TickIce).forget(session)
+	if _black_brain != null:
+		_black_brain.black.forget(session)
 
 
 func _on_level_changed(old_level: int, new_level: int, value: float, session: String) -> void:
@@ -1744,7 +1809,7 @@ func _merge_world(session: String, fields: Dictionary) -> void:
 
 ## Пометка в session.data.world: что сервер мира закрывает эту сессию (finish, disconnect). Остальные поля world сохраняются.
 ## Повтор при version_conflict и обрыве связи; не вышло окончательно (документа нет, отказ) — продолжаем без пометки.
-func _mark_finish(session: String, finish: String, disconnect: bool) -> void:
+func _mark_finish(session: String, finish: String, disconnect: bool, extra: Dictionary = {}) -> void:
 	if bridge == null:
 		return
 	for attempt in FINISH_ATTEMPTS:
@@ -1756,6 +1821,7 @@ func _mark_finish(session: String, finish: String, disconnect: bool) -> void:
 			var w: Dictionary = (data.get("world", {}) as Dictionary).duplicate(true) if data.get("world") is Dictionary else {}
 			w["finish"] = finish
 			w["disconnect"] = disconnect
+			w.merge(extra, true)   # например black_log: журнал Black ICE для карточки флэтлайна (поле world непрозрачно для Моста)
 			data["world"] = w
 			@warning_ignore("redundant_await")
 			var r: Dictionary = await bridge.put_doc(BridgeApi.T_SESSION, session, int(cur["ver"]), data)
@@ -1844,7 +1910,10 @@ func _finish_in_bridge(ev: Dictionary) -> void:
 		await get_tree().process_frame
 	if ev["reason"] == ExitLogic.REASON_FLATLINE:
 		# Пометка в Мосте ДО ожидания: рестарт сервера мира посреди него продолжит этот же флэтлайн (recover).
-		await _mark_finish(session, "flatline", bool(ev.get("disconnect", false)))
+		var extra := {}
+		if _black_log.has(session):
+			extra["black_log"] = _black_log[session]
+		await _mark_finish(session, "flatline", bool(ev.get("disconnect", false)), extra)
 		var verdict := await _await_master_flatline(session)
 		if verdict == "":
 			return  # узел закрывается: продолжит следующий процесс по пометке
