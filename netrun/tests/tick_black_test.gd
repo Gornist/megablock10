@@ -155,32 +155,76 @@ func test_два_пинга_мимо_возврат_в_логово_и_чутк�
 			break   # дальше — возврат, а не новая охота при том же trace
 	assert_bool(lost).is_true()
 	for i in 20:
-		b.tick(_ctx(tg, {"s1": 30.0}))   # trace упал; на возврате в логово наибольший в узле — 30
+		b.tick(_ctx(tg, {"s1": 60.0}))   # возврат в логово: опора чуткого сна — 60
 		if b.phase == TickBlack.Phase.SLEEP:
 			break
 	assert_int(b.phase).is_equal(TickBlack.Phase.SLEEP)
-	# чуткий сон: порог min(50, 30 + 10) = 40, пробуждение за 3 такта
-	b.tick(_ctx(tg, {"s1": 39.0}))
+	# чуткий сон: порог max(50, 60 + 10) = 70, пробуждение за 3 такта
+	b.tick(_ctx(tg, {"s1": 69.0}))
 	assert_int(b.phase).is_equal(TickBlack.Phase.SLEEP)
-	b.tick(_ctx(tg, {"s1": 40.0}))
+	b.tick(_ctx(tg, {"s1": 70.0}))
 	assert_int(b.phase).is_equal(TickBlack.Phase.WAKING)
 	assert_int(b.wake_left()).is_equal(3)
 
 
-func test_чуткий_сон_не_выше_50() -> void:
+## Чёрный ICE после потери следа спит чутко; at_return — trace каждого нетраннера в момент возврата в логово (опоры чуткого сна).
+func _sleeping_light(at_return: Dictionary, alarm: int = 0) -> TickBlack:
 	var b := _black()
+	var here := {}
+	var away := {}
+	var hid := {}
+	for s in at_return:
+		here[s] = FAR
+		away[s] = Vector2i(13, 14)
+		hid[s] = true
+	b.wake_by_master()
 	for i in 7:
-		b.tick(_ctx({"s1": FAR}, {"s1": 85.0}))
+		b.tick(_ctx(here, at_return, {}, alarm))
+	assert_int(b.phase).is_equal(TickBlack.Phase.HUNT)
 	for i in 12:
-		b.tick(_ctx({"s1": Vector2i(13, 14)}, {"s1": 85.0}, {"s1": true}))   # Призрак далеко: пинги мимо, потеря следа
+		b.tick(_ctx(away, at_return, hid, alarm))   # Призрак далеко: пинги мимо, потеря следа
 		if b.phase == TickBlack.Phase.RETURNING:
 			break
 	for i in 20:
-		b.tick(_ctx({"s1": FAR}, {"s1": 85.0}))
+		b.tick(_ctx(here, at_return, {}, alarm))
 		if b.phase == TickBlack.Phase.SLEEP:
 			break
-	# возврат при trace 85: порог min(50, 95) = 50 — второй нетраннер с trace 60 его бы разбудил
-	b.tick(_ctx({"s1": FAR, "s2": FAR}, {"s1": 40.0, "s2": 60.0}))
+	assert_int(b.phase).is_equal(TickBlack.Phase.SLEEP)
+	return b
+
+
+func test_чуткий_сон_порог_у_каждого_игрока_свой() -> void:
+	var b := _sleeping_light({"s1": 85.0, "s2": 60.0})
+	b.tick(_ctx({"s1": FAR, "s2": FAR}, {"s1": 85.0, "s2": 60.0}))   # те же trace — не будит сразу
+	assert_int(b.phase).is_equal(TickBlack.Phase.SLEEP)
+	b.tick(_ctx({"s1": FAR, "s2": FAR}, {"s1": 94.0, "s2": 69.0}))
+	assert_int(b.phase).is_equal(TickBlack.Phase.SLEEP)
+	b.tick(_ctx({"s1": FAR, "s2": FAR}, {"s1": 94.0, "s2": 70.0}))   # бывший в узле с 60 — на 70
+	assert_int(b.phase).is_equal(TickBlack.Phase.WAKING)
+	var c := _sleeping_light({"s1": 85.0})
+	c.tick(_ctx({"s1": FAR}, {"s1": 94.0}))
+	assert_int(c.phase).is_equal(TickBlack.Phase.SLEEP)
+	c.tick(_ctx({"s1": FAR}, {"s1": 95.0}))   # ушедший на 85 будит на 95
+	assert_int(c.phase).is_equal(TickBlack.Phase.WAKING)
+
+
+func test_вошедший_позже_с_высоким_trace_будит_сразу_а_с_низким_по_своей_опоре() -> void:
+	var b := _sleeping_light({"s1": 85.0})
+	b.tick(_ctx({"s1": FAR, "s3": FAR}, {"s1": 85.0, "s3": 60.0}))   # новичок с 60: опора min(60, 40) = 40 → порог 50
+	assert_int(b.phase).is_equal(TickBlack.Phase.WAKING)
+	var c := _sleeping_light({"s1": 85.0})
+	c.tick(_ctx({"s1": FAR, "s3": FAR}, {"s1": 85.0, "s3": 30.0}))   # вошёл с 30: опора 30 → порог max(50, 40) = 50
+	assert_int(c.phase).is_equal(TickBlack.Phase.SLEEP)
+	c.tick(_ctx({"s1": FAR, "s3": FAR}, {"s1": 85.0, "s3": 50.0}))
+	assert_int(c.phase).is_equal(TickBlack.Phase.WAKING)
+
+
+func test_тревога_будит_на_переходе_а_не_пока_держится() -> void:
+	var b := _sleeping_light({"s1": 10.0}, 3)   # уровень 3 держится всё время потери следа и возврата
+	for i in 4:
+		b.tick(_ctx({"s1": FAR}, {"s1": 10.0}, {}, 3))
+	assert_int(b.phase).is_equal(TickBlack.Phase.SLEEP)   # повторно не будит
+	b.tick(_ctx({"s1": FAR}, {"s1": 10.0}, {}, 4))          # переход на 4 — будит
 	assert_int(b.phase).is_equal(TickBlack.Phase.WAKING)
 
 

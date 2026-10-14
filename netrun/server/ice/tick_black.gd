@@ -9,7 +9,8 @@ enum Phase { SLEEP, WAKING, HUNT, RETURNING }
 
 const DEFAULTS := {
 	"wake_trace": 50.0,          # trace нетраннера узла, при котором ICE просыпается (глубокий сон)
-	"wake_light_trace_step": 10.0,  # чуткий сон: будит каждые новые +10 trace к уровню на момент возврата в логово
+	"wake_light_trace_step": 10.0,  # чуткий сон: порог игрока max(50, ref + 10)
+	"wake_newcomer_ref_cap": 40.0,  # опора вошедшего в узел позже: min(trace при входе, 40)
 	"wake_ticks": 6,
 	"wake_light_ticks": 3,       # пробуждение из чуткого сна
 	"wake_alarm_level": 3,       # тревога узла, будящая ICE
@@ -35,7 +36,8 @@ var _cell: Vector2i
 var _t := 0
 var _wake_left := 0
 var _light := false              # «чуткий сон» после потери следа
-var _ref_trace := 0.0            # trace на момент возврата в логово (чуткий сон будит при +wake_light_trace_step)
+var _refs: Dictionary = {}       # сессия → опора чуткого сна: trace на возврате ICE в логово (вошедшему позже — min(trace при входе, 40))
+var _prev_alarm := 0             # уровень тревоги узла на прошлом такте: будит только переход вверх
 var _since_ping := 0
 var _misses := 0
 var _known := Vector2i.ZERO      # последняя засечённая клетка цели
@@ -163,6 +165,9 @@ func tick(ctx: Dictionary) -> Array:
 	var traces: Dictionary = ctx.get("traces", {})
 	var alarm := int(ctx.get("alarm_level", 0))
 	var immune: Dictionary = ctx.get("immune", {})
+	# Тревога будит только при переходе на уровень 3 (и 4), а не пока уровень держится: иначе потеря следа не давала бы передышки.
+	var alarm_up := alarm > _prev_alarm and alarm >= int(_s["wake_alarm_level"])
+	_prev_alarm = alarm
 	for s in _near.keys():
 		if not targets.has(s):
 			_near.erase(s)
@@ -173,7 +178,7 @@ func tick(ctx: Dictionary) -> Array:
 		return events
 	match phase:
 		Phase.SLEEP:
-			_tick_sleep(targets, traces, alarm, events)
+			_tick_sleep(targets, traces, alarm_up, events)
 		Phase.WAKING:
 			_wake_left -= 1
 			if _wake_left > 0:
@@ -193,7 +198,9 @@ func tick(ctx: Dictionary) -> Array:
 			if _cell == _home:
 				phase = Phase.SLEEP
 				_light = true
-				_ref_trace = _max_trace(traces)
+				_refs.clear()
+				for s in traces:
+					_refs[s] = float(traces[s])   # опора чуткого сна — trace каждого игрока на возврате
 				_log("sleep", {"light": true})
 				events.append({"kind": "sleep"})
 	return events
@@ -206,18 +213,24 @@ func _max_trace(traces: Dictionary) -> float:
 	return m
 
 
-func _tick_sleep(targets: Dictionary, traces: Dictionary, alarm: int, events: Array) -> void:
+func _tick_sleep(targets: Dictionary, traces: Dictionary, alarm_up: bool, events: Array) -> void:
 	var reason := ""
 	if _master:
 		reason = "master"
-	elif alarm >= int(_s["wake_alarm_level"]):
+	elif alarm_up:
 		reason = "alarm"
 	else:
-		var threshold := float(_s["wake_trace"])
-		if _light:
-			threshold = minf(threshold, _ref_trace + float(_s["wake_light_trace_step"]))   # чуткий сон: +10 к уровню возврата, но не выше 50
-		if _max_trace(traces) >= threshold:
-			reason = "trace"
+		# Глубокий сон — trace ≥ 50. Чуткий — у каждого игрока свой порог max(50, ref + 10): ref — его trace на возврате ICE в логово,
+		# а вошедшему позже — min(trace при входе, 40) (потеря следа даёт передышку, но не пропускает новичка с высоким trace).
+		for s in traces:
+			var threshold := float(_s["wake_trace"])
+			if _light:
+				if not _refs.has(s):
+					_refs[s] = minf(float(traces[s]), float(_s["wake_newcomer_ref_cap"]))
+				threshold = maxf(threshold, float(_refs[s]) + float(_s["wake_light_trace_step"]))
+			if float(traces[s]) >= threshold:
+				reason = "trace"
+				break
 	if reason == "":
 		for s in targets:
 			if _lair_dist(targets[s]) <= int(_s["adjacent_cells"]):
@@ -322,6 +335,7 @@ func _step_toward(goal: Vector2i, blocked: Dictionary = {}) -> void:
 func _deep_reset(events: Array) -> void:
 	phase = Phase.SLEEP
 	_light = false
+	_refs.clear()
 	_cell = _home
 	_has_known = false
 	_target = ""
