@@ -103,8 +103,12 @@ func test_spawn_только_если_модуль_включён_и_есть_ф
 	VolumeRegistry.configure("off")
 
 
-func test_конфиг_volumetric_по_умолчанию_off_и_парсится() -> void:
-	assert_str(RenderConfig.new().volumetric).is_equal("off")
+func test_конфиг_volumetric_по_умолчанию_все_модули_и_парсится() -> void:
+	assert_str(RenderConfig.new().volumetric).is_equal("vault,portal,shard,exit,ice")
+	assert_array(Array(VolumeRegistry.parse_spec(RenderConfig.new().volumetric))).contains_exactly(["vault", "portal", "shard", "exit", "ice"])
+	var off := ConfigFile.new()
+	off.set_value("render", "volumetric", "off")   # стенд: сплошные модели как до облака
+	assert_str(RenderConfig.from_config(off).volumetric).is_equal("off")
 	var cfg := ConfigFile.new()
 	cfg.set_value("render", "volumetric", " ICE,Vault ")
 	assert_str(RenderConfig.from_config(cfg).volumetric).is_equal("ice,vault")

@@ -22,7 +22,8 @@ func test_значения_по_умолчанию_принятая_база() -
 	assert_int(c.foveation).is_equal(0)
 	assert_str(c.layers).is_equal("behind")
 	assert_str(c.perf).is_equal("off")
-	assert_str(c.volumetric).is_equal("off")
+	assert_str(c.volumetric).is_equal("vault,portal,shard,exit,ice")   # облако (Б) принято как вид (14.10); "off" — только стенд
+	assert_float(c.volume_impostor_m).is_equal(0.0)   # импостор по умолчанию выкл. (выигрыша на очках не измерено)
 	assert_str(c.bench).is_empty()
 	assert_str(c.probe).is_empty()
 	assert_array(c.warnings).is_empty()

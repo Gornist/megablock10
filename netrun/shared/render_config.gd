@@ -17,7 +17,7 @@ extends RefCounted
 ## Удалённые ключи aa, fringe, scale, foveation_dynamic (тупики замеров 08–12.10) в старых файлах игнорируются с предупреждением.
 ## perf = "off"             ; счётчик кадра: "on" — раз в 5 с строка `[perf]` (FPS, среднее / максимум времени кадра, GPU-время) в журнал клиента и logcat;
 ##                           ; "diag" — то же плюс XrDiag: через 8 с строка `[xr-diag]` (фовеация, VRS, MSAA, размеры цели на уровне OpenXR) и PNG кадра вида в user://
-## volumetric = "off"       ; объекты Сети облаком частиц (VolumeRegistry): "off" (по умолчанию), "all" или модули через запятую ("ice,vault"); нужен файл `.points` у модели
+## volumetric = "vault,portal,shard,exit,ice" ; объекты Сети облаком частиц (VolumeRegistry): умолчание — все модули (облако (Б) принято владельцем в очках 14.10); "off" — выкл. (стенд, сравнения), "all" или модули через запятую ("ice,vault"); точки — файл `.points` у модели, иначе сэмплер на лету
 ## bench = ""               ; воспроизводимый замер (BenchRun): имя пресета EyePresets (entry, north, south, vault_w, …) — через 5 с риг встаёт в его позу, 3 окна по 10 с,
 ##                           ; строка `[bench] ИТОГ` с медианой и min/max окон по fps / времени кадра / GPU; голову во время замера не вертеть; пусто — выкл.
 ## probe = ""               ; синтетическая нагрузка (LoadProbe): "quads=N,px=P,mode=blend|a2c|opaque|point" — N квадов по P пикселей, приклеенных к голове; "sweep" — серия вариантов за один запуск (ProbeSweep); пусто — выкл.
@@ -32,7 +32,8 @@ const VOLUME_IMPOSTOR_MIN := 4.0
 const VOLUME_IMPOSTOR_MAX := 40.0
 ## Ключи, удалённые рефактором (docs/netrun-refactor-plan.md): в старых netrun.cfg на очках встречаются, значения не читаем.
 const LEGACY_KEYS := ["aa", "fringe", "scale", "foveation_dynamic"]
-const VOLUMETRIC_DEFAULT := "off"
+## Принятый вид (владелец 14.10, «снял, всё выглядит заебись»): все объёмные модули. Бюджет — серии на очках 13–14.10 (docs/netrun-refactor-plan.md).
+const VOLUMETRIC_DEFAULT := "vault,portal,shard,exit,ice"
 const PERF_VALUES := ["on", "off", "diag"]
 const PERF_DEFAULT := "off"
 const LAYERS_VALUES := ["on", "off", "behind"]
