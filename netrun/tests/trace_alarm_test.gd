@@ -201,3 +201,29 @@ func test_уровень_4_закрывает_порталы_через_10_та�
 	node._alarm_on_tick()   # десятый такт
 	assert_bool(node.is_locked_down()).is_true()
 	assert_float(node.lockdown_left_sec()).is_greater(1.0)
+
+
+# --- Т3b: контракт
+
+func test_событие_node_несёт_alarm_и_alert_level_рядом_со_старым_alert() -> void:
+	var node: GrayNode = _world.node_of("g_a")
+	node.raise_alarm(60.0)
+	var ev := _world.node_event("g_a")
+	assert_float(float(ev["alert"])).is_equal_approx(0.6, 0.0001)   # прежнее поле 0…1
+	assert_float(float(ev["alarm"])).is_equal(60.0)                 # новое 0–100
+	assert_int(int(ev["alert_level"])).is_equal(2)                  # и уровень 0–4
+
+
+func test_клиент_принимает_alarm_и_старый_alert() -> void:
+	var scene: Node3D = auto_free(preload("res://client/rig_test_scene.gd").new())
+	add_child(scene)
+	var seen: Array = []
+	scene.alarm_changed.connect(func(l: int, a: float): seen.append([l, a]))
+	scene.apply_alarm({"level": 3, "alarm": 80.0})
+	assert_int(scene.alarm_level).is_equal(3)
+	scene.apply_alarm({"level": 3, "alarm": 90.0})   # тот же уровень — подписчика не дёргаем
+	assert_int(seen.size()).is_equal(1)
+	scene.apply_alarm({"level": 0, "alarm": 0.0})
+	assert_int(scene.alarm_level).is_equal(0)
+	assert_int(seen.size()).is_equal(2)
+	assert_int(AlarmLevels.level_for(30.0)).is_equal(1)   # без поля уровня клиент считает сам по alert 0…1

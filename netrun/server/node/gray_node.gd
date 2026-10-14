@@ -598,7 +598,9 @@ func _write_node_state() -> void:
 		_node_write_again = false
 		var world := {"up": true, "players": _live_sessions().size()}
 		if is_graph_node():
-			world["alert"] = snappedf(alert, 0.01)
+			world["alert"] = snappedf(alert, 0.01)           # прежняя шкала 0…1 (читатели прошлой версии)
+			world["alarm"] = snappedf(alarm, 1.0)            # Т3b: шкала 0–100 и уровень 0–4 рядом со старым полем
+			world["alert_level"] = alarm_level
 			world["slots_empty"] = _refill_at.size()
 			world["alert_at"] = int(Time.get_unix_time_from_system() * 1000.0)
 			var refill: Dictionary = {}
@@ -2005,11 +2007,7 @@ func _check_portals() -> void:
 
 ## Уровень тревоги 0…4 по значению шкалы 0…100 (ice.md §4: 25 / 50 / 75 / 100).
 static func alarm_level_for(value: float) -> int:
-	var level := 0
-	for i in ALARM_LEVEL_AT.size():
-		if value >= float(ALARM_LEVEL_AT[i]):
-			level = i + 1
-	return level
+	return AlarmLevels.level_for(value)   # пороги общие с клиентом (shared/alarm_levels.gd)
 
 
 ## Тревога узла растёт на amount шкалы 0…1 (прежний вызов: тесты, Мост) — это amount × 100 пунктов.
@@ -2058,6 +2056,7 @@ func _apply_alert() -> void:
 	if not changed:
 		return
 	event.emit({"kind": "alarm_level", "node": node_id, "level": level})
+	_send_alarm(level)
 	if level >= 4:
 		if _lockdown_ticks_left == -1:
 			_lockdown_ticks_left = int(settings.get("alert_lockdown_ticks", 10))
@@ -2065,6 +2064,13 @@ func _apply_alert() -> void:
 	else:
 		_lockdown_ticks_left = -1   # тревога упала ниже 100 до закрытия (или после него): отсчёт сброшен, закрытие не повторяется
 		_lockdown_sec_left = -1.0
+
+
+## Уровень тревоги сменился — сказать нетраннерам узла (клиент: вид тревоги, аккорд уровня, строка деки). Т3b.
+func _send_alarm(level: int) -> void:
+	var fields := {"kind": WorldMsg.EV_ALARM, "node": node_id, "level": level, "alarm": snappedf(alarm, 1.0)}
+	for session in _live_sessions():
+		net.send_to(session, WorldMsg.encode_fields(WorldMsg.EVENT, fields))
 
 
 ## Есть ли в узле нетраннер (сессия узла с аватаром; в тоннеле между узлами — нет).

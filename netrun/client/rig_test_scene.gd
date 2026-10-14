@@ -13,6 +13,11 @@ signal frame_slow(ms: float)
 ## Применить демона из деки / выйти чисто на площадке выхода (N7); решает сервер.
 signal daemon_use_requested(daemon_id: String)
 signal leave_requested
+## Уровень тревоги узла сменился (Т3b): level 0–4, alarm 0–100. Вид (AssetMaterials.set_alarm у Blender), аккорд уровня и строка деки — подписчики.
+signal alarm_changed(level: int, alarm: float)
+## Тревога показанного узла: шкала 0–100 и уровень 0–4 (узел прислал `alarm`/`alert_level`; старый сервер — только `alert` 0…1).
+var alarm := 0.0
+var alarm_level := 0
 ## Отправка добычи (К5б): запрос списка получателей и подтверждённая отправка — их шлёт в сеть тот, кто собрал клиент.
 signal give_list_requested
 signal give_requested(item_id: String, to: Dictionary)
@@ -664,6 +669,9 @@ func apply_node(info: Dictionary) -> void:
 		return
 	node_info = info
 	current_node = str(info.get("node", ""))
+	# Тревога узла при входе: alarm 0–100 и alert_level (Т3b); старый сервер шлёт только alert 0…1 — уровень считаем сами.
+	var arrived_alarm := float(info["alarm"]) if info.has("alarm") else float(info.get("alert", 0.0)) * 100.0
+	apply_alarm({"alarm": arrived_alarm, "level": int(info["alert_level"]) if info.has("alert_level") else AlarmLevels.level_for(arrived_alarm)})
 	apply_layout(LayoutData.cached(str(info.get("layout", ""))), str(info.get("tier", "")))
 	view.set_dead_decks(info.get("dead", []))
 	_refresh_breach_context()   # тир нового узла — в панель сразу: длина замка (и `breach.request lock=`) не должна ждать события деки
@@ -706,6 +714,16 @@ func apply_layout(ld: LayoutData, tier: String) -> void:
 
 ## Слоты шардов узла изменились (вынесли, пополнилось, хранилище открылось/закрылось): лежащий шард виден, вынесенный — нет; вид хранилища — по vault
 ## (закрытое — шард внутри тусклый и не берётся).
+## Тревога узла (событие alarm или поля узла при входе): запомнить и сказать подписчикам, если уровень сменился.
+func apply_alarm(ev: Dictionary) -> void:
+	alarm = clampf(float(ev.get("alarm", 0.0)), 0.0, 100.0)
+	var level := clampi(int(ev.get("level", AlarmLevels.level_for(alarm))), 0, AlarmLevels.MAX_LEVEL)
+	if level == alarm_level:
+		return
+	alarm_level = level
+	alarm_changed.emit(level, alarm)
+
+
 func apply_shards(shards: Array) -> void:
 	if ended:
 		return
