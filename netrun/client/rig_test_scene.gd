@@ -99,6 +99,7 @@ var ice_audio_enabled := false
 var selected_daemon := ""
 var _ice_nodes: Dictionary = {}      # id ICE -> IceView
 var _beacon_nodes: Dictionary = {}   # id Маяка -> BeaconView (поле bk state, только тактовый режим)
+var _sensor_nodes: Dictionary = {}   # id Датчика -> SensorView (поле sn state, только тактовый режим)
 var _avatar_nodes: Dictionary = {}   # id чужого аватара -> AvatarView
 ## Чужие ICE и аватары показываются из буфера состояний с задержкой (RemoteTracks), а не прыжками по пакетам.
 var remote := RemoteTracks.new()
@@ -258,6 +259,7 @@ func apply_state(state: Dictionary) -> void:
 			_ice_nodes.erase(id)
 			remote.forget_ice(id)
 	_apply_beacons(state.get("bk", []))
+	_apply_sensors(state.get("sn", []))
 
 
 ## Маяки узла: появились — создаём, угол и дальность — из снимка; пропали (другой узел, нет тактов) — убираем.
@@ -276,6 +278,24 @@ func _apply_beacons(list: Array) -> void:
 		if not seen.has(id):
 			(_beacon_nodes[id] as Node).free()
 			_beacon_nodes.erase(id)
+
+
+## Датчики узла: как Маяки — создаём по снимку, убираем пропавших.
+func _apply_sensors(list: Array) -> void:
+	var seen := {}
+	for v: Dictionary in list:
+		var id := str(v["id"])
+		seen[id] = true
+		if not _sensor_nodes.has(id):
+			var s := SensorView.new()
+			s.name = "Sensor_" + id
+			add_child(s)
+			_sensor_nodes[id] = s
+		(_sensor_nodes[id] as SensorView).apply_view(v)
+	for id in _sensor_nodes.keys():
+		if not seen.has(id):
+			(_sensor_nodes[id] as Node).free()
+			_sensor_nodes.erase(id)
 
 
 ## Маяк по id (тесты, превью).
