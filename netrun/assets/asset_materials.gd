@@ -15,8 +15,7 @@ const SHADERS := {
 
 ## Вуаль на гранях плит (меши `*_skirt` в floor, ceiling и far_*): в .glb у неё материал-роль shell_soft, а шейдер по имени меша — этот.
 const SKIRT_SHADER := preload("res://assets/shaders/skirt.gdshader")
-const CLOUD_SHADER_2S := preload("res://assets/shaders/cloud_dark_2s.gdshader")  # то же, cull_disabled (ручка cloud_two_sided)
-const CLOUD_SHADER := preload("res://assets/shaders/cloud_dark.gdshader")  # «облако без основы» (прототип, ручка cloud)
+const CLOUD_SHADER := preload("res://assets/shaders/cloud_dark.gdshader")  # «облако без основы»: вид реквизита (ручка cloud, умолчание 1; принято 12.10, облако (Б) на объектах — 14.10)
 ## Ореол-«капля» маяка предмета (меш `beacon_halo` в узле Beacon у шарда и токена): роль shell_soft, шейдер по имени меша.
 const BEACON_HALO_SHADER := preload("res://assets/shaders/beacon_halo.gdshader")
 ## Луч маяка (меш `beacon_beam`): штрихи (streaks) с ореолом, но спокойнее обычных — почти без дыхания и качания, гладкий (без бусин), ярче, чтобы читаться с 3 м.
@@ -120,7 +119,6 @@ const KNOBS := {
 	"cloud_far": 0.0,        # цена a2c — в ПЛОЩАДИ материала, не в числе частиц (замер Pico): 1 — и дальние пласты far_* облаком (+3,4 мс), 0 — остаются сплошной тёмной гранью
 	"cloud_floor": 0.0,      # 1 — и пол комнаты (floor*) облаком; 0 — остаётся solid_dark (чаще всего самая большая площадь на экране)
 	"cloud_ceiling": 0.0,    # 1 — и потолок облаком; 0 — остаётся solid_dark
-	"cloud_two_sided": 0.0,  # C3: 1 — cull_disabled (cloud_dark_2s): сквозь дыры передней грани видны задние грани объёма (владелец на очках: «рендерятся не все грани»); цена ≈ ×2 a2c-фрагментов реквизита
 	# Рябь «эквалайзеров» (штрихи окружения, только при tier != ""; существа и аватары не трогаем). Меры независимы:
 	"streak_far_min": 1.0,   # яркость штрихов на дистанции ≥ streak_far_end (1 — не гасить; 0,3 — ориентир), как кромка плит
 	"streak_far_start": 8.0,
@@ -321,7 +319,7 @@ static func apply(root: Node, tier: String = "") -> void:
 			if String(mi.name).ends_with("_hang"):  # подвесные штрихи (под полом): длина меняется от верхнего конца
 				m.set_shader_parameter("anchor", 1.0)
 			if src.resource_name == "solid_dark" and float(_k("cloud")) > 0.0 and _cloud_scope_ok(root):  # прототип «облако без основы»: частицы с дырами вместо тёмной грани (нужен MSAA)
-				m.shader = CLOUD_SHADER_2S if float(_k("cloud_two_sided")) > 0.5 else CLOUD_SHADER
+				m.shader = CLOUD_SHADER
 				m.set_shader_parameter("glitch_tex", GlitchSprite.texture())
 				m.set_shader_parameter("dust", float(_k("cloud")))
 				m.set_shader_parameter("dust_cell", float(_k("dust_cell")))
