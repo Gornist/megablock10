@@ -16,6 +16,8 @@
 #                                       — очки без человека (docs/devbox.md, «Д5»): готовность по состоянию системы, прогон под trap
 #   scripts/box.sh up <служба> <сессия> [--port N] [--ttl мин] -- команда…  — свой экземпляр службы: порт из пула, каталог
 #                                       ~/box/inst/<служба>-<сессия> ({PORT}/{DIR} в аргументах); down <служба> <сессия> [--purge]; inst — список
+#   scripts/box.sh adb-rescue [--dry] — лишний adb-сервер (не 5037, без клиентов) держит USB-устройства: остановить, вернуть основному,
+#                                       восстановить forward/reverse (серверы с клиентами не трогает)
 #   scripts/box.sh boot-check         — прогнать проверку после загрузки вручную (идемпотентно: ничего не убивает и не перезапускает,
 #                                       что уже работает); итог — ~/box/boot.report и строка в статусе
 #   scripts/box.sh journal [N]        — последние N (20) строк журнала действий ~/box/journal.jsonl
@@ -175,7 +177,7 @@ REMOTE
     [ "$rc" -eq 255 ] && { unreachable; exit 1; }
     exit "$rc" ;;
 
-  lease|release|leases|check|run|queue|pico|up|down|inst)
+  lease|release|leases|check|run|queue|pico|up|down|inst|adb-rescue)
     # Логика — scripts/box/ctl.sh из клона ~/box/repo: одна версия на всех, а не та, что у вызвавшего в worktree.
     args=$cmd
     for a in "$@"; do args="$args $(printf '%q' "$a")"; done
@@ -219,7 +221,7 @@ REMOTE
     "${SSH[@]}" "tail -n $n \"\$HOME/box/journal.jsonl\" 2>&1" ;;
 
   *)
-    sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
     [ -z "$cmd" ] && exit 2
     exit 2 ;;
 esac
