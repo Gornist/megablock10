@@ -54,6 +54,11 @@ static func bots(layout: LayoutData, tier: String = "BASE") -> Dictionary:
 	return LayoutBots.check_bots(layout, tier)
 
 
+## Правила видимости по таблице зрения цикла (stealth.md С7 «Формально», levels.md п. 7): ступеньки укрытий и уход — тоже секунды, отдельно от run_all.
+static func stealth_rules(layout: LayoutData, tier: String = "BASE") -> Dictionary:
+	return {"safe_steps": LayoutBots.check_safe_steps(layout, tier), "escape": LayoutBots.check_escape(layout, tier)}
+
+
 ## Имена проверок, которые не прошли (пустой массив — раскладка проходит всё).
 static func failures(layout: LayoutData, tier: String = "BASE") -> Array[String]:
 	var out: Array[String] = []
