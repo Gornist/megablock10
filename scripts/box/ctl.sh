@@ -926,14 +926,14 @@ cmd_adb_rescue() { # adb-rescue [--dry]: остановить лишние се�
 cmd_usb_watch() { # usb-watch: раз в минуту (box-usb-watch.timer). Без root: будит RCPad, пишет перезагрузки и пропажу очков в журнал
   local rc=${RCPAD:-3063604} st=$BOX/usb-watch.state now up cur prev m miss
   now=$(date +%s)
-  if timeout 10 "$ADB" devices </dev/null 2>/dev/null | grep -q "^$PICO[[:space:]]*device"; then
+  if timeout 10 "$ADB" devices </dev/null 2>/dev/null | grep -q "^${PICO}[[:space:]]*device"; then
     [ -f "$st" ] && jlog pico-usb-back pico "$PICO" missing_sec "$((now - $(get "$st" miss)))"
     rm -f "$st"
   else
     miss=$(get "$st" miss)
     [ -n "$miss" ] || { echo "miss=$now" >"$st"; jlog pico-usb-missing pico "$PICO" usb "$(lsusb 2>/dev/null | grep -c -i -E '2d40|pico|pvr')"; }
   fi
-  timeout 10 "$ADB" devices </dev/null 2>/dev/null | grep -q "^$rc[[:space:]]*device" || return 0
+  timeout 10 "$ADB" devices </dev/null 2>/dev/null | grep -q "^${rc}[[:space:]]*device" || return 0
   m=$(timeout 10 "$ADB" -s "$rc" shell 'dumpsys power | grep -m1 mWakefulness=' </dev/null 2>/dev/null | tr -d '\r')
   case $m in *Awake*|'') :;; *)
     timeout 10 "$ADB" -s "$rc" shell input keyevent KEYCODE_WAKEUP </dev/null >/dev/null 2>&1
