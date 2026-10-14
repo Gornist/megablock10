@@ -93,7 +93,17 @@ RECIPES = {
         ],
     },
 }
-for _state in ("black_ice", "black_ice_hunt", "black_ice_catch"):
+RECIPES["ice/black_lair"] = {   # логово Black ICE (2×2 клетки): плита, знаки, шипы, холм сна
+    "count": 800, "half": 0.016, "spark": 0.08,
+    "parts": [
+        ("black_lair_slab", "surface", 0.35),
+        ("black_lair_signs", "dot", 0.25),
+        ("black_lair_thorns", "line", 0.20),
+        ("black_lair_mound", "line", 0.20),
+    ],
+}
+# базовый Black ICE, его запасные состояния и пять видов (ice.md §6.2): общий рецепт, имена мешей по имени модели
+for _state in ("black_ice", "black_ice_hunt", "black_ice_catch") + tuple("black_ice_" + _k for _k in ("hound", "kraken", "raven", "scorpion", "lich")):
     RECIPES["ice/" + _state] = {
         "count": 900, "half": 0.02, "spark": 0.12,
         "parts": [
