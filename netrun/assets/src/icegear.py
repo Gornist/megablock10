@@ -14,6 +14,7 @@
 """
 import math
 import os
+import random
 import sys
 
 import bmesh
@@ -132,7 +133,104 @@ def build_ice_sensor(out, name="sensor_ice", seed=62):
                       notes="узел Beam: длина 1 м вдоль +Y Blender (−Z Godot), Godot масштабирует по длине; состояния — beam.gdshader (state, flash)")
 
 
+def build_ice_barrier(out, name="barrier_ice", seed=63):
+    """Барьер Soft ICE (ice.md §5: «стена кода», закрывает клетку-проход, портал или хранилище; вскрытие 3 / 4 / 5 кодов): ОДИН файл на три состояния.
+    Общие стойки по краям клетки 1 м (origin на полу в центре, лицом к +Y Blender = −Z Godot) + узлы `State_closed` (сплошная панель кода: чёрная плита с кромкой и
+    вертикальными красными штрихами), `State_opening` (две половинки с щелью, штрихи рваные: вскрывается), `State_open` (только порог — проход свободен). Узлы
+    `Code_1…Code_5` — отметки кодов на левой стойке, кумулятивно, как `Tier_k` хранилища: Godot включает столько, сколько осталось вскрыть. Ровно ОДИН `State_*`
+    видимый (без явного выключения видны все три). Корпус сплошной, не облако (`/ice/` вне охвата (А)): барьер — игровой сигнал и читается с 5 клеток."""
+    lib.reset()
+    rng = random.Random(seed)
+    hot, ice, void = lib.lin("threat_hot"), lib.lin("ice_white"), lib.lin("void")
+    W, T, H = 0.90, 0.06, 1.50   # панель кода: по ширине клетки хода 1 м, толщина 6 см, выше колена и пояса
+    posts = []
+    for sx in (-1, 1):
+        p = lib.box_bm((0.07, 0.09, H + 0.1), bevel=0.006, center=(sx * (W / 2 + 0.035), 0, (H + 0.1) / 2))
+        g = lib.lit_part(p, H + 0.1, 0.008)
+        posts.append(lib.obj_from_bm(f"barrier_ice_post_{'l' if sx < 0 else 'r'}", p, "solid_dark", hot, rgb_fn=lib.combine_rgb([g], hot, void)))
+    # ---- State_closed: цельная панель + «дождь кода» красных штрихов по лицу
+    panel = lib.box_bm((W, T, H), bevel=0.006, center=(0, 0, H / 2))
+    gp = lib.lit_part(panel, H, 0.01)
+    closed = [lib.obj_from_bm("barrier_ice_panel", panel, "solid_dark", hot, rgb_fn=lib.combine_rgb([gp], hot, void))]
+    code = []
+    for side in (1, -1):   # код на ОБЕИХ гранях: барьер читают с любой стороны (панель непрозрачна и закрывает штрихи обратной грани)
+        for i in range(22):
+            x = -W / 2 + 0.03 + (W - 0.06) * (i + rng.uniform(-0.25, 0.25)) / 21.0
+            hh = rng.uniform(0.18, 0.55)
+            code.append((Vector((x, side * (T / 2 + 0.004), rng.uniform(hh + 0.05, H - hh - 0.05))), rng.uniform(0.007, 0.013), hh, rng.uniform(0.55, 0.95), hot if i % 5 == 0 else ice if i % 11 == 3 else hot))
+    closed.append(lib.streak_set("barrier_ice_code", code, hot))
+    # ---- State_opening: две половинки с щелью по центру, штрихи рваные
+    half_w = 0.33
+    opening = []
+    for sx in (-1, 1):
+        h = lib.box_bm((half_w, T, H), bevel=0.006, center=(sx * (W / 2 - half_w / 2), 0, H / 2))
+        gh = lib.lit_part(h, H, 0.01)
+        opening.append(lib.obj_from_bm(f"barrier_ice_half_{'l' if sx < 0 else 'r'}", h, "solid_dark", hot, rgb_fn=lib.combine_rgb([gh], hot, void)))
+    frag = []
+    for i in range(24):
+        sx = -1 if i % 2 == 0 else 1
+        side = 1 if i % 4 < 2 else -1   # осколки на обеих гранях половинок
+        x = sx * rng.uniform(W / 2 - half_w + 0.03, W / 2 - 0.03)
+        hh = rng.uniform(0.1, 0.4)
+        frag.append((Vector((x, side * (T / 2 + 0.004), rng.uniform(hh + 0.05, H - hh - 0.05))), rng.uniform(0.007, 0.012), hh, rng.uniform(0.35, 0.8), hot))
+    # осколки кода в щели: потерянные штрихи висят в проходе (проход уже можно, но он горит)
+    for i in range(5):
+        frag.append((Vector((rng.uniform(-0.09, 0.09), 0.0, rng.uniform(0.2, 1.3))), 0.007, rng.uniform(0.05, 0.14), rng.uniform(0.25, 0.5), ice))
+    opening.append(lib.streak_set("barrier_ice_frag", frag, hot))
+    # ---- State_open: только низкий порог — проход свободен
+    sill = lib.box_bm((W, 0.10, 0.025), bevel=0.004, center=(0, 0, 0.0125))
+    gs = lib.lit_part(sill, 0.025, 0.008)
+    open_ = [lib.obj_from_bm("barrier_ice_sill", sill, "solid_dark", hot, rgb_fn=lib.combine_rgb([gs], ice, void))]
+    # ---- Code_1…5: засечки на левой стойке (по одному штриху каждая), кумулятивно
+    marks = []
+    for k in range(5):
+        marks.append(lib.group(f"Code_{k + 1}", [lib.streak_set(f"barrier_ice_mark_{k + 1}", [(Vector((-(W / 2 + 0.035), 0.047, 0.28 + 0.2 * k)), 0.012, 0.045, 0.95, ice)], ice)]))
+    groups = [lib.group("State_closed", closed), lib.group("State_opening", opening), lib.group("State_open", open_)]
+    all_objs = [*posts, *closed, *opening, *open_, *groups, *[t for g in marks for t in [g, *g.children]]]
+    return lib.export(name, "ice", all_objs, out, budget_tris=700, budget_points=0, budget_streaks=80, origin="floor", budget_draws=16,
+                      notes="State_closed/opening/open (ровно один видимый), Code_1..5 (кумулятивно: сколько осталось вскрыть); лицом к Blender +Y (Godot −Z)")
+
+
+def build_ice_tracer(out, name="tracer_ice", seed=64):
+    """Трассировщик Soft ICE (ice.md §5: «низкая ищейка с хвостом из клеток», тревога 3+): низкое тело 0,9 м длиной и 0,32 м высотой, опущенная морда с «глазом»,
+    гребень из красных штрихов вдоль спины (шерсть-след) и узел `Tail` с четырьмя плитками-«следами» по клеткам 1 м позади (`Tail_1…Tail_4`, кумулятивно: длину хвоста
+    задаёт игра — след нетраннера, который он идёт). Лицом к Blender +Y (Godot −Z), origin «feet» (хвост тянется назад, ноги в (0,0) внутри габарита).
+    Красный по принципу 5 (угроза); корпус сплошной (`/ice/` вне облака (А))."""
+    lib.reset()
+    rng = random.Random(seed)
+    hot, red, ice, void = lib.lin("threat_hot"), lib.lin("threat"), lib.lin("ice_white"), lib.lin("void")
+    body = lib.box_bm((0.34, 0.80, 0.26), bevel=0.02, center=(0, 0, 0.17))
+    gb = lib.lit_part(body, 0.30, 0.012)
+    snout = lib.cone_bm(0.14, 0.04, 0.34, segments=6)   # конус вдоль Z → поворот на −90° вокруг X (вершина вперёд, +Y), затем в позицию
+    snout = lib.xform_bm(snout, rot=(-90.0, 0, 0), offset=(0, 0.55, 0.14))
+    # морда — часть меша корпуса (один вызов отрисовки; лимит 8 примитивов на ассет)
+    body = lib.merge_bm(body, snout)
+    body_obj = lib.obj_from_bm("tracer_ice_body", body, "solid_dark", red, rgb_fn=lambda co: red if (gb(co) or co.y > 0.66) else void)
+    eye = lambda: lib.ico_bm(0.5, subdiv=1, scale=(0.06, 0.06, 0.06), center=(0, 0.62, 0.20))
+    eye_objs = lib.shell_stack(eye, "tracer_ice_eye", ice, layers=2, grow=0.4, a_inner=0.95, a_outer=0.25, pivot=(0, 0.62, 0.20))
+    spine = []
+    for i in range(20):
+        t = i / 19.0
+        hh = rng.uniform(0.10, 0.22) * (1.0 - 0.3 * t)
+        spine.append((Vector((rng.uniform(-0.11, 0.11), 0.34 - 0.75 * t, 0.30 + hh)), rng.uniform(0.008, 0.015), hh, rng.uniform(0.5, 0.9), hot if i % 4 == 0 else red))
+    spine_obj = lib.streak_set("tracer_ice_spine", spine, red)
+    tails, tail_nodes = [], []
+    for k in range(4):   # плитки-следы по клеткам 1 м позади (центры на −1, −2, −3, −4 м), кромка слабее корпуса
+        tile = lib.box_bm((0.78, 0.78, 0.02), center=(0, -1.0 - k, 0.012))
+        gt = lib.lit_part(tile, 0.022, 0.012)
+        dim = tuple(c * (0.75 - 0.12 * k) for c in red)
+        tobj = lib.obj_from_bm(f"tracer_ice_tail_{k + 1}", tile, "solid_dark", red, rgb_fn=lib.combine_rgb([gt], dim, void))
+        tails.append(tobj)
+        tail_nodes.append(lib.group(f"Tail_{k + 1}", [tobj]))
+    tail = lib.group("Tail", [*tail_nodes])
+    objs = [body_obj, *eye_objs, spine_obj, tail, *tail_nodes, *tails, lib.anchor("AlertAnchor", (0.0, 0.0, 0.9))]
+    return lib.export(name, "ice", objs, out, budget_tris=700, budget_points=0, budget_streaks=40, origin="feet", budget_layers=2,
+                      notes="узел Tail с Tail_1..4 (клетки 1 м позади, кумулятивно); AlertAnchor; лицом к Blender +Y (Godot −Z)")
+
+
 if __name__ == "__main__":
     o = lib.args()
     build_ice_lighthouse(o)
     build_ice_sensor(o)
+    build_ice_barrier(o)
+    build_ice_tracer(o)
