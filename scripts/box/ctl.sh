@@ -923,15 +923,24 @@ cmd_adb_rescue() { # adb-rescue [--dry]: остановить лишние се�
   "$ADB" devices -l 2>&1 | sed -n '1,6p'
 }
 
-cmd_usb_watch() { # usb-watch: раз в минуту (box-usb-watch.timer). Без root: будит RCPad, пишет перезагрузки и пропажу очков в журнал
-  local rc=${RCPAD:-3063604} st=$BOX/usb-watch.state now up cur prev m miss
+cmd_usb_watch() { # usb-watch: раз в минуту (box-usb-watch.timer). Будит RCPad, пишет его перезагрузки и пропажу очков, чинит хаб очков
+  local rc=${RCPAD:-3063604} st=$BOX/usb-watch.state now up cur prev m miss last rec
   now=$(date +%s)
   if timeout 10 "$ADB" devices </dev/null 2>/dev/null | grep -q "^${PICO}[[:space:]]*device"; then
     [ -f "$st" ] && jlog pico-usb-back pico "$PICO" missing_sec "$((now - $(get "$st" miss)))"
     rm -f "$st"
   else
-    miss=$(get "$st" miss)
-    [ -n "$miss" ] || { echo "miss=$now" >"$st"; jlog pico-usb-missing pico "$PICO" usb "$(lsusb 2>/dev/null | grep -c -i -E '2d40|pico|pvr')"; }
+    miss=$(get "$st" miss); last=$(get "$st" last)
+    [ -n "$miss" ] || { miss=$now; jlog pico-usb-missing pico "$PICO" usb "$(lsusb 2>/dev/null | grep -c -i -E '2d40|pico|pvr')"; }
+    # пропали ≥ 3 мин и не чаще раза в 15 мин — переподключить хаб (root-скрипт ставит владелец: install-usb-recover.sh);
+    # хаб рвёт только очки на нём, RCPad сидит на корневом порту
+    if [ $((now - miss)) -ge 180 ] && [ $((now - ${last:-0})) -ge 900 ]; then
+      if sudo -n /usr/local/sbin/box-usb-recover >/dev/null 2>&1; then rec="хаб переподключён"
+      else rec="нет root-скрипта: sudo bash ~/box/repo/scripts/box/install-usb-recover.sh"; fi
+      jlog usb-recover pico "$PICO" missing_sec "$((now - miss))" result "$rec"
+      last=$now
+    fi
+    printf 'miss=%s\nlast=%s\n' "$miss" "${last:-0}" >"$st"
   fi
   timeout 10 "$ADB" devices </dev/null 2>/dev/null | grep -q "^${rc}[[:space:]]*device" || return 0
   m=$(timeout 10 "$ADB" -s "$rc" shell 'dumpsys power | grep -m1 mWakefulness=' </dev/null 2>/dev/null | tr -d '\r')

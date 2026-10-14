@@ -1,4 +1,4 @@
-# Страж USB devbox: раз в минуту (box-usb-watch.timer). Без root и без нажатий на очки: уснувший RCPad будит,
+# Страж USB devbox: раз в минуту (box-usb-watch.timer). На очки не нажимает: уснувший RCPad будит,
 # перезагрузку RCPad (с причиной) и пропажу очков из adb пишет в ~/box/journal.jsonl — чтобы причина была видна, а не гадалась.
 [Unit]
 Description=страж USB devbox: RCPad и очки Pico (только наблюдение и пробуждение RCPad)
