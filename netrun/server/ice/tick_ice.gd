@@ -30,6 +30,7 @@ const _GUARD := 64
 
 var _grid: NodeGrid
 var _s: Dictionary = {}
+var _sight_bonus := 0.0   # прибавка к дальности зрения, клеток: тревога узла 2-го уровня даёт +1 (ice.md §4)
 var _route: Array[Vector2i] = []
 ## Ожидание на точках маршрута (тактов; параллельно _route) и взгляд на время ожидания (dir8; ZERO — не менять направление).
 var _waits: Array[int] = []
@@ -149,6 +150,11 @@ func awareness_of(session: Variant) -> int:
 ## Был ли нетраннер виден ICE в конце последнего такта (фокус или периферия; скрытый — нет). Для trace «на виду».
 func sees(session: Variant) -> bool:
 	return int(_vis.get(session, TickVision.NONE)) != TickVision.NONE
+
+
+## Прибавка к дальности зрения, клеток (тревога узла 2-го уровня — 1, спокойно — 0). Действует со следующего такта.
+func set_sight_bonus(cells: float) -> void:
+	_sight_bonus = maxf(cells, 0.0)
 
 
 ## Наибольший счётчик осведомлённости 0..awareness_max.
@@ -303,7 +309,7 @@ func _update_awareness(targets: Dictionary, tcell: Dictionary, hidden: Dictionar
 			if tcell[s] == _cell:
 				v = TickVision.FOCUS   # нетраннер вошёл в клетку ICE сам: «потерянным» он не становится
 			else:
-				v = TickVision.classify(_grid, _cell, _dir, tcell[s], float(_s["sight_cells"]), float(_s["half_angle_deg"]), float(_s["focus_deg"]))
+				v = TickVision.classify(_grid, _cell, _dir, tcell[s], float(_s["sight_cells"]) + _sight_bonus, float(_s["half_angle_deg"]), float(_s["focus_deg"]))
 		_vis[s] = v
 		var delta := -1
 		if v == TickVision.FOCUS:

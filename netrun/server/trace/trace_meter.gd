@@ -16,12 +16,17 @@ const DEFAULT_SETTINGS := {
 	"suspicious_at": 25.0,
 	"trace_at": 50.0,
 	"lockdown_at": 75.0,
-	"decay_per_sec": 1.0,  # спад, пока нетраннер скрыт
+	# Пассивного спада нет (ice.md §3: «сам не спадает»): прежние −1/с, пока скрыт, обнуляли любую ошибку за полминуты. Ключ оставлен — 0 — для
+	# тестов и стендов, которым нужен свой спад; спад хаба и дрейф по тиру задаёт узел через drift(now, rate).
+	"decay_per_sec": 0.0,
 	"weights": {
-		"seen_by_ice": 8.0,
+		"seen_by_ice": 8.0,   # в секунду, пока цель на виду — только непошаговые (realtime) ICE; в тактовом режиме вместо него «search»
 		"sensor_hit": 5.0,
 		"noise": 3.0,
 		"door_forced": 10.0,
+		"search": 10.0,       # ICE перешёл в Поиск на тебя — один раз за Поиск (тактовый режим)
+		"fail": 5.0,          # взлом закончился FAIL
+		"tracer": 15.0,       # коснулся Трассировщик
 	},
 }
 
@@ -73,9 +78,10 @@ func add_amount(amount: float, now: float) -> void:
 	_set_value(_value + maxf(amount, 0.0))
 
 
-## Спад за время с прошлого вызова. hidden = false — нетраннера сейчас видят: спада нет.
-func tick(now: float, hidden: bool = true) -> void:
-	_advance(now, hidden)
+## Прежний спад за время с прошлого вызова (decay_per_sec, по умолчанию 0 — спада нет). hidden = false — нетраннера видят: спада нет.
+## drift_per_sec — дрейф узла: + рост по времени в узле, − спад в хабе, 0 — тоннель; действует и когда нетраннера видят.
+func tick(now: float, hidden: bool = true, drift_per_sec: float = 0.0) -> void:
+	_advance(now, hidden, drift_per_sec)
 
 
 ## Сколько секунд trace ещё заморожен (0 — не заморожен).
@@ -110,20 +116,25 @@ func level_for(v: float) -> int:
 	return Level.NORMAL
 
 
-func _advance(now: float, hidden: bool) -> void:
+func _advance(now: float, hidden: bool, drift_per_sec: float = 0.0) -> void:
 	if not _has_time:
 		_has_time = true
 		_last_time = now
 		return
 	var from := _last_time
 	_last_time = maxf(now, from)
-	if not hidden or _level == Level.FLATLINE:
+	if _level == Level.FLATLINE:
 		return
-	# Спад только вне окна заморозки.
+	# Рост и спад только вне окна заморозки (JITTER замораживает оба).
 	var start := maxf(from, _frozen_until)
 	var dt := _last_time - start
-	if dt > 0.0:
-		_set_value(_value - float(_settings["decay_per_sec"]) * dt)
+	if dt <= 0.0:
+		return
+	var delta := drift_per_sec * dt
+	if hidden:
+		delta -= float(_settings["decay_per_sec"]) * dt   # прежний спад (по умолчанию 0)
+	if delta != 0.0:
+		_set_value(_value + delta)
 
 
 func _set_value(v: float) -> void:

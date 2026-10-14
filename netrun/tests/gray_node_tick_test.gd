@@ -184,9 +184,10 @@ func test_г_взгляд_проверка_поиск_и_выброс_на_че�
 		await _advance(5.0)
 		states.append((_node._tick_ices[_node.ices()[0]] as TickIce).state())
 		if states.size() == 1:
-			# На виду за такт набегает «секунды с прошлого такта» (5 с) × вес 0,5.
-			assert_float(_node.session_state(a).trace.value()).is_equal_approx(2.5, 0.3)
+			# Т3a: «на виду» trace больше не набегает по секундам — только дрейф узла (доли пункта) до Поиска.
+			assert_float(_node.session_state(a).trace.value()).is_less(1.0)
 	assert_array(states).is_equal([1, 2, 3])   # «?» → Проверка → Поиск: на третьем такте тревога
+	assert_float(_node.session_state(a).trace.value()).is_between(10.0, 11.5)   # Поиск: +10 один раз (trace_events.search) и дрейф
 	assert_bool(_events.any(func(e): return e["kind"] == "ice_eject")).is_false()
 	assert_float(_node.alert).is_greater(0.0)   # search_started поднял тревогу узла
 	await _advance(5.0)   # четвёртый такт, целиком проведённый в Поиске: захват
