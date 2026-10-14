@@ -27,6 +27,8 @@ const STATE_INTERVAL := 0.1
 ## Шкала тревоги узла (ice.md §4) и пороги уровней 1…4.
 const ALARM_MAX := 100.0
 const ALARM_LEVEL_AT := [25.0, 50.0, 75.0, 100.0]
+## Прибавка к зрению ICE на тревоге 2+: «+1 клетка» ice.md §4 — клетка карты 2 м (Страж 3 клетки = 6 м), а дальности в коде — в клетках 1 м.
+const ALARM_SIGHT_BONUS := 2.0
 ## Позиции других аватаров — вдвое чаще (docs/netrun.md: ~20 раз/с).
 const AVATAR_INTERVAL := 0.05
 ## Допуск на дробное число физических тиков в интервале (60 Гц: 0.1 с — 6 тиков с погрешностью).
@@ -149,6 +151,8 @@ var _lockdown_sec_left := -1.0       # то же для непошаговых �
 var tick_clock: TickClock
 var _tick_mode := false
 var _tick_ices: Dictionary = {}      # IceNode -> TickIce (только Soft ICE тактового режима)
+var _beacons: Array[TickBeacon] = []   # Маяки раскладки (тактовый режим; ice.md §5): вращаются каждый такт, без IceNode
+var _beacon_ids: Dictionary = {}     # TickBeacon -> id маяка из раскладки (журнал, state)
 var _intents: Dictionary = {}        # IceNode -> TickIce.intent() после последнего такта (рассылается 10 раз/с без пересчёта)
 var _entered_tick: Dictionary = {}   # сессия -> номер такта узла, когда она вошла (скрыта первые entry_hidden_ticks тактов)
 var _grace_spent: Dictionary = {}    # сессия -> true: ходила после входа, грейс прибытия (arrival_grace_ticks) кончился досрочно
@@ -258,6 +262,10 @@ func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 		# Такты: Стражи — по раскладке (маршрут в клетках с ожиданием и поворотом); столько, сколько просит узел, но не больше, чем в файле.
 		for i in mini(soft, layout.sentries.size()):
 			_add_layout_sentry(layout.sentries[i])
+		for bd: Dictionary in layout.beacons:   # Маяки раскладки: отдельный вид Soft ICE — стоят на тумбе и вращаются
+			var tb := TickBeacon.new(bd["cell"], bd["start"], ice_grid, {"step_deg": bd["step_deg"], "sweep_steps": bd["sweep_steps"]})
+			_beacons.append(tb)
+			_beacon_ids[tb] = str(bd["id"])
 	else:
 		for i in soft:
 			_add_ice(NodeLayout.ICE[i]["id"], NodeLayout.ICE[i]["waypoints"])
@@ -1048,6 +1056,18 @@ func _run_tick(live: Array, meters: Dictionary, dt_sec: float) -> void:
 				"capture":
 					if not captured.has(ev["session"]):
 						captured[ev["session"]] = ice
+	# Маяки раскладки: поворот, зрение только фокусом; «Поиск» маяка — как Поиск Стража (trace +10 цели, тревога узла +10).
+	var suspicious := {}
+	for s in meters:
+		suspicious[s] = (meters[s] as TraceMeter).level() >= TraceMeter.Level.SUSPICIOUS
+	for tb: TickBeacon in _beacons:
+		for bev: Dictionary in tb.tick(pos, hidden, immune, suspicious):
+			if str(bev["kind"]) == "search_started":
+				var seen_by := str(bev.get("session", ""))
+				print("[beacon] %s SEARCH_STARTED %s" % [_beacon_ids.get(tb, "?"), seen_by])
+				if seen_by != "":
+					add_trace_event(seen_by, "search")
+				alarm_event("search")
 	for session in captured:
 		if net.has_avatar(session):
 			(captured[session] as IceNode).ejected.emit(session, "caught")
@@ -1182,7 +1202,26 @@ func _broadcast_state() -> void:
 		}
 		if _tick_mode:
 			fields["tk"] = _tick_field(session)
+			if not _beacons.is_empty():
+				fields["bk"] = beacon_view()
 		net.send_to(session, WorldMsg.encode_fields(WorldMsg.STATE, fields), false)
+
+
+## Маяки узла для state (поле `bk`): [{id, c: [x, z], d: [dx, dz] — угол сейчас, nd — после следующего такта, aw 0..6, r — дальность, клеток}].
+func beacon_view() -> Array:
+	var out: Array = []
+	for tb: TickBeacon in _beacons:
+		var it := tb.intent()
+		var c: Vector2i = it["cell"]
+		var d: Vector2i = it["dir"]
+		var nd: Vector2i = it["next_dir"]
+		out.append({"id": str(_beacon_ids.get(tb, "")), "c": [c.x, c.y], "d": [d.x, d.y], "nd": [nd.x, nd.y], "aw": int(it["aware"]), "r": float(it["range"])})
+	return out
+
+
+## Для тестов и сценариев: маяки узла.
+func beacons() -> Array[TickBeacon]:
+	return _beacons
 
 
 ## Тактовые поля ICE в state (старые id, p, f, s, b остаются): c — клетка [x, z], d — направление, st — состояние TickIce 0..3, nc / nd — клетка и
@@ -2052,7 +2091,9 @@ func _apply_alert() -> void:
 			if ice.brain.is_black():
 				ice.brain.alarm_awake = level >= 3 and tier() == NodeGraph.TIER_BLACK   # охота Black ICE со 3-го уровня (NIGHTMARE)
 		if _tick_ices.has(ice):
-			(_tick_ices[ice] as TickIce).set_sight_bonus(1.0 if level >= 2 else 0.0)   # уровень 2: зрение всех ICE +1 клетка
+			(_tick_ices[ice] as TickIce).set_sight_bonus(ALARM_SIGHT_BONUS if level >= 2 else 0.0)   # уровень 2: зрение всех ICE +1 клетка карты
+	for tb: TickBeacon in _beacons:
+		tb.set_sight_bonus(ALARM_SIGHT_BONUS if level >= 2 else 0.0)   # и Маяков: 5 клеток карты (10 м), на тревоге 2+ — 6 (12 м)
 	if not changed:
 		return
 	event.emit({"kind": "alarm_level", "node": node_id, "level": level})

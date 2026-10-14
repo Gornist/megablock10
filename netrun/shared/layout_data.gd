@@ -35,6 +35,8 @@ var portals: Array[Vector3] = []
 var vaults: Array = []
 ## Стражи: {id: String, route: Array of {cell: Vector2i (клетка 1 м), wait: int, look: Vector2i (dir8, ZERO — не задан)}} — формат маршрута TickIce.
 var sentries: Array = []
+## Маяки (`kind: beacon`): {id, cell: Vector2i (клетка 1 м; клетка-тумба «O»), start: Vector2i (dir8), step_deg: float, sweep_steps: int}.
+var beacons: Array = []
 ## Black ICE (`black` в файле): {id, route} или пусто.
 var black: Dictionary = {}
 ## Подсказки: {cell: Vector2i (клетка 1 м), text: String, pos: Vector3 (место в мире, y = 0)}.
@@ -267,8 +269,18 @@ func _fill_ice(src: Variant) -> String:
 		if not (e is Dictionary):
 			return "ice: запись не объект"
 		var ed: Dictionary = e
+		if str(ed.get("kind", "")) == "beacon":
+			var bc: Variant = _point_cell(ed)
+			if bc == null:
+				return "ice %s: маяк без клетки в пределах карты" % str(ed.get("id", "?"))
+			var start := NodeGrid.look_dir(ed.get("start", "N"))
+			if start == Vector2i.ZERO:
+				return "ice %s: маяку нужно направление start (N, NE, E…)" % str(ed.get("id", "?"))
+			beacons.append({"id": str(ed.get("id", "o%d" % (beacons.size() + 1))), "cell": bc, "start": start,
+				"step_deg": clampf(float(ed.get("step_deg", 45.0)), 45.0, 180.0), "sweep_steps": maxi(int(ed.get("sweep_steps", 0)), 0)})
+			continue
 		if str(ed.get("kind", "")) != "sentry":
-			continue   # Маяк, датчик и запасной Страж — следующие карточки
+			continue   # датчик и запасной Страж — следующие карточки
 		var r := _route(ed.get("route", []))
 		if r.has("error"):
 			return "ice %s: %s" % [str(ed.get("id", "?")), str(r["error"])]
