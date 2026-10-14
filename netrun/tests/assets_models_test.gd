@@ -884,7 +884,7 @@ const POINTS_BUDGET := {
 	"env/exit_frame": [1000, 0.014],
 	"ice/soft_ice": [700, 0.018], "ice/black_ice": [900, 0.02], "ice/black_ice_hunt": [900, 0.02], "ice/black_ice_catch": [900, 0.02],
 	"ice/black_ice_hound": [900, 0.02], "ice/black_ice_kraken": [900, 0.02], "ice/black_ice_raven": [900, 0.02], "ice/black_ice_scorpion": [900, 0.02],
-	"ice/black_ice_lich": [900, 0.02], "ice/black_lair": [800, 0.016],
+	"ice/black_ice_lich": [900, 0.02], "ice/black_lair": [1200, 0.02],
 }
 
 ## Виды Black ICE (ice.md §6.2): тот же силуэт и те же клипы, что у базового, плюс отличительная деталь.
@@ -904,21 +904,36 @@ func test_black_ice_kinds_keep_clips_and_differ_from_base() -> void:
 		assert_bool(m.find_child("AlertAnchor", true, false) != null).override_failure_message("black_ice_%s: нет AlertAnchor" % kd).is_true()
 		assert_bool(m.find_child("black_ice_%s_inner" % kd, true, false) != null).is_true()
 		var box := _aabb(m)
-		assert_float(box.size.y).override_failure_message("black_ice_%s: рост ≈ как у базового (иглы до 3,4 м)" % kd).is_between(base_box.size.y - 0.05, base_box.size.y + 0.4)
+		if kd in ["hound", "scorpion"]:   # низкие позы: ниже базового, но не ниже 1,5 м (с жалом/гребнем)
+			assert_float(box.size.y).override_failure_message("black_ice_%s: низкая поза (1,5…базовый)" % kd).is_between(1.5, base_box.size.y - 0.05)
+		else:
+			assert_float(box.size.y).override_failure_message("black_ice_%s: рост ≈ как у базового (иглы до 3,4 м)" % kd).is_between(base_box.size.y - 0.05, base_box.size.y + 0.4)
 		sizes[kd] = "%.2f,%.2f,%.2f" % [box.size.x, box.size.y, box.size.z]
 	var distinct := {}
 	for kd in sizes:
 		distinct[sizes[kd]] = true
 	assert_int(distinct.size()).override_failure_message("виды различимы силуэтом: габариты %s" % str(sizes)).is_greater_equal(4)
+	# главный признак вида (Game 14.10): Гончая низкая и вытянутая, Скорпион плоский с кольцом радиуса 4 м, Кракен с нитями к стенам, Ворон с крыльями шире базового
+	var hound := _aabb(_load("ice", "black_ice_hound"))
+	assert_float(hound.size.y).override_failure_message("Гончая низкая: ниже базового").is_less(base_box.size.y - 0.4)
+	assert_float(hound.size.z).override_failure_message("Гончая вытянутая: длиннее базового").is_greater(base_box.size.z + 0.5)
+	assert_float(_aabb(_load("ice", "black_ice_scorpion")).size.x).override_failure_message("Скорпион: кольцо 2 клеток карты (радиус 4 м → ≥ 7,5 м)").is_greater(7.5)
+	assert_float(_aabb(_load("ice", "black_ice_kraken")).size.x).override_failure_message("Кракен: нити до стен (≥ 4,5 м)").is_greater(4.5)
+	assert_float(_aabb(_load("ice", "black_ice_raven")).size.x).override_failure_message("Ворон: крылья шире базового").is_greater(base_box.size.x + 1.0)
 
 
-func test_black_lair_is_a_two_by_two_cell_slab_with_a_sleeper_anchor() -> void:
+func test_black_lair_is_a_four_by_four_slab_with_three_states_and_a_sleeper_anchor() -> void:
 	var m := _load("ice", "black_lair")
 	var box := _aabb(m)
-	assert_float(box.size.x).is_equal_approx(2.0, 0.05)
-	assert_float(box.size.z).is_equal_approx(2.0, 0.05)
+	assert_float(box.size.x).override_failure_message("логово 2×2 клетки карты по 2 м = 4×4 м").is_equal_approx(4.0, 0.1)
+	assert_float(box.size.z).is_equal_approx(4.0, 0.1)
 	assert_float(box.position.y).is_between(-0.01, 0.01)   # на полу
 	assert_bool(m.find_child("Anchor_Sleeper", true, false) != null).override_failure_message("black_lair: нет якоря Anchor_Sleeper").is_true()
+	for s in ["State_sleep", "State_waking", "State_empty"]:
+		var n := m.find_child(s, true, false) as Node3D
+		assert_bool(n != null and _meshes(n).size() > 0).override_failure_message("black_lair: нет состояния " + s).is_true()
+	# «пробуждение» выше сна (холм поднимается до 1,4 м)
+	assert_float(_aabb(m.find_child("State_waking", true, false)).size.y).is_greater(_aabb(m.find_child("State_sleep", true, false)).size.y + 0.4)
 
 
 func _points_model(key: String) -> Node3D:

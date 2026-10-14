@@ -64,51 +64,89 @@ def _black_kind_extras(kind, seed, shell, inner, pts, blue, red, hot):
     raven (Ворон: сносит программу) — крылья из штрихов, поднимающиеся наружу; scorpion (Скорпион: сужает прыжок) — хвост дугой над спиной с жалом;
     lich (Лич: стирает «расшифрован») — корона над головой и кольцо плавающих осколков."""
     rng = random.Random(seed + 1000)
+    ice = lib.lin("ice_white")
     if kind == "hound":
-        for i in range(26):
-            t = i / 25.0
-            hh = rng.uniform(0.25, 0.55)
-            z_top = 2.5 - 1.0 * t + rng.uniform(-0.15, 0.15)
-            inner.append((Vector((rng.uniform(-0.22, 0.22), -0.10 - 0.55 * t, z_top - hh)), rng.uniform(0.012, 0.022), hh, rng.uniform(0.7, 1.0), hot))
-        for _ in range(24):
-            pts.append(Vector((rng.uniform(-0.3, 0.3), rng.uniform(-0.8, -0.2), rng.uniform(0.8, 2.6))))
+        # хвост из искр позади бегущей фигуры: убывающие вспышки по −Y и россыпь точек (поза — _pose_kind: низкая, вытянутая)
+        for i in range(34):
+            t = i / 33.0
+            hh = rng.uniform(0.08, 0.30) * (1.0 - 0.5 * t)
+            inner.append((Vector((rng.uniform(-0.28, 0.28) * (1.0 + t), -0.55 - 1.7 * t, rng.uniform(0.12, 0.75) * (1.0 - 0.4 * t) + hh)), rng.uniform(0.010, 0.018), hh, rng.uniform(0.6, 1.0), hot if i % 3 == 0 else red))
+        for _ in range(60):
+            t = rng.random()
+            pts.append(Vector((rng.uniform(-0.45, 0.45), -0.6 - 2.2 * t, rng.uniform(0.05, 0.9))))
     elif kind == "kraken":
-        n = 14
+        # нити-щупальца к стенам и площадке выхода: восемь лучей по полу (цепочки точек до 2,8 м) и столбы-щупальца у корпуса
+        for arm in range(8):
+            a = math.tau * (arm + rng.uniform(-0.15, 0.15)) / 8.0
+            length = rng.uniform(2.0, 2.8)
+            for s in range(18):
+                t = s / 17.0
+                r = 0.5 + (length - 0.5) * t
+                wob = 0.07 * math.sin(t * 9.0 + arm)
+                pts.append(Vector((r * math.cos(a) - wob * math.sin(a), r * math.sin(a) + wob * math.cos(a), 0.014 + 0.05 * (1.0 - t))))
+        n = 10
         for i in range(n):
             a = math.tau * (i + rng.uniform(-0.25, 0.25)) / n
-            r = rng.uniform(1.0, 1.3)
-            hh = rng.uniform(0.3, 0.75)
-            inner.append((Vector((r * math.cos(a), 0.8 * r * math.sin(a), hh)), rng.uniform(0.02, 0.035), hh, rng.uniform(0.4, 0.7), red))
-        for _ in range(30):
-            a = rng.uniform(0, math.tau)
-            r = rng.uniform(0.4, 1.6)
-            pts.append(Vector((r * math.cos(a), 0.8 * r * math.sin(a), 0.015)))
+            r = rng.uniform(0.8, 1.1)
+            hh = rng.uniform(0.35, 0.8)
+            inner.append((Vector((r * math.cos(a), 0.8 * r * math.sin(a), hh)), rng.uniform(0.02, 0.032), hh, rng.uniform(0.4, 0.7), red))
     elif kind == "raven":
+        # крылья острыми гранями и клюв: наружу и вверх, концы горячие; клюв — три убывающих штриха вперёд у головы
         for side in (-1, 1):
-            for i in range(16):
-                t = i / 15.0
-                hh = rng.uniform(0.3, 0.5) * (1.0 - 0.35 * t)
-                z = 2.0 + 0.9 * t
-                c = hot if i >= 13 else red
-                inner.append((Vector((side * (0.35 + 0.95 * t), -0.15 - 0.3 * t, z)), rng.uniform(0.012, 0.02), hh, rng.uniform(0.45, 0.8), c))
+            for i in range(18):
+                t = i / 17.0
+                hh = rng.uniform(0.34, 0.55) * (1.0 - 0.5 * t)
+                z = 1.8 + 1.1 * t ** 1.3
+                c = hot if i >= 14 else red
+                inner.append((Vector((side * (0.30 + 1.15 * t), -0.15 - 0.45 * t, z)), rng.uniform(0.010, 0.016), hh, rng.uniform(0.5, 0.85), c))
+        for j in range(4):
+            inner.append((Vector((0.0, 0.35 + 0.16 * j, 2.62 - 0.10 * j)), 0.016 - 0.003 * j, 0.20 - 0.04 * j, 0.95, hot))
     elif kind == "scorpion":
+        # плоский (поза) с поднятым жалом над корпусом и кольцом радиуса 4 м по полу (2 клетки карты по 2 м): «зона, где дальний прыжок режется»
         steps = 22
         for i in range(steps):
             t = i / (steps - 1.0)
-            y = -0.3 - 0.8 * math.sin(math.pi * t) + 1.1 * t ** 3
-            z = 1.0 + 2.4 * t
-            tip = i >= steps - 3
-            inner.append((Vector((rng.uniform(-0.01, 0.01), y, z)), 0.02 if tip else 0.014, 0.16 if tip else 0.11, 0.95 if tip else 0.75, hot if tip else red))
+            y = -0.3 - 0.9 * math.sin(math.pi * t) + 1.0 * t ** 3
+            z = 0.9 + 2.2 * t
+            tip = i >= steps - 4
+            inner.append((Vector((rng.uniform(-0.01, 0.01), y, z)), 0.022 if tip else 0.014, 0.20 if tip else 0.10, 0.95 if tip else 0.75, hot if tip else red))
+        for s in range(64):
+            a = math.tau * s / 64.0
+            pts.append(Vector((4.0 * math.cos(a), 4.0 * math.sin(a), 0.014)))
     elif kind == "lich":
-        for i in range(9):
-            a = math.tau * i / 9.0
-            inner.append((Vector((0.28 * math.cos(a), 0.28 * math.sin(a) + 0.04, 2.95)), 0.012, rng.uniform(0.25, 0.4), 0.9, hot))
+        # маска-череп: овал из ярких штрихов вокруг головы с провалами глаз и носа; внутри корпуса мерцают «стираемые» символы (низкой яркости, шейдер даёт мерцание)
+        for ci in range(9):
+            x = -0.16 + 0.04 * ci
+            eye = 0.05 < abs(x) < 0.13
+            for z0, z1 in ((2.74, 2.92), (2.18, 2.48)):   # лоб и скулы с челюстью
+                inner.append((Vector((x, 0.20 + 0.03 * abs(x) / 0.16, (z0 + z1) / 2)), 0.010, (z1 - z0) / 2, 0.95, ice))
+            if not eye:   # переносица и межглазье цельные, глазницы пустые
+                inner.append((Vector((x, 0.21, 2.62)), 0.010, 0.10, 0.9, ice))
+        for _ in range(22):
+            x, z = rng.uniform(-0.22, 0.22), rng.uniform(1.3, 2.1)
+            inner.append((Vector((x, 0.0, z)), rng.uniform(0.006, 0.010), rng.uniform(0.04, 0.12), rng.uniform(0.3, 0.55), ice))
         for _ in range(26):
             a = rng.uniform(0, math.tau)
             r = rng.uniform(0.8, 1.0)
             pts.append(Vector((r * math.cos(a), 0.8 * r * math.sin(a), rng.uniform(1.6, 2.5))))
     else:
         raise ValueError(f"неизвестный вид Black ICE {kind}")
+
+
+def _pose_kind(kind, shell, inner, pts):
+    """Поза вида над общим силуэтом (до деталей вида): Гончая — низкая и вытянутая вперёд («бегущая»), Скорпион — плоский и широкий; остальные виды стоят как базовый.
+    Сжатие по высоте, растяжение по +Y и наклон вперёд применяются к центрам штрихов и точек (высота штриха сжимается вместе с z). Правит списки на месте."""
+    sq_z, st_y, lean = {"hound": (0.60, 1.55, 0.35), "scorpion": (0.52, 1.20, 0.0)}.get(kind, (1.0, 1.0, 0.0))
+    if sq_z == 1.0 and st_y == 1.0:
+        return
+
+    def tf(v):
+        z = v.z * sq_z
+        return Vector((v.x * (1.25 if kind == "scorpion" else 1.0), v.y * st_y + lean * v.z * 0.5, z))
+
+    shell[:] = [(tf(c), w, hh * sq_z, a, col) for c, w, hh, a, col in shell]
+    inner[:] = [(tf(c), w, hh * sq_z, a, col) for c, w, hh, a, col in inner]
+    pts[:] = [tf(p) for p in pts]
 
 
 def build_black_ice(out, name="black_ice", seed=31, scale=2.0, state="idle", kind=""):
@@ -183,7 +221,8 @@ def build_black_ice(out, name="black_ice", seed=31, scale=2.0, state="idle", kin
         r = rng.uniform(0.55, 0.95)
         hh = rng.uniform(0.5, 1.5)
         inner.append((Vector((r * math.cos(ang), 0.8 * r * math.sin(ang), hh / 2)), rng.uniform(0.012, 0.024), hh / 2, rng.uniform(0.25, 0.7), red))
-    if kind:   # вид Black ICE: деталь поверх общего силуэта (база не меняется)
+    if kind:   # вид Black ICE: поза и деталь поверх общего силуэта (база не меняется)
+        _pose_kind(kind, shell, inner, pts)
         _black_kind_extras(kind, seed, shell, inner, pts, blue, red, hot)
     objs = [lib.streak_set(f"{name}_shell", shell, blue), lib.streak_set(f"{name}_inner", inner, red)]
     dust = [(c + Vector((rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(-0.3, 0.6))).normalized() * rng.uniform(0.05, 0.2)) for c in rng.sample([x[0] for x in shell], min(260, len(shell)))]
@@ -210,39 +249,52 @@ def build_black_ice(out, name="black_ice", seed=31, scale=2.0, state="idle", kin
 
 
 def build_black_lair(out, name="black_lair", seed=34):
-    """Логово Black ICE (ice.md §6.1: «лежит в логове, 2×2 занятые клетки, видно от входа»): плита 2×2 м с красной кромкой, два кольца знаков на полу, рваный
-    венец из вертикальных шипов по краю и низкий пульсирующий холм красных штрихов в центре (спящий Black ICE ставит Godot в якорь `Anchor_Sleeper`).
-    Состояний нет: «пробуждение» делает игра (потухание слоёв фона, свет краснеет — параметр intensity/breathe холма). Origin на полу в центре 2×2 клеток."""
+    """Логово Black ICE (ice.md §6.1: «лежит в логове, 2×2 занятые клетки карты, видно от входа», клетка карты 2 м → 4×4 м; Game 14.10: «низкий холм или гнездо, во сне
+    медленно пульсирует»): плита 4×4 м с красной кромкой, три кольца знаков, венец шипов по краю и узлы состояний: `State_sleep` (низкий холм красных штрихов, дышит —
+    параметр шейдера `breathe`/пульс задаёт игра), `State_waking` (холм поднят до 1,4 м, штрихи горячие, над гнездом искры: игра растягивает его на 6 тактов пробуждения),
+    `State_empty` (холм осыпался: пепел и потухшие знаки, Black ICE вышел). Включайте ровно один State_*. Спящий Black ICE ставится в якорь `Anchor_Sleeper`.
+    Origin на полу в центре 4×4 м (2×2 клетки карты). Корпус сплошной (`/ice/` вне облака (А))."""
     lib.reset()
     rng = random.Random(seed)
-    hot, red, blue, void = lib.lin("threat_hot"), lib.lin("threat"), lib.lin("blue"), lib.lin("void")
-    slab = lib.box_bm((2.0, 2.0, 0.08), bevel=0.02, center=(0, 0, 0.04))
-    glow = lib.lit_part(slab, 0.08, 0.02)
-    objs = [lib.obj_from_bm("black_lair_slab", slab, "solid_dark", hot, rgb_fn=lib.combine_rgb([glow], hot, void))]
-    pts = []
-    for r, n in ((0.55, 36), (0.9, 56)):   # два кольца знаков на плите
+    hot, red, void = lib.lin("threat_hot"), lib.lin("threat"), lib.lin("void")
+    HALF = 2.0
+    slab = lib.box_bm((4.0, 4.0, 0.10), bevel=0.03, center=(0, 0, 0.05))
+    glow = lib.lit_part(slab, 0.10, 0.03)
+    slab_obj = lib.obj_from_bm("black_lair_slab", slab, "solid_dark", hot, rgb_fn=lib.combine_rgb([glow], hot, void))
+    signs = []
+    for r, n in ((0.9, 40), (1.45, 64), (1.9, 88)):   # три кольца знаков на плите
         for i in range(n):
             a = math.tau * (i + rng.uniform(-0.3, 0.3)) / n
-            pts.append(Vector((r * math.cos(a), r * math.sin(a), 0.09)))
-    objs.append(lib.point_cloud("black_lair_signs", pts, red, half_size=0.012, seed=seed, a_min=0.4, a_max=0.9))
+            signs.append(Vector((r * math.cos(a), r * math.sin(a), 0.11)))
+    signs_obj = lib.point_cloud("black_lair_signs", signs, red, half_size=0.014, seed=seed, a_min=0.4, a_max=0.9)
     thorns = []
-    for i in range(22):   # рваный венец: шипы по периметру разной высоты
+    for i in range(36):   # рваный венец: шипы по периметру разной высоты
         side = i % 4
-        u = rng.uniform(-0.95, 0.95)
-        x, y = [(u, 0.97), (0.97, u), (u, -0.97), (-0.97, u)][side]
-        hh = rng.uniform(0.2, 0.45)
-        thorns.append((Vector((x, y, 0.08 + hh)), rng.uniform(0.014, 0.026), hh, rng.uniform(0.5, 0.85), red))
-    objs.append(lib.streak_set("black_lair_thorns", thorns, red))
-    mound = []
-    for _ in range(40):   # холм «сна»: низкие красные штрихи в центре, дышит (параметр шейдера breathe задаёт игра)
-        a = rng.uniform(0, math.tau)
-        r = 0.45 * math.sqrt(rng.random())
-        hh = rng.uniform(0.05, 0.17)
-        mound.append((Vector((r * math.cos(a), r * math.sin(a), 0.08 + hh), ), rng.uniform(0.014, 0.024), hh, rng.uniform(0.25, 0.6), red))
-    objs.append(lib.streak_set("black_lair_mound", mound, red))
-    objs.append(lib.anchor("Anchor_Sleeper", (0, 0, 0.1)))
-    return lib.export(name, "ice", objs, out, budget_tris=200, budget_points=200, budget_streaks=120, origin="floor",
-                      notes="логово 2×2 клетки, якорь Anchor_Sleeper (спящий Black ICE), пробуждение — игра; красный по принципу 5")
+        u = rng.uniform(-HALF + 0.1, HALF - 0.1)
+        x, y = [(u, HALF - 0.05), (HALF - 0.05, u), (u, -HALF + 0.05), (-HALF + 0.05, u)][side]
+        hh = rng.uniform(0.25, 0.6)
+        thorns.append((Vector((x, y, 0.10 + hh)), rng.uniform(0.016, 0.03), hh, rng.uniform(0.5, 0.85), red))
+    thorns_obj = lib.streak_set("black_lair_thorns", thorns, red)
+
+    def _mound(n, r_max, h_lo, h_hi, a_lo, a_hi, color, name):
+        out_s = []
+        for _ in range(n):
+            a = rng.uniform(0, math.tau)
+            r = r_max * math.sqrt(rng.random())
+            hh = rng.uniform(h_lo, h_hi) * (1.0 - 0.55 * r / r_max)   # к краю ниже: холм, а не стена
+            out_s.append((Vector((r * math.cos(a), r * math.sin(a), 0.10 + hh)), rng.uniform(0.016, 0.028), hh, rng.uniform(a_lo, a_hi), color))
+        return lib.streak_set(name, out_s, color)
+
+    sleep = _mound(70, 1.0, 0.10, 0.30, 0.25, 0.6, red, "black_lair_mound")
+    waking = _mound(80, 1.2, 0.45, 1.4, 0.45, 0.9, hot, "black_lair_rise")
+    embers = [Vector((rng.uniform(-1.3, 1.3), rng.uniform(-1.3, 1.3), 0.15 + rng.uniform(0.0, 1.6))) for _ in range(50)]
+    embers_obj = lib.point_cloud("black_lair_embers", embers, hot, half_size=0.012, seed=seed + 1, a_min=0.5, a_max=1.0)
+    ash = [Vector((rng.uniform(-1.1, 1.1), rng.uniform(-1.1, 1.1), 0.11)) for _ in range(40)]
+    ash_obj = lib.point_cloud("black_lair_ash", ash, red, half_size=0.010, seed=seed + 2, a_min=0.15, a_max=0.4)
+    groups = [lib.group("State_sleep", [sleep]), lib.group("State_waking", [waking, embers_obj]), lib.group("State_empty", [ash_obj])]
+    objs = [slab_obj, signs_obj, thorns_obj, sleep, waking, embers_obj, ash_obj, *groups, lib.anchor("Anchor_Sleeper", (0, 0, 0.12))]
+    return lib.export(name, "ice", objs, out, budget_tris=300, budget_points=360, budget_streaks=260, origin="floor", budget_draws=12,
+                      notes="логово 4×4 м (2×2 клетки карты), State_sleep/waking/empty (ровно один), Anchor_Sleeper; красный по принципу 5")
 
 
 if __name__ == "__main__":

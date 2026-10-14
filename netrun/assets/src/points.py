@@ -100,13 +100,13 @@ RECIPES["ice/tracer_ice"] = {   # Трассировщик Soft ICE: низко�
         ("tracer_ice_spine", "line", 0.40),
     ],
 }
-RECIPES["ice/black_lair"] = {   # логово Black ICE (2×2 клетки): плита, знаки, шипы, холм сна
-    "count": 800, "half": 0.016, "spark": 0.08,
+RECIPES["ice/black_lair"] = {   # логово Black ICE (4×4 м, 2×2 клетки карты): плита, знаки, шипы и холм СНА (пробуждение и «пусто» — без облака)
+    "count": 1200, "half": 0.02, "spark": 0.08,
     "parts": [
-        ("black_lair_slab", "surface", 0.35),
+        ("black_lair_slab", "surface", 0.30),
         ("black_lair_signs", "dot", 0.25),
-        ("black_lair_thorns", "line", 0.20),
-        ("black_lair_mound", "line", 0.20),
+        ("black_lair_thorns", "line", 0.15),
+        ("black_lair_mound", "line", 0.30),
     ],
 }
 # базовый Black ICE, его запасные состояния и пять видов (ice.md §6.2): общий рецепт, имена мешей по имени модели

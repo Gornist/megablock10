@@ -8,13 +8,13 @@
 | `models/ice/barrier_ice.glb` | 408 / 700 | 0 / 0 | 78 / 80 | 0 | 13 | 1.04 × 1.6 × 0.1 | solid_dark, streaks | — | floor | ок |
 | `models/ice/black_ice.glb` | 0 / 300 | 157 / 600 | 256 / 350 | 0 | 3 | 1.4096 × 3.3711 × 1.68 | points, streaks | idle, hunt, catch | feet | ок |
 | `models/ice/black_ice_catch.glb` | 0 / 300 | 156 / 600 | 331 / 350 | 0 | 3 | 2.3818 × 3.3707 × 2.7782 | points, streaks | — | feet | ок |
-| `models/ice/black_ice_hound.glb` | 0 / 300 | 181 / 600 | 282 / 350 | 0 | 3 | 1.4096 × 3.3711 × 2.1809 | points, streaks | idle, hunt, catch | feet | ок |
+| `models/ice/black_ice_hound.glb` | 0 / 300 | 217 / 600 | 290 / 350 | 0 | 3 | 1.4096 × 2.0226 × 5.2174 | points, streaks | idle, hunt, catch | feet | ок |
 | `models/ice/black_ice_hunt.glb` | 0 / 300 | 162 / 600 | 282 / 350 | 0 | 3 | 1.3545 × 3.2935 × 2.1668 | points, streaks | — | feet | ок |
-| `models/ice/black_ice_kraken.glb` | 0 / 300 | 187 / 600 | 270 / 350 | 0 | 3 | 2.7551 × 3.3711 × 2.5329 | points, streaks | idle, hunt, catch | feet | ок |
-| `models/ice/black_ice_lich.glb` | 0 / 300 | 183 / 600 | 265 / 350 | 0 | 3 | 1.8977 × 3.3711 × 2.1623 | points, streaks | idle, hunt, catch | feet | ок |
-| `models/ice/black_ice_raven.glb` | 0 / 300 | 157 / 600 | 288 / 350 | 0 | 3 | 2.6369 × 3.3711 × 1.8554 | points, streaks | idle, hunt, catch | feet | ок |
-| `models/ice/black_ice_scorpion.glb` | 0 / 300 | 157 / 600 | 278 / 350 | 0 | 3 | 1.4096 × 3.56 × 2.3987 | points, streaks | idle, hunt, catch | feet | ок |
-| `models/ice/black_lair.glb` | 68 / 200 | 92 / 200 | 62 / 120 | 0 | 4 | 2 × 0.9575 × 2 | points, solid_dark, streaks | — | floor | ок |
+| `models/ice/black_ice_kraken.glb` | 0 / 300 | 301 / 600 | 266 / 350 | 0 | 3 | 4.6707 × 3.3711 × 4.0933 | points, streaks | idle, hunt, catch | feet | ок |
+| `models/ice/black_ice_lich.glb` | 0 / 300 | 183 / 600 | 301 / 350 | 0 | 3 | 1.8557 × 3.3711 × 2.1746 | points, streaks | idle, hunt, catch | feet | ок |
+| `models/ice/black_ice_raven.glb` | 0 / 300 | 157 / 600 | 296 / 350 | 0 | 3 | 2.9277 × 3.3711 × 2.0054 | points, streaks | idle, hunt, catch | feet | ок |
+| `models/ice/black_ice_scorpion.glb` | 0 / 300 | 221 / 600 | 278 / 350 | 0 | 3 | 8.022 × 3.3 × 8 | points, streaks | idle, hunt, catch | feet | ок |
+| `models/ice/black_lair.glb` | 68 / 300 | 282 / 360 | 186 / 260 | 0 | 7 | 4 × 2.2678 × 4 | points, solid_dark, streaks | — | floor | ок |
 | `models/env/ceiling.glb` | 144 / 300 | 0 / 0 | 0 / 0 | 1 | 2 | 1.5252 × 0.8115 × 1.4557 | shell_soft, solid_dark | — | ceiling | ок |
 | `models/env/ceiling_b.glb` | 108 / 300 | 0 / 0 | 0 / 0 | 1 | 2 | 1.1653 × 0.7915 × 1.5791 | shell_soft, solid_dark | — | ceiling | ок |
 | `models/env/ceiling_c.glb` | 36 / 300 | 0 / 0 | 0 / 0 | 1 | 2 | 1.1463 × 0.728 × 0.7571 | shell_soft, solid_dark | — | ceiling | ок |
@@ -77,7 +77,7 @@
 | `models/env/exit_frame.points` | 1000 / 1000 | 28000 | ок |
 | `models/ice/soft_ice.points` | 700 / 700 | 19600 | ок |
 | `models/ice/tracer_ice.points` | 500 / 500 | 14000 | ок |
-| `models/ice/black_lair.points` | 800 / 800 | 22400 | ок |
+| `models/ice/black_lair.points` | 1200 / 1200 | 33600 | ок |
 | `models/ice/black_ice.points` | 900 / 900 | 25200 | ок |
 | `models/ice/black_ice_hunt.points` | 900 / 900 | 25200 | ок |
 | `models/ice/black_ice_catch.points` | 900 / 900 | 25200 | ок |
