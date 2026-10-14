@@ -136,6 +136,7 @@ func set_look(new_tier: String, new_layout: LayoutData) -> void:
 		if module == "lockdown_gate":
 			_gates = made
 	_apply_exit()
+	_attach_exit_cloud()
 
 
 ## Кресло — там, где игрок появляется (вход раскладки); датчик — только в прежней комнате: в раскладке Стражи — на карте, датчика нет.
@@ -307,9 +308,22 @@ func _place(parent: Node3D, path: String, pos: Vector3, yaw: float) -> Node3D:
 ## Объём частицами поверх модели (VolumeRegistry): только когда модуль включён в `[render] volumetric`; облако — потомок предмета, поэтому
 ## видимость (открыт/закрыт) и поворот у него общие. Цвет — слой палитры hud_ok (материал облака задаёт Blender).
 func _attach_cloud(module: String, host: Node3D, model_path: String) -> void:
-	var c := VolumeRegistry.spawn(module, model_path, AssetMaterials.layer("hud_ok"), AABB())
+	var c := VolumeRegistry.spawn(module, model_path, VolumeRegistry.color_of(module), AABB())
 	if c != null:
 		host.add_child(c)
+
+
+## Рамка выхода облаком (только при `volumetric` с «exit»/«all»): сплошной модели exit_frame клиент не ставит, поэтому облако без неё —
+## голограмма на площадке выхода, лицом к центру комнаты. Дочерний узел комнаты: исчезает вместе с ней при смене узла/раскладки.
+func _attach_exit_cloud() -> void:
+	if _room == null or not VolumeRegistry.is_enabled("exit"):
+		return
+	var host := Node3D.new()
+	host.name = "ExitFrame"
+	host.position = exit_pos()
+	host.rotation.y = NodeLayout.yaw_facing(exit_pos(), NodeLayout.ROOM_CENTER)
+	_room.add_child(host)
+	_attach_cloud("exit", host, NodeAssets.env_path("exit_frame"))
 
 
 ## Убрать узел из дерева и освободить сразу (queue_free оставил бы его в сцене до конца кадра). Звать только вне обхода этих узлов.

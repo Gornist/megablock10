@@ -7,9 +7,15 @@ extends RefCounted
 ## самой модели на лету (VolumeSampler, число точек — SAMPLE_COUNTS): так облако можно мерить на очках до генератора; файл, когда появится, главнее.
 
 ## Сколько точек сэмплировать по модулю, когда файла `.points` нет (бюджет плана: хранилище ≈ 1,5k, выход ≈ 1k, портал ≈ 0,8k, шард ≈ 0,3k).
-const SAMPLE_COUNTS := {"vault": 1500, "exit": 1000, "portal": 800, "shard": 300}
+const SAMPLE_COUNTS := {"vault": 1500, "exit": 1000, "portal": 800, "shard": 300, "ice": 900}
 const SAMPLE_DEFAULT := 800
 const SAMPLE_SEED := 20261013
+## Слой палитры облака по модулю: сначала слой Blender (volume_ice, volume_exit — есть, когда влит его PR), иначе запасной из уже существующих.
+const COLOR_LAYERS := {"ice": ["volume_ice", "ice_calm"], "exit": ["volume_exit", "hud_ok"]}
+const COLOR_DEFAULT := "hud_ok"
+
+## Порог импостора дальних облаков, м (`[render] volume_impostor_m`; 0 — выкл.): его получает каждое новое облако.
+static var impostor_m := 0.0
 
 static var _all := false
 static var _modules := PackedStringArray()
@@ -52,6 +58,14 @@ static func points_path(model_path: String) -> String:
 	return model_path.get_basename() + ".points"
 
 
+## Цвет облака модуля по палитре клиента (слой Blender, если он уже есть в AssetMaterials.LAYERS, иначе запасной).
+static func color_of(module: String) -> Color:
+	for layer: String in COLOR_LAYERS.get(module, [COLOR_DEFAULT]):
+		if AssetMaterials.LAYERS.has(layer):
+			return AssetMaterials.layer(layer)
+	return AssetMaterials.layer(COLOR_DEFAULT)
+
+
 ## Облако для модуля или null: модуль выключен, файла точек нет или он битый. Узел добавляет вызывающий (родитель = узел модели).
 static func spawn(module: String, model_path: String, color: Color, bounds: AABB) -> VolumeCloud:
 	if not is_enabled(module):
@@ -71,6 +85,7 @@ static func spawn(module: String, model_path: String, color: Color, bounds: AABB
 			box = VolumeSampler.bounds_of(pts)
 	var c := VolumeCloud.new()
 	c.name = "Cloud_" + module
+	c.impostor_m = impostor_m
 	c.setup(pts, color, box)
 	# В logcat видно, дошёл ли файл `.points` до игры (в APK попадает по include_filter) или сработал сэмплер.
 	print("[volume] spawn module=%s source=%s points=%d" % [module, source, VolumeCloud.points_in(pts)])

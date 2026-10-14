@@ -851,6 +851,9 @@ func _ensure_shard_model(sh: Dictionary, reposition: bool) -> Node3D:
 	if m == null:
 		m = NodeAssets.instance(asset)
 		m.name = id
+		var cloud := VolumeRegistry.spawn("shard", asset, VolumeRegistry.color_of("shard"), AABB())   # облако шарда (`volumetric` с «shard»)
+		if cloud != null:
+			m.add_child(cloud)
 		add_child(m)
 		_pickups[id] = m
 		reposition = true

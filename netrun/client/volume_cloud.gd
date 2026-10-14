@@ -20,7 +20,12 @@ const LOD_PERIOD_SEC := 0.25
 var auto_lod := true
 ## Дополнительный множитель плотности (регулятор бюджета кадра): 1 — как есть.
 var density := 1.0
+## Порог импостора, м (0 — выкл., по умолчанию): дальше облако заменяется запечённым билбордом (VolumeImpostor, гистерезис ±1 м).
+var impostor_m := 0.0
 
+var _bounds := AABB()
+var _impostor: Node3D
+var _far := false
 var _mm: MultiMesh
 var _mmi: MultiMeshInstance3D
 var _count := 0
@@ -89,6 +94,7 @@ static func make_buffer(points: PackedFloat32Array, color: Color) -> PackedFloat
 ## Строит MultiMesh: points — массив POINT_FLOATS на точку (см. шапку), color — цвет облака (палитра клиента), bounds — габарит модели (для отсечения по кадру).
 func setup(points: PackedFloat32Array, color: Color, bounds: AABB) -> void:
 	_count = points_in(points)
+	_bounds = bounds if bounds.size != Vector3.ZERO else VolumeSampler.bounds_of(points)   # у файла .points габарита нет — по самим точкам
 	var mat := ShaderMaterial.new()
 	mat.shader = SHADER
 	var quad := QuadMesh.new()
@@ -100,7 +106,7 @@ func setup(points: PackedFloat32Array, color: Color, bounds: AABB) -> void:
 	_mm.use_custom_data = true
 	_mm.mesh = quad
 	_mm.instance_count = _count
-	_mm.custom_aabb = bounds.grow(0.1)
+	_mm.custom_aabb = _bounds.grow(0.1)
 	_mm.buffer = make_buffer(points, color)
 	_mmi = MultiMeshInstance3D.new()
 	_mmi.name = "Particles"
@@ -153,5 +159,26 @@ func _process(delta: float) -> void:
 	_acc = 0.0
 	var cam := get_viewport().get_camera_3d()
 	if cam != null:
-		_lod = lod_fraction(cam.global_position.distance_to(global_position))
+		var dist := cam.global_position.distance_to(global_position)
+		_lod = lod_fraction(dist)
+		_set_far(VolumeImpostor.next_far(_far, dist, impostor_m))
 		_apply()
+
+
+## Далеко — вместо тысяч квадов один билборд (запекается при первом переходе); близко — снова живое облако.
+func _set_far(far: bool) -> void:
+	if far == _far or _mmi == null:
+		return
+	if far and _impostor == null:
+		_impostor = VolumeImpostor.bake(_mm, _bounds)
+		if _impostor == null:
+			return
+		add_child(_impostor)
+	_far = far
+	_mmi.visible = not far
+	if _impostor != null:
+		_impostor.visible = far
+
+
+func is_far() -> bool:
+	return _far

@@ -49,6 +49,12 @@ func _init(is_black: bool = false) -> void:
 	_model.name = "Model"
 	add_child(_model)
 	_player = _model.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	# Голограмма стража облаком частиц (`volumetric` с «ice»): потомок узла Rig модели — едет и качается вместе с клипами; точки в
+	# локальных координатах модели. Нет Rig у модели — потомок самой модели. По умолчанию модуль выключен, ничего не добавляется.
+	var cloud := VolumeRegistry.spawn("ice", asset, VolumeRegistry.color_of("ice"), AABB())
+	if cloud != null:
+		var host := _model.find_child("Rig", true, false) as Node3D
+		(host if host != null else _model).add_child(cloud)
 	_alert = Label3D.new()
 	_alert.name = "Alert"
 	_alert.billboard = BaseMaterial3D.BILLBOARD_ENABLED
