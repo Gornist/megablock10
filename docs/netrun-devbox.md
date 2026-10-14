@@ -148,7 +148,7 @@ godot -- --flat --host=127.0.0.1 --port=7777 --token=t1
 - **Пресеты рендера и серии замеров** (рефактор Сети, G2): умолчания приняты и живут в коде (`RenderConfig`: msaa 2, foveation 0, layers behind;
   `AssetMaterials.KNOBS`: вид V10), поэтому `netrun.cfg` теперь нужен только для сравнений. `netrun/tools/pico_stand.sh <пресет> [ключ=значение ...]`
   пишет секции `[render]` и `[assets]` на очки (остальной файл не трогает; `--show`, `--reset`); пресеты: `base` (чистые умолчания), `bench`
-  (`perf=on`, `bench=entry`), `cloud-props` (+ `cloud=1`), `cloud-props-2s` (+ `cloud_two_sided=1`), `probe-sweep`. Ключи `RenderConfig.KEYS` идут
+  (`perf=on`, `bench=entry`), `cloud-props` (+ `cloud=1`), `cloud-vol`/`cloud-vol-budget`/`cloud-all`/`cloud-all-imp` (облако (Б), регулятор, импостор), `probe-sweep` (`cloud-props-2s` и ручка `cloud_two_sided` удалены 14.10: +5,5 мс, 66 fps). Ключи `RenderConfig.KEYS` идут
   в `[render]`, остальные — в `[assets]`. `netrun/tools/pico_series.sh "имя=пресет ключ=значение" ...` прогоняет варианты подряд (конфиг →
   перезапуск → итог `[bench]`/`[probe]` → PNG кадра при `perf=diag`) в `~/pico-series/<время>`; `PICO_SERVER_CMD` — команда сервера мира.
   Грабли без человека: очки на столе засыпают по датчику (`dumpsys power` → `Asleep`; `svc power stayon true` не всегда хватает; на Pico помогли
