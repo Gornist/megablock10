@@ -1087,3 +1087,57 @@ func test_ice_tracer_has_tail_cells_and_alert_anchor() -> void:
 	# тело низкое («ищейка»), без хвоста
 	var body := _aabb(m.find_child("tracer_ice_body", true, false))
 	assert_float(body.size.y).override_failure_message("Трассировщик — низкая ищейка").is_less(0.5)
+
+
+# ---------------------------------------------------------------- вид тревоги узла 0–4 (AssetMaterials.alarm_background / set_alarm, ice.md §4, §8)
+
+func test_alarm_background_shifts_warmer_by_level_and_keeps_calm_unchanged() -> void:
+	var calm := AssetMaterials.alarm_background(0)
+	assert_bool(calm.is_equal_approx(Color(AssetMaterials.VOID_BG, 1.0))).override_failure_message("уровень 0 — без изменений (VOID_BG)").is_true()
+	var prev_warm := -1.0
+	for lvl in [0, 1, 2, 4]:   # уровень 3 пульсирует, сравниваем по остальным: тёплость (r − b) растёт монотонно
+		var c := AssetMaterials.alarm_background(lvl)
+		var warm := c.r - c.b
+		assert_float(warm).override_failure_message("уровень %d не теплее предыдущего" % lvl).is_greater(prev_warm)
+		prev_warm = warm
+	# «охота» (3): пульс в ритме такта — начало такта ярче конца; фон не уходит в чистый чёрный и не ярче максимума
+	var start := AssetMaterials.alarm_background(3, 0.0)
+	var end := AssetMaterials.alarm_background(3, 1.0)
+	assert_float(start.r + start.g + start.b).override_failure_message("пульс охоты: начало такта ярче конца").is_greater(end.r + end.g + end.b)
+	assert_float(maxf(end.r, maxf(end.g, end.b))).is_greater(0.02)   # чистого чёрного нет (STYLE.md п.11)
+	for lvl in 5:
+		var c := AssetMaterials.alarm_background(lvl, 0.5)
+		assert_float(maxf(c.r, maxf(c.g, c.b))).override_failure_message("фон уровня %d слишком яркий (не заливка)" % lvl).is_less(0.5)
+	assert_bool(AssetMaterials.alarm_background(9).is_equal_approx(AssetMaterials.alarm_background(4))).is_true()   # зажим уровня
+
+
+func test_set_alarm_shifts_env_edges_warmer_and_level_zero_restores_tier() -> void:
+	AssetMaterials.reset_tuning()
+	var env := _load("env", "cover")
+	AssetMaterials.apply(env, "BASE")
+	var mat := _mat_of(env, "pillar_block")
+	assert_bool(mat != null).is_true()
+	var tier_c: Color = AssetMaterials.TIER_TINT["BASE"]
+	AssetMaterials.set_alarm(env, 0, "BASE")
+	assert_bool(Color(mat.get_shader_parameter("edge_color")).is_equal_approx(tier_c) or mat.get_shader_parameter("tint") == null or Color(mat.get_shader_parameter("tint")).is_equal_approx(tier_c)).is_true()
+	AssetMaterials.set_alarm(env, 4, "BASE")
+	var hot: Color = Color(mat.get_shader_parameter("edge_color")) if mat.get_shader_parameter("edge_color") != null else Color(mat.get_shader_parameter("tint"))
+	assert_float(hot.r - hot.b).override_failure_message("локдаун: кромки окружения теплее тира").is_greater(tier_c.r - tier_c.b + 0.3)
+	# серого посередине быть не должно (STYLE.md п.4): на каждом уровне кромка насыщена, а не смесь голубого с красным
+	for lvl in 5:
+		AssetMaterials.set_alarm(env, lvl, "BASE")
+		var c: Color = Color(mat.get_shader_parameter("edge_color")) if mat.get_shader_parameter("edge_color") != null else Color(mat.get_shader_parameter("tint"))
+		assert_float(c.s).override_failure_message("уровень %d: кромка серая (s=%.2f)" % [lvl, c.s]).is_greater(0.4)
+	AssetMaterials.set_alarm(env, 0, "BASE")
+	var back: Color = Color(mat.get_shader_parameter("edge_color")) if mat.get_shader_parameter("edge_color") != null else Color(mat.get_shader_parameter("tint"))
+	assert_bool(back.is_equal_approx(tier_c)).override_failure_message("уровень 0 возвращает цвет тира").is_true()
+
+
+func test_guard_booth_has_door_and_lamp_nodes_and_fits_one_cell() -> void:
+	var m := _load("ice", "guard_booth")
+	for n in ["Door", "Lamp"]:
+		assert_bool(m.find_child(n, true, false) != null and _meshes(m.find_child(n, true, false)).size() > 0).override_failure_message("guard_booth: нет узла " + n).is_true()
+	var box := _aabb(m)
+	assert_float(box.position.y).is_between(-0.01, 0.01)
+	assert_float(maxf(box.size.x, box.size.z)).override_failure_message("будка шире клетки хода 1 м").is_less(1.0)
+	assert_float(box.size.y).override_failure_message("выше головы, как укрытие (2,2 м)").is_between(2.0, 2.4)

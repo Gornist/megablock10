@@ -239,6 +239,49 @@ const TIER_TINT := {
 ## даёт dark 38→31, 16→13, 28→21 %, lum 21→23, 26→27, 26→28, cyan и hor не хуже; остаток dark — чёрные плиты (пол комнаты — одна плита solid_dark, потолок), не фон.
 const VOID_BG := Color(0.0, 0.10, 0.13)
 
+## ВИД ТРЕВОГИ УЗЛА 0–4 (docs/gamedesign/ice.md §4, §8: «цвет фона узла сдвигается» — главный сигнал). Уровень приходит от Godot (`alert_level`, `AlarmLevels`):
+## 0 спокойно — без изменений; 1 насторожен — лёгкий сдвиг фона; 2 тревога — заметно теплее; 3 охота — красный оттенок и пульс в ритме такта; 4 локдаун — фон на максимуме.
+## Это ЦВЕТ ФОНА (Environment.background_color, бесплатно по перекрытию слоёв, как VOID_BG) и тёплый сдвиг кромок окружения (`set_alarm`): кадр не заливается красным
+## (красный — только у угрозы, STYLE.md п.4; на 3–4 уровнях угроза и есть узел). Доли смеси фона к ALARM_BG_RED и кромок окружения к PAL_THREAT_HOT — по уровням 0…4.
+const ALARM_BG_RED := Color(0.16, 0.015, 0.03)
+const ALARM_BG_MIX := [0.0, 0.14, 0.34, 0.58, 0.92]
+const ALARM_EDGE_MIX := [0.0, 0.0, 0.22, 0.5, 0.85]
+## Пульс фона «охоты» (уровень 3): глубина модуляции яркости и форма (острая вспышка к началу такта и спад); фаза такта 0…1 даёт игра (доля прошедшего такта).
+const ALARM_PULSE_DEPTH := 0.18
+## Тир окружения нужен, чтобы сдвигать от его цвета: BASE голубой, HARD синий, NIGHTMARE фиолетовый (TIER_TINT).
+
+
+## Цвет фона узла на уровне тревоги level (0…4); tick_phase 0…1 — доля прошедшего такта (пульс только у уровня 3, «охота»; у остальных не нужен — 0).
+static func alarm_background(level: int, tick_phase := 0.0) -> Color:
+	var l := clampi(level, 0, 4)
+	var base := VOID_BG.lerp(ALARM_BG_RED, float(ALARM_BG_MIX[l]))
+	if l == 3:
+		var pulse := pow(1.0 - clampf(tick_phase, 0.0, 1.0), 2.0)   # вспышка в начале такта, к концу гаснет
+		base = base * (1.0 - ALARM_PULSE_DEPTH + ALARM_PULSE_DEPTH * 2.0 * pulse)
+	return Color(base.r, base.g, base.b, 1.0)
+
+
+## Сдвиг кромок окружения к тёплому по уровню тревоги: звать на корне ОКРУЖЕНИЯ (пол, потолок, дальние пласты, колонны), не на ICE/аватарах. Тир задаёт исходный цвет
+## (`tier`: BASE, HARD, NIGHTMARE), уровень 0 возвращает его. Действует на материалы с `tint`/`edge_color` (solid_dark, skirt, streaks, points, cloud).
+static func set_alarm(root: Node, level: int, tier := "BASE") -> void:
+	var l := clampi(level, 0, 4)
+	var c := _alarm_edge_color(TIER_TINT.get(tier, TIER_TINT["BASE"]), float(ALARM_EDGE_MIX[l]))
+	set_param(root, &"tint", c)
+	set_param(root, &"edge_color", c)
+
+
+## Цвет кромок на доле t пути от цвета тира к красному: поворот ОТТЕНКА через синий и фиолетовый (а не линейная смесь RGB: голубое + красное = серое, STYLE.md п.4:
+## «серого посередине быть не должно»). Насыщенность и яркость идут линейно к PAL_THREAT_HOT.
+static func _alarm_edge_color(base: Color, t: float) -> Color:
+	if t <= 0.0:
+		return base
+	var h0 := base.h
+	var h1 := 1.0 + PAL_THREAT_HOT.h   # красный как «1.0 + h»: идём вперёд по кругу (голубой → синий → фиолетовый → красный)
+	if h1 < h0:
+		h1 += 1.0
+	var h := fposmod(lerpf(h0, h1, t), 1.0)
+	return Color.from_hsv(h, lerpf(base.s, PAL_THREAT_HOT.s, t), lerpf(base.v, PAL_THREAT_HOT.v, t))
+
 ## Затухание штрихов окружения к концам (streaks.gdshader). Ореол штрихов убран (B1): в окружении штрихи не рисуются (streak_keep=0), у существ и аватаров его не было.
 const ENV_END_FADE := 0.6
 

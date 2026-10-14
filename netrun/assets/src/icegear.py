@@ -228,9 +228,35 @@ def build_ice_tracer(out, name="tracer_ice", seed=64):
                       notes="узел Tail с Tail_1..4 (клетки 1 м позади, кумулятивно); AlertAnchor; лицом к Blender +Y (Godot −Z)")
 
 
+def build_guard_booth(out, name="guard_booth", seed=65):
+    """Будка запасного Стража (тревога 2, levels.md §9: «простой объём у стены»): корпус 0,9×0,9×2,2 м (как укрытие `cover`, одна клетка хода 1 м, лицом к +Y Blender =
+    −Z Godot) с красными рёбрами и узким тёмным проёмом на лицевой грани; узел `Door` — створка в проёме (Godot сдвигает её вверх/в сторону при выходе Стража), узел
+    `Lamp` — маленькая линза над дверью (включается на тревоге 2+). Origin на полу в центре клетки. Корпус сплошной (`/ice/` вне облака (А))."""
+    lib.reset()
+    hot, ice, void = lib.lin("threat_hot"), lib.lin("ice_white"), lib.lin("void")
+    S, H = 0.90, 2.20
+    body = lib.box_bm((S, S, H), bevel=0.02, center=(0, 0, H / 2))
+    gb = lib.lit_part(body, H, 0.014)
+    body_obj = lib.obj_from_bm("guard_booth_body", body, "solid_dark", hot, rgb_fn=lib.combine_rgb([gb], hot, void))
+    # створка: тонкая панель чуть выступает над лицевой гранью (проём 0,46×1,70 м), своя красная кромка по верху
+    # (створка почти вровень с гранью: центр габарита по Y остаётся в пределах 5 см — origin «floor», validate)
+    door = lib.box_bm((0.46, 0.05, 1.70), bevel=0.006, center=(0, S / 2 - 0.02, 0.85))
+    gd = lib.lit_part(door, 1.70, 0.010)
+    door_obj = lib.obj_from_bm("guard_booth_door", door, "solid_dark", hot, rgb_fn=lib.combine_rgb([gd], hot, void))
+    # линза — над лицевой гранью по верху корпуса (не выступает вперёд)
+    lamp = lambda: lib.ico_bm(0.5, subdiv=1, scale=(0.07, 0.07, 0.07), center=(0, 0.30, H + 0.06))
+    lamp_objs = lib.shell_stack(lamp, "guard_booth_lamp", ice, layers=2, grow=0.4, a_inner=0.95, a_outer=0.25, pivot=(0, 0.30, H + 0.06))
+    door_node = lib.group("Door", [door_obj])
+    lamp_node = lib.group("Lamp", [*lamp_objs])
+    objs = [body_obj, door_node, door_obj, lamp_node, *lamp_objs]
+    return lib.export(name, "ice", objs, out, budget_tris=300, budget_points=0, budget_streaks=0, origin="floor", budget_layers=2,
+                      notes="узлы Door (створка) и Lamp (линза); корпус как cover; лицом к Blender +Y (Godot −Z)")
+
+
 if __name__ == "__main__":
     o = lib.args()
     build_ice_lighthouse(o)
     build_ice_sensor(o)
     build_ice_barrier(o)
     build_ice_tracer(o)
+    build_guard_booth(o)
