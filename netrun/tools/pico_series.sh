@@ -90,16 +90,24 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT TERM HUP
 
-if [ -n "${PICO_SERVER_CMD:-}" ]; then
+# Сервер мира стенда. Один сервер на серию (по умолчанию) ведёт игрока до конца прогона фикстуры: Страж ЛОВИТ его через ≈85 с, после чего
+# сессии терминала нет («ждёт игрока»), и следующие варианты идут по стартовой сцене без мира — без порталов и ICE (14.10: серия cloud-all
+# мерила сцену без стража). PICO_SERVER_PER_VARIANT=1 — свежий сервер (новая сессия, страж на месте) на КАЖДЫЙ вариант.
+start_server() {
+  [ -z "$server_pid" ] || { kill "$server_pid" 2>/dev/null; sleep 2; }
   nohup bash -c "exec $PICO_SERVER_CMD" > "$OUT/server.log" 2>&1 </dev/null &
   server_pid=$!
   sleep 6
+}
+if [ -n "${PICO_SERVER_CMD:-}" ] && [ "${PICO_SERVER_PER_VARIANT:-0}" != 1 ]; then
+  start_server
 fi
 
 fail=0
 for spec in "$@"; do
   name="${spec%%=*}"; rest="${spec#*=}"
   echo "== $name: $rest"
+  [ -z "${PICO_SERVER_CMD:-}" ] || [ "${PICO_SERVER_PER_VARIANT:-0}" != 1 ] || start_server
   # shellcheck disable=SC2086
   "$HERE/pico_stand.sh" $rest || { echo "   пресет не записан — вариант пропущен"; fail=1; continue; }
   adb -s "$serial" shell am force-stop "$PACKAGE" </dev/null
