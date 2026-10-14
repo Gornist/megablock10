@@ -346,6 +346,7 @@ pico_todo() { # что сделать человеку — по виду при�
     boundary) echo "Надеть очки и один раз нажать «Войти в VR (текущая граница)» — карточка границы не закрывается через adb; затем перезапустить прогон";;
     state) echo "Надеть очки и пройти настройку границы/трекинга вручную, затем перезапустить прогон";;
     wake) echo "Очки не просыпаются: проверить питание очков, кабель USB и adb (box.sh status)";;
+    adb) echo "Лишний adb-сервер прячет очки от основного: scripts/box.sh adb-rescue (Devbox/Pipeline); если у сервера есть клиенты — договориться с хозяином";;
     asleep) echo "ПОГАСИТЬ ОЧКИ ВРУЧНУЮ (кнопка питания): риск выгорания матриц";;
     timeout) echo "Прогон не уложился во время: посмотреть журнал прогона, очки погашены, перезапустить";;
     *) echo "Посмотреть PNG и журнал ~/box/journal.jsonl";;
@@ -452,7 +453,13 @@ pico_ready() { # pico_ready <владелец>: бронь → разбудит�
     Asleep|Dozing)
       pico_power
       pico_wait Awake 8 || { echo "pico ready: очки не проснулись за 8 с ($(pico_state)); ${PICO_LEASE_NOTE}"; pico_attention "$own" "очки не проснулись по POWER ($(pico_state))" "" wake; return 1; };;
-    *) echo "pico ready: очки не отвечают ($st); ${PICO_LEASE_NOTE}"; pico_attention "$own" "очки не отвечают на adb ($st)" "" wake; return 1;;
+    *) stray=$(adb_stray_text)
+       if [ -n "$stray" ]; then
+         # очки есть в USB, но основной adb их не видит: их держит лишний adb-сервер (инцидент 14.10) — это не «очки не отвечают»
+         why="очки не видны основному adb: ${stray}держит USB-устройства. Вернуть: scripts/box.sh adb-rescue (не трогает серверы с клиентами; рвёт forward/reverse на секунды и возвращает)"
+         echo "pico ready: НЕ ГОТОВО — $why; ${PICO_LEASE_NOTE}"; pico_attention "$own" "$why" "" adb; return 1
+       fi
+       echo "pico ready: очки не отвечают ($st); ${PICO_LEASE_NOTE}"; pico_attention "$own" "очки не отвечают на adb ($st)" "" wake; return 1;;
   esac
   # Один цикл вместо двух (прогон Godot 20:00: conf=1 появился ПОСЛЕ 4 проходов × 2 с, а итоговая проверка уже не нажимала —
   # «НЕ ГОТОВО: window seethrough.setting» при живом трекинге). До PICO_READY_PASSES проходов по ~2 с (по умолчанию 12 ≈ 25–30 с):
@@ -501,8 +508,15 @@ pico_ready() { # pico_ready <владелец>: бронь → разбудит�
 pico_start() { # pico_start <владелец> <пакет/активити>: am start, карточку границы (если есть) — парковкой; игра ДОЛЖНА быть resumed
   # Порядок (опыты 13.10): am start → если система держит окно («kept for the user») — HOME и один повтор (разрешено владельцем);
   # игра стартует, но остаётся paused ЗА карточкой (seethrough.setting) — тогда стек карточки на другой дисплей.
-  local own=$1 comp=$2 out pkg i parked=0 low
+  local own=$1 comp=$2 out pkg i parked=0 low stray
   pkg=${comp%%/*}
+  if ! "$ADB" devices 2>/dev/null | grep -q "^${PICO}[[:space:]]*device"; then
+    stray=$(adb_stray_text)
+    if [ -n "$stray" ]; then
+      DIAG_WHY="очки не видны основному adb: ${stray}держит USB-устройства — scripts/box.sh adb-rescue"
+      pico_attention "$own" "$DIAG_WHY" "" adb; echo "pico start: НЕ ГОТОВО — $DIAG_WHY"; return 1
+    fi
+  fi
   out=$(timeout 30 "$ADB" -s "$PICO" shell am start -n "$comp" </dev/null 2>&1 | tr -d '\r')
   low=$(tr 'A-Z' 'a-z' <<<"$out")
   case $low in
@@ -845,6 +859,70 @@ cmd_inst_ls() {
   [ "$any" -eq 1 ] || echo "экземпляров нет"
 }
 
+# --- лишние adb-серверы и возврат устройств (инцидент 14.10) -------------------------------------------------------------------
+# Второй adb-сервер (не 5037) забирает USB-устройства себе, основной их не видит (ни device, ни unauthorized). Так очки пропали
+# после перезагрузки: `adb -L tcp:5099` поднимала переменная ANDROID_ADB_SERVER_PORT=5099 у Godot (любая adb-команда сама стартует сервер).
+adb_servers() { # строки «порт pid клиентов» для adb-серверов НЕ на 5037 (клиенты — установленные соединения на порт сервера)
+  local pid port cl
+  # процесс — сервер adb, если в args есть «fork-server» или «server nodaemon»; порт — из «-L tcp:[localhost:]N» (так их стартует
+  # ANDROID_ADB_SERVER_PORT) или «-P N»; `timeout …`-обёртки и сам awk пропускаем (там adb не первый аргумент команды).
+  ps -eo pid=,args= 2>/dev/null | awk '$2 ~ /(^|\/)adb$/ && /(fork-server|server nodaemon)/ {
+      if (match($0, /-L tcp:(localhost:)?[0-9]+/)) { s = substr($0, RSTART, RLENGTH); sub(/.*:/, "", s) }
+      else if (match($0, /-P [0-9]+/)) { s = substr($0, RSTART + 3, RLENGTH - 3) }
+      else next
+      if (s != "5037") print $1, s }' |
+  while read -r pid port; do
+    cl=$(ss -Htn state established "( sport = :$port )" 2>/dev/null | wc -l | tr -d ' ')
+    echo "$port $pid $cl"
+  done
+}
+adb_stray_text() { # одной строкой для вердикта; пусто — лишних нет
+  adb_servers | awk '{printf "adb-сервер на порту %s (pid %s, клиентов %s); ", $1, $2, $3}'
+}
+cmd_adb_rescue() { # adb-rescue [--dry]: остановить лишние серверы без клиентов, вернуть устройства основному, восстановить forward/reverse
+  local dry=0 s port pid cl serial fw rv killed=0 dev l r
+  [ "${1:-}" = "--dry" ] && dry=1
+  s=$(adb_servers)
+  if [ -z "$s" ]; then echo "adb rescue: лишних adb-серверов нет"; return 0; fi
+  while read -r port pid cl; do
+    [ -n "$port" ] || continue
+    if [ "$cl" -gt 0 ]; then
+      echo "adb rescue: порт $port (pid $pid): есть клиенты ($cl) — НЕ трогаю, договоритесь с хозяином"; continue
+    fi
+    echo "adb rescue: порт $port (pid $pid) без клиентов — $([ "$dry" = 1 ] && echo "остановил бы" || echo "останавливаю")"
+    if [ "$dry" = 0 ]; then
+      ANDROID_ADB_SERVER_PORT=$port "$ADB" kill-server </dev/null >/dev/null 2>&1
+      jlog adb-stray-killed port "$port" pid "$pid"
+      killed=$((killed + 1))
+    fi
+  done <<<"$s"
+  [ "$dry" = 1 ] && return 0
+  [ "$killed" -gt 0 ] || return 1
+  sleep 4
+  # основной сервер опрашивает USB только при старте: если устройство Pico есть в USB, а в adb нет — один перезапуск службы,
+  # перед ним записываем forward/reverse всех устройств и возвращаем точно такими же (порядок reverse: «удалённый локальный»).
+  if lsusb 2>/dev/null | grep -q '2d40:' && ! "$ADB" devices 2>/dev/null | grep -q "^${PICO}[[:space:]]"; then
+    fw=$("$ADB" forward --list 2>/dev/null | awk 'NF>=3{print $1, $2, $3}')
+    rv=""
+    for dev in $("$ADB" devices 2>/dev/null | awk 'NR>1 && $2=="device"{print $1}'); do
+      l=$(timeout 8 "$ADB" -s "$dev" reverse --list </dev/null 2>/dev/null | awk -v d="$dev" 'NF>=3{print d, $2, $3}')
+      [ -n "$l" ] && rv="$rv$l"$'\n'
+    done
+    export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+    export DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}
+    systemctl --user restart box-adb
+    for r in 1 2 3 4 5 6 7 8 9 10 11 12; do sleep 1; "$ADB" devices 2>/dev/null | grep -q "^${PICO}[[:space:]]" && break; done
+    while read -r serial l r; do
+      [ -n "$serial" ] && "$ADB" -s "$serial" forward "$l" "$r" </dev/null >/dev/null 2>&1
+    done <<<"$fw"
+    while read -r serial r l; do
+      [ -n "$serial" ] && "$ADB" -s "$serial" reverse "$r" "$l" </dev/null >/dev/null 2>&1
+    done <<<"$rv"
+    jlog adb-restart-claim note "box-adb перезапущен после остановки лишнего сервера; forward/reverse восстановлены" fw "$(wc -l <<<"$fw" | tr -d ' ')" rv "$(printf '%s' "$rv" | grep -c .)"
+  fi
+  "$ADB" devices -l 2>&1 | sed -n '1,6p'
+}
+
 sub=${1:-}
 [ $# -gt 0 ] && shift
 case $sub in
@@ -852,6 +930,8 @@ case $sub in
   down) cmd_down "$@";;
   inst) cmd_inst_ls;;
   pico) cmd_pico "$@";;
+  adb-rescue) cmd_adb_rescue "$@";;
+  adb-stray) adb_stray_text;;
   lease) cmd_lease "$@";;
   release) cmd_release "$@";;
   leases) cmd_leases;;

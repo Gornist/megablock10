@@ -100,8 +100,9 @@ fi
 info "$ADB_NOTE · устройств: ${#SERIALS[@]}"
 # ЛИШНИЙ adb-сервер (не 5037) держит USB-устройства и прячет их от основного: 14.10 очки пропали из adb после перезагрузки —
 # `adb -L tcp:5099` (поднят переменной ANDROID_ADB_SERVER_PORT=5099 у Godot) держал интерфейс Pico. Любой такой сервер — замечание.
-STRAY=$(ps -eo pid=,etimes=,args= 2>/dev/null | awk '/adb .*(fork-server|server nodaemon|-L tcp)/ && !/-L tcp:(localhost:)?5037/ && !/awk/ {printf "pid %s (%d ч): %s; ", $1, $2/3600, substr($0, index($0,$3), 60)}')
-[ -n "$STRAY" ] && problem "лишний adb-сервер вне 5037 держит USB-устройства и прячет их от основного: $STRAY — остановить: ANDROID_ADB_SERVER_PORT=<порт> adb kill-server"
+STRAY=""
+[ -f "$BOX/repo/scripts/box/ctl.sh" ] && STRAY=$(bash "$BOX/repo/scripts/box/ctl.sh" adb-stray </dev/null 2>/dev/null)
+[ -n "$STRAY" ] && problem "лишний adb-сервер вне 5037 держит USB-устройства и прячет их от основного: ${STRAY}— scripts/box.sh adb-rescue (серверы с клиентами не трогает)"
 # Кто убивает общий сервер: adb сам пишет в журнал службы цепочку процессов kill-server. Свежее убийство (30 мин) — замечание:
 # каждое рвёт устройства и reverse/forward у всех сессий.
 KILLS=$(journalctl --user -u box-adb --since '24 hours ago' --no-pager -o short-iso 2>/dev/null | grep -c 'killed by remote request')
