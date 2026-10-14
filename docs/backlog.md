@@ -7,7 +7,7 @@
 
 Формат строки: `- [ ] [зона] что сделать — зачем / откуда` (зона — как в `scripts/zone-check.sh`).
 
-- [ ] [android] Обновления зависимостей от dependabot: #258 (Gradle, 6 штук), #259 (Paparazzi) — прогнать `dbx.sh --full`, эталоны Paparazzi сверить, «готово» Pipeline
+- [~] (Android App) [android] Обновления зависимостей от dependabot: #258 (Gradle, 6 штук), #259 (Paparazzi) — прогнать `dbx.sh --full`, эталоны Paparazzi сверить, «готово» Pipeline
 - [ ] [collector] Обновления зависимостей от dependabot: #256 (@fastify/static), #257 (клиент, 5 штук) — `admin-web/tools/test.sh all`, «готово» Pipeline
 - [ ] [godot] Витрина объектов `tests/showcase_preview.tscn` (ветка agent/gd-showcase) — PR, чтобы снимать все модели одной командой
 - [ ] [story] Библия мира в ветке agent/story-bible (30 коммитов, PR нет) — довести и сдать PR либо сказать, чего не хватает
