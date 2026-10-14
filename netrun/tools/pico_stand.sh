@@ -11,7 +11,6 @@
 #   bench           perf=on, bench=entry: 5 с прогрева + 3 окна по 10 с, строка `[bench] ИТОГ`
 #   cloud-props     bench + cloud=1: облако на колоннах/хранилище/выходе (C3a; пол, потолок и дальние остаются solid_dark).
 #                   После B3 `cloud=1` — умолчание AssetMaterials, так что пресет ≡ bench (оставлен алиасом для старых команд)
-#   cloud-props-2s  cloud-props + cloud_two_sided=1: задние грани объёма видны сквозь дыры (cull_disabled)
 #   cloud-vol       bench + volumetric=vault,portal: хранилище и порталы облаком частиц (VolumeRegistry, точки с поверхности модели)
 #   cloud-vol-budget cloud-vol + volume_budget_ms=10.5: регулятор плотности облаков по GPU-времени кадра (VolumeBudget)
 #   cloud-all       bench + volumetric=vault,portal,shard,exit,ice: все объёмные модули (рамка выхода, голограмма ICE, шарды)
@@ -61,13 +60,12 @@ if [ "$1" != "--reset" ]; then
     base)           set -- "$@" ;;
     bench)          set -- perf=on bench=entry "$@" ;;
     cloud-props)    set -- perf=on bench=entry cloud=1 "$@" ;;
-    cloud-props-2s) set -- perf=on bench=entry cloud=1 cloud_two_sided=1 "$@" ;;
     cloud-vol)      set -- perf=on bench=entry volumetric=vault,portal "$@" ;;
     cloud-vol-budget) set -- perf=on bench=entry volumetric=vault,portal volume_budget_ms=10.5 "$@" ;;
     cloud-all)      set -- perf=on bench=entry volumetric=vault,portal,shard,exit,ice "$@" ;;
     cloud-all-imp)  set -- perf=on bench=entry volumetric=vault,portal,shard,exit,ice volume_impostor_m=8 "$@" ;;
     probe-sweep)    set -- perf=on probe=sweep "$@" ;;
-    *) echo "pico_stand: неизвестный пресет «$preset» (есть: base bench cloud-props cloud-props-2s cloud-vol cloud-vol-budget probe-sweep)" >&2; exit 2 ;;
+    *) echo "pico_stand: неизвестный пресет «$preset» (есть: base bench cloud-props cloud-vol cloud-vol-budget cloud-all cloud-all-imp probe-sweep)" >&2; exit 2 ;;
   esac
   # Последнее значение ключа выигрывает: пресет, затем ключи с командной строки.
   render=""; assets=""
