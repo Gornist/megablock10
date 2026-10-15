@@ -7,7 +7,7 @@
     ".#.LL.O.",
     "...LL...",
     ".==..==.",
-    "1..S.EE2",
+    "1.#S#EE2",
     "3....EE."
   ],
   "vaults": [
@@ -19,14 +19,13 @@
     {"id": "g_w", "kind": "sentry", "route": [
       {"cell": [2, 2], "wait": 2, "look": ["E"]},
       {"cell": [0, 2], "wait": 2, "look": ["E"]},
-      {"cell": [0, 4], "wait": 2, "look": ["E"]},
-      {"cell": [2, 4], "wait": 2, "look": ["N"]}
+      {"cell": [0, 3], "wait": 2, "look": ["W"]},
+      {"cell": [2, 3], "wait": 3, "look": ["W"]}
     ]},
     {"id": "g_e", "kind": "sentry", "route": [
-      {"cell": [5, 2], "wait": 4, "look": ["W"]},
-      {"cell": [7, 2], "wait": 2, "look": ["W"]},
-      {"cell": [7, 4], "wait": 4, "look": ["W"]},
-      {"cell": [5, 4], "wait": 2, "look": ["N"]}
+      {"cell": [5, 2], "wait": 5, "look": ["W"]},
+      {"cell": [7, 2], "wait": 5, "look": ["W"]},
+      {"cell": [7, 3], "wait": 5, "look": ["W"]}
     ]},
     {"id": "o1", "kind": "beacon", "cell": [6, 3], "start": "S"},
     {"id": "d_w", "kind": "sensor", "cell1": [2, 10], "dir": "E", "len": 4, "on": 2, "off": 1},
