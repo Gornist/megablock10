@@ -16,7 +16,7 @@ func before_test() -> void:
 		"cells": ["V......V", "........", "........", "...LL...", "...LL...", "........", "1..S.EE2", "b....EE3"],
 		"vaults": [{"cell": [0, 0], "pad": [0, 1], "ring": "outer"}, {"cell": [7, 0], "pad": [7, 1], "ring": "outer"}],
 		"ice": [],
-		"black": {"id": "b1", "kind": "", "cell": [3, 3]},
+		"black": {"id": "b1", "kind": "kraken", "cell": [3, 3]},
 	})
 	assert_str((LayoutData._cache[LAIR] as LayoutData).error).is_empty()
 	_root = Node.new()
@@ -124,3 +124,12 @@ func test_журнал_записан_до_выброса_флэтлайна() -
 	var log: Array = node._black_log["s1"]
 	assert_str(str(log[0]["ev"])).is_equal("wake")
 	assert_str(str(log[-1]["ev"])).is_equal("flatline")
+
+
+func test_вид_кракен_из_раскладки_закрывает_выход_и_бодрствует_лимит_прыжка_ноль() -> void:
+	var node := _world.node_of("x_core")
+	var tb := node.black_ice()
+	assert_str(tb.kind()).is_equal("kraken")
+	assert_float(node.hop_limit_at(Vector2i(1, 1))).is_equal(0.0)   # у Кракена нет ограничения прыжка
+	_tick(node, Vector2i(1, 8), 60.0)   # будит
+	assert_bool(tb.exit_locked()).is_true()

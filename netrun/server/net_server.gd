@@ -59,6 +59,8 @@ const TELEPORT_CELL_SLACK := 0.5
 var grid: NodeGrid = NodeGrid.for_layout()
 ## Сетка узла сессии (раскладка узла): func(session) -> NodeGrid. Не задан — общая `grid` (колонны legacy). Узлы графа ставят её каждый свою.
 var grid_of: Callable
+## Предел прыжка из клетки (Скорпион, ice.md §6.2): func(session, from_cell: Vector2i) -> float, м; ≤ 0 — предела нет. Не задан — только REACH_M.
+var hop_limit_of: Callable
 
 ## Узел может запретить взятие (далеко и т.п.): func(session, object_id) -> bool. Не задан — берётся откуда угодно.
 var grab_check: Callable
@@ -480,6 +482,10 @@ func _cell_verdict(session: String, from: Vector3, to: Vector3) -> String:
 	var a := NodeGrid.cell_of(from)
 	if Vector2(b - a).length() * NodeGrid.CELL_M > NodeGrid.REACH_M + TELEPORT_CELL_SLACK:
 		return WorldMsg.REASON_RANGE
+	if hop_limit_of.is_valid():
+		var limit := float(hop_limit_of.call(session, a))
+		if limit > 0.0 and Vector2(b - a).length() * NodeGrid.CELL_M > limit + 0.001:
+			return WorldMsg.REASON_RANGE
 	if not g.line_clear(a, b):
 		return WorldMsg.REASON_BLOCKED
 	for other: String in sessions_in(node_of(session)):

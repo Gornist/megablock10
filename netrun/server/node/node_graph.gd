@@ -75,6 +75,7 @@ static func from_dict(d: Dictionary) -> NodeGraph:
 				"hub": bool(n.get("hub", false)),     # хаб (тихий узел): здесь trace спадает, дрейфа по времени нет
 				"layout": str(n.get("layout", "")),   # имя раскладки (data/layouts); пусто — legacy
 				"ice_settings": n["ice_settings"] if n.get("ice_settings") is Dictionary else {},
+				"black": n["black"] if n.get("black") is Dictionary else {},   # Black ICE узла: {"kind": hound|kraken|raven|scorpion|lich}; пусто — базовый
 				"signs": n["signs"] if n.get("signs") is Array else [],
 			}
 	var e: Variant = d.get("entries")

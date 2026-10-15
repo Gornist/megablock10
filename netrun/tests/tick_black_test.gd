@@ -281,3 +281,80 @@ func test_журнал_начинается_с_пробуждения_и_без_
 	b.tick(_ctx({"s2": FAR}, {"s2": 60.0}))
 	assert_str(str(b.journal()[0]["ev"])).is_equal("wake")
 	assert_array(b.journal().filter(func(e): return e["ev"] == "hop")).is_empty()
+
+
+# --- виды (ice.md §6.2): по одному наказанию из колонки «Наказывает» ---
+
+func _kind_hunting(kind: String, player: Vector2i = FAR, burns: Dictionary = {}) -> TickBlack:
+	var b := TickBlack.new(LAIR, HOME, NodeGrid.new(), {"kind": kind}, burns)
+	var wake := 6
+	b.wake_by_master()
+	for i in wake + 1:
+		b.tick(_ctx({"s1": player}, {"s1": 60.0}))
+	assert_int(b.phase).is_equal(TickBlack.Phase.HUNT)
+	return b
+
+
+func test_гончая_две_клетки_карты_за_такт_и_сжигает_заряд_на_ожоге() -> void:
+	var base := _kind_hunting("")
+	var hound := _kind_hunting("hound")
+	assert_int(hound.cell().x - HOME.x).is_greater(base.cell().x - HOME.x)   # шаг 4 клетки против 2
+	var near := Vector2i(hound.cell().x + 1, hound.cell().y)
+	var burns := {}
+	var h := _kind_hunting("hound", near, burns)
+	var kinds: Array = []
+	for e in h.tick(_ctx({"s1": Vector2i(h.cell().x + 1, h.cell().y)}, {"s1": 60.0})):
+		kinds.append(e["kind"])
+	assert_array(kinds).contains(["burn_charge"])
+
+
+func test_ворон_пинг_раз_в_два_такта_и_первый_такт_захвата_сносит_а_не_жжёт() -> void:
+	var burns := {}
+	var r := _kind_hunting("raven", FAR, burns)   # игрок далеко: захвата ещё нет
+	assert_int(int(burns.get("s1", 0))).is_equal(0)
+	var seen := []
+	var near := Vector2i(r.cell().x + 1, r.cell().y)
+	# игрок встаёт рядом: первый такт захвата — снос заряда без ожога, второй — ожог
+	for e in r.tick(_ctx({"s1": near}, {"s1": 60.0})):
+		seen.append(e["kind"])
+	assert_array(seen).contains(["strip_charge"])
+	assert_int(int(burns.get("s1", 0))).is_equal(0)
+	r.tick(_ctx({"s1": near}, {"s1": 60.0}))
+	assert_int(int(burns.get("s1", 0))).is_equal(1)
+	var pings := r.journal().filter(func(e): return e["ev"] == "ping")
+	assert_int(pings.size()).is_greater_equal(2)   # пинг раз в 2 такта чаще, чем раз в 3
+
+
+func test_кракен_закрывает_выход_пока_не_спит() -> void:
+	var k := TickBlack.new(LAIR, HOME, NodeGrid.new(), {"kind": "kraken"})
+	assert_bool(k.exit_locked()).is_false()
+	k.wake_by_master()
+	k.tick(_ctx({"s1": FAR}))
+	assert_bool(k.exit_locked()).is_true()
+	var base := TickBlack.new(LAIR, HOME, NodeGrid.new())
+	base.wake_by_master()
+	base.tick(_ctx({"s1": FAR}))
+	assert_bool(base.exit_locked()).is_false()
+
+
+func test_скорпион_в_кольце_ограничивает_прыжок_одной_клеткой() -> void:
+	var s := TickBlack.new(LAIR, HOME, NodeGrid.new(), {"kind": "scorpion"})
+	assert_float(s.hop_limit_at(HOME + Vector2i(2, 0))).is_equal(0.0)   # спит — ограничения нет
+	s.wake_by_master()
+	s.tick(_ctx({"s1": FAR}))
+	assert_float(s.hop_limit_at(s.cell() + Vector2i(3, 0))).is_equal(1.5)   # в 4 клетках 1 м (2 клетки карты)
+	assert_float(s.hop_limit_at(s.cell() + Vector2i(5, 0))).is_equal(0.0)
+
+
+func test_лич_на_ожоге_снимает_расшифровку() -> void:
+	var l := _kind_hunting("lich", Vector2i(10, 7))
+	var kinds: Array = []
+	for i in 2:
+		for e in l.tick(_ctx({"s1": Vector2i(l.cell().x + 1, l.cell().y)}, {"s1": 60.0})):
+			kinds.append(e["kind"])
+	assert_array(kinds).contains(["strip_decrypt"])
+
+
+func test_неизвестный_вид_это_базовый() -> void:
+	assert_bool(TickBlack.kind_settings("???").is_empty()).is_true()
+	assert_array(TickBlack.KINDS).contains(["", "hound", "kraken", "raven", "scorpion", "lich"])
