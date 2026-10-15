@@ -451,3 +451,14 @@ func test_bridge_outage_during_master_wait_does_not_approve() -> void:
 	assert_bool(await _wait_for(func(): return "finished" in _kinds(), 10.0)).is_true()
 	assert_str(str(_session_data()["outcome"])).is_equal("soft_ice")
 	assert_str(_owner(DEAD_DECK)).is_equal("outbox:KEY_ALICE")
+
+
+func test_mark_finish_кладёт_журнал_black_log_в_world_сессии() -> void:
+	_setup()
+	await _bot_in_node_with_trace(10.0)
+	var log := [{"t": 1, "ev": "wake", "why": "trace"}, {"t": 8, "ev": "flatline", "s": SESSION}]
+	await _node._mark_finish(SESSION, "flatline", false, {"black_log": log})
+	var w: Dictionary = _session_data()["world"]
+	assert_str(str(w["finish"])).is_equal("flatline")
+	assert_int((w["black_log"] as Array).size()).is_equal(2)
+	assert_str(str(w["black_log"][0]["why"])).is_equal("trace")

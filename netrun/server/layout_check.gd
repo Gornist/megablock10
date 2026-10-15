@@ -337,6 +337,9 @@ static func check_occupied_visible(layout: LayoutData) -> Dictionary:
 	var covered := {}
 	for c in layout.cover_cells():
 		covered[c] = true
+	if not layout.lair.is_empty():
+		for c: Vector2i in layout.lair["cells"]:
+			covered[c] = true   # логово: ice/black_lair.glb (4×4 м); подключение в клиенте — 4.5c
 	for v: Dictionary in layout.vaults:
 		covered[v["cell1"]] = true
 	for bd: Dictionary in layout.beacons:
