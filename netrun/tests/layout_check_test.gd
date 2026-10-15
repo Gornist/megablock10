@@ -299,22 +299,41 @@ func test_ядро_разбирается_логово_барьер_лучи_с�
 	assert_array(rings).is_equal(["outer", "outer", "inner"])
 
 
-## Известные расхождения черновика §4.5 с правилами §2 (отчёт Game): вход виден Стражу в такт 1, окна внешних площадок 5 из цикла 8 при пороге 8.
-## Тест фиксирует именно этот набор: новая ошибка раскладки или правка черновика его изменит.
-const CORE_KNOWN_FAILS := ["entry_hidden", "windows"]
-
-
-func test_ядро_проходит_проверки_nightmare_кроме_известных_расхождений_черновика() -> void:
+func test_ядро_проходит_все_проверки_nightmare() -> void:
 	var ld := LayoutData.load_named("core")
 	assert_str(ld.error).is_empty()
 	var all := LayoutCheck.run_all(ld, "NIGHTMARE")
-	var failed: Array = []
 	for k: String in all:
 		print("[layout_check] core %s ok=%s %s" % [k, str(all[k]["ok"]), str(all[k]["detail"])])
-		if not bool(all[k]["ok"]):
-			failed.append(k)
-	failed.sort()
-	assert_array(failed).is_equal(CORE_KNOWN_FAILS)
+	assert_str("; ".join(LayoutCheck.failures(ld, "NIGHTMARE"))).is_empty()
+
+
+## Правило Game (levels.md §4.5, §2 п. 1): клетка входа S и свободные соседние не попадают ни в фокус, ни в периферию Стражей ни в одной фазе цикла.
+## НЕ ВЫПОЛНЕНО паузами и взглядами (отчёт Game, PR): перебор взглядов в паузах (север/юг/восток у северных и южных углов, обе стороны обхода у
+## обоих Стражей) даёт компромисс: если у южных углов смотреть на север (N/NE), вход виден лишь 8–14 тактов из 80, но площадка (0,1) попадает
+## в зрение (окно 4 при пороге 8); иначе окна 10–13 в порядке, а вход виден 42–58 тактов из 80 — направление при движении по южным ветвям
+## задаёт сама ветвь. Тест держит число тактов под наблюдением входа не выше известного (42), пока Game не решит: маршрут, сетка или дальность.
+func test_ядро_вход_и_соседние_клетки_видны_не_чаще_известного() -> void:
+	var ld := LayoutData.load_named("core")
+	var cycle := LayoutCheck.cycle_ticks(ld)
+	assert_int(cycle).is_greater(0)
+	var grid := ld.grid()
+	var s := NodeGrid.cell_of(ld.spawn)
+	var cells: Array[Vector2i] = []
+	for dx in range(-1, 2):
+		for dy in range(-1, 2):
+			var c := s + Vector2i(dx, dy)
+			if not grid.is_occupied(c):
+				cells.append(c)
+	var states := LayoutCheck.simulate(ld, cycle)
+	var seen := 0
+	for t in states.size():
+		if LayoutCheck._seen_by_any(ld, grid, states[t], cells):
+			seen += 1
+	print("[core-entry] вход и соседние под наблюдением %d тактов из %d" % [seen, states.size()])
+	assert_int(seen).is_less_equal(42)
+	# цикл не короче двух порогов окна (порог по тиру добычи Ядра — HARD, 8)
+	assert_int(cycle).is_greater_equal(2 * LayoutCheck.outer_window_min("NIGHTMARE"))
 
 
 func test_ядро_правила_логова_6_3() -> void:
