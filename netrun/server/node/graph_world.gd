@@ -53,6 +53,9 @@ func start(server: NetServer, bridge_api: BridgeApi, node_graph: NodeGraph) -> v
 	net.grid_of = func(session: String) -> NodeGrid:
 		var gn: GrayNode = nodes.get(net.node_of(session))
 		return gn.ice_grid if gn != null else net.grid
+	net.hop_limit_of = func(session: String, from: Vector2i) -> float:
+		var gn: GrayNode = nodes.get(net.node_of(session))
+		return gn.hop_limit_at(from) if gn != null else 0.0
 	net.join_check = func(session: String) -> bool: return not join_blocked(session)
 	if str(graph.settings.get("time_mode", "realtime")) == "tick":
 		# Такты: один ход за такт у того узла, где нетраннер (вместо перезарядки телепорта).

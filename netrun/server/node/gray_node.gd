@@ -235,6 +235,7 @@ func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 		net.teleport_snap = func(_session: String, to: Vector3) -> Dictionary: return snap_teleport(to)
 		net.spawn_of = func(_session: String) -> Vector3: return layout.spawn
 		net.grid_of = func(_session: String) -> NodeGrid: return ice_grid
+		net.hop_limit_of = func(_session: String, from: Vector2i) -> float: return hop_limit_at(from)
 		net.join_check = func(session: String) -> bool: return not join_blocked(session)
 	net.session_joined.connect(_on_joined)
 	net.avatar_removed.connect(_on_avatar_removed)
@@ -394,7 +395,13 @@ func _add_ice(id: String, waypoints: Array, black: bool = false, route: Array = 
 		var lair_cells: Array[Vector2i] = []
 		for c: Vector2i in layout.lair["cells"]:
 			lair_cells.append(c)
-		var tb := TickBlack.new(lair_cells, layout.lair["home"], ice_grid, black_ice_settings.get("tick", {}), black_burns)
+		var tsettings: Dictionary = (black_ice_settings.get("tick", {}) as Dictionary).duplicate()
+		var kind := str((node_def.get("black", {}) as Dictionary).get("kind", str(layout.lair.get("kind", "")))) if node_def.get("black") is Dictionary else str(layout.lair.get("kind", ""))
+		if kind != "" and not TickBlack.KINDS.has(kind):
+			push_warning("[node] %s: неизвестный вид Black ICE «%s», базовый" % [node_id, kind])
+			kind = ""
+		tsettings["kind"] = kind
+		var tb := TickBlack.new(lair_cells, layout.lair["home"], ice_grid, tsettings, black_burns)
 		_black_brain = TickBlackBrain.new(tb, settings)
 		_black_brain.ejected.connect(func(s: String, r: String) -> void: ice.ejected.emit(s, r))
 		ice.brain = _black_brain
@@ -1154,6 +1161,10 @@ func _step_tick_black(pos: Dictionary, hidden: Dictionary, immune: Dictionary, m
 		if kind == "flatline":
 			_black_log[str(ev["session"])] = ev["journal"]
 			flat = str(ev["session"])
+		elif kind == "burn_charge" or kind == "strip_charge":
+			_strip_charge(str(ev["session"]))   # Гончая жжёт за такт захвата, Ворон сносит на первом такте
+		elif kind == "strip_decrypt":
+			event.emit({"kind": "black_strip_decrypt", "session": str(ev["session"])})   # Лич: снятие «расшифрован» делает Мост по этому событию (пара)
 		elif kind in ["wake", "hunt", "lost", "capture", "feel"]:
 			var e := ev.duplicate()
 			e["kind"] = "black_" + kind
@@ -1161,6 +1172,18 @@ func _step_tick_black(pos: Dictionary, hidden: Dictionary, immune: Dictionary, m
 	if flat != "":
 		# Выброс — после записи журнала: цепочка ejected → _end → _finish_in_bridge синхронна и сразу читает _black_log.
 		_black_brain.ejected.emit(flat, "black_caught")
+
+
+## Black ICE сжигает заряд одного демона деки сессии (Гончая — каждый ожог, Ворон — первый такт захвата). Нет заряженных — ничего.
+func _strip_charge(session: String) -> void:
+	if not _sessions.has(session):
+		return
+	var ds: DaemonSession = _sessions[session]
+	var ids := ds.charged_ids()
+	if ids.is_empty():
+		return
+	ds.set_charged(str(ids[0]), false)
+	event.emit({"kind": "black_strip_charge", "session": session, "daemon": str(ids[0])})
 
 
 ## Мастер будит Black ICE узла (ice.md §6.1: «мастер» — одна из причин пробуждения).
@@ -1565,7 +1588,14 @@ func _on_leave_requested(session: String) -> void:
 	var avatar := net.get_avatar(session)
 	if avatar == null or not NodeLayout.on_exit_pad_in(layout, avatar.position):
 		return
+	if _black_brain != null and _black_brain.black.exit_locked():
+		return   # Кракен бодрствует: площадка выхода закрыта (аварийный выход — отдельным путём)
 	net.end_session(session, ExitLogic.REASON_CLEAN)
+
+
+## Предел прыжка (м) из клетки: Скорпион в 2 клетках карты от себя разрешает прыжок только на 1 клетку; 0 — предела нет.
+func hop_limit_at(from: Vector2i) -> float:
+	return _black_brain.black.hop_limit_at(from) if _black_brain != null else 0.0
 
 
 ## Просьба начать взлом: отвечает только узел, где игрок (в графе обработчик подключён у каждого узла).

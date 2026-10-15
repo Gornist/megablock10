@@ -25,8 +25,31 @@ const DEFAULTS := {
 	"journal_max": 120,
 }
 
+## Виды Black ICE (ice.md §6.2, «graph.json black.kind»): отличия от базового; "" — базовый. Эффекты захвата отдаются узлу событиями
+## `burn_charge` (Гончая: сжигает заряд демона деки за каждый такт захвата), `strip_charge` (Ворон: первый такт захвата не жжёт, а сносит
+## заряженного демона), `strip_decrypt` (Лич: каждый такт захвата снимает «расшифрован» с одного добытого шарда).
+## Кракен — `exit_locked()` (пока не спит, площадка выхода закрыта), Скорпион — `hop_limit_at(клетка)` (в 2 клетках карты прыжок на 1 клетку).
+const KINDS := ["", "hound", "kraken", "raven", "scorpion", "lich"]
+
+
+static func kind_settings(kind: String) -> Dictionary:
+	match kind:
+		"hound":
+			return {"step_cells": 4, "burn_charge": true}   # 2 клетки карты за такт
+		"kraken":
+			return {"lock_exit": true}
+		"raven":
+			return {"ping_ticks": 2, "strip_first": true}   # пинг раз в 2 такта, шаг прежний (1 клетка карты)
+		"scorpion":
+			return {"hop_ring_cells": 4}                    # 2 клетки карты
+		"lich":
+			return {"strip_decrypt": true}
+	return {}
+
+
 var phase: int = Phase.SLEEP
 var burns: Dictionary = {}       # сессия → ожоги за забег; ссылка делится с владельцем забега (граф миров)
+var _streak: Dictionary = {}     # сессия → тактов захвата подряд (для первого такта Ворона)
 
 var _s: Dictionary
 var _grid: NodeGrid
@@ -55,6 +78,7 @@ var _last_wake_reason := ""
 ## lair — клетки логова (занятые на сетке узла), home — клетка, в которой ICE спит и откуда выходит.
 func _init(lair: Array[Vector2i], home: Vector2i, grid: NodeGrid, settings: Dictionary = {}, shared_burns: Dictionary = {}) -> void:
 	_s = DEFAULTS.duplicate()
+	_s.merge(kind_settings(str(settings.get("kind", ""))), true)
 	_s.merge(settings, true)
 	_lair = lair.duplicate()
 	_home = home
@@ -130,6 +154,7 @@ func on_hop(session: String, to: Vector2i) -> void:
 		return
 	if _captured.has(session) and _cheb(to, _cell) > int(_s["break_cells"]):
 		_captured.erase(session)
+		_streak.erase(session)
 		_stun = 1
 		_log("break", {"s": session})
 	elif _cheb(to, _cell) <= int(_s["capture_cells"]):
@@ -297,21 +322,52 @@ func _tick_hunt(targets: Dictionary, hidden: Dictionary, immune: Dictionary, tra
 				_log("feel", {"s": s, "c": [c.x, c.y]})
 				events.append({"kind": "feel", "session": s, "cell": c})
 				continue
-			burns[s] = int(burns.get(s, 0)) + 1
+			_streak[s] = int(_streak.get(s, 0)) + 1
+			var burn := true
+			if bool(_s.get("strip_first", false)) and int(_streak[s]) == 1:
+				burn = false   # Ворон: первый такт захвата сносит заряженного демона, а не жжёт
+				events.append({"kind": "strip_charge", "session": s})
+			if burn:
+				burns[s] = int(burns.get(s, 0)) + 1
 			_captured[s] = true
-			_log("capture", {"s": s, "burns": burns[s]})
-			events.append({"kind": "capture", "session": s, "burns": burns[s]})
-			if int(burns[s]) >= int(_s["burns_to_flatline"]):
+			_log("capture", {"s": s, "burns": burns.get(s, 0), "burn": burn})
+			events.append({"kind": "capture", "session": s, "burns": burns.get(s, 0), "burn": burn})
+			if burn and bool(_s.get("burn_charge", false)):
+				events.append({"kind": "burn_charge", "session": s})   # Гончая
+			if burn and bool(_s.get("strip_decrypt", false)):
+				events.append({"kind": "strip_decrypt", "session": s})   # Лич
+			if int(burns.get(s, 0)) >= int(_s["burns_to_flatline"]):
 				_log("flatline", {"s": s})
 				events.append({"kind": "flatline", "session": s, "journal": _journal.duplicate(true)})
 				return
 		else:
 			_captured.erase(s)
+			_streak.erase(s)
 	_forced.clear()
+
+
+## Кракен: пока ICE не спит, площадка выхода закрыта (аварийный выход — всегда).
+func exit_locked() -> bool:
+	return bool(_s.get("lock_exit", false)) and phase != Phase.SLEEP
+
+
+## Скорпион: самый длинный прыжок (м) из клетки `from`, пока ICE бодрствует и клетка в его кольце; 0 — ограничения нет.
+func hop_limit_at(from: Vector2i) -> float:
+	var ring := int(_s.get("hop_ring_cells", 0))
+	if ring <= 0 or phase == Phase.SLEEP:
+		return 0.0
+	if Vector2(from - _cell).length() <= float(ring):
+		return 1.5 * NodeGrid.CELL_M   # на одну клетку, включая диагональ
+	return 0.0
+
+
+func kind() -> String:
+	return str(_s.get("kind", ""))
 
 
 func _to_return(events: Array, why: String) -> void:
 	phase = Phase.RETURNING
+	_streak.clear()
 	_has_known = false
 	_target = ""
 	_captured.clear()
