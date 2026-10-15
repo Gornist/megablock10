@@ -344,6 +344,9 @@ static func check_occupied_visible(layout: LayoutData) -> Dictionary:
 		covered[v["cell1"]] = true
 	for bd: Dictionary in layout.beacons:
 		covered[bd["cell"]] = true   # тумба Маяка: BeaconView (ice/lighthouse_ice) на этой клетке
+	for kd: Dictionary in layout.barriers:
+		for c: Vector2i in kd["cells"]:
+			covered[c] = true   # барьер: ice/barrier_ice.glb на своём блоке 2×2
 	var bad := {}   # блок карты → символ
 	for c: Vector2i in layout.occupied:
 		var b := LayoutData.block_of(c)
@@ -381,6 +384,13 @@ static func check_ice_gear(layout: LayoutData) -> Dictionary:
 		for sx in LayoutData.SIZE:
 			if layout.blocks[sz][sx] == "O" and not beacon_blocks.has(Vector2i(sx, sz)):
 				bad.append("блок (%d,%d) «O» без записи kind: beacon" % [sx, sz])
+	var barrier_blocks := {}
+	for kd: Dictionary in layout.barriers:
+		barrier_blocks[kd["block"]] = true
+	for sz in LayoutData.SIZE:
+		for sx in LayoutData.SIZE:
+			if layout.blocks[sz][sx] == "B" and not barrier_blocks.has(Vector2i(sx, sz)):
+				bad.append("блок (%d,%d) «B» без записи kind: barrier" % [sx, sz])
 	for sd: Dictionary in layout.sensors:
 		for c: Vector2i in sd["cells"]:
 			if keep.has(c):

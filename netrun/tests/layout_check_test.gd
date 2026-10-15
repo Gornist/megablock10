@@ -283,3 +283,42 @@ func test_узлы_графа_с_серверной_привязаны_и_про
 		assert_str(ld.error).is_empty()
 		var fails := LayoutCheck.failures(ld, g.tier_of(id))
 		assert_array(fails).override_failure_message("%s (%s): %s" % [id, name, "; ".join(fails)]).is_empty()
+
+
+func test_ядро_разбирается_логово_барьер_лучи_стражи_маяк() -> void:
+	var ld := LayoutData.load_named("core")
+	assert_str(ld.error).is_empty()
+	assert_int(ld.sentries.size()).is_equal(2)
+	assert_int(ld.beacons.size()).is_equal(1)
+	assert_int(ld.sensors.size()).is_equal(2)
+	assert_int(ld.barriers.size()).is_equal(1)
+	assert_int(ld.vaults.size()).is_equal(3)
+	assert_int(ld.portals.size()).is_equal(3)
+	assert_int((ld.lair["cells"] as Array).size()).is_equal(16)
+	var rings: Array = ld.vaults.map(func(v): return v["ring"])
+	assert_array(rings).is_equal(["outer", "outer", "inner"])
+
+
+## Известные расхождения черновика §4.5 с правилами §2 (отчёт Game): вход виден Стражу в такт 1, окна внешних площадок 5 из цикла 8 при пороге 8.
+## Тест фиксирует именно этот набор: новая ошибка раскладки или правка черновика его изменит.
+const CORE_KNOWN_FAILS := ["entry_hidden", "windows"]
+
+
+func test_ядро_проходит_проверки_nightmare_кроме_известных_расхождений_черновика() -> void:
+	var ld := LayoutData.load_named("core")
+	assert_str(ld.error).is_empty()
+	var all := LayoutCheck.run_all(ld, "NIGHTMARE")
+	var failed: Array = []
+	for k: String in all:
+		print("[layout_check] core %s ok=%s %s" % [k, str(all[k]["ok"]), str(all[k]["detail"])])
+		if not bool(all[k]["ok"]):
+			failed.append(k)
+	failed.sort()
+	assert_array(failed).is_equal(CORE_KNOWN_FAILS)
+
+
+func test_ядро_правила_логова_6_3() -> void:
+	var ld := LayoutData.load_named("core")
+	var r := LayoutBots.check_core_rules(ld, "NIGHTMARE")
+	print("[core-rules] ", r)
+	assert_bool(r["ok"]).override_failure_message(str(r["detail"])).is_true()

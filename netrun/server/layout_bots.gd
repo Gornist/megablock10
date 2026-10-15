@@ -468,6 +468,7 @@ static func check_periods(l: LayoutData) -> Dictionary:
 		return {"ok": true, "detail": "Стражей %d: периоды не сравниваются" % l.sentries.size()}
 	var grid := l.grid()
 	var periods: Array[int] = []
+	var all_keys: Array = []
 	for s: Dictionary in l.sentries:
 		var g := TickIce.new({"sight_cells": l.sight_cells}, s["route"], grid)
 		var keys: Array = []
@@ -475,13 +476,18 @@ static func check_periods(l: LayoutData) -> Dictionary:
 			g.tick({})
 			keys.append("%s%s" % [str(g.cell()), str(g.dir())])
 		periods.append(int(_period_skip(keys)["period"]))
+		all_keys.append(keys)
+	var shifted := false
 	for i in periods.size():
 		if periods[i] == 0:
 			return {"ok": false, "detail": "период Стража %s не найден" % str(l.sentries[i]["id"])}
 		for j in range(i + 1, periods.size()):
+			if periods[i] == periods[j] and all_keys[i] != all_keys[j]:
+				shifted = true   # одинаковые периоды со сдвигом фазы — приём раскладки Ядра (levels.md §4.5: «цикл 8, сдвиг 4»)
+				continue
 			if periods[i] % periods[j] == 0 or periods[j] % periods[i] == 0:
 				return {"ok": false, "detail": "периоды %d и %d кратны (Стражи %s и %s)" % [periods[i], periods[j], str(l.sentries[i]["id"]), str(l.sentries[j]["id"])]}
-	return {"ok": true, "detail": "периоды Стражей: %s" % str(periods)}
+	return {"ok": true, "detail": "периоды Стражей: %s%s" % [str(periods), " (одинаковые — со сдвигом фазы)" if shifted else ""]}
 
 
 ## К каждому хранилищу ≥ 2 непересекающихся пути по клеткам (шаг на 8 соседей, без общих промежуточных клеток) от входа (п. 3).
@@ -493,12 +499,14 @@ static func check_paths(l: LayoutData) -> Dictionary:
 	var bad: Array[String] = []
 	var worst := 99
 	for v: Dictionary in l.vaults:
+		if str(v["ring"]) == "inner":
+			continue   # внутреннее — в нише за барьером: одна дорога, ответ — инструмент (levels.md §4.5)
 		var k := _disjoint_paths(grid, src, v["pad1"], 2)
 		worst = mini(worst, k)
 		if k < 2:
 			bad.append("хранилище %s: путей %d" % [str(v["cell"]), k])
 	if bad.is_empty():
-		return {"ok": true, "detail": "к каждому хранилищу не меньше 2 путей"}
+		return {"ok": true, "detail": "к каждому внешнему хранилищу не меньше 2 путей"}
 	return {"ok": false, "detail": "; ".join(bad)}
 
 
@@ -894,3 +902,76 @@ static func check_black_runner(l: LayoutData, tier_name: String = "NIGHTMARE", s
 	if failed.is_empty():
 		return {"ok": true, "detail": "бегун уходит с %d стартовых клеток" % r["starts"]}
 	return {"ok": false, "detail": "захват при побеге с %d из %d клеток, например %s" % [failed.size(), r["starts"], str(failed[0])]}
+
+
+# --- проверка раскладки с Black ICE (ice.md §6.3) ---
+
+const LAIR_KEEP_OUT := 2   # «не ближе 1 клетки карты к логову» = 2 клетки 1 м (Чебышёв)
+const CORE_MAX_HOPS := 3   # от площадки внешнего хранилища до выхода — не больше 6 клеток карты = 3 прыжка
+
+
+## ice.md §6.3: логово видно с клетки входа; к площадке выхода ≥ 2 пути, не ближе клетки карты к логову; от площадки каждого внешнего хранилища до
+## выхода ≤ 3 прыжка; бот «бегун» (check_black_runner) уходит. Без логова — проверка не применяется.
+static func check_core_rules(l: LayoutData, tier_name: String = "NIGHTMARE") -> Dictionary:
+	if l.lair.is_empty():
+		return {"ok": true, "detail": "логова нет — §6.3 не применяется"}
+	var grid := l.grid()
+	var src := NodeGrid.cell_of(l.spawn)
+	var lair: Array[Vector2i] = []
+	for c: Vector2i in l.lair["cells"]:
+		lair.append(c)
+	var bad: Array[String] = []
+	# 1. логово видно от входа
+	var seen := false
+	for c in lair:
+		if grid.line_clear(src, c):
+			seen = true
+			break
+	if not seen:
+		bad.append("логово не видно с клетки входа %s" % str(src))
+	# 2. ≥ 2 пути до выхода мимо логова
+	var wide := NodeGrid.new()
+	wide.occ = grid.occ.duplicate()
+	wide.landing = grid.landing
+	for y in NodeGrid.rows():
+		for x in NodeGrid.cols():
+			var c := Vector2i(x, y)
+			for lc in lair:
+				if maxi(absi(c.x - lc.x), absi(c.y - lc.y)) <= LAIR_KEEP_OUT:
+					wide.occ[c] = true
+					break
+	wide.occ.erase(src)
+	var exit_cell := Vector2i.ZERO
+	var have_exit := false
+	for ec: Vector3 in l.exit_cells:
+		for c in LayoutData.block_cells(LayoutData.block_of(NodeGrid.cell_of(ec))):
+			if not grid.is_occupied(c):
+				exit_cell = c
+				have_exit = true
+				break
+		if have_exit:
+			break
+	var paths := 0
+	if have_exit:
+		wide.occ.erase(exit_cell)
+		paths = _disjoint_paths(wide, src, exit_cell, 2)
+	if paths < 2:
+		bad.append("к площадке выхода %d путей мимо логова (нужно ≥ 2)" % paths)
+	# 3. уход от внешних площадок ≤ 3 прыжков
+	var b := LayoutBots.new(l, tier_name)
+	if b.error != "":
+		bad.append(b.error)
+	else:
+		for v: Dictionary in l.vaults:
+			if str(v["ring"]) != "outer":
+				continue
+			var hops := int(b.escape_of(_idx_static(v["pad1"]))["hops"])
+			if hops < 0 or hops > CORE_MAX_HOPS:
+				bad.append("хранилище %s: до выхода %d прыжков (≤ %d)" % [str(v["cell"]), hops, CORE_MAX_HOPS])
+	# 4. бегун
+	var runner := check_black_runner(l, tier_name)
+	if not bool(runner["ok"]):
+		bad.append(str(runner["detail"]))
+	if bad.is_empty():
+		return {"ok": true, "detail": "логово видно с входа, к выходу %d пути мимо логова, уход ≤ %d прыжков, бегун уходит" % [paths, CORE_MAX_HOPS]}
+	return {"ok": false, "detail": "; ".join(bad)}

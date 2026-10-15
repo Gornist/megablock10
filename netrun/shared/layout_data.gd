@@ -37,6 +37,8 @@ var vaults: Array = []
 var sentries: Array = []
 ## Маяки (`kind: beacon`): {id, cell: Vector2i (клетка 1 м; клетка-тумба «O»), start: Vector2i (dir8), step_deg: float, sweep_steps: int}.
 var beacons: Array = []
+## Барьеры (`kind: barrier`, `cell: [bx, bz]` — блок «B»): {id, block: Vector2i (блок карты), cells: Array[Vector2i] (4 клетки 1 м, заняты, пока барьер закрыт)}.
+var barriers: Array = []
 ## Датчики (`kind: sensor`): {id, cells: Array[Vector2i] (луч, 2–12 клеток 1 м), on: int, off: int (0 — по тиру узла), phase: int (сдвиг цикла, тактов)}.
 var sensors: Array = []
 ## Black ICE (`black` в файле): {id, route} или пусто.
@@ -292,6 +294,16 @@ func _fill_ice(src: Variant) -> String:
 			occupied[bc] = true   # тумба занимает свою клетку 1 м
 			beacons.append({"id": str(ed.get("id", "o%d" % (beacons.size() + 1))), "cell": bc, "start": start,
 				"step_deg": clampf(float(ed.get("step_deg", 45.0)), 45.0, 180.0), "sweep_steps": maxi(int(ed.get("sweep_steps", 0)), 0)})
+			continue
+		if str(ed.get("kind", "")) == "barrier":
+			# Барьер (ice.md §5): закрывает проход — блок карты «B» (4 клетки 1 м), занятый, пока не вскрыт.
+			var bb: Variant = _map_cell(ed.get("cell"))
+			if bb == null:
+				return "ice %s: барьеру нужна клетка карты cell [bx, bz]" % str(ed.get("id", "?"))
+			var bbk: Vector2i = bb
+			if blocks[bbk.y][bbk.x] != "B":
+				return "ice %s: барьер стоит не на блоке «B» карты" % str(ed.get("id", "?"))
+			barriers.append({"id": str(ed.get("id", "k%d" % (barriers.size() + 1))), "block": bbk, "cells": block_cells(bbk)})
 			continue
 		if str(ed.get("kind", "")) == "sensor":
 			var sc: Variant = _point_cell(ed)

@@ -1,0 +1,38 @@
+{
+  "name": "core",
+  "cells": [
+    "V..V...V",
+    "..#v#...",
+    "...B....",
+    ".#.LL.O.",
+    "...LL...",
+    ".==..==.",
+    "1..S.EE2",
+    "3....EE."
+  ],
+  "vaults": [
+    {"cell": [0, 0], "pad": [0, 1], "ring": "outer"},
+    {"cell": [7, 0], "pad": [7, 1], "ring": "outer"},
+    {"cell": [3, 0], "pad": [3, 1], "ring": "inner"}
+  ],
+  "ice": [
+    {"id": "g_w", "kind": "sentry", "route": [
+      {"cell": [2, 2]},
+      {"cell": [0, 2]},
+      {"cell": [0, 4]},
+      {"cell": [2, 4]}
+    ]},
+    {"id": "g_e", "kind": "sentry", "route": [
+      {"cell": [7, 4]},
+      {"cell": [5, 4]},
+      {"cell": [5, 2]},
+      {"cell": [7, 2]}
+    ]},
+    {"id": "o1", "kind": "beacon", "cell": [6, 3], "start": "S"},
+    {"id": "d_w", "kind": "sensor", "cell1": [2, 10], "dir": "E", "len": 4, "on": 2, "off": 1},
+    {"id": "d_e", "kind": "sensor", "cell1": [10, 10], "dir": "E", "len": 4, "on": 2, "off": 1},
+    {"id": "bar1", "kind": "barrier", "cell": [3, 2]}
+  ],
+  "black": {"id": "core_ice", "kind": "", "cell": [3, 3]},
+  "meta": {"sight_cells": 8}
+}

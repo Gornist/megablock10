@@ -161,6 +161,7 @@ var _black_log: Dictionary = {}      # сессия → журнал Black ICE �
 var _sensors: Array[TickSensor] = []   # Датчики раскладки (тактовый режим; ice.md §5): луч, вкл/выкл по тиру
 var _sensor_ids: Dictionary = {}     # TickSensor -> id датчика из раскладки
 var _sensor_hit: Dictionary = {}     # TickSensor -> {сессия: true}: уже сработал на неё в этом включении (повторно — после выключения)
+var _barriers: Array = []            # Барьеры раскладки (ice.md §5): {id, cells: Array[Vector2i], open: bool}; закрытый занимает клетки ice_grid
 var _intents: Dictionary = {}        # IceNode -> TickIce.intent() после последнего такта (рассылается 10 раз/с без пересчёта)
 var _entered_tick: Dictionary = {}   # сессия -> номер такта узла, когда она вошла (скрыта первые entry_hidden_ticks тактов)
 var _grace_spent: Dictionary = {}    # сессия -> true: ходила после входа, грейс прибытия (arrival_grace_ticks) кончился досрочно
@@ -284,6 +285,8 @@ func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 				int(sd["off"]) if int(sd["off"]) > 0 else program.y, int(sd["phase"]))
 			_sensors.append(ts)
 			_sensor_ids[ts] = str(sd["id"])
+		for kd: Dictionary in layout.barriers:
+			_barriers.append({"id": str(kd["id"]), "cells": kd["cells"], "open": false})   # клетки уже заняты в ice_grid (блок «B»)
 	else:
 		for i in soft:
 			_add_ice(NodeLayout.ICE[i]["id"], NodeLayout.ICE[i]["waypoints"])
@@ -1307,6 +1310,8 @@ func _broadcast_state() -> void:
 				fields["bk"] = beacon_view()
 			if not _sensors.is_empty():
 				fields["sn"] = sensor_view()
+			if not _barriers.is_empty():
+				fields["br"] = barrier_view()
 		if _black_brain != null:
 			fields["burn"] = int(black_burns.get(session, 0))   # ожоги за забег, на деке «ОЖОГ 1/3»
 		net.send_to(session, WorldMsg.encode_fields(WorldMsg.STATE, fields), false)
@@ -1379,6 +1384,46 @@ func sensor_view() -> Array:
 ## Для тестов и сценариев: датчики узла.
 func sensors() -> Array[TickSensor]:
 	return _sensors
+
+
+## Барьеры узла для state (поле `br`): [{id, c: [[x, z], …] клетки блока, open 0/1}].
+func barrier_view() -> Array:
+	var out: Array = []
+	for b: Dictionary in _barriers:
+		var cells: Array = []
+		for c: Vector2i in b["cells"]:
+			cells.append([c.x, c.y])
+		out.append({"id": b["id"], "c": cells, "open": 1 if b["open"] else 0})
+	return out
+
+
+## Закрыт ли барьер (нет такого — false).
+func barrier_closed(id: String) -> bool:
+	for b: Dictionary in _barriers:
+		if b["id"] == id:
+			return not bool(b["open"])
+	return false
+
+
+## Вскрыть барьер (ice.md §5). how: "charge" — мини-игра заряда (панель), «force» — силой (2 такта курка): trace +10 и тревога +10 на сессию,
+## "pick" — Отмычка, тихо. Клетки блока освобождаются в сетке узла — через них можно прыгать и ходят ICE. Возвращает false, если такого барьера
+## нет или он уже открыт. Ввод (мини-игра, удержание курка) — не здесь: узел принимает уже готовое решение.
+func open_barrier(id: String, how: String, session: String = "") -> bool:
+	for b: Dictionary in _barriers:
+		if b["id"] != id:
+			continue
+		if bool(b["open"]):
+			return false
+		b["open"] = true
+		for c: Vector2i in b["cells"]:
+			ice_grid.occ.erase(c)
+		if how == "force":
+			if session != "":
+				add_trace_event(session, "barrier")
+			alarm_event("barrier")
+		event.emit({"kind": "barrier_open", "node": node_id, "barrier": id, "how": how, "session": session})
+		return true
+	return false
 
 
 ## Маяки узла для state (поле `bk`): [{id, c: [x, z], d: [dx, dz] — угол сейчас, nd — после следующего такта, aw 0..6, r — дальность, клеток}].

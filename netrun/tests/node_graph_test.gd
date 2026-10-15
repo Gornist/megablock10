@@ -124,7 +124,7 @@ func test_раскладки_реального_графа_вмещают_свя
 		assert_int(int(g.nodes[id]["shards"])).is_less_equal(ld.vaults.size())
 		for i in (g.nodes[id]["links"] as Array).size():
 			assert_bool(ld.portals[i] != Vector3.INF).is_true()
-	assert_int(with_layout).is_equal(7)   # node_00 (учебная) и node_01, node_02, node_07 (Фойе) + node_03, node_05, node_10 (Серверная и её варианты)
+	assert_int(with_layout).is_equal(9)   # node_00 (учебная) и node_01, node_02, node_07 (Фойе) + node_03, node_05, node_10 (Серверная и её варианты) + node_11, node_12 (Ядро)
 	assert_str(g.nodes["node_05"]["layout"]).is_equal("server_room")
 	assert_str(g.nodes["node_03"]["layout"]).is_equal("server_room_light")
 	assert_str(g.nodes["node_10"]["layout"]).is_equal("server_room_dark")
