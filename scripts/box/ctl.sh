@@ -309,6 +309,10 @@ PICO_OK_PKGS="${PICO_OK_PKGS:-com.megablok10.netrun com.pvr.home com.picovrtob.v
 # sys.pxr.boundary.ready=1 как условие «готово» ОТМЕНЕНО: замер 13.10 21:03–21:05 (3 прогона, игра resumed на дисплее 0, трекинг 1/1)
 # — значение остаётся 0, пока карточка границы не подтверждена человеком, а игре оно не мешает. Включить: PICO_REQUIRE_BOUNDARY=1.
 PICO_REQUIRE_BOUNDARY=${PICO_REQUIRE_BOUNDARY:-0}
+# Лобби Pico (com.pvr.appmanager/.AllAppActivity и лаунчеры): при брони ЧЕЛОВЕКА это нормальный экран — после «Войти в VR» он стоит
+# в лобби и ждёт игру (15.10, П6: ready принял лобби за «системное окно», p6_run вышел, сервер стенда умер, человек остался без
+# игры). Автопрогону (бронь не человека) appmanager по-прежнему «системное окно». Свои — в $BOX/pico-lobby-pkgs по строке.
+PICO_LOBBY_PKGS="com.pvr.appmanager com.pvr.vrshell com.pvr.home com.picovrtob.vrlauncher $(cat "$BOX/pico-lobby-pkgs" 2>/dev/null | tr '\n' ' ')"
 PICO_LEASE_NOTE="бронь оставлена"  # внутри pico run меняется на «бронь снимет run»
 DIAG_WHY="" DIAG_KIND=""
 pico_diagnose() { # 0 — состояние здоровое; иначе DIAG_WHY (причина текстом) и DIAG_KIND: physical | window | unknown | state
@@ -326,6 +330,9 @@ pico_diagnose() { # 0 — состояние здоровое; иначе DIAG_W
   fi
   # карточка границы допустима, пока `pico start` не снял её парковкой (pico_ready выставляет PICO_CARD_OK; трекинг проверен выше)
   if [ "$PICO_CARD_OK" = 1 ] && [ "$pkg" = "$PICO_BOUNDARY_PKG" ]; then return 0; fi
+  if pico_is_human "$(pico_lease_owner)"; then  # человек в очках: лобби — штатный экран, игру pico start запустит поверх
+    case " $PICO_LOBBY_PKGS " in *" $pkg "*) return 0;; esac
+  fi
   case " $PICO_BAD_PKGS " in *" $pkg "*) DIAG_WHY="системное окно на переднем плане: $P_RES"; DIAG_KIND=window; return 1;; esac
   case " $PICO_OK_PKGS " in *" $pkg "*) ;; *) DIAG_WHY="неизвестное окно на переднем плане: $P_RES (не игра и не лаунчер; известные: ${PICO_OK_PKGS})"; DIAG_KIND=unknown; return 1;; esac
   if [ "$PICO_REQUIRE_BOUNDARY" = 1 ] && [ "$P_BOUND" != 1 ]; then
@@ -641,6 +648,90 @@ pico_run() {
   return "$rc"
 }
 
+# pico show <владелец> [--minutes N] [--dir каталог] -- команда стенда…   (показ человеку в очках)
+#   Для брони ЧЕЛОВЕКА: бронь pico на N минут (по умолчанию 240, ≤ 480) → ready (лобби — допустимый экран) → команда стенда
+#   отвязанным процессом (setsid; сервер живёт после выхода show и после конца ssh-сеанса) → вердикт «ПОКАЗ ИДЁТ». Карточку
+#   не паркует (PICO_PARK_OK=0), очки не гасит ни при ошибке, ни в конце. Команда видит PICO_SERIAL, PICO_RUN_DIR, BOX_OWNER,
+#   BOX_CTL, BOX_SHOW=1 (внутри — `$BOX_CTL pico start <владелец> <пакет/активити>`, чтобы игра встала поверх лобби).
+#   Закончить: `pico unshow` («снял») — TERM группе процессов стенда (его trap гасит сервер), бронь снимается, очки гасит страж
+#   через 3 мин. Не сказали «снял» — команду остановит timeout через N минут + 5 (бронь к тому времени истечёт сама).
+SHOW_STATE=$BOX/show.state
+show_alive() { # → 0, если записанная команда показа жива (pid + время старта совпали)
+  local pid st
+  pid=$(get "$SHOW_STATE" pid); st=$(get "$SHOW_STATE" lstart)
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && [ "$(ps -o lstart= -p "$pid" 2>/dev/null | sed 's/  */ /g')" = "$st" ]
+}
+pico_show() {
+  [ $# -ge 3 ] || { err "использование: pico show <владелец> [--minutes N] [--dir каталог] -- команда стенда…"; return 2; }
+  local own=$1 min=240 dir="" lo v rc pid
+  shift
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --minutes) min=${2:-}; shift 2;;
+      --dir) dir=${2:-}; shift 2;;
+      --) shift; break;;
+      *) err "неизвестная опция '$1' (ожидался -- перед командой)"; return 2;;
+    esac
+  done
+  [ $# -gt 0 ] || { err "нет команды после --"; return 2; }
+  pico_is_human "$own" || { err "pico show — показ человеку: владелец '$own' не в списке людей (Владелец, ~/box/pico-human-owners); автопрогон — pico run"; return 2; }
+  case $min in ''|*[!0-9]*) err "--minutes — число"; return 2;; esac
+  { [ "$min" -ge 1 ] && [ "$min" -le 480 ]; } || { err "минут от 1 до 480"; return 2; }
+  if [ -f "$SHOW_STATE" ] && show_alive; then
+    echo "pico show: показ уже идёт (владелец $(get "$SHOW_STATE" owner), pid $(get "$SHOW_STATE" pid), каталог $(get "$SHOW_STATE" dir)) — снять: pico unshow"; return 1
+  fi
+  rm -f "$SHOW_STATE"
+  [ -n "$dir" ] || dir=$BOX/runs/$(date +%m%d-%H%M%S)-show-$own
+  mkdir -p "$dir" || { err "не создал каталог $dir"; return 2; }
+  lo=$(pico_lease_owner)
+  if [ -n "$lo" ] && [ "$lo" != "$own" ]; then echo "pico show: бронь pico у $lo — очки не будить"; return 21; fi
+  cmd_lease pico "$own" "$min" "показ человеку: $(basename "$1")" >/dev/null || { echo "pico show: бронь pico не взята"; return 21; }
+  jlog pico-show-start owner "$own" minutes "$min" dir "$dir" cmd "$*"
+  pico_light on
+  v=$(pico_ready "$own"); rc=$?
+  echo "$v"
+  if [ "$rc" -ne 0 ]; then
+    echo "pico show: НЕ ГОТОВО — команда стенда не запускалась; очки не гашу, бронь $own осталась (до $(hm "$(get "$BOX/leases/pico.lease" until)")); каталог: $dir"; return 20
+  fi
+  (
+    cd "$dir" || exit 1
+    PICO_PARK_OK=0 PICO_SERIAL=$PICO PICO_RUN_DIR=$dir BOX_OWNER=$own BOX_SHOW=1 BOX_CTL=$(readlink -f "$0") \
+      setsid nohup timeout "$(( min * 60 + 300 ))" "$@" >"$dir/show.log" 2>&1 </dev/null 7>&- 9>&- &
+    echo $! >"$dir/.pid"
+  )
+  pid=$(cat "$dir/.pid"); rm -f "$dir/.pid"
+  sleep 2
+  if ! kill -0 "$pid" 2>/dev/null; then
+    echo "pico show: команда стенда завершилась за 2 с — журнал: $dir/show.log"; tail -n 5 "$dir/show.log"
+    jlog pico-show-fail owner "$own" dir "$dir"; return 20
+  fi
+  {
+    echo "owner=$own"; echo "pid=$pid"; echo "dir=$dir"; echo "since=$NOW"; echo "minutes=$min"
+    echo "lstart=$(ps -o lstart= -p "$pid" 2>/dev/null | sed 's/  */ /g')"; echo "cmd=$(clean "$*")"
+  } >"$SHOW_STATE"
+  jlog pico-show-up owner "$own" pid "$pid" dir "$dir"
+  echo "pico show: ПОКАЗ ИДЁТ — стенд pid $pid (отвязан от ssh), журнал $dir/show.log; очки не гасятся, карточку не паркую; снять: box.sh pico unshow"
+}
+pico_unshow() { # pico unshow: «снял» — остановить стенд показа, снять бронь; очки погасит страж через 3 мин
+  local own pid i
+  [ -f "$SHOW_STATE" ] || { echo "pico unshow: показа нет"; return 0; }
+  own=$(get "$SHOW_STATE" owner); pid=$(get "$SHOW_STATE" pid)
+  if show_alive; then
+    kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null
+    for ((i = 0; i < 10; i++)); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+    if kill -0 "$pid" 2>/dev/null; then kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null; fi
+    echo "pico unshow: стенд остановлен (pid $pid)"
+  else
+    echo "pico unshow: стенд уже не идёт"
+  fi
+  rm -f "$SHOW_STATE"
+  pico_unpark_card
+  [ "$(pico_lease_owner)" = "$own" ] && cmd_release pico "$own" >/dev/null 2>&1
+  pico_light off
+  jlog pico-show-end owner "$own" pid "$pid"
+  echo "pico unshow: бронь pico снята; очки погаснут сами через ~$((PICO_GRACE / 60)) мин (страж), POWER не жму"
+}
+
 cmd_pico() {
   local act=${1:-status} own st lo min note
   [ $# -gt 0 ] && shift
@@ -734,7 +825,9 @@ cmd_pico() {
         echo "окно=${P_RES:-?} light=${P_LIGHT:-?} граница=${P_BOUND:-?} трекинг=${P_ALG:-?}/${P_CONF:-?} вердикт=$DIAG_KIND: $DIAG_WHY"; return 1
       fi ;;
     run) pico_run "$@"; return $? ;;
-    *) err "pico status | wake <владелец> <мин> [заметка] | sleep <владелец> [--force] | guard | ready <владелец> | start <владелец> <пакет/активити> | unpark | fg | run <владелец> <мин> [--timeout сек] [--port N] [--dir каталог] -- команда… | taps on|off|status"; return 2;;
+    show) pico_show "$@"; return $? ;;
+    unshow) pico_unshow; return $? ;;
+    *) err "pico show <владелец> [--minutes N] -- команда | unshow | status | wake <владелец> <мин> [заметка] | sleep <владелец> [--force] | guard | ready <владелец> | start <владелец> <пакет/активити> | unpark | fg | run <владелец> <мин> [--timeout сек] [--port N] [--dir каталог] -- команда… | taps on|off|status"; return 2;;
   esac
 }
 

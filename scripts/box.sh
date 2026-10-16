@@ -12,6 +12,7 @@
 #   scripts/box.sh queue [класс]      — кто держит и кто ждёт (в т. ч. замки dbx.sh, gdUnit, display); подробности — scripts/box/ctl.sh
 #   scripts/box.sh pico status | wake <владелец> <мин> [заметка] | sleep <владелец> [--force]  — очки Pico: будить только под бронь
 #                                       `pico`, гасить сразу после (датчик заклеен). guard on|off|status — таймер-страж: гасит Awake без брони > 3 мин
+#   scripts/box.sh pico show <Владелец> [--minutes N] -- команда стенда… | unshow — показ ЧЕЛОВЕКУ в очках: лобби допустимо, стенд живёт до «снял»
 #   scripts/box.sh pico ready <владелец> | fg | start <владелец> <пакет/активити> | run <владелец> <мин> [--timeout сек] [--port N] -- команда…
 #                                       — очки без человека (docs/devbox.md, «Д5»): готовность по состоянию системы, прогон под trap
 #   scripts/box.sh up <служба> <сессия> [--port N] [--ttl мин] -- команда…  — свой экземпляр службы: порт из пула, каталог
