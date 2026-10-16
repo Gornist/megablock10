@@ -97,6 +97,13 @@ const MODE_CHARGE := "charge"
 ## no_bridge | gone | not_shard | open | no_decrypter}). После успеха сервер присылает свежий ev deck: шард в ГРУЗе уже «ОТКРЫТ».
 const DECRYPT := "decrypt"
 const MODE_DECRYPT := "decrypt"
+## Вскрытие барьера Soft ICE (ice.md §5). Клиент -> сервер: barrier {id: барьер узла, how: "charge" | "force"}. «charge» — мини-игра заряда (режим for_barrier: цепочка
+## 3/4/5 кодов по тиру узла, сетка 5×5, ловушек нет, буфер = цепочка + 2); дальше те же bk_tap и bk_cancel. «force» — силой: игрок удерживает курок у барьера 2 такта подряд
+## (отпустил = bk_cancel, прыжок = отмена), барьер открыт, trace +10 и тревога +10. Сервер -> клиент: bk / bk_tick / bk_end / bk_no с mode = "barrier"
+## (bk: {barrier, how, ...}; для force: ticks — сколько тактов держать; bk_tick: {left_ticks} на каждом такте; bk_end: {outcome, barrier, opened, how, early?};
+## bk_no: {reason: not_ready | active | gone | open | far | no_barrier}). Открытый барьер приходит в state.br (open: 1).
+const BARRIER := "barrier"
+const MODE_BARRIER := "barrier"
 const EV_ENDED := "ended"
 const EV_DAEMON := "daemon"
 ## Телепорт (VR: движение только им). Клиент -> сервер: {t: tp, p: [x, z]} — цель на полу; решает сервер. Успех ответа не имеет

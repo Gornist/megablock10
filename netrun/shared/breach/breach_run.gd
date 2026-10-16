@@ -18,6 +18,9 @@ extends RefCounted
 const MODE_STORAGE := "storage"
 const MODE_CHARGE := "charge"
 const MODE_DECRYPT := "decrypt"
+const MODE_BARRIER := "barrier"
+## Сетка мини-игры барьера (ice.md §5): 5×5 независимо от тира.
+const BARRIER_GRID := 5
 
 const EVENT_TRAP := "TRAP"
 const EVENT_MATCH := "MATCH"
@@ -79,6 +82,20 @@ static func for_decrypt(shard_tier: int, seed_: int, target: Array = [], data: B
 			seq.append(d.alphabet[rng.randi_range(0, d.alphabet.size() - 1)])
 	var lock := BreachDaemon.make("decrypt", seq, "DECRYPT", shard_tier, "Шифр-замок")
 	return _build(MODE_DECRYPT, tier_, [lock], seq.size() + d.decrypt_buffer_extra, int(p["cipher_timer_sec"]), int(p["grid_size"]), {}, seed_, d)
+
+
+## Барьер Soft ICE (ice.md §5): цепочка кодов по тиру узла (BASE 3 / HARD 4 / NIGHTMARE 5 — как шифр-замок), сетка 5×5, таймер заряда тира, ловушек нет.
+static func for_barrier(tier_: String, seed_: int, data: BreachData = null) -> BreachRun:
+	var d := data if data != null else BreachData.shared()
+	var shard_tier := maxi(BreachData.TIER_NAMES.find(tier_) + 1, 1)
+	var p := d.tier_params(tier_)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_
+	var seq: Array = []
+	for _i in range(d.decrypt_length(shard_tier)):
+		seq.append(d.alphabet[rng.randi_range(0, d.alphabet.size() - 1)])
+	var lock := BreachDaemon.make("barrier", seq, "BARRIER", shard_tier, "Барьер")
+	return _build(MODE_BARRIER, tier_, [lock], seq.size() + d.decrypt_buffer_extra, int(p["cipher_timer_sec"]), BARRIER_GRID, {}, seed_, d)
 
 
 static func _build(mode_: String, tier_: String, daemons: Array, buffer: int, timer: int, grid_size: int, traps: Dictionary, seed_: int, data: BreachData, lock_length: int = 0) -> BreachRun:
