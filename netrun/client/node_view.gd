@@ -139,6 +139,7 @@ func set_look(new_tier: String, new_layout: LayoutData) -> void:
 		var made := _add_module(_room, module, list)
 		if module == "lockdown_gate":
 			_gates = made
+	_counts["obstacle"] = _add_obstacles(_room)
 	_apply_exit()
 	_attach_exit_cloud()
 	_apply_alarm()
@@ -204,18 +205,31 @@ func _apply_furniture() -> void:
 	_sensor.visible = layout == null
 
 
-## Колонны комнаты: центры модулей. По раскладке — блоки карты «#» (хранилища «V» рисует set_vaults).
+## Препятствия раскладки: области из соседних по стороне блоков «#» (levels.md §2 п. 13). Прежняя комната (layout == null) — только одиночные колонны.
+func obstacle_regions() -> Array[ObstacleRegions.Region]:
+	if layout == null:
+		var none: Array[ObstacleRegions.Region] = []
+		return none
+	return ObstacleRegions.from_blocks(layout.blocks)
+
+
+## Колонны комнаты: центры модулей `pillar` — одиночный блок «#» (хранилища «V» рисует set_vaults). Область из двух и более блоков — один корпус
+## ObstacleBody (solid_obstacles), модулей на ней нет.
 func pillar_positions() -> Array[Vector3]:
 	var out: Array[Vector3] = []
 	if layout == null:
 		for p: Vector3 in NodeLayout.PILLARS:
 			out.append(p)
 		return out
-	for sz in LayoutData.SIZE:
-		for sx in LayoutData.SIZE:
-			if layout.blocks[sz][sx] == "#":
-				out.append(NodeLayout.cell_center(sx, sz))
+	for r in obstacle_regions():
+		if r.blocks.size() == 1:
+			out.append(NodeLayout.cell_center(r.blocks[0].x, r.blocks[0].y))
 	return out
+
+
+## Области из двух и более блоков: каждая рисуется одним корпусом по внешнему контуру.
+func solid_obstacles() -> Array:
+	return obstacle_regions().filter(func(r: ObstacleRegions.Region) -> bool: return r.blocks.size() > 1)
 
 
 ## Укрытия блока хранилища (env/cover, одна клетка 1×1 м): блок 2×2 занят целиком, хранилище стоит на одной его клетке (cell1),
@@ -325,6 +339,34 @@ func _add_module(parent: Node3D, module: String, xforms: Array) -> Array[Node3D]
 		if REFLECTED.has(module):
 			made.append_array(_add_multi(parent, path, module + "_reflection", list, mod_tier, true))
 	return made
+
+
+## Цельные препятствия (П7-2): один меш на все области из двух и более блоков — корпус `pillar_block` и рамка `pillar_base` (имена и материалы как у модуля
+## `pillar`: свет рёбер, облако и дыхание ставит AssetMaterials), плюс копия для отражения в полу. Возвращает число областей.
+func _add_obstacles(parent: Node3D) -> int:
+	var regions := solid_obstacles()
+	if regions.is_empty():
+		return 0
+	var built := ObstacleBody.build(regions)
+	var path := NodeAssets.env_path("pillar", tier)
+	for mirrored in [false, true]:
+		for part in NodeAssets.mesh_parts(path, tier, mirrored):
+			var key := "body" if part["name"] == "pillar_block" else ("frame" if part["name"] == "pillar_base" else "")
+			if key == "":
+				continue
+			var mesh := built[key] as ArrayMesh
+			if mesh.get_surface_count() == 0:
+				continue
+			mesh = mesh.duplicate() as ArrayMesh  # материал у каждого экземпляра свой: прямой и отражённый
+			mesh.surface_set_material(0, (part["mesh"] as Mesh).surface_get_material(0))
+			var mi := MeshInstance3D.new()
+			mi.name = "%s%s" % [part["name"], "_reflection" if mirrored else ""]
+			mi.mesh = mesh
+			mi.transform = part["xform"] as Transform3D  # у отражения — зеркало по Y
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			mi.set_meta("asset", path)
+			parent.add_child(mi)
+	return regions.size()
 
 
 ## По одному MultiMeshInstance3D на меш модели (у штрихов, точек и тайлов свой материал). mirrored — копия для отражения в полу.
