@@ -16,6 +16,12 @@ var state: int = State.IDLE:
 		if state != v:
 			state = v
 			queue_redraw()
+## Подсвечена как следующий код замка («сначала замок» читается без текста): жёлтая толстая рамка у доступной клетки с нужным кодом.
+var lock_hint := false:
+	set(v):
+		if lock_hint != v:
+			lock_hint = v
+			queue_redraw()
 ## Ожидает подтверждения сервера: выбрана у нас, но ещё не у него.
 var pending := false:
 	set(v):
@@ -70,7 +76,12 @@ func _draw() -> void:
 		_:
 			if dead:
 				ink = Color(DeckTheme.BAD, 0.7)
-	MbShape.draw_frame(self, Rect2(Vector2.ZERO, size), fill, edge, MbShape.Form.TAB, DeckTheme.CUT_SMALL, 2.0 if state == State.AVAILABLE else 1.0)
+	var border := 2.0 if state == State.AVAILABLE else 1.0
+	if lock_hint and state == State.AVAILABLE:
+		fill = Color(DeckTheme.WARN, 0.45)
+		edge = DeckTheme.WARN
+		border = 4.0
+	MbShape.draw_frame(self, Rect2(Vector2.ZERO, size), fill, edge, MbShape.Form.TAB, DeckTheme.CUT_SMALL, border)
 	var f := DeckTheme.font_mono()
 	var y := (size.y + f.get_ascent(font_size) - f.get_descent(font_size)) * 0.5
 	draw_string(f, Vector2(0, y), code, HORIZONTAL_ALIGNMENT_CENTER, size.x, font_size, ink)

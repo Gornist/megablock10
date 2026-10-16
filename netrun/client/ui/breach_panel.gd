@@ -59,6 +59,7 @@ var _pick_sig: Variant = null            # [ids, ram, тир], для котор
 var _ctx_key: Variant = null
 # виджеты состояния «run»
 var _cells: Dictionary = {}              # Vector2i -> BreachCell
+var _peak: Dictionary = {}               # id цели -> наибольший прогресс цепочки за попытку (для «ПРЕРВАНО на n/m»)
 var _timer_label: Label
 var _ice_label: Label
 var _trace_box: VBoxContainer
@@ -604,6 +605,11 @@ func _build_run() -> void:
 	_buffer_flow.add_theme_constant_override("v_separation", 3)
 	_right.add_child(_buffer_flow)
 	_right.add_child(DeckUi.section_title("ЦЕЛИ", "%d" % mirror.targets.size()))
+	var rules := DeckUi.label(rules_line_text(not mirror.lock.is_empty()), DeckTheme.V_DIM, false)
+	rules.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	rules.custom_minimum_size.x = 200
+	_right.add_child(rules)
+	_peak.clear()
 	_targets_box = DeckUi.vbox(2)
 	_right.add_child(_targets_box)
 	var spacer := Control.new()
@@ -655,30 +661,89 @@ func _refresh_run() -> void:
 		f.add_child(l)
 		_buffer_flow.add_child(f)
 	DeckUi.clear(_targets_box)
-	var locked := not mirror.lock.is_empty() and not mirror.lock_opened   # замок закрыт: демоны пока не засчитываются
+	var locked := not mirror.lock.is_empty() and not mirror.lock_opened   # замок закрыт: добыча пока не засчитывается
+	var lock_next := ""   # следующий нужный код замка: клетки с ним на сетке подсвечены («сначала замок» без текста)
 	if not mirror.lock.is_empty():
-		_add_lock_rows()
+		var lp := chain_progress(mirror.lock, codes)
+		if locked and lp < mirror.lock.size():
+			lock_next = str(mirror.lock[lp])
+		_add_lock_rows(lp)
+	for c in _cells:
+		var gc: BreachCell = _cells[c]
+		gc.lock_hint = lock_next != "" and gc.state == BreachCell.State.AVAILABLE and gc.code == lock_next
 	for t in mirror.targets:
-		var done := mirror.is_matched(str(t["id"]))
-		var row := DeckUi.hbox(6)
-		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		row.add_child(DeckUi.label("⚠" if done and locked else ("✓" if done else "·"), DeckTheme.V_WARN if done and locked else (DeckTheme.V_OK if done else DeckTheme.V_DIM), false))
-		row.add_child(DeckUi.label(" ".join((t["cells"] as Array).map(func(c): return str(c))), DeckTheme.V_DIM if done else DeckTheme.V_CODE, false))
-		var name_l := DeckUi.label(str(t["name"]) + (" — до замка, не засчитан" if done and locked else ""), DeckTheme.V_WARN if done and locked else DeckTheme.V_DIM)
-		DeckUi.expand(name_l)
-		row.add_child(name_l)
-		_targets_box.add_child(row)
+		_targets_box.add_child(_target_row(t, codes, locked))
 	_refresh_trace()
 
 
-## Замок хранилища (Взлом 2.0) — первым в списке целей: его цепочку надо набрать до демонов, иначе они не засчитаются (на П7 владелец набрал демона до замка и не понял,
-## почему «не срабатывает»). Закрыт — «1. ЗАМОК» и подсказка «2. ДЕМОНЫ — только после замка»; вскрыт — «замок вскрыт».
-func _add_lock_rows() -> void:
+## Строка цели: прогресс по ходу набора (собранные коды подсвечены, следующий нужный — ярче), «ДО ЗАМКА — НЕ ЗАСЧИТАНО» сразу, как цепочка добычи совпала раньше замка,
+## «ПРЕРВАНО на n/m», если цепочка порвана (не тот код, ловушка, буфер вытолкнул). Пока замок закрыт, цели добычи приглушены (breach.md §2.1).
+func _target_row(t: Dictionary, codes: Array, locked: bool) -> Control:
+	var chain: Array = t["cells"]
+	var id := str(t["id"])
+	var loot := BreachRules.LOOT_EFFECTS.has(str(t.get("effect", "")))
+	var done := mirror.is_matched(id)
+	var early := done and locked and loot
+	var p := chain.size() if done else chain_progress(chain, codes)
+	_peak[id] = maxi(int(_peak.get(id, 0)), p)
+	var broken := not done and int(_peak[id]) > p
+	var muted := locked and loot and not done
+	var row := DeckUi.hbox(6)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var mark := "!" if early else ("✓" if done else ("·" if p == 0 else str(p)))
+	row.add_child(DeckUi.label(mark, DeckTheme.V_WARN if early else (DeckTheme.V_OK if done else DeckTheme.V_DIM), false))
+	for i in chain.size():
+		var v := DeckTheme.V_DIM
+		if early:
+			v = DeckTheme.V_WARN
+		elif not muted:
+			v = DeckTheme.V_OK if i < p else (DeckTheme.V_CODE if i == p else DeckTheme.V_DIM)
+		row.add_child(DeckUi.label(str(chain[i]), v, false))
+	var name_l := DeckUi.label(target_status_text(str(t["name"]), early, broken, int(_peak[id]), chain.size()), DeckTheme.V_WARN if early or broken else DeckTheme.V_DIM)
+	DeckUi.expand(name_l)
+	row.add_child(name_l)
+	return row
+
+
+## Подпись цели: имя, а при «до замка» или разрыве — состояние вместо имени (его видно сразу, не на экране итога).
+static func target_status_text(name_: String, early: bool, broken: bool, peak: int, total: int) -> String:
+	if early:
+		return "%s — ДО ЗАМКА — НЕ ЗАСЧИТАНО" % name_
+	if broken:
+		return "%s — ПРЕРВАНО на %d/%d" % [name_, peak, total]
+	return name_
+
+
+## Длина цепочки, уже собранной в конце буфера: наибольшее k, при котором последние k кодов буфера — первые k кодов chain (коды подряд, без вставок).
+static func chain_progress(chain: Array, buffer: Array) -> int:
+	for k in range(mini(chain.size(), buffer.size()), 0, -1):
+		var ok := true
+		for i in k:
+			if str(buffer[buffer.size() - k + i]) != str(chain[i]):
+				ok = false
+				break
+		if ok:
+			return k
+	return 0
+
+
+## Строка правил над списком целей (breach.md §2.1): одной строкой, видна всегда.
+static func rules_line_text(has_lock: bool) -> String:
+	return "коды подряд, без вставок · строка ↔ столбец" + (" · добыча — после ЗАМКА" if has_lock else "")
+
+
+## Замок хранилища (Взлом 2.0) — первым в списке целей: его цепочку надо набрать до добычи, иначе она не засчитается (на П7 владелец набрал демона до замка и не понял,
+## почему «не срабатывает»). Закрыт — «1. ЗАМОК» с прогрессом и подсказка «2. ДЕМОНЫ — только после замка»; вскрыт — «замок вскрыт».
+func _add_lock_rows(progress: int) -> void:
 	var opened := mirror.lock_opened
 	var row := DeckUi.hbox(6)
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(DeckUi.label("✓" if opened else "1", DeckTheme.V_OK if opened else DeckTheme.V_WARN, false))
-	row.add_child(DeckUi.label(" ".join(mirror.lock.map(func(c): return str(c))), DeckTheme.V_DIM if opened else DeckTheme.V_CODE, false))
+	for i in mirror.lock.size():
+		var v := DeckTheme.V_DIM
+		if not opened:
+			v = DeckTheme.V_OK if i < progress else (DeckTheme.V_WARN if i == progress else DeckTheme.V_CODE)
+		row.add_child(DeckUi.label(str(mirror.lock[i]), v, false))
 	var name_l := DeckUi.label(lock_row_text(opened), DeckTheme.V_OK if opened else DeckTheme.V_WARN)
 	DeckUi.expand(name_l)
 	row.add_child(name_l)
