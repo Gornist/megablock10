@@ -19,7 +19,11 @@
       {"cell": [0, 2], "wait": 2, "look": ["N"]},
       {"cell": [7, 2], "wait": 2, "look": ["N"]}
     ]},
-    {"id": "d1", "kind": "sensor", "cell1": [8, 6], "dir": "E", "len": 2}
+    {"id": "d1", "kind": "sensor", "cell1": [8, 6], "dir": "E", "len": 2},
+    {"id": "r1", "kind": "reserve", "route": [
+      {"cell": [0, 7], "wait": 1, "look": ["N"]},
+      {"cell": [0, 5], "wait": 2, "look": ["E"]}
+    ]}
   ],
   "black": null,
   "meta": {"sight_cells": 4}

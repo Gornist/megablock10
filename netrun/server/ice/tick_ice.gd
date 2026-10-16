@@ -159,6 +159,10 @@ func set_sight_bonus(cells: float) -> void:
 	_sight_bonus = maxf(cells, 0.0)
 
 
+func sight_bonus() -> float:
+	return _sight_bonus
+
+
 ## Наибольший счётчик осведомлённости 0..awareness_max.
 func max_awareness() -> int:
 	return _max_aw()

@@ -164,6 +164,7 @@ var _sensor_ids: Dictionary = {}     # TickSensor -> id датчика из ра
 var _sensor_hit: Dictionary = {}     # TickSensor -> {сессия: true}: уже сработал на неё в этом включении (повторно — после выключения)
 var _barriers: Array = []            # Барьеры раскладки (ice.md §5): {id, cells: Array[Vector2i], open: bool}; закрытый занимает клетки ice_grid
 var _intents: Dictionary = {}        # IceNode -> TickIce.intent() после последнего такта (рассылается 10 раз/с без пересчёта)
+var _reserve_out: Array[IceNode] = []   # запасные Стражи, вышедшие из будок на тревоге 2 (раскладка: reserves); пусто — будки закрыты
 var _entered_tick: Dictionary = {}   # сессия -> номер такта узла, когда она вошла (скрыта первые entry_hidden_ticks тактов)
 var _grace_spent: Dictionary = {}    # сессия -> true: ходила после входа, грейс прибытия (arrival_grace_ticks) кончился досрочно
 var _black_vt := 0.0                 # виртуальное время Black ICE: за такт оно идёт на black_tick_sec
@@ -1324,6 +1325,8 @@ func _broadcast_state() -> void:
 				fields["sn"] = sensor_view()
 			if not _barriers.is_empty():
 				fields["br"] = barrier_view()
+			if layout != null and not layout.booths.is_empty():
+				fields["bo"] = booth_view()
 		if _black_brain != null:
 			fields["burn"] = int(black_burns.get(session, 0))   # ожоги за забег, на деке «ОЖОГ 1/3»
 		net.send_to(session, WorldMsg.encode_fields(WorldMsg.STATE, fields), false)
@@ -2352,6 +2355,39 @@ func _change_alarm(new_value: float) -> void:
 		_write_node_state()  # тревога переживает рестарт сервера мира (node.data.world.alert + alert_at)
 
 
+## Запасные Стражи (ice.md §4, «тревога 2»; решение владельца 16.10): на тревоге ≥ 2 из будок раскладки выходят запасные — один раз за забег узла, по маршруту записи
+## `kind: reserve` (первая точка — клетка будки). Падение тревоги ниже 2 их не убирает; уходят, когда узел остыл до нуля (alarm == 0) — следующий забег снова с будкой.
+func _reserve_sync(level: int) -> void:
+	if not _tick_mode or layout == null or layout.reserves.is_empty():
+		return
+	if level >= 2 and _reserve_out.is_empty():
+		for rd: Dictionary in layout.reserves:
+			_add_layout_sentry(rd)
+			_reserve_out.append(_ices.back())
+			print("[reserve] %s вышел из будки tick=%d" % [str(rd["id"]), tick_clock.tick_no])
+		event.emit({"kind": "reserve_out", "node": node_id})
+	elif alarm <= 0.0 and not _reserve_out.is_empty():
+		for ice in _reserve_out:
+			_ices.erase(ice)
+			_tick_ices.erase(ice)
+			_intents.erase(ice)
+			remove_child(ice)   # сразу из дерева: queue_free убирает позже, и имя запасного занято, когда он выходит снова
+			ice.queue_free()
+		_reserve_out.clear()
+		print("[reserve] остыл до нуля: запасные ушли в будки")
+
+
+## Будки запасных Стражей для state (поле `bo`): [{id, c: [x, z] клетка 1 м, open 0/1 — запасной вышел (створка сдвинута)}].
+func booth_view() -> Array:
+	var out: Array = []
+	if layout == null:
+		return out
+	for i in layout.booths.size():
+		var c: Vector2i = layout.booths[i]
+		out.append({"id": "b%d" % (i + 1), "c": [c.x, c.y], "open": 0 if _reserve_out.is_empty() else 1})
+	return out
+
+
 ## Уровни тревоги и их эффекты (ice.md §4), прежний множитель внимания непошаговых ICE по alert.
 func _apply_alert() -> void:
 	var k := 1.0 + alert * float(settings["alert_boost"])
@@ -2359,6 +2395,7 @@ func _apply_alert() -> void:
 	var changed := level != alarm_level
 	alarm_level = level
 	sensors_armed = level >= 1   # «спящие» датчики раскладки включены (самих датчиков пока нет — только флаг)
+	_reserve_sync(level)   # до цикла по ICE: вышедший запасной сразу получает бонус зрения ниже
 	for ice in _ices:
 		if ice.brain != null:
 			ice.brain.alert_scale = k
