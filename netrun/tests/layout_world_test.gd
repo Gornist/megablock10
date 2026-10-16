@@ -287,7 +287,11 @@ func test_датчик_раскладки_стоит_на_узле_и_срабо
 	var view := _alt().sensor_view()
 	assert_str(str(view[0]["id"])).is_equal("d1")
 	assert_int((view[0]["c"] as Array).size()).is_equal(3)
-	assert_int(int(view[0]["on"])).is_equal(1)
+	assert_int(int(view[0]["on"])).override_failure_message("П6-4: вход в узел застаёт луч выключенным").is_equal(0)
+	assert_int(int(view[0]["l"])).is_equal(3)   # BASE: три выключенных такта впереди
+	for i in 3:
+		sensors[0].tick()
+	assert_int(int(_alt().sensor_view()[0]["on"])).is_equal(1)   # потом включается
 	# Срабатывание: тревога узла +5 и ближайший Страж — в Проверку к клетке луча (сессии в узле нет — trace не считаем).
 	var cell: Vector2i = sensors[0].cells()[1]
 	var before := _alt().alarm

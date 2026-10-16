@@ -101,7 +101,7 @@ func _make_sensors() -> Array[TickSensor]:
 	var out: Array[TickSensor] = []
 	var prog := _program()
 	for sd: Dictionary in layout.sensors:
-		out.append(TickSensor.new(sd["cells"], int(sd["on"]) if int(sd["on"]) > 0 else prog.x, int(sd["off"]) if int(sd["off"]) > 0 else prog.y, int(sd["phase"])))
+		out.append(TickSensor.for_layout(sd, prog))   # тот же путь, что у узла: старт в фазе «выключен»
 	return out
 
 
