@@ -278,7 +278,7 @@ func _process(delta: float) -> void:
 	drive(turn_x, tp_stick, clicked, delta, walk)
 
 
-## Один шаг управления по готовому вводу (так же зовут тесты): turn_x — вращение мира (левый стик по X или Q/E; только режимы smooth
+## Один шаг управления по готовому вводу (так же зовут тесты): turn_x — вращение мира (правый стик вбок (сектор поворота) или Q/E; только режимы smooth
 ## и snap), tp_stick — правый стик телепорта (x вправо, y вперёд: отклонил — прицел, положение стика — поворот при телепорте, вернул
 ## к центру — прыжок), clicked — нажатие стика (отмена), walk — ходьба WASD (только плоская сборка с walk_enabled).
 func drive(turn_x: float, tp_stick: Vector2, clicked: bool, delta: float, walk: Vector2 = Vector2.ZERO) -> void:
