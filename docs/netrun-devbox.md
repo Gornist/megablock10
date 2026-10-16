@@ -177,6 +177,10 @@ godot -- --flat --host=127.0.0.1 --port=7777 --token=t1
   (install → provision → свежий сервер → start; «не готово» и «игра не встала» — не выход, сервер остаётся; конец — `box.sh pico unshow` после «снял» или
   `touch ~/pico-p6/stop`; журналы — в каталог показа: `server.log`, `logcat.txt`, `pico-log.txt`). Автопрогон без человека — `pico run Godot <мин> --port 7777 -- …`
   (тогда ready обязателен). Первый П6 16.10 сорвался на `pico run` под бронью человека: скрипт ждал бронь Godot и вышел на «не готово», сервер умер вместе с ним.
+  **Стенд П7** (16.10, main 61522b3; «следующий стенд начинать с Архива», П6-5): цепочка Архив node_03 (BASE, `server_room_light`) ↔ Серверная node_05 ↔ Ядро node_11,
+  вход t03 в Архив, остальное как П6: `tools/stand/p7_graph.json`, `p7_bridge_fixture.json`, `tools/srv_p7.sh`; APK — `P6_DIR=$HOME/pico-p7 scripts/box.sh run gpu Godot --name p7-build
+  -- bash netrun/tools/p6_build.sh` → `~/pico-p7/netrun-client-p6.apk`; показ — `P6_SERVER=srv_p7.sh P6_APK=$HOME/pico-p7/netrun-client-p6.apk scripts/box.sh pico show Владелец
+  --minutes <мин> -- bash netrun/tools/p6_run.sh` (только по слову «надеваю»).
 - **Падение в нативном коде:** кадры `libgodot_android.so` в tombstone без имён (библиотека шаблона уже без символов). Функцию находит
   дизассемблер по адресу кадра: `$ANDROID_HOME/ndk/<версия>/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-objdump -d --start-address=…`
   по `<копия>/android/build/build/intermediates/merged_native_libs/…/arm64-v8a/libgodot_android.so` (BuildId в tombstone должен совпасть).
