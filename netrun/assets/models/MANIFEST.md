@@ -46,7 +46,7 @@
 | `models/ice/lighthouse_ice.glb` | 274 / 300 | 0 / 0 | 0 / 0 | 3 | 6 | 0.6 × 0.84 × 0.6 | shell_soft, solid_dark | — | floor | ок |
 | `models/env/lockdown_gate.glb` | 300 / 320 | 0 / 0 | 0 / 0 | 0 | 1 | 0.89 × 2 × 0.09 | solid_dark | — | floor | ок |
 | `models/env/lockdown_gate_open.glb` | 300 / 320 | 0 / 0 | 0 / 0 | 0 | 1 | 0.89 × 0.12 × 0.09 | solid_dark | — | floor | ок |
-| `models/env/pillar.glb` | 464 / 560 | 0 / 0 | 0 / 0 | 0 | 2 | 2 × 2.2 × 2 | solid_dark | — | floor | ок |
+| `models/env/pillar.glb` | 116 / 140 | 0 / 0 | 0 / 0 | 0 | 2 | 2 × 2.2 × 2 | solid_dark | — | floor | ок |
 | `models/env/platform.glb` | 28 / 300 | 0 / 0 | 0 / 0 | 0 | 1 | 1.9 × 0.3 × 1.9 | solid_dark | — | floor | ок |
 | `models/props/portal.glb` | 0 / 2000 | 358 / 400 | 82 / 100 | 0 | 2 | 3.028 × 3.014 × 0.1571 | points, streaks | — | floor | ок |
 | `models/props/portal_locked.glb` | 0 / 2000 | 157 / 260 | 27 / 40 | 0 | 2 | 3.0273 × 3.0139 × 0.1508 | points, streaks | — | floor | ок |
