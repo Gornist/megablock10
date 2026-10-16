@@ -10,7 +10,7 @@ extends RefCounted
 const DEADZONE := 0.2
 const SNAP_THRESHOLD := 0.7      ## стик за этим порогом запускает рывок
 const SNAP_RELEASE := 0.3        ## ниже этого порога стик «взведён» снова
-const SNAP_STEP_DEG := 30.0      ## рывок поворота стиком (режим по умолчанию turn_mode = snap)
+const SNAP_STEP_DEG := 45.0      ## рывок поворота стиком (режим по умолчанию turn_mode = snap)
 const MOVE_SPEED := 1.5          ## м/с, ходьба WASD в плоской сборке с --walk (разработка); в VR ходьбы нет
 const MAX_MOVE_SPEED := 3.0      ## жёсткий потолок, настройкой не превысить
 

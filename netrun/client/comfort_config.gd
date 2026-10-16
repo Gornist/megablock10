@@ -7,7 +7,8 @@ extends RefCounted
 ## проверяет сам и клиенту не доверяет, так что файлом правила не обойти. Адрес сервера и токен через этот файл не передаются.
 ##
 ## [comfort]
-## turn_mode = "snap"            ; "snap" (по умолчанию: щелчок 30° левым стиком, как в Skyrim VR) | "smooth" (плавно) | "none" (стик мир не вращает, поворот при телепорте)
+## snap_step_deg = 45.0          ; шаг щелчкового поворота, 10…90 (по умолчанию 45°, как в документе Game П6-0)
+## turn_mode = "snap"            ; "snap" (по умолчанию: щелчок левым стиком, как в Skyrim VR) | "smooth" (плавно) | "none" (стик мир не вращает, поворот при телепорте)
 ## turn_speed_deg_s = 60.0       ; угловая скорость при полном стике, 10…120
 ## turn_vignette = 0.45          ; доля поля зрения, закрываемая у краёв при полной скорости, 0…0,8 (0 — без виньетки)
 ## turn_ramp_up_s = 0.25         ; разгон поворота, 0,05…2
@@ -24,10 +25,11 @@ extends RefCounted
 const HAND_PITCH_DEFAULT := -40.0
 const PATH := "user://comfort.cfg"
 const SECTION := "comfort"
-const KEYS := ["turn_mode", "turn_speed_deg_s", "turn_vignette", "turn_ramp_up_s", "turn_ramp_down_s",
+const KEYS := ["turn_mode", "snap_step_deg", "turn_speed_deg_s", "turn_vignette", "turn_ramp_up_s", "turn_ramp_down_s",
 	"teleport_range", "teleport_cooldown", "teleport_blink_s", "hand_pitch_deg", "hand_offset_x", "hand_offset_y", "hand_offset_z"]
 ## Числовые поля: [наименьшее, наибольшее]. Нулевые разгон и остановка — это рывок, поэтому снизу не ноль.
 const LIMITS := {
+	"snap_step_deg": [10.0, 90.0],
 	"turn_speed_deg_s": [10.0, RigMath.TURN_SPEED_MAX_DEG_S],
 	"turn_vignette": [0.0, RigMath.TURN_VIGNETTE_LIMIT],
 	"turn_ramp_up_s": [0.05, 2.0],
@@ -42,6 +44,7 @@ const LIMITS := {
 }
 
 var turn_mode := RigMath.TURN_MODE_DEFAULT
+var snap_step_deg := RigMath.SNAP_STEP_DEG
 var turn_speed_deg_s := RigMath.TURN_SPEED_DEG_S
 var turn_vignette := RigMath.TURN_VIGNETTE_MAX
 var turn_ramp_up_s := RigMath.TURN_RAMP_UP_SEC
@@ -131,6 +134,7 @@ func log_fields() -> Dictionary:
 
 func apply_to(rig: XRRig) -> void:
 	rig.turn_mode = turn_mode
+	rig.snap_step_deg = snap_step_deg
 	rig.turn_speed_deg_s = turn_speed_deg_s
 	rig.turn_vignette = turn_vignette
 	rig.turn_ramp_up_s = turn_ramp_up_s
