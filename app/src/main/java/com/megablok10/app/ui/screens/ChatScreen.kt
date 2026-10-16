@@ -28,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.megablok10.app.data.ChatMessageEntity
@@ -494,11 +495,12 @@ private fun PaymentOrItemStatus(self: Boolean, status: String?, onAccept: (() ->
 /** Сигнал СБ (SecAlertStore) приходит телом обычного фракционного сообщения — тег вместо пузыря, тир контейнера не показываем: это служебное деление сложности взлома для мастера. */
 @Composable
 private fun SecurityAlertTag(alert: Mb10Qr.SecurityAlert) {
+    val locale = LocalLocale.current.platformLocale   // Compose 1.12: Locale.getDefault() в композиции не следит за сменой языка (lint NonObservableLocale)
     val parts = buildList {
         add("Тревога!")
         add("«${alert.containerName}»")
         alert.intruderCallsign?.let(::add)
-        alert.preciseAt?.let { add(SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(it)) }
+        alert.preciseAt?.let { add(SimpleDateFormat("HH:mm:ss", locale).format(it)) }
     }
     MbTag(parts.joinToString(" · "), tone = MbTagTone.Bad)
 }

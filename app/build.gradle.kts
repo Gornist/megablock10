@@ -3,7 +3,6 @@ import java.util.concurrent.Callable
 
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
     id("app.cash.paparazzi")
@@ -36,8 +35,8 @@ detekt {
 
 android {
     namespace = "com.megablok10.app"
-    // 36 — потолок AGP 8.13; Compose 1.12 и lifecycle 2.11 уже требуют 37 и AGP 9.2 (зависимости ниже — последние под 36).
-    compileSdk = 36
+    // 37 — потолок AGP 9.2; его требуют Compose 1.12 и lifecycle 2.11. Платформу докачивает Gradle (лицензии — в workflow).
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.megablok10.app"
@@ -127,7 +126,8 @@ dependencies { byteBuddyAgent("net.bytebuddy:byte-buddy-agent:1.18.14") }
 // тесты приложения, каждый ровно один раз (задача без скриншотов от режима Paparazzi не зависит и во втором вызове up-to-date).
 // Один тест: ./gradlew :app:testDebugUnitTestNoScreenshots --tests '*RoomTest*' (скриншот — verifyPaparazziDebug --tests …).
 val screenshotTests = "com.megablok10.app.screenshots.*"
-for (variant in listOf("Debug", "Release")) {
+// Только Debug: с AGP 9 юнит-тесты создаются лишь для тестируемого типа сборки (testReleaseUnitTest нет), а CI и скрипты зовут Debug.
+for (variant in listOf("Debug")) {
     val unitTest = "test${variant}UnitTest"
     val noScreenshots = tasks.register<Test>("${unitTest}NoScreenshots") {
         description = "Unit-тесты варианта ${variant.lowercase()} без скриншот-тестов — в своей JVM, без Paparazzi"
@@ -195,19 +195,17 @@ dependencies {
     // Общие правила игры (тиры, эффекты демонов, кодек предмета, решение о сигнале СБ) — rules/README.md.
     implementation(project(":rules"))
 
-    // core-ktx 1.19 и Compose BOM 2026.09 (Compose 1.12) требуют compileSdk 37 и AGP 9.1+ (checkDebugAarMetadata, dependabot #258, 14.10);
-    // у нас AGP 8.13.2 (build.gradle.kts: AGP 9 ждёт стабильных Paparazzi и detekt). Поднимать вместе с AGP 9.
-    implementation("androidx.core:core-ktx:1.17.0")
+    // core-ktx 1.19 и Compose BOM 2026.09 (Compose 1.12) требуют compileSdk 37 и AGP 9.1+ (checkDebugAarMetadata, dependabot #258, 14.10).
+    implementation("androidx.core:core-ktx:1.19.1")
     implementation("androidx.activity:activity-compose:1.12.0")
-    implementation(platform("androidx.compose:compose-bom:2026.06.01"))   // Compose 1.11
+    implementation(platform("androidx.compose:compose-bom:2026.09.00"))   // Compose 1.12
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui-tooling-preview")
     // Экраны — через ViewModel (переживают поворот и смену вкладки): viewModel() и collectAsStateWithLifecycle в Compose.
-    // 2.10 — последняя линия под compileSdk 36 (2.11 требует 37 и AGP 9.2).
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.10.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.11.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
 
     // QR: генерация своего кода и сканирование чужого
     implementation("com.google.zxing:core:3.5.4")
