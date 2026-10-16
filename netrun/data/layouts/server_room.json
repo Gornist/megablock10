@@ -16,8 +16,8 @@
   ],
   "ice": [
     {"id": "g1", "kind": "sentry", "route": [
-      {"cell": [0, 2], "wait": 2, "look": ["N"]},
-      {"cell": [7, 2], "wait": 2, "look": ["N"]}
+      {"cell": [0, 2], "wait": 5, "look": ["S"]},
+      {"cell": [7, 2], "wait": 3, "look": ["N"]}
     ]},
     {"id": "g2", "kind": "sentry", "route": [
       {"cell": [7, 4], "wait": 1},

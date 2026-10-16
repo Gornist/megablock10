@@ -99,19 +99,19 @@
       "silent": false
     },
     "t03": {
-      "node": "node_05",
+      "node": "node_03",
       "label": "Стойка 3",
       "token_sha256": "4ab53a252c0eb82880fa8bda7a765e4e621bb9a8ac438c71c3986a001988868c",
       "silent": false
     },
     "t04": {
-      "node": "node_05",
+      "node": "node_03",
       "label": "Стойка 4",
       "token_sha256": "4ab53a252c0eb82880fa8bda7a765e4e621bb9a8ac438c71c3986a001988868c",
       "silent": false
     },
     "t05": {
-      "node": "node_05",
+      "node": "node_03",
       "label": "Стойка 5",
       "token_sha256": "4ab53a252c0eb82880fa8bda7a765e4e621bb9a8ac438c71c3986a001988868c",
       "silent": false
@@ -127,7 +127,7 @@
     "s_fake000000000001": {
       "state": "active",
       "terminal": "t03",
-      "node": "node_05",
+      "node": "node_03",
       "runner": "KEY_ALICE",
       "callsign": "Призрак",
       "loot_eddies": 0,
@@ -261,6 +261,30 @@
       "shard": {
         "tier": 2,
         "title": "Графики ТО",
+        "decrypted": false
+      }
+    },
+    "it_p1_s031": {
+      "owner": "node:node_03",
+      "kind": "SHARD",
+      "payload": "sh-031",
+      "protected": false,
+      "origin": "node:node_03",
+      "shard": {
+        "tier": 1,
+        "title": "Опись архива",
+        "decrypted": true
+      }
+    },
+    "it_p1_s032": {
+      "owner": "node:node_03",
+      "kind": "SHARD",
+      "payload": "sh-032",
+      "protected": false,
+      "origin": "node:node_03",
+      "shard": {
+        "tier": 1,
+        "title": "Журнал выдачи",
         "decrypted": false
       }
     },

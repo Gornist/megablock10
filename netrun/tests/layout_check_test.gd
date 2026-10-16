@@ -340,3 +340,21 @@ func test_ядро_правила_логова_6_3() -> void:
 	var r := LayoutBots.check_core_rules(ld, "NIGHTMARE")
 	print("[core-rules] ", r)
 	assert_bool(r["ok"]).override_failure_message(str(r["detail"])).is_true()
+
+
+func test_серверная_у_одной_площадки_окно_не_короче_взлома_hard_плюс_два() -> void:
+	# П6-5: на П6 в Серверной (HARD) — ноль взломов: окна площадок 13 и 11 тактов короче взлома. Таймер HARD 90 с при окне такта 5 с — до 18 тактов
+	# (в панели игрок такт не держит, такты идут по окну); у одной площадки окно ≥ взлом + 2, вторая остаётся «горячей» (выбор: пойти к спокойной или рискнуть).
+	var ld := LayoutData.load_named("server_room")
+	assert_str(ld.error).is_empty()
+	var timer := int(BreachData.load_default().tier_params("HARD")["timer_sec"])
+	var hack_ticks := ceili(float(timer) / float(NodeGraph.DEFAULT_SETTINGS["tick_window_sec"]))
+	var cycle := LayoutCheck.cycle_ticks(ld)
+	assert_int(cycle).is_greater(0)
+	var windows: Array[int] = []
+	for v: Dictionary in ld.vaults:
+		windows.append(LayoutCheck.window_ticks(ld, v["pad_cell"], cycle))
+	print("[server_room] взлом HARD %d тактов, окна площадок %s" % [hack_ticks, str(windows)])
+	assert_int(windows.max()).override_failure_message("окна %s короче взлома %d + 2" % [str(windows), hack_ticks]).is_greater_equal(hack_ticks + 2)
+	assert_int(windows.min()).override_failure_message("вторая площадка остаётся «горячей»: окно %s не короче порога HARD" % str(windows)).is_greater_equal(LayoutCheck.outer_window_min("HARD"))
+	assert_int(windows.min()).override_failure_message("окно второй площадки %s не должно быть спокойным как у первой" % str(windows)).is_less(hack_ticks + 2)
