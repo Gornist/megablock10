@@ -306,22 +306,23 @@ COVER_CELL = 1.0   # клетка хода, м (NodeGrid.CELL_M)
 COVER_BODY = 0.9   # корпус по центру клетки, щель 5 см до границы
 
 
-def _cover_parts(centers):
-    """Столбы-укрытия на клетках с центрами `centers` (x, y): корпус 0,9×0,9×2,2 м и плоская рамка по границе клетки 1×1 на полу. Корпус нарезан
-    плоскостями у рёбер (3 см), у верха и на 0,3 м от пола: свет вершин остаётся только у вертикальных рёбер, верхнего контура и в основании.
+def _cover_parts(centers, body_size=COVER_BODY, cell=COVER_CELL):
+    """Столбы-укрытия на клетках с центрами `centers` (x, y): корпус body_size×body_size×2,2 м (по умолчанию 0,9 м, клетка 1×1) и плоская рамка по границе клетки
+    cell×cell на полу. Корпус нарезан плоскостями у рёбер (3 см), у верха и на 0,3 м от пола: свет вершин остаётся только у вертикальных рёбер, верхнего контура
+    и в основании. Колонна 2×2 м — один «столб» с body_size 1,9 и cell 2 (15.10: четыре укрытия с зазорами владелец принял за четыре колонны).
     Возвращает (корпус bmesh, рамки bmesh, rgb_fn корпуса)."""
     cy, void = lib.lin("cyan"), lib.lin("void")
-    half, band, rise = COVER_BODY / 2, 0.03, 0.3
+    half, band, rise = body_size / 2, 0.03, 0.3
     bodies, frames = [], []
     for cx, cy_ in centers:
-        bm = lib.box_bm((COVER_BODY, COVER_BODY, COVER_H), center=(cx, cy_, COVER_H / 2))
+        bm = lib.box_bm((body_size, body_size, COVER_H), center=(cx, cy_, COVER_H / 2))
         for co, no in (((cx - half + band, 0, 0), (1, 0, 0)), ((cx + half - band, 0, 0), (1, 0, 0)),
                        ((0, cy_ - half + band, 0), (0, 1, 0)), ((0, cy_ + half - band, 0), (0, 1, 0)),
                        ((0, 0, rise), (0, 0, 1)), ((0, 0, COVER_H - band), (0, 0, 1))):
             bmesh.ops.bisect_plane(bm, geom=list(bm.verts) + list(bm.edges) + list(bm.faces), plane_co=co, plane_no=no)
         bodies.append(bm)
         fb = bmesh.new()  # рамка шириной 3 см, внешний край — граница клетки; на 3 мм выше пола, чтобы не мерцать с плитой
-        o, i = COVER_CELL / 2, COVER_CELL / 2 - 0.03
+        o, i = cell / 2, cell / 2 - 0.03
         ring = [[fb.verts.new(Vector((cx + sx * r, cy_ + sy * r, 0.003))) for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1))] for r in (o, i)]
         for k in range(4):
             fb.faces.new([ring[0][k], ring[0][(k + 1) % 4], ring[1][(k + 1) % 4], ring[1][k]])
@@ -349,10 +350,10 @@ def _cover_parts(centers):
     return body, frame, lit
 
 
-def _cover_asset(out, name, centers, tris, notes):
+def _cover_asset(out, name, centers, tris, notes, body_size=COVER_BODY, cell=COVER_CELL):
     lib.reset()
     cy = lib.lin("cyan")
-    body, frame, lit = _cover_parts(centers)
+    body, frame, lit = _cover_parts(centers, body_size, cell)
     objs = [lib.obj_from_bm("pillar_block", body, "solid_dark", cy, rgb_fn=lit, smooth=True),  # smooth: нормали для обводки силуэта (fringe.gdshader)
             lib.obj_from_bm("pillar_base", frame, "solid_dark", cy)]
     return lib.export(name, "env", objs, out, budget_tris=tris, origin="floor", notes=notes)
@@ -367,9 +368,12 @@ def build_cover(out):
 
 
 def build_pillar(out):
-    """Колонна модуля 2×2 м (блок «#» раскладки) = четыре укрытия по клетке (как `cover`). Прежний контракт (имя, путь, origin в центре модуля) сохранён."""
-    return _cover_asset(out, "pillar", [(sx * 0.5, sy * 0.5) for sx in (-1, 1) for sy in (-1, 1)], 560,
-                        f"модуль 2×2 м = 4 укрытия по клетке {COVER_CELL:g} м, высота {COVER_H:g} м")
+    """Колонна модуля 2×2 м (блок «#» раскладки) = ОДИН корпус 1,9×1,9×2,2 м по центру модуля (15.10, карточка Godot П6-0г: из четырёх укрытий 0,9 м с зазорами
+    владелец на П6 видел четыре колонны вместо одной). Рёбра, контур верха, подсветка основания и облако — как у `pillar_block` укрытия; рамка по границе модуля 2×2.
+    Занятость клеток не меняется (её задаёт раскладка, не модель), одиночный `cover` 1×1 остаётся. Контракт (имя, путь, origin в центре модуля) сохранён."""
+    return _cover_asset(out, "pillar", [(0.0, 0.0)], 140,
+                        f"модуль 2×2 м = один корпус 1,9×1,9 м, высота {COVER_H:g} м, рамка по границе модуля",
+                        body_size=1.9, cell=2.0)
 
 
 if __name__ == "__main__":

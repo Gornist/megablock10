@@ -1156,3 +1156,21 @@ func test_guard_booth_has_door_and_lamp_nodes_and_fits_one_cell() -> void:
 	assert_float(box.position.y).is_between(-0.01, 0.01)
 	assert_float(maxf(box.size.x, box.size.z)).override_failure_message("будка шире клетки хода 1 м").is_less(1.0)
 	assert_float(box.size.y).override_failure_message("выше головы, как укрытие (2,2 м)").is_between(2.0, 2.4)
+
+
+func test_pillar_is_one_body_two_by_two_module_not_four_covers() -> void:
+	# Карточка Godot П6-0г: блок «#» ставит один модуль pillar, а ассет из четырёх укрытий с зазорами выглядел четырьмя колоннами
+	var m := _load("env", "pillar")
+	var blocks := _meshes(m).filter(func(mi): return String(mi.name) == "pillar_block")
+	assert_int(blocks.size()).is_equal(1)
+	var b: AABB = (blocks[0] as MeshInstance3D).get_aabb()
+	assert_float(b.size.x).override_failure_message("корпус колонны ≈ 1,9 м по X, а не 0,9 м укрытия").is_equal_approx(1.9, 0.02)
+	assert_float(b.size.z).is_equal_approx(1.9, 0.02)
+	assert_float(b.size.y).is_equal_approx(2.2, 0.02)
+	# единый корпус: одна поверхность pillar_block без зазоров, рамка по границе модуля 2×2
+	var frame := _meshes(m).filter(func(mi): return String(mi.name) == "pillar_base")
+	assert_int(frame.size()).is_equal(1)
+	assert_float((frame[0] as MeshInstance3D).get_aabb().size.x).is_equal_approx(2.0, 0.02)
+	# одиночное укрытие 1×1 остаётся прежним
+	var cover := _aabb(_load("env", "cover"))
+	assert_float(cover.size.x).is_equal_approx(1.0, 0.02)
