@@ -63,6 +63,8 @@ var layout: LayoutData = null
 var exit_locked := false
 ## За игроком идёт охота Black ICE: порталы закрыты.
 var hunted := false
+## Уровень тревоги узла 0–4: кромки комнаты сдвинуты к тёплому (AssetMaterials.set_alarm); переживает пересборку комнаты.
+var alarm_level := 0
 
 var _room: Node3D
 var _props: Node3D
@@ -137,6 +139,18 @@ func set_look(new_tier: String, new_layout: LayoutData) -> void:
 			_gates = made
 	_apply_exit()
 	_attach_exit_cloud()
+	_apply_alarm()
+
+
+## Уровень тревоги узла: тёплый сдвиг кромок комнаты по уровню (0 возвращает цвет тира). Цвет и материал задаёт AssetMaterials.
+func set_alarm_level(level: int) -> void:
+	alarm_level = clampi(level, 0, 4)
+	_apply_alarm()
+
+
+func _apply_alarm() -> void:
+	if _room != null:
+		AssetMaterials.set_alarm(_room, alarm_level, tier)
 
 
 ## Кресло — там, где игрок появляется (вход раскладки); датчик — только в прежней комнате: в раскладке Стражи — на карте, датчика нет.
