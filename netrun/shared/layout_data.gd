@@ -39,7 +39,7 @@ var sentries: Array = []
 var beacons: Array = []
 ## Барьеры (`kind: barrier`, `cell: [bx, bz]` — блок «B»): {id, block: Vector2i (блок карты), cells: Array[Vector2i] (4 клетки 1 м, заняты, пока барьер закрыт)}.
 var barriers: Array = []
-## Датчики (`kind: sensor`): {id, cells: Array[Vector2i] (луч, 2–12 клеток 1 м), on: int, off: int (0 — по тиру узла), phase: int (сдвиг цикла, тактов)}.
+## Датчики (`kind: sensor`): {id, cells: Array[Vector2i] (луч, 2–12 клеток 1 м), on: int, off: int (0 — по тиру узла), phase: int (сколько выключенных тактов цикла уже прошло на входе в узел: старт всегда в фазе «выключен», TickSensor.for_layout; по модулю `off`)}.
 var sensors: Array = []
 ## Black ICE (`black` в файле): {id, route} или пусто.
 var black: Dictionary = {}

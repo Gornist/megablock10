@@ -93,3 +93,39 @@ func test_проверка_по_сигналу_идёт_к_клетке_и_де�
 	assert_int(ti.state()).is_equal(TickIce.Mode.CHECK)
 	var fp: Variant = ti.footprint()
 	assert_object(fp).is_equal(Vector2i(2, 8))
+
+
+func test_старт_в_фазе_выключен_фаза_двигает_старт_внутри_выключенного() -> void:
+	# П6-4: на стенде П6 луч казался включённым с самого входа — датчик стартовал с позиции 0, то есть «включён». Теперь вход в узел всегда застаёт луч выключенным.
+	var s := TickSensor.new(TickSensor.beam_cells(Vector2i(8, 8), E, 3), 3, 3)
+	assert_bool(s.is_on()).is_true()   # конструктор по-прежнему с позиции 0: так считают тесты цикла
+	s.start_off()
+	assert_bool(s.is_on()).is_false()
+	assert_int(s.ticks_left()).is_equal(3)   # все три выключенных такта впереди
+	assert_bool(s.blinking()).is_false()
+	s.start_off(2)   # фаза — сколько выключенных тактов уже прошло: два, остался последний (мигает)
+	assert_bool(s.is_on()).is_false()
+	assert_int(s.ticks_left()).is_equal(1)
+	assert_bool(s.blinking()).is_true()
+	s.start_off(5)   # дальше цикла выключения не уходит: 5 % 3 = 2, луч не включён и при входе
+	assert_bool(s.is_on()).is_false()
+	assert_int(s.ticks_left()).is_equal(1)
+
+
+func test_датчик_раскладки_берёт_программу_тира_и_стартует_выключенным() -> void:
+	var cells := TickSensor.beam_cells(Vector2i(8, 8), E, 3)
+	var sd := {"id": "d1", "cells": cells, "on": 0, "off": 0, "phase": 0}
+	var s := TickSensor.for_layout(sd, TickSensor.program_of("HARD"))   # 2 вкл / 2 выкл
+	assert_object(s.program()).is_equal(Vector2i(2, 2))
+	assert_bool(s.is_on()).is_false()
+	assert_int(s.ticks_left()).is_equal(2)
+	sd["on"] = 4   # раскладка задаёт свои числа
+	sd["off"] = 1
+	sd["phase"] = 3
+	s = TickSensor.for_layout(sd, TickSensor.program_of("HARD"))
+	assert_object(s.program()).is_equal(Vector2i(4, 1))
+	assert_bool(s.is_on()).is_false()
+	for i in 4:   # после выключенного такта включается и держит ровно on тактов
+		s.tick()
+	assert_bool(s.is_on()).is_true()
+	assert_int(s.ticks_left()).is_equal(1)

@@ -289,8 +289,7 @@ func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 			_beacon_ids[tb] = str(bd["id"])
 		var program := TickSensor.program_of(tier())   # вкл/выкл по тиру узла; раскладка может задать свои числа
 		for sd: Dictionary in layout.sensors:
-			var ts := TickSensor.new(sd["cells"], int(sd["on"]) if int(sd["on"]) > 0 else program.x,
-				int(sd["off"]) if int(sd["off"]) > 0 else program.y, int(sd["phase"]))
+			var ts := TickSensor.for_layout(sd, program)   # старт в фазе «выключен»: вход в узел не застаёт луч включённым (П6-4)
 			_sensors.append(ts)
 			_sensor_ids[ts] = str(sd["id"])
 		for kd: Dictionary in layout.barriers:

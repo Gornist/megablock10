@@ -21,6 +21,34 @@ const RED_HOLD_SEC := 0.4
 const ST_SEARCH := 3
 
 
+## Датчики из поля `sn` сообщения state ({id, c: [[x, y], …], on, bl, l}): {cells: Array[Vector2i], on: bool}. Мигающий (bl) выключен: луч включается к следующему такту,
+## а прыжок срабатывает по состоянию сейчас (GrayNode._sensors_hop → TickSensor.crossed_by).
+static func parse_sensors(list: Array) -> Array:
+	var out: Array = []
+	for e in list:
+		if not (e is Dictionary) or not (e as Dictionary).has("c"):
+			continue
+		var cells: Array[Vector2i] = []
+		for p in (e as Dictionary)["c"]:
+			cells.append(_cell(p))
+		out.append({"cells": cells, "on": int((e as Dictionary).get("on", 0)) == 1})
+	return out
+
+
+## Угроза прыжка from→to от Датчиков: красный, если отрезок задевает клетку включённого луча (кроме клетки старта; как на сервере, NodeGrid.segment_first_hit); иначе зелёный —
+## выключенный луч перепрыгнуть можно. `sensors` — parse_sensors.
+static func sensor_threat(sensors: Array, from: Vector3, to: Vector3) -> int:
+	for s: Dictionary in sensors:
+		if not bool(s["on"]):
+			continue
+		var set := {}
+		for c: Vector2i in s["cells"]:
+			set[c] = true
+		if NodeGrid.segment_first_hit(set, from, to) != Vector2i.MAX:
+			return RED
+	return GREEN
+
+
 ## Угроза клетке после следующего такта: 0 зелёный, 1 жёлтый (периферия), 2 красный (фокус или предзахват).
 static func threat(grid: NodeGrid, intents: Array, cell: Vector2i) -> int:
 	var worst := GREEN

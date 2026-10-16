@@ -106,3 +106,14 @@ func test_ICE_исчез_забыть_шаг() -> void:
 	tr.on_state(_state(1.0, _ice([4, 8], [6, 8])), 10.0)
 	tr.forget_ice("ice_1")
 	assert_bool(tr.ice_pose("ice_1", 10.0).is_empty()).is_true()
+
+
+func test_датчики_из_снимка_для_прогноза_прыжка() -> void:
+	var tr := RemoteTracks.new()
+	var s := _state(1.0, _ice([4, 8], [6, 8]))
+	s["sn"] = [{"id": "d1", "c": [[8, 8], [9, 8]], "on": 1, "bl": 0, "l": 2}]
+	tr.on_state(s, 1.0)
+	assert_int(tr.sensors().size()).is_equal(1)
+	assert_bool(tr.sensors()[0]["on"]).is_true()
+	tr.on_state(_state(2.0, _ice([4, 8], [6, 8])), 2.0)   # в снимке датчиков нет (другой узел): список пуст, старого луча не остаётся
+	assert_int(tr.sensors().size()).is_equal(0)
