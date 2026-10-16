@@ -349,7 +349,8 @@ func _step_teleport(stick: Vector2, clicked: bool, delta: float) -> void:
 	_aim = RigMath.aim_step(_aim, stick, clicked, delta)
 	# Поворот при телепорте — угол того же стика, пока он отклонён: при отпускании стик возвращается к центру, и берётся последнее
 	# значение «держу» (слабее RigMath.FACING_STICK_MIN угол не обновляем).
-	if turn_mode == RigMath.TURN_MODE_NONE and _aim["aiming"] and stick.length() >= RigMath.FACING_STICK_MIN:
+	# Поворот при телепорте живёт и рядом со щелчковым поворотом левого стика (snap, по умолчанию с П6); плавный поворот его заменяет.
+	if turn_mode != RigMath.TURN_MODE_SMOOTH and _aim["aiming"] and stick.length() >= RigMath.FACING_STICK_MIN:
 		_face_deg = RigMath.facing_deg(stick)
 	elif not _aim["aiming"] and _aim["event"] != RigMath.AIM_FIRE:
 		_face_deg = 0.0
