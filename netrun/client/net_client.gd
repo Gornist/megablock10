@@ -128,6 +128,11 @@ func request_decrypt(item: String) -> bool:
 	return _send(WorldMsg.encode_fields(WorldMsg.DECRYPT, {"item": item}))
 
 
+## Вскрытие барьера (ice.md §5): how — "charge" (мини-игра, клетки и отмена — те же request_breach_tap / request_breach_cancel) или "force" (держать курок 2 такта).
+func request_barrier(barrier: String, how: String = "charge") -> bool:
+	return _send(WorldMsg.encode_fields(WorldMsg.BARRIER, {"id": barrier, "how": how}))
+
+
 func request_breach_tap(cell: Vector2i) -> bool:
 	return _send(WorldMsg.encode_fields(WorldMsg.BK_TAP, {"cell": [cell.x, cell.y]}))
 

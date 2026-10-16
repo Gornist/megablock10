@@ -103,6 +103,7 @@ var _vault_open_until: Dictionary = {} # id слота -> время узла, �
 var breach: VaultBreach
 var charge: ChargeBreach
 var decrypt: DecryptBreach
+var barrier: BarrierBreach
 var _takes_inflight: Dictionary = {} # сессия -> число незавершённых op.take_from_node (в графе общий на все узлы)
 var _slot_pos: Dictionary = {}       # id объекта (слот шарда узла) -> позиция
 var _entered_at: Dictionary = {}     # сессия -> время узла, когда она вошла (журнал ICE: «секунды от входа»)
@@ -224,6 +225,7 @@ func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 	breach = VaultBreach.new(self)
 	charge = ChargeBreach.new(self)
 	decrypt = DecryptBreach.new(self)
+	barrier = BarrierBreach.new(self)
 	daemons.load_dir()
 	_tick_mode = str(settings.get("time_mode", "realtime")) == "tick"
 	if _tick_mode:
@@ -247,12 +249,15 @@ func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 	net.breach_open_requested.connect(_on_breach_open)
 	net.charge_requested.connect(_on_charge_requested)
 	net.decrypt_requested.connect(_on_decrypt_requested)
-	# Клетки и отмена идут одним сообщением на обе мини-игры; у игрока одновременно одна из них (заряд и взлом друг друга исключают).
+	net.barrier_requested.connect(_on_barrier_requested)
+	# Клетки и отмена идут одним сообщением на все мини-игры; у игрока одновременно одна из них (заряд, расшифровка, барьер и взлом друг друга исключают).
 	net.breach_tap_requested.connect(func(session: String, cell: Array) -> void:
 		if charge.has_attempt(session):
 			charge.request_tap(session, cell)
 		elif decrypt.has_attempt(session):
 			decrypt.request_tap(session, cell)
+		elif barrier.has_attempt(session):
+			barrier.request_tap(session, cell)
 		else:
 			breach.request_tap(session, cell))
 	net.breach_cancel_requested.connect(func(session: String) -> void:
@@ -260,6 +265,8 @@ func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 			charge.request_cancel(session)
 		elif decrypt.has_attempt(session):
 			decrypt.request_cancel(session)
+		elif barrier.has_attempt(session):
+			barrier.request_cancel(session)
 		else:
 			breach.request_cancel(session))
 	net.teleported.connect(func(session: String, from: Vector3, to: Vector3) -> void:
@@ -269,7 +276,8 @@ func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 			_black_brain.black.on_hop(session, NodeGrid.cell_of(to))
 		breach.end_early(session, "teleport")
 		charge.end_early(session, "teleport")
-		decrypt.end_early(session, "teleport"))
+		decrypt.end_early(session, "teleport")
+		barrier.end_early(session, "teleport"))
 	var soft := NodeLayout.ICE.size() if node_def.is_empty() else int(node_def.get("ice", 1))
 	if _tick_mode and not layout.is_legacy():
 		# Такты: Стражи — по раскладке (маршрут в клетках с ожиданием и поворотом); столько, сколько просит узел, но не больше, чем в файле.
@@ -943,6 +951,7 @@ func _step(delta: float) -> void:
 	breach.tick(delta)
 	charge.tick(delta)
 	decrypt.tick(delta)
+	barrier.tick(delta)
 	_expire_vaults()
 	if is_graph_node():
 		_check_portals()
@@ -1044,7 +1053,7 @@ func _tick_step(meters: Dictionary) -> void:
 	var free: Array = []
 	for session in live:
 		# Не свободен: оборвана связь (аватар ждёт возврата) или идёт панель взлома / заряда / расшифровки. В тоннеле сессия не «live».
-		if net.peer_of(session) != -1 and not breach.has_attempt(session) and not charge.has_attempt(session) and not decrypt.has_attempt(session):
+		if net.peer_of(session) != -1 and not breach.has_attempt(session) and not charge.has_attempt(session) and not decrypt.has_attempt(session) and not barrier.has_attempt(session):
 			free.append(session)
 	tick_clock.set_free(free)
 	var prev := tick_clock.last_tick_at
@@ -1058,6 +1067,7 @@ func _run_tick(live: Array, meters: Dictionary, dt_sec: float) -> void:
 	var line := "[tick] n=%d moves=%d by=%s" % [n, tick_clock.last_moves, tick_clock.last_by]
 	print(line)
 	tick_logged.emit(line)
+	barrier.on_node_tick()   # удержание силового вскрытия барьера: такт засчитан
 	_alarm_on_tick()   # тревога +alert_per_tick за такт, пока в узле нетраннер; отсчёт до закрытия порталов (уровень 4)
 	var pos := {}
 	var hidden := {}
@@ -1558,6 +1568,7 @@ func _on_session_lost(session: String) -> void:
 	breach.end_early(session, "session_lost")   # обрыв посреди взлома — досрочный итог по собранному
 	charge.end_early(session, "session_lost")   # заряд просто бросается
 	decrypt.end_early(session, "session_lost")
+	barrier.end_early(session, "session_lost")
 	if bridge != null and synced and _sessions.has(session):
 		_merge_world(session, {"connected": false, "trace": 0, "node": node_id})
 
@@ -1566,6 +1577,7 @@ func _on_avatar_removed(session: String) -> void:
 	breach.end_early(session, "avatar_removed")   # до того, как сессия забыта: итогу нужна её дека
 	charge.end_early(session, "avatar_removed")
 	decrypt.end_early(session, "avatar_removed")
+	barrier.end_early(session, "avatar_removed")
 	_close_vaults_of(session)
 	_portal_state.erase(session)
 	if not _sessions.has(session):
@@ -1666,6 +1678,34 @@ func _on_charge_requested(session: String, daemon_id: String) -> void:
 	charge.request_start(session, daemon_id)
 	if charge.has_attempt(session):
 		register_move(session)   # начало заряда — ход
+
+
+## Просьба вскрыть барьер (ice.md §5): отвечает только узел, где игрок. Начало вскрытия — ход.
+func _on_barrier_requested(session: String, barrier_id: String, how: String) -> void:
+	if not _sessions.has(session) or net.node_of(session) != node_id:
+		return
+	barrier.request_start(session, barrier_id, how)
+	if barrier.has_attempt(session):
+		register_move(session)
+
+
+## Барьер с таким id есть в узле (открытый или закрытый).
+func has_barrier(id: String) -> bool:
+	for b: Dictionary in _barriers:
+		if b["id"] == id:
+			return true
+	return false
+
+
+## Клетка `cell` — соседняя (по восьми направлениям) с блоком барьера и сама свободна: оттуда барьер вскрывают.
+func barrier_adjacent(id: String, cell: Vector2i) -> bool:
+	for b: Dictionary in _barriers:
+		if b["id"] != id:
+			continue
+		for c: Vector2i in b["cells"]:
+			if maxi(absi(c.x - cell.x), absi(c.y - cell.y)) <= 1:
+				return true
+	return false
 
 
 ## Просьба расшифровать шард из ГРУЗа (К7): отвечает только узел, где игрок.
@@ -2510,6 +2550,7 @@ func release_session(session: String) -> DaemonSession:
 	breach.end_early(session, "transit")
 	charge.end_early(session, "transit")
 	decrypt.end_early(session, "transit")
+	barrier.end_early(session, "transit")
 	_close_vaults_of(session)
 	var cb: Callable = _level_cbs.get(session, Callable())
 	if cb.is_valid() and ds.trace.level_changed.is_connected(cb):
