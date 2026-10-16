@@ -37,8 +37,8 @@ func test_шейдеры_тела_и_руки_имеют_общие_uniform_ды
 
 ## Умолчания читаем из исходника общей части: RenderingServer.shader_get_parameter_default без устройства отрисовки отдаёт null.
 func test_по_умолчанию_дыхание_и_отклик_выключены() -> void:
-	var src := FileAccess.get_file_as_string("res://assets/shaders/particles_body.gdshaderinc")
-	assert_bool(src.length() > 0).override_failure_message("не прочитан particles_body.gdshaderinc").is_true()
+	var src := FileAccess.get_file_as_string("res://assets/shaders/breath_touch.gdshaderinc")
+	assert_bool(src.length() > 0).override_failure_message("не прочитан breath_touch.gdshaderinc").is_true()
 	assert_bool(src.contains("uniform float breath_depth : hint_range(0.0, 1.0) = 0.0;")).override_failure_message("breath_depth по умолчанию должен быть 0").is_true()
 	for u in ["touch_a", "touch_b", "touch_c", "touch_d"]:
 		assert_bool(src.contains("uniform vec4 %s = vec4(0.0);" % u)).override_failure_message("%s по умолчанию должен быть выключен (w = 0)" % u).is_true()
@@ -81,6 +81,35 @@ func test_ручка_cloud_touch_ноль_гасит_отклик() -> void:
 	AssetMaterials.tune({"cloud_touch": 0.0})
 	AssetMaterials.set_cloud_touch(get_tree(), [Vector4(0, 1, 0, 1.0)])
 	assert_float((_mat(c).get_shader_parameter("touch_a") as Vector4).w).is_equal(0.0)
+
+
+## Облако на гранях (А): меши с cloud_dark из группы surface_clouds получают те же дыхание и отклик, что объёмное (Б).
+func _surface() -> ShaderMaterial:
+	var mi: MeshInstance3D = auto_free(MeshInstance3D.new())
+	mi.mesh = BoxMesh.new()
+	var m := ShaderMaterial.new()
+	m.shader = AssetMaterials.CLOUD_SHADER
+	mi.set_surface_override_material(0, m)
+	mi.add_to_group(AssetMaterials.SURFACE_CLOUD_GROUP)
+	add_child(mi)
+	return m
+
+
+func test_шейдер_граней_имеет_uniform_дыхания_и_отклика() -> void:
+	var have := _names(AssetMaterials.CLOUD_SHADER)
+	for u in UNIFORMS:
+		assert_bool(have.has(u)).override_failure_message("нет uniform '%s' в cloud_dark" % u).is_true()
+
+
+func test_дыхание_и_отклик_доходят_до_облака_на_гранях() -> void:
+	var m := _surface()
+	AssetMaterials.set_cloud_breath(get_tree(), 0.4)
+	AssetMaterials.set_cloud_touch(get_tree(), [Vector4(1, 2, 3, 0.35)])
+	assert_float(float(m.get_shader_parameter("breath_phase"))).is_equal_approx(0.4, 1e-6)
+	assert_float(float(m.get_shader_parameter("breath_depth"))).is_equal_approx(0.6, 1e-6)
+	assert_float((m.get_shader_parameter("touch_a") as Vector4).w).is_equal_approx(0.35, 1e-6)
+	AssetMaterials.set_cloud_touch(get_tree(), [])
+	assert_float((m.get_shader_parameter("touch_a") as Vector4).w).is_equal(0.0)
 
 
 func test_без_облаков_помощники_ничего_не_ломают() -> void:

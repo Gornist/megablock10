@@ -21,39 +21,14 @@ uniform vec2 glitch_cells = vec2(8.0, 4.0);                     // столбц�
 uniform float facing_fade : hint_range(0.0, 1.0) = 0.0;       // 1 — гасить точки, обращённые от камеры (голова: лицо спереди не просвечивает затылком); 0 — не гасить (руки)
 uniform vec3 facing_center = vec3(0.0);                          // центр объёма в мировых координатах, от него считается «наружу»; задаёт узел каждый кадр
 
-// Дыхание: всё облако вдыхает единой волной, вдох — на тике хода. Фазу такта (0 — тик, 1 — следующий тик) каждый кадр задаёт клиент; сам шейдер времени не ведёт.
-// Волна чуть бежит по пространству (breath_spread), поэтому соседние объекты вдыхают с лёгким сдвигом, а не хлопают разом. breath_depth = 0 — выкл. (руки, тело).
-uniform float breath_depth : hint_range(0.0, 1.0) = 0.0;
-uniform float breath_phase : hint_range(0.0, 1.0) = 0.0;
-uniform float breath_spread : hint_range(0.0, 0.5) = 0.08;    // сдвиг фазы волны, долей такта на метр вдоль (x, y, z) ≈ (1, 0.5, 0.7)
-
-// Отклик на приближение (рука, аватар): до четырёх источников, xyz — мир, w — радиус влияния, м (0 — источник выключен). Без состояния и следа: частицы
-// отвечают положению источника в этом кадре — рядом крупнее, ярче, теплее по цвету и чуть расходятся от источника, источник ушёл — всё как было.
-uniform vec4 touch_a = vec4(0.0);
-uniform vec4 touch_b = vec4(0.0);
-uniform vec4 touch_c = vec4(0.0);
-uniform vec4 touch_d = vec4(0.0);
-uniform float touch_gain : hint_range(0.0, 4.0) = 1.2;        // прибавка яркости у самого источника
-uniform float touch_grow : hint_range(0.0, 3.0) = 0.8;        // прибавка размера у самого источника
-uniform float touch_push : hint_range(0.0, 0.1) = 0.025;      // на сколько частица расходится от источника, м
-uniform vec3 touch_color = vec3(0.85, 0.98, 1.0);             // цвет, к которому частицы уходят у источника (по умолчанию ice_white)
+// Дыхание и отклик на приближение (общая часть с облаком на гранях): uniform'ы breath_*, touch_* и функции breath_lift, touch_k.
+#include "breath_touch.gdshaderinc"
 
 varying vec3 v_col;
 varying float v_alpha;
 varying float v_kind;
 varying float v_fade;
 varying flat float v_frame;
-
-// Близость к источнику 0…1 (1 — в нём, 0 — на радиусе и дальше) и вклад в сдвиг.
-float touch_near(vec4 t, vec3 p, inout vec3 push) {
-	if (t.w <= 0.0) {
-		return 0.0;
-	}
-	vec3 d = p - t.xyz;
-	float k = 1.0 - smoothstep(0.0, t.w, length(d));
-	push += normalize(d + vec3(0.0, 0.0001, 0.0)) * k;
-	return k;
-}
 
 void vertex() {
 	float size = INSTANCE_CUSTOM.x;
@@ -77,26 +52,16 @@ void vertex() {
 		float d = dot(out_dir, normalize(CAMERA_POSITION_WORLD - facing_center));
 		facing = mix(0.12, 1.0, smoothstep(-0.15, 0.4, d));  // с обратной стороны точка остаётся бледной
 	}
-	float lift = 1.0;   // множитель яркости от дыхания и отклика
-	float swell = 1.0;  // множитель размера
+	float lift = breath_lift(w);              // множитель яркости от дыхания и отклика
+	float swell = 1.0 + 0.5 * (lift - 1.0);   // размер дышит вместе с яркостью: на вдохе крупнее, на выдохе мельче
 	vec3 tint = COLOR.rgb;
-	if (breath_depth > 0.0) {
-		float ph = breath_phase - breath_spread * dot(w, vec3(1.0, 0.5, 0.7));
-		float b = 0.5 + 0.5 * cos(6.28318 * ph);   // пик — на тике, спад к концу такта
-		b *= b;                                       // вдох короткий и резкий, выдох долгий
-		lift *= mix(1.0 - 0.45 * breath_depth, 1.0 + 0.35 * breath_depth, b);
-		swell *= 1.0 + 0.25 * breath_depth * b;
-	}
-	if (touch_a.w + touch_b.w + touch_c.w + touch_d.w > 0.0) {
-		vec3 push = vec3(0.0);
-		float k = touch_near(touch_a, w, push);
-		k = max(k, touch_near(touch_b, w, push));
-		k = max(k, touch_near(touch_c, w, push));
-		k = max(k, touch_near(touch_d, w, push));
+	vec3 push = vec3(0.0);
+	float tk = touch_k(w, push);
+	if (tk > 0.0) {
 		w += push * touch_push;
-		lift *= 1.0 + touch_gain * k;
-		swell *= 1.0 + touch_grow * k;
-		tint = mix(tint, touch_color, 0.6 * k);
+		lift *= 1.0 + touch_gain * tk;
+		swell *= 1.0 + touch_grow * tk;
+		tint = mix(tint, touch_color, 0.6 * tk);
 	}
 	size *= swell;
 	v_alpha = weight * mix(1.0 - wave_depth, 1.0, wave) * tw * fade * intensity * facing * lift;
