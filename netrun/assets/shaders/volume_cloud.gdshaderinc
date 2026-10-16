@@ -39,7 +39,8 @@ float cloud_noise2(vec2 p) {
 
 // wp, nw — мировая позиция и нормаль поверхности, vdir — единичный вектор от точки к камере, dist — дистанция, м,
 // proj_px = PROJECTION_MATRIX[1][1] × VIEWPORT_SIZE.y (в пользовательских функциях Godot эти встроенные недоступны — передаёт fragment(); в fragment() P[1][1] отрицателен — берём модуль).
-vec4 volume_cloud(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px, float edge) {
+// dens_k — множитель плотности частиц (дыхание и отклик на приближение, breath_touch.gdshaderinc; 1 — как без них).
+vec4 volume_cloud(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px, float edge, float dens_k) {
 	vec3 an = abs(nw);
 	vec2 plane;
 	float axis;
@@ -64,7 +65,7 @@ vec4 volume_cloud(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px, float 
 	float graze = ndv * ndv;
 	float far_k = 1.0 - smoothstep(dust_far_start, dust_far_end, dist);
 	float patch_k = mix(1.0, smoothstep(0.25, 0.75, patch_n), dust_patch);
-	float dens = clamp(dust_density * patch_k * (0.55 + 0.45 * up) * (1.0 + 0.7 * graze) + edge * dust_edge_gain, 0.0, 1.0);
+	float dens = clamp(dust_density * patch_k * (0.55 + 0.45 * up) * (1.0 + 0.7 * graze) * dens_k + edge * dust_edge_gain, 0.0, 1.0);
 	float px_world = 2.0 * max(dist, 0.1) / max(abs(proj_px), 1.0);
 	float sharp = smoothstep(0.7, 2.0, dust_cell / px_world);
 	if (sharp < 0.02) {  // ячейка мельче ~0,7 px: только средняя засветка — без выборки текстуры (дальние плиты и потолок: основная масса фрагментов)

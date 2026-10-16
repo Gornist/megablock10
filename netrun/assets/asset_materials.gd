@@ -14,6 +14,7 @@ const SHADERS := {
 
 ## Вуаль на гранях плит (меши `*_skirt` в floor, ceiling и far_*): в .glb у неё материал-роль shell_soft, а шейдер по имени меша — этот.
 const SKIRT_SHADER := preload("res://assets/shaders/skirt.gdshader")
+const SURFACE_CLOUD_GROUP := &"surface_clouds"   # меши с облаком на гранях (А): дыхание и отклик ставятся на их материалы
 const CLOUD_SHADER := preload("res://assets/shaders/cloud_dark.gdshader")  # «облако без основы»: вид реквизита (ручка cloud, умолчание 1; принято 12.10, облако (Б) на объектах — 14.10)
 ## Луч Soft ICE (меши `*_beam*` у датчика и `*_fan` у маяка, ice/sensor_ice и ice/lighthouse_ice): роль shell_soft, шейдер по имени меша; состояния — set_beam(root, state, flash).
 const BEAM_SHADER := preload("res://assets/shaders/beam.gdshader")
@@ -382,6 +383,7 @@ static func apply(root: Node, tier: String = "") -> void:
 				m.set_shader_parameter("anchor", 1.0)
 			if src.resource_name == "solid_dark" and float(_k("cloud")) > 0.0 and _cloud_scope_ok(root):  # прототип «облако без основы»: частицы с дырами вместо тёмной грани (нужен MSAA)
 				m.shader = CLOUD_SHADER
+				mi.add_to_group(SURFACE_CLOUD_GROUP)   # set_cloud_breath / set_cloud_touch находят поверхностные облака по группе
 				m.set_shader_parameter("glitch_tex", GlitchSprite.texture())
 				m.set_shader_parameter("dust", float(_k("cloud")))
 				m.set_shader_parameter("dust_cell", float(_k("dust_cell")))
@@ -455,11 +457,20 @@ static func tick_phase(tk: Dictionary, server_now: float) -> float:
 	return clampf((server_now - float(tk.get("at", server_now))) / win, 0.0, 1.0)
 
 
-## Материалы объёмных облаков (VolumeCloud, группа `volume_clouds`) в дереве: материал лежит на QuadMesh внутри MultiMesh.
+## Материалы облаков в дереве: объёмных (VolumeCloud, группа `volume_clouds`; материал лежит на QuadMesh внутри MultiMesh) и поверхностных (А: меши с cloud_dark,
+## группа `surface_clouds`, их ставит apply(); материал — surface override).
 static func _cloud_materials(tree: SceneTree) -> Array[ShaderMaterial]:
 	var out: Array[ShaderMaterial] = []
 	if tree == null:
 		return out
+	for n in tree.get_nodes_in_group(SURFACE_CLOUD_GROUP):
+		var mi := n as MeshInstance3D
+		if mi == null or mi.mesh == null:
+			continue
+		for s in mi.mesh.get_surface_count():
+			var sm := mi.get_surface_override_material(s) as ShaderMaterial
+			if sm != null and sm.shader == CLOUD_SHADER:
+				out.append(sm)
 	for n in tree.get_nodes_in_group("volume_clouds"):
 		for c in n.get_children():
 			var mmi := c as MultiMeshInstance3D
