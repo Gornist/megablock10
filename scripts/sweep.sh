@@ -8,7 +8,8 @@
 #   - очки Awake без брони — гасит сам (box.sh pico sleep Pipeline) и сообщает;
 #   - новая строка «нужен человек» в ~/box/attention.log на devbox;
 #   - замечания `box.sh status` (лишний adb-сервер, запаркованная карточка);
-#   - сессия Claude Code проекта, у которой последний ход оборвался ошибкой API или отказом классификатора.
+#   - сессия Claude Code проекта, у которой последний ход оборвался ошибкой API или отказом классификатора;
+#   - сессия с контекстом ≥ 400 тыс. токенов на ход (пора /clear).
 # Уже сообщённое не повторяется: состояние в ~/.cache/mb10-sweep/.
 set -u
 ST=$HOME/.cache/mb10-sweep; mkdir -p "$ST"
@@ -42,6 +43,19 @@ once() {
   done < <(sed -n 's/^W://p' <<<"$s")
   # Сессии: последний ход в журнале — ошибка API или отказ классификатора. Только журналы, менявшиеся за 3 ч.
   while IFS= read -r f; do
+    # Разросшийся контекст: каждый ход оплачивает его целиком. 14–16.10 Godot, Blender, Devbox и Pipeline жили сутками
+    # с 0,6–1 млн на ход (08.10 — 0,4 млн), расход вырос в полтора раза при том же темпе. Сообщаем на 400, 600, 800 тыс. —
+    # Pipeline передаёт сессии «итоги в memory/бэклог, затем /clear».
+    local ctx z
+    ctx=$(grep '"cache_read_input_tokens"' -- "$f" | tail -1 | jq -r '.message.usage | (.cache_read_input_tokens // 0) + (.cache_creation_input_tokens // 0) + (.input_tokens // 0)' 2>/dev/null)
+    if [ "${ctx:-0}" -ge 400000 ] 2>/dev/null; then
+      key=$(basename "$f" .jsonl):ctx$((ctx / 200000))
+      if ! grep -qxF "$key" "$ST/sessions" 2>/dev/null; then
+        echo "$key" >>"$ST/sessions"
+        z=$(grep -oE 'zone-check\.sh [a-z]+' -- "$f" | tail -1 | cut -d' ' -f2)
+        found="$found\nсессия $(basename "$f" .jsonl | cut -c1-8) (${z:-зона?}): контекст $((ctx / 1000)) тыс. — итоги в memory/бэклог и /clear"
+      fi
+    fi
     last=$(grep -E '"type":"(assistant|user)"' -- "$f" | tail -1)
     # Признак — поля записи, а не текст: в журнале Pipeline эти слова встречаются в самом скрипте (ложная находка 14.10).
     why=$(jq -r 'if .isApiErrorMessage == true then "ошибка API: \(.error // "") \(.message.content[0].text // "" | .[0:60])"
