@@ -147,6 +147,10 @@ const KNOBS := {
 	"edge_round": 1.0,       # 0…1: скруглить профиль света рёбер (smoothstep по яркости вершин): убирает излом на пике градиента — светлую «линию Маха» по середине голубой полосы; 1 — полностью (принято, замер 6 на очках)
 }
 static var _tuned := {}
+## Материалы с облаком на гранях (А), созданные apply(), слабыми ссылками: дыхание и отклик ставятся на них, где бы ни жил меш. Группа surface_clouds ловит только
+## MeshInstance3D в дереве, а колонны, укрытия и корпуса препятствий клиент собирает из частей `NodeAssets.mesh_parts` (MultiMesh и свои MeshInstance3D без группы;
+## корень с группой освобождён) — по группе они не дышали (П7-3, 17.10).
+static var _surface_cloud_mats: Array[WeakRef] = []
 static var _grid_tex: ImageTexture
 
 const GRID_TEX_PX := 128      # пикселей текстуры на метр (клетка 1 м)
@@ -383,7 +387,8 @@ static func apply(root: Node, tier: String = "") -> void:
 				m.set_shader_parameter("anchor", 1.0)
 			if src.resource_name == "solid_dark" and float(_k("cloud")) > 0.0 and _cloud_scope_ok(root):  # прототип «облако без основы»: частицы с дырами вместо тёмной грани (нужен MSAA)
 				m.shader = CLOUD_SHADER
-				mi.add_to_group(SURFACE_CLOUD_GROUP)   # set_cloud_breath / set_cloud_touch находят поверхностные облака по группе
+				mi.add_to_group(SURFACE_CLOUD_GROUP)   # set_cloud_breath / set_cloud_touch находят поверхностные облака по группе и по реестру материалов
+				_surface_cloud_mats.append(weakref(m))
 				m.set_shader_parameter("glitch_tex", GlitchSprite.texture())
 				m.set_shader_parameter("dust", float(_k("cloud")))
 				m.set_shader_parameter("dust_cell", float(_k("dust_cell")))
@@ -457,20 +462,32 @@ static func tick_phase(tk: Dictionary, server_now: float) -> float:
 	return clampf((server_now - float(tk.get("at", server_now))) / win, 0.0, 1.0)
 
 
-## Материалы облаков в дереве: объёмных (VolumeCloud, группа `volume_clouds`; материал лежит на QuadMesh внутри MultiMesh) и поверхностных (А: меши с cloud_dark,
-## группа `surface_clouds`, их ставит apply(); материал — surface override).
+## Материалы облаков: объёмных (VolumeCloud, группа `volume_clouds`; материал лежит на QuadMesh внутри MultiMesh) и поверхностных (А: cloud_dark) — из группы
+## `surface_clouds` (меши в дереве) и из реестра материалов apply() (MultiMesh и рантайм-меши из частей mesh_parts); общий материал берётся один раз.
 static func _cloud_materials(tree: SceneTree) -> Array[ShaderMaterial]:
 	var out: Array[ShaderMaterial] = []
 	if tree == null:
 		return out
+	var seen := {}
 	for n in tree.get_nodes_in_group(SURFACE_CLOUD_GROUP):
 		var mi := n as MeshInstance3D
 		if mi == null or mi.mesh == null:
 			continue
 		for s in mi.mesh.get_surface_count():
 			var sm := mi.get_surface_override_material(s) as ShaderMaterial
-			if sm != null and sm.shader == CLOUD_SHADER:
+			if sm != null and sm.shader == CLOUD_SHADER and not seen.has(sm.get_instance_id()):
+				seen[sm.get_instance_id()] = true
 				out.append(sm)
+	var alive: Array[WeakRef] = []
+	for w in _surface_cloud_mats:
+		var rm := w.get_ref() as ShaderMaterial
+		if rm == null:
+			continue
+		alive.append(w)
+		if rm.shader == CLOUD_SHADER and not seen.has(rm.get_instance_id()):
+			seen[rm.get_instance_id()] = true
+			out.append(rm)
+	_surface_cloud_mats = alive
 	for n in tree.get_nodes_in_group("volume_clouds"):
 		for c in n.get_children():
 			var mmi := c as MultiMeshInstance3D

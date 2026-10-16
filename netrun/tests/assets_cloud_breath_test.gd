@@ -112,6 +112,36 @@ func test_дыхание_и_отклик_доходят_до_облака_на_�
 	assert_float((m.get_shader_parameter("touch_a") as Vector4).w).is_equal(0.0)
 
 
+## Колонны, укрытия и корпуса препятствий клиент собирает из частей mesh_parts: меш с материалом облака не в дереве (MultiMesh или свой MeshInstance3D, корень apply()
+## освобождён) — группа surface_clouds его не знает, ловить надо по реестру материалов apply().
+func test_дыхание_доходит_до_материала_меша_вне_группы() -> void:
+	var root: Node3D = auto_free(Node3D.new())
+	var mi := MeshInstance3D.new()
+	mi.name = "pillar_block"
+	var mesh := BoxMesh.new()
+	var src := ShaderMaterial.new()
+	src.resource_name = "solid_dark"
+	src.shader = AssetMaterials.SHADERS["solid_dark"]
+	mesh.surface_set_material(0, src)
+	mi.mesh = mesh
+	root.add_child(mi)
+	AssetMaterials.apply(root, "BASE")
+	var m := mi.get_surface_override_material(0) as ShaderMaterial
+	assert_object(m).is_not_null()
+	assert_bool(m.shader == AssetMaterials.CLOUD_SHADER).override_failure_message("apply() не включил облако на гранях").is_true()
+	var mesh2 := (mi.mesh as BoxMesh).duplicate() as Mesh   # то, что делает NodeAssets._collect: материал уезжает на меш, узел с группой освобождается
+	mesh2.surface_set_material(0, m)
+	root.remove_child(mi)
+	mi.free()
+	var holder: MeshInstance3D = auto_free(MeshInstance3D.new())
+	holder.mesh = mesh2
+	add_child(holder)   # живёт в дереве, но не в группе surface_clouds
+	AssetMaterials.set_cloud_breath(get_tree(), 0.35)
+	AssetMaterials.set_cloud_touch(get_tree(), [Vector4(1, 2, 3, 0.4)])
+	assert_float(float(m.get_shader_parameter("breath_phase"))).is_equal_approx(0.35, 1e-6)
+	assert_float((m.get_shader_parameter("touch_a") as Vector4).w).is_equal_approx(0.4, 1e-6)
+
+
 func test_без_облаков_помощники_ничего_не_ломают() -> void:
 	AssetMaterials.set_cloud_breath(get_tree(), 0.3)
 	AssetMaterials.set_cloud_touch(get_tree(), [Vector4(0, 0, 0, 1)])
