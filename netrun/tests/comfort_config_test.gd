@@ -16,6 +16,18 @@ func _cfg(values: Dictionary) -> ConfigFile:
 	return c
 
 
+func test_snap_step_is_45_by_default_and_comes_from_the_file_within_limits() -> void:
+	assert_float(ComfortConfig.new().snap_step_deg).is_equal(45.0)
+	var c := ComfortConfig.from_config(_cfg({"snap_step_deg": 30.0}))
+	assert_float(c.snap_step_deg).is_equal(30.0)
+	var wide := ComfortConfig.from_config(_cfg({"snap_step_deg": 400.0}))
+	assert_float(wide.snap_step_deg).is_equal(90.0)
+	assert_int(wide.warnings.size()).is_equal(1)
+	var rig: XRRig = auto_free(XRRig.new())
+	c.apply_to(rig)
+	assert_float(rig.snap_step_deg).is_equal(30.0)
+
+
 func test_defaults_come_from_code() -> void:
 	var c := ComfortConfig.new()
 	assert_str(c.turn_mode).is_equal("snap")
