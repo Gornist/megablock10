@@ -22,7 +22,7 @@
     {"id": "d1", "kind": "sensor", "cell1": [8, 6], "dir": "E", "len": 2},
     {"id": "r1", "kind": "reserve", "route": [
       {"cell": [0, 7], "wait": 1, "look": ["N"]},
-      {"cell": [0, 5], "wait": 2, "look": ["E"]}
+      {"cell": [0, 3], "wait": 2, "look": ["N"]}
     ]}
   ],
   "black": null,

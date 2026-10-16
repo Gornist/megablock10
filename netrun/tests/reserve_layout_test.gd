@@ -37,3 +37,19 @@ func test_запасной_без_будки_на_карте_ошибка() -> v
 	rows[7] = ".....EE."   # без «b»
 	var ld := LayoutData.parse({"name": "t", "cells": rows, "vaults": [{"cell": [0, 0], "pad": [0, 1], "ring": "outer"}], "ice": [{"id": "r1", "kind": "reserve", "route": [{"cell": [0, 7]}, {"cell": [0, 4]}]}]})
 	assert_str(ld.error).is_not_empty()
+
+
+func test_маршрут_запасного_в_серверных_идёт_по_западному_краю_от_будки_до_ряда_3() -> void:
+	# Game 16.10: запасной ходит по столбцу 0 и в паузе смотрит на север вдоль него — на спокойную площадку (0,0), отнимая у неё окно; в LayoutCheck он не участвует.
+	for n in ["server_room", "server_room_light", "server_room_dark"]:
+		var ld := LayoutData.load_named(n)
+		assert_str(ld.error).is_empty()
+		assert_int(ld.reserves.size()).is_equal(1)
+		var route: Array = ld.reserves[0]["route"]
+		assert_int(route.size()).is_equal(2)
+		assert_object(route[0]["cell"]).is_equal(ld.booths[0])
+		assert_object(route[1]["cell"]).is_equal(LayoutData.block_center_cell(Vector2i(0, 3)))
+		assert_int(int(route[0]["wait"])).is_equal(1)
+		assert_int(int(route[1]["wait"])).is_equal(2)
+		assert_object(route[0]["look"]).is_equal(Vector2i(0, -1))
+		assert_object(route[1]["look"]).is_equal(Vector2i(0, -1))
