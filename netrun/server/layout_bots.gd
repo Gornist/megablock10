@@ -670,34 +670,85 @@ func _window_targets(a: int) -> Array:
 	var safe := safe_cells()
 	var out := {}
 	var budget := [_DFS_BUDGET]
-	var alive := PackedByteArray()
-	alive.resize(cycle)
-	alive.fill(1)
+	var alive := PackedInt64Array()
+	alive.resize(_nwords())
+	for t in cycle:   # живы все такты цикла; биты за пределами цикла не ставим
+		alive[t / _BITS] |= 1 << (t % _BITS)
 	_win_dfs(a, 0, alive, safe, out, budget)
 	var res: Array = out.keys()
 	_window_cache[a] = res
 	return res
 
 
-func _win_dfs(cur: int, k: int, alive: PackedByteArray, safe: Dictionary, out: Dictionary, budget: Array) -> void:
+const _BITS := 32   # тактов цикла в одном слове маски (поиск окна идёт масками: 240 тактов → 8 слов вместо цикла по байтам, ×100 быстрее)
+
+var _seen_bits_cache := {}   # (idx, сдвиг) → PackedInt64Array: бит t — видна ли клетка в такт t + сдвиг
+var _on_bits_cache := {}     # (датчик, сдвиг) → PackedInt64Array: бит t — включён ли датчик в такт t + сдвиг
+var _beam_bits_cache := {}   # (a, b, сдвиг) → PackedInt64Array: бит t — какой-то луч на прыжке a → b включён в такт t + сдвиг
+
+
+func _nwords() -> int:
+	return (cycle + _BITS - 1) / _BITS
+
+
+## Маска по кольцу цикла: бит t (t < cycle) = arr[base + (t + sh) mod cycle] == 1.
+func _ring_bits(arr: PackedByteArray, base: int, sh: int) -> PackedInt64Array:
+	var w := PackedInt64Array()
+	w.resize(_nwords())
+	for t in cycle:
+		if arr[base + posmod(t + sh, cycle)] == 1:
+			w[t / _BITS] |= 1 << (t % _BITS)
+	return w
+
+
+func _seen_bits(i: int, sh: int) -> PackedInt64Array:
+	var key := i * 8 + sh
+	if not _seen_bits_cache.has(key):
+		_seen_at(i, 0)   # заполняет _cell_time[i]
+		_seen_bits_cache[key] = _ring_bits(_cell_time[i], 0, sh)
+	return _seen_bits_cache[key]
+
+
+func _beam_bits(a: int, b: int, sh: int) -> PackedInt64Array:
+	var key := (a * 100000 + b) * 8 + sh
+	if not _beam_bits_cache.has(key):
+		var w := PackedInt64Array()
+		w.resize(_nwords())
+		for k: int in _crossed(a, b):
+			var kk := k * 8 + sh
+			if not _on_bits_cache.has(kk):
+				_on_bits_cache[kk] = _ring_bits(_sensor_on[k], _skip, sh)
+			var on: PackedInt64Array = _on_bits_cache[kk]
+			for n in w.size():
+				w[n] |= on[n]
+		_beam_bits_cache[key] = w
+	return _beam_bits_cache[key]
+
+
+func _win_dfs(cur: int, k: int, alive: PackedInt64Array, safe: Dictionary, out: Dictionary, budget: Array) -> void:
 	for j: int in _reach_of(cur):
 		budget[0] -= 1
 		if budget[0] < 0:
 			return
 		var crossing: Array = _crossed(cur, j)
-		# прыжок cur → j выполняется в состоянии t + k
-		var a2 := PackedByteArray()
-		a2.resize(cycle)
+		# прыжок cur → j выполняется в состоянии t + k; в клетку j приходим к такту t + k + 1
+		var a2 := alive.duplicate()
 		var any := false
-		for t in cycle:
-			if alive[t] == 0:
-				continue
-			if not crossing.is_empty() and _beam_hit(cur, j, t + k):
-				continue
-			if not safe.has(j) and _seen_at(j, t + k + 1):
-				continue
-			a2[t] = 1
-			any = true
+		var beam := PackedInt64Array()
+		var seen := PackedInt64Array()
+		if not crossing.is_empty():
+			beam = _beam_bits(cur, j, k)
+		if not safe.has(j):
+			seen = _seen_bits(j, k + 1)
+		for n in a2.size():
+			var v: int = a2[n]
+			if not beam.is_empty():
+				v &= ~beam[n]
+			if not seen.is_empty():
+				v &= ~seen[n]
+			a2[n] = v
+			if v != 0:
+				any = true
 		if not any:
 			continue
 		if safe.has(j):
