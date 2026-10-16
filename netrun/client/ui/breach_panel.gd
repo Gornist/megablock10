@@ -508,6 +508,11 @@ func _build_idle() -> void:
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_right.add_child(spacer)
+	if lock_length() > 0:   # правило видно до старта: замок первым, демоны после него
+		var rule := DeckUi.label("У хранилища замок: сначала наберите его цепочку (%d), демоны засчитаются только после" % lock_length(), DeckTheme.V_WARN, false)
+		rule.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		rule.custom_minimum_size.x = 200
+		_right.add_child(rule)
 	var used := picked_cells()
 	var over := not fits_ram()
 	var row := DeckUi.hbox(8)
@@ -650,17 +655,48 @@ func _refresh_run() -> void:
 		f.add_child(l)
 		_buffer_flow.add_child(f)
 	DeckUi.clear(_targets_box)
+	var locked := not mirror.lock.is_empty() and not mirror.lock_opened   # замок закрыт: демоны пока не засчитываются
+	if not mirror.lock.is_empty():
+		_add_lock_rows()
 	for t in mirror.targets:
 		var done := mirror.is_matched(str(t["id"]))
 		var row := DeckUi.hbox(6)
 		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		row.add_child(DeckUi.label("✓" if done else "·", DeckTheme.V_OK if done else DeckTheme.V_DIM, false))
+		row.add_child(DeckUi.label("⚠" if done and locked else ("✓" if done else "·"), DeckTheme.V_WARN if done and locked else (DeckTheme.V_OK if done else DeckTheme.V_DIM), false))
 		row.add_child(DeckUi.label(" ".join((t["cells"] as Array).map(func(c): return str(c))), DeckTheme.V_DIM if done else DeckTheme.V_CODE, false))
-		var name_l := DeckUi.label(str(t["name"]), DeckTheme.V_DIM)
+		var name_l := DeckUi.label(str(t["name"]) + (" — до замка, не засчитан" if done and locked else ""), DeckTheme.V_WARN if done and locked else DeckTheme.V_DIM)
 		DeckUi.expand(name_l)
 		row.add_child(name_l)
 		_targets_box.add_child(row)
 	_refresh_trace()
+
+
+## Замок хранилища (Взлом 2.0) — первым в списке целей: его цепочку надо набрать до демонов, иначе они не засчитаются (на П7 владелец набрал демона до замка и не понял,
+## почему «не срабатывает»). Закрыт — «1. ЗАМОК» и подсказка «2. ДЕМОНЫ — только после замка»; вскрыт — «замок вскрыт».
+func _add_lock_rows() -> void:
+	var opened := mirror.lock_opened
+	var row := DeckUi.hbox(6)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(DeckUi.label("✓" if opened else "1", DeckTheme.V_OK if opened else DeckTheme.V_WARN, false))
+	row.add_child(DeckUi.label(" ".join(mirror.lock.map(func(c): return str(c))), DeckTheme.V_DIM if opened else DeckTheme.V_CODE, false))
+	var name_l := DeckUi.label(lock_row_text(opened), DeckTheme.V_OK if opened else DeckTheme.V_WARN)
+	DeckUi.expand(name_l)
+	row.add_child(name_l)
+	_targets_box.add_child(row)
+	if not opened:
+		var hint := DeckUi.label(lock_hint_text(), DeckTheme.V_DIM, false)
+		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		hint.custom_minimum_size.x = 200
+		_targets_box.add_child(hint)
+
+
+## Строка замка в списке целей: сначала замок — потом демоны.
+static func lock_row_text(opened: bool) -> String:
+	return "ЗАМОК ВСКРЫТ — теперь демоны" if opened else "1. ЗАМОК — набрать первым"
+
+
+static func lock_hint_text() -> String:
+	return "2. ДЕМОНЫ — только после замка: совпавшие раньше не засчитываются"
 
 
 func _refresh_trace() -> void:
