@@ -35,7 +35,7 @@ host=$(ip -4 -o addr show scope global | awk '$2 !~ /tailscale|tun/ {sub(/\/.*/,
 # Свежий сервер (старый стенд на 7777 — вон), в своей группе процессов: умирает только вместе с этим скриптом (TERM от `pico unshow`/конец времени/stop).
 old=$(ss -ulpn 2>/dev/null | grep ':7777 ' | sed -nE 's/.*pid=([0-9]+).*/\1/p' | head -1)   # только то, что держит порт 7777
 [ -z "$old" ] || { kill "$old" 2>/dev/null; sleep 2; }
-nohup bash "$HERE/srv_p6.sh" > "$OUT/server.log" 2>&1 </dev/null &
+nohup bash "$HERE/${P6_SERVER:-srv_p6.sh}" > "$OUT/server.log" 2>&1 </dev/null &   # стенд следующего показа — P6_SERVER=srv_p7.sh P6_APK=~/pico-p7/…
 spid=$!
 done_flag=0
 cleanup() {   # журналы забираем до остановки игры; повторный вызов (TERM, потом EXIT) ничего не делает
