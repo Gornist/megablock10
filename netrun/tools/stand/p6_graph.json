@@ -1,10 +1,10 @@
 {
   "version": 1,
-  "default_entry": "node_05",
+  "default_entry": "node_03",
   "entries": {
-    "t03": "node_05",
-    "t04": "node_05",
-    "t05": "node_05"
+    "t03": "node_03",
+    "t04": "node_03",
+    "t05": "node_03"
   },
   "settings": {
     "tunnel_sec": 2.5,
@@ -68,6 +68,21 @@
     }
   },
   "nodes": {
+    "node_03": {
+      "title": "Архив",
+      "tier": "BASE",
+      "ice": 1,
+      "shards": 2,
+      "layout": "server_room_light",
+      "links": [
+        "node_05"
+      ],
+      "ice_settings": {
+        "sight_range": 6.0,
+        "notice_per_sec": 0.15,
+        "chase_speed": 1.5
+      }
+    },
     "node_05": {
       "title": "Серверная",
       "tier": "HARD",
@@ -75,6 +90,7 @@
       "shards": 2,
       "layout": "server_room",
       "links": [
+        "node_03",
         "node_11"
       ],
       "ice_settings": {
