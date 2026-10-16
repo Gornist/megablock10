@@ -169,6 +169,12 @@ godot -- --flat --host=127.0.0.1 --port=7777 --token=t1
   `box.sh pico run Godot 5 -- netrun/tools/pico.sh tune …`. Пресет `cloud-props` после B3 ≡ `bench` (`cloud=1` — умолчание `AssetMaterials`), оставлен алиасом.
   Самотест — `netrun/tools/box_guard_selftest.sh` (подложные ctl.sh и adb, `PICO_SERIAL=NOSUCH`, `BOX_TEST=1`; очков и `~/box` не касается; 21 проверка):
   проверки броней и серии гонять только им, а не рабочими скриптами по ssh — 13.10 17:27 так разбудили очки.
+- **Стенд П6 (16.10; Серверная HARD ↔ Ядро NIGHTMARE с Гончей, барьер закрыт, Black ICE спит):** граф `netrun/tools/stand/p6_graph.json` (два узла,
+  один тоннель; trace и тревога — из `data/graph.json`), фальш-Мост `p6_bridge_fixture.json` (Призрак на t03, RAM 14, демоны Извлечение 1–3 и Призрак,
+  шарды на узлах 05 и 11), сервер `tools/srv_p6.sh` (порт 7777). APK — `scripts/box.sh run gpu Godot --name p6-build -- bash netrun/tools/p6_build.sh`
+  → `~/pico-p6/netrun-client-p6.apk` (отдельно от `~/pico-cfg`). Прогон — только по слову владельца «надеваю», под бронью Devbox:
+  `scripts/box.sh pico run Godot <мин> --port 7777 -- bash netrun/tools/p6_run.sh` (install → provision → сервер → ready → start; конец — `touch ~/pico-p6/stop`
+  после «снял»; журналы — в каталог прогона: `server.log`, `logcat.txt`, `pico-log.txt`).
 - **Падение в нативном коде:** кадры `libgodot_android.so` в tombstone без имён (библиотека шаблона уже без символов). Функцию находит
   дизассемблер по адресу кадра: `$ANDROID_HOME/ndk/<версия>/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-objdump -d --start-address=…`
   по `<копия>/android/build/build/intermediates/merged_native_libs/…/arm64-v8a/libgodot_android.so` (BuildId в tombstone должен совпасть).

@@ -114,13 +114,24 @@ var _acc := 0.0
 var _spin_t := 0.0
 var _count := 0
 var _max_ms := 0.0
+var _env: Environment
+
+const CALM_BG := Color(0.02, 0.024, 0.03)   ## фон спокойного узла; тревога сдвигает его на разницу AssetMaterials.alarm_background (уровень − 0)
+
+
+## Фон узла на уровне тревоги: спокойный фон плюс сдвиг цвета Blender (к тёмно-красному); tick_phase 0…1 — пульс «охоты» (уровень 3).
+static func alarm_bg(level: int, tick_phase := 0.0) -> Color:
+	var d := AssetMaterials.alarm_background(level, tick_phase) - AssetMaterials.alarm_background(0)
+	return Color(maxf(CALM_BG.r + d.r, 0.0), maxf(CALM_BG.g + d.g, 0.0), maxf(CALM_BG.b + d.b, 0.0))
 
 
 func _ready() -> void:
 	var env := WorldEnvironment.new()
 	env.environment = Environment.new()
+	_env = env.environment
+	alarm_changed.connect(_on_alarm_view)
 	env.environment.background_mode = Environment.BG_COLOR
-	env.environment.background_color = Color(0.02, 0.024, 0.03)
+	env.environment.background_color = CALM_BG
 	env.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.environment.ambient_light_color = AMBIENT_COLOR
 	env.environment.ambient_light_energy = AMBIENT_ENERGY
@@ -191,6 +202,8 @@ func _process(delta: float) -> void:
 		var pose := remote.avatar_pose(id, now)
 		if not pose.is_empty():
 			(_avatar_nodes[id] as AvatarView).move_to(pose["p"], delta)
+	if alarm_level == 3:   # «охота»: фон пульсирует в ритме такта
+		_env.background_color = alarm_bg(3, _tick_phase(now))
 	_animate_shards(delta)
 	_update_stow_target(delta)
 	_update_breach_panel()
@@ -809,6 +822,21 @@ func apply_alarm(ev: Dictionary) -> void:
 		return
 	alarm_level = level
 	alarm_changed.emit(level, alarm)
+
+
+## Вид тревоги: кромки комнаты и фон по уровню (цвета — AssetMaterials у Blender).
+func _on_alarm_view(level: int, _alarm: float) -> void:
+	view.set_alarm_level(level)
+	_env.background_color = alarm_bg(level, _tick_phase(Time.get_ticks_msec() / 1000.0))
+
+
+## Доля окна такта, прошедшая к моменту local_now (0…1); нет тактов — 0.
+func _tick_phase(local_now: float) -> float:
+	var tk := remote.tick_info()
+	var win := float(tk.get("win", 0.0))
+	if win <= 0.0:
+		return 0.0
+	return clampf((remote.clock.server_time(local_now) - float(tk.get("at", 0.0))) / win, 0.0, 1.0)
 
 
 func apply_shards(shards: Array) -> void:

@@ -1,0 +1,340 @@
+{
+  "settings": {
+    "global": {
+      "confirm_timeout_s": 120,
+      "disconnect_grace_s": 3600
+    }
+  },
+  "nodes": {
+    "node_00": {
+      "title": "Учебный",
+      "tier": "BASE",
+      "lockdown_until": 0,
+      "eddies": 100
+    },
+    "node_01": {
+      "title": "Фойе",
+      "tier": "BASE",
+      "lockdown_until": 0,
+      "eddies": 100
+    },
+    "node_02": {
+      "title": "Бухгалтерия",
+      "tier": "BASE",
+      "lockdown_until": 0,
+      "eddies": 100
+    },
+    "node_03": {
+      "title": "Архив",
+      "tier": "BASE",
+      "lockdown_until": 0,
+      "eddies": 100
+    },
+    "node_04": {
+      "title": "Склад запчастей",
+      "tier": "BASE",
+      "lockdown_until": 0,
+      "eddies": 100
+    },
+    "node_05": {
+      "title": "Серверная",
+      "tier": "HARD",
+      "lockdown_until": 0,
+      "eddies": 100
+    },
+    "node_06": {
+      "title": "Лаборатория",
+      "tier": "HARD",
+      "lockdown_until": 0,
+      "eddies": 100
+    },
+    "node_07": {
+      "title": "Склад Арасаки",
+      "tier": "BASE",
+      "lockdown_until": 0,
+      "eddies": 100
+    },
+    "node_08": {
+      "title": "Сервисная шахта",
+      "tier": "HARD",
+      "lockdown_until": 0,
+      "eddies": 100
+    },
+    "node_09": {
+      "title": "Кабинет директора",
+      "tier": "HARD",
+      "lockdown_until": 0,
+      "eddies": 100
+    },
+    "node_10": {
+      "title": "Парковка",
+      "tier": "BASE",
+      "lockdown_until": 0,
+      "eddies": 100
+    },
+    "node_11": {
+      "title": "Ядро",
+      "tier": "NIGHTMARE",
+      "lockdown_until": 0,
+      "eddies": 100
+    },
+    "node_12": {
+      "title": "Хранилище",
+      "tier": "NIGHTMARE",
+      "lockdown_until": 0,
+      "eddies": 100
+    }
+  },
+  "terminals": {
+    "t01": {
+      "node": "node_01",
+      "label": "Стойка 1",
+      "token_sha256": "4ab53a252c0eb82880fa8bda7a765e4e621bb9a8ac438c71c3986a001988868c",
+      "silent": false
+    },
+    "t02": {
+      "node": "node_02",
+      "label": "Стойка 2",
+      "token_sha256": "4ab53a252c0eb82880fa8bda7a765e4e621bb9a8ac438c71c3986a001988868c",
+      "silent": false
+    },
+    "t03": {
+      "node": "node_05",
+      "label": "Стойка 3",
+      "token_sha256": "4ab53a252c0eb82880fa8bda7a765e4e621bb9a8ac438c71c3986a001988868c",
+      "silent": false
+    },
+    "t04": {
+      "node": "node_05",
+      "label": "Стойка 4",
+      "token_sha256": "4ab53a252c0eb82880fa8bda7a765e4e621bb9a8ac438c71c3986a001988868c",
+      "silent": false
+    },
+    "t05": {
+      "node": "node_05",
+      "label": "Стойка 5",
+      "token_sha256": "4ab53a252c0eb82880fa8bda7a765e4e621bb9a8ac438c71c3986a001988868c",
+      "silent": false
+    },
+    "t06": {
+      "node": "node_10",
+      "label": "Стойка 6",
+      "token_sha256": "4ab53a252c0eb82880fa8bda7a765e4e621bb9a8ac438c71c3986a001988868c",
+      "silent": false
+    }
+  },
+  "sessions": {
+    "s_fake000000000001": {
+      "state": "active",
+      "terminal": "t03",
+      "node": "node_05",
+      "runner": "KEY_ALICE",
+      "callsign": "Призрак",
+      "loot_eddies": 0,
+      "outcome": null,
+      "ram": 14
+    }
+  },
+  "items": {
+    "it_p1_d1": {
+      "owner": "deck:s_fake000000000001",
+      "kind": "DAEMON",
+      "payload": "p1",
+      "protected": false,
+      "origin": "phone:KEY_ALICE",
+      "daemon": {
+        "effect": "EXTRACT_SHARD",
+        "tier": 1,
+        "name": "Извлечение-1",
+        "cells": [
+          "E9",
+          "1C"
+        ]
+      }
+    },
+    "it_p1_d2": {
+      "owner": "deck:s_fake000000000001",
+      "kind": "DAEMON",
+      "payload": "p2",
+      "protected": false,
+      "origin": "phone:KEY_ALICE",
+      "daemon": {
+        "effect": "EXTRACT_SHARD",
+        "tier": 2,
+        "name": "Извлечение-2",
+        "cells": [
+          "1C",
+          "BD",
+          "E9"
+        ]
+      }
+    },
+    "it_p1_d3": {
+      "owner": "deck:s_fake000000000001",
+      "kind": "DAEMON",
+      "payload": "p3",
+      "protected": false,
+      "origin": "phone:KEY_ALICE",
+      "daemon": {
+        "effect": "EXTRACT_SHARD",
+        "tier": 3,
+        "name": "Извлечение-3",
+        "cells": [
+          "1C",
+          "BD",
+          "E9",
+          "7A"
+        ]
+      }
+    },
+    "it_p1_d4": {
+      "owner": "deck:s_fake000000000001",
+      "kind": "DAEMON",
+      "payload": "p4",
+      "protected": false,
+      "origin": "phone:KEY_ALICE",
+      "daemon": {
+        "effect": "GHOST",
+        "tier": 2,
+        "name": "Призрак",
+        "cells": [
+          "55",
+          "7A",
+          "FF"
+        ]
+      }
+    },
+    "it_p1_s07": {
+      "owner": "node:node_07",
+      "kind": "SHARD",
+      "payload": "sh-07",
+      "protected": false,
+      "origin": "node:node_07",
+      "shard": {
+        "tier": 1,
+        "title": "Накладная",
+        "decrypted": true
+      }
+    },
+    "it_p1_s04": {
+      "owner": "node:node_04",
+      "kind": "SHARD",
+      "payload": "sh-04",
+      "protected": false,
+      "origin": "node:node_04",
+      "shard": {
+        "tier": 1,
+        "title": "Опись",
+        "decrypted": true
+      }
+    },
+    "it_p1_s10": {
+      "owner": "node:node_10",
+      "kind": "SHARD",
+      "payload": "sh-10",
+      "protected": false,
+      "origin": "node:node_10",
+      "shard": {
+        "tier": 1,
+        "title": "Журнал въезда",
+        "decrypted": true
+      }
+    },
+    "it_p1_s081": {
+      "owner": "node:node_08",
+      "kind": "SHARD",
+      "payload": "sh-081",
+      "protected": false,
+      "origin": "node:node_08",
+      "shard": {
+        "tier": 2,
+        "title": "Схемы шахты",
+        "decrypted": true
+      }
+    },
+    "it_p1_s082": {
+      "owner": "node:node_08",
+      "kind": "SHARD",
+      "payload": "sh-082",
+      "protected": false,
+      "origin": "node:node_08",
+      "shard": {
+        "tier": 2,
+        "title": "Графики ТО",
+        "decrypted": false
+      }
+    },
+    "it_p1_s051": {
+      "owner": "node:node_05",
+      "kind": "SHARD",
+      "payload": "sh-051",
+      "protected": false,
+      "origin": "node:node_05",
+      "shard": {
+        "tier": 2,
+        "title": "Реестр",
+        "decrypted": true
+      }
+    },
+    "it_p1_s052": {
+      "owner": "node:node_05",
+      "kind": "SHARD",
+      "payload": "sh-052",
+      "protected": false,
+      "origin": "node:node_05",
+      "shard": {
+        "tier": 2,
+        "title": "Логи доступа",
+        "decrypted": false
+      }
+    },
+    "it_p1_s111": {
+      "owner": "node:node_11",
+      "kind": "SHARD",
+      "payload": "sh-111",
+      "protected": false,
+      "origin": "node:node_11",
+      "shard": {
+        "tier": 3,
+        "title": "Ключи ядра",
+        "decrypted": true
+      }
+    },
+    "it_p1_s112": {
+      "owner": "node:node_11",
+      "kind": "SHARD",
+      "payload": "sh-112",
+      "protected": false,
+      "origin": "node:node_11",
+      "shard": {
+        "tier": 3,
+        "title": "Резерв ядра",
+        "decrypted": false
+      }
+    },
+    "it_p1_s113": {
+      "owner": "node:node_11",
+      "kind": "SHARD",
+      "payload": "sh-113",
+      "protected": false,
+      "origin": "node:node_11",
+      "shard": {
+        "tier": 3,
+        "title": "Архив ядра",
+        "decrypted": true
+      }
+    },
+    "it_p1_s121": {
+      "owner": "node:node_12",
+      "kind": "SHARD",
+      "payload": "sh-121",
+      "protected": false,
+      "origin": "node:node_12",
+      "shard": {
+        "tier": 3,
+        "title": "Секретный отчёт",
+        "decrypted": true
+      }
+    }
+  }
+}
