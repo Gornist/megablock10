@@ -140,6 +140,9 @@ const KNOBS := {
 	# Завеса ВВЕРХ от верхней кромки плит пола и дальнего пола (квады в том же меше `*_skirt`, env._slab_rise). Включена по умолчанию (V10); клин у края комнаты — отдельная задача:
 	"tile_glow": 3.0,        # множитель альфы завесы вверх относительно вуали (0 — выкл.; 1 — как вуаль потолка; 2–4 — заметнее); вуаль вниз не затрагивает
 	"tile_glow_h": 1.0,      # высота завесы вверх относительно модельной (0,45 м в комнате, 1 м в дальнем полу): 0,5 — ниже, 2 — выше
+	# Дыхание и отклик объёмного облака (Б): включаются вызовом set_cloud_breath / set_cloud_touch из клиента каждый кадр; без вызова облако статично, как раньше.
+	"cloud_breath": 0.6,     # глубина дыхания 0…1 (0 — выкл.): вдох на тике хода, яркость облака ≈ ×0,73…×1,21, размер до +15 %
+	"cloud_touch": 1.0,      # сила отклика на руку/аватар 0…2 (0 — выкл.): рядом частицы ярче, крупнее, теплее по цвету и чуть расходятся
 	"edge_round": 1.0,       # 0…1: скруглить профиль света рёбер (smoothstep по яркости вершин): убирает излом на пике градиента — светлую «линию Маха» по середине голубой полосы; 1 — полностью (принято, замер 6 на очках)
 }
 static var _tuned := {}
@@ -441,6 +444,56 @@ static func set_beam(root: Node, state: int, flash: float = 0.0) -> void:
 			if m != null and m.shader == BEAM_SHADER:
 				m.set_shader_parameter("state", float(state))
 				m.set_shader_parameter("flash", clampf(flash, 0.0, 1.0))
+
+
+## Доля такта хода 0…1 (0 — тик, к 1 — следующий тик) по полю состояния `tk` {at, win} и серверному времени сейчас. Вне окна (опоздали) — зажимается в 0…1,
+## чтобы облако не «перескакивало» при задержке тика. win ≤ 0 — 0.
+static func tick_phase(tk: Dictionary, server_now: float) -> float:
+	var win := float(tk.get("win", 0.0))
+	if win <= 0.0:
+		return 0.0
+	return clampf((server_now - float(tk.get("at", server_now))) / win, 0.0, 1.0)
+
+
+## Материалы объёмных облаков (VolumeCloud, группа `volume_clouds`) в дереве: материал лежит на QuadMesh внутри MultiMesh.
+static func _cloud_materials(tree: SceneTree) -> Array[ShaderMaterial]:
+	var out: Array[ShaderMaterial] = []
+	if tree == null:
+		return out
+	for n in tree.get_nodes_in_group("volume_clouds"):
+		for c in n.get_children():
+			var mmi := c as MultiMeshInstance3D
+			if mmi == null or mmi.multimesh == null or mmi.multimesh.mesh == null:
+				continue
+			var m := mmi.multimesh.mesh.material as ShaderMaterial
+			if m != null:
+				out.append(m)
+	return out
+
+
+## Дыхание облаков: phase — доля такта хода (`tick_phase`), вдох — на тике. Звать каждый кадр; глубина — ручка cloud_breath. Руки и тело не затрагиваются.
+static func set_cloud_breath(tree: SceneTree, phase: float) -> void:
+	var depth := clampf(float(_k("cloud_breath")), 0.0, 1.0)
+	for m in _cloud_materials(tree):
+		m.set_shader_parameter("breath_depth", depth)
+		m.set_shader_parameter("breath_phase", clampf(phase, 0.0, 1.0))
+
+
+## Отклик облаков на приближение: sources — до четырёх Vector4 (xyz — мировая позиция руки/аватара, w — радиус влияния, м; 0 — выкл.). Остальные слоты гасятся.
+## Звать каждый кадр (состояния нет: ушёл источник — облако как было). Сила — ручка cloud_touch; 0 гасит все слоты.
+static func set_cloud_touch(tree: SceneTree, sources: Array) -> void:
+	var on := float(_k("cloud_touch"))
+	var slots := [&"touch_a", &"touch_b", &"touch_c", &"touch_d"]
+	var mats := _cloud_materials(tree)
+	for m in mats:
+		for i in slots.size():
+			var v := Vector4.ZERO
+			if on > 0.0 and i < sources.size():
+				v = sources[i]
+			m.set_shader_parameter(slots[i], v)
+		m.set_shader_parameter("touch_gain", 1.2 * on)
+		m.set_shader_parameter("touch_grow", 0.8 * on)
+		m.set_shader_parameter("touch_push", 0.025 * on)
 
 
 ## Параметр шейдера на всех материалах ассета (анимация и настройка из кода: touch_pos, touch_radius, breathe, pulse…).
