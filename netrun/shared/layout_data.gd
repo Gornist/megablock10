@@ -324,6 +324,22 @@ func _fill_ice(src: Variant) -> String:
 		if r.has("error"):
 			return "ice %s: %s" % [str(ed.get("id", "?")), str(r["error"])]
 		sentries.append({"id": str(ed.get("id", "g%d" % (sentries.size() + 1))), "route": r["route"]})
+	return _trim_sensor_beams()
+
+
+## Луч Датчика обрывается на первой занятой клетке (колонна, укрытие, тумба Маяка, хранилище, барьер): «что видно, то и работает» (Game 16.10, правило без
+## исключений) — и рисуется, и срабатывает только до неё. Занятость известна только после разбора всех записей (тумба Маяка), поэтому обрезаем в конце. Клетка
+## самого датчика остаётся, даже если занята; луч короче BEAM_MIN_LEN клеток — ошибка раскладки.
+func _trim_sensor_beams() -> String:
+	for s: Dictionary in sensors:
+		var out: Array[Vector2i] = []
+		for c: Vector2i in s["cells"]:
+			if not out.is_empty() and occupied.has(c):
+				break
+			out.append(c)
+		if out.size() < NodeGrid.BEAM_MIN_LEN:
+			return "ice %s: луч датчика упирается в занятую клетку сразу (меньше %d клеток)" % [str(s["id"]), NodeGrid.BEAM_MIN_LEN]
+		s["cells"] = out
 	return ""
 
 
