@@ -243,6 +243,25 @@ static func aim_step(state: Dictionary, stick: Vector2, clicked: bool, delta: fl
 	return {"aiming": true, "low": 0.0, "event": ""}
 
 
+## Правый стик делится на поворот (вбок) и прицел телепорта (вперёд) — как в Skyrim VR (Game 16.10, окончательно): угол от «вперёд» до AIM_SECTOR_DEG —
+## прицел; от TURN_SECTOR_DEG до TURN_SECTOR_MAX_DEG (вбок) — поворот; между ними и назад — мёртвая зона по углу, чтобы прицел и поворот не путались.
+## Пока прицел держится (aiming), стик целиком идёт в прицел и поворота нет. Возвращает {"turn": x стика для поворота, "aim": стик для прицела}.
+const AIM_SECTOR_DEG := 40.0
+const TURN_SECTOR_DEG := 60.0
+const TURN_SECTOR_MAX_DEG := 120.0
+static func split_right_stick(stick: Vector2, aiming: bool) -> Dictionary:
+	if aiming:
+		return {"turn": 0.0, "aim": stick}
+	if stick.length() < STICK_AIM_RELEASE:   # у центра: ничего не начинаем, но слабое отклонение прицел «отпустит» как раньше
+		return {"turn": 0.0, "aim": stick}
+	var angle := rad_to_deg(absf(atan2(stick.x, stick.y)))   # 0 — вперёд, 90 — вбок, 180 — назад
+	if angle <= AIM_SECTOR_DEG:
+		return {"turn": 0.0, "aim": stick}
+	if angle >= TURN_SECTOR_DEG and angle <= TURN_SECTOR_MAX_DEG:
+		return {"turn": stick.x, "aim": Vector2.ZERO}
+	return {"turn": 0.0, "aim": Vector2.ZERO}   # мёртвая зона по углу
+
+
 # ---------------------------------------------------------------- телепорт: моргание
 
 static func blink_new() -> Dictionary:
