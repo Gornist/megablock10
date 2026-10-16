@@ -71,7 +71,7 @@ func check_start(session: String, item: String) -> Dictionary:
 	var avatar := node.net.get_avatar(session)
 	if ds == null or avatar == null or node.net.node_of(session) != node.node_id or node._finishing.has(session):
 		return {"reason": "not_ready"}
-	if _by_session.has(session) or node.charge.has_attempt(session) or node.breach.has_attempt(session) or node.breach.is_opening(session):
+	if _by_session.has(session) or node.charge.has_attempt(session) or node.barrier.has_attempt(session) or node.breach.has_attempt(session) or node.breach.is_opening(session):
 		return {"reason": "active"}
 	if node.bridge == null or not node.bridge.is_ready():
 		return {"reason": "no_bridge"}
