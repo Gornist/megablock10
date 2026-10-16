@@ -204,6 +204,7 @@ func _process(delta: float) -> void:
 			(_avatar_nodes[id] as AvatarView).move_to(pose["p"], delta)
 	if alarm_level == 3:   # «охота»: фон пульсирует в ритме такта
 		_env.background_color = alarm_bg(3, _tick_phase(now))
+	_update_cloud(now)
 	_animate_shards(delta)
 	_update_stow_target(delta)
 	_update_breach_panel()
@@ -853,6 +854,41 @@ func _update_danger(state: Dictionary) -> void:
 	world_ui.danger.wake_count(waking)
 	if state.has("burn"):
 		world_ui.danger.burns(int(state["burn"]))
+
+
+## Радиусы отклика облаков (Blender, PR 346): рука и чужой аватар, м; до CLOUD_TOUCH_MAX источников в мировых координатах.
+const CLOUD_TOUCH_HAND_R := 0.35
+const CLOUD_TOUCH_AVATAR_R := 0.8
+const CLOUD_TOUCH_AVATAR_Y := 1.0   ## высота центра отклика у аватара (рост сидящего), м
+const CLOUD_TOUCH_MAX := 4
+
+
+## Дыхание облаков (Б) по такту хода и отклик на руки и чужие аватары — каждый кадр (контракт Blender: AssetMaterials.set_cloud_breath / set_cloud_touch).
+## Нет тактов (win = 0) — фаза 0; нет облаков — вызовы ничего не делают.
+func _update_cloud(local_now: float) -> void:
+	var tree := get_tree()
+	if tree == null:
+		return
+	AssetMaterials.set_cloud_breath(tree, AssetMaterials.tick_phase(remote.tick_info(), remote.clock.server_time(local_now)))
+	AssetMaterials.set_cloud_touch(tree, cloud_touch_sources())
+
+
+## Источники отклика: руки игрока (в очках), затем чужие аватары — не больше CLOUD_TOUCH_MAX.
+func cloud_touch_sources() -> Array:
+	var out: Array = []
+	if rig != null and rig.xr_active:
+		for h: Node3D in [rig.right_hand, rig.left_hand]:
+			if h != null and h.is_inside_tree():
+				var p := h.global_position
+				out.append(Vector4(p.x, p.y, p.z, CLOUD_TOUCH_HAND_R))
+	for id in _avatar_nodes:
+		if out.size() >= CLOUD_TOUCH_MAX:
+			break
+		var a := _avatar_nodes[id] as Node3D
+		if a != null and a.is_inside_tree():
+			var p := a.global_position
+			out.append(Vector4(p.x, p.y + CLOUD_TOUCH_AVATAR_Y, p.z, CLOUD_TOUCH_AVATAR_R))
+	return out
 
 
 ## Доля окна такта, прошедшая к моменту local_now (0…1); нет тактов — 0.
