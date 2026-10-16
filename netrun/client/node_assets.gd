@@ -9,6 +9,14 @@ const ROOT := "res://assets/models/"
 const TIERS := ["BASE", "HARD", "NIGHTMARE"]
 const SOFT_ICE := ROOT + "ice/soft_ice.glb"
 const BLACK_ICE := ROOT + "ice/black_ice.glb"
+## Виды Black ICE (ice.md §6.2, graph.json "black": {"kind"}): модель вида — ice/black_ice_<вид>.glb, те же клипы idle/hunt/catch, что у базового.
+const BLACK_KINDS := ["hound", "kraken", "raven", "scorpion", "lich"]
+const BLACK_LAIR := ROOT + "ice/black_lair.glb"
+
+
+## Модель Black ICE по виду; пустой или неизвестный вид — базовая.
+static func black_ice_path(kind: String) -> String:
+	return "%sice/black_ice_%s.glb" % [ROOT, kind] if BLACK_KINDS.has(kind) else BLACK_ICE
 const RUNNER := ROOT + "avatar/runner.glb"
 ## Отражение в полу: яркость зеркальной копии (assets/ARCHITECTURE.md, п. 8).
 const REFLECTION_INTENSITY := 0.18

@@ -1298,6 +1298,8 @@ func _broadcast_state() -> void:
 			entry["bw"] = bb.wake_left()
 			entry["pg"] = bb.ping_in()
 			entry["c"] = [bc.x, bc.y]
+			if bb.kind() != "":
+				entry["kd"] = bb.kind()   # вид (hound, kraken, raven, scorpion, lich): клиент рисует модель вида; нет поля — базовый Black ICE
 		ice_list.append(entry)
 	for session in _live_sessions():
 		var ds: DaemonSession = _sessions[session]
