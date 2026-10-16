@@ -10,7 +10,7 @@ extends RefCounted
 const DEADZONE := 0.2
 const SNAP_THRESHOLD := 0.7      ## стик за этим порогом запускает рывок
 const SNAP_RELEASE := 0.3        ## ниже этого порога стик «взведён» снова
-const SNAP_STEP_DEG := 30.0      ## рывок: только режим turn_mode = snap (разработка), по умолчанию не используется
+const SNAP_STEP_DEG := 45.0      ## рывок поворота стиком (режим по умолчанию turn_mode = snap)
 const MOVE_SPEED := 1.5          ## м/с, ходьба WASD в плоской сборке с --walk (разработка); в VR ходьбы нет
 const MAX_MOVE_SPEED := 3.0      ## жёсткий потолок, настройкой не превысить
 
@@ -21,7 +21,7 @@ const MAX_MOVE_SPEED := 3.0      ## жёсткий потолок, настро�
 const TURN_MODE_NONE := "none"
 const TURN_MODE_SMOOTH := "smooth"
 const TURN_MODE_SNAP := "snap"
-const TURN_MODE_DEFAULT := TURN_MODE_NONE
+const TURN_MODE_DEFAULT := TURN_MODE_SNAP   # решение владельца после П6 (16.10): поворот стиком щелчками, как в Skyrim VR; плавный — настройкой turn_mode = "smooth"
 ## Поворот при телепорте задаёт тот же правый стик, что и прицел: его положение (угол) относительно текущего взгляда. Слабее
 ## FACING_STICK_MIN стик не читаем (при отпускании он возвращается к центру — берётся последнее «держу»). В пределах FACING_DEAD_DEG от
 ## «вверх» поворота нет, дальше угол растёт плавно до 180° (facing_deg).

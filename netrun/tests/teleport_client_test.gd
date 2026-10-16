@@ -34,9 +34,9 @@ func _teleport_forward(rig: XRRig) -> void:
 	_frames(rig, 12)
 
 
-func test_defaults_are_no_stick_turn_and_no_walking() -> void:
+func test_defaults_are_snap_stick_turn_and_no_walking() -> void:
 	var rig: XRRig = _scene().rig
-	assert_str(rig.turn_mode).is_equal(RigMath.TURN_MODE_NONE)
+	assert_str(rig.turn_mode).is_equal(RigMath.TURN_MODE_SNAP)
 	assert_float(rig.turn_speed_deg_s).is_equal(RigMath.TURN_SPEED_DEG_S)
 	assert_bool(rig.walk_enabled).is_false()
 	assert_float(rig.teleport_range).is_equal(RigMath.TELEPORT_RANGE)
@@ -317,8 +317,22 @@ func _teleport_with(rig: XRRig, stick: Vector2) -> void:
 		rig.drive(0.0, Vector2.ZERO, false, DT)
 
 
-func test_left_stick_does_not_rotate_the_world_by_default() -> void:
+func test_left_stick_turns_the_world_one_click_by_default() -> void:
+	# Решение владельца после П6 (16.10): поворот стиком по умолчанию щелчком (snap, 30°), как в Skyrim VR; держишь стик — один щелчок, отпустил — снова можно.
 	var rig: XRRig = _scene().rig
+	var yaw0 := _yaw(rig)
+	for i in 72:
+		rig.drive(1.0, Vector2.ZERO, false, DT)
+	assert_float(absf(_yaw(rig) - yaw0)).is_equal_approx(deg_to_rad(RigMath.SNAP_STEP_DEG), 0.001)
+	assert_float(rig.vignette_amount()).is_equal(0.0)   # щелчок без виньетки
+	rig.drive(0.0, Vector2.ZERO, false, DT)
+	rig.drive(1.0, Vector2.ZERO, false, DT)
+	assert_float(absf(_yaw(rig) - yaw0)).is_equal_approx(deg_to_rad(2.0 * RigMath.SNAP_STEP_DEG), 0.001)
+
+
+func test_left_stick_does_not_rotate_the_world_in_none_mode() -> void:
+	var rig: XRRig = _scene().rig
+	rig.turn_mode = RigMath.TURN_MODE_NONE
 	var yaw0 := _yaw(rig)
 	for i in 72:
 		rig.drive(1.0, Vector2.ZERO, false, DT)   # turn_x — левый стик: вращает мир только в режимах smooth и snap

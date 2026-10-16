@@ -69,7 +69,8 @@ var _barrier_open_btn: MbButton
 var _barrier_force_btn: MbButton
 var _barrier_cancel_btn: MbButton
 var _barrier_id := ""                       # барьер рядом, который можно вскрыть ("" — рядом нет)
-var _barrier_forcing := false              # идёт силовое вскрытие: держимся на месте
+var _barrier_near_lair := false            # барьер в 2 клетках карты от логова Black ICE: на полосе предупреждение
+var _barrier_forcing := false             # идёт силовое вскрытие: держимся на месте
 var _rows_chargeable := false              # в списке есть кнопка «ЗАРЯДИТЬ»: деку есть чем нажимать
 var _calls: DeckCalls
 var _tab := TAB_DECK
@@ -691,10 +692,13 @@ func _on_call_changed(state: Dictionary) -> void:
 # ---------------------------------------------------------------- барьер Soft ICE (ice.md §5)
 
 ## Рядом закрытый барьер barrier_id ("" — рядом нет): полоса с «ВСКРЫТЬ» и «СИЛОЙ». Во время мини-игры или силового вскрытия не меняется.
-func set_barrier_prompt(barrier_id: String) -> void:
-	if barrier_id == _barrier_id:
+func set_barrier_prompt(barrier_id: String, near_lair: bool = false) -> void:
+	if barrier_id == _barrier_id and near_lair == _barrier_near_lair:
 		return
 	_barrier_id = barrier_id
+	_barrier_near_lair = near_lair
+	if not _barrier_forcing:
+		_barrier_label.text = HudLogic.barrier_hint_text(near_lair)   # барьер объясняет себя (П6-3): куда ведёт, где логово, цена силы
 	_refresh_barrier_row()
 
 
@@ -715,7 +719,7 @@ func apply_barrier_force_tick(left_ticks: int) -> void:
 ## Силовое вскрытие закончено (`bk_end`): открыт или брошен.
 func end_barrier_force(opened: bool) -> void:
 	_barrier_forcing = false
-	_barrier_label.text = "БАРЬЕР РЯДОМ"
+	_barrier_label.text = HudLogic.barrier_hint_text(_barrier_near_lair)
 	if opened:
 		_barrier_id = ""
 	show_notice("Барьер вскрыт силой" if opened else "Силовое вскрытие брошено")

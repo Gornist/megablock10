@@ -29,6 +29,7 @@ const EYE_POS_BLACK := Vector3(0.0, 2.3, -0.6)
 
 var black := false
 var asset := ""
+var kind := ""   ## вид Black ICE (hound, kraken, raven, scorpion, lich); пусто — базовый
 var state := STATE_PATROL
 var near_target := false
 
@@ -42,9 +43,10 @@ var _eye_state := -1
 var _lost_mark: Label3D
 
 
-func _init(is_black: bool = false) -> void:
+func _init(is_black: bool = false, black_kind: String = "") -> void:
 	black = is_black
-	asset = NodeAssets.BLACK_ICE if black else NodeAssets.SOFT_ICE
+	kind = black_kind if black and NodeAssets.BLACK_KINDS.has(black_kind) else ""
+	asset = NodeAssets.black_ice_path(kind) if black else NodeAssets.SOFT_ICE
 	_model = NodeAssets.instance(asset)
 	_model.name = "Model"
 	add_child(_model)

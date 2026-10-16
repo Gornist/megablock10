@@ -49,8 +49,8 @@ func test_recenter_moves_origin_horizontally_only() -> void:
 
 # ---------------------------------------------------------------- плавный поворот
 
-func test_default_turn_is_none_the_stick_does_not_rotate_the_world() -> void:
-	assert_str(RigMath.TURN_MODE_DEFAULT).is_equal(RigMath.TURN_MODE_NONE)
+func test_default_turn_is_snap_the_stick_turns_in_clicks() -> void:
+	assert_str(RigMath.TURN_MODE_DEFAULT).is_equal(RigMath.TURN_MODE_SNAP)
 	assert_float(RigMath.TURN_SPEED_DEG_S).is_equal(60.0)
 	assert_float(RigMath.TURN_SPEED_DEG_S).is_less(RigMath.TURN_SPEED_MAX_DEG_S)
 	assert_float(RigMath.TURN_SPEED_MAX_DEG_S).is_equal(120.0)

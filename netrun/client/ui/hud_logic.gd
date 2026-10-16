@@ -209,6 +209,29 @@ static func barrier_denied_text(reason: String) -> String:
 	return "Сейчас нельзя"
 
 
+## Расстояние (клеток 1 м, Чебышёв), ближе которого барьер «рядом с логовом»: 2 клетки карты по 2 м (П6-3, ice.md §5).
+const BARRIER_LAIR_NEAR := 4
+## Цена силового вскрытия (graph.json trace_events.barrier / alert_events.barrier, ice.md §5): на полосе до удержания курка.
+const BARRIER_FORCE_COST := "trace +10, тревога +10"
+
+
+## Барьер рядом с логовом: хотя бы одна клетка барьера в BARRIER_LAIR_NEAR клетках (по Чебышёву) от клетки логова.
+static func barrier_near_lair(barrier_cells: Array, lair_cells: Array) -> bool:
+	for b: Vector2i in barrier_cells:
+		for l: Vector2i in lair_cells:
+			if maxi(absi(b.x - l.x), absi(b.y - l.y)) <= BARRIER_LAIR_NEAR:
+				return true
+	return false
+
+
+## Полоса у барьера объясняет его (П6-3, на П6 владелец вскрыл силой, не зная цены, и разбудил Black ICE): куда ведёт, предупреждение о логове, цена силы.
+static func barrier_hint_text(near_lair: bool) -> String:
+	var t := "БАРЬЕР → внутреннее хранилище"
+	if near_lair:
+		t += "\nРЯДОМ ЛОГОВО BLACK ICE!"
+	return t + "\nСИЛОЙ: " + BARRIER_FORCE_COST
+
+
 ## Строка деки при силовом вскрытии: осталось тактов удержания (без прыжка).
 static func barrier_force_text(left_ticks: int) -> String:
 	if left_ticks <= 0:

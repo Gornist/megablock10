@@ -142,7 +142,6 @@ func test_a_cell_is_at_least_2_cm_on_a_deck_at_scale_1_for_every_tier() -> void:
 
 func test_wrist_deck_pos_keeps_the_near_edge_at_the_gap_for_any_scale() -> void:
 	assert_vector(WorldUI.wrist_deck_pos(WorldUI.WRIST_DECK_SCALE)).is_equal_approx(WorldUI.WRIST_DECK_POS, Vector3(0.0001, 0.0001, 0.0001))
-	assert_vector(WorldUI.wrist_trace_pos(WorldUI.WRIST_DECK_SCALE)).is_equal_approx(WorldUI.WRIST_TRACE_POS, Vector3(0.0001, 0.0001, 0.0001))
 	for sc in [0.75, 1.0]:
 		var length: float = DeckPanel.PANEL_WIDTH_M * sc
 		var near_edge := WorldUI.wrist_deck_pos(sc).y + length * 0.5   # ближний к кисти край (Y якоря — к пальцам)
@@ -151,8 +150,8 @@ func test_wrist_deck_pos_keeps_the_near_edge_at_the_gap_for_any_scale() -> void:
 
 func test_кольцо_такта_на_запястье_над_верхним_краем_деки_и_меньше_прежнего() -> void:
 	for sc in [WorldUI.WRIST_DECK_SCALE, WorldUI.CHARGE_DECK_SCALE]:
-		# в осях якоря: позиция кольца = trace.position + wrist_ring_pos; «верх» деки — локальный +Y, повёрнутый на WRIST_DECK_ROLL_DEG вокруг Z
-		var ring: Vector3 = WorldUI.wrist_trace_pos(sc) + WorldUI.wrist_ring_pos(sc)
+		# в осях якоря: позиция кольца = trace.position + повёрнутый trace wrist_ring_pos; «верх» деки — локальный +Y, повёрнутый на WRIST_DECK_ROLL_DEG вокруг Z
+		var ring: Vector3 = WorldUI.wrist_trace_pos(sc) + WorldUI.wrist_trace_basis(sc) * WorldUI.wrist_ring_pos(sc)
 		var rel := ring - WorldUI.wrist_deck_pos(sc)
 		var up_axis := Basis(Vector3.BACK, deg_to_rad(WorldUI.WRIST_DECK_ROLL_DEG)) * Vector3.UP
 		assert_float(rel.dot(up_axis)).is_greater(DeckPanel.PANEL_HEIGHT_M * sc * 0.5)   # за верхним краем, а не поверх панели

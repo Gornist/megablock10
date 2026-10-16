@@ -255,6 +255,7 @@ func apply_state(state: Dictionary) -> void:
 		selected_daemon = ids[0] if not ids.is_empty() else ""
 	_refresh_deck()
 	remote.on_state(state, Time.get_ticks_msec() / 1000.0)
+	_update_danger(state)
 	_update_tick_floor()
 	var seen := {}
 	for ice in state.get("ice", []):
@@ -263,7 +264,7 @@ func apply_state(state: Dictionary) -> void:
 		var pos := Vector3(p[0], p[1], p[2])
 		seen[id] = true
 		if not _ice_nodes.has(id):
-			_ice_nodes[id] = _make_ice(id, int(ice.get("b", 0)) == 1)
+			_ice_nodes[id] = _make_ice(id, int(ice.get("b", 0)) == 1, str(ice.get("kd", "")))
 			_ice_nodes[id].position = pos
 		_show_ice_state(_ice_nodes[id], int(ice["s"]), pos)
 		if ice.has("c"):
@@ -284,6 +285,7 @@ func apply_state(state: Dictionary) -> void:
 func _apply_barriers(list: Array) -> void:
 	var seen := {}
 	var near := ""
+	var near_lair := false
 	var mine := NodeGrid.cell_of(rig.global_position)
 	for v: Dictionary in list:
 		var id := str(v["id"])
@@ -296,11 +298,15 @@ func _apply_barriers(list: Array) -> void:
 		(_barrier_nodes[id] as BarrierView).apply_view(v)
 		if int(v.get("open", 0)) == 0 and near == "" and barrier_adjacent(v["c"], mine):
 			near = id
+			var cells: Array = []
+			for c: Variant in v["c"]:
+				cells.append(Vector2i(int((c as Array)[0]), int((c as Array)[1])))
+			near_lair = not _layout.lair.is_empty() and HudLogic.barrier_near_lair(cells, _layout.lair["cells"])
 	for id in _barrier_nodes.keys():
 		if not seen.has(id):
 			(_barrier_nodes[id] as Node).free()
 			_barrier_nodes.erase(id)
-	world_ui.deck.set_barrier_prompt(near)
+	world_ui.deck.set_barrier_prompt(near, near_lair)
 
 
 ## Клетка `cell` соседняя (по восьми направлениям) с клеткой блока барьера: так же решает сервер (GrayNode.barrier_adjacent).
@@ -578,8 +584,8 @@ func _refresh_deck() -> void:
 	world_ui.deck.set_deck(deck)
 
 
-func _make_ice(id: String, black: bool) -> IceView:
-	var n := IceView.new(black)
+func _make_ice(id: String, black: bool, kind: String = "") -> IceView:
+	var n := IceView.new(black, kind)
 	n.name = id
 	if ice_audio_enabled:
 		var a := IceAudio.new()
@@ -804,6 +810,7 @@ static func entry_point(ld: LayoutData) -> Vector3:
 func apply_layout(ld: LayoutData, tier: String) -> void:
 	_layout = ld if ld != null and ld.error.is_empty() else LayoutData.cached(LayoutData.LEGACY)
 	view.set_look(tier, _layout)
+	view.set_lair({} if _layout.is_legacy() else _layout.lair)
 	var g := NodeGrid.for_layout() if _layout.is_legacy() else _layout.grid()
 	rig.grid = g
 	if tick_floor != null:
@@ -826,8 +833,26 @@ func apply_alarm(ev: Dictionary) -> void:
 
 ## Вид тревоги: кромки комнаты и фон по уровню (цвета — AssetMaterials у Blender).
 func _on_alarm_view(level: int, _alarm: float) -> void:
+	if world_ui != null and world_ui.danger != null:
+		world_ui.danger.alarm_level(level)
 	view.set_alarm_level(level)
 	_env.background_color = alarm_bg(level, _tick_phase(Time.get_ticks_msec() / 1000.0))
+
+
+## Опасное в центре зрения (ice.md §8 «Правило П6»): пробуждение Black ICE (bw — тактов до конца, у ближайшего просыпающегося) и ожоги (burn) из снимка.
+func _update_danger(state: Dictionary) -> void:
+	for ice in state.get("ice", []):   # логово повторяет фазу Black ICE: спит, просыпается, пусто
+		if int(ice.get("b", 0)) == 1:
+			view.set_lair_phase(int(ice.get("bp", 0)))
+	if world_ui == null or world_ui.danger == null:
+		return
+	var waking := 0
+	for ice in state.get("ice", []):
+		if int(ice.get("bp", 0)) == 1 and int(ice.get("bw", 0)) > 0:   # фаза 1 — пробуждение
+			waking = int(ice["bw"]) if waking == 0 else mini(waking, int(ice["bw"]))
+	world_ui.danger.wake_count(waking)
+	if state.has("burn"):
+		world_ui.danger.burns(int(state["burn"]))
 
 
 ## Доля окна такта, прошедшая к моменту local_now (0…1); нет тактов — 0.

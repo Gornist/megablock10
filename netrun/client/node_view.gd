@@ -66,6 +66,8 @@ var hunted := false
 ## Уровень тревоги узла 0–4: кромки комнаты сдвинуты к тёплому (AssetMaterials.set_alarm); переживает пересборку комнаты.
 var alarm_level := 0
 
+var _lair: Node3D          ## логово Black ICE (props ice/black_lair.glb), пока в раскладке есть lair
+var _lair_phase := 0       ## фаза Black ICE: 0 сон, 1 пробуждение, 2+ вышел
 var _room: Node3D
 var _props: Node3D
 var _furniture: Node3D
@@ -151,6 +153,49 @@ func set_alarm_level(level: int) -> void:
 func _apply_alarm() -> void:
 	if _room != null:
 		AssetMaterials.set_alarm(_room, alarm_level, tier)
+
+
+## Центр логова Black ICE: середина ограничивающего прямоугольника его клеток (4×4 м, четыре блока «L» карты).
+static func lair_center(lair: Dictionary) -> Vector3:
+	var cells: Array = lair.get("cells", [])
+	if cells.is_empty():
+		return Vector3.ZERO
+	var lo := Vector2i(cells[0])
+	var hi := lo
+	for c: Vector2i in cells:
+		lo = Vector2i(mini(lo.x, c.x), mini(lo.y, c.y))
+		hi = Vector2i(maxi(hi.x, c.x), maxi(hi.y, c.y))
+	return (NodeGrid.center(lo) + NodeGrid.center(hi)) * 0.5
+
+
+## Логово Black ICE узла (раскладка с `lair`; пустой словарь — логова нет): плита с красной кромкой на месте четырёх блоков «L», видна от входа
+## (ice.md §6.1: «логово видно от входа»). Состояние — по фазе Black ICE (set_lair_phase).
+func set_lair(lair: Dictionary) -> void:
+	_discard(_lair)
+	_lair = null
+	if lair.is_empty():
+		return
+	_lair = NodeAssets.instance(NodeAssets.BLACK_LAIR)
+	_lair.name = "Lair"
+	_lair.position = lair_center(lair)
+	add_child(_lair)
+	set_lair_phase(_lair_phase)
+
+
+## Фаза Black ICE (bp состояния): 0 сон — холм красных штрихов, 1 пробуждение — горячий холм, остальное (охота, возврат) — пепел «Black ICE вышел».
+func set_lair_phase(phase: int) -> void:
+	_lair_phase = phase
+	if _lair == null:
+		return
+	var want := "State_sleep" if phase == 0 else ("State_waking" if phase == 1 else "State_empty")
+	for s in ["State_sleep", "State_waking", "State_empty"]:
+		var n := _lair.find_child(s, true, false) as Node3D
+		if n != null:
+			n.visible = s == want
+
+
+func lair_node() -> Node3D:
+	return _lair
 
 
 ## Кресло — там, где игрок появляется (вход раскладки); датчик — только в прежней комнате: в раскладке Стражи — на карте, датчика нет.
