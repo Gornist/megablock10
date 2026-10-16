@@ -334,7 +334,7 @@ func _apply_beacons(list: Array) -> void:
 			b.name = "Beacon_" + id
 			add_child(b)
 			_beacon_nodes[id] = b
-		(_beacon_nodes[id] as BeaconView).apply_view(v)
+		(_beacon_nodes[id] as BeaconView).apply_view(v, rig.grid)
 	for id in _beacon_nodes.keys():
 		if not seen.has(id):
 			(_beacon_nodes[id] as Node).free()
