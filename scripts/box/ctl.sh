@@ -688,7 +688,12 @@ pico_show_wait() { # pico_show_wait <владелец> <минут>
       last="$DIAG_KIND|$P_RES"
       case $DIAG_KIND in
         physical) say="нажмите в очках «Перезапустить отслеживание» (или включите свет: трекинг не работает, conf=${P_CONF:-?}); окно $P_RES";;
-        window) say="нажмите в очках «Войти в VR»; сейчас окно $P_RES";;
+        window)
+          case ${P_RES%%/*} in
+            "$PICO_BOUNDARY_PKG") say="нажмите в очках «Войти в VR»; сейчас окно $P_RES";;
+            *) say="закройте окно в очках (системное: $P_RES)";;
+          esac;;
+        unknown) say="закройте приложение в очках (магазин, файлы и т. п.): окно $P_RES — не игра и не лобби";;
         *) say="${DIAG_WHY:-экран не готов}";;
       esac
       echo "pico show: жду: $say"
@@ -703,7 +708,7 @@ pico_show_wait() { # pico_show_wait <владелец> <минут>
 }
 pico_show() {
   [ $# -ge 3 ] || { err "использование: pico show <владелец> [--minutes N] [--wait N] [--dir каталог] -- команда стенда…"; return 2; }
-  local own=$1 min=240 wait=3 dir="" lo rc pid
+  local own=$1 min=240 wait=3 dir="" lo rc pid cwd=$PWD
   shift
   while [ $# -gt 0 ]; do
     case $1 in
@@ -736,7 +741,7 @@ pico_show() {
     echo "pico show: НЕ ГОТОВО — команда стенда не запускалась; очки не гашу, бронь $own осталась (до $(hm "$(get "$BOX/leases/pico.lease" until)")); каталог: $dir"; return 20
   fi
   (
-    cd "$dir" || exit 1
+    cd "$cwd" || exit 1  # каталог ВЫЗОВА, не каталог показа: владелец копирует команды с относительным путём (`bash netrun/tools/p6_run.sh`)
     PICO_PARK_OK=0 PICO_SERIAL=$PICO PICO_RUN_DIR=$dir BOX_OWNER=$own BOX_SHOW=1 BOX_CTL=$(readlink -f "$0") \
       setsid nohup timeout "$(( min * 60 + 300 ))" "$@" >"$dir/show.log" 2>&1 </dev/null 7>&- 9>&- &
     echo $! >"$dir/.pid"
