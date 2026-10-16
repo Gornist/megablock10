@@ -73,14 +73,25 @@ wait_for "VPN (tun_incy + xray)" "$VPN_TIMEOUT" vpn_up \
   || bad "VPN не поднялся (autoConnect в incy включён? Иду дальше без него)"
 
 # 2. Tailscale. Демон стартует при загрузке раньше VPN и ходит к control plane через прокси xray — пока прокси нет, не Running.
-#    Уже Running — не трогаем (раньше перезапускали всегда и на секунды роняли ssh); иначе ждём немного и перезапускаем.
+#    Уже Running — не трогаем (раньше перезапускали всегда и на секунды роняли ssh). Иначе (14.10: при старте раньше прокси демон
+#    остаётся «logged out» — fetch control key: connection refused на 127.0.0.1:10809) — то, что владелец делал руками:
+#    `tailscale up` БЕЗ sudo (оператор демона — nick), потом перезапуск tailscaled, потом ещё раз `tailscale up`.
+#    Флаги — те же, что в настройках узла (--ssh, --operator=nick): `tailscale up` без них отказывается менять настройки.
+ts_up() { timeout 40 tailscale up --ssh --operator=nick --accept-risk=lose-ssh >/dev/null 2>&1; }
 if wait_for "Tailscale (BackendState=Running)" 15 ts_running; then
   :
-elif sudo -n /usr/bin/systemctl restart tailscaled; then
-  wait_for "Tailscale после перезапуска tailscaled" "$TS_TIMEOUT" ts_running \
-    || bad "Tailscale: $(ts_state) после перезапуска — владельцу: sudo tailscale up (или вход, если NeedsLogin)"
 else
-  bad "Tailscale: $(ts_state), а sudo без пароля на tailscaled не настроен (/etc/sudoers.d/devbox-tailscale)"
+  log "Tailscale: $(ts_state) при поднятом VPN — tailscale up"
+  ts_up
+  if wait_for "Tailscale после tailscale up" 30 ts_running; then
+    :
+  elif sudo -n /usr/bin/systemctl restart tailscaled; then
+    ts_up
+    wait_for "Tailscale после перезапуска tailscaled" "$TS_TIMEOUT" ts_running \
+      || bad "Tailscale: $(ts_state) после tailscale up и перезапуска — владельцу: вход, если NeedsLogin (tailscale up, откроет ссылку)"
+  else
+    bad "Tailscale: $(ts_state), tailscale up не помог, а sudo без пароля на tailscaled не настроен (/etc/sudoers.d/devbox-tailscale)"
+  fi
 fi
 
 # 3. adb. Сервер — user-служба box-adb (поднимается сама при входе); здесь только проверка. Чужой сервер не убиваем.
