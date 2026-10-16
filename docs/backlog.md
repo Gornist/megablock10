@@ -17,7 +17,6 @@
 - [ ] [devbox] Первый живой прогон `box.sh pico show` с человеком в очках (ожидание `--wait`, лобби, `unshow`) — код влит в #336/#352, на живых очках с человеком не проверен; ждёт: показ владельца — Devbox 16.10
 - [ ] [devbox] Проверить `tailscale up` из `devbox-session-start.sh` на реальной загрузке с проблемой Tailscale: строка «tailscale up» в `~/.local/state/devbox-session.log` — #333, 16.10
 - [ ] [devbox] Причина самовыключения RCPad и шторма USB over-current: смотреть `~/box/journal.jsonl` (`usb-recover`, `rcpad-reboot`); физика — кабель/блок питания; ждёт: владелец заменяет кабель/БП — Devbox 16.10
-- [ ] [devbox] Свет для очков: умная розетка/реле (`~/box/pico-light-on/off`) — трекинг Pico в тёмной комнате; ждёт: владелец покупает/ставит — Devbox 16.10
 
 - [ ] [android] Переход на AGP 9.1 и compileSdk 37 — тогда поднять core-ktx 1.19+, Compose BOM 2026.09+, Paparazzi alpha05.1 (эталоны a11y/scroll/Dialogs перезаписать с проверкой) и убрать их ignore из `.github/dependabot.yml` — из #258/#259, 14.10
 - [ ] [godot] 4.5b Барьер (ice.md §5: закрывает клетку, вскрытие мини-игрой заряда 3/4/5 кодов, силой 2 такта + trace/тревога +10) и раскладка Ядра (levels.md §4.5) с проверкой §6.3 — после 4.5a; w4-mechanics.md п. 4.5b, Game 14.10
