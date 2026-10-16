@@ -661,13 +661,54 @@ show_alive() { # → 0, если записанная команда показ�
   pid=$(get "$SHOW_STATE" pid); st=$(get "$SHOW_STATE" lstart)
   [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && [ "$(ps -o lstart= -p "$pid" 2>/dev/null | sed 's/  */ /g')" = "$st" ]
 }
+# Человек в очках сам закроет карточку границы («Войти в VR») и «Слишком темно» («Перезапустить отслеживание») — show НЕ выходит
+# с «НЕ ГОТОВО» (15.10 21:10: дважды вышел, пока владелец уже сидел в очках), а ждёт до $2 минут, опрос раз в 2 с.
+# Допустимо: pico_diagnose при брони человека (игра, лобби, vrshell, лаунчер + трекинг работает). Одна строка «жду: …» — при первой
+# причине и при её смене. 0 — экран допустим; 1 — не дождались (или очки не отвечают).
+pico_show_wait() { # pico_show_wait <владелец> <минут>
+  local own=$1 deadline last="" st say
+  deadline=$(( $(date +%s) + $2 * 60 ))
+  PICO_CARD_OK=0
+  st=$(pico_state)
+  case ${st%% *} in
+    Awake) ;;
+    Asleep|Dozing)
+      pico_power
+      pico_wait Awake 8 || { echo "pico show: очки не проснулись по POWER за 8 с ($(pico_state))"; pico_attention "$own" "очки не проснулись по POWER ($(pico_state))" "" wake; return 1; };;
+    *) echo "pico show: очки не отвечают на adb ($st)${st:+ — scripts/box.sh adb-rescue, если их держит лишний сервер}"; pico_attention "$own" "очки не отвечают на adb ($st)" "" wake; return 1;;
+  esac
+  while :; do
+    if pico_diagnose; then
+      jlog pico-show-ready owner "$own" res "$P_RES" conf "${P_CONF:-}"
+      rm -f "$BOX/attention.last"
+      echo "pico show: экран допустим — окно $P_RES, трекинг algstate=${P_ALG:-?}/conf=${P_CONF:-?}"
+      return 0
+    fi
+    if [ "$last" != "$DIAG_KIND|$P_RES" ]; then
+      last="$DIAG_KIND|$P_RES"
+      case $DIAG_KIND in
+        physical) say="нажмите в очках «Перезапустить отслеживание» (или включите свет: трекинг не работает, conf=${P_CONF:-?}); окно $P_RES";;
+        window) say="нажмите в очках «Войти в VR»; сейчас окно $P_RES";;
+        *) say="${DIAG_WHY:-экран не готов}";;
+      esac
+      echo "pico show: жду: $say"
+    fi
+    [ "$(date +%s)" -ge "$deadline" ] && break
+    sleep 2
+  done
+  jlog pico-show-timeout owner "$own" res "${P_RES:-}" kind "$DIAG_KIND" wait_min "$2"
+  pico_attention "$own" "показ: за $2 мин экран так и не стал допустимым — $DIAG_WHY" "$(pico_shot)" "${DIAG_KIND:-other}"
+  echo "pico show: за $2 мин экран не стал допустимым — $DIAG_WHY"
+  return 1
+}
 pico_show() {
-  [ $# -ge 3 ] || { err "использование: pico show <владелец> [--minutes N] [--dir каталог] -- команда стенда…"; return 2; }
-  local own=$1 min=240 dir="" lo v rc pid
+  [ $# -ge 3 ] || { err "использование: pico show <владелец> [--minutes N] [--wait N] [--dir каталог] -- команда стенда…"; return 2; }
+  local own=$1 min=240 wait=3 dir="" lo rc pid
   shift
   while [ $# -gt 0 ]; do
     case $1 in
       --minutes) min=${2:-}; shift 2;;
+      --wait) wait=${2:-}; shift 2;;
       --dir) dir=${2:-}; shift 2;;
       --) shift; break;;
       *) err "неизвестная опция '$1' (ожидался -- перед командой)"; return 2;;
@@ -677,6 +718,8 @@ pico_show() {
   pico_is_human "$own" || { err "pico show — показ человеку: владелец '$own' не в списке людей (Владелец, ~/box/pico-human-owners); автопрогон — pico run"; return 2; }
   case $min in ''|*[!0-9]*) err "--minutes — число"; return 2;; esac
   { [ "$min" -ge 1 ] && [ "$min" -le 480 ]; } || { err "минут от 1 до 480"; return 2; }
+  case $wait in ''|*[!0-9]*) err "--wait — минуты (0 — без ожидания)"; return 2;; esac
+  [ "$wait" -le 60 ] || { err "--wait до 60 минут"; return 2; }
   if [ -f "$SHOW_STATE" ] && show_alive; then
     echo "pico show: показ уже идёт (владелец $(get "$SHOW_STATE" owner), pid $(get "$SHOW_STATE" pid), каталог $(get "$SHOW_STATE" dir)) — снять: pico unshow"; return 1
   fi
@@ -688,8 +731,7 @@ pico_show() {
   cmd_lease pico "$own" "$min" "показ человеку: $(basename "$1")" >/dev/null || { echo "pico show: бронь pico не взята"; return 21; }
   jlog pico-show-start owner "$own" minutes "$min" dir "$dir" cmd "$*"
   pico_light on
-  v=$(pico_ready "$own"); rc=$?
-  echo "$v"
+  pico_show_wait "$own" "$wait"; rc=$?
   if [ "$rc" -ne 0 ]; then
     echo "pico show: НЕ ГОТОВО — команда стенда не запускалась; очки не гашу, бронь $own осталась (до $(hm "$(get "$BOX/leases/pico.lease" until)")); каталог: $dir"; return 20
   fi
@@ -827,7 +869,7 @@ cmd_pico() {
     run) pico_run "$@"; return $? ;;
     show) pico_show "$@"; return $? ;;
     unshow) pico_unshow; return $? ;;
-    *) err "pico show <владелец> [--minutes N] -- команда | unshow | status | wake <владелец> <мин> [заметка] | sleep <владелец> [--force] | guard | ready <владелец> | start <владелец> <пакет/активити> | unpark | fg | run <владелец> <мин> [--timeout сек] [--port N] [--dir каталог] -- команда… | taps on|off|status"; return 2;;
+    *) err "pico show <владелец> [--minutes N] [--wait N] -- команда | unshow | status | wake <владелец> <мин> [заметка] | sleep <владелец> [--force] | guard | ready <владелец> | start <владелец> <пакет/активити> | unpark | fg | run <владелец> <мин> [--timeout сек] [--port N] [--dir каталог] -- команда… | taps on|off|status"; return 2;;
   esac
 }
 
