@@ -448,10 +448,13 @@ func test_real_buttons_are_not_smaller_than_the_minimum_after_layout() -> void:
 
 
 func test_trace_indicator_clears_the_deck_on_the_wrist_and_in_the_flat_build() -> void:
-	# Дека с вкладками выше прежней: индикатор trace не должен лечь на её край ни на запястье (ниже, к локтю), ни в плоской сборке (выше).
-	# На запястье дека повёрнута на 90°: вдоль предплечья идёт её ширина; trace — за дальним (к локтю) краем.
-	var elbow_edge := WorldUI.WRIST_DECK_POS.y - WorldUI.WRIST_DECK_LENGTH_M * 0.5
-	assert_float(WorldUI.WRIST_TRACE_POS.y).is_less_equal(elbow_edge - 0.03)
+	# Дека с вкладками выше прежней: индикатор trace не должен лечь на её край ни на запястье (над верхним краем, рядом с кольцом такта), ни в плоской сборке (выше).
+	# На запястье дека повёрнута на 90°: её «верх» — повёрнутый +Y; trace стоит за верхним краем (решение владельца после П6).
+	var up_axis := Basis(Vector3.BACK, deg_to_rad(WorldUI.WRIST_DECK_ROLL_DEG)) * Vector3.UP
+	var rel := WorldUI.wrist_trace_pos(WorldUI.WRIST_DECK_SCALE) - WorldUI.wrist_deck_pos(WorldUI.WRIST_DECK_SCALE)
+	assert_float(rel.dot(up_axis)).is_greater_equal(DeckPanel.PANEL_HEIGHT_M * WorldUI.WRIST_DECK_SCALE * 0.5 + 0.015)
+	# полоса индикатора (после масштаба) не длиннее края деки по предплечью
+	assert_float(TraceIndicator.BAR_W * WorldUI.WRIST_DECK_SCALE).is_less_equal(WorldUI.WRIST_DECK_LENGTH_M)
 	assert_float(WorldUI.FLAT_TRACE_POS.y).is_greater_equal(DeckPanel.PANEL_HEIGHT_M * 0.5 + 0.015)
 
 

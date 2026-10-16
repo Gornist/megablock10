@@ -16,13 +16,13 @@ const WRIST_DECK_GAP := 0.02
 const WRIST_DECK_LENGTH_M := DeckPanel.PANEL_WIDTH_M * WRIST_DECK_SCALE
 ## Центр деки в системе якоря (якорь — на WRIST_ANCHOR_ELBOW от запястья к локтю; Y якоря — к пальцам): ближний к кисти край деки — в WRIST_DECK_GAP от запястья.
 const WRIST_DECK_POS := Vector3(0, -(WRIST_DECK_LENGTH_M * 0.5 + WRIST_DECK_GAP - HandView.WRIST_ANCHOR_ELBOW), 0)
-## Trace — за дальним (к локтю) краем деки.
-const WRIST_TRACE_POS := Vector3(0, WRIST_DECK_POS.y - (WRIST_DECK_LENGTH_M * 0.5 + 0.045), 0)
 const FLAT_TRACE_POS := Vector3(0, 0.14, 0)
-## Кольцо-таймер такта — ребёнок индикатора trace: в плоской сборке и на контроллере справа от полосы, на запястье — над декой (за её верхним краем в осях
-## самой деки, между ней и индикатором его не видно) на RING_ABOVE_GAP, чуть выше плоскости деки на RING_LIFT: взгляд на деку захватывает и кольцо.
+## Trace на запястье — над верхним краем деки, в ряд с кольцом такта (решение владельца после П6, 16.10; раньше был за дальним краем деки, слева от неё).
+## Кольцо-таймер такта — ребёнок индикатора trace: в плоской сборке и на контроллере справа от полосы, на запястье — за концом полосы на RING_BESIDE_GAP; сам
+## индикатор стоит над декой на RING_ABOVE_GAP, чуть выше плоскости деки на RING_LIFT: взгляд на деку захватывает и тревогу, и кольцо.
 const RING_POS_FLAT := Vector3(0.14, 0.0, 0.0)
 const RING_ABOVE_GAP := 0.025
+const RING_BESIDE_GAP := 0.03
 const RING_LIFT := 0.004
 ## На время сетки заряда (К6) дека на запястье увеличивается до этого масштаба (32 × 24 см): клетка 7×7 не мельче 2,8 см вместо 2,1; растёт за ZOOM_PER_SEC в секунду,
 ## чтобы не прыгать перед глазами.
@@ -110,15 +110,29 @@ static func wrist_deck_pos(scale: float) -> Vector3:
 	return Vector3(0, -(DeckPanel.PANEL_WIDTH_M * scale * 0.5 + WRIST_DECK_GAP - HandView.WRIST_ANCHOR_ELBOW), 0)
 
 
-## Кольцо такта на запястье при масштабе деки scale — в осях индикатора trace: над верхним краем деки (её «верх» с учётом поворота WRIST_DECK_ROLL_DEG).
-static func wrist_ring_pos(scale: float) -> Vector3:
-	var up := Basis(Vector3.BACK, deg_to_rad(WRIST_DECK_ROLL_DEG)) * Vector3(0.0, DeckPanel.PANEL_HEIGHT_M * scale * 0.5 + RING_ABOVE_GAP, RING_LIFT)
-	return wrist_deck_pos(scale) - wrist_trace_pos(scale) + up
+## Кольцо такта на запястье — в осях индикатора trace: в ряд с полосой, за её концом (решение владельца после П6, 16.10: «тревога — рядом с кружком такта»).
+## Индикатор лежит над верхним краем деки, как кольцо раньше, и повёрнут вместе с декой, так что кольцо оказывается у края полосы по ходу предплечья.
+static func wrist_ring_pos(_scale: float = 1.0) -> Vector3:
+	return Vector3(TraceIndicator.BAR_W * 0.5 + RING_BESIDE_GAP, 0.0, 0.0)
 
 
-## Trace — за дальним краем деки при масштабе scale.
+## Trace на запястье при масштабе деки scale — над верхним краем деки (её «верх» с учётом поворота WRIST_DECK_ROLL_DEG), в центре края.
 static func wrist_trace_pos(scale: float) -> Vector3:
-	return Vector3(0, wrist_deck_pos(scale).y - (DeckPanel.PANEL_WIDTH_M * scale * 0.5 + 0.045), 0)
+	var up := Basis(Vector3.BACK, deg_to_rad(WRIST_DECK_ROLL_DEG)) * Vector3(0.0, DeckPanel.PANEL_HEIGHT_M * scale * 0.5 + RING_ABOVE_GAP, RING_LIFT)
+	return wrist_deck_pos(scale) + up
+
+
+## Поворот и масштаб trace на запястье: как у деки (читается в ту же сторону, полоса не длиннее края деки).
+static func wrist_trace_basis(scale: float) -> Basis:
+	return Basis(Vector3.BACK, deg_to_rad(WRIST_DECK_ROLL_DEG)) * Basis.from_scale(Vector3.ONE * scale)
+
+
+## Trace, кольцо такта и деку на запястье — под масштаб деки scale.
+func _place_wrist(scale: float) -> void:
+	deck.scale = Vector3.ONE * scale
+	deck.position = wrist_deck_pos(scale)
+	trace.transform = Transform3D(wrist_trace_basis(scale), wrist_trace_pos(scale))
+	tick_ring.position = wrist_ring_pos(scale)
 
 
 func _process(delta: float) -> void:
@@ -143,25 +157,22 @@ func _place() -> void:
 		want.add_child(_anchor)
 		if rig.xr_active and wrist:
 			_anchor.transform = Transform3D.IDENTITY
-			deck.scale = Vector3.ONE * WRIST_DECK_SCALE
 			deck.rotation = Vector3(0, 0, deg_to_rad(WRIST_DECK_ROLL_DEG))
-			deck.position = WRIST_DECK_POS
-			trace.position = WRIST_TRACE_POS
-			tick_ring.position = wrist_ring_pos(WRIST_DECK_SCALE)
+			_place_wrist(WRIST_DECK_SCALE)
 			_deck_zoom = WRIST_DECK_SCALE
 		elif rig.xr_active:
 			_anchor.transform = Transform3D(Basis.from_euler(Vector3(-PI / 3, 0, 0)), Vector3(0, 0.05, -0.1))
 			deck.scale = Vector3.ONE
 			deck.rotation = Vector3.ZERO
 			deck.position = Vector3.ZERO
-			trace.position = FLAT_TRACE_POS
+			trace.transform = Transform3D(Basis.IDENTITY, FLAT_TRACE_POS)
 			tick_ring.position = RING_POS_FLAT
 		else:
 			_anchor.transform = Transform3D(Basis.from_euler(Vector3(0, deg_to_rad(15), 0)), Vector3(-0.3, -0.2, -0.65))
 			deck.scale = Vector3.ONE
 			deck.rotation = Vector3.ZERO
 			deck.position = Vector3.ZERO
-			trace.position = FLAT_TRACE_POS
+			trace.transform = Transform3D(Basis.IDENTITY, FLAT_TRACE_POS)
 			tick_ring.position = RING_POS_FLAT
 	# На запястье дека живёт, пока рука видна (есть поза контроллера): без данных якорь стоял бы в начале рига.
 	_anchor.visible = not (rig.xr_active and wrist) or rig.left_hand_view.visible
@@ -176,7 +187,4 @@ func _update_charge_zoom(delta: float) -> void:
 	if is_equal_approx(_deck_zoom, want):
 		return
 	_deck_zoom = move_toward(_deck_zoom, want, ZOOM_PER_SEC * delta)
-	deck.scale = Vector3.ONE * _deck_zoom
-	deck.position = wrist_deck_pos(_deck_zoom)
-	trace.position = wrist_trace_pos(_deck_zoom)
-	tick_ring.position = wrist_ring_pos(_deck_zoom)
+	_place_wrist(_deck_zoom)
