@@ -158,6 +158,9 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	scene.decrypt_requested.connect(func(item: String):
 		if net.request_decrypt(item):
 			log_file.log("decrypt.request", {"item": item}))
+	scene.barrier_requested.connect(func(id: String, how: String):
+		if net.request_barrier(id, how):
+			log_file.log("barrier.request", {"barrier": id, "how": how}))
 	scene.charge_cell_tapped.connect(func(cell: Vector2i): net.request_breach_tap(cell))
 	scene.charge_cancel_requested.connect(func():
 		net.request_breach_cancel()
@@ -469,13 +472,15 @@ func _on_event(ev: Dictionary) -> void:
 			scene.apply_breach_event(ev)
 			if ev.get("mode", "") == WorldMsg.MODE_DECRYPT:
 				log_file.log("decrypt.end", {"item": ev.get("item", ""), "outcome": ev.get("outcome", ""), "decrypted": ev.get("decrypted", false), "early": ev.get("early", ""), "error": ev.get("error", ""), "left": ev.get("left", 0)})
+			elif ev.get("mode", "") == WorldMsg.MODE_BARRIER:
+				log_file.log("barrier.end", {"barrier": ev.get("barrier", ""), "how": ev.get("how", ""), "outcome": ev.get("outcome", ""), "opened": ev.get("opened", false), "early": ev.get("early", "")})
 			elif ev.get("mode", "") == WorldMsg.MODE_CHARGE:
 				log_file.log("charge.end", {"daemon": ev.get("daemon", ""), "outcome": ev.get("outcome", ""), "charged": ev.get("charged", false), "early": ev.get("early", ""), "left": ev.get("left", 0)})
 			else:
 				log_file.log("breach.end", HudLogic.breach_end_fields(ev))
 		WorldMsg.EV_BK_NO:
 			scene.apply_breach_event(ev)
-			log_file.log("decrypt.no" if ev.get("mode", "") == WorldMsg.MODE_DECRYPT else ("charge.no" if ev.get("mode", "") == WorldMsg.MODE_CHARGE else "breach.no"), {"reason": ev.get("reason", "")})
+			log_file.log("barrier.no" if ev.get("mode", "") == WorldMsg.MODE_BARRIER else ("decrypt.no" if ev.get("mode", "") == WorldMsg.MODE_DECRYPT else ("charge.no" if ev.get("mode", "") == WorldMsg.MODE_CHARGE else "breach.no")), {"reason": ev.get("reason", "")})
 		WorldMsg.EV_GIVE_LIST:
 			scene.apply_give_list(ev)
 			log_file.log("give.list", {"runners": (ev.get("runners", []) as Array).size()})

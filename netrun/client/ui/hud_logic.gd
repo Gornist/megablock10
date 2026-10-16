@@ -195,6 +195,27 @@ static func launch_error_text(error: String) -> String:
 	return "Нельзя запустить"
 
 
+## Отказ вскрытия барьера (`bk_no` с mode = barrier) словами для строки-уведомления на деке.
+static func barrier_denied_text(reason: String) -> String:
+	match reason:
+		"active":
+			return "Сейчас идёт другая мини-игра"
+		"far":
+			return "Подойдите к барьеру вплотную"
+		"open":
+			return "Барьер уже вскрыт"
+		"no_barrier":
+			return "Здесь нет такого барьера"
+	return "Сейчас нельзя"
+
+
+## Строка деки при силовом вскрытии: осталось тактов удержания (без прыжка).
+static func barrier_force_text(left_ticks: int) -> String:
+	if left_ticks <= 0:
+		return "БАРЬЕР: вскрыт силой"
+	return "СИЛОЙ: держитесь на месте — ещё %d %s" % [left_ticks, "такт" if left_ticks == 1 else "такта"]
+
+
 ## Отказ заряда (`bk_no` с mode = charge) словами для строки-уведомления на деке.
 static func charge_denied_text(reason: String, left: int = 0) -> String:
 	match reason:

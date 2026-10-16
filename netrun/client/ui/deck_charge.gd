@@ -72,6 +72,16 @@ func is_shown() -> bool:
 	return visible
 
 
+## Заголовок сетки по режиму мини-игры.
+static func head_text(mode_: String) -> String:
+	match mode_:
+		WorldMsg.MODE_DECRYPT:
+			return "РАСШИФРОВКА"
+		WorldMsg.MODE_BARRIER:
+			return "БАРЬЕР"
+	return "ЗАРЯД"
+
+
 ## Начало попытки (`bk` с mode = charge). false — событие негодное.
 func begin(m: BreachMirror, name_: String, mode_: String = WorldMsg.MODE_CHARGE) -> bool:
 	if m == null:
@@ -110,7 +120,10 @@ func tap_cell(cell: Vector2i) -> bool:
 func apply_end(ev: Dictionary) -> void:
 	if mirror != null:
 		mirror.apply_end(ev)
-	charged = bool(ev.get("decrypted", false)) if mode == WorldMsg.MODE_DECRYPT else bool(ev.get("charged", false))
+	if mode == WorldMsg.MODE_BARRIER:
+		charged = bool(ev.get("opened", false))
+	else:
+		charged = bool(ev.get("decrypted", false)) if mode == WorldMsg.MODE_DECRYPT else bool(ev.get("charged", false))
 	_build_result(ev)
 	_result_shown = true
 	_result_left = RESULT_SEC
@@ -170,7 +183,7 @@ func _build_run() -> void:
 	_side = DeckUi.vbox(DeckTheme.GAP)
 	DeckUi.expand(_side, true)
 	cols.add_child(_side)
-	_side.add_child(DeckUi.label("РАСШИФРОВКА" if mode == WorldMsg.MODE_DECRYPT else "ЗАРЯД", DeckTheme.V_HEAD, false))
+	_side.add_child(DeckUi.label(head_text(mode), DeckTheme.V_HEAD, false))
 	_side.add_child(DeckUi.label(daemon_name, DeckTheme.V_NAME))
 	_timer_label = DeckUi.label("", DeckTheme.V_TIMER, false)
 	_side.add_child(_timer_label)
@@ -244,7 +257,10 @@ func _refresh_run() -> void:
 func _build_result(ev: Dictionary) -> void:
 	_clear_all()
 	var decrypting := mode == WorldMsg.MODE_DECRYPT
+	var barrier := mode == WorldMsg.MODE_BARRIER
 	var headline := ("ОТКРЫТ" if charged else "НЕ РАСШИФРОВАН") if decrypting else ("ЗАРЯЖЕН" if charged else "ЗАРЯД НЕ УДАЛСЯ")
+	if barrier:
+		headline = "БАРЬЕР ВСКРЫТ" if charged else "БАРЬЕР ЗАКРЫТ"
 	var title := DeckUi.label(headline, DeckTheme.V_BIG, false)
 	title.add_theme_color_override("font_color", DeckTheme.tone_color("ok" if charged else "bad"))
 	title.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -252,7 +268,9 @@ func _build_result(ev: Dictionary) -> void:
 	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	add_child(title)
 	var sub := ""
-	if decrypting:
+	if barrier:
+		sub = "Путь свободен" if charged else ("Прервано" if str(ev.get("early", "")) != "" else "Время вышло — можно снова")
+	elif decrypting:
 		sub = HudLogic.decrypt_result_sub(ev)
 	elif charged:
 		sub = "%s · левый X — запуск" % daemon_name

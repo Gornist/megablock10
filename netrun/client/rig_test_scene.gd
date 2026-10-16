@@ -32,6 +32,8 @@ signal charge_requested(daemon_id: String)
 signal charge_cell_tapped(cell: Vector2i)
 signal decrypt_requested(item_id: String)
 signal charge_cancel_requested
+## Вскрытие барьера Soft ICE (ice.md §5): «ВСКРЫТЬ» (how = charge) или «СИЛОЙ» (how = force) у соседнего барьера на деке. Просит сервер ProtoClient.
+signal barrier_requested(barrier_id: String, how: String)
 
 ## Импульс левого контроллера: демон запущен / запуск отказан / заряд готов.
 const LAUNCH_PULSE_AMP := 0.8
@@ -100,6 +102,7 @@ var selected_daemon := ""
 var _ice_nodes: Dictionary = {}      # id ICE -> IceView
 var _beacon_nodes: Dictionary = {}   # id Маяка -> BeaconView (поле bk state, только тактовый режим)
 var _sensor_nodes: Dictionary = {}   # id Датчика -> SensorView (поле sn state, только тактовый режим)
+var _barrier_nodes: Dictionary = {}  # id Барьера -> BarrierView (поле br state, только тактовый режим)
 var _avatar_nodes: Dictionary = {}   # id чужого аватара -> AvatarView
 ## Чужие ICE и аватары показываются из буфера состояний с задержкой (RemoteTracks), а не прыжками по пакетам.
 var remote := RemoteTracks.new()
@@ -159,6 +162,7 @@ func _ready() -> void:
 	world_ui.deck.charge_cell_tapped.connect(func(cell: Vector2i): charge_cell_tapped.emit(cell))
 	world_ui.deck.decrypt_requested.connect(func(id: String): decrypt_requested.emit(id))
 	world_ui.deck.charge_cancel_requested.connect(func(): charge_cancel_requested.emit())
+	world_ui.deck.barrier_requested.connect(func(id: String, how: String): barrier_requested.emit(id, how))
 	world_ui.deck.set_deck({"daemons": [], "selected": ""})
 	world_ui.deck.give_list_requested.connect(func(): give_list_requested.emit())
 	world_ui.deck.give_requested.connect(func(item_id: String, to: Dictionary): give_requested.emit(item_id, to))
@@ -260,6 +264,44 @@ func apply_state(state: Dictionary) -> void:
 			remote.forget_ice(id)
 	_apply_beacons(state.get("bk", []))
 	_apply_sensors(state.get("sn", []))
+	_apply_barriers(state.get("br", []))
+
+
+## Барьеры узла: создаём по снимку, убираем пропавших; рядом закрытый барьер (клетка игрока соседняя с его блоком) — подсказка на деке.
+func _apply_barriers(list: Array) -> void:
+	var seen := {}
+	var near := ""
+	var mine := NodeGrid.cell_of(rig.global_position)
+	for v: Dictionary in list:
+		var id := str(v["id"])
+		seen[id] = true
+		if not _barrier_nodes.has(id):
+			var b := BarrierView.new()
+			b.name = "Barrier_" + id
+			add_child(b)
+			_barrier_nodes[id] = b
+		(_barrier_nodes[id] as BarrierView).apply_view(v)
+		if int(v.get("open", 0)) == 0 and near == "" and barrier_adjacent(v["c"], mine):
+			near = id
+	for id in _barrier_nodes.keys():
+		if not seen.has(id):
+			(_barrier_nodes[id] as Node).free()
+			_barrier_nodes.erase(id)
+	world_ui.deck.set_barrier_prompt(near)
+
+
+## Клетка `cell` соседняя (по восьми направлениям) с клеткой блока барьера: так же решает сервер (GrayNode.barrier_adjacent).
+static func barrier_adjacent(cells: Array, cell: Vector2i) -> bool:
+	for c: Variant in cells:
+		var a := c as Array
+		if maxi(absi(int(a[0]) - cell.x), absi(int(a[1]) - cell.y)) <= 1:
+			return true
+	return false
+
+
+## Барьер по id (тесты, превью).
+func barrier_view_of(id: String) -> BarrierView:
+	return _barrier_nodes.get(id)
 
 
 ## Маяки узла: появились — создаём, угол и дальность — из снимка; пропали (другой узел, нет тактов) — убираем.
@@ -1115,8 +1157,8 @@ func _vault_pos(id: String) -> Vector3:
 func apply_breach_event(ev: Dictionary) -> void:
 	if ended:
 		return
-	if str(ev.get("mode", "")) == WorldMsg.MODE_CHARGE or str(ev.get("mode", "")) == WorldMsg.MODE_DECRYPT:
-		_apply_charge_event(ev)   # заряд демона и расшифровка шарда идут на деке запястья, а не на панели у хранилища
+	if str(ev.get("mode", "")) in [WorldMsg.MODE_CHARGE, WorldMsg.MODE_DECRYPT, WorldMsg.MODE_BARRIER]:
+		_apply_charge_event(ev)   # заряд демона, расшифровка шарда и вскрытие барьера идут на деке запястья, а не на панели у хранилища
 		return
 	var bp := world_ui.breach_panel
 	match str(ev.get("kind", "")):
@@ -1137,9 +1179,39 @@ func apply_breach_event(ev: Dictionary) -> void:
 			bp.show_denied(str(ev.get("reason", "")), int(ev.get("left", 0)), ev)
 
 
+## События вскрытия барьера (mode = barrier): мини-игра «charge» — сетка на деке (как заряд); «force» — строка удержания и «СТОП» на деке.
+func _apply_barrier_event(ev: Dictionary) -> void:
+	var deck := world_ui.deck
+	var force := str(ev.get("how", "")) == "force"
+	match str(ev.get("kind", "")):
+		WorldMsg.EV_BK:
+			if force:
+				deck.begin_barrier_force(int(ev.get("ticks", 2)))
+			else:
+				deck.begin_charge(BreachMirror.from_event(ev), WorldMsg.MODE_BARRIER, "БАРЬЕР")
+		WorldMsg.EV_BK_TICK:
+			if ev.has("left_ticks"):
+				deck.apply_barrier_force_tick(int(ev["left_ticks"]))
+			else:
+				deck.apply_charge_tick(ev)
+		WorldMsg.EV_BK_END:
+			var opened := bool(ev.get("opened", false))
+			if str(ev.get("how", "")) == "force":
+				deck.end_barrier_force(opened)
+			else:
+				deck.apply_charge_end(ev)
+			world_ui.feedback.pulse("left", CHARGED_PULSE_AMP if opened else DENY_PULSE_AMP, CHARGED_PULSE_S if opened else DENY_PULSE_S)
+		WorldMsg.EV_BK_NO:
+			deck.show_barrier_denied(str(ev.get("reason", "")))
+			world_ui.feedback.pulse("left", DENY_PULSE_AMP, DENY_PULSE_S)
+
+
 ## События заряда (mode = charge): сетка на деке, ответ на тап, итог, отказ.
 func _apply_charge_event(ev: Dictionary) -> void:
 	var deck := world_ui.deck
+	if str(ev.get("mode", "")) == WorldMsg.MODE_BARRIER:
+		_apply_barrier_event(ev)
+		return
 	var decrypting := str(ev.get("mode", "")) == WorldMsg.MODE_DECRYPT
 	match str(ev.get("kind", "")):
 		WorldMsg.EV_BK:

@@ -35,6 +35,8 @@ signal charge_cell_tapped(cell: Vector2i)
 signal charge_cancel_requested
 ## Кнопка «РАСШИФРОВАТЬ» у зашифрованного шарда ДОБЫЧИ (К7); сетка и отмена идут теми же сигналами, что у заряда.
 signal decrypt_requested(item_id: String)
+## Вскрытие барьера Soft ICE (ice.md §5): «ВСКРЫТЬ» (мини-игра на запястье, how = charge) или «СИЛОЙ» (держаться на месте 2 такта, how = force) у соседнего барьера.
+signal barrier_requested(barrier_id: String, how: String)
 ## Уведомление на деке показывается столько секунд.
 ## Нажата заготовка ответа (диалог, текст) — для журнала клиента.
 signal reply_sent(thread_id: String, text: String)
@@ -61,6 +63,13 @@ var _chat: DeckChat
 var _charge: DeckCharge
 var _notice: Label
 var _notice_left := 0.0
+var _barrier_row: HBoxContainer            # полоса у соседнего барьера: «ВСКРЫТЬ» и «СИЛОЙ»; при силовом вскрытии — строка и «ОТМЕНА»
+var _barrier_label: Label
+var _barrier_open_btn: MbButton
+var _barrier_force_btn: MbButton
+var _barrier_cancel_btn: MbButton
+var _barrier_id := ""                       # барьер рядом, который можно вскрыть ("" — рядом нет)
+var _barrier_forcing := false              # идёт силовое вскрытие: держимся на месте
 var _rows_chargeable := false              # в списке есть кнопка «ЗАРЯДИТЬ»: деку есть чем нажимать
 var _calls: DeckCalls
 var _tab := TAB_DECK
@@ -112,6 +121,23 @@ func _ready() -> void:
 	_notice = DeckUi.label("", DeckTheme.V_WARN, false)
 	_notice.visible = false
 	col.add_child(_notice)
+	_barrier_row = DeckUi.hbox(8)
+	_barrier_row.visible = false
+	_barrier_label = DeckUi.label("БАРЬЕР РЯДОМ", DeckTheme.V_WARN, false)
+	_barrier_row.add_child(DeckUi.expand(_barrier_label))
+	_barrier_open_btn = MbButton.new("ВСКРЫТЬ", "quiet")
+	_barrier_open_btn.button_height = DeckTheme.BTN_SMALL_H
+	_barrier_open_btn.pressed.connect(func(): barrier_requested.emit(_barrier_id, "charge"))
+	_barrier_row.add_child(_barrier_open_btn)
+	_barrier_force_btn = MbButton.new("СИЛОЙ", "ghost")
+	_barrier_force_btn.button_height = DeckTheme.BTN_SMALL_H
+	_barrier_force_btn.pressed.connect(func(): barrier_requested.emit(_barrier_id, "force"))
+	_barrier_row.add_child(_barrier_force_btn)
+	_barrier_cancel_btn = MbButton.new("СТОП", "ghost")
+	_barrier_cancel_btn.button_height = DeckTheme.BTN_SMALL_H
+	_barrier_cancel_btn.pressed.connect(func(): charge_cancel_requested.emit())
+	_barrier_row.add_child(_barrier_cancel_btn)
+	col.add_child(_barrier_row)
 	_deck_scroll = ScrollContainer.new()
 	_deck_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	DeckUi.expand(_deck_scroll, true)
@@ -662,6 +688,61 @@ func _on_call_changed(state: Dictionary) -> void:
 	_update_badges()
 
 
+# ---------------------------------------------------------------- барьер Soft ICE (ice.md §5)
+
+## Рядом закрытый барьер barrier_id ("" — рядом нет): полоса с «ВСКРЫТЬ» и «СИЛОЙ». Во время мини-игры или силового вскрытия не меняется.
+func set_barrier_prompt(barrier_id: String) -> void:
+	if barrier_id == _barrier_id:
+		return
+	_barrier_id = barrier_id
+	_refresh_barrier_row()
+
+
+## Началось силовое вскрытие (`bk` mode = barrier, how = force, ticks): строка про удержание и «ОТМЕНА».
+func begin_barrier_force(ticks: int) -> void:
+	_barrier_forcing = true
+	_barrier_label.text = HudLogic.barrier_force_text(ticks)
+	_refresh_barrier_row()
+
+
+## Такт удержания (`bk_tick` с left_ticks).
+func apply_barrier_force_tick(left_ticks: int) -> void:
+	if _barrier_forcing:
+		_barrier_label.text = HudLogic.barrier_force_text(left_ticks)
+		_dirty = true
+
+
+## Силовое вскрытие закончено (`bk_end`): открыт или брошен.
+func end_barrier_force(opened: bool) -> void:
+	_barrier_forcing = false
+	_barrier_label.text = "БАРЬЕР РЯДОМ"
+	if opened:
+		_barrier_id = ""
+	show_notice("Барьер вскрыт силой" if opened else "Силовое вскрытие брошено")
+	_refresh_barrier_row()
+
+
+## Отказ вскрытия (`bk_no` с mode = barrier): причина строкой на деке.
+func show_barrier_denied(reason: String) -> void:
+	show_notice(HudLogic.barrier_denied_text(reason))
+
+
+func barrier_row_visible() -> bool:
+	return _barrier_row.visible
+
+
+func barrier_force_active() -> bool:
+	return _barrier_forcing
+
+
+func _refresh_barrier_row() -> void:
+	_barrier_row.visible = (_barrier_id != "" or _barrier_forcing) and not _charge.visible
+	_barrier_open_btn.visible = not _barrier_forcing
+	_barrier_force_btn.visible = not _barrier_forcing
+	_barrier_cancel_btn.visible = _barrier_forcing
+	_dirty = true
+
+
 # ---------------------------------------------------------------- заряд демона (К6)
 
 ## Началась мини-игра заряда (`bk` с mode = charge): сетка заменяет вкладки и список. Увеличение деки до масштаба 1 делает WorldUI по is_charging().
@@ -724,6 +805,7 @@ func _set_charge_layout(on: bool) -> void:
 		_loot_scroll.visible = false
 		_chat.visible = false
 		_calls.visible = false
+	_refresh_barrier_row()
 	_dirty = true
 
 
@@ -732,6 +814,7 @@ func _end_charge_view() -> void:
 	_charge.hide_all()
 	_tabs.visible = true
 	_show_tab(back)
+	_refresh_barrier_row()
 	_dirty = true
 
 
