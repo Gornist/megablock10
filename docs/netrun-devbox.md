@@ -172,9 +172,11 @@ godot -- --flat --host=127.0.0.1 --port=7777 --token=t1
 - **Стенд П6 (16.10; Серверная HARD ↔ Ядро NIGHTMARE с Гончей, барьер закрыт, Black ICE спит):** граф `netrun/tools/stand/p6_graph.json` (два узла,
   один тоннель; trace и тревога — из `data/graph.json`), фальш-Мост `p6_bridge_fixture.json` (Призрак на t03, RAM 14, демоны Извлечение 1–3 и Призрак,
   шарды на узлах 05 и 11), сервер `tools/srv_p6.sh` (порт 7777). APK — `scripts/box.sh run gpu Godot --name p6-build -- bash netrun/tools/p6_build.sh`
-  → `~/pico-p6/netrun-client-p6.apk` (отдельно от `~/pico-cfg`). Прогон — только по слову владельца «надеваю», под бронью Devbox:
-  `scripts/box.sh pico run Godot <мин> --port 7777 -- bash netrun/tools/p6_run.sh` (install → provision → сервер → ready → start; конец — `touch ~/pico-p6/stop`
-  после «снял»; журналы — в каталог прогона: `server.log`, `logcat.txt`, `pico-log.txt`).
+  → `~/pico-p6/netrun-client-p6.apk` (отдельно от `~/pico-cfg`). Показ человеку — только по слову владельца «надеваю», через `pico show` Devbox
+  (бронь «Владелец», лобби допустимо, карточку границы не паркует и очки не гасит): `scripts/box.sh pico show Владелец --minutes <мин> -- bash netrun/tools/p6_run.sh`
+  (install → provision → свежий сервер → start; «не готово» и «игра не встала» — не выход, сервер остаётся; конец — `box.sh pico unshow` после «снял» или
+  `touch ~/pico-p6/stop`; журналы — в каталог показа: `server.log`, `logcat.txt`, `pico-log.txt`). Автопрогон без человека — `pico run Godot <мин> --port 7777 -- …`
+  (тогда ready обязателен). Первый П6 16.10 сорвался на `pico run` под бронью человека: скрипт ждал бронь Godot и вышел на «не готово», сервер умер вместе с ним.
 - **Падение в нативном коде:** кадры `libgodot_android.so` в tombstone без имён (библиотека шаблона уже без символов). Функцию находит
   дизассемблер по адресу кадра: `$ANDROID_HOME/ndk/<версия>/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-objdump -d --start-address=…`
   по `<копия>/android/build/build/intermediates/merged_native_libs/…/arm64-v8a/libgodot_android.so` (BuildId в tombstone должен совпасть).
