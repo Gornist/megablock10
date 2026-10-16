@@ -160,3 +160,39 @@ func test_клетка_куда_ICE_шагнёт_красная_и_залипа�
 	assert_int(TickForecast.threat(g, [it], ICE + Vector2i(2, 0))).is_equal(TickForecast.RED)
 	assert_bool(TickForecast.red_hold_ok(0.2)).is_false()   # залипание: красную рамку сразу в прыжок не отпускают
 	assert_bool(TickForecast.red_hold_ok(TickForecast.RED_HOLD_SEC)).is_true()
+
+
+# ---------------------------------------------------------------- датчик на пути прыжка (П6-4)
+
+const BEAM := [Vector2i(8, 8), Vector2i(9, 8), Vector2i(10, 8)]
+
+
+func _beam(on: bool) -> Dictionary:
+	return {"cells": BEAM, "on": on}
+
+
+func test_прыжок_через_включённый_луч_красный() -> void:
+	var from := NodeGrid.center(Vector2i(7, 8))
+	assert_int(TickForecast.sensor_threat([_beam(true)], from, NodeGrid.center(Vector2i(12, 8)))).is_equal(TickForecast.RED)   # перелёт через луч
+	assert_int(TickForecast.sensor_threat([_beam(true)], from, NodeGrid.center(Vector2i(9, 8)))).is_equal(TickForecast.RED)    # приземление на луч
+
+
+func test_выключенный_луч_перепрыгнуть_можно_зелёный() -> void:
+	var from := NodeGrid.center(Vector2i(7, 8))
+	assert_int(TickForecast.sensor_threat([_beam(false)], from, NodeGrid.center(Vector2i(12, 8)))).is_equal(TickForecast.GREEN)
+	assert_int(TickForecast.sensor_threat([], from, NodeGrid.center(Vector2i(12, 8)))).is_equal(TickForecast.GREEN)
+
+
+func test_мимо_луча_и_клетка_старта_не_красят() -> void:
+	assert_int(TickForecast.sensor_threat([_beam(true)], NodeGrid.center(Vector2i(7, 6)), NodeGrid.center(Vector2i(12, 6)))).is_equal(TickForecast.GREEN)   # на два ряда выше
+	# стоим под лучом (его включили, когда мы уже стояли): шаг в сторону от него клетку старта не считает, как на сервере
+	assert_int(TickForecast.sensor_threat([_beam(true)], NodeGrid.center(Vector2i(10, 8)), NodeGrid.center(Vector2i(12, 8)))).is_equal(TickForecast.GREEN)
+
+
+func test_поле_sn_разбирается_в_клетки_и_состояние() -> void:
+	var list := TickForecast.parse_sensors([{"id": "d1", "c": [[8, 8], [9, 8]], "on": 1, "bl": 0, "l": 2}, {"id": "d2", "c": [[3, 3], [3, 4]], "on": 0, "bl": 1, "l": 1}])
+	assert_int(list.size()).is_equal(2)
+	assert_array(list[0]["cells"]).contains_exactly([Vector2i(8, 8), Vector2i(9, 8)])
+	assert_bool(list[0]["on"]).is_true()
+	assert_bool(list[1]["on"]).is_false()
+	assert_int(TickForecast.parse_sensors([]).size()).is_equal(0)

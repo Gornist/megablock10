@@ -295,3 +295,22 @@ static func beam_cells(start: Vector2i, dir: Vector2i, length: int) -> Array[Vec
 	for i in length:
 		out.append(start + dir * i)
 	return out
+
+
+## Шаг дискретизации отрезка прыжка по клеткам, клетки: меньше клетки, чтобы не проскочить угол.
+const SEGMENT_STEP := 0.25
+
+
+## Первая клетка из `cells` (Dictionary Vector2i → любое), которую задевает отрезок from→to (мировые точки), включая точку приземления; Vector2i.MAX — не задевает.
+## Клетка старта не считается: нетраннер уже стоял в ней. Общий код: сервер (TickSensor.crossed_by) и прицел клиента (TickForecast.sensor_threat) считают одинаково.
+static func segment_first_hit(cells: Dictionary, from: Vector3, to: Vector3) -> Vector2i:
+	var a := Vector2(from.x, from.z)
+	var b := Vector2(to.x, to.z)
+	var start := cell_of(from)
+	var n := maxi(ceili(a.distance_to(b) / SEGMENT_STEP), 1)
+	for i in range(1, n + 1):
+		var p := a.lerp(b, float(i) / n)
+		var c := cell_of(Vector3(p.x, 0.0, p.y))
+		if c != start and cells.has(c):
+			return c
+	return Vector2i.MAX

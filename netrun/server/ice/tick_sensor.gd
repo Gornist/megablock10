@@ -7,8 +7,6 @@ extends RefCounted
 
 ## Программа по тиру: x — тактов включён, y — тактов выключен (ice.md §5: BASE 3/3, HARD 2/2, NIGHTMARE 2/1).
 const PROGRAMS := {"BASE": Vector2i(3, 3), "HARD": Vector2i(2, 2), "NIGHTMARE": Vector2i(2, 1)}
-## Шаг дискретизации отрезка прыжка, клетки: меньше клетки, чтобы не проскочить угол.
-const _STEP := 0.25
 
 var _cells: Array[Vector2i] = []
 var _set: Dictionary = {}
@@ -35,6 +33,22 @@ func _init(cells: Array[Vector2i], on_ticks: int, off_ticks: int, phase: int = 0
 	_on = maxi(on_ticks, 1)
 	_off = maxi(off_ticks, 1)
 	_t = posmod(phase, _on + _off)
+
+
+## Датчик записи раскладки `sd` ({cells, on, off, phase}): числа цикла из записи, ноль — из `program` (программа тира). Стартует в фазе «выключен»:
+## П6 (16.10): у конструктора позиция 0 — «включён», и игрок входил в узел под включённым лучом («луч был включён с самого начала»). Узел и проверка раскладки
+## (LayoutBots) строят датчики одним путём, чтобы то, что считает проверка, было тем, что в игре.
+static func for_layout(sd: Dictionary, program: Vector2i) -> TickSensor:
+	var on := int(sd["on"]) if int(sd["on"]) > 0 else program.x
+	var off := int(sd["off"]) if int(sd["off"]) > 0 else program.y
+	var ts := TickSensor.new(sd["cells"], on, off)
+	ts.start_off(int(sd["phase"]))
+	return ts
+
+
+## Начало цикла в фазе «выключен»: `delay` — сколько выключенных тактов уже прошло (разводит парные датчики), не больше, чем есть выключенных — луч при входе не включён.
+func start_off(delay: int = 0) -> void:
+	_t = _on + posmod(delay, _off)
 
 
 func cells() -> Array[Vector2i]:
@@ -85,16 +99,7 @@ func hit_by(positions: Dictionary) -> Dictionary:
 func crossed_by(from: Vector3, to: Vector3) -> Vector2i:
 	if not is_on():
 		return Vector2i.MAX
-	var a := Vector2(from.x, from.z)
-	var b := Vector2(to.x, to.z)
-	var start := NodeGrid.cell_of(from)
-	var n := maxi(ceili(a.distance_to(b) / _STEP), 1)
-	for i in range(1, n + 1):
-		var p := a.lerp(b, float(i) / n)
-		var c := NodeGrid.cell_of(Vector3(p.x, 0.0, p.y))
-		if c != start and _set.has(c):
-			return c
-	return Vector2i.MAX
+	return NodeGrid.segment_first_hit(_set, from, to)
 
 
 ## Намерение для клиента: клетки луча, включён ли, мигает ли, сколько тактов до смены.

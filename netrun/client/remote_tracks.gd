@@ -18,6 +18,7 @@ var avatars: Dictionary = {}  # id аватара (строкой) -> StateBuffe
 var poses: Dictionary = {}    # id аватара (строкой) -> AvatarPose из последнего пакета; нет записи — в пакете позы не было (или мусор)
 var _intents: Array = []      # намерения ICE из последнего снимка (TickForecast.parse_intents); в realtime пусто
 var _tick: Dictionary = {}    # поле tk последнего снимка: n, at, win, inh, mv; в realtime пусто
+var _sensors: Array = []      # Датчики из поля sn последнего снимка (TickForecast.parse_sensors): {cells, on}; нет поля — пусто
 var _steps: Dictionary = {}   # id тактового ICE -> {from_p, to_p, from_yaw, to_yaw, t0}: идущий шаг между клетками
 
 
@@ -27,6 +28,8 @@ func on_state(state: Dictionary, local_now: float) -> void:
 	var k := _stamp(state, local_now)
 	var list: Array = state.get("ice", [])
 	_intents = TickForecast.parse_intents(list)
+	var sn: Variant = state.get("sn")
+	_sensors = TickForecast.parse_sensors(sn as Array) if sn is Array else []
 	var tk: Variant = state.get("tk")
 	_tick = (tk as Dictionary).duplicate() if tk is Dictionary else {}
 	for d in list:
@@ -45,6 +48,11 @@ func on_state(state: Dictionary, local_now: float) -> void:
 ## Намерения ICE из последнего снимка: словари {c, d, st, nc, nd, sc, black} (клетки — Vector2i). В realtime — пусто.
 func intents() -> Array:
 	return _intents
+
+
+## Датчики последнего снимка для прогноза прыжка: {cells: Array[Vector2i], on: bool}. В узле без датчиков — пусто.
+func sensors() -> Array:
+	return _sensors
 
 
 ## Поле tk последнего снимка: n — номер такта, at — его время (часы сервера), win — окно, inh — вдох, mv — ход принят. В realtime — пусто.

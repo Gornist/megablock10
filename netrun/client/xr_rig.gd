@@ -450,6 +450,8 @@ func _show_aim(delta: float = 0.0) -> void:
 		charge = 1.0
 		if kind == "hop" and info["valid"]:
 			threat = TickForecast.threat(grid, tick_source.intents(), cell)
+			# Отрезок прыжка задевает включённый луч Датчика — красная рамка; луч выключен — рамка по ICE (зелёная: перепрыгнуть можно, П6-4).
+			threat = maxi(threat, TickForecast.sensor_threat(tick_source.sensors(), global_position, info["p"]))
 			_last_threat = threat
 		if moved and kind != "denied":
 			note = "ХОД ПРИНЯТ"
