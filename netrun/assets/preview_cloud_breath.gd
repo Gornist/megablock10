@@ -24,11 +24,15 @@ func _ready() -> void:
 	VolumeRegistry.configure("all")
 	_spawn(room, "res://assets/models/props/vault.glb", "vault", Vector3(0, 0, -2.5), 0.0)
 	_spawn(room, "res://assets/models/props/shard.glb", "shard", Vector3(1.6, 0.9, -1.6), 0.0)
+	for px in [-2.2, 2.2]:  # колонны: облако на гранях (А) дышит и откликается так же, как объёмное (Б)
+		var p := NodeAssets.instance(NodeAssets.env_path("pillar"), "BASE")
+		p.position = Vector3(px, 0, -2.0)
+		room.add_child(p)
 	_cam = Camera3D.new()
-	_cam.fov = 60.0
+	_cam.fov = 85.0
 	_cam.current = true
 	add_child(_cam)
-	_cam.look_at_from_position(Vector3(0.0, 1.2, -0.7), Vector3(0.0, 0.7, -2.5))
+	_cam.look_at_from_position(Vector3(0.0, 1.3, 0.4), Vector3(0.0, 0.9, -2.5))
 	AssetMaterials.set_cloud_touch(get_tree(), [])
 	for i in 4:
 		AssetMaterials.set_cloud_breath(get_tree(), 0.25 * i)
@@ -37,7 +41,7 @@ func _ready() -> void:
 	AssetMaterials.set_cloud_breath(get_tree(), 0.0)
 	var v0 := Vector3(0.0, 1.0, -2.5)
 	for i in 2:
-		var src := v0 + Vector3(0.5 if i == 0 else -0.2, -0.2, 0.2)
+		var src := v0 + Vector3(0.5, -0.2, 0.2) if i == 0 else Vector3(-1.7, 1.0, -0.9)   # 0 — у хранилища (Б), 1 — у левой колонны (А)
 		AssetMaterials.set_cloud_touch(get_tree(), [Vector4(src.x, src.y, src.z, 0.8)])
 		await _shot("touch_%d" % i)
 	get_tree().quit()
