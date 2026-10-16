@@ -34,6 +34,7 @@ var deck: DeckPanel
 var trace: TraceIndicator
 var tick_ring: TickRing
 var alert: OffscreenAlert
+var danger: DangerCue   ## опасное в центре зрения (ожог, пробуждение Black ICE, рост тревоги), ребёнок камеры
 ## Вкладки ЧАТ и ЗВОНКИ деки: указатель правого контроллера (мышь в плоской сборке) нажимает деку; отклик — вибрация и звук на сообщения и
 ## звонки; связь с телефоном (пока фиктивная) — null, и тогда вкладок нет, указатель молчит. Положение и масштаб деки на руке — только здесь.
 var pointer: DeckPointer
@@ -80,6 +81,10 @@ func attach(r: XRRig) -> void:
 	alert = OffscreenAlert.new()
 	alert.camera = rig.camera
 	rig.camera.add_child(alert)
+	danger = DangerCue.new()
+	danger.name = "DangerCue"
+	danger.pulse_sink = _haptic
+	rig.camera.add_child(danger)
 	feedback = DeckFeedback.new()
 	feedback.name = "DeckFeedback"
 	_anchor.add_child(feedback)   # звук идёт из места деки
@@ -96,6 +101,15 @@ func attach(r: XRRig) -> void:
 	breach_pointer.clicked.connect(func(): feedback.pulse("right", 0.25, 0.02))
 	breach_panel.trap_felt.connect(func(): feedback.pulse("left", 0.7, 0.15))   # ловушка: импульс левого контроллера
 	_place()
+
+
+## Импульс контроллера для DangerCue: hand — "left" | "right"; без очков ничего не делает.
+func _haptic(hand: String, amplitude: float, seconds: float) -> void:
+	if rig == null or not rig.xr_active:
+		return
+	var h: XRController3D = rig.left_hand if hand == "left" else rig.right_hand
+	if h != null:
+		h.trigger_haptic_pulse("haptic", 0.0, amplitude, seconds, 0.0)
 
 
 ## Подключить связь с телефоном (null — отключить): у деки появляются вкладки ЧАТ и ЗВОНКИ, вибрация и звук следят за событиями.

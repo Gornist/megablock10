@@ -255,6 +255,7 @@ func apply_state(state: Dictionary) -> void:
 		selected_daemon = ids[0] if not ids.is_empty() else ""
 	_refresh_deck()
 	remote.on_state(state, Time.get_ticks_msec() / 1000.0)
+	_update_danger(state)
 	_update_tick_floor()
 	var seen := {}
 	for ice in state.get("ice", []):
@@ -826,8 +827,23 @@ func apply_alarm(ev: Dictionary) -> void:
 
 ## Вид тревоги: кромки комнаты и фон по уровню (цвета — AssetMaterials у Blender).
 func _on_alarm_view(level: int, _alarm: float) -> void:
+	if world_ui != null and world_ui.danger != null:
+		world_ui.danger.alarm_level(level)
 	view.set_alarm_level(level)
 	_env.background_color = alarm_bg(level, _tick_phase(Time.get_ticks_msec() / 1000.0))
+
+
+## Опасное в центре зрения (ice.md §8 «Правило П6»): пробуждение Black ICE (bw — тактов до конца, у ближайшего просыпающегося) и ожоги (burn) из снимка.
+func _update_danger(state: Dictionary) -> void:
+	if world_ui == null or world_ui.danger == null:
+		return
+	var waking := 0
+	for ice in state.get("ice", []):
+		if int(ice.get("bp", 0)) == 1 and int(ice.get("bw", 0)) > 0:   # фаза 1 — пробуждение
+			waking = int(ice["bw"]) if waking == 0 else mini(waking, int(ice["bw"]))
+	world_ui.danger.wake_count(waking)
+	if state.has("burn"):
+		world_ui.danger.burns(int(state["burn"]))
 
 
 ## Доля окна такта, прошедшая к моменту local_now (0…1); нет тактов — 0.
