@@ -3,6 +3,7 @@
 // Нормаль и позиция идут varying'ами от вершины (не NORMAL фрагмента), поэтому узор привязан к мировой решётке и не «плывёт» при движении головы.
 
 #include "volume_cloud.gdshaderinc"
+#include "breath_touch.gdshaderinc"
 
 uniform sampler2D grid_tex : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float grid_alpha : hint_range(0.0, 2.0) = 0.0;
@@ -28,7 +29,14 @@ void fragment() {
 		float g = texture(grid_tex, v_wp.xz - grid_origin).r;
 		edge = max(edge, clamp(g * grid_alpha * 3.0, 0.0, 1.0));
 	}
-	vec4 c = volume_cloud(v_wp, normalize(v_nw), normalize(CAMERA_POSITION_WORLD - v_wp), v_dist, PROJECTION_MATRIX[1][1] * VIEWPORT_SIZE.y, edge);
+	// Дыхание по такту хода и отклик на руку/аватар: плотность и яркость частиц (значения задаёт клиент; умолчания — как раньше).
+	float lift = breath_lift(v_wp);
+	vec3 push = vec3(0.0);
+	float tk = touch_k(v_wp, push);
+	float dens_k = max(1.0 + 1.4 * (lift - 1.0) + touch_grow * tk, 0.0);
+	vec4 c = volume_cloud(v_wp, normalize(v_nw), normalize(CAMERA_POSITION_WORLD - v_wp), v_dist, PROJECTION_MATRIX[1][1] * VIEWPORT_SIZE.y, edge, dens_k);
+	c.rgb *= lift * (1.0 + touch_gain * tk);
+	c.rgb = mix(c.rgb, touch_color * dust, 0.5 * tk);
 	ALBEDO = mix(c.rgb, edge_color.rgb, edge * edge_mix);
 	ALPHA = c.a;
 }
