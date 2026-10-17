@@ -60,7 +60,7 @@
 | `models/props/shard_encrypted.glb` | 14 / 400 | 151 / 220 | 7 / 7 | 2 | 9 | 0.197 × 0.1431 × 0.136 | points, shell_soft, streaks | — | center | ок |
 | `models/ice/soft_ice.glb` | 0 / 300 | 160 / 200 | 179 / 200 | 0 | 3 | 1.2214 × 2.15 × 0.7577 | points, streaks | idle, patrol | feet | ок |
 | `models/ice/tracer_ice.glb` | 240 / 700 | 0 / 0 | 20 / 40 | 2 | 8 | 0.78 × 0.6803 × 5.11 | shell_soft, solid_dark, streaks | — | feet | ок |
-| `models/props/vault.glb` | 208 / 900 | 314 / 500 | 107 / 220 | 2 | 17 | 0.9277 × 0.807 × 0.9085 | points, shell_soft, solid_dark, streaks | — | floor | ок |
+| `models/props/vault.glb` | 140 / 900 | 462 / 500 | 107 / 220 | 2 | 18 | 0.9277 × 0.807 × 0.9085 | points, shell_soft, solid_dark, streaks | — | floor | ок |
 | `models/props/vault_closed.glb` | 0 / 500 | 248 / 420 | 111 / 160 | 0 | 2 | 0.7878 × 0.8098 × 0.76 | points, streaks | — | floor | ок |
 | `models/props/vault_open.glb` | 0 / 500 | 248 / 420 | 105 / 160 | 0 | 2 | 0.7878 × 0.9982 × 0.76 | points, streaks | — | floor | ок |
 | `models/deck/wrist_deck.glb` | 80 / 2000 | 184 / 200 | 2 / 8 | 0 | 7 | 0.1085 × 0.0919 × 0.06 | points, solid_dark, streaks | — | center | ок |

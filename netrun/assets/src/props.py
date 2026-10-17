@@ -158,8 +158,8 @@ def _beacon(z_top, rgb):
 
 
 def build_vault_volume(out, name="vault", seed=12):
-    """Хранилище узла «волюметрик»: ОДИН файл на три состояния. Общий корпус (чёрный постамент 0,6×0,6×0,3 м и широкий тонкий лоток 0,78×0,74×0,03 м с яркой
-    кромкой ice_white, цепочка точек по кромке, вуаль `vault_skirt` и свисающие штрихи `vault_streaks_hang` вокруг лотка) + узлы-группы
+    """Хранилище узла «волюметрик»: ОДИН файл на три состояния. Общий корпус (постамент 0,6×0,6×0,3 м — облако точек `vault_base_pts` по граням и рёбрам, без сплошного
+    ящика, и тонкий лоток 0,9×0,9×0,03 м `vault_body` с яркой кромкой ice_white, цепочка точек по кромке, вуаль `vault_skirt` и свисающие штрихи `vault_streaks_hang` вокруг лотка) + узлы-группы
     State_closed (шард внутри: крышка и клетка из штрихов 0,78 м, ядро), State_open (створки подняты, столб света к ShardSlot, кольца), State_empty
     (низкий тусклый лоток с пунктирной меткой и «крестом»: шард вынесен), Tier_1..3 (кумулятивные засечки на лицевой грани постамента) и метка ShardSlot (центр
     шарда, 1,0 м над полом). Клиент включает нужное через visible. Лицом к Blender +Y (Godot −Z), origin на полу."""
@@ -167,13 +167,20 @@ def build_vault_volume(out, name="vault", seed=12):
     rng = random.Random(seed)
     cy, ice, void = lib.lin("cyan"), lib.lin("ice_white"), lib.lin("void")
     HX, HY, ZB, ZT = 0.45, 0.45, 0.30, 0.33  # лоток 0,9×0,9 м по центру клетки хода 1×1 м, щель 5 см (как у укрытий); лицо — +Y по оси клетки
-    base = lib.box_bm((0.60, 0.60, ZB), bevel=0.012, center=(0, 0, ZB / 2))
-    g_base = lib.lit_part(base, ZB, 0.012)
     tray = lib.box_bm((2 * HX, 2 * HY, 0.03), center=(0, 0, ZT - 0.015))
     g_tray = lib.lit_part(tray, ZT, 0.014)
-    body = lib.merge_bm(base, tray)
-    rim_c, rim_i = _scaled(cy, 0.6), _scaled(ice, 0.85)
-    objs = [lib.obj_from_bm("vault_body", body, "solid_dark", cy, rgb_fn=lambda co: rim_i if g_tray(co) else (rim_c if g_base(co) else void), smooth=True)]  # smooth: нормали для обводки силуэта (fringe.gdshader)
+    rim_i = _scaled(ice, 0.85)
+    # Постамент 0,6×0,6×0,3 м — не глухой чёрный ящик (семейство «хранилище», #424 Ш4: «пьедесталы» из жалобы владельца), а облако точек по его граням
+    # с цепочками по рёбрам: тот же объём и те же засечки тиров на лицевой грани, но просвечивает и не читается как ступень укрытия.
+    base = lib.box_bm((0.60, 0.60, ZB), center=(0, 0, ZB / 2))
+    bpts = lib.sample_surface(base, 96, seed=seed + 20, push=0.012, min_z=0.006)
+    c = 0.30
+    edges = [((sx * c, sy * c, 0.0), (sx * c, sy * c, ZB)) for sx in (-1, 1) for sy in (-1, 1)]  # четыре вертикальных ребра
+    edges += [((-c, sy * c, ZB), (c, sy * c, ZB)) for sy in (-1, 1)] + [((sx * c, -c, ZB), (sx * c, c, ZB)) for sx in (-1, 1)]  # верхний контур
+    base.free()
+    bpts += lib.sample_lines(edges, 16, spread=0.003, seed=seed + 21, min_z=0.006)
+    objs = [lib.obj_from_bm("vault_body", tray, "solid_dark", cy, rgb_fn=lambda co: rim_i if g_tray(co) else void, smooth=True)]  # smooth: нормали для обводки силуэта (fringe.gdshader)
+    objs.append(lib.point_cloud("vault_base_pts", bpts, cy, half_size=0.007, seed=seed + 22, a_min=0.35, a_max=0.85, on_floor=True))
     sk = [(Vector((ax, ay, ZB)), Vector((bx, by, ZB)), Vector((0, 0, -0.28)), 0.95, 0.95)
           for ax, ay, bx, by in ((-HX, -HY, HX, -HY), (HX, -HY, HX, HY), (HX, HY, -HX, HY), (-HX, HY, -HX, -HY))]
     objs.append(lib.skirt_set("vault_skirt", sk, cy))
