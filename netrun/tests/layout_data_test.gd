@@ -80,7 +80,7 @@ func test_учебный_узел_та_же_карта_медленный_стр
 	assert_array(t.blocks).is_equal(f.blocks)
 	for p: Dictionary in t.sentries[0]["route"]:
 		assert_int(p["wait"]).is_equal(2)
-	assert_int(t.signs.size()).is_equal(4)
+	assert_int(t.signs.size()).is_equal(5)   # пятая — у хранилища: «СНАЧАЛА ЗАМОК, ПОТОМ ДЕМОНЫ» (Game 17.10)
 	for s: Dictionary in t.signs:
 		assert_bool(not t.occupied.has(s["cell"])).is_true()   # подсказка лежит на свободной клетке
 		assert_bool(not str(s["text"]).is_empty()).is_true()
