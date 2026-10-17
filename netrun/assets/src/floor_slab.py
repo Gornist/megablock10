@@ -21,7 +21,9 @@ import lib  # noqa: E402
 import env  # noqa: E402  (плиты и штрихи кромки — те же функции, что у плиток пола)
 
 TOP = -0.01          # верх плиты, м: на уровне пола, ничего не выступает
-STREAK_PITCH = 0.25  # шаг подвесных штрихов, м (только для датчика случайных чисел, см. build_floor_slab)
+UNDER_DROP = 0.05    # на сколько подложка ниже верха плиты (облака), м
+UNDER_T = 0.02       # толщина подложки, м
+STREAK_PITCH = 0.25# шаг подвесных штрихов, м (только для датчика случайных чисел, см. build_floor_slab)
 STREAK_GAP = 0.12    # доля пропусков (там же)
 HANG_MAX = 0.9       # длина подвесных штрихов, м (там же)
 SKIRT_SEG = 2.0     # длина отрезка вуали вдоль кромки, м
@@ -59,8 +61,13 @@ def build_floor_slab(out, size, seed):
     infos = [(0.0, 0.0, half, half, TOP)]
     top = lib.obj_from_bm("slab", env._slab_bm(0.0, 0.0, half, half, TOP, 1.0), "solid_dark", cy, rgb_fn=env._slab_rgb(infos, rim, lib.lin("void")))
     env._slab_streaks(rng, 0.0, 0.0, half, half, TOP, 1.0, STREAK_PITCH, HANG_MAX, HANG_MAX, 0.011, 0.017, 0.65, p_gap=STREAK_GAP)  # вывод не нужен, см. докстроку файла
+    # Подложка под облачным полом (#424, Ш5): пол — облако с дырами, и сквозь дыры видно всё, что лежит ниже уровня пола (дальние пласты, зеркала). Сплошной тёмный лист
+    # на 5 см ниже верха облака закрывает это: дыры показывают тёмный фон, а не чужую геометрию. Без света (одноцветный void), НЕ облако: AssetMaterials.apply
+    # пропускает меш `floor_slab_under` мимо облачной ветки. Рамка и сетка остаются у `slab` над ней.
+    under = lib.obj_from_bm("floor_slab_under", lib.box_bm((2 * half, 2 * half, UNDER_T), center=(0.0, 0.0, TOP - UNDER_DROP - UNDER_T / 2)), "solid_dark", lib.lin("void"))
     objs = [
         top,
+        under,
         lib.skirt_set(f"floor_slab_skirt", _skirts(rng, half), cy),
     ]
     return lib.export(name, "env", objs, out, budget_tris=400, budget_points=0, origin="slab", budget_streaks=0,

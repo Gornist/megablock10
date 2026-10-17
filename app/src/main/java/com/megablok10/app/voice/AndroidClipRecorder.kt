@@ -32,7 +32,7 @@ class AndroidClipRecorder(private val context: Context) : ClipRecorder {
             r.prepare()
             r.start()
             recorder = r
-            Mb10Log.event(TAG, "voice.record_start", "file" to file.name)
+            Mb10Log.event(TAG, "voice.record_start", "file" to file.name, "denoise" to "off")
             true
         } catch (e: Exception) { // IllegalStateException / IOException / RuntimeException: микрофон занят, нет разрешения
             Mb10Log.warnEvent(TAG, "voice.record_failed", "error" to e.javaClass.simpleName, "msg" to e.message)

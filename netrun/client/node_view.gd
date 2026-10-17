@@ -25,8 +25,6 @@ const PANEL_SINK_MAX := 0.7
 const PANEL_RAISE_MAX := 0.3
 ## Масштаб корпуса: экран модели 0,44 м, поверхность панели взлома — BreachPanelLayout.WIDTH_M (0,48 м).
 const PANEL_SCALE := BreachPanelLayout.WIDTH_M / 0.44
-const SENSOR_SWEEP_RAD := 0.6
-const SENSOR_SWEEP_HZ := 0.12
 ## Стен, углов, дверей, кольца тоннеля, башен света (far_field) и кольца горизонта в комнате нет: на принятом виде (V10: штрихи и точки окружения выключены,
 ## дымка погашена) они невидимы и стоили только вызовов отрисовки (docs/netrun-refactor-plan.md). Ворота lockdown_gate остаются: это игровой сигнал LOCKDOWN.
 ## Границу комнаты показывает только кромка плит пола: room_edge (подвесные штрихи и дымка кромки) на принятом виде невидим, убран по решению владельца 13.10.
@@ -77,7 +75,6 @@ var _lair_phase := 0       ## фаза Black ICE: 0 сон, 1 пробужден
 var _room: Node3D
 var _props: Node3D
 var _furniture: Node3D
-var _sensor: Node3D
 var _counts: Dictionary = {}
 var _gates: Array[Node3D] = []
 var _booths: Dictionary = {}     # id будки -> {node, door, door_rest: Vector3, lamp}: поле bo снимка (запасной Страж)
@@ -87,8 +84,7 @@ var _pads: Dictionary = {}       # id слота -> площадка взлом�
 var _panels: Dictionary = {}     # id слота -> корпус панели взлома (props/hack_panel.glb)
 var _portals: Array[Dictionary] = []  # {to, open, ok, locked}
 var _closed_to: Dictionary = {}  # узлы, которые сервер отказался открыть (локдаун): портал в них закрыт, пока не придёт новое событие node
-var _seat: Node3D
-var _t := 0.0
+var _seat: Node3D   ## кресло — только в прежней комнате (layout == null)
 
 
 func _init() -> void:
@@ -99,16 +95,7 @@ func _init() -> void:
 	_furniture = Node3D.new()
 	_furniture.name = "Furniture"
 	add_child(_furniture)
-	# Кресло узла там, где игрок появляется; датчик у стены (свёрнут к центру комнаты), его голова качается.
-	_seat = _place(_furniture, NodeAssets.prop_path("seat"), NodeLayout.SPAWN, 0.0)
-	_sensor = _place(_furniture, NodeAssets.prop_path("sensor"), NodeLayout.SENSOR_POS, NodeLayout.cardinal_yaw(NodeLayout.SENSOR_POS))
 	set_tier("BASE")
-
-
-func _process(delta: float) -> void:
-	_t += delta
-	if _sensor != null and _sensor.visible:
-		_sensor.rotation.y = NodeLayout.cardinal_yaw(NodeLayout.SENSOR_POS) + sin(_t * TAU * SENSOR_SWEEP_HZ) * SENSOR_SWEEP_RAD
 
 
 # ---------------------------------------------------------------- комната
@@ -242,10 +229,14 @@ func lair_node() -> Node3D:
 	return _lair
 
 
-## Кресло — там, где игрок появляется (вход раскладки); датчик — только в прежней комнате: в раскладке Стражи — на карте, датчика нет.
+## Кресло (props/seat.glb) — только в прежней комнате (layout == null), там, где игрок появляется. В раскладке кресла нет: в правилах у него
+## роли нет (levels.md, решение 17.10), вход обозначает символ S. Колонны-датчика узла нет нигде (убрана вместе с NodeLayout.SENSOR_POS).
 func _apply_furniture() -> void:
-	_seat.position = NodeLayout.SPAWN if layout == null else layout.spawn
-	_sensor.visible = layout == null
+	if layout != null:
+		_discard(_seat)
+		_seat = null
+	elif _seat == null:
+		_seat = _place(_furniture, NodeAssets.prop_path("seat"), NodeLayout.SPAWN, 0.0)
 
 
 ## Препятствия раскладки: области из соседних по стороне блоков «#» (levels.md §2 п. 13). Прежняя комната (layout == null) — только одиночные колонны.
@@ -521,6 +512,7 @@ func _discard(n: Node) -> void:
 	n.free()
 
 
+## Кресло прежней комнаты; в раскладке — null.
 func seat_node() -> Node3D:
 	return _seat
 

@@ -219,6 +219,8 @@ func test_floor_slab_is_single_thin_slab_with_veil_only() -> void:
 		elif n == "slab":
 			slab = mi
 			tris += (mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3
+		elif n == AssetMaterials.UNDER_SLAB:   # сплошная подложка под облачным полом (#424, Ш5): считается в бюджет
+			tris += (mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3
 		else:
 			assert_bool(false).override_failure_message("floor_slab_16: лишний меш «%s» (штрихов и точек в окружении нет)" % n).is_true()
 	assert_bool(slab != null and skirt != null).override_failure_message("floor_slab_16: нужны меши slab и *_skirt").is_true()
@@ -481,6 +483,18 @@ func test_hack_panel_screen_and_anchor() -> void:
 		assert_float(n.dot(z)).override_failure_message("нормаль экрана не совпадает с +Z метки").is_greater(0.99)
 
 
+## Семейство «хранилище» (#424, Ш4): корпус панели на частицах, без пьедестала. Основание 0,34×0,34×0,02 читалось как круглая/квадратная ступень.
+func test_hack_panel_has_no_solid_pedestal_at_the_floor() -> void:
+	var p := _load("props", "hack_panel")
+	for mi in _meshes(p):
+		var role := String(mi.mesh.surface_get_material(0).resource_name) if mi.mesh.surface_get_material(0) != null else ""
+		if role != "solid_dark":
+			continue
+		var b: AABB = mi.transform * mi.get_aabb()
+		var wide_and_low: bool = maxf(b.size.x, b.size.z) > 0.3 and b.position.y < 0.05
+		assert_bool(wide_and_low).override_failure_message("hack_panel: %s — сплошная плита шире 0,3 м у пола (основание-пьедестал)" % mi.name).is_false()
+
+
 func test_hack_pad_is_a_thin_plate_under_the_feet() -> void:
 	var box := _aabb(_load("props", "hack_pad"))
 	assert_float(box.size.x).is_between(0.85, 1.0)
@@ -730,6 +744,52 @@ func test_asset_materials_veil_knob_scales_and_hides_the_veil() -> void:
 	AssetMaterials.reset_tuning()
 
 
+## Под облачным полом лежит сплошная тёмная подложка (#424, Ш5): сквозь дыры облака виден тёмный фон, а не дальние пласты и зеркала под полом.
+## Подложка — solid_dark при любых ручках облака, закрывает всю комнату и лежит ниже верха облака; слой облака (slab) остаётся.
+func test_floor_slab_has_solid_void_underlay_below_cloud_layer() -> void:
+	AssetMaterials.reset_tuning()
+	var room := NodeLayout.ROOM_MAX - NodeLayout.ROOM_MIN
+	var root := _apply_new("env", "floor_slab_16")
+	var under: MeshInstance3D = null
+	var slab: MeshInstance3D = null
+	for mi in _meshes(root):
+		if String(mi.name) == AssetMaterials.UNDER_SLAB:
+			under = mi
+		elif String(mi.name) == "slab":
+			slab = mi
+	assert_bool(under != null and slab != null).override_failure_message("floor_slab_16: нужны меши floor_slab_under и slab").is_true()
+	var um := under.get_surface_override_material(0) as ShaderMaterial
+	assert_str(um.shader.resource_path).override_failure_message("подложка — сплошной solid_dark, не облако").ends_with("solid_dark.gdshader")
+	assert_str((slab.get_surface_override_material(0) as ShaderMaterial).shader.resource_path).override_failure_message("слой облака у пола остаётся").contains("cloud_dark")
+	assert_bool(under.is_in_group(AssetMaterials.SURFACE_CLOUD_GROUP)).override_failure_message("подложка не должна дышать как облако").is_false()
+	var ub := under.get_aabb()
+	assert_float(ub.size.x).override_failure_message("подложка не на всю комнату по X").is_equal_approx(room.x, 0.01)
+	assert_float(ub.size.z).override_failure_message("подложка не на всю комнату по Z").is_equal_approx(room.x, 0.01)
+	assert_float(ub.end.y).override_failure_message("подложка не ниже верха облака").is_less(slab.get_aabb().end.y)
+	assert_float(ub.size.y).override_failure_message("подложка не тонкая").is_less_equal(0.03)
+	assert_int((under.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3).override_failure_message("подложка — коробка, 12 треугольников").is_equal(12)
+	AssetMaterials.tune({"cloud": 1.0, "cloud_floor": 1.0, "cloud_ceiling": 1.0, "cloud_far": 1.0})   # все охваты облака включены — подложка всё равно сплошная
+	var all_on := _apply_new("env", "floor_slab_16")
+	assert_str(_mat_of(all_on, AssetMaterials.UNDER_SLAB).shader.resource_path).override_failure_message("подложка при всех охватах облака — solid_dark").ends_with("solid_dark.gdshader")
+	AssetMaterials.reset_tuning()
+
+
+## Ручка floor_density (#424, Ш5): зерно пола реже, чем у реквизита (умолчание 0,6), линии сетки не гаснут; реквизит ручка не трогает.
+func test_floor_density_knob_scales_only_floor_grain() -> void:
+	AssetMaterials.reset_tuning()
+	assert_float(float(AssetMaterials.KNOBS["floor_density"])).override_failure_message("умолчание floor_density — 0,6").is_equal_approx(0.6, 0.0001)
+	var dd := float(AssetMaterials.KNOBS["dust_density"])
+	var slab := _mat_of(_apply_new("env", "floor_slab_16"), "slab")
+	assert_float(float(slab.get_shader_parameter("dust_density"))).override_failure_message("пол: dust_density × 0,6").is_equal_approx(dd * 0.6, 0.0001)
+	assert_float(float(slab.get_shader_parameter("grid_alpha"))).override_failure_message("сетка пола не гасится ручкой").is_equal_approx(0.35, 0.001)
+	assert_float(float(_mat_of(_apply_new("env", "cover"), "pillar_block").get_shader_parameter("dust_density"))).override_failure_message("реквизит: плотность без множителя").is_equal_approx(dd, 0.0001)
+	AssetMaterials.tune({"floor_density": 1.0})
+	assert_float(float(_mat_of(_apply_new("env", "floor_slab_16"), "slab").get_shader_parameter("dust_density"))).override_failure_message("floor_density=1: как у реквизита").is_equal_approx(dd, 0.0001)
+	AssetMaterials.tune({"floor_density": 0.3})
+	assert_float(float(_mat_of(_apply_new("env", "floor_slab_16"), "slab").get_shader_parameter("dust_density"))).override_failure_message("floor_density=0,3: меняет uniform").is_equal_approx(dd * 0.3, 0.0001)
+	AssetMaterials.reset_tuning()
+
+
 func test_asset_materials_knob_cloud_swaps_solid_dark_for_cloud_shader() -> void:
 	AssetMaterials.reset_tuning()
 	var dflt := _load("env", "cover")
@@ -760,14 +820,20 @@ func _cloud_meshes(root: Node) -> int:
 
 
 func test_asset_materials_cloud_scope_props_yes_slabs_gate_and_deck_no() -> void:
-	AssetMaterials.reset_tuning()  # умолчания охвата = принятый C3a: облако на реквизите, пол/потолок/дальние пласты остаются solid_dark
+	AssetMaterials.reset_tuning()  # умолчания охвата («всё из частиц», #424): облако на реквизите, полу и дальних пластах; потолок остаётся solid_dark
 	assert_int(_cloud_meshes(_apply_new("env", "cover"))).override_failure_message("укрытие — облако").is_greater(0)
 	assert_int(_cloud_meshes(_apply_new("env", "exit_frame"))).override_failure_message("рамка выхода — облако").is_greater(0)
-	assert_int(_cloud_meshes(_apply_new("env", "far_floor"))).override_failure_message("cloud_far=0: дальние пласты остаются solid_dark").is_equal(0)
-	assert_int(_cloud_meshes(_apply_new("env", "floor_slab_16"))).override_failure_message("cloud_floor=0: пол остаётся solid_dark").is_equal(0)
+	assert_int(_cloud_meshes(_apply_new("env", "far_floor"))).override_failure_message("cloud_far=1 по умолчанию: дальние пласты — облако").is_greater(0)
+	assert_int(_cloud_meshes(_apply_new("env", "floor_slab_16"))).override_failure_message("cloud_floor=1 по умолчанию: пол — облако").is_greater(0)
+	var slab_mat := _mat_of(_apply_new("env", "floor_slab_16"), "slab")
+	assert_float(float(slab_mat.get_shader_parameter("grid_alpha"))).override_failure_message("линии клеток 1 м на полу-облаке сохранены (grid_tex в cloud_dark)").is_greater(0.0)
+	assert_object(slab_mat.get_shader_parameter("grid_tex")).is_not_null()
 	assert_int(_cloud_meshes(_apply_new("env", "ceiling"))).override_failure_message("cloud_ceiling=0: потолок остаётся solid_dark").is_equal(0)
-	assert_int(_cloud_meshes(_apply_new("env", "lockdown_gate"))).override_failure_message("ворота LOCKDOWN всегда сплошные: красная кромка — сигнал").is_equal(0)
-	assert_int(_cloud_meshes(_apply_new("deck", "wrist_deck"))).override_failure_message("дека всегда сплошная (своя палитра, замера облака не было)").is_equal(0)
+	AssetMaterials.tune({"cloud_far": 0.0, "cloud_floor": 0.0})
+	assert_int(_cloud_meshes(_apply_new("env", "far_floor"))).override_failure_message("cloud_far=0: ручка возвращает сплошную грань").is_equal(0)
+	assert_int(_cloud_meshes(_apply_new("env", "floor_slab_16"))).override_failure_message("cloud_floor=0: ручка возвращает solid_dark").is_equal(0)
+	AssetMaterials.reset_tuning()
+	assert_int(_cloud_meshes(_apply_new("deck", "wrist_deck"))).override_failure_message("/deck/ остаётся сплошным (своя палитра; решение владельца 17.10)").is_equal(0)
 	AssetMaterials.tune({"cloud_far": 1.0, "cloud_floor": 1.0, "cloud_ceiling": 1.0})
 	assert_int(_cloud_meshes(_apply_new("env", "far_floor"))).override_failure_message("cloud_far=1: дальние пласты тоже облако").is_greater(0)
 	assert_int(_cloud_meshes(_apply_new("env", "floor_slab_16"))).override_failure_message("cloud_floor=1: пол — облако").is_greater(0)
@@ -776,6 +842,59 @@ func test_asset_materials_cloud_scope_props_yes_slabs_gate_and_deck_no() -> void
 	assert_str(_mat_of(one_side, "pillar_block").shader.resource_path).override_failure_message("укрытие — облако, одна сторона (cull_back)").ends_with("cloud_dark.gdshader")
 	assert_bool(AssetMaterials.KNOBS.has("cloud_two_sided")).override_failure_message("cloud_two_sided снята 14.10 (+5,5 мс на очках), ручки быть не должно").is_false()
 	assert_bool(FileAccess.file_exists("res://assets/shaders/cloud_dark_2s.gdshader")).override_failure_message("cloud_dark_2s.gdshader удалён").is_false()
+
+
+## Число вершин с фиолетовым оттенком (hue 0,68–0,85, насыщенность > 0,3, яркость > 0,05) в цветах вершин всех мешей корня. Цвета в .glb линейные: #8a5cff даёт hue ≈ 0,69, не 0,72;
+## синий HARD (#2a7bff) — hue ≈ 0,64, ниже границы.
+func _violet_verts(root: Node) -> int:
+	var n := 0
+	for mi in _meshes(root):
+		for s in mi.mesh.get_surface_count():
+			var cols: Variant = mi.mesh.surface_get_arrays(s)[Mesh.ARRAY_COLOR]
+			if cols == null:
+				continue
+			for c in cols as PackedColorArray:
+				if c.h >= 0.68 and c.h <= 0.85 and c.s > 0.3 and c.v > 0.05:
+					n += 1
+	return n
+
+
+func test_shard_has_no_violet_vertices() -> void:
+	assert_int(_violet_verts(_load("deck", "daemon_GHOST"))).override_failure_message("контроль: у демона GHOST фиолетовый есть — проверка оттенка рабочая").is_greater(0)
+	for a in ["shard", "shard_encrypted"]:
+		assert_int(_violet_verts(_load("props", a))).override_failure_message("%s: фиолетовые вершины (фиолетового в Сети нет, #424)" % a).is_equal(0)
+
+
+## Красные облачные материалы корня: у каждого облачного меша dust_color ≈ layer("volume_ice"), касание — светлый красный.
+func _assert_cloud_is_red(root: Node, what: String) -> void:
+	var red := AssetMaterials.layer("volume_ice")
+	var n := 0
+	for mi in _meshes(root):
+		var sm := mi.get_surface_override_material(0) as ShaderMaterial
+		if sm == null or sm.shader == null or not sm.shader.resource_path.contains("cloud_dark"):
+			continue
+		n += 1
+		var c := sm.get_shader_parameter("dust_color") as Color
+		assert_bool(c.is_equal_approx(red)).override_failure_message("%s: %s — dust_color не красный слой volume_ice" % [what, mi.name]).is_true()
+		var t := sm.get_shader_parameter("touch_color") as Vector3
+		assert_float(t.x).override_failure_message("%s: %s — touch_color не красный" % [what, mi.name]).is_greater(t.z)
+	assert_int(n).override_failure_message(what + ": нет облачных мешей").is_greater(0)
+
+
+func test_asset_materials_ice_gear_and_lockdown_gate_are_red_cloud() -> void:
+	AssetMaterials.reset_tuning()
+	for a in ["lighthouse_ice", "sensor_ice", "barrier_ice", "guard_booth", "black_lair"]:
+		_assert_cloud_is_red(_apply_new("ice", a), "ice/" + a)
+	_assert_cloud_is_red(_apply_new("env", "lockdown_gate"), "env/lockdown_gate")
+	# остальное окружение — бирюза (умолчание шейдера), не красное
+	var cover := _apply_new("env", "cover")
+	var teal: Variant = _mat_of(cover, "pillar_block").get_shader_parameter("dust_color")
+	assert_bool(teal == null).override_failure_message("укрытие: цвет облака не переопределяется, остаётся бирюза шейдера").is_true()
+	# логово: облако не ломает три состояния
+	var lair := _apply_new("ice", "black_lair")
+	for st in ["State_sleep", "State_waking", "State_empty"]:
+		var n := lair.find_child(st, true, false)
+		assert_bool(n != null and _meshes(n).size() > 0).override_failure_message("black_lair с облаком: нет состояния " + st).is_true()
 
 
 func _apply_new(group: String, asset: String) -> Node3D:
