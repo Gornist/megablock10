@@ -3,28 +3,28 @@
 # Запуск: ./gradlew :app:detekt   (отчёты — app/build/reports/detekt/). Старые находки лежат в app/detekt-baseline.xml.
 complexity:
   LongMethod:
-    threshold: 80
+    allowedLines: 80
     ignoreAnnotated: ['Composable']
     excludes: ['**/debug/**', '**/test/**']
   LongParameterList:
-    functionThreshold: 8
-    constructorThreshold: 10
+    allowedFunctionParameters: 8
+    allowedConstructorParameters: 10
     ignoreDefaultParameters: true
     ignoreAnnotated: ['Composable']
   CyclomaticComplexMethod:
-    threshold: 20
+    allowedComplexity: 20
     ignoreAnnotated: ['Composable']
     excludes: ['**/debug/**', '**/test/**']
   NestedBlockDepth:
-    threshold: 5
+    allowedDepth: 5
     ignoreAnnotated: ['Composable']
   TooManyFunctions:
-    thresholdInFiles: 30
-    thresholdInClasses: 25
-    thresholdInObjects: 25
+    allowedFunctionsPerFile: 30
+    allowedFunctionsPerClass: 25
+    allowedFunctionsPerObject: 25
     ignoreAnnotated: ['Composable']
   LargeClass:
-    threshold: 700
+    allowedLines: 700
 style:
   MagicNumber:
     active: false
@@ -38,9 +38,9 @@ style:
     max: 5
   ThrowsCount:
     max: 4
-  UnusedImports:
+  UnusedImport:
     active: true
-  UnusedPrivateMember:
+  UnusedPrivateFunction:
     active: true
     ignoreAnnotated: ['Preview']
   UnusedPrivateProperty:

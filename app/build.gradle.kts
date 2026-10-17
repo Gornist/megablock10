@@ -6,7 +6,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
     id("app.cash.paparazzi")
-    id("io.gitlab.arturbosch.detekt")
+    id("dev.detekt")
 }
 
 // Настройки конкретной игры задаются при сборке, а не в публичном коде: адрес сервера мастера и режим первого запуска.

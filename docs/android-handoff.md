@@ -171,14 +171,16 @@ kit — в [kit/README.md](../kit/README.md).
   тестовой задачи, и clean удаляет закоммиченные эталоны, после чего сверка падает на «нет файла». Прогнать тесты заново без
   кэша — `./gradlew verifyPaparazziDebug --rerun-tasks` (или `:app:testDebugUnitTestNoScreenshots --rerun` — без скриншотов); удалённые эталоны — `git restore app/src/test/snapshots`.
 - `DebugQrBus` (только debug) теряет строку, если экран её сейчас не слушает. Стенд e2e это учитывает.
-- detekt закреплён на Kotlin 2.0.21 **только в своей конфигурации** (`build.gradle.kts`: `configurations.matching { it.name ==
-  "detekt" }` → `useVersion("2.0.21")`, detekt 1.23 собран с этой версией и сверяет её); сам проект собирается Kotlin 2.4
-  (2.4.20). Не «чините» это поднятием версии detekt-а или Kotlin проекта вниз.
+- detekt 2.0.0-alpha.6 (17.10; плагин `dev.detekt`, стабильной 2.0 ещё нет): собран с Kotlin 2.4 и Analysis API, пин компилятора
+  2.0.21, нужный 1.23, убран — не возвращайте. Ключи `config/detekt/detekt.yml` переименованы по
+  [руководству миграции](https://detekt.dev/docs/introduction/migration) (`threshold` → `allowedLines`/`allowedComplexity`/…,
+  `UnusedImports` → `UnusedImport`, `UnusedPrivateMember` → `UnusedPrivateFunction`). Задача `detekt` идёт в режиме `light`
+  (без classpath) — правила, которым нужны типы, не работают, как и в 1.23. Baseline 1.x не подходит 2.x (формат ID) — при
+  пересоздании только `detektBaseline`.
 - Сборка (16.10): Kotlin 2.4, **AGP 9.2.1, Gradle 9.4.1**, compileSdk 37, Compose 1.12 (BOM 2026.09), lifecycle 2.11, Paparazzi
   2.0.0-alpha05.1 (альфа, но собрана под AGP 9; эталоны скриншотов при переходе не изменились). Kotlin встроен в AGP: плагин
   `kotlin.android` не подключается (версию KGP задают `kotlin.plugin.compose` и `kotlin.jvm` в корневом `build.gradle.kts`).
-  detekt остаётся 1.23.8 — его задача `detekt` работает на Gradle 9 без интеграции с AGP; 2.0 (плагин `dev.detekt`, другой
-  формат конфигурации и baseline) — отдельной задачей. С AGP 9 юнит-тесты создаются только для Debug (`testReleaseUnitTest` нет).
+  С AGP 9 юнит-тесты создаются только для Debug (`testReleaseUnitTest` нет).
   targetSdk оставлен 34: 35+ включает edge-to-edge и прогнозируемый «назад» — поднимать отдельной правкой с проверкой всех экранов.
 
 ## План дальнейшей работы
