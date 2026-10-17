@@ -61,8 +61,8 @@ import com.megablok10.app.ui.theme.MbIcons
 import com.megablok10.app.ui.theme.MbTypography
 import com.megablok10.app.ui.theme.bubbleMeta
 import com.megablok10.app.ui.theme.mbFrame
-import com.megablok10.app.voice.AndroidClipRecorder
 import com.megablok10.app.voice.RecordedClip
+import com.megablok10.app.voice.createClipRecorder
 import com.megablok10.app.voice.RecordingState
 import com.megablok10.app.voice.VoiceMarker
 import com.megablok10.app.voice.VoiceRecordSession
@@ -199,7 +199,7 @@ internal fun rememberVoiceRecordUi(micAllowed: Boolean, onClip: (RecordedClip) -
     val haptic = LocalHapticFeedback.current
     val session = remember {
         val dir = File(context.cacheDir, "voice-rec")
-        VoiceRecordSession(AndroidClipRecorder(context), { UUID.randomUUID().toString().replace("-", "").let { it to File(dir, "$it.m4a") } }, System::currentTimeMillis)
+        VoiceRecordSession(createClipRecorder(context),{ UUID.randomUUID().toString().replace("-", "").let { it to File(dir, "$it.m4a") } }, System::currentTimeMillis)
     }
     var recording by remember { mutableStateOf(false) }
     var state by remember { mutableStateOf(RecordingState()) }
