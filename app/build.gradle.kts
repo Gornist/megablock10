@@ -117,7 +117,7 @@ android {
 // Java-агент ByteBuddy (им пользуется Paparazzi) — загружается при старте тестовой JVM, а не подключается на лету. Версия — та же,
 // что приходит с Paparazzi; при расхождении не страшно: ByteBuddy ищет загруженный агент по имени класса в системном загрузчике.
 val byteBuddyAgent: Configuration by configurations.creating { isTransitive = false }
-dependencies { byteBuddyAgent("net.bytebuddy:byte-buddy-agent:1.18.14") }
+dependencies { byteBuddyAgent("net.bytebuddy:byte-buddy-agent:1.18.15") }
 
 // Скриншот-тесты (Paparazzi: layoutlib со своей Skia) и остальные unit-тесты (Robolectric: android-all, нативный SQLite) — в разных
 // JVM. В одной JVM нативные библиотеки конфликтовали: на macOS скриншоты после Robolectric падали SIGSEGV в layoutlib (25.09).
