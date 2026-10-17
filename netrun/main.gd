@@ -13,6 +13,7 @@ func _ready() -> void:
 	var features := {
 		"dedicated_server": OS.has_feature("dedicated_server"),
 		"android": OS.has_feature("android"),
+		"solo": OS.has_feature("solo"),
 	}
 	# Без экрана (godot --headless) режим по умолчанию — сервер, пока не указано иное.
 	var args := OS.get_cmdline_user_args()
@@ -22,7 +23,7 @@ func _ready() -> void:
 			run_bot(args, a.trim_prefix("--bot="))
 			return
 	var mode := RunMode.detect(features, args)
-	if DisplayServer.get_name() == "headless" and not ("--flat" in args or "--client" in args):
+	if DisplayServer.get_name() == "headless" and not ("--flat" in args or "--client" in args or "--solo" in args):
 		mode = RunMode.Mode.SERVER
 	match mode:
 		RunMode.Mode.SERVER:
@@ -39,6 +40,11 @@ func _ready() -> void:
 			var f := preload("res://client/flat_stub.gd").new()
 			add_child(f)
 			f.start(args)
+		RunMode.Mode.SOLO:
+			var solo := preload("res://client/solo_stub.gd").new()
+			solo.name = "Solo"
+			add_child(solo)
+			solo.start(args)
 
 
 ## `--bot=ghost_run|exposed_run|black_run|graph_run` (+ `--bot-route=node_02,node_03`, `--bot-ghost`, `--host=`, `--port=`, `--token=`, `--bot-reconnect`, `--bot-hold=<с после шарда>`, `--bot-daemon=<id GHOST-демона>`, `--exit-after=`): бот проходит узел и выходит
