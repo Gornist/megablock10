@@ -165,6 +165,11 @@ class Mb10QrCodecTest {
     }
 
     @Test
+    fun `removed GRANT kind decodes to null and grants nothing`() {
+        assertNull(Mb10QrCodec.decode("MB10:GRANT:v1:node-1#0:DAEMON:1:AAAA=="))
+    }
+
+    @Test
     fun `truncated transaction decodes to null instead of throwing`() {
         assertNull(Mb10QrCodec.decode("MB10:TX:v1:only-id"))
     }

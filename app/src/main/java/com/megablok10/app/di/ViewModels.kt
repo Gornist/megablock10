@@ -78,7 +78,7 @@ fun AppGraph.directThreadViewModel(myKey: String, peerKey: String) = DirectThrea
 )
 
 fun AppGraph.cyberdeckViewModel() =
-    CyberdeckViewModel(identity.state, daemons, shards, directory, ramUpgrades::apply, rewards::applyGrant, sendItem, notices, processScope)
+    CyberdeckViewModel(identity.state, daemons, shards, directory, ramUpgrades::apply, sendItem, notices, processScope)
 
 fun AppGraph.netrunViewModel() = NetrunViewModel(identity.state, netrun, processScope)
 

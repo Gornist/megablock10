@@ -35,7 +35,7 @@ data class Container(
     /**
      * Стабильный адрес слота для SlotClaim — позиция в списке, не меняется,
      * пока QR не перепечатан. Разделитель '#', не ':' — slotRef сам попадает
-     * полем внутрь ':'-разделённых wire-строк (ClaimProtocol, Mb10Qr.LootGrant),
+     * полем внутрь ':'-разделённых wire-строк (ClaimProtocol),
      * ':' внутри него сдвинул бы там все индексы после разбора split(":").
      */
     fun slotRef(index: Int): String = "$id#$index"

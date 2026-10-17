@@ -43,12 +43,11 @@ class CyberdeckViewModel(
     private val shards: ShardCollection,
     directory: ContactDirectory,
     applyRamUpgrade: suspend (Mb10Qr.RamUpgrade) -> Int?,
-    applyGrant: suspend (Mb10Qr.LootGrant) -> String?,
     private val sendItem: SendItem,
     private val notices: PlayerNotices,
     private val work: CoroutineScope,
 ) : ViewModel() {
-    private val scanObject = ScanObject(shards, applyRamUpgrade, applyGrant)
+    private val scanObject = ScanObject(shards, applyRamUpgrade)
 
     val state: StateFlow<CyberdeckState> = combine(daemons.observeAll(), shards.observeAll(), directory.view, ::CyberdeckState)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_MS), CyberdeckState())
@@ -65,7 +64,7 @@ class CyberdeckViewModel(
 
     fun selectSegment(segment: Int) { _segment.value = segment }
 
-    /** Отсканированный объект, кроме контейнера: шард, RAM-токен, фрагмент лута от мастера. Маршрутизация — сценарий ScanObject. */
+    /** Отсканированный объект, кроме контейнера: шард или RAM-токен. Маршрутизация — сценарий ScanObject. */
     fun onScan(qr: Mb10Qr) {
         work.launch {
             scanObject(qr).forEach { effect ->
@@ -73,7 +72,6 @@ class CyberdeckViewModel(
                     is ScanEffect.Notice -> notices.show(effect.text)
                     is ScanEffect.Collected -> _segment.value = when (effect.kind) {
                         CollectedKind.Shard -> SEGMENT_SHARDS
-                        CollectedKind.Daemon -> SEGMENT_DAEMONS
                     }
                 }
             }

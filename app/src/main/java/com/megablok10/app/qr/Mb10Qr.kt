@@ -68,15 +68,6 @@ sealed interface Mb10Qr {
     data class RamUpgrade(val token: String, val delta: Int) : Mb10Qr
 
     /**
-     * Ручная выдача одного слота лута живым мастером в обход авто-извлечения
-     * (ревизия v9 §6 — для самого ценного, тир 3: игрок видит "ФРАГМЕНТ
-     * ИЗВЛЕЧЁН · ТРЕБУЕТСЯ ДЕШИФРОВКА" и идёт к мастеру за этим QR).
-     * encryptedPayload — тот же формат, что у LootSlot.payload, тот же
-     * LootCodec/LootCrypto читает оба пути одинаково.
-     */
-    data class LootGrant(val slotRef: String, val type: LootType, val tier: Tier, val encryptedPayload: String) : Mb10Qr
-
-    /**
      * Сигнал СБ — не QR в смысле "сканируется", а тело обычного фракционного
      * чат-сообщения (см. ChatScreen.MessageBubble, тот же трюк, что и у
      * PaymentBubble): SecAlertStore кодирует этим кодеком и шлёт как body
@@ -174,7 +165,6 @@ object Mb10QrCodec {
                 "CONTAINER" -> decodeContainer(parts)
                 "SHARD" -> decodeShard(parts)
                 "RAM" -> decodeRamUpgrade(parts)
-                "GRANT" -> decodeLootGrant(parts)
                 "SECALERT" -> decodeSecurityAlert(parts)
                 "TX" -> decodeTransaction(parts)
                 "ITEM" -> decodeItemTransfer(parts)
@@ -260,12 +250,6 @@ object Mb10QrCodec {
         if (parts.size < 5) return null
         val delta = parts[4].toIntOrNull() ?: return null
         return Mb10Qr.RamUpgrade(token = parts[3], delta = delta)
-    }
-
-    private fun decodeLootGrant(parts: List<String>): Mb10Qr.LootGrant? {
-        if (parts.size < 7) return null
-        val type = LootType.entries.find { it.name == parts[4] } ?: return null
-        return Mb10Qr.LootGrant(slotRef = parts[3], type = type, tier = Tier.fromLevel(parts[5].toIntOrNull() ?: 1), encryptedPayload = parts[6])
     }
 
     fun encodeSecurityAlert(alert: Mb10Qr.SecurityAlert): String = listOf(
