@@ -71,6 +71,13 @@ func after_test() -> void:
 	_root.queue_free()
 
 
+## Наступает следующий такт узла: начало расшифровки и телепорт — ходы, второй ход в том же такте сервер отказал бы (reason=moved),
+## а ждать окно в 5 с тесту незачем.
+func _next_tick() -> void:
+	var c := _node.tick_clock
+	assert_bool(await _wait_for(func(): return c.poll(c.last_tick_at + c.window_sec))).is_true()   # до физического кадра узла «в узле есть нетраннер» не отмечен
+
+
 func _wait_for(cond: Callable, sec: float = 15.0) -> bool:
 	var t := Time.get_ticks_msec() + int(sec * 1000)
 	while Time.get_ticks_msec() < t:
@@ -245,6 +252,7 @@ func test_cancel_time_out_and_teleport_leave_the_shard_locked_and_cost_nothing()
 	assert_bool(p.ends[0]["decrypted"]).is_false()
 	p.ends.clear()
 	assert_bool(await _start(p, SHARD2)).is_true()
+	await _next_tick()
 	p.net.request_teleport(Vector3(1.0, 0.0, -2.0))
 	assert_bool(await _wait_for(func(): return not p.ends.is_empty())).is_true()
 	assert_str(p.ends[0]["early"]).is_equal("teleport")
