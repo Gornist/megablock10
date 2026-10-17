@@ -2,7 +2,7 @@ class_name RunMode
 extends RefCounted
 ## Выбор режима запуска по метке сборки и аргументам. Чистая функция — проверяется тестом.
 
-enum Mode { SERVER, CLIENT, FLAT }
+enum Mode { SERVER, CLIENT, FLAT, SOLO }
 
 ## features — результат OS.has_feature по нужным меткам (передаём словарём, чтобы тестировать),
 ## args — пользовательские аргументы после `--`.
@@ -11,6 +11,9 @@ static func detect(features: Dictionary, args: PackedStringArray) -> Mode:
 		return Mode.SERVER
 	if "--flat" in args:
 		return Mode.FLAT
+	# Одиночная игра для тестеров (docs/gamedesign/flat-playtest.md): сервер мира и клиент в одном процессе. Метка «solo» — сборка Windows.
+	if "--solo" in args or features.get("solo", false):
+		return Mode.SOLO
 	if "--client" in args or features.get("android", false):
 		return Mode.CLIENT
 	# Запуск с рабочего стола без аргументов — плоская отладочная сборка.

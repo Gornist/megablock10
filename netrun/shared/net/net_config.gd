@@ -37,6 +37,8 @@ var port: int = DEFAULT_PORT
 var token: String = ""
 var grace_sec: float = DEFAULT_GRACE_SEC
 var beat_sec: float = DEFAULT_BEAT_SEC
+## Адрес, на котором сервер слушает (`--bind=`); "" — все интерфейсы. Одиночная игра ставит 127.0.0.1: брандмауэр Windows не спрашивает, из сети не достать.
+var bind: String = ""
 ## Откуда прочитан файл настроек ("" — файла не было).
 var file_path: String = ""
 ## Что в файле не так (по строке; значения токена сюда не попадают) — клиент пишет в журнал `net.config.warn`.
@@ -154,6 +156,8 @@ func _apply_args(args: PackedStringArray) -> void:
 			host = a.trim_prefix("--host=")
 		elif a.begins_with("--port="):
 			port = int(a.trim_prefix("--port="))
+		elif a.begins_with("--bind="):
+			bind = a.trim_prefix("--bind=")
 		elif a.begins_with("--token="):
 			token = a.trim_prefix("--token=")
 		elif a.begins_with("--grace="):
