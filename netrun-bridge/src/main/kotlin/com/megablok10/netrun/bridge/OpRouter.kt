@@ -124,6 +124,7 @@ internal class OpRouter(private val ops: ValueOps, private val terminals: Termin
         tier = req(msg, "tier"), selected = strings(msg, "selected"), matched = strings(msg, "matched"),
         active = strings(msg, "active"), vaults = strings(msg, "vaults"),
         openS = msg["open_s"].long() ?: throw StoreException("bad_request", "нужен open_s"),
+        vaultKey = msg["vault_key"].string(),
     )
 
     private fun moves(msg: JsonObject): List<Move> {
