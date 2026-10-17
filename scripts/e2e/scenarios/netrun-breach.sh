@@ -214,7 +214,13 @@ nrj "{\"op\":\"session.confirm\",\"session\":\"$S2\",\"terminal\":\"$TERM_ID\"}"
 GH2=$(deck_item $S2 GHOST); EX2=$(deck_item $S2 EXTRACT_SHARD)
 [ -n "$GH2" ] && [ -n "$EX2" ] || { nr_save_logs; die "во второй деке нет GHOST или EXTRACT_SHARD"; }
 # Мост — последний судья: run.breach по остывающему узлу отказывает cooldown, ничего не меняя (протокол 6.6)
-BREACH2="{\"op\":\"run.breach\",\"rid\":\"breach:$S2:1\",\"session\":\"$S2\",\"node\":\"$NODE_ID\",\"n\":1,\"tier\":\"BASE\",\"selected\":[\"$EX2\"],\"matched\":[\"$EX2\"],\"active\":[],\"vaults\":[\"it_nr_shard_2\"],\"open_s\":60}"
+# Остывание у каждого хранилища своё (П8-1, протокол 6.6 п.5): отказ — на ТОМ ЖЕ хранилище, что взломали в забеге 1. Его ключ K — запись runner.breach_cooldown
+# с самым поздним сроком (слот `node_07_pkN`; у старого Моста — узел). Шлём run.breach с vault_key=K: новый Мост режет по слоту, старый поле игнорирует и режет по
+# ключу-узлу — проверка зелёная на обоих. Предмет в запросе другой (шард 2 — слот пополнился), слот тот же: ключ остывания — слот, а не предмет.
+CDK=$(nrp '{"op":"list","type":"runner"}' "(lambda cd: max(cd, key=cd.get) if cd else '')([r for r in d['docs'] if r['data'].get('key')=='$PKA'][0]['data'].get('breach_cooldown',{}))")
+VKEY=""; if [ -n "$CDK" ] && [ "$CDK" != "$NODE_ID" ]; then VKEY=",\"vault_key\":\"$CDK\""; fi
+echo "остывание: ключ взломанного хранилища: ${CDK:-—}"
+BREACH2="{\"op\":\"run.breach\",\"rid\":\"breach:$S2:1\",\"session\":\"$S2\",\"node\":\"$NODE_ID\",\"n\":1,\"tier\":\"BASE\",\"selected\":[\"$EX2\"],\"matched\":[\"$EX2\"],\"active\":[],\"vaults\":[\"it_nr_shard_2\"]$VKEY,\"open_s\":60}"
 eq "Мост: run.breach по остывающему узлу — отказ cooldown" "cooldown" "$(nrp "$BREACH2" 'd["err"]["code"] if not d["ok"] else "принят"')"
 eq "Мост: отказанный run.breach не открыл хранилище и не взял эдди" "None" "$(doc_field session $S2 "data.get('breach')")"
 eq "Мост: запас эдди узла прежний после отказа" "$((NODE_EDDIES - BREACH_EDDIES))" "$(doc_field node $NODE_ID "data['eddies']")"
