@@ -65,13 +65,13 @@ cp "$EXE" "$NETRUN/build/netrun-solo.exe" || fail "копирование exe"
 echo "$BUILD_NUMBER" > "$NETRUN/build/netrun-solo.txt"
 
 if [[ "$SMOKE" == 1 ]]; then
-	# Дымовой прогон проекта-копии (тот же код и данные, что внутри exe): сервер и клиент поднялись в одном процессе. timeout 124 — норма:
-	# выход по --exit-after= в режиме SOLO может быть не реализован, процесс просто доживает до предела.
+	# Дымовой прогон проекта-копии (тот же код и данные, что внутри exe): сервер и клиент поднялись в одном процессе. Выход по --exit-after= в SOLO
+	# есть (SoloStub), поэтому ждём чистый код 0; 124 (дожил до предела timeout) — сбой: процесс завис или таймер не сработал.
 	SMOKE_LOG="$WORK/smoke.log"
 	timeout 30 "$GODOT" --headless --path "$WORK" -- --solo --exit-after=8 > "$SMOKE_LOG" 2>&1
 	src=$?
 	grep -aq '\[netrun-solo\]' "$SMOKE_LOG" || fail "дымовой прогон: нет строки [netrun-solo], журнал: $SMOKE_LOG"
-	if [[ "$src" != 0 && "$src" != 124 ]]; then fail "дымовой прогон: код выхода $src, журнал: $SMOKE_LOG"; fi
+	if [[ "$src" != 0 ]]; then fail "дымовой прогон: код выхода $src, журнал: $SMOKE_LOG"; fi
 	if grep -aq "SCRIPT ERROR\|Parse Error" "$SMOKE_LOG"; then fail "дымовой прогон: ошибки скриптов, журнал: $SMOKE_LOG"; fi
 	echo "SMOKE ok код=$src строка=[netrun-solo]"
 fi

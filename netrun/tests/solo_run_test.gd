@@ -37,7 +37,9 @@ func _start(args: PackedStringArray = PackedStringArray()) -> void:
 	_solo = SoloStubScript.new()
 	add_child(_solo)
 	_solo.run_finished.connect(func(result: String, tutorial: bool): _results.append([result, tutorial]))
-	assert_bool(_solo.start(args)).is_true()
+	var run_args := PackedStringArray(args)
+	run_args.append(SoloStubScript.NO_UI_ARG)   # здесь проверяем забег и порты, экраны тестера — в solo_ui_test
+	assert_bool(_solo.start(run_args)).is_true()
 
 
 ## Узел, где клиент стоит по последнему EV_NODE.
