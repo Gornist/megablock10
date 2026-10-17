@@ -6,9 +6,8 @@ import com.megablok10.kit.text.Base64Text.encode as b64
 /**
  * Формат содержимого лут-слота ДО шифрования (LootCrypto оборачивает
  * результат этого кодека, а не наоборот) — тот же стиль, что у Mb10QrCodec:
- * поля через '|', свободный текст в base64. Один и тот же payload читают и
- * при автоматическом извлечении демоном, и при ручной выдаче мастером через
- * Mb10Qr.LootGrant — формат общий для обоих путей.
+ * поля через '|', свободный текст в base64. Payload читают при автоматическом
+ * извлечении демоном (LootCrypto расшифровывает слот контейнера).
  */
 object LootCodec {
     fun encodeShard(title: String, meta: String, body: String, valueHint: String, decryptAction: Boolean, moneyAmount: Long): String =

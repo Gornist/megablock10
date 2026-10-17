@@ -3,7 +3,6 @@ package com.megablok10.app.breach
 import com.megablok10.app.collector.CollectorSettings
 import com.megablok10.app.identity.Identity
 import com.megablok10.app.log.Mb10Log
-import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.shards.ShardStore
 import com.megablok10.app.wallet.TransactionStore
 
@@ -84,28 +83,6 @@ class DaemonRewards(
         }
 
         return RewardOutcome(eddies, shardTitles, daemonNames, exhausted, matchedEffects)
-    }
-
-    /**
-     * Ручная выдача от живого мастера в обход авто-извлечения (ревизия v9 §6,
-     * тир 3 — "ФРАГМЕНТ ИЗВЛЕЧЁН · ТРЕБУЕТСЯ ДЕШИФРОВКА"). Тот же LootCodec/
-     * LootCrypto, что и у слота контейнера — просто без демона и без сетки
-     * взлома: мастер лично подтвердил выдачу, повторный взлом не нужен.
-     * Возвращает описание для тоста, null — если payload битый.
-     */
-    suspend fun applyGrant(grant: Mb10Qr.LootGrant): String? {
-        val lootKey = LootCrypto.deriveKey(settings.gameSecret())
-        val loot = LootCrypto.decrypt(grant.encryptedPayload, lootKey)?.let(LootCodec::decode) ?: return null
-        return when (loot) {
-            is LootCodec.Loot.ShardLoot -> {
-                shards.grant(id = "shard:${grant.slotRef}", tier = grant.tier, loot = loot, sourceRef = grant.slotRef)
-                "Шард получен: ${loot.title}"
-            }
-            is LootCodec.Loot.DaemonLoot -> {
-                daemons.grant(id = "daemon:${grant.slotRef}", loot = loot, sourceRef = grant.slotRef)
-                "Демон получен: ${loot.name}"
-            }
-        }
     }
 }
 

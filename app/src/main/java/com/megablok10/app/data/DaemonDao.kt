@@ -23,7 +23,7 @@ interface DaemonDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(daemons: List<DaemonEntity>)
 
-    /** REPLACE — извлечение демона с тем же id (например, повторная выдача мастером через LootGrant) не плодит дубликат, просто перезаписывает. */
+    /** REPLACE — извлечение демона с тем же id (например, повторное извлечение того же слота) не плодит дубликат, просто перезаписывает. */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(daemon: DaemonEntity)
 }

@@ -40,15 +40,14 @@ class CyberdeckViewModelTest {
 
     private fun TestScope.deck(
         applyRamUpgrade: suspend (Mb10Qr.RamUpgrade) -> Int? = { null },
-        applyGrant: suspend (Mb10Qr.LootGrant) -> String? = { null },
     ) = CyberdeckViewModel(
-        MutableStateFlow(alice.identity), daemons, shards, directory, applyRamUpgrade, applyGrant,
+        MutableStateFlow(alice.identity), daemons, shards, directory, applyRamUpgrade,
         SendItem(items, FakeMessenger(bob.peer)), notices, this,
     )
 
     @Test fun newCharacterGetsTheStartingDaemonSeededExactlyOnce() = runTest {
         val identity = MutableStateFlow(alice.identity)
-        val vm = CyberdeckViewModel(identity, daemons, shards, directory, { null }, { null }, SendItem(items, FakeMessenger()), notices, this)
+        val vm = CyberdeckViewModel(identity, daemons, shards, directory, { null }, SendItem(items, FakeMessenger()), notices, this)
         backgroundScope.launch { vm.state.collect {} }
         runCurrent()
 
