@@ -84,3 +84,13 @@ func test_метка_гаснет_за_время_показа() -> void:
 	d._step(DangerCue.SHOW_SEC + 0.1)
 	assert_bool(d.is_showing()).is_false()
 	assert_str(d.shown_text()).is_equal("")
+
+
+func test_вспышка_ожога_берёт_материал_и_числа_у_blender() -> void:
+	var d: DangerCue = _scene.world_ui.danger
+	assert_object(d._flash_mat.shader).is_same(AssetMaterials.BURN_FLASH_SHADER)
+	assert_int(d._flash_mat.render_priority).is_equal(105)
+	_scene.apply_state(_state(1))
+	assert_float(d._flash_left).is_equal_approx(AssetMaterials.BURN_FLASH_SEC, 0.0001)
+	assert_float(float(d._flash_mat.get_shader_parameter("strength"))).is_equal_approx(AssetMaterials.BURN_FLASH_START, 0.0001)
+	assert_float(float(d._flash_mat.get_shader_parameter("half_fov"))).is_between(0.3, 1.5)
