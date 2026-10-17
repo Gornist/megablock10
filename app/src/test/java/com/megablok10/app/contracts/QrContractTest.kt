@@ -7,6 +7,7 @@ import com.megablok10.app.breach.Tier
 import com.megablok10.app.qr.Mb10Qr
 import com.megablok10.app.qr.Mb10QrCodec
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -63,5 +64,12 @@ class QrContractTest {
             assertEquals(v.str("name"), v.str("line"), Mb10QrCodec.encodeSecurityAlert(alert))
             assertEquals(v.str("name"), alert, Mb10QrCodec.decode(v.str("line")))
         }
+    }
+
+    /** Вид другой версии телефон не разбирает: поля сдвинулись бы молча (SHARD несёт деньги). */
+    @Test fun linesOfAnotherVersionAreRejected() {
+        val all = vectors.list("rejected")
+        assertTrue(all.isNotEmpty())
+        for (v in all) assertNull(v.str("name"), Mb10QrCodec.decode(v.str("line")))
     }
 }

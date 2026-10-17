@@ -164,6 +164,12 @@ sealed interface Mb10Qr {
 object Mb10QrCodec {
     private const val MAGIC = "MB10"
 
+    /**
+     * Версия вида QR (`MB10:ВИД:vN:…`) — третья часть. Вид другой версии читать нельзя: поля сдвинутся молча, а SHARD несёт деньги.
+     * Все писатели (Мастерская, Мост, приложение) пишут `v1`; новая версия вида сначала учится читаться здесь, потом печататься.
+     */
+    private fun isV1(parts: List<String>): Boolean = parts[2] == "v1"
+
     fun decode(raw: String): Mb10Qr? {
         val parts = raw.split(":")
         if (parts.size < 2 || parts[0] != MAGIC) return null
@@ -192,7 +198,7 @@ object Mb10QrCodec {
         "$MAGIC:CONTACT:v1:$publicKeyB64:$callsign:$faction"
 
     private fun decodeContact(parts: List<String>): Mb10Qr.Contact? {
-        if (parts.size < 6) return null
+        if (parts.size < 6 || !isV1(parts)) return null
         return Mb10Qr.Contact(
             publicKeyB64 = parts[3],
             callsign = parts[4],
@@ -212,7 +218,7 @@ object Mb10QrCodec {
     }
 
     private fun decodeContainer(parts: List<String>): Mb10Qr.ContainerQr? {
-        if (parts.size < 8) return null
+        if (parts.size < 8 || !isV1(parts)) return null
         val lootBlob = unb64(parts[7])
         val loot = if (lootBlob.isEmpty()) emptyList() else lootBlob.split(";").mapNotNull { slot ->
             val f = slot.split(",", limit = 4)
@@ -243,7 +249,7 @@ object Mb10QrCodec {
     ): String = "$MAGIC:SHARD:v1:$id:${if (decryptAction) 1 else 0}:$tier:${b64(valueHint)}:${b64(title)}:${b64(meta)}:${b64(body)}:$moneyAmount"
 
     private fun decodeShard(parts: List<String>): Mb10Qr.Shard? {
-        if (parts.size < 10) return null
+        if (parts.size < 10 || !isV1(parts)) return null
         return Mb10Qr.Shard(
             id = parts[3],
             decryptAction = parts[4] == "1",
@@ -257,7 +263,7 @@ object Mb10QrCodec {
     }
 
     private fun decodeRamUpgrade(parts: List<String>): Mb10Qr.RamUpgrade? {
-        if (parts.size < 5) return null
+        if (parts.size < 5 || !isV1(parts)) return null
         val delta = parts[4].toIntOrNull() ?: return null
         return Mb10Qr.RamUpgrade(token = parts[3], delta = delta)
     }
@@ -274,7 +280,7 @@ object Mb10QrCodec {
     ).joinToString(":")
 
     private fun decodeSecurityAlert(parts: List<String>): Mb10Qr.SecurityAlert? {
-        if (parts.size < 8) return null
+        if (parts.size < 8 || !isV1(parts)) return null
         return Mb10Qr.SecurityAlert(
             containerId = parts[3],
             containerName = unb64(parts[4]),
@@ -338,7 +344,7 @@ object Mb10QrCodec {
         "$MAGIC:RCPT:v1:${receipt.id}:${receipt.receiverPubKeyB64}:${receipt.signatureB64}"
 
     private fun decodeReceipt(parts: List<String>): Mb10Qr.Receipt? {
-        if (parts.size < 6) return null
+        if (parts.size < 6 || !isV1(parts)) return null
         return Mb10Qr.Receipt(id = parts[3], receiverPubKeyB64 = parts[4], signatureB64 = parts[5])
     }
 

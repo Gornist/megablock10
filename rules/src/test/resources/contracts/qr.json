@@ -110,5 +110,35 @@
       "preciseAt": null,
       "line": "MB10:SECALERT:v1:c-2:0J/Rg9GB0YLQvtC5:1::"
     }
+  ],
+  "rejected": [
+    {
+      "name": "CONTAINER другой версии (v2): поля не угадываются",
+      "line": "MB10:CONTAINER:v2:c-1:0KHQtdC50YQg0JDRgNCw0YHQsNC60Lg=:2:0JDRgNCw0YHQsNC60LA=:U0hBUkQsMSwzLEFBQUErL2JiYmI9PTtEQUVNT04sMiwxLENDQ0M9PQ=="
+    },
+    {
+      "name": "SHARD другой версии (v2): он несёт деньги, читать вслепую нельзя",
+      "line": "MB10:SHARD:v2:s-1:1:2:0YbQtdC90L3QvtGB0YLRjA==:0KHRhdC10LzRiw==:0JDRgNCw0YHQsNC60LA=:0KHRgtGA0L7QutCwIDEK0YHRgtGA0L7QutCwIDI=:25"
+    },
+    {
+      "name": "SHARD с мусором вместо версии",
+      "line": "MB10:SHARD:vX:s-1:1:2:0YbQtdC90L3QvtGB0YLRjA==:0KHRhdC10LzRiw==:0JDRgNCw0YHQsNC60LA=:0KHRgtGA0L7QutCwIDEK0YHRgtGA0L7QutCwIDI=:25"
+    },
+    {
+      "name": "RAM другой версии",
+      "line": "MB10:RAM:v2:tok-1:4"
+    },
+    {
+      "name": "SECALERT другой версии",
+      "line": "MB10:SECALERT:v2:c-1:0KHQtdC50YQg0JDRgNCw0YHQsNC60Lg=:2:0JrQu9C10LzRgtGL:1760000000000"
+    },
+    {
+      "name": "CONTACT другой версии",
+      "line": "MB10:CONTACT:v2:PK+/==:Клемты:Арасака"
+    },
+    {
+      "name": "RCPT другой версии",
+      "line": "MB10:RCPT:v2:tx-1:PK_B+/==:SIG_R1"
+    }
   ]
 }
