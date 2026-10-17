@@ -9,12 +9,10 @@ updates:
     open-pull-requests-limit: 5
     groups:
       gradle-minor: { update-types: [minor, patch] }
-    # До перехода на AGP 9 (бэклог Android): core-ktx 1.19+ и Compose BOM 2026.09+ требуют AGP 9.1 и compileSdk 37,
-    # Paparazzi alpha05.1 собран под AGP 9 (NoSuchMethodError в mergeDebugResources). 14.10, PR #258/#259 — красные.
+    # core-ktx, Compose BOM и Paparazzi держали до AGP 9 (14.10, #258/#259 красные); с 17.10 (#365, AGP 9.2.1) снова обновляются.
+    # detekt 2.0 — другой плагин и правила: только отдельной задачей Android, не автоматическим PR (#365).
     ignore:
-      - { dependency-name: "androidx.core:core-ktx" }
-      - { dependency-name: "androidx.compose:compose-bom" }
-      - { dependency-name: "app.cash.paparazzi" }
+      - { dependency-name: "io.gitlab.arturbosch.detekt*", update-types: ["version-update:semver-major"] }
   - package-ecosystem: npm             # сервер коллектора
     directory: "/admin-web/server"
     schedule: { interval: weekly, day: monday }
