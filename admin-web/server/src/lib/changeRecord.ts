@@ -1,4 +1,4 @@
-const FIELDS = [
+export const FIELDS = [
   "balance",
   "ramCapacity",
   "callsign",

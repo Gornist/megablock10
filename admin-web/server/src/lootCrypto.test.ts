@@ -2,14 +2,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { decryptLoot, deriveLootKey, encryptLoot } from "./lib/lootCrypto.js";
 import { encodeDaemonLoot, encodeShardLoot } from "./lib/lootCodec.js";
+import { loadContract, type LootCryptoVectors } from "./contractVectors.js";
 
 const FALLBACK_KEY = deriveLootKey(undefined);
 
 /**
- * AES-256-GCM, тот же ключ и байтовый layout (iv || ciphertext || tag), что
- * LootCrypto.kt на Android — реальная кросс-проверка с javax.crypto была
- * сделана вручную (см. admin-web/README.md), здесь только регресс round-trip
- * внутри самого Node, чтобы будущая правка не сломала совместимость молча.
+ * AES-256-GCM, байтовый layout iv || ciphertext || tag, как в LootCrypto.kt на Android. Совместимость с Kotlin держат общие векторы
+ * внизу файла; здесь — регресс round-trip внутри самого Node.
  */
 test("encryptLoot/decryptLoot — round-trip для шарда", () => {
   const plain = encodeShardLoot({
@@ -67,13 +66,29 @@ test("deriveLootKey — payload одной игры не читается клю
 });
 
 /**
- * Тестовый вектор для сверки с LootCrypto.deriveKey на Android (HKDF-SHA256,
- * salt = 32 нулевых байта, info = "mb10-loot-v1"). Значение посчитано этой
- * же функцией и захардкожено на обеих сторонах — если реализации разойдутся
- * (например, кто-то поменяет salt/info на одной стороне), один из двух
- * тестов, а не оба сразу, покраснеет.
+ * Общие векторы `loot-crypto.json` (посчитаны независимо от Kotlin и TS; их же читает LootCryptoContractTest на Android): ключ по секрету
+ * игры (null/пробелы = постоянный ключ v1), блоки AES-GCM, которые обязаны открыться, и блоки, которые обязаны вернуть null.
+ * Разойдутся реализации — телефон не прочтёт лут, который собрал коллектор.
  */
-test("deriveLootKey — тестовый вектор для сверки с Kotlin-стороной (LootCryptoTest.deriveKey matches shared vector)", () => {
-  const key = deriveLootKey("mb10-cross-check-secret");
-  assert.equal(key.toString("hex"), "232aab80471b62a518d8b054f2a1aeb0cd62c28586a02df3f1106ec15eca4a2d");
-});
+const vectors = loadContract<LootCryptoVectors>("loot-crypto");
+const secretOf = (s: string | null) => s ?? undefined;
+
+for (const k of vectors.keys) {
+  test(`ключ лута: ${k.name}`, () => {
+    assert.equal(deriveLootKey(secretOf(k.gameSecret)).toString("hex"), k.keyHex);
+  });
+}
+
+for (const s of vectors.sealed) {
+  test(`блок открывается: ${s.name}`, () => {
+    const key = deriveLootKey(secretOf(s.gameSecret));
+    assert.equal(decryptLoot(s.sealedB64, key), s.plaintext);
+    assert.equal(Buffer.from(s.sealedB64, "base64").subarray(0, 12).toString("hex"), s.ivHex, "IV — первые 12 байт блока");
+  });
+}
+
+for (const r of vectors.rejected) {
+  test(`блок отвергнут (null): ${r.name}`, () => {
+    assert.equal(decryptLoot(r.sealedB64, deriveLootKey(secretOf(r.gameSecret))), null);
+  });
+}
