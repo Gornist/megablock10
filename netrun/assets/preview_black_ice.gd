@@ -3,6 +3,8 @@ extends Node3D
 ## Запуск: netrun/tools/dev.sh shot res://assets/preview_black_ice.tscn  (по умолчанию облако (Б) выключено в сцене; `--volumetric=ice` включает его на моделях)
 
 var _out := "/tmp/black_ice_shots"
+var _solo := false
+var _state := "sleep"
 const KINDS := ["black_ice", "black_ice_hound", "black_ice_kraken", "black_ice_raven", "black_ice_scorpion", "black_ice_lich"]
 
 
@@ -12,6 +14,10 @@ func _ready() -> void:
 			_out = a.substr(6)
 		elif a.begins_with("--volumetric="):
 			VolumeRegistry.configure(a.substr(13))
+		elif a == "--solo":   # только логово, без ряда ICE (соседи перебивают кадр с 9 м)
+			_solo = true
+		elif a.begins_with("--state="):   # sleep|waking|empty
+			_state = a.substr(8)
 	DirAccess.make_dir_recursive_absolute(_out)
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
@@ -21,7 +27,7 @@ func _ready() -> void:
 	add_child(we)
 	var slab := NodeAssets.instance(NodeAssets.env_path("floor_slab_16"), "BASE")
 	add_child(slab)
-	for i in KINDS.size():
+	for i in (0 if _solo else KINDS.size()):
 		var m := NodeAssets.instance("res://assets/models/ice/%s.glb" % KINDS[i])
 		m.position = Vector3(-7.5 + 3.0 * i, 0, 0)
 		add_child(m)
@@ -31,7 +37,7 @@ func _ready() -> void:
 	var lair := NodeAssets.instance("res://assets/models/ice/black_lair.glb")
 	lair.position = Vector3(0, 0, -6.0)
 	for s in ["State_sleep", "State_waking", "State_empty"]:
-		(lair.find_child(s, true, false) as Node3D).visible = s == "State_sleep"   # ровно одно состояние (как у клиента)
+		(lair.find_child(s, true, false) as Node3D).visible = s == "State_" + _state# ровно одно состояние (как у клиента)
 	add_child(lair)
 	var cam := Camera3D.new()
 	cam.fov = 60.0
@@ -39,6 +45,7 @@ func _ready() -> void:
 	add_child(cam)
 	var shots := [
 		["row", Vector3(0.0, 2.2, 8.0), Vector3(0.0, 1.5, 0.0)],
+		["lair_entrance", Vector3(0.0, 1.7, 3.0), Vector3(0.0, 1.0, -6.0)],   # П6-6 (в): спящее логово с 9 м глазами игрока (вход узла)
 		["lair", Vector3(0.0, 3.0, 2.0), Vector3(0.0, 0.0, -5.0)],
 		# профиль каждого вида (камера справа, фигура смотрит в −Z): грива, хвост, крылья, корона читаются сбоку
 		["side_hound", Vector3(-4.5 + 4.0, 1.7, 0.0), Vector3(-4.5, 1.6, 0.0)],
