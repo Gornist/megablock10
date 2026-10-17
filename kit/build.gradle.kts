@@ -6,7 +6,7 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 // логикой (офлайн-сеть на площадке, подписанные передачи, мастерский сервер) — так же.
 plugins {
     id("org.jetbrains.kotlin.jvm")
-    id("io.gitlab.arturbosch.detekt")
+    id("dev.detekt")
     id("ru.vyarus.animalsniffer")
 }
 

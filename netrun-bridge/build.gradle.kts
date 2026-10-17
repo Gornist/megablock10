@@ -5,7 +5,7 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 // (docs/netrun-tasks.md, B0–B3). Работает на мини-ПК площадки, не на телефоне, поэтому Animal Sniffer не нужен.
 plugins {
     id("org.jetbrains.kotlin.jvm")
-    id("io.gitlab.arturbosch.detekt")
+    id("dev.detekt")
     application
 }
 
