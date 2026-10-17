@@ -1,0 +1,42 @@
+{
+  "name": "server_room_hard10",
+  "cells": [
+    "V..v.....V",
+    ".##.##.##.",
+    "..........",
+    ".##O.#.##.",
+    "..........",
+    ".###.###..",
+    "..........",
+    ".##.##.##.",
+    "1...S..EE2",
+    "b......EE3"
+  ],
+  "vaults": [
+    {"cell": [0, 0], "pad": [0, 1], "ring": "outer"},
+    {"cell": [9, 0], "pad": [9, 1], "ring": "outer"},
+    {"cell": [3, 0], "pad": [3, 1], "ring": "inner"}
+  ],
+  "ice": [
+    {"id": "g1", "kind": "sentry", "route": [
+      {"cell": [0, 2], "wait": 4, "look": ["S"]},
+      {"cell": [9, 2], "wait": 2, "look": ["N"]}
+    ]},
+    {"id": "g2", "kind": "sentry", "route": [
+      {"cell": [9, 6], "wait": 1},
+      {"cell": [0, 6], "wait": 1}
+    ]},
+    {"id": "g3", "kind": "sentry", "route": [
+      {"cell": [1, 4], "wait": 1},
+      {"cell": [8, 4], "wait": 1}
+    ]},
+    {"id": "o1", "kind": "beacon", "cell": [3, 3], "start": "N", "step_deg": 90},
+    {"id": "d1", "kind": "sensor", "cell1": [8, 10], "dir": "E", "len": 2, "on": 2, "off": 2},
+    {"id": "r1", "kind": "reserve", "route": [
+      {"cell": [0, 9], "wait": 1, "look": ["N"]},
+      {"cell": [0, 5], "wait": 2, "look": ["N"]}
+    ]}
+  ],
+  "black": null,
+  "meta": {"sight_cells": 8}
+}
