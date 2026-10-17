@@ -260,7 +260,7 @@ func test_targets_show_match_and_timer_counts_down_from_server() -> void:
 	await _setup_ui()
 	await _start_run()
 	assert_str("\n".join(_panel.texts())).contains("1:30")   # таймер HARD в Взломе 2.0: 90 с (был 60)
-	_panel.apply_tick({"left": 9, "matched": ["d1"]})
+	_panel.apply_tick({"left": 9, "matched": ["d1"], "lock_opened": true})   # замок вскрыт — совпадение засчитано (до замка было бы «⚠ не засчитан»)
 	var all := "\n".join(_panel.texts())
 	assert_str(all).contains("0:09").contains("✓")
 
