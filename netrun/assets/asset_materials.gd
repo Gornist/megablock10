@@ -67,8 +67,9 @@ const LAYERS := {
 	"ice_precapture": PAL_THREAT,                  # мигание перед захватом
 	# Луч Soft ICE (датчик, маяк): горит / погашен / вспышка срабатывания; мигание — состояние BEAM_BLINK тем же цветом beam_on
 	"beam_on": PAL_THREAT_HOT,                     # луч включён (угроза: ICE видит)
-	"beam_off": PAL_DIM,                           # погашен: путь виден, пройти можно
+	"beam_off": PAL_CYAN,                          # погашен: путь виден, пройти можно (голубое — «можно»; тусклый PAL_DIM на полу не читался, П6-6)
 	"beam_flash": PAL_ICE,                         # вспышка срабатывания (одиночный импульс)
+	"alarm_focus": PAL_THREAT_HOT,                 # тревога 2+: свет окружения у игрока (set_alarm_focus)
 	# Облако частиц (Б), VolumeCloud: цвет облака объекта (файлы `.points`, ARCHITECTURE.md §13)
 	"volume_ice": PAL_THREAT,                      # облако ICE (Soft и Black): красное, красное только у угрозы; у Black ICE ложится на синюю оболочку модели («красное внутри»)
 	"volume_exit": PAL_ICE,                        # рамка выхода: брусья с кромкой ice_white
@@ -157,6 +158,8 @@ static var _tuned := {}
 ## MeshInstance3D в дереве, а колонны, укрытия и корпуса препятствий клиент собирает из частей `NodeAssets.mesh_parts` (MultiMesh и свои MeshInstance3D без группы;
 ## корень с группой освобождён) — по группе они не дышали (П7-3, 17.10).
 static var _surface_cloud_mats: Array[WeakRef] = []
+## Материалы окружения с перекраской света у игрока (alarm_focus.gdshaderinc: solid_dark, cloud_dark, skirt), созданные apply() вне существ/аватаров; слабые ссылки, как выше.
+static var _focus_mats: Array[WeakRef] = []
 static var _grid_tex: ImageTexture
 
 const GRID_TEX_PX := 128      # пикселей текстуры на метр (клетка 1 м)
@@ -284,6 +287,26 @@ static func set_alarm(root: Node, level: int, tier := "BASE") -> void:
 	set_param(root, &"edge_color", c)
 
 
+## Тревога у игрока (П6-6 (б), ice.md §8 «Правило П6»): на уровне 2+ свет кромок, сетки пола и облака в радиусе вокруг игрока уходит в тревожный цвет (`alarm_focus`) —
+## сдвиг цвета виден там, куда смотрят, без сравнения «до/после». Звать каждый кадр с позицией игрока (мир); уровень 0–1 и радиус 0 выключают. Состояния нет: ушёл игрок — след сходит
+## вместе с ним. Действует на материалы окружения, созданные apply() (реестр, дерево не обходится); существа и аватары не трогает.
+const ALARM_FOCUS_RADIUS := [0.0, 0.0, 3.5, 5.0, 7.0]
+const ALARM_FOCUS_GAIN := [0.0, 0.0, 1.35, 1.55, 1.8]
+static func set_alarm_focus(world_pos: Vector3, level: int) -> void:
+	var l := clampi(level, 0, 4)
+	var alive: Array[WeakRef] = []
+	for w in _focus_mats:
+		var m := w.get_ref() as ShaderMaterial
+		if m == null:
+			continue
+		alive.append(w)
+		m.set_shader_parameter("focus_pos", world_pos)
+		m.set_shader_parameter("focus_radius", float(ALARM_FOCUS_RADIUS[l]))
+		m.set_shader_parameter("focus_gain", float(ALARM_FOCUS_GAIN[l]))
+		m.set_shader_parameter("focus_color", layer("alarm_focus"))
+	_focus_mats = alive
+
+
 ## Цвет кромок на доле t пути от цвета тира к красному: поворот ОТТЕНКА через синий и фиолетовый (а не линейная смесь RGB: голубое + красное = серое, STYLE.md п.4:
 ## «серого посередине быть не должно»). Насыщенность и яркость идут линейно к PAL_THREAT_HOT.
 static func _alarm_edge_color(base: Color, t: float) -> Color:
@@ -407,6 +430,8 @@ static func apply(root: Node, tier: String = "") -> void:
 					m.set_shader_parameter("grid_tex", _grid_texture())
 					m.set_shader_parameter("grid_alpha", float(_k("floor_grid")))
 			mi.set_surface_override_material(s, m)
+			if not entity and (m.shader == SHADERS["solid_dark"] or m.shader == CLOUD_SHADER or m.shader == SKIRT_SHADER):
+				_focus_mats.append(weakref(m))
 
 
 ## Красный «шрам»: в радиусе вокруг точки (мировые координаты) свечение уходит в красный, часть клеток пропадает.

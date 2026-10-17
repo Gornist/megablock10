@@ -68,6 +68,7 @@ func _ready() -> void:
 		["tracer", Vector3(7.0, 1.2, -3.5), Vector3(4.5, 0.3, -6.5)],
 		["overview", Vector3(0.0, 4.2, 5.0), Vector3(0.0, 0.0, -1.0)],
 		["lighthouses", Vector3(0.0, 2.2, 1.0), Vector3(0.0, 0.2, -2.5)],
+		["sensors_5m", Vector3(0.0, 1.6, 6.0), Vector3(0.0, 0.2, 0.5)],         # П6-6: четыре состояния луча (погашен, горит, мигает, вспышка) с 5 м
 		["sensors_close", Vector3(-1.0, 1.0, 2.6), Vector3(-3.0, 0.2, -0.5)],
 		["sensors_eye", Vector3(0.0, 1.2, 4.0), Vector3(0.0, 0.2, -1.5)],
 		["lighthouse_close", Vector3(-3.0, 1.1, -0.2), Vector3(-4.5, 0.6, -2.0)],

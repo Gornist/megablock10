@@ -5,6 +5,8 @@
 shader_type spatial;
 render_mode blend_add, unshaded, depth_draw_never, cull_disabled, fog_disabled;
 
+#include "alarm_focus.gdshaderinc"
+
 uniform float glow : hint_range(0.0, 4.0) = 1.0;
 uniform float veil_alpha : hint_range(0.0, 0.5) = 0.065;   // итоговая непрозрачность у кромки: «очень прозрачная»
 uniform float veil_scale : hint_range(0.0, 4.0) = 1.0;    // множитель итоговой альфы вуали (ручка veil_scale; 0 — меш скрывается совсем; > 1 — усилить: очки П5 одобрили вуаль потолка)
@@ -28,6 +30,7 @@ uniform float far_end = 60.0;
 
 varying float v_dist;
 varying float v_rise;   // 1 — квад завесы вверх (UV2.x > 0), 0 — обычная вуаль
+varying vec3 v_wp;
 
 vec3 recolor(vec3 c) {
 	float mx = max(c.r, max(c.g, c.b));
@@ -41,6 +44,7 @@ void vertex() {
 		VERTEX.y += (rise_scale - 1.0) * UV2.x;
 	}
 	v_dist = -(MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).z;
+	v_wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	if (v_rise > 0.5 && rise_gain <= 0.0) {
 		POSITION = vec4(2.0, 2.0, 2.0, 1.0);  // завеса выключена: квад вне экрана
 	} else {
@@ -55,6 +59,6 @@ void fragment() {
 	}
 	float fade = 1.0 - smoothstep(fade_start, fade_end, v_dist);
 	vec3 col = mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount);
-	ALBEDO = col * glow * mix(1.0, far_gain, smoothstep(far_start, far_end, v_dist));
+	ALBEDO = focus_light(col * glow * mix(1.0, far_gain, smoothstep(far_start, far_end, v_dist)), v_wp);
 	ALPHA = dens * veil_alpha * fade * intensity * mix(veil_scale, rise_gain, v_rise);
 }

@@ -4,6 +4,7 @@
 
 #include "volume_cloud.gdshaderinc"
 #include "breath_touch.gdshaderinc"
+#include "alarm_focus.gdshaderinc"
 
 uniform sampler2D grid_tex : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float grid_alpha : hint_range(0.0, 2.0) = 0.0;
@@ -37,6 +38,6 @@ void fragment() {
 	vec4 c = volume_cloud(v_wp, normalize(v_nw), normalize(CAMERA_POSITION_WORLD - v_wp), v_dist, PROJECTION_MATRIX[1][1] * VIEWPORT_SIZE.y, edge, dens_k);
 	c.rgb *= lift * (1.0 + touch_gain * tk);
 	c.rgb = mix(c.rgb, touch_color * dust, 0.5 * tk);
-	ALBEDO = mix(c.rgb, edge_color.rgb, edge * edge_mix);
+	ALBEDO = focus_light(mix(c.rgb, edge_color.rgb, edge * edge_mix), v_wp);   // тревога у игрока (alarm_focus.gdshaderinc)
 	ALPHA = c.a;
 }
