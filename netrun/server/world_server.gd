@@ -26,6 +26,13 @@ func start(args: PackedStringArray) -> void:
 			_exit_after = float(a.trim_prefix("--exit-after="))
 	print("[netrun-server] запущен, Godot ", Engine.get_version_info().string)
 	var cfg := NetConfig.from_args(args)
+	var problem := bridge_problem(args, cfg)
+	if not problem.is_empty():
+		# Мир на тестовых данных вместо Моста на игре тихо терял бы ценности: без явного --bridge= (или --tokens=) не стартуем.
+		push_error("[netrun-server] " + problem)
+		printerr("[netrun-server] " + problem)
+		get_tree().quit(2)
+		return
 	net = NetServer.new()
 	net.name = "Net"
 	add_child(net)
@@ -84,30 +91,44 @@ static func load_graph(args: PackedStringArray) -> NodeGraph:
 	return g
 
 
-## `--bridge=fake` (по умолчанию) | `--bridge=ws://хост:порт/netrun/v1`; ключ роли world — `--bridge-key=` или NETRUN_KEY_WORLD.
+## `--bridge=fake` | `--bridge=ws://хост:порт/netrun/v1` — обязателен (аудит 17.10: молчаливый fake на игре терял ценности); ключ роли world — `--bridge-key=` или NETRUN_KEY_WORLD.
 ## Старый путь `--tokens=` без `--bridge=` остаётся (словарь токен -> сессия, без Моста). Фикстура фейка — `--bridge-fixture=`.
+## Без `--bridge=` и без `--tokens=`, а также с опечаткой в значении — null и `bridge_problem` не пуст (сервер не стартует).
 static func make_bridge(args: PackedStringArray, cfg: NetConfig) -> BridgeApi:
-	var spec := ""
+	var spec := _bridge_spec(args)
 	var key := OS.get_environment("NETRUN_KEY_WORLD")
 	var fixture := FakeBridge.DEFAULT_FIXTURE
 	for a in args:
-		if a.begins_with("--bridge="):
-			spec = a.trim_prefix("--bridge=")
-		elif a.begins_with("--bridge-key="):
+		if a.begins_with("--bridge-key="):
 			key = a.trim_prefix("--bridge-key=")
 		elif a.begins_with("--bridge-fixture="):
 			fixture = a.trim_prefix("--bridge-fixture=")
-	if spec.is_empty():
-		if not cfg.tokens.is_empty():
-			return null
-		spec = "fake"
 	if spec == "fake":
 		return FakeBridge.new(fixture)
 	if spec.begins_with("ws://") or spec.begins_with("wss://"):
 		var url := spec if spec.count("/") > 2 else spec + "/netrun/v1"
 		return BridgeClient.new(url, key)
-	push_error("[netrun-server] --bridge= принимает fake или ws://хост:порт, получено «%s»" % spec)
-	return FakeBridge.new(fixture)
+	return null
+
+
+## Что не так с запуском по части Моста (пусто — всё хорошо): нет ни `--bridge=`, ни `--tokens=`, либо значение `--bridge=` не fake и не ws://…
+static func bridge_problem(args: PackedStringArray, cfg: NetConfig) -> String:
+	var spec := _bridge_spec(args)
+	if spec.is_empty():
+		if cfg.tokens.is_empty():
+			return "не задан --bridge=: нужен --bridge=fake или --bridge=ws://хост:порт (либо старый путь --tokens=токен:сессия)"
+		return ""
+	if spec == "fake" or spec.begins_with("ws://") or spec.begins_with("wss://"):
+		return ""
+	return "--bridge= принимает fake или ws://хост:порт, получено «%s»" % spec
+
+
+static func _bridge_spec(args: PackedStringArray) -> String:
+	var spec := ""
+	for a in args:
+		if a.begins_with("--bridge="):
+			spec = a.trim_prefix("--bridge=")
+	return spec
 
 
 func _process(delta: float) -> void:
