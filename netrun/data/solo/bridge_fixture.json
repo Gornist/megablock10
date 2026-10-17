@@ -127,12 +127,20 @@
     "s_fake000000000001": {
       "state": "active",
       "terminal": "t03",
-      "node": "node_03",
+      "node": "node_00",
       "runner": "KEY_ALICE",
       "callsign": "Призрак",
       "loot_eddies": 0,
       "outcome": null,
       "ram": 14
+    }
+  },
+  "runners": {
+    "r_alice": {
+      "key": "KEY_ALICE",
+      "callsign": "Призрак",
+      "runs": 0,
+      "tutorial_done": false
     }
   },
   "items": {

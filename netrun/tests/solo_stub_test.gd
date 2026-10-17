@@ -2,17 +2,14 @@ extends GdUnitTestSuite
 ## Одиночная игра (client/solo_stub.gd): сервер мира и плоский клиент в одном процессе по петле 127.0.0.1; данные data/solo читаются сервером.
 
 const SoloStubScript := preload("res://client/solo_stub.gd")
-const SESSION :="s_fake000000000001"   # сессия «Призрак» в data/solo/bridge_fixture.json (терминал t03 → Архив)
+const SESSION :="s_fake000000000001"   # сессия «Призрак» в data/solo/bridge_fixture.json (терминал t03; первый вход — учебный узел)
 
 var _solo: Node
 
 
 func after_test() -> void:
 	if _solo != null:
-		var proto := _solo.flat.get_node_or_null("Proto") as ProtoClient
-		if proto != null and proto.net != null:
-			await proto.net.drop()
-		_solo.server.net.stop_net()
+		await _solo.stop()
 		_solo.queue_free()
 		_solo = null
 
@@ -59,7 +56,7 @@ func test_аргументы_клиента_несут_адрес_и_токен(
 	assert_str(cfg.terminal_id()).is_equal("t03")
 
 
-func test_клиент_входит_в_архив_через_встроенный_сервер() -> void:
+func test_клиент_входит_через_встроенный_сервер() -> void:
 	_solo = preload("res://client/solo_stub.gd").new()
 	add_child(_solo)
 	assert_bool(_solo.start(PackedStringArray())).is_true()

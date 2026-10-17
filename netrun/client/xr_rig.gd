@@ -39,6 +39,13 @@ signal teleport_attempted(from: Vector3, to: Vector3, ok: bool, reason: String)
 ## Ходьба WASD в плоской сборке (--walk, для разработки и старых сценариев); в VR ходьбы нет.
 @export var walk_enabled := false
 @export var move_speed := RigMath.MOVE_SPEED
+## Режим тестера (одиночная игра без гарнитуры, SoloControls): ходьбы нет совсем (даже с --walk), Q/E — щелчок 45°, прицел телепорта держит ЛКМ (tester_aim),
+## осмотр мышью — пока мышь захвачена (mouse_captured), без ПКМ. Обычная плоская сборка разработчика (T, плавный Q/E, WASD с --walk) остаётся как была.
+var tester_mode := false
+## Мышь захвачена окном (SoloControls): мышь ведёт взгляд, а деку и панель взлома не нажимает (DeckPointer ждёт Tab — свободного курсора).
+var mouse_captured := false
+## ЛКМ зажата при захваченной мыши: прицел телепорта по центру экрана; отпустить — прыжок.
+var tester_aim := false
 ## Кнопка удержания в VR (действие XRController3D); настройкой можно заменить, например на "grip_click".
 @export var exit_button := "menu_button"
 @export var exit_hold_sec := ExitLogic.HOLD_SEC
@@ -270,9 +277,13 @@ func _process(delta: float) -> void:
 			turn_x = parts["turn"]
 	else:
 		turn_x = _flat_turn()
-		if Input.is_physical_key_pressed(KEY_T):
-			tp_stick = Vector2(turn_x, 0.0) if turn_x != 0.0 else Vector2(0.0, 1.0)   # T — прицел; T + Q/E — поворот ∓90°
-		walk = _flat_move()
+		if tester_mode:
+			if tester_aim:
+				tp_stick = Vector2(0.0, 1.0)   # ЛКМ держит прицел; Q/E в это время только поворачивают на 45°, поворота при прыжке нет
+		else:
+			if Input.is_physical_key_pressed(KEY_T):
+				tp_stick = Vector2(turn_x, 0.0) if turn_x != 0.0 else Vector2(0.0, 1.0)   # T — прицел; T + Q/E — поворот ∓90°
+			walk = _flat_move()
 	var clicked := _tp_click
 	_tp_click = false
 	drive(turn_x, tp_stick, clicked, delta, walk)
@@ -284,7 +295,7 @@ func _process(delta: float) -> void:
 func drive(turn_x: float, tp_stick: Vector2, clicked: bool, delta: float, walk: Vector2 = Vector2.ZERO) -> void:
 	_since_tp += delta
 	_apply_turn(turn_x, delta)
-	if walk_enabled and not xr_active and not movement_locked:
+	if walk_enabled and not tester_mode and not xr_active and not movement_locked:
 		global_position += RigMath.move_velocity(walk, camera.global_rotation.y, move_speed) * delta
 	_step_teleport(tp_stick, clicked, delta)
 	_step_blink(delta)
@@ -580,7 +591,34 @@ func _key_axis(neg: Key, pos: Key) -> float:
 
 
 func _flat_move() -> Vector2:
+	if tester_mode:
+		return Vector2.ZERO
 	return Vector2(_key_axis(KEY_A, KEY_D), _key_axis(KEY_S, KEY_W))
+
+
+## Включить (выключить) режим тестера: ходьба выключена, поворот — щелчок 45° (даже если comfort.cfg просит плавный).
+func set_tester_mode(on: bool) -> void:
+	tester_mode = on
+	if on:
+		walk_enabled = false
+		turn_mode = RigMath.TURN_MODE_SNAP
+		snap_step_deg = RigMath.SNAP_STEP_DEG
+		teleport_range = minf(teleport_range, NodeGrid.REACH_M)   # досягаемость по решению Game — 4,5 м (≈ 2,2 клетки карты по 2 м); comfort.cfg шире не растянет
+	else:
+		mouse_captured = false
+		tester_aim = false
+
+
+## Отмена прицела телепорта (та же, что клавиша C и нажатие правого стика в VR).
+func request_aim_cancel() -> void:
+	_tp_click = true
+
+
+## Осмотр мышью на relative-сдвиг (плоская сборка): рыскание и наклон камеры.
+func look_by(rel: Vector2) -> void:
+	_mouse_yaw -= rel.x * 0.003
+	_mouse_pitch = clampf(_mouse_pitch - rel.y * 0.003, -1.4, 1.4)
+	camera.rotation = Vector3(_mouse_pitch, _mouse_yaw, 0.0)
 
 
 func _flat_turn() -> float:
@@ -590,10 +628,8 @@ func _flat_turn() -> float:
 func _unhandled_input(event: InputEvent) -> void:
 	if xr_active:
 		return
-	if event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
-		_mouse_yaw -= event.relative.x * 0.003
-		_mouse_pitch = clampf(_mouse_pitch - event.relative.y * 0.003, -1.4, 1.4)
-		camera.rotation = Vector3(_mouse_pitch, _mouse_yaw, 0.0)
+	if event is InputEventMouseMotion and (mouse_captured if tester_mode else Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)):
+		look_by(event.relative)
 	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_R:
 		recenter()
 	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_C:

@@ -3,7 +3,9 @@ extends Node
 ## Клиент прототипа (V3), общий для Pico 4 и плоской сборки: сцена, XR-риг, сеть, журнал в файл.
 ## Журнал (user://logs/netrun-*.log): start, mode, xr, render (+ render.warn), comfort (+ comfort.warn), rig.recenter, rig.teleport (в тактовом режиме + threat=0|1|2, wait=true), teleport.denied,
 ## tick (тактовый режим: одна строка на такт — n, inh, mv),
-## net.* (в том числе net.config, net.reconnect), grab.*, breach.* (взлом хранилища: request, start, tap — только отказ или ловушка, end, no, cancel), app.pause/resume, frame.slow.
+## net.* (в том числе net.config, net.reconnect), grab.*, breach.* (взлом хранилища: request, start, tap — только отказ или ловушка, end, no, cancel), app.pause/resume, frame.slow,
+## aim.miss (промах прицела телепорта: reason — RunJournal.AIM_MISS_REASONS, by=client|server, dist, target, from).
+## Одиночная игра (`--journal-dir=`, RunJournal): журнал в папке попытки, в строке start ещё build, solo=true, tutorial.
 ## Деку на руке дополняют вкладки ЧАТ и ЗВОНКИ (фиктивная связь с телефоном): `phone link=fake|off tabs=N` при старте, `phone.msg thread=…`,
 ## `phone.call phase=…`, `phone.reply thread=… text=…`, `deck.tab id=…`; в строке `perf` — `deck_redraws=N` (сколько раз дека рисовалась в текстуру).
 ## Аргументы разработки: `--walk` (плоская сборка: ходьба WASD), `--turn=none|snap|smooth` (режим поворота поверх comfort.cfg),
@@ -66,8 +68,15 @@ var _last_slow_log_ms := -SLOW_LOG_MIN_GAP_MS
 
 
 func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
-	log_file.open()
-	log_file.log("start", {"mode": mode, "godot": Engine.get_version_info().string, "args": redact_args(args), "log": log_file.path})
+	var journal := RunJournal.client_options(args)   # одиночная игра: журнал — в папке попытки, в строке start — build, solo, tutorial
+	if str(journal["dir"]).is_empty():
+		log_file.open()
+	else:
+		log_file.open("", journal["dir"])
+	var start_fields := {"mode": mode}
+	start_fields.merge(journal["fields"])
+	start_fields.merge({"godot": Engine.get_version_info().string, "args": redact_args(args), "log": log_file.path})
+	log_file.log("start", start_fields)
 	# Настройки рендера читаются до построения сцены: обводка силуэтов (fringe) ставится в материалы при построении узлов.
 	var render_cfg := RenderConfig.load_file(config_paths)
 	render_cfg.apply_assets(config_paths)
@@ -387,6 +396,8 @@ func _on_teleport_attempted(from: Vector3, to: Vector3, ok: bool, reason: String
 	log_file.log("rig.teleport", fields)
 	if not ok:
 		log_file.log("teleport.denied", {"reason": reason, "by": "client"})
+		if RunJournal.is_aim_miss(reason):   # прицел мимо: дальше досягаемости, клетка закрыта, вне комнаты, красная не удержана
+			log_file.log("aim.miss", {"reason": reason, "by": "client", "dist": fields["dist"], "target": fields["to"], "from": fields["from"], "cell": fields["cell"]})
 	elif net != null and net.is_connected_to_world and not scene.ended:  # после ended запрос не уходит
 		net.request_teleport(scene.rig.last_pick())  # центр выбранной клетки; без связи двигаемся только у себя: сервер сверит позу, когда связь вернётся
 
@@ -404,6 +415,10 @@ func _on_daemon_use_requested(id: String) -> void:
 ## Сервер отказал: риг возвращается туда, где аватар на сервере.
 func _on_teleport_denied(reason: String, server_pos: Vector3, left: float) -> void:
 	log_file.log("teleport.denied", {"reason": reason, "by": "server", "left": snappedf(left, 0.01), "at": _fmt_xz(server_pos)})
+	if RunJournal.is_aim_miss(reason):   # клиент счёл клетку доступной, сервер — нет (занята, дальше, вне комнаты)
+		var target: Vector3 = scene.rig.last_pick()
+		log_file.log("aim.miss", {"reason": reason, "by": "server", "dist": snappedf(NodeLayout.flat_distance(server_pos, target), 0.1),
+			"target": _fmt_xz(target), "from": _fmt_xz(server_pos)})
 	scene.rig.apply_teleport_denial(reason, server_pos, left)
 
 
