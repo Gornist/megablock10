@@ -26,6 +26,12 @@ const BEAM_BLINK := 2
 const BEACON_HALO_SHADER := preload("res://assets/shaders/beacon_halo.gdshader")
 ## Луч маяка (меш `beacon_beam`): штрихи (streaks) с ореолом, но спокойнее обычных — почти без дыхания и качания, гладкий (без бусин), ярче, чтобы читаться с 3 м.
 const BEACON_BEAM := {"halo": 0.5, "halo_width": 2.2, "end_fade": 0.6, "breathe": 0.08, "sway": 0.003, "bead_depth": 0.0, "glow": 2.2}
+## Пульс спящего логова Black ICE (ice/black_lair, State_sleep; П6-6 (в), владелец на П6: логова не заметил): холм `black_lair_mound` дышит глубоко и медленно (период ≈ 4 с),
+## «сердце» `black_lair_heart` бьётся чаще (≈ 2,5 с) и размашистее — пульс читается от входа, но без стробоскопа (VR-комфорт, STYLE.md п.7: движение только у существ/предметов).
+const LAIR_SLEEP_BREATHE := {
+	"black_lair_mound": {"breathe": 0.55, "breathe_speed": 1.6},
+	"black_lair_heart": {"breathe": 0.7, "breathe_speed": 2.5},
+}
 
 ## ПАЛИТРА КЛИЕНТСКИХ СЛОЁВ (маркеры пола, прицел, след ICE, стрелки, кольцо такта, метки, HUD, экран конца). Цвет и материал задаёт Blender, логику — Godot:
 ## клиент берёт цвета ТОЛЬКО отсюда (`AssetMaterials.layer("aim_ok")`) и не задаёт свои. База — HEX из lib.py / STYLE.md: голубой мир, ледяной белый, красный только у угрозы
@@ -385,6 +391,9 @@ static func apply(root: Node, tier: String = "") -> void:
 				m.set_shader_parameter("anchor", 0.0)
 			if String(mi.name).ends_with("_hang"):  # подвесные штрихи (под полом): длина меняется от верхнего конца
 				m.set_shader_parameter("anchor", 1.0)
+			if src.resource_name == "streaks" and LAIR_SLEEP_BREATHE.has(String(mi.name)):  # спящее логово Black ICE (П6-6 (в)): холм дышит медленно и глубоко, «сердце» бьётся чаще — пульс виден от входа
+				for k in LAIR_SLEEP_BREATHE[String(mi.name)]:
+					m.set_shader_parameter(k, LAIR_SLEEP_BREATHE[String(mi.name)][k])
 			if src.resource_name == "solid_dark" and float(_k("cloud")) > 0.0 and _cloud_scope_ok(root):  # прототип «облако без основы»: частицы с дырами вместо тёмной грани (нужен MSAA)
 				m.shader = CLOUD_SHADER
 				mi.add_to_group(SURFACE_CLOUD_GROUP)   # set_cloud_breath / set_cloud_touch находят поверхностные облака по группе и по реестру материалов

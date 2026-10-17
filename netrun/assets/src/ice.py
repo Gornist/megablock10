@@ -272,27 +272,31 @@ def build_black_lair(out, name="black_lair", seed=34):
         side = i % 4
         u = rng.uniform(-HALF + 0.1, HALF - 0.1)
         x, y = [(u, HALF - 0.05), (HALF - 0.05, u), (u, -HALF + 0.05), (-HALF + 0.05, u)][side]
-        hh = rng.uniform(0.25, 0.6)
+        hh = rng.uniform(0.4, 0.95)   # П6-6 (в): было 0,25–0,6 — на П6 логово «не заметили» (в рост стоящего игрока шипы теперь выше колена и бёдер)
         thorns.append((Vector((x, y, 0.10 + hh)), rng.uniform(0.016, 0.03), hh, rng.uniform(0.5, 0.85), red))
     thorns_obj = lib.streak_set("black_lair_thorns", thorns, red)
 
-    def _mound(n, r_max, h_lo, h_hi, a_lo, a_hi, color, name):
+    def _mound(n, r_max, h_lo, h_hi, a_lo, a_hi, color, name, rnd=rng, w_lo=0.016, w_hi=0.028):
         out_s = []
         for _ in range(n):
-            a = rng.uniform(0, math.tau)
-            r = r_max * math.sqrt(rng.random())
-            hh = rng.uniform(h_lo, h_hi) * (1.0 - 0.55 * r / r_max)   # к краю ниже: холм, а не стена
-            out_s.append((Vector((r * math.cos(a), r * math.sin(a), 0.10 + hh)), rng.uniform(0.016, 0.028), hh, rng.uniform(a_lo, a_hi), color))
+            a = rnd.uniform(0, math.tau)
+            r = r_max * math.sqrt(rnd.random())
+            hh = rnd.uniform(h_lo, h_hi) * (1.0 - 0.55 * r / r_max)   # к краю ниже: холм, а не стена
+            out_s.append((Vector((r * math.cos(a), r * math.sin(a), 0.10 + hh)), rnd.uniform(w_lo, w_hi), hh, rnd.uniform(a_lo, a_hi), color))
         return lib.streak_set(name, out_s, color)
 
-    sleep = _mound(70, 1.0, 0.10, 0.30, 0.25, 0.6, red, "black_lair_mound")
+    # Спящий (П6-6 (в), владелец на П6 логова не заметил: «читается от входа — пульс, свой силуэт»): выше, гуще, ярче прежнего холма, а в середине — «сердце»:
+    # пучок горячих штрихов выше холма (отдельный меш: шейдер даёт ему быстрый пульс, холму — медленный, AssetMaterials.apply). Отдельный датчик: остальные состояния не сдвигаются.
+    srng = random.Random(seed + 7)
+    sleep = _mound(110, 1.25, 0.25, 0.75, 0.5, 0.9, red, "black_lair_mound", rnd=srng, w_lo=0.02, w_hi=0.034)
+    heart = _mound(14, 0.18, 1.0, 1.4, 0.8, 1.0, hot, "black_lair_heart", rnd=srng, w_lo=0.02, w_hi=0.03)
     waking = _mound(80, 1.2, 0.45, 1.4, 0.45, 0.9, hot, "black_lair_rise")
     embers = [Vector((rng.uniform(-1.3, 1.3), rng.uniform(-1.3, 1.3), 0.15 + rng.uniform(0.0, 1.6))) for _ in range(50)]
     embers_obj = lib.point_cloud("black_lair_embers", embers, hot, half_size=0.012, seed=seed + 1, a_min=0.5, a_max=1.0)
     ash = [Vector((rng.uniform(-1.1, 1.1), rng.uniform(-1.1, 1.1), 0.11)) for _ in range(40)]
     ash_obj = lib.point_cloud("black_lair_ash", ash, red, half_size=0.010, seed=seed + 2, a_min=0.15, a_max=0.4)
-    groups = [lib.group("State_sleep", [sleep]), lib.group("State_waking", [waking, embers_obj]), lib.group("State_empty", [ash_obj])]
-    objs = [slab_obj, signs_obj, thorns_obj, sleep, waking, embers_obj, ash_obj, *groups, lib.anchor("Anchor_Sleeper", (0, 0, 0.12))]
+    groups = [lib.group("State_sleep", [sleep, heart]), lib.group("State_waking", [waking, embers_obj]), lib.group("State_empty", [ash_obj])]
+    objs = [slab_obj, signs_obj, thorns_obj, sleep, heart, waking, embers_obj, ash_obj, *groups, lib.anchor("Anchor_Sleeper", (0, 0, 0.12))]
     return lib.export(name, "ice", objs, out, budget_tris=300, budget_points=360, budget_streaks=260, origin="floor", budget_draws=12,
                       notes="логово 4×4 м (2×2 клетки карты), State_sleep/waking/empty (ровно один), Anchor_Sleeper; красный по принципу 5")
 
