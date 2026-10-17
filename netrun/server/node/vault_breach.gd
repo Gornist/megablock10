@@ -100,7 +100,7 @@ func check_open(session: String, vault: String, ids: Array, recheck: bool = fals
 	if is_busy(vault, session):
 		return {"reason": "busy"}
 	if not node.is_tutorial():
-		var left := cooldown_left(ds, str(node._shard_items.get(vault, "")))
+		var left := cooldown_left(ds, vault)
 		if left > 0.0:
 			return {"reason": "cooldown", "left": ceili(left)}
 	if ids.is_empty() or ids.size() != _unique(ids).size():
@@ -120,12 +120,13 @@ func check_open(session: String, vault: String, ids: Array, recheck: bool = fals
 	return {}
 
 
-## Секунд до конца остывания хранилища для игрока (0 — не остывает). Остывание у каждого хранилища своё: ключ `breach_cooldown` — id предмета-хранилища;
-## старый ключ-узел (документы до П8-1) остужает любое хранилище узла. Берётся больший срок из двух.
-func cooldown_left(ds: DaemonSession, vault_item: String = "") -> float:
+## Секунд до конца остывания хранилища для игрока (0 — не остывает). Остывание у каждого хранилища своё: ключ `breach_cooldown` — id слота
+## хранилища (`<узел>_pkN`, стабилен при пополнении, в отличие от предмета); старый ключ-узел (документы до П8-1) остужает любое хранилище
+## узла. Берётся больший срок из двух.
+func cooldown_left(ds: DaemonSession, slot_id: String = "") -> float:
 	var until := int(ds.breach_cooldown.get(node.node_id, 0))
-	if vault_item != "":
-		until = maxi(until, int(ds.breach_cooldown.get(vault_item, 0)))
+	if slot_id != "":
+		until = maxi(until, int(ds.breach_cooldown.get(slot_id, 0)))
 	return maxf((until - Time.get_unix_time_from_system() * 1000.0) / 1000.0, 0.0)
 
 
@@ -342,6 +343,7 @@ func _finish(att: Attempt, early: String = "") -> void:
 	var req := {
 		"n": att.n, "tier": att.tier, "selected": att.order.duplicate(), "matched": matched, "active": active,
 		"vaults": _vault_items(att.vault), "open_s": clampi(roundi(float(node.settings.get("vault_open_sec", 60.0))), 1, 600),
+		"vault_key": att.vault,   # слот панели - ключ остывания (протокол 6.6); предмет в слоте после пополнения другой
 	}
 	# Пока операция в полёте, run.finish игрока её дожидается (общий счётчик узла).
 	node._takes_inflight[session] = int(node._takes_inflight.get(session, 0)) + 1
@@ -358,8 +360,7 @@ func _finish(att: Attempt, early: String = "") -> void:
 	node._takes_inflight[session] = maxi(int(node._takes_inflight.get(session, 0)) - 1, 0)
 	_by_session.erase(session)
 	finished_count += 1
-	var vault_items: Array = req["vaults"]
-	_apply_result(att, outcome, matched, resp, str(vault_items[0]) if not vault_items.is_empty() else "")
+	_apply_result(att, outcome, matched, resp)
 
 
 ## Предметы, лежащие сейчас в хранилищах узла: хранилище панели первым (протокол 6.6, `vaults`).
@@ -396,7 +397,7 @@ func _local_result(att: Attempt, outcome: String, matched: Array) -> Dictionary:
 	return {"ok": true, "local": true, "outcome": outcome, "eddies": 0, "opened_slots": slots, "exhausted": false, "cooldown_until": 0, "alert": null}
 
 
-func _apply_result(att: Attempt, outcome: String, matched: Array, resp: Dictionary, vault_item: String = "") -> void:
+func _apply_result(att: Attempt, outcome: String, matched: Array, resp: Dictionary) -> void:
 	var session := att.session
 	var ds: DaemonSession = node._sessions.get(session)
 	var opened: Array = []
@@ -421,8 +422,8 @@ func _apply_result(att: Attempt, outcome: String, matched: Array, resp: Dictiona
 					node.open_vault(slot, session, minf(left, open_s) if left > 0.0 else open_s)
 		var until := int(resp.get("cooldown_until", 0))
 		if until > 0 and ds != null:
-			# Ключ — предмет-хранилище панели (первый в req.vaults); предметов нет — старое поведение, ключ узла.
-			ds.breach_cooldown[vault_item if vault_item != "" else node.node_id] = until
+			# Ключ — слот хранилища панели (req.vault_key): предмет в нём меняется при пополнении, слот — нет.
+			ds.breach_cooldown[att.vault] = until
 			end["cooldown"] = ceili((until - Time.get_unix_time_from_system() * 1000.0) / 1000.0)
 		end["alert"] = alert_text(resp.get("alert"), outcome, bool(resp.get("local", false)))
 	else:

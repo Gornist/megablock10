@@ -2201,7 +2201,7 @@ func vault_access(slot: String, session: String) -> Dictionary:
 		return {"access": "busy"}
 	var ds: DaemonSession = _sessions.get(session)
 	if ds != null and not is_tutorial():
-		var left := breach.cooldown_left(ds, str(_shard_items.get(slot, "")))
+		var left := breach.cooldown_left(ds, slot)
 		if left > 0.0:
 			return {"access": "cooldown", "left": ceili(left)}
 	return {"access": "ok"}

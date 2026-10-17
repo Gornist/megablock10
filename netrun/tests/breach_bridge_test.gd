@@ -76,6 +76,24 @@ func test_cooldown_blocks_the_next_breach_of_the_same_node_for_that_runner() -> 
 	assert_str(other["outcome"]).is_equal("SUCCESS")
 
 
+func test_cooldown_key_is_the_slot_vault_key_so_a_refilled_slot_with_a_new_item_stays_cooled() -> void:
+	var b := FakeBridge.new(BRIDGE)
+	var first := _req()
+	first["vault_key"] = "b_a_pk0"
+	assert_bool((await b.run_breach(S1, "b_a", first))["ok"]).is_true()
+	assert_array(b._runner_doc("KEY_ALICE")["data"]["breach_cooldown"].keys()).is_equal(["b_a_pk0"])   # слот, не предмет и не узел
+	# слот пополнили другим предметом (it_b_s2 первым в vaults), vault_key тот же - остывает
+	var refilled := _req(2)
+	refilled["vaults"] = ["it_b_s2"]
+	refilled["vault_key"] = "b_a_pk0"
+	assert_str(BridgeApi.err_code(await b.run_breach(S1, "b_a", refilled))).is_equal("cooldown")
+	# другой слот - можно
+	var other := _req(3)
+	other["vault_key"] = "b_a_pk1"
+	assert_bool((await b.run_breach(S1, "b_a", other))["ok"]).is_true()
+	assert_array(b._runner_doc("KEY_ALICE")["data"]["breach_cooldown"].keys()).contains_exactly_in_any_order(["b_a_pk0", "b_a_pk1"])
+
+
 func test_cooldown_is_per_vault_and_the_other_vault_of_the_node_stays_available() -> void:
 	var b := FakeBridge.new(BRIDGE)
 	var r1: Dictionary = await b.run_breach(S1, "b_a", _req())            # панель — it_b_s1

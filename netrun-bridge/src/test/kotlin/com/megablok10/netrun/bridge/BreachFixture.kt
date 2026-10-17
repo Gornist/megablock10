@@ -147,7 +147,8 @@ class BreachFixture(path: String = ":memory:") {
         vaults: List<String> = listOf("v_sh1", "v_sh2", "v_sh3", "v_dm1"),
         openS: Long = 60,
         node: String = "node_07",
-    ) = BreachRequest(sid, node, n, tier, selected, matched, active, vaults, openS)
+        vaultKey: String? = null,
+    ) = BreachRequest(sid, node, n, tier, selected, matched, active, vaults, openS, vaultKey)
 
     fun breach(sid: String, q: BreachRequest, rid: String = "breach:$sid:${q.n}", caller: Caller = world): OpResult =
         ops.runBreach(caller, rid, q)

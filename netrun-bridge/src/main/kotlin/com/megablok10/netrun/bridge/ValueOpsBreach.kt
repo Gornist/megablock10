@@ -40,7 +40,12 @@ data class BreachRequest(
     val vaults: List<String>,
     /** На сколько секунд открыть хранилище, 1..600. */
     val openS: Long,
-)
+    /** Необязательно: id слота хранилища панели (`<узел>_pkN`) — ключ остывания; слот переживает пополнение, предмет в нём меняется. */
+    val vaultKey: String? = null,
+) {
+    /** Ключ остывания взломанного хранилища: `vault_key`, иначе предмет панели (`vaults[0]`); null — ключом служит узел. */
+    fun cooldownKey(): String? = vaultKey?.takeIf { it.isNotBlank() } ?: vaults.firstOrNull()
+}
 
 /**
  * `run.breach` — итог взлома хранилища (протокол, 6.6). Сервер мира считает сетку, ходы и совпадения; Мост по итогу считает
@@ -56,7 +61,7 @@ fun ValueOps.runBreach(caller: Caller, rid: String, q: BreachRequest): OpResult 
         "op" to VJ.p("run.breach"), "session" to VJ.p(q.session), "node" to VJ.p(q.node), "n" to VJ.p(q.n), "tier" to VJ.p(q.tier),
         "selected" to VJ.arr(q.selected), "matched" to VJ.arr(q.matched), "active" to VJ.arr(q.active), "vaults" to VJ.arr(q.vaults),
         "open_s" to VJ.p(q.openS),
-    )
+    ).let { base -> q.vaultKey?.takeIf { it.isNotBlank() }?.let { VJ.with(base, "vault_key" to VJ.p(it)) } ?: base }
     return execute(caller, "run.breach", rid, params) { tx, _ -> BreachTx(this, tx, caller, rid, q, tier).run() }
 }
 
@@ -109,8 +114,9 @@ private class BreachTx(
         val runnerId = ValueOps.runnerDocId(runnerKey)
         val runner = tx.get(ValueOps.RUNNER, runnerId)
         val cooldown = runner?.let { breachCooldown(it) }.orEmpty()
-        // Остывание у каждого хранилища своё (ключ — предмет панели `vaults[0]`); старый ключ-узел остужает любое хранилище узла.
-        val vaultKey = q.vaults.firstOrNull()
+        // Остывание у каждого хранилища своё: ключ — слот панели `vault_key` (стабилен при пополнении); без него — предмет `vaults[0]`;
+        // ключ-узел остужает любое хранилище узла.
+        val vaultKey = q.cooldownKey()
         if ((cooldown[q.node] ?: 0L) > now || (vaultKey != null && (cooldown[vaultKey] ?: 0L) > now)) {
             ops.fail("cooldown", "хранилище остывает для этого нетраннера", runner)
         }
@@ -310,11 +316,11 @@ private class BreachTx(
         (runner.data["breach_cooldown"] as? JsonObject)?.mapValues { (it.value as? JsonPrimitive)?.longOrNull ?: 0L }.orEmpty()
 
     /**
-     * Остывание хранилища для нетраннера: ключ — предмет панели (`vaults[0]`), без хранилищ — узел (старое поведение);
-     * ключи обоих видов с истёкшим сроком удаляются той же записью.
+     * Остывание хранилища для нетраннера: ключ — слот панели (`vault_key`), иначе предмет `vaults[0]`, иначе узел (старое поведение);
+     * ключи с истёкшим сроком удаляются той же записью.
      */
     private fun writeRunner(runner: Doc?, key: String, s: Doc, cooldown: Map<String, Long>, until: Long) {
-        val next = (cooldown.filterValues { it > now } + ((q.vaults.firstOrNull() ?: q.node) to until)).toSortedMap()
+        val next = (cooldown.filterValues { it > now } + ((q.cooldownKey() ?: q.node) to until)).toSortedMap()
         val cooled = JsonObject(next.mapValues { VJ.p(it.value) })
         val base = runner?.data ?: ops.newRunner(key, VJ.str(s.data, "callsign").orEmpty())
         val data = VJ.with(base, "breach_cooldown" to cooled)

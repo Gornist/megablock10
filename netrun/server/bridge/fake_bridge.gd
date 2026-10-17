@@ -471,8 +471,11 @@ func _breach_once(session: String, node: String, req: Dictionary) -> Dictionary:
 	var now_ms := _now_ms()
 	var runner := _runner_doc(str(sd.get("runner", "")))
 	var cooldowns: Dictionary = (runner.get("data", {}) as Dictionary).get("breach_cooldown", {})
-	# Остывание у каждого хранилища своё (ключ — предмет панели, первый в vaults); старый ключ-узел остужает любое хранилище узла.
-	var panel_vault := str((req["vaults"] as Array)[0]) if not (req.get("vaults", []) as Array).is_empty() else ""
+	# Остывание у каждого хранилища своё. Ключ: vault_key (слот панели; предмет в слоте после пополнения другой), без него - предмет панели
+	# (vaults[0]), без предметов - узел. Ключ-узел остужает любое хранилище узла.
+	var panel_vault := str(req.get("vault_key", ""))
+	if panel_vault == "" and not (req.get("vaults", []) as Array).is_empty():
+		panel_vault = str((req["vaults"] as Array)[0])
 	if int(cooldowns.get(node, 0)) > now_ms or (panel_vault != "" and int(cooldowns.get(panel_vault, 0)) > now_ms):
 		return err("cooldown", "хранилище остывает для этого нетраннера", runner.duplicate(true))
 	var tier := str(req["tier"])

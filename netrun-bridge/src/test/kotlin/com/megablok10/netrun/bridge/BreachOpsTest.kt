@@ -366,6 +366,18 @@ class BreachOpsTest {
         assertEquals(setOf("v_sh2"), cd.keys)
     }
 
+    @Test fun cooldownKeyIsSlotSoRefillWithNewItemKeepsCooldown() {
+        val f = BreachFixture()
+        val a = f.enterA()
+        assertTrue(f.breach(a, f.req(a, selected = listOf("it_ex"), vaults = listOf("v_sh1"), vaultKey = "node_07_pk0")).ok)
+        assertEquals(setOf("node_07_pk0"), (f.runner(f.keyA)["breach_cooldown"] as JsonObject).keys)
+        // слот пополнили новым предметом (другой id): тот же vault_key по-прежнему остывает
+        assertEquals("cooldown", code(f.breach(a, f.req(a, n = 2, selected = listOf("it_ex"), vaults = listOf("v_sh2"), vaultKey = "node_07_pk0"))))
+        // другой слот узла доступен; ключи слотов не мешают друг другу
+        assertTrue(f.breach(a, f.req(a, n = 3, selected = listOf("it_ex"), vaults = listOf("v_sh2"), vaultKey = "node_07_pk1")).ok)
+        assertEquals(setOf("node_07_pk0", "node_07_pk1"), (f.runner(f.keyA)["breach_cooldown"] as JsonObject).keys)
+    }
+
     @Test fun cooldownIsPerVaultSoOtherVaultOfSameNodeStaysAvailable() {
         val f = BreachFixture()
         val a = f.enterA()

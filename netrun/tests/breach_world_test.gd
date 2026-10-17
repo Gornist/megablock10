@@ -387,6 +387,12 @@ func test_one_panel_one_hacker_and_cooldown_after_a_success() -> void:
 	assert_str(a.nos[0]["reason"]).is_equal("cooldown")
 	assert_int(int(a.nos[0]["left"])).is_greater(1700)
 	assert_int(_bridge.breach_calls).is_equal(1)
+	# Мост записал ключ СЛОТА, а не узла и не предмета
+	assert_array(_bridge._runner_doc("KEY_ALICE")["data"]["breach_cooldown"].keys()).is_equal([s0])
+	# слот пополнили новым предметом (другой id): остывание не снимается
+	var gn: GrayNode = _world.node_of("b_a")
+	gn._shard_items[s0] = "it_b_refilled"
+	assert_str(str(gn.vault_access(s0, S1)["access"])).is_equal("cooldown")
 	# второе хранилище того же узла взламывается: отказа нет, панель открывается
 	a.nos.clear()
 	_stand_at(S1, "b_a", 1)
@@ -409,13 +415,11 @@ func test_legacy_node_cooldown_key_cools_every_vault_of_the_node_in_the_panel() 
 	assert_int(_bridge.breach_calls).is_equal(0)
 
 
-func test_vault_item_cooldown_key_cools_only_that_vault_in_the_panel() -> void:
+func test_slot_cooldown_key_cools_only_that_vault_in_the_panel() -> void:
 	var now_ms := int(Time.get_unix_time_from_system() * 1000.0)
 	var s0 := _slot("b_a", 0)
 	var s1 := _slot("b_a", 1)
-	var gn: GrayNode = _world.node_of("b_a")
-	assert_bool(await _wait_for(func(): return str(gn._shard_items.get(s0, "")) != "")).is_true()
-	_bridge._set_cooldown("KEY_ALICE", str(gn._shard_items[s0]), now_ms + 1_500_000, now_ms)
+	_bridge._set_cooldown("KEY_ALICE", s0, now_ms + 1_500_000, now_ms)
 	var a := await _ready_peer("t03", S1)
 	assert_bool(await _wait_for(func(): return a.vault(s0).get("access", "") == "cooldown")).is_true()
 	assert_str(a.vault(s1).get("access", "")).is_equal("ok")
