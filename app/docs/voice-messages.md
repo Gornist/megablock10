@@ -17,7 +17,11 @@
 
 ## Формат записи
 
-AAC-LC, моно, 16 кГц, 20 кбит/с (`MediaRecorder`, MPEG-4, файл `.m4a`; работает со всеми Android ≥ 8, Opus потребовал бы API 29). 60 с ≈ 150 КБ.
+AAC-LC, моно, 16 кГц, 20 кбит/с (MPEG-4, файл `.m4a`; работает со всеми Android ≥ 8, Opus потребовал бы API 29). 60 с ≈ 150 КБ.
+Запись идёт через `AudioRecord` (48 кГц) → нейросетевой шумодав RNNoise (та же библиотека, что у звонков) → понижение до 16 кГц (FIR) → `MediaCodec` AAC-LC → `MediaMuxer`
+(`DenoisedClipRecorder`); формат файла и провод от этого не меняются — получатели и сервер разницы не видят. Нет библиотеки RNNoise, не создалось её состояние или шумодав
+выключен (`CallDenoise.enabled`) — прежний `MediaRecorder` (`AndroidClipRecorder`); выбор — `createClipRecorder`, на каждом старте записи. В журнале `voice.record_start`
+(`denoise=on|off`) и `voice.record_stop` (`durationMs`, `bytes`, `speechProbMean`).
 Волна — 64 байта (высота столбиков), считается при записи и едет вместе со звуком.
 
 ## Провод
