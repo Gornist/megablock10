@@ -232,4 +232,6 @@ dependencies {
     testImplementation("org.xerial:sqlite-jdbc:3.53.4.0")
     // Настоящая Room в памяти на JVM: транзакции, откаты, выдача seq — то, что фейками не проверить (testing/RoomTest.kt)
     testImplementation("org.robolectric:robolectric:4.17")
+    // Общие векторы контрактов (rules/src/test/resources/contracts/*.json, тесты в contracts/) — как в :rules, только тестам
+    testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
 }

@@ -1,0 +1,170 @@
+{
+  "_about": "Запись изменений (kit ChangeRecord ↔ admin-web lib/changeRecord.ts ↔ Мост WorldRecordDeriver). payload_utf8 — байты, которые подписывает отправитель: десять полей через «|», null = пустое поле. signature — ECDSA P-256/SHA-256, DER, base64; publicKeyB64 — X.509 SPKI DER. fields/reasons — закрытые списки: device пишет приложение, world — Мост (ключ мира), master_only — только от мастера на устройство; сервер принимает device ∪ world.",
+  "payload": [
+    {
+      "name": "баланс: все поля заполнены",
+      "record": {
+        "id": "rec-1",
+        "subjectKeyB64": "SUBJ+key/==",
+        "seq": 7,
+        "happenedAt": 1760000000000,
+        "field": "balance",
+        "oldValue": "100",
+        "newValue": "70",
+        "reason": "TRANSFER_OUT",
+        "sourceRef": "tx-1",
+        "actor": "ACTOR+key/=="
+      },
+      "payload_utf8": "rec-1|SUBJ+key/==|7|1760000000000|balance|100|70|TRANSFER_OUT|tx-1|ACTOR+key/=="
+    },
+    {
+      "name": "null — пустое поле, а не слово null",
+      "record": {
+        "id": "rec-2",
+        "subjectKeyB64": "S",
+        "seq": 1,
+        "happenedAt": 1,
+        "field": "callsign",
+        "oldValue": null,
+        "newValue": "Клемты",
+        "reason": "CHARACTER_CREATED",
+        "sourceRef": null,
+        "actor": "S"
+      },
+      "payload_utf8": "rec-2|S|1|1|callsign||Клемты|CHARACTER_CREATED||S"
+    },
+    {
+      "name": "пустые строки и null совпадают в байтах",
+      "record": {
+        "id": "rec-3",
+        "subjectKeyB64": "S",
+        "seq": 2,
+        "happenedAt": 2,
+        "field": "faction",
+        "oldValue": "",
+        "newValue": null,
+        "reason": "MASTER_OVERRIDE",
+        "sourceRef": "",
+        "actor": "M"
+      },
+      "payload_utf8": "rec-3|S|2|2|faction|||MASTER_OVERRIDE||M"
+    },
+    {
+      "name": "юникод и разделитель | внутри значения не экранируются",
+      "record": {
+        "id": "rec-4",
+        "subjectKeyB64": "S",
+        "seq": 9007199254740991,
+        "happenedAt": 1760000000999,
+        "field": "shards.add",
+        "oldValue": null,
+        "newValue": "{\"title\":\"Схемы | Арасака\"}",
+        "reason": "BREACH_LOOT",
+        "sourceRef": "shard:a#0",
+        "actor": "S"
+      },
+      "payload_utf8": "rec-4|S|9007199254740991|1760000000999|shards.add||{\"title\":\"Схемы | Арасака\"}|BREACH_LOOT|shard:a#0|S"
+    },
+    {
+      "name": "запись мира: net.breach",
+      "record": {
+        "id": "w:net.breach:e1:42:node_07_pk0",
+        "subjectKeyB64": "WORLD",
+        "seq": 3,
+        "happenedAt": 1760000100000,
+        "field": "net.breach",
+        "oldValue": null,
+        "newValue": "{\"outcome\":\"success\"}",
+        "reason": "NET_BREACH",
+        "sourceRef": "node_07_pk0",
+        "actor": "WORLD"
+      },
+      "payload_utf8": "w:net.breach:e1:42:node_07_pk0|WORLD|3|1760000100000|net.breach||{\"outcome\":\"success\"}|NET_BREACH|node_07_pk0|WORLD"
+    }
+  ],
+  "signature": [
+    {
+      "name": "верная подпись (ECDSA P-256, SHA-256, DER, base64)",
+      "publicKeyB64": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE5axYWiay4zpQvTtT51wKS5/2t5Tq/jqA1rE83EBCsp1izAT6N2STCF2DN6yOQd0oCnyxuHOu+V+xWTU8y3dh1g==",
+      "payload_utf8": "rec-1|SUBJ+key/==|7|1760000000000|balance|100|70|TRANSFER_OUT|tx-1|ACTOR+key/==",
+      "signatureB64": "MEQCIBHrvsa2d55khDU50slXcvZj1SHoy9+ewxJp3rVi7KuMAiA+7+cfEFKA5Aq9D+rc0ORHzrFalXMGRqC/fEn+Ngw80w==",
+      "valid": true
+    },
+    {
+      "name": "верная подпись юникодной записи",
+      "publicKeyB64": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE5axYWiay4zpQvTtT51wKS5/2t5Tq/jqA1rE83EBCsp1izAT6N2STCF2DN6yOQd0oCnyxuHOu+V+xWTU8y3dh1g==",
+      "payload_utf8": "rec-4|S|9007199254740991|1760000000999|shards.add||{\"title\":\"Схемы | Арасака\"}|BREACH_LOOT|shard:a#0|S",
+      "signatureB64": "MEYCIQCNCKagI4SEpISTdOE0pN9DW64Imegxt3F+6aGQs0XEVQIhAL40IfyeylFIETrJo7/2zgiNGVz6OTK7KR+H4s8L4RqX",
+      "valid": true
+    },
+    {
+      "name": "чужие байты: подпись первой записи под вторым payload",
+      "publicKeyB64": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE5axYWiay4zpQvTtT51wKS5/2t5Tq/jqA1rE83EBCsp1izAT6N2STCF2DN6yOQd0oCnyxuHOu+V+xWTU8y3dh1g==",
+      "payload_utf8": "rec-2|S|1|1|callsign||Клемты|CHARACTER_CREATED||S",
+      "signatureB64": "MEQCIBHrvsa2d55khDU50slXcvZj1SHoy9+ewxJp3rVi7KuMAiA+7+cfEFKA5Aq9D+rc0ORHzrFalXMGRqC/fEn+Ngw80w==",
+      "valid": false
+    },
+    {
+      "name": "изменён seq в payload",
+      "publicKeyB64": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE5axYWiay4zpQvTtT51wKS5/2t5Tq/jqA1rE83EBCsp1izAT6N2STCF2DN6yOQd0oCnyxuHOu+V+xWTU8y3dh1g==",
+      "payload_utf8": "rec-1|SUBJ+key/==|8|1760000000000|balance|100|70|TRANSFER_OUT|tx-1|ACTOR+key/==",
+      "signatureB64": "MEQCIBHrvsa2d55khDU50slXcvZj1SHoy9+ewxJp3rVi7KuMAiA+7+cfEFKA5Aq9D+rc0ORHzrFalXMGRqC/fEn+Ngw80w==",
+      "valid": false
+    }
+  ],
+  "fields": {
+    "device": [
+      "balance",
+      "ramCapacity",
+      "callsign",
+      "faction",
+      "daemons.add",
+      "daemons.remove",
+      "shards.add",
+      "shards.remove",
+      "shards.decrypt",
+      "counters.breach",
+      "counters.alert",
+      "counters.blocked"
+    ],
+    "world": [
+      "net.run",
+      "net.item",
+      "net.alert",
+      "net.breach"
+    ],
+    "master_only": [
+      "announcement"
+    ]
+  },
+  "reasons": {
+    "device": [
+      "CHARACTER_CREATED",
+      "BREACH_ATTEMPT",
+      "BREACH_BLOCKED",
+      "BREACH_LOOT",
+      "BREACH_EDDIES",
+      "SHARD_SCAN",
+      "SHARD_DECRYPT",
+      "TRANSFER_OUT",
+      "TRANSFER_IN",
+      "TRANSFER_CANCELLED",
+      "ITEM_TRANSFER_OUT",
+      "ITEM_TRANSFER_IN",
+      "ITEM_TRANSFER_CANCELLED",
+      "RAM_UPGRADE",
+      "ALERT_SENT",
+      "ALERT_SUPPRESSED",
+      "MASTER_OVERRIDE",
+      "CHARACTER_RESET"
+    ],
+    "world": [
+      "NET_ENTER",
+      "NET_EXIT",
+      "NET_FLATLINE",
+      "NET_ITEM_OWNER",
+      "NET_ALERT",
+      "NET_BREACH"
+    ]
+  }
+}
