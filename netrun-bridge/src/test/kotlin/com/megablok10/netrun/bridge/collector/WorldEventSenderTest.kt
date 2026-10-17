@@ -105,8 +105,8 @@ class WorldEventSenderTest {
     @Test fun collectorThatDoesNotAnnounceWorldEventsGetsNothing() {
         val s = sender()
         s.start(scope)
-        for ((i, caps) in listOf(null, """{"world_records":1}""", """{"world_events":0}""", """{"world_events":2}""").withIndex()) {
-            collector.capabilities = caps // 404, поле не объявлено, не поддерживается, формат новее нашего
+        for ((i, caps) in listOf(null, """{"world_records":1}""", """{"world_events":0}""").withIndex()) {
+            collector.capabilities = caps // 404, поле не объявлено, не поддерживается
             s.offer(listOf(event(i)))
             await("проверка возможностей для случая $i") { collector.capabilityGets.get() > i }
             await("событие забыто в случае $i") { s.queued == 0 }
@@ -117,6 +117,16 @@ class WorldEventSenderTest {
         s.offer(listOf(event(9)))
         await("после объявления возможностей") { collector.events.size == 1 }
         assertEquals("e:test:9:run.enter:s_9", collector.events.single().str("id")) // из прежних не догнано ни одно
+    }
+
+    /** Коллектор новее Моста (обещает понимать и старые версии, docs/netrun-world-records.md п. 5): события идут, а не выбрасываются. */
+    @Test fun collectorWithNewerWorldEventsVersionGetsEvents() {
+        collector.capabilities = """{"world_records":2,"world_events":2}"""
+        val s = sender()
+        s.start(scope)
+        s.offer(listOf(event(1)))
+        await("событие у коллектора версии 2") { collector.events.size == 1 }
+        assertEquals(1, collector.eventPosts.get())
     }
 
     @Test fun batchesAreAtMostFiftyAndEverythingArrives() {

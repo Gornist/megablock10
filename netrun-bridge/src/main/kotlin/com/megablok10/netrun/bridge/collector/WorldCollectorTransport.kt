@@ -34,7 +34,8 @@ import java.time.Duration
  *
  * **Запись мира нельзя слать вслепую.** После ответа `rejected` kit удаляет запись из очереди, а коллектор, не знающий `net.*`,
  * отвечает именно так: запись пропала бы молча (C2, раздел 1). Поэтому перед любой отправкой транспорт спрашивает открытый
- * `GET /api/capabilities` и шлёт, только когда `world_records` равен [SUPPORTED_WORLD_RECORDS]; иначе возвращает null («нет связи»),
+ * `GET /api/capabilities` и шлёт, только когда `world_records` не меньше [SUPPORTED_WORLD_RECORDS] (коллектор обязан понимать и старые версии,
+ * `docs/netrun-world-records.md` п. 5); иначе возвращает null («нет связи»),
  * очередь остаётся целой, а `SyncEngine` повторяет по своему бэкоффу. Положительный ответ помнится [capabilityTtlMs].
  */
 class WorldCollectorTransport(
@@ -109,11 +110,11 @@ class WorldCollectorTransport(
         }
         if (!reportedOnce || reported != lastReported) {
             val fields = arrayOf("url" to base, "world_records" to reported, "need" to SUPPORTED_WORLD_RECORDS)
-            if (reported == SUPPORTED_WORLD_RECORDS) log.event(TAG, "world.capabilities", *fields) else log.warnEvent(TAG, "world.capabilities", *fields)
+            if (capable(reported)) log.event(TAG, "world.capabilities", *fields) else log.warnEvent(TAG, "world.capabilities", *fields)
         }
         reportedOnce = true
         lastReported = reported
-        if (reported != SUPPORTED_WORLD_RECORDS) return false
+        if (!capable(reported)) return false
         capableUntil = clock() + capabilityTtlMs
         return true
     }
@@ -124,6 +125,9 @@ class WorldCollectorTransport(
         if (resp.statusCode() !in HTTP_OK) return null
         return Json.parseToJsonElement(resp.body()).jsonObject["world_records"]?.jsonPrimitive?.intOrNull
     }
+
+    /** Коллектор объявил версию не ниже нашей: он обязан понимать и все прежние (docs/netrun-world-records.md п. 5); не объявил (null) — слать нельзя. */
+    private fun capable(reported: Int?): Boolean = reported != null && reported >= SUPPORTED_WORLD_RECORDS
 
     companion object {
         const val TAG = "WorldSync"
