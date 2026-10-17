@@ -152,9 +152,12 @@ const KNOBS := {
 	"cloud_edge_mix": 0.35,  # доля цвета неона у частиц рёбер/линий сетки (владелец: неона меньше)
 	"dust_cell": 0.018,      # ширина ячейки облака, м (высота вдвое больше); владелец: частицы мельче и реже (C2: 0,35 читалось лучше)
 	"dust_density": 0.35,    # доля ячеек с частицей на ровной грани вблизи (с пятнами dust_patch: проплешины и сгущения)
-	"cloud_far": 0.0,        # цена a2c — в ПЛОЩАДИ материала, не в числе частиц (замер Pico): 1 — и дальние пласты far_* облаком (+3,4 мс), 0 — остаются сплошной тёмной гранью
-	"cloud_floor": 0.0,      # 1 — и пол комнаты (floor*) облаком; 0 — остаётся solid_dark (чаще всего самая большая площадь на экране)
+	# «Всё из частиц» (#424, владелец 17.10): пол и дальние пласты по умолчанию тоже облако. ЦЕНА НЕ ИЗМЕРЕНА НА ОЧКАХ: прежний замер cloud_far=1 — +3,4 мс (MSAA 4×, цена a2c в ПЛОЩАДИ
+	# материала, не в числе частиц), бюджет владельца +1,0 мс при 90 Гц. Затухание по дистанции (dust_far_start/end в volume_cloud) уже гасит далёкую часть плит; не влезаем — ручкой 0.
+	"cloud_far": 1.0,        # 1 (умолчание) — дальние пласты far_* облаком; 0 — сплошная тёмная грань (цена +? мс НЕ ИЗМЕРЕНА на очках; ориентир старого замера +3,4 мс)
+	"cloud_floor": 1.0,      # 1 (умолчание) — пол комнаты (floor*) облаком, линии клеток 1 м остаются (grid_tex в cloud_dark); 0 — solid_dark (цена +? мс НЕ ИЗМЕРЕНА на очках, пол — самая большая площадь)
 	"cloud_ceiling": 0.0,    # 1 — и потолок облаком; 0 — остаётся solid_dark
+	"floor_density": 0.6,    # множитель плотности зерна облачного пола (меш slab; dust_density × floor_density), 1 — как dust_density у реквизита: пол плотнее и ярче низких объектов на нём (#424, Ш5); линии клеток 1 м (grid_tex, вес ребра) НЕ гасятся
 	# Рябь «эквалайзеров» (штрихи окружения, только при tier != ""; существа и аватары не трогаем). Меры независимы:
 	"streak_far_min": 1.0,   # яркость штрихов на дистанции ≥ streak_far_end (1 — не гасить; 0,3 — ориентир), как кромка плит
 	"streak_far_start": 8.0,
@@ -173,6 +176,8 @@ const KNOBS := {
 	"edge_round": 1.0,       # 0…1: скруглить профиль света рёбер (smoothstep по яркости вершин): убирает излом на пике градиента — светлую «линию Маха» по середине голубой полосы; 1 — полностью (принято, замер 6 на очках)
 }
 static var _tuned := {}
+## Имя меша сплошной подложки под облачным полом (src/floor_slab.py): облачная ветка apply() его пропускает.
+const UNDER_SLAB := "floor_slab_under"
 ## Материалы с облаком на гранях (А), созданные apply(), слабыми ссылками: дыхание и отклик ставятся на них, где бы ни жил меш. Группа surface_clouds ловит только
 ## MeshInstance3D в дереве, а колонны, укрытия и корпуса препятствий клиент собирает из частей `NodeAssets.mesh_parts` (MultiMesh и свои MeshInstance3D без группы;
 ## корень с группой освобождён) — по группе они не дышали (П7-3, 17.10).
@@ -243,14 +248,14 @@ static func _k(name: String) -> Variant:
 	return _tuned.get(name, KNOBS[name])
 
 
-## Охват облака (ручка cloud) по группам моделей по пути сцены: far_* / floor* / ceiling* — по своим ручкам (по умолчанию сплошные); ворота lockdown_gate* и вся дека (deck/)
-## всегда сплошные: у ворот красная кромка — сигнал LOCKDOWN, облако перекрасило бы её в бирюзу, у деки на руке своя палитра и замера облака не было; остальное (колонны,
-## укрытия, хранилище, рамка выхода, платформа…) — облако. Корпуса ICE (`/ice/`: маяк, излучатель датчика — мелкие, 0,12–0,6 м) тоже сплошные: облако на них читается рваным
-## пятном, а ICE — игровой сигнал, он должен читаться с 5 клеток.
+## Охват облака (ручка cloud) по группам моделей по пути сцены: far_* / floor* / ceiling* — по своим ручкам (с 17.10 far и floor — облако, ceiling — сплошной); вся дека (deck/)
+## всегда сплошная: на руке своя палитра и замера облака не было; остальное (колонны, укрытия, хранилище, рамка выхода, платформа…) — облако.
+## «Всё из частиц» (#424, 17.10): облако и у снаряжения ICE (`/ice/`: маяк, излучатель датчика, будка, логово) и у ворот lockdown_gate*, но КРАСНОЕ (`_is_threat_gear`): красное
+## только у угрозы, а ворота и снаряжение ICE — угроза; бирюзой они перестали бы читаться как сигнал. Сами существа ICE (Б, облако из .points) этой веткой не затрагиваются.
 static func _cloud_scope_ok(root: Node) -> bool:
 	var path := root.scene_file_path
 	var base := path.get_file()
-	if base.begins_with("lockdown_gate") or path.contains("/deck/") or path.contains("/ice/"):
+	if path.contains("/deck/"):
 		return false
 	if base.begins_with("far_"):
 		return float(_k("cloud_far")) > 0.5
@@ -259,6 +264,22 @@ static func _cloud_scope_ok(root: Node) -> bool:
 	if base.begins_with("ceiling"):
 		return float(_k("cloud_ceiling")) > 0.5
 	return true
+
+
+## Снаряжение ICE (`/ice/`) и ворота LOCKDOWN (`lockdown_gate*`): облако красное, а не бирюзовое (красный — только у угрозы).
+static func _is_threat_gear(root: Node) -> bool:
+	var path := root.scene_file_path
+	return path.contains("/ice/") or path.get_file().begins_with("lockdown_gate")
+
+
+## Красные цвета облака угрозы (слой volume_ice + светлый красный для горячих частиц, кромок и касания) — задаются в apply() вместо бирюзовых умолчаний шейдера.
+static func _paint_threat_cloud(m: ShaderMaterial) -> void:
+	var hot := PAL_THREAT_HOT
+	m.set_shader_parameter("dust_color", layer("volume_ice"))
+	m.set_shader_parameter("dust_hot", hot)
+	m.set_shader_parameter("edge_color", hot)
+	m.set_shader_parameter("touch_color", Vector3(hot.r, hot.g, hot.b))  # vec3 без source_color: значения как есть
+
 
 ## Цвета тиров окружения (BASE/HARD/NIGHTMARE): голубая гамма, красный в тирах не участвует.
 const TIER_TINT := {
@@ -436,15 +457,17 @@ static func apply(root: Node, tier: String = "") -> void:
 			if src.resource_name == "streaks" and LAIR_SLEEP_BREATHE.has(String(mi.name)):  # спящее логово Black ICE (П6-6 (в)): холм дышит медленно и глубоко, «сердце» бьётся чаще — пульс виден от входа
 				for k in LAIR_SLEEP_BREATHE[String(mi.name)]:
 					m.set_shader_parameter(k, LAIR_SLEEP_BREATHE[String(mi.name)][k])
-			if src.resource_name == "solid_dark" and float(_k("cloud")) > 0.0 and _cloud_scope_ok(root):  # прототип «облако без основы»: частицы с дырами вместо тёмной грани (нужен MSAA)
+			if src.resource_name == "solid_dark" and String(mi.name) != UNDER_SLAB and float(_k("cloud")) > 0.0 and _cloud_scope_ok(root):  # floor_slab_under — сплошная подложка под облачным полом (#424 Ш5): solid_dark при любом cloud;  # прототип «облако без основы»: частицы с дырами вместо тёмной грани (нужен MSAA)
 				m.shader = CLOUD_SHADER
 				mi.add_to_group(SURFACE_CLOUD_GROUP)   # set_cloud_breath / set_cloud_touch находят поверхностные облака по группе и по реестру материалов
 				_surface_cloud_mats.append(weakref(m))
 				m.set_shader_parameter("glitch_tex", GlitchSprite.texture())
 				m.set_shader_parameter("dust", float(_k("cloud")))
 				m.set_shader_parameter("dust_cell", float(_k("dust_cell")))
-				m.set_shader_parameter("dust_density", float(_k("dust_density")))
+				m.set_shader_parameter("dust_density", float(_k("dust_density")) * (float(_k("floor_density")) if String(mi.name) == "slab" else 1.0))
 				m.set_shader_parameter("edge_mix", float(_k("cloud_edge_mix")))
+				if _is_threat_gear(root):
+					_paint_threat_cloud(m)
 				if String(mi.name) == "slab" and float(_k("floor_grid")) > 0.0:
 					m.set_shader_parameter("grid_tex", _grid_texture())
 					m.set_shader_parameter("grid_alpha", float(_k("floor_grid")))

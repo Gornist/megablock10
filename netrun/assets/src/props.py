@@ -158,8 +158,8 @@ def _beacon(z_top, rgb):
 
 
 def build_vault_volume(out, name="vault", seed=12):
-    """Хранилище узла «волюметрик»: ОДИН файл на три состояния. Общий корпус (чёрный постамент 0,6×0,6×0,3 м и широкий тонкий лоток 0,78×0,74×0,03 м с яркой
-    кромкой ice_white, цепочка точек по кромке, вуаль `vault_skirt` и свисающие штрихи `vault_streaks_hang` вокруг лотка) + узлы-группы
+    """Хранилище узла «волюметрик»: ОДИН файл на три состояния. Общий корпус (постамент 0,6×0,6×0,3 м — облако точек `vault_base_pts` по граням и рёбрам, без сплошного
+    ящика, и тонкий лоток 0,9×0,9×0,03 м `vault_body` с яркой кромкой ice_white, цепочка точек по кромке, вуаль `vault_skirt` и свисающие штрихи `vault_streaks_hang` вокруг лотка) + узлы-группы
     State_closed (шард внутри: крышка и клетка из штрихов 0,78 м, ядро), State_open (створки подняты, столб света к ShardSlot, кольца), State_empty
     (низкий тусклый лоток с пунктирной меткой и «крестом»: шард вынесен), Tier_1..3 (кумулятивные засечки на лицевой грани постамента) и метка ShardSlot (центр
     шарда, 1,0 м над полом). Клиент включает нужное через visible. Лицом к Blender +Y (Godot −Z), origin на полу."""
@@ -167,13 +167,20 @@ def build_vault_volume(out, name="vault", seed=12):
     rng = random.Random(seed)
     cy, ice, void = lib.lin("cyan"), lib.lin("ice_white"), lib.lin("void")
     HX, HY, ZB, ZT = 0.45, 0.45, 0.30, 0.33  # лоток 0,9×0,9 м по центру клетки хода 1×1 м, щель 5 см (как у укрытий); лицо — +Y по оси клетки
-    base = lib.box_bm((0.60, 0.60, ZB), bevel=0.012, center=(0, 0, ZB / 2))
-    g_base = lib.lit_part(base, ZB, 0.012)
     tray = lib.box_bm((2 * HX, 2 * HY, 0.03), center=(0, 0, ZT - 0.015))
     g_tray = lib.lit_part(tray, ZT, 0.014)
-    body = lib.merge_bm(base, tray)
-    rim_c, rim_i = _scaled(cy, 0.6), _scaled(ice, 0.85)
-    objs = [lib.obj_from_bm("vault_body", body, "solid_dark", cy, rgb_fn=lambda co: rim_i if g_tray(co) else (rim_c if g_base(co) else void), smooth=True)]  # smooth: нормали для обводки силуэта (fringe.gdshader)
+    rim_i = _scaled(ice, 0.85)
+    # Постамент 0,6×0,6×0,3 м — не глухой чёрный ящик (семейство «хранилище», #424 Ш4: «пьедесталы» из жалобы владельца), а облако точек по его граням
+    # с цепочками по рёбрам: тот же объём и те же засечки тиров на лицевой грани, но просвечивает и не читается как ступень укрытия.
+    base = lib.box_bm((0.60, 0.60, ZB), center=(0, 0, ZB / 2))
+    bpts = lib.sample_surface(base, 96, seed=seed + 20, push=0.012, min_z=0.006)
+    c = 0.30
+    edges = [((sx * c, sy * c, 0.0), (sx * c, sy * c, ZB)) for sx in (-1, 1) for sy in (-1, 1)]  # четыре вертикальных ребра
+    edges += [((-c, sy * c, ZB), (c, sy * c, ZB)) for sy in (-1, 1)] + [((sx * c, -c, ZB), (sx * c, c, ZB)) for sx in (-1, 1)]  # верхний контур
+    base.free()
+    bpts += lib.sample_lines(edges, 16, spread=0.003, seed=seed + 21, min_z=0.006)
+    objs = [lib.obj_from_bm("vault_body", tray, "solid_dark", cy, rgb_fn=lambda co: rim_i if g_tray(co) else void, smooth=True)]  # smooth: нормали для обводки силуэта (fringe.gdshader)
+    objs.append(lib.point_cloud("vault_base_pts", bpts, cy, half_size=0.007, seed=seed + 22, a_min=0.35, a_max=0.85, on_floor=True))
     sk = [(Vector((ax, ay, ZB)), Vector((bx, by, ZB)), Vector((0, 0, -0.28)), 0.95, 0.95)
           for ax, ay, bx, by in ((-HX, -HY, HX, -HY), (HX, -HY, HX, HY), (HX, HY, -HX, HY), (-HX, HY, -HX, -HY))]
     objs.append(lib.skirt_set("vault_skirt", sk, cy))
@@ -255,7 +262,8 @@ def build_shard(out, name="shard", encrypted=False):
     с глитч-полосами (пунктирные горизонтальные полосы, смещённые вбок) — отличим формой. Tier_1..3: кумулятивные кольца точек вокруг (центральное, верхнее, нижнее)."""
     lib.reset()
     rng = random.Random(7)
-    cy, ice, vio = lib.lin("cyan"), lib.lin("ice_white"), lib.lin("violet")
+    # «Зашифрованный» шард — ледяной белый, а не фиолетовый (#424, 17.10: фиолетовый из Сети убран; фиолетовый тира NIGHTMARE и деки — не здесь); отличие — форма (клетка, глитч) и тусклость
+    cy, ice, vio = lib.lin("cyan"), lib.lin("ice_white"), lib.lin("ice_white")
     hz, rx = 0.065, 0.032
     bm, ring, top, bot = _crystal_bm(rx, hz)
     objs = [lib.obj_from_bm("shard_facets", bm, "shell_soft", vio if encrypted else cy, alpha=(0.3 if encrypted else 0.65))]
@@ -326,7 +334,7 @@ def build_daemon_token(out, name="daemon_token", seed=31):
 
 def build_hack_panel(out, name="hack_panel"):
     """Панель взлома: рамка 0,5×0,4 м (чёрная плита 3 см, яркая кромка, цепочка точек), наклон 25° к игроку (верх отклонён назад, нормаль экрана на 25° вверх),
-    центр экрана на высоте 1,1 м, на тонкой стойке с плоским основанием. Узел `Screen` — квад 0,44×0,30 м с UV 0..1 (u вправо, v вниз, как видит игрок),
+    центр экрана на высоте 1,1 м, на стойке из штрихов и точек (без сплошной стойки и основания). Узел `Screen` — квад 0,44×0,30 м с UV 0..1 (u вправо, v вниз, как видит игрок),
     материал-заглушка тёмно-бирюзовый; узел `ScreenAnchor` — центр экрана, его +Z (Godot) направлен от экрана к игроку. Лицом к Blender +Y (Godot −Z); origin на полу."""
     lib.reset()
     rng = random.Random(41)
@@ -340,12 +348,17 @@ def build_hack_panel(out, name="hack_panel"):
     fglow = _xf_glow(frame, lambda co: co.y > 0.014 and (abs(co.x) > 0.249 or abs(co.z) > 0.199), rot=(TILT, 0, 0), offset=(0, 0, CZ))
     rim = _scaled(ice, 0.85)
     objs = [lib.obj_from_bm("panel_frame", frame, "solid_dark", cy, rgb_fn=lambda co: rim if _key(co) in fglow else void)]
-    pole = lib.box_bm((0.03, 0.03, 1.07), center=(0, -0.014, 0.02 + 0.535))
-    foot = lib.box_bm((0.34, 0.34, 0.02), center=(0, 0, 0.01))
-    g_foot = lib.lit_part(foot, 0.02, 0.012)
-    pbm = lib.merge_bm(pole, foot)
-    dim, rim_f = _scaled(cy, 0.45), _scaled(ice, 0.8)
-    objs.append(lib.obj_from_bm("panel_stand", pbm, "solid_dark", cy, rgb_fn=lambda co: rim_f if g_foot(co) else (dim if co.z > 0.021 else void)))
+    # Стойка — цепочка штрихов и точек (семейство «хранилище»: всё на частицах, без сплошной стойки и без основания-пьедестала 0,34×0,34 м,
+    # которое читалось как круглая/квадратная ступень): штрихи с разрывами от пола до рамки, между ними точки; у пола — горсть тусклых точек.
+    srng = random.Random(45)  # свой генератор: поток rng ниже (занавес рамки) не меняется
+    stand = []
+    for i, z0 in enumerate((0.0, 0.17, 0.35, 0.53, 0.71, 0.88)):
+        ln = srng.uniform(0.09, 0.13)
+        stand.append((Vector((0, -0.014, z0 + ln / 2)), srng.uniform(0.007, 0.010), ln / 2, 0.85 - 0.08 * i))
+    objs.append(lib.streak_set("panel_stand_streaks", stand, cy))
+    spine = lib.sample_line((0, -0.014, 0.0), (0, -0.014, 0.97), 14, spread=0.004, seed=43)
+    spine += [Vector((srng.gauss(0, 0.03), srng.gauss(-0.014, 0.03), 0.0)) for _ in range(8)]  # россыпь у пола на месте бывшего основания
+    objs.append(lib.point_cloud("panel_stand_pts", spine, cy, half_size=0.006, seed=44, a_min=0.35, a_max=0.8, on_floor=True))
     sc = bmesh.new()
     uv = sc.loops.layers.uv.new("UV0")
     cs = [(0.22, -0.15, (0, 0)), (-0.22, -0.15, (1, 0)), (-0.22, 0.15, (1, 1)), (0.22, 0.15, (0, 1))]  # слева→справа глазами игрока: +x слева; v вверх (glTF перевернёт)
@@ -379,7 +392,7 @@ def build_hack_panel(out, name="hack_panel"):
 
 def build_hack_pad(out, name="hack_pad", seed=51):
     """Площадка взлома под ногами: тонкая плита 0,9×0,9×0,03 м с яркой кромкой, цепочка точек по краю, два контура-следа и шеврон в сторону хранилища
-    (Blender −Y, Godot +Z), вуаль `pad_skirt` поднимается от кромки на 0,25 м и короткие штрихи вдоль кромки. Игрок встаёт в 0,85 м перед хранилищем;
+    (Blender −Y, Godot +Z) и низкие штрихи вдоль кромки (до 0,11 м; вуали-«коробки» нет — семейство «хранилище» на частицах). Игрок встаёт в 0,85 м перед хранилищем;
     ориентация как у хранилища (тот же yaw). Origin на полу в центре."""
     lib.reset()
     rng = random.Random(seed)
@@ -389,9 +402,8 @@ def build_hack_pad(out, name="hack_pad", seed=51):
     g = lib.lit_part(plate, T, 0.014)
     rim = _scaled(ice, 0.85)
     objs = [lib.obj_from_bm("pad_plate", plate, "solid_dark", cy, rgb_fn=lambda co: rim if g(co) else void)]
-    sk = [(Vector((ax, ay, T)), Vector((bx, by, T)), Vector((0, 0, 0.25)), 0.9, 0.9)
-          for ax, ay, bx, by in ((-H, -H, H, -H), (H, -H, H, H), (H, H, -H, H), (-H, H, -H, -H))]
-    objs.append(lib.skirt_set("pad_skirt", sk, cy))
+    # Вуаль-«коробка» pad_skirt (поднималась от кромки на 0,25 м) убрана: вместе с высокими штрихами по краю она читалась как ступень-пьедестал.
+    # Плита solid_dark в клиенте рисуется облаком (AssetMaterials, cloud=1), кромка — точки ice_white.
     objs.append(lib.point_cloud("pad_rim_pts", _rect_pts(H - 0.01, H - 0.01, T + 0.004, 26, rng), ice, half_size=0.007, seed=seed, a_min=0.6, a_max=1.0))
     marks = _rect_pts(0.06, 0.14, T + 0.004, 22, rng)
     marks = [Vector((p.x - 0.14, p.y, p.z)) for p in marks] + [Vector((p.x + 0.14, p.y, p.z)) for p in marks]
@@ -405,7 +417,7 @@ def build_hack_pad(out, name="hack_pad", seed=51):
                 continue
             u = (q + 0.5) / 8 * 2 * (H - 0.02) - (H - 0.02)
             e = [(u, -H), (H, u), (u, H), (-H, u)][side]
-            ln = rng.uniform(0.06, 0.2)
+            ln = rng.uniform(0.04, 0.11)  # низкие штрихи вдоль кромки (были до 0,2 м и вместе с вуалью давали «стенку»)
             st.append((Vector((e[0], e[1], T + ln / 2)), rng.uniform(0.009, 0.013), ln / 2, rng.uniform(0.4, 0.8)))
     objs.append(lib.streak_set("pad_streaks", st, cy))
     return lib.export(name, "props", objs, out, budget_tris=120, budget_points=160, budget_streaks=40, origin="floor",
