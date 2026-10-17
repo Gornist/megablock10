@@ -6,7 +6,7 @@ extends Node
 ## сервер и клиент заново (фикстура читается с нуля), по умолчанию с Архива.
 ## Журнал: каждая попытка (учебная тоже) — своя папка RunJournal (в сборке для тестеров — Документы\Мегаблок10\runs\<дата-время>-<сборка>\,
 ## иначе user://runs, `--runs-dir=` — явно); клиент пишет в неё свой журнал, в конце попытки — строка run.summary, журнал закрывается.
-## Путь папки — journal_dir() (экран итога К5), ответы анкеты — journal.log_survey().
+## Путь папки — journal_dir() (экран итога К5), ответы анкеты — journal.log_survey(). `--exit-after=<с>` — чистый выход по таймеру (дымовой прогон CI).
 
 ## Конец забега: result — причина выхода (ExitLogic.REASON_*), tutorial — попытка шла в учебном узле (журнал её помечает, анкету после неё не показывают).
 signal run_finished(result: String, tutorial: bool)
@@ -30,6 +30,8 @@ const PORT_FIRST := 49200
 const PORT_LAST := 49299
 ## Сервер закрывает связь через NetServer.DISCONNECT_DELAY_SEC (0,3 с) после выхода: столько ждём, прежде чем убрать его поддерево.
 const EXIT_SETTLE_SEC := 0.5
+## Выход по таймеру: `--exit-after=<секунды>`.
+const EXIT_AFTER_ARG := "--exit-after="
 
 var port := 0
 var server_root: Node
@@ -41,6 +43,8 @@ var tutorial := false
 ## Журнал текущей попытки и базовый каталог попыток (выбран на старте).
 var journal := RunJournal.new()
 var runs_base := ""
+## Чем завершить процесс по --exit-after (тесты подменяют: настоящий quit закрыл бы прогон тестов).
+var quit_fn := func(code: int) -> void: get_tree().quit(code)
 var _user_args := PackedStringArray()
 var _finished := false
 var _exit_ms := -1
@@ -102,10 +106,21 @@ static func write_fixture(with_tutorial: bool, path: String = FIXTURE_RUN) -> St
 	return path
 
 
+## Секунды из `--exit-after=`; -1 — аргумента нет или он не число.
+static func exit_after_sec(args: PackedStringArray) -> float:
+	for a in args:
+		if a.begins_with(EXIT_AFTER_ARG) and a.trim_prefix(EXIT_AFTER_ARG).is_valid_float():
+			return maxf(a.trim_prefix(EXIT_AFTER_ARG).to_float(), 0.0)
+	return -1.0
+
+
 ## Первый запуск: учебный узел (with_tutorial), если в аргументах нет --skip-tutorial.
 func start(args: PackedStringArray, with_tutorial: bool = true) -> bool:
 	_user_args = args
 	runs_base = RunJournal.pick_base(RunJournal.preferred_base(args, OS.get_system_dir(OS.SYSTEM_DIR_DOCUMENTS), OS.has_feature("solo")))
+	var sec := exit_after_sec(args)
+	if sec >= 0.0:
+		get_tree().create_timer(sec).timeout.connect(_on_exit_after)
 	return _launch(with_tutorial and not (SKIP_TUTORIAL_ARG in args))
 
 
@@ -211,6 +226,14 @@ func _finish(reason: String) -> void:
 	print("[netrun-solo] забег окончен: ", reason, " (учебный узел)" if tutorial else "")
 	_write_summary(reason)
 	run_finished.emit(reason, tutorial)
+
+
+## Таймер --exit-after: итог попытки (exit_after, если забег не кончился сам), журнал закрыт, сервер и клиент остановлены, выход с кодом 0.
+func _on_exit_after() -> void:
+	_write_summary(RunJournal.RESULT_EXIT_AFTER)
+	await stop()
+	print("[netrun-solo] выход по --exit-after")
+	quit_fn.call(0)
 
 
 ## Итог попытки — строкой run.summary в журнал клиента, затем журнал закрывается (дальше в файл пишет только анкета, RunJournal.log_survey).

@@ -103,6 +103,26 @@ func test_папка_попытки_start_промах_прицела_сводк
 	assert_str(FileAccess.get_file_as_string(first.path_join(DirAccess.get_files_at(first)[0]))).contains("survey.q1")   # прошлая попытка не тронута
 
 
+func test_exit_after_разбор_аргумента() -> void:
+	assert_float(SoloStubScript.exit_after_sec(PackedStringArray(["--solo", "--exit-after=8"]))).is_equal(8.0)
+	assert_float(SoloStubScript.exit_after_sec(PackedStringArray(["--exit-after=0.5"]))).is_equal(0.5)
+	assert_float(SoloStubScript.exit_after_sec(PackedStringArray(["--exit-after=x"]))).is_equal(-1.0)
+	assert_float(SoloStubScript.exit_after_sec(PackedStringArray())).is_equal(-1.0)
+
+
+func test_exit_after_сводка_остановка_и_код_0() -> void:
+	var codes: Array = []
+	_solo = SoloStubScript.new()
+	_solo.quit_fn = func(code: int) -> void: codes.append(code)
+	add_child(_solo)
+	assert_bool(_solo.start(PackedStringArray(["--runs-dir=" + BASE, "--exit-after=1.5", SoloStubScript.SKIP_TUTORIAL_ARG]))).is_true()
+	var path: String = _solo.journal.log_path
+	assert_bool(await _wait_for(func(): return codes.size() == 1, 20.0)).is_true()
+	assert_array(codes).is_equal([0])
+	assert_object(_solo.server).is_null()   # сервер и клиент остановлены до выхода
+	assert_str(FileAccess.get_file_as_string(path)).contains("run.summary result=exit_after tutorial=false")
+
+
 func test_остановка_до_конца_забега_пишет_сводку_stopped() -> void:
 	_start(PackedStringArray([SoloStubScript.SKIP_TUTORIAL_ARG]))
 	assert_bool(await _wait_for(func(): return _proto().net != null and _proto().net.is_connected_to_world)).is_true()
