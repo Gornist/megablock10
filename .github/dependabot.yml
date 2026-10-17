@@ -10,9 +10,6 @@ updates:
     groups:
       gradle-minor: { update-types: [minor, patch] }
     # core-ktx, Compose BOM и Paparazzi держали до AGP 9 (14.10, #258/#259 красные); с 17.10 (#365, AGP 9.2.1) снова обновляются.
-    # detekt 2.0 — другой плагин и правила: только отдельной задачей Android, не автоматическим PR (#365).
-    ignore:
-      - { dependency-name: "io.gitlab.arturbosch.detekt*", update-types: ["version-update:semver-major"] }
   - package-ecosystem: npm             # сервер коллектора
     directory: "/admin-web/server"
     schedule: { interval: weekly, day: monday }
