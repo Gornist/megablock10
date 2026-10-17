@@ -385,7 +385,7 @@ def build_hack_panel(out, name="hack_panel"):
 
 def build_hack_pad(out, name="hack_pad", seed=51):
     """Площадка взлома под ногами: тонкая плита 0,9×0,9×0,03 м с яркой кромкой, цепочка точек по краю, два контура-следа и шеврон в сторону хранилища
-    (Blender −Y, Godot +Z), вуаль `pad_skirt` поднимается от кромки на 0,25 м и короткие штрихи вдоль кромки. Игрок встаёт в 0,85 м перед хранилищем;
+    (Blender −Y, Godot +Z) и низкие штрихи вдоль кромки (до 0,11 м; вуали-«коробки» нет — семейство «хранилище» на частицах). Игрок встаёт в 0,85 м перед хранилищем;
     ориентация как у хранилища (тот же yaw). Origin на полу в центре."""
     lib.reset()
     rng = random.Random(seed)
@@ -395,9 +395,8 @@ def build_hack_pad(out, name="hack_pad", seed=51):
     g = lib.lit_part(plate, T, 0.014)
     rim = _scaled(ice, 0.85)
     objs = [lib.obj_from_bm("pad_plate", plate, "solid_dark", cy, rgb_fn=lambda co: rim if g(co) else void)]
-    sk = [(Vector((ax, ay, T)), Vector((bx, by, T)), Vector((0, 0, 0.25)), 0.9, 0.9)
-          for ax, ay, bx, by in ((-H, -H, H, -H), (H, -H, H, H), (H, H, -H, H), (-H, H, -H, -H))]
-    objs.append(lib.skirt_set("pad_skirt", sk, cy))
+    # Вуаль-«коробка» pad_skirt (поднималась от кромки на 0,25 м) убрана: вместе с высокими штрихами по краю она читалась как ступень-пьедестал.
+    # Плита solid_dark в клиенте рисуется облаком (AssetMaterials, cloud=1), кромка — точки ice_white.
     objs.append(lib.point_cloud("pad_rim_pts", _rect_pts(H - 0.01, H - 0.01, T + 0.004, 26, rng), ice, half_size=0.007, seed=seed, a_min=0.6, a_max=1.0))
     marks = _rect_pts(0.06, 0.14, T + 0.004, 22, rng)
     marks = [Vector((p.x - 0.14, p.y, p.z)) for p in marks] + [Vector((p.x + 0.14, p.y, p.z)) for p in marks]
@@ -411,7 +410,7 @@ def build_hack_pad(out, name="hack_pad", seed=51):
                 continue
             u = (q + 0.5) / 8 * 2 * (H - 0.02) - (H - 0.02)
             e = [(u, -H), (H, u), (u, H), (-H, u)][side]
-            ln = rng.uniform(0.06, 0.2)
+            ln = rng.uniform(0.04, 0.11)  # низкие штрихи вдоль кромки (были до 0,2 м и вместе с вуалью давали «стенку»)
             st.append((Vector((e[0], e[1], T + ln / 2)), rng.uniform(0.009, 0.013), ln / 2, rng.uniform(0.4, 0.8)))
     objs.append(lib.streak_set("pad_streaks", st, cy))
     return lib.export(name, "props", objs, out, budget_tris=120, budget_points=160, budget_streaks=40, origin="floor",
