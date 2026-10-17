@@ -78,3 +78,30 @@ func test_кадр_передаёт_облакам_дыхание_и_откли�
 func test_без_облаков_кадр_ничего_не_ломает() -> void:
 	_scene._update_cloud(1.0)
 	assert_bool(true).is_true()
+
+
+## Тревога у игрока (Blender, PR 385): кадр передаёт материалам окружения позицию игрока и уровень; уровни 0–1 выключают сами.
+func _env_material() -> ShaderMaterial:
+	var root: Node3D = auto_free(Node3D.new())
+	var mi := MeshInstance3D.new()
+	var mesh := BoxMesh.new()
+	var src := ShaderMaterial.new()
+	src.resource_name = "solid_dark"
+	src.shader = AssetMaterials.SHADERS["solid_dark"]
+	mesh.surface_set_material(0, src)
+	mi.mesh = mesh
+	root.add_child(mi)
+	AssetMaterials.apply(root, "BASE")
+	return mi.get_surface_override_material(0) as ShaderMaterial
+
+
+func test_кадр_передаёт_фокус_тревоги_с_позицией_игрока() -> void:
+	var m := _env_material()
+	_scene.rig.global_position = Vector3(2.0, 0.0, -1.0)
+	_scene.alarm_level = 3
+	_scene._update_alarm_focus()
+	assert_vector(m.get_shader_parameter("focus_pos")).is_equal(Vector3(2.0, 0.0, -1.0))
+	assert_float(float(m.get_shader_parameter("focus_radius"))).is_equal_approx(5.0, 0.0001)
+	_scene.alarm_level = 1
+	_scene._update_alarm_focus()
+	assert_float(float(m.get_shader_parameter("focus_radius"))).is_equal(0.0)   # уровни 0–1 — след сошёл
