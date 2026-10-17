@@ -11,6 +11,8 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 [ -f "$HOME/netrun-env.sh" ] && . "$HOME/netrun-env.sh"
 . "$HERE/box_guard.sh"
+. "$HERE/stand_guard.sh"
+stand_require_cache "$HERE/.."   # копия netrun без .godot — сервер не встанет; ловим до того, как трогаем очки
 PACKAGE="com.megablok10.netrun"
 COMPONENT="$PACKAGE/com.godot.game.GodotAppLauncher"
 APK="${P6_APK:-$HOME/pico-p6/netrun-client-p6.apk}"

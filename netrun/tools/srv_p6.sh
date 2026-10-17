@@ -6,6 +6,8 @@
 # Остановить: kill $(ss -ulpn | grep :7777 | sed -E "s/.*pid=([0-9]+).*/\1/")
 # shellcheck disable=SC1090
 . ~/netrun-env.sh 2>/dev/null || true
+. "$(dirname "$0")/stand_guard.sh"
 cd "$(dirname "$0")/.." || exit 1
+stand_require_cache .
 exec godot --headless --path . -- --graph=res://tools/stand/p6_graph.json --bridge=fake --bridge-fixture="$PWD/tools/stand/p6_bridge_fixture.json" \
   --grace=3600 --vault-requires-open=true --exit-after=7200
