@@ -760,12 +760,19 @@ func _cloud_meshes(root: Node) -> int:
 
 
 func test_asset_materials_cloud_scope_props_yes_slabs_gate_and_deck_no() -> void:
-	AssetMaterials.reset_tuning()  # умолчания охвата = принятый C3a: облако на реквизите, пол/потолок/дальние пласты остаются solid_dark
+	AssetMaterials.reset_tuning()  # умолчания охвата («всё из частиц», #424): облако на реквизите, полу и дальних пластах; потолок остаётся solid_dark
 	assert_int(_cloud_meshes(_apply_new("env", "cover"))).override_failure_message("укрытие — облако").is_greater(0)
 	assert_int(_cloud_meshes(_apply_new("env", "exit_frame"))).override_failure_message("рамка выхода — облако").is_greater(0)
-	assert_int(_cloud_meshes(_apply_new("env", "far_floor"))).override_failure_message("cloud_far=0: дальние пласты остаются solid_dark").is_equal(0)
-	assert_int(_cloud_meshes(_apply_new("env", "floor_slab_16"))).override_failure_message("cloud_floor=0: пол остаётся solid_dark").is_equal(0)
+	assert_int(_cloud_meshes(_apply_new("env", "far_floor"))).override_failure_message("cloud_far=1 по умолчанию: дальние пласты — облако").is_greater(0)
+	assert_int(_cloud_meshes(_apply_new("env", "floor_slab_16"))).override_failure_message("cloud_floor=1 по умолчанию: пол — облако").is_greater(0)
+	var slab_mat := _mat_of(_apply_new("env", "floor_slab_16"), "slab")
+	assert_float(float(slab_mat.get_shader_parameter("grid_alpha"))).override_failure_message("линии клеток 1 м на полу-облаке сохранены (grid_tex в cloud_dark)").is_greater(0.0)
+	assert_object(slab_mat.get_shader_parameter("grid_tex")).is_not_null()
 	assert_int(_cloud_meshes(_apply_new("env", "ceiling"))).override_failure_message("cloud_ceiling=0: потолок остаётся solid_dark").is_equal(0)
+	AssetMaterials.tune({"cloud_far": 0.0, "cloud_floor": 0.0})
+	assert_int(_cloud_meshes(_apply_new("env", "far_floor"))).override_failure_message("cloud_far=0: ручка возвращает сплошную грань").is_equal(0)
+	assert_int(_cloud_meshes(_apply_new("env", "floor_slab_16"))).override_failure_message("cloud_floor=0: ручка возвращает solid_dark").is_equal(0)
+	AssetMaterials.reset_tuning()
 	assert_int(_cloud_meshes(_apply_new("env", "lockdown_gate"))).override_failure_message("ворота LOCKDOWN всегда сплошные: красная кромка — сигнал").is_equal(0)
 	assert_int(_cloud_meshes(_apply_new("deck", "wrist_deck"))).override_failure_message("дека всегда сплошная (своя палитра, замера облака не было)").is_equal(0)
 	AssetMaterials.tune({"cloud_far": 1.0, "cloud_floor": 1.0, "cloud_ceiling": 1.0})
