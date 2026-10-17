@@ -255,7 +255,8 @@ def build_shard(out, name="shard", encrypted=False):
     с глитч-полосами (пунктирные горизонтальные полосы, смещённые вбок) — отличим формой. Tier_1..3: кумулятивные кольца точек вокруг (центральное, верхнее, нижнее)."""
     lib.reset()
     rng = random.Random(7)
-    cy, ice, vio = lib.lin("cyan"), lib.lin("ice_white"), lib.lin("violet")
+    # «Зашифрованный» шард — ледяной белый, а не фиолетовый (#424, 17.10: фиолетовый из Сети убран; фиолетовый тира NIGHTMARE и деки — не здесь); отличие — форма (клетка, глитч) и тусклость
+    cy, ice, vio = lib.lin("cyan"), lib.lin("ice_white"), lib.lin("ice_white")
     hz, rx = 0.065, 0.032
     bm, ring, top, bot = _crystal_bm(rx, hz)
     objs = [lib.obj_from_bm("shard_facets", bm, "shell_soft", vio if encrypted else cy, alpha=(0.3 if encrypted else 0.65))]

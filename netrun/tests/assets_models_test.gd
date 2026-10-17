@@ -784,6 +784,27 @@ func test_asset_materials_cloud_scope_props_yes_slabs_gate_and_deck_no() -> void
 	assert_bool(FileAccess.file_exists("res://assets/shaders/cloud_dark_2s.gdshader")).override_failure_message("cloud_dark_2s.gdshader удалён").is_false()
 
 
+## Число вершин с фиолетовым оттенком (hue 0,68–0,85, насыщенность > 0,3, яркость > 0,05) в цветах вершин всех мешей корня. Цвета в .glb линейные: #8a5cff даёт hue ≈ 0,69, не 0,72;
+## синий HARD (#2a7bff) — hue ≈ 0,64, ниже границы.
+func _violet_verts(root: Node) -> int:
+	var n := 0
+	for mi in _meshes(root):
+		for s in mi.mesh.get_surface_count():
+			var cols: Variant = mi.mesh.surface_get_arrays(s)[Mesh.ARRAY_COLOR]
+			if cols == null:
+				continue
+			for c in cols as PackedColorArray:
+				if c.h >= 0.68 and c.h <= 0.85 and c.s > 0.3 and c.v > 0.05:
+					n += 1
+	return n
+
+
+func test_shard_has_no_violet_vertices() -> void:
+	assert_int(_violet_verts(_load("deck", "daemon_GHOST"))).override_failure_message("контроль: у демона GHOST фиолетовый есть — проверка оттенка рабочая").is_greater(0)
+	for a in ["shard", "shard_encrypted"]:
+		assert_int(_violet_verts(_load("props", a))).override_failure_message("%s: фиолетовые вершины (фиолетового в Сети нет, #424)" % a).is_equal(0)
+
+
 ## Красные облачные материалы корня: у каждого облачного меша dust_color ≈ layer("volume_ice"), касание — светлый красный.
 func _assert_cloud_is_red(root: Node, what: String) -> void:
 	var red := AssetMaterials.layer("volume_ice")
