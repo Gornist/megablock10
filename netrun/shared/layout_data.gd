@@ -1,6 +1,6 @@
 class_name LayoutData
 extends RefCounted
-## Раскладка узла как данные (docs/gamedesign/levels.md, 3 и 7): карта 8×8 символов, хранилища, маршруты Стражей, подсказки.
+## Раскладка узла как данные (docs/gamedesign/levels.md, 3 и 7): карта W×H символов (1..12 по стороне; 8×8 — прежняя комната), хранилища, маршруты Стражей, подсказки.
 ## Символ карты = блок 2×2 клетки сетки 1 м (NodeGrid): клетка карты (sx, sz) ↔ клетки (2sx..2sx+1, 2sz..2sz+1); центр блока = центр модуля
 ## NodeLayout.cell_center(sx, sz) — туда ставятся предметы. Чистые данные: без сцены и сети; сервер и клиент подключат её следующей карточкой.
 ## Файл — res://data/layouts/<имя>.json; разбор не падает: при ошибке `error` не пусто (остальные поля тогда не годятся).
@@ -10,7 +10,10 @@ extends RefCounted
 ## ("N"/"NE"/…/"NW" или список имён — берётся первое).
 
 const DIR := "res://data/layouts/"
+## Сторона карты по умолчанию (8×8: legacy, Фойе, учебный) — константы NodeLayout.ROOM_MAX/GRID и тесты. Размер раскладки — её `cols`/`rows`.
 const SIZE := 8
+## Предел стороны карты, блоков (1..MAX_SIDE по каждой стороне); предел площади по тиру — LayoutCheck.
+const MAX_SIDE := 12
 ## Занятые символы: колонна, хранилище, Маяк, барьер, логово Black ICE. Остальные (. S 1 2 3 E b v =) — свободные клетки (часть — метки).
 const OCCUPIED_SYMBOLS := "#VOBL"
 const FREE_SYMBOLS := ".S123Ebv="
@@ -18,8 +21,11 @@ const DEFAULT_SIGHT_CELLS := 6.0
 
 var name := ""
 var error := ""
-## Карта: 8 строк по 8 символов.
+## Карта: `rows` строк по `cols` символов (1..MAX_SIDE; не обязательно квадрат).
 var blocks: Array[String] = []
+## Размер карты в блоках: столбцов (запад → восток) и строк (север → юг). Комната растёт от NodeLayout.ROOM_MIN на юг и восток. До разбора — SIZE.
+var cols := SIZE
+var rows := SIZE
 ## Занятые клетки 1 м: Vector2i → true (как NodeGrid.occ).
 var occupied: Dictionary = {}
 ## Вход (центр блока S, y = 0), как NodeLayout.SPAWN.
@@ -120,8 +126,25 @@ func cover_cells() -> Array[Vector2i]:
 	return []
 
 
+## Юго-восточный угол комнаты (x, z), м: ROOM_MIN + CELL · (cols, rows). Для 8×8 — NodeLayout.ROOM_MAX.
+func room_max() -> Vector2:
+	return NodeLayout.ROOM_MIN + NodeLayout.CELL * Vector2(cols, rows)
+
+
+## Центр комнаты (y = 0), куда «смотрит внутрь» вход от портала. Для 8×8 — NodeLayout.ROOM_CENTER.
+func room_center() -> Vector3:
+	var c := NodeLayout.ROOM_MIN + room_max()
+	return Vector3(c.x * 0.5, 0.0, c.y * 0.5)
+
+
+## Клетка карты (блок) внутри карты.
+func has_block(b: Vector2i) -> bool:
+	return b.x >= 0 and b.y >= 0 and b.x < cols and b.y < rows
+
+
 func grid() -> NodeGrid:
 	var g := NodeGrid.new()
+	g.size = Vector2i(cols * 2, rows * 2)
 	g.occ = occupied.duplicate()
 	if not is_legacy():
 		# Прыжок на клетку самого хранилища (она занята) ставит на площадку перед ним; соседние клетки блока свободны и остаются как есть.
@@ -132,18 +155,23 @@ func grid() -> NodeGrid:
 
 func _fill(d: Dictionary) -> String:
 	var cells: Variant = d.get("cells")
-	if not (cells is Array) or (cells as Array).size() != SIZE:
-		return "cells: нужно %d строк" % SIZE
+	if not (cells is Array) or (cells as Array).is_empty() or (cells as Array).size() > MAX_SIDE:
+		return "cells: нужно от 1 до %d строк" % MAX_SIDE
+	rows = (cells as Array).size()
+	var first: Variant = (cells as Array)[0]
+	if not (first is String) or (first as String).is_empty() or (first as String).length() > MAX_SIDE:
+		return "cells[0]: нужна строка из 1–%d символов" % MAX_SIDE
+	cols = (first as String).length()
 	var spawn_blocks: Array[Vector2i] = []
 	var exit_blocks: Array[Vector2i] = []
 	var portal_at: Dictionary = {}
-	for sz in SIZE:
+	for sz in rows:
 		var row: Variant = (cells as Array)[sz]
-		if not (row is String) or (row as String).length() != SIZE:
-			return "cells[%d]: нужна строка из %d символов" % [sz, SIZE]
+		if not (row is String) or (row as String).length() != cols:
+			return "cells[%d]: нужна строка из %d символов (как в первой)" % [sz, cols]
 		var line: String = row
 		blocks.append(line)
-		for sx in SIZE:
+		for sx in cols:
 			var ch := line[sx]
 			var b := Vector2i(sx, sz)
 			if OCCUPIED_SYMBOLS.contains(ch):
@@ -222,7 +250,7 @@ func _fill_vaults(src: Variant) -> String:
 		var cell: Variant = _map_cell(vd.get("cell"))
 		var pad: Variant = _map_cell(vd.get("pad"))
 		if cell == null or pad == null:
-			return "vaults: cell и pad — клетки карты [x, z] в пределах 0..%d" % (SIZE - 1)
+			return "vaults: cell и pad — клетки карты [x, z] в пределах карты %d×%d" % [cols, rows]
 		var cc: Vector2i = cell
 		var pc: Vector2i = pad
 		var pair := _vault_pair(cc, pc)
@@ -319,7 +347,7 @@ func _fill_ice(src: Variant) -> String:
 			if cells.is_empty():
 				return "ice %s: датчику нужны dir по ряду или столбцу (N, E, S, W) и len 2–12" % str(ed.get("id", "?"))
 			for bc2 in cells:
-				if not NodeGrid.in_bounds(bc2):
+				if not _in_grid(bc2):
 					return "ice %s: луч датчика выходит за карту" % str(ed.get("id", "?"))
 			sensors.append({"id": str(ed.get("id", "d%d" % (sensors.size() + 1))), "cells": cells,
 				"on": maxi(int(ed.get("on", 0)), 0), "off": maxi(int(ed.get("off", 0)), 0), "phase": maxi(int(ed.get("phase", 0)), 0)})
@@ -368,7 +396,7 @@ func _fill_lair(bd: Dictionary) -> String:
 	for dx in 2:
 		for dy in 2:
 			var bb := Vector2i(tl.x + dx, tl.y + dy)
-			if bb.x >= SIZE or bb.y >= SIZE or blocks[bb.y][bb.x] != "L":
+			if not has_block(bb) or blocks[bb.y][bb.x] != "L":
 				return "black: логову нужны четыре блока «L» (2×2) от блока %s" % str(tl)
 			cells.append_array(block_cells(bb))
 	lair = {"id": str(bd.get("id", "black_1")), "kind": str(bd.get("kind", "")), "cells": cells,
@@ -418,7 +446,7 @@ func _point_cell(pd: Dictionary) -> Variant:
 		var a: Variant = pd["cell1"]
 		if a is Array and (a as Array).size() == 2:
 			var c := Vector2i(int((a as Array)[0]), int((a as Array)[1]))
-			if NodeGrid.in_bounds(c):
+			if _in_grid(c):
 				return c
 		return null
 	var b: Variant = _map_cell(pd.get("cell"))
@@ -427,11 +455,16 @@ func _point_cell(pd: Dictionary) -> Variant:
 	return block_center_cell(b)
 
 
-## Клетка карты [sx, sz] → Vector2i; null — не пара чисел или вне 0..7.
+## Клетка карты [sx, sz] → Vector2i; null — не пара чисел или вне карты (0..cols-1, 0..rows-1).
 func _map_cell(v: Variant) -> Variant:
 	if not (v is Array) or (v as Array).size() != 2:
 		return null
 	var c := Vector2i(int((v as Array)[0]), int((v as Array)[1]))
-	if c.x < 0 or c.y < 0 or c.x >= SIZE or c.y >= SIZE:
+	if not has_block(c):
 		return null
 	return c
+
+
+## Клетка 1 м внутри комнаты этой раскладки.
+func _in_grid(c: Vector2i) -> bool:
+	return c.x >= 0 and c.y >= 0 and c.x < cols * 2 and c.y < rows * 2

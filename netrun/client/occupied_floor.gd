@@ -4,7 +4,8 @@ extends Node3D
 ## светящуюся заливку приглушённого голубого. Один MultiMesh (по образцу TickFloor), не мерцает; лежит ниже света зрения ICE (TickFloor.FUTURE_LIFT),
 ## чтобы не перекрывать телеграф такта. Клетки берутся из сетки узла: другая раскладка — set_grid.
 
-const CAPACITY := 256
+## Запас под самую большую карту 12×12 блоков (24×24 клетки = 576): рисуется только visible_instance_count, лишнее стоит память, не кадр.
+const CAPACITY := 576
 ## Высота над полом, м: под светом зрения (TickFloor.FUTURE_LIFT = 0,008), над плитой пола.
 const LIFT := 0.004
 ## Цвета — только из палитры клиентских слоёв Blender: заливка cell_occupied_fill и контур клетки cell_occupied_edge (AssetMaterials.layer).
@@ -93,7 +94,7 @@ func cell_position(i: int) -> Vector3:
 func _rebuild() -> void:
 	var cells: Array[Vector2i] = []
 	for c: Vector2i in _grid.occ:
-		if NodeGrid.in_bounds(c):
+		if _grid.has_cell(c):   # границы — у сетки узла (карта W×H), а не комнаты 8×8 по умолчанию
 			cells.append(c)
 	cells.sort()   # порядок не зависит от порядка вставки: тест и кадр одинаковы
 	_cell_pos.clear()

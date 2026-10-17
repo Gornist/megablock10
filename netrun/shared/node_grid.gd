@@ -17,8 +17,12 @@ var occ: Dictionary = {}
 ## Куда ставит прыжок на занятую клетку: Vector2i → Vector2i. Так клетки хранилища (блок 2×2, занят) отправляют игрока на площадку перед ним;
 ## и клиентский прицел (pick), и сервер (NetServer) подставляют клетку одинаково. Пусто — прыжок на занятую клетку отказ.
 var landing: Dictionary = {}
+## Размер комнаты в клетках 1 м (столбцы × строки). По умолчанию — комната 8×8 блоков (16×16 клеток: legacy, Фойе, учебный, тесты);
+## раскладку другого размера выставляет LayoutData.grid(). Границы (has_cell, is_occupied вне границ, pick) — по экземпляру, статических «текущих размеров» нет.
+var size := Vector2i(16, 16)
 
 
+## Столбцы/строки комнаты по умолчанию (8×8 блоков). Размер конкретной сетки — её поле `size`.
 static func cols() -> int:
 	return roundi((NodeLayout.ROOM_MAX.x - NodeLayout.ROOM_MIN.x) / CELL_M)
 
@@ -36,8 +40,28 @@ static func center(c: Vector2i) -> Vector3:
 	return Vector3(NodeLayout.ROOM_MIN.x + CELL_M * (c.x + 0.5), 0.0, NodeLayout.ROOM_MIN.y + CELL_M * (c.y + 0.5))
 
 
+## Клетка в комнате размера по умолчанию (16×16). Для сетки раскладки — has_cell.
 static func in_bounds(c: Vector2i) -> bool:
 	return c.x >= 0 and c.y >= 0 and c.x < cols() and c.y < rows()
+
+
+## Клетка внутри комнаты этой сетки.
+func has_cell(c: Vector2i) -> bool:
+	return c.x >= 0 and c.y >= 0 and c.x < size.x and c.y < size.y
+
+
+## Юго-восточный угол комнаты этой сетки (x, z), м: ROOM_MIN растёт на юг и восток.
+func room_max() -> Vector2:
+	return NodeLayout.ROOM_MIN + Vector2(size) * CELL_M
+
+
+## Копия для ICE, которой нужно временно освободить часть клеток: размер, занятость (копия) и площадки хранилищ (общие).
+func duplicate_grid() -> NodeGrid:
+	var g := NodeGrid.new()
+	g.size = size
+	g.occ = occ.duplicate()
+	g.landing = landing
+	return g
 
 
 ## Занятость по колоннам узла: каждая колонна закрывает все клетки своего блока 2×2 м.
@@ -61,7 +85,7 @@ func landing_of(c: Vector2i) -> Vector2i:
 
 ## Вне комнаты — занято: за стену не прыгнуть и не заглянуть.
 func is_occupied(c: Vector2i) -> bool:
-	return not in_bounds(c) or occ.has(c)
+	return not has_cell(c) or occ.has(c)
 
 
 ## Линия между центрами клеток свободна: промежуточные клетки (без концов) не заняты.
@@ -232,7 +256,7 @@ func path(from: Vector2i, to: Vector2i) -> Array[Vector2i]:
 ## к `aim` из достижимых; занятую или закрытую линией клетку к соседней не притягиваем — игрок должен видеть, что она закрыта.
 func pick(from: Vector3, aim: Vector3) -> Dictionary:
 	var raw := cell_of(aim)
-	var c := Vector2i(clampi(raw.x, 0, cols() - 1), clampi(raw.y, 0, rows() - 1))
+	var c := Vector2i(clampi(raw.x, 0, size.x - 1), clampi(raw.y, 0, size.y - 1))
 	if c != raw and is_occupied(c):
 		return _pick_result(c, "denied", "room")
 	c = landing_of(c)   # клетка хранилища → площадка перед ним (дальше — обычный прыжок на неё)

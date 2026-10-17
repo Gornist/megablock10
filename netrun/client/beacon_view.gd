@@ -73,9 +73,7 @@ func _build_fan(grid: NodeGrid, cell: Vector2i, dir: Vector2i, r: float) -> void
 	var mat := _fan_material()
 	if mat == null or dir == Vector2i.ZERO:
 		return
-	var g := NodeGrid.new()
-	g.occ = grid.occ.duplicate()
-	g.landing = grid.landing
+	var g := grid.duplicate_grid()
 	var bx := cell.x - posmod(cell.x, 2)
 	var by := cell.y - posmod(cell.y, 2)
 	for dx in 2:

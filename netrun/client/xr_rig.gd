@@ -430,7 +430,7 @@ func aim_hold_sec() -> float:
 
 func _show_aim(delta: float = 0.0) -> void:
 	var pose := _aim_pose()
-	var info := RigMath.teleport_aim(pose["origin"], pose["dir"], global_position, teleport_range, global_position.y)
+	var info := RigMath.teleport_aim(pose["origin"], pose["dir"], global_position, teleport_range, global_position.y, grid.room_max())
 	if info["valid"]:
 		# Прицел притягивается к клетке: «p» — центр выбранной клетки (сюда ляжет прыжок), «raw» — куда указывает рука.
 		var pick := grid.pick(global_position, info["p"])
@@ -513,7 +513,7 @@ func _fire_teleport() -> void:
 	# Клетка уже проверена по дальности (центр до центра), а сам игрок стоит не в центре своей клетки: запас — одна клетка.
 	# В тактовом режиме перезарядки на клиенте нет: ход один за такт считает сервер.
 	var cooldown := 0.0 if in_ticks else teleport_cooldown
-	var reason := RigMath.teleport_verdict(from, to, _since_tp, movement_locked, teleport_range + NodeGrid.CELL_M, cooldown)
+	var reason := RigMath.teleport_verdict(from, to, _since_tp, movement_locked, teleport_range + NodeGrid.CELL_M, cooldown, grid.room_max())
 	if not reason.is_empty():
 		teleport_attempted.emit(from, to, false, reason)
 		return

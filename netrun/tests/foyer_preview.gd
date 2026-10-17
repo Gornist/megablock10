@@ -59,8 +59,10 @@ func _ready() -> void:
 	var cam := Camera3D.new()
 	add_child(cam)
 	var hidden := false
+	# Карта не 8×8 (--layout=server_room_hard10): центр, края и высота обзора — по раскладке; 8×8 — прежние пресеты Фойе.
+	var sized: LayoutData = null if foyer.cols == NodeLayout.GRID and foyer.rows == NodeLayout.GRID else foyer
 	for n: String in EyePresets.names():
-		var p := EyePresets.get_preset(n)
+		var p := EyePresets.get_preset(n, sized)
 		if not p["eye"] and not hidden:
 			_hide_ceilings(scene)   # сверху потолок и дальние пласты закрывают пол; «вверх» кадра — север (−Z)
 			hidden = true

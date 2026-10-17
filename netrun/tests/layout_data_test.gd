@@ -129,8 +129,14 @@ func test_битые_данные_дают_error_и_не_падают() -> void:
 	var base := {"name": "x", "cells": ok_cells, "vaults": [], "ice": []}
 	assert_str(LayoutData.parse(base).error).is_empty()
 	var short := base.duplicate(true)
-	short["cells"] = ok_cells.slice(0, 7)
-	assert_bool(LayoutData.parse(short).error != "").is_true()
+	short["cells"] = ok_cells.slice(0, 7)   # карта любого размера 1..12 (G1): 8×7 — допустимая раскладка, не ошибка
+	var short_ld := LayoutData.parse(short)
+	assert_str(short_ld.error).is_empty()
+	assert_int(short_ld.rows).is_equal(7)
+	assert_int(short_ld.cols).is_equal(8)
+	var none := base.duplicate(true)
+	none["cells"] = []
+	assert_bool(LayoutData.parse(none).error != "").is_true()
 	var wide := base.duplicate(true)
 	wide["cells"] = ok_cells.duplicate()
 	wide["cells"][2] = "........."
