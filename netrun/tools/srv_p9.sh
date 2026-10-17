@@ -10,7 +10,9 @@
 # Остановить: kill $(ss -ulpn | grep :7777 | sed -E "s/.*pid=([0-9]+).*/\1/")
 # shellcheck disable=SC1090
 . ~/netrun-env.sh 2>/dev/null || true
+. "$(dirname "$0")/stand_guard.sh"
 cd "$(dirname "$0")/.." || exit 1
+stand_require_cache .
 
 size=""
 if [ -r "$HOME/pico-p9/size" ]; then
