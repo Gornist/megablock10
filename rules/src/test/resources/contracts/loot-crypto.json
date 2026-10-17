@@ -1,0 +1,58 @@
+{
+  "_about": "Крипто лута (app LootCrypto ↔ kit SecretBox ↔ admin-web lib/lootCrypto.ts). Ключ: без секрета (null, пусто, пробелы) — постоянные 32 байта «MB10-LOOT-v1-key-breach-protocol»; иначе HKDF-SHA256(ikm = секрет UTF-8, salt = 32 нуля, info = «mb10-loot-v1», 32 байта). Блок: base64(IV 12 байт ‖ шифртекст AES-256-GCM ‖ тег 16 байт). sealed — известные ответы (IV фиксирован только в векторе; в бою случайный): расшифровка обязана вернуть plaintext. rejected — расшифровка обязана вернуть null.",
+  "keys": [
+    {
+      "name": "без секрета — постоянный ключ v1",
+      "gameSecret": null,
+      "keyHex": "4d4231302d4c4f4f542d76312d6b65792d6272656163682d70726f746f636f6c"
+    },
+    {
+      "name": "пустой/пробельный секрет = без секрета",
+      "gameSecret": "   ",
+      "keyHex": "4d4231302d4c4f4f542d76312d6b65792d6272656163682d70726f746f636f6c"
+    },
+    {
+      "name": "HKDF-SHA256(secret), salt = 32 нуля, info = mb10-loot-v1",
+      "gameSecret": "mb10-cross-check-secret",
+      "keyHex": "232aab80471b62a518d8b054f2a1aeb0cd62c28586a02df3f1106ec15eca4a2d"
+    },
+    {
+      "name": "секрет с юникодом",
+      "gameSecret": "секрет игры",
+      "keyHex": "36dbb318f04190bb25f102df0c042e28985cfbe73cd59ace0dda5dc74a347fff"
+    }
+  ],
+  "sealed": [
+    {
+      "name": "шард-payload под ключом секрета",
+      "gameSecret": "mb10-cross-check-secret",
+      "ivHex": "000102030405060708090a0b",
+      "plaintext": "SHARD|dGVzdA==|||0|0",
+      "sealedB64": "AAECAwQFBgcICQoLwa64J+BbXSpxJCER+10sbZ0p96WLlUky70WNu3K44ZI8sJ3r"
+    },
+    {
+      "name": "юникод под постоянным ключом",
+      "gameSecret": null,
+      "ivHex": "a0a1a2a3a4a5a6a7a8a9aaab",
+      "plaintext": "DAEMON|daemon:x#1|0KLQtdC90Yw=|1C,BD,55|2|BLACKOUT Тень",
+      "sealedB64": "oKGio6Slpqeoqaqr9bH9ZxB4ukp9ZBdMapd34MOfTeLvKq12kJ5Upv+gb/UDJlPqCq5pxy0RuPD1zHYRaIc6T2hW7hP0AC8YvbfEEwpI6R7rMk/8RegZ"
+    }
+  ],
+  "rejected": [
+    {
+      "name": "тот же шифртекст, но другой ключ (секрет другой игры)",
+      "gameSecret": "другая-игра",
+      "sealedB64": "AAECAwQFBgcICQoLwa64J+BbXSpxJCER+10sbZ0p96WLlUky70WNu3K44ZI8sJ3r"
+    },
+    {
+      "name": "обрезанный блок",
+      "gameSecret": "mb10-cross-check-secret",
+      "sealedB64": "AAECAwQFBgcICQoL"
+    },
+    {
+      "name": "не base64",
+      "gameSecret": null,
+      "sealedB64": "не-валидный-base64!!!"
+    }
+  ]
+}

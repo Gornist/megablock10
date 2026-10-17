@@ -1,0 +1,72 @@
+{
+  "_about": "Карточки денег (TX v2), предметов (ITEM v2) и чек (RCPT v1) в QR/личке: line — строка карточки (свободный текст — base64 UTF-8), preimage_utf8 — байты, которые подписывает отправитель (TX2|…, ITEM2|…) или получатель на чеке (id|ключ). Версию v1 денег/предметов принимать нельзя (подпись без адресата). Ключи и подписи в векторах — условные строки, криптография здесь не проверяется.",
+  "money": [
+    {
+      "name": "обычный платёж",
+      "id": "tx-1",
+      "from": "PK_A+/==",
+      "to": "PK_B+/==",
+      "amount": 30,
+      "memo": "за пиво",
+      "signature": "SIG_1",
+      "preimage_utf8": "TX2|tx-1|PK_A+/==|PK_B+/==|30|за пиво",
+      "line": "MB10:TX:v2:tx-1:PK_A+/==:PK_B+/==:30:0LfQsCDQv9C40LLQvg==:SIG_1"
+    },
+    {
+      "name": "подпись memo: | и : внутри, юникод, перевод строки",
+      "id": "tx-2",
+      "from": "PK_A+/==",
+      "to": "PK_B+/==",
+      "amount": 1,
+      "memo": "а|б:в\nг «ё»",
+      "signature": "SIG_2",
+      "preimage_utf8": "TX2|tx-2|PK_A+/==|PK_B+/==|1|а|б:в\nг «ё»",
+      "line": "MB10:TX:v2:tx-2:PK_A+/==:PK_B+/==:1:0LB80LE60LIK0LMgwqvRkcK7:SIG_2"
+    },
+    {
+      "name": "пустое memo, большая сумма",
+      "id": "tx-3",
+      "from": "PK_B+/==",
+      "to": "PK_A+/==",
+      "amount": 9007199254740991,
+      "memo": "",
+      "signature": "SIG_3",
+      "preimage_utf8": "TX2|tx-3|PK_B+/==|PK_A+/==|9007199254740991|",
+      "line": "MB10:TX:v2:tx-3:PK_B+/==:PK_A+/==:9007199254740991::SIG_3"
+    }
+  ],
+  "items": [
+    {
+      "name": "шард",
+      "id": "i1",
+      "from": "PK_A+/==",
+      "to": "PK_B+/==",
+      "kind": "SHARD",
+      "payload": "SHARD|shard:a#0|1|2|0YbQtdC90L3QvtGB0YLRjA==|0KHRhdC10LzRiw==|0JDRgNCw0YHQsNC60LA=|0KHRgtGA0L7QutCwIDEK0YHRgtGA0L7QutCwIDI=|0|0",
+      "signature": "SIG_I1",
+      "preimage_utf8": "ITEM2|i1|PK_A+/==|PK_B+/==|SHARD|SHARD|shard:a#0|1|2|0YbQtdC90L3QvtGB0YLRjA==|0KHRhdC10LzRiw==|0JDRgNCw0YHQsNC60LA=|0KHRgtGA0L7QutCwIDEK0YHRgtGA0L7QutCwIDI=|0|0",
+      "line": "MB10:ITEM:v2:i1:PK_A+/==:PK_B+/==:SHARD:U0hBUkR8c2hhcmQ6YSMwfDF8MnwwWWJRdGRDOTBMM1F2dEdCMFlMUmpBPT18MEtIUmhkQzEwTHpSaXc9PXwwSkRSZ05DdzBZSFFzTkM2MExBPXwwS0hSZ3RHQTBMN1F1dEN3SURFSzBZSFJndEdBMEw3UXV0Q3dJREk9fDB8MA==:SIG_I1"
+    },
+    {
+      "name": "демон",
+      "id": "i2",
+      "from": "PK_A+/==",
+      "to": "PK_B+/==",
+      "kind": "DAEMON",
+      "payload": "DAEMON|daemon:x#1|0KLQtdC90Yw=|1C,BD,55|2|BLACKOUT",
+      "signature": "SIG_I2",
+      "preimage_utf8": "ITEM2|i2|PK_A+/==|PK_B+/==|DAEMON|DAEMON|daemon:x#1|0KLQtdC90Yw=|1C,BD,55|2|BLACKOUT",
+      "line": "MB10:ITEM:v2:i2:PK_A+/==:PK_B+/==:DAEMON:REFFTU9OfGRhZW1vbjp4IzF8MEtMUXRkQzkwWXc9fDFDLEJELDU1fDJ8QkxBQ0tPVVQ=:SIG_I2"
+    }
+  ],
+  "receipts": [
+    {
+      "name": "чек получателя",
+      "id": "tx-1",
+      "receiver": "PK_B+/==",
+      "signature": "SIG_R1",
+      "preimage_utf8": "tx-1|PK_B+/==",
+      "line": "MB10:RCPT:v1:tx-1:PK_B+/==:SIG_R1"
+    }
+  ]
+}
