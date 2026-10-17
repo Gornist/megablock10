@@ -89,6 +89,8 @@ func _process(delta: float) -> void:
 	if not enabled or not panel.is_interactive():
 		_release_all()
 		return
+	if rig.mouse_captured and _pressed:
+		set_trigger(false)   # курсор захватили, пока кнопка была нажата: отпускание пришло бы уже не сюда
 	var ray := _current_ray()
 	if ray.is_empty():
 		update_ray(Vector3.ZERO, Vector3.ZERO)
@@ -123,8 +125,8 @@ func _current_ray() -> Dictionary:
 			return {}
 		return {"origin": n.global_position, "dir": -n.global_basis.z}
 	var vp := get_viewport()
-	if vp == null or rig.camera == null or not rig.camera.is_inside_tree():
-		return {}
+	if rig.mouse_captured or vp == null or rig.camera == null or not rig.camera.is_inside_tree():
+		return {}   # мышь захвачена (режим тестера): она ведёт взгляд, нажимать панель — только свободным курсором (Tab)
 	var mouse := vp.get_mouse_position()
 	if not vp.get_visible_rect().has_point(mouse):
 		return {}
@@ -178,7 +180,7 @@ func is_pressed() -> bool:
 
 ## Плоская сборка: мышь. Левая кнопка на панели — клик (и не уходит дальше, например в захват предметов), колесо — прокрутка.
 func _input(event: InputEvent) -> void:
-	if rig == null or panel == null or rig.xr_active or not enabled or not panel.is_interactive():
+	if rig == null or panel == null or rig.xr_active or rig.mouse_captured or not enabled or not panel.is_interactive():
 		return
 	if not event is InputEventMouseButton:
 		return
