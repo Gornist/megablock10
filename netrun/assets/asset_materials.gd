@@ -152,6 +152,7 @@ const KNOBS := {
 	"cloud_edge_mix": 0.35,  # доля цвета неона у частиц рёбер/линий сетки (владелец: неона меньше)
 	"dust_cell": 0.018,      # ширина ячейки облака, м (высота вдвое больше); владелец: частицы мельче и реже (C2: 0,35 читалось лучше)
 	"dust_density": 0.35,    # доля ячеек с частицей на ровной грани вблизи (с пятнами dust_patch: проплешины и сгущения)
+	"dust_fps": 0.0,         # смен кадра глитч-спрайта у ячейки облака в секунду; 0 — постоянный кадр (рябь на очках 17.10: было 10), для A/B на устройстве можно вернуть 1–3 (волна из нескольких кадров, а не мельтешение)
 	# «Всё из частиц» (#424, владелец 17.10): пол и дальние пласты по умолчанию тоже облако. ЦЕНА НЕ ИЗМЕРЕНА НА ОЧКАХ: прежний замер cloud_far=1 — +3,4 мс (MSAA 4×, цена a2c в ПЛОЩАДИ
 	# материала, не в числе частиц), бюджет владельца +1,0 мс при 90 Гц. Затухание по дистанции (dust_far_start/end в volume_cloud) уже гасит далёкую часть плит; не влезаем — ручкой 0.
 	"cloud_far": 1.0,        # 1 (умолчание) — дальние пласты far_* облаком; 0 — сплошная тёмная грань (цена +? мс НЕ ИЗМЕРЕНА на очках; ориентир старого замера +3,4 мс)
@@ -464,6 +465,7 @@ static func apply(root: Node, tier: String = "") -> void:
 				m.set_shader_parameter("glitch_tex", GlitchSprite.texture())
 				m.set_shader_parameter("dust", float(_k("cloud")))
 				m.set_shader_parameter("dust_cell", float(_k("dust_cell")))
+				m.set_shader_parameter("dust_fps", float(_k("dust_fps")))
 				m.set_shader_parameter("dust_density", float(_k("dust_density")) * (float(_k("floor_density")) if String(mi.name) == "slab" else 1.0))
 				m.set_shader_parameter("edge_mix", float(_k("cloud_edge_mix")))
 				if _is_threat_gear(root):

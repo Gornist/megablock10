@@ -790,6 +790,16 @@ func test_floor_density_knob_scales_only_floor_grain() -> void:
 	AssetMaterials.reset_tuning()
 
 
+## Рябь частиц на очках (17.10): ячейка облака по умолчанию держит один кадр спрайта (dust_fps = 0), ручка доходит до материала.
+func test_dust_fps_knob_defaults_to_static_cell_frame() -> void:
+	AssetMaterials.reset_tuning()
+	assert_float(float(AssetMaterials.KNOBS["dust_fps"])).override_failure_message("умолчание dust_fps — 0 (постоянный кадр ячейки)").is_equal(0.0)
+	assert_float(float(_mat_of(_apply_new("env", "cover"), "pillar_block").get_shader_parameter("dust_fps"))).override_failure_message("материал облака получает dust_fps").is_equal(0.0)
+	AssetMaterials.tune({"dust_fps": 3.0})
+	assert_float(float(_mat_of(_apply_new("env", "cover"), "pillar_block").get_shader_parameter("dust_fps"))).override_failure_message("ручка dust_fps меняет uniform").is_equal(3.0)
+	AssetMaterials.reset_tuning()
+
+
 func test_asset_materials_knob_cloud_swaps_solid_dark_for_cloud_shader() -> void:
 	AssetMaterials.reset_tuning()
 	var dflt := _load("env", "cover")
