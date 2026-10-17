@@ -174,11 +174,12 @@ kit — в [kit/README.md](../kit/README.md).
 - detekt закреплён на Kotlin 2.0.21 **только в своей конфигурации** (`build.gradle.kts`: `configurations.matching { it.name ==
   "detekt" }` → `useVersion("2.0.21")`, detekt 1.23 собран с этой версией и сверяет её); сам проект собирается Kotlin 2.4
   (2.4.20). Не «чините» это поднятием версии detekt-а или Kotlin проекта вниз.
-- Сборка (28.09): Kotlin 2.4, AGP 8.13, Gradle 8.14, compileSdk 36, Compose 1.11 — потолок без AGP 9. Дальше упирается в
-  AGP 9: Compose 1.12 и lifecycle 2.11 требуют compileSdk 37 и AGP 9.2, а AGP 9 поддерживают только альфа-версии Paparazzi
-  (2.0.0-alpha05.1, другая отрисовка — эталоны скриншотов заново) и detekt (2.0.0-alpha; у 1.23 конфигурации закреплён
-  Kotlin 2.0.21, `build.gradle.kts`). Переходить, когда они выйдут стабильными. targetSdk оставлен 34: 35+ включает
-  edge-to-edge и прогнозируемый «назад» — поднимать отдельной правкой с проверкой всех экранов.
+- Сборка (16.10): Kotlin 2.4, **AGP 9.2.1, Gradle 9.4.1**, compileSdk 37, Compose 1.12 (BOM 2026.09), lifecycle 2.11, Paparazzi
+  2.0.0-alpha05.1 (альфа, но собрана под AGP 9; эталоны скриншотов при переходе не изменились). Kotlin встроен в AGP: плагин
+  `kotlin.android` не подключается (версию KGP задают `kotlin.plugin.compose` и `kotlin.jvm` в корневом `build.gradle.kts`).
+  detekt остаётся 1.23.8 — его задача `detekt` работает на Gradle 9 без интеграции с AGP; 2.0 (плагин `dev.detekt`, другой
+  формат конфигурации и baseline) — отдельной задачей. С AGP 9 юнит-тесты создаются только для Debug (`testReleaseUnitTest` нет).
+  targetSdk оставлен 34: 35+ включает edge-to-edge и прогнозируемый «назад» — поднимать отдельной правкой с проверкой всех экранов.
 
 ## План дальнейшей работы
 
