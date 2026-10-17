@@ -1057,9 +1057,9 @@ func test_ice_beams_get_beam_shader_palette_colors_and_state_helper() -> void:
 		# корпус луча не трогает: состояние луча — только у мешей луча
 		var solid := _meshes(m).filter(func(mi): return not (String(mi.name).ends_with("_fan") or String(mi.name).contains("_beam")))
 		assert_int(solid.size()).is_greater(0)
-	# красный у угрозы (ICE), погашенный — тусклый голубой, вспышка — ледяной белый (STYLE.md п.4)
+	# красный у угрозы (ICE), погашенный — голубой «можно» (П6-6: тусклый PAL_DIM на полу не читался), вспышка — ледяной белый (STYLE.md п.4)
 	assert_bool(AssetMaterials.layer("beam_on").is_equal_approx(AssetMaterials.PAL_THREAT_HOT)).is_true()
-	assert_bool(AssetMaterials.layer("beam_off").is_equal_approx(AssetMaterials.PAL_DIM)).is_true()
+	assert_bool(AssetMaterials.layer("beam_off").is_equal_approx(AssetMaterials.PAL_CYAN)).is_true()
 	assert_bool(AssetMaterials.layer("beam_flash").is_equal_approx(AssetMaterials.PAL_ICE)).is_true()
 
 
