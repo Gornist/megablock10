@@ -305,6 +305,10 @@ func get_doc(type: String, id: String) -> Dictionary:
 	return await _request("get", {"type": type, "id": id})
 
 
+func cached_doc(type: String, id: String) -> Dictionary:
+	return (docs.get(type, {}) as Dictionary).get(id, {})
+
+
 func list_docs(type: String) -> Dictionary:
 	return await _request("list", {"type": type})
 

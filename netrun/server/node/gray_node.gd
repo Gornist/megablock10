@@ -2037,13 +2037,9 @@ func _gate_limit_sec() -> float:
 func _callsign_of(session: String) -> String:
 	if bridge == null:
 		return session
-	var d: Variant = bridge.get("docs")
-	if d is Dictionary:
-		var s: Dictionary = ((d as Dictionary).get(BridgeApi.T_SESSION, {}) as Dictionary).get(session, {})
-		var cs := str((s.get("data", {}) as Dictionary).get("callsign", ""))
-		if cs != "":
-			return cs
-	return session
+	var s: Dictionary = bridge.cached_doc(BridgeApi.T_SESSION, session)
+	var cs := str((s.get("data", {}) as Dictionary).get("callsign", ""))
+	return cs if cs != "" else session
 
 
 func _finish_in_bridge(ev: Dictionary) -> void:

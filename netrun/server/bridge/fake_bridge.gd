@@ -624,6 +624,10 @@ func _put_doc(type: String, id: String, ver: int, data: Dictionary) -> Dictionar
 	return ok({"doc": _put(type, id, ints_of(data.duplicate(true))).duplicate(true)})
 
 
+func cached_doc(type: String, id: String) -> Dictionary:
+	return doc(type, id)
+
+
 func get_doc(type: String, id: String) -> Dictionary:
 	_apply_late_give()
 	var d := doc(type, id)
