@@ -91,22 +91,39 @@ func test_укрытий_нет_без_раскладки_и_в_legacy() -> void
 	assert_int(int(scene.view.module_counts()["cover"])).is_equal(0)
 
 
-func test_выход_и_кресло_по_раскладке_датчика_нет() -> void:
+const SEAT_GLB := "res://assets/models/props/seat.glb"
+const SENSOR_GLB := "res://assets/models/props/sensor.glb"
+
+
+## Все модели под узлом, видимые или нет: «скрыто» не считается «убрано» (used_assets пропускает скрытое).
+func _all_assets(n: Node, out: Array = []) -> Array:
+	for c in n.get_children():
+		if c.has_meta("asset") and not out.has(c.get_meta("asset")):
+			out.append(c.get_meta("asset"))
+		_all_assets(c, out)
+	return out
+
+
+func test_выход_по_раскладке_кресла_и_датчика_нет() -> void:
 	var scene := _scene()
 	scene.apply_node(_info(ALT, _alt))
 	assert_vector(scene.view.exit_pos()).is_equal(_alt.exit_pos)
 	assert_array(scene.view.exit_cells()).is_equal(_alt.exit_cells)
-	assert_vector(scene.view.seat_node().position).is_equal_approx(_alt.spawn, Vector3.ONE * 0.001)
-	assert_array(scene.view.used_assets()).not_contains(["res://assets/models/props/sensor.glb"])
-	assert_array(scene.view.used_assets()).contains(["res://assets/models/props/seat.glb"])
+	assert_object(scene.view.seat_node()).is_null()
+	var all := _all_assets(scene.view)
+	assert_array(all).is_not_empty()   # проверка не пустая: хранилища и колонны на месте
+	assert_array(all).not_contains([SEAT_GLB])
+	assert_array(all).not_contains([SENSOR_GLB])
 
 
-func test_без_поля_layout_комната_прежняя_и_датчик_на_месте() -> void:
+func test_без_поля_layout_комната_прежняя_кресло_есть_датчика_нет() -> void:
 	var scene := _scene()
 	scene.apply_node(_info("", _alt))
 	assert_int(scene.view.pillar_positions().size()).is_equal(NodeLayout.PILLARS.size())
 	assert_vector(scene.view.seat_node().position).is_equal_approx(NodeLayout.SPAWN, Vector3.ONE * 0.001)
-	assert_array(scene.view.used_assets()).contains(["res://assets/models/props/sensor.glb"])
+	var all := _all_assets(scene.view)
+	assert_array(all).contains([SEAT_GLB])
+	assert_array(all).not_contains([SENSOR_GLB])
 	assert_vector(scene.view.exit_pos()).is_equal(NodeLayout.EXIT_POS)
 
 
@@ -119,7 +136,7 @@ func test_переход_между_узлами_пересобирает_ком
 	assert_vector(scene.view.seat_node().position).is_equal_approx(NodeLayout.SPAWN, Vector3.ONE * 0.001)
 	scene.apply_node(_info(ALT, _alt))
 	assert_int(int(scene.view.module_counts()["pillar"])).is_equal(2)
-	assert_vector(scene.view.seat_node().position).is_equal_approx(_alt.spawn, Vector3.ONE * 0.001)
+	assert_object(scene.view.seat_node()).is_null()   # в раскладке кресла нет, возврат из старой комнаты его убирает
 
 
 func test_площадка_взлома_по_клетке_pad_раскладки() -> void:
