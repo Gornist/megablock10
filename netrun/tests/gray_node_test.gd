@@ -35,6 +35,7 @@ func before_test() -> void:
 	sroot.add_child(_server)
 	assert_int(_server.start(cfg, _bridge)).is_equal(OK)
 	_node = GrayNode.new()
+	_node.settings = NodeGraph.DEFAULT_SETTINGS.duplicate(true)   # копия: тест может подкрутить настройки узла, не трогая общие умолчания
 	sroot.add_child(_node)
 	_node.start(_server, _bridge)
 	_events = []
@@ -95,6 +96,12 @@ func test_bot_without_ghost_is_ejected_and_shard_stays() -> void:
 	# Колонны закрывают взгляд отдельно (ice_brain_test), здесь ICE смотрят без препятствий.
 	for ice in _node.ices():
 		ice.brain.grid = null
+	# Узел тактовый: ICE видит игрока и ходит по тактам, а такт — по ходам игрока или по окну. Ускоряем окно (реальное время бота),
+	# чтобы такты шли и пока бот стоит у шарда; скрытые такты после входа и грейс прибытия убираем — здесь они не предмет проверки.
+	_node.settings["entry_hidden_ticks"] = 0
+	_node.settings["arrival_grace_ticks"] = 0
+	_node.tick_clock.window_sec = 0.8
+	_node.tick_clock.min_interval_sec = 0.3
 	_bot.hold_after_grab = 4.0   # бот постоит у шарда на виду: поиск ICE дойдёт до последней замеченной точки (без случайности пути)
 	_bot.start(_cfg, BotClient.Scenario.EXPOSED_RUN)
 	assert_bool(await _wait_for(func(): return not _bot.result.is_empty())).is_true()
