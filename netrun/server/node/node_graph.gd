@@ -111,8 +111,7 @@ func errors() -> Array[String]:
 		var n: Dictionary = nodes[id]
 		if not (n["tier"] in TIERS):
 			out.append("%s: неизвестный тир «%s»" % [id, n["tier"]])
-		if int(n["ice"]) < 0 or int(n["ice"]) > NodeLayout.ICE.size():
-			out.append("%s: ICE %d, допустимо 0…%d" % [id, n["ice"], NodeLayout.ICE.size()])
+		var max_ice := NodeLayout.ICE.size()   # прежняя раскладка; у карты W×H столько Стражей, сколько в файле (Серверная 10×10 — 3)
 		var max_shards := NodeLayout.SHARD_SLOTS.size()
 		var max_links := NodeLayout.PORTAL_SLOTS.size()
 		var links: Array = n["links"]
@@ -124,9 +123,12 @@ func errors() -> Array[String]:
 			else:
 				max_shards = ld.vaults.size()
 				max_links = ld.portals.size()
+				max_ice = maxi(max_ice, ld.sentries.size())
 				for i in mini(links.size(), ld.portals.size()):
 					if ld.portals[i] == Vector3.INF:
 						out.append("%s: связь %d ведёт в портал %d, которого нет на карте «%s»" % [id, i, i + 1, lname])
+		if int(n["ice"]) < 0 or int(n["ice"]) > max_ice:
+			out.append("%s: ICE %d, допустимо 0…%d" % [id, n["ice"], max_ice])
 		if int(n["shards"]) < 1 or int(n["shards"]) > max_shards:
 			out.append("%s: шардов %d, допустимо 1…%d" % [id, n["shards"], max_shards])
 		if links.size() > max_links:

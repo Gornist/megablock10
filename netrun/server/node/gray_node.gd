@@ -2406,6 +2406,7 @@ func _apply_alert() -> void:
 		tb.set_sight_bonus(ALARM_SIGHT_BONUS if level >= 2 else 0.0)   # и Маяков: 5 клеток карты (10 м), на тревоге 2+ — 6 (12 м)
 	if not changed:
 		return
+	log_line("alarm.level", {"node": node_id, "level": level, "alarm": snappedf(alarm, 1.0)})   # разбор забегов (p9_report.sh): уровня тревоги в журнале сервера иначе нет
 	event.emit({"kind": "alarm_level", "node": node_id, "level": level})
 	_send_alarm(level)
 	if level >= 4:

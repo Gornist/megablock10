@@ -1,0 +1,121 @@
+{
+  "version": 1,
+  "default_entry": "node_05",
+  "entries": {
+    "t03": "node_05",
+    "t04": "node_05",
+    "t05": "node_05"
+  },
+  "settings": {
+    "tunnel_sec": 2.5,
+    "portal_dwell_sec": 1.0,
+    "portal_radius": 1.5,
+    "portal_deny_repeat_sec": 3.0,
+    "shard_refill_sec": {
+      "BASE": 600,
+      "HARD": 900,
+      "NIGHTMARE": 1200
+    },
+    "refill_retry_sec": 30,
+    "trace_drift_sec": {
+      "BASE": 60,
+      "HARD": 30,
+      "NIGHTMARE": 15
+    },
+    "hub_trace_decay_sec": 10,
+    "trace_events": {
+      "search": 10,
+      "sensor": 5,
+      "barrier": 10,
+      "fail": 5,
+      "tracer": 15
+    },
+    "alert_per_tick": 0.25,
+    "alert_events": {
+      "search": 10,
+      "eject": 20,
+      "fail": 10,
+      "sensor": 5,
+      "barrier": 10,
+      "tracer": 10
+    },
+    "alert_cool_sec_per_point": 6,
+    "alert_lockdown_ticks": 10,
+    "alert_boost": 0.5,
+    "lockdown_sec": 600,
+    "time_mode": "tick",
+    "tick_window_sec": 5.0,
+    "tick_min_interval_sec": 0.6,
+    "tick_inhale_sec": 0.5,
+    "black_tick_sec": 1.0,
+    "entry_hidden_ticks": 2,
+    "arrival_grace_ticks": 2,
+    "trace": {
+      "weights": {
+        "seen_by_ice": 2.0
+      }
+    },
+    "ice": {
+      "catch_grace_sec": 2.0,
+      "catch_range": 1.0
+    },
+    "black_ice": {
+      "sight_range": 12.0,
+      "notice_per_sec": 0.5,
+      "chase_speed": 2.5,
+      "catch_range": 1.5,
+      "catch_grace_sec": 0.0
+    }
+  },
+  "nodes": {
+    "node_03": {
+      "title": "Архив",
+      "tier": "BASE",
+      "ice": 2,
+      "shards": 2,
+      "layout": "server_room_light",
+      "links": [
+        "node_05"
+      ],
+      "ice_settings": {
+        "sight_range": 6.0,
+        "notice_per_sec": 0.15,
+        "chase_speed": 1.5
+      }
+    },
+    "node_05": {
+      "title": "Серверная",
+      "tier": "HARD",
+      "ice": 2,
+      "shards": 2,
+      "layout": "server_room",
+      "links": [
+        "node_03",
+        "node_11"
+      ],
+      "ice_settings": {
+        "sight_range": 8.0,
+        "notice_per_sec": 0.15,
+        "chase_speed": 1.5
+      }
+    },
+    "node_11": {
+      "title": "Реактор",
+      "tier": "NIGHTMARE",
+      "ice": 2,
+      "shards": 3,
+      "black": {
+        "kind": "hound"
+      },
+      "layout": "core",
+      "links": [
+        "node_05"
+      ],
+      "ice_settings": {
+        "sight_range": 8.0,
+        "notice_per_sec": 0.15,
+        "chase_speed": 1.5
+      }
+    }
+  }
+}
