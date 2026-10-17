@@ -92,6 +92,7 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 			var diag := XrDiag.new()
 			add_child(diag)
 			diag.reported.connect(func(d: Dictionary): log_file.log("xr.diag", d))
+			diag.eye_reported.connect(func(d: Dictionary): log_file.log("xr.eye", d))   # кадр глаза: diff/luma для автопроверок вида на очках
 	if render_cfg.bench != "":   # воспроизводимый замер: [render] bench = "<пресет>" (поза, 3 прогона по 60 с, медиана)
 		var bench := BenchRun.new()
 		add_child(bench)
