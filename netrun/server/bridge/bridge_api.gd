@@ -202,6 +202,12 @@ func list_docs(_type: String) -> Dictionary:
 	return err("internal", "не реализовано")
 
 
+## Документ из локального кэша подписки, без запроса к Мосту ({} — в кэше нет): синхронное чтение для подписей (позывной в «ФЛЭТЛАЙН»).
+## У обеих реализаций один смысл (аудит 17.10: сервер читал bridge.get("docs"), а у фальши поле было _docs — позывной молча подменялся ключом).
+func cached_doc(_type: String, _id: String) -> Dictionary:
+	return {}
+
+
 ## Подписка на типы документов; ответ — снимок {"seq", "docs"}, дальше сигнал doc_changed.
 func subscribe(_types: Array) -> Dictionary:
 	return err("internal", "не реализовано")

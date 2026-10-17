@@ -29,6 +29,19 @@ func test_to_response_ok_and_error() -> void:
 	assert_str(BridgeApi.err_code(BridgeClient.to_response({"ok": false}))).is_equal("internal")
 
 
+func test_cached_doc_одинаково_у_клиента_и_фальши() -> void:
+	# Сервер мира читает позывной из кэша документов (GrayNode._callsign_of): у обеих реализаций один метод, не поле docs/_docs (аудит 17.10).
+	var c := BridgeClient.new()
+	assert_dict(c.cached_doc(BridgeApi.T_SESSION, "s1")).is_empty()
+	c.handle_text('{"v":1,"push":"chg","seq":1,"last":true,"doc":{"type":"session","id":"s1","ver":2,"data":{"callsign":"Призрак"}}}')
+	assert_str(str(c.cached_doc(BridgeApi.T_SESSION, "s1")["data"]["callsign"])).is_equal("Призрак")
+	var f := FakeBridge.new()
+	var d := f.cached_doc(BridgeApi.T_SESSION, "s_fake000000000001")
+	assert_str(str(d["data"]["callsign"])).is_equal("Призрак")
+	assert_dict(f.cached_doc(BridgeApi.T_SESSION, "нет такой")).is_empty()
+	assert_dict(BridgeApi.new().cached_doc(BridgeApi.T_SESSION, "s1")).is_empty()
+
+
 func test_build_request_has_envelope() -> void:
 	var m: Dictionary = JSON.parse_string(BridgeClient.build_request("w-3", "op.take_from_node", {"rid": "take:s:i", "item": "i"}))
 	assert_int(int(m["v"])).is_equal(1)
