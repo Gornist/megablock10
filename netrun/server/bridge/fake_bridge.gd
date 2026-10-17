@@ -471,8 +471,10 @@ func _breach_once(session: String, node: String, req: Dictionary) -> Dictionary:
 	var now_ms := _now_ms()
 	var runner := _runner_doc(str(sd.get("runner", "")))
 	var cooldowns: Dictionary = (runner.get("data", {}) as Dictionary).get("breach_cooldown", {})
-	if int(cooldowns.get(node, 0)) > now_ms:
-		return err("cooldown", "узел остывает", runner.duplicate(true))
+	# Остывание у каждого хранилища своё (ключ — предмет панели, первый в vaults); старый ключ-узел остужает любое хранилище узла.
+	var panel_vault := str((req["vaults"] as Array)[0]) if not (req.get("vaults", []) as Array).is_empty() else ""
+	if int(cooldowns.get(node, 0)) > now_ms or (panel_vault != "" and int(cooldowns.get(panel_vault, 0)) > now_ms):
+		return err("cooldown", "хранилище остывает для этого нетраннера", runner.duplicate(true))
 	var tier := str(req["tier"])
 	var matched: Array = req["matched"]
 	var outcome := "FAIL" if matched.is_empty() else ("SUCCESS" if matched.size() == (req["selected"] as Array).size() else "PARTIAL")
@@ -521,7 +523,7 @@ func _breach_once(session: String, node: String, req: Dictionary) -> Dictionary:
 			ndata["eddies"] = stock - eddies
 			_put(T_NODE, node, ndata)
 		cooldown_until = now_ms + FAKE_COOLDOWN_S * 1000
-		_set_cooldown(str(sd.get("runner", "")), node, cooldown_until, now_ms)
+		_set_cooldown(str(sd.get("runner", "")), panel_vault if panel_vault != "" else node, cooldown_until, now_ms)
 	var live: Array = []
 	for o in sd.get("opened", []):
 		if int(o.get("until", 0)) > now_ms:
@@ -547,14 +549,15 @@ func _runner_doc(key: String) -> Dictionary:
 	return {}
 
 
-func _set_cooldown(key: String, node: String, until_ms: int, now_ms: int) -> void:
+## Записать остывание: cd_key — id предмета-хранилища (или узла, если хранилищ в запросе нет); истёкшие ключи обоих видов чистятся.
+func _set_cooldown(key: String, cd_key: String, until_ms: int, now_ms: int) -> void:
 	var r := _runner_doc(key)
 	var data: Dictionary = (r["data"] as Dictionary).duplicate(true) if not r.is_empty() else {"key": key, "callsign": "", "runs": 0, "tutorial_done": true}
 	var cds: Dictionary = {}
 	for k in data.get("breach_cooldown", {}):
 		if int(data["breach_cooldown"][k]) > now_ms:
 			cds[k] = data["breach_cooldown"][k]
-	cds[node] = until_ms
+	cds[cd_key] = until_ms
 	data["breach_cooldown"] = cds
 	var rid := str(r.get("id", "r_" + key.sha256_text().substr(0, 32)))
 	if not _docs.has(T_RUNNER):

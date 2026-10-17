@@ -375,15 +375,50 @@ func test_one_panel_one_hacker_and_cooldown_after_a_success() -> void:
 	# открытое хранилище — только взломщику: второй его не возьмёт
 	assert_str(_world.node_of("b_a").vault_state(s0, S2)).is_equal("closed")
 	assert_bool(await _wait_for(func(): return b.vault(s0).get("vault", "") == "closed" and b.vault(s0).get("access", "") == "ok")).is_true()
-	# остывание: у первого узел остывает — второе хранилище тоже
+	# остывание — у каждого хранилища своё (П8-1): взломанное остывает, второе хранилище узла нет
 	var s1 := _slot("b_a", 1)
-	assert_bool(await _wait_for(func(): return a.vault(s1).get("access", "") == "cooldown")).is_true()
+	_world.node_of("b_a").close_vault(s0)   # открытое хранилище показывает «open»; «остывает» видно, когда оно закрылось
+	assert_bool(await _wait_for(func(): return a.vault(s0).get("access", "") == "cooldown")).is_true()
+	assert_int(int(a.vault(s0)["left"])).is_greater(1700)
+	assert_str(a.vault(s1).get("access", "")).is_equal("ok")
+	assert_str(b.vault(s0).get("access", "")).is_equal("ok")          # другому игроку взломанное хранилище не остывает
 	a.nos.clear()
-	_stand_at(S1, "b_a", 1)
-	assert_bool(await _start(a, s1, [D_EXTRACT])).is_true()
+	assert_bool(await _start(a, s0, [D_EXTRACT])).is_true()
 	assert_str(a.nos[0]["reason"]).is_equal("cooldown")
 	assert_int(int(a.nos[0]["left"])).is_greater(1700)
 	assert_int(_bridge.breach_calls).is_equal(1)
+	# второе хранилище того же узла взламывается: отказа нет, панель открывается
+	a.nos.clear()
+	_stand_at(S1, "b_a", 1)
+	assert_bool(await _start(a, s1, [D_EXTRACT])).is_true()
+	assert_bool(a.nos.is_empty()).is_true()
+	assert_object(a.mirror).is_not_null()
+
+
+func test_legacy_node_cooldown_key_cools_every_vault_of_the_node_in_the_panel() -> void:
+	# документ runner до П8-1: ключ — узел, остужает любое хранилище узла
+	var now_ms := int(Time.get_unix_time_from_system() * 1000.0)
+	_bridge._set_cooldown("KEY_ALICE", "b_a", now_ms + 1_500_000, now_ms)
+	var a := await _ready_peer("t03", S1)
+	var s0 := _slot("b_a", 0)
+	var s1 := _slot("b_a", 1)
+	assert_bool(await _wait_for(func(): return a.vault(s0).get("access", "") == "cooldown" and a.vault(s1).get("access", "") == "cooldown")).is_true()
+	_stand_at(S1, "b_a", 1)
+	assert_bool(await _start(a, s1, [D_EXTRACT])).is_true()
+	assert_str(a.nos[0]["reason"]).is_equal("cooldown")
+	assert_int(_bridge.breach_calls).is_equal(0)
+
+
+func test_vault_item_cooldown_key_cools_only_that_vault_in_the_panel() -> void:
+	var now_ms := int(Time.get_unix_time_from_system() * 1000.0)
+	var s0 := _slot("b_a", 0)
+	var s1 := _slot("b_a", 1)
+	var gn: GrayNode = _world.node_of("b_a")
+	assert_bool(await _wait_for(func(): return str(gn._shard_items.get(s0, "")) != "")).is_true()
+	_bridge._set_cooldown("KEY_ALICE", str(gn._shard_items[s0]), now_ms + 1_500_000, now_ms)
+	var a := await _ready_peer("t03", S1)
+	assert_bool(await _wait_for(func(): return a.vault(s0).get("access", "") == "cooldown")).is_true()
+	assert_str(a.vault(s1).get("access", "")).is_equal("ok")
 
 
 func test_request_validation_rejects_bad_daemons_far_and_empty() -> void:

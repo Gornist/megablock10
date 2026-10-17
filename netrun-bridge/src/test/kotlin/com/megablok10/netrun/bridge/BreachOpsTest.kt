@@ -52,10 +52,11 @@ class BreachOpsTest {
         assertEquals(1L, VJ.lng(breach, "n"))
         assertEquals("SUCCESS", VJ.str(breach, "outcome"))
         assertEquals(1L, VJ.lng(breach, "opened_n"))
-        // остывание узла для этого нетраннера: 30 мин
+        // остывание хранилища панели (vaults[0]) для этого нетраннера: 30 мин; ключа узла нет
         val cd = (f.runner(f.keyA)["breach_cooldown"] as JsonObject)
-        assertEquals(VJ.lng(r.body, "cooldown_until"), VJ.lng(cd, "node_07"))
-        assertTrue(VJ.lng(cd, "node_07") - f.nowMs in 1_799_000L..1_800_100L)
+        assertEquals(setOf("v_sh1"), cd.keys)
+        assertEquals(VJ.lng(r.body, "cooldown_until"), VJ.lng(cd, "v_sh1"))
+        assertTrue(VJ.lng(cd, "v_sh1") - f.nowMs in 1_799_000L..1_800_100L)
         assertEquals(total, f.eddiesTotal())
         assertEquals(emptyList<Violation>(), Auditor(f.store).check())
     }
@@ -355,13 +356,41 @@ class BreachOpsTest {
         val a = f.enterA()
         f.breach(a, f.req(a, selected = listOf("it_ex")))
         val rd = f.store.get("runner", ValueOps.runnerDocId(f.keyA))!!
-        val old = VJ.with(rd.data, "breach_cooldown" to JsonObject((rd.data["breach_cooldown"] as JsonObject) + ("node_99" to JsonPrimitive(5L))))
-        f.store.put("runner", rd.id, rd.ver, old)
+        // истёкшие ключи обоих видов: старый ключ-узел и ключ хранилища
+        val stale = (rd.data["breach_cooldown"] as JsonObject) + ("node_99" to JsonPrimitive(5L)) + ("v_old" to JsonPrimitive(6L))
+        f.store.put("runner", rd.id, rd.ver, VJ.with(rd.data, "breach_cooldown" to JsonObject(stale)))
         f.advance(30 * 60_000L + 10)
         val r = f.breach(a, f.req(a, n = 2, selected = listOf("it_ex"), vaults = listOf("v_sh2")))
         assertTrue(r.body.toString(), r.ok)
         val cd = f.runner(f.keyA)["breach_cooldown"] as JsonObject
-        assertEquals(setOf("node_07"), cd.keys)
+        assertEquals(setOf("v_sh2"), cd.keys)
+    }
+
+    @Test fun cooldownIsPerVaultSoOtherVaultOfSameNodeStaysAvailable() {
+        val f = BreachFixture()
+        val a = f.enterA()
+        assertTrue(f.breach(a, f.req(a, selected = listOf("it_ex"), vaults = listOf("v_sh1", "v_sh2"))).ok)
+        // то же хранилище панели — остывает
+        assertEquals("cooldown", code(f.breach(a, f.req(a, n = 2, selected = listOf("it_ex"), vaults = listOf("v_sh1", "v_sh2")))))
+        // другое хранилище того же узла (панель — v_sh2) — доступно; остывают оба ключа
+        val second = f.breach(a, f.req(a, n = 3, selected = listOf("it_ex"), vaults = listOf("v_sh2", "v_sh3")))   // n другой: отказ n=2 хранится по rid
+        assertTrue(second.body.toString(), second.ok)
+        assertEquals(setOf("v_sh1", "v_sh2"), (f.runner(f.keyA)["breach_cooldown"] as JsonObject).keys)
+    }
+
+    @Test fun legacyNodeKeyCooldownBlocksEveryVaultOfTheNode() {
+        val f = BreachFixture()
+        val a = f.enterA()
+        val rd = f.store.get("runner", ValueOps.runnerDocId(f.keyA))!!
+        val until = JsonPrimitive(f.nowMs + 600_000L)
+        f.store.put("runner", rd.id, rd.ver, VJ.with(rd.data, "breach_cooldown" to JsonObject(mapOf("node_07" to until))))
+        for ((i, vault) in listOf("v_sh1", "v_sh2", "v_sh3").withIndex()) {   // n разные: отказ хранится по rid
+            assertEquals(vault, "cooldown", code(f.breach(a, f.req(a, n = i + 1L, selected = listOf("it_ex"), vaults = listOf(vault)))))
+        }
+        // после истечения ключ-узел чистится, пишется ключ хранилища
+        f.advance(600_010L)
+        assertTrue(f.breach(a, f.req(a, n = 4, selected = listOf("it_ex"), vaults = listOf("v_sh3"))).ok)
+        assertEquals(setOf("v_sh3"), (f.runner(f.keyA)["breach_cooldown"] as JsonObject).keys)
     }
 
     @Test fun masterCanClearCooldownByPutting() {
