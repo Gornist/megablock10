@@ -744,6 +744,52 @@ func test_asset_materials_veil_knob_scales_and_hides_the_veil() -> void:
 	AssetMaterials.reset_tuning()
 
 
+## Под облачным полом лежит сплошная тёмная подложка (#424, Ш5): сквозь дыры облака виден тёмный фон, а не дальние пласты и зеркала под полом.
+## Подложка — solid_dark при любых ручках облака, закрывает всю комнату и лежит ниже верха облака; слой облака (slab) остаётся.
+func test_floor_slab_has_solid_void_underlay_below_cloud_layer() -> void:
+	AssetMaterials.reset_tuning()
+	var room := NodeLayout.ROOM_MAX - NodeLayout.ROOM_MIN
+	var root := _apply_new("env", "floor_slab_16")
+	var under: MeshInstance3D = null
+	var slab: MeshInstance3D = null
+	for mi in _meshes(root):
+		if String(mi.name) == AssetMaterials.UNDER_SLAB:
+			under = mi
+		elif String(mi.name) == "slab":
+			slab = mi
+	assert_bool(under != null and slab != null).override_failure_message("floor_slab_16: нужны меши floor_slab_under и slab").is_true()
+	var um := under.get_surface_override_material(0) as ShaderMaterial
+	assert_str(um.shader.resource_path).override_failure_message("подложка — сплошной solid_dark, не облако").ends_with("solid_dark.gdshader")
+	assert_str((slab.get_surface_override_material(0) as ShaderMaterial).shader.resource_path).override_failure_message("слой облака у пола остаётся").contains("cloud_dark")
+	assert_bool(under.is_in_group(AssetMaterials.SURFACE_CLOUD_GROUP)).override_failure_message("подложка не должна дышать как облако").is_false()
+	var ub := under.get_aabb()
+	assert_float(ub.size.x).override_failure_message("подложка не на всю комнату по X").is_equal_approx(room.x, 0.01)
+	assert_float(ub.size.z).override_failure_message("подложка не на всю комнату по Z").is_equal_approx(room.x, 0.01)
+	assert_float(ub.end.y).override_failure_message("подложка не ниже верха облака").is_less(slab.get_aabb().end.y)
+	assert_float(ub.size.y).override_failure_message("подложка не тонкая").is_less_equal(0.03)
+	assert_int((under.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3).override_failure_message("подложка — коробка, 12 треугольников").is_equal(12)
+	AssetMaterials.tune({"cloud": 1.0, "cloud_floor": 1.0, "cloud_ceiling": 1.0, "cloud_far": 1.0})   # все охваты облака включены — подложка всё равно сплошная
+	var all_on := _apply_new("env", "floor_slab_16")
+	assert_str(_mat_of(all_on, AssetMaterials.UNDER_SLAB).shader.resource_path).override_failure_message("подложка при всех охватах облака — solid_dark").ends_with("solid_dark.gdshader")
+	AssetMaterials.reset_tuning()
+
+
+## Ручка floor_density (#424, Ш5): зерно пола реже, чем у реквизита (умолчание 0,6), линии сетки не гаснут; реквизит ручка не трогает.
+func test_floor_density_knob_scales_only_floor_grain() -> void:
+	AssetMaterials.reset_tuning()
+	assert_float(float(AssetMaterials.KNOBS["floor_density"])).override_failure_message("умолчание floor_density — 0,6").is_equal_approx(0.6, 0.0001)
+	var dd := float(AssetMaterials.KNOBS["dust_density"])
+	var slab := _mat_of(_apply_new("env", "floor_slab_16"), "slab")
+	assert_float(float(slab.get_shader_parameter("dust_density"))).override_failure_message("пол: dust_density × 0,6").is_equal_approx(dd * 0.6, 0.0001)
+	assert_float(float(slab.get_shader_parameter("grid_alpha"))).override_failure_message("сетка пола не гасится ручкой").is_equal_approx(0.35, 0.001)
+	assert_float(float(_mat_of(_apply_new("env", "cover"), "pillar_block").get_shader_parameter("dust_density"))).override_failure_message("реквизит: плотность без множителя").is_equal_approx(dd, 0.0001)
+	AssetMaterials.tune({"floor_density": 1.0})
+	assert_float(float(_mat_of(_apply_new("env", "floor_slab_16"), "slab").get_shader_parameter("dust_density"))).override_failure_message("floor_density=1: как у реквизита").is_equal_approx(dd, 0.0001)
+	AssetMaterials.tune({"floor_density": 0.3})
+	assert_float(float(_mat_of(_apply_new("env", "floor_slab_16"), "slab").get_shader_parameter("dust_density"))).override_failure_message("floor_density=0,3: меняет uniform").is_equal_approx(dd * 0.3, 0.0001)
+	AssetMaterials.reset_tuning()
+
+
 func test_asset_materials_knob_cloud_swaps_solid_dark_for_cloud_shader() -> void:
 	AssetMaterials.reset_tuning()
 	var dflt := _load("env", "cover")
