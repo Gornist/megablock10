@@ -45,6 +45,9 @@ for p in $NR_BRIDGE $NR_LINE $NR_ENET; do ! port_open $p || die "порт $p з�
 # ── запрос к Мосту ролью test: nrj '<json>' печатает ответ; nrp '<json>' '<python-выражение от d>' — поле ответа ──
 nrj() { node "$ROOT/scripts/e2e/netrun-bridge.mjs" $NR_BRIDGE kt "$1"; }
 nrp() { nrj "$1" | python3 -c "import sys,json;d=json.load(sys.stdin);print($2)"; }
+# Остывание взлома у Alice на узле: максимум по ключам узла и его хранилищ (`<узел>_pkN` — слот хранилища, Мост с П8-1; ключ-узел —
+# старые документы). Так сценарий зелёный и со старым Мостом, и с новым; пусто — 0.
+cd_max() { echo "max([v for k,v in [r for r in d['docs'] if r['data'].get('key')=='$PKA'][0]['data'].get('breach_cooldown',{}).items() if k=='$NODE_ID' or k.startswith('${NODE_ID}_pk')] or [0])"; }
 item_owner() { nrp "{\"op\":\"get\",\"type\":\"item\",\"id\":\"$1\"}" 'd["doc"]["data"]["owner"]'; }
 session_view() { nrp "{\"op\":\"get\",\"type\":\"session\",\"id\":\"$1\"}" 'd["doc"]["data"]["state"]+"/"+str(d["doc"]["data"].get("outcome"))'; }
 # поле документа: doc_field <тип> <id> '<python-выражение от data>'
@@ -178,8 +181,8 @@ eq "run.breach: эдди из запаса узла больше нуля" True 
 eq "эдди забега уплачены при чистом выходе (eddies_paid = эдди взлома)" "$BREACH_EDDIES" "$(doc_field session $S1 "data['eddies_paid']")"
 eq "запас эдди узла уменьшился ровно на эдди взлома" "$((NODE_EDDIES - BREACH_EDDIES))" "$(doc_field node $NODE_ID "data['eddies']")"
 # Остывание узла — на нетраннере (runner.breach_cooldown), не короче времени открытия хранилища
-eq "остывание: узел остывает для Alice (runner.breach_cooldown)" True "$(nrp '{"op":"list","type":"runner"}' "[r for r in d['docs'] if r['data'].get('key')=='$PKA'][0]['data'].get('breach_cooldown',{}).get('$NODE_ID',0) > $(date +%s)000")"
-eq "остывание: больше 5 минут" True "$(nrp '{"op":"list","type":"runner"}' "[r for r in d['docs'] if r['data'].get('key')=='$PKA'][0]['data'].get('breach_cooldown',{}).get('$NODE_ID',0) > $(date +%s)000 + 300000")"
+eq "остывание: узел остывает для Alice (runner.breach_cooldown)" True "$(nrp '{"op":"list","type":"runner"}' "$(cd_max) > $(date +%s)000")"
+eq "остывание: больше 5 минут" True "$(nrp '{"op":"list","type":"runner"}' "$(cd_max) > $(date +%s)000 + 300000")"
 
 # Шард ушёл из деки Alice: outbox Bob (или уже его телефон), на телефоне Alice его нет
 eq "шард 1 ушёл из узла и из деки Alice к Bob (outbox/телефон)" True "$(nrp '{"op":"get","type":"item","id":"it_nr_shard_1"}' "d['doc']['data']['owner'] in ('outbox:$PKB','phone:$PKB')")"
@@ -225,7 +228,7 @@ eq "второй забег: шард 2 остался в узле" "node:$NODE_
 eq "второй забег: эдди узла не тронуты" "$((NODE_EDDIES - BREACH_EDDIES))" "$(doc_field node $NODE_ID "data['eddies']")"
 eq "второй забег: шарда 2 на телефоне Alice нет" 0 "$(phone_has shards nr-shard-2)"
 eq_wait 60 "второй забег: демон EXTRACT_SHARD вернулся на телефон" 1 phone_has daemons "$D_EXTRACT"
-eq "остывание прежнее: взлом №2 не продлил и не сбросил его" True "$(nrp '{"op":"list","type":"runner"}' "[r for r in d['docs'] if r['data'].get('key')=='$PKA'][0]['data'].get('breach_cooldown',{}).get('$NODE_ID',0) > $(date +%s)000")"
+eq "остывание прежнее: взлом №2 не продлил и не сбросил его" True "$(nrp '{"op":"list","type":"runner"}' "$(cd_max) > $(date +%s)000")"
 check "боты и сервер мира без ошибок движка" bash -c "! grep -q 'SCRIPT ERROR' '$NR_DIR/world.log' '$NR_DIR/bot1.log' '$NR_DIR/bot2.log'"
 eq_wait 60 "коллектор принял NET_EXIT сессии 2 (чистый выход)" 1 col_count NET_EXIT "$S2"
 eq "коллектор: шард 1 по-прежнему с двумя сменами владельца (повторного взлома записи не добавили)" 2 "$(col_count NET_ITEM_OWNER it_nr_shard_1)"
