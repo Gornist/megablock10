@@ -6,6 +6,7 @@ import com.megablok10.app.chat.ChatMessageType
 import com.megablok10.app.chat.ChatProtocol
 import com.megablok10.app.chat.ChatWireMessage
 import com.megablok10.kit.net.IncompatibleVersionReporter
+import com.megablok10.kit.net.LineEnvelope
 import com.megablok10.kit.time.ManualClock
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -16,9 +17,26 @@ class WireVersionTest {
     private val msg = ChatWireMessage(ChatMessageType.DM, "pk==", "Ольга", "Клемты", "to==", 42L, "привет: мир")
     private val line = ChatProtocol.encode(msg)
 
+    /** Короткое имя из `wireVersions` дашборда → магия протокола в [WireVersion.SUPPORTED]. */
+    private val magicOfReported = mapOf("chat" to "MB10CHAT", "call" to "MB10CALL", "claim" to "MB10CLAIM", "read" to "MB10READ", "to" to LineEnvelope.MAGIC)
+
     @Test fun reportedVersionsMatchSupportedOnes() {
         assertEquals(mapOf("chat" to WireVersion.CHAT, "call" to WireVersion.CALL, "claim" to WireVersion.CLAIM, "read" to WireVersion.READ, "to" to WireVersion.ENVELOPE), WireVersion.REPORTED)
-        assertEquals(WireVersion.SUPPORTED.values.toSet(), WireVersion.REPORTED.values.toSet())
+        // по ключам, а не по множествам значений: новый протокол с версией 1 «растворился» бы среди одинаковых единиц
+        assertEquals(magicOfReported.keys, WireVersion.REPORTED.keys)
+        for ((short, magic) in magicOfReported) {
+            assertEquals("версия «$short» в REPORTED и $magic в SUPPORTED", WireVersion.SUPPORTED[magic], WireVersion.REPORTED[short])
+        }
+    }
+
+    /**
+     * Протоколы, которые приложение понимает, но дашборду не сообщает (голос и вход в Сеть, аудит 17.10). Добавление в REPORTED —
+     * контракт с Коллектором (`wireVersions` в presence): сервер сначала принимает ключи. Новый протокол в SUPPORTED без записи
+     * сюда и без короткого имени в REPORTED этот тест красит — решение «сообщать или нет» принимается явно.
+     */
+    @Test fun everySupportedProtocolIsEitherReportedOrListedAsKnownGap() {
+        val knownGap = setOf("MB10VOICE", "MB10LISTEN", "MB10ENTER", "MB10ENTERED")
+        assertEquals(knownGap, WireVersion.SUPPORTED.keys - magicOfReported.values.toSet())
     }
 
     @Test fun ownVersionRoundTrips() {

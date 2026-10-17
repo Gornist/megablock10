@@ -691,6 +691,7 @@ pico_show_wait() { # pico_show_wait <владелец> <минут>
         window)
           case ${P_RES%%/*} in
             "$PICO_BOUNDARY_PKG") say="нажмите в очках «Войти в VR»; сейчас окно $P_RES";;
+            com.pvr.seethrough.setting) say="в очках окно настроек прозрачного режима/трекинга ($P_RES): закройте его или нажмите «Перезапустить отслеживание»; не встаёт трекинг — свет у очков";;
             *) say="закройте окно в очках (системное: $P_RES)";;
           esac;;
         unknown) say="закройте приложение в очках (магазин, файлы и т. п.): окно $P_RES — не игра и не лобби";;
@@ -705,6 +706,15 @@ pico_show_wait() { # pico_show_wait <владелец> <минут>
   pico_attention "$own" "показ: за $2 мин экран так и не стал допустимым — $DIAG_WHY" "$(pico_shot)" "${DIAG_KIND:-other}"
   echo "pico show: за $2 мин экран не стал допустимым — $DIAG_WHY"
   return 1
+}
+PICO_SHOW_SETTLE=${PICO_SHOW_SETTLE:-15}  # секунд наблюдения за только что запущенным стендом показа (p6_run проверяет сервер на ~8 с)
+pico_show_settle() { # pico_show_settle <pid>: 0 — стенд жив по окончании окна наблюдения; 1 — умер раньше
+  local i
+  for ((i = 0; i < PICO_SHOW_SETTLE; i++)); do
+    sleep 1
+    kill -0 "$1" 2>/dev/null || return 1
+  done
+  return 0
 }
 pico_show() {
   [ $# -ge 3 ] || { err "использование: pico show <владелец> [--minutes N] [--wait N] [--dir каталог] -- команда стенда…"; return 2; }
@@ -747,9 +757,10 @@ pico_show() {
     echo $! >"$dir/.pid"
   )
   pid=$(cat "$dir/.pid"); rm -f "$dir/.pid"
-  sleep 2
-  if ! kill -0 "$pid" 2>/dev/null; then
-    echo "pico show: команда стенда завершилась за 2 с — журнал: $dir/show.log"; tail -n 5 "$dir/show.log"
+  # Окно наблюдения: стенд (p6_run) проверяет сервер через ~8 с и тогда выходит с кодом 1; 17.10 22:11 команда умерла на 9-й секунде
+  # (сервер не поднялся), а `pico show` к тому часу уже написал «ПОКАЗ ИДЁТ» — человек сидел в очках без игры.
+  if ! pico_show_settle "$pid"; then
+    echo "pico show: НЕ ГОТОВО — стенд умер в первые ${PICO_SHOW_SETTLE} с, игру не выводим (очки не гашу, бронь $own осталась) — журнал: $dir/show.log"; tail -n 5 "$dir/show.log"
     jlog pico-show-fail owner "$own" dir "$dir"; return 20
   fi
   {

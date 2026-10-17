@@ -334,8 +334,8 @@ IBM Plex Mono из приложения, `client/ui/fonts/`, около 1,1 МБ
 иначе плоская сборка (`-- --flat`). Аргументы пользователя идут после `--`.
 
 ```sh
-godot --headless --path netrun                         # сервер мира; выход по Ctrl+C / SIGTERM
-godot --headless --path netrun -- --exit-after=5       # сервер, сам выйдет через 5 с
+godot --headless --path netrun -- --bridge=fake                    # сервер мира на тестовых данных; выход по Ctrl+C / SIGTERM. --bridge= обязателен: без него (и без --tokens=) сервер не стартует
+godot --headless --path netrun -- --bridge=fake --exit-after=5     # сервер, сам выйдет через 5 с
 godot --path netrun -- --flat                          # плоская отладочная сборка (с окном)
 godot --headless --path netrun --import                # импорт проекта (CI, первая загрузка)
 ```
@@ -361,7 +361,8 @@ godot --path netrun -- --flat --host=127.0.0.1 --port=7777 --token=t1    # пл�
 Сервер мира берёт токен терминала и операции с ценностями у Моста (`:netrun-bridge`, протокол — `docs/netrun-bridge-protocol.md`).
 Выбор — аргументом `--bridge=`:
 
-- `--bridge=fake` (по умолчанию) — `FakeBridge` в том же процессе, данные из `tests/fixtures/bridge_fixture.json`
+- `--bridge=` обязателен (17.10, аудит: молчаливая фикстура на игре теряла ценности): без него и без `--tokens=` или с опечаткой сервер печатает причину и выходит с кодом 2.
+- `--bridge=fake` — `FakeBridge` в том же процессе, данные из `tests/fixtures/bridge_fixture.json`
   (другая фикстура — `--bridge-fixture=res://…`). Kotlin не нужен. Токены очков в фикстуре: `t03:token-t03` и `t04:token-t03`
   (сессия `s_fake000000000001` active, `…02` pending). Без `--bridge`, но с `--tokens=` работает старая заглушка (токен -> сессия).
 - `--bridge=ws://хост:порт` — `BridgeClient` по WebSocket (`/netrun/v1` добавляется сам), ключ роли world — `--bridge-key=` или
@@ -456,7 +457,7 @@ GHOST, сервер раз в 0.1 с шлёт снимок (`WorldMsg.STATE`: tr
 `settings` — все числа: `tunnel_sec`, `portal_dwell_sec`, `shard_refill_sec` по тирам, `refill_retry_sec`, `alert_*`, `lockdown_sec`.
 Проверка данных — `NodeGraph.errors()` (симметрия, связность, слоты, тир входа); тест `node_graph_test.gd`.
 
-Граф — режим по умолчанию: `godot --headless --path netrun` (или `-- --graph=<путь>`); прежний одиночный серый узел node_07 — `-- --single-node`.
+Граф — режим по умолчанию: `godot --headless --path netrun -- --bridge=fake` (или `-- --bridge=fake --graph=<путь>`); прежний одиночный серый узел node_07 — `-- --single-node`.
 Шарды сервер мира не создаёт: узел пополняется только из запаса, заложенного мастером (предметы `node:<узел>` в Мосте); пустой узел просто ждёт.
 Битый граф в журнал (`push_error`) и сервер работает одним узлом.
 

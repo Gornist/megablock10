@@ -1,0 +1,114 @@
+{
+  "_about": "QR и личка-карточки «MB10:ВИД:vN:…» (app Mb10QrCodec ↔ admin-web lib/mb10QrCodec.ts ↔ Мост PhoneWire). Свободный текст — base64 UTF-8; line — ровно то, что должен выдать кодировщик, и то, что должен разобрать декодер в поля. Поле tier контейнера — уровень (1…), loot — слоты «ТИП,уровень,копий,payload» через «;» внутри base64.",
+  "containers": [
+    {
+      "name": "два слота разного типа",
+      "id": "c-1",
+      "containerName": "Сейф Арасаки",
+      "tier": 2,
+      "ownerFaction": "Арасака",
+      "loot": [
+        {
+          "type": "SHARD",
+          "tier": 1,
+          "copies": 3,
+          "payload": "AAAA+/bbbb=="
+        },
+        {
+          "type": "DAEMON",
+          "tier": 2,
+          "copies": 1,
+          "payload": "CCCC=="
+        }
+      ],
+      "line": "MB10:CONTAINER:v1:c-1:0KHQtdC50YQg0JDRgNCw0YHQsNC60Lg=:2:0JDRgNCw0YHQsNC60LA=:U0hBUkQsMSwzLEFBQUErL2JiYmI9PTtEQUVNT04sMiwxLENDQ0M9PQ=="
+    },
+    {
+      "name": "без слотов и без фракции",
+      "id": "c-2",
+      "containerName": "Пустой",
+      "tier": 1,
+      "ownerFaction": "",
+      "loot": [],
+      "line": "MB10:CONTAINER:v1:c-2:0J/Rg9GB0YLQvtC5:1::"
+    }
+  ],
+  "shards": [
+    {
+      "name": "шард с действием расшифровки и деньгами",
+      "id": "s-1",
+      "decryptAction": true,
+      "tier": 2,
+      "valueHint": "ценность",
+      "title": "Схемы",
+      "meta": "Арасака",
+      "body": "Строка 1\nстрока 2",
+      "moneyAmount": 25,
+      "line": "MB10:SHARD:v1:s-1:1:2:0YbQtdC90L3QvtGB0YLRjA==:0KHRhdC10LzRiw==:0JDRgNCw0YHQsNC60LA=:0KHRgtGA0L7QutCwIDEK0YHRgtGA0L7QutCwIDI=:25"
+    },
+    {
+      "name": "шард без действия, без денег",
+      "id": "s-2",
+      "decryptAction": false,
+      "tier": 1,
+      "valueHint": "",
+      "title": "Лог",
+      "meta": "",
+      "body": "Текст",
+      "moneyAmount": 0,
+      "line": "MB10:SHARD:v1:s-2:0:1::0JvQvtCz::0KLQtdC60YHRgg==:0"
+    }
+  ],
+  "ram": [
+    {
+      "name": "RAM-апгрейд",
+      "token": "tok-1",
+      "delta": 4,
+      "line": "MB10:RAM:v1:tok-1:4"
+    }
+  ],
+  "provisions": [
+    {
+      "name": "персонаж",
+      "id": "p-1",
+      "collectorUrl": "http://10.10.0.10:2527",
+      "gameSecret": "секрет игры",
+      "callsign": "Клемты",
+      "faction": "Арасака",
+      "startBalance": 500,
+      "ramCapacity": 6,
+      "line": "MB10:PROV:v1:p-1:aHR0cDovLzEwLjEwLjAuMTA6MjUyNw==:0YHQtdC60YDQtdGCINC40LPRgNGL:0JrQu9C10LzRgtGL:0JDRgNCw0YHQsNC60LA=:500:6"
+    },
+    {
+      "name": "персонаж без адреса и секрета",
+      "id": "p-2",
+      "collectorUrl": "",
+      "gameSecret": "",
+      "callsign": "Тень",
+      "faction": "",
+      "startBalance": 0,
+      "ramCapacity": 4,
+      "line": "MB10:PROV:v1:p-2:::0KLQtdC90Yw=::0:4"
+    }
+  ],
+  "secAlerts": [
+    {
+      "name": "с позывным и точным временем",
+      "containerId": "c-1",
+      "containerName": "Сейф Арасаки",
+      "tier": 2,
+      "intruderCallsign": "Клемты",
+      "preciseAt": 1760000000000,
+      "line": "MB10:SECALERT:v1:c-1:0KHQtdC50YQg0JDRgNCw0YHQsNC60Lg=:2:0JrQu9C10LzRgtGL:1760000000000"
+    },
+    {
+      "name": "без позывного и времени",
+      "containerId": "c-2",
+      "containerName": "Пустой",
+      "tier": 1,
+      "intruderCallsign": null,
+      "preciseAt": null,
+      "line": "MB10:SECALERT:v1:c-2:0J/Rg9GB0YLQvtC5:1::"
+    }
+  ]
+}

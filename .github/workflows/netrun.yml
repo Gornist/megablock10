@@ -2,6 +2,7 @@ name: Netrun (Godot)
 
 on:
   push:
+    branches: [ main ]   # ветки агентов проверяются в PR (без этого каждый пуш в PR давал два прогона: push и pull_request)
     paths: [ "netrun/**", ".github/workflows/netrun.yml" ]
   pull_request:
     paths: [ "netrun/**", ".github/workflows/netrun.yml" ]

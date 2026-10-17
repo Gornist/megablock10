@@ -82,14 +82,27 @@ func test_garbage_frame_is_ignored() -> void:
 
 func test_make_bridge_choice() -> void:
 	var cfg := NetConfig.new()
-	assert_object(WorldServer.make_bridge(PackedStringArray([]), cfg)).is_instanceof(FakeBridge)
 	assert_object(WorldServer.make_bridge(PackedStringArray(["--bridge=fake"]), cfg)).is_instanceof(FakeBridge)
+	assert_str(WorldServer.bridge_problem(PackedStringArray(["--bridge=fake"]), cfg)).is_empty()
 	var ws := WorldServer.make_bridge(PackedStringArray(["--bridge=ws://10.0.0.5:7410", "--bridge-key=kw"]), cfg)
 	assert_object(ws).is_instanceof(BridgeClient)
 	assert_str((ws as BridgeClient).url).is_equal("ws://10.0.0.5:7410/netrun/v1")
 	assert_str((ws as BridgeClient).key).is_equal("kw")
+	assert_str(WorldServer.bridge_problem(PackedStringArray(["--bridge=ws://10.0.0.5:7410"]), cfg)).is_empty()
 	cfg.tokens = {"t1": "alice"}
 	assert_object(WorldServer.make_bridge(PackedStringArray([]), cfg)).is_null()
+	assert_str(WorldServer.bridge_problem(PackedStringArray([]), cfg)).is_empty()   # старый путь --tokens= без Моста
+
+
+func test_без_bridge_и_с_опечаткой_сервер_не_берёт_фикстуру() -> void:
+	var cfg := NetConfig.new()
+	# Игра: забыли --bridge= или опечатка в значении - раньше выходил мир на тестовых данных, теперь причина и отказ запуска.
+	assert_object(WorldServer.make_bridge(PackedStringArray([]), cfg)).is_null()
+	assert_str(WorldServer.bridge_problem(PackedStringArray([]), cfg)).contains("--bridge=")
+	assert_object(WorldServer.make_bridge(PackedStringArray(["--bridge=fak"]), cfg)).is_null()
+	assert_str(WorldServer.bridge_problem(PackedStringArray(["--bridge=fak"]), cfg)).contains("«fak»")
+	assert_object(WorldServer.make_bridge(PackedStringArray(["--bridge=http://x"]), cfg)).is_null()
+	assert_str(WorldServer.bridge_problem(PackedStringArray(["--bridge=http://x"]), cfg)).is_not_empty()
 
 
 func test_socket_buffer_fits_big_snapshot() -> void:

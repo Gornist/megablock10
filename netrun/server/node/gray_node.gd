@@ -2210,7 +2210,7 @@ func refill_left(slot: String) -> int:
 
 
 ## Доступ сессии к хранилищу для панели взлома: access — empty (ждёт пополнения, left — секунд) | open (можно брать) | busy (взламывает другой) |
-## cooldown (узел остывает для неё, left — секунд) | ok (можно начинать).
+## cooldown (это хранилище остывает для неё — у каждого своё, left — секунд) | ok (можно начинать).
 func vault_access(slot: String, session: String) -> Dictionary:
 	if net.holder_of(slot) != "":
 		return {"access": "empty", "left": refill_left(slot)}
@@ -2220,7 +2220,7 @@ func vault_access(slot: String, session: String) -> Dictionary:
 		return {"access": "busy"}
 	var ds: DaemonSession = _sessions.get(session)
 	if ds != null and not is_tutorial():
-		var left := breach.cooldown_left(ds)
+		var left := breach.cooldown_left(ds, slot)
 		if left > 0.0:
 			return {"access": "cooldown", "left": ceili(left)}
 	return {"access": "ok"}
