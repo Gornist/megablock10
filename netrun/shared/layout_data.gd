@@ -35,6 +35,10 @@ var portals: Array[Vector3] = []
 var vaults: Array = []
 ## Стражи: {id: String, route: Array of {cell: Vector2i (клетка 1 м), wait: int, look: Vector2i (dir8, ZERO — не задан)}} — формат маршрута TickIce.
 var sentries: Array = []
+## Будки запасного Стража (блоки «b»): клетка 1 м у стены — юго-восточная клетка блока (block_center_cell), её рисует клиент (ice/guard_booth.glb).
+var booths: Array[Vector2i] = []
+## Запасные Стражи (`kind: reserve`): {id, route} — формат Стража; первая точка маршрута — клетка будки. Выходят из будки на тревоге 2 (ice.md §4), один раз за забег узла.
+var reserves: Array = []
 ## Маяки (`kind: beacon`): {id, cell: Vector2i (клетка 1 м; клетка-тумба «O»), start: Vector2i (dir8), step_deg: float, sweep_steps: int}.
 var beacons: Array = []
 ## Барьеры (`kind: barrier`, `cell: [bx, bz]` — блок «B»): {id, block: Vector2i (блок карты), cells: Array[Vector2i] (4 клетки 1 м, заняты, пока барьер закрыт)}.
@@ -150,6 +154,8 @@ func _fill(d: Dictionary) -> String:
 						occupied[c] = true
 			elif not FREE_SYMBOLS.contains(ch):
 				return "cells[%d][%d]: неизвестный символ '%s'" % [sz, sx, ch]
+			if ch == "b":
+				booths.append(block_center_cell(b))
 			if ch == "S":
 				spawn_blocks.append(b)
 			elif ch == "E":
@@ -318,8 +324,17 @@ func _fill_ice(src: Variant) -> String:
 			sensors.append({"id": str(ed.get("id", "d%d" % (sensors.size() + 1))), "cells": cells,
 				"on": maxi(int(ed.get("on", 0)), 0), "off": maxi(int(ed.get("off", 0)), 0), "phase": maxi(int(ed.get("phase", 0)), 0)})
 			continue
+		if str(ed.get("kind", "")) == "reserve":
+			var rr := _route(ed.get("route", []))
+			if rr.has("error"):
+				return "ice %s: %s" % [str(ed.get("id", "?")), str(rr["error"])]
+			var first: Vector2i = (rr["route"] as Array)[0]["cell"]
+			if not booths.has(first):
+				return "ice %s: запасной Страж должен начинать маршрут в будке (блок «b» карты)" % str(ed.get("id", "?"))
+			reserves.append({"id": str(ed.get("id", "r%d" % (reserves.size() + 1))), "route": rr["route"]})
+			continue
 		if str(ed.get("kind", "")) != "sentry":
-			continue   # запасной Страж — следующая карточка
+			continue
 		var r := _route(ed.get("route", []))
 		if r.has("error"):
 			return "ice %s: %s" % [str(ed.get("id", "?")), str(r["error"])]

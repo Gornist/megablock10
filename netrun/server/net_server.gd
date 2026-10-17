@@ -118,6 +118,8 @@ func start(config: NetConfig, token_verifier: TokenVerifier) -> Error:
 	add_child(_world)
 	_add_object(NetConfig.PICKUP_ID, Vector3(0, 1.0, -1.5))
 	var enet := ENetMultiplayerPeer.new()
+	if not config.bind.is_empty():
+		enet.set_bind_ip(config.bind)
 	var err := enet.create_server(config.port, 32)
 	if err != OK:
 		push_error("[netrun-server] не открыть порт %d: %s" % [config.port, error_string(err)])

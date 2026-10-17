@@ -24,8 +24,18 @@ const BEAM_ON := 1
 const BEAM_BLINK := 2
 ## Ореол-«капля» маяка предмета (меш `beacon_halo` в узле Beacon у шарда и токена): роль shell_soft, шейдер по имени меша.
 const BEACON_HALO_SHADER := preload("res://assets/shaders/beacon_halo.gdshader")
+## Вспышка ожога по краям зрения (П6-6 (г)): шейдер квада на камере (DangerCue); цвета — слои burn_flash/burn_flash_hot, форму и силу задаёт шейдер, Godot — только `strength`.
+const BURN_FLASH_SHADER := preload("res://assets/shaders/burn_flash.gdshader")
+const BURN_FLASH_START := 1.0   ## strength в момент ожога (было 0,85 у Godot — на П6 не заметили; форма шейдера теперь сама держит центр свободным)
+const BURN_FLASH_SEC := 0.9     ## спад до 0 (было 0,7): ≈ 80 кадров при 90 Гц; вспышка одна на ожог, без повторов — VR-комфорт (STYLE.md п.7)
 ## Луч маяка (меш `beacon_beam`): штрихи (streaks) с ореолом, но спокойнее обычных — почти без дыхания и качания, гладкий (без бусин), ярче, чтобы читаться с 3 м.
 const BEACON_BEAM := {"halo": 0.5, "halo_width": 2.2, "end_fade": 0.6, "breathe": 0.08, "sway": 0.003, "bead_depth": 0.0, "glow": 2.2}
+## Пульс спящего логова Black ICE (ice/black_lair, State_sleep; П6-6 (в), владелец на П6: логова не заметил): холм `black_lair_mound` дышит глубоко и медленно (период ≈ 4 с),
+## «сердце» `black_lair_heart` бьётся чаще (≈ 2,5 с) и размашистее — пульс читается от входа, но без стробоскопа (VR-комфорт, STYLE.md п.7: движение только у существ/предметов).
+const LAIR_SLEEP_BREATHE := {
+	"black_lair_mound": {"breathe": 0.55, "breathe_speed": 1.6},
+	"black_lair_heart": {"breathe": 0.7, "breathe_speed": 2.5},
+}
 
 ## ПАЛИТРА КЛИЕНТСКИХ СЛОЁВ (маркеры пола, прицел, след ICE, стрелки, кольцо такта, метки, HUD, экран конца). Цвет и материал задаёт Blender, логику — Godot:
 ## клиент берёт цвета ТОЛЬКО отсюда (`AssetMaterials.layer("aim_ok")`) и не задаёт свои. База — HEX из lib.py / STYLE.md: голубой мир, ледяной белый, красный только у угрозы
@@ -64,6 +74,8 @@ const LAYERS := {
 	"beam_off": PAL_CYAN,                          # погашен: путь виден, пройти можно (голубое — «можно»; тусклый PAL_DIM на полу не читался, П6-6)
 	"beam_flash": PAL_ICE,                         # вспышка срабатывания (одиночный импульс)
 	"alarm_focus": PAL_THREAT_HOT,                 # тревога 2+: свет окружения у игрока (set_alarm_focus)
+	"burn_flash": PAL_THREAT,                      # ожог: красный край поля зрения (burn_flash_material)
+	"burn_flash_hot": PAL_THREAT_HOT,              # и яркий обод у самой границы
 	# Облако частиц (Б), VolumeCloud: цвет облака объекта (файлы `.points`, ARCHITECTURE.md §13)
 	"volume_ice": PAL_THREAT,                      # облако ICE (Soft и Black): красное, красное только у угрозы; у Black ICE ложится на синюю оболочку модели («красное внутри»)
 	"volume_exit": PAL_ICE,                        # рамка выхода: брусья с кромкой ice_white
@@ -93,6 +105,19 @@ const LAYERS := {
 	# Экран деки: янтарь разрешён только здесь (STYLE.md), 2D-интерфейс деки (DeckTheme/mb_*) остаётся своей системой в этой гамме
 	"deck_screen": PAL_AMBER,
 }
+
+
+## Новый материал вспышки ожога для квада на камере (render_priority выше меток 100): клиент меняет только `strength` 0…1 (старт BURN_FLASH_START, спад за BURN_FLASH_SEC).
+## half_fov — половина поля зрения камеры, рад.
+static func burn_flash_material(half_fov := 0.95) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = BURN_FLASH_SHADER
+	m.render_priority = 105
+	m.set_shader_parameter("strength", 0.0)
+	m.set_shader_parameter("half_fov", half_fov)
+	m.set_shader_parameter("tint", layer("burn_flash", 1.0))
+	m.set_shader_parameter("hot", layer("burn_flash_hot", 1.0))
+	return m
 
 
 ## Цвет слоя клиента по имени из LAYERS (с альфой, если она задана в палитре); alpha ≥ 0 переопределяет альфу. Неизвестное имя — предупреждение и ледяной белый.
@@ -408,6 +433,9 @@ static func apply(root: Node, tier: String = "") -> void:
 				m.set_shader_parameter("anchor", 0.0)
 			if String(mi.name).ends_with("_hang"):  # подвесные штрихи (под полом): длина меняется от верхнего конца
 				m.set_shader_parameter("anchor", 1.0)
+			if src.resource_name == "streaks" and LAIR_SLEEP_BREATHE.has(String(mi.name)):  # спящее логово Black ICE (П6-6 (в)): холм дышит медленно и глубоко, «сердце» бьётся чаще — пульс виден от входа
+				for k in LAIR_SLEEP_BREATHE[String(mi.name)]:
+					m.set_shader_parameter(k, LAIR_SLEEP_BREATHE[String(mi.name)][k])
 			if src.resource_name == "solid_dark" and float(_k("cloud")) > 0.0 and _cloud_scope_ok(root):  # прототип «облако без основы»: частицы с дырами вместо тёмной грани (нужен MSAA)
 				m.shader = CLOUD_SHADER
 				mi.add_to_group(SURFACE_CLOUD_GROUP)   # set_cloud_breath / set_cloud_touch находят поверхностные облака по группе и по реестру материалов

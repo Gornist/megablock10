@@ -34,6 +34,10 @@ const SENSOR_SWEEP_HZ := 0.12
 const FAR_FADE := Vector2(40.0, 130.0)
 const FAR_PARAMS := {"far_gain": 1.8, "far_start": 20.0, "far_end": 60.0}
 const MODULES := ["floor", "pillar", "cover", "platform", "lockdown_gate", "ceiling", "far_floor", "far_ceiling"]
+## Будка запасного Стража (ice/guard_booth.glb, ice.md §4): створка `Door` сдвигается вбок на столько, м, когда запасной вышел (корпус 0,9 м); лампа `Lamp` горит с тревоги 2.
+const BOOTH_PATH := NodeAssets.ROOT + "ice/guard_booth.glb"
+const BOOTH_DOOR_SLIDE := 0.8
+const BOOTH_LAMP_LEVEL := 2
 ## Варианты модуля (другой seed, тот же размер): узор не повторяется, девять одинаковых плиток подряд — запрещены (assets/ARCHITECTURE.md, п. 6).
 ## Экземпляры модуля делятся по вариантам по кругу; первый вариант всегда в комнате (его путь — NodeAssets.env_path(module)).
 const VARIANTS := {
@@ -74,6 +78,7 @@ var _furniture: Node3D
 var _sensor: Node3D
 var _counts: Dictionary = {}
 var _gates: Array[Node3D] = []
+var _booths: Dictionary = {}     # id будки -> {node, door, door_rest: Vector3, lamp}: поле bo снимка (запасной Страж)
 var _vaults: Dictionary = {}     # id слота -> хранилище (props/vault.glb)
 var _vault_tier: Dictionary = {} # id слота -> тир содержимого 1–3 (последний известный)
 var _pads: Dictionary = {}       # id слота -> площадка взлома (props/hack_pad.glb)
@@ -127,6 +132,7 @@ func set_look(new_tier: String, new_layout: LayoutData) -> void:
 	layout = l
 	_apply_furniture()
 	_discard(_room)
+	_booths.clear()   # будки жили в старой комнате; новые придут со следующим снимком (поле bo)
 	_room = Node3D.new()
 	_room.name = "Room"
 	add_child(_room)
@@ -149,6 +155,41 @@ func set_look(new_tier: String, new_layout: LayoutData) -> void:
 func set_alarm_level(level: int) -> void:
 	alarm_level = clampi(level, 0, 4)
 	_apply_alarm()
+	_apply_booth_lamps()
+
+
+## Будки запасного Стража по полю `bo` снимка: [{id, c: [x, z] клетка 1 м, open 0/1}]. Создаём у стены лицом в комнату (модель смотрит в −Z Godot), пропавшие убираем,
+## створка сдвинута, пока запасной вышел. Звать каждый снимок: повторный вызов только обновляет створки.
+func set_booths(list: Array) -> void:
+	if _room == null:
+		return
+	var seen := {}
+	for v: Dictionary in list:
+		var id := str(v["id"])
+		seen[id] = true
+		if not _booths.has(id) or not is_instance_valid((_booths[id] as Dictionary)["node"]):
+			var c: Array = v["c"]
+			var pos := NodeGrid.center(Vector2i(int(c[0]), int(c[1])))
+			var n := _place(_room, BOOTH_PATH, pos, NodeLayout.cardinal_yaw(pos) + PI)   # cardinal_yaw — «лицом +Z»; у будки лицо −Z
+			n.name = "Booth_" + id
+			var door := n.find_child("Door", true, false) as Node3D
+			_booths[id] = {"node": n, "door": door, "door_rest": door.position if door != null else Vector3.ZERO, "lamp": n.find_child("Lamp", true, false) as Node3D}
+		var b: Dictionary = _booths[id]
+		var d := b["door"] as Node3D
+		if d != null:
+			d.position = (b["door_rest"] as Vector3) + Vector3(BOOTH_DOOR_SLIDE if int(v.get("open", 0)) == 1 else 0.0, 0.0, 0.0)
+	for id in _booths.keys():
+		if not seen.has(id):
+			_discard((_booths[id] as Dictionary)["node"] as Node)
+			_booths.erase(id)
+	_apply_booth_lamps()
+
+
+func _apply_booth_lamps() -> void:
+	for id in _booths:
+		var lamp := (_booths[id] as Dictionary)["lamp"] as Node3D
+		if lamp != null:
+			lamp.visible = alarm_level >= BOOTH_LAMP_LEVEL
 
 
 func _apply_alarm() -> void:

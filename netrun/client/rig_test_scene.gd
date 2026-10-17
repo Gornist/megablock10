@@ -205,6 +205,7 @@ func _process(delta: float) -> void:
 	if alarm_level == 3:   # «охота»: фон пульсирует в ритме такта
 		_env.background_color = alarm_bg(3, _tick_phase(now))
 	_update_cloud(now)
+	_update_alarm_focus()
 	_animate_shards(delta)
 	_update_stow_target(delta)
 	_update_breach_panel()
@@ -280,6 +281,7 @@ func apply_state(state: Dictionary) -> void:
 	_apply_beacons(state.get("bk", []))
 	_apply_sensors(state.get("sn", []))
 	_apply_barriers(state.get("br", []))
+	view.set_booths(state.get("bo", []))   # будки запасного Стража: створка и лампа по тревоге
 
 
 ## Барьеры узла: создаём по снимку, убираем пропавших; рядом закрытый барьер (клетка игрока соседняя с его блоком) — подсказка на деке.
@@ -871,6 +873,12 @@ func _update_cloud(local_now: float) -> void:
 		return
 	AssetMaterials.set_cloud_breath(tree, AssetMaterials.tick_phase(remote.tick_info(), remote.clock.server_time(local_now)))
 	AssetMaterials.set_cloud_touch(tree, cloud_touch_sources())
+
+
+## Тревога 2+ у игрока (Blender, PR 385: AssetMaterials.set_alarm_focus) — каждый кадр с позицией игрока на полу (мир): кромки, сетка пола, вуаль и облако колонн в радиусе
+## уходят в тревожный цвет. Уровни 0–1 функция выключает сама, дерево не обходит; без вызова вид не меняется (откат — убрать вызов).
+func _update_alarm_focus() -> void:
+	AssetMaterials.set_alarm_focus(rig.global_position if rig != null else Vector3.ZERO, alarm_level)
 
 
 ## Источники отклика: руки игрока (в очках), затем чужие аватары — не больше CLOUD_TOUCH_MAX.

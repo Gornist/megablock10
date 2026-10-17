@@ -24,7 +24,11 @@
       {"cell": [0, 4], "wait": 1}
     ]},
     {"id": "o1", "kind": "beacon", "cell": [3, 3], "start": "N"},
-    {"id": "d1", "kind": "sensor", "cell1": [8, 6], "dir": "E", "len": 2}
+    {"id": "d1", "kind": "sensor", "cell1": [8, 6], "dir": "E", "len": 2},
+    {"id": "r1", "kind": "reserve", "route": [
+      {"cell": [0, 7], "wait": 1, "look": ["N"]},
+      {"cell": [0, 3], "wait": 2, "look": ["N"]}
+    ]}
   ],
   "black": null,
   "meta": {"sight_cells": 8}
