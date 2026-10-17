@@ -51,4 +51,24 @@ func _ready() -> void:
 		await RenderingServer.frame_post_draw
 		get_viewport().get_texture().get_image().save_png("%s/focus_%d.png" % [_out, lvl])
 		print("кадр focus_", lvl)
+	# П6-6 (г): ожог — красная вспышка по краям зрения (квад на камере, как в DangerCue); уровень 0 — «до», 1,0 — старт вспышки, 0,5 — середина спада
+	AssetMaterials.set_alarm_focus(Vector3(0.0, 0.0, -1.0), 0)
+	AssetMaterials.set_alarm(room, 0, "BASE")
+	env.background_color = AssetMaterials.alarm_background(0, 0.0)
+	var flash_mat := AssetMaterials.burn_flash_material(deg_to_rad(cam.fov) * 0.5 * 1.6)   # горизонтальная половина при 16:9 ≈ 1,6 × вертикальной
+	var quad := QuadMesh.new()
+	quad.size = Vector2(2.0, 2.0)
+	quad.material = flash_mat
+	var flash := MeshInstance3D.new()
+	flash.mesh = quad
+	flash.position = Vector3(0.0, 0.0, -0.24)
+	flash.extra_cull_margin = 16.0
+	cam.add_child(flash)
+	for s in [0.0, 1.0, 0.5]:
+		flash_mat.set_shader_parameter("strength", s)
+		for k in 12:
+			await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png("%s/burn_%d.png" % [_out, int(s * 10)])
+		print("кадр burn_", int(s * 10))
 	get_tree().quit()
