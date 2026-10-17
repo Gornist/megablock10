@@ -20,7 +20,10 @@ add() { NAMES+=("$1"); CMDS+=("$2"); }
 if hit '^(app|kit|rules)/|^(build|settings)\.gradle|^gradle\.properties|^gradle/'; then
   [ $FULL = 1 ] && add android "scripts/dbx.sh --full" || add android "scripts/dbx.sh --auto"
 fi
-hit '^netrun-bridge/' && add bridge "scripts/dbx.sh -- :netrun-bridge:detekt :netrun-bridge:test"
+# Мост собирается из rules/ и kit/: их правка красит CI Моста, а dbx.sh --auto его не гоняет (аудит 17.10, review-pipeline №2).
+hit '^(netrun-bridge|rules|kit)/' && add bridge "scripts/dbx.sh -- :netrun-bridge:detekt :netrun-bridge:test"
+# Конвейер (скрипты, хук, workflows): раньше verify отвечал «нечего проверять» (аудит 17.10).
+hit '^scripts/[^/]*$|^\.claude/hooks/|^\.github/workflows/' && add pipeline "scripts/lint-pipeline.sh"
 if hit '^netrun/'; then [ $FULL = 1 ] && add godot "netrun/tools/dev.sh test --all" || add godot "netrun/tools/dev.sh test"; fi
 # Ассеты без .gd (модели, src/*.py, шейдеры): dev.sh test по ним ничего не находит и молчит — проверяем правила ассетов явно (сессия Blender, 05.10).
 [ $FULL = 0 ] && hit '^netrun/assets/' && add assets "netrun/tools/dev.sh test assets_models_test"

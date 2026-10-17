@@ -21,6 +21,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Предел: обычно 2–3 мин; без него зависший прогон держит раннер до 6 ч (netrun 05.10 висел 50 мин) — аудит 17.10
+    timeout-minutes: 30
     permissions:
       contents: write   # только для record_screenshots: коммит новых эталонов в ветку запуска
     steps:
@@ -118,6 +120,7 @@ jobs:
 
   admin-web:
     runs-on: ubuntu-latest
+    timeout-minutes: 15   # обычно 3–4 мин
     steps:
       - uses: actions/checkout@v7
 

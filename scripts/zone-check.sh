@@ -17,7 +17,7 @@ case $1 in
   gamedesign) IN='^docs/gamedesign/'; OUT='';;
   story)     IN='^docs/story/'; OUT='';;
   devbox)    IN="$DEVBOX"; OUT='';;
-  pipeline)  IN='^CLAUDE\.md|^AGENTS\.md|^\.github/(dependabot|labeler)\.yml|^\.github/rulesets/|^\.github/workflows/(main|pipeline|labeler)\.yml|^docs/ci\.md|^\.claude/|^\.githooks/|^scripts/[^/]*$'; OUT="$DEVBOX";;
+  pipeline)  IN='^CLAUDE\.md|^\.gitattributes$|^AGENTS\.md|^\.github/(dependabot|labeler)\.yml|^\.github/rulesets/|^\.github/workflows/(main|pipeline|labeler)\.yml|^docs/ci\.md|^\.claude/|^\.githooks/|^scripts/[^/]*$'; OUT="$DEVBOX";;
   *) echo "использование: zone-check.sh android|collector|nodes|godot|blender|gamedesign|story|devbox|pipeline"; exit 2;;
 esac
 git fetch -q origin main 2>/dev/null || true
