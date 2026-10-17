@@ -175,6 +175,8 @@ const KNOBS := {
 	"edge_round": 1.0,       # 0…1: скруглить профиль света рёбер (smoothstep по яркости вершин): убирает излом на пике градиента — светлую «линию Маха» по середине голубой полосы; 1 — полностью (принято, замер 6 на очках)
 }
 static var _tuned := {}
+## Имя меша сплошной подложки под облачным полом (src/floor_slab.py): облачная ветка apply() его пропускает.
+const UNDER_SLAB := "floor_slab_under"
 ## Материалы с облаком на гранях (А), созданные apply(), слабыми ссылками: дыхание и отклик ставятся на них, где бы ни жил меш. Группа surface_clouds ловит только
 ## MeshInstance3D в дереве, а колонны, укрытия и корпуса препятствий клиент собирает из частей `NodeAssets.mesh_parts` (MultiMesh и свои MeshInstance3D без группы;
 ## корень с группой освобождён) — по группе они не дышали (П7-3, 17.10).
@@ -454,14 +456,14 @@ static func apply(root: Node, tier: String = "") -> void:
 			if src.resource_name == "streaks" and LAIR_SLEEP_BREATHE.has(String(mi.name)):  # спящее логово Black ICE (П6-6 (в)): холм дышит медленно и глубоко, «сердце» бьётся чаще — пульс виден от входа
 				for k in LAIR_SLEEP_BREATHE[String(mi.name)]:
 					m.set_shader_parameter(k, LAIR_SLEEP_BREATHE[String(mi.name)][k])
-			if src.resource_name == "solid_dark" and float(_k("cloud")) > 0.0 and _cloud_scope_ok(root):  # прототип «облако без основы»: частицы с дырами вместо тёмной грани (нужен MSAA)
+			if src.resource_name == "solid_dark" and String(mi.name) != UNDER_SLAB and float(_k("cloud")) > 0.0 and _cloud_scope_ok(root):  # floor_slab_under — сплошная подложка под облачным полом (#424 Ш5): solid_dark при любом cloud;  # прототип «облако без основы»: частицы с дырами вместо тёмной грани (нужен MSAA)
 				m.shader = CLOUD_SHADER
 				mi.add_to_group(SURFACE_CLOUD_GROUP)   # set_cloud_breath / set_cloud_touch находят поверхностные облака по группе и по реестру материалов
 				_surface_cloud_mats.append(weakref(m))
 				m.set_shader_parameter("glitch_tex", GlitchSprite.texture())
 				m.set_shader_parameter("dust", float(_k("cloud")))
 				m.set_shader_parameter("dust_cell", float(_k("dust_cell")))
-				m.set_shader_parameter("dust_density", float(_k("dust_density")))
+				m.set_shader_parameter("dust_density", float(_k("dust_density")) * (float(_k("floor_density")) if String(mi.name) == "slab" else 1.0))
 				m.set_shader_parameter("edge_mix", float(_k("cloud_edge_mix")))
 				if _is_threat_gear(root):
 					_paint_threat_cloud(m)

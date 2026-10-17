@@ -39,7 +39,7 @@
 | `models/env/floor.glb` | 308 / 450 | 0 / 0 | 0 / 0 | 1 | 2 | 1.5512 × 1.3933 × 1.5796 | shell_soft, solid_dark | — | surface | ок |
 | `models/env/floor_b.glb` | 220 / 450 | 0 / 0 | 0 / 0 | 1 | 2 | 1.5527 × 1.3397 × 1.5975 | shell_soft, solid_dark | — | surface | ок |
 | `models/env/floor_c.glb` | 264 / 450 | 0 / 0 | 0 / 0 | 1 | 2 | 1.5875 × 1.3682 × 1.5445 | shell_soft, solid_dark | — | surface | ок |
-| `models/env/floor_slab_16.glb` | 92 / 400 | 0 / 0 | 0 / 0 | 1 | 2 | 16 × 0.7787 × 16 | shell_soft, solid_dark | — | slab | ок |
+| `models/env/floor_slab_16.glb` | 104 / 400 | 0 / 0 | 0 / 0 | 1 | 3 | 16 × 0.7787 × 16 | shell_soft, solid_dark | — | slab | ок |
 | `models/ice/guard_booth.glb` | 176 / 300 | 0 / 0 | 0 / 0 | 2 | 4 | 0.9 × 2.309 × 0.905 | shell_soft, solid_dark | — | floor | ок |
 | `models/props/hack_pad.glb` | 28 / 120 | 128 / 160 | 29 / 40 | 0 | 4 | 0.9259 × 0.1379 × 0.9 | points, solid_dark, streaks | — | floor | ок |
 | `models/props/hack_panel.glb` | 22 / 300 | 71 / 120 | 17 / 20 | 0 | 6 | 0.5175 × 1.2986 × 0.205 | points, solid_dark, streaks | — | floor | ок |

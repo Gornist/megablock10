@@ -219,6 +219,8 @@ func test_floor_slab_is_single_thin_slab_with_veil_only() -> void:
 		elif n == "slab":
 			slab = mi
 			tris += (mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3
+		elif n == AssetMaterials.UNDER_SLAB:   # сплошная подложка под облачным полом (#424, Ш5): считается в бюджет
+			tris += (mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3
 		else:
 			assert_bool(false).override_failure_message("floor_slab_16: лишний меш «%s» (штрихов и точек в окружении нет)" % n).is_true()
 	assert_bool(slab != null and skirt != null).override_failure_message("floor_slab_16: нужны меши slab и *_skirt").is_true()
