@@ -37,11 +37,26 @@ static func names() -> Array:
 	return PRESETS.keys()
 
 
-## Копия пресета по имени; пустой словарь, если такого нет.
-static func get_preset(name_: String) -> Dictionary:
-	if not PRESETS.has(name_):
+## Копия пресета по имени; пустой словарь, если такого нет. `ld` — раскладка другого размера (не 8×8): центр, края и высота обзора по ней
+## (см. for_layout); без неё — пресеты Фойе 8×8, как прежде.
+static func get_preset(name_: String, ld: LayoutData = null) -> Dictionary:
+	var all: Dictionary = PRESETS if ld == null else for_layout(ld)
+	if not all.has(name_):
 		return {}
-	return (PRESETS[name_] as Dictionary).duplicate()
+	return (all[name_] as Dictionary).duplicate()
+
+
+## Все пресеты для раскладки: вход, хранилище и выход — её; центр кадров сверху — центр её комнаты, края половин — её стены, высота обзора растёт
+## с большей стороной (fov сверху узкий, 12×12 не влезла бы в 21 м). У 8×8 высота ровно TOP_HEIGHT.
+static func for_layout(ld: LayoutData) -> Dictionary:
+	return _build(ld)
+
+
+## Во сколько раз обзор сверху выше, чем для комнаты 16×16 м: по большей стороне, не ниже 1.
+static func top_scale(ld: LayoutData) -> float:
+	if ld == null:
+		return 1.0
+	return maxf(1.0, float(maxi(ld.cols, ld.rows)) / float(NodeLayout.GRID))
 
 
 static func _eye(pos_floor: Vector3, look: Vector3) -> Dictionary:
@@ -53,33 +68,42 @@ static func _top(center: Vector3, height: float) -> Dictionary:
 	return {"pos": center + Vector3(0.0, height, 0.0), "look": center, "fov": TOP_FOV_DEG, "up": Vector3(0.0, 0.0, -1.0), "eye": false}
 
 
-static func _build() -> Dictionary:
-	var spawn := NodeLayout.SPAWN
+static func _build(ld: LayoutData = null) -> Dictionary:
+	var spawn := NodeLayout.SPAWN if ld == null else ld.spawn
+	var cols := NodeLayout.GRID if ld == null else ld.cols
+	var rows := NodeLayout.GRID if ld == null else ld.rows
+	var room_max := NodeLayout.ROOM_MAX if ld == null else ld.room_max()
+	var room_center := NodeLayout.ROOM_CENTER if ld == null else ld.room_center()
+	var exit_pos := NodeLayout.EXIT_POS if ld == null else ld.exit_pos
 	var pitch := deg_to_rad(ENTRY_PITCH_DEG)
 	var entry_look := spawn + Vector3(0.0, EYE_HEIGHT, 0.0) + Vector3(0.0, sin(pitch), -cos(pitch)) * 10.0   # на север, как вход в Фойе
 	# Хранилища Фойе — углы северной стены (блоки (0; 0) и (7; 0)), порталы между ними; у западного — площадка в блоке (0; 1).
-	var north_eye := NodeLayout.cell_center(3, 4)
-	var north_look := NodeLayout.cell_center(3, 0) + Vector3(0.0, LOOK_Y, 0.0)
-	var south_eye := NodeLayout.cell_center(3, 2)
-	var south_look := (NodeLayout.SPAWN + NodeLayout.EXIT_POS) * 0.5 + Vector3(0.0, 0.5, 0.0)   # между входом и площадкой выхода
+	# Для другой раскладки та же схема на оси (cols/2 − 1) — у 8×8 это 3; ряды не дальше последнего.
+	var axis := maxi((cols >> 1) - 1, 0)
+	var north_eye := NodeLayout.cell_center(axis, mini(4, rows - 1))
+	var north_look := NodeLayout.cell_center(axis, 0) + Vector3(0.0, LOOK_Y, 0.0)
+	var south_eye := NodeLayout.cell_center(axis, mini(2, rows - 1))
+	var south_look := (spawn + exit_pos) * 0.5 + Vector3(0.0, 0.5, 0.0)   # между входом и площадкой выхода
 	# Западное хранилище и его площадка — по раскладке (центры клеток 1 м), а не по центрам блоков 2×2.
 	var wy := deg_to_rad(WEDGE_YAW_DEG)
 	var wp := deg_to_rad(WEDGE_PITCH_DEG)
 	var wedge_look := spawn + Vector3(0.0, EYE_HEIGHT, 0.0) + Vector3(sin(wy) * cos(wp), sin(wp), -cos(wy) * cos(wp)) * 10.0
-	var west: Dictionary = LayoutData.cached("foyer").vaults[0]
+	var vaults: Array = LayoutData.cached("foyer").vaults if ld == null or ld.vaults.is_empty() else ld.vaults
+	var west: Dictionary = vaults[0]
 	var west_slot: Vector3 = west["slot"]
 	var vault := Vector3(west_slot.x, LOOK_Y, west_slot.z)
 	var vault_pad: Vector3 = west["pad"]
-	var center := Vector3(NodeLayout.ROOM_CENTER.x, 0.0, NodeLayout.ROOM_CENTER.z)
+	var center := Vector3(room_center.x, 0.0, room_center.z)
 	var north_c := Vector3(center.x, 0.0, NodeLayout.ROOM_MIN.y + TOP_HALF_OFFSET)
-	var south_c := Vector3(center.x, 0.0, NodeLayout.ROOM_MAX.y - TOP_HALF_OFFSET)
+	var south_c := Vector3(center.x, 0.0, room_max.y - TOP_HALF_OFFSET)
+	var k := top_scale(ld)
 	return {
 		"entry": _eye(spawn, entry_look),
 		"north": _eye(north_eye, north_look),
 		"south": _eye(south_eye, south_look),
 		"vault_w": _eye(vault_pad, vault),
 		"wedge": _eye(spawn, wedge_look),
-		"top": _top(center, TOP_HEIGHT),
-		"top_north": _top(north_c, TOP_HALF_HEIGHT),
-		"top_south": _top(south_c, TOP_HALF_HEIGHT),
+		"top": _top(center, TOP_HEIGHT * k),
+		"top_north": _top(north_c, TOP_HALF_HEIGHT * k),
+		"top_south": _top(south_c, TOP_HALF_HEIGHT * k),
 	}

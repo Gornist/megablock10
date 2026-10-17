@@ -41,7 +41,7 @@ const BOOTH_LAMP_LEVEL := 2
 ## Варианты модуля (другой seed, тот же размер): узор не повторяется, девять одинаковых плиток подряд — запрещены (assets/ARCHITECTURE.md, п. 6).
 ## Экземпляры модуля делятся по вариантам по кругу; первый вариант всегда в комнате (его путь — NodeAssets.env_path(module)).
 const VARIANTS := {
-	# пол — один чёрный тайл на всю комнату (решение владельца 05.10.2026), граница комнаты — кромка; обе в NodeLayout.ROOM_CENTER, один раз
+	# пол — один чёрный тайл на всю комнату (решение владельца 05.10.2026), граница комнаты — кромка; ставится в центр комнаты (room_center), один раз, масштаб по размеру карты (floor_scale)
 	"floor": ["floor_slab_16"],
 	"ceiling": ["ceiling", "ceiling_b", "ceiling_c"],
 	"far_floor": ["far_floor", "far_floor_b", "far_floor_c"],
@@ -53,6 +53,8 @@ const REFLECTED := ["lockdown_gate", "pillar", "cover", "platform"]
 const CEILING_H := 5.0
 const LAYER_PITCH := 7.0
 const FAR_STEP := 11.0
+## Сторона запечённой плиты пола (env/floor_slab_16), м: растягивается до размера карты (floor_scale).
+const FLOOR_SLAB_M := 16.0
 ## Стена и дверь стоят на краю ячейки: модуль окружения центрирован в ячейке, поэтому его сдвигают к наружному краю на столько метров.
 const WALL_EDGE := 0.9
 ## Дальний план: уровни пластов и радиус сетки участков 11 м вокруг центра комнаты (в участках); у нашего пласта пустые участки под комнатой.
@@ -170,7 +172,7 @@ func set_booths(list: Array) -> void:
 		if not _booths.has(id) or not is_instance_valid((_booths[id] as Dictionary)["node"]):
 			var c: Array = v["c"]
 			var pos := NodeGrid.center(Vector2i(int(c[0]), int(c[1])))
-			var n := _place(_room, BOOTH_PATH, pos, NodeLayout.cardinal_yaw(pos) + PI)   # cardinal_yaw — «лицом +Z»; у будки лицо −Z
+			var n := _place(_room, BOOTH_PATH, pos, NodeLayout.cardinal_yaw(pos, room_center()) + PI)   # cardinal_yaw — «лицом +Z»; у будки лицо −Z
 			n.name = "Booth_" + id
 			var door := n.find_child("Door", true, false) as Node3D
 			_booths[id] = {"node": n, "door": door, "door_rest": door.position if door != null else Vector3.ZERO, "lamp": n.find_child("Lamp", true, false) as Node3D}
@@ -293,6 +295,43 @@ func exit_cells() -> Array[Vector3]:
 	return NodeLayout.exit_platform_cells() if layout == null else layout.exit_cells
 
 
+## Размер карты в ячейках 2 м (столбцы, строки): раскладка W×H или прежняя комната 8×8.
+func room_cells() -> Vector2i:
+	return Vector2i(NodeLayout.GRID, NodeLayout.GRID) if layout == null else Vector2i(layout.cols, layout.rows)
+
+
+## Центр комнаты (y = 0): по нему смотрят вход, порталы и выход, вокруг него дальний план. Для 8×8 — NodeLayout.ROOM_CENTER.
+func room_center() -> Vector3:
+	return NodeLayout.ROOM_CENTER if layout == null else layout.room_center()
+
+
+## Юго-восточный угол комнаты (x, z), м.
+func room_max() -> Vector2:
+	return NodeLayout.ROOM_MAX if layout == null else layout.room_max()
+
+
+## Масштаб плиты пола FLOOR_SLAB_M × FLOOR_SLAB_M до размера карты: по X — столбцы, по Z — строки, по Y — 1 (толщина и вуаль не растут). У 8×8 — единица.
+func floor_scale() -> Vector3:
+	var dim := room_cells()
+	return Vector3(dim.x * NodeLayout.CELL / FLOOR_SLAB_M, 1.0, dim.y * NodeLayout.CELL / FLOOR_SLAB_M)
+
+
+## Что покрывает пол по плоскости (x, z): прямоугольник от ROOM_MIN до юго-восточного угла комнаты.
+func floor_rect() -> Rect2:
+	var c := room_center()
+	var half := Vector2(floor_scale().x, floor_scale().z) * FLOOR_SLAB_M * 0.5
+	return Rect2(Vector2(c.x, c.z) - half, half * 2.0)
+
+
+## На сколько участков (11 м) дальний план шире обычного: нужно, только когда сторона комнаты не помещается в «дыру» под нашим пластом (3 участка = 33 м).
+## До 12×12 (24 м) — ноль, дальний план прежний.
+func far_grow() -> int:
+	var dim := room_cells()
+	var side := maxi(dim.x, dim.y) * NodeLayout.CELL
+	var hole_half: float = (float(FAR_LAYERS[0]["hole"]) + 0.5) * FAR_STEP
+	return maxi(0, ceili((side * 0.5 - hole_half) / FAR_STEP))
+
+
 ## Сколько экземпляров каждого модуля в комнате (для проверки сетки).
 func module_counts() -> Dictionary:
 	return _counts
@@ -316,15 +355,17 @@ func _room_transforms() -> Dictionary:
 	var out := {}
 	for module in MODULES:
 		out[module] = []
-	# Пол — один тайл: по одному разу в центре (origin ассетов — центр плиты), без поворота.
-	out["floor"].append(Transform3D(Basis.IDENTITY, NodeLayout.ROOM_CENTER))
-	var last := NodeLayout.GRID - 1
-	for iz in NodeLayout.GRID:
-		for ix in NodeLayout.GRID:
+	# Пол — один тайл: по одному разу в центре комнаты (origin ассетов — центр плиты), без поворота; плита 16×16 м растянута по осям X и Z до размера карты
+	# (8×8 — масштаб ровно 1). Сетка клеток в шейдере берётся по мировым x, z, поэтому растяжение её не искажает.
+	out["floor"].append(Transform3D(Basis.from_scale(floor_scale()), room_center()))
+	var dim := room_cells()
+	var last := dim.y - 1
+	for iz in dim.y:
+		for ix in dim.x:
 			var c := NodeLayout.cell_center(ix, iz)
 			out["ceiling"].append(Transform3D(Basis(Vector3.UP, PI / 2.0 * ((ix + iz * 3 + 1) % 4)), c + Vector3(0, CEILING_H, 0)))
 			# Ворота LOCKDOWN — в южной стене на месте дверей выхода (угловые ячейки не в счёт: двери выхода сбоку от оси площадки).
-			if iz == last and ix > 0 and ix < last and _is_exit_door(c):
+			if iz == last and ix > 0 and ix < dim.x - 1 and _is_exit_door(c):
 				var wb := Basis(Vector3.UP, PI)
 				out["lockdown_gate"].append(Transform3D(wb, c + wb * Vector3(0, 0, -WALL_EDGE)))  # на наружный край ячейки
 	for c in exit_cells():
@@ -340,13 +381,16 @@ func _room_transforms() -> Dictionary:
 ## Дальний план: участки 11×11 м сеткой вокруг центра комнаты, на трёх пластах (наш, выше, ниже). У участка две вещи: пол и потолок.
 func _far_transforms(out: Dictionary) -> void:
 	var n := 0
+	var center := room_center()
+	var grow := far_grow()
 	for layer in FAR_LAYERS:
-		var r: int = layer["r"]
+		var r: int = int(layer["r"]) + grow
+		var hole: int = int(layer["hole"]) + (grow if int(layer["hole"]) > 0 else 0)
 		for gx in range(-r, r + 1):
 			for gz in range(-r, r + 1):
-				if int(layer["hole"]) > 0 and absi(gx) <= int(layer["hole"]) and absi(gz) <= int(layer["hole"]):
+				if hole > 0 and absi(gx) <= hole and absi(gz) <= hole:
 					continue  # под комнатой — она сама
-				var p := Vector3(NodeLayout.ROOM_CENTER.x + gx * FAR_STEP, float(layer["y"]), NodeLayout.ROOM_CENTER.z + gz * FAR_STEP)
+				var p := Vector3(center.x + gx * FAR_STEP, float(layer["y"]), center.z + gz * FAR_STEP)
 				var b := Basis(Vector3.UP, PI / 2.0 * (n % 4))
 				out["far_floor"].append(Transform3D(b, p))
 				out["far_ceiling"].append(Transform3D(b, p + Vector3(0, CEILING_H, 0)))
@@ -463,7 +507,7 @@ func _attach_exit_cloud() -> void:
 	var host := Node3D.new()
 	host.name = "ExitFrame"
 	host.position = exit_pos()
-	host.rotation.y = NodeLayout.yaw_facing(exit_pos(), NodeLayout.ROOM_CENTER)
+	host.rotation.y = NodeLayout.yaw_facing(exit_pos(), room_center())
 	_room.add_child(host)
 	_attach_cloud("exit", host, NodeAssets.env_path("exit_frame"))
 
@@ -621,7 +665,7 @@ func set_portals(portals: Array) -> void:
 	for pt in portals:
 		var p: Array = pt["p"]
 		var pos := Vector3(float(p[0]), 0.0, float(p[1]))
-		var yaw := NodeLayout.yaw_facing(pos, NodeLayout.ROOM_CENTER)
+		var yaw := NodeLayout.yaw_facing(pos, room_center())
 		var portal_ok := _place(_props, NodeAssets.prop_path("portal"), pos, yaw)
 		_attach_cloud("portal", portal_ok, NodeAssets.prop_path("portal"))
 		_portals.append({

@@ -133,9 +133,10 @@ static func yaw_facing(from: Vector3, to: Vector3) -> float:
 
 
 ## Поворот вокруг Y лицом к центру комнаты по ближайшему направлению сетки (0, ±90°, 180°): хранилища и датчик стоят вдоль стен.
-static func cardinal_yaw(p: Vector3) -> float:
-	var dx := ROOM_CENTER.x - p.x
-	var dz := ROOM_CENTER.z - p.z
+## `center` — центр комнаты раскладки (LayoutData.room_center()); по умолчанию — комната 8×8.
+static func cardinal_yaw(p: Vector3, center: Vector3 = ROOM_CENTER) -> float:
+	var dx := center.x - p.x
+	var dz := center.z - p.z
 	if absf(dx) > absf(dz):
 		return PI / 2.0 if dx > 0.0 else -PI / 2.0
 	return 0.0 if dz > 0.0 else PI
