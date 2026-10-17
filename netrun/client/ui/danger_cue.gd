@@ -9,8 +9,7 @@ const DROP := 0.04           ## метка чуть ниже оси взгляд
 const SHOW_SEC := 1.6        ## сколько держится метка
 const WAKE_SHOW_SEC := 1.2   ## метка отсчёта живёт до следующего такта
 const FADE_SEC := 0.35       ## плавное гашение в конце
-const FLASH_SEC := 0.7       ## красная вспышка краёв на ожог
-const FLASH_START := 0.85
+const FLASH_HALF_FOV := 0.95   ## половина горизонтального поля зрения по умолчанию (очки, нет обычной камеры), рад
 const BURN_PULSE_AMP := 1.0
 const BURN_PULSE_S := 0.35
 const ALARM_PULSE_AMP := 0.5
@@ -24,20 +23,6 @@ const BURN_DB := -4.0
 const WAKE_NOTES := [[330.0, 0.06]]
 const ALARM_NOTES := [[523.0, 0.1], [698.0, 0.14]]
 const BURN_NOTES := [[110.0, 0.22], [82.0, 0.28]]
-
-const FLASH_SHADER := """
-shader_type spatial;
-render_mode unshaded, blend_mix, depth_test_disabled, depth_draw_never, cull_disabled;
-uniform float strength = 0.0;
-uniform vec3 tint = vec3(0.9, 0.05, 0.08);
-uniform float half_fov = 0.95;
-void fragment() {
-	float ang = acos(clamp(dot(normalize(VERTEX), vec3(0.0, 0.0, -1.0)), -1.0, 1.0));
-	float edge = smoothstep(half_fov * 0.35, half_fov, ang);
-	ALBEDO = tint;
-	ALPHA = edge * strength;
-}
-"""
 
 ## Куда уходят импульсы (по умолчанию — ничего; сцена подключает DeckFeedback.pulse): Callable(hand: String, amplitude: float, seconds: float).
 var pulse_sink: Callable = Callable()
@@ -55,6 +40,20 @@ var _burn_last := 0
 var _alarm_last := 0
 
 
+## Половина горизонтального поля зрения камеры, рад: на плоском экране считается по fov и соотношению сторон окна; в очках (рантайм сам задаёт поле) и без камеры — FLASH_HALF_FOV.
+func _half_fov() -> float:
+	var cam := get_viewport().get_camera_3d() if is_inside_tree() else null
+	if cam == null or cam.get_viewport() == null or cam.get_viewport().use_xr:
+		return FLASH_HALF_FOV
+	var size := cam.get_viewport().get_visible_rect().size
+	if size.y <= 0.0:
+		return FLASH_HALF_FOV
+	var half_v := deg_to_rad(cam.fov) * 0.5
+	if cam.keep_aspect == Camera3D.KEEP_HEIGHT:
+		return atan(tan(half_v) * size.x / size.y)
+	return half_v
+
+
 func _ready() -> void:
 	_label = Label3D.new()
 	_label.font_size = 96
@@ -65,11 +64,7 @@ func _ready() -> void:
 	_label.visible = false
 	Label3DSharp.apply(_label)
 	add_child(_label)
-	var sh := Shader.new()
-	sh.code = FLASH_SHADER
-	_flash_mat = ShaderMaterial.new()
-	_flash_mat.shader = sh
-	_flash_mat.render_priority = 105
+	_flash_mat = AssetMaterials.burn_flash_material(_half_fov())   # шейдер и цвет — у Blender; клиент меняет только strength
 	var quad := QuadMesh.new()
 	quad.size = Vector2(2.0, 2.0)
 	quad.material = _flash_mat
@@ -107,8 +102,9 @@ func burns(count: int, limit: int = 3) -> void:
 	_burn_last = count
 	shown["burn"] += 1
 	_show("ОЖОГ %d/%d" % [count, limit], AssetMaterials.layer("hud_bad"), SHOW_SEC, "burn")
-	_flash_left = FLASH_SEC
-	_flash_mat.set_shader_parameter("strength", FLASH_START)
+	_flash_left = AssetMaterials.BURN_FLASH_SEC
+	_flash_mat.set_shader_parameter("half_fov", _half_fov())
+	_flash_mat.set_shader_parameter("strength", AssetMaterials.BURN_FLASH_START)
 	_flash.visible = true
 	_pulse("left", BURN_PULSE_AMP, BURN_PULSE_S)
 	_pulse("right", BURN_PULSE_AMP, BURN_PULSE_S)
@@ -172,7 +168,7 @@ func _step(delta: float) -> void:
 			_label.visible = false
 	if _flash_left > 0.0:
 		_flash_left -= delta
-		_flash_mat.set_shader_parameter("strength", FLASH_START * clampf(_flash_left / FLASH_SEC, 0.0, 1.0))
+		_flash_mat.set_shader_parameter("strength", AssetMaterials.BURN_FLASH_START * clampf(_flash_left / AssetMaterials.BURN_FLASH_SEC, 0.0, 1.0))
 		if _flash_left <= 0.0:
 			_flash.visible = false
 	if _left <= 0.0 and _flash_left <= 0.0:
