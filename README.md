@@ -82,7 +82,7 @@ TCP на постоянный порт 47100. Каждая строка идёт
 Нужны JDK 21 (его требует Paparazzi 2; байткод проекта — Java 17) и Android SDK command-line tools.
 
 ```bash
-sdkmanager "platform-tools" "platforms;android-36" "build-tools;35.0.0"   # один раз
+sdkmanager "platform-tools" "platforms;android-37.0" "build-tools;36.0.0"   # один раз
 ./gradlew assembleDebug                                                    # → app/build/outputs/apk/debug/app-debug.apk
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
