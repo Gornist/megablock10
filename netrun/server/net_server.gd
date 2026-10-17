@@ -203,10 +203,12 @@ func is_object_locked(object_id: String) -> bool:
 
 
 ## Поставить аватар в точку (переход через портал): сервер двигает его сам, предел скорости не мешает следующим позициям клиента.
-func teleport(session: String, pos: Vector3) -> void:
+## `dest_grid` — сетка узла назначения, если аватар ещё числится в прежнем узле (переход: set_node идёт после телепорта); иначе сетка узла сессии.
+func teleport(session: String, pos: Vector3, dest_grid: NodeGrid = null) -> void:
 	var a := get_avatar(session)
 	if a != null:
-		a.position = NodeLayout.clamp_to_room(Vector3(pos.x, 0.0, pos.z))
+		var g := dest_grid if dest_grid != null else grid_for(session)
+		a.position = NodeLayout.clamp_to_room(Vector3(pos.x, 0.0, pos.z), g.room_max())
 		_pos_time_ms[session] = Time.get_ticks_msec()
 		_tp_count[session] = teleport_count(session) + 1
 
@@ -409,7 +411,7 @@ func _handle_pos(session: String, p: Variant) -> void:
 	var now := Time.get_ticks_msec()
 	var dt := minf((now - int(_pos_time_ms.get(session, now))) / 1000.0, 1.0)
 	_pos_time_ms[session] = now
-	var target := NodeLayout.clamp_to_room(Vector3(p.x, 0.0, p.z))
+	var target := NodeLayout.clamp_to_room(Vector3(p.x, 0.0, p.z), grid_for(session).room_max())
 	var allowed := MAX_SPEED * dt + 0.3
 	var d := target - a.position
 	if d.length() > allowed:
@@ -446,7 +448,7 @@ func _handle_teleport(session: String, p: Variant) -> void:
 	var tick_rule := move_check.is_valid()
 	var cooldown := 0.0 if tick_rule else RigMath.TELEPORT_COOLDOWN_LIMIT - TELEPORT_COOLDOWN_SLACK   # такты: перезарядки нет, ход один за такт
 	var reason := RigMath.teleport_verdict(a.position, to, since, node_of(session) == TUNNEL_NODE,
-		RigMath.TELEPORT_RANGE_LIMIT + TELEPORT_RANGE_SLACK, cooldown)
+		RigMath.TELEPORT_RANGE_LIMIT + TELEPORT_RANGE_SLACK, cooldown, grid_for(session).room_max())
 	if reason.is_empty() and tick_rule and bool(move_check.call(session)):
 		reason = WorldMsg.REASON_MOVED
 	if reason.is_empty():

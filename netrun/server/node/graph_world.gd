@@ -245,7 +245,7 @@ func _complete_transit(session: String) -> void:
 	if ds == null:
 		return
 	var arrive := (nodes[dest] as GrayNode).layout.spawn if back else NodeLayout.arrival_in((nodes[to] as GrayNode).layout, graph.slot_to(to, from))
-	net.teleport(session, arrive)
+	net.teleport(session, arrive, (nodes[dest] as GrayNode).ice_grid)   # узел сессии сменится строчкой ниже: комната — назначения, не прежнего размера
 	net.set_node(session, dest)
 	_where[session] = dest
 	(nodes[dest] as GrayNode).adopt_session(session, ds)

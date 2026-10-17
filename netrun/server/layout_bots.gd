@@ -21,7 +21,8 @@ var grid: NodeGrid
 var cycle := 1
 var _skip := 0   # тактов «разгона» патруля до петли маршрута (в таблицу не входят)
 var error := ""
-var _cols := 16
+var _cols := 16   # размер комнаты в клетках 1 м — из сетки раскладки (grid.size), см. _init
+var _rows := 16
 var _exposed := PackedByteArray()   # [(t − 1) mod cycle] * cells + idx → 0/1 под взглядом или лучом
 var _sensor_on: Array = []          # по датчикам: PackedByteArray по (t − 1) mod cycle
 var _sensor_cells: Array = []       # по датчикам: Array[Vector2i]
@@ -33,7 +34,8 @@ func _init(l: LayoutData, tier_name: String = "BASE") -> void:
 	layout = l
 	tier = tier_name
 	grid = l.grid()
-	_cols = NodeGrid.cols()
+	_cols = grid.size.x
+	_rows = grid.size.y
 	if l.is_legacy():
 		return
 	_build()
@@ -148,7 +150,7 @@ func _build() -> void:
 	beacons = _make_beacons()
 	sensors = _make_sensors()
 	var rows := _skip + cycle   # такты разгона как есть, дальше один цикл
-	var n := _cols * NodeGrid.rows()
+	var n := _cols * _rows
 	_exposed.resize(rows * n)
 	_exposed.fill(0)
 	_sensor_on.clear()
@@ -194,7 +196,7 @@ func _build() -> void:
 
 ## Под взглядом или лучом клетка i в такт t (состояние после t тактов).
 func exposed(t: int, i: int) -> bool:
-	return _exposed[_ti(t) * _cols * NodeGrid.rows() + i] == 1
+	return _exposed[_ti(t) * _cols * _rows + i] == 1
 
 
 ## Строка таблицы для такта t (состояние после t тактов).
@@ -249,7 +251,7 @@ func window_of(c: Vector2i) -> int:
 ## Один отрезок: от клетки `from` в такт t0 до любой клетки из targets (set индексов), `dwell` тактов стоит на ней. Минимум (обнаружений,
 ## тактов). {cost, ticks, path: Array[int]} или {} — не дошёл за LEG_HORIZON. Первые ENTRY_HIDDEN_TICKS тактов отсчёта скрыты (flag hidden).
 func _leg(from: int, t0: int, targets: Dictionary, dwell: int, hidden_ticks: int) -> Dictionary:
-	var n := _cols * NodeGrid.rows()
+	var n := _cols * _rows
 	var cur := {from: 0}
 	var parents: Array = []
 	var best := {}
@@ -512,8 +514,8 @@ static func check_paths(l: LayoutData) -> Dictionary:
 
 ## Число непересекающихся по промежуточным клеткам путей (до limit) — поток с разбиением клеток на вход и выход.
 static func _disjoint_paths(grid: NodeGrid, a: Vector2i, b: Vector2i, limit: int) -> int:
-	var cols := NodeGrid.cols()
-	var n := cols * NodeGrid.rows()
+	var cols := grid.size.x
+	var n := cols * grid.size.y
 	var cap := {}   # u * 2n + v → остаточная ёмкость
 	var adj: Array = []
 	adj.resize(2 * n)
@@ -526,7 +528,7 @@ static func _disjoint_paths(grid: NodeGrid, a: Vector2i, b: Vector2i, limit: int
 			(adj[u] as Array).append(v)
 		if not (adj[v] as Array).has(u):
 			(adj[v] as Array).append(u)
-	for y in NodeGrid.rows():
+	for y in grid.size.y:
 		for x in cols:
 			var c := Vector2i(x, y)
 			if grid.is_occupied(c):
@@ -635,7 +637,7 @@ func _seen_at(i: int, s: int) -> bool:
 func safe_cells() -> Dictionary:
 	if not _safe.is_empty():
 		return _safe
-	for y in NodeGrid.rows():
+	for y in _rows:
 		for x in _cols:
 			var c := Vector2i(x, y)
 			if grid.is_occupied(c):
@@ -850,7 +852,7 @@ static func check_safe_steps(l: LayoutData, tier_name: String = "BASE") -> Dicti
 	for v: Dictionary in l.vaults:
 		if str(v["ring"]) != "outer":
 			continue
-		var r := b.stairs_path(_idx_static(v["pad1"]))
+		var r := b.stairs_path(b._idx(v["pad1"]))
 		if bool(r.get("ok", false)):
 			parts.append("хр%s: %d звеньев пути, окон %d" % [str(v["cell1"]), r["steps"], r["windows"]])
 		else:
@@ -872,7 +874,7 @@ static func check_escape(l: LayoutData, tier_name: String = "BASE") -> Dictionar
 	var bad: Array[String] = []
 	var parts: Array[String] = []
 	for v: Dictionary in l.vaults:
-		var e := b.escape_of(_idx_static(v["pad1"]))
+		var e := b.escape_of(b._idx(v["pad1"]))
 		var hops := int(e["hops"])
 		parts.append("хр%s: %d прыжков, небезопасная на пути %s" % [str(v["cell1"]), hops, "да" if e["unsafe"] else "нет"])
 		if hops < ESCAPE_MIN_HOPS or hops > ESCAPE_MAX_HOPS:
@@ -887,6 +889,7 @@ static func check_escape(l: LayoutData, tier_name: String = "BASE") -> Dictionar
 	return {"ok": false, "warning": false, "detail": "; ".join(bad) + " (" + detail + ")"}
 
 
+## Индекс клетки в комнате 8×8 блоков (16 столбцов); для раскладки другого размера — `_idx` экземпляра.
 static func _idx_static(c: Vector2i) -> int:
 	return c.y * NodeGrid.cols() + c.x
 
@@ -928,7 +931,7 @@ func black_runner_report(stride: int = 2) -> Dictionary:
 	var lair := {}
 	for c: Vector2i in layout.lair.get("cells", []):
 		lair[c] = true
-	for y in range(0, NodeGrid.rows(), stride):
+	for y in range(0, _rows, stride):
 		for x in range(0, _cols, stride):
 			var c := Vector2i(x, y)
 			if grid.is_occupied(c) or lair.has(c):
@@ -981,11 +984,9 @@ static func check_core_rules(l: LayoutData, tier_name: String = "NIGHTMARE") -> 
 	if not seen:
 		bad.append("логово не видно с клетки входа %s" % str(src))
 	# 2. ≥ 2 пути до выхода мимо логова
-	var wide := NodeGrid.new()
-	wide.occ = grid.occ.duplicate()
-	wide.landing = grid.landing
-	for y in NodeGrid.rows():
-		for x in NodeGrid.cols():
+	var wide := grid.duplicate_grid()
+	for y in grid.size.y:
+		for x in grid.size.x:
 			var c := Vector2i(x, y)
 			for lc in lair:
 				if maxi(absi(c.x - lc.x), absi(c.y - lc.y)) <= LAIR_KEEP_OUT:
@@ -1016,7 +1017,7 @@ static func check_core_rules(l: LayoutData, tier_name: String = "NIGHTMARE") -> 
 		for v: Dictionary in l.vaults:
 			if str(v["ring"]) != "outer":
 				continue
-			var hops := int(b.escape_of(_idx_static(v["pad1"]))["hops"])
+			var hops := int(b.escape_of(b._idx(v["pad1"]))["hops"])
 			if hops < 0 or hops > CORE_MAX_HOPS:
 				bad.append("хранилище %s: до выхода %d прыжков (≤ %d)" % [str(v["cell"]), hops, CORE_MAX_HOPS])
 	# 4. бегун

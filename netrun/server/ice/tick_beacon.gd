@@ -36,9 +36,7 @@ var _vis: Dictionary = {}
 func _init(cell: Vector2i, start_dir: Vector2i, grid: NodeGrid, settings: Dictionary = {}) -> void:
 	_cell = cell
 	# Тумба (блок 2×2 карты) не загораживает сама себе взгляд: свой блок в копии сетки свободен (иначе из его угла видно лишь в сторону наружу).
-	_grid = NodeGrid.new()
-	_grid.occ = grid.occ.duplicate()
-	_grid.landing = grid.landing
+	_grid = grid.duplicate_grid()
 	var bx := cell.x - posmod(cell.x, 2)
 	var by := cell.y - posmod(cell.y, 2)
 	for dx in 2:

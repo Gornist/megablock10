@@ -78,12 +78,14 @@ const DAEMON_NAMES := {"ghost_1": "Призрак", "jitter_1": "Дрожь", "e
 const DEFAULT_DECK_CELLS := {"ghost_1": ["1C", "BD"], "jitter_1": ["55", "E9"]}
 
 
-static func in_room(p: Vector3) -> bool:
-	return p.x >= ROOM_MIN.x and p.x <= ROOM_MAX.x and p.z >= ROOM_MIN.y and p.z <= ROOM_MAX.y
+## Точка в комнате. `room_max` — юго-восточный угол комнаты раскладки (LayoutData.room_max(), NodeGrid.room_max()); по умолчанию — 8×8 блоков.
+## ROOM_MIN общий для всех размеров: комната растёт на юг и восток.
+static func in_room(p: Vector3, room_max: Vector2 = ROOM_MAX) -> bool:
+	return p.x >= ROOM_MIN.x and p.x <= room_max.x and p.z >= ROOM_MIN.y and p.z <= room_max.y
 
 
-static func clamp_to_room(p: Vector3) -> Vector3:
-	return Vector3(clampf(p.x, ROOM_MIN.x, ROOM_MAX.x), p.y, clampf(p.z, ROOM_MIN.y, ROOM_MAX.y))
+static func clamp_to_room(p: Vector3, room_max: Vector2 = ROOM_MAX) -> Vector3:
+	return Vector3(clampf(p.x, ROOM_MIN.x, room_max.x), p.y, clampf(p.z, ROOM_MIN.y, room_max.y))
 
 
 static func flat_distance(a: Vector3, b: Vector3) -> float:
@@ -115,8 +117,8 @@ static func _near_grid(offset: float, shift: float) -> bool:
 
 
 ## Расстояние от точки до ближайшей стены (до плоскости на краю ячейки, толщину стены не вычитаем).
-static func wall_gap(p: Vector3) -> float:
-	return minf(minf(p.x - ROOM_MIN.x, ROOM_MAX.x - p.x), minf(p.z - ROOM_MIN.y, ROOM_MAX.y - p.z))
+static func wall_gap(p: Vector3, room_max: Vector2 = ROOM_MAX) -> float:
+	return minf(minf(p.x - ROOM_MIN.x, room_max.x - p.x), minf(p.z - ROOM_MIN.y, room_max.y - p.z))
 
 
 ## Центры четырёх ячеек под площадкой выхода.
@@ -186,8 +188,9 @@ static func arrival_in(layout: LayoutData, slot: int) -> Vector3:
 	if slot < 0 or slot >= layout.portals.size() or layout.portals[slot] == Vector3.INF:
 		return layout.spawn
 	var p: Vector3 = layout.portals[slot]
-	var d := Vector3(ROOM_CENTER.x - p.x, 0.0, ROOM_CENTER.z - p.z).normalized()
-	return clamp_to_room(p + d * ARRIVE_DIST)
+	var center := layout.room_center()
+	var d := Vector3(center.x - p.x, 0.0, center.z - p.z).normalized()
+	return clamp_to_room(p + d * ARRIVE_DIST, layout.room_max())
 
 
 ## Площадка у хранилища раскладки с центром слота slot (y не важен); null — такого хранилища в раскладке нет.

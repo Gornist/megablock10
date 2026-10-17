@@ -143,8 +143,9 @@ static func recenter_origin(origin_pos: Vector3, head_global: Vector3, target: V
 ## игрок стоит (отсюда считается дальность), floor_y — высота пола. Луч вниз — пересечение с полом; горизонтальный и выше —
 ## дальняя точка по горизонтальному направлению. Результат обрезается по дальности (вдоль линии от from), затем по комнате
 ## (обрезка по комнате расстояние не увеличивает). Возвращает {valid, p, clamped_range, clamped_room}; valid = false —
-## целиться некуда (стик вперёд, а контроллер смотрит строго вверх).
-static func teleport_aim(hand: Vector3, dir: Vector3, from: Vector3, range_m: float = TELEPORT_RANGE, floor_y: float = 0.0) -> Dictionary:
+## целиться некуда (стик вперёд, а контроллер смотрит строго вверх). room_max — юго-восточный угол комнаты раскладки (NodeGrid.room_max()).
+static func teleport_aim(hand: Vector3, dir: Vector3, from: Vector3, range_m: float = TELEPORT_RANGE, floor_y: float = 0.0,
+		room_max: Vector2 = NodeLayout.ROOM_MAX) -> Dictionary:
 	var d := dir.normalized() if dir.length() > 0.0001 else Vector3.ZERO
 	var flat := Vector2(d.x, d.z)
 	var raw: Vector3
@@ -161,7 +162,7 @@ static func teleport_aim(hand: Vector3, dir: Vector3, from: Vector3, range_m: fl
 	if cut_range:
 		off = off.normalized() * range_m
 	var p := Vector3(from.x + off.x, floor_y, from.z + off.y)
-	var inside := NodeLayout.clamp_to_room(p)
+	var inside := NodeLayout.clamp_to_room(p, room_max)
 	var cut_room := not is_equal_approx(inside.x, p.x) or not is_equal_approx(inside.z, p.z)
 	return {"valid": true, "p": inside, "clamped_range": cut_range, "clamped_room": cut_room}
 
@@ -183,14 +184,14 @@ static func arc_points(from: Vector3, to: Vector3, count: int, lift: float = -1.
 ## красным) и у сервера (с допусками на запаздывание позы): since_last_sec — сколько прошло с прошлого телепорта (INF — не было),
 ## max_range — дальность по полу, min_cooldown — наименьшая пауза.
 static func teleport_verdict(from: Vector3, to: Vector3, since_last_sec: float, in_tunnel: bool,
-		max_range: float = TELEPORT_RANGE_LIMIT, min_cooldown: float = TELEPORT_COOLDOWN_LIMIT) -> String:
+		max_range: float = TELEPORT_RANGE_LIMIT, min_cooldown: float = TELEPORT_COOLDOWN_LIMIT, room_max: Vector2 = NodeLayout.ROOM_MAX) -> String:
 	if in_tunnel:
 		return WorldMsg.REASON_TUNNEL
 	if since_last_sec < min_cooldown:
 		return WorldMsg.REASON_COOLDOWN
 	if NodeLayout.flat_distance(from, to) > max_range:
 		return WorldMsg.REASON_RANGE
-	if not NodeLayout.in_room(to):
+	if not NodeLayout.in_room(to, room_max):
 		return WorldMsg.REASON_ROOM
 	return ""
 

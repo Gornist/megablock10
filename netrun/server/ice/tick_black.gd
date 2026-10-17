@@ -85,9 +85,7 @@ func _init(lair: Array[Vector2i], home: Vector2i, grid: NodeGrid, settings: Dict
 	_cell = home
 	burns = shared_burns
 	# Логово занято на карте, но ICE спит и выходит из него: в копии сетки его клетки свободны.
-	_grid = NodeGrid.new()
-	_grid.occ = grid.occ.duplicate()
-	_grid.landing = grid.landing
+	_grid = grid.duplicate_grid()   # с размером комнаты: на большой карте ICE не упирается в границы 16×16
 	for c in _lair:
 		_grid.occ.erase(c)
 

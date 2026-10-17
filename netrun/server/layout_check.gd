@@ -46,7 +46,25 @@ static func run_all(layout: LayoutData, tier: String = "BASE") -> Dictionary:
 		"ice_gear": check_ice_gear(layout),
 		"periods": LayoutBots.check_periods(layout),
 		"paths": LayoutBots.check_paths(layout),
+		"area": check_area(layout, tier),
 	}
+
+
+## Предел площади карты по тиру, клеток карты (блок 2×2 клетки сетки): BASE 64, HARD 100, NIGHTMARE 144. Неизвестный тир — как BASE.
+const AREA_MAX := {"BASE": 64, "HARD": 100, "NIGHTMARE": 144}
+
+
+static func area_max(tier: String) -> int:
+	return int(AREA_MAX.get(tier, AREA_MAX["BASE"]))
+
+
+## (ж) Площадь карты (cols × rows) не больше предела тира: больше — боты и игрок ходят слишком долго по одному узлу.
+static func check_area(layout: LayoutData, tier: String = "BASE") -> Dictionary:
+	var area := layout.cols * layout.rows
+	var limit := area_max(tier)
+	if area > limit:
+		return _res(false, "карта %d×%d = %d клеток, предел тира %s — %d" % [layout.cols, layout.rows, area, tier, limit])
+	return _res(true, "карта %d×%d = %d клеток (предел тира %s — %d)" % [layout.cols, layout.rows, area, tier, limit])
 
 
 ## Проверки с прогоном ботов (вор, бегун; дольше остальных — секунды): отдельно от run_all.
@@ -282,8 +300,8 @@ static func check_cover(layout: LayoutData) -> Dictionary:
 static func check_dead_ends(layout: LayoutData) -> Dictionary:
 	var bad: Array[String] = []
 	var worst := 0
-	for sz in LayoutData.SIZE:
-		for sx in LayoutData.SIZE:
+	for sz in layout.rows:
+		for sx in layout.cols:
 			var b := Vector2i(sx, sz)
 			if _block_free(layout, b) and _free_neighbors(layout, b).size() <= 1:
 				var length := _dead_end_length(layout, b)
@@ -380,15 +398,15 @@ static func check_ice_gear(layout: LayoutData) -> Dictionary:
 			bad.append("Маяк %s стоит не в блоке «O»" % str(bd["id"]))
 		if keep.has(bc):
 			bad.append("Маяк %s на клетке %s" % [str(bd["id"]), keep[bc]])
-	for sz in LayoutData.SIZE:
-		for sx in LayoutData.SIZE:
+	for sz in layout.rows:
+		for sx in layout.cols:
 			if layout.blocks[sz][sx] == "O" and not beacon_blocks.has(Vector2i(sx, sz)):
 				bad.append("блок (%d,%d) «O» без записи kind: beacon" % [sx, sz])
 	var barrier_blocks := {}
 	for kd: Dictionary in layout.barriers:
 		barrier_blocks[kd["block"]] = true
-	for sz in LayoutData.SIZE:
-		for sx in LayoutData.SIZE:
+	for sz in layout.rows:
+		for sx in layout.cols:
 			if layout.blocks[sz][sx] == "B" and not barrier_blocks.has(Vector2i(sx, sz)):
 				bad.append("блок (%d,%d) «B» без записи kind: barrier" % [sx, sz])
 	for sd: Dictionary in layout.sensors:
@@ -434,7 +452,7 @@ static func check_arrival_safe(layout: LayoutData, ticks: int = ARRIVAL_SAFE_TIC
 		for dx in range(-1, 2):
 			for dy in range(-1, 2):
 				var z := c + Vector2i(dx, dy)
-				if NodeGrid.in_bounds(z) and not grid.is_occupied(z):
+				if grid.has_cell(z) and not grid.is_occupied(z):
 					zone.append(z)
 		var problem := ""
 		for z in zone:
@@ -469,7 +487,7 @@ static func _on_cell_center(p: Vector3) -> bool:
 
 
 static func _block_free(layout: LayoutData, b: Vector2i) -> bool:
-	if b.x < 0 or b.y < 0 or b.x >= LayoutData.SIZE or b.y >= LayoutData.SIZE:
+	if not layout.has_block(b):
 		return false
 	return not LayoutData.OCCUPIED_SYMBOLS.contains(layout.blocks[b.y][b.x])
 
@@ -487,7 +505,7 @@ static func _dead_end_length(layout: LayoutData, end: Vector2i) -> int:
 	var length := 1
 	var prev := end
 	var cur := end
-	for _i in LayoutData.SIZE * LayoutData.SIZE:
+	for _i in layout.cols * layout.rows:
 		var next: Array[Vector2i] = []
 		for n in _free_neighbors(layout, cur):
 			if n != prev:
