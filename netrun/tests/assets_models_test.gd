@@ -932,7 +932,9 @@ func test_black_lair_is_a_four_by_four_slab_with_three_states_and_a_sleeper_anch
 	for s in ["State_sleep", "State_waking", "State_empty"]:
 		var n := m.find_child(s, true, false) as Node3D
 		assert_bool(n != null and _meshes(n).size() > 0).override_failure_message("black_lair: нет состояния " + s).is_true()
-	# «пробуждение» выше сна (холм поднимается до 1,4 м)
+	# П6-6 (в): у спящего есть «сердце» (отдельный меш: AssetMaterials даёт ему быстрый пульс) — читается от входа
+	assert_bool((m.find_child("State_sleep", true, false) as Node3D).find_child("black_lair_heart", true, false) != null).override_failure_message("black_lair: нет black_lair_heart в State_sleep").is_true()
+	# «пробуждение» выше сна (спящий холм ≤ 1,9 м, пробуждение — до 3,5 м)
 	assert_float(_aabb(m.find_child("State_waking", true, false)).size.y).is_greater(_aabb(m.find_child("State_sleep", true, false)).size.y + 0.4)
 
 

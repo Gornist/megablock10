@@ -14,7 +14,7 @@
 | `models/ice/black_ice_lich.glb` | 0 / 300 | 183 / 600 | 301 / 350 | 0 | 3 | 1.8557 × 3.3711 × 2.1746 | points, streaks | idle, hunt, catch | feet | ок |
 | `models/ice/black_ice_raven.glb` | 0 / 300 | 157 / 600 | 296 / 350 | 0 | 3 | 2.9277 × 3.3711 × 2.0054 | points, streaks | idle, hunt, catch | feet | ок |
 | `models/ice/black_ice_scorpion.glb` | 0 / 300 | 221 / 600 | 278 / 350 | 0 | 3 | 8.022 × 3.3 × 8 | points, streaks | idle, hunt, catch | feet | ок |
-| `models/ice/black_lair.glb` | 68 / 300 | 282 / 360 | 240 / 260 | 0 | 8 | 4 × 2.382 × 4 | points, solid_dark, streaks | — | floor | ок |
+| `models/ice/black_lair.glb` | 68 / 300 | 282 / 360 | 240 / 260 | 0 | 8 | 4 × 2.9192 × 4 | points, solid_dark, streaks | — | floor | ок |
 | `models/env/ceiling.glb` | 144 / 300 | 0 / 0 | 0 / 0 | 1 | 2 | 1.5252 × 0.8115 × 1.4557 | shell_soft, solid_dark | — | ceiling | ок |
 | `models/env/ceiling_b.glb` | 108 / 300 | 0 / 0 | 0 / 0 | 1 | 2 | 1.1653 × 0.7915 × 1.5791 | shell_soft, solid_dark | — | ceiling | ок |
 | `models/env/ceiling_c.glb` | 36 / 300 | 0 / 0 | 0 / 0 | 1 | 2 | 1.1463 × 0.728 × 0.7571 | shell_soft, solid_dark | — | ceiling | ок |

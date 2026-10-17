@@ -289,8 +289,8 @@ def build_black_lair(out, name="black_lair", seed=34):
     # пучок горячих штрихов выше холма (отдельный меш: шейдер даёт ему быстрый пульс, холму — медленный, AssetMaterials.apply). Отдельный датчик: остальные состояния не сдвигаются.
     srng = random.Random(seed + 7)
     sleep = _mound(110, 1.25, 0.25, 0.75, 0.5, 0.9, red, "black_lair_mound", rnd=srng, w_lo=0.02, w_hi=0.034)
-    heart = _mound(14, 0.18, 1.0, 1.4, 0.8, 1.0, hot, "black_lair_heart", rnd=srng, w_lo=0.02, w_hi=0.03)
-    waking = _mound(80, 1.2, 0.45, 1.4, 0.45, 0.9, hot, "black_lair_rise")
+    heart = _mound(14, 0.18, 0.6, 0.9, 0.8, 1.0, hot, "black_lair_heart", rnd=srng, w_lo=0.02, w_hi=0.03)   # полувысота 0,6–0,9 → верх 1,3–1,9 м: сон ниже пробуждения
+    waking = _mound(80, 1.2, 0.8, 1.7, 0.45, 0.9, hot, "black_lair_rise")
     embers = [Vector((rng.uniform(-1.3, 1.3), rng.uniform(-1.3, 1.3), 0.15 + rng.uniform(0.0, 1.6))) for _ in range(50)]
     embers_obj = lib.point_cloud("black_lair_embers", embers, hot, half_size=0.012, seed=seed + 1, a_min=0.5, a_max=1.0)
     ash = [Vector((rng.uniform(-1.1, 1.1), rng.uniform(-1.1, 1.1), 0.11)) for _ in range(40)]
