@@ -481,6 +481,18 @@ func test_hack_panel_screen_and_anchor() -> void:
 		assert_float(n.dot(z)).override_failure_message("нормаль экрана не совпадает с +Z метки").is_greater(0.99)
 
 
+## Семейство «хранилище» (#424, Ш4): корпус панели на частицах, без пьедестала. Основание 0,34×0,34×0,02 читалось как круглая/квадратная ступень.
+func test_hack_panel_has_no_solid_pedestal_at_the_floor() -> void:
+	var p := _load("props", "hack_panel")
+	for mi in _meshes(p):
+		var role := String(mi.mesh.surface_get_material(0).resource_name) if mi.mesh.surface_get_material(0) != null else ""
+		if role != "solid_dark":
+			continue
+		var b: AABB = mi.transform * mi.get_aabb()
+		var wide_and_low: bool = maxf(b.size.x, b.size.z) > 0.3 and b.position.y < 0.05
+		assert_bool(wide_and_low).override_failure_message("hack_panel: %s — сплошная плита шире 0,3 м у пола (основание-пьедестал)" % mi.name).is_false()
+
+
 func test_hack_pad_is_a_thin_plate_under_the_feet() -> void:
 	var box := _aabb(_load("props", "hack_pad"))
 	assert_float(box.size.x).is_between(0.85, 1.0)

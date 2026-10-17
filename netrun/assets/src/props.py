@@ -327,7 +327,7 @@ def build_daemon_token(out, name="daemon_token", seed=31):
 
 def build_hack_panel(out, name="hack_panel"):
     """Панель взлома: рамка 0,5×0,4 м (чёрная плита 3 см, яркая кромка, цепочка точек), наклон 25° к игроку (верх отклонён назад, нормаль экрана на 25° вверх),
-    центр экрана на высоте 1,1 м, на тонкой стойке с плоским основанием. Узел `Screen` — квад 0,44×0,30 м с UV 0..1 (u вправо, v вниз, как видит игрок),
+    центр экрана на высоте 1,1 м, на стойке из штрихов и точек (без сплошной стойки и основания). Узел `Screen` — квад 0,44×0,30 м с UV 0..1 (u вправо, v вниз, как видит игрок),
     материал-заглушка тёмно-бирюзовый; узел `ScreenAnchor` — центр экрана, его +Z (Godot) направлен от экрана к игроку. Лицом к Blender +Y (Godot −Z); origin на полу."""
     lib.reset()
     rng = random.Random(41)
@@ -341,12 +341,17 @@ def build_hack_panel(out, name="hack_panel"):
     fglow = _xf_glow(frame, lambda co: co.y > 0.014 and (abs(co.x) > 0.249 or abs(co.z) > 0.199), rot=(TILT, 0, 0), offset=(0, 0, CZ))
     rim = _scaled(ice, 0.85)
     objs = [lib.obj_from_bm("panel_frame", frame, "solid_dark", cy, rgb_fn=lambda co: rim if _key(co) in fglow else void)]
-    pole = lib.box_bm((0.03, 0.03, 1.07), center=(0, -0.014, 0.02 + 0.535))
-    foot = lib.box_bm((0.34, 0.34, 0.02), center=(0, 0, 0.01))
-    g_foot = lib.lit_part(foot, 0.02, 0.012)
-    pbm = lib.merge_bm(pole, foot)
-    dim, rim_f = _scaled(cy, 0.45), _scaled(ice, 0.8)
-    objs.append(lib.obj_from_bm("panel_stand", pbm, "solid_dark", cy, rgb_fn=lambda co: rim_f if g_foot(co) else (dim if co.z > 0.021 else void)))
+    # Стойка — цепочка штрихов и точек (семейство «хранилище»: всё на частицах, без сплошной стойки и без основания-пьедестала 0,34×0,34 м,
+    # которое читалось как круглая/квадратная ступень): штрихи с разрывами от пола до рамки, между ними точки; у пола — горсть тусклых точек.
+    srng = random.Random(45)  # свой генератор: поток rng ниже (занавес рамки) не меняется
+    stand = []
+    for i, z0 in enumerate((0.0, 0.17, 0.35, 0.53, 0.71, 0.88)):
+        ln = srng.uniform(0.09, 0.13)
+        stand.append((Vector((0, -0.014, z0 + ln / 2)), srng.uniform(0.007, 0.010), ln / 2, 0.85 - 0.08 * i))
+    objs.append(lib.streak_set("panel_stand_streaks", stand, cy))
+    spine = lib.sample_line((0, -0.014, 0.0), (0, -0.014, 0.97), 14, spread=0.004, seed=43)
+    spine += [Vector((srng.gauss(0, 0.03), srng.gauss(-0.014, 0.03), 0.0)) for _ in range(8)]  # россыпь у пола на месте бывшего основания
+    objs.append(lib.point_cloud("panel_stand_pts", spine, cy, half_size=0.006, seed=44, a_min=0.35, a_max=0.8, on_floor=True))
     sc = bmesh.new()
     uv = sc.loops.layers.uv.new("UV0")
     cs = [(0.22, -0.15, (0, 0)), (-0.22, -0.15, (1, 0)), (-0.22, 0.15, (1, 1)), (0.22, 0.15, (0, 1))]  # слева→справа глазами игрока: +x слева; v вверх (glTF перевернёт)

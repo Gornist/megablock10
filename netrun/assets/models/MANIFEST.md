@@ -42,7 +42,7 @@
 | `models/env/floor_slab_16.glb` | 92 / 400 | 0 / 0 | 0 / 0 | 1 | 2 | 16 × 0.7787 × 16 | shell_soft, solid_dark | — | slab | ок |
 | `models/ice/guard_booth.glb` | 176 / 300 | 0 / 0 | 0 / 0 | 2 | 4 | 0.9 × 2.309 × 0.905 | shell_soft, solid_dark | — | floor | ок |
 | `models/props/hack_pad.glb` | 36 / 120 | 128 / 160 | 29 / 40 | 1 | 5 | 0.9259 × 0.28 × 0.9 | points, shell_soft, solid_dark, streaks | — | floor | ок |
-| `models/props/hack_panel.glb` | 62 / 300 | 50 / 120 | 11 / 20 | 0 | 5 | 0.5175 × 1.2986 × 0.34 | points, solid_dark, streaks | — | floor | ок |
+| `models/props/hack_panel.glb` | 22 / 300 | 71 / 120 | 17 / 20 | 0 | 6 | 0.5175 × 1.2986 × 0.205 | points, solid_dark, streaks | — | floor | ок |
 | `models/ice/lighthouse_ice.glb` | 274 / 300 | 0 / 0 | 0 / 0 | 3 | 6 | 0.6 × 0.84 × 0.6 | shell_soft, solid_dark | — | floor | ок |
 | `models/env/lockdown_gate.glb` | 300 / 320 | 0 / 0 | 0 / 0 | 0 | 1 | 0.89 × 2 × 0.09 | solid_dark | — | floor | ок |
 | `models/env/lockdown_gate_open.glb` | 300 / 320 | 0 / 0 | 0 / 0 | 0 | 1 | 0.89 × 0.12 × 0.09 | solid_dark | — | floor | ок |
