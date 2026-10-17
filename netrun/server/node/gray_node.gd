@@ -229,7 +229,7 @@ func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 	decrypt = DecryptBreach.new(self)
 	barrier = BarrierBreach.new(self)
 	daemons.load_dir()
-	_tick_mode = str(settings.get("time_mode", "realtime")) == "tick"
+	_tick_mode = str(settings.get("time_mode", "tick")) == "tick"
 	if _tick_mode:
 		tick_clock = TickClock.new(float(settings["tick_window_sec"]), float(settings["tick_min_interval_sec"]))
 	_build_slots()
