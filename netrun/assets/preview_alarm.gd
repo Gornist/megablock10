@@ -41,4 +41,14 @@ func _ready() -> void:
 		await RenderingServer.frame_post_draw
 		get_viewport().get_texture().get_image().save_png("%s/alarm_%d.png" % [_out, lvl])
 		print("кадр alarm_", lvl)
+	# П6-6 (б): тревога 2–4 у игрока — свет кромок и пола в радиусе вокруг него уходит в тревожный цвет; игрок стоит на (0, 0, −1): колонны и ворота дальше за ним
+	for lvl in [2, 3, 4]:
+		env.background_color = AssetMaterials.alarm_background(lvl, 0.0)
+		AssetMaterials.set_alarm(room, lvl, "BASE")
+		AssetMaterials.set_alarm_focus(Vector3(0.0, 0.0, -1.0), lvl)
+		for k in 12:
+			await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png("%s/focus_%d.png" % [_out, lvl])
+		print("кадр focus_", lvl)
 	get_tree().quit()

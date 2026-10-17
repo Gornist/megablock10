@@ -4,6 +4,8 @@
 shader_type spatial;
 render_mode unshaded, cull_back, fog_disabled;
 
+#include "alarm_focus.gdshaderinc"
+
 // Не чистый чёрный, а тёмная бирюза темнее фона-пустоты (AssetMaterials.VOID_BG): у референса CDPR чистого чёрного ≈ 0 %, плиты читаются силуэтом на фоне.
 uniform vec4 base_color : source_color = vec4(0.0, 0.07, 0.09, 1.0);
 uniform float edge_glow : hint_range(0.0, 4.0) = 0.75;        // общая яркость контура (почти прозрачный: тусклый, фон просвечивает сквозь свет)
@@ -70,5 +72,5 @@ void fragment() {
 		vec3 gc = tint_amount > 0.0 ? tint.rgb : vec3(0.094, 0.9, 1.0);
 		col += gc * g * grid_alpha;
 	}
-	ALBEDO = col;
+	ALBEDO = base_color.rgb + focus_light(col - base_color.rgb, v_wp);   // тревога у игрока: свет кромок и сетки уходит в тревожный цвет, основа остаётся
 }

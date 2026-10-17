@@ -17,6 +17,9 @@ uniform float flash : hint_range(0.0, 1.0) = 0.0;
 // 1 — веер маяка (радиальное затухание), 0 — полоса датчика (мягкие концы и края).
 uniform float fan : hint_range(0.0, 1.0) = 0.0;
 uniform float glow : hint_range(0.0, 4.0) = 1.0;
+uniform float on_wide : hint_range(0.2, 1.0) = 0.5;       // степень профиля поперёк у горящего луча: меньше — шире
+uniform float off_level : hint_range(0.0, 1.0) = 0.35;     // яркость погашенного луча (было 0,22: на полу его не было видно)
+uniform float on_boost : hint_range(0.5, 3.0) = 1.7;      // горящий ярче погашенного не только альфой
 uniform float fade_start = 60.0;
 uniform float fade_end = 90.0;
 uniform float intensity = 1.0;
@@ -36,9 +39,13 @@ void fragment() {
 	} else {
 		shape = smoothstep(0.0, 0.04, u) * (1.0 - smoothstep(0.92, 1.0, u)) * (1.0 - across * across);
 	}
-	float blink = 0.15 + 0.85 * smoothstep(-0.2, 0.6, sin(TIME * 7.85));
-	float level = state < 0.5 ? 0.22 : (state < 1.5 ? 1.0 : blink);
-	vec3 base = state < 0.5 ? off_color.rgb : on_color.rgb;
+	// Три состояния различимы с 5 м (П6-6; владелец на П6: «луч был включён с самого начала», погашенный почти не виден): погашен — ровный голубой (можно),
+	// горит — красный и ярче (нельзя), мигает за такт до включения — плавно ПЕРЕЛИВАЕТСЯ голубой ↔ красный (скоро нельзя), а не просто тускнеет.
+	float pulse = smoothstep(-0.2, 0.6, sin(TIME * 7.85));   // 1,25 Гц, мягко
+	float on_k = state < 0.5 ? 0.0 : (state < 1.5 ? 1.0 : pulse);
+	shape = pow(max(shape, 0.0), mix(1.0, on_wide, on_k));   // горящий шире (мягкие края подтянуты): красный по восприятию тусклее голубого, шириной добираем
+	float level = mix(off_level, 1.0, on_k);
+	vec3 base = mix(off_color.rgb, on_color.rgb * on_boost, on_k);
 	vec3 col = mix(base, flash_color.rgb, flash);
 	float fade = 1.0 - smoothstep(fade_start, fade_end, v_dist);
 	ALBEDO = col * glow;
