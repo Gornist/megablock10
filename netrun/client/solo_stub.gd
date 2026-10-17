@@ -4,6 +4,9 @@ extends Node
 ## Мост — FakeBridge с фикстурой data/solo (Призрак, RAM 14, демоны П5/П6; учебный узел, Архив → Серверная → Реактор). Сервер слушает только петлю: брандмауэр Windows не спрашивает.
 ## Забег: первый запуск — учебный узел; конец сессии (чистый выход, выброс, флэтлайн, аварийный выход) — сигнал run_finished; restart() поднимает
 ## сервер и клиент заново (фикстура читается с нуля), по умолчанию с Архива.
+## Журнал: каждая попытка (учебная тоже) — своя папка RunJournal (в сборке для тестеров — Документы\Мегаблок10\runs\<дата-время>-<сборка>\,
+## иначе user://runs, `--runs-dir=` — явно); клиент пишет в неё свой журнал, в конце попытки — строка run.summary, журнал закрывается.
+## Путь папки — journal_dir() (экран итога К5), ответы анкеты — journal.log_survey().
 
 ## Конец забега: result — причина выхода (ExitLogic.REASON_*), tutorial — попытка шла в учебном узле (журнал её помечает, анкету после неё не показывают).
 signal run_finished(result: String, tutorial: bool)
@@ -35,6 +38,9 @@ var server: Node
 var flat: Node
 ## Текущая попытка идёт в учебном узле.
 var tutorial := false
+## Журнал текущей попытки и базовый каталог попыток (выбран на старте).
+var journal := RunJournal.new()
+var runs_base := ""
 var _user_args := PackedStringArray()
 var _finished := false
 var _exit_ms := -1
@@ -99,7 +105,13 @@ static func write_fixture(with_tutorial: bool, path: String = FIXTURE_RUN) -> St
 ## Первый запуск: учебный узел (with_tutorial), если в аргументах нет --skip-tutorial.
 func start(args: PackedStringArray, with_tutorial: bool = true) -> bool:
 	_user_args = args
+	runs_base = RunJournal.pick_base(RunJournal.preferred_base(args, OS.get_system_dir(OS.SYSTEM_DIR_DOCUMENTS), OS.has_feature("solo")))
 	return _launch(with_tutorial and not (SKIP_TUTORIAL_ARG in args))
+
+
+## Папка журнала текущей попытки ("" — не создать, журнал тогда в user://logs, как на очках).
+func journal_dir() -> String:
+	return journal.dir
 
 
 ## Новая попытка без перезапуска exe: остановить сервер и клиент, поднять заново на новом порту. По умолчанию — с Архива
@@ -111,6 +123,7 @@ func restart(with_tutorial: bool = false) -> bool:
 
 ## Остановить попытку: клиент прощается и закрывает сокет, сервер закрывает свой, оба поддерева уходят; порт свободен.
 func stop() -> void:
+	_write_summary(RunJournal.RESULT_STOPPED)   # попытку оборвали до конца забега (перезапуск из меню): сводка всё равно в журнале
 	_finished = true   # остановка — не конец забега: run_finished не шлём
 	if _exit_ms >= 0:
 		var left := EXIT_SETTLE_SEC - (Time.get_ticks_msec() - _exit_ms) / 1000.0
@@ -163,11 +176,18 @@ func _launch(with_tutorial: bool) -> bool:
 	server.call("start", server_args(port, fixture))
 	if server.get("net") != null:
 		server.net.exit_event.connect(_on_exit)
+	var cargs := client_args(_user_args, port)
+	if not journal.begin(runs_base if not runs_base.is_empty() else RunJournal.FALLBACK_BASE, BuildInfo.BUILD, with_tutorial).is_empty():
+		cargs.append_array(RunJournal.client_args(journal.dir, with_tutorial))   # клиент откроет журнал в папке попытки
 	flat = preload("res://client/flat_stub.gd").new()
 	client_root.add_child(flat)
-	flat.start(client_args(_user_args, port))
+	flat.start(cargs)
 	var proto := _proto()
+	if proto != null:
+		journal.log_path = proto.log_file.path
+		proto.log_file.logged.connect(journal.observe)   # сводка попытки копится по строкам журнала клиента
 	if proto != null and proto.net != null:
+		proto.net.state_received.connect(journal.observe_state)
 		proto.net.reconnect_gave_up.connect(func(): _finish(ExitLogic.REASON_CONNECTION_LOST))
 	print("[netrun-solo] сервер и клиент в одном процессе, порт ", port, ", учебный узел" if with_tutorial else ", с Архива")
 	return true
@@ -189,4 +209,15 @@ func _finish(reason: String) -> void:
 	_finished = true
 	_exit_ms = Time.get_ticks_msec()
 	print("[netrun-solo] забег окончен: ", reason, " (учебный узел)" if tutorial else "")
+	_write_summary(reason)
 	run_finished.emit(reason, tutorial)
+
+
+## Итог попытки — строкой run.summary в журнал клиента, затем журнал закрывается (дальше в файл пишет только анкета, RunJournal.log_survey).
+## Повторный вызов ничего не пишет: журнал уже закрыт.
+func _write_summary(result: String) -> void:
+	var proto := _proto()
+	if proto == null or not proto.log_file.is_open():
+		return
+	proto.log_file.log("run.summary", journal.summary(result))
+	proto.log_file.close()

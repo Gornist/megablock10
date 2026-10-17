@@ -20,6 +20,8 @@ const TUTORIAL_ARG := "--journal-tutorial="
 const AIM_MISS_REASONS := [WorldMsg.REASON_FAR, WorldMsg.REASON_RANGE, WorldMsg.REASON_ROOM, WorldMsg.REASON_CELL, WorldMsg.REASON_BLOCKED, "hold"]
 ## Результат попытки, оборванной таймером `--exit-after=` (дымовой прогон).
 const RESULT_EXIT_AFTER := "exit_after"
+## Результат попытки, остановленной до конца забега (перезапуск из меню, закрытие окна).
+const RESULT_STOPPED := "stopped"
 
 ## Папка попытки ("" — не открыта) и файл журнала клиента в ней (его путь сообщает SoloStub, когда клиент открыл журнал).
 var dir := ""
