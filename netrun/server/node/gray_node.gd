@@ -162,6 +162,7 @@ var _black_log: Dictionary = {}      # сессия → журнал Black ICE �
 var _sensors: Array[TickSensor] = []   # Датчики раскладки (тактовый режим; ice.md §5): луч, вкл/выкл по тиру
 var _sensor_ids: Dictionary = {}     # TickSensor -> id датчика из раскладки
 var _sensor_hit: Dictionary = {}     # TickSensor -> {сессия: true}: уже сработал на неё в этом включении (повторно — после выключения)
+var _sensor_fired: Dictionary = {}   # сессия -> [{id, a}]: срабатывания, о которых игроку ещё не сказали (поле `sf` ближайшего state)
 var _barriers: Array = []            # Барьеры раскладки (ice.md §5): {id, cells: Array[Vector2i], open: bool}; закрытый занимает клетки ice_grid
 var _intents: Dictionary = {}        # IceNode -> TickIce.intent() после последнего такта (рассылается 10 раз/с без пересчёта)
 var _reserve_out: Array[IceNode] = []   # запасные Стражи, вышедшие из будок на тревоге 2 (раскладка: reserves); пусто — будки закрыты
@@ -1322,6 +1323,9 @@ func _broadcast_state() -> void:
 				fields["bk"] = beacon_view()
 			if not _sensors.is_empty():
 				fields["sn"] = sensor_view()
+				var fired := take_sensor_fired(session)
+				if not fired.is_empty():
+					fields["sf"] = fired   # сработал Датчик на этого игрока: вспышка луча, звук и «ТРЕВОГА +n» в центре зрения (ice.md П8)
 			if not _barriers.is_empty():
 				fields["br"] = barrier_view()
 			if layout != null and not layout.booths.is_empty():
@@ -1369,6 +1373,9 @@ func _sensor_fire(ts: TickSensor, session: String, cell: Vector2i) -> void:
 	fired[session] = true
 	_sensor_hit[ts] = fired
 	print("[sensor] %s TRIGGERED %s cell=%d,%d" % [_sensor_ids.get(ts, "?"), session, cell.x, cell.y])
+	var pending: Array = _sensor_fired.get(session, [])
+	pending.append({"id": str(_sensor_ids.get(ts, "")), "a": _sensor_alarm()})
+	_sensor_fired[session] = pending
 	add_trace_event(session, "sensor")
 	alarm_event("sensor")
 	var nearest: TickIce = null
@@ -1391,7 +1398,19 @@ func sensor_view() -> Array:
 		var cells: Array = []
 		for c: Vector2i in it["cells"]:
 			cells.append([c.x, c.y])
-		out.append({"id": str(_sensor_ids.get(ts, "")), "c": cells, "on": 1 if it["on"] else 0, "bl": 1 if it["blink"] else 0, "l": int(it["left"])})
+		out.append({"id": str(_sensor_ids.get(ts, "")), "c": cells, "on": 1 if it["on"] else 0, "bl": 1 if it["blink"] else 0, "l": int(it["left"]), "al": _sensor_alarm()})
+	return out
+
+
+## Сколько тревоги даёт срабатывание Датчика (`alert_events.sensor` узла): клиент пишет «ЛУЧ → ТРЕВОГА +5» на прицеле до прыжка.
+func _sensor_alarm() -> int:
+	return int((settings.get("alert_events", {}) as Dictionary).get("sensor", 0.0))
+
+
+## Срабатывания Датчика на эту сессию с прошлого вызова (и сразу забыть): [{id, a}] — для поля `sf` state. Пусто — ничего не срабатывало.
+func take_sensor_fired(session: String) -> Array:
+	var out: Array = _sensor_fired.get(session, [])
+	_sensor_fired.erase(session)
 	return out
 
 

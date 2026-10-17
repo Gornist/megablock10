@@ -223,3 +223,36 @@ func test_show_at_цвета_по_прогнозу_и_подпись() -> void:
 	aim.show_at(Vector3(0, 1, 0), t, false, 1.0, "denied", "occupied", -1, "ХОД ПРИНЯТ")
 	assert_object(aim.frame_color()).is_equal(AssetMaterials.layer("aim_denied"))
 	assert_str(aim.label_text()).is_equal("ЗАНЯТО")
+	aim.show_at(Vector3(0, 1, 0), t, true, 1.0, "hop", "", 2, "ЛУЧ → ТРЕВОГА +5", true)
+	assert_object(aim.frame_color()).override_failure_message("подпись-предупреждение не гасит красную рамку").is_equal(AssetMaterials.layer("aim_no"))
+	assert_str(aim.label_text()).is_equal("ЛУЧ → ТРЕВОГА +5")
+
+
+## Снимок с лучом Датчика на клетке `cell` (on — включён) и без ICE.
+func _feed_beam(scene: Node3D, cell: Vector2i, on: bool, al: int = 5) -> void:
+	var now := _now()
+	scene.remote.on_state({"k": now, "ice": [], "sn": [{"id": "d1", "c": [[cell.x, cell.y]], "on": 1 if on else 0, "bl": 0, "l": 2, "al": al}],
+		"tk": {"n": 1, "at": now - 1.0, "win": 5.0, "inh": 0, "mv": 0}}, now)
+
+
+func test_прицел_через_включённый_луч_пишет_ЛУЧ_ТРЕВОГА_и_рамка_красная() -> void:
+	var scene := _scene()
+	var rig: XRRig = scene.rig
+	var target := _aim_cell(rig)
+	_feed_beam(scene, target, true, 5)
+	_frames(rig, 2, Vector2(0, 1))
+	assert_int(rig.last_threat()).is_equal(TickForecast.RED)
+	assert_bool(rig.aim_visual.label_visible()).is_true()
+	assert_str(rig.aim_visual.label_text()).is_equal("ЛУЧ → ТРЕВОГА +5")
+	assert_object(rig.aim_visual.frame_color()).is_equal(AssetMaterials.layer("aim_no"))
+
+
+func test_выключенный_луч_прицел_зелёный_и_без_подписи() -> void:
+	var scene := _scene()
+	var rig: XRRig = scene.rig
+	var target := _aim_cell(rig)
+	_feed_beam(scene, target, false)
+	_frames(rig, 2, Vector2(0, 1))
+	assert_int(rig.last_threat()).is_equal(TickForecast.GREEN)
+	assert_bool(rig.aim_visual.label_visible()).is_false()
+	assert_object(rig.aim_visual.frame_color()).is_equal(AssetMaterials.layer("aim_ok"))

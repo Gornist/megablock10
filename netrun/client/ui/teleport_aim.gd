@@ -119,15 +119,16 @@ static func _unshaded(c: Color) -> StandardMaterial3D:
 ## готовности перезарядки 0…1 (меньше 1 — на рамке растёт диск); kind — "hop" / "wait" / "denied" (NodeGrid.pick), reason — причина
 ## отказа для серой рамки. Без kind (старые вызовы) вид клетки берётся по ok.
 ## Тактовый режим (docs/gamedesign/time-and-movement.md 2.2): threat — TickForecast.GREEN / YELLOW / RED прыжка на эту клетку (−1 — не тактовый режим,
-## цвет по ok); note — подпись на рамке («ХОД ПРИНЯТ», «ЖДАТЬ · ОКНО ЧЕРЕЗ N»); с подписью hop и wait рисуются нейтральной рамкой.
-func show_at(start: Vector3, target: Vector3, ok: bool, charge: float = 1.0, kind: String = "", reason: String = "", threat: int = -1, note: String = "") -> void:
+## цвет по ok); note — подпись на рамке («ХОД ПРИНЯТ», «ЖДАТЬ · ОКНО ЧЕРЕЗ N»); с подписью hop и wait рисуются нейтральной рамкой,
+## кроме подписи-предупреждения (warn_note: «ЛУЧ → ТРЕВОГА +5», П8) — рамка остаётся цвета угрозы.
+func show_at(start: Vector3, target: Vector3, ok: bool, charge: float = 1.0, kind: String = "", reason: String = "", threat: int = -1, note: String = "", warn_note: bool = false) -> void:
 	_ok = ok
 	_kind = kind if not kind.is_empty() else "hop"
 	_reason = reason
 	var layer := "aim_ok" if ok else "aim_no"
 	if _kind == "hop" and threat >= 0:
 		layer = ["aim_ok", "aim_warn", "aim_no"][clampi(threat, 0, 2)]
-	if _kind == "wait" or (not note.is_empty() and _kind != "denied"):
+	if _kind == "wait" or (not note.is_empty() and not warn_note and _kind != "denied"):
 		layer = "aim_wait"
 	elif _kind == "denied":
 		layer = "aim_denied"

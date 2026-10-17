@@ -94,3 +94,24 @@ func test_вспышка_ожога_берёт_материал_и_числа_у
 	assert_float(d._flash_left).is_equal_approx(AssetMaterials.BURN_FLASH_SEC, 0.0001)
 	assert_float(float(d._flash_mat.get_shader_parameter("strength"))).is_equal_approx(AssetMaterials.BURN_FLASH_START, 0.0001)
 	assert_float(float(d._flash_mat.get_shader_parameter("half_fov"))).is_between(0.3, 1.5)
+
+
+func _beam_state(fired: bool) -> Dictionary:
+	var st := _state(0)
+	st["sn"] = [{"id": "d1", "c": [[8, 8], [9, 8]], "on": 1, "bl": 0, "l": 2, "al": 5}]
+	if fired:
+		st["sf"] = [{"id": "d1", "a": 5}]
+	return st
+
+
+func test_сработал_датчик_метка_импульс_и_вспышка_луча() -> void:
+	var d: DangerCue = _scene.world_ui.danger
+	_scene.apply_state(_beam_state(false))   # датчик появился, не сработал
+	assert_int(d.shown["sensor"]).is_equal(0)
+	_scene.apply_state(_beam_state(true))
+	assert_int(d.shown["sensor"]).is_equal(1)
+	assert_str(d.shown_text()).is_equal("ЛУЧ → ТРЕВОГА +5")
+	assert_int(_pulses.size()).is_equal(2)   # обе руки
+	assert_float((_scene._sensor_nodes["d1"] as SensorView).flash_strength()).is_greater(0.9)
+	_scene.apply_state(_beam_state(false))   # без sf второй раз не кричит
+	assert_int(d.shown["sensor"]).is_equal(1)

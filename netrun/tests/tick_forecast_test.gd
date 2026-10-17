@@ -196,3 +196,18 @@ func test_поле_sn_разбирается_в_клетки_и_состояни
 	assert_bool(list[0]["on"]).is_true()
 	assert_bool(list[1]["on"]).is_false()
 	assert_int(TickForecast.parse_sensors([]).size()).is_equal(0)
+
+
+func test_сколько_тревоги_даст_прыжок_через_луч() -> void:
+	var from := NodeGrid.center(Vector2i(7, 8))
+	var beam := {"cells": BEAM, "on": true, "al": 7}
+	assert_int(TickForecast.sensor_hit_alarm([beam], from, NodeGrid.center(Vector2i(12, 8)))).is_equal(7)
+	assert_int(TickForecast.sensor_hit_alarm([_beam(true)], from, NodeGrid.center(Vector2i(12, 8)))).is_equal(TickForecast.SENSOR_ALARM_DEFAULT)
+	assert_int(TickForecast.sensor_hit_alarm([_beam(false)], from, NodeGrid.center(Vector2i(12, 8)))).is_equal(-1)   # выключен — перепрыгнуть можно
+	assert_int(TickForecast.sensor_hit_alarm([beam], NodeGrid.center(Vector2i(7, 6)), NodeGrid.center(Vector2i(12, 6)))).is_equal(-1)   # мимо луча
+
+
+func test_поле_al_в_sn_разбирается_и_по_умолчанию_5() -> void:
+	var list := TickForecast.parse_sensors([{"id": "d1", "c": [[8, 8], [9, 8]], "on": 1, "al": 10}, {"id": "d2", "c": [[3, 3], [3, 4]], "on": 1}])
+	assert_int(list[0]["al"]).is_equal(10)
+	assert_int(list[1]["al"]).is_equal(5)

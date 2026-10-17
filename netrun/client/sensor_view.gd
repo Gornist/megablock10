@@ -5,12 +5,19 @@ extends Node3D
 ## Данные — элемент поля `sn` state: {id, c: [[x, z], …] клетки луча по порядку, on 0/1, bl 0/1, l тактов до смены}.
 
 const ASSET := NodeAssets.ROOT + "ice/sensor_ice.glb"
+## Сколько секунд сходит вспышка срабатывания (одиночный импульс; длину задаёт игра, цвет — слой beam_flash).
+const FLASH_SEC := 0.6
 
+var _flash_left := 0.0
 var _a: Node3D
 var _b: Node3D
 var _beam: Node3D
 var _cells: Array = []
 var _state := -1
+
+
+func _ready() -> void:
+	set_process(false)   # _process нужен только на время вспышки (Godot включает его при входе в дерево, если он объявлен)
 
 
 func _init() -> void:
@@ -24,6 +31,25 @@ func _init() -> void:
 	var b_beam := _b.find_child("Beam", true, false) as Node3D
 	if b_beam != null:
 		b_beam.visible = false   # луч один на пару
+
+
+## Вспышка срабатывания (параметр flash шейдера beam; цвет — слой beam_flash у Blender): сразу полная, сходит на нет за FLASH_SEC. Зовут по полю `sf` state.
+func flash() -> void:
+	_flash_left = FLASH_SEC
+	AssetMaterials.set_beam(_a, maxi(_state, AssetMaterials.BEAM_OFF), 1.0)
+	set_process(true)
+
+
+## Сила вспышки сейчас, 0…1.
+func flash_strength() -> float:
+	return clampf(_flash_left / FLASH_SEC, 0.0, 1.0)
+
+
+func _process(delta: float) -> void:
+	_flash_left = maxf(_flash_left - delta, 0.0)
+	AssetMaterials.set_beam(_a, maxi(_state, AssetMaterials.BEAM_OFF), flash_strength())
+	if _flash_left <= 0.0:
+		set_process(false)
 
 
 ## Состояние луча по полям снимка: 1 — горит, мигает перед включением, иначе погашен.
@@ -51,4 +77,4 @@ func apply_view(v: Dictionary) -> void:
 	var st := beam_state_of(v)
 	if st != _state:
 		_state = st
-		AssetMaterials.set_beam(_a, st)
+		AssetMaterials.set_beam(_a, st, flash_strength())
