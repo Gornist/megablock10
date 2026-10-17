@@ -153,15 +153,10 @@ func _collect(ld: LayoutData) -> void:
 		_marks.append({"n": 8, "pos": seat.global_position + Vector3(0, 0.9, 0), "off": Vector2(-18, 0)})
 		_legend.append("8  кресло (props/seat.glb) на входе S")
 	else:
-		_legend.append("8  кресло — в сцене нет")
+		_legend.append("8  кресло — в сцене нет (убрано из раскладочных узлов, решение 17.10)")
 	_marks.append({"n": 9, "pos": ld.spawn + Vector3(0, 0.05, 0), "off": Vector2(18, 10)})
 	_legend.append("9  вход S (спавн игрока; символ карты)")
-	var sensor_prop: Node3D = view._sensor
-	if sensor_prop != null and sensor_prop.visible:
-		_marks.append({"n": 10, "pos": sensor_prop.global_position + Vector3(0, 1.0, 0), "off": Vector2.ZERO})
-		_legend.append("10 колонна-датчик узла (props/sensor.glb)")
-	else:
-		_legend.append("10 колонна-датчик узла — в сцене нет (скрыта при раскладке)")
+	_legend.append("10 колонна-датчик узла — в сцене нет (убрана совсем, решение 17.10)")
 	for p in view.pillar_positions():
 		_marks.append({"n": 11, "pos": p + Vector3(0, 1.2, 0), "off": Vector2.ZERO})
 	_legend.append("11 одиночная колонна-укрытие (env/pillar, '#')")

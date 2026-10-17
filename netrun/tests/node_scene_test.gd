@@ -332,13 +332,14 @@ func test_shard_asset_and_encrypted_variant() -> void:
 	assert_str((scene._pickups["node_x_pk1"] as Node3D).get_meta("asset")).is_equal("res://assets/models/props/shard_encrypted.glb")
 
 
-func test_node_furniture_seat_sensor_and_dead_deck() -> void:
+func test_node_furniture_seat_and_dead_deck_without_sensor() -> void:
 	var scene := _scene()
 	var info := _info("BASE")
 	info["dead"] = [[-3.0, -3.0]]
 	scene.apply_node(info)
 	var used: Array = scene.view.used_assets()
-	assert_array(used).contains(["res://assets/models/props/seat.glb", "res://assets/models/props/sensor.glb", "res://assets/models/props/dead_deck.glb"])
+	assert_array(used).contains(["res://assets/models/props/seat.glb", "res://assets/models/props/dead_deck.glb"])
+	assert_array(used).not_contains(["res://assets/models/props/sensor.glb"])   # колонны-датчика узла больше нет (решение 17.10)
 	assert_vector(scene.view.seat_node().global_position).is_equal_approx(NodeLayout.SPAWN, Vector3.ONE * 0.001)
 	scene.apply_node(_info("BASE"))  # колода убрана (подобрали)
 	assert_array(scene.view.used_assets()).not_contains(["res://assets/models/props/dead_deck.glb"])
