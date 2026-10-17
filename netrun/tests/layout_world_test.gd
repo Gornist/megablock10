@@ -298,6 +298,11 @@ func test_датчик_раскладки_стоит_на_узле_и_срабо
 	_alt()._sensor_fire(sensors[0], "s1", cell)
 	assert_float(_alt().alarm - before).is_equal_approx(5.0, 0.001)
 	assert_int(_tick_of(_alt()).awareness_of("s1")).is_equal(TickIce.CHECK_CEILING)
+	assert_int(int(_alt().sensor_view()[0]["al"])).is_equal(5)   # прицел клиента пишет «ЛУЧ → ТРЕВОГА +5» до прыжка
 	_alt()._sensor_fire(sensors[0], "s1", cell)   # второй раз за то же включение — молчит
 	assert_float(_alt().alarm - before).is_equal_approx(5.0, 0.001)
+	# Игроку о срабатывании скажет поле sf ближайшего state (раз): вспышка луча, звук и метка в центре зрения.
+	assert_array(_alt().take_sensor_fired("s1")).is_equal([{"id": "d1", "a": 5}])
+	assert_array(_alt().take_sensor_fired("s1")).is_empty()
+	assert_array(_alt().take_sensor_fired("s2")).is_empty()   # другому игроку не говорят
 	LayoutData._cache.erase(SENSOR)

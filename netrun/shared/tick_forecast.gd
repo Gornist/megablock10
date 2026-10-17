@@ -16,6 +16,8 @@ const DEFAULT_SIGHT := 6.0
 const PRECAPTURE_M := 2.0
 ## Красная рамка «залипает» (stealth.md С9): прыжок, только если рамка простояла на клетке не меньше (с).
 const RED_HOLD_SEC := 0.4
+## Тревога от Датчика, если сервер не прислал `al` (старый сервер): `alert_events.sensor` из graph.json.
+const SENSOR_ALARM_DEFAULT := 5
 
 ## Состояние TickIce «Поиск» (server/ice/tick_ice.gd: Mode.SEARCH); клиент server/ не читает, номер продублирован.
 const ST_SEARCH := 3
@@ -31,13 +33,13 @@ static func parse_sensors(list: Array) -> Array:
 		var cells: Array[Vector2i] = []
 		for p in (e as Dictionary)["c"]:
 			cells.append(_cell(p))
-		out.append({"cells": cells, "on": int((e as Dictionary).get("on", 0)) == 1})
+		out.append({"cells": cells, "on": int((e as Dictionary).get("on", 0)) == 1, "al": int((e as Dictionary).get("al", SENSOR_ALARM_DEFAULT))})
 	return out
 
 
-## Угроза прыжка from→to от Датчиков: красный, если отрезок задевает клетку включённого луча (кроме клетки старта; как на сервере, NodeGrid.segment_first_hit); иначе зелёный —
-## выключенный луч перепрыгнуть можно. `sensors` — parse_sensors.
-static func sensor_threat(sensors: Array, from: Vector3, to: Vector3) -> int:
+## Сколько тревоги даст прыжок from→to через включённый луч Датчика (поле `al` из `sn`), −1 — луч не задет или выключен. Отрезок — как на сервере
+## (кроме клетки старта; NodeGrid.segment_first_hit). `sensors` — parse_sensors.
+static func sensor_hit_alarm(sensors: Array, from: Vector3, to: Vector3) -> int:
 	for s: Dictionary in sensors:
 		if not bool(s["on"]):
 			continue
@@ -45,8 +47,13 @@ static func sensor_threat(sensors: Array, from: Vector3, to: Vector3) -> int:
 		for c: Vector2i in s["cells"]:
 			set[c] = true
 		if NodeGrid.segment_first_hit(set, from, to) != Vector2i.MAX:
-			return RED
-	return GREEN
+			return int(s.get("al", SENSOR_ALARM_DEFAULT))
+	return -1
+
+
+## Угроза прыжка from→to от Датчиков: красный, если отрезок задевает клетку включённого луча; иначе зелёный — выключенный луч перепрыгнуть можно.
+static func sensor_threat(sensors: Array, from: Vector3, to: Vector3) -> int:
+	return RED if sensor_hit_alarm(sensors, from, to) >= 0 else GREEN
 
 
 ## Угроза клетке после следующего такта: 0 зелёный, 1 жёлтый (периферия), 2 красный (фокус или предзахват).

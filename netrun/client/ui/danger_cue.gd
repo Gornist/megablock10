@@ -2,7 +2,7 @@ class_name DangerCue
 extends Node3D
 ## Опасное — в центре зрения, а не на деке (ice.md §8 «Правило П6», 16.10: «в панике на деку не смотрят»): метка у центра на 1–2 с, свой звук на каждый вид,
 ## на ожог ещё красная вспышка по краям зрения и сильная вибрация. Три сигнала: пробуждение Black ICE («ЧЁРНЫЙ ЛЁД 6…» обратным счётом по тактам),
-## ожог («ОЖОГ 2/3»), рост уровня тревоги («ТРЕВОГА 2»). Дека их только повторяет. Крепится к камере (rig.camera). Нет очков, звука или вибрации — молча.
+## ожог («ОЖОГ 2/3»), рост уровня тревоги («ТРЕВОГА 2»); четвёртый (П8) — сработал Датчик («ЛУЧ → ТРЕВОГА +5»). Дека их только повторяет. Крепится к камере (rig.camera). Нет очков, звука или вибрации — молча.
 
 const DIST := 0.9            ## расстояние метки от глаз, м
 const DROP := 0.04           ## метка чуть ниже оси взгляда, чтобы не закрывать цель по центру
@@ -16,6 +16,9 @@ const ALARM_PULSE_AMP := 0.5
 const ALARM_PULSE_S := 0.15
 const WAKE_PULSE_AMP := 0.25
 const WAKE_PULSE_S := 0.05
+const SENSOR_PULSE_AMP := 0.6
+const SENSOR_PULSE_S := 0.12
+const SENSOR_DB := -8.0
 const WAKE_DB := -10.0
 const ALARM_DB := -8.0
 const BURN_DB := -4.0
@@ -23,11 +26,13 @@ const BURN_DB := -4.0
 const WAKE_NOTES := [[330.0, 0.06]]
 const ALARM_NOTES := [[523.0, 0.1], [698.0, 0.14]]
 const BURN_NOTES := [[110.0, 0.22], [82.0, 0.28]]
+## Датчик: резкий высокий щелчок-«чирик» (две короткие ноты вниз) — отличается и от тревоги (вверх), и от ожога (низкий).
+const SENSOR_NOTES := [[1175.0, 0.05], [880.0, 0.09]]
 
 ## Куда уходят импульсы (по умолчанию — ничего; сцена подключает DeckFeedback.pulse): Callable(hand: String, amplitude: float, seconds: float).
 var pulse_sink: Callable = Callable()
 ## Сколько раз показана метка каждого вида — для проверки.
-var shown := {"wake": 0, "burn": 0, "alarm": 0}
+var shown := {"wake": 0, "burn": 0, "alarm": 0, "sensor": 0}
 
 var _label: Label3D
 var _flash: MeshInstance3D
@@ -78,6 +83,7 @@ func _ready() -> void:
 	_players["wake"] = _player(DeckFeedback.make_tone_stream(WAKE_NOTES, 0.0, 0.0, false), WAKE_DB)
 	_players["alarm"] = _player(DeckFeedback.make_tone_stream(ALARM_NOTES, 0.02, 0.0, false), ALARM_DB)
 	_players["burn"] = _player(DeckFeedback.make_tone_stream(BURN_NOTES, 0.0, 0.0, false), BURN_DB)
+	_players["sensor"] = _player(DeckFeedback.make_tone_stream(SENSOR_NOTES, 0.0, 0.0, false), SENSOR_DB)
 	set_process(false)
 
 
@@ -119,6 +125,14 @@ func alarm_level(level: int) -> void:
 	shown["alarm"] += 1
 	_show("ТРЕВОГА %d" % level, AssetMaterials.layer("hud_bad"), SHOW_SEC, "alarm")
 	_pulse("left", ALARM_PULSE_AMP, ALARM_PULSE_S)
+
+
+## Сработал Датчик на этого игрока (поле `sf` состояния): метка «ЛУЧ → ТРЕВОГА +n» в центре зрения, щелчок и импульс. Вспышку самого луча даёт SensorView.flash.
+func sensor_fired(alarm_add: int) -> void:
+	shown["sensor"] += 1
+	_show("ЛУЧ → ТРЕВОГА +%d" % alarm_add, AssetMaterials.layer("hud_bad"), SHOW_SEC, "sensor")
+	_pulse("left", SENSOR_PULSE_AMP, SENSOR_PULSE_S)
+	_pulse("right", SENSOR_PULSE_AMP, SENSOR_PULSE_S)
 
 
 ## Новый забег или другой узел-хозяин: счётчики событий сбросить (ожоги идут за забег, но клиент — новый на каждый забег).

@@ -280,6 +280,7 @@ func apply_state(state: Dictionary) -> void:
 			remote.forget_ice(id)
 	_apply_beacons(state.get("bk", []))
 	_apply_sensors(state.get("sn", []))
+	_apply_sensor_fired(state.get("sf", []))
 	_apply_barriers(state.get("br", []))
 	view.set_booths(state.get("bo", []))   # будки запасного Стража: створка и лампа по тревоге
 
@@ -360,6 +361,16 @@ func _apply_sensors(list: Array) -> void:
 		if not seen.has(id):
 			(_sensor_nodes[id] as Node).free()
 			_sensor_nodes.erase(id)
+
+
+## Датчик сработал на этого игрока (поле `sf` state: [{id, a}], ice.md §5, П8): вспышка его луча, метка «ЛУЧ → ТРЕВОГА +a» в центре зрения, звук и импульс.
+func _apply_sensor_fired(list: Array) -> void:
+	for v: Dictionary in list:
+		var s: SensorView = _sensor_nodes.get(str(v.get("id", "")))
+		if s != null:
+			s.flash()
+		if world_ui != null and world_ui.danger != null:
+			world_ui.danger.sensor_fired(int(v.get("a", TickForecast.SENSOR_ALARM_DEFAULT)))
 
 
 ## Маяк по id (тесты, превью).

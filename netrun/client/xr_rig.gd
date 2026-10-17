@@ -452,6 +452,7 @@ func _show_aim(delta: float = 0.0) -> void:
 	var kind: String = info.get("kind", "")
 	var threat := -1
 	var note := ""
+	var beam_note := ""
 	var tick := _tick_info()
 	_last_threat = -1
 	if not tick.is_empty():
@@ -462,13 +463,19 @@ func _show_aim(delta: float = 0.0) -> void:
 		if kind == "hop" and info["valid"]:
 			threat = TickForecast.threat(grid, tick_source.intents(), cell)
 			# Отрезок прыжка задевает включённый луч Датчика — красная рамка; луч выключен — рамка по ICE (зелёная: перепрыгнуть можно, П6-4).
-			threat = maxi(threat, TickForecast.sensor_threat(tick_source.sensors(), global_position, info["p"]))
+			var beam_alarm := TickForecast.sensor_hit_alarm(tick_source.sensors(), global_position, info["p"])
+			if beam_alarm >= 0:
+				threat = TickForecast.RED
+				beam_note = "ЛУЧ → ТРЕВОГА +%d" % beam_alarm   # последствие видно до прыжка (ice.md §5, П8): красная рамка с подписью
 			_last_threat = threat
 		if moved and kind != "denied":
 			note = "ХОД ПРИНЯТ"
+			beam_note = ""
 		elif kind == "wait":
 			note = "ЖДАТЬ · ОКНО ЧЕРЕЗ %d" % tick_source.window_left(Time.get_ticks_msec() / 1000.0)
-	aim_visual.show_at(pose["arc_from"], info["p"], ok, charge, kind, info.get("reason", ""), threat, note)
+	if not beam_note.is_empty():
+		note = beam_note
+	aim_visual.show_at(pose["arc_from"], info["p"], ok, charge, kind, info.get("reason", ""), threat, note, not beam_note.is_empty())
 	aim_visual.set_heading(_heading_after_teleport())
 
 
