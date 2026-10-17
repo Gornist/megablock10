@@ -245,14 +245,14 @@ static func _k(name: String) -> Variant:
 	return _tuned.get(name, KNOBS[name])
 
 
-## Охват облака (ручка cloud) по группам моделей по пути сцены: far_* / floor* / ceiling* — по своим ручкам (с 17.10 far и floor — облако, ceiling — сплошной); ворота lockdown_gate* и вся дека (deck/)
-## всегда сплошные: у ворот красная кромка — сигнал LOCKDOWN, облако перекрасило бы её в бирюзу, у деки на руке своя палитра и замера облака не было; остальное (колонны,
-## укрытия, хранилище, рамка выхода, платформа…) — облако. Корпуса ICE (`/ice/`: маяк, излучатель датчика — мелкие, 0,12–0,6 м) тоже сплошные: облако на них читается рваным
-## пятном, а ICE — игровой сигнал, он должен читаться с 5 клеток.
+## Охват облака (ручка cloud) по группам моделей по пути сцены: far_* / floor* / ceiling* — по своим ручкам (с 17.10 far и floor — облако, ceiling — сплошной); вся дека (deck/)
+## всегда сплошная: на руке своя палитра и замера облака не было; остальное (колонны, укрытия, хранилище, рамка выхода, платформа…) — облако.
+## «Всё из частиц» (#424, 17.10): облако и у снаряжения ICE (`/ice/`: маяк, излучатель датчика, будка, логово) и у ворот lockdown_gate*, но КРАСНОЕ (`_is_threat_gear`): красное
+## только у угрозы, а ворота и снаряжение ICE — угроза; бирюзой они перестали бы читаться как сигнал. Сами существа ICE (Б, облако из .points) этой веткой не затрагиваются.
 static func _cloud_scope_ok(root: Node) -> bool:
 	var path := root.scene_file_path
 	var base := path.get_file()
-	if base.begins_with("lockdown_gate") or path.contains("/deck/") or path.contains("/ice/"):
+	if path.contains("/deck/"):
 		return false
 	if base.begins_with("far_"):
 		return float(_k("cloud_far")) > 0.5
@@ -261,6 +261,22 @@ static func _cloud_scope_ok(root: Node) -> bool:
 	if base.begins_with("ceiling"):
 		return float(_k("cloud_ceiling")) > 0.5
 	return true
+
+
+## Снаряжение ICE (`/ice/`) и ворота LOCKDOWN (`lockdown_gate*`): облако красное, а не бирюзовое (красный — только у угрозы).
+static func _is_threat_gear(root: Node) -> bool:
+	var path := root.scene_file_path
+	return path.contains("/ice/") or path.get_file().begins_with("lockdown_gate")
+
+
+## Красные цвета облака угрозы (слой volume_ice + светлый красный для горячих частиц, кромок и касания) — задаются в apply() вместо бирюзовых умолчаний шейдера.
+static func _paint_threat_cloud(m: ShaderMaterial) -> void:
+	var hot := PAL_THREAT_HOT
+	m.set_shader_parameter("dust_color", layer("volume_ice"))
+	m.set_shader_parameter("dust_hot", hot)
+	m.set_shader_parameter("edge_color", hot)
+	m.set_shader_parameter("touch_color", Vector3(hot.r, hot.g, hot.b))  # vec3 без source_color: значения как есть
+
 
 ## Цвета тиров окружения (BASE/HARD/NIGHTMARE): голубая гамма, красный в тирах не участвует.
 const TIER_TINT := {
@@ -447,6 +463,8 @@ static func apply(root: Node, tier: String = "") -> void:
 				m.set_shader_parameter("dust_cell", float(_k("dust_cell")))
 				m.set_shader_parameter("dust_density", float(_k("dust_density")))
 				m.set_shader_parameter("edge_mix", float(_k("cloud_edge_mix")))
+				if _is_threat_gear(root):
+					_paint_threat_cloud(m)
 				if String(mi.name) == "slab" and float(_k("floor_grid")) > 0.0:
 					m.set_shader_parameter("grid_tex", _grid_texture())
 					m.set_shader_parameter("grid_alpha", float(_k("floor_grid")))

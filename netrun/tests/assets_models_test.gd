@@ -773,8 +773,7 @@ func test_asset_materials_cloud_scope_props_yes_slabs_gate_and_deck_no() -> void
 	assert_int(_cloud_meshes(_apply_new("env", "far_floor"))).override_failure_message("cloud_far=0: ручка возвращает сплошную грань").is_equal(0)
 	assert_int(_cloud_meshes(_apply_new("env", "floor_slab_16"))).override_failure_message("cloud_floor=0: ручка возвращает solid_dark").is_equal(0)
 	AssetMaterials.reset_tuning()
-	assert_int(_cloud_meshes(_apply_new("env", "lockdown_gate"))).override_failure_message("ворота LOCKDOWN всегда сплошные: красная кромка — сигнал").is_equal(0)
-	assert_int(_cloud_meshes(_apply_new("deck", "wrist_deck"))).override_failure_message("дека всегда сплошная (своя палитра, замера облака не было)").is_equal(0)
+	assert_int(_cloud_meshes(_apply_new("deck", "wrist_deck"))).override_failure_message("/deck/ остаётся сплошным (своя палитра; решение владельца 17.10)").is_equal(0)
 	AssetMaterials.tune({"cloud_far": 1.0, "cloud_floor": 1.0, "cloud_ceiling": 1.0})
 	assert_int(_cloud_meshes(_apply_new("env", "far_floor"))).override_failure_message("cloud_far=1: дальние пласты тоже облако").is_greater(0)
 	assert_int(_cloud_meshes(_apply_new("env", "floor_slab_16"))).override_failure_message("cloud_floor=1: пол — облако").is_greater(0)
@@ -783,6 +782,38 @@ func test_asset_materials_cloud_scope_props_yes_slabs_gate_and_deck_no() -> void
 	assert_str(_mat_of(one_side, "pillar_block").shader.resource_path).override_failure_message("укрытие — облако, одна сторона (cull_back)").ends_with("cloud_dark.gdshader")
 	assert_bool(AssetMaterials.KNOBS.has("cloud_two_sided")).override_failure_message("cloud_two_sided снята 14.10 (+5,5 мс на очках), ручки быть не должно").is_false()
 	assert_bool(FileAccess.file_exists("res://assets/shaders/cloud_dark_2s.gdshader")).override_failure_message("cloud_dark_2s.gdshader удалён").is_false()
+
+
+## Красные облачные материалы корня: у каждого облачного меша dust_color ≈ layer("volume_ice"), касание — светлый красный.
+func _assert_cloud_is_red(root: Node, what: String) -> void:
+	var red := AssetMaterials.layer("volume_ice")
+	var n := 0
+	for mi in _meshes(root):
+		var sm := mi.get_surface_override_material(0) as ShaderMaterial
+		if sm == null or sm.shader == null or not sm.shader.resource_path.contains("cloud_dark"):
+			continue
+		n += 1
+		var c := sm.get_shader_parameter("dust_color") as Color
+		assert_bool(c.is_equal_approx(red)).override_failure_message("%s: %s — dust_color не красный слой volume_ice" % [what, mi.name]).is_true()
+		var t := sm.get_shader_parameter("touch_color") as Vector3
+		assert_float(t.x).override_failure_message("%s: %s — touch_color не красный" % [what, mi.name]).is_greater(t.z)
+	assert_int(n).override_failure_message(what + ": нет облачных мешей").is_greater(0)
+
+
+func test_asset_materials_ice_gear_and_lockdown_gate_are_red_cloud() -> void:
+	AssetMaterials.reset_tuning()
+	for a in ["lighthouse_ice", "sensor_ice", "barrier_ice", "guard_booth", "black_lair"]:
+		_assert_cloud_is_red(_apply_new("ice", a), "ice/" + a)
+	_assert_cloud_is_red(_apply_new("env", "lockdown_gate"), "env/lockdown_gate")
+	# остальное окружение — бирюза (умолчание шейдера), не красное
+	var cover := _apply_new("env", "cover")
+	var teal: Variant = _mat_of(cover, "pillar_block").get_shader_parameter("dust_color")
+	assert_bool(teal == null).override_failure_message("укрытие: цвет облака не переопределяется, остаётся бирюза шейдера").is_true()
+	# логово: облако не ломает три состояния
+	var lair := _apply_new("ice", "black_lair")
+	for st in ["State_sleep", "State_waking", "State_empty"]:
+		var n := lair.find_child(st, true, false)
+		assert_bool(n != null and _meshes(n).size() > 0).override_failure_message("black_lair с облаком: нет состояния " + st).is_true()
 
 
 func _apply_new(group: String, asset: String) -> Node3D:
