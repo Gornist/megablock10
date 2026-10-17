@@ -280,6 +280,7 @@ func apply_state(state: Dictionary) -> void:
 	_apply_beacons(state.get("bk", []))
 	_apply_sensors(state.get("sn", []))
 	_apply_barriers(state.get("br", []))
+	view.set_booths(state.get("bo", []))   # будки запасного Стража: створка и лампа по тревоге
 
 
 ## Барьеры узла: создаём по снимку, убираем пропавших; рядом закрытый барьер (клетка игрока соседняя с его блоком) — подсказка на деке.

@@ -23,6 +23,9 @@ var config_paths: PackedStringArray = NetConfig.default_paths()
 var scene: Node3D
 var net: NetClient
 var trace_audio: TraceAudio
+## Аккорд уровня тревоги узла (ice.md §8): один проигрыватель на клиент, создаётся по первому событию тревоги; chord_plays — сколько аккордов сыграно (журнал и тесты).
+var chord_plays := 0
+var _chord_player: AudioStreamPlayer
 ## Звук такта (пульс, тиканье перед шагом ICE): только в VR-сборке и только в тактовом узле; в плоской сборке и в тестах — null.
 var tick_audio: TickAudio
 var _tick_sound := false
@@ -431,6 +434,19 @@ func _on_state(state: Dictionary) -> void:
 		add_child(tick_audio)
 
 
+## Короткий аккорд нового уровня тревоги; на уровне 0 (остыло) звука нет.
+func _play_alarm_chord(level: int) -> void:
+	var wav := AlarmChord.make(level)
+	if wav == null:
+		return
+	if _chord_player == null:
+		_chord_player = AudioStreamPlayer.new()
+		add_child(_chord_player)
+	_chord_player.stream = wav
+	_chord_player.play()
+	chord_plays += 1
+
+
 func _on_event(ev: Dictionary) -> void:
 	if ev.get("kind") != WorldMsg.EV_BK_TICK:   # bk_tick идёт раз в секунду и на каждый тап: в журнал — только отказы и ловушки (breach.tap)
 		log_file.log("node.event", {"kind": ev.get("kind", ""), "reason": ev.get("reason", ""), "daemon": ev.get("daemon", ""), "ok": ev.get("ok", "")})
@@ -448,6 +464,7 @@ func _on_event(ev: Dictionary) -> void:
 			scene.apply_shards(ev.get("shards", []))
 		WorldMsg.EV_ALARM:   # уровень тревоги узла сменился (Т3b)
 			scene.apply_alarm(ev)
+			_play_alarm_chord(int(ev.get("level", 0)))
 			log_file.log("alarm.level", {"node": ev.get("node", ""), "level": ev.get("level", 0), "alarm": ev.get("alarm", 0)})
 		WorldMsg.EV_DECK:
 			scene.apply_deck(ev)
