@@ -9,7 +9,7 @@
 |---|---|---|
 | `change-record.json` | байты подписи записи (`payload_utf8`), проверка подписи ECDSA P-256/SHA-256/DER, закрытые списки `fields` и `reasons` | приложение (`ChangeRecordContractTest`); коллектор — `changeRecord.ts`; Мост — `WorldRecordDeriver` |
 | `cards.json` | карточки денег `TX v2`, предметов `ITEM v2`, чек `RCPT v1`: строка и байты подписи (`TX2\|…`, `ITEM2\|…`, `id\|ключ`) | приложение (`CardsContractTest`); Мост — `PhoneWire` |
-| `qr.json` | QR контейнера, шарда, RAM-апгрейда, персонажа, сигнала СБ | приложение (`QrContractTest`); коллектор — `mb10QrCodec.ts`; Мост — `PhoneWire` |
+| `qr.json` | QR контейнера, шарда, RAM-апгрейда, персонажа, сигнала СБ; `rejected` — строки другой версии, которые декодер обязан отвергнуть | приложение (`QrContractTest`); коллектор — `mb10QrCodec.ts`; Мост — `PhoneWire` |
 | `loot-crypto.json` | ключ лута (постоянный и HKDF от секрета игры), блок AES-256-GCM `IV ‖ шифртекст ‖ тег` | приложение (`LootCryptoContractTest`); коллектор — `lootCrypto.ts` |
 
 Правила файлов:
