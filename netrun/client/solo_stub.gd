@@ -7,6 +7,7 @@ extends Node
 ## Журнал: каждая попытка (учебная тоже) — своя папка RunJournal (в сборке для тестеров — Документы\Мегаблок10\runs\<дата-время>-<сборка>\,
 ## иначе user://runs, `--runs-dir=` — явно); клиент пишет в неё свой журнал, в конце попытки — строка run.summary, журнал закрывается.
 ## Путь папки — journal_dir() (экран итога К5), ответы анкеты — journal.log_survey(). `--exit-after=<с>` — чистый выход по таймеру (дымовой прогон CI).
+## Экраны тестера (наушники, картинка управления, подсказки, меню Esc, итог, анкета) — SoloUi (client/solo/), поднимается в start(); `--no-ui` — без них.
 
 ## Конец забега: result — причина выхода (ExitLogic.REASON_*), tutorial — попытка шла в учебном узле (журнал её помечает, анкету после неё не показывают).
 signal run_finished(result: String, tutorial: bool)
@@ -32,6 +33,10 @@ const PORT_LAST := 49299
 const EXIT_SETTLE_SEC := 0.5
 ## Выход по таймеру: `--exit-after=<секунды>`.
 const EXIT_AFTER_ARG := "--exit-after="
+## Режим тестера у плоского клиента (FlatStub.TESTER_ARG): мышь захвачена, прицел по центру, поворот щелчком.
+const TESTER_ARG := "--tester"
+## Отладка: без экранов тестера (наушники, меню, итог, анкета).
+const NO_UI_ARG := "--no-ui"
 
 var port := 0
 var server_root: Node
@@ -43,6 +48,12 @@ var tutorial := false
 ## Журнал текущей попытки и базовый каталог попыток (выбран на старте).
 var journal := RunJournal.new()
 var runs_base := ""
+## Сводка последней попытки (поля run.summary), её же пишет в журнал _write_summary; экран итога берёт цифры отсюда.
+var last_summary := {}
+## Экраны тестера (client/solo/solo_ui.gd); null — с --no-ui.
+var ui: SoloUi
+## Где хранится «тестер уже видел» (картинка управления, подсказки H, анкета); тесты подменяют до start().
+var seen_path := SoloSeen.PATH
 ## Чем завершить процесс по --exit-after (тесты подменяют: настоящий quit закрыл бы прогон тестов).
 var quit_fn := func(code: int) -> void: get_tree().quit(code)
 var _user_args := PackedStringArray()
@@ -70,7 +81,7 @@ static func server_args(port_: int, fixture: String = FIXTURE) -> PackedStringAr
 ## Аргументы клиента: пользовательские (если есть) и адрес петли с токеном; их значения перекрывают netrun.cfg.
 static func client_args(user_args: PackedStringArray, port_: int) -> PackedStringArray:
 	var out := PackedStringArray(user_args)
-	out.append_array(PackedStringArray(["--host=" + LOOPBACK, "--port=%d" % port_, "--token=" + TOKEN]))
+	out.append_array(PackedStringArray(["--host=" + LOOPBACK, "--port=%d" % port_, "--token=" + TOKEN, TESTER_ARG]))   # режим тестера: управление SoloControls
 	return out
 
 
@@ -121,7 +132,22 @@ func start(args: PackedStringArray, with_tutorial: bool = true) -> bool:
 	var sec := exit_after_sec(args)
 	if sec >= 0.0:
 		get_tree().create_timer(sec).timeout.connect(_on_exit_after)
-	return _launch(with_tutorial and not (SKIP_TUTORIAL_ARG in args))
+	var ok := _launch(with_tutorial and not (SKIP_TUTORIAL_ARG in args))
+	if ok and not (NO_UI_ARG in args):
+		ui = SoloUi.new()
+		add_child(ui)
+		ui.setup(self, SoloSeen.load_from(seen_path))
+		ui.begin()   # наушники → (первый запуск) картинка управления → игра, которая уже идёт под экранами
+	return ok
+
+
+## Груз деки на конец попытки (последнее событие `deck`: loot, eddies, daemons) — цифры добычи для экрана итога. {} — деки не было.
+func deck_snapshot() -> Dictionary:
+	var proto := _proto()
+	if proto == null or proto.scene == null or not is_instance_valid(proto.scene):
+		return {}
+	var d: Variant = proto.scene.get("deck_info")
+	return (d as Dictionary).duplicate(true) if d is Dictionary else {}
 
 
 ## Папка журнала текущей попытки ("" — не создать, журнал тогда в user://logs, как на очках).
@@ -174,6 +200,7 @@ func _launch(with_tutorial: bool) -> bool:
 	if fixture.is_empty():
 		return false
 	tutorial = with_tutorial
+	last_summary = {}
 	_finished = false
 	_exit_ms = -1
 	server_root = Node.new()
@@ -242,5 +269,6 @@ func _write_summary(result: String) -> void:
 	var proto := _proto()
 	if proto == null or not proto.log_file.is_open():
 		return
-	proto.log_file.log("run.summary", journal.summary(result))
+	last_summary = journal.summary(result)
+	proto.log_file.log("run.summary", last_summary)
 	proto.log_file.close()
