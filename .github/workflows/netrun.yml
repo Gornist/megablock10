@@ -138,3 +138,32 @@ jobs:
         with:
           name: netrun-client-debug-apk
           path: netrun/build/netrun-client.apk
+
+  # Плоская одиночная сборка для тестеров (docs/netrun-flat-windows.md): один exe для Windows из временной копии проекта с gl_compatibility.
+  # Запуск exe на раннере Ubuntu невозможен (нет Wine), поэтому CI проверяет: (1) exe собрался — код возврата и размер > 20 МБ, нет ошибок экспорта;
+  # (2) дымовой прогон ПРОЕКТА той же копии (godot --headless -- --solo): сервер и клиент поднялись, в журнале есть [netrun-solo], нет ошибок скриптов.
+  solo-export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Godot (Linux) и шаблоны экспорта
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: ${{ env.GODOT_VERSION }}-${{ env.GODOT_CHANNEL }}
+          use-dotnet: false
+          include-templates: true
+
+      - run: godot --version
+
+      - name: Экспорт Windows (Flat Windows (solo)) и дымовой прогон
+        run: bash netrun/tools/export_flat_win.sh --smoke
+
+      - name: Артефакт — exe для тестеров
+        uses: actions/upload-artifact@v7
+        with:
+          name: netrun-solo-windows
+          path: |
+            netrun/build/netrun-solo.exe
+            netrun/build/netrun-solo.txt
+          retention-days: 14
