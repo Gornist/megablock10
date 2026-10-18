@@ -58,14 +58,10 @@ func _ready() -> void:
 	eye_vp.add_child(eye_cam)
 	var cam := Camera3D.new()
 	add_child(cam)
-	var hidden := false
 	# Карта не 8×8 (--layout=server_room_hard10): центр, края и высота обзора — по раскладке; 8×8 — прежние пресеты Фойе.
 	var sized: LayoutData = null if foyer.cols == NodeLayout.GRID and foyer.rows == NodeLayout.GRID else foyer
 	for n: String in EyePresets.names():
 		var p := EyePresets.get_preset(n, sized)
-		if not p["eye"] and not hidden:
-			_hide_ceilings(scene)   # сверху потолок и дальние пласты закрывают пол; «вверх» кадра — север (−Z)
-			hidden = true
 		var c := eye_cam if p["eye"] else cam
 		c.fov = p["fov"]
 		c.look_at_from_position(p["pos"], p["look"], p["up"])
@@ -108,13 +104,6 @@ func _sensors_state(ld: LayoutData) -> Array:
 			cells.append([c.x, c.y])
 		out.append({"id": sd["id"], "c": cells, "on": 1, "bl": 0, "l": 2})
 	return out
-
-
-func _hide_ceilings(scene: Node3D) -> void:
-	for c in scene.view.get_node("Room").get_children():
-		var n := str(c.name) + str(c.get_meta("asset", ""))   # варианты модулей получают имена @MultiMeshInstance3D@N — смотрим путь ассета
-		if "ceiling" in n or "far_" in n or str(c.name) == "Horizon":
-			(c as Node3D).visible = false
 
 
 func _shot(cam: Camera3D, name_: String, vp: Viewport) -> void:

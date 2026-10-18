@@ -122,24 +122,6 @@ static func set_tier_nodes(root: Node, tier: int) -> void:
 			(n as Node3D).visible = k <= tier
 
 
-## Затухание по расстоянию и параметры шейдера на материалах частей из mesh_parts (кэш общий для всех экземпляров пути и тира). Параметр, которого у шейдера
-## материала нет (у дымки нет far_gain), пропускается, как в AssetMaterials.set_param.
-static func tune_parts(parts: Array, fade: Vector2, params: Dictionary) -> void:
-	for part in parts:
-		var mesh := part["mesh"] as Mesh
-		for s in mesh.get_surface_count():
-			var m := mesh.surface_get_material(s) as ShaderMaterial
-			if m == null:
-				continue
-			var names: Array = m.shader.get_shader_uniform_list().map(func(u): return u["name"])
-			if names.has("fade_start"):
-				m.set_shader_parameter("fade_start", fade.x)
-				m.set_shader_parameter("fade_end", fade.y)
-			for k in params:
-				if names.has(k):
-					m.set_shader_parameter(k, params[k])
-
-
 static func _collect(n: Node, xf: Transform3D, out: Array) -> void:
 	for c in n.get_children():
 		# Скрытое (AssetMaterials прячет меши при mist_alpha=0, veil_scale=0 и т. д.; неактивные State_/Tier_) в MultiMesh не попадает: раньше `visible` игнорировался

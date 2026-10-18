@@ -37,7 +37,6 @@ func _ready() -> void:
 	var cam := Camera3D.new()
 	add_child(cam)
 	var top := EyePresets.get_preset("top")
-	_hide_ceilings(scene)
 	cam.fov = top["fov"]
 	cam.look_at_from_position(top["pos"], top["look"], top["up"])
 	await _shot(cam, "top")
@@ -52,13 +51,6 @@ func _ready() -> void:
 	cam.look_at_from_position(Vector3(-1.0, 1.6, 1.0), Vector3(0.0, 1.0, -3.0), Vector3.UP)  # ряд из двух и одиночная
 	await _shot(cam, "row_single")
 	get_tree().quit()
-
-
-func _hide_ceilings(scene: Node3D) -> void:
-	for c in scene.view.get_node("Room").get_children():
-		var n := str(c.name) + str(c.get_meta("asset", ""))
-		if "ceiling" in n or "far_" in n or str(c.name) == "Horizon":
-			(c as Node3D).visible = false
 
 
 func _shot(cam: Camera3D, name_: String) -> void:

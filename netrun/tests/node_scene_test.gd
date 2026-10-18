@@ -4,8 +4,8 @@ extends GdUnitTestSuite
 
 const TIERS := ["BASE", "HARD", "NIGHTMARE"]
 ## Модули, которые всегда в комнате (ворота lockdown_gate — только при LOCKDOWN). Стен, углов, дверей, тоннеля, far_field и горизонта нет (рефактор Сети).
-const ENV_MODULES := ["floor", "pillar", "platform", "ceiling", "far_floor", "far_ceiling"]
-const REMOVED_MODULES := ["wall", "corner", "doorway", "tunnel_ring", "far_field", "room_edge"]
+const ENV_MODULES := ["floor", "pillar", "platform"]
+const REMOVED_MODULES := ["wall", "corner", "doorway", "tunnel_ring", "far_field", "room_edge", "ceiling", "far_floor", "far_ceiling"]
 const PORTAL := "res://assets/models/props/portal.glb"
 const PORTAL_LOCKED := "res://assets/models/props/portal_locked.glb"
 const GATE := "res://assets/models/env/lockdown_gate.glb"
@@ -95,7 +95,7 @@ func test_tier_changes_the_tint_of_the_room() -> void:
 	for tier in TIERS:
 		var scene := _scene()
 		scene.apply_node(_info(tier))
-		tints[tier] = _tint(scene.view, _module_path("ceiling"))
+		tints[tier] = _tint(scene.view, _module_path("floor"))
 	assert_bool(tints["BASE"] != tints["HARD"] and tints["HARD"] != tints["NIGHTMARE"]).override_failure_message("тиры одного цвета: %s" % str(tints)).is_true()
 	for tier in TIERS:
 		assert_bool(tints[tier].b >= tints[tier].r).override_failure_message("%s: красный в окружении" % tier).is_true()
@@ -104,19 +104,20 @@ func test_tier_changes_the_tint_of_the_room() -> void:
 func test_next_node_rebuilds_the_room_for_its_tier() -> void:
 	var scene := _scene()
 	scene.apply_node(_info("HARD"))
-	var hard := _tint(scene.view, _module_path("ceiling"))
+	var hard := _tint(scene.view, _module_path("floor"))
 	scene.apply_node(_info("NIGHTMARE"))
 	assert_str(scene.view.tier).is_equal("NIGHTMARE")
-	assert_bool(_tint(scene.view, _module_path("ceiling")) != hard).override_failure_message("тир не сменил цвет").is_true()
+	assert_bool(_tint(scene.view, _module_path("floor")) != hard).override_failure_message("тир не сменил цвет").is_true()
 
 
-func test_room_is_one_floor_slab_with_an_edge_and_8x8_ceiling() -> void:
+func test_room_is_one_floor_slab_without_ceiling_and_far_layers() -> void:
 	var scene := _scene()
 	scene.apply_node(_info("BASE"))
 	var counts: Dictionary = scene.view.module_counts()
-	# пол — один тайл в центре комнаты (кромка room_edge убрана); потолок — по ячейке
+	# пол — один тайл в центре комнаты (кромка room_edge убрана); потолка и дальних пластов нет (решение владельца 18.10), горизонт — купол
 	assert_int(counts["floor"]).is_equal(1)
-	assert_int(counts["ceiling"]).is_equal(NodeLayout.GRID * NodeLayout.GRID)
+	for module in ["ceiling", "far_floor", "far_ceiling"]:
+		assert_bool(counts.has(module)).override_failure_message(module + " построен").is_false()
 	for module in ["floor"]:
 		var mm := _multimesh_of(scene.view, _module_path(module))
 		assert_bool(mm != null).override_failure_message("нет " + module).is_true()
@@ -491,20 +492,14 @@ func test_assembled_node_fits_the_triangle_budget() -> void:
 
 
 func test_repeated_modules_are_instanced_not_duplicated() -> void:
-	# 64 плитки потолка (в трёх вариантах) — MultiMesh на вариант и поверхность, а не по узлу на плитку
+	# несколько помостов площадки выхода — один MultiMesh на модуль и поверхность, а не по узлу на помост
 	var scene := _scene()
 	scene.apply_node(_info("BASE"))
-	var multi: Array = scene.view.find_children("*", "MultiMeshInstance3D", true, false)
-	var per_variant: Dictionary = {}  # путь варианта -> число плиток (у каждого меша варианта оно одно)
-	for n in multi:
-		var path := str(n.get_meta("asset", ""))
-		if path in ["res://assets/models/env/ceiling.glb", "res://assets/models/env/ceiling_b.glb", "res://assets/models/env/ceiling_c.glb"] and not str(n.name).contains("reflection"):
-			per_variant[path] = (n as MultiMeshInstance3D).multimesh.instance_count
-	assert_int(per_variant.size()).is_equal(3)
-	var total := 0
-	for v in per_variant.values():
-		total += int(v)
-	assert_int(total).is_equal(NodeLayout.GRID * NodeLayout.GRID)
+	var platforms := int(scene.view.module_counts()["platform"])
+	assert_int(platforms).is_greater(1)
+	var mm := _multimesh_of(scene.view, _module_path("platform"))
+	assert_bool(mm != null).is_true()
+	assert_int(mm.instance_count).is_equal(platforms)
 	# обычные экземпляры — только предметы узла (хранилища, площадки, корпуса панелей, порталы, кресло, датчик): их по десятку, а не по узлу на плитку
 	assert_int(scene.view.find_children("*", "MeshInstance3D", true, false).size()).is_less(80)
 
@@ -532,16 +527,13 @@ func test_horizon_band_is_not_built() -> void:
 	assert_object(_multimesh_of(scene.view, NodeAssets.env_path("horizon_band"))).is_null()
 
 
-func test_far_layers_fade_late_and_brighten_toward_the_horizon() -> void:
-	var scene := _scene()
-	scene.apply_node(_info("BASE"))
-	for module in ["far_floor", "far_ceiling"]:
-		var path := _module_path(module)
-		assert_bool(_multimesh_of(scene.view, path) != null).override_failure_message("нет " + module).is_true()
-		assert_bool(_param(scene.view, path, "fade_start") != null).override_failure_message(module + ": нет fade_start").is_true()
-		assert_float(float(_param(scene.view, path, "fade_start"))).is_equal(NodeView.FAR_FADE.x)
-		assert_float(float(_param(scene.view, path, "fade_end"))).is_equal(NodeView.FAR_FADE.y)
-	var floor_path := _module_path("far_floor")
-	assert_float(float(_param(scene.view, floor_path, "far_gain"))).is_equal(1.8)
-	assert_float(float(_param(scene.view, floor_path, "far_start"))).is_equal(20.0)
-	assert_float(float(_param(scene.view, floor_path, "far_end"))).is_equal(60.0)
+func test_ceiling_and_far_layers_are_not_built_the_horizon_is_the_dome() -> void:
+	# «убери плиты сверху и снизу вообще, оставим только горизонт» (владелец 18.10): потолок и дальние пласты не строятся
+	for tier in TIERS:
+		var scene := _scene()
+		scene.apply_node(_info(tier))
+		for module in ["ceiling", "far_floor", "far_ceiling"]:
+			assert_object(_multimesh_of(scene.view, _module_path(module))).override_failure_message("%s: построен %s" % [tier, module]).is_null()
+		assert_bool(scene.view.find_children("*far_*", "", true, false).is_empty()).override_failure_message("%s: остались far_*" % tier).is_true()
+	var scene2 := _scene()
+	assert_object(scene2.backdrop).is_instanceof(BackdropDome)   # горизонт - единственный дальний фон
