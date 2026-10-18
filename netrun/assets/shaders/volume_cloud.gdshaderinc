@@ -15,7 +15,12 @@ uniform float dust : hint_range(0.0, 3.0) = 0.0;                      // ярк�
 uniform float dust_cell : hint_range(0.01, 0.2) = 0.018;              // ширина ячейки, м (высота вдвое больше)
 uniform float dust_density : hint_range(0.0, 1.0) = 0.35;             // доля ячеек, в которых есть частица, на ровной грани вблизи
 uniform float dust_fps : hint_range(0.0, 30.0) = 0.0;                 // смен кадра спрайта в секунду у каждой ячейки; 0 (умолчание) — у ячейки свой постоянный кадр. 10 кадров/с с жёсткой альфой (alpha_to_coverage) на очках рябили всю поверхность (владелец 17.10: «частицы жутко рябят»)
-uniform float dust_far_start = 10.0;                                   // дальше плотность и яркость падают
+// Заливка вдали (рябь на очках 18.10: «вдали рябит больше», «видна граница отрисовки»): ячейка мельче dust_fill_lo px экрана не рисуется зерном (0/1 покрытие на MSAA 2× перескакивает при любом
+// микродвижении головы), а заменяется ровной непрозрачной заливкой среднего цвета (тот же средний свет: цвет·плотность·dust_cover_avg); от dust_fill_hi px до dust_fill_lo зерно плавно растворяется в заливку.
+uniform float dust_fill : hint_range(0.0, 1.0) = 0.0;                 // 0 — выкл. (как раньше: дробная альфа), 1 — полная заливка; ручка AssetMaterials `dust_fill`
+uniform float dust_fill_lo : hint_range(0.2, 6.0) = 2.0;
+uniform float dust_fill_hi : hint_range(0.5, 8.0) = 4.0;
+uniform float dust_far_start = 10.0;                                  // дальше плотность и яркость падают
 uniform float dust_far_end = 40.0;
 uniform vec4 dust_color : source_color = vec4(0.176, 0.463, 0.553, 1.0);  // стальная бирюза референса (45,118,141): PAL_DIM светлее, неон — только акцент
 uniform vec4 dust_hot : source_color = vec4(0.62, 0.92, 1.0, 1.0);        // редкие яркие блоки (рывок): белёсый акцент
@@ -67,9 +72,15 @@ vec4 volume_cloud(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px, float 
 	float patch_k = mix(1.0, smoothstep(0.25, 0.75, patch_n), dust_patch);
 	float dens = clamp(dust_density * patch_k * (0.55 + 0.45 * up) * (1.0 + 0.7 * graze) * dens_k + edge * dust_edge_gain, 0.0, 1.0);
 	float px_world = 2.0 * max(dist, 0.1) / max(abs(proj_px), 1.0);
-	float sharp = smoothstep(0.7, 2.0, dust_cell / px_world);
-	if (sharp < 0.02) {  // ячейка мельче ~0,7 px: только средняя засветка — без выборки текстуры (дальние плиты и потолок: основная масса фрагментов)
-		return vec4(mix(dust_color.rgb, dust_hot.rgb, edge * 0.5) * dust, clamp(dens * dust_cover_avg * far_k, 0.0, 1.0));
+	float cell_px = dust_cell / px_world;
+	float sharp = smoothstep(0.7, 2.0, cell_px);
+	vec3 avg_rgb = mix(dust_color.rgb, dust_hot.rgb, edge * 0.5) * dust;
+	float fill_w = dust_fill * (1.0 - smoothstep(dust_fill_lo, dust_fill_hi, cell_px));
+	if (fill_w >= 0.999 || (dust_fill <= 0.0 && sharp < 0.02)) {  // ячейка мельче порога: только средняя засветка — без выборки текстуры (дальние плиты и потолок: основная масса фрагментов)
+		if (dust_fill > 0.0) {
+			return vec4(avg_rgb * dens * dust_cover_avg * far_k, 1.0);   // заливка: яркость среднего света, цвет гаснет вдаль (альфа 1 — без дитера a2c)
+		}
+		return vec4(avg_rgb, clamp(dens * dust_cover_avg * far_k, 0.0, 1.0));
 	}
 	float n = glitch_cells.x * glitch_cells.y;
 	float frame = floor(mod(TIME * dust_fps + h * n, n));
@@ -80,5 +91,10 @@ vec4 volume_cloud(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px, float 
 	float present = step(h2, dens);
 	float a = mix(dens * dust_cover_avg, s * present, sharp);
 	vec3 base = mix(dust_color.rgb, dust_hot.rgb, smoothstep(0.55, 1.0, s) * step(0.82, h) + edge * 0.5);
-	return vec4(base * dust, clamp(a * far_k, 0.0, 1.0));
+	vec4 cell = vec4(base * dust, clamp(a * far_k, 0.0, 1.0));
+	if (fill_w > 0.0) {   // зерно → заливка: цвет и покрытие смешиваются по весу, на границе режимов нет скачка яркости
+		float ao = cell.a * (1.0 - fill_w) + fill_w;   // «зерно поверх заливки» с весом (1 − fill_w)
+		cell = vec4((cell.rgb * cell.a * (1.0 - fill_w) + avg_rgb * dens * dust_cover_avg * far_k * fill_w) / max(ao, 0.001), ao);
+	}
+	return cell;
 }

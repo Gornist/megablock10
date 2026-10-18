@@ -790,6 +790,19 @@ func test_floor_density_knob_scales_only_floor_grain() -> void:
 	AssetMaterials.reset_tuning()
 
 
+## Заливка вдали (18.10, рябь вдали на очках): по умолчанию включена и доходит до материала облака; dust_fill = 0 выключает.
+func test_dust_fill_knob_defaults_on_and_reaches_cloud_material() -> void:
+	AssetMaterials.reset_tuning()
+	assert_float(float(AssetMaterials.KNOBS["dust_fill"])).override_failure_message("умолчание dust_fill — 1").is_equal(1.0)
+	var m := _mat_of(_apply_new("env", "cover"), "pillar_block")
+	assert_float(float(m.get_shader_parameter("dust_fill"))).override_failure_message("материал облака получает dust_fill").is_equal(1.0)
+	assert_float(float(m.get_shader_parameter("dust_fill_lo"))).is_equal(2.0)
+	assert_float(float(m.get_shader_parameter("dust_fill_hi"))).is_equal(4.0)
+	AssetMaterials.tune({"dust_fill": 0.0})
+	assert_float(float(_mat_of(_apply_new("env", "cover"), "pillar_block").get_shader_parameter("dust_fill"))).override_failure_message("ручка dust_fill = 0 выключает").is_equal(0.0)
+	AssetMaterials.reset_tuning()
+
+
 ## Рябь частиц на очках (17.10): ячейка облака по умолчанию держит один кадр спрайта (dust_fps = 0), ручка доходит до материала.
 func test_dust_fps_knob_defaults_to_static_cell_frame() -> void:
 	AssetMaterials.reset_tuning()
