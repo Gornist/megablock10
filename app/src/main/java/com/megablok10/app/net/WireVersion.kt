@@ -32,7 +32,8 @@ object WireVersion {
     const val ENVELOPE = LineEnvelope.VERSION
 
     /** Версии для дашборда (поле `wireVersions` в presence): короткие имена протоколов, порядок стабилен. */
-    val REPORTED: Map<String, Int> = linkedMapOf("chat" to CHAT, "call" to CALL, "claim" to CLAIM, "read" to READ, "to" to ENVELOPE)
+    val REPORTED: Map<String, Int> =
+        linkedMapOf("chat" to CHAT, "call" to CALL, "claim" to CLAIM, "read" to READ, "to" to ENVELOPE, "voice" to VOICE, "enter" to ENTER)
 
     /** Магия протокола → версия, которую понимает это приложение. */
     val SUPPORTED: Map<String, Int> = mapOf("MB10CHAT" to CHAT, "MB10CALL" to CALL, "MB10CLAIM" to CLAIM, "MB10READ" to READ, "MB10VOICE" to VOICE, "MB10LISTEN" to VOICE_LISTENED, "MB10ENTER" to ENTER, "MB10ENTERED" to ENTERED, LineEnvelope.MAGIC to ENVELOPE)

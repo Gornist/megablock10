@@ -18,10 +18,19 @@ class WireVersionTest {
     private val line = ChatProtocol.encode(msg)
 
     /** Короткое имя из `wireVersions` дашборда → магия протокола в [WireVersion.SUPPORTED]. */
-    private val magicOfReported = mapOf("chat" to "MB10CHAT", "call" to "MB10CALL", "claim" to "MB10CLAIM", "read" to "MB10READ", "to" to LineEnvelope.MAGIC)
+    private val magicOfReported = mapOf(
+        "chat" to "MB10CHAT", "call" to "MB10CALL", "claim" to "MB10CLAIM", "read" to "MB10READ", "to" to LineEnvelope.MAGIC,
+        "voice" to "MB10VOICE", "enter" to "MB10ENTER",
+    )
 
     @Test fun reportedVersionsMatchSupportedOnes() {
-        assertEquals(mapOf("chat" to WireVersion.CHAT, "call" to WireVersion.CALL, "claim" to WireVersion.CLAIM, "read" to WireVersion.READ, "to" to WireVersion.ENVELOPE), WireVersion.REPORTED)
+        assertEquals(
+            mapOf(
+                "chat" to WireVersion.CHAT, "call" to WireVersion.CALL, "claim" to WireVersion.CLAIM, "read" to WireVersion.READ,
+                "to" to WireVersion.ENVELOPE, "voice" to WireVersion.VOICE, "enter" to WireVersion.ENTER,
+            ),
+            WireVersion.REPORTED,
+        )
         // по ключам, а не по множествам значений: новый протокол с версией 1 «растворился» бы среди одинаковых единиц
         assertEquals(magicOfReported.keys, WireVersion.REPORTED.keys)
         for ((short, magic) in magicOfReported) {
@@ -30,12 +39,14 @@ class WireVersionTest {
     }
 
     /**
-     * Протоколы, которые приложение понимает, но дашборду не сообщает (голос и вход в Сеть, аудит 17.10). Добавление в REPORTED —
-     * контракт с Коллектором (`wireVersions` в presence): сервер сначала принимает ключи. Новый протокол в SUPPORTED без записи
-     * сюда и без короткого имени в REPORTED этот тест красит — решение «сообщать или нет» принимается явно.
+     * Протоколы, которые приложение понимает, но дашборду не сообщает: ответные половины (чек прослушивания голоса, ответ Моста на
+     * вход в Сеть) версионируются вместе с запросом. Коллектор принимает до 8 ключей `wireVersions` на устройство (`presence.ts`),
+     * у нас 7. Новый протокол в SUPPORTED без записи сюда и без короткого имени в REPORTED этот тест красит — решение
+     * «сообщать или нет» принимается явно.
      */
     @Test fun everySupportedProtocolIsEitherReportedOrListedAsKnownGap() {
-        val knownGap = setOf("MB10VOICE", "MB10LISTEN", "MB10ENTER", "MB10ENTERED")
+        assertTrue("предел коллектора — 8 ключей wireVersions", WireVersion.REPORTED.size <= 8)
+        val knownGap = setOf("MB10LISTEN", "MB10ENTERED")
         assertEquals(knownGap, WireVersion.SUPPORTED.keys - magicOfReported.values.toSet())
     }
 
