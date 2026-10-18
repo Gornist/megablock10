@@ -36,7 +36,6 @@ func _ready() -> void:
 	add_child(_layer)
 	var sized: LayoutData = null if ld.cols == NodeLayout.GRID and ld.rows == NodeLayout.GRID else ld
 	var top := EyePresets.get_preset("top", sized)
-	_hide_ceilings()
 	var k := EyePresets.top_scale(sized)
 	var shift := 7.0 * k  # комната — в левой части кадра, справа место под легенду
 	_cam.fov = top["fov"]
@@ -108,13 +107,6 @@ func _booths(ld: LayoutData) -> Array:
 	for i in ld.booths.size():
 		out.append({"id": "b%d" % (i + 1), "c": [ld.booths[i].x, ld.booths[i].y], "open": 0})
 	return out
-
-
-func _hide_ceilings() -> void:
-	for c in _scene.view.get_node("Room").get_children():
-		var n := str(c.name) + str(c.get_meta("asset", ""))
-		if "ceiling" in n or "far_" in n or str(c.name) == "Horizon":
-			(c as Node3D).visible = false
 
 
 ## Список меток по данным сцены (позиции читаются у самих узлов и у раскладки, а не выдумываются).

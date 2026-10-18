@@ -67,19 +67,14 @@ func test_пол_покрывает_ровно_карту_10x10_6x9_12x12() -> v
 		assert_vector(xf.basis.get_scale()).is_equal_approx(Vector3(dim.x * 2.0 / 16.0, 1.0, dim.y * 2.0 / 16.0), Vector3.ONE * 0.001)
 
 
-func test_потолок_ровно_над_ячейками_карты() -> void:
-	for dim in [Vector2i(10, 10), Vector2i(6, 9)]:
-		var ld := _parse(dim.x, dim.y)
-		var v := _view(ld)
-		assert_int(int(v.module_counts()["ceiling"])).is_equal(dim.x * dim.y)
-		var rect := _room_rect(ld)
-		for xf: Transform3D in v._room_transforms()["ceiling"]:
-			assert_bool(rect.has_point(Vector2(xf.origin.x, xf.origin.z))).is_true()
-		# крайние ячейки: центры на полметра ячейки внутрь от углов
-		var first: Transform3D = v._room_transforms()["ceiling"][0]
-		var last: Transform3D = v._room_transforms()["ceiling"][dim.x * dim.y - 1]
-		assert_vector(first.origin).is_equal_approx(NodeLayout.cell_center(0, 0) + Vector3(0, NodeView.CEILING_H, 0), Vector3.ONE * 0.001)
-		assert_vector(last.origin).is_equal_approx(NodeLayout.cell_center(dim.x - 1, dim.y - 1) + Vector3(0, NodeView.CEILING_H, 0), Vector3.ONE * 0.001)
+func test_потолка_и_дальних_пластов_нет_в_комнате_любого_размера() -> void:
+	# решение владельца 18.10 («убери плиты сверху и снизу вообще, оставим только горизонт»): горизонт - купол, пол остаётся
+	for dim in [Vector2i(8, 8), Vector2i(10, 10), Vector2i(6, 9), Vector2i(12, 12)]:
+		var v := _view(_parse(dim.x, dim.y))
+		var xforms: Dictionary = v._room_transforms()
+		for module: String in ["ceiling", "far_floor", "far_ceiling"]:
+			assert_bool(xforms.has(module)).override_failure_message("%s в %s" % [module, str(dim)]).is_false()
+		assert_int(int(v.module_counts()["floor"])).is_equal(1)
 
 
 func test_ворота_локдауна_стоят_в_южной_стене_карты() -> void:
@@ -103,33 +98,16 @@ func test_центр_комнаты_и_размер_по_раскладке() ->
 	assert_vector(w.room_max()).is_equal(Vector2(4.0, 4.0))
 
 
-func test_дальний_план_вокруг_центра_комнаты_и_шире_карты() -> void:
-	for dim in [Vector2i(10, 10), Vector2i(6, 9), Vector2i(12, 12)]:
-		var ld := _parse(dim.x, dim.y)
-		var v := _view(ld)
-		assert_int(v.far_grow()).is_equal(0)   # до 12×12 дальний план прежний: «дыра» под пластом (33 м) шире комнаты (24 м)
-		var c := ld.room_center()
-		var xs := PackedFloat32Array()
-		for xf: Transform3D in v._room_transforms()["far_floor"]:
-			if is_zero_approx(xf.origin.y):
-				xs.append(xf.origin.x - c.x)
-				# наш пласт: участок не накрывает комнату (иначе z-борьба с полом), но стоит вокруг её центра
-				assert_bool(absf(xf.origin.x - c.x) > 11.0 or absf(xf.origin.z - c.z) > 11.0).is_true()
-		assert_int(xs.size()).is_greater(0)
-		assert_float(float(Array(xs).min()) + float(Array(xs).max())).is_equal_approx(0.0, 0.001)   # симметрично центру
-
-
 func test_8x8_раскладка_и_прежняя_комната_дают_одни_и_те_же_преобразования() -> void:
 	var old := _view(null)
 	var same := _view(_parse(8, 8))
 	var a: Dictionary = old._room_transforms()
 	var b: Dictionary = same._room_transforms()
-	for module: String in ["floor", "ceiling", "far_floor", "far_ceiling"]:
+	for module: String in ["floor"]:
 		assert_array(b[module]).override_failure_message(module).is_equal(a[module])
 	var floor_xf: Transform3D = a["floor"][0]
 	assert_bool(floor_xf.basis == Basis.IDENTITY).is_true()
 	assert_vector(floor_xf.origin).is_equal(NodeLayout.ROOM_CENTER)
-	assert_int(int(old.module_counts()["ceiling"])).is_equal(64)
 
 
 # ---------------------------------------------------------------- подсветка занятых клеток

@@ -28,10 +28,9 @@ const PANEL_SCALE := BreachPanelLayout.WIDTH_M / 0.44
 ## Стен, углов, дверей, кольца тоннеля, башен света (far_field) и кольца горизонта в комнате нет: на принятом виде (V10: штрихи и точки окружения выключены,
 ## дымка погашена) они невидимы и стоили только вызовов отрисовки (docs/netrun-refactor-plan.md). Ворота lockdown_gate остаются: это игровой сигнал LOCKDOWN.
 ## Границу комнаты показывает только кромка плит пола: room_edge (подвесные штрихи и дымка кромки) на принятом виде невидим, убран по решению владельца 13.10.
-## Дальние пласты (far_*) иначе гаснут на 14…40 м (assets/ARCHITECTURE.md, п. 17): затухание по расстоянию и яркость к горизонту.
-const FAR_FADE := Vector2(40.0, 130.0)
-const FAR_PARAMS := {"far_gain": 1.8, "far_start": 20.0, "far_end": 60.0}
-const MODULES := ["floor", "pillar", "cover", "platform", "lockdown_gate", "ceiling", "far_floor", "far_ceiling"]
+## Потолка и дальних пластов (far_*) в комнате нет (решение владельца 18.10: «убери плиты сверху и снизу вообще, оставим только горизонт»): горизонт — фон-купол BackdropDome
+## (client/rig_test_scene.gd); пол комнаты с сеткой остаётся игровым полем.
+const MODULES := ["floor", "pillar", "cover", "platform", "lockdown_gate"]
 ## Будка запасного Стража (ice/guard_booth.glb, ice.md §4): створка `Door` сдвигается вбок на столько, м, когда запасной вышел (корпус 0,9 м); лампа `Lamp` горит с тревоги 2.
 const BOOTH_PATH := NodeAssets.ROOT + "ice/guard_booth.glb"
 const BOOTH_DOOR_SLIDE := 0.8
@@ -41,22 +40,13 @@ const BOOTH_LAMP_LEVEL := 2
 const VARIANTS := {
 	# пол — один чёрный тайл на всю комнату (решение владельца 05.10.2026), граница комнаты — кромка; ставится в центр комнаты (room_center), один раз, масштаб по размеру карты (floor_scale)
 	"floor": ["floor_slab_16"],
-	"ceiling": ["ceiling", "ceiling_b", "ceiling_c"],
-	"far_floor": ["far_floor", "far_floor_b", "far_floor_c"],
-	"far_ceiling": ["far_ceiling", "far_ceiling_b", "far_ceiling_c"],
 }
 ## Модули с отражением в полу (зеркальная копия, тусклая): стены, углы, двери, ворота, колонны, укрытия блока хранилища, помосты.
 const REFLECTED := ["lockdown_gate", "pillar", "cover", "platform"]
-## Потолок и дальние пласты: комната лежит в «пласте данных», выше и ниже — такие же (assets/ARCHITECTURE.md, п. 12).
-const CEILING_H := 5.0
-const LAYER_PITCH := 7.0
-const FAR_STEP := 11.0
 ## Сторона запечённой плиты пола (env/floor_slab_16), м: растягивается до размера карты (floor_scale).
 const FLOOR_SLAB_M := 16.0
 ## Стена и дверь стоят на краю ячейки: модуль окружения центрирован в ячейке, поэтому его сдвигают к наружному краю на столько метров.
 const WALL_EDGE := 0.9
-## Дальний план: уровни пластов и радиус сетки участков 11 м вокруг центра комнаты (в участках); у нашего пласта пустые участки под комнатой.
-const FAR_LAYERS := [{"y": 0.0, "r": 2, "hole": 1}, {"y": LAYER_PITCH, "r": 1, "hole": -1}, {"y": -LAYER_PITCH, "r": 2, "hole": 1}]
 
 ## Тир узла, по которому выбраны файлы окружения (BASE, если сервер тир не назвал).
 var tier := ""
@@ -330,15 +320,6 @@ func floor_rect() -> Rect2:
 	return Rect2(Vector2(c.x, c.z) - half, half * 2.0)
 
 
-## На сколько участков (11 м) дальний план шире обычного: нужно, только когда сторона комнаты не помещается в «дыру» под нашим пластом (3 участка = 33 м).
-## До 12×12 (24 м) — ноль, дальний план прежний.
-func far_grow() -> int:
-	var dim := room_cells()
-	var side := maxi(dim.x, dim.y) * NodeLayout.CELL
-	var hole_half: float = (float(FAR_LAYERS[0]["hole"]) + 0.5) * FAR_STEP
-	return maxi(0, ceili((side * 0.5 - hole_half) / FAR_STEP))
-
-
 ## Сколько экземпляров каждого модуля в комнате (для проверки сетки).
 func module_counts() -> Dictionary:
 	return _counts
@@ -370,7 +351,6 @@ func _room_transforms() -> Dictionary:
 	for iz in dim.y:
 		for ix in dim.x:
 			var c := NodeLayout.cell_center(ix, iz)
-			out["ceiling"].append(Transform3D(Basis(Vector3.UP, PI / 2.0 * ((ix + iz * 3 + 1) % 4)), c + Vector3(0, CEILING_H, 0)))
 			# Ворота LOCKDOWN — в южной стене на месте дверей выхода (угловые ячейки не в счёт: двери выхода сбоку от оси площадки).
 			if iz == last and ix > 0 and ix < dim.x - 1 and _is_exit_door(c):
 				var wb := Basis(Vector3.UP, PI)
@@ -381,27 +361,7 @@ func _room_transforms() -> Dictionary:
 		out["pillar"].append(Transform3D(Basis.IDENTITY, p))
 	for p in cover_positions():
 		out["cover"].append(Transform3D(Basis.IDENTITY, p))
-	_far_transforms(out)
 	return out
-
-
-## Дальний план: участки 11×11 м сеткой вокруг центра комнаты, на трёх пластах (наш, выше, ниже). У участка две вещи: пол и потолок.
-func _far_transforms(out: Dictionary) -> void:
-	var n := 0
-	var center := room_center()
-	var grow := far_grow()
-	for layer in FAR_LAYERS:
-		var r: int = int(layer["r"]) + grow
-		var hole: int = int(layer["hole"]) + (grow if int(layer["hole"]) > 0 else 0)
-		for gx in range(-r, r + 1):
-			for gz in range(-r, r + 1):
-				if hole > 0 and absi(gx) <= hole and absi(gz) <= hole:
-					continue  # под комнатой — она сама
-				var p := Vector3(center.x + gx * FAR_STEP, float(layer["y"]), center.z + gz * FAR_STEP)
-				var b := Basis(Vector3.UP, PI / 2.0 * (n % 4))
-				out["far_floor"].append(Transform3D(b, p))
-				out["far_ceiling"].append(Transform3D(b, p + Vector3(0, CEILING_H, 0)))
-				n += 1
 
 
 ## Дверь выхода — ячейка южной стены по сторонам от оси площадки (для прежней комнаты это NodeLayout.EXIT_DOORS).
@@ -417,7 +377,6 @@ func _is_exit_door(cell: Vector3) -> bool:
 func _add_module(parent: Node3D, module: String, xforms: Array) -> Array[Node3D]:
 	var made: Array[Node3D] = []
 	var vars: Array = VARIANTS.get(module, [module])
-	# Дальний план в тоне тира узла (BASE — бирюза, как в референсе). Раньше в BASE он красился в HARD, чтобы не спорить со стенами; стен нет.
 	var mod_tier := tier
 	for v in vars.size():
 		var list: Array = []
@@ -425,8 +384,6 @@ func _add_module(parent: Node3D, module: String, xforms: Array) -> Array[Node3D]
 			if i % vars.size() == v:
 				list.append(xforms[i])
 		var path := NodeAssets.env_path(str(vars[v]), mod_tier)
-		if module.begins_with("far_") and not list.is_empty():
-			NodeAssets.tune_parts(NodeAssets.mesh_parts(path, mod_tier), FAR_FADE, FAR_PARAMS)  # материалы в кэше общие: настройка идемпотентна
 		made.append_array(_add_multi(parent, path, module, list, mod_tier, false))
 		if REFLECTED.has(module):
 			made.append_array(_add_multi(parent, path, module + "_reflection", list, mod_tier, true))
