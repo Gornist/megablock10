@@ -13,7 +13,7 @@ uniform float veil_scale : hint_range(0.0, 4.0) = 1.0;    // множитель 
 // Завеса ВВЕРХ от верхней кромки плит пола (квады с высотой в UV2.x, env._slab_rise): отдельные ручки, чтобы не трогать вуаль вниз.
 uniform float rise_gain : hint_range(0.0, 8.0) = 1.0;     // множитель альфы завесы вверх (ручка tile_glow); 0 — квады схлопываются, заливку не тратят
 uniform float rise_scale : hint_range(0.1, 3.0) = 1.0;    // высота завесы вверх относительно модельной (ручка tile_glow_h)
-uniform float falloff : hint_range(0.5, 4.0) = 2.4;      // крутизна затухания книзу: больше — вуаль плотнее прижата к кромке
+const float falloff = 2.4;      // крутизна затухания книзу: больше — вуаль плотнее прижата к кромке
 uniform vec4 tint : source_color = vec4(1.0);
 uniform float tint_amount : hint_range(0.0, 1.0) = 0.0;
 // Верх вуали плотнее всего и лежит на нижнем краю плиты, на 3 см ниже светящейся кромки: издали две яркие линии рядом сливаются в пиксель и мерцают.
@@ -21,8 +21,8 @@ uniform float tint_amount : hint_range(0.0, 1.0) = 0.0;
 // Пятнистость и дрейф пятен вдоль грани убраны (принято: ровная и статичная вуаль — без «лава-лампы»).
 uniform float top_fade : hint_range(0.0, 0.5) = 0.12;
 // Затухание по расстоянию до камеры (замена depth-fade) и яркость растёт к горизонту, как у штрихов (far_gain). 1 — выключено.
-uniform float fade_start = 60.0;
-uniform float fade_end = 90.0;
+const float fade_start = 60.0;
+const float fade_end = 90.0;
 uniform float intensity = 1.0; // общий множитель яркости (отражение в полу = 0.2)
 uniform float far_gain : hint_range(1.0, 6.0) = 1.0;
 uniform float far_start = 20.0;

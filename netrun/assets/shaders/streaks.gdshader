@@ -10,25 +10,25 @@ render_mode blend_add, unshaded, depth_draw_never, cull_disabled, fog_disabled;
 
 uniform float lattice : hint_range(0.0, 0.5) = 0.0;  // шаг мировой решётки, м: центры прищёлкиваются к ней (0 = выкл.), эффект «объёмного дисплея»
 uniform float glow : hint_range(0.0, 6.0) = 1.6;
-uniform float bead_freq : hint_range(0.0, 60.0) = 14.0;   // бусин на метр
+const float bead_freq = 14.0;   // бусин на метр
 uniform float bead_depth : hint_range(0.0, 1.0) = 0.35;
-uniform float bead_speed : hint_range(0.0, 2.0) = 0.12;   // бусины ползут вверх, м/с
+const float bead_speed = 0.12;   // бусины ползут вверх, м/с
 uniform float end_fade : hint_range(0.05, 1.0) = 0.35;
-uniform float edge_sharp : hint_range(1.0, 12.0) = 5.0;   // больше — тоньше ядро
+const float edge_sharp = 5.0;   // больше — тоньше ядро
 // Мягкий ореол (люминесценция): 0 — выкл. (существа, аватары, дека), у окружения ставит AssetMaterials.apply. Квад расширяется в halo_width раз,
 // ядро остаётся прежней мировой ширины, вокруг — широкий слабый ореол: соседние штрихи сливаются в светящуюся дымку. Без буфера глубины и без постобработки.
 uniform float halo : hint_range(0.0, 1.0) = 0.0;
 uniform float halo_width : hint_range(1.0, 6.0) = 2.5;
-uniform float halo_sharp : hint_range(0.5, 8.0) = 2.2;   // больше — уже ореол (в долях расширенного квада)
+const float halo_sharp = 2.2;   // больше — уже ореол (в долях расширенного квада)
 uniform float pulse : hint_range(0.0, 1.0) = 0.45;        // глубина бегущей волны яркости
-uniform float pulse_speed : hint_range(0.0, 3.0) = 1.0;
-uniform float pulse_scale : hint_range(0.0, 8.0) = 1.6;   // волн на метр вдоль стены
+const float pulse_speed = 1.0;
+const float pulse_scale = 1.6;   // волн на метр вдоль стены
 uniform float breathe : hint_range(0.0, 0.8) = 0.3;       // «дыхание/горение»: размах изменения длины штриха (две частоты, как пламя)
 uniform float breathe_speed : hint_range(0.0, 3.0) = 0.7;
 uniform float sway : hint_range(0.0, 0.1) = 0.012;       // покачивание штриха из стороны в сторону, м
-uniform float sway_speed : hint_range(0.0, 3.0) = 0.6;
+const float sway_speed = 0.6;
 uniform float shimmer : hint_range(0.0, 0.8) = 0.3;      // у каждого штриха своя слабая пульсация яркости
-uniform float shimmer_speed : hint_range(0.0, 4.0) = 1.3;
+const float shimmer_speed = 1.3;
 uniform float anchor : hint_range(-1.0, 1.0) = -1.0;     // что неподвижно при изменении длины: -1 основание (стены, существа), +1 верх (подвесные штрихи под полом), 0 центр
 uniform vec3 touch_pos = vec3(0.0);                       // касание: мировая точка
 uniform float touch_radius = 0.0;                         // 0 — выключено
@@ -36,8 +36,8 @@ uniform vec4 touch_color : source_color = vec4(1.0, 0.12, 0.24, 1.0);
 uniform vec4 tint : source_color = vec4(1.0);
 uniform float tint_amount : hint_range(0.0, 1.0) = 0.0;
 // Затухание по расстоянию до камеры (замена depth-fade: буфер глубины не читаем, на мобильном дорого).
-uniform float fade_start = 60.0;
-uniform float fade_end = 90.0;
+const float fade_start = 60.0;
+const float fade_end = 90.0;
 uniform float intensity = 1.0; // общий множитель яркости (отражение в полу = 0.2)
 // Яркий горизонт (референс: штрихи копятся в бирюзовый туман на уровне глаз): множитель яркости растёт с расстоянием от far_start до far_end
 // до far_gain и применяется до затухания по расстоянию. 1 — выключено (по умолчанию).

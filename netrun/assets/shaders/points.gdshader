@@ -7,19 +7,19 @@ render_mode blend_add, unshaded, depth_draw_never, cull_disabled, fog_disabled;
 
 uniform float glow : hint_range(0.0, 6.0) = 1.4;
 uniform float lattice : hint_range(0.0, 0.5) = 0.0;  // шаг мировой решётки, м: центры прищёлкиваются к ней (0 = выкл.), эффект «объёмного дисплея»
-uniform float twinkle : hint_range(0.0, 0.5) = 0.15;
-uniform float twinkle_speed : hint_range(0.0, 3.0) = 0.6;
+const float twinkle = 0.15;
+const float twinkle_speed = 0.6;
 // «Дыхание» поля точек (пол, рёбра тайлов): по полю бежит волна яркости и вместе с ней пульсирует размер точек.
 uniform float wave : hint_range(0.0, 1.0) = 0.6;          // глубина волны яркости
-uniform float size_wave : hint_range(0.0, 1.0) = 0.45;    // глубина пульсации размера
-uniform float wave_speed : hint_range(0.0, 3.0) = 0.9;
-uniform float wave_scale : hint_range(0.0, 6.0) = 1.1;    // волн на метр
+const float size_wave = 0.45;    // глубина пульсации размера
+const float wave_speed = 0.9;
+const float wave_scale = 1.1;    // волн на метр
 uniform vec4 tint : source_color = vec4(1.0);
 uniform float tint_amount : hint_range(0.0, 1.0) = 0.0;
 
 // Затухание по расстоянию до камеры (замена depth-fade: буфер глубины не читаем, на мобильном дорого).
-uniform float fade_start = 60.0;
-uniform float fade_end = 90.0;
+const float fade_start = 60.0;
+const float fade_end = 90.0;
 uniform float intensity = 1.0; // общий множитель яркости (отражение в полу = 0.2)
 // Минимальный диаметр точки в пикселях экрана (точка меньше пикселя мерцает): дальше квад растёт до min_px, яркость падает по площади. 0 — выключено.
 uniform float min_px : hint_range(0.0, 6.0) = 2.0;

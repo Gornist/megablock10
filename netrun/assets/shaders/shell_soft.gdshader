@@ -4,14 +4,14 @@ shader_type spatial;
 render_mode blend_add, unshaded, depth_draw_never, cull_back, fog_disabled;
 
 uniform float glow : hint_range(0.0, 4.0) = 0.9;
-uniform float fresnel_power : hint_range(0.5, 6.0) = 2.5;
-uniform float center_alpha : hint_range(0.0, 1.0) = 0.1;
+const float fresnel_power = 2.5;
+const float center_alpha = 0.1;
 uniform vec4 tint : source_color = vec4(1.0);
 uniform float tint_amount : hint_range(0.0, 1.0) = 0.0; // тир: 1.0 перекрашивает в tint
 
 // Затухание по расстоянию до камеры (замена depth-fade: буфер глубины не читаем, на мобильном дорого).
-uniform float fade_start = 60.0;
-uniform float fade_end = 90.0;
+const float fade_start = 60.0;
+const float fade_end = 90.0;
 uniform float intensity = 1.0; // общий множитель яркости (отражение в полу = 0.2)
 
 varying float v_dist;

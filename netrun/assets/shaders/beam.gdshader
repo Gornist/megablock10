@@ -17,11 +17,11 @@ uniform float flash : hint_range(0.0, 1.0) = 0.0;
 // 1 — веер маяка (радиальное затухание), 0 — полоса датчика (мягкие концы и края).
 uniform float fan : hint_range(0.0, 1.0) = 0.0;
 uniform float glow : hint_range(0.0, 4.0) = 1.0;
-uniform float on_wide : hint_range(0.2, 1.0) = 0.5;       // степень профиля поперёк у горящего луча: меньше — шире
-uniform float off_level : hint_range(0.0, 1.0) = 0.35;     // яркость погашенного луча (было 0,22: на полу его не было видно)
-uniform float on_boost : hint_range(0.5, 3.0) = 1.7;      // горящий ярче погашенного не только альфой
-uniform float fade_start = 60.0;
-uniform float fade_end = 90.0;
+const float on_wide = 0.5;       // степень профиля поперёк у горящего луча: меньше — шире
+const float off_level = 0.35;     // яркость погашенного луча (было 0,22: на полу его не было видно)
+const float on_boost = 1.7;      // горящий ярче погашенного не только альфой
+const float fade_start = 60.0;
+const float fade_end = 90.0;
 uniform float intensity = 1.0;
 
 varying float v_dist;

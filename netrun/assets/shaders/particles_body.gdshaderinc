@@ -3,20 +3,20 @@
 
 uniform float glow : hint_range(0.0, 6.0) = 1.6;
 uniform float lattice : hint_range(0.0, 0.05) = 0.006;         // шаг решётки, м (0 — выкл.)
-uniform float wave_speed : hint_range(0.0, 4.0) = 0.9;         // бегущая от запястья к кончикам волна света, циклов в секунду
-uniform float wave_depth : hint_range(0.0, 1.0) = 0.6;
-uniform float twinkle : hint_range(0.0, 0.5) = 0.2;
-uniform float spark_rise : hint_range(0.0, 0.2) = 0.07;        // на сколько искра поднимается над кончиком за цикл, м
-uniform float spark_half_len : hint_range(0.0, 0.05) = 0.013;  // полудлина искры, м
+const float wave_speed = 0.9;         // бегущая от запястья к кончикам волна света, циклов в секунду
+const float wave_depth = 0.6;
+const float twinkle = 0.2;
+const float spark_rise = 0.07;        // на сколько искра поднимается над кончиком за цикл, м
+const float spark_half_len = 0.013;  // полудлина искры, м
 uniform float intensity : hint_range(0.0, 4.0) = 1.0;
 uniform float min_angle : hint_range(0.0, 0.01) = 0.0;         // наименьший угловой размер точки, рад: далёкие точки не мельче ~2 пикселей (чужое тело; у своих рук 0)
 
 // Глитч-спрайт (GlitchSprite): вместо круглой точки — анимированное блочное пятно, у каждой частицы своя фаза. glitch_mix = 0 — прежние круглые точки.
 uniform sampler2D glitch_tex : filter_linear_mipmap, repeat_disable;
 uniform float glitch_mix : hint_range(0.0, 1.0) = 0.0;          // 0 — выкл., 1 — все точки (не искры) рисуются спрайтом
-uniform float glitch_fps : hint_range(1.0, 30.0) = 12.0;
+const float glitch_fps = 12.0;
 uniform float glitch_scale : hint_range(0.2, 4.0) = 1.0;        // полуширина квада в полуразмерах точки; высота вдвое больше (ячейка 1:2)
-uniform vec2 glitch_cells = vec2(8.0, 4.0);                     // столбцов и строк атласа
+const vec2 glitch_cells = vec2(8.0, 4.0);                     // столбцов и строк атласа
 
 uniform float facing_fade : hint_range(0.0, 1.0) = 0.0;       // 1 — гасить точки, обращённые от камеры (голова: лицо спереди не просвечивает затылком); 0 — не гасить (руки)
 uniform vec3 facing_center = vec3(0.0);                          // центр объёма в мировых координатах, от него считается «наружу»; задаёт узел каждый кадр
