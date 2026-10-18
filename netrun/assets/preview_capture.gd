@@ -13,8 +13,7 @@ const CEILING_H := 5.0
 const LAYER_PITCH := 7.0  # шаг между пластами данных: потолок 5 м + 2 м пустоты
 const ICE_POS := Vector3(1.0, 0.0, -2.8)
 ## Яркий горизонт (STYLE.md, ARCHITECTURE.md «Ореол и горизонт»): дальние пласты (env/far_*) не гаснут в чёрный
-## на 14…40 м, а светятся: затухание отодвинуто, яркость растёт с расстоянием (far_gain от far_start до far_end).
-const FAR_FADE := [40.0, 130.0]
+## вдали, а светятся: яркость растёт с расстоянием (far_gain от far_start до far_end).
 const FAR_GAIN := 1.8
 const FAR_GAIN_RANGE := [20.0, 60.0]
 
@@ -97,7 +96,6 @@ func _shots() -> Array:
 		["props/hack_pad", Vector3(2.9, 0, 0.7), 180.0, "BASE", 1.0],
 		["props/hack_panel", Vector3(2.9, 0, -0.3), 180.0, "BASE", 1.0]]
 	var solo := [["avatar/runner", Vector3(0, 0, 0), 180.0, "", 1.0]]
-	var scar := [ICE_POS + Vector3(0, 1.0, -0.6), 4.2]
 	var icestage := [["env/floor_slab_16", Vector3.ZERO, 0.0, "BASE", 1.0],
 		["ice/soft_ice", Vector3(-1.8, 0, 0.0), 180.0, "", 1.0], ["ice/black_ice", Vector3(1.5, 0, 0.0), 180.0, "", 1.0], ["avatar/runner", Vector3(0.0, 0, 1.0), 180.0, "", 1.0]]
 	var icestates := [["env/floor_slab_16", Vector3.ZERO, 0.0, "BASE", 1.0],
@@ -114,39 +112,37 @@ func _shots() -> Array:
 	for i in tk.size():
 		decks.append(["deck/daemon_" + tk[i], Vector3(-1.75 + 0.5 * i, 0.55, 0.0), 0.0, "", 8.0])
 	return [
-		{"name": "red_probe", "cam": Vector3(0.0, 0.9, 2.2), "look": Vector3(0.0, 0.7, 0.0), "fov": 40.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": [
-			["deck/daemon_EXTRACT_DAEMON", Vector3(-0.8, 0.5, 0.0), 0.0, "", 8.0], ["deck/daemon_EXTRACT_DAEMON", Vector3(0.0, 0.9, 0.0), 0.0, "", 8.0], ["deck/daemon_EXTRACT_DAEMON", Vector3(0.8, 1.4, 0.3), 0.0, "", 8.0]]},
-		{"name": "deck_close", "cam": Vector3(0.9, 1.5, 1.0), "look": Vector3(0.0, 1.1, 0.4), "fov": 45.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": decks},
-		{"name": "token_close", "cam": Vector3(-1.2, 0.7, 1.0), "look": Vector3(-1.2, 0.55, 0.0), "fov": 40.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": decks},
-		{"name": "deck_stage", "cam": Vector3(0.0, 1.0, 2.9), "look": Vector3(0.0, 0.85, 0.0), "fov": 60.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": decks},
-		{"name": "gate_close", "cam": Vector3(-2.0, 1.3, 1.5), "look": Vector3(-2.0, 1.0, -2.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": envmore},
-		{"name": "corner_platform", "cam": Vector3(2.0, 1.5, 1.5), "look": Vector3(2.0, 0.6, -2.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": envmore},
-		{"name": "env_more", "cam": Vector3(0.0, 1.5, 5.5), "look": Vector3(0.0, 1.0, -1.0), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": envmore},
-		{"name": "node_props", "cam": Vector3(0.0, 1.25, 4.8), "look": Vector3(0.0, 0.8, 0.0), "fov": 60.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": nodeprops},
-		{"name": "ice_states", "cam": Vector3(0.0, 1.3, 6.5), "look": Vector3(0.0, 1.4, 0.0), "fov": 60.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": icestates},
-		{"name": "ice_stage", "cam": Vector3(0.0, 1.25, 6.0), "look": Vector3(0.0, 1.2, 0.0), "fov": 60.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": icestage},
-		{"name": "ice_close", "cam": Vector3(1.2, 1.3, 3.2), "look": Vector3(1.5, 1.4, 0.0), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": icestage},
-		{"name": "props_stage", "cam": Vector3(0.0, 1.3, 3.6), "look": Vector3(0.0, 1.1, -1.0), "fov": 65.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": props},
-		{"name": "props_volume", "cam": Vector3(0.0, 1.3, 3.4), "look": Vector3(0.0, 0.8, 0.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": volume},
-		{"name": "shard_close", "cam": Vector3(-2.6, 1.1, 2.0), "look": Vector3(-2.6, 1.0, 0.6), "fov": 35.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": volume},
-		{"name": "vault_close", "cam": Vector3(-0.2, 1.0, 1.6), "look": Vector3(-0.9, 0.6, 0.3), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": props},
-		{"name": "avatar_stage", "cam": Vector3(0.1, 1.2, 3.0), "look": Vector3(0.0, 0.95, 0.0), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": stage},
-		{"name": "avatar_side", "cam": Vector3(2.0, 1.15, 0.0), "look": Vector3(0.0, 1.0, 0.0), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": solo},
-		{"name": "avatar_close", "cam": Vector3(0.45, 1.25, 1.7), "look": Vector3(0.0, 1.0, 0.0), "fov": 55.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": solo},
-		{"name": "far_view", "cam": Vector3(0.0, 1.4, -3.4), "look": Vector3(0.0, 2.2, -20.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
-		{"name": "room_entrance", "cam": Vector3(-1.0, 1.25, 8.6), "look": Vector3(0.0, 1.0, -2.5), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
-		{"name": "room_overview", "cam": Vector3(11.0, 10.5, 11.0), "look": Vector3(0.0, 0.4, -0.5), "fov": 50.0, "fade": [30.0, 80.0], "corrupt": scar, "items": room},
-		{"name": "portal_view", "cam": Vector3(2.2, 1.4, 0.2), "look": Vector3(-4.0, 1.4, 0.0), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": room},
-		{"name": "room_floor", "cam": Vector3(0.3, 1.6, 1.6), "look": Vector3(0.0, 0.0, -0.4), "fov": 70.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
-		{"name": "room_inside", "cam": Vector3(-3.0, 1.25, 3.0), "look": Vector3(0.5, 0.9, -2.8), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": scar, "items": room},
+		{"name": "deck_close", "cam": Vector3(0.9, 1.5, 1.0), "look": Vector3(0.0, 1.1, 0.4), "fov": 45.0, "items": decks},
+		{"name": "token_close", "cam": Vector3(-1.2, 0.7, 1.0), "look": Vector3(-1.2, 0.55, 0.0), "fov": 40.0, "items": decks},
+		{"name": "deck_stage", "cam": Vector3(0.0, 1.0, 2.9), "look": Vector3(0.0, 0.85, 0.0), "fov": 60.0, "items": decks},
+		{"name": "gate_close", "cam": Vector3(-2.0, 1.3, 1.5), "look": Vector3(-2.0, 1.0, -2.0), "fov": 70.0, "items": envmore},
+		{"name": "corner_platform", "cam": Vector3(2.0, 1.5, 1.5), "look": Vector3(2.0, 0.6, -2.0), "fov": 70.0, "items": envmore},
+		{"name": "env_more", "cam": Vector3(0.0, 1.5, 5.5), "look": Vector3(0.0, 1.0, -1.0), "fov": 75.0, "items": envmore},
+		{"name": "node_props", "cam": Vector3(0.0, 1.25, 4.8), "look": Vector3(0.0, 0.8, 0.0), "fov": 60.0, "items": nodeprops},
+		{"name": "ice_states", "cam": Vector3(0.0, 1.3, 6.5), "look": Vector3(0.0, 1.4, 0.0), "fov": 60.0, "items": icestates},
+		{"name": "ice_stage", "cam": Vector3(0.0, 1.25, 6.0), "look": Vector3(0.0, 1.2, 0.0), "fov": 60.0, "items": icestage},
+		{"name": "ice_close", "cam": Vector3(1.2, 1.3, 3.2), "look": Vector3(1.5, 1.4, 0.0), "fov": 55.0, "items": icestage},
+		{"name": "props_stage", "cam": Vector3(0.0, 1.3, 3.6), "look": Vector3(0.0, 1.1, -1.0), "fov": 65.0, "items": props},
+		{"name": "props_volume", "cam": Vector3(0.0, 1.3, 3.4), "look": Vector3(0.0, 0.8, 0.0), "fov": 70.0, "items": volume},
+		{"name": "shard_close", "cam": Vector3(-2.6, 1.1, 2.0), "look": Vector3(-2.6, 1.0, 0.6), "fov": 35.0, "items": volume},
+		{"name": "vault_close", "cam": Vector3(-0.2, 1.0, 1.6), "look": Vector3(-0.9, 0.6, 0.3), "fov": 55.0, "items": props},
+		{"name": "avatar_stage", "cam": Vector3(0.1, 1.2, 3.0), "look": Vector3(0.0, 0.95, 0.0), "fov": 55.0, "items": stage},
+		{"name": "avatar_side", "cam": Vector3(2.0, 1.15, 0.0), "look": Vector3(0.0, 1.0, 0.0), "fov": 55.0, "items": solo},
+		{"name": "avatar_close", "cam": Vector3(0.45, 1.25, 1.7), "look": Vector3(0.0, 1.0, 0.0), "fov": 55.0, "items": solo},
+		{"name": "far_view", "cam": Vector3(0.0, 1.4, -3.4), "look": Vector3(0.0, 2.2, -20.0), "fov": 70.0, "items": room},
+		{"name": "room_entrance", "cam": Vector3(-1.0, 1.25, 8.6), "look": Vector3(0.0, 1.0, -2.5), "fov": 75.0, "items": room},
+		{"name": "room_overview", "cam": Vector3(11.0, 10.5, 11.0), "look": Vector3(0.0, 0.4, -0.5), "fov": 50.0, "items": room},
+		{"name": "portal_view", "cam": Vector3(2.2, 1.4, 0.2), "look": Vector3(-4.0, 1.4, 0.0), "fov": 70.0, "items": room},
+		{"name": "room_floor", "cam": Vector3(0.3, 1.6, 1.6), "look": Vector3(0.0, 0.0, -0.4), "fov": 70.0, "items": room},
+		{"name": "room_inside", "cam": Vector3(-3.0, 1.25, 3.0), "look": Vector3(0.5, 0.9, -2.8), "fov": 75.0, "items": room},
 		# с края комнаты (юго-западный угол) вдоль южной кромки и наружу, за обрыв
-		{"name": "edge_view", "cam": Vector3(-3.4, 1.4, 3.1), "look": Vector3(3.0, 0.0, 6.0), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": room},
+		{"name": "edge_view", "cam": Vector3(-3.4, 1.4, 3.1), "look": Vector3(3.0, 0.0, 6.0), "fov": 75.0, "items": room},
 		# колонна вплотную снизу-сбоку: ребро-стык двух граней (белая мерцающая полоска внутри голубой полосы при MSAA на очках); флаг --msaa=4
-		{"name": "pillar_close", "cam": Vector3(2.6, 0.8, 2.7), "look": Vector3(3.6, 1.6, 3.6), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": room},
+		{"name": "pillar_close", "cam": Vector3(2.6, 0.8, 2.7), "look": Vector3(3.6, 1.6, 3.6), "fov": 75.0, "items": room},
 		# с южной границы комнаты на плиты дальнего пола вокруг (завеса вверх от их верхних кромок, ручки tile_glow / tile_glow_h)
-		{"name": "tile_rise", "cam": Vector3(0.0, 1.2, 3.2), "look": Vector3(0.5, 0.2, 11.0), "fov": 75.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": room},
+		{"name": "tile_rise", "cam": Vector3(0.0, 1.2, 3.2), "look": Vector3(0.5, 0.2, 11.0), "fov": 75.0, "items": room},
 		# выход без стен: взгляд из центра комнаты на свободную рамку env/exit_frame в точке выхода (1, 0, −4)
-		{"name": "exit_view", "cam": Vector3(-1.8, 1.3, -0.4), "look": Vector3(1.0, 1.1, -4.0), "fov": 60.0, "fade": [14.0, 40.0], "corrupt": [Vector3.ZERO, 0.0], "items": room},
+		{"name": "exit_view", "cam": Vector3(-1.8, 1.3, -0.4), "look": Vector3(1.0, 1.1, -4.0), "fov": 60.0, "items": room},
 	]
 
 
@@ -510,13 +506,9 @@ func _setup(inst: Node3D, it: Array, shot: Dictionary, intensity: float) -> void
 		AM.set_param(inst, "breathe", 0.25)  # аватар дышит заметнее стены: штрихи короткие
 	if String(it[0]).begins_with("ice/"):
 		AM.set_param(inst, "breathe", 0.12)  # существа «дышат»: длина штрихов медленно плывёт
-	AM.set_distance_fade(inst, shot["fade"][0], shot["fade"][1])
-	if String(it[0]).begins_with("env/far_") and shot["fade"][1] < 100.0:  # дальние пласты не гаснут в чёрный (горизонт светится): затухание отодвинуто, яркость растёт с расстоянием
-		AM.set_distance_fade(inst, FAR_FADE[0], FAR_FADE[1])
+	if String(it[0]).begins_with("env/far_"):  # дальние пласты не гаснут в чёрный (горизонт светится): яркость растёт с расстоянием
 		AM.set_param(inst, "far_gain", FAR_GAIN)
 		AM.set_param(inst, "far_start", FAR_GAIN_RANGE[0])
 		AM.set_param(inst, "far_end", FAR_GAIN_RANGE[1])
-	if String(it[0]).begins_with("env/"):
-		AM.set_corruption(inst, shot["corrupt"][0], shot["corrupt"][1])
 	if intensity != 1.0:
 		AM.set_intensity(inst, intensity)

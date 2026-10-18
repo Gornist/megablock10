@@ -35,11 +35,6 @@ uniform float touch_radius = 0.0;                         // 0 — выключ�
 uniform vec4 touch_color : source_color = vec4(1.0, 0.12, 0.24, 1.0);
 uniform vec4 tint : source_color = vec4(1.0);
 uniform float tint_amount : hint_range(0.0, 1.0) = 0.0;
-// Corruption: красный «шрам» в радиусе от точки (мировые координаты): цвет уходит в corrupt_color, часть клеток пропадает.
-// Дискретные клетки по сетке, без анимации: комфорт в VR (никаких вспышек). Выключено при corrupt_radius = 0.
-uniform vec3 corrupt_pos = vec3(0.0);
-uniform float corrupt_radius = 0.0;
-uniform vec4 corrupt_color : source_color = vec4(1.0, 0.12, 0.24, 1.0);
 // Затухание по расстоянию до камеры (замена depth-fade: буфер глубины не читаем, на мобильном дорого).
 uniform float fade_start = 60.0;
 uniform float fade_end = 90.0;
@@ -64,19 +59,6 @@ varying float v_pxk;
 varying vec3 v_wp;
 varying float v_dist;
 
-float corrupt_k() {
-	return corrupt_radius > 0.0 ? 1.0 - smoothstep(corrupt_radius * 0.12, corrupt_radius, distance(v_wp, corrupt_pos)) : 0.0;
-}
-float cell_hash(float salt) {
-	return fract(sin(dot(floor(v_wp * vec3(2.5, 16.0, 2.5)) + salt, vec3(12.9, 78.2, 37.7))) * 43758.5);
-}
-// Порча горизонтальными полосами (глитч, как в референсе Blackwall): полоса либо цвета ассета, либо corrupt_color, без серого посередине.
-float corrupt_mask(float k) {
-	return k > 0.0 ? step(cell_hash(0.0), k) : 0.0;  // при k = 0 шрама нет: без защиты клетка с нулевым хешем краснела бы сама
-}
-float corrupt_hole(float m) {
-	return 1.0 - m * step(cell_hash(7.0), 0.4); // часть порченых клеток пропадает
-}
 // Тир перекрашивает цвет ассета в tint, но белые акценты (проёмы, порог, узлы) остаются белыми: чем ближе цвет к белому, тем меньше перекраска.
 vec3 recolor(vec3 c) {
 	float mx = max(c.r, max(c.g, c.b));
@@ -153,8 +135,7 @@ void fragment() {
 	float bead = 1.0 - bead_depth + bead_depth * bsq;
 	float shim = 1.0 - shimmer + shimmer * (0.5 + 0.5 * sin(TIME * shimmer_speed + v_phase * 2.1));
 	float wave = 1.0 - pulse + pulse * (0.5 + 0.5 * sin((v_wp.x + 0.6 * v_wp.z) * pulse_scale * 3.14159 - TIME * pulse_speed));
-	float k = corrupt_k();
-	vec3 col = mix(mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount), corrupt_color.rgb, corrupt_mask(k));
+	vec3 col = mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount);
 	float boost = 1.0;
 	if (touch_radius > 0.0) {  // красная горизонтальная полоса на высоте касания и мягкое пятно вокруг
 		float tk = 1.0 - smoothstep(0.0, touch_radius, distance(v_wp, touch_pos));
@@ -163,5 +144,5 @@ void fragment() {
 		boost += 2.4 * band * tk;
 	}
 	ALBEDO = col * glow * mix(1.0, far_gain, smoothstep(far_start, far_end, v_dist));
-	ALPHA = COLOR.a * across * along * bead * wave * shim * boost * corrupt_hole(corrupt_mask(k)) * dist_fade() * intensity * v_comp * v_pxk * mix(1.0, far_dim_min, smoothstep(far_dim_start, far_dim_end, v_dist));
+	ALPHA = COLOR.a * across * along * bead * wave * shim * boost * dist_fade() * intensity * v_comp * v_pxk * mix(1.0, far_dim_min, smoothstep(far_dim_start, far_dim_end, v_dist));
 }

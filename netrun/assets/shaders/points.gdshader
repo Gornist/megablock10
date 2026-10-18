@@ -17,11 +17,6 @@ uniform float wave_scale : hint_range(0.0, 6.0) = 1.1;    // волн на ме�
 uniform vec4 tint : source_color = vec4(1.0);
 uniform float tint_amount : hint_range(0.0, 1.0) = 0.0;
 
-// Corruption: красный «шрам» в радиусе от точки (мировые координаты): цвет уходит в corrupt_color, часть клеток пропадает.
-// Дискретные клетки по сетке, без анимации: комфорт в VR (никаких вспышек). Выключено при corrupt_radius = 0.
-uniform vec3 corrupt_pos = vec3(0.0);
-uniform float corrupt_radius = 0.0;
-uniform vec4 corrupt_color : source_color = vec4(1.0, 0.12, 0.24, 1.0);
 // Затухание по расстоянию до камеры (замена depth-fade: буфер глубины не читаем, на мобильном дорого).
 uniform float fade_start = 60.0;
 uniform float fade_end = 90.0;
@@ -35,19 +30,6 @@ varying vec3 v_wp;
 varying float v_dist;
 varying float v_comp;  // 1 / (во сколько раз квад увеличен до min_px)²
 
-float corrupt_k() {
-	return corrupt_radius > 0.0 ? 1.0 - smoothstep(corrupt_radius * 0.12, corrupt_radius, distance(v_wp, corrupt_pos)) : 0.0;
-}
-float cell_hash(float salt) {
-	return fract(sin(dot(floor(v_wp * vec3(2.5, 16.0, 2.5)) + salt, vec3(12.9, 78.2, 37.7))) * 43758.5);
-}
-// Порча горизонтальными полосами (глитч, как в референсе Blackwall): полоса либо цвета ассета, либо corrupt_color, без серого посередине.
-float corrupt_mask(float k) {
-	return k > 0.0 ? step(cell_hash(0.0), k) : 0.0;  // при k = 0 шрама нет: без защиты клетка с нулевым хешем краснела бы сама
-}
-float corrupt_hole(float m) {
-	return 1.0 - m * step(cell_hash(7.0), 0.4); // часть порченых клеток пропадает
-}
 // Тир перекрашивает цвет ассета в tint, но белые акценты (проёмы, порог, узлы) остаются белыми: чем ближе цвет к белому, тем меньше перекраска.
 vec3 recolor(vec3 c) {
 	float mx = max(c.r, max(c.g, c.b));
@@ -88,7 +70,6 @@ void fragment() {
 	float d = length(UV - vec2(0.5)) * 2.0;
 	float soft = smoothstep(1.0, 0.25, d);
 	float tw = 1.0 - twinkle + twinkle * sin(TIME * twinkle_speed + v_phase + (v_wp.x + v_wp.z) * 1.7); // волны мерцания бегут по полу
-	float k = corrupt_k();
-	ALBEDO = mix(mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount), corrupt_color.rgb, corrupt_mask(k)) * glow;
+	ALBEDO = mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount) * glow;
 	ALPHA = soft * COLOR.a * tw * (1.0 - wave + wave * v_wave) * dist_fade() * intensity * v_comp;
 }
