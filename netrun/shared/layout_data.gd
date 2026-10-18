@@ -58,6 +58,9 @@ var black: Dictionary = {}
 var lair: Dictionary = {}
 ## Подсказки: {cell: Vector2i (клетка 1 м), text: String, pos: Vector3 (место в мире, y = 0)}.
 var signs: Array = []
+## Источники света облака, заданные раскладкой (`lights` в файле, необязательно): {pos: Vector3 (мир, y = 1), r: float (м), s: float (сила), threat: bool (красный — угроза)}.
+## Есть хоть один — клиент берёт только их; пусто — набор по умолчанию из самой раскладки (CloudLightPlan).
+var lights: Array = []
 ## Дальность зрения Стражей этой раскладки, клеток (meta.sight_cells; по умолчанию как TickIce.DEFAULTS).
 var sight_cells := DEFAULT_SIGHT_CELLS
 ## Дальность зрения задана в файле (meta.sight_cells); иначе сервер берёт её по тиру узла.
@@ -233,6 +236,9 @@ func _fill(d: Dictionary) -> String:
 	err = _fill_signs(d.get("signs", []))
 	if err != "":
 		return err
+	err = _fill_lights(d.get("lights", []))
+	if err != "":
+		return err
 	var meta: Variant = d.get("meta", {})
 	if meta is Dictionary:
 		has_sight = (meta as Dictionary).has("sight_cells")
@@ -401,6 +407,31 @@ func _fill_lair(bd: Dictionary) -> String:
 			cells.append_array(block_cells(bb))
 	lair = {"id": str(bd.get("id", "black_1")), "kind": str(bd.get("kind", "")), "cells": cells,
 		"home": Vector2i(2 * tl.x + 2, 2 * tl.y + 2)}
+	return ""
+
+
+## Источники света облака: `lights: [{cell | cell1: [x, z], r: 1..12, s: 0.1..3 (по умолчанию 1), threat: bool}]`; cell — центр блока карты, cell1 — клетка 1 м.
+func _fill_lights(src: Variant) -> String:
+	if not (src is Array):
+		return "lights: нужен массив"
+	for l: Variant in src:
+		if not (l is Dictionary):
+			return "lights: запись не объект"
+		var ld: Dictionary = l
+		var c: Variant = _point_cell(ld)
+		if c == null:
+			return "lights: нужна клетка cell [x, z] или cell1"
+		var cc: Vector2i = c
+		var pos := NodeGrid.center(cc)
+		if not ld.has("cell1"):
+			var b := block_of(cc)
+			pos = NodeLayout.cell_center(b.x, b.y)
+		pos.y = 1.0
+		var r := float(ld.get("r", 3.0))
+		var s := float(ld.get("s", 1.0))
+		if r < 1.0 or r > 12.0 or s < 0.1 or s > 3.0:
+			return "lights: r в 1..12 м, s в 0,1..3"
+		lights.append({"pos": pos, "r": r, "s": s, "threat": bool(ld.get("threat", false))})
 	return ""
 
 
