@@ -114,8 +114,11 @@ var _portals: Array = []             # [{to, slot, pos}] порталы узла
 var _portal_state: Dictionary = {}   # сессия -> {to, since, fired} — сколько стоит у портала
 var _exiting: Dictionary = {}        # сессия -> true между «аватар убран» и событием выхода: её забег закрывает этот узел
 var _level_cbs: Dictionary = {}      # сессия -> Callable, подключённый к trace.level_changed (при переходе переподключается)
-var _local_lock_until := 0.0         # локдаун узла от сервера мира (время узла), когда Моста нет
-var _alert_t := 0.0
+var _alert_t: float:                 # время узла последнего шага остывания (тесты ставят напрямую)
+	get:
+		return alarm_state.alert_t
+	set(v):
+		alarm_state.alert_t = v
 var _ready_done := false
 ## Сессии, чей исход уже уходит в Мост (в том числе восстановленный флэтлайн): второй исход и повторный вход не допускаем.
 var _finishing: Dictionary = {}
@@ -132,12 +135,22 @@ var recovered_sessions: Array[String] = []
 ## Сессии с недовершённым флэтлайном из прошлого процесса (пометка world.finish в Мосте).
 var recovered_flatlines: Array[String] = []
 ## Конец локдауна узла (мс Unix, время Моста; 0 — нет) — из документа node.
-var lockdown_until := 0
+var lockdown_until: int:
+	get:
+		return alarm_state.lockdown_until
+	set(v):
+		alarm_state.lockdown_until = v
 var node_writes := 0
 var _node_write_busy := false
 var _node_write_again := false
+## Тревога и локдаун узла — в NodeAlarm (node_alarm.gd); alarm, alarm_level, sensors_armed, lockdown_until — прежние имена-алиасы на его поля.
+var alarm_state: NodeAlarm = NodeAlarm.new(self)
 ## Тревога узла 0…100 (ice.md §4; граф): растёт от присутствия нетраннера (за такт) и событий, остывает только в пустом узле.
-var alarm := 0.0
+var alarm: float:
+	get:
+		return alarm_state.alarm
+	set(v):
+		alarm_state.alarm = v
 ## Тревога 0…1 = alarm / 100 — прежнее поле для событий, Моста и клиента (контракт не менялся; новое поле — Т3b).
 var alert: float:
 	get:
@@ -146,9 +159,16 @@ var alert: float:
 		alarm = clampf(v, 0.0, 1.0) * ALARM_MAX
 ## Уровень тревоги 0…4 (alarm_level_for) и эффекты: 1 — «спящие» датчики включены (флаг), 2 — зрение тактовых ICE +1 клетка,
 ## 3 — в NIGHTMARE просыпается Black ICE, 4 — через alert_lockdown_ticks тактов порталы закрыты на lockdown_sec.
-var alarm_level := 0
-var sensors_armed := false
-var _lockdown_ticks_left := -1       # тактов до закрытия порталов (уровень 4); −1 — отсчёт не идёт
+var alarm_level: int:
+	get:
+		return alarm_state.alarm_level
+	set(v):
+		alarm_state.alarm_level = v
+var sensors_armed: bool:
+	get:
+		return alarm_state.sensors_armed
+	set(v):
+		alarm_state.sensors_armed = v
 
 ## Тактовое время узла (режим realtime удалён, аудит 17.10): часы тактов, мозги Soft ICE на клетках, виртуальные часы Black ICE.
 var tick_clock: TickClock
@@ -157,7 +177,6 @@ var devices: LayoutDevices = LayoutDevices.new(self)   # Маяки, Датчи�
 var _black_brain: TickBlackBrain     # Black ICE по тактам (раскладка с логовом, тактовый режим); null — прежний IceBrain
 var _black_log: Dictionary = {}      # сессия → журнал Black ICE на момент флэтлайна (уйдёт в session.data.world.black_log)
 var _intents: Dictionary = {}        # IceNode -> TickIce.intent() после последнего такта (рассылается 10 раз/с без пересчёта)
-var _reserve_out: Array[IceNode] = []   # запасные Стражи, вышедшие из будок на тревоге 2 (раскладка: reserves); пусто — будки закрыты
 var _entered_tick: Dictionary = {}   # сессия -> номер такта узла, когда она вошла (скрыта первые entry_hidden_ticks тактов)
 var _grace_spent: Dictionary = {}    # сессия -> true: ходила после входа, грейс прибытия (arrival_grace_ticks) кончился досрочно
 var _black_vt := 0.0                 # виртуальное время Black ICE: за такт оно идёт на black_tick_sec
@@ -508,7 +527,7 @@ func recover(docs: Array) -> void:
 		held.clear()
 	node_items.sort()
 	var free_slots: Array = _slot_pos.keys()
-	_restore_alert(saved_world)
+	alarm_state.restore(saved_world)
 	var pending := _restore_refill_slots(saved_world)  # слоты, чьё пополнение ещё не подошло: остаются пустыми
 	for sid in pending:
 		free_slots.erase(sid)
@@ -553,15 +572,6 @@ func recover(docs: Array) -> void:
 	print("[gray-node] снимок Моста (", node_id, "): активных сессий ", active.size(), ", шард ", ",".join(_shard_items.values()) if not _shard_items.is_empty() else "—", ", локдаун до ", lockdown_until)
 
 
-## Тревога из прошлого процесса: остывала по alert_cool_sec с момента записи (alert_at, мс Unix), пока сервера мира не было.
-func _restore_alert(saved_world: Dictionary) -> void:
-	var a := float(saved_world.get("alert", 0.0))
-	if a <= 0.0 or not saved_world.has("alert_at"):
-		return
-	var elapsed := maxf(Time.get_unix_time_from_system() - float(saved_world["alert_at"]) / 1000.0, 0.0)
-	# сервера мира не было — в узле никого не было: остывание по alert_cool_sec_per_point секунд за пункт шкалы 0…100
-	alarm = clampf(a * ALARM_MAX - elapsed / maxf(float(settings["alert_cool_sec_per_point"]), 0.001), 0.0, ALARM_MAX)
-	_apply_alert()
 
 
 ## Слоты, которые к рестарту ждали пополнения: id слота -> сколько секунд осталось (refill — {слот: срок, мс Unix}).
@@ -2197,154 +2207,59 @@ func _check_portals() -> void:
 
 ## Уровень тревоги 0…4 по значению шкалы 0…100 (ice.md §4: 25 / 50 / 75 / 100).
 static func alarm_level_for(value: float) -> int:
-	return AlarmLevels.level_for(value)   # пороги общие с клиентом (shared/alarm_levels.gd)
+	return NodeAlarm.level_for(value)
 
+
+## Состояние и правила тревоги — в NodeAlarm (`alarm_state`); ниже — прежние публичные имена узла, тонкие делегаты.
 
 ## Тревога узла растёт на amount шкалы 0…1 (прежний вызов: тесты, Мост) — это amount × 100 пунктов.
 func raise_alert(amount: float) -> void:
-	raise_alarm(amount * ALARM_MAX)
+	alarm_state.raise_points(amount * ALARM_MAX)
 
 
 ## Тревога растёт на points пунктов шкалы 0…100; событие и запись узла — когда целое значение или уровень изменились.
 func raise_alarm(points: float) -> void:
-	if points <= 0.0:
-		return
-	_change_alarm(minf(alarm + points, ALARM_MAX))
+	alarm_state.raise_points(points)
 
 
 ## Событие из alert_events (поиск, выброс, FAIL, датчик, барьер, Трассировщик); только в узле графа.
 func alarm_event(event_name: String) -> void:
-	raise_alarm(float((settings.get("alert_events", {}) as Dictionary).get(event_name, 0.0)))
-
-
-func _change_alarm(new_value: float) -> void:
-	var before := alarm
-	alarm = clampf(new_value, 0.0, ALARM_MAX)
-	if alarm == before:
-		return
-	var level_before := alarm_level
-	_apply_alert()
-	if snappedf(alarm, 1.0) != snappedf(before, 1.0) or alarm_level != level_before:
-		event.emit({"kind": "alert", "node": node_id, "value": alert})
-		_write_node_state()  # тревога переживает рестарт сервера мира (node.data.world.alert + alert_at)
-
-
-## Запасные Стражи (ice.md §4, «тревога 2»; решение владельца 16.10): на тревоге ≥ 2 из будок раскладки выходят запасные — один раз за забег узла, по маршруту записи
-## `kind: reserve` (первая точка — клетка будки). Падение тревоги ниже 2 их не убирает; уходят, когда узел остыл до нуля (alarm == 0) — следующий забег снова с будкой.
-func _reserve_sync(level: int) -> void:
-	if layout == null or layout.reserves.is_empty():
-		return
-	if level >= 2 and _reserve_out.is_empty():
-		for rd: Dictionary in layout.reserves:
-			_add_layout_sentry(rd)
-			_reserve_out.append(_ices.back())
-			print("[reserve] %s вышел из будки tick=%d" % [str(rd["id"]), tick_clock.tick_no])
-		event.emit({"kind": "reserve_out", "node": node_id})
-	elif alarm <= 0.0 and not _reserve_out.is_empty():
-		for ice in _reserve_out:
-			_ices.erase(ice)
-			_tick_ices.erase(ice)
-			_intents.erase(ice)
-			remove_child(ice)   # сразу из дерева: queue_free убирает позже, и имя запасного занято, когда он выходит снова
-			ice.queue_free()
-		_reserve_out.clear()
-		print("[reserve] остыл до нуля: запасные ушли в будки")
+	alarm_state.on_event(event_name)
 
 
 ## Будки запасных Стражей для state (поле `bo`): [{id, c: [x, z] клетка 1 м, open 0/1 — запасной вышел (створка сдвинута)}].
 func booth_view() -> Array:
-	var out: Array = []
-	if layout == null:
-		return out
-	for i in layout.booths.size():
-		var c: Vector2i = layout.booths[i]
-		out.append({"id": "b%d" % (i + 1), "c": [c.x, c.y], "open": 0 if _reserve_out.is_empty() else 1})
-	return out
+	return alarm_state.booth_view()
 
 
-## Уровни тревоги и их эффекты (ice.md §4), прежний множитель внимания непошаговых ICE по alert.
 func _apply_alert() -> void:
-	var k := 1.0 + alert * float(settings["alert_boost"])
-	var level := alarm_level_for(alarm)
-	var changed := level != alarm_level
-	alarm_level = level
-	sensors_armed = level >= 1   # «спящие» датчики раскладки включены (самих датчиков пока нет — только флаг)
-	_reserve_sync(level)   # до цикла по ICE: вышедший запасной сразу получает бонус зрения ниже
-	for ice in _ices:
-		if ice.brain != null:
-			ice.brain.alert_scale = k
-			if ice.brain.is_black():
-				ice.brain.alarm_awake = level >= 3 and tier() == NodeGraph.TIER_BLACK   # охота Black ICE со 3-го уровня (NIGHTMARE)
-		if _tick_ices.has(ice):
-			(_tick_ices[ice] as TickIce).set_sight_bonus(ALARM_SIGHT_BONUS if level >= 2 else 0.0)   # уровень 2: зрение всех ICE +1 клетка карты
-	devices.set_sight_bonus(ALARM_SIGHT_BONUS if level >= 2 else 0.0)   # и Маяков: 5 клеток карты (10 м), на тревоге 2+ — 6 (12 м)
-	if not changed:
-		return
-	log_line("alarm.level", {"node": node_id, "level": level, "alarm": snappedf(alarm, 1.0)})   # разбор забегов (p9_report.sh): уровня тревоги в журнале сервера иначе нет
-	event.emit({"kind": "alarm_level", "node": node_id, "level": level})
-	_send_alarm(level)
-	if level >= 4:
-		if _lockdown_ticks_left == -1:
-			_lockdown_ticks_left = int(settings.get("alert_lockdown_ticks", 10))
-	else:
-		_lockdown_ticks_left = -1   # тревога упала ниже 100 до закрытия (или после него): отсчёт сброшен, закрытие не повторяется
+	alarm_state.apply()
 
 
-## Уровень тревоги сменился — сказать нетраннерам узла (клиент: вид тревоги, аккорд уровня, строка деки). Т3b.
-func _send_alarm(level: int) -> void:
-	var fields := {"kind": WorldMsg.EV_ALARM, "node": node_id, "level": level, "alarm": snappedf(alarm, 1.0)}
-	for session in _live_sessions():
-		net.send_to(session, WorldMsg.encode_fields(WorldMsg.EVENT, fields))
-
-
-## Есть ли в узле нетраннер (сессия узла с аватаром; в тоннеле между узлами — нет).
 func _node_occupied() -> bool:
-	for s in _sessions.keys():
-		if net.node_of(s) == node_id and net.has_avatar(s):
-			return true
-	return false
+	return alarm_state.occupied()
 
 
-## Такт сервера: тревога растёт от присутствия нетраннера и ведёт отсчёт до закрытия порталов (тактовый узел).
 func _alarm_on_tick() -> void:
-	if not is_graph_node():
-		return
-	if _node_occupied():
-		raise_alarm(float(settings["alert_per_tick"]))
-	if _lockdown_ticks_left > 0:
-		_lockdown_ticks_left -= 1
-		if _lockdown_ticks_left == 0:
-			lock_for(float(settings["lockdown_sec"]))
-			_lockdown_ticks_left = -2   # закрытие уже сработало: до падения ниже уровня 4 не повторять
+	alarm_state.on_tick()
 
 
-## По общим часам: остывание — только в пустом узле, −1 за alert_cool_sec_per_point секунд (рост и закрытие считают такты).
 func _tick_alert() -> void:
-	var dt := _now - _alert_t
-	_alert_t = _now
-	if dt <= 0.0 or not is_graph_node():
-		return
-	if not _node_occupied() and alarm > 0.0:
-		_change_alarm(alarm - dt / maxf(float(settings["alert_cool_sec_per_point"]), 0.001))
+	alarm_state.cool_tick()
 
 
 ## Закрыть узел сервером мира на sec секунд (когда Моста нет; с Мостом локдаун — lockdown_until узла).
 func lock_for(sec: float) -> void:
-	_local_lock_until = maxf(_local_lock_until, _now + sec)
-	event.emit({"kind": "lockdown", "node": node_id, "sec": sec})
+	alarm_state.lock_for(sec)
 
 
 ## Сколько секунд узел ещё закрыт (0 — открыт): большее из локдауна сервера мира и lockdown_until Моста (мс Unix).
 func lockdown_left_sec() -> float:
-	var left := maxf(_local_lock_until - _now, 0.0)
-	var ms := lockdown_until - int(Time.get_unix_time_from_system() * 1000.0)
-	if ms > 0:
-		left = maxf(left, ms / 1000.0)
-	return left
+	return alarm_state.lockdown_left_sec()
 
 
 func is_locked_down() -> bool:
-	return lockdown_left_sec() > 0.0
+	return alarm_state.is_locked_down()
 
 
 # --- шарды: вынос и пополнение
