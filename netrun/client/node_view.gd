@@ -138,6 +138,22 @@ func set_look(new_tier: String, new_layout: LayoutData) -> void:
 	_apply_exit()
 	_attach_exit_cloud()
 	_apply_alarm()
+	_apply_cloud_lights()
+
+
+## Невидимые источники света облака этого узла (AssetMaterials.set_cloud_lights, один раз на смену узла; где ставить — CloudLightPlan, как светят — Blender).
+func _apply_cloud_lights() -> void:
+	if is_inside_tree():
+		AssetMaterials.set_cloud_lights(get_tree(), CloudLightPlan.build(layout))
+
+
+func _enter_tree() -> void:
+	if _room != null:
+		_apply_cloud_lights()   # комнату собрали до входа в дерево
+
+
+func _exit_tree() -> void:
+	AssetMaterials.set_cloud_lights(get_tree(), [])   # узла больше нет: источников нет, облако снова равномерное
 
 
 ## Уровень тревоги узла: тёплый сдвиг кромок комнаты по уровню (0 возвращает цвет тира). Цвет и материал задаёт AssetMaterials.
