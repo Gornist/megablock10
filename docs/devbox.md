@@ -75,6 +75,8 @@
 ## Что уже работает (D1, 13.10)
 
 `scripts/box.sh` (Mac, bash 3.2) — единственная точка входа; код выхода 0/1, вердикт первой строкой.
+Общая ssh-обвязка — `scripts/lib/devbox.sh` (19.10): `dssh <команда>` (на самом devbox идёт локально, `DEVBOX_TMO` — ConnectTimeout, 10 с), `unreachable` (Tailscale лежит или машина выключена). `dbx.sh` кладёт исполнителя на devbox файлом `dbx-run-<хэш>` через mv: перезапись на месте ломала процессы, уже ждущие в flock.
+`adb` в PATH неинтерактивного ssh: `~/.bashrc` на devbox (блок `box-adb-path` над проверкой интерактивности, 19.10; копия `~/.bashrc.bak-1019`) дописывает `~/android-sdk/platform-tools` в конец PATH — `pico.sh install` вне box.sh больше не падает «adb: command not found».
 
 | Команда | Что делает |
 |---|---|
