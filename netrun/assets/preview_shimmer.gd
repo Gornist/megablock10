@@ -2,7 +2,7 @@ extends Node3D
 ## Рябь облака при микродвижении головы (очки 18.10: «вдали рябит больше», «лесенка жёстче»): Фойе глазами игрока, кадр как у приложения на Pico 4 (1504×1504, msaa как в клиенте),
 ## камера сдвигается между кадрами на доли пикселя (тремор головы); меряется средняя разница яркости соседних кадров по трём полосам кадра: верх — потолок и дальние пласты,
 ## середина — горизонт и колонны, низ — пол вблизи. Неподвижная ровная картинка даёт ≈0, зерно, у которого покрытие перескакивает между пикселями, — много.
-## Запуск: netrun/tools/dev.sh shot res://assets/preview_shimmer.tscn [--lights] [--msaa=0|2|4] [--tune=dust_fill=0,...] [--pose=entry|wedge|north]
+## Запуск: netrun/tools/dev.sh shot res://assets/preview_shimmer.tscn [--lights] [--dome] [--nofar] [--msaa=0|2|4] [--tune=dust_fill=0,...] [--pose=entry|wedge|north]
 ## В журнал: `shimmer <поза> msaa=…: верх=… середина=… низ=… всё=…`; кадры <поза>_a/_b — первый и шестой.
 ## Метрика сравнительная (одна сцена, разные ручки), не абсолютная: в уровень входит и честный сдвиг резких краёв. Дыхание облака (cloud_breath) даёт отдельную временную
 ## составляющую (≈1,2 из 3,5 на умолчаниях) — для чистого замера ряби от сдвига ставьте --tune=cloud_breath=0.
@@ -15,6 +15,8 @@ const DYAW := 0.011  # градусы (≈ 0,2 px)
 var _out := "/tmp/shimmer_shots"
 var _pose := "entry"
 var _msaa := -1
+var _dome := false     # --dome: фон-купол (BackdropDome)
+var _nofar := false    # --nofar: дальние пласты и «Horizon» скрыты (как будто их заменил купол)
 var _lights := false   # --lights: невидимые источники света у хранилищ, порталов и входа (AssetMaterials.set_cloud_lights)
 
 
@@ -24,6 +26,10 @@ func _ready() -> void:
 			_out = a.substr(6)
 		elif a.begins_with("--pose="):
 			_pose = a.substr(7)
+		elif a == "--dome":
+			_dome = true
+		elif a == "--nofar":
+			_nofar = true
 		elif a == "--lights":
 			_lights = true
 		elif a.begins_with("--msaa="):
@@ -42,6 +48,11 @@ func _ready() -> void:
 	var foyer := LayoutData.cached("foyer")
 	scene.apply_node({"kind": "node", "node": "foyer", "title": "Фойе", "tier": "BASE", "r": NodeLayout.PORTAL_RADIUS, "shards": [], "portals": [], "layout": foyer.name})
 	scene.apply_state({"k": Time.get_ticks_msec() / 1000.0, "trace": 0.0, "level": 0, "cd": [], "ice": [], "bk": [], "sn": [], "tk": {"n": 4, "at": 0.0, "win": 5.0, "inh": 0, "mv": 0}})
+	if _nofar:
+		for c in scene.view.get_node("Room").get_children():
+			var n := str(c.name) + str(c.get_meta("asset", ""))
+			if "far_" in n or str(c.name) == "Horizon":
+				(c as Node3D).visible = false
 	if _lights:
 		var ls: Array = []
 		for v: Dictionary in foyer.vaults:
@@ -65,6 +76,8 @@ func _ready() -> void:
 	cam.fov = p["fov"]
 	cam.look_at_from_position(p["pos"], p["look"], p["up"])
 	cam.current = true
+	if _dome:
+		cam.add_child(BackdropDome.new())
 	var base := cam.global_transform
 	var sums := [0.0, 0.0, 0.0, 0.0]
 	var prev: Image = null
