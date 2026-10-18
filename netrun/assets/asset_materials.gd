@@ -169,13 +169,8 @@ const KNOBS := {
 	"cloud_floor": 1.0,      # 1 (умолчание) — пол комнаты (floor*) облаком, линии клеток 1 м остаются (grid_tex в cloud_dark); 0 — solid_dark (цена +? мс НЕ ИЗМЕРЕНА на очках, пол — самая большая площадь)
 	"cloud_ceiling": 0.0,    # 1 — и потолок облаком; 0 — остаётся solid_dark
 	"floor_density": 0.6,    # множитель плотности зерна облачного пола (меш slab; dust_density × floor_density), 1 — как dust_density у реквизита: пол плотнее и ярче низких объектов на нём (#424, Ш5); линии клеток 1 м (grid_tex, вес ребра) НЕ гасятся
-	# Рябь «эквалайзеров» (штрихи окружения, только при tier != ""; существа и аватары не трогаем). Меры независимы:
-	"streak_far_min": 1.0,   # яркость штрихов на дистанции ≥ streak_far_end (1 — не гасить; 0,3 — ориентир), как кромка плит
-	"streak_far_start": 8.0,
-	"streak_far_end": 25.0,
+	# Штрихи и точки окружения (tier != ""; существа и аватары не трогаем): 0 — не рисуются (рамка выхода exit_frame ещё несёт штрихи и точки; решение владельца на очках П5). Ручки гашения по дистанции, длины и ширинного гашения штрихов удалены 19.10: при streak_keep=0 не действовали.
 	"streak_keep": 0.0,      # доля штрихов окружения, что остаются: 0 — не рисуются (решение владельца на очках; объекты уйдут из моделей в B2), 1 — все
-	"streak_len": 1.0,       # длина штрихов окружения (0,6 — короче)
-	"streak_px_fade": 0.0,   # 0…1: штрих уже ~2 px на экране тускнеет, а не «ползёт лесенкой» (1 — полная мера)
 	"point_keep": 0.0,       # доля точек ОКРУЖЕНИЯ (tier ≠ ""): 0 — убрать все (решение владельца: вдали точки сильно мерцают); существа и аватары не трогаем
 	"veil_scale": 1.0,       # множитель альфы вуали плит (`*_skirt`); 0 — меши скрываются совсем; > 1 — усилить (до 4): очки П5 одобрили вуаль у плит потолка
 	# Завеса ВВЕРХ от верхней кромки плит пола и дальнего пола (квады в том же меше `*_skirt`, env._slab_rise). Включена по умолчанию (V10); клин у края комнаты — отдельная задача:
@@ -442,16 +437,8 @@ static func apply(root: Node, tier: String = "") -> void:
 				m.set_shader_parameter("tint_amount", 1.0)
 			if tier != "" and src.resource_name == "streaks":  # окружение: длинное затухание к концам; существа и аватары — резкие
 				m.set_shader_parameter("end_fade", ENV_END_FADE)
-				if float(_k("streak_far_min")) < 1.0:  # ручки ряби «эквалайзеров»: параметры не задаём, пока ручка не тронута (в шейдере они выключены)
-					m.set_shader_parameter("far_dim_min", float(_k("streak_far_min")))
-					m.set_shader_parameter("far_dim_start", float(_k("streak_far_start")))
-					m.set_shader_parameter("far_dim_end", float(_k("streak_far_end")))
 				if float(_k("streak_keep")) < 1.0:
 					m.set_shader_parameter("keep_frac", float(_k("streak_keep")))
-				if float(_k("streak_len")) != 1.0:
-					m.set_shader_parameter("len_scale", float(_k("streak_len")))
-				if float(_k("streak_px_fade")) > 0.0:
-					m.set_shader_parameter("px_fade", float(_k("streak_px_fade")))
 			if String(mi.name).ends_with("_fan") or String(mi.name).contains("_beam"):  # луч Soft ICE (датчик, маяк): свой шейдер, цвета — слои beam_*; состояния — set_beam
 				m.shader = BEAM_SHADER
 				m.set_shader_parameter("on_color", layer("beam_on"))
