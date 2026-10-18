@@ -23,7 +23,8 @@ done
 
 { echo "== shellcheck -S warning"; } >>"$log"
 # shellcheck disable=SC2086  # список файлов без пробелов в именах — разбиение по словам намеренное
-shellcheck -S warning $files >>"$log" 2>&1
+# -s bash: подключаемые библиотеки (scripts/lib/) законно без шебанга — иначе SC2148 (19.10, #487).
+shellcheck -S warning -s bash $files >>"$log" 2>&1
 sc=$?
 sc_n=$(grep -c '^In .* line [0-9]*:' "$log")
 [ "$sc" -ne 0 ] && [ "$sc_n" -eq 0 ] && sc_n=1
