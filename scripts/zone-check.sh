@@ -6,7 +6,7 @@
 # Зоны — копия таблицы из CLAUDE.md: правите таблицу — правьте и здесь. Общие для всех: свой раздел docs/progress.md, GLOSSARY.md, свои строки docs/backlog.md.
 cd "$(dirname "$0")/.." || exit 2
 NODES='^firmware/|^admin-web/server/src/(displays/|audio/|routes/audio\.ts|scripts/display[^/]*\.ts|display[^/]*\.test\.ts|audio\.test\.ts|firmwareHost\.test\.ts)|^\.github/workflows/firmware\.yml|^docs/(displays|firmware-plan|sound-nodes)\.md'
-DEVBOX='^scripts/(devbox-[^/]*|dbx\.sh|box[^/]*)$|^scripts/box/|^docs/devbox\.md'
+DEVBOX='^scripts/(devbox-[^/]*|dbx\.sh|box[^/]*|lib/devbox\.sh)$|^scripts/box/|^docs/devbox\.md'
 BLENDER='^netrun/assets/|^netrun/client/(avatar_view|hand_view|avatar_body|head_[^/]*)\.gd|^netrun/tests/assets_[^/]*'
 case $1 in
   android)   IN='^(build\.gradle\.kts|settings\.gradle\.kts|gradle\.properties|gradlew(\.bat)?)$|^gradle/|^(app|kit|rules|scripts/e2e)/|^docs/(android-handoff|architecture|refactor-plan|device-testing|db-migrations)\.md|^docs/ux/|^scripts/phone\.sh$|^\.github/workflows/(e2e|apk)\.yml'; OUT='';;
