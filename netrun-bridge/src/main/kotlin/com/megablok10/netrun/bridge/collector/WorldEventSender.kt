@@ -49,7 +49,7 @@ data class WorldEventConfig(
  *
  * - [offer] не блокирует: зовётся из слушателя хранилища под его замком, поэтому только кладёт события в очередь в памяти
  *   (ограничена [WorldEventConfig.queueCapacity], при переполнении старое выбрасывается) и будит [run]. Сеть — вне замка, в [run].
- * - Перед отправкой — открытый `GET /api/capabilities`: шлём, только когда `world_events` равен [SUPPORTED_WORLD_EVENTS].
+ * - Перед отправкой — открытый `GET /api/capabilities`: шлём, только когда `world_events` не меньше [SUPPORTED_WORLD_EVENTS] (коллектор обязан принимать и старые версии).
  * - Просроченное ([FastEvent.ts] + [FastEvent.ttlMs] по [clock]) не отправляется — ни с первой попытки, ни с повторной.
  * - Коллектор недоступен — Мост работает дальше: предупреждение в журнал (без секрета, реже раза в [WorldEventConfig.warnEveryMs]).
  */
@@ -172,7 +172,7 @@ internal class WorldEventSender(
         } catch (e: IOException) {
             return Capable.UNREACHABLE
         }
-        return if (version == SUPPORTED_WORLD_EVENTS) {
+        return if (version != null && version >= SUPPORTED_WORLD_EVENTS) {
             capableUntil = t + config.capabilityTtlMs
             Capable.YES
         } else {

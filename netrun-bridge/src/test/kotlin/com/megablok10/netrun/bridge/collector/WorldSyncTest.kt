@@ -128,6 +128,16 @@ class WorldSyncTest {
         assertEquals(expected.size, sent.toSet().size) // и ни одного нового id при повторе
     }
 
+    /** Коллектор новее Моста обязан понимать и старые записи (docs/netrun-world-records.md п. 5): очередь уходит, а не стоит. */
+    @Test fun collectorWithNewerWorldRecordsVersionGetsTheQueue() {
+        val f = ValueFixture(":memory:")
+        val w = sync(f)
+        val expected = playRun(f)
+        collector.capabilities = """{"world_records":3}"""
+        w.start()
+        await("очередь у коллектора версии 3") { collector.stored.size == expected.size && queued(w) == 0 }
+    }
+
     @Test fun collectorThatDoesNotAnnounceWorldRecordsGetsNothing() {
         val f = ValueFixture(":memory:")
         val w = sync(f)
@@ -141,9 +151,6 @@ class WorldSyncTest {
         collector.capabilities = """{"world_records":1}""" // коллектор до NET_BREACH: новой причины не знает, очередь не шлём
         collector.capabilityGets.set(0)
         await("ещё проверки при world_records=1") { collector.capabilityGets.get() >= 2 }
-        collector.capabilities = """{"world_records":3}""" // формат новее нашего: тоже не шлём
-        collector.capabilityGets.set(0)
-        await("ещё проверки при world_records=3") { collector.capabilityGets.get() >= 2 }
         assertEquals(0, collector.changePosts.get())
         assertEquals(expected.size, queued(w)) // записи целы, ничего не потеряно
         collector.capabilities = """{"world_records":2}"""
