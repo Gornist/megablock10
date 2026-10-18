@@ -19,33 +19,65 @@ export const FIELDS = [
 ] as const;
 export type Field = (typeof FIELDS)[number];
 
-export const REASONS = [
-  "CHARACTER_CREATED",
-  "BREACH_ATTEMPT",
-  "BREACH_BLOCKED",
-  "BREACH_LOOT",
-  "BREACH_EDDIES",
-  "SHARD_SCAN",
-  "SHARD_DECRYPT",
-  "TRANSFER_OUT",
-  "TRANSFER_IN",
-  "TRANSFER_CANCELLED",
-  "ITEM_TRANSFER_OUT",
-  "ITEM_TRANSFER_IN",
-  "ITEM_TRANSFER_CANCELLED",
-  "RAM_UPGRADE",
-  "ALERT_SENT",
-  "ALERT_SUPPRESSED",
-  "MASTER_OVERRIDE",
-  "CHARACTER_RESET",
-  "NET_ENTER",
-  "NET_EXIT",
-  "NET_FLATLINE",
-  "NET_ITEM_OWNER",
-  "NET_ALERT",
-  "NET_BREACH",
-] as const;
-export type Reason = (typeof REASONS)[number];
+/**
+ * Одна строка на причину записи — всё, что коллектор о ней знает: подпись для дашборда и три признака, по которым раньше стояли отдельные
+ * списки в integrity/anomalies/pulse/analytics (копии расходились: забытая причина давала ложные «необъяснимые скачки» или занижала метрики).
+ * Новая причина добавляется ТОЛЬКО здесь, все четыре поля обязательны — компилятор не даст забыть. Порядок строк = порядок в REASONS и
+ * в фильтрах дашборда. Kotlin-копия (ChangeFields.kt, WorldRecordDeriver.kt) сверяется общими векторами change-record.json.
+ */
+export interface ReasonInfo {
+  /** Подпись в фильтрах и ленте. */
+  label: string;
+  /** Баланс по этой причине законно растёт (награда, получение перевода, возврат, старт/сброс, правка мастера) — иначе скачок «необъяснимый». */
+  gainsBalance: boolean;
+  /** Награда за игру: входит в «эдди за интервал» пульса и в сравнение выбросов. */
+  reward: boolean;
+  /** Деньги лишь переезжают между игроками — не источник эмиссии. */
+  transfer: boolean;
+}
+
+const reason = (label: string, flags: Partial<Omit<ReasonInfo, "label">> = {}): ReasonInfo => ({ label, gainsBalance: false, reward: false, transfer: false, ...flags });
+
+export const REASON_INFO = {
+  CHARACTER_CREATED: reason("Создание персонажа", { gainsBalance: true }),
+  BREACH_ATTEMPT: reason("Попытка взлома"),
+  BREACH_BLOCKED: reason("Взлом отклонён"),
+  BREACH_LOOT: reason("Добыча с узла", { gainsBalance: true, reward: true }),
+  BREACH_EDDIES: reason("Эдди за взлом", { gainsBalance: true, reward: true }),
+  SHARD_SCAN: reason("Скан шарда", { gainsBalance: true, reward: true }),
+  SHARD_DECRYPT: reason("Расшифровка шарда"),
+  TRANSFER_OUT: reason("Перевод (отправка)", { transfer: true }),
+  TRANSFER_IN: reason("Перевод (получение)", { gainsBalance: true, transfer: true }),
+  TRANSFER_CANCELLED: reason("Перевод отменён", { gainsBalance: true, transfer: true }),
+  ITEM_TRANSFER_OUT: reason("Передача предмета (отправка)"),
+  ITEM_TRANSFER_IN: reason("Передача предмета (получение)"),
+  ITEM_TRANSFER_CANCELLED: reason("Передача предмета отменена"),
+  RAM_UPGRADE: reason("Улучшение RAM"),
+  ALERT_SENT: reason("Сигнал СБ отправлен"),
+  ALERT_SUPPRESSED: reason("Сигнал СБ подавлен"),
+  MASTER_OVERRIDE: reason("Правка мастера", { gainsBalance: true }),
+  CHARACTER_RESET: reason("Сброс персонажа", { gainsBalance: true }),
+  NET_ENTER: reason("Сеть: вход"),
+  NET_EXIT: reason("Сеть: выход"),
+  NET_FLATLINE: reason("Сеть: флэтлайн"),
+  NET_ITEM_OWNER: reason("Сеть: предмет сменил владельца"),
+  NET_ALERT: reason("Сеть: тревога аудитора"),
+  NET_BREACH: reason("Сеть: взлом хранилища"),
+} satisfies Record<string, ReasonInfo>;
+export type Reason = keyof typeof REASON_INFO;
+export const REASONS = Object.keys(REASON_INFO) as Reason[];
+
+/** Строка таблицы по коду причины из записи; null — код неизвестен (запись старой или чужой версии). */
+export function reasonInfo(code: string): ReasonInfo | null {
+  return Object.hasOwn(REASON_INFO, code) ? REASON_INFO[code as Reason] : null;
+}
+
+/** Список наград для SQL `reason IN (…)`: `'BREACH_LOOT','BREACH_EDDIES','SHARD_SCAN'`. Коды — наши константы, не ввод. */
+export function rewardReasonsSql(): string {
+  return REASONS.filter((code) => REASON_INFO[code].reward)
+    .map((code) => `'${code}'`)
+    .join(",");
+}
 
 /**
  * Запись, как её присылает устройство — сырой JSON из тела запроса, ещё не

@@ -1,5 +1,6 @@
 import type { PulseSample } from "../apiTypes.js";
 import type { Db } from "../db/index.js";
+import { reasonInfo } from "./changeRecord.js";
 import { ONLINE_WINDOW_MS, activePlayers, getPlayerBase, withOnline } from "./playerSummary.js";
 
 /**
@@ -65,8 +66,6 @@ export function resetPulseCounters() {
   counters = emptyCounters();
 }
 
-const REWARD_REASONS = new Set(["BREACH_EDDIES", "BREACH_LOOT", "SHARD_SCAN"]);
-
 /** Снимает сэмпл за интервал (now − intervalMs, now], сбрасывает счётчики приёма и пишет строку в pulse_samples. */
 export function takePulseSample(db: Db, now = Date.now(), intervalMs = PULSE_INTERVAL_MS): PulseSample {
   const c = counters;
@@ -82,7 +81,7 @@ export function takePulseSample(db: Db, now = Date.now(), intervalMs = PULSE_INT
   for (const r of rows) {
     if (r.field === "counters.breach") breaches++;
     if (r.reason === "TRANSFER_IN") transfers++;
-    if (r.field === "balance" && REWARD_REASONS.has(r.reason)) eddies += Math.max(0, Number(r.new_value ?? 0) - Number(r.old_value ?? 0));
+    if (r.field === "balance" && reasonInfo(r.reason)?.reward) eddies += Math.max(0, Number(r.new_value ?? 0) - Number(r.old_value ?? 0));
   }
 
   const undelivered = (db.prepare(`SELECT COUNT(*) AS n FROM master_pending WHERE delivered = 0 AND failed_at IS NULL`).get() as { n: number }).n;

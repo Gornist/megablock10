@@ -1,5 +1,5 @@
 import type { Db } from "../db/index.js";
-import { isWorldField } from "./changeRecord.js";
+import { REASON_INFO, isWorldField } from "./changeRecord.js";
 
 /**
  * Перевод сырой записи изменения (field/reason/source_ref/JSON) в фразу для мастера.
@@ -34,32 +34,7 @@ const OUTCOME_RU: Record<string, string> = { success: "успех", partial: "ч
 const BLOCK_RU: Record<string, string> = { NO_LINK: "нет связи с сетью игры", COOLDOWN: "узел остывает после прошлого взлома", EXHAUSTED: "тираж узла исчерпан" };
 
 /** Названия причин для фильтров и подписей (клиент берёт их отсюда же по смыслу; ключи — коды причин из протокола). */
-export const REASON_LABEL_RU: Record<string, string> = {
-  CHARACTER_CREATED: "Создание персонажа",
-  CHARACTER_RESET: "Сброс персонажа",
-  BREACH_ATTEMPT: "Попытка взлома",
-  BREACH_BLOCKED: "Взлом отклонён",
-  BREACH_LOOT: "Добыча с узла",
-  BREACH_EDDIES: "Эдди за взлом",
-  SHARD_SCAN: "Скан шарда",
-  SHARD_DECRYPT: "Расшифровка шарда",
-  TRANSFER_OUT: "Перевод (отправка)",
-  TRANSFER_IN: "Перевод (получение)",
-  TRANSFER_CANCELLED: "Перевод отменён",
-  ITEM_TRANSFER_OUT: "Передача предмета (отправка)",
-  ITEM_TRANSFER_IN: "Передача предмета (получение)",
-  ITEM_TRANSFER_CANCELLED: "Передача предмета отменена",
-  RAM_UPGRADE: "Улучшение RAM",
-  ALERT_SENT: "Сигнал СБ отправлен",
-  ALERT_SUPPRESSED: "Сигнал СБ подавлен",
-  MASTER_OVERRIDE: "Правка мастера",
-  NET_ENTER: "Сеть: вход",
-  NET_EXIT: "Сеть: выход",
-  NET_FLATLINE: "Сеть: флэтлайн",
-  NET_ITEM_OWNER: "Сеть: предмет сменил владельца",
-  NET_ALERT: "Сеть: тревога аудитора",
-  NET_BREACH: "Сеть: взлом хранилища",
-};
+export const REASON_LABEL_RU: Record<string, string> = Object.fromEntries(Object.entries(REASON_INFO).map(([code, info]) => [code, info.label]));
 
 function parse<T>(raw: string | null): T | null {
   if (!raw) return null;

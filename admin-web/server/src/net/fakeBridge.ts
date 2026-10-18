@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { WebSocketServer, type WebSocket } from "ws";
-import type { BridgeDoc } from "./bridgeProtocol.js";
+import { BRIDGE_PROTO, type BridgeDoc } from "./bridgeProtocol.js";
 
 /**
  * Минимальный Мост по протоколу C1 (docs/netrun-bridge-protocol.md) — для тестов клиента и разработки экрана «Сеть» без devbox и
@@ -116,11 +116,11 @@ export class FakeBridge {
     const fail = (code: string, msg: string, doc?: BridgeDoc) => c.ws.send(JSON.stringify(err(m.cid, code, msg, doc)));
 
     if (m.op === "hello") {
-      if (m.proto !== 1) return fail("unsupported_version", "proto");
+      if (m.proto !== BRIDGE_PROTO) return fail("unsupported_version", "proto");
       if (m.key !== this.key) return fail("unauthorized", "неверный ключ роли");
       c.role = String(m.role);
       c.client = String(m.client);
-      return reply({ proto: 1, bridge: "fake-0.1", now: Date.now(), world_pub: "FAKEWORLDPUB" });
+      return reply({ proto: BRIDGE_PROTO, bridge: "fake-0.1", now: Date.now(), world_pub: "FAKEWORLDPUB" });
     }
     if (!c.role) return fail("unauthorized", "сначала hello");
     this.requests.push(m);

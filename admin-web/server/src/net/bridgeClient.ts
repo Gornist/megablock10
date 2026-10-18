@@ -1,5 +1,5 @@
 import WebSocket from "ws";
-import { BridgeError, BridgeUnavailableError, SUBSCRIBE_TYPES, type BridgeDoc, type BridgeStatus } from "./bridgeProtocol.js";
+import { BRIDGE_PROTO, BridgeError, BridgeUnavailableError, SUBSCRIBE_TYPES, type BridgeDoc, type BridgeStatus } from "./bridgeProtocol.js";
 import { Mirror, type ChangePush } from "./mirror.js";
 
 export interface BridgeClientOptions {
@@ -97,7 +97,7 @@ export class BridgeClient {
 
   private async handshake(ws: WebSocket): Promise<void> {
     try {
-      const hello = await this.send(ws, { op: "hello", proto: 1, role: "master", client: this.o.client, key: this.o.key });
+      const hello = await this.send(ws, { op: "hello", proto: BRIDGE_PROTO, role: "master", client: this.o.client, key: this.o.key });
       // Снимок кладём в зеркало в тот же момент, когда пришёл ответ на sub (а не в продолжении после await): пуши chg могут идти
       // следом в том же тике, и снимок, применённый позже них, затёр бы их — копия молча осталась бы устаревшей.
       await this.send(ws, { op: "sub", types: [...this.o.types] }, (snap) =>
