@@ -17,7 +17,7 @@ for f in check verify dbx ci-wait agent-worktree zone-check train land test-hook
 done
 files="$files .claude/hooks/guard-bash.sh .claude/hooks/session-brief.sh"
 # Скрипты зоны Devbox (13.10): проверяем, если они уже в ветке — box.sh и box/probe.sh приходят вместе с D1.
-for f in scripts/box.sh scripts/box/probe.sh scripts/devbox-session-start.sh scripts/devbox-godot-ai.sh; do
+for f in scripts/lib/devbox.sh scripts/box.sh scripts/box/probe.sh scripts/devbox-session-start.sh scripts/devbox-godot-ai.sh; do
   [ -f "$f" ] && files="$files $f"
 done
 
