@@ -1,5 +1,6 @@
 import type { AttentionItem, PulseSample } from "../apiTypes.js";
 import type { Db } from "../db/index.js";
+import { reasonInfo, rewardReasonsSql } from "./changeRecord.js";
 import { positiveNumber } from "./envNumber.js";
 import { findFutureClocks } from "./integrity.js";
 import { PULSE_INTERVAL_MS, readPulse } from "./pulse.js";
@@ -133,8 +134,6 @@ export function robustStats(xs: number[]): { median: number; sigma: number } {
   return { median, sigma: 1.4826 * med(xs.map((x) => Math.abs(x - median))) };
 }
 
-const REWARD_REASONS = new Set(["BREACH_EDDIES", "BREACH_LOOT", "SHARD_SCAN"]);
-
 /**
  * Игроки-выбросы за последние 15 минут: взломов или наград заметно больше, чем у остальных активных. Сравнение — с самой игрой
  * (медиана активных), а не с константой: на быстрой игре «много» — другое число, чем на медленной. Нужно не меньше 5 активных.
@@ -144,7 +143,7 @@ export function computeOutliers(db: Db, playerName: (key: string) => string, now
   const rows = db
     .prepare(
       `SELECT subject_key, field, reason, old_value, new_value, received_at FROM changes
-       WHERE received_at > ? AND received_at <= ? AND seq > 0 AND (field = 'counters.breach' OR (field = 'balance' AND reason IN ('BREACH_EDDIES','BREACH_LOOT','SHARD_SCAN')))`,
+       WHERE received_at > ? AND received_at <= ? AND seq > 0 AND (field = 'counters.breach' OR (field = 'balance' AND reason IN (${rewardReasonsSql()})))`,
     )
     .all(now - 15 * MIN, now) as { subject_key: string; field: string; reason: string; old_value: string | null; new_value: string | null; received_at: number }[];
 
@@ -154,7 +153,7 @@ export function computeOutliers(db: Db, playerName: (key: string) => string, now
   for (const r of rows) {
     lastAt.set(r.subject_key, Math.max(lastAt.get(r.subject_key) ?? 0, r.received_at));
     if (r.field === "counters.breach") breaches.set(r.subject_key, (breaches.get(r.subject_key) ?? 0) + 1);
-    else if (REWARD_REASONS.has(r.reason)) eddies.set(r.subject_key, (eddies.get(r.subject_key) ?? 0) + Math.max(0, Number(r.new_value ?? 0) - Number(r.old_value ?? 0)));
+    else if (reasonInfo(r.reason)?.reward) eddies.set(r.subject_key, (eddies.get(r.subject_key) ?? 0) + Math.max(0, Number(r.new_value ?? 0) - Number(r.old_value ?? 0)));
   }
 
   const items: AttentionItem[] = [];
