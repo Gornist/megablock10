@@ -31,7 +31,7 @@ const DEFAULT_SETTINGS := {
 	"vault_open_sec": 60.0,          # на сколько секунд взлом открывает хранилище (run.breach: open_s, 1..600)
 	"trap_trace": {"BASE": 5.0, "HARD": 8.0, "NIGHTMARE": 12.0},  # сколько trace даёт ловушка во взломе (мёртвая клетка или порченый код), по тиру узла
 	"lockdown_sec": 600.0,           # локдаун узла после выброса; без Моста держит сам сервер мира, с Мостом — lockdown_until узла
-	"time_mode": "realtime",         # время узла: "tick" — такты (ходы игроков и окно, docs/gamedesign/time-and-movement.md), "realtime" — прежнее непрерывное (graph.json ставит tick)
+	"time_mode": "tick",             # время узла: такты (ходы игроков и окно, docs/gamedesign/time-and-movement.md); режим realtime удалён (аудит 17.10), ключ оставлен для старых графов и игнорируется
 	"tick_window_sec": 5.0,          # такт наступает не позже, чем через столько секунд после прошлого
 	"tick_min_interval_sec": 0.6,    # и не чаще
 	"tick_inhale_sec": 0.5,          # «вдох» перед тактом по окну (для клиента)

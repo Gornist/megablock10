@@ -88,6 +88,14 @@ func _wait_for(cond: Callable, sec: float = 20.0) -> bool:
 	return cond.call()
 
 
+## Наступает следующий такт узла node_id: начало взлома и телепорт — ходы, второй ход в том же такте сервер отказал бы (reason=moved),
+## а ждать окно в 5 с тесту незачем.
+func _next_tick(node_id: String) -> void:
+	var c := (_world.node_of(node_id) as GrayNode).tick_clock
+	# узел помечает «в узле есть нетраннер» в физическом кадре — до него такт сделать нельзя, ждём кадры
+	assert_bool(await _wait_for(func(): return c.poll(c.last_tick_at + c.window_sec))).is_true()
+
+
 func _kinds() -> Array:
 	return _events.map(func(e): return e["kind"])
 
@@ -294,7 +302,8 @@ func test_teleport_in_the_middle_ends_the_breach_early() -> void:
 	var p := await _ready_peer("t03", S1)
 	_stand_at(S1, "b_a", 0)
 	assert_bool(await _start(p, _slot("b_a", 0), [D_EXTRACT])).is_true()
-	p.net.request_teleport(NodeGrid.center(Vector2i(9, 8)))   # клетка (9;8) свободна: (2; −6) попадал в колонну (3;−5)
+	await _next_tick("b_a")
+	p.net.request_teleport(NodeGrid.center(Vector2i(9, 8)))# клетка (9;8) свободна: (2; −6) попадал в колонну (3;−5)
 	assert_bool(await _wait_for(func(): return not p.ends.is_empty())).is_true()
 	assert_str(p.ends[0]["early"]).is_equal("teleport")
 	assert_str(p.ends[0]["outcome"]).is_equal("FAIL")

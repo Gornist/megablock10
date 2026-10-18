@@ -79,6 +79,13 @@ func _wait_for(cond: Callable, sec: float = 15.0) -> bool:
 	return cond.call()
 
 
+## Наступает следующий такт узла: начало заряда и телепорт — ходы, второй ход в том же такте сервер отказал бы (reason=moved),
+## а ждать окно в 5 с тесту незачем.
+func _next_tick() -> void:
+	var c := _node.tick_clock
+	assert_bool(await _wait_for(func(): return c.poll(c.last_tick_at + c.window_sec))).is_true()   # до физического кадра узла «в узле есть нетраннер» не отмечен
+
+
 ## Сырой клиент: события и снимки пишутся в Peer.
 func _peer() -> Peer:
 	var p := Peer.new()
@@ -280,6 +287,7 @@ func test_time_running_out_gives_no_charge() -> void:
 func test_a_teleport_interrupts_the_charge_with_no_consequences() -> void:
 	var p := await _ready_peer()
 	assert_bool(await _start(p, GHOST)).is_true()
+	await _next_tick()
 	p.net.request_teleport(Vector3(1.0, 0.0, -2.0))
 	assert_bool(await _wait_for(func(): return not p.ends.is_empty())).is_true()
 	assert_str(p.ends[0]["early"]).is_equal("teleport")

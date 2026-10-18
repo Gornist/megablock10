@@ -198,14 +198,6 @@ func test_стражей_не_больше_чем_в_раскладке_и_legac
 	assert_float(float(_leg()._tick_ices.values()[0]._s["sight_cells"])).is_equal(6.0)   # по тиру, раскладка legacy дальности не задаёт
 
 
-func test_в_реальном_времени_узел_с_раскладкой_ходит_по_прежним_маршрутам() -> void:
-	_build(1, "realtime")
-	assert_int(_alt().ices().size()).is_equal(1)
-	assert_str(str(_alt().ices()[0].name)).is_equal(NodeLayout.ICE[0]["id"])
-	assert_object(_alt().ices()[0].position).is_equal(NodeLayout.ICE[0]["waypoints"][0])
-	assert_bool(_alt()._tick_ices.is_empty()).is_true()
-
-
 # ---------------------------------------------------------------- сообщение узла
 
 func test_сообщение_о_входе_в_узел_несёт_имя_раскладки() -> void:

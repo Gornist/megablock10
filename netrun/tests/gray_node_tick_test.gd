@@ -279,16 +279,6 @@ func test_з_state_в_тактовом_режиме_несёт_tk_и_намер�
 	assert_array(rt[1]).is_not_equal(rt[0])   # пояс идёт, а не стоит
 
 
-func test_з_state_в_реальном_времени_без_тактовых_полей() -> void:
-	_boot(false)
-	var a := await _join("tok_a")
-	assert_bool(await _wait_for(func(): return _states.has(a))).is_true()
-	var st: Dictionary = _states[a]
-	assert_bool(st.has("tk")).is_false()
-	for key in ["c", "d", "st", "nc", "nd", "aw", "sc", "rt"]:
-		assert_bool((st["ice"][0] as Dictionary).has(key)).is_false()
-
-
 func test_и_один_ход_за_такт_второй_отказ_moved_и_mv() -> void:
 	_boot(true)
 	var a := await _join("tok_a")
@@ -305,14 +295,6 @@ func test_и_один_ход_за_такт_второй_отказ_moved_и_mv()
 	var before := _server.teleport_count(a)
 	await _hop(a, _neighbor(_cell_of(a)))
 	assert_int(_server.teleport_count(a)).is_equal(before + 1)   # в новом такте снова можно
-
-
-func test_ход_в_реальном_времени_по_прежнему_ограничен_перезарядкой() -> void:
-	_boot(false)
-	var a := await _join("tok_a")
-	await _hop(a, _neighbor(_cell_of(a)))
-	await _hop(a, _neighbor(_cell_of(a), 1))
-	assert_array(_denied[a]).is_equal([WorldMsg.REASON_COOLDOWN])
 
 
 func test_black_ice_за_такт_идёт_black_tick_sec_виртуального_времени() -> void:
