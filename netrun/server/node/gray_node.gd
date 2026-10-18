@@ -131,13 +131,21 @@ var _alert_t: float:                 # время узла последнего 
 		alarm_state.alert_t = v
 var _ready_done := false
 ## Сессии, чей исход уже уходит в Мост (в том числе восстановленный флэтлайн): второй исход и повторный вход не допускаем.
-var _finishing: Dictionary = {}
-var _hunted: Dictionary = {}         # сессия -> true, пока за ней идёт охота Black ICE
-var hunt_retry_sec := HUNT_RETRY_SEC # пауза между попытками записи охоты (тест ставит поменьше)
+## Исход забега и охота Black ICE — в RunOutcome (run_outcome.gd). _finishing / _hunted / hunt_retry_sec ниже — прежние имена-алиасы
+## на его поля (тот же Dictionary: их читают breach-классы и тесты).
+var outcome: RunOutcome = RunOutcome.new(self)
+var _finishing: Dictionary:          # сессия -> true: её исход уже уходит в Мост
+	get:
+		return outcome.finishing
+var _hunted: Dictionary:             # сессия -> true, пока за ней идёт охота Black ICE
+	get:
+		return outcome.hunted
+var hunt_retry_sec: float:           # пауза между попытками записи охоты (тест ставит поменьше)
+	get:
+		return outcome.hunt_retry_sec
+	set(value):
+		outcome.hunt_retry_sec = value
 var _given: Dictionary = {}          # id предмета, отданного игроком другому (К5б) -> сессия, у которой он теперь ("" — ушёл на телефон); слот отданного шарда не вернуть на постамент
-var _hunt_written: Dictionary = {}   # сессия -> bool: что Мост подтвердил в world.hunt (нет записи — не писали, то есть false)
-var _hunt_writing: Dictionary = {}   # сессия -> true, пока идёт запись: она одна на сессию и сама перечитывает нужное значение
-var _flat_disconnect: Dictionary = {} # сессия -> true: Black ICE догнал в окне возврата после обрыва («обрыв до флэтлайна»)
 ## Снимок Моста принят (после рестарта — активные сессии и шард восстановлены).
 var synced := false
 ## Сессии, взятые из снимка Моста: ждали возврата игрока.
@@ -469,8 +477,8 @@ func _sync_from_bridge() -> void:
 func apply_snapshot(docs: Array) -> void:
 	recover(docs)
 	synced = true
-	for session in _hunt_written.keys():
-		_sync_hunt(session)  # охота прошлого процесса не продолжается: снять её отметку в Мосте
+	for session in outcome.hunt_written.keys():
+		outcome._sync_hunt(session)  # охота прошлого процесса не продолжается: снять её отметку в Мосте
 	_write_node_state()
 
 
@@ -505,7 +513,7 @@ func recover(docs: Array) -> void:
 							if o is Dictionary and str(o.get("node", node_id)) == node_id:
 								opened.append({"session": str(d["id"]), "item": str(o.get("item", "")), "until": int(o.get("until", 0))})
 						if w is Dictionary and (w as Dictionary).get("hunt") == true:
-							_hunt_written[str(d["id"])] = true  # отметка прошлого процесса: его охоты нет, apply_snapshot её снимет
+							outcome.hunt_written[str(d["id"])] = true  # отметка прошлого процесса: его охоты нет, apply_snapshot её снимет
 			BridgeApi.T_ITEM:
 				if data.get("kind") != "SHARD" and data.get("kind") != "DAEMON":
 					continue
@@ -1153,16 +1161,7 @@ func _tick_target(ti: TickIce, pos: Dictionary) -> String:
 
 ## Охота Black ICE → флаг «под охотой» у NetServer (аварийный выход сожжёт деку). Каждый тик: выход не ждёт 0,1 с.
 func _update_hunts() -> void:
-	for session in _live_sessions():
-		var hunted := false
-		for ice in _ices:
-			if ice.brain != null and ice.brain.is_black() and ice.brain.is_hunting(session):
-				hunted = true
-		if hunted != bool(_hunted.get(session, false)):
-			_hunted[session] = hunted
-			net.set_under_hunt(session, hunted)
-			event.emit({"kind": "hunt", "session": session, "on": hunted})
-			_sync_hunt(session)
+	outcome._update_hunts()
 
 
 ## Trace во времени (ice.md §3): прежний спад decay_per_sec (по умолчанию 0 — пассивного спада нет) и дрейф узла графа — +1 за
@@ -1442,8 +1441,8 @@ func _on_avatar_removed(session: String) -> void:
 	_entered_at.erase(session)
 	_exiting[session] = true
 	_level_cbs.erase(session)
-	_hunted.erase(session)
-	_sync_hunt(session)  # игрок ушёл: охоты за сессией больше нет (Мосту сказать «false»)
+	outcome.hunted.erase(session)
+	outcome._sync_hunt(session)  # игрок ушёл: охоты за сессией больше нет (Мосту сказать «false»)
 	_write_node_state()
 	_forget_in_ices(session)
 
@@ -1475,7 +1474,7 @@ func _on_ice_ejected(session: String, reason: String) -> void:
 	if reason == "black_caught":
 		# Поймали в окне возврата после обрыва — в карточке мастеру «обрыв до флэтлайна».
 		if net.peer_of(session) == -1:
-			_flat_disconnect[session] = true
+			outcome.flat_disconnect[session] = true
 		_end(session, ExitLogic.REASON_FLATLINE, "flatline")
 	elif reason == "flatline" and has_black_ice():
 		return  # Soft ICE при trace 100 в узле с Black ICE не выбрасывает: добивает охота
@@ -1484,14 +1483,7 @@ func _on_ice_ejected(session: String, reason: String) -> void:
 
 
 func _end(session: String, exit_reason: String, kind: String) -> void:
-	if not net.has_avatar(session):
-		return
-	if is_graph_node():
-		alarm_event("eject")
-		if kind == "ice_eject" and bridge == null and not is_tutorial():
-			lock_for(float(settings["lockdown_sec"]))  # с Мостом локдаун выставляет он (run.finish soft_ice)
-	event.emit({"kind": kind, "session": session})
-	net.end_session(session, exit_reason)
+	outcome._end(session, exit_reason, kind)
 
 
 func _on_leave_requested(session: String) -> void:
@@ -1648,17 +1640,7 @@ func _on_object_taken(object_id: String, session: String) -> void:
 
 
 func _on_exit_event(ev: Dictionary) -> void:
-	_portal_state.erase(ev["session"])
-	# Граф: сигнал приходит всем узлам, забег закрывает тот, чей игрок это был (метка _exiting из _on_avatar_removed).
-	if not _exiting.erase(ev["session"]) and is_graph_node():
-		return
-	event.emit({"kind": "exit", "session": ev["session"], "reason": ev["reason"]})
-	_finishing[ev["session"]] = true
-	if ev["reason"] == ExitLogic.REASON_FLATLINE:
-		ev = ev.duplicate()
-		ev["disconnect"] = bool(_flat_disconnect.get(ev["session"], false))
-		_flat_disconnect.erase(ev["session"])
-	_finish_in_bridge(ev)
+	outcome._on_exit_event(ev)
 
 
 ## Исход забега по причине выхода (раздел 6.5 протокола и таблица исходов в netrun.md).
@@ -1706,54 +1688,6 @@ func _mark_trace_level(session: String, level: int, value: float, effects: Array
 			return
 
 
-## Охота Black ICE в session.data.world.hunt: Мост по true шлёт быстрое событие ice.hunt, конец охоты событием не является.
-## Пишем смену, а не каждый тик: нужное значение берётся из _hunted, подтверждённое Мостом — из _hunt_written. Писатель один на
-## сессию: пока он ждёт Мост, смена охоты только меняет _hunted, а он по возвращении видит свежее значение (true и сразу false
-## не обгоняют друг друга и очередь запросов не растёт). Мост недоступен — HUNT_ATTEMPTS попыток и отказ без записи: охота не
-## критична для хода, а следующая смена охоты запишется заново.
-func _sync_hunt(session: String) -> void:
-	if bridge == null or not synced or _hunt_writing.has(session):
-		return
-	_hunt_writing[session] = true
-	while bool(_hunted.get(session, false)) != bool(_hunt_written.get(session, false)):
-		var want := bool(_hunted.get(session, false))
-		if not await _put_hunt(session, want):
-			break
-		_hunt_written[session] = want
-	_hunt_writing.erase(session)
-	if not _sessions.has(session):
-		_hunt_written.erase(session)  # игрока в узле нет: помнить нечего
-
-
-## Один раз записать world.hunt (чтение-правка-запись, остальные поля world сохраняются). Повтор при version_conflict и обрыве
-## связи, но не больше HUNT_ATTEMPTS. false — не вышло.
-func _put_hunt(session: String, hunt: bool) -> bool:
-	for attempt in HUNT_ATTEMPTS:
-		@warning_ignore("redundant_await")
-		var g: Dictionary = await bridge.get_doc(BridgeApi.T_SESSION, session)
-		if g.get("ok", false):
-			var cur: Dictionary = g["doc"]
-			var data: Dictionary = (cur.get("data", {}) as Dictionary).duplicate(true)
-			var w: Dictionary = (data.get("world", {}) as Dictionary).duplicate(true) if data.get("world") is Dictionary else {}
-			w["hunt"] = hunt
-			data["world"] = w
-			@warning_ignore("redundant_await")
-			var r: Dictionary = await bridge.put_doc(BridgeApi.T_SESSION, session, int(cur["ver"]), data)
-			if r.get("ok", false):
-				return true
-			g = r
-		var code := BridgeApi.err_code(g)
-		if is_transient(g):
-			if not is_inside_tree():
-				return false
-			await get_tree().create_timer(hunt_retry_sec).timeout
-		elif code != "version_conflict":
-			push_warning("[gray-node] hunt %s: %s" % [session, code])
-			return false
-	push_warning("[gray-node] hunt %s: не записано за %d попыток" % [session, HUNT_ATTEMPTS])
-	return false
-
-
 ## Слить поля в session.data.world, не трогая остальные (trace_level, effects, finish). Повтор при version_conflict.
 func _merge_world(session: String, fields: Dictionary) -> void:
 	for attempt in 3:
@@ -1772,157 +1706,18 @@ func _merge_world(session: String, fields: Dictionary) -> void:
 			return
 
 
-## Пометка в session.data.world: что сервер мира закрывает эту сессию (finish, disconnect). Остальные поля world сохраняются.
-## Повтор при version_conflict и обрыве связи; не вышло окончательно (документа нет, отказ) — продолжаем без пометки.
+## Исход забега и запись в Мост (_mark_finish, _finish_in_bridge, ожидание мастера, охота) — в RunOutcome (run_outcome.gd);
+## ниже тонкие делегаты с прежними именами.
 func _mark_finish(session: String, finish: String, disconnect: bool, extra: Dictionary = {}) -> void:
-	if bridge == null:
-		return
-	for attempt in FINISH_ATTEMPTS:
-		@warning_ignore("redundant_await")
-		var g: Dictionary = await bridge.get_doc(BridgeApi.T_SESSION, session)
-		if g.get("ok", false):
-			var cur: Dictionary = g["doc"]
-			var data: Dictionary = (cur.get("data", {}) as Dictionary).duplicate(true)
-			var w: Dictionary = (data.get("world", {}) as Dictionary).duplicate(true) if data.get("world") is Dictionary else {}
-			w["finish"] = finish
-			w["disconnect"] = disconnect
-			w.merge(extra, true)   # например black_log: журнал Black ICE для карточки флэтлайна (поле world непрозрачно для Моста)
-			data["world"] = w
-			@warning_ignore("redundant_await")
-			var r: Dictionary = await bridge.put_doc(BridgeApi.T_SESSION, session, int(cur["ver"]), data)
-			if r.get("ok", false):
-				return
-			g = r
-		if not is_transient(g) and BridgeApi.err_code(g) != "version_conflict":
-			push_warning("[gray-node] пометка finish %s: %s" % [session, BridgeApi.err_code(g)])
-			return
-		if not is_inside_tree():
-			return
-		await get_tree().create_timer(FINISH_RETRY_SEC if is_transient(g) else 0.05).timeout
-	push_warning("[gray-node] пометка finish %s не записана" % session)
-
-
-## «Ждём мастера» перед флэтлайном. Возвращает "approve" (применять), "deny" (пощадить) или "" (узел закрывается).
-## Мост сам ведёт срок и решение по таймауту; нам остаётся спрашивать раз в GATE_POLL_SEC, пока он отвечает wait.
-## Сбой связи или отказ Моста решения не заменяют: опрос продолжается, исход сами не назначаем (run.finish без Моста
-## всё равно не пройдёт). Дольше срока await_timeout_s + запас — запись в журнал и дальше те же опросы.
-func _await_master_flatline(session: String) -> String:
-	var announced := false
-	var summary := "ФЛЭТЛАЙН: %s" % str(_callsign_of(session))
-	var started := Time.get_ticks_msec()
-	var limit_sec := await _gate_limit_sec()
-	var warned_at := 0.0
-	var failures := 0
-	while is_inside_tree():
-		@warning_ignore("redundant_await")
-		var r: Dictionary = await bridge.master_gate("flatline", session, node_id, summary)
-		if not r.get("ok", false):
-			failures += 1
-			if failures == 1 or failures % 60 == 0:
-				push_warning("[gray-node] master.gate flatline %s: %s (опрос продолжается)" % [session, BridgeApi.err_code(r)])
-		else:
-			failures = 0
-			var mode := str(r.get("mode", "auto"))
-			if mode != "wait":
-				var decision := str(r.get("decision", "approve")) if r.get("decision") != null else "approve"
-				print("[gray-node] flatline ", session, ": ", mode, " ", decision)
-				event.emit({"kind": "flatline_gate", "session": session, "mode": mode, "decision": decision})
-				return decision
-			if not announced:
-				announced = true
-				print("[gray-node] flatline ", session, ": ждём мастера")
-				event.emit({"kind": "waiting_master", "session": session})
-		var waited := (Time.get_ticks_msec() - started) / 1000.0
-		if waited >= limit_sec + warned_at:
-			warned_at += limit_sec
-			push_warning("[gray-node] flatline %s: ждём решения уже %d с (срок %d с) — Мост должен решить по таймауту, опрос продолжается" % [session, int(waited), int(limit_sec)])
-			event.emit({"kind": "gate_overdue", "session": session, "waited": waited})
-		if not is_inside_tree():
-			break
-		await get_tree().create_timer(GATE_POLL_SEC).timeout
-	return ""
-
-
-## Срок «ждём мастера» из настроек Моста (settings/global.await_timeout_s) плюс запас; нет связи — по умолчанию.
-func _gate_limit_sec() -> float:
-	var timeout := GATE_DEFAULT_TIMEOUT_SEC
-	@warning_ignore("redundant_await")
-	var g: Dictionary = await bridge.get_doc("settings", "global")
-	if g.get("ok", false):
-		var t: Variant = ((g["doc"] as Dictionary).get("data", {}) as Dictionary).get("await_timeout_s")
-		if t is int or t is float:
-			timeout = maxf(float(t), 1.0)
-	return timeout + GATE_GRACE_SEC
+	await outcome._mark_finish(session, finish, disconnect, extra)
 
 
 func _callsign_of(session: String) -> String:
-	if bridge == null:
-		return session
-	var s: Dictionary = bridge.cached_doc(BridgeApi.T_SESSION, session)
-	var cs := str((s.get("data", {}) as Dictionary).get("callsign", ""))
-	return cs if cs != "" else session
+	return outcome._callsign_of(session)
 
 
 func _finish_in_bridge(ev: Dictionary) -> void:
-	if bridge == null:
-		return
-	var session: String = ev["session"]
-	while int(_takes_inflight.get(session, 0)) > 0:
-		await get_tree().process_frame
-	if ev["reason"] == ExitLogic.REASON_FLATLINE:
-		# Пометка в Мосте ДО ожидания: рестарт сервера мира посреди него продолжит этот же флэтлайн (recover).
-		var extra := {}
-		if _black_log.has(session):
-			extra["black_log"] = _black_log[session]
-		await _mark_finish(session, "flatline", bool(ev.get("disconnect", false)), extra)
-		var verdict := await _await_master_flatline(session)
-		if verdict == "":
-			return  # узел закрывается: продолжит следующий процесс по пометке
-		if verdict == "deny":
-			ev = ev.duplicate()
-			ev["reason"] = ExitLogic.REASON_EJECTED  # мастер пощадил до применения: как Soft ICE, без блокировки
-			ev["disconnect"] = false
-	var plan := outcome_plan(ev)
-	# Дека могла измениться между чтением и вызовом (пришёл предмет по op.give_item, протокол 6.5/6.7): Мост отвечает bad_request «не упомянут
-	# в moves» и не записывает rid — перечитываем деку, пересобираем moves и шлём тот же rid. Это не новое намерение.
-	var r: Dictionary = {}
-	for round_no in MOVES_ATTEMPTS:
-		var moves := await _collect_moves(session, plan)
-		for attempt in FINISH_ATTEMPTS:
-			@warning_ignore("redundant_await")
-			r = await bridge.run_finish(session, plan["outcome"], node_id, plan["disconnect"], moves)
-			if not is_transient(r) or not is_inside_tree():
-				break
-			await get_tree().create_timer(FINISH_RETRY_SEC).timeout
-		if not is_moves_stale(r) or not is_inside_tree():
-			break
-	print("[gray-node] run.finish ", session, " ", plan["outcome"], ": ", "ok" if r.get("ok", false) else BridgeApi.err_code(r))
-	if r.get("ok", false):
-		_finishing.erase(session)  # сессия закрыта в Мосте: terminal.auth её уже не отдаст
-	event.emit({"kind": "finished", "session": session, "outcome": plan["outcome"], "ok": r.get("ok", false)})
-
-
-## moves исхода по свежему чтению деки и документа сессии. Деление на рабочих и груз — по `session.loaded` (как у Моста); документ сессии
-## не получен — запасное правило по origin.
-func _collect_moves(session: String, plan: Dictionary) -> Array:
-	var listed: Dictionary = {}
-	for attempt in FINISH_ATTEMPTS:
-		@warning_ignore("redundant_await")
-		listed = await bridge.list_docs(BridgeApi.T_ITEM)
-		if listed.get("ok", false) or not is_transient(listed) or not is_inside_tree():
-			break
-		await get_tree().create_timer(FINISH_RETRY_SEC).timeout
-	var sdata: Dictionary = {}
-	for attempt in FINISH_ATTEMPTS:
-		@warning_ignore("redundant_await")
-		var sr: Dictionary = await bridge.get_doc(BridgeApi.T_SESSION, session)
-		if sr.get("ok", false):
-			sdata = (sr["doc"] as Dictionary).get("data", {})
-			break
-		if not is_transient(sr) or not is_inside_tree():
-			break
-		await get_tree().create_timer(FINISH_RETRY_SEC).timeout
-	return finish_moves(listed.get("docs", []), session, sdata, plan)
+	await outcome._finish_in_bridge(ev)
 
 
 ## Ответ Моста «в деке предмет, которого нет в moves» (протокол 6.5): деку надо перечитать и повторить тем же rid.
@@ -2046,19 +1841,16 @@ func empty_slots() -> int:
 
 ## Идёт ли запись охоты в Мост (тест ждёт, пока писатель закончит или сдастся).
 func is_hunt_writing() -> bool:
-	return not _hunt_writing.is_empty()
+	return outcome.is_hunt_writing()
 
 
 func is_hunted(session: String) -> bool:
-	return bool(_hunted.get(session, false))
+	return outcome.is_hunted(session)
 
 
 ## Идёт ли в узле охота Black ICE (за кем-то из игроков узла).
 func is_hunt_active() -> bool:
-	for session in _hunted:
-		if bool(_hunted[session]):
-			return true
-	return false
+	return outcome.is_hunt_active()
 
 
 ## Портал: игрок простоял в радиусе `portal_dwell_sec` (повтор отказа — не чаще `portal_deny_repeat_sec`).
@@ -2183,28 +1975,7 @@ func _push_shards() -> void:
 
 ## Снять сессию с узла (уходит в тоннель/в другой узел): состояние (trace, дека, перезарядки) возвращается вызывающему целым.
 func release_session(session: String) -> DaemonSession:
-	var ds: DaemonSession = _sessions.get(session)
-	if ds == null:
-		return null
-	breach.end_early(session, "transit")
-	charge.end_early(session, "transit")
-	decrypt.end_early(session, "transit")
-	barrier.end_early(session, "transit")
-	shards.close_vaults_of(session)
-	var cb: Callable = _level_cbs.get(session, Callable())
-	if cb.is_valid() and ds.trace.level_changed.is_connected(cb):
-		ds.trace.level_changed.disconnect(cb)
-	_level_cbs.erase(session)
-	_sessions.erase(session)
-	_effect_logged.erase(session)
-	_entered_at.erase(session)
-	_hunted.erase(session)
-	_sync_hunt(session)  # сессия уходит в другой узел: охота этого узла за ней кончилась
-	_portal_state.erase(session)
-	net.set_under_hunt(session, false)
-	_forget_in_ices(session)
-	_write_node_state()
-	return ds
+	return outcome.release_session(session)
 
 
 ## Принять сессию с её состоянием: trace и дека те же объекты, что были в прошлом узле.
