@@ -83,7 +83,7 @@ class CallManager(
         if (_state.value.phase != CallPhase.IDLE) return
         val callId = UUID.randomUUID().toString()
         Mb10Log.event(TAG, "call.outgoing_start", "call" to callId.take(8), "peer" to Mb10Log.short(peer.pubKeyB64), "addr" to peers.describe(peer.pubKeyB64))
-        _state.value = CallUiState(CallPhase.OUTGOING_RINGING, callId, peer.pubKeyB64, peer.callsign, isOutgoing = true, startedAt = System.currentTimeMillis())
+        _state.value = CallRules.outgoing(callId, peer.pubKeyB64, peer.callsign, System.currentTimeMillis())
         SoundPlayer.startDialTone(app)
         recovery = IceRecoveryPolicy(isCaller = true)
 
@@ -117,15 +117,14 @@ class CallManager(
         Mb10Log.event(TAG, "call.signal_in", "type" to signal.type.name, "call" to signal.callId.take(8), "from" to Mb10Log.short(signal.fromPubKeyB64), "phase" to _state.value.phase.name)
         when (signal.type) {
             CallSignalType.OFFER -> onOffer(identity, signal)
-            CallSignalType.ANSWER -> if (_state.value.callId == signal.callId) onAnswer(identity, signal)
-            CallSignalType.ICE_CANDIDATE -> if (_state.value.callId == signal.callId) onRemoteIceCandidate(signal)
-            CallSignalType.DECLINE, CallSignalType.END -> if (_state.value.callId == signal.callId) onHangUpByPeer()
+            CallSignalType.ANSWER -> if (CallRules.belongsToCurrentCall(_state.value, signal)) onAnswer(identity, signal)
+            CallSignalType.ICE_CANDIDATE -> if (CallRules.belongsToCurrentCall(_state.value, signal)) onRemoteIceCandidate(signal)
+            CallSignalType.DECLINE, CallSignalType.END -> if (CallRules.belongsToCurrentCall(_state.value, signal)) onHangUpByPeer()
         }
     }
 
     private fun markConnected(callId: String, connected: Boolean) {
-        if (_state.value.callId != callId) return
-        _state.value = _state.value.copy(audioConnected = connected, everConnected = _state.value.everConnected || connected)
+        _state.value = CallRules.withConnected(_state.value, callId, connected)
     }
 
     private fun onIceState(callId: String, state: PeerConnection.IceConnectionState) {
@@ -164,7 +163,7 @@ class CallManager(
 
     private fun restartIce(identity: Identity, callId: String) {
         val s = _state.value
-        if (s.callId != callId || s.phase != CallPhase.IN_CALL) return
+        if (!CallRules.canRestartIce(s, callId)) return
         Mb10Log.event(TAG, "call.ice_restart", "call" to callId.take(8))
         CallMedia.createRestartOffer { sdp ->
             if (_state.value.callId == callId) sendSignal(identity, s.peerPubKeyB64, CallSignalType.OFFER, callId, sdp = sdp)
@@ -181,14 +180,13 @@ class CallManager(
     }
 
     private fun onOffer(identity: Identity, signal: CallSignal) {
-        val current = _state.value
-        if (current.phase == CallPhase.IN_CALL && signal.callId == current.callId && signal.fromPubKeyB64 == current.peerPubKeyB64) {
-            onRestartOffer(identity, signal)
-            return
+        when (CallRules.onOffer(_state.value, signal)) {
+            CallRules.OfferAction.RESTART_ICE -> { onRestartOffer(identity, signal); return }
+            CallRules.OfferAction.IGNORE_BUSY -> { Mb10Log.warnEvent(TAG, "call.offer_ignored_busy", "call" to signal.callId.take(8)); return } // busy-сигнала в MVP нет
+            CallRules.OfferAction.RING -> Unit
         }
-        if (_state.value.phase != CallPhase.IDLE) { Mb10Log.warnEvent(TAG, "call.offer_ignored_busy", "call" to signal.callId.take(8)); return } // уже заняты другим звонком — молча игнорируем, без busy-сигнала в MVP
         val sdp = signal.sdp ?: return
-        _state.value = CallUiState(CallPhase.INCOMING_RINGING, signal.callId, signal.fromPubKeyB64, signal.fromCallsign, isOutgoing = false, startedAt = System.currentTimeMillis())
+        _state.value = CallRules.incoming(signal.callId, signal.fromPubKeyB64, signal.fromCallsign, System.currentTimeMillis())
         SoundPlayer.startIncomingRingtone(app)
         scheduleRingTimeout(identity, signal.callId)
         recovery = IceRecoveryPolicy(isCaller = false)
@@ -206,13 +204,13 @@ class CallManager(
     private fun onAnswer(identity: Identity, signal: CallSignal) {
         val sdp = signal.sdp ?: return
         // Второй и далее ANSWER в уже идущем звонке — ответ на наш перезапуск ICE: только применяем его.
-        if (_state.value.phase == CallPhase.IN_CALL) {
+        if (CallRules.onAnswer(_state.value) == CallRules.AnswerAction.APPLY_RESTART_ANSWER) {
             CallMedia.setRemoteAnswer(sdp)
             recovery?.onRestartAnswered()
             return
         }
         SoundPlayer.stopLoop()
-        _state.value = _state.value.copy(phase = CallPhase.IN_CALL, phaseSince = System.currentTimeMillis())
+        _state.value = CallRules.inCall(_state.value, System.currentTimeMillis())
         CallMedia.setRemoteAnswer(sdp)
         CallForegroundService.start(app, _state.value.peerCallsign)
         startRecoveryWatch(identity, signal.callId)
@@ -228,13 +226,7 @@ class CallManager(
 
     /** Пир отклонил или завершил звонок — исход зависит от того, на какой фазе это случилось. */
     private fun onHangUpByPeer() {
-        val outcome = when (_state.value.phase) {
-            CallPhase.IN_CALL -> CallOutcome.COMPLETED
-            CallPhase.OUTGOING_RINGING -> CallOutcome.DECLINED // пир отклонил/сбросил, пока мы дозванивались
-            CallPhase.INCOMING_RINGING -> CallOutcome.MISSED // звонивший сам передумал/сбросил, пока мы не ответили
-            CallPhase.IDLE -> CallOutcome.COMPLETED
-        }
-        endCallLocal(outcome)
+        endCallLocal(CallRules.outcomeOfPeerHangUp(_state.value.phase))
     }
 
     override fun accept(identity: Identity) {
@@ -242,7 +234,7 @@ class CallManager(
         if (s.phase != CallPhase.INCOMING_RINGING) return
         Mb10Log.event(TAG, "call.accept", "call" to s.callId.take(8))
         SoundPlayer.stopLoop()
-        _state.value = s.copy(phase = CallPhase.IN_CALL, phaseSince = System.currentTimeMillis())
+        _state.value = CallRules.inCall(s, System.currentTimeMillis())
         CallMedia.addLocalAudioTrack(app)
         CallMedia.createAnswer { sdp -> sendSignal(identity, s.peerPubKeyB64, CallSignalType.ANSWER, s.callId, sdp = sdp) }
         CallForegroundService.start(app, s.peerCallsign)
@@ -255,10 +247,10 @@ class CallManager(
      */
     override fun setMuted(muted: Boolean) {
         val s = _state.value
-        if (s.phase != CallPhase.IN_CALL || s.muted == muted) return
+        val next = CallRules.withMuted(s, muted) ?: return
         Mb10Log.event(TAG, "call.mute", "call" to s.callId.take(8), "muted" to muted)
         CallMedia.setMicrophoneEnabled(!muted)
-        _state.value = s.copy(muted = muted)
+        _state.value = next
     }
 
     /** И отклонение входящего, и отмена исходящего, и завершение уже идущего звонка — везде со стороны пира это просто "разговор закончен". */
@@ -266,15 +258,9 @@ class CallManager(
         val s = _state.value
         if (s.phase == CallPhase.IDLE) return
         Mb10Log.event(TAG, "call.end_by_user", "call" to s.callId.take(8), "phase" to s.phase.name)
-        val type = if (s.phase == CallPhase.INCOMING_RINGING) CallSignalType.DECLINE else CallSignalType.END
-        sendSignal(identity, s.peerPubKeyB64, type, s.callId)
-        val outcome = when (s.phase) {
-            CallPhase.IN_CALL -> CallOutcome.COMPLETED
-            CallPhase.OUTGOING_RINGING -> CallOutcome.CANCELLED
-            CallPhase.INCOMING_RINGING -> CallOutcome.DECLINED
-            CallPhase.IDLE -> CallOutcome.COMPLETED
-        }
-        endCallLocal(outcome)
+        val hangUp = CallRules.hangUpByUser(s.phase)
+        sendSignal(identity, s.peerPubKeyB64, hangUp.signal, s.callId)
+        endCallLocal(hangUp.outcome)
     }
 
     /**
@@ -286,13 +272,13 @@ class CallManager(
             delay(RING_TIMEOUT_MS)
             val s = _state.value
             if (s.callId != callId) return@launch
-            when (s.phase) {
-                CallPhase.OUTGOING_RINGING -> {
+            when (val action = CallRules.onRingTimeout(s.phase)) {
+                is CallRules.RingTimeout.SendEndAndFinish -> {
                     sendSignal(identity, s.peerPubKeyB64, CallSignalType.END, callId)
-                    endCallLocal(CallOutcome.UNREACHABLE)
+                    endCallLocal(action.outcome)
                 }
-                CallPhase.INCOMING_RINGING -> endCallLocal(CallOutcome.MISSED)
-                else -> Unit
+                is CallRules.RingTimeout.Finish -> endCallLocal(action.outcome)
+                CallRules.RingTimeout.Ignore -> Unit
             }
         }
     }
