@@ -20,6 +20,7 @@ uniform float dust_fps : hint_range(0.0, 30.0) = 0.0;                 // сме�
 uniform float dust_fill : hint_range(0.0, 1.0) = 0.0;                 // 0 — выкл. (как раньше: дробная альфа), 1 — полная заливка; ручка AssetMaterials `dust_fill`
 uniform float dust_fill_lo : hint_range(0.2, 6.0) = 2.0;
 uniform float dust_fill_hi : hint_range(0.5, 8.0) = 4.0;
+uniform float dust_sharp : hint_range(0.0, 1.0) = 0.0;                // 0 — как раньше; 1 — прозрачность ячейки почти 0/1 (smoothstep по яркости спрайта): меньше дробной альфы = меньше дитера a2c внутри ячейки
 uniform float dust_far_start = 10.0;                                  // дальше плотность и яркость падают
 uniform float dust_far_end = 40.0;
 uniform vec4 dust_color : source_color = vec4(0.176, 0.463, 0.553, 1.0);  // стальная бирюза референса (45,118,141): PAL_DIM светлее, неон — только акцент
@@ -44,8 +45,9 @@ float cloud_noise2(vec2 p) {
 
 // wp, nw — мировая позиция и нормаль поверхности, vdir — единичный вектор от точки к камере, dist — дистанция, м,
 // proj_px = PROJECTION_MATRIX[1][1] × VIEWPORT_SIZE.y (в пользовательских функциях Godot эти встроенные недоступны — передаёт fragment(); в fragment() P[1][1] отрицателен — берём модуль).
-// dens_k — множитель плотности частиц (дыхание и отклик на приближение, breath_touch.gdshaderinc; 1 — как без них).
-vec4 volume_cloud(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px, float edge, float dens_k) {
+// dens_k — множитель плотности частиц (отклик на приближение, breath_touch.gdshaderinc; 1 — как без него; дыхание на плотность не влияет: ячейки мигали бы на тике).
+// lit — освещённость 0…1 от невидимых источников (cloud_light.gdshaderinc; 1 — как без них), lit_col/lit_col_w — цвет источника и вес перекраски.
+vec4 volume_cloud(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px, float edge, float dens_k, float lit, vec3 lit_col, float lit_col_w) {
 	vec3 an = abs(nw);
 	vec2 plane;
 	float axis;
@@ -70,11 +72,17 @@ vec4 volume_cloud(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px, float 
 	float graze = ndv * ndv;
 	float far_k = 1.0 - smoothstep(dust_far_start, dust_far_end, dist);
 	float patch_k = mix(1.0, smoothstep(0.25, 0.75, patch_n), dust_patch);
-	float dens = clamp(dust_density * patch_k * (0.55 + 0.45 * up) * (1.0 + 0.7 * graze) * dens_k + edge * dust_edge_gain, 0.0, 1.0);
+	float lit_d = mix(lit_ambient, 1.0, smoothstep(0.0, 1.0, lit));   // плотность зерна: в темноте — доля lit_ambient, у света — полная
+	float lit_e = mix(lit_edge, 1.0, lit);                            // линии сетки и рёбра гаснут слабее зерна
+	float dens = clamp(dust_density * patch_k * (0.55 + 0.45 * up) * (1.0 + 0.7 * graze) * dens_k * lit_d + edge * dust_edge_gain * lit_e, 0.0, 1.0);
+	if (dens < 0.004) {   // неосвещённое и дальнее — пустота: без выборки текстуры и без дробной альфы
+		return vec4(0.0);
+	}
 	float px_world = 2.0 * max(dist, 0.1) / max(abs(proj_px), 1.0);
 	float cell_px = dust_cell / px_world;
 	float sharp = smoothstep(0.7, 2.0, cell_px);
-	vec3 avg_rgb = mix(dust_color.rgb, dust_hot.rgb, edge * 0.5) * dust;
+	float lit_b = mix(lit_dim, 1.0, lit) * dust;                      // яркость частиц: в темноте тусклее
+	vec3 avg_rgb = mix(mix(dust_color.rgb, dust_hot.rgb, edge * 0.5), lit_col, lit_col_w) * lit_b;
 	float fill_w = dust_fill * (1.0 - smoothstep(dust_fill_lo, dust_fill_hi, cell_px));
 	if (fill_w >= 0.999 || (dust_fill <= 0.0 && sharp < 0.02)) {  // ячейка мельче порога: только средняя засветка — без выборки текстуры (дальние плиты и потолок: основная масса фрагментов)
 		if (dust_fill > 0.0) {
@@ -88,10 +96,11 @@ vec4 volume_cloud(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px, float 
 	vec2 uv = (cellxy + f) / glitch_cells;
 	// градиенты — от непрерывных координат ячеек, иначе на границе ячейки скачок и швы мипов
 	float s = textureGrad(glitch_tex, uv, dFdx(coord) / glitch_cells, dFdy(coord) / glitch_cells).r;
+	s = mix(s, smoothstep(0.35, 0.65, s), dust_sharp);
 	float present = step(h2, dens);
 	float a = mix(dens * dust_cover_avg, s * present, sharp);
 	vec3 base = mix(dust_color.rgb, dust_hot.rgb, smoothstep(0.55, 1.0, s) * step(0.82, h) + edge * 0.5);
-	vec4 cell = vec4(base * dust, clamp(a * far_k, 0.0, 1.0));
+	vec4 cell = vec4(mix(base, lit_col, lit_col_w) * lit_b, clamp(a * far_k, 0.0, 1.0));
 	if (fill_w > 0.0) {   // зерно → заливка: цвет и покрытие смешиваются по весу, на границе режимов нет скачка яркости
 		float ao = cell.a * (1.0 - fill_w) + fill_w;   // «зерно поверх заливки» с весом (1 − fill_w)
 		cell = vec4((cell.rgb * cell.a * (1.0 - fill_w) + avg_rgb * dens * dust_cover_avg * far_k * fill_w) / max(ao, 0.001), ao);

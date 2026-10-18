@@ -2,6 +2,7 @@
 // Вес ребра берём из цвета вершины (1 на стыке → 0 на 3 см), линии клеток пола — из той же текстуры grid_tex, что у solid_dark: там плотность поднимается до скопления (линия остаётся читаемой, но из частиц).
 // Нормаль и позиция идут varying'ами от вершины (не NORMAL фрагмента), поэтому узор привязан к мировой решётке и не «плывёт» при движении головы.
 
+#include "cloud_light.gdshaderinc"
 #include "volume_cloud.gdshaderinc"
 #include "breath_touch.gdshaderinc"
 #include "alarm_focus.gdshaderinc"
@@ -34,8 +35,16 @@ void fragment() {
 	float lift = breath_lift(v_wp);
 	vec3 push = vec3(0.0);
 	float tk = touch_k(v_wp, push);
-	float dens_k = max(1.0 + 1.4 * (lift - 1.0) + touch_grow * tk, 0.0);
-	vec4 c = volume_cloud(v_wp, normalize(v_nw), normalize(CAMERA_POSITION_WORLD - v_wp), v_dist, PROJECTION_MATRIX[1][1] * VIEWPORT_SIZE.y, edge, dens_k);
+	float dens_k = max(1.0 + touch_grow * tk, 0.0);   // дыхание — только яркостью (lift): от плотности ячейки включались и гасли на каждом тике
+	// Освещённость: статические источники узла и рука/аватар (touch). Нет источников — 1, как раньше.
+	vec3 lit_col = vec3(1.0);
+	float lit = 1.0;
+	float lit_w = 0.0;
+	if (lit_strength > 0.0 && cl_n > 0) {
+		lit = mix(1.0, max(cloud_lit(v_wp, lit_col), tk), lit_strength);
+		lit_w = lit_tint * lit;
+	}
+	vec4 c = volume_cloud(v_wp, normalize(v_nw), normalize(CAMERA_POSITION_WORLD - v_wp), v_dist, PROJECTION_MATRIX[1][1] * VIEWPORT_SIZE.y, edge, dens_k, lit, lit_col, lit_w);
 	c.rgb *= lift * (1.0 + touch_gain * tk);
 	c.rgb = mix(c.rgb, touch_color * dust, 0.5 * tk);
 	ALBEDO = focus_light(mix(c.rgb, edge_color.rgb, edge * edge_mix), v_wp);   // тревога у игрока (alarm_focus.gdshaderinc)

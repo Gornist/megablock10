@@ -803,6 +803,31 @@ func test_dust_fill_knob_defaults_on_and_reaches_cloud_material() -> void:
 	AssetMaterials.reset_tuning()
 
 
+## Свет облака (18.10): источники доходят до материала (и до созданных позже), лишние отбрасываются, пустой массив — «источников нет»; ручки по умолчанию включены.
+func test_cloud_lights_reach_cloud_material_and_clear() -> void:
+	AssetMaterials.reset_tuning()
+	AssetMaterials.set_cloud_lights(null, [])
+	var early := _mat_of(_apply_new("env", "cover"), "pillar_block")
+	assert_int(int(early.get_shader_parameter("cl_n"))).override_failure_message("без источников cl_n = 0 (облако равномерное)").is_equal(0)
+	AssetMaterials.set_cloud_lights(null, [{"p": Vector3(1, 0, 2), "r": 3.0, "c": Color(1, 0, 0), "s": 0.5}, {"p": Vector3(-4, 1, 0), "r": 2.0}])
+	assert_int(AssetMaterials.cloud_lights().size()).is_equal(2)
+	assert_vector(AssetMaterials.cloud_lights()[0]["p"]).is_equal(Vector3(1, 0, 2))
+	assert_float(float(AssetMaterials.cloud_lights()[0]["s"])).is_equal(0.5)
+	assert_float(float(AssetMaterials.cloud_lights()[1]["s"])).override_failure_message("сила по умолчанию 1").is_equal(1.0)
+	var late := _mat_of(_apply_new("env", "cover"), "pillar_block")
+	assert_int(int(late.get_shader_parameter("cl_n"))).override_failure_message("материал, созданный после set_cloud_lights, получает источники").is_equal(2)
+	assert_float(float((late.get_shader_parameter("cl_pos") as PackedVector4Array)[0].w)).is_equal(3.0)
+	assert_int((late.get_shader_parameter("cl_pos") as PackedVector4Array).size()).override_failure_message("массив uniform фиксированной длины").is_equal(AssetMaterials.CLOUD_LIGHTS_MAX)
+	var many := []
+	for i in AssetMaterials.CLOUD_LIGHTS_MAX + 3:
+		many.append({"p": Vector3(i, 0, 0), "r": 1.0})
+	AssetMaterials.set_cloud_lights(null, many)
+	assert_int(AssetMaterials.cloud_lights().size()).override_failure_message("лишние источники отбрасываются").is_equal(AssetMaterials.CLOUD_LIGHTS_MAX)
+	assert_float(float(late.get_shader_parameter("lit_strength"))).override_failure_message("ручка cloud_light по умолчанию 1").is_equal(1.0)
+	AssetMaterials.set_cloud_lights(null, [])
+	AssetMaterials.reset_tuning()
+
+
 ## Рябь частиц на очках (17.10): ячейка облака по умолчанию держит один кадр спрайта (dust_fps = 0), ручка доходит до материала.
 func test_dust_fps_knob_defaults_to_static_cell_frame() -> void:
 	AssetMaterials.reset_tuning()

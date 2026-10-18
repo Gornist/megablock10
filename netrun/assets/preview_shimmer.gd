@@ -2,7 +2,7 @@ extends Node3D
 ## Рябь облака при микродвижении головы (очки 18.10: «вдали рябит больше», «лесенка жёстче»): Фойе глазами игрока, кадр как у приложения на Pico 4 (1504×1504, msaa как в клиенте),
 ## камера сдвигается между кадрами на доли пикселя (тремор головы); меряется средняя разница яркости соседних кадров по трём полосам кадра: верх — потолок и дальние пласты,
 ## середина — горизонт и колонны, низ — пол вблизи. Неподвижная ровная картинка даёт ≈0, зерно, у которого покрытие перескакивает между пикселями, — много.
-## Запуск: netrun/tools/dev.sh shot res://assets/preview_shimmer.tscn [--msaa=0|2|4] [--tune=dust_fill=0,...] [--pose=entry|wedge|north]
+## Запуск: netrun/tools/dev.sh shot res://assets/preview_shimmer.tscn [--lights] [--msaa=0|2|4] [--tune=dust_fill=0,...] [--pose=entry|wedge|north]
 ## В журнал: `shimmer <поза> msaa=…: верх=… середина=… низ=… всё=…`; кадры <поза>_a/_b — первый и шестой.
 ## Метрика сравнительная (одна сцена, разные ручки), не абсолютная: в уровень входит и честный сдвиг резких краёв. Дыхание облака (cloud_breath) даёт отдельную временную
 ## составляющую (≈1,2 из 3,5 на умолчаниях) — для чистого замера ряби от сдвига ставьте --tune=cloud_breath=0.
@@ -15,6 +15,7 @@ const DYAW := 0.011  # градусы (≈ 0,2 px)
 var _out := "/tmp/shimmer_shots"
 var _pose := "entry"
 var _msaa := -1
+var _lights := false   # --lights: невидимые источники света у хранилищ, порталов и входа (AssetMaterials.set_cloud_lights)
 
 
 func _ready() -> void:
@@ -23,6 +24,8 @@ func _ready() -> void:
 			_out = a.substr(6)
 		elif a.begins_with("--pose="):
 			_pose = a.substr(7)
+		elif a == "--lights":
+			_lights = true
 		elif a.begins_with("--msaa="):
 			_msaa = int(a.substr(7))
 		elif a.begins_with("--tune="):
@@ -39,6 +42,15 @@ func _ready() -> void:
 	var foyer := LayoutData.cached("foyer")
 	scene.apply_node({"kind": "node", "node": "foyer", "title": "Фойе", "tier": "BASE", "r": NodeLayout.PORTAL_RADIUS, "shards": [], "portals": [], "layout": foyer.name})
 	scene.apply_state({"k": Time.get_ticks_msec() / 1000.0, "trace": 0.0, "level": 0, "cd": [], "ice": [], "bk": [], "sn": [], "tk": {"n": 4, "at": 0.0, "win": 5.0, "inh": 0, "mv": 0}})
+	if _lights:
+		var ls: Array = []
+		for v: Dictionary in foyer.vaults:
+			ls.append({"p": v["slot"], "r": 3.5})
+		for q: Vector3 in foyer.portals:
+			ls.append({"p": q + Vector3(0.0, 0.5, 0.0), "r": 3.5})
+		var eye: Vector3 = EyePresets.get_preset(_pose, null)["pos"]
+		ls.append({"p": Vector3(eye.x, 0.0, eye.z), "r": 4.0})
+		AssetMaterials.set_cloud_lights(get_tree(), ls)
 	var render := RenderConfig.new()
 	if _msaa >= 0:
 		render.msaa = _msaa

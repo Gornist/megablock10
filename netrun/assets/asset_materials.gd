@@ -154,6 +154,13 @@ const KNOBS := {
 	"dust_density": 0.35,    # доля ячеек с частицей на ровной грани вблизи (с пятнами dust_patch: проплешины и сгущения)
 	"dust_fill": 1.0,        # 1 (умолчание) — вдали (ячейка мельче dust_fill_lo px экрана) вместо зерна ровная заливка среднего света, от dust_fill_hi до dust_fill_lo px зерно растворяется в неё (рябь вдали и «граница отрисовки» на очках 18.10)
 	"dust_fill_lo": 2.0,     # экранная ширина ячейки, px, ниже которой зерна нет совсем (на Pico: пол дальше ≈6 м); 0 у dust_fill — выкл.
+	# Освещение облака (18.10, владелец: «частицы видны только в освещении, где света нет — нет и частиц»): источники приходят из клиента (set_cloud_lights); без них вид равномерный, как раньше.
+	"cloud_light": 1.0,      # 0 — выкл. (равномерное облако), 1 — плотность и яркость частиц целиком по освещённости
+	"lit_ambient": 0.08,     # доля плотности зерна в полной темноте (редкие пылинки)
+	"lit_dim": 0.35,         # яркость частиц в темноте относительно освещённых
+	"lit_edge": 0.4,         # линии сетки и рёбра в темноте: 1 — не гаснут, 0 — гаснут как зерно
+	"lit_tint": 0.5,         # перекраска освещённых частиц цветом источника
+	"dust_sharp": 1.0,       # 1 (умолчание) — прозрачность ячейки почти 0/1 (smoothstep по яркости спрайта): меньше дробной альфы и дитера a2c внутри ячейки (preview_shimmer, пол вблизи: 0,99 → 0,83); 0 — как раньше
 	"dust_fill_hi": 4.0,     # выше неё зерно целое (ближе ≈3 м); между lo и hi — плавный переход
 	"dust_fps": 0.0,        # смен кадра глитч-спрайта у ячейки облака в секунду; 0 — постоянный кадр (рябь на очках 17.10: было 10), для A/B на устройстве можно вернуть 1–3 (волна из нескольких кадров, а не мельтешение)
 	# «Всё из частиц» (#424, владелец 17.10): пол и дальние пласты по умолчанию тоже облако. ЦЕНА НЕ ИЗМЕРЕНА НА ОЧКАХ: прежний замер cloud_far=1 — +3,4 мс (MSAA 4×, цена a2c в ПЛОЩАДИ
@@ -186,6 +193,10 @@ const UNDER_SLAB := "floor_slab_under"
 ## MeshInstance3D в дереве, а колонны, укрытия и корпуса препятствий клиент собирает из частей `NodeAssets.mesh_parts` (MultiMesh и свои MeshInstance3D без группы;
 ## корень с группой освобождён) — по группе они не дышали (П7-3, 17.10).
 static var _surface_cloud_mats: Array[WeakRef] = []
+## Источники света узла (set_cloud_lights), упакованные для шейдера: pos[i] = (xyz, радиус), col[i] = (rgb, сила), n — число; материалам, созданным позже, отдаются в apply().
+static var _lights_pos := PackedVector4Array()
+static var _lights_col := PackedVector4Array()
+const CLOUD_LIGHTS_MAX := 12
 ## Материалы окружения с перекраской света у игрока (alarm_focus.gdshaderinc: solid_dark, cloud_dark, skirt), созданные apply() вне существ/аватаров; слабые ссылки, как выше.
 static var _focus_mats: Array[WeakRef] = []
 static var _grid_tex: ImageTexture
@@ -472,6 +483,9 @@ static func apply(root: Node, tier: String = "") -> void:
 				m.set_shader_parameter("dust_fill", float(_k("dust_fill")))
 				m.set_shader_parameter("dust_fill_lo", float(_k("dust_fill_lo")))
 				m.set_shader_parameter("dust_fill_hi", float(_k("dust_fill_hi")))
+				m.set_shader_parameter("dust_sharp", float(_k("dust_sharp")))
+				_push_cloud_light_knobs(m)
+				_push_lights(m)
 				m.set_shader_parameter("dust_density", float(_k("dust_density")) * (float(_k("floor_density")) if String(mi.name) == "slab" else 1.0))
 				m.set_shader_parameter("edge_mix", float(_k("cloud_edge_mix")))
 				if _is_threat_gear(root):
@@ -589,6 +603,52 @@ static func set_cloud_breath(tree: SceneTree, phase: float) -> void:
 	for m in _cloud_materials(tree):
 		m.set_shader_parameter("breath_depth", depth)
 		m.set_shader_parameter("breath_phase", clampf(phase, 0.0, 1.0))
+
+
+## Невидимые источники света узла (решение владельца 18.10): частицы поверхностного облака видны там, где свет. Звать один раз при построении или смене узла (не каждый кадр);
+## пустой массив — источников нет, облако равномерное, как раньше. Элемент: {"p": Vector3 мир, м; "r": float радиус влияния, м; "s": float сила (1); "c": Color цвет (бирюзово-белый)};
+## не больше CLOUD_LIGHTS_MAX (лишние отбрасываются с предупреждением). Запоминается и отдаётся облачным материалам, созданным позже. Рука и аватар освещают через set_cloud_touch.
+static func set_cloud_lights(tree: SceneTree, lights: Array) -> void:
+	_lights_pos = PackedVector4Array()
+	_lights_col = PackedVector4Array()
+	if lights.size() > CLOUD_LIGHTS_MAX:
+		push_warning("AssetMaterials.set_cloud_lights: %d источников, берём первые %d" % [lights.size(), CLOUD_LIGHTS_MAX])
+	for l in lights.slice(0, CLOUD_LIGHTS_MAX):
+		var p: Vector3 = l.get("p", Vector3.ZERO)
+		var c: Color = l.get("c", Color(0.8, 0.97, 1.0))
+		_lights_pos.append(Vector4(p.x, p.y, p.z, maxf(float(l.get("r", 3.0)), 0.01)))
+		_lights_col.append(Vector4(c.r, c.g, c.b, float(l.get("s", 1.0))))
+	for m in _cloud_materials(tree):
+		if m.shader == CLOUD_SHADER:
+			_push_lights(m)
+
+
+## Источники света узла, как их приняло облако: [{"p", "r", "s", "c"}] (для тестов и отладки).
+static func cloud_lights() -> Array:
+	var out := []
+	for i in _lights_pos.size():
+		var a := _lights_pos[i]
+		var b := _lights_col[i]
+		out.append({"p": Vector3(a.x, a.y, a.z), "r": a.w, "s": b.w, "c": Color(b.x, b.y, b.z)})
+	return out
+
+
+static func _push_lights(m: ShaderMaterial) -> void:
+	var pos := _lights_pos.duplicate()
+	var col := _lights_col.duplicate()
+	m.set_shader_parameter("cl_n", pos.size())
+	pos.resize(CLOUD_LIGHTS_MAX)   # массив uniform фиксированной длины: хвост — нули
+	col.resize(CLOUD_LIGHTS_MAX)
+	m.set_shader_parameter("cl_pos", pos)
+	m.set_shader_parameter("cl_col", col)
+
+
+static func _push_cloud_light_knobs(m: ShaderMaterial) -> void:
+	m.set_shader_parameter("lit_strength", float(_k("cloud_light")))
+	m.set_shader_parameter("lit_ambient", float(_k("lit_ambient")))
+	m.set_shader_parameter("lit_dim", float(_k("lit_dim")))
+	m.set_shader_parameter("lit_edge", float(_k("lit_edge")))
+	m.set_shader_parameter("lit_tint", float(_k("lit_tint")))
 
 
 ## Отклик облаков на приближение: sources — до четырёх Vector4 (xyz — мировая позиция руки/аватара, w — радиус влияния, м; 0 — выкл.). Остальные слоты гасятся.
