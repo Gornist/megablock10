@@ -24,7 +24,7 @@ const ST_SEARCH := 3
 
 
 ## Датчики из поля `sn` сообщения state ({id, c: [[x, y], …], on, bl, l}): {cells: Array[Vector2i], on: bool}. Мигающий (bl) выключен: луч включается к следующему такту,
-## а прыжок срабатывает по состоянию сейчас (GrayNode._sensors_hop → TickSensor.crossed_by).
+## а прыжок срабатывает по состоянию сейчас (LayoutDevices.sensors_hop → TickSensor.crossed_by).
 static func parse_sensors(list: Array) -> Array:
 	var out: Array = []
 	for e in list:

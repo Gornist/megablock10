@@ -153,15 +153,9 @@ var _lockdown_ticks_left := -1       # тактов до закрытия пор
 ## Тактовое время узла (режим realtime удалён, аудит 17.10): часы тактов, мозги Soft ICE на клетках, виртуальные часы Black ICE.
 var tick_clock: TickClock
 var _tick_ices: Dictionary = {}      # IceNode -> TickIce (только Soft ICE тактового режима)
-var _beacons: Array[TickBeacon] = []   # Маяки раскладки (тактовый режим; ice.md §5): вращаются каждый такт, без IceNode
-var _beacon_ids: Dictionary = {}     # TickBeacon -> id маяка из раскладки (журнал, state)
+var devices: LayoutDevices = LayoutDevices.new(self)   # Маяки, Датчики, Барьеры раскладки (ice.md §5): состояние и правила — в layout_devices.gd
 var _black_brain: TickBlackBrain     # Black ICE по тактам (раскладка с логовом, тактовый режим); null — прежний IceBrain
 var _black_log: Dictionary = {}      # сессия → журнал Black ICE на момент флэтлайна (уйдёт в session.data.world.black_log)
-var _sensors: Array[TickSensor] = []   # Датчики раскладки (тактовый режим; ice.md §5): луч, вкл/выкл по тиру
-var _sensor_ids: Dictionary = {}     # TickSensor -> id датчика из раскладки
-var _sensor_hit: Dictionary = {}     # TickSensor -> {сессия: true}: уже сработал на неё в этом включении (повторно — после выключения)
-var _sensor_fired: Dictionary = {}   # сессия -> [{id, a}]: срабатывания, о которых игроку ещё не сказали (поле `sf` ближайшего state)
-var _barriers: Array = []            # Барьеры раскладки (ice.md §5): {id, cells: Array[Vector2i], open: bool}; закрытый занимает клетки ice_grid
 var _intents: Dictionary = {}        # IceNode -> TickIce.intent() после последнего такта (рассылается 10 раз/с без пересчёта)
 var _reserve_out: Array[IceNode] = []   # запасные Стражи, вышедшие из будок на тревоге 2 (раскладка: reserves); пусто — будки закрыты
 var _entered_tick: Dictionary = {}   # сессия -> номер такта узла, когда она вошла (скрыта первые entry_hidden_ticks тактов)
@@ -268,7 +262,7 @@ func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 			breach.request_cancel(session))
 	net.teleported.connect(func(session: String, from: Vector3, to: Vector3) -> void:
 		register_move(session)
-		_sensors_hop(session, from, to)
+		devices.sensors_hop(session, from, to)
 		if _black_brain != null:
 			_black_brain.black.on_hop(session, NodeGrid.cell_of(to))
 		breach.end_early(session, "teleport")
@@ -280,17 +274,7 @@ func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 		# Такты: Стражи — по раскладке (маршрут в клетках с ожиданием и поворотом); столько, сколько просит узел, но не больше, чем в файле.
 		for i in mini(soft, layout.sentries.size()):
 			_add_layout_sentry(layout.sentries[i])
-		for bd: Dictionary in layout.beacons:   # Маяки раскладки: отдельный вид Soft ICE — стоят на тумбе и вращаются
-			var tb := TickBeacon.new(bd["cell"], bd["start"], ice_grid, {"step_deg": bd["step_deg"], "sweep_steps": bd["sweep_steps"]})
-			_beacons.append(tb)
-			_beacon_ids[tb] = str(bd["id"])
-		var program := TickSensor.program_of(tier())   # вкл/выкл по тиру узла; раскладка может задать свои числа
-		for sd: Dictionary in layout.sensors:
-			var ts := TickSensor.for_layout(sd, program)   # старт в фазе «выключен»: вход в узел не застаёт луч включённым (П6-4)
-			_sensors.append(ts)
-			_sensor_ids[ts] = str(sd["id"])
-		for kd: Dictionary in layout.barriers:
-			_barriers.append({"id": str(kd["id"]), "cells": kd["cells"], "open": false})   # клетки уже заняты в ice_grid (блок «B»)
+		devices.build(layout, tier())   # Маяки, Датчики, Барьеры раскладки
 	else:
 		for i in soft:
 			_add_ice(NodeLayout.ICE[i]["id"], NodeLayout.ICE[i]["waypoints"])
@@ -1098,15 +1082,8 @@ func _run_tick(live: Array, meters: Dictionary, dt_sec: float) -> void:
 	var suspicious := {}
 	for s in meters:
 		suspicious[s] = (meters[s] as TraceMeter).level() >= TraceMeter.Level.SUSPICIOUS
-	for tb: TickBeacon in _beacons:
-		for bev: Dictionary in tb.tick(pos, hidden, immune, suspicious):
-			if str(bev["kind"]) == "search_started":
-				var seen_by := str(bev.get("session", ""))
-				print("[beacon] %s SEARCH_STARTED %s" % [_beacon_ids.get(tb, "?"), seen_by])
-				if seen_by != "":
-					add_trace_event(seen_by, "search")
-				alarm_event("search")
-	_sensors_tick(pos, hidden, immune)
+	devices.beacons_tick(pos, hidden, immune, suspicious)
+	devices.sensors_tick(pos, hidden, immune)
 	for session in captured:
 		if net.has_avatar(session):
 			(captured[session] as IceNode).ejected.emit(session, "caught")
@@ -1305,15 +1282,15 @@ func _broadcast_state() -> void:
 			"cd": cd,
 		}
 		fields["tk"] = _tick_field(session)
-		if not _beacons.is_empty():
-			fields["bk"] = beacon_view()
-		if not _sensors.is_empty():
-			fields["sn"] = sensor_view()
-			var fired := take_sensor_fired(session)
+		if not devices.beacons.is_empty():
+			fields["bk"] = devices.beacon_view()
+		if not devices.sensors.is_empty():
+			fields["sn"] = devices.sensor_view()
+			var fired := devices.take_sensor_fired(session)
 			if not fired.is_empty():
 				fields["sf"] = fired   # сработал Датчик на этого игрока: вспышка луча, звук и «ТРЕВОГА +n» в центре зрения (ice.md П8)
-		if not _barriers.is_empty():
-			fields["br"] = barrier_view()
+		if not devices.barriers.is_empty():
+			fields["br"] = devices.barrier_view()
 		if layout != null and not layout.booths.is_empty():
 			fields["bo"] = booth_view()
 		if _black_brain != null:
@@ -1321,145 +1298,51 @@ func _broadcast_state() -> void:
 		net.send_to(session, WorldMsg.encode_fields(WorldMsg.STATE, fields), false)
 
 
-## Датчики на такте: цикл вперёд, затем те, кто стоит под включённым лучом (скрытые и неуязвимые — нет: Призрак обходит датчик).
-func _sensors_tick(pos: Dictionary, hidden: Dictionary, immune: Dictionary) -> void:
-	for ts: TickSensor in _sensors:
-		ts.tick()
-		if not ts.is_on():
-			_sensor_hit.erase(ts)
-			continue
-		var standing := {}
-		for s in pos:
-			if not hidden.get(s, false) and not immune.get(s, false):
-				standing[s] = pos[s]
-		var hits := ts.hit_by(standing)
-		for s in hits:
-			_sensor_fire(ts, str(s), hits[s])
-
-
-## Прыжок игрока: отрезок пересекает включённый луч — «луч видит перенос». Скрытый (Призрак, вход) и неуязвимый невидимы датчику.
-func _sensors_hop(session: String, from: Vector3, to: Vector3) -> void:
-	if _sensors.is_empty() or not _sessions.has(session):
-		return
-	var n := tick_clock.tick_no
-	var ds: DaemonSession = _sessions[session]
-	if ds.is_ghost(_now) or n - int(_entered_tick.get(session, -1000000)) <= int(settings.get("entry_hidden_ticks", 2)) or _arrival_immune(session, n):
-		return
-	for ts: TickSensor in _sensors:
-		var c := ts.crossed_by(from, to)
-		if c != Vector2i.MAX:
-			_sensor_fire(ts, session, c)
-
-
-## Сработал датчик: trace +5, тревога узла +5, ближайший Страж — в Проверку к клетке (раз за включение на сессию).
-func _sensor_fire(ts: TickSensor, session: String, cell: Vector2i) -> void:
-	var fired: Dictionary = _sensor_hit.get(ts, {})
-	if fired.has(session):
-		return
-	fired[session] = true
-	_sensor_hit[ts] = fired
-	print("[sensor] %s TRIGGERED %s cell=%d,%d" % [_sensor_ids.get(ts, "?"), session, cell.x, cell.y])
-	var pending: Array = _sensor_fired.get(session, [])
-	pending.append({"id": str(_sensor_ids.get(ts, "")), "a": _sensor_alarm()})
-	_sensor_fired[session] = pending
-	add_trace_event(session, "sensor")
-	alarm_event("sensor")
-	var nearest: TickIce = null
-	var best := INF
-	var at := NodeGrid.center(cell)
-	for ice: IceNode in _tick_ices:
-		var d := Vector2(ice.position.x - at.x, ice.position.z - at.z).length()
-		if d < best:
-			best = d
-			nearest = _tick_ices[ice]
-	if nearest != null:
-		nearest.investigate(session, cell)
-
+## Устройства раскладки (Датчики, Барьеры, Маяки) живут в LayoutDevices (`devices`); ниже — прежние публичные имена узла, тонкие делегаты.
 
 ## Датчики узла для state (поле `sn`): [{id, c: [[x, z], …] клетки луча, on 0/1, bl 1 — мигает перед включением, l — тактов до смены}].
 func sensor_view() -> Array:
-	var out: Array = []
-	for ts: TickSensor in _sensors:
-		var it := ts.intent()
-		var cells: Array = []
-		for c: Vector2i in it["cells"]:
-			cells.append([c.x, c.y])
-		out.append({"id": str(_sensor_ids.get(ts, "")), "c": cells, "on": 1 if it["on"] else 0, "bl": 1 if it["blink"] else 0, "l": int(it["left"]), "al": _sensor_alarm()})
-	return out
+	return devices.sensor_view()
 
 
-## Сколько тревоги даёт срабатывание Датчика (`alert_events.sensor` узла): клиент пишет «ЛУЧ → ТРЕВОГА +5» на прицеле до прыжка.
-func _sensor_alarm() -> int:
-	return int((settings.get("alert_events", {}) as Dictionary).get("sensor", 0.0))
+## Сработал датчик (trace +5, тревога узла +5, ближайший Страж — в Проверку): для тестов и сценариев.
+func _sensor_fire(ts: TickSensor, session: String, cell: Vector2i) -> void:
+	devices.sensor_fire(ts, session, cell)
 
 
 ## Срабатывания Датчика на эту сессию с прошлого вызова (и сразу забыть): [{id, a}] — для поля `sf` state. Пусто — ничего не срабатывало.
 func take_sensor_fired(session: String) -> Array:
-	var out: Array = _sensor_fired.get(session, [])
-	_sensor_fired.erase(session)
-	return out
+	return devices.take_sensor_fired(session)
 
 
 ## Для тестов и сценариев: датчики узла.
 func sensors() -> Array[TickSensor]:
-	return _sensors
+	return devices.sensors
 
 
 ## Барьеры узла для state (поле `br`): [{id, c: [[x, z], …] клетки блока, open 0/1}].
 func barrier_view() -> Array:
-	var out: Array = []
-	for b: Dictionary in _barriers:
-		var cells: Array = []
-		for c: Vector2i in b["cells"]:
-			cells.append([c.x, c.y])
-		out.append({"id": b["id"], "c": cells, "open": 1 if b["open"] else 0})
-	return out
+	return devices.barrier_view()
 
 
 ## Закрыт ли барьер (нет такого — false).
 func barrier_closed(id: String) -> bool:
-	for b: Dictionary in _barriers:
-		if b["id"] == id:
-			return not bool(b["open"])
-	return false
+	return devices.barrier_closed(id)
 
 
-## Вскрыть барьер (ice.md §5). how: "charge" — мини-игра заряда (панель), «force» — силой (2 такта курка): trace +10 и тревога +10 на сессию,
-## "pick" — Отмычка, тихо. Клетки блока освобождаются в сетке узла — через них можно прыгать и ходят ICE. Возвращает false, если такого барьера
-## нет или он уже открыт. Ввод (мини-игра, удержание курка) — не здесь: узел принимает уже готовое решение.
+## Вскрыть барьер (ice.md §5; how: "charge" | "force" | "pick"). Подробно — LayoutDevices.open_barrier.
 func open_barrier(id: String, how: String, session: String = "") -> bool:
-	for b: Dictionary in _barriers:
-		if b["id"] != id:
-			continue
-		if bool(b["open"]):
-			return false
-		b["open"] = true
-		for c: Vector2i in b["cells"]:
-			ice_grid.occ.erase(c)
-		if how == "force":
-			if session != "":
-				add_trace_event(session, "barrier")
-			alarm_event("barrier")
-		event.emit({"kind": "barrier_open", "node": node_id, "barrier": id, "how": how, "session": session})
-		return true
-	return false
+	return devices.open_barrier(id, how, session)
 
 
-## Маяки узла для state (поле `bk`): [{id, c: [x, z], d: [dx, dz] — угол сейчас, nd — после следующего такта, aw 0..6, r — дальность, клеток}].
+## Маяки узла для state (поле `bk`).
 func beacon_view() -> Array:
-	var out: Array = []
-	for tb: TickBeacon in _beacons:
-		var it := tb.intent()
-		var c: Vector2i = it["cell"]
-		var d: Vector2i = it["dir"]
-		var nd: Vector2i = it["next_dir"]
-		out.append({"id": str(_beacon_ids.get(tb, "")), "c": [c.x, c.y], "d": [d.x, d.y], "nd": [nd.x, nd.y], "aw": int(it["aware"]), "r": float(it["range"])})
-	return out
+	return devices.beacon_view()
 
 
 ## Для тестов и сценариев: маяки узла.
 func beacons() -> Array[TickBeacon]:
-	return _beacons
+	return devices.beacons
 
 
 ## Тактовые поля ICE в state (старые id, p, f, s, b остаются): c — клетка [x, z], d — направление, st — состояние TickIce 0..3, nc / nd — клетка и
@@ -1700,21 +1583,12 @@ func _on_barrier_requested(session: String, barrier_id: String, how: String) -> 
 
 ## Барьер с таким id есть в узле (открытый или закрытый).
 func has_barrier(id: String) -> bool:
-	for b: Dictionary in _barriers:
-		if b["id"] == id:
-			return true
-	return false
+	return devices.has_barrier(id)
 
 
 ## Клетка `cell` — соседняя (по восьми направлениям) с блоком барьера и сама свободна: оттуда барьер вскрывают.
 func barrier_adjacent(id: String, cell: Vector2i) -> bool:
-	for b: Dictionary in _barriers:
-		if b["id"] != id:
-			continue
-		for c: Vector2i in b["cells"]:
-			if maxi(absi(c.x - cell.x), absi(c.y - cell.y)) <= 1:
-				return true
-	return false
+	return devices.barrier_adjacent(id, cell)
 
 
 ## Просьба расшифровать шард из ГРУЗа (К7): отвечает только узел, где игрок.
@@ -2403,8 +2277,7 @@ func _apply_alert() -> void:
 				ice.brain.alarm_awake = level >= 3 and tier() == NodeGraph.TIER_BLACK   # охота Black ICE со 3-го уровня (NIGHTMARE)
 		if _tick_ices.has(ice):
 			(_tick_ices[ice] as TickIce).set_sight_bonus(ALARM_SIGHT_BONUS if level >= 2 else 0.0)   # уровень 2: зрение всех ICE +1 клетка карты
-	for tb: TickBeacon in _beacons:
-		tb.set_sight_bonus(ALARM_SIGHT_BONUS if level >= 2 else 0.0)   # и Маяков: 5 клеток карты (10 м), на тревоге 2+ — 6 (12 м)
+	devices.set_sight_bonus(ALARM_SIGHT_BONUS if level >= 2 else 0.0)   # и Маяков: 5 клеток карты (10 м), на тревоге 2+ — 6 (12 м)
 	if not changed:
 		return
 	log_line("alarm.level", {"node": node_id, "level": level, "alarm": snappedf(alarm, 1.0)})   # разбор забегов (p9_report.sh): уровня тревоги в журнале сервера иначе нет
