@@ -6,8 +6,7 @@ render_mode blend_add, unshaded, depth_draw_never, cull_back, fog_disabled;
 uniform float glow : hint_range(0.0, 4.0) = 0.9;
 uniform float fresnel_power : hint_range(0.5, 6.0) = 2.5;
 uniform float center_alpha : hint_range(0.0, 1.0) = 0.1;
-uniform vec4 tint : source_color = vec4(1.0);
-uniform float tint_amount : hint_range(0.0, 1.0) = 0.0; // тир: 1.0 перекрашивает в tint
+#include "tint_common.gdshaderinc"
 
 // Corruption: красный «шрам» в радиусе от точки (мировые координаты): цвет уходит в corrupt_color, часть клеток пропадает.
 // Дискретные клетки по сетке, без анимации: комфорт в VR (никаких вспышек). Выключено при corrupt_radius = 0.
@@ -34,12 +33,6 @@ float corrupt_mask(float k) {
 }
 float corrupt_hole(float m) {
 	return 1.0 - m * step(cell_hash(7.0), 0.4); // часть порченых клеток пропадает
-}
-// Тир перекрашивает цвет ассета в tint, но белые акценты (проёмы, порог, узлы) остаются белыми: чем ближе цвет к белому, тем меньше перекраска.
-vec3 recolor(vec3 c) {
-	float mx = max(c.r, max(c.g, c.b));
-	float mn = min(c.r, min(c.g, c.b));
-	return mix(tint.rgb * mx, c, mn / max(mx, 0.0001));
 }
 float dist_fade() {
 	return 1.0 - smoothstep(fade_start, fade_end, v_dist);

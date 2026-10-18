@@ -10,8 +10,7 @@ uniform float halo_alpha : hint_range(0.0, 1.0) = 0.17;  // непрозрачн
 uniform float falloff : hint_range(0.5, 8.0) = 5.0;       // крутизна: больше — ореол уже
 uniform float breathe : hint_range(0.0, 0.5) = 0.12;      // медленное «дыхание» яркости (комфорт в VR: без вспышек)
 uniform float breathe_speed : hint_range(0.0, 3.0) = 0.8;
-uniform vec4 tint : source_color = vec4(1.0);
-uniform float tint_amount : hint_range(0.0, 1.0) = 0.0;
+#include "tint_common.gdshaderinc"
 uniform float fade_start = 60.0;
 uniform float fade_end = 90.0;
 uniform float intensity = 1.0;
@@ -33,11 +32,6 @@ void vertex() {
 	POSITION = PROJECTION_MATRIX * VIEW_MATRIX * vec4(wp, 1.0);
 }
 
-vec3 recolor(vec3 c) {
-	float mx = max(c.r, max(c.g, c.b));
-	float mn = min(c.r, min(c.g, c.b));
-	return mix(tint.rgb * mx, c, mn / max(mx, 0.0001));
-}
 
 void fragment() {
 	float d2 = dot(v_q, v_q);

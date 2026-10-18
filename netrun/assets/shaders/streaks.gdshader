@@ -33,8 +33,7 @@ uniform float anchor : hint_range(-1.0, 1.0) = -1.0;     // что неподв�
 uniform vec3 touch_pos = vec3(0.0);                       // касание: мировая точка
 uniform float touch_radius = 0.0;                         // 0 — выключено
 uniform vec4 touch_color : source_color = vec4(1.0, 0.12, 0.24, 1.0);
-uniform vec4 tint : source_color = vec4(1.0);
-uniform float tint_amount : hint_range(0.0, 1.0) = 0.0;
+#include "tint_common.gdshaderinc"
 // Corruption: красный «шрам» в радиусе от точки (мировые координаты): цвет уходит в corrupt_color, часть клеток пропадает.
 // Дискретные клетки по сетке, без анимации: комфорт в VR (никаких вспышек). Выключено при corrupt_radius = 0.
 uniform vec3 corrupt_pos = vec3(0.0);
@@ -76,12 +75,6 @@ float corrupt_mask(float k) {
 }
 float corrupt_hole(float m) {
 	return 1.0 - m * step(cell_hash(7.0), 0.4); // часть порченых клеток пропадает
-}
-// Тир перекрашивает цвет ассета в tint, но белые акценты (проёмы, порог, узлы) остаются белыми: чем ближе цвет к белому, тем меньше перекраска.
-vec3 recolor(vec3 c) {
-	float mx = max(c.r, max(c.g, c.b));
-	float mn = min(c.r, min(c.g, c.b));
-	return mix(tint.rgb * mx, c, mn / max(mx, 0.0001));
 }
 float dist_fade() {
 	return 1.0 - smoothstep(fade_start, fade_end, v_dist);

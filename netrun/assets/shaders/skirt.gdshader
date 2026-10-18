@@ -14,8 +14,7 @@ uniform float veil_scale : hint_range(0.0, 4.0) = 1.0;    // множитель 
 uniform float rise_gain : hint_range(0.0, 8.0) = 1.0;     // множитель альфы завесы вверх (ручка tile_glow); 0 — квады схлопываются, заливку не тратят
 uniform float rise_scale : hint_range(0.1, 3.0) = 1.0;    // высота завесы вверх относительно модельной (ручка tile_glow_h)
 uniform float falloff : hint_range(0.5, 4.0) = 2.4;      // крутизна затухания книзу: больше — вуаль плотнее прижата к кромке
-uniform vec4 tint : source_color = vec4(1.0);
-uniform float tint_amount : hint_range(0.0, 1.0) = 0.0;
+#include "tint_common.gdshaderinc"
 // Верх вуали плотнее всего и лежит на нижнем краю плиты, на 3 см ниже светящейся кромки: издали две яркие линии рядом сливаются в пиксель и мерцают.
 // top_fade — доля высоты вуали сверху, на которой плотность нарастает с нуля: вуаль «отрывается» от кромки плиты (0,12 принято на очках; 0 — как раньше).
 // Пятнистость и дрейф пятен вдоль грани убраны (принято: ровная и статичная вуаль — без «лава-лампы»).
@@ -32,11 +31,6 @@ varying float v_dist;
 varying float v_rise;   // 1 — квад завесы вверх (UV2.x > 0), 0 — обычная вуаль
 varying vec3 v_wp;
 
-vec3 recolor(vec3 c) {
-	float mx = max(c.r, max(c.g, c.b));
-	float mn = min(c.r, min(c.g, c.b));
-	return mix(tint.rgb * mx, c, mn / max(mx, 0.0001));
-}
 
 void vertex() {
 	v_rise = UV2.x > 0.0 ? 1.0 : 0.0;

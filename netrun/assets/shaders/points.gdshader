@@ -14,8 +14,7 @@ uniform float wave : hint_range(0.0, 1.0) = 0.6;          // глубина во
 uniform float size_wave : hint_range(0.0, 1.0) = 0.45;    // глубина пульсации размера
 uniform float wave_speed : hint_range(0.0, 3.0) = 0.9;
 uniform float wave_scale : hint_range(0.0, 6.0) = 1.1;    // волн на метр
-uniform vec4 tint : source_color = vec4(1.0);
-uniform float tint_amount : hint_range(0.0, 1.0) = 0.0;
+#include "tint_common.gdshaderinc"
 
 // Corruption: красный «шрам» в радиусе от точки (мировые координаты): цвет уходит в corrupt_color, часть клеток пропадает.
 // Дискретные клетки по сетке, без анимации: комфорт в VR (никаких вспышек). Выключено при corrupt_radius = 0.
@@ -47,12 +46,6 @@ float corrupt_mask(float k) {
 }
 float corrupt_hole(float m) {
 	return 1.0 - m * step(cell_hash(7.0), 0.4); // часть порченых клеток пропадает
-}
-// Тир перекрашивает цвет ассета в tint, но белые акценты (проёмы, порог, узлы) остаются белыми: чем ближе цвет к белому, тем меньше перекраска.
-vec3 recolor(vec3 c) {
-	float mx = max(c.r, max(c.g, c.b));
-	float mn = min(c.r, min(c.g, c.b));
-	return mix(tint.rgb * mx, c, mn / max(mx, 0.0001));
 }
 float dist_fade() {
 	return 1.0 - smoothstep(fade_start, fade_end, v_dist);
