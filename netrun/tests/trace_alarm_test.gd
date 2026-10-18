@@ -215,7 +215,7 @@ func test_событие_node_несёт_alarm_и_alert_level_рядом_со_с
 
 
 func test_клиент_принимает_alarm_и_старый_alert() -> void:
-	var scene: Node3D = auto_free(preload("res://client/rig_test_scene.gd").new())
+	var scene: Node3D = auto_free(preload("res://client/world_scene.gd").new())
 	add_child(scene)
 	var seen: Array = []
 	scene.alarm_changed.connect(func(l: int, a: float): seen.append([l, a]))

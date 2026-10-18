@@ -19,7 +19,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var scene: Node3D = preload("res://client/rig_test_scene.gd").new()
+	var scene: Node3D = preload("res://client/world_scene.gd").new()
 	root.add_child(scene)
 	await process_frame
 	var ld := LayoutData.cached(_layout_name)

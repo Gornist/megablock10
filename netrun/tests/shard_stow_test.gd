@@ -8,7 +8,7 @@ const SLOT2 := "node_05_pk1"
 
 ## Сцена с двухшаговой схемой (правой взял → к деке → grip): так проверяются хват, радиус укладки и подсказка. Схема по умолчанию — _scene_auto().
 func _scene() -> Node3D:
-	var scene: Node3D = auto_free(preload("res://client/rig_test_scene.gd").new())
+	var scene: Node3D = auto_free(preload("res://client/world_scene.gd").new())
 	scene.auto_stow_right = false
 	add_child(scene)
 	return scene
@@ -16,7 +16,7 @@ func _scene() -> Node3D:
 
 ## Сцена со схемой по умолчанию: шард, взятый любой рукой, сразу уходит в деку.
 func _scene_auto() -> Node3D:
-	var scene: Node3D = auto_free(preload("res://client/rig_test_scene.gd").new())
+	var scene: Node3D = auto_free(preload("res://client/world_scene.gd").new())
 	add_child(scene)
 	return scene
 

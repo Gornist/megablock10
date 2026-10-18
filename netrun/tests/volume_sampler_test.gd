@@ -121,7 +121,7 @@ func _node_info() -> Dictionary:
 
 func test_nodeview_без_volumetric_облаков_нет_с_ним_у_хранилища_и_портала() -> void:
 	VolumeRegistry.configure("off")
-	var scene: Node3D = auto_free(preload("res://client/rig_test_scene.gd").new())
+	var scene: Node3D = auto_free(preload("res://client/world_scene.gd").new())
 	add_child(scene)
 	scene.apply_node(_node_info())
 	assert_int(scene.view.find_children("Cloud_*", "Node3D", true, false).size()).is_equal(0)
