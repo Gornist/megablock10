@@ -86,10 +86,9 @@ def check(rep):
     if rep["origin"] == "center" and any(abs(m) > tol for m in mid):
         bad.append(f"origin не в центре: центр={[round(m, 3) for m in mid]}, допуск {tol:.3f}")
     # «surface» — поверхность пола: геометрия может уходить вниз (штрихи под тайлами), но не глубже 1 м; центр по XZ как у модуля
-    # дальние пласты (far_*) глубже: плиты-«ямы» до −2,6 м и штрихи до −3 м (решение владельца); в комнате глубина по-прежнему 1 м
-    depth = 3.0 if rep["name"].startswith("far_") else 1.0
+    depth = 1.0
     # центр плитки проверялся по габариту (угловые точки делали его симметричным); точек в окружении больше нет, поэтому — «не дальше края плитки»: модуль ставится по origin, не по габариту
-    tile_half = 5.5 if rep["name"].startswith("far_") else 1.0
+    tile_half = 1.0
     if rep["origin"] == "surface":
         if lo[1] < -depth or hi[1] < -0.01:
             bad.append(f"origin «surface»: min.y={lo[1]:.2f} (глубже {depth:g} м) или всё под полом, max.y={hi[1]:.2f}")
@@ -98,20 +97,12 @@ def check(rep):
         hi_solid = max([p["max"][1] for p in info["prims"] if p not in rise_prims and not str(p["mesh"]).startswith("beacon_")] or [hi[1]])
         if hi_solid > 0.04:  # 4 см — размер точки на полу; выше — выступ над поверхностью, это коллизии
             bad.append(f"origin «surface»: геометрия выше поверхности пола, max.y={hi_solid:.3f} (допуск 0.04, только точки)")
-        rise_lim = 1.05 if rep["name"].startswith("far_") else 0.5
+        rise_lim = 0.5
         for p in rise_prims:
             if p["max"][1] > rise_lim:
                 bad.append(f"{p['mesh']}: завеса вверх {p['max'][1]:.2f} м > {rise_lim:g} м над поверхностью пола")
         if max(abs(lo[0]), abs(lo[2]), abs(hi[0]), abs(hi[2])) > tile_half + 0.05:
             bad.append(f"origin «surface»: геометрия за пределами плитки ±{tile_half:g} м: min={[round(v, 2) for v in lo]}, max={[round(v, 2) for v in hi]}")
-    # «ceiling» — потолок, зеркало «surface»: origin на плоскости потолка, геометрия уходит вверх (до 1 м) и не выступает вниз в комнату
-    if rep["origin"] == "ceiling":
-        if hi[1] > depth:  # «геометрия касается плоскости» (lo ≤ 0,01) больше не требуем: точки на плоскости убраны, плиты потолка бывают целиком выше неё
-            bad.append(f"origin «ceiling»: max.y={hi[1]:.2f} (выше {depth:g} м)")
-        if lo[1] < -0.04:  # 4 см — размер точки; ниже — выступ в комнату, это коллизии
-            bad.append(f"origin «ceiling»: геометрия ниже плоскости потолка, min.y={lo[1]:.3f} (допуск −0.04, только точки)")
-        if max(abs(lo[0]), abs(lo[2]), abs(hi[0]), abs(hi[2])) > tile_half + 0.05:
-            bad.append(f"origin «ceiling»: геометрия за пределами плитки ±{tile_half:g} м: min={[round(v, 2) for v in lo]}, max={[round(v, 2) for v in hi]}")
     # «feet» — существа: ноги/якорь в (0,0) внутри габарита по XZ и на полу; центр габарита не требуем (существо асимметрично)
     if rep["origin"] == "feet" and (abs(lo[1]) > 0.01 or not (lo[0] - 0.05 <= 0 <= hi[0] + 0.05 and lo[2] - 0.05 <= 0 <= hi[2] + 0.05)):
         bad.append(f"origin не у ног: min.y={lo[1]:.3f}, якорь (0,0) вне габарита xz")
