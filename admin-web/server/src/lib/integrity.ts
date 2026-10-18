@@ -1,4 +1,5 @@
 import type { Db } from "../db/index.js";
+import { reasonInfo } from "./changeRecord.js";
 import { cachedByDbVersion } from "./dbCache.js";
 
 /**
@@ -8,18 +9,6 @@ import { cachedByDbVersion } from "./dbCache.js";
  * Всё, что не зависит от «сейчас», считается один раз на версию БД
  * (см. dbCache.ts); окна по времени применяет вызывающий код.
  */
-
-/** Причины, которыми баланс законно растёт: награды, получение перевода, возврат отменённого, старт/сброс, правка мастера. */
-const BALANCE_GAIN_REASONS = new Set([
-  "BREACH_EDDIES",
-  "BREACH_LOOT",
-  "SHARD_SCAN",
-  "TRANSFER_IN",
-  "TRANSFER_CANCELLED",
-  "MASTER_OVERRIDE",
-  "CHARACTER_CREATED",
-  "CHARACTER_RESET",
-]);
 
 export interface ChainBreak {
   subjectKey: string;
@@ -205,7 +194,7 @@ export function findUnexplainedJumps(db: Db, since: number, minDelta: number): U
     .all(since) as { id: string; subject_key: string; received_at: number; reason: string; old_value: string | null; new_value: string | null }[];
   const out: UnexplainedJump[] = [];
   for (const r of rows) {
-    if (BALANCE_GAIN_REASONS.has(r.reason)) continue;
+    if (reasonInfo(r.reason)?.gainsBalance) continue;
     const delta = Number(r.new_value ?? 0) - Number(r.old_value ?? 0);
     if (delta >= minDelta) out.push({ id: r.id, subjectKey: r.subject_key, at: r.received_at, delta, reason: r.reason });
   }

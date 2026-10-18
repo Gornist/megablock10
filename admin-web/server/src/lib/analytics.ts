@@ -1,11 +1,9 @@
 import type { Economy, FactionEvents, FactionRow } from "../apiTypes.js";
 import type { Db } from "../db/index.js";
+import { reasonInfo } from "./changeRecord.js";
 import { REASON_LABEL_RU, containerIdOfSourceRef } from "./humanize.js";
 import { parseSafe } from "./json.js";
 import type { PlayerBase } from "./playerSummary.js";
-
-/** Причины, где деньги лишь переезжают между игроками (пара TRANSFER_OUT/TRANSFER_IN) — в «источниках эмиссии» их нет, иначе шум. */
-const TRANSFER_REASONS = new Set(["TRANSFER_OUT", "TRANSFER_IN", "TRANSFER_CANCELLED"]);
 
 const DELTA_SQL = `(CAST(COALESCE(new_value, '0') AS INTEGER) - CAST(COALESCE(old_value, '0') AS INTEGER))`;
 
@@ -58,7 +56,8 @@ export function computeEconomy(db: Db, players: PlayerBase[], buckets = 60, excl
       .prepare(`SELECT reason, SUM(${DELTA_SQL}) AS total FROM changes WHERE field = 'balance' GROUP BY reason`)
       .all() as { reason: string; total: number }[]
   )
-    .filter((r) => !TRANSFER_REASONS.has(r.reason) && r.total !== 0)
+    // переводы между игроками — в «источниках эмиссии» их нет, иначе шум (признак `transfer` в таблице причин)
+    .filter((r) => !reasonInfo(r.reason)?.transfer && r.total !== 0)
     .map((r) => ({ reason: r.reason, label: REASON_LABEL_RU[r.reason] ?? r.reason, total: r.total }))
     .sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
 
