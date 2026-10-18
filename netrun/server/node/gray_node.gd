@@ -149,11 +149,9 @@ var alert: float:
 var alarm_level := 0
 var sensors_armed := false
 var _lockdown_ticks_left := -1       # тактов до закрытия порталов (уровень 4); −1 — отсчёт не идёт
-var _lockdown_sec_left := -1.0       # то же для непошаговых узлов, секунды
 
-## Тактовое время узла (settings.time_mode == "tick"): часы тактов, мозги Soft ICE на клетках, виртуальные часы Black ICE.
+## Тактовое время узла (режим realtime удалён, аудит 17.10): часы тактов, мозги Soft ICE на клетках, виртуальные часы Black ICE.
 var tick_clock: TickClock
-var _tick_mode := false
 var _tick_ices: Dictionary = {}      # IceNode -> TickIce (только Soft ICE тактового режима)
 var _beacons: Array[TickBeacon] = []   # Маяки раскладки (тактовый режим; ice.md §5): вращаются каждый такт, без IceNode
 var _beacon_ids: Dictionary = {}     # TickBeacon -> id маяка из раскладки (журнал, state)
@@ -229,13 +227,10 @@ func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 	decrypt = DecryptBreach.new(self)
 	barrier = BarrierBreach.new(self)
 	daemons.load_dir()
-	_tick_mode = str(settings.get("time_mode", "tick")) == "tick"
-	if _tick_mode:
-		tick_clock = TickClock.new(float(settings["tick_window_sec"]), float(settings["tick_min_interval_sec"]))
+	tick_clock = TickClock.new(float(settings["tick_window_sec"]), float(settings["tick_min_interval_sec"]))
 	_build_slots()
 	if manage_net_hooks:
-		if _tick_mode:
-			net.move_check = move_made
+		net.move_check = move_made
 		net.grab_check = can_grab
 		net.teleport_snap = func(_session: String, to: Vector3) -> Dictionary: return snap_teleport(to)
 		net.spawn_of = func(_session: String) -> Vector3: return layout.spawn
@@ -281,7 +276,7 @@ func start(server: NetServer, bridge_api: BridgeApi = null) -> void:
 		decrypt.end_early(session, "teleport")
 		barrier.end_early(session, "teleport"))
 	var soft := NodeLayout.ICE.size() if node_def.is_empty() else int(node_def.get("ice", 1))
-	if _tick_mode and not layout.is_legacy():
+	if not layout.is_legacy():
 		# Такты: Стражи — по раскладке (маршрут в клетках с ожиданием и поворотом); столько, сколько просит узел, но не больше, чем в файле.
 		for i in mini(soft, layout.sentries.size()):
 			_add_layout_sentry(layout.sentries[i])
@@ -364,7 +359,7 @@ func has_black_ice() -> bool:
 func enable_black_ice() -> void:
 	if has_black_ice():
 		return
-	if _tick_mode and not layout.lair.is_empty():
+	if not layout.lair.is_empty():
 		# Логово раскладки: Black ICE спит в нём и живёт по тактам (TickBlack), а не бродит по маршруту.
 		_add_ice(str(layout.lair["id"]), [NodeGrid.center(layout.lair["home"])], true, [], true)
 		return
@@ -417,7 +412,7 @@ func _add_ice(id: String, waypoints: Array, black: bool = false, route: Array = 
 		_black_brain = TickBlackBrain.new(tb, settings)
 		_black_brain.ejected.connect(func(s: String, r: String) -> void: ice.ejected.emit(s, r))
 		ice.brain = _black_brain
-	if _tick_mode and not black:
+	if not black:
 		var ti := TickIce.new(_tick_ice_settings(settings), route if not route.is_empty() else TickIce.route_from_points(wps), ice_grid)
 		_tick_ices[ice] = ti
 		ice.position = NodeGrid.center(ti.cell())
@@ -449,7 +444,7 @@ func _log_ice(ice: IceNode, session: String, what: String, awareness: float) -> 
 	if p is Vector3:
 		d = "%.1f" % ice.brain.position.distance_to(p)
 	var aw := "" if awareness < 0.0 else " aw=%.2f" % awareness
-	var tk := " tick=%d" % tick_clock.tick_no if _tick_mode else ""
+	var tk := " tick=%d" % tick_clock.tick_no
 	var line := "[ice] t=%.1f %s %s%s alert=%.2f d=%s %s%s" % [t, ice.name, what, aw, alert, d, session, tk]
 	print(line)
 	ice_logged.emit(line)
@@ -942,12 +937,11 @@ func _step(delta: float) -> void:
 		if not ds.is_ghost(_now):
 			targets[session] = avatar.position
 	for ice in _ices:
-		# В тактовом режиме IceNode не думает сам (netrunner_count = 0 — только rest()): ICE шагает по такту, см. _tick_step.
-		ice.netrunner_count = 0 if _tick_mode else meters.size()
+		# IceNode не думает сам (netrunner_count = 0 — только rest()): ICE шагает по такту, см. _tick_step.
+		ice.netrunner_count = 0
 		ice.targets = targets
 		ice.meters = meters
-	if _tick_mode:
-		_tick_step(meters)
+	_tick_step(meters)
 	_update_hunts()
 	breach.tick(delta)
 	charge.tick(delta)
@@ -971,22 +965,16 @@ func _step(delta: float) -> void:
 
 # --- тактовое время (docs/gamedesign/time-and-movement.md, 3)
 
-## Тактовый режим включён (settings.time_mode == "tick").
-func is_tick_mode() -> bool:
-	return _tick_mode
-
-
 ## Запомнить ход нетраннера этого узла (телепорт, «ждать», взять, демон, начало панели, портал): до такта второй ход ему закрыт.
 func register_move(session: String) -> void:
-	if _tick_mode and net.node_of(session) == node_id:
+	if net.node_of(session) == node_id:
 		tick_clock.register_move(session)
 
 
 ## Вход в узел: первые entry_hidden_ticks тактов нетраннер невидим для ICE (отсчёт — от номера такта узла в момент входа).
 func _mark_entered_tick(session: String) -> void:
-	if _tick_mode:
-		_entered_tick[session] = tick_clock.tick_no
-		_grace_spent.erase(session)
+	_entered_tick[session] = tick_clock.tick_no
+	_grace_spent.erase(session)
 
 
 ## Грейс прибытия (W3, правило «безопасный выход портала»): нетраннер, вошедший в узел и ещё не ходивший, неуязвим для ICE в тактах n после
@@ -1002,7 +990,7 @@ func _arrival_immune(session: String, n: int) -> bool:
 
 ## Хук NetServer.move_check: нетраннер уже сходил в этом такте (Т4).
 func move_made(session: String) -> bool:
-	return _tick_mode and tick_clock.moved(session)
+	return tick_clock.moved(session)
 
 
 ## Настройки TickIce из настроек ICE узла: известные ему ключи как есть, дальность зрения — по тиру (settings.ice_sight_cells);
@@ -1289,8 +1277,7 @@ func _broadcast_state() -> void:
 			"s": b.state(),
 			"b": 1 if b.is_black() else 0,
 		}
-		if _tick_mode:
-			_add_tick_fields(entry, ice)
+		_add_tick_fields(entry, ice)
 		if b is TickBlackBrain:
 			# Фаза: 0 сон, 1 пробуждение, 2 охота, 3 возврат; bw — тактов до конца пробуждения (на деке «ЧЁРНЫЙ ЛЁД 6…»); pg — до пинга; bc — клетка.
 			var bb: TickBlack = (b as TickBlackBrain).black
@@ -1317,19 +1304,18 @@ func _broadcast_state() -> void:
 			"ice": ice_list,
 			"cd": cd,
 		}
-		if _tick_mode:
-			fields["tk"] = _tick_field(session)
-			if not _beacons.is_empty():
-				fields["bk"] = beacon_view()
-			if not _sensors.is_empty():
-				fields["sn"] = sensor_view()
-				var fired := take_sensor_fired(session)
-				if not fired.is_empty():
-					fields["sf"] = fired   # сработал Датчик на этого игрока: вспышка луча, звук и «ТРЕВОГА +n» в центре зрения (ice.md П8)
-			if not _barriers.is_empty():
-				fields["br"] = barrier_view()
-			if layout != null and not layout.booths.is_empty():
-				fields["bo"] = booth_view()
+		fields["tk"] = _tick_field(session)
+		if not _beacons.is_empty():
+			fields["bk"] = beacon_view()
+		if not _sensors.is_empty():
+			fields["sn"] = sensor_view()
+			var fired := take_sensor_fired(session)
+			if not fired.is_empty():
+				fields["sf"] = fired   # сработал Датчик на этого игрока: вспышка луча, звук и «ТРЕВОГА +n» в центре зрения (ice.md П8)
+		if not _barriers.is_empty():
+			fields["br"] = barrier_view()
+		if layout != null and not layout.booths.is_empty():
+			fields["bo"] = booth_view()
 		if _black_brain != null:
 			fields["burn"] = int(black_burns.get(session, 0))   # ожоги за забег, на деке «ОЖОГ 1/3»
 		net.send_to(session, WorldMsg.encode_fields(WorldMsg.STATE, fields), false)
@@ -2376,7 +2362,7 @@ func _change_alarm(new_value: float) -> void:
 ## Запасные Стражи (ice.md §4, «тревога 2»; решение владельца 16.10): на тревоге ≥ 2 из будок раскладки выходят запасные — один раз за забег узла, по маршруту записи
 ## `kind: reserve` (первая точка — клетка будки). Падение тревоги ниже 2 их не убирает; уходят, когда узел остыл до нуля (alarm == 0) — следующий забег снова с будкой.
 func _reserve_sync(level: int) -> void:
-	if not _tick_mode or layout == null or layout.reserves.is_empty():
+	if layout == null or layout.reserves.is_empty():
 		return
 	if level >= 2 and _reserve_out.is_empty():
 		for rd: Dictionary in layout.reserves:
@@ -2431,10 +2417,8 @@ func _apply_alert() -> void:
 	if level >= 4:
 		if _lockdown_ticks_left == -1:
 			_lockdown_ticks_left = int(settings.get("alert_lockdown_ticks", 10))
-			_lockdown_sec_left = float(_lockdown_ticks_left) * float(settings.get("tick_window_sec", 5.0))
 	else:
 		_lockdown_ticks_left = -1   # тревога упала ниже 100 до закрытия (или после него): отсчёт сброшен, закрытие не повторяется
-		_lockdown_sec_left = -1.0
 
 
 ## Уровень тревоги сменился — сказать нетраннерам узла (клиент: вид тревоги, аккорд уровня, строка деки). Т3b.
@@ -2465,25 +2449,13 @@ func _alarm_on_tick() -> void:
 			_lockdown_ticks_left = -2   # закрытие уже сработало: до падения ниже уровня 4 не повторять
 
 
-## По общим часам: у непошаговых узлов рост за секунды присутствия и отсчёт закрытия; остывание — только в пустом узле, −1 за
-## alert_cool_sec_per_point секунд.
+## По общим часам: остывание — только в пустом узле, −1 за alert_cool_sec_per_point секунд (рост и закрытие считают такты).
 func _tick_alert() -> void:
 	var dt := _now - _alert_t
 	_alert_t = _now
 	if dt <= 0.0 or not is_graph_node():
 		return
-	if _node_occupied():
-		if not _tick_mode:
-			var per_sec := float(settings["alert_per_tick"]) / maxf(float(settings.get("tick_window_sec", 5.0)), 0.001)
-			if alarm < ALARM_MAX:
-				_change_alarm(alarm + per_sec * dt)
-			if _lockdown_sec_left > 0.0:
-				_lockdown_sec_left -= dt
-				if _lockdown_sec_left <= 0.0:
-					lock_for(float(settings["lockdown_sec"]))
-					_lockdown_sec_left = -1.0
-					_lockdown_ticks_left = -2
-	elif alarm > 0.0:
+	if not _node_occupied() and alarm > 0.0:
 		_change_alarm(alarm - dt / maxf(float(settings["alert_cool_sec_per_point"]), 0.001))
 
 
