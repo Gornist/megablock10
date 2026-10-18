@@ -152,7 +152,7 @@ def _place_slabs_dense(rng, bound, cover, tol=0.03, max_n=12, tries=3000):
 
 
 def _slab_streaks(rng, cx, cyy, hx, hy, hh, sg, pitch, base, ln_max, wmin, wmax, amin, p_gap=0.1):
-    """Штрихи вдоль всех 4 кромок плиты, свисают вниз от её нижней грани (у потолка вверх). Шаг ≈ pitch, пропуски p_gap, длина плывёт плавной
+    """Штрихи вдоль всех 4 кромок плиты, свисают вниз от её нижней грани. Шаг ≈ pitch, пропуски p_gap, длина плывёт плавной
     волной вдоль кромки (base·0,4…1,0, ещё ×0,5…1,0 шумом) и шумом, не длиннее ln_max (глубина не больше допустимой для модуля)."""
     out, ph = [], rng.uniform(0, 6.28)
     for side in range(4):
@@ -180,37 +180,31 @@ def _slab_streaks(rng, cx, cyy, hx, hy, hh, sg, pitch, base, ln_max, wmin, wmax,
 
 
 SKIRT_H_ROOM = 0.7  # высота вуали под кромкой плиты в комнате, м: порядка длины штрихов (0,1…0,9)
-SKIRT_H_FAR = 1.2   # то же в дальних пластах, где штрихи до 3 м (было 1,8: вуаль дальних пластов давала 1,4 из 2,3 слоёв перерисовки, замер 07.10)
-SKIRT_FAR_SIDES = 2  # граней плиты с вуалью в дальних пластах (из 4; было 4): наполовину меньше площади при почти том же виде издали
 RISE_H_ROOM = 0.45  # высота завесы ВВЕРХ от верхней кромки плиты пола в комнате, м (очки П5: «вуаль у плит потолка выглядит здорово» — та же завеса вместо штрихов)
-RISE_H_FAR = 1.0    # то же у плит дальнего пола
-RISE_FAR_SIDES = 2  # граней плиты дальнего пола с завесой вверх (из 4): как у вуали дальних пластов, вдвое меньше площади
 
 
-def _slab_skirt(rng, cx, cyy, hx, hy, hh, sg, h_max, sides=4):
-    """Вуаль плиты: по одному вертикальному квадрату на каждую из 4 боковых граней, от нижней кромки плиты вниз (у потолка вверх) на высоту
+def _slab_skirt(rng, cx, cyy, hx, hy, hh, sg, h_max):
+    """Вуаль плиты: по одному вертикальному квадрату на каждую из 4 боковых граней, от нижней кромки плиты вниз на высоту
     h_max·0,6…1,0 (у каждой грани своя), плотность у кромки 0,7…1,0, внизу 0. Пространство под плитой не заливается: только плоскости по её периметру."""
     z0 = sg * (hh - SLAB_T)
     quads = []
     faces = ((cx - hx, cyy - hy, cx + hx, cyy - hy), (cx + hx, cyy - hy, cx + hx, cyy + hy),
              (cx + hx, cyy + hy, cx - hx, cyy + hy), (cx - hx, cyy + hy, cx - hx, cyy - hy))
-    keep = sorted(rng.sample(range(4), sides)) if sides < 4 else range(4)  # какие грани получают вуаль (случайно, но детерминированно по seed)
-    for (ax, ay, bx, by) in (faces[i] for i in keep):
+    for (ax, ay, bx, by) in faces:
         h = h_max * rng.uniform(0.6, 1.0)
         quads.append((Vector((ax, ay, z0)), Vector((bx, by, z0)), Vector((0, 0, -sg * h)), rng.uniform(0.7, 1.0), rng.uniform(0.7, 1.0)))
     return quads
 
 
-def _slab_rise(rng, cx, cyy, hx, hy, hh, hmax, sides=4):
+def _slab_rise(rng, cx, cyy, hx, hy, hh, hmax):
     """Завеса плиты ПОЛА вверх, в комнату: по вертикальному квадрату на грань от ВЕРХНЕЙ (светящейся) кромки плиты вверх на hmax·0,6…1,0, плотность у кромки
     0,7…1,0, вверху 0. Формат квада — как у _slab_skirt, плюс шестое поле — высота (в UV1.x, см. lib.skirt_set): по нему шейдер отличает завесу вверх от вуали вниз
-    и применяет ручки tile_glow / tile_glow_h. Только пол (знак +1): у потолка вуаль и так идёт вверх от плиты, её очки одобрили."""
+    и применяет ручки tile_glow / tile_glow_h. Только пол (потолка нет с 18.10)."""
     z0 = hh
     quads = []
     faces = ((cx - hx, cyy - hy, cx + hx, cyy - hy), (cx + hx, cyy - hy, cx + hx, cyy + hy),
              (cx + hx, cyy + hy, cx - hx, cyy + hy), (cx - hx, cyy + hy, cx - hx, cyy - hy))
-    keep = sorted(rng.sample(range(4), sides)) if sides < 4 else range(4)
-    for (ax, ay, bx, by) in (faces[i] for i in keep):
+    for (ax, ay, bx, by) in faces:
         h = hmax * rng.uniform(0.6, 1.0)
         quads.append((Vector((ax, ay, z0)), Vector((bx, by, z0)), Vector((0, 0, h)), rng.uniform(0.7, 1.0), rng.uniform(0.7, 1.0), h))
     return quads
@@ -218,21 +212,20 @@ def _slab_rise(rng, cx, cyy, hx, hy, hh, hmax, sides=4):
 
 # Виды плит: (вес, (мин, макс) по одной стороне, (мин, макс) по другой), метры.
 ROOM_KINDS = [(0.14, (1.3, 1.68), (0.3, 0.5)), (0.26, (0.8, 1.2), (0.5, 0.8)), (0.34, (0.4, 0.65), (0.35, 0.6)), (0.26, (0.22, 0.4), (0.22, 0.4))]
-FAR_KINDS = [(0.16, (3.0, 4.6), (2.0, 3.2)), (0.28, (1.6, 3.0), (1.0, 2.0)), (0.3, (0.7, 1.3), (0.5, 1.0)), (0.26, (0.3, 0.6), (0.3, 0.6))]
 
 
-def build_floor(out, name="floor", seed=2, ceiling=False, cover=0.22, dense=False):
-    """Плитка пола (или потолка при ceiling=True) 2×2 м: тонкие (3 см) чёрные непрозрачные плиты РАЗНОГО размера — от вытянутых 1,6×0,4 м и
-    крупных ~1×0,7 до мелких 0,25–0,4 м (расстановка зависит от seed: три варианта на пол и три на потолок, чтобы узор не повторялся).
-    Потолок — ~22% площади (случайная досыпка, _place_slabs); пол комнаты dense=True — ≈ 43% (решение владельца 2026-10-05, деление на
-    ячейки, _place_slabs_dense), бюджет tris пола 450. Боковых стенок нет: свет — штрихи, свисающие от всех четырёх кромок (шаг ≈ 5 см, пропуски 10%, длина до 0,9 м плывёт волной).
+def build_floor(out, name="floor", seed=2, cover=0.22, dense=False):
+    """Плитка пола 2×2 м: тонкие (3 см) чёрные непрозрачные плиты РАЗНОГО размера — от вытянутых 1,6×0,4 м и
+    крупных ~1×0,7 до мелких 0,25–0,4 м (расстановка зависит от seed: три варианта, чтобы узор не повторялся).
+    Случайная досыпка (_place_slabs) — ~22% площади; пол комнаты dense=True — ≈ 43% (решение владельца 2026-10-05, деление на
+    ячейки, _place_slabs_dense), бюджет tris пола 450. Потолка и дальних пластов нет с 18.10 (STYLE.md). Боковых стенок нет: свет — штрихи, свисающие от всех четырёх кромок (шаг ≈ 5 см, пропуски 10%, длина до 0,9 м плывёт волной).
     Верх плиты чёрный, контур верха светится слабее штрихов. Пол: верх плиты НЕ ВЫШЕ поверхности пола (0…−0,45 м), штрихи висят вниз,
-    точки на полу чуть ниже поверхности. Потолок — то же, инвертированное: плита не ниже плоскости потолка (0…+0,45 м), штрихи растут вверх.
+    точки на полу чуть ниже поверхности.
     Ничего не выступает в комнату, коллизий нет. cover = 0: чистая площадка без плит (под хранилище). Origin на поверхности в центре."""
     lib.reset()
     rng = random.Random(seed)
     cy = lib.lin("cyan")
-    sg = -1.0 if ceiling else 1.0  # знак по высоте: пол смотрит вниз от поверхности, потолок вверх
+    sg = 1.0  # знак по высоте: пол смотрит вниз от поверхности
     # края плит ≤ 0,84: угловые точки (±0,875) вне плит, габарит симметричен
     if cover <= 0:
         rects = []
@@ -253,52 +246,17 @@ def build_floor(out, name="floor", seed=2, ceiling=False, cover=0.22, dense=Fals
         # Вглубь штрих не уходит ниже −0,95 м от плоскости.
         streaks += _slab_streaks(rng, cx, cyy, hx, hy, hh, sg, pitch, rng.uniform(0.6, 0.95), 0.95 + hh - SLAB_T, 0.011, 0.017, 0.65)
         skirts += _slab_skirt(srng, cx, cyy, hx, hy, hh, sg, min(SKIRT_H_ROOM, 0.95 + hh - SLAB_T))
-        if not ceiling:  # пол: завеса вверх от верхней кромки (в тот же меш *_skirt: отдельный меш дал бы четвёртый слой прозрачности, предел 3)
-            skirts += _slab_rise(rrng, cx, cyy, hx, hy, hh, RISE_H_ROOM)
+        # завеса вверх от верхней кромки (в тот же меш *_skirt: отдельный меш дал бы четвёртый слой прозрачности, предел 3)
+        skirts += _slab_rise(rrng, cx, cyy, hx, hy, hh, RISE_H_ROOM)
     # B2 (12.10.2026): штрихи и точки окружения не рисуются (streak_keep=0 и point_keep=0 приняты на очках) и из модели убраны. Цикл выше всё равно считает штрихи:
     # они потребляют датчик rng, от которого зависит раскладка плит, — раскладка (то, что видели на очках) остаётся прежней.
     rim = tuple(c * 0.6 for c in cy)  # контур верха слабее штрихов
     objs = [lib.obj_from_bm("tiles", lib.merge_bm(*tiles), "solid_dark", cy, rgb_fn=_slab_rgb(infos, rim, lib.lin("void")))] if tiles else []
     if skirts:  # вуаль на гранях плит (имя *_skirt: в Godot шейдер skirt.gdshader); у чистой площадки без плит её нет
-        objs.append(lib.skirt_set("ceiling_skirt" if ceiling else "floor_skirt", skirts, cy))
+        objs.append(lib.skirt_set("floor_skirt", skirts, cy))
     area = sum(4 * hx * hy for _, _, hx, hy in rects)
-    return lib.export(name, "env", objs, out, budget_tris=(450 if dense else 300), budget_points=0, budget_streaks=0, origin=("ceiling" if ceiling else "surface"),
+    return lib.export(name, "env", objs, out, budget_tris=(450 if dense else 300), budget_points=0, budget_streaks=0, origin="surface",
                       notes=f"{len(rects)} плит толщиной {SLAB_T * 100:.0f} см, покрытие {area / 4.0 * 100:.0f}% плитки 2×2 м")
-
-
-def build_far_surface(out, name="far_floor", seed=61, ceiling=False, size=11.0, cover=0.20):
-    """Пол (или потолок при ceiling=True) дальнего плана: участок 11×11 м из тех же тонких плит, что в комнате (build_floor), но крупнее и глубже:
-    размеры от 0,3 м до 3–4,6 м, покрытие ~20%. Плиты лежат на разной глубине — от плоскости пола до −2,6 м (потолок: до +2,6 м), как «ямы»;
-    штрихи свисают от кромок вниз длинные (до 3 м, не глубже −3 м: предел validate для far_*). Точки пола реже (шаг 0,75 м, ~15% пропусков),
-    над плитами их нет. Нужен, чтобы пол и потолок были везде, а не только в комнате; в игре берутся участки сеткой 11 м.
-    Origin на поверхности (потолок: на плоскости потолка) в центре."""
-    lib.reset()
-    rng = random.Random(seed)
-    cy = lib.lin("cyan")
-    sg = -1.0 if ceiling else 1.0
-    rects = _place_slabs(rng, FAR_KINDS, cover * size * size, size / 2 - 0.3, 0.5, max_n=26)
-    tiles, streaks, infos, covered, skirts = [], [], [], [], []
-    srng = random.Random(seed * 7 + 3)
-    rrng = random.Random(seed * 11 + 5)
-    perim = sum(4 * (hx + hy) for _, _, hx, hy in rects)
-    pitch = max(0.2, perim * 0.9 / 235)  # бюджет 260 штрихов на участок
-    for cx, cyy, hx, hy in rects:
-        hh = 0.0 if rng.random() < 0.2 else -rng.uniform(0.1, 2.6)
-        tiles.append(_slab_bm(cx, cyy, hx, hy, hh, sg))
-        infos.append((cx, cyy, hx, hy, sg * hh))
-        covered.append((cx, cyy, hx, hy))
-        ln_max = 2.98 + hh - SLAB_T  # низ штриха не глубже −2,98 м
-        streaks += _slab_streaks(rng, cx, cyy, hx, hy, hh, sg, pitch, ln_max * rng.uniform(0.6, 1.0), ln_max, 0.012, 0.018, 0.65)
-        skirts += _slab_skirt(srng, cx, cyy, hx, hy, hh, sg, min(SKIRT_H_FAR, ln_max), SKIRT_FAR_SIDES)
-        if not ceiling:  # дальний пол: завеса вверх от верхней кромки (две грани из четырёх)
-            skirts += _slab_rise(rrng, cx, cyy, hx, hy, hh, RISE_H_FAR, RISE_FAR_SIDES)
-    # B2 (12.10.2026): штрихи и точки окружения убраны (не рисуются, см. build_floor); цикл выше считает штрихи ради датчика rng — раскладка плит прежняя.
-    rim = tuple(c * 0.6 for c in cy)
-    objs = [lib.obj_from_bm("tiles", lib.merge_bm(*tiles), "solid_dark", cy, rgb_fn=_slab_rgb(infos, rim, lib.lin("void")))]
-    objs.append(lib.skirt_set("far_ceiling_skirt" if ceiling else "far_floor_skirt", skirts, cy))
-    area = sum(4 * hx * hy for _, _, hx, hy in rects)
-    return lib.export(name, "env", objs, out, budget_tris=1100, budget_points=0, budget_streaks=0, origin=("ceiling" if ceiling else "surface"),
-                      notes=f"{len(rects)} плит, покрытие {area / (size * size) * 100:.1f}% участка {size:g}×{size:g} м, глубина до 2,6 м")
 
 
 COVER_H = 2.2      # высота укрытия, м: выше головы стоящего игрока; одна на все (полуукрытий нет, решение Game: занятая клетка закрывает взгляд целиком)
@@ -380,11 +338,5 @@ if __name__ == "__main__":
     o = lib.args()
     build_pillar(o)
     build_cover(o)
-    for name, seed in (("far_floor", 61), ("far_floor_b", 62), ("far_floor_c", 63)):
-        build_far_surface(o, name, seed)
-    for name, seed in (("far_ceiling", 71), ("far_ceiling_b", 72), ("far_ceiling_c", 73)):
-        build_far_surface(o, name, seed, ceiling=True)
     for name, seed in (("floor", 2), ("floor_b", 5), ("floor_c", 9)):
         build_floor(o, name, seed, cover=0.425, dense=True)
-    for name, seed in (("ceiling", 3), ("ceiling_b", 6), ("ceiling_c", 11)):
-        build_floor(o, name, seed, ceiling=True)

@@ -1,6 +1,6 @@
 extends GdUnitTestSuite
 ## Фон-купол (assets/backdrop_dome.gd, shaders/backdrop.gdshader): шейдер компилируется, текстура пылинок не пустая и детерминирована, цвет пустоты следует за тревогой.
-## Вид — по кадру `dev.sh shot res://assets/preview_shimmer.tscn --dome --nofar` и с очков.
+## Вид — по кадру `dev.sh shot res://assets/preview_shimmer.tscn --dome` и с очков.
 
 
 func test_dome_builds_with_first_render_priority() -> void:
