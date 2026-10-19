@@ -250,6 +250,32 @@ func test_призрак_рядом_не_жжётся_ice_нащупывает_�
 	assert_object(b.cell()).is_not_equal(ghost)      # в клетку игрока не входит
 
 
+func test_призрак_замер_на_засечённой_клетке_через_два_пинга_ice_теряет_след_и_уходит_в_логово() -> void:
+	var b := _hunting()
+	var tr := {"s1": 60.0}
+	var ghost := Vector2i(b.cell().x + 3, b.cell().y)   # Призрак рядом, но вне захвата: ICE дойдёт и «нащупает» его
+	var lost := false
+	for i in 40:
+		for e in b.tick(_ctx({"s1": ghost}, tr, {"s1": true})):
+			lost = lost or e["kind"] == "lost"
+		if lost:
+			break
+	assert_bool(lost).override_failure_message("замерший Призрак не потерял охоту: нащупывание той же клетки обнуляет промахи").is_true()
+
+
+func test_призрак_уходит_на_соседнюю_клетку_нащупал_новую_охота_продолжается() -> void:
+	var b := _hunting()
+	var tr := {"s1": 60.0}
+	var ghost := Vector2i(b.cell().x + 1, b.cell().y)
+	b.tick(_ctx({"s1": ghost}, tr, {"s1": true}))
+	assert_object(b.known_cell()).is_equal(ghost)
+	var next := Vector2i(ghost.x, ghost.y + 1)   # соседняя клетка, тоже в зоне нащупывания
+	b.tick(_ctx({"s1": next}, tr, {"s1": true}))
+	assert_object(b.known_cell()).is_equal(next)   # засекла новую клетку
+	assert_int(b.get("_misses") as int).is_equal(0)   # новое нащупывание — попадание, промахи сброшены
+	assert_int(b.phase).is_equal(TickBlack.Phase.HUNT)
+
+
 func test_грейс_прибытия_не_жжётся() -> void:
 	var burns := {}
 	var b := _hunting(burns)
