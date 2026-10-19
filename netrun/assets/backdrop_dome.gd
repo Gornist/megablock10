@@ -32,12 +32,17 @@ func _init() -> void:
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
-## Цвет пустоты по уровню тревоги (0…4) и доле такта — тот же, что у `AssetMaterials.alarm_background` для Environment.
+## Свет пустоты по уровню тревоги (0…4) и доле такта (`void_for`): спокойный узел ничего не добавляет к чёрному фону, тревога — красный сдвиг.
 func set_alarm(level: int, tick_phase := 0.0) -> void:
-	# Купол светит АДДИТИВНО поверх прозрачного фона вида: спокойный узел — ноль (пустота остаётся чёрной, как до купола), тревога добавляет только красный сдвиг фона.
+	(material_override as ShaderMaterial).set_shader_parameter("void_color", void_for(level, tick_phase))
+
+
+## Свет пустоты купола по уровню тревоги: аддитивный, поверх прозрачного фона вида (который остаётся чёрным). Спокойный узел — ноль, тревога — только красный сдвиг фона
+## (alarm_background(level) − alarm_background(0), без отрицательных каналов).
+static func void_for(level: int, tick_phase := 0.0) -> Color:
 	var c := AssetMaterials.alarm_background(level, tick_phase)
 	var calm := AssetMaterials.alarm_background(0)
-	(material_override as ShaderMaterial).set_shader_parameter("void_color", Color(maxf(c.r - calm.r, 0.0), maxf(c.g - calm.g, 0.0), maxf(c.b - calm.b, 0.0)))
+	return Color(maxf(c.r - calm.r, 0.0), maxf(c.g - calm.g, 0.0), maxf(c.b - calm.b, 0.0))
 
 
 ## Равнопромежуточная текстура пылинок (один раз на процесс): ~DUST_COUNT мягких точек 2–3 текселя, у полюсов шире по x (развёртка растягивает), яркость разная; чёрный фон.
