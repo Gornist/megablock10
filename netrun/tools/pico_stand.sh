@@ -26,7 +26,7 @@ set -e
 
 PACKAGE="com.megablok10.netrun"
 CFG_PATH="/sdcard/Android/data/$PACKAGE/files/netrun.cfg"
-RENDER_KEYS=" msaa layers foveation perf volumetric bench probe volume_budget_ms volume_impostor_m "
+RENDER_KEYS=" msaa layers far_cull_mfoveation perf volumetric bench probe volume_budget_ms volume_impostor_m "
 
 [ -f "$HOME/netrun-env.sh" ] && . "$HOME/netrun-env.sh"
 . "$(cd "$(dirname "$0")" && pwd)/box_guard.sh"

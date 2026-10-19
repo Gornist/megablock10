@@ -112,6 +112,7 @@ func setup(points: PackedFloat32Array, color: Color, bounds: AABB) -> void:
 	_mmi.name = "Particles"
 	_mmi.multimesh = _mm
 	_mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	NodeAssets.limit_range(_mmi)   # дальше far_cull_m облако не рисуется (редкая восьмая часть точек вдали — тоже мусор)
 	add_child(_mmi)
 	add_to_group("volume_clouds")   # регулятор плотности (VolumeBudget) находит облака по группе
 	_apply()

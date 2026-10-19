@@ -208,6 +208,15 @@ func test_apply_msaa_ставит_режим_вьюпорта_и_без_fxaa() -
 	assert_int(vp.msaa_3d).is_equal(Viewport.MSAA_DISABLED)
 
 
+func test_far_cull_m_умолчание_12_ноль_без_предела_вне_границ_отвергается() -> void:
+	assert_float(RenderConfig.from_config(_cfg({})).far_cull_m).is_equal(12.0)
+	assert_float(RenderConfig.from_config(_cfg({"far_cull_m": 0})).far_cull_m).is_equal(0.0)
+	assert_float(RenderConfig.from_config(_cfg({"far_cull_m": 20})).far_cull_m).is_equal(20.0)
+	var bad := RenderConfig.from_config(_cfg({"far_cull_m": 1}))
+	assert_float(bad.far_cull_m).is_equal(12.0)
+	assert_int(bad.warnings.size()).is_equal(1)
+
+
 func test_apply_assets_без_файла_не_падает() -> void:
 	# Контракт с AssetMaterials.tune_from_config (зона Blender): нет файла — ручки как были
 	RenderConfig.new().apply_assets(PackedStringArray(["user://нет_такого_render.cfg"]))
