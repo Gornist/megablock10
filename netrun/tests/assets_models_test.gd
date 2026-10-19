@@ -823,8 +823,18 @@ func test_cloud_lights_reach_cloud_material_and_clear() -> void:
 	assert_float(float(AssetMaterials.cloud_lights()[1]["s"])).override_failure_message("сила по умолчанию 1").is_equal(1.0)
 	var late := _mat_of(_apply_new("env", "cover"), "pillar_block")
 	assert_int(int(late.get_shader_parameter("cl_n"))).override_failure_message("материал, созданный после set_cloud_lights, получает источники").is_equal(2)
-	assert_float(float((late.get_shader_parameter("cl_pos") as PackedVector4Array)[0].w)).is_equal(3.0)
-	assert_int((late.get_shader_parameter("cl_pos") as PackedVector4Array).size()).override_failure_message("массив uniform фиксированной длины").is_equal(AssetMaterials.CLOUD_LIGHTS_MAX)
+	# карта освещённости: у источника (1, 2) сила 0,5 и красный цвет, вдали от всех источников света нет
+	var tex := late.get_shader_parameter("lit_map") as ImageTexture
+	assert_object(tex).override_failure_message("карта освещённости доходит до материала").is_not_null()
+	var rect: Vector4 = late.get_shader_parameter("lit_rect")
+	var img := tex.get_image()
+	var at := func(x: float, z: float) -> Color:
+		return img.get_pixel(clampi(int((x - rect.x) * rect.z * img.get_width()), 0, img.get_width() - 1), clampi(int((z - rect.y) * rect.w * img.get_height()), 0, img.get_height() - 1))
+	var c1: Color = at.call(1.0, 2.0)
+	assert_float(c1.a).override_failure_message("сила в центре источника ≈ 0,5").is_equal_approx(0.5, 0.02)
+	assert_float(c1.r).override_failure_message("цвет сильнейшего источника — красный").is_greater(0.9)
+	assert_float((at.call(-4.0, 0.0) as Color).a).override_failure_message("у второго источника сила 1").is_equal_approx(1.0, 0.02)
+	assert_float((at.call(1.0 + 3.0, 2.0 + 3.0) as Color).a).override_failure_message("вне радиуса света нет").is_less(0.01)
 	var many := []
 	for i in AssetMaterials.CLOUD_LIGHTS_MAX + 3:
 		many.append({"p": Vector3(i, 0, 0), "r": 1.0})

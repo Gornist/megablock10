@@ -196,6 +196,9 @@ static var _surface_cloud_mats: Array[WeakRef] = []
 ## Источники света узла (set_cloud_lights), упакованные для шейдера: pos[i] = (xyz, радиус), col[i] = (rgb, сила), n — число; материалам, созданным позже, отдаются в apply().
 static var _lights_pos := PackedVector4Array()
 static var _lights_col := PackedVector4Array()
+static var _lit_tex: ImageTexture
+static var _lit_rect := Vector4(0.0, 0.0, 1.0, 1.0)
+const LIT_TEXEL := 0.125   # м на тексель карты освещённости
 const CLOUD_LIGHTS_MAX := 12
 ## Материалы окружения с перекраской света у игрока (alarm_focus.gdshaderinc: solid_dark, cloud_dark, skirt), созданные apply() вне существ/аватаров; слабые ссылки, как выше.
 static var _focus_mats: Array[WeakRef] = []
@@ -611,6 +614,7 @@ static func set_cloud_lights(tree: SceneTree, lights: Array) -> void:
 		var c: Color = l.get("c", Color(0.8, 0.97, 1.0))
 		_lights_pos.append(Vector4(p.x, p.y, p.z, maxf(float(l.get("r", 3.0)), 0.01)))
 		_lights_col.append(Vector4(c.r, c.g, c.b, float(l.get("s", 1.0))))
+	_build_lit_map()
 	for m in _cloud_materials(tree):
 		if _is_cloud_shader(m.shader):
 			_push_lights(m)
@@ -627,13 +631,53 @@ static func cloud_lights() -> Array:
 
 
 static func _push_lights(m: ShaderMaterial) -> void:
-	var pos := _lights_pos.duplicate()
-	var col := _lights_col.duplicate()
-	m.set_shader_parameter("cl_n", pos.size())
-	pos.resize(CLOUD_LIGHTS_MAX)   # массив uniform фиксированной длины: хвост — нули
-	col.resize(CLOUD_LIGHTS_MAX)
-	m.set_shader_parameter("cl_pos", pos)
-	m.set_shader_parameter("cl_col", col)
+	m.set_shader_parameter("cl_n", _lights_pos.size())
+	if _lit_tex != null:
+		m.set_shader_parameter("lit_map", _lit_tex)
+		m.set_shader_parameter("lit_rect", _lit_rect)
+
+
+## Карта освещённости по XZ (RGBA8): источники «splat» в окно по радиусу, побеждает сильнейший (цвет и сила), форма спада та же, что была в шейдере:
+## (1 − smoothstep(0,15·r … r, расстояние)) · сила. Строится один раз на смену узла (≈20 тыс. операций), в шейдере — одна выборка вместо 12 расчётов на фрагмент.
+static func _build_lit_map() -> void:
+	_lit_tex = null
+	if _lights_pos.is_empty():
+		return
+	var x0 := INF
+	var z0 := INF
+	var x1 := -INF
+	var z1 := -INF
+	for l in _lights_pos:
+		x0 = minf(x0, l.x - l.w)
+		z0 = minf(z0, l.z - l.w)
+		x1 = maxf(x1, l.x + l.w)
+		z1 = maxf(z1, l.z + l.w)
+	var w := maxi(int(ceil((x1 - x0) / LIT_TEXEL)), 8)
+	var h := maxi(int(ceil((z1 - z0) / LIT_TEXEL)), 8)
+	w = mini(w, 256)
+	h = mini(h, 256)
+	var sx := (x1 - x0) / float(w)
+	var sz := (z1 - z0) / float(h)
+	var img := Image.create_empty(w, h, false, Image.FORMAT_RGBA8)
+	var best := PackedFloat32Array()
+	best.resize(w * h)
+	for i in _lights_pos.size():
+		var l := _lights_pos[i]
+		var cc := _lights_col[i]
+		var ix0 := clampi(int(floor((l.x - l.w - x0) / sx)), 0, w - 1)
+		var ix1 := clampi(int(ceil((l.x + l.w - x0) / sx)), 0, w - 1)
+		var iz0 := clampi(int(floor((l.z - l.w - z0) / sz)), 0, h - 1)
+		var iz1 := clampi(int(ceil((l.z + l.w - z0) / sz)), 0, h - 1)
+		for iz in range(iz0, iz1 + 1):
+			var pz := z0 + (float(iz) + 0.5) * sz
+			for ix in range(ix0, ix1 + 1):
+				var px := x0 + (float(ix) + 0.5) * sx
+				var k := (1.0 - smoothstep(0.15 * l.w, l.w, Vector2(px - l.x, pz - l.z).length())) * cc.w
+				if k > best[iz * w + ix]:
+					best[iz * w + ix] = k
+					img.set_pixel(ix, iz, Color(cc.x, cc.y, cc.z, clampf(k, 0.0, 1.0)))
+	_lit_tex = ImageTexture.create_from_image(img)
+	_lit_rect = Vector4(x0, z0, 1.0 / (x1 - x0), 1.0 / (z1 - z0))
 
 
 static func _push_cloud_light_knobs(m: ShaderMaterial) -> void:
