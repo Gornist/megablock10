@@ -452,6 +452,8 @@ func _breach_request_error(session: String, node: String, req: Dictionary) -> St
 	var s := doc(T_SESSION, session)
 	if s.is_empty():
 		return ""   # not_found скажет вызывающий
+	if node != _current_node(s):
+		return "node не текущий узел сессии"
 	var cells := 0
 	var loaded: Variant = s["data"].get("loaded")
 	for id in sel:
@@ -481,7 +483,8 @@ func _breach_once(session: String, node: String, req: Dictionary) -> Dictionary:
 	var world: Dictionary = sd.get("world", {}) if sd.get("world") is Dictionary else {}
 	var prev: Dictionary = sd.get("breach", {}) if sd.get("breach") is Dictionary else {}
 	var nd := doc(T_NODE, node)
-	if sd.get("state") != "active" or world.has("finish") or n <= int(prev.get("n", 0)) or bool(nd["data"].get("tutorial", false)):
+	var tutorial_node := str(doc("settings", "global").get("data", {}).get("tutorial_node", ""))
+	if sd.get("state") != "active" or world.has("finish") or n <= int(prev.get("n", 0)) or bool(nd["data"].get("tutorial", false)) or node == tutorial_node:
 		return err("session_state", "взлом сейчас невозможен", s.duplicate(true))
 	var now_ms := _now_ms()
 	var runner := _runner_doc(str(sd.get("runner", "")))
