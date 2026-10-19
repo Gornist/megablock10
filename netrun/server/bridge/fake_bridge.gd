@@ -551,7 +551,8 @@ func _breach_once(session: String, node: String, req: Dictionary) -> Dictionary:
 			var ndata: Dictionary = (nd["data"] as Dictionary).duplicate(true)
 			ndata["eddies"] = stock - eddies
 			_put(T_NODE, node, ndata)
-		cooldown_until = now_ms + FAKE_COOLDOWN_S * 1000
+		var cooldown_s := int(doc("settings", "global").get("data", {}).get("breach_cooldown_s", FAKE_COOLDOWN_S))
+		cooldown_until = now_ms + maxi(cooldown_s, int(req["open_s"])) * 1000
 		_set_cooldown(str(sd.get("runner", "")), panel_vault if panel_vault != "" else node, cooldown_until, now_ms)
 	var live: Array = []
 	for o in sd.get("opened", []):
