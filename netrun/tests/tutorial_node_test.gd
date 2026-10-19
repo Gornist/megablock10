@@ -79,7 +79,8 @@ func test_tutorial_node_has_no_black_ice_and_one_gentle_soft_ice() -> void:
 	var gn := _world.node_of("g_00")
 	assert_bool(gn.has_black_ice()).is_false()
 	assert_int(gn.ices().size()).is_equal(1)
-	assert_float(float(gn.ices()[0].brain._s["sight_range"])).is_less(float(IceBrain.DEFAULT_SETTINGS["sight_range"]))
+	var ti: TickIce = gn._tick_ices[gn.ices()[0]]
+	assert_float(float(ti._s["sight_cells"])).is_less(float(TickIce.DEFAULTS["sight_cells"]))   # смягчение: sight_range узла → дальность в клетках
 	assert_int(gn.slot_ids().size()).is_equal(1)
 
 

@@ -109,6 +109,20 @@ func test_cardinal_yaw_snaps_to_the_nearest_wall_direction() -> void:
 	assert_float(NodeLayout.cardinal_yaw(Vector3(7, 0, -5))).is_equal_approx(-PI / 2.0, 0.001)
 
 
+## Дальность зрения по умолчанию, м (настройки узла без sight_range); взгляд на старте — от первой точки маршрута ко второй.
+const LEGACY_SIGHT_M := 12.0
+
+
+## Видит ли ICE точку: в радиусе и в конусе (плоскость XZ; препятствий не учитываем).
+func _sees(from: Vector3, facing_dir: Vector3, point: Vector3, sight_range: float, half_angle_deg: float) -> bool:
+	var d := Vector2(point.x - from.x, point.z - from.z)
+	if d.length() > sight_range:
+		return false
+	if d.length() < 0.0001:
+		return true
+	return absf(Vector2(facing_dir.x, facing_dir.z).angle_to(d)) <= deg_to_rad(half_angle_deg)
+
+
 ## Маршруты ICE (карточка 1б, шаг 3). Расстояние от точки до ближайшей точки маршрута (ломаная, по кругу: последняя точка → первая), плоскость XZ.
 func _route_distance(p: Vector3, waypoints: Array) -> float:
 	var best := INF
@@ -155,10 +169,10 @@ func test_every_vault_slot_is_far_from_every_ice_route() -> void:
 func test_spawn_and_portals_are_outside_the_ice_cone_at_patrol_start_in_every_graph_node() -> void:
 	var g := NodeGraph.load_file()
 	var boost := 1.0 + float(g.settings["alert_boost"])
-	var half := float(IceBrain.DEFAULT_SETTINGS["sight_half_angle_deg"])
+	var half := float(TickIce.DEFAULTS["half_angle_deg"])
 	for id in g.nodes:
 		var def: Dictionary = g.nodes[id]
-		var sight := float(def.get("ice_settings", {}).get("sight_range", IceBrain.DEFAULT_SETTINGS["sight_range"])) * boost
+		var sight := float(def.get("ice_settings", {}).get("sight_range", LEGACY_SIGHT_M)) * boost
 		var checks: Array = []
 		for i in int(def["ice"]):
 			checks.append([NodeLayout.ICE[i], sight])
@@ -169,7 +183,9 @@ func test_spawn_and_portals_are_outside_the_ice_cone_at_patrol_start_in_every_gr
 			var wps: Array[Vector3] = []
 			for w in c[0]["waypoints"]:
 				wps.append(w)
-			var brain := IceBrain.new({}, wps[0], wps)
+			var facing := Vector3.FORWARD
+			if wps.size() > 1 and Vector2(wps[1].x - wps[0].x, wps[1].z - wps[0].z).length() > 0.0001:
+				facing = Vector3(wps[1].x - wps[0].x, 0.0, wps[1].z - wps[0].z).normalized()
 			for p in watched:
-				assert_bool(IceBrain.can_see(wps[0], brain.facing, p, c[1], half)).override_failure_message("%s: %s на старте видит %s (зрение %.1f м)" % [id, c[0]["id"], p, c[1]]).is_false()
+				assert_bool(_sees(wps[0], facing, p, c[1], half)).override_failure_message("%s: %s на старте видит %s (зрение %.1f м)" % [id, c[0]["id"], p, c[1]]).is_false()
 				assert_float(_route_distance(p, wps)).override_failure_message("%s: маршрут %s ближе 3 м к %s" % [c[0]["id"], id, p]).is_greater_equal(3.0)
