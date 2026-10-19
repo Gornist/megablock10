@@ -6,6 +6,8 @@ extends GdUnitTestSuite
 ## Чего здесь нет и быть не может: паузы повторного входа и локдауна узла у настоящего Моста (FakeBridge правил Моста не знает) —
 ## их проверяет ValueOpsTest (Kotlin); сторона Godot — outcomes_graph_test.gd.
 
+const LegacyLair := preload("res://tests/legacy_lair_util.gd")
+
 static var _next_port := 18691
 const SESSION := "s_fake000000000001"
 const NODE := "node_07"
@@ -22,11 +24,13 @@ var _bridge: FakeBridge
 var _bot: BotClient
 var _cfg: NetConfig
 var _events: Array = []
+var _black := false   # в узле Black ICE в логове
 
 
-## black — в узле Black ICE (тир NIGHTMARE); hunt_speed — его скорость охоты; grace — окно возврата после обрыва;
+## black — в узле Black ICE в логове (legacy-комната + логово, тир NIGHTMARE); его такты даёт тест (_black_tick), а не часы узла:
+## часы живут, пока бот ходит к шарду (один ход за такт), и замирают в _enter_node. grace — окно возврата после обрыва;
 ## await_master — флэтлайн ждёт решения мастера (settings/global.await_flatline).
-func _setup(black: bool = false, hunt_speed: float = 2.0, grace: float = 1.5, await_master: bool = false) -> void:
+func _setup(black: bool = false, grace: float = 1.5, await_master: bool = false) -> void:
 	_root = Node.new()
 	_root.name = "OutcomesTestRoot"
 	add_child(_root)
@@ -51,9 +55,11 @@ func _setup(black: bool = false, hunt_speed: float = 2.0, grace: float = 1.5, aw
 	assert_int(_server.start(_cfg, _bridge)).is_equal(OK)
 	_node = GrayNode.new()
 	sroot.add_child(_node)
+	_black = black
+	if black:
+		LegacyLair.apply(_node, "", false)
 	_node.ice_settings = {"sight_range": 0.0}
 	_node.trace_settings = {"decay_per_sec": 0.0}
-	_node.black_ice_settings = {"hunt_speed": hunt_speed}
 	_events = []
 	_node.event.connect(func(ev: Dictionary): _events.append(ev))
 	_node.start(_server, _bridge)
@@ -110,11 +116,38 @@ func _enter_node(take_shard: bool = false) -> void:
 		_bot.loiter_radius = 0.5
 	_bot.start(_cfg, BotClient.Scenario.LOITER)
 	assert_bool(await _wait_for(func(): return _node.session_state(SESSION) != null and _bot.net.is_connected_to_world)).is_true()
-	if not take_shard:
+	if take_shard:
+		assert_bool(await _wait_for(func(): return NodeLayout.flat_distance(_avatar_pos(), NodeLayout.SHARD_POS) < 2.5)).is_true()
+		assert_bool(_bot.net.request_grab(NetConfig.PICKUP_ID)).is_true()
+		assert_bool(await _wait_for(func(): return _bot.shard_taken and _owner(SHARD) == "deck:" + SESSION)).is_true()
+	if _black:
+		LegacyLair.freeze(_node)   # ходить боту больше не нужно: дальше такты Black ICE даёт тест
+
+
+## Один такт Black ICE логова: игрок стоит в клетке cell (по умолчанию далеко от логова), скрыт, пока действует GHOST. Сессии нет — такта нет.
+func _black_tick(cell: Vector2i = LegacyLair.FAR) -> void:
+	var ds := _node.session_state(SESSION)
+	if ds == null:
 		return
-	assert_bool(await _wait_for(func(): return NodeLayout.flat_distance(_avatar_pos(), NodeLayout.SHARD_POS) < 2.5)).is_true()
-	assert_bool(_bot.net.request_grab(NetConfig.PICKUP_ID)).is_true()
-	assert_bool(await _wait_for(func(): return _bot.shard_taken and _owner(SHARD) == "deck:" + SESSION)).is_true()
+	_node._step_tick_black({SESSION: NodeGrid.center(cell)}, {SESSION: ds.is_ghost(_node.now())}, {}, {SESSION: ds.trace})
+
+
+## Trace игрока уже ≥ 50: пробуждение (6 тактов) и первый такт охоты — Black ICE охотится, порталы закрыты.
+func _hunt() -> void:
+	for i in LegacyLair.TICKS_TO_HUNT:
+		_black_tick()
+	assert_bool(_node.black_ice().is_hunting()).is_true()
+
+
+## Игрок стоит рядом с Black ICE: ожог за такт захвата, на третьем — флэтлайн (событие узла; ждёт ли исход мастера — решает узел).
+func _catch() -> void:
+	for i in 10:
+		if "flatline" in _kinds():
+			break
+		var at := _node.black_ice().cell()
+		_black_tick(Vector2i(at.x + 1, at.y))
+	assert_array(_kinds()).contains(["flatline"])
+	assert_int(int(_node.black_burns.get(SESSION, 0))).is_equal(3)
 
 
 ## Поднять trace игрока до value (door_forced весит 10; спад в этом узле выключен).
@@ -181,9 +214,10 @@ func test_emergency_exit_without_hunt_keeps_deck_and_leaves_loot_in_node() -> vo
 
 
 func test_emergency_exit_under_hunt_burns_deck_loot_stays_protected_goes_home() -> void:
-	_setup(true, 0.2)  # медленный охотник: до выхода не догонит
+	_setup(true)  # охота идёт, но Black ICE далеко (цель в углу карты): до выхода не догонит
 	await _enter_node(true)
 	_trace(60.0)
+	_hunt()
 	assert_bool(await _wait_for(func(): return not _hunt_events(true).is_empty())).is_true()
 	assert_bool(_bot.net.request_exit(ExitLogic.REASON_HEADSET_OFF)).is_true()
 	await _wait_finished()
@@ -194,12 +228,19 @@ func test_emergency_exit_under_hunt_burns_deck_loot_stays_protected_goes_home() 
 
 
 func test_ghost_breaks_the_hunt_so_emergency_exit_keeps_deck() -> void:
-	_setup(true, 0.2)
+	_setup(true)
 	await _enter_node()
 	_trace(60.0)
+	_hunt()
 	assert_bool(await _wait_for(func(): return not _hunt_events(true).is_empty())).is_true()
 	(_node.session_state(SESSION)).set_charged("ghost_1")   # защитный демон вне взлома работает только заряженным (К6)
-	assert_bool(_bot.net.request_use("ghost_1")).is_true()  # охота идёт по позиции, спрятанного GHOST'ом она не видит
+	assert_bool(_bot.net.request_use("ghost_1")).is_true()  # охота идёт по пингу, спрятанного GHOST'ом пинг не видит
+	assert_bool(await _wait_for(func(): return (_node.session_state(SESSION)).is_ghost(_node.now()))).is_true()
+	for i in 12:   # два пинга подряд мимо — Black ICE теряет след (игрок ушёл с засечённой клетки, иначе ICE «нащупал» бы его)
+		if not _node.black_ice().is_hunting():
+			break
+		_black_tick(LegacyLair.AWAY)
+	assert_bool(_node.black_ice().is_hunting()).is_false()
 	assert_bool(await _wait_for(func(): return not _hunt_events(false).is_empty())).is_true()
 	assert_bool(_bot.net.request_exit(ExitLogic.REASON_MANUAL_HOLD)).is_true()
 	await _wait_finished()
@@ -244,9 +285,11 @@ func test_soft_ice_leaves_foreign_phone_cargo_in_node() -> void:
 # ---------------------------------------------------------------- Black ICE
 
 func test_black_ice_flatline_dead_deck_and_loot_stay_in_node_protected_goes_home() -> void:
-	_setup(true, 8.0)
+	_setup(true)
 	await _enter_node(true)
 	_trace(60.0)
+	_hunt()
+	_catch()
 	assert_bool(await _wait_for(func(): return not _bot.result.is_empty())).is_true()
 	assert_str(_bot.result).is_equal("flatline")
 	await _wait_finished()
@@ -261,9 +304,11 @@ func test_black_ice_flatline_dead_deck_and_loot_stay_in_node_protected_goes_home
 
 
 func test_pardon_before_flatline_is_the_soft_ice_outcome() -> void:
-	_setup(true, 8.0, 1.5, true)
+	_setup(true, 1.5, true)
 	await _enter_node(true)
 	_trace(60.0)
+	_hunt()
+	_catch()
 	assert_bool(await _wait_for(func(): return "waiting_master" in _kinds())).is_true()
 	# пока мастер не решил, ничего не применено, персонаж жив
 	assert_str(str(_session_data()["state"])).is_equal("active")
@@ -297,9 +342,10 @@ func test_drop_is_emergency_after_grace_deck_kept_loot_in_node() -> void:
 
 
 func test_drop_under_hunt_burns_deck_after_grace() -> void:
-	_setup(true, 0.2)
+	_setup(true)
 	await _enter_node(true)
 	_trace(60.0)
+	_hunt()
 	assert_bool(await _wait_for(func(): return not _hunt_events(true).is_empty())).is_true()
 	await _bot.net.drop()
 	await _wait_finished()
@@ -310,7 +356,7 @@ func test_drop_under_hunt_burns_deck_after_grace() -> void:
 
 
 func test_return_within_grace_continues_the_same_run() -> void:
-	_setup(false, 2.0, 6.0)
+	_setup(false, 6.0)
 	await _enter_node()
 	_trace(30.0)
 	var avatar_id := _server.avatar_id(SESSION)
@@ -330,11 +376,13 @@ func test_return_within_grace_continues_the_same_run() -> void:
 
 
 func test_black_ice_catches_dropped_avatar_within_grace_is_disconnect_flatline() -> void:
-	_setup(true, 8.0, 15.0, true)
+	_setup(true, 15.0, true)
 	await _enter_node(true)
 	await _bot.net.drop()
 	assert_bool(await _wait_for(func(): return _server.peer_of(SESSION) == -1)).is_true()
-	_trace(60.0)  # аватар в Сети, trace растёт — охота
+	_trace(60.0)  # аватар в Сети, trace растёт — охота и ожоги
+	_hunt()
+	_catch()
 	assert_bool(await _wait_for(func(): return "waiting_master" in _kinds())).is_true()
 	assert_array(_kinds()).contains(["flatline"])
 	# Мастер ещё решает: пометка в Мосте уже несёт «обрыв до флэтлайна», персонаж жив
@@ -350,11 +398,13 @@ func test_black_ice_catches_dropped_avatar_within_grace_is_disconnect_flatline()
 
 
 func test_pardon_of_disconnect_flatline_is_plain_soft_ice() -> void:
-	_setup(true, 8.0, 15.0, true)
+	_setup(true, 15.0, true)
 	await _enter_node(true)
 	await _bot.net.drop()
 	assert_bool(await _wait_for(func(): return _server.peer_of(SESSION) == -1)).is_true()
 	_trace(60.0)
+	_hunt()
+	_catch()
 	assert_bool(await _wait_for(func(): return "waiting_master" in _kinds())).is_true()
 	_bridge.decide_gate("flatline", SESSION, "deny")
 	await _wait_finished()
