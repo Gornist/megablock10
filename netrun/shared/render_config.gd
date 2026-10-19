@@ -21,10 +21,12 @@ extends RefCounted
 ## bench = ""               ; воспроизводимый замер (BenchRun): имя пресета EyePresets (entry, north, south, vault_w, …) — через 5 с риг встаёт в его позу, 3 окна по 10 с,
 ##                           ; строка `[bench] ИТОГ` с медианой и min/max окон по fps / времени кадра / GPU; голову во время замера не вертеть; пусто — выкл.
 ## probe = ""               ; синтетическая нагрузка (LoadProbe): "quads=N,px=P,mode=blend|a2c|opaque|point" — N квадов по P пикселей, приклеенных к голове; "sweep" — серия вариантов за один запуск (ProbeSweep); пусто — выкл.
+## warmup = "on"            ; прогрев шейдеров при старте (ShaderWarmup): по одному мешу каждого материала мира на 3 кадра за чёрным экраном перед камерой, чтобы компиляция пайплайнов
+##                           ; прошла до первого кадра с миром ("on" по умолчанию, "off" — выкл.); итог — строка журнала `warmup.done frames=… meshes=… ms=…`
 ## volume_budget_ms = 0       ; регулятор плотности облаков (VolumeBudget): потолок GPU-времени кадра, мс (4…20; при 90 Гц ≈ 10,5); выше — облака редеют, ниже — густеют; 0 — выкл.
 
 const SECTION := "render"
-const KEYS := ["msaa", "layers", "foveation", "perf", "volumetric", "bench", "probe", "volume_budget_ms", "volume_impostor_m"]
+const KEYS := ["msaa", "layers", "foveation", "perf", "volumetric", "bench", "probe", "volume_budget_ms", "volume_impostor_m", "warmup"]
 const VOLUME_BUDGET_MIN := 4.0
 const VOLUME_BUDGET_MAX := 20.0
 ## Импостор дальних облаков (VolumeCloud): расстояние до камеры, мс м — дальше него облако заменяется билбордом; 0 — выкл. (по умолчанию).
@@ -38,6 +40,8 @@ const PERF_VALUES := ["on", "off", "diag"]
 const PERF_DEFAULT := "off"
 const LAYERS_VALUES := ["on", "off", "behind"]
 const LAYERS_DEFAULT := "behind"
+const WARMUP_VALUES := ["on", "off"]
+const WARMUP_DEFAULT := "on"
 const MSAA_DEFAULT := 2
 const FOVEATION_DEFAULT := 0
 const FOVEATION_MAX := 3
@@ -58,6 +62,8 @@ var volume_budget_ms: float = 0.0
 ## Порог импостора дальних облаков, м (VolumeCloud); 0 — выкл.
 var volume_impostor_m: float = 0.0
 var foveation: int = FOVEATION_DEFAULT
+## Прогрев шейдеров при старте (ShaderWarmup): "on" | "off".
+var warmup: String = WARMUP_DEFAULT
 ## Откуда прочитан файл ("" — файла или секции не было).
 var file_path: String = ""
 ## Что в файле не так (по строке на поле).
@@ -110,6 +116,11 @@ static func from_config(cfg: ConfigFile) -> RenderConfig:
 					c.bench = b
 				else:
 					c.warnings.append("bench: нет пресета «%s» (есть: %s) — замер выключен" % [b, ", ".join(EyePresets.names())])
+			"warmup":
+				if v is String and (v as String).to_lower() in WARMUP_VALUES:
+					c.warmup = (v as String).to_lower()
+				else:
+					c.warnings.append("warmup: допустимо «on» или «off», получено «%s» — оставлено «%s»" % [v, c.warmup])
 			"volume_budget_ms":
 				var n: Variant = _number(v)
 				if n != null and (float(n) == 0.0 or (float(n) >= VOLUME_BUDGET_MIN and float(n) <= VOLUME_BUDGET_MAX)):
@@ -184,6 +195,11 @@ static func layers_enabled(s: String) -> bool:
 	return s == "on" or s == "behind"
 
 
+## Прогрев шейдеров включён в конфиге? (чистый маппинг, без сцены)
+static func warmup_enabled(s: String) -> bool:
+	return s == "on"
+
+
 ## Счётчик кадра включён в конфиге?
 static func perf_enabled(s: String) -> bool:
 	return s == "on" or s == "diag"
@@ -232,5 +248,5 @@ func apply_xr(iface: Object) -> PackedStringArray:
 
 ## Поля строки журнала `render …` (MbLog).
 func log_fields() -> Dictionary:
-	return {"msaa": msaa, "layers": layers, "perf": perf, "volumetric": volumetric, "bench": bench if bench != "" else "off", "probe": probe if probe != "" else "off", "volume_budget_ms": volume_budget_ms, "volume_impostor_m": volume_impostor_m, "foveation": foveation,
+	return {"msaa": msaa, "layers": layers, "perf": perf, "volumetric": volumetric, "bench": bench if bench != "" else "off", "probe": probe if probe != "" else "off", "volume_budget_ms": volume_budget_ms, "volume_impostor_m": volume_impostor_m, "foveation": foveation, "warmup": warmup,
 		"file": file_path if not file_path.is_empty() else "none"}
