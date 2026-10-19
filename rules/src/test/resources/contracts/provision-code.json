@@ -1,0 +1,27 @@
+{
+  "_about": "Короткий код выдачи персонажа (ввод без камеры, решение владельца 19.10): 6 знаков из алфавита в 31 знак — A–Z без I, L, O и цифры 2–9; печатается как ABC-DEF. Телефон и сервер нормализуют ввод одинаково: верхний регистр, пробелы и «-» отбрасываются; всё, что после этого не ровно 6 знаков алфавита, — не код (null) и на сервер не уходит. normalize — известные ответы; ответ null значит «не код». Сервер: POST /api/provisions/redeem {code} → 200 {qr}, 404 unknown_code, 429 rate_limited+retryAfterSec.",
+  "alphabet": "ABCDEFGHJKMNPQRSTUVWXYZ23456789",
+  "length": 6,
+  "normalize": [
+    { "name": "тире и нижний регистр", "input": "abc-def", "output": "ABCDEF" },
+    { "name": "уже нормальный вид", "input": "K7M29Q", "output": "K7M29Q" },
+    { "name": "пробелы по краям и внутри", "input": " k7m 29q ", "output": "K7M29Q" },
+    { "name": "несколько тире", "input": "K7-M2-9Q", "output": "K7M29Q" },
+    { "name": "цифры 2–9 допустимы", "input": "234-567", "output": "234567" },
+    { "name": "слишком короткий", "input": "ABCDE", "output": null },
+    { "name": "слишком длинный", "input": "ABCDEFG", "output": null },
+    { "name": "пустая строка", "input": "", "output": null },
+    { "name": "только разделители", "input": " - - ", "output": null },
+    { "name": "ноль похож на O и не входит в алфавит", "input": "ABCDE0", "output": null },
+    { "name": "единица не входит в алфавит", "input": "ABCDE1", "output": null },
+    { "name": "буква I не входит в алфавит", "input": "ABCDEI", "output": null },
+    { "name": "буква L не входит в алфавит", "input": "ABCDEL", "output": null },
+    { "name": "буква O не входит в алфавит", "input": "ABCDEO", "output": null },
+    { "name": "кириллические А, В, С — не латиница", "input": "АВС-DEF", "output": null },
+    { "name": "спецсимвол внутри", "input": "ABC_DEF", "output": null }
+  ],
+  "format": [
+    { "code": "ABCDEF", "text": "ABC-DEF" },
+    { "code": "K7M29Q", "text": "K7M-29Q" }
+  ]
+}
