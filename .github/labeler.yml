@@ -11,6 +11,8 @@
           - "!admin-web/server/src/audio/**"
           - "!admin-web/server/src/routes/audio.ts"
           - "!admin-web/server/src/scripts/display*"
+  - changed-files:
+      - any-glob-to-any-file: ["docs/provisioning-qr.md", "docs/character-reissue.md"]
 "зона: физические узлы":
   - changed-files:
       - any-glob-to-any-file:
