@@ -1,5 +1,5 @@
 class_name ChargeBreach
-extends RefCounted
+extends BreachMiniGame
 ## Заряд защитного демона на сервере узла (К6, docs/netrun-deck-design.md §3.1, §3.3): короткая мини-игра на запястье в спокойный момент — режим движка for_charge
 ## (цель — цепочка самого демона, сетка и таймер по его тиру, буфер = длина + 2, ловушек нет). Совпала цепочка — демон заряжен: один заряд — один запуск
 ## (`use`), потом перезарядка из effects/<ЭФФЕКТ>.json. Попытка сессионная, как у VaultBreach, но без Моста, без номера попытки, без trace и без сигнала СБ:
@@ -12,37 +12,16 @@ const MODE := BreachRun.MODE_CHARGE
 
 ## Одна попытка одного игрока.
 class Attempt:
-	extends RefCounted
-	var session := ""
+	extends BreachMiniGame.BaseAttempt
 	var daemon := ""
-	var run: BreachRun
-	var sent_left := -1
-	var ending := false
 
 
-var node: GrayNode
-var _by_session: Dictionary = {}   # сессия -> Attempt
-var _rng := RandomNumberGenerator.new()
-## Сколько попыток закончено и сколько из них дали заряд — для тестов и журнала.
-var finished_count := 0
+## Сколько из закончённых попыток (finished_count — в базе) дали заряд — для тестов и журнала.
 var charged_count := 0
 
 
-func _init(owner_node: GrayNode) -> void:
-	node = owner_node
-	_rng.randomize()
-
-
-func has_attempt(session: String) -> bool:
-	return _by_session.has(session)
-
-
-func attempt_of(session: String) -> Attempt:
-	return _by_session.get(session)
-
-
-func clear_session(session: String) -> void:
-	_by_session.erase(session)
+func _mode() -> String:
+	return MODE
 
 
 ## Проверка просьбы «зарядить»: {} — можно, иначе {reason, left?}.
@@ -98,53 +77,7 @@ func request_start(session: String, daemon_id: String) -> void:
 	node.event.emit({"kind": "charge_start", "session": session, "daemon": daemon_id, "tier": run.tier})
 
 
-## Тап клиента: принятый — ответ ok (и matched), отклонённый — ok=false.
-func request_tap(session: String, cell: Array) -> void:
-	var att: Attempt = _by_session.get(session)
-	if att == null or att.ending or cell.size() != 2:
-		return
-	var c := Vector2i(int(cell[0]), int(cell[1]))
-	var r := att.run.tap(c)
-	var msg := {"kind": WorldMsg.EV_BK_TICK, "mode": MODE, "cell": [c.x, c.y], "ok": bool(r["ok"]), "left": att.run.seconds_left}
-	if r["ok"]:
-		msg["trap"] = false
-		msg["matched"] = att.run.attempt.matched_daemon_ids()
-	node.net.send_to(session, WorldMsg.encode_fields(WorldMsg.EVENT, msg))
-	# Цепочка собрана — заряд готов, добивать буфер незачем.
-	if r["ok"] and not r["finished"] and (msg["matched"] as Array).size() == att.run.attempt.daemons.size():
-		att.run.resolve()
-		r["finished"] = true
-	if r["finished"]:
-		_finish(att)
-
-
-func request_cancel(session: String) -> void:
-	end_early(session, "cancel")
-
-
-## Шаг времени: таймер попыток, раз в секунду — `bk_tick` без клетки; время вышло — итог (заряда нет).
-func tick(delta: float) -> void:
-	if _by_session.is_empty():
-		return
-	for session in _by_session.keys():
-		var att: Attempt = _by_session[session]
-		if att.ending:
-			continue
-		att.run.advance(delta)
-		if att.run.seconds_left != att.sent_left:
-			att.sent_left = att.run.seconds_left
-			node.net.send_to(session, WorldMsg.encode_fields(WorldMsg.EVENT, {"kind": WorldMsg.EV_BK_TICK, "mode": MODE, "left": att.run.seconds_left}), false)
-		if att.run.is_finished():
-			_finish(att)
-
-
-## Попытку бросают (телепорт, выброс, обрыв, переход, «ОТМЕНА»): заряда нет, последствий нет.
-func end_early(session: String, reason: String) -> void:
-	var att: Attempt = _by_session.get(session)
-	if att != null and not att.ending:
-		_finish(att, reason)
-
-
+## Тап (цепочка собрана — заряд готов), отмена, ранний уход (заряда нет, последствий нет), шаг времени (время вышло — заряда нет) — в BreachMiniGame.
 func _finish(att: Attempt, early: String = "") -> void:
 	if att.ending:
 		return
@@ -166,8 +99,3 @@ func _finish(att: Attempt, early: String = "") -> void:
 	node.net.send_to(session, WorldMsg.encode_fields(WorldMsg.EVENT, end))
 	node.event.emit({"kind": "charge_end", "session": session, "daemon": att.daemon, "outcome": outcome, "charged": charged, "early": early})
 
-
-func _send_no(session: String, deny: Dictionary) -> void:
-	var msg := {"kind": WorldMsg.EV_BK_NO, "mode": MODE}
-	msg.merge(deny)
-	node.net.send_to(session, WorldMsg.encode_fields(WorldMsg.EVENT, msg))

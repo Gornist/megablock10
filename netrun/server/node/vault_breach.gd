@@ -1,5 +1,5 @@
 class_name VaultBreach
-extends RefCounted
+extends BreachMiniGame
 ## Взлом хранилища на сервере узла (К3, docs/netrun-deck-design.md §3, §7): попытка живёт в сессии игрока, мир при этом не останавливается — ICE ходит,
 ## trace растёт, ловушка поднимает trace узла. Сетку строит и проверяет сервер (shared/breach, порт движка телефона): клиент просит «начать»,
 ## «клетка», «завершить» и только показывает; каждый тап подтверждается ответом `bk_tick`.
@@ -18,40 +18,23 @@ const NUMBER_RETRY_SEC := 0.3
 
 ## Одна попытка одного игрока.
 class Attempt:
-	extends RefCounted
-	var session := ""
+	extends BreachMiniGame.BaseAttempt
 	var vault := ""
 	var n := 0
 	var tier := "BASE"
-	var run: BreachRun
 	var order: Array = []          # id выбранных демонов (порядок выбора)
 	var names: Dictionary = {}     # id -> имя
-	var sent_left := -1
-	var ending := false
 	var early := ""
 
 
-var node: GrayNode
-var _by_session: Dictionary = {}   # сессия -> Attempt
+## Поля node, _by_session (сессия -> Attempt), _rng, finished_count («сколько попыток закончено» — для тестов и журнала) и _init — в BreachMiniGame.
 var _opening: Dictionary = {}      # сессия -> true, пока узнаём и пишем номер попытки в Мосте
 var _n_local: Dictionary = {}      # сессия -> последний выданный номер (когда Моста нет и как нижняя граница)
-var _rng := RandomNumberGenerator.new()
-## Сколько попыток закончено / из них досрочно — для тестов и журнала.
-var finished_count := 0
-
-
-func _init(owner_node: GrayNode) -> void:
-	node = owner_node
-	_rng.randomize()
 
 
 ## Зерно ГСЧ сеток вскрытия (для тестов: сетка следующей попытки детерминирована; в игре зерно случайное, берётся в `_init`).
 func seed_rng(s: int) -> void:
 	_rng.seed = s
-
-
-func has_attempt(session: String) -> bool:
-	return _by_session.has(session)
 
 
 ## Идёт начало попытки (ждём номер у Моста): заряду в это время тоже нельзя начаться.
@@ -73,7 +56,7 @@ func is_busy(vault: String, session: String) -> bool:
 
 
 func clear_session(session: String) -> void:
-	_by_session.erase(session)
+	super(session)
 	_opening.erase(session)
 
 
@@ -288,10 +271,6 @@ func _trap_hit(session: String, att: Attempt) -> void:
 	node.event.emit({"kind": "breach_trap", "session": session, "vault": att.vault, "trace": amount})
 
 
-func request_cancel(session: String) -> void:
-	end_early(session, "cancel")
-
-
 ## Шаг времени: таймер попыток, реплики по времени, раз в секунду — `bk_tick` без клетки; время вышло — итог.
 func tick(delta: float) -> void:
 	if _by_session.is_empty():
@@ -315,12 +294,7 @@ func tick(delta: float) -> void:
 			_finish(att)
 
 
-## Досрочный итог по собранному (телепорт, выброс, обрыв, «ЗАВЕРШИТЬ», уход в тоннель): подсмотреть сетку и уйти без последствий нельзя.
-func end_early(session: String, reason: String) -> void:
-	var att: Attempt = _by_session.get(session)
-	if att != null and not att.ending:
-		_finish(att, reason)
-
+## Досрочный итог по собранному (телепорт, выброс, обрыв, «ЗАВЕРШИТЬ», уход в тоннель): подсмотреть сетку и уйти без последствий нельзя — end_early и request_cancel в BreachMiniGame.
 
 # ---------------------------------------------------------------- итог
 
