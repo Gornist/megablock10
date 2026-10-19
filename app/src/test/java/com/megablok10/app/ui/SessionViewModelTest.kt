@@ -38,6 +38,8 @@ class SessionViewModelTest {
         identityStore = identity,
         peers = MutableStateFlow(emptyList()),
         provisioning = { provisionResult },
+        redeem = { _, _ -> error("ввод кода здесь не проверяется — см. SessionViewModelRedeemTest") },
+        savedBaseUrl = { null },
         create = CreateCharacter(identity, changes),
         reset = { resets += it; identity.clear() },
         onUiStarted = { uiStarts++ },
