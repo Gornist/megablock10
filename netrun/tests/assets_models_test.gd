@@ -609,7 +609,7 @@ func test_asset_materials_knob_floor_grid_texture_on_the_slab() -> void:
 	AssetMaterials.reset_tuning()
 	var dflt := _load("env", "floor_slab_16")
 	AssetMaterials.apply(dflt, "BASE")
-	assert_float(float(_mat_of(dflt, "slab").get_shader_parameter("grid_alpha"))).override_failure_message("по умолчанию сетка-текстура включена").is_equal_approx(0.35, 0.001)
+	assert_bool(_mat_of(dflt, "slab").get_shader_parameter("grid_alpha") == null).override_failure_message("с 20.10 по умолчанию сетки-текстуры нет (floor_grid = 0)").is_true()
 	assert_bool(dflt.find_child("slab_seams", true, false) == null).override_failure_message("точек швов в модели нет (убраны в B2)").is_true()
 	AssetMaterials.tune({"floor_grid": 0.0})
 	var off := _load("env", "floor_slab_16")
@@ -770,6 +770,7 @@ func test_floor_slab_has_solid_void_underlay_below_cloud_layer() -> void:
 ## Ручка floor_density (#424, Ш5): зерно пола реже, чем у реквизита (умолчание 0,6), линии сетки не гаснут; реквизит ручка не трогает.
 func test_floor_density_knob_scales_only_floor_grain() -> void:
 	AssetMaterials.reset_tuning()
+	AssetMaterials.tune({"floor_grid": 0.35})   # сетка выключена по умолчанию с 20.10: проверяем, что множитель плотности её не гасит
 	assert_float(float(AssetMaterials.KNOBS["floor_density"])).override_failure_message("умолчание floor_density — 0,6").is_equal_approx(0.6, 0.0001)
 	var dd := float(AssetMaterials.KNOBS["dust_density"])
 	var slab := _mat_of(_apply_new("env", "floor_slab_16"), "slab")
@@ -783,16 +784,16 @@ func test_floor_density_knob_scales_only_floor_grain() -> void:
 	AssetMaterials.reset_tuning()
 
 
-## Заливка вдали (18.10, рябь вдали на очках): по умолчанию включена и доходит до материала облака; dust_fill = 0 выключает.
-func test_dust_fill_knob_defaults_on_and_reaches_cloud_material() -> void:
+## Заливка вдали (18.10): с 20.10 выключена по умолчанию (в непрозрачном режиме дитера a2c нет); ручка доходит до материала облака.
+func test_dust_fill_knob_defaults_off_and_reaches_cloud_material() -> void:
 	AssetMaterials.reset_tuning()
-	assert_float(float(AssetMaterials.KNOBS["dust_fill"])).override_failure_message("умолчание dust_fill — 1").is_equal(1.0)
+	assert_float(float(AssetMaterials.KNOBS["dust_fill"])).override_failure_message("умолчание dust_fill — 0").is_equal(0.0)
 	var m := _mat_of(_apply_new("env", "cover"), "pillar_block")
-	assert_float(float(m.get_shader_parameter("dust_fill"))).override_failure_message("материал облака получает dust_fill").is_equal(1.0)
+	assert_float(float(m.get_shader_parameter("dust_fill"))).override_failure_message("материал облака получает dust_fill").is_equal(0.0)
 	assert_float(float(m.get_shader_parameter("dust_fill_lo"))).is_equal(2.0)
 	assert_float(float(m.get_shader_parameter("dust_fill_hi"))).is_equal(4.0)
-	AssetMaterials.tune({"dust_fill": 0.0})
-	assert_float(float(_mat_of(_apply_new("env", "cover"), "pillar_block").get_shader_parameter("dust_fill"))).override_failure_message("ручка dust_fill = 0 выключает").is_equal(0.0)
+	AssetMaterials.tune({"dust_fill": 1.0})
+	assert_float(float(_mat_of(_apply_new("env", "cover"), "pillar_block").get_shader_parameter("dust_fill"))).override_failure_message("ручка dust_fill = 1 включает заливку").is_equal(1.0)
 	AssetMaterials.reset_tuning()
 
 
@@ -889,8 +890,9 @@ func test_asset_materials_cloud_scope_props_yes_slabs_gate_and_deck_no() -> void
 	assert_int(_cloud_meshes(_apply_new("env", "cover"))).override_failure_message("укрытие — облако").is_greater(0)
 	assert_int(_cloud_meshes(_apply_new("env", "exit_frame"))).override_failure_message("рамка выхода — облако").is_greater(0)
 	assert_int(_cloud_meshes(_apply_new("env", "floor_slab_16"))).override_failure_message("cloud_floor=1 по умолчанию: пол — облако").is_greater(0)
+	AssetMaterials.tune({"floor_grid": 0.35})   # по умолчанию сетки нет (20.10); при floor_grid > 0 линии клеток 1 м идут через grid_tex в cloud_dark
 	var slab_mat := _mat_of(_apply_new("env", "floor_slab_16"), "slab")
-	assert_float(float(slab_mat.get_shader_parameter("grid_alpha"))).override_failure_message("линии клеток 1 м на полу-облаке сохранены (grid_tex в cloud_dark)").is_greater(0.0)
+	assert_float(float(slab_mat.get_shader_parameter("grid_alpha"))).override_failure_message("линии клеток 1 м на полу-облаке при floor_grid > 0 (grid_tex в cloud_dark)").is_greater(0.0)
 	assert_object(slab_mat.get_shader_parameter("grid_tex")).is_not_null()
 	AssetMaterials.tune({"cloud_floor": 0.0})
 	assert_int(_cloud_meshes(_apply_new("env", "floor_slab_16"))).override_failure_message("cloud_floor=0: ручка возвращает solid_dark").is_equal(0)
