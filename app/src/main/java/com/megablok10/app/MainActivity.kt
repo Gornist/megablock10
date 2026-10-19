@@ -5,19 +5,25 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
@@ -81,6 +87,12 @@ import com.megablok10.app.ui.theme.MbTypography
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // targetSdk 35 всё равно рисует под системными панелями; явный вызов даёт прозрачные панели и светлые значки на тёмном фоне
+        // (иначе значки статус-бара пропадают на нашем тёмном фоне). Отступы — MbAppShell и экраны вне оболочки (windowInsetsPadding).
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+        )
         super.onCreate(savedInstanceState)
         val graph = appGraph
         setContent {
@@ -247,7 +259,7 @@ fun AppRoot() {
                 }
             }
             AnnouncementDialogHost()
-            AppSnackHost(Modifier.align(Alignment.BottomCenter).padding(bottom = 64.dp))
+            AppSnackHost(Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 64.dp))
             if (callState.phase != CallPhase.IDLE) {
                 CallOverlay(
                     state = callState,
@@ -285,6 +297,8 @@ fun SetupScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(c.bg)
+            // Сначала отступы под панели и клавиатуру (targetSdk 35), потом прокрутка внутри них.
+            .windowInsetsPadding(WindowInsets.safeDrawing)
             // С раскрытым вводом кода (и ручным созданием в dev-сборке) экран может не влезть, особенно с клавиатурой.
             .verticalScroll(rememberScrollState())
             .padding(24.dp),
