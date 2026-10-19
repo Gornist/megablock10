@@ -52,8 +52,24 @@ static func instance(path: String, tier: String = "") -> Node3D:
 		_dress(n, tier)
 		if _reflects(path):
 			_add_reflection(n, packed)
+		limit_range(n)
 	n.set_meta("asset", path)
 	return n
+
+
+## Дальность прорисовки (`[render] far_cull_m`, м; 0 — без предела): задаёт клиент при старте (proto_client), по умолчанию предела нет.
+static var far_cull_m := 0.0
+
+
+## Дальше far_cull_m все меши под узлом (и отражение) не рисуются: вдали модель без облака — сплошное чёрное тело (владелец 19.10).
+static func limit_range(root: Node) -> void:
+	if far_cull_m <= 0.0:
+		return
+	var geoms: Array[Node] = root.find_children("*", "GeometryInstance3D", true, false)
+	if root is GeometryInstance3D:
+		geoms.append(root)
+	for g in geoms:
+		(g as GeometryInstance3D).visibility_range_end = far_cull_m
 
 
 static func _reflects(path: String) -> bool:

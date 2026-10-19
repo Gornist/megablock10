@@ -166,6 +166,23 @@ func test_layers_парсинг_и_маппинг() -> void:
 	assert_bool(RenderConfig.layers_behind("off")).is_false()
 
 
+func test_warmup_по_умолчанию_on_парсинг_и_маппинг() -> void:
+	assert_str(RenderConfig.new().warmup).is_equal("on")
+	assert_bool("warmup" in RenderConfig.KEYS).is_true()
+	assert_str(RenderConfig.from_config(_cfg({"warmup": "off"})).warmup).is_equal("off")
+	assert_str(RenderConfig.from_config(_cfg({"warmup": "ON"})).warmup).is_equal("on")
+	assert_bool(RenderConfig.warmup_enabled("on")).is_true()
+	assert_bool(RenderConfig.warmup_enabled("off")).is_false()
+	assert_str(RenderConfig.new().log_fields()["warmup"]).is_equal("on")
+
+
+func test_warmup_неверное_по_умолчанию_с_предупреждением() -> void:
+	for bad: Variant in ["вкл", "", 1, true, "diag"]:
+		var c := RenderConfig.from_config(_cfg({"warmup": bad}))
+		assert_str(c.warmup).is_equal(RenderConfig.WARMUP_DEFAULT)
+		assert_int(c.warnings.size()).is_equal(1)
+
+
 func test_layers_неверное_по_умолчанию_с_предупреждением() -> void:
 	for bad: Variant in ["вкл", "", 1, true]:
 		var c := RenderConfig.from_config(_cfg({"layers": bad}))
@@ -206,6 +223,15 @@ func test_apply_msaa_ставит_режим_вьюпорта_и_без_fxaa() -
 	assert_int(vp.screen_space_aa).is_equal(Viewport.SCREEN_SPACE_AA_DISABLED)
 	RenderConfig.from_config(_cfg({"msaa": 0})).apply_msaa(vp)
 	assert_int(vp.msaa_3d).is_equal(Viewport.MSAA_DISABLED)
+
+
+func test_far_cull_m_умолчание_12_ноль_без_предела_вне_границ_отвергается() -> void:
+	assert_float(RenderConfig.from_config(_cfg({})).far_cull_m).is_equal(12.0)
+	assert_float(RenderConfig.from_config(_cfg({"far_cull_m": 0})).far_cull_m).is_equal(0.0)
+	assert_float(RenderConfig.from_config(_cfg({"far_cull_m": 20})).far_cull_m).is_equal(20.0)
+	var bad := RenderConfig.from_config(_cfg({"far_cull_m": 1}))
+	assert_float(bad.far_cull_m).is_equal(12.0)
+	assert_int(bad.warnings.size()).is_equal(1)
 
 
 func test_apply_assets_без_файла_не_падает() -> void:
