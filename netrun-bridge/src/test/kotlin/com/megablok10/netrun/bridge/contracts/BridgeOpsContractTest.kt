@@ -56,6 +56,8 @@ class BridgeOpsContractTest {
         assertTrue("${problems.size} из ${cases.size}:\n" + problems.joinToString("\n"), problems.isEmpty())
     }
 
+    private fun bad(msg: String): Nothing = throw AssertionError(msg)
+
     private fun check(c: JsonObject) {
         var now = c.long("now_ms")
         val clock: () -> Long = { now++ }
@@ -74,21 +76,21 @@ class BridgeOpsContractTest {
             val expect = c.obj("expect")
             val result = runCatching { router.handle(Caller(Role.WORLD, "world-main"), request.str("op"), request) }
             if (expect.bool("ok")) {
-                val reply = result.getOrElse { throw AssertionError("ждали успех, а Мост отказал: $it") }
+                val reply = result.getOrElse { bad("ждали успех, а Мост отказал: $it") }
                 expect["reply"]?.let { subset("reply", it, JsonObject(reply)) }
             } else {
-                val e = result.exceptionOrNull() ?: throw AssertionError("ждали отказ ${expect.str("err")}, а Мост ответил ${result.getOrNull()}")
-                val se = e as? StoreException ?: throw AssertionError("ждали StoreException, а выброшено $e")
+                val e = result.exceptionOrNull() ?: bad("ждали отказ ${expect.str("err")}, а Мост ответил ${result.getOrNull()}")
+                val se = e as? StoreException ?: bad("ждали StoreException, а выброшено $e")
                 assertEquals("код ошибки", expect.str("err"), se.code)
                 expect["err_doc"]?.let {
-                    val doc = se.current ?: throw AssertionError("в ошибке нет документа, ждали $it")
+                    val doc = se.current ?: bad("в ошибке нет документа, ждали $it")
                     subset("err.doc", it, VJ.docJson(doc))
                 }
             }
             for (want in expect["docs_after"]?.objects().orEmpty()) {
                 val type = want.str("type")
                 val id = want.str("id")
-                val doc = store.get(type, id) ?: throw AssertionError("после вызова нет документа $type/$id")
+                val doc = store.get(type, id) ?: bad("после вызова нет документа $type/$id")
                 subset("docs_after $type/$id.data", want.obj("data"), doc.data)
             }
         } finally {
@@ -100,20 +102,20 @@ class BridgeOpsContractTest {
     private fun subset(path: String, want: JsonElement, got: JsonElement?) {
         when (want) {
             is JsonObject -> {
-                val g = got as? JsonObject ?: throw AssertionError("$path: ждали объект, а $got")
+                val g = got as? JsonObject ?: bad("$path: ждали объект, а $got")
                 for ((k, v) in want) {
-                    if (k !in g) throw AssertionError("$path.$k: поля нет, ждали $v")
+                    if (k !in g) bad("$path.$k: поля нет, ждали $v")
                     subset("$path.$k", v, g.getValue(k))
                 }
             }
             is JsonArray -> {
-                val g = got as? JsonArray ?: throw AssertionError("$path: ждали массив, а $got")
-                if (g.size != want.size) throw AssertionError("$path: длина ${g.size}, ждали ${want.size} ($got)")
+                val g = got as? JsonArray ?: bad("$path: ждали массив, а $got")
+                if (g.size != want.size) bad("$path: длина ${g.size}, ждали ${want.size} ($got)")
                 for (i in want.indices) subset("$path[$i]", want[i], g[i])
             }
-            is JsonNull -> if (got !is JsonNull) throw AssertionError("$path: ждали null, а $got")
+            is JsonNull -> if (got !is JsonNull) bad("$path: ждали null, а $got")
             is JsonPrimitive -> {
-                val g = got as? JsonPrimitive ?: throw AssertionError("$path: ждали $want, а $got")
+                val g = got as? JsonPrimitive ?: bad("$path: ждали $want, а $got")
                 val same = if (!want.isString && !g.isString && g !is JsonNull) {
                     val a = want.content.toBigDecimalOrNull()
                     val b = g.content.toBigDecimalOrNull()
@@ -121,7 +123,7 @@ class BridgeOpsContractTest {
                 } else {
                     want.isString == g.isString && want.content == g.content
                 }
-                if (!same) throw AssertionError("$path: ждали $want, а $got")
+                if (!same) bad("$path: ждали $want, а $got")
             }
         }
     }
