@@ -1,5 +1,5 @@
 class_name BarrierBreach
-extends RefCounted
+extends BreachMiniGame
 ## Вскрытие барьера Soft ICE на сервере узла (docs/gamedesign/ice.md §5, levels.md §4.5). Два пути, оба — от клетки, соседней с блоком барьера:
 ##  • «charge» — мини-игра заряда в режиме движка for_barrier (цепочка 3/4/5 кодов по тиру узла, сетка 5×5, ловушек нет, буфер = цепочка + 2); тапы и отмена — те же bk_tap и
 ##    bk_cancel; успех — барьер открыт тихо (`open_barrier(.., "charge")`), неудача и время — барьер закрыт, последствий нет;
@@ -17,39 +17,18 @@ const HOW_FORCE := "force"
 
 
 class Attempt:
-	extends RefCounted
-	var session := ""
+	extends BreachMiniGame.BaseAttempt
 	var barrier := ""
 	var how := HOW_CHARGE
-	var run: BreachRun
 	var ticks_left := 0
-	var sent_left := -1
-	var ending := false
 
 
-var node: GrayNode
-var _by_session: Dictionary = {}   # сессия -> Attempt
-var _rng := RandomNumberGenerator.new()
-## Сколько попыток закончено и сколько из них открыли барьер — для тестов и журнала.
-var finished_count := 0
+## Сколько из закончённых попыток (finished_count — в базе) открыли барьер — для тестов и журнала.
 var opened_count := 0
 
 
-func _init(owner_node: GrayNode) -> void:
-	node = owner_node
-	_rng.randomize()
-
-
-func has_attempt(session: String) -> bool:
-	return _by_session.has(session)
-
-
-func attempt_of(session: String) -> Attempt:
-	return _by_session.get(session)
-
-
-func clear_session(session: String) -> void:
-	_by_session.erase(session)
+func _mode() -> String:
+	return MODE
 
 
 ## Проверка просьбы вскрыть барьер: {} — можно, иначе {reason}.
@@ -105,46 +84,8 @@ func request_start(session: String, barrier_id: String, how: String) -> void:
 	node.event.emit({"kind": "barrier_start", "session": session, "barrier": barrier_id, "how": how})
 
 
-## Тап клиента (только «charge»): принятый — ответ ok (и matched), отклонённый — ok=false.
-func request_tap(session: String, cell: Array) -> void:
-	var att: Attempt = _by_session.get(session)
-	if att == null or att.ending or att.run == null or cell.size() != 2:
-		return
-	var c := Vector2i(int(cell[0]), int(cell[1]))
-	var r := att.run.tap(c)
-	var msg := {"kind": WorldMsg.EV_BK_TICK, "mode": MODE, "cell": [c.x, c.y], "ok": bool(r["ok"]), "left": att.run.seconds_left}
-	if r["ok"]:
-		msg["trap"] = false
-		msg["matched"] = att.run.attempt.matched_daemon_ids()
-	node.net.send_to(session, WorldMsg.encode_fields(WorldMsg.EVENT, msg))
-	# Цепочка собрана — барьер готов, добивать буфер незачем.
-	if r["ok"] and not r["finished"] and (msg["matched"] as Array).size() == att.run.attempt.daemons.size():
-		att.run.resolve()
-		r["finished"] = true
-	if r["finished"]:
-		_finish(att)
-
-
-## «ОТМЕНА» мини-игры или отпущенный курок силового вскрытия.
-func request_cancel(session: String) -> void:
-	end_early(session, "cancel")
-
-
-## Шаг времени: таймер мини-игры «charge», раз в секунду — `bk_tick` без клетки; время вышло — итог (барьер закрыт).
-func tick(delta: float) -> void:
-	if _by_session.is_empty():
-		return
-	for session in _by_session.keys():
-		var att: Attempt = _by_session[session]
-		if att.ending or att.run == null:
-			continue
-		att.run.advance(delta)
-		if att.run.seconds_left != att.sent_left:
-			att.sent_left = att.run.seconds_left
-			node.net.send_to(session, WorldMsg.encode_fields(WorldMsg.EVENT, {"kind": WorldMsg.EV_BK_TICK, "mode": MODE, "left": att.run.seconds_left}), false)
-		if att.run.is_finished():
-			_finish(att)
-
+## Тап (только «charge»; у силового вскрытия run == null — база его пропускает), «ОТМЕНА» мини-игры или отпущенный курок силового вскрытия (request_cancel),
+## шаг времени «charge» (время вышло — барьер закрыт) и ранний уход (барьер закрыт, последствий нет) — в BreachMiniGame.
 
 ## Такт узла (после применения ходов): удержание силового вскрытия засчитывается, если игрок не прыгал (прыжок бросает попытку раньше).
 func on_node_tick() -> void:
@@ -156,13 +97,6 @@ func on_node_tick() -> void:
 		node.net.send_to(session, WorldMsg.encode_fields(WorldMsg.EVENT, {"kind": WorldMsg.EV_BK_TICK, "mode": MODE, "left_ticks": maxi(att.ticks_left, 0)}))
 		if att.ticks_left <= 0:
 			_finish(att, "", true)
-
-
-## Попытку бросают (телепорт, выброс, обрыв, переход, «ОТМЕНА», отпущенный курок): барьер закрыт, последствий нет.
-func end_early(session: String, reason: String) -> void:
-	var att: Attempt = _by_session.get(session)
-	if att != null and not att.ending:
-		_finish(att, reason)
 
 
 func _finish(att: Attempt, early: String = "", forced_done: bool = false) -> void:
@@ -190,8 +124,3 @@ func _finish(att: Attempt, early: String = "", forced_done: bool = false) -> voi
 	node.net.send_to(att.session, WorldMsg.encode_fields(WorldMsg.EVENT, end))
 	node.event.emit({"kind": "barrier_end", "session": att.session, "barrier": att.barrier, "how": att.how, "outcome": outcome, "opened": opened, "early": early})
 
-
-func _send_no(session: String, deny: Dictionary) -> void:
-	var msg := {"kind": WorldMsg.EV_BK_NO, "mode": MODE}
-	msg.merge(deny)
-	node.net.send_to(session, WorldMsg.encode_fields(WorldMsg.EVENT, msg))

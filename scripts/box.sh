@@ -42,7 +42,7 @@ case $cmd in
 
   sync)
     REF=${1:-main}
-    if [ "${SSH[0]}" = onbox ] && [ "$ROOT" = "$HOME/box/repo" ]; then
+    if [ "$(hostname -s)" = "$DEVBOX_HOST" ] && [ "$ROOT" = "$HOME/box/repo" ]; then
       echo "sync: из самого клона нельзя — он переписал бы скрипт на ходу; с Mac: scripts/box.sh sync [ветка]"; exit 1
     fi
     URL=$(git -C "$ROOT" remote get-url origin 2>/dev/null) || { echo "sync: у этой копии нет origin"; exit 1; }

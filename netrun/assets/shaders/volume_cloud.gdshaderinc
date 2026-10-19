@@ -10,7 +10,7 @@
 // Файл раньше назывался volume_dust.gdshaderinc (пыль на solid_dark удалена в B1).
 
 uniform sampler2D glitch_tex : filter_linear_mipmap, repeat_disable;
-uniform vec2 glitch_cells = vec2(8.0, 4.0);                         // столбцов и строк атласа
+const vec2 glitch_cells = vec2(8.0, 4.0);                         // столбцов и строк атласа
 uniform float dust : hint_range(0.0, 3.0) = 0.0;                      // яркость частиц облака (ручка cloud)
 uniform float dust_cell : hint_range(0.01, 0.2) = 0.018;              // ширина ячейки, м (высота вдвое больше)
 uniform float dust_density : hint_range(0.0, 1.0) = 0.35;             // доля ячеек, в которых есть частица, на ровной грани вблизи
@@ -27,9 +27,9 @@ uniform vec4 dust_color : source_color = vec4(0.176, 0.463, 0.553, 1.0);  // с�
 uniform vec4 dust_hot : source_color = vec4(0.62, 0.92, 1.0, 1.0);        // редкие яркие блоки (рывок): белёсый акцент
 
 uniform float dust_patch : hint_range(0.0, 1.0) = 0.65;               // насколько плотность пятнами: 0 — ровно, 1 — большие тёмные проплешины и сгущения (как в референсе: свет лежит пятнами)
-uniform float dust_patch_scale : hint_range(0.05, 3.0) = 0.35;         // пятен на метр
-uniform float dust_cover_avg : hint_range(0.0, 1.0) = 0.3;      // средняя доля покрытия кадра спрайта (по атласу ≈ 0,2–0,35)
-uniform float dust_edge_gain : hint_range(0.0, 4.0) = 1.4;      // насколько вес ребра поднимает плотность (ребро = скопление частиц)
+const float dust_patch_scale = 0.35;         // пятен на метр
+const float dust_cover_avg = 0.3;      // средняя доля покрытия кадра спрайта (по атласу ≈ 0,2–0,35)
+const float dust_edge_gain = 1.4;      // насколько вес ребра поднимает плотность (ребро = скопление частиц)
 
 float cloud_hash(vec2 p) {  // хэш без sin: три fract/умножения
 	vec3 p3 = fract(vec3(p.xyx) * 0.1031);

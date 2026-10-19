@@ -1,5 +1,5 @@
 class_name DecryptBreach
-extends RefCounted
+extends BreachMiniGame
 ## Расшифровка зашифрованного шарда на месте (К7, docs/netrun-deck-design.md §3.1, контракт Моста — docs/netrun-bridge-protocol.md, 6.8): мини-игра на запястье
 ## в режиме движка for_decrypt (цепочка шифр-замка 3/4/5 по тиру шарда, сетка и таймер по тиру, буфер = цепочка + 2, ловушек нет — как на телефоне). Доступна, если
 ## среди рабочих демонов есть DECRYPT тира не ниже тира шарда (DeckDecrypt). Попытка сессионная, как у ChargeBreach: мир идёт, телепорт, выброс и «ОТМЕНА» её бросают
@@ -18,41 +18,20 @@ const VERSION_ATTEMPTS := 3
 const RETRY_SEC := 0.6
 
 class Attempt:
-	extends RefCounted
-	var session := ""
+	extends BreachMiniGame.BaseAttempt
 	var item := ""
 	var title := ""
 	var tier := 1
-	var run: BreachRun
-	var sent_left := -1
-	var ending := false
 
 
-var node: GrayNode
-var _by_session: Dictionary = {}   # сессия -> Attempt (до конца обращения к Мосту)
-var _rng := RandomNumberGenerator.new()
 ## Пауза между повторами при обрыве связи с Мостом, с (тест ставит поменьше).
 var retry_sec := RETRY_SEC
-## Сколько попыток закончено и сколько из них расшифровали шард — для тестов и журнала.
-var finished_count := 0
+## Сколько из закончённых попыток (finished_count — в базе; попытка живёт до конца обращения к Мосту) расшифровали шард — для тестов и журнала.
 var decrypted_count := 0
 
 
-func _init(owner_node: GrayNode) -> void:
-	node = owner_node
-	_rng.randomize()
-
-
-func has_attempt(session: String) -> bool:
-	return _by_session.has(session)
-
-
-func attempt_of(session: String) -> Attempt:
-	return _by_session.get(session)
-
-
-func clear_session(session: String) -> void:
-	_by_session.erase(session)
+func _mode() -> String:
+	return MODE
 
 
 ## Рабочие демоны сессии как строки {id, effect, tier}: те же, что показывает дека (ds.deck).
@@ -121,50 +100,8 @@ func request_start(session: String, item: String) -> void:
 	node.event.emit({"kind": "decrypt_start", "session": session, "item": item, "tier": tier})
 
 
-func request_tap(session: String, cell: Array) -> void:
-	var att: Attempt = _by_session.get(session)
-	if att == null or att.ending or cell.size() != 2:
-		return
-	var c := Vector2i(int(cell[0]), int(cell[1]))
-	var r := att.run.tap(c)
-	var msg := {"kind": WorldMsg.EV_BK_TICK, "mode": MODE, "cell": [c.x, c.y], "ok": bool(r["ok"]), "left": att.run.seconds_left}
-	if r["ok"]:
-		msg["trap"] = false
-		msg["matched"] = att.run.attempt.matched_daemon_ids()
-	node.net.send_to(session, WorldMsg.encode_fields(WorldMsg.EVENT, msg))
-	# Цепочка замка собрана — добивать буфер незачем.
-	if r["ok"] and not r["finished"] and (msg["matched"] as Array).size() == att.run.attempt.daemons.size():
-		att.run.resolve()
-		r["finished"] = true
-	if r["finished"]:
-		_finish(att)
-
-
-func request_cancel(session: String) -> void:
-	end_early(session, "cancel")
-
-
-func tick(delta: float) -> void:
-	if _by_session.is_empty():
-		return
-	for session in _by_session.keys():
-		var att: Attempt = _by_session[session]
-		if att.ending:
-			continue
-		att.run.advance(delta)
-		if att.run.seconds_left != att.sent_left:
-			att.sent_left = att.run.seconds_left
-			node.net.send_to(session, WorldMsg.encode_fields(WorldMsg.EVENT, {"kind": WorldMsg.EV_BK_TICK, "mode": MODE, "left": att.run.seconds_left}), false)
-		if att.run.is_finished():
-			_finish(att)
-
-
-## Попытку бросают (телепорт, выброс, обрыв, переход, «ОТМЕНА»): шард остаётся зашифрованным, последствий нет. Уже ушедший в Мост запрос не отзывается.
-func end_early(session: String, reason: String) -> void:
-	var att: Attempt = _by_session.get(session)
-	if att != null and not att.ending:
-		_finish(att, reason)
-
+## Тап (цепочка замка собрана — добивать буфер незачем), отмена, шаг времени и ранний уход — в BreachMiniGame. Ранний уход: шард остаётся зашифрованным,
+## последствий нет; уже ушедший в Мост запрос не отзывается.
 
 ## Итог мини-игры. Успех без досрочного ухода идёт в Мост (await внутри; вызывающий не ждёт).
 func _finish(att: Attempt, early: String = "") -> void:
@@ -261,8 +198,3 @@ static func error_for(code: String) -> String:
 			return "busy"
 	return "refused"
 
-
-func _send_no(session: String, deny: Dictionary) -> void:
-	var msg := {"kind": WorldMsg.EV_BK_NO, "mode": MODE}
-	msg.merge(deny)
-	node.net.send_to(session, WorldMsg.encode_fields(WorldMsg.EVENT, msg))
