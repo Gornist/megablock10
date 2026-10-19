@@ -75,7 +75,7 @@ var daemons := DaemonService.new()
 ## Настройки ICE и trace (подбираются на этапе 2); пусто — значения по умолчанию.
 var ice_settings: Dictionary = {}
 var trace_settings: Dictionary = {}
-## Поверх ice_settings — только для Black ICE (hunt_speed, hunt_level, дальность взгляда…).
+## Поверх ice_settings — только для Black ICE логова (дальность взгляда sight_range, tick…).
 var black_ice_settings: Dictionary = {}
 ## Ожоги Black ICE за забег: сессия → число. Один словарь на весь мир (GraphWorld выдаёт его всем узлам): ожог не лечится и не сбрасывается
 ## переходом в другой узел (ice.md §6.1). Отдельный узел без мира — свой словарь.
@@ -188,16 +188,16 @@ var sensors_armed: bool:
 	set(v):
 		alarm_state.sensors_armed = v
 
-## Тактовое время узла (режим realtime удалён, аудит 17.10): часы тактов, мозги Soft ICE на клетках, виртуальные часы Black ICE.
+## Тактовое время узла (режим realtime удалён, аудит 17.10): часы тактов, мозги Soft ICE на клетках, Black ICE логова.
 var tick_clock: TickClock
 var _tick_ices: Dictionary = {}      # IceNode -> TickIce (только Soft ICE тактового режима)
 var devices: LayoutDevices = LayoutDevices.new(self)   # Маяки, Датчики, Барьеры раскладки (ice.md §5): состояние и правила — в layout_devices.gd
-var _black_brain: TickBlackBrain     # Black ICE по тактам (раскладка с логовом, тактовый режим); null — прежний IceBrain
+var _black_brain: TickBlackBrain     # Black ICE по тактам (раскладка с логовом); null — в узле нет Black ICE
+var _no_lair_warned := false         # предупреждение «NIGHTMARE без логова» уже было
 var _black_log: Dictionary = {}      # сессия → журнал Black ICE на момент флэтлайна (уйдёт в session.data.world.black_log)
 var _intents: Dictionary = {}        # IceNode -> TickIce.intent() после последнего такта (рассылается 10 раз/с без пересчёта)
 var _entered_tick: Dictionary = {}   # сессия -> номер такта узла, когда она вошла (скрыта первые entry_hidden_ticks тактов)
 var _grace_spent: Dictionary = {}    # сессия -> true: ходила после входа, грейс прибытия (arrival_grace_ticks) кончился досрочно
-var _black_vt := 0.0                 # виртуальное время Black ICE: за такт оно идёт на black_tick_sec
 
 ## Тактовый режим: строка о такте в журнал сервера (то же печатается в stdout), как ice_logged.
 signal tick_logged(line: String)
@@ -352,32 +352,23 @@ func _live_sessions() -> Array:
 	return out
 
 
-## Есть ли в узле Black ICE (тир NIGHTMARE или добавлен тестом).
+## Есть ли в узле Black ICE (раскладка с логовом и тир NIGHTMARE; Black ICE живёт только в логове).
 func has_black_ice() -> bool:
-	for ice in _ices:
-		if ice.brain != null and ice.brain.is_black():
-			return true
-	return false
+	return _black_brain != null
 
 
-## Поселить Black ICE узла (NodeLayout.BLACK_ICE); повторный вызов ничего не добавляет.
+## Поселить Black ICE узла в логове раскладки; повторный вызов ничего не добавляет. Раскладка без логова Black ICE не селит
+## (режима «бродит по маршруту» нет, решение владельца 19.10): узел NIGHTMARE без логова — предупреждение и только Soft ICE.
 func enable_black_ice() -> void:
 	if has_black_ice():
 		return
-	if not layout.lair.is_empty():
-		# Логово раскладки: Black ICE спит в нём и живёт по тактам (TickBlack), а не бродит по маршруту.
-		_add_ice(str(layout.lair["id"]), [NodeGrid.center(layout.lair["home"])], true, [], true)
+	if layout.lair.is_empty():
+		if not _no_lair_warned:
+			_no_lair_warned = true
+			push_warning("[node] %s: NIGHTMARE без логова: Black ICE не будет" % node_id)
 		return
-	for d in NodeLayout.BLACK_ICE:
-		_add_ice(d["id"], d["waypoints"], true)
-
-
-## Для тестов: убрать Black ICE (узел без него).
-func queue_free_black_for_test() -> void:
-	for ice in _ices.duplicate():
-		if ice.brain != null and ice.brain.is_black():
-			_ices.erase(ice)
-			ice.queue_free()
+	# Логово раскладки: Black ICE спит в нём и живёт по тактам (TickBlack).
+	_add_ice(str(layout.lair["id"]), [NodeGrid.center(layout.lair["home"])], [], true)
 
 
 ## Страж раскладки (тактовый режим): sentry = {id, route: [{cell, wait, look}]} — маршрут как есть, без пересчёта точек в клетки.
@@ -386,10 +377,11 @@ func _add_layout_sentry(sentry: Dictionary) -> void:
 	var wps: Array = []
 	for pt: Dictionary in route:
 		wps.append(NodeGrid.center(pt["cell"]))
-	_add_ice(str(sentry["id"]), wps, false, route)
+	_add_ice(str(sentry["id"]), wps, route)
 
 
-func _add_ice(id: String, waypoints: Array, black: bool = false, route: Array = [], in_lair: bool = false) -> void:
+## Soft ICE (Страж по тактам) или, при in_lair, Black ICE логова (TickBlackBrain вместо IceBrain).
+func _add_ice(id: String, waypoints: Array, route: Array = [], in_lair: bool = false) -> void:
 	var wps: Array[Vector3] = []
 	for w in waypoints:
 		wps.append(w)
@@ -399,7 +391,7 @@ func _add_ice(id: String, waypoints: Array, black: bool = false, route: Array = 
 	ice.time_source = now
 	var settings := ice_settings.duplicate(true)
 	settings.merge(node_def.get("ice_settings", {}), true)  # узел может смягчить ICE (учебный)
-	if black:
+	if in_lair:
 		settings.merge(black_ice_settings, true)
 		settings["black"] = true
 	ice.setup(settings, wps, ice_grid)
@@ -417,7 +409,7 @@ func _add_ice(id: String, waypoints: Array, black: bool = false, route: Array = 
 		_black_brain = TickBlackBrain.new(tb, settings)
 		_black_brain.ejected.connect(func(s: String, r: String) -> void: ice.ejected.emit(s, r))
 		ice.brain = _black_brain
-	if not black:
+	if not in_lair:
 		var ti := TickIce.new(_tick_ice_settings(settings), route if not route.is_empty() else TickIce.route_from_points(wps), ice_grid)
 		_tick_ices[ice] = ti
 		ice.position = NodeGrid.center(ti.cell())
@@ -499,8 +491,6 @@ func recover(docs: Array) -> void:
 					lockdown_until = int(data.get("lockdown_until", 0))
 					if data.get("world") is Dictionary:
 						saved_world = data["world"]
-					if node_def.is_empty() and str(data.get("tier", "")) == TIER_BLACK:
-						enable_black_ice()  # у узла графа тир задаёт graph.json
 			BridgeApi.T_SESSION:
 				if data.get("state") == "active" and _session_location(data) == node_id:
 					var w: Variant = data.get("world")
@@ -1005,7 +995,7 @@ func _tick_step(meters: Dictionary) -> void:
 		_run_tick(live, meters, _now - prev)
 
 
-## Один такт узла: ходы уже применены; ICE делают шаг, считаются видимость, trace, события; Black ICE «думает» black_tick_sec.
+## Один такт узла: ходы уже применены; ICE делают шаг, считаются видимость, trace, события; Black ICE логова делает свой такт.
 func _run_tick(live: Array, meters: Dictionary, dt_sec: float) -> void:
 	var n := tick_clock.tick_no
 	var line := "[tick] n=%d moves=%d by=%s" % [n, tick_clock.last_moves, tick_clock.last_by]
@@ -1016,7 +1006,6 @@ func _run_tick(live: Array, meters: Dictionary, dt_sec: float) -> void:
 	var pos := {}
 	var hidden := {}
 	var immune := {}     # неуязвимые: грейс прибытия (скрытые тоже — сразу после скрытых тактов он продолжается)
-	var seen_pos := {}   # те, кого видно ICE (не скрыты): для Black ICE
 	var hide_ticks := int(settings.get("entry_hidden_ticks", 2))
 	for session in live:
 		var avatar := net.get_avatar(session)
@@ -1027,8 +1016,6 @@ func _run_tick(live: Array, meters: Dictionary, dt_sec: float) -> void:
 		pos[session] = avatar.position
 		hidden[session] = h
 		immune[session] = _arrival_immune(session, n)
-		if not h:
-			seen_pos[session] = avatar.position
 	var captured := {}   # сессия -> ICE, который её взял
 	for ice: IceNode in _tick_ices:
 		var ti: TickIce = _tick_ices[ice]
@@ -1059,7 +1046,6 @@ func _run_tick(live: Array, meters: Dictionary, dt_sec: float) -> void:
 		if net.has_avatar(session):
 			(captured[session] as IceNode).ejected.emit(session, "caught")
 	_step_tick_black(pos, hidden, immune, meters)
-	_step_black(seen_pos, meters)
 	for s: Variant in tick_clock.last_moved:
 		_grace_spent[s] = true   # ходила: грейс кончится со следующего такта (в этом ICE уже отходил по правилу)
 	# Следующий такт: кто будет неуязвим (по позиции сейчас) — по ним intent() строит шаг с обходом, стрелка не врёт.
@@ -1070,26 +1056,6 @@ func _run_tick(live: Array, meters: Dictionary, dt_sec: float) -> void:
 	for ice: IceNode in _tick_ices:
 		(_tick_ices[ice] as TickIce).expect_immune(next_immune)
 		_intents[ice] = (_tick_ices[ice] as TickIce).intent()
-
-
-## Black ICE в тактовом режиме — прежний IceBrain: за такт он «думает» black_tick_sec виртуального времени (по 0,1 с, как в реальном времени).
-func _step_black(seen_pos: Dictionary, meters: Dictionary) -> void:
-	var sub := 0.1
-	var steps := maxi(roundi(float(settings.get("black_tick_sec", 1.0)) / sub), 1)
-	for ice in _ices:
-		if _tick_ices.has(ice) or ice.brain == null or not ice.brain.is_black():
-			continue
-		var targets := seen_pos.duplicate()
-		ice.targets = targets
-		ice.brain.rest()   # первый подшаг dt = 0: за такт ровно steps подшагов по sub
-		for i in steps + 1:
-			if i > 0:
-				_black_vt += sub
-			ice.brain.step(_black_vt, targets, meters)
-			for s in targets.keys():
-				if not net.has_avatar(s):
-					targets.erase(s)
-		ice.position = ice.brain.position
 
 
 ## Black ICE логова: один такт TickBlack. Скрытые (Призрак, входные такты) — пинг мимо; пробуждение, пинги, захваты — в журнал узла;
@@ -1105,7 +1071,11 @@ func _step_tick_black(pos: Dictionary, hidden: Dictionary, immune: Dictionary, m
 			traces[s] = (meters[s] as TraceMeter).value()
 	var flat := ""
 	var ctx := {"targets": targets, "hidden": hidden, "immune": immune, "traces": traces, "alarm_level": alarm_level}
-	for ev: Dictionary in _black_brain.tick_step(ctx):
+	var events := _black_brain.tick_step(ctx)
+	for ice in _ices:
+		if ice.brain == _black_brain:
+			ice.position = _black_brain.position   # рассылка состояния («p») берёт позицию IceNode
+	for ev: Dictionary in events:
 		var kind := str(ev["kind"])
 		print("[black] %s %s" % [kind, str(ev)])
 		if kind == "flatline":

@@ -25,10 +25,8 @@ func _init(owner_node: GrayNode) -> void:
 ## Охота Black ICE → флаг «под охотой» у NetServer (аварийный выход сожжёт деку). Каждый тик: выход не ждёт 0,1 с.
 func _update_hunts() -> void:
 	for session in _node._live_sessions():
-		var is_hunted_now := false
-		for ice in _node._ices:
-			if ice.brain != null and ice.brain.is_black() and ice.brain.is_hunting(session):
-				is_hunted_now = true
+		var black := _node.black_ice()   # охотится только Black ICE логова: охота общая, не за конкретной сессией
+		var is_hunted_now := black != null and black.is_hunting()
 		if is_hunted_now != bool(hunted.get(session, false)):
 			hunted[session] = is_hunted_now
 			_node.net.set_under_hunt(session, is_hunted_now)

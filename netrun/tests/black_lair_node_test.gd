@@ -73,6 +73,24 @@ func test_логово_без_четырёх_блоков_L_отвергаетс
 	assert_str(LayoutData.parse(d).error).is_not_empty()
 
 
+## Black ICE без логова не бывает (решение владельца 19.10): `black` без `cell` (старый вариант с маршрутом) раскладка отвергает.
+func test_black_без_cell_отвергается_старого_маршрута_нет() -> void:
+	var d := {"name": "t", "cells": ["V......V", "........", "........", "...LL...", "...LL...", "........", "1..S.EE2", "b....EE3"],
+		"vaults": [], "ice": [], "black": {"id": "b1", "route": [{"cell1": [10, 8]}, {"cell1": [14, 8]}]}}
+	assert_str(LayoutData.parse(d).error).contains("cell")
+
+
+## Узел NIGHTMARE с раскладкой без логова (legacy): Black ICE не селится, узел не падает (предупреждение в журнале — «NIGHTMARE без логова»).
+func test_nightmare_без_логова_не_селит_black_ice() -> void:
+	var gn := GrayNode.new()
+	auto_free(gn)
+	assert_bool(gn.layout.lair.is_empty()).is_true()
+	gn.enable_black_ice()
+	gn.enable_black_ice()
+	assert_bool(gn.has_black_ice()).is_false()
+	assert_object(gn.black_ice()).is_null()
+
+
 func test_охота_закрывает_порталы_ожоги_общие_и_третий_флэтлайн() -> void:
 	var node := _world.node_of("x_core")
 	var ejected: Array = []

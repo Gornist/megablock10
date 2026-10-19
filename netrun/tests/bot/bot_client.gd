@@ -2,7 +2,7 @@ class_name BotClient
 extends Node
 ## Бот: headless-клиент серого узла без экрана и без сцены. Тот же NetClient, что у игрока, свой «ход» по комнате.
 ## Сценарии: GHOST_RUN — применить GHOST, дойти до шарда, взять, дойти до выхода, выйти чисто;
-## EXPOSED_RUN — то же без GHOST (ICE замечает, выбрасывает). BLACK_RUN — идёт к патрулю Black ICE и ждёт: result = flatline (P4). LOITER — ходит кругами у входа, не заканчивается (нагрузка, P1). Итог — result и сигнал finished.
+## EXPOSED_RUN — то же без GHOST (ICE замечает, выбрасывает). LOITER — ходит кругами у входа, не заканчивается (нагрузка, P1). Итог — result и сигнал finished.
 ## С reconnect = true бот переживает перезапуск сервера мира (M5): связь пропала без причины — повторяет подключение с тем же
 ## токеном, начинает путь с точки входа и продолжает сценарий (шард уже взят — идёт к выходу). Из командной строки —
 ## `godot --headless --path netrun -- --bot=ghost_run --host=… --port=… --token=t03:… [--bot-reconnect]` (main.gd, run_bot).
@@ -12,14 +12,13 @@ signal finished(result: String)
 ## Учебный узел (W2) — GRAPH_RUN с read_signs и use_ghost: бот обходит таблички, применяет демона, берёт шард-заглушку, выходит.
 ## GRAPH_RUN (W1): идёт по графу узлов по маршруту `route` (id узлов, в которые надо пройти порталами), в последнем берёт шард
 ## и выходит чисто там же; `use_ghost` — сначала GHOST. Видит узел так, как его описал сервер (событие node): порталы и шарды.
-enum Scenario { GHOST_RUN, EXPOSED_RUN, LOITER, BLACK_RUN, GRAPH_RUN }
+enum Scenario { GHOST_RUN, EXPOSED_RUN, LOITER, GRAPH_RUN }
 
 ## Бот двигается так же, как игрок в VR: прыжками-телепортами (не дальше RigMath.TELEPORT_RANGE, пауза — перезарядка, цель — центр клетки), не ходьбой.
 const HOP_PAUSE := RigMath.TELEPORT_COOLDOWN + 0.05  # с между прыжками (сервер пускает чаще, но бот ходит по правилам игрока)
 const LOITER_MAX_ARC := 0.8  # рад: дуга за один прыжок по кругу (хорда не длиннее 0,8 радиуса)
 const SEND_PERIOD := 0.05
 const ARRIVE := 1.0
-const BLACK_SPOT := Vector3(0, 0, -9)  # в 3,6 м от линии патруля Black ICE (NodeLayout.BLACK_ICE, z = -6): в зоне его зрения (12 м), патруль заходит в его конус
 const SIGN_REACH := 2.0    # на таком расстоянии от таблички она прочитана
 const GRAB_FROM := 1.5     # на таком расстоянии от шарда просим взять
 const GRAB_FROM_VAULT_CELLS := 2.1  # то же у раскладки, где хранилище занимает клетки (ближайший центр свободной клетки — 1,58 м от слота)
@@ -266,8 +265,6 @@ func _resume() -> void:
 func _enter_scenario() -> void:
 	if scenario == Scenario.LOITER:
 		_enter("loiter")
-	elif scenario == Scenario.BLACK_RUN:
-		_enter("to_black")
 	elif scenario == Scenario.GRAPH_RUN:
 		_enter("tut_signs" if read_signs else ("ghost" if use_ghost else "g_wait"))
 	else:
@@ -346,15 +343,6 @@ func _can_hop() -> bool:
 	return true
 
 
-## «Ждать» — ход на свою клетку (тактовый режим): такт наступает по ходам, а не по окну. Не в реальном времени и не в панели.
-func _wait_move() -> void:
-	if _tick_n() < 0 or not _can_hop():
-		return
-	_next_hop_at = _clock + HOP_PAUSE
-	_hop_tick_n = _tick_n()
-	net.request_teleport(position)
-
-
 func _loiter_point(angle: float) -> Vector3:
 	return loiter_center + Vector3(loiter_radius * sin(angle), 0, loiter_radius * (1.0 - cos(angle)) - loiter_radius)
 
@@ -400,11 +388,6 @@ func _process(delta: float) -> void:
 			if _walk_to(_loiter_point(_loiter_angle), delta, 0.05) and _can_hop():
 				_loiter_angle += minf(loiter_omega * HOP_PAUSE, LOITER_MAX_ARC)
 				_hop(_loiter_point(_loiter_angle))
-		"to_black":
-			if _walk_to(BLACK_SPOT, delta, 0.5):
-				_enter("lurk")
-		"lurk":
-			_wait_move()  # стоим на виду у Black ICE (в тактовом режиме — «ждём»: такты идут по ходам); шаг кончается событием «ended» или таймаутом шага
 		"ghost":
 			# Дека из Моста приходит серверу мира асинхронно (список предметов): первый запрос может прийти раньше деки
 			# (not_in_deck) — повторяем раз в секунду, пока ghost не включился.

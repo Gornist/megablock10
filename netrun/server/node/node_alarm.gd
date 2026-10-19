@@ -104,8 +104,6 @@ func apply() -> void:
 	for ice in node._ices:
 		if ice.brain != null:
 			ice.brain.alert_scale = k
-			if ice.brain.is_black():
-				ice.brain.alarm_awake = level >= 3 and node.tier() == NodeGraph.TIER_BLACK   # охота Black ICE со 3-го уровня (NIGHTMARE)
 		if node._tick_ices.has(ice):
 			(node._tick_ices[ice] as TickIce).set_sight_bonus(GrayNode.ALARM_SIGHT_BONUS if level >= 2 else 0.0)   # уровень 2: зрение всех ICE +1 клетка карты
 	node.devices.set_sight_bonus(GrayNode.ALARM_SIGHT_BONUS if level >= 2 else 0.0)   # и Маяков: 5 клеток карты (10 м), на тревоге 2+ — 6 (12 м)

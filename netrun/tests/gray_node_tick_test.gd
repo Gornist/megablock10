@@ -297,21 +297,6 @@ func test_и_один_ход_за_такт_второй_отказ_moved_и_mv()
 	assert_int(_server.teleport_count(a)).is_equal(before + 1)   # в новом такте снова можно
 
 
-func test_black_ice_за_такт_идёт_black_tick_sec_виртуального_времени() -> void:
-	_boot(true)
-	_node.black_ice_settings = {"sight_range": 0.0}   # слеп: патрулирует, не охотится
-	_node.enable_black_ice()
-	var black: IceNode = _node.ices().filter(func(i: IceNode): return i.brain.is_black())[0]
-	await _join("tok_a")
-	await _advance(0.1)
-	var p0 := black.position
-	await _advance(5.0)   # такт по окну
-	assert_int(_tick_no()).is_equal(1)
-	assert_float(p0.distance_to(black.position)).is_equal_approx(1.0, 0.15)   # patrol_speed 1 м/с × black_tick_sec 1 с
-	await _advance(0.3)   # без нового такта Black ICE стоит
-	assert_float(p0.distance_to(black.position)).is_equal_approx(1.0, 0.15)
-
-
 # --- Грейс прибытия (W3): безопасный выход из портала ---
 
 func test_грейс_прибытия_ice_не_наступает_и_не_берёт_пока_игрок_стоит() -> void:

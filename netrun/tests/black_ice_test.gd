@@ -112,36 +112,6 @@ func _bot_in_node_with_trace(value: float) -> void:
 	(_node.session_state(SESSION) as DaemonSession).trace.add_action("door_forced", _node.now(), value / 10.0)
 
 
-func test_black_ice_lives_only_in_nightmare_tier() -> void:
-	_setup()
-	var plain := GrayNode.new()
-	auto_free(plain)
-	assert_bool(plain.has_black_ice()).is_false()
-	assert_bool(_node.has_black_ice()).is_true()
-	# Узел из Моста с tier NIGHTMARE поселяет Black ICE сам.
-	var by_tier := GrayNode.new()
-	by_tier.net = _server
-	by_tier.recover([{"type": "node", "id": "node_07", "ver": 1, "data": {"tier": "NIGHTMARE", "lockdown_until": 0}}])
-	auto_free(by_tier)
-	assert_bool(by_tier.has_black_ice()).is_true()
-	var std := GrayNode.new()
-	std.net = _server
-	std.recover([{"type": "node", "id": "node_07", "ver": 1, "data": {"tier": "STANDARD", "lockdown_until": 0}}])
-	auto_free(std)
-	assert_bool(std.has_black_ice()).is_false()
-
-
-func test_hunt_starts_at_trace_level_and_marks_session_hunted() -> void:
-	_setup({"hunt_speed": 0.2})  # медленный охотник: ловит нескоро
-	await _bot_in_node_with_trace(60.0)
-	assert_bool(await _wait_for(func(): return "hunt" in _kinds())).is_true()
-	var hunt: Dictionary = _events.filter(func(e): return e["kind"] == "hunt")[0]
-	assert_bool(hunt["on"]).is_true()
-	assert_str(hunt["session"]).is_equal(SESSION)
-	var black := _node.ices().filter(func(i: IceNode): return i.brain.is_black())[0] as IceNode
-	assert_bool(black.brain.is_hunting(SESSION)).is_true()
-
-
 func test_state_tells_the_client_when_it_is_hunted() -> void:
 	# клиент по полю hunt закрывает порталы (portal_locked): охота идёт за этим игроком, а не вообще в узле
 	_setup({"hunt_speed": 0.2})
@@ -365,22 +335,10 @@ func test_emergency_exit_without_hunt_keeps_deck() -> void:
 	assert_array(_kinds()).not_contains(["hunt"])
 
 
-## Бот-сценарий «попался Black ICE»: Black ICE видит бота сам (зрение), trace не трогаем.
-func test_bot_caught_by_black_ice_by_sight() -> void:
-	_setup({}, false)
-	_bot.start(_cfg, BotClient.Scenario.BLACK_RUN)
-	assert_bool(await _wait_for(func(): return not _bot.result.is_empty(), 60.0)).is_true()
-	assert_str(_bot.result).is_equal("flatline")
-	assert_bool(await _wait_for(func(): return "finished" in _kinds())).is_true()
-	assert_str(str(_session_data()["outcome"])).is_equal("black_ice")
-	assert_str(_owner(DEAD_DECK)).is_equal("node:" + NODE)
-
-
 ## Узел без Black ICE: trace 100 — выброс Soft ICE, а не флэтлайн.
 func test_trace_100_without_black_ice_is_soft_eject() -> void:
 	_setup()
-	_node.queue_free_black_for_test()
-	assert_bool(_node.has_black_ice()).is_false()
+	assert_bool(_node.has_black_ice()).is_false()   # legacy-раскладка без логова: Black ICE не селится
 	await _bot_in_node_with_trace(100.0)
 	assert_bool(await _wait_for(func(): return "finished" in _kinds())).is_true()
 	assert_array(_kinds()).contains(["ice_eject"])

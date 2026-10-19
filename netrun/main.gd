@@ -47,16 +47,16 @@ func _ready() -> void:
 			solo.start(args)
 
 
-## `--bot=ghost_run|exposed_run|black_run|graph_run` (+ `--bot-route=node_02,node_03`, `--bot-ghost`, `--host=`, `--port=`, `--token=`, `--bot-reconnect`, `--bot-hold=<с после шарда>`, `--bot-daemon=<id GHOST-демона>`, `--exit-after=`): бот проходит узел и выходит
+## `--bot=ghost_run|exposed_run|graph_run` (+ `--bot-route=node_02,node_03`, `--bot-ghost`, `--host=`, `--port=`, `--token=`, `--bot-reconnect`, `--bot-hold=<с после шарда>`, `--bot-daemon=<id GHOST-демона>`, `--exit-after=`): бот проходит узел и выходит
 ## из процесса: код 0 — чистый выход, 1 — любой другой итог. Итог печатается строкой `[bot] итог: <result>`.
 ## Для стенда e2e со взломом: `--bot-give=<ключ телефона>` — отдать взятый шард контакту телефона; `--bot-force-breach` — проба отказа
 ## (просит взлом при «ОСТЫВАЕТ», печатает «[bot] взлом отклонён: <причина>» и выходит без шарда).
 func run_bot(args: PackedStringArray, kind: String) -> void:
 	var bot_script: GDScript = load(BOT_SCRIPT)
 	var sc: Dictionary = bot_script.get_script_constant_map()["Scenario"]
-	var scenarios := {"ghost_run": sc["GHOST_RUN"], "exposed_run": sc["EXPOSED_RUN"], "black_run": sc["BLACK_RUN"], "graph_run": sc["GRAPH_RUN"]}
+	var scenarios := {"ghost_run": sc["GHOST_RUN"], "exposed_run": sc["EXPOSED_RUN"], "graph_run": sc["GRAPH_RUN"]}
 	if not scenarios.has(kind):
-		push_error("[bot] --bot= принимает ghost_run, exposed_run, black_run или graph_run, получено «%s»" % kind)
+		push_error("[bot] --bot= принимает ghost_run, exposed_run или graph_run, получено «%s»" % kind)
 		get_tree().quit(2)
 		return
 	var bot = bot_script.new()  # без типа: класс BotClient в APK очков не входит

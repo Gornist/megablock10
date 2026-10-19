@@ -153,55 +153,6 @@ func _meter_at(value: float) -> TraceMeter:
 	return m
 
 
-func test_black_ice_caught_is_black_caught_not_eject() -> void:
-	var b := _brain({"black": true})
-	_run(b, 0.0, 10.0, func(_t): return {"a": Vector3(0, 0, -2)} if _ejects.is_empty() else {})
-	assert_array(_ejects).is_equal([["a", "black_caught"]])
-
-
-func test_soft_ice_never_hunts() -> void:
-	var b := _brain()
-	_run(b, 0.0, 1.0, func(_t): return {"a": Vector3(0, 0, 10)}, {"a": _meter_at(60.0)})  # trace 60, но цель за спиной
-	assert_int(b.state()).is_equal(S.PATROL)
-	assert_bool(b.is_hunting("a")).is_false()
-
-
-func test_black_ice_hunts_from_trace_level_without_sight() -> void:
-	var b := _brain({"black": true})
-	var meter := _meter_at(55.0)  # уровень TRACE
-	_run(b, 0.0, 0.5, func(_t): return {"a": Vector3(0, 0, 10)}, {"a": meter})  # за спиной: зрение не видит
-	assert_int(b.state()).is_equal(S.HUNT)
-	assert_bool(b.is_hunting("a")).is_true()
-	assert_float(b.position.z).is_greater(0.0)  # пошёл к цели, а не по патрулю (он стоит без маршрута)
-
-
-func test_black_ice_does_not_hunt_below_trace_level() -> void:
-	var b := _brain({"black": true})
-	_run(b, 0.0, 1.0, func(_t): return {"a": Vector3(0, 0, 10)}, {"a": _meter_at(30.0)})
-	assert_int(b.state()).is_equal(S.PATROL)
-
-
-func test_hunt_catches_target_with_black_caught() -> void:
-	var b := _brain({"black": true, "hunt_speed": 5.0})
-	var meter := _meter_at(55.0)
-	_run(b, 0.0, 6.0, func(_t): return {"a": Vector3(0, 0, 8)} if _ejects.is_empty() else {}, {"a": meter})
-	assert_array(_ejects).is_equal([["a", "black_caught"]])
-	assert_int(b.state()).is_equal(S.PATROL)
-
-
-func test_hunt_is_slower_than_walking_player() -> void:
-	var b := _brain({"black": true})  # hunt_speed 2.0 < 2.5 м/с игрока
-	var meter := _meter_at(55.0)
-	var t := 0.0
-	var player := Vector3(0, 0, 10)
-	while t < 8.0:
-		t += 0.1
-		player.z += 2.5 * 0.1  # игрок уходит прочь со скоростью ходьбы
-		b.step(t, {"a": player}, {"a": meter})
-	assert_array(_ejects).is_empty()
-	assert_bool(b.is_hunting("a")).is_true()
-
-
 ## Призрак (волна 1в): сервер узла не кладёт скрытого GHOST'ом игрока в targets — ICE смотрит сквозь него: ни «?», ни подозрения, ни trace.
 ## Тот же игрок в 2 м перед ICE без Призрака подозрение вызывает сразу.
 func test_ghost_player_in_front_of_ice_raises_no_suspicion_and_no_trace() -> void:
@@ -218,17 +169,6 @@ func test_ghost_player_in_front_of_ice_raises_no_suspicion_and_no_trace() -> voi
 	assert_float(b.awareness()).is_equal(0.0)
 	assert_str(b.target()).is_equal("")
 	assert_float(meter.value()).is_less_equal(before)
-
-
-func test_hunt_stops_when_target_is_ghost_or_trace_drops() -> void:
-	var b := _brain({"black": true})
-	var meter := _meter_at(55.0)
-	var t := _run(b, 0.0, 0.5, func(_t): return {"a": Vector3(0, 0, 10)}, {"a": meter})
-	assert_bool(b.is_hunting("a")).is_true()
-	# GHOST: цели нет в targets — охота забыта.
-	_run(b, t, 0.3, func(_t): return {}, {"a": meter})
-	assert_bool(b.is_hunting("a")).is_false()
-	assert_int(b.state()).is_equal(S.PATROL)
 
 
 ## Тревога после «!» (карточка 1б, шаг 2): catch_grace_sec секунд поиска ICE стоит и смотрит, не ловит; потом поиск как раньше.
