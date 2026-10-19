@@ -24,15 +24,20 @@ func _init() -> void:
 	m.shader = SHADER
 	m.render_priority = -128
 	m.set_shader_parameter("dust_tex", dust_texture())
+	m.set_shader_parameter("haze_gain", float(AssetMaterials.knob("backdrop_haze")))
+	m.set_shader_parameter("dust_gain", float(AssetMaterials.knob("backdrop_dust")))
 	material_override = m
+	visible = float(AssetMaterials.knob("backdrop")) > 0.0   # 0 — купола нет (A/B на очках без пересборки)
 	custom_aabb = AABB(Vector3(-1e5, -1e5, -1e5), Vector3(2e5, 2e5, 2e5))   # не отсекается по положению: вершины пересчитываются в вершинном шейдере
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
 ## Цвет пустоты по уровню тревоги (0…4) и доле такта — тот же, что у `AssetMaterials.alarm_background` для Environment.
 func set_alarm(level: int, tick_phase := 0.0) -> void:
+	# Купол светит АДДИТИВНО поверх прозрачного фона вида: спокойный узел — ноль (пустота остаётся чёрной, как до купола), тревога добавляет только красный сдвиг фона.
 	var c := AssetMaterials.alarm_background(level, tick_phase)
-	(material_override as ShaderMaterial).set_shader_parameter("void_color", c)
+	var calm := AssetMaterials.alarm_background(0)
+	(material_override as ShaderMaterial).set_shader_parameter("void_color", Color(maxf(c.r - calm.r, 0.0), maxf(c.g - calm.g, 0.0), maxf(c.b - calm.b, 0.0)))
 
 
 ## Равнопромежуточная текстура пылинок (один раз на процесс): ~DUST_COUNT мягких точек 2–3 текселя, у полюсов шире по x (развёртка растягивает), яркость разная; чёрный фон.
