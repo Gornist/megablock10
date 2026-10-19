@@ -9,9 +9,14 @@ uniform float sky_haze_height : hint_range(0.05, 1.0) = 0.16;          // тол
 uniform float sky_haze_below : hint_range(0.0, 2.0) = 0.0;             // ниже горизонта дымки нет: пол уходит в чёрное
 uniform float sky_haze_gain : hint_range(0.0, 3.0) = 1.0;              // ручка `backdrop_haze`
 
-// d — мировое направление взгляда (единичное).
+// Дымка по высоте y = d.y (−1…1): ноль выше толщины, максимум на горизонте. Без exp/pow: гладкая «колокольная» форма (1 − u²)² на u = |y| / (2·sky_haze_height).
+float sky_haze(float y) {
+	float u = clamp(abs(y) / (2.0 * sky_haze_height), 0.0, 1.0);
+	float k = 1.0 - u * u;
+	return k * k * (y < 0.0 ? sky_haze_below : 0.6);
+}
+
+// Небо в направлении d (мировое, единичное): свет пустоты + дымка.
 vec3 backdrop_sky(vec3 d) {
-	float y = d.y;
-	float haze = exp(-pow(abs(y) / sky_haze_height, 2.0)) * (y < 0.0 ? sky_haze_below : 0.6);
-	return sky_void + sky_haze_color * haze * sky_haze_gain;
+	return sky_void + sky_haze_color * sky_haze(d.y) * sky_haze_gain;
 }

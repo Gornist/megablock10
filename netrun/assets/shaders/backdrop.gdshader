@@ -14,17 +14,18 @@ uniform vec3 sky_dust_color : source_color = vec3(0.45, 0.85, 0.95);
 uniform float sky_dust_gain : hint_range(0.0, 2.0) = 0.5;           // ручка `backdrop_dust`
 
 const float DOME_R = 60.0;
-varying vec3 v_dir;
+varying vec2 v_uv;
+varying float v_haze;
 
+// Развёртка и дымка считаются в вершине (сфера 64×64): в пикселе остаётся одна выборка пылинок, без atan/acos/exp на полноэкранном проходе (на очках купол + свет съедали бюджет 11,1 мс).
 void vertex() {
-	v_dir = VERTEX;
+	v_uv = UV;
+	v_haze = sky_haze(VERTEX.y);
 	POSITION = PROJECTION_MATRIX * vec4(mat3(VIEW_MATRIX) * (MODEL_MATRIX * vec4(VERTEX, 0.0)).xyz * DOME_R, 1.0);   // направление × DOME_R в виде: поворот головы без сдвига
 }
 
 void fragment() {
-	vec3 d = normalize(v_dir);
-	vec2 uv = vec2(atan(d.x, -d.z) / 6.28318 + 0.5, acos(clamp(d.y, -1.0, 1.0)) / 3.14159);
-	float dust = texture(sky_dust_tex, uv).r;
-	ALBEDO = backdrop_sky(d) + sky_dust_color * dust * sky_dust_gain;
+	float dust = texture(sky_dust_tex, v_uv).r;
+	ALBEDO = sky_void + sky_haze_color * v_haze * sky_haze_gain + sky_dust_color * dust * sky_dust_gain;
 	ALPHA = 0.0;
 }

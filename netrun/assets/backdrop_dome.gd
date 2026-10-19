@@ -17,8 +17,8 @@ func _init() -> void:
 	var sphere := SphereMesh.new()
 	sphere.radius = 1.0
 	sphere.height = 2.0
-	sphere.radial_segments = 48
-	sphere.rings = 24
+	sphere.radial_segments = 64
+	sphere.rings = 64   # дымка считается в вершине: кольца плотные у горизонта не нужны — 64 колец ≈ 2,8° (полоса дымки ±9°)
 	mesh = sphere
 	var m := ShaderMaterial.new()
 	m.shader = SHADER
