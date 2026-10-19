@@ -18,6 +18,9 @@ const R_THREAT := 3.0
 const R_PILLAR := 2.0                ## колонна — блок 2×2 м: свет по грани, пятнами рядом с рукой
 const R_CENTER := 4.0
 const PILLAR_SYMBOL := "#"
+## Сколько ближних ко входу колонн получают свет (`[render] pillar_lights`: клиент ставит из конфига при старте, умолчание конфига 4); цикл по
+## источникам стоит в фрагментном шейдере облака, и число источников — цена кадра. Здесь умолчание «без ограничения», кроме общего MAX — тесты.
+static var pillar_max := MAX
 ## Красный свет угрозы ICE (цвет по палитре Blender: «красный — у угрозы ICE/ворот»).
 const THREAT_COLOR := Color(1.0, 0.25, 0.3)
 
@@ -51,8 +54,9 @@ static func build(layout: LayoutData) -> Array:
 			lights.append(_light(NodeGrid.center(route[0]["cell"]), R_THREAT, 1.0, true))
 	if not layout.lair.is_empty():
 		lights.append(_light(NodeGrid.center(layout.lair["home"]), R_THREAT, 1.0, true))
-	for pc: Vector3 in pillar_centers(layout):
-		lights.append(_light(pc, R_PILLAR))
+	var pillars := pillar_centers(layout)
+	for i in mini(pillars.size(), pillar_max):
+		lights.append(_light(pillars[i], R_PILLAR))
 	lights.append(_light(layout.room_center(), R_CENTER))
 	return lights.slice(0, MAX)
 

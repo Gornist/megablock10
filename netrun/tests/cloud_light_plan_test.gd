@@ -128,6 +128,31 @@ func test_переполнение_колонны_вытесняются_пер�
 	assert_array(CloudLightPlan.pillar_centers(ld)).is_equal(pcs)
 
 
+func after_test() -> void:
+	CloudLightPlan.pillar_max = CloudLightPlan.MAX
+
+
+func test_pillar_max_ограничивает_число_колонн_ближние_ко_входу() -> void:
+	var ld := _pillar_layout(["S#1#####", "########", "########", "########", "########", "########", "########", "#######E"])
+	var pcs := CloudLightPlan.pillar_centers(ld)
+	CloudLightPlan.pillar_max = 2
+	var lights := CloudLightPlan.build(ld)
+	assert_bool(_has_light_near(lights, pcs[0])).is_true()
+	assert_bool(_has_light_near(lights, pcs[1])).is_true()
+	assert_bool(_has_light_near(lights, pcs[2])).is_false()
+	assert_bool(_has_light_near(lights, ld.room_center())).is_true()   # места освободились — центр комнаты на месте
+	assert_int(lights.size()).is_equal(3 + 2 + 1)   # вход, выход, портал + 2 колонны + центр
+
+
+func test_pillar_max_ноль_колонн_без_света() -> void:
+	var ld := _pillar_layout(["S#1#####", "########", "########", "########", "########", "########", "########", "#######E"])
+	CloudLightPlan.pillar_max = 0
+	var lights := CloudLightPlan.build(ld)
+	for pc: Vector3 in CloudLightPlan.pillar_centers(ld):
+		assert_bool(_has_light_near(lights, pc)).is_false()
+	assert_int(lights.size()).is_equal(3 + 1)
+
+
 func test_колонны_не_вытесняют_важное_сверху() -> void:
 	var ld := _pillar_layout(["S.1#...E", "........", "........", "........", "........", "........", "........", "........"])
 	for i in 20:
