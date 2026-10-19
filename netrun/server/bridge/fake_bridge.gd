@@ -194,8 +194,12 @@ func _opened_by_other(item: String, session: String) -> bool:
 	return false
 
 
-static func _now_ms() -> int:
-	return int(Time.get_unix_time_from_system() * 1000.0)
+## Тест: если не 0, это «сейчас» фальши (мс Unix) — общие векторы Моста задают время явно (`now_ms`).
+var now_override_ms := 0
+
+
+func _now_ms() -> int:
+	return now_override_ms if now_override_ms > 0 else int(Time.get_unix_time_from_system() * 1000.0)
 
 
 func op_leave_in_node(session: String, node: String, item: String) -> Dictionary:
