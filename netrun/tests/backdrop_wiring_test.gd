@@ -21,11 +21,12 @@ func _void_color() -> Color:
 func test_купол_есть_в_сцене_и_спокойного_цвета() -> void:
 	assert_object(_scene.backdrop).is_instanceof(BackdropDome)
 	assert_bool((_scene.backdrop as Node).is_inside_tree()).is_true()
-	assert_object(_void_color()).is_equal(AssetMaterials.alarm_background(0))
+	assert_object(_void_color()).override_failure_message("спокойный узел: купол ничего не добавляет к чёрному фону").is_equal(BackdropDome.void_for(0))
 
 
 func test_цвет_пустоты_идёт_за_уровнем_тревоги() -> void:
 	_scene.apply_alarm({"alarm": 60.0, "level": 2})
-	assert_object(_void_color()).is_equal(AssetMaterials.alarm_background(2))
+	assert_object(_void_color()).is_equal(BackdropDome.void_for(2))
+	assert_float(_void_color().r).override_failure_message("тревога добавляет красный сдвиг").is_greater(0.0)
 	_scene.apply_alarm({"alarm": 10.0, "level": 0})
-	assert_object(_void_color()).is_equal(AssetMaterials.alarm_background(0))
+	assert_object(_void_color()).is_equal(BackdropDome.void_for(0))
