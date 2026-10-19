@@ -24,30 +24,12 @@
 #   scripts/box.sh journal [N]        — последние N (20) строк журнала действий ~/box/journal.jsonl
 # Перезагрузка devbox, драйверы, пакеты, пароли — только владелец (docs/devbox.md, «Нельзя»).
 set -u
-HOST=devbox
-TS_IP=100.80.115.46
-LAN_IP=192.168.1.141
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-if [ "$(hostname -s 2>/dev/null)" = "$HOST" ]; then
-  # Запущен на самом devbox (из клона ~/box/repo, из ssh-сеанса сессии): ходить по ssh к себе незачем, да и не выйдет —
-  # нет known_hosts («Host key verification failed», 13.10). Те же команды, локально; stdin сохраняется.
-  onbox() { bash -c "$*"; }
-  SSH=(onbox)
-else
-  SSH=(ssh -o ConnectTimeout=8 -o BatchMode=yes "$HOST")
-fi
-
-unreachable() { # ssh не прошёл: отличить «Tailscale лежит» от «машина выключена»
-  local ts=нет lan=нет
-  ping -c1 -t2 "$TS_IP" >/dev/null 2>&1 && ts=есть
-  ping -c1 -t2 "$LAN_IP" >/dev/null 2>&1 && lan=есть
-  echo "devbox: НЕДОСТУПЕН — ssh не отвечает (ping Tailscale $TS_IP: $ts, LAN $LAN_IP: $lan)"
-  if [ "$lan" = есть ] && [ "$ts" = нет ]; then
-    echo "  ! машина включена, Tailscale лежит: владельцу на devbox — sudo systemctl restart tailscaled; если не Running — sudo tailscale up"
-  elif [ "$lan" = нет ] && [ "$ts" = нет ]; then
-    echo "  ! машина выключена или не в сети (LAN и Tailscale молчат) — владельцу"
-  fi
-}
+export DEVBOX_TMO=${DEVBOX_TMO:-8}
+# dssh/unreachable/onbox — общая обвязка (на самом devbox ssh к себе не нужен и не выходит: known_hosts, 13.10)
+# shellcheck source=lib/devbox.sh
+. "$ROOT/scripts/lib/devbox.sh"
+SSH=(dssh)
 
 cmd=${1:-}
 [ $# -gt 0 ] && shift
