@@ -303,3 +303,62 @@ func release_session(session: String) -> DaemonSession:
 	_node._forget_in_ices(session)
 	_node._write_node_state()
 	return ds
+
+
+## Принять сессию с её состоянием: trace и дека те же объекты, что были в прошлом узле (пара к release_session).
+func adopt_session(session: String, ds: DaemonSession) -> void:
+	_node._sessions[session] = ds
+	_node._entered_at[session] = _node._now
+	_node._mark_entered_tick(session)
+	_node._connect_meter(session, ds.trace)
+	print("[gray-node] ", session, " вошёл в ", _node.node_id, " (переход)")
+	_node._push_deck(session)
+	if _node.bridge != null and _node.synced:
+		# Мост читает world.node (где игрок сейчас) и trace_level/effects (сигнал СБ): после перехода пишем их для нового узла.
+		merge_world(session, {"connected": _node.net.peer_of(session) != -1, "trace": int(ds.trace.value()), "node": _node.node_id,
+			"trace_level": ds.trace.level(), "effects": ds.active_effects(_node._now)})
+		_node._write_node_state()
+
+
+## Уровень trace в session.data.world (trace_level — число TraceMeter.Level, trace — значение, effects — активные GHOST/TIMESKEW/BLACKOUT): Мост по нему решает про сигнал СБ.
+## Остальные поля world сохраняются; повтор при version_conflict и обрыве, не вышло окончательно — без записи (уровень не критичен для хода).
+func mark_trace_level(session: String, level: int, value: float, effects: Array) -> void:
+	for attempt in GrayNode.FINISH_ATTEMPTS:
+		@warning_ignore("redundant_await")
+		var g: Dictionary = await _node.bridge.get_doc(BridgeApi.T_SESSION, session)
+		if g.get("ok", false):
+			var cur: Dictionary = g["doc"]
+			var data: Dictionary = (cur.get("data", {}) as Dictionary).duplicate(true)
+			var w: Dictionary = (data.get("world", {}) as Dictionary).duplicate(true) if data.get("world") is Dictionary else {}
+			w["trace_level"] = level
+			w["trace"] = int(value)
+			w["effects"] = effects
+			data["world"] = w
+			@warning_ignore("redundant_await")
+			var r: Dictionary = await _node.bridge.put_doc(BridgeApi.T_SESSION, session, int(cur["ver"]), data)
+			if r.get("ok", false):
+				return
+			g = r
+		if not GrayNode.is_transient(g) and BridgeApi.err_code(g) != "version_conflict":
+			push_warning("[gray-node] trace_level %s: %s" % [session, BridgeApi.err_code(g)])
+			return
+		if not _node.is_inside_tree():
+			return
+
+
+## Слить поля в session.data.world, не трогая остальные (trace_level, effects, finish). Повтор при version_conflict.
+func merge_world(session: String, fields: Dictionary) -> void:
+	for attempt in 3:
+		@warning_ignore("redundant_await")
+		var g: Dictionary = await _node.bridge.get_doc(BridgeApi.T_SESSION, session)
+		if not g.get("ok", false):
+			return
+		var cur: Dictionary = g["doc"]
+		var data: Dictionary = (cur.get("data", {}) as Dictionary).duplicate(true)
+		var w: Dictionary = (data.get("world", {}) as Dictionary).duplicate(true) if data.get("world") is Dictionary else {}
+		w.merge(fields, true)
+		data["world"] = w
+		@warning_ignore("redundant_await")
+		var r: Dictionary = await _node.bridge.put_doc(BridgeApi.T_SESSION, session, int(cur["ver"]), data)
+		if r.get("ok", false) or BridgeApi.err_code(r) != "version_conflict":
+			return
