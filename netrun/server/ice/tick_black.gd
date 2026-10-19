@@ -314,9 +314,13 @@ func _tick_hunt(targets: Dictionary, hidden: Dictionary, immune: Dictionary, tra
 		var c: Vector2i = targets[s]
 		if _cheb(c, _cell) <= int(_s["capture_cells"]):
 			if (hidden.get(s, false) or immune.get(s, false)) and not _forced.has(s):
+				# «Нащупал» новую клетку — попадание (счёт промахов сброшен); та же клетка, что уже засечена, — не попадание: замерший Призрак
+				# не держит охоту вечно (решение Game 19.10, ice.md §6).
+				var fresh := not _has_known or c != _known
 				_known = c
 				_has_known = true
-				_misses = 0
+				if fresh:
+					_misses = 0
 				_log("feel", {"s": s, "c": [c.x, c.y]})
 				events.append({"kind": "feel", "session": s, "cell": c})
 				continue
