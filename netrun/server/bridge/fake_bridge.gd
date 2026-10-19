@@ -168,6 +168,8 @@ func op_take_from_node(session: String, node: String, item: String) -> Dictionar
 			return err("not_found", "сессии нет")
 		if s["data"].get("state") != "active":
 			return err("session_state", "сессия не active", s.duplicate(true))
+		if node != _current_node(s):
+			return err("bad_request", "node не текущий узел сессии")
 		var it := doc(T_ITEM, item)
 		if it.is_empty():
 			return err("not_found", "предмета нет")
@@ -179,6 +181,21 @@ func op_take_from_node(session: String, node: String, item: String) -> Dictionar
 		d["owner"] = "deck:" + session
 		d["taken_at"] = node
 		return ok({"item": _put(T_ITEM, item, d).duplicate(true)}))
+
+
+## Текущий узел сессии (раздел 5): `world.node`, а если его нет — `session.node`.
+static func _current_node(session_doc: Dictionary) -> String:
+	var world: Variant = session_doc["data"].get("world")
+	var wn := str((world as Dictionary).get("node", "")) if world is Dictionary else ""
+	return wn if not wn.is_empty() else str(session_doc["data"].get("node", ""))
+
+
+## Предмет есть в живом `opened` этой сессии (6.6 п.4: открытое этой же сессией второй раз не выбирают).
+func _in_opened(session_data: Dictionary, item: String, now_ms: int) -> bool:
+	for o in session_data.get("opened", []):
+		if str(o.get("item", "")) == item and int(o.get("until", 0)) > now_ms:
+			return true
+	return false
 
 
 ## Предмет есть в живом `session.opened` другой незакрытой сессии (раздел 6.2: `claimed`).
@@ -194,8 +211,12 @@ func _opened_by_other(item: String, session: String) -> bool:
 	return false
 
 
-static func _now_ms() -> int:
-	return int(Time.get_unix_time_from_system() * 1000.0)
+## Тест: если не 0, это «сейчас» фальши (мс Unix) — общие векторы Моста задают время явно (`now_ms`).
+var now_override_ms := 0
+
+
+func _now_ms() -> int:
+	return now_override_ms if now_override_ms > 0 else int(Time.get_unix_time_from_system() * 1000.0)
 
 
 func op_leave_in_node(session: String, node: String, item: String) -> Dictionary:
@@ -260,6 +281,8 @@ func op_give_item(session: String, item: String, ver: int, to_session: String, t
 			return err("not_found", "нет сессии, предмета или получателя")
 		if not to_phone.is_empty() and to_phone == str(s["data"].get("runner", "")):
 			return err("bad_request", "на свой телефон отдавать нельзя")
+		if not (str(it["data"].get("kind", "")) in ["SHARD", "DAEMON"]):
+			return err("bad_request", "отдать можно только SHARD или DAEMON")
 		for x in [s, rs]:
 			if not x.is_empty() and (x["data"].get("state") != "active" or not str((x["data"].get("world", {}) as Dictionary).get("finish", "")).is_empty()):
 				return err("session_state", "сессия не active или в исходе", x.duplicate(true))
@@ -407,6 +430,8 @@ func run_breach(session: String, node: String, req: Dictionary) -> Dictionary:
 		return err("not_found", "сессии нет")
 	if doc(T_NODE, node).is_empty():
 		return err("not_found", "узла нет")
+	if node != _current_node(s):   # узла нет — not_found (выше), узел есть, но не текущий — bad_request
+		return err("bad_request", "node не текущий узел сессии")
 	return _once(breach_rid(session, int(req["n"])), {"op": "breach", "session": session, "node": node, "req": req}, func():
 		return _breach_once(session, node, req))
 
@@ -466,7 +491,8 @@ func _breach_once(session: String, node: String, req: Dictionary) -> Dictionary:
 	var world: Dictionary = sd.get("world", {}) if sd.get("world") is Dictionary else {}
 	var prev: Dictionary = sd.get("breach", {}) if sd.get("breach") is Dictionary else {}
 	var nd := doc(T_NODE, node)
-	if sd.get("state") != "active" or world.has("finish") or n <= int(prev.get("n", 0)) or bool(nd["data"].get("tutorial", false)):
+	var tutorial_node := str(doc("settings", "global").get("data", {}).get("tutorial_node", ""))
+	if sd.get("state") != "active" or world.has("finish") or n <= int(prev.get("n", 0)) or bool(nd["data"].get("tutorial", false)) or node == tutorial_node:
 		return err("session_state", "взлом сейчас невозможен", s.duplicate(true))
 	var now_ms := _now_ms()
 	var runner := _runner_doc(str(sd.get("runner", "")))
@@ -509,7 +535,7 @@ func _breach_once(session: String, node: String, req: Dictionary) -> Dictionary:
 			var found := ""
 			for v in req["vaults"]:
 				var it := doc(T_ITEM, str(v))
-				if it.is_empty() or str(v) in picked or it["data"].get("owner") != "node:" + node or _opened_by_other(str(v), session):
+				if it.is_empty() or str(v) in picked or it["data"].get("owner") != "node:" + node or _opened_by_other(str(v), session) or _in_opened(sd, str(v), now_ms):
 					continue
 				var want := "SHARD" if e["effect"] == "EXTRACT_SHARD" else "DAEMON"
 				var info: Dictionary = it["data"].get("shard" if want == "SHARD" else "daemon", {})
@@ -525,7 +551,8 @@ func _breach_once(session: String, node: String, req: Dictionary) -> Dictionary:
 			var ndata: Dictionary = (nd["data"] as Dictionary).duplicate(true)
 			ndata["eddies"] = stock - eddies
 			_put(T_NODE, node, ndata)
-		cooldown_until = now_ms + FAKE_COOLDOWN_S * 1000
+		var cooldown_s := int(doc("settings", "global").get("data", {}).get("breach_cooldown_s", FAKE_COOLDOWN_S))
+		cooldown_until = now_ms + maxi(cooldown_s, int(req["open_s"])) * 1000
 		_set_cooldown(str(sd.get("runner", "")), panel_vault if panel_vault != "" else node, cooldown_until, now_ms)
 	var live: Array = []
 	for o in sd.get("opened", []):

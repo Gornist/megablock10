@@ -12,6 +12,7 @@
 | `qr.json` | QR контейнера, шарда, RAM-апгрейда, персонажа, сигнала СБ; `rejected` — строки другой версии, которые декодер обязан отвергнуть | приложение (`QrContractTest`); коллектор — `mb10QrCodec.ts`; Мост — `PhoneWire` |
 | `loot-crypto.json` | ключ лута (постоянный и HKDF от секрета игры), блок AES-256-GCM `IV ‖ шифртекст ‖ тег` | приложение (`LootCryptoContractTest`); коллектор — `lootCrypto.ts` |
 | `provision-code.json` | короткий код выдачи персонажа (ввод без камеры): алфавит из 31 знака, длина 6, нормализация ввода (регистр, пробелы, «-»), вид `ABC-DEF` | приложение (`ProvisionCodeContractTest`); коллектор — генерация и `POST /api/provisions/redeem` |
+| `bridge-ops.json` | операции Моста «запрос → ответ + документы после»: `op.take_from_node` (6.2), `op.give_item` (6.7), `run.breach` (6.6: отказы, открытие хранилища, остывание); ожидания выписаны из таблиц протокола `docs/netrun-bridge-protocol.md`, формат чтения — в `_about` файла | приложение — нет; Мост — `BridgeOpsContractTest`; Godot — `netrun/tests/bridge_ops_contract_test.gd` (фальшь `fake_bridge.gd`) |
 
 Правила файлов:
 
