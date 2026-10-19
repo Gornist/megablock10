@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { ensureAuthSchema } from "../lib/auth.js";
+import { generateProvisionCode } from "../lib/provisionCode.js";
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS changes (
@@ -330,6 +331,23 @@ const MIGRATIONS: Migration[] = [
     // Точка ↔ узел (контейнер): узел в мире и есть точка с QR-дисплеем и звуком. NULL — точка без узла (динамик в баре).
     version: 7,
     migrate: (db) => addColumnIfMissing(db, "displays", "node_id", "TEXT"),
+  },
+  {
+    // Короткий код выдачи персонажа (lib/provisionCode.ts): ввод без камеры. Уникален только среди непогашенных (не привязан и не void) —
+    // индекс частичный. Уже выданным, но ещё не применённым кодам проставляем код сейчас: мастер увидит его рядом с их QR.
+    version: 8,
+    migrate: (db) => {
+      addColumnIfMissing(db, "provisions", "short_code", "TEXT");
+      db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_provisions_short_code ON provisions (short_code) WHERE short_code IS NOT NULL AND bound_key IS NULL AND void = 0`);
+      const open = db.prepare(`SELECT id FROM provisions WHERE short_code IS NULL AND bound_key IS NULL AND void = 0`).all() as { id: string }[];
+      const taken = db.prepare(`SELECT 1 FROM provisions WHERE short_code = ? AND bound_key IS NULL AND void = 0`);
+      const assign = db.prepare(`UPDATE provisions SET short_code = ? WHERE id = ?`);
+      for (const { id } of open) {
+        let code = generateProvisionCode();
+        while (taken.get(code)) code = generateProvisionCode();
+        assign.run(code, id);
+      }
+    },
   },
 ];
 

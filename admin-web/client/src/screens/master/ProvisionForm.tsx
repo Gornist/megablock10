@@ -88,7 +88,7 @@ export function ProvisionForm() {
       />
       {showError && <div className="login-error">{showError}</div>}
 
-      {result && <QrPanel result={result} caption={`${result.item.callsign}${result.item.faction ? ` · ${result.item.faction}` : ""} · ${result.item.balance} €$`} />}
+      {result && <QrPanel result={result} caption={`${result.item.callsign}${result.item.faction ? ` · ${result.item.faction}` : ""} · ${result.item.balance} €$`} code={result.item.code} />}
 
       <Panel title={`Выданные коды${data ? ` (${data.items.length})` : ""}`}>
         <AsyncPanel data={data} error={listError} isEmpty={(d) => d.items.length === 0} emptyLabel="кодов пока не выдавали">

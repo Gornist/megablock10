@@ -2,6 +2,7 @@ import type { AttentionItem } from "../../apiTypes.js";
 import { REASON_LABEL_RU } from "../humanize.js";
 import { findUnexplainedJumps, getIntegrityFindings } from "../integrity.js";
 import { provisionConflicts } from "../provisions.js";
+import { redeemLimiter } from "../redeemLimiter.js";
 import { MIN, type AttentionRule } from "./context.js";
 
 /** Проверки целостности (lib/integrity.ts): перекрёстные признаки подделки и зависших переводов. Все — в окне integrityWindowMs. */
@@ -21,6 +22,26 @@ export const provisionConflict: AttentionRule = ({ db, now, t, playerName }) =>
         at: c.at,
       }),
     );
+
+/**
+ * Общий потолок неверных коротких кодов сработал (redeemLimiter.ts): кто-то перебирает коды — или игроки массово путаются, — а ввод
+ * кода заблокирован всем до конца часа. Мастеру: выдать QR по старинке (камерой) и посмотреть, чей это IP в логах.
+ */
+export const redeemFlood: AttentionRule = ({ now }) => {
+  const at = redeemLimiter.globalBlockedAt(now);
+  return at === null
+    ? []
+    : [
+        {
+          id: "provision:redeem_flood",
+          kind: "redeem_flood",
+          severity: "warn",
+          title: "Перебор коротких кодов персонажа",
+          detail: "слишком много неверных кодов за час — ввод кода без камеры закрыт для всех до конца часа; QR камерой работает как раньше",
+          at,
+        },
+      ];
+};
 
 /** Один платёж или предмет получили двое: честное приложение так не делает. */
 export const duplicateReceive: AttentionRule = ({ db, now, t, playerName }) =>

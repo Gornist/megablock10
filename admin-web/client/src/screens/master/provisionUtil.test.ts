@@ -3,7 +3,7 @@ import type { ProvisionItem } from "../../api/types";
 import { provisionStatus, ramLabel } from "./provisionUtil";
 
 const item = (over: Partial<ProvisionItem>): ProvisionItem => ({
-  id: "i", callsign: "A", faction: "", balance: 0, ram: 0, createdAt: 0, createdBy: "M", replacesKey: null, replacesName: null, boundKey: null, boundName: null, boundAt: null, void: false, conflicts: 0, ...over,
+  id: "i", callsign: "A", faction: "", balance: 0, ram: 0, createdAt: 0, createdBy: "M", replacesKey: null, replacesName: null, boundKey: null, boundName: null, boundAt: null, void: false, conflicts: 0, code: null, ...over,
 });
 
 describe("provisionStatus", () => {
