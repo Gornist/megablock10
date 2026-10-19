@@ -32,6 +32,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <!-- Foreground-сервис на всё время сессии персонажа — без него фоновый процесс рано или поздно замораживается, и приём чата/звонков встаёт до открытия приложения заново (presence/MeshForegroundService). -->
+    <!-- На Android 14+ служба идёт как specialUse: у dataSync с Android 15 лимит 6 часов в сутки, потом служба останавливается, а приём чата и звонков
+         должен жить всю игру. На Android 10–13 тип specialUse не определён, там служба остаётся dataSync (лимита нет) — оба типа в манифесте. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- Само CallStyle-уведомление на Android 13+ не покажется без этого — сервис при этом всё равно запустится и будет жить, просто плашка будет не видна игроку. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -77,7 +80,11 @@
         <service
             android:name=".presence.MeshForegroundService"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="dataSync|specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Приём сообщений и звонков по локальной сети игры на время сессии персонажа" />
+        </service>
 
         <receiver
             android:name=".call.CallActionReceiver"
