@@ -1662,48 +1662,13 @@ static func is_transient(resp: Dictionary) -> bool:
 	return BridgeApi.err_code(resp) in ["unavailable", "timeout", "disconnected", "internal"]
 
 
-## Уровень trace в session.data.world (trace_level — число TraceMeter.Level, trace — значение, effects — активные GHOST/TIMESKEW/BLACKOUT): Мост по нему решает про сигнал СБ.
-## Остальные поля world сохраняются; повтор при version_conflict и обрыве, не вышло окончательно — без записи (уровень не критичен для хода).
+## Запись trace_level и слияние полей в session.data.world — в RunOutcome (run_outcome.gd: mark_trace_level, merge_world).
 func _mark_trace_level(session: String, level: int, value: float, effects: Array) -> void:
-	for attempt in FINISH_ATTEMPTS:
-		@warning_ignore("redundant_await")
-		var g: Dictionary = await bridge.get_doc(BridgeApi.T_SESSION, session)
-		if g.get("ok", false):
-			var cur: Dictionary = g["doc"]
-			var data: Dictionary = (cur.get("data", {}) as Dictionary).duplicate(true)
-			var w: Dictionary = (data.get("world", {}) as Dictionary).duplicate(true) if data.get("world") is Dictionary else {}
-			w["trace_level"] = level
-			w["trace"] = int(value)
-			w["effects"] = effects
-			data["world"] = w
-			@warning_ignore("redundant_await")
-			var r: Dictionary = await bridge.put_doc(BridgeApi.T_SESSION, session, int(cur["ver"]), data)
-			if r.get("ok", false):
-				return
-			g = r
-		if not is_transient(g) and BridgeApi.err_code(g) != "version_conflict":
-			push_warning("[gray-node] trace_level %s: %s" % [session, BridgeApi.err_code(g)])
-			return
-		if not is_inside_tree():
-			return
+	await outcome.mark_trace_level(session, level, value, effects)
 
 
-## Слить поля в session.data.world, не трогая остальные (trace_level, effects, finish). Повтор при version_conflict.
 func _merge_world(session: String, fields: Dictionary) -> void:
-	for attempt in 3:
-		@warning_ignore("redundant_await")
-		var g: Dictionary = await bridge.get_doc(BridgeApi.T_SESSION, session)
-		if not g.get("ok", false):
-			return
-		var cur: Dictionary = g["doc"]
-		var data: Dictionary = (cur.get("data", {}) as Dictionary).duplicate(true)
-		var w: Dictionary = (data.get("world", {}) as Dictionary).duplicate(true) if data.get("world") is Dictionary else {}
-		w.merge(fields, true)
-		data["world"] = w
-		@warning_ignore("redundant_await")
-		var r: Dictionary = await bridge.put_doc(BridgeApi.T_SESSION, session, int(cur["ver"]), data)
-		if r.get("ok", false) or BridgeApi.err_code(r) != "version_conflict":
-			return
+	await outcome.merge_world(session, fields)
 
 
 ## Исход забега и запись в Мост (_mark_finish, _finish_in_bridge, ожидание мастера, охота) — в RunOutcome (run_outcome.gd);
@@ -1978,16 +1943,6 @@ func release_session(session: String) -> DaemonSession:
 	return outcome.release_session(session)
 
 
-## Принять сессию с её состоянием: trace и дека те же объекты, что были в прошлом узле.
+## Принять сессию с её состоянием: trace и дека те же объекты, что были в прошлом узле (пара к release_session — в RunOutcome).
 func adopt_session(session: String, ds: DaemonSession) -> void:
-	_sessions[session] = ds
-	_entered_at[session] = _now
-	_mark_entered_tick(session)
-	_connect_meter(session, ds.trace)
-	print("[gray-node] ", session, " вошёл в ", node_id, " (переход)")
-	_push_deck(session)
-	if bridge != null and synced:
-		# Мост читает world.node (где игрок сейчас) и trace_level/effects (сигнал СБ): после перехода пишем их для нового узла.
-		_merge_world(session, {"connected": net.peer_of(session) != -1, "trace": int(ds.trace.value()), "node": node_id,
-			"trace_level": ds.trace.level(), "effects": ds.active_effects(_now)})
-		_write_node_state()
+	outcome.adopt_session(session, ds)
