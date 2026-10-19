@@ -12,7 +12,7 @@ const STATE_PATROL := 0
 const STATE_SUSPICIOUS := 1
 const STATE_SEARCH := 2
 const STATE_HUNT := 3
-## Охота вплотную: ближе этого до игрока Black ICE показывает catch (сервер ловит с 1,5 м — IceBrain catch_range).
+## Охота вплотную: ближе этого до игрока Black ICE показывает catch (Black ICE ловит по такту, TickBlack).
 const CATCH_NEAR := 2.0
 const SEARCH_SPEED := 1.6
 const ALERT_TEXT := ["", "?", "!", "!!"]
