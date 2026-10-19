@@ -166,6 +166,23 @@ func test_layers_парсинг_и_маппинг() -> void:
 	assert_bool(RenderConfig.layers_behind("off")).is_false()
 
 
+func test_warmup_по_умолчанию_on_парсинг_и_маппинг() -> void:
+	assert_str(RenderConfig.new().warmup).is_equal("on")
+	assert_bool("warmup" in RenderConfig.KEYS).is_true()
+	assert_str(RenderConfig.from_config(_cfg({"warmup": "off"})).warmup).is_equal("off")
+	assert_str(RenderConfig.from_config(_cfg({"warmup": "ON"})).warmup).is_equal("on")
+	assert_bool(RenderConfig.warmup_enabled("on")).is_true()
+	assert_bool(RenderConfig.warmup_enabled("off")).is_false()
+	assert_str(RenderConfig.new().log_fields()["warmup"]).is_equal("on")
+
+
+func test_warmup_неверное_по_умолчанию_с_предупреждением() -> void:
+	for bad: Variant in ["вкл", "", 1, true, "diag"]:
+		var c := RenderConfig.from_config(_cfg({"warmup": bad}))
+		assert_str(c.warmup).is_equal(RenderConfig.WARMUP_DEFAULT)
+		assert_int(c.warnings.size()).is_equal(1)
+
+
 func test_layers_неверное_по_умолчанию_с_предупреждением() -> void:
 	for bad: Variant in ["вкл", "", 1, true]:
 		var c := RenderConfig.from_config(_cfg({"layers": bad}))

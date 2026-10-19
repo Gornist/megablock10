@@ -18,7 +18,7 @@
 #   cloud-all-imp   cloud-all + volume_impostor_m=8: дальше 8 м облака — запечённые билборды (VolumeImpostor)
 #   probe-sweep     perf=on, probe=sweep: серия синтетической нагрузки (база + 14 вариантов, ≈3,5 мин) → таблица `[probe] ИТОГ`
 #
-# Ключи: имена из RenderConfig.KEYS (msaa layers foveation perf volumetric bench probe volume_budget_ms) пишутся в [render], остальные — в [assets]
+# Ключи: имена из RenderConfig.KEYS (msaa layers foveation perf volumetric bench probe volume_budget_ms volume_impostor_m warmup) пишутся в [render], остальные — в [assets]
 # (AssetMaterials.KNOBS; неизвестная ручка игра пропускает с предупреждением). Пример:
 #   pico_stand.sh cloud-props msaa=4 dust_density=0.55 perf=diag bench=wedge
 # Читается при СТАРТЕ игры: после смены — перезапуск (pico_series.sh делает это сам). Устройство — PICO_SERIAL или единственное подключённое.
@@ -26,7 +26,7 @@ set -e
 
 PACKAGE="com.megablok10.netrun"
 CFG_PATH="/sdcard/Android/data/$PACKAGE/files/netrun.cfg"
-RENDER_KEYS=" msaa layers far_cull_m pillar_lights foveation perf volumetric bench probe volume_budget_ms volume_impostor_m "
+RENDER_KEYS=" msaa layers far_cull_m pillar_lights foveation perf volumetric bench probe volume_budget_ms volume_impostor_m warmup "
 
 [ -f "$HOME/netrun-env.sh" ] && . "$HOME/netrun-env.sh"
 . "$(cd "$(dirname "$0")" && pwd)/box_guard.sh"

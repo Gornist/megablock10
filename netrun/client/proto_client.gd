@@ -139,6 +139,7 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 		scene.rig.render.apply_msaa(get_viewport())   # плоский клиент: только 3D-сглаживание
 		scene.rig.recenter()
 	_log_render(scene.rig.render, scene.rig.xr_active, scene.rig.xr_render_missing)
+	_start_warmup(render_cfg)
 	var cfg := NetConfig.from_sources(args, config_paths)
 	for w in cfg.warnings:
 		log_file.log("net.config.warn", {"msg": w})
@@ -190,6 +191,28 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	net.teleport_denied.connect(_on_teleport_denied)
 	log_file.log("net.connect", {"host": cfg.host, "port": cfg.port})
 	net.start_client(cfg)
+
+
+## Прогрев шейдеров ([render] warmup, по умолчанию "on"): по образцу каждого материала мира перед камерой за чёрным экраном, пока не пришёл первый кадр с миром.
+## В журнал — `warmup.done frames=… meshes=… ms=…`: по ней при показе видно, сработал ли прогрев и сколько занял.
+func _start_warmup(r: RenderConfig) -> void:
+	ShaderWarmup.enabled = RenderConfig.warmup_enabled(r.warmup)
+	if not ShaderWarmup.enabled:
+		log_file.log("warmup.skip", {"reason": "off"})
+		return
+	if DisplayServer.get_name() == "headless":   # без отрисовки компилировать нечего; заодно тесты клиента не получают чужие кадры и узлы у камеры
+		ShaderWarmup.enabled = false
+		log_file.log("warmup.skip", {"reason": "headless"})
+		return
+	var w := ShaderWarmup.new()
+	w.name = "ShaderWarmup"
+	scene.add_child(w)
+	w.done.connect(func(info: Dictionary):
+		log_file.log("warmup.done", info)
+		w.queue_free())
+	if not w.start(scene.rig.camera):
+		log_file.log("warmup.skip", {"reason": "not_started"})
+		w.queue_free()
 
 
 ## Что применено к рендеру: `render msaa=… aa=… fringe=… scale=… foveation=… dynamic=…` (масштаб и фовеация — только в XR), предупреждения файла — `render.warn`.
