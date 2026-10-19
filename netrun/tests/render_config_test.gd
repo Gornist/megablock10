@@ -225,6 +225,16 @@ func test_apply_msaa_ставит_режим_вьюпорта_и_без_fxaa() -
 	assert_int(vp.msaa_3d).is_equal(Viewport.MSAA_DISABLED)
 
 
+func test_pillar_lights_умолчание_4_диапазон_0_12_иное_отвергается() -> void:
+	assert_int(RenderConfig.from_config(_cfg({})).pillar_lights).is_equal(4)
+	assert_int(RenderConfig.from_config(_cfg({"pillar_lights": 0})).pillar_lights).is_equal(0)
+	assert_int(RenderConfig.from_config(_cfg({"pillar_lights": 12})).pillar_lights).is_equal(12)
+	for bad_value: Variant in [13, -1, "много"]:
+		var bad := RenderConfig.from_config(_cfg({"pillar_lights": bad_value}))
+		assert_int(bad.pillar_lights).is_equal(4)
+		assert_int(bad.warnings.size()).is_equal(1)
+
+
 func test_far_cull_m_умолчание_12_ноль_без_предела_вне_границ_отвергается() -> void:
 	assert_float(RenderConfig.from_config(_cfg({})).far_cull_m).is_equal(12.0)
 	assert_float(RenderConfig.from_config(_cfg({"far_cull_m": 0})).far_cull_m).is_equal(0.0)
