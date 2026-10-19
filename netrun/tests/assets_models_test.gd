@@ -796,6 +796,20 @@ func test_dust_fill_knob_defaults_on_and_reaches_cloud_material() -> void:
 	AssetMaterials.reset_tuning()
 
 
+## Облако непрозрачное (19.10, владелец: «видно не должно быть то, что за колонной»): по умолчанию грань пишет глубину без alpha_to_coverage; cloud_solid = 0 — прежние дыры через a2c.
+func test_cloud_face_is_opaque_by_default_and_a2c_on_knob() -> void:
+	AssetMaterials.reset_tuning()
+	assert_float(float(AssetMaterials.KNOBS["cloud_solid"])).is_equal(1.0)
+	var solid := _mat_of(_apply_new("env", "cover"), "pillar_block")
+	assert_bool(solid.shader == AssetMaterials.CLOUD_SHADER).override_failure_message("по умолчанию — непрозрачное облако").is_true()
+	assert_bool(solid.shader.code.contains("alpha_to_coverage_and_one")).override_failure_message("без alpha_to_coverage в render_mode").is_false()
+	AssetMaterials.tune({"cloud_solid": 0.0})
+	var a2c := _mat_of(_apply_new("env", "cover"), "pillar_block")
+	assert_bool(a2c.shader == AssetMaterials.CLOUD_A2C_SHADER).override_failure_message("cloud_solid = 0 — вариант с a2c").is_true()
+	assert_bool(AssetMaterials._is_cloud_shader(a2c.shader) and AssetMaterials._is_cloud_shader(solid.shader)).is_true()
+	AssetMaterials.reset_tuning()
+
+
 ## Свет облака (18.10): источники доходят до материала (и до созданных позже), лишние отбрасываются, пустой массив — «источников нет»; ручки по умолчанию включены.
 func test_cloud_lights_reach_cloud_material_and_clear() -> void:
 	AssetMaterials.reset_tuning()
