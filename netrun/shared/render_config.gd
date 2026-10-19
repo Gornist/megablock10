@@ -11,6 +11,7 @@ extends RefCounted
 ## layers = "behind"        ; панели (дека, взлом, итог) слоями композитора OpenXR: "behind" (по умолчанию), "on" или "off"
 ##                           ; (чёткий текст и линии; нужна поддержка слоёв рантаймом). "behind" — слой позади сцены с вырезом в альфе, руки и луч
 ##                           ; наводки рисуются поверх панели и объектов; "on" — слой поверх сцены (руки и луч пропадают за панелью); "off" — панели 3D-плоскостями
+## far_cull_m = 12          ; дальше этого расстояния модели и облака не рисуются (владелец 19.10: вдали частицы превращались в сплошное чёрное); 0 — без предела, 3…60
 ## foveation = 0             ; фовеация (OpenXR): 0 выкл. (по умолчанию), 1 низкая, 2 средняя, 3 высокая; при msaa > 0 принудительно 0
 ##                           ; (MSAA с фовеацией на Adreno 650 даёт пустой экран)
 ##
@@ -24,7 +25,12 @@ extends RefCounted
 ## volume_budget_ms = 0       ; регулятор плотности облаков (VolumeBudget): потолок GPU-времени кадра, мс (4…20; при 90 Гц ≈ 10,5); выше — облака редеют, ниже — густеют; 0 — выкл.
 
 const SECTION := "render"
-const KEYS := ["msaa", "layers", "foveation", "perf", "volumetric", "bench", "probe", "volume_budget_ms", "volume_impostor_m"]
+const KEYS := ["msaa", "layers", "far_cull_m", "foveation", "perf", "volumetric", "bench", "probe", "volume_budget_ms", "volume_impostor_m"]
+## Дальность прорисовки моделей и облаков предметов, м: дальше они не рисуются совсем (вдали облако редеет до восьмой части точек, а сплошная
+## тёмная модель под ним остаётся; заодно дешевле кадр). 0 — без предела. 3…60.
+const FAR_CULL_MIN := 3.0
+const FAR_CULL_MAX := 60.0
+const FAR_CULL_DEFAULT := 12.0
 const VOLUME_BUDGET_MIN := 4.0
 const VOLUME_BUDGET_MAX := 20.0
 ## Импостор дальних облаков (VolumeCloud): расстояние до камеры, мс м — дальше него облако заменяется билбордом; 0 — выкл. (по умолчанию).
@@ -45,6 +51,8 @@ const FOVEATION_MAX := 3
 var msaa: int = MSAA_DEFAULT
 ## Панели слоями композитора OpenXR: "behind" (по умолчанию) | "on" | "off".
 var layers: String = LAYERS_DEFAULT
+## Дальность прорисовки моделей и облаков, м (0 — без предела).
+var far_cull_m: float = FAR_CULL_DEFAULT
 ## Счётчик кадра (FramePerf): "on" | "off".
 var perf: String = PERF_DEFAULT
 ## Объёмные модули (VolumeRegistry): "off" | "all" | список через запятую.
@@ -99,6 +107,12 @@ static func from_config(cfg: ConfigFile) -> RenderConfig:
 					c.layers = (v as String).to_lower()
 				else:
 					c.warnings.append("layers: допустимо «on», «off» или «behind», получено «%s» — оставлено «%s»" % [v, c.layers])
+			"far_cull_m":
+				var f: Variant = _number(v)
+				if f != null and (float(f) == 0.0 or (float(f) >= FAR_CULL_MIN and float(f) <= FAR_CULL_MAX)):
+					c.far_cull_m = float(f)
+				else:
+					c.warnings.append("far_cull_m: нужно 0 или число %s…%s, получено «%s» — оставлено %s" % [FAR_CULL_MIN, FAR_CULL_MAX, v, c.far_cull_m])
 			"perf":
 				if v is String and (v as String).to_lower() in PERF_VALUES:
 					c.perf = (v as String).to_lower()
@@ -232,5 +246,5 @@ func apply_xr(iface: Object) -> PackedStringArray:
 
 ## Поля строки журнала `render …` (MbLog).
 func log_fields() -> Dictionary:
-	return {"msaa": msaa, "layers": layers, "perf": perf, "volumetric": volumetric, "bench": bench if bench != "" else "off", "probe": probe if probe != "" else "off", "volume_budget_ms": volume_budget_ms, "volume_impostor_m": volume_impostor_m, "foveation": foveation,
+	return {"msaa": msaa, "layers": layers, "far_cull_m": far_cull_m, "perf": perf, "volumetric": volumetric, "bench": bench if bench != "" else "off", "probe": probe if probe != "" else "off", "volume_budget_ms": volume_budget_ms, "volume_impostor_m": volume_impostor_m, "foveation": foveation,
 		"file": file_path if not file_path.is_empty() else "none"}
