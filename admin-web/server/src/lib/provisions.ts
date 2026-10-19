@@ -3,6 +3,7 @@ import type { FastifyRequest } from "fastify";
 import type { ProvisionItem } from "../apiTypes.js";
 import type { Db } from "../db/index.js";
 import { encodeProvisionQr } from "./mb10QrCodec.js";
+import { formatProvisionCode, generateProvisionCode } from "./provisionCode.js";
 
 /**
  * QR персонажа (docs/provisioning-qr.md, docs/character-reissue.md): мастер выдаёт код, телефон при первом запуске применяет его
@@ -47,6 +48,7 @@ interface ProvisionRow {
   bound_key: string | null;
   bound_at: number | null;
   void: number;
+  short_code: string | null;
 }
 
 export function createProvision(db: Db, masterName: string, params: ProvisionParams, replacesKey: string | null = null, now = Date.now()): string {
@@ -57,11 +59,23 @@ export function createProvision(db: Db, masterName: string, params: ProvisionPar
       db.prepare(`UPDATE provisions SET void = 1 WHERE replaces_key = ? AND bound_key IS NULL`).run(replacesKey);
       db.prepare(`UPDATE provisions SET void = 1 WHERE bound_key = ?`).run(replacesKey);
     }
+    // Код уникален среди непогашенных: занятый — перегенерируем (частичный индекс — страховка, транзакция синхронная).
+    const taken = db.prepare(`SELECT 1 FROM provisions WHERE short_code = ? AND bound_key IS NULL AND void = 0`);
+    let code = generateProvisionCode();
+    while (taken.get(code)) code = generateProvisionCode();
     db.prepare(
-      `INSERT INTO provisions (id, callsign, faction, balance, ram, created_by, created_at, replaces_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(id, params.callsign, params.faction, params.balance, params.ram, masterName, now, replacesKey);
+      `INSERT INTO provisions (id, callsign, faction, balance, ram, created_by, created_at, replaces_key, short_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, params.callsign, params.faction, params.balance, params.ram, masterName, now, replacesKey, code);
   })();
   return id;
+}
+
+/**
+ * Выдача по короткому коду: только непогашенная (не привязана к ключу и не void). Нет, погашена и перевыдана — один и тот же
+ * undefined: снаружи это не различается. `code` — уже нормализованный (normalizeProvisionCode) и проверенный (isProvisionCode).
+ */
+export function findOpenProvisionByCode(db: Db, code: string): ProvisionRow | undefined {
+  return db.prepare(`SELECT * FROM provisions WHERE short_code = ? AND bound_key IS NULL AND void = 0`).get(code) as ProvisionRow | undefined;
 }
 
 export type BindResult = { ok: true } | { ok: false; error: string };
@@ -143,6 +157,8 @@ function provisionItem(r: ProvisionRow, conflicts: number, playerName: (key: str
     boundAt: r.bound_at,
     void: r.void === 1,
     conflicts,
+    // Код показываем, пока выдача открыта: применённый или погашенный уже ничего не открывает.
+    code: r.short_code && r.bound_key === null && r.void === 0 ? formatProvisionCode(r.short_code) : null,
   };
 }
 

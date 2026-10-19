@@ -79,6 +79,8 @@ export interface ProvisionItem {
   void: boolean;
   /** Второй телефон пытался применить этот код. */
   conflicts: number;
+  /** Короткий код для ввода без камеры («ABC-DEF»); null — выдача уже применена или погашена. */
+  code: string | null;
 }
 
 export interface ProvisionsResponse {

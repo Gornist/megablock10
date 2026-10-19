@@ -40,13 +40,18 @@ export function ToggleField({ label, value, onToggle }: { label: string; value: 
  * Готовый QR: печать (картинка) и, если задан displaySource, «На дисплей» — тот же QR на электронную точку (сервер рисует кадр из той
  * же строки, см. docs/displays.md).
  */
-export function QrPanel({ result, caption, displaySource }: { result: QrResult; caption: string; displaySource?: DisplaySource }) {
+export function QrPanel({ result, caption, displaySource, code }: { result: QrResult; caption: string; displaySource?: DisplaySource; code?: string | null }) {
   const [pushing, setPushing] = useState(false);
   return (
     <Panel title="Готово" action={displaySource && <AppButton onClick={() => setPushing(true)}>На дисплей</AppButton>}>
       <div className="qr-panel">
         <img src={result.qrImage} alt="QR" width={260} height={260} />
         <p className="mono qr-caption">{caption}</p>
+        {code && (
+          <p className="mono qr-caption">
+            код без камеры: <strong>{code}</strong>
+          </p>
+        )}
         <p className="hint-text">Сфотографируйте или напечатайте до игры — появится у игрока сразу после скана.</p>
         <details>
           <summary className="hint-text">сырая строка QR</summary>
