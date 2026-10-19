@@ -64,12 +64,11 @@ func test_ранний_выход_по_дальности_стоит_после_
 	assert_int(tex).is_greater(exit_at)
 
 
-func test_освещение_облака_без_ветки_в_цикле_источников() -> void:
-	# continue в цикле по 12 источникам на каждый фрагмент стоил на Pico ≈0,5 мс; нулевой радиус гасится max(), не веткой
+func test_освещение_облака_одной_выборкой_без_цикла_источников() -> void:
+	# B1: освещённость — одна выборка карты lit_map; цикл по 12 источникам на фрагмент (и continue в нём, ≈0,5 мс на Pico) не возвращается
 	var s: String = _sources()["cloud_light.gdshaderinc"]
-	assert_bool(s.contains("continue")).is_false()
-	assert_bool(s.contains("max(l.w")).is_true()
-
+	assert_bool(s.contains("for (")).is_false()
+	assert_bool(s.contains("textureLod(lit_map")).is_true()
 
 func test_клампы_инвариантов_ручек() -> void:
 	AssetMaterials.tune({"dust_cell": 0.0, "dust_fill_lo": 5.0, "dust_fill_hi": 3.0, "rim_far_start": 8.0, "rim_far_end": 8.0})
