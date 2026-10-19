@@ -666,7 +666,7 @@ func _streak_mats(root: Node) -> Array:
 	for mi in _meshes(root):
 		for s in mi.mesh.get_surface_count():
 			var m := mi.get_surface_override_material(s) as ShaderMaterial
-			if m != null and m.shader.get_shader_uniform_list().any(func(u): return u["name"] == "len_scale"):  # только штрихи: keep_frac есть и у точек
+			if m != null and m.shader.get_shader_uniform_list().any(func(u): return u["name"] == "halo"):  # только штрихи: keep_frac есть и у точек
 				out.append(m)
 	return out
 
@@ -676,7 +676,7 @@ func _point_mats(root: Node) -> Array:
 	for mi in _meshes(root):
 		for s in mi.mesh.get_surface_count():
 			var m := mi.get_surface_override_material(s) as ShaderMaterial
-			if m != null and m.shader.get_shader_uniform_list().any(func(u): return u["name"] == "keep_frac") and not m.shader.get_shader_uniform_list().any(func(u): return u["name"] == "len_scale"):
+			if m != null and m.shader.get_shader_uniform_list().any(func(u): return u["name"] == "keep_frac") and not m.shader.get_shader_uniform_list().any(func(u): return u["name"] == "halo"):
 				out.append(m)
 	return out
 
@@ -701,7 +701,7 @@ func test_asset_materials_knob_point_keep_reaches_env_points_only() -> void:
 	AssetMaterials.reset_tuning()
 
 
-func test_asset_materials_streak_knobs_reach_env_streaks_only() -> void:
+func test_asset_materials_streak_keep_knob_reaches_env_streaks_only() -> void:
 	AssetMaterials.reset_tuning()
 	var dflt := _load("env", "exit_frame")  # образец окружения со штрихами и точками (у platform они убраны 15.10)
 	AssetMaterials.apply(dflt, "BASE")
@@ -709,16 +709,11 @@ func test_asset_materials_streak_knobs_reach_env_streaks_only() -> void:
 	assert_int(base.size()).override_failure_message("в стене нет штрихов").is_greater(0)
 	for m in base:
 		assert_float(float(m.get_shader_parameter("keep_frac"))).override_failure_message("по умолчанию штрихи окружения не рисуются (streak_keep=0, решение владельца)").is_equal(0.0)
-		assert_bool(m.get_shader_parameter("far_dim_min") == null and m.get_shader_parameter("px_fade") == null).override_failure_message("остальные ручки штрихов не заданы").is_true()
-	AssetMaterials.tune({"streak_far_min": 0.3, "streak_far_start": 6.0, "streak_far_end": 20.0, "streak_keep": 0.6, "streak_len": 0.7, "streak_px_fade": 1.0})
+	AssetMaterials.tune({"streak_keep": 0.6})
 	var tuned := _load("env", "exit_frame")  # образец окружения со штрихами и точками (у platform они убраны 15.10)
 	AssetMaterials.apply(tuned, "BASE")
 	for m in _streak_mats(tuned):
-		assert_float(float(m.get_shader_parameter("far_dim_min"))).is_equal_approx(0.3, 0.001)
-		assert_float(float(m.get_shader_parameter("far_dim_end"))).is_equal_approx(20.0, 0.001)
 		assert_float(float(m.get_shader_parameter("keep_frac"))).is_equal_approx(0.6, 0.001)
-		assert_float(float(m.get_shader_parameter("len_scale"))).is_equal_approx(0.7, 0.001)
-		assert_float(float(m.get_shader_parameter("px_fade"))).is_equal_approx(1.0, 0.001)
 	var creature := _load("ice", "soft_ice")  # существа без тира: ручки окружения их не трогают
 	AssetMaterials.apply(creature)
 	for m in _streak_mats(creature):
