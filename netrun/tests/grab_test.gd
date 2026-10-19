@@ -109,7 +109,7 @@ func test_request_without_connection_is_not_sent() -> void:
 
 
 func test_scene_object_moves_only_after_confirm() -> void:
-	var scene: Node3D = preload("res://client/rig_test_scene.gd").new()
+	var scene: Node3D = preload("res://client/world_scene.gd").new()
 	_root.add_child(scene)
 	var requested: Array[String] = []
 	scene.grab_requested.connect(func(id): requested.append(id))
@@ -127,6 +127,6 @@ func test_scene_object_moves_only_after_confirm() -> void:
 
 
 func test_scene_far_object_is_not_requested() -> void:
-	var scene: Node3D = preload("res://client/rig_test_scene.gd").new()
+	var scene: Node3D = preload("res://client/world_scene.gd").new()
 	_root.add_child(scene)
 	assert_bool(scene.try_grab(Vector3(50, 0, 50), 3.0, scene.rig.camera)).is_false()

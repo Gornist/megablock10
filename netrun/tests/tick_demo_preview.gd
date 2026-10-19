@@ -10,7 +10,7 @@ func _ready() -> void:
 		if a.begins_with("--out="):
 			_out = a.substr(6)
 	DirAccess.make_dir_recursive_absolute(_out)
-	var scene: Node3D = preload("res://client/rig_test_scene.gd").new()
+	var scene: Node3D = preload("res://client/world_scene.gd").new()
 	add_child(scene)
 	await get_tree().process_frame
 	scene.show_tick_demo()

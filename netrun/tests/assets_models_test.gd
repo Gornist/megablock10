@@ -7,9 +7,8 @@ extends GdUnitTestSuite
 const ROOT := "res://assets/models/"
 ## модули окружения клиента (NodeView.MODULES) и их варианты
 const ENV_VARIANTS := {
-	"floor": ["floor", "floor_b", "floor_c"], "ceiling": ["ceiling", "ceiling_b", "ceiling_c"], "pillar": ["pillar"], "platform": ["platform"],
-	"lockdown_gate": ["lockdown_gate"], "exit_frame": ["exit_frame"], "far_floor": ["far_floor", "far_floor_b", "far_floor_c"],
-	"far_ceiling": ["far_ceiling", "far_ceiling_b", "far_ceiling_c"],
+	"floor": ["floor", "floor_b", "floor_c"], "pillar": ["pillar"], "platform": ["platform"],
+	"lockdown_gate": ["lockdown_gate"], "exit_frame": ["exit_frame"],
 }
 const PROPS := ["vault", "vault_closed", "vault_open", "shard", "shard_encrypted", "daemon_token", "hack_panel", "hack_pad", "dead_deck", "portal", "portal_locked", "sensor", "seat"]
 ## Бюджеты треугольников предметов узла «волюметрик» (карточка владельца; точки и штрихи считает validate.py по самим .glb)
@@ -169,7 +168,7 @@ func test_env_streaks_and_creatures_have_no_halo() -> void:
 
 func test_slab_modules_have_a_translucent_additive_skirt() -> void:
 	## «вуаль» на гранях плит: меш `*_skirt` в модулях с плитами; шейдер аддитивный, без освещения и без записи глубины; по одному квадрату на грань
-	var skirts := {"floor": "floor_skirt", "floor_c": "floor_skirt", "ceiling": "ceiling_skirt", "far_floor": "far_floor_skirt", "far_ceiling": "far_ceiling_skirt"}
+	var skirts := {"floor": "floor_skirt", "floor_c": "floor_skirt"}
 	for module in skirts:
 		var parts := NodeAssets.mesh_parts(NodeAssets.env_path(module), "BASE")
 		var found := 0
@@ -243,8 +242,9 @@ func test_experimental_floor_models_are_gone() -> void:
 			"floor_clear", "floor_slab_8", "room_edge_8", "room_moat_8", "room_moat_16"]:
 		assert_bool(ResourceLoader.exists(ROOT + "env/%s.glb" % name)).override_failure_message("env/%s.glb должен быть удалён (B2)" % name).is_false()
 	assert_bool(ResourceLoader.exists("res://assets/shaders/glass.gdshader")).is_false()
-	for name in ["wall", "wall_b", "wall_c", "corner", "doorway", "doorway_b", "tunnel_ring", "far_field", "far_field_b", "far_field_c", "horizon_band", "portal_wall", "cable_straight", "cable_curve", "column_field", "room_edge_16"]:
-		assert_bool(ResourceLoader.exists(ROOT + "env/%s.glb" % name)).override_failure_message("env/%s.glb должен быть удалён (B2c/B2d)" % name).is_false()
+	for name in ["wall", "wall_b", "wall_c", "corner", "doorway", "doorway_b", "tunnel_ring", "far_field", "far_field_b", "far_field_c", "horizon_band", "portal_wall", "cable_straight", "cable_curve", "column_field", "room_edge_16",
+			"ceiling", "ceiling_b", "ceiling_c", "far_floor", "far_floor_b", "far_floor_c", "far_ceiling", "far_ceiling_b", "far_ceiling_c"]:
+		assert_bool(ResourceLoader.exists(ROOT + "env/%s.glb" % name)).override_failure_message("env/%s.glb должен быть удалён (B2c/B2d, потолок и дальние пласты — 18.10)" % name).is_false()
 	assert_bool(ResourceLoader.exists("res://assets/shaders/haze.gdshader")).override_failure_message("haze.gdshader удалён вместе с дымкой (B2d)").is_false()
 
 
@@ -260,7 +260,7 @@ func test_mesh_parts_are_cached_per_tier_and_mirror() -> void:
 # ---------------------------------------------------------------- сетка
 
 func test_grid_modules_fit_the_cell() -> void:
-	for module in ["floor", "floor_b", "floor_c", "ceiling", "pillar", "platform", "lockdown_gate", "exit_frame"]:
+	for module in ["floor", "floor_b", "floor_c", "pillar", "platform", "lockdown_gate", "exit_frame"]:
 		var box := _aabb(_load("env", module))
 		assert_float(box.size.x).override_failure_message("%s: шире ячейки (%.2f)" % [module, box.size.x]).is_less(CELL_FIT)
 		assert_float(box.size.z).override_failure_message("%s: глубже ячейки (%.2f)" % [module, box.size.z]).is_less(CELL_FIT)
@@ -268,7 +268,7 @@ func test_grid_modules_fit_the_cell() -> void:
 		assert_float(absf(box.get_center().z)).override_failure_message("%s: сдвинут по Z" % module).is_less(0.1)
 
 
-func test_floor_never_rises_above_the_floor_and_ceiling_never_drops_below_the_ceiling() -> void:
+func test_floor_never_rises_above_the_floor() -> void:
 	for f in ["floor", "floor_b", "floor_c"]:
 		# твёрдая часть и штрихи — не выше пола; прозрачная завеса вверх от плит (меш *_skirt с UV2, env._slab_rise) в этот габарит не входит, её высота — ниже
 		var root := _load("env", f)
@@ -282,8 +282,6 @@ func test_floor_never_rises_above_the_floor_and_ceiling_never_drops_below_the_ce
 			solid = b if first else solid.merge(b)
 			first = false
 		assert_float(solid.end.y).override_failure_message(f).is_less(0.05)
-	for c in ["ceiling", "ceiling_b", "ceiling_c"]:
-		assert_float(_aabb(_load("env", c)).position.y).override_failure_message(c).is_greater(-0.05)
 
 
 func test_portal_is_as_wide_as_the_graph_radius() -> void:
@@ -763,7 +761,7 @@ func test_floor_slab_has_solid_void_underlay_below_cloud_layer() -> void:
 	assert_float(ub.end.y).override_failure_message("подложка не ниже верха облака").is_less(slab.get_aabb().end.y)
 	assert_float(ub.size.y).override_failure_message("подложка не тонкая").is_less_equal(0.03)
 	assert_int((under.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3).override_failure_message("подложка — коробка, 12 треугольников").is_equal(12)
-	AssetMaterials.tune({"cloud": 1.0, "cloud_floor": 1.0, "cloud_ceiling": 1.0, "cloud_far": 1.0})   # все охваты облака включены — подложка всё равно сплошная
+	AssetMaterials.tune({"cloud": 1.0, "cloud_floor": 1.0})   # охват облака включён — подложка всё равно сплошная
 	var all_on := _apply_new("env", "floor_slab_16")
 	assert_str(_mat_of(all_on, AssetMaterials.UNDER_SLAB).shader.resource_path).override_failure_message("подложка при всех охватах облака — solid_dark").ends_with("solid_dark.gdshader")
 	AssetMaterials.reset_tuning()
@@ -863,22 +861,18 @@ func _cloud_meshes(root: Node) -> int:
 
 
 func test_asset_materials_cloud_scope_props_yes_slabs_gate_and_deck_no() -> void:
-	AssetMaterials.reset_tuning()  # умолчания охвата («всё из частиц», #424): облако на реквизите, полу и дальних пластах; потолок остаётся solid_dark
+	AssetMaterials.reset_tuning()  # умолчания охвата («всё из частиц», #424): облако на реквизите и полу
 	assert_int(_cloud_meshes(_apply_new("env", "cover"))).override_failure_message("укрытие — облако").is_greater(0)
 	assert_int(_cloud_meshes(_apply_new("env", "exit_frame"))).override_failure_message("рамка выхода — облако").is_greater(0)
-	assert_int(_cloud_meshes(_apply_new("env", "far_floor"))).override_failure_message("cloud_far=1 по умолчанию: дальние пласты — облако").is_greater(0)
 	assert_int(_cloud_meshes(_apply_new("env", "floor_slab_16"))).override_failure_message("cloud_floor=1 по умолчанию: пол — облако").is_greater(0)
 	var slab_mat := _mat_of(_apply_new("env", "floor_slab_16"), "slab")
 	assert_float(float(slab_mat.get_shader_parameter("grid_alpha"))).override_failure_message("линии клеток 1 м на полу-облаке сохранены (grid_tex в cloud_dark)").is_greater(0.0)
 	assert_object(slab_mat.get_shader_parameter("grid_tex")).is_not_null()
-	assert_int(_cloud_meshes(_apply_new("env", "ceiling"))).override_failure_message("cloud_ceiling=0: потолок остаётся solid_dark").is_equal(0)
-	AssetMaterials.tune({"cloud_far": 0.0, "cloud_floor": 0.0})
-	assert_int(_cloud_meshes(_apply_new("env", "far_floor"))).override_failure_message("cloud_far=0: ручка возвращает сплошную грань").is_equal(0)
+	AssetMaterials.tune({"cloud_floor": 0.0})
 	assert_int(_cloud_meshes(_apply_new("env", "floor_slab_16"))).override_failure_message("cloud_floor=0: ручка возвращает solid_dark").is_equal(0)
 	AssetMaterials.reset_tuning()
 	assert_int(_cloud_meshes(_apply_new("deck", "wrist_deck"))).override_failure_message("/deck/ остаётся сплошным (своя палитра; решение владельца 17.10)").is_equal(0)
-	AssetMaterials.tune({"cloud_far": 1.0, "cloud_floor": 1.0, "cloud_ceiling": 1.0})
-	assert_int(_cloud_meshes(_apply_new("env", "far_floor"))).override_failure_message("cloud_far=1: дальние пласты тоже облако").is_greater(0)
+	AssetMaterials.tune({"cloud_floor": 1.0})
 	assert_int(_cloud_meshes(_apply_new("env", "floor_slab_16"))).override_failure_message("cloud_floor=1: пол — облако").is_greater(0)
 	AssetMaterials.reset_tuning()
 	var one_side := _apply_new("env", "cover")
@@ -961,42 +955,42 @@ func _has_uv2(mi: MeshInstance3D) -> bool:
 	return ((mi.mesh as ArrayMesh).surface_get_format(0) & Mesh.ARRAY_FORMAT_TEX_UV2) != 0
 
 
-func test_floor_skirt_mesh_carries_the_upward_curtain_and_the_ceiling_does_not() -> void:
+func test_floor_skirt_mesh_carries_the_upward_curtain_and_the_slab_does_not() -> void:
 	# завеса вверх от верхней кромки плит пола — квады в том же меше *_skirt (второй слой прозрачности был бы четвёртым, предел 3), высота в UV2.x
-	for pair in [["floor", "floor_skirt", 0.5], ["far_floor", "far_floor_skirt", 1.05]]:
+	for pair in [["floor", "floor_skirt", 0.5]]:
 		var root := _load("env", pair[0])
 		var sk := _skirt_mesh(root, pair[1])
 		assert_bool(sk != null).override_failure_message("нет меша %s у %s" % [pair[1], pair[0]]).is_true()
 		assert_bool(_has_uv2(sk)).override_failure_message("%s: нет высоты завесы в UV2" % pair[1]).is_true()
 		var top := _max_y(sk)
 		assert_bool(top > 0.1 and top <= float(pair[2])).override_failure_message("%s: верх завесы %.2f м вне 0,1…%.2f" % [pair[1], top, float(pair[2])]).is_true()
-	var ceiling := _load("env", "ceiling")
-	var csk := _skirt_mesh(ceiling, "ceiling_skirt")
-	assert_bool(csk != null and not _has_uv2(csk)).override_failure_message("у потолка вуаль прежняя, без завесы вверх").is_true()
+	var slab := _load("env", "floor_slab_16")
+	var ssk := _skirt_mesh(slab, "floor_slab_skirt")
+	assert_bool(ssk != null and not _has_uv2(ssk)).override_failure_message("у плиты комнаты вуаль без завесы вверх").is_true()
 
 
 func test_tile_glow_knobs_drive_only_the_curtain_quads() -> void:
 	AssetMaterials.reset_tuning()
-	var dflt := _load("env", "far_floor")
+	var dflt := _load("env", "floor")
 	AssetMaterials.apply(dflt, "BASE")
-	var sk := _skirt_mesh(dflt, "far_floor_skirt")
+	var sk := _skirt_mesh(dflt, "floor_skirt")
 	var m := sk.get_surface_override_material(0) as ShaderMaterial
 	assert_float(float(m.get_shader_parameter("rise_gain"))).override_failure_message("по умолчанию завеса вверх включена (tile_glow=3, V10)").is_equal_approx(3.0, 0.001)
 	assert_float(float(m.get_shader_parameter("rise_scale"))).is_equal_approx(1.0, 0.001)
 	AssetMaterials.tune({"tile_glow": 2.5, "tile_glow_h": 1.5, "veil_scale": 2.0})
-	var tuned := _load("env", "far_floor")
+	var tuned := _load("env", "floor")
 	AssetMaterials.apply(tuned, "BASE")
-	var tm := _skirt_mesh(tuned, "far_floor_skirt").get_surface_override_material(0) as ShaderMaterial
+	var tm := _skirt_mesh(tuned, "floor_skirt").get_surface_override_material(0) as ShaderMaterial
 	assert_float(float(tm.get_shader_parameter("rise_gain"))).is_equal_approx(2.5, 0.001)
 	assert_float(float(tm.get_shader_parameter("rise_scale"))).is_equal_approx(1.5, 0.001)
-	assert_float(float(tm.get_shader_parameter("veil_scale"))).override_failure_message("veil_scale > 1 усиливает вуаль (потолок одобрен очками)").is_equal_approx(2.0, 0.001)
-	AssetMaterials.tune({"veil_scale": 0.0})  # вуаль выключена, завеса вверх включена: меш пола остаётся, потолок скрывается целиком
-	var floor_root := _load("env", "far_floor")
+	assert_float(float(tm.get_shader_parameter("veil_scale"))).override_failure_message("veil_scale > 1 усиливает вуаль").is_equal_approx(2.0, 0.001)
+	AssetMaterials.tune({"veil_scale": 0.0})  # вуаль выключена, завеса вверх включена: меш плит остаётся, вуаль плиты комнаты (без завесы) скрывается целиком
+	var floor_root := _load("env", "floor")
 	AssetMaterials.apply(floor_root, "BASE")
-	assert_bool(_skirt_mesh(floor_root, "far_floor_skirt").visible).override_failure_message("в меше пола есть завеса вверх: скрывать его нельзя").is_true()
-	var ceiling := _load("env", "far_ceiling")
-	AssetMaterials.apply(ceiling, "BASE")
-	assert_bool(_skirt_mesh(ceiling, "far_ceiling_skirt").visible).override_failure_message("veil_scale=0: вуаль потолка скрыта").is_false()
+	assert_bool(_skirt_mesh(floor_root, "floor_skirt").visible).override_failure_message("в меше пола есть завеса вверх: скрывать его нельзя").is_true()
+	var slab := _load("env", "floor_slab_16")
+	AssetMaterials.apply(slab, "BASE")
+	assert_bool(_skirt_mesh(slab, "floor_slab_skirt").visible).override_failure_message("veil_scale=0: вуаль плиты комнаты скрыта").is_false()
 	AssetMaterials.reset_tuning()
 
 
@@ -1025,11 +1019,11 @@ func test_edge_round_knob_reaches_solid_dark_smooth_by_default() -> void:
 
 func test_rim_min_px_knob_reaches_plates_only() -> void:
 	AssetMaterials.reset_tuning()
-	var dflt := _load("env", "far_ceiling")
+	var dflt := _load("env", "floor")
 	AssetMaterials.apply(dflt, "BASE")
 	assert_float(float(_mat_of(dflt, "tiles").get_shader_parameter("rim_min_px"))).override_failure_message("по умолчанию гашение по ширине кромки 4 px (V10)").is_equal(4.0)
 	AssetMaterials.tune({"rim_min_px": 3.0})
-	var tuned := _load("env", "far_ceiling")
+	var tuned := _load("env", "floor")
 	AssetMaterials.apply(tuned, "BASE")
 	assert_float(float(_mat_of(tuned, "tiles").get_shader_parameter("rim_min_px"))).is_equal_approx(3.0, 0.001)
 	var cover := _load("env", "cover")  # колонны: ручки плит их не трогают

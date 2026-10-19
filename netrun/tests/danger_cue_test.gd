@@ -6,7 +6,7 @@ var _pulses: Array = []
 
 
 func before_test() -> void:
-	_scene = preload("res://client/rig_test_scene.gd").new()
+	_scene = preload("res://client/world_scene.gd").new()
 	add_child(_scene)
 	await get_tree().process_frame
 	_pulses = []

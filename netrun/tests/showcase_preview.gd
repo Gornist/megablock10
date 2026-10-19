@@ -1,6 +1,6 @@
 extends Node3D
 ## Витрина: все модели клиента (res://assets/models/**.glb) в одной сцене сеткой с подписями; облако (Б) включено у моделей с файлом `.points`
-## (рядом с обычной моделью — копия «+ облако»). Вид — умолчания клиента: окружение и свет как в rig_test_scene, msaa 2.
+## (рядом с обычной моделью — копия «+ облако»). Вид — умолчания клиента: окружение и свет как в world_scene, msaa 2.
 ## Снимает КЛИЕНТОМ (не очки: кадр VR с устройства снять нельзя — XrDiag и screencap пустые): `netrun/tools/dev.sh shot res://tests/showcase_preview.tscn`.
 ## Кадры: overview (вся витрина), затем по группам по два ряда — env_1.., props_1.., ice_1, deck_1.., avatar_1 — и cloud (облако крупно).
 ## Размеры: крупные модели уменьшены до MAX_SIZE, мелкие увеличены до MIN_SIZE — масштаб в подписи (×k). Размер кадра — SHOT_SIZE.
@@ -42,7 +42,7 @@ func _ready() -> void:
 
 
 func _build_world() -> void:
-	var rig_script := preload("res://client/rig_test_scene.gd")
+	var rig_script := preload("res://client/world_scene.gd")
 	var env := WorldEnvironment.new()
 	env.environment = Environment.new()
 	env.environment.background_mode = Environment.BG_COLOR

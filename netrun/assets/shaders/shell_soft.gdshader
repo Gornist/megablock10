@@ -6,8 +6,7 @@ render_mode blend_add, unshaded, depth_draw_never, cull_back, fog_disabled;
 uniform float glow : hint_range(0.0, 4.0) = 0.9;
 const float fresnel_power = 2.5;
 const float center_alpha = 0.1;
-uniform vec4 tint : source_color = vec4(1.0);
-uniform float tint_amount : hint_range(0.0, 1.0) = 0.0; // тир: 1.0 перекрашивает в tint
+#include "tint_common.gdshaderinc"
 
 // Затухание по расстоянию до камеры (замена depth-fade: буфер глубины не читаем, на мобильном дорого).
 const float fade_start = 60.0;
@@ -16,12 +15,6 @@ uniform float intensity = 1.0; // общий множитель яркости (
 
 varying float v_dist;
 
-// Тир перекрашивает цвет ассета в tint, но белые акценты (проёмы, порог, узлы) остаются белыми: чем ближе цвет к белому, тем меньше перекраска.
-vec3 recolor(vec3 c) {
-	float mx = max(c.r, max(c.g, c.b));
-	float mn = min(c.r, min(c.g, c.b));
-	return mix(tint.rgb * mx, c, mn / max(mx, 0.0001));
-}
 float dist_fade() {
 	return 1.0 - smoothstep(fade_start, fade_end, v_dist);
 }

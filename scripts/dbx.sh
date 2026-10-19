@@ -13,6 +13,9 @@
 # Вызывать один раз и ждать итога (минуты): опрос внутри скрипта, не более ≈90 мин. Из агента — обычным вызовом Bash, без собственного опроса.
 # ./gradlew --stop на devbox не вызываем: демон общий с другими сессиями (skill devbox).
 set -u
+HERE=$(cd "$(dirname "$0")" && pwd)
+# shellcheck source=lib/devbox.sh
+. "$HERE/lib/devbox.sh"
 cd "$(git rev-parse --show-toplevel)" || exit 2
 NAME=$(git rev-parse --abbrev-ref HEAD | tr '/ ' '--'); MODE=""; ARGS=""; ENVS=""; FETCH=""
 # Переменные Mac на devbox не доезжают (исполнитель отвязан, аргументы — из файла): нужные передаются явно через --env (Android, 05.10:
@@ -56,11 +59,13 @@ fi
 
 [ "${DBX_DRY:-}" = 1 ] && { echo "DBX dry: $ARGS${ENVS:+ | env: $(echo $ENVS)}${FETCH:+ | fetch:$FETCH}"; exit 0; }
 
-SSH="ssh -o ConnectTimeout=15 -o BatchMode=yes devbox"
+export DEVBOX_TMO=15
 JOB="dbx-$NAME-$(date +%s)"
 
 # Исполнитель на devbox: очередь flock (fd 9 не отдаём Gradle: иначе демон удержит блокировку), отметки [dbx] для ожидающего.
-$SSH 'cat > ~/.local/bin/dbx-run && chmod +x ~/.local/bin/dbx-run' <<'RUNNER'
+# Файл именуется по хэшу содержимого и кладётся через mv: bash дочитывает скрипт по смещению, и перезапись на месте (прежнее
+# `cat > dbx-run`) ломала процесс, уже ждущий в flock (аудит 17.10, review-pipeline №7).
+RUNNER=$(cat <<'RUNNER'
 #!/bin/bash
 NAME=$1; C=$2; JOB=$3; D=$HOME/wt-dbx-$NAME
 read -ra ARGS < "$HOME/jobs/$JOB.args"
@@ -76,18 +81,22 @@ export JAVA_HOME=/usr/lib/jvm/temurin-21-jdk-amd64 PATH=/usr/lib/jvm/temurin-21-
 cd "$D" && ./gradlew --console=plain "${ARGS[@]}" 9>&-
 echo "[dbx] rc=$? $(date +%s)"
 RUNNER
+)
+RUNNER_BIN="dbx-run-$(printf '%s\n' "$RUNNER" | shasum | cut -c1-8)"
+# shellcheck disable=SC2016  # $HOME и $f раскрывает удалённая оболочка
+printf '%s\n' "$RUNNER" | dssh "f=\$HOME/.local/bin/$RUNNER_BIN; [ -x \$f ] || { cat > \$f.new && chmod +x \$f.new && mv \$f.new \$f; }" || { echo "не положил исполнитель на devbox"; unreachable; exit 2; }
 # Переменная окружения — не вход задачи Gradle: из кэша или «UP-TO-DATE» задача с ней не выполнится и ничего не перегенерирует.
 # С --env задачи прогоняются заново (--rerun-tasks): медленнее, но перегенерация не тихая (проверено 06.10: повтор без него шёл из кэша).
 [ -n "$ENVS" ] && ARGS="$ARGS --rerun-tasks"
-echo "$ARGS" | $SSH "cat > ~/jobs/$JOB.args"
-[ -n "$ENVS" ] && printf '%s' "$ENVS" | $SSH "cat > ~/jobs/$JOB.env"
+echo "$ARGS" | dssh "cat > ~/jobs/$JOB.args"
+[ -n "$ENVS" ] && printf '%s' "$ENVS" | dssh "cat > ~/jobs/$JOB.env"
 # shellcheck disable=SC2088  # тильду раскрывает удалённая оболочка devbox, так и задумано
-$SSH "~/.local/bin/devjob start $JOB 'dbx-run $NAME $C $JOB'" >/dev/null 2>&1 || { echo "не запустил задачу на devbox"; exit 2; }
+dssh "~/.local/bin/devjob start $JOB '$RUNNER_BIN $NAME $C $JOB'" >/dev/null 2>&1 || { echo "не запустил задачу на devbox"; exit 2; }
 
 START=$(date +%s); RC=""; TAIL=""
 for _ in $(seq 1 360); do
   sleep 15
-  TAIL=$($SSH "grep -E '^\[dbx\]' ~/jobs/$JOB.log 2>/dev/null; ~/.local/bin/devjob status $JOB" 2>/dev/null) || continue
+  TAIL=$(dssh "grep -E '^\[dbx\]' ~/jobs/$JOB.log 2>/dev/null; ~/.local/bin/devjob status $JOB" 2>/dev/null) || continue
   RC=$(echo "$TAIL" | sed -n 's/^\[dbx\] rc=\([0-9]*\).*/\1/p' | tail -1)
   [ -n "$RC" ] && break
   echo "$TAIL" | grep -q "завершена\|нет такой" && { RC=9; break; }
@@ -98,12 +107,12 @@ E=$(echo "$TAIL" | sed -n 's/^\[dbx\] rc=[0-9]* \([0-9]*\)/\1/p' | tail -1)
 echo "DBX rc=$RC commit=${C:0:7} name=$NAME очередь=$(( ${S:-0} > 0 && ${Q:-0} > 0 ? S-Q : 0 ))с сборка=$(( ${E:-0} > 0 && ${S:-0} > 0 ? E-S : $(date +%s)-START ))с задачи: $ARGS"
 if [ "$RC" = 0 ]; then
   [ $MODE != custom ] && [ -z "$ENVS" ] && echo "$C" > "$OK"
-  $SSH "grep -E 'тестов [0-9]+|BUILD SUCCESSFUL' ~/jobs/$JOB.log | tail -4" 2>/dev/null
+  dssh "grep -E 'тестов [0-9]+|BUILD SUCCESSFUL' ~/jobs/$JOB.log | tail -4" 2>/dev/null
   for f in $FETCH; do   # забрать сгенерированное на devbox в рабочую копию
     mkdir -p "$(dirname "$f")" && scp -q -o BatchMode=yes "devbox:wt-dbx-$NAME/$f" "$f" && echo "DBX fetch: $f" || { echo "DBX fetch НЕ ВЫШЕЛ: $f"; RC=5; }
   done
   exit "$RC"
 fi
-$SSH "grep -nE 'FAILED|BUILD FAILED|^e: |Lint found|What went wrong|Failed to|тестов [0-9]+, .*упало [1-9]|Exception' ~/jobs/$JOB.log | head -40; echo '--- хвост ---'; tail -n 15 ~/jobs/$JOB.log" 2>/dev/null
+dssh "grep -nE 'FAILED|BUILD FAILED|^e: |Lint found|What went wrong|Failed to|тестов [0-9]+, .*упало [1-9]|Exception' ~/jobs/$JOB.log | head -40; echo '--- хвост ---'; tail -n 15 ~/jobs/$JOB.log" 2>/dev/null
 echo "полный журнал: ssh devbox 'cat ~/jobs/$JOB.log'"
 exit "$RC"

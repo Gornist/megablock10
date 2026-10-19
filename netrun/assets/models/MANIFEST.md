@@ -15,9 +15,6 @@
 | `models/ice/black_ice_raven.glb` | 0 / 300 | 157 / 600 | 296 / 350 | 0 | 3 | 2.9277 × 3.3711 × 2.0054 | points, streaks | idle, hunt, catch | feet | ок |
 | `models/ice/black_ice_scorpion.glb` | 0 / 300 | 221 / 600 | 278 / 350 | 0 | 3 | 8.022 × 3.3 × 8 | points, streaks | idle, hunt, catch | feet | ок |
 | `models/ice/black_lair.glb` | 68 / 300 | 282 / 360 | 240 / 260 | 0 | 8 | 4 × 2.9192 × 4 | points, solid_dark, streaks | — | floor | ок |
-| `models/env/ceiling.glb` | 144 / 300 | 0 / 0 | 0 / 0 | 1 | 2 | 1.5252 × 0.8115 × 1.4557 | shell_soft, solid_dark | — | ceiling | ок |
-| `models/env/ceiling_b.glb` | 108 / 300 | 0 / 0 | 0 / 0 | 1 | 2 | 1.1653 × 0.7915 × 1.5791 | shell_soft, solid_dark | — | ceiling | ок |
-| `models/env/ceiling_c.glb` | 36 / 300 | 0 / 0 | 0 / 0 | 1 | 2 | 1.1463 × 0.728 × 0.7571 | shell_soft, solid_dark | — | ceiling | ок |
 | `models/env/cover.glb` | 116 / 140 | 0 / 0 | 0 / 0 | 0 | 2 | 1.0 × 2.2 × 1.0 | solid_dark | — | floor | ок |
 | `models/deck/daemon_BLACKOUT.glb` | 80 / 300 | 72 / 140 | 0 / 8 | 0 | 2 | 0.0579 × 0.036 × 0.0512 | points, solid_dark | — | center | ок |
 | `models/deck/daemon_DECRYPT.glb` | 88 / 300 | 24 / 140 | 0 / 8 | 2 | 3 | 0.0292 × 0.0292 × 0.0291 | points, shell_soft | — | center | ок |
@@ -30,12 +27,6 @@
 | `models/props/daemon_token.glb` | 86 / 200 | 66 / 80 | 3 / 3 | 3 | 7 | 0.138 × 0.1209 × 0.0153 | points, shell_soft, solid_dark, streaks | — | center | ок |
 | `models/props/dead_deck.glb` | 68 / 300 | 9 / 20 | 2 / 4 | 0 | 3 | 0.18 × 0.065 × 0.11 | points, solid_dark, streaks | — | center | ок |
 | `models/env/exit_frame.glb` | 352 / 450 | 18 / 60 | 29 / 140 | 0 | 7 | 1.9627 × 2.2792 × 0.1789 | points, solid_dark, streaks | — | floor | ок |
-| `models/env/far_ceiling.glb` | 832 / 1100 | 0 / 0 | 0 / 0 | 1 | 2 | 10.2229 × 2.9758 × 9.9755 | shell_soft, solid_dark | — | ceiling | ок |
-| `models/env/far_ceiling_b.glb` | 576 / 1100 | 0 / 0 | 0 / 0 | 1 | 2 | 9.7011 × 2.9387 × 10.2645 | shell_soft, solid_dark | — | ceiling | ок |
-| `models/env/far_ceiling_c.glb` | 416 / 1100 | 0 / 0 | 0 / 0 | 1 | 2 | 9.7476 × 2.96 × 9.0408 | shell_soft, solid_dark | — | ceiling | ок |
-| `models/env/far_floor.glb` | 684 / 1100 | 0 / 0 | 0 / 0 | 1 | 2 | 9.9339 × 3.9349 × 9.4 | shell_soft, solid_dark | — | surface | ок |
-| `models/env/far_floor_b.glb` | 864 / 1100 | 0 / 0 | 0 / 0 | 1 | 2 | 9.6717 × 3.9201 × 10.0736 | shell_soft, solid_dark | — | surface | ок |
-| `models/env/far_floor_c.glb` | 720 / 1100 | 0 / 0 | 0 / 0 | 1 | 2 | 10.1618 × 3.944 × 9.8894 | shell_soft, solid_dark | — | surface | ок |
 | `models/env/floor.glb` | 308 / 450 | 0 / 0 | 0 / 0 | 1 | 2 | 1.5512 × 1.3933 × 1.5796 | shell_soft, solid_dark | — | surface | ок |
 | `models/env/floor_b.glb` | 220 / 450 | 0 / 0 | 0 / 0 | 1 | 2 | 1.5527 × 1.3397 × 1.5975 | shell_soft, solid_dark | — | surface | ок |
 | `models/env/floor_c.glb` | 264 / 450 | 0 / 0 | 0 / 0 | 1 | 2 | 1.5875 × 1.3682 × 1.5445 | shell_soft, solid_dark | — | surface | ок |

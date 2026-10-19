@@ -14,8 +14,7 @@ uniform float wave : hint_range(0.0, 1.0) = 0.6;          // глубина во
 const float size_wave = 0.45;    // глубина пульсации размера
 const float wave_speed = 0.9;
 const float wave_scale = 1.1;    // волн на метр
-uniform vec4 tint : source_color = vec4(1.0);
-uniform float tint_amount : hint_range(0.0, 1.0) = 0.0;
+#include "tint_common.gdshaderinc"
 
 // Затухание по расстоянию до камеры (замена depth-fade: буфер глубины не читаем, на мобильном дорого).
 const float fade_start = 60.0;
@@ -30,12 +29,6 @@ varying vec3 v_wp;
 varying float v_dist;
 varying float v_comp;  // 1 / (во сколько раз квад увеличен до min_px)²
 
-// Тир перекрашивает цвет ассета в tint, но белые акценты (проёмы, порог, узлы) остаются белыми: чем ближе цвет к белому, тем меньше перекраска.
-vec3 recolor(vec3 c) {
-	float mx = max(c.r, max(c.g, c.b));
-	float mn = min(c.r, min(c.g, c.b));
-	return mix(tint.rgb * mx, c, mn / max(mx, 0.0001));
-}
 float dist_fade() {
 	return 1.0 - smoothstep(fade_start, fade_end, v_dist);
 }

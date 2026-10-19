@@ -37,7 +37,7 @@ func test_trace_indicator_text() -> void:
 
 
 func test_scene_applies_server_state() -> void:
-	var scene: Node3D = auto_free(preload("res://client/rig_test_scene.gd").new())
+	var scene: Node3D = auto_free(preload("res://client/world_scene.gd").new())
 	add_child(scene)
 	scene.apply_state({
 		"trace": 55.0, "level": 2, "ghost": false,
@@ -58,7 +58,7 @@ func test_scene_applies_server_state() -> void:
 
 
 func test_flatline_screen_fades_without_moving_camera() -> void:
-	var scene: Node3D = auto_free(preload("res://client/rig_test_scene.gd").new())
+	var scene: Node3D = auto_free(preload("res://client/world_scene.gd").new())
 	add_child(scene)
 	var cam_before: Vector3 = scene.rig.camera.position
 	scene.show_ended("flatline")
@@ -72,14 +72,14 @@ func test_flatline_screen_fades_without_moving_camera() -> void:
 
 
 func test_clean_exit_has_no_flatline_screen() -> void:
-	var scene: Node3D = auto_free(preload("res://client/rig_test_scene.gd").new())
+	var scene: Node3D = auto_free(preload("res://client/world_scene.gd").new())
 	add_child(scene)
 	scene.show_ended("clean")
 	assert_bool(scene.flatline_shown).is_false()
 
 
 func test_black_ice_has_its_own_model_and_hunt_state_is_accepted() -> void:
-	var scene: Node3D = auto_free(preload("res://client/rig_test_scene.gd").new())
+	var scene: Node3D = auto_free(preload("res://client/world_scene.gd").new())
 	add_child(scene)
 	scene.apply_state({"trace": 0.0, "level": 0, "ghost": false,
 		"ice": [{"id": "black_1", "p": [0.0, 0.0, -9.0], "f": [1.0, 0.0], "s": 3, "b": 1},

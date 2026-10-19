@@ -83,7 +83,7 @@ docs/netrun-devbox.md): gdUnit через flock /tmp/gdunit.lock, Gradle — н�
 ### К2. Дека показывает правду (Sonnet / medium)
 
 - **Ветка:** `agent/deck-k2`. **Читать:** design §5.1–5.3, §6.1, §8 (вид деки), `netrun/README.md` («Дека на руке»);
-  `client/ui/deck_panel.gd`, `deck_ui.gd`, `hud_logic.gd`, `world_ui.gd`, `client/rig_test_scene.gd`, `server/daemons/*`.
+  `client/ui/deck_panel.gd`, `deck_ui.gd`, `hud_logic.gd`, `world_ui.gd`, `client/world_scene.gd`, `server/daemons/*`.
 - **Сделать:** на деке: полоса RAM (занято/ёмкость, до этапа ENTER v2 — значение по умолчанию 6 и пометка), ПРОГРАММЫ (имя, тир,
   цепочка моноширинным ≥ 19 px, эффект, состояние: готов / перезарядка / активен N с / «не работает в Сети»), отдельная вкладка
   ДОБЫЧА (шарды, демоны, эдди; значок открыт/зашифрован; пока без действий). Сервер: поля `ram` и тип записи в `ev deck`, если нужно.
@@ -104,7 +104,7 @@ docs/netrun-devbox.md): gdUnit через flock /tmp/gdunit.lock, Gradle — н�
 ### К3. Взлом хранилища на панели (Sonnet / high; очки)
 
 - **Ветка:** `agent/deck-k3`. **Читать:** design §3, §4 (С1), §7, §8 (хранилище); `server/node/gray_node.gd`, `net_server.gd`,
-  `client/rig_test_scene.gd`, `xr_rig.gd`, `deck_pointer.gd`, К1 (`shared/breach/`).
+  `client/world_scene.gd`, `xr_rig.gd`, `deck_pointer.gd`, К1 (`shared/breach/`).
 - **Сделать:** панель взлома в мире у хранилища (≈48×32 см, привязана к миру, без тряски); указка и курок, подсветка доступных клеток
   клиентом, подтверждение сервером; точка у хранилища, куда ставит телепорт; мир идёт, ловушка поднимает trace; уход, выброс,
   телепорт посреди взлома — досрочный итог; совпавший EXTRACT_SHARD **открывает** хранилище за этой сессией, `can_grab` берёт
@@ -115,7 +115,7 @@ docs/netrun-devbox.md): gdUnit через flock /tmp/gdunit.lock, Gradle — н�
 
 ### К5. Шард в руку → в деку (Sonnet / medium; очки)
 
-- **Ветка:** `agent/deck-k5`. **Читать:** design §8; `try_grab` в `rig_test_scene.gd`, `hand_view.gd`, `xr_rig.gd`.
+- **Ветка:** `agent/deck-k5`. **Читать:** design §8; `try_grab` в `world_scene.gd`, `hand_view.gd`, `xr_rig.gd`.
 - **Сделать:** grip рядом с открытым хранилищем берёт шард в руку; правая рука к левому запястью + grip → «втягивается», строка в
   ДОБЫЧЕ мигает; взятый левой сразу в деку; виды хранилища (закрыто / открыто для тебя / пусто) и шарда по состоянию.
 - **Готово:** gdUnit; **очки:** игрок кладёт шард в деку без подсказки со второй попытки, ни одного «потерял шард» за 30 мин.

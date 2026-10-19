@@ -9,8 +9,7 @@ render_mode unshaded, cull_back, fog_disabled;
 // Не чистый чёрный, а тёмная бирюза темнее фона-пустоты (AssetMaterials.VOID_BG): у референса CDPR чистого чёрного ≈ 0 %, плиты читаются силуэтом на фоне.
 uniform vec4 base_color : source_color = vec4(0.0, 0.07, 0.09, 1.0);
 uniform float edge_glow : hint_range(0.0, 4.0) = 0.75;        // общая яркость контура (почти прозрачный: тусклый, фон просвечивает сквозь свет)
-uniform vec4 tint : source_color = vec4(1.0);
-uniform float tint_amount : hint_range(0.0, 1.0) = 0.0;
+#include "tint_common.gdshaderinc"
 // Сетка клеток хода ТЕКСТУРОЙ на верхних гранях (пол): линии клетки 1 м запечены в grid_tex (AssetMaterials._grid_texture, мипмапы), выборка по МИРОВЫМ x,z
 // с анизотропной фильтрацией: издали и под скользящим углом линия плавно тускнеет по мипам, а не мерцает и не «лесенкой» (в отличие от точек и шейдерных линий на границе пикселя).
 // grid_alpha = 0 — выключено. grid_origin — мировые xz угла клетки, если плита стоит не на целых метрах. Анизотропия берётся из настроек проекта
@@ -33,11 +32,6 @@ uniform float rim_world_w = 0.014;
 uniform float edge_round : hint_range(0.0, 1.0) = 1.0;
 
 // Перекраска тиром сохраняет чёрное и белое: у чёрных вершин (тайлы пола) кайма остаётся нулевой.
-vec3 recolor(vec3 c) {
-	float mx = max(c.r, max(c.g, c.b));
-	float mn = min(c.r, min(c.g, c.b));
-	return mix(tint.rgb * mx, c, mn / max(mx, 0.0001));
-}
 
 varying vec3 v_wp;
 varying float v_top;   // нормаль.y в пространстве модели: верх плиты смотрит в +Y (нужна сетке)

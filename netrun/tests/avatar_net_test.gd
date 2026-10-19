@@ -146,7 +146,7 @@ func test_remote_tracks_keep_the_pose_from_the_fifth_field() -> void:
 
 
 func test_scene_draws_the_body_from_the_pose_and_hides_it_without() -> void:
-	var scene: Node3D = auto_free(preload("res://client/rig_test_scene.gd").new())
+	var scene: Node3D = auto_free(preload("res://client/world_scene.gd").new())
 	add_child(scene)
 	scene.apply_avatars({"k": 1.0, "a": [[3, -1.0, -3.0, 0, _pose().encode()]]})
 	var av: AvatarView = scene.avatar_node("3")

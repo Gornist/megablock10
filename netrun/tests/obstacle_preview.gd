@@ -30,7 +30,7 @@ func _ready() -> void:
 	})
 	assert(ld.error.is_empty(), ld.error)
 	LayoutData._cache[NAME] = ld
-	var scene: Node3D = preload("res://client/rig_test_scene.gd").new()
+	var scene: Node3D = preload("res://client/world_scene.gd").new()
 	add_child(scene)
 	await get_tree().process_frame
 	scene.apply_node({"kind": "node", "node": NAME, "title": "Препятствия", "tier": "BASE", "r": NodeLayout.PORTAL_RADIUS, "shards": [], "portals": [], "layout": NAME})

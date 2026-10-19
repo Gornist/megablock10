@@ -28,7 +28,7 @@ func _ready() -> void:
 	deck.scale = Vector3.ONE * WorldUI.WRIST_DECK_SCALE
 	deck.position = Vector3(0, 0, -0.45)
 	add_child(deck)
-	# Данные такого же вида, какой приходит с сервера: state.cd + ev deck, склеенные HudLogic.program_entries (как в rig_test_scene).
+	# Данные такого же вида, какой приходит с сервера: state.cd + ev deck, склеенные HudLogic.program_entries (как в world_scene).
 	var cd := [
 		{"id": "a", "name": "Призрак", "left": 12.0, "st": "active", "until": 118.0},
 		{"id": "b", "name": "Дрожь", "left": 42.0, "st": "cooldown", "until": 142.0},

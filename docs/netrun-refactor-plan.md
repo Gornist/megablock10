@@ -54,7 +54,7 @@
 |---|---|
 | `layers=behind` по умолчанию (руки и нить наводки поверх всего) | `LAYERS_DEFAULT = "behind"` в G1; bench msaa 2 с `behind` — в приёмку G1 |
 | `tile_glow=3` оставить; клин у края комнаты — отдельная задача | умолчание 3,0/1,0, ручки живые; задача «клин» вне рефактора |
-| Облако C3a на колоннах принято как вид | `cloud=1`, `cloud_far/floor/ceiling=0`, `cloud_lite` константой — умолчание в B1/B3; `cloud_two_sided` мерим на следующих очках |
+| Облако C3a на колоннах принято как вид | `cloud=1`, `cloud_lite` константой — умолчание в B1/B3; `cloud_two_sided` мерим на следующих очках (на момент принятия были и `cloud_far/floor/ceiling=0`; потолок и дальние пласты удалены 18.10 — «оставим только горизонт», горизонт — `BackdropDome`) |
 | `scale` удалить совсем | ключ и `apply_xr`-ветка убираются в G1 |
 | Облако (Б) для хранилища, выхода, портала, шарда — делать, но дешевле | раздел 4.1: способы с ценой на bench; `src/points.py` пишется после выбора способа |
 
@@ -91,7 +91,7 @@
 
 | Слой | Где живёт | Чей | Для чего |
 |---|---|---|---|
-| (А) Поверхностное облако | `assets/shaders/cloud_dark*.gdshader[inc]` + `volume_dust.gdshaderinc`, ручки в `AssetMaterials` | Blender | статичное окружение (реквизит; пол/потолок/дальние — solid_dark, `cloud_far/floor/ceiling=0`) |
+| (А) Поверхностное облако | `assets/shaders/cloud_dark*.gdshader[inc]` + `volume_dust.gdshaderinc`, ручки в `AssetMaterials` | Blender | статичное окружение (реквизит; пол — облако с сеткой; потолка и дальних пластов нет с 18.10, горизонт — `BackdropDome`) |
 | (Б) Объём частицами | `client/volume_cloud.gd`, `client/volume_registry.gd` (MultiMesh, LOD по расстоянию), `particles_body.gdshaderinc` | Godot (код), Blender (шейдер) | объекты Сети: хранилища, выход, порталы, шард, ICE-голограмма; бюджет ≤ 12k blend-квадов на вид, `volume_budget_ms` |
 | Данные | `*.points` рядом с моделью (`VolumeRegistry.points_path`), формат 7 float32 | Blender (запекание), Godot (загрузка) | один формат, одна запись на модель |
 

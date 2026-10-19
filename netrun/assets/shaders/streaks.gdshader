@@ -33,8 +33,7 @@ uniform float anchor : hint_range(-1.0, 1.0) = -1.0;     // что неподв�
 uniform vec3 touch_pos = vec3(0.0);                       // касание: мировая точка
 uniform float touch_radius = 0.0;                         // 0 — выключено
 uniform vec4 touch_color : source_color = vec4(1.0, 0.12, 0.24, 1.0);
-uniform vec4 tint : source_color = vec4(1.0);
-uniform float tint_amount : hint_range(0.0, 1.0) = 0.0;
+#include "tint_common.gdshaderinc"
 // Затухание по расстоянию до камеры (замена depth-fade: буфер глубины не читаем, на мобильном дорого).
 const float fade_start = 60.0;
 const float fade_end = 90.0;
@@ -53,12 +52,6 @@ uniform float keep_frac : hint_range(0.0, 1.0) = 1.0;       // доля штри
 varying vec3 v_wp;
 varying float v_dist;
 
-// Тир перекрашивает цвет ассета в tint, но белые акценты (проёмы, порог, узлы) остаются белыми: чем ближе цвет к белому, тем меньше перекраска.
-vec3 recolor(vec3 c) {
-	float mx = max(c.r, max(c.g, c.b));
-	float mn = min(c.r, min(c.g, c.b));
-	return mix(tint.rgb * mx, c, mn / max(mx, 0.0001));
-}
 float dist_fade() {
 	return 1.0 - smoothstep(fade_start, fade_end, v_dist);
 }
