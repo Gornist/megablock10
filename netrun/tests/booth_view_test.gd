@@ -15,7 +15,7 @@ func before_test() -> void:
 		"ice": [],
 	})
 	assert_str((LayoutData._cache[NAME] as LayoutData).error).is_empty()
-	_scene = preload("res://client/rig_test_scene.gd").new()
+	_scene = preload("res://client/world_scene.gd").new()
 	add_child(_scene)
 	await get_tree().process_frame
 	_scene.apply_node({"kind": "node", "node": "x", "title": "Т", "tier": "BASE", "r": NodeLayout.PORTAL_RADIUS, "shards": [], "portals": [], "layout": NAME})

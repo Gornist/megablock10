@@ -7,7 +7,7 @@ var _attempts: Array = []
 
 
 func _scene() -> Node3D:
-	var scene: Node3D = auto_free(preload("res://client/rig_test_scene.gd").new())
+	var scene: Node3D = auto_free(preload("res://client/world_scene.gd").new())
 	add_child(scene)
 	_attempts = []
 	scene.rig.teleport_attempted.connect(func(from: Vector3, to: Vector3, ok: bool, reason: String):

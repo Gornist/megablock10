@@ -8,7 +8,7 @@ var _events: Array = []
 
 
 func _rig() -> XRRig:
-	var scene: Node3D = auto_free(preload("res://client/rig_test_scene.gd").new())
+	var scene: Node3D = auto_free(preload("res://client/world_scene.gd").new())
 	add_child(scene)
 	_reasons = []
 	_events = []

@@ -39,7 +39,7 @@ func _ready() -> void:
 					d[p[0]] = p[1]
 			AssetMaterials.tune(d)
 	DirAccess.make_dir_recursive_absolute(_out)
-	var scene: Node3D = preload("res://client/rig_test_scene.gd").new()
+	var scene: Node3D = preload("res://client/world_scene.gd").new()
 	add_child(scene)
 	await get_tree().process_frame
 	var foyer := LayoutData.cached("foyer")

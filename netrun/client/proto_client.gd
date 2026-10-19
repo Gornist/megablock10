@@ -82,7 +82,7 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	render_cfg.apply_assets(config_paths)
 	VolumeRegistry.configure(render_cfg.volumetric)   # какие модули рисуются облаком частиц (по умолчанию ни один)
 	VolumeRegistry.impostor_m = render_cfg.volume_impostor_m   # дальше этого расстояния облако — билборд (0 — выкл.)
-	scene = preload("res://client/rig_test_scene.gd").new()
+	scene = preload("res://client/world_scene.gd").new()
 	add_child(scene)
 	if RenderConfig.perf_enabled(render_cfg.perf):   # счётчик кадра для стенда: [render] perf = "on"
 		var perf := FramePerf.new()

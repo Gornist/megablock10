@@ -35,7 +35,7 @@ func after_test() -> void:
 
 
 func _scene() -> Node3D:
-	var scene: Node3D = auto_free(preload("res://client/rig_test_scene.gd").new())
+	var scene: Node3D = auto_free(preload("res://client/world_scene.gd").new())
 	add_child(scene)
 	return scene
 
@@ -234,7 +234,7 @@ func test_после_тоннеля_риг_в_точке_arrive() -> void:
 
 
 func test_точка_входа_раскладки_и_запасная() -> void:
-	var cls := preload("res://client/rig_test_scene.gd")
+	var cls := preload("res://client/world_scene.gd")
 	assert_vector(cls.entry_point(_alt)).is_equal(_alt.spawn)
 	assert_vector(cls.entry_point(null)).is_equal(NodeLayout.SPAWN)
 	assert_vector(cls.entry_point(LayoutData.load_named("нет_такой"))).is_equal(NodeLayout.SPAWN)

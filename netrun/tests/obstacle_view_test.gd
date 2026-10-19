@@ -32,7 +32,7 @@ func after_test() -> void:
 
 
 func _view() -> NodeView:
-	var scene: Node3D = auto_free(preload("res://client/rig_test_scene.gd").new())
+	var scene: Node3D = auto_free(preload("res://client/world_scene.gd").new())
 	add_child(scene)
 	scene.apply_node({"kind": "node", "node": "node_x", "title": "Тест", "tier": "BASE", "r": NodeLayout.PORTAL_RADIUS, "shards": [], "portals": [], "layout": NAME})
 	return scene.view
@@ -72,7 +72,7 @@ func test_reflection_is_a_mirrored_copy_with_its_own_material() -> void:
 
 
 func test_legacy_room_has_no_solid_obstacles() -> void:
-	var scene: Node3D = auto_free(preload("res://client/rig_test_scene.gd").new())
+	var scene: Node3D = auto_free(preload("res://client/world_scene.gd").new())
 	add_child(scene)
 	scene.apply_node({"kind": "node", "node": "node_x", "title": "Тест", "tier": "BASE", "r": NodeLayout.PORTAL_RADIUS, "shards": [], "portals": []})
 	assert_int(scene.view.solid_obstacles().size()).is_equal(0)
