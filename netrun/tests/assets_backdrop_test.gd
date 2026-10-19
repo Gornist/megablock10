@@ -56,7 +56,7 @@ func test_cloud_gaps_show_the_dome_sky() -> void:
 	assert_int(m.size()).override_failure_message("у укрытия есть облачный материал").is_greater(0)
 	var cloud := m[0] as ShaderMaterial
 	assert_float(float(cloud.get_shader_parameter("sky_fill"))).override_failure_message("sky_fill = 1 по умолчанию").is_equal(1.0)
-	assert_float(float(cloud.get_shader_parameter("sky_haze_gain"))).override_failure_message("облако получает дымку неба").is_equal(1.0)
+	assert_float(float(cloud.get_shader_parameter("sky_haze_gain"))).override_failure_message("облако получает дымку неба по ручке backdrop_haze").is_equal(float(AssetMaterials.KNOBS["backdrop_haze"]))
 	AssetMaterials.set_sky_void(null, Color(0.2, 0.0, 0.0))
 	assert_float(AssetMaterials._sky_void.r).is_equal_approx(0.2, 0.0001)
 	AssetMaterials.set_sky_void(null, Color(0, 0, 0))
