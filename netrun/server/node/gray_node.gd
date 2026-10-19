@@ -145,7 +145,11 @@ var hunt_retry_sec: float:           # пауза между попытками 
 		return outcome.hunt_retry_sec
 	set(value):
 		outcome.hunt_retry_sec = value
-var _given: Dictionary = {}          # id предмета, отданного игроком другому (К5б) -> сессия, у которой он теперь ("" — ушёл на телефон); слот отданного шарда не вернуть на постамент
+## Дека и обмен грузом (К5б) — в NodeDeck (node_deck.gd). `_given` — прежнее имя-алиас на его поле (тот же Dictionary: его трогает ShardVaults).
+var deck_state: NodeDeck = NodeDeck.new(self)
+var _given: Dictionary:              # id предмета, отданного игроком другому -> сессия, у которой он теперь ("" — ушёл на телефон)
+	get:
+		return deck_state.given
 ## Снимок Моста принят (после рестарта — активные сессии и шард восстановлены).
 var synced := false
 ## Сессии, взятые из снимка Моста: ждали возврата игрока.
@@ -706,110 +710,29 @@ static func finish_moves(items: Array, session: String, session_data: Dictionary
 	return moves
 
 
-## Что дека показывает про сессию (событие `ev deck`): RAM и занятое ею, рабочие демоны (имя, эффект, тир, цепочка), груз и эдди.
+## Дека, груз и обмен — в NodeDeck (node_deck.gd); здесь прежние имена тонкими делегатами.
+## Что дека показывает про сессию (событие `ev deck`): RAM и занятое ею, рабочие демоны, груз и эдди.
 func deck_view(ds: DaemonSession) -> Dictionary:
-	var rows: Array = []
-	var used := 0
-	for id in ds.deck:
-		var def := daemons.get_def(id)
-		var meta: Dictionary = ds.deck_meta.get(id, {})
-		var cells: Array = (meta.get("cells", []) as Array).map(func(c: Variant) -> String: return str(c))
-		used += cells.size()
-		var row := {"id": id, "name": daemons.display_name(id, NodeLayout.DAEMON_NAMES.get(id, id)), "effect": def.effect if def != null else "",
-			"tier": def.tier if def != null else 1, "cells": cells, "prot": bool(meta.get("prot", false)), "loaded": true, "chargeable": daemons.is_chargeable(id)}
-		if def != null and def.unsupported_reason != "":
-			row["unsupported"] = def.unsupported_reason
-		rows.append(row)
-	return {"kind": WorldMsg.EV_DECK, "ram": ds.ram, "ram_default": ds.ram_default, "used": used, "daemons": rows,
-		"loot": ds.loot_view, "eddies": ds.loot_eddies}
+	return deck_state.deck_view(ds)
 
 
 func _push_deck(session: String) -> void:
-	var ds: DaemonSession = _sessions.get(session)
-	if ds != null:
-		net.send_to(session, WorldMsg.encode_fields(WorldMsg.EVENT, deck_view(ds)))
+	deck_state.push_deck(session)
 
 
-## Строка перезарядок в снимке: к {id, name, left} добавлены st (ready | charged | cooldown | active | unsupported) и until (время сервера, когда
-## состояние кончится; нет у ready и unsupported). active — действует эффект (GHOST, JITTER) и важнее перезарядки, которая идёт параллельно.
+## Строка перезарядок в снимке: к {id, name, left} добавлены st и until (см. NodeDeck.cd_entry).
 func cd_entry(ds: DaemonSession, id: String, now: float) -> Dictionary:
-	var def := daemons.get_def(id)
-	var left := ds.cooldown_left(id, now)
-	var entry := {"id": id, "name": daemons.display_name(id, NodeLayout.DAEMON_NAMES.get(id, id)), "left": left, "st": "ready"}
-	if def != null and def.unsupported_reason != "":
-		entry["st"] = "unsupported"
-		return entry
-	var act := ds.active_left(def.effect, now) if def != null else 0.0
-	if act > 0.0:
-		entry["st"] = "active"
-		entry["until"] = snappedf(now + act, 0.001)
-	elif left > 0.0:
-		entry["st"] = "cooldown"
-		entry["until"] = snappedf(now + left, 0.001)
-	elif ds.is_charged(id):
-		entry["st"] = "charged"
-	return entry
+	return deck_state.cd_entry(ds, id, now)
 
 
 ## Дека и груз из Моста (предметы deck:<сессия>), RAM и эдди из документа сессии; в конце — событие `ev deck` игроку.
 func _load_deck(session: String) -> void:
-	if bridge == null or not bridge.is_ready():
-		return
-	@warning_ignore("redundant_await")
-	var r: Dictionary = await bridge.list_docs(BridgeApi.T_ITEM)
-	var ds: DaemonSession = _sessions.get(session)
-	if ds == null or not r.get("ok", false):
-		return
-	var docs: Array = r.get("docs", [])
-	# Сессия нужна до деления на рабочих и груз (`loaded`, RAM): документ предметов один без неё не скажет, кто рабочий.
-	@warning_ignore("redundant_await")
-	var sr: Dictionary = await bridge.get_doc(BridgeApi.T_SESSION, session)
-	if _sessions.get(session) != ds:
-		return   # сессия ушла, пока ждали Мост
-	var sdata: Dictionary = {}
-	if sr.get("ok", false):
-		sdata = (sr["doc"] as Dictionary).get("data", {})
-	var ids: Array[String] = []
-	var meta := {}
-	for e in deck_from_items(docs, session, sdata):
-		var def := daemons.add_item_daemon(e["id"], e["daemon"])
-		if def != null:
-			ids.append(def.id)
-			meta[def.id] = {"cells": e["daemon"].get("cells", []), "prot": e["protected"]}
-			if def.unsupported_reason != "":
-				print("[gray-node] ", session, ": демон ", def.display_name, " (", def.effect, ") не работает в Сети: ", def.unsupported_reason)
-	if not ids.is_empty():
-		ds.deck = ids
-		ds.deck_meta = meta
-	ds.loot_view = loot_from_items(docs, session, sdata)
-	if not sdata.is_empty():
-		var ram := int(sdata.get("ram", 0))
-		if ram > 0:   # нет поля (сессия до К2): остаётся значение по умолчанию с пометкой
-			ds.ram = ram
-			ds.ram_default = false
-		ds.loot_eddies = int(sdata.get("loot_eddies", 0))
-		ds.runner_key = str(sdata.get("runner", ""))
-	await _load_cooldown(session, ds)
-	if _sessions.get(session) == ds:
-		_push_deck(session)
+	await deck_state.load_deck(session)
 
 
-## Остывание узлов для игрока из документа runner (breach_cooldown: узел -> мс Unix): по ключу игрока из сессии. Нет документа — остывания нет.
+## Остывание узлов для игрока из документа runner (breach_cooldown).
 func _load_cooldown(session: String, ds: DaemonSession) -> void:
-	if ds.runner_key.is_empty():
-		return
-	@warning_ignore("redundant_await")
-	var r: Dictionary = await bridge.list_docs(BridgeApi.T_RUNNER)
-	if _sessions.get(session) != ds or not r.get("ok", false):
-		return
-	for d in r.get("docs", []):
-		var data: Dictionary = d.get("data", {})
-		if str(data.get("key", "")) == ds.runner_key and data.get("breach_cooldown") is Dictionary:
-			var cds: Dictionary = {}
-			for k in data["breach_cooldown"]:
-				cds[str(k)] = int(data["breach_cooldown"][k])
-			ds.breach_cooldown = cds
-			_push_shards()   # панель взлома показывает «ОСТЫВАЕТ»
+	await deck_state.load_cooldown(session, ds)
 
 
 # ---------------------------------------------------------------- отправка добычи (К5б, GiveService)
@@ -821,7 +744,7 @@ func has_session(session: String) -> bool:
 
 ## Можно ли менять груз сессии: она в узле, аватар на месте и забег не закрывается (выход, флэтлайн, охота за исходом).
 func can_exchange(session: String) -> bool:
-	return _sessions.has(session) and net != null and net.has_avatar(session) and not _finishing.has(session) and not _exiting.has(session)
+	return deck_state.can_exchange(session)
 
 
 ## Отдача в Мосте началась/кончилась: исход забега ждёт её, как ждёт take (протокол, 6.7). Начинать до первого await.
@@ -833,15 +756,14 @@ func end_inflight(session: String) -> void:
 	_takes_inflight[session] = maxi(int(_takes_inflight.get(session, 0)) - 1, 0)
 
 
-## Предмет отдан: теперь он у сессии `holder` ("" — на телефоне контакта). Запоминаем, чтобы слот шарда, откуда его взяли, не показал его
-## снова. Вернулся к тому, кто его брал (A -> B -> A), — settle_shards снова видит его у него и слот не пустеет зря.
+## Предмет отдан: теперь он у сессии `holder` ("" — на телефоне контакта) — см. NodeDeck.note_given.
 func note_given(item: String, holder: String = "") -> void:
-	_given[item] = holder
+	deck_state.note_given(item, holder)
 
 
 ## Предмет отдан кому-то, кроме `session` (у неё его нет): слот, откуда она его взяла, после её выхода не вернуть на постамент.
 func is_given_away(item: String, session: String) -> bool:
-	return _given.has(item) and str(_given[item]) != session
+	return deck_state.is_given_away(item, session)
 
 
 ## Перечитать груз и деку игрока из Моста и отправить ему `ev deck`.
