@@ -1,21 +1,15 @@
 class_name TickBlackBrain
 extends IceBrain
 ## Black ICE по тактам в обёртке IceBrain (docs/gamedesign/ice.md §6.1): узел и IceNode видят привычный интерфейс (state, is_hunting, position,
-## ejected), а думает TickBlack. step() ничего не делает — такт приходит из узла через tick_step().
+## ejected), а думает TickBlack. Такт приходит из узла через tick_step().
 
 var black: TickBlack
 var _view_phase := -1
 
 
-func _init(tb: TickBlack, settings: Dictionary = {}) -> void:
-	var s := settings.duplicate()
-	s["black"] = true
-	super._init(s, NodeGrid.center(tb.cell()))
+func _init(tb: TickBlack) -> void:
+	super._init(true, NodeGrid.center(tb.cell()))
 	black = tb
-
-
-func step(_now: float, _targets: Dictionary, _meters: Dictionary = {}) -> void:
-	pass
 
 
 ## Охота закрывает порталы всем нетраннерам узла (ice.md §6.1: «под охотой порталы закрыты»).

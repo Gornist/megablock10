@@ -388,13 +388,7 @@ func _add_ice(id: String, waypoints: Array, route: Array = [], in_lair: bool = f
 	var ice := IceNode.new()
 	ice.name = id
 	ice.position = wps[0]
-	ice.time_source = now
-	var settings := ice_settings.duplicate(true)
-	settings.merge(node_def.get("ice_settings", {}), true)  # узел может смягчить ICE (учебный)
-	if in_lair:
-		settings.merge(black_ice_settings, true)
-		settings["black"] = true
-	ice.setup(settings, wps, ice_grid)
+	ice.setup(in_lair, wps)
 	if in_lair:
 		var lair_cells: Array[Vector2i] = []
 		for c: Vector2i in layout.lair["cells"]:
@@ -406,10 +400,12 @@ func _add_ice(id: String, waypoints: Array, route: Array = [], in_lair: bool = f
 			kind = ""
 		tsettings["kind"] = kind
 		var tb := TickBlack.new(lair_cells, layout.lair["home"], ice_grid, tsettings, black_burns)
-		_black_brain = TickBlackBrain.new(tb, settings)
+		_black_brain = TickBlackBrain.new(tb)
 		_black_brain.ejected.connect(func(s: String, r: String) -> void: ice.ejected.emit(s, r))
 		ice.brain = _black_brain
 	if not in_lair:
+		var settings := ice_settings.duplicate(true)
+		settings.merge(node_def.get("ice_settings", {}), true)  # узел может смягчить ICE (учебный)
 		var ti := TickIce.new(_tick_ice_settings(settings), route if not route.is_empty() else TickIce.route_from_points(wps), ice_grid)
 		_tick_ices[ice] = ti
 		ice.position = NodeGrid.center(ti.cell())
@@ -882,10 +878,7 @@ func _step(delta: float) -> void:
 		if not ds.is_ghost(_now):
 			targets[session] = avatar.position
 	for ice in _ices:
-		# IceNode не думает сам (netrunner_count = 0 — только rest()): ICE шагает по такту, см. _tick_step.
-		ice.netrunner_count = 0
-		ice.targets = targets
-		ice.meters = meters
+		ice.targets = targets   # IceNode сам не думает: ICE шагает по такту, см. _tick_step
 	_tick_step(meters)
 	_update_hunts()
 	breach.tick(delta)
