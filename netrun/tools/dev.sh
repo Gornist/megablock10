@@ -44,6 +44,12 @@ cmd_sync() {
   fi
   dssh "mkdir -p ~/$REMOTE/netrun" || die "ssh"
   rsync -a --delete --exclude reports --exclude .godot "$ROOT/netrun/" "$HOST:$REMOTE/netrun/" || die "rsync"
+  # Общие векторы контрактов (rules/src/test/resources/contracts): их читают тесты Godot (bridge_ops_contract_test: res://../rules/…); без папки такие тесты пропускаются.
+  local contracts=rules/src/test/resources/contracts
+  if [[ -d "$ROOT/$contracts" ]]; then
+    dssh "mkdir -p ~/$REMOTE/$contracts" || die "ssh"
+    rsync -a --delete "$ROOT/$contracts/" "$HOST:$REMOTE/$contracts/" || die "rsync contracts"
+  fi
   dssh "echo '$BRANCH' > ~/$REMOTE/.dev-branch; echo '$(git -C "$ROOT" rev-parse --short HEAD)' > ~/$REMOTE/.dev-sha"
   echo "dev.sh: sync ok ($(git -C "$ROOT" rev-parse --short HEAD) + рабочие правки)"
 }
