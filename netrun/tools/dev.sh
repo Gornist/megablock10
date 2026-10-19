@@ -16,8 +16,12 @@
 #    (доли кадра, например DEV_CROP=0.3,0.15,0.4,0.7) режет каждый кадр перед сборкой сетки.
 set -uo pipefail
 
-HOST=${DEV_HOST:-devbox}
 ROOT=$(git rev-parse --show-toplevel)
+# Общая обвязка ssh к devbox (scripts/lib/devbox.sh: dssh, unreachable). DEV_HOST — прежнее имя переменной, оставлено для совместимости.
+DEVBOX_HOST=${DEV_HOST:-${DEVBOX_HOST:-devbox}}
+# shellcheck source=../../scripts/lib/devbox.sh
+. "$ROOT/scripts/lib/devbox.sh"
+HOST=$DEVBOX_HOST   # адрес для rsync
 BRANCH=$(git -C "$ROOT" branch --show-current)
 SLUG=${BRANCH#agent/}
 SLUG=${SLUG//\//-}
@@ -32,14 +36,15 @@ die() { echo "dev.sh: $*" >&2; exit 2; }
 
 cmd_sync() {
   echo "dev.sh: $ROOT@$BRANCH -> $HOST:$REMOTE"
-  local mark
-  mark=$(ssh "$HOST" "cat ~/$REMOTE/.dev-branch 2>/dev/null || true")
+  local mark rc=0
+  mark=$(dssh "cat ~/$REMOTE/.dev-branch 2>/dev/null || true") || rc=$?
+  if [[ $rc -eq 255 ]]; then unreachable >&2; die "devbox недоступен"; fi
   if [[ -n "$mark" && "$mark" != "$BRANCH" && -z "${DEV_REMOTE:-}" ]]; then
     die "в $REMOTE лежит ветка '$mark', а у вас '$BRANCH'; задайте DEV_REMOTE=... явно, если так и надо"
   fi
-  ssh "$HOST" "mkdir -p ~/$REMOTE/netrun" || die "ssh"
+  dssh "mkdir -p ~/$REMOTE/netrun" || die "ssh"
   rsync -a --delete --exclude reports --exclude .godot "$ROOT/netrun/" "$HOST:$REMOTE/netrun/" || die "rsync"
-  ssh "$HOST" "echo '$BRANCH' > ~/$REMOTE/.dev-branch; echo '$(git -C "$ROOT" rev-parse --short HEAD)' > ~/$REMOTE/.dev-sha"
+  dssh "echo '$BRANCH' > ~/$REMOTE/.dev-branch; echo '$(git -C "$ROOT" rev-parse --short HEAD)' > ~/$REMOTE/.dev-sha"
   echo "dev.sh: sync ok ($(git -C "$ROOT" rev-parse --short HEAD) + рабочие правки)"
 }
 
@@ -117,7 +122,7 @@ cmd_test() {
     local i n
     for i in "${!names[@]}"; do n=${names[$i]}; n=${n##*/}; names[$i]=${n%.gd}; done
   fi
-  remote_test_script | ssh "$HOST" bash -s -- "${names[@]}"
+  remote_test_script | dssh bash -s -- "${names[@]}"
 }
 
 remote_shot_script() {
@@ -171,7 +176,7 @@ cmd_shot() {
   local scene=${1:-}
   [[ "$scene" == res://* ]] || die "shot: нужна сцена res://… (например res://assets/preview_avatars.tscn)"
   shift
-  remote_shot_script "$scene" "$@" | ssh "$HOST" bash -s
+  remote_shot_script "$scene" "$@" | dssh bash -s
   mkdir -p "$SHOT_DIR"
   if scp -q "$HOST:$SHOT_DIR/sheet.png" "$SHOT_DIR/sheet.png" 2>/dev/null; then
     echo "dev.sh: сетка на Mac: $SHOT_DIR/sheet.png (отдельные кадры — на devbox: $SHOT_DIR)"
