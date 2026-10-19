@@ -17,13 +17,14 @@ for f in check verify dbx ci-wait agent-worktree zone-check train land test-hook
 done
 files="$files .claude/hooks/guard-bash.sh .claude/hooks/session-brief.sh"
 # Скрипты зоны Devbox (13.10): проверяем, если они уже в ветке — box.sh и box/probe.sh приходят вместе с D1.
-for f in scripts/box.sh scripts/box/probe.sh scripts/devbox-session-start.sh scripts/devbox-godot-ai.sh; do
+for f in scripts/lib/devbox.sh scripts/box.sh scripts/box/probe.sh scripts/devbox-session-start.sh scripts/devbox-godot-ai.sh; do
   [ -f "$f" ] && files="$files $f"
 done
 
 { echo "== shellcheck -S warning"; } >>"$log"
 # shellcheck disable=SC2086  # список файлов без пробелов в именах — разбиение по словам намеренное
-shellcheck -S warning $files >>"$log" 2>&1
+# -s bash: подключаемые библиотеки (scripts/lib/) законно без шебанга — иначе SC2148 (19.10, #487).
+shellcheck -S warning -s bash $files >>"$log" 2>&1
 sc=$?
 sc_n=$(grep -c '^In .* line [0-9]*:' "$log")
 [ "$sc" -ne 0 ] && [ "$sc_n" -eq 0 ] && sc_n=1
