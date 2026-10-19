@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -39,8 +40,9 @@ class MbNavItem(val id: String, val icon: Int, val label: String, val badge: Int
 /**
  * Оболочка приложения (раздел 5 гайдлайна): шапка (портрет → профиль, позывной, фракция, €$, узлы) скрывается на
  * вложенных экранах ([header] = false — там заголовок даёт `MbBreadcrumb`), нижнее меню — всегда (так в прототипе,
- * даже на экране взлома). Системные отступы (edge-to-edge) — здесь; сама Activity ещё не включает edge-to-edge
- * глобально (M5, когда все экраны перенесены — иначе старые непереехавшие экраны полезут под системные панели).
+ * даже на экране взлома). Системные отступы (edge-to-edge, targetSdk 35 — панели всегда поверх приложения) — здесь: статус-бар,
+ * клавиатура ([imePadding] — нижнее меню поднимается над ней, как раньше при adjustResize) и навигационная панель. Экраны вне
+ * оболочки (SetupScreen, ProfileScreen) и оверлеи (звонок, плашка) ставят отступы сами.
  */
 @Composable
 fun MbAppShell(
@@ -60,7 +62,8 @@ fun MbAppShell(
 ) {
     val c = LocalMbColors.current
     Box(modifier.fillMaxSize().background(c.bg)) {
-        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
+        // Порядок важен: imePadding после statusBars, а navigationBars у нижнего меню — после него: поверх клавиатуры инсет панели уже учтён.
+        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars).imePadding()) {
             if (header) {
                 Row(
                     modifier = Modifier

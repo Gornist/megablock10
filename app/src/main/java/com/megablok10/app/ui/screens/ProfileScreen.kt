@@ -2,8 +2,11 @@ package com.megablok10.app.ui.screens
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -39,7 +42,8 @@ fun ProfileScreen(
 ) {
     var segment by remember { mutableIntStateOf(SEGMENT_PROFILE) }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = MbDimens.screenPadding)) {
+    // Вне оболочки (MbAppShell): панели и клавиатуру учитываем сами (targetSdk 35 — приложение рисуется под ними).
+    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = MbDimens.screenPadding)) {
         MbBreadcrumb(parts = listOf("Профиль"), icon = MbIcons.User) {
             MbIconButton(MbIcons.Close, "Назад", onBack)
         }
