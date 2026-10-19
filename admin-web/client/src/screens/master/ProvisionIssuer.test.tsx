@@ -7,7 +7,7 @@ import { ProvisionIssuer } from "./ProvisionIssuer";
 vi.mock("../../api/client");
 
 const result: ProvisionQr = {
-  item: { id: "i1", callsign: "Alice", faction: "Neon", balance: 500, ram: 8, createdAt: 0, createdBy: "M", replacesKey: null, replacesName: null, boundKey: null, boundName: null, boundAt: null, void: false, conflicts: 0 },
+  item: { id: "i1", callsign: "Alice", faction: "Neon", balance: 500, ram: 8, createdAt: 0, createdBy: "M", replacesKey: null, replacesName: null, boundKey: null, boundName: null, boundAt: null, void: false, conflicts: 0, code: "ABC-DEF" },
   qr: "MB10:PROV:v1:i1",
   qrImage: "data:image/png;base64,AAA",
 };

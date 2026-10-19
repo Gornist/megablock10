@@ -7,23 +7,18 @@ render_mode blend_add, unshaded, depth_draw_never, cull_disabled, fog_disabled;
 
 uniform float glow : hint_range(0.0, 6.0) = 1.4;
 uniform float lattice : hint_range(0.0, 0.5) = 0.0;  // шаг мировой решётки, м: центры прищёлкиваются к ней (0 = выкл.), эффект «объёмного дисплея»
-uniform float twinkle : hint_range(0.0, 0.5) = 0.15;
-uniform float twinkle_speed : hint_range(0.0, 3.0) = 0.6;
+const float twinkle = 0.15;
+const float twinkle_speed = 0.6;
 // «Дыхание» поля точек (пол, рёбра тайлов): по полю бежит волна яркости и вместе с ней пульсирует размер точек.
 uniform float wave : hint_range(0.0, 1.0) = 0.6;          // глубина волны яркости
-uniform float size_wave : hint_range(0.0, 1.0) = 0.45;    // глубина пульсации размера
-uniform float wave_speed : hint_range(0.0, 3.0) = 0.9;
-uniform float wave_scale : hint_range(0.0, 6.0) = 1.1;    // волн на метр
+const float size_wave = 0.45;    // глубина пульсации размера
+const float wave_speed = 0.9;
+const float wave_scale = 1.1;    // волн на метр
 #include "tint_common.gdshaderinc"
 
-// Corruption: красный «шрам» в радиусе от точки (мировые координаты): цвет уходит в corrupt_color, часть клеток пропадает.
-// Дискретные клетки по сетке, без анимации: комфорт в VR (никаких вспышек). Выключено при corrupt_radius = 0.
-uniform vec3 corrupt_pos = vec3(0.0);
-uniform float corrupt_radius = 0.0;
-uniform vec4 corrupt_color : source_color = vec4(1.0, 0.12, 0.24, 1.0);
 // Затухание по расстоянию до камеры (замена depth-fade: буфер глубины не читаем, на мобильном дорого).
-uniform float fade_start = 60.0;
-uniform float fade_end = 90.0;
+const float fade_start = 60.0;
+const float fade_end = 90.0;
 uniform float intensity = 1.0; // общий множитель яркости (отражение в полу = 0.2)
 // Минимальный диаметр точки в пикселях экрана (точка меньше пикселя мерцает): дальше квад растёт до min_px, яркость падает по площади. 0 — выключено.
 uniform float min_px : hint_range(0.0, 6.0) = 2.0;
@@ -34,19 +29,6 @@ varying vec3 v_wp;
 varying float v_dist;
 varying float v_comp;  // 1 / (во сколько раз квад увеличен до min_px)²
 
-float corrupt_k() {
-	return corrupt_radius > 0.0 ? 1.0 - smoothstep(corrupt_radius * 0.12, corrupt_radius, distance(v_wp, corrupt_pos)) : 0.0;
-}
-float cell_hash(float salt) {
-	return fract(sin(dot(floor(v_wp * vec3(2.5, 16.0, 2.5)) + salt, vec3(12.9, 78.2, 37.7))) * 43758.5);
-}
-// Порча горизонтальными полосами (глитч, как в референсе Blackwall): полоса либо цвета ассета, либо corrupt_color, без серого посередине.
-float corrupt_mask(float k) {
-	return k > 0.0 ? step(cell_hash(0.0), k) : 0.0;  // при k = 0 шрама нет: без защиты клетка с нулевым хешем краснела бы сама
-}
-float corrupt_hole(float m) {
-	return 1.0 - m * step(cell_hash(7.0), 0.4); // часть порченых клеток пропадает
-}
 float dist_fade() {
 	return 1.0 - smoothstep(fade_start, fade_end, v_dist);
 }
@@ -81,7 +63,6 @@ void fragment() {
 	float d = length(UV - vec2(0.5)) * 2.0;
 	float soft = smoothstep(1.0, 0.25, d);
 	float tw = 1.0 - twinkle + twinkle * sin(TIME * twinkle_speed + v_phase + (v_wp.x + v_wp.z) * 1.7); // волны мерцания бегут по полу
-	float k = corrupt_k();
-	ALBEDO = mix(mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount), corrupt_color.rgb, corrupt_mask(k)) * glow;
+	ALBEDO = mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount) * glow;
 	ALPHA = soft * COLOR.a * tw * (1.0 - wave + wave * v_wave) * dist_fade() * intensity * v_comp;
 }

@@ -11,6 +11,7 @@ import {
   balanceUnexplained,
   duplicateReceive,
   provisionConflict,
+  redeemFlood,
   transferStuck,
 } from "./attentionRules/integrityRules.js";
 
@@ -38,6 +39,7 @@ const RULES: AttentionRule[] = [
   playerOutliers,
   clockSkew,
   provisionConflict,
+  redeemFlood,
   duplicateReceive,
   amountMismatch,
   balanceUnexplained,

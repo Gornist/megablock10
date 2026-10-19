@@ -3,11 +3,14 @@ import { qrImageDataUrl } from "../lib/qrImage.js";
 import type { ProvisionQr, ProvisionsResponse } from "../apiTypes.js";
 import type { Db } from "../db/index.js";
 import { logMasterAction, requireMaster } from "../lib/auth.js";
+import { isProvisionCode, normalizeProvisionCode } from "../lib/provisionCode.js";
+import { redeemLimiter } from "../lib/redeemLimiter.js";
 import { makeHumanizeContext } from "../lib/humanize.js";
 import { projectCharacter } from "../lib/projection.js";
 import {
   PROVISION_MAX_BALANCE,
   createProvision,
+  findOpenProvisionByCode,
   getProvision,
   listProvisions,
   provisionConfig,
@@ -53,6 +56,29 @@ export function registerProvisionRoutes(app: FastifyInstance, db: Db) {
       return created;
     })();
     return respond(request, id);
+  });
+
+  /**
+   * Короткий код вместо камеры (lib/provisionCode.ts): телефон меняет «ABC-DEF» на ту же строку QR, что отдаёт GET …/:id/qr. Без мастера —
+   * на первом запуске у телефона нет ничего, кроме адреса сервера. Одноразовость остаётся за bindProvision при применении: сам обмен
+   * кода не гасит, повтор до применения допустим. Защита от подбора — redeemLimiter.ts: пока лимит сработал, код не проверяется вовсе.
+   */
+  app.post<{ Body: { code?: unknown } }>("/api/provisions/redeem", async (request, reply) => {
+    const raw = request.body?.code;
+    if (typeof raw !== "string" || raw.length > 64) return reply.code(400).send({ error: "code is required" });
+    const gate = redeemLimiter.check(request.ip);
+    if (!gate.ok) {
+      reply.header("retry-after", String(gate.retryAfterSec));
+      return reply.code(429).send({ error: "rate_limited", retryAfterSec: gate.retryAfterSec });
+    }
+    const code = normalizeProvisionCode(raw);
+    const row = isProvisionCode(code) ? findOpenProvisionByCode(db, code) : undefined;
+    if (!row) {
+      redeemLimiter.fail(request.ip);
+      return reply.code(404).send({ error: "unknown_code" });
+    }
+    redeemLimiter.success(request.ip);
+    return { qr: provisionQrString(row, provisionConfig(request)) };
   });
 
   /** Тот же код ещё раз (потерян лист/погас экран) — только пока он не применён и не погашен. */

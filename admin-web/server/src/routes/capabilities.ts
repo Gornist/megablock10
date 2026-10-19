@@ -11,6 +11,8 @@ export const CAPABILITIES = {
   world_records: 2,
   /** POST /api/world-events: быстрые события на точки (routes/worldEvents.ts). */
   world_events: 1,
+  /** POST /api/provisions/redeem: вход в игру коротким кодом без камеры (routes/provisions.ts); телефон решает по нему, показывать ли поле. */
+  provisionCode: 1,
 } as const;
 
 /**

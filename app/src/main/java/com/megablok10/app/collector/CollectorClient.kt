@@ -151,6 +151,33 @@ class CollectorClient(
                 false
             }
         }
+
+    /**
+     * POST /api/provisions/redeem — обмен короткого кода на QR персонажа (ввод без камеры, docs/provisioning-qr.md). Заголовок
+     * X-Game-Secret не шлём: на первом запуске секрета ещё нет, он придёт внутри QR. Сам [code] в журнал не пишем — это
+     * одноразовая выдача персонажа, а журнал игроки присылают мастеру.
+     */
+    suspend fun redeemProvisionCode(baseUrl: String, code: String): RedeemResult = withContext(Dispatchers.IO) {
+        try {
+            // Request.Builder.url бросает IllegalArgumentException на адресе, который не разобрать, — поэтому сборка запроса внутри try.
+            val request = Request.Builder()
+                .url("$baseUrl/api/provisions/redeem")
+                .post(JSONObject().put("code", code).toString().toRequestBody(JSON))
+                .build()
+            http.newCall(request).execute().use { response ->
+                val result = parseRedeemResponse(response.code, response.body?.string().orEmpty(), response.header("Retry-After"))
+                Mb10Log.event(TAG, "provision.redeem", "url" to baseUrl, "http" to response.code, "result" to result.javaClass.simpleName)
+                result
+            }
+        } catch (e: IOException) {
+            Mb10Log.warnEvent(TAG, "provision.redeem_unreachable", "url" to baseUrl, "error" to e.javaClass.simpleName, "msg" to e.message)
+            RedeemResult.Unreachable
+        } catch (e: IllegalArgumentException) {
+            // Опечатка в поле «Адрес сервера» — для игрока то же, что недоступный сервер.
+            Mb10Log.warnEvent(TAG, "provision.redeem_bad_url", "url" to baseUrl)
+            RedeemResult.Unreachable
+        }
+    }
 }
 
 /** Заголовок X-Game-Secret — только если мастер задал GAME_SECRET на сервере и раздал его игрокам (см. admin-web/README.md); пусто — ничего не меняется, как раньше. */

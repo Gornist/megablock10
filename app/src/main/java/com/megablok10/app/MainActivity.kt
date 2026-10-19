@@ -24,6 +24,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -52,6 +54,7 @@ import com.megablok10.app.di.settingsViewModel
 import com.megablok10.app.di.shellViewModel
 import com.megablok10.app.qr.ItemKind
 import com.megablok10.app.qr.Mb10Qr
+import com.megablok10.app.qr.ProvisionCode
 import com.megablok10.app.qr.rememberMb10QrScanner
 import com.megablok10.app.ui.theme.AppSnack
 import com.megablok10.app.ui.LocalAppGraph
@@ -155,7 +158,12 @@ fun AppRoot() {
     val currentIdentity = identity
     if (currentIdentity == null) {
         // Сетевая сессия поднимается сама, как только персонаж появился (SessionViewModel).
-        SetupScreen(onProvision = session::provision, onCreated = session::createCharacter)
+        SetupScreen(
+            onProvision = session::provision,
+            onCreated = session::createCharacter,
+            onRedeem = session::redeemCode,
+            needsServerAddress = session.needsServerAddress(),
+        )
     } else if (showProfile) {
         ProfileScreen(
             identity = currentIdentity,
@@ -264,10 +272,22 @@ fun AppRoot() {
     }
 }
 
+/** «ABC-DEF» — шесть знаков кода и тире; пробелы при вводе не нужны, лишнее обрезаем. */
+private const val MAX_CODE_INPUT = 8
+
 @Composable
-fun SetupScreen(onProvision: (Mb10Qr.Provision) -> Unit, onCreated: (String, String) -> Unit) {
+fun SetupScreen(
+    onProvision: (Mb10Qr.Provision) -> Unit,
+    onCreated: (String, String) -> Unit,
+    onRedeem: (code: String, address: String) -> Unit,
+    needsServerAddress: Boolean,
+) {
     var callsign by remember { mutableStateOf("") }
     var faction by remember { mutableStateOf("") }
+    // Ввод кода без камеры (решение владельца 19.10): блок раскрывается по кнопке, чтобы не загромождать экран тем, у кого камера есть.
+    var codeEntryOpen by remember { mutableStateOf(false) }
+    var code by remember { mutableStateOf("") }
+    var address by remember { mutableStateOf("") }
     val c = MbColorsDefault
     val startScan = rememberMb10QrScanner { qr ->
         if (qr is Mb10Qr.Provision) onProvision(qr) else AppSnack.show("Это не код персонажа. Нужен QR от мастера")
@@ -277,7 +297,10 @@ fun SetupScreen(onProvision: (Mb10Qr.Provision) -> Unit, onCreated: (String, Str
         modifier = Modifier
             .fillMaxSize()
             .background(c.bg)
+            // Сначала отступы под панели и клавиатуру (targetSdk 35), потом прокрутка внутри них.
             .windowInsetsPadding(WindowInsets.safeDrawing)
+            // С раскрытым вводом кода (и ручным созданием в dev-сборке) экран может не влезть, особенно с клавиатурой.
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
         verticalArrangement = Arrangement.Center
     ) {
@@ -292,6 +315,38 @@ fun SetupScreen(onProvision: (Mb10Qr.Provision) -> Unit, onCreated: (String, Str
         )
         Spacer(Modifier.height(16.dp))
         MbButton("Сканировать QR персонажа", onClick = startScan, keyIcon = MbIcons.Scan)
+        Spacer(Modifier.height(10.dp))
+        MbButton(
+            "Нет камеры? Ввести код",
+            kind = MbButtonKind.Ghost,
+            modifier = Modifier.fillMaxWidth(),
+            onClick = { codeEntryOpen = !codeEntryOpen }
+        )
+        if (codeEntryOpen) {
+            Spacer(Modifier.height(12.dp))
+            Text("Код персонажа", style = MbTypography.settingLabel, color = c.ink2)
+            Spacer(Modifier.height(6.dp))
+            // Показываем сразу в верхнем регистре и не даём набрать лишнего: код — 6 знаков и тире («ABC-DEF»).
+            MbField(
+                value = code,
+                onValueChange = { code = it.filter { ch -> ch.isLetterOrDigit() || ch == '-' }.uppercase().take(MAX_CODE_INPUT) },
+                placeholder = "ABC-DEF",
+                modifier = Modifier.fillMaxWidth()
+            )
+            if (needsServerAddress) {
+                Spacer(Modifier.height(12.dp))
+                Text("Адрес сервера", style = MbTypography.settingLabel, color = c.ink2)
+                Spacer(Modifier.height(6.dp))
+                MbField(value = address, onValueChange = { address = it }, placeholder = "http://10.10.0.10:2527", modifier = Modifier.fillMaxWidth())
+            }
+            Spacer(Modifier.height(12.dp))
+            MbButton(
+                "Применить",
+                enabled = ProvisionCode.normalize(code) != null,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = { onRedeem(code, address) }
+            )
+        }
         Spacer(Modifier.height(10.dp))
         Text(
             "Код действует один раз. Повторно — только после сброса сессии и с новым кодом от мастера.",

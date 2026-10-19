@@ -24,7 +24,7 @@ export function ReissuePanel({ snapshot, onClose }: { snapshot: CharacterSnapsho
         extraRam={snapshot.ramCapacity}
         onResult={setResult}
       />
-      {result && <QrPanel result={result} caption={`${result.item.callsign} · ${result.item.balance} €$ · заменяет прежнюю сессию`} />}
+      {result && <QrPanel result={result} caption={`${result.item.callsign} · ${result.item.balance} €$ · заменяет прежнюю сессию`} code={result.item.code} />}
     </>
   );
 }
