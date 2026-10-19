@@ -273,6 +273,8 @@ func op_give_item(session: String, item: String, ver: int, to_session: String, t
 			return err("not_found", "нет сессии, предмета или получателя")
 		if not to_phone.is_empty() and to_phone == str(s["data"].get("runner", "")):
 			return err("bad_request", "на свой телефон отдавать нельзя")
+		if not (str(it["data"].get("kind", "")) in ["SHARD", "DAEMON"]):
+			return err("bad_request", "отдать можно только SHARD или DAEMON")
 		for x in [s, rs]:
 			if not x.is_empty() and (x["data"].get("state") != "active" or not str((x["data"].get("world", {}) as Dictionary).get("finish", "")).is_empty()):
 				return err("session_state", "сессия не active или в исходе", x.duplicate(true))
