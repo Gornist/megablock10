@@ -430,6 +430,8 @@ func run_breach(session: String, node: String, req: Dictionary) -> Dictionary:
 		return err("not_found", "сессии нет")
 	if doc(T_NODE, node).is_empty():
 		return err("not_found", "узла нет")
+	if node != _current_node(s):   # узла нет — not_found (выше), узел есть, но не текущий — bad_request
+		return err("bad_request", "node не текущий узел сессии")
 	return _once(breach_rid(session, int(req["n"])), {"op": "breach", "session": session, "node": node, "req": req}, func():
 		return _breach_once(session, node, req))
 
@@ -460,8 +462,6 @@ func _breach_request_error(session: String, node: String, req: Dictionary) -> St
 	var s := doc(T_SESSION, session)
 	if s.is_empty():
 		return ""   # not_found скажет вызывающий
-	if node != _current_node(s):
-		return "node не текущий узел сессии"
 	var cells := 0
 	var loaded: Variant = s["data"].get("loaded")
 	for id in sel:
