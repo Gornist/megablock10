@@ -275,9 +275,8 @@ static var _sky_void := Color(0.0, 0.0, 0.0)
 static func sky_params(m: ShaderMaterial) -> void:
 	m.set_shader_parameter("sky_haze_gain", float(_k("backdrop_haze")))
 	m.set_shader_parameter("sky_void", _sky_void)
-	if m.shader != CLOUD_SHADER and m.shader != CLOUD_A2C_SHADER:   # пылинки — только у купола; в просветах граней облака их нет (текстура не нужна)
-		m.set_shader_parameter("sky_dust_tex", BackdropDome.dust_texture())
-		m.set_shader_parameter("sky_dust_gain", float(_k("backdrop_dust")))
+	m.set_shader_parameter("sky_dust_tex", BackdropDome.dust_texture())
+	m.set_shader_parameter("sky_dust_gain", float(_k("backdrop_dust")))
 
 
 ## Свет пустоты по тревоге: звать из BackdropDome.set_alarm; облачным материалам просветов отдаётся тот же цвет.

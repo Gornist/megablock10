@@ -9,9 +9,6 @@ render_mode unshaded, blend_premul_alpha, cull_front, depth_draw_never, fog_disa
 // непрозрачный купол закрыл бы слой деки (19.10 на очках «пропала дека»), а свет поверх прозрачного фона слой оставляет видимым.
 
 #include "backdrop_sky.gdshaderinc"
-uniform sampler2D sky_dust_tex : filter_linear, repeat_enable;   // равнопромежуточная развёртка пылинок (BackdropDome.dust_texture), R — яркость
-uniform vec3 sky_dust_color : source_color = vec3(0.45, 0.85, 0.95);
-uniform float sky_dust_gain : hint_range(0.0, 2.0) = 0.5;           // ручка `backdrop_dust`
 
 const float DOME_R = 60.0;
 varying vec2 v_uv;

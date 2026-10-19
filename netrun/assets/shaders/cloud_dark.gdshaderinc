@@ -59,7 +59,7 @@ void fragment() {
 	// (sky_fill = 1, ручка cloud_sky); 0 — чёрный просвет (владелец 20.10: «чёрный солид»).
 	vec3 sky = vec3(0.0);
 	if (sky_fill > 0.5 && c.a < 0.999) {
-		sky = backdrop_sky(normalize(v_wp - CAMERA_POSITION_WORLD));
+		sky = backdrop_sky_dust(normalize(v_wp - CAMERA_POSITION_WORLD));
 	}
 	ALBEDO = col * c.a + sky * (1.0 - c.a);
 #endif
