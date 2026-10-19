@@ -102,7 +102,7 @@ func test_legacy_даёт_те_же_занятые_клетки_и_позици�
 	assert_array(slots).is_equal(NodeLayout.SHARD_SLOTS)
 
 
-func test_legacy_маршруты_ice_и_black_ice_как_в_константах() -> void:
+func test_legacy_маршруты_ice_как_в_константах_и_без_логова() -> void:
 	var ld := LayoutData.load_named("legacy")
 	assert_int(ld.sentries.size()).is_equal(NodeLayout.ICE.size())
 	for i in NodeLayout.ICE.size():
@@ -115,11 +115,7 @@ func test_legacy_маршруты_ice_и_black_ice_как_в_константа�
 		for j in want_cells.size():
 			assert_object(got_route[j]["cell"]).is_equal(want_cells[j])
 			assert_int(got_route[j]["wait"]).is_equal(0)
-	var bl: Dictionary = NodeLayout.BLACK_ICE[0]
-	assert_str(ld.black["id"]).is_equal(bl["id"])
-	var black_cells := TickIce.route_from_points(bl["waypoints"])
-	for j in black_cells.size():
-		assert_object(ld.black["route"][j]["cell"]).is_equal(black_cells[j])
+	assert_bool(ld.lair.is_empty()).is_true()   # у legacy нет логова: Black ICE в нём не живёт
 
 
 func test_битые_данные_дают_error_и_не_падают() -> void:

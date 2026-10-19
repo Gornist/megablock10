@@ -128,8 +128,6 @@ func _all_routes() -> Array:
 	var out: Array = []
 	for d in NodeLayout.ICE:
 		out.append(d)
-	for d in NodeLayout.BLACK_ICE:
-		out.append(d)
 	return out
 
 
@@ -153,7 +151,7 @@ func test_every_vault_slot_is_far_from_every_ice_route() -> void:
 
 
 ## Спавн и порталы — вне конуса ICE на первой точке патруля (ICE смотрит на вторую) с запасом по зрению узла: каждый узел графа со своими числами
-## (sight_range узла × тревога, Black ICE — settings.black_ice). И маршрут не заходит ближе 3 м к спавну и порталам.
+## (sight_range узла × тревога). И маршрут не заходит ближе 3 м к спавну и порталам.
 func test_spawn_and_portals_are_outside_the_ice_cone_at_patrol_start_in_every_graph_node() -> void:
 	var g := NodeGraph.load_file()
 	var boost := 1.0 + float(g.settings["alert_boost"])
@@ -164,8 +162,6 @@ func test_spawn_and_portals_are_outside_the_ice_cone_at_patrol_start_in_every_gr
 		var checks: Array = []
 		for i in int(def["ice"]):
 			checks.append([NodeLayout.ICE[i], sight])
-		if def["tier"] == NodeGraph.TIER_BLACK:
-			checks.append([NodeLayout.BLACK_ICE[0], float(g.settings["black_ice"]["sight_range"]) * boost])
 		var watched: Array = [NodeLayout.SPAWN]
 		for i in (def["links"] as Array).size():
 			watched.append(NodeLayout.PORTAL_SLOTS[i])

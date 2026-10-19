@@ -51,10 +51,8 @@ var beacons: Array = []
 var barriers: Array = []
 ## Датчики (`kind: sensor`): {id, cells: Array[Vector2i] (луч, 2–12 клеток 1 м), on: int, off: int (0 — по тиру узла), phase: int (сколько выключенных тактов цикла уже прошло на входе в узел: старт всегда в фазе «выключен», TickSensor.for_layout; по модулю `off`)}.
 var sensors: Array = []
-## Black ICE (`black` в файле): {id, route} или пусто.
-var black: Dictionary = {}
 ## Логово Black ICE (`black: {id, kind, cell: [bx, bz]}` — левый верхний блок 2×2 блоков карты «L»): {id, kind: String (вид, "" — базовый),
-## cells: Array[Vector2i] (16 клеток 1 м), home: Vector2i (клетка, где спит ICE)} или пусто. Без лога — Black ICE бродит по black.route (legacy).
+## cells: Array[Vector2i] (16 клеток 1 м), home: Vector2i (клетка, где спит ICE)} или пусто. Black ICE живёт только в логове: `black: null` — без него.
 var lair: Dictionary = {}
 ## Подсказки: {cell: Vector2i (клетка 1 м), text: String, pos: Vector3 (место в мире, y = 0)}.
 var signs: Array = []
@@ -222,15 +220,11 @@ func _fill(d: Dictionary) -> String:
 	var bk: Variant = d.get("black")
 	if bk is Dictionary:
 		var bd: Dictionary = bk
-		if bd.has("cell"):
-			var lerr := _fill_lair(bd)
-			if lerr != "":
-				return lerr
-		else:
-			var broute := _route(bd.get("route", []))
-			if broute.has("error"):
-				return "black: " + str(broute["error"])
-			black = {"id": str(bd.get("id", "black_1")), "route": broute["route"]}
+		if not bd.has("cell"):
+			return "black: нужен cell [bx, bz] логова (Black ICE без логова не бывает)"
+		var lerr := _fill_lair(bd)
+		if lerr != "":
+			return lerr
 	elif bk != null:
 		return "black: нужен объект или null"
 	err = _fill_signs(d.get("signs", []))
