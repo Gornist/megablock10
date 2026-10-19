@@ -151,6 +151,7 @@ const KNOBS := {
 	# «Облако без основы» (владелец 08.10, принято 12.10: вид C3a — облако на колоннах и реквизите, пол — сплошной solid_dark; замер на очках: +0,26 мс на MSAA 2×).
 	"cloud": 1.0,            # 0 — выкл. (сплошные грани solid_dark); 1 — грани реквизита становятся частицами с дырами (alpha_to_coverage, нужен MSAA 2×+; яркость = значение); см. cloud_dark.gdshader
 	"cloud_solid": 1.0,      # 1 (умолчание) — грань облака непрозрачна: просвет чёрный, мира за гранью не рисуется (19.10, владелец: «видно не должно быть то, что за колонной»), без alpha_to_coverage; 0 — прежние дыры через a2c
+	"cloud_sky": 1.0,        # 1 (умолчание) — просветы непрозрачной грани облака показывают небо купола (грань выглядит прозрачной, мира за ней нет); 0 — чёрные просветы (cloud_solid = 1 откат: «чёрный солид» 20.10); нужен backdrop = 1
 	"cloud_edge_mix": 0.35,  # доля цвета неона у частиц рёбер/линий сетки (владелец: неона меньше)
 	"dust_cell": 0.018,      # ширина ячейки облака, м (высота вдвое больше); владелец: частицы мельче и реже (C2: 0,35 читалось лучше)
 	"dust_density": 0.35,    # доля ячеек с частицей на ровной грани вблизи (с пятнами dust_patch: проплешины и сгущения)
@@ -261,6 +262,26 @@ static func _is_plate(mi: MeshInstance3D, _root: Node) -> bool:
 ## Значение ручки по имени (умолчание, если не задана) — для клиента и фона-купола.
 static func knob(name: String) -> Variant:
 	return _k(name)
+
+
+## Небо купола (BackdropDome) для просветов граней облака: свет пустоты по тревоге запоминается и отдаётся материалам, созданным позже.
+static var _sky_void := Color(0.0, 0.0, 0.0)
+
+
+## Параметры неба (дымка, цвет пустоты; у купола ещё текстура и яркость пылинок) в материал купола или облака — по ручкам backdrop_haze / backdrop_dust.
+static func sky_params(m: ShaderMaterial) -> void:
+	m.set_shader_parameter("sky_haze_gain", float(_k("backdrop_haze")))
+	m.set_shader_parameter("sky_void", _sky_void)
+	if m.shader != CLOUD_SHADER and m.shader != CLOUD_A2C_SHADER:   # пылинки — только у купола; в просветах граней облака их нет (текстура не нужна)
+		m.set_shader_parameter("sky_dust_tex", BackdropDome.dust_texture())
+		m.set_shader_parameter("sky_dust_gain", float(_k("backdrop_dust")))
+
+
+## Свет пустоты по тревоге: звать из BackdropDome.set_alarm; облачным материалам просветов отдаётся тот же цвет.
+static func set_sky_void(tree: SceneTree, c: Color) -> void:
+	_sky_void = c
+	for m in _cloud_materials(tree):
+		m.set_shader_parameter("sky_void", c)
 
 
 ## Шейдер облака — любой из двух вариантов (непрозрачный по умолчанию, a2c при cloud_solid = 0).
@@ -482,6 +503,8 @@ static func apply(root: Node, tier: String = "") -> void:
 				m.set_shader_parameter("dust_fill_hi", float(_k("dust_fill_hi")))
 				m.set_shader_parameter("dust_sharp", float(_k("dust_sharp")))
 				_push_cloud_light_knobs(m)
+				sky_params(m)
+				m.set_shader_parameter("sky_fill", 1.0 if float(_k("cloud_sky")) > 0.0 and float(_k("backdrop")) > 0.0 else 0.0)
 				_push_lights(m)
 				m.set_shader_parameter("dust_density", float(_k("dust_density")) * (float(_k("floor_density")) if String(mi.name) == "slab" else 1.0))
 				m.set_shader_parameter("edge_mix", float(_k("cloud_edge_mix")))

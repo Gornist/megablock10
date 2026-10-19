@@ -23,9 +23,7 @@ func _init() -> void:
 	var m := ShaderMaterial.new()
 	m.shader = SHADER
 	m.render_priority = -128
-	m.set_shader_parameter("dust_tex", dust_texture())
-	m.set_shader_parameter("haze_gain", float(AssetMaterials.knob("backdrop_haze")))
-	m.set_shader_parameter("dust_gain", float(AssetMaterials.knob("backdrop_dust")))
+	AssetMaterials.sky_params(m)
 	material_override = m
 	visible = float(AssetMaterials.knob("backdrop")) > 0.0   # 0 — купола нет (A/B на очках без пересборки)
 	custom_aabb = AABB(Vector3(-1e5, -1e5, -1e5), Vector3(2e5, 2e5, 2e5))   # не отсекается по положению: вершины пересчитываются в вершинном шейдере
@@ -34,7 +32,9 @@ func _init() -> void:
 
 ## Свет пустоты по уровню тревоги (0…4) и доле такта (`void_for`): спокойный узел ничего не добавляет к чёрному фону, тревога — красный сдвиг.
 func set_alarm(level: int, tick_phase := 0.0) -> void:
-	(material_override as ShaderMaterial).set_shader_parameter("void_color", void_for(level, tick_phase))
+	var c := void_for(level, tick_phase)
+	(material_override as ShaderMaterial).set_shader_parameter("sky_void", c)
+	AssetMaterials.set_sky_void(get_tree(), c)   # просветы непрозрачных граней облака показывают то же небо
 
 
 ## Свет пустоты купола по уровню тревоги: аддитивный, поверх прозрачного фона вида (который остаётся чёрным). Спокойный узел — ноль, тревога — только красный сдвиг фона

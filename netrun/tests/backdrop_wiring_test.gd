@@ -15,7 +15,7 @@ func after_test() -> void:
 
 
 func _void_color() -> Color:
-	return ((_scene.backdrop as BackdropDome).material_override as ShaderMaterial).get_shader_parameter("void_color")
+	return ((_scene.backdrop as BackdropDome).material_override as ShaderMaterial).get_shader_parameter("sky_void")
 
 
 func test_купол_есть_в_сцене_и_спокойного_цвета() -> void:

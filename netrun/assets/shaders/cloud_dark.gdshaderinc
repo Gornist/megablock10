@@ -3,6 +3,7 @@
 // Нормаль и позиция идут varying'ами от вершины (не NORMAL фрагмента), поэтому узор привязан к мировой решётке и не «плывёт» при движении головы.
 
 #include "cloud_light.gdshaderinc"
+#include "backdrop_sky.gdshaderinc"
 #include "volume_cloud.gdshaderinc"
 #include "breath_touch.gdshaderinc"
 #include "alarm_focus.gdshaderinc"
@@ -12,6 +13,8 @@ uniform float grid_alpha : hint_range(0.0, 2.0) = 0.0;
 uniform vec2 grid_origin = vec2(0.0);
 uniform vec4 edge_color : source_color = vec4(0.094, 0.9, 1.0, 1.0);
 uniform float edge_mix : hint_range(0.0, 1.0) = 0.35;   // насколько частицы ребра краснее к цвету неона (меньше неона — владелец)
+
+uniform float sky_fill : hint_range(0.0, 1.0) = 0.0;   // 1 — просветы грани показывают небо купола (ручка cloud_sky); 0 — чёрные
 
 varying vec3 v_wp;
 varying vec3 v_nw;
@@ -52,6 +55,12 @@ void fragment() {
 	ALBEDO = col;
 	ALPHA = c.a;   // покрытие сэмплов: дыры мягкие, за ними видно мир (прежний вид; cloud_dark_a2c.gdshader, ручка cloud_solid = 0)
 #else
-	ALBEDO = col * c.a;   // грань непрозрачна: частица — яркость на чёрном, просвет — чёрный; мира за гранью нет, глубина пишется по всей грани (cloud_dark.gdshader)
+	// Грань непрозрачна и пишет глубину по всей поверхности (мира за ней нет), но ВЫГЛЯДИТ прозрачной: в просветах между частицами — небо купола в этом направлении
+	// (sky_fill = 1, ручка cloud_sky); 0 — чёрный просвет (владелец 20.10: «чёрный солид»).
+	vec3 sky = vec3(0.0);
+	if (sky_fill > 0.5 && c.a < 0.999) {
+		sky = backdrop_sky(normalize(v_wp - CAMERA_POSITION_WORLD));
+	}
+	ALBEDO = col * c.a + sky * (1.0 - c.a);
 #endif
 }

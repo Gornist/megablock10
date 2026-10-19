@@ -1,0 +1,17 @@
+// Небо фона-купола как функция направления: свет пустоты по тревоге (спокойный — ноль) и дымка над горизонтом.
+// Общая часть backdrop.gdshader (аддитивный купол поверх прозрачного фона; пылинки купол добавляет сам из текстуры) и cloud_dark.gdshaderinc (просветы непрозрачной грани
+// облака показывают то же небо, что было бы за пустой сценой: грань «прозрачна», но мира за ней нет; владелец 20.10: «чёрный просвет темнее дымки неба, получается силуэт-стена»).
+// Все uniform'ы — с префиксом sky_ (в облаке уже есть dust_color и др.); значения ставит AssetMaterials.sky_params / BackdropDome.set_alarm.
+
+uniform vec3 sky_void : source_color = vec3(0.0, 0.0, 0.0);           // свет пустоты по тревоге (BackdropDome.void_for): спокойный — 0
+uniform vec3 sky_haze_color : source_color = vec3(0.012, 0.05, 0.062); // дымка у горизонта: тусклая бирюза
+uniform float sky_haze_height : hint_range(0.05, 1.0) = 0.16;          // толщина дымки по sin высоты
+uniform float sky_haze_below : hint_range(0.0, 2.0) = 0.0;             // ниже горизонта дымки нет: пол уходит в чёрное
+uniform float sky_haze_gain : hint_range(0.0, 3.0) = 1.0;              // ручка `backdrop_haze`
+
+// d — мировое направление взгляда (единичное).
+vec3 backdrop_sky(vec3 d) {
+	float y = d.y;
+	float haze = exp(-pow(abs(y) / sky_haze_height, 2.0)) * (y < 0.0 ? sky_haze_below : 0.6);
+	return sky_void + sky_haze_color * haze * sky_haze_gain;
+}
