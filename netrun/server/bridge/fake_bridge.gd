@@ -168,6 +168,8 @@ func op_take_from_node(session: String, node: String, item: String) -> Dictionar
 			return err("not_found", "сессии нет")
 		if s["data"].get("state") != "active":
 			return err("session_state", "сессия не active", s.duplicate(true))
+		if node != _current_node(s):
+			return err("bad_request", "node не текущий узел сессии")
 		var it := doc(T_ITEM, item)
 		if it.is_empty():
 			return err("not_found", "предмета нет")
@@ -179,6 +181,13 @@ func op_take_from_node(session: String, node: String, item: String) -> Dictionar
 		d["owner"] = "deck:" + session
 		d["taken_at"] = node
 		return ok({"item": _put(T_ITEM, item, d).duplicate(true)}))
+
+
+## Текущий узел сессии (раздел 5): `world.node`, а если его нет — `session.node`.
+static func _current_node(session_doc: Dictionary) -> String:
+	var world: Variant = session_doc["data"].get("world")
+	var wn := str((world as Dictionary).get("node", "")) if world is Dictionary else ""
+	return wn if not wn.is_empty() else str(session_doc["data"].get("node", ""))
 
 
 ## Предмет есть в живом `session.opened` другой незакрытой сессии (раздел 6.2: `claimed`).
