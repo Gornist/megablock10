@@ -190,6 +190,14 @@ static func _current_node(session_doc: Dictionary) -> String:
 	return wn if not wn.is_empty() else str(session_doc["data"].get("node", ""))
 
 
+## Предмет есть в живом `opened` этой сессии (6.6 п.4: открытое этой же сессией второй раз не выбирают).
+func _in_opened(session_data: Dictionary, item: String, now_ms: int) -> bool:
+	for o in session_data.get("opened", []):
+		if str(o.get("item", "")) == item and int(o.get("until", 0)) > now_ms:
+			return true
+	return false
+
+
 ## Предмет есть в живом `session.opened` другой незакрытой сессии (раздел 6.2: `claimed`).
 func _opened_by_other(item: String, session: String) -> bool:
 	var now_ms := _now_ms()
@@ -527,7 +535,7 @@ func _breach_once(session: String, node: String, req: Dictionary) -> Dictionary:
 			var found := ""
 			for v in req["vaults"]:
 				var it := doc(T_ITEM, str(v))
-				if it.is_empty() or str(v) in picked or it["data"].get("owner") != "node:" + node or _opened_by_other(str(v), session):
+				if it.is_empty() or str(v) in picked or it["data"].get("owner") != "node:" + node or _opened_by_other(str(v), session) or _in_opened(sd, str(v), now_ms):
 					continue
 				var want := "SHARD" if e["effect"] == "EXTRACT_SHARD" else "DAEMON"
 				var info: Dictionary = it["data"].get("shard" if want == "SHARD" else "daemon", {})
