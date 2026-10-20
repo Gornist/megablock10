@@ -153,6 +153,7 @@ const KNOBS := {
 	"cloud_solid": 1.0,      # 1 (умолчание) — грань облака непрозрачна: просвет чёрный, мира за гранью не рисуется (19.10, владелец: «видно не должно быть то, что за колонной»), без alpha_to_coverage; 0 — прежние дыры через a2c
 	"cloud_sky": 1.0,        # 1 (умолчание) — просветы непрозрачной грани облака показывают небо купола (грань выглядит прозрачной, мира за ней нет); 0 — чёрные просветы (cloud_solid = 1 откат: «чёрный солид» 20.10); нужен backdrop = 1
 	"cloud_edge_mix": 0.0,   # доля неона у частиц рёбер и линий сетки: 0 с 20.10 (линии рёбер — те же частицы, не неон); было 0,35
+	"cloud_face_fade": 0.9,  # мягкая кромка граней колонн и укрытий (pillar_block): частицы редеют к ребру на 25 см; 0 — без затухания (резкий обрыв)
 	"cloud_edge_gain": 0.25, # насколько ребро/линия поднимает плотность частиц: 0,25 с 20.10 (было 1,4 — сплошные «жирные» линии на колоннах, основаниях и полу)
 	"dust_cell": 0.018,      # ширина ячейки облака, м (высота вдвое больше); владелец: частицы мельче и реже (C2: 0,35 читалось лучше)
 	"dust_density": 0.35,    # доля ячеек с частицей на ровной грани вблизи (с пятнами dust_patch: проплешины и сгущения)
@@ -171,7 +172,7 @@ const KNOBS := {
 	# Фон-купол (BackdropDome, 19.10): ручки для A/B на очках без пересборки.
 	"backdrop": 1.0,         # 0 — купола нет (как до 18.10: чистый прозрачный фон), 1 — есть
 	"backdrop_haze": 0.0,    # множитель дымки у горизонта: 0 с 20.10 (владелец: «серый блок дымки на горизонте сбивает с толку»); 1…4 — вернуть пояс
-	"backdrop_dust": 0.5,    # яркость неподвижных пылинок (0 — без них)
+	"backdrop_dust": 0.8,    # яркость звёзд фона (BackdropDome, stars.gdshader; 0 — без звёзд)
 	"dust_fps": 0.0,        # смен кадра глитч-спрайта у ячейки облака в секунду; 0 — постоянный кадр (рябь на очках 17.10: было 10), для A/B на устройстве можно вернуть 1–3 (волна из нескольких кадров, а не мельтешение)
 	# «Всё из частиц» (#424, владелец 17.10): пол по умолчанию тоже облако. ЦЕНА НЕ ИЗМЕРЕНА НА ОЧКАХ (MSAA 4×: цена a2c в ПЛОЩАДИ материала, не в числе частиц),
 	# бюджет владельца +1,0 мс при 90 Гц. Потолка и дальних пластов нет с 18.10 (STYLE.md), ручек cloud_far/cloud_ceiling тоже. Не влезаем — cloud_floor 0.
@@ -278,8 +279,11 @@ static var _sky_void := Color(0.0, 0.0, 0.0)
 static func sky_params(m: ShaderMaterial) -> void:
 	m.set_shader_parameter("sky_haze_gain", float(_k("backdrop_haze")))
 	m.set_shader_parameter("sky_void", _sky_void)
-	m.set_shader_parameter("sky_dust_tex", BackdropDome.dust_texture())
-	m.set_shader_parameter("sky_dust_gain", float(_k("backdrop_dust")))
+
+
+## Свет пустоты, как его принял AssetMaterials (set_sky_void): для тестов и отладки.
+static func sky_void_color() -> Color:
+	return _sky_void
 
 
 ## Свет пустоты по тревоге: звать из BackdropDome.set_alarm; облачным материалам просветов отдаётся тот же цвет.
@@ -516,6 +520,7 @@ static func apply(root: Node, tier: String = "") -> void:
 				m.set_shader_parameter("dust_density", float(_k("dust_density")) * (float(_k("floor_density")) if String(mi.name) == "slab" else 1.0))
 				m.set_shader_parameter("edge_mix", float(_k("cloud_edge_mix")))
 				m.set_shader_parameter("dust_edge_gain", float(_k("cloud_edge_gain")))
+				m.set_shader_parameter("edge_fade", float(_k("cloud_face_fade")) if String(mi.name) == "pillar_block" else 0.0)
 				if _is_threat_gear(root):
 					_paint_threat_cloud(m)
 				if String(mi.name) == "slab" and float(_k("floor_grid")) > 0.0:
