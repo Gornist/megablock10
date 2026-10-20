@@ -1,63 +1,56 @@
 class_name BackdropDome
-extends MeshInstance3D
-## Фон-купол Сети (решение владельца 18.10, шаг B): внутренняя сторона сферы вокруг головы вместо дальней геометрии с частицами — почти-чёрная пустота, дымка у горизонта и
-## неподвижные пылинки (shaders/backdrop.gdshader). Клиент добавляет его ребёнком любого Node3D (позиция не важна: шейдер берёт из вида только поворот), цвет пустоты по
-## тревоге — set_alarm(level, tick_phase), как Environment.background_color. Рисуется первым, глубину не читает и не пишет; на дальности ничего не значит (радиус 1).
+extends MultiMeshInstance3D
+## Фон Сети (решение владельца 18.10, шаг B): дальний план — только «звёзды»: STAR_COUNT мелких светящихся точек на сфере радиуса STAR_RADIUS вокруг начала мира (shaders/stars.gdshader).
+## Это мировые частицы, а не небо-шейдер: звезда стоит на месте при любом повороте головы и рига (20.10: пылинки «тянулись за гарнитурой», небо в пикселе стоило +2 мс на Pico).
+## Клиент добавляет узел ребёнком мира (положение — начало мира; поворот родителя не нужен, но и не мешает звёздам: они просто часть мира).
+## Цвет пустоты по тревоге — set_alarm(level, tick_phase): передаётся просветам граней облака (AssetMaterials.set_sky_void), как Environment.background_color.
 
-const SHADER := preload("res://assets/shaders/backdrop.gdshader")
-const DUST_SIZE := Vector2i(4096, 2048)   # 360°×180°: ≈ 11 текселей на градус, на Pico ≈ 15 px/° — пылинки не мельче пикселя, mip не нужен (шва по ∂uv нет)
-const DUST_COUNT := 4200
-const DUST_SEED := 1018
+const SHADER := preload("res://assets/shaders/stars.gdshader")
+const STAR_COUNT := 2400
+const STAR_RADIUS := 55.0   # м: дальше комнаты (≈20 м), ближе дальности камеры; параллакс при сдвиге головы на 0,3 м ≈ 0,3°
+const STAR_SEED := 1018
 
-static var _dust: ImageTexture
+## Позиции звёзд (мир, м): то же, что записано в MultiMesh — под headless-рендером он ничего не хранит, а тестам нужно проверить положение.
+var star_positions := PackedVector3Array()
 
 
 func _init() -> void:
 	name = "BackdropDome"
-	var sphere := SphereMesh.new()
-	sphere.radius = 1.0
-	sphere.height = 2.0
-	sphere.radial_segments = 48
-	sphere.rings = 24
-	mesh = sphere
+	var quad := QuadMesh.new()
+	quad.size = Vector2.ONE
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_custom_data = true
+	mm.mesh = quad
+	mm.instance_count = STAR_COUNT
+	var rng := RandomNumberGenerator.new()
+	rng.seed = STAR_SEED
+	for i in STAR_COUNT:
+		var z := rng.randf_range(-1.0, 1.0)
+		var a := rng.randf() * TAU
+		var r := sqrt(1.0 - z * z)
+		var dir := Vector3(r * cos(a), z, r * sin(a))
+		star_positions.append(dir * STAR_RADIUS)
+		mm.set_instance_transform(i, Transform3D(Basis.IDENTITY, dir * STAR_RADIUS))
+		mm.set_instance_custom_data(i, Color(pow(rng.randf(), 2.0) * 0.65 + 0.35, 0.0, 0.0, 0.0))   # яркость 0,35…1: все видны, редкие ярче
+	multimesh = mm
 	var m := ShaderMaterial.new()
 	m.shader = SHADER
 	m.render_priority = -128
-	m.set_shader_parameter("dust_tex", dust_texture())
+	m.set_shader_parameter("star_gain", float(AssetMaterials.knob("backdrop_dust")))
 	material_override = m
-	custom_aabb = AABB(Vector3(-1e5, -1e5, -1e5), Vector3(2e5, 2e5, 2e5))   # не отсекается по положению: вершины пересчитываются в вершинном шейдере
+	visible = float(AssetMaterials.knob("backdrop")) > 0.0   # 0 — звёзд нет (A/B на очках без пересборки)
+	custom_aabb = AABB(Vector3(-1e3, -1e3, -1e3), Vector3(2e3, 2e3, 2e3))   # не отсекается по положению камеры
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
-## Цвет пустоты по уровню тревоги (0…4) и доле такта — тот же, что у `AssetMaterials.alarm_background` для Environment.
+## Свет пустоты по уровню тревоги (0…4) и доле такта: просветам граней облака (звёзды его не используют). Спокойный узел — ноль, тревога — красный сдвиг фона.
 func set_alarm(level: int, tick_phase := 0.0) -> void:
+	AssetMaterials.set_sky_void(get_tree(), void_for(level, tick_phase))
+
+
+## Свет пустоты по уровню тревоги: alarm_background(level) − alarm_background(0), без отрицательных каналов (сам фон рисует Environment клиента).
+static func void_for(level: int, tick_phase := 0.0) -> Color:
 	var c := AssetMaterials.alarm_background(level, tick_phase)
-	(material_override as ShaderMaterial).set_shader_parameter("void_color", c)
-
-
-## Равнопромежуточная текстура пылинок (один раз на процесс): ~DUST_COUNT мягких точек 2–3 текселя, у полюсов шире по x (развёртка растягивает), яркость разная; чёрный фон.
-static func dust_texture() -> ImageTexture:
-	if _dust != null:
-		return _dust
-	var img := Image.create_empty(DUST_SIZE.x, DUST_SIZE.y, false, Image.FORMAT_L8)
-	var rng := RandomNumberGenerator.new()
-	rng.seed = DUST_SEED
-	for i in DUST_COUNT:
-		var y := rng.randf_range(0.04, 0.96)   # не у самих полюсов
-		var x := rng.randf() * DUST_SIZE.x
-		var py := y * DUST_SIZE.y
-		var stretch := 1.0 / maxf(sin(y * PI), 0.15)   # у полюса градус по x мельче: точка шире, чтобы не стать полоской-иглой
-		var b := pow(rng.randf(), 2.0) * 0.9 + 0.1
-		var rx := 1.3 * stretch
-		for dy in range(-2, 3):
-			for dx in range(int(-ceil(rx * 1.6)), int(ceil(rx * 1.6)) + 1):
-				var d := sqrt(float(dx) * float(dx) / (stretch * stretch) + float(dy) * float(dy))
-				var k := clampf(1.0 - d / 1.6, 0.0, 1.0)
-				if k <= 0.0:
-					continue
-				var px := posmod(int(x) + dx, DUST_SIZE.x)
-				var qy := clampi(int(py) + dy, 0, DUST_SIZE.y - 1)
-				var cur := img.get_pixel(px, qy).r
-				img.set_pixel(px, qy, Color(maxf(cur, b * k * k), 0.0, 0.0))
-	_dust = ImageTexture.create_from_image(img)
-	return _dust
+	var calm := AssetMaterials.alarm_background(0)
+	return Color(maxf(c.r - calm.r, 0.0), maxf(c.g - calm.g, 0.0), maxf(c.b - calm.b, 0.0))

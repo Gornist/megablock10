@@ -3,9 +3,11 @@
 // через AssetMaterials.set_cloud_lights; рука и аватар (touch_*, breath_touch.gdshaderinc) освещают так же. Нет источников (cl_n = 0) или lit_strength = 0 — освещённость 1:
 // вид прежний, равномерный. Результат lit 0…1 управляет плотностью и яркостью в volume_cloud(), ниже порога плотности ячейка не рисуется совсем (без дробной альфы a2c: вдали нет мерцания).
 
-uniform vec4 cl_pos[12];                                   // xyz — мир, м; w — радиус влияния, м
-uniform vec4 cl_col[12];                                   // rgb — цвет источника; a — сила 0…1+
-uniform int cl_n = 0;
+// Освещённость считается НЕ в шейдере по источникам (12 distance+smoothstep на фрагмент — на очках 22 мс), а читается одной выборкой из карты освещённости на плоскости XZ
+// (AssetMaterials строит её один раз при set_cloud_lights: R,G,B — цвет сильнейшего источника, A — освещённость 0…1). Источники — 2D по XZ: высота грани не меняет свет.
+uniform sampler2D lit_map : filter_linear, repeat_disable;
+uniform vec4 lit_rect = vec4(0.0, 0.0, 1.0, 1.0);          // x0, z0 (мир, м) и 1/ширина, 1/глубина карты
+uniform int cl_n = 0;                                        // число источников (0 — карты нет, облако равномерное)
 uniform float lit_strength : hint_range(0.0, 1.0) = 1.0;  // ручка AssetMaterials `cloud_light`: 0 — выкл. (равномерно), 1 — полностью по свету
 uniform float lit_ambient : hint_range(0.0, 0.5) = 0.08;  // доля плотности в полной темноте (редкие пылинки)
 uniform float lit_dim : hint_range(0.0, 1.0) = 0.35;      // яркость частиц в темноте относительно освещённых
@@ -15,17 +17,11 @@ uniform float lit_tint : hint_range(0.0, 1.0) = 0.5;      // насколько 
 // Освещённость точки p от статических источников 0…1 (плато у источника, гладкий спад до радиуса); tint — цвет сильнейшего.
 float cloud_lit(vec3 p, out vec3 tint) {
 	tint = vec3(1.0);
-	float best = 0.0;
-	for (int i = 0; i < 12; i++) {
-		if (i >= cl_n) {
-			break;
-		}
-		vec4 l = cl_pos[i];
-		float k = (1.0 - smoothstep(0.15 * l.w, l.w, distance(p, l.xyz))) * cl_col[i].a;
-		if (k > best) {
-			best = k;
-			tint = cl_col[i].rgb;
-		}
+	vec2 uv = (p.xz - lit_rect.xy) * lit_rect.zw;
+	if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) {
+		return 0.0;   // дальше радиуса всех источников
 	}
-	return clamp(best, 0.0, 1.0);
+	vec4 t = textureLod(lit_map, uv, 0.0);
+	tint = t.rgb;
+	return t.a;
 }
