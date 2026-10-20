@@ -6,8 +6,8 @@ shader_type spatial;
 render_mode unshaded, blend_premul_alpha, cull_disabled, depth_draw_never, fog_disabled, shadows_disabled;
 
 uniform vec3 star_color : source_color = vec3(0.45, 0.85, 0.95);
-uniform float star_gain : hint_range(0.0, 4.0) = 1.0;       // ручка `backdrop_dust`
-uniform float star_angle : hint_range(0.0005, 0.01) = 0.0016;   // угловой радиус звезды, рад (на Pico ≈ 860 px/рад → ≈1,4 px)
+uniform float star_gain : hint_range(0.0, 4.0) = 1.5;       // ручка `backdrop_dust`
+uniform float star_angle : hint_range(0.0005, 0.01) = 0.0028;   // угловой радиус звезды, рад (на Pico ≈ 860 px/рад → ≈2,4 px; при 0,0016 на очках звёзд не было видно, 20.10)
 
 varying float v_b;
 
@@ -19,7 +19,7 @@ void vertex() {
 }
 
 void fragment() {
-	float soft = smoothstep(1.0, 0.15, length(UV * 2.0 - 1.0));
+	float soft = smoothstep(1.0, 0.35, length(UV * 2.0 - 1.0));
 	ALBEDO = star_color * star_gain * v_b * soft;
 	ALPHA = 0.0;
 }

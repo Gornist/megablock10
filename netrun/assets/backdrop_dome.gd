@@ -32,7 +32,7 @@ func _init() -> void:
 		var dir := Vector3(r * cos(a), z, r * sin(a))
 		star_positions.append(dir * STAR_RADIUS)
 		mm.set_instance_transform(i, Transform3D(Basis.IDENTITY, dir * STAR_RADIUS))
-		mm.set_instance_custom_data(i, Color(pow(rng.randf(), 2.0) * 0.9 + 0.1, 0.0, 0.0, 0.0))   # яркость: больше тусклых, редкие яркие
+		mm.set_instance_custom_data(i, Color(pow(rng.randf(), 2.0) * 0.65 + 0.35, 0.0, 0.0, 0.0))   # яркость 0,35…1: все видны, редкие ярче
 	multimesh = mm
 	var m := ShaderMaterial.new()
 	m.shader = SHADER
