@@ -15,6 +15,7 @@ const SHADERS := {
 ## Вуаль на гранях плит (меши `*_skirt` в floor*): в .glb у неё материал-роль shell_soft, а шейдер по имени меша — этот.
 const SKIRT_SHADER := preload("res://assets/shaders/skirt.gdshader")
 const SURFACE_CLOUD_GROUP := &"surface_clouds"   # меши с облаком на гранях (А): дыхание и отклик ставятся на их материалы
+const CLOUD_A2C_SHADER := preload("res://assets/shaders/cloud_dark_a2c.gdshader")  # прежний вид облака: дыры через alpha_to_coverage, за гранью виден мир (ручка cloud_solid = 0)
 const CLOUD_SHADER := preload("res://assets/shaders/cloud_dark.gdshader")  # «облако без основы»: вид реквизита (ручка cloud, умолчание 1; принято 12.10, облако (Б) на объектах — 14.10)
 ## Луч Soft ICE (меши `*_beam*` у датчика и `*_fan` у маяка, ice/sensor_ice и ice/lighthouse_ice): роль shell_soft, шейдер по имени меша; состояния — set_beam(root, state, flash).
 const BEAM_SHADER := preload("res://assets/shaders/beam.gdshader")
@@ -50,8 +51,8 @@ const PAL_VOID := Color("02050a")        # чёрная завеса (экран
 const PAL_AMBER := Color("ff7a1a")       # янтарь: ТОЛЬКО экран деки (STYLE.md), слои deck_*
 const LAYERS := {
 	# Клетки пола
-	"cell_occupied_fill": Color(PAL_CYAN, 0.14),   # занятая клетка (укрытие, хранилище): слабая голубая заливка
-	"cell_occupied_edge": Color(PAL_CYAN, 0.55),   # и контур клетки
+	"cell_occupied_fill": Color(PAL_CYAN, 0.0),    # занятая клетка: заливки нет (20.10, владелец: «светлая заливка клеток» и жирные линии у колонн не из частиц; было альфа 0,14)
+	"cell_occupied_edge": Color(PAL_CYAN, 0.0),    # контур клетки: нет (20.10: синяя линия у основания колонны ломает погружение; было 0,55)
 	# Клетка в зрении ICE (TickFloor): тёмно-красная заливка на тёмном фоне читается КОРИЧНЕВОЙ, поэтому заливка почти прозрачна, а читается контур клетки
 	"cell_vision_fill": Color(PAL_THREAT_HOT, 0.03),   # замер foyer_preview 08.10: смешивание линейное, α 0,04 в красном после sRGB — бурые (58,44,44); 0,03 с пульсом ≤ 0,05 ≈ (40,30,30)
 	"cell_vision_edge": Color(PAL_THREAT_HOT, 0.85),
@@ -140,7 +141,7 @@ const KNOBS := {
 	"min_px_streaks": 1.5,   # минимальная полная ширина штриха, px экрана (streaks.gdshader min_px)
 	"min_px_points": 2.0,    # минимальный диаметр точки, px (points.gdshader min_px)
 	"solid_base": "",        # цвет плит solid_dark «#rrggbb»; пусто — по умолчанию из шейдера
-	"floor_grid": 0.35,      # сетка клеток 1 м ТЕКСТУРОЙ с мипмапами и анизотропией на плите пола (0 — выкл.; 0,3–0,5; точки швов slab_seams убраны в B2); по умолчанию ВКЛ.: так выглядит кадр Blender, иначе клиент — «другая игра»
+	"floor_grid": 0.0,       # сетка клеток 1 м ТЕКСТУРОЙ на плите пола; 0 — нет (умолчание с 20.10: владелец по кадрам «floor_grid=0 и dust_fill=0 выглядели лучше всего», пол — только зерно частиц); 0,35 — прежние линии клеток (с мипмапами и анизотропией)
 	# Мерцание кромок плит пола (две линии на расстоянии 3 см сходятся в пиксель). Меры независимы, комбинируются:
 	"rim_top_only": true,    # светится только лицевая грань плиты, боковая полоска кромки погашена (одна линия вместо двух)
 	"rim_far_min": 0.0,      # яркость кромки плит на дистанции ≥ rim_far_end (1 — не гасить; 0 — гасить полностью)
@@ -149,10 +150,14 @@ const KNOBS := {
 	"rim_min_px": 4.0,       # гашение кромки плит по её ширине на экране, px (0 — выкл.): кромка уже ~0,35·N px гаснет совсем, от N px — полная; адаптируется к глазу Pico, в отличие от дистанции
 	# «Облако без основы» (владелец 08.10, принято 12.10: вид C3a — облако на колоннах и реквизите, пол — сплошной solid_dark; замер на очках: +0,26 мс на MSAA 2×).
 	"cloud": 1.0,            # 0 — выкл. (сплошные грани solid_dark); 1 — грани реквизита становятся частицами с дырами (alpha_to_coverage, нужен MSAA 2×+; яркость = значение); см. cloud_dark.gdshader
-	"cloud_edge_mix": 0.35,  # доля цвета неона у частиц рёбер/линий сетки (владелец: неона меньше)
+	"cloud_solid": 1.0,      # 1 (умолчание) — грань облака непрозрачна: просвет чёрный, мира за гранью не рисуется (19.10, владелец: «видно не должно быть то, что за колонной»), без alpha_to_coverage; 0 — прежние дыры через a2c
+	"cloud_sky": 1.0,        # 1 (умолчание) — просветы непрозрачной грани облака показывают небо купола (грань выглядит прозрачной, мира за ней нет); 0 — чёрные просветы (cloud_solid = 1 откат: «чёрный солид» 20.10); нужен backdrop = 1
+	"cloud_edge_mix": 0.0,   # доля неона у частиц рёбер и линий сетки: 0 с 20.10 (линии рёбер — те же частицы, не неон); было 0,35
+	"cloud_face_fade": 0.9,  # мягкая кромка граней колонн и укрытий (pillar_block): частицы редеют к ребру на 25 см; 0 — без затухания (резкий обрыв)
+	"cloud_edge_gain": 0.25, # насколько ребро/линия поднимает плотность частиц: 0,25 с 20.10 (было 1,4 — сплошные «жирные» линии на колоннах, основаниях и полу)
 	"dust_cell": 0.018,      # ширина ячейки облака, м (высота вдвое больше); владелец: частицы мельче и реже (C2: 0,35 читалось лучше)
 	"dust_density": 0.35,    # доля ячеек с частицей на ровной грани вблизи (с пятнами dust_patch: проплешины и сгущения)
-	"dust_fill": 1.0,        # 1 (умолчание) — вдали (ячейка мельче dust_fill_lo px экрана) вместо зерна ровная заливка среднего света, от dust_fill_hi до dust_fill_lo px зерно растворяется в неё (рябь вдали и «граница отрисовки» на очках 18.10)
+	"dust_fill": 0.0,        # 0 (умолчание с 20.10) — без заливки вдали: в непрозрачном режиме дитера a2c нет, дальние ячейки мельче пикселя дают гладкую яркость (владелец: «dust_fill=0 выглядел лучше всего»); 1 — вдали ячейка мельче dust_fill_lo px заменяется ровной заливкой
 	"dust_fill_lo": 2.0,     # экранная ширина ячейки, px, ниже которой зерна нет совсем (на Pico: пол дальше ≈6 м); 0 у dust_fill — выкл.
 	# Освещение облака (18.10, владелец: «частицы видны только в освещении, где света нет — нет и частиц»): источники приходят из клиента (set_cloud_lights); без них вид равномерный, как раньше.
 	"cloud_light": 1.0,      # 0 — выкл. (равномерное облако), 1 — плотность и яркость частиц целиком по освещённости
@@ -161,7 +166,13 @@ const KNOBS := {
 	"lit_edge": 0.4,         # линии сетки и рёбра в темноте: 1 — не гаснут, 0 — гаснут как зерно
 	"lit_tint": 0.5,         # перекраска освещённых частиц цветом источника
 	"dust_sharp": 1.0,       # 1 (умолчание) — прозрачность ячейки почти 0/1 (smoothstep по яркости спрайта): меньше дробной альфы и дитера a2c внутри ячейки (preview_shimmer, пол вблизи: 0,99 → 0,83); 0 — как раньше
+	"dust_fill_edge": 0.3,   # вес линий сетки и рёбер в заливке вдали (1 — как в зерне): сплошные яркие линии дальнего пола выбивались из частиц (20.10)
+	"dust_fill_far_min": 0.3,   # яркость заливки на дистанции ≥ 24 м (с 6 м плавно) относительно ближней: дальний пол тише
 	"dust_fill_hi": 4.0,     # выше неё зерно целое (ближе ≈3 м); между lo и hi — плавный переход
+	# Фон-купол (BackdropDome, 19.10): ручки для A/B на очках без пересборки.
+	"backdrop": 1.0,         # 0 — купола нет (как до 18.10: чистый прозрачный фон), 1 — есть
+	"backdrop_haze": 0.0,    # множитель дымки у горизонта: 0 с 20.10 (владелец: «серый блок дымки на горизонте сбивает с толку»); 1…4 — вернуть пояс
+	"backdrop_dust": 0.8,    # яркость звёзд фона (BackdropDome, stars.gdshader; 0 — без звёзд)
 	"dust_fps": 0.0,        # смен кадра глитч-спрайта у ячейки облака в секунду; 0 — постоянный кадр (рябь на очках 17.10: было 10), для A/B на устройстве можно вернуть 1–3 (волна из нескольких кадров, а не мельтешение)
 	# «Всё из частиц» (#424, владелец 17.10): пол по умолчанию тоже облако. ЦЕНА НЕ ИЗМЕРЕНА НА ОЧКАХ (MSAA 4×: цена a2c в ПЛОЩАДИ материала, не в числе частиц),
 	# бюджет владельца +1,0 мс при 90 Гц. Потолка и дальних пластов нет с 18.10 (STYLE.md), ручек cloud_far/cloud_ceiling тоже. Не влезаем — cloud_floor 0.
@@ -189,6 +200,9 @@ static var _surface_cloud_mats: Array[WeakRef] = []
 ## Источники света узла (set_cloud_lights), упакованные для шейдера: pos[i] = (xyz, радиус), col[i] = (rgb, сила), n — число; материалам, созданным позже, отдаются в apply().
 static var _lights_pos := PackedVector4Array()
 static var _lights_col := PackedVector4Array()
+static var _lit_tex: ImageTexture
+static var _lit_rect := Vector4(0.0, 0.0, 1.0, 1.0)
+const LIT_TEXEL := 0.125   # м на тексель карты освещённости
 const CLOUD_LIGHTS_MAX := 12
 ## Материалы окружения с перекраской света у игрока (alarm_focus.gdshaderinc: solid_dark, cloud_dark, skirt), созданные apply() вне существ/аватаров; слабые ссылки, как выше.
 static var _focus_mats: Array[WeakRef] = []
@@ -250,6 +264,38 @@ static func reset_tuning() -> void:
 static func _is_plate(mi: MeshInstance3D, _root: Node) -> bool:
 	var n := String(mi.name)
 	return n == "slab" or n == "tiles" or n.ends_with("_plates")
+
+
+## Значение ручки по имени (умолчание, если не задана) — для клиента и фона-купола.
+static func knob(name: String) -> Variant:
+	return _k(name)
+
+
+## Небо купола (BackdropDome) для просветов граней облака: свет пустоты по тревоге запоминается и отдаётся материалам, созданным позже.
+static var _sky_void := Color(0.0, 0.0, 0.0)
+
+
+## Параметры неба (дымка, цвет пустоты; у купола ещё текстура и яркость пылинок) в материал купола или облака — по ручкам backdrop_haze / backdrop_dust.
+static func sky_params(m: ShaderMaterial) -> void:
+	m.set_shader_parameter("sky_haze_gain", float(_k("backdrop_haze")))
+	m.set_shader_parameter("sky_void", _sky_void)
+
+
+## Свет пустоты, как его принял AssetMaterials (set_sky_void): для тестов и отладки.
+static func sky_void_color() -> Color:
+	return _sky_void
+
+
+## Свет пустоты по тревоге: звать из BackdropDome.set_alarm; облачным материалам просветов отдаётся тот же цвет.
+static func set_sky_void(tree: SceneTree, c: Color) -> void:
+	_sky_void = c
+	for m in _cloud_materials(tree):
+		m.set_shader_parameter("sky_void", c)
+
+
+## Шейдер облака — любой из двух вариантов (непрозрачный по умолчанию, a2c при cloud_solid = 0).
+static func _is_cloud_shader(sh: Shader) -> bool:
+	return sh == CLOUD_SHADER or sh == CLOUD_A2C_SHADER
 
 
 static func _k(name: String) -> Variant:
@@ -454,7 +500,7 @@ static func apply(root: Node, tier: String = "") -> void:
 				for k in LAIR_SLEEP_BREATHE[String(mi.name)]:
 					m.set_shader_parameter(k, LAIR_SLEEP_BREATHE[String(mi.name)][k])
 			if src.resource_name == "solid_dark" and String(mi.name) != UNDER_SLAB and float(_k("cloud")) > 0.0 and _cloud_scope_ok(root):  # floor_slab_under — сплошная подложка под облачным полом (#424 Ш5): solid_dark при любом cloud;  # прототип «облако без основы»: частицы с дырами вместо тёмной грани (нужен MSAA)
-				m.shader = CLOUD_SHADER
+				m.shader = CLOUD_SHADER if float(_k("cloud_solid")) > 0.0 else CLOUD_A2C_SHADER
 				mi.add_to_group(SURFACE_CLOUD_GROUP)   # set_cloud_breath / set_cloud_touch находят поверхностные облака по группе и по реестру материалов
 				_surface_cloud_mats.append(weakref(m))
 				m.set_shader_parameter("glitch_tex", GlitchSprite.texture())
@@ -464,18 +510,24 @@ static func apply(root: Node, tier: String = "") -> void:
 				m.set_shader_parameter("dust_fill", float(_k("dust_fill")))
 				m.set_shader_parameter("dust_fill_lo", float(_k("dust_fill_lo")))
 				m.set_shader_parameter("dust_fill_hi", float(_k("dust_fill_hi")))
+				m.set_shader_parameter("dust_fill_edge", float(_k("dust_fill_edge")))
+				m.set_shader_parameter("dust_fill_far_min", float(_k("dust_fill_far_min")))
 				m.set_shader_parameter("dust_sharp", float(_k("dust_sharp")))
 				_push_cloud_light_knobs(m)
+				sky_params(m)
+				m.set_shader_parameter("sky_fill", 1.0 if float(_k("cloud_sky")) > 0.0 and float(_k("backdrop")) > 0.0 else 0.0)
 				_push_lights(m)
 				m.set_shader_parameter("dust_density", float(_k("dust_density")) * (float(_k("floor_density")) if String(mi.name) == "slab" else 1.0))
 				m.set_shader_parameter("edge_mix", float(_k("cloud_edge_mix")))
+				m.set_shader_parameter("dust_edge_gain", float(_k("cloud_edge_gain")))
+				m.set_shader_parameter("edge_fade", float(_k("cloud_face_fade")) if String(mi.name) == "pillar_block" else 0.0)
 				if _is_threat_gear(root):
 					_paint_threat_cloud(m)
 				if String(mi.name) == "slab" and float(_k("floor_grid")) > 0.0:
 					m.set_shader_parameter("grid_tex", _grid_texture())
 					m.set_shader_parameter("grid_alpha", float(_k("floor_grid")))
 			mi.set_surface_override_material(s, m)
-			if not entity and (m.shader == SHADERS["solid_dark"] or m.shader == CLOUD_SHADER or m.shader == SKIRT_SHADER):
+			if not entity and (m.shader == SHADERS["solid_dark"] or _is_cloud_shader(m.shader) or m.shader == SKIRT_SHADER):
 				_focus_mats.append(weakref(m))
 
 
@@ -527,7 +579,7 @@ static func _cloud_materials(tree: SceneTree) -> Array[ShaderMaterial]:
 			continue
 		for s in mi.mesh.get_surface_count():
 			var sm := mi.get_surface_override_material(s) as ShaderMaterial
-			if sm != null and sm.shader == CLOUD_SHADER and not seen.has(sm.get_instance_id()):
+			if sm != null and _is_cloud_shader(sm.shader) and not seen.has(sm.get_instance_id()):
 				seen[sm.get_instance_id()] = true
 				out.append(sm)
 	var alive: Array[WeakRef] = []
@@ -536,7 +588,7 @@ static func _cloud_materials(tree: SceneTree) -> Array[ShaderMaterial]:
 		if rm == null:
 			continue
 		alive.append(w)
-		if rm.shader == CLOUD_SHADER and not seen.has(rm.get_instance_id()):
+		if _is_cloud_shader(rm.shader) and not seen.has(rm.get_instance_id()):
 			seen[rm.get_instance_id()] = true
 			out.append(rm)
 	_surface_cloud_mats = alive
@@ -572,8 +624,9 @@ static func set_cloud_lights(tree: SceneTree, lights: Array) -> void:
 		var c: Color = l.get("c", Color(0.8, 0.97, 1.0))
 		_lights_pos.append(Vector4(p.x, p.y, p.z, maxf(float(l.get("r", 3.0)), 0.01)))
 		_lights_col.append(Vector4(c.r, c.g, c.b, float(l.get("s", 1.0))))
+	_build_lit_map()
 	for m in _cloud_materials(tree):
-		if m.shader == CLOUD_SHADER:
+		if _is_cloud_shader(m.shader):
 			_push_lights(m)
 
 
@@ -588,13 +641,53 @@ static func cloud_lights() -> Array:
 
 
 static func _push_lights(m: ShaderMaterial) -> void:
-	var pos := _lights_pos.duplicate()
-	var col := _lights_col.duplicate()
-	m.set_shader_parameter("cl_n", pos.size())
-	pos.resize(CLOUD_LIGHTS_MAX)   # массив uniform фиксированной длины: хвост — нули
-	col.resize(CLOUD_LIGHTS_MAX)
-	m.set_shader_parameter("cl_pos", pos)
-	m.set_shader_parameter("cl_col", col)
+	m.set_shader_parameter("cl_n", _lights_pos.size())
+	if _lit_tex != null:
+		m.set_shader_parameter("lit_map", _lit_tex)
+		m.set_shader_parameter("lit_rect", _lit_rect)
+
+
+## Карта освещённости по XZ (RGBA8): источники «splat» в окно по радиусу, побеждает сильнейший (цвет и сила), форма спада та же, что была в шейдере:
+## (1 − smoothstep(0,15·r … r, расстояние)) · сила. Строится один раз на смену узла (≈20 тыс. операций), в шейдере — одна выборка вместо 12 расчётов на фрагмент.
+static func _build_lit_map() -> void:
+	_lit_tex = null
+	if _lights_pos.is_empty():
+		return
+	var x0 := INF
+	var z0 := INF
+	var x1 := -INF
+	var z1 := -INF
+	for l in _lights_pos:
+		x0 = minf(x0, l.x - l.w)
+		z0 = minf(z0, l.z - l.w)
+		x1 = maxf(x1, l.x + l.w)
+		z1 = maxf(z1, l.z + l.w)
+	var w := maxi(int(ceil((x1 - x0) / LIT_TEXEL)), 8)
+	var h := maxi(int(ceil((z1 - z0) / LIT_TEXEL)), 8)
+	w = mini(w, 256)
+	h = mini(h, 256)
+	var sx := (x1 - x0) / float(w)
+	var sz := (z1 - z0) / float(h)
+	var img := Image.create_empty(w, h, false, Image.FORMAT_RGBA8)
+	var best := PackedFloat32Array()
+	best.resize(w * h)
+	for i in _lights_pos.size():
+		var l := _lights_pos[i]
+		var cc := _lights_col[i]
+		var ix0 := clampi(int(floor((l.x - l.w - x0) / sx)), 0, w - 1)
+		var ix1 := clampi(int(ceil((l.x + l.w - x0) / sx)), 0, w - 1)
+		var iz0 := clampi(int(floor((l.z - l.w - z0) / sz)), 0, h - 1)
+		var iz1 := clampi(int(ceil((l.z + l.w - z0) / sz)), 0, h - 1)
+		for iz in range(iz0, iz1 + 1):
+			var pz := z0 + (float(iz) + 0.5) * sz
+			for ix in range(ix0, ix1 + 1):
+				var px := x0 + (float(ix) + 0.5) * sx
+				var k := (1.0 - smoothstep(0.15 * l.w, l.w, Vector2(px - l.x, pz - l.z).length())) * cc.w
+				if k > best[iz * w + ix]:
+					best[iz * w + ix] = k
+					img.set_pixel(ix, iz, Color(cc.x, cc.y, cc.z, clampf(k, 0.0, 1.0)))
+	_lit_tex = ImageTexture.create_from_image(img)
+	_lit_rect = Vector4(x0, z0, 1.0 / (x1 - x0), 1.0 / (z1 - z0))
 
 
 static func _push_cloud_light_knobs(m: ShaderMaterial) -> void:

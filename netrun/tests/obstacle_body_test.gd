@@ -79,7 +79,7 @@ func test_corner_is_lit_and_flat_wall_middle_is_dark() -> void:
 		if absf(v.x - x0) < 0.001 and absf(v.z - z0) < 0.001 and v.y > 0.25 and v.y < 2.19:
 			assert_float(colors[i].g).is_equal_approx(lit.g, 0.01)  # вертикальное ребро на любой высоте (цвета вершин в меше — 8 бит)
 			corner_seen = true
-		if absf(v.z - z0) < 0.001 and absf(v.x - (x0 + ObstacleBody.BAND)) < 0.001 and v.y > 0.25 and v.y < 2.19:  # в трёх сантиметрах от ребра свет уже погас
+		if absf(v.z - z0) < 0.001 and absf(v.x - (x0 + ObstacleBody.BAND)) < 0.001 and v.y > 0.25 and v.y < 2.19:  # на краю полосы BAND от ребра свет уже погас
 			assert_float(colors[i].g).is_equal_approx(dark.g, 0.01)  # на прямой стене рёбер нет
 			dark_seen = true
 	assert_bool(corner_seen).is_true()
