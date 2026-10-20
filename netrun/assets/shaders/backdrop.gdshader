@@ -2,7 +2,7 @@
 // Вместо дальней геометрии с частицами (на очках она мерцала и обрывалась видимой границей): почти-чёрная нейтральная пустота, лёгкая бирюзовая дымка у горизонта и
 // НЕПОДВИЖНЫЕ пылинки из запечённой текстуры (референсы CDPR: дальнее не обрывается, а растворяется в чёрном; sub-пиксельных точек и хеша в шейдере нет — они сами мерцают).
 // Купол в прозрачном проходе (после непрозрачного мира) с обычным тестом глубины и без записи: на дальности DOME_R от головы он виден только там, где ничего ближе нет (пол, кубы, стойки закрывают его). Слой деки (xr_layer_host) вырезается по глубине панели.
-// В вершинном шейдере из вида берётся только поворот: купол всегда в центре головы, следить за позицией камеры клиенту не нужно. Камера клиента должна видеть дальше DOME_R (у XR-камеры far ≥ 100 м).
+// Направление — VERTEX как есть (мировые оси), а не MODEL_MATRIX: поворот родителя (риг, сцена) не должен вращать небо вместе с головой (20.10: «пылинки двигаются вместе с гарнитурой»). В вершинном шейдере из вида берётся только поворот: купол всегда в центре головы, следить за позицией камеры клиенту не нужно. Камера клиента должна видеть дальше DOME_R (у XR-камеры far ≥ 100 м).
 shader_type spatial;
 render_mode unshaded, blend_premul_alpha, cull_front, depth_draw_never, fog_disabled, shadows_disabled;
 // blend_premul_alpha при ALPHA = 0 — чисто аддитивный свет: альфа кадра не трогается. Клиент рисует вид с прозрачным фоном (transparent_bg) и слоем деки позади (xr_layer_host, layers = behind):
@@ -11,18 +11,17 @@ render_mode unshaded, blend_premul_alpha, cull_front, depth_draw_never, fog_disa
 #include "backdrop_sky.gdshaderinc"
 
 const float DOME_R = 60.0;
-varying vec2 v_uv;
-varying float v_haze;
-
-// Развёртка и дымка считаются в вершине (сфера 64×64): в пикселе остаётся одна выборка пылинок, без atan/acos/exp на полноэкранном проходе (на очках купол + свет съедали бюджет 11,1 мс).
+// Сфера нужна только для покрытия экрана и глубины: цвет считается в пикселе по МИРОВОМУ направлению луча (INV_PROJECTION_MATRIX и INV_VIEW_MATRIX текущего глаза), поэтому небо
+// и пылинки стоят в мире при любом повороте головы и родителя (20.10: на очках пылинки «двигались вместе с гарнитурой» при расчёте направления в вершине).
 void vertex() {
-	v_uv = UV;
-	v_haze = sky_haze(VERTEX.y);
-	POSITION = PROJECTION_MATRIX * vec4(mat3(VIEW_MATRIX) * (MODEL_MATRIX * vec4(VERTEX, 0.0)).xyz * DOME_R, 1.0);   // направление × DOME_R в виде: поворот головы без сдвига
+	POSITION = PROJECTION_MATRIX * vec4(mat3(VIEW_MATRIX) * VERTEX * DOME_R, 1.0);   // покрытие: любая часть сферы вокруг глаза закрывает экран
 }
 
 void fragment() {
-	float dust = texture(sky_dust_tex, v_uv).r;
-	ALBEDO = sky_void + sky_haze_color * v_haze * sky_haze_gain + sky_dust_color * dust * sky_dust_gain;
+	vec4 vp = INV_PROJECTION_MATRIX * vec4(SCREEN_UV * 2.0 - 1.0, 1.0, 1.0);
+	vec3 d = normalize((INV_VIEW_MATRIX * vec4(normalize(vp.xyz / vp.w), 0.0)).xyz);
+	vec2 uv = vec2(atan(d.x, -d.z) / 6.28318 + 0.5, acos(clamp(d.y, -1.0, 1.0)) / 3.14159);
+	float dust = textureLod(sky_dust_tex, uv, 0.0).r;
+	ALBEDO = backdrop_sky(d) + sky_dust_color * dust * sky_dust_gain;
 	ALPHA = 0.0;
 }

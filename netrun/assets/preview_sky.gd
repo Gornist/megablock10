@@ -6,12 +6,15 @@ extends Node3D
 const EYE := Vector2i(1504, 1504)
 
 var _out := "/tmp/sky_shots"
+var _yaw := 0.0   # --yaw=градусы: поворот головы в позе horizon (проверка, что небо стоит в мире, а не едет с головой)
 
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			_out = a.substr(6)
+		elif a.begins_with("--yaw="):
+			_yaw = float(a.substr(6))
 		elif a.begins_with("--tune="):
 			var d := {}
 			for kv in a.trim_prefix("--tune=").split(","):
@@ -54,7 +57,8 @@ func _ready() -> void:
 	# 2. через колонну: камера на линии позади колонны (от центра), смотрит сквозь неё в центр комнаты и дальше
 	await _shot(cam, "through", p0 - dir * 4.5 + Vector3(0, eye_y, 0), c + dir * -6.0 + Vector3(0, 1.0, 0))
 	# 3. горизонт: поза у спавна, взгляд ровно вперёд (к горизонту), небо в верхней половине кадра
-	await _shot(cam, "horizon", Vector3(c.x, eye_y, c.z + 3.0), Vector3(c.x, eye_y + 0.1, c.z - 40.0))
+	var hl := Vector3(0.0, 0.1, -43.0).rotated(Vector3.UP, deg_to_rad(_yaw))
+	await _shot(cam, "horizon", Vector3(c.x, eye_y, c.z + 3.0), Vector3(c.x, eye_y, c.z + 3.0) + hl)
 	# 4. рука у грани: источник отклика на грани колонны, камера в 1,1 м
 	AssetMaterials.set_cloud_touch(get_tree(), [Vector4(face.x, 1.2, face.z, 0.5)])
 	await _shot(cam, "hand", face - dir * 1.1 + Vector3(0, eye_y, 0), face + Vector3(0, 1.1, 0))
