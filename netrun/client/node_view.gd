@@ -135,6 +135,12 @@ func set_look(new_tier: String, new_layout: LayoutData) -> void:
 func _apply_cloud_lights() -> void:
 	if is_inside_tree():
 		AssetMaterials.set_cloud_lights(get_tree(), CloudLightPlan.build(layout))
+		var rects: Array[Rect2] = []   # основания препятствий: пол вокруг них редеет (стык колонны с полом без резкой линии)
+		for r in obstacle_regions():
+			for b in r.blocks:
+				var c := NodeLayout.cell_center(b.x, b.y)
+				rects.append(Rect2(c.x - NodeLayout.CELL * 0.5, c.z - NodeLayout.CELL * 0.5, NodeLayout.CELL, NodeLayout.CELL))
+		AssetMaterials.set_cloud_occluders(get_tree(), rects)
 
 
 func _enter_tree() -> void:
