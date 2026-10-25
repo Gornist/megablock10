@@ -65,7 +65,7 @@ if [ ! -x "$SDK/cmdline-tools/latest/bin/sdkmanager" ]; then
     && unzip -q -o cmdtools.zip -d $SDK/cmdline-tools && rm -rf $SDK/cmdline-tools/latest && mv $SDK/cmdline-tools/cmdline-tools $SDK/cmdline-tools/latest && rm cmdtools.zip"
 fi
 as_user "export JAVA_HOME=/usr/lib/jvm/temurin-21-jdk-amd64; yes | $SDK/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null 2>&1; \
-  $SDK/cmdline-tools/latest/bin/sdkmanager 'platform-tools' 'platforms;android-37' 'build-tools;36.0.0' 'emulator'" || FAILED+=("sdkmanager")
+  $SDK/cmdline-tools/latest/bin/sdkmanager 'platform-tools' 'platforms;android-37.0' 'build-tools;36.0.0' 'emulator'" || FAILED+=("sdkmanager")
 
 step "Godot 4.7.2 и Blender 4.5.14 в ~/.local"
 as_user "mkdir -p ~/.local/bin ~/.local/godot ~/.local/blender-dl"
