@@ -262,7 +262,7 @@ def build_floor(out, name="floor", seed=2, cover=0.22, dense=False):
 COVER_H = 2.2      # высота укрытия, м: выше головы стоящего игрока; одна на все (полуукрытий нет, решение Game: занятая клетка закрывает взгляд целиком)
 COVER_CELL = 1.0   # клетка хода, м (NodeGrid.CELL_M)
 COVER_BODY = 0.9   # корпус по центру клетки, щель 5 см до границы
-COVER_BAND = 0.25  # ширина полосы веса ребра у вертикальных рёбер и верха корпуса, м (было 3 см, «свет рёбер»): с 20.10 вес ребра в облаке — ЗАТУХАНИЕ частиц к кромке грани на 25 см (мягкий край, владелец: «резкий обрыв»); client/obstacle_body.gd BAND держать равным
+COVER_BAND = 0.5   # ширина полосы веса ребра у вертикальных рёбер и верха корпуса, м (было 3 см, «свет рёбер»): с 20.10 вес ребра в облаке — ЗАТУХАНИЕ частиц к кромке грани на 25 см (мягкий край, владелец: «резкий обрыв»; 20.10 вторая просьба: 25 см в очках не читается → 50 см; у малых тел не больше 40 % стороны); client/obstacle_body.gd BAND держать равным
 
 
 def _cover_parts(centers, body_size=COVER_BODY, cell=COVER_CELL):
@@ -271,7 +271,7 @@ def _cover_parts(centers, body_size=COVER_BODY, cell=COVER_CELL):
     и в основании. Колонна 2×2 м — один «столб» с body_size 1,9 и cell 2 (15.10: четыре укрытия с зазорами владелец принял за четыре колонны).
     Возвращает (корпус bmesh, рамки bmesh, rgb_fn корпуса)."""
     cy, void = lib.lin("cyan"), lib.lin("void")
-    half, band, rise = body_size / 2, COVER_BAND, 0.3
+    half, band, rise = body_size / 2, min(COVER_BAND, 0.4 * body_size), 0.3
     bodies, frames = [], []
     for cx, cy_ in centers:
         bm = lib.box_bm((body_size, body_size, COVER_H), center=(cx, cy_, COVER_H / 2))
