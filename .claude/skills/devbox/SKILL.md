@@ -9,7 +9,7 @@ Mac (8 ГБ) — только правка, git и `scripts/check.sh --fast`. Gr
 (i7-9700T, 16 ГБ, Ubuntu 24.04, KVM). Машина общая для всех веток.
 
 ## Доступ
-- `ssh devbox` (Tailscale SSH, 100.80.115.46, пользователь `nick`; имя хоста с Mac резолвится неверно — только IP).
+- `ssh devbox` (LAN 192.168.1.141, пользователь `nick`; алиас в `~/.ssh/config` на Mac). Tailscale с 20.10 нет — адрес 100.80.115.46 не работает.
 - Состояние машины и устройств — `scripts/box.sh status` (одна строка); adb — user-служба `box-adb`, `adb kill-server` не нужен.
   Машиной управляет сессия **Devbox** (ТЗ — `docs/devbox.md`): очередь, брони устройств и портов — через неё.
 - Репозиторий `~/megablock10`; на Mac git-remote `devbox`. Пуш ветки: `git push devbox <ветка> --no-verify`
