@@ -22,6 +22,7 @@
 | LARP | `~/cp2020-lore` (`bin/lore.py`, `bin/remote.sh add/status/pull`, flock), изредка | — | база лора, повторная выжимка через API (≈32 $) |
 | Nomad Surf (проект Surf N130) | `~/surf-blender`, отдельный `~/blender-5.2.2`, user-сервис `surf-decals` :8765; Cycles на GPU 1–5 мин | — | всё перечисленное |
 | Collector | на devbox ничего; тесты на Mac | — | — |
+| Шерегеш (сборка образов Raspberry Pi, 25.10) | `~/shimg` (исходники, открытые ключи, результаты ~1 ГБ на сборку, 30–50 ГБ в запасе), Docker: контейнеры `--privileged --platform linux/arm64` на `debian:trixie` (≈45 мин в эмуляции, грузит все ядра, 2–4 ГБ ОЗУ), файловые проверки OTA на `ghcr.io/armbian/docker-armbian-build` (≈8 ГБ в `$HOME` на время прогона), том `sheregesh-image-work` (можно стереть — пересоздастся); эмуляция arm64: `qemu-user-static` + `binfmt-support` (флаг F, переживает перезагрузку) | к devbox ничего не подключено; платы стенда не трогает | образы `debian:trixie` и `ghcr.io/armbian/docker-armbian-build`, том `sheregesh-image-work`, `docker restart` и перезагрузка во время сборки; секретов (ключ подписи OTA) на devbox нет |
 
 ## Сбои 08–13.10, ради которых сессия заводится
 

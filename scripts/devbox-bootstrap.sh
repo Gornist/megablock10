@@ -35,7 +35,8 @@ apt_install() { apt-get install -y -qq -o Dpkg::Options::=--force-confdef -o Dpk
 apt-get update -qq </dev/null
 try apt_install build-essential ca-certificates curl wget git gnupg unzip zip rsync jq python3 python3-pip nodejs npm \
   openssh-server docker.io qemu-system-x86 cpu-checker tesseract-ocr vainfo intel-media-va-driver-non-free \
-  android-sdk-platform-tools-common flatpak shellcheck xz-utils efibootmgr
+  android-sdk-platform-tools-common flatpak shellcheck xz-utils efibootmgr zstd \
+  qemu-user-static binfmt-support   # эмуляция arm64 для сборки образов Raspberry Pi (Шерегеш): binfmt qemu-aarch64 с флагом F после каждой загрузки
 systemctl enable --now ssh docker >/dev/null 2>&1
 usermod -aG docker,plugdev,kvm,dialout "$U"
 
