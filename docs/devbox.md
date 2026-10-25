@@ -6,9 +6,9 @@
 
 ## Машина
 
-`nick-arasaka-micro`: Ubuntu, GTX 1650 4 ГБ (драйвер 595.99), 8 ядер; ssh `devbox` = Tailscale 100.80.115.46 (LAN 192.168.1.141 ключ не
-пускает), пользователь `nick`. GNOME/Wayland, автовход nick: автозапуск `~/.config/autostart/devbox-session.desktop` → `~/box/repo/scripts/devbox-session-start.sh`
-(клон репозитория, `scripts/box.sh sync`; с 13.10 — не ручная копия): incy VPN → Tailscale → adb → Blender c blender-mcp на 9876 →
+`nick-arasaka-micro`: Ubuntu, GTX 1650 4 ГБ (драйвер 595.99), 8 ядер; ssh `devbox` = LAN 192.168.1.141 (Tailscale и VPN убраны 25.10.2026),
+пользователь `nick`. GNOME/Wayland, автовход nick: автозапуск `~/.config/autostart/devbox-session.desktop` → `~/box/repo/scripts/devbox-session-start.sh`
+(клон репозитория, `scripts/box.sh sync`; с 13.10 — не ручная копия): сеть (LAN) → adb → Blender c blender-mcp на 9876 →
 редактор Godot → самопроверка. adb — user-служба `box-adb`. Подробности сборок — skill `devbox`, Godot на devbox — `docs/netrun-devbox.md`.
 
 ## Кто что держит (13.10)
@@ -91,9 +91,9 @@
 | `box.sh pico status` / `wake <владелец> <мин> [заметка]` / `sleep <владелец> [--force]` | очки Pico: **будить только под бронь `pico`, гасить сразу после** — датчик приближения заклеен (решение владельца 13.10), сами очки не гаснут, матрицы выгорают. `wake` берёт бронь и жмёт `KEYCODE_POWER`; `sleep` гасит и снимает свою бронь. `KEYCODE_SLEEP` на Pico не работает, а POWER — переключатель, поэтому состояние (`dumpsys power`: `mWakefulness`, `Display Power`) читается до и после, на уже проснувшихся/спящих очках POWER не нажимается, повтор — один раз по свежему чтению. Чужую бронь гасить нельзя без `--force` |
 | `box.sh guard on\|off\|status` | таймер-страж `box-pico-guard` (раз в минуту, `ctl.sh pico guard`): Awake без брони дольше 3 мин → гасит. Включается **только этой командой** — действует на очки без человека; `status` показывает Awake без брони как замечание |
 
-Загрузочная проверка (`devbox-session-start.sh`): Tailscale трогается **только** если не Running — после поднятия VPN (incy) сначала
-`tailscale up --ssh --operator=nick` (без sudo: оператор демона — nick; причина «руками sudo tailscale up» — демон стартует раньше
-прокси xray и остаётся logged out), потом перезапуск tailscaled и ещё раз `tailscale up` (раньше перезапускали всегда, роняя ssh);
+Загрузочная проверка (`devbox-session-start.sh`): **VPN (incy) и Tailscale убраны 25.10.2026** (подписка на VPN кончилась, а машина и
+все её клиенты в одной локальной сети 192.168.1.0/24). Сеть — только проверка, что есть LAN-адрес и выход в интернет напрямую; ssh с Mac
+по `192.168.1.141` (`Host devbox` в `~/.ssh/config` указывает туда). Прежние шаги с `tailscale up` и перезапуском `tailscaled` — в истории git.
 adb — проверка службы; Blender — ждёт графику, повторяет, сохраняет крэш-отчёт; редактор Godot — только ждёт и сообщает; в конце та же
 проба. Итог — `~/box/boot.report` (его показывает `status`); сообщением сессиям с бронями и Pipeline итог станет в D2, когда появятся брони.
 

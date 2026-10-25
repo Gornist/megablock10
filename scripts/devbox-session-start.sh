@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
-# Старт сеанса devbox: incy (VPN) → Tailscale → adb → Blender (blender-mcp на 9876) → редактор Godot → самопроверка.
+# Старт сеанса devbox: сеть (LAN, напрямую) → adb → Blender (blender-mcp на 9876) → редактор Godot → самопроверка.
 # Запускается автозапуском GNOME после входа nick (~/.config/autostart/devbox-session.desktop), нужен графический сеанс.
 # Автозапуск указывает на клон репозитория ~/box/repo (scripts/box.sh sync) — не на ручную копию: правка здесь доезжает до
 # devbox одной командой, а расхождение видно в `scripts/box.sh status`. Запустить вручную (идемпотентно, ничего не убивает):
 #   scripts/box.sh boot-check
-# Требует (один раз, руками владельца):
-#   1) incy: Настройки → «Автоподключение» (autoConnect) — иначе VPN сам не поднимется;
-#   2) sudo-правило без пароля на перезапуск tailscaled (/etc/sudoers.d/devbox-tailscale, см. docs/netrun-devbox.md).
 # Итог: журнал ~/.local/state/devbox-session.log (подробно), ~/box/boot.report (вердикт — его читает `box.sh status`),
 # ~/box/journal.jsonl (строка на запуск). Каждый этап ждёт предыдущий, но по таймауту идёт дальше — чтобы сбой этапа был виден,
 # а не молчал и не тянул за собой остальное. Чужое не убиваем: Blender без 9876 не перезапускаем (там может быть работа).
@@ -20,13 +17,11 @@ exec 9>"$BOX/boot.lock"
 flock -n 9 || { echo "[$(date '+%F %T')] проверка уже идёт — выхожу"; exit 0; }
 
 HERE=$(cd "$(dirname "$0")" && pwd)
-VPN_TIMEOUT=${VPN_TIMEOUT:-180}
-TS_TIMEOUT=${TS_TIMEOUT:-90}
+NET_TIMEOUT=${NET_TIMEOUT:-60}
 GFX_TIMEOUT=${GFX_TIMEOUT:-120}
 BLENDER_TIMEOUT=${BLENDER_TIMEOUT:-60}
 BLENDER_TRIES=${BLENDER_TRIES:-3}
 GODOT_TIMEOUT=${GODOT_TIMEOUT:-90}
-INCY=/opt/incy/bin/incy
 BLENDER=${BLENDER:-$HOME/.local/bin/blender}
 BLENDER_COMM=${BLENDER_COMM:-blender}
 MCP_PORT=${MCP_PORT:-9876}
@@ -50,9 +45,6 @@ wait_for() {  # wait_for <что> <секунд> <команда…>
   log "ТАЙМАУТ: $what (${t} с)"; return 1
 }
 
-vpn_up() { ip -4 -br addr show tun_incy 2>/dev/null | grep -q '198\.18\.' && pgrep -x xray >/dev/null; }
-ts_state() { tailscale status --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("BackendState","?"))' 2>/dev/null; }
-ts_running() { [ "$(ts_state)" = "Running" ]; }
 gfx_up() { [ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ] && pgrep -x gnome-shell >/dev/null && timeout 8 nvidia-smi -L >/dev/null 2>&1; }
 mcp_up() { ss -H -ltn "sport = :$MCP_PORT" 2>/dev/null | grep -q .; }
 godot_up() { ss -H -ltn 'sport = :8000' 2>/dev/null | grep -q .; }
@@ -62,39 +54,11 @@ blender_gui() { pgrep -a -x "$BLENDER_COMM" 2>/dev/null | grep -v -E ' (-b|--bac
 
 log "=== старт сеанса (скрипты: $(git -C "$HERE/.." rev-parse --short HEAD 2>/dev/null || echo 'не из git')) ==="
 
-# 1. incy → VPN
-if ! pgrep -f "$INCY" >/dev/null; then
-  log "запускаю incy"
-  setsid nohup "$INCY" >/dev/null 2>&1 9>&- &
-else
-  log "incy уже запущен"
-fi
-wait_for "VPN (tun_incy + xray)" "$VPN_TIMEOUT" vpn_up \
-  || bad "VPN не поднялся (autoConnect в incy включён? Иду дальше без него)"
+# 1. Сеть. VPN (incy) и Tailscale убраны 25.10.2026: devbox работает только в локальной сети 192.168.1.0/24, ходит напрямую.
+net_up() { ip -4 -o addr show scope global 2>/dev/null | grep -q 'inet 192\.168\.' && curl -s -o /dev/null -m 6 https://github.com; }
+wait_for "сеть (LAN и выход в интернет)" "$NET_TIMEOUT" net_up || bad "нет выхода в интернет (ip -br addr; curl https://github.com)"
 
-# 2. Tailscale. Демон стартует при загрузке раньше VPN и ходит к control plane через прокси xray — пока прокси нет, не Running.
-#    Уже Running — не трогаем (раньше перезапускали всегда и на секунды роняли ssh). Иначе (14.10: при старте раньше прокси демон
-#    остаётся «logged out» — fetch control key: connection refused на 127.0.0.1:10809) — то, что владелец делал руками:
-#    `tailscale up` БЕЗ sudo (оператор демона — nick), потом перезапуск tailscaled, потом ещё раз `tailscale up`.
-#    Флаги — те же, что в настройках узла (--ssh, --operator=nick): `tailscale up` без них отказывается менять настройки.
-ts_up() { timeout 40 tailscale up --ssh --operator=nick --accept-risk=lose-ssh >/dev/null 2>&1; }
-if wait_for "Tailscale (BackendState=Running)" 15 ts_running; then
-  :
-else
-  log "Tailscale: $(ts_state) при поднятом VPN — tailscale up"
-  ts_up
-  if wait_for "Tailscale после tailscale up" 30 ts_running; then
-    :
-  elif sudo -n /usr/bin/systemctl restart tailscaled; then
-    ts_up
-    wait_for "Tailscale после перезапуска tailscaled" "$TS_TIMEOUT" ts_running \
-      || bad "Tailscale: $(ts_state) после tailscale up и перезапуска — владельцу: вход, если NeedsLogin (tailscale up, откроет ссылку)"
-  else
-    bad "Tailscale: $(ts_state), tailscale up не помог, а sudo без пароля на tailscaled не настроен (/etc/sudoers.d/devbox-tailscale)"
-  fi
-fi
-
-# 3. adb. Сервер — user-служба box-adb (поднимается сама при входе); здесь только проверка. Чужой сервер не убиваем.
+# 2. adb. Сервер — user-служба box-adb (поднимается сама при входе); здесь только проверка. Чужой сервер не убиваем.
 if adb_up; then
   if systemctl --user is-active --quiet box-adb 2>/dev/null; then
     log "ok: adb — служба box-adb"

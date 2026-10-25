@@ -84,7 +84,7 @@ cat >"$D" <<EOF
 [Desktop Entry]
 Type=Application
 Name=devbox-session
-Comment=incy (VPN) -> Tailscale -> adb -> Blender (из репозитория: scripts/box.sh sync)
+Comment=сеть -> adb -> Blender (из репозитория: scripts/box.sh sync)
 Exec=$REPO/scripts/devbox-session-start.sh
 X-GNOME-Autostart-enabled=true
 X-GNOME-Autostart-Delay=5
