@@ -1,6 +1,7 @@
 extends Node3D
 ## Кадры клиента для приёмки вида «грань облака + небо купола» (владелец 20.10: «чёрный солид везде»): Фойе глазами игрока (кадр на глаз Pico 4), четыре позы —
 ## `close` (вплотную к грани колонны), `through` (через колонну на дальнюю), `horizon` (взгляд на горизонт), `hand` (рука у грани, отклик поверхности).
+## Позы: close, through, base (стык колонны с полом), horizon, hand.
 ## Запуск: netrun/tools/dev.sh shot res://assets/preview_sky.tscn [--tune=cloud_sky=0,...] [--out=каталог]; кадры <поза>.png.
 
 const EYE := Vector2i(1504, 1504)
@@ -29,6 +30,10 @@ func _ready() -> void:
 	var foyer := LayoutData.cached("foyer")
 	scene.apply_node({"kind": "node", "node": "foyer", "title": "Фойе", "tier": "BASE", "r": NodeLayout.PORTAL_RADIUS, "shards": [], "portals": [], "layout": foyer.name})
 	scene.apply_state({"k": Time.get_ticks_msec() / 1000.0, "trace": 0.0, "level": 0, "cd": [], "ice": [], "bk": [], "sn": [], "tk": {"n": 4, "at": 0.0, "win": 5.0, "inh": 0, "mv": 0}})
+	var rects: Array = []
+	for pp: Vector3 in scene.view.pillar_positions():
+		rects.append(Rect2(pp.x - 0.95, pp.z - 0.95, 1.9, 1.9))
+	AssetMaterials.set_cloud_occluders(get_tree(), rects)   # основания колонн: пол вокруг редеет (как вызовет клиент)
 	var vp := SubViewport.new()
 	vp.size = EYE
 	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
@@ -56,6 +61,8 @@ func _ready() -> void:
 	await _shot(cam, "close", face - dir * 0.7 + Vector3(0, eye_y, 0), face + Vector3(0, 1.0, 0))
 	# 2. через колонну: камера на линии позади колонны (от центра), смотрит сквозь неё в центр комнаты и дальше
 	await _shot(cam, "through", p0 - dir * 4.5 + Vector3(0, eye_y, 0), c + dir * -6.0 + Vector3(0, 1.0, 0))
+	# 5. стык колонны с полом: камера в 2,2 м от грани, взгляд на основание (растушёвка у пола)
+	await _shot(cam, "base", face - dir * 2.2 + Vector3(0, eye_y, 0), face + Vector3(0, 0.15, 0))
 	# 3. горизонт: поза у спавна, взгляд ровно вперёд (к горизонту), небо в верхней половине кадра
 	var hl := Vector3(0.0, 0.1, -43.0).rotated(Vector3.UP, deg_to_rad(_yaw))
 	await _shot(cam, "horizon", Vector3(c.x, eye_y, c.z + 3.0), Vector3(c.x, eye_y, c.z + 3.0) + hl)
