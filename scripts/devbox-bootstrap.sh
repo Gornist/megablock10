@@ -86,9 +86,19 @@ as_user "mkdir -p ~/jobs ~/box ~/.local/state"
 
 step "PATH для неинтерактивного ssh (adb и инструменты находятся без входа в сеанс)"
 if ! grep -q 'box-adb-path' "$H/.bashrc"; then
-  as_user "printf '%s\n' '# >>> box-adb-path (неинтерактивный ssh: adb и ~/.local/bin; в конец PATH) >>>' \
-    'for d in \$HOME/android-sdk/platform-tools \$HOME/.local/bin; do case :\$PATH: in *:\$d:*) ;; *) PATH=\$PATH:\$d;; esac; done' \
-    '# <<< box-adb-path <<<' > /tmp/bp.\$\$ && sed -i '4r /tmp/bp.\$\$' ~/.bashrc && rm /tmp/bp.\$\$"
+  # блок ставится В НАЧАЛО ~/.bashrc, над проверкой интерактивности (иначе неинтерактивный ssh его не увидит); 25.10 вариант через
+  # sed '4r' молча не вставился — теперь через временный файл и mv, с проверкой
+  BP=$(mktemp)
+  {
+    echo '# >>> box-adb-path (неинтерактивный ssh: adb и ~/.local/bin; в конец PATH) >>>'
+    # shellcheck disable=SC2016  # раскрывается при чтении ~/.bashrc, не здесь
+    echo 'for d in $HOME/android-sdk/platform-tools $HOME/.local/bin; do case :$PATH: in *:$d:*) ;; *) PATH=$PATH:$d;; esac; done'
+    echo '# <<< box-adb-path <<<'
+    echo
+    cat "$H/.bashrc"
+  } >"$BP" && install -m 644 -o "$U" -g "$U" "$BP" "$H/.bashrc"
+  rm -f "$BP"
+  grep -q box-adb-path "$H/.bashrc" || FAILED+=("bashrc: блок PATH не вставился")
 fi
 as_user 'grep -q "ANDROID_HOME" ~/.bashrc || cat >> ~/.bashrc <<EOF
 # >>> devbox-setup >>>
