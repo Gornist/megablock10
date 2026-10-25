@@ -78,6 +78,7 @@
 `scripts/box.sh` (Mac, bash 3.2) — единственная точка входа; код выхода 0/1, вердикт первой строкой.
 Общая ssh-обвязка — `scripts/lib/devbox.sh` (19.10): `dssh <команда>` (на самом devbox идёт локально, `DEVBOX_TMO` — ConnectTimeout, 10 с), `unreachable` (Tailscale лежит или машина выключена). `dbx.sh` кладёт исполнителя на devbox файлом `dbx-run-<хэш>` через mv: перезапись на месте ломала процессы, уже ждущие в flock.
 `adb` в PATH неинтерактивного ssh: `~/.bashrc` на devbox (блок `box-adb-path` над проверкой интерактивности, 19.10; копия `~/.bashrc.bak-1019`) дописывает `~/android-sdk/platform-tools` в конец PATH — `pico.sh install` вне box.sh больше не падает «adb: command not found».
+Скорость с devbox после переустановки 25.10 (прямой выход, без VPN): github.com и его CDN (`objects.githubusercontent.com`, `185.199.*`) отдают 20–30 КБ/с (шаблоны экспорта Godot ~1,3 ГБ — около 17 ч; `syft` в сборке образа Шерегеша ~12 мин), `mirror.yandex.ru` и `deb.debian.org` — нормально (ISO Ubuntu 6,5 ГБ за 12 мин, ≈9 МБ/с). Большие файлы с GitHub качать на Mac (≈10 МБ/с), сверить SHA-256 и положить `scp`/`rsync` на devbox; маленькое (`git clone`, `uv`, плагин Godot AI) идёт нормально. Зеркала: ISO и пакеты — `mirror.yandex.ru/ubuntu-releases`, `apt` — штатные.
 
 | Команда | Что делает |
 |---|---|
