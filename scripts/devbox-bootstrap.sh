@@ -29,24 +29,26 @@ systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target 
 loginctl enable-linger "$U"
 
 step "apt: базовые пакеты"
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-try apt-get install -y -qq build-essential ca-certificates curl wget git gnupg unzip zip rsync jq python3 python3-pip nodejs npm \
+export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a
+# без вопросов и без ввода с терминала: в `ssh -t … | tee` apt, ждущий ответа, получает SIGTTIN и висит в состоянии T (25.10.2026, 15 минут впустую)
+apt_install() { apt-get install -y -qq -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold "$@" </dev/null; }
+apt-get update -qq </dev/null
+try apt_install build-essential ca-certificates curl wget git gnupg unzip zip rsync jq python3 python3-pip nodejs npm \
   openssh-server docker.io qemu-system-x86 cpu-checker tesseract-ocr vainfo intel-media-va-driver-non-free \
   android-sdk-platform-tools-common flatpak shellcheck xz-utils efibootmgr
 systemctl enable --now ssh docker >/dev/null 2>&1
 usermod -aG docker,plugdev,kvm,dialout "$U"
 
 step "драйвер NVIDIA 595 (open)"
-try apt-get install -y -qq nvidia-driver-595-open
+try apt_install nvidia-driver-595-open
 
 step "Temurin 17 и 21 (репозиторий Adoptium)"
 mkdir -p /etc/apt/keyrings
 curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public -o /etc/apt/keyrings/adoptium.asc
 echo "deb [signed-by=/etc/apt/keyrings/adoptium.asc] https://packages.adoptium.net/artifactory/deb $(. /etc/os-release; echo "$VERSION_CODENAME") main" \
   >/etc/apt/sources.list.d/adoptium.list
-apt-get update -qq
-try apt-get install -y -qq temurin-17-jdk temurin-21-jdk
+apt-get update -qq </dev/null
+try apt_install temurin-17-jdk temurin-21-jdk
 
 step "автовход nick (GDM) — графический сеанс нужен Blender, Godot и автозапуску"
 CONF=/etc/gdm3/custom.conf
