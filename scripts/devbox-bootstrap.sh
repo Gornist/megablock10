@@ -70,14 +70,22 @@ as_user "export JAVA_HOME=/usr/lib/jvm/temurin-21-jdk-amd64; yes | $SDK/cmdline-
 
 step "Godot 4.7.2 и Blender 4.5.14 в ~/.local"
 as_user "mkdir -p ~/.local/bin ~/.local/godot ~/.local/blender-dl"
+# GitHub с devbox отдаёт 20–30 КБ/с (25.10, docs/devbox.md): большие файлы можно заранее положить с Mac в ~/bootstrap/dl/ (scp), тогда
+# скрипт их возьмёт, а не пойдёт качать. Имена: Godot_v4.7.2-stable_linux.x86_64.zip, blender-4.5.14-linux-x64.tar.xz.
+DL=$H/bootstrap/dl
+GODOT_ZIP=Godot_v4.7.2-stable_linux.x86_64.zip
+BLENDER_TAR=blender-4.5.14-linux-x64.tar.xz
+fetch() { # fetch <имя файла> <url> — из ~/bootstrap/dl, иначе качает с докачкой; результат в /tmp
+  if [ -s "$DL/$1" ]; then as_user "cp '$DL/$1' /tmp/$1"; else as_user "curl -fSL -C - --retry 3 -o /tmp/$1 '$2'"; fi
+}
 if [ ! -x "$H/.local/godot/godot-4.7.2-stable" ]; then
-  as_user "cd /tmp && curl -fsSL -o godot.zip https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip \
-    && unzip -q -o godot.zip -d ~/.local/godot && mv ~/.local/godot/Godot_v4.7.2-stable_linux.x86_64 ~/.local/godot/godot-4.7.2-stable && rm godot.zip \
+  fetch "$GODOT_ZIP" "https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/$GODOT_ZIP" \
+    && as_user "unzip -q -o /tmp/$GODOT_ZIP -d ~/.local/godot && mv ~/.local/godot/Godot_v4.7.2-stable_linux.x86_64 ~/.local/godot/godot-4.7.2-stable && rm /tmp/$GODOT_ZIP \
     && ln -sf ~/.local/godot/godot-4.7.2-stable ~/.local/bin/godot" || FAILED+=("godot")
 fi
 if [ ! -x "$H/.local/blender/blender" ]; then
-  as_user "cd /tmp && curl -fsSL -o blender.tar.xz https://download.blender.org/release/Blender4.5/blender-4.5.14-linux-x64.tar.xz \
-    && rm -rf ~/.local/blender && mkdir -p ~/.local/blender && tar -xJf blender.tar.xz -C ~/.local/blender --strip-components=1 && rm blender.tar.xz \
+  fetch "$BLENDER_TAR" "https://download.blender.org/release/Blender4.5/$BLENDER_TAR" \
+    && as_user "rm -rf ~/.local/blender && mkdir -p ~/.local/blender && tar -xJf /tmp/$BLENDER_TAR -C ~/.local/blender --strip-components=1 && rm /tmp/$BLENDER_TAR \
     && ln -sf ~/.local/blender/blender ~/.local/bin/blender" || FAILED+=("blender")
 fi
 
