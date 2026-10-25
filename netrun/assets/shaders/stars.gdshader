@@ -6,8 +6,8 @@ shader_type spatial;
 render_mode unshaded, blend_premul_alpha, cull_disabled, depth_draw_never, fog_disabled, shadows_disabled;
 
 uniform vec3 star_color : source_color = vec3(0.45, 0.85, 0.95);
-uniform float star_gain : hint_range(0.0, 4.0) = 1.5;       // ручка `backdrop_dust`
-uniform float star_angle : hint_range(0.0005, 0.01) = 0.0028;   // угловой радиус звезды, рад (на Pico ≈ 860 px/рад → ≈2,4 px; при 0,0016 на очках звёзд не было видно, 20.10)
+uniform float star_gain : hint_range(0.0, 6.0) = 2.5;       // ручка `backdrop_dust`
+uniform float star_angle : hint_range(0.0005, 0.03) = 0.007;    // угловой радиус звезды, рад (ручка `backdrop_star_size` × 0,0028; на Pico ≈ 630 px/рад: 0,007 ≈ 4,4 px; при 0,0016 и 0,0028 звёзд в очках не различали, 20.10)
 
 varying float v_b;
 

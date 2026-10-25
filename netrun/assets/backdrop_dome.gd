@@ -9,6 +9,7 @@ const SHADER := preload("res://assets/shaders/stars.gdshader")
 const STAR_COUNT := 2400
 const STAR_RADIUS := 55.0   # м: дальше комнаты (≈20 м), ближе дальности камеры; параллакс при сдвиге головы на 0,3 м ≈ 0,3°
 const STAR_SEED := 1018
+const STAR_ANGLE_BASE := 0.0028   # угловой радиус при backdrop_star_size = 1, рад
 
 ## Позиции звёзд (мир, м): то же, что записано в MultiMesh — под headless-рендером он ничего не хранит, а тестам нужно проверить положение.
 var star_positions := PackedVector3Array()
@@ -38,6 +39,7 @@ func _init() -> void:
 	m.shader = SHADER
 	m.render_priority = -128
 	m.set_shader_parameter("star_gain", float(AssetMaterials.knob("backdrop_dust")))
+	m.set_shader_parameter("star_angle", STAR_ANGLE_BASE * float(AssetMaterials.knob("backdrop_star_size")))
 	material_override = m
 	visible = float(AssetMaterials.knob("backdrop")) > 0.0   # 0 — звёзд нет (A/B на очках без пересборки)
 	custom_aabb = AABB(Vector3(-1e3, -1e3, -1e3), Vector3(2e3, 2e3, 2e3))   # не отсекается по положению камеры

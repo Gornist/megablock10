@@ -153,6 +153,9 @@ const KNOBS := {
 	"cloud_solid": 1.0,      # 1 (умолчание) — грань облака непрозрачна: просвет чёрный, мира за гранью не рисуется (19.10, владелец: «видно не должно быть то, что за колонной»), без alpha_to_coverage; 0 — прежние дыры через a2c
 	"cloud_sky": 1.0,        # 1 (умолчание) — просветы непрозрачной грани облака показывают небо купола (грань выглядит прозрачной, мира за ней нет); 0 — чёрные просветы (cloud_solid = 1 откат: «чёрный солид» 20.10); нужен backdrop = 1
 	"cloud_edge_mix": 0.0,   # доля неона у частиц рёбер и линий сетки: 0 с 20.10 (линии рёбер — те же частицы, не неон); было 0,35
+	"cloud_face_fade_w": 0.5,   # ширина растушёвки граней колонн у основания и верха по высоте, м (и полоса вертикальных рёбер в модели — env.py COVER_BAND): 25 см в очках не читалось (20.10); на выбор 0,35 / 0,5 / 0,8
+	"cloud_floor_fade": 0.9, # растушёвка пола у основания препятствий (нужен set_cloud_occluders от клиента): 0 — нет, 1 — до пустоты у самого контура
+	"cloud_floor_fade_w": 0.7,   # ширина растушёвки пола вокруг основания, м (на выбор 0,5 / 0,7 / 1,0)
 	"cloud_face_fade": 0.9,  # мягкая кромка граней колонн и укрытий (pillar_block): частицы редеют к ребру на 25 см; 0 — без затухания (резкий обрыв)
 	"cloud_edge_gain": 0.25, # насколько ребро/линия поднимает плотность частиц: 0,25 с 20.10 (было 1,4 — сплошные «жирные» линии на колоннах, основаниях и полу)
 	"dust_cell": 0.018,      # ширина ячейки облака, м (высота вдвое больше); владелец: частицы мельче и реже (C2: 0,35 читалось лучше)
@@ -172,7 +175,8 @@ const KNOBS := {
 	# Фон-купол (BackdropDome, 19.10): ручки для A/B на очках без пересборки.
 	"backdrop": 1.0,         # 0 — купола нет (как до 18.10: чистый прозрачный фон), 1 — есть
 	"backdrop_haze": 0.0,    # множитель дымки у горизонта: 0 с 20.10 (владелец: «серый блок дымки на горизонте сбивает с толку»); 1…4 — вернуть пояс
-	"backdrop_dust": 1.5,    # яркость звёзд фона (BackdropDome, stars.gdshader; 0 — без звёзд): 0,8 при радиусе 0,0016 рад на очках не было видно (20.10)
+	"backdrop_dust": 2.5,    # яркость звёзд фона (BackdropDome, stars.gdshader; 0 — без звёзд); варианты на выбор: 1,8 тише / 2,5 / 3,5 ярче
+	"backdrop_star_size": 2.5,   # размер звёзд: множитель угла 0,0028 рад (на Pico 1 ≈ 1,8 px радиус); на выбор: 1,8 мельче / 2,5 / 4 крупнее; в очках при 1 звёзд не различали
 	"dust_fps": 0.0,        # смен кадра глитч-спрайта у ячейки облака в секунду; 0 — постоянный кадр (рябь на очках 17.10: было 10), для A/B на устройстве можно вернуть 1–3 (волна из нескольких кадров, а не мельтешение)
 	# «Всё из частиц» (#424, владелец 17.10): пол по умолчанию тоже облако. ЦЕНА НЕ ИЗМЕРЕНА НА ОЧКАХ (MSAA 4×: цена a2c в ПЛОЩАДИ материала, не в числе частиц),
 	# бюджет владельца +1,0 мс при 90 Гц. Потолка и дальних пластов нет с 18.10 (STYLE.md), ручек cloud_far/cloud_ceiling тоже. Не влезаем — cloud_floor 0.
@@ -201,6 +205,10 @@ static var _surface_cloud_mats: Array[WeakRef] = []
 static var _lights_pos := PackedVector4Array()
 static var _lights_col := PackedVector4Array()
 static var _lit_tex: ImageTexture
+static var _occ_tex: ImageTexture
+static var _occ_rect := Vector4(0.0, 0.0, 1.0, 1.0)
+static var _occ_n := 0
+const OCC_TEXEL := 0.125   # м на тексель карты оснований препятствий
 static var _lit_rect := Vector4(0.0, 0.0, 1.0, 1.0)
 const LIT_TEXEL := 0.125   # м на тексель карты освещённости
 const CLOUD_LIGHTS_MAX := 12
@@ -517,10 +525,12 @@ static func apply(root: Node, tier: String = "") -> void:
 				sky_params(m)
 				m.set_shader_parameter("sky_fill", 1.0 if float(_k("cloud_sky")) > 0.0 and float(_k("backdrop")) > 0.0 else 0.0)
 				_push_lights(m)
+				_push_occ(m)
 				m.set_shader_parameter("dust_density", float(_k("dust_density")) * (float(_k("floor_density")) if String(mi.name) == "slab" else 1.0))
 				m.set_shader_parameter("edge_mix", float(_k("cloud_edge_mix")))
 				m.set_shader_parameter("dust_edge_gain", float(_k("cloud_edge_gain")))
 				m.set_shader_parameter("edge_fade", float(_k("cloud_face_fade")) if String(mi.name) == "pillar_block" else 0.0)
+				m.set_shader_parameter("face_fade_w", float(_k("cloud_face_fade_w")))
 				if _is_threat_gear(root):
 					_paint_threat_cloud(m)
 				if String(mi.name) == "slab" and float(_k("floor_grid")) > 0.0:
@@ -638,6 +648,64 @@ static func cloud_lights() -> Array:
 		var b := _lights_col[i]
 		out.append({"p": Vector3(a.x, a.y, a.z), "r": a.w, "s": b.w, "c": Color(b.x, b.y, b.z)})
 	return out
+
+
+## Основания препятствий (решение владельца 20.10: стык колонны с полом резкой линией): rects — Rect2 в плоскости XZ мира (position = (x, z), size = (ширина, глубина)) — контур каждого
+## препятствия на полу. Звать один раз при построении узла вместе с set_cloud_lights; пустой массив — растушёвки нет. Плита пола (и верхние грани платформ) вокруг контура редеет на
+## cloud_floor_fade_w метров; грани самих колонн редеют к полу по высоте (cloud_face_fade_w) в шейдере. Карта запоминается и отдаётся материалам, созданным позже.
+static func set_cloud_occluders(tree: SceneTree, rects: Array) -> void:
+	_occ_n = rects.size()
+	_occ_tex = null
+	if not rects.is_empty():
+		_build_occ_map(rects)
+	for m in _cloud_materials(tree):
+		if _is_cloud_shader(m.shader):
+			_push_occ(m)
+
+
+static func _build_occ_map(rects: Array) -> void:
+	var fw := maxf(float(_k("cloud_floor_fade_w")), 0.05)
+	var x0 := INF
+	var z0 := INF
+	var x1 := -INF
+	var z1 := -INF
+	for r: Rect2 in rects:
+		x0 = minf(x0, r.position.x - fw)
+		z0 = minf(z0, r.position.y - fw)
+		x1 = maxf(x1, r.end.x + fw)
+		z1 = maxf(z1, r.end.y + fw)
+	var w := clampi(int(ceil((x1 - x0) / OCC_TEXEL)), 8, 256)
+	var h := clampi(int(ceil((z1 - z0) / OCC_TEXEL)), 8, 256)
+	var sx := (x1 - x0) / float(w)
+	var sz := (z1 - z0) / float(h)
+	var img := Image.create_empty(w, h, false, Image.FORMAT_L8)
+	var best := PackedFloat32Array()
+	best.resize(w * h)
+	for r: Rect2 in rects:
+		var ix0 := clampi(int(floor((r.position.x - fw - x0) / sx)), 0, w - 1)
+		var ix1 := clampi(int(ceil((r.end.x + fw - x0) / sx)), 0, w - 1)
+		var iz0 := clampi(int(floor((r.position.y - fw - z0) / sz)), 0, h - 1)
+		var iz1 := clampi(int(ceil((r.end.y + fw - z0) / sz)), 0, h - 1)
+		for iz in range(iz0, iz1 + 1):
+			var pz := z0 + (float(iz) + 0.5) * sz
+			var dz := maxf(maxf(r.position.y - pz, pz - r.end.y), 0.0)
+			for ix in range(ix0, ix1 + 1):
+				var px := x0 + (float(ix) + 0.5) * sx
+				var dx := maxf(maxf(r.position.x - px, px - r.end.x), 0.0)
+				var k := 1.0 - smoothstep(0.0, fw, sqrt(dx * dx + dz * dz))
+				if k > best[iz * w + ix]:
+					best[iz * w + ix] = k
+					img.set_pixel(ix, iz, Color(k, 0.0, 0.0))
+	_occ_tex = ImageTexture.create_from_image(img)
+	_occ_rect = Vector4(x0, z0, 1.0 / (x1 - x0), 1.0 / (z1 - z0))
+
+
+static func _push_occ(m: ShaderMaterial) -> void:
+	m.set_shader_parameter("occ_n", _occ_n)
+	m.set_shader_parameter("occ_strength", float(_k("cloud_floor_fade")))
+	if _occ_tex != null:
+		m.set_shader_parameter("occ_map", _occ_tex)
+		m.set_shader_parameter("occ_rect", _occ_rect)
 
 
 static func _push_lights(m: ShaderMaterial) -> void:
