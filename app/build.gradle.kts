@@ -118,7 +118,7 @@ android {
 // Java-агент ByteBuddy (им пользуется Paparazzi) — загружается при старте тестовой JVM, а не подключается на лету. Версия — та же,
 // что приходит с Paparazzi; при расхождении не страшно: ByteBuddy ищет загруженный агент по имени класса в системном загрузчике.
 val byteBuddyAgent: Configuration by configurations.creating { isTransitive = false }
-dependencies { byteBuddyAgent("net.bytebuddy:byte-buddy-agent:1.18.14") }
+dependencies { byteBuddyAgent("net.bytebuddy:byte-buddy-agent:1.18.16") }
 
 // Скриншот-тесты (Paparazzi: layoutlib со своей Skia) и остальные unit-тесты (Robolectric: android-all, нативный SQLite) — в разных
 // JVM. В одной JVM нативные библиотеки конфликтовали: на macOS скриншоты после Robolectric падали SIGSEGV в layoutlib (25.09).
@@ -221,18 +221,18 @@ dependencies {
     // host-кандидаты напрямую. org.webrtc:google-webrtc официально мёртв
     // (Google больше не публикует precompiled Android-сборки), этот форк —
     // активно поддерживаемая замена с тем же пакетом org.webrtc.*.
-    implementation("io.github.webrtc-sdk:android:150.7871.01")
+    implementation("io.github.webrtc-sdk:android:150.7871.04")
 
     // Связь с мастерским коллектором (admin-web) — обычный HTTP на ноутбуке
     // мастера в той же локальной сети, не P2P. См. CollectorClient.
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.1")
 
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.12.0")
     // Настоящий SQLite на JVM — чтобы прогонять миграции Room на базе с данными (MigrationDataTest)
     testImplementation("org.xerial:sqlite-jdbc:3.53.4.0")
     // Настоящая Room в памяти на JVM: транзакции, откаты, выдача seq — то, что фейками не проверить (testing/RoomTest.kt)
     testImplementation("org.robolectric:robolectric:4.17")
     // Общие векторы контрактов (rules/src/test/resources/contracts/*.json, тесты в contracts/) — как в :rules, только тестам
-    testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
 }
