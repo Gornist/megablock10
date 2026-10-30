@@ -89,6 +89,18 @@ if [ ! -x "$H/.local/blender/blender" ]; then
     && ln -sf ~/.local/blender/blender ~/.local/bin/blender" || FAILED+=("blender")
 fi
 
+step "полный клон ~/megablock10 и ~/mb-main/local.properties (для dbx.sh и Godot AI)"
+# ПОЛНЫЙ клон, не --filter=blob:none: dbx.sh пушит в него синтетические коммиты (дерево Mac с незакоммиченным), а promisor-клон при приёме
+# лезет за недостающими объектами в GitHub и отказывает (`not our ref`, 30.10). Быстрее всего — бандл с Mac: на Mac
+# `git bundle create ~/mb.bundle --remotes=origin main`, `scp` в ~/bootstrap/dl/mb.bundle; без него идёт git clone с GitHub (≈35 МБ).
+if [ ! -d "$H/megablock10/.git" ]; then
+  SRC=https://github.com/Gornist/megablock10.git
+  [ -s "$DL/mb.bundle" ] && SRC=$DL/mb.bundle
+  as_user "git clone -q '$SRC' ~/megablock10 && git -C ~/megablock10 remote set-url origin https://github.com/Gornist/megablock10.git \
+    && git -C ~/megablock10 checkout -q main 2>/dev/null || true" || FAILED+=("клон megablock10")
+fi
+as_user "mkdir -p ~/mb-main && [ -f ~/mb-main/local.properties ] || printf 'sdk.dir=/home/nick/android-sdk\n' > ~/mb-main/local.properties"
+
 step "devjob, каталоги"
 as_user "mkdir -p ~/jobs ~/box ~/.local/state"
 [ -f "$HERE/box/devjob" ] && install -m 755 -o "$U" -g "$U" "$HERE/box/devjob" "$H/.local/bin/devjob" || echo "нет $HERE/box/devjob — положить руками"
