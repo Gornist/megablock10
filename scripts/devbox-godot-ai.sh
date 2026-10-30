@@ -3,7 +3,7 @@
 # Запускать НА devbox: scripts/devbox-godot-ai.sh setup|start|stop|status|autostart|hook
 #
 # Что и где (docs/netrun-devbox.md, «Godot AI»):
-#   * рабочая копия — git worktree ~/wt-godot на ветке agent/godot (от agent/netrun): агент правит сцены прямо в ней,
+#   * рабочая копия — git worktree ~/wt-godot на ветке agent/godot (от main): агент правит сцены прямо в ней,
 #     правки видны в `git diff` и уходят обычным коммитом; свой каталог/ветка — GODOT_AI_WT / GODOT_AI_BRANCH;
 #   * плагин (addons/godot_ai) в репозиторий не кладём (в .gitignore): он правит project.godot и открывает порты.
 #     start дописывает в project.godot три строки (плагин, автозагрузка хелпера, аргументы игры), stop их снимает —
@@ -22,7 +22,8 @@ PLUGIN_SHA256="${GODOT_AI_SHA256:-bff05c143e1061842f4a9f2c415331616227967eaba1ac
 REPO="${GODOT_AI_REPO:-$HOME/megablock10}"
 WT="${GODOT_AI_WT:-$HOME/wt-godot}"
 BRANCH="${GODOT_AI_BRANCH:-agent/godot}"
-BASE_BRANCH="${GODOT_AI_BASE:-agent/netrun}"
+# База новой ветки agent/godot: main. Прежнюю agent/netrun на GitHub удалили (25.10 на чистой devbox setup падал без GODOT_AI_BASE=main).
+BASE_BRANCH="${GODOT_AI_BASE:-main}"
 PROJECT="$WT/netrun"
 PIDFILE="$HOME/.godot-ai-editor.pid"
 LOG="$WT/.godot-ai-editor.log"
