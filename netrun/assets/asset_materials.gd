@@ -15,6 +15,7 @@ const SHADERS := {
 ## Вуаль на гранях плит (меши `*_skirt` в floor*): в .glb у неё материал-роль shell_soft, а шейдер по имени меша — этот.
 const SKIRT_SHADER := preload("res://assets/shaders/skirt.gdshader")
 const SURFACE_CLOUD_GROUP := &"surface_clouds"   # меши с облаком на гранях (А): дыхание и отклик ставятся на их материалы
+const CLOUD_A2C_SHADER := preload("res://assets/shaders/cloud_dark_a2c.gdshader")  # прежний вид облака: дыры через alpha_to_coverage, за гранью виден мир (ручка cloud_solid = 0)
 const CLOUD_SHADER := preload("res://assets/shaders/cloud_dark.gdshader")  # «облако без основы»: вид реквизита (ручка cloud, умолчание 1; принято 12.10, облако (Б) на объектах — 14.10)
 ## Луч Soft ICE (меши `*_beam*` у датчика и `*_fan` у маяка, ice/sensor_ice и ice/lighthouse_ice): роль shell_soft, шейдер по имени меша; состояния — set_beam(root, state, flash).
 const BEAM_SHADER := preload("res://assets/shaders/beam.gdshader")
@@ -149,6 +150,7 @@ const KNOBS := {
 	"rim_min_px": 4.0,       # гашение кромки плит по её ширине на экране, px (0 — выкл.): кромка уже ~0,35·N px гаснет совсем, от N px — полная; адаптируется к глазу Pico, в отличие от дистанции
 	# «Облако без основы» (владелец 08.10, принято 12.10: вид C3a — облако на колоннах и реквизите, пол — сплошной solid_dark; замер на очках: +0,26 мс на MSAA 2×).
 	"cloud": 1.0,            # 0 — выкл. (сплошные грани solid_dark); 1 — грани реквизита становятся частицами с дырами (alpha_to_coverage, нужен MSAA 2×+; яркость = значение); см. cloud_dark.gdshader
+	"cloud_solid": 1.0,      # 1 (умолчание) — грань облака непрозрачна: просвет чёрный, мира за гранью не рисуется (19.10, владелец: «видно не должно быть то, что за колонной»), без alpha_to_coverage; 0 — прежние дыры через a2c
 	"cloud_edge_mix": 0.35,  # доля цвета неона у частиц рёбер/линий сетки (владелец: неона меньше)
 	"dust_cell": 0.018,      # ширина ячейки облака, м (высота вдвое больше); владелец: частицы мельче и реже (C2: 0,35 читалось лучше)
 	"dust_density": 0.35,    # доля ячеек с частицей на ровной грани вблизи (с пятнами dust_patch: проплешины и сгущения)
@@ -162,6 +164,10 @@ const KNOBS := {
 	"lit_tint": 0.5,         # перекраска освещённых частиц цветом источника
 	"dust_sharp": 1.0,       # 1 (умолчание) — прозрачность ячейки почти 0/1 (smoothstep по яркости спрайта): меньше дробной альфы и дитера a2c внутри ячейки (preview_shimmer, пол вблизи: 0,99 → 0,83); 0 — как раньше
 	"dust_fill_hi": 4.0,     # выше неё зерно целое (ближе ≈3 м); между lo и hi — плавный переход
+	# Фон-купол (BackdropDome, 19.10): ручки для A/B на очках без пересборки.
+	"backdrop": 1.0,         # 0 — купола нет (как до 18.10: чистый прозрачный фон), 1 — есть
+	"backdrop_haze": 1.0,    # множитель дымки у горизонта (0 — без дымки)
+	"backdrop_dust": 0.5,    # яркость неподвижных пылинок (0 — без них)
 	"dust_fps": 0.0,        # смен кадра глитч-спрайта у ячейки облака в секунду; 0 — постоянный кадр (рябь на очках 17.10: было 10), для A/B на устройстве можно вернуть 1–3 (волна из нескольких кадров, а не мельтешение)
 	# «Всё из частиц» (#424, владелец 17.10): пол по умолчанию тоже облако. ЦЕНА НЕ ИЗМЕРЕНА НА ОЧКАХ (MSAA 4×: цена a2c в ПЛОЩАДИ материала, не в числе частиц),
 	# бюджет владельца +1,0 мс при 90 Гц. Потолка и дальних пластов нет с 18.10 (STYLE.md), ручек cloud_far/cloud_ceiling тоже. Не влезаем — cloud_floor 0.
@@ -250,6 +256,16 @@ static func reset_tuning() -> void:
 static func _is_plate(mi: MeshInstance3D, _root: Node) -> bool:
 	var n := String(mi.name)
 	return n == "slab" or n == "tiles" or n.ends_with("_plates")
+
+
+## Значение ручки по имени (умолчание, если не задана) — для клиента и фона-купола.
+static func knob(name: String) -> Variant:
+	return _k(name)
+
+
+## Шейдер облака — любой из двух вариантов (непрозрачный по умолчанию, a2c при cloud_solid = 0).
+static func _is_cloud_shader(sh: Shader) -> bool:
+	return sh == CLOUD_SHADER or sh == CLOUD_A2C_SHADER
 
 
 static func _k(name: String) -> Variant:
@@ -454,7 +470,7 @@ static func apply(root: Node, tier: String = "") -> void:
 				for k in LAIR_SLEEP_BREATHE[String(mi.name)]:
 					m.set_shader_parameter(k, LAIR_SLEEP_BREATHE[String(mi.name)][k])
 			if src.resource_name == "solid_dark" and String(mi.name) != UNDER_SLAB and float(_k("cloud")) > 0.0 and _cloud_scope_ok(root):  # floor_slab_under — сплошная подложка под облачным полом (#424 Ш5): solid_dark при любом cloud;  # прототип «облако без основы»: частицы с дырами вместо тёмной грани (нужен MSAA)
-				m.shader = CLOUD_SHADER
+				m.shader = CLOUD_SHADER if float(_k("cloud_solid")) > 0.0 else CLOUD_A2C_SHADER
 				mi.add_to_group(SURFACE_CLOUD_GROUP)   # set_cloud_breath / set_cloud_touch находят поверхностные облака по группе и по реестру материалов
 				_surface_cloud_mats.append(weakref(m))
 				m.set_shader_parameter("glitch_tex", GlitchSprite.texture())
@@ -475,7 +491,7 @@ static func apply(root: Node, tier: String = "") -> void:
 					m.set_shader_parameter("grid_tex", _grid_texture())
 					m.set_shader_parameter("grid_alpha", float(_k("floor_grid")))
 			mi.set_surface_override_material(s, m)
-			if not entity and (m.shader == SHADERS["solid_dark"] or m.shader == CLOUD_SHADER or m.shader == SKIRT_SHADER):
+			if not entity and (m.shader == SHADERS["solid_dark"] or _is_cloud_shader(m.shader) or m.shader == SKIRT_SHADER):
 				_focus_mats.append(weakref(m))
 
 
@@ -527,7 +543,7 @@ static func _cloud_materials(tree: SceneTree) -> Array[ShaderMaterial]:
 			continue
 		for s in mi.mesh.get_surface_count():
 			var sm := mi.get_surface_override_material(s) as ShaderMaterial
-			if sm != null and sm.shader == CLOUD_SHADER and not seen.has(sm.get_instance_id()):
+			if sm != null and _is_cloud_shader(sm.shader) and not seen.has(sm.get_instance_id()):
 				seen[sm.get_instance_id()] = true
 				out.append(sm)
 	var alive: Array[WeakRef] = []
@@ -536,7 +552,7 @@ static func _cloud_materials(tree: SceneTree) -> Array[ShaderMaterial]:
 		if rm == null:
 			continue
 		alive.append(w)
-		if rm.shader == CLOUD_SHADER and not seen.has(rm.get_instance_id()):
+		if _is_cloud_shader(rm.shader) and not seen.has(rm.get_instance_id()):
 			seen[rm.get_instance_id()] = true
 			out.append(rm)
 	_surface_cloud_mats = alive
@@ -573,7 +589,7 @@ static func set_cloud_lights(tree: SceneTree, lights: Array) -> void:
 		_lights_pos.append(Vector4(p.x, p.y, p.z, maxf(float(l.get("r", 3.0)), 0.01)))
 		_lights_col.append(Vector4(c.r, c.g, c.b, float(l.get("s", 1.0))))
 	for m in _cloud_materials(tree):
-		if m.shader == CLOUD_SHADER:
+		if _is_cloud_shader(m.shader):
 			_push_lights(m)
 
 

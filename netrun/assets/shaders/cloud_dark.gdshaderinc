@@ -47,6 +47,11 @@ void fragment() {
 	vec4 c = volume_cloud(v_wp, normalize(v_nw), normalize(CAMERA_POSITION_WORLD - v_wp), v_dist, PROJECTION_MATRIX[1][1] * VIEWPORT_SIZE.y, edge, dens_k, lit, lit_col, lit_w);
 	c.rgb *= lift * (1.0 + touch_gain * tk);
 	c.rgb = mix(c.rgb, touch_color * dust, 0.5 * tk);
-	ALBEDO = focus_light(mix(c.rgb, edge_color.rgb, edge * edge_mix), v_wp);   // тревога у игрока (alarm_focus.gdshaderinc)
-	ALPHA = c.a;
+	vec3 col = focus_light(mix(c.rgb, edge_color.rgb, edge * edge_mix), v_wp);   // тревога у игрока (alarm_focus.gdshaderinc)
+#ifdef CLOUD_A2C
+	ALBEDO = col;
+	ALPHA = c.a;   // покрытие сэмплов: дыры мягкие, за ними видно мир (прежний вид; cloud_dark_a2c.gdshader, ручка cloud_solid = 0)
+#else
+	ALBEDO = col * c.a;   // грань непрозрачна: частица — яркость на чёрном, просвет — чёрный; мира за гранью нет, глубина пишется по всей грани (cloud_dark.gdshader)
+#endif
 }
