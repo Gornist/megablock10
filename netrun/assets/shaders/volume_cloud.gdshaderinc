@@ -18,6 +18,10 @@ uniform float dust_fps : hint_range(0.0, 30.0) = 0.0;                 // сме�
 // Заливка вдали (рябь на очках 18.10: «вдали рябит больше», «видна граница отрисовки»): ячейка мельче dust_fill_lo px экрана не рисуется зерном (0/1 покрытие на MSAA 2× перескакивает при любом
 // микродвижении головы), а заменяется ровной непрозрачной заливкой среднего цвета (тот же средний свет: цвет·плотность·dust_cover_avg); от dust_fill_hi px до dust_fill_lo зерно плавно растворяется в заливку.
 uniform float dust_fill : hint_range(0.0, 1.0) = 0.0;                 // 0 — выкл. (как раньше: дробная альфа), 1 — полная заливка; ручка AssetMaterials `dust_fill`
+uniform float dust_fill_edge : hint_range(0.0, 1.0) = 0.3;            // вес линий сетки и рёбер в заливке вдали (в зерне вблизи — 1): сплошные яркие линии вдали выбивались из частиц (владелец 20.10); ручка `dust_fill_edge`
+uniform float dust_fill_far_min : hint_range(0.0, 1.0) = 0.3;         // яркость заливки на дистанции ≥ dust_fill_far_end относительно ближней
+uniform float dust_fill_far_start = 6.0;
+uniform float dust_fill_far_end = 24.0;
 uniform float dust_fill_lo : hint_range(0.2, 6.0) = 2.0;
 uniform float dust_fill_hi : hint_range(0.5, 8.0) = 4.0;
 uniform float dust_sharp : hint_range(0.0, 1.0) = 0.0;                // 0 — как раньше; 1 — прозрачность ячейки почти 0/1 (smoothstep по яркости спрайта): меньше дробной альфы = меньше дитера a2c внутри ячейки
@@ -29,7 +33,7 @@ uniform vec4 dust_hot : source_color = vec4(0.62, 0.92, 1.0, 1.0);        // р�
 uniform float dust_patch : hint_range(0.0, 1.0) = 0.65;               // насколько плотность пятнами: 0 — ровно, 1 — большие тёмные проплешины и сгущения (как в референсе: свет лежит пятнами)
 const float dust_patch_scale = 0.35;         // пятен на метр
 const float dust_cover_avg = 0.3;      // средняя доля покрытия кадра спрайта (по атласу ≈ 0,2–0,35)
-const float dust_edge_gain = 1.4;      // насколько вес ребра поднимает плотность (ребро = скопление частиц)
+uniform float dust_edge_gain : hint_range(0.0, 4.0) = 0.25;   // насколько вес ребра поднимает плотность: раньше 1,4 = сплошные «жирные» линии на рёбрах колонн, рамках у основания и линиях пола (владелец 20.10); ручка cloud_edge_gain
 
 float cloud_hash(vec2 p) {  // хэш без sin: три fract/умножения
 	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -74,7 +78,11 @@ vec4 volume_cloud(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px, float 
 	float patch_k = mix(1.0, smoothstep(0.25, 0.75, patch_n), dust_patch);
 	float lit_d = mix(lit_ambient, 1.0, smoothstep(0.0, 1.0, lit));   // плотность зерна: в темноте — доля lit_ambient, у света — полная
 	float lit_e = mix(lit_edge, 1.0, lit);                            // линии сетки и рёбра гаснут слабее зерна
-	float dens = clamp(dust_density * patch_k * (0.55 + 0.45 * up) * (1.0 + 0.7 * graze) * dens_k * lit_d + edge * dust_edge_gain * lit_e, 0.0, 1.0);
+	float dens_g = dust_density * patch_k * (0.55 + 0.45 * up) * (1.0 + 0.7 * graze) * dens_k * lit_d;   // зерно
+	float dens_e = edge * dust_edge_gain * lit_e;                                                          // линии сетки и рёбра
+	float dens = clamp(dens_g + dens_e, 0.0, 1.0);
+	// Заливка вдали: линии вносят меньше (dust_fill_edge) и вся заливка тускнеет с расстоянием (dust_fill_far_*) — дальний пол из тех же частиц, без резкой сетки
+	float dens_f = clamp(dens_g + dens_e * dust_fill_edge, 0.0, 1.0) * mix(1.0, dust_fill_far_min, smoothstep(dust_fill_far_start, dust_fill_far_end, dist));
 	if (dens < 0.004) {   // неосвещённое и дальнее — пустота: без выборки текстуры и без дробной альфы
 		return vec4(0.0);
 	}
@@ -86,7 +94,11 @@ vec4 volume_cloud(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px, float 
 	float fill_w = dust_fill * (1.0 - smoothstep(dust_fill_lo, dust_fill_hi, cell_px));
 	if (fill_w >= 0.999 || (dust_fill <= 0.0 && sharp < 0.02)) {  // ячейка мельче порога: только средняя засветка — без выборки текстуры (дальние плиты и потолок: основная масса фрагментов)
 		if (dust_fill > 0.0) {
-			return vec4(avg_rgb * dens * dust_cover_avg * far_k, 1.0);   // заливка: яркость среднего света, цвет гаснет вдаль (альфа 1 — без дитера a2c)
+#ifdef CLOUD_A2C
+			return vec4(avg_rgb * dens_f * dust_cover_avg * far_k, 1.0);   // заливка: яркость среднего света, цвет гаснет вдаль (альфа 1 — без дитера a2c)
+#else
+			return vec4(avg_rgb, dens_f * dust_cover_avg * far_k);   // непрозрачная грань: альфа — яркость заливки (cloud_dark множит цвет на неё), поэтому неоновая обводка рёбер вдали тускнеет вместе с ней
+#endif
 		}
 		return vec4(avg_rgb, clamp(dens * dust_cover_avg * far_k, 0.0, 1.0));
 	}
@@ -102,8 +114,15 @@ vec4 volume_cloud(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px, float 
 	vec3 base = mix(dust_color.rgb, dust_hot.rgb, smoothstep(0.55, 1.0, s) * step(0.82, h) + edge * 0.5);
 	vec4 cell = vec4(mix(base, lit_col, lit_col_w) * lit_b, clamp(a * far_k, 0.0, 1.0));
 	if (fill_w > 0.0) {   // зерно → заливка: цвет и покрытие смешиваются по весу, на границе режимов нет скачка яркости
-		float ao = cell.a * (1.0 - fill_w) + fill_w;   // «зерно поверх заливки» с весом (1 − fill_w)
-		cell = vec4((cell.rgb * cell.a * (1.0 - fill_w) + avg_rgb * dens * dust_cover_avg * far_k * fill_w) / max(ao, 0.001), ao);
+#ifdef CLOUD_A2C
+		float fill_a = 1.0;
+		vec3 fill_rgb = avg_rgb * dens_f * dust_cover_avg * far_k;
+#else
+		float fill_a = dens_f * dust_cover_avg * far_k;   // см. выше: альфа заливки — её яркость
+		vec3 fill_rgb = avg_rgb;
+#endif
+		float ao = cell.a * (1.0 - fill_w) + fill_a * fill_w;   // «зерно поверх заливки» с весом (1 − fill_w)
+		cell = vec4((cell.rgb * cell.a * (1.0 - fill_w) + fill_rgb * fill_a * fill_w) / max(ao, 0.001), ao);
 	}
 	return cell;
 }
