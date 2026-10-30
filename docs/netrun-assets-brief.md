@@ -2,6 +2,12 @@
 
 Документ для агента-моделлера. Всё необходимое — по ссылкам ниже; решения владельца не пересматривать.
 
+**Статус:** выполнено — архив (ТЗ первого набора ассетов); частично устарело. Ассеты живут в `netrun/assets/models/<группа>/` (`env`, `props`, `ice`, `avatar`, `deck`) с `MANIFEST.md`,
+исходники — `netrun/assets/src/`, приёмка — превью-сцены `netrun/assets/preview_*.tscn` (общей `preview.tscn` нет), дальше работу ведёт сессия Blender по `ARCHITECTURE.md` и `STYLE.md`.
+Набор разошёлся со списком ниже: в `env` сегодня `floor*`, `pillar`, `platform`, `cover`, `lockdown_gate*`, `exit_frame` (`wall`, `corner`, `doorway`, `cable_*`, `tunnel_ring` не сделаны); в `ice` кроме
+`soft_ice`/`black_ice` — зверинец Black ICE и ICE-постройки (`barrier_ice`, `sensor_ice`, `lighthouse_ice`, `guard_booth`…); в `props` добавились `hack_pad`, `hack_panel`, `daemon_token`. В графе
+сейчас 13 узлов (`node_00`…`node_12`, `netrun/data/graph.json`), а не 12. Сверено с main 30.10.2026.
+
 > **Актуально:** про прозрачность, объём, свечение, материалы и бюджеты это ТЗ устарело. Канон — `netrun/assets/ARCHITECTURE.md` (архитектура пространств), затем `netrun/assets/STYLE.md`. Этот документ остаётся источником списка ассетов и приёмки.
 
 ## Откуда брать контекст
