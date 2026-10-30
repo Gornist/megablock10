@@ -135,7 +135,7 @@ godot -- --flat --host=127.0.0.1 --port=7777 --token=t1
 Через него агент `godot-dev` (`.claude/agents/godot-dev.md`) правит сцены и ноды, запускает игру, снимает кадры и читает журналы.
 
 - **Рабочая копия:** git worktree `~/wt-godot`, ветка `agent/godot`. Принести на Mac: `git fetch devbox agent/godot`. Скрипт `devbox-godot-ai.sh` по умолчанию
-  режет её от ветки `agent/netrun` (`GODOT_AI_BASE`) — такой ветки в `origin` и на новом devbox уже нет, на чистой машине задать `GODOT_AI_BASE=main`.
+  режет её от `main` (`GODOT_AI_BASE`, #562; прежняя база `agent/netrun` удалена).
 - **Редактор:** `scripts/devbox-godot-ai.sh setup` (один раз: worktree, плагин с проверкой sha256, импорт), затем `start|stop|status`;
   `autostart` — поднимать при входе nick (после переустановки 25.10 в `~/.config/autostart` лежит только `devbox-session.desktop`, `godot-ai.desktop` вернёт `autostart`).
   Плагин в репозиторий не кладём (`netrun/.gitignore`): `start` дописывает в `project.godot`

@@ -17,8 +17,9 @@ PR: приложение #23 (срез 1), #24 (срез 2), #26, #34; очки 
 *(Срез на 05.10.2026, до реализации; сегодняшнее состояние — в шапке и в разделе 7.)*
 
 **Очки.** Интерфейс готов: [`netrun/shared/phone_link.gd`](../netrun/shared/phone_link.gd) (диалоги, сообщения, фаза звонка `idle|outgoing|incoming|in_call`, журнал
-звонков, команды `send_text`, `mark_read`, `accept_call`, `decline_call`, `hangup`, `set_muted`, `start_call`; сигналы `threads_changed`, `message_received`,
-`call_changed`). Реализует его только `FakePhoneLink` (сценарий по таймеру), в журнале `phone link=fake`. Деке всё равно, кто за интерфейсом: настоящая связь — новый
+звонков, команды `send_text`, `mark_read`, `accept_call`, `decline_call`, `hangup`, `set_muted`, `start_call`, чтение `threads`, `messages`, `call_state`,
+`contacts`, `call_log`, `is_online`; сигналы `threads_changed`, `message_received`, `call_changed`, `contacts_changed`, `online_changed`). На момент среза его реализует только
+`FakePhoneLink` (сценарий по таймеру), в журнале `phone link=fake`; сегодня есть и настоящая — `RemotePhoneLink`. Деке всё равно, кто за интерфейсом: настоящая связь — новый
 потомок `PhoneLink`.
 
 **Приложение (по досье).** Чат: Room `chat_messages`, диалога как сущности нет (запросы `observeRecentDirectThreads`, `observeDirect`, `observeFaction`), статусы
