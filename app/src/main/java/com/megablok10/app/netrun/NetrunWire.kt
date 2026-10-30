@@ -26,7 +26,8 @@ data class EnterRequest(
 data class EnterReply(val rid: String, val ok: Boolean, val session: String, val code: String, val msg: String, val signature: String)
 
 /**
- * Строки входа в «Сеть»: `MB10ENTER:v1:<rid>:<терминал>:<ключ>:<b64 позывной>:<transfers через запятую>:<protected>:<ts>:<подпись>` и
+ * Строки входа в «Сеть»: `MB10ENTER:v2:<rid>:<терминал>:<ключ>:<b64 позывной>:<transfers через запятую>:<protected>:<ram>:<ts>:<подпись>`
+ * (v2 — с ёмкостью буфера деки; запрос, начатый до обновления, уходит строкой v1 — то же без `<ram>`, 10 частей; Мост принимает обе) и
  * `MB10ENTERED:v1:<rid>:<1|0>:<b64 сессия>:<b64 code>:<b64 msg>:<подпись>`. Формат — близнец `PhoneWire` Моста (`netrun-bridge`):
  * менять только вместе с ним и с версией в [WireVersion].
  */
