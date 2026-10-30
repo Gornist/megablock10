@@ -51,5 +51,5 @@ Mac (8 ГБ) — только правка, git и `scripts/check.sh --fast`. Gr
   `live_run` конфликтует: задачи брали 7510/7511/7877.
 - Красные сценарии, не связанные с приложением: локаль без UTF-8 (lib.sh ставит `LC_ALL=C.UTF-8`) и отключённый Android
   виртуальный Wi-Fi без интернета (`up.sh` выставляет `captive_portal_mode 0`). Подробности и первичная настройка —
-  `docs/netrun-devbox.md`, `scripts/devbox-setup.sh` (идемпотентный).
+  `docs/netrun-devbox.md`; машина с нуля — `scripts/devbox-bootstrap.sh`.
 - Нужен файл с devbox (журнал, скриншот) — `scp devbox:<путь> .` или `ssh devbox 'tail -n 200 …'`, не пересказывать по памяти.
