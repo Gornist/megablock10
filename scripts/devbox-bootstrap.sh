@@ -9,8 +9,9 @@
 #
 # Что делает: пакеты и драйвер NVIDIA 595 (open), Docker, Temurin 17/21, Android SDK (cmdline-tools, platform-tools, platform 37,
 # build-tools 36.0.0, emulator), Godot 4.7.2 и Blender 4.5.14 в ~/.local, автовход nick в GNOME без блокировки и сна, linger для
-# user-служб, права на USB/KVM, `devjob`. Чего НЕ делает: Tailscale и VPN (убраны), секреты и ключи (возвращает владелец из копии
-# ~/Developer/devbox-backup-1025 на Mac), экспортные шаблоны Godot, образы эмулятора e2e и всё из зон Godot/Blender (они доустановят сами).
+# user-служб, права на USB/KVM, `devjob`, ~/netrun-env.sh, экспортные шаблоны Godot (если файл .tpz лежит в ~/bootstrap/dl/). Чего НЕ
+# делает: Tailscale и VPN (убраны), секреты и ключи (возвращает владелец из копии ~/Developer/devbox-backup-1025 на Mac), образы
+# эмулятора e2e и всё из зон Godot/Blender (они доустановят сами).
 set -u
 
 [ "$(id -u)" = 0 ] || { echo "нужен sudo: sudo bash $0"; exit 1; }
@@ -87,6 +88,37 @@ if [ ! -x "$H/.local/blender/blender" ]; then
   fetch "$BLENDER_TAR" "https://download.blender.org/release/Blender4.5/$BLENDER_TAR" \
     && as_user "rm -rf ~/.local/blender && mkdir -p ~/.local/blender && tar -xJf /tmp/$BLENDER_TAR -C ~/.local/blender --strip-components=1 && rm /tmp/$BLENDER_TAR \
     && ln -sf ~/.local/blender/blender ~/.local/bin/blender" || FAILED+=("blender")
+fi
+
+step "экспортные шаблоны Godot 4.7.2 (APK для Pico, Windows-экспорт)"
+# ~1,28 ГБ: с devbox GitHub отдаёт 20–30 КБ/с (≈17 ч), поэтому файл надо положить с Mac заранее в ~/bootstrap/dl/ и сверить SHA-256 там
+# (на Mac: curl -L -o Godot_v4.7.2-stable_export_templates.tpz https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/…;
+# scp … nick@devbox:bootstrap/dl/). Нет файла — шаг пропускается, это не сбой: Godot-сессия доложит шаблоны сама.
+TPZ=Godot_v4.7.2-stable_export_templates.tpz
+TPZ_SIZE=1281349702   # байт, по GitHub releases 4.7.2-stable; sha256 f298490b…8011 (его сверила сессия Godot на обеих машинах)
+TPL=$H/.local/share/godot/export_templates/4.7.2.stable
+if [ -f "$TPL/version.txt" ] && [ -f "$TPL/android_source.zip" ]; then
+  echo "уже стоят: $TPL"
+elif [ -s "$DL/$TPZ" ]; then
+  if [ "$(stat -c %s "$DL/$TPZ")" = "$TPZ_SIZE" ]; then
+    as_user "mkdir -p ~/.local/share/godot/export_templates && cd /tmp && rm -rf tpl && mkdir tpl && unzip -q -o '$DL/$TPZ' -d tpl \
+      && rm -rf '$TPL' && mv tpl/templates '$TPL' && rm -rf tpl" || FAILED+=("шаблоны Godot: распаковка")
+    [ -f "$TPL/version.txt" ] || FAILED+=("шаблоны Godot: нет version.txt")
+  else
+    FAILED+=("шаблоны Godot: размер $DL/$TPZ не $TPZ_SIZE — файл обрезан")
+  fi
+else
+  echo "нет $DL/$TPZ — пропускаю (положить с Mac: scp, см. комментарий выше)"
+fi
+
+step "~/netrun-env.sh (окружение Godot-сессии: JAVA_HOME temurin-17, Android SDK)"
+# Его читают devbox-godot-ai.sh и скрипты netrun (. ~/netrun-env.sh); Gradle-сборки Android идут на temurin-21 из ~/.bashrc.
+if [ ! -f "$H/netrun-env.sh" ]; then
+  as_user "printf '%s\n' \
+    'export JAVA_HOME=/usr/lib/jvm/temurin-17-jdk-amd64' \
+    'export ANDROID_HOME=\$HOME/android-sdk ANDROID_SDK_ROOT=\$HOME/android-sdk' \
+    'export PATH=\$HOME/.local/bin:\$JAVA_HOME/bin:\$ANDROID_HOME/platform-tools:\$ANDROID_HOME/emulator:\$ANDROID_HOME/cmdline-tools/latest/bin:\$PATH' \
+    > ~/netrun-env.sh"
 fi
 
 step "devjob, каталоги"
