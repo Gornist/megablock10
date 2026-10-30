@@ -6,25 +6,27 @@ description: Запуск тяжёлого (Gradle, Paparazzi, стенд e2e, G
 # devbox — где выполняется всё тяжёлое
 
 Mac (8 ГБ) — только правка, git и `scripts/check.sh --fast`. Gradle, `verifyPaparazziDebug`, e2e, Godot, Мост — на devbox
-(i7-9700T, 16 ГБ, Ubuntu 24.04, KVM). Машина общая для всех веток.
+(i7-9700T, 16 ГБ, GTX 1650, Ubuntu 26.04.1, KVM; переустановлена с нуля 25.10 — `scripts/devbox-bootstrap.sh`). Машина общая
+для всех веток. Чего нет в git, после переустановки нет и на машине: стенды и рабочие копии каждая сессия поднимает себе сама.
 
 ## Доступ
-- `ssh devbox` (LAN 192.168.1.141, пользователь `nick`; алиас в `~/.ssh/config` на Mac). Tailscale с 20.10 нет — адрес 100.80.115.46 не работает.
+- `ssh devbox` (LAN 192.168.1.141, пользователь `nick`; алиас в `~/.ssh/config` на Mac). VPN и Tailscale нет. После переустановки
+  отпечаток хоста новый: `ssh-keygen -R 192.168.1.141`. GitHub с devbox качает медленно (20–30 КБ/с) — большое качать на Mac и `scp`.
 - Состояние машины и устройств — `scripts/box.sh status` (одна строка); adb — user-служба `box-adb`, `adb kill-server` не нужен.
   Машиной управляет сессия **Devbox** (ТЗ — `docs/devbox.md`): очередь, брони устройств и портов — через неё.
 - Репозиторий `~/megablock10`; на Mac git-remote `devbox`. Пуш ветки: `git push devbox <ветка> --no-verify`
   (локальный pre-push хук запускает Gradle на Mac — на devbox он не нужен).
 - Окружение: `~/netrun-env.sh` (Android SDK в `~/android-sdk`, Godot в `~/.local/bin`). **Ловушка JDK:** `devjob` сам делает
-  `. ~/netrun-env.sh`, а там JAVA_HOME=temurin-17 (нужен ветке `agent/netrun`, она от `main` до Kotlin 2.4). Для `main` и веток
-  от свежего `main` в команде `devjob` явно: `export JAVA_HOME=/usr/lib/jvm/temurin-21-jdk-amd64 PATH=/usr/lib/jvm/temurin-21-jdk-amd64/bin:$PATH`.
+  `. ~/netrun-env.sh`, а там JAVA_HOME=temurin-17, тогда как Gradle `main` нужен 21 (Paparazzi 2). В команде `devjob` явно:
+  `export JAVA_HOME=/usr/lib/jvm/temurin-21-jdk-amd64 PATH=/usr/lib/jvm/temurin-21-jdk-amd64/bin:$PATH` (`dbx.sh` делает это сам).
   Проверки `java -version` мало: версия подставляется тихо.
-- **Каталог.** `devjob` делает `cd ~/megablock10`, а там постоянно checkout `agent/netrun` (`receive.denyCurrentBranch=updateInstead`
-  для пушей Cyberspace). Чужие ветки в `~/megablock10` **не** переключать: `git -C ~/megablock10 worktree add ~/wt-<имя> <ветка>`,
-  `cp local.properties`, ссылки на `admin-web/*/node_modules`, в команде `devjob` — `cd ~/wt-<имя> && …`. Для `main` уже есть `~/mb-main`.
+- **Каталог.** `devjob` делает `cd ~/megablock10` (checkout `main`, общий). Ветки в нём **не** переключать:
+  `git -C ~/megablock10 worktree add ~/wt-<имя> <ветка>`, `cp local.properties`, ссылки на `admin-web/*/node_modules`, в команде
+  `devjob` — `cd ~/wt-<имя> && …`. Для `main` есть `~/mb-main`; `dbx.sh` работает в своих `~/wt-dbx-*` и берёт оттуда `local.properties`.
 
 - **Godot AI (`~/wt-godot`).** Живой редактор Godot с плагином Godot AI (MCP) и рабочая копия `~/wt-godot` (ветка `agent/godot`) —
-  `bash ~/wt-godot/scripts/devbox-godot-ai.sh setup|start|stop|status` (порты 8000/9500; пока ветка не влита — скрипт из репозитория
-  через `scp`). Работает на дисплее GNOME `:0` (нужен вход nick). Тесты Godot — `netrun/tools/gdunit.sh` (сам подтягивает
+  `bash ~/wt-godot/scripts/devbox-godot-ai.sh setup|start|stop|status` (порты 8000/9500; поднимается сам после перезагрузки).
+  Работает на дисплее GNOME (автовход nick, Wayland). Тесты Godot — `netrun/tools/gdunit.sh` (сам подтягивает
   `~/netrun-env.sh`: неинтерактивный ssh не знает путь к `godot`). Правит и проверяет агент `godot-dev` (`.claude/agents/godot-dev.md`);
   подробности и ловушки — `docs/netrun-devbox.md`, «Godot AI».
 
@@ -49,5 +51,5 @@ Mac (8 ГБ) — только правка, git и `scripts/check.sh --fast`. Gr
   `live_run` конфликтует: задачи брали 7510/7511/7877.
 - Красные сценарии, не связанные с приложением: локаль без UTF-8 (lib.sh ставит `LC_ALL=C.UTF-8`) и отключённый Android
   виртуальный Wi-Fi без интернета (`up.sh` выставляет `captive_portal_mode 0`). Подробности и первичная настройка —
-  `docs/netrun-devbox.md`, `scripts/devbox-setup.sh` (идемпотентный).
+  `docs/netrun-devbox.md`; машина с нуля — `scripts/devbox-bootstrap.sh`.
 - Нужен файл с devbox (журнал, скриншот) — `scp devbox:<путь> .` или `ssh devbox 'tail -n 200 …'`, не пересказывать по памяти.
