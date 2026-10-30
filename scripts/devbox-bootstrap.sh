@@ -111,7 +111,7 @@ else
   echo "нет $DL/$TPZ — пропускаю (положить с Mac: scp, см. комментарий выше)"
 fi
 
-step "~/netrun-env.sh (окружение Godot-сессии: JAVA_HOME temurin-17, Android SDK)"
+step "netrun-env.sh в домашнем каталоге (окружение Godot-сессии: JAVA_HOME temurin-17, Android SDK)"
 # Его читают devbox-godot-ai.sh и скрипты netrun (. ~/netrun-env.sh); Gradle-сборки Android идут на temurin-21 из ~/.bashrc.
 if [ ! -f "$H/netrun-env.sh" ]; then
   as_user "printf '%s\n' \
