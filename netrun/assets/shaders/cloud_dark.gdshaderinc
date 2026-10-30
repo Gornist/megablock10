@@ -3,6 +3,7 @@
 // Нормаль и позиция идут varying'ами от вершины (не NORMAL фрагмента), поэтому узор привязан к мировой решётке и не «плывёт» при движении головы.
 
 #include "cloud_light.gdshaderinc"
+#include "backdrop_sky.gdshaderinc"
 #include "volume_cloud.gdshaderinc"
 #include "breath_touch.gdshaderinc"
 #include "alarm_focus.gdshaderinc"
@@ -12,6 +13,16 @@ uniform float grid_alpha : hint_range(0.0, 2.0) = 0.0;
 uniform vec2 grid_origin = vec2(0.0);
 uniform vec4 edge_color : source_color = vec4(0.094, 0.9, 1.0, 1.0);
 uniform float edge_mix : hint_range(0.0, 1.0) = 0.35;   // насколько частицы ребра краснее к цвету неона (меньше неона — владелец)
+
+uniform float edge_fade : hint_range(0.0, 1.0) = 0.0;   // мягкая кромка (20.10): вес ребра COLOR (1 на кромке грани → 0 в 25 см) гасит плотность частиц, а не усиливает; 0 — выкл. (ручка cloud_face_fade; ставится у pillar_block)
+uniform float face_fade_w = 0.5;   // ширина растушёвки у основания и верха грани по МИРОВОЙ высоте, м (ручка cloud_face_fade_w): частицы колонны редеют к полу, стык не режется линией
+uniform float face_top_y = 2.2;    // высота верха колонн/укрытий (COVER_H)
+// Растушёвка пола у основания препятствий: карта «занятых» мест по XZ (AssetMaterials.set_cloud_occluders): 1 у контура препятствия → 0 на occ_w м от него; частицы плиты пола и верхних граней редеют к основанию колонны.
+uniform sampler2D occ_map : filter_linear, repeat_disable;
+uniform vec4 occ_rect = vec4(0.0, 0.0, 1.0, 1.0);   // x0, z0 (мир, м), 1/ширина, 1/глубина
+uniform int occ_n = 0;                                // число препятствий (0 — растушёвки нет)
+uniform float occ_strength : hint_range(0.0, 1.0) = 0.9;   // ручка cloud_floor_fade
+uniform float sky_fill : hint_range(0.0, 1.0) = 0.0;   // 1 — просветы грани показывают небо купола (ручка cloud_sky); 0 — чёрные
 
 varying vec3 v_wp;
 varying vec3 v_nw;
@@ -35,7 +46,21 @@ void fragment() {
 	float lift = breath_lift(v_wp);
 	vec3 push = vec3(0.0);
 	float tk = touch_k(v_wp, push);
-	float dens_k = max(1.0 + touch_grow * tk, 0.0);   // дыхание — только яркостью (lift): от плотности ячейки включались и гасли на каждом тике
+	float face_fade = edge_fade * edge;   // 0…1: у кромки грани частицы редеют и тускнеют, край растворяется
+	if (edge_fade > 0.0) {
+		edge = 0.0;   // линий и неона рёбер нет — только затухание
+		float by = 1.0 - smoothstep(0.0, face_fade_w, v_wp.y);                       // основание: к полу частицы редеют
+		float ty = smoothstep(face_top_y - face_fade_w, face_top_y, v_wp.y);       // верх
+		face_fade = max(face_fade, edge_fade * max(by, ty));
+	}
+	float occ = 0.0;
+	if (occ_n > 0 && edge_fade <= 0.0 && v_top > 0.9) {   // пол и платформы: вокруг основания препятствий частицы редеют
+		vec2 ouv = (v_wp.xz - occ_rect.xy) * occ_rect.zw;
+		if (ouv.x >= 0.0 && ouv.y >= 0.0 && ouv.x <= 1.0 && ouv.y <= 1.0) {
+			occ = textureLod(occ_map, ouv, 0.0).r * occ_strength;
+		}
+	}
+	float dens_k = max(1.0 + touch_grow * tk, 0.0) * (1.0 - face_fade) * (1.0 - occ);   // дыхание — только яркостью (lift): от плотности ячейки включались и гасли на каждом тике
 	// Освещённость: статические источники узла и рука/аватар (touch). Нет источников — 1, как раньше.
 	vec3 lit_col = vec3(1.0);
 	float lit = 1.0;
@@ -45,8 +70,19 @@ void fragment() {
 		lit_w = lit_tint * lit;
 	}
 	vec4 c = volume_cloud(v_wp, normalize(v_nw), normalize(CAMERA_POSITION_WORLD - v_wp), v_dist, PROJECTION_MATRIX[1][1] * VIEWPORT_SIZE.y, edge, dens_k, lit, lit_col, lit_w);
-	c.rgb *= lift * (1.0 + touch_gain * tk);
+	c.rgb *= lift * (1.0 + touch_gain * tk) * (1.0 - 0.5 * face_fade) * (1.0 - 0.6 * occ);
 	c.rgb = mix(c.rgb, touch_color * dust, 0.5 * tk);
-	ALBEDO = focus_light(mix(c.rgb, edge_color.rgb, edge * edge_mix), v_wp);   // тревога у игрока (alarm_focus.gdshaderinc)
-	ALPHA = c.a;
+	vec3 col = focus_light(mix(c.rgb, edge_color.rgb, edge * edge_mix), v_wp);   // тревога у игрока (alarm_focus.gdshaderinc)
+#ifdef CLOUD_A2C
+	ALBEDO = col;
+	ALPHA = c.a;   // покрытие сэмплов: дыры мягкие, за ними видно мир (прежний вид; cloud_dark_a2c.gdshader, ручка cloud_solid = 0)
+#else
+	// Грань непрозрачна и пишет глубину по всей поверхности (мира за ней нет), но ВЫГЛЯДИТ прозрачной: в просветах между частицами — небо купола в этом направлении
+	// (sky_fill = 1, ручка cloud_sky); 0 — чёрный просвет (владелец 20.10: «чёрный солид»).
+	vec3 sky = vec3(0.0);
+	if (sky_fill > 0.5 && c.a < 0.999) {
+		sky = sky_floor + backdrop_sky(normalize(v_wp - CAMERA_POSITION_WORLD));
+	}
+	ALBEDO = col * c.a + sky * (1.0 - c.a);
+#endif
 }
