@@ -46,6 +46,7 @@ show_help() {
   log              Забрать журнал приложения и logcat в каталог с датой
   shot             Снимок экрана в файл (дата и время в имени)
   info             Модель, прошивка, заряд, Wi-Fi SSID и IP
+  vkinfo           Возможности Vulkan-GPU очков (`cmd gpu vkjson`): крупные точки, 64-битные атомики, расширения; полный JSON — в файл
   tune [ключ=значение ...]   Настройки комфорта (user://comfort.cfg на очках): показать, изменить, перезапустить приложение,
                    напечатать строку `comfort` из журнала. `tune --reset` — удалить файл (значения по умолчанию)
   provision --host=<адрес> --token=<терминал:токен> [--port=<порт>]
@@ -170,6 +171,33 @@ cmd_shot() {
   adb -s "$serial" shell rm "/sdcard/$filename"
 
   echo "Готово: $filename"
+}
+
+# vkinfo: ответ на «потянет ли GPU очков точки-примитивы с размером и 64-битные атомики в шейдерах» — по самому устройству, не по базам.
+# `adb shell cmd gpu vkjson` печатает JSON свойств Vulkan (Android ≥ 9); полный вывод — в vkinfo-<дата>.json, на экран — вердикт в несколько строк.
+cmd_vkinfo() {
+  local serial out
+  serial=$(select_device) || return 1
+  out="vkinfo-$(date +%Y%m%d-%H%M%S).json"
+  adb -s "$serial" shell cmd gpu vkjson > "$out" 2>/dev/null || true
+  if [[ ! -s "$out" ]] || ! grep -q '"properties"' "$out"; then
+    echo "vkinfo: устройство не отдало vkjson (cmd gpu vkjson не поддерживается этой прошивкой) — файл $out пуст или не JSON" >&2
+    return 1
+  fi
+  echo "=== Vulkan очков ($(adb -s "$serial" shell getprop ro.product.model | tr -d '\r')) → $out ==="
+  echo -n "GPU / API: "
+  grep -o '"deviceName": *"[^"]*"' "$out" | head -1 | sed 's/.*: *//' | tr -d '\n'
+  echo -n " / apiVersion "
+  grep -o '"apiVersion": *[0-9]*' "$out" | head -1 | sed 's/.*: *//'
+  echo -n "largePoints: "
+  grep -o '"largePoints": *[a-z0-9]*' "$out" | head -1 | sed 's/.*: *//'
+  echo -n "pointSizeRange: "
+  grep -A3 '"pointSizeRange"' "$out" | tr -d ' \n' | sed 's/.*pointSizeRange"://' | cut -c1-40
+  echo
+  echo -n "64-бит атомики в SSBO (shaderBufferInt64Atomics): "
+  grep -o '"shaderBufferInt64Atomics": *[a-z0-9]*' "$out" | head -1 | sed 's/.*: *//' || true
+  echo -n "расширение VK_KHR_shader_atomic_int64: "
+  if grep -q 'VK_KHR_shader_atomic_int64' "$out"; then echo "есть"; else echo "нет"; fi
 }
 
 # info
@@ -480,6 +508,9 @@ case "$1" in
     ;;
   info)
     cmd_info
+    ;;
+  vkinfo)
+    cmd_vkinfo
     ;;
   tune)
     shift
