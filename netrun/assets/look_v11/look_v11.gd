@@ -24,7 +24,7 @@ const PORTAL_H := 2.9
 const FIGURE := Vector3(1.4, 0.0, -2.9)
 
 var K := {
-	"row": 0.035, "floor_row": 0.07, "step": 0.016, "pt": 0.007, "glow": 0.3, "glow_size": 3.0, "thick": 0.06, "thick_floor": 0.02, "occ_in": 0.3, "rjit": 0.15, "pvar": 1.1, "min_px": 1.6, "min_row_px": 5.0,
+	"row": 0.035, "floor_row": 0.07, "step": 0.016, "pt": 0.007, "glow": 0.3, "glow_size": 3.0, "thick": 0.06, "thick_floor": 0.02, "occ_in": 0.3, "rag": 0.35, "rag_f": 1.1, "holes": 0.3, "wob": 0.8, "bulge": 0.18, "bulge_floor": 0.05, "stray": 0.03, "stray_d": 0.35, "rjit": 0.15, "pvar": 1.1, "min_px": 1.6, "min_row_px": 5.0,
 	"fade_near": 4.0, "fade_far": 20.0, "fade_min": 0.15, "light_r": 4.5, "gap": 0.12, "jit": 0.6, "light": 4.0, "halo": 0.22, "sheet": 1.0,
 	"edge": 0.6, "world_gain": 2.8, "fig": 1.0, "gap_len": 0.12, "clump_lo": 0.1, "clump_hi": 5.0, "clump_f": 0.6, "min_dot_px": 4.0,
 }
@@ -36,6 +36,9 @@ var _seed := 1
 var _shade := 0.7  # яркость текущей грани (к порталу ярче); пол сам тусклее граней
 var _clump := FastNoiseLite.new()
 var _thick_dir := Vector3.UP  # наружу от текущей поверхности
+var _rag := FastNoiseLite.new()    # рваный край и дыры
+var _wob := FastNoiseLite.new()    # волна строк
+var _bulge := FastNoiseLite.new()  # вспучивание грани
 
 
 func _shots() -> Array:
@@ -135,7 +138,9 @@ const WORLD_RAMP := [Color("0e161a"), Color("1f3038"), Color("3f6068"), Color("4
 func _world_col(p: Vector3, edge_k: float) -> Color:
 	var l := _portal_light(p)
 	# сгустки: медленный шум по поверхности — где-то строки ярче, где-то почти гаснут (у CP2077 поверхность неровная по яркости)
-	var cl := 0.5 + 0.5 * _clump.get_noise_3dv(p)
+	# шум вытянут по диагонали — светлые полосы-разводы, как на камнях CP2077, а не круглые пятна
+	var q := Vector3(p.x * 0.6 + p.y * 1.2, p.y * 0.35, p.z * 0.6 - p.y * 1.2)
+	var cl := 0.5 + 0.5 * _clump.get_noise_3dv(q)
 	var v := (1.0 + _k("pvar") * (_rand() - 0.5)) * lerpf(_k("clump_lo"), _k("clump_hi"), cl * cl) * _shade * (0.08 + 0.92 * edge_k)
 	v = v * _k("world_gain") * 0.33 + l * (0.6 + 0.6 * _rand())  # 1.0 ≈ #1F3038; свет портала сверху
 	var x := clampf(v, 0.0, 3.999)
@@ -151,20 +156,34 @@ func _row(a: Vector3, b: Vector3, row: int, row_step: float, kind: float, keep: 
 	var x := _rand() * _k("step")
 	var gap: float = _k("gap")
 	while x < ln:
-		var p := a + dir * x + (Vector3.UP if kind < 0.5 else Vector3.BACK) * (_rand() - 0.5) * _k("rjit") * row_step
-		# толщина оболочки: точки лежат не в плоскости, а слоем наружу (чаще у поверхности) — читается объём, а не плёнка
-		var th := _rand()
-		p += _thick_dir * th * th * (_k("thick") if kind < 0.5 else _k("thick_floor"))
+		var sdir := Vector3.UP if kind < 0.5 else Vector3.BACK
+		var p := a + dir * x + sdir * (_rand() - 0.5) * _k("rjit") * row_step
 		var t := x / ln
 		x += _k("step") * (1.0 + _k("jit") * (_rand() - 0.5) * 2.0)
 		if _noise1(x / _k("gap_len"), rs) < gap:
 			continue
+		# Органика (у CP2077 оболочки рваные, а не линованные кубы):
+		# строки волнятся — плавный сдвиг поперёк строки на доли шага;
+		p += sdir * _wob.get_noise_3dv(p * 0.8) * row_step * _k("wob")
+		# грань вспучена — медленный шум выдавливает оболочку наружу (только наружу: внутрь ушло бы за тело колонны);
+		var bl := 0.5 + 0.5 * _bulge.get_noise_3dv(p)
+		p += _thick_dir * bl * bl * (_k("bulge") if kind < 0.5 else _k("bulge_floor"))
+		# дыры — рваные куски оболочки выпадают целиком;
+		var hn := _rag.get_noise_3dv(p * 0.6)
+		if _rand() < smoothstep(_k("holes"), _k("holes") + 0.12, hn):
+			continue
+		# толщина: точки лежат слоем наружу (чаще у поверхности) — объём, а не плёнка; редкие отлетают дальше — пыль у поверхности.
+		var th := _rand()
+		p += _thick_dir * th * th * (_k("thick") if kind < 0.5 else _k("thick_floor"))
+		var stray := _rand() < _k("stray")
+		if stray:
+			p += _thick_dir * _rand() * _k("stray_d") + Vector3(_rand() - 0.5, (_rand() - 0.5) * 0.5, _rand() - 0.5) * _k("stray_d") * 0.5
 		var ke: Vector2 = keep.call(t, p)
 		var lp := _portal_light(p)
 		if _rand() > clampf(ke.x * (1.0 + lp * 0.6), 0.0, 1.0):
 			continue
 		var sz: float = _k("pt") * (0.8 + 0.4 * _rand())
-		_push(p, _world_col(p, ke.y), row, row_step, kind, sz)
+		_push(p, _world_col(p, ke.y * (0.45 if stray else 1.0)), row, row_step, kind, sz)
 
 
 func _build() -> int:
@@ -173,6 +192,19 @@ func _build() -> int:
 	_clump.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	_clump.frequency = _k("clump_f")
 	_clump.seed = 7
+	_clump.fractal_octaves = 3
+	for nz: FastNoiseLite in [_rag, _wob, _bulge]:
+		nz.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+		nz.fractal_type = FastNoiseLite.FRACTAL_FBM
+	_rag.frequency = _k("rag_f")
+	_rag.fractal_octaves = 4
+	_rag.seed = 11
+	_wob.frequency = 0.9
+	_wob.fractal_octaves = 2
+	_wob.seed = 13
+	_bulge.frequency = 0.7
+	_bulge.fractal_octaves = 2
+	_bulge.seed = 17
 	var edge: float = _k("edge")
 	# Пол: строки вдоль X, шаг по Z; растушёвка к краю комнаты и у оснований колонн.
 	var fr: float = _k("floor_row")
@@ -180,7 +212,8 @@ func _build() -> int:
 	for r in nrows:
 		var z := -ROOM + (r + 0.5) * fr
 		var keep := func(_t: float, p: Vector3) -> Vector2:
-			var e := minf(ROOM - absf(p.x), ROOM - absf(p.z))
+			var rg := _rag.get_noise_3dv(p * 0.9) * _k("rag")
+			var e := minf(ROOM - absf(p.x), ROOM - absf(p.z)) + rg * 4.0
 			var k := smoothstep(0.0, 2.5, e)
 			for pc in PILLARS:
 				var dx := absf(p.x - pc.x) - PILLAR_W * 0.5
@@ -188,7 +221,7 @@ func _build() -> int:
 				var dd := maxf(dx, dz)
 				if dd < 0.03:
 					return Vector2(0.0, 0.0)
-				k *= 0.35 + 0.65 * smoothstep(0.0, 0.6, dd)
+				k *= 0.35 + 0.65 * smoothstep(0.0, 0.6, dd + rg)
 			return Vector2(0.15 + 0.85 * k, k)
 		_row(Vector3(-ROOM, 0.0, z), Vector3(ROOM, 0.0, z), r, fr, 1.0, keep, float(r) + 0.5)
 	# Колонны: 4 грани, строки по высоте; край растворяется к рёбрам, низу и верху.
@@ -207,9 +240,11 @@ func _build() -> int:
 			_shade = 0.5 + 0.7 * maxf(0.0, nrm.dot(to_p)) + 0.2 * absf(nrm.x)
 			for r in hrows:
 				var y := (r + 0.5) * rs
-				var keep := func(t: float, _p: Vector3) -> Vector2:
-					var es := minf(t, 1.0 - t) * PILLAR_W
-					var k := smoothstep(0.0, edge, es) * smoothstep(0.0, edge * 0.8, PILLAR_H - y) * (0.3 + 0.7 * smoothstep(0.0, edge * 1.2, y))
+				var keep := func(t: float, p: Vector3) -> Vector2:
+					# рваный край: расстояние до ребра/верха/низа сдвинуто шумом — граница оболочки неровная, с языками и выгрызами
+					var rg := _rag.get_noise_3dv(p * 1.7) * _k("rag")
+					var es := minf(t, 1.0 - t) * PILLAR_W + rg
+					var k := smoothstep(0.0, edge, es) * smoothstep(0.0, edge * 0.8, PILLAR_H - y + rg) * (0.3 + 0.7 * smoothstep(0.0, edge * 1.2, y + rg))
 					return Vector2(0.04 + 0.96 * k, k)
 				_row(a + Vector3(0, y, 0), b + Vector3(0, y, 0), r, rs, 0.0, keep, pi * 1000.0 + f * 100.0 + r)
 	_shade = 1.0
