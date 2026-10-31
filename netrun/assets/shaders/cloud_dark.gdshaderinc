@@ -22,7 +22,6 @@ uniform sampler2D occ_map : filter_linear, repeat_disable;
 uniform vec4 occ_rect = vec4(0.0, 0.0, 1.0, 1.0);   // x0, z0 (мир, м), 1/ширина, 1/глубина
 uniform int occ_n = 0;                                // число препятствий (0 — растушёвки нет)
 uniform float occ_strength : hint_range(0.0, 1.0) = 0.9;   // ручка cloud_floor_fade
-uniform float sky_fill : hint_range(0.0, 1.0) = 0.0;   // 1 — просветы грани показывают небо купола (ручка cloud_sky); 0 — чёрные
 
 varying vec3 v_wp;
 varying vec3 v_nw;
@@ -77,12 +76,8 @@ void fragment() {
 	ALBEDO = col;
 	ALPHA = c.a;   // покрытие сэмплов: дыры мягкие, за ними видно мир (прежний вид; cloud_dark_a2c.gdshader, ручка cloud_solid = 0)
 #else
-	// Грань непрозрачна и пишет глубину по всей поверхности (мира за ней нет), но ВЫГЛЯДИТ прозрачной: в просветах между частицами — небо купола в этом направлении
-	// (sky_fill = 1, ручка cloud_sky); 0 — чёрный просвет (владелец 20.10: «чёрный солид»).
-	vec3 sky = vec3(0.0);
-	if (sky_fill > 0.5 && c.a < 0.999) {
-		sky = sky_floor + backdrop_sky(normalize(v_wp - CAMERA_POSITION_WORLD));
-	}
-	ALBEDO = col * c.a + sky * (1.0 - c.a);
+	// Грань непрозрачна и пишет глубину по всей поверхности (мира за ней нет); просвет между частицами — цвет пустоты (V11, 31.10: неба, купола и дымки нет;
+	// пустота = фон клиента sky_floor + сдвиг тревоги sky_void), поэтому грань выглядит так же, как пустое место за ней.
+	ALBEDO = col * c.a + (sky_floor + sky_void) * (1.0 - c.a);
 #endif
 }

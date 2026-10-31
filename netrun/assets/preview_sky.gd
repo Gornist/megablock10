@@ -2,7 +2,7 @@ extends Node3D
 ## Кадры клиента для приёмки вида «грань облака + небо купола» (владелец 20.10: «чёрный солид везде»): Фойе глазами игрока (кадр на глаз Pico 4), четыре позы —
 ## `close` (вплотную к грани колонны), `through` (через колонну на дальнюю), `horizon` (взгляд на горизонт), `hand` (рука у грани, отклик поверхности).
 ## Позы: close, through, base (стык колонны с полом), horizon, hand.
-## Запуск: netrun/tools/dev.sh shot res://assets/preview_sky.tscn [--tune=cloud_sky=0,...] [--out=каталог]; кадры <поза>.png.
+## Запуск: netrun/tools/dev.sh shot res://assets/preview_sky.tscn [--tune=ключ=значение,...] [--out=каталог]; кадры <поза>.png.
 
 const EYE := Vector2i(1504, 1504)
 
