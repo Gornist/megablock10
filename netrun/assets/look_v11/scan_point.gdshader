@@ -69,7 +69,8 @@ void vertex() {
 	if (rim_gain > 0.0) {  // фигура: нормаль точки лежит в базисе экземпляра, кромка светлее (френель)
 		vec3 nrm = normalize(MODEL_MATRIX[0].xyz);
 		float fr = 1.0 - abs(dot(nrm, normalize(CAMERA_POSITION_WORLD - center)));
-		v_rim = pow(fr, 1.5);
+		v_rim = pow(fr, 2.0);
+		lf *= 1.0 - smoothstep(0.55, 0.95, fr) * step(0.45, COLOR.a);  // у кромки часть точек гаснет — край рассыпается
 	}
 	float fade = mix(1.0, fade_min, smoothstep(fade_near, fade_far, depth));
 	v_k = k * lf * fade * gain;

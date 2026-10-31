@@ -19,8 +19,8 @@ const PILLAR_W := 1.9
 const PILLAR_H := 2.2
 const ROOM := 8.0
 const PORTAL := Vector3(0.0, 0.0, -6.8)   # низ-центр портала
-const PORTAL_W := 1.3
-const PORTAL_H := 2.3
+const PORTAL_W := 2.0
+const PORTAL_H := 2.9
 const FIGURE := Vector3(1.4, 0.0, -2.9)
 
 var K := {
@@ -135,7 +135,7 @@ func _world_col(p: Vector3, edge_k: float) -> Color:
 	var l := _portal_light(p)
 	# сгустки: медленный шум по поверхности — где-то строки ярче, где-то почти гаснут (у CP2077 поверхность неровная по яркости)
 	var cl := 0.5 + 0.5 * _clump.get_noise_3dv(p)
-	var v := (1.0 + _k("pvar") * (_rand() - 0.5)) * lerpf(_k("clump_lo"), _k("clump_hi"), cl * cl) * _shade * (0.3 + 0.7 * edge_k)
+	var v := (1.0 + _k("pvar") * (_rand() - 0.5)) * lerpf(_k("clump_lo"), _k("clump_hi"), cl * cl) * _shade * (0.08 + 0.92 * edge_k)
 	v = v * _k("world_gain") * 0.33 + l * (0.6 + 0.6 * _rand())  # 1.0 ≈ #1F3038; свет портала сверху
 	var x := clampf(v, 0.0, 3.999)
 	var i := int(x)
@@ -205,7 +205,7 @@ func _build() -> int:
 				var keep := func(t: float, _p: Vector3) -> Vector2:
 					var es := minf(t, 1.0 - t) * PILLAR_W
 					var k := smoothstep(0.0, edge, es) * smoothstep(0.0, edge * 0.8, PILLAR_H - y) * (0.3 + 0.7 * smoothstep(0.0, edge * 1.2, y))
-					return Vector2(0.2 + 0.8 * k, k)
+					return Vector2(0.04 + 0.96 * k, k)
 				_row(a + Vector3(0, y, 0), b + Vector3(0, y, 0), r, rs, 0.0, keep, pi * 1000.0 + f * 100.0 + r)
 	_shade = 1.0
 	var world_n := _cnt
@@ -278,10 +278,10 @@ func _add_occluders() -> void:
 	for pc in PILLARS:
 		var b := MeshInstance3D.new()
 		var bm := BoxMesh.new()
-		bm.size = Vector3(PILLAR_W - 0.01, PILLAR_H - 0.01, PILLAR_W - 0.01)
+		bm.size = Vector3(PILLAR_W - 0.2, PILLAR_H - 0.12, PILLAR_W - 0.2)  # тело меньше оболочки: ребро растворяется в пустоту, а не обрывается силуэтом
 		b.mesh = bm
 		b.material_override = m
-		b.position = Vector3(pc.x, PILLAR_H * 0.5, pc.y)
+		b.position = Vector3(pc.x, (PILLAR_H - 0.12) * 0.5, pc.y)
 		add_child(b)
 
 
@@ -326,7 +326,7 @@ func _add_figure(base: Vector3) -> void:
 	_buf = PackedFloat32Array()
 	_cnt = 0
 	var rs := 0.011
-	var dark := RED_DARK.lerp(RED, 0.4).srgb_to_linear()  # тело светится само: тусклый малиновый, кромка — ядро
+	var dark := RED_DARK.lerp(RED, 0.15).srgb_to_linear()  # тело светится само: тусклый малиновый, кромка — ядро
 	for pt in FIG_PARTS:
 		var r: float = pt[0]
 		var hgt: float = pt[1]
@@ -352,7 +352,7 @@ func _add_figure(base: Vector3) -> void:
 				var b := (0.7 + 0.8 * _rand()) * _k("fig")
 				_push(xf * lp, Color(dark.r * b, dark.g * b, dark.b * b), 0, rs, 3.0, 0.0075, nrm)
 			y += rs
-	_add_points("Figure", _buf, _cnt, {"rim_gain": _k("fig"), "rim_col": RED, "fade_min": 0.6})
+	_add_points("Figure", _buf, _cnt, {"rim_gain": 1.4 * _k("fig"), "rim_col": RED, "fade_min": 0.6})
 
 
 func _k(n: String) -> float:
