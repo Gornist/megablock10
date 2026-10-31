@@ -13,5 +13,6 @@ void fragment() {
 	if (dot(d, d) > 1.0) discard;
 	vec3 c = v_col;
 	if (rim_gain > 0.0) c = mix(v_col, rim_col * rim_gain, v_rim);
+	else c = v_col * (1.0 + v_rim);  // кромка мира (world_rim), у пола и рамки v_rim = 0
 	ALBEDO = mix(void_col, c, clamp(v_k, 0.0, 1.0));
 }

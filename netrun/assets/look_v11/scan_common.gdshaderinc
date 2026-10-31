@@ -10,6 +10,7 @@ uniform float vp_h = 720.0;      // высота кадра, px (VIEWPORT_SIZE �
 
 uniform float pt_step = 0.0;     // шаг точек в строке, м (0 — не прореживать в строке)
 uniform float min_dot_px = 2.6;  // точки в строке ближе — прореживаем
+uniform float world_rim = 0.0;   // мир: усиление яркости на кромке (взгляд вскользь), 0 — нет
 uniform float size_mul = 1.0;    // ореол: квад во столько раз больше точки
 uniform float rim_gain = 0.0;    // > 0 — фигура: COLOR = тёмное тело, к кромке — rim_col
 uniform vec3 rim_col : source_color = vec3(0.773, 0.220, 0.294);
@@ -65,6 +66,11 @@ void vertex() {
 		float fr = 1.0 - abs(dot(nrm, normalize(CAMERA_POSITION_WORLD - center)));
 		v_rim = pow(fr, 2.0);
 		lf *= 1.0 - smoothstep(0.55, 0.95, fr) * step(0.45, COLOR.a);  // у кромки часть точек гаснет — край рассыпается
+	}
+	if (world_rim > 0.0 && cd.z < 0.5) {  // мир, только грани (у пола вскользь — весь дальний пол): кромка светлее там, где смотрим на оболочку вскользь — подсвеченные края форм, как у камней CP2077
+		vec3 nrm = normalize(MODEL_MATRIX[0].xyz);
+		float fr = 1.0 - abs(dot(nrm, normalize(CAMERA_POSITION_WORLD - center)));
+		v_rim = world_rim * pow(fr, 3.0);
 	}
 	float fade = mix(1.0, fade_min, smoothstep(fade_near, fade_far, depth));
 	v_k = k * lf * fade * gain;

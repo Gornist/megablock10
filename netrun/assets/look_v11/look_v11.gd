@@ -24,9 +24,9 @@ const PORTAL_H := 2.9
 const FIGURE := Vector3(1.4, 0.0, -2.9)
 
 var K := {
-	"row": 0.035, "floor_row": 0.07, "step": 0.016, "pt": 0.007, "glow": 0.3, "glow_size": 3.0, "thick": 0.06, "thick_floor": 0.02, "occ_in": 0.3, "rag": 0.35, "rag_f": 1.1, "holes": 0.3, "wob": 0.8, "bulge": 0.18, "bulge_floor": 0.05, "stray": 0.03, "stray_d": 0.35, "rjit": 0.15, "pvar": 1.1, "min_px": 1.6, "min_row_px": 5.0,
+	"row": 0.035, "floor_row": 0.07, "step": 0.016, "pt": 0.007, "glow": 0.3, "glow_size": 3.0, "thick": 0.06, "thick_floor": 0.02, "occ_in": 0.3, "rag": 0.5, "rag_f": 1.1, "holes": 0.3, "wob": 0.8, "bulge": 0.35, "bulge_floor": 0.05, "stray": 0.03, "stray_d": 0.35, "world_rim": 2.5, "rjit": 0.15, "pvar": 0.6, "min_px": 1.6, "min_row_px": 5.0,
 	"fade_near": 4.0, "fade_far": 20.0, "fade_min": 0.15, "light_r": 4.5, "gap": 0.12, "jit": 0.6, "light": 4.0, "halo": 0.22, "sheet": 1.0,
-	"edge": 0.6, "world_gain": 2.8, "fig": 1.0, "gap_len": 0.12, "clump_lo": 0.1, "clump_hi": 5.0, "clump_f": 0.6, "min_dot_px": 4.0,
+	"edge": 0.6, "world_gain": 2.8, "fig": 1.0, "gap_len": 0.12, "clump_lo": 0.1, "clump_hi": 5.0, "clump_f": 0.3, "min_dot_px": 4.0,
 }
 var _out := "/tmp/look_v11"
 var _only: Array = []
@@ -183,7 +183,7 @@ func _row(a: Vector3, b: Vector3, row: int, row_step: float, kind: float, keep: 
 		if _rand() > clampf(ke.x * (1.0 + lp * 0.6), 0.0, 1.0):
 			continue
 		var sz: float = _k("pt") * (0.8 + 0.4 * _rand())
-		_push(p, _world_col(p, ke.y * (0.45 if stray else 1.0)), row, row_step, kind, sz)
+		_push(p, _world_col(p, ke.y * (0.45 if stray else 1.0)), row, row_step, kind, sz, _thick_dir)
 
 
 func _build() -> int:
@@ -249,7 +249,7 @@ func _build() -> int:
 				_row(a + Vector3(0, y, 0), b + Vector3(0, y, 0), r, rs, 0.0, keep, pi * 1000.0 + f * 100.0 + r)
 	_shade = 1.0
 	var world_n := _cnt
-	_add_points("World", _buf, world_n, {"pt_step": _k("step"), "min_dot_px": _k("min_dot_px")})
+	_add_points("World", _buf, world_n, {"pt_step": _k("step"), "min_dot_px": _k("min_dot_px"), "world_rim": _k("world_rim")})
 	_add_occluders()
 	# Портал: рама из ярких точек строками, световой лист с потёками, ореол.
 	_buf = PackedFloat32Array()
