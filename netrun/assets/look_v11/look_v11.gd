@@ -325,8 +325,8 @@ func _add_figure(base: Vector3) -> void:
 	occ.albedo_color = VOID
 	_buf = PackedFloat32Array()
 	_cnt = 0
-	var rs := 0.011
-	var dark := RED_DARK.lerp(RED, 0.15).srgb_to_linear()  # тело светится само: тусклый малиновый, кромка — ядро
+	var rs := 0.016
+	var dark := RED_DARK.lerp(RED, 0.35).srgb_to_linear()  # тело светится само: тусклый малиновый, кромка — ядро
 	for pt in FIG_PARTS:
 		var r: float = pt[0]
 		var hgt: float = pt[1]
@@ -344,12 +344,12 @@ func _add_figure(base: Vector3) -> void:
 		while y < hgt * 0.5:
 			var cy := clampf(y, -half, half)
 			var rad := sqrt(maxf(r * r - (y - cy) * (y - cy), 0.0))
-			var n := int(TAU * rad / 0.008)
+			var n := int(TAU * rad / 0.015)
 			for i in n:
 				var a := (float(i) + _rand() * 0.6) / float(maxi(n, 1)) * TAU
 				var lp := Vector3(cos(a) * rad, y, sin(a) * rad)
 				var nrm := xf.basis * (lp - Vector3(0, cy, 0)).normalized()
-				var b := (0.7 + 0.8 * _rand()) * _k("fig")
+				var b := (0.35 + 1.3 * _rand() * _rand() * 1.6) * _k("fig")
 				_push(xf * lp, Color(dark.r * b, dark.g * b, dark.b * b), 0, rs, 3.0, 0.0075, nrm)
 			y += rs
 	_add_points("Figure", _buf, _cnt, {"rim_gain": 1.4 * _k("fig"), "rim_col": RED, "fade_min": 0.6})
