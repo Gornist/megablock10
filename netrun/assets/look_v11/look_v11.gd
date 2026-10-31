@@ -24,9 +24,9 @@ const PORTAL_H := 2.9
 const FIGURE := Vector3(1.4, 0.0, -2.9)
 
 var K := {
-	"row": 0.03, "floor_row": 0.07, "step": 0.008, "pt": 0.0055, "glow": 0.3, "glow_size": 2.5, "thick": 0.03, "thick_floor": 0.02, "occ_in": 0.3, "rag": 0.5, "rag_f": 1.1, "holes": 0.3, "wob": 0.8, "bulge": 0.35, "bulge_floor": 0.05, "stray": 0.03, "stray_d": 0.35, "world_rim": 2.5, "rjit": 0.15, "pvar": 0.6, "min_px": 1.6, "min_row_px": 5.0,
-	"fade_near": 4.0, "fade_far": 20.0, "fade_min": 0.15, "light_r": 4.5, "gap": 0.05, "floor_step": 0.024, "flow_ang": 65.0, "flow_amp": 0.12, "flow_f": 0.6, "band": 0.12, "scatter": 0.05, "stroke": 0.09, "stroke_gap": 0.4, "flow_turn": 50.0, "jit": 0.3, "light": 4.0, "halo": 0.22, "sheet": 1.0,
-	"edge": 0.6, "world_gain": 2.8, "fig": 1.0, "gap_len": 0.12, "clump_lo": 0.1, "clump_hi": 5.0, "clump_f": 0.3, "min_dot_px": 1.8,
+	"row": 0.035, "floor_row": 0.07, "step": 0.016, "pt": 0.007, "glow": 0.3, "glow_size": 3.0, "thick": 0.06, "thick_floor": 0.02, "occ_in": 0.3, "rag": 0.5, "rag_f": 1.1, "holes": 0.3, "wob": 0.8, "bulge": 0.35, "bulge_floor": 0.05, "stray": 0.03, "stray_d": 0.35, "world_rim": 2.5, "rjit": 0.15, "pvar": 0.6, "min_px": 1.6, "min_row_px": 5.0,
+	"fade_near": 4.0, "fade_far": 20.0, "fade_min": 0.15, "light_r": 4.5, "gap": 0.05, "floor_step": 0.024, "flow_ang": 45.0, "flow_amp": 0.35, "flow_f": 1.2, "band": 0.2, "scatter": 0.08, "stroke": 0.09, "stroke_gap": 0.0, "flow_turn": 0.0, "jit": 0.6, "light": 4.0, "halo": 0.22, "sheet": 1.0,
+	"edge": 0.6, "world_gain": 2.8, "fig": 1.0, "gap_len": 0.12, "clump_lo": 0.1, "clump_hi": 5.0, "clump_f": 0.3, "min_dot_px": 4.0,
 }
 var _out := "/tmp/look_v11"
 var _only: Array = []
