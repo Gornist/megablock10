@@ -1,5 +1,10 @@
 # Протокол Моста «Сеть» (контракт C1)
 
+**Статус:** актуально, реализовано (`netrun-bridge/`, `OpRouter.kt`); сверено с main 30.10.2026 по списку операций `OpRouter` и версиям `GET /api/capabilities`
+(`world_records: 2`, `world_events: 1`). Операции с ценностями: `op.submit_deck`, `op.take_from_node`, `op.leave_in_node`, `op.issue_to_phone`, `run.finish`, `run.breach`,
+`op.give_item`, `op.decrypt_item`; мастер — `master.*` (раздел 6a, включая `master.stock_node` / `master.unstock_node`); служебные — `session.abort`, `session.confirm`, `terminal.auth`.
+Таблицы кодов ошибок и полей — контракт между зонами, правятся только вместе с Мостом. Раздел 10 — список правок соседей под деку (К2–К7), выполнен.
+
 Контракт между Мостом (`:netrun-bridge`) и его клиентами по WebSocket: сервер мира (Godot), инструменты мастера, фейки
 (F1). Телефон с Мостом по WebSocket не говорит — только карточками kit `Handover` (раздел 8). По этому документу пишутся
 B0 (хранилище), B1 (WebSocket), B3 (операции с ценностями), F1 (фейки), V2 (токен терминала), M2/M3/M5.

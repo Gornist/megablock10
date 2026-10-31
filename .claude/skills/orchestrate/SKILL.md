@@ -86,7 +86,7 @@ skill `netrun-loop` (Godot). Цифры и грабли — внизу.
 
 ```
 Проект «Мегаблок №10». Рабочая копия и ветка: <путь, agent/…>. Только там. НЕ пушить, НЕ мержить, основной checkout и main не трогать. Коммиты — локально.
-Прочти: CLAUDE.md, .claude/rules/app-invariants.md, раздел «правила» docs/architecture.md. Скоуп: <области>; чужие области (collector, netrun, admin-web, firmware) не менять.
+Прочти: CLAUDE.md, .claude/rules/app-invariants.md, разделы «Куда класть новое» и «Что нельзя менять без согласования» docs/architecture.md. Скоуп: <области>; чужие области (collector, netrun, admin-web, firmware) не менять.
 Рефакторинг = поведение не меняется. Неприкосновенно: форматы сети/QR/записей, схема Room, имена prefs, события Mb10Log и MB10DBG, эталоны app/src/test/snapshots
 (никогда recordPaparazziDebug, cleanTest*). Gradle на Mac не запускать: только scripts/dbx.sh --auto (на шаг) и --full (в конце); rc=0 — зелёно. Читай код точечно
 (grep, диапазоны), файлы >300 строк целиком не читай; готовое досье ниже — не перепроверяй. Циклы ожидания — с пределом. Коммит после каждого зелёного шага: на русском, что и ПОЧЕМУ;

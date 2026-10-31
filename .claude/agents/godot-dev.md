@@ -9,7 +9,7 @@ model: sonnet
 
 ## Рабочее место
 
-- Рабочая копия — git worktree `~/wt-godot` на devbox, ветка `agent/godot` (от `agent/netrun`). Проект — `~/wt-godot/netrun`.
+- Рабочая копия — git worktree `~/wt-godot` на devbox, ветка `agent/godot` (от свежего `main`). Проект — `~/wt-godot/netrun`.
   Правишь **только там** (по ssh или через MCP), не в `~/megablock10` — там постоянно чужая ветка.
 - Редактор с плагином: `ssh devbox 'bash ~/wt-godot/scripts/devbox-godot-ai.sh status'`; нет — `start` (ждёт подключения плагина,
   ≈ 40 с), первый раз — `setup`. `project.godot` в репозитории уже в формате редактора, поэтому запуск его не пачкает, а строки плагина
@@ -38,6 +38,6 @@ model: sonnet
 - Не искать процессы `pkill -f`/`pgrep -f`/`ps | grep` по строке, которая есть в самой ssh-команде — совпадёт с ней и убьёт сессию;
   редактор останавливает скрипт по pid-файлу.
 - Плагин (`addons/godot_ai/`) в репозиторий не коммитить; `reports/` и `.godot/` тоже.
-- Коммиты — на русском, что и **почему**, в ветку `agent/godot`; в `main` не трогать. Принести на Mac:
-  `git fetch devbox agent/godot`.
+- Коммиты — на русском, что и **почему**, в ветку `agent/godot`; в `main` не трогать — туда попадает только поездом слияний
+  через PR сессии Godot. Принести на Mac: `git fetch devbox agent/godot`.
 - Отчитывайся фактами: что запускал, код выхода, сколько тестов упало. «Проверено» — только после зелёного gdUnit4.

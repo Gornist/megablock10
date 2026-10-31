@@ -6,9 +6,9 @@
 
 ## Машина
 
-`nick-arasaka-micro`: Ubuntu, GTX 1650 4 ГБ (драйвер 595.99), 8 ядер; ssh `devbox` = Tailscale 100.80.115.46 (LAN 192.168.1.141 ключ не
-пускает), пользователь `nick`. GNOME/Wayland, автовход nick: автозапуск `~/.config/autostart/devbox-session.desktop` → `~/box/repo/scripts/devbox-session-start.sh`
-(клон репозитория, `scripts/box.sh sync`; с 13.10 — не ручная копия): incy VPN → Tailscale → adb → Blender c blender-mcp на 9876 →
+`nick-arasaka-micro`: Ubuntu, GTX 1650 4 ГБ (драйвер 595.99), 8 ядер; ssh `devbox` = LAN 192.168.1.141 (Tailscale и VPN убраны 25.10.2026),
+пользователь `nick`. GNOME/Wayland, автовход nick: автозапуск `~/.config/autostart/devbox-session.desktop` → `~/box/repo/scripts/devbox-session-start.sh`
+(клон репозитория, `scripts/box.sh sync`; с 13.10 — не ручная копия): сеть (LAN) → adb → Blender c blender-mcp на 9876 →
 редактор Godot → самопроверка. adb — user-служба `box-adb`. Подробности сборок — skill `devbox`, Godot на devbox — `docs/netrun-devbox.md`.
 
 ## Кто что держит (13.10)
@@ -22,6 +22,7 @@
 | LARP | `~/cp2020-lore` (`bin/lore.py`, `bin/remote.sh add/status/pull`, flock), изредка | — | база лора, повторная выжимка через API (≈32 $) |
 | Nomad Surf (проект Surf N130) | `~/surf-blender`, отдельный `~/blender-5.2.2`, user-сервис `surf-decals` :8765; Cycles на GPU 1–5 мин | — | всё перечисленное |
 | Collector | на devbox ничего; тесты на Mac | — | — |
+| Шерегеш (сборка образов Raspberry Pi, 25.10) | `~/shimg` (исходники, открытые ключи, результаты ~1 ГБ на сборку, 30–50 ГБ в запасе), Docker: контейнеры `--privileged --platform linux/arm64` на `debian:trixie` (≈45 мин в эмуляции, грузит все ядра, 2–4 ГБ ОЗУ), файловые проверки OTA на `ghcr.io/armbian/docker-armbian-build` (≈8 ГБ в `$HOME` на время прогона), том `sheregesh-image-work` (можно стереть — пересоздастся); эмуляция arm64: пакет `qemu-user-binfmt` (тянет `qemu-user` со статическими бинарниками; флаги `OPF`, регистрирует `systemd-binfmt` при каждой загрузке; `qemu-user-static` в Ubuntu 26.04 — виртуальное имя) | к devbox ничего не подключено; платы стенда не трогает | образы `debian:trixie` и `ghcr.io/armbian/docker-armbian-build`, том `sheregesh-image-work`, `docker restart` и перезагрузка во время сборки; секретов (ключ подписи OTA) на devbox нет |
 
 ## Сбои 08–13.10, ради которых сессия заводится
 
@@ -46,7 +47,7 @@
 
 ## Обязанности
 
-1. **Статус одной строкой** — `scripts/box.sh status` (Mac → ssh): сеть (Tailscale/LAN), аптайм, GPU (драйвер, память), диск, нагрузка;
+1. **Статус одной строкой** — `scripts/box.sh status` (Mac → ssh): сеть (LAN), аптайм, GPU (драйвер, память), диск, нагрузка;
    устройства (serial, модель, Wi-Fi/IP, время, VPN, что на переднем плане, кем занято); порты 9876/8000/9500/7777/2517/2527/4174/8765;
    голова очереди и брони. Вердикт 1–5 строк, код 0/1.
 2. **Очередь по классам** (`box queue add|ls`): `gpu` — экспорт Godot, сборка Blender, Cycles (в т. ч. Nomad Surf), эмуляторы e2e —
@@ -56,7 +57,7 @@
 4. **Экземпляры на сессию** (`box up <служба> <сессия>`): сервер стенда Godot, копия коллектора со своей БД, статика Дронкарты — порт из пула,
    свой каталог; `box down`. Blender — один общий с бронью (GPU 4 ГБ), второй экземпляр только по решению владельца.
 5. **adb как постоянный user-сервис**, не зависящий от ssh-сеансов; все команды — только с `-s <serial>`.
-6. **Проверка после загрузки** (user-сервис или автозапуск из репозитория вместо ручной копии): Tailscale (перезапуск, если нужно), adb и
+6. **Проверка после загрузки** (user-сервис или автозапуск из репозитория вместо ручной копии): сеть (LAN и выход наружу), adb и
    устройства, Blender 9876 (ждать графику, повтор после segfault), редактор Godot. Итог — сообщением сессиям, которые держат брони, и Pipeline.
 7. **Перепроверка себя**: после каждого действия — `box status` и сравнение с ожидаемым; расхождение — повтор один раз, дальше — владельцу.
    Журнал действий и сбоев `~/box/journal.jsonl`; раз в день — короткая ретро Pipeline (skill `retro`).
@@ -75,12 +76,14 @@
 ## Что уже работает (D1, 13.10)
 
 `scripts/box.sh` (Mac, bash 3.2) — единственная точка входа; код выхода 0/1, вердикт первой строкой.
-Общая ssh-обвязка — `scripts/lib/devbox.sh` (19.10): `dssh <команда>` (на самом devbox идёт локально, `DEVBOX_TMO` — ConnectTimeout, 10 с), `unreachable` (Tailscale лежит или машина выключена). `dbx.sh` кладёт исполнителя на devbox файлом `dbx-run-<хэш>` через mv: перезапись на месте ломала процессы, уже ждущие в flock.
+Общая ssh-обвязка — `scripts/lib/devbox.sh` (19.10): `dssh <команда>` (на самом devbox идёт локально, `DEVBOX_TMO` — ConnectTimeout, 10 с), `unreachable` (машина выключена или не в сети). `dbx.sh` кладёт исполнителя на devbox файлом `dbx-run-<хэш>` через mv: перезапись на месте ломала процессы, уже ждущие в flock.
 `adb` в PATH неинтерактивного ssh: `~/.bashrc` на devbox (блок `box-adb-path` над проверкой интерактивности, 19.10; копия `~/.bashrc.bak-1019`) дописывает `~/android-sdk/platform-tools` в конец PATH — `pico.sh install` вне box.sh больше не падает «adb: command not found».
+`~/megablock10` на devbox — **полный** клон (не `--filter=blob:none`): `dbx.sh` пушит в него синтетические коммиты, а promisor-клон при приёме лезет в GitHub за недостающими объектами и отказывает (`upload-pack: not our ref`, 30.10 после переустановки). Чинится: `git config remote.origin.promisor false` + догрузка истории бандлом с Mac (`git bundle create … --remotes=origin main`, `git fetch бандл '+refs/remotes/origin/*:refs/remotes/origin/*'`), проверка — `dbx.sh -n проба -- --version` из worktree с untracked-файлом.
+Скорость с devbox после переустановки 25.10 (прямой выход, без VPN): github.com и его CDN (`objects.githubusercontent.com`, `185.199.*`) отдают 20–30 КБ/с (шаблоны экспорта Godot ~1,3 ГБ — около 17 ч; `syft` в сборке образа Шерегеша ~12 мин), `mirror.yandex.ru` и `deb.debian.org` — нормально (ISO Ubuntu 6,5 ГБ за 12 мин, ≈9 МБ/с). Большие файлы с GitHub качать на Mac (≈10 МБ/с), сверить SHA-256 и положить `scp`/`rsync` на devbox; маленькое (`git clone`, `uv`, плагин Godot AI) идёт нормально. Зеркала: ISO и пакеты — `mirror.yandex.ru/ubuntu-releases`, `apt` — штатные.
 
 | Команда | Что делает |
 |---|---|
-| `box.sh status [--brief]` | проба `scripts/box/probe.sh` идёт по ssh со stdin (копии на машине нет): up/load/GPU/диск, Tailscale/VPN/LAN, adb (чей сервер), устройства (модель, Wi-Fi, время, VPN, что на переднем плане, battery, forward/reverse), порты, чем занята машина, итог загрузочной проверки, версия скриптов. `!` — замечание. При недоступности — ping Tailscale и LAN отдельно, с подсказкой владельцу |
+| `box.sh status [--brief]` | проба `scripts/box/probe.sh` идёт по ssh со stdin (копии на машине нет): up/load/GPU/диск, LAN, adb (чей сервер), устройства (модель, Wi-Fi, время, VPN, что на переднем плане, battery, forward/reverse), порты, чем занята машина, итог загрузочной проверки, версия скриптов. `!` — замечание. При недоступности — ping Tailscale и LAN отдельно, с подсказкой владельцу |
 | `box.sh sync [ветка]` | клон `~/box/repo` (sparse, только `scripts/`) → ревизия; ставит юнит `box-adb`, пишет `Exec` автозапуска из клона; прежний `.desktop` — в `.orig` |
 | `box.sh adb [status\|adopt [--force]]` | чей adb-сервер; `adopt` переводит чужой сервер под службу, отказывая, пока есть forward/reverse, клиенты adb, Gradle, эмуляторы |
 | `box.sh boot-check` | прогнать проверку после загрузки вручную — идемпотентно, ничего не убивает; итог `~/box/boot.report` |
@@ -91,13 +94,13 @@
 | `box.sh pico status` / `wake <владелец> <мин> [заметка]` / `sleep <владелец> [--force]` | очки Pico: **будить только под бронь `pico`, гасить сразу после** — датчик приближения заклеен (решение владельца 13.10), сами очки не гаснут, матрицы выгорают. `wake` берёт бронь и жмёт `KEYCODE_POWER`; `sleep` гасит и снимает свою бронь. `KEYCODE_SLEEP` на Pico не работает, а POWER — переключатель, поэтому состояние (`dumpsys power`: `mWakefulness`, `Display Power`) читается до и после, на уже проснувшихся/спящих очках POWER не нажимается, повтор — один раз по свежему чтению. Чужую бронь гасить нельзя без `--force` |
 | `box.sh guard on\|off\|status` | таймер-страж `box-pico-guard` (раз в минуту, `ctl.sh pico guard`): Awake без брони дольше 3 мин → гасит. Включается **только этой командой** — действует на очки без человека; `status` показывает Awake без брони как замечание |
 
-Загрузочная проверка (`devbox-session-start.sh`): Tailscale трогается **только** если не Running — после поднятия VPN (incy) сначала
-`tailscale up --ssh --operator=nick` (без sudo: оператор демона — nick; причина «руками sudo tailscale up» — демон стартует раньше
-прокси xray и остаётся logged out), потом перезапуск tailscaled и ещё раз `tailscale up` (раньше перезапускали всегда, роняя ssh);
+Загрузочная проверка (`devbox-session-start.sh`): **VPN (incy) и Tailscale убраны 25.10.2026** (подписка на VPN кончилась, а машина и
+все её клиенты в одной локальной сети 192.168.1.0/24). Сеть — только проверка, что есть LAN-адрес и выход в интернет напрямую; ssh с Mac
+по `192.168.1.141` (`Host devbox` в `~/.ssh/config` указывает туда). Прежние шаги с `tailscale up` и перезапуском `tailscaled` — в истории git.
 adb — проверка службы; Blender — ждёт графику, повторяет, сохраняет крэш-отчёт; редактор Godot — только ждёт и сообщает; в конце та же
 проба. Итог — `~/box/boot.report` (его показывает `status`); сообщением сессиям с бронями и Pipeline итог станет в D2, когда появятся брони.
 
-**Не сделано и почему:** watchdog Tailscale (причину потери ssh 12–13.10 по журналам не восстановить — на обеих загрузках автозапуск
+**Не сделано и почему:** (Tailscale убран 25.10, пункт про его watchdog снят; раньше — причина потери ssh 12–13.10 по журналам не восстановлена, автозапуск
 довёл Tailscale до Running; при ближайшем сбое смотреть `journalctl -u tailscaled` и `~/.local/state/devbox-session.log`); перезагрузочный
 путь проверен только прогоном `boot-check` и подложным Blender с двумя падениями — полная загрузка требует владельца.
 
@@ -216,7 +219,7 @@ Pipeline и пишет владельцу.
 ничего не делает; код хука — в журнал `pico-light`. Чем включать — решает тот, кто подключит лампу (умная розетка, реле, `uhubctl`).
 **USB-хаб devbox** (13.10, только чтение): VIA Labs `2109:2210` (4 порта USB2, шина 1 порт 5, все 4 порта свободны) и `2109:0210`
 (1 порт, шина 2 порт 4 — **под ним Pico, питание этого порта не трогать**). `uhubctl` не установлен; ядро даёт `…/1-5:1.0/1-5-portN/disable`,
-но запись — только root, а у `nick` sudo без пароля лишь на перезапуск `tailscaled`. Умеет ли хаб реально отключать питание порта
+но запись — только root, а у `nick` sudo без пароля нет (кроме `box-usb-recover`). Умеет ли хаб реально отключать питание порта
 (PPPS), по `lsusb -v` без root не видно. Проще и надёжнее — **умная розетка (Wi‑Fi, с локальным API) или USB-реле на лампу**, без хаба.
 
 Чего `pico run` **не делает** сознательно: не меняет системных настроек очков (`svc power stayon`, `global_6dof`, `setprop` — только

@@ -4,7 +4,7 @@
 #   probe.sh            — вердикт, замечания, сводка (машина, сеть, adb, устройства, порты, занято)
 #   probe.sh --brief    — только вердикт и замечания
 # Только чтение: ничего не запускает, не перезапускает и не нажимает на устройствах. Код выхода: 0 — замечаний нет, 1 — есть.
-# Что считается замечанием (!): Tailscale не Running, нет adb-сервера на 5037, GPU/диск, устройство offline/unauthorized,
+# Что считается замечанием (!): нет adb-сервера на 5037, GPU/диск, устройство offline/unauthorized,
 # нет blender-mcp (9876) или редактора Godot (8000/9500), автозапуск не отчитался после загрузки. Остальное — справка.
 set -u
 ADB=${ADB:-$HOME/android-sdk/platform-tools/adb}
@@ -47,30 +47,9 @@ read -r DFSIZE DFPCT <<<"$(df -P / | awk 'NR==2{gsub("%","",$5); printf "%d %d",
 info "машина: up $(dur "$UP") · load $L1/$L5 из $CORES · $GPU · диск свободно ${DFSIZE} ГБ (${DFPCT}%)"
 
 # --- сеть -------------------------------------------------------------------------------------------------------------
-TS_STATE="нет tailscale"; TS_IP=""; TS_HEALTH=""
-if command -v tailscale >/dev/null; then
-  ts_json=$(timeout 6 tailscale status --json 2>/dev/null)
-  if [ -n "$ts_json" ]; then
-    # shellcheck disable=SC2016  # программа python — не для оболочки
-    read -r TS_STATE TS_IP _ <<<"$(python3 -c '
-import json, sys
-d = json.load(sys.stdin)
-s = d.get("Self") or {}
-print(d.get("BackendState", "?"), (s.get("TailscaleIPs") or ["-"])[0], s.get("Online"))' <<<"$ts_json" 2>/dev/null)"
-    TS_HEALTH=$(python3 -c '
-import json, sys
-print("; ".join((json.load(sys.stdin).get("Health") or [])[:2]))' <<<"$ts_json" 2>/dev/null)
-  else
-    TS_STATE="демон не отвечает"
-  fi
-fi
-if [ "$TS_STATE" != "Running" ]; then
-  problem "Tailscale: $TS_STATE${TS_HEALTH:+ ($TS_HEALTH)} — ssh снаружи пропадёт; sudo systemctl restart tailscaled, если не помогло — tailscale up"
-fi
-VPN="VPN нет"
-if ip -4 -br addr show tun_incy 2>/dev/null | grep -q '198\.18\.' && pgrep -x xray >/dev/null; then VPN="VPN tun_incy+xray"; fi
 LAN=$(ip -4 -br addr show eno1 2>/dev/null | awk '{sub("/.*","",$3); print $3}')
-info "сеть: tailscale $TS_STATE ${TS_IP} · ${VPN} · LAN ${LAN:-—}"
+[ -n "$LAN" ] || problem "нет LAN-адреса на eno1 (кабель, роутер)"
+info "сеть: LAN ${LAN:-—} (напрямую, без VPN и Tailscale)"
 
 # --- adb и устройства -------------------------------------------------------------------------------------------------
 ADB_NOTE=""

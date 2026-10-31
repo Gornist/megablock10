@@ -1,5 +1,7 @@
 # Дека в очках: порядок прогона на Pico 4
 
+**Статус: частично устарело (сверено с main 30.10.2026).** Порядок этапов и критерии актуальны (дека К2–К8 влита 4–5.10.2026), но прогон владельцем в репозитории не отмечен. Устарели пути подготовки: `~/pico-cfg/watch.sh`, `srv.sh`, `build.sh` и `calm_graph.json` лежали на старом devbox вне git (машина переустановлена 25.10). Актуальный путь: сборка очков — `netrun/tools/p6_build.sh`, запуск — `box.sh pico run|ready|start|fg` (правила — `docs/netrun-devbox.md`, `docs/devbox.md`), сервер с фальшь-Мостом — `netrun/tools/srv_p9.sh` и фикстуры `netrun/tools/stand/*_bridge_fixture.json`, журнал — `netrun/tools/pico.sh log`. Схема «шард любой рукой в деку» — по умолчанию (`auto_stow_right = true` в `client/world_scene.gd`).
+
 Один заход владельца на очках проверяет всё, что агенты сделали без очков (К2–К8 из [netrun-deck-tasks.md](../netrun-deck-tasks.md)).
 Подробные пункты по этапам — в соседних файлах `k3-checklist.md`, `k6-checklist.md`, `k7-checklist.md`; здесь — порядок и то, чего в них нет.
 Правила работы с очками: не ставить сборку, пока владелец в них; запуск через `~/pico-cfg/watch.sh`; владелец не видит терминал, журнал

@@ -1,21 +1,26 @@
 # netrun — проект Godot (VR-клиент, сервер мира, плоская сборка)
 
-Один проект Godot, три сборки (docs/netrun.md, «Сервер мира и клиент»). Рендерер — Mobile.
+**Статус:** актуально, сверено с main 30.10.2026. Разделы о ранних этапах (граф W1, «Серый узел» N7, A3) сохранены как история решений, где число или правило с тех пор
+изменилось — стоит пометка «теперь …» и ссылка на код. Время узла — только тактовое (`TickClock`, клетки 1 м): `docs/netrun-tick-mode.md`; общий план — `docs/netrun.md`.
+
+Один проект Godot, четыре режима запуска (`RunMode`: сервер, клиент Pico 4, плоская отладочная сборка, одиночная `solo` для Windows — `docs/netrun.md`, «Сервер мира и клиент»;
+`docs/netrun-flat-windows.md`). Рендерер — Mobile.
 
 ## Версии (закреплены на сезон)
 
-- **Godot 4.7.2-stable** (из docs/netrun-vr-hardware.md). Шаблоны экспорта — той же версии; на машине разработки их может не быть,
-  экспорт APK проверяет CI (задача G1).
+- **Godot 4.7.2-stable** (из docs/netrun-vr-hardware.md; та же версия в `.github/workflows/netrun.yml`, `GODOT_VERSION`). Шаблоны экспорта — той же версии: в CI ставятся сами, на devbox лежат в
+  `~/.local/share/godot/export_templates/4.7.2.stable/` (качаются с GitHub медленно — класть с Mac, `docs/netrun-devbox.md`). Экспорт APK, сервера и Windows-exe проверяет CI (jobs `export` и `solo-export`).
 - **gdUnit4 6.2.1** — лежит в `addons/gdUnit4` (источник: github.com/MikeSchulze/gdUnit4, тег v6.2.1). Проверен на Godot 4.7.2.
   Обновлять только осознанно, вместе с версией Godot.
-- **OpenXR Vendors 5.1.0** — пока НЕ добавлен. Понадобится, если потребуется passthrough на Pico (П4) или вендорские
-  расширения; требует Gradle-сборку и один вендор на шаблон экспорта. Для MVP на стандартном OpenXR не нужен.
+- **OpenXR Vendors 5.1.0** — по-прежнему НЕ добавлен (нужен был бы для passthrough или вендорских расширений; требует Gradle-сборку и один вендор на шаблон экспорта). Нужные Pico записи манифеста
+  (`handtracking=1`, `pvr.app.type=vr`) добавляет свой плагин экспорта `addons/netrun_pico_manifest` (в APK очков сам плагин не входит).
 - Очки — обычная Pico 4 (стандартный OpenXR).
 
 ## Pico 4: известные ограничения (проверено на очках 2026-10-04)
 
 Очки: Pico 4, PICO OS 5.13.7, рантайм OpenXR Pico(XRT) 3.0.1. Установка, запуск, журналы — `tools/pico.sh`; стенд с очками на
-devbox — docs/netrun-devbox.md, «Очки Pico 4 по USB».
+devbox — docs/netrun-devbox.md, «Очки Pico 4 по USB». Очки — общее устройство машины: бронь и показ владельцу идут через `scripts/box.sh pico …`
+(`docs/devbox.md`), скрипты стендов `tools/pico_stand.sh`, `pico_series.sh`, `p6_run.sh` и др. сами проверяют бронь (`tools/box_guard.sh`); список — в разделе «Скрипты tools/» ниже.
 
 - **`xr/openxr/foveation_eye_tracked=false`** (project.godot; комментарий в файле не живёт — редактор его переписывает). С этим
   расширением (Godot 4.7 запрашивает его по умолчанию на Vulkan/Mobile) процесс падает сразу после строки
@@ -49,7 +54,7 @@ devbox — docs/netrun-devbox.md, «Очки Pico 4 по USB».
 
 ## Структура
 
-- `main.tscn`, `main.gd` — точка входа, выбирает режим.
+- `main.tscn`, `main.gd` — точка входа, выбирает режим (`shared/run_mode.gd`: `--server`/метка `dedicated_server`, `--flat`, `--solo`/метка `solo`, `--client`/Android; без аргументов — плоская).
 - OpenXR включён только на Android (`openxr/enabled.android` в project.godot): плоская сборка и сервер его не поднимают. Риг — `client/xr_rig.tscn`, математика — `shared/rig_math.gd`. На ПК с рантаймом OpenXR: `-- --client --xr-mode on`.
 - `shared/` — код, общий для сервера и клиента (в т.ч. `run_mode.gd` — выбор режима).
 - `shared/breach/` — движок взлома деки (порт мини-игры телефона, docs/netrun-deck-design.md §3, §7.4, §10): `BreachRules` (строка/столбец, совпадение, исход),
@@ -57,9 +62,14 @@ devbox — docs/netrun-devbox.md, «Очки Pico 4 по USB».
   `for_decrypt`), `BreachAutoSolver` (боты). Числа и реплики — `data/rules/breach.json` (выгружает Kotlin-тест `:rules`), клетка — `Vector2i(строка, столбец)`.
   Тесты `tests/breach_*_test.gd`; golden от Kotlin (`tests/fixtures/breach_golden.json`) проигрывает `breach_golden_test.gd`.
 - `server/node/vault_breach.gd` — взлом хранилищ на узле (К3); клиент — `client/ui/breach_panel.gd`, `breach_cell.gd`, копия попытки `shared/breach/breach_mirror.gd`.
-- `server/` — сервер мира. `client/` — клиент Pico 4 и плоская сборка. `tests/` — тесты gdUnit4.
-- `export_presets.cfg` — пресеты: «Client Pico 4 (Android)» (OpenXR, arm64), «Server (dedicated)» (метка `dedicated_server`),
-  «Flat debug (Linux)». Ключ подписи Android в репозиторий не кладём (в CI — ключ отладки).
+- `server/` — сервер мира: `net_server.gd` (ENet, сессии, телепорт), `world_server.gd` (запуск), `node/` (`GrayNode` и вынесенные из него `LayoutDevices`, `NodeAlarm`, `ShardVaults`, `RunOutcome`, `NodeDeck`,
+  `NodeSync`; `TickClock`, `GraphWorld`/`NodeGraph`, взлом/заряд/расшифровка/барьер, `GiveService`), `ice/` (`TickIce`, `TickBlack`, `TickBeacon`, `TickSensor`; `IceBrain` — шим для снимка и журнала),
+  `daemons/`, `trace/`, `bridge/` (`BridgeClient`, `FakeBridge`, `BridgeApi`).
+- `client/` — клиент Pico 4 и плоская сборка (`ui/` — дека, панели, HUD; `solo/` — экраны одиночной игры; `audio/`; рендер: `volume_*` — облако частиц объектов, `shader_warmup.gd`, `frame_perf.gd`). `data/` — граф, раскладки узлов
+  (`data/layouts/*.json`), демоны, правила взлома; `data/solo/` — граф и фикстура Моста одиночной игры. `assets/` — модели, шейдеры, превью-сцены. `tools/` — скрипты (раздел «Скрипты tools/» ниже).
+- `tests/` — тесты gdUnit4: 171 файл `*_test.gd` и около 1950 функций `test_*` (`grep -rh "func test_" tests | wc -l`), боты `tests/bot/`, данные `tests/fixtures/`.
+- `export_presets.cfg` — четыре пресета: «Client Pico 4 (Android)» (OpenXR, arm64; без `server/`, `tests/`, `addons/gdUnit4`, `addons/netrun_pico_manifest`), «Server (dedicated)» (метка `dedicated_server`, без `client/`),
+  «Flat debug (Linux)» (метка `flat`) и «Flat Windows (solo)» (метки `flat,solo`, один exe с вшитым pck — одиночная игра для тестеров, `tools/export_flat_win.sh`). Ключ подписи Android в репозиторий не кладём (в CI — ключ отладки).
 
 ## 3D-ассеты
 
@@ -69,6 +79,8 @@ devbox — docs/netrun-devbox.md, «Очки Pico 4 по USB».
 `assets/models/MANIFEST.md`. `.glb` несут только форму и цвета вершин: вид (аддитивность, свечение, дыхание штрихов, тир, шрам ICE, отражение в полу)
 делают шейдеры `assets/shaders/*.gdshader`, которые подставляет `AssetMaterials.apply` (`assets/asset_materials.gd`); `client/node_assets.gd` вызывает его
 при создании каждой модели. Тир узла — параметр материала окружения (путь модуля от тира не зависит).
+Вид по умолчанию — «облако частиц»: грани реквизита и пол — частицы с дырами (шейдер `cloud_dark`, нужен MSAA 2×), объекты Сети (хранилище, портал, шард, выход, ICE) — объёмные облака из файлов `.points` (`client/volume_*.gd`);
+подробности и ручки — раздел «Ручки `netrun.cfg`: `[render]` и `[assets]`».
 
 Исходники — Blender-скрипты `assets/src/*.py` (Blender запускается только на devbox). Сборка, проверка и кадры — `assets/tools/pipeline.sh`
 (`build` собирает все ассеты на devbox и проверяет их `assets/src/validate.py`, `shots`, `demo`, `fps`); кадры настоящей сцены клиента —
@@ -88,29 +100,30 @@ devbox — docs/netrun-devbox.md, «Очки Pico 4 по USB».
 пути и одевает модели шейдерами (тир узла из graph.json — BASE, HARD или NIGHTMARE — красит окружение, файлы одни на все тиры), `client/ice_view.gd` — ICE, `client/avatar_view.gd` —
 чужие нетраннеры; сцена-оркестратор — `client/world_scene.gd`. Сервер без графики и ассетов не читает.
 
-- **Комната.** Карта клеток по 2 м (`NodeLayout.cell_center`): пол (одна плита с сеткой и зерном — игровое поле), колонны-укрытия (`NodeLayout.PILLARS`),
-  площадка выхода из помостов, ворота `lockdown_gate` при локдауне. Повторяющиеся модули — один `MultiMesh` на модуль и вариант, у колонн, укрытий и помостов ещё
+- **Комната.** Модули окружения лежат на сетке 2 м (`NodeLayout.cell_center`, `CELL` = 2), игровая сетка (прыжок, взгляд ICE) — клетки 1 м (`NodeGrid.CELL_M`); размер комнаты — раскладка узла
+  `data/layouts/<имя>.json` (`LayoutData`: карта до 12×12 блоков, не обязательно квадрат; 8×8 — `legacy`, Фойе, учебный). Пол (одна плита с сеткой и зерном — игровое поле), колонны-укрытия
+  (символ `#` карты; `NodeLayout.PILLARS` — только `legacy`), площадка выхода из помостов, ворота `lockdown_gate` при локдауне. Повторяющиеся модули — один `MultiMesh` на модуль и вариант, у колонн, укрытий и помостов ещё
   зеркальный `MultiMesh` — отражение в полу. Потолка, стен, дальних пластов (`far_*`) и кольца горизонта нет (решение владельца 18.10: «убери плиты сверху и снизу
   вообще, оставим только горизонт»): горизонт — фон-купол `BackdropDome` (`assets/backdrop_dome.gd`), его добавляет сцена клиента.
 - **Предметы.** `vault_open` / `vault_closed` на слоте шарда (шард лежит / слот пуст), над ним вращается и парит `shard` (`shard_encrypted`, если слот
   помечен `enc`); `portal` на слоте портала, `portal_locked` — когда узел назначения в локдауне (`open: false` или отказ `portal_denied` / lockdown) и пока
   за игроком идёт охота Black ICE (поле `hunt` снимка state); `lockdown_gate` вместо дверей при уровне trace LOCKDOWN (сервер выход при этом не закрывает —
-  это сигнал среды); `seat` в точке входа — только в старой комнате без раскладки (в раскладочных узлах кресла нет, колонны `sensor` нет нигде: у обоих в правилах роли нет, решение 17.10), `dead_deck` из поля `dead` события node (сервер его пока не шлёт).
+  это сигнал среды); `seat` в точке входа — только в старой комнате без раскладки (в раскладочных узлах кресла нет, колонны `sensor` нет нигде: у обоих в правилах роли нет, решение 17.10), `dead_deck` рядом со слотом, где лежит демон мёртвой деки (список сервер шлёт в событии node, `ShardVaults.dead_decks`).
 - **ICE.** Клип выбирается по состоянию из снимка (`IceView.clip_for`): Soft — patrol / idle (подозрение стоит) / patrol быстрее (поиск); Black — idle,
   hunt (поиск и охота), catch (охота вплотную к игроку). Над головой знак: «?» подозревает, «!» ищет, «!!» охотится (цвет модели состояние не передаёт).
 - **Аватары.** `avatar/runner` с неоном под номер игрока (девять оттенков), лицом по ходу движения (сервер шлёт только позицию).
 - **Сетка (A3).** Раньше слоты стояли на рёбрах и вершинах ячеек, а площадка портала r = 1,5 м у слотов (−7; −6) и (4; −13) заходила за стену на ~0,7 м.
-  Теперь `SPAWN` (−1; −1), `SHARD_SLOTS` (−1; −9), (−5; −13), (5; −13), `PORTAL_SLOTS` (−5; −1), (−5; −9), (3; −9) — центры ячеек, не ближе 1 м к стене
-  (площадки порталов — не ближе 1,7 м); `EXIT_POS` (4; 0) — вершина четырёх ячеек (четыре помоста вписывают круг r = 2). Аватар на сервере появляется
-  в `SPAWN`, риг клиента стоит там же. Проверка — `tests/node_layout_test.gd`, сборка сцены — `tests/node_scene_test.gd`.
-- **Бюджет.** Самый тяжёлый узел (NIGHTMARE, три хранилища, три портала, мёртвая дека, три ICE, девять чужих аватаров) — около 19 тыс. треугольников при
-  потолке 100 тыс.; число вызовов отрисовки — в `docs/netrun-stage1-results-flat.md` (замер в окне).
+  Теперь `SPAWN` (−1; −1), `PORTAL_SLOTS` (−5; −1), (−5; −9), (3; −9) — центры ячеек, не ближе 1 м к стене (площадки порталов — не ближе 1,7 м); `EXIT_POS` (4; 0) — вершина четырёх ячеек
+  (четыре помоста вписывают круг r = 2). `SHARD_SLOTS` с тех пор сдвинуты в центры клеток 1 м своего блока (сейчас (−1,5; −9,5), (−5,5; −12,5), (4,5; −12,5): владелец на очках П4 видел хранилища на пересечении).
+  Аватар на сервере появляется в `SPAWN`, риг клиента стоит там же. Проверка — `tests/node_layout_test.gd`, сборка сцены — `tests/node_scene_test.gd`.
+- **Бюджет.** Замер A3 (до облака частиц): самый тяжёлый узел (NIGHTMARE, три хранилища, три портала, мёртвая дека, три ICE, девять чужих аватаров) — около 19 тыс. треугольников при
+  потолке 100 тыс.; число вызовов отрисовки — в `docs/netrun-stage1-results-flat.md` (замер в окне). Бюджет кадра облака сейчас меряют на очках (`bench`, `perf`, `volume_budget_ms` — раздел про ручки; `docs/netrun-bench.md`, `docs/netrun-refactor-plan.md`).
 
 ## Тесты
 
-gdUnit4, как в CI (`.github/workflows/netrun.yml`): `netrun/tools/gdunit.sh [res://tests/файл_test.gd]` на devbox (весь набор — 574 тестаа,
-несколько минут; долгое — через `devjob`). Код выхода: 0 — зелёно, 100 — упавшие, 101 — предупреждения (CI красит и их). Встроенный
-`test_run` плагина Godot AI проект не видит — не использовать. Правки сцен и запуск игры — агент `godot-dev`.
+gdUnit4, как в CI (`.github/workflows/netrun.yml`, job `test`: проверка ассетов `assets/src/validate.py`, импорт, `tools/gdunit_ci.sh res://tests`): с Mac — `netrun/tools/dev.sh test [файл_test …]` (по изменённым) или
+`dev.sh test --all` (весь набор — 171 файл, около 1950 функций `test_*`, 5–10 минут; в фоне); на devbox напрямую — `netrun/tools/gdunit.sh [res://tests/файл_test.gd]`. Код выхода: 0 — зелёно, 100 — упавшие, 101 — предупреждения (CI красит и их). Встроенный
+`test_run` плагина Godot AI проект не видит — не использовать. Правки сцен и запуск игры — агент `godot-dev`; цикл правки — skill `netrun-loop`.
 
 ## Управление: телепорт и поворот при телепорте
 
@@ -129,34 +142,36 @@ gdUnit4, как в CI (`.github/workflows/netrun.yml`): `netrun/tools/gdunit.sh 
   углы; 8° у «вверх» — без поворота; слабее 0,6 угол не читается; `RigMath.facing_deg`). Вернул стик к центру (ниже 0,3 дольше 0,05 с) —
   телепорт: экран темнеет 0,1 с, в самой тёмной точке риг переезжает и поворачивается вокруг головы на выбранный угол (`XRRig._step_blink`),
   проявляется 0,1 с; берётся последнее положение «держу», а не путь стика к центру. Нажатие стика (`primary_click`) — отмена; отмена,
-  отказ клиента или сервера поворот отменяют. Мир на глазах не вращается. Вращение мира левым стиком по X (`turn_mode = smooth`: плавно
-  вокруг головы, 60°/с, разгон 0,25 с, остановка 0,2 с, виньетка по краям до 45 %; `snap`: рывок 30°) — только по настройке. Захват (grip) и
+  отказ клиента или сервера поворот отменяют. Поворот мира стиком — тем же правым стиком вбок, левый стик не используется: по умолчанию `turn_mode = snap` (щелчок `snap_step_deg` = 45°), `smooth` (плавно
+  вокруг головы, 60°/с, разгон 0,25 с, остановка 0,2 с, виньетка по краям до 45 %) и `none` (весь стик — прицел телепорта, поворот только при телепорте) — по настройке. Захват (grip) и
   удержание выхода (menu) — как раньше. Во время цифрового тоннеля (`XRRig.movement_locked`) телепорт запрещён (прицела нет).
 - **Плоская сборка** (разработка и боты): T зажата — прицел по взгляду в пол (ПКМ + мышь — наклон взгляда), отпустить — телепорт, C — отмена;
   при зажатой T Q/E выбирают поворот при телепорте (∓90°); WASD — только с `--walk`; плавный или рывковый поворот стиком — `--turn=smooth` или `--turn=snap`.
-- **Правила.** Дальность `TELEPORT_RANGE` = 4 м по полу (от риг-а, не от руки), перезарядка `TELEPORT_COOLDOWN` = 1,2 с, цель внутри комнаты
-  (`NodeLayout.clamp_to_room`), прицел «в себя» (< 0,25 м) телепорт не запрашивает. Луч руки вниз — пересечение с полом (рука должна быть
-  выше пола не меньше чем на 0,2 м), горизонтальный и выше — дальняя точка по горизонтали. `TELEPORT_TRACE` = 0 — задел под шум телепорта, не используется.
-- **Сервер решает** (`NetServer._handle_teleport`, сообщение `WorldMsg.TELEPORT` `{t: tp, p: [x, z]}`): сессия с аватаром, не тоннель,
-  цель в комнате, расстояние от позиции аватара ≤ предел + 0,5 м (поза клиента запаздывает), с прошлого телепорта ≥ предел перезарядки − 0,2 с.
-  Пределы сервера (`RigMath.TELEPORT_RANGE_LIMIT` = 6 м, `TELEPORT_COOLDOWN_LIMIT` = 0,6 с) выше значений по умолчанию, чтобы настройка на очках
-  могла их менять, но не обходить; клиент никогда не доверяется. Успех: аватар в точке, база предела скорости потока поз (`_pos_time_ms`) сбрасывается,
-  в журнал сервера `teleport ok`. Отказ — `{t: tp_no, reason: range|cooldown|tunnel|room, p: [x, z], left}`, клиент возвращает риг на позицию
+- **Правила.** Прыжок — на центр клетки 1 м (`NodeGrid`), не дальше `TELEPORT_RANGE` = 4,5 м по полу (= `NodeGrid.REACH_M`, центр до центра), не на занятую клетку (колонна, хранилище — его клетки отправляют на площадку) и не сквозь укрытия
+  (линия между центрами; угол закрыт, только если заняты обе боковые клетки). Узел тактовый: **ход один за такт** (второй — отказ `moved`), перезарядки нет ни на клиенте, ни на сервере (`TELEPORT_COOLDOWN` = 1,2 с
+  действует только вне тактов: тесты и запасные режимы); прыжок на свою клетку — ход «ждать». Цель внутри комнаты (`NodeLayout.clamp_to_room`), прицел «в себя» (< 0,25 м) вне тактов телепорт не запрашивает.
+  Луч руки вниз — пересечение с полом (рука должна быть выше пола не меньше чем на 0,2 м), горизонтальный и выше — дальняя точка по горизонтали. `TELEPORT_TRACE` = 0 — задел под шум телепорта, не используется. Клетки, ход и красная
+  зона — `docs/netrun-tick-mode.md`.
+- **Сервер решает** (`NetServer._handle_teleport`, сообщение `WorldMsg.TELEPORT` `{t: tp, p: [x, z]}`): сессия с аватаром, не тоннель, цель в комнате, не `moved`, клетка (`cell`: занята, вне комнаты или в ней другой аватар;
+  `blocked`: за укрытием; `range`: дальше 4,5 м от клетки аватара + запас). Пределы сервера (`RigMath.TELEPORT_RANGE_LIMIT` = 6 м, `TELEPORT_COOLDOWN_LIMIT` = 0,6 с — последний действует вне тактов) выше значений по умолчанию,
+  чтобы настройка на очках могла их менять, но не обходить; клиент никогда не доверяется. Успех: аватар в центре клетки (или на площадке хранилища), база предела скорости потока поз (`_pos_time_ms`) сбрасывается,
+  в журнал сервера `teleport ok`. Отказ — `{t: tp_no, reason: range|cooldown|tunnel|room|cell|blocked|moved, p: [x, z], left}`, клиент возвращает риг на позицию
   сервера (с морганием; если затемнение ещё не дошло до переноса — переноса не будет вовсе). Поток поз и предел скорости (8 м/с) остаются.
 - **Чужие аватары.** В `av` у записи аватара, который прыгал, 4-й элемент — счётчик скачков (`NetServer.avatar_entry`). `StateBuffer` не
   интерполирует и не экстраполирует между снимками с разным счётчиком: аватар стоит на старом месте и прыгает на новое, не «ползёт»; потеря
   пакета скачок не прячет (счётчик в каждом пакете). Перенос сервером (`NetServer.teleport`, переход через портал) тоже считается скачком.
 - **Боты** (`tests/bot/bot_client.gd`) двигаются прыжками по тем же правилам: не дальше `RigMath.TELEPORT_RANGE`, пауза `HOP_PAUSE` (перезарядка + 0,05 с);
   осторожный путь EXPOSED_RUN — короткими прыжками. Круги LOITER — прыжками по точкам круга (дуга не больше 0,8 рад).
-- **Настройка без пересборки.** Необязательный `user://comfort.cfg` (`client/comfort_config.gd`, секция `[comfort]`): `turn_mode` (`none` | `smooth` | `snap`),
-  `turn_speed_deg_s` (10…120), `turn_vignette` (0…0,8), `turn_ramp_up_s`, `turn_ramp_down_s` (0,05…2), `teleport_range` (1…6), `teleport_cooldown`
-  (0,6…10), `teleport_blink_s` (0,03…0,4; каждая половина моргания). Нет файла — значения из кода; неверное поле — значение по умолчанию и
+- **Настройка без пересборки.** Необязательный `user://comfort.cfg` (`client/comfort_config.gd`, секция `[comfort]`): `turn_mode` (`snap` по умолчанию | `smooth` | `none`),
+  `snap_step_deg` (10…90), `turn_speed_deg_s` (10…120), `turn_vignette` (0…0,8), `turn_ramp_up_s`, `turn_ramp_down_s` (0,05…2), `teleport_range` (1…6), `teleport_cooldown`
+  (0,6…10), `teleport_blink_s` (0,03…0,4; каждая половина моргания), а также `hand_pitch_deg` и `hand_offset_x/y/z` (калибровка рук). Нет файла — значения из кода; неверное поле — значение по умолчанию и
   `comfort.warn` в журнале; всё ограничено пределами (серверными для телепорта). На очках — `tools/pico.sh tune ключ=значение …`
   (правит файл, перезапускает приложение, печатает строку `comfort` из журнала; `tune --reset` — удалить файл). Адрес сервера и токен через
-  файл не передаются. Значения по умолчанию: поворот none (стик мир не вращает; числа smooth — 60°/с, разгон 0,25 с, остановка 0,2 с, виньетка 0,45); телепорт 4 м, 1,2 с, моргание 0,1 + 0,1 с.
+  файл не передаются. Значения по умолчанию: поворот snap 45° (числа smooth — 60°/с, разгон 0,25 с, остановка 0,2 с, виньетка 0,45); телепорт 4,5 м (`RigMath.TELEPORT_RANGE`; в комментарии-образце заголовка `comfort_config.gd` ещё стоит 4.0), моргание 0,1 + 0,1 с;
+  перезарядка 1,2 с — вне тактов.
 - **Замеры в журнале клиента** (для проверки на очках): `node.perf node=… tier=… build_ms=… first_frame_ms=… draws=… prims=… objects=…` при входе в
   узел (сборка комнаты, первая отрисовка — туда попадает первый показ шейдеров — и через 2 с вызовы отрисовки/примитивы/объекты в кадре),
-  `perf frames=… avg_ms=… max_ms=… slow=… draws=… prims=… objects=…` раз в 10 с, `frame.slow ms=… limit_ms=17.36` — только кадр, пропустивший
+  `perf frames=… avg_ms=… max_ms=… slow=… draws=… prims=… objects=…` раз в 10 с, `frame.slow ms=… limit_ms=17.36` (`FrameStats` считает от 72 Гц и допуска 1,25; при 90 Гц предел тот же) — только кадр, пропустивший
   обновление экрана (`shared/frame_stats.gd`; раньше порог был ровно 1/72 с и срабатывал на каждом кадре при ровных 72 Гц).
 - **Журнал клиента.** `comfort turn=… speed=… vignette=… ramp_up=… ramp_down=… range=… cooldown=… blink=… file=none|user walk=…` при старте;
   `rig.teleport from=x,z to=x,z dist=… ok=… face=…` на каждую попытку (face — поворот при телепорте, градусы вправо); `teleport.denied reason=… by=client|server` на отказ. Тесты: `rig_math_test.gd`
@@ -169,8 +184,9 @@ gdUnit4, как в CI (`.github/workflows/netrun.yml`): `netrun/tools/gdunit.sh 
 
 Решение владельца (4 октября 2026, `docs/netrun.md`): в очках на деке левой руки — мессенджер и звонки. **Очки — второй экран телефона**:
 телефон остаётся в кармане включённым и хозяином личности, истории сообщений и WebRTC-звонка; дека показывает то, что он отдаёт, и передаёт
-ему команды (ответить заготовкой, принять, отклонить, завершить, заглушить). **Голос звонка в очках** (микрофон и динамики Pico) — следующий
-этап, здесь только интерфейс. По умолчанию это **прототип на фиктивных данных**: владелец оценивает ощущения и читаемость на Pico 4.
+ему команды (ответить заготовкой, принять, отклонить, завершить, заглушить). **Голос звонка в очках** (микрофон и динамики Pico) — `client/phone_voice.gd`
+(`PhoneVoice`, кадры микрофона и звук собеседника по связи с телефоном; план, протокол и итоги — `docs/netrun-phone-link.md`, «Голос»). Без аргументов по-прежнему
+**фиктивные данные** (`FakePhoneLink`), настоящая связь — `--phone=remote` или `[phone]` в `netrun.cfg` (ниже): интерфейс деки один и тот же.
 
 **Связь с телефоном.** По умолчанию — фиктивная (`FakePhoneLink`, сценарий по таймеру). Настоящая (`RemotePhoneLink`: очки слушают порт, телефон подключается
 к ним, токен в `?token=`) включается аргументом `--phone=remote [--phone-port=7420] [--phone-token=…]` или секцией `[phone]` в `netrun.cfg` на очках
@@ -206,7 +222,7 @@ gdUnit4, как в CI (`.github/workflows/netrun.yml`): `netrun/tools/gdunit.sh 
   `settings.vault_requires_open` выключен и лежащий шард открыт всем; К3 включил его по умолчанию (`"auto"`, см. «Взлом хранилища»).
 - **Взлом хранилища (К3).** Шард в хранилище берётся только после взлома мини-игрой на панели в мире — тем же движком, что на телефоне
   (`shared/breach/`, правила и числа 1:1, docs/netrun-deck-design.md §3, §7). Сквозной путь:
-  1. **Площадка.** Телепорт ближе `NodeLayout.VAULT_SNAP_RADIUS` (1,6 м) к хранилищу ставит риг на площадку в `VAULT_PAD_DIST` (0,85 м) перед ним и
+  1. **Площадка.** Телепорт ближе `NodeLayout.VAULT_SNAP_RADIUS` (0,75 м) к хранилищу ставит риг на площадку в `VAULT_PAD_DIST` (1 м) перед ним (прыжок на любую клетку блока хранилища ведёт на площадку — `NodeGrid.landing`, `docs/netrun-tick-mode.md`) и
      разворачивает взгляд к нему (`XRRig.teleport_snap` + `face_toward` в самой тёмной точке моргания); то же считает сервер (`NetServer.teleport_snap`,
      `NodeLayout.snap_to_vault_pad`) — клиенту не верим. С площадки и панель, и парящий шард в досягаемости сидя.
   2. **Панель.** `BreachPanel` (`client/ui/breach_panel.gd`): 48 × 32 см, SubViewport 768 × 512, поза — `BreachPanelLayout.pose` (0,65 м от головы к
@@ -222,7 +238,7 @@ gdUnit4, как в CI (`.github/workflows/netrun.yml`): `netrun/tools/gdunit.sh 
   4. **Сервер.** `VaultBreach` (`server/node/vault_breach.gd`) на узле: проверка («рядом» — `BREACH_REACH` 3 м, не пусто, не занято, не остывает, демоны в
      деке, цепочки ≤ RAM), номер попытки `n = max(world.breach_n, breach.n) + 1` пишется в `session.world.breach_n` ДО показа сетки, `BreachRun.for_storage`,
      таймер `advance(delta)`, тапы. Мир идёт: ловушка поднимает trace игрока на `settings.trap_trace[тир узла]` (5 / 8 / 12), провал (FAIL) поднимает
-     тревогу узла на `alert_per_fail`. Все цели совпали — попытка кончается сразу (исход SUCCESS тот же, добивать буфер не нужно).
+     тревогу узла на `alert_events.fail` и trace игрока на `trace_events.fail` (`NodeGraph.DEFAULT_SETTINGS`). Все цели совпали — попытка кончается сразу (исход SUCCESS тот же, добивать буфер не нужно).
   5. **Итог.** Буфер полон, таймер, «ЗАВЕРШИТЬ», телепорт, выброс/флэтлайн/выход, обрыв связи, уход в тоннель — всё это итог по собранному (`resolve`):
      подсмотреть сетку и уйти без последствий нельзя. Он уходит в Мост операцией `run.breach` (`BridgeApi.run_breach`, rid `breach:<сессия>:<n>`,
      контракт docs/netrun-bridge-protocol.md 6.6): Мост считает эдди, открывает хранилища (`session.opened`), ставит остывание узла, решает сигнал СБ.
@@ -330,15 +346,19 @@ IBM Plex Mono из приложения, `client/ui/fonts/`, около 1,1 МБ
 
 ## Как запускать
 
-Режим: сервер, если `--headless` или метка `dedicated_server`/аргумент `--server`; клиент — на Android или `-- --client`;
-иначе плоская сборка (`-- --flat`). Аргументы пользователя идут после `--`.
+Режим выбирает `RunMode.detect` и `main.gd`: сервер — метка `dedicated_server`, `-- --server` или любой запуск `--headless` без `--flat`/`--client`/`--solo`; плоская сборка — `-- --flat`;
+одиночная игра — `-- --solo` или метка `solo` (Windows-exe); клиент — на Android или `-- --client`; без аргументов с окном — плоская. Аргументы пользователя идут после `--`.
+Бот без сцены — `-- --bot=ghost_run|exposed_run|graph_run` (`--bot-route=`, `--bot-daemon=`, `--bot-hold=`, `--bot-reconnect`; перечень — комментарий над `run_bot` в `main.gd`).
 
 ```sh
 godot --headless --path netrun -- --bridge=fake                    # сервер мира на тестовых данных; выход по Ctrl+C / SIGTERM. --bridge= обязателен: без него (и без --tokens=) сервер не стартует
 godot --headless --path netrun -- --bridge=fake --exit-after=5     # сервер, сам выйдет через 5 с
 godot --path netrun -- --flat                          # плоская отладочная сборка (с окном)
+godot --path netrun -- --solo                          # одиночная игра для тестеров (сервер с фикстурой Моста и клиент в одном процессе; на Windows — exe из `tools/export_flat_win.sh`)
 godot --headless --path netrun --import                # импорт проекта (CI, первая загрузка)
 ```
+
+С Mac (Godot там не запускаем) то же через devbox: `netrun/tools/dev.sh sync|test|shot` (раздел «Тесты» и `skill netrun-loop`), экспорт — `tools/export_flat_win.sh`, APK очков — `~/pico-cfg/build.sh` на devbox (`docs/netrun-devbox.md`).
 
 Сеть (V2): сервер слушает ENet-порт 7777; токены пока из аргумента (вместо Моста, F1/M5), клиент берёт адрес и токен из аргументов.
 
@@ -425,6 +445,33 @@ godot --headless --path netrun -s -d res://addons/gdUnit4/bin/GdUnitCmdTool.gd -
 (на раннере — стеки через gdb), убивает процесс и один раз повторяет набор; красные тесты не повторяет. Предел одного теста — 120 с
 (`gdunit4/settings/test/test_timeout_seconds` в `project.godot`): зависший `await` теперь падает «Test timed out», а не ждёт 5 минут.
 
+## Ручки `netrun.cfg`: `[render]` и `[assets]`
+
+Вид и стоимость кадра подбирают на очках без пересборки: секции `[render]` и `[assets]` того же `netrun.cfg` (поиск файла — `NetConfig.default_paths()`, берётся первый прочитанный; нет файла или поля — умолчание из кода,
+неверное поле — умолчание и строка `render.warn` в журнале). Положить: `tools/pico_stand.sh <пресет> [ключ=значение …]` (пресеты `base`, `bench`, `cloud-*`, `probe-sweep`; `--show`, `--reset`; читается при старте — после смены перезапуск),
+серией — `tools/pico_series.sh`; замеры и итоги — `docs/netrun-bench.md`, `docs/netrun-refactor-plan.md`. Список читать из кода, не отсюда: `RenderConfig.KEYS` (`shared/render_config.gd`) и `AssetMaterials.KNOBS` (`assets/asset_materials.gd`).
+
+- **`[render]`** (умолчание — принятый вид): `msaa` (2; допустимо 0, 2, 4 — 4× не влезает в 11,1 мс при 90 Гц), `layers` (`behind`; панели слоями композитора OpenXR: `behind` | `on` | `off`), `far_cull_m` (12; дальше модели и облака не рисуются, 0 — без предела, 3…60),
+  `foveation` (0…3; при `msaa` > 0 принудительно 0), `perf` (`off` | `on` | `diag`: строка `[perf]` раз в 5 с; `diag` — ещё `[xr-diag]` и PNG кадра), `volumetric` (`vault,portal,shard,exit,ice` — объекты облаком частиц; `off`, `all` или список),
+  `warmup` (`on`; прогрев шейдеров за чёрным экраном), `volume_budget_ms` (0 — выкл.; 4…20 — регулятор плотности облаков по GPU-времени кадра), `volume_impostor_m` (0 — выкл.; 4…40 — дальние облака билбордами),
+  `bench` (имя пресета `EyePresets`: воспроизводимый замер, строка `[bench] ИТОГ`), `probe` (синтетическая нагрузка `LoadProbe`, `sweep` — серия). Удалённые тупики замеров `aa`, `fringe`, `scale`, `foveation_dynamic` в старых файлах игнорируются с предупреждением.
+- **`[assets]`** (`AssetMaterials.KNOBS`, неизвестная ручка игра пропускает с предупреждением): облако на гранях и полу (`cloud`, `cloud_floor`, `floor_density`, `dust_*`, `cloud_edge_mix`), его освещение и дыхание (`cloud_light`, `lit_*`, `cloud_breath`, `cloud_touch`),
+  сетка клеток 1 м на полу (`floor_grid`), кромки плит (`rim_*`), штрихи и точки окружения (`streak_keep`, `point_keep`, `min_px_*`), вуаль и завеса плит (`veil_scale`, `tile_glow*`), цвет плит (`solid_base`), `edge_round`.
+  Смысл и принятые значения каждой ручки — в комментариях `KNOBS` и `assets/ARCHITECTURE.md` §21.
+
+## Скрипты `tools/`
+
+С Mac (Godot, Gradle и очки — на devbox; общий цикл и брони — `docs/devbox.md`, `docs/netrun-devbox.md`):
+
+- `dev.sh` — `sync` / `test [файлы|--all]` / `shot res://сцена` / `all`: rsync в `~/wt-<ветка>` на devbox, тесты gdUnit4 и кадры превью одной сеткой (skill `netrun-loop`).
+- `gdunit.sh`, `gdunit_ci.sh` — тесты gdUnit4 на devbox / в CI со сторожем зависания. `export_flat_win.sh` — один exe для Windows (пресет «Flat Windows (solo)», `--smoke` — дымовой прогон проекта; `docs/netrun-flat-windows.md`).
+- Очки: `pico.sh` (install / launch / stop / log / shot / info / tune / provision), `pico_ready.sh` (снять системные окна безопасными кнопками), `pico_stand.sh`, `pico_series.sh` (серии замеров), `p6_build.sh` + `p6_run.sh` (показ стенда П6/П7/П9
+  владельцу по слову «надеваю», через `scripts/box.sh pico show`), `box_guard.sh` / `stand_guard.sh` (брони и кэш классов Godot). Серверы стендов — `srv_p6.sh`, `srv_p7.sh`, `srv_p9.sh` (графы и фикстуры Моста — `tools/stand/`),
+  отчёт П9 — `p9_report.sh` (+ `p9_report.py`, `p9_cost.gd`).
+- Мост и надёжность: `live_run.sh` (Мост + сервер мира + бот, убийство сервера посреди забега), `soak.sh` (долгий прогон, `soak_run.gd`, `soak_audit.gd`), `power_cut.sh` («выдернули питание»), `check_bridge.gd`; `bench_world.gd` — замер сервера мира (N узлов и M ботов в одном процессе, `docs/netrun-bench.md`);
+  службы для машины площадки — `tools/systemd/` (`netrun-world.service`, `netrun-bridge.service`, `netrun.target`).
+- Телефон: `fake_phone.sh` + `fake_phone.gd` — «фальшивый телефон» для живой проверки связи очков без приложения.
+
 ## Выход (N6)
 
 Удержание 3 с (VR — `menu_button`, настройка `XRRig.exit_button`; плоская сборка — Esc) → клиент шлёт серверу пакет
@@ -440,9 +487,10 @@ godot --headless --path netrun -s -d res://addons/gdUnit4/bin/GdUnitCmdTool.gd -
 
 ## Серый узел (N7)
 
-`server/node/gray_node.gd` собирает узел node_07 (геометрия — `shared/node_layout.gd`: комната, укрытия, шард, площадка выхода,
-2 ICE с патрулём): на сессию TraceMeter и DaemonSession (дека `ghost_1`, `jitter_1`), ICE шагает 10 раз/с и не видит игрока под
-GHOST, сервер раз в 0.1 с шлёт снимок (`WorldMsg.STATE`: trace, ICE, перезарядки) и события (`WorldMsg.EVENT`). Шард берётся
+История N7 (первый серый узел); с тех пор `GrayNode` разросся и разбит на `LayoutDevices`, `NodeAlarm`, `ShardVaults`, `RunOutcome`, `NodeDeck`, `NodeSync` (#519/#523), а время узла стало тактовым (`docs/netrun-tick-mode.md`).
+`server/node/gray_node.gd` собирает узел (геометрия — раскладка `data/layouts/*.json` через `LayoutData`; `shared/node_layout.gd` — константы `legacy`/Фойе: комната 16×16 м, укрытия, шард, площадка выхода,
+2 ICE с патрулём): на сессию TraceMeter и DaemonSession (дека `ghost_1`, `jitter_1`), Soft ICE ходит по тактам (`TickIce`; прежний «шаг 10 раз/с» удалён вместе с режимом `realtime`, #467/#469) и не видит игрока под
+GHOST, сервер раз в 0.1 с шлёт снимок (`WorldMsg.STATE`: trace, ICE, перезарядки, `tk` — такт) и события (`WorldMsg.EVENT`). Шард берётся
 через сервер (`grab`, не дальше 3.5 м), в Мосте это `op.take_from_node`; забег закрывает одна `run.finish`: чистый выход на
 площадке (`leave`) — добыча на телефон, выброс ICE / флэтлайн / обрыв — добыча остаётся в узле.
 
@@ -451,10 +499,11 @@ GHOST, сервер раз в 0.1 с шлёт снимок (`WorldMsg.STATE`: tr
 
 ## Граф узлов (W1)
 
-`data/graph.json` — 12 узлов (BASE 6, HARD 4, NIGHTMARE 2), тоннели-связи (симметричные, до трёх на узел: i-я связь — слот
-портала `NodeLayout.PORTAL_SLOTS[i]`), у каждого узла тир, число Soft ICE, число шардов; Black ICE — только в NIGHTMARE (по тиру,
-в данных его нет). `entries` — узел входа по терминалу (`t01 → node_01`…), `default_entry` — для остальных; вход всегда не NIGHTMARE.
-`settings` — все числа: `tunnel_sec`, `portal_dwell_sec`, `shard_refill_sec` по тирам, `refill_retry_sec`, `alert_*`, `lockdown_sec`.
+`data/graph.json` — 12 узлов сети (BASE 6, HARD 4, NIGHTMARE 2) и отдельный учебный `node_00` (`tutorial`, без связей), тоннели-связи (симметричные, до трёх на узел: i-я связь — слот
+портала `NodeLayout.PORTAL_SLOTS[i]`), у каждого узла тир, число Soft ICE, число шардов, имя раскладки (`layout`: `foyer`, `server_room*`, `core`, …; нет поля — `legacy`); `hub: true` у `node_07` (спад trace).
+Black ICE задаёт не тир, а поле `black` узла (`node_11`, `node_12` — NIGHTMARE; логово — символ `L` раскладки, `TickBlack`, #503/#508). `entries` — узел входа по терминалу (`t01 → node_01`…), `default_entry` — для остальных
+(`node_07`); вход всегда не NIGHTMARE. `settings` — все числа с умолчаниями в `NodeGraph.DEFAULT_SETTINGS` (`server/node/node_graph.gd`): `tunnel_sec`, `portal_dwell_sec`, `shard_refill_sec` по тирам,
+`refill_retry_sec`, `trace_*`, `alert_*`, `lockdown_sec`, такт — `time_mode` (всегда `tick`), `tick_window_sec`, `tick_min_interval_sec`, `tick_inhale_sec`, `entry_hidden_ticks`, `arrival_grace_ticks`, `ice_sight_cells`; блоки `ice` и `black_ice` — настройки Стражей.
 Проверка данных — `NodeGraph.errors()` (симметрия, связность, слоты, тир входа); тест `node_graph_test.gd`.
 
 Граф — режим по умолчанию: `godot --headless --path netrun -- --bridge=fake` (или `-- --bridge=fake --graph=<путь>`); прежний одиночный серый узел node_07 — `-- --single-node`.
@@ -475,14 +524,13 @@ GHOST, сервер раз в 0.1 с шлёт снимок (`WorldMsg.STATE`: tr
   `shard_refill_sec[тир]`; затем слот берёт свободный шард `node:<узел>` из Моста (сервер мира шардов не создаёт — их выпускает
   Мост), нет свободного — повтор через `refill_retry_sec`. Без Моста слот просто оживает. Добыча, оставшаяся в узле окончания
   (выброс, флэтлайн, обрыв), слот не пустит.
-- **Остывание.** Тревога узла 0…1: растёт, когда trace игрока впервые достиг TRACE (`alert_per_trace`) и при выбросе
-  (`alert_per_eject`); остывает за `alert_cool_sec`; при полной зрение и внимание ICE выше на `alert_boost`.
-- **Локдаун.** После выброса Soft ICE: с Мостом — `node.lockdown_until` (ставит Мост по run.finish), без Моста — сервер мира на
+- **Остывание.** Тревога узла 0…100 очков (наружу в снимке — доля 0…1, ice.md §4; `NodeAlarm`): растёт за такт, пока в узле есть нетраннер (`alert_per_tick`), и за события `alert_events` (поиск, выброс, FAIL взлома,
+  датчик, барьер, Трассировщик); остывает на `alert_cool_sec_per_point` с очко, только когда в узле никого; при уровне «локдаун» через `alert_lockdown_ticks` тактов порталы закрываются на `lockdown_sec`.
+  (Прежние `alert_per_trace` / `alert_per_eject` / `alert_cool_sec` заменены этой моделью.)
+- **Локдаун.** После выброса Soft ICE и по тревоге: с Мостом — `node.lockdown_until` (ставит Мост по run.finish), без Моста — сервер мира на
   `lockdown_sec`. Закрытый узел не принимает через портал; портал в закрытый узел на карте серый.
-- **Мост.** `session.data.world.node` — где игрок сейчас (после рестарта сервера мира узел находит игрока по нему).
-  Ограничение действующего Моста (`ValueOps.activeSession`): `take_from_node` и `run.finish` требуют `node == session.node`,
-  а в графе шард берут в узле, куда игрок прошёл тоннелем, — до правки Моста (принимать узел из `world.node` сессии) вне узла
-  входа вынос шарда Мост отклонит; `FakeBridge` это допускает.
+- **Мост.** `session.data.world.node` — где игрок сейчас (после рестарта сервера мира узел находит игрока по нему). Действующий Мост принимает его
+  за текущий узел сессии (`ValueOps.currentNode`: `world.node`, иначе узел приёма), поэтому `take_from_node` и `run.finish` работают и вне узла входа — прежнее ограничение «узел должен совпасть с `session.node`» снято.
 - **Бот.** `BotClient.Scenario.GRAPH_RUN` (`route`, `use_ghost`; из командной строки `--bot=graph_run --bot-route=node_02,node_03`):
   идёт порталами по маршруту, в последнем узле берёт шард и выходит чисто. Тест `graph_world_test.gd`: забег через три узла с
   возвращением добычи на телефон, trace и дека сохранены, пополнение, локдаун, тревога, 12 узлов по тирам.
@@ -508,3 +556,6 @@ GHOST, сервер раз в 0.1 с шлёт снимок (`WorldMsg.STATE`: tr
 `--phone host:port=ключ` (только `--test`): эмулятор за NAT виден как 127.0.0.1, такой адрес Мост по строкам не запоминает.
 Тот же Мост шлёт записи мира на коллектор стенда (`--collector`), а в конце сценарий проверяет их приём, флаг нетраннера и повтор отправки после
 перезапуска Моста с той же базой (M6b).
+
+Второй сценарий — `scripts/e2e/scenarios/netrun-breach.sh` (Х2): тот же стенд, но сервер мира без `--vault-requires-open=false` — хранилище закрыто, бот взламывает его автосолвером, берёт шард, отдаёт его контакту
+телефона (`give`, К5б) и выходит; второй забег проверяет остывание узла (отказ `cooldown` и на сервере мира, и в Мосте). Нужны `godot` и Node ≥ 22; без `godot` сценарий пропускается (`E2E_NETRUN_REQUIRED=1` — красный).
