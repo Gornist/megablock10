@@ -1,5 +1,21 @@
 # План рефактора Сети: умолчания, мёртвый код, облако (черновик на утверждение)
 
+**Статус: выполнено — архив (сверено с main 30.10.2026).** Все шаги раздела 6 влиты в `main` 13–14.10; ниже текст плана сохранён как память решений («почему так»).
+Текущее состояние кода — `netrun/shared/render_config.gd` (ключи `[render]`: msaa, layers, far_cull_m, foveation, perf, volumetric, bench, probe, volume_budget_ms, volume_impostor_m, warmup; `LEGACY_KEYS = aa, fringe, scale, foveation_dynamic` — только предупреждение), `netrun/assets/ARCHITECTURE.md` и `STYLE.md` (вид v1).
+
+| Шаг плана | PR | Итог |
+|---|---|---|
+| G1 `RenderConfig`: msaa 2, foveation 0, layers behind, удалены scale/aa/fringe/foveation_dynamic | #192 (поезд #196) | влит; защита msaa>0 + foveation>0 в коде |
+| B1 умолчания V10 в `KNOBS`, удалены fringe/halo/edge_soft/clip/noise/plate_flat/dust/uv_rim | #193 (#196) | влит |
+| B2 15 экспериментальных .glb, штрихи/точки окружения; B2d `room_edge_16`, haze, `mist_alpha` | #200, #221 | влиты |
+| G2 `pico_stand.sh` + `pico_series.sh` (пресеты вместо `stand_cfg.sh`) | #197 (#204) | влит; пресеты: base, bench, cloud-props, cloud-vol, cloud-vol-budget, cloud-all, cloud-all-imp, probe-sweep |
+| B3 облако — умолчание (вид C3a), `cloud_lite`/3D-шум удалены, `volume_dust` → `volume_cloud` | #223 | влит; `cloud_two_sided` и `cloud_dark_2s` сняты 14.10 (+5,5 мс) |
+| B4 документы Сети (`ARCHITECTURE.md`, `STYLE.md`) | #232 (#238) | влит |
+| G3 облако (Б): `VolumeSampler` на лету, затем `.points` Blender; G7 `volume_budget_ms` | #222, #224 (#225) | влиты; `.points` лежат у vault, portal, shard, shard_encrypted, exit_frame, ICE (16 файлов); `VOLUMETRIC_DEFAULT = "vault,portal,shard,exit,ice"` |
+
+Позже тот же курс продолжили: «всё из частиц» (#389/#392/#431, #424), потолок и дальние пласты удалены (#482/#485/#493, 18–19.10), горизонт — `BackdropDome` (#481), прогрев шейдеров (`warmup`), `far_cull_m`.
+Осталось: замер облака из настоящих `.points` на очках как отдельная серия (раздел 0, последняя строка) и перемер импостора (`volume_impostor_m`, по умолчанию выкл.) со стражем и свежим сервером; клин `tile_glow` у края комнаты — вне рефактора. В `docs/backlog.md` этих строк на 30.10 нет — ждут очков и слова владельца.
+
 Составлен по итогам замеров на Pico 4 08–12.10.2026 (main 8853470). Это **план, не код**: порядок PR, зоны и приёмка.
 Решения владельца по разделу 8 внесены 12.10. Автор свода — сессия Godot; разделы про `netrun/assets/` и `AssetMaterials` согласуются с Blender (отметки «Blender»).
 Цифры замеров — в памяти `netrun-msaa-pico-findings-1008` и `docs/netrun-bench.md`; bench = `[render] bench="entry"`, 3×10 с, GPU мс.

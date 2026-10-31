@@ -1,5 +1,12 @@
 # Очки как второй экран настоящего телефона: сообщения и звонки
 
+**Статус:** выполнено (срезы 1–3 влиты в main 05–06.10.2026: сообщения, звонки, голос), документ — контракт и журнал решений; сверено с main 30.10.2026.
+Сторона очков: `netrun/shared/phone_link.gd`, `netrun/client/remote_phone_link.gd` (+ `phone_sounds.gd`, `phone_voice.gd`), общая логика — `netrun/shared/phone_logic.gd`,
+`phone_voice_codec.gd`, `phone_voice_dsp.gd`; сторона телефона: `app/src/main/java/com/megablok10/app/headset/` (`HeadsetMirror`, `HeadsetRuntime`, `HeadsetSettings`).
+PR: приложение #23 (срез 1), #24 (срез 2), #26, #34; очки — #27 (пауза закрывает порт), #31 (контракт голоса). Раздел 1 «Где мы» — срез на 05.10 до реализации.
+Осталось: поле `link` в карточке `MB10ENTERED` (раздел 4, п. 3) в Мосте не найдено — адрес и токен очков пока вводятся вручную в экране приложения
+(`HeadsetSettings`: переключатель, адрес, токен, голос); включение по умолчанию (п. 4) не делалось; «Не проверено» в конце — не снято.
+
 План от 05.10.2026 (сессия Godot). Основа — две разведки без правок кода: приложение (`app/`, `kit/`) и очки (Godot 4.7.2, Pico 4, веб). Пути и номера строк из
 досье приложения взяты у агента-разведчика и перед правкой перепроверяются. Решения владельца (04.10) не пересматриваются: [netrun.md](netrun.md) (раздел «Решения
 владельца»): телефон лежит в кармане включённым и остаётся хозяином личности, истории сообщений и WebRTC-звонка; очки показывают то, что он отдаёт, и передают
@@ -7,9 +14,12 @@
 
 ## 1. Где мы
 
+*(Срез на 05.10.2026, до реализации; сегодняшнее состояние — в шапке и в разделе 7.)*
+
 **Очки.** Интерфейс готов: [`netrun/shared/phone_link.gd`](../netrun/shared/phone_link.gd) (диалоги, сообщения, фаза звонка `idle|outgoing|incoming|in_call`, журнал
-звонков, команды `send_text`, `mark_read`, `accept_call`, `decline_call`, `hangup`, `set_muted`, `start_call`; сигналы `threads_changed`, `message_received`,
-`call_changed`). Реализует его только `FakePhoneLink` (сценарий по таймеру), в журнале `phone link=fake`. Деке всё равно, кто за интерфейсом: настоящая связь — новый
+звонков, команды `send_text`, `mark_read`, `accept_call`, `decline_call`, `hangup`, `set_muted`, `start_call`, чтение `threads`, `messages`, `call_state`,
+`contacts`, `call_log`, `is_online`; сигналы `threads_changed`, `message_received`, `call_changed`, `contacts_changed`, `online_changed`). На момент среза его реализует только
+`FakePhoneLink` (сценарий по таймеру), в журнале `phone link=fake`; сегодня есть и настоящая — `RemotePhoneLink`. Деке всё равно, кто за интерфейсом: настоящая связь — новый
 потомок `PhoneLink`.
 
 **Приложение (по досье).** Чат: Room `chat_messages`, диалога как сущности нет (запросы `observeRecentDirectThreads`, `observeDirect`, `observeFaction`), статусы
@@ -131,6 +141,8 @@ Opus (TwoVoIP) в срез 3 не берём: PCM моно 44,1 кГц ≈ 88 К
 5. **Порядок срезов 1 → 2 → 3** подтверждён; голос не раньше.
 
 ## 7. Что дальше
+
+*Статус 30.10.2026: срезы 1–3 в main (PR выше); ниже — журнал состояния на 05–06.10, ветки `agent/phone-link-remote` и `agent/phone-voice` уже влиты.*
 
 План одобрен владельцем 05.10.2026 (раздел 6). Срез 0 — после его слова. Срез 1 начинаем двумя сессиями: Godot — `RemotePhoneLink` (слияние первым), Android App —
 `HeadsetMirror` по ТЗ из раздела 2; ТЗ отправлено сессии Android App сообщением 05.10.2026.
