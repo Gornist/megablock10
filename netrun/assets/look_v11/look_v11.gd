@@ -40,6 +40,10 @@ var _rag := FastNoiseLite.new()    # рваный край и дыры
 var _wob := FastNoiseLite.new()    # волна строк
 var _bulge := FastNoiseLite.new()  # вспучивание грани
 var _flow := FastNoiseLite.new()   # изгиб волокон
+## Запечённые точки (MultiMesh по имени набора) — для VR-демо: пишет --bake, читает look_vr.gd.
+const BAKED_DIR := "res://assets/look_v11/baked"
+var _have_baked := false
+var _mms := {}
 
 
 func _shots() -> Array:
@@ -76,6 +80,13 @@ func _ready() -> void:
 	add_child(_cam)
 	var t0 := Time.get_ticks_msec()
 	var n := _build()
+	if "--bake" in OS.get_cmdline_user_args():  # запечь точки для VR-демо и выйти (pico_demo.sh)
+		DirAccess.make_dir_recursive_absolute(BAKED_DIR)
+		for nm: String in _mms:
+			var err := ResourceSaver.save(_mms[nm], "%s/%s.res" % [BAKED_DIR, nm])
+			print("LOOK bake %s: %s" % [nm, error_string(err)])
+		get_tree().quit()
+		return
 	_cam.look_at_from_position(Vector3(0, 1.6, 6), Vector3(0, 1, 0))
 	await get_tree().create_timer(2.0).timeout  # прогрев: шейдеры компилируются, первый кадр иначе пустой
 	print("LOOK points=%d build=%d ms" % [n, Time.get_ticks_msec() - t0])
@@ -157,6 +168,8 @@ func _world_col(p: Vector3, edge_k: float) -> Color:
 ## у каждой грани свой наклон A, шум изгибает волокна, так что они текут косо и дугами. Точка берётся, если лежит у изолинии
 ## (|f/шаг − целое| < band); доля scatter — россыпью между волокнами. keep(t, p) — вероятность и яркость края (t — доля по u).
 func _sheet(o: Vector3, ud: Vector3, vd: Vector3, w: float, h: float, kind: float, keep: Callable, sd: float) -> void:
+	if _have_baked:  # точки уже запечены (VR-демо): генерация на очках шла бы десятки секунд
+		return
 	var st: float = _k("step") if kind < 0.5 else _k("floor_step")
 	var rs: float = _k("row") if kind < 0.5 else _k("floor_row")
 	var ang := deg_to_rad(_k("flow_ang")) * (_h(sd * 3.7 + 1.0) * 2.0 - 1.0)
@@ -312,22 +325,28 @@ func _build() -> int:
 
 
 func _add_points(nm: String, buf: PackedFloat32Array, n: int, params: Dictionary) -> void:
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_colors = true
-	mm.use_custom_data = true
-	var q := QuadMesh.new()
-	q.size = Vector2.ONE
-	mm.mesh = q
-	mm.instance_count = n
-	mm.buffer = buf
+	var mm: MultiMesh
+	var bp := "%s/%s.res" % [BAKED_DIR, nm]
+	if _have_baked and ResourceLoader.exists(bp):
+		mm = load(bp) as MultiMesh
+	else:
+		mm = MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_colors = true
+		mm.use_custom_data = true
+		var q := QuadMesh.new()
+		q.size = Vector2.ONE
+		mm.mesh = q
+		mm.instance_count = n
+		mm.buffer = buf
+	_mms[nm] = mm
 	var mi := MultiMeshInstance3D.new()
 	mi.name = nm
 	mi.multimesh = mm
 	mi.custom_aabb = AABB(Vector3(-20, -5, -20), Vector3(40, 15, 40))
 	var m := ShaderMaterial.new()
 	m.shader = preload("res://assets/look_v11/scan_point.gdshader")
-	m.set_shader_parameter("vp_h", float(get_viewport().get_visible_rect().size.y))
+	m.set_shader_parameter("vp_h", _vp_h())
 	for key in ["min_px", "min_row_px", "fade_near", "fade_far", "fade_min"]:
 		m.set_shader_parameter(key, K[key])
 	for key in params:
@@ -347,7 +366,7 @@ func _add_points(nm: String, buf: PackedFloat32Array, n: int, params: Dictionary
 		gm.set_shader_parameter(key, K[key])
 	for key in params:
 		gm.set_shader_parameter(key, params[key])
-	gm.set_shader_parameter("vp_h", float(get_viewport().get_visible_rect().size.y))
+	gm.set_shader_parameter("vp_h", _vp_h())
 	gm.set_shader_parameter("size_mul", _k("glow_size"))
 	gm.set_shader_parameter("glow", _k("glow"))
 	gi.material_override = gm
@@ -437,6 +456,11 @@ func _add_figure(base: Vector3) -> void:
 				_push(xf * lp, Color(dark.r * b, dark.g * b, dark.b * b), 0, rs, 3.0, 0.0075, nrm)
 			y += rs
 	_add_points("Figure", _buf, _cnt, {"rim_gain": 1.4 * _k("fig"), "rim_col": RED, "fade_min": 0.6})
+
+
+## Высота кадра, px, для перевода мирового размера точки в экранный (в VR — высота кадра глаза).
+func _vp_h() -> float:
+	return float(get_viewport().get_visible_rect().size.y)
 
 
 func _k(n: String) -> float:
