@@ -30,7 +30,7 @@ func test_после_start_созданы_образцы_каждого_мате
 	assert_int(_warm.warmed.size()).is_greater_equal(20)
 	assert_int(_warm.meshes).is_greater_equal(_warm.warmed.size())
 	for must in ["props/vault", "props/portal", "props/shard", "ice/soft_ice", "ice/black_ice", "env/pillar", "env/floor_slab_16", "avatar/runner",
-			"volume_cloud", "hand_view", "hand_view_remote", "head_cloud", "backdrop_dome", "label3d", "tunnel_fx", "burn_flash", "std_alpha"]:
+			"volume_cloud", "hand_view", "hand_view_remote", "head_cloud","label3d", "tunnel_fx", "burn_flash", "std_alpha"]:
 		assert_bool(_warm.warmed.has(must)).override_failure_message("нет образца " + must).is_true()
 	assert_array(_warm.skipped).is_empty()   # все модели есть в клиенте
 	# образцы стоят перед камерой на DISTANCE м и мелкие

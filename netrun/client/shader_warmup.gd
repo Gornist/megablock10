@@ -128,8 +128,6 @@ func _populate() -> void:
 	var head := HeadCloud.new()
 	head.set_process(false)
 	_put(head, "head_cloud")
-	# Купол фона (класс Blender: только создаём).
-	_put(BackdropDome.new(), "backdrop_dome")
 	# Тоннель перехода (шейдер на сфере) и вспышка ожога (шейдер Blender, strength 0).
 	var tunnel := TunnelFx.new()
 	tunnel.visible = true
