@@ -24,9 +24,9 @@ const PORTAL_H := 2.9
 const FIGURE := Vector3(1.4, 0.0, -2.9)
 
 var K := {
-	"row": 0.028, "floor_row": 0.05, "step": 0.011, "pt": 0.0075, "rjit": 0.3, "pvar": 1.1, "min_px": 1.6, "min_row_px": 3.0,
+	"row": 0.035, "floor_row": 0.07, "step": 0.016, "pt": 0.007, "glow": 0.3, "glow_size": 3.0, "thick": 0.06, "thick_floor": 0.02, "occ_in": 0.3, "rjit": 0.15, "pvar": 1.1, "min_px": 1.6, "min_row_px": 5.0,
 	"fade_near": 4.0, "fade_far": 20.0, "fade_min": 0.15, "light_r": 4.5, "gap": 0.12, "jit": 0.6, "light": 4.0, "halo": 0.22, "sheet": 1.0,
-	"edge": 0.6, "world_gain": 3.6, "fig": 1.0, "gap_len": 0.12, "clump_lo": 0.1, "clump_hi": 5.0, "clump_f": 0.6, "min_dot_px": 2.6,
+	"edge": 0.6, "world_gain": 2.8, "fig": 1.0, "gap_len": 0.12, "clump_lo": 0.1, "clump_hi": 5.0, "clump_f": 0.6, "min_dot_px": 4.0,
 }
 var _out := "/tmp/look_v11"
 var _only: Array = []
@@ -35,6 +35,7 @@ var _halos: Array[MeshInstance3D] = []
 var _seed := 1
 var _shade := 0.7  # яркость текущей грани (к порталу ярче); пол сам тусклее граней
 var _clump := FastNoiseLite.new()
+var _thick_dir := Vector3.UP  # наружу от текущей поверхности
 
 
 func _shots() -> Array:
@@ -151,6 +152,9 @@ func _row(a: Vector3, b: Vector3, row: int, row_step: float, kind: float, keep: 
 	var gap: float = _k("gap")
 	while x < ln:
 		var p := a + dir * x + (Vector3.UP if kind < 0.5 else Vector3.BACK) * (_rand() - 0.5) * _k("rjit") * row_step
+		# толщина оболочки: точки лежат не в плоскости, а слоем наружу (чаще у поверхности) — читается объём, а не плёнка
+		var th := _rand()
+		p += _thick_dir * th * th * (_k("thick") if kind < 0.5 else _k("thick_floor"))
 		var t := x / ln
 		x += _k("step") * (1.0 + _k("jit") * (_rand() - 0.5) * 2.0)
 		if _noise1(x / _k("gap_len"), rs) < gap:
@@ -197,7 +201,8 @@ func _build() -> int:
 		for f in 4:
 			var a: Vector3 = corners[f]
 			var b: Vector3 = corners[(f + 1) % 4]
-			var nrm := (b - a).cross(Vector3.UP).normalized()
+			var nrm := Vector3.UP.cross(b - a).normalized()  # наружу
+			_thick_dir = nrm
 			var to_p := (PORTAL + Vector3(0, PORTAL_H * 0.5, 0) - (a + b) * 0.5).normalized()
 			_shade = 0.5 + 0.7 * maxf(0.0, nrm.dot(to_p)) + 0.2 * absf(nrm.x)
 			for r in hrows:
@@ -268,6 +273,24 @@ func _add_points(nm: String, buf: PackedFloat32Array, n: int, params: Dictionary
 		m.set_shader_parameter(key, params[key])
 	mi.material_override = m
 	add_child(mi)
+	if _k("glow") <= 0.0:
+		return
+	# Ореол точки: тот же MultiMesh вторым проходом — квад крупнее, мягкое пятно аддитивно. Точка светится, а не лежит краской на грани.
+	var gi := MultiMeshInstance3D.new()
+	gi.name = nm + "Glow"
+	gi.multimesh = mm
+	gi.custom_aabb = mi.custom_aabb
+	var gm := ShaderMaterial.new()
+	gm.shader = preload("res://assets/look_v11/scan_glow.gdshader")
+	for key in ["min_px", "min_row_px", "fade_near", "fade_far", "fade_min"]:
+		gm.set_shader_parameter(key, K[key])
+	for key in params:
+		gm.set_shader_parameter(key, params[key])
+	gm.set_shader_parameter("vp_h", float(get_viewport().get_visible_rect().size.y))
+	gm.set_shader_parameter("size_mul", _k("glow_size"))
+	gm.set_shader_parameter("glow", _k("glow"))
+	gi.material_override = gm
+	add_child(gi)
 
 
 ## Непрозрачность граней (решение 19.10): тело колонны цвета пустоты пишет глубину — сквозь колонну не видно, что за ней.
@@ -278,10 +301,10 @@ func _add_occluders() -> void:
 	for pc in PILLARS:
 		var b := MeshInstance3D.new()
 		var bm := BoxMesh.new()
-		bm.size = Vector3(PILLAR_W - 0.2, PILLAR_H - 0.12, PILLAR_W - 0.2)  # тело меньше оболочки: ребро растворяется в пустоту, а не обрывается силуэтом
+		bm.size = Vector3(PILLAR_W - _k("occ_in") * 2.0, PILLAR_H - _k("occ_in"), PILLAR_W - _k("occ_in") * 2.0)  # тело меньше оболочки: ребро растворяется в пустоту, а не обрывается силуэтом
 		b.mesh = bm
 		b.material_override = m
-		b.position = Vector3(pc.x, (PILLAR_H - 0.12) * 0.5, pc.y)
+		b.position = Vector3(pc.x, (PILLAR_H - _k("occ_in")) * 0.5, pc.y)
 		add_child(b)
 
 
