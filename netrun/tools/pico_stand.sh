@@ -17,6 +17,9 @@
 #   cloud-all       bench + volumetric=vault,portal,shard,exit,ice: все объёмные модули (рамка выхода, голограмма ICE, шарды)
 #   cloud-all-imp   cloud-all + volume_impostor_m=8: дальше 8 м облака — запечённые билборды (VolumeImpostor)
 #   probe-sweep     perf=on, probe=sweep: серия синтетической нагрузки (база + 14 вариантов, ≈3,5 мин) → таблица `[probe] ИТОГ`
+#   probe-pts       perf=on, probe=sweep_pts: V11, способы рисовать облако точек (discard/a2c/points/points_a2c/gpup × 100к/300к/1М, px=4;
+#                   база + 15 вариантов, ≈3,5 мин) → `[probe] ИТОГ`
+#   probe-pts-one   perf=on bench=entry + свой вариант: pico_stand.sh probe-pts-one probe=quads=300000,px=4,mode=points → строка `[bench] ИТОГ`
 #
 # Ключи: имена из RenderConfig.KEYS (msaa layers foveation perf volumetric bench probe volume_budget_ms volume_impostor_m warmup) пишутся в [render], остальные — в [assets]
 # (AssetMaterials.KNOBS; неизвестная ручка игра пропускает с предупреждением). Пример:
@@ -46,7 +49,7 @@ adb -s "$serial" pull "$CFG_PATH" "$tmp" >/dev/null 2>&1 </dev/null || : > "$tmp
 
 case "${1:-}" in
   --show) cat "$tmp"; exit 0 ;;
-  "")     sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+  "")     sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac
 
 # Запись конфига — действие над очками: чужая бронь pico (devbox) — отказ «кто и до когда», чужой прогон не трогаем.
@@ -66,7 +69,9 @@ if [ "$1" != "--reset" ]; then
     cloud-all)      set -- perf=on bench=entry volumetric=vault,portal,shard,exit,ice "$@" ;;
     cloud-all-imp)  set -- perf=on bench=entry volumetric=vault,portal,shard,exit,ice volume_impostor_m=8 "$@" ;;
     probe-sweep)    set -- perf=on probe=sweep "$@" ;;
-    *) echo "pico_stand: неизвестный пресет «$preset» (есть: base bench cloud-props cloud-vol cloud-vol-budget cloud-all cloud-all-imp probe-sweep)" >&2; exit 2 ;;
+    probe-pts)      set -- perf=on probe=sweep_pts "$@" ;;
+    probe-pts-one)  set -- perf=on bench=entry "$@" ;;
+    *) echo "pico_stand: неизвестный пресет «$preset» (есть: base bench cloud-props cloud-vol cloud-vol-budget cloud-all cloud-all-imp probe-sweep probe-pts probe-pts-one)" >&2; exit 2 ;;
   esac
   # Последнее значение ключа выигрывает: пресет, затем ключи с командной строки.
   render=""; assets=""
