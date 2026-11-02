@@ -30,9 +30,9 @@ dependencies {
     // Кодек предмета в карточке (ItemPayloadCodec): Мост принимает карточки телефонов в том же формате и разбирает payload по тем же правилам.
     implementation(project(":rules"))
     // JsonObject — тип поля data документа; плагин сериализации не нужен, только разбор и сборка дерева JSON.
-    api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+    api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
     // SQLite через JDBC: драйвер несёт нативную библиотеку для Linux/macOS/Windows.
-    implementation("org.xerial:sqlite-jdbc:3.53.4.0")
+    implementation("org.xerial:sqlite-jdbc:3.54.1.0")
 
     // WebSocket-сервер: Java-WebSocket — один небольшой JAR на чистой Java (без Netty/Ktor-рантайма), сервер и клиент по RFC 6455.
     implementation("org.java-websocket:Java-WebSocket:1.6.0")
