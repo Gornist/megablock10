@@ -28,7 +28,7 @@ const PANEL_SCALE := BreachPanelLayout.WIDTH_M / 0.44
 ## Стен, углов, дверей, кольца тоннеля, башен света (far_field) и кольца горизонта в комнате нет: на принятом виде (V10: штрихи и точки окружения выключены,
 ## дымка погашена) они невидимы и стоили только вызовов отрисовки (docs/netrun-refactor-plan.md). Ворота lockdown_gate остаются: это игровой сигнал LOCKDOWN.
 ## Границу комнаты показывает только кромка плит пола: room_edge (подвесные штрихи и дымка кромки) на принятом виде невидим, убран по решению владельца 13.10.
-## Потолка и дальних пластов (far_*) в комнате нет (решение владельца 18.10: «убери плиты сверху и снизу вообще, оставим только горизонт»): горизонт — фон-купол BackdropDome
+## Потолка и дальних пластов (far_*) в комнате нет (решение владельца 18.10: «убери плиты сверху и снизу вообще, оставим только горизонт»): фона-купола нет (V11, решение владельца 31.10): просвет — цвет пустоты Environment.background_color
 ## (client/world_scene.gd); пол комнаты с сеткой остаётся игровым полем.
 const MODULES := ["floor", "pillar", "cover", "platform", "lockdown_gate"]
 ## Будка запасного Стража (ice/guard_booth.glb, ice.md §4): створка `Door` сдвигается вбок на столько, м, когда запасной вышел (корпус 0,9 м); лампа `Lamp` горит с тревоги 2.
@@ -55,6 +55,7 @@ var tier := ""
 var layout: LayoutData = null
 ## Выходы закрыты (уровень trace LOCKDOWN): вместо дверей — lockdown_gate. Сервер сам выход не закрывает: это сигнал среды.
 var exit_locked := false
+var _exit_glow: Node3D   ## хост GlowSource выхода (виден, пока выход открыт)
 ## За игроком идёт охота Black ICE: порталы закрыты.
 var hunted := false
 ## Уровень тревоги узла 0–4: кромки комнаты сдвинуты к тёплому (AssetMaterials.set_alarm); переживает пересборку комнаты.
@@ -125,6 +126,7 @@ func set_look(new_tier: String, new_layout: LayoutData) -> void:
 		if module == "lockdown_gate":
 			_gates = made
 	_counts["obstacle"] = _add_obstacles(_room)
+	_attach_exit_glow()
 	_apply_exit()
 	_attach_exit_cloud()
 	_apply_alarm()
@@ -334,6 +336,21 @@ func set_exit_locked(locked: bool) -> void:
 func _apply_exit() -> void:
 	for n in _gates:
 		n.visible = exit_locked
+	if _exit_glow != null and is_instance_valid(_exit_glow):
+		_exit_glow.visible = not exit_locked   # у запертого выхода (ворота lockdown_gate) света нет
+
+
+## Светящийся источник на площадке выхода (V11): ребёнок комнаты, исчезает вместе с ней при смене узла/раскладки.
+func _attach_exit_glow() -> void:
+	_exit_glow = null
+	if _room == null:
+		return
+	var host := Node3D.new()
+	host.name = "ExitGlow"
+	host.position = exit_pos()
+	host.add_child(GlowSource.new().setup("exit"))
+	_room.add_child(host)
+	_exit_glow = host
 
 
 ## Преобразования модулей: пол на каждую ячейку, стены по периметру (поворот вокруг Y: стена по умолчанию — на северном краю -Z),
@@ -518,6 +535,7 @@ func set_vaults(shards: Array) -> void:
 			yaw = vault_yaw_to(base, pad_pos, yaw)
 		_vaults[id] = _place(_props, NodeAssets.prop_path("vault"), base, yaw)  # один ассет: вид — узлы State_* и Tier_*
 		_attach_cloud("vault", _vaults[id], NodeAssets.prop_path("vault"))
+		(_vaults[id] as Node3D).add_child(GlowSource.new().setup("vault"))   # V11: светится только в состоянии «открыто» (set_vault_state)
 		_pads[id] = _place(_props, NodeAssets.prop_path("hack_pad"), pad_pos, yaw)
 		_panels[id] = _place_panel(base, yaw, pad_pos)
 		set_vault_state(id, vault_state_of(sh), int(sh.get("tier", 0)))
@@ -593,6 +611,9 @@ func set_vault_state(id: String, state: String, tier: int = 0) -> void:
 	if v == null:
 		return
 	NodeAssets.set_state(v, state)
+	var glow := v.get_node_or_null("Glow_vault") as Node3D
+	if glow != null:
+		glow.visible = state == VAULT_OPEN
 	if tier > 0:
 		_vault_tier[id] = clampi(tier, 1, 3)
 	NodeAssets.set_tier_nodes(v, int(_vault_tier.get(id, 1)))
@@ -633,6 +654,7 @@ func set_portals(portals: Array) -> void:
 		var yaw := NodeLayout.yaw_facing(pos, room_center())
 		var portal_ok := _place(_props, NodeAssets.prop_path("portal"), pos, yaw)
 		_attach_cloud("portal", portal_ok, NodeAssets.prop_path("portal"))
+		portal_ok.add_child(GlowSource.new().setup("portal"))   # V11: виден вместе с открытой аркой (portal_ok скрыт при закрытии)
 		_portals.append({
 			"to": str(pt["to"]), "open": bool(pt.get("open", true)),
 			"ok": portal_ok,
