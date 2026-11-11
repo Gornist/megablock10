@@ -659,3 +659,65 @@ GPU 2,5–2,9 мс, 113–160 вызовов отрисовки, 50–89 тыс.
 **Вспышка ожога** (П6-6 (г), 17.10): красный край поля зрения — `AssetMaterials.burn_flash_material(half_fov)` (шейдер `shaders/burn_flash.gdshader`, цвета — слои `burn_flash` = PAL_THREAT и `burn_flash_hot` = PAL_THREAT_HOT у обода, render_priority 105). Клиент (DangerCue, Godot) вешает квад 2×2 м на камеру в 0,24 м и меняет только `strength`: старт `BURN_FLASH_START` = 1,0, линейный спад за `BURN_FLASH_SEC` = 0,9 с, один раз на ожог. Форма: вуаль 7 % на весь взгляд (смена цвета заметна и в центре), красный край с 45 % полуугла, у границы — яркий обод; центр остаётся читаемым (кадр `burn_10` в `preview_alarm`). Не проверено на очках: видна ли кромка у границы линзы Pico (если нет — поднять `inner`/`wash`).
 
 **Что НЕ ручка (правка кода):** цвет фона `VOID_BG` (клиент берёт из константы), число слоёв вуали, охват облака (`_cloud_scope_ok`), палитра (`PAL_*` и `STYLE.md`).
+
+
+## 22. Состояние на консервацию (11.11.2026)
+
+Решение владельца 11.11: проект консервируется, всё задокументировано и залито на GitHub. Новых задач зона Blender не берёт. Этот раздел — точка входа для возобновления; хронология — §10 и §21, заметки сессии — `notes/` (см. `notes/README.md`).
+
+### Что сделано и работает (в `main`)
+
+- Вид V10 (§21): пол и грани реквизита — облако частиц (`cloud`, `cloud_floor`), хранилище, порталы, шарды, рамка выхода и ICE — объём из `.points` (`src/points.py`), красное облако у угрозы, дыхание по такту и отклик на руку (`cloud_breath`, `cloud_touch`), заливка вдали (`dust_fill`), потолка и дальних пластов нет (18.10), фон-купол `BackdropDome` (пустота, дымка, пылинки).
+- Конвейер Blender → `.glb` → Godot (`tools/pipeline.sh`), валидатор (`src/validate.py`), `MANIFEST.md`, кадры приёмки `preview_*` (ARCHITECTURE §7, §18). Документы вида сверены с `main` 30.10 (PR #559).
+- Ручки `[assets]` (`AssetMaterials.KNOBS`) и пресеты стенда очков `netrun/tools/pico_stand.sh`.
+
+### Начато и не закончено
+
+| Что | Где | Состояние |
+|---|---|---|
+| Непрозрачные грани облака (`cloud_solid`), карта освещённости, мягкая кромка колонн 50 см, растушёвка пола у оснований (`set_cloud_occluders`), купол/звёзды/небо | PR #524, #526, #528 (стопкой), #533 (`agent/bl-sky`, содержит все три) | Не влито. Показ в очках не состоялся (владелец ждал «надеваю»). Кадр на Pico по автопрогону 11,11 мс (90 Гц). Кромка 0,5 требует Godot #537 (`BAND` 0,5 + вызов `set_cloud_occluders` в `node_view.gd`) |
+| V11: купол, звёзды, `cloud_sky`, дымка убраны; просвет = цвет пустоты; палитра V11 в `AssetMaterials` и шейдерах | `agent/bl-sky`, два последних коммита | Купол убран, тест `assets_backdrop_test` переписан и зелёный (4 теста). Палитра (последний коммит, «незакончено») — **тесты после неё не прогонялись**: проверить `assets_models_test` (`TIER_TINT`, цвета слоёв), `node_scene_test`, `shader_warmup_test` |
+| V11: стайлгайд | PR #573 (`agent/bl-v11`) | Раздел «Вид V11» в `STYLE.md`, старые пункты помечены «ОТМЕНЕНО V11»; плюс `src/scan_rows.py` |
+| Строки скана для пола и граней (п.2 карточки V11) | — | **Не начато.** Ждало замера Godot: способ рисования (MultiMesh из `.points` против шейдера на гранях) решал бы, запекать ли `.points` для пола и колонн или считать строки в шейдере |
+| Данные для замера | `src/scan_rows.py` | Генератор тестовой комнаты на 100 тыс. / 300 тыс. / 1 млн точек: `python3 netrun/assets/src/scan_rows.py --n 300000 --out /tmp/room.points` (≈1 с на 100 тыс., детерминирован). Замер на очках **не сделан** |
+| Стенд под показ | ветки `agent/bl-stand-1030` (= #537 + #532 + `bl-sky`, хэш 524b1ae9), `agent/bl-stand-local` | APK собирался на devbox и пропал при его переустановке; пересобрать — ниже. На очки не ставился |
+
+### Решения владельца, ещё не реализованные (V11, 31.10)
+
+1. Купол, небо, звёзды — убрать (в ветке `bl-sky` сделано, в `main` нет). Класс `BackdropDome` остался пустым узлом ради `set_alarm`/`void_for`; удалить вместе с вызовами в `world_scene.gd`, `shader_warmup.gd` — карточка Godot.
+2. Пол — из тех же строк скана (ровный шаг строк = масштаб), без сетки клеток и линий — не сделано.
+3. Видимые светящиеся вещи с ореолом (портал, хранилище, кромки важного) и тускло светящиеся сами облака (`lit_ambient` > 0) — не сделано; ореол — квад-гало, аддитивно.
+4. Строго два цвета: стальная бирюза мира `#1F3038` → `#3F6068`, яркий циан `#28ACAE` → `#76C6C5` только у источников, малиново-красный `#C5384B` у живого и угрозы; пустота `#0A0C0E`. Константы заведены в `AssetMaterials` (`PAL_*`, `VOID_BG`), в шейдерах `dust_color`, `dust_hot`, `edge_color`; `CALM_BG` клиента (Godot, `world_scene.gd`) надо выровнять с `VOID_BG`; тест `backdrop_wiring_test` держит их равными.
+5. Грани колонн остаются непрозрачными (19.10).
+
+Старые нереализованные пункты: убрать штрихи/точки `exit_frame`, затем ручки `streak_keep`/`point_keep`/`keep_frac`; таблица `MESH_RULES` вместо ветвлений в `AssetMaterials.apply()`; проход `beacon_halo`; серия замеров цены облака на очках (измерен один автопрогон).
+
+### Известные проблемы
+
+- Тесты после палитры V11 не прогонялись (см. выше).
+- `assets_obstacle_body_test` краснеет, пока `COVER_BAND` в `env.py` и `BAND` в `client/obstacle_body.gd` не равны (в `bl-sky` 0,5, в клиенте `main` 0,03; Godot #537 ставит 0,5).
+- Сборка APK печатает `ERROR: No project icon specified` — безвредно, APK собирается.
+- Автопрогон на очках требует света у камер (`alg_confidence ≥ 1`), иначе «слишком темно»; очки нельзя перезапускать, пока владелец в них (память `pico-headset-testing-etiquette`).
+- `scan_rows.py`: 81 % точек — пол, шаг строк на 1 млн точек 1,5 см; цена на Pico не измерена.
+
+### Как возобновить с нуля
+
+1. Репозиторий и своя копия: `scripts/agent-worktree.sh new <имя>`; работать не в основном checkout. Прочитать `docs/progress.md`, `CLAUDE.md`, этот раздел, `STYLE.md` («Вид V11»).
+2. Какую ветку брать: за основу — `agent/bl-sky` (V11 без купола + непрозрачные грани + растушёвка + палитра), вклеить `origin/main`; Godot-часть — `agent/gd-cover-band` (#537) и `agent/gd-pillar-lights` (#532). Первое действие — прогнать тесты: `netrun/tools/dev.sh test assets_models_test assets_backdrop_test backdrop_wiring_test node_scene_test shader_warmup_test assets_cloud_breath_test obstacle_body_test assets_obstacle_body_test`.
+3. devbox после переустановки: Godot 4.7.2 в `~/.local/godot`; экспортные шаблоны (1,2 ГБ) — `https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz`, распаковать `templates/` в `~/.local/share/godot/export_templates/4.7.2.stable/` (внутри `android_source.zip`, `android_debug.apk`); `~/netrun-env.sh` (`JAVA_HOME=/usr/lib/jvm/temurin-17-jdk-amd64`, `ANDROID_HOME=$HOME/android-sdk`, `PATH` с `~/.local/bin`, `platform-tools`, `cmdline-tools/latest/bin`). Сборка APK очков: `netrun/tools/dev.sh sync`, затем на devbox `P6_DIR=~/pico-bl-ripple/<хэш> bash netrun/tools/p6_build.sh` в каталоге `~/wt-<ветка>`; адрес и токен — `netrun/tools/pico.sh provision`.
+4. Стенд на очки — только по слову владельца; запись пресета и ручек — `netrun/tools/pico_stand.sh`.
+5. Blender 4.5 в `~/.local/blender`, сборка моделей — `netrun/assets/tools/pipeline.sh` (§7); кадры клиента — `netrun/tools/dev.sh shot res://assets/preview_sky.tscn`.
+6. Генератор строк скана — `src/scan_rows.py`; формат `.points` — §13 и `VolumeCloud.parse` (float32 LE ×7: x y z полуразмер фаза вид вес).
+
+### Данные вне git (путь, размер)
+
+| Что | Где (Mac владельца) | Размер |
+|---|---|---|
+| Видео киберпространства CP2077 (источник разбора V11) | `~/Developer/cp77-cyberspace-study/video.mkv` | 170 МБ |
+| Кадры разбора и сетки (`fr/`, `grids/`, `opus/`) | `~/Developer/cp77-cyberspace-study/` | 7 + 11 + 25 МБ |
+| Референсы CDPR 06.10 (шесть `webp`) | `~/.claude/projects/-Users-peachbite-Developer-megablock10/memory/netrun-refs/` | 1,3 МБ |
+| Референсы CDPR 08.10 (листы `sheet_aa…af.jpg`, порядок — `notes/cp77-cyberspace/refs2-ORDER.txt`) | `…/memory/netrun-refs2/` | 0,6 МБ |
+| Снимки с очков и стендов | `~/Developer/megablock10-wt/headset-shots/` | 30 МБ |
+| Звуки киберпространства и Чёрной стены (Cyberpunk 2077, GOG) | ПК `winpc` по ssh (память `winpc-cyberpunk-assets`) | не мерил |
+
+Текстовое из этого перечня (стайлгайд V11, оба разбора, заметки сессии) лежит в `notes/` в git.
