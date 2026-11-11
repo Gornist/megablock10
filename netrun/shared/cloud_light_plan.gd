@@ -5,7 +5,8 @@ extends RefCounted
 ## Где ставить — данные узла (здесь); радиус спада, цвет света и отклик частиц — у Blender (AssetMaterials / шейдер облака).
 ##
 ## Раскладка задала `lights` — берём только их. Иначе набор по умолчанию, в порядке важности (лишнее сверх CLOUD_LIGHTS_MAX отбрасывается с хвоста):
-## вход, выход, хранилища, порталы, угрозы (Маяки, Датчики, Стражи, логово — красные), центр комнаты (проход между зонами).
+## вход, выход, хранилища, порталы, угрозы (Маяки, Датчики, Стражи, логово — красные), колонны «#» (ближние ко входу; решение владельца 19.10:
+## грань колонны светится пятнами рядом с рукой), центр комнаты (проход между зонами).
 
 const MAX := 12
 const Y := 1.0                       ## высота источника, м
@@ -14,7 +15,12 @@ const R_EXIT := 3.0
 const R_VAULT := 3.0
 const R_PORTAL := 3.0
 const R_THREAT := 3.0
+const R_PILLAR := 2.0                ## колонна — блок 2×2 м: свет по грани, пятнами рядом с рукой
 const R_CENTER := 4.0
+const PILLAR_SYMBOL := "#"
+## Сколько ближних ко входу колонн получают свет (`[render] pillar_lights`: клиент ставит из конфига при старте, умолчание конфига 4); цикл по
+## источникам стоит в фрагментном шейдере облака, и число источников — цена кадра. Здесь умолчание «без ограничения», кроме общего MAX — тесты.
+static var pillar_max := MAX
 ## Красный свет угрозы ICE (цвет по палитре Blender: «красный — у угрозы ICE/ворот»).
 const THREAT_COLOR := Color(1.0, 0.25, 0.3)
 
@@ -48,8 +54,31 @@ static func build(layout: LayoutData) -> Array:
 			lights.append(_light(NodeGrid.center(route[0]["cell"]), R_THREAT, 1.0, true))
 	if not layout.lair.is_empty():
 		lights.append(_light(NodeGrid.center(layout.lair["home"]), R_THREAT, 1.0, true))
+	var pillars := pillar_centers(layout)
+	for i in mini(pillars.size(), pillar_max):
+		lights.append(_light(pillars[i], R_PILLAR))
 	lights.append(_light(layout.room_center(), R_CENTER))
 	return lights.slice(0, MAX)
+
+
+## Центры блоков-колонн «#» (y = 0), ближайшие ко входу первыми; при равном расстоянии — по x, потом по z. Детерминированно:
+## при переполнении MAX в набор попадают ближние, дальние обрезает slice вместе с центром комнаты.
+static func pillar_centers(layout: LayoutData) -> Array[Vector3]:
+	var out: Array[Vector3] = []
+	for sz in layout.blocks.size():
+		var line: String = layout.blocks[sz]
+		for sx in line.length():
+			if line[sx] == PILLAR_SYMBOL:
+				out.append(NodeLayout.cell_center(sx, sz))
+	out.sort_custom(func(a: Vector3, b: Vector3) -> bool:
+		var da := Vector2(a.x - layout.spawn.x, a.z - layout.spawn.z).length_squared()
+		var db := Vector2(b.x - layout.spawn.x, b.z - layout.spawn.z).length_squared()
+		if not is_equal_approx(da, db):
+			return da < db
+		if not is_equal_approx(a.x, b.x):
+			return a.x < b.x
+		return a.z < b.z)
+	return out
 
 
 ## Прежняя комната (layout == null или legacy): вход, выход и шард-заглушка.
