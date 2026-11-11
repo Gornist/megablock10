@@ -26,13 +26,15 @@ var _vp_rid := RID()
 var _done := false
 
 
-func setup(camera: Node3D) -> void:
+## name — "sweep" (LoadProbe.SWEEP) или "sweep_pts" (LoadProbe.SWEEP_PTS, V11).
+func setup(camera: Node3D, name: String = "sweep") -> void:
 	_camera = camera
 	_specs = [""]
-	_specs.append_array(LoadProbe.SWEEP)
+	_specs.append_array(LoadProbe.SWEEP_PTS if name == "sweep_pts" else LoadProbe.SWEEP)
 
 
 func _ready() -> void:
+	print(LoadProbe.gpu_line(get_viewport()))
 	_vp_rid = get_viewport().get_viewport_rid()
 	RenderingServer.viewport_set_measure_render_time(_vp_rid, true)
 	_next_variant()
