@@ -1,38 +1,41 @@
 extends GdUnitTestSuite
-## Фон-купол (assets/backdrop_dome.gd, shaders/backdrop.gdshader): шейдер компилируется, текстура пылинок не пустая и детерминирована, цвет пустоты следует за тревогой.
-## Вид — по кадру `dev.sh shot res://assets/preview_shimmer.tscn --dome` и с очков.
+## Пустота (вид V11, 31.10): купола, неба, звёзд и дымки нет — BackdropDome ничего не рисует и только передаёт сдвиг пустоты по тревоге просветам граней облака
+## (assets/backdrop_dome.gd, shaders/backdrop_sky.gdshaderinc). Вид — по кадру `dev.sh shot res://assets/preview_sky.tscn` и с очков.
 
 
-func test_dome_builds_with_first_render_priority() -> void:
+func test_dome_draws_nothing() -> void:
 	var d := auto_free(BackdropDome.new()) as BackdropDome
-	assert_object(d.mesh).is_not_null()
-	var m := d.material_override as ShaderMaterial
-	assert_int(m.render_priority).override_failure_message("купол рисуется первым").is_equal(-128)
-	assert_object(m.get_shader_parameter("dust_tex")).is_not_null()
-	assert_bool(m.shader.get_shader_uniform_list().any(func(u): return u["name"] == "void_color")).is_true()
+	assert_object(d).is_instanceof(Node3D)
+	assert_bool((d as Node).is_class("GeometryInstance3D")).override_failure_message("V11: купол ничего не рисует (ни звёзд, ни неба)").is_false()
+	assert_int(d.get_child_count()).is_equal(0)
 
 
-func test_dust_texture_has_sparse_stable_dots() -> void:
-	var t := BackdropDome.dust_texture()
-	assert_object(BackdropDome.dust_texture()).override_failure_message("один раз на процесс").is_same(t)
-	var img := t.get_image()
-	assert_int(img.get_width()).is_equal(BackdropDome.DUST_SIZE.x)
-	var lit := 0
-	var total := 0
-	for y in range(0, img.get_height(), 8):
-		for x in range(0, img.get_width(), 8):
-			total += 1
-			if img.get_pixel(x, y).r > 0.02:
-				lit += 1
-	assert_int(lit).override_failure_message("пылинки есть").is_greater(50)
-	assert_float(float(lit) / float(total)).override_failure_message("но их мало: это пустота, не шум").is_less(0.1)
+func test_no_sky_shaders_or_knobs_left() -> void:
+	assert_bool(FileAccess.file_exists("res://assets/shaders/stars.gdshader")).override_failure_message("звёзд нет с V11").is_false()
+	for k in ["cloud_sky", "backdrop", "backdrop_haze", "backdrop_dust", "backdrop_star_size"]:
+		assert_bool(AssetMaterials.KNOBS.has(k)).override_failure_message("ручка %s убрана с V11" % k).is_false()
+	var code := FileAccess.get_file_as_string("res://assets/shaders/backdrop_sky.gdshaderinc")
+	assert_bool(code.contains("sky_haze") or code.contains("backdrop_sky(")).override_failure_message("дымки и функции неба нет").is_false()
 
 
-func test_dome_void_color_follows_alarm() -> void:
+func test_alarm_void_goes_to_cloud_gaps_and_calm_adds_nothing() -> void:
 	var d := auto_free(BackdropDome.new()) as BackdropDome
-	d.set_alarm(2)
-	var c: Color = (d.material_override as ShaderMaterial).get_shader_parameter("void_color")
-	var want := AssetMaterials.alarm_background(2)
-	assert_float(c.r).is_equal_approx(want.r, 0.0001)
-	assert_float(c.g).is_equal_approx(want.g, 0.0001)
-	assert_float(c.b).is_equal_approx(want.b, 0.0001)
+	d.set_alarm(0)
+	var c0 := AssetMaterials.sky_void_color()
+	assert_float(c0.r + c0.g + c0.b).override_failure_message("спокойный узел: ничего не добавляет к фону").is_equal_approx(0.0, 0.0001)
+	d.set_alarm(3)
+	assert_float(AssetMaterials.sky_void_color().r).override_failure_message("тревога добавляет красный сдвиг просветам").is_greater(0.0)
+	d.set_alarm(0)
+
+
+## Просвет непрозрачной грани облака — цвет пустоты (фон клиента + сдвиг тревоги), без неба: у материала нет sky_fill и дымки, сдвиг доходит.
+func test_cloud_gaps_are_void_colored() -> void:
+	AssetMaterials.reset_tuning()
+	var m := ((auto_free(NodeAssets.instance("res://assets/models/env/cover.glb", "BASE")) as Node).find_children("*", "MeshInstance3D", true, false)
+		.map(func(n): return (n as MeshInstance3D).get_surface_override_material(0)).filter(func(x): return x is ShaderMaterial and x.shader == AssetMaterials.CLOUD_SHADER))
+	assert_int(m.size()).override_failure_message("у укрытия есть облачный материал").is_greater(0)
+	var cloud := m[0] as ShaderMaterial
+	assert_bool(cloud.get_shader_parameter("sky_fill") == null and cloud.get_shader_parameter("sky_haze_gain") == null).override_failure_message("неба и дымки в материале нет").is_true()
+	AssetMaterials.set_sky_void(null, Color(0.2, 0.0, 0.0))
+	assert_float(AssetMaterials._sky_void.r).is_equal_approx(0.2, 0.0001)
+	AssetMaterials.set_sky_void(null, Color(0, 0, 0))

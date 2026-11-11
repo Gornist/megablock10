@@ -56,6 +56,104 @@ func test_предел_двенадцать_важное_впереди() -> voi
 	assert_bool(_has_light_near(lights, ld.exit_pos)).is_true()
 
 
+func _pillar_layout(rows: Array, extra: Dictionary = {}) -> LayoutData:
+	var d := {"name": "pillars", "cells": rows, "vaults": [], "ice": []}
+	d.merge(extra)
+	var ld := LayoutData.parse(d)
+	assert_str(ld.error).is_empty()
+	return ld
+
+
+func _light_at(lights: Array, p: Vector3) -> Dictionary:
+	for l: Dictionary in lights:
+		var q: Vector3 = l["p"]
+		if Vector2(q.x, q.z).distance_to(Vector2(p.x, p.z)) <= 0.01:
+			return l
+	return {}
+
+
+func test_колонна_даёт_источник_радиус_два_без_цвета() -> void:
+	var ld := _pillar_layout(["S.1#...E", "........", "........", "........", "........", "........", "........", "........"])
+	var pc := NodeLayout.cell_center(3, 0)   # центр блока «#» (3, 0)
+	var l := _light_at(CloudLightPlan.build(ld), pc)
+	assert_bool(l.is_empty()).is_false()
+	assert_float(float(l["r"])).is_equal(CloudLightPlan.R_PILLAR)
+	assert_float(float(l["r"])).is_equal(2.0)
+	assert_float(float(l["s"])).is_equal(1.0)
+	assert_float((l["p"] as Vector3).y).is_equal(CloudLightPlan.Y)
+	assert_bool(l.has("c")).is_false()   # цвет по умолчанию облака, красный — только у угроз
+
+
+func test_блоки_колонн_находятся_по_карте_ближние_ко_входу_первыми() -> void:
+	var ld := _pillar_layout(["S.1....E", "........", "...#....", "........", "........", "..#.....", "........", "......#."])
+	var pcs := CloudLightPlan.pillar_centers(ld)
+	assert_int(pcs.size()).is_equal(3)
+	assert_object(pcs[0]).is_equal(NodeLayout.cell_center(3, 2))   # расстояние от входа (0,0): 13 < 29 < 85 (в блоках²)
+	assert_object(pcs[1]).is_equal(NodeLayout.cell_center(2, 5))
+	assert_object(pcs[2]).is_equal(NodeLayout.cell_center(6, 7))
+
+
+func test_колонны_после_угроз_и_перед_центром_комнаты() -> void:
+	var ld := _pillar_layout(["S.1#...E", "........", "........", "........", "........", "........", "........", "........"])
+	var lights := CloudLightPlan.build(ld)
+	var pc := NodeLayout.cell_center(3, 0)
+	var ip := -1
+	var ic := -1
+	for i in lights.size():
+		var q: Vector3 = lights[i]["p"]
+		if Vector2(q.x, q.z).distance_to(Vector2(pc.x, pc.z)) <= 0.01:
+			ip = i
+		if Vector2(q.x, q.z).distance_to(Vector2(ld.room_center().x, ld.room_center().z)) <= 0.01:
+			ic = i
+	assert_int(ip).is_greater(-1)
+	assert_int(ic).is_equal(lights.size() - 1)   # центр комнаты — последним
+	assert_int(ip).is_equal(ic - 1)
+
+
+func test_переполнение_колонны_вытесняются_первыми_берутся_ближние_ко_входу() -> void:
+	# 61 колонна, вход, выход, портал: свободно 12 - 3 = 9 мест; центр комнаты отрезан вместе с дальними колоннами.
+	var ld := _pillar_layout(["S#1#####", "########", "########", "########", "########", "########", "########", "#######E"])
+	var pcs := CloudLightPlan.pillar_centers(ld)
+	assert_int(pcs.size()).is_greater(9)
+	var lights := CloudLightPlan.build(ld)
+	assert_int(lights.size()).is_equal(CloudLightPlan.MAX)
+	assert_bool(_has_light_near(lights, ld.spawn)).is_true()
+	assert_bool(_has_light_near(lights, ld.exit_pos)).is_true()
+	assert_bool(_has_light_near(lights, ld.portals[0])).is_true()
+	for i in 9:
+		assert_bool(_has_light_near(lights, pcs[i])).is_true()
+	assert_bool(_has_light_near(lights, pcs[9])).is_false()
+	assert_bool(_has_light_near(lights, ld.room_center())).is_false()
+	# детерминированно: тот же порядок при втором построении
+	assert_array(CloudLightPlan.pillar_centers(ld)).is_equal(pcs)
+
+
+func test_колонны_не_вытесняют_важное_сверху() -> void:
+	var ld := _pillar_layout(["S.1#...E", "........", "........", "........", "........", "........", "........", "........"])
+	for i in 20:
+		ld.vaults.append({"slot": Vector3(float(i), 1.0, 0.0)})   # вход + выход + портал + хранилища уже заполняют все 12 мест
+	var lights := CloudLightPlan.build(ld)
+	assert_int(lights.size()).is_equal(CloudLightPlan.MAX)
+	assert_bool(_has_light_near(lights, ld.spawn)).is_true()
+	assert_bool(_has_light_near(lights, ld.exit_pos)).is_true()
+	assert_bool(_has_light_near(lights, NodeLayout.cell_center(3, 0))).is_false()   # колонне места не нашлось
+	for i in 9:
+		assert_bool(_has_light_near(lights, Vector3(float(i), 1.0, 0.0))).is_true()
+
+
+func test_своё_поле_lights_колонн_не_добавляет() -> void:
+	var ld := _pillar_layout(["S.1#...E", "........", "........", "........", "........", "........", "........", "........"],
+		{"lights": [{"cell1": [4, 4]}]})
+	var lights := CloudLightPlan.build(ld)
+	assert_int(lights.size()).is_equal(1)
+	assert_bool(_has_light_near(lights, NodeLayout.cell_center(3, 0))).is_false()
+
+
+func test_legacy_колонн_не_добавляет() -> void:
+	assert_int(CloudLightPlan.build(null).size()).is_equal(3)
+	assert_int(CloudLightPlan.for_legacy().size()).is_equal(3)
+
+
 func test_поле_lights_раскладки_заменяет_набор_по_умолчанию() -> void:
 	var ld := LayoutData.parse({"name": "custom", "cells": ["S.1....E", "........", "........", "........", "........", "........", "........", "........"],
 		"lights": [{"cell1": [4, 4], "r": 5.0, "s": 2.0}, {"cell": [3, 3], "threat": true}]})
