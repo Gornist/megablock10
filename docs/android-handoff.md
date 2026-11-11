@@ -18,6 +18,62 @@
 - Модель угроз — **дружеская игра** (решение владельца 25.09, README, «Доверие к балансу»): подписи мастера на QR, реестр ключей игроков,
   подписи сообщений чата, звонков, сигналов СБ и presence не делаем. Если модель угроз поменяется — это первое, что делать.
 
+## Состояние на консервацию (11.11.2026)
+
+Решение владельца 11.11: проект консервируется, новых задач нет. Всё Android-приложение — в `main`, незакоммиченного и непушенного у сессии нет, открытых PR по приложению нет
+(единственный открытый — dependabot #575, см. ниже). Остальные разделы этого документа описывают устройство; этот — что отдаём и как возобновить.
+
+**Что сделано и работает** (проверено CI: detekt, Lint, Animal Sniffer, ≈665 unit-тестов app + kit + rules, Paparazzi, e2e на двух эмуляторах):
+чат и фракционные сообщения, голосовые (запись через RNNoise, плеер, «прослушано»), звонки WebRTC с шумодавом и перезапуском ICE, кошелёк (переводы с подписью,
+`UNKNOWN` = «мог дойти»), предметы и шарды, взлом 2.0, QR всех видов (только `v1`; TX/ITEM — `v2`), выдача персонажа QR **или коротким кодом без камеры**, синхронизация с
+коллектором (`wireVersions` из 7 ключей), связь с очками Pico и вход в «Сеть» (`MB10ENTER` v2), `targetSdk 35` с edge-to-edge, раздача APK через `apk.yml` с постоянной подписью,
+общие JSON-векторы контрактов (`rules/src/test/resources/contracts/`, читают приложение, Коллектор, Мост).
+
+**Не проверено вживую** (в CI проверить нельзя; чек-листы — [live-test-plan.md](live-test-plan.md), Т14, и [device-testing.md](device-testing.md)):
+входящий звонок и диалог объявления под edge-to-edge; Android 14 и 10–13 (служба `dataSync` на них не менялась, но не запускалась после перехода на 35); живая запись голосовых
+с RNNoise (запасной `MediaRecorder` на месте); NSD между 5+ устройствами и роуминг Wi-Fi; нагрузка на 100 устройств; обновление поверх старой версии (миграции Room 12→17 проверены
+тестами на данных, на телефоне — нет); e2e на **новой** devbox не прогонялся ни разу (образы эмуляторов не ставились — см. «Как возобновить»).
+
+**Решения владельца, которые не реализованы:** звуки приложения из Cyberpunk 2077 (holodeck, взлом, деньги, предметы, вход, QR, интерфейс, сигнал СБ) — владелец не выбрал.
+Есть 81 кандидат, сырьё **вне git**: `~/Developer/cp77-sound-candidates/android/` (16 МБ; папки `1_holodeck` 8 файлов, `2_breach` 21, `3_ICE` 7, `4_money` 5, `5_item` 7,
+`6_login` 5, `7_QR` 7, `8_UI` 17, `9_SECALERT` 4; `INDEX.md` и страница прослушивания `listen.html` — `python3 -m http.server 8765` из этой папки), извлечение —
+`~/Developer/cp77-sound-candidates/HOWTO.md` и `cp77_extract.py` (Wwise на Windows-ПК с игрой, см. memory «winpc-cyberpunk-assets»). Выбор — номерами («1б, 2в…»); в
+`app/src/main/res/raw/` кладём только одобренное; плеер приложения — `sound/SoundPlayer`. Не делали по прямому решению: расшифровка голосовых (07.10), TalkBack, ключ в Android
+Keystore, подписи сообщений (дружеская игра), перенос `Mb10Qr`/подписи и `PhoneWire` в `:rules`, `CallMediaPort`.
+
+**Известные проблемы:**
+- dependabot #575 (группа `gradle-minor`: KSP 2.3.13, byte-buddy-agent 1.18.16, WebRTC 150.7871.04, okhttp 4.12.1, sqlite-jdbc 3.54.1.0, kotlinx-serialization-json 1.12.0) **красный**:
+  `Could not find org.jetbrains.kotlinx:kotlinx-coroutines-test:1.12.0` (в журнале CI от 02.11; причину — вероятно, kotlinx-serialization 1.12 поднимает версию coroutines до
+  ещё не опубликованной — не проверяла). **Рекомендация: не вливать до консервации**; при возобновлении — разобрать группу по одному (остальные пять без проверки), а
+  `kotlinx-serialization-json` оставить 1.11.0, пока не выйдет согласованная coroutines.
+- Нет иконки приложения (`MissingApplicationIcon` в lint-baseline — нужен арт); 7 находок `ModifierParameter` и одна `DecryptRules` в baseline'ах.
+- Общий потолок неверных коротких кодов на сервере (100 в час) могут исчерпать два чужих адреса и остановить выдачу новым игрокам до конца часа; для офлайн-LAN принято, значение — переменная окружения коллектора.
+- `SetupScreen.needsServerAddress()` читается при каждой рекомпозиции и не реактивен (для экрана первого запуска достаточно).
+- Векторы `change-record.json` содержат случайные ECDSA-подписи, полученные одноразовым Node-скриптом, **которого больше нет**: существующие значения не перегенерировать,
+  новые векторы добавлять рядом, считая независимо от Kotlin (Node `crypto`; формулы подписи и форматы — в самих файлах и в `contracts/README.md`).
+- Прочее из P2 аудита и мелкое — в разделе «Известные ограничения и долги» ниже.
+
+**Как возобновить с нуля:**
+1. *Сборка и проверки.* Gradle на Mac с 8 ГБ не гонять: `scripts/dbx.sh --auto|--full` на devbox (`docs/devbox.md`). Devbox переустановлен 25.10: клон `~/megablock10`
+   (полный, не `blob:none` — иначе `dbx.sh` падает с `not our ref`), `~/mb-main/local.properties`, Android SDK (platform 37, build-tools 36.0.0), Temurin 17/21; Gradle-кэши
+   пусты — первый прогон идёт десятки минут. Pre-push хук (`scripts/setup-hooks.sh`) гоняет `check.sh --fast` с `dbx.sh --auto`. Без devbox — только CI на PR.
+2. *Подпись APK.* `apk.yml` подписывает постоянным ключом из секретов Actions `ANDROID_KEYSTORE_BASE64` (`base64 -i keystore.jks`), `ANDROID_KEYSTORE_PASSWORD`,
+   `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` (все четыре или ни одного; без них — debug-ключ раннера). Ключ хранит владелец, в репозитории его нет. Первый переход на
+   постоянный ключ требует один раз удалить приложение с телефона. `debug.keystore` devbox возвращён прежний (подпись устройств совпадает).
+3. *e2e.* На devbox образов нет: `sdkmanager "platform-tools" "emulator" "system-images;android-34;google_apis;x86_64"` и два AVD (`avdmanager create avd -n <имя> -k
+   "system-images;android-34;google_apis;x86_64" -d pixel_6`; имена по умолчанию `Medium_Phone_API_35`/`Second_API_35` — `scripts/e2e/lib.sh`, на CI `e2e_a`/`e2e_b`; точные
+   команды — шаг в `.github/workflows/e2e.yml`); затем `scripts/e2e/up.sh && scripts/e2e/run-all.sh` (стенд на 5554/5556, коллектор :2517; после `zz-provisioning` — `down.sh && up.sh`).
+   Kvm и docker у пользователя `nick` есть. Устройство стенда — [scripts/e2e/README.md](../scripts/e2e/README.md).
+4. *Выдача персонажа.* Мастер создаёт выдачу в «Мастерской» (форма «Персонаж», `admin-web`): QR и рядом короткий код `ABC-DEF`; адрес сервера и код игры приходят в QR
+   (или из сборки: `-Pmb10.collectorUrl=…` / `MB10_COLLECTOR_URL` / `local.properties`). Для стенда: `scripts/phone.sh prov <серийник> <позывной> <фракция> [баланс] [RAM]`
+   (DEBUG_QR). Контракт — [provisioning-qr.md](provisioning-qr.md) (зона Коллектора). Свежий коллектор для живых прогонов: `scripts/box.sh up mb10-collector <сессия> -- …` +
+   `admin-web/server` (`npm ci`, `createMaster.ts`; токен мастера в чат не выводить); `~/live-collector` на devbox не сохранён.
+5. *Телефоны для живой проверки.* XCover7 (серийник `R5CY41JG61L`, Android 16, adb на devbox; бронь — `scripts/box.sh lease xcover7 <сессия> <мин>`, снять после) и Xiaomi
+   (грабли — «Установка через USB» и «Отладка по USB (настройки безопасности)»). **Без VPN** — с ним нет голоса в звонках. Очки Pico — только под бронью `pico`, без разрешения
+   владельца не трогать. RCPad — отдельный проект, в Мегаблок не входит (ветка `agent/rcpad-sticks` остаётся локальной).
+6. *Порядок работы.* Своя worktree (`scripts/agent-worktree.sh new <имя>`), `scripts/zone-check.sh android`, PR, `scripts/ci-wait.sh pr N`, «готово к слиянию» — Pipeline;
+   код по карточке — Sonnet (skill `orchestrate`); формат, затрагивающий Коллектор/Мост/QR, — по правилу «Контракт между зонами» (читающая сторона первой).
+
 ## Сборка и платформа
 
 - compileSdk 37, minSdk 26, **targetSdk 35** (владелец 19.10 выбрал 35, не 36: APK ставится в обход Play, требования магазина к targetSdk

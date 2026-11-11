@@ -1,0 +1,42 @@
+# Карточка Ш2-Б — такт на сервере: часы, ходы, ICE по тактам, намерения в рассылке
+
+Общие правила: `/private/tmp/claude-501/-Users-peachbite-Developer-megablock10/b5e593da-1b32-40c7-b757-4bc3f658fdd5/scratchpad/cards/rules-godot.md` (прочти первыми).
+Рабочая копия и ветка: `/Users/peachbite/Developer/megablock10-wt/gd-w2-tick`, `agent/gd-w2-tick` (уже есть `NodeGrid`, `TickVision`, `TickIce` — коммиты Ш1 и Ш2-А).
+Источники (только эти разделы): `docs/gamedesign/time-and-movement.md` 3.1, 3.3, 3.5–3.9; `docs/gamedesign/ice.md` 2, 9. Клиентскую часть (свет на полу, стрелки, рамка) НЕ делай — это Ш2-В.
+
+**Цель:** время узла идёт тактами (режим `tick`, по умолчанию в `graph.json`); soft ICE ходят по клеткам (`TickIce`); сервер рассылает такт и намерения ICE. Режим `realtime` (прежний) остаётся нетронутым и по умолчанию в коде.
+
+**Зона записи:** `netrun/server/node/tick_clock.gd` (новый), `netrun/server/node/gray_node.gd`, `netrun/server/node/graph_world.gd` (только передача настроек), `netrun/server/node/node_graph.gd` (настройки по умолчанию),
+`netrun/server/net_server.gd` (правило хода), `netrun/server/ice/tick_ice.gd` (правки по шагу 1), `netrun/shared/net/world_msg.gd`, `netrun/data/graph.json` (только `settings`), `netrun/tests/` (новые и правки), `netrun/tests/bot/bot_client.gd` (бот под такты), `docs/netrun-deck-design.md` и `docs/netrun.md` НЕ трогать — документ напишу сам.
+Клиент (`netrun/client/`) — НЕ трогать; старый клиент не должен падать на новых полях сообщений.
+
+## Досье
+- `gray_node.gd`: `_step` (≈793) собирает `targets`/`meters` и отдаёт `IceNode`; `_add_ice` (≈280) создаёт `IceNode`/`IceBrain` из `NodeLayout.ICE`/`BLACK_ICE` и тира узла; `_broadcast_state` (≈858) шлёт поле `ice` — список `{id, p, f, s, b}`; `_on_ice_ejected` (≈979); журнал `_log_ice` (≈313).
+  Настройки узла — `settings` (из `apply_def`, `NodeGraph.DEFAULT_SETTINGS`, `graph.json settings`).
+- `net_server.gd`: `_handle_teleport` (≈420) — сервер уже проверяет клетку (Ш1), правило перезарядки: `RigMath.teleport_verdict`; сигнал `teleported`; панели: `breach/charge/decrypt` у `GrayNode`; тоннель — `TUNNEL_NODE`; пауза/обрыв — сигнал `session_lost` (`net_server.gd` ≈608) и `AwayGuard`.
+- Состояние ICE у старого клиента — `s` = `IceBrain.State` (0 Патруль, 1 Подозрение, 2 Поиск, 3 Охота): для `TickIce` отдавать в `s` соответствие 0→0, Взгляд и Проверка→1, Поиск→2, а настоящее состояние `TickIce` (0..3) — в новом поле `st`.
+- Black ICE в тактовом режиме — прежний `IceBrain`: на каждый такт его шагают виртуальным временем `black_tick_sec` = 1,0 с (10 подшагов по 0,1 с); его метры и скорости не менять. Полная переработка Black ICE — позже.
+
+## Что сделать (один коммит на шаг; после каждого — `netrun/tools/dev.sh test <наборы>`)
+
+1. **Правки TickIce по итогам разбора.** (а) В Проверке и Поиске ICE не заходит в клетку нетраннера: останавливается перед ней (как в Патруле), нетраннер в соседней клетке виден в фокусе. (б) Если ICE уже в клетке цели (цель вошла к нему сама) — цель считается в фокусе (счётчик +2), а не потерянной.
+   Обнови `tick_ice_test.gd`.
+2. **`tick_clock.gd`** (`class_name TickClock`, `RefCounted`, чистая логика, часы подаёт вызывающий): `window_sec` 5,0, `min_interval_sec` 0,6; `register_move(session)`; `set_free(sessions: Array)` (кто сейчас держит такт, Т3); `poll(now) -> bool` — пора ли делать такт: (все свободные сходили и с прошлого такта ≥ `min_interval_sec`) ИЛИ (с прошлого такта ≥ `window_sec`);
+   нет свободных нетраннеров и никого в узле — тактов нет (Т8), отсчёт окна начинается с появления первого нетраннера; `tick_no`, `last_tick_at`, `moved(session)`, `inhale(now, inhale_sec)` — идёт ли «вдох» (до такта по окну осталось ≤ `inhale_sec` 0,5 с и такт не по ходам). После такта `moved` очищается. Тесты `tick_clock_test.gd`: ход единственного → такт не раньше 0,6 с; не сходил → такт через 5,0 с; двое: ждём обоих, но не дольше окна; один в панели (не свободен) такт не держит; нет нетраннеров → тактов нет; вдох за 0,5 с до окна.
+3. **Режим времени в `GrayNode`.** `NodeGraph.DEFAULT_SETTINGS`: `time_mode` "realtime", `tick_window_sec` 5.0, `tick_min_interval_sec` 0.6, `tick_inhale_sec` 0.5, `black_tick_sec` 1.0, `entry_hidden_ticks` 2; в `graph.json settings` — `"time_mode": "tick"`. Узел читает `settings.time_mode`.
+   В режиме `tick`: soft ICE — `TickIce` (маршрут из `NodeLayout.ICE`: точки → клетки `NodeGrid.cell_of`, настройки из `ice_settings`/`node_def.ice_settings`, где есть пересечение по смыслу: дальность зрения в клетках `sight_cells` по тиру — BASE 6, HARD 8, NIGHTMARE 10); `_step` не двигает ICE по времени, а спрашивает `TickClock.poll(now)` и на такт вызывает `tick_ice.tick(targets, hidden)` у каждого soft ICE, шагает black ICE виртуальным временем, считает события:
+   `capture` → тот же `_on_ice_ejected(session, "caught")`; `search_started` → журнал + тревога узла +0,1 (шкала `alert` 0–1; по правилам `alert_events`); видимость → trace (`seen_by_ice` за такт, количество = секунды с прошлого такта, не больше окна).
+   `hidden` — под Призраком (`is_ghost`) и первые `entry_hidden_ticks` тактов после входа (`_entered_at` в тактах). Тактов нет без нетраннеров (`TickClock`), ICE не шагают, `rest()` для Black — как раньше.
+   Режим `realtime` — ровно прежний код (тесты ICE, бот, black_ice зелёные без правок).
+4. **Ходы и правило «один ход за такт».** Ход регистрируют (в `TickClock.register_move`): принятый телепорт (в том числе на свою клетку — «ждать»; в `net_server` ответ клиенту не меняется), `object_taken` (взять), удачный запуск демона (`_on_daemon_requested`), начало взлома/заряда/расшифровки, вход в портал. Не свободен (Т3): тоннель, панель взлома/заряда/расшифровки, пауза/обрыв (`session_lost`, `AwayGuard`), ожидание выхода.
+   `NetServer._handle_teleport`: в режиме `tick` перезарядка 1,2 с заменяется отказом `WorldMsg.REASON_MOVED = "moved"`, если нетраннер уже сходил в этом такте (проверка — вызываемый хук `move_check: Callable(session) -> bool`, задаёт `GrayNode`; не задан — прежняя перезарядка). Остальные проверки (клетка, дальность) — как в Ш1.
+5. **Рассылка.** В `_broadcast_state` в режиме `tick` к каждому ICE добавить (старые поля `id,p,f,s,b` остаются): `c` — `[cx, cz]` клетка, `d` — `[dx, dz]` направление, `st` — состояние TickIce 0..3, `nc`/`nd` — клетка и направление после следующего шага, `aw` — наибольший счётчик 0..6; к сообщению — `tk`: `{n: номер такта, at: время последнего такта (узловое «k»), win: окно, inh: 0|1 «вдох», mv: 0|1 «твой ход принят»}`;
+   `mv` — для каждого игрока своё. В режиме `realtime` новые поля НЕ посылаются. Журнал сервера: строки `[ice]` в режиме `tick` несут `tick=N`; строка `[tick] n=… moves=… by=window|moves` на каждый такт.
+6. **Боты и тесты.** Боты (`tests/bot/bot_client.gd`) в режиме `tick` ходят «по ходам» (один прыжок на такт, «ждать» — прыжок на свою клетку); тесты узла, где ICE важны по времени (`gray_node_test`, `outcomes_*`, `black_ice_test`, e2e-подобные), остаются на `realtime` (узел создаётся без `graph.json`), а новые тесты тактового режима: (а) Страж идёт по маршруту по 2 клетки за такт; (б) такт по ходу игрока; (в) такт по окну 5 с (подай время тестом, не sleep); (г) «?» → Взгляд, Проверка, Поиск → выброс не раньше 3 тактов на модели П1 (цель в фокусе, неподвижна);
+   (д) два нетраннера: ждём обоих; (е) нетраннер в панели такт не держит; (ж) нетраннера нет — тактов нет; (з) сообщение `state` в `tick` несёт `tk` и `c/d/st/nc/nd/aw`, в `realtime` — нет; (и) `moved` — отказ второго хода в том же такте.
+   Тесты, использующие `graph.json` целиком (`outcomes_graph_test`, `graph_world_test` и др.), поправь так, чтобы они проверяли своё (например, `time_mode: "realtime"` в их настройках) — не ослабляя проверок.
+7. **Полный прогон:** `netrun/tools/dev.sh test --all` — только в фоне (Bash `run_in_background`); итог — число тестов и падений. Бот-прогон 10 минут в режиме `tick` (`netrun/tools/soak_run.gd`, как запускать — шапка файла; в фоне) — итог: ошибок нет, забеги заканчиваются.
+
+## Приёмка
+Затронутые наборы и `--all` — 0 ошибок; бот-прогон 10 мин без ошибок; `git diff --stat origin/main` — только файлы из зоны. Коммиты на русском (что и почему), `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`. Не пушить.
+**Отчёт** ≤ 15 строк: СТАТУС, коммиты (sha, тема), проверки (команда → вердикт), решения, которые принял сам, вопросы (особенно: что из «ходов» не удалось привязать и почему).
