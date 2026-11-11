@@ -1,0 +1,17 @@
+# Карточка COVER — «Занятые клетки блока хранилища видны» (PR C, решение Game 07.10)
+
+Рабочая копия/ветка: **`~/Developer/megablock10-wt/gd-cover`**, `agent/gd-cover` (от свежего main 4ecb861, в нём уже #93, #96, #91 Blender). Правила — `rules-godot.md`. Sonnet, коммит на шаг, зелёные тесты. Зона записи: `netrun/client/`, `netrun/shared/`, `netrun/server/layout_check.gd`, `netrun/tests/`, `docs/netrun-tick-mode.md`. НЕ трогать: `netrun/assets/` (Blender), `docs/gamedesign/`, `scripts/e2e/`.
+
+## Решение Game
+Блок хранилища 2×2 остаётся занятым целиком (зрение и раскладка не меняются), но не должен выглядеть пустым. Хранилище стоит на клетке блока, обращённой к площадке (`LayoutData.vaults[i].slot`); остальные **3 клетки блока** — укрытие `env/cover` (ассет Blender, **одна клетка 1×1 м**, origin = центр клетки на полу, корпус 0,9×0,9×2,2 м; уже в main: `netrun/assets/models/env/cover.glb`). Общее правило: **занятая клетка всегда видна** — занятая клетка без модели = ошибка LayoutCheck.
+
+## Досье
+- Клиент рисует колонны модулем `env/pillar` (2×2 м = 4 столба 1×1) по блокам «#» — `client/node_view.gd` (`MODULES`, `VARIANTS`, `_build…` раскладки; ищи `pillar` и `layout`); подсветка занятых клеток на полу — `client/occupied_floor.gd` (PR A). Занятые клетки: `LayoutData.occupied` / `NodeGrid.occ`; блок хранилища: `LayoutData.block_cells(block)`, клетка хранилища — `NodeGrid.cell_of(slot)`.
+- Контракт ассетов клиента: тест `tests/node_assets_files_test.gd` сверяет `NodeView.MODULES/VARIANTS` с файлами `assets/models/env/` — новый модуль добавляй в `MODULES` и `VARIANTS` так же, как остальные (имя файла `cover`); материалы только в `AssetMaterials` (в node_view не выставлять; для `cover` проверь, что `assets/asset_materials.gd` уже его знает — Blender его добавил; если нет — в отчёт).
+- LayoutCheck: `server/layout_check.gd` (`run_all`, есть `check_vault_grid`, `check_cover`, `check_arrival_safe`).
+
+## Шаги
+1. **C1 — рисуем:** для каждого хранилища раскладки клиент ставит `env/cover` в центр каждой из 3 клеток блока хранилища, кроме клетки самого хранилища (`NodeGrid.center(cell)`, y = 0); не путай с колоннами `#` (они остаются модулем `pillar`). Отражение в полу — как у колонн (модули с отражением в `node_view.gd`, константа списка). Один MultiMesh на модуль, как остальные. Тест: число экземпляров cover = 3 × число хранилищ foyer; позиции — центры клеток; ни один не на клетке хранилища.
+2. **C2 — LayoutCheck:** новая проверка `check_occupied_visible` в `run_all`: каждая занятая клетка раскладки (`LayoutData.occupied`) покрыта моделью — клеткой колонны (блок «#»), cover (3 клетки блока хранилища) или клеткой хранилища (`slot`) / другого занятого символа из `OCCUPIED_SYMBOLS` (`#VOBL`); для символов без модели в клиенте (O, B, L) — проверка падает с понятным сообщением (если их нет в раскладках — тест на негативный пример: раскладка с занятым символом без модели → ошибка). Тесты на foyer, foyer_tutorial, legacy (legacy без занятых клеток раскладки — не должна падать).
+3. Подсветка занятых клеток на полу (`occupied_floor`) и cover не конфликтуют (подсветка под моделью допустима).
+Проверки: `dev.sh test` по затронутым (node_assets_files_test, layout_*, node_layout_view_test, occupied_floor_test, node_scene_test), в конце `dev.sh test --all` в фоне; `scripts/zone-check.sh godot`. Кадр Фойе — `dev.sh shot res://tests/foyer_preview.tscn` (сетка ≤ 1024 px; один раз убедись, что кадр не чёрный, содержимое в отчёте не описывай). Отчёт ≤ 12 строк (`rules-godot.md`).
