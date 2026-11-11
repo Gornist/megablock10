@@ -11,7 +11,7 @@
 uniform sampler2D grid_tex : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float grid_alpha : hint_range(0.0, 2.0) = 0.0;
 uniform vec2 grid_origin = vec2(0.0);
-uniform vec4 edge_color : source_color = vec4(0.094, 0.9, 1.0, 1.0);
+uniform vec4 edge_color : source_color = vec4(0.157, 0.675, 0.682, 1.0);   // V11: циан источников #28ACAE (был 18e6ff)
 uniform float edge_mix : hint_range(0.0, 1.0) = 0.35;   // насколько частицы ребра краснее к цвету неона (меньше неона — владелец)
 
 uniform float edge_fade : hint_range(0.0, 1.0) = 0.0;   // мягкая кромка (20.10): вес ребра COLOR (1 на кромке грани → 0 в 25 см) гасит плотность частиц, а не усиливает; 0 — выкл. (ручка cloud_face_fade; ставится у pillar_block)

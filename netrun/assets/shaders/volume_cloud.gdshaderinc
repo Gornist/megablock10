@@ -27,8 +27,8 @@ uniform float dust_fill_hi : hint_range(0.5, 8.0) = 4.0;
 uniform float dust_sharp : hint_range(0.0, 1.0) = 0.0;                // 0 — как раньше; 1 — прозрачность ячейки почти 0/1 (smoothstep по яркости спрайта): меньше дробной альфы = меньше дитера a2c внутри ячейки
 uniform float dust_far_start = 10.0;                                  // дальше плотность и яркость падают
 uniform float dust_far_end = 40.0;
-uniform vec4 dust_color : source_color = vec4(0.176, 0.463, 0.553, 1.0);  // стальная бирюза референса (45,118,141): PAL_DIM светлее, неон — только акцент
-uniform vec4 dust_hot : source_color = vec4(0.62, 0.92, 1.0, 1.0);        // редкие яркие блоки (рывок): белёсый акцент
+uniform vec4 dust_color : source_color = vec4(0.247, 0.376, 0.408, 1.0);  // V11: тусклая стальная бирюза мира #3F6068 (был (45,118,141) — ярче и синее)
+uniform vec4 dust_hot : source_color = vec4(0.463, 0.776, 0.773, 1.0);    // V11: яркий циан ядра #76C6C5 — только у источников и редких ярких блоков
 
 uniform float dust_patch : hint_range(0.0, 1.0) = 0.65;               // насколько плотность пятнами: 0 — ровно, 1 — большие тёмные проплешины и сгущения (как в референсе: свет лежит пятнами)
 const float dust_patch_scale = 0.35;         // пятен на метр

@@ -42,11 +42,14 @@ const LAIR_SLEEP_BREATHE := {
 ## клиент берёт цвета ТОЛЬКО отсюда (`AssetMaterials.layer("aim_ok")`) и не задаёт свои. База — HEX из lib.py / STYLE.md: голубой мир, ледяной белый, красный только у угрозы
 ## (ICE и его взгляд), янтарь — только экран деки. ЗАПРЕЩЕНЫ коричневый, жёлтый, оранжевый и ядовито-зелёный (в кадре клиента 07.10 они были: «две разные игры»).
 ## Стадии ICE (спокойно → подозрение → тревога → охота) идут внутри красной семьи от белого к красному; безопасное — голубое.
-const PAL_CYAN := Color("18e6ff")        # BASE, окружение, «можно»
-const PAL_ICE := Color("d9f8ff")         # ледяной белый: самые яркие рёбра, текст, нейтрально
-const PAL_THREAT := Color("ff1f3d")      # только угроза: ICE, его взгляд, отказ
+const PAL_CYAN := Color("28acae")        # V11 (31.10): циан данных/«можно» у источников (был 18e6ff); мир — стальная бирюза PAL_DIM/PAL_WORLD
+const PAL_ICE := Color("d9f8ff")         # ледяной белый: надписи и метки, нейтрально
+const PAL_THREAT := Color("c5384b")      # V11: живое и угроза — ядро малиново-красного (было ff1f3d): ICE, его взгляд, облако угрозы, отказ
+const PAL_ALARM := Color("ff1f3d")       # V11: HUD-тревога и экран поражения — ярче мирового красного, читается поверх
 const PAL_THREAT_HOT := Color("ff7a6b")  # светлый красный: предупреждение, шаг ICE
-const PAL_DIM := Color("2d6b78")         # погасший голубой: недоступно, фон шкал
+const PAL_DIM := Color("3f6068")         # V11: погасший/мир тускло, фон шкал (был 2d6b78): верх стальной бирюзы мира #1F3038 → #3F6068
+const PAL_WORLD_DARK := Color("1f3038")  # V11: низ стальной бирюзы мира — частицы поверхностей вдали и у краёв
+const PAL_CORE := Color("76c6c5")        # V11: ядро яркого циана — только у источников (ореол портала/хранилища)
 const PAL_VOID := Color("02050a")        # чёрная завеса (экран конца), не чистый чёрный
 const PAL_AMBER := Color("ff7a1a")       # янтарь: ТОЛЬКО экран деки (STYLE.md), слои deck_*
 const LAYERS := {
@@ -75,7 +78,7 @@ const LAYERS := {
 	"beam_off": PAL_CYAN,                          # погашен: путь виден, пройти можно (голубое — «можно»; тусклый PAL_DIM на полу не читался, П6-6)
 	"beam_flash": PAL_ICE,                         # вспышка срабатывания (одиночный импульс)
 	"alarm_focus": PAL_THREAT_HOT,                 # тревога 2+: свет окружения у игрока (set_alarm_focus)
-	"burn_flash": PAL_THREAT,                      # ожог: красный край поля зрения (burn_flash_material)
+	"burn_flash": PAL_ALARM,                       # ожог: красный край поля зрения (burn_flash_material)
 	"burn_flash_hot": PAL_THREAT_HOT,              # и яркий обод у самой границы
 	# Облако частиц (Б), VolumeCloud: цвет облака объекта (файлы `.points`, ARCHITECTURE.md §13)
 	"volume_ice": PAL_THREAT,                      # облако ICE (Soft и Black): красное, красное только у угрозы; у Black ICE ложится на синюю оболочку модели («красное внутри»)
@@ -94,10 +97,10 @@ const LAYERS := {
 	"hud_ok": PAL_CYAN,
 	"hud_notice": PAL_ICE,
 	"hud_warn": PAL_THREAT_HOT,
-	"hud_bad": PAL_THREAT,
+	"hud_bad": PAL_ALARM,
 	"hud_off": PAL_DIM,
 	"end_win": PAL_CYAN,
-	"end_lose": PAL_THREAT,
+	"end_lose": PAL_ALARM,
 	"end_veil": PAL_VOID,                          # завеса экрана конца (фейд в тёмное)
 	# Указка деки (луч из руки к панелям)
 	"pointer_dot": PAL_ICE,                        # точка на панели
@@ -334,7 +337,7 @@ static func _paint_threat_cloud(m: ShaderMaterial) -> void:
 
 ## Цвета тиров окружения (BASE/HARD/NIGHTMARE): голубая гамма, красный в тирах не участвует.
 const TIER_TINT := {
-	"BASE": Color("18e6ff"),
+	"BASE": Color("28acae"),
 	"HARD": Color("2a7bff"),
 	"NIGHTMARE": Color("8a5cff"),
 }
@@ -345,7 +348,7 @@ const TIER_TINT := {
 ## бесплатно по перекрытию слоёв на Pico, в отличие от нового аддитивного купола. Клиент ставит `Environment.background_color = AssetMaterials.VOID_BG`.
 ## Чёрные плиты `solid_dark` остаются чёрными и читаются силуэтом на бирюзовом фоне. Подбор по кадрам room_inside / room_overview / edge_view (BASE): старый фон → этот
 ## даёт dark 38→31, 16→13, 28→21 %, lum 21→23, 26→27, 26→28, cyan и hor не хуже; остаток dark — чёрные плиты (пол комнаты — одна плита solid_dark, потолок), не фон.
-const VOID_BG := Color(0.0, 0.10, 0.13)
+const VOID_BG := Color("0a0c0e")   # V11 (31.10): пустота #0A0C0E, бирюзовой дымки нет; клиенту CALM_BG выровнять (карточка Godot)
 
 ## ВИД ТРЕВОГИ УЗЛА 0–4 (docs/gamedesign/ice.md §4, §8: «цвет фона узла сдвигается» — главный сигнал). Уровень приходит от Godot (`alert_level`, `AlarmLevels`):
 ## 0 спокойно — без изменений; 1 насторожен — лёгкий сдвиг фона; 2 тревога — заметно теплее; 3 охота — красный оттенок и пульс в ритме такта; 4 локдаун — фон на максимуме.
