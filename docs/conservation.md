@@ -57,6 +57,7 @@
 | Карточки геймдизайна и Godot | `~/Developer/gamedesign-cards/`, `~/Developer/netrun-godot-cards/` | 4,5 МБ / 0,2 МБ | рабочие; нужное перенесено в docs сессиями |
 | Аудит рефакторинга 17.10 | `~/Developer/refactor-audit/` | 0,3 МБ | план и отчёты перенесены в `docs/research/refactor-audit-1017/` |
 | Данные строк скана, стенды очков | devbox `~/pico-bl-v11/`, `~/pico-*` | см. [devbox.md](devbox.md) | пересобираются скриптами |
+| База лора Cyberpunk (книги, индекс для агента `lore`) | `~/Developer/cp2020-lore/` (Mac) — **единственная копия**, исходные PDF утеряны | 191 МБ | платные книги; сохранить вне машины ([story/lore-base.md](story/lore-base.md)) |
 | Ключи подписи APK | секреты GitHub Actions (`ANDROID_KEYSTORE_*`) + у владельца | — | секреты |
 
 ## Как возобновить
