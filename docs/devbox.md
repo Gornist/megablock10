@@ -227,3 +227,70 @@ Pipeline и пишет владельцу.
 
 Приёмка каждого шага: скрипт печатает вердикт, `lint-pipeline` зелёный, проверка на devbox описана в PR (skill `pr`), перезагрузка — только
 с владельцем.
+
+## Состояние на консервацию (11.11.2026)
+
+Решение владельца 11.11: проект консервируется, новых задач нет. Ниже — что есть и как поднять заново. **Достоверность:** состояние машины
+подтверждено сессией Devbox по ssh **до 30.10**; 11.11 машина оказалась вне сети (ping 100 %, ARP `incomplete`, ssh timeout, MAC
+`e8:6a:64:8d:8f:ab` в сети не найден — выключена или отключена), поэтому инвентарь рабочих копий (ниже) **не снят** — дописать при включении.
+
+### Что стоит на машине (проверено 30.10)
+- Ubuntu 26.04.1 LTS Desktop одним разделом ext4 на весь диск (Kingston NVMe 465 ГБ, EFI 1 ГБ), ядро 7.0.0-38, NVIDIA GTX 1650 драйвер 595.99.02 (open),
+  автовход `nick` в GNOME/Wayland, блокировка экрана и сон выключены. Адрес `192.168.1.141` по DHCP **без резерва в UniFi**; Tailscale и VPN убраны 25.10.
+- Docker 29, Temurin 17 и 21, Android SDK (`platform-tools`, `platforms;android-37.0`, `build-tools;36.0.0`, `emulator`) в `~/android-sdk`, Godot 4.7.2 и
+  Blender 4.5.14 в `~/.local` (symlink в `~/.local/bin`), `uv`, эмуляция arm64 (`qemu-user-binfmt`, `systemd-binfmt`, флаг F) для сборки образов Шерегеша.
+- User-службы: `box-adb` (adb-сервер :5037), `box-usb-watch.timer`, страж очков `box-pico-guard.timer` (`box.sh sync` его **не ставит**; включается только `box.sh guard on`
+  по слову владельца — на 30.10 не включался), `nightcoop-hub` (хаб NightCoop на UDP 47800/47810, отпечаток ключа `P2RW-PNKQ-RJ4S-7ZNJ`, **не часть Мегаблока**: исходники `Twenfys/nightcoop-hub`
+  коммит `6b694a6` + ENet `5a9c537fd464b3c6d3c55e1d3bd47588faf71b42`, собирались вручную в `~/nightcoop-hub`). Автозапуск сеанса — `~/.config/autostart/devbox-session.desktop`
+  → `~/box/repo/scripts/devbox-session-start.sh`; редактор Godot AI (8000/9500) — `godot-ai.desktop` через 20 с после входа; GUI-Blender с `blender-mcp` на 9876.
+- root-скрипт `/usr/local/sbin/box-usb-recover` и правило sudoers `NOPASSWD` на него ставит `scripts/box/install-usb-recover.sh` (стояло с 14.10 на прежней системе;
+  на переустановленной сессия Devbox его **не ставила**, кто-то другой мог — не проверено; нужен `sudo bash ~/box/repo/scripts/box/install-usb-recover.sh`).
+- `uv`/`uvx` 0.13.5 в `~/.local/bin` (нужен клиенту `uvx godot-ai attach`) поставлены руками, **в bootstrap их нет** (см. «Как поднять», п. 6).
+
+### Что вне git и пропадёт при переустановке
+| Путь на devbox | Что | Размер | Резерв |
+|---|---|---|---|
+| `~/.android/adbkey`, `adbkey.pub` | ключ adb: им авторизованы телефоны и Pico; без него — «разрешить отладку» заново (на Pico руками) | 2 КБ | Mac `~/Developer/devbox-backup-1025/home/android/` (проверено 11.11, цела) |
+| `~/.android/debug.keystore` | debug-подпись APK на устройствах; другая подпись = «несовместимая подпись», придётся удалять приложения | 3 КБ | там же |
+| `~/.local/share/nightcoop-hub/hub-sign.key` | ключ хаба NightCoop (потеря = новый отпечаток у всех игроков) | 0,4 КБ | Mac `…/devbox-backup-1025/home/hub/` |
+| `~/.config/systemd/user/*.service,*.timer`, `~/.config/autostart/` | службы и автозапуск | <10 КБ | `box-*` ставит `box.sh sync`; `nightcoop-hub.service` — копия в бэкапе `home/config/user/` |
+| `~/.config/godot`, `~/.config/blender/4.5` | настройки редакторов и аддон `blender-mcp` | ≈1 МБ | `home/config/` в бэкапе (файлы до 2 МБ) |
+| `~/.local/share/godot/export_templates/4.7.2.stable/` | шаблоны экспорта Godot (APK для Pico, Windows): 1,28 ГБ в архиве | ≈1,3 ГБ (распакованно не измерено) | **нет**: скачать на Mac (с devbox GitHub 20–30 КБ/с) и положить `scp` в `~/bootstrap/dl/` |
+| `~/pico-cfg`, `~/pico-p*`, `~/pico-bl-*` (по сообщению Pipeline — `~/pico-bl-v11`) | скрипты и APK-сборки для Pico, стенды показа | не снято 11.11 (на 25.10 `pico-cfg` ≈1,2 ГБ, из них в бэкапе ≈58 МБ — файлы до 2 МБ без APK) | частично: `home/pico-cfg/` в бэкапе; APK пересобираются `p6_build.sh` после шаблонов |
+| `~/megablock10`, `~/wt-godot`, `~/wt-dbx-*`, `~/mb-main/local.properties` | рабочие копии и кэш `dbx.sh`, Gradle | не снято 11.11 | всё воспроизводимо из git; **непушеное — см. инвентарь ниже** |
+| `~/jobs`, `~/box/journal.jsonl`, `~/box/attention.log`, `~/box/runs` | журналы `devjob`/`box.sh`, прогоны показа | не снято 11.11 | журналы на 25.10 сохранены в бэкапе (`home/box/`); позже — нет |
+| `~/shimg`, том Docker `sheregesh-image-work` | сборки образов Raspberry Pi сессии «Шерегеш» (воспроизводимы из git, образы копировались на Mac) | не снято 11.11 | не нужен |
+| `~/.ssh/id_ed25519` (ключ самой devbox прежней системы) | не сохранялся | — | не нужен: пуш с devbox не используется (`dbx.sh` пушит с Mac) |
+
+Пропали при переустановке 25.10 по решению владельца и **не возвращались**: `~/live-collector` (база и секреты живого коллектора :2527), `~/cp2020-lore`,
+`~/surf-blender`, `~/blender-5.2.2`, `~/larphouse`, `/srv/build/armbian`, все прежние `~/wt-*`.
+
+### Инвентарь незакоммиченного и непушеного по рабочим копиям (11.11)
+**Не снят: машина недоступна 11.11.** Известно только на 30.10: `~/megablock10` (ветка `main`) и `~/wt-godot` (`agent/godot` от `main`) — своих коммитов нет,
+`~/wt-dbx-agent-docs-android` (`refs/dbx/agent-docs-android`, `7e09cbf2`, detached) — чужое (Android), содержимое с тех пор не проверялось. Команда для снятия при включении
+машины (только чтение, ничего не коммитит):
+```bash
+ssh devbox 'for d in $(find ~ -maxdepth 2 -name .git -not -path "*/.cache/*" | sed "s|/.git$||" | sort); do
+  b=$(git -C $d branch --show-current); [ -n "$b" ] || b="(detached $(git -C $d rev-parse --short HEAD))"
+  echo "$d | $b | изменений=$(git -C $d status --porcelain | wc -l) | непушеных=$(git -C $d log --branches --not --remotes --oneline | wc -l)"; done'
+```
+
+### Как поднять машину с нуля
+1. Mac: скачать `Godot_v4.7.2-stable_export_templates.tpz` (1 281 349 702 байт, GitHub `godotengine/godot-builds`, релиз `4.7.2-stable`, sha256 `f298490b…8011`), при желании
+   `Godot_v4.7.2-stable_linux.x86_64.zip`, `blender-4.5.14-linux-x64.tar.xz` и `mb.bundle` (`git bundle create ~/mb.bundle --remotes=origin main`) — положить на devbox в `~/bootstrap/dl/`.
+2. Установщик Ubuntu 26.04.1 Desktop (ISO `ubuntu-26.04.1-desktop-amd64.iso` с `mirror.yandex.ru/ubuntu-releases/26.04/`, SHA-256 `601e30fb…bda1f`; запись на флешку — `dd`
+   под `sudo` на машине): «Erase disk», пользователь `nick`, имя `devbox`, кабель. **Вводит владелец:** установщик, пароль `sudo` во всех командах ниже.
+3. Mac: `ssh-keygen -R 192.168.1.141`, `ssh-copy-id -i ~/.ssh/id_ed25519.pub nick@192.168.1.141`, затем `rsync -a scripts/ nick@192.168.1.141:bootstrap/scripts/`.
+4. devbox: `sudo bash ~/bootstrap/scripts/devbox-bootstrap.sh` (15–30 мин; при сбое можно перезапускать; итог — строка `ИТОГ`), затем `sudo reboot` (драйвер NVIDIA).
+5. Mac: `scripts/box.sh sync` (клон `~/box/repo`, службы `box-*`, автозапуск), вернуть ключи из бэкапа: `rsync -a ~/Developer/devbox-backup-1025/home/android/ nick@192.168.1.141:.android/`
+   (права 600), `sudo bash ~/box/repo/scripts/box/install-usb-recover.sh` (владелец), `scripts/box.sh status` — ждать `devbox: ОК`.
+6. Godot-редактор: сначала `uv`/`uvx` (bootstrap их не ставит): `uv-x86_64-unknown-linux-gnu.tar.gz` с `github.com/astral-sh/uv/releases` (≈20 МБ, сверить `.sha256`; с devbox GitHub медленный — качать на Mac и `scp`)
+   → `~/.local/bin/`; затем на devbox `scripts/devbox-godot-ai.sh setup` и `start` (база ветки `agent/godot` теперь `main`). Хаб NightCoop — по желанию: собрать из `Twenfys/nightcoop-hub`, ключ вернуть из бэкапа.
+7. Проверка: `scripts/dbx.sh -n проба -- --version` из worktree с untracked-файлом → `DBX rc=0`; `docker run --rm --platform linux/arm64 debian:trixie uname -m` → `aarch64`.
+
+### Открытые хвосты (не код)
+- Закрепить `192.168.1.141` за MAC `e8:6a:64:8d:8f:ab` в UniFi (владелец). У плат Raspberry Pi адреса уже сменились (`pi1` `.87`→`.94`, `pi2` `.165`→`.173` по ARP на 11.11) — резерв нужен и им.
+- Pico `PA8110MGH4261073G` не отвечала на adb с 19.10 (`usb-recover` не вернул): физически — кабель, порт или питание очков; перегрузки по току на USB-порту были 19.10.
+- Пульт-самоделка `sheregesh` (`192.168.1.188`, пользователь `pilot`): ssh есть, ключа Mac на нём нет, не открывался.
+- Копия `~/Developer/devbox-backup-1025` на Mac содержит секреты (`chmod 700`): не коммитить; хранить, пока devbox нужна.
+- Шаблоны экспорта Godot — не в бэкапе (1,3 ГБ): без них нет APK для Pico и Windows-сборки.
