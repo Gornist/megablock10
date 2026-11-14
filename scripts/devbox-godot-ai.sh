@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Редактор Godot с плагином Godot AI (MCP) на devbox — на реальном дисплее GNOME (:0, GTX 1650).
-# Запускать НА devbox: scripts/devbox-godot-ai.sh setup|start|stop|status|autostart|hook
+# Редактор Godot с плагином Godot AI (MCP) на хосте Сети — на реальном дисплее машины. С 14.11.2026 это 3060pc (рабочий ПК владельца,
+# KDE Wayland, RTX 3060; docs/devbox.md «Хост Сети»), раньше devbox (GNOME, Xwayland :0). Клиент ходит по ssh к NETRUN_HOST (.mcp.json).
+# Запускать НА машине: scripts/devbox-godot-ai.sh setup|start|stop|status|autostart|hook
+# На 3060pc окно редактора открывается на рабочем столе владельца: start — только с его разрешения, autostart там не включать.
 #
 # Что и где (docs/netrun-devbox.md, «Godot AI»):
 #   * рабочая копия — git worktree ~/wt-godot на ветке agent/godot (от main): агент правит сцены прямо в ней,
@@ -108,12 +110,19 @@ case "$CMD" in
     editor_alive && { echo "уже запущен, pid $(cat "$PIDFILE")"; exit 0; }
     [[ -f "$PROJECT/addons/godot_ai/plugin.cfg" ]] || { echo "нет плагина в $PROJECT — сначала: $0 setup" >&2; exit 1; }
     env_load
-    export DISPLAY=:0
-    XAUTHORITY="$(ls /run/user/"$(id -u)"/.mutter-Xwaylandauth.* | head -1)"; export XAUTHORITY
+    # Дисплей: GNOME (devbox) — Xwayland :0 с ключом mutter; иначе (KDE Wayland на 3060pc) — родной Wayland-драйвер Godot.
+    xauth="$(ls /run/user/"$(id -u)"/.mutter-Xwaylandauth.* 2>/dev/null | head -1 || true)"
+    if [[ -n "$xauth" ]]; then
+      export DISPLAY=:0 XAUTHORITY="$xauth"; DRIVER=()
+    else
+      XDG_RUNTIME_DIR="/run/user/$(id -u)"; export XDG_RUNTIME_DIR WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+      [[ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]] || { echo "нет графического сеанса ($XDG_RUNTIME_DIR/$WAYLAND_DISPLAY): владелец не вошёл в рабочий стол" >&2; exit 1; }
+      DRIVER=(--display-driver wayland)
+    fi
     export GODOT_AI_DISABLE_TELEMETRY=1   # на площадке интернета нет, да и незачем
     patch_project on
     cd "$PROJECT"
-    nohup godot --editor --path . >"$LOG" 2>&1 </dev/null &
+    nohup godot --editor "${DRIVER[@]}" --path . >"$LOG" 2>&1 </dev/null &
     echo $! >"$PIDFILE"
     for _ in $(seq 1 30); do
       sleep 3

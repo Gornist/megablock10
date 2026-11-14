@@ -1,24 +1,25 @@
 #!/usr/bin/env bash
-# Цикл «правка → синхронизация → тесты → кадры» для Godot-части (netrun/) одной командой с Mac. Печатает КОМПАКТНЫЙ итог, полные журналы остаются на devbox.
+# Цикл «правка → синхронизация → тесты → кадры» для Godot-части (netrun/) одной командой с Mac. Печатает КОМПАКТНЫЙ итог, полные журналы остаются на хосте Сети (NETRUN_HOST, по умолчанию 3060pc).
 #
-#   netrun/tools/dev.sh sync                      залить netrun/ на devbox (rsync --delete, без reports/.godot)
+#   netrun/tools/dev.sh sync                      залить netrun/ на хост Сети (rsync --delete, без reports/.godot)
 #   netrun/tools/dev.sh test [файл_test ...]      sync + тесты; по умолчанию — затронутые изменёнными файлами (git diff от origin/main, включая неотправленное)
 #   netrun/tools/dev.sh test --all                весь набор (5–10 мин: запускать в фоне, Bash run_in_background)
-#   netrun/tools/dev.sh shot res://assets/X.tscn [арги сцены]   sync + превью-сцена на дисплее devbox; кадры склеиваются в ОДНУ сетку, на Mac приходит только она
+#   netrun/tools/dev.sh shot res://assets/X.tscn [арги сцены]   sync + превью-сцена на дисплее хоста Сети (только с разрешения владельца: это его рабочий стол); кадры склеиваются в ОДНУ сетку, на Mac приходит только она
 #   netrun/tools/dev.sh all [res://сцена ...]     sync + тесты по изменённым [+ shot]
 #
 # Правила (сбои, на которых это выверено):
-#  - Рабочий каталог на devbox выводится из ВЕТКИ (wt-<ветка без agent/>), а не из имени папки; в нём файл .dev-branch со своей веткой — чужую не затираем.
+#  - Рабочий каталог на хосте Сети выводится из ВЕТКИ (wt-<ветка без agent/>), а не из имени папки; в нём файл .dev-branch со своей веткой — чужую не затираем.
 #    Явно другой каталог — DEV_REMOTE=wt-имя (метка обновится). Каталоги — копии без .git: состояние — только то, что залил sync.
 #  - rsync всегда с --delete: оставшийся от другой ветки *_test.gd без нужного кода вешает gdUnit в отладчике (Parser Error → Debugger Break).
-#  - Один gdUnit и один дисплей на devbox: flock /tmp/gdunit.lock и /tmp/display.lock, timeout на каждый запуск.
-#  - Картинки в контекст агента не лить: shot отдаёт одну сетку ≤ 1024 px шириной (Pillow на devbox). Деталь мелкая — DEV_CROP=левый,верх,ширина,высота
+#  - Один gdUnit и один дисплей на машине: flock /tmp/gdunit.lock и /tmp/display.lock, timeout на каждый запуск.
+#  - Картинки в контекст агента не лить: shot отдаёт одну сетку ≤ 1024 px шириной (Pillow на машине). Деталь мелкая — DEV_CROP=левый,верх,ширина,высота
 #    (доли кадра, например DEV_CROP=0.3,0.15,0.4,0.7) режет каждый кадр перед сборкой сетки.
 set -uo pipefail
 
 ROOT=$(git rev-parse --show-toplevel)
-# Общая обвязка ssh к devbox (scripts/lib/devbox.sh: dssh, unreachable). DEV_HOST — прежнее имя переменной, оставлено для совместимости.
-DEVBOX_HOST=${DEV_HOST:-${DEVBOX_HOST:-devbox}}
+# Машина — хост Сети NETRUN_HOST (по умолчанию 3060pc, docs/devbox.md «Хост Сети»); DEV_HOST и DEVBOX_HOST — прежние имена, переопределяют.
+# Обвязка ssh — scripts/lib/devbox.sh (dssh, unreachable, gpu_guard_sh).
+DEVBOX_HOST=${DEV_HOST:-${DEVBOX_HOST:-${NETRUN_HOST:-3060pc}}}
 # shellcheck source=../../scripts/lib/devbox.sh
 . "$ROOT/scripts/lib/devbox.sh"
 HOST=$DEVBOX_HOST   # адрес для rsync
@@ -38,7 +39,7 @@ cmd_sync() {
   echo "dev.sh: $ROOT@$BRANCH -> $HOST:$REMOTE"
   local mark rc=0
   mark=$(dssh "cat ~/$REMOTE/.dev-branch 2>/dev/null || true") || rc=$?
-  if [[ $rc -eq 255 ]]; then unreachable >&2; die "devbox недоступен"; fi
+  if [[ $rc -eq 255 ]]; then unreachable >&2; die "$HOST недоступен"; fi
   if [[ -n "$mark" && "$mark" != "$BRANCH" && -z "${DEV_REMOTE:-}" ]]; then
     die "в $REMOTE лежит ветка '$mark', а у вас '$BRANCH'; задайте DEV_REMOTE=... явно, если так и надо"
   fi
@@ -140,12 +141,15 @@ export XDG_RUNTIME_DIR=/run/user/\$(id -u) WAYLAND_DISPLAY=wayland-0
 rm -rf $SHOT_DIR && mkdir -p $SHOT_DIR
 # rsync --delete стирает *.import, которых нет в git (у новых .glb их не бывает до первого открытия редактора), и без импорта сцена не находит модели:
 # «No loader found for resource» и пустой кадр. Импорт — как в gdunit.sh; кэш .godot жив, поэтому повторный проход короткий.
-# Скрипт приходит на stdin (`ssh bash -s`): godot читает stdin и съедает остаток скрипта (после него молча нет сетки) — гасим его </dev/null.
+# Скрипт приходит на stdin (ssh … bash -s; обратных кавычек в этом heredoc не писать — они выполняются на Mac): godot читает stdin и съедает остаток скрипта (после него молча нет сетки) — гасим его </dev/null.
 timeout 300 ~/.local/bin/godot --headless --path netrun --import > /dev/null 2>&1 </dev/null || true
 # Кадр — GPU: встаём в общую очередь devbox (класс gpu: экспорт Godot, Cycles, эмуляторы — по одному, видеокарта 4 ГБ; docs/devbox.md, D4).
 # Свой flock на дисплей остаётся внутри (класс gpu — отдельный замок, самоблокировки нет). Нет ctl.sh (не devbox) — запускаем напрямую.
 CTL=\$HOME/box/repo/scripts/box/ctl.sh
 gpu() { if [ -f "\$CTL" ]; then bash "\$CTL" run gpu "\${BOX_OWNER:-Godot}" --name shot --wait "\${SHOT_QUEUE_WAIT:-900}" -- "\$@"; else "\$@"; fi; }
+# На хосте Сети видеопамять держит локальная LLM: нет памяти — вердикт вместо молча пустого кадра (scripts/lib/devbox.sh, gpu_guard_sh).
+$(gpu_guard_sh)
+vram_check || exit 4
 gpu bash -c 'timeout 180 flock /tmp/display.lock ~/.local/bin/godot --display-driver wayland --path netrun --resolution 1280x720 "\$@" > $SHOT_DIR/run.log 2>&1 </dev/null' _ $scene -- --out=$SHOT_DIR $*
 [ \$? = 3 ] && echo "dev.sh shot: очередь gpu не дала запуститься за \${SHOT_QUEUE_WAIT:-900} с — scripts/box.sh queue gpu"
 grep -aE "ERROR|SCRIPT|Parse" $SHOT_DIR/run.log | head -5
@@ -155,7 +159,7 @@ from PIL import Image
 files = [f for f in sorted(glob.glob("$SHOT_DIR/*.png")) if not f.endswith("sheet.png")]
 if not files:
     print("кадров нет, см. $SHOT_DIR/run.log")
-    raise SystemExit
+    raise SystemExit(5)
 cell = 512
 crop = [float(x) for x in "${DEV_CROP:-}".split(",") if x.strip()]
 tiles = []
@@ -175,6 +179,7 @@ sheet.save("$SHOT_DIR/sheet.png")
 print("сетка %dx%d px, кадров %d (слева направо, сверху вниз):" % (sheet.width, sheet.height, len(tiles)))
 print("  " + ", ".join(os.path.basename(f)[:-4] for f in files))
 PY
+[ \$? = 5 ] && vram_why $SHOT_DIR/run.log
 REMOTE_EOF
 }
 
@@ -185,7 +190,7 @@ cmd_shot() {
   remote_shot_script "$scene" "$@" | dssh bash -s
   mkdir -p "$SHOT_DIR"
   if scp -q "$HOST:$SHOT_DIR/sheet.png" "$SHOT_DIR/sheet.png" 2>/dev/null; then
-    echo "dev.sh: сетка на Mac: $SHOT_DIR/sheet.png (отдельные кадры — на devbox: $SHOT_DIR)"
+    echo "dev.sh: сетка на Mac: $SHOT_DIR/sheet.png (отдельные кадры — на $HOST: $SHOT_DIR)"
   fi
 }
 

@@ -1,29 +1,29 @@
 #!/usr/bin/env bash
-# Конвейер ассетов «Сети»: Mac → devbox (Blender → .glb → Godot) → Mac. Запускать с Mac из любого каталога.
-#   pipeline.sh build            — собрать ВСЕ ассеты из src/*.py на devbox (PYTHONHASHSEED=0), проверить, забрать .glb и отчёты, пересобрать MANIFEST.md;
+# Конвейер ассетов «Сети»: Mac → хост Сети (NETRUN_HOST, по умолчанию 3060pc) (Blender → .glb → Godot) → Mac. Запускать с Mac из любого каталога.
+#   pipeline.sh build            — собрать ВСЕ ассеты из src/*.py на хосте Сети (PYTHONHASHSEED=0), проверить, забрать .glb и отчёты, пересобрать MANIFEST.md;
 #       в конце src/head_points.py: без HeadLowPolygon.stl печатает «пропуск» (код 0), HEAD_STL=путь — перегенерирует netrun/client/head_points.gd
 #   pipeline.sh shots [каталог] [флаги сцены] [--grid] — снять кадры комнаты из Godot (по умолчанию /tmp/assets-shots); флаги: --only=a,b --lattice=0.05 --crowd --portal (вернуть портал у западной стены, по умолчанию нет) --tiles (вернуть пол из модулей floor*, по умолчанию одна плита env/floor_slab_16) --bg=r,g,b (цвет фона-пустоты, по умолчанию AssetMaterials.VOID_BG; старый чёрный — --bg=0.004,0.008,0.016) --noexit (убрать свободную рамку выхода env/exit_frame в точке выхода; по умолчанию она есть) --nobeacon (выключить узел Beacon у шардов и токена, как в руке)
-#       --grid — самому pipeline.sh (в сцену не уходит): после съёмки склеить кадры на devbox в ОДНУ сетку ≤ 1024 px по ширине с подписями
+#       --grid — самому pipeline.sh (в сцену не уходит): после съёмки склеить кадры на хосте Сети в ОДНУ сетку ≤ 1024 px по ширине с подписями
 #                имён кадров и забрать на Mac один PNG: <каталог>/grid.png (отдельные кадры лежат там же)
 #   pipeline.sh movie [файл.mp4] [флаги сцены] — записать видео комнаты (7 с) и сконвертировать (нужен ffmpeg на Mac); флаги: --walk --static --cam=…
 #   pipeline.sh demo [файл.mp4] — длинный проход по комнате (34 с, 1920×1080): вход → хранилище → портал → ICE → вверх
 #   pipeline.sh fps              — замер времени кадра GPU/CPU и числа вызовов отрисовки на трёх ракурсах
 #   pipeline.sh stats <кадр|каталог> ... [--ref <референс.png>] — числовые метрики кадров (яркость, доли чёрного/бирюзы/синего/красного, горизонт, потолок/пол)
-#       таблицей на devbox (tools/framestats.py): сравнение с референсом цифрами, без картинок в контексте
+#       таблицей на хосте Сети (tools/framestats.py): сравнение с референсом цифрами, без картинок в контексте
 #   pipeline.sh overdraw         — перерисовка (слоёв прозрачности на пиксель) по слоям: all/streaks/points/glass/skirt/haze/shell_soft/beacon_halo на кадрах
 #       room_entrance, room_inside, room_overview (ODFRAMES=a,b меняет кадры, ODCATS="all streaks" — слои; слой бывает `слой@ассет`, например ODCATS="all@floor_slab skirt@far_floor" ODEXTRA=--nobatch); preview_capture.gd --overdraw=<слой>, счёт tools/overdraw.py
-# Требует: devbox доступен (Tailscale), на нём Blender (~/.local/bin/blender) и Godot (~/.local/bin/godot), графический сеанс nick.
-# Стенд просмотра — минимальный проект Godot ~/assets-gd на devbox (создаётся сам); это не проект netrun/.
-# Блокировки на devbox. build/shots/movie/demo/fps берут /tmp/assets-pipeline.lock на ВСЁ время команды (две параллельные сборки ломали
+# Требует: хост Сети доступен по ssh (LAN), на нём Blender (~/.local/bin/blender) и Godot (~/.local/bin/godot), графический сеанс Wayland (wayland-0) владельца машины.
+# Стенд просмотра — минимальный проект Godot ~/assets-gd на хосте Сети (создаётся сам); это не проект netrun/.
+# Блокировки на хосте Сети. build/shots/movie/demo/fps берут /tmp/assets-pipeline.lock на ВСЁ время команды (две параллельные сборки ломали
 # ~/assets-work и ~/assets-gd): вторая ждёт (до 30 мин) и печатает «pipeline.sh: жду другую сборку…». Блокировку держит отдельный
 # ssh-сеанс, он умирает вместе с этим скриптом (даже по Ctrl-C) и никаким фоновым процессом не наследуется. Запуск Godot с дисплеем
 # дополнительно берёт /tmp/display.lock — тот же, что netrun/tools/dev.sh (кадры dev.sh и pipeline.sh не пересекаются на экране).
-# build НЕ трогает отслеживаемые файлы вне пересобранных ассетов: *.glb.import (их делает Godot, на devbox их нет) rsync не удаляет;
+# build НЕ трогает отслеживаемые файлы вне пересобранных ассетов: *.glb.import (их делает Godot, на хосте Сети их нет) rsync не удаляет;
 # Python запускается с PYTHONHASHSEED=0, поэтому повторная сборка даёт те же .glb побайтно. Тяжёлого параллельно не запускать (skill devbox).
 set -euo pipefail
 SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"   # абсолютный путь: после cd относительный $0 не найти (overdraw вызывает себя же)
 cd "$(dirname "$0")/.."   # netrun/assets
-HOST=${DEVBOX:-nick@100.80.115.46}   # имя devbox с Mac резолвится неверно — только IP
+HOST=${DEVBOX:-${NETRUN_HOST:-3060pc}}   # хост Сети: имя из ~/.ssh/config (3060pc → 192.168.1.53); DEVBOX — прежнее имя, переопределяет
 GD_ENV='U=$(id -u); export XDG_RUNTIME_DIR=/run/user/$U WAYLAND_DISPLAY=wayland-0'
 LOCK_FILE=/tmp/assets-pipeline.lock
 DISPLAY_LOCK='flock -w 900 /tmp/display.lock'
@@ -35,7 +35,7 @@ release_lock() {
   [ -n "$LOCKDIR" ] && rm -rf "$LOCKDIR"
 }
 
-acquire_lock() {  # держит flock на devbox, пока жив отдельный ssh-сеанс (cat читает его stdin; закрыли fifo или убили ssh — блокировка снята)
+acquire_lock() {  # держит flock на хосте Сети, пока жив отдельный ssh-сеанс (cat читает его stdin; закрыли fifo или убили ssh — блокировка снята)
   LOCKDIR=$(mktemp -d); mkfifo "$LOCKDIR/in"
   trap release_lock EXIT; trap 'exit 130' INT TERM
   exec 7<>"$LOCKDIR/in"
@@ -44,13 +44,13 @@ flock -n 9 || { echo WAITING; flock -w 1800 9 || { echo TIMEOUT; exit 3; }; }
 echo LOCKED; cat >/dev/null" <"$LOCKDIR/in" >"$LOCKDIR/out" 2>/dev/null 7>&- &
   LOCKPID=$!
   local i waited=0
-  for i in $(seq 1 4000); do   # 0,5 с × 4000 ≈ 33 мин: чуть больше 1800 с ожидания на devbox
+  for i in $(seq 1 4000); do   # 0,5 с × 4000 ≈ 33 мин: чуть больше 1800 с ожидания на машине
     if grep -q LOCKED "$LOCKDIR/out" 2>/dev/null; then return 0; fi
     if [ $waited -eq 0 ] && grep -q WAITING "$LOCKDIR/out" 2>/dev/null; then echo "pipeline.sh: жду другую сборку…"; waited=1; fi
     if grep -q TIMEOUT "$LOCKDIR/out" 2>/dev/null || ! kill -0 "$LOCKPID" 2>/dev/null; then break; fi
     sleep 0.5
   done
-  echo "pipeline.sh: не получил блокировку $LOCK_FILE на devbox (занято дольше 30 мин или нет связи)"; exit 3
+  echo "pipeline.sh: не получил блокировку $LOCK_FILE на $HOST (занято дольше 30 мин или нет связи)"; exit 3
 }
 
 ensure_project() {  # минимальный проект просмотра + импорт ассетов в Godot
@@ -62,7 +62,7 @@ ensure_project() {  # минимальный проект просмотра + �
 ~/.local/bin/godot --headless --path . --import 2>&1 | grep -iE "error" || true'
 }
 
-make_grid() {  # на devbox: все кадры каталога $1 → grid.png ≤ 1024 px по ширине, имя кадра в каждой ячейке
+make_grid() {  # на хосте Сети: все кадры каталога $1 → grid.png ≤ 1024 px по ширине, имя кадра в каждой ячейке
   ssh "$HOST" python3 - "$1" <<'PY'
 import glob, os, sys
 from PIL import Image, ImageDraw, ImageFont
@@ -99,6 +99,16 @@ PY
 
 cmd=${1:-help}
 case "$cmd" in build|shots|movie|demo|fps) acquire_lock ;; esac
+# Кадрам и видео нужен GPU, а видеопамять хоста Сети держит локальная LLM владельца: не хватает — вердикт и код 4 вместо пустых кадров.
+# Модель не выгружаем (только по слову владельца). Порог — NETRUN_GPU_MIN_MIB (1024). Сборке (build, Blender -b) GPU не нужен.
+case "$cmd" in
+  shots|movie|demo|fps)
+    # shellcheck source=../../../scripts/lib/devbox.sh
+    . "$(dirname "$SELF")/../../../scripts/lib/devbox.sh"
+    rc=0; ssh "$HOST" "$(gpu_guard_sh)
+vram_check" || rc=$?
+    [ $rc -eq 0 ] || { echo "pipeline.sh $cmd: не запускаю (код $rc)"; exit $rc; } ;;
+esac
 
 case "$cmd" in
   build)
@@ -114,7 +124,7 @@ for s in $(ls src/*.py | grep -vE "lib.py|glbinfo.py|validate.py|_smoke.py|point
 done
 python3 src/points.py --root out
 python3 src/validate.py --root out'
-    # *.glb.import делает Godot, на devbox их нет: не удаляем (--exclude защищает и от --delete)
+    # *.glb.import делает Godot, на хосте Сети их нет: не удаляем (--exclude защищает и от --delete)
     rsync -a --delete --exclude MANIFEST.md --exclude '*.glb.import' "$HOST:~/assets-work/out/models/" models/
     rsync -a --delete "$HOST:~/assets-work/out/reports/" reports/
     python3 src/validate.py --manifest | tail -2
@@ -130,19 +140,19 @@ python3 src/validate.py --root out'
       esac
     done
     ensure_project; rm -rf "$out"
-    ssh "$HOST" "$GD_ENV; cd ~/assets-gd && rm -rf shots && timeout 150 $DISPLAY_LOCK ~/.local/bin/godot --display-driver wayland --path . --resolution 1280x720 -- --out=/home/nick/assets-gd/shots $extra 2>&1 | grep -E 'ERROR|SCRIPT|Parse|SHADER' || true"
-    if [ $grid -eq 1 ]; then make_grid /home/nick/assets-gd/shots; fi
+    ssh "$HOST" "$GD_ENV; cd ~/assets-gd && rm -rf shots && timeout 150 $DISPLAY_LOCK ~/.local/bin/godot --display-driver wayland --path . --resolution 1280x720 -- --out=\$HOME/assets-gd/shots $extra 2>&1 | grep -E 'ERROR|SCRIPT|Parse|SHADER' || true"
+    if [ $grid -eq 1 ]; then make_grid assets-gd/shots; fi
     scp -rq "$HOST:~/assets-gd/shots" "$out"
     if [ $grid -eq 1 ]; then echo "сетка: $out/grid.png (отдельные кадры — рядом)"; else echo "кадры: $out"; fi
     echo "ИЗОЛИРОВАНО, НЕ ПРИЁМКА: своя сцена и камеры. Приёмка вида — netrun/tools/dev.sh shot res://tests/foyer_preview.tscn (клиентский NodeView), окончательно — кадр с очков (docs: ARCHITECTURE.md §18)." ;;
   movie)
     mp4=${2:-/tmp/assets-room.mp4}; extra=${*:3}; ensure_project
-    ssh "$HOST" "$GD_ENV; cd ~/assets-gd && rm -f room.avi && timeout 240 $DISPLAY_LOCK ~/.local/bin/godot --display-driver wayland --path . --resolution 1280x720 --write-movie /home/nick/assets-gd/room.avi --fixed-fps 24 --quit-after 168 -- --movie $extra 2>&1 | grep -E 'ERROR|SCRIPT|Parse' || true"
+    ssh "$HOST" "$GD_ENV; cd ~/assets-gd && rm -f room.avi && timeout 240 $DISPLAY_LOCK ~/.local/bin/godot --display-driver wayland --path . --resolution 1280x720 --write-movie \$HOME/assets-gd/room.avi --fixed-fps 24 --quit-after 168 -- --movie $extra 2>&1 | grep -E 'ERROR|SCRIPT|Parse' || true"
     scp -q "$HOST:~/assets-gd/room.avi" /tmp/assets-room.avi
     ffmpeg -v error -y -i /tmp/assets-room.avi -c:v libx264 -pix_fmt yuv420p -crf 20 -an "$mp4"; echo "видео: $mp4" ;;
   demo)
     mp4=${2:-/tmp/assets-demo.mp4}; extra=${*:3}; ensure_project
-    ssh "$HOST" "$GD_ENV; cd ~/assets-gd && rm -f demo.avi && timeout 420 $DISPLAY_LOCK ~/.local/bin/godot --display-driver wayland --path . --resolution 1920x1080 --write-movie /home/nick/assets-gd/demo.avi --fixed-fps 24 --quit-after 816 -- --demo $extra 2>&1 | grep -E 'ERROR|SCRIPT|Parse' | grep -v 'leaked\|still in use' || true"
+    ssh "$HOST" "$GD_ENV; cd ~/assets-gd && rm -f demo.avi && timeout 420 $DISPLAY_LOCK ~/.local/bin/godot --display-driver wayland --path . --resolution 1920x1080 --write-movie \$HOME/assets-gd/demo.avi --fixed-fps 24 --quit-after 816 -- --demo $extra 2>&1 | grep -E 'ERROR|SCRIPT|Parse' | grep -v 'leaked\|still in use' || true"
     scp -q "$HOST:~/assets-gd/demo.avi" /tmp/assets-demo.avi
     ffmpeg -v error -y -i /tmp/assets-demo.avi -c:v libx264 -pix_fmt yuv420p -crf 20 -an "$mp4"; echo "демо: $mp4 (34 с, 24 к/с, 1920×1080)" ;;
   fps)
@@ -153,8 +163,8 @@ python3 src/validate.py --root out'
     done
     echo "== толпа: 9 аватаров в комнате (--crowd)"
     ssh "$HOST" "$GD_ENV; cd ~/assets-gd && timeout 60 $DISPLAY_LOCK ~/.local/bin/godot --display-driver wayland --path . --resolution 1920x1080 -- --movie --static --fps ${FPS_EXTRA:-} --crowd --cam=-1.0,1.25,8.6,0.0,1.0,-2.5 2>&1 | grep -E 'GPU мс|вызовов' || true"
-    echo "ЭТО НЕ Pico 4: настольная видеокарта devbox, окно с вертикальной синхронизацией." ;;
-  stats)  # числовые метрики кадров на devbox (там Pillow); без GPU, блокировка не нужна
+    echo "ЭТО НЕ Pico 4: настольная видеокарта хоста Сети, окно с вертикальной синхронизацией." ;;
+  stats)  # числовые метрики кадров на хосте Сети (там Pillow); без GPU, блокировка не нужна
     shift; [ $# -gt 0 ] || { echo "pipeline.sh stats <кадр.png|каталог> ... [--ref <референс.png>]" >&2; exit 2; }
     tmp=/tmp/assets-stats-$$; ssh "$HOST" "rm -rf $tmp; mkdir -p $tmp/in $tmp/ref"
     scp -q tools/framestats.py "$HOST:$tmp/framestats.py"
@@ -167,7 +177,7 @@ python3 src/validate.py --root out'
       esac
     done
     ssh "$HOST" "python3 $tmp/framestats.py $refargs $tmp/in; rm -rf $tmp" ;;
-  overdraw)  # кадры по слоям (каждый запуск shots берёт блокировку сам), счёт — на devbox
+  overdraw)  # кадры по слоям (каждый запуск shots берёт блокировку сам), счёт — на хосте Сети
     frames=${ODFRAMES:-room_entrance,room_inside,room_overview}
     cats=${ODCATS:-all streaks points skirt shell_soft beacon_halo}
     loc=$(mktemp -d); tmp=/tmp/assets-od-$$; ssh "$HOST" "rm -rf $tmp; mkdir -p $tmp"

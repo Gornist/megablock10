@@ -11,6 +11,32 @@
 (клон репозитория, `scripts/box.sh sync`; с 13.10 — не ручная копия): сеть (LAN) → adb → Blender c blender-mcp на 9876 →
 редактор Godot → самопроверка. adb — user-служба `box-adb`. Подробности сборок — skill `devbox`, Godot на devbox — `docs/netrun-devbox.md`.
 
+## Хост Сети: 3060pc (с 14.11.2026)
+
+Решение владельца 14.11: devbox в ремонте, **Сеть (Godot, Blender, сборка APK, очки Pico) переезжает на 3060pc надолго**. Gradle, Paparazzi,
+e2e, Мост и раннер GitHub остаются за devbox (на 3060pc нет Docker, KVM, Temurin 21) и до его возвращения недоступны.
+
+- **Машина:** `ssh 3060pc` (LAN 192.168.1.53, пользователь `peachbite`), Ubuntu 26.04.1, KDE Wayland (`/run/user/1000/wayland-0`), Ryzen 5 7600X,
+  30 ГБ, RTX 3060 12 ГБ. Это **рабочий ПК владельца**, не выделенный стенд: автовход, сон и блокировку не трогать, системные и user-службы
+  (box-adb, страж очков, `devbox-session-start.sh`, автозапуск редактора Godot AI) не ставить без его слова. Окна Godot (`dev.sh shot`,
+  `pipeline.sh shots/movie/fps`, редактор `devbox-godot-ai.sh start`) открываются на его рабочем столе — только с его разрешения.
+- **Видеопамять занята локальной LLM:** ≈10,8 из 12 ГБ держит сервис моделей skill `offrail` (`~/AI/PolyStrata`). Тестам gdUnit (`--headless`)
+  и сборке Blender (`-b`) GPU не нужен. Кадры и видео перед запуском проверяют свободную память (`gpu_guard_sh` в `scripts/lib/devbox.sh`,
+  порог `NETRUN_GPU_MIN_MIB`, по умолчанию 1024 МиБ): не хватает — вердикт «ВИДЕОПАМЯТЬ…» со списком процессов и код 4, пустой прогон —
+  та же подсказка. **Модель не выгружать без слова владельца.**
+- **Как скрипты находят машину:** `NETRUN_HOST` (по умолчанию `3060pc`) и `NETRUN_LAN_IP` (192.168.1.53, для диагностики `unreachable`) — в
+  `scripts/lib/devbox.sh`. Их берут `netrun/tools/dev.sh`, `fake_phone.sh`, `netrun/assets/tools/pipeline.sh`, `.mcp.json` (`godot-ai`).
+  Прежние переопределения работают: `DEV_HOST`/`DEVBOX_HOST` (dev.sh, fake_phone.sh), `DEVBOX` (pipeline.sh) — например `DEV_HOST=devbox`,
+  когда devbox вернётся. Алиас `devbox` на 3060pc **не перенаправлять**: туда ходят `dbx.sh`, e2e и `box.sh`.
+- **Установка:** `scripts/netbox-provision.sh` на самой машине (идемпотентно, итог — строка `ИТОГ`): Temurin 17, udev adb, Pillow, Godot 4.7.2 +
+  шаблоны экспорта (sha256 `f298490b…8011`), Blender 4.5.14, uv 0.13.5, Android SDK (`platform-tools`, `android-37.0`, `build-tools 36.0.0`),
+  `~/netrun-env.sh`, `devjob`, PATH для неинтерактивного ssh. Ключи adb и debug-подпись — руками из бэкапа Mac
+  `~/Developer/devbox-backup-1025/home/android/` в `~/.android` (права 600): тогда Pico не спрашивает «разрешить отладку», APK ставится поверх.
+- **Очки:** по USB к 3060pc подключает владелец; `adb devices` → `device`. Адрес сервера мира для очков (`pico.sh provision --host=…`) — 192.168.1.53.
+  Запуск на очках — только по «надеваю».
+- **Проверено 14.11:** `dev.sh test --all` без переменных — на 3060pc, зелёный; `pipeline.sh build` — модели собираются на 3060pc.
+  Не проверено: `dev.sh shot`, `pipeline.sh shots`, `p6_build.sh`, Pico по USB (нужны разрешение владельца и видеопамять).
+
 ## Кто что держит (13.10)
 
 | Сессия | Процессы и порты | Устройства | Нельзя трогать без неё |

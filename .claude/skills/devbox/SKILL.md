@@ -1,6 +1,6 @@
 ---
 name: devbox
-description: Запуск тяжёлого (Gradle, Paparazzi, стенд e2e, Godot, Мост) на машине разработки devbox по SSH — реквизиты, devjob, пуш ветки, диагностика. Использовать перед любой сборкой, тестом приложения или e2e.
+description: Запуск тяжёлого (Gradle, Paparazzi, стенд e2e, Мост) на машине разработки devbox, а Godot, Blender и очки Сети — на 3060pc (с 14.11) по SSH — реквизиты, devjob, пуш ветки, диагностика. Использовать перед любой сборкой, тестом приложения или e2e.
 ---
 
 # devbox — где выполняется всё тяжёлое
@@ -8,6 +8,15 @@ description: Запуск тяжёлого (Gradle, Paparazzi, стенд e2e, G
 Mac (8 ГБ) — только правка, git и `scripts/check.sh --fast`. Gradle, `verifyPaparazziDebug`, e2e, Godot, Мост — на devbox
 (i7-9700T, 16 ГБ, GTX 1650, Ubuntu 26.04.1, KVM; переустановлена с нуля 25.10 — `scripts/devbox-bootstrap.sh`). Машина общая
 для всех веток. Чего нет в git, после переустановки нет и на машине: стенды и рабочие копии каждая сессия поднимает себе сама.
+
+## Сеть — на 3060pc (с 14.11.2026)
+devbox в ремонте. **Godot, Blender, сборка APK и очки Pico** — на хосте Сети 3060pc: `ssh 3060pc` (192.168.1.53, пользователь `peachbite`,
+KDE Wayland, RTX 3060). `netrun/tools/dev.sh`, `fake_phone.sh`, `netrun/assets/tools/pipeline.sh` и `.mcp.json` идут туда сами
+(`NETRUN_HOST`, по умолчанию `3060pc`; обратно — `DEV_HOST=devbox`/`DEVBOX=devbox`). Gradle, Paparazzi, e2e и Мост на 3060pc не переезжают —
+до возвращения devbox они недоступны. Это рабочий ПК владельца: окна Godot (`shot`, `pipeline.sh shots/movie/fps`, редактор Godot AI) и
+очки — только с его разрешения; автовход, сон, блокировку и службы не трогать; видеопамять держит его локальная LLM — кадры при нехватке
+печатают «ВИДЕОПАМЯТЬ…» с кодом 4, модель не выгружать без его слова. Установка — `scripts/netbox-provision.sh`; подробно — `docs/devbox.md`, «Хост Сети».
+`devjob` и `~/netrun-env.sh` там те же. Ниже — про devbox.
 
 ## Доступ
 - `ssh devbox` (LAN 192.168.1.141, пользователь `nick`; алиас в `~/.ssh/config` на Mac). VPN и Tailscale нет. После переустановки

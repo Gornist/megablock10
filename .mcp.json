@@ -4,7 +4,7 @@
       "command": "ssh",
       "args": [
         "-o", "BatchMode=yes",
-        "devbox",
+        "${NETRUN_HOST:-3060pc}",
         "PATH=$HOME/.local/bin:$PATH exec uvx godot-ai==4.2.3 attach --disable-telemetry"
       ]
     }

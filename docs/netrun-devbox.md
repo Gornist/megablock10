@@ -4,6 +4,14 @@
 редактор Godot AI, стенды П6–П9, учения «выдернули питание». Саму машину (железо, установка, ssh, службы, очереди, брони, adb, очки без человека)
 ведёт сессия Devbox — [devbox.md](devbox.md) (ТЗ), скрипты `scripts/devbox-bootstrap.sh`, `scripts/box.sh`; сюда это не дублируется.
 
+> **С 14.11.2026 Сеть живёт на 3060pc, не на devbox** (devbox в ремонте; решение владельца «переносим надолго»). Скрипты Сети
+> (`netrun/tools/dev.sh`, `fake_phone.sh`, `netrun/assets/tools/pipeline.sh`, `.mcp.json`) по умолчанию идут на `NETRUN_HOST=3060pc`
+> (192.168.1.53, пользователь `peachbite`); назад на devbox — `DEV_HOST=devbox` / `DEVBOX=devbox`. Машина ставится `scripts/netbox-provision.sh`,
+> пути те же (`~/.local/godot`, `~/.local/blender`, `~/android-sdk`, `~/netrun-env.sh`, `~/wt-<ветка>`). Отличия от devbox: рабочий стол
+> владельца (KDE Wayland) — окна Godot, редактор Godot AI и очки только с его разрешения, автозапуска и служб нет; видеопамять держит его
+> локальная LLM — кадры при нехватке печатают «ВИДЕОПАМЯТЬ…» и код 4, модель не выгружать без его слова. Подробно — [devbox.md](devbox.md),
+> «Хост Сети». Ниже «devbox» для Сети читать как «хост Сети»; таблица — про devbox, на 3060pc `~/wt-godot` и `~/pico-*` ещё не заведены.
+
 Машина с 25.10.2026 переустановлена: Ubuntu 26.04.1, LAN `192.168.1.141` (`Host devbox` в `~/.ssh/config`), **без Tailscale и VPN**.
 Прежняя инструкция под Ubuntu 24.04 (`scripts/devbox-setup.sh`) устарела — остался в репозитории как история; новая машина ставится
 `scripts/devbox-bootstrap.sh` (порядок — в шапке скрипта и в `devbox.md`).
@@ -152,7 +160,8 @@ godot -- --flat --host=127.0.0.1 --port=7777 --token=t1
   не ставить** (было в `netrun/tools/*.sh` до 14.10): редактор сам зовёт `adb` (список устройств для запуска), с этой переменной это поднимает второй
   adb-сервер на 5099, он забирает USB очков, и основной на 5037 их не видит (Devbox, 14.10: очки пропали из adb после перезагрузки; лечение — `box.sh adb-rescue`).
   Проверка: `ps -eo cmd | grep "adb.*server"` показывает только `:5037 server nodaemon`. Исключение — `gdunit_ci.sh` (раннер CI без устройств).
-- **Клиент (Claude Code на Mac):** `.mcp.json` запускает `ssh devbox … uvx godot-ai==4.2.3 attach` (stdio-мост) — туннеля и токенов нет. Телеметрию
+- **Клиент (Claude Code на Mac):** `.mcp.json` запускает `ssh ${NETRUN_HOST:-3060pc} … uvx godot-ai==4.2.3 attach` (stdio-мост) — туннеля и токенов нет.
+  На 3060pc (KDE Wayland) `start` сам берёт родной Wayland-драйвер Godot (на GNOME devbox — Xwayland `:0`); `autostart` там не включать. Телеметрию
   плагина отключает `--disable-telemetry` / `GODOT_AI_DISABLE_TELEMETRY=1`.
 - **Тесты — gdUnit4, как в CI:** `ssh devbox 'cd ~/wt-godot && netrun/tools/gdunit.sh [res://tests/файл_test.gd]'` (весь набор — 171 файл `netrun/tests/*_test.gd`,
   ≈1900 `func test_` на 30.10; зелёный при открытом редакторе; долго — через `devjob start`; в цикле правки — `netrun/tools/dev.sh test`, skill `netrun-loop`).
