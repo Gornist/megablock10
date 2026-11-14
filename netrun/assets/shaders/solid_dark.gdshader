@@ -63,7 +63,7 @@ void fragment() {
 	vec3 col = base_color.rgb + mix(vc, recolor(vc), tint_amount) * edge_glow * rim_gain;
 	if (grid_alpha > 0.0 && v_top > 0.9) {
 		float g = texture(grid_tex, v_wp.xz - grid_origin).r;
-		vec3 gc = tint_amount > 0.0 ? tint.rgb : vec3(0.094, 0.9, 1.0);
+		vec3 gc = tint_amount > 0.0 ? tint.rgb : vec3(0.157, 0.675, 0.682);
 		col += gc * g * grid_alpha;
 	}
 	ALBEDO = base_color.rgb + focus_light(col - base_color.rgb, v_wp);   // тревога у игрока: свет кромок и сетки уходит в тревожный цвет, основа остаётся

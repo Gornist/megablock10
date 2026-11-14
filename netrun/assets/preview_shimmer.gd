@@ -15,7 +15,7 @@ const DYAW := 0.011  # градусы (≈ 0,2 px)
 var _out := "/tmp/shimmer_shots"
 var _pose := "entry"
 var _msaa := -1
-var _dome := false     # --dome: фон-купол (BackdropDome)
+var _transparent := false   # --transparent: вид с прозрачным фоном, как у клиента на очках (слой деки позади); печатает среднюю альфу пустых полос
 var _lights := false   # --lights: невидимые источники света у хранилищ, порталов и входа (AssetMaterials.set_cloud_lights)
 
 
@@ -25,8 +25,8 @@ func _ready() -> void:
 			_out = a.substr(6)
 		elif a.begins_with("--pose="):
 			_pose = a.substr(7)
-		elif a == "--dome":
-			_dome = true
+		elif a == "--transparent":
+			_transparent = true
 		elif a == "--lights":
 			_lights = true
 		elif a.begins_with("--msaa="):
@@ -61,6 +61,7 @@ func _ready() -> void:
 	vp.size = EYE
 	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	render.apply_msaa(vp)
+	vp.transparent_bg = _transparent
 	add_child(vp)
 	var cam := Camera3D.new()
 	vp.add_child(cam)
@@ -68,8 +69,6 @@ func _ready() -> void:
 	cam.fov = p["fov"]
 	cam.look_at_from_position(p["pos"], p["look"], p["up"])
 	cam.current = true
-	if _dome:
-		cam.add_child(BackdropDome.new())
 	var base := cam.global_transform
 	var sums := [0.0, 0.0, 0.0, 0.0]
 	var prev: Image = null
@@ -83,6 +82,8 @@ func _ready() -> void:
 			await get_tree().process_frame
 		await RenderingServer.frame_post_draw
 		var img := vp.get_texture().get_image()
+		if _transparent and k == 0:
+			print("alpha_top=%.3f (средняя альфа верхней трети кадра, 0 — пусто/прозрачно, слой деки виден; 1 — залито)" % _alpha_top(img))
 		img.convert(Image.FORMAT_L8)
 		if k == 0 or k == 5:
 			img.save_png("%s/%s_%s.png" % [_out, _pose, "a" if k == 0 else "b"])
@@ -121,3 +122,14 @@ func _band_diff(a: Image, b: Image) -> Array:
 		tn += cnt[j]
 	out.append(tot / maxf(tn, 1))
 	return out
+
+
+## Средняя альфа верхней трети кадра (небо без геометрии): у клиента с прозрачным фоном и слоем деки позади там должно быть ≈0 — купол не закрывает деку.
+func _alpha_top(img: Image) -> float:
+	var s := 0.0
+	var n := 0
+	for y in range(0, img.get_height() / 3, 8):
+		for x in range(0, img.get_width(), 8):
+			s += img.get_pixel(x, y).a
+			n += 1
+	return s / maxf(n, 1)
