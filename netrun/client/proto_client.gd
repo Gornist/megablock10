@@ -107,7 +107,7 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	var probe_spec := LoadProbe.parse(render_cfg.probe)   # синтетическая нагрузка: [render] probe = "quads=N,px=P,mode=…"
 	if probe_spec["sweep"]:   # probe = "sweep": серия вариантов за один запуск, итог `[probe] ИТОГ`
 		var sweep := ProbeSweep.new()
-		sweep.setup(scene.rig.camera)
+		sweep.setup(scene.rig.camera, probe_spec["sweep_name"])
 		add_child(sweep)
 		sweep.finished.connect(func(r: Array): log_file.log("probe.sweep", {"variants": r.size()}))
 	elif probe_spec["on"]:
