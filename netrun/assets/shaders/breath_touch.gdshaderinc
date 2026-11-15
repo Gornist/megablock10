@@ -2,6 +2,8 @@
 // Состояния нет, времени шейдер не ведёт: всё приходит uniform'ами, которые клиент каждый кадр ставит через AssetMaterials.set_cloud_breath / set_cloud_touch.
 // Умолчания — выкл. (breath_depth = 0, радиусы источников 0): без вызова клиента вид прежний, руки и тело не меняются.
 
+#include "pixel_math.gdshaderinc"
+
 // Дыхание: всё облако вдыхает единой волной, вдох — на тике хода. Фазу такта (0 — тик, 1 — следующий тик) задаёт клиент.
 // Волна чуть бежит по миру (breath_spread): соседние объекты вдыхают с лёгким сдвигом, а не хлопают разом.
 uniform float breath_depth : hint_range(0.0, 1.0) = 0.0;
@@ -29,15 +31,26 @@ float breath_lift(vec3 w) {
 	return mix(1.0 - 0.45 * breath_depth, 1.0 + 0.35 * breath_depth, b);
 }
 
-// Близость к одному источнику 0…1 (1 — в нём, 0 — на радиусе и дальше); push копит направление «от источника».
-float touch_near(vec4 t, vec3 p, inout vec3 push) {
+// Близость к одному источнику 0…1 (1 — в нём, 0 — на радиусе и дальше), без направления.
+float touch_near_k(vec4 t, vec3 p) {
 	if (t.w <= 0.0) {
 		return 0.0;
 	}
-	vec3 d = p - t.xyz;
-	float k = 1.0 - smoothstep(0.0, t.w, length(d));
-	push += normalize(d + vec3(0.0, 0.0001, 0.0)) * k;
+	return 1.0 - smoothstep(0.0, t.w, length(p - t.xyz));
+}
+
+// Близость к одному источнику 0…1; push копит направление «от источника» (в самом источнике направления нет — safe_dir даёт ноль, а не NaN).
+float touch_near(vec4 t, vec3 p, inout vec3 push) {
+	float k = touch_near_k(t, p);
+	if (k > 0.0) {
+		push += safe_dir(p - t.xyz) * k;
+	}
 	return k;
+}
+
+// Близость к ближайшему из источников 0…1 — только коэффициент, без push (облако на гранях сдвига не использует: дешевле touch_k).
+float touch_level(vec3 p) {
+	return max(max(touch_near_k(touch_a, p), touch_near_k(touch_b, p)), max(touch_near_k(touch_c, p), touch_near_k(touch_d, p)));
 }
 
 // Близость к ближайшему из источников 0…1; push — суммарный сдвиг «от источников».

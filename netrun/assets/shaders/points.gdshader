@@ -15,6 +15,7 @@ const float size_wave = 0.45;    // глубина пульсации разме
 const float wave_speed = 0.9;
 const float wave_scale = 1.1;    // волн на метр
 #include "tint_common.gdshaderinc"
+#include "pixel_math.gdshaderinc"
 
 // Затухание по расстоянию до камеры (замена depth-fade: буфер глубины не читаем, на мобильном дорого).
 const float fade_start = 60.0;
@@ -50,7 +51,7 @@ void vertex() {
 	float hs = h * (1.0 + size_wave * (v_wave - 0.5) * 2.0);
 	float sk = 1.0;
 	if (min_px > 0.0) {  // мировой размер пикселя на дистанции точки: 2·d / (P[1][1] · высота вьюпорта); полуразмер точки ≥ min_px / 2
-		float px = 2.0 * max(v_dist, 0.1) / (PROJECTION_MATRIX[1][1] * VIEWPORT_SIZE.y);
+		float px = world_per_px(v_dist, PROJECTION_MATRIX[1][1], VIEWPORT_SIZE.y);
 		sk = max(1.0, 0.5 * min_px * px / max(hs, 0.0001));
 	}
 	v_comp = 1.0 / (sk * sk);
@@ -61,7 +62,7 @@ void vertex() {
 
 void fragment() {
 	float d = length(UV - vec2(0.5)) * 2.0;
-	float soft = smoothstep(1.0, 0.25, d);
+	float soft = 1.0 - smoothstep(0.25, 1.0, d);
 	float tw = 1.0 - twinkle + twinkle * sin(TIME * twinkle_speed + v_phase + (v_wp.x + v_wp.z) * 1.7); // волны мерцания бегут по полу
 	ALBEDO = mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount) * glow;
 	ALPHA = soft * COLOR.a * tw * (1.0 - wave + wave * v_wave) * dist_fade() * intensity * v_comp;

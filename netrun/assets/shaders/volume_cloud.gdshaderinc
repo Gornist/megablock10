@@ -9,6 +9,8 @@
 // B3 (13.10.2026): единственный путь — «лёгкий» (хэш без sin, пятна 2D-шумом по плоскости грани: 4 хэша на фрагмент вместо 8); прежний 3D-шум и ручка cloud_lite удалены.
 // Файл раньше назывался volume_dust.gdshaderinc (пыль на solid_dark удалена в B1).
 
+#include "pixel_math.gdshaderinc"
+
 uniform sampler2D glitch_tex : filter_linear_mipmap, repeat_disable;
 const vec2 glitch_cells = vec2(8.0, 4.0);                         // столбцов и строк атласа
 uniform float dust : hint_range(0.0, 3.0) = 0.0;                      // яркость частиц облака (ручка cloud)
@@ -47,21 +49,38 @@ float cloud_noise2(vec2 p) {
 // proj_px = PROJECTION_MATRIX[1][1] × VIEWPORT_SIZE.y (в пользовательских функциях Godot эти встроенные недоступны — передаёт fragment(); в fragment() P[1][1] отрицателен — берём модуль).
 // dens_k — множитель плотности частиц (отклик на приближение, breath_touch.gdshaderinc; 1 — как без него; дыхание на плотность не влияет: ячейки мигали бы на тике).
 // lit — освещённость 0…1 от невидимых источников (cloud_light.gdshaderinc; 1 — как без них), lit_col/lit_col_w — цвет источника и вес перекраски.
+// ПРАВИЛО СТЕРЕО: CAMERA_POSITION_WORLD в стерео (multiview) — СЕРЕДИНА между глазами (документация Godot 4.7), не позиция текущего глаза. Для вопроса «есть ли частица в ячейке»
+// (graze → dens → step(h2, dens)) это правильно: у обоих глаз один набор точек. Чисто яркостные эффекты могут брать глаз: INV_VIEW_MATRIX[3].xyz.
 vec4 volume_cloud(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px, float edge, float dens_k, float lit, vec3 lit_col, float lit_col_w) {
+	// Производные мировой позиции — первой строкой, до любых ветвей: coord зависит от выбора оси по нормали, и dFdx(coord) на ребре или грани 45° — производная разрывной
+	// величины. Производные wp непрерывны; в плоскость выбранной оси их проецируем аналитически (как строится plane).
+	vec3 wp_dx = dFdx(wp);
+	vec3 wp_dy = dFdy(wp);
+	float cell_w = max(dust_cell, 0.001);   // hint_range в рантайме не клампит
 	vec3 an = abs(nw);
 	vec2 plane;
+	vec2 gdx;
+	vec2 gdy;
 	float axis;
 	if (an.y >= an.x && an.y >= an.z) {
 		plane = vec2(wp.x, wp.z * 0.5);
+		gdx = vec2(wp_dx.x, wp_dx.z * 0.5);
+		gdy = vec2(wp_dy.x, wp_dy.z * 0.5);
 		axis = 0.0;
 	} else if (an.x >= an.z) {
 		plane = vec2(wp.z, wp.y * 0.5);
+		gdx = vec2(wp_dx.z, wp_dx.y * 0.5);
+		gdy = vec2(wp_dy.z, wp_dy.y * 0.5);
 		axis = 1.0;
 	} else {
 		plane = vec2(wp.x, wp.y * 0.5);
+		gdx = vec2(wp_dx.x, wp_dx.y * 0.5);
+		gdy = vec2(wp_dy.x, wp_dy.y * 0.5);
 		axis = 2.0;
 	}
-	vec2 coord = plane / dust_cell;
+	gdx /= cell_w;
+	gdy /= cell_w;
+	vec2 coord = plane / cell_w;
 	vec2 id = floor(coord);
 	vec2 f = fract(coord);
 	float h = cloud_hash(id + axis * 31.0);
@@ -70,7 +89,7 @@ vec4 volume_cloud(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px, float 
 	float up = clamp(nw.y * 0.5 + 0.5, 0.0, 1.0);
 	float ndv = 1.0 - clamp(abs(dot(nw, vdir)), 0.0, 1.0);
 	float graze = ndv * ndv;
-	float far_k = 1.0 - smoothstep(dust_far_start, dust_far_end, dist);
+	float far_k = 1.0 - smoothstep(dust_far_start, max(dust_far_end, dust_far_start + 0.001), dist);
 	float patch_k = mix(1.0, smoothstep(0.25, 0.75, patch_n), dust_patch);
 	float lit_d = mix(lit_ambient, 1.0, smoothstep(0.0, 1.0, lit));   // плотность зерна: в темноте — доля lit_ambient, у света — полная
 	float lit_e = mix(lit_edge, 1.0, lit);                            // линии сетки и рёбра гаснут слабее зерна
@@ -78,12 +97,14 @@ vec4 volume_cloud(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px, float 
 	if (dens < 0.004) {   // неосвещённое и дальнее — пустота: без выборки текстуры и без дробной альфы
 		return vec4(0.0);
 	}
-	float px_world = 2.0 * max(dist, 0.1) / max(abs(proj_px), 1.0);
-	float cell_px = dust_cell / px_world;
+	float cell_px = cell_w / world_per_px(dist, proj_px, 1.0);   // proj_px уже умножен на высоту вьюпорта
 	float sharp = smoothstep(0.7, 2.0, cell_px);
 	float lit_b = mix(lit_dim, 1.0, lit) * dust;                      // яркость частиц: в темноте тусклее
 	vec3 avg_rgb = mix(mix(dust_color.rgb, dust_hot.rgb, edge * 0.5), lit_col, lit_col_w) * lit_b;
-	float fill_w = dust_fill * (1.0 - smoothstep(dust_fill_lo, dust_fill_hi, cell_px));
+	float fill_w = dust_fill * (1.0 - smoothstep(dust_fill_lo, max(dust_fill_hi, dust_fill_lo + 0.001), cell_px));
+	if (far_k <= 0.0) {   // дальше dust_far_end: прежний путь при far_k = 0 в любом режиме даёт ровно это (полная заливка — (0,0,0,1), частичная — (0,0,0,fill_w), без заливки — альфа 0); без кадра атласа и выборки
+		return vec4(0.0, 0.0, 0.0, fill_w >= 0.999 ? 1.0 : fill_w);
+	}
 	if (fill_w >= 0.999 || (dust_fill <= 0.0 && sharp < 0.02)) {  // ячейка мельче порога: только средняя засветка — без выборки текстуры (дальние плиты и потолок: основная масса фрагментов)
 		if (dust_fill > 0.0) {
 			return vec4(avg_rgb * dens * dust_cover_avg * far_k, 1.0);   // заливка: яркость среднего света, цвет гаснет вдаль (альфа 1 — без дитера a2c)
@@ -94,8 +115,8 @@ vec4 volume_cloud(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px, float 
 	float frame = floor(mod(TIME * dust_fps + h * n, n));
 	vec2 cellxy = vec2(mod(frame, glitch_cells.x), floor(frame / glitch_cells.x));
 	vec2 uv = (cellxy + f) / glitch_cells;
-	// градиенты — от непрерывных координат ячеек, иначе на границе ячейки скачок и швы мипов
-	float s = textureGrad(glitch_tex, uv, dFdx(coord) / glitch_cells, dFdy(coord) / glitch_cells).r;
+	// градиенты — аналитические, от производных мировой позиции (взяты в начале функции): на границе ячейки и на ребре нет скачка и швов мипов
+	float s = textureGrad(glitch_tex, uv, gdx / glitch_cells, gdy / glitch_cells).r;
 	s = mix(s, smoothstep(0.35, 0.65, s), dust_sharp);
 	float present = step(h2, dens);
 	float a = mix(dens * dust_cover_avg, s * present, sharp);

@@ -229,6 +229,26 @@ static func tune(d: Dictionary) -> void:
 		else:
 			v = str(v)
 		_tuned[k] = v
+	_sanitize_knobs()
+
+
+## Наименьшая ширина ячейки облака, м: ноль и меньше превращают координаты ячеек в inf/NaN.
+const DUST_CELL_MIN := 0.001
+## Минимальный зазор между границами smoothstep (lo < hi), иначе в шейдере smoothstep с перевёрнутыми или равными краями — неопределённое поведение.
+const EDGE_GAP_MIN := 0.001
+
+
+## Инварианты ручек, которые hint_range шейдера в рантайме не держит: dust_cell > 0, dust_fill_hi > dust_fill_lo, rim_far_end > rim_far_start.
+## Нарушение — ошибка конфигурации: значение подправляется с предупреждением, а не уходит в шейдер.
+static func _sanitize_knobs() -> void:
+	if float(_k("dust_cell")) < DUST_CELL_MIN:
+		push_warning("AssetMaterials: dust_cell %s ≤ 0 — взято %s" % [_k("dust_cell"), DUST_CELL_MIN])
+		_tuned["dust_cell"] = DUST_CELL_MIN
+	for pair in [["dust_fill_lo", "dust_fill_hi"], ["rim_far_start", "rim_far_end"]]:
+		var lo := float(_k(pair[0]))
+		if float(_k(pair[1])) < lo + EDGE_GAP_MIN:
+			push_warning("AssetMaterials: %s ≤ %s — верхняя граница поднята на %s" % [pair[1], pair[0], EDGE_GAP_MIN])
+			_tuned[pair[1]] = lo + EDGE_GAP_MIN
 
 
 ## Прочитать блок cfg (по умолчанию [assets]) и применить как tune(). Вызывать сразу после cfg.load(), до построения сцены.

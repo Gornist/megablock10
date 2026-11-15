@@ -35,7 +35,7 @@ void vertex() {
 
 void fragment() {
 	float d2 = dot(v_q, v_q);
-	float k = exp(-d2 * falloff) * smoothstep(1.0, 0.55, sqrt(d2));
+	float k = exp(-d2 * falloff) * (1.0 - smoothstep(0.55, 1.0, sqrt(d2)));
 	float br = 1.0 - breathe + breathe * (0.5 + 0.5 * sin(TIME * breathe_speed));
 	float fade = 1.0 - smoothstep(fade_start, fade_end, v_dist);
 	ALBEDO = mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount) * glow;

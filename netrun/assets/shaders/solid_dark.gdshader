@@ -5,6 +5,7 @@ shader_type spatial;
 render_mode unshaded, cull_back, fog_disabled;
 
 #include "alarm_focus.gdshaderinc"
+#include "pixel_math.gdshaderinc"
 
 // Не чистый чёрный, а тёмная бирюза темнее фона-пустоты (AssetMaterials.VOID_BG): у референса CDPR чистого чёрного ≈ 0 %, плиты читаются силуэтом на фоне.
 uniform vec4 base_color : source_color = vec4(0.0, 0.07, 0.09, 1.0);
@@ -52,7 +53,7 @@ void fragment() {
 	}
 	rim_gain *= mix(1.0, rim_far_min, smoothstep(rim_far_start, rim_far_end, v_dist));
 	if (rim_min_px > 0.0) {
-		float rim_px = rim_world_w * abs(PROJECTION_MATRIX[1][1]) * VIEWPORT_SIZE.y * 0.5 / max(v_dist, 0.1);  // ширина кромки на экране, px
+		float rim_px = rim_world_w / world_per_px(v_dist, PROJECTION_MATRIX[1][1], VIEWPORT_SIZE.y);  // ширина кромки на экране, px
 		rim_gain *= smoothstep(0.35, 1.0, rim_px / rim_min_px);
 	}
 	vec3 vc = COLOR.rgb;

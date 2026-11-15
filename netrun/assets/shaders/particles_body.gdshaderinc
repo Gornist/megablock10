@@ -37,6 +37,7 @@ void vertex() {
 	float weight = INSTANCE_CUSTOM.w;
 	vec3 w = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
 	float fade = 1.0;
+	v_frame = 0.0;   // varying пишется на всех путях (раньше — только в ветке глитча)
 	if (kind > 0.5) {
 		float rise = fract(TIME * 0.55 + phase * 7.0);  // искра поднимается и гаснет, у каждой своя фаза
 		w.y += rise * spark_rise;
@@ -48,8 +49,8 @@ void vertex() {
 	float tw = 1.0 - twinkle + twinkle * sin(TIME * 2.3 + phase * 40.0 + float(INSTANCE_ID) * 1.7);
 	float facing = 1.0;
 	if (facing_fade > 0.5) {
-		vec3 out_dir = normalize(w - facing_center + vec3(0.0, 0.0, 0.0001));
-		float d = dot(out_dir, normalize(CAMERA_POSITION_WORLD - facing_center));
+		vec3 out_dir = safe_dir(w - facing_center);   // точка в самом центре: направления нет (ноль), а не NaN
+		float d = dot(out_dir, safe_dir(CAMERA_POSITION_WORLD - facing_center));
 		facing = mix(0.12, 1.0, smoothstep(-0.15, 0.4, d));  // с обратной стороны точка остаётся бледной
 	}
 	float lift = breath_lift(w);              // множитель яркости от дыхания и отклика
@@ -83,7 +84,7 @@ void vertex() {
 		float k = size * glitch_scale;
 		mv.xy += vec2(q.x * k, 0.0) + up * q.y * k * 2.0;
 		float n = glitch_cells.x * glitch_cells.y;
-		float rnd = fract(sin(float(INSTANCE_ID) * 12.9898 + phase * 78.233) * 43758.5453);
+		float rnd = fract(phase * 97.31 + 0.37);   // случайность из phase (массив перемешан): sin(INSTANCE_ID · …) на сотнях тысяч экземпляров теряет точность
 		v_frame = floor(mod(TIME * glitch_fps + rnd * n, n));
 	} else {
 		mv.xy += q * size;
@@ -95,12 +96,12 @@ void fragment() {
 	vec2 q = (UV - vec2(0.5)) * 2.0;
 	float soft;
 	if (v_kind > 0.5) {
-		soft = smoothstep(1.0, 0.0, abs(q.x)) * (1.0 - q.y * q.y);
+		soft = (1.0 - smoothstep(0.0, 1.0, abs(q.x))) * (1.0 - q.y * q.y);
 	} else if (glitch_mix > 0.5) {
 		vec2 cell = vec2(mod(v_frame, glitch_cells.x), floor(v_frame / glitch_cells.x));
 		soft = texture(glitch_tex, (cell + UV) / glitch_cells).r;
 	} else {
-		soft = smoothstep(1.0, 0.25, length(q));
+		soft = 1.0 - smoothstep(0.25, 1.0, length(q));
 	}
 	ALBEDO = v_col * glow;
 	ALPHA = clamp(soft * v_alpha, 0.0, 1.0);

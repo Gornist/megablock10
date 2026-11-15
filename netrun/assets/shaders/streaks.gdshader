@@ -34,6 +34,7 @@ uniform vec3 touch_pos = vec3(0.0);                       // касание: м�
 uniform float touch_radius = 0.0;                         // 0 — выключено
 uniform vec4 touch_color : source_color = vec4(1.0, 0.12, 0.24, 1.0);
 #include "tint_common.gdshaderinc"
+#include "pixel_math.gdshaderinc"
 // Затухание по расстоянию до камеры (замена depth-fade: буфер глубины не читаем, на мобильном дорого).
 const float fade_start = 60.0;
 const float fade_end = 90.0;
@@ -83,7 +84,7 @@ void vertex() {
 	float wk = 1.0;
 	if (min_px > 0.0) {  // мировой размер пикселя на дистанции штриха: 2·d / (P[1][1] · высота вьюпорта); полуширина ядра должна быть ≥ min_px / 2
 		float d0 = max(-(VIEW_MATRIX * vec4(wc, 1.0)).z, 0.1);
-		float px = 2.0 * d0 / (PROJECTION_MATRIX[1][1] * VIEWPORT_SIZE.y);
+		float px = world_per_px(d0, PROJECTION_MATRIX[1][1], VIEWPORT_SIZE.y);
 		wk = max(1.0, 0.5 * min_px * px / max(w * s, 0.0001));
 	}
 	v_comp = 1.0 / wk;
@@ -105,9 +106,9 @@ void fragment() {
 	float core = exp(-v_q.x * v_q.x * hw * hw * edge_sharp);
 	float across = core;
 	if (halo > 0.0) {  // ядро чуть слабее, вокруг широкий мягкий хвост (гаснет к краю квада, чтобы не было обрезки)
-		across = core * 0.8 + halo * exp(-v_q.x * v_q.x * halo_sharp) * smoothstep(1.0, 0.55, abs(v_q.x));
+		across = core * 0.8 + halo * exp(-v_q.x * v_q.x * halo_sharp) * (1.0 - smoothstep(0.55, 1.0, abs(v_q.x)));
 	}
-	float along = smoothstep(1.0, 1.0 - end_fade, abs(v_q.y));
+	float along = 1.0 - smoothstep(max(1.0 - end_fade, 0.0), 1.0, abs(v_q.y));
 	// «Бусины»: гладкая прямоугольная волна (жёсткий step давал ступеньки по длине штриха); мягкость — не меньше пикселя (fwidth) и не меньше 8% периода
 	float bph = v_wy * bead_freq - TIME * bead_speed * bead_freq;
 	float bf = fract(bph);
