@@ -75,3 +75,48 @@ godot --headless --path netrun --quit-after 6000 -s res://tools/bench_world.gd -
 Найдено прогоном и исправлено: снимок Моста больше ~64 КиБ рвал WebSocket Godot (код 1009) — буфер поднят до 16 МиБ; отправка
 закрывающемуся пиру ENet. В журналах мира осталось 2 ошибки движка (не падения) — разобрать при следующем прогоне.
 
+
+## Замер на очках без человека
+
+Очки лежат на столе, голова не вертится — но трекинг всё равно шлёт позу. Поэтому поза камеры фиксируется целиком, а сравнения идут внутри одного запуска
+игры (шум между запусками ±1 мс). Код — `netrun/client/bench_run.gd` (`BenchRun`), ключи — `[render]` в `netrun.cfg` (описание в шапке `shared/render_config.gd`).
+
+| Ключ | Умолчание | Смысл |
+|---|---|---|
+| `bench` | `""` | пресет `EyePresets` (`entry`, `wedge`, `floor_down`, `floor_horizon`, …); пусто — замера нет |
+| `bench_lock` | `true` | после прогрева каждый кадр: `rig.global_transform = поза_камеры_пресета * camera.transform.affine_inverse()` — поза `XRCamera3D` (позиция, наклон, крен) совпадает с пресетом при любом трекинге. `false` — прежнее: один раз по позиции и рысканию |
+| `bench_settle_s` | 10 | прогрев до первого окна, с |
+| `bench_runs` | 3 | число окон; с `bench_ab` округляется вверх до чётного |
+| `bench_run_s` | 20 | длина окна, с |
+| `bench_ab` | `""` | `имя=a\|b` — A/B внутри сессии, окна идут A,B,A,B… |
+| `bench_ab_settle_s` | 2 | выдержка после смены варианта перед окном, без учёта |
+
+Новые пресеты для пола: `floor_down` (вход, глаза 1,2 м, взгляд вдоль комнаты на 15° ниже горизонта) и `floor_horizon` (тот же вход, взгляд на горизонт).
+
+**A/B.** `msaa` — `Viewport.msaa_3d` (0/2/4/8): проверка счётчика GPU, на Pico MSAA 4× дороже 2× больше чем на 2 мс. Ручки `AssetMaterials.KNOBS` меняются живьём,
+только если это прямой uniform шейдера облака (`cloud_dark`) на уже созданных материалах: `dust_cell`, `dust_fps`, `dust_fill`, `dust_fill_lo`, `dust_fill_hi`, `dust_sharp`,
+`cloud_edge_mix` и ручки света облака `cloud_light`, `lit_ambient`, `lit_dim`, `lit_edge`, `lit_tint`. Остальные ручки читаются при создании материалов (`apply()`):
+замер идёт без A/B, в журнале строка `[bench] ab: ручка <имя> не меняется живьём` — их сравнивают двумя запусками (серией `pico_series.sh`).
+
+**CSV кадров.** `user://bench/<пресет>-<ГГГГММДД-ЧЧММСС>.csv` (на очках `files/bench/`), строка на кадр окна, заголовок `run,variant,frame,t_ms,frame_ms,gpu_ms`:
+`run` с 1, `variant` — `A`/`B`/`-`, `frame` с 0 в окне, `t_ms` от начала окна, `gpu_ms` = −1 — рендерер не отдал время. Запись — в конце каждого окна (файл переписывается целиком).
+Путь ОС — строка `[bench] csv=<путь>`. Кадры выдержки A/B в CSV не попадают.
+
+**Строки журнала.**
+- `[bench] proj p11_l=… p11_r=… viewport=WxH msaa=N` — один раз после прогрева; `p11` — `[1][1]` проекции левого и правого глаза со знаком (знак `PROJECTION_MATRIX[1][1]` в шейдерах на Pico).
+- `[bench] run=i fps=… avg_ms=… max_ms=… gpu_avg_ms=… frame_p50=… frame_p95=… frame_peak=… frame_over=… gpu_p50=… gpu_p95=… gpu_peak=… gpu_over=… [variant=A|B]` — окно.
+- `[bench] ИТОГ preset=… runs=… median_fps=… … avg_max=…` — старые поля (медиана окон, min/max окон), дальше в конце перцентили по сырым кадрам всех окон.
+- `[bench] AB-var …` по варианту (медианы его окон) и `[bench] AB name=… a=… b=… d_gpu_p50=… d_gpu_p95=… d_frame_p50=…` — разница B − A (`n/a`, если нет данных GPU).
+- Перцентили — по сырым кадрам: сортировка, индекс `ceil(q·n) − 1`. `*_over` — доля кадров строго дольше 11,11 мс (бюджет 90 Гц); `*_peak` — максимум. Кадры без GPU-времени в статистику GPU не входят.
+
+Читать: сначала `gpu_p95` и `gpu_over` (хвост важнее среднего: кадры > 11,11 мс — пропуски 90 Гц), потом `gpu_p50`; `frame_*` — то, что видит игрок, `gpu_*` — вклад рендера;
+расхождение окон одного варианта (`AB-var`, строки `run=`) — шум замера: разница `B − A` меньше него не значима.
+
+**Серия.** `pico_series.sh` забирает CSV в `<результаты>/<имя>-bench/` (через `adb exec-out run-as com.megablok10.netrun tar c files/bench`, запасной путь —
+`/sdcard/Android/data/com.megablok10.netrun/files/bench/`), в `<имя>.txt` попадают строки `[bench] AB`, `proj`, `csv` и итог. Пример — цена MSAA 4× против 2× на полу:
+
+```
+pico_series.sh "ab=bench bench=floor_down bench_ab=msaa=2|4"
+```
+
+Живая ручка: `pico_series.sh "ab=bench bench=floor_down bench_ab=cloud_light=0|1"`.

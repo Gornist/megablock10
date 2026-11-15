@@ -126,8 +126,14 @@ func set_density(value: float) -> void:
 
 ## Задать долю видимых точек вручную (0…1; префикс массива); выключает автоматический ЛОД до следующего set_auto.
 func set_lod(fraction: float) -> void:
+	auto_lod = false   # иначе _process в ближайшие LOD_PERIOD_SEC перезапишет ручное значение
 	_lod = clampf(fraction, 0.0, 1.0)
 	_apply()
+
+
+## Вернуть автоматический ЛОД (по дистанции до камеры) или выключить его, не трогая текущую долю.
+func set_auto(enabled: bool) -> void:
+	auto_lod = enabled
 
 
 func point_count() -> int:

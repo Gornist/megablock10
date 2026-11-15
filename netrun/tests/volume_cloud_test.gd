@@ -112,3 +112,15 @@ func test_конфиг_volumetric_по_умолчанию_все_модули_и
 	var cfg := ConfigFile.new()
 	cfg.set_value("render", "volumetric", " ICE,Vault ")
 	assert_str(RenderConfig.from_config(cfg).volumetric).is_equal("ice,vault")
+
+
+func test_ручной_ЛОД_выключает_автоматический_и_set_auto_возвращает() -> void:
+	var pts := PackedFloat32Array([0, 1, 0, 0.02, 0.3, 0, 1,  0.1, 1, 0, 0.02, 0.6, 0, 1])
+	var c: VolumeCloud = auto_free(VolumeCloud.new())
+	add_child(c)
+	c.setup(pts, Color(0.2, 0.9, 1.0), AABB(Vector3(-0.5, 0, -0.5), Vector3(1, 2, 1)))
+	assert_bool(c.auto_lod).is_true()
+	c.set_lod(0.5)
+	assert_bool(c.auto_lod).is_false()
+	c.set_auto(true)
+	assert_bool(c.auto_lod).is_true()

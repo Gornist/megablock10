@@ -175,7 +175,7 @@ func test_пресеты_центр_и_края_по_раскладке() -> voi
 		for n: String in EyePresets.names():
 			var p := EyePresets.get_preset(n, ld)
 			assert_bool(NodeLayout.in_room(p["pos"], ld.room_max())).override_failure_message("%s %s pos" % [dim, n]).is_true()
-			if n != "entry" and n != "wedge":   # у них look — направление на 10 м вперёд (вход синтетической карты у северной стены: взгляд уходит за неё)
+			if not ["entry", "wedge", "floor_down", "floor_horizon"].has(n):   # у них look — направление на 10 м вперёд (вход синтетической карты у северной стены: взгляд уходит за неё)
 				assert_bool(NodeLayout.in_room(p["look"], ld.room_max())).override_failure_message("%s %s look" % [dim, n]).is_true()
 
 
