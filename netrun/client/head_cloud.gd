@@ -49,6 +49,7 @@ func _init(color: Color = HandView.COLOR_HAND) -> void:
 	_mat.set_shader_parameter("facing_fade", 1.0)
 	_mat.set_shader_parameter("glow", GLOW)
 	_mat.set_shader_parameter("lattice", LATTICE)
+	AssetMaterials.push_body_particle_knobs(_mat)   # body_min_px (> 0 заменяет min_angle), глитч-частота, развёртка и ступени яркости
 	_mm = MultiMesh.new()
 	_mm.transform_format = MultiMesh.TRANSFORM_3D
 	_mm.use_colors = true

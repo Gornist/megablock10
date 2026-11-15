@@ -16,6 +16,7 @@ const float wave_speed = 0.9;
 const float wave_scale = 1.1;    // волн на метр
 #include "tint_common.gdshaderinc"
 #include "pixel_math.gdshaderinc"
+#include "display_fx.gdshaderinc"
 
 // Затухание по расстоянию до камеры (замена depth-fade: буфер глубины не читаем, на мобильном дорого).
 const float fade_start = 60.0;
@@ -29,6 +30,7 @@ uniform float keep_frac : hint_range(0.0, 1.0) = 1.0;
 varying vec3 v_wp;
 varying float v_dist;
 varying float v_comp;  // 1 / (во сколько раз квад увеличен до min_px)²
+varying vec3 v_fx;     // цвет излучателя после развёртки и ступеней яркости (display_fx.gdshaderinc; в умолчании = COLOR.rgb)
 
 float dist_fade() {
 	return 1.0 - smoothstep(fade_start, fade_end, v_dist);
@@ -45,6 +47,7 @@ void vertex() {
 	if (lattice > 0.0) {
 		v_wp = floor(v_wp / lattice + 0.5) * lattice;
 	}
+	v_fx = quant_lum(COLOR.rgb * sweep_mul(v_wp));
 	v_wave = 0.5 + 0.5 * sin((v_wp.x + 0.6 * v_wp.z) * wave_scale * 3.14159 - TIME * wave_speed);
 	vec4 mv = VIEW_MATRIX * vec4(v_wp, 1.0);
 	v_dist = -mv.z;
@@ -64,6 +67,6 @@ void fragment() {
 	float d = length(UV - vec2(0.5)) * 2.0;
 	float soft = 1.0 - smoothstep(0.25, 1.0, d);
 	float tw = 1.0 - twinkle + twinkle * sin(TIME * twinkle_speed + v_phase + (v_wp.x + v_wp.z) * 1.7); // волны мерцания бегут по полу
-	ALBEDO = mix(COLOR.rgb, recolor(COLOR.rgb), tint_amount) * glow;
+	ALBEDO = mix(v_fx, recolor(v_fx), tint_amount) * glow;
 	ALPHA = soft * COLOR.a * tw * (1.0 - wave + wave * v_wave) * dist_fade() * intensity * v_comp;
 }

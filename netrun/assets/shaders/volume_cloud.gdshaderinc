@@ -10,6 +10,7 @@
 // Файл раньше назывался volume_dust.gdshaderinc (пыль на solid_dark удалена в B1).
 
 #include "pixel_math.gdshaderinc"
+#include "display_fx.gdshaderinc"
 
 uniform sampler2D glitch_tex : filter_linear_mipmap, repeat_disable;
 const vec2 glitch_cells = vec2(8.0, 4.0);                         // столбцов и строк атласа
@@ -86,7 +87,8 @@ vec4 volume_cloud(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px, float 
 	float cell_px = cell_w / world_per_px(dist, proj_px, 1.0);   // proj_px уже умножен на высоту вьюпорта
 	float sharp = smoothstep(0.7, 2.0, cell_px);
 	float lit_b = mix(lit_dim, 1.0, lit) * dust;                      // яркость частиц: в темноте тусклее
-	vec3 avg_rgb = mix(mix(dust_color.rgb, dust_hot.rgb, edge * 0.5), lit_col, lit_col_w) * lit_b;
+	float fx_m = sweep_mul(wp);   // B4: развёртка и ступени яркости на цвет зерна до усреднения (в умолчании тождественно)
+	vec3 avg_rgb = quant_lum(mix(mix(dust_color.rgb, dust_hot.rgb, edge * 0.5), lit_col, lit_col_w) * lit_b * fx_m);
 	float fill_w = dust_fill * (1.0 - smoothstep(dust_fill_lo, max(dust_fill_hi, dust_fill_lo + 0.001), cell_px));
 	if (far_k <= 0.0) {   // дальше dust_far_end: прежний путь при far_k = 0 в любом режиме даёт ровно это (полная заливка — (0,0,0,1), частичная — (0,0,0,fill_w), без заливки — альфа 0); без кадра атласа и выборки
 		return vec4(0.0, 0.0, 0.0, fill_w >= 0.999 ? 1.0 : fill_w);
@@ -108,7 +110,7 @@ vec4 volume_cloud(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px, float 
 	float present = step(h2, dens);
 	float a = mix(dust_fill > 0.0 ? dens * dust_cover_avg : 0.0, s * present, sharp);   // без заливки мелкое зерно гаснет к пустоте, а не к серому среднему
 	vec3 base = mix(dust_color.rgb, dust_hot.rgb, smoothstep(0.55, 1.0, s) * step(0.82, h) + edge * 0.5);
-	vec4 cell = vec4(mix(base, lit_col, lit_col_w) * lit_b, clamp(a * far_k, 0.0, 1.0));
+	vec4 cell = vec4(quant_lum(mix(base, lit_col, lit_col_w) * lit_b * fx_m), clamp(a * far_k, 0.0, 1.0));
 	if (fill_w > 0.0) {   // зерно → заливка: цвет и покрытие смешиваются по весу, на границе режимов нет скачка яркости
 		float ao = cell.a * (1.0 - fill_w) + fill_w;   // «зерно поверх заливки» с весом (1 − fill_w)
 		cell = vec4((cell.rgb * cell.a * (1.0 - fill_w) + avg_rgb * dens * dust_cover_avg * far_k * fill_w) / max(ao, 0.001), ao);

@@ -200,6 +200,16 @@ const KNOBS := {
 	"scan_radius": 0.009,    # полусторона квадратного излучателя, м (радиус + разброс·шаг точек ≤ 0,5·шаг точек − 1 мм, иначе подрезается)
 	"scan_gap": 0.12,        # доля пропущенных точек
 	"scan_debug": 0.0,       # 1 — размер строки в px (серый = 4 px), 2 — только тон, 3 — только точки
+	# Сущности (B2a + G1 + B4, 15.11; карточка card-entities): всё в умолчании — вид и поведение прежние. ЦЕНА НЕ ИЗМЕРЕНА НА ОЧКАХ.
+	"body_min_px": 0.0,      # наименьший диаметр точки чужого тела (руки, голова, облако объекта), px экрана; > 0 — точка растёт, яркость падает по площади, min_angle обнуляется; свои руки не трогаем
+	"body_glitch_fps": 12.0, # смен кадра глитч-блока тела в секунду (раньше константа 12)
+	"volume_lod_smooth": 0.0, # 1 — плавный LOD облака объекта (доля по расстоянию до габарита, экспонента 0,3 с, затухание на границе доли), 0 — ступени раз в 0,25 с
+	"volume_lod_energy": 0.0, # 1 — при редкой доле облака яркость оставшихся точек растёт (1 / доля, до ×8): средняя яркость сохраняется; нужен volume_lod_smooth
+	"sweep_gain": 0.0,       # 0…0,5: бегущая развёртка яркости «объёмного дисплея» (+ к яркости на фронте, не выше ×1,25); 0 — выкл.
+	"sweep_period": 4.0,     # с на проход развёртки (≥ 2; фазу ведёт NodeView)
+	"sweep_span": 6.0,       # м, длина прохода развёртки вдоль оси X
+	"sweep_decay": 0.15,     # доля прохода, послесвечение за фронтом
+	"lum_steps": 0.0,        # 0 — выкл.; 2…16 — яркость точки округляется до стольких ступеней (дискретные уровни дисплея), оттенок сохраняется
 	"edge_round": 1.0,       # 0…1: скруглить профиль света рёбер (smoothstep по яркости вершин): убирает излом на пике градиента — светлую «линию Маха» по середине голубой полосы; 1 — полностью (принято, замер 6 на очках)
 }
 static var _tuned := {}
@@ -282,6 +292,11 @@ static func _sanitize_knobs() -> void:
 			push_warning("AssetMaterials: %s ≤ %s — верхняя граница поднята на %s" % [pair[1], pair[0], EDGE_GAP_MIN])
 			_tuned[pair[1]] = lo + EDGE_GAP_MIN
 	_sanitize_scan_knobs()
+	_tuned["sweep_period"] = maxf(float(_k("sweep_period")), 2.0)   # быстрее двух секунд на проход — мельтешение (комфорт в VR)
+	_tuned["sweep_span"] = maxf(float(_k("sweep_span")), 0.1)
+	_tuned["lum_steps"] = clampf(roundf(float(_k("lum_steps"))), 0.0, 16.0)
+	_tuned["body_min_px"] = clampf(float(_k("body_min_px")), 0.0, 8.0)
+	_tuned["body_glitch_fps"] = clampf(float(_k("body_glitch_fps")), 0.0, 30.0)
 
 
 ## Инварианты узора строк (шейдер их не держит, а формула среднего на них стоит): квадрат излучателя внутри слота точки (радиус + разброс·шаг ≤ 0,5·шаг − 1 мм)
@@ -539,6 +554,8 @@ static func apply(root: Node, tier: String = "") -> void:
 				m.set_shader_parameter("min_px", _k("min_px_points"))
 				if tier != "" and float(_k("point_keep")) < 1.0:  # ручка: доля точек окружения
 					m.set_shader_parameter("keep_frac", float(_k("point_keep")))
+				if display_fx_active():  # ручки sweep_* и lum_steps (B4); в умолчании параметры не трогаем
+					push_display_fx_knobs(m)
 			if tier != "" and TIER_TINT.has(tier):
 				m.set_shader_parameter("tint", TIER_TINT[tier])
 				m.set_shader_parameter("tint_amount", 1.0)
@@ -582,6 +599,8 @@ static func apply(root: Node, tier: String = "") -> void:
 				m.set_shader_parameter("dust_fill_hi", float(_k("dust_fill_hi")))
 				m.set_shader_parameter("dust_sharp", float(_k("dust_sharp")))
 				_push_cloud_light_knobs(m)
+				if display_fx_active():
+					push_display_fx_knobs(m)
 				_push_lights(m)
 				m.set_shader_parameter("dust_density", float(_k("dust_density")) * (float(_k("floor_density")) if String(mi.name) == "slab" else 1.0))
 				m.set_shader_parameter("edge_mix", float(_k("cloud_edge_mix")))
@@ -821,6 +840,30 @@ static func _build_lit_map() -> void:
 					img.set_pixel(ix, iz, Color(cc.x, cc.y, cc.z, clampf(k, 0.0, 1.0)))
 	_lit_tex = ImageTexture.create_from_image(img)
 	_lit_rect = Vector4(x0, z0, 1.0 / (x1 - x0), 1.0 / (z1 - z0))
+
+
+## Признаки объёмного дисплея (display_fx.gdshaderinc): развёртка и ступени яркости. Всегда задаёт все значения, умолчания тождественны.
+static func push_display_fx_knobs(m: ShaderMaterial) -> void:
+	m.set_shader_parameter("sweep_gain", float(_k("sweep_gain")))
+	m.set_shader_parameter("sweep_span", float(_k("sweep_span")))
+	m.set_shader_parameter("sweep_decay", float(_k("sweep_decay")))
+	m.set_shader_parameter("lum_steps", int(_k("lum_steps")))
+
+
+## Ручки облака точек тела (руки, голова, объект; particles_body.gdshaderinc): минимальный размер точки в пикселях, частота глитча, развёртка, ступени.
+## own — своя рука: min_px ей не задаётся (она у глаз, растить нечего), min_angle не трогаем (его ставит вызывающий). Для чужого тела min_px > 0 заменяет min_angle.
+static func push_body_particle_knobs(m: ShaderMaterial, own: bool = false) -> void:
+	m.set_shader_parameter("glitch_fps", float(_k("body_glitch_fps")))
+	var px := 0.0 if own else float(_k("body_min_px"))
+	m.set_shader_parameter("min_px", px)
+	if px > 0.0:
+		m.set_shader_parameter("min_angle", 0.0)
+	push_display_fx_knobs(m)
+
+
+## Сдвигает ли ручка sweep_* / lum_steps вид (для материалов glb: в умолчании параметры не задаются).
+static func display_fx_active() -> bool:
+	return float(_k("sweep_gain")) > 0.0 or float(_k("lum_steps")) > 0.0
 
 
 static func _push_cloud_light_knobs(m: ShaderMaterial) -> void:

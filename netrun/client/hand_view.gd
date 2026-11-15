@@ -84,6 +84,7 @@ func _init(is_left: bool = false, ctrl: XRController3D = null) -> void:
 		_mat.set_shader_parameter("glitch_mix", 1.0)
 		_mat.set_shader_parameter("glitch_scale", glitch_scale)
 		_mat.set_shader_parameter("intensity", glitch_gain)
+	AssetMaterials.push_body_particle_knobs(_mat, true)   # своя рука: без min_px
 	_mm = MultiMesh.new()
 	_mm.transform_format = MultiMesh.TRANSFORM_3D
 	_mm.use_colors = true
@@ -232,6 +233,7 @@ func set_tint(c: Color) -> void:
 func set_occluded(on: bool) -> void:
 	_mat.shader = SHADER_OCCLUDED if on else SHADER
 	_mat.set_shader_parameter("min_angle", REMOTE_MIN_ANGLE if on else 0.0)
+	AssetMaterials.push_body_particle_knobs(_mat, not on)   # чужая рука: body_min_px > 0 заменяет min_angle
 
 
 ## Обновить положения частиц в буфере экземпляров по позиции суставов (остальные поля заданы один раз при создании).

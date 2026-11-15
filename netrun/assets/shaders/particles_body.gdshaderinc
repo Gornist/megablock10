@@ -10,11 +10,17 @@ const float spark_rise = 0.07;        // на сколько искра подн
 const float spark_half_len = 0.013;  // полудлина искры, м
 uniform float intensity : hint_range(0.0, 4.0) = 1.0;
 uniform float min_angle : hint_range(0.0, 0.01) = 0.0;         // наименьший угловой размер точки, рад: далёкие точки не мельче ~2 пикселей (чужое тело; у своих рук 0)
+uniform float min_px : hint_range(0.0, 8.0) = 0.0;             // наименьший диаметр точки в пикселях экрана (B2a, ручка body_min_px): точка растёт, яркость падает по площади; 0 — выкл.
+// Плавный LOD облака (G1, ручка volume_lod_smooth; VolumeCloud): точки с рангом выше lod_keep гаснут по полосе lod_band; lod_count = 0 — выкл. (ступенчатый LOD).
+uniform float lod_keep = 1.0;
+uniform float lod_band = 0.08;
+uniform float lod_count = 0.0;     // полное число точек облака (не видимый префикс)
+uniform float lod_gain = 1.0;      // сохранение средней яркости при редкой доле (ручка volume_lod_energy)
 
 // Глитч-спрайт (GlitchSprite): вместо круглой точки — анимированное блочное пятно, у каждой частицы своя фаза. glitch_mix = 0 — прежние круглые точки.
 uniform sampler2D glitch_tex : filter_linear_mipmap, repeat_disable;
 uniform float glitch_mix : hint_range(0.0, 1.0) = 0.0;          // 0 — выкл., 1 — все точки (не искры) рисуются спрайтом
-const float glitch_fps = 12.0;
+uniform float glitch_fps : hint_range(0.0, 30.0) = 12.0;        // смен кадра глитч-блока в секунду (ручка body_glitch_fps)
 uniform float glitch_scale : hint_range(0.2, 4.0) = 1.0;        // полуширина квада в полуразмерах точки; высота вдвое больше (ячейка 1:2)
 const vec2 glitch_cells = vec2(8.0, 4.0);                     // столбцов и строк атласа
 
@@ -23,8 +29,10 @@ uniform vec3 facing_center = vec3(0.0);                          // центр �
 
 // Дыхание и отклик на приближение (общая часть с облаком на гранях): uniform'ы breath_*, touch_* и функции breath_lift, touch_k.
 #include "breath_touch.gdshaderinc"
+#include "display_fx.gdshaderinc"
 
 varying vec3 v_col;
+varying float v_gain;   // энергия в цвет: компенсации размера (min_px) и LOD; профиль точки остаётся в альфе
 varying float v_alpha;
 varying float v_kind;
 varying float v_fade;
@@ -66,12 +74,24 @@ void vertex() {
 	}
 	size *= swell;
 	v_alpha = weight * mix(1.0 - wave_depth, 1.0, wave) * tw * fade * intensity * facing * lift;
-	v_col = tint;
+	v_col = quant_lum(tint * sweep_mul(w));   // художественная яркость: развёртка, потом ступени; компенсации размера и LOD — ниже, в v_gain
 	v_kind = kind;
+	v_gain = 1.0;
 	vec4 mv = VIEW_MATRIX * vec4(w, 1.0);
 	float grown = max(size, length(mv.xyz) * min_angle);
+	if (min_px > 0.0) {   // наименьший диаметр точки в пикселях (как points.gdshader): точка растёт, энергия сохраняется по площади
+		float half_px = 0.5 * min_px * world_per_px(length(mv.xyz), PROJECTION_MATRIX[1][1], VIEWPORT_SIZE.y);
+		grown = max(grown, half_px);
+		float sk = grown / max(size, 0.0001);
+		v_gain *= 1.0 / max(sk * sk, 1.0);
+	}
 	float spark_scale = grown / max(size, 0.0001);
 	size = grown;
+	if (lod_count > 0.0) {   // плавный LOD облака: ранг точки в перемешанном массиве, у границы доли — затухание вместо скачка
+		float rank = (float(INSTANCE_ID) + 0.5) / lod_count;
+		v_alpha *= 1.0 - smoothstep(lod_keep, lod_keep + lod_band, rank);
+		v_gain *= lod_gain;
+	}
 	vec2 q = vec2(UV.x - 0.5, 0.5 - UV.y) * 2.0;
 	if (kind > 0.5) {
 		vec2 up = (VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xy;  // вертикаль мира в плоскости экрана: штрих всегда стоит вертикально
@@ -103,6 +123,6 @@ void fragment() {
 	} else {
 		soft = 1.0 - smoothstep(0.25, 1.0, length(q));
 	}
-	ALBEDO = v_col * glow;
+	ALBEDO = v_col * glow * v_gain;
 	ALPHA = clamp(soft * v_alpha, 0.0, 1.0);
 }

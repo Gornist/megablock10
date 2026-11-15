@@ -32,6 +32,13 @@ renderer/rendering_method="mobile"
 textures/vram_compression/import_etc2_astc=true
 textures/default_filters/anisotropic_filtering_level=4
 
+[shader_globals]
+
+sweep_phase={
+"type": "float",
+"value": 0.0
+}
+
 [xr]
 
 openxr/foveation_eye_tracked=false

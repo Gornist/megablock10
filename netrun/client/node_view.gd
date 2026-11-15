@@ -74,6 +74,7 @@ var _pads: Dictionary = {}       # id слота -> площадка взлом�
 var _panels: Dictionary = {}     # id слота -> корпус панели взлома (props/hack_panel.glb)
 var _portals: Array[Dictionary] = []  # {to, open, ok, locked}
 var _closed_to: Dictionary = {}  # узлы, которые сервер отказался открыть (локдаун): портал в них закрыт, пока не придёт новое событие node
+var _sweep_t := 0.0   # накопленное время развёртки, с
 var _seat: Node3D   ## кресло — только в прежней комнате (layout == null)
 
 
@@ -86,6 +87,19 @@ func _init() -> void:
 	_furniture.name = "Furniture"
 	add_child(_furniture)
 	set_tier("BASE")
+
+
+## Фаза развёртки «объёмного дисплея» 0…1 для накопленного времени t (с) и периода (с, не меньше 2): с CPU, а не TIME шейдера (тот сбрасывается раз в час).
+static func sweep_phase_at(t: float, period: float) -> float:
+	return fposmod(t, maxf(period, 2.0)) / maxf(period, 2.0)
+
+
+## Ведёт глобальный uniform sweep_phase (ручки sweep_gain, sweep_period); при sweep_gain = 0 ничего не делает.
+func _process(delta: float) -> void:
+	if float(AssetMaterials.knob("sweep_gain")) <= 0.0:
+		return
+	_sweep_t = fposmod(_sweep_t + delta, maxf(float(AssetMaterials.knob("sweep_period")), 2.0))   # накопление по модулю периода: число не растёт, шва нет
+	RenderingServer.global_shader_parameter_set("sweep_phase", sweep_phase_at(_sweep_t, float(AssetMaterials.knob("sweep_period"))))
 
 
 # ---------------------------------------------------------------- комната
