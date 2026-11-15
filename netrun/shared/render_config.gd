@@ -21,13 +21,21 @@ extends RefCounted
 ## volumetric = "vault,portal,shard,exit,ice" ; объекты Сети облаком частиц (VolumeRegistry): умолчание — все модули (облако (Б) принято владельцем в очках 14.10); "off" — выкл. (стенд, сравнения), "all" или модули через запятую ("ice,vault"); точки — файл `.points` у модели, иначе сэмплер на лету
 ## bench = ""               ; воспроизводимый замер (BenchRun): имя пресета EyePresets (entry, north, south, vault_w, …) — через 5 с риг встаёт в его позу, 3 окна по 10 с,
 ##                           ; строка `[bench] ИТОГ` с медианой и min/max окон по fps / времени кадра / GPU; голову во время замера не вертеть; пусто — выкл.
+## bench_lock = true        ; замер: после прогрева каждый кадр ставить риг так, чтобы поза XRCamera3D (позиция, наклон, крен) совпадала с пресетом, компенсируя трекинг — очки на столе
+##                           ; смотрят куда попало; false — прежнее: риг ставится один раз по позиции и рысканию, голова своя
+## bench_settle_s = 10      ; замер: прогрев до первого окна, с (0…120)
+## bench_runs = 3           ; замер: число окон (1…20); с bench_ab округляется вверх до чётного
+## bench_run_s = 20         ; замер: длина окна, с (1…120); каждый кадр окна — строка CSV в user://bench/<пресет>-<ГГГГММДД-ЧЧММСС>.csv, в журнал `[bench] csv=<путь>`
+## bench_ab = ""            ; A/B внутри сессии: "<имя>=<a>|<b>", окна идут A,B,A,B…; имя — msaa (0/2/4/8) или ручка AssetMaterials, меняющаяся живьём (cloud_light, lit_*, dust_cell,
+##                           ; dust_fps, dust_fill*, dust_sharp, cloud_edge_mix); итог — строка `[bench] AB name=… a=… b=… d_gpu_p50=… d_gpu_p95=… d_frame_p50=…` (B − A)
+## bench_ab_settle_s = 2    ; A/B: выдержка после смены варианта перед окном, без учёта, с (0…30)
 ## probe = ""               ; синтетическая нагрузка (LoadProbe): "quads=N,px=P,mode=blend|a2c|opaque|point" — N квадов по P пикселей, приклеенных к голове; "sweep" — серия вариантов за один запуск (ProbeSweep); пусто — выкл.
 ## warmup = "on"            ; прогрев шейдеров при старте (ShaderWarmup): по одному мешу каждого материала мира на 3 кадра за чёрным экраном перед камерой, чтобы компиляция пайплайнов
 ##                           ; прошла до первого кадра с миром ("on" по умолчанию, "off" — выкл.); итог — строка журнала `warmup.done frames=… meshes=… ms=…`
 ## volume_budget_ms = 0       ; регулятор плотности облаков (VolumeBudget): потолок GPU-времени кадра, мс (4…20; при 90 Гц ≈ 10,5); выше — облака редеют, ниже — густеют; 0 — выкл.
 
 const SECTION := "render"
-const KEYS := ["msaa", "layers", "far_cull_m", "foveation", "perf", "volumetric", "bench", "probe", "volume_budget_ms", "volume_impostor_m", "warmup"]
+const KEYS := ["msaa", "layers", "far_cull_m", "foveation", "perf", "volumetric", "bench", "bench_lock", "bench_settle_s", "bench_runs", "bench_run_s", "bench_ab", "bench_ab_settle_s", "probe", "volume_budget_ms", "volume_impostor_m", "warmup"]
 ## Дальность прорисовки моделей и облаков предметов, м: дальше они не рисуются совсем (вдали облако редеет до восьмой части точек, а сплошная
 ## тёмная модель под ним остаётся; заодно дешевле кадр). 0 — без предела. 3…60.
 const FAR_CULL_MIN := 3.0
@@ -63,6 +71,13 @@ var perf: String = PERF_DEFAULT
 var volumetric: String = VOLUMETRIC_DEFAULT
 ## Пресет воспроизводимого замера (BenchRun) или "" — выкл.
 var bench: String = ""
+## Замер: держать позу камеры пресета каждый кадр (компенсация трекинга), прогрев, число и длина окон (BenchRun), A/B внутри сессии.
+var bench_lock: bool = true
+var bench_settle_s: float = BenchRun.SETTLE_SEC
+var bench_runs: int = BenchRun.RUNS
+var bench_run_s: float = BenchRun.RUN_SEC
+var bench_ab: String = ""
+var bench_ab_settle_s: float = BenchRun.AB_SETTLE_SEC
 ## Спецификация синтетической нагрузки (LoadProbe) или "" — выкл.
 var probe: String = ""
 ## Потолок GPU-времени кадра для регулятора облаков (VolumeBudget), мс; 0 — выкл.
@@ -130,6 +145,46 @@ static func from_config(cfg: ConfigFile) -> RenderConfig:
 					c.bench = b
 				else:
 					c.warnings.append("bench: нет пресета «%s» (есть: %s) — замер выключен" % [b, ", ".join(EyePresets.names())])
+			"bench_lock":
+				var bl: Variant = _bool(v)
+				if bl != null:
+					c.bench_lock = bl
+				else:
+					c.warnings.append("bench_lock: нужно true/false, получено «%s» — оставлено %s" % [v, c.bench_lock])
+			"bench_settle_s":
+				var n: Variant = _number(v)
+				if n != null and float(n) >= 0.0 and float(n) <= 120.0:
+					c.bench_settle_s = float(n)
+				else:
+					c.warnings.append("bench_settle_s: нужно число 0…120, получено «%s» — оставлено %s" % [v, c.bench_settle_s])
+			"bench_runs":
+				var n: Variant = _int(v)
+				if n != null and n >= 1 and n <= 20:
+					c.bench_runs = n
+				else:
+					c.warnings.append("bench_runs: нужно целое 1…20, получено «%s» — оставлено %d" % [v, c.bench_runs])
+			"bench_run_s":
+				var n: Variant = _number(v)
+				if n != null and float(n) >= 1.0 and float(n) <= 120.0:
+					c.bench_run_s = float(n)
+				else:
+					c.warnings.append("bench_run_s: нужно число 1…120, получено «%s» — оставлено %s" % [v, c.bench_run_s])
+			"bench_ab_settle_s":
+				var n: Variant = _number(v)
+				if n != null and float(n) >= 0.0 and float(n) <= 30.0:
+					c.bench_ab_settle_s = float(n)
+				else:
+					c.warnings.append("bench_ab_settle_s: нужно число 0…30, получено «%s» — оставлено %s" % [v, c.bench_ab_settle_s])
+			"bench_ab":
+				var spec := str(v).strip_edges()
+				if spec == "":
+					c.bench_ab = ""
+				else:
+					var ab := BenchRun.parse_ab(spec)
+					if ab["ok"]:
+						c.bench_ab = spec
+					else:
+						c.warnings.append("bench_ab: %s — A/B выключен" % ab["error"])
 			"warmup":
 				if v is String and (v as String).to_lower() in WARMUP_VALUES:
 					c.warmup = (v as String).to_lower()
@@ -181,6 +236,20 @@ static func _int(v: Variant) -> Variant:
 	if n == null or not is_equal_approx(float(n), roundf(float(n))):
 		return null
 	return int(roundf(float(n)))
+
+
+## Булево из bool, «true/false/on/off/1/0/yes/no»; иначе null.
+static func _bool(v: Variant) -> Variant:
+	if v is bool:
+		return v
+	if v is int or v is float:
+		return float(v) != 0.0 if float(v) in [0.0, 1.0] else null
+	var s := str(v).strip_edges().to_lower()
+	if s in ["true", "on", "1", "yes"]:
+		return true
+	if s in ["false", "off", "0", "no"]:
+		return false
+	return null
 
 
 static func _number(v: Variant) -> Variant:

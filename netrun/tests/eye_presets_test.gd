@@ -1,7 +1,7 @@
 extends GdUnitTestSuite
 ## Пресеты камеры (shared/eye_presets.gd): полные данные, высота глаз как у риг-а клиента, точки внутри комнаты.
 
-const NAMES := ["entry", "north", "south", "vault_w", "wedge", "top", "top_north", "top_south"]
+const NAMES := ["entry", "north", "south", "vault_w", "wedge", "floor_down", "floor_horizon", "top", "top_north", "top_south"]
 
 
 func test_все_кадры_приёмки_есть_по_порядку() -> void:
@@ -69,6 +69,20 @@ func test_vault_w_лицом_к_западному_хранилищу_с_пло�
 	var p := EyePresets.get_preset("vault_w")
 	assert_float(NodeLayout.flat_distance(p["pos"], west["pad"])).is_less(0.001)
 	assert_float(NodeLayout.flat_distance(p["look"], west["slot"])).is_less(0.001)
+
+
+func test_пол_смотрит_вдоль_комнаты_от_входа_вниз_и_на_горизонт() -> void:
+	var entry := EyePresets.get_preset("entry")
+	var down := EyePresets.get_preset("floor_down")
+	var hor := EyePresets.get_preset("floor_horizon")
+	assert_vector(down["pos"]).is_equal(entry["pos"])
+	assert_vector(hor["pos"]).is_equal(entry["pos"])
+	var dd: Vector3 = (down["look"] - down["pos"]).normalized()
+	var dh: Vector3 = (hor["look"] - hor["pos"]).normalized()
+	assert_float(rad_to_deg(asin(dd.y))).is_equal_approx(-15.0, 0.01)
+	assert_float(dh.y).is_equal_approx(0.0, 0.0001)
+	assert_float(dd.x).is_equal_approx(0.0, 0.0001)   # строго на север
+	assert_float(dh.z).is_less(-0.99)
 
 
 func test_клин_смотрит_вправо_и_вверх_от_входа() -> void:

@@ -9,7 +9,7 @@
 # Пресеты (замеры bench — в docs/netrun-bench.md, итоги 08–12.10 — в docs/netrun-refactor-plan.md):
 #   base            чистые умолчания: msaa 2, foveation 0, layers behind, вид V10, облако (Б) на всех модулях (с 14.10 — умолчание кода;
 #                   `volumetric=off` — сплошные модели, для сравнения)
-#   bench           perf=on, bench=entry: 5 с прогрева + 3 окна по 10 с, строка `[bench] ИТОГ`
+#   bench           perf=on, bench=entry: 10 с прогрева + 3 окна по 20 с (поза камеры держится каждый кадр), строка `[bench] ИТОГ`
 #   cloud-props     bench + cloud=1: облако на колоннах/хранилище/выходе (C3a; пол, потолок и дальние остаются solid_dark).
 #                   После B3 `cloud=1` — умолчание AssetMaterials, так что пресет ≡ bench (оставлен алиасом для старых команд)
 #   cloud-vol       bench + volumetric=vault,portal: хранилище и порталы облаком частиц (VolumeRegistry, точки с поверхности модели)
@@ -18,7 +18,7 @@
 #   cloud-all-imp   cloud-all + volume_impostor_m=8: дальше 8 м облака — запечённые билборды (VolumeImpostor)
 #   probe-sweep     perf=on, probe=sweep: серия синтетической нагрузки (база + 14 вариантов, ≈3,5 мин) → таблица `[probe] ИТОГ`
 #
-# Ключи: имена из RenderConfig.KEYS (msaa layers foveation perf volumetric bench probe volume_budget_ms volume_impostor_m warmup) пишутся в [render], остальные — в [assets]
+# Ключи: имена из RenderConfig.KEYS (msaa layers foveation perf volumetric bench bench_lock bench_settle_s bench_runs bench_run_s bench_ab bench_ab_settle_s probe volume_budget_ms volume_impostor_m warmup) пишутся в [render], остальные — в [assets]
 # (AssetMaterials.KNOBS; неизвестная ручка игра пропускает с предупреждением). Пример:
 #   pico_stand.sh cloud-props msaa=4 dust_density=0.55 perf=diag bench=wedge
 # Читается при СТАРТЕ игры: после смены — перезапуск (pico_series.sh делает это сам). Устройство — PICO_SERIAL или единственное подключённое.
@@ -26,7 +26,7 @@ set -e
 
 PACKAGE="com.megablok10.netrun"
 CFG_PATH="/sdcard/Android/data/$PACKAGE/files/netrun.cfg"
-RENDER_KEYS=" msaa layers far_cull_m foveation perf volumetric bench probe volume_budget_ms volume_impostor_m warmup "
+RENDER_KEYS=" msaa layers far_cull_m foveation perf volumetric bench bench_lock bench_settle_s bench_runs bench_run_s bench_ab bench_ab_settle_s probe volume_budget_ms volume_impostor_m warmup "
 
 [ -f "$HOME/netrun-env.sh" ] && . "$HOME/netrun-env.sh"
 . "$(cd "$(dirname "$0")" && pwd)/box_guard.sh"
