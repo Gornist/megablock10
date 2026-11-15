@@ -52,34 +52,20 @@ float cloud_noise2(vec2 p) {
 // ПРАВИЛО СТЕРЕО: CAMERA_POSITION_WORLD в стерео (multiview) — СЕРЕДИНА между глазами (документация Godot 4.7), не позиция текущего глаза. Для вопроса «есть ли частица в ячейке»
 // (graze → dens → step(h2, dens)) это правильно: у обоих глаз один набор точек. Чисто яркостные эффекты могут брать глаз: INV_VIEW_MATRIX[3].xyz.
 vec4 volume_cloud(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px, float edge, float dens_k, float lit, vec3 lit_col, float lit_col_w) {
-	// Производные мировой позиции — первой строкой, до любых ветвей: coord зависит от выбора оси по нормали, и dFdx(coord) на ребре или грани 45° — производная разрывной
-	// величины. Производные wp непрерывны; в плоскость выбранной оси их проецируем аналитически (как строится plane).
-	vec3 wp_dx = dFdx(wp);
-	vec3 wp_dy = dFdy(wp);
 	float cell_w = max(dust_cell, 0.001);   // hint_range в рантайме не клампит
 	vec3 an = abs(nw);
 	vec2 plane;
-	vec2 gdx;
-	vec2 gdy;
 	float axis;
 	if (an.y >= an.x && an.y >= an.z) {
 		plane = vec2(wp.x, wp.z * 0.5);
-		gdx = vec2(wp_dx.x, wp_dx.z * 0.5);
-		gdy = vec2(wp_dy.x, wp_dy.z * 0.5);
 		axis = 0.0;
 	} else if (an.x >= an.z) {
 		plane = vec2(wp.z, wp.y * 0.5);
-		gdx = vec2(wp_dx.z, wp_dx.y * 0.5);
-		gdy = vec2(wp_dy.z, wp_dy.y * 0.5);
 		axis = 1.0;
 	} else {
 		plane = vec2(wp.x, wp.y * 0.5);
-		gdx = vec2(wp_dx.x, wp_dx.y * 0.5);
-		gdy = vec2(wp_dy.x, wp_dy.y * 0.5);
 		axis = 2.0;
 	}
-	gdx /= cell_w;
-	gdy /= cell_w;
 	vec2 coord = plane / cell_w;
 	vec2 id = floor(coord);
 	vec2 f = fract(coord);
@@ -115,8 +101,9 @@ vec4 volume_cloud(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px, float 
 	float frame = floor(mod(TIME * dust_fps + h * n, n));
 	vec2 cellxy = vec2(mod(frame, glitch_cells.x), floor(frame / glitch_cells.x));
 	vec2 uv = (cellxy + f) / glitch_cells;
-	// градиенты — аналитические, от производных мировой позиции (взяты в начале функции): на границе ячейки и на ребре нет скачка и швов мипов
-	float s = textureGrad(glitch_tex, uv, gdx / glitch_cells, gdy / glitch_cells).r;
+	// градиенты — от непрерывных координат ячеек, иначе на границе ячейки скачок и швы мипов. На ребре (смена оси по нормали) dFdx(coord) разрывна; аналитические
+	// производные от dFdx(wp) в начале функции это лечили, но стоили на Pico ≈0,43 мс (серия 15.11, floor_down) — не взяты, путь пола заменяет B3 (scan_rows)
+	float s = textureGrad(glitch_tex, uv, dFdx(coord) / glitch_cells, dFdy(coord) / glitch_cells).r;
 	s = mix(s, smoothstep(0.35, 0.65, s), dust_sharp);
 	float present = step(h2, dens);
 	float a = mix(dens * dust_cover_avg, s * present, sharp);

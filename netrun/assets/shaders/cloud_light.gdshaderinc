@@ -21,10 +21,10 @@ float cloud_lit(vec3 p, out vec3 tint) {
 			break;
 		}
 		vec4 l = cl_pos[i];
-		if (l.w <= 0.0) {   // нулевой радиус: smoothstep(0, 0, …) не определён — источник выключен
-			continue;
-		}
-		float k = (1.0 - smoothstep(0.15 * l.w, l.w, distance(p, l.xyz))) * cl_col[i].a;
+		// нулевой радиус: smoothstep(0, 0, …) не определён — радиус не меньше 0,1 мм, источник фактически выключен. Без ветки: continue в цикле
+		// по 12 источникам на каждый фрагмент облака стоил на Pico ≈0,5 мс (серия 15.11, floor_down)
+		float r = max(l.w, 0.0001);
+		float k = (1.0 - smoothstep(0.15 * r, r, distance(p, l.xyz))) * cl_col[i].a;
 		if (k > best) {
 			best = k;
 			tint = cl_col[i].rgb;
