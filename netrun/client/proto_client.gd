@@ -94,10 +94,10 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 			add_child(diag)
 			diag.reported.connect(func(d: Dictionary): log_file.log("xr.diag", d))
 			diag.eye_reported.connect(func(d: Dictionary): log_file.log("xr.eye", d))   # кадр глаза: diff/luma для автопроверок вида на очках
-	if render_cfg.bench != "":   # воспроизводимый замер: [render] bench = "<пресет>" (поза, 3 прогона по 60 с, медиана)
+	if render_cfg.bench != "":   # воспроизводимый замер: [render] bench = "<пресет>" (поза камеры, окна, медиана и перцентили, CSV кадров)
 		var bench := BenchRun.new()
 		add_child(bench)
-		bench.setup(scene.rig, render_cfg.bench)
+		bench.setup(scene.rig, render_cfg.bench, render_cfg)   # позу камеры держит каждый кадр (bench_lock), окна, A/B — ключи bench_* [render]
 		bench.finished.connect(func(r: Dictionary): log_file.log("bench", r))
 	if render_cfg.volume_budget_ms > 0.0:   # регулятор плотности облаков по GPU-времени кадра: [render] volume_budget_ms
 		var vb := VolumeBudget.new()

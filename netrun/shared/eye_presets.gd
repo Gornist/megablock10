@@ -21,6 +21,9 @@ const ENTRY_PITCH_DEG := -12.0
 ## яркая плоскость, уходящая клином в нижний угол. Приближение по кадру: точную позу уточняют в сеансе очков.
 const WEDGE_YAW_DEG := 35.0
 const WEDGE_PITCH_DEG := 30.0
+## Замер пола (BenchRun, `[render] bench`): от входа вдоль комнаты на север; floor_down — взгляд на 15° ниже горизонта (пол занимает нижнюю половину кадра), floor_horizon — на горизонт.
+const FLOOR_DOWN_PITCH_DEG := -15.0
+const FLOOR_HORIZON_PITCH_DEG := 0.0
 ## Высота точки, на которую смотрят «глаза» при взгляде на предметы (метка шарда у хранилища, props/vault_*.glb).
 const LOOK_Y := 1.0
 ## Высота камеры обзора на всю комнату и на половину (северную, южную).
@@ -80,6 +83,10 @@ static func _build(ld: LayoutData = null) -> Dictionary:
 	# Хранилища Фойе — углы северной стены (блоки (0; 0) и (7; 0)), порталы между ними; у западного — площадка в блоке (0; 1).
 	# Для другой раскладки та же схема на оси (cols/2 − 1) — у 8×8 это 3; ряды не дальше последнего.
 	var axis := maxi((cols >> 1) - 1, 0)
+	var fd := deg_to_rad(FLOOR_DOWN_PITCH_DEG)
+	var fh := deg_to_rad(FLOOR_HORIZON_PITCH_DEG)
+	var floor_down_look := spawn + Vector3(0.0, EYE_HEIGHT, 0.0) + Vector3(0.0, sin(fd), -cos(fd)) * 10.0
+	var floor_horizon_look := spawn + Vector3(0.0, EYE_HEIGHT, 0.0) + Vector3(0.0, sin(fh), -cos(fh)) * 10.0
 	var north_eye := NodeLayout.cell_center(axis, mini(4, rows - 1))
 	var north_look := NodeLayout.cell_center(axis, 0) + Vector3(0.0, LOOK_Y, 0.0)
 	var south_eye := NodeLayout.cell_center(axis, mini(2, rows - 1))
@@ -103,6 +110,8 @@ static func _build(ld: LayoutData = null) -> Dictionary:
 		"south": _eye(south_eye, south_look),
 		"vault_w": _eye(vault_pad, vault),
 		"wedge": _eye(spawn, wedge_look),
+		"floor_down": _eye(spawn, floor_down_look),
+		"floor_horizon": _eye(spawn, floor_horizon_look),
 		"top": _top(center, TOP_HEIGHT * k),
 		"top_north": _top(north_c, TOP_HALF_HEIGHT * k),
 		"top_south": _top(south_c, TOP_HALF_HEIGHT * k),

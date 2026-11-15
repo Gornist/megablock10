@@ -126,11 +126,20 @@ for spec in "$@"; do
     adb -s "$serial" logcat -d -s godot </dev/null | grep -aq "\] ИТОГ" && break
   done
   echo "   питание: $(adb -s "$serial" shell dumpsys power </dev/null | grep -a -m1 mWakefulness | tr -d '\r ') ожидание ${waited} с"
-  adb -s "$serial" logcat -d -s godot </dev/null | grep -a "\[bench\] ИТОГ\|\[probe\]\|\[perf\]\|\[xr-diag\]" | sed -E 's/^.*I godot   : //' | tail -24 | tee "$OUT/$name.txt" | sed 's/^/   /'
+  adb -s "$serial" logcat -d -s godot </dev/null | grep -a "\[bench\] ИТОГ\|\[bench\] AB\|\[bench\] proj\|\[bench\] csv\|\[probe\]\|\[perf\]\|\[xr-diag\]" | sed -E 's/^.*I godot   : //' | tail -24 | tee "$OUT/$name.txt" | sed 's/^/   /'
   [ "$(wc -l < "$OUT/$name.txt")" -gt 0 ] || { echo "   нет строк итога (кадры не рисуются: очки спят или игра на паузе)"; fail=1; }
   adb -s "$serial" exec-out run-as "$PACKAGE" cat files/xr_diag_view.png </dev/null > "$OUT/$name.png" 2>/dev/null || true
   [ -s "$OUT/$name.png" ] && head -c 4 "$OUT/$name.png" | grep -q PNG || adb -s "$serial" pull "/sdcard/Android/data/$PACKAGE/files/xr_diag_view.png" "$OUT/$name.png" >/dev/null 2>&1 </dev/null || true
   [ -s "$OUT/$name.png" ] && echo "   кадр: $OUT/$name.png" || { rm -f "$OUT/$name.png"; echo "   кадра нет (perf=diag не задан или PNG ещё не сохранён)"; }
+  # Покадровый CSV замера (bench: user://bench/*.csv): через run-as (tar), запасной путь — каталог внешних данных приложения, как у xr_diag_view.png
+  bench_dir="$OUT/$name-bench"
+  mkdir -p "$bench_dir"
+  adb -s "$serial" exec-out run-as "$PACKAGE" tar c files/bench </dev/null 2>/dev/null | tar x -C "$bench_dir" 2>/dev/null || true
+  if [ -z "$(find "$bench_dir" -name "*.csv" 2>/dev/null | head -1)" ]; then
+    adb -s "$serial" pull "/sdcard/Android/data/$PACKAGE/files/bench/." "$bench_dir/" >/dev/null 2>&1 </dev/null || true
+  fi
+  ncsv=$(find "$bench_dir" -name "*.csv" 2>/dev/null | wc -l | tr -d " ")
+  if [ "$ncsv" -gt 0 ]; then echo "   CSV кадров: $bench_dir ($ncsv)"; else rmdir "$bench_dir" 2>/dev/null; fi
   # Кадр вида от XrDiag на устройстве бывает чёрным (shot_mean=0.0): штатный снимок экрана очков — что реально видно (стерео, оба глаза)
   adb -s "$serial" exec-out screencap -p </dev/null > "$OUT/$name-screen.png" 2>/dev/null || true
   if [ -s "$OUT/$name-screen.png" ] && head -c 4 "$OUT/$name-screen.png" | grep -q PNG; then echo "   экран: $OUT/$name-screen.png"; else rm -f "$OUT/$name-screen.png"; echo "   снимка экрана нет"; fi
