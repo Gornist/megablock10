@@ -130,3 +130,12 @@ func test_nodeview_без_volumetric_облаков_нет_с_ним_у_хран
 	assert_int(scene.view.find_children("Cloud_vault", "Node3D", true, false).size()).is_equal(1)
 	assert_int(scene.view.find_children("Cloud_portal", "Node3D", true, false).size()).is_equal(1)
 	VolumeRegistry.configure("off")
+
+
+func test_габарит_охватывает_квад_самой_крупной_точки() -> void:
+	var pts := PackedFloat32Array([0, 0, 0, 0.01, 0.1, 0, 1,  1, 0, 0, 0.2, 0.2, 0, 1])
+	var box := VolumeSampler.bounds_of(pts)
+	assert_float(VolumeSampler.max_half(pts)).is_equal_approx(0.2, 0.0001)
+	assert_bool(box.has_point(Vector3(1.199, 0.199, 0.0))).is_true()     # квад крупной точки
+	assert_bool(box.has_point(Vector3(-0.01, -0.01, 0.0))).is_true()
+	assert_float(box.size.x).is_equal_approx(1.0 + 0.4, 0.0001)      # не больше чем на полуразмер крупнейшей с каждой стороны

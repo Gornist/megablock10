@@ -19,17 +19,16 @@ const LOD_PERIOD_SEC := 0.25
 const LOD_SMOOTH_NODES := [[4.0, 1.0], [8.0, 0.5], [16.0, 0.25], [32.0, 0.125]]
 const LOD_TAU := 0.3
 const LOD_BAND := 0.08
+## Из particles_body.gdshaderinc (там const, из кода не читаются): подъём искры за цикл и её полудлина, м (для запаса отсечения, cull_margin).
+const CULL_SPARK_RISE := 0.07
+const CULL_SPARK_HALF_LEN := 0.013
 
 ## Менять ли ЛОД по расстоянию сам (тесты и стенды с фиксированной плотностью выключают).
 var auto_lod := true
 ## Дополнительный множитель плотности (регулятор бюджета кадра): 1 — как есть.
 var density := 1.0
-## Порог импостора, м (0 — выкл., по умолчанию): дальше облако заменяется запечённым билбордом (VolumeImpostor, гистерезис ±1 м).
-var impostor_m := 0.0
 
 var _bounds := AABB()
-var _impostor: Node3D
-var _far := false
 var _mm: MultiMesh
 var _mmi: MultiMeshInstance3D
 var _count := 0
@@ -42,11 +41,47 @@ var _shown_count := 0
 var _mat: ShaderMaterial
 
 
-## Точки из байтов файла; пусто, если размер не кратен POINT_BYTES.
-static func parse(bytes: PackedByteArray) -> PackedFloat32Array:
+## Точка с индексом i (по POINT_FLOATS float) годна: все числа конечны, полуразмер > 0, вид 0 или 1, вес в [0, 1].
+static func point_valid(points: PackedFloat32Array, i: int) -> bool:
+	var o := i * POINT_FLOATS
+	for k in POINT_FLOATS:
+		if not is_finite(points[o + k]):
+			return false
+	var kind := points[o + 5]
+	var weight := points[o + 6]
+	return points[o + 3] > 0.0 and (kind == 0.0 or kind == 1.0) and weight >= 0.0 and weight <= 1.0
+
+
+## Сколько точек массива негодны (см. point_valid).
+static func count_invalid(points: PackedFloat32Array) -> int:
+	var bad := 0
+	for i in points_in(points):
+		if not point_valid(points, i):
+			bad += 1
+	return bad
+
+
+## Массив без негодных точек; порядок хороших сохраняется (ЛОД — префикс перемешанного массива).
+static func sanitize(points: PackedFloat32Array) -> PackedFloat32Array:
+	if count_invalid(points) == 0:
+		return points
+	var out := PackedFloat32Array()
+	for i in points_in(points):
+		if point_valid(points, i):
+			out.append_array(points.slice(i * POINT_FLOATS, (i + 1) * POINT_FLOATS))
+	return out
+
+
+## Точки из байтов файла; пусто, если размер не кратен POINT_BYTES. Негодные точки (NaN/inf, полуразмер ≤ 0, вид не 0/1, вес вне [0, 1]) выкидываются,
+## об этом — одно предупреждение на файл (name — для сообщения), остальные точки остаются.
+static func parse(bytes: PackedByteArray, name: String = "") -> PackedFloat32Array:
 	if bytes.is_empty() or bytes.size() % POINT_BYTES != 0:
 		return PackedFloat32Array()
-	return bytes.to_float32_array()
+	var raw := bytes.to_float32_array()
+	var bad := count_invalid(raw)
+	if bad > 0:
+		push_warning("VolumeCloud: %s — выкинуто негодных точек: %d из %d (NaN/inf, полуразмер ≤ 0, вид не 0/1 или вес вне 0…1)" % [name, bad, points_in(raw)])
+	return sanitize(raw)
 
 
 ## Точки из файла `.points` (пусто и предупреждение, если файла нет или он битый).
@@ -56,10 +91,40 @@ static func load_file(path: String) -> PackedFloat32Array:
 	var f := FileAccess.open(path, FileAccess.READ)
 	if f == null:
 		return PackedFloat32Array()
-	var pts := parse(f.get_buffer(f.get_length()))
+	var pts := parse(f.get_buffer(f.get_length()), path)
 	if pts.is_empty():
-		push_warning("VolumeCloud: %s — размер не кратен %d байтам, облако пропущено" % [path, POINT_BYTES])
+		push_warning("VolumeCloud: %s — пусто: размер не кратен %d байтам или все точки негодны, облако пропущено" % [path, POINT_BYTES])
 	return pts
+
+
+## Запас габарита для отсечения по кадру, м: куда шейдер (particles_body.gdshaderinc) уносит частицу и насколько раздувает квад.
+## Параметры — из материала, не заданные — умолчание шейдера. Центр: искра поднимается на spark_rise, остальные прищёлкиваются к решётке (до √3·lattice/2),
+## обе сдвигаются отталкиванием до 4·touch_push (четыре источника по ≤ 1). Квад: полуразмер × набухание (вдох ×1,5 при touch_grow·(1+…)) по диагонали √2 + полудлина искры.
+## min_angle / min_px растят точку с расстоянием — берём точку на дальней границе (far_cull_m, без предела — 32 м, дальний узел плавного ЛОД); 1 px ≈ d/700
+## (консервативно к Pico: на 90° и ~2000 px высоты пиксель вдвое мельче).
+static func cull_margin(max_half_size: float, mat: ShaderMaterial) -> float:
+	var lattice := _shader_param(mat, "lattice", 0.006)
+	var push := 4.0 * maxf(_shader_param(mat, "touch_push", 0.025), 0.025)   # set_cloud_touch потом может поднять touch_push — не меньше умолчания
+	var grow := maxf(_shader_param(mat, "touch_grow", 0.8), 0.8)
+	var center := maxf(CULL_SPARK_RISE, 0.5 * sqrt(3.0) * lattice) + push
+	var half := _nonneg(max_half_size) * 1.5 * (1.0 + grow)
+	var reach := NodeAssets.far_cull_m if NodeAssets.far_cull_m > 0.0 else float((LOD_SMOOTH_NODES[LOD_SMOOTH_NODES.size() - 1] as Array)[0])
+	var by_angle := reach * _shader_param(mat, "min_angle", 0.0)
+	var by_px := 0.5 * _shader_param(mat, "min_px", 0.0) * reach / 700.0
+	half = maxf(half, maxf(by_angle, by_px))
+	return center + sqrt(2.0) * half + CULL_SPARK_HALF_LEN
+
+
+static func _nonneg(v: float) -> float:
+	return v if is_finite(v) and v > 0.0 else 0.0
+
+
+## Число-параметр шейдерного материала: заданное, иначе умолчание шейдера, иначе fallback.
+static func _shader_param(mat: ShaderMaterial, pname: StringName, fallback: float) -> float:
+	var v: Variant = mat.get_shader_parameter(pname)
+	if v == null and mat.shader != null:
+		v = RenderingServer.shader_get_parameter_default(mat.shader.get_rid(), pname)
+	return float(v) if v is float or v is int else fallback
 
 
 ## Сколько точек в массиве.
@@ -152,7 +217,7 @@ func setup(points: PackedFloat32Array, color: Color, bounds: AABB) -> void:
 	_mm.use_custom_data = true
 	_mm.mesh = quad
 	_mm.instance_count = _count
-	_mm.custom_aabb = _bounds.grow(0.1)
+	_mm.custom_aabb = _bounds.grow(cull_margin(VolumeSampler.max_half(points), mat))   # габарит модели + то, куда шейдер уносит и раздувает частицы
 	_mm.buffer = make_buffer(points, color)
 	_mmi = MultiMeshInstance3D.new()
 	_mmi.name = "Particles"
@@ -161,7 +226,23 @@ func setup(points: PackedFloat32Array, color: Color, bounds: AABB) -> void:
 	NodeAssets.limit_range(_mmi)   # дальше far_cull_m облако не рисуется (редкая восьмая часть точек вдали — тоже мусор)
 	add_child(_mmi)
 	add_to_group("volume_clouds")   # регулятор плотности (VolumeBudget) находит облака по группе
+	_sync_budget()
 	_apply()
+
+
+func _ready() -> void:
+	_sync_budget()   # setup мог быть раньше add_child: облако, вошедшее в сцену после снижения, берёт текущую плотность
+
+
+## Спросить у регулятора (группа `volume_budget`) текущую плотность: облако, созданное после снижения, не остаётся на 1,0.
+func _sync_budget() -> void:
+	if not is_inside_tree():
+		return
+	var vb := get_tree().get_first_node_in_group(VolumeBudget.BUDGET_GROUP)
+	if vb != null and vb.has_method("current_density"):
+		density = clampf(float(vb.call("current_density")), 0.0, 1.0)
+		if _mm != null:
+			_apply()
 
 
 ## Плотность облака (множитель к ЛОД; регулятор VolumeBudget зовёт через группу `volume_clouds`).
@@ -237,27 +318,6 @@ func _process(delta: float) -> void:
 	_acc = 0.0
 	var cam := get_viewport().get_camera_3d()
 	if cam != null:
-		var dist := cam.global_position.distance_to(global_position)
-		_set_far(VolumeImpostor.next_far(_far, dist, impostor_m))
 		if not smooth_lod:   # плавный режим доли ведёт выше, каждый кадр
-			_lod = lod_fraction(dist)
+			_lod = lod_fraction(cam.global_position.distance_to(global_position))
 			_apply()
-
-
-## Далеко — вместо тысяч квадов один билборд (запекается при первом переходе); близко — снова живое облако.
-func _set_far(far: bool) -> void:
-	if far == _far or _mmi == null:
-		return
-	if far and _impostor == null:
-		_impostor = VolumeImpostor.bake(_mm, _bounds)
-		if _impostor == null:
-			return
-		add_child(_impostor)
-	_far = far
-	_mmi.visible = not far
-	if _impostor != null:
-		_impostor.visible = far
-
-
-func is_far() -> bool:
-	return _far

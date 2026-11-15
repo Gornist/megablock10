@@ -81,7 +81,6 @@ func start(args: PackedStringArray, mode: String, want_xr: bool) -> void:
 	var render_cfg := RenderConfig.load_file(config_paths)
 	render_cfg.apply_assets(config_paths)
 	VolumeRegistry.configure(render_cfg.volumetric)   # какие модули рисуются облаком частиц (по умолчанию ни один)
-	VolumeRegistry.impostor_m = render_cfg.volume_impostor_m   # дальше этого расстояния облако — билборд (0 — выкл.)
 	NodeAssets.far_cull_m = render_cfg.far_cull_m   # дальше — модели и облака не рисуются (0 — без предела)
 	scene = preload("res://client/world_scene.gd").new()
 	add_child(scene)

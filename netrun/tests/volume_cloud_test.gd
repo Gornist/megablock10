@@ -124,3 +124,68 @@ func test_ручной_ЛОД_выключает_автоматический_и
 	assert_bool(c.auto_lod).is_false()
 	c.set_auto(true)
 	assert_bool(c.auto_lod).is_true()
+
+
+## G5: габарит отсечения должен покрывать то, куда шейдер уносит частицы.
+func _body_material() -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = VolumeCloud.SHADER
+	return m
+
+
+func test_запас_отсечения_покрывает_подъём_искры_и_отталкивание() -> void:
+	var m := _body_material()
+	var margin := VolumeCloud.cull_margin(0.012, m)
+	assert_float(margin).is_greater_equal(0.07 + 0.013)             # искра поднимается на spark_rise и имеет полудлину
+	assert_float(margin).is_greater_equal(4.0 * 0.025)               # отталкивание от четырёх источников, touch_push по умолчанию
+	m.set_shader_parameter("touch_push", 0.1)
+	assert_float(VolumeCloud.cull_margin(0.012, m)).is_greater_equal(4.0 * 0.1)
+
+
+func test_запас_растёт_с_размером_точки_решёткой_и_min_angle() -> void:
+	var m := _body_material()
+	var base := VolumeCloud.cull_margin(0.012, m)
+	assert_float(VolumeCloud.cull_margin(0.2, m)).is_greater(base + 0.2)   # крупная точка (с запасом на набухание) выходит за габарит
+	m.set_shader_parameter("min_angle", 0.01)
+	assert_float(VolumeCloud.cull_margin(0.012, m)).is_greater(base)       # точка растёт с расстоянием
+	m.set_shader_parameter("min_angle", 0.0)
+	m.set_shader_parameter("min_px", 4.0)
+	assert_float(VolumeCloud.cull_margin(0.012, m)).is_greater(base)
+
+
+func test_setup_расширяет_custom_aabb_на_запас() -> void:
+	var c: VolumeCloud = auto_free(VolumeCloud.new())
+	c.auto_lod = false
+	add_child(c)
+	var box := AABB(Vector3(-0.5, 0, -0.5), Vector3(1, 2, 1))
+	c.setup(PackedFloat32Array([0, 1, 0, 0.02, 0.3, 0, 1]), Color.WHITE, box)
+	var mmi := c.get_node("Particles") as MultiMeshInstance3D
+	assert_float(mmi.multimesh.custom_aabb.position.y).is_less_equal(box.position.y - 0.07)
+	assert_float(mmi.multimesh.custom_aabb.end.y).is_greater_equal(box.end.y + 0.07)
+
+
+func _pt(x: float, half: float, kind: float, weight: float) -> PackedFloat32Array:
+	return PackedFloat32Array([x, 0.0, 0.0, half, 0.5, kind, weight])
+
+
+func test_битые_точки_выкидываются_хорошие_остаются() -> void:
+	var raw := PackedFloat32Array()
+	raw.append_array(_pt(1.0, 0.02, 0.0, 1.0))        # хорошая
+	raw.append_array(_pt(NAN, 0.02, 0.0, 1.0))         # NaN
+	raw.append_array(_pt(2.0, 0.0, 0.0, 1.0))          # полуразмер 0
+	raw.append_array(_pt(3.0, -0.1, 0.0, 1.0))         # отрицательный полуразмер
+	raw.append_array(_pt(INF, 0.02, 1.0, 0.5))         # inf
+	raw.append_array(_pt(4.0, 0.02, 2.0, 1.0))         # вид вне {0, 1}
+	raw.append_array(_pt(5.0, 0.02, 0.0, 1.5))         # вес вне [0, 1]
+	raw.append_array(_pt(6.0, 0.02, 0.0, -0.1))        # вес < 0
+	raw.append_array(_pt(7.0, 0.03, 1.0, 0.0))         # хорошая (искра, вес 0 допустим)
+	var pts := VolumeCloud.parse(raw.to_byte_array())
+	assert_int(VolumeCloud.points_in(pts)).is_equal(2)
+	assert_float(pts[0]).is_equal(1.0)
+	assert_float(pts[VolumeCloud.POINT_FLOATS]).is_equal(7.0)   # порядок сохранён (префикс = случайная выборка)
+	assert_int(VolumeCloud.count_invalid(raw)).is_equal(7)
+
+
+func test_все_точки_хорошие_ничего_не_выкидывается() -> void:
+	var pts := VolumeCloud.load_file(EXAMPLE)
+	assert_int(VolumeCloud.count_invalid(pts)).is_equal(0)

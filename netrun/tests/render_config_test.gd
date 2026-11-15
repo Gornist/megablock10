@@ -23,7 +23,6 @@ func test_значения_по_умолчанию_принятая_база() -
 	assert_str(c.layers).is_equal("behind")
 	assert_str(c.perf).is_equal("off")
 	assert_str(c.volumetric).is_equal("vault,portal,shard,exit,ice")   # облако (Б) принято как вид (14.10); "off" — только стенд
-	assert_float(c.volume_impostor_m).is_equal(0.0)   # импостор по умолчанию выкл. (выигрыша на очках не измерено)
 	assert_str(c.bench).is_empty()
 	assert_str(c.probe).is_empty()
 	assert_array(c.warnings).is_empty()
@@ -85,10 +84,11 @@ func test_фовеация_с_msaa_гасится_до_нуля_с_предуп�
 
 func test_удалённые_ключи_игнорируются_с_предупреждением() -> void:
 	# Старые netrun.cfg на очках: aa, fringe, scale, foveation_dynamic — тупики замеров; значения не читаются
-	var c := RenderConfig.from_config(_cfg({"msaa": 2, "aa": "fxaa", "fringe": "off", "scale": 1.25, "foveation_dynamic": true}))
+	# volume_impostor_m снят 15.11 (G2): старый ключ — то же предупреждение, загрузка не падает
+	var c := RenderConfig.from_config(_cfg({"msaa": 2, "aa": "fxaa", "fringe": "off", "scale": 1.25, "foveation_dynamic": true, "volume_impostor_m": 8.0}))
 	assert_int(c.msaa).is_equal(2)
 	assert_int(c.foveation).is_equal(0)
-	assert_int(c.warnings.size()).is_equal(4)
+	assert_int(c.warnings.size()).is_equal(5)
 	for w in c.warnings:
 		assert_str(w).contains("удалён")
 	for k in RenderConfig.LEGACY_KEYS:

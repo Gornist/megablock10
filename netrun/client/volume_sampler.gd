@@ -68,7 +68,15 @@ static func sample_triangles(tris: PackedVector3Array, count: int, seed_value: i
 	return out
 
 
-## Габарит набора точек (с запасом на полуразмер).
+## Наибольший полуразмер точек массива, м (0 — точек нет).
+static func max_half(points: PackedFloat32Array) -> float:
+	var best := 0.0
+	for i in points.size() / VolumeCloud.POINT_FLOATS:
+		best = maxf(best, points[i * VolumeCloud.POINT_FLOATS + 3])
+	return best
+
+
+## Габарит набора точек с запасом на наибольший полуразмер (квад самой крупной точки целиком внутри).
 static func bounds_of(points: PackedFloat32Array) -> AABB:
 	var n := points.size() / VolumeCloud.POINT_FLOATS
 	if n == 0:
@@ -77,7 +85,7 @@ static func bounds_of(points: PackedFloat32Array) -> AABB:
 	for i in range(1, n):
 		var o := i * VolumeCloud.POINT_FLOATS
 		box = box.expand(Vector3(points[o], points[o + 1], points[o + 2]))
-	return box.grow(HALF_SIZE)
+	return box.grow(max_half(points))
 
 
 ## Индекс треугольника по накопленной площади (бинарный поиск: первый cum[i] >= x).

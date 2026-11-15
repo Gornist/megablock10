@@ -14,9 +14,6 @@ const SAMPLE_SEED := 20261013
 const COLOR_LAYERS := {"ice": ["volume_ice", "ice_calm"], "exit": ["volume_exit", "hud_ok"]}
 const COLOR_DEFAULT := "hud_ok"
 
-## Порог импостора дальних облаков, м (`[render] volume_impostor_m`; 0 — выкл.): его получает каждое новое облако.
-static var impostor_m := 0.0
-
 static var _all := false
 static var _modules := PackedStringArray()
 ## Сэмплированные точки по пути модели: сэмплируем один раз, все экземпляры (порталы, хранилища) берут тот же массив.
@@ -85,7 +82,6 @@ static func spawn(module: String, model_path: String, color: Color, bounds: AABB
 			box = VolumeSampler.bounds_of(pts)
 	var c := VolumeCloud.new()
 	c.name = "Cloud_" + module
-	c.impostor_m = impostor_m
 	c.setup(pts, color, box)
 	# В logcat видно, дошёл ли файл `.points` до игры (в APK попадает по include_filter) или сработал сэмплер.
 	print("[volume] spawn module=%s source=%s points=%d" % [module, source, VolumeCloud.points_in(pts)])

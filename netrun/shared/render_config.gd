@@ -35,7 +35,7 @@ extends RefCounted
 ## volume_budget_ms = 0       ; регулятор плотности облаков (VolumeBudget): потолок GPU-времени кадра, мс (4…20; при 90 Гц ≈ 10,5); выше — облака редеют, ниже — густеют; 0 — выкл.
 
 const SECTION := "render"
-const KEYS := ["msaa", "layers", "far_cull_m", "foveation", "perf", "volumetric", "bench", "bench_lock", "bench_settle_s", "bench_runs", "bench_run_s", "bench_ab", "bench_ab_settle_s", "probe", "volume_budget_ms", "volume_impostor_m", "warmup"]
+const KEYS := ["msaa", "layers", "far_cull_m", "foveation", "perf", "volumetric", "bench", "bench_lock", "bench_settle_s", "bench_runs", "bench_run_s", "bench_ab", "bench_ab_settle_s", "probe", "volume_budget_ms", "warmup"]
 ## Дальность прорисовки моделей и облаков предметов, м: дальше они не рисуются совсем (вдали облако редеет до восьмой части точек, а сплошная
 ## тёмная модель под ним остаётся; заодно дешевле кадр). 0 — без предела. 3…60.
 const FAR_CULL_MIN := 3.0
@@ -43,11 +43,9 @@ const FAR_CULL_MAX := 60.0
 const FAR_CULL_DEFAULT := 12.0
 const VOLUME_BUDGET_MIN := 4.0
 const VOLUME_BUDGET_MAX := 20.0
-## Импостор дальних облаков (VolumeCloud): расстояние до камеры, мс м — дальше него облако заменяется билбордом; 0 — выкл. (по умолчанию).
-const VOLUME_IMPOSTOR_MIN := 4.0
-const VOLUME_IMPOSTOR_MAX := 40.0
 ## Ключи, удалённые рефактором (docs/netrun-refactor-plan.md): в старых netrun.cfg на очках встречаются, значения не читаем.
-const LEGACY_KEYS := ["aa", "fringe", "scale", "foveation_dynamic"]
+## volume_impostor_m снят 15.11 (G2): билборд — одна плоская картинка для обоих глаз.
+const LEGACY_KEYS := ["aa", "fringe", "scale", "foveation_dynamic", "volume_impostor_m"]
 ## Принятый вид (владелец 14.10, «снял, всё выглядит заебись»): все объёмные модули. Бюджет — серии на очках 13–14.10 (docs/netrun-refactor-plan.md).
 const VOLUMETRIC_DEFAULT := "vault,portal,shard,exit,ice"
 const PERF_VALUES := ["on", "off", "diag"]
@@ -82,8 +80,6 @@ var bench_ab_settle_s: float = BenchRun.AB_SETTLE_SEC
 var probe: String = ""
 ## Потолок GPU-времени кадра для регулятора облаков (VolumeBudget), мс; 0 — выкл.
 var volume_budget_ms: float = 0.0
-## Порог импостора дальних облаков, м (VolumeCloud); 0 — выкл.
-var volume_impostor_m: float = 0.0
 var foveation: int = FOVEATION_DEFAULT
 ## Прогрев шейдеров при старте (ShaderWarmup): "on" | "off".
 var warmup: String = WARMUP_DEFAULT
@@ -196,12 +192,6 @@ static func from_config(cfg: ConfigFile) -> RenderConfig:
 					c.volume_budget_ms = float(n)
 				else:
 					c.warnings.append("volume_budget_ms: нужно 0 или число %s…%s, получено «%s» — регулятор выключен" % [VOLUME_BUDGET_MIN, VOLUME_BUDGET_MAX, v])
-			"volume_impostor_m":
-				var d: Variant = _number(v)
-				if d != null and (float(d) == 0.0 or (float(d) >= VOLUME_IMPOSTOR_MIN and float(d) <= VOLUME_IMPOSTOR_MAX)):
-					c.volume_impostor_m = float(d)
-				else:
-					c.warnings.append("volume_impostor_m: нужно 0 или число %s…%s, получено «%s» — импостор выключен" % [VOLUME_IMPOSTOR_MIN, VOLUME_IMPOSTOR_MAX, v])
 			"probe":
 				var spec := LoadProbe.parse(str(v))
 				c.probe = str(v).strip_edges().to_lower() if spec["on"] else ""
@@ -331,5 +321,5 @@ func apply_xr(iface: Object) -> PackedStringArray:
 
 ## Поля строки журнала `render …` (MbLog).
 func log_fields() -> Dictionary:
-	return {"msaa": msaa, "layers": layers, "far_cull_m": far_cull_m, "perf": perf, "volumetric": volumetric, "bench": bench if bench != "" else "off", "probe": probe if probe != "" else "off", "volume_budget_ms": volume_budget_ms, "volume_impostor_m": volume_impostor_m, "foveation": foveation, "warmup": warmup,
+	return {"msaa": msaa, "layers": layers, "far_cull_m": far_cull_m, "perf": perf, "volumetric": volumetric, "bench": bench if bench != "" else "off", "probe": probe if probe != "" else "off", "volume_budget_ms": volume_budget_ms, "foveation": foveation, "warmup": warmup,
 		"file": file_path if not file_path.is_empty() else "none"}

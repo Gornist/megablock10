@@ -1,7 +1,7 @@
 # План рефактора Сети: умолчания, мёртвый код, облако (черновик на утверждение)
 
 **Статус: выполнено — архив (сверено с main 30.10.2026).** Все шаги раздела 6 влиты в `main` 13–14.10; ниже текст плана сохранён как память решений («почему так»).
-Текущее состояние кода — `netrun/shared/render_config.gd` (ключи `[render]`: msaa, layers, far_cull_m, foveation, perf, volumetric, bench, probe, volume_budget_ms, volume_impostor_m, warmup; `LEGACY_KEYS = aa, fringe, scale, foveation_dynamic` — только предупреждение), `netrun/assets/ARCHITECTURE.md` и `STYLE.md` (вид v1).
+Текущее состояние кода — `netrun/shared/render_config.gd` (ключи `[render]`: msaa, layers, far_cull_m, foveation, perf, volumetric, bench, probe, volume_budget_ms, warmup; `LEGACY_KEYS = aa, fringe, scale, foveation_dynamic` — только предупреждение), `netrun/assets/ARCHITECTURE.md` и `STYLE.md` (вид v1).
 
 | Шаг плана | PR | Итог |
 |---|---|---|
@@ -14,11 +14,13 @@
 | G3 облако (Б): `VolumeSampler` на лету, затем `.points` Blender; G7 `volume_budget_ms` | #222, #224 (#225) | влиты; `.points` лежат у vault, portal, shard, shard_encrypted, exit_frame, ICE (16 файлов); `VOLUMETRIC_DEFAULT = "vault,portal,shard,exit,ice"` |
 
 Позже тот же курс продолжили: «всё из частиц» (#389/#392/#431, #424), потолок и дальние пласты удалены (#482/#485/#493, 18–19.10), горизонт — `BackdropDome` (#481), прогрев шейдеров (`warmup`), `far_cull_m`.
-Осталось: замер облака из настоящих `.points` на очках как отдельная серия (раздел 0, последняя строка) и перемер импостора (`volume_impostor_m`, по умолчанию выкл.) со стражем и свежим сервером; клин `tile_glow` у края комнаты — вне рефактора. В `docs/backlog.md` этих строк на 30.10 нет — ждут очков и слова владельца.
+Осталось: замер облака из настоящих `.points` на очках как отдельная серия (раздел 0, последняя строка) (импостор `volume_impostor_m` снят 15.11 — см. пункт G2 ниже); клин `tile_glow` у края комнаты — вне рефактора. В `docs/backlog.md` этих строк на 30.10 нет — ждут очков и слова владельца.
 
 Составлен по итогам замеров на Pico 4 08–12.10.2026 (main 8853470). Это **план, не код**: порядок PR, зоны и приёмка.
 Решения владельца по разделу 8 внесены 12.10. Автор свода — сессия Godot; разделы про `netrun/assets/` и `AssetMaterials` согласуются с Blender (отметки «Blender»).
 Цифры замеров — в памяти `netrun-msaa-pico-findings-1008` и `docs/netrun-bench.md`; bench = `[render] bench="entry"`, 3×10 с, GPU мс.
+
+**G2 импостор (`VolumeImpostor`, `volume_impostor_m`) — снято 15.11:** стерео — оба глаза видят одну плоскую картинку, объём становится наклейкой; задачу закрыл плавный LOD (`volume_lod_smooth`). Код, тесты и ручка удалены; старый ключ в `netrun.cfg` — предупреждение «удалён», загрузка не падает.
 
 ## 0. Что решено и измерено (опора плана)
 

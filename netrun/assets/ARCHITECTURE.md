@@ -563,7 +563,7 @@ GPU 2,5–2,9 мс, 113–160 вызовов отрисовки, 50–89 тыс.
 
 **Ручки.** Живут в `AssetMaterials.KNOBS` (мой файл), клиент читает `netrun.cfg`, блок `[assets]`, при старте: `AssetMaterials.tune_from_config(cfg)` (или `tune(словарь)`),
 **до** построения окружения: ручки читаются в момент `apply()`, уже созданные материалы не меняются. `reset_tuning()` — к умолчаниям. Неизвестный ключ — `push_warning`, не ошибка (старые cfg безопасны).
-Запись на очках: `netrun/tools/pico_stand.sh <пресет> [ключ=значение …]` (пресеты `base`, `bench`, `cloud-props`, `cloud-vol`…`cloud-all-imp`, `probe-sweep`; после B3 `[assets]` у `cloud-props` и `base` совпадают).
+Запись на очках: `netrun/tools/pico_stand.sh <пресет> [ключ=значение …]` (пресеты `base`, `bench`, `cloud-props`, `cloud-vol`…`cloud-all`, `probe-sweep`; после B3 `[assets]` у `cloud-props` и `base` совпадают).
 
 | Ручка | Умолчание | Что делает |
 |---|---|---|

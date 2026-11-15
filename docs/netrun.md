@@ -247,7 +247,7 @@
   (раньше — Compatibility); на Quest 3 жалуются на ошибки драйверов Vulkan. За Mobile — ubershaders и предкомпиляция конвейеров:
   без них первая отрисовка нового материала (как раз на переходе между узлами) даёт рывок, а в очках рывок укачивает. Выбран Mobile
   (`rendering_method="mobile"` в `project.godot`); замеры кадра на Pico — [netrun-bench.md](netrun-bench.md). Клиентские ручки `[render]` в `netrun.cfg` — `shared/render_config.gd`
-  (msaa — по умолчанию 2×, layers, far_cull_m, foveation, warmup, perf, volumetric, bench, probe, volume_budget_ms, volume_impostor_m); прогрев шейдеров при
+  (msaa — по умолчанию 2×, layers, far_cull_m, foveation, warmup, perf, volumetric, bench, probe, volume_budget_ms); прогрев шейдеров при
   старте (`ShaderWarmup`) убирает рывок первой отрисовки материала. Бюджет и правила VR — в следующем разделе.
 - **Тесты** — gdUnit4 без экрана в CI (логика, сеть, боты на плоской сборке); сетевые проверки с потерями и задержкой.
   Длительный прогон с ботами на длину игрового дня: симулятор Odysseus на первых тестах падал каждые 5–15 минут. Комфорт,

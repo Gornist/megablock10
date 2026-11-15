@@ -463,7 +463,7 @@ godot --headless --path netrun -s -d res://addons/gdUnit4/bin/GdUnitCmdTool.gd -
 
 - **`[render]`** (умолчание — принятый вид): `msaa` (2; допустимо 0, 2, 4 — 4× не влезает в 11,1 мс при 90 Гц), `layers` (`behind`; панели слоями композитора OpenXR: `behind` | `on` | `off`), `far_cull_m` (12; дальше модели и облака не рисуются, 0 — без предела, 3…60),
   `foveation` (0…3; при `msaa` > 0 принудительно 0), `perf` (`off` | `on` | `diag`: строка `[perf]` раз в 5 с; `diag` — ещё `[xr-diag]` и PNG кадра), `volumetric` (`vault,portal,shard,exit,ice` — объекты облаком частиц; `off`, `all` или список),
-  `warmup` (`on`; прогрев шейдеров за чёрным экраном), `volume_budget_ms` (0 — выкл.; 4…20 — регулятор плотности облаков по GPU-времени кадра), `volume_impostor_m` (0 — выкл.; 4…40 — дальние облака билбордами),
+  `warmup` (`on`; прогрев шейдеров за чёрным экраном), `volume_budget_ms` (0 — выкл.; 4…20 — регулятор плотности облаков по GPU-времени кадра),
   `bench` (имя пресета `EyePresets`: воспроизводимый замер, строка `[bench] ИТОГ`), `probe` (синтетическая нагрузка `LoadProbe`, `sweep` — серия). Удалённые тупики замеров `aa`, `fringe`, `scale`, `foveation_dynamic` в старых файлах игнорируются с предупреждением.
 - **`[assets]`** (`AssetMaterials.KNOBS`, неизвестная ручка игра пропускает с предупреждением): облако на гранях и полу (`cloud`, `cloud_floor`, `floor_density`, `dust_*`, `cloud_edge_mix`), его освещение и дыхание (`cloud_light`, `lit_*`, `cloud_breath`, `cloud_touch`),
   сетка клеток 1 м на полу (`floor_grid`), кромки плит (`rim_*`), штрихи и точки окружения (`streak_keep`, `point_keep`, `min_px_*`), вуаль и завеса плит (`veil_scale`, `tile_glow*`), цвет плит (`solid_base`), `edge_round`.
