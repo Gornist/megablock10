@@ -95,7 +95,7 @@ vec4 volume_cloud(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px, float 
 		if (dust_fill > 0.0) {
 			return vec4(avg_rgb * dens * dust_cover_avg * far_k, 1.0);   // заливка: яркость среднего света, цвет гаснет вдаль (альфа 1 — без дитера a2c)
 		}
-		return vec4(avg_rgb, clamp(dens * dust_cover_avg * far_k, 0.0, 1.0));
+		return vec4(0.0);   // без заливки вдали — пусто, как в эталоне bl-sky (владелец 15.11): дробная альфа среднего света на очках давала серую «кашу» дальнего пола и колонн
 	}
 	float n = glitch_cells.x * glitch_cells.y;
 	float frame = floor(mod(TIME * dust_fps + h * n, n));
@@ -106,7 +106,7 @@ vec4 volume_cloud(vec3 wp, vec3 nw, vec3 vdir, float dist, float proj_px, float 
 	float s = textureGrad(glitch_tex, uv, dFdx(coord) / glitch_cells, dFdy(coord) / glitch_cells).r;
 	s = mix(s, smoothstep(0.35, 0.65, s), dust_sharp);
 	float present = step(h2, dens);
-	float a = mix(dens * dust_cover_avg, s * present, sharp);
+	float a = mix(dust_fill > 0.0 ? dens * dust_cover_avg : 0.0, s * present, sharp);   // без заливки мелкое зерно гаснет к пустоте, а не к серому среднему
 	vec3 base = mix(dust_color.rgb, dust_hot.rgb, smoothstep(0.55, 1.0, s) * step(0.82, h) + edge * 0.5);
 	vec4 cell = vec4(mix(base, lit_col, lit_col_w) * lit_b, clamp(a * far_k, 0.0, 1.0));
 	if (fill_w > 0.0) {   // зерно → заливка: цвет и покрытие смешиваются по весу, на границе режимов нет скачка яркости
