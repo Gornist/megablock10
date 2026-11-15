@@ -16,6 +16,8 @@ const SHADERS := {
 const SKIRT_SHADER := preload("res://assets/shaders/skirt.gdshader")
 const SURFACE_CLOUD_GROUP := &"surface_clouds"   # меши с облаком на гранях (А): дыхание и отклик ставятся на их материалы
 const CLOUD_SHADER := preload("res://assets/shaders/cloud_dark.gdshader")  # «облако без основы»: вид реквизита (ручка cloud, умолчание 1; принято 12.10, облако (Б) на объектах — 14.10)
+## Непрозрачный пол со строками скана (B3, ручка scan_rows): без alpha_to_coverage, ALPHA не пишется; облачные регистры (дыхание, рука, свет, тревога) обслуживают его так же, как CLOUD_SHADER.
+const FLOOR_SCAN_SHADER := preload("res://assets/shaders/floor_scan.gdshader")
 ## Луч Soft ICE (меши `*_beam*` у датчика и `*_fan` у маяка, ice/sensor_ice и ice/lighthouse_ice): роль shell_soft, шейдер по имени меша; состояния — set_beam(root, state, flash).
 const BEAM_SHADER := preload("res://assets/shaders/beam.gdshader")
 ## Состояния луча датчика (параметр `state` шейдера beam.gdshader).
@@ -177,6 +179,15 @@ const KNOBS := {
 	# Дыхание и отклик объёмного облака (Б): включаются вызовом set_cloud_breath / set_cloud_touch из клиента каждый кадр; без вызова облако статично, как раньше.
 	"cloud_breath": 0.6,     # глубина дыхания 0…1 (0 — выкл.): вдох на тике хода, яркость облака ≈ ×0,73…×1,21, размер до +15 %
 	"cloud_touch": 1.0,      # сила отклика на руку/аватар 0…2 (0 — выкл.): рядом частицы ярче, крупнее, теплее по цвету и чуть расходятся
+	# Строки скана пола в шейдере (B3, 15.11; карточка netrun-volumetric-blender.md): вместо облака пол (меш slab) — непрозрачный floor_scan.gdshader: точки у ног → линия строки → ровный тон, среднее одно.
+	# Умолчание 0 — вид не меняется. ЦЕНА НЕ ИЗМЕРЕНА НА ОЧКАХ. Работает при cloud_floor=1 (при 0 пол остаётся solid_dark).
+	"scan_rows": 0.0,        # 1 — пол строками скана (непрозрачный шейдер, без a2c); 0 — как было (облако cloud_dark)
+	"scan_row_step": 0.04,   # шаг строк пола, м; кратно ENTITY_LATTICE (4 см); крупнее (0,08) — вариант (б) без пересборки
+	"scan_dot_step": 0.07,   # шаг точек вдоль строки, м
+	"scan_jitter": 0.25,     # разброс центра точки в слоте, доли шага точек
+	"scan_radius": 0.009,    # полусторона квадратного излучателя, м (радиус + разброс·шаг точек ≤ 0,5·шаг точек − 1 мм, иначе подрезается)
+	"scan_gap": 0.12,        # доля пропущенных точек
+	"scan_debug": 0.0,       # 1 — размер строки в px (серый = 4 px), 2 — только тон, 3 — только точки
 	"edge_round": 1.0,       # 0…1: скруглить профиль света рёбер (smoothstep по яркости вершин): убирает излом на пике градиента — светлую «линию Маха» по середине голубой полосы; 1 — полностью (принято, замер 6 на очках)
 }
 static var _tuned := {}
@@ -239,6 +250,8 @@ static func tune(d: Dictionary) -> void:
 const DUST_CELL_MIN := 0.001
 ## Минимальный зазор между границами smoothstep (lo < hi), иначе в шейдере smoothstep с перевёрнутыми или равными краями — неопределённое поведение.
 const EDGE_GAP_MIN := 0.001
+## Наименьшие шаг строк, шаг точек и радиус излучателя, м: ноль даёт деление на ноль в формуле среднего.
+const SCAN_MIN := 0.002
 
 
 ## Инварианты ручек, которые hint_range шейдера в рантайме не держит: dust_cell > 0, dust_fill_hi > dust_fill_lo, rim_far_end > rim_far_start.
@@ -252,6 +265,27 @@ static func _sanitize_knobs() -> void:
 		if float(_k(pair[1])) < lo + EDGE_GAP_MIN:
 			push_warning("AssetMaterials: %s ≤ %s — верхняя граница поднята на %s" % [pair[1], pair[0], EDGE_GAP_MIN])
 			_tuned[pair[1]] = lo + EDGE_GAP_MIN
+	_sanitize_scan_knobs()
+
+
+## Инварианты узора строк (шейдер их не держит, а формула среднего на них стоит): квадрат излучателя внутри слота точки (радиус + разброс·шаг ≤ 0,5·шаг − 1 мм)
+## и внутри строки (радиус ≤ 0,5·шаг строк − 1 мм), шаги > 0. Радиус подрезается с предупреждением; не кратный ENTITY_LATTICE шаг строк — только предупреждение.
+static func _sanitize_scan_knobs() -> void:
+	for k in ["scan_row_step", "scan_dot_step", "scan_radius"]:
+		if float(_k(k)) < SCAN_MIN:
+			push_warning("AssetMaterials: %s ≤ 0 — взято %s" % [k, SCAN_MIN])
+			_tuned[k] = SCAN_MIN
+	_tuned["scan_jitter"] = clampf(float(_k("scan_jitter")), 0.0, 0.45)
+	_tuned["scan_gap"] = clampf(float(_k("scan_gap")), 0.0, 0.8)
+	var rmax := minf(float(_k("scan_dot_step")) * (0.5 - float(_k("scan_jitter"))) - 0.001, 0.5 * float(_k("scan_row_step")) - 0.001)
+	rmax = maxf(rmax, SCAN_MIN)
+	if float(_k("scan_radius")) > rmax:
+		push_warning("AssetMaterials: scan_radius %s не влезает в слот точки и строку — взято %s" % [_k("scan_radius"), rmax])
+		_tuned["scan_radius"] = rmax
+	if float(_k("scan_rows")) > 0.5:
+		var r := float(_k("scan_row_step")) / ENTITY_LATTICE
+		if absf(r - roundf(r)) > 0.01:
+			push_warning("AssetMaterials: scan_row_step %s не кратен ENTITY_LATTICE %s: в кадре два разных «дисплея»" % [_k("scan_row_step"), ENTITY_LATTICE])
 
 
 ## Прочитать блок cfg (по умолчанию [assets]) и применить как tune(). Вызывать сразу после cfg.load(), до построения сцены.
@@ -291,6 +325,28 @@ static func _cloud_scope_ok(root: Node) -> bool:
 	if base.begins_with("floor"):
 		return float(_k("cloud_floor")) > 0.5
 	return true
+
+
+## Меш — верх плиты пола комнаты (`slab` в floor*) и включены строки скана (ручка scan_rows): его материал — непрозрачный FLOOR_SCAN_SHADER вместо облака.
+static func _is_scan_floor(mi: MeshInstance3D, root: Node) -> bool:
+	return String(mi.name) == "slab" and root.scene_file_path.get_file().begins_with("floor") and float(_k("scan_rows")) > 0.5
+
+
+## Шейдер из «облачных» (дыхание, рука, свет, тревога у игрока обслуживают оба): облако на гранях и пол со строками.
+static func _is_cloud_shader(sh: Shader) -> bool:
+	return sh == CLOUD_SHADER or sh == FLOOR_SCAN_SHADER
+
+
+## Ручки строк скана и цвет пустоты в материал пола: узор от origin комнаты (не камеры), void_color = VOID_BG (тот же, что цвет очистки).
+static func _push_scan_knobs(m: ShaderMaterial) -> void:
+	m.set_shader_parameter("row_step", float(_k("scan_row_step")))
+	m.set_shader_parameter("dot_step", float(_k("scan_dot_step")))
+	m.set_shader_parameter("row_jitter", float(_k("scan_jitter")))
+	m.set_shader_parameter("row_radius", float(_k("scan_radius")))
+	m.set_shader_parameter("row_gap", float(_k("scan_gap")))
+	m.set_shader_parameter("scan_debug", float(_k("scan_debug")))
+	m.set_shader_parameter("pattern_origin", NodeLayout.ROOM_CENTER)
+	m.set_shader_parameter("void_color", VOID_BG)
 
 
 ## Снаряжение ICE (`/ice/`) и ворота LOCKDOWN (`lockdown_gate*`): облако красное, а не бирюзовое (красный — только у угрозы).
@@ -477,7 +533,8 @@ static func apply(root: Node, tier: String = "") -> void:
 				for k in LAIR_SLEEP_BREATHE[String(mi.name)]:
 					m.set_shader_parameter(k, LAIR_SLEEP_BREATHE[String(mi.name)][k])
 			if src.resource_name == "solid_dark" and String(mi.name) != UNDER_SLAB and float(_k("cloud")) > 0.0 and _cloud_scope_ok(root):  # floor_slab_under — сплошная подложка под облачным полом (#424 Ш5): solid_dark при любом cloud;  # прототип «облако без основы»: частицы с дырами вместо тёмной грани (нужен MSAA)
-				m.shader = CLOUD_SHADER
+				var scan_floor := _is_scan_floor(mi, root)
+				m.shader = FLOOR_SCAN_SHADER if scan_floor else CLOUD_SHADER
 				mi.add_to_group(SURFACE_CLOUD_GROUP)   # set_cloud_breath / set_cloud_touch находят поверхностные облака по группе и по реестру материалов
 				_surface_cloud_mats.append(weakref(m))
 				m.set_shader_parameter("glitch_tex", GlitchSprite.texture())
@@ -494,11 +551,13 @@ static func apply(root: Node, tier: String = "") -> void:
 				m.set_shader_parameter("edge_mix", float(_k("cloud_edge_mix")))
 				if _is_threat_gear(root):
 					_paint_threat_cloud(m)
-				if String(mi.name) == "slab" and float(_k("floor_grid")) > 0.0:
+				if scan_floor:   # строки скана: grid_tex не читается, цвет пустоты — цвет очистки
+					_push_scan_knobs(m)
+				elif String(mi.name) == "slab" and float(_k("floor_grid")) > 0.0:
 					m.set_shader_parameter("grid_tex", _grid_texture())
 					m.set_shader_parameter("grid_alpha", float(_k("floor_grid")))
 			mi.set_surface_override_material(s, m)
-			if not entity and (m.shader == SHADERS["solid_dark"] or m.shader == CLOUD_SHADER or m.shader == SKIRT_SHADER):
+			if not entity and (m.shader == SHADERS["solid_dark"] or _is_cloud_shader(m.shader) or m.shader == SKIRT_SHADER):
 				_focus_mats.append(weakref(m))
 
 
@@ -550,7 +609,7 @@ static func _cloud_materials(tree: SceneTree) -> Array[ShaderMaterial]:
 			continue
 		for s in mi.mesh.get_surface_count():
 			var sm := mi.get_surface_override_material(s) as ShaderMaterial
-			if sm != null and sm.shader == CLOUD_SHADER and not seen.has(sm.get_instance_id()):
+			if sm != null and _is_cloud_shader(sm.shader) and not seen.has(sm.get_instance_id()):
 				seen[sm.get_instance_id()] = true
 				out.append(sm)
 	var alive: Array[WeakRef] = []
@@ -559,7 +618,7 @@ static func _cloud_materials(tree: SceneTree) -> Array[ShaderMaterial]:
 		if rm == null:
 			continue
 		alive.append(w)
-		if rm.shader == CLOUD_SHADER and not seen.has(rm.get_instance_id()):
+		if _is_cloud_shader(rm.shader) and not seen.has(rm.get_instance_id()):
 			seen[rm.get_instance_id()] = true
 			out.append(rm)
 	_surface_cloud_mats = alive
@@ -597,7 +656,7 @@ static func set_cloud_lights(tree: SceneTree, lights: Array) -> void:
 		_lights_col.append(Vector4(c.r, c.g, c.b, float(l.get("s", 1.0))))
 	_build_lit_map()
 	for m in _cloud_materials(tree):
-		if m.shader == CLOUD_SHADER:
+		if _is_cloud_shader(m.shader):
 			_push_lights(m)
 
 
