@@ -610,12 +610,8 @@ func test_asset_materials_knob_floor_grid_texture_on_the_slab() -> void:
 	AssetMaterials.reset_tuning()
 	var dflt := _load("env", "floor_slab_16")
 	AssetMaterials.apply(dflt, "BASE")
-	assert_float(float(_mat_of(dflt, "slab").get_shader_parameter("grid_alpha"))).override_failure_message("по умолчанию сетка-текстура включена").is_equal_approx(0.35, 0.001)
+	assert_bool(_mat_of(dflt, "slab").get_shader_parameter("grid_alpha") == null).override_failure_message("по умолчанию сетки-текстуры нет (вид эталона, владелец 15.11)").is_true()
 	assert_bool(dflt.find_child("slab_seams", true, false) == null).override_failure_message("точек швов в модели нет (убраны в B2)").is_true()
-	AssetMaterials.tune({"floor_grid": 0.0})
-	var off := _load("env", "floor_slab_16")
-	AssetMaterials.apply(off, "BASE")
-	assert_bool(_mat_of(off, "slab").get_shader_parameter("grid_alpha") == null).override_failure_message("floor_grid=0: сетки-текстуры нет (параметр не задан)").is_true()
 	AssetMaterials.tune({"floor_grid": 0.4})
 	var on := _load("env", "floor_slab_16")
 	AssetMaterials.apply(on, "BASE")
@@ -775,7 +771,6 @@ func test_floor_density_knob_scales_only_floor_grain() -> void:
 	var dd := float(AssetMaterials.KNOBS["dust_density"])
 	var slab := _mat_of(_apply_new("env", "floor_slab_16"), "slab")
 	assert_float(float(slab.get_shader_parameter("dust_density"))).override_failure_message("пол: dust_density × 0,6").is_equal_approx(dd * 0.6, 0.0001)
-	assert_float(float(slab.get_shader_parameter("grid_alpha"))).override_failure_message("сетка пола не гасится ручкой").is_equal_approx(0.35, 0.001)
 	assert_float(float(_mat_of(_apply_new("env", "cover"), "pillar_block").get_shader_parameter("dust_density"))).override_failure_message("реквизит: плотность без множителя").is_equal_approx(dd, 0.0001)
 	AssetMaterials.tune({"floor_density": 1.0})
 	assert_float(float(_mat_of(_apply_new("env", "floor_slab_16"), "slab").get_shader_parameter("dust_density"))).override_failure_message("floor_density=1: как у реквизита").is_equal_approx(dd, 0.0001)
@@ -784,16 +779,45 @@ func test_floor_density_knob_scales_only_floor_grain() -> void:
 	AssetMaterials.reset_tuning()
 
 
-## Заливка вдали (18.10, рябь вдали на очках): по умолчанию включена и доходит до материала облака; dust_fill = 0 выключает.
-func test_dust_fill_knob_defaults_on_and_reaches_cloud_material() -> void:
+## Заливка вдали: по умолчанию выключена (вид эталона, владелец 15.11: дальний пол «твёрдый»), ручка доходит до материала облака; dust_fill = 1 включает.
+func test_dust_fill_knob_defaults_off_and_reaches_cloud_material() -> void:
 	AssetMaterials.reset_tuning()
-	assert_float(float(AssetMaterials.KNOBS["dust_fill"])).override_failure_message("умолчание dust_fill — 1").is_equal(1.0)
+	assert_float(float(AssetMaterials.KNOBS["dust_fill"])).override_failure_message("умолчание dust_fill — 0").is_equal(0.0)
 	var m := _mat_of(_apply_new("env", "cover"), "pillar_block")
-	assert_float(float(m.get_shader_parameter("dust_fill"))).override_failure_message("материал облака получает dust_fill").is_equal(1.0)
+	assert_float(float(m.get_shader_parameter("dust_fill"))).override_failure_message("материал облака получает dust_fill").is_equal(0.0)
 	assert_float(float(m.get_shader_parameter("dust_fill_lo"))).is_equal(2.0)
 	assert_float(float(m.get_shader_parameter("dust_fill_hi"))).is_equal(4.0)
-	AssetMaterials.tune({"dust_fill": 0.0})
-	assert_float(float(_mat_of(_apply_new("env", "cover"), "pillar_block").get_shader_parameter("dust_fill"))).override_failure_message("ручка dust_fill = 0 выключает").is_equal(0.0)
+	AssetMaterials.tune({"dust_fill": 1.0})
+	assert_float(float(_mat_of(_apply_new("env", "cover"), "pillar_block").get_shader_parameter("dust_fill"))).override_failure_message("ручка dust_fill = 1 включает").is_equal(1.0)
+	AssetMaterials.reset_tuning()
+
+
+## Вид эталона bl-sky (владелец 15.11): рёбра без неона и без сгущения, мягкая кромка только у корпуса колонны, пол вокруг оснований редеет по карте препятствий.
+func test_вид_эталона_мягкая_кромка_и_растушёвка_пола() -> void:
+	AssetMaterials.reset_tuning()
+	var body := _mat_of(_apply_new("env", "cover"), "pillar_block")
+	assert_float(float(body.get_shader_parameter("edge_mix"))).override_failure_message("неона рёбер нет").is_equal(0.0)
+	assert_float(float(body.get_shader_parameter("dust_edge_gain"))).override_failure_message("ребро почти не сгущает частицы").is_equal_approx(0.25, 0.0001)
+	assert_float(float(body.get_shader_parameter("edge_fade"))).override_failure_message("корпус колонны: мягкая кромка").is_equal_approx(0.9, 0.0001)
+	assert_float(float(body.get_shader_parameter("face_fade_w"))).is_equal_approx(0.5, 0.0001)
+	var slab := _mat_of(_apply_new("env", "floor_slab_16"), "slab")
+	assert_float(float(slab.get_shader_parameter("edge_fade"))).override_failure_message("у пола мягкой кромки граней нет").is_equal(0.0)
+	assert_bool(slab.get_shader_parameter("grid_alpha") == null).override_failure_message("сетки-текстуры пола по умолчанию нет").is_true()
+	AssetMaterials.set_cloud_occluders(Engine.get_main_loop() as SceneTree, [Rect2(-0.95, -0.95, 1.9, 1.9), Rect2(3.05, -0.95, 1.9, 1.9)])
+	assert_int(AssetMaterials.cloud_occluder_count()).is_equal(2)
+	var later := _mat_of(_apply_new("env", "floor_slab_16"), "slab")
+	assert_int(int(later.get_shader_parameter("occ_n"))).override_failure_message("материал, созданный после set_cloud_occluders, получает карту").is_equal(2)
+	var tex := later.get_shader_parameter("occ_map") as Texture2D
+	assert_bool(tex != null).override_failure_message("карта оснований задана").is_true()
+	var img := tex.get_image()
+	var rect: Vector4 = later.get_shader_parameter("occ_rect")
+	var at := func(x: float, z: float) -> float:
+		return img.get_pixel(clampi(int((x - rect.x) * rect.z * img.get_width()), 0, img.get_width() - 1), clampi(int((z - rect.y) * rect.w * img.get_height()), 0, img.get_height() - 1)).r
+	assert_float(at.call(0.0, 0.0)).override_failure_message("под колонной — 1").is_greater(0.95)
+	assert_float(at.call(0.0, 1.3)).override_failure_message("в 35 см от контура — частично").is_between(0.05, 0.95)
+	assert_float(at.call(1.5, 2.5)).override_failure_message("дальше cloud_floor_fade_w — 0").is_less(0.05)
+	AssetMaterials.set_cloud_occluders(Engine.get_main_loop() as SceneTree, [])
+	assert_int(int(_mat_of(_apply_new("env", "floor_slab_16"), "slab").get_shader_parameter("occ_n"))).override_failure_message("пустой список — растушёвки нет").is_equal(0)
 	AssetMaterials.reset_tuning()
 
 
@@ -876,9 +900,11 @@ func test_asset_materials_cloud_scope_props_yes_slabs_gate_and_deck_no() -> void
 	assert_int(_cloud_meshes(_apply_new("env", "cover"))).override_failure_message("укрытие — облако").is_greater(0)
 	assert_int(_cloud_meshes(_apply_new("env", "exit_frame"))).override_failure_message("рамка выхода — облако").is_greater(0)
 	assert_int(_cloud_meshes(_apply_new("env", "floor_slab_16"))).override_failure_message("cloud_floor=1 по умолчанию: пол — облако").is_greater(0)
+	AssetMaterials.tune({"floor_grid": 0.35})
 	var slab_mat := _mat_of(_apply_new("env", "floor_slab_16"), "slab")
-	assert_float(float(slab_mat.get_shader_parameter("grid_alpha"))).override_failure_message("линии клеток 1 м на полу-облаке сохранены (grid_tex в cloud_dark)").is_greater(0.0)
+	assert_float(float(slab_mat.get_shader_parameter("grid_alpha"))).override_failure_message("floor_grid>0: линии клеток 1 м на полу-облаке (grid_tex в cloud_dark)").is_greater(0.0)
 	assert_object(slab_mat.get_shader_parameter("grid_tex")).is_not_null()
+	AssetMaterials.reset_tuning()
 	AssetMaterials.tune({"cloud_floor": 0.0})
 	assert_int(_cloud_meshes(_apply_new("env", "floor_slab_16"))).override_failure_message("cloud_floor=0: ручка возвращает solid_dark").is_equal(0)
 	AssetMaterials.reset_tuning()

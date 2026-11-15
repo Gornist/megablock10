@@ -149,7 +149,7 @@ const KNOBS := {
 	"min_px_streaks": 1.5,   # минимальная полная ширина штриха, px экрана (streaks.gdshader min_px)
 	"min_px_points": 2.0,    # минимальный диаметр точки, px (points.gdshader min_px)
 	"solid_base": "",        # цвет плит solid_dark «#rrggbb»; пусто — по умолчанию из шейдера
-	"floor_grid": 0.35,      # сетка клеток 1 м ТЕКСТУРОЙ с мипмапами и анизотропией на плите пола (0 — выкл.; 0,3–0,5; точки швов slab_seams убраны в B2); по умолчанию ВКЛ.: так выглядит кадр Blender, иначе клиент — «другая игра»
+	"floor_grid": 0.0,       # сетка клеток 1 м ТЕКСТУРОЙ на плите пола; 0 — нет (вид эталона bl-sky, владелец 15.11: «пол выглядит как ковёр»; пол — только зерно частиц); 0,35 — прежние линии клеток
 	# Мерцание кромок плит пола (две линии на расстоянии 3 см сходятся в пиксель). Меры независимы, комбинируются:
 	"rim_top_only": true,    # светится только лицевая грань плиты, боковая полоска кромки погашена (одна линия вместо двух)
 	"rim_far_min": 0.0,      # яркость кромки плит на дистанции ≥ rim_far_end (1 — не гасить; 0 — гасить полностью)
@@ -158,10 +158,15 @@ const KNOBS := {
 	"rim_min_px": 4.0,       # гашение кромки плит по её ширине на экране, px (0 — выкл.): кромка уже ~0,35·N px гаснет совсем, от N px — полная; адаптируется к глазу Pico, в отличие от дистанции
 	# «Облако без основы» (владелец 08.10, принято 12.10: вид C3a — облако на колоннах и реквизите, пол — сплошной solid_dark; замер на очках: +0,26 мс на MSAA 2×).
 	"cloud": 1.0,            # 0 — выкл. (сплошные грани solid_dark); 1 — грани реквизита становятся частицами с дырами (alpha_to_coverage, нужен MSAA 2×+; яркость = значение); см. cloud_dark.gdshader
-	"cloud_edge_mix": 0.35,  # доля цвета неона у частиц рёбер/линий сетки (владелец: неона меньше)
+	"cloud_edge_mix": 0.0,   # доля неона у частиц рёбер и линий сетки: 0 (вид эталона, владелец 15.11: «твёрдые колонны с жирной светящейся гранью»); было 0,35
+	"cloud_edge_gain": 0.25, # насколько ребро поднимает плотность частиц: 0,25 (было 1,4 — сплошные «жирные» линии на колоннах и основаниях)
+	"cloud_face_fade": 0.9,  # мягкая кромка граней колонн и укрытий (pillar_block): частицы редеют к ребру (полоса env.py COVER_BAND) и к полу/верху; 0 — резкий обрыв
+	"cloud_face_fade_w": 0.5,   # ширина растушёвки граней колонн у основания и верха по высоте, м
+	"cloud_floor_fade": 0.9, # растушёвка пола у основания препятствий (set_cloud_occluders от клиента): 0 — нет, 1 — до пустоты у самого контура
+	"cloud_floor_fade_w": 0.7,   # ширина растушёвки пола вокруг основания, м
 	"dust_cell": 0.018,      # ширина ячейки облака, м (высота вдвое больше); владелец: частицы мельче и реже (C2: 0,35 читалось лучше)
 	"dust_density": 0.35,    # доля ячеек с частицей на ровной грани вблизи (с пятнами dust_patch: проплешины и сгущения)
-	"dust_fill": 1.0,        # 1 (умолчание) — вдали (ячейка мельче dust_fill_lo px экрана) вместо зерна ровная заливка среднего света, от dust_fill_hi до dust_fill_lo px зерно растворяется в неё (рябь вдали и «граница отрисовки» на очках 18.10)
+	"dust_fill": 0.0,        # 0 — без заливки вдали (вид эталона, владелец 15.11: дальний пол «твёрдый»); 1 — вдали (ячейка мельче dust_fill_lo px) вместо зерна ровная заливка среднего света
 	"dust_fill_lo": 2.0,     # экранная ширина ячейки, px, ниже которой зерна нет совсем (на Pico: пол дальше ≈6 м); 0 у dust_fill — выкл.
 	# Освещение облака (18.10, владелец: «частицы видны только в освещении, где света нет — нет и частиц»): источники приходят из клиента (set_cloud_lights); без них вид равномерный, как раньше.
 	"cloud_light": 1.0,      # 0 — выкл. (равномерное облако), 1 — плотность и яркость частиц целиком по освещённости
@@ -209,6 +214,10 @@ static var _lights_pos := PackedVector4Array()
 static var _lights_col := PackedVector4Array()
 static var _lit_tex: ImageTexture
 static var _lit_rect := Vector4(0.0, 0.0, 1.0, 1.0)
+static var _occ_tex: ImageTexture
+static var _occ_rect := Vector4(0.0, 0.0, 1.0, 1.0)
+static var _occ_n := 0
+const OCC_TEXEL := 0.125   # м на тексель карты оснований препятствий
 const LIT_TEXEL := 0.125   # м на тексель карты освещённости
 const CLOUD_LIGHTS_MAX := 12
 ## Материалы окружения с перекраской света у игрока (alarm_focus.gdshaderinc: solid_dark, cloud_dark, skirt), созданные apply() вне существ/аватаров; слабые ссылки, как выше.
@@ -576,6 +585,10 @@ static func apply(root: Node, tier: String = "") -> void:
 				_push_lights(m)
 				m.set_shader_parameter("dust_density", float(_k("dust_density")) * (float(_k("floor_density")) if String(mi.name) == "slab" else 1.0))
 				m.set_shader_parameter("edge_mix", float(_k("cloud_edge_mix")))
+				m.set_shader_parameter("dust_edge_gain", float(_k("cloud_edge_gain")))
+				m.set_shader_parameter("edge_fade", float(_k("cloud_face_fade")) if String(mi.name) == "pillar_block" else 0.0)
+				m.set_shader_parameter("face_fade_w", float(_k("cloud_face_fade_w")))
+				_push_occ(m)
 				if _is_threat_gear(root):
 					_paint_threat_cloud(m)
 				if scan_floor:   # строки скана: grid_tex не читается, цвет пустоты — цвет очистки
@@ -695,6 +708,69 @@ static func cloud_lights() -> Array:
 		var b := _lights_col[i]
 		out.append({"p": Vector3(a.x, a.y, a.z), "r": a.w, "s": b.w, "c": Color(b.x, b.y, b.z)})
 	return out
+
+
+## Основания препятствий (вид эталона bl-sky, владелец 15.11): rects — Rect2 в плоскости XZ мира (position = (x, z), size = (ширина, глубина)), контур каждого
+## препятствия на полу. Клиент зовёт при сборке узла рядом с set_cloud_lights; пустой массив — растушёвки нет. Плита пола вокруг контура редеет на
+## cloud_floor_fade_w м; грани колонн редеют к полу по высоте (cloud_face_fade_w). Карта запоминается и отдаётся материалам, созданным позже.
+static func set_cloud_occluders(tree: SceneTree, rects: Array) -> void:
+	_occ_n = rects.size()
+	_occ_tex = null
+	if not rects.is_empty():
+		_build_occ_map(rects)
+	for m in _cloud_materials(tree):
+		if _is_cloud_shader(m.shader):
+			_push_occ(m)
+
+
+## Сколько оснований препятствий принял AssetMaterials (для тестов).
+static func cloud_occluder_count() -> int:
+	return _occ_n
+
+
+static func _build_occ_map(rects: Array) -> void:
+	var fw := maxf(float(_k("cloud_floor_fade_w")), 0.05)
+	var x0 := INF
+	var z0 := INF
+	var x1 := -INF
+	var z1 := -INF
+	for r: Rect2 in rects:
+		x0 = minf(x0, r.position.x - fw)
+		z0 = minf(z0, r.position.y - fw)
+		x1 = maxf(x1, r.end.x + fw)
+		z1 = maxf(z1, r.end.y + fw)
+	var w := clampi(int(ceil((x1 - x0) / OCC_TEXEL)), 8, 256)
+	var h := clampi(int(ceil((z1 - z0) / OCC_TEXEL)), 8, 256)
+	var sx := (x1 - x0) / float(w)
+	var sz := (z1 - z0) / float(h)
+	var img := Image.create_empty(w, h, false, Image.FORMAT_L8)
+	var best := PackedFloat32Array()
+	best.resize(w * h)
+	for r: Rect2 in rects:
+		var ix0 := clampi(int(floor((r.position.x - fw - x0) / sx)), 0, w - 1)
+		var ix1 := clampi(int(ceil((r.end.x + fw - x0) / sx)), 0, w - 1)
+		var iz0 := clampi(int(floor((r.position.y - fw - z0) / sz)), 0, h - 1)
+		var iz1 := clampi(int(ceil((r.end.y + fw - z0) / sz)), 0, h - 1)
+		for iz in range(iz0, iz1 + 1):
+			var pz := z0 + (float(iz) + 0.5) * sz
+			var dz := maxf(maxf(r.position.y - pz, pz - r.end.y), 0.0)
+			for ix in range(ix0, ix1 + 1):
+				var px := x0 + (float(ix) + 0.5) * sx
+				var dx := maxf(maxf(r.position.x - px, px - r.end.x), 0.0)
+				var k := 1.0 - smoothstep(0.0, fw, sqrt(dx * dx + dz * dz))
+				if k > best[iz * w + ix]:
+					best[iz * w + ix] = k
+					img.set_pixel(ix, iz, Color(k, 0.0, 0.0))
+	_occ_tex = ImageTexture.create_from_image(img)
+	_occ_rect = Vector4(x0, z0, 1.0 / (x1 - x0), 1.0 / (z1 - z0))
+
+
+static func _push_occ(m: ShaderMaterial) -> void:
+	m.set_shader_parameter("occ_n", _occ_n)
+	m.set_shader_parameter("occ_strength", float(_k("cloud_floor_fade")))
+	if _occ_tex != null:
+		m.set_shader_parameter("occ_map", _occ_tex)
+		m.set_shader_parameter("occ_rect", _occ_rect)
 
 
 static func _push_lights(m: ShaderMaterial) -> void:

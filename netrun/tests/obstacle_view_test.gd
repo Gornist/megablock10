@@ -46,6 +46,18 @@ func test_l_shape_is_one_obstacle_and_diagonal_blocks_stay_pillars() -> void:
 	assert_int(int(view.module_counts()["pillar"])).is_equal(2)
 
 
+## Растушёвка пола у оснований (вид эталона, владелец 15.11): узел отдаёт AssetMaterials контур каждого блока препятствия — квадрат корпуса 1,9 м.
+func test_occluder_rects_one_per_block_and_reach_asset_materials() -> void:
+	var view := _view()
+	var rects := view.occluder_rects()
+	assert_int(rects.size()).is_equal(5)   # три блока «Г» и два диагональных
+	var r: Rect2 = rects[0]
+	assert_float(r.size.x).is_equal_approx(NodeLayout.CELL - 2.0 * ObstacleBody.INSET, 0.001)
+	var c := NodeLayout.cell_center(1, 1)
+	assert_bool(rects.any(func(q: Rect2) -> bool: return q.has_point(Vector2(c.x, c.z)))).override_failure_message("блок (1,1) накрыт контуром").is_true()
+	assert_int(AssetMaterials.cloud_occluder_count()).override_failure_message("узел в дереве — карта отдана облаку").is_equal(5)
+
+
 func test_one_mesh_instance_for_body_and_one_for_frame_with_solid_material() -> void:
 	var view := _view()
 	var room := view.get_node("Room")

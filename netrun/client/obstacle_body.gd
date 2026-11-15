@@ -9,7 +9,8 @@ extends RefCounted
 
 const HEIGHT := 2.2  ## COVER_H
 const INSET := 0.05  ## щель до границы модуля: корпус 1,9 из 2,0
-const BAND := 0.03   ## полоса у рёбер и верха (шаг света)
+const BAND := 0.5    ## полоса веса ребра у рёбер и верха = env.py COVER_BAND: облако гасит частицы к кромке на 50 см (мягкий край, вид эталона, владелец 15.11; было 3 см «свет рёбер»)
+const FRAME_W := 0.03  ## ширина рамки на полу (env.py: рамки — прежние 3 см, полоса веса ребра корпуса — BAND)
 const RISE := 0.3    ## высота подсвеченного основания
 const FRAME_Y := 0.003
 const CYAN := Color("18e6ff")
@@ -123,8 +124,8 @@ static func _band_and_frame(body: SurfaceTool, frame: SurfaceTool, loop: PackedV
 		for e in q:
 			body.set_color(e[1])
 			body.add_vertex(_v3(e[0], HEIGHT))
-	# Рамка на полу: от границы модуля внутрь на BAND (цвет рамки — полный свет, как cyan у pillar_base).
-	var f_in := inset_loop(loop, BAND)
+	# Рамка на полу: от границы модуля внутрь на FRAME_W (цвет рамки — полный свет, как cyan у pillar_base).
+	var f_in := inset_loop(loop, FRAME_W)
 	for i in n:
 		var j := (i + 1) % n
 		var q := [loop[i], f_in[j], f_in[i], loop[i], loop[j], f_in[j]]

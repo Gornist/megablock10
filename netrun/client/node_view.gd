@@ -135,6 +135,18 @@ func set_look(new_tier: String, new_layout: LayoutData) -> void:
 func _apply_cloud_lights() -> void:
 	if is_inside_tree():
 		AssetMaterials.set_cloud_lights(get_tree(), CloudLightPlan.build(layout))
+		AssetMaterials.set_cloud_occluders(get_tree(), occluder_rects())   # пол вокруг оснований колонн редеет (вид эталона, владелец 15.11)
+
+
+## Контуры препятствий на полу (XZ мира) для растушёвки пола: блок каждой области — квадрат корпуса (клетка минус щель ObstacleBody.INSET).
+func occluder_rects() -> Array:
+	var out: Array = []
+	var half := NodeLayout.CELL * 0.5 - ObstacleBody.INSET
+	for r in obstacle_regions():
+		for b: Vector2i in r.blocks:
+			var c := NodeLayout.cell_center(b.x, b.y)
+			out.append(Rect2(c.x - half, c.z - half, half * 2.0, half * 2.0))
+	return out
 
 
 func _enter_tree() -> void:
@@ -144,6 +156,7 @@ func _enter_tree() -> void:
 
 func _exit_tree() -> void:
 	AssetMaterials.set_cloud_lights(get_tree(), [])   # узла больше нет: источников нет, облако снова равномерное
+	AssetMaterials.set_cloud_occluders(get_tree(), [])
 
 
 ## Уровень тревоги узла: тёплый сдвиг кромок комнаты по уровню (0 возвращает цвет тира). Цвет и материал задаёт AssetMaterials.

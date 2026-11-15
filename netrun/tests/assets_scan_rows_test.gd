@@ -36,7 +36,7 @@ func test_ручка_по_умолчанию_ноль_и_пол_остаётся
 	var m := _slab_mat()
 	assert_object(m).is_not_null()
 	assert_bool(m.shader == AssetMaterials.CLOUD_SHADER).override_failure_message("scan_rows=0: пол — тот же шейдер cloud_dark").is_true()
-	assert_object(m.get_shader_parameter("grid_tex")).override_failure_message("линии клеток облачного пола на месте").is_not_null()
+	assert_object(m.get_shader_parameter("grid_tex")).override_failure_message("сетки-текстуры пола по умолчанию нет (floor_grid 0, вид эталона 15.11)").is_null()
 
 
 func test_ручка_один_даёт_непрозрачный_шейдер_пола() -> void:

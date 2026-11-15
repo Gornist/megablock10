@@ -12,6 +12,15 @@ uniform float grid_alpha : hint_range(0.0, 2.0) = 0.0;
 uniform vec2 grid_origin = vec2(0.0);
 uniform vec4 edge_color : source_color = vec4(0.094, 0.9, 1.0, 1.0);
 uniform float edge_mix : hint_range(0.0, 1.0) = 0.35;   // насколько частицы ребра краснее к цвету неона (меньше неона — владелец)
+// Мягкая кромка (вид эталона bl-sky, владелец 20.10 и 15.11): вес ребра COLOR гасит плотность частиц к кромке грани, а не усиливает; 0 — выкл. (ручка cloud_face_fade; ставится у pillar_block).
+uniform float edge_fade : hint_range(0.0, 1.0) = 0.0;
+uniform float face_fade_w = 0.5;   // ширина растушёвки у основания и верха грани по МИРОВОЙ высоте, м (ручка cloud_face_fade_w): стык колонны с полом не режется линией
+uniform float face_top_y = 2.2;    // высота верха колонн и укрытий (env.py COVER_H)
+// Растушёвка пола у основания препятствий: карта «занятых» мест по XZ (AssetMaterials.set_cloud_occluders): 1 у контура → 0 на cloud_floor_fade_w м от него.
+uniform sampler2D occ_map : filter_linear, repeat_disable;
+uniform vec4 occ_rect = vec4(0.0, 0.0, 1.0, 1.0);   // x0, z0 (мир, м), 1/ширина, 1/глубина
+uniform int occ_n = 0;                                // число препятствий (0 — растушёвки нет)
+uniform float occ_strength : hint_range(0.0, 1.0) = 0.9;   // ручка cloud_floor_fade
 
 varying vec3 v_wp;
 varying vec3 v_nw;
@@ -38,7 +47,21 @@ void fragment() {
 	// Дыхание по такту хода и отклик на руку/аватар: плотность и яркость частиц (значения задаёт клиент; умолчания — как раньше).
 	float lift = breath_lift(v_wp);
 	float tk = touch_level(v_wp);   // только близость, без push (сдвиг — для вершин частиц)
-	float dens_k = max(1.0 + touch_grow * tk, 0.0);   // дыхание — только яркостью (lift): от плотности ячейки включались и гасли на каждом тике
+	float face_fade = edge_fade * edge;   // 0…1: у кромки грани частицы редеют и тускнеют, край растворяется
+	if (edge_fade > 0.0) {
+		edge = 0.0;   // линий и неона рёбер нет — только затухание
+		float by = 1.0 - smoothstep(0.0, face_fade_w, v_wp.y);                   // основание: к полу частицы редеют
+		float ty = smoothstep(face_top_y - face_fade_w, face_top_y, v_wp.y);   // верх
+		face_fade = max(face_fade, edge_fade * max(by, ty));
+	}
+	float occ = 0.0;
+	if (occ_n > 0 && edge_fade <= 0.0 && v_top > 0.9) {   // пол и платформы: вокруг основания препятствий частицы редеют
+		vec2 ouv = (v_wp.xz - occ_rect.xy) * occ_rect.zw;
+		if (ouv.x >= 0.0 && ouv.y >= 0.0 && ouv.x <= 1.0 && ouv.y <= 1.0) {
+			occ = textureLod(occ_map, ouv, 0.0).r * occ_strength;
+		}
+	}
+	float dens_k = max(1.0 + touch_grow * tk, 0.0) * (1.0 - face_fade) * (1.0 - occ);   // дыхание — только яркостью (lift): от плотности ячейки включались и гасли на каждом тике
 	// Освещённость: статические источники узла и рука/аватар (touch). Нет источников — 1, как раньше.
 	vec3 lit_col = vec3(1.0);
 	float lit = 1.0;
@@ -49,7 +72,7 @@ void fragment() {
 	}
 	vec4 c = volume_cloud(v_wp, safe_dir(v_nw), safe_dir(CAMERA_POSITION_WORLD - v_wp), v_dist,   // CAMERA_POSITION_WORLD в стерео — середина между глаз (правило в volume_cloud.gdshaderinc)
  PROJECTION_MATRIX[1][1] * VIEWPORT_SIZE.y, edge, dens_k, lit, lit_col, lit_w);
-	c.rgb *= lift * (1.0 + touch_gain * tk);
+	c.rgb *= lift * (1.0 + touch_gain * tk) * (1.0 - 0.5 * face_fade) * (1.0 - 0.6 * occ);
 	c.rgb = mix(c.rgb, touch_color * dust, 0.5 * tk);
 	ALBEDO = focus_light(mix(c.rgb, edge_color.rgb, edge * edge_mix), v_wp);   // тревога у игрока (alarm_focus.gdshaderinc)
 	ALPHA = c.a;
