@@ -566,7 +566,8 @@ func test_asset_materials_knobs_change_materials_and_reset() -> void:
 	AssetMaterials.reset_tuning()
 	var base := _load("env", "cover")
 	AssetMaterials.apply(base, "BASE")
-	assert_bool(_mat_of(base, "pillar_block").next_pass == null).override_failure_message("обводки (fringe) больше нет: материал без next_pass").is_true()
+	var np := _mat_of(base, "pillar_block").next_pass as ShaderMaterial
+	assert_bool(np == null or np.shader == AssetMaterials.CORE_SHADER).override_failure_message("обводки (fringe) больше нет: next_pass — только сердечник cloud_core").is_true()
 	assert_float(float(_mat_of(base, "pillar_block").get_shader_parameter("edge_glow"))).override_failure_message("рёбра колонн: edge_glow 1,0 (принято на очках) вшит константой").is_equal_approx(1.0, 0.001)
 	var cfg := ConfigFile.new()
 	cfg.set_value("assets", "fringe_on", false)  # удалённая ручка из старого cfg на очках: не ошибка, только предупреждение
@@ -1342,3 +1343,21 @@ func test_pillar_is_one_body_two_by_two_module_not_four_covers() -> void:
 	# одиночное укрытие 1×1 остаётся прежним
 	var cover := _aabb(_load("env", "cover"))
 	assert_float(cover.size.x).is_equal_approx(1.0, 0.02)
+
+
+# Сердечник под облаком граней (слово владельца 15.11: «колонны прозрачные, вижу, что за ними»): по умолчанию у облачного материала укрытия next_pass —
+# непрозрачный CORE_SHADER цвета пустоты, утопленный по нормали; у пола его нет (там своя подложка); ручка 0 — прежнее прозрачное облако.
+func test_cloud_core_под_облаком_укрытия_и_ручка_выключает() -> void:
+	AssetMaterials.reset_tuning()
+	var m := _mat_of(_apply_new("env", "cover"), "pillar_block")
+	assert_object(m.shader).is_equal(AssetMaterials.CLOUD_SHADER)
+	var core := m.next_pass as ShaderMaterial
+	assert_object(core).override_failure_message("у облака укрытия есть сердечник").is_not_null()
+	assert_object(core.shader).is_equal(AssetMaterials.CORE_SHADER)
+	assert_float(float(core.get_shader_parameter("core_sink"))).is_equal_approx(0.01, 1e-6)
+	var slab := _mat_of(_apply_new("env", "floor_slab_16"), "slab")
+	assert_object(slab.next_pass).override_failure_message("у пола сердечника нет").is_null()
+	AssetMaterials.tune({"cloud_core": 0.0})
+	var off := _mat_of(_apply_new("env", "cover"), "pillar_block")
+	assert_object(off.next_pass).override_failure_message("cloud_core = 0 — прозрачное облако, как раньше").is_null()
+	AssetMaterials.reset_tuning()

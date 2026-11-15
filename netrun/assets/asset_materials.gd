@@ -18,6 +18,8 @@ const SURFACE_CLOUD_GROUP := &"surface_clouds"   # меши с облаком н
 const CLOUD_SHADER := preload("res://assets/shaders/cloud_dark.gdshader")  # «облако без основы»: вид реквизита (ручка cloud, умолчание 1; принято 12.10, облако (Б) на объектах — 14.10)
 ## Непрозрачный пол со строками скана (B3, ручка scan_rows): без alpha_to_coverage, ALPHA не пишется; облачные регистры (дыхание, рука, свет, тревога) обслуживают его так же, как CLOUD_SHADER.
 const FLOOR_SCAN_SHADER := preload("res://assets/shaders/floor_scan.gdshader")
+## Непрозрачный сердечник под облаком граней (ручка cloud_core): next_pass облачного материала, утоплен по нормали.
+const CORE_SHADER := preload("res://assets/shaders/cloud_core.gdshader")
 ## Луч Soft ICE (меши `*_beam*` у датчика и `*_fan` у маяка, ice/sensor_ice и ice/lighthouse_ice): роль shell_soft, шейдер по имени меша; состояния — set_beam(root, state, flash).
 const BEAM_SHADER := preload("res://assets/shaders/beam.gdshader")
 ## Состояния луча датчика (параметр `state` шейдера beam.gdshader).
@@ -142,6 +144,8 @@ const KNOBS := {
 	# Фон и пол (владелец 15.11: «скайбокс убрать полностью — только чёрный», «яркой подсветки тайлов на полу не должно быть»): прежний вид — значением 1.
 	"backdrop": 0.0,         # 1 — фон-купол BackdropDome (горизонт/пылинки); 0 (умолчание) — купола нет, фон чисто чёрный
 	"occupied_floor": 0.0,   # 1 — голубая заливка клеток под укрытиями (OccupiedFloor); 0 (умолчание) — не создаётся
+	"cloud_core": 1.0,       # 1 (умолчание, владелец 15.11) — под облаком граней непрозрачный сердечник цвета пустоты: сквозь колонны и укрытия не видно; 0 — прозрачные, как раньше
+	"cloud_core_sink": 0.01, # м: насколько сердечник утоплен внутрь от грани (меньше — частицы режутся его глубиной, больше — щель у рёбер)
 	"min_px_streaks": 1.5,   # минимальная полная ширина штриха, px экрана (streaks.gdshader min_px)
 	"min_px_points": 2.0,    # минимальный диаметр точки, px (points.gdshader min_px)
 	"solid_base": "",        # цвет плит solid_dark «#rrggbb»; пусто — по умолчанию из шейдера
@@ -333,6 +337,18 @@ static func _cloud_scope_ok(root: Node) -> bool:
 	if base.begins_with("floor"):
 		return float(_k("cloud_floor")) > 0.5
 	return true
+
+
+## Общий материал сердечника (ручки cloud_core_sink, VOID_BG): один на все облачные меши, пересоздаётся при смене ручек (tune → apply новых сцен).
+static var _core_mat: ShaderMaterial
+static func _core_material() -> ShaderMaterial:
+	var sink := float(_k("cloud_core_sink"))
+	if _core_mat == null or not is_equal_approx(float(_core_mat.get_shader_parameter("core_sink")), sink):
+		_core_mat = ShaderMaterial.new()
+		_core_mat.shader = CORE_SHADER
+		_core_mat.set_shader_parameter("core_sink", sink)
+		_core_mat.set_shader_parameter("core_color", VOID_BG)
+	return _core_mat
 
 
 ## Меш — верх плиты пола комнаты (`slab` в floor*) и включены строки скана (ручка scan_rows): его материал — непрозрачный FLOOR_SCAN_SHADER вместо облака.
@@ -544,6 +560,8 @@ static func apply(root: Node, tier: String = "") -> void:
 			if src.resource_name == "solid_dark" and String(mi.name) != UNDER_SLAB and float(_k("cloud")) > 0.0 and _cloud_scope_ok(root):  # floor_slab_under — сплошная подложка под облачным полом (#424 Ш5): solid_dark при любом cloud;  # прототип «облако без основы»: частицы с дырами вместо тёмной грани (нужен MSAA)
 				var scan_floor := _is_scan_floor(mi, root)
 				m.shader = FLOOR_SCAN_SHADER if scan_floor else CLOUD_SHADER
+				if not scan_floor and float(_k("cloud_core")) > 0.0 and not root.scene_file_path.get_file().begins_with("floor"):
+					m.next_pass = _core_material()   # сплошной сердечник под частицами: сквозь объект не видно (пол — своя подложка floor_slab_under)
 				mi.add_to_group(SURFACE_CLOUD_GROUP)   # set_cloud_breath / set_cloud_touch находят поверхностные облака по группе и по реестру материалов
 				_surface_cloud_mats.append(weakref(m))
 				m.set_shader_parameter("glitch_tex", GlitchSprite.texture())
