@@ -117,7 +117,7 @@ var _max_ms := 0.0
 var _env: Environment
 var backdrop: BackdropDome   ## фон-купол вместо дальней геометрии (решение владельца 18.10, шаг B); цвет пустоты — по тревоге, как фон окружения
 
-const CALM_BG := Color(0.02, 0.024, 0.03)   ## фон спокойного узла; тревога сдвигает его на разницу AssetMaterials.alarm_background (уровень − 0)
+const CALM_BG := Color(0.0, 0.0, 0.0)   ## фон спокойного узла (чистый чёрный, владелец 15.11); тревога сдвигает его на разницу AssetMaterials.alarm_background (уровень − 0)
 
 
 ## Фон узла на уровне тревоги: спокойный фон плюс сдвиг цвета Blender (к тёмно-красному); tick_phase 0…1 — пульс «охоты» (уровень 3).
@@ -138,9 +138,10 @@ func _ready() -> void:
 	env.environment.ambient_light_energy = AMBIENT_ENERGY
 	env.environment.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 	add_child(env)
-	backdrop = BackdropDome.new()   # позиция не важна: шейдер берёт из вида только поворот, купол рисуется первым и глубину не пишет
-	add_child(backdrop)
-	backdrop.set_alarm(0)
+	if float(AssetMaterials.knob("backdrop")) > 0.0:   # ручка [assets] backdrop: по умолчанию купола нет, фон чёрный (владелец 15.11)
+		backdrop = BackdropDome.new()   # позиция не важна: шейдер берёт из вида только поворот, купол рисуется первым и глубину не пишет
+		add_child(backdrop)
+		backdrop.set_alarm(0)
 	_add_light(Vector3(-52.0, 25.0, 0.0), 0.55)
 	_add_light(Vector3(-30.0, 205.0, 0.0), 0.25)
 	view = NodeView.new()
@@ -208,7 +209,8 @@ func _process(delta: float) -> void:
 			(_avatar_nodes[id] as AvatarView).move_to(pose["p"], delta)
 	if alarm_level == 3:   # «охота»: фон пульсирует в ритме такта
 		_env.background_color = alarm_bg(3, _tick_phase(now))
-		backdrop.set_alarm(3, _tick_phase(now))
+		if backdrop != null:
+			backdrop.set_alarm(3, _tick_phase(now))
 	_update_cloud(now)
 	_update_alarm_focus()
 	_animate_shards(delta)
@@ -391,8 +393,9 @@ func _update_tick_floor() -> void:
 	if tick_floor == null:
 		tick_floor = TickFloor.new(rig.grid)
 		add_child(tick_floor)
-		occupied_floor = OccupiedFloor.new(rig.grid)
-		add_child(occupied_floor)
+		if float(AssetMaterials.knob("occupied_floor")) > 0.0:   # ручка [assets] occupied_floor: по умолчанию заливки занятых клеток нет (владелец 15.11)
+			occupied_floor = OccupiedFloor.new(rig.grid)
+			add_child(occupied_floor)
 	tick_floor.apply(remote.intents(), tk, NodeGrid.cell_of(rig.global_position))
 
 
@@ -856,7 +859,8 @@ func _on_alarm_view(level: int, _alarm: float) -> void:
 		world_ui.danger.alarm_level(level)
 	view.set_alarm_level(level)
 	_env.background_color = alarm_bg(level, _tick_phase(Time.get_ticks_msec() / 1000.0))
-	backdrop.set_alarm(level, _tick_phase(Time.get_ticks_msec() / 1000.0))
+	if backdrop != null:
+		backdrop.set_alarm(level, _tick_phase(Time.get_ticks_msec() / 1000.0))
 
 
 ## Опасное в центре зрения (ice.md §8 «Правило П6»): пробуждение Black ICE (bw — тактов до конца, у ближайшего просыпающегося) и ожоги (burn) из снимка.

@@ -129,7 +129,8 @@ func _populate() -> void:
 	head.set_process(false)
 	_put(head, "head_cloud")
 	# Купол фона (класс Blender: только создаём).
-	_put(BackdropDome.new(), "backdrop_dome")
+	if float(AssetMaterials.knob("backdrop")) > 0.0:   # купола в сцене нет — и прогревать его нечего
+		_put(BackdropDome.new(), "backdrop_dome")
 	# Тоннель перехода (шейдер на сфере) и вспышка ожога (шейдер Blender, strength 0).
 	var tunnel := TunnelFx.new()
 	tunnel.visible = true

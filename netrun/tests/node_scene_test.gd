@@ -536,4 +536,4 @@ func test_ceiling_and_far_layers_are_not_built_the_horizon_is_the_dome() -> void
 			assert_object(_multimesh_of(scene.view, _module_path(module))).override_failure_message("%s: построен %s" % [tier, module]).is_null()
 		assert_bool(scene.view.find_children("*far_*", "", true, false).is_empty()).override_failure_message("%s: остались far_*" % tier).is_true()
 	var scene2 := _scene()
-	assert_object(scene2.backdrop).is_instanceof(BackdropDome)   # горизонт - единственный дальний фон
+	assert_object(scene2.backdrop).is_null()   # владелец 15.11: скайбокса нет, фон чёрный (ручка backdrop=1 возвращает купол)

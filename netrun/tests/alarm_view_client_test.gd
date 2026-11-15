@@ -17,16 +17,17 @@ func after_test() -> void:
 
 func test_спокойный_фон_без_сдвига() -> void:
 	var c: Color = _scene.alarm_bg(0)
-	assert_float(c.r).is_equal_approx(0.02, 0.0001)
-	assert_float(c.g).is_equal_approx(0.024, 0.0001)
+	assert_float(c.r).is_equal_approx(0.0, 0.0001)   # спокойный фон — чистый чёрный (владелец 15.11)
+	assert_float(c.g).is_equal_approx(0.0, 0.0001)
+	assert_float(c.b).is_equal_approx(0.0, 0.0001)
 
 
 func test_фон_краснеет_с_уровнем() -> void:
 	var r1: float = _scene.alarm_bg(1).r
 	var r4: float = _scene.alarm_bg(4).r
-	assert_bool(r1 > 0.02).is_true()
+	assert_bool(r1 > 0.0).is_true()
 	assert_bool(r4 > r1).is_true()
-	assert_float(_scene.alarm_bg(4).g).is_less(0.024)
+	assert_float(_scene.alarm_bg(4).g).is_less(_scene.alarm_bg(4).r)   # красный, не белёсый
 
 
 func test_охота_пульсирует_в_такте() -> void:
@@ -41,7 +42,7 @@ func test_событие_тревоги_ставит_уровень_и_фон() 
 	assert_float(_scene._env.background_color.r).is_equal_approx(_scene.alarm_bg(2).r, 0.0001)
 	_scene.apply_alarm({"alarm": 0.0, "level": 0})
 	assert_int(_scene.view.alarm_level).is_equal(0)
-	assert_float(_scene._env.background_color.r).is_equal_approx(0.02, 0.0001)
+	assert_float(_scene._env.background_color.r).is_equal_approx(0.0, 0.0001)
 
 
 func test_уровень_переживает_пересборку_комнаты() -> void:

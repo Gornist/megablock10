@@ -139,6 +139,9 @@ const PILLAR_EDGE := {"edge_glow": 1.0}
 ## Ручки читаются в момент `apply()` (создание материалов): вызывать `tune()` / `tune_from_config()` ДО построения окружения, один раз при старте.
 ## Имя → умолчание (то, что стоит в коде без ручек).
 const KNOBS := {
+	# Фон и пол (владелец 15.11: «скайбокс убрать полностью — только чёрный», «яркой подсветки тайлов на полу не должно быть»): прежний вид — значением 1.
+	"backdrop": 0.0,         # 1 — фон-купол BackdropDome (горизонт/пылинки); 0 (умолчание) — купола нет, фон чисто чёрный
+	"occupied_floor": 0.0,   # 1 — голубая заливка клеток под укрытиями (OccupiedFloor); 0 (умолчание) — не создаётся
 	"min_px_streaks": 1.5,   # минимальная полная ширина штриха, px экрана (streaks.gdshader min_px)
 	"min_px_points": 2.0,    # минимальный диаметр точки, px (points.gdshader min_px)
 	"solid_base": "",        # цвет плит solid_dark «#rrggbb»; пусто — по умолчанию из шейдера
@@ -309,6 +312,11 @@ static func _is_plate(mi: MeshInstance3D, _root: Node) -> bool:
 	return n == "slab" or n == "tiles" or n.ends_with("_plates")
 
 
+## Текущее значение ручки (с учётом tune/tune_from_config) для клиента.
+static func knob(name: String) -> Variant:
+	return _k(name)
+
+
 static func _k(name: String) -> Variant:
 	return _tuned.get(name, KNOBS[name])
 
@@ -377,7 +385,8 @@ const TIER_TINT := {
 ## бесплатно по перекрытию слоёв на Pico, в отличие от нового аддитивного купола. Клиент ставит `Environment.background_color = AssetMaterials.VOID_BG`.
 ## Чёрные плиты `solid_dark` остаются чёрными и читаются силуэтом на бирюзовом фоне. Подбор по кадрам room_inside / room_overview / edge_view (BASE): старый фон → этот
 ## даёт dark 38→31, 16→13, 28→21 %, lum 21→23, 26→27, 26→28, cyan и hor не хуже; остаток dark — чёрные плиты (пол комнаты — одна плита solid_dark, потолок), не фон.
-const VOID_BG := Color(0.0, 0.10, 0.13)
+## ИЗМЕНЕНО 15.11 (владелец): чистый чёрный, без бирюзовой дымки; прежний вид — Color(0.0, 0.10, 0.13).
+const VOID_BG := Color(0.0, 0.0, 0.0)
 
 ## ВИД ТРЕВОГИ УЗЛА 0–4 (docs/gamedesign/ice.md §4, §8: «цвет фона узла сдвигается» — главный сигнал). Уровень приходит от Godot (`alert_level`, `AlarmLevels`):
 ## 0 спокойно — без изменений; 1 насторожен — лёгкий сдвиг фона; 2 тревога — заметно теплее; 3 охота — красный оттенок и пульс в ритме такта; 4 локдаун — фон на максимуме.
