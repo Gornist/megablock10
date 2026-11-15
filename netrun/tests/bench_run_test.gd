@@ -80,10 +80,10 @@ func test_перцентили_по_сырым_кадрам_индекс_ceil_q_
 
 
 func test_статистика_кадров_доля_дольше_11_11() -> void:
-	var f := PackedFloat64Array([10.0, 11.0, 12.0, 20.0])
+	var f := PackedFloat64Array([10.0, 11.12, 12.0, 20.0])   # 11,12 — дрожь vsync, не пропуск; пропуск — дольше 16,67
 	var g := PackedFloat64Array([8.0, -1.0, 12.0, 9.0])   # −1 — нет данных GPU, не считается
 	var s := BenchRun.frame_stats(f, g)
-	assert_float(s["frame_over"]).is_equal(0.5)
+	assert_float(s["frame_over"]).is_equal(0.25)
 	assert_float(s["frame_peak"]).is_equal(20.0)
 	assert_float(s["gpu_over"]).is_equal_approx(0.333, 0.001)   # 1 из 3
 	assert_float(s["gpu_p50"]).is_equal(9.0)

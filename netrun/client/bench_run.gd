@@ -17,8 +17,10 @@ const SETTLE_SEC := 10.0
 const RUNS := 3
 const RUN_SEC := 20.0
 const AB_SETTLE_SEC := 2.0
-## Бюджет кадра 90 Гц, мс: доля кадров дольше него — главный показатель замера.
+## Бюджет кадра 90 Гц, мс: доля кадров GPU дольше него — главный показатель замера.
 const OVER_MS := 11.11
+## Пропуск vsync: время кадра привязано к 11,11 мс и дрожит на сотые (11,12), поэтому кадр считается пропущенным, только если он дольше полутора бюджетов.
+const FRAME_MISS_MS := OVER_MS * 1.5
 const CSV_HEADER := "run,variant,frame,t_ms,frame_ms,gpu_ms"
 ## Ручки AssetMaterials, что меняются живьём: имя → uniform шейдера cloud_dark.gdshader (прямой 1:1; у всех cloud_dark-материалов, уже созданных apply()).
 const LIVE_UNIFORMS := {
@@ -327,11 +329,11 @@ static func frame_stats(f: PackedFloat64Array, gpu_ms: PackedFloat64Array) -> Di
 		"frame_p50": snappedf(percentile(f, 0.5), 0.01),
 		"frame_p95": snappedf(percentile(f, 0.95), 0.01),
 		"frame_peak": snappedf(_peak(f), 0.01),
-		"frame_over": over_share(f),
+		"frame_over": over_share(f, FRAME_MISS_MS),
 		"gpu_p50": snappedf(percentile(g, 0.5), 0.01) if not g.is_empty() else -1.0,
 		"gpu_p95": snappedf(percentile(g, 0.95), 0.01) if not g.is_empty() else -1.0,
 		"gpu_peak": snappedf(_peak(g), 0.01) if not g.is_empty() else -1.0,
-		"gpu_over": over_share(g) if not g.is_empty() else -1.0,
+		"gpu_over": over_share(g, OVER_MS) if not g.is_empty() else -1.0,
 	}
 
 
@@ -342,13 +344,13 @@ static func _peak(values: PackedFloat64Array) -> float:
 	return m
 
 
-## Доля значений строго больше OVER_MS (0…1, три знака).
-static func over_share(values: PackedFloat64Array) -> float:
+## Доля значений строго больше limit (0…1, три знака).
+static func over_share(values: PackedFloat64Array, limit: float) -> float:
 	if values.is_empty():
 		return 0.0
 	var n := 0
 	for v in values:
-		if v > OVER_MS:
+		if v > limit:
 			n += 1
 	return snappedf(float(n) / values.size(), 0.001)
 
